@@ -24,11 +24,30 @@
 | 文件系统故障 | 原发布事务已提交但 COMMIT 确认丢失，后续异常清理；查库失败及普通拒绝 | 使用实际数据库和私有文件断言：已发布素材保留；查库结果不明保留私有文件 |
 | 媒体 | JPEG/PNG/WebP/AVIF/GIF/TIFF 解码，20MP 输入规范化、动画/多页/恶意尺寸拒绝、缩略图 | Sharp 实际编解码；前端可导入范围由真实浏览器内核再决定 |
 | 真实界面 | 三张公开示例照片及技术构图、多选区、自由构图、曲线、负向调色、草图进入 AI 参考、六种尺寸 | [逐项实操记录](verification/browser-refinement.md)，未登录浏览器，不冒充团队/运营 UI 已完成真实端到端测试 |
-| 原生数据库与容器 | GitHub 上原生 PostgreSQL 18 和 Docker/Caddy/独立 Worker 的全量工作流 | 结果在本文件下一节按实际远端运行补记；历史工作流不替代当前版本 |
+| 原生数据库与容器 | GitHub 上原生 PostgreSQL 18 和 Docker/Caddy/独立 Worker 的全量工作流 | 本轮工作流已真实成功，见下一节；历史工作流不替代当前版本 |
 
 ## 3. 本轮 GitHub 原生验收
 
-本轮远端检查在代码同步后执行。当前本地五轮已通过；本节只在读取到对应提交的真实工作流结果后记录成功，不提前声明远端通过。
+[GitHub Actions 42646867844](https://github.com/hxjyaohaohaode/AI-xiutu/actions/runs/42646867844) 已完成，结论 **success**。代码提交为 `1d5272997f9b654225d37d5a7f91c3f9f59ab7bd`，远端文件树 `0e57379f80a1b69cc2e57cff20a9991ed1cf5b5c` 与本地验收索引逐 SHA 比对一致。
+
+- 运行时间：2026-11-09 15:39:27—15:41:42 UTC。
+- `baseline`（job 129262355416）：真实原生 PostgreSQL 18，连接池上限 10；全工作区类型检查、**253 项通过 / 0 失败 / 0 跳过**、生产构建和生产依赖审计均通过。
+- `containers`（job 129262968346）：实际构建后端与 Caddy 前端镜像；启动 PostgreSQL、迁移、API、独立 AI Worker 和网页服务。迁移退出码 0，数据库和 API 健康检查通过。
+- 容器烟测访问 `/health`、`/v1/public-config`、网页入口及未登录私有 API；断言私有 API 返回 401，外部 AI/短信/支付配置不可用，DB/API/Worker 没有宿主端口绑定，API 与 Worker 使用同一私有素材和发送日志卷。
+- 没有启用外部执行，也没有发送真实短信或模型请求。HTTP 本地容器检查不等同生产 HTTPS、真实用户网络或外部账单验收。
+
+已读取的实际日志摘要：
+
+```text
+2026-11-09T15:40:24.7617737Z ℹ tests 253
+2026-11-09T15:40:24.7618231Z ℹ pass 253
+2026-11-09T15:40:24.7618423Z ℹ fail 0
+2026-11-09T15:40:24.7618851Z ℹ skipped 0
+2026-11-09T15:40:25.9018134Z found 0 vulnerabilities
+2026-11-09T15:41:38.5880130Z Container smoke checks passed; no SMS or model request was enabled or sent.
+```
+
+此节在远端运行结束后补记，仅修改 Markdown，不改变以上已验收的源码/配置指纹。
 
 ## 4. 重点回归反例
 
