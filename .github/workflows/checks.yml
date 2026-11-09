@@ -1,0 +1,148 @@
+name: Baseline checks
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+permissions:
+  contents: read
+concurrency:
+  group: checks-${{ github.ref }}
+  cancel-in-progress: true
+jobs:
+  baseline:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    services:
+      postgres:
+        image: postgres:18
+        env:
+          POSTGRES_USER: xiutu
+          POSTGRES_PASSWORD: ci-only-disposable
+          POSTGRES_DB: xiutu_test
+        ports: ['5432:5432']
+        options: >-
+          --health-cmd "pg_isready -U xiutu -d xiutu_test"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+    env:
+      TEST_DATABASE_URL: postgresql://xiutu:ci-only-disposable@127.0.0.1:5432/xiutu_test
+      REQUIRE_DB_TESTS: '1'
+      DB_POOL_MAX: '10'
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
+        with:
+          node-version-file: .nvmrc
+          cache: npm
+      - run: npm ci
+      - run: npm run check
+      - run: npm audit --omit=dev --audit-level=high
+  containers:
+    needs: baseline
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    env:
+      COMPOSE_PROJECT_NAME: xiutu-ci-${{ github.run_id }}-${{ github.run_attempt }}
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+      - name: Create isolated configuration with external execution disabled
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+          from secrets import token_hex
+          values = {
+              'POSTGRES_PASSWORD': token_hex(24),
+              'SESSION_SECRET': token_hex(32),
+              'APP_ORIGIN': 'http://127.0.0.1',
+              'APP_DOMAIN': ':80',
+              # Compose must override this development-only value to internal 3001.
+              'PORT': '3999',
+              'COOKIE_SECURE': 'false',
+              'AI_PLAN_ENABLED': 'false',
+              'AI_TEXT_ENABLED': 'false',
+              'AI_IMAGE_ENABLED': 'false',
+              'AI_SPEECH_ENABLED': 'false',
+              'DASHSCOPE_API_KEY': '',
+              'ARK_API_KEY': '',
+              'TENCENT_SECRET_ID': '',
+              'TENCENT_SECRET_KEY': '',
+              'ARK_IMAGE_MODELS_JSON': '[]',
+              'QWEN_ASR_MODELS': '',
+          }
+          target = Path('.env')
+          target.write_text(''.join(f'{key}={value}\n' for key, value in values.items()))
+          target.chmod(0o600)
+          PY
+      - name: Validate and build both Docker targets
+        run: |
+          docker compose config --quiet
+          docker compose build
+      - name: Start PostgreSQL, migration, API, worker and web
+        run: docker compose up --detach --no-build
+      - name: Verify HTTP, health, disabled external services and private network bindings
+        run: |
+          python3 - <<'PY'
+          import json
+          import subprocess
+          import time
+          from urllib.request import urlopen
+          from urllib.error import HTTPError, URLError
+
+          base = 'http://127.0.0.1'
+          deadline = time.monotonic() + 90
+          while True:
+              try:
+                  with urlopen(base + '/health', timeout=4) as response:
+                      assert json.load(response)['ok'] is True
+                  break
+              except (OSError, URLError, AssertionError, ValueError):
+                  if time.monotonic() >= deadline:
+                      raise SystemExit('The public health endpoint did not become ready.')
+                  time.sleep(2)
+
+          with urlopen(base + '/v1/public-config', timeout=5) as response:
+              config = json.load(response)
+          assert config['brand']['name']
+          assert config['capabilities']['aiConfigured'] is False
+          assert config['capabilities']['smsConfigured'] is False
+          assert config['capabilities']['paymentConfigured'] is False
+          assert config['capabilities']['availableOperations'] == []
+          assert config['media']['canonical'] == 'png'
+          with urlopen(base + '/', timeout=5) as response:
+              assert 'text/html' in response.headers['Content-Type']
+              assert 'id="root"' in response.read().decode()
+          try:
+              urlopen(base + '/v1/projects', timeout=5)
+          except HTTPError as error:
+              assert error.code == 401
+          else:
+              raise AssertionError('Private API accepted an unauthenticated request.')
+
+          states = {}
+          for service in ('db', 'migrate', 'api', 'worker', 'web'):
+              identifier = subprocess.check_output(['docker', 'compose', 'ps', '-a', '-q', service], text=True).strip()
+              assert identifier and '\n' not in identifier, f'Missing or unexpected service: {service}'
+              state = json.loads(subprocess.check_output(['docker', 'inspect', identifier], text=True))[0]
+              states[service] = state
+              if service == 'migrate':
+                  assert state['State']['Status'] == 'exited' and state['State']['ExitCode'] == 0
+              else:
+                  assert state['State']['Running'] is True, f'Service stopped: {service}'
+              if service in ('db', 'api', 'worker'):
+                  assert not state['HostConfig']['PortBindings'], f'Private service published host ports: {service}'
+          assert states['api']['State']['Health']['Status'] == 'healthy'
+          assert states['db']['State']['Health']['Status'] == 'healthy'
+          for service in ('api', 'worker'):
+              destinations = {mount['Destination'] for mount in states[service]['Mounts']}
+              assert {'/app/.data/private', '/app/.data/ai-dispatch-journal'} <= destinations
+          print('Container smoke checks passed; no SMS or model request was enabled or sent.')
+          PY
+      - name: Show container diagnostics on failure
+        if: failure()
+        run: docker compose logs --no-color --tail=120
+      - name: Remove isolated containers and volumes
+        if: always()
+        run: docker compose down --volumes --remove-orphans

@@ -1,0 +1,19 @@
+{
+  "name": "@ai-xiutu/api",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "tsx watch src/index.ts",
+    "start": "tsx src/index.ts",
+    "typecheck": "tsc --noEmit -p tsconfig.json",
+    "test": "tsx --test test/*.test.ts"
+  },
+  "dependencies": {
+    "@ai-xiutu/db": "*",
+    "@ai-xiutu/providers": "*",
+    "@ai-xiutu/editor": "*",
+    "@ai-xiutu/ai": "*",
+    "@ai-xiutu/storage": "*"
+  }
+}

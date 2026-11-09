@@ -1,0 +1,791 @@
+@layer components {
+  .brand-logo {
+    width: 31px;
+    height: 31px;
+    object-fit: contain;
+    border-radius: 8px;
+    flex-shrink: 0;
+  }
+  .curve-point-select {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 10px;
+    font-size: 10px;
+    color: #68745d;
+    margin-top: 14px;
+  }
+  .curve-point-select select {
+    max-width: 150px;
+    font-size: 10px;
+    background: #fafbf7;
+    border: 1px solid #dfe5d6;
+    border-radius: 6px;
+    min-height: 34px;
+    padding: 6px;
+  }
+  .empty-sketch-button {
+    margin-top: 9px;
+    font-size: 11px;
+    min-height: 34px;
+  }
+  .sketch-toolbar-button {
+    margin-left: 6px;
+  }
+  .ai-task-tabs {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    border-bottom: 1px solid var(--line);
+    padding: 0 16px 12px;
+    flex-shrink: 0;
+  }
+  .ai-task-tabs > button {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 6px;
+    flex: 1;
+    border-radius: 8px;
+    min-height: 38px;
+    font-size: 11px;
+    color: #707764;
+  }
+  .ai-task-tabs > button.selected {
+    background: #f5ecd0;
+    color: #6b5626;
+    font-weight: 600;
+  }
+  .ai-task-tabs > button:hover {
+    background: #f5f4ec;
+  }
+  .ai-intro .ai-data-note {
+    line-height: 1.7;
+    display: block;
+    margin-top: 15px;
+    font-size: 10px;
+    color: #6c7560;
+  }
+  .ai-size-field {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    font-size: 10px;
+    color: #737a68;
+    padding: 9px 0 14px;
+  }
+  .ai-size-field select {
+    border: 1px solid #e1e5d8;
+    border-radius: 6px;
+    padding: 5px;
+    background: #fff;
+    max-width: 170px;
+  }
+  .ai-size-field > span {
+    margin-left: auto;
+    font-size: 9px;
+  }
+  .sketch-reference {
+    margin: 20px 0;
+    text-align: center;
+  }
+  .sketch-entry {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    flex-direction: column;
+    gap: 9px;
+    width: 100%;
+    min-height: 142px;
+    border: 1px dashed #cfd7c4;
+    background: #f9faf6;
+    border-radius: 12px;
+    color: #718164;
+  }
+  .sketch-entry strong {
+    font-size: 12px;
+    font-weight: 600;
+  }
+  .sketch-entry span {
+    font-size: 10px;
+    color: #78816e;
+  }
+  .sketch-entry:hover {
+    background: #f2f5e9;
+    border-color: #aebd96;
+  }
+  .sketch-reference > .text-button {
+    margin-top: 6px;
+  }
+  .sketch-reference > span {
+    display: block;
+    font-size: 10px;
+    color: #737d66;
+    margin-top: 9px;
+  }
+  .sketch-preview {
+    position: relative;
+    background: #f1f2eb;
+    border-radius: 10px;
+    overflow: hidden;
+    padding: 12px;
+  }
+  .sketch-preview img {
+    margin: auto;
+    width: auto;
+    max-width: 100%;
+    max-height: 180px;
+    box-shadow: 0 2px 9px #2c331d17;
+  }
+  .sketch-preview .icon-button {
+    position: absolute;
+    right: 6px;
+    top: 6px;
+    background: #ffffffe8;
+    border: 1px solid #e1e5d8;
+  }
+  .ai-image-result > img {
+    width: 100%;
+    height: auto;
+    max-height: 340px;
+    object-fit: contain;
+    background: #eff0e9;
+    border-radius: 8px;
+    margin: 14px 0 8px;
+  }
+  .ai-image-result > span {
+    display: block;
+    font-size: 9px;
+    color: #727c67;
+    margin-bottom: 11px;
+  }
+  .ai-text-result input,
+  .ai-text-result textarea,
+  .ai-transcript-result textarea {
+    width: 100%;
+    background: #fafbf7;
+    border: 1px solid #e1e5d9;
+    border-radius: 7px;
+    padding: 10px;
+    font-size: 12px;
+    color: #404b36;
+    line-height: 1.8;
+  }
+  .ai-text-result input {
+    font-size: 12px;
+    font-weight: 600;
+    margin: 10px 0 8px;
+  }
+  .ai-text-result textarea {
+    min-height: 170px;
+    resize: vertical;
+  }
+  .ai-result-actions {
+    display: flex;
+    align-items: center;
+    gap: 6px 13px;
+    flex-wrap: wrap;
+    margin-top: 8px;
+  }
+  .ai-result-actions > .button {
+    width: 100%;
+    font-size: 11px;
+    min-height: 38px;
+  }
+  .ai-result-actions > .text-button {
+    font-size: 10px;
+  }
+  .ai-transcript-result > label {
+    display: block;
+    font-size: 11px;
+    color: #68745c;
+    margin: 12px 0 8px;
+  }
+  .ai-transcript-result textarea {
+    display: block;
+    min-height: 110px;
+    margin-top: 8px;
+  }
+  .transcript-targets {
+    display: flex;
+    gap: 6px;
+    margin-top: 7px;
+  }
+  .transcript-targets > .button {
+    font-size: 10px;
+    padding: 8px;
+    flex: 1;
+  }
+  .voice-capture {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    text-align: center;
+    padding: 25px 2px 15px;
+  }
+  .voice-orb {
+    height: 76px;
+    width: 76px;
+    display: grid;
+    place-items: center;
+    background: #f5edcf;
+    color: #8f793c;
+    border: 1px solid #ebddb1;
+    border-radius: 50%;
+    margin-bottom: 17px;
+    box-shadow: 0 0 0 10px #faf8ee;
+  }
+  .voice-orb.recording {
+    background: #fbe4d8;
+    color: #b96443;
+    box-shadow: 0 0 0 10px #fdf1e9;
+    animation: recording-glow 1.8s ease-in-out infinite;
+  }
+  .voice-capture > strong {
+    font-size: 14px;
+    font-weight: 600;
+    color: #4f5b43;
+  }
+  .voice-capture > p {
+    font-size: 11px;
+    line-height: 1.8;
+    color: #737e65;
+    margin: 10px 0;
+    max-width: 255px;
+  }
+  .recording-time {
+    font-variant-numeric: tabular-nums;
+    font-size: 12px;
+    color: #8c947f;
+    margin: 5px 0 15px;
+    letter-spacing: 0.08em;
+  }
+  .button-recording {
+    background: #fae8df;
+    color: #a25035;
+    border: 1px solid #e7c7b9;
+  }
+  .voice-playback {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    width: 100%;
+    margin-top: 17px;
+  }
+  .voice-playback audio {
+    min-width: 0;
+    width: 100%;
+    height: 38px;
+  }
+  .voice-capture .inline-error {
+    text-align: left;
+    font-size: 11px;
+  }
+  @keyframes recording-glow {
+    50% {
+      box-shadow: 0 0 0 14px #fdf1e9;
+    }
+  }
+  .drawing-toolbar {
+    display: flex;
+    gap: 12px;
+    align-items: center;
+    justify-content: space-between;
+    margin-bottom: 15px;
+  }
+  .drawing-tools {
+    display: flex;
+    gap: 4px;
+    align-items: center;
+  }
+  .drawing-tools .selected {
+    background: #f7edcc;
+    color: #8b6b24;
+  }
+  .drawing-toolbar select {
+    background: #fafbf7;
+    border: 1px solid #e0e5d5;
+    border-radius: 7px;
+    padding: 9px;
+    font-size: 12px;
+    margin-left: auto;
+  }
+  .drawing-controls {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 17px;
+    margin-bottom: 18px;
+  }
+  .drawing-colors {
+    display: flex;
+    gap: 8px;
+    align-items: center;
+  }
+  .drawing-colors > button {
+    height: 27px;
+    width: 27px;
+    border-radius: 50%;
+    background: var(--swatch);
+    border: 3px solid #fff;
+    box-shadow: 0 0 0 1px #d9dfcf;
+  }
+  .drawing-colors > button.selected {
+    box-shadow: 0 0 0 2px #515e41;
+  }
+  .custom-color {
+    height: 29px;
+    width: 29px;
+    border-radius: 50%;
+    border: 1px dashed #c9d2bd;
+    display: grid;
+    place-items: center;
+    position: relative;
+    cursor: pointer;
+    color: #687655;
+    font-size: 20px;
+  }
+  .custom-color input {
+    position: absolute;
+    inset: 0;
+    width: 100%;
+    height: 100%;
+    opacity: 0;
+    cursor: pointer;
+  }
+  .drawing-width {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    font-size: 11px;
+    color: #727e62;
+    white-space: nowrap;
+  }
+  .drawing-width input {
+    width: 100px;
+    accent-color: #c5a13c;
+  }
+  .drawing-width span {
+    width: 20px;
+    text-align: right;
+    font-variant-numeric: tabular-nums;
+  }
+  .drawing-surface {
+    height: min(49dvh, 460px);
+    min-height: 180px;
+    background: #eeefe8;
+    border: 1px solid #dfe3d5;
+    border-radius: 11px;
+    overflow: hidden;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 15px;
+  }
+  .drawing-surface canvas {
+    height: 100%;
+    width: auto;
+    max-width: 100%;
+    object-fit: contain;
+    background: #fff;
+    box-shadow: 0 3px 15px #2f39221a;
+    touch-action: none;
+    cursor: crosshair;
+    aspect-ratio: 1;
+  }
+  .drawing-surface.landscape canvas {
+    aspect-ratio: 3/2;
+  }
+  .drawing-surface.portrait canvas {
+    aspect-ratio: 2/3;
+  }
+  .drawing-meta {
+    display: flex;
+    justify-content: space-between;
+    gap: 12px;
+    font-size: 10px;
+    color: #788467;
+    margin: 12px 1px 18px;
+  }
+  .drawing-actions {
+    display: flex;
+    gap: 10px;
+    justify-content: flex-end;
+    flex-wrap: wrap;
+  }
+  .drawing-actions > .button {
+    font-size: 11px;
+    min-height: 42px;
+  }
+  .copy-project-form {
+    margin-top: 20px;
+    padding-top: 20px;
+    border-top: 1px solid var(--line);
+  }
+  .view-actions {
+    display: flex;
+    align-items: center;
+    gap: 9px;
+    flex-wrap: wrap;
+  }
+  .brand-logo-config {
+    border: 1px solid #e0e6d6;
+    padding: 17px;
+    border-radius: 10px;
+    background: #f9fbf5;
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+  }
+  .brand-logo-config > label {
+    display: flex;
+    flex-direction: column;
+    gap: 9px;
+    font-size: 12px;
+    color: #5d6b4f;
+  }
+  .brand-logo-preview {
+    height: 70px;
+    width: 70px;
+    object-fit: contain;
+    border: 1px solid #dce3d1;
+    border-radius: 10px;
+    background: #fff;
+    padding: 5px;
+  }
+  .logo-file-label input {
+    font-size: 12px;
+  }
+  .brand-logo-config .fine-print {
+    margin: 0;
+  }
+  .brand-logo-config .text-button {
+    align-self: flex-start;
+  }
+  .model-operations {
+    border: 1px solid #dfe5d4;
+    border-radius: 9px;
+    padding: 12px 15px;
+    margin: 0;
+    display: flex;
+    gap: 18px;
+    flex-wrap: wrap;
+  }
+  .model-operations legend {
+    font-size: 12px;
+    color: #68765a;
+    padding: 0 5px;
+  }
+  .model-operations label {
+    display: flex;
+    gap: 7px;
+    align-items: center;
+    font-size: 12px;
+    color: #5b6c4c;
+  }
+  .model-operations input {
+    accent-color: #b58f32;
+    width: 16px;
+    height: 16px;
+  }
+  /* Secondary copy remains legible on the light workspace surfaces. */
+  .nav-section-label,
+  .sidebar-empty-copy,
+  .team-empty,
+  .team-empty button,
+  .sidebar-text-action,
+  .space-row small,
+  .account-login small,
+  .breadcrumb > span,
+  .save-indicator,
+  .workspace-tabs button,
+  .stage-hint,
+  .eyebrow,
+  .fine-print,
+  .form-hint,
+  .drop-description,
+  .local-assurance {
+    color: #727b66;
+  }
+}
+@layer responsive {
+  @media (max-width: 1080px) {
+    .sketch-toolbar-button {
+      margin-left: 0;
+    }
+    .editor-status {
+      display: none;
+    }
+  }
+  @media (max-width: 760px) {
+    .ai-task-tabs {
+      padding: 0 18px 12px;
+      gap: 7px;
+    }
+    .ai-task-tabs > button {
+      font-size: 12px;
+      min-height: 44px;
+    }
+    .ai-panel-title small {
+      font-size: 10px;
+    }
+    .ai-composer-bottom select {
+      min-height: 36px;
+    }
+    .ai-size-field {
+      font-size: 12px;
+      padding: 8px 0 14px;
+    }
+    .ai-size-field select {
+      font-size: 12px;
+      min-height: 38px;
+      max-width: 190px;
+    }
+    .ai-size-field > span {
+      font-size: 10px;
+    }
+    .ai-image-result > span {
+      font-size: 10px;
+    }
+    .ai-text-result input,
+    .ai-text-result textarea,
+    .ai-transcript-result textarea {
+      font-size: 14px;
+    }
+    .ai-text-result textarea {
+      min-height: 200px;
+    }
+    .ai-result-actions > .button {
+      font-size: 12px;
+      min-height: 44px;
+    }
+    .ai-result-actions > .text-button {
+      font-size: 11px;
+      min-height: 40px;
+    }
+    .transcript-targets > .button {
+      font-size: 11px;
+      min-height: 44px;
+    }
+    .sketch-entry {
+      min-height: 145px;
+    }
+    .sketch-entry strong {
+      font-size: 14px;
+    }
+    .sketch-entry span {
+      font-size: 11px;
+    }
+    .sketch-reference > span {
+      font-size: 11px;
+    }
+    .sketch-reference > .text-button {
+      min-height: 44px;
+      font-size: 12px;
+    }
+    .voice-capture {
+      padding: 26px 3px 20px;
+    }
+    .voice-capture > strong {
+      font-size: 16px;
+    }
+    .voice-capture > p {
+      font-size: 12px;
+      max-width: 290px;
+    }
+    .voice-capture > .button {
+      min-height: 44px;
+      font-size: 12px;
+    }
+    .voice-playback .icon-button {
+      min-height: 44px;
+      min-width: 44px;
+    }
+    .voice-playback audio {
+      height: 44px;
+    }
+    .drawing-toolbar {
+      gap: 4px;
+      flex-wrap: wrap;
+      margin-bottom: 12px;
+    }
+    .drawing-toolbar select {
+      font-size: 12px;
+      min-height: 44px;
+      padding: 7px;
+      max-width: 112px;
+    }
+    .drawing-tools {
+      gap: 0;
+    }
+    .drawing-tools .toolbar-separator {
+      margin: 0 3px;
+    }
+    .drawing-toolbar .icon-button {
+      min-width: 39px;
+      width: 39px;
+      height: 44px;
+    }
+    .drawing-controls {
+      flex-wrap: wrap;
+      gap: 15px;
+      margin-bottom: 17px;
+    }
+    .drawing-colors {
+      gap: 10px;
+    }
+    .drawing-colors > button,
+    .custom-color {
+      height: 30px;
+      width: 30px;
+    }
+    .drawing-width {
+      width: 100%;
+      font-size: 12px;
+    }
+    .drawing-width input {
+      flex: 1;
+      height: 22px;
+    }
+    .drawing-width span {
+      font-size: 12px;
+    }
+    .drawing-surface {
+      height: min(38dvh, 350px);
+      min-height: 160px;
+      padding: 10px;
+    }
+    .drawing-meta {
+      font-size: 9px;
+      flex-wrap: wrap;
+      gap: 5px;
+      margin: 10px 0 15px;
+    }
+    .drawing-actions {
+      gap: 7px;
+      justify-content: stretch;
+    }
+    .drawing-actions > .button {
+      font-size: 10px;
+      padding: 10px 8px;
+      min-height: 44px;
+      flex: 1;
+      gap: 5px;
+    }
+    .drawing-actions > .button > svg {
+      width: 15px;
+      height: 15px;
+    }
+    .empty-sketch-button {
+      margin-top: 5px;
+      font-size: 10px;
+      min-height: 35px;
+    }
+    .sketch-toolbar-button {
+      min-height: 40px;
+      font-size: 10px;
+    }
+    .editor-toolbar .toolbar-actions {
+      gap: 3px;
+    }
+    .view-actions {
+      gap: 7px;
+    }
+    .view-actions .button {
+      font-size: 10px;
+      min-height: 40px;
+      padding: 8px 10px;
+    }
+    .brand-logo-config {
+      padding: 14px;
+    }
+    .brand-logo-config > label {
+      font-size: 12px;
+    }
+    .model-operations {
+      gap: 10px;
+    }
+    .model-operations label {
+      min-height: 44px;
+    }
+    .model-operations input {
+      width: 20px;
+      height: 20px;
+    }
+    .button,
+    .icon-button,
+    .text-button {
+      min-height: 44px;
+    }
+    .nav-section-label .icon-button {
+      min-width: 44px;
+      width: 44px;
+      height: 44px;
+      margin-top: -12px;
+      margin-bottom: -12px;
+    }
+    .icon-button {
+      min-width: 44px;
+      width: 44px;
+    }
+    .workspace-tabs button {
+      min-height: 44px;
+    }
+    .mobile-tools button {
+      min-height: 57px;
+    }
+    .modal .icon-button {
+      min-width: 44px;
+      width: 44px;
+      height: 44px;
+    }
+    .range-label {
+      margin-bottom: 10px;
+    }
+    .range-label input {
+      min-height: 35px;
+    }
+    .reset-value {
+      min-width: 35px;
+      min-height: 35px;
+    }
+    .ai-composer textarea,
+    .stack-form input:not([type='checkbox']),
+    .stack-form select,
+    .comment-composer textarea,
+    .document-editor > textarea,
+    .document-title {
+      font-size: 16px;
+    }
+  }
+  @media (max-width: 380px) {
+    .drawing-toolbar .icon-button {
+      width: 34px;
+      min-width: 34px;
+    }
+    .drawing-toolbar select {
+      max-width: 95px;
+      font-size: 11px;
+    }
+    .drawing-colors {
+      gap: 8px;
+    }
+    .drawing-actions {
+      flex-wrap: wrap;
+    }
+    .drawing-actions > .button:last-child {
+      flex-basis: 100%;
+    }
+    .editor-toolbar {
+      padding-left: 10px;
+      padding-right: 10px;
+    }
+    .editor-toolbar .icon-button {
+      width: 36px;
+      min-width: 36px;
+    }
+    .empty-sketch-button {
+      font-size: 9px;
+    }
+  }
+}

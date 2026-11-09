@@ -1,0 +1,60 @@
+{
+  "name": "ai-xiutu",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "engines": {
+    "node": ">=24.0.0 <25"
+  },
+  "workspaces": [
+    "apps/*",
+    "packages/*"
+  ],
+  "scripts": {
+    "dev": "node scripts/dev.mjs",
+    "dev:api": "tsx watch apps/api/src/index.ts",
+    "dev:web": "npm run dev -w @ai-xiutu/web",
+    "build": "npm run typecheck && npm run build -w @ai-xiutu/web",
+    "typecheck": "node scripts/typecheck.mjs",
+    "test": "node scripts/test.mjs",
+    "check": "npm run typecheck && npm test && npm run build -w @ai-xiutu/web",
+    "db:migrate": "tsx packages/db/src/migrate.ts",
+    "admin:create": "tsx apps/api/src/bootstrap.ts",
+    "start": "tsx apps/api/src/index.ts",
+    "test:lite": "node scripts/with-lite.mjs test",
+    "dev:lite": "node scripts/with-lite.mjs dev",
+    "db:local": "node scripts/local-db.mjs",
+    "worker:ai": "tsx apps/worker-ai/src/index.ts",
+    "doctor": "tsx scripts/doctor.ts",
+    "admin:lite": "node scripts/with-lite.mjs admin",
+    "doctor:lite": "node scripts/with-lite.mjs doctor",
+    "verify": "node scripts/verify.mjs",
+    "verify:lite": "node scripts/with-lite.mjs verify"
+  },
+  "dependencies": {
+    "@fastify/cookie": "11.1.5",
+    "@fastify/multipart": "10.1.8",
+    "@phosphor-icons/react": "2.1.10",
+    "dotenv": "18.0.10",
+    "fastify": "5.12.8",
+    "pg": "8.23.1",
+    "react": "19.3.1",
+    "react-dom": "19.3.1",
+    "sharp": "0.35.5",
+    "tsx": "4.23.15",
+    "zod": "4.6.7"
+  },
+  "devDependencies": {
+    "@electric-sql/pglite": "0.5.15",
+    "@electric-sql/pglite-socket": "0.2.18",
+    "@types/node": "24.19.2",
+    "@types/pg": "8.23.1",
+    "@types/react": "19.3.0",
+    "@types/react-dom": "19.3.0",
+    "@vitejs/plugin-react": "6.3.0",
+    "embedded-postgres": "18.6.0-beta.19",
+    "prettier": "3.9.10",
+    "typescript": "5.9.3",
+    "vite": "8.3.7"
+  }
+}

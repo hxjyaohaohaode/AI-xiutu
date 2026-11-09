@@ -1,0 +1,10 @@
+node_modules
+.git
+.env
+.env.*
+.data
+.postgres
+artifacts
+coverage
+test-results
+apps/web/dist

@@ -1,0 +1,15 @@
+{
+  "name": "@ai-xiutu/ai",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "exports": "./src/index.ts",
+  "types": "./src/index.ts",
+  "dependencies": {
+    "@ai-xiutu/db": "*",
+    "@ai-xiutu/editor": "*",
+    "@ai-xiutu/providers": "*",
+    "@ai-xiutu/storage": "*",
+    "@ai-xiutu/multimodal": "*"
+  }
+}

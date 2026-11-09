@@ -1,0 +1,10 @@
+{
+  "name": "@ai-xiutu/worker-ai",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "dependencies": {
+    "@ai-xiutu/ai": "*",
+    "@ai-xiutu/db": "*"
+  }
+}

@@ -1,0 +1,10 @@
+node_modules/
+dist/
+.env
+.env.*
+.data/
+.postgres/
+artifacts/
+coverage/
+test-results/
+package-lock.json

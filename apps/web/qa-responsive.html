@@ -1,0 +1,145 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width,initial-scale=1" />
+    <title>创作工作台 · 响应式验收</title>
+    <style>
+      * {
+        box-sizing: border-box;
+      }
+      body {
+        margin: 0;
+        background: #e9eae5;
+        color: #343c2e;
+        font:
+          14px/1.6 system-ui,
+          -apple-system,
+          'PingFang SC',
+          'Microsoft YaHei',
+          sans-serif;
+      }
+      header {
+        position: sticky;
+        top: 0;
+        z-index: 2;
+        background: #fffffff2;
+        border-bottom: 1px solid #d6dcce;
+        padding: 14px 22px;
+        display: flex;
+        align-items: center;
+        gap: 20px;
+        flex-wrap: wrap;
+      }
+      h1 {
+        font-size: 16px;
+        margin: 0;
+      }
+      p {
+        font-size: 12px;
+        color: #68735d;
+        margin: 0;
+      }
+      nav {
+        display: flex;
+        gap: 8px;
+        flex-wrap: wrap;
+      }
+      a {
+        color: #4c613a;
+        border: 1px solid #c9d2bc;
+        padding: 6px 12px;
+        border-radius: 7px;
+        text-decoration: none;
+        background: #f7f9f0;
+      }
+      .frames {
+        display: flex;
+        align-items: flex-start;
+        gap: 24px;
+        padding: 24px;
+        width: max-content;
+        min-width: 100%;
+      }
+      .frame {
+        background: #fff;
+        border: 1px solid #ccd3c1;
+        border-radius: 12px;
+        padding: 12px;
+        box-shadow: 0 6px 25px #24301610;
+      }
+      .frame h2 {
+        font-size: 13px;
+        margin: 0 0 10px;
+        display: flex;
+        justify-content: space-between;
+      }
+      .frame h2 span {
+        font-size: 11px;
+        color: #7c866e;
+        font-weight: 400;
+      }
+      iframe {
+        border: 0;
+        background: #fff;
+        display: block;
+      }
+      body.single .frames {
+        width: 100%;
+        justify-content: center;
+      }
+      .note {
+        padding: 0 24px 24px;
+        font-size: 12px;
+        color: #6d785f;
+      }
+    </style>
+  </head>
+  <body>
+    <header>
+      <div>
+        <h1>响应式布局验收</h1>
+        <p>同一真实工作台，独立视口。仅用于 Vite 开发验收，不纳入生产构建。</p>
+      </div>
+      <nav>
+        <a href="?focus=320">320</a><a href="?focus=390">390</a><a href="?focus=768">768</a
+        ><a href="?focus=844">844 横屏</a><a href="?focus=1024">1024</a
+        ><a href="?focus=1440">1440</a><a href="?">全部</a
+        ><a href="/" target="_blank" rel="noopener">打开工作台</a>
+      </nav>
+    </header>
+    <main class="frames" id="frames"></main>
+    <p class="note">
+      这里检验布局与可操作性，不模拟真实手机内存、触控指针、麦克风权限或大陆网络。多个画框共用此浏览器会话。
+    </p>
+    <script type="module">
+      const sizes = [
+        { width: 320, height: 700, label: '小屏手机' },
+        { width: 390, height: 844, label: '手机' },
+        { width: 768, height: 1024, label: '竖向平板' },
+        { width: 844, height: 390, label: '横屏手机' },
+        { width: 1024, height: 768, label: '横向平板' },
+        { width: 1440, height: 900, label: '桌面' },
+      ];
+      const focus = Number(new URLSearchParams(location.search).get('focus'));
+      if (focus) document.body.classList.add('single');
+      for (const size of sizes.filter((item) => !focus || item.width === focus)) {
+        const section = document.createElement('section');
+        section.className = 'frame';
+        const title = document.createElement('h2');
+        title.textContent = size.label;
+        const subtitle = document.createElement('span');
+        subtitle.textContent = `${size.width} × ${size.height}`;
+        title.append(subtitle);
+        const frame = document.createElement('iframe');
+        frame.width = String(size.width);
+        frame.height = String(size.height);
+        frame.title = `${size.label} ${size.width}px 工作台`;
+        frame.src = `/?qaViewport=${size.width}`;
+        frame.allow = 'microphone';
+        section.append(title, frame);
+        document.getElementById('frames').append(section);
+      }
+    </script>
+  </body>
+</html>
