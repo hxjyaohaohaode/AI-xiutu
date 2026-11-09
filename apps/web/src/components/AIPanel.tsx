@@ -1,313 +1,104 @@
-import { secureUuid } from '../lib/uuid';
 import { useCallback, useEffect, useRef, useState, type FormEvent } from 'react';
 import {
   ArrowUp,
   Sparkle,
   X,
   SlidersHorizontal,
-  CheckCircle,
-  Clock,
-  WarningCircle,
   ImageSquare,
   FileText,
   Microphone,
   PencilSimple,
-  SpeakerHigh,
-  Copy,
-  ArrowSquareOut,
-  FloppyDisk,
+  Plus,
+  Paperclip,
+  ArrowBendDownRight,
+  WarningCircle,
 } from '@phosphor-icons/react';
-import { parseRecipe, type RecipeV1 } from '@ai-xiutu/editor';
-import { api, errorMessage, formatDate, jsonRequest } from '../lib/api';
+import {
+  MAX_HEADER_BYTES,
+  parseEditorRecipe,
+  patchEditorAdjustments,
+  readImageHeader,
+  type EditorRecipe,
+} from '@ai-xiutu/editor';
+import { secureUuid } from '../lib/uuid';
+import { api, errorMessage, jsonRequest } from '../lib/api';
 import type { Artwork, Asset, Project, PublicConfig } from '../lib/types';
-import { Busy, IconButton, InlineError } from './Ui';
+import { Busy, IconButton, InlineError, Modal } from './Ui';
+import { Disclosure } from './Controls';
 import { VoiceCapture } from './VoiceCapture';
+import { AIThread } from '../ai/AIThread';
+import { recipeDifferences, additionalRecipeChanges } from '../ai/recipeDiff';
+import { ImageParameters } from '../ai/ImageParameters';
+import {
+  allowedImageSizes,
+  imageBatchError,
+  defaultImageOptions,
+  imageOptionsError,
+  imagePointQuote,
+  imageSizeError,
+  requestImageOptions,
+} from '../ai/capabilities';
+import type {
+  AIOperation,
+  AIJob,
+  AIModel,
+  GeneratedImage,
+  ImageOptions,
+  ModelResponse,
+} from '../ai/types';
+export type { AIOperation } from '../ai/types';
 
-export type AIOperation = 'edit-plan' | 'generate-image' | 'generate-text' | 'transcribe';
-type Model = {
-  id: string;
-  label: string;
-  provider?: string;
-  operations?: AIOperation[];
-  pointsPerPlan?: number;
-  enabled: boolean;
-  minWidth?: number;
-  maxWidth?: number;
-  minHeight?: number;
-  maxHeight?: number;
-  minPixels?: number;
-  maxPixels?: number;
-  maxDimension?: number;
-  minAspectRatio?: number;
-  maxAspectRatio?: number;
-  runtimeAvailable?: boolean;
-  runtimeOperations?: AIOperation[];
-  runtimeReason?: string | null;
-};
-type JobOutput =
-  | {
-      kind: 'edit-plan';
-      recipe: RecipeV1;
-      summary: string;
-      baseVersion: number;
-      inputHash: string;
-      artworkId: string;
-    }
-  | {
-      kind: 'image';
-      assetId: string;
-      artworkId: string;
-      width: number;
-      height: number;
-      url: string;
-      thumbnailUrl?: string;
-      modelId: string;
-    }
-  | { kind: 'text'; title: string; body: string; summary: string }
-  | { kind: 'transcript'; text: string; noSpeech?: boolean };
-type Job = {
-  id: string;
-  operation?: AIOperation;
-  artworkId?: string;
-  modelId: string;
-  state: string;
-  output: JobOutput | null;
-  errorCode: string | null;
-  reservedUnits: number;
-  createdAt: string;
-  updatedAt: string;
-};
-type ModelResponse = {
-  models: Model[];
-  executionEnabled: boolean;
-  reason?: string;
-  availableOperations?: AIOperation[];
-  operationStatus?: Record<string, { available: boolean; reason: string | null }>;
-};
-const tasks: {
-  id: AIOperation;
-  label: string;
-  icon: React.ReactNode;
-  title: string;
-  description: string;
-  placeholder: string;
-  button: string;
-}[] = [
+const tasks = [
   {
-    id: 'edit-plan',
+    id: 'edit-plan' as const,
     label: '调整',
-    icon: <SlidersHorizontal size={17} />,
-    title: '说说你想要的感觉。',
-    description: '把文字想法变成可修改的编辑参数。先预览，喜欢了再保存。',
-    placeholder: '例如：保留自然肤色，让光线更柔和一点…',
-    button: '获取调整建议',
+    icon: <SlidersHorizontal size={18} />,
+    placeholder: '想更柔和、提亮阴影，还是保留更多细节？',
+    button: '生成调整建议',
+    hint: '只发送文字与配方，照片不外传',
+    chips: ['让光线柔和一点', '提亮阴影，保留高光', '降低饱和度，更自然'],
   },
   {
-    id: 'generate-image',
+    id: 'generate-image' as const,
     label: '生图',
-    icon: <ImageSquare size={17} />,
-    title: '从一笔草图，到新画面。',
-    description: '写下场景与风格，也可以画一张草图作为参考。结果会保存为独立作品。',
-    placeholder: '例如：按照草图构图，画一座黄昏时分的玻璃花房…',
-    button: '生成一张图片',
+    icon: <ImageSquare size={18} />,
+    placeholder: '描述画面，或加一张参考图继续创作…',
+    button: '生成图片',
+    hint: '仅发送本轮明确选择的参考图',
+    chips: ['按参考图构图，保持自然光', '改为简洁的手绘风格', '保留主体，换成纯色背景'],
   },
   {
-    id: 'generate-text',
+    id: 'generate-text' as const,
     label: '文案',
-    icon: <FileText size={17} />,
-    title: '给画面，配一段文字。',
-    description: '创作说明、社交文案或团队简报，先在这里一起推敲。',
-    placeholder: '例如：为一组春日街拍写三条自然、不夸张的发布文案…',
+    icon: <FileText size={18} />,
+    placeholder: '写标题、介绍，或继续润色上一版…',
     button: '生成文案',
+    hint: '仅发送文字与已选上下文',
+    chips: ['给这件作品写三个标题', '把语气改得简洁自然', '写一段适合分享的作品介绍'],
   },
   {
-    id: 'transcribe',
+    id: 'transcribe' as const,
     label: '语音',
-    icon: <Microphone size={17} />,
-    title: '用声音，开始下一步。',
-    description: '先识别成文字，再由你决定用于调整、生图或文案。每一步单独确认。',
+    icon: <Microphone size={18} />,
     placeholder: '',
-    button: '发送语音识别',
+    button: '确认发送语音',
+    hint: '录音先在本机，确认后识别',
+    chips: [],
   },
 ];
-const sizes = [
-  { width: 1024, height: 1024, label: '1:1 · 1024' },
-  { width: 1536, height: 1024, label: '3:2 · 1536' },
-  { width: 1024, height: 1536, label: '2:3 · 1536' },
-  { width: 2048, height: 2048, label: '1:1 · 2048' },
-  { width: 2560, height: 1440, label: '16:9 · 2560' },
-  { width: 1440, height: 2560, label: '9:16 · 2560' },
-  { width: 3840, height: 2160, label: '16:9 · 4K' },
-  { width: 2160, height: 3840, label: '9:16 · 4K' },
-  { width: 4096, height: 4096, label: '1:1 · 4096' },
-];
-
-function SpeakButton({ text }: { text: string }) {
-  const supported = 'speechSynthesis' in window;
-  useEffect(
-    () => () => {
-      if (supported) window.speechSynthesis.cancel();
-    },
-    [supported],
-  );
-  if (!supported) return null;
-  return (
-    <button
-      className="text-button"
-      onClick={() => {
-        window.speechSynthesis.cancel();
-        const utterance = new SpeechSynthesisUtterance(text);
-        utterance.lang = 'zh-CN';
-        window.speechSynthesis.speak(utterance);
-      }}
-    >
-      <SpeakerHigh size={16} />
-      浏览器朗读
-    </button>
-  );
-}
-function TextResult({
-  output,
-  project,
-  onSaved,
-}: {
-  output: Extract<JobOutput, { kind: 'text' }>;
-  project: Project;
-  onSaved: () => void;
-}) {
-  const [title, setTitle] = useState(output.title);
-  const [body, setBody] = useState(output.body);
-  const [busy, setBusy] = useState(false);
-  const [saved, setSaved] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-  async function save() {
-    setBusy(true);
-    setError(null);
-    try {
-      await api(
-        `/projects/${project.id}/documents`,
-        jsonRequest('POST', { title: title.trim() || 'AI 创作文案', body }),
-      );
-      setSaved(true);
-      onSaved();
-    } catch (e) {
-      setError(errorMessage(e));
-    } finally {
-      setBusy(false);
-    }
-  }
-  return (
-    <div className="ai-text-result">
-      <input
-        aria-label="生成文案标题"
-        value={title}
-        maxLength={200}
-        onChange={(e) => {
-          setTitle(e.target.value);
-          setSaved(false);
-        }}
-      />
-      <textarea
-        aria-label="生成文案，可继续修改"
-        value={body}
-        maxLength={100000}
-        onChange={(e) => {
-          setBody(e.target.value);
-          setSaved(false);
-        }}
-      />
-      <InlineError message={error} />
-      <div className="ai-result-actions">
-        <button
-          className="text-button"
-          onClick={() =>
-            navigator.clipboard
-              .writeText(`${title}\n\n${body}`)
-              .catch(() => setError('暂时无法自动复制，请选中文字手动复制。'))
-          }
-        >
-          <Copy size={16} />
-          复制
-        </button>
-        <SpeakButton text={body} />
-        <button
-          className="button button-secondary"
-          disabled={busy || saved || !body.trim()}
-          onClick={() => void save()}
-        >
-          {busy ? (
-            <Busy />
-          ) : saved ? (
-            <>
-              <CheckCircle size={16} />
-              已存为文档
-            </>
-          ) : (
-            <>
-              <FloppyDisk size={16} />
-              存为项目文档
-            </>
-          )}
-        </button>
-      </div>
-    </div>
-  );
-}
-function TranscriptResult({
-  text,
-  onUse,
-}: {
-  text: string;
-  onUse: (operation: AIOperation, text: string) => void;
-}) {
-  const [value, setValue] = useState(text);
-  return (
-    <div className="ai-transcript-result">
-      <label>
-        识别文字，可以先修改
-        <textarea
-          aria-label="语音识别文字"
-          value={value}
-          maxLength={1500}
-          onChange={(e) => setValue(e.target.value)}
-        />
-      </label>
-      <SpeakButton text={value} />
-      <div className="transcript-targets">
-        <button
-          className="button button-secondary"
-          disabled={!value.trim()}
-          onClick={() => onUse('edit-plan', value)}
-        >
-          用于调整
-        </button>
-        <button
-          className="button button-secondary"
-          disabled={!value.trim()}
-          onClick={() => onUse('generate-image', value)}
-        >
-          用于生图
-        </button>
-        <button
-          className="button button-secondary"
-          disabled={!value.trim()}
-          onClick={() => onUse('generate-text', value)}
-        >
-          用于文案
-        </button>
-      </div>
-      <p className="fine-print">只填入输入框，不会自动执行下一项任务。</p>
-    </div>
-  );
-}
-
+const draftCache = new Map<string, { prompt: string; operation: AIOperation }>();
 export function AIPanel({
   project,
   artwork,
   recipe,
   config,
+  userId = null,
+  projectAssets = [],
+  currentAsset = null,
   initialOperation = 'edit-plan',
   referenceFile,
+  referenceSource = 'sketch',
+  onReferenceFile,
   onClearReference,
   onDraw,
   onClose,
@@ -321,14 +112,19 @@ export function AIPanel({
 }: {
   project: Project | null;
   artwork: Artwork | null;
-  recipe: RecipeV1;
+  recipe: EditorRecipe;
   config: PublicConfig | null;
+  userId?: string | null;
+  projectAssets?: Asset[];
+  currentAsset?: Asset | null;
   initialOperation?: AIOperation;
   referenceFile: File | null;
+  referenceSource?: 'sketch' | 'upload';
+  onReferenceFile?: (file: File, source: 'sketch' | 'upload') => void;
   onClearReference: () => void;
   onDraw: () => void;
   onClose: () => void;
-  onPreview: (recipe: RecipeV1) => void;
+  onPreview: (recipe: EditorRecipe) => void;
   onSave: () => void;
   onCreateProject: () => void;
   onOpenArtwork: (id: string) => void;
@@ -336,75 +132,137 @@ export function AIPanel({
   isLoggedIn: boolean;
   onAuth: () => void;
 }) {
+  const scope = (userId ?? 'local') + ':' + (project?.id ?? 'none');
+  const cached = draftCache.get(scope);
   const [modelResponse, setModelResponse] = useState<ModelResponse | null>(null);
   const [modelId, setModelId] = useState('');
-  const [operation, setOperation] = useState<AIOperation>(initialOperation);
-  const [prompt, setPrompt] = useState('');
-  const [jobs, setJobs] = useState<Job[]>([]);
+  const [operation, setOperation] = useState<AIOperation>(
+    referenceFile ? 'generate-image' : (cached?.operation ?? initialOperation),
+  );
+  const [prompt, setPrompt] = useState(cached?.prompt ?? '');
+  const [jobs, setJobs] = useState<AIJob[]>([]);
+  const [threadId, setThreadId] = useState<string | null | 'recent'>('recent');
+  const [parentJobId, setParentJobId] = useState<string | null>(null);
+  const [candidate, setCandidate] = useState<{
+    recipe: EditorRecipe;
+    job: AIJob;
+    snapshot: string;
+  } | null>(null);
   const [error, setError] = useState<string | null>(null);
-  const [busy, setBusy] = useState(false);
-  const [loading, setLoading] = useState(true);
+  const [busy, setBusy] = useState(false),
+    [loading, setLoading] = useState(true);
+  const [refresh, setRefresh] = useState(0);
   const [idempotency, setIdempotency] = useState(() => secureUuid());
-  const [size, setSize] = useState('2048x2048');
-  const [customSize, setCustomSize] = useState(false);
-  const [customWidth, setCustomWidth] = useState(2048);
-  const [customHeight, setCustomHeight] = useState(2048);
+  const [width, setWidth] = useState(2048),
+    [height, setHeight] = useState(2048);
+  const [imageOptions, setImageOptions] = useState<ImageOptions>({});
   const [audioBase64, setAudioBase64] = useState<string | null>(null);
-  const [referenceAsset, setReferenceAsset] = useState<Asset | null>(null);
-  const [referenceUrl, setReferenceUrl] = useState<string | null>(null);
+  const [voiceEpoch, setVoiceEpoch] = useState(0);
+  const [referenceIds, setReferenceIds] = useState<string[]>([]);
+  const [uploadedReference, setUploadedReference] = useState<Asset | null>(null);
+  const [auxiliary, setAuxiliary] = useState<{ kind: 'mask' | 'markup'; assetId: string } | null>(
+    null,
+  );
+  const [documents, setDocuments] = useState<{ id: string; title: string; version: number }[]>([]);
+  const [documentId, setDocumentId] = useState('');
+  const fileInput = useRef<HTMLInputElement>(null);
+  const promptInput = useRef<HTMLTextAreaElement>(null);
+  const submitLock = useRef(false);
+  const generation = useRef(0);
   const submittedRecipes = useRef(new Map<string, string>());
+  const draft = useRef({ prompt, operation });
+  draft.current = { prompt, operation };
   const taskChanged = useRef(onTaskChanged);
   taskChanged.current = onTaskChanged;
-  const eligibleModels = (modelResponse?.models ?? []).filter(
+  const selected = (modelResponse?.models ?? []).find((model) => model.id === modelId);
+  const eligible = (modelResponse?.models ?? []).filter(
     (model) => model.enabled !== false && (model.operations ?? ['edit-plan']).includes(operation),
   );
-  const chosen = eligibleModels.find((model) => model.id === modelId);
-  const task = tasks.find((item) => item.id === operation)!;
-  const modelReady = (model?: Model) =>
+  const modelReady = (model?: AIModel) =>
     model?.runtimeAvailable === true && model.runtimeOperations?.includes(operation) === true;
-  const operationStatus = modelResponse?.operationStatus?.[operation];
+  const opStatus = modelResponse?.operationStatus?.[operation];
   const enabled =
-    operationStatus?.available ??
-    (modelResponse?.availableOperations
-      ? modelResponse.availableOperations.includes(operation)
-      : operation === 'edit-plan' && !!modelResponse?.executionEnabled);
+    opStatus?.available ??
+    modelResponse?.availableOperations?.includes(operation) ??
+    (operation === 'edit-plan' && !!modelResponse?.executionEnabled);
+  const ready = !!enabled && modelReady(selected);
+  const task = tasks.find((item) => item.id === operation)!;
+  const caps = selected?.parameterCapabilities;
+  const sizeFailure =
+    operation === 'generate-image' ? imageSizeError(selected, width, height) : null;
+  const optionsFailure =
+    operation === 'generate-image' ? imageOptionsError(selected, imageOptions) : null;
+  const batchFailure =
+    operation === 'generate-image' ? imageBatchError(selected, width, height, imageOptions) : null;
+  const quote =
+    operation === 'generate-image'
+      ? imagePointQuote(selected, imageOptions)
+      : (selected?.pointsPerPlan ?? null);
+  const needsArtwork = operation === 'edit-plan';
+  const parent = jobs.find((job) => job.id === parentJobId);
+  const referencedCount = referenceIds.length + (referenceFile ? 1 : 0);
+  const referenceLimit = caps?.references.maxCount ?? 0;
+  const referenceFailure =
+    operation === 'generate-image' &&
+    referencedCount &&
+    (!caps?.references.supported || referencedCount > referenceLimit)
+      ? '当前模型最多支持 ' + referenceLimit + ' 张参考图，请移除多余参考或切换模型。'
+      : null;
   const reason =
-    chosen?.runtimeReason ||
-    operationStatus?.reason ||
+    selected?.runtimeReason ||
+    opStatus?.reason ||
     modelResponse?.reason ||
     config?.capabilities.aiUnavailableReason ||
-    (chosen && !modelReady(chosen)
-      ? '这个模型尚未配置用于当前任务。可以切换其他已开通的模型。'
-      : '');
-  const minWidth = chosen?.minWidth ?? 64;
-  const minHeight = chosen?.minHeight ?? 64;
-  const maxWidth = Math.min(chosen?.maxWidth ?? 8192, chosen?.maxDimension ?? 8192);
-  const maxHeight = Math.min(chosen?.maxHeight ?? 8192, chosen?.maxDimension ?? 8192);
-  const minPixels = chosen?.minPixels ?? 1;
-  const maxPixels = chosen?.maxPixels ?? 0;
-  function sizeError(width: number, height: number) {
-    if (!Number.isSafeInteger(width) || !Number.isSafeInteger(height))
-      return '宽高需要填写整数像素。';
-    if (width < minWidth || width > maxWidth || height < minHeight || height > maxHeight)
-      return `当前范围：宽 ${minWidth}–${maxWidth}，高 ${minHeight}–${maxHeight} 像素。`;
-    if (!maxPixels) return '服务尚未返回这个模型的像素范围。';
-    if (width * height < minPixels || width * height > maxPixels)
-      return `总像素需要在 ${(minPixels / 1e6).toFixed(2)}–${(maxPixels / 1e6).toFixed(2)} 百万之间。`;
-    if (typeof chosen?.minAspectRatio !== 'number' || typeof chosen?.maxAspectRatio !== 'number')
-      return '服务尚未返回这个模型的宽高比范围。';
-    if (width / height < chosen.minAspectRatio || width / height > chosen.maxAspectRatio)
-      return `宽高比需要在 ${chosen.minAspectRatio}–${chosen.maxAspectRatio} 之间。`;
-    return null;
+    '服务尚未开放当前任务';
+  const needsContext = !isLoggedIn
+    ? 'login'
+    : !project
+      ? 'project'
+      : needsArtwork && !artwork
+        ? 'artwork'
+        : null;
+  const statusText =
+    needsContext === 'login'
+      ? '登录后保存 AI 创作'
+      : needsContext === 'project'
+        ? '先选择一个保存项目'
+        : needsContext === 'artwork'
+          ? '先保存当前作品版本'
+          : loading
+            ? '正在读取模型能力'
+            : ready
+              ? '已准备好'
+              : task.label + '暂未开通';
+  const canSubmit =
+    !busy &&
+    quote !== null &&
+    !!project &&
+    ready &&
+    (!needsArtwork || !!artwork) &&
+    (operation === 'transcribe' ? !!audioBase64 : !!prompt.trim()) &&
+    !sizeFailure &&
+    !optionsFailure &&
+    !batchFailure &&
+    (operation !== 'generate-image' ||
+      (referencedCount <= referenceLimit && (!referencedCount || !!caps?.references.supported)));
+  const allThreads = Array.from(new Set(jobs.map((job) => job.threadId ?? job.id)));
+  const visibleThread = threadId === 'recent' ? (allThreads[0] ?? null) : threadId;
+  const visibleJobs = jobs
+    .filter((job) => (job.threadId ?? job.id) === visibleThread)
+    .slice()
+    .sort((a, b) => a.createdAt.localeCompare(b.createdAt));
+  function changed() {
+    setIdempotency(secureUuid());
+    setError(null);
   }
-  const allowedSizes = sizes.filter((value) => !sizeError(value.width, value.height));
-  const [presetWidth, presetHeight] = size.split('x').map(Number);
-  const imageWidth = customSize ? customWidth : (presetWidth ?? 0);
-  const imageHeight = customSize ? customHeight : (presetHeight ?? 0);
-  const imageSizeError = sizeError(imageWidth, imageHeight);
-
-  useEffect(() => {
-    setOperation(initialOperation);
-  }, [initialOperation, referenceFile]);
+  useEffect(
+    () => () => {
+      draftCache.set(scope, draft.current);
+      if (draftCache.size > 20) draftCache.delete(draftCache.keys().next().value!);
+      generation.current += 1;
+    },
+    [scope],
+  );
   useEffect(() => {
     let live = true;
     setLoading(true);
@@ -412,88 +270,132 @@ export function AIPanel({
       .then((result) => {
         if (live) setModelResponse(result);
       })
-      .catch((e) => live && setError(errorMessage(e)))
+      .catch((error) => live && setError(errorMessage(error)))
       .finally(() => live && setLoading(false));
     return () => {
       live = false;
     };
   }, []);
   useEffect(() => {
-    if (!eligibleModels.some((model) => model.id === modelId))
-      setModelId(eligibleModels.find(modelReady)?.id ?? eligibleModels[0]?.id ?? '');
+    if (!eligible.some((model) => model.id === modelId))
+      setModelId(eligible.find(modelReady)?.id ?? eligible[0]?.id ?? '');
   }, [operation, modelResponse, modelId]);
   useEffect(() => {
-    if (
-      allowedSizes.length &&
-      !allowedSizes.some((value) => `${value.width}x${value.height}` === size)
-    )
-      setSize(`${allowedSizes[0]!.width}x${allowedSizes[0]!.height}`);
-  }, [modelId, modelResponse, size]);
+    setImageOptions(defaultImageOptions(selected));
+    const allowed = allowedImageSizes(selected);
+    if (imageSizeError(selected, width, height) && allowed[0]) {
+      setWidth(allowed[0].width);
+      setHeight(allowed[0].height);
+    }
+    setAuxiliary(null);
+    changed();
+  }, [modelId]);
   useEffect(() => {
-    setReferenceAsset(null);
-    if (!referenceFile) {
-      setReferenceUrl(null);
+    setUploadedReference(null);
+    if (referenceFile) {
+      setOperation('generate-image');
+      changed();
+    }
+  }, [referenceFile]);
+  useEffect(() => {
+    if (!project) {
+      setJobs([]);
       return;
     }
-    const url = URL.createObjectURL(referenceFile);
-    setReferenceUrl(url);
-    setIdempotency(secureUuid());
-    return () => URL.revokeObjectURL(url);
-  }, [referenceFile, project?.id]);
-  useEffect(() => {
-    setJobs([]);
-    if (!project) return;
     const controller = new AbortController();
-    let timeout: ReturnType<typeof setTimeout>;
+    let timer: ReturnType<typeof setTimeout>;
     let live = true;
     let digest = '';
     const load = async () => {
       try {
-        const result = await api<{ jobs: Job[] }>(`/projects/${project.id}/ai-jobs`, {
+        const result = await api<{ jobs: AIJob[] }>('/projects/' + project.id + '/ai-jobs', {
           signal: controller.signal,
         });
         if (!live) return;
         setJobs(result.jobs);
-        const next = result.jobs.map((job) => `${job.id}:${job.state}`).join('|');
+        const next = result.jobs.map((job) => job.id + ':' + job.state).join('|');
         if (digest && next !== digest) taskChanged.current();
         digest = next;
         if (result.jobs.some((job) => job.state === 'queued' || job.state === 'running'))
-          timeout = setTimeout(load, 2000);
-      } catch (e) {
-        if (live && (e as Error).name !== 'AbortError') setError(errorMessage(e));
+          timer = setTimeout(load, 2000);
+      } catch (error) {
+        if (live && (error as Error).name !== 'AbortError') setError(errorMessage(error));
       }
     };
     void load();
     return () => {
       live = false;
       controller.abort();
-      clearTimeout(timeout);
+      clearTimeout(timer);
     };
-  }, [project?.id, busy]);
+  }, [project?.id, refresh]);
+  useEffect(() => {
+    if (!project) return;
+    let live = true;
+    api<{ documents: { id: string; title: string; version: number }[] }>(
+      '/projects/' + project.id + '/documents',
+    )
+      .then((result) => live && setDocuments(result.documents))
+      .catch(() => {});
+    return () => {
+      live = false;
+    };
+  }, [project?.id]);
   const audioReady = useCallback((value: string | null) => {
     setAudioBase64(value);
     setIdempotency(secureUuid());
   }, []);
-  function changeOperation(value: AIOperation) {
-    setOperation(value);
-    setError(null);
-    setIdempotency(secureUuid());
+  function changeOperation(next: AIOperation) {
+    setOperation(next);
+    setParentJobId(null);
+    changed();
+  }
+  async function chooseLocal(file: File | undefined) {
+    if (!file || !onReferenceFile) return;
+    try {
+      const limit = Math.min(
+        config?.limits.maxUploadBytes ?? 20 * 1024 * 1024,
+        caps?.references.maxBytes ?? 20 * 1024 * 1024,
+      );
+      if (file.size > limit) throw new Error('参考图超过当前上传或模型字节限制。');
+      const header = readImageHeader(
+        new Uint8Array(await file.slice(0, MAX_HEADER_BYTES).arrayBuffer()),
+        { maxPixels: config?.media?.maxPixels ?? 40_000_000, maxDimension: 16384 },
+      );
+      if (header.animated || !['png', 'jpeg', 'webp'].includes(header.format))
+        throw new Error('AI参考请选择已确认的静态 PNG、JPEG 或 WebP。');
+      onReferenceFile(new File([file], file.name, { type: 'image/' + header.format }), 'upload');
+    } catch (error) {
+      setError(errorMessage(error));
+    }
+  }
+  function continueJob(job: AIJob, image?: GeneratedImage) {
+    if (job.state !== 'completed') return;
+    const next = job.operation ?? 'edit-plan';
+    setOperation(next);
+    setParentJobId(job.id);
+    setThreadId(job.threadId ?? job.id);
+    setModelId(job.modelId);
+    setPrompt('');
+    if (image) {
+      setReferenceIds([image.assetId]);
+      setAuxiliary(null);
+      onClearReference();
+    }
+    changed();
+    setTimeout(() => promptInput.current?.focus(), 0);
   }
   async function submit(event: FormEvent) {
     event.preventDefault();
-    if (
-      !project ||
-      !enabled ||
-      !modelId ||
-      !modelReady(chosen) ||
-      (operation === 'generate-image' && imageSizeError)
-    )
-      return;
+    if (!canSubmit || !project || submitLock.current) return;
+    submitLock.current = true;
     setBusy(true);
     setError(null);
+    const expectedGeneration = generation.current;
     try {
       const snapshot = JSON.stringify(recipe);
       const body: Record<string, unknown> = { operation, modelId, idempotencyKey: idempotency };
+      if (parentJobId) body.parentJobId = parentJobId;
       if (operation === 'edit-plan') {
         if (!artwork) throw new Error('请先保存当前作品。');
         Object.assign(body, {
@@ -503,451 +405,600 @@ export function AIPanel({
           recipe,
         });
       } else if (operation === 'generate-image') {
-        Object.assign(body, { prompt: prompt.trim(), width: imageWidth, height: imageHeight });
+        Object.assign(body, { prompt: prompt.trim(), width, height });
+        const options = requestImageOptions(selected, imageOptions);
+        if (options) body.imageOptions = options;
+        const ids = [...referenceIds];
         if (referenceFile) {
           if (referenceFile.size > (config?.limits.maxUploadBytes ?? 20 * 1024 * 1024))
-            throw new Error('这张参考图超过当前云端上传限制，请使用较小的副本。');
-          let attached = referenceAsset;
-          if (!attached) {
+            throw new Error('参考图超过当前云端上传限制。');
+          let asset = uploadedReference;
+          if (!asset) {
             const form = new FormData();
             form.append('file', referenceFile);
-            attached = (
-              await api<{ asset: Asset }>(`/projects/${project.id}/assets`, {
-                method: 'POST',
-                body: form,
-              })
+            asset = (
+              await api<{ asset: Asset }>(
+                '/projects/' + project.id + '/assets?source=' + referenceSource,
+                { method: 'POST', body: form },
+              )
             ).asset;
-            setReferenceAsset(attached);
+            if (expectedGeneration !== generation.current) return;
+            setUploadedReference(asset);
           }
-          body.referenceAssetId = attached.id;
+          ids.push(asset.id);
         }
-      } else if (operation === 'generate-text') body.prompt = prompt.trim();
-      else {
+        if (ids.length) {
+          if (selected?.provider === 'openai') body.referenceAssetIds = ids;
+          else body.referenceAssetId = ids[0];
+        }
+        if (auxiliary) {
+          if (!ids.length) throw new Error('遮罩或标注需要先选择参考图。');
+          body[auxiliary.kind === 'mask' ? 'maskAssetId' : 'markupAssetId'] = auxiliary.assetId;
+        }
+      } else if (operation === 'generate-text') {
+        body.prompt = prompt.trim();
+        const doc = documents.find((item) => item.id === documentId);
+        if (doc) {
+          body.contextDocumentId = doc.id;
+          body.expectedDocumentVersion = doc.version;
+        }
+      } else {
         if (!audioBase64) throw new Error('请先录制一段语音。');
         body.audioBase64 = audioBase64;
       }
-      const result = await api<{ job: Job }>(
-        `/projects/${project.id}/ai-jobs`,
+      if (expectedGeneration !== generation.current) return;
+      const result = await api<{ job: AIJob }>(
+        '/projects/' + project.id + '/ai-jobs',
         jsonRequest('POST', body),
       );
-      if (result.job?.id) submittedRecipes.current.set(result.job.id, snapshot);
+      if (expectedGeneration !== generation.current) return;
+      submittedRecipes.current.set(result.job.id, snapshot);
+      setJobs((previous) => [result.job, ...previous.filter((job) => job.id !== result.job.id)]);
+      setThreadId(result.job.threadId ?? result.job.id);
+      setParentJobId(null);
       setPrompt('');
-      if (operation === 'transcribe') setAudioBase64(null);
-      setIdempotency(secureUuid());
+      if (operation === 'transcribe') {
+        setAudioBase64(null);
+        setVoiceEpoch((value) => value + 1);
+      }
+      changed();
+      setRefresh((value) => value + 1);
       taskChanged.current();
-    } catch (e) {
-      setError(errorMessage(e));
+    } catch (error) {
+      if (expectedGeneration === generation.current) setError(errorMessage(error));
     } finally {
-      setBusy(false);
+      submitLock.current = false;
+      if (expectedGeneration === generation.current) setBusy(false);
     }
   }
-  function preview(job: Job) {
+  function preview(job: AIJob) {
     if (job.output?.kind !== 'edit-plan' || !artwork) return;
     if ((job.artworkId ?? job.output.artworkId) !== artwork.id) {
-      setError('这条建议不属于当前作品，请先打开对应作品。');
+      setError('请先打开这条建议对应的作品。');
       return;
     }
     if (job.output.baseVersion !== artwork.headVersion) {
-      setError('这条建议基于较早的作品版本。请先到「对比」查看相应版本，再决定如何调整。');
+      setError('建议基于旧版本，请到对比视图核对后再决定。');
       return;
     }
     const submitted = submittedRecipes.current.get(job.id);
     if (
       (!submitted || submitted !== JSON.stringify(recipe)) &&
       !window.confirm(
-        '当前本地编辑可能已与这条建议的起点不同。预览会替换当前参数，并保留为可撤销的一步；云端不会改变。继续预览吗？',
+        '本地编辑与建议起点可能不同。预览将作为可撤销的一步替换对应参数，云端不变。继续吗？',
       )
     )
       return;
     try {
-      onPreview(parseRecipe(job.output.recipe));
-    } catch (e) {
-      setError(errorMessage(e));
+      let next = parseEditorRecipe(job.output.recipe);
+      if (recipe.schemaVersion === 2 && next.schemaVersion === 1) {
+        if (
+          !window.confirm(
+            '这是旧版AI建议。仅更新13项基础明暗与色彩，保留当前曲线、构图、选区和新版参数。继续吗？',
+          )
+        )
+          return;
+        next = patchEditorAdjustments(recipe, next.adjustments);
+      }
+      setCandidate({ recipe: next, job, snapshot: JSON.stringify(recipe) });
+    } catch (error) {
+      setError(errorMessage(error));
     }
   }
-  const requiresArtwork = operation === 'edit-plan';
-  const relevantJobs = jobs
-    .filter((job) => (job.operation ?? 'edit-plan') === operation)
-    .slice(0, 12);
-  const readyToSubmit =
-    !busy &&
-    enabled &&
-    !!project &&
-    modelReady(chosen) &&
-    (!requiresArtwork || !!artwork) &&
-    (operation === 'transcribe' ? !!audioBase64 : !!prompt.trim()) &&
-    (operation !== 'generate-image' || !imageSizeError);
+  const availableAssets = [
+    ...projectAssets,
+    ...jobs.flatMap((job) =>
+      job.output?.kind === 'image'
+        ? (job.output.images ?? [job.output]).map((image) => ({
+            id: image.assetId,
+            projectId: project?.id ?? '',
+            name: 'AI 候选',
+            mime: 'image/png',
+            width: image.width,
+            height: image.height,
+            bytes: 0,
+            url: image.url ?? '/v1/assets/' + image.assetId + '/file',
+            thumbnailUrl: image.thumbnailUrl ?? '/v1/assets/' + image.assetId + '/thumbnail',
+          }))
+        : [],
+    ),
+  ].filter((asset, index, array) => array.findIndex((item) => item.id === asset.id) === index);
   return (
-    <aside className="ai-panel" aria-label="AI创作助手">
-      <header>
-        <div className="ai-panel-title">
-          <span>
-            <Sparkle size={21} weight="fill" />
-          </span>
-          <div>
-            <h2>一起想一想</h2>
-            <small>把想法，慢慢变成作品</small>
-          </div>
-        </div>
-        <IconButton label="关闭AI面板" onClick={onClose}>
-          <X size={20} />
-        </IconButton>
-      </header>
-      <nav className="ai-task-tabs" aria-label="AI任务类型">
+    <aside className="ai-panel ai-workbench" aria-label="AI创作助手">
+      <nav className="ai-task-tabs" aria-label="AI任务类型" data-motion="ai-tabs">
         {tasks.map((item) => (
           <button
             key={item.id}
+            type="button"
             aria-pressed={operation === item.id}
-            className={operation === item.id ? 'selected' : ''}
             disabled={busy}
             onClick={() => changeOperation(item.id)}
           >
             {item.icon}
-            {item.label}
+            <span>{item.label}</span>
           </button>
         ))}
       </nav>
-      <div className="ai-scroll">
-        <div className="ai-intro">
-          <Sparkle size={26} weight="light" />
-          <h3>{task.title}</h3>
-          <p>{task.description}</p>
-          <span className="ai-data-note">
-            {operation === 'edit-plan'
-              ? '发送文字和编辑参数，不发送照片'
-              : operation === 'generate-image'
-                ? '提交时发送文字与已选择的参考草图'
-                : operation === 'generate-text'
-                  ? '按文字要求生成，不会读取未选择的项目文档'
-                  : '确认后发送录音，识别完成后再决定下一步'}
-          </span>
-        </div>
-        {loading ? (
-          <Busy label="读取创作能力" />
-        ) : (
-          (!enabled || !modelReady(chosen)) && (
-            <div className="capability-notice">
-              <SlidersHorizontal size={19} />
-              <div>
-                <strong>{task.label}能力暂未开放</strong>
-                <p>
-                  {reason || '当前服务尚未配置此模型。你可以先整理想法、画草图，或继续手动编辑。'}
-                </p>
-              </div>
-            </div>
-          )
+      <div
+        className={'ai-readiness ' + (ready && !needsContext ? 'ready' : '')}
+        data-motion="ai-status"
+      >
+        <span className="ai-readiness-dot" aria-hidden />
+        <span>{statusText}</span>
+        {needsContext && (
+          <button
+            type="button"
+            disabled={busy}
+            onClick={
+              needsContext === 'login'
+                ? onAuth
+                : needsContext === 'project'
+                  ? onCreateProject
+                  : onSave
+            }
+          >
+            {needsContext === 'login' ? '登录' : needsContext === 'project' ? '选项目' : '保存'}
+          </button>
         )}
-        {!isLoggedIn ? (
-          <div className="ai-context-prompt">
-            <p>登录后，把每次创作留在自己的项目中。</p>
-            <button className="button button-secondary" onClick={onAuth}>
-              登录创作空间
-            </button>
-          </div>
-        ) : !project ? (
-          <div className="ai-context-prompt">
-            <p>选择或创建一个项目，用来保存任务和结果。</p>
-            <button className="button button-secondary" onClick={onCreateProject}>
-              创建项目
-            </button>
-          </div>
-        ) : requiresArtwork && !artwork ? (
-          <div className="ai-context-prompt">
-            <p>先把当前照片保存到项目，调整建议才能绑定作品版本。</p>
-            <button className="button button-secondary" onClick={onSave}>
-              先保存作品
-            </button>
-          </div>
-        ) : (
-          <div className="context-chip">
-            <span className="status-dot" />
-            {requiresArtwork ? artwork?.title : project.title}
-            {requiresArtwork && <small>V{artwork?.headVersion}</small>}
-          </div>
-        )}
-        {operation === 'generate-image' && (
-          <div className="sketch-reference">
-            {referenceUrl ? (
-              <>
-                <div className="sketch-preview">
-                  <img src={referenceUrl} alt="本次生图的草图参考" />
-                  <IconButton
-                    label="移除参考草图"
-                    onClick={() => {
-                      onClearReference();
-                      setReferenceAsset(null);
-                    }}
-                  >
-                    <X size={17} />
-                  </IconButton>
-                </div>
-                <span>
-                  {referenceAsset ? '已保存到项目，将作为生成参考' : '本地草图 · 点击生成后上传'}
-                </span>
-              </>
-            ) : (
-              <button className="sketch-entry" onClick={onDraw}>
-                <PencilSimple size={27} />
-                <strong>先画一张草图</strong>
-                <span>画出构图、位置和大致轮廓</span>
-              </button>
-            )}
-            <button className="text-button" onClick={onDraw}>
-              <PencilSimple size={16} />
-              {referenceUrl ? '重新画一张' : '打开草图板'}
-            </button>
-          </div>
-        )}
-        {operation === 'transcribe' && <VoiceCapture onReady={audioReady} />}
-        {relevantJobs.length > 0 && (
-          <div className="ai-jobs">
-            <div className="section-label">项目中的{task.label}记录</div>
-            {relevantJobs.map((job) => (
-              <article className={`ai-job ${job.state}`} key={job.id}>
-                <header>
-                  {job.state === 'completed' ? (
-                    <CheckCircle size={17} />
-                  ) : job.state === 'unknown' || job.state === 'failed' ? (
-                    <WarningCircle size={17} />
-                  ) : (
-                    <Clock size={17} />
-                  )}
-                  <strong>
-                    {job.state === 'completed'
-                      ? '结果已准备好'
-                      : job.state === 'unknown'
-                        ? '结果待核对'
-                        : job.state === 'running'
-                          ? '正在处理'
-                          : job.state === 'queued'
-                            ? '等待处理'
-                            : job.state === 'cancelled'
-                              ? '已取消'
-                              : '未能完成'}
-                  </strong>
-                  <small>{formatDate(job.createdAt)}</small>
-                </header>
-                {job.state === 'unknown' && (
-                  <p>请求结果尚不明确，已保留原任务。请等待核对，不要重复提交同一请求。</p>
-                )}
-                {job.state === 'failed' && <p>本次任务未完成，已有作品和文档没有改变。</p>}
-                {job.output?.kind === 'edit-plan' && (
-                  <>
-                    <p>{job.output.summary}</p>
-                    {job.state === 'completed' && (
-                      <button
-                        className="button button-secondary button-full"
-                        onClick={() => preview(job)}
-                      >
-                        预览这份建议
-                      </button>
-                    )}
-                  </>
-                )}
-                {job.state === 'completed' && job.output?.kind === 'image' && (
-                  <div className="ai-image-result">
-                    <img
-                      src={job.output.thumbnailUrl ?? `/v1/assets/${job.output.assetId}/thumbnail`}
-                      alt="本次AI生成的图片"
-                      loading="lazy"
-                    />
-                    <span>
-                      AI 生成 · {job.output.width} × {job.output.height}
-                    </span>
-                    <button
-                      className="button button-secondary button-full"
-                      onClick={() => {
-                        if (job.output?.kind === 'image') onOpenArtwork(job.output.artworkId);
-                      }}
-                    >
-                      打开继续编辑
-                      <ArrowSquareOut size={16} />
-                    </button>
-                  </div>
-                )}
-                {job.state === 'completed' && job.output?.kind === 'text' && project && (
-                  <TextResult output={job.output} project={project} onSaved={onTaskChanged} />
-                )}
-                {job.state === 'completed' &&
-                  job.output?.kind === 'transcript' &&
-                  (job.output.noSpeech || !job.output.text.trim()) && (
-                    <p>
-                      没有识别到清晰语音。本次识别已完成并按任务点数结算，可以检查麦克风后重新录制。
-                    </p>
-                  )}
-                {job.state === 'completed' &&
-                  job.output?.kind === 'transcript' &&
-                  !!job.output.text.trim() && (
-                    <TranscriptResult
-                      text={job.output.text}
-                      onUse={(target, text) => {
-                        changeOperation(target);
-                        setPrompt(text);
-                      }}
-                    />
-                  )}
-                <footer>
-                  {job.reservedUnits} 点 ·{' '}
-                  {job.state === 'unknown'
-                    ? '等待结算确认'
-                    : job.state === 'completed'
-                      ? '任务已完成'
-                      : '按任务实际状态结算'}
-                </footer>
-              </article>
-            ))}
-          </div>
+        {!needsContext && !ready && !loading && (
+          <details>
+            <summary aria-label="查看能力未开放原因">
+              <WarningCircle size={16} />
+            </summary>
+            <p>{reason}</p>
+          </details>
         )}
       </div>
-      <form className="ai-composer" onSubmit={submit}>
-        <InlineError message={error} />
-        {operation !== 'transcribe' && (
-          <>
-            <label className="sr-only" htmlFor="ai-prompt">
-              你的创作要求
-            </label>
-            <textarea
-              id="ai-prompt"
+      <div className="ai-model-row">
+        <select
+          aria-label={task.label + '模型'}
+          value={modelId}
+          disabled={busy || !eligible.length}
+          onChange={(event) => {
+            setModelId(event.target.value);
+            changed();
+          }}
+        >
+          {!eligible.length && <option value="">暂无适用模型</option>}
+          {eligible.map((model) => (
+            <option key={model.id} value={model.id}>
+              {model.label}
+              {modelReady(model) ? '' : ' · 未开通'}
+            </option>
+          ))}
+        </select>
+        <span className="ai-price">{quote === null ? '点数待确认' : quote + ' 点 / 次'}</span>
+      </div>
+      {allThreads.length > 0 && (
+        <div className="ai-conversation-toolbar" data-motion="ai-context">
+          <select
+            aria-label="选择已保存创作线程"
+            value={visibleThread ?? ''}
+            disabled={busy}
+            onChange={(event) => {
+              setThreadId(event.target.value || null);
+              setParentJobId(null);
+            }}
+          >
+            <option value="">新的创作</option>
+            {allThreads.map((id) => {
+              const first = jobs.filter((job) => (job.threadId ?? job.id) === id).at(-1);
+              return (
+                <option key={id} value={id}>
+                  {(first?.request?.prompt || first?.prompt || '语音 / 创作记录').slice(0, 28)}
+                </option>
+              );
+            })}
+          </select>
+          <IconButton
+            label="新建创作线程"
+            disabled={busy}
+            onClick={() => {
+              setThreadId(null);
+              setParentJobId(null);
+              setPrompt('');
+              changed();
+            }}
+          >
+            <Plus size={17} />
+          </IconButton>
+        </div>
+      )}
+      <div className="ai-scroll">
+        {visibleJobs.length && project ? (
+          <AIThread
+            jobs={visibleJobs}
+            project={project}
+            onOpen={onOpenArtwork}
+            onPreview={preview}
+            onContinue={continueJob}
+            onChanged={onTaskChanged}
+            onTranscript={(target, text) => {
+              changeOperation(target);
+              setPrompt(text);
+              promptInput.current?.focus();
+            }}
+          />
+        ) : (
+          <div className="ai-quiet-start" data-motion="empty-state">
+            <p>{operation === 'transcribe' ? '说出来，先确认文字再继续。' : '从一句想法开始。'}</p>
+            {!!task.chips.length && (
+              <div className="prompt-chips">
+                {task.chips.map((text) => (
+                  <button
+                    key={text}
+                    type="button"
+                    disabled={busy}
+                    onClick={() => {
+                      setPrompt(text);
+                      changed();
+                      promptInput.current?.focus();
+                    }}
+                  >
+                    {text}
+                  </button>
+                ))}
+              </div>
+            )}
+          </div>
+        )}
+        {operation === 'transcribe' && <VoiceCapture key={voiceEpoch} onReady={audioReady} />}
+        {operation === 'generate-image' && (
+          <Disclosure
+            title="生成设置"
+            summary={width + '×' + height + ' · ' + (imageOptions.n ?? 1) + ' 张'}
+            role="ai-options"
+          >
+            <ImageParameters
+              model={selected}
+              width={width}
+              height={height}
+              options={imageOptions}
               disabled={busy}
-              value={prompt}
-              onChange={(e) => {
-                setPrompt(e.target.value);
-                setIdempotency(secureUuid());
+              onSize={(w, h) => {
+                setWidth(w);
+                setHeight(h);
+                changed();
               }}
-              placeholder={task.placeholder}
-              maxLength={1500}
+              onOptions={(next) => {
+                setImageOptions(next);
+                changed();
+              }}
             />
-          </>
+          </Disclosure>
         )}
         {operation === 'generate-image' && (
-          <div className="ai-dimensions">
-            <div className="ai-dimension-mode">
-              <strong>生成尺寸</strong>
+          <Disclosure
+            title="参考与局部编辑"
+            summary={referencedCount ? referencedCount + ' 张参考' : '可选'}
+            role="ai-reference"
+          >
+            <div className="reference-actions">
               <button
                 type="button"
-                aria-pressed={!customSize}
-                onClick={() => setCustomSize(false)}
-                disabled={busy}
+                className="text-button"
+                disabled={busy || !caps?.references.supported || referencedCount >= referenceLimit}
+                onClick={() => fileInput.current?.click()}
               >
-                常用
+                <Paperclip size={16} />
+                选择图片
               </button>
               <button
                 type="button"
-                aria-pressed={customSize}
-                onClick={() => setCustomSize(true)}
-                disabled={busy}
+                className="text-button"
+                disabled={busy || !caps?.references.supported || referencedCount >= referenceLimit}
+                onClick={onDraw}
               >
-                自定义
+                <PencilSimple size={16} />
+                画草图
               </button>
-              <span>每次 1 张</span>
+              {currentAsset && (
+                <button
+                  type="button"
+                  className="text-button"
+                  disabled={
+                    busy ||
+                    !caps?.references.supported ||
+                    referenceIds.includes(currentAsset.id) ||
+                    referencedCount >= referenceLimit
+                  }
+                  onClick={() => {
+                    setReferenceIds((ids) => [...ids, currentAsset.id]);
+                    changed();
+                  }}
+                >
+                  使用当前原图
+                </button>
+              )}
             </div>
-            {customSize ? (
-              <div className="ai-custom-size">
-                <label>
-                  宽
-                  <input
-                    type="number"
-                    aria-label="生成宽度像素"
-                    min={minWidth}
-                    max={maxWidth}
-                    step="1"
-                    value={customWidth}
-                    disabled={busy}
-                    onChange={(event) => {
-                      setCustomWidth(Number(event.target.value));
-                      setIdempotency(secureUuid());
-                    }}
-                  />
-                </label>
-                <span>×</span>
-                <label>
-                  高
-                  <input
-                    type="number"
-                    aria-label="生成高度像素"
-                    min={minHeight}
-                    max={maxHeight}
-                    step="1"
-                    value={customHeight}
-                    disabled={busy}
-                    onChange={(event) => {
-                      setCustomHeight(Number(event.target.value));
-                      setIdempotency(secureUuid());
-                    }}
-                  />
-                </label>
-                <small>px</small>
+            <input
+              ref={fileInput}
+              className="sr-only"
+              type="file"
+              accept="image/png,image/jpeg,image/webp"
+              onChange={(event) => {
+                void chooseLocal(event.target.files?.[0]);
+                event.target.value = '';
+              }}
+            />
+            {referenceFile && (
+              <div className="pending-reference">
+                <Paperclip size={18} />
+                <span>
+                  {referenceFile.name}
+                  <small>确认发送后上传</small>
+                </span>
+                <IconButton
+                  label="移除本地参考"
+                  disabled={busy}
+                  onClick={() => {
+                    onClearReference();
+                    setUploadedReference(null);
+                    changed();
+                  }}
+                >
+                  <X size={16} />
+                </IconButton>
               </div>
-            ) : (
+            )}
+            <div className="reference-picker">
+              {availableAssets.map((asset) => (
+                <button
+                  key={asset.id}
+                  type="button"
+                  aria-pressed={referenceIds.includes(asset.id)}
+                  disabled={
+                    busy ||
+                    !caps?.references.supported ||
+                    (!referenceIds.includes(asset.id) && referencedCount >= referenceLimit)
+                  }
+                  onClick={() => {
+                    setReferenceIds((ids) =>
+                      ids.includes(asset.id)
+                        ? ids.filter((id) => id !== asset.id)
+                        : [...ids, asset.id],
+                    );
+                    changed();
+                  }}
+                >
+                  <img
+                    src={asset.thumbnailUrl ?? '/v1/assets/' + asset.id + '/thumbnail'}
+                    alt=""
+                    loading="lazy"
+                  />
+                  <span>{asset.name}</span>
+                </button>
+              ))}
+            </div>
+            {(!caps?.references.supported || !referenceLimit) && (
+              <p className="control-note">当前模型没有开放参考图，选择已开通的模型后可使用。</p>
+            )}
+            {(caps?.references.allowMask || caps?.references.allowMarkup) && (
+              <div className="auxiliary-picker">
+                <label>
+                  遮罩 / 标注图
+                  <select
+                    value={auxiliary ? auxiliary.kind + ':' + auxiliary.assetId : ''}
+                    disabled={busy || !referencedCount}
+                    onChange={(event) => {
+                      const [kind, assetId] = event.target.value.split(':');
+                      setAuxiliary(
+                        kind && assetId ? { kind: kind as 'mask' | 'markup', assetId } : null,
+                      );
+                      changed();
+                    }}
+                  >
+                    <option value="">不附加</option>
+                    {caps.references.allowMask &&
+                      availableAssets.map((asset) => (
+                        <option key={'mask' + asset.id} value={'mask:' + asset.id}>
+                          遮罩 · {asset.name}
+                        </option>
+                      ))}
+                    {caps.references.allowMarkup &&
+                      availableAssets.map((asset) => (
+                        <option key={'markup' + asset.id} value={'markup:' + asset.id}>
+                          标注 · {asset.name}
+                        </option>
+                      ))}
+                  </select>
+                </label>
+                <p className="control-note">
+                  二者互斥，需先选参考图；遮罩透明区域表示修改范围，必须符合模型对尺寸和格式的要求。
+                </p>
+              </div>
+            )}
+            <p className="control-note">
+              参考只表示创作依据，不保证像素级保留。当前原图不包含尚未导出的本地调整。
+            </p>
+          </Disclosure>
+        )}
+        {operation === 'generate-text' && documents.length > 0 && (
+          <Disclosure
+            title="引用项目文档"
+            summary={documentId ? '已选 1 份' : '可选'}
+            role="ai-options"
+          >
+            <label className="context-document-select">
+              本轮上下文
               <select
-                aria-label="常用生成图片尺寸"
-                value={size}
+                value={documentId}
+                disabled={busy}
                 onChange={(event) => {
-                  setSize(event.target.value);
-                  setIdempotency(secureUuid());
+                  setDocumentId(event.target.value);
+                  changed();
                 }}
-                disabled={busy || !allowedSizes.length}
               >
-                {!allowedSizes.length && <option value="">没有符合当前模型的常用尺寸</option>}
-                {allowedSizes.map((value) => (
-                  <option value={`${value.width}x${value.height}`} key={value.label}>
-                    {value.label} · {value.width}×{value.height}
+                <option value="">不引用文档</option>
+                {documents.map((doc) => (
+                  <option key={doc.id} value={doc.id}>
+                    {doc.title} · V{doc.version}
                   </option>
                 ))}
               </select>
-            )}
-            <p className={imageSizeError ? 'dimension-error' : 'dimension-hint'}>
-              {imageSizeError ??
-                `${((imageWidth * imageHeight) / 1e6).toFixed(2)} 百万像素 · 模型上限 ${(maxPixels / 1e6).toFixed(2)} 百万`}
-            </p>
+            </label>
+          </Disclosure>
+        )}
+      </div>
+      <form className="ai-composer" onSubmit={submit} data-motion="ai-composer">
+        {parent && (
+          <div className="ai-parent-context">
+            <ArrowBendDownRight size={15} />
+            <span>
+              {operation === 'generate-text'
+                ? '基于上次生成文案'
+                : operation === 'generate-image'
+                  ? '继续修改所选候选'
+                  : '基于当前草稿继续调整'}
+            </span>
+            <IconButton
+              label="取消续接，作为新创作"
+              disabled={busy}
+              onClick={() => {
+                setParentJobId(null);
+                changed();
+              }}
+            >
+              <X size={14} />
+            </IconButton>
           </div>
         )}
-
-        <div className="ai-composer-bottom">
-          <div>
-            <select
-              aria-label={`${task.label}模型`}
-              value={modelId}
-              onChange={(e) => {
-                setModelId(e.target.value);
-                setIdempotency(secureUuid());
-              }}
-              disabled={busy || !eligibleModels.length}
+        <InlineError message={error} />
+        {operation !== 'transcribe' && (
+          <textarea
+            ref={promptInput}
+            aria-label="本轮创作要求"
+            disabled={busy}
+            value={prompt}
+            placeholder={task.placeholder}
+            maxLength={1500}
+            rows={2}
+            onChange={(event) => {
+              setPrompt(event.target.value);
+              changed();
+            }}
+          />
+        )}
+        <div className="ai-composer-actions">
+          <span>
+            {needsArtwork && artwork
+              ? '作品 V' + artwork.headVersion
+              : (project?.title ?? '本地想法')}
+          </span>
+          {operation !== 'transcribe' && (
+            <IconButton
+              label="改用语音输入，识别后再确认"
+              disabled={busy}
+              onClick={() => changeOperation('transcribe')}
             >
-              {!eligibleModels.length && <option value="">暂无适用模型</option>}
-              {eligibleModels.map((model) => (
-                <option key={model.id} value={model.id}>
-                  {model.label}
-                  {modelReady(model) ? '' : ' · 未开通'}
-                </option>
-              ))}
-            </select>
-            <small>
-              {typeof chosen?.pointsPerPlan === 'number'
-                ? `${chosen.pointsPerPlan} 服务点 / 次`
-                : '点数以当前服务配置为准'}
-            </small>
-          </div>
+              <Microphone size={18} />
+            </IconButton>
+          )}
           <button
             type="submit"
             className="ai-send"
             title={task.button}
             aria-label={task.button}
-            disabled={!readyToSubmit}
+            disabled={!canSubmit}
           >
-            {busy ? <Busy label="" /> : <ArrowUp size={21} />}
+            {busy ? <Busy label="" /> : <ArrowUp size={20} />}
+            <span>{operation === 'transcribe' ? '识别' : '发送'}</span>
           </button>
         </div>
-        <p className="fine-print">
-          {operation === 'edit-plan'
-            ? '建议先进入本地草稿，保存时检查云端版本。'
-            : operation === 'generate-image'
-              ? '点击发送即确认上传参考草图并生成新作品。'
-              : operation === 'generate-text'
-                ? '生成结果可以修改，确认后再存为项目文档。'
-                : '点击发送语音识别，仅执行一次识别任务。'}
+        <p className="ai-submit-note">
+          {task.hint}
+          {operation === 'generate-image' && referenceFile ? '；发送即确认上传' : ''}。
         </p>
+        {(sizeFailure || optionsFailure || batchFailure || referenceFailure) &&
+          operation === 'generate-image' && (
+            <p className="parameter-error">
+              {sizeFailure || optionsFailure || batchFailure || referenceFailure}
+            </p>
+          )}
       </form>
+      {candidate && (
+        <Modal
+          title="对照调整建议"
+          subtitle="与当前草稿逐项对比，确认后才进入本地编辑记录。"
+          onClose={() => setCandidate(null)}
+        >
+          <div className="ai-proposal-review" data-motion="modal-content">
+            <p>{candidate.job.output?.kind === 'edit-plan' ? candidate.job.output.summary : ''}</p>
+            <div className="proposal-differences" role="table" aria-label="参数变化">
+              <div role="row" className="proposal-diff-heading">
+                <span role="columnheader">参数</span>
+                <span role="columnheader">当前</span>
+                <span role="columnheader">建议</span>
+              </div>
+              {recipeDifferences(recipe, candidate.recipe).map((change) => (
+                <div role="row" key={change.path}>
+                  <span role="cell">{change.label}</span>
+                  <span role="cell">
+                    {Number(change.before.toFixed(4))}
+                    {change.unit === 'ratio' ? '' : change.unit}
+                  </span>
+                  <strong role="cell">
+                    {Number(change.after.toFixed(4))}
+                    {change.unit === 'ratio' ? '' : change.unit}
+                  </strong>
+                </div>
+              ))}
+            </div>
+            {!recipeDifferences(recipe, candidate.recipe).length && (
+              <p className="control-note">基础与新版数值参数没有变化。</p>
+            )}
+            {!!additionalRecipeChanges(recipe, candidate.recipe).length && (
+              <p className="parameter-error">
+                完整候选还与当前的 {additionalRecipeChanges(recipe, candidate.recipe).join('、')}{' '}
+                不同；确认将一起替换，可撤销。
+              </p>
+            )}
+            <p className="control-note">
+              云端版本不会自动改写。预览后可以继续精修，再由你保存新版本。
+            </p>
+            <button
+              className="button button-primary"
+              onClick={() => {
+                if (
+                  !artwork ||
+                  candidate.job.output?.kind !== 'edit-plan' ||
+                  artwork.id !== candidate.job.output.artworkId ||
+                  artwork.headVersion !== candidate.job.output.baseVersion ||
+                  candidate.snapshot !== JSON.stringify(recipe)
+                ) {
+                  setCandidate(null);
+                  setError('作品或草稿已经改变，请重新预览这条建议。');
+                  return;
+                }
+                onPreview(candidate.recipe);
+                setCandidate(null);
+              }}
+            >
+              作为可撤销的一步预览
+            </button>
+          </div>
+        </Modal>
+      )}
     </aside>
   );
 }

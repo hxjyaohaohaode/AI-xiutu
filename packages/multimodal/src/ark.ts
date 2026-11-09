@@ -61,6 +61,50 @@ export function getArkImageModels(
         maxPixels: limits.max,
         maxDimension: 8192 as const,
         supportsReference: true as const,
+        provider: 'ark' as const,
+        parameterCapabilities: {
+          quality: {
+            supported: false,
+            reason: '当前Ark接入按固定供应商质量执行，不发送quality字段。',
+          },
+          background: { supported: false, reason: '当前Ark接入没有已核验的background参数。' },
+          outputFormat: {
+            supported: false,
+            reason: '当前Ark仅接收安全位图并统一存为PNG，没有开放供应商格式开关。',
+          },
+          outputCompression: { supported: false, reason: '当前Ark接入没有已核验的压缩参数。' },
+          n: {
+            supported: false,
+            min: 1,
+            max: 1,
+            default: 1,
+            reason: '当前Ark适配器固定单张输出。',
+          },
+          complexity: { supported: false, reason: '当前Ark接入没有complexity参数。' },
+          references: {
+            supported: true,
+            maxCount: 1,
+            maxBytes: MAX_IMAGE_BYTES,
+            allowMask: false,
+            allowMarkup: false,
+          },
+          size: {
+            supported: true,
+            multipleOf: 1,
+            minPixels: limits.min,
+            maxPixels: limits.max,
+            maxDimension: 8192,
+            minAspectRatio: 1 / 16,
+            maxAspectRatio: 16,
+            auto: false as const,
+          },
+          inputFidelity: { supported: false, reason: '当前Ark接入没有input_fidelity参数。' },
+          stream: { supported: false, reason: '只发布最终通过审核的图片。' },
+          partialImages: { supported: false, reason: '没有接入部分图像流与计费。' },
+          svg: { supported: false, reason: '当前只接收静态PNG/JPEG/WebP。' },
+          gif: { supported: false, reason: '当前只接收静态PNG/JPEG/WebP。' },
+          dependencies: [],
+        },
       });
     }),
   );
@@ -71,6 +115,8 @@ export function validateArkImageInput(
   models: readonly ImageModelDescriptor[],
 ): void {
   if (!input || typeof input !== 'object') reject('ARK_INPUT_INVALID');
+  if (input.imageOptions || input.references || input.mask || input.markup)
+    reject('ARK_PARAMETER_NOT_SUPPORTED');
   const model = models.find((candidate) => candidate.id === input.model);
   if (!model) reject('ARK_MODEL_NOT_ENABLED');
   if (

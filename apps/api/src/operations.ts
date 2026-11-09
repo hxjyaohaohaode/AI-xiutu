@@ -34,7 +34,7 @@ const planSchema = z.object({
 const modelSchema = z
   .object({
     label: title,
-    provider: z.enum(['qwen', 'ark']).default('qwen'),
+    provider: z.enum(['qwen', 'ark', 'openai']).default('qwen'),
     operations: z
       .array(z.enum(['edit-plan', 'generate-image', 'generate-text', 'transcribe']))
       .min(1)
@@ -45,12 +45,23 @@ const modelSchema = z
     maxWidth: z.number().int().min(64).max(8192),
     minHeight: z.number().int().min(64).max(8192),
     maxHeight: z.number().int().min(64).max(8192),
-    maxOutputs: z.number().int().min(1).max(4),
+    maxOutputs: z.number().int().min(1).max(10),
     unitCost: z.number().int().min(1).max(100000),
     allowedQualities: z
-      .array(z.enum(['low', 'medium', 'high', 'auto']))
+      .array(z.enum(['low', 'medium', 'high', 'xhigh', 'max', 'auto']))
       .min(1)
-      .max(4),
+      .max(6),
+    imageUnitCosts: z
+      .object({
+        auto: z.number().int().min(1).max(100000).optional(),
+        low: z.number().int().min(1).max(100000).optional(),
+        medium: z.number().int().min(1).max(100000).optional(),
+        high: z.number().int().min(1).max(100000).optional(),
+        xhigh: z.number().int().min(1).max(100000).optional(),
+        max: z.number().int().min(1).max(100000).optional(),
+      })
+      .strict()
+      .optional(),
     reason,
   })
   .strict()
@@ -58,7 +69,9 @@ const modelSchema = z
   .refine(
     (x) =>
       x.operations.every((op) =>
-        x.provider === 'ark' ? op === 'generate-image' : op !== 'generate-image',
+        x.provider === 'ark' || x.provider === 'openai'
+          ? op === 'generate-image'
+          : op !== 'generate-image',
       ),
     '供应商与操作能力不匹配',
   );
@@ -79,6 +92,16 @@ export const modelDto = (p: Record<string, any>) => ({
   ...p.config,
   version: p.version,
   pointsPerPlan: p.config.unitCost,
+  ...(p.config.provider === 'openai' || p.config.provider === 'ark'
+    ? {
+        pricing: {
+          unit: 'service-point',
+          per: 'image',
+          defaultPerImage: p.config.unitCost,
+          qualityPerImage: p.config.imageUnitCosts ?? {},
+        },
+      }
+    : {}),
 });
 export async function publicSettings(db: Database) {
   const row = (await db.query('SELECT * FROM app_config WHERE id=true')).rows[0]!;
@@ -98,6 +121,8 @@ export function registerOperations(
   app: FastifyInstance,
   db: Database,
   capabilities: () => Record<string, unknown>,
+  describeModel: (model: ReturnType<typeof modelDto>) => Record<string, unknown> = (model) => model,
+  providerModelCatalog: readonly unknown[] = [],
 ): void {
   app.get('/v1/me/entitlements', async (req) => {
     const user = requireUser(req);
@@ -389,7 +414,10 @@ export function registerOperations(
   app.get('/v1/ops/models', async (req) => {
     requireOperator(req);
     return {
-      models: (await db.query('SELECT * FROM model_configs ORDER BY id')).rows.map(modelDto),
+      models: (await db.query('SELECT * FROM model_configs ORDER BY id')).rows.map((row) =>
+        describeModel(modelDto(row)),
+      ),
+      providerModelCatalog,
     };
   });
   app.put('/v1/ops/models/:id', async (req) => {
@@ -410,7 +438,7 @@ export function registerOperations(
         reason: why,
         version: row.version,
       });
-      return modelDto(row);
+      return describeModel(modelDto(row));
     });
     return { model };
   });

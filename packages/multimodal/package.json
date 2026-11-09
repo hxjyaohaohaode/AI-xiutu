@@ -15,6 +15,7 @@
   },
   "dependencies": {
     "@ai-xiutu/editor": "0.1.0",
-    "@ai-xiutu/providers": "0.1.0"
+    "@ai-xiutu/providers": "0.1.0",
+    "sharp": "0.35.5"
   }
 }

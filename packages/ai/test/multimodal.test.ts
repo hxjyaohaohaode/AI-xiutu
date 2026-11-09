@@ -13,7 +13,7 @@ import {
   transaction,
   type Database,
 } from '@ai-xiutu/db';
-import { createRecipe } from '@ai-xiutu/editor';
+import { createRecipe, createRecipeV2, createAdjustmentRegionV2 } from '@ai-xiutu/editor';
 import { ProviderError, type ImageModerator, type TextModerator } from '@ai-xiutu/providers';
 import { LocalPrivateStorage } from '@ai-xiutu/storage';
 import {
@@ -29,6 +29,7 @@ import {
   createAiService,
   digest,
   DispatchJournal,
+  preparePlan,
   type PlanProvider,
 } from '../src/index.js';
 
@@ -47,6 +48,7 @@ interface Controls {
   speechError?: Error;
   speechText?: string;
   imageOutput?: Uint8Array;
+  planValue?: unknown;
   beforeTextReview?: (text: string, call: number) => Promise<void>;
   beforeImageReview?: (bytes: Uint8Array, call: number) => Promise<void>;
   afterJournal?: () => Promise<void>;
@@ -138,7 +140,7 @@ async function fixture(db: Database, parentDirectory: string, png: Buffer, refer
         calls.plan += 1;
         if (controls.textError) throw controls.textError;
         return {
-          value: { summary: '降低对比度', adjustments: { contrast: -25 } },
+          value: controls.planValue ?? { summary: '降低对比度', adjustments: { contrast: -25 } },
           requestId: 'injected-plan-receipt',
         };
       }
@@ -432,6 +434,159 @@ test(
         }
       });
     try {
+      await run(
+        'new v2 numeric plans freeze their protocol, moderate generated changes and preserve existing masks without auto-applying',
+        async (f) => {
+          const recipe = createRecipeV2({
+            levels: { inputBlack: 0.1, inputWhite: 0.4 },
+            regions: [
+              createAdjustmentRegionV2({ name: '私有既有区域', adjustments: { exposure: 0.5 } }),
+            ],
+          });
+          f.controls.planValue = {
+            summary: '拓展色阶，并调整蓝色饱和度',
+            adjustments: { contrast: -12 },
+            parameters: [
+              { path: 'levels.inputBlack', value: 0.5 },
+              { path: 'levels.inputWhite', value: 0.9 },
+              { path: 'hsl.blue.saturation', value: 18 },
+            ],
+          };
+          f.controls.beforeTextReview = async (text, call) => {
+            assert.ok(!text.includes('私有既有区域'));
+            if (call === 2) {
+              const generated = JSON.parse(text);
+              assert.equal(generated.proposalVersion, 2);
+              assert.equal(generated.parameterChanges.length, 4);
+              assert.equal(generated.recipe, undefined, 'unchanged masks are not generated text');
+            }
+          };
+          const body = { ...f.planBody(), recipe };
+          const [created, duplicate] = await Promise.all([f.submit(body), f.submit(body)]);
+          assert.equal(created.job.id, duplicate.job.id);
+          assert.equal((created.job.request as Record<string, unknown>).proposalVersion, 2);
+          assert.equal((await f.row(created.job.id)).input.proposalVersion, 2);
+          await f.service.runOnce();
+          const job = await f.row(created.job.id);
+          assert.equal(job.state, 'completed');
+          assert.equal(job.output.proposalVersion, 2);
+          assert.equal(job.output.recipe.levels.inputBlack, 0.5);
+          assert.deepEqual(job.output.recipe.regions, recipe.regions);
+          assert.equal(job.output.parameterChanges.length, 4);
+          assert.equal(f.calls.plan, 1);
+          assert.equal(job.hold_state, 'settled');
+          assert.equal(
+            (await db.query('SELECT head_version FROM artworks WHERE id=$1', [f.artworkId]))
+              .rows[0]!.head_version,
+            1,
+          );
+        },
+      );
+      await run(
+        'invalid generated v2 paths never publish and retain their genuine receipt plus unknown hold',
+        async (f) => {
+          f.controls.planValue = {
+            summary: '非法区域替换',
+            adjustments: {},
+            parameters: [{ path: 'regions.0.opacity', value: 0 }],
+          };
+          const created = await f.submit({ ...f.planBody(), recipe: createRecipeV2() });
+          await f.service.runOnce();
+          const job = await f.row(created.job.id);
+          assert.equal(job.state, 'unknown');
+          assert.equal(job.hold_state, 'unknown');
+          assert.equal(job.provider_request_id, 'injected-plan-receipt');
+          assert.equal(job.output, null);
+          await f.service.runOnce();
+          assert.equal(f.calls.plan, 1);
+        },
+      );
+      await run(
+        'old frozen v2 tasks retain the legacy adjustment protocol and digest while new protocol tampering fails before dispatch',
+        async (f) => {
+          const created = await f.submit({
+            ...f.planBody(),
+            recipe: createRecipeV2({ detail: { texture: 15 } }),
+          });
+          const row = await f.row(created.job.id);
+          const old = { ...row.input };
+          delete old.proposalVersion;
+          old.prepared = preparePlan(old.prepared.endpoint, row.model_id, old.prompt, old.recipe);
+          const oldHash = digest(
+            canonical({
+              operation: 'edit-plan',
+              projectId: row.project_id,
+              actorId: row.actor_id,
+              modelId: row.model_id,
+              artworkId: old.artworkId,
+              expectedVersion: old.expectedVersion,
+              recipe: old.recipe,
+              endpoint: old.prepared.endpoint,
+              body: old.prepared.body,
+            }),
+          );
+          await db.query('UPDATE ai_jobs SET input=$2,input_hash=$3 WHERE id=$1', [
+            row.id,
+            JSON.stringify(old),
+            oldHash,
+          ]);
+          await f.service.runOnce();
+          const completed = await f.row(row.id);
+          assert.equal(completed.state, 'completed');
+          assert.equal(completed.output.proposalVersion, undefined);
+          assert.equal(completed.output.recipe.detail.texture, 15);
+          assert.equal(completed.output.recipe.adjustments.contrast, -25);
+          const next = await f.submit({ ...f.planBody(), recipe: createRecipeV2() });
+          await db.query("UPDATE ai_jobs SET input=input-'proposalVersion' WHERE id=$1", [
+            next.job.id,
+          ]);
+          await f.service.runOnce();
+          const rejected = await f.row(next.job.id);
+          assert.equal(rejected.state, 'failed');
+          assert.equal(rejected.error_code, 'INPUT_INTEGRITY_FAILED');
+          assert.equal(rejected.hold_state, 'released');
+          assert.equal(f.calls.plan, 1);
+        },
+      );
+      await run(
+        'text iteration explicitly freezes its successful same-project parent, without implicit full chat history',
+        async (f) => {
+          const first = await f.submit(f.textBody());
+          await f.service.runOnce();
+          const parent = await f.row(first.job.id);
+          assert.equal(parent.state, 'completed');
+          const second = await f.submit({
+            ...f.textBody(),
+            prompt: '请根据上一版改得更简洁',
+            parentJobId: parent.id,
+          });
+          await f.service.runOnce();
+          const child = await f.row(second.job.id);
+          assert.equal(child.state, 'completed');
+          const messages = f.sent.texts[1]!.messages as { role: string; content: string }[];
+          const payload = JSON.parse(messages[1]!.content);
+          assert.deepEqual(JSON.parse(payload.parentContext), {
+            parentJobId: parent.id,
+            title: parent.output.title,
+            body: parent.output.body,
+          });
+          assert.equal(payload.request, '请根据上一版改得更简洁');
+          const list = await f.service.list({ actorId: f.actorId, projectId: f.projectId });
+          const dto = list.jobs.find((job) => job.id === child.id)!;
+          assert.equal(dto.threadId, parent.id);
+          assert.equal(dto.parentJobId, parent.id);
+          assert.equal(dto.contextSummary.parentResultIncluded, true);
+          await assert.rejects(
+            f.service.submit({
+              actorId: f.actorId,
+              projectId: f.otherProjectId,
+              spaceId: f.spaceId,
+              body: { ...f.textBody(), parentJobId: parent.id },
+            }),
+            { code: 'PARENT_JOB_NOT_USABLE' },
+          );
+        },
+      );
       await run(
         'image submit is idempotent, reserves once and exposes no generated asset until normalized-byte review passes',
         async (f) => {

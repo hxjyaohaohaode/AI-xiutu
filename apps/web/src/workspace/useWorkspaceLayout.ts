@@ -34,7 +34,7 @@ function defaults(view: Viewport): WorkspaceLayout {
         x: Math.max(16, view.width - 430),
         y: 20,
         width: 390,
-        height: mobile ? Math.min(350, view.height * 0.46) : Math.min(680, view.height - 130),
+        height: mobile ? Math.min(440, view.height * 0.56) : Math.min(680, view.height - 130),
       },
     },
   };
@@ -44,16 +44,19 @@ export function boundPanel(value: PanelGeometry, view: Viewport): PanelGeometry 
   const headerHeight = mobile ? 54 : 60;
   const availableHeight = Math.max(0, view.height - headerHeight - panelBottomOffset(view));
   const maximumHeight = Math.max(0, availableHeight - 12);
-  const width = mobile
-    ? view.width - 16
-    : Math.min(Math.max(280, value.width), Math.min(720, view.width - 40));
+  const dockedSide = value.dock === 'left' || value.dock === 'right';
+  const maximumWidth = Math.max(
+    240,
+    view.width - (dockedSide ? Math.min(280, view.width * 0.34) : 24),
+  );
+  const width = mobile ? view.width - 16 : Math.min(Math.max(260, value.width), maximumWidth);
   const bottomMaximum = Math.min(
     maximumHeight,
-    Math.max(Math.min(112, maximumHeight), Math.min(availableHeight * 0.55, availableHeight - 140)),
+    Math.max(Math.min(112, maximumHeight), availableHeight - Math.min(140, availableHeight * 0.5)),
   );
   const mobileMaximum = Math.min(
     maximumHeight,
-    Math.max(Math.min(112, maximumHeight), Math.min(view.height * 0.56, availableHeight - 150)),
+    Math.max(Math.min(112, maximumHeight), availableHeight - Math.min(180, availableHeight * 0.55)),
   );
   const height = mobile
     ? Math.min(Math.max(Math.min(150, mobileMaximum), value.height), mobileMaximum)

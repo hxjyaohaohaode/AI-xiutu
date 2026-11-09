@@ -1,0 +1,1935 @@
+@layer motion {
+  [data-motion] {
+    animation-duration: var(--motion-entry, 240ms);
+    animation-delay: calc(var(--motion-delay, 0ms) + min(var(--motion-index, 0), 5) * 18ms);
+    animation-timing-function: cubic-bezier(0.2, 0.75, 0.2, 1);
+    animation-fill-mode: both;
+    transition:
+      background-color var(--motion-interact, 100ms),
+      border-color var(--motion-interact, 100ms),
+      color var(--motion-interact, 100ms),
+      box-shadow var(--motion-interact, 100ms);
+  }
+  [data-motion][data-motion-state='idle'] {
+    animation: none;
+    filter: none;
+  }
+  [data-motion][data-motion-state='exit'] {
+    animation-name: ui-exit;
+    animation-duration: var(--motion-exit, 140ms);
+    animation-delay: 0ms;
+    animation-timing-function: cubic-bezier(0.4, 0, 1, 1);
+    pointer-events: none;
+  }
+  [data-motion][data-motion-state='hidden'] {
+    animation: none;
+    display: none;
+  }
+  [data-gesture='active'],
+  [data-gesture='active'] [data-motion] {
+    animation: none !important;
+    transition: none !important;
+    filter: none !important;
+  }
+  @keyframes ui-slide {
+    from {
+      opacity: 0;
+      translate: var(--motion-x, 0px) var(--motion-y, 0px);
+      filter: blur(var(--motion-blur, 0px));
+    }
+    to {
+      opacity: 1;
+      translate: 0 0;
+      filter: blur(0px);
+    }
+  }
+  @keyframes ui-lift {
+    0% {
+      opacity: 0;
+      translate: 0 var(--motion-y, 9px);
+      scale: var(--motion-scale, 0.98);
+      filter: blur(var(--motion-blur, 0px));
+    }
+    72% {
+      opacity: 1;
+      filter: blur(0px);
+    }
+    100% {
+      opacity: 1;
+      translate: 0 0;
+      scale: 1;
+      filter: blur(0px);
+    }
+  }
+  @keyframes ui-reveal {
+    from {
+      opacity: 0;
+      clip-path: inset(0 0 9% 0);
+      translate: var(--motion-x, 0px) var(--motion-y, 6px);
+      filter: blur(var(--motion-blur, 0px));
+    }
+    to {
+      opacity: 1;
+      clip-path: inset(0);
+      translate: 0 0;
+      filter: blur(0px);
+    }
+  }
+  @keyframes ui-scale {
+    from {
+      opacity: 0;
+      scale: var(--motion-scale, 0.96);
+      translate: var(--motion-x, 0px) var(--motion-y, 0px);
+      filter: blur(var(--motion-blur, 0px));
+    }
+    to {
+      opacity: 1;
+      scale: 1;
+      translate: 0 0;
+      filter: blur(0px);
+    }
+  }
+  @keyframes ui-settle {
+    0% {
+      opacity: 0;
+      translate: var(--motion-x, 0px) var(--motion-y, 8px);
+      scale: var(--motion-scale, 0.99);
+      filter: blur(var(--motion-blur, 0px));
+    }
+    65% {
+      opacity: 1;
+      filter: blur(0px);
+    }
+    100% {
+      opacity: 1;
+      translate: 0 0;
+      scale: 1;
+      filter: blur(0px);
+    }
+  }
+  @keyframes ui-exit {
+    from {
+      opacity: 1;
+      translate: 0 0;
+      scale: 1;
+      filter: blur(0px);
+    }
+    to {
+      opacity: 0;
+      translate: calc(var(--motion-x, 0px) * 0.35) calc(var(--motion-y, 6px) * 0.5);
+      scale: var(--motion-scale, 0.99);
+      filter: blur(calc(var(--motion-blur, 0px) * 0.65));
+    }
+  }
+  [data-motion='topbar'] {
+    --motion-entry: 280ms;
+    --motion-exit: 140ms;
+    --motion-delay: 0ms;
+    --motion-blur: 4px;
+    --motion-x: 0px;
+    --motion-y: -8px;
+    --motion-scale: 0.995;
+    --motion-interact: 110ms;
+    animation-name: ui-settle;
+  }
+  [data-motion='brand'] {
+    --motion-entry: 320ms;
+    --motion-exit: 130ms;
+    --motion-delay: 24ms;
+    --motion-blur: 3px;
+    --motion-x: 0px;
+    --motion-y: 0px;
+    --motion-scale: 1;
+    --motion-interact: 120ms;
+    animation-name: ui-reveal;
+  }
+  [data-motion='navigation'] {
+    --motion-entry: 300ms;
+    --motion-exit: 180ms;
+    --motion-delay: 0ms;
+    --motion-blur: 5px;
+    --motion-x: -20px;
+    --motion-y: 0px;
+    --motion-scale: 1;
+    --motion-interact: 120ms;
+    animation-name: ui-slide;
+  }
+  [data-motion='space-row'] {
+    --motion-entry: 240ms;
+    --motion-exit: 120ms;
+    --motion-delay: 32ms;
+    --motion-blur: 3px;
+    --motion-x: -9px;
+    --motion-y: 0px;
+    --motion-scale: 1;
+    --motion-interact: 100ms;
+    animation-name: ui-slide;
+  }
+  [data-motion='project-row'] {
+    --motion-entry: 220ms;
+    --motion-exit: 100ms;
+    --motion-delay: 46ms;
+    --motion-blur: 2px;
+    --motion-x: -6px;
+    --motion-y: 0px;
+    --motion-scale: 1;
+    --motion-interact: 100ms;
+    animation-name: ui-slide;
+  }
+  [data-motion='tool-dock'] {
+    --motion-entry: 290ms;
+    --motion-exit: 150ms;
+    --motion-delay: 42ms;
+    --motion-blur: 4px;
+    --motion-x: 0px;
+    --motion-y: 12px;
+    --motion-scale: 0.98;
+    --motion-interact: 110ms;
+    animation-name: ui-lift;
+  }
+  [data-motion='tool-item'] {
+    --motion-entry: 230ms;
+    --motion-exit: 110ms;
+    --motion-delay: 12ms;
+    --motion-blur: 2px;
+    --motion-x: 0px;
+    --motion-y: 5px;
+    --motion-scale: 0.94;
+    --motion-interact: 90ms;
+    animation-name: ui-settle;
+  }
+  [data-motion='panel-frame'] {
+    --motion-entry: 250ms;
+    --motion-exit: 160ms;
+    --motion-delay: 0ms;
+    --motion-blur: 0px;
+    --motion-x: 0px;
+    --motion-y: 10px;
+    --motion-scale: 0.985;
+    --motion-interact: 0ms;
+    animation-name: ui-settle;
+  }
+  [data-motion='panel-header'] {
+    --motion-entry: 240ms;
+    --motion-exit: 120ms;
+    --motion-delay: 18ms;
+    --motion-blur: 3px;
+    --motion-x: 6px;
+    --motion-y: 0px;
+    --motion-scale: 1;
+    --motion-interact: 100ms;
+    animation-name: ui-slide;
+  }
+  [data-motion='panel-menu'] {
+    --motion-entry: 180ms;
+    --motion-exit: 120ms;
+    --motion-delay: 0ms;
+    --motion-blur: 3px;
+    --motion-x: 0px;
+    --motion-y: -3px;
+    --motion-scale: 0.95;
+    --motion-interact: 90ms;
+    animation-name: ui-scale;
+  }
+  [data-motion='inspector-header'] {
+    --motion-entry: 260ms;
+    --motion-exit: 130ms;
+    --motion-delay: 20ms;
+    --motion-blur: 3px;
+    --motion-x: 8px;
+    --motion-y: 0px;
+    --motion-scale: 1;
+    --motion-interact: 100ms;
+    animation-name: ui-slide;
+  }
+  [data-motion='inspector-section'] {
+    --motion-entry: 300ms;
+    --motion-exit: 160ms;
+    --motion-delay: 36ms;
+    --motion-blur: 4px;
+    --motion-x: 0px;
+    --motion-y: 8px;
+    --motion-scale: 1;
+    --motion-interact: 120ms;
+    animation-name: ui-reveal;
+  }
+  [data-motion='slider-row'] {
+    --motion-entry: 235ms;
+    --motion-exit: 110ms;
+    --motion-delay: 15ms;
+    --motion-blur: 2px;
+    --motion-x: 7px;
+    --motion-y: 0px;
+    --motion-scale: 1;
+    --motion-interact: 75ms;
+    animation-name: ui-slide;
+  }
+  [data-motion='curve-controls'] {
+    --motion-entry: 275ms;
+    --motion-exit: 145ms;
+    --motion-delay: 30ms;
+    --motion-blur: 3px;
+    --motion-x: 0px;
+    --motion-y: 7px;
+    --motion-scale: 0.98;
+    --motion-interact: 85ms;
+    animation-name: ui-settle;
+  }
+  [data-motion='color-picker'] {
+    --motion-entry: 290ms;
+    --motion-exit: 140ms;
+    --motion-delay: 12ms;
+    --motion-blur: 5px;
+    --motion-x: 0px;
+    --motion-y: 5px;
+    --motion-scale: 0.97;
+    --motion-interact: 95ms;
+    animation-name: ui-scale;
+  }
+  [data-motion='selection-controls'] {
+    --motion-entry: 310ms;
+    --motion-exit: 150ms;
+    --motion-delay: 18ms;
+    --motion-blur: 4px;
+    --motion-x: 0px;
+    --motion-y: 9px;
+    --motion-scale: 1;
+    --motion-interact: 100ms;
+    animation-name: ui-reveal;
+  }
+  [data-motion='canvas-toolbar'] {
+    --motion-entry: 270ms;
+    --motion-exit: 130ms;
+    --motion-delay: 48ms;
+    --motion-blur: 3px;
+    --motion-x: 0px;
+    --motion-y: 7px;
+    --motion-scale: 0.98;
+    --motion-interact: 90ms;
+    animation-name: ui-lift;
+  }
+  [data-motion='ai-tabs'] {
+    --motion-entry: 230ms;
+    --motion-exit: 110ms;
+    --motion-delay: 0ms;
+    --motion-blur: 3px;
+    --motion-x: 0px;
+    --motion-y: -5px;
+    --motion-scale: 1;
+    --motion-interact: 85ms;
+    animation-name: ui-slide;
+  }
+  [data-motion='ai-status'] {
+    --motion-entry: 200ms;
+    --motion-exit: 110ms;
+    --motion-delay: 15ms;
+    --motion-blur: 2px;
+    --motion-x: 0px;
+    --motion-y: 4px;
+    --motion-scale: 1;
+    --motion-interact: 95ms;
+    animation-name: ui-reveal;
+  }
+  [data-motion='ai-context'] {
+    --motion-entry: 240ms;
+    --motion-exit: 130ms;
+    --motion-delay: 30ms;
+    --motion-blur: 3px;
+    --motion-x: 7px;
+    --motion-y: 0px;
+    --motion-scale: 1;
+    --motion-interact: 100ms;
+    animation-name: ui-slide;
+  }
+  [data-motion='ai-user-message'] {
+    --motion-entry: 280ms;
+    --motion-exit: 150ms;
+    --motion-delay: 0ms;
+    --motion-blur: 3px;
+    --motion-x: 12px;
+    --motion-y: 0px;
+    --motion-scale: 1;
+    --motion-interact: 120ms;
+    animation-name: ui-slide;
+  }
+  [data-motion='ai-answer'] {
+    --motion-entry: 360ms;
+    --motion-exit: 180ms;
+    --motion-delay: 24ms;
+    --motion-blur: 5px;
+    --motion-x: 0px;
+    --motion-y: 10px;
+    --motion-scale: 1;
+    --motion-interact: 130ms;
+    animation-name: ui-reveal;
+  }
+  [data-motion='ai-result-media'] {
+    --motion-entry: 310ms;
+    --motion-exit: 160ms;
+    --motion-delay: 30ms;
+    --motion-blur: 0px;
+    --motion-x: 0px;
+    --motion-y: 8px;
+    --motion-scale: 0.99;
+    --motion-interact: 120ms;
+    animation-name: ui-settle;
+  }
+  [data-motion='ai-composer'] {
+    --motion-entry: 260ms;
+    --motion-exit: 140ms;
+    --motion-delay: 38ms;
+    --motion-blur: 3px;
+    --motion-x: 0px;
+    --motion-y: 9px;
+    --motion-scale: 1;
+    --motion-interact: 110ms;
+    animation-name: ui-lift;
+  }
+  [data-motion='ai-options'] {
+    --motion-entry: 290ms;
+    --motion-exit: 150ms;
+    --motion-delay: 0ms;
+    --motion-blur: 4px;
+    --motion-x: 0px;
+    --motion-y: -7px;
+    --motion-scale: 0.995;
+    --motion-interact: 95ms;
+    animation-name: ui-reveal;
+  }
+  [data-motion='ai-reference'] {
+    --motion-entry: 245ms;
+    --motion-exit: 125ms;
+    --motion-delay: 20ms;
+    --motion-blur: 0px;
+    --motion-x: 0px;
+    --motion-y: 6px;
+    --motion-scale: 0.96;
+    --motion-interact: 100ms;
+    animation-name: ui-settle;
+  }
+  [data-motion='voice-controls'] {
+    --motion-entry: 330ms;
+    --motion-exit: 180ms;
+    --motion-delay: 15ms;
+    --motion-blur: 4px;
+    --motion-x: 0px;
+    --motion-y: 9px;
+    --motion-scale: 0.95;
+    --motion-interact: 120ms;
+    animation-name: ui-scale;
+  }
+  [data-motion='voice-result'] {
+    --motion-entry: 300ms;
+    --motion-exit: 160ms;
+    --motion-delay: 26ms;
+    --motion-blur: 4px;
+    --motion-x: 0px;
+    --motion-y: 8px;
+    --motion-scale: 1;
+    --motion-interact: 100ms;
+    animation-name: ui-reveal;
+  }
+  [data-motion='drawing-frame'] {
+    --motion-entry: 280ms;
+    --motion-exit: 170ms;
+    --motion-delay: 0ms;
+    --motion-blur: 0px;
+    --motion-x: 0px;
+    --motion-y: 12px;
+    --motion-scale: 0.99;
+    --motion-interact: 0ms;
+    animation-name: ui-settle;
+  }
+  [data-motion='drawing-tools'] {
+    --motion-entry: 260ms;
+    --motion-exit: 120ms;
+    --motion-delay: 22ms;
+    --motion-blur: 3px;
+    --motion-x: -8px;
+    --motion-y: 0px;
+    --motion-scale: 1;
+    --motion-interact: 85ms;
+    animation-name: ui-slide;
+  }
+  [data-motion='drawing-colors'] {
+    --motion-entry: 250ms;
+    --motion-exit: 140ms;
+    --motion-delay: 38ms;
+    --motion-blur: 4px;
+    --motion-x: 0px;
+    --motion-y: 5px;
+    --motion-scale: 0.97;
+    --motion-interact: 85ms;
+    animation-name: ui-scale;
+  }
+  [data-motion='auth-fields'] {
+    --motion-entry: 280ms;
+    --motion-exit: 150ms;
+    --motion-delay: 30ms;
+    --motion-blur: 4px;
+    --motion-x: 0px;
+    --motion-y: 9px;
+    --motion-scale: 1;
+    --motion-interact: 110ms;
+    animation-name: ui-slide;
+  }
+  [data-motion='auth-tabs'] {
+    --motion-entry: 235ms;
+    --motion-exit: 130ms;
+    --motion-delay: 16ms;
+    --motion-blur: 3px;
+    --motion-x: 0px;
+    --motion-y: 5px;
+    --motion-scale: 0.98;
+    --motion-interact: 90ms;
+    animation-name: ui-settle;
+  }
+  [data-motion='view-header'] {
+    --motion-entry: 280ms;
+    --motion-exit: 140ms;
+    --motion-delay: 0ms;
+    --motion-blur: 4px;
+    --motion-x: 0px;
+    --motion-y: -7px;
+    --motion-scale: 1;
+    --motion-interact: 120ms;
+    animation-name: ui-slide;
+  }
+  [data-motion='artwork-meta'] {
+    --motion-entry: 300ms;
+    --motion-exit: 160ms;
+    --motion-delay: 18ms;
+    --motion-blur: 3px;
+    --motion-x: 0px;
+    --motion-y: 9px;
+    --motion-scale: 1;
+    --motion-interact: 110ms;
+    animation-name: ui-lift;
+  }
+  [data-motion='artwork-media'] {
+    --motion-entry: 320ms;
+    --motion-exit: 170ms;
+    --motion-delay: 0ms;
+    --motion-blur: 0px;
+    --motion-x: 0px;
+    --motion-y: 8px;
+    --motion-scale: 0.99;
+    --motion-interact: 110ms;
+    animation-name: ui-settle;
+  }
+  [data-motion='discussion'] {
+    --motion-entry: 320ms;
+    --motion-exit: 170ms;
+    --motion-delay: 15ms;
+    --motion-blur: 4px;
+    --motion-x: 0px;
+    --motion-y: 12px;
+    --motion-scale: 1;
+    --motion-interact: 110ms;
+    animation-name: ui-reveal;
+  }
+  [data-motion='comment'] {
+    --motion-entry: 270ms;
+    --motion-exit: 140ms;
+    --motion-delay: 18ms;
+    --motion-blur: 3px;
+    --motion-x: -9px;
+    --motion-y: 0px;
+    --motion-scale: 1;
+    --motion-interact: 100ms;
+    animation-name: ui-slide;
+  }
+  [data-motion='task-item'] {
+    --motion-entry: 240ms;
+    --motion-exit: 125ms;
+    --motion-delay: 12ms;
+    --motion-blur: 2px;
+    --motion-x: 8px;
+    --motion-y: 0px;
+    --motion-scale: 1;
+    --motion-interact: 90ms;
+    animation-name: ui-slide;
+  }
+  [data-motion='document-list'] {
+    --motion-entry: 285ms;
+    --motion-exit: 155ms;
+    --motion-delay: 8ms;
+    --motion-blur: 4px;
+    --motion-x: -10px;
+    --motion-y: 0px;
+    --motion-scale: 1;
+    --motion-interact: 110ms;
+    animation-name: ui-slide;
+  }
+  [data-motion='document-editor'] {
+    --motion-entry: 340ms;
+    --motion-exit: 170ms;
+    --motion-delay: 32ms;
+    --motion-blur: 4px;
+    --motion-x: 0px;
+    --motion-y: 10px;
+    --motion-scale: 1;
+    --motion-interact: 110ms;
+    animation-name: ui-reveal;
+  }
+  [data-motion='delivery'] {
+    --motion-entry: 315ms;
+    --motion-exit: 165ms;
+    --motion-delay: 20ms;
+    --motion-blur: 4px;
+    --motion-x: 0px;
+    --motion-y: 13px;
+    --motion-scale: 0.99;
+    --motion-interact: 120ms;
+    animation-name: ui-lift;
+  }
+  [data-motion='ops-navigation'] {
+    --motion-entry: 275ms;
+    --motion-exit: 145ms;
+    --motion-delay: 0ms;
+    --motion-blur: 4px;
+    --motion-x: -12px;
+    --motion-y: 0px;
+    --motion-scale: 1;
+    --motion-interact: 100ms;
+    animation-name: ui-slide;
+  }
+  [data-motion='ops-content'] {
+    --motion-entry: 325ms;
+    --motion-exit: 175ms;
+    --motion-delay: 24ms;
+    --motion-blur: 4px;
+    --motion-x: 0px;
+    --motion-y: 9px;
+    --motion-scale: 1;
+    --motion-interact: 120ms;
+    animation-name: ui-reveal;
+  }
+  [data-motion='ops-row'] {
+    --motion-entry: 225ms;
+    --motion-exit: 115ms;
+    --motion-delay: 16ms;
+    --motion-blur: 2px;
+    --motion-x: 6px;
+    --motion-y: 0px;
+    --motion-scale: 1;
+    --motion-interact: 90ms;
+    animation-name: ui-slide;
+  }
+  [data-motion='quota'] {
+    --motion-entry: 320ms;
+    --motion-exit: 170ms;
+    --motion-delay: 18ms;
+    --motion-blur: 4px;
+    --motion-x: 0px;
+    --motion-y: 6px;
+    --motion-scale: 0.98;
+    --motion-interact: 110ms;
+    animation-name: ui-scale;
+  }
+  [data-motion='modal-frame'] {
+    --motion-entry: 270ms;
+    --motion-exit: 170ms;
+    --motion-delay: 0ms;
+    --motion-blur: 0px;
+    --motion-x: 0px;
+    --motion-y: 12px;
+    --motion-scale: 0.985;
+    --motion-interact: 100ms;
+    animation-name: ui-settle;
+  }
+  [data-motion='modal-header'] {
+    --motion-entry: 285ms;
+    --motion-exit: 140ms;
+    --motion-delay: 18ms;
+    --motion-blur: 4px;
+    --motion-x: 0px;
+    --motion-y: -7px;
+    --motion-scale: 1;
+    --motion-interact: 110ms;
+    animation-name: ui-reveal;
+  }
+  [data-motion='modal-content'] {
+    --motion-entry: 300ms;
+    --motion-exit: 150ms;
+    --motion-delay: 32ms;
+    --motion-blur: 4px;
+    --motion-x: 0px;
+    --motion-y: 8px;
+    --motion-scale: 1;
+    --motion-interact: 110ms;
+    animation-name: ui-reveal;
+  }
+  [data-motion='popover'] {
+    --motion-entry: 205ms;
+    --motion-exit: 120ms;
+    --motion-delay: 0ms;
+    --motion-blur: 4px;
+    --motion-x: 0px;
+    --motion-y: -4px;
+    --motion-scale: 0.95;
+    --motion-interact: 95ms;
+    animation-name: ui-scale;
+  }
+  [data-motion='empty-state'] {
+    --motion-entry: 400ms;
+    --motion-exit: 190ms;
+    --motion-delay: 40ms;
+    --motion-blur: 6px;
+    --motion-x: 0px;
+    --motion-y: 15px;
+    --motion-scale: 1;
+    --motion-interact: 120ms;
+    animation-name: ui-reveal;
+  }
+  [data-motion='notice'] {
+    --motion-entry: 240ms;
+    --motion-exit: 150ms;
+    --motion-delay: 0ms;
+    --motion-blur: 3px;
+    --motion-x: 0px;
+    --motion-y: -8px;
+    --motion-scale: 1;
+    --motion-interact: 100ms;
+    animation-name: ui-slide;
+  }
+  [data-motion='inline-error'] {
+    --motion-entry: 210ms;
+    --motion-exit: 120ms;
+    --motion-delay: 0ms;
+    --motion-blur: 2px;
+    --motion-x: 0px;
+    --motion-y: 4px;
+    --motion-scale: 0.99;
+    --motion-interact: 95ms;
+    animation-name: ui-settle;
+  }
+  [data-motion='capability'] {
+    --motion-entry: 260ms;
+    --motion-exit: 140ms;
+    --motion-delay: 12ms;
+    --motion-blur: 3px;
+    --motion-x: 0px;
+    --motion-y: 5px;
+    --motion-scale: 1;
+    --motion-interact: 105ms;
+    animation-name: ui-reveal;
+  }
+  @media (min-width: 760px) and (max-width: 1119px) {
+    [data-motion='topbar'] {
+      --motion-entry: 265ms;
+      --motion-exit: 130ms;
+      --motion-delay: 0ms;
+      --motion-blur: 3px;
+      --motion-x: 0px;
+      --motion-y: -6px;
+      --motion-scale: 0.995;
+      --motion-interact: 110ms;
+      animation-name: ui-settle;
+    }
+    [data-motion='brand'] {
+      --motion-entry: 305ms;
+      --motion-exit: 120ms;
+      --motion-delay: 16ms;
+      --motion-blur: 2px;
+      --motion-x: 0px;
+      --motion-y: 0px;
+      --motion-scale: 1;
+      --motion-interact: 120ms;
+      animation-name: ui-reveal;
+    }
+    [data-motion='navigation'] {
+      --motion-entry: 275ms;
+      --motion-exit: 170ms;
+      --motion-delay: 0ms;
+      --motion-blur: 4px;
+      --motion-x: -20px;
+      --motion-y: 0px;
+      --motion-scale: 1;
+      --motion-interact: 120ms;
+      animation-name: ui-slide;
+    }
+    [data-motion='space-row'] {
+      --motion-entry: 215ms;
+      --motion-exit: 110ms;
+      --motion-delay: 26ms;
+      --motion-blur: 2px;
+      --motion-x: -9px;
+      --motion-y: 0px;
+      --motion-scale: 1;
+      --motion-interact: 100ms;
+      animation-name: ui-slide;
+    }
+    [data-motion='project-row'] {
+      --motion-entry: 195ms;
+      --motion-exit: 90ms;
+      --motion-delay: 40ms;
+      --motion-blur: 1px;
+      --motion-x: -6px;
+      --motion-y: 0px;
+      --motion-scale: 1;
+      --motion-interact: 100ms;
+      animation-name: ui-slide;
+    }
+    [data-motion='tool-dock'] {
+      --motion-entry: 275ms;
+      --motion-exit: 140ms;
+      --motion-delay: 34ms;
+      --motion-blur: 3px;
+      --motion-x: 0px;
+      --motion-y: 9px;
+      --motion-scale: 0.98;
+      --motion-interact: 110ms;
+      animation-name: ui-lift;
+    }
+    [data-motion='tool-item'] {
+      --motion-entry: 215ms;
+      --motion-exit: 100ms;
+      --motion-delay: 4ms;
+      --motion-blur: 1px;
+      --motion-x: 0px;
+      --motion-y: 3.75px;
+      --motion-scale: 0.94;
+      --motion-interact: 90ms;
+      animation-name: ui-settle;
+    }
+    [data-motion='panel-frame'] {
+      --motion-entry: 240ms;
+      --motion-exit: 150ms;
+      --motion-delay: 0ms;
+      --motion-blur: 0px;
+      --motion-x: 0px;
+      --motion-y: 8px;
+      --motion-scale: 0.985;
+      --motion-interact: 0ms;
+      animation-name: ui-settle;
+    }
+    [data-motion='panel-header'] {
+      --motion-entry: 225ms;
+      --motion-exit: 110ms;
+      --motion-delay: 10ms;
+      --motion-blur: 2px;
+      --motion-x: 6px;
+      --motion-y: 0px;
+      --motion-scale: 1;
+      --motion-interact: 100ms;
+      animation-name: ui-slide;
+    }
+    [data-motion='panel-menu'] {
+      --motion-entry: 165ms;
+      --motion-exit: 110ms;
+      --motion-delay: 0ms;
+      --motion-blur: 2px;
+      --motion-x: 0px;
+      --motion-y: -2.25px;
+      --motion-scale: 0.95;
+      --motion-interact: 90ms;
+      animation-name: ui-scale;
+    }
+    [data-motion='inspector-header'] {
+      --motion-entry: 235ms;
+      --motion-exit: 120ms;
+      --motion-delay: 14ms;
+      --motion-blur: 2px;
+      --motion-x: 8px;
+      --motion-y: 0px;
+      --motion-scale: 1;
+      --motion-interact: 100ms;
+      animation-name: ui-slide;
+    }
+    [data-motion='inspector-section'] {
+      --motion-entry: 275ms;
+      --motion-exit: 150ms;
+      --motion-delay: 30ms;
+      --motion-blur: 3px;
+      --motion-x: 0px;
+      --motion-y: 6.4px;
+      --motion-scale: 1;
+      --motion-interact: 120ms;
+      animation-name: ui-reveal;
+    }
+    [data-motion='slider-row'] {
+      --motion-entry: 215ms;
+      --motion-exit: 110ms;
+      --motion-delay: 5ms;
+      --motion-blur: 1px;
+      --motion-x: 7px;
+      --motion-y: 0px;
+      --motion-scale: 1;
+      --motion-interact: 85ms;
+      animation-name: ui-slide;
+    }
+    [data-motion='curve-controls'] {
+      --motion-entry: 255ms;
+      --motion-exit: 145ms;
+      --motion-delay: 20ms;
+      --motion-blur: 2px;
+      --motion-x: 0px;
+      --motion-y: 7px;
+      --motion-scale: 0.98;
+      --motion-interact: 85ms;
+      animation-name: ui-settle;
+    }
+    [data-motion='color-picker'] {
+      --motion-entry: 270ms;
+      --motion-exit: 140ms;
+      --motion-delay: 2ms;
+      --motion-blur: 4px;
+      --motion-x: 0px;
+      --motion-y: 5px;
+      --motion-scale: 0.97;
+      --motion-interact: 85ms;
+      animation-name: ui-scale;
+    }
+    [data-motion='selection-controls'] {
+      --motion-entry: 290ms;
+      --motion-exit: 150ms;
+      --motion-delay: 8ms;
+      --motion-blur: 3px;
+      --motion-x: 0px;
+      --motion-y: 9px;
+      --motion-scale: 1;
+      --motion-interact: 85ms;
+      animation-name: ui-reveal;
+    }
+    [data-motion='canvas-toolbar'] {
+      --motion-entry: 255ms;
+      --motion-exit: 120ms;
+      --motion-delay: 40ms;
+      --motion-blur: 2px;
+      --motion-x: 0px;
+      --motion-y: 5.25px;
+      --motion-scale: 0.98;
+      --motion-interact: 90ms;
+      animation-name: ui-lift;
+    }
+    [data-motion='ai-tabs'] {
+      --motion-entry: 215ms;
+      --motion-exit: 100ms;
+      --motion-delay: 0ms;
+      --motion-blur: 2px;
+      --motion-x: 0px;
+      --motion-y: -3.75px;
+      --motion-scale: 1;
+      --motion-interact: 85ms;
+      animation-name: ui-slide;
+    }
+    [data-motion='ai-status'] {
+      --motion-entry: 185ms;
+      --motion-exit: 100ms;
+      --motion-delay: 7ms;
+      --motion-blur: 1px;
+      --motion-x: 0px;
+      --motion-y: 3px;
+      --motion-scale: 1;
+      --motion-interact: 95ms;
+      animation-name: ui-reveal;
+    }
+    [data-motion='ai-context'] {
+      --motion-entry: 225ms;
+      --motion-exit: 120ms;
+      --motion-delay: 22ms;
+      --motion-blur: 2px;
+      --motion-x: 7px;
+      --motion-y: 0px;
+      --motion-scale: 1;
+      --motion-interact: 100ms;
+      animation-name: ui-slide;
+    }
+    [data-motion='ai-user-message'] {
+      --motion-entry: 255ms;
+      --motion-exit: 140ms;
+      --motion-delay: 0ms;
+      --motion-blur: 2px;
+      --motion-x: 12px;
+      --motion-y: 0px;
+      --motion-scale: 1;
+      --motion-interact: 120ms;
+      animation-name: ui-slide;
+    }
+    [data-motion='ai-answer'] {
+      --motion-entry: 335ms;
+      --motion-exit: 170ms;
+      --motion-delay: 18ms;
+      --motion-blur: 4px;
+      --motion-x: 0px;
+      --motion-y: 8px;
+      --motion-scale: 1;
+      --motion-interact: 130ms;
+      animation-name: ui-reveal;
+    }
+    [data-motion='ai-result-media'] {
+      --motion-entry: 300ms;
+      --motion-exit: 150ms;
+      --motion-delay: 20ms;
+      --motion-blur: 0px;
+      --motion-x: 0px;
+      --motion-y: 6.4px;
+      --motion-scale: 0.99;
+      --motion-interact: 120ms;
+      animation-name: ui-settle;
+    }
+    [data-motion='ai-composer'] {
+      --motion-entry: 240ms;
+      --motion-exit: 140ms;
+      --motion-delay: 28ms;
+      --motion-blur: 2px;
+      --motion-x: 0px;
+      --motion-y: 9px;
+      --motion-scale: 1;
+      --motion-interact: 85ms;
+      animation-name: ui-lift;
+    }
+    [data-motion='ai-options'] {
+      --motion-entry: 270ms;
+      --motion-exit: 150ms;
+      --motion-delay: 0ms;
+      --motion-blur: 3px;
+      --motion-x: 0px;
+      --motion-y: -7px;
+      --motion-scale: 0.995;
+      --motion-interact: 85ms;
+      animation-name: ui-reveal;
+    }
+    [data-motion='ai-reference'] {
+      --motion-entry: 235ms;
+      --motion-exit: 115ms;
+      --motion-delay: 10ms;
+      --motion-blur: 0px;
+      --motion-x: 0px;
+      --motion-y: 4.800000000000001px;
+      --motion-scale: 0.96;
+      --motion-interact: 100ms;
+      animation-name: ui-settle;
+    }
+    [data-motion='voice-controls'] {
+      --motion-entry: 310ms;
+      --motion-exit: 180ms;
+      --motion-delay: 5ms;
+      --motion-blur: 3px;
+      --motion-x: 0px;
+      --motion-y: 9px;
+      --motion-scale: 0.95;
+      --motion-interact: 85ms;
+      animation-name: ui-scale;
+    }
+    [data-motion='voice-result'] {
+      --motion-entry: 275ms;
+      --motion-exit: 150ms;
+      --motion-delay: 20ms;
+      --motion-blur: 3px;
+      --motion-x: 0px;
+      --motion-y: 6.4px;
+      --motion-scale: 1;
+      --motion-interact: 100ms;
+      animation-name: ui-reveal;
+    }
+    [data-motion='drawing-frame'] {
+      --motion-entry: 270ms;
+      --motion-exit: 160ms;
+      --motion-delay: 0ms;
+      --motion-blur: 0px;
+      --motion-x: 0px;
+      --motion-y: 9.600000000000001px;
+      --motion-scale: 0.99;
+      --motion-interact: 0ms;
+      animation-name: ui-settle;
+    }
+    [data-motion='drawing-tools'] {
+      --motion-entry: 240ms;
+      --motion-exit: 120ms;
+      --motion-delay: 12ms;
+      --motion-blur: 2px;
+      --motion-x: -8px;
+      --motion-y: 0px;
+      --motion-scale: 1;
+      --motion-interact: 85ms;
+      animation-name: ui-slide;
+    }
+    [data-motion='drawing-colors'] {
+      --motion-entry: 230ms;
+      --motion-exit: 140ms;
+      --motion-delay: 28ms;
+      --motion-blur: 3px;
+      --motion-x: 0px;
+      --motion-y: 5px;
+      --motion-scale: 0.97;
+      --motion-interact: 85ms;
+      animation-name: ui-scale;
+    }
+    [data-motion='auth-fields'] {
+      --motion-entry: 255ms;
+      --motion-exit: 140ms;
+      --motion-delay: 24ms;
+      --motion-blur: 3px;
+      --motion-x: 0px;
+      --motion-y: 7.2px;
+      --motion-scale: 1;
+      --motion-interact: 110ms;
+      animation-name: ui-slide;
+    }
+    [data-motion='auth-tabs'] {
+      --motion-entry: 215ms;
+      --motion-exit: 130ms;
+      --motion-delay: 6ms;
+      --motion-blur: 2px;
+      --motion-x: 0px;
+      --motion-y: 5px;
+      --motion-scale: 0.98;
+      --motion-interact: 85ms;
+      animation-name: ui-settle;
+    }
+    [data-motion='view-header'] {
+      --motion-entry: 255ms;
+      --motion-exit: 130ms;
+      --motion-delay: 0ms;
+      --motion-blur: 3px;
+      --motion-x: 0px;
+      --motion-y: -5.6000000000000005px;
+      --motion-scale: 1;
+      --motion-interact: 120ms;
+      animation-name: ui-slide;
+    }
+    [data-motion='artwork-meta'] {
+      --motion-entry: 275ms;
+      --motion-exit: 150ms;
+      --motion-delay: 12ms;
+      --motion-blur: 2px;
+      --motion-x: 0px;
+      --motion-y: 7.2px;
+      --motion-scale: 1;
+      --motion-interact: 110ms;
+      animation-name: ui-lift;
+    }
+    [data-motion='artwork-media'] {
+      --motion-entry: 310ms;
+      --motion-exit: 160ms;
+      --motion-delay: 0ms;
+      --motion-blur: 0px;
+      --motion-x: 0px;
+      --motion-y: 6.4px;
+      --motion-scale: 0.99;
+      --motion-interact: 110ms;
+      animation-name: ui-settle;
+    }
+    [data-motion='discussion'] {
+      --motion-entry: 295ms;
+      --motion-exit: 160ms;
+      --motion-delay: 9ms;
+      --motion-blur: 3px;
+      --motion-x: 0px;
+      --motion-y: 9.600000000000001px;
+      --motion-scale: 1;
+      --motion-interact: 110ms;
+      animation-name: ui-reveal;
+    }
+    [data-motion='comment'] {
+      --motion-entry: 245ms;
+      --motion-exit: 130ms;
+      --motion-delay: 12ms;
+      --motion-blur: 2px;
+      --motion-x: -9px;
+      --motion-y: 0px;
+      --motion-scale: 1;
+      --motion-interact: 100ms;
+      animation-name: ui-slide;
+    }
+    [data-motion='task-item'] {
+      --motion-entry: 215ms;
+      --motion-exit: 115ms;
+      --motion-delay: 6ms;
+      --motion-blur: 1px;
+      --motion-x: 8px;
+      --motion-y: 0px;
+      --motion-scale: 1;
+      --motion-interact: 90ms;
+      animation-name: ui-slide;
+    }
+    [data-motion='document-list'] {
+      --motion-entry: 260ms;
+      --motion-exit: 145ms;
+      --motion-delay: 2ms;
+      --motion-blur: 3px;
+      --motion-x: -10px;
+      --motion-y: 0px;
+      --motion-scale: 1;
+      --motion-interact: 110ms;
+      animation-name: ui-slide;
+    }
+    [data-motion='document-editor'] {
+      --motion-entry: 315ms;
+      --motion-exit: 160ms;
+      --motion-delay: 26ms;
+      --motion-blur: 3px;
+      --motion-x: 0px;
+      --motion-y: 8px;
+      --motion-scale: 1;
+      --motion-interact: 110ms;
+      animation-name: ui-reveal;
+    }
+    [data-motion='delivery'] {
+      --motion-entry: 290ms;
+      --motion-exit: 155ms;
+      --motion-delay: 14ms;
+      --motion-blur: 3px;
+      --motion-x: 0px;
+      --motion-y: 10.4px;
+      --motion-scale: 0.99;
+      --motion-interact: 120ms;
+      animation-name: ui-lift;
+    }
+    [data-motion='ops-navigation'] {
+      --motion-entry: 250ms;
+      --motion-exit: 135ms;
+      --motion-delay: 0ms;
+      --motion-blur: 3px;
+      --motion-x: -12px;
+      --motion-y: 0px;
+      --motion-scale: 1;
+      --motion-interact: 100ms;
+      animation-name: ui-slide;
+    }
+    [data-motion='ops-content'] {
+      --motion-entry: 300ms;
+      --motion-exit: 165ms;
+      --motion-delay: 18ms;
+      --motion-blur: 3px;
+      --motion-x: 0px;
+      --motion-y: 7.2px;
+      --motion-scale: 1;
+      --motion-interact: 120ms;
+      animation-name: ui-reveal;
+    }
+    [data-motion='ops-row'] {
+      --motion-entry: 200ms;
+      --motion-exit: 105ms;
+      --motion-delay: 10ms;
+      --motion-blur: 1px;
+      --motion-x: 6px;
+      --motion-y: 0px;
+      --motion-scale: 1;
+      --motion-interact: 90ms;
+      animation-name: ui-slide;
+    }
+    [data-motion='quota'] {
+      --motion-entry: 295ms;
+      --motion-exit: 160ms;
+      --motion-delay: 12ms;
+      --motion-blur: 3px;
+      --motion-x: 0px;
+      --motion-y: 4.800000000000001px;
+      --motion-scale: 0.98;
+      --motion-interact: 110ms;
+      animation-name: ui-scale;
+    }
+    [data-motion='modal-frame'] {
+      --motion-entry: 260ms;
+      --motion-exit: 160ms;
+      --motion-delay: 0ms;
+      --motion-blur: 0px;
+      --motion-x: 0px;
+      --motion-y: 9.600000000000001px;
+      --motion-scale: 0.985;
+      --motion-interact: 100ms;
+      animation-name: ui-settle;
+    }
+    [data-motion='modal-header'] {
+      --motion-entry: 260ms;
+      --motion-exit: 130ms;
+      --motion-delay: 12ms;
+      --motion-blur: 3px;
+      --motion-x: 0px;
+      --motion-y: -5.6000000000000005px;
+      --motion-scale: 1;
+      --motion-interact: 110ms;
+      animation-name: ui-reveal;
+    }
+    [data-motion='modal-content'] {
+      --motion-entry: 275ms;
+      --motion-exit: 140ms;
+      --motion-delay: 26ms;
+      --motion-blur: 3px;
+      --motion-x: 0px;
+      --motion-y: 6.4px;
+      --motion-scale: 1;
+      --motion-interact: 110ms;
+      animation-name: ui-reveal;
+    }
+    [data-motion='popover'] {
+      --motion-entry: 180ms;
+      --motion-exit: 110ms;
+      --motion-delay: 0ms;
+      --motion-blur: 3px;
+      --motion-x: 0px;
+      --motion-y: -3.2px;
+      --motion-scale: 0.95;
+      --motion-interact: 95ms;
+      animation-name: ui-scale;
+    }
+    [data-motion='empty-state'] {
+      --motion-entry: 375ms;
+      --motion-exit: 180ms;
+      --motion-delay: 34ms;
+      --motion-blur: 5px;
+      --motion-x: 0px;
+      --motion-y: 12px;
+      --motion-scale: 1;
+      --motion-interact: 120ms;
+      animation-name: ui-reveal;
+    }
+    [data-motion='notice'] {
+      --motion-entry: 215ms;
+      --motion-exit: 140ms;
+      --motion-delay: 0ms;
+      --motion-blur: 2px;
+      --motion-x: 0px;
+      --motion-y: -6.4px;
+      --motion-scale: 1;
+      --motion-interact: 100ms;
+      animation-name: ui-slide;
+    }
+    [data-motion='inline-error'] {
+      --motion-entry: 185ms;
+      --motion-exit: 110ms;
+      --motion-delay: 0ms;
+      --motion-blur: 1px;
+      --motion-x: 0px;
+      --motion-y: 3.2px;
+      --motion-scale: 0.99;
+      --motion-interact: 95ms;
+      animation-name: ui-settle;
+    }
+    [data-motion='capability'] {
+      --motion-entry: 235ms;
+      --motion-exit: 130ms;
+      --motion-delay: 6ms;
+      --motion-blur: 2px;
+      --motion-x: 0px;
+      --motion-y: 4px;
+      --motion-scale: 1;
+      --motion-interact: 105ms;
+      animation-name: ui-reveal;
+    }
+  }
+  @media (max-width: 759px) {
+    [data-motion='topbar'] {
+      --motion-entry: 225ms;
+      --motion-exit: 110ms;
+      --motion-delay: 0ms;
+      --motion-blur: 2px;
+      --motion-x: 0px;
+      --motion-y: -4px;
+      --motion-scale: 1;
+      --motion-interact: 70ms;
+      animation-name: ui-slide;
+    }
+    [data-motion='brand'] {
+      --motion-entry: 265ms;
+      --motion-exit: 100ms;
+      --motion-delay: 0ms;
+      --motion-blur: 1px;
+      --motion-x: 0px;
+      --motion-y: 0px;
+      --motion-scale: 1;
+      --motion-interact: 70ms;
+      animation-name: ui-reveal;
+    }
+    [data-motion='navigation'] {
+      --motion-entry: 230ms;
+      --motion-exit: 155ms;
+      --motion-delay: 0ms;
+      --motion-blur: 3px;
+      --motion-x: -10px;
+      --motion-y: 0px;
+      --motion-scale: 1;
+      --motion-interact: 85ms;
+      animation-name: ui-slide;
+    }
+    [data-motion='space-row'] {
+      --motion-entry: 170ms;
+      --motion-exit: 95ms;
+      --motion-delay: 12ms;
+      --motion-blur: 2px;
+      --motion-x: -4.5px;
+      --motion-y: 0px;
+      --motion-scale: 1;
+      --motion-interact: 85ms;
+      animation-name: ui-slide;
+    }
+    [data-motion='project-row'] {
+      --motion-entry: 150ms;
+      --motion-exit: 90ms;
+      --motion-delay: 12ms;
+      --motion-blur: 2px;
+      --motion-x: -3px;
+      --motion-y: 0px;
+      --motion-scale: 1;
+      --motion-interact: 85ms;
+      animation-name: ui-slide;
+    }
+    [data-motion='tool-dock'] {
+      --motion-entry: 235ms;
+      --motion-exit: 120ms;
+      --motion-delay: 0ms;
+      --motion-blur: 2px;
+      --motion-x: 0px;
+      --motion-y: 6px;
+      --motion-scale: 1;
+      --motion-interact: 70ms;
+      animation-name: ui-slide;
+    }
+    [data-motion='tool-item'] {
+      --motion-entry: 175ms;
+      --motion-exit: 80ms;
+      --motion-delay: 0ms;
+      --motion-blur: 1px;
+      --motion-x: 0px;
+      --motion-y: 2.5px;
+      --motion-scale: 1;
+      --motion-interact: 70ms;
+      animation-name: ui-reveal;
+    }
+    [data-motion='panel-frame'] {
+      --motion-entry: 210ms;
+      --motion-exit: 145ms;
+      --motion-delay: 0ms;
+      --motion-blur: 0px;
+      --motion-x: 0px;
+      --motion-y: 16px;
+      --motion-scale: 1;
+      --motion-interact: 0ms;
+      animation-name: ui-slide;
+    }
+    [data-motion='panel-header'] {
+      --motion-entry: 185ms;
+      --motion-exit: 90ms;
+      --motion-delay: 0ms;
+      --motion-blur: 1px;
+      --motion-x: 3px;
+      --motion-y: 0px;
+      --motion-scale: 1;
+      --motion-interact: 70ms;
+      animation-name: ui-slide;
+    }
+    [data-motion='panel-menu'] {
+      --motion-entry: 125ms;
+      --motion-exit: 90ms;
+      --motion-delay: 0ms;
+      --motion-blur: 1px;
+      --motion-x: 0px;
+      --motion-y: -1.5px;
+      --motion-scale: 1;
+      --motion-interact: 70ms;
+      animation-name: ui-slide;
+    }
+    [data-motion='inspector-header'] {
+      --motion-entry: 190ms;
+      --motion-exit: 105ms;
+      --motion-delay: 12ms;
+      --motion-blur: 2px;
+      --motion-x: 4px;
+      --motion-y: 0px;
+      --motion-scale: 1;
+      --motion-interact: 85ms;
+      animation-name: ui-slide;
+    }
+    [data-motion='inspector-section'] {
+      --motion-entry: 230ms;
+      --motion-exit: 135ms;
+      --motion-delay: 12ms;
+      --motion-blur: 2px;
+      --motion-x: 0px;
+      --motion-y: 4px;
+      --motion-scale: 1;
+      --motion-interact: 85ms;
+      animation-name: ui-reveal;
+    }
+    [data-motion='slider-row'] {
+      --motion-entry: 170ms;
+      --motion-exit: 90ms;
+      --motion-delay: 8ms;
+      --motion-blur: 2px;
+      --motion-x: 3.5px;
+      --motion-y: 0px;
+      --motion-scale: 1;
+      --motion-interact: 65ms;
+      animation-name: ui-slide;
+    }
+    [data-motion='curve-controls'] {
+      --motion-entry: 210ms;
+      --motion-exit: 120ms;
+      --motion-delay: 8ms;
+      --motion-blur: 2px;
+      --motion-x: 0px;
+      --motion-y: 4.2px;
+      --motion-scale: 1;
+      --motion-interact: 65ms;
+      animation-name: ui-slide;
+    }
+    [data-motion='color-picker'] {
+      --motion-entry: 225ms;
+      --motion-exit: 115ms;
+      --motion-delay: 8ms;
+      --motion-blur: 2px;
+      --motion-x: 0px;
+      --motion-y: 3px;
+      --motion-scale: 1;
+      --motion-interact: 65ms;
+      animation-name: ui-reveal;
+    }
+    [data-motion='selection-controls'] {
+      --motion-entry: 245ms;
+      --motion-exit: 125ms;
+      --motion-delay: 8ms;
+      --motion-blur: 2px;
+      --motion-x: 0px;
+      --motion-y: 5.3999999999999995px;
+      --motion-scale: 1;
+      --motion-interact: 65ms;
+      animation-name: ui-slide;
+    }
+    [data-motion='canvas-toolbar'] {
+      --motion-entry: 215ms;
+      --motion-exit: 100ms;
+      --motion-delay: 0ms;
+      --motion-blur: 1px;
+      --motion-x: 0px;
+      --motion-y: 3.5px;
+      --motion-scale: 1;
+      --motion-interact: 70ms;
+      animation-name: ui-slide;
+    }
+    [data-motion='ai-tabs'] {
+      --motion-entry: 175ms;
+      --motion-exit: 80ms;
+      --motion-delay: 0ms;
+      --motion-blur: 1px;
+      --motion-x: 0px;
+      --motion-y: -2.5px;
+      --motion-scale: 1;
+      --motion-interact: 70ms;
+      animation-name: ui-slide;
+    }
+    [data-motion='ai-status'] {
+      --motion-entry: 145ms;
+      --motion-exit: 80ms;
+      --motion-delay: 0ms;
+      --motion-blur: 1px;
+      --motion-x: 0px;
+      --motion-y: 2px;
+      --motion-scale: 1;
+      --motion-interact: 70ms;
+      animation-name: ui-slide;
+    }
+    [data-motion='ai-context'] {
+      --motion-entry: 185ms;
+      --motion-exit: 100ms;
+      --motion-delay: 0ms;
+      --motion-blur: 1px;
+      --motion-x: 3.5px;
+      --motion-y: 0px;
+      --motion-scale: 1;
+      --motion-interact: 70ms;
+      animation-name: ui-slide;
+    }
+    [data-motion='ai-user-message'] {
+      --motion-entry: 210ms;
+      --motion-exit: 125ms;
+      --motion-delay: 0ms;
+      --motion-blur: 2px;
+      --motion-x: 6px;
+      --motion-y: 0px;
+      --motion-scale: 1;
+      --motion-interact: 85ms;
+      animation-name: ui-slide;
+    }
+    [data-motion='ai-answer'] {
+      --motion-entry: 290ms;
+      --motion-exit: 155ms;
+      --motion-delay: 12ms;
+      --motion-blur: 3px;
+      --motion-x: 0px;
+      --motion-y: 5px;
+      --motion-scale: 1;
+      --motion-interact: 85ms;
+      animation-name: ui-reveal;
+    }
+    [data-motion='ai-result-media'] {
+      --motion-entry: 270ms;
+      --motion-exit: 145ms;
+      --motion-delay: 0ms;
+      --motion-blur: 0px;
+      --motion-x: 0px;
+      --motion-y: 5px;
+      --motion-scale: 1;
+      --motion-interact: 80ms;
+      animation-name: ui-slide;
+    }
+    [data-motion='ai-composer'] {
+      --motion-entry: 195ms;
+      --motion-exit: 115ms;
+      --motion-delay: 8ms;
+      --motion-blur: 2px;
+      --motion-x: 0px;
+      --motion-y: 5.3999999999999995px;
+      --motion-scale: 1;
+      --motion-interact: 65ms;
+      animation-name: ui-slide;
+    }
+    [data-motion='ai-options'] {
+      --motion-entry: 225ms;
+      --motion-exit: 125ms;
+      --motion-delay: 0ms;
+      --motion-blur: 2px;
+      --motion-x: 0px;
+      --motion-y: -4.2px;
+      --motion-scale: 1;
+      --motion-interact: 65ms;
+      animation-name: ui-reveal;
+    }
+    [data-motion='ai-reference'] {
+      --motion-entry: 205ms;
+      --motion-exit: 110ms;
+      --motion-delay: 0ms;
+      --motion-blur: 0px;
+      --motion-x: 0px;
+      --motion-y: 5px;
+      --motion-scale: 1;
+      --motion-interact: 80ms;
+      animation-name: ui-slide;
+    }
+    [data-motion='voice-controls'] {
+      --motion-entry: 265ms;
+      --motion-exit: 155ms;
+      --motion-delay: 8ms;
+      --motion-blur: 2px;
+      --motion-x: 0px;
+      --motion-y: 5.3999999999999995px;
+      --motion-scale: 1;
+      --motion-interact: 65ms;
+      animation-name: ui-reveal;
+    }
+    [data-motion='voice-result'] {
+      --motion-entry: 230ms;
+      --motion-exit: 135ms;
+      --motion-delay: 12ms;
+      --motion-blur: 2px;
+      --motion-x: 0px;
+      --motion-y: 4px;
+      --motion-scale: 1;
+      --motion-interact: 85ms;
+      animation-name: ui-reveal;
+    }
+    [data-motion='drawing-frame'] {
+      --motion-entry: 240ms;
+      --motion-exit: 155ms;
+      --motion-delay: 0ms;
+      --motion-blur: 0px;
+      --motion-x: 0px;
+      --motion-y: 16px;
+      --motion-scale: 1;
+      --motion-interact: 0ms;
+      animation-name: ui-slide;
+    }
+    [data-motion='drawing-tools'] {
+      --motion-entry: 195ms;
+      --motion-exit: 95ms;
+      --motion-delay: 8ms;
+      --motion-blur: 2px;
+      --motion-x: -4px;
+      --motion-y: 0px;
+      --motion-scale: 1;
+      --motion-interact: 65ms;
+      animation-name: ui-slide;
+    }
+    [data-motion='drawing-colors'] {
+      --motion-entry: 185ms;
+      --motion-exit: 115ms;
+      --motion-delay: 8ms;
+      --motion-blur: 2px;
+      --motion-x: 0px;
+      --motion-y: 3px;
+      --motion-scale: 1;
+      --motion-interact: 65ms;
+      animation-name: ui-slide;
+    }
+    [data-motion='auth-fields'] {
+      --motion-entry: 210ms;
+      --motion-exit: 125ms;
+      --motion-delay: 12ms;
+      --motion-blur: 2px;
+      --motion-x: 0px;
+      --motion-y: 4.5px;
+      --motion-scale: 1;
+      --motion-interact: 85ms;
+      animation-name: ui-reveal;
+    }
+    [data-motion='auth-tabs'] {
+      --motion-entry: 170ms;
+      --motion-exit: 105ms;
+      --motion-delay: 8ms;
+      --motion-blur: 2px;
+      --motion-x: 0px;
+      --motion-y: 3px;
+      --motion-scale: 1;
+      --motion-interact: 65ms;
+      animation-name: ui-slide;
+    }
+    [data-motion='view-header'] {
+      --motion-entry: 210ms;
+      --motion-exit: 115ms;
+      --motion-delay: 0ms;
+      --motion-blur: 2px;
+      --motion-x: 0px;
+      --motion-y: -3.5px;
+      --motion-scale: 1;
+      --motion-interact: 85ms;
+      animation-name: ui-reveal;
+    }
+    [data-motion='artwork-meta'] {
+      --motion-entry: 230ms;
+      --motion-exit: 135ms;
+      --motion-delay: 12ms;
+      --motion-blur: 2px;
+      --motion-x: 0px;
+      --motion-y: 4.5px;
+      --motion-scale: 1;
+      --motion-interact: 85ms;
+      animation-name: ui-reveal;
+    }
+    [data-motion='artwork-media'] {
+      --motion-entry: 280ms;
+      --motion-exit: 155ms;
+      --motion-delay: 0ms;
+      --motion-blur: 0px;
+      --motion-x: 0px;
+      --motion-y: 5px;
+      --motion-scale: 1;
+      --motion-interact: 80ms;
+      animation-name: ui-slide;
+    }
+    [data-motion='discussion'] {
+      --motion-entry: 250ms;
+      --motion-exit: 145ms;
+      --motion-delay: 12ms;
+      --motion-blur: 2px;
+      --motion-x: 0px;
+      --motion-y: 6px;
+      --motion-scale: 1;
+      --motion-interact: 85ms;
+      animation-name: ui-reveal;
+    }
+    [data-motion='comment'] {
+      --motion-entry: 200ms;
+      --motion-exit: 115ms;
+      --motion-delay: 12ms;
+      --motion-blur: 2px;
+      --motion-x: -4.5px;
+      --motion-y: 0px;
+      --motion-scale: 1;
+      --motion-interact: 85ms;
+      animation-name: ui-slide;
+    }
+    [data-motion='task-item'] {
+      --motion-entry: 170ms;
+      --motion-exit: 100ms;
+      --motion-delay: 12ms;
+      --motion-blur: 2px;
+      --motion-x: 4px;
+      --motion-y: 0px;
+      --motion-scale: 1;
+      --motion-interact: 85ms;
+      animation-name: ui-slide;
+    }
+    [data-motion='document-list'] {
+      --motion-entry: 215ms;
+      --motion-exit: 130ms;
+      --motion-delay: 8ms;
+      --motion-blur: 2px;
+      --motion-x: -5px;
+      --motion-y: 0px;
+      --motion-scale: 1;
+      --motion-interact: 85ms;
+      animation-name: ui-slide;
+    }
+    [data-motion='document-editor'] {
+      --motion-entry: 270ms;
+      --motion-exit: 145ms;
+      --motion-delay: 12ms;
+      --motion-blur: 2px;
+      --motion-x: 0px;
+      --motion-y: 5px;
+      --motion-scale: 1;
+      --motion-interact: 85ms;
+      animation-name: ui-reveal;
+    }
+    [data-motion='delivery'] {
+      --motion-entry: 245ms;
+      --motion-exit: 140ms;
+      --motion-delay: 12ms;
+      --motion-blur: 2px;
+      --motion-x: 0px;
+      --motion-y: 6.5px;
+      --motion-scale: 1;
+      --motion-interact: 85ms;
+      animation-name: ui-reveal;
+    }
+    [data-motion='ops-navigation'] {
+      --motion-entry: 205ms;
+      --motion-exit: 120ms;
+      --motion-delay: 0ms;
+      --motion-blur: 2px;
+      --motion-x: -6px;
+      --motion-y: 0px;
+      --motion-scale: 1;
+      --motion-interact: 85ms;
+      animation-name: ui-slide;
+    }
+    [data-motion='ops-content'] {
+      --motion-entry: 255ms;
+      --motion-exit: 150ms;
+      --motion-delay: 12ms;
+      --motion-blur: 2px;
+      --motion-x: 0px;
+      --motion-y: 4.5px;
+      --motion-scale: 1;
+      --motion-interact: 85ms;
+      animation-name: ui-reveal;
+    }
+    [data-motion='ops-row'] {
+      --motion-entry: 155ms;
+      --motion-exit: 90ms;
+      --motion-delay: 12ms;
+      --motion-blur: 2px;
+      --motion-x: 3px;
+      --motion-y: 0px;
+      --motion-scale: 1;
+      --motion-interact: 85ms;
+      animation-name: ui-slide;
+    }
+    [data-motion='quota'] {
+      --motion-entry: 250ms;
+      --motion-exit: 145ms;
+      --motion-delay: 12ms;
+      --motion-blur: 2px;
+      --motion-x: 0px;
+      --motion-y: 3px;
+      --motion-scale: 1;
+      --motion-interact: 85ms;
+      animation-name: ui-reveal;
+    }
+    [data-motion='modal-frame'] {
+      --motion-entry: 230ms;
+      --motion-exit: 155ms;
+      --motion-delay: 0ms;
+      --motion-blur: 0px;
+      --motion-x: 0px;
+      --motion-y: 16px;
+      --motion-scale: 1;
+      --motion-interact: 80ms;
+      animation-name: ui-slide;
+    }
+    [data-motion='modal-header'] {
+      --motion-entry: 215ms;
+      --motion-exit: 115ms;
+      --motion-delay: 12ms;
+      --motion-blur: 2px;
+      --motion-x: 0px;
+      --motion-y: -3.5px;
+      --motion-scale: 1;
+      --motion-interact: 85ms;
+      animation-name: ui-reveal;
+    }
+    [data-motion='modal-content'] {
+      --motion-entry: 230ms;
+      --motion-exit: 125ms;
+      --motion-delay: 12ms;
+      --motion-blur: 2px;
+      --motion-x: 0px;
+      --motion-y: 4px;
+      --motion-scale: 1;
+      --motion-interact: 85ms;
+      animation-name: ui-reveal;
+    }
+    [data-motion='popover'] {
+      --motion-entry: 135ms;
+      --motion-exit: 95ms;
+      --motion-delay: 0ms;
+      --motion-blur: 2px;
+      --motion-x: 0px;
+      --motion-y: -2px;
+      --motion-scale: 1;
+      --motion-interact: 85ms;
+      animation-name: ui-reveal;
+    }
+    [data-motion='empty-state'] {
+      --motion-entry: 330ms;
+      --motion-exit: 165ms;
+      --motion-delay: 12ms;
+      --motion-blur: 3px;
+      --motion-x: 0px;
+      --motion-y: 7.5px;
+      --motion-scale: 1;
+      --motion-interact: 85ms;
+      animation-name: ui-reveal;
+    }
+    [data-motion='notice'] {
+      --motion-entry: 170ms;
+      --motion-exit: 125ms;
+      --motion-delay: 0ms;
+      --motion-blur: 2px;
+      --motion-x: 0px;
+      --motion-y: -4px;
+      --motion-scale: 1;
+      --motion-interact: 85ms;
+      animation-name: ui-reveal;
+    }
+    [data-motion='inline-error'] {
+      --motion-entry: 140ms;
+      --motion-exit: 95ms;
+      --motion-delay: 0ms;
+      --motion-blur: 2px;
+      --motion-x: 0px;
+      --motion-y: 2px;
+      --motion-scale: 1;
+      --motion-interact: 85ms;
+      animation-name: ui-reveal;
+    }
+    [data-motion='capability'] {
+      --motion-entry: 190ms;
+      --motion-exit: 115ms;
+      --motion-delay: 12ms;
+      --motion-blur: 2px;
+      --motion-x: 0px;
+      --motion-y: 2.5px;
+      --motion-scale: 1;
+      --motion-interact: 85ms;
+      animation-name: ui-reveal;
+    }
+  }
+  [data-motion-state='exit'] [data-motion] {
+    animation-name: ui-exit;
+    animation-duration: var(--motion-exit, 140ms);
+    animation-delay: 0ms;
+  }
+  [data-motion-pixels='true'],
+  canvas,
+  .image-viewport,
+  .image-frame,
+  .comparison-image-frame,
+  .drawing-surface {
+    filter: none !important;
+  }
+  @media (prefers-reduced-motion: reduce) {
+    [data-motion],
+    [data-motion]::before,
+    [data-motion]::after {
+      animation: none !important;
+      transition: none !important;
+      filter: none !important;
+      translate: none !important;
+      scale: none !important;
+      clip-path: none !important;
+    }
+  }
+}

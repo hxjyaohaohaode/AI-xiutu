@@ -11,6 +11,7 @@ import {
 } from '@phosphor-icons/react';
 import { downloadBlob, errorMessage } from '../lib/api';
 import { Busy, IconButton, InlineError, Modal } from './Ui';
+import { usePresence } from '../motion/usePresence';
 import { ColorPicker } from './ColorPicker';
 
 type Point = { x: number; y: number };
@@ -38,6 +39,7 @@ export function DrawingBoard({
   const [cursor, setCursor] = useState(0);
   const [color, setColor] = useState(initialColor);
   const [showColor, setShowColor] = useState(false);
+  const colorPresence = usePresence(showColor, 'color-picker');
   const [width, setWidth] = useState(5);
   const [erase, setErase] = useState(false);
   const [ratio, setRatio] = useState('square');
@@ -163,10 +165,14 @@ export function DrawingBoard({
       title="草图"
       subtitle="先画构图，确认提交后才上传参考图。"
       onClose={onClose}
+      canClose={() =>
+        !busy &&
+        (!cursor || window.confirm('草图还在当前绘画窗口中。确认已下载或不再需要后，再关闭吗？'))
+      }
       wide
       className="drawing-modal"
     >
-      <div className="drawing-toolbar">
+      <div className="drawing-toolbar" data-motion="drawing-tools">
         <div className="drawing-tools">
           <IconButton
             label="铅笔"
@@ -225,7 +231,7 @@ export function DrawingBoard({
           <Trash size={20} />
         </IconButton>
       </div>
-      <div className="drawing-controls">
+      <div className="drawing-controls" data-motion="drawing-colors">
         <div className="drawing-colors" aria-label="快捷笔触颜色">
           {colors.map((value) => (
             <button
@@ -261,8 +267,14 @@ export function DrawingBoard({
           />
           <span>{width}</span>
         </label>
-        {showColor && (
-          <div className="drawing-color-popover">
+        {colorPresence.present && (
+          <div
+            className="drawing-color-popover"
+            data-motion="color-picker"
+            data-motion-state={colorPresence.phase}
+            inert={!showColor}
+            aria-hidden={!showColor}
+          >
             <div className="popover-heading">
               <strong>完整颜色</strong>
               <button className="text-button" onClick={() => setShowColor(false)}>
@@ -288,7 +300,7 @@ export function DrawingBoard({
           style={{ width: dimensions[0]! * fit, height: dimensions[1]! * fit }}
           aria-label="草图画布，使用鼠标、手指或触控笔绘画"
           onPointerDown={(event) => {
-            if (pointer.current !== null || event.button !== 0) return;
+            if (busy || pointer.current !== null || event.button !== 0) return;
             if (
               cursor >= 300 ||
               strokes.slice(0, cursor).reduce((sum, stroke) => sum + stroke.points.length, 0) >=

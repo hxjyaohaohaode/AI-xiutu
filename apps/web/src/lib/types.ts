@@ -1,4 +1,4 @@
-import type { RecipeV1 } from '@ai-xiutu/editor';
+import type { EditorRecipe } from '@ai-xiutu/editor';
 
 export type User = {
   id: string;
@@ -52,6 +52,16 @@ export type Asset = {
   bytes: number;
   url: string;
   thumbnailUrl?: string;
+  source?: 'upload' | 'generated' | 'sketch' | 'unknown';
+  createdAt?: string;
+  annotations?: {
+    title: string | null;
+    tags: string[];
+    capturedAt: string | null;
+    location: { label: string } | null;
+  };
+  annotationVersion?: number;
+  annotationUpdatedAt?: string;
 };
 export type Artwork = {
   id: string;
@@ -67,7 +77,7 @@ export type Revision = {
   id: string;
   artworkId: string;
   version: number;
-  recipe: RecipeV1;
+  recipe: EditorRecipe;
   label?: string;
   createdAt: string;
   createdBy?: string;

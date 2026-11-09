@@ -42,8 +42,9 @@ import type {
 import { useEditor, localPixelBudget, LocalImportError } from './editor/useEditor';
 import { FloatingPanel } from './workspace/FloatingPanel';
 import { panelBottomOffset, useWorkspaceLayout } from './workspace/useWorkspaceLayout';
+import { usePresence } from './motion/usePresence';
 import { ImportSettings } from './components/ImportSettings';
-import { createRecipe, parseRecipe } from '@ai-xiutu/editor';
+import { createRecipeV2, parseEditorRecipe } from '@ai-xiutu/editor';
 import { DEFAULT_BRAND, brandLogoUrl } from './lib/brand';
 
 import { CanvasStage } from './editor/CanvasStage';
@@ -52,14 +53,23 @@ import { AuthPanel } from './components/AuthPanel';
 import type { AIOperation } from './components/AIPanel';
 import { AIPanelFeature } from './components/AIPanelFeature';
 import { Sidebar } from './components/Sidebar';
-import { Brand, Busy, EmptyState, IconButton, InlineError, Modal, Toast } from './components/Ui';
+import {
+  Brand,
+  Busy,
+  DialogMotionContext,
+  EmptyState,
+  IconButton,
+  InlineError,
+  Modal,
+  Toast,
+} from './components/Ui';
 import {
   CollaborateView,
   CompareView,
   DeliveryView,
   DocumentsView,
-  WorksView,
 } from './components/WorkspaceViews';
+import { AssetLibrary } from './components/AssetLibrary';
 import {
   ExportDialog,
   NameDialog,
@@ -105,6 +115,7 @@ export function App() {
   const [pendingImport, setPendingImport] = useState<File | null>(null);
   const [importReason, setImportReason] = useState<string | null>(null);
   const [referenceFile, setReferenceFile] = useState<File | null>(null);
+  const [referenceSource, setReferenceSource] = useState<'sketch' | 'upload'>('sketch');
   const [initialAIOperation, setInitialAIOperation] = useState<AIOperation>('edit-plan');
   const [config, setConfig] = useState<PublicConfig | null>(null);
   const [session, setSession] = useState<Session>({ user: null, spaces: [] });
@@ -271,6 +282,7 @@ export function App() {
   }, [session.user?.id, spaceId]);
   useEffect(() => {
     const handle = (e: KeyboardEvent) => {
+      if (document.querySelector('dialog[open]')) return;
       const target = e.target as HTMLElement;
       if (target.isContentEditable || ['INPUT', 'TEXTAREA', 'SELECT'].includes(target.tagName))
         return;
@@ -473,7 +485,7 @@ export function App() {
       setArtwork(data.artwork);
       setAsset(data.asset);
       setRevision(data.revision);
-      setSavedRecipe(JSON.stringify(parseRecipe(data.revision.recipe)));
+      setSavedRecipe(JSON.stringify(parseEditorRecipe(data.revision.recipe)));
       setView('editor');
       setComparing(false);
       notify(`已打开「${data.artwork.title}」版本 ${data.artwork.headVersion}。`, 'success');
@@ -483,6 +495,44 @@ export function App() {
       return false;
     } finally {
       if (req === projectRequest.current) setOpening(false);
+    }
+  }
+
+  async function openLibraryAsset(next: Asset) {
+    if (!project || next.projectId !== project.id) return;
+    if (saveLock.current) {
+      notify('作品正在保存，请稍等片刻。');
+      return;
+    }
+    if (dirty && !window.confirm('当前还有未保存的编辑。打开素材原图会替换本地草稿，继续吗？'))
+      return;
+    const request = ++projectRequest.current;
+    editor.cancelPendingLoad();
+    setOpening(true);
+    try {
+      const response = await fetch(next.url, { credentials: 'include' });
+      if (!response.ok) throw new Error('无法读取素材，请刷新当前项目权限后重试。');
+      const blob = await response.blob();
+      if (request !== projectRequest.current) return;
+      await editor.loadFile(
+        new File([blob], next.name, { type: blob.type || next.mime }),
+        undefined,
+        () => request === projectRequest.current,
+      );
+      if (request !== projectRequest.current) return;
+      setAsset(next);
+      setArtwork(null);
+      setRevision(null);
+      setSavedRecipe(null);
+      setView('editor');
+      setComparing(false);
+      setInspectorOpen(false);
+      setAiOpen(false);
+      notify('原始素材已打开。保存时会建立独立作品，不会改写已有版本。', 'success');
+    } catch (error) {
+      if (request === projectRequest.current) notify(errorMessage(error), 'error');
+    } finally {
+      if (request === projectRequest.current) setOpening(false);
     }
   }
 
@@ -582,7 +632,7 @@ export function App() {
       jsonRequest('POST', {
         assetId: uploaded.asset.id,
         title: filenameBase(pendingImport.name),
-        recipe: createRecipe(),
+        recipe: createRecipeV2(),
       }),
     );
     setPendingImport(null);
@@ -721,6 +771,15 @@ export function App() {
         ? 'inspector'
         : null;
   const activePanel = activePanelId ? workspaceLayout.panel(activePanelId) : null;
+  const panelPresence = usePresence(!!activePanelId, 'panel-frame');
+  const lastPanelId = useRef<typeof activePanelId>(null);
+  if (activePanelId) lastPanelId.current = activePanelId;
+  const shownPanelId = activePanelId ?? (panelPresence.present ? lastPanelId.current : null);
+  const shownPanel = shownPanelId ? workspaceLayout.panel(shownPanelId) : null;
+  const dialogPresence = usePresence(!!dialog, 'modal-frame');
+  const lastDialog = useRef<Dialog>(null);
+  if (dialog) lastDialog.current = dialog;
+  const renderedDialog = dialog ?? (dialogPresence.present ? lastDialog.current : null);
   const canvasInsets = {
     left: activePanel?.dock === 'left' ? activePanel.width + 24 : 0,
     right: activePanel?.dock === 'right' ? activePanel.width + 24 : 0,
@@ -785,7 +844,7 @@ export function App() {
             onOps={() => setOps(true)}
           />
           <div className="workspace">
-            <header className="floating-topbar">
+            <header className="floating-topbar" data-motion="topbar">
               <div className="workspace-identity">
                 <IconButton label="打开空间与项目" onClick={() => setSidebarOpen(true)}>
                   <List size={21} />
@@ -928,22 +987,7 @@ export function App() {
                     }}
                   >
                     {editor.file && !workspaceLayout.focused && (
-                      <div className="image-action-strip">
-                        <IconButton
-                          label="撤销（Ctrl/⌘ Z）"
-                          disabled={!editor.canUndo}
-                          onClick={editor.undo}
-                        >
-                          <ArrowCounterClockwise size={19} />
-                        </IconButton>
-                        <IconButton
-                          label="重做（Ctrl/⌘ Shift Z）"
-                          disabled={!editor.canRedo}
-                          onClick={editor.redo}
-                        >
-                          <ArrowClockwise size={19} />
-                        </IconButton>
-                        <span />
+                      <div className="image-action-strip" data-motion="canvas-toolbar">
                         <IconButton label="打开另一张图片" onClick={() => void importFile()}>
                           <Plus size={20} />
                         </IconButton>
@@ -971,10 +1015,15 @@ export function App() {
                     />
                   </div>
                   {!workspaceLayout.focused && (
-                    <nav className="floating-tool-dock" aria-label="编辑工具">
+                    <nav
+                      className="floating-tool-dock"
+                      aria-label="编辑工具"
+                      data-motion="tool-dock"
+                    >
                       {toolGroups.map((tool) => (
                         <button
                           key={tool.id}
+                          data-motion="tool-item"
                           className={group === tool.id && inspectorOpen ? 'active' : ''}
                           aria-pressed={group === tool.id && inspectorOpen}
                           onClick={() => chooseTool(tool.id)}
@@ -1001,10 +1050,14 @@ export function App() {
               ) : (
                 <div className="view-container">
                   {view === 'works' && (
-                    <WorksView
+                    <AssetLibrary
                       project={project}
                       artworks={artworks}
-                      assets={assets}
+                      space={currentSpace}
+                      projects={projects}
+                      refreshToken={refreshToken}
+                      onSelectProject={(item) => void loadProject(item)}
+                      onOpenAsset={(item) => void openLibraryAsset(item)}
                       onOpen={(item) => void openArtwork(item)}
                       onImport={() => void importFile()}
                       onCreate={openCreateProject}
@@ -1049,24 +1102,26 @@ export function App() {
                   )}
                 </div>
               )}
-              {activePanelId && activePanel && (
+              {shownPanelId && shownPanel && (
                 <FloatingPanel
+                  open={!!activePanelId}
+                  motionState={panelPresence.phase}
                   title={
-                    activePanelId === 'ai'
+                    shownPanelId === 'ai'
                       ? 'AI 创作'
                       : (toolGroups.find((tool) => tool.id === group)?.label ?? '调整')
                   }
-                  label={activePanelId === 'ai' ? 'AI可移动面板' : '可移动编辑面板'}
-                  geometry={activePanel}
+                  label={shownPanelId === 'ai' ? 'AI可移动面板' : '可移动编辑面板'}
+                  geometry={shownPanel}
                   viewport={workspaceLayout.view}
-                  onGeometry={(next) => workspaceLayout.updatePanel(activePanelId, next)}
+                  onGeometry={(next) => workspaceLayout.updatePanel(shownPanelId, next)}
                   onClose={() => {
                     setInspectorOpen(false);
                     setAiOpen(false);
                     setSampling(false);
                   }}
                 >
-                  {activePanelId === 'inspector' ? (
+                  {shownPanelId === 'inspector' ? (
                     <ToolInspector
                       editor={editor}
                       group={group}
@@ -1082,6 +1137,15 @@ export function App() {
                     />
                   ) : (
                     <AIPanelFeature
+                      key={(session.user?.id ?? 'local') + ':' + (project?.id ?? 'none')}
+                      userId={session.user?.id ?? null}
+                      projectAssets={assets}
+                      currentAsset={asset}
+                      referenceSource={referenceSource}
+                      onReferenceFile={(file, source) => {
+                        setReferenceFile(file);
+                        setReferenceSource(source);
+                      }}
                       project={project}
                       artwork={artwork}
                       recipe={editor.recipe}
@@ -1157,183 +1221,196 @@ export function App() {
               .catch((error) => notify(errorMessage(error), 'error'));
         }}
       />
-      {dialog === 'drawing' && (
-        <Suspense
-          fallback={
-            <Modal title="准备草图板" onClose={closeDialog}>
-              <Busy />
-            </Modal>
-          }
-        >
-          <DrawingBoard
-            initialColor={pickedColor}
+      <DialogMotionContext.Provider value={{ open: !!dialog, phase: dialogPresence.phase }}>
+        {renderedDialog === 'drawing' && (
+          <Suspense
+            fallback={
+              <Modal title="准备草图板" onClose={closeDialog}>
+                <Busy />
+              </Modal>
+            }
+          >
+            <DrawingBoard
+              initialColor={pickedColor}
+              onClose={closeDialog}
+              onUse={(file) => importFile(file)}
+              onReference={(file) => {
+                setReferenceFile(file);
+                setReferenceSource('sketch');
+                setInitialAIOperation('generate-image');
+                setAiOpen(true);
+                setInspectorOpen(false);
+                notify('草图已作为本地参考。确认提交生图时才会上传。');
+              }}
+            />
+          </Suspense>
+        )}
+        {renderedDialog === 'importSettings' && (
+          <ImportSettings
+            budget={editor.pixelBudget}
+            onBudget={editor.setPixelBudget}
+            file={pendingImport}
+            reason={importReason}
+            config={config}
+            project={project}
+            loggedIn={!!session.user}
+            onAuth={() => setDialog('auth')}
+            onCreateProject={openCreateProject}
+            onRetry={() => importFile(pendingImport ?? undefined)}
+            onServerImport={serverImport}
             onClose={closeDialog}
-            onUse={(file) => importFile(file)}
-            onReference={(file) => {
-              setReferenceFile(file);
-              setInitialAIOperation('generate-image');
-              setAiOpen(true);
-              setInspectorOpen(false);
-              notify('草图已作为本地参考。确认提交生图时才会上传。');
+          />
+        )}
+        {renderedDialog === 'auth' && (
+          <AuthPanel
+            config={config}
+            onSession={receiveSession}
+            onClose={() => setDialog(pendingImport ? 'importSettings' : null)}
+          />
+        )}
+        {renderedDialog === 'project' && (
+          <NameDialog
+            kind="project"
+            defaultName={editor.file ? filenameBase(editor.file.name) : ''}
+            onSubmit={createProject}
+            onClose={() => setDialog(pendingImport ? 'importSettings' : null)}
+          />
+        )}
+        {renderedDialog === 'team' && (
+          <NameDialog kind="team" onSubmit={createTeam} onClose={closeDialog} />
+        )}
+        {renderedDialog === 'join' && (
+          <NameDialog kind="join" onSubmit={joinTeam} onClose={closeDialog} />
+        )}
+        {renderedDialog === 'teamSettings' && currentSpace && (
+          <TeamDialog space={currentSpace} onClose={closeDialog} />
+        )}
+        {renderedDialog === 'copy' && project && (
+          <CopyProjectDialog
+            project={project}
+            spaces={session.spaces}
+            onClose={closeDialog}
+            onCopied={(copied) => {
+              setSpaceId(copied.spaceId);
+              setRefreshToken((value) => value + 1);
+              void loadProject(copied);
+              notify('独立副本已创建。', 'success');
             }}
           />
-        </Suspense>
-      )}
-      {dialog === 'importSettings' && (
-        <ImportSettings
-          budget={editor.pixelBudget}
-          onBudget={editor.setPixelBudget}
-          file={pendingImport}
-          reason={importReason}
-          config={config}
-          project={project}
-          loggedIn={!!session.user}
-          onAuth={() => setDialog('auth')}
-          onCreateProject={openCreateProject}
-          onRetry={() => importFile(pendingImport ?? undefined)}
-          onServerImport={serverImport}
-          onClose={closeDialog}
-        />
-      )}
-      {dialog === 'auth' && (
-        <AuthPanel
-          config={config}
-          onSession={receiveSession}
-          onClose={() => setDialog(pendingImport ? 'importSettings' : null)}
-        />
-      )}
-      {dialog === 'project' && (
-        <NameDialog
-          kind="project"
-          defaultName={editor.file ? filenameBase(editor.file.name) : ''}
-          onSubmit={createProject}
-          onClose={() => setDialog(pendingImport ? 'importSettings' : null)}
-        />
-      )}
-      {dialog === 'team' && <NameDialog kind="team" onSubmit={createTeam} onClose={closeDialog} />}
-      {dialog === 'join' && <NameDialog kind="join" onSubmit={joinTeam} onClose={closeDialog} />}
-      {dialog === 'teamSettings' && currentSpace && (
-        <TeamDialog space={currentSpace} onClose={closeDialog} />
-      )}
-      {dialog === 'copy' && project && (
-        <CopyProjectDialog
-          project={project}
-          spaces={session.spaces}
-          onClose={closeDialog}
-          onCopied={(copied) => {
-            setSpaceId(copied.spaceId);
-            setRefreshToken((value) => value + 1);
-            void loadProject(copied);
-            notify('独立副本已创建。', 'success');
-          }}
-        />
-      )}
-      {dialog === 'share' && project && <ShareDialog project={project} onClose={closeDialog} />}
-      {dialog === 'export' && editor.file && (
-        <ExportDialog
-          editor={editor}
-          onClose={closeDialog}
-          onSuccess={(message) => notify(message, 'success')}
-        />
-      )}
-      {dialog === 'conflict' && (
-        <Modal
-          title="云端已经有了更新"
-          subtitle="你的本地编辑仍然保留，没有覆盖队友的新版本。"
-          onClose={closeDialog}
-        >
-          <p className="dialog-copy">
-            可以先保留当前编辑，也可以把这份修改保存为独立作品，再到项目中比较两份结果。
-          </p>
-          <div className="dialog-actions">
-            <button className="button button-secondary" onClick={closeDialog}>
-              保留本地编辑
-            </button>
-            <button
-              className="button button-primary"
-              disabled={saving}
-              onClick={() => {
-                if (project) void saveToProject(project, true);
-              }}
-            >
-              {saving ? <Busy /> : '另存为独立分支'}
-            </button>
-          </div>
-        </Modal>
-      )}
-      {dialog === 'quota' && entitlements && (
-        <Modal title="你的服务点" subtitle={currentSpace?.name ?? '当前空间'} onClose={closeDialog}>
-          <div className="quota-balance">
-            <Sparkle size={30} />
-            <strong>{entitlements.available}</strong>
-            <span>可用服务点</span>
-          </div>
-          <div className="quota-detail">
-            <div>
-              <span>免费权益可用</span>
-              <strong>{entitlements.freeAvailable}</strong>
+        )}
+        {renderedDialog === 'share' && project && (
+          <ShareDialog project={project} onClose={closeDialog} />
+        )}
+        {renderedDialog === 'export' && editor.file && (
+          <ExportDialog
+            editor={editor}
+            onClose={closeDialog}
+            onSuccess={(message) => notify(message, 'success')}
+          />
+        )}
+        {renderedDialog === 'conflict' && (
+          <Modal
+            title="云端已经有了更新"
+            subtitle="你的本地编辑仍然保留，没有覆盖队友的新版本。"
+            onClose={closeDialog}
+          >
+            <p className="dialog-copy">
+              可以先保留当前编辑，也可以把这份修改保存为独立作品，再到项目中比较两份结果。
+            </p>
+            <div className="dialog-actions">
+              <button className="button button-secondary" onClick={closeDialog}>
+                保留本地编辑
+              </button>
+              <button
+                className="button button-primary"
+                disabled={saving}
+                onClick={() => {
+                  if (project) void saveToProject(project, true);
+                }}
+              >
+                {saving ? <Busy /> : '另存为独立分支'}
+              </button>
             </div>
-            <div>
-              <span>购买权益可用</span>
-              <strong>{entitlements.purchasedAvailable}</strong>
+          </Modal>
+        )}
+        {renderedDialog === 'quota' && entitlements && (
+          <Modal
+            title="你的服务点"
+            subtitle={currentSpace?.name ?? '当前空间'}
+            onClose={closeDialog}
+          >
+            <div className="quota-balance">
+              <Sparkle size={30} />
+              <strong>{entitlements.available}</strong>
+              <span>可用服务点</span>
             </div>
-            <div>
-              <span>任务占用</span>
-              <strong>{entitlements.held}</strong>
+            <div className="quota-detail">
+              <div>
+                <span>免费权益可用</span>
+                <strong>{entitlements.freeAvailable}</strong>
+              </div>
+              <div>
+                <span>购买权益可用</span>
+                <strong>{entitlements.purchasedAvailable}</strong>
+              </div>
+              <div>
+                <span>任务占用</span>
+                <strong>{entitlements.held}</strong>
+              </div>
             </div>
-          </div>
-          <p className="form-hint">
-            点数用于已开放的云端能力，本地手动编辑不消耗服务点。团队额度与个人额度分别计算。
-          </p>
-        </Modal>
-      )}
-      {dialog === 'help' && (
-        <Modal title={`在${brand}，自在创作`} onClose={closeDialog}>
-          <div className="help-list">
-            <section>
-              <SlidersHorizontal size={24} />
-              <div>
-                <h3>先从一张照片开始</h3>
-                <p>
-                  当前支持明暗、色彩、RGB曲线、裁切旋转、径向局部调整、锐化与柔化。照片先在本机处理。
-                </p>
-              </div>
-            </section>
-            <section>
-              <CloudArrowUp size={24} />
-              <div>
-                <h3>喜欢哪一步，就留下它</h3>
-                <p>登录后把作品保存到项目。每次保存创建新版本，发生冲突时可以另存分支。</p>
-              </div>
-            </section>
-            <section>
-              <UsersThree size={24} />
-              <div>
-                <h3>让队友接上你的想法</h3>
-                <p>
-                  创建团队、邀请成员，在项目里讨论、写文档和跟进任务。共享时选择具体接收者与范围。
-                </p>
-              </div>
-            </section>
-            <section>
-              <ShieldCheck size={24} />
-              <div>
-                <h3>清楚知道作品去了哪里</h3>
-                <p>
-                  打开照片不会自动上传。AI
-                  调整只发送文字和参数；生图会发送你确认的参考草图；语音需要单独确认发送。具体能力按服务设置开放。
-                </p>
-              </div>
-            </section>
-          </div>
-          <p className="fine-print">
-            本地格式以头部检查与浏览器解码为准，PNG / JPEG / WebP / BMP / 静态 GIF / AVIF
-            可按实际支持导入；TIFF 可明确上传规范化。当前本机预算{' '}
-            {(editor.pixelBudget / 1e6).toFixed(1)}{' '}
-            百万像素，可在设置中修改；云端另有服务限制。细节滤镜请在导出的原尺寸图片上复核。
-          </p>
-        </Modal>
-      )}
+            <p className="form-hint">
+              点数用于已开放的云端能力，本地手动编辑不消耗服务点。团队额度与个人额度分别计算。
+            </p>
+          </Modal>
+        )}
+        {renderedDialog === 'help' && (
+          <Modal title={`在${brand}，自在创作`} onClose={closeDialog}>
+            <div className="help-list">
+              <section>
+                <SlidersHorizontal size={24} />
+                <div>
+                  <h3>先从一张照片开始</h3>
+                  <p>
+                    当前支持明暗、色彩、RGB曲线、裁切旋转、径向局部调整、锐化与柔化。照片先在本机处理。
+                  </p>
+                </div>
+              </section>
+              <section>
+                <CloudArrowUp size={24} />
+                <div>
+                  <h3>喜欢哪一步，就留下它</h3>
+                  <p>登录后把作品保存到项目。每次保存创建新版本，发生冲突时可以另存分支。</p>
+                </div>
+              </section>
+              <section>
+                <UsersThree size={24} />
+                <div>
+                  <h3>让队友接上你的想法</h3>
+                  <p>
+                    创建团队、邀请成员，在项目里讨论、写文档和跟进任务。共享时选择具体接收者与范围。
+                  </p>
+                </div>
+              </section>
+              <section>
+                <ShieldCheck size={24} />
+                <div>
+                  <h3>清楚知道作品去了哪里</h3>
+                  <p>
+                    打开照片不会自动上传。AI
+                    调整只发送文字和参数；生图会发送你确认的参考草图；语音需要单独确认发送。具体能力按服务设置开放。
+                  </p>
+                </div>
+              </section>
+            </div>
+            <p className="fine-print">
+              本地格式以头部检查与浏览器解码为准，PNG / JPEG / WebP / BMP / 静态 GIF / AVIF
+              可按实际支持导入；TIFF 可明确上传规范化。当前本机预算{' '}
+              {(editor.pixelBudget / 1e6).toFixed(1)}{' '}
+              百万像素，可在设置中修改；云端另有服务限制。细节滤镜请在导出的原尺寸图片上复核。
+            </p>
+          </Modal>
+        )}
+      </DialogMotionContext.Provider>
       <Toast notice={notice} dismiss={dismissNotice} />
     </>
   );

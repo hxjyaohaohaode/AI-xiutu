@@ -62,9 +62,8 @@ export function ImportSettings({
     <Modal
       title="图片导入与分辨率"
       subtitle="原图保留。更高的资源预算需要你明确选择。"
-      onClose={() => {
-        if (!busy) onClose();
-      }}
+      onClose={onClose}
+      canClose={() => !busy}
     >
       {file && (
         <div className="import-file-summary">
@@ -76,7 +75,7 @@ export function ImportSettings({
         </div>
       )}
       {reason && <p className="form-hint">{reason}</p>}
-      <div className="stack-form">
+      <div className="stack-form" data-motion="modal-content">
         <label>
           本机处理预算
           <select
@@ -131,7 +130,8 @@ export function ImportSettings({
           </p>
           <p className="fine-print">
             当前服务端格式：
-            {config?.media?.serverImport?.join(' / ').toUpperCase() || '能力尚未读取'}；上传上限{' '}
+            {config?.media?.serverImport?.join(' / ').toUpperCase() ||
+              '能力尚未读取'}；上传上限{' '}
             {Math.floor(
               (config?.media?.maxUploadBytes ?? config?.limits.maxUploadBytes ?? 0) / 1024 / 1024,
             )}{' '}

@@ -17,13 +17,15 @@ import {
 import { api, errorMessage, formatDate, jsonRequest } from '../lib/api';
 import { Busy, IconButton, InlineError } from './Ui';
 import type { Asset, Project, PublicConfig, User } from '../lib/types';
+import { Disclosure, OptionChips, ValueSlider } from './Controls';
+import type { ImageCapabilities } from '../ai/types';
 import { QuotaManager } from './QuotaManager';
 
 type OpsTab = 'overview' | 'users' | 'config' | 'plans' | 'models' | 'quota' | 'audit';
 type ModelConfig = {
   id: string;
   label: string;
-  provider: 'qwen' | 'ark';
+  provider: 'qwen' | 'ark' | 'openai';
   operations: ('edit-plan' | 'generate-image' | 'generate-text' | 'transcribe')[];
   enabled: boolean;
   minWidth: number;
@@ -34,6 +36,19 @@ type ModelConfig = {
   unitCost: number;
   allowedQualities: string[];
   pointsPerPlan?: number;
+  imageUnitCosts?: Record<string, number>;
+  runtimeAvailable?: boolean;
+  runtimeReason?: string | null;
+  parameterCapabilities?: ImageCapabilities;
+};
+type ProviderCatalogItem = {
+  id: string;
+  label: string;
+  provider: 'openai';
+  providerReady: boolean;
+  accountVerified: false;
+  maxDimension: number;
+  parameterCapabilities?: ImageCapabilities;
 };
 type Plan = {
   id: string;
@@ -92,6 +107,7 @@ export function OpsDashboard({
   const [config, setConfig] = useState<Config | null>(null);
   const [plans, setPlans] = useState<Plan[]>([]);
   const [models, setModels] = useState<ModelConfig[]>([]);
+  const [providerCatalog, setProviderCatalog] = useState<ProviderCatalogItem[]>([]);
   const [entries, setEntries] = useState<Audit[]>([]);
   const [reason, setReason] = useState('');
   const [invite, setInvite] = useState('');
@@ -128,9 +144,15 @@ export function OpsDashboard({
         setManagedProjects(managed);
         if (!logoProject) setLogoProject(managed[0]?.id ?? '');
       } else if (tab === 'plans') setPlans((await api<{ plans: Plan[] }>('/ops/plans')).plans);
-      else if (tab === 'models')
-        setModels((await api<{ models: ModelConfig[] }>('/ops/models')).models);
-      else if (tab === 'audit') setEntries((await api<{ entries: Audit[] }>('/ops/audit')).entries);
+      else if (tab === 'models') {
+        const result = await api<{
+          models: ModelConfig[];
+          providerModelCatalog?: ProviderCatalogItem[];
+        }>('/ops/models');
+        setModels(result.models);
+        setProviderCatalog(result.providerModelCatalog ?? []);
+      } else if (tab === 'audit')
+        setEntries((await api<{ entries: Audit[] }>('/ops/audit')).entries);
     } catch (e) {
       setError(errorMessage(e));
     } finally {
@@ -179,7 +201,7 @@ export function OpsDashboard({
   };
   return (
     <div className="ops-layout">
-      <aside className="ops-sidebar">
+      <aside className="ops-sidebar" data-motion="ops-navigation">
         <button className="text-button" onClick={onBack}>
           <ArrowLeft size={18} />
           返回创作
@@ -573,8 +595,10 @@ export function OpsDashboard({
                       label="复制注册邀请码"
                       onClick={() =>
                         navigator.clipboard
-                          .writeText(invite)
-                          .catch(() => setError('请手动复制邀请码。'))
+                          ? navigator.clipboard
+                              .writeText(invite)
+                              .catch(() => setError('请手动复制邀请码。'))
+                          : setError('当前环境不能自动复制，请手动选择邀请码。')
                       }
                     >
                       <Copy size={18} />
@@ -736,9 +760,64 @@ export function OpsDashboard({
                   <p className="form-hint">
                     调整模型范围不会越过全局执行门禁。服务密钥不在网页中展示或保存。
                   </p>
+                  {!!providerCatalog.length && (
+                    <Disclosure
+                      title="从已核验的模型档案添加"
+                      summary={providerCatalog.length + ' 个供应商标识'}
+                      role="ops-content"
+                    >
+                      <label>
+                        选择模型档案
+                        <select
+                          aria-label="供应商模型档案"
+                          value=""
+                          disabled={busy}
+                          onChange={(event) => {
+                            const item = providerCatalog.find(
+                              (model) => model.id === event.target.value,
+                            );
+                            if (!item) return;
+                            const existing = models.find((model) => model.id === item.id);
+                            setModelEdit(
+                              existing
+                                ? { ...existing }
+                                : {
+                                    id: item.id,
+                                    label: item.label,
+                                    provider: item.provider,
+                                    operations: ['generate-image'],
+                                    enabled: false,
+                                    minWidth: 64,
+                                    maxWidth: item.maxDimension,
+                                    minHeight: 64,
+                                    maxHeight: item.maxDimension,
+                                    maxOutputs: 1,
+                                    unitCost: 1,
+                                    allowedQualities: [
+                                      ...(item.parameterCapabilities?.quality.values ?? ['auto']),
+                                    ],
+                                  },
+                            );
+                          }}
+                        >
+                          <option value="">选择后填写服务点和运营范围</option>
+                          {providerCatalog.map((item) => (
+                            <option key={item.id} value={item.id}>
+                              {item.label}
+                              {item.providerReady ? ' · 执行环境已配置' : ' · 执行环境未配置'}
+                            </option>
+                          ))}
+                        </select>
+                      </label>
+                      <p className="control-note">
+                        供应商档案只证明当前适配器认识这些标识，不代表你的账号已经取得权限或完成真实调用。添加默认停用，密钥与执行白名单仍需服务端配置。
+                      </p>
+                    </Disclosure>
+                  )}
                   {models.map((model) => (
                     <button
                       className="model-row"
+                      data-motion="ops-row"
                       key={model.id}
                       onClick={() => setModelEdit({ ...model })}
                     >
@@ -746,6 +825,11 @@ export function OpsDashboard({
                       <div>
                         <strong>{model.label}</strong>
                         <small>{model.id}</small>
+                        <small>
+                          {model.runtimeAvailable
+                            ? '当前操作可执行'
+                            : (model.runtimeReason ?? '执行环境未开放')}
+                        </small>
                       </div>
                       <span className="soft-tag">{model.enabled ? '目录已启用' : '目录停用'}</span>
                       <span>编辑</span>
@@ -771,6 +855,7 @@ export function OpsDashboard({
                         maxOutputs,
                         unitCost,
                         allowedQualities,
+                        imageUnitCosts,
                       } = modelEdit;
                       void action(
                         () =>
@@ -788,6 +873,7 @@ export function OpsDashboard({
                               maxOutputs,
                               unitCost,
                               allowedQualities,
+                              ...(imageUnitCosts ? { imageUnitCosts } : {}),
                               reason,
                             }),
                           ),
@@ -812,21 +898,23 @@ export function OpsDashboard({
                       <select
                         value={modelEdit.provider ?? 'qwen'}
                         onChange={(e) => {
-                          const provider = e.target.value as 'qwen' | 'ark';
+                          const provider = e.target.value as ModelConfig['provider'];
                           setModelEdit({
                             ...modelEdit,
                             provider,
-                            operations: provider === 'ark' ? ['generate-image'] : ['edit-plan'],
+                            operations: provider !== 'qwen' ? ['generate-image'] : ['edit-plan'],
+                            imageUnitCosts: undefined,
                           });
                         }}
                       >
                         <option value="qwen">阿里云 · Qwen</option>
                         <option value="ark">火山方舟 · Ark</option>
+                        <option value="openai">OpenAI · 图片模型</option>
                       </select>
                     </label>
                     <fieldset className="model-operations">
                       <legend>用于哪些任务</legend>
-                      {(modelEdit.provider === 'ark'
+                      {(modelEdit.provider !== 'qwen'
                         ? [['generate-image', '图片生成']]
                         : [
                             ['edit-plan', '调整建议'],
@@ -875,37 +963,105 @@ export function OpsDashboard({
                           ['unitCost', '每次任务服务点'],
                         ] as const
                       ).map(([key, label]) => (
-                        <label key={key}>
-                          {label}
-                          <input
-                            type="number"
-                            min={key === 'unitCost' || key === 'maxOutputs' ? 1 : 64}
-                            max={key === 'unitCost' ? 100000 : key === 'maxOutputs' ? 4 : 4096}
-                            step="1"
-                            value={modelEdit[key]}
-                            onChange={(e) =>
-                              setModelEdit({ ...modelEdit, [key]: Number(e.target.value) })
-                            }
-                            required
-                          />
-                        </label>
+                        <ValueSlider
+                          key={key}
+                          label={
+                            key === 'unitCost' && modelEdit.provider !== 'qwen'
+                              ? '默认每张服务点'
+                              : label
+                          }
+                          value={modelEdit[key]}
+                          min={key === 'unitCost' || key === 'maxOutputs' ? 1 : 64}
+                          max={key === 'unitCost' ? 100000 : key === 'maxOutputs' ? 10 : 8192}
+                          disabled={busy}
+                          onChange={(value) => setModelEdit({ ...modelEdit, [key]: value })}
+                        />
                       ))}
                     </div>
-                    <label>
-                      质量选项（逗号分隔）
-                      <input
-                        value={modelEdit.allowedQualities.join(', ')}
-                        onChange={(e) =>
-                          setModelEdit({
-                            ...modelEdit,
-                            allowedQualities: e.target.value
-                              .split(',')
-                              .map((s) => s.trim())
-                              .filter(Boolean),
-                          })
-                        }
-                      />
-                    </label>
+                    <div className="parameter-row">
+                      <div className="parameter-label">允许的质量选项</div>
+                      <div className="option-chips" role="group" aria-label="模型允许质量">
+                        {['auto', 'low', 'medium', 'high', 'xhigh', 'max'].map((quality) => (
+                          <button
+                            type="button"
+                            key={quality}
+                            aria-pressed={modelEdit.allowedQualities.includes(quality)}
+                            disabled={busy}
+                            onClick={() =>
+                              setModelEdit({
+                                ...modelEdit,
+                                allowedQualities: modelEdit.allowedQualities.includes(quality)
+                                  ? modelEdit.allowedQualities.filter((value) => value !== quality)
+                                  : [...modelEdit.allowedQualities, quality],
+                              })
+                            }
+                          >
+                            {
+                              (
+                                {
+                                  auto: '自动',
+                                  low: '低',
+                                  medium: '中',
+                                  high: '高',
+                                  xhigh: '超高',
+                                  max: '最高',
+                                } as Record<string, string>
+                              )[quality]
+                            }
+                          </button>
+                        ))}
+                      </div>
+                      <p className="control-note">
+                        实际选项还会取供应商能力的交集；目录配置不会开启模型不支持的参数。
+                      </p>
+                    </div>
+                    {modelEdit.provider !== 'qwen' && (
+                      <Disclosure
+                        title="按质量设置每张服务点"
+                        summary="未设置则使用默认价格"
+                        role="ops-content"
+                      >
+                        {modelEdit.allowedQualities.map((quality) => (
+                          <div className="quality-cost-row" key={quality}>
+                            <label className="switch-row">
+                              <span>{quality} 独立价格</span>
+                              <input
+                                type="checkbox"
+                                checked={modelEdit.imageUnitCosts?.[quality] !== undefined}
+                                disabled={busy}
+                                onChange={(event) => {
+                                  const next = { ...modelEdit.imageUnitCosts };
+                                  if (event.target.checked) next[quality] = modelEdit.unitCost;
+                                  else delete next[quality];
+                                  setModelEdit({ ...modelEdit, imageUnitCosts: next });
+                                }}
+                              />
+                            </label>
+                            {modelEdit.imageUnitCosts?.[quality] !== undefined && (
+                              <ValueSlider
+                                label={quality + ' 每张服务点'}
+                                value={modelEdit.imageUnitCosts[quality]!}
+                                min={1}
+                                max={100000}
+                                disabled={busy}
+                                onChange={(value) =>
+                                  setModelEdit({
+                                    ...modelEdit,
+                                    imageUnitCosts: {
+                                      ...modelEdit.imageUnitCosts,
+                                      [quality]: value,
+                                    },
+                                  })
+                                }
+                              />
+                            )}
+                          </div>
+                        ))}
+                        <p className="control-note">
+                          用户预占 = 当前质量的每张服务点 × 输出张数。这里不是供应商人民币报价。
+                        </p>
+                      </Disclosure>
+                    )}
                     <label className="switch-row">
                       <span>启用目录项</span>
                       <input
@@ -921,7 +1077,8 @@ export function OpsDashboard({
                         busy ||
                         reason.trim().length < 3 ||
                         !modelEdit.id ||
-                        !modelEdit.operations?.length
+                        !modelEdit.operations?.length ||
+                        !modelEdit.allowedQualities.length
                       }
                     >
                       保存模型范围

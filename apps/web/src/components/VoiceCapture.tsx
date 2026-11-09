@@ -134,7 +134,11 @@ export function VoiceCapture({ onReady }: { onReady: (base64: string | null) => 
     }
   }
   return (
-    <div className="voice-capture">
+    <div
+      className="voice-capture"
+      data-motion="voice-controls"
+      data-recording={state === 'recording'}
+    >
       <div className={`voice-orb ${state}`}>
         <Waveform size={32} weight="light" />
       </div>

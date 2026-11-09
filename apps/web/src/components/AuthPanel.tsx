@@ -33,6 +33,7 @@ export function AuthPanel({
     return () => clearTimeout(timer);
   }, [cooldown]);
   const switchMode = (next: Mode) => {
+    if (busy || sending) return;
     setMode(next);
     setError(null);
     setMessage('');
@@ -72,7 +73,9 @@ export function AuthPanel({
           '/auth/reset',
           jsonRequest('POST', { phone: phone.trim(), code: code.trim(), newPassword: password }),
         );
-        switchMode('password');
+        setMode('password');
+        setPassword('');
+        setCode('');
         setMessage('密码已更新，请用新密码登录。');
       } else {
         const endpoint =
@@ -106,13 +109,18 @@ export function AuthPanel({
   const title =
     mode === 'register' ? '把灵感留在这里' : mode === 'reset' ? '找回你的账号' : '欢迎回到创作中';
   return (
-    <Modal title={title} onClose={onClose}>
+    <Modal title={title} onClose={onClose} canClose={() => !busy && !sending}>
       <div className="auth-brand">
         <Brand name={config?.brand.name} logoUrl={brandLogoUrl(config?.brand)} compact />
         <p>保存作品，延续每一份灵感。</p>
       </div>
       {(mode === 'password' || mode === 'otp') && (
-        <div className="segmented">
+        <div
+          className="segmented"
+          data-motion="auth-tabs"
+          inert={busy || sending}
+          aria-disabled={busy || sending}
+        >
           <button
             className={mode === 'password' ? 'selected' : ''}
             onClick={() => switchMode('password')}
@@ -126,111 +134,113 @@ export function AuthPanel({
           </button>
         </div>
       )}
-      <form className="stack-form" onSubmit={submit}>
-        <label>
-          手机号
-          <input
-            type="tel"
-            autoComplete="tel"
-            inputMode="tel"
-            value={phone}
-            onChange={(e) => setPhone(e.target.value)}
-            placeholder="请输入手机号"
-            maxLength={18}
-            required
-          />
-        </label>
-        {mode === 'register' && (
+      <form className="stack-form" onSubmit={submit} data-motion="auth-fields">
+        <fieldset disabled={busy || sending} className="unframed-fields">
           <label>
-            怎么称呼你
+            手机号
             <input
-              autoComplete="nickname"
-              value={displayName}
-              onChange={(e) => setDisplayName(e.target.value)}
-              placeholder="你的昵称"
-              maxLength={40}
+              type="tel"
+              autoComplete="tel"
+              inputMode="tel"
+              value={phone}
+              onChange={(e) => setPhone(e.target.value)}
+              placeholder="请输入手机号"
+              maxLength={18}
               required
             />
           </label>
-        )}
-        {mode !== 'password' && (
-          <label>
-            短信验证码
-            <div className="input-action">
+          {mode === 'register' && (
+            <label>
+              怎么称呼你
               <input
-                autoComplete="one-time-code"
-                inputMode="numeric"
-                value={code}
-                onChange={(e) => setCode(e.target.value)}
-                placeholder="6 位验证码"
-                maxLength={10}
+                autoComplete="nickname"
+                value={displayName}
+                onChange={(e) => setDisplayName(e.target.value)}
+                placeholder="你的昵称"
+                maxLength={40}
                 required
               />
-              <button type="button" onClick={sendCode} disabled={sending || cooldown > 0}>
-                {sending ? '发送中…' : cooldown > 0 ? `${cooldown} 秒后重发` : '获取验证码'}
-              </button>
-            </div>
-          </label>
-        )}
-        {mode !== 'otp' && (
-          <label>
-            {mode === 'reset' ? '新密码' : '密码'}
-            <div className="input-action">
-              <input
-                type={visible ? 'text' : 'password'}
-                autoComplete={mode === 'password' ? 'current-password' : 'new-password'}
-                value={password}
-                onChange={(e) => setPassword(e.target.value)}
-                placeholder={mode === 'password' ? '请输入密码' : '至少 10 位字符'}
-                minLength={mode === 'password' ? 1 : 10}
-                maxLength={128}
-                required
-              />
-              <IconButton
-                label={visible ? '隐藏密码' : '显示密码'}
-                onClick={() => setVisible(!visible)}
-              >
-                {visible ? <EyeSlash size={18} /> : <Eye size={18} />}
-              </IconButton>
-            </div>
-          </label>
-        )}
-        {mode === 'register' && (
-          <label>
-            注册邀请码 {config?.registrationMode !== 'invite' && <small>选填</small>}
-            <input
-              value={inviteCode}
-              onChange={(e) => setInviteCode(e.target.value)}
-              placeholder="填写收到的注册邀请码"
-              autoComplete="off"
-              required={config?.registrationMode === 'invite'}
-              maxLength={100}
-            />
-          </label>
-        )}
-        {mode !== 'password' && config?.capabilities.smsConfigured === false && (
-          <p className="form-hint">
-            短信服务尚未开通，验证码暂时无法发送。已有账号可使用密码登录。
-          </p>
-        )}
-        {message && (
-          <p className="success-note" role="status">
-            {message}
-          </p>
-        )}
-        <InlineError message={error} />
-        <button className="button button-primary button-full" type="submit" disabled={busy}>
-          {busy ? (
-            <Busy />
-          ) : (
-            <>
-              {mode === 'register' ? '创建账号' : mode === 'reset' ? '更新密码' : '登录'}
-              <ArrowRight size={18} />
-            </>
+            </label>
           )}
-        </button>
+          {mode !== 'password' && (
+            <label>
+              短信验证码
+              <div className="input-action">
+                <input
+                  autoComplete="one-time-code"
+                  inputMode="numeric"
+                  value={code}
+                  onChange={(e) => setCode(e.target.value)}
+                  placeholder="6 位验证码"
+                  maxLength={10}
+                  required
+                />
+                <button type="button" onClick={sendCode} disabled={sending || cooldown > 0}>
+                  {sending ? '发送中…' : cooldown > 0 ? `${cooldown} 秒后重发` : '获取验证码'}
+                </button>
+              </div>
+            </label>
+          )}
+          {mode !== 'otp' && (
+            <label>
+              {mode === 'reset' ? '新密码' : '密码'}
+              <div className="input-action">
+                <input
+                  type={visible ? 'text' : 'password'}
+                  autoComplete={mode === 'password' ? 'current-password' : 'new-password'}
+                  value={password}
+                  onChange={(e) => setPassword(e.target.value)}
+                  placeholder={mode === 'password' ? '请输入密码' : '至少 10 位字符'}
+                  minLength={mode === 'password' ? 1 : 10}
+                  maxLength={128}
+                  required
+                />
+                <IconButton
+                  label={visible ? '隐藏密码' : '显示密码'}
+                  onClick={() => setVisible(!visible)}
+                >
+                  {visible ? <EyeSlash size={18} /> : <Eye size={18} />}
+                </IconButton>
+              </div>
+            </label>
+          )}
+          {mode === 'register' && (
+            <label>
+              注册邀请码 {config?.registrationMode !== 'invite' && <small>选填</small>}
+              <input
+                value={inviteCode}
+                onChange={(e) => setInviteCode(e.target.value)}
+                placeholder="填写收到的注册邀请码"
+                autoComplete="off"
+                required={config?.registrationMode === 'invite'}
+                maxLength={100}
+              />
+            </label>
+          )}
+          {mode !== 'password' && config?.capabilities.smsConfigured === false && (
+            <p className="form-hint">
+              短信服务尚未开通，验证码暂时无法发送。已有账号可使用密码登录。
+            </p>
+          )}
+          {message && (
+            <p className="success-note" role="status">
+              {message}
+            </p>
+          )}
+          <InlineError message={error} />
+          <button className="button button-primary button-full" type="submit" disabled={busy}>
+            {busy ? (
+              <Busy />
+            ) : (
+              <>
+                {mode === 'register' ? '创建账号' : mode === 'reset' ? '更新密码' : '登录'}
+                <ArrowRight size={18} />
+              </>
+            )}
+          </button>
+        </fieldset>
       </form>
-      <div className="auth-links">
+      <div className="auth-links" inert={busy || sending} aria-disabled={busy || sending}>
         {mode === 'password' || mode === 'otp' ? (
           <>
             <button onClick={() => switchMode('reset')}>忘记密码？</button>

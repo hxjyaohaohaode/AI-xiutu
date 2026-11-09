@@ -79,7 +79,7 @@ export class RecipeValidationError extends Error {
 type RecordValue = Record<string, unknown>;
 
 /** Read only own data properties: never call recipe getters or accept class instances. */
-function record(
+export function record(
   value: unknown,
   keys: readonly string[],
   path: string,
@@ -109,7 +109,13 @@ function record(
   return result;
 }
 
-function number(value: unknown, min: number, max: number, path: string, errors: string[]): number {
+export function number(
+  value: unknown,
+  min: number,
+  max: number,
+  path: string,
+  errors: string[],
+): number {
   if (typeof value !== 'number' || !Number.isFinite(value) || value < min || value > max) {
     errors.push(`${path}: expected a finite number from ${min} to ${max}`);
     return min;
@@ -117,12 +123,12 @@ function number(value: unknown, min: number, max: number, path: string, errors: 
   return Object.is(value, -0) ? 0 : value;
 }
 
-function boolean(value: unknown, path: string, errors: string[]): boolean {
+export function boolean(value: unknown, path: string, errors: string[]): boolean {
   if (typeof value !== 'boolean') errors.push(`${path}: expected a boolean`);
   return value === true;
 }
 
-function adjustments(value: unknown, path: string, errors: string[]): Adjustments {
+export function adjustments(value: unknown, path: string, errors: string[]): Adjustments {
   const values = record(
     value,
     TOOLS.map((tool) => tool.id),
@@ -135,7 +141,7 @@ function adjustments(value: unknown, path: string, errors: string[]): Adjustment
   return out;
 }
 
-function arrayData(
+export function arrayData(
   value: unknown,
   min: number,
   max: number,

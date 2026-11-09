@@ -216,6 +216,22 @@ export const assetDto = (a: Record<string, any>) => ({
   url: `/v1/assets/${a.id}/file`,
   thumbnailUrl: `/v1/assets/${a.id}/thumbnail`,
   provenance: a.provenance ?? {},
+  source:
+    a.provenance?.kind === 'ai-generated'
+      ? 'generated'
+      : a.provenance?.kind === 'uploaded'
+        ? a.provenance.declaredSource === 'sketch'
+          ? 'sketch'
+          : 'upload'
+        : 'unknown',
+  annotations: {
+    title: a.annotations?.title ?? null,
+    tags: a.annotations?.tags ?? [],
+    capturedAt: a.annotations?.capturedAt ?? null,
+    location: a.annotations?.location ?? null,
+  },
+  annotationVersion: a.annotation_version ?? 1,
+  annotationUpdatedAt: a.annotation_updated_at ?? null,
   createdAt: a.created_at,
 });
 export const artworkDto = (a: Record<string, any>) => ({

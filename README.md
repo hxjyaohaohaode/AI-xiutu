@@ -4,9 +4,9 @@
 
 这是 **0.1 开发基线**：真实的编辑内核、持久数据、鉴权、额度账本和供应商适配器已经串联；没有内置演示账户、伪造验证码、假 AI 回复或默认收费凭据。完整人像重塑、图层合成、实时 CRDT 和商业支付不冒充已完成。
 
-![内容优先的桌面工作台](docs/screenshots/desktop.jpg)
+![内容优先的桌面工作台](docs/screenshots/refined-desktop-color.jpg)
 
-默认把空间留给作品，工具按需出现；支持移动和调整面板、停靠、专注模式及按屏幕保存布局。另见[原图与调整对比](docs/screenshots/comparison.jpg)和[390px 手机布局](docs/screenshots/phone-390.jpg)。截图中的构图仅用于实际浏览器验收，产品没有预置演示作品。
+默认把空间留给作品，工具按需出现；支持移动和调整面板、停靠、专注模式及按屏幕保存布局。另见[多选区人像精修](docs/screenshots/refined-portrait-regions.jpg)、[短横屏布局](docs/screenshots/refined-landscape.jpg)和[当前实操记录](docs/verification/browser-refinement.md)。截图使用公开示例照片或独立技术测试构图；产品没有预置演示作品。
 
 ## 从这里开始
 
@@ -17,7 +17,9 @@
 | [实现与验证记录](docs/VERIFICATION.md)        | 实际检查范围、结果、未完成的外部实测               |
 | [API 契约](apps/api/API.md)                   | 可直接用于后续开发的真实端点、请求、响应           |
 | [图像核心](packages/editor/README.md)         | 数值语义、配方版本、几何与内存预算                 |
-| [多模态适配器](packages/multimodal/README.md) | Ark 生图、Qwen ASR、模型档案、格式及错误分类       |
+| [多模态适配器](packages/multimodal/README.md) | OpenAI / Ark 生图、Qwen ASR、模型档案、格式及错误分类 |
+| [OpenAI 参数契约](packages/multimodal/OPENAI.md) | 按模型映射的参数、依赖、预算与尚未开放的能力 |
+| [交互与能力边界](docs/INTERACTION.md) | 多局部、自由构图、精细调色、响应式和后续扩展 |
 | [工作台说明](apps/web/README.md)              | 响应式交互、本地处理与云端保存                     |
 
 ## 本地运行
@@ -39,9 +41,9 @@ npm run dev:lite
 
 ## 核心能力
 
-- **编辑**：原始像素与编辑配方分离；双向明暗/色彩、RGB 与单通道曲线、裁切/旋转/镜像、手动局部蒙版、锐化/柔化、撤销与重做、配方导入导出、原尺寸重算导出。
-- **AI**：调整建议、文字/草图生图、文本生成、短语音识别；按任务和服务器能力选择模型。每个任务有冻结输入、审核、额度预占、状态与核验记录。
-- **数据**：私人素材、项目、作品、不可变版本、讨论、任务和文档；编辑保存使用版本比较，冲突不静默覆盖。
+- **编辑**：版本化 v1/v2 非破坏配方；13 项基础参数及 52 条新增数值路径；连续 HSL、三路分级、色阶、纹理/清晰度、颗粒/暗角；自由像素裁切、可拖曲线、最多 8 个独立区域与 6 类选区。美颜为顶层手动分人精修，自动人像分析尚未接入。
+- **AI**：参数建议、文字/草图/多参考图生图与编辑、文本迭代、短语音识别；按任务与模型能力呈现参数。v2 建议可修改白名单内的 65 个数值路径，呈现实际差异后由用户确认。每个任务有冻结输入、审核、额度预占、状态与核验记录。
+- **数据**：私人素材、项目、作品、不可变版本、讨论、任务和文档；空间与项目范围内搜索、分页、日期/来源分组；可编辑的声明标题、标签、拍摄时间和手工位置。编辑与元数据保存都有版本比较，冲突不静默覆盖。
 - **空间**：个人与团队统一导航；owner/admin/editor/reviewer/viewer 分工；参考授权与独立复制分别控制，额度不在个人与团队之间偷偷挪用。
 - **运营**：账户、注册模式、免费周期权益、套餐目录、模型范围、品牌与图标、带原因的正负额度调整和审计。
 - **部署**：同源网页/API、独立 Worker、PostgreSQL、私有存储与发送日志；提供 Docker Compose、环境模板和 GitHub Actions。
@@ -72,7 +74,7 @@ packages/editor  版本化配方、数值算法、几何、格式门禁
 packages/db      PostgreSQL 迁移、事务、账本与事件
 packages/storage 私有素材接收、安全规范化与有界读取
 packages/providers Tencent 短信/文本与图片审核
-packages/multimodal Ark 生图、Qwen 语音适配器
+packages/multimodal OpenAI / Ark 生图、Qwen 语音适配器
 packages/ai      任务编排、冻结输入、计费状态与恢复保护
 infra            容器与同源反向代理
 scripts          开发、诊断和验证入口

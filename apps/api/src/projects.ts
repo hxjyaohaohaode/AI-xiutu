@@ -1,7 +1,14 @@
 import type { FastifyInstance } from 'fastify';
 import { z } from 'zod';
-import { parseRecipe, RecipeValidationError } from '@ai-xiutu/editor';
-import { transaction, audit, emit, type Database } from '@ai-xiutu/db';
+import { parseEditorRecipe, RecipeValidationError } from '@ai-xiutu/editor';
+import {
+  transaction,
+  audit,
+  emit,
+  lockAssetStorageKeys,
+  discardUnreferencedStorageKeys,
+  type Database,
+} from '@ai-xiutu/db';
 import {
   HttpError,
   id,
@@ -19,7 +26,7 @@ import type { LocalPrivateStorage } from './storage.js';
 
 export function validatedRecipe(input: unknown) {
   try {
-    return parseRecipe(input);
+    return parseEditorRecipe(input);
   } catch (error) {
     if (error instanceof RecipeValidationError)
       throw new HttpError(400, 'INVALID_RECIPE', '编辑配方无效', { errors: error.errors });
@@ -127,6 +134,10 @@ export function registerProjects(
   app.post('/v1/projects/:id/assets', async (req, reply) => {
     const user = requireUser(req);
     const p = z.object({ id }).parse(req.params);
+    const query = z
+      .object({ source: z.enum(['upload', 'sketch']).default('upload') })
+      .strict()
+      .parse(req.query);
     await projectAccess(db, p.id, user.id, 'edit');
     const file = await req.file();
     if (!file) throw new HttpError(400, 'FILE_REQUIRED', '请选择图片');
@@ -134,10 +145,11 @@ export function registerProjects(
     let committed = false;
     try {
       const asset = await transaction(db, async (tx) => {
+        await lockAssetStorageKeys(tx, [stored.key]);
         const project = await projectAccess(tx, p.id, user.id, 'edit');
         const row = (
           await tx.query(
-            'INSERT INTO assets(project_id,name,storage_key,mime,width,height,bytes,content_hash,created_by) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9) RETURNING *',
+            'INSERT INTO assets(project_id,name,storage_key,mime,width,height,bytes,content_hash,created_by,provenance) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10) RETURNING *',
             [
               p.id,
               file.filename.slice(0, 200) || 'image.png',
@@ -148,6 +160,7 @@ export function registerProjects(
               stored.bytes,
               stored.hash,
               user.id,
+              JSON.stringify({ kind: 'uploaded', declaredSource: query.source }),
             ],
           )
         ).rows[0]!;
@@ -157,7 +170,14 @@ export function registerProjects(
       committed = true;
       return reply.code(201).send({ asset });
     } finally {
-      if (!committed) await storage.discard(stored.key);
+      if (!committed) {
+        try {
+          await discardUnreferencedStorageKeys(db, [stored.key], (key) => storage.discard(key));
+        } catch {
+          // Preserve private bytes when commit/publication cannot be established.
+          process.stderr.write('{"event":"upload_asset_cleanup_deferred"}\n');
+        }
+      }
     }
   });
   app.get('/v1/assets/:id/file', async (req, reply) => {

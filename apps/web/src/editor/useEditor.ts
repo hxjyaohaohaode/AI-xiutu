@@ -1,10 +1,11 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import {
   createRecipe,
-  parseRecipe,
+  createRecipeV2,
+  parseEditorRecipe,
   readImageHeader,
   MAX_HEADER_BYTES,
-  type RecipeV1,
+  type EditorRecipe,
   type RGBAImage,
 } from '@ai-xiutu/editor';
 import { downloadBlob, filenameBase } from '../lib/api';
@@ -39,13 +40,40 @@ export class LocalImportError extends Error {
     this.name = 'LocalImportError';
   }
 }
-type HistoryItem = { recipe: RecipeV1; label: string };
+export type BrushSettings = {
+  radius: number;
+  feather: number;
+  opacity: number;
+  mode: 'add' | 'subtract';
+};
+const DEFAULT_BRUSH: BrushSettings = { radius: 0.05, feather: 0.65, opacity: 1, mode: 'add' };
+
+type HistoryItem = { recipe: EditorRecipe; label: string };
 type ExportResult = { image?: RGBAImage; blob?: Blob };
 type PendingExport = { resolve: (value: ExportResult) => void; reject: (error: Error) => void };
 
 export function useEditor() {
   const [pixelBudget, setBudget] = useState(localPixelBudget);
   const [sourceFormat, setSourceFormat] = useState('');
+  const [activeRegionId, setActiveRegionId] = useState<string | null>(null);
+  const [brushSettings, setBrushState] = useState<BrushSettings>({ ...DEFAULT_BRUSH });
+  const [maskOverlay, setMaskOverlay] = useState(true);
+  const setBrushSettings = useCallback(
+    (next: BrushSettings | ((previous: BrushSettings) => BrushSettings)) => {
+      setBrushState((previous) => {
+        const value = typeof next === 'function' ? next(previous) : next;
+        const clamp = (v: number, min: number, max: number, fallback: number) =>
+          Number.isFinite(v) ? Math.max(min, Math.min(max, v)) : fallback;
+        return {
+          radius: clamp(value.radius, 0.000001, 0.5, previous.radius),
+          feather: clamp(value.feather, 0, 1, previous.feather),
+          opacity: clamp(value.opacity, 0, 1, previous.opacity),
+          mode: value.mode === 'subtract' ? 'subtract' : 'add',
+        };
+      });
+    },
+    [],
+  );
   const setPixelBudget = useCallback((value: number) => {
     if (!PIXEL_BUDGETS.includes(value as (typeof PIXEL_BUDGETS)[number])) return;
     setBudget(value);
@@ -53,9 +81,10 @@ export function useEditor() {
       localStorage.setItem('editor:pixel-budget:v2', String(value));
     } catch {}
   }, []);
-  const initial = useRef(createRecipe());
-  const [recipe, setRecipe] = useState<RecipeV1>(initial.current);
+  const initial = useRef(createRecipeV2());
+  const [recipe, setRecipe] = useState<EditorRecipe>(initial.current);
   const recipeRef = useRef(recipe);
+  const getRecipe = useCallback(() => recipeRef.current, []);
   const [history, setHistory] = useState<HistoryItem[]>([
     { recipe: initial.current, label: '原始照片' },
   ]);
@@ -65,6 +94,7 @@ export function useEditor() {
   const [file, setFile] = useState<File | null>(null);
   const [originalPreview, setOriginalPreview] = useState<RGBAImage | null>(null);
   const [rendered, setRendered] = useState<RGBAImage | null>(null);
+  const [renderedGeometryKey, setRenderedGeometryKey] = useState<string | null>(null);
   const [dimensions, setDimensions] = useState<{ width: number; height: number } | null>(null);
   const [rendering, setRendering] = useState(false);
   const [loading, setLoading] = useState(false);
@@ -73,12 +103,38 @@ export function useEditor() {
   const worker = useRef<Worker | null>(null);
   const requestId = useRef(0);
   const latestPreviewId = useRef(0);
+  const previewVersion = useRef(0);
+  const previewInFlight = useRef<{
+    id: number;
+    version: number;
+    source: number;
+    recipe: EditorRecipe;
+  } | null>(null);
+  const previewPending = useRef<{ recipe: EditorRecipe; version: number; source: number } | null>(
+    null,
+  );
+  const pumpPreview = useRef<() => void>(() => {});
   const loadGeneration = useRef(0);
   const loadBusy = useRef(false);
   const sourceIdentity = useRef(0);
   const isLoading = useCallback(() => loadBusy.current, []);
   const getSourceIdentity = useCallback(() => sourceIdentity.current, []);
   const pending = useRef(new Map<number, PendingExport>());
+  pumpPreview.current = () => {
+    if (!worker.current || previewInFlight.current || !previewPending.current) return;
+    const next = previewPending.current;
+    previewPending.current = null;
+    if (next.source !== sourceIdentity.current) return;
+    const id = ++requestId.current;
+    latestPreviewId.current = id;
+    previewInFlight.current = {
+      id,
+      version: next.version,
+      source: next.source,
+      recipe: next.recipe,
+    };
+    worker.current.postMessage({ type: 'preview', id, recipe: next.recipe });
+  };
 
   useEffect(() => {
     const w = new Worker(new URL('./render.worker.ts', import.meta.url), { type: 'module' });
@@ -98,17 +154,29 @@ export function useEditor() {
         pending.current.delete(id);
         if (failure || (!result && !blob)) p?.reject(new Error(failure ?? '导出失败'));
         else p?.resolve({ image: result, blob });
-      } else if (id === latestPreviewId.current) {
-        setRendering(false);
-        if (failure) setError(failure);
-        else if (result) {
-          setRendered(result);
-          setError(null);
+      } else if (id === previewInFlight.current?.id) {
+        const completed = previewInFlight.current;
+        previewInFlight.current = null;
+        if (
+          completed.version === previewVersion.current &&
+          completed.source === sourceIdentity.current &&
+          completed.recipe === recipeRef.current
+        ) {
+          if (failure) setError(failure);
+          else if (result) {
+            setRendered(result);
+            setRenderedGeometryKey(JSON.stringify(completed.recipe.geometry));
+            setError(null);
+          }
         }
+        pumpPreview.current();
+        setRendering(!!previewInFlight.current || !!previewPending.current);
       }
     };
     w.onerror = () => {
       setRendering(false);
+      previewInFlight.current = null;
+      previewPending.current = null;
       setError('图像处理暂时中断。请重新导入照片，已下载的配方仍可恢复。');
       for (const p of pending.current.values()) p.reject(new Error('图像处理进程已中断'));
       pending.current.clear();
@@ -116,6 +184,8 @@ export function useEditor() {
     return () => {
       w.terminate();
       worker.current = null;
+      previewInFlight.current = null;
+      previewPending.current = null;
       for (const p of pending.current.values()) p.reject(new Error('编辑器已关闭'));
       pending.current.clear();
     };
@@ -124,20 +194,20 @@ export function useEditor() {
   useEffect(() => {
     if (!originalPreview || !worker.current) return;
     setRendering(true);
-    const timer = setTimeout(() => {
-      const id = ++requestId.current;
-      latestPreviewId.current = id;
-      worker.current?.postMessage({ type: 'preview', id, recipe });
-    }, 65);
-    return () => clearTimeout(timer);
+    previewPending.current = {
+      recipe,
+      version: ++previewVersion.current,
+      source: sourceIdentity.current,
+    };
+    pumpPreview.current();
   }, [recipe, originalPreview]);
 
-  const replaceRecipe = useCallback((next: RecipeV1) => {
+  const replaceRecipe = useCallback((next: EditorRecipe) => {
     recipeRef.current = next;
     setRecipe(next);
   }, []);
   const resetHistory = useCallback(
-    (next: RecipeV1) => {
+    (next: EditorRecipe) => {
       const items = [{ recipe: next, label: '导入时状态' }];
       historyRef.current = items;
       indexRef.current = 0;
@@ -154,7 +224,11 @@ export function useEditor() {
     setLoading(false);
   }, []);
   const loadFile = useCallback(
-    async (incoming: File, existingRecipe?: RecipeV1, isCurrent: () => boolean = () => true) => {
+    async (
+      incoming: File,
+      existingRecipe?: EditorRecipe,
+      isCurrent: () => boolean = () => true,
+    ) => {
       if (incoming.size > MAX_LOCAL_FILE_BYTES)
         throw new LocalImportError(
           'LOCAL_SIZE_LIMIT',
@@ -195,7 +269,7 @@ export function useEditor() {
             `原图 ${header.width}×${header.height}，超过当前 ${(maxPixels / 1e6).toFixed(1)} 百万像素 / 单边 ${maxDimension}px 预算。可在导入设置中明确调整设备预算；不会自动缩小原图。`,
           );
         if (generation !== loadGeneration.current || !isCurrent()) return;
-        const safeRecipe = existingRecipe ? parseRecipe(existingRecipe) : createRecipe();
+        const safeRecipe = existingRecipe ? parseEditorRecipe(existingRecipe) : createRecipeV2();
         const mime =
           header.format === 'jpeg'
             ? 'image/jpeg'
@@ -259,13 +333,19 @@ export function useEditor() {
           [full.data.buffer],
         );
         sourceIdentity.current += 1;
+        previewPending.current = null;
+        previewVersion.current += 1;
         latestPreviewId.current = ++requestId.current;
         setFile(typedSource);
         setSourceFormat(header.format);
         setDimensions({ width: full.width, height: full.height });
         setOriginalPreview(preview);
         setRendered(preview);
+        setRenderedGeometryKey(JSON.stringify(createRecipe().geometry));
         resetHistory(safeRecipe);
+        setActiveRegionId(null);
+        setBrushState({ ...DEFAULT_BRUSH });
+        setMaskOverlay(true);
       } finally {
         bitmap?.close();
         if (fullCanvas) {
@@ -286,8 +366,8 @@ export function useEditor() {
   );
 
   const commit = useCallback(
-    (next: RecipeV1, label = '调整照片') => {
-      const safe = parseRecipe(next);
+    (next: EditorRecipe, label = '调整照片') => {
+      const safe = parseEditorRecipe(next);
       replaceRecipe(safe);
       if (JSON.stringify(historyRef.current[indexRef.current]?.recipe) === JSON.stringify(safe))
         return;
@@ -302,6 +382,10 @@ export function useEditor() {
     },
     [replaceRecipe],
   );
+  const cancelPreview = useCallback(() => {
+    const current = historyRef.current[indexRef.current];
+    if (current) replaceRecipe(current.recipe);
+  }, [replaceRecipe]);
   const commitCurrent = useCallback(
     (label = '调整照片') => commit(recipeRef.current, label),
     [commit],
@@ -406,7 +490,7 @@ export function useEditor() {
         throw new Error(
           '读取配方期间图片已切换，配方没有应用到新图。请在当前图片准备好后重新导入。',
         );
-      const next = parseRecipe(JSON.parse(text));
+      const next = parseEditorRecipe(JSON.parse(text));
       commit(next, '导入配方');
     },
     [commit],
@@ -416,13 +500,21 @@ export function useEditor() {
     file,
     dimensions,
     sourceFormat,
+    activeRegionId,
+    setActiveRegionId,
+    brushSettings,
+    setBrushSettings,
+    maskOverlay,
+    setMaskOverlay,
     pixelBudget,
     setPixelBudget,
     getCloudUploadFile,
     recipe,
+    getRecipe,
     history,
     historyIndex,
     rendered,
+    renderedGeometryKey,
     originalPreview,
     rendering,
     loading,
@@ -434,6 +526,7 @@ export function useEditor() {
     cancelPendingLoad,
     loadFile,
     preview: replaceRecipe,
+    cancelPreview,
     commit,
     commitCurrent,
     undo,
@@ -441,7 +534,8 @@ export function useEditor() {
     exportImage,
     exportRecipe,
     importRecipe,
-    reset: () => commit(createRecipe(), '恢复原图'),
+    reset: () =>
+      commit(recipeRef.current.schemaVersion === 2 ? createRecipeV2() : createRecipe(), '恢复原图'),
   };
 }
 export type EditorState = ReturnType<typeof useEditor>;

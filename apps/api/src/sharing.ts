@@ -239,7 +239,7 @@ export function registerSharing(app: FastifyInstance, db: Database): void {
       for (const a of assets) {
         const copied = (
           await tx.query(
-            'INSERT INTO assets(project_id,name,storage_key,mime,width,height,bytes,content_hash,provenance,created_by) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10) RETURNING id',
+            'INSERT INTO assets(project_id,name,storage_key,mime,width,height,bytes,content_hash,provenance,created_by,annotations) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11) RETURNING id',
             [
               row.id,
               a.name,
@@ -251,6 +251,7 @@ export function registerSharing(app: FastifyInstance, db: Database): void {
               a.content_hash,
               JSON.stringify(a.provenance ?? {}),
               user.id,
+              JSON.stringify(a.annotations ?? {}),
             ],
           )
         ).rows[0]!;

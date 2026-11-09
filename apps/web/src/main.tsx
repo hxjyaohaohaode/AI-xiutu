@@ -4,6 +4,8 @@ import { App } from './App';
 import './styles.css';
 import './features.css';
 import './workspace/workspace.css';
+import './refinement.css';
+import './motion/motion.css';
 
 ReactDOM.createRoot(document.getElementById('root')!).render(
   <React.StrictMode>

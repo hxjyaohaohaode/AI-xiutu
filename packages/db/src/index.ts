@@ -1,5 +1,6 @@
 import pg from 'pg';
 import { schemaSql, schemaV2Sql } from './schema.js';
+import { schemaV3Sql } from './schema-v3.js';
 
 export type { PoolClient, QueryResultRow } from 'pg';
 export type Database = pg.Pool;
@@ -33,6 +34,34 @@ export async function transaction<T>(
     tx.release();
   }
 }
+/** Coordinate publication and cleanup even when a COMMIT acknowledgement is lost.
+ * A fresh SELECT alone could run before the original transaction has ended. */
+export async function lockAssetStorageKeys(tx: Queryable, keys: readonly string[]): Promise<void> {
+  for (const key of [...new Set(keys)].sort())
+    await tx.query('SELECT pg_advisory_xact_lock(hashtextextended($1,0))', [
+      `ai-xiutu:asset-publication:${key}`,
+    ]);
+}
+/** Caller must preserve private candidates if this authoritative check fails.
+ * Deleted rows and completed copies still count as references; reclamation is
+ * deliberately conservative and not a retention/garbage-collection policy. */
+export async function discardUnreferencedStorageKeys(
+  db: Database,
+  keys: readonly string[],
+  discard: (key: string) => Promise<void>,
+): Promise<void> {
+  const unique = [...new Set(keys)].sort();
+  if (!unique.length) return;
+  await transaction(db, async (tx) => {
+    await lockAssetStorageKeys(tx, unique);
+    const result = await tx.query(
+      'SELECT storage_key FROM assets WHERE storage_key=ANY($1::text[])',
+      [unique],
+    );
+    const referenced = new Set(result.rows.map((row) => row.storage_key));
+    for (const key of unique) if (!referenced.has(key)) await discard(key);
+  });
+}
 export async function migrate(db: Database): Promise<void> {
   await transaction(db, async (tx) => {
     await tx.query("SELECT pg_advisory_xact_lock(hashtext('ai-xiutu-schema'))");
@@ -47,6 +76,10 @@ export async function migrate(db: Database): Promise<void> {
     if (!(await tx.query('SELECT version FROM schema_migrations WHERE version=2')).rowCount) {
       await tx.query(schemaV2Sql);
       await tx.query('INSERT INTO schema_migrations(version) VALUES(2)');
+    }
+    if (!(await tx.query('SELECT version FROM schema_migrations WHERE version=3')).rowCount) {
+      await tx.query(schemaV3Sql);
+      await tx.query('INSERT INTO schema_migrations(version) VALUES(3)');
     }
   });
 }

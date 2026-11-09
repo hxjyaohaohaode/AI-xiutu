@@ -24,6 +24,7 @@ import {
 import { registerAuth } from './auth.js';
 import { registerSpaces } from './spaces.js';
 import { registerProjects } from './projects.js';
+import { registerAssetAnnotations } from './asset-annotations.js';
 import { registerCollaboration } from './collaboration.js';
 import { registerSharing } from './sharing.js';
 import { registerOperations, publicSettings, modelDto } from './operations.js';
@@ -34,9 +35,19 @@ export interface AiService {
   reason: string | null;
   availableOperations?: string[];
   operationStatus?: Record<string, { available: boolean; reason: string | null }>;
+  providerModelCatalog?: readonly unknown[];
   describeModel?(
     id: string,
-    config: { provider?: string; operations?: string[] },
+    config: {
+      provider?: string;
+      operations?: string[];
+      maxOutputs?: number;
+      allowedQualities?: string[];
+      unitCost?: number;
+      imageUnitCosts?: Partial<
+        Record<'auto' | 'low' | 'medium' | 'high' | 'xhigh' | 'max', number>
+      >;
+    },
   ): {
     runtimeAvailable: boolean;
     runtimeReason?: string | null;
@@ -101,52 +112,44 @@ export async function buildApp(options: BuildOptions = {}): Promise<FastifyInsta
   });
   app.setErrorHandler((error, req, reply) => {
     if (error instanceof ZodError)
-      return reply
-        .code(400)
-        .send({
-          error: {
-            code: 'VALIDATION_ERROR',
-            message: '输入字段不符合要求',
-            details: {
-              fields: error.issues.map((i) => ({
-                path: i.path.map(String).join('.'),
-                message: i.message,
-              })),
-            },
+      return reply.code(400).send({
+        error: {
+          code: 'VALIDATION_ERROR',
+          message: '输入字段不符合要求',
+          details: {
+            fields: error.issues.map((i) => ({
+              path: i.path.map(String).join('.'),
+              message: i.message,
+            })),
           },
-        });
+        },
+      });
     if (error instanceof RecipeValidationError)
-      return reply
-        .code(400)
-        .send({
-          error: {
-            code: 'RECIPE_INVALID',
-            message: '编辑参数不符合要求',
-            details: { fields: error.errors },
-          },
-        });
+      return reply.code(400).send({
+        error: {
+          code: 'RECIPE_INVALID',
+          message: '编辑参数不符合要求',
+          details: { fields: error.errors },
+        },
+      });
     if (error instanceof ProviderError)
-      return reply
-        .code(error.outcome === 'unknown' ? 503 : 400)
-        .send({
-          error: {
-            code: error.code,
-            message:
-              error.outcome === 'unknown'
-                ? '外部请求结果尚待核实，请查看任务状态，勿重复提交'
-                : '输入或供应商配置不符合当前操作要求',
-          },
-        });
+      return reply.code(error.outcome === 'unknown' ? 503 : 400).send({
+        error: {
+          code: error.code,
+          message:
+            error.outcome === 'unknown'
+              ? '外部请求结果尚待核实，请查看任务状态，勿重复提交'
+              : '输入或供应商配置不符合当前操作要求',
+        },
+      });
     if (error instanceof HttpError)
-      return reply
-        .code(error.statusCode)
-        .send({
-          error: {
-            code: error.code,
-            message: error.message,
-            ...(error.details ? { details: error.details } : {}),
-          },
-        });
+      return reply.code(error.statusCode).send({
+        error: {
+          code: error.code,
+          message: error.message,
+          ...(error.details ? { details: error.details } : {}),
+        },
+      });
     if (error instanceof StorageError)
       return reply
         .code(error.statusCode)
@@ -167,11 +170,9 @@ export async function buildApp(options: BuildOptions = {}): Promise<FastifyInsta
         .code(409)
         .send({ error: { code: 'REFERENCE_CONFLICT', message: '相关记录已改变，请刷新' } });
     if (e.code === '40001' || e.code === '40P01')
-      return reply
-        .code(409)
-        .send({
-          error: { code: 'CONCURRENT_CHANGE', message: '并发操作发生冲突，请刷新后重试原操作' },
-        });
+      return reply.code(409).send({
+        error: { code: 'CONCURRENT_CHANGE', message: '并发操作发生冲突，请刷新后重试原操作' },
+      });
     if (e.code === 'FST_REQ_FILE_TOO_LARGE' || e.statusCode === 413)
       return reply
         .code(413)
@@ -195,7 +196,9 @@ export async function buildApp(options: BuildOptions = {}): Promise<FastifyInsta
   });
   const capabilities = () => ({
     smsConfigured: sms.configured,
-    providerConfigured: Boolean(process.env.DASHSCOPE_API_KEY || process.env.ARK_API_KEY),
+    providerConfigured: Boolean(
+      process.env.DASHSCOPE_API_KEY || process.env.ARK_API_KEY || process.env.OPENAI_API_KEY,
+    ),
     moderationConfigured: createTencentTextModerator().configured,
     aiConfigured: ai?.configured ?? false,
     aiUnavailableReason: ai?.reason ?? 'AI服务尚未配置；未进行任何模型调用',
@@ -203,6 +206,7 @@ export async function buildApp(options: BuildOptions = {}): Promise<FastifyInsta
     imageGenerationConfigured: ai?.availableOperations?.includes('generate-image') ?? false,
     availableOperations: ai?.availableOperations ?? [],
     operationStatus: ai?.operationStatus ?? {},
+    providerModelCatalog: ai?.providerModelCatalog ?? [],
   });
   app.get('/health', async () => {
     await db.query('SELECT 1');
@@ -243,22 +247,21 @@ export async function buildApp(options: BuildOptions = {}): Promise<FastifyInsta
     reason: ai?.reason ?? 'AI服务未启用',
     availableOperations: ai?.availableOperations ?? [],
     operationStatus: ai?.operationStatus ?? {},
+    providerModelCatalog: ai?.providerModelCatalog ?? [],
   }));
   app.post('/v1/projects/:id/ai-jobs', async (req, reply) => {
     const user = requireUser(req);
     const p = z.object({ id }).parse(req.params);
     const project = await projectAccess(db, p.id, user.id, 'edit');
     if (!ai) throw new HttpError(503, 'AI_EXECUTION_DISABLED', 'AI执行尚未配置，未产生费用');
-    return reply
-      .code(202)
-      .send(
-        await ai.submit({
-          actorId: user.id,
-          projectId: p.id,
-          spaceId: project.space_id,
-          body: req.body,
-        }),
-      );
+    return reply.code(202).send(
+      await ai.submit({
+        actorId: user.id,
+        projectId: p.id,
+        spaceId: project.space_id,
+        body: req.body,
+      }),
+    );
   });
   app.get('/v1/projects/:id/ai-jobs', async (req) => {
     const user = requireUser(req);
@@ -287,7 +290,20 @@ export async function buildApp(options: BuildOptions = {}): Promise<FastifyInsta
   registerProjects(app, db, storage);
   registerCollaboration(app, db);
   registerSharing(app, db);
-  registerOperations(app, db, capabilities);
+  registerOperations(
+    app,
+    db,
+    capabilities,
+    (model) => ({
+      ...model,
+      ...(ai?.describeModel?.(model.id, model) ?? {
+        runtimeAvailable: false,
+        runtimeReason: '执行适配器尚未配置',
+      }),
+    }),
+    ai?.providerModelCatalog ?? [],
+  );
+  registerAssetAnnotations(app, db);
   app.addHook('onClose', async () => {
     if (!options.db) await db.end();
   });

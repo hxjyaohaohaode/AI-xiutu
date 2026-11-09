@@ -1,6 +1,6 @@
 import { randomUUID } from 'node:crypto';
 import { z } from 'zod';
-import { parseRecipe, type RecipeV1 } from '@ai-xiutu/editor';
+import { parseEditorRecipe, type EditorRecipe } from '@ai-xiutu/editor';
 import {
   transaction,
   ensureMonthlyGrant,
@@ -25,7 +25,11 @@ import {
   type PreparedPlan,
 } from './provider.js';
 import { DispatchJournal } from './journal.js';
-import { createMultimodalService, type MultimodalDependencies } from './multimodal.js';
+import {
+  createMultimodalService,
+  type MultimodalDependencies,
+  type ImageCatalogConfig,
+} from './multimodal.js';
 export * from './provider.js';
 export { DispatchJournal } from './journal.js';
 
@@ -48,15 +52,20 @@ const requestSchema = z
     artworkId: z.string().uuid(),
     expectedVersion: z.number().int().positive(),
     recipe: z.unknown(),
+    parentJobId: z.string().uuid().optional(),
   })
   .strict();
 interface StoredInput {
   prompt: string;
   artworkId: string;
   expectedVersion: number;
-  recipe: RecipeV1;
+  recipe: EditorRecipe;
   prepared: PreparedPlan;
   requestHash: string;
+  proposalVersion?: 2;
+  parentJobId?: string;
+  threadId?: string;
+  threadDepth?: number;
 }
 interface JobRow {
   id: string;
@@ -87,14 +96,51 @@ function frozenPlanHash(
       recipe: input.recipe,
       endpoint: input.prepared.endpoint,
       body: input.prepared.body,
+      ...(input.proposalVersion !== undefined ? { proposalVersion: input.proposalVersion } : {}),
+      ...(input.parentJobId
+        ? {
+            parentJobId: input.parentJobId,
+            threadId: input.threadId,
+            threadDepth: input.threadDepth,
+          }
+        : {}),
     }),
   );
 }
 function jobDto(job: JobRow) {
+  const frozen = job.input as unknown as Record<string, any>;
+  const source = frozen.input && typeof frozen.input === 'object' ? frozen.input : frozen;
+  const request: Record<string, unknown> = { operation: job.operation ?? 'edit-plan' };
+  for (const key of [
+    'prompt',
+    'width',
+    'height',
+    'imageOptions',
+    'referenceAssetId',
+    'referenceAssetIds',
+    'maskAssetId',
+    'markupAssetId',
+    'parentJobId',
+    'artworkId',
+    'expectedVersion',
+    'contextDocumentId',
+    'expectedDocumentVersion',
+    'proposalVersion',
+  ]) {
+    if (source[key] !== undefined) request[key] = source[key];
+  }
   return {
     id: job.id,
     operation: job.operation ?? 'edit-plan',
     prompt: job.input.prompt,
+    request,
+    parentJobId: frozen.parentJobId ?? null,
+    threadId: frozen.threadId ?? job.id,
+    contextSummary: {
+      parentResultIncluded: Boolean(frozen.manifest?.parentContext),
+      contextDocumentId: frozen.manifest?.documentId ?? null,
+      documentVersion: frozen.manifest?.documentVersion ?? null,
+    },
     projectId: job.project_id,
     artworkId: job.input.artworkId,
     modelId: job.model_id,
@@ -157,9 +203,10 @@ function createEditPlanService(
     async submit(args: { actorId: string; projectId: string; spaceId: string; body: unknown }) {
       if (!configured) throw new AiError('AI_NOT_CONFIGURED', reason!, 503);
       const body = requestSchema.parse(args.body);
-      const recipe = parseRecipe(body.recipe);
+      const recipe = parseEditorRecipe(body.recipe);
       const requestHash = digest(canonical({ ...body, recipe }));
-      const prepared = preparePlan(endpoint, body.modelId, body.prompt, recipe);
+      const proposalVersion = recipe.schemaVersion === 2 ? 2 : 1;
+      const prepared = preparePlan(endpoint, body.modelId, body.prompt, recipe, proposalVersion);
       if (Array.from(prepared.moderationText).length > 10_000)
         throw new AiError('INPUT_TOO_LARGE', '完整输入超过审核上限');
       await journal.assertDatabaseMatches(db);
@@ -225,7 +272,29 @@ function createEditPlanService(
           recipe,
           prepared,
           requestHash,
+          ...(proposalVersion === 2 ? { proposalVersion: 2 as const } : {}),
         };
+        if (body.parentJobId) {
+          const parent = (
+            await tx.query(
+              'SELECT id,state,operation,input FROM ai_jobs WHERE id=$1 AND project_id=$2',
+              [body.parentJobId, args.projectId],
+            )
+          ).rows[0];
+          if (
+            !parent ||
+            parent.state !== 'completed' ||
+            parent.operation !== 'edit-plan' ||
+            parent.input?.artworkId !== body.artworkId
+          )
+            throw new AiError('PARENT_JOB_NOT_USABLE', '只能继续当前作品已完成的调整建议');
+          const depth = Number(parent.input?.threadDepth ?? 0) + 1;
+          if (!Number.isSafeInteger(depth) || depth > 50)
+            throw new AiError('THREAD_DEPTH_LIMIT', '此创作分支已达到50轮');
+          input.parentJobId = parent.id;
+          input.threadId = parent.input?.threadId ?? parent.id;
+          input.threadDepth = depth;
+        }
         const frozenHash = frozenPlanHash(input, {
           projectId: args.projectId,
           actorId: args.actorId,
@@ -358,6 +427,11 @@ function createEditPlanService(
           throw new AiError('INPUT_INTEGRITY_FAILED', '模型与冻结请求不匹配');
         if (job.input.prepared.endpoint !== endpoint)
           throw new AiError('PROVIDER_CONFIG_CHANGED', '供应商配置已变化，请取消后重新提交');
+        if (
+          job.input.proposalVersion !== undefined &&
+          (job.input.proposalVersion !== 2 || job.input.recipe.schemaVersion !== 2)
+        )
+          throw new AiError('INPUT_INTEGRITY_FAILED', '建议协议与配方版本不匹配');
         const before = await moderator.check(job.input.prepared.body, job.id);
         if (before.inputHash !== digest(job.input.prepared.body) || before.decision !== 'passed')
           throw new AiError('INPUT_REVIEW_REQUIRED', '请求未通过内容审核');
@@ -375,8 +449,22 @@ function createEditPlanService(
         const result = await provider.complete(job.input.prepared);
         providerRequestId = result.requestId;
         vendorCompleted = true;
-        const proposal = parseProposal(result.value, parseRecipe(job.input.recipe));
-        const outputText = canonical(proposal);
+        const proposal = parseProposal(
+          result.value,
+          parseEditorRecipe(job.input.recipe),
+          job.input.proposalVersion ?? 1,
+        );
+        // The model never receives or changes existing region masks. Review the complete
+        // newly-generated summary/numeric changes, not megabytes of preserved RLE data.
+        const outputText = canonical(
+          proposal.proposalVersion === 2
+            ? {
+                summary: proposal.summary,
+                proposalVersion: 2,
+                parameterChanges: proposal.parameterChanges,
+              }
+            : proposal,
+        );
         const after = await moderator.check(outputText, job.id);
         if (after.inputHash !== digest(outputText) || after.decision !== 'passed')
           throw new AiError('OUTPUT_REVIEW_REQUIRED', '建议未通过内容审核');
@@ -462,7 +550,8 @@ export function createAiService(
       : 'AI 服务尚未配置。请在运营端设置模型，并由服务器配置对应供应商、审核凭据和执行开关。',
     availableOperations,
     operationStatus,
-    describeModel(id: string, config: { provider?: string; operations?: string[] }) {
+    providerModelCatalog: multimodal.providerModelCatalog,
+    describeModel(id: string, config: ImageCatalogConfig) {
       const description = multimodal.describeModel(id, config);
       if (
         (config.provider ?? 'qwen') === 'qwen' &&

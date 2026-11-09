@@ -1,3 +1,4 @@
+import { usePresence } from '../motion/usePresence';
 import {
   ArrowRight,
   CaretDown,
@@ -54,6 +55,7 @@ export function Sidebar({
   onLogout: () => void;
   onOps: () => void;
 }) {
+  const presence = usePresence(open, 'navigation');
   const personal = session.spaces.find((s) => s.kind === 'personal');
   const teams = session.spaces.filter((s) => s.kind === 'team');
   const selectedSpace = session.spaces.find((s) => s.id === spaceId);
@@ -70,6 +72,8 @@ export function Sidebar({
       <aside
         className={`sidebar ${open ? 'open' : ''}`}
         aria-label="空间与项目"
+        data-motion="navigation"
+        data-motion-state={presence.phase}
         aria-hidden={!open}
         inert={!open}
       >
@@ -82,6 +86,7 @@ export function Sidebar({
         <div className="sidebar-main">
           <div className="nav-section-label">我的空间</div>
           <button
+            data-motion="space-row"
             className={`space-row ${!selectedSpace || selectedSpace.kind === 'personal' ? 'selected' : ''}`}
             onClick={() => onSpace(personal ?? null)}
           >
@@ -108,6 +113,7 @@ export function Sidebar({
           {teams.map((space) => (
             <button
               key={space.id}
+              data-motion="space-row"
               className={`space-row ${spaceId === space.id ? 'selected' : ''}`}
               onClick={() => onSpace(space)}
             >
@@ -155,6 +161,7 @@ export function Sidebar({
             <nav className="project-list" aria-label="项目">
               {projects.map((project) => (
                 <button
+                  data-motion="project-row"
                   className={selectedProject?.id === project.id ? 'selected' : ''}
                   key={project.id}
                   onClick={() => onProject(project)}
@@ -178,6 +185,7 @@ export function Sidebar({
               <nav className="project-list" aria-label="共享给我的项目">
                 {sharedProjects.map((project) => (
                   <button
+                    data-motion="project-row"
                     className={selectedProject?.id === project.id ? 'selected' : ''}
                     key={project.id}
                     onClick={() => onProject(project)}

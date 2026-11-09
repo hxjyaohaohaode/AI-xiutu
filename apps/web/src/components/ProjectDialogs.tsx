@@ -135,9 +135,8 @@ export function ExportDialog({
     <Modal
       title="把这张画面，带走"
       subtitle="从原始照片重新计算，保留当前的每一项调整。"
-      onClose={() => {
-        if (!busy) onClose();
-      }}
+      onClose={onClose}
+      canClose={() => !busy}
     >
       <div className="export-options">
         <button className={format === 'png' ? 'selected' : ''} onClick={() => setFormat('png')}>
@@ -354,8 +353,10 @@ export function TeamDialog({ space, onClose }: { space: Space; onClose: () => vo
                     label="复制团队邀请码"
                     onClick={() =>
                       navigator.clipboard
-                        .writeText(code)
-                        .catch(() => setError('无法自动复制，请手动选中邀请码。'))
+                        ? navigator.clipboard
+                            .writeText(code)
+                            .catch(() => setError('无法自动复制，请手动选中邀请码。'))
+                        : setError('当前环境不能自动复制，请手动选择邀请码。')
                     }
                   >
                     <Copy size={18} />
@@ -476,9 +477,8 @@ export function CopyProjectDialog({
     <Modal
       title="把项目复制到另一个空间"
       subtitle="副本包含允许复制的素材和作品版本，与来源项目独立保存。"
-      onClose={() => {
-        if (!busy) onClose();
-      }}
+      onClose={onClose}
+      canClose={() => !busy}
     >
       <form className="stack-form" onSubmit={copy}>
         <label>

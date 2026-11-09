@@ -54,7 +54,7 @@ export function WorksView({
 }) {
   return (
     <div className="content-view">
-      <div className="view-heading">
+      <div className="view-heading" data-motion="view-header">
         <div>
           <span className="eyebrow">YOUR WORK, IN ONE PLACE</span>
           <h1>{project?.title ?? '作品，从一张照片开始'}</h1>
@@ -111,7 +111,11 @@ export function WorksView({
             const asset = assets.find((a) => a.id === work.assetId);
             return (
               <button key={work.id} className="artwork-card" onClick={() => onOpen(work)}>
-                <div className="artwork-cover">
+                <div
+                  className="artwork-cover"
+                  data-motion="artwork-media"
+                  data-motion-pixels="true"
+                >
                   {asset?.thumbnailUrl ||
                   (asset && asset.width * asset.height <= localPixelBudget()) ? (
                     <img src={asset!.thumbnailUrl ?? asset!.url} alt={work.title} loading="lazy" />
@@ -130,7 +134,7 @@ export function WorksView({
                     <ArrowSquareOut size={15} />
                   </span>
                 </div>
-                <div className="artwork-card-meta">
+                <div className="artwork-card-meta" data-motion="artwork-meta">
                   <strong>{work.title}</strong>
                   <span>
                     版本 {work.headVersion}
@@ -210,7 +214,7 @@ export function CompareView({
     );
   return (
     <div className="content-view compare-view">
-      <div className="view-heading">
+      <div className="view-heading" data-motion="view-header">
         <div>
           <h1>对比</h1>
           <p>构图不同的版本会各自适应画布，原件始终保留。</p>
@@ -387,7 +391,7 @@ export function CollaborateView({
   }
   return (
     <div className="content-view">
-      <div className="view-heading">
+      <div className="view-heading" data-motion="view-header">
         <div>
           <span className="eyebrow">BETTER, TOGETHER</span>
           <h1>想法放在一起。</h1>
@@ -403,7 +407,7 @@ export function CollaborateView({
         <Busy label="正在读取项目讨论" />
       ) : (
         <div className="collaboration-grid">
-          <section className="surface discussion">
+          <section className="surface discussion" data-motion="discussion">
             <div className="section-heading">
               <h2>
                 <ChatCircleDots size={20} />
@@ -416,6 +420,7 @@ export function CollaborateView({
                 comments.map((comment) => (
                   <article
                     key={comment.id}
+                    data-motion="comment"
                     className={`comment ${comment.resolved ? 'resolved' : ''}`}
                   >
                     <div className="comment-avatar">
@@ -500,7 +505,7 @@ export function CollaborateView({
             </div>
             <div className="task-list">
               {tasks.map((task) => (
-                <div className={`task-item ${task.status}`} key={task.id}>
+                <div className={`task-item ${task.status}`} data-motion="task-item" key={task.id}>
                   <button
                     aria-label={`${task.title}：${task.status === 'todo' ? '开始处理' : task.status === 'doing' ? '标记完成' : '重新打开'}`}
                     onClick={() => changeTask(task)}
@@ -564,6 +569,8 @@ export function DocumentsView({
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [dirty, setDirty] = useState(false);
+  const currentDraft = useRef({ title, body });
+  currentDraft.current = { title, body };
   useEffect(() => {
     onDirtyChange(dirty);
     return () => onDirtyChange(false);
@@ -586,6 +593,7 @@ export function DocumentsView({
     setDirty(false);
   }, [project.id]);
   function choose(doc: ProjectDocument | null) {
+    if (busy) return;
     if (dirty && !window.confirm('这份文档还有未保存的修改。放弃修改并切换吗？')) return;
     setSelected(doc);
     setTitle(doc?.title ?? '');
@@ -597,17 +605,20 @@ export function DocumentsView({
     event.preventDefault();
     setBusy(true);
     setError(null);
+    const snapshot = { title: title.trim(), body };
     try {
       const result = await api<{ document: ProjectDocument }>(
         selected ? `/documents/${selected.id}` : `/projects/${project.id}/documents`,
         jsonRequest(selected ? 'PATCH' : 'POST', {
-          title: title.trim(),
-          body,
+          ...snapshot,
           ...(selected ? { expectedVersion: selected.version } : {}),
         }),
       );
       setSelected(result.document);
-      setDirty(false);
+      setDirty(
+        currentDraft.current.title.trim() !== snapshot.title ||
+          currentDraft.current.body !== snapshot.body,
+      );
       const list = await api<{ documents: ProjectDocument[] }>(`/projects/${project.id}/documents`);
       setDocs(list.documents);
     } catch (e) {
@@ -618,7 +629,7 @@ export function DocumentsView({
   }
   return (
     <div className="content-view">
-      <div className="view-heading">
+      <div className="view-heading" data-motion="view-header">
         <div>
           <span className="eyebrow">A SHARED UNDERSTANDING</span>
           <h1>把想法，写清楚。</h1>
@@ -626,8 +637,12 @@ export function DocumentsView({
         </div>
       </div>
       <div className="documents-layout">
-        <aside className="surface document-list">
-          <button className="button button-secondary button-full" onClick={() => choose(null)}>
+        <aside className="surface document-list" data-motion="document-list">
+          <button
+            className="button button-secondary button-full"
+            disabled={busy}
+            onClick={() => choose(null)}
+          >
             <Plus size={17} />
             新建文档
           </button>
@@ -635,6 +650,7 @@ export function DocumentsView({
             <button
               key={doc.id}
               className={`document-row ${selected?.id === doc.id ? 'selected' : ''}`}
+              disabled={busy}
               onClick={() => choose(doc)}
             >
               <FileText size={18} />
@@ -648,7 +664,7 @@ export function DocumentsView({
           ))}
           {!docs.length && <p className="quiet-copy">你的第一份创作说明，会出现在这里。</p>}
         </aside>
-        <form className="surface document-editor" onSubmit={save}>
+        <form className="surface document-editor" onSubmit={save} data-motion="document-editor">
           <input
             className="document-title"
             aria-label="文档标题"
@@ -710,7 +726,7 @@ export function DeliveryView({
 }) {
   return (
     <div className="content-view">
-      <div className="view-heading">
+      <div className="view-heading" data-motion="view-header">
         <div>
           <span className="eyebrow">READY FOR THE NEXT CHAPTER</span>
           <h1>带着作品，出发。</h1>
@@ -718,7 +734,7 @@ export function DeliveryView({
         </div>
       </div>
       <div className="delivery-grid">
-        <section className="surface delivery-card">
+        <section className="surface delivery-card" data-motion="delivery">
           <div className="delivery-icon">
             <Images size={30} />
           </div>
@@ -732,7 +748,7 @@ export function DeliveryView({
             选择导出格式
           </button>
         </section>
-        <section className="surface delivery-card">
+        <section className="surface delivery-card" data-motion="delivery">
           <div className="delivery-icon recipe">
             <NotePencil size={30} />
           </div>

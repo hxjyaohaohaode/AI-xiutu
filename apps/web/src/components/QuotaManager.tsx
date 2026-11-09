@@ -82,7 +82,7 @@ export function QuotaManager() {
     }
   }
   return (
-    <div className="quota-manager">
+    <div className="quota-manager" data-motion="quota">
       <section className="surface ops-section">
         <h2>先找到需要调整的用户</h2>
         <form className="search-form" onSubmit={search}>

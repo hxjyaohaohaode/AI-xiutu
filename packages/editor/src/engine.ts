@@ -55,9 +55,9 @@ function compileCurves(curves: Curves): CompiledCurves {
   ) as CompiledCurves;
 }
 
-const NO_CURVES: CompiledCurves = { rgb: null, red: null, green: null, blue: null };
+export const NO_CURVES: CompiledCurves = { rgb: null, red: null, green: null, blue: null };
 
-interface Tone {
+export interface Tone {
   gains: [number, number, number];
   brightness: number;
   contrast: number;
@@ -70,7 +70,7 @@ interface Tone {
   active: boolean;
 }
 
-function tone(a: Adjustments): Tone {
+export function tone(a: Adjustments): Tone {
   const temperature = a.temperature / 100;
   const tint = a.tint / 100;
   return {
@@ -92,7 +92,7 @@ function tone(a: Adjustments): Tone {
 }
 
 /** Map linear RGB through declared linear and display-encoded stages, then back to linear. */
-function mapPoint(
+export function mapPoint(
   r: number,
   g: number,
   b: number,
@@ -174,7 +174,7 @@ function detailValue(
   return clamp(value + soften * (smooth - value) + sharpen * thresholded);
 }
 
-function detailPoint(
+export function detailPoint(
   source: Float32Array,
   image: RGBAImage,
   x: number,
@@ -249,6 +249,18 @@ export interface ReferenceRenderWorkspace {
   output: Uint8ClampedArray;
 }
 
+/** Internal versioned extension point. v1 never supplies it or changes its order. */
+export interface LinearRegionExtension {
+  active: boolean;
+  apply(
+    working: Float32Array,
+    scratch: Float32Array,
+    image: RGBAImage,
+    coordinates: ImageCoordinateContext | undefined,
+    options: RenderOptions,
+  ): Float32Array;
+}
+
 export function createRenderSession(inputRecipe: RecipeV1): ReferenceRenderSession {
   const recipe = parseRecipe(inputRecipe);
   return {
@@ -280,6 +292,7 @@ export function renderValidatedRegion(
   options: RenderOptions,
   coordinates?: ImageCoordinateContext,
   workspace?: ReferenceRenderWorkspace,
+  extension?: LinearRegionExtension,
 ): RGBAImage {
   const recipe = session.recipe;
   const crop = pixelCrop(image, recipe.geometry);
@@ -287,7 +300,8 @@ export function renderValidatedRegion(
   const globalNeutral = session.globalNeutral;
   const localActive = session.localActive;
   let working: Float32Array | null = null;
-  if (!globalNeutral || localActive) {
+  let scratch: Float32Array | null = null;
+  if (!globalNeutral || localActive || extension?.active) {
     const n = image.width * image.height;
     working = workspace ? workspace.working.subarray(0, n * 3) : new Float32Array(n * 3);
     const t = session.globalTone;
@@ -310,8 +324,8 @@ export function renderValidatedRegion(
     }
     const globalDetail = recipe.adjustments.sharpness > 0 || recipe.adjustments.soften > 0;
     // At most two float RGB buffers, reused across global and local stages.
-    let scratch: Float32Array | null =
-      globalDetail || localActive
+    scratch =
+      globalDetail || localActive || extension?.active
         ? workspace
           ? workspace.scratch.subarray(0, n * 3)
           : new Float32Array(n * 3)
@@ -384,6 +398,9 @@ export function renderValidatedRegion(
         }
       }
     }
+  }
+  if (extension?.active && working && scratch) {
+    working = extension.apply(working, scratch, image, coordinates, options);
   }
   checkAbort(options);
   const data = workspace

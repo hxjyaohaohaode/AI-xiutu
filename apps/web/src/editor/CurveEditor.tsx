@@ -1,10 +1,113 @@
-import { useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { Plus, Trash, ArrowCounterClockwise } from '@phosphor-icons/react';
-import type { CurvePoint, RecipeV1 } from '@ai-xiutu/editor';
+import { type CurvePoint, type EditorRecipe, type RecipeV1 } from '@ai-xiutu/editor';
 import type { EditorState } from './useEditor';
 import { IconButton } from '../components/Ui';
+import { PrecisionRange } from './PrecisionRange';
+import { sharedHistogram } from './histogram-cache';
 
 type Channel = keyof RecipeV1['curves'];
+type CurveCapture = Pick<
+  SVGSVGElement,
+  'setPointerCapture' | 'hasPointerCapture' | 'releasePointerCapture'
+>;
+type CurveGestureContext = {
+  sourceIdentity: number;
+  channel: Channel;
+  recipe: EditorRecipe;
+  preview: (recipe: EditorRecipe) => void;
+  commit: () => void;
+};
+type CurveGesture = {
+  pointerId: number;
+  index: number;
+  sourceIdentity: number;
+  channel: Channel;
+  base: EditorRecipe;
+  lastPreview: EditorRecipe;
+  capture: CurveCapture;
+};
+
+/** One owned pointer transaction. Exported for event-order regression tests without a fake DOM. */
+export function createCurveGestureController(context: () => CurveGestureContext) {
+  let active: CurveGesture | null = null;
+  const compatible = (gesture: CurveGesture, current: CurveGestureContext) =>
+    gesture.sourceIdentity === current.sourceIdentity &&
+    gesture.channel === current.channel &&
+    gesture.lastPreview === current.recipe;
+  function finish(mode: 'commit' | 'cancel' | 'discard', pointerId?: number): boolean {
+    const gesture = active;
+    if (!gesture || (pointerId !== undefined && gesture.pointerId !== pointerId)) return false;
+    // Clear ownership before releasing capture: its lost-capture event must not
+    // roll back a transaction which has already committed or cancelled.
+    active = null;
+    try {
+      if (gesture.capture.hasPointerCapture(gesture.pointerId))
+        gesture.capture.releasePointerCapture(gesture.pointerId);
+    } catch {
+      // The browser may have removed the source element already.
+    }
+    const current = context();
+    if (compatible(gesture, current)) {
+      if (mode === 'cancel') current.preview(gesture.base);
+      if (mode === 'commit') current.commit();
+    }
+    return true;
+  }
+  return {
+    begin(pointerId: number, index: number, capture: CurveCapture): boolean {
+      if (active) return false;
+      const current = context();
+      if (
+        !Number.isInteger(index) ||
+        index < 0 ||
+        index >= current.recipe.curves[current.channel].length
+      )
+        return false;
+      active = {
+        pointerId,
+        index,
+        capture,
+        sourceIdentity: current.sourceIdentity,
+        channel: current.channel,
+        base: current.recipe,
+        lastPreview: current.recipe,
+      };
+      try {
+        capture.setPointerCapture(pointerId);
+      } catch {
+        active = null;
+        return false;
+      }
+      return true;
+    },
+    current(pointerId: number): Readonly<CurveGesture> | null {
+      if (!active || active.pointerId !== pointerId) return null;
+      if (!compatible(active, context())) {
+        finish('discard');
+        return null;
+      }
+      return active;
+    },
+    preview(pointerId: number, recipe: EditorRecipe): boolean {
+      if (!active || active.pointerId !== pointerId) return false;
+      const current = context();
+      if (!compatible(active, current)) {
+        finish('discard');
+        return false;
+      }
+      // The editor writes this exact object synchronously. A later external
+      // commit/preview has a different identity and terminates our ownership.
+      active.lastPreview = recipe;
+      current.preview(recipe);
+      return true;
+    },
+    commit: (pointerId: number) => finish('commit', pointerId),
+    cancel: (pointerId?: number) => finish('cancel', pointerId),
+    discard: () => finish('discard'),
+  };
+}
+
 const channels: { key: Channel; label: string; color: string }[] = [
   { key: 'rgb', label: 'RGB', color: '#62665c' },
   { key: 'red', label: '红', color: '#d45a4c' },
@@ -14,18 +117,51 @@ const channels: { key: Channel; label: string; color: string }[] = [
 export function CurveEditor({ editor }: { editor: EditorState }) {
   const [channel, setChannel] = useState<Channel>('rgb');
   const [selected, setSelected] = useState(1);
-  const dragging = useRef<number | null>(null);
-  const gestureStart = useRef<RecipeV1 | null>(null);
+  const editorRef = useRef(editor);
+  editorRef.current = editor;
+  const channelRef = useRef(channel);
+  channelRef.current = channel;
+  const gestures = useRef<ReturnType<typeof createCurveGestureController> | null>(null);
+  if (!gestures.current)
+    gestures.current = createCurveGestureController(() => ({
+      sourceIdentity: editorRef.current.getSourceIdentity(),
+      channel: channelRef.current,
+      recipe: editorRef.current.getRecipe(),
+      preview: editorRef.current.preview,
+      commit: () => editorRef.current.commitCurrent('调整曲线'),
+    }));
+  const sourceIdentity = editor.getSourceIdentity();
+  useEffect(() => {
+    // Do not restore the preceding source's recipe into a newly loaded image.
+    gestures.current?.discard();
+  }, [sourceIdentity, channel]);
+  useEffect(() => {
+    const blur = () => gestures.current?.cancel();
+    const escape = (event: KeyboardEvent) => {
+      if (event.key === 'Escape' && gestures.current?.cancel()) event.preventDefault();
+    };
+    window.addEventListener('blur', blur);
+    window.addEventListener('keydown', escape);
+    return () => {
+      window.removeEventListener('blur', blur);
+      window.removeEventListener('keydown', escape);
+      gestures.current?.cancel();
+    };
+  }, []);
   const points = editor.recipe.curves[channel];
   const color = channels.find((c) => c.key === channel)!.color;
-  const update = (next: CurvePoint[], commit = false) => {
-    const recipe = { ...editor.recipe, curves: { ...editor.recipe.curves, [channel]: next } };
-    if (commit) editor.commit(recipe, '调整曲线');
+  const update = (next: CurvePoint[], commit = false, pointerId?: number) => {
+    const current = editor.getRecipe();
+    const recipe = { ...current, curves: { ...current.curves, [channel]: next } };
+    if (pointerId !== undefined) gestures.current?.preview(pointerId, recipe);
+    else if (commit) editor.commit(recipe, '调整曲线');
     else editor.preview(recipe);
   };
-  function changePoint(index: number, x: number, y: number, commit = false) {
-    if (index < 0 || index >= points.length || !Number.isFinite(x) || !Number.isFinite(y)) return;
-    const next = points.map((p) => [...p] as CurvePoint);
+  function changePoint(index: number, x: number, y: number, commit = false, pointerId?: number) {
+    const currentPoints = editor.getRecipe().curves[channel];
+    if (index < 0 || index >= currentPoints.length || !Number.isFinite(x) || !Number.isFinite(y))
+      return;
+    const next = currentPoints.map((p) => [...p] as CurvePoint);
     let nextX = index === 0 ? 0 : index === next.length - 1 ? 1 : next[index]![0];
     if (index > 0 && index < next.length - 1 && x !== next[index]![0]) {
       const left = next[index - 1]![0];
@@ -36,9 +172,19 @@ export function CurveEditor({ editor }: { editor: EditorState }) {
       if (proposed > left && proposed < right) nextX = proposed;
     }
     next[index] = [nextX, Math.max(0, Math.min(1, y))];
-    update(next, commit);
+    update(next, commit, pointerId);
   }
-  function addPoint() {
+  function addPoint(at?: CurvePoint) {
+    if (at && points.length < 16) {
+      const x = Math.max(0.000001, Math.min(0.999999, at[0]));
+      if (points.some((point) => Math.abs(point[0] - x) < 0.000001)) return;
+      const index = points.findIndex((point) => point[0] > x);
+      const next = points.map((point) => [...point] as CurvePoint);
+      next.splice(index, 0, [x, Math.max(0, Math.min(1, at[1]))]);
+      setSelected(index);
+      update(next, true);
+      return;
+    }
     let gap = 0,
       index = 0;
     for (let i = 0; i < points.length - 1; i++) {
@@ -58,14 +204,28 @@ export function CurveEditor({ editor }: { editor: EditorState }) {
     update(next, true);
   }
   const active = points[Math.min(selected, points.length - 1)]!;
+  const histogram = useMemo(() => sharedHistogram(editor.rendered), [editor.rendered]);
+  const distribution = histogram
+    ? channel === 'rgb'
+      ? histogram.luminance
+      : histogram[channel]
+    : null;
+  const maximum = distribution ? Math.max(1, ...Array.from(distribution)) : 1;
+  const histogramPath = distribution
+    ? `M0 256 ${Array.from(distribution, (count, x) => `L${x} ${256 - (count / maximum) * 220}`).join(' ')} L256 256Z`
+    : '';
   return (
-    <section className="curve-editor">
-      <div className="channel-tabs">
+    <section className="curve-editor refined-curve" data-motion="curve-controls">
+      <div className="channel-tabs" role="tablist" aria-label="曲线通道">
         {channels.map((c) => (
           <button
             key={c.key}
             className={channel === c.key ? 'selected' : ''}
+            role="tab"
+            aria-selected={channel === c.key}
             onClick={() => {
+              gestures.current?.cancel();
+              channelRef.current = c.key;
               setChannel(c.key);
               setSelected(0);
             }}
@@ -80,27 +240,38 @@ export function CurveEditor({ editor }: { editor: EditorState }) {
         viewBox="0 0 256 256"
         role="img"
         aria-label={`${channels.find((c) => c.key === channel)?.label} 通道曲线。可通过下方数值控制点编辑。`}
+        onDoubleClick={(event) => {
+          if ((event.target as Element).closest('[data-curve-point]')) return;
+          const bounds = event.currentTarget.getBoundingClientRect();
+          addPoint([
+            (event.clientX - bounds.left) / bounds.width,
+            1 - (event.clientY - bounds.top) / bounds.height,
+          ]);
+        }}
         onPointerMove={(e) => {
-          if (dragging.current === null) return;
+          const gesture = gestures.current?.current(e.pointerId);
+          if (!gesture) return;
+          if ((e.buttons & 1) === 0) {
+            gestures.current?.cancel(e.pointerId);
+            return;
+          }
           const bounds = e.currentTarget.getBoundingClientRect();
+          if (bounds.width <= 0 || bounds.height <= 0) return;
           changePoint(
-            dragging.current,
+            gesture.index,
             (e.clientX - bounds.left) / bounds.width,
             1 - (e.clientY - bounds.top) / bounds.height,
+            false,
+            e.pointerId,
           );
         }}
         onPointerUp={(e) => {
-          if (dragging.current === null) return;
-          dragging.current = null;
-          editor.commitCurrent('调整曲线');
-          if (e.currentTarget.hasPointerCapture(e.pointerId))
-            e.currentTarget.releasePointerCapture(e.pointerId);
+          gestures.current?.commit(e.pointerId);
         }}
-        onPointerCancel={() => {
-          dragging.current = null;
-          if (gestureStart.current) editor.preview(gestureStart.current);
-        }}
+        onPointerCancel={(e) => gestures.current?.cancel(e.pointerId)}
+        onLostPointerCapture={(e) => gestures.current?.cancel(e.pointerId)}
       >
+        {histogramPath && <path d={histogramPath} fill={color} opacity=".1" />}
         {[0, 64, 128, 192, 256].map((n) => (
           <g key={n}>
             <line x1={n} x2={n} y1="0" y2="256" className="graph-grid" />
@@ -117,12 +288,47 @@ export function CurveEditor({ editor }: { editor: EditorState }) {
         {points.map((p, i) => (
           <g
             key={i}
+            data-curve-point={i}
+            role="button"
+            tabIndex={0}
+            aria-label={`曲线控制点 ${i + 1}，输入 ${Number((p[0] * 255).toFixed(2))}，输出 ${Number((p[1] * 255).toFixed(2))}`}
+            onFocus={() => setSelected(i)}
+            onKeyDown={(event) => {
+              const step = (event.altKey ? 0.1 : event.shiftKey ? 10 : 1) / 255;
+              if (['ArrowLeft', 'ArrowRight', 'ArrowUp', 'ArrowDown'].includes(event.key)) {
+                event.preventDefault();
+                changePoint(
+                  i,
+                  p[0] +
+                    (event.key === 'ArrowRight' ? step : event.key === 'ArrowLeft' ? -step : 0),
+                  p[1] + (event.key === 'ArrowUp' ? step : event.key === 'ArrowDown' ? -step : 0),
+                );
+              } else if (
+                (event.key === 'Delete' || event.key === 'Backspace') &&
+                i > 0 &&
+                i < points.length - 1
+              ) {
+                event.preventDefault();
+                update(
+                  points.filter((_, index) => index !== i),
+                  true,
+                );
+                setSelected(Math.max(0, i - 1));
+              } else if (event.key === 'Escape') {
+                event.preventDefault();
+                if (!gestures.current?.cancel()) editor.cancelPreview();
+              }
+            }}
+            onKeyUp={(event) => {
+              if (['ArrowLeft', 'ArrowRight', 'ArrowUp', 'ArrowDown'].includes(event.key))
+                editor.commitCurrent('微调曲线控制点');
+            }}
             onPointerDown={(e) => {
+              if (e.button !== 0) return;
+              const svg = e.currentTarget.ownerSVGElement;
+              if (!svg || !gestures.current?.begin(e.pointerId, i, svg)) return;
               e.preventDefault();
-              gestureStart.current = editor.recipe;
-              dragging.current = i;
               setSelected(i);
-              e.currentTarget.ownerSVGElement?.setPointerCapture(e.pointerId);
             }}
           >
             <circle cx={p[0] * 256} cy={(1 - p[1]) * 256} r="14" fill="transparent" />
@@ -151,45 +357,38 @@ export function CurveEditor({ editor }: { editor: EditorState }) {
           ))}
         </select>
       </label>
+      <PrecisionRange
+        label="控制点输入值"
+        value={active[0] * 255}
+        min={0}
+        max={255}
+        step={0.1}
+        disabled={selected === 0 || selected >= points.length - 1}
+        onChange={(value) =>
+          changePoint(Math.min(selected, points.length - 1), value / 255, active[1])
+        }
+        onCommit={() => editor.commitCurrent('微调曲线输入')}
+        onCancel={editor.cancelPreview}
+      />
+      <PrecisionRange
+        label="控制点输出值"
+        value={active[1] * 255}
+        min={0}
+        max={255}
+        step={0.1}
+        onChange={(value) =>
+          changePoint(Math.min(selected, points.length - 1), active[0], value / 255)
+        }
+        onCommit={() => editor.commitCurrent('微调曲线输出')}
+        onCancel={editor.cancelPreview}
+      />
       <div className="curve-point-controls">
-        <label>
-          输入
-          <input
-            aria-label="控制点输入值"
-            type="number"
-            min="0"
-            max="255"
-            value={Math.round(active[0] * 255)}
-            disabled={selected === 0 || selected === points.length - 1}
-            onChange={(e) =>
-              changePoint(
-                Math.min(selected, points.length - 1),
-                Number(e.target.value) / 255,
-                active[1],
-                true,
-              )
-            }
-          />
-        </label>
-        <label>
-          输出
-          <input
-            aria-label="控制点输出值"
-            type="number"
-            min="0"
-            max="255"
-            value={Math.round(active[1] * 255)}
-            onChange={(e) =>
-              changePoint(
-                Math.min(selected, points.length - 1),
-                active[0],
-                Number(e.target.value) / 255,
-                true,
-              )
-            }
-          />
-        </label>
-        <IconButton label="添加曲线控制点" onClick={addPoint} disabled={points.length >= 16}>
+        <small>{points.length} / 16 个控制点</small>
+        <IconButton
+          label="添加曲线控制点"
+          onClick={() => addPoint()}
+          disabled={points.length >= 16}
+        >
           <Plus size={18} />
         </IconButton>
         <IconButton
@@ -206,6 +405,61 @@ export function CurveEditor({ editor }: { editor: EditorState }) {
           <Trash size={18} />
         </IconButton>
       </div>
+      <details className="editor-section">
+        <summary>
+          <span>曲线起点</span>
+          <small>应用于当前通道</small>
+        </summary>
+        <div className="curve-preset-list">
+          {(
+            [
+              [
+                '自然对比',
+                [
+                  [0, 0],
+                  [0.25, 0.19],
+                  [0.75, 0.81],
+                  [1, 1],
+                ],
+              ],
+              [
+                '柔和对比',
+                [
+                  [0, 0],
+                  [0.25, 0.3],
+                  [0.75, 0.7],
+                  [1, 1],
+                ],
+              ],
+              [
+                '抬黑',
+                [
+                  [0, 0.12],
+                  [0.35, 0.37],
+                  [1, 1],
+                ],
+              ],
+              [
+                '反相',
+                [
+                  [0, 1],
+                  [1, 0],
+                ],
+              ],
+            ] as [string, CurvePoint[]][]
+          ).map(([name, curve]) => (
+            <button
+              key={name}
+              onClick={() => {
+                setSelected(0);
+                update(curve, true);
+              }}
+            >
+              {name}
+            </button>
+          ))}
+        </div>
+      </details>
       <button
         className="text-button"
         onClick={() => {
@@ -222,7 +476,9 @@ export function CurveEditor({ editor }: { editor: EditorState }) {
         <ArrowCounterClockwise size={15} />
         重置当前通道
       </button>
-      <p className="inspector-note">调整暗部和亮部的映射。选择控制点后可以精确输入。</p>
+      <p className="inspector-note">
+        拖动控制点，双击空白处添点。选中点后方向键微调；首尾输入边界固定。可直接反相，不限制曲线只增强对比。
+      </p>
     </section>
   );
 }

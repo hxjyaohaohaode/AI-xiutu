@@ -1,4 +1,9 @@
-import { renderRecipe, renderRecipeTiled, type RGBAImage, type RecipeV1 } from '@ai-xiutu/editor';
+import {
+  renderEditorRecipe,
+  renderEditorRecipeTiled,
+  type RGBAImage,
+  type EditorRecipe,
+} from '@ai-xiutu/editor';
 
 let preview: RGBAImage | null = null;
 let original: RGBAImage | null = null;
@@ -7,7 +12,7 @@ type Message = {
   id: number;
   image?: RGBAImage;
   original?: RGBAImage;
-  recipe?: RecipeV1;
+  recipe?: EditorRecipe;
   originalOnly?: boolean;
   format?: 'png' | 'jpeg' | 'webp';
   quality?: number;
@@ -26,8 +31,11 @@ self.onmessage = async (event: MessageEvent<Message>) => {
       message.type === 'export'
         ? message.originalOnly
           ? source
-          : renderRecipeTiled(source, message.recipe, { maxPixels: 67_108_864, tileSize: 512 })
-        : renderRecipe(source, message.recipe, { maxPixels: 4_194_304 });
+          : renderEditorRecipeTiled(source, message.recipe, {
+              maxPixels: 67_108_864,
+              tileSize: 512,
+            })
+        : renderEditorRecipe(source, message.recipe, { maxPixels: 4_194_304 });
     if (message.type === 'export' && typeof OffscreenCanvas !== 'undefined') {
       const format = message.format ?? 'png';
       const canvas = new OffscreenCanvas(result.width, result.height);

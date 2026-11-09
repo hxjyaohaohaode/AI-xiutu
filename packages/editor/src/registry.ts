@@ -157,7 +157,7 @@ export const TOOLS: readonly Readonly<ToolDefinition>[] = Object.freeze(
       unit: '%',
       group: 'detail',
       domain: 'linear-srgb',
-      description: '有限 3×3 保边柔化；局部模式只作用于手选椭圆，不检测皮肤。',
+      description: '有限 3×3 保边柔化；局部模式按手动选区作用，不检测皮肤。',
     },
   ].map((tool) => Object.freeze(tool)) as ToolDefinition[],
 );
