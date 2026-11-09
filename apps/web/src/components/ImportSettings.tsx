@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { CloudArrowUp, FolderOpen, ImageSquare } from '@phosphor-icons/react';
 import { PIXEL_BUDGETS, MAX_LOCAL_FILE_BYTES } from '../editor/useEditor';
+import { MAX_V3_PIXELS } from '@ai-xiutu/editor';
 import type { Project, PublicConfig } from '../lib/types';
 import { errorMessage } from '../lib/api';
 import { Busy, InlineError, Modal } from './Ui';
@@ -85,19 +86,26 @@ export function ImportSettings({
             onChange={(event) => onBudget(Number(event.target.value))}
           >
             {PIXEL_BUDGETS.map((value) => (
-              <option key={value} value={value} disabled={small && value > 16_777_216}>
+              <option
+                key={value}
+                value={value}
+                disabled={(small || !!file) && value > MAX_V3_PIXELS}
+              >
                 {(value / 1e6).toFixed(1)} 百万像素
                 {value === 4_194_304
                   ? ' · 手机建议'
                   : value === 16_777_216
                     ? ' · 标准桌面'
-                    : value === 40_000_000
-                      ? ' · 高分辨率'
-                      : ' · 高内存设备'}
+                    : ' · 仅已有 v1/v2 作品'}
               </option>
             ))}
           </select>
         </label>
+        <p className="resource-budget-note" role="status">
+          新导入与 v3 作品最多 {(MAX_V3_PIXELS / 1e6).toFixed(1)} 百万像素、单边8192px。
+          当前新导入实际预算为 {(Math.min(budget, MAX_V3_PIXELS) / 1e6).toFixed(1)} 百万像素。
+          40/67百万像素选项仅供已有的 v1/v2 作品，提高设备预算不会提高 v3 引擎上限。
+        </p>
         <p className="resource-budget-note">
           选择的上限不是设备性能保证。分块处理减少中间缓冲，但解码、原始像素和导出仍至少可能占用约{' '}
           {Math.ceil((budget * 12) / 1024 / 1024)}{' '}
@@ -135,7 +143,8 @@ export function ImportSettings({
             {Math.floor(
               (config?.media?.maxUploadBytes ?? config?.limits.maxUploadBytes ?? 0) / 1024 / 1024,
             )}{' '}
-            MiB。规范化后仍要符合本机预算才能本地编辑。
+            MiB。规范化后仍要同时符合本机预算与 v3
+            的16.8百万像素上限才能本地编辑；更大素材可保存在项目中，需明确准备较小副本后编辑。
           </p>
           {!loggedIn ? (
             <button className="button button-secondary" onClick={onAuth}>

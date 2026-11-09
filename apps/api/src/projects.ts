@@ -23,6 +23,8 @@ import {
   assertVersion,
 } from './core.js';
 import type { LocalPrivateStorage } from './storage.js';
+import { validateRecipeReferences } from './recipe-references.js';
+import { appendArtworkRevision } from './revision-commands.js';
 
 export function validatedRecipe(input: unknown) {
   try {
@@ -230,6 +232,15 @@ export function registerProjects(
       const project = await projectAccess(tx, asset.project_id, user.id, 'edit');
       if ((await tx.query('SELECT id FROM artworks WHERE asset_id=$1 LIMIT 1', [p.id])).rowCount)
         throw new HttpError(409, 'ASSET_IN_USE', '作品仍引用此资源');
+      if (
+        (
+          await tx.query(
+            'SELECT revision_id FROM revision_sources WHERE asset_id=$1 UNION ALL SELECT revision_id FROM revision_image_layers WHERE asset_id=$1 LIMIT 1',
+            [p.id],
+          )
+        ).rowCount
+      )
+        throw new HttpError(409, 'ASSET_IN_USE', '历史版本或合成图层仍引用此资源');
       await tx.query('UPDATE assets SET deleted_at=clock_timestamp() WHERE id=$1', [p.id]);
       await emit(tx, project.space_id, project.id, 'asset.deleted', p.id);
     });
@@ -249,6 +260,7 @@ export function registerProjects(
         )
       ).rows[0];
       if (!asset) throw new HttpError(400, 'ASSET_MISMATCH', '图片不属于该项目');
+      await validateRecipeReferences(tx, p.id, recipe);
       const artwork = (
         await tx.query(
           'INSERT INTO artworks(project_id,asset_id,title) VALUES($1,$2,$3) RETURNING *',
@@ -268,7 +280,7 @@ export function registerProjects(
       await emit(tx, project.space_id, p.id, 'artwork.created', artwork.id);
       return {
         artwork: artworkDto({ ...artwork, head_revision_id: revision.id }),
-        revision: revisionDto(revision),
+        revision: revisionDto({ ...revision, asset_id: body.assetId }),
       };
     });
     return reply.code(201).send(result);
@@ -283,7 +295,10 @@ export function registerProjects(
       await db.query('SELECT * FROM assets WHERE id=$1 AND deleted_at IS NULL', [artwork.asset_id])
     ).rows[0];
     const revision = (
-      await db.query('SELECT * FROM revisions WHERE id=$1', [artwork.head_revision_id])
+      await db.query(
+        'SELECT r.*,s.asset_id FROM revisions r JOIN revision_sources s ON s.revision_id=r.id WHERE r.id=$1',
+        [artwork.head_revision_id],
+      )
     ).rows[0];
     return {
       artwork: artworkDto(artwork),
@@ -320,6 +335,7 @@ export function registerProjects(
             await tx.query('SELECT recipe FROM revisions WHERE id=$1', [artwork.head_revision_id])
           ).rows[0]!;
           const recipe = 'recipe' in body ? validatedRecipe(body.recipe) : old.recipe;
+          await validateRecipeReferences(tx, artwork.project_id, recipe);
           const label = 'label' in body ? body.label : '重命名';
           const revision = (
             await tx.query(
@@ -341,7 +357,10 @@ export function registerProjects(
             )
           ).rows[0]!;
           await emit(tx, project.space_id, project.id, 'artwork.revised', p.id);
-          return { artwork: artworkDto(updated), revision: revisionDto(revision) };
+          return {
+            artwork: artworkDto(updated),
+            revision: revisionDto({ ...revision, asset_id: artwork.asset_id }),
+          };
         });
         return reply.code(method === 'POST' ? 201 : 200).send(result);
       },
@@ -356,7 +375,7 @@ export function registerProjects(
     return {
       revisions: (
         await db.query(
-          'SELECT * FROM revisions WHERE artwork_id=$1 ORDER BY version DESC LIMIT 100',
+          'SELECT r.*,s.asset_id FROM revisions r JOIN revision_sources s ON s.revision_id=r.id WHERE r.artwork_id=$1 ORDER BY r.version DESC LIMIT 100',
           [p.id],
         )
       ).rows.map(revisionDto),
@@ -367,12 +386,52 @@ export function registerProjects(
     const p = z.object({ id, revisionId: id }).parse(req.params);
     const row = (
       await db.query(
-        'SELECT r.*,a.project_id FROM revisions r JOIN artworks a ON a.id=r.artwork_id WHERE r.id=$1 AND r.artwork_id=$2',
+        'SELECT r.*,a.project_id,s.asset_id FROM revisions r JOIN artworks a ON a.id=r.artwork_id JOIN revision_sources s ON s.revision_id=r.id WHERE r.id=$1 AND r.artwork_id=$2',
         [p.revisionId, p.id],
       )
     ).rows[0];
     if (!row) throw new HttpError(404, 'REVISION_NOT_FOUND', '版本不存在');
     await projectAccess(db, row.project_id, user.id);
-    return { revision: revisionDto(row) };
+    const asset = (
+      await db.query('SELECT * FROM assets WHERE id=$1 AND deleted_at IS NULL', [row.asset_id])
+    ).rows[0];
+    if (!asset) throw new HttpError(409, 'SOURCE_UNAVAILABLE', '此历史版本的源图片不可用');
+    return { revision: revisionDto(row), asset: assetDto(asset) };
+  });
+  app.post('/v1/artworks/:id/restore', async (req, reply) => {
+    const user = requireUser(req);
+    const params = z.object({ id }).parse(req.params);
+    const body = z
+      .object({ revisionId: id, expectedVersion: z.number().int().positive() })
+      .strict()
+      .parse(req.body);
+    const result = await transaction(db, async (tx) => {
+      const artwork = (await tx.query('SELECT * FROM artworks WHERE id=$1 FOR UPDATE', [params.id]))
+        .rows[0];
+      if (!artwork) throw new HttpError(404, 'ARTWORK_NOT_FOUND', '作品不存在');
+      const project = await projectAccess(tx, artwork.project_id, user.id, 'edit');
+      assertVersion(artwork.head_version, body.expectedVersion);
+      const original = (
+        await tx.query(
+          'SELECT r.*,s.asset_id FROM revisions r JOIN revision_sources s ON s.revision_id=r.id WHERE r.id=$1 AND r.artwork_id=$2',
+          [body.revisionId, artwork.id],
+        )
+      ).rows[0];
+      if (!original) throw new HttpError(404, 'REVISION_NOT_FOUND', '版本不属于此作品');
+      const saved = await appendArtworkRevision(tx, {
+        artwork,
+        actorId: user.id,
+        recipe: validatedRecipe(original.recipe),
+        assetId: original.asset_id,
+        label: `恢复版本 ${original.version}`,
+      });
+      await emit(tx, project.space_id, project.id, 'artwork.revised', artwork.id);
+      await audit(tx, user.id, 'artwork.restore', 'revision', saved.revision.id, {
+        sourceRevisionId: original.id,
+        artworkId: artwork.id,
+      });
+      return saved;
+    });
+    return reply.code(201).send(result);
   });
 }

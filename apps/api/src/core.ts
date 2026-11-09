@@ -247,6 +247,7 @@ export const artworkDto = (a: Record<string, any>) => ({
 export const revisionDto = (r: Record<string, any>) => ({
   id: r.id,
   artworkId: r.artwork_id,
+  assetId: r.asset_id,
   version: r.version,
   parentId: r.parent_id,
   recipe: r.recipe,

@@ -2,7 +2,7 @@ import 'dotenv/config';
 import { mkdtemp, open, rm } from 'node:fs/promises';
 import { join, resolve } from 'node:path';
 import { randomBytes } from 'node:crypto';
-import { createDatabase } from '@ai-xiutu/db';
+import { createDatabase, getSchemaReadiness } from '@ai-xiutu/db';
 import { createAiService } from '@ai-xiutu/ai';
 import {
   createTencentSms,
@@ -24,12 +24,11 @@ try {
   });
   db = createDatabase(config.databaseUrl);
   await db.query('SELECT 1');
-  const version = (await db.query('SELECT max(version) AS version FROM schema_migrations')).rows[0]
-    ?.version;
+  const schema = await getSchemaReadiness(db);
   results.push({
     check: 'database',
-    ok: Number(version) >= 2,
-    detail: `Reachable. Schema version ${Number(version) || 0}; native/WASM provenance must be recorded separately.`,
+    ok: schema.ready,
+    detail: `Reachable. Schema version ${schema.currentVersion}; required ${schema.requiredVersion}; missing [${schema.missingVersions.join(',')}]; unexpected [${schema.unexpectedVersions.join(',')}]. Native/WASM provenance must be recorded separately.`,
   });
   const storage = createPrivateStorage();
   await storage.initialize();

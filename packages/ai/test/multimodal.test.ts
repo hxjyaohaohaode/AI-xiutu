@@ -13,7 +13,12 @@ import {
   transaction,
   type Database,
 } from '@ai-xiutu/db';
-import { createRecipe, createRecipeV2, createAdjustmentRegionV2 } from '@ai-xiutu/editor';
+import {
+  createRecipe,
+  createRecipeV2,
+  createRecipeV3,
+  createAdjustmentRegionV2,
+} from '@ai-xiutu/editor';
 import { ProviderError, type ImageModerator, type TextModerator } from '@ai-xiutu/providers';
 import { LocalPrivateStorage } from '@ai-xiutu/storage';
 import {
@@ -435,6 +440,60 @@ test(
       });
     try {
       await run(
+        'v3 plans preserve image dependencies and fine transform, while unuploaded or foreign layer references create no hold',
+        async (f) => {
+          const recipe = createRecipeV3({
+            transform: { rotationDegrees: -13.75 },
+            imageLayers: [
+              {
+                id: 'layer-v3',
+                name: 'Private source layer',
+                enabled: false,
+                opacity: 0.8,
+                blendMode: 'screen',
+                sourceId: f.assetId,
+                x: 0.1,
+                y: 0.1,
+                width: 0.5,
+                height: 0.5,
+                rotationDegrees: 3.5,
+                flipX: false,
+                flipY: false,
+                mask: null,
+              },
+            ],
+          });
+          f.controls.planValue = {
+            summary: '微调蓝色',
+            adjustments: { contrast: -4 },
+            parameters: [{ path: 'hsl.blue.saturation', value: -8 }],
+          };
+          const body = { ...f.planBody(), recipe };
+          for (const sourceId of ['local:unuploaded', f.foreignAssetId]) {
+            const invalid = structuredClone(recipe);
+            invalid.imageLayers[0]!.sourceId = sourceId;
+            await assert.rejects(
+              f.submit({ ...body, idempotencyKey: randomUUID(), recipe: invalid }),
+              {
+                code: sourceId.startsWith('local:') ? 'LAYER_NOT_UPLOADED' : 'LAYER_ASSET_MISMATCH',
+              },
+            );
+          }
+          assert.equal((await f.entitlements()).held, 0);
+          const created = await f.submit(body);
+          await f.service.runOnce();
+          const done = await f.row(created.job.id);
+          assert.equal(done.state, 'completed');
+          assert.equal(done.hold_state, 'settled');
+          assert.equal(done.output.recipe.schemaVersion, 3);
+          assert.deepEqual(done.output.recipe.transform, recipe.transform);
+          assert.deepEqual(done.output.recipe.imageLayers, recipe.imageLayers);
+          assert.equal(done.output.recipe.hsl.blue.saturation, -8);
+          assert.equal(done.output.parameterChanges.length, 2);
+          assert.equal(f.calls.plan, 1);
+        },
+      );
+      await run(
         'new v2 numeric plans freeze their protocol, moderate generated changes and preserve existing masks without auto-applying',
         async (f) => {
           const recipe = createRecipeV2({
@@ -665,7 +724,7 @@ test(
             await db.query('SELECT * FROM revisions WHERE id=$1', [art.head_revision_id])
           ).rows[0]!;
           assert.equal(revision.version, 1);
-          assert.deepEqual(revision.recipe, createRecipe());
+          assert.deepEqual(revision.recipe, createRecipeV3());
           assert.equal((await f.entitlements()).held, 0);
           assert.equal((await f.entitlements()).usage.spent, 3);
           assert.equal((await f.submit(body)).job.id, done.id);
@@ -1281,6 +1340,44 @@ test(
           await f.service.runOnce();
           assert.equal(f.calls.image, 0);
           assert.equal(await f.generatedCount(), 0);
+        },
+      );
+
+      await run(
+        'restored image dispatch evidence wins over later model disablement and cannot release the paid hold',
+        async (f) => {
+          const job = await f.submit(f.imageBody());
+          await f.journal.start(job.job.id, job.job.inputHash);
+          await db.query(
+            "UPDATE model_configs SET config=jsonb_set(config,'{enabled}','false'::jsonb) WHERE id=$1",
+            [f.modelIds.image],
+          );
+          await f.service.runOnce();
+          const done = await f.row(job.job.id);
+          assert.equal(done.state, 'unknown');
+          assert.equal(done.hold_state, 'unknown');
+          assert.equal(done.error_code, 'DISPATCH_ALREADY_RECORDED');
+          assert.equal(f.calls.image, 0);
+          assert.equal((await f.entitlements()).held, 3);
+        },
+      );
+
+      await run(
+        'restored plan dispatch evidence wins over revoked membership before any access-denied release',
+        async (f) => {
+          const job = await f.submit(f.planBody());
+          await f.journal.start(job.job.id, job.job.inputHash);
+          await db.query("UPDATE memberships SET role='viewer' WHERE space_id=$1 AND user_id=$2", [
+            f.spaceId,
+            f.actorId,
+          ]);
+          await f.service.runOnce();
+          const done = await f.row(job.job.id);
+          assert.equal(done.state, 'unknown');
+          assert.equal(done.hold_state, 'unknown');
+          assert.equal(done.error_code, 'DISPATCH_ALREADY_RECORDED');
+          assert.equal(f.calls.plan, 0);
+          assert.equal((await f.entitlements()).held, 2);
         },
       );
 

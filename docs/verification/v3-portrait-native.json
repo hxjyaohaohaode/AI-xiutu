@@ -1,0 +1,1990 @@
+{
+  "schemaVersion": 1,
+  "evidenceKind": "actual-native-cpu-inference-and-product-adapter-render-validation",
+  "recordedAt": "2026-11-09T17:36:21.285218+00:00",
+  "nativeRunId": "8c26e14c-08ae-4451-af67-0144ad5b8fbc",
+  "browserAutomaticInferenceVerified": false,
+  "limits": [
+    "Three public photographs are a smoke test, not a representative population accuracy study.",
+    "The 46 controls are deterministic landmark/mask editing primitives, not industrial automatic defect detection.",
+    "Native CPU inference does not establish browser WebGL support or mobile latency.",
+    "Model inference timing excludes initial model loading; editing check timing includes full/tiled/reverse renders, assertions and hashes.",
+    "Visual checks of canonical images, landmark overlays and rendered crops are qualitative, not pixel-perfect landmark ground truth."
+  ],
+  "runtime": {
+    "os": "Linux-6.18.57-x86_64-with-glibc2.39",
+    "machine": "x86_64",
+    "python": "3.12.14",
+    "mediapipe": "1.2.2",
+    "numpy": "2.5.4",
+    "pillow": "13.0.0",
+    "node": "v24.22.1",
+    "nodePlatform": "linux",
+    "nodeArch": "x64",
+    "reportedCpuModel": "AMD EPYC 9V74 80-Core Processor",
+    "reportedAvailableParallelism": 8,
+    "delegate": "CPU / TensorFlow Lite XNNPACK",
+    "systemDependencyNote": "Official Ubuntu libgles2 1.7.0-1build1 was extracted to an isolated directory for libGLESv2.so.2; no product dependency was changed.",
+    "modelRuntimeWarning": "MediaPipe logged disabled optional feedback tensors and a NORM_RECT/IMAGE_DIMENSIONS projection warning. Actual inference completed; geometric accuracy is not established by successful execution alone."
+  },
+  "models": {
+    "schemaVersion": 1,
+    "sdkVersion": "1.2.2",
+    "algorithmVersion": "mediapipe-v1-selfie256",
+    "assets": [
+      {
+        "file": "face_landmarker.task",
+        "sha256": "64184e229b263107bc2b804c6625db1341ff2bb731874b0bcc2fe6544e0bc9ff",
+        "bytes": 3758596
+      },
+      {
+        "file": "pose_landmarker_lite.task",
+        "sha256": "59929e1d1ee95287735ddd833b19cf4ac46d29bc7afddbbf6753c459690d574a",
+        "bytes": 5777746
+      },
+      {
+        "file": "selfie_multiclass_256x256.tflite",
+        "sha256": "c6748b1253a99067ef71f7e26ca71096cd449baefa8f101900ea23016507e0e0",
+        "bytes": 16371837
+      }
+    ]
+  },
+  "modelSources": [
+    "https://storage.googleapis.com/mediapipe-models/face_landmarker/face_landmarker/float16/1/face_landmarker.task",
+    "https://storage.googleapis.com/mediapipe-models/pose_landmarker/pose_landmarker_lite/float16/1/pose_landmarker_lite.task",
+    "https://storage.googleapis.com/mediapipe-models/image_segmenter/selfie_multiclass_256x256/float32/1/selfie_multiclass_256x256.tflite"
+  ],
+  "sourceHashFormula": "SHA256(UTF8(width + \"x\" + height + \":srgb-rgba8:\") || full normalized RGBA bytes)",
+  "inputs": [
+    {
+      "name": "portrait-hopper",
+      "width": 512,
+      "height": 600,
+      "contentHash": "7d5ea333c0a2916fc3e9014d166876eaeaa1bf70f2254fe4e28e64832c5a1bf9",
+      "canonicalPngSha256": "9201de05215c97bfc34cf9eacf996e9b04db9813fb83cc3de3cbf08e8ba15935",
+      "sourceJpegSha256": "a8ca6d734765703b09728ab47fe59f473d93ae3967fc24c7c0288c3c7adb7130",
+      "sourceUrl": "https://raw.githubusercontent.com/matplotlib/matplotlib/main/lib/matplotlib/mpl-data/sample_data/grace_hopper.jpg",
+      "timings": {
+        "faceMs": 11.426,
+        "poseMs": 27.072,
+        "segmentationMs": 124.993
+      },
+      "faceCount": 1,
+      "bodyCount": 1,
+      "faceLandmarkCounts": [478],
+      "bodyLandmarkCounts": [33],
+      "categoryCounts": {
+        "0": 130027,
+        "1": 2648,
+        "2": 7867,
+        "3": 32736,
+        "4": 113055,
+        "5": 20867
+      },
+      "fixedJpegBytes": 61306
+    },
+    {
+      "name": "mediapipe-portrait",
+      "width": 820,
+      "height": 1024,
+      "contentHash": "d1fe799e11c80a03453d6486a0fbca1bbeea47f9278e48957e39a48a32114f2b",
+      "canonicalPngSha256": "5a55e8fc183d906e0e50d5f27670c5c71cd16b6e587bd5f1a5e9c49c60065483",
+      "sourceJpegSha256": "a6f11efaa834706db23f275b6115058fa87fc7f14362681e6abe14e82749de3e",
+      "sourceUrl": "https://storage.googleapis.com/mediapipe-assets/portrait.jpg",
+      "timings": {
+        "faceMs": 11.346,
+        "poseMs": 25.41,
+        "segmentationMs": 129.313
+      },
+      "faceCount": 1,
+      "bodyCount": 1,
+      "faceLandmarkCounts": [478],
+      "bodyLandmarkCounts": [33],
+      "categoryCounts": {
+        "0": 412422,
+        "1": 11101,
+        "2": 17521,
+        "3": 48333,
+        "4": 348337,
+        "5": 1966
+      },
+      "fixedJpegBytes": 176561
+    },
+    {
+      "name": "mediapipe-pose",
+      "width": 1000,
+      "height": 667,
+      "contentHash": "b57e5f5c1a05a5131a9f390690204785f2ff03d577cd2b3a07baf4ed6ed6ec6a",
+      "canonicalPngSha256": "99cb0df7365a4d3617aca6f6dc6167eb42dbedd6d308ed15a95096b68a313550",
+      "sourceJpegSha256": "c8a830ed683c0276d713dd5aeda28f415f10cd6291972084a40d0d8b934ed62b",
+      "sourceUrl": "https://storage.googleapis.com/mediapipe-assets/pose.jpg",
+      "timings": {
+        "faceMs": 2.387,
+        "poseMs": 28.491,
+        "segmentationMs": 114.224
+      },
+      "faceCount": 0,
+      "bodyCount": 1,
+      "faceLandmarkCounts": [],
+      "bodyLandmarkCounts": [33],
+      "categoryCounts": {
+        "0": 622130,
+        "1": 1281,
+        "2": 21400,
+        "3": 1780,
+        "4": 20409
+      },
+      "fixedJpegBytes": 44100
+    }
+  ],
+  "summary": {
+    "individualToolsPassed": 46,
+    "signedPositiveAndNegativeCases": 36,
+    "exactFullTiledComparisons": 46,
+    "exactOutsideMaskChecks": 18,
+    "immutableSourceHashChecks": 46,
+    "controlValidationElapsedMs": {
+      "min": 179.381,
+      "median": 271.031,
+      "max": 1403.351
+    },
+    "positiveParameterValue": 55,
+    "negativeParameterValueForSignedControls": -55
+  },
+  "controls": [
+    {
+      "name": "mediapipe-portrait",
+      "tool": "smooth",
+      "label": "磨皮",
+      "sourceFrame": {
+        "coordinates": "source-normalized",
+        "contentHash": "d1fe799e11c80a03453d6486a0fbca1bbeea47f9278e48957e39a48a32114f2b",
+        "width": 820,
+        "height": 1024,
+        "orientation": "normalized"
+      },
+      "targetId": "face-d1fe799e11c8-1",
+      "positiveStats": {
+        "changedPixels": 18135,
+        "maxChannelDelta": 11,
+        "meanChannelDelta": 0.02019578887195122
+      },
+      "negativeStats": null,
+      "fullTiledByteEqual": true,
+      "outsideMaskUnchanged": true,
+      "elapsedMs": 764.094
+    },
+    {
+      "name": "mediapipe-portrait",
+      "tool": "wrinkles",
+      "label": "纹理弱化",
+      "sourceFrame": {
+        "coordinates": "source-normalized",
+        "contentHash": "d1fe799e11c80a03453d6486a0fbca1bbeea47f9278e48957e39a48a32114f2b",
+        "width": 820,
+        "height": 1024,
+        "orientation": "normalized"
+      },
+      "targetId": "face-d1fe799e11c8-1",
+      "positiveStats": {
+        "changedPixels": 22212,
+        "maxChannelDelta": 53,
+        "meanChannelDelta": 0.04878803036077236
+      },
+      "negativeStats": null,
+      "fullTiledByteEqual": true,
+      "outsideMaskUnchanged": true,
+      "elapsedMs": 684.084
+    },
+    {
+      "name": "mediapipe-portrait",
+      "tool": "texture",
+      "label": "皮肤肌理",
+      "sourceFrame": {
+        "coordinates": "source-normalized",
+        "contentHash": "d1fe799e11c80a03453d6486a0fbca1bbeea47f9278e48957e39a48a32114f2b",
+        "width": 820,
+        "height": 1024,
+        "orientation": "normalized"
+      },
+      "targetId": "face-d1fe799e11c8-1",
+      "positiveStats": {
+        "changedPixels": 22700,
+        "maxChannelDelta": 59,
+        "meanChannelDelta": 0.052962239583333334
+      },
+      "negativeStats": {
+        "changedPixels": 22702,
+        "maxChannelDelta": 55,
+        "meanChannelDelta": 0.05256923272357723
+      },
+      "fullTiledByteEqual": true,
+      "outsideMaskUnchanged": true,
+      "elapsedMs": 915.334
+    },
+    {
+      "name": "mediapipe-portrait",
+      "tool": "skinLight",
+      "label": "肤色明暗",
+      "sourceFrame": {
+        "coordinates": "source-normalized",
+        "contentHash": "d1fe799e11c80a03453d6486a0fbca1bbeea47f9278e48957e39a48a32114f2b",
+        "width": 820,
+        "height": 1024,
+        "orientation": "normalized"
+      },
+      "targetId": "face-d1fe799e11c8-1",
+      "positiveStats": {
+        "changedPixels": 33669,
+        "maxChannelDelta": 28,
+        "meanChannelDelta": 0.7215951314786585
+      },
+      "negativeStats": {
+        "changedPixels": 33608,
+        "maxChannelDelta": 28,
+        "meanChannelDelta": 0.6522599879319105
+      },
+      "fullTiledByteEqual": true,
+      "outsideMaskUnchanged": true,
+      "elapsedMs": 1072.103
+    },
+    {
+      "name": "mediapipe-portrait",
+      "tool": "even",
+      "label": "匀肤",
+      "sourceFrame": {
+        "coordinates": "source-normalized",
+        "contentHash": "d1fe799e11c80a03453d6486a0fbca1bbeea47f9278e48957e39a48a32114f2b",
+        "width": 820,
+        "height": 1024,
+        "orientation": "normalized"
+      },
+      "targetId": "face-d1fe799e11c8-1",
+      "positiveStats": {
+        "changedPixels": 14033,
+        "maxChannelDelta": 6,
+        "meanChannelDelta": 0.012219734502032521
+      },
+      "negativeStats": null,
+      "fullTiledByteEqual": true,
+      "outsideMaskUnchanged": true,
+      "elapsedMs": 1403.351
+    },
+    {
+      "name": "mediapipe-portrait",
+      "tool": "skinWarmth",
+      "label": "肤色冷暖",
+      "sourceFrame": {
+        "coordinates": "source-normalized",
+        "contentHash": "d1fe799e11c80a03453d6486a0fbca1bbeea47f9278e48957e39a48a32114f2b",
+        "width": 820,
+        "height": 1024,
+        "orientation": "normalized"
+      },
+      "targetId": "face-d1fe799e11c8-1",
+      "positiveStats": {
+        "changedPixels": 32925,
+        "maxChannelDelta": 5,
+        "meanChannelDelta": 0.0830931624745935
+      },
+      "negativeStats": {
+        "changedPixels": 32896,
+        "maxChannelDelta": 5,
+        "meanChannelDelta": 0.0822460143546748
+      },
+      "fullTiledByteEqual": true,
+      "outsideMaskUnchanged": true,
+      "elapsedMs": 1076.362
+    },
+    {
+      "name": "mediapipe-portrait",
+      "tool": "complexion",
+      "label": "气色",
+      "sourceFrame": {
+        "coordinates": "source-normalized",
+        "contentHash": "d1fe799e11c80a03453d6486a0fbca1bbeea47f9278e48957e39a48a32114f2b",
+        "width": 820,
+        "height": 1024,
+        "orientation": "normalized"
+      },
+      "targetId": "face-d1fe799e11c8-1",
+      "positiveStats": {
+        "changedPixels": 32314,
+        "maxChannelDelta": 2,
+        "meanChannelDelta": 0.04900200076219512
+      },
+      "negativeStats": {
+        "changedPixels": 32298,
+        "maxChannelDelta": 2,
+        "meanChannelDelta": 0.04908814469004065
+      },
+      "fullTiledByteEqual": true,
+      "outsideMaskUnchanged": true,
+      "elapsedMs": 1017.955
+    },
+    {
+      "name": "mediapipe-portrait",
+      "tool": "underEye",
+      "label": "眼下明暗",
+      "sourceFrame": {
+        "coordinates": "source-normalized",
+        "contentHash": "d1fe799e11c80a03453d6486a0fbca1bbeea47f9278e48957e39a48a32114f2b",
+        "width": 820,
+        "height": 1024,
+        "orientation": "normalized"
+      },
+      "targetId": "face-d1fe799e11c8-1",
+      "positiveStats": {
+        "changedPixels": 2583,
+        "maxChannelDelta": 24,
+        "meanChannelDelta": 0.02668437182418699
+      },
+      "negativeStats": {
+        "changedPixels": 2539,
+        "maxChannelDelta": 24,
+        "meanChannelDelta": 0.023470052083333335
+      },
+      "fullTiledByteEqual": true,
+      "outsideMaskUnchanged": true,
+      "elapsedMs": 983.255
+    },
+    {
+      "name": "mediapipe-portrait",
+      "tool": "eyeLight",
+      "label": "亮眼",
+      "sourceFrame": {
+        "coordinates": "source-normalized",
+        "contentHash": "d1fe799e11c80a03453d6486a0fbca1bbeea47f9278e48957e39a48a32114f2b",
+        "width": 820,
+        "height": 1024,
+        "orientation": "normalized"
+      },
+      "targetId": "face-d1fe799e11c8-1",
+      "positiveStats": {
+        "changedPixels": 311,
+        "maxChannelDelta": 39,
+        "meanChannelDelta": 0.002485073678861789
+      },
+      "negativeStats": {
+        "changedPixels": 292,
+        "maxChannelDelta": 16,
+        "meanChannelDelta": 0.0013739361026422765
+      },
+      "fullTiledByteEqual": true,
+      "outsideMaskUnchanged": true,
+      "elapsedMs": 1220.241
+    },
+    {
+      "name": "mediapipe-portrait",
+      "tool": "browDetail",
+      "label": "眉毛增强",
+      "sourceFrame": {
+        "coordinates": "source-normalized",
+        "contentHash": "d1fe799e11c80a03453d6486a0fbca1bbeea47f9278e48957e39a48a32114f2b",
+        "width": 820,
+        "height": 1024,
+        "orientation": "normalized"
+      },
+      "targetId": "face-d1fe799e11c8-1",
+      "positiveStats": {
+        "changedPixels": 1382,
+        "maxChannelDelta": 37,
+        "meanChannelDelta": 0.009688611534552846
+      },
+      "negativeStats": {
+        "changedPixels": 1372,
+        "maxChannelDelta": 23,
+        "meanChannelDelta": 0.008700536712398375
+      },
+      "fullTiledByteEqual": true,
+      "outsideMaskUnchanged": true,
+      "elapsedMs": 1339.677
+    },
+    {
+      "name": "mediapipe-portrait",
+      "tool": "sculpt",
+      "label": "鼻梁光影",
+      "sourceFrame": {
+        "coordinates": "source-normalized",
+        "contentHash": "d1fe799e11c80a03453d6486a0fbca1bbeea47f9278e48957e39a48a32114f2b",
+        "width": 820,
+        "height": 1024,
+        "orientation": "normalized"
+      },
+      "targetId": "face-d1fe799e11c8-1",
+      "positiveStats": {
+        "changedPixels": 2791,
+        "maxChannelDelta": 21,
+        "meanChannelDelta": 0.024938071646341462
+      },
+      "negativeStats": {
+        "changedPixels": 2748,
+        "maxChannelDelta": 20,
+        "meanChannelDelta": 0.022464907266260162
+      },
+      "fullTiledByteEqual": true,
+      "outsideMaskUnchanged": true,
+      "elapsedMs": 861.991
+    },
+    {
+      "name": "mediapipe-portrait",
+      "tool": "faceSlim",
+      "label": "瘦脸 / 宽脸",
+      "sourceFrame": {
+        "coordinates": "source-normalized",
+        "contentHash": "d1fe799e11c80a03453d6486a0fbca1bbeea47f9278e48957e39a48a32114f2b",
+        "width": 820,
+        "height": 1024,
+        "orientation": "normalized"
+      },
+      "targetId": "face-d1fe799e11c8-1",
+      "positiveStats": {
+        "changedPixels": 27031,
+        "maxChannelDelta": 192,
+        "meanChannelDelta": 0.49267657520325203
+      },
+      "negativeStats": {
+        "changedPixels": 27039,
+        "maxChannelDelta": 245,
+        "meanChannelDelta": 0.5168258542936992
+      },
+      "fullTiledByteEqual": true,
+      "outsideMaskUnchanged": null,
+      "elapsedMs": 299.915
+    },
+    {
+      "name": "mediapipe-portrait",
+      "tool": "faceSmall",
+      "label": "小脸 / 大脸",
+      "sourceFrame": {
+        "coordinates": "source-normalized",
+        "contentHash": "d1fe799e11c80a03453d6486a0fbca1bbeea47f9278e48957e39a48a32114f2b",
+        "width": 820,
+        "height": 1024,
+        "orientation": "normalized"
+      },
+      "targetId": "face-d1fe799e11c8-1",
+      "positiveStats": {
+        "changedPixels": 30379,
+        "maxChannelDelta": 195,
+        "meanChannelDelta": 0.47629454077743905
+      },
+      "negativeStats": {
+        "changedPixels": 30403,
+        "maxChannelDelta": 238,
+        "meanChannelDelta": 0.45797962715955287
+      },
+      "fullTiledByteEqual": true,
+      "outsideMaskUnchanged": null,
+      "elapsedMs": 261.485
+    },
+    {
+      "name": "mediapipe-portrait",
+      "tool": "faceNarrow",
+      "label": "窄脸 / 宽脸",
+      "sourceFrame": {
+        "coordinates": "source-normalized",
+        "contentHash": "d1fe799e11c80a03453d6486a0fbca1bbeea47f9278e48957e39a48a32114f2b",
+        "width": 820,
+        "height": 1024,
+        "orientation": "normalized"
+      },
+      "targetId": "face-d1fe799e11c8-1",
+      "positiveStats": {
+        "changedPixels": 15595,
+        "maxChannelDelta": 160,
+        "meanChannelDelta": 0.2984819613821138
+      },
+      "negativeStats": {
+        "changedPixels": 15595,
+        "maxChannelDelta": 148,
+        "meanChannelDelta": 0.2953001937245935
+      },
+      "fullTiledByteEqual": true,
+      "outsideMaskUnchanged": null,
+      "elapsedMs": 256.053
+    },
+    {
+      "name": "mediapipe-portrait",
+      "tool": "vFace",
+      "label": "下脸收窄",
+      "sourceFrame": {
+        "coordinates": "source-normalized",
+        "contentHash": "d1fe799e11c80a03453d6486a0fbca1bbeea47f9278e48957e39a48a32114f2b",
+        "width": 820,
+        "height": 1024,
+        "orientation": "normalized"
+      },
+      "targetId": "face-d1fe799e11c8-1",
+      "positiveStats": {
+        "changedPixels": 15193,
+        "maxChannelDelta": 237,
+        "meanChannelDelta": 0.3313186769563008
+      },
+      "negativeStats": {
+        "changedPixels": 15197,
+        "maxChannelDelta": 250,
+        "meanChannelDelta": 0.3137885861280488
+      },
+      "fullTiledByteEqual": true,
+      "outsideMaskUnchanged": null,
+      "elapsedMs": 303.16
+    },
+    {
+      "name": "mediapipe-portrait",
+      "tool": "temples",
+      "label": "太阳穴",
+      "sourceFrame": {
+        "coordinates": "source-normalized",
+        "contentHash": "d1fe799e11c80a03453d6486a0fbca1bbeea47f9278e48957e39a48a32114f2b",
+        "width": 820,
+        "height": 1024,
+        "orientation": "normalized"
+      },
+      "targetId": "face-d1fe799e11c8-1",
+      "positiveStats": {
+        "changedPixels": 6111,
+        "maxChannelDelta": 94,
+        "meanChannelDelta": 0.06044604293699187
+      },
+      "negativeStats": {
+        "changedPixels": 6040,
+        "maxChannelDelta": 111,
+        "meanChannelDelta": 0.06382232914126017
+      },
+      "fullTiledByteEqual": true,
+      "outsideMaskUnchanged": null,
+      "elapsedMs": 271.031
+    },
+    {
+      "name": "mediapipe-portrait",
+      "tool": "cheekbones",
+      "label": "颧骨",
+      "sourceFrame": {
+        "coordinates": "source-normalized",
+        "contentHash": "d1fe799e11c80a03453d6486a0fbca1bbeea47f9278e48957e39a48a32114f2b",
+        "width": 820,
+        "height": 1024,
+        "orientation": "normalized"
+      },
+      "targetId": "face-d1fe799e11c8-1",
+      "positiveStats": {
+        "changedPixels": 7024,
+        "maxChannelDelta": 156,
+        "meanChannelDelta": 0.1256268260924797
+      },
+      "negativeStats": {
+        "changedPixels": 7013,
+        "maxChannelDelta": 159,
+        "meanChannelDelta": 0.1306255557672764
+      },
+      "fullTiledByteEqual": true,
+      "outsideMaskUnchanged": null,
+      "elapsedMs": 251.469
+    },
+    {
+      "name": "mediapipe-portrait",
+      "tool": "jaw",
+      "label": "下颌角",
+      "sourceFrame": {
+        "coordinates": "source-normalized",
+        "contentHash": "d1fe799e11c80a03453d6486a0fbca1bbeea47f9278e48957e39a48a32114f2b",
+        "width": 820,
+        "height": 1024,
+        "orientation": "normalized"
+      },
+      "targetId": "face-d1fe799e11c8-1",
+      "positiveStats": {
+        "changedPixels": 8122,
+        "maxChannelDelta": 240,
+        "meanChannelDelta": 0.16832166222052847
+      },
+      "negativeStats": {
+        "changedPixels": 8140,
+        "maxChannelDelta": 251,
+        "meanChannelDelta": 0.15890775851117886
+      },
+      "fullTiledByteEqual": true,
+      "outsideMaskUnchanged": null,
+      "elapsedMs": 247.338
+    },
+    {
+      "name": "mediapipe-portrait",
+      "tool": "chin",
+      "label": "下巴长短",
+      "sourceFrame": {
+        "coordinates": "source-normalized",
+        "contentHash": "d1fe799e11c80a03453d6486a0fbca1bbeea47f9278e48957e39a48a32114f2b",
+        "width": 820,
+        "height": 1024,
+        "orientation": "normalized"
+      },
+      "targetId": "face-d1fe799e11c8-1",
+      "positiveStats": {
+        "changedPixels": 6444,
+        "maxChannelDelta": 207,
+        "meanChannelDelta": 0.151269134273374
+      },
+      "negativeStats": {
+        "changedPixels": 6409,
+        "maxChannelDelta": 232,
+        "meanChannelDelta": 0.1932883161839431
+      },
+      "fullTiledByteEqual": true,
+      "outsideMaskUnchanged": null,
+      "elapsedMs": 260.94
+    },
+    {
+      "name": "mediapipe-portrait",
+      "tool": "forehead",
+      "label": "额头比例",
+      "sourceFrame": {
+        "coordinates": "source-normalized",
+        "contentHash": "d1fe799e11c80a03453d6486a0fbca1bbeea47f9278e48957e39a48a32114f2b",
+        "width": 820,
+        "height": 1024,
+        "orientation": "normalized"
+      },
+      "targetId": "face-d1fe799e11c8-1",
+      "positiveStats": {
+        "changedPixels": 12584,
+        "maxChannelDelta": 147,
+        "meanChannelDelta": 0.13750674860264228
+      },
+      "negativeStats": {
+        "changedPixels": 12579,
+        "maxChannelDelta": 139,
+        "meanChannelDelta": 0.11757455221036585
+      },
+      "fullTiledByteEqual": true,
+      "outsideMaskUnchanged": null,
+      "elapsedMs": 238.214
+    },
+    {
+      "name": "mediapipe-portrait",
+      "tool": "eyeSize",
+      "label": "眼睛大小",
+      "sourceFrame": {
+        "coordinates": "source-normalized",
+        "contentHash": "d1fe799e11c80a03453d6486a0fbca1bbeea47f9278e48957e39a48a32114f2b",
+        "width": 820,
+        "height": 1024,
+        "orientation": "normalized"
+      },
+      "targetId": "face-d1fe799e11c8-1",
+      "positiveStats": {
+        "changedPixels": 4497,
+        "maxChannelDelta": 98,
+        "meanChannelDelta": 0.04984279725609756
+      },
+      "negativeStats": {
+        "changedPixels": 4521,
+        "maxChannelDelta": 106,
+        "meanChannelDelta": 0.0531591399898374
+      },
+      "fullTiledByteEqual": true,
+      "outsideMaskUnchanged": null,
+      "elapsedMs": 251.377
+    },
+    {
+      "name": "mediapipe-portrait",
+      "tool": "eyeSpacing",
+      "label": "眼间距",
+      "sourceFrame": {
+        "coordinates": "source-normalized",
+        "contentHash": "d1fe799e11c80a03453d6486a0fbca1bbeea47f9278e48957e39a48a32114f2b",
+        "width": 820,
+        "height": 1024,
+        "orientation": "normalized"
+      },
+      "targetId": "face-d1fe799e11c8-1",
+      "positiveStats": {
+        "changedPixels": 5393,
+        "maxChannelDelta": 224,
+        "meanChannelDelta": 0.10909989519817073
+      },
+      "negativeStats": {
+        "changedPixels": 5421,
+        "maxChannelDelta": 216,
+        "meanChannelDelta": 0.11360756478658536
+      },
+      "fullTiledByteEqual": true,
+      "outsideMaskUnchanged": null,
+      "elapsedMs": 254.127
+    },
+    {
+      "name": "mediapipe-portrait",
+      "tool": "eyeRotate",
+      "label": "眼睛旋转",
+      "sourceFrame": {
+        "coordinates": "source-normalized",
+        "contentHash": "d1fe799e11c80a03453d6486a0fbca1bbeea47f9278e48957e39a48a32114f2b",
+        "width": 820,
+        "height": 1024,
+        "orientation": "normalized"
+      },
+      "targetId": "face-d1fe799e11c8-1",
+      "positiveStats": {
+        "changedPixels": 5176,
+        "maxChannelDelta": 147,
+        "meanChannelDelta": 0.07427075393800812
+      },
+      "negativeStats": {
+        "changedPixels": 5170,
+        "maxChannelDelta": 132,
+        "meanChannelDelta": 0.07506629509654472
+      },
+      "fullTiledByteEqual": true,
+      "outsideMaskUnchanged": null,
+      "elapsedMs": 271.541
+    },
+    {
+      "name": "mediapipe-portrait",
+      "tool": "noseWidth",
+      "label": "鼻翼宽度",
+      "sourceFrame": {
+        "coordinates": "source-normalized",
+        "contentHash": "d1fe799e11c80a03453d6486a0fbca1bbeea47f9278e48957e39a48a32114f2b",
+        "width": 820,
+        "height": 1024,
+        "orientation": "normalized"
+      },
+      "targetId": "face-d1fe799e11c8-1",
+      "positiveStats": {
+        "changedPixels": 2958,
+        "maxChannelDelta": 107,
+        "meanChannelDelta": 0.028851467225609755
+      },
+      "negativeStats": {
+        "changedPixels": 2946,
+        "maxChannelDelta": 106,
+        "meanChannelDelta": 0.028906646976626017
+      },
+      "fullTiledByteEqual": true,
+      "outsideMaskUnchanged": null,
+      "elapsedMs": 253.118
+    },
+    {
+      "name": "mediapipe-portrait",
+      "tool": "noseTip",
+      "label": "鼻尖位置",
+      "sourceFrame": {
+        "coordinates": "source-normalized",
+        "contentHash": "d1fe799e11c80a03453d6486a0fbca1bbeea47f9278e48957e39a48a32114f2b",
+        "width": 820,
+        "height": 1024,
+        "orientation": "normalized"
+      },
+      "targetId": "face-d1fe799e11c8-1",
+      "positiveStats": {
+        "changedPixels": 1138,
+        "maxChannelDelta": 117,
+        "meanChannelDelta": 0.01620895261686992
+      },
+      "negativeStats": {
+        "changedPixels": 1147,
+        "maxChannelDelta": 98,
+        "meanChannelDelta": 0.017796462144308942
+      },
+      "fullTiledByteEqual": true,
+      "outsideMaskUnchanged": null,
+      "elapsedMs": 233.462
+    },
+    {
+      "name": "mediapipe-portrait",
+      "tool": "noseLength",
+      "label": "鼻长",
+      "sourceFrame": {
+        "coordinates": "source-normalized",
+        "contentHash": "d1fe799e11c80a03453d6486a0fbca1bbeea47f9278e48957e39a48a32114f2b",
+        "width": 820,
+        "height": 1024,
+        "orientation": "normalized"
+      },
+      "targetId": "face-d1fe799e11c8-1",
+      "positiveStats": {
+        "changedPixels": 4136,
+        "maxChannelDelta": 146,
+        "meanChannelDelta": 0.07592694042174797
+      },
+      "negativeStats": {
+        "changedPixels": 4130,
+        "maxChannelDelta": 131,
+        "meanChannelDelta": 0.08209278137703252
+      },
+      "fullTiledByteEqual": true,
+      "outsideMaskUnchanged": null,
+      "elapsedMs": 235.062
+    },
+    {
+      "name": "mediapipe-portrait",
+      "tool": "lipSize",
+      "label": "嘴唇大小",
+      "sourceFrame": {
+        "coordinates": "source-normalized",
+        "contentHash": "d1fe799e11c80a03453d6486a0fbca1bbeea47f9278e48957e39a48a32114f2b",
+        "width": 820,
+        "height": 1024,
+        "orientation": "normalized"
+      },
+      "targetId": "face-d1fe799e11c8-1",
+      "positiveStats": {
+        "changedPixels": 4160,
+        "maxChannelDelta": 157,
+        "meanChannelDelta": 0.044220814278455284
+      },
+      "negativeStats": {
+        "changedPixels": 4113,
+        "maxChannelDelta": 177,
+        "meanChannelDelta": 0.04288181211890244
+      },
+      "fullTiledByteEqual": true,
+      "outsideMaskUnchanged": null,
+      "elapsedMs": 266.184
+    },
+    {
+      "name": "mediapipe-portrait",
+      "tool": "smile",
+      "label": "嘴角",
+      "sourceFrame": {
+        "coordinates": "source-normalized",
+        "contentHash": "d1fe799e11c80a03453d6486a0fbca1bbeea47f9278e48957e39a48a32114f2b",
+        "width": 820,
+        "height": 1024,
+        "orientation": "normalized"
+      },
+      "targetId": "face-d1fe799e11c8-1",
+      "positiveStats": {
+        "changedPixels": 2355,
+        "maxChannelDelta": 161,
+        "meanChannelDelta": 0.05468194232723577
+      },
+      "negativeStats": {
+        "changedPixels": 2351,
+        "maxChannelDelta": 170,
+        "meanChannelDelta": 0.049808657266260166
+      },
+      "fullTiledByteEqual": true,
+      "outsideMaskUnchanged": null,
+      "elapsedMs": 250.171
+    },
+    {
+      "name": "mediapipe-portrait",
+      "tool": "browThickness",
+      "label": "眉毛粗细",
+      "sourceFrame": {
+        "coordinates": "source-normalized",
+        "contentHash": "d1fe799e11c80a03453d6486a0fbca1bbeea47f9278e48957e39a48a32114f2b",
+        "width": 820,
+        "height": 1024,
+        "orientation": "normalized"
+      },
+      "targetId": "face-d1fe799e11c8-1",
+      "positiveStats": {
+        "changedPixels": 1675,
+        "maxChannelDelta": 66,
+        "meanChannelDelta": 0.013379700203252033
+      },
+      "negativeStats": {
+        "changedPixels": 1717,
+        "maxChannelDelta": 86,
+        "meanChannelDelta": 0.01674050431910569
+      },
+      "fullTiledByteEqual": true,
+      "outsideMaskUnchanged": null,
+      "elapsedMs": 281.335
+    },
+    {
+      "name": "mediapipe-portrait",
+      "tool": "lipstick",
+      "label": "口红",
+      "sourceFrame": {
+        "coordinates": "source-normalized",
+        "contentHash": "d1fe799e11c80a03453d6486a0fbca1bbeea47f9278e48957e39a48a32114f2b",
+        "width": 820,
+        "height": 1024,
+        "orientation": "normalized"
+      },
+      "targetId": "face-d1fe799e11c8-1",
+      "positiveStats": {
+        "changedPixels": 1637,
+        "maxChannelDelta": 23,
+        "meanChannelDelta": 0.015090272484756098
+      },
+      "negativeStats": null,
+      "fullTiledByteEqual": true,
+      "outsideMaskUnchanged": true,
+      "elapsedMs": 405.796
+    },
+    {
+      "name": "mediapipe-portrait",
+      "tool": "eyeshadow",
+      "label": "眼影",
+      "sourceFrame": {
+        "coordinates": "source-normalized",
+        "contentHash": "d1fe799e11c80a03453d6486a0fbca1bbeea47f9278e48957e39a48a32114f2b",
+        "width": 820,
+        "height": 1024,
+        "orientation": "normalized"
+      },
+      "targetId": "face-d1fe799e11c8-1",
+      "positiveStats": {
+        "changedPixels": 1613,
+        "maxChannelDelta": 25,
+        "meanChannelDelta": 0.01216773056402439
+      },
+      "negativeStats": null,
+      "fullTiledByteEqual": true,
+      "outsideMaskUnchanged": true,
+      "elapsedMs": 425.22
+    },
+    {
+      "name": "mediapipe-portrait",
+      "tool": "blush",
+      "label": "腮红",
+      "sourceFrame": {
+        "coordinates": "source-normalized",
+        "contentHash": "d1fe799e11c80a03453d6486a0fbca1bbeea47f9278e48957e39a48a32114f2b",
+        "width": 820,
+        "height": 1024,
+        "orientation": "normalized"
+      },
+      "targetId": "face-d1fe799e11c8-1",
+      "positiveStats": {
+        "changedPixels": 5099,
+        "maxChannelDelta": 18,
+        "meanChannelDelta": 0.028859803734756096
+      },
+      "negativeStats": null,
+      "fullTiledByteEqual": true,
+      "outsideMaskUnchanged": true,
+      "elapsedMs": 467.382
+    },
+    {
+      "name": "mediapipe-portrait",
+      "tool": "contour",
+      "label": "修容",
+      "sourceFrame": {
+        "coordinates": "source-normalized",
+        "contentHash": "d1fe799e11c80a03453d6486a0fbca1bbeea47f9278e48957e39a48a32114f2b",
+        "width": 820,
+        "height": 1024,
+        "orientation": "normalized"
+      },
+      "targetId": "face-d1fe799e11c8-1",
+      "positiveStats": {
+        "changedPixels": 6479,
+        "maxChannelDelta": 12,
+        "meanChannelDelta": 0.03091693661077236
+      },
+      "negativeStats": null,
+      "fullTiledByteEqual": true,
+      "outsideMaskUnchanged": true,
+      "elapsedMs": 424.134
+    },
+    {
+      "name": "mediapipe-portrait",
+      "tool": "highlight",
+      "label": "高光妆",
+      "sourceFrame": {
+        "coordinates": "source-normalized",
+        "contentHash": "d1fe799e11c80a03453d6486a0fbca1bbeea47f9278e48957e39a48a32114f2b",
+        "width": 820,
+        "height": 1024,
+        "orientation": "normalized"
+      },
+      "targetId": "face-d1fe799e11c8-1",
+      "positiveStats": {
+        "changedPixels": 2895,
+        "maxChannelDelta": 21,
+        "meanChannelDelta": 0.022375587525406505
+      },
+      "negativeStats": null,
+      "fullTiledByteEqual": true,
+      "outsideMaskUnchanged": true,
+      "elapsedMs": 437.748
+    },
+    {
+      "name": "mediapipe-portrait",
+      "tool": "browColor",
+      "label": "眉妆",
+      "sourceFrame": {
+        "coordinates": "source-normalized",
+        "contentHash": "d1fe799e11c80a03453d6486a0fbca1bbeea47f9278e48957e39a48a32114f2b",
+        "width": 820,
+        "height": 1024,
+        "orientation": "normalized"
+      },
+      "targetId": "face-d1fe799e11c8-1",
+      "positiveStats": {
+        "changedPixels": 1451,
+        "maxChannelDelta": 53,
+        "meanChannelDelta": 0.025378715701219513
+      },
+      "negativeStats": null,
+      "fullTiledByteEqual": true,
+      "outsideMaskUnchanged": true,
+      "elapsedMs": 376.042
+    },
+    {
+      "name": "mediapipe-portrait",
+      "tool": "underEyeMakeup",
+      "label": "卧蚕妆",
+      "sourceFrame": {
+        "coordinates": "source-normalized",
+        "contentHash": "d1fe799e11c80a03453d6486a0fbca1bbeea47f9278e48957e39a48a32114f2b",
+        "width": 820,
+        "height": 1024,
+        "orientation": "normalized"
+      },
+      "targetId": "face-d1fe799e11c8-1",
+      "positiveStats": {
+        "changedPixels": 2516,
+        "maxChannelDelta": 20,
+        "meanChannelDelta": 0.021820217225609756
+      },
+      "negativeStats": null,
+      "fullTiledByteEqual": true,
+      "outsideMaskUnchanged": true,
+      "elapsedMs": 394.142
+    },
+    {
+      "name": "mediapipe-pose",
+      "tool": "headSize",
+      "label": "头部大小",
+      "sourceFrame": {
+        "coordinates": "source-normalized",
+        "contentHash": "b57e5f5c1a05a5131a9f390690204785f2ff03d577cd2b3a07baf4ed6ed6ec6a",
+        "width": 1000,
+        "height": 667,
+        "orientation": "normalized"
+      },
+      "targetId": "body-b57e5f5c1a05-1",
+      "positiveStats": {
+        "changedPixels": 3574,
+        "maxChannelDelta": 134,
+        "meanChannelDelta": 0.0431544227886057
+      },
+      "negativeStats": {
+        "changedPixels": 3541,
+        "maxChannelDelta": 110,
+        "meanChannelDelta": 0.04019490254872564
+      },
+      "fullTiledByteEqual": true,
+      "outsideMaskUnchanged": null,
+      "elapsedMs": 182.7
+    },
+    {
+      "name": "mediapipe-pose",
+      "tool": "neckLength",
+      "label": "颈部比例",
+      "sourceFrame": {
+        "coordinates": "source-normalized",
+        "contentHash": "b57e5f5c1a05a5131a9f390690204785f2ff03d577cd2b3a07baf4ed6ed6ec6a",
+        "width": 1000,
+        "height": 667,
+        "orientation": "normalized"
+      },
+      "targetId": "body-b57e5f5c1a05-1",
+      "positiveStats": {
+        "changedPixels": 2806,
+        "maxChannelDelta": 206,
+        "meanChannelDelta": 0.08519740129935033
+      },
+      "negativeStats": {
+        "changedPixels": 2787,
+        "maxChannelDelta": 204,
+        "meanChannelDelta": 0.07969565217391304
+      },
+      "fullTiledByteEqual": true,
+      "outsideMaskUnchanged": null,
+      "elapsedMs": 199.223
+    },
+    {
+      "name": "mediapipe-pose",
+      "tool": "neckWidth",
+      "label": "颈部宽度",
+      "sourceFrame": {
+        "coordinates": "source-normalized",
+        "contentHash": "b57e5f5c1a05a5131a9f390690204785f2ff03d577cd2b3a07baf4ed6ed6ec6a",
+        "width": 1000,
+        "height": 667,
+        "orientation": "normalized"
+      },
+      "targetId": "body-b57e5f5c1a05-1",
+      "positiveStats": {
+        "changedPixels": 890,
+        "maxChannelDelta": 36,
+        "meanChannelDelta": 0.004470264867566217
+      },
+      "negativeStats": {
+        "changedPixels": 881,
+        "maxChannelDelta": 32,
+        "meanChannelDelta": 0.00436031984007996
+      },
+      "fullTiledByteEqual": true,
+      "outsideMaskUnchanged": null,
+      "elapsedMs": 179.381
+    },
+    {
+      "name": "mediapipe-pose",
+      "tool": "shoulders",
+      "label": "肩宽",
+      "sourceFrame": {
+        "coordinates": "source-normalized",
+        "contentHash": "b57e5f5c1a05a5131a9f390690204785f2ff03d577cd2b3a07baf4ed6ed6ec6a",
+        "width": 1000,
+        "height": 667,
+        "orientation": "normalized"
+      },
+      "targetId": "body-b57e5f5c1a05-1",
+      "positiveStats": {
+        "changedPixels": 3297,
+        "maxChannelDelta": 209,
+        "meanChannelDelta": 0.11642278860569714
+      },
+      "negativeStats": {
+        "changedPixels": 3330,
+        "maxChannelDelta": 206,
+        "meanChannelDelta": 0.1247296351824088
+      },
+      "fullTiledByteEqual": true,
+      "outsideMaskUnchanged": null,
+      "elapsedMs": 197.204
+    },
+    {
+      "name": "mediapipe-pose",
+      "tool": "arms",
+      "label": "手臂轮廓",
+      "sourceFrame": {
+        "coordinates": "source-normalized",
+        "contentHash": "b57e5f5c1a05a5131a9f390690204785f2ff03d577cd2b3a07baf4ed6ed6ec6a",
+        "width": 1000,
+        "height": 667,
+        "orientation": "normalized"
+      },
+      "targetId": "body-b57e5f5c1a05-1",
+      "positiveStats": {
+        "changedPixels": 2886,
+        "maxChannelDelta": 72,
+        "meanChannelDelta": 0.01566566716641679
+      },
+      "negativeStats": {
+        "changedPixels": 2864,
+        "maxChannelDelta": 44,
+        "meanChannelDelta": 0.012334832583708146
+      },
+      "fullTiledByteEqual": true,
+      "outsideMaskUnchanged": null,
+      "elapsedMs": 242.397
+    },
+    {
+      "name": "mediapipe-pose",
+      "tool": "waist",
+      "label": "腰部轮廓",
+      "sourceFrame": {
+        "coordinates": "source-normalized",
+        "contentHash": "b57e5f5c1a05a5131a9f390690204785f2ff03d577cd2b3a07baf4ed6ed6ec6a",
+        "width": 1000,
+        "height": 667,
+        "orientation": "normalized"
+      },
+      "targetId": "body-b57e5f5c1a05-1",
+      "positiveStats": {
+        "changedPixels": 3959,
+        "maxChannelDelta": 99,
+        "meanChannelDelta": 0.06147326336831584
+      },
+      "negativeStats": {
+        "changedPixels": 3931,
+        "maxChannelDelta": 74,
+        "meanChannelDelta": 0.05314392803598201
+      },
+      "fullTiledByteEqual": true,
+      "outsideMaskUnchanged": null,
+      "elapsedMs": 207.533
+    },
+    {
+      "name": "mediapipe-pose",
+      "tool": "hips",
+      "label": "胯部轮廓",
+      "sourceFrame": {
+        "coordinates": "source-normalized",
+        "contentHash": "b57e5f5c1a05a5131a9f390690204785f2ff03d577cd2b3a07baf4ed6ed6ec6a",
+        "width": 1000,
+        "height": 667,
+        "orientation": "normalized"
+      },
+      "targetId": "body-b57e5f5c1a05-1",
+      "positiveStats": {
+        "changedPixels": 3693,
+        "maxChannelDelta": 48,
+        "meanChannelDelta": 0.03531984007996002
+      },
+      "negativeStats": {
+        "changedPixels": 3683,
+        "maxChannelDelta": 65,
+        "meanChannelDelta": 0.03862868565717142
+      },
+      "fullTiledByteEqual": true,
+      "outsideMaskUnchanged": null,
+      "elapsedMs": 210.663
+    },
+    {
+      "name": "mediapipe-pose",
+      "tool": "legLength",
+      "label": "腿部比例",
+      "sourceFrame": {
+        "coordinates": "source-normalized",
+        "contentHash": "b57e5f5c1a05a5131a9f390690204785f2ff03d577cd2b3a07baf4ed6ed6ec6a",
+        "width": 1000,
+        "height": 667,
+        "orientation": "normalized"
+      },
+      "targetId": "body-b57e5f5c1a05-1",
+      "positiveStats": {
+        "changedPixels": 11396,
+        "maxChannelDelta": 212,
+        "meanChannelDelta": 0.33451924037981007
+      },
+      "negativeStats": {
+        "changedPixels": 11375,
+        "maxChannelDelta": 232,
+        "meanChannelDelta": 0.360888055972014
+      },
+      "fullTiledByteEqual": true,
+      "outsideMaskUnchanged": null,
+      "elapsedMs": 235.651
+    },
+    {
+      "name": "mediapipe-pose",
+      "tool": "legs",
+      "label": "腿部轮廓",
+      "sourceFrame": {
+        "coordinates": "source-normalized",
+        "contentHash": "b57e5f5c1a05a5131a9f390690204785f2ff03d577cd2b3a07baf4ed6ed6ec6a",
+        "width": 1000,
+        "height": 667,
+        "orientation": "normalized"
+      },
+      "targetId": "body-b57e5f5c1a05-1",
+      "positiveStats": {
+        "changedPixels": 4872,
+        "maxChannelDelta": 67,
+        "meanChannelDelta": 0.029920039980009996
+      },
+      "negativeStats": {
+        "changedPixels": 4888,
+        "maxChannelDelta": 37,
+        "meanChannelDelta": 0.024505747126436783
+      },
+      "fullTiledByteEqual": true,
+      "outsideMaskUnchanged": null,
+      "elapsedMs": 203.577
+    },
+    {
+      "name": "mediapipe-pose",
+      "tool": "height",
+      "label": "身形纵向",
+      "sourceFrame": {
+        "coordinates": "source-normalized",
+        "contentHash": "b57e5f5c1a05a5131a9f390690204785f2ff03d577cd2b3a07baf4ed6ed6ec6a",
+        "width": 1000,
+        "height": 667,
+        "orientation": "normalized"
+      },
+      "targetId": "body-b57e5f5c1a05-1",
+      "positiveStats": {
+        "changedPixels": 19066,
+        "maxChannelDelta": 214,
+        "meanChannelDelta": 0.5441964017991004
+      },
+      "negativeStats": {
+        "changedPixels": 19158,
+        "maxChannelDelta": 234,
+        "meanChannelDelta": 0.5667626186906547
+      },
+      "fullTiledByteEqual": true,
+      "outsideMaskUnchanged": null,
+      "elapsedMs": 225.093
+    }
+  ],
+  "images": [
+    {
+      "name": "portrait-hopper",
+      "sourceFrame": {
+        "coordinates": "source-normalized",
+        "orientation": "normalized",
+        "contentHash": "7d5ea333c0a2916fc3e9014d166876eaeaa1bf70f2254fe4e28e64832c5a1bf9",
+        "width": 512,
+        "height": 600
+      },
+      "actualModelOutputAccepted": true,
+      "availability": [
+        {
+          "id": "face-7d5ea333c0a2-1",
+          "kind": "face",
+          "landmarks": 478,
+          "controls": [
+            {
+              "id": "smooth",
+              "available": true,
+              "reason": null
+            },
+            {
+              "id": "wrinkles",
+              "available": true,
+              "reason": null
+            },
+            {
+              "id": "texture",
+              "available": true,
+              "reason": null
+            },
+            {
+              "id": "skinLight",
+              "available": true,
+              "reason": null
+            },
+            {
+              "id": "even",
+              "available": true,
+              "reason": null
+            },
+            {
+              "id": "skinWarmth",
+              "available": true,
+              "reason": null
+            },
+            {
+              "id": "complexion",
+              "available": true,
+              "reason": null
+            },
+            {
+              "id": "underEye",
+              "available": true,
+              "reason": null
+            },
+            {
+              "id": "eyeLight",
+              "available": true,
+              "reason": null
+            },
+            {
+              "id": "browDetail",
+              "available": true,
+              "reason": null
+            },
+            {
+              "id": "sculpt",
+              "available": true,
+              "reason": null
+            },
+            {
+              "id": "faceSlim",
+              "available": true,
+              "reason": null
+            },
+            {
+              "id": "faceSmall",
+              "available": true,
+              "reason": null
+            },
+            {
+              "id": "faceNarrow",
+              "available": true,
+              "reason": null
+            },
+            {
+              "id": "vFace",
+              "available": true,
+              "reason": null
+            },
+            {
+              "id": "temples",
+              "available": true,
+              "reason": null
+            },
+            {
+              "id": "cheekbones",
+              "available": true,
+              "reason": null
+            },
+            {
+              "id": "jaw",
+              "available": true,
+              "reason": null
+            },
+            {
+              "id": "chin",
+              "available": true,
+              "reason": null
+            },
+            {
+              "id": "forehead",
+              "available": true,
+              "reason": null
+            },
+            {
+              "id": "eyeSize",
+              "available": true,
+              "reason": null
+            },
+            {
+              "id": "eyeSpacing",
+              "available": true,
+              "reason": null
+            },
+            {
+              "id": "eyeRotate",
+              "available": true,
+              "reason": null
+            },
+            {
+              "id": "noseWidth",
+              "available": true,
+              "reason": null
+            },
+            {
+              "id": "noseTip",
+              "available": true,
+              "reason": null
+            },
+            {
+              "id": "noseLength",
+              "available": true,
+              "reason": null
+            },
+            {
+              "id": "lipSize",
+              "available": true,
+              "reason": null
+            },
+            {
+              "id": "smile",
+              "available": true,
+              "reason": null
+            },
+            {
+              "id": "browThickness",
+              "available": true,
+              "reason": null
+            },
+            {
+              "id": "lipstick",
+              "available": true,
+              "reason": null
+            },
+            {
+              "id": "eyeshadow",
+              "available": true,
+              "reason": null
+            },
+            {
+              "id": "blush",
+              "available": true,
+              "reason": null
+            },
+            {
+              "id": "contour",
+              "available": true,
+              "reason": null
+            },
+            {
+              "id": "highlight",
+              "available": true,
+              "reason": null
+            },
+            {
+              "id": "browColor",
+              "available": true,
+              "reason": null
+            },
+            {
+              "id": "underEyeMakeup",
+              "available": true,
+              "reason": null
+            }
+          ]
+        },
+        {
+          "id": "body-7d5ea333c0a2-1",
+          "kind": "body",
+          "landmarks": 33,
+          "controls": [
+            {
+              "id": "headSize",
+              "available": true,
+              "reason": null
+            },
+            {
+              "id": "neckLength",
+              "available": true,
+              "reason": null
+            },
+            {
+              "id": "neckWidth",
+              "available": true,
+              "reason": null
+            },
+            {
+              "id": "shoulders",
+              "available": true,
+              "reason": null
+            },
+            {
+              "id": "arms",
+              "available": false,
+              "reason": "该操作所需身体关键点不可见，请手动液化或换图。"
+            },
+            {
+              "id": "waist",
+              "available": false,
+              "reason": "该操作所需身体关键点不可见，请手动液化或换图。"
+            },
+            {
+              "id": "hips",
+              "available": false,
+              "reason": "该操作所需身体关键点不可见，请手动液化或换图。"
+            },
+            {
+              "id": "legLength",
+              "available": false,
+              "reason": "该操作所需身体关键点不可见，请手动液化或换图。"
+            },
+            {
+              "id": "legs",
+              "available": false,
+              "reason": "该操作所需身体关键点不可见，请手动液化或换图。"
+            },
+            {
+              "id": "height",
+              "available": false,
+              "reason": "该操作所需身体关键点不可见，请手动液化或换图。"
+            }
+          ]
+        }
+      ],
+      "combined": {
+        "changedPixels": 88989,
+        "maxChannelDelta": 231,
+        "meanChannelDelta": 2.5786903211805554,
+        "fullTiledByteEqual": true,
+        "outputHash": "c8ec88313b7487986217fe3c70a94e57f8d71107f63751f1faf3a5275044c827",
+        "regions": 2,
+        "paintLayers": 1,
+        "warpStrokes": 4
+      }
+    },
+    {
+      "name": "mediapipe-portrait",
+      "sourceFrame": {
+        "coordinates": "source-normalized",
+        "orientation": "normalized",
+        "contentHash": "d1fe799e11c80a03453d6486a0fbca1bbeea47f9278e48957e39a48a32114f2b",
+        "width": 820,
+        "height": 1024
+      },
+      "actualModelOutputAccepted": true,
+      "availability": [
+        {
+          "id": "face-d1fe799e11c8-1",
+          "kind": "face",
+          "landmarks": 478,
+          "controls": [
+            {
+              "id": "smooth",
+              "available": true,
+              "reason": null
+            },
+            {
+              "id": "wrinkles",
+              "available": true,
+              "reason": null
+            },
+            {
+              "id": "texture",
+              "available": true,
+              "reason": null
+            },
+            {
+              "id": "skinLight",
+              "available": true,
+              "reason": null
+            },
+            {
+              "id": "even",
+              "available": true,
+              "reason": null
+            },
+            {
+              "id": "skinWarmth",
+              "available": true,
+              "reason": null
+            },
+            {
+              "id": "complexion",
+              "available": true,
+              "reason": null
+            },
+            {
+              "id": "underEye",
+              "available": true,
+              "reason": null
+            },
+            {
+              "id": "eyeLight",
+              "available": true,
+              "reason": null
+            },
+            {
+              "id": "browDetail",
+              "available": true,
+              "reason": null
+            },
+            {
+              "id": "sculpt",
+              "available": true,
+              "reason": null
+            },
+            {
+              "id": "faceSlim",
+              "available": true,
+              "reason": null
+            },
+            {
+              "id": "faceSmall",
+              "available": true,
+              "reason": null
+            },
+            {
+              "id": "faceNarrow",
+              "available": true,
+              "reason": null
+            },
+            {
+              "id": "vFace",
+              "available": true,
+              "reason": null
+            },
+            {
+              "id": "temples",
+              "available": true,
+              "reason": null
+            },
+            {
+              "id": "cheekbones",
+              "available": true,
+              "reason": null
+            },
+            {
+              "id": "jaw",
+              "available": true,
+              "reason": null
+            },
+            {
+              "id": "chin",
+              "available": true,
+              "reason": null
+            },
+            {
+              "id": "forehead",
+              "available": true,
+              "reason": null
+            },
+            {
+              "id": "eyeSize",
+              "available": true,
+              "reason": null
+            },
+            {
+              "id": "eyeSpacing",
+              "available": true,
+              "reason": null
+            },
+            {
+              "id": "eyeRotate",
+              "available": true,
+              "reason": null
+            },
+            {
+              "id": "noseWidth",
+              "available": true,
+              "reason": null
+            },
+            {
+              "id": "noseTip",
+              "available": true,
+              "reason": null
+            },
+            {
+              "id": "noseLength",
+              "available": true,
+              "reason": null
+            },
+            {
+              "id": "lipSize",
+              "available": true,
+              "reason": null
+            },
+            {
+              "id": "smile",
+              "available": true,
+              "reason": null
+            },
+            {
+              "id": "browThickness",
+              "available": true,
+              "reason": null
+            },
+            {
+              "id": "lipstick",
+              "available": true,
+              "reason": null
+            },
+            {
+              "id": "eyeshadow",
+              "available": true,
+              "reason": null
+            },
+            {
+              "id": "blush",
+              "available": true,
+              "reason": null
+            },
+            {
+              "id": "contour",
+              "available": true,
+              "reason": null
+            },
+            {
+              "id": "highlight",
+              "available": true,
+              "reason": null
+            },
+            {
+              "id": "browColor",
+              "available": true,
+              "reason": null
+            },
+            {
+              "id": "underEyeMakeup",
+              "available": true,
+              "reason": null
+            }
+          ]
+        },
+        {
+          "id": "body-d1fe799e11c8-1",
+          "kind": "body",
+          "landmarks": 33,
+          "controls": [
+            {
+              "id": "headSize",
+              "available": true,
+              "reason": null
+            },
+            {
+              "id": "neckLength",
+              "available": true,
+              "reason": null
+            },
+            {
+              "id": "neckWidth",
+              "available": true,
+              "reason": null
+            },
+            {
+              "id": "shoulders",
+              "available": true,
+              "reason": null
+            },
+            {
+              "id": "arms",
+              "available": true,
+              "reason": null
+            },
+            {
+              "id": "waist",
+              "available": true,
+              "reason": null
+            },
+            {
+              "id": "hips",
+              "available": true,
+              "reason": null
+            },
+            {
+              "id": "legLength",
+              "available": false,
+              "reason": "该操作所需身体关键点不可见，请手动液化或换图。"
+            },
+            {
+              "id": "legs",
+              "available": false,
+              "reason": "该操作所需身体关键点不可见，请手动液化或换图。"
+            },
+            {
+              "id": "height",
+              "available": false,
+              "reason": "该操作所需身体关键点不可见，请手动液化或换图。"
+            }
+          ]
+        }
+      ],
+      "combined": {
+        "changedPixels": 99946,
+        "maxChannelDelta": 166,
+        "meanChannelDelta": 0.7689766736534552,
+        "fullTiledByteEqual": true,
+        "outputHash": "abee0b71707cfe31b008760240e9bf3ce504d9620766d3854be4d37c8509732b",
+        "regions": 2,
+        "paintLayers": 1,
+        "warpStrokes": 4
+      }
+    },
+    {
+      "name": "mediapipe-pose",
+      "sourceFrame": {
+        "coordinates": "source-normalized",
+        "orientation": "normalized",
+        "contentHash": "b57e5f5c1a05a5131a9f390690204785f2ff03d577cd2b3a07baf4ed6ed6ec6a",
+        "width": 1000,
+        "height": 667
+      },
+      "actualModelOutputAccepted": true,
+      "availability": [
+        {
+          "id": "body-b57e5f5c1a05-1",
+          "kind": "body",
+          "landmarks": 33,
+          "controls": [
+            {
+              "id": "headSize",
+              "available": true,
+              "reason": null
+            },
+            {
+              "id": "neckLength",
+              "available": true,
+              "reason": null
+            },
+            {
+              "id": "neckWidth",
+              "available": true,
+              "reason": null
+            },
+            {
+              "id": "shoulders",
+              "available": true,
+              "reason": null
+            },
+            {
+              "id": "arms",
+              "available": true,
+              "reason": null
+            },
+            {
+              "id": "waist",
+              "available": true,
+              "reason": null
+            },
+            {
+              "id": "hips",
+              "available": true,
+              "reason": null
+            },
+            {
+              "id": "legLength",
+              "available": true,
+              "reason": null
+            },
+            {
+              "id": "legs",
+              "available": true,
+              "reason": null
+            },
+            {
+              "id": "height",
+              "available": true,
+              "reason": null
+            }
+          ]
+        }
+      ],
+      "combined": {
+        "changedPixels": 2908,
+        "maxChannelDelta": 175,
+        "meanChannelDelta": 0.05412143928035982,
+        "fullTiledByteEqual": true,
+        "outputHash": "9c96ec4250180986b1a01b35d34f56ae970fa05813cc5435e28fdfd19705492a",
+        "regions": 0,
+        "paintLayers": 0,
+        "warpStrokes": 2
+      }
+    }
+  ],
+  "defectsFoundByActualInference": [
+    {
+      "issue": "Previously downloaded pose bundle was truncated to 3207168 bytes, while an earlier fixed hash matched that incomplete file.",
+      "correction": "The complete official 5777746-byte bundle was obtained and SHA256/ZIP structure checks were fixed before final inference.",
+      "completeSha256": "59929e1d1ee95287735ddd833b19cf4ac46d29bc7afddbbf6753c459690d574a"
+    },
+    {
+      "issue": "Cropped upper-body photos yielded invisible leg estimates outside the previous y<=2 validation range (actual y=2.642005681991577).",
+      "correction": "Body landmark data retains bounded [-8,8] estimates; every tool still requires its own visible, in-frame joints. Face limits remain [-1,2]."
+    }
+  ],
+  "reproduction": {
+    "guide": "scripts/qa/README.md",
+    "sourceManifest": "scripts/qa/portrait-native-inputs.json",
+    "requirements": "scripts/qa/portrait-native-requirements.txt",
+    "nativeScript": "scripts/qa/portrait-native-infer.py",
+    "validationScript": "scripts/qa/portrait-native-verify.ts",
+    "visualScript": "scripts/qa/portrait-native-visuals.py",
+    "reportScript": "scripts/qa/portrait-native-report.mjs",
+    "normalNpmTestDownloadsModelsOrImages": false,
+    "usesBillableAIAPI": false
+  },
+  "codeFileSha256": {
+    "package-lock.json": "19f86f179c772febbc69bf403d708baabec1b36ebfd68d6a898c7b21b8de8f6a",
+    "packages/editor/src/curves.ts": "e4d6bae5a7a44642591ae23e735ff1edf9a77a9d5a3f6c2a29921bfb5c58a026",
+    "packages/editor/src/engine.ts": "55a1acff28c297f8a1bae639ffecfdb2036573333a8c92bfd21a074578c4431c",
+    "packages/editor/src/geometry.ts": "1055983f12f5769cae29a7372f0776e2dff5dd8753f9cece4654c6418148b39f",
+    "packages/editor/src/headers.ts": "52f888e0bcd0590c94c166c215845dd9542a98a7cdb7c0b1f923b0c097db2321",
+    "packages/editor/src/index.ts": "7fd1ec3e4c08971410f505f36c9b984926b8579e2fdbed0d29ca6b396add2a7f",
+    "packages/editor/src/mask.ts": "7966873ba709ec8ed55cf1adfd8c24101c4426599f87be02294651ab68af961a",
+    "packages/editor/src/recipe.ts": "53f5a91bf5794556a677e67e1671011894591b24025b98f9f808bb851a4fd07c",
+    "packages/editor/src/registry.ts": "598d3ad846c1acba0001f3aa0d0aac315b2b8052324499f8cb6bdd386e627fd9",
+    "packages/editor/src/tiled.ts": "085abf903249b6720c10aa40996897ef65845ef20ea7e260569174a9ec0da4c0",
+    "packages/editor/src/types.ts": "9bc7ab62bebe492613f2c5aae752212730bde0777b3320493b63dcbd4fb41354",
+    "packages/editor/src/v2-engine.ts": "f5f3f00617b2102712f09caa07d928df6f03a83da69d75e0c6e088916fd5b9e6",
+    "packages/editor/src/v2-mask.ts": "5375ffaffefb1e5eb63c9ba6c9af48a5837fa2377964a467d6eb6b5a7eb82ee1",
+    "packages/editor/src/v2-recipe.ts": "75d9cef4aab968a6ee176fabeee967ae0c13175f5760182ea39b1f14302a333b",
+    "packages/editor/src/v2-registry.ts": "be074a30db05a49ce95cf55c46e299161f54bb9e7f206b1dc83d3a12a2fe2517",
+    "packages/editor/src/v2-types.ts": "7e18119ed86e3ee120a415139dce2eed5e9bc4ca829ebcd8642208623d9edbd6",
+    "packages/editor/src/v3-blend.ts": "71b275f98a5183cb15ce57106d1af063b8d0da837c8134b5857a9e91e0756f84",
+    "packages/editor/src/v3-engine.ts": "cbba8a3d7d26822437514b3090393db911331197deb7832098838d04f8a5a370",
+    "packages/editor/src/v3-geometry.ts": "d1907ef77b9ba64b2855ebb872c2d0d2b83442974dd1818a1275f4f7f1862fd7",
+    "packages/editor/src/v3-mask.ts": "b82c35717ea6285653b131f4b0ebc5c533d5a092ffad743099fa892822bb886c",
+    "packages/editor/src/v3-optics.ts": "7b95cb887032d58ee8cd47d0ad4dfab9d038ec6a1620cdc1a653b4426c5707b1",
+    "packages/editor/src/v3-paint.ts": "11d408f1f2c63e2642320accb7950ddcf094610fa7b4cb11f0ba86ce1a317f0f",
+    "packages/editor/src/v3-pixels.ts": "7af2bfce49751ccc26f06ce1a38da217d9185a89dc2bf4a0d26344a265ed32a4",
+    "packages/editor/src/v3-recipe.ts": "9cdc7b125bd7cf6a38663cf334f1bc1b9c55ff9a13a6b1ae11baa42d88915535",
+    "packages/editor/src/v3-registry.ts": "2179396fd99653728302d9ed3520a57c49be6b7871b0fac332d48de72d7ee30c",
+    "packages/editor/src/v3-types.ts": "ba12f4f1f2b57ff89b74974fb58f84e1b0afc795c24e0639c2a353ce9ebab68f",
+    "packages/editor/src/v3-warp.ts": "cb2974679498a716726c49d20f9e38b9c77b6d72c01b4491b671545d24b36f05",
+    "packages/portrait/src/adapter.ts": "3fd85040c68eaf352f14a234ce995e6cf2f4a0f9abeddfcc4ede640a651544b9",
+    "packages/portrait/src/catalog.ts": "7ca070476851532281d80f2c7d25e363739b12ce5fd3461bd81376085a0603bd",
+    "packages/portrait/src/geometry.ts": "9e5639cae961d0fb6ef81c5b60f0af8122e9cd29a959e4b3ec681887dfd2d893",
+    "packages/portrait/src/index.ts": "221ef1c55c89685690722df5d61a7ba6052ccbf96e931340e54ec10215fc4101",
+    "packages/portrait/src/plans.ts": "4f423298e6d6bec4c5859dcd53f73bff867e42fca28a4698342f25e3736fdc3d",
+    "packages/portrait/src/types.ts": "e2d678db75127a6a03b0837a00a075e2616366619943fa112081533d2b74b47c",
+    "packages/portrait/src/validation.ts": "e1613e0f4c2616ebcc66ca774c16ca3ac4154fab8c947f1092339babee96d3f4",
+    "scripts/qa/portrait-native-infer.py": "d05fe888a0c5f6db7811261ad779b4532560d6ca76665147974cdfcc4644bf11",
+    "scripts/qa/portrait-native-inputs.json": "1d73d405366590e8667dd28bd4daef23cfea59e0a9700652f423936ddcb2eceb",
+    "scripts/qa/portrait-native-requirements.txt": "f558d7b17cae1b3862d7e579f5c379200be3e18db29b257bb5209eddb6c5d594",
+    "scripts/qa/portrait-native-verify.ts": "702d15f62fa4c8c460d29b1ba22f606481047d3f5665eb07f354ce494765b8ee"
+  }
+}

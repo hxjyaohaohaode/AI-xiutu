@@ -40,6 +40,12 @@ test('all media-containing wrappers keep zero blur in every breakpoint', () => {
     'artwork-media',
     'ai-result-media',
     'ai-reference',
+    'panel-body',
+    'color-family',
+    'paint-controls',
+    'region-controls',
+    'mask-editor',
+    'portrait-controls',
   ] as MotionRole[])
     for (const width of [390, 844, 1440]) assert.equal(motionProfile(role, width).blurPx, 0, role);
 });

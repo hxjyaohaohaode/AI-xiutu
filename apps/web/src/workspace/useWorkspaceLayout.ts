@@ -1,83 +1,46 @@
-import { useCallback, useEffect, useState } from 'react';
-
-export type Dock = 'floating' | 'left' | 'right' | 'bottom';
-export type PanelId = 'inspector' | 'ai';
-export type PanelGeometry = { dock: Dock; x: number; y: number; width: number; height: number };
+import { useCallback, useEffect, useRef, useState } from 'react';
+import {
+  boundPanel,
+  defaultPanel,
+  type PanelGeometry,
+  type PanelId,
+  type Viewport,
+} from './panelGeometry';
+export * from './panelGeometry';
 export type WorkspaceLayout = { theme: 'light' | 'dark'; panels: Record<PanelId, PanelGeometry> };
-export type Viewport = { width: number; height: number; bucket: 'phone' | 'tablet' | 'desktop' };
-const storageKey = (bucket: string) => `image-workspace:v3:${bucket}`;
-
-/** Bottom toolbar plus breathing room; coordinates below are inside the workspace body. */
-export function panelBottomOffset(view: Viewport): number {
-  return view.bucket === 'phone' ? 70 : view.height <= 520 ? 64 : 84;
-}
+export const layoutStorageKey = (view: Viewport) =>
+  `image-workspace:v4:${view.bucket}:${view.width > view.height ? 'landscape' : 'portrait'}`;
 
 function viewport(): Viewport {
   const width = window.innerWidth;
   const height = window.innerHeight;
-  return { width, height, bucket: width < 760 ? 'phone' : width < 1120 ? 'tablet' : 'desktop' };
-}
-function defaults(view: Viewport): WorkspaceLayout {
-  const mobile = view.bucket === 'phone';
+  const body = document.querySelector<HTMLElement>('.workspace-body')?.getBoundingClientRect();
+  const visibleBottom = Math.min(
+    height,
+    (window.visualViewport?.height ?? height) + (window.visualViewport?.offsetTop ?? 0),
+  );
   return {
-    theme: 'light',
-    panels: {
-      inspector: {
-        dock: mobile ? 'bottom' : 'right',
-        x: Math.max(16, view.width - 370),
-        y: 20,
-        width: 330,
-        height: mobile ? Math.min(330, view.height * 0.43) : Math.min(600, view.height - 160),
-      },
-      ai: {
-        dock: mobile ? 'bottom' : 'right',
-        x: Math.max(16, view.width - 430),
-        y: 20,
-        width: 390,
-        height: mobile ? Math.min(440, view.height * 0.56) : Math.min(680, view.height - 130),
-      },
-    },
-  };
-}
-export function boundPanel(value: PanelGeometry, view: Viewport): PanelGeometry {
-  const mobile = view.bucket === 'phone';
-  const headerHeight = mobile ? 54 : 60;
-  const availableHeight = Math.max(0, view.height - headerHeight - panelBottomOffset(view));
-  const maximumHeight = Math.max(0, availableHeight - 12);
-  const dockedSide = value.dock === 'left' || value.dock === 'right';
-  const maximumWidth = Math.max(
-    240,
-    view.width - (dockedSide ? Math.min(280, view.width * 0.34) : 24),
-  );
-  const width = mobile ? view.width - 16 : Math.min(Math.max(260, value.width), maximumWidth);
-  const bottomMaximum = Math.min(
-    maximumHeight,
-    Math.max(Math.min(112, maximumHeight), availableHeight - Math.min(140, availableHeight * 0.5)),
-  );
-  const mobileMaximum = Math.min(
-    maximumHeight,
-    Math.max(Math.min(112, maximumHeight), availableHeight - Math.min(180, availableHeight * 0.55)),
-  );
-  const height = mobile
-    ? Math.min(Math.max(Math.min(150, mobileMaximum), value.height), mobileMaximum)
-    : value.dock === 'bottom'
-      ? Math.min(Math.max(Math.min(112, bottomMaximum), value.height), bottomMaximum)
-      : Math.min(Math.max(Math.min(180, maximumHeight), value.height), maximumHeight);
-  return {
-    ...value,
-    dock: mobile ? 'bottom' : value.dock,
     width,
     height,
-    x: Math.max(12, Math.min(value.x, view.width - width - 12)),
-    y: Math.max(0, Math.min(Math.max(8, value.y), availableHeight - height)),
+    bucket: width < 760 ? 'phone' : width < 1120 ? 'tablet' : 'desktop',
+    ...(body
+      ? {
+          workspaceWidth: body.width,
+          workspaceHeight: Math.max(0, Math.min(body.height, visibleBottom - body.top)),
+        }
+      : {}),
   };
 }
-function read(view: Viewport): WorkspaceLayout {
-  const fallback = defaults(view);
+export function defaultWorkspaceLayout(view: Viewport): WorkspaceLayout {
+  return {
+    theme: 'light',
+    panels: { inspector: defaultPanel('inspector', view), ai: defaultPanel('ai', view) },
+  };
+}
+export function parseWorkspaceLayout(raw: string | null, view: Viewport): WorkspaceLayout {
+  const fallback = defaultWorkspaceLayout(view);
   try {
-    const parsed = JSON.parse(
-      localStorage.getItem(storageKey(view.bucket)) ?? 'null',
-    ) as WorkspaceLayout | null;
+    const parsed = JSON.parse(raw ?? 'null') as WorkspaceLayout | null;
     if (!parsed || !['light', 'dark'].includes(parsed.theme)) return fallback;
     for (const id of ['inspector', 'ai'] as const) {
       const p = parsed.panels?.[id];
@@ -99,52 +62,106 @@ function read(view: Viewport): WorkspaceLayout {
     return fallback;
   }
 }
+function read(view: Viewport): WorkspaceLayout {
+  try {
+    // v3 has no presentation/composition fields; the same validator supplies defaults.
+    return parseWorkspaceLayout(
+      localStorage.getItem(layoutStorageKey(view)) ??
+        localStorage.getItem(`image-workspace:v3:${view.bucket}`),
+      view,
+    );
+  } catch {
+    return defaultWorkspaceLayout(view);
+  }
+}
 export function useWorkspaceLayout() {
   const [view, setView] = useState<Viewport>(viewport);
-  const [layout, setLayout] = useState<WorkspaceLayout>(() => read(viewport()));
+  const [preferences, setPreferences] = useState(() => {
+    const v = viewport();
+    return { key: layoutStorageKey(v), value: read(v) };
+  });
   const [focused, setFocused] = useState(false);
+  const viewRef = useRef(view);
+  viewRef.current = view;
+  const currentKey = layoutStorageKey(view);
+  // A bucket/orientation transition must never render or persist another device's layout.
+  const layout = preferences.key === currentKey ? preferences.value : read(view);
   useEffect(() => {
     let frame = 0;
     const resize = () => {
       cancelAnimationFrame(frame);
-      frame = requestAnimationFrame(() => setView(viewport()));
+      frame = requestAnimationFrame(() => {
+        const next = viewport();
+        setView((previous) =>
+          Object.keys(next).every(
+            (key) => previous[key as keyof Viewport] === next[key as keyof Viewport],
+          )
+            ? previous
+            : next,
+        );
+      });
     };
+    const observer = new ResizeObserver(resize);
+    const body = document.querySelector<HTMLElement>('.workspace-body');
+    if (body) observer.observe(body);
     window.addEventListener('resize', resize);
+    window.visualViewport?.addEventListener('resize', resize);
+    resize();
     return () => {
       cancelAnimationFrame(frame);
+      observer.disconnect();
       window.removeEventListener('resize', resize);
+      window.visualViewport?.removeEventListener('resize', resize);
     };
   }, []);
   useEffect(() => {
-    setLayout(read(view));
-  }, [view.bucket]);
+    setPreferences((previous) =>
+      previous.key === currentKey ? previous : { key: currentKey, value: read(viewRef.current) },
+    );
+  }, [currentKey]);
   useEffect(() => {
+    if (preferences.key !== currentKey) return;
     const timer = setTimeout(() => {
       try {
-        localStorage.setItem(storageKey(view.bucket), JSON.stringify(layout));
+        localStorage.setItem(preferences.key, JSON.stringify(preferences.value));
       } catch {
-        /* An unavailable preference store never blocks editing. */
+        /* Preferences being unavailable must not block editing. */
       }
     }, 220);
     return () => clearTimeout(timer);
-  }, [layout, view.bucket]);
+  }, [preferences, currentKey]);
   const panel = (id: PanelId) => boundPanel(layout.panels[id], view);
-  const updatePanel = useCallback(
-    (id: PanelId, value: PanelGeometry) =>
-      setLayout((previous) => ({ ...previous, panels: { ...previous.panels, [id]: value } })),
-    [],
-  );
-  const setTheme = useCallback(
-    (theme: 'light' | 'dark') => setLayout((previous) => ({ ...previous, theme })),
-    [],
-  );
+  const updatePanel = useCallback((id: PanelId, value: PanelGeometry) => {
+    const v = viewRef.current,
+      key = layoutStorageKey(v);
+    setPreferences((previous) => {
+      const current = previous.key === key ? previous.value : read(v);
+      return {
+        key,
+        value: { ...current, panels: { ...current.panels, [id]: boundPanel(value, v) } },
+      };
+    });
+  }, []);
+  const setTheme = useCallback((theme: 'light' | 'dark') => {
+    const v = viewRef.current,
+      key = layoutStorageKey(v);
+    setPreferences((previous) => ({
+      key,
+      value: {
+        ...(previous.key === key ? previous.value : read(v)),
+        theme,
+      },
+    }));
+  }, []);
   const reset = useCallback(() => {
     const next = viewport();
-    setLayout(defaults(next));
+    setPreferences({ key: layoutStorageKey(next), value: defaultWorkspaceLayout(next) });
     setFocused(false);
     try {
-      localStorage.removeItem(storageKey(next.bucket));
-    } catch {}
+      localStorage.removeItem(layoutStorageKey(next));
+    } catch {
+      /* nonessential store */
+    }
   }, []);
   return { view, layout, panel, updatePanel, setTheme, focused, setFocused, reset };
 }

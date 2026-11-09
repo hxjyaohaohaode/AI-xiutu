@@ -2,6 +2,11 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import {
   createRecipe,
   createRecipeV2,
+  createRecipeV3,
+  migrateRecipeToV3,
+  type Point,
+  type PaintStrokeV3,
+  type WarpStrokeV3,
   parseEditorRecipe,
   readImageHeader,
   MAX_HEADER_BYTES,
@@ -9,6 +14,13 @@ import {
   type RGBAImage,
 } from '@ai-xiutu/editor';
 import { downloadBlob, filenameBase } from '../lib/api';
+import { secureUuid } from '../lib/uuid';
+import { sha256 } from '@noble/hashes/sha2.js';
+import { bytesToHex } from '@noble/hashes/utils.js';
+import { usePortraitAnalysis } from './usePortraitAnalysis';
+import { decodeImageSource } from './imageSources';
+import { editorGeometryKey } from './coordinates';
+export { editorGeometryKey } from './coordinates';
 
 const MAX_PREVIEW_PIXELS = 4_194_304;
 function previewEdge() {
@@ -48,6 +60,26 @@ export type BrushSettings = {
 };
 const DEFAULT_BRUSH: BrushSettings = { radius: 0.05, feather: 0.65, opacity: 1, mode: 'add' };
 
+export type PaintSettings = Omit<PaintStrokeV3, 'points'> & { choosingSource: boolean };
+export type WarpSettings = Pick<WarpStrokeV3, 'mode' | 'radius' | 'feather' | 'strength'> & {
+  protecting: boolean;
+};
+const INITIAL_PAINT: PaintSettings = {
+  mode: 'paint',
+  color: [227, 97, 81, 255],
+  radius: 0.025,
+  feather: 0.6,
+  opacity: 1,
+  source: null,
+  choosingSource: false,
+};
+const INITIAL_WARP: WarpSettings = {
+  mode: 'push',
+  radius: 0.12,
+  feather: 0.7,
+  strength: 0.5,
+  protecting: false,
+};
 type HistoryItem = { recipe: EditorRecipe; label: string };
 type ExportResult = { image?: RGBAImage; blob?: Blob };
 type PendingExport = { resolve: (value: ExportResult) => void; reject: (error: Error) => void };
@@ -58,6 +90,15 @@ export function useEditor() {
   const [activeRegionId, setActiveRegionId] = useState<string | null>(null);
   const [brushSettings, setBrushState] = useState<BrushSettings>({ ...DEFAULT_BRUSH });
   const [maskOverlay, setMaskOverlay] = useState(true);
+  const [activeMaskPath, setActiveMaskPath] = useState<number[]>([]);
+  const [activePaintLayerId, setActivePaintLayerId] = useState<string | null>(null);
+  const [activeImageLayerId, setActiveImageLayerId] = useState<string | null>(null);
+  const [paintSettings, setPaintSettings] = useState<PaintSettings>({ ...INITIAL_PAINT });
+  const [warpSettings, setWarpSettings] = useState<WarpSettings>({ ...INITIAL_WARP });
+  const [layerImages, setLayerImages] = useState<ReadonlyMap<string, RGBAImage>>(new Map());
+  const layerFiles = useRef(new Map<string, File>());
+  const layerDimensions = useRef(new Map<string, { width: number; height: number }>());
+  const [sourceHash, setSourceHash] = useState<string | null>(null);
   const setBrushSettings = useCallback(
     (next: BrushSettings | ((previous: BrushSettings) => BrushSettings)) => {
       setBrushState((previous) => {
@@ -81,7 +122,7 @@ export function useEditor() {
       localStorage.setItem('editor:pixel-budget:v2', String(value));
     } catch {}
   }, []);
-  const initial = useRef(createRecipeV2());
+  const initial = useRef(createRecipeV3());
   const [recipe, setRecipe] = useState<EditorRecipe>(initial.current);
   const recipeRef = useRef(recipe);
   const getRecipe = useCallback(() => recipeRef.current, []);
@@ -96,6 +137,7 @@ export function useEditor() {
   const [rendered, setRendered] = useState<RGBAImage | null>(null);
   const [renderedGeometryKey, setRenderedGeometryKey] = useState<string | null>(null);
   const [dimensions, setDimensions] = useState<{ width: number; height: number } | null>(null);
+  const portrait = usePortraitAnalysis(originalPreview, dimensions, sourceHash);
   const [rendering, setRendering] = useState(false);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -165,7 +207,7 @@ export function useEditor() {
           if (failure) setError(failure);
           else if (result) {
             setRendered(result);
-            setRenderedGeometryKey(JSON.stringify(completed.recipe.geometry));
+            setRenderedGeometryKey(editorGeometryKey(completed.recipe));
             setError(null);
           }
         }
@@ -200,7 +242,7 @@ export function useEditor() {
       source: sourceIdentity.current,
     };
     pumpPreview.current();
-  }, [recipe, originalPreview]);
+  }, [recipe, originalPreview, layerImages]);
 
   const replaceRecipe = useCallback((next: EditorRecipe) => {
     recipeRef.current = next;
@@ -228,6 +270,7 @@ export function useEditor() {
       incoming: File,
       existingRecipe?: EditorRecipe,
       isCurrent: () => boolean = () => true,
+      references: ReadonlyMap<string, File> = new Map(),
     ) => {
       if (incoming.size > MAX_LOCAL_FILE_BYTES)
         throw new LocalImportError(
@@ -257,7 +300,11 @@ export function useEditor() {
             'ANIMATION_UNSUPPORTED',
             '当前仅处理静态图片，不能自动丢弃动画帧。请先明确导出单帧副本。',
           );
-        const maxPixels = Math.min(pixelBudget, localPixelBudget());
+        const maxPixels = Math.min(
+          pixelBudget,
+          localPixelBudget(),
+          !existingRecipe || existingRecipe.schemaVersion === 3 ? 16_777_216 : 67_108_864,
+        );
         const maxDimension = maxPixels > 16_777_216 ? 16384 : 8192;
         if (
           header.width * header.height > maxPixels ||
@@ -268,8 +315,8 @@ export function useEditor() {
             'LOCAL_SIZE_LIMIT',
             `原图 ${header.width}×${header.height}，超过当前 ${(maxPixels / 1e6).toFixed(1)} 百万像素 / 单边 ${maxDimension}px 预算。可在导入设置中明确调整设备预算；不会自动缩小原图。`,
           );
-        if (generation !== loadGeneration.current || !isCurrent()) return;
-        const safeRecipe = existingRecipe ? parseEditorRecipe(existingRecipe) : createRecipeV2();
+        if (generation !== loadGeneration.current || !isCurrent()) return false;
+        const safeRecipe = existingRecipe ? parseEditorRecipe(existingRecipe) : createRecipeV3();
         const mime =
           header.format === 'jpeg'
             ? 'image/jpeg'
@@ -307,7 +354,7 @@ export function useEditor() {
         if (!context) throw new Error('当前浏览器无法创建图像画布。');
         context.drawImage(bitmap, 0, 0);
         const full = context.getImageData(0, 0, fullCanvas.width, fullCanvas.height);
-        if (generation !== loadGeneration.current || !isCurrent()) return;
+        if (generation !== loadGeneration.current || !isCurrent()) return false;
         const scale = Math.min(
           1,
           previewEdge() / Math.max(bitmap.width, bitmap.height),
@@ -320,15 +367,47 @@ export function useEditor() {
         if (!miniContext) throw new Error('当前浏览器无法创建预览。');
         miniContext.drawImage(bitmap, 0, 0, mini.width, mini.height);
         const pixels = miniContext.getImageData(0, 0, mini.width, mini.height);
-        if (generation !== loadGeneration.current || !isCurrent()) return;
+        if (generation !== loadGeneration.current || !isCurrent()) return false;
         if (!worker.current) throw new Error('本地图像处理器尚未就绪，请重试。');
-        sourceRef.current = { width: full.width, height: full.height };
         const preview = { width: pixels.width, height: pixels.height, data: pixels.data };
+        const resolved = new Map<string, Awaited<ReturnType<typeof decodeImageSource>>>();
+        let layerPixelCount = 0;
+        for (const layer of safeRecipe.schemaVersion === 3 ? safeRecipe.imageLayers : []) {
+          if (resolved.has(layer.sourceId)) continue;
+          if (generation !== loadGeneration.current || !isCurrent()) return false;
+          const reference = references.get(layer.sourceId);
+          if (!reference)
+            throw new Error('合成素材未能解析，请重新选择素材或从有权访问的项目中打开。');
+          const decoded = await decodeImageSource(reference);
+          layerPixelCount += decoded.original.width * decoded.original.height;
+          if (layerPixelCount > 16_777_216)
+            throw new Error('合成素材总像素超出当前设备的 16.8MP 预算。');
+          resolved.set(layer.sourceId, decoded);
+        }
+        if (generation !== loadGeneration.current || !isCurrent()) return false;
+        sourceRef.current = { width: full.width, height: full.height };
+        const fingerprint = sha256
+          .create()
+          .update(new TextEncoder().encode(`${full.width}x${full.height}:srgb-rgba8:`))
+          .update(new Uint8Array(full.data.buffer, full.data.byteOffset, full.data.byteLength))
+          .digest();
+        setSourceHash(bytesToHex(fingerprint));
+        layerFiles.current = new Map([...resolved].map(([id, item]) => [id, item.file]));
+        layerDimensions.current = new Map(
+          [...resolved].map(([id, item]) => [
+            id,
+            { width: item.original.width, height: item.original.height },
+          ]),
+        );
+        const images = new Map([...resolved].map(([id, item]) => [id, item.preview]));
+        setLayerImages(images);
         worker.current.postMessage(
           {
             type: 'source',
             image: preview,
             original: { width: full.width, height: full.height, data: full.data },
+            images,
+            originalImages: new Map([...resolved].map(([id, item]) => [id, item.original])),
           },
           [full.data.buffer],
         );
@@ -341,11 +420,17 @@ export function useEditor() {
         setDimensions({ width: full.width, height: full.height });
         setOriginalPreview(preview);
         setRendered(preview);
-        setRenderedGeometryKey(JSON.stringify(createRecipe().geometry));
+        setRenderedGeometryKey(editorGeometryKey(createRecipeV3()));
         resetHistory(safeRecipe);
         setActiveRegionId(null);
+        setActiveMaskPath([]);
+        setActivePaintLayerId(null);
+        setActiveImageLayerId(null);
+        setPaintSettings({ ...INITIAL_PAINT });
+        setWarpSettings({ ...INITIAL_WARP });
         setBrushState({ ...DEFAULT_BRUSH });
         setMaskOverlay(true);
+        return true;
       } finally {
         bitmap?.close();
         if (fullCanvas) {
@@ -381,6 +466,106 @@ export function useEditor() {
       setHistoryIndex(items.length - 1);
     },
     [replaceRecipe],
+  );
+  const importImageLayer = useCallback(
+    async (incoming: File) => {
+      const identity = sourceIdentity.current;
+      if (!sourceRef.current) throw new Error('请先打开底图。');
+      const decoded = await decodeImageSource(incoming);
+      if (identity !== sourceIdentity.current || loadBusy.current)
+        throw new Error('素材读取期间底图已改变，请重新添加。');
+      const current = migrateRecipeToV3(recipeRef.current);
+      if (current.imageLayers.length >= 8) throw new Error('当前工作稿最多保留 8 个合成图层。');
+      const uniqueFiles = new Set<File>();
+      const total =
+        [...layerDimensions.current].reduce((n, [id, d]) => {
+          const f = layerFiles.current.get(id);
+          if (!f || uniqueFiles.has(f)) return n;
+          uniqueFiles.add(f);
+          return n + d.width * d.height;
+        }, 0) +
+        decoded.original.width * decoded.original.height;
+      if (total > 16_777_216)
+        throw new Error(
+          '本会话合成素材（含撤销历史）总像素上限为 16.8MP。可保存后重新打开，释放已删除素材。',
+        );
+      const sourceId = `local-${secureUuid()}`,
+        id = secureUuid();
+      layerFiles.current.set(sourceId, decoded.file);
+      layerDimensions.current.set(sourceId, {
+        width: decoded.original.width,
+        height: decoded.original.height,
+      });
+      worker.current?.postMessage(
+        { type: 'image-source', sourceId, image: decoded.preview, original: decoded.original },
+        [decoded.original.data.buffer],
+      );
+      setLayerImages((old) => new Map([...old, [sourceId, decoded.preview]]));
+      const dims = sourceRef.current;
+      const ratio = decoded.preview.width / decoded.preview.height;
+      const width = Math.min(0.7, (0.7 * dims.height * ratio) / dims.width),
+        height = (width * dims.width) / (ratio * dims.height);
+      commit(
+        {
+          ...current,
+          imageLayers: [
+            ...current.imageLayers,
+            {
+              id,
+              sourceId,
+              name: incoming.name.slice(0, 120),
+              enabled: true,
+              opacity: 1,
+              blendMode: 'normal',
+              x: (1 - width) / 2,
+              y: (1 - height) / 2,
+              width,
+              height,
+              rotationDegrees: 0,
+              flipX: false,
+              flipY: false,
+              mask: null,
+            },
+          ],
+        },
+        '添加合成素材',
+      );
+      setActiveImageLayerId(id);
+    },
+    [commit],
+  );
+  const getLayerFiles = useCallback(() => new Map(layerFiles.current), []);
+  const rekeyImageSources = useCallback(
+    (mapping: ReadonlyMap<string, string>) => {
+      if (!mapping.size) return;
+      for (const [from, to] of mapping) {
+        const file = layerFiles.current.get(from),
+          dim = layerDimensions.current.get(from);
+        if (file) layerFiles.current.set(to, file);
+        if (dim) layerDimensions.current.set(to, dim);
+      }
+      worker.current?.postMessage({ type: 'rekey-sources', mapping });
+      setLayerImages((old) => {
+        const next = new Map(old);
+        for (const [from, to] of mapping) {
+          const value = old.get(from);
+          if (value) next.set(to, value);
+        }
+        return next;
+      });
+      if (recipeRef.current.schemaVersion === 3)
+        commit(
+          {
+            ...recipeRef.current,
+            imageLayers: recipeRef.current.imageLayers.map((layer) => ({
+              ...layer,
+              sourceId: mapping.get(layer.sourceId) ?? layer.sourceId,
+            })),
+          },
+          '保存合成素材引用',
+        );
+    },
+    [commit],
   );
   const cancelPreview = useCallback(() => {
     const current = historyRef.current[indexRef.current];
@@ -491,6 +676,19 @@ export function useEditor() {
           '读取配方期间图片已切换，配方没有应用到新图。请在当前图片准备好后重新导入。',
         );
       const next = parseEditorRecipe(JSON.parse(text));
+      if (
+        next.schemaVersion === 3 &&
+        next.imageLayers.some((l) => !layerFiles.current.has(l.sourceId))
+      )
+        throw new Error(
+          '配方引用的合成素材不在本会话中。请从云端项目打开完整作品，或先恢复所引用的素材。',
+        );
+      if (
+        next.schemaVersion === 3 &&
+        sourceRef.current &&
+        sourceRef.current.width * sourceRef.current.height > 16_777_216
+      )
+        throw new Error('这张原图超过 v3 编辑预算，请明确准备较小副本。');
       commit(next, '导入配方');
     },
     [commit],
@@ -499,6 +697,22 @@ export function useEditor() {
   return {
     file,
     dimensions,
+    sourceHash,
+    portrait,
+    activeMaskPath,
+    setActiveMaskPath,
+    activePaintLayerId,
+    setActivePaintLayerId,
+    activeImageLayerId,
+    setActiveImageLayerId,
+    paintSettings,
+    setPaintSettings,
+    warpSettings,
+    setWarpSettings,
+    layerImages,
+    importImageLayer,
+    getLayerFiles,
+    rekeyImageSources,
     sourceFormat,
     activeRegionId,
     setActiveRegionId,
@@ -535,7 +749,14 @@ export function useEditor() {
     exportRecipe,
     importRecipe,
     reset: () =>
-      commit(recipeRef.current.schemaVersion === 2 ? createRecipeV2() : createRecipe(), '恢复原图'),
+      commit(
+        recipeRef.current.schemaVersion === 3
+          ? createRecipeV3()
+          : recipeRef.current.schemaVersion === 2
+            ? createRecipeV2()
+            : createRecipe(),
+        '恢复原图',
+      ),
   };
 }
 export type EditorState = ReturnType<typeof useEditor>;

@@ -1,0 +1,2501 @@
+{
+  "recordedAtUtc": "2026-11-09T17:52:08.825462+00:00",
+  "baseCommit": "770be981daa99898937fbd92cb15661c40f92131",
+  "scope": "git tracked and non-ignored untracked repository files; private environment/data/dependencies/build products omitted; these two self-record files excluded to avoid recursive hashes",
+  "readEvidence": "F denotes full source reading during this independent pass, not formal proof or repeated six-pass line review. Hashes are inventory-time snapshots; concurrent later changes require difference review.",
+  "statuses": {
+    "F": "本轮完整阅读",
+    "O": "前轮负责模块的既有复核，非本轮独立再审",
+    "C": "上下文阅读，非代码审查",
+    "T": "本轮执行测试，未逐行重读",
+    "S": "其他专项负责，本独立审查未覆盖",
+    "B": "二进制只登记",
+    "U": "仅清单登记，未逐行阅读"
+  },
+  "counts": {
+    "F": 122,
+    "U": 105,
+    "C": 4,
+    "O": 47,
+    "T": 1,
+    "B": 9,
+    "S": 16
+  },
+  "sourceCounts": {
+    "F": 112,
+    "U": 49,
+    "O": 42,
+    "T": 1,
+    "S": 16
+  },
+  "files": [
+    {
+      "path": ".dockerignore",
+      "status": "F",
+      "kind": "text",
+      "lines": 11,
+      "sha256": "b4e841875e7ede01897b78b096d2dda6a0e6c8c18e43b6287244e3c30e455693",
+      "note": "构建排除环境凭据、数据目录、依赖与输出；仅查看规则不读取私人配置。"
+    },
+    {
+      "path": ".env.example",
+      "status": "U",
+      "kind": "text",
+      "lines": 77,
+      "sha256": "36dfcc3269ee4627af9514d94616d50a0c8e40b5ae7c3b1d337ead11630520d5",
+      "note": "已纳入清单；本独立审查未逐行复核。"
+    },
+    {
+      "path": ".github/workflows/checks.yml",
+      "status": "F",
+      "kind": "text",
+      "lines": 164,
+      "sha256": "86e9ac58bdac06eaef0ae707c15c7e1d86d47443f10a2b0932fdfdb19ce02969",
+      "note": "固定action引用、原生PG18、DB强制测试、容器禁用供应商与私网检查；脚本存在不等于本轮CI已通过。"
+    },
+    {
+      "path": ".gitignore",
+      "status": "U",
+      "kind": "text",
+      "lines": 14,
+      "sha256": "8ffde91a0668cdc0b3669cd54c625969d029835322cb8b3c9b0531aee183f06d",
+      "note": "已纳入清单；本独立审查未逐行复核。"
+    },
+    {
+      "path": ".npmrc",
+      "status": "U",
+      "kind": "text",
+      "lines": 3,
+      "sha256": "e7aec7c6391e1582653bff0ae8dd7b252655b96d97791d90da109c8de737da50",
+      "note": "已纳入清单；本独立审查未逐行复核。"
+    },
+    {
+      "path": ".nvmrc",
+      "status": "U",
+      "kind": "text",
+      "lines": 1,
+      "sha256": "d9f318747a126ce2247661af67852b185def7789492eabfad7bba322be087c33",
+      "note": "已纳入清单；本独立审查未逐行复核。"
+    },
+    {
+      "path": ".prettierignore",
+      "status": "U",
+      "kind": "text",
+      "lines": 10,
+      "sha256": "9c2b626452d5db152aeca21146b7fe6b263f685b11c3f28003049f4e85161fc1",
+      "note": "已纳入清单；本独立审查未逐行复核。"
+    },
+    {
+      "path": ".prettierrc.json",
+      "status": "U",
+      "kind": "text",
+      "lines": 5,
+      "sha256": "d7fa1c1dee12b930b45e1f8c465b07da95fa519cfd9e3e503c76dc762617b1fb",
+      "note": "已纳入清单；本独立审查未逐段复核内容。锁文件/许可证清单不等于供应链或法律认证。"
+    },
+    {
+      "path": "AGENTS.md",
+      "status": "C",
+      "kind": "text",
+      "lines": 19,
+      "sha256": "35733974c4a40bd041ac55b57fe97cf98349afc00426a8a34d8eb34a95d26860",
+      "note": "任务上下文已读；本轮没有重新逐段验收全部文档事实。"
+    },
+    {
+      "path": "README.md",
+      "status": "C",
+      "kind": "text",
+      "lines": 93,
+      "sha256": "97fa2505f547ffbbdd82fbf63ca2edcce9ca483bd758f97d8868facde1705ebe",
+      "note": "任务上下文已读；本轮没有重新逐段验收全部文档事实。"
+    },
+    {
+      "path": "apps/api/API.md",
+      "status": "U",
+      "kind": "text",
+      "lines": 254,
+      "sha256": "288e15aec6be2a88f15afae22d373bfca9708b3318dfd326214ec36b6f34e539",
+      "note": "已纳入清单；本独立审查未逐段复核内容。锁文件/许可证清单不等于供应链或法律认证。"
+    },
+    {
+      "path": "apps/api/package.json",
+      "status": "F",
+      "kind": "text",
+      "lines": 20,
+      "sha256": "8b79534b486397ccd484483c9ff904e8b43e5a49cfb8a2de2898f022ba786577",
+      "note": "contracts/db/providers/editor/ai/storage 工作区依赖与真实脚本。"
+    },
+    {
+      "path": "apps/api/src/ai-decisions.ts",
+      "status": "F",
+      "kind": "text",
+      "lines": 377,
+      "sha256": "c926b4f5b5059436c73784e2ac4aee622be5e2e3d9c49850fb52baac620520c8",
+      "note": "completed/provenance 门禁、actor 幂等/请求哈希、CAS、正确候选类型；拒绝不退款；采用不二次结算。"
+    },
+    {
+      "path": "apps/api/src/app.ts",
+      "status": "F",
+      "kind": "text",
+      "lines": 351,
+      "sha256": "ccb9fed5639f80271df27c55ab519e0e891c310ff45a07038a06efd654373a20",
+      "note": "Origin 写门禁、body/multipart 限制、错误脱敏、真实服务能力发现、每条 AI 路由鉴权。"
+    },
+    {
+      "path": "apps/api/src/asset-annotations.ts",
+      "status": "F",
+      "kind": "text",
+      "lines": 184,
+      "sha256": "c282b7164409db3a4b919d18a26b3e66932256540eae202a830680697a5b6554",
+      "note": "严格字段 schema、版本冲突、声明元数据、游标绑定 actor/filter、搜索转义与结果上限。"
+    },
+    {
+      "path": "apps/api/src/asset-copy.ts",
+      "status": "F",
+      "kind": "text",
+      "lines": 340,
+      "sha256": "ee6d4d30fc3cd9ecd207931f792355c710a8fd986d8e5ca063131291eaf476f1",
+      "note": "源访问+复制许可+目标编辑权限、持久幂等、已完成副本复用、目标容量、最后一次权限/过期检查。"
+    },
+    {
+      "path": "apps/api/src/auth.ts",
+      "status": "F",
+      "kind": "text",
+      "lines": 285,
+      "sha256": "ad012478e9e963899cbc79ffd152e844902d820ab86b04cbddffed36e577bde5",
+      "note": "OTP HMAC/时效/独立失败计数、一次性消费、邀请激活、重置撤销会话、短信真实发送/未知态。"
+    },
+    {
+      "path": "apps/api/src/bootstrap.ts",
+      "status": "F",
+      "kind": "text",
+      "lines": 50,
+      "sha256": "1876f171987209a1faea00a62e6db4cae4852f9739358066b9039ad0e7d84926",
+      "note": "显式配置、一次性锁、已有账号/运营拒绝、无默认密钥/密码；初始化与用户自证语义分开。"
+    },
+    {
+      "path": "apps/api/src/collaboration.ts",
+      "status": "F",
+      "kind": "text",
+      "lines": 323,
+      "sha256": "ceab69cd0bb3dafb957a4bcd946251e1a47abd3446b62c95383a626cda03948a",
+      "note": "评论锚点项目绑定、任务/文档 CAS、文档历史追加；事件长轮询反复重验成员和账号状态。"
+    },
+    {
+      "path": "apps/api/src/config.ts",
+      "status": "F",
+      "kind": "text",
+      "lines": 44,
+      "sha256": "68ec42ada2c08f6061dce1f326739a184e3d05c80d0dee9b003fa522a87da01e",
+      "note": "数据库/秘密值长度、exact origin、secure cookie、代理跳数及数值预算；未读取私有环境值。"
+    },
+    {
+      "path": "apps/api/src/core.ts",
+      "status": "F",
+      "kind": "text",
+      "lines": 263,
+      "sha256": "5b4bc72a8742c401f28a1868c65cf667e2880fc78ce5522009e4d5938db3620f",
+      "note": "密码 scrypt 与常时比较、会话不透明哈希、限流、project/member/shared ACL、operator 不绕过私人项目。"
+    },
+    {
+      "path": "apps/api/src/editor-contract.ts",
+      "status": "F",
+      "kind": "text",
+      "lines": 83,
+      "sha256": "8b61bdc1f546090851be788cc2ebccad14ddecaf346c3121bcefa03a1b4efbac",
+      "note": "直接派生真实注册表参数/作用域；AI 可写范围只覆盖现有全局白名单，不任意改 V3 路径。"
+    },
+    {
+      "path": "apps/api/src/index.ts",
+      "status": "F",
+      "kind": "text",
+      "lines": 32,
+      "sha256": "7b0f321c55cc8b086e1fa6a2b817b49d7cb06562c98fc84d758039f7d6af78db",
+      "note": "配置/服务启动顺序和进程停止时数据库/HTTP 清理。"
+    },
+    {
+      "path": "apps/api/src/operations.ts",
+      "status": "F",
+      "kind": "text",
+      "lines": 514,
+      "sha256": "0f11967d5723d339b2ad53603c40bff1c9972bc7bf70c33d5bbf1626eb1a1a2d",
+      "note": "运营专属/审计、账号限制撤会话、套餐版本追加、模型参数校验、额度理由与幂等、无默认密码。"
+    },
+    {
+      "path": "apps/api/src/projects.ts",
+      "status": "F",
+      "kind": "text",
+      "lines": 437,
+      "sha256": "2b75f9706641dcc63c2dae3bd0cbc3391b3b1a0a8933553c1ab01637b345415d",
+      "note": "上传前后 ACL、私有素材/缩略图 ACL、源与引用层保护、CAS 版本追加、历史按自身底图恢复。"
+    },
+    {
+      "path": "apps/api/src/recipe-references.ts",
+      "status": "F",
+      "kind": "text",
+      "lines": 49,
+      "sha256": "d21d558b446969296ae38d30f4e81358da42e611a83c280526b6aa3dd8c7b870",
+      "note": "V3 图层必须是同项目有效 UUID 素材，跨项目复制完整重映射，不接受任意 URL。"
+    },
+    {
+      "path": "apps/api/src/revision-commands.ts",
+      "status": "F",
+      "kind": "text",
+      "lines": 93,
+      "sha256": "2a4c25714ccda6ea7018a43499740a516f5ce9bdfd80bb86b038743ef06816d2",
+      "note": "同项目源锁与引用验证、原子更新头和追加不可变版本；分支独立。"
+    },
+    {
+      "path": "apps/api/src/sharing.ts",
+      "status": "F",
+      "kind": "text",
+      "lines": 348,
+      "sha256": "0bfaf6723b88c5a905c5a165d6184a03208981428a5b0419e0ec33c8e31fdaf2",
+      "note": "reference/copy 许可与容量、不可越权授予、同事务快照复制、幂等、图层来源重映射、过期重检。"
+    },
+    {
+      "path": "apps/api/src/spaces.ts",
+      "status": "F",
+      "kind": "text",
+      "lines": 228,
+      "sha256": "65466d5e875c14e94ea80a911c744b22a7940feede13b53d0620839179918177",
+      "note": "个人空间不可加成员、角色层级、邀请使用时重验、移除成员撤销关联授权，团队额度独立。"
+    },
+    {
+      "path": "apps/api/src/storage.ts",
+      "status": "F",
+      "kind": "text",
+      "lines": 1,
+      "sha256": "0bc6642ecddcdde06da30aa0099d78eb2b29c6fbca1b80f61daf3501e568d394",
+      "note": "仅复用私有存储包，没有额外公开文件服务。"
+    },
+    {
+      "path": "apps/api/test/ai-decisions.test.ts",
+      "status": "U",
+      "kind": "text",
+      "lines": 1120,
+      "sha256": "a31dc70b0ccb70e0bb42dcdc20726dbc2f0d56cc023600d31ab101aa34a8cc85",
+      "note": "已纳入清单；本独立审查未逐条阅读/执行此文件，不据此推断全部用例通过。"
+    },
+    {
+      "path": "apps/api/test/asset-annotations.test.ts",
+      "status": "U",
+      "kind": "text",
+      "lines": 460,
+      "sha256": "6bb035a7eaf4c871e79b962eb905e534c487a9d528105dd8a2e225a13e72cbf5",
+      "note": "已纳入清单；本独立审查未逐条阅读/执行此文件，不据此推断全部用例通过。"
+    },
+    {
+      "path": "apps/api/test/asset-copy.test.ts",
+      "status": "U",
+      "kind": "text",
+      "lines": 600,
+      "sha256": "764012fd88be00b1532541fa2363b42bb22f8a92bbe478d0c606d860a2f07bc1",
+      "note": "已纳入清单；本独立审查未逐条阅读/执行此文件，不据此推断全部用例通过。"
+    },
+    {
+      "path": "apps/api/test/integration.test.ts",
+      "status": "U",
+      "kind": "text",
+      "lines": 951,
+      "sha256": "006a1e40ca14065e4c4abe6b58796e4d0406e23ccb1d683493a38ce04f764207",
+      "note": "已纳入清单；本独立审查未逐条阅读/执行此文件，不据此推断全部用例通过。"
+    },
+    {
+      "path": "apps/api/tsconfig.json",
+      "status": "U",
+      "kind": "text",
+      "lines": 5,
+      "sha256": "8232231dbe3ceecb55d79ad73c513bb64778d5eb29b707314b8058d300a4e234",
+      "note": "已纳入清单；本独立审查未逐段复核内容。锁文件/许可证清单不等于供应链或法律认证。"
+    },
+    {
+      "path": "apps/web/MOTION.md",
+      "status": "O",
+      "kind": "text",
+      "lines": 122,
+      "sha256": "bdb76c7c27f47bdbdcab5783932e63913030cb910ded11e724f1081ffa597aac",
+      "note": "前轮编写/复核记录；内容证据范围见文件自身，不当本轮六次人工代码审核。"
+    },
+    {
+      "path": "apps/web/README.md",
+      "status": "C",
+      "kind": "text",
+      "lines": 72,
+      "sha256": "cfb2958dc5c8718ef7bbb16ff99a6464df8763b35dd9130cc92d39f38eb0cd05",
+      "note": "任务上下文已读；本轮没有重新逐段验收全部文档事实。"
+    },
+    {
+      "path": "apps/web/index.html",
+      "status": "U",
+      "kind": "text",
+      "lines": 18,
+      "sha256": "edd7725e8524ef932f12a9d38f0a687c729182a393d6111dcc1f03a2329d70bd",
+      "note": "已纳入清单；本独立审查未逐行复核。"
+    },
+    {
+      "path": "apps/web/package.json",
+      "status": "F",
+      "kind": "text",
+      "lines": 29,
+      "sha256": "238333e9967e6e1fbb1b47b515bfbbf2f6a148ce66cc25e63c2db11f5bd1a43d",
+      "note": "真实工作区依赖、typecheck/test/build 入口，新增 portrait/contracts/MediaPipe 版本关联。"
+    },
+    {
+      "path": "apps/web/public/favicon.svg",
+      "status": "U",
+      "kind": "text",
+      "lines": 1,
+      "sha256": "5835ffd8d76af7b5a402f4896a2284a0cbfc4a6414add1698bd5ee31600c853f",
+      "note": "已纳入清单；本独立审查未逐行复核。"
+    },
+    {
+      "path": "apps/web/qa-responsive.html",
+      "status": "U",
+      "kind": "text",
+      "lines": 145,
+      "sha256": "e979f59da6c22b199315e61669f0ef61c4c82d93f34a2f397b3bd8f3dfe1f162",
+      "note": "已纳入清单；本独立审查未逐行复核。"
+    },
+    {
+      "path": "apps/web/src/App.tsx",
+      "status": "F",
+      "kind": "text",
+      "lines": 1716,
+      "sha256": "19c382e7a858470dd5f45d822a4ca436787aa1fcbaed7cff2aa29ff22dc3e847",
+      "note": "跨源异步身份、保存快照、CAS 冲突分支、正确 revision 源图、跨项目复制许可；未保存草稿不会被 AI 采用或历史慢响应覆盖。"
+    },
+    {
+      "path": "apps/web/src/ai/AIThread.tsx",
+      "status": "O",
+      "kind": "text",
+      "lines": 561,
+      "sha256": "9db509e5993bc42e2dc8df2223acd93b97ef67c4359deaa72f5e9bad5815c8f5",
+      "note": "前轮：原AI输出与手改稿分开、真实来源和明确采用动作。"
+    },
+    {
+      "path": "apps/web/src/ai/ImageParameters.tsx",
+      "status": "F",
+      "kind": "text",
+      "lines": 252,
+      "sha256": "201b99f8dfd6f914a2d3099a7bcc250f7ee8b0c1158d0b457e98797f409237dc",
+      "note": "按当前模型显示真正开放参数；自由尺寸受能力约束；不支持项给原因；供应商编码与项目规范化格式分开。"
+    },
+    {
+      "path": "apps/web/src/ai/QueuedCancellation.tsx",
+      "status": "U",
+      "kind": "text",
+      "lines": 72,
+      "sha256": "0f2a420de0a79c5e405d901d4b0c015e2fd1544e9d61cc7e8d5f938b70b5779e",
+      "note": "已纳入清单；本独立审查未逐行复核。"
+    },
+    {
+      "path": "apps/web/src/ai/ResultActions.tsx",
+      "status": "O",
+      "kind": "text",
+      "lines": 382,
+      "sha256": "7468de30d36ca272a9d562bf49f9503e358029ca7b11f6265914a86e0ac4a3ba",
+      "note": "前轮：明确拒绝/分支/替换/合成/应用/文本保存、目标版本快照。"
+    },
+    {
+      "path": "apps/web/src/ai/capabilities.ts",
+      "status": "F",
+      "kind": "text",
+      "lines": 163,
+      "sha256": "33ceea5fbeee56c3799b6c67a92f5058cd17ba790c780e46c17125b30fdcdd05",
+      "note": "服务端/供应商/运营参数交集、尺寸步进和比例、输出总像素、透明与 JPEG 依赖、整数服务点报价。"
+    },
+    {
+      "path": "apps/web/src/ai/decisions.css",
+      "status": "O",
+      "kind": "text",
+      "lines": 153,
+      "sha256": "28214581cee9fcfedcf12fe6eb6dbdc05fa82f59a5b9e95a9c7b89333df02eb3",
+      "note": "前轮：结果/确认/历史层级与小屏正文密度。"
+    },
+    {
+      "path": "apps/web/src/ai/decisions.ts",
+      "status": "O",
+      "kind": "text",
+      "lines": 95,
+      "sha256": "b05015b65be2514fbfa3c4b6a84be775aa74bdcd1812ce10880204bef8361933",
+      "note": "前轮：协议1请求、actor/project/job隔离、稳定幂等与dirty门禁。"
+    },
+    {
+      "path": "apps/web/src/ai/recipeDiff.ts",
+      "status": "F",
+      "kind": "text",
+      "lines": 95,
+      "sha256": "c9a588a003503a50f8e14cf7cb49b305f787a45e31e4f45f7515e993d69b0e33",
+      "note": "V3 继承 V2 数值差异、V3 数值与非数值块变化；对象键序不误报，图层顺序变化保留；已修复 CR-01。"
+    },
+    {
+      "path": "apps/web/src/ai/types.ts",
+      "status": "O",
+      "kind": "text",
+      "lines": 165,
+      "sha256": "94a4d66fce082676cf8ebb90b810d40c72a2a4e61b0328d556a9d122593f6ee0",
+      "note": "前轮：共享能力与结果类型，非权限权威。"
+    },
+    {
+      "path": "apps/web/src/ai/useResultDecisions.ts",
+      "status": "O",
+      "kind": "text",
+      "lines": 135,
+      "sha256": "5c24dac803884dbb2b51d98279dd19ef76a333a13b2994bf9cd4c81453404571",
+      "note": "前轮：未知请求保留key、GET/POST竞态、父刷新错误不反转已成功决定。"
+    },
+    {
+      "path": "apps/web/src/components/AIPanel.tsx",
+      "status": "O",
+      "kind": "text",
+      "lines": 1016,
+      "sha256": "a8b60ddda6bbfa4c8c442538c3ad2fc47dff55252349b4239247bf6e23e77751",
+      "note": "前轮：按实际模型能力请求、用户确认、草图/语音/文档入口；新结果决定接入。"
+    },
+    {
+      "path": "apps/web/src/components/AIPanelFeature.tsx",
+      "status": "F",
+      "kind": "text",
+      "lines": 64,
+      "sha256": "84e1db16ba0061efc7f34cf660f1aaaad0e3c4cef39146c797469a8baf554131",
+      "note": "AI 面板懒加载/错误边界与安全随机数错误独立，不使本地图像编辑整体失效。"
+    },
+    {
+      "path": "apps/web/src/components/AssetLibrary.tsx",
+      "status": "F",
+      "kind": "text",
+      "lines": 595,
+      "sha256": "d0f7d7efa883da5cb4c582f587aea43bcaee2eecfee1d3bf84aa8e4241576fd3",
+      "note": "服务器授权范围检索、游标/请求世代、项目/来源/时间分组、annotation CAS、声明时间地点与原图分离。"
+    },
+    {
+      "path": "apps/web/src/components/AuthPanel.tsx",
+      "status": "F",
+      "kind": "text",
+      "lines": 260,
+      "sha256": "036839322875021897f794ea42a916ee32c70fb664865b80a36bc4019068ee08",
+      "note": "真实密码/验证码/注册/重置端点、忙碌门禁、短信未配置状态、无演示验证码；服务器限流为权威。"
+    },
+    {
+      "path": "apps/web/src/components/ColorPicker.tsx",
+      "status": "O",
+      "kind": "text",
+      "lines": 448,
+      "sha256": "e23250cef53866035932f7fb7097b59cbb1052c471fcda30f4bff9656af087a6",
+      "note": "前轮：连续色谱/HEX/HSV/HSL/RGBA、单指针取消和键盘。"
+    },
+    {
+      "path": "apps/web/src/components/Controls.tsx",
+      "status": "F",
+      "kind": "text",
+      "lines": 157,
+      "sha256": "38247e821d5ea665be219605412cbfd7e241952ddfd7257f56602b957af5d2b4",
+      "note": "折叠逐层展现、可访问选项组、滑条与精确输入并存；能力/参数合法性仍由调用方和服务器检查。"
+    },
+    {
+      "path": "apps/web/src/components/DrawingBoard.tsx",
+      "status": "F",
+      "kind": "text",
+      "lines": 386,
+      "sha256": "7e15ced1f0206bab3c6b243e5def8e03134302c66cbfb2fd4e4983f29200e761",
+      "note": "本地笔触、撤销/重做、取消捕获、完整色谱、白底 PNG；确认后才作为 AI 参考，笔触/画幅预算显式。"
+    },
+    {
+      "path": "apps/web/src/components/ImportSettings.tsx",
+      "status": "F",
+      "kind": "text",
+      "lines": 178,
+      "sha256": "09bed7012651a499dcba9391bb173bb4686b5237b2634d0b3f472fcbff56f660",
+      "note": "新 V3 16.8MP 与旧版大图预算区分；服务端规范化需明确上传；真实格式和元数据丢弃说明。"
+    },
+    {
+      "path": "apps/web/src/components/OpsDashboard.tsx",
+      "status": "F",
+      "kind": "text",
+      "lines": 1120,
+      "sha256": "3dc3a013cb484222915d7f4c3ca15eceffacc4b79e3494045278de0f258c650f",
+      "note": "运营状态/待验证用户/品牌公开确认/套餐目录/模型与价格；服务端执行门禁不可被目录绕过，无假支付。"
+    },
+    {
+      "path": "apps/web/src/components/ProjectDialogs.tsx",
+      "status": "F",
+      "kind": "text",
+      "lines": 699,
+      "sha256": "e8489079f005e5538494debe551b117524dc1df02fd88401b151b1ce41256895",
+      "note": "复制稳定幂等、空间角色、参考与副本撤销语义、导出实际 Blob 重复下载、MIME/质量说明；不声称系统相册实写。"
+    },
+    {
+      "path": "apps/web/src/components/QuotaManager.tsx",
+      "status": "F",
+      "kind": "text",
+      "lines": 250,
+      "sha256": "91d46f6347c4f7340a4642388cfd26382ec315c7313e2c008bc63b045cebc4fc",
+      "note": "运营查用户和明确空间；正向赠额/负向可用额调整、理由、稳定幂等 key；未知请求不伪报完成。"
+    },
+    {
+      "path": "apps/web/src/components/Sidebar.tsx",
+      "status": "F",
+      "kind": "text",
+      "lines": 243,
+      "sha256": "8d55e190e78a721a4e7686365e4e5a6d379d9482455f036381b6271f43f3878a",
+      "note": "个人/团队统一入口、共享项目分列、移动隐藏导航 inert、角色文案；导航本身不充当权限。"
+    },
+    {
+      "path": "apps/web/src/components/Ui.tsx",
+      "status": "F",
+      "kind": "text",
+      "lines": 227,
+      "sha256": "e447e2261f1abccd629cc6a6041bcc92bb0b3a64d2dcfaa1dfa99acd12b87fb5",
+      "note": "dialog 关闭门禁/退场 inert、Escape 原生取消、toast 保留最后状态、ARIA、品牌数据驱动。"
+    },
+    {
+      "path": "apps/web/src/components/VoiceCapture.tsx",
+      "status": "F",
+      "kind": "text",
+      "lines": 196,
+      "sha256": "1d81f0c0dd1957c0b43b651ecf9fc66727a94dcba3c7ae491a0fc5d139e77e7a",
+      "note": "只有明确开始才申请麦克风、30秒停止、流结束/卸载清理、本地试听和明确发送；不自动外传。"
+    },
+    {
+      "path": "apps/web/src/components/WorkspaceViews.tsx",
+      "status": "O",
+      "kind": "text",
+      "lines": 919,
+      "sha256": "80748ec70e6df32c813fd16d55b4ff9e2555109061e9e25f69ef87c62a2f6fda",
+      "note": "前轮：revision源图、恢复CAS、文档/任务/评论联动。"
+    },
+    {
+      "path": "apps/web/src/components/color-model.ts",
+      "status": "O",
+      "kind": "text",
+      "lines": 76,
+      "sha256": "b095ef9b00065a22e91f0df9eb9367824e4ba90cf1811ffe76d4ec5abd913a0e",
+      "note": "前轮：颜色空间往返和全alpha字节测试。"
+    },
+    {
+      "path": "apps/web/src/editor/AdvancedInspector.tsx",
+      "status": "O",
+      "kind": "text",
+      "lines": 232,
+      "sha256": "609b40b35ba23a798a9bcb914e2b4ea2fce7415891552ffa220b985bd9072259",
+      "note": "前轮：V3全工具路由、scoped参数/曲线、错误保留合法配方。"
+    },
+    {
+      "path": "apps/web/src/editor/CanvasStage.tsx",
+      "status": "F",
+      "kind": "text",
+      "lines": 1528,
+      "sha256": "f2b3679d7f60503dd608fa75760a348cb658983f60a9e8fa5d46003f7b1d535a",
+      "note": "源/显示坐标转换、变换就绪门禁、像素画笔、液化、选区/图层手势、取消与捕获；第二触点竞争已修复，见 CR-02。"
+    },
+    {
+      "path": "apps/web/src/editor/ColorControls.tsx",
+      "status": "O",
+      "kind": "text",
+      "lines": 373,
+      "sha256": "e243274b70f32f126ffa965a96968fd6568966e3d5b7c6435d7448bb64960def",
+      "note": "前轮：全局/区域/组完整色彩控件、连续选色与分区。"
+    },
+    {
+      "path": "apps/web/src/editor/CurveEditor.tsx",
+      "status": "O",
+      "kind": "text",
+      "lines": 501,
+      "sha256": "f4d6e2e4a1f37b2a7cfda0f52469db0e26335aa73f176f406a214d9cd1c7e55e",
+      "note": "前轮：完整配方scoped曲线、跨源/作用域手势失效、捕获重入。"
+    },
+    {
+      "path": "apps/web/src/editor/GeometryControls.tsx",
+      "status": "O",
+      "kind": "text",
+      "lines": 281,
+      "sha256": "4fedebff6a5ec6c40bfa0f3282a8cb1859761436b6ce8b705e31589721161350",
+      "note": "前轮：自由整数裁切/连续几何，奇异与超预算拒绝。"
+    },
+    {
+      "path": "apps/web/src/editor/Histogram.tsx",
+      "status": "F",
+      "kind": "text",
+      "lines": 84,
+      "sha256": "64442de2bcc5d8f658764a4df1c5ad0659723aceca9a375da03027681de4271d",
+      "note": "RGB/亮度/对数切换、明确当前预览统计和暗亮端代理；不冒充 RAW 截断判定。"
+    },
+    {
+      "path": "apps/web/src/editor/LayerControls.tsx",
+      "status": "O",
+      "kind": "text",
+      "lines": 1019,
+      "sha256": "aafb93d2379f79a3069d98804659978cca8ed65ecb3287b7032781a8d8165e83",
+      "note": "前轮：图层/混合/绘制/克隆来源/像素点/保护液化，真实上限。"
+    },
+    {
+      "path": "apps/web/src/editor/LocalControls.tsx",
+      "status": "O",
+      "kind": "text",
+      "lines": 516,
+      "sha256": "82c9c1ee048b184c523e77d0ae1ee642a5a91deb26f78fa630b87d2ca68e2ece",
+      "note": "前轮：多局部/组、独立/共享参数、顺序/透明度/名称。"
+    },
+    {
+      "path": "apps/web/src/editor/MaskControls.tsx",
+      "status": "O",
+      "kind": "text",
+      "lines": 422,
+      "sha256": "a8531eabdc74ac45d09b52b8eda6d2abcf13f2ac320a8fde7245e9b2f994edf5",
+      "note": "前轮：复合子路径、添加/减去/相交、合法范围与蒙版预算。"
+    },
+    {
+      "path": "apps/web/src/editor/ParameterShelf.tsx",
+      "status": "O",
+      "kind": "text",
+      "lines": 84,
+      "sha256": "19330d4e089c0ca92aa52332de663a433407d3f32358e35577a8442457f6b85c",
+      "note": "前轮：同类集中、单主滑条、切换结束当前事务。"
+    },
+    {
+      "path": "apps/web/src/editor/PortraitControls.tsx",
+      "status": "O",
+      "kind": "text",
+      "lines": 405,
+      "sha256": "cf0aed314b0db1b427a3620d6f4e2fb8ed0020bec1f530630af7f37ca322bf9c",
+      "note": "前轮：能力可用性、多人独立、每妆容颜色、整体脱离、标注导入导出。"
+    },
+    {
+      "path": "apps/web/src/editor/PrecisionRange.tsx",
+      "status": "O",
+      "kind": "text",
+      "lines": 298,
+      "sha256": "4f3074936ae0593df5a280e63597baf671ea15b36a7593ecf5285b04a2d0e98f",
+      "note": "前轮：触摸/键盘事务、取消恢复、不相关指针不能提交。"
+    },
+    {
+      "path": "apps/web/src/editor/ToolInspector.tsx",
+      "status": "O",
+      "kind": "text",
+      "lines": 1654,
+      "sha256": "f1b8ae23dd24161caec6aceaa1676a231df989c98cc448e9eafce403fa86e4c8",
+      "note": "前轮：美颜顶层与V3显式升级；旧基础工具保留。"
+    },
+    {
+      "path": "apps/web/src/editor/advanced-inspector.css",
+      "status": "O",
+      "kind": "text",
+      "lines": 432,
+      "sha256": "da1fbb7507179fa7c3bcda8b241513da74f1a1bcac5cfe0d52dfac5a215c0bbc",
+      "note": "前轮：紧凑层级、微色阶、三端/低高/减少动态规则。"
+    },
+    {
+      "path": "apps/web/src/editor/advanced-model.ts",
+      "status": "O",
+      "kind": "text",
+      "lines": 181,
+      "sha256": "d1fbad704e8175b14b0f6e7ac99f52e532f1e12c8b64991be90dc70c048a9f56",
+      "note": "前轮：注册表身份、全局/区域/组独立ColorBlock、预览前严格合法性。"
+    },
+    {
+      "path": "apps/web/src/editor/canvas-gesture.ts",
+      "status": "F",
+      "kind": "text",
+      "lines": 57,
+      "sha256": "f6787997c4983be5b91fe600d6da97d37f6b1de7bd6c6844425a4b9cef508b6a",
+      "note": "真实 Stage 共用触点策略：第二触点取消一次，全部松开前抑制；回滚严格核对 source identity 与 recipe 引用。"
+    },
+    {
+      "path": "apps/web/src/editor/coordinates.ts",
+      "status": "F",
+      "kind": "text",
+      "lines": 38,
+      "sha256": "8a9885532707d3fa37e7de3fd8ead2f8cb7a759e7e7ca816ab5f09c0184855aa",
+      "note": "实际变换/位移逆映射；透明扩展区不落笔；图层把手允许域外移动，画笔和取色有严格边界。"
+    },
+    {
+      "path": "apps/web/src/editor/editor-controls.css",
+      "status": "U",
+      "kind": "text",
+      "lines": 1429,
+      "sha256": "9bd224a0995337bc9a86e2f6f690447cd092b8281053f5aa436d634260e59d21",
+      "note": "已纳入清单；本独立审查未逐行复核。"
+    },
+    {
+      "path": "apps/web/src/editor/histogram-cache.ts",
+      "status": "F",
+      "kind": "text",
+      "lines": 16,
+      "sha256": "a8b95bc7228209211e10ad363cceedd4bc46e0ad0605109c03dfa7c549c63f14",
+      "note": "以不可变预览对象为 WeakMap 键；计数缓存不持有原始像素源；消费者不得修改共享 bins。"
+    },
+    {
+      "path": "apps/web/src/editor/imageSources.ts",
+      "status": "F",
+      "kind": "text",
+      "lines": 79,
+      "sha256": "44717fa659ebb760c8de9df35c3416797a2422c351b04ff05bae5fad2b2f9fb5",
+      "note": "文件头先验、方向归一、尺寸与总像素预算、图层完整/预览源分离、失败释放 canvas；显式规范化。"
+    },
+    {
+      "path": "apps/web/src/editor/portrait.worker.ts",
+      "status": "F",
+      "kind": "text",
+      "lines": 276,
+      "sha256": "96ddb72ec387bb576beddbecc726fdc2dbecf5a681d4d563f2a4c5eb0faeb18d",
+      "note": "真实模型/WASM 同源加载、WebGL2 前置检查、脸/身体分离目标、分割初选与降级警告、资源关闭；非完整实机成功证据。"
+    },
+    {
+      "path": "apps/web/src/editor/precision.ts",
+      "status": "F",
+      "kind": "text",
+      "lines": 148,
+      "sha256": "d120237e12d29c8b9615ef8ffaa0ac01f69f523ffad41041e7a4dac66250c116",
+      "note": "最小 1px 中心吸附、原图裁切取整、注册路径、嵌套蒙版替换保持兄弟节点、旧版独立兼容。"
+    },
+    {
+      "path": "apps/web/src/editor/previewBudget.ts",
+      "status": "F",
+      "kind": "text",
+      "lines": 100,
+      "sha256": "7ddfaacfdfc8177d546db39656a682dd4e75d6068e67307bfb22f0df6b936a1e",
+      "note": "输入及变换后预览均受像素预算；线性预乘 alpha 面积采样；不更改原图、配方和最终导出。"
+    },
+    {
+      "path": "apps/web/src/editor/range-gesture.ts",
+      "status": "O",
+      "kind": "text",
+      "lines": 69,
+      "sha256": "2aa41d7eef7020e09899909f9ece33db35c9f597f34ff0d56258dadc80bed05b",
+      "note": "前轮：真实共享滑条事务状态机与迟到事件门禁。"
+    },
+    {
+      "path": "apps/web/src/editor/render.worker.ts",
+      "status": "F",
+      "kind": "text",
+      "lines": 124,
+      "sha256": "42dc35e6113bd5f8a125c48ccde562551282aa930d74426199eeb23297d66f69",
+      "note": "源消息顺序、完整分辨率几何检查、V3/旧配方分派、导出 MIME 实核、JPEG 白底、源与导出请求快照。"
+    },
+    {
+      "path": "apps/web/src/editor/selection.worker.ts",
+      "status": "F",
+      "kind": "text",
+      "lines": 59,
+      "sha256": "88d69ba6b3f09ff593c85f7a81997ceb340bbcb711aa764c138120b2aca76405",
+      "note": "受限预览预算、V3 复合蒙版、反变换采样、域外透明、错误不保留旧成功覆盖图。"
+    },
+    {
+      "path": "apps/web/src/editor/source-flow.ts",
+      "status": "F",
+      "kind": "text",
+      "lines": 36,
+      "sha256": "f1663c12dd0601d7539aff470c61d5319cf688925538afa17eeaa0fb89fc12c1",
+      "note": "异步打开/保存的身份防护；历史 artwork、revision、asset、project 绑定校验。"
+    },
+    {
+      "path": "apps/web/src/editor/useEditor.ts",
+      "status": "F",
+      "kind": "text",
+      "lines": 762,
+      "sha256": "5bc31a443014afd5b95393125fd30da96d78f0bf91d065c46066989102197378",
+      "note": "不可变原图/完整指纹、预览 latest-wins、图层引用解析、原图导出、源切换失效、历史和复制来源缓存；分辨率预算显式。"
+    },
+    {
+      "path": "apps/web/src/editor/usePortraitAnalysis.ts",
+      "status": "F",
+      "kind": "text",
+      "lines": 204,
+      "sha256": "9d2704cb9d6fc339f05c968dacc5a60d888695dfc6a5f5ff512233e50ca4dd62",
+      "note": "超时/取消/换源失效；分析帧匹配完整原图 hash、方向和尺寸；导入严格协议校验，未当自动识别成功。"
+    },
+    {
+      "path": "apps/web/src/editor/useStagePreviews.ts",
+      "status": "F",
+      "kind": "text",
+      "lines": 144,
+      "sha256": "8f056a4231d95a390a1cb2b40622058ef670b982edaeffae4b507994d2223986",
+      "note": "每类单在途与末次请求合并；源/几何变化丢弃迟到帧；对比保留几何，源坐标编辑明确禁用当前位移。"
+    },
+    {
+      "path": "apps/web/src/features.css",
+      "status": "O",
+      "kind": "text",
+      "lines": 791,
+      "sha256": "98f45858ab896885b18d782e5dec71adafac02c12e7208be09a26305aaf39914",
+      "note": "前轮修改范围复核；完整旧CSS未在本独立审查逐行重读。"
+    },
+    {
+      "path": "apps/web/src/lib/api.ts",
+      "status": "F",
+      "kind": "text",
+      "lines": 77,
+      "sha256": "35814ca45bab0a01735603e34c7025c5acd9041fc7254ce02b767c705ef8a055",
+      "note": "同源凭据、结构化错误、网络未知态、无自动付费重试、下载文件名与 Blob URL 有界释放。"
+    },
+    {
+      "path": "apps/web/src/lib/asset-copy.ts",
+      "status": "F",
+      "kind": "text",
+      "lines": 45,
+      "sha256": "079c1fd5c1886071ddab7320c1a9a94975dbb21ace58b0d1a7ec8a204cbcc75b",
+      "note": "actor/source/target 绑定的复制幂等身份；云端源使用授权复制，不能失败后退回未授权重上传。"
+    },
+    {
+      "path": "apps/web/src/lib/audio.ts",
+      "status": "F",
+      "kind": "text",
+      "lines": 51,
+      "sha256": "bf7f363715e5559741cececfb8e13bac05b274a83f79a0d182838ed77ad95754",
+      "note": "受限字节/时长、16k 单声道 PCM、解码失败与 AudioContext 清理；真机编码仍需验收。"
+    },
+    {
+      "path": "apps/web/src/lib/brand.ts",
+      "status": "F",
+      "kind": "text",
+      "lines": 9,
+      "sha256": "6d55c788bcd80d4ccdd0ff74cda46e4201d32ded05b4474a47437744b6494b8e",
+      "note": "单一可配置品牌回退、logo 版本参数；无外部字体或任意 URL 注入。"
+    },
+    {
+      "path": "apps/web/src/lib/types.ts",
+      "status": "O",
+      "kind": "text",
+      "lines": 114,
+      "sha256": "4a00f8f982391dc5b74895d4b7684dce5634656f0b820e9dbfe20978ea0a82a9",
+      "note": "前轮：Revision自身assetId与服务器契约匹配。"
+    },
+    {
+      "path": "apps/web/src/lib/uuid.ts",
+      "status": "F",
+      "kind": "text",
+      "lines": 41,
+      "sha256": "3470cf3ffeb7e811d65e3c587fb04bef034228edd2e925d6f875228afaf5546c",
+      "note": "Web Crypto UUID 及 getRandomValues 回退；缺安全随机数明确失败，无 Math.random 替代。"
+    },
+    {
+      "path": "apps/web/src/main.tsx",
+      "status": "F",
+      "kind": "text",
+      "lines": 14,
+      "sha256": "eb6553973ceac974760f6a44e8a4fef54be13505fe26289a5cb1e75364d95907",
+      "note": "StrictMode、实际样式装载顺序、根容器初始化。"
+    },
+    {
+      "path": "apps/web/src/motion/motion.css",
+      "status": "O",
+      "kind": "text",
+      "lines": 2751,
+      "sha256": "50a3092017f471345be551064132540345f92a61602f7e191e0f612cbc4a548b",
+      "note": "前轮：按角色轨迹，媒体祖先零blur，reduced-motion。"
+    },
+    {
+      "path": "apps/web/src/motion/registry.ts",
+      "status": "O",
+      "kind": "text",
+      "lines": 2825,
+      "sha256": "24f9341501c4b85831ee764a135ee18ff20127dd674ac886f668a91818656b3e",
+      "note": "前轮：77逻辑角色三档参数；不声称每DOM实例独立动画。"
+    },
+    {
+      "path": "apps/web/src/motion/usePresence.ts",
+      "status": "F",
+      "kind": "text",
+      "lines": 51,
+      "sha256": "80544b6723a646251d217ce3adb61844a14e2cb63afc65f1ce39acbb5c962d9b",
+      "note": "角色时序与 reduced-motion；退出时保留节点，由组件 inert/hidden 配合。"
+    },
+    {
+      "path": "apps/web/src/refinement.css",
+      "status": "O",
+      "kind": "text",
+      "lines": 2093,
+      "sha256": "721b7a88ab705816b887b3b892e53927098b4f72e938c1103523553ffa0cec1b",
+      "note": "前轮修改范围复核；完整旧CSS未在本独立审查逐行重读。"
+    },
+    {
+      "path": "apps/web/src/styles.css",
+      "status": "O",
+      "kind": "text",
+      "lines": 4474,
+      "sha256": "224b74af9dd0fa4c31cc564a685d88c892b8c21bb5db6d6b7319e9ea6767c2f6",
+      "note": "前轮修改范围复核；完整旧CSS未在本独立审查逐行重读。"
+    },
+    {
+      "path": "apps/web/src/workspace/FloatingPanel.tsx",
+      "status": "O",
+      "kind": "text",
+      "lines": 561,
+      "sha256": "7ccd2f56fa4956ed36753601a8fce7da1990c805ee08f5900d85c319f3e935b4",
+      "note": "前轮：单指针所有权、键盘、取消/失焦、尺寸菜单、最大化还原。"
+    },
+    {
+      "path": "apps/web/src/workspace/panel.css",
+      "status": "O",
+      "kind": "text",
+      "lines": 343,
+      "sha256": "cb84ade5525aaa75c1967a7203fae7af2d8b0afa3474b7ae83c629fc6be14d64",
+      "note": "前轮：三档/短屏密度、单外线、触摸把手与减少动态。"
+    },
+    {
+      "path": "apps/web/src/workspace/panelGeometry.ts",
+      "status": "O",
+      "kind": "text",
+      "lines": 262,
+      "sha256": "5ab5554bb15f1f5706823ea9f20693d49c2ef8797132c5b7d96c04509f68aaea",
+      "note": "前轮：自由尺寸/停靠/8边缩放/视口约束，11项几何测试。"
+    },
+    {
+      "path": "apps/web/src/workspace/useWorkspaceLayout.ts",
+      "status": "O",
+      "kind": "text",
+      "lines": 167,
+      "sha256": "afa1d2c456266baa49915df7f44dbfb896a22a7b4ace2378abb186200365211c",
+      "note": "前轮：按设备方向与面板偏好、迁移/存储失败降级。"
+    },
+    {
+      "path": "apps/web/src/workspace/workspace.css",
+      "status": "U",
+      "kind": "text",
+      "lines": 2331,
+      "sha256": "0bd13bb6a1a5347831645a43b30fe6d64ce310fab57f624206a1c144fc94fd53",
+      "note": "已纳入清单；本独立审查未逐行复核。"
+    },
+    {
+      "path": "apps/web/test/advanced-inspector.test.ts",
+      "status": "O",
+      "kind": "text",
+      "lines": 131,
+      "sha256": "43e722314b41b4592544b13691ef130882309adadcec9eb644b72a36acf4fff8",
+      "note": "前轮已阅读并执行：4项作用域/合法参数/退化几何；本轮不虚增为又一次逐行审查。"
+    },
+    {
+      "path": "apps/web/test/ai-capabilities.test.ts",
+      "status": "U",
+      "kind": "text",
+      "lines": 150,
+      "sha256": "db22ec360a94a81f8dfd73f814db9809523809c75846ac68b43eac9fc3ae1725",
+      "note": "已纳入清单；本独立审查未逐条阅读/执行此文件，不据此推断全部用例通过。"
+    },
+    {
+      "path": "apps/web/test/ai-decisions.test.ts",
+      "status": "O",
+      "kind": "text",
+      "lines": 103,
+      "sha256": "8dcae72e6d6c9c9028083060ba673805fbe0cc6d15518603f3de046b6fc81c70",
+      "note": "前轮已阅读并执行：3项真实请求构造/稳定幂等；本轮不虚增为又一次逐行审查。"
+    },
+    {
+      "path": "apps/web/test/asset-copy.test.ts",
+      "status": "U",
+      "kind": "text",
+      "lines": 105,
+      "sha256": "809bea4d7409670008cf080abbb871dee1b829d12c86bffd6dd1bfc1fd96ddf2",
+      "note": "已纳入清单；本独立审查未逐条阅读/执行此文件，不据此推断全部用例通过。"
+    },
+    {
+      "path": "apps/web/test/canvas-gesture.test.ts",
+      "status": "F",
+      "kind": "text",
+      "lines": 100,
+      "sha256": "d94961d78c0f540010d7deab1052caa66c135d594626a6ea7c8cdb6ceaa081a8",
+      "note": "6项实际执行：双指释放两种顺序、第三指、重复down、普通缩放、失焦重置、配方/源所有权回滚。"
+    },
+    {
+      "path": "apps/web/test/color-picker.test.ts",
+      "status": "O",
+      "kind": "text",
+      "lines": 43,
+      "sha256": "a802e00d2accfab602d97131a2c92f4a4086ef4b8a054fbd188dda32ab07a54c",
+      "note": "前轮已阅读并执行：3项连续颜色空间/alpha；本轮不虚增为又一次逐行审查。"
+    },
+    {
+      "path": "apps/web/test/compound-mask-path.test.ts",
+      "status": "O",
+      "kind": "text",
+      "lines": 65,
+      "sha256": "599c9bc8dfe36a1518b421172d206ccf5f46d80efa70c0c4bc156493dd4c00dd",
+      "note": "前轮已阅读并执行：2项嵌套替换与陈旧路径；本轮不虚增为又一次逐行审查。"
+    },
+    {
+      "path": "apps/web/test/curve-gesture.test.ts",
+      "status": "O",
+      "kind": "text",
+      "lines": 263,
+      "sha256": "4239adcec494ccaa0a1ba403734c77132b12a3984f74e968839d313dba0df1d8",
+      "note": "前轮已阅读并执行：10项曲线源/通道/作用域事务；本轮不虚增为又一次逐行审查。"
+    },
+    {
+      "path": "apps/web/test/histogram-cache.test.ts",
+      "status": "U",
+      "kind": "text",
+      "lines": 59,
+      "sha256": "5ee53f1bf3deae0af3fc78cf219ec4c07dc84e71ecc9d1e253c5e8ce7befbe53",
+      "note": "已纳入清单；本独立审查未逐条阅读/执行此文件，不据此推断全部用例通过。"
+    },
+    {
+      "path": "apps/web/test/image-sources-flow.test.ts",
+      "status": "U",
+      "kind": "text",
+      "lines": 95,
+      "sha256": "60836934daa7254207fd338a233b5003ac188a9a21c7b58d81ba4b4794e580a1",
+      "note": "已纳入清单；本独立审查未逐条阅读/执行此文件，不据此推断全部用例通过。"
+    },
+    {
+      "path": "apps/web/test/motion.test.ts",
+      "status": "O",
+      "kind": "text",
+      "lines": 59,
+      "sha256": "0032ca7e55c2cc5baa712144f781e04d2cd8906ae0f2c78c2e6d2346b81e862d",
+      "note": "前轮已阅读并执行：3项角色和媒体低动态规则；本轮不虚增为又一次逐行审查。"
+    },
+    {
+      "path": "apps/web/test/precision.test.ts",
+      "status": "U",
+      "kind": "text",
+      "lines": 155,
+      "sha256": "7e2e1d0ad48002e678dd87e63cb78d2e6c06290a689d78269361e7bd9e105d6e",
+      "note": "已纳入清单；本独立审查未逐条阅读/执行此文件，不据此推断全部用例通过。"
+    },
+    {
+      "path": "apps/web/test/range-gesture.test.ts",
+      "status": "O",
+      "kind": "text",
+      "lines": 57,
+      "sha256": "4a8830de87a82f6fa04b6c4bed326cdba9b1131dd88ef1ea9d68f555e74ebd26",
+      "note": "前轮已阅读并执行：4项指针/键盘/取消事务；本轮不虚增为又一次逐行审查。"
+    },
+    {
+      "path": "apps/web/test/recipe-diff.test.ts",
+      "status": "F",
+      "kind": "text",
+      "lines": 173,
+      "sha256": "addcd0da689003e4a875ab1502565ee6d2e84a28f11f3c8979ae0996930fba6f",
+      "note": "6项实际执行：v1/v2及V3数值、非数值块、对象键序/图层顺序、输入不被修改。"
+    },
+    {
+      "path": "apps/web/test/render-preview-budget.test.ts",
+      "status": "U",
+      "kind": "text",
+      "lines": 138,
+      "sha256": "326fd89d045b1f563dae107bb8208ba6e30312896c12101d590f4dc9c545e0b2",
+      "note": "已纳入清单；本独立审查未逐条阅读/执行此文件，不据此推断全部用例通过。"
+    },
+    {
+      "path": "apps/web/test/render-worker.test.ts",
+      "status": "U",
+      "kind": "text",
+      "lines": 96,
+      "sha256": "3cb463038262ea5ace151e42253d43c608a26d4c66a8913b4c03e544b86452d9",
+      "note": "已纳入清单；本独立审查未逐条阅读/执行此文件，不据此推断全部用例通过。"
+    },
+    {
+      "path": "apps/web/test/source-coordinates.test.ts",
+      "status": "T",
+      "kind": "text",
+      "lines": 78,
+      "sha256": "11914843301a39ad8eab7ff16552ea885ba0c627fdfe5f3c370cbc46520c690e",
+      "note": "本轮实际执行3项，验证变换/保护就绪与源像素映射；未在本轮人工逐条重读测试文件。"
+    },
+    {
+      "path": "apps/web/test/uuid.test.ts",
+      "status": "U",
+      "kind": "text",
+      "lines": 83,
+      "sha256": "035e4945d89cfe1404c8474369458adc1f92ddd8360449188b1daef58ea22ee9",
+      "note": "已纳入清单；本独立审查未逐条阅读/执行此文件，不据此推断全部用例通过。"
+    },
+    {
+      "path": "apps/web/test/workspace-layout.test.ts",
+      "status": "O",
+      "kind": "text",
+      "lines": 206,
+      "sha256": "a9d20d4b6567c41bb67ab7c710f6723e5ba9ef3eb17d587ea0daf81e4c8b4ff2",
+      "note": "前轮已阅读并执行：11项连续尺寸/方向/视口退化；本轮不虚增为又一次逐行审查。"
+    },
+    {
+      "path": "apps/web/tsconfig.json",
+      "status": "F",
+      "kind": "text",
+      "lines": 17,
+      "sha256": "612b38ad4ed939b4e6a66776c16e0e996fed1288365b3a1112f03d9155660d69",
+      "note": "strict/noEmit、DOM/Worker 类型边界，源码与 Vite 配置被类型检查纳入。"
+    },
+    {
+      "path": "apps/web/vite.config.ts",
+      "status": "F",
+      "kind": "text",
+      "lines": 61,
+      "sha256": "b34a4717f9e9e58a4aad68e101fd0edd100a4aba9c318e3573e61a86556422c7",
+      "note": "开发代理指向实际 API 端口；仅固定 MediaPipe loader 文件直出，缺文件404；无任意路径读取。"
+    },
+    {
+      "path": "apps/worker-ai/package.json",
+      "status": "U",
+      "kind": "text",
+      "lines": 10,
+      "sha256": "d8d1846da5abff570d10ac853e6e004cd13877575aab947d10b5575852ba5bfb",
+      "note": "已纳入清单；本独立审查未逐段复核内容。锁文件/许可证清单不等于供应链或法律认证。"
+    },
+    {
+      "path": "apps/worker-ai/src/index.ts",
+      "status": "F",
+      "kind": "text",
+      "lines": 36,
+      "sha256": "47f5ae8528934b05fbaa5eca05f051ec19cb8059b4d0bd7f12b85b5c5a3030e4",
+      "note": "真实适配器环境门禁、后台轮询、失配停止、优雅关闭；没有替身自动注入生产路径。"
+    },
+    {
+      "path": "apps/worker-ai/tsconfig.json",
+      "status": "U",
+      "kind": "text",
+      "lines": 1,
+      "sha256": "2fbd292cd1864b7f17b399f49e9e8ef465c26ce3117baf06e423921c33296aea",
+      "note": "已纳入清单；本独立审查未逐段复核内容。锁文件/许可证清单不等于供应链或法律认证。"
+    },
+    {
+      "path": "compose.yaml",
+      "status": "F",
+      "kind": "text",
+      "lines": 104,
+      "sha256": "13e57173b595ba6712cded5c8e904fab46c9064acea756aefb503e3517d486b2",
+      "note": "数据库/迁移/API/worker/web依赖、仅web公开端口、存储与dispatch持久卷、健康检查。"
+    },
+    {
+      "path": "docs/DESIGN.md",
+      "status": "C",
+      "kind": "text",
+      "lines": 203,
+      "sha256": "797197a4e7a611800a716bc99e2dc5b74c1781c22a3f0298dc919381a212a237",
+      "note": "任务上下文已读；本轮没有重新逐段验收全部文档事实。"
+    },
+    {
+      "path": "docs/EXTENSIONS.md",
+      "status": "U",
+      "kind": "text",
+      "lines": 226,
+      "sha256": "9fe8d3c1b6ad00601ffcbe2e9a8df17ebf5ff9811761f91bac7cda1e3a6b0a2e",
+      "note": "已纳入清单；本独立审查未逐段复核内容。锁文件/许可证清单不等于供应链或法律认证。"
+    },
+    {
+      "path": "docs/INTERACTION.md",
+      "status": "O",
+      "kind": "text",
+      "lines": 114,
+      "sha256": "a400f214b41dcf1bfe484d81a023270d2d7ff580a0ce06a335b5f6b667afc1fe",
+      "note": "前轮编写/复核记录；内容证据范围见文件自身，不当本轮六次人工代码审核。"
+    },
+    {
+      "path": "docs/OPERATIONS.md",
+      "status": "U",
+      "kind": "text",
+      "lines": 178,
+      "sha256": "6ae7256580414d87ad0a3f7ecd72d41a14cb163569a023d1bc0365e51f23e617",
+      "note": "已纳入清单；本独立审查未逐段复核内容。锁文件/许可证清单不等于供应链或法律认证。"
+    },
+    {
+      "path": "docs/RESEARCH.md",
+      "status": "O",
+      "kind": "text",
+      "lines": 106,
+      "sha256": "c7e0d39c47ed374312dfff8ce1262e161d0f0f381d6718c2b44a5133b4bb1fd9",
+      "note": "前轮编写/复核记录；内容证据范围见文件自身，不当本轮六次人工代码审核。"
+    },
+    {
+      "path": "docs/VERIFICATION.md",
+      "status": "U",
+      "kind": "text",
+      "lines": 94,
+      "sha256": "9f5ca56c29080a5f3da5feb8f8d4e44975bcd8954a169aace03ce6423216a34f",
+      "note": "已纳入清单；本独立审查未逐段复核内容。锁文件/许可证清单不等于供应链或法律认证。"
+    },
+    {
+      "path": "docs/VISION.md",
+      "status": "U",
+      "kind": "text",
+      "lines": 62,
+      "sha256": "6fd9b2c9666221189fada23706b8ed2a274b925b492ce97f3def8583f87f67c3",
+      "note": "已纳入清单；本独立审查未逐段复核内容。锁文件/许可证清单不等于供应链或法律认证。"
+    },
+    {
+      "path": "docs/screenshots/comparison.jpg",
+      "status": "B",
+      "kind": "binary",
+      "lines": null,
+      "sha256": "af5bd3e303d4cd48eaee73640f00e88bb730e72bea44b58538de8b9d8ba6755d",
+      "note": "仅列入文件清单与哈希；不把截图/二进制当作人工源码检查。"
+    },
+    {
+      "path": "docs/screenshots/desktop.jpg",
+      "status": "B",
+      "kind": "binary",
+      "lines": null,
+      "sha256": "b9e5defcf8f6d41cae87efedce3acaeefa0d88e974db63ccfecd81b7bd5bf92a",
+      "note": "仅列入文件清单与哈希；不把截图/二进制当作人工源码检查。"
+    },
+    {
+      "path": "docs/screenshots/phone-390.jpg",
+      "status": "B",
+      "kind": "binary",
+      "lines": null,
+      "sha256": "784cd5bed1b54483e6b2df4661f1f278cde6ad3ae8cce3cfe9f6e81b1127e0d6",
+      "note": "仅列入文件清单与哈希；不把截图/二进制当作人工源码检查。"
+    },
+    {
+      "path": "docs/screenshots/refined-desktop-color.jpg",
+      "status": "B",
+      "kind": "binary",
+      "lines": null,
+      "sha256": "010d4a704903078220e95172c46afefb56a412ade9daf9e4cfd1a3168f0c1de9",
+      "note": "仅列入文件清单与哈希；不把截图/二进制当作人工源码检查。"
+    },
+    {
+      "path": "docs/screenshots/refined-landscape.jpg",
+      "status": "B",
+      "kind": "binary",
+      "lines": null,
+      "sha256": "35e1eb28bca594e37586b9410674f95014147a9dfab578320e2a1f01122a42c2",
+      "note": "仅列入文件清单与哈希；不把截图/二进制当作人工源码检查。"
+    },
+    {
+      "path": "docs/screenshots/refined-phone-curves.jpg",
+      "status": "B",
+      "kind": "binary",
+      "lines": null,
+      "sha256": "f37bfbeb92a64fb1d9267a9402a7163ceb12634d5b62407a4423d4712ac7c5e7",
+      "note": "仅列入文件清单与哈希；不把截图/二进制当作人工源码检查。"
+    },
+    {
+      "path": "docs/screenshots/refined-portrait-regions.jpg",
+      "status": "B",
+      "kind": "binary",
+      "lines": null,
+      "sha256": "ff7e944128722b811d6439e3ae3e2b951415d1e146d53fcdc56e70fe15f39c3c",
+      "note": "仅列入文件清单与哈希；不把截图/二进制当作人工源码检查。"
+    },
+    {
+      "path": "docs/screenshots/v3-paint-desktop.jpg",
+      "status": "B",
+      "kind": "binary",
+      "lines": null,
+      "sha256": "2ef6dedc780ca2094babbf24d5006be6f0fa82e6b84ca3503448b627aecaf098",
+      "note": "仅列入文件清单与哈希；不把截图/二进制当作人工源码检查。"
+    },
+    {
+      "path": "docs/screenshots/v3-portrait-desktop.jpg",
+      "status": "B",
+      "kind": "binary",
+      "lines": null,
+      "sha256": "01602712b50d7ad67970f9cc599dbc8b9d807b695af81b29db6917d0429c380a",
+      "note": "仅列入文件清单与哈希；不把截图/二进制当作人工源码检查。"
+    },
+    {
+      "path": "docs/verification/browser-refinement.md",
+      "status": "U",
+      "kind": "text",
+      "lines": 68,
+      "sha256": "25af8db397e2527b17c391b6358c9a5c67a472aa74ba5522d67c8f9431fdfbdd",
+      "note": "已纳入清单；本独立审查未逐段复核内容。锁文件/许可证清单不等于供应链或法律认证。"
+    },
+    {
+      "path": "docs/verification/initial-baseline.md",
+      "status": "U",
+      "kind": "text",
+      "lines": 100,
+      "sha256": "d1dc0c1f01277172b790941b25bafb03e04b18f84dad125159b55867e48a9bf5",
+      "note": "已纳入清单；本独立审查未逐段复核内容。锁文件/许可证清单不等于供应链或法律认证。"
+    },
+    {
+      "path": "docs/verification/initial-rounds.md",
+      "status": "U",
+      "kind": "text",
+      "lines": 243,
+      "sha256": "5f40c0d70495fe9241be9ed37d426638b5f79ee84be0ca143c2649deedf663d3",
+      "note": "已纳入清单；本独立审查未逐段复核内容。锁文件/许可证清单不等于供应链或法律认证。"
+    },
+    {
+      "path": "docs/verification/interaction-v2.md",
+      "status": "O",
+      "kind": "text",
+      "lines": 101,
+      "sha256": "b866f50cda5a2d958794181c53872b4fe106dd07da1bba0e8991af0b9e2364a0",
+      "note": "前轮编写/复核记录；内容证据范围见文件自身，不当本轮六次人工代码审核。"
+    },
+    {
+      "path": "docs/verification/rounds.md",
+      "status": "U",
+      "kind": "text",
+      "lines": 243,
+      "sha256": "1ab619fac5f65befcda5abb6c901c06ba9d4f0a86e31ae95a7ec0b29488b69cc",
+      "note": "已纳入清单；本独立审查未逐段复核内容。锁文件/许可证清单不等于供应链或法律认证。"
+    },
+    {
+      "path": "docs/verification/v3-backend-review.md",
+      "status": "U",
+      "kind": "text",
+      "lines": 87,
+      "sha256": "c0ed35eaeca434717e060533e126a18ff184f48a8994ac81410adc37cabd7f56",
+      "note": "已纳入清单；本独立审查未逐段复核内容。锁文件/许可证清单不等于供应链或法律认证。"
+    },
+    {
+      "path": "docs/verification/v3-editor-review.md",
+      "status": "U",
+      "kind": "text",
+      "lines": 101,
+      "sha256": "7a5576041e0fd40eeafbf37fb6f04114767426aa5cc6bc5a4dda72d666a3ac33",
+      "note": "已纳入清单；本独立审查未逐段复核内容。锁文件/许可证清单不等于供应链或法律认证。"
+    },
+    {
+      "path": "docs/verification/v3-portrait-native.json",
+      "status": "U",
+      "kind": "text",
+      "lines": 1990,
+      "sha256": "07a3aff68abc5b13702aa7d3a8759914572e31f75ea67a7645a60e8960d12e46",
+      "note": "已纳入清单；本独立审查未逐段复核内容。锁文件/许可证清单不等于供应链或法律认证。"
+    },
+    {
+      "path": "docs/verification/v3-ui-review.md",
+      "status": "O",
+      "kind": "text",
+      "lines": 93,
+      "sha256": "67d375f23029b9e8d337606d1895e2e6b5bf968afb8f5fef5b58c6186d538de8",
+      "note": "前轮编写/复核记录；内容证据范围见文件自身，不当本轮六次人工代码审核。"
+    },
+    {
+      "path": "infra/Caddyfile",
+      "status": "F",
+      "kind": "text",
+      "lines": 25,
+      "sha256": "d33033f732887cd8064e6989fb66bc823f554766c800982b01eab5840350372d",
+      "note": "CSP同源WASM/worker、麦克风self、API反代、vision缺文件404不落SPA；真实公网仍需部署验收。"
+    },
+    {
+      "path": "infra/Dockerfile",
+      "status": "F",
+      "kind": "text",
+      "lines": 19,
+      "sha256": "8085b8d940fbf584c57045adbf03f92de5b123b2ba2ffadcf508a21c4c635a4c",
+      "note": "Node24构建、多阶段web/server、默认安装同源模型、nonroot运行、私有存储目录。"
+    },
+    {
+      "path": "package-lock.json",
+      "status": "U",
+      "kind": "text",
+      "lines": 3309,
+      "sha256": "19f86f179c772febbc69bf403d708baabec1b36ebfd68d6a898c7b21b8de8f6a",
+      "note": "已纳入清单；本独立审查未逐段复核内容。锁文件/许可证清单不等于供应链或法律认证。"
+    },
+    {
+      "path": "package.json",
+      "status": "F",
+      "kind": "text",
+      "lines": 61,
+      "sha256": "45d019c05afe79edbcdc9badf06d9c36579ed1e2cf5df212b0a529b2ef802c44",
+      "note": "Node24范围、工作区、typecheck/test/build/migrate/worker/verify入口；供应商开关无隐式付费执行。"
+    },
+    {
+      "path": "packages/ai/README.md",
+      "status": "U",
+      "kind": "text",
+      "lines": 29,
+      "sha256": "7fe6d25c2f86a5b371b83dbf936b5659ee0ba7db3102245f3b10f1dccb75fbe0",
+      "note": "已纳入清单；本独立审查未逐段复核内容。锁文件/许可证清单不等于供应链或法律认证。"
+    },
+    {
+      "path": "packages/ai/package.json",
+      "status": "U",
+      "kind": "text",
+      "lines": 15,
+      "sha256": "4c4e9ed9142b6e0965057acec5b8d05db9c3af7c62b77ad0276c4e076ad57183",
+      "note": "已纳入清单；本独立审查未逐段复核内容。锁文件/许可证清单不等于供应链或法律认证。"
+    },
+    {
+      "path": "packages/ai/src/index.ts",
+      "status": "F",
+      "kind": "text",
+      "lines": 682,
+      "sha256": "c8af3ed75be083689b7b11ec780f08de820edc78a285f3b68274e39fee26e790",
+      "note": "冻结输入/全局准入/权限复验、任务 claim、调参白名单、双审核、未知预占与人工证据处理；CR-03 待停用恢复策略。"
+    },
+    {
+      "path": "packages/ai/src/journal.ts",
+      "status": "F",
+      "kind": "text",
+      "lines": 88,
+      "sha256": "d44b996925105ce66df835a6095898c574513cffc008f6c9f8aa578e6fad8ba9",
+      "note": "独占创建、文件与目录 fsync、哈希绑定数据库；恢复不一致失败停止，不能仅凭缓存自动重发。"
+    },
+    {
+      "path": "packages/ai/src/lifecycle.ts",
+      "status": "U",
+      "kind": "text",
+      "lines": 29,
+      "sha256": "981849e18550a106a85d890f5c393a92ce4efb2312613cb560804522b8807374",
+      "note": "已纳入清单；本独立审查未逐行复核。"
+    },
+    {
+      "path": "packages/ai/src/multimodal.ts",
+      "status": "F",
+      "kind": "text",
+      "lines": 1296,
+      "sha256": "778887050f4bd98e8487380f754bada2ff5dc0523f96bfd0c60a1bd346f41386",
+      "note": "多模态严格输入、引用文件哈希/像素预算、冻结 manifest、整批审核原子发布、授权复验和未知结果保持。"
+    },
+    {
+      "path": "packages/ai/src/provider.ts",
+      "status": "F",
+      "kind": "text",
+      "lines": 249,
+      "sha256": "0c47e79fe807a19c7f0f7d30906236d9614fa106f7bd19e3454dc42e95c60ff0",
+      "note": "批准端点、无照片时禁止声称看过图片；严格数值提案、单次请求、V3 继承数据完整保留、无任意路径写入。"
+    },
+    {
+      "path": "packages/ai/test/multimodal.test.ts",
+      "status": "U",
+      "kind": "text",
+      "lines": 1360,
+      "sha256": "9a3185a11cad2942eff2ecce040f18bf0c391d17a8fd8767482511627c63a3f3",
+      "note": "已纳入清单；本独立审查未逐条阅读/执行此文件，不据此推断全部用例通过。"
+    },
+    {
+      "path": "packages/ai/test/openai.test.ts",
+      "status": "U",
+      "kind": "text",
+      "lines": 519,
+      "sha256": "3f16dc2d3e53b5ab81b7341e1ef7114f29439f137f48ec063914c1f3f1857fbf",
+      "note": "已纳入清单；本独立审查未逐条阅读/执行此文件，不据此推断全部用例通过。"
+    },
+    {
+      "path": "packages/ai/test/provider.test.ts",
+      "status": "U",
+      "kind": "text",
+      "lines": 330,
+      "sha256": "9f9318d89370c9cc39f4b00c43784eeda4ee04e611d991a8015539ad3ed4e95b",
+      "note": "已纳入清单；本独立审查未逐条阅读/执行此文件，不据此推断全部用例通过。"
+    },
+    {
+      "path": "packages/ai/test/service.test.ts",
+      "status": "U",
+      "kind": "text",
+      "lines": 240,
+      "sha256": "bb955037888c5e2eec781bfcaf525f18aed092562a193f02ad3ae213db674eee",
+      "note": "已纳入清单；本独立审查未逐条阅读/执行此文件，不据此推断全部用例通过。"
+    },
+    {
+      "path": "packages/ai/tsconfig.json",
+      "status": "U",
+      "kind": "text",
+      "lines": 1,
+      "sha256": "0202ddd07a99f802be6e40961df9246c2bf2552966b6a87d0fff2f8a9306a646",
+      "note": "已纳入清单；本独立审查未逐段复核内容。锁文件/许可证清单不等于供应链或法律认证。"
+    },
+    {
+      "path": "packages/contracts/README.md",
+      "status": "U",
+      "kind": "text",
+      "lines": 18,
+      "sha256": "389914777554475ca82870d1252405d2e663a36bf359e230c42f8e30d67d1374",
+      "note": "已纳入清单；本独立审查未逐段复核内容。锁文件/许可证清单不等于供应链或法律认证。"
+    },
+    {
+      "path": "packages/contracts/package.json",
+      "status": "F",
+      "kind": "text",
+      "lines": 8,
+      "sha256": "8355f8933fc5577118dd1609d1ba28afa9cbac80af246a0f416a18f62832f632",
+      "note": "工作区统一契约入口；没有重复拷贝前端专属数据模型作为权威。"
+    },
+    {
+      "path": "packages/contracts/src/catalog.ts",
+      "status": "F",
+      "kind": "text",
+      "lines": 366,
+      "sha256": "d20c77015676b427d501e1a651e9422145a5ae5356f8d8e5a0754f9adfe206b7",
+      "note": "模块/能力/权限/输入输出/限制可发现；contract-only 与执行器分开，不能用功能目录证明已实现全部商业能力。"
+    },
+    {
+      "path": "packages/contracts/src/index.ts",
+      "status": "F",
+      "kind": "text",
+      "lines": 3,
+      "sha256": "10d1abc7233230fe70cba4dbdbe1fa32cec937e8bc27ea3bf6fea38c368effed",
+      "note": "单一协议/注册器/目录公共出口。"
+    },
+    {
+      "path": "packages/contracts/src/protocol.ts",
+      "status": "F",
+      "kind": "text",
+      "lines": 266,
+      "sha256": "8ce7a21e310be4a11e742027a623ef2dc1caf10d64f5b74ca783e329ccdbba9f",
+      "note": "严格版本/资源帧/参数范围、动作辨别联合、expectedVersion、文本替换成对字段，编辑原文标记。"
+    },
+    {
+      "path": "packages/contracts/src/registry.ts",
+      "status": "F",
+      "kind": "text",
+      "lines": 117,
+      "sha256": "b6473816d12c1097c9837e236fd6f53903e50c421f545b35920e992d1e9ae3bb",
+      "note": "命名空间/重复/依赖环校验、注册封存、返回克隆、runtime gate；元数据不执行第三方代码或代替ACL。"
+    },
+    {
+      "path": "packages/contracts/test/contracts.test.ts",
+      "status": "U",
+      "kind": "text",
+      "lines": 174,
+      "sha256": "af8ccfe0b203cc0805e9b655346060577fae956ebbcf768e6ffac66c95eaf563",
+      "note": "已纳入清单；本独立审查未逐条阅读/执行此文件，不据此推断全部用例通过。"
+    },
+    {
+      "path": "packages/contracts/tsconfig.json",
+      "status": "U",
+      "kind": "text",
+      "lines": 1,
+      "sha256": "0202ddd07a99f802be6e40961df9246c2bf2552966b6a87d0fff2f8a9306a646",
+      "note": "已纳入清单；本独立审查未逐段复核内容。锁文件/许可证清单不等于供应链或法律认证。"
+    },
+    {
+      "path": "packages/db/package.json",
+      "status": "U",
+      "kind": "text",
+      "lines": 11,
+      "sha256": "20d797896663b219623a272631b2298df7799e681d1b06393e09177d1bdc3c85",
+      "note": "已纳入清单；本独立审查未逐段复核内容。锁文件/许可证清单不等于供应链或法律认证。"
+    },
+    {
+      "path": "packages/db/src/index.ts",
+      "status": "F",
+      "kind": "text",
+      "lines": 150,
+      "sha256": "c3781ac17628498eb4e84ee159498918d16057d3899ee136d6c1004d24d1fb59",
+      "note": "事务 rollback/finally、迁移版本1–7与锁、发布锁/引用感知清理、事件提交顺序。"
+    },
+    {
+      "path": "packages/db/src/migrate.ts",
+      "status": "F",
+      "kind": "text",
+      "lines": 11,
+      "sha256": "9f79d83264f1686ee2a2c35f7f839037abb6ab6c57d2f1e1f2068268f41f3d2b",
+      "note": "显式 DATABASE_URL、调用共享迁移、成功/失败后关闭连接池。"
+    },
+    {
+      "path": "packages/db/src/quota.ts",
+      "status": "F",
+      "kind": "text",
+      "lines": 266,
+      "sha256": "aae335d7bcb69ac2e56a77402034d70260890a518695c88e4fd723f678672772",
+      "note": "wallet 串行化、月批次唯一、预占/结算/释放状态机、归还原批次并尊重过期、未知不自动重试。"
+    },
+    {
+      "path": "packages/db/src/schema-v3.ts",
+      "status": "F",
+      "kind": "text",
+      "lines": 8,
+      "sha256": "8f9c66d614bb186e4cb9a58f4adc799c2ddb446afef3951303f88da77cdd4a3d",
+      "note": "素材说明为独立版本元数据，不改原始内容；列表索引。"
+    },
+    {
+      "path": "packages/db/src/schema-v4.ts",
+      "status": "F",
+      "kind": "text",
+      "lines": 65,
+      "sha256": "f7e0e4b4e2506b94f289e316720edcc3ded59d79ea8ef4a33bce284f35ae7e00",
+      "note": "revision 源快照/不可变与同项目引用触发器；结果决定独立不可变记录。"
+    },
+    {
+      "path": "packages/db/src/schema-v5.ts",
+      "status": "F",
+      "kind": "text",
+      "lines": 5,
+      "sha256": "69878bd81042852e3276f751ada6b1465db6f90085d96b06d585f5c58a937e07",
+      "note": "只追加 contentEdited 标记，保留既有决定和来源。"
+    },
+    {
+      "path": "packages/db/src/schema-v6.ts",
+      "status": "F",
+      "kind": "text",
+      "lines": 6,
+      "sha256": "c698d53aaad33c9135a68956369d6941d62a9beeaaa72fff952e05fd397d5096",
+      "note": "前向扩展 layer action 约束，不重写既有决定。"
+    },
+    {
+      "path": "packages/db/src/schema-v7.ts",
+      "status": "F",
+      "kind": "text",
+      "lines": 77,
+      "sha256": "72dd2f95e99a4c88ff4166470cfba902b47f60ac249e3e14992712ae4b2c4e38",
+      "note": "逻辑保留容量、原子配额触发器、素材内容与副本来源不可变；软删除不假释放容量。"
+    },
+    {
+      "path": "packages/db/src/schema.ts",
+      "status": "F",
+      "kind": "text",
+      "lines": 219,
+      "sha256": "902fc38f6020946fce444951b05735ba6ab7128ff3df49e4ffcce84803d12bd9",
+      "note": "原始表约束、额度守恒、ledger/revision/audit/document/plan 不可变、v2 追加迁移。"
+    },
+    {
+      "path": "packages/db/test/fault-database.ts",
+      "status": "U",
+      "kind": "text",
+      "lines": 56,
+      "sha256": "3465c90bb91be30e6d1eb8b1e53fef86824efcbdf8154eb901042daa0c45da7b",
+      "note": "已纳入清单；本独立审查未逐条阅读/执行此文件，不据此推断全部用例通过。"
+    },
+    {
+      "path": "packages/db/tsconfig.json",
+      "status": "U",
+      "kind": "text",
+      "lines": 5,
+      "sha256": "055076ab4314c141b41809604316512a8f25456a4f435145d8e154c5db940621",
+      "note": "已纳入清单；本独立审查未逐段复核内容。锁文件/许可证清单不等于供应链或法律认证。"
+    },
+    {
+      "path": "packages/editor/README.md",
+      "status": "U",
+      "kind": "text",
+      "lines": 332,
+      "sha256": "9389dde9e980b380a35875bc0425ba3b8fa769b11f89d1c7a469460fe98a8fd9",
+      "note": "已纳入清单；本独立审查未逐段复核内容。锁文件/许可证清单不等于供应链或法律认证。"
+    },
+    {
+      "path": "packages/editor/V3.md",
+      "status": "U",
+      "kind": "text",
+      "lines": 161,
+      "sha256": "64f62826091590c94a8f1c95987af77300f90ec793325cbd817ed432cab5ae53",
+      "note": "已纳入清单；本独立审查未逐段复核内容。锁文件/许可证清单不等于供应链或法律认证。"
+    },
+    {
+      "path": "packages/editor/package.json",
+      "status": "U",
+      "kind": "text",
+      "lines": 16,
+      "sha256": "85d0a140823796631f8ce89483cc3dfe497e7cb7e8200a965e6adfdec87da4b1",
+      "note": "已纳入清单；本独立审查未逐段复核内容。锁文件/许可证清单不等于供应链或法律认证。"
+    },
+    {
+      "path": "packages/editor/src/curves.ts",
+      "status": "F",
+      "kind": "text",
+      "lines": 36,
+      "sha256": "e4d6bae5a7a44642591ae23e735ff1edf9a77a9d5a3f6c2a29921bfb5c58a026",
+      "note": "X有序控制点、线性插值允许Y反相、LUT有界，公开编译入口先校验。"
+    },
+    {
+      "path": "packages/editor/src/engine.ts",
+      "status": "F",
+      "kind": "text",
+      "lines": 453,
+      "sha256": "55a1acff28c297f8a1bae639ffecfdb2036573333a8c92bfd21a074578c4431c",
+      "note": "v1固定运算顺序、线性光与编码域分离、透明RGB不污染邻域、有限细节、取消检查、中性保真。"
+    },
+    {
+      "path": "packages/editor/src/geometry.ts",
+      "status": "F",
+      "kind": "text",
+      "lines": 213,
+      "sha256": "1055983f12f5769cae29a7372f0776e2dff5dd8753f9cece4654c6418148b39f",
+      "note": "独立普通/分块预算、裁切 floor/ceil、整数旋转/镜像及逆坐标一致。"
+    },
+    {
+      "path": "packages/editor/src/headers.ts",
+      "status": "F",
+      "kind": "text",
+      "lines": 611,
+      "sha256": "52f888e0bcd0590c94c166c215845dd9542a98a7cdb7c0b1f923b0c097db2321",
+      "note": "1MiB前缀预算、实际文件签名、PNG/JPEG/WebP/BMP/GIF/AVIF结构/尺寸检查；不能替代压缩像素解码校验。"
+    },
+    {
+      "path": "packages/editor/src/index.ts",
+      "status": "F",
+      "kind": "text",
+      "lines": 121,
+      "sha256": "7fd1ec3e4c08971410f505f36c9b984926b8579e2fdbed0d29ca6b396add2a7f",
+      "note": "v1/v2/v3公共导出与不同渲染/解析/迁移函数明示，没有静默降级。"
+    },
+    {
+      "path": "packages/editor/src/mask.ts",
+      "status": "F",
+      "kind": "text",
+      "lines": 16,
+      "sha256": "7966873ba709ec8ed55cf1adfd8c24101c4426599f87be02294651ab68af961a",
+      "note": "原图归一椭圆、内外及反选、平滑羽化；专用算法不冒充识别人像。"
+    },
+    {
+      "path": "packages/editor/src/recipe.ts",
+      "status": "F",
+      "kind": "text",
+      "lines": 332,
+      "sha256": "53f5a91bf5794556a677e67e1671011894591b24025b98f9f808bb851a4fd07c",
+      "note": "普通数据对象/禁止getter、未知字段/稀疏数组/循环拒绝、有限数值、严格曲线/几何与显式schema。"
+    },
+    {
+      "path": "packages/editor/src/registry.ts",
+      "status": "F",
+      "kind": "text",
+      "lines": 183,
+      "sha256": "598d3ad846c1acba0001f3aa0d0aac315b2b8052324499f8cb6bdd386e627fd9",
+      "note": "真实算法对应范围/中性值/单位，双向数值与独立非负锐化柔化的语义明确。"
+    },
+    {
+      "path": "packages/editor/src/tiled.ts",
+      "status": "F",
+      "kind": "text",
+      "lines": 109,
+      "sha256": "085abf903249b6720c10aa40996897ef65845ef20ea7e260569174a9ec0da4c0",
+      "note": "旧版分块共享同一参考实现、正确halo、原图坐标、只拼接核心区域，不把分块写成零内存。"
+    },
+    {
+      "path": "packages/editor/src/types.ts",
+      "status": "F",
+      "kind": "text",
+      "lines": 135,
+      "sha256": "9bc7ab62bebe492613f2c5aae752212730bde0777b3320493b63dcbd4fb41354",
+      "note": "RGBA8 straight alpha sRGB、EXIF已定向、旧schema数值域、不同渲染预算语义。"
+    },
+    {
+      "path": "packages/editor/src/v2-engine.ts",
+      "status": "F",
+      "kind": "text",
+      "lines": 550,
+      "sha256": "f5f3f00617b2102712f09caa07d928df6f03a83da69d75e0c6e088916fd5b9e6",
+      "note": "固定旧色阶/HSL/分级/细节/局部顺序、确定性颗粒、halo随局部细节增长、v1原解释器保持。"
+    },
+    {
+      "path": "packages/editor/src/v2-mask.ts",
+      "status": "F",
+      "kind": "text",
+      "lines": 255,
+      "sha256": "5375ffaffefb1e5eb63c9ba6c9af48a5837fa2377964a467d6eb6b5a7eb82ee1",
+      "note": "源坐标域外为0、羽化/反选、连续色相/饱和/亮度、透明排除、有界栅格游程、不隐藏位图分配。"
+    },
+    {
+      "path": "packages/editor/src/v2-recipe.ts",
+      "status": "F",
+      "kind": "text",
+      "lines": 615,
+      "sha256": "75d9cef4aab968a6ee176fabeee967ae0c13175f5760182ea39b1f14302a333b",
+      "note": "扩展数值联合约束、局部/点/栅格预算、严格mask辨别联合、复制安全、显式迁移和V3禁止降级。"
+    },
+    {
+      "path": "packages/editor/src/v2-registry.ts",
+      "status": "F",
+      "kind": "text",
+      "lines": 339,
+      "sha256": "be074a30db05a49ce95cf55c46e299161f54bb9e7f206b1dc83d3a12a2fe2517",
+      "note": "八色段之间连续插值而非离散颜色限制；数值路径范围与真实budget常量。"
+    },
+    {
+      "path": "packages/editor/src/v2-types.ts",
+      "status": "F",
+      "kind": "text",
+      "lines": 175,
+      "sha256": "7e18119ed86e3ee120a415139dce2eed5e9bc4ca829ebcd8642208623d9edbd6",
+      "note": "旧版局部和完整扩展参数结构，版本/算法语义与V3兼容继承范围。"
+    },
+    {
+      "path": "packages/editor/src/v3-blend.ts",
+      "status": "S",
+      "kind": "text",
+      "lines": 112,
+      "sha256": "71b275f98a5183cb15ce57106d1af063b8d0da837c8134b5857a9e91e0756f84",
+      "note": "本独立审查未逐行复读；引擎/人物专项记录见 v3-editor-review.md，不借用为本人的人工覆盖。"
+    },
+    {
+      "path": "packages/editor/src/v3-engine.ts",
+      "status": "S",
+      "kind": "text",
+      "lines": 198,
+      "sha256": "cbba8a3d7d26822437514b3090393db911331197deb7832098838d04f8a5a370",
+      "note": "本独立审查未逐行复读；引擎/人物专项记录见 v3-editor-review.md，不借用为本人的人工覆盖。"
+    },
+    {
+      "path": "packages/editor/src/v3-geometry.ts",
+      "status": "S",
+      "kind": "text",
+      "lines": 254,
+      "sha256": "d1907ef77b9ba64b2855ebb872c2d0d2b83442974dd1818a1275f4f7f1862fd7",
+      "note": "本独立审查未逐行复读；引擎/人物专项记录见 v3-editor-review.md，不借用为本人的人工覆盖。"
+    },
+    {
+      "path": "packages/editor/src/v3-mask.ts",
+      "status": "S",
+      "kind": "text",
+      "lines": 49,
+      "sha256": "b82c35717ea6285653b131f4b0ebc5c533d5a092ffad743099fa892822bb886c",
+      "note": "本独立审查未逐行复读；引擎/人物专项记录见 v3-editor-review.md，不借用为本人的人工覆盖。"
+    },
+    {
+      "path": "packages/editor/src/v3-optics.ts",
+      "status": "S",
+      "kind": "text",
+      "lines": 95,
+      "sha256": "7b95cb887032d58ee8cd47d0ad4dfab9d038ec6a1620cdc1a653b4426c5707b1",
+      "note": "本独立审查未逐行复读；引擎/人物专项记录见 v3-editor-review.md，不借用为本人的人工覆盖。"
+    },
+    {
+      "path": "packages/editor/src/v3-paint.ts",
+      "status": "S",
+      "kind": "text",
+      "lines": 275,
+      "sha256": "11d408f1f2c63e2642320accb7950ddcf094610fa7b4cb11f0ba86ce1a317f0f",
+      "note": "本独立审查未逐行复读；引擎/人物专项记录见 v3-editor-review.md，不借用为本人的人工覆盖。"
+    },
+    {
+      "path": "packages/editor/src/v3-pixels.ts",
+      "status": "S",
+      "kind": "text",
+      "lines": 76,
+      "sha256": "7af2bfce49751ccc26f06ce1a38da217d9185a89dc2bf4a0d26344a265ed32a4",
+      "note": "本独立审查未逐行复读；引擎/人物专项记录见 v3-editor-review.md，不借用为本人的人工覆盖。"
+    },
+    {
+      "path": "packages/editor/src/v3-recipe.ts",
+      "status": "S",
+      "kind": "text",
+      "lines": 675,
+      "sha256": "9cdc7b125bd7cf6a38663cf334f1bc1b9c55ff9a13a6b1ae11baa42d88915535",
+      "note": "本独立审查未逐行复读；引擎/人物专项记录见 v3-editor-review.md，不借用为本人的人工覆盖。"
+    },
+    {
+      "path": "packages/editor/src/v3-registry.ts",
+      "status": "F",
+      "kind": "text",
+      "lines": 202,
+      "sha256": "2179396fd99653728302d9ed3520a57c49be6b7871b0fac332d48de72d7ee30c",
+      "note": "实际V3数值/图层/蒙版/位移预算、16混合与真实参数；没有增加AI任意写入路径。"
+    },
+    {
+      "path": "packages/editor/src/v3-types.ts",
+      "status": "F",
+      "kind": "text",
+      "lines": 218,
+      "sha256": "ba12f4f1f2b57ff89b74974fb58f84e1b0afc795c24e0639c2a353ce9ebab68f",
+      "note": "原图归一、完整ColorBlock、多独立选区/组、显式图层来源、可重放笔触和双向位移、origin追溯。"
+    },
+    {
+      "path": "packages/editor/src/v3-warp.ts",
+      "status": "S",
+      "kind": "text",
+      "lines": 95,
+      "sha256": "cb2974679498a716726c49d20f9e38b9c77b6d72c01b4491b671545d24b36f05",
+      "note": "本独立审查未逐行复读；引擎/人物专项记录见 v3-editor-review.md，不借用为本人的人工覆盖。"
+    },
+    {
+      "path": "packages/editor/test/editor.test.ts",
+      "status": "U",
+      "kind": "text",
+      "lines": 606,
+      "sha256": "ddc68a54ed80e6f200f45658906f39add435c94d3c43547b315d973564d562a3",
+      "note": "已纳入清单；本独立审查未逐条阅读/执行此文件，不据此推断全部用例通过。"
+    },
+    {
+      "path": "packages/editor/test/extended-headers.test.ts",
+      "status": "U",
+      "kind": "text",
+      "lines": 112,
+      "sha256": "df09d0f04dd6aa8cb58c6104621cc2ace407ef70604705cdc221dfd6e9eb21dc",
+      "note": "已纳入清单；本独立审查未逐条阅读/执行此文件，不据此推断全部用例通过。"
+    },
+    {
+      "path": "packages/editor/test/header-audit.test.ts",
+      "status": "U",
+      "kind": "text",
+      "lines": 305,
+      "sha256": "4b3608db6421db30d002f86d0d82a594e2a48529950c63180f0cc91e8893cb46",
+      "note": "已纳入清单；本独立审查未逐条阅读/执行此文件，不据此推断全部用例通过。"
+    },
+    {
+      "path": "packages/editor/test/headers.test.ts",
+      "status": "U",
+      "kind": "text",
+      "lines": 225,
+      "sha256": "f1c264bcc13218dc0476110f76f3e909c7357f355d6ac3741136be3cac1866b2",
+      "note": "已纳入清单；本独立审查未逐条阅读/执行此文件，不据此推断全部用例通过。"
+    },
+    {
+      "path": "packages/editor/test/render-worker.mjs",
+      "status": "U",
+      "kind": "text",
+      "lines": 5,
+      "sha256": "3868c9c2534422fc20e85fe977f04f5fdc307838581ddafe7dd44d4062af9d78",
+      "note": "已纳入清单；本独立审查未逐条阅读/执行此文件，不据此推断全部用例通过。"
+    },
+    {
+      "path": "packages/editor/test/tiled-worker.mjs",
+      "status": "U",
+      "kind": "text",
+      "lines": 18,
+      "sha256": "06745c68de4f84009c7b35fbe596c20894857c9cd257ddca93812ba14c23d465",
+      "note": "已纳入清单；本独立审查未逐条阅读/执行此文件，不据此推断全部用例通过。"
+    },
+    {
+      "path": "packages/editor/test/tiled.test.ts",
+      "status": "U",
+      "kind": "text",
+      "lines": 397,
+      "sha256": "9c03b77f2f6137e6be0919f5aa237ce13bd7cdb24a7957aafff8820a1a8b9ff4",
+      "note": "已纳入清单；本独立审查未逐条阅读/执行此文件，不据此推断全部用例通过。"
+    },
+    {
+      "path": "packages/editor/test/v2-mask.test.ts",
+      "status": "U",
+      "kind": "text",
+      "lines": 275,
+      "sha256": "d6d86688890841c686b5c3daf1aa9b5d0f2488ce826204bfcea8c11897ffe066",
+      "note": "已纳入清单；本独立审查未逐条阅读/执行此文件，不据此推断全部用例通过。"
+    },
+    {
+      "path": "packages/editor/test/v2-recipe.test.ts",
+      "status": "U",
+      "kind": "text",
+      "lines": 315,
+      "sha256": "05c9b38495c8e9cc207582f0cb9cb5b58a224f25de69c28eb66e7e9c939c3123",
+      "note": "已纳入清单；本独立审查未逐条阅读/执行此文件，不据此推断全部用例通过。"
+    },
+    {
+      "path": "packages/editor/test/v2-render.test.ts",
+      "status": "U",
+      "kind": "text",
+      "lines": 787,
+      "sha256": "59b7a21e819c6607b71c15eaeabfdf2f033d6371c2540d1f9c33e160c2367b12",
+      "note": "已纳入清单；本独立审查未逐条阅读/执行此文件，不据此推断全部用例通过。"
+    },
+    {
+      "path": "packages/editor/test/v2-worker.mjs",
+      "status": "U",
+      "kind": "text",
+      "lines": 18,
+      "sha256": "fb9607705f6d72d7d84060ffeb1bc54d8df02ebb03cd8a5dfebe08108c5a9943",
+      "note": "已纳入清单；本独立审查未逐条阅读/执行此文件，不据此推断全部用例通过。"
+    },
+    {
+      "path": "packages/editor/test/v3-composite.test.ts",
+      "status": "U",
+      "kind": "text",
+      "lines": 573,
+      "sha256": "5bcc0882abb8e9a8f601380778324c5b05e2735be12d6e4c38110124bedecc63",
+      "note": "已纳入清单；本独立审查未逐条阅读/执行此文件，不据此推断全部用例通过。"
+    },
+    {
+      "path": "packages/editor/test/v3-geometry.test.ts",
+      "status": "U",
+      "kind": "text",
+      "lines": 248,
+      "sha256": "1df9e3d500de463e526d4b04daaf0458fb2c65dfdf831ecc0ab8b0ea1eb608c0",
+      "note": "已纳入清单；本独立审查未逐条阅读/执行此文件，不据此推断全部用例通过。"
+    },
+    {
+      "path": "packages/editor/test/v3-recipe.test.ts",
+      "status": "U",
+      "kind": "text",
+      "lines": 285,
+      "sha256": "23f98f7e13cfd0300f123433a5242f05aabddc520ca5574a947b6c613539b502",
+      "note": "已纳入清单；本独立审查未逐条阅读/执行此文件，不据此推断全部用例通过。"
+    },
+    {
+      "path": "packages/editor/test/v3-worker.mjs",
+      "status": "U",
+      "kind": "text",
+      "lines": 23,
+      "sha256": "4ce3c4915bf9834ebac8682495d43504f66e7f92ea5a7aa25dc5751debb7ae35",
+      "note": "已纳入清单；本独立审查未逐条阅读/执行此文件，不据此推断全部用例通过。"
+    },
+    {
+      "path": "packages/editor/tsconfig.json",
+      "status": "U",
+      "kind": "text",
+      "lines": 4,
+      "sha256": "902aedcca69381b282b4bfb47a017b7729458c3a65238bb580f5e1146f30d956",
+      "note": "已纳入清单；本独立审查未逐段复核内容。锁文件/许可证清单不等于供应链或法律认证。"
+    },
+    {
+      "path": "packages/multimodal/OPENAI.md",
+      "status": "U",
+      "kind": "text",
+      "lines": 57,
+      "sha256": "133fd2deba17264d66774def943d02ea15b3c5feec28dd983ec566574abea769",
+      "note": "已纳入清单；本独立审查未逐段复核内容。锁文件/许可证清单不等于供应链或法律认证。"
+    },
+    {
+      "path": "packages/multimodal/README.md",
+      "status": "U",
+      "kind": "text",
+      "lines": 131,
+      "sha256": "18af50d021f0bd5955a8f56797d977ceb47266d0e93cc720eb4f2c2a3b8f0f51",
+      "note": "已纳入清单；本独立审查未逐段复核内容。锁文件/许可证清单不等于供应链或法律认证。"
+    },
+    {
+      "path": "packages/multimodal/package.json",
+      "status": "U",
+      "kind": "text",
+      "lines": 21,
+      "sha256": "a0835dbf58d5af4967a466a32da085017e5be6c7095755783370626740cdac55",
+      "note": "已纳入清单；本独立审查未逐段复核内容。锁文件/许可证清单不等于供应链或法律认证。"
+    },
+    {
+      "path": "packages/multimodal/src/ark.ts",
+      "status": "F",
+      "kind": "text",
+      "lines": 258,
+      "sha256": "6624817aaf43cc49db77b2df4676267494d91860fe46d0e4c8b7ac64889ebbad",
+      "note": "运营绑定准确模型与 profile、国内固定端点、单图和参考约束、base64字节解码、拒绝跟随输出 URL。"
+    },
+    {
+      "path": "packages/multimodal/src/http.ts",
+      "status": "F",
+      "kind": "text",
+      "lines": 128,
+      "sha256": "1b28d224f9a1ca635078d259d6335862e09d95428443e51a851683bec09c2e90",
+      "note": "单次有界 POST、禁止重定向、响应体/超时限制、拒绝与未知区分，不自动重试付费调用。"
+    },
+    {
+      "path": "packages/multimodal/src/index.ts",
+      "status": "F",
+      "kind": "text",
+      "lines": 21,
+      "sha256": "ef2da6fe439080883f6cd21ff17aa61e8e26bed4b58dae2c3c95238697a21e14",
+      "note": "公共导出只暴露受验证的适配器与共享传输；端点冻结仍由上层负责。"
+    },
+    {
+      "path": "packages/multimodal/src/openai.ts",
+      "status": "F",
+      "kind": "text",
+      "lines": 462,
+      "sha256": "ee412899d2d2b73fca775957828442a01b93f42b6b738df5748994f10fb41921",
+      "note": "固定官方端点、明确模型白名单/参数依赖、引用/批次预算、整批输出数与像素/MIME校验、透明性实查。"
+    },
+    {
+      "path": "packages/multimodal/src/qwen.ts",
+      "status": "F",
+      "kind": "text",
+      "lines": 99,
+      "sha256": "9de05beb26b6d8a707159965e52faa0bed186ee184fd26645da8514f07a23051",
+      "note": "ASR 固定北京端点/模型白名单、严格 WAV、完整完成状态和输出长度，禁止未知结果伪报转写成功。"
+    },
+    {
+      "path": "packages/multimodal/src/types.ts",
+      "status": "F",
+      "kind": "text",
+      "lines": 118,
+      "sha256": "86c3aac1c7fd73e62a9d9ab9f39412675892193fbb58afe388ca358e883d4585",
+      "note": "模型能力、参考/遮罩/参数/结果契约，供应商未知字段不会通过类型自动获授权。"
+    },
+    {
+      "path": "packages/multimodal/src/wav.ts",
+      "status": "F",
+      "kind": "text",
+      "lines": 53,
+      "sha256": "fdedc786effe805064fd4576e45d9bf4bbe195cc0bef9c6e4d436729625af775",
+      "note": "RIFF 边界、单 fmt/data、16k单声道PCM16、30秒预算、不接受压缩/扩展格式。"
+    },
+    {
+      "path": "packages/multimodal/test/adapters.test.ts",
+      "status": "U",
+      "kind": "text",
+      "lines": 460,
+      "sha256": "9fda7ce99a2440f1c83c76617226fd7751b2d60ef32f72090d9300460a21f6c3",
+      "note": "已纳入清单；本独立审查未逐条阅读/执行此文件，不据此推断全部用例通过。"
+    },
+    {
+      "path": "packages/multimodal/test/openai.test.ts",
+      "status": "U",
+      "kind": "text",
+      "lines": 337,
+      "sha256": "676c736d9a2544e8303899e01ed07541ca082dfbf4ec3490c51c2f8276adf6c8",
+      "note": "已纳入清单；本独立审查未逐条阅读/执行此文件，不据此推断全部用例通过。"
+    },
+    {
+      "path": "packages/multimodal/tsconfig.json",
+      "status": "U",
+      "kind": "text",
+      "lines": 1,
+      "sha256": "0202ddd07a99f802be6e40961df9246c2bf2552966b6a87d0fff2f8a9306a646",
+      "note": "已纳入清单；本独立审查未逐段复核内容。锁文件/许可证清单不等于供应链或法律认证。"
+    },
+    {
+      "path": "packages/portrait/README.md",
+      "status": "U",
+      "kind": "text",
+      "lines": 145,
+      "sha256": "0912a82b2862576643353579a66f34176ab81d018a7a65b38f6be6376e0c035c",
+      "note": "已纳入清单；本独立审查未逐段复核内容。锁文件/许可证清单不等于供应链或法律认证。"
+    },
+    {
+      "path": "packages/portrait/package.json",
+      "status": "U",
+      "kind": "text",
+      "lines": 20,
+      "sha256": "1073065bdde355382ef30c1561c8c172aeebbd5705d56f997edbc7b799071208",
+      "note": "已纳入清单；本独立审查未逐段复核内容。锁文件/许可证清单不等于供应链或法律认证。"
+    },
+    {
+      "path": "packages/portrait/src/adapter.ts",
+      "status": "S",
+      "kind": "text",
+      "lines": 72,
+      "sha256": "3fd85040c68eaf352f14a234ce995e6cf2f4a0f9abeddfcc4ede640a651544b9",
+      "note": "本独立审查未逐行复读；引擎/人物专项记录见 v3-editor-review.md，不借用为本人的人工覆盖。"
+    },
+    {
+      "path": "packages/portrait/src/catalog.ts",
+      "status": "S",
+      "kind": "text",
+      "lines": 72,
+      "sha256": "7ca070476851532281d80f2c7d25e363739b12ce5fd3461bd81376085a0603bd",
+      "note": "本独立审查未逐行复读；引擎/人物专项记录见 v3-editor-review.md，不借用为本人的人工覆盖。"
+    },
+    {
+      "path": "packages/portrait/src/geometry.ts",
+      "status": "S",
+      "kind": "text",
+      "lines": 142,
+      "sha256": "9e5639cae961d0fb6ef81c5b60f0af8122e9cd29a959e4b3ec681887dfd2d893",
+      "note": "本独立审查未逐行复读；引擎/人物专项记录见 v3-editor-review.md，不借用为本人的人工覆盖。"
+    },
+    {
+      "path": "packages/portrait/src/index.ts",
+      "status": "S",
+      "kind": "text",
+      "lines": 22,
+      "sha256": "221ef1c55c89685690722df5d61a7ba6052ccbf96e931340e54ec10215fc4101",
+      "note": "本独立审查未逐行复读；引擎/人物专项记录见 v3-editor-review.md，不借用为本人的人工覆盖。"
+    },
+    {
+      "path": "packages/portrait/src/plans.ts",
+      "status": "S",
+      "kind": "text",
+      "lines": 746,
+      "sha256": "4f423298e6d6bec4c5859dcd53f73bff867e42fca28a4698342f25e3736fdc3d",
+      "note": "本独立审查未逐行复读；引擎/人物专项记录见 v3-editor-review.md，不借用为本人的人工覆盖。"
+    },
+    {
+      "path": "packages/portrait/src/types.ts",
+      "status": "S",
+      "kind": "text",
+      "lines": 37,
+      "sha256": "e2d678db75127a6a03b0837a00a075e2616366619943fa112081533d2b74b47c",
+      "note": "本独立审查未逐行复读；引擎/人物专项记录见 v3-editor-review.md，不借用为本人的人工覆盖。"
+    },
+    {
+      "path": "packages/portrait/src/validation.ts",
+      "status": "S",
+      "kind": "text",
+      "lines": 192,
+      "sha256": "e1613e0f4c2616ebcc66ca774c16ca3ac4154fab8c947f1092339babee96d3f4",
+      "note": "本独立审查未逐行复读；引擎/人物专项记录见 v3-editor-review.md，不借用为本人的人工覆盖。"
+    },
+    {
+      "path": "packages/portrait/test/fixtures.ts",
+      "status": "U",
+      "kind": "text",
+      "lines": 86,
+      "sha256": "6d2a73506a3b58ae7f6b3217b29098a727f65db9bf086f5c67ee534dbd3cc406",
+      "note": "已纳入清单；本独立审查未逐条阅读/执行此文件，不据此推断全部用例通过。"
+    },
+    {
+      "path": "packages/portrait/test/portrait.test.ts",
+      "status": "U",
+      "kind": "text",
+      "lines": 451,
+      "sha256": "875b755a17eacc3f59c9d4ee47cce9ac391c98efa9c60d276f718566339c95ad",
+      "note": "已纳入清单；本独立审查未逐条阅读/执行此文件，不据此推断全部用例通过。"
+    },
+    {
+      "path": "packages/portrait/tsconfig.json",
+      "status": "U",
+      "kind": "text",
+      "lines": 1,
+      "sha256": "a61cc0903b4a75d44d905830a42a4067a6c84e0a33942332130db39b9201bbdb",
+      "note": "已纳入清单；本独立审查未逐段复核内容。锁文件/许可证清单不等于供应链或法律认证。"
+    },
+    {
+      "path": "packages/providers/README.md",
+      "status": "U",
+      "kind": "text",
+      "lines": 53,
+      "sha256": "0dad6c169f3c6b815bd253feed7e471a010947d3777921609e9a8455fbee2f3a",
+      "note": "已纳入清单；本独立审查未逐段复核内容。锁文件/许可证清单不等于供应链或法律认证。"
+    },
+    {
+      "path": "packages/providers/package.json",
+      "status": "U",
+      "kind": "text",
+      "lines": 11,
+      "sha256": "a453487bccb61601fae619728d308dfa03b5a03f7fa7596c9d26526fefbdf6fa",
+      "note": "已纳入清单；本独立审查未逐段复核内容。锁文件/许可证清单不等于供应链或法律认证。"
+    },
+    {
+      "path": "packages/providers/src/index.ts",
+      "status": "F",
+      "kind": "text",
+      "lines": 350,
+      "sha256": "a7d3110a7841a764f9842cb6254ab69d8420ed8a3efe91020f5e153841154af4",
+      "note": "TC3 签名、固定腾讯端点、短信收件人/状态验证；文本/图片审核类型分开、字节/像素预算、未知失败关闭。"
+    },
+    {
+      "path": "packages/providers/test/providers.test.ts",
+      "status": "U",
+      "kind": "text",
+      "lines": 230,
+      "sha256": "442167b1f5986c3d98fb01f8fecaa0140b40536d9d2380ad6f6cf5145360840f",
+      "note": "已纳入清单；本独立审查未逐条阅读/执行此文件，不据此推断全部用例通过。"
+    },
+    {
+      "path": "packages/providers/tsconfig.json",
+      "status": "U",
+      "kind": "text",
+      "lines": 5,
+      "sha256": "055076ab4314c141b41809604316512a8f25456a4f435145d8e154c5db940621",
+      "note": "已纳入清单；本独立审查未逐段复核内容。锁文件/许可证清单不等于供应链或法律认证。"
+    },
+    {
+      "path": "packages/storage/README.md",
+      "status": "U",
+      "kind": "text",
+      "lines": 61,
+      "sha256": "8a72a70a469947c8e756ed7c145ae0bf8f518a0bfd12aa96cfc5abb4a7c2b8a0",
+      "note": "已纳入清单；本独立审查未逐段复核内容。锁文件/许可证清单不等于供应链或法律认证。"
+    },
+    {
+      "path": "packages/storage/package.json",
+      "status": "U",
+      "kind": "text",
+      "lines": 11,
+      "sha256": "e999abf1811488103a24bab3552d05f115ec021392db6725bcc2cbab6a2f6bb1",
+      "note": "已纳入清单；本独立审查未逐段复核内容。锁文件/许可证清单不等于供应链或法律认证。"
+    },
+    {
+      "path": "packages/storage/src/index.ts",
+      "status": "F",
+      "kind": "text",
+      "lines": 437,
+      "sha256": "f96c9c75f21d5b108171a6164d565ffa01a6dd9755b55b5cdda9b3dc2d69ee78",
+      "note": "实际字节探测/Sharp限制、动画/危险格式拒绝、私有原子持久化、规范化与缩略图、引用感知清理责任。"
+    },
+    {
+      "path": "packages/storage/test/storage.test.ts",
+      "status": "U",
+      "kind": "text",
+      "lines": 210,
+      "sha256": "b85ac24c50b745a4dfb274785869fb2ef064b6ed45f25b931b1d777b5b50a0f5",
+      "note": "已纳入清单；本独立审查未逐条阅读/执行此文件，不据此推断全部用例通过。"
+    },
+    {
+      "path": "packages/storage/tsconfig.json",
+      "status": "U",
+      "kind": "text",
+      "lines": 5,
+      "sha256": "055076ab4314c141b41809604316512a8f25456a4f435145d8e154c5db940621",
+      "note": "已纳入清单；本独立审查未逐段复核内容。锁文件/许可证清单不等于供应链或法律认证。"
+    },
+    {
+      "path": "scripts/dev.mjs",
+      "status": "F",
+      "kind": "text",
+      "lines": 60,
+      "sha256": "bf602ad2e349706ca1736526c37f604740ec0d186f974f19403240adc0ebbef6",
+      "note": "先迁移再启动API/worker/web、子进程失败退出、信号清理，避免未迁移库执行AI。"
+    },
+    {
+      "path": "scripts/doctor.ts",
+      "status": "F",
+      "kind": "text",
+      "lines": 93,
+      "sha256": "88e8a6d22ed87a6d177ddade435346dec5fcd05afb327538167bcc7f8067908f",
+      "note": "本地配置/DB/私有目录fsync检查、不发供应商请求、不打印凭据；schema最低版本遗漏见CR-04。"
+    },
+    {
+      "path": "scripts/local-db.mjs",
+      "status": "F",
+      "kind": "text",
+      "lines": 80,
+      "sha256": "169add6099940d9a45d65a5aaa4ff89dc401ef75db54be54956ee6cb4dd08dbc",
+      "note": "仅非root本地开发、随机凭据文件0600且忽略、localhost绑定、保留数据而非重建生产库。"
+    },
+    {
+      "path": "scripts/prepare-vision.mjs",
+      "status": "F",
+      "kind": "text",
+      "lines": 70,
+      "sha256": "44e629373c2822b951b95f2334477add227f1323d7ab61818d2f07a0a69c3674",
+      "note": "官方版本化模型与WASM同源资源、size/SHA/结构核验、受限下载、不在用户运行时外部CDN加载。"
+    },
+    {
+      "path": "scripts/qa/README.md",
+      "status": "U",
+      "kind": "text",
+      "lines": 52,
+      "sha256": "68fff164c101cfb701ff2c121ed777465ecbef47b7858f5ed33d1b8cb89eea34",
+      "note": "根任务正在维护的真实模型QA材料；本独立审查未执行或逐行复核。"
+    },
+    {
+      "path": "scripts/qa/portrait-native-fetch.py",
+      "status": "U",
+      "kind": "text",
+      "lines": 26,
+      "sha256": "b03fa008e4190d5d76b0d5541bbbdfe2c0bfe8ef4b727749a120616c163522d6",
+      "note": "根任务正在维护的真实模型QA材料；本独立审查未执行或逐行复核。"
+    },
+    {
+      "path": "scripts/qa/portrait-native-infer.py",
+      "status": "U",
+      "kind": "text",
+      "lines": 161,
+      "sha256": "d05fe888a0c5f6db7811261ad779b4532560d6ca76665147974cdfcc4644bf11",
+      "note": "根任务正在维护的真实模型QA材料；本独立审查未执行或逐行复核。"
+    },
+    {
+      "path": "scripts/qa/portrait-native-inputs.json",
+      "status": "U",
+      "kind": "text",
+      "lines": 26,
+      "sha256": "1d73d405366590e8667dd28bd4daef23cfea59e0a9700652f423936ddcb2eceb",
+      "note": "根任务正在维护的真实模型QA材料；本独立审查未执行或逐行复核。"
+    },
+    {
+      "path": "scripts/qa/portrait-native-report.mjs",
+      "status": "U",
+      "kind": "text",
+      "lines": 153,
+      "sha256": "9ee3f4c8d2f43e598719206d193c7a0912690ef1f08f3fcddca3845681926ce0",
+      "note": "根任务正在维护的真实模型QA材料；本独立审查未执行或逐行复核。"
+    },
+    {
+      "path": "scripts/qa/portrait-native-requirements.txt",
+      "status": "U",
+      "kind": "text",
+      "lines": 21,
+      "sha256": "f558d7b17cae1b3862d7e579f5c379200be3e18db29b257bb5209eddb6c5d594",
+      "note": "根任务正在维护的真实模型QA材料；本独立审查未执行或逐行复核。"
+    },
+    {
+      "path": "scripts/qa/portrait-native-verify.ts",
+      "status": "U",
+      "kind": "text",
+      "lines": 345,
+      "sha256": "702d15f62fa4c8c460d29b1ba22f606481047d3f5665eb07f354ce494765b8ee",
+      "note": "根任务正在维护的真实模型QA材料；本独立审查未执行或逐行复核。"
+    },
+    {
+      "path": "scripts/qa/portrait-native-visuals.py",
+      "status": "U",
+      "kind": "text",
+      "lines": 74,
+      "sha256": "28933dae0fa0c8c922adec4d30e3f5faed4035b8752e8e2cdc6f7899803aeab7",
+      "note": "根任务正在维护的真实模型QA材料；本独立审查未执行或逐行复核。"
+    },
+    {
+      "path": "scripts/test.mjs",
+      "status": "F",
+      "kind": "text",
+      "lines": 20,
+      "sha256": "b605d899da403a4f1b2f71f3c65cb876ae7ae09949e59527387cd64cd4f21474",
+      "note": "收集实际测试文件、受控并发；数据库缺失不能在强制模式被悄悄算通过。"
+    },
+    {
+      "path": "scripts/tsconfig.json",
+      "status": "U",
+      "kind": "text",
+      "lines": 4,
+      "sha256": "487cd5319c8b830a4cf881e48aeb9ee9878d8fd93b414ac78033e1409db72f2b",
+      "note": "已纳入清单；本独立审查未逐段复核内容。锁文件/许可证清单不等于供应链或法律认证。"
+    },
+    {
+      "path": "scripts/typecheck.mjs",
+      "status": "F",
+      "kind": "text",
+      "lines": 20,
+      "sha256": "e8c25cb67427059a45c0e4af2ddda6fe231211e7a7d73372fa1df7c15c1a56fb",
+      "note": "发现各app/package/scripts实际TS配置，任何检查失败退出。"
+    },
+    {
+      "path": "scripts/verify.mjs",
+      "status": "F",
+      "kind": "text",
+      "lines": 97,
+      "sha256": "bdd41d2a14495e591af04e5e48258b6c778603d4eac19c80ae6aee173a8ce09f",
+      "note": "源码哈希前后、typecheck/tests/build/audit四门；强制DB测试，轮次证据不等于人工每行审核。"
+    },
+    {
+      "path": "scripts/vision-assets.mjs",
+      "status": "F",
+      "kind": "text",
+      "lines": 66,
+      "sha256": "3ebca2332eaec0d59c2efef5a63d1ecb5c15da39ee4920b9ce1ea207411fab8b",
+      "note": "模型长度/哈希/TFL3或task容器完整性验证；不是运行质量认证。"
+    },
+    {
+      "path": "scripts/with-lite.mjs",
+      "status": "F",
+      "kind": "text",
+      "lines": 66,
+      "sha256": "40e8e554b20e5451a5fd57c9f8bd16b02118c1518a3580f5f981fc5c2cb8a4fd",
+      "note": "WASM数据库仅开发/测试、生产拒绝、测试隔离内存库；不替代原生PostgreSQL并发验收。"
+    },
+    {
+      "path": "tests/vision-assets.test.mjs",
+      "status": "U",
+      "kind": "text",
+      "lines": 38,
+      "sha256": "a91f02e449b535d112e80bc1b1e36010a460fc507388623f2f0ccf9d46e9e0a8",
+      "note": "已纳入清单；本独立审查未逐条阅读/执行此文件，不据此推断全部用例通过。"
+    },
+    {
+      "path": "third-party/Apache-2.0.txt",
+      "status": "U",
+      "kind": "text",
+      "lines": 202,
+      "sha256": "cfc7749b96f63bd31c3c42b5c471bf756814053e847c10f3eb003417bc523d30",
+      "note": "已纳入清单；本独立审查未逐段复核内容。锁文件/许可证清单不等于供应链或法律认证。"
+    },
+    {
+      "path": "third-party/NOTICE.md",
+      "status": "U",
+      "kind": "text",
+      "lines": 19,
+      "sha256": "0264dce47453daaea90b7aafc67abd02c56709ece22e98e76efc52769573ccca",
+      "note": "已纳入清单；本独立审查未逐段复核内容。锁文件/许可证清单不等于供应链或法律认证。"
+    },
+    {
+      "path": "tsconfig.base.json",
+      "status": "U",
+      "kind": "text",
+      "lines": 16,
+      "sha256": "bf2a1cae20982829b0f46743a48f0c28cc0e178a52a460a4d3d82c7ae6c41991",
+      "note": "已纳入清单；本独立审查未逐段复核内容。锁文件/许可证清单不等于供应链或法律认证。"
+    }
+  ],
+  "followupReads": {
+    "recordedAtUtc": "2026-11-09T17:55:42.071921+00:00",
+    "purpose": "CR-03/04 follow-up source review only; original inventory counts and source snapshot retained. No additional full-suite or live-vendor test claimed.",
+    "files": [
+      {
+        "path": "packages/ai/src/lifecycle.ts",
+        "sha256": "981849e18550a106a85d890f5c393a92ce4efb2312613cb560804522b8807374",
+        "scope": "完整读取：独立旧running清扫、行锁、unknown预占保留、审计事件；没有调用供应商。"
+      },
+      {
+        "path": "apps/web/src/ai/QueuedCancellation.tsx",
+        "sha256": "0f2a420de0a79c5e405d901d4b0c015e2fd1544e9d61cc7e8d5f938b70b5779e",
+        "scope": "完整读取：双击锁、卸载守卫、明确服务器确认、所有结果刷新权威任务、不本地假定退款。"
+      },
+      {
+        "path": "scripts/doctor.ts",
+        "sha256": "88e8a6d22ed87a6d177ddade435346dec5fcd05afb327538167bcc7f8067908f",
+        "scope": "完整读取当前版本：getSchemaReadiness调用、缺失和意外迁移报告、没有真实供应商调用。"
+      },
+      {
+        "path": "packages/ai/src/index.ts",
+        "sha256": "d727bc88020be3c286b5f9996310c747ebac8abf012d4757bd06bdce69fc5c5f",
+        "scope": "差异阅读：cancel任务锁与角色/发送证据判断、冲突转unknown事务提交、createAiService统一维护调度；不声称重新完整读一次。"
+      },
+      {
+        "path": "packages/db/src/index.ts",
+        "sha256": "f2af2b056c9eb4d5438be3871b6e03ba90f6b818cbc8e8b38ec465f9933fe255",
+        "scope": "差异阅读：唯一迁移注册表、所有缺失/意外版本校验；不声称重新完整读一次。"
+      },
+      {
+        "path": "apps/api/src/app.ts",
+        "sha256": "ccb9fed5639f80271df27c55ab519e0e891c310ff45a07038a06efd654373a20",
+        "scope": "差异阅读：POST /v1/ai-jobs/:id/cancel 身份、UUID和生命周期服务门禁；不声称重新完整读一次。"
+      }
+    ]
+  }
+}

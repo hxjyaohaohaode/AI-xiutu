@@ -1422,3 +1422,8 @@
     transition: none;
   }
 }
+/* Precision overlays never interpolate or blur the edited image. */
+.composite-overlay { position:absolute; inset:0; width:100%; height:100%; pointer-events:none; overflow:visible; }
+.composite-overlay polygon { pointer-events:all; cursor:move; touch-action:none; }
+.source-frame-note { display:block; max-width: min(70vw, 480px); margin:0 auto 4px; color:var(--muted, #777b75); font-size:11px; line-height:1.4; text-align:center; background:var(--surface, #f7f8f5); border-radius:5px; padding:3px 7px; }
+@media (max-width:759px) { .source-frame-note {font-size:10px;max-width:80vw;padding:2px 5px;} }

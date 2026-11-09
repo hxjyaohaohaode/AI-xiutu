@@ -1,0 +1,153 @@
+.result-decision-area {
+  margin-top: 8px;
+}
+.ai-decision-history {
+  margin-top: 8px;
+  color: var(--muted);
+  font-size: 12px;
+}
+.ai-decision-history summary {
+  display: flex;
+  gap: 12px;
+  justify-content: space-between;
+  cursor: pointer;
+  list-style: none;
+  min-height: 32px;
+  align-items: center;
+}
+.ai-decision-history summary small {
+  opacity: 0.75;
+  font-size: 11px;
+}
+.ai-decision-record {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 6px;
+  padding: 9px 0;
+}
+.ai-decision-record p {
+  grid-column: 1 / -1;
+  margin: 0;
+}
+.ai-decision-record time {
+  font-size: 10px;
+  opacity: 0.8;
+}
+.ai-decision-success {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 7px;
+  align-items: center;
+  font-size: 12px;
+  margin: 9px 0;
+}
+.ai-decision-confirm {
+  display: grid;
+  gap: 16px;
+  padding: 8px 22px 24px;
+  font-size: 14px;
+  line-height: 1.65;
+}
+.ai-decision-confirm > p {
+  margin: 0;
+}
+.ai-decision-confirm label {
+  display: grid;
+  gap: 8px;
+}
+.ai-decision-confirm input,
+.ai-decision-confirm select {
+  width: 100%;
+  min-height: 38px;
+  border: 0;
+  background: rgba(120, 120, 120, 0.08);
+  border-radius: 9px;
+  padding: 8px 10px;
+  font: inherit;
+  color: inherit;
+}
+.decision-parameter-list {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  max-height: 32dvh;
+  overflow-y: auto;
+}
+.decision-parameter-list li {
+  display: flex;
+  gap: 12px;
+  justify-content: space-between;
+  padding: 5px 0;
+}
+.decision-parameter-list li span:last-child {
+  font-variant-numeric: tabular-nums;
+}
+.decision-reasons {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+.decision-reasons button {
+  padding: 7px 11px;
+  border: 0;
+  background: rgba(120, 120, 120, 0.06);
+  border-radius: 8px;
+  color: inherit;
+}
+.decision-reasons button[aria-pressed='true'] {
+  background: rgba(120, 120, 120, 0.18);
+}
+.revision-entry {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+  background: rgba(120, 120, 120, 0.04);
+  border-radius: 10px;
+}
+.revision-entry > .revision-open {
+  background: transparent;
+  width: 100%;
+  text-align: left;
+}
+.revision-entry > .revision-restore {
+  background: transparent;
+  width: auto;
+  align-self: flex-end;
+  min-height: 32px;
+  font-size: 12px;
+  margin: 0 8px 5px;
+  padding: 4px 6px;
+}
+.revision-source-note {
+  color: var(--muted);
+  font-size: 11px;
+  padding: 0 14px 5px;
+}
+@media (min-width: 760px) and (max-width: 1119px) {
+  .ai-decision-confirm {
+    padding: 8px 20px 22px;
+    gap: 14px;
+  }
+}
+@media (max-width: 759px) {
+  .ai-decision-confirm {
+    padding: 6px 16px 18px;
+    gap: 12px;
+    font-size: 13px;
+  }
+  .ai-decision-history {
+    font-size: 11px;
+  }
+  .ai-decision-history summary {
+    min-height: 34px;
+    gap: 6px;
+  }
+  .ai-decision-record {
+    grid-template-columns: 1fr;
+    gap: 3px;
+  }
+  .decision-reasons button {
+    min-height: 36px;
+    font-size: 12px;
+  }
+}

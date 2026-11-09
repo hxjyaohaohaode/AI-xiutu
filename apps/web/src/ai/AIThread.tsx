@@ -10,12 +10,14 @@ import {
   SpeakerHigh,
   WarningCircle,
 } from '@phosphor-icons/react';
-import type { EditorRecipe } from '@ai-xiutu/editor';
-import { api, errorMessage, formatDate, jsonRequest } from '../lib/api';
-import type { Project } from '../lib/types';
-import { Busy, InlineError } from '../components/Ui';
+import { formatDate } from '../lib/api';
+import type { Artwork, Project } from '../lib/types';
+import { Busy, InlineError, Modal } from '../components/Ui';
 import { Disclosure } from '../components/Controls';
 import type { AIOperation, AIJob, GeneratedImage, JobOutput } from './types';
+import { useResultDecisions, type ResultDecisionController } from './useResultDecisions';
+import { ResultActions } from './ResultActions';
+import { QueuedCancellation } from './QueuedCancellation';
 
 export function SpeakButton({ text }: { text: string }) {
   const supported = 'speechSynthesis' in window;
@@ -44,33 +46,35 @@ export function SpeakButton({ text }: { text: string }) {
 }
 function TextResult({
   output,
-  project,
-  onSaved,
+  controller,
+  documents,
+  canEdit,
 }: {
   output: Extract<JobOutput, { kind: 'text' }>;
-  project: Project;
-  onSaved: () => void;
+  controller: ResultDecisionController;
+  documents: { id: string; title: string; version: number }[];
+  canEdit: boolean;
 }) {
   const [title, setTitle] = useState(output.title),
     [body, setBody] = useState(output.body);
   const [editing, setEditing] = useState(false),
-    [busy, setBusy] = useState(false),
     [saved, setSaved] = useState(false);
+  const [confirming, setConfirming] = useState(false);
+  const [targetId, setTargetId] = useState('');
   const [error, setError] = useState<string | null>(null);
+  const busy = controller.busy;
+  const locked = busy || !!controller.uncertain;
+  const target = documents.find((document) => document.id === targetId);
   async function save() {
-    setBusy(true);
-    setError(null);
-    try {
-      await api(
-        '/projects/' + project.id + '/documents',
-        jsonRequest('POST', { title: title.trim() || 'AI 创作文案', body }),
-      );
+    const response = await controller.decide({
+      action: 'save-text',
+      title: title.trim() || 'AI 创作文案',
+      body,
+      ...(target ? { targetDocumentId: target.id, expectedDocumentVersion: target.version } : {}),
+    });
+    if (response) {
       setSaved(true);
-      onSaved();
-    } catch (error) {
-      setError(errorMessage(error));
-    } finally {
-      setBusy(false);
+      setConfirming(false);
     }
   }
   return (
@@ -80,8 +84,8 @@ function TextResult({
           <input
             aria-label="文案标题"
             value={title}
-            maxLength={200}
-            disabled={busy}
+            maxLength={120}
+            disabled={locked}
             onChange={(event) => {
               setTitle(event.target.value);
               setSaved(false);
@@ -91,7 +95,7 @@ function TextResult({
             aria-label="文案内容"
             value={body}
             maxLength={100000}
-            disabled={busy}
+            disabled={locked}
             onChange={(event) => {
               setBody(event.target.value);
               setSaved(false);
@@ -105,7 +109,11 @@ function TextResult({
         </div>
       )}
       <div className="ai-result-actions">
-        <button className="text-button" disabled={busy} onClick={() => setEditing(!editing)}>
+        <button
+          className="text-button"
+          disabled={locked || !canEdit}
+          onClick={() => setEditing(!editing)}
+        >
           <PencilSimple size={16} />
           {editing ? '完成编辑' : '编辑'}
         </button>
@@ -127,8 +135,8 @@ function TextResult({
         <SpeakButton text={body} />
         <button
           className="text-button"
-          disabled={busy || saved || !body.trim()}
-          onClick={() => void save()}
+          disabled={locked || saved || !canEdit}
+          onClick={() => setConfirming(true)}
         >
           {busy ? <Busy label="" /> : saved ? <CheckCircle size={16} /> : <FloppyDisk size={16} />}
           {saved ? '已存为文档' : '存为文档'}
@@ -136,10 +144,103 @@ function TextResult({
       </div>
       {(title !== output.title || body !== output.body) && (
         <p className="control-note">
-          这里的修改需存为文档才会保存；“继续润色”仍以上次模型的原始结果为起点。
+          手动修改后保存的文档会保留本次 AI
+          来源。“基于生成稿继续润色”使用原始模型结果；继续编辑后的稿件可在输入区选择该项目文档作为上下文。
         </p>
       )}
       <InlineError message={error} />
+      {controller.uncertain?.action === 'save-text' && (
+        <button
+          className="text-button"
+          disabled={busy}
+          onClick={async () => {
+            const response = await controller.decide(controller.uncertain!);
+            if (response) {
+              setSaved(true);
+              setConfirming(false);
+            }
+          }}
+        >
+          核验并重试同一文档保存
+        </button>
+      )}
+      {confirming && (
+        <Modal
+          title="保存 AI 文案"
+          subtitle="保留生成来源与本次手动修改标记。"
+          canClose={() => !busy}
+          onClose={() => setConfirming(false)}
+        >
+          <div className="ai-decision-confirm" data-motion="result-confirmation">
+            <label>
+              保存位置
+              <select
+                aria-label="文案保存位置"
+                disabled={locked}
+                value={targetId}
+                onChange={(event) => setTargetId(event.target.value)}
+              >
+                <option value="">新建项目文档</option>
+                {documents.map((document) => (
+                  <option key={document.id} value={document.id}>
+                    {document.title} · V{document.version}
+                  </option>
+                ))}
+              </select>
+            </label>
+            <p>
+              {target
+                ? `将“${target.title}”的 V${target.version} 保存为新版本，旧版本保留。若队员已修改该文档，系统会阻止本次覆盖。`
+                : '建立独立的项目文档，原始 AI 输出保持不变。'}
+            </p>
+            {(title !== output.title || body !== output.body) && (
+              <p className="control-note">
+                这是你编辑后的文稿，系统会标记“经手动编辑”，不会将它标记为模型原始审核结果。
+              </p>
+            )}
+            {body === '' && (
+              <p className="control-note">
+                当前正文为空。
+                {target
+                  ? '确认后将建立一个正文已清空的新版本，旧版本仍保留。'
+                  : '确认后将建立正文为空的独立文档。'}
+              </p>
+            )}
+            <InlineError message={controller.error} />
+            <div className="ai-result-actions">
+              <button
+                className="button button-secondary"
+                disabled={busy}
+                onClick={() => setConfirming(false)}
+              >
+                返回
+              </button>
+              <button
+                className="button button-primary"
+                disabled={locked || !canEdit || (!!targetId && !target)}
+                onClick={() => void save()}
+              >
+                {busy ? <Busy label="保存中" /> : target ? '保存为文档新版本' : '新建文档'}
+              </button>
+            </div>
+            {controller.uncertain?.action === 'save-text' && (
+              <button
+                className="text-button"
+                disabled={busy}
+                onClick={async () => {
+                  const response = await controller.decide(controller.uncertain!);
+                  if (response) {
+                    setSaved(true);
+                    setConfirming(false);
+                  }
+                }}
+              >
+                核验并重试同一文档保存
+              </button>
+            )}
+          </div>
+        </Modal>
+      )}
     </div>
   );
 }
@@ -199,17 +300,144 @@ export const jobStateLabel = (state: AIJob['state']) =>
     failed: '未完成',
     cancelled: '已取消',
   })[state];
-export function AIThread({
-  jobs,
+type ThreadResultProps = {
+  job: AIJob;
+  project: Project;
+  artwork: Artwork | null;
+  userId?: string | null;
+  isDirty: boolean;
+  documents: { id: string; title: string; version: number }[];
+  onOpen: (id: string) => void;
+  onPreview: (job: AIJob) => void;
+  onContinue: (job: AIJob, image?: GeneratedImage) => void;
+  onTranscript: (operation: AIOperation, text: string) => void;
+  onChanged: () => void;
+  onDecisionApplied?: (id: string) => void | Promise<void>;
+};
+function CompletedResult({
+  job,
   project,
+  artwork,
+  userId,
+  isDirty,
+  documents,
   onOpen,
   onPreview,
   onContinue,
   onTranscript,
   onChanged,
+  onDecisionApplied,
+}: ThreadResultProps) {
+  const controller = useResultDecisions(job, (userId ?? 'session') + ':' + project.id, onChanged);
+  const canEdit = ['owner', 'admin', 'editor'].includes(project.role);
+  const images = job.output?.kind === 'image' ? (job.output.images ?? [job.output]) : [];
+  const actionProps = { job, controller, artwork, isDirty, canEdit, onOpen, onDecisionApplied };
+  return (
+    <>
+      {job.output?.kind === 'edit-plan' && (
+        <div data-motion="ai-answer">
+          <p>{job.output.summary}</p>
+          {!!job.output.parameterChanges?.length && (
+            <p className="control-note">
+              已生成 {job.output.parameterChanges.length} 项参数建议，可先逐项对照。
+            </p>
+          )}
+          <div className="ai-result-actions">
+            <button className="button button-primary" onClick={() => onPreview(job)}>
+              对照与本地预览
+            </button>
+            <button className="text-button" onClick={() => onContinue(job)}>
+              <ArrowBendDownRight size={16} />
+              继续调整
+            </button>
+          </div>
+          <ResultActions {...actionProps} />
+        </div>
+      )}
+      {images.length > 0 && (
+        <div className="ai-image-gallery" data-motion="ai-result-media" data-motion-pixels="true">
+          {images.map((image, index) => (
+            <div key={image.assetId} className="ai-generated-image">
+              <button
+                className="ai-image-open"
+                onClick={() => onOpen(image.artworkId)}
+                aria-label={'打开生成候选 ' + (index + 1)}
+              >
+                <img
+                  src={image.thumbnailUrl ?? '/v1/assets/' + image.assetId + '/thumbnail'}
+                  alt={'AI 生成候选 ' + (index + 1)}
+                  loading="lazy"
+                />
+              </button>
+              <div className="ai-image-meta">
+                <span>
+                  {image.width}×{image.height}
+                </span>
+                <span>候选 {index + 1}</span>
+              </div>
+              <div className="ai-result-actions">
+                <button className="text-button" onClick={() => onOpen(image.artworkId)}>
+                  <ArrowSquareOut size={16} />
+                  打开候选
+                </button>
+                <button className="text-button" onClick={() => onContinue(job, image)}>
+                  <ArrowBendDownRight size={16} />
+                  继续改这张
+                </button>
+              </div>
+              <ResultActions {...actionProps} outputIndex={image.index ?? index} />
+            </div>
+          ))}
+        </div>
+      )}
+      {job.output?.kind === 'text' && (
+        <div data-motion="ai-answer">
+          <TextResult
+            output={job.output}
+            controller={controller}
+            documents={documents}
+            canEdit={canEdit}
+          />
+          <button className="text-button continue-copy" onClick={() => onContinue(job)}>
+            <ArrowBendDownRight size={16} />
+            基于生成稿继续润色
+          </button>
+          <ResultActions {...actionProps} />
+        </div>
+      )}
+      {job.output?.kind === 'transcript' && (job.output.noSpeech || !job.output.text.trim()) && (
+        <p className="ai-status-copy">
+          没有识别到清晰语音。本次识别已完成并结算，可以检查麦克风后重新录制。
+        </p>
+      )}
+      {job.output?.kind === 'transcript' && !!job.output.text.trim() && (
+        <TranscriptResult text={job.output.text} onUse={onTranscript} />
+      )}
+      <InlineError message={controller.error} />
+    </>
+  );
+}
+export function AIThread({
+  jobs,
+  project,
+  artwork = null,
+  userId,
+  isDirty = true,
+  documents = [],
+  onOpen,
+  onPreview,
+  onContinue,
+  onTranscript,
+  onChanged,
+  onDecisionApplied,
 }: {
   jobs: AIJob[];
   project: Project;
+  artwork?: Artwork | null;
+  userId?: string | null;
+  isDirty?: boolean;
+  documents?: { id: string; title: string; version: number }[];
+  onDecisionApplied?: (id: string) => void | Promise<void>;
   onOpen: (id: string) => void;
   onPreview: (job: AIJob) => void;
   onContinue: (job: AIJob, image?: GeneratedImage) => void;
@@ -220,7 +448,6 @@ export function AIThread({
     <div className="ai-thread" aria-label="真实创作记录">
       {jobs.map((job) => {
         const prompt = job.request?.prompt || job.prompt;
-        const images = job.output?.kind === 'image' ? (job.output.images ?? [job.output]) : [];
         return (
           <section
             className="ai-turn"
@@ -296,85 +523,33 @@ export function AIThread({
                   可以继续本地编辑。只有通过审核的最终结果才会出现在这里。
                 </p>
               )}
-              {job.state === 'completed' && job.output?.kind === 'edit-plan' && (
-                <div data-motion="ai-answer">
-                  <p>{job.output.summary}</p>
-                  {!!job.output.parameterChanges?.length && (
-                    <p className="control-note">
-                      已生成 {job.output.parameterChanges.length} 项参数建议，预览前可逐项对照。
-                    </p>
-                  )}
-                  <div className="ai-result-actions">
-                    <button className="button button-primary" onClick={() => onPreview(job)}>
-                      预览建议
-                    </button>
-                    <button className="text-button" onClick={() => onContinue(job)}>
-                      <ArrowBendDownRight size={16} />
-                      继续调整
-                    </button>
-                  </div>
-                </div>
+              <QueuedCancellation
+                key={(userId ?? 'session') + ':' + project.id + ':' + job.id}
+                job={job}
+                onChanged={onChanged}
+              />
+              {job.state === 'cancelled' && (
+                <p className="ai-status-copy">任务已取消。点数变动可在用量记录中核对。</p>
               )}
-              {job.state === 'completed' && images.length > 0 && (
-                <div
-                  className="ai-image-gallery"
-                  data-motion="ai-result-media"
-                  data-motion-pixels="true"
-                >
-                  {images.map((image, index) => (
-                    <div key={image.assetId} className="ai-generated-image">
-                      <button
-                        className="ai-image-open"
-                        onClick={() => onOpen(image.artworkId)}
-                        aria-label={'打开生成图片 ' + (index + 1)}
-                      >
-                        <img
-                          src={image.thumbnailUrl ?? '/v1/assets/' + image.assetId + '/thumbnail'}
-                          alt={'AI 生成候选 ' + (index + 1)}
-                          loading="lazy"
-                        />
-                      </button>
-                      <div className="ai-image-meta">
-                        <span>
-                          {image.width}×{image.height}
-                        </span>
-                        <span>候选 {index + 1}</span>
-                      </div>
-                      <div className="ai-result-actions">
-                        <button className="text-button" onClick={() => onOpen(image.artworkId)}>
-                          <ArrowSquareOut size={16} />
-                          打开编辑
-                        </button>
-                        <button className="text-button" onClick={() => onContinue(job, image)}>
-                          <ArrowBendDownRight size={16} />
-                          继续改这张
-                        </button>
-                      </div>
-                    </div>
-                  ))}
-                </div>
+              {job.state === 'completed' && (
+                <CompletedResult
+                  key={(userId ?? 'session') + ':' + project.id + ':' + job.id}
+                  {...{
+                    job,
+                    project,
+                    artwork,
+                    userId,
+                    isDirty,
+                    documents,
+                    onOpen,
+                    onPreview,
+                    onContinue,
+                    onTranscript,
+                    onChanged,
+                    onDecisionApplied,
+                  }}
+                />
               )}
-              {job.state === 'completed' && job.output?.kind === 'text' && (
-                <div data-motion="ai-answer">
-                  <TextResult output={job.output} project={project} onSaved={onChanged} />
-                  <button className="text-button continue-copy" onClick={() => onContinue(job)}>
-                    <ArrowBendDownRight size={16} />
-                    基于生成稿继续润色
-                  </button>
-                </div>
-              )}
-              {job.state === 'completed' &&
-                job.output?.kind === 'transcript' &&
-                (job.output.noSpeech || !job.output.text.trim()) && (
-                  <p className="ai-status-copy">
-                    没有识别到清晰语音。本次识别已完成并结算，可以检查麦克风后重新录制。
-                  </p>
-                )}
-              {job.state === 'completed' &&
-                job.output?.kind === 'transcript' &&
-                !!job.output.text.trim() && (
-                  <TranscriptResult text={job.output.text} onUse={onTranscript} />
-                )}
             </article>
           </section>
         );

@@ -1,5 +1,6 @@
 import { useEffect, useId, useRef, useState, type CSSProperties } from 'react';
 import { ArrowCounterClockwise, Check } from '@phosphor-icons/react';
+import { RangeGesture, RANGE_KEYS, type RangeCompletion } from './range-gesture';
 
 /** A slider is the primary control. Numeric entry is an explicit precision affordance. */
 export function PrecisionRange({
@@ -41,7 +42,10 @@ export function PrecisionRange({
   const [editing, setEditing] = useState(false);
   const [draft, setDraft] = useState('');
   const [invalid, setInvalid] = useState(false);
-  const pointer = useRef(false);
+  const gesture = useRef(new RangeGesture());
+  const range = useRef<HTMLInputElement>(null);
+  const ignoredPointer = useRef<number | null>(null);
+  const numberEditing = useRef(false);
   const input = useRef<HTMLInputElement>(null);
   const latest = useRef(value);
   latest.current = value;
@@ -55,8 +59,45 @@ export function PrecisionRange({
       input.current?.select();
     }
   }, [editing]);
+  function complete(result: RangeCompletion | null) {
+    if (!result?.changed) return;
+    if (result.action === 'commit') onCommit?.();
+    else {
+      latest.current = result.initial;
+      // Settings (brush radius, feather) and recipe previews can share a shelf.
+      // Restore the controlled value as well as its enclosing recipe transaction.
+      onChange(result.initial);
+      onCancel?.();
+    }
+  }
+  function cancelGesture() {
+    const pointerId = gesture.current.pointerId;
+    if (pointerId !== null) ignoredPointer.current = pointerId;
+    complete(gesture.current.cancel());
+    if (pointerId !== null && range.current?.hasPointerCapture(pointerId))
+      range.current.releasePointerCapture(pointerId);
+  }
+  const cancelRef = useRef(cancelGesture);
+  cancelRef.current = cancelGesture;
+  useEffect(() => {
+    const cancel = () => cancelRef.current();
+    const visibility = () => {
+      if (document.visibilityState !== 'visible') cancel();
+    };
+    window.addEventListener('blur', cancel);
+    document.addEventListener('visibilitychange', visibility);
+    return () => {
+      // A new source/scope may already own the parent; never roll an old preview into it.
+      gesture.current.discard();
+      window.removeEventListener('blur', cancel);
+      document.removeEventListener('visibilitychange', visibility);
+    };
+  }, []);
+  useEffect(() => {
+    if (disabled) cancelRef.current();
+  }, [disabled]);
   function finishNumber() {
-    if (!editing) return;
+    if (!numberEditing.current) return;
     const number = draft.trim() === '' ? NaN : Number(draft);
     if (
       !Number.isFinite(number) ||
@@ -67,16 +108,24 @@ export function PrecisionRange({
       setInvalid(true);
       return;
     }
-    onChange(number);
-    onCommit?.();
+    numberEditing.current = false;
+    if (number !== latest.current) {
+      latest.current = number;
+      onChange(number);
+      onCommit?.();
+    }
     setInvalid(false);
     setEditing(false);
   }
   function change(number: number) {
     if (!Number.isFinite(number)) return;
-    onChange(
-      Math.max(min, Math.min(max, integer ? Math.round(number) : Number(number.toFixed(10)))),
+    const next = Math.max(
+      min,
+      Math.min(max, integer ? Math.round(number) : Number(number.toFixed(10))),
     );
+    latest.current = next;
+    gesture.current.change(next);
+    onChange(next);
   }
   const position = max > min ? ((value - min) / (max - min)) * 100 : 0;
   return (
@@ -108,6 +157,7 @@ export function PrecisionRange({
                 max={max}
                 step={step}
                 value={draft}
+                disabled={disabled}
                 onChange={(event) => {
                   setDraft(event.target.value);
                   setInvalid(false);
@@ -119,6 +169,7 @@ export function PrecisionRange({
                   }
                   if (event.key === 'Escape') {
                     event.preventDefault();
+                    numberEditing.current = false;
                     setEditing(false);
                     setInvalid(false);
                   }
@@ -141,6 +192,7 @@ export function PrecisionRange({
               aria-label={`${label}数值 ${readable}${unit}，点击精确输入`}
               disabled={disabled}
               onClick={() => {
+                numberEditing.current = true;
                 setDraft(String(value));
                 setEditing(true);
               }}
@@ -167,6 +219,7 @@ export function PrecisionRange({
         {neutral > min && neutral < max && <i className="precision-neutral" aria-hidden />}
         <input
           id={id}
+          ref={range}
           type="range"
           aria-label={label}
           aria-valuetext={`${readable}${unit}`}
@@ -176,27 +229,46 @@ export function PrecisionRange({
           step={step}
           value={value}
           disabled={disabled || max <= min}
-          onChange={(event) => change(Number(event.target.value))}
-          onPointerDown={() => {
-            pointer.current = true;
+          onFocus={() => {
+            if (!gesture.current.active) ignoredPointer.current = null;
           }}
-          onPointerUp={() => {
-            if (pointer.current) {
-              pointer.current = false;
-              onCommit?.();
+          onChange={(event) => {
+            if (ignoredPointer.current !== null) return;
+            change(Number(event.target.value));
+            if (!gesture.current.active) onCommit?.();
+          }}
+          onPointerDown={(event) => {
+            if (!gesture.current.beginPointer(event.pointerId, latest.current, event.isPrimary)) {
+              event.preventDefault();
+              return;
             }
+            ignoredPointer.current = null;
+            event.currentTarget.setPointerCapture(event.pointerId);
           }}
-          onPointerCancel={() => {
-            pointer.current = false;
-            if (onCancel) onCancel();
-            else onCommit?.();
+          onPointerUp={(event) => {
+            complete(gesture.current.endPointer(event.pointerId));
+            if (ignoredPointer.current === event.pointerId) ignoredPointer.current = null;
+            if (event.currentTarget.hasPointerCapture(event.pointerId))
+              event.currentTarget.releasePointerCapture(event.pointerId);
+          }}
+          onPointerCancel={(event) => {
+            if (gesture.current.pointerId === event.pointerId) cancelGesture();
+          }}
+          onLostPointerCapture={(event) => {
+            if (gesture.current.pointerId === event.pointerId) cancelGesture();
           }}
           onKeyDown={(event) => {
             if (event.key === 'Escape') {
               event.preventDefault();
-              onCancel?.();
+              cancelGesture();
               return;
             }
+            if (!RANGE_KEYS.has(event.key)) return;
+            if (!gesture.current.beginKey(event.key, latest.current)) {
+              event.preventDefault();
+              return;
+            }
+            ignoredPointer.current = null;
             if (
               (event.altKey || event.shiftKey) &&
               ['ArrowLeft', 'ArrowDown', 'ArrowRight', 'ArrowUp'].includes(event.key)
@@ -207,23 +279,11 @@ export function PrecisionRange({
             }
           }}
           onKeyUp={(event) => {
-            if (
-              [
-                'ArrowLeft',
-                'ArrowDown',
-                'ArrowRight',
-                'ArrowUp',
-                'Home',
-                'End',
-                'PageUp',
-                'PageDown',
-              ].includes(event.key)
-            )
-              onCommit?.();
+            complete(gesture.current.endKey(event.key));
           }}
           onBlur={() => {
-            if (pointer.current) pointer.current = false;
-            onCommit?.();
+            if (gesture.current.pointerId !== null) cancelGesture();
+            else complete(gesture.current.commit());
           }}
           onDoubleClick={onReset}
         />

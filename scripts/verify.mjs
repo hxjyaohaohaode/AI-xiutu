@@ -17,6 +17,7 @@ function files(directory = '.') {
     )
       return [];
     const path = directory === '.' ? entry.name : `${directory}/${entry.name}`;
+    if (path === 'apps/web/public/vision') return [];
     return entry.isDirectory() ? files(path) : path.endsWith('.md') ? [] : [path];
   });
 }
@@ -28,6 +29,20 @@ const fingerprint = () => {
   }
   return hash.digest('hex');
 };
+const inventory = files()
+  .sort()
+  .map((path) => {
+    const bytes = readFileSync(path);
+    return {
+      path,
+      bytes: bytes.length,
+      sha256: createHash('sha256').update(bytes).digest('hex'),
+      lines: /\.(?:[cm]?[jt]sx?|sql|css|ya?ml|json|html|sh|py)$/.test(path)
+        ? bytes.toString('utf8').split('\n').length
+        : null,
+    };
+  });
+writeFileSync(`${root}/${label}-inventory.json`, JSON.stringify(inventory, null, 2) + '\n');
 const before = fingerprint();
 const startedAt = new Date().toISOString();
 const checks = [];
@@ -67,6 +82,9 @@ const report = {
       ? 'PostgreSQL 18.6 WASM/PGlite (single backend)'
       : 'native PostgreSQL via TEST_DATABASE_URL',
   sourceFingerprint: before,
+  inventory: `${label}-inventory.json`,
+  files: inventory.length,
+  sourceLines: inventory.reduce((sum, item) => sum + (item.lines ?? 0), 0),
   unchangedDuringChecks: before === after,
   checks,
   passed:

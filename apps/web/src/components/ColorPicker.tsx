@@ -1,83 +1,21 @@
-import { useEffect, useRef, useState, type PointerEvent } from 'react';
+import { useEffect, useId, useRef, useState, type PointerEvent } from 'react';
 import { Copy, Plus, Check } from '@phosphor-icons/react';
 import { IconButton, InlineError } from './Ui';
 import '../editor/editor-controls.css';
 
-type RGB = { r: number; g: number; b: number; a: number };
-type HSV = { h: number; s: number; v: number };
-type HSL = { h: number; s: number; l: number };
-const clamp = (value: number, low: number, high: number) =>
-  Math.max(low, Math.min(high, Number.isFinite(value) ? value : low));
-function rgba(value: string): RGB {
-  let hex = value.replace('#', '');
-  if (hex.length === 3 || hex.length === 4) hex = [...hex].map((char) => char + char).join('');
-  if (!/^[\da-f]{6}([\da-f]{2})?$/i.test(hex)) hex = '34372eff';
-  return {
-    r: parseInt(hex.slice(0, 2), 16),
-    g: parseInt(hex.slice(2, 4), 16),
-    b: parseInt(hex.slice(4, 6), 16),
-    a: hex.length === 8 ? parseInt(hex.slice(6, 8), 16) / 255 : 1,
-  };
-}
-function hsv(color: RGB): HSV {
-  const r = color.r / 255;
-  const g = color.g / 255;
-  const b = color.b / 255;
-  const max = Math.max(r, g, b);
-  const min = Math.min(r, g, b);
-  const delta = max - min;
-  let h = !delta
-    ? 0
-    : max === r
-      ? ((g - b) / delta) % 6
-      : max === g
-        ? (b - r) / delta + 2
-        : (r - g) / delta + 4;
-  h = (h * 60 + 360) % 360;
-  return { h, s: max ? delta / max : 0, v: max };
-}
-function fromHsv(color: HSV, a: number): RGB {
-  const h = ((color.h % 360) + 360) % 360;
-  const c = color.v * color.s;
-  const x = c * (1 - Math.abs(((h / 60) % 2) - 1));
-  const m = color.v - c;
-  const [r, g, b] =
-    h < 60
-      ? [c, x, 0]
-      : h < 120
-        ? [x, c, 0]
-        : h < 180
-          ? [0, c, x]
-          : h < 240
-            ? [0, x, c]
-            : h < 300
-              ? [x, 0, c]
-              : [c, 0, x];
-  return {
-    r: Math.round((r! + m) * 255),
-    g: Math.round((g! + m) * 255),
-    b: Math.round((b! + m) * 255),
-    a,
-  };
-}
-function hex(color: RGB) {
-  return (
-    '#' +
-    [color.r, color.g, color.b, Math.round(color.a * 255)]
-      .map((value) => clamp(Math.round(value), 0, 255).toString(16).padStart(2, '0'))
-      .join('')
-      .toUpperCase()
-  );
-}
-function hsl(color: RGB): HSL {
-  const converted = hsv(color);
-  const l = converted.v * (1 - converted.s / 2);
-  return { h: converted.h, s: l === 0 || l === 1 ? 0 : (converted.v - l) / Math.min(l, 1 - l), l };
-}
-function fromHsl(color: HSL, alpha: number): RGB {
-  const v = color.l + color.s * Math.min(color.l, 1 - color.l);
-  return fromHsv({ h: color.h, s: v ? 2 * (1 - color.l / v) : 0, v }, alpha);
-}
+import {
+  clamp,
+  rgba,
+  hsv,
+  hsl,
+  hex,
+  fromHsv,
+  fromHsl,
+  type RGB,
+  type HSV,
+  type HSL,
+} from './color-model';
+
 const quickColors = [
   '#FFFFFFFF',
   '#15171CFF',
@@ -127,8 +65,39 @@ export function ColorPicker({
   const [channelMode, setChannelMode] = useState<'rgb' | 'hsv' | 'hsl'>('hsv');
   const [swatches, setSwatches] = useState(readSwatches);
   const [copied, setCopied] = useState(false);
+  const channelId = useId();
+  const spectrumNode = useRef<HTMLDivElement>(null);
   const active = useRef<number | null>(null);
-  const beforeGesture = useRef(value);
+  const beforeGesture = useRef({ value, hue });
+  const currentColor = useRef(color);
+  currentColor.current = color;
+  function finishSpectrum(cancel: boolean) {
+    const pointer = active.current;
+    if (pointer === null) return;
+    active.current = null;
+    if (cancel) {
+      setHue(beforeGesture.current.hue);
+      onChange(beforeGesture.current.value);
+    }
+    if (spectrumNode.current?.hasPointerCapture(pointer))
+      spectrumNode.current.releasePointerCapture(pointer);
+  }
+  const cancelRef = useRef(() => finishSpectrum(true));
+  cancelRef.current = () => finishSpectrum(true);
+  useEffect(() => {
+    const cancel = () => cancelRef.current();
+    const visibility = () => {
+      if (document.visibilityState !== 'visible') cancel();
+    };
+    window.addEventListener('blur', cancel);
+    document.addEventListener('visibilitychange', visibility);
+    return () => {
+      // Unmount may switch person, layer or source: discard ownership without writing to its successor.
+      active.current = null;
+      window.removeEventListener('blur', cancel);
+      document.removeEventListener('visibilitychange', visibility);
+    };
+  }, []);
   useEffect(() => {
     if (!copied) return;
     const id = setTimeout(() => setCopied(false), 1600);
@@ -141,11 +110,13 @@ export function ColorPicker({
     setDraft(hex(next));
   }, [value]);
   function emit(next: RGB) {
+    currentColor.current = next;
     onChange(hex(next));
     setError(null);
   }
   function spectrum(event: PointerEvent<HTMLDivElement>) {
     const bounds = event.currentTarget.getBoundingClientRect();
+    if (!bounds.width || !bounds.height) return;
     const s = clamp((event.clientX - bounds.left) / bounds.width, 0, 1);
     const v = 1 - clamp((event.clientY - bounds.top) / bounds.height, 0, 1);
     emit(fromHsv({ h: hue, s, v }, color.a));
@@ -204,6 +175,7 @@ export function ColorPicker({
         </IconButton>
       </div>
       <div
+        ref={spectrumNode}
         className="color-spectrum"
         style={{ backgroundColor: `hsl(${hue},100%,50%)` }}
         tabIndex={0}
@@ -214,8 +186,11 @@ export function ColorPicker({
         aria-valuenow={Math.round(saturationValue.s * 100)}
         aria-valuetext={`饱和度${Math.round(saturationValue.s * 100)}%，明度${Math.round(saturationValue.v * 100)}%`}
         onPointerDown={(event) => {
-          if (event.button !== 0) return;
-          beforeGesture.current = value;
+          if (event.button !== 0 || !event.isPrimary || active.current !== null) {
+            event.preventDefault();
+            return;
+          }
+          beforeGesture.current = { value, hue };
           active.current = event.pointerId;
           event.currentTarget.setPointerCapture(event.pointerId);
           spectrum(event);
@@ -224,30 +199,38 @@ export function ColorPicker({
           if (active.current === event.pointerId) spectrum(event);
         }}
         onPointerUp={(event) => {
-          active.current = null;
-          if (event.currentTarget.hasPointerCapture(event.pointerId))
-            event.currentTarget.releasePointerCapture(event.pointerId);
+          if (active.current === event.pointerId) finishSpectrum(false);
         }}
-        onPointerCancel={() => {
-          active.current = null;
-          onChange(beforeGesture.current);
+        onPointerCancel={(event) => {
+          if (active.current === event.pointerId) finishSpectrum(true);
         }}
+        onLostPointerCapture={(event) => {
+          if (active.current === event.pointerId) finishSpectrum(true);
+        }}
+        onBlur={() => finishSpectrum(true)}
         onKeyDown={(event) => {
+          if (event.key === 'Escape') {
+            event.preventDefault();
+            finishSpectrum(true);
+            return;
+          }
           if (!['ArrowLeft', 'ArrowRight', 'ArrowUp', 'ArrowDown'].includes(event.key)) return;
           event.preventDefault();
+          if (active.current !== null) return;
           const amount = event.altKey ? 0.001 : event.shiftKey ? 0.1 : 0.01;
+          const latest = hsv(currentColor.current);
           emit(
             fromHsv(
               {
                 h: hue,
                 s: clamp(
-                  saturationValue.s +
+                  latest.s +
                     (event.key === 'ArrowRight' ? amount : event.key === 'ArrowLeft' ? -amount : 0),
                   0,
                   1,
                 ),
                 v: clamp(
-                  saturationValue.v +
+                  latest.v +
                     (event.key === 'ArrowUp' ? amount : event.key === 'ArrowDown' ? -amount : 0),
                   0,
                   1,
@@ -309,6 +292,11 @@ export function ColorPicker({
               event.preventDefault();
               commitHex();
             }
+            if (event.key === 'Escape') {
+              event.preventDefault();
+              setDraft(hex(color));
+              setError(null);
+            }
           }}
         />
       </label>
@@ -316,15 +304,42 @@ export function ColorPicker({
         {(['hsv', 'hsl', 'rgb'] as const).map((mode) => (
           <button
             key={mode}
+            id={`${channelId}-${mode}`}
             role="tab"
+            tabIndex={channelMode === mode ? 0 : -1}
             aria-selected={channelMode === mode}
+            aria-controls={`${channelId}-fields`}
             onClick={() => setChannelMode(mode)}
+            onKeyDown={(event) => {
+              const modes = ['hsv', 'hsl', 'rgb'] as const;
+              const index = modes.indexOf(mode);
+              const next =
+                event.key === 'Home'
+                  ? 0
+                  : event.key === 'End'
+                    ? 2
+                    : event.key === 'ArrowRight'
+                      ? (index + 1) % 3
+                      : event.key === 'ArrowLeft'
+                        ? (index + 2) % 3
+                        : -1;
+              if (next < 0) return;
+              event.preventDefault();
+              setChannelMode(modes[next]!);
+              document.getElementById(`${channelId}-${modes[next]}`)?.focus();
+            }}
           >
             {mode.toUpperCase()}
           </button>
         ))}
       </div>
-      <div className="color-numbers color-channel-fields" key={channelMode}>
+      <div
+        className="color-numbers color-channel-fields"
+        key={channelMode}
+        id={`${channelId}-fields`}
+        role="tabpanel"
+        aria-labelledby={`${channelId}-${channelMode}`}
+      >
         {channelMode === 'rgb' &&
           (['r', 'g', 'b'] as const).map((key) => (
             <label key={key}>

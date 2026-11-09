@@ -38,6 +38,7 @@ jobs:
           node-version-file: .nvmrc
           cache: npm
       - run: npm ci
+      - run: npm run vision:prepare
       - run: npm run check
       - run: npm audit --omit=dev --audit-level=high
   containers:
@@ -113,7 +114,22 @@ jobs:
           assert config['media']['canonical'] == 'png'
           with urlopen(base + '/', timeout=5) as response:
               assert 'text/html' in response.headers['Content-Type']
+              assert "'wasm-unsafe-eval'" in response.headers['Content-Security-Policy']
               assert 'id="root"' in response.read().decode()
+          with urlopen(base + '/vision/manifest.json', timeout=5) as response:
+              vision = json.load(response)
+              assert vision['schemaVersion'] == 1 and vision['sdkVersion'] == '1.2.2'
+              assert len(vision['assets']) == 3
+          import hashlib
+          for item in vision['assets']:
+              with urlopen(base + '/vision/' + item['file'], timeout=15) as response:
+                  assert hashlib.sha256(response.read()).hexdigest() == item['sha256']
+          try:
+              urlopen(base + '/vision/missing-file.task', timeout=5)
+          except HTTPError as error:
+              assert error.code == 404
+          else:
+              raise AssertionError('Missing model file incorrectly fell back to HTML.')
           try:
               urlopen(base + '/v1/projects', timeout=5)
           except HTTPError as error:

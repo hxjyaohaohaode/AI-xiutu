@@ -25,6 +25,10 @@ import { registerAuth } from './auth.js';
 import { registerSpaces } from './spaces.js';
 import { registerProjects } from './projects.js';
 import { registerAssetAnnotations } from './asset-annotations.js';
+import { registerAiDecisions } from './ai-decisions.js';
+import { registerAssetCopy } from './asset-copy.js';
+import { registerEditorContract } from './editor-contract.js';
+import { createBuiltinRegistry, type RuntimeGate } from '@ai-xiutu/contracts';
 import { registerCollaboration } from './collaboration.js';
 import { registerSharing } from './sharing.js';
 import { registerOperations, publicSettings, modelDto } from './operations.js';
@@ -62,6 +66,7 @@ export interface AiService {
     body: unknown;
   }): Promise<unknown>;
   list(args: { actorId: string; projectId: string }): Promise<unknown>;
+  cancel?(args: { actorId: string; jobId: string; body: unknown }): Promise<unknown>;
   resolve?(args: { actorId: string; jobId: string; body: unknown }): Promise<unknown>;
 }
 export interface BuildOptions {
@@ -159,6 +164,13 @@ export async function buildApp(options: BuildOptions = {}): Promise<FastifyInsta
         .code(error.code === 'HOLD_NOT_FOUND' ? 404 : 409)
         .send({ error: { code: error.code, message: error.message } });
     const e = error as { code?: string; statusCode?: number; name?: string; message?: string };
+    if (e.code === 'P0001' && e.message === 'SPACE_STORAGE_LIMIT')
+      return reply.code(409).send({
+        error: {
+          code: 'SPACE_STORAGE_LIMIT',
+          message: '目标空间的保留素材容量已满，请联系运营调整限额；软删除尚不会释放保留容量',
+        },
+      });
     if (e.name === 'AiError' && e.statusCode && e.code)
       return reply.code(e.statusCode).send({ error: { code: e.code, message: e.message } });
     if (e.code === '23505')
@@ -218,6 +230,25 @@ export async function buildApp(options: BuildOptions = {}): Promise<FastifyInsta
     media: storage.capabilities(),
     limits: { maxUploadBytes: config.maxUploadBytes, maxPixels: config.maxPixels },
   }));
+  const moduleRegistry = createBuiltinRegistry();
+  app.get('/v1/modules', async () => {
+    const gates: Record<string, RuntimeGate> = {
+      sms: { available: sms.configured, reason: sms.configured ? null : '短信供应商未配置' },
+      moderation: { available: capabilities().moderationConfigured, reason: '审核供应商未配置' },
+      'portrait.analysis': {
+        available: false,
+        reason: '由浏览器检查同源模型资产和分析适配器，服务器不宣称客户端模型可用',
+      },
+    };
+    for (const operation of ['generate-image', 'edit-plan', 'generate-text', 'transcribe']) {
+      const status = ai?.operationStatus?.[operation];
+      gates[operation] = status ?? {
+        available: ai?.availableOperations?.includes(operation) ?? false,
+        reason: ai?.reason ?? '执行适配器未配置',
+      };
+    }
+    return { protocolVersion: 1, modules: moduleRegistry.discover(gates) };
+  });
   app.get('/v1/public-logo', async (_req, reply) => {
     const asset = (
       await db.query(
@@ -269,6 +300,12 @@ export async function buildApp(options: BuildOptions = {}): Promise<FastifyInsta
     await projectAccess(db, p.id, user.id);
     return ai ? ai.list({ actorId: user.id, projectId: p.id }) : { jobs: [] };
   });
+  app.post('/v1/ai-jobs/:id/cancel', async (req) => {
+    const user = requireUser(req);
+    const p = z.object({ id }).parse(req.params);
+    if (!ai?.cancel) throw new HttpError(503, 'AI_LIFECYCLE_UNAVAILABLE', '任务维护服务未配置');
+    return ai.cancel({ actorId: user.id, jobId: p.id, body: req.body });
+  });
   app.get('/v1/ops/ai-jobs/unknown', async (req) => {
     requireOperator(req);
     return {
@@ -304,6 +341,9 @@ export async function buildApp(options: BuildOptions = {}): Promise<FastifyInsta
     ai?.providerModelCatalog ?? [],
   );
   registerAssetAnnotations(app, db);
+  registerAiDecisions(app, db);
+  registerAssetCopy(app, db);
+  registerEditorContract(app);
   app.addHook('onClose', async () => {
     if (!options.db) await db.end();
   });

@@ -76,6 +76,7 @@ export type Artwork = {
 export type Revision = {
   id: string;
   artworkId: string;
+  assetId: string;
   version: number;
   recipe: EditorRecipe;
   label?: string;

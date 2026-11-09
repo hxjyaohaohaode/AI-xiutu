@@ -29,7 +29,8 @@
     "admin:lite": "node scripts/with-lite.mjs admin",
     "doctor:lite": "node scripts/with-lite.mjs doctor",
     "verify": "node scripts/verify.mjs",
-    "verify:lite": "node scripts/with-lite.mjs verify"
+    "verify:lite": "node scripts/with-lite.mjs verify",
+    "vision:prepare": "node --use-env-proxy scripts/prepare-vision.mjs"
   },
   "dependencies": {
     "@fastify/cookie": "11.1.5",

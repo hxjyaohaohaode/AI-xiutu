@@ -1,5 +1,7 @@
 # @ai-xiutu/editor
 
+**当前统一入口已支持 Recipe v3。** 详见 [v3 算法、扩展与完整契约](V3.md)：精细构图、完整局部色彩/曲线、组联动、复合蒙版、绘制/仿制/16种混合、图像图层、手动液化与背景保护。下文 v1/v2 章节保留其已发布算法定义。
+
 无 DOM、网络、模型依赖的 TypeScript CPU 图像参考引擎。提供版本固定的基础调色、曲线、无插值几何变换，以及 v2 新增的色阶、连续插值 HSL、色彩分级、纹理/清晰度、暗角/颗粒和多种手动局部选区。配方是非破坏性的 JSON：原图与配方分开保存，每次从原始输入计算结果。已发布的 v1 解释器保留；v2 是显式版本，不会静默改变旧配方的效果。
 
 本包不是完整的 125 项编辑功能实现，也不包含人脸识别、肤色识别、自动磨皮、五官形变、多人实例分割、隐私销毁或 AI 修图。`soften` 是手动选择作用区域的局部平滑算法；把它用于人像不使它变成人脸模型。
@@ -169,7 +171,7 @@ const highResolution = renderRecipeTiled(source, recipe, {
 
 ## Recipe v2 与显式迁移
 
-`RecipeV2` 固定为 `schemaVersion: 2`、`engineVersion: '2.0.0'`，`EditorRecipe` 是 `RecipeV1 | RecipeV2`。新版本完整保留 v1 的 `adjustments/curves/geometry/local`，增加 `levels/hsl/grading/detail/effects/regions`。v1 配方不能直接改一个版本号充当 v2：必须补齐完整模型并验证。
+`RecipeV2` 固定为 `schemaVersion: 2`、`engineVersion: '2.0.0'`，`EditorRecipe` 当前为 `RecipeV1 | RecipeV2 | RecipeV3`；此节专述 v2。新版本完整保留 v1 的 `adjustments/curves/geometry/local`，增加 `levels/hsl/grading/detail/effects/regions`。v1 配方不能直接改一个版本号充当 v2：必须补齐完整模型并验证。
 
 ```ts
 import {

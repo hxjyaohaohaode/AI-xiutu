@@ -10,6 +10,7 @@
     "test": "tsx --test test/*.test.ts"
   },
   "dependencies": {
+    "@ai-xiutu/contracts": "*",
     "@ai-xiutu/db": "*",
     "@ai-xiutu/providers": "*",
     "@ai-xiutu/editor": "*",

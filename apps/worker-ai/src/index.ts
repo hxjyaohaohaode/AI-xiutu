@@ -15,13 +15,14 @@ process.on('SIGTERM', () => {
 });
 console.log(
   service.configured
-    ? 'AI adjustment-plan worker enabled.'
-    : 'AI adjustment-plan worker disabled: external services require explicit configuration.',
+    ? 'AI worker dispatch enabled; lifecycle recovery is active.'
+    : 'AI worker dispatch disabled; lifecycle recovery remains active.',
 );
 try {
   while (!stopped) {
     try {
-      if (service.configured) await service.runOnce();
+      // Disabled providers stop new dispatch, never lease recovery/hold safety.
+      await service.runOnce();
     } catch {
       console.error(
         'AI worker paused: database/journal consistency check failed. Inspect recovery evidence before restart.',

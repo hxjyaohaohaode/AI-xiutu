@@ -70,3 +70,52 @@ export {
   renderEditorRecipeTiled,
   recipeV2Halo,
 } from './v2-engine.js';
+
+export type * from './v3-types.js';
+export {
+  SCHEMA_VERSION_V3,
+  ENGINE_VERSION_V3,
+  createRecipeV3,
+  parseRecipeV3,
+  validateRecipeV3,
+  migrateRecipeToV3,
+  createColorBlockV3,
+  createAdjustmentRegionV3,
+  createFineTransformV3,
+  createOpticsV3,
+  parseSelectionMaskV3,
+  recipeV2Stage,
+  getEditorParameter,
+  setEditorParameter,
+} from './v3-recipe.js';
+export {
+  V3_TOOLS,
+  BLEND_MODES_V3,
+  MAX_V3_PIXELS,
+  MAX_V3_REGION_EDITS,
+  MAX_V3_REGION_GROUPS,
+  MAX_V3_PAINT_LAYERS,
+  MAX_V3_IMAGE_LAYERS,
+  MAX_V3_PAINT_STROKES,
+  MAX_V3_PAINT_POINTS,
+  MAX_V3_STROKE_POINTS,
+  MAX_V3_WARP_STROKES,
+  MAX_V3_MASK_NODES,
+  MAX_V3_MASK_DEPTH,
+  MAX_V3_PAINT_INDEX_REFERENCES,
+  MAX_V3_PAINT_WORK,
+} from './v3-registry.js';
+export { renderRecipeV3, renderRecipeV3Tiled } from './v3-engine.js';
+export {
+  compileFineTransformV3,
+  applyMatrixV3,
+  getEditorOutputDimensions,
+  mapEditorSourceToOutput,
+  mapEditorOutputToSource,
+  mapEditorOutputToContent,
+  compileEditorCoordinateMap,
+} from './v3-geometry.js';
+export type { Matrix3V3, TransformContextV3, EditorCoordinateMap } from './v3-geometry.js';
+export { compileSelectionMaskV3 } from './v3-mask.js';
+export { blendRgbaV3 } from './v3-blend.js';
+export { compileWarpFieldV3 } from './v3-warp.js';

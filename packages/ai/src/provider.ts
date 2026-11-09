@@ -4,10 +4,11 @@ import {
   TOOLS,
   V2_TOOLS,
   patchEditorAdjustments,
-  parseRecipeV2,
+  parseEditorRecipe,
   type EditorRecipe,
   type Adjustments,
   type RecipeV2,
+  type RecipeV3,
 } from '@ai-xiutu/editor';
 import { ProviderError } from '@ai-xiutu/providers';
 import { postBoundedJson, MultimodalProviderError } from '@ai-xiutu/multimodal';
@@ -50,7 +51,7 @@ export interface PreparedPlan {
   hash: string;
   moderationText: string;
 }
-function readNumericPath(recipe: RecipeV2, path: string): number {
+function readNumericPath(recipe: RecipeV2 | RecipeV3, path: string): number {
   let value: unknown = recipe;
   for (const key of path.split('.')) value = (value as Record<string, unknown>)[key];
   return value as number;
@@ -71,8 +72,8 @@ export function preparePlan(
     currentAdjustments: recipe.adjustments,
   };
   if (proposalVersion === 2) {
-    if (recipe.schemaVersion !== 2)
-      throw new Error('Proposal version 2 requires a version 2 recipe.');
+    if (recipe.schemaVersion === 1)
+      throw new Error('Proposal version 2 requires a version 2 or 3 recipe.');
     const extended = V2_TOOLS.map(
       (tool) =>
         `${tool.path}: ${tool.min}..${tool.max}, ${tool.unit}${tool.unit === 'px' || tool.unit === 'seed' ? ', integer only' : ''}`,
@@ -147,10 +148,11 @@ export interface ParameterChange {
 }
 export function parseProposal(raw: unknown, base: EditorRecipe, proposalVersion: 1 | 2 = 1) {
   if (proposalVersion === 2) {
-    if (base.schemaVersion !== 2)
-      throw new Error('Proposal version 2 requires a version 2 recipe.');
+    if (base.schemaVersion === 1)
+      throw new Error('Proposal version 2 requires a version 2 or 3 recipe.');
     const parsed = proposalV2Schema.parse(raw);
-    const recipe = parseRecipeV2(base);
+    const recipe = parseEditorRecipe(base);
+    if (recipe.schemaVersion === 1) throw new Error('Unexpected legacy recipe');
     const changes: ParameterChange[] = [];
     for (const tool of TOOLS) {
       const value = (parsed.adjustments as Partial<Adjustments>)[tool.id];
@@ -185,7 +187,7 @@ export function parseProposal(raw: unknown, base: EditorRecipe, proposalVersion:
     }
     return {
       summary: parsed.summary,
-      recipe: parseRecipeV2(recipe),
+      recipe: parseEditorRecipe(recipe),
       proposalVersion: 2 as const,
       parameterChanges: changes,
     };

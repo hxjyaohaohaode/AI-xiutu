@@ -8,3 +8,4 @@ artifacts
 coverage
 test-results
 apps/web/dist
+apps/web/public/vision

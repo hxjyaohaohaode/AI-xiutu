@@ -14,7 +14,8 @@ import {
   type Database,
   type Queryable,
 } from '@ai-xiutu/db';
-import { createRecipe } from '@ai-xiutu/editor';
+import { createRecipeV3 } from '@ai-xiutu/editor';
+import { freezePreviouslyDispatchedJob } from './lifecycle.js';
 import {
   ProviderError,
   createTencentTextModerator,
@@ -147,6 +148,8 @@ interface Job {
   input_hash: string;
   input: Frozen;
   hold_id: string;
+  lease_started_at: Date | null;
+  provider_request_id: string | null;
   state: string;
   error_code: string | null;
   output: unknown;
@@ -165,6 +168,7 @@ function dto(job: Job) {
     threadId: job.input.threadId ?? job.id,
     parentJobId: job.input.parentJobId ?? null,
     state: job.state,
+    canCancel: job.state === 'queued',
     inputHash: job.input_hash,
     output: job.output,
     errorCode: job.error_code,
@@ -807,19 +811,8 @@ export function createMultimodalService(
     },
     async runOnce(): Promise<boolean> {
       if (!availableOperations.length) return false;
-      await journal.assertDatabaseMatches(db);
       await storage.initialize();
       const job = await transaction(db, async (tx) => {
-        const stale = await tx.query(
-          "SELECT * FROM ai_jobs WHERE state='running' AND lease_started_at<clock_timestamp()-interval '5 minutes' FOR UPDATE SKIP LOCKED",
-        );
-        for (const row of stale.rows) {
-          await markUnknownHold(tx, row.hold_id);
-          await tx.query(
-            "UPDATE ai_jobs SET state='unknown',error_code='WORKER_LOST',input=input-'audioBase64',updated_at=clock_timestamp() WHERE id=$1",
-            [row.id],
-          );
-        }
         const selected = (
           await tx.query(
             "SELECT * FROM ai_jobs WHERE state='queued' AND operation=ANY($1::text[]) ORDER BY created_at,id LIMIT 1 FOR UPDATE SKIP LOCKED",
@@ -827,6 +820,7 @@ export function createMultimodalService(
           )
         ).rows[0] as Job | undefined;
         if (!selected) return null;
+        if (await freezePreviouslyDispatchedJob(tx, journal, selected)) return null;
         await tx.query(
           "UPDATE ai_jobs SET state='running',lease_started_at=clock_timestamp(),updated_at=clock_timestamp() WHERE id=$1",
           [selected.id],
@@ -1235,7 +1229,7 @@ export function createMultimodalService(
             const rev = (
               await tx.query(
                 "INSERT INTO revisions(artwork_id,version,recipe,author_id,label) VALUES($1,1,$2,$3,'AI 生成原始版本') RETURNING id",
-                [art.id, JSON.stringify(createRecipe()), job.actor_id],
+                [art.id, JSON.stringify(createRecipeV3()), job.actor_id],
               )
             ).rows[0]!;
             await tx.query('UPDATE artworks SET head_revision_id=$2 WHERE id=$1', [art.id, rev.id]);

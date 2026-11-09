@@ -7,6 +7,7 @@ import {
   createRecipeV2,
   createAdjustmentRegionV2,
   migrateRecipeToV2,
+  migrateRecipeToV3,
   neutralAdjustments,
   parseSelectionMask,
   type Adjustments,
@@ -40,6 +41,8 @@ import {
   Gradient,
   UserFocus,
   Eyedropper,
+  HandPointing,
+  Stack,
 } from '@phosphor-icons/react';
 import { IconButton } from '../components/Ui';
 import { CurveEditor } from './CurveEditor';
@@ -55,9 +58,21 @@ import {
   setNumericRecipeValue,
 } from './precision';
 import './editor-controls.css';
+import { AdvancedInspector } from './AdvancedInspector';
+import { checkedRecipe } from './advanced-model';
 
 export type ToolGroup =
-  'beauty' | 'light' | 'color' | 'curves' | 'crop' | 'local' | 'detail' | 'history';
+  | 'beauty'
+  | 'light'
+  | 'color'
+  | 'curves'
+  | 'crop'
+  | 'local'
+  | 'detail'
+  | 'paint'
+  | 'liquify'
+  | 'composite'
+  | 'history';
 export const toolGroups: { id: ToolGroup; label: string; icon: ReactNode; description: string }[] =
   [
     {
@@ -91,6 +106,24 @@ export const toolGroups: { id: ToolGroup; label: string; icon: ReactNode; descri
       label: '细节',
       icon: <DiamondsFour size={22} />,
       description: '清晰、柔和、颗粒与氛围',
+    },
+    {
+      id: 'paint',
+      label: '绘制',
+      icon: <PaintBrush size={22} />,
+      description: '逐像素画笔、克隆与自由混合',
+    },
+    {
+      id: 'liquify',
+      label: '液化',
+      icon: <HandPointing size={22} />,
+      description: '推移、膨胀与收缩，保护重要背景',
+    },
+    {
+      id: 'composite',
+      label: '合成',
+      icon: <Stack size={22} />,
+      description: '多张原图、独立图层与混合范围',
     },
     {
       id: 'history',
@@ -130,7 +163,60 @@ function Section({
     </details>
   );
 }
-export function ToolInspector({
+export type ToolInspectorProps = {
+  editor: EditorState;
+  group: ToolGroup;
+  mobileOpen: boolean;
+  onClose: () => void;
+  pickedColor?: string;
+  onColorChange?: (value: string) => void;
+  sampling?: boolean;
+  onSample?: () => void;
+  onGroupChange?: (group: ToolGroup) => void;
+};
+export function ToolInspector(props: ToolInspectorProps) {
+  const [upgradeError, setUpgradeError] = useState<string | null>(null);
+  if (props.editor.recipe.schemaVersion === 3)
+    return <AdvancedInspector key={props.editor.getSourceIdentity()} {...props} />;
+  if (['paint', 'liquify', 'composite'].includes(props.group))
+    return (
+      <aside className="inspector refined-inspector">
+        <div className="inspector-scroll">
+          <h2>升级到可扩展编辑配方</h2>
+          <p className="control-note">
+            旧版本会保留原有色彩与局部语义。升级后可使用独立绘制、液化、合成与完整局部调色。
+          </p>
+          <button
+            className="button button-secondary"
+            onClick={() => {
+              try {
+                props.editor.commit(
+                  checkedRecipe(
+                    migrateRecipeToV3(props.editor.getRecipe()),
+                    props.editor.dimensions,
+                    props.editor.pixelBudget,
+                  ),
+                  '升级到第三代编辑配方',
+                );
+                setUpgradeError(null);
+              } catch (error) {
+                setUpgradeError(error instanceof Error ? error.message : '当前图片无法升级。');
+              }
+            }}
+          >
+            升级当前草稿，可撤销
+          </button>
+          {upgradeError && (
+            <p className="parameter-error" role="alert">
+              {upgradeError}
+            </p>
+          )}
+        </div>
+      </aside>
+    );
+  return <LegacyToolInspector {...props} />;
+}
+function LegacyToolInspector({
   editor,
   group,
   mobileOpen,

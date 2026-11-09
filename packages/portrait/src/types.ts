@@ -1,0 +1,37 @@
+import type { SourceFrame } from '@ai-xiutu/contracts';
+import type { Point, SelectionMaskV3 } from '@ai-xiutu/editor';
+
+/** Detection is geometric analysis, never identity recognition or a beauty score. */
+export interface PortraitTarget {
+  id: string;
+  kind: 'face' | 'body';
+  label: string;
+  landmarks: (Point & { z?: number; visibility?: number })[];
+  contours: Record<string, Point[]>;
+  bounds: { x: number; y: number; width: number; height: number };
+}
+export interface PortraitAnalysis {
+  schemaVersion: 1;
+  provider: string;
+  algorithmVersion: string;
+  frame: SourceFrame;
+  targets: PortraitTarget[];
+  segmentation: {
+    skin: SelectionMaskV3;
+    hair: SelectionMaskV3;
+    background: SelectionMaskV3;
+  } | null;
+  warnings: string[];
+}
+export interface PortraitTool {
+  id: string;
+  label: string;
+  group: 'skin' | 'features' | 'body' | 'makeup';
+  target: 'face' | 'body';
+  min: number;
+  max: number;
+  step: number;
+  description: string;
+  method: 'local-color' | 'landmark-warp' | 'masked-paint';
+}
+export type PortraitValues = Record<string, number>;

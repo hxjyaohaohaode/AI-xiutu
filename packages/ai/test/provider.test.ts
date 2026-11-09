@@ -1,6 +1,12 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { createRecipe, createRecipeV2, createAdjustmentRegionV2, V2_TOOLS } from '@ai-xiutu/editor';
+import {
+  createRecipe,
+  createRecipeV2,
+  createRecipeV3,
+  createAdjustmentRegionV2,
+  V2_TOOLS,
+} from '@ai-xiutu/editor';
 import {
   canonical,
   validateQwenEndpoint,
@@ -118,6 +124,89 @@ test('v2 proposals atomically validate joint levels, report actual differences a
   );
   assert.deepEqual(proposal.recipe.regions, base.regions);
   assert.equal(base.levels.inputBlack, 0.1, 'base is immutable');
+});
+test('v3 global proposals preserve fine geometry, layers and warp without exposing their private data to the provider', () => {
+  const base = createRecipeV3({
+    transform: { rotationDegrees: 12.75, scaleX: 1.1 },
+    optics: { aberrationRed: 0.75 },
+    imageLayers: [
+      {
+        id: 'layer-one',
+        name: 'Private composition name',
+        enabled: true,
+        opacity: 0.65,
+        blendMode: 'soft-light',
+        sourceId: 'local:private-layer',
+        x: 0,
+        y: 0,
+        width: 0.5,
+        height: 0.5,
+        rotationDegrees: -6,
+        flipX: false,
+        flipY: true,
+        mask: null,
+      },
+    ],
+    warp: {
+      enabled: true,
+      strokes: [
+        {
+          id: 'warp-one',
+          mode: 'push',
+          from: { x: 0.5, y: 0.5 },
+          to: { x: 0.55, y: 0.5 },
+          radius: 0.2,
+          feather: 0.7,
+          strength: -0.25,
+        },
+      ],
+    },
+  });
+  const prepared = preparePlan(
+    validateQwenEndpoint('https://dashscope.aliyuncs.com/compatible-mode/v1'),
+    'test-only-model',
+    '稍微减曝光和蓝色饱和度',
+    base,
+    2,
+  );
+  assert.equal(prepared.body.includes('Private composition name'), false);
+  assert.equal(prepared.body.includes('local:private-layer'), false);
+  const result = parseProposal(
+    {
+      summary: '微调曝光和蓝色',
+      adjustments: { exposure: -0.25 },
+      parameters: [{ path: 'hsl.blue.saturation', value: -12 }],
+    },
+    base,
+    2,
+  );
+  assert.equal(result.recipe.schemaVersion, 3);
+  if (result.recipe.schemaVersion !== 3) throw new Error('expected v3');
+  assert.deepEqual(result.recipe.transform, base.transform);
+  assert.deepEqual(result.recipe.imageLayers, base.imageLayers);
+  assert.deepEqual(result.recipe.warp, base.warp);
+  assert.deepEqual(result.recipe.optics, base.optics);
+  assert.equal(result.recipe.adjustments.exposure, -0.25);
+  assert.equal(result.recipe.hsl.blue.saturation, -12);
+  assert.equal(base.adjustments.exposure, 0);
+  assert.throws(() =>
+    parseProposal(
+      {
+        summary: '禁止模型擅改',
+        adjustments: {},
+        parameters: [{ path: 'transform.rotationDegrees', value: 20 }],
+      },
+      base,
+      2,
+    ),
+  );
+  assert.throws(() =>
+    parseProposal(
+      { summary: '禁止模型擅改', adjustments: {}, parameters: [], imageLayers: [] },
+      base,
+      2,
+    ),
+  );
 });
 test('v2 whitelist rejects arbitrary paths, duplicates, non-finite numbers, integer violations and invalid final levels', () => {
   const base = createRecipeV2();

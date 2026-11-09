@@ -28,10 +28,11 @@ import type {
   Revision,
   Task,
 } from '../lib/types';
-import { Busy, EmptyState, IconButton, InlineError } from './Ui';
+import { Busy, EmptyState, IconButton, InlineError, Modal } from './Ui';
 import { PixelCanvas } from '../editor/CanvasStage';
 import { localPixelBudget, type EditorState } from '../editor/useEditor';
 import type { RGBAImage } from '@ai-xiutu/editor';
+import '../ai/decisions.css';
 
 export function WorksView({
   project,
@@ -181,29 +182,86 @@ export function CompareView({
   editor,
   artwork,
   onOpenRevision,
+  onRestoreRevision,
+  isDirty = true,
 }: {
   editor: EditorState;
   artwork: Artwork | null;
-  onOpenRevision: (revision: Revision) => void;
+  onOpenRevision: (revision: Revision) => void | Promise<void>;
+  onRestoreRevision?: (revision: Revision) => Promise<void>;
+  isDirty?: boolean;
 }) {
   const [revisions, setRevisions] = useState<Revision[]>([]);
   const [error, setError] = useState<string | null>(null);
+  const [loadingRevisions, setLoadingRevisions] = useState(false);
+  const [busyRevision, setBusyRevision] = useState<string | null>(null);
+  const [restore, setRestore] = useState<{
+    revision: Revision;
+    artworkId: string;
+    headVersion: number;
+  } | null>(null);
+  const scope = useRef(artwork?.id);
+  scope.current = artwork?.id;
   const [mode, setMode] = useState<'side' | 'original' | 'edited'>(() =>
     window.innerWidth < 760 ? 'edited' : 'side',
   );
   useEffect(() => {
     setRevisions([]);
-    if (!artwork) return;
+    setError(null);
+    setRestore(null);
+    setBusyRevision(null);
+    if (!artwork) {
+      setLoadingRevisions(false);
+      return;
+    }
+    setLoadingRevisions(true);
     const controller = new AbortController();
     api<{ revisions: Revision[] }>(`/artworks/${artwork.id}/revisions`, {
       signal: controller.signal,
     })
-      .then((value) => setRevisions(value.revisions))
+      .then((value) => {
+        if (!controller.signal.aborted) setRevisions(value.revisions);
+      })
       .catch((error) => {
-        if (error.name !== 'AbortError') setError(errorMessage(error));
+        if (!controller.signal.aborted && error.name !== 'AbortError')
+          setError(errorMessage(error));
+      })
+      .finally(() => {
+        if (!controller.signal.aborted) setLoadingRevisions(false);
       });
     return () => controller.abort();
   }, [artwork?.id, artwork?.headVersion]);
+  async function openRevision(revision: Revision) {
+    if (busyRevision) return;
+    const expected = artwork?.id;
+    setBusyRevision(revision.id);
+    setError(null);
+    try {
+      await onOpenRevision(revision);
+    } catch (failure) {
+      if (scope.current === expected) setError(errorMessage(failure));
+    } finally {
+      if (scope.current === expected) setBusyRevision(null);
+    }
+  }
+  async function restoreRevision() {
+    if (!restore || !onRestoreRevision || busyRevision || isDirty) return;
+    if (artwork?.id !== restore.artworkId || artwork.headVersion !== restore.headVersion) {
+      setError('当前作品版本已改变，请重新查看历史后恢复。');
+      return;
+    }
+    const expected = artwork.id;
+    setBusyRevision(restore.revision.id);
+    setError(null);
+    try {
+      await onRestoreRevision(restore.revision);
+      if (scope.current === expected) setRestore(null);
+    } catch (failure) {
+      if (scope.current === expected) setError(errorMessage(failure));
+    } finally {
+      if (scope.current === expected) setBusyRevision(null);
+    }
+  }
   if (!editor.file)
     return (
       <EmptyState
@@ -258,21 +316,98 @@ export function CompareView({
       {artwork && (
         <details className="saved-versions">
           <summary>
-            查看云端历史版本 <span>打开后成为本地草稿，不覆盖最新版本</span>
+            查看云端历史版本 <span>每个版本绑定当时的原图与配方</span>
           </summary>
+          {loadingRevisions && <Busy label="正在读取版本" />}
+          {!loadingRevisions && !revisions.length && (
+            <p className="control-note">尚未读取到保存版本。</p>
+          )}
           <div className="version-list">
             {revisions.map((revision) => (
-              <button key={revision.id} onClick={() => onOpenRevision(revision)}>
-                <Clock size={19} />
-                <div>
-                  <strong>{revision.label || `版本 ${revision.version}`}</strong>
-                  <small>{formatDate(revision.createdAt)}</small>
-                </div>
-                <span>V{revision.version}</span>
-              </button>
+              <div className="revision-entry" key={revision.id} data-motion="revision-entry">
+                <button
+                  className="revision-open"
+                  disabled={!!busyRevision}
+                  onClick={() => void openRevision(revision)}
+                >
+                  <Clock size={19} />
+                  <div>
+                    <strong>{revision.label || `版本 ${revision.version}`}</strong>
+                    <small>{formatDate(revision.createdAt)}</small>
+                  </div>
+                  <span>
+                    {busyRevision === revision.id ? <Busy label="" /> : `V${revision.version}`}
+                  </span>
+                </button>
+                <span className="revision-source-note">
+                  {revision.assetId !== artwork.assetId
+                    ? '使用此版本自己的原图来源'
+                    : '与当前作品使用同一原图'}{' '}
+                  · 打开为本地草稿
+                </span>
+                {onRestoreRevision && revision.version !== artwork.headVersion && (
+                  <button
+                    className="revision-restore text-button"
+                    disabled={!!busyRevision || isDirty}
+                    title={isDirty ? '先保存或撤销本地修改后再恢复云端版本' : undefined}
+                    onClick={() =>
+                      setRestore({
+                        revision,
+                        artworkId: artwork.id,
+                        headVersion: artwork.headVersion,
+                      })
+                    }
+                  >
+                    恢复为新版本
+                  </button>
+                )}
+              </div>
             ))}
           </div>
+          {isDirty && onRestoreRevision && (
+            <p className="control-note">先保存或撤销本地修改后，才能将历史恢复为云端新版本。</p>
+          )}
         </details>
+      )}
+      {restore && (
+        <Modal
+          title={`恢复 V${restore.revision.version}`}
+          subtitle="恢复会追加新版本，所有已有版本继续保留。"
+          canClose={() => !busyRevision}
+          onClose={() => setRestore(null)}
+        >
+          <div className="ai-decision-confirm" data-motion="revision-restore">
+            <p>
+              使用 V{restore.revision.version} 当时的原始图片与完整编辑配方，接在当前 V
+              {restore.headVersion} 之后。不会把旧配方套用到另一张原图。
+            </p>
+            {isDirty && (
+              <p className="parameter-error">本地又有了未保存修改，请先保存或撤销，再恢复历史。</p>
+            )}
+            <InlineError message={error} />
+            <div className="ai-result-actions">
+              <button
+                className="button button-secondary"
+                disabled={!!busyRevision}
+                onClick={() => setRestore(null)}
+              >
+                返回
+              </button>
+              <button
+                className="button button-primary"
+                disabled={
+                  !!busyRevision ||
+                  isDirty ||
+                  artwork?.id !== restore.artworkId ||
+                  artwork?.headVersion !== restore.headVersion
+                }
+                onClick={() => void restoreRevision()}
+              >
+                {busyRevision ? <Busy label="恢复中" /> : '确认恢复为新版本'}
+              </button>
+            </div>
+          </div>
+        </Modal>
       )}
     </div>
   );
@@ -716,11 +851,13 @@ export function DocumentsView({
 export function DeliveryView({
   editor,
   artwork,
+  sourcePending,
   onExport,
   onRecipeImport,
 }: {
   editor: EditorState;
   artwork: Artwork | null;
+  sourcePending: boolean;
   onExport: () => void;
   onRecipeImport: () => void;
 }) {
@@ -743,7 +880,11 @@ export function DeliveryView({
           <p>
             PNG 保留透明背景，JPEG 适合分享，WebP 取决于浏览器编码能力。按原图尺寸重新计算当前调整。
           </p>
-          <button className="button button-primary" onClick={onExport} disabled={!editor.file}>
+          <button
+            className="button button-primary"
+            onClick={onExport}
+            disabled={!editor.file || editor.loading || sourcePending}
+          >
             <DownloadSimple size={18} />
             选择导出格式
           </button>
@@ -757,13 +898,17 @@ export function DeliveryView({
           <p>保存调色、曲线、构图和局部参数。配方不包含照片，请一并保留原件。</p>
           <button
             className="button button-secondary"
-            disabled={!editor.file}
+            disabled={!editor.file || editor.loading || sourcePending}
             onClick={editor.exportRecipe}
           >
             <DownloadSimple size={18} />
             下载配方 JSON
           </button>
-          <button className="text-button" disabled={!editor.file} onClick={onRecipeImport}>
+          <button
+            className="text-button"
+            disabled={!editor.file || editor.loading || sourcePending}
+            onClick={onRecipeImport}
+          >
             <UploadSimple size={16} />
             导入已有配方
           </button>

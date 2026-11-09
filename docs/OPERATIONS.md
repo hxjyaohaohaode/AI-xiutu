@@ -16,10 +16,23 @@
 
 ```sh
 npm ci
+npm run vision:prepare
 cp .env.example .env
 ```
 
 在私有 `.env` 中设置随机 `SESSION_SECRET`（至少32字符），保持 `APP_ORIGIN` 与实际网页 origin 完全一致。不要把密钥写在前端变量、源码、聊天截图或 Git 中。`.env.example` 所有密钥均为空；它不是可直接访问第三方账户的配置。
+
+### 人物模型的同源资源
+
+`vision:prepare` 从 Google 官方版本 1 地址下载 face_landmarker、pose_landmarker_lite、selfie_multiclass_256x256 三个模型（合计约 25.91 MB），逐一验证源码中固定的 SHA-256，再复制 npm lock 锁定的 MediaPipe 1.2.2 WASM 加载器和二进制。资源在 `apps/web/public/vision`，不放进 Git；浏览器运行时全部从本网站加载，照片不因人物识别自动上传。
+
+Docker 构建默认准备这些资源；明确不部署时可设置构建参数 `WITH_PORTRAIT_MODELS=false`，相应自动功能会报告未安装。离线构建需先建立可信的已校验构建缓存，不能把任意同名模型当作正确资源。模型下载失败使启用模型的构建失败；没有静默假成功。
+
+自动分析需要 OffscreenCanvas 和可用 WebGL 2。当前 MediaPipe JS 输入路径即使 CPU delegate 也会使用 WebGL；CPU 推理不代表不需要图形上下文。分析进程有 60 秒截止、显式取消和换图后结果丢弃。当前测试云浏览器不能创建 WebGL 2，因此浏览器自动识别只验证了明确不可用的分支，不能将模型成功下载当作识别成功。手工局部、绘制、液化和严格同图标注导入可独立运行。
+
+Caddy 对 `/vision/*` 不采用 SPA 回退，缺失文件返回 404；CSP 仅增加执行 WASM 所需的 `wasm-unsafe-eval`，不加入普通 `unsafe-eval`。开发服务器对白名单固定 WASM JS 加载器提供透传，解决 Vite 动态导入 public 文件的限制，不暴露任意文件路径。
+
+模型与 SDK 的来源、许可证及质量边界见 [人物资源说明](VISION.md)。MediaPipe 的 Apache-2.0 资源不意味着测试照片也拥有相同授权。
 
 ### 2.2 不依赖系统数据库的开发
 

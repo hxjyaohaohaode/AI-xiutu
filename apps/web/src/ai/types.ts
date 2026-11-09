@@ -134,6 +134,8 @@ export type JobRequest = {
 };
 export type AIJob = {
   id: string;
+  /** Server-calculated permission hint; cancellation still checks the live dispatch state. */
+  canCancel?: boolean;
   projectId?: string;
   operation?: AIOperation;
   artworkId?: string;

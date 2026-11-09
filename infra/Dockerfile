@@ -1,7 +1,10 @@
 FROM node:24-bookworm-slim AS build
 WORKDIR /app
 COPY . .
-RUN npm ci && npm run build
+ARG WITH_PORTRAIT_MODELS=true
+RUN npm ci
+RUN if [ "$WITH_PORTRAIT_MODELS" = "true" ]; then npm run vision:prepare; fi
+RUN npm run build
 
 FROM node:24-bookworm-slim AS server
 WORKDIR /app

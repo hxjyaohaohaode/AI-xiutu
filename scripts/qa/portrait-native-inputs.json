@@ -1,0 +1,26 @@
+{
+  "schemaVersion": 1,
+  "inputs": [
+    {
+      "name": "portrait-hopper",
+      "url": "https://raw.githubusercontent.com/matplotlib/matplotlib/main/lib/matplotlib/mpl-data/sample_data/grace_hopper.jpg",
+      "sha256": "a8ca6d734765703b09728ab47fe59f473d93ae3967fc24c7c0288c3c7adb7130",
+      "bytes": 61306,
+      "source": "Matplotlib official public sample_data; image is not redistributed in this repository"
+    },
+    {
+      "name": "mediapipe-portrait",
+      "url": "https://storage.googleapis.com/mediapipe-assets/portrait.jpg",
+      "sha256": "a6f11efaa834706db23f275b6115058fa87fc7f14362681e6abe14e82749de3e",
+      "bytes": 176561,
+      "source": "Google MediaPipe official example asset; image is not redistributed in this repository"
+    },
+    {
+      "name": "mediapipe-pose",
+      "url": "https://storage.googleapis.com/mediapipe-assets/pose.jpg",
+      "sha256": "c8a830ed683c0276d713dd5aeda28f415f10cd6291972084a40d0d8b934ed62b",
+      "bytes": 44100,
+      "source": "Google MediaPipe official example asset; image is not redistributed in this repository"
+    }
+  ]
+}

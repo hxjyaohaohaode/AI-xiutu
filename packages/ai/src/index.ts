@@ -26,6 +26,11 @@ import {
 } from './provider.js';
 import { DispatchJournal } from './journal.js';
 import {
+  recoverStaleAiJobs,
+  freezePreviouslyDispatchedJob,
+  hasQueuedDispatchEvidence,
+} from './lifecycle.js';
+import {
   createMultimodalService,
   type MultimodalDependencies,
   type ImageCatalogConfig,
@@ -79,6 +84,8 @@ interface JobRow {
   output: unknown;
   error_code: string | null;
   hold_id: string;
+  lease_started_at: Date | null;
+  provider_request_id: string | null;
   units?: number;
   created_at: Date;
   updated_at: Date;
@@ -107,7 +114,7 @@ function frozenPlanHash(
     }),
   );
 }
-function jobDto(job: JobRow) {
+function jobDto(job: JobRow, canCancel = false) {
   const frozen = job.input as unknown as Record<string, any>;
   const source = frozen.input && typeof frozen.input === 'object' ? frozen.input : frozen;
   const request: Record<string, unknown> = { operation: job.operation ?? 'edit-plan' };
@@ -145,6 +152,7 @@ function jobDto(job: JobRow) {
     artworkId: job.input.artworkId,
     modelId: job.model_id,
     state: job.state,
+    canCancel,
     inputHash: job.input_hash,
     output: job.output,
     errorCode: job.error_code,
@@ -154,11 +162,18 @@ function jobDto(job: JobRow) {
   };
 }
 
-async function member(tx: Queryable, actorId: string, projectId: string, edit: boolean) {
+async function member(
+  tx: Queryable,
+  actorId: string,
+  projectId: string,
+  edit: boolean,
+  lock = false,
+) {
   const result = await tx.query(
     `SELECT p.space_id, m.role, s.kind FROM projects p JOIN spaces s ON s.id=p.space_id
     JOIN memberships m ON m.space_id=p.space_id AND m.user_id=$1 JOIN users u ON u.id=m.user_id
-    WHERE p.id=$2 AND p.deleted_at IS NULL AND u.status='active' AND u.phone_verified_at IS NOT NULL`,
+    WHERE p.id=$2 AND p.deleted_at IS NULL AND u.status='active' AND u.phone_verified_at IS NOT NULL
+    ${lock ? 'FOR SHARE OF p,m,u' : ''}`,
     [actorId, projectId],
   );
   const row = result.rows[0];
@@ -205,7 +220,7 @@ function createEditPlanService(
       const body = requestSchema.parse(args.body);
       const recipe = parseEditorRecipe(body.recipe);
       const requestHash = digest(canonical({ ...body, recipe }));
-      const proposalVersion = recipe.schemaVersion === 2 ? 2 : 1;
+      const proposalVersion = recipe.schemaVersion >= 2 ? 2 : 1;
       const prepared = preparePlan(endpoint, body.modelId, body.prompt, recipe, proposalVersion);
       if (Array.from(prepared.moderationText).length > 10_000)
         throw new AiError('INPUT_TOO_LARGE', '完整输入超过审核上限');
@@ -225,7 +240,7 @@ function createEditPlanService(
           const old = prior.rows[0] as JobRow;
           if (old.input.requestHash !== requestHash)
             throw new AiError('IDEMPOTENCY_CONFLICT', '此请求标识已经用于其他内容', 409);
-          return { job: jobDto(old) };
+          return { job: jobDto(old, old.state === 'queued') };
         }
         const artwork = await tx.query(
           'SELECT head_version FROM artworks WHERE id=$1 AND project_id=$2',
@@ -234,6 +249,24 @@ function createEditPlanService(
         if (!artwork.rows[0]) throw new AiError('ARTWORK_NOT_FOUND', '请先保存作品', 404);
         if (artwork.rows[0].head_version !== body.expectedVersion)
           throw new AiError('VERSION_CONFLICT', '作品版本已变化，请先同步', 409);
+        if (recipe.schemaVersion === 3) {
+          const sourceIds = [...new Set(recipe.imageLayers.map((layer) => layer.sourceId))].sort();
+          if (sourceIds.some((sourceId) => !z.uuid().safeParse(sourceId).success))
+            throw new AiError(
+              'LAYER_NOT_UPLOADED',
+              '请先保存并上传所有合成图层，AI建议不会引用本地临时图片',
+            );
+          if (
+            sourceIds.length &&
+            (
+              await tx.query(
+                'SELECT id FROM assets WHERE id=ANY($1::uuid[]) AND project_id=$2 AND deleted_at IS NULL ORDER BY id FOR SHARE',
+                [sourceIds, args.projectId],
+              )
+            ).rowCount !== sourceIds.length
+          )
+            throw new AiError('LAYER_ASSET_MISMATCH', '合成图层不属于当前项目或已被删除');
+        }
         const settings = await tx.query('SELECT config FROM model_configs WHERE id=$1', [
           body.modelId,
         ]);
@@ -315,17 +348,107 @@ function createEditPlanService(
           ],
         );
         await emit(tx, args.spaceId, args.projectId, 'ai.queued', id);
-        return { job: jobDto({ ...inserted.rows[0], units: hold.units } as JobRow) };
+        return { job: jobDto({ ...inserted.rows[0], units: hold.units } as JobRow, true) };
       });
     },
     async list(args: { actorId: string; projectId: string }) {
-      await member(db, args.actorId, args.projectId, false);
+      const permission = await member(db, args.actorId, args.projectId, false);
       const rows = await db.query(
         `SELECT j.*,h.units FROM ai_jobs j LEFT JOIN quota_holds h ON h.id=j.hold_id
         WHERE j.project_id=$1 ORDER BY j.created_at DESC LIMIT 100`,
         [args.projectId],
       );
-      return { jobs: rows.rows.map((row) => jobDto(row as JobRow)) };
+      return {
+        jobs: rows.rows.map((row) =>
+          jobDto(
+            row as JobRow,
+            row.state === 'queued' &&
+              (['owner', 'admin'].includes(permission.role) ||
+                (permission.role === 'editor' && row.actor_id === args.actorId)),
+          ),
+        ),
+      };
+    },
+    async cancel(args: { actorId: string; jobId: string; body: unknown }) {
+      const body = z
+        .object({ reason: z.string().trim().max(500).optional() })
+        .strict()
+        .parse(args.body ?? {});
+      const result = await transaction(db, async (tx) => {
+        const selected = await tx.query('SELECT * FROM ai_jobs WHERE id=$1 FOR UPDATE', [
+          args.jobId,
+        ]);
+        const job = selected.rows[0] as JobRow | undefined;
+        if (!job) throw new AiError('JOB_NOT_FOUND', '任务不存在', 404);
+        const permission = await member(tx, args.actorId, job.project_id, true, true);
+        if (job.actor_id !== args.actorId && !['owner', 'admin'].includes(permission.role))
+          throw new AiError(
+            'FORBIDDEN',
+            '只能取消自己的任务；空间所有者和管理员可取消队列任务',
+            403,
+          );
+        const hold = (
+          await tx.query('SELECT state,units FROM quota_holds WHERE id=$1', [job.hold_id])
+        ).rows[0];
+        if (job.state === 'cancelled' && hold?.state === 'released')
+          return {
+            job: jobDto({ ...job, units: hold.units }),
+            replayed: true,
+            quotaReleased: true,
+          };
+        if (job.state !== 'queued')
+          throw new AiError(
+            'JOB_NOT_QUEUED',
+            '任务已开始或已结束，不能取消排队；未知结果须经运营核验，不能自动退款或重试',
+            409,
+          );
+        if (!hold) throw new AiError('HOLD_NOT_FOUND', '额度预占缺失，请联系运营核验', 409);
+        const evidence = await hasQueuedDispatchEvidence(journal, job, hold.state);
+        if (evidence) {
+          await markUnknownHold(tx, job.hold_id);
+          await tx.query(
+            `UPDATE ai_jobs SET state='unknown',error_code='CANCELLATION_REQUIRES_RECONCILIATION',
+            input=input-'audioBase64',updated_at=clock_timestamp() WHERE id=$1`,
+            [job.id],
+          );
+          await audit(
+            tx,
+            args.actorId,
+            'ai.cancellation_requires_reconciliation',
+            'ai_job',
+            job.id,
+          );
+          await emit(tx, permission.space_id, job.project_id, 'ai.unknown', job.id);
+          return { reconciliationRequired: true };
+        }
+        await releaseHold(tx, job.hold_id);
+        const cancelled = (
+          await tx.query(
+            `UPDATE ai_jobs SET state='cancelled',error_code='USER_CANCELLED',
+            input=input-'audioBase64',updated_at=clock_timestamp() WHERE id=$1 RETURNING *`,
+            [job.id],
+          )
+        ).rows[0] as JobRow;
+        await audit(tx, args.actorId, 'ai.cancelled', 'ai_job', job.id, {
+          operation: job.operation,
+          reason: body.reason ?? '',
+          jobActorId: job.actor_id,
+        });
+        await emit(tx, permission.space_id, job.project_id, 'ai.cancelled', job.id);
+        return {
+          job: jobDto({ ...cancelled, units: hold.units }),
+          replayed: false,
+          quotaReleased: true,
+        };
+      });
+      // Commit the conservative unknown transition before reporting the conflict.
+      if ('reconciliationRequired' in result)
+        throw new AiError(
+          'CANCELLATION_REQUIRES_RECONCILIATION',
+          '任务存在发送或预占异常证据，已转待核验并保留额度；未退款，也不会自动重试',
+          409,
+        );
+      return result;
     },
     async resolve(args: { actorId: string; jobId: string; body: unknown }) {
       const body = z
@@ -366,26 +489,13 @@ function createEditPlanService(
     },
     async runOnce(): Promise<boolean> {
       if (!configured) return false;
-      await journal.assertDatabaseMatches(db);
-      // Lost workers are never automatically resubmitted to a billable vendor.
-      await transaction(db, async (tx) => {
-        const stale = await tx.query(
-          "SELECT * FROM ai_jobs WHERE state='running' AND operation='edit-plan' AND lease_started_at<clock_timestamp()-interval '5 minutes' FOR UPDATE SKIP LOCKED",
-        );
-        for (const row of stale.rows) {
-          await markUnknownHold(tx, row.hold_id);
-          await tx.query(
-            "UPDATE ai_jobs SET state='unknown',error_code='WORKER_LOST',updated_at=clock_timestamp() WHERE id=$1",
-            [row.id],
-          );
-        }
-      });
       const claimed = await transaction(db, async (tx) => {
         const selected = await tx.query(
           "SELECT * FROM ai_jobs WHERE state='queued' AND operation='edit-plan' ORDER BY created_at,id LIMIT 1 FOR UPDATE SKIP LOCKED",
         );
         if (!selected.rows[0]) return null;
         const job = selected.rows[0] as JobRow;
+        if (await freezePreviouslyDispatchedJob(tx, journal, job)) return null;
         try {
           await member(tx, job.actor_id, job.project_id, true);
         } catch {
@@ -429,7 +539,7 @@ function createEditPlanService(
           throw new AiError('PROVIDER_CONFIG_CHANGED', '供应商配置已变化，请取消后重新提交');
         if (
           job.input.proposalVersion !== undefined &&
-          (job.input.proposalVersion !== 2 || job.input.recipe.schemaVersion !== 2)
+          (job.input.proposalVersion !== 2 || job.input.recipe.schemaVersion < 2)
         )
           throw new AiError('INPUT_INTEGRITY_FAILED', '建议协议与配方版本不匹配');
         const before = await moderator.check(job.input.prepared.body, job.id);
@@ -532,8 +642,11 @@ export function createAiService(
   env: NodeJS.ProcessEnv = process.env,
   dependencies: AiDependencies = {},
 ) {
-  const plan = createEditPlanService(db, env, dependencies);
-  const multimodal = createMultimodalService(db, env, dependencies);
+  const journal =
+    dependencies.journal ?? new DispatchJournal(env.AI_JOURNAL_DIR ?? '.data/ai-dispatch-journal');
+  const sharedDependencies = { ...dependencies, journal };
+  const plan = createEditPlanService(db, env, sharedDependencies);
+  const multimodal = createMultimodalService(db, env, sharedDependencies);
   const availableOperations = [
     ...(plan.configured ? ['edit-plan'] : []),
     ...multimodal.availableOperations,
@@ -570,8 +683,14 @@ export function createAiService(
       return operation === 'edit-plan' ? plan.submit(args) : multimodal.submit(args);
     },
     list: plan.list,
+    cancel: plan.cancel,
     resolve: plan.resolve,
     async runOnce() {
+      // One maintenance pass per worker iteration, independent of every runtime
+      // provider flag. Unknown recovery remains safe even with a broken journal;
+      // the journal check then blocks all new external dispatch.
+      await recoverStaleAiJobs(db);
+      await journal.assertDatabaseMatches(db);
       preferMultimodal = !preferMultimodal;
       return preferMultimodal
         ? (await multimodal.runOnce()) || (await plan.runOnce())

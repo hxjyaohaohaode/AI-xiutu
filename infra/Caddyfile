@@ -4,13 +4,18 @@
     X-Content-Type-Options nosniff
     Referrer-Policy same-origin
     Permissions-Policy "camera=(), microphone=(self), geolocation=()"
-    Content-Security-Policy "default-src 'self'; script-src 'self'; worker-src 'self' blob:; style-src 'self' 'unsafe-inline'; img-src 'self' blob: data:; media-src 'self' blob:; connect-src 'self'; font-src 'self'; object-src 'none'; base-uri 'self'; frame-ancestors 'none'; form-action 'self'"
+    Content-Security-Policy "default-src 'self'; script-src 'self' 'wasm-unsafe-eval'; worker-src 'self' blob:; style-src 'self' 'unsafe-inline'; img-src 'self' blob: data:; media-src 'self' blob:; connect-src 'self'; font-src 'self'; object-src 'none'; base-uri 'self'; frame-ancestors 'none'; form-action 'self'"
   }
   handle /v1/* {
     reverse_proxy api:3001
   }
   handle /health {
     reverse_proxy api:3001
+  }
+  handle /vision/* {
+    root * /srv
+    header Cache-Control "public, max-age=3600"
+    file_server
   }
   handle {
     root * /srv

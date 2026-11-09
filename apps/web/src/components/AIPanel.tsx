@@ -107,6 +107,8 @@ export function AIPanel({
   onCreateProject,
   onOpenArtwork,
   onTaskChanged,
+  onDecisionApplied,
+  isDirty = true,
   isLoggedIn,
   onAuth,
 }: {
@@ -129,6 +131,8 @@ export function AIPanel({
   onCreateProject: () => void;
   onOpenArtwork: (id: string) => void;
   onTaskChanged: () => void;
+  onDecisionApplied?: (id: string) => void | Promise<void>;
+  isDirty?: boolean;
   isLoggedIn: boolean;
   onAuth: () => void;
 }) {
@@ -340,7 +344,7 @@ export function AIPanel({
     return () => {
       live = false;
     };
-  }, [project?.id]);
+  }, [project?.id, refresh]);
   const audioReady = useCallback((value: string | null) => {
     setAudioBase64(value);
     setIdempotency(secureUuid());
@@ -491,7 +495,7 @@ export function AIPanel({
       return;
     try {
       let next = parseEditorRecipe(job.output.recipe);
-      if (recipe.schemaVersion === 2 && next.schemaVersion === 1) {
+      if (recipe.schemaVersion >= 2 && next.schemaVersion === 1) {
         if (
           !window.confirm(
             '这是旧版AI建议。仅更新13项基础明暗与色彩，保留当前曲线、构图、选区和新版参数。继续吗？',
@@ -629,10 +633,18 @@ export function AIPanel({
           <AIThread
             jobs={visibleJobs}
             project={project}
+            artwork={artwork}
+            userId={userId}
+            isDirty={isDirty}
+            documents={documents}
+            onDecisionApplied={onDecisionApplied}
             onOpen={onOpenArtwork}
             onPreview={preview}
             onContinue={continueJob}
-            onChanged={onTaskChanged}
+            onChanged={() => {
+              setRefresh((value) => value + 1);
+              onTaskChanged();
+            }}
             onTranscript={(target, text) => {
               changeOperation(target);
               setPrompt(text);

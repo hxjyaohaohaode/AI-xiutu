@@ -40,11 +40,19 @@ import type {
   View,
 } from './lib/types';
 import { useEditor, localPixelBudget, LocalImportError } from './editor/useEditor';
+import { normalizeImageSourceFile } from './editor/imageSources';
+import { createSourceLoadGuard, assertRevisionSourceBinding } from './editor/source-flow';
+import { assetCopyAttempt, sourcePersistenceRoute } from './lib/asset-copy';
 import { FloatingPanel } from './workspace/FloatingPanel';
-import { panelBottomOffset, useWorkspaceLayout } from './workspace/useWorkspaceLayout';
+import { workspaceCanvasInsets, useWorkspaceLayout } from './workspace/useWorkspaceLayout';
 import { usePresence } from './motion/usePresence';
 import { ImportSettings } from './components/ImportSettings';
-import { createRecipeV2, parseEditorRecipe } from '@ai-xiutu/editor';
+import {
+  createRecipeV3,
+  parseEditorRecipe,
+  MAX_V3_PIXELS,
+  type EditorRecipe,
+} from '@ai-xiutu/editor';
 import { DEFAULT_BRAND, brandLogoUrl } from './lib/brand';
 
 import { CanvasStage } from './editor/CanvasStage';
@@ -130,7 +138,16 @@ export function App() {
   const [artwork, setArtwork] = useState<Artwork | null>(null);
   const [asset, setAsset] = useState<Asset | null>(null);
   const [revision, setRevision] = useState<Revision | null>(null);
-  const [savedRecipe, setSavedRecipe] = useState<string | null>(null);
+  const [savedRecipe, setSavedRecipeState] = useState<string | null>(null);
+  const savedRecipeRef = useRef<string | null>(null);
+  const setSavedRecipe = useCallback((value: string | null) => {
+    savedRecipeRef.current = value;
+    setSavedRecipeState(value);
+  }, []);
+  const layerOwners = useRef(new Map<string, string>());
+  const uploadedLayerAliases = useRef(new Map<string, string>());
+  const uploadedBaseAssets = useRef(new Map<string, Asset>());
+  const cloudBaseSources = useRef(new Map<number, Asset>());
   const [documentDirty, setDocumentDirty] = useState(false);
   const [view, setView] = useState<View>('editor');
   const [group, setGroup] = useState<ToolGroup>('light');
@@ -167,6 +184,10 @@ export function App() {
   const brand = config?.brand.name || DEFAULT_BRAND;
   const currentSpace = session.spaces.find((s) => s.id === spaceId) ?? null;
   const dirty = !!editor.file && JSON.stringify(editor.recipe) !== savedRecipe;
+  const artworkRef = useRef(artwork);
+  artworkRef.current = artwork;
+  const isEditorDirty = () =>
+    !!editor.file && JSON.stringify(editor.getRecipe()) !== savedRecipeRef.current;
   const refreshConfig = useCallback(() => {
     api<PublicConfig>('/public-config')
       .then(setConfig)
@@ -413,6 +434,24 @@ export function App() {
     setAssets(result.assets);
     setArtworks(result.artworks);
   }
+  function beginSourceLoad() {
+    const request = ++projectRequest.current;
+    editor.cancelPendingLoad();
+    const guard = createSourceLoadGuard(() => ({
+      context: projectRequest.current,
+      source: editor.getSourceIdentity(),
+      recipe: editor.getRecipe(),
+    }));
+    return {
+      ...guard,
+      request,
+      abandoned: () => {
+        if (guard.status() === 'edited')
+          notify('加载期间你继续修改了当前图片，已保留这些编辑。准备好后可重新打开目标图片。');
+        return false;
+      },
+    };
+  }
   async function importFile(file?: File): Promise<boolean> {
     if (saveLock.current) {
       notify('作品正在保存，请稍等片刻。');
@@ -422,26 +461,32 @@ export function App() {
       fileInput.current?.click();
       return false;
     }
-    if (dirty && !window.confirm('当前还有未保存的编辑。打开新图片将替换本地编辑，确认继续吗？'))
+    if (
+      isEditorDirty() &&
+      !window.confirm('当前还有未保存的编辑。打开新图片将替换本地编辑，确认继续吗？')
+    )
       return false;
-    const request = ++projectRequest.current;
-    editor.cancelPendingLoad();
+    // Close the previous source's panel before decoding. A tool explicitly opened
+    // while the new image becomes visible must not be closed by the late load completion.
+    setInspectorOpen(false);
+    const load = beginSourceLoad();
     try {
-      await editor.loadFile(file, undefined, () => request === projectRequest.current);
-      if (request !== projectRequest.current) return false;
+      const loaded = await editor.loadFile(file, undefined, load.isCurrent);
+      if (!loaded) return load.abandoned();
+      if (load.request !== projectRequest.current) return false;
       setArtwork(null);
       setAsset(null);
       setRevision(null);
       setSavedRecipe(null);
       setView('editor');
       setComparing(false);
-      setInspectorOpen(false);
       setSampling(false);
       setPendingImport(null);
       setImportReason(null);
       notify('图片已打开，尚未上传。', 'success');
       return true;
     } catch (e) {
+      if (!load.isCurrent()) return load.abandoned();
       if (
         e instanceof LocalImportError &&
         ['LOCAL_SIZE_LIMIT', 'LOCAL_FORMAT_UNSUPPORTED'].includes(e.code)
@@ -454,34 +499,73 @@ export function App() {
     }
   }
 
+  async function resolveLayerReferences(
+    value: EditorRecipe,
+    isCurrent: () => boolean,
+  ): Promise<Map<string, File>> {
+    const references = new Map<string, File>();
+    if (value.schemaVersion !== 3) return references;
+    for (const id of new Set(value.imageLayers.map((layer) => layer.sourceId))) {
+      if (!/^[a-f0-9-]{36}$/i.test(id)) throw new Error('云端作品包含不可解析的合成素材引用。');
+      if (!isCurrent()) return references;
+      const response = await fetch(`/v1/assets/${id}/file`, { credentials: 'include' });
+      if (!isCurrent()) return references;
+      if (!response.ok) throw new Error('无法读取作品引用的合成素材，请确认项目访问权限。');
+      const blob = await response.blob();
+      if (!isCurrent()) return references;
+      references.set(
+        id,
+        new File([blob], `${id}.${blob.type.split('/')[1] || 'png'}`, { type: blob.type }),
+      );
+    }
+    return references;
+  }
   async function openArtwork(next: Artwork | string): Promise<boolean> {
     if (saveLock.current) {
       notify('作品正在保存，请稍等片刻。');
       return false;
     }
     if (
-      dirty &&
+      isEditorDirty() &&
       !window.confirm(
         '当前还有未保存的编辑。打开云端作品前，请确认已导出或不再需要这些修改。继续打开吗？',
       )
     )
       return false;
     const id = typeof next === 'string' ? next : next.id;
-    const req = ++projectRequest.current;
-    editor.cancelPendingLoad();
+    const load = beginSourceLoad();
     setOpening(true);
     try {
       const data = await api<{ artwork: Artwork; asset: Asset; revision: Revision }>(
         `/artworks/${id}`,
       );
-      if (req !== projectRequest.current) return false;
+      if (!load.isCurrent()) return load.abandoned();
+      assertRevisionSourceBinding({
+        artworkId: id,
+        projectId: data.artwork.projectId,
+        revision: data.revision,
+        asset: data.asset,
+      });
+      if (data.artwork.assetId !== data.asset.id)
+        throw new Error('当前作品来源与版本不一致，请刷新后重试。');
       const response = await fetch(data.asset.url, { credentials: 'include' });
       if (!response.ok) throw new Error('暂时无法读取这张图片，请检查项目访问权限后重试。');
       const blob = await response.blob();
-      if (req !== projectRequest.current) return false;
+      if (!load.isCurrent()) return load.abandoned();
       const file = new File([blob], data.asset.name, { type: blob.type || data.asset.mime });
-      await editor.loadFile(file, data.revision.recipe, () => req === projectRequest.current);
-      if (req !== projectRequest.current) return false;
+      const layerReferences = await resolveLayerReferences(data.revision.recipe, load.isCurrent);
+      if (!load.isCurrent()) return load.abandoned();
+      const loaded = await editor.loadFile(
+        file,
+        data.revision.recipe,
+        load.isCurrent,
+        layerReferences,
+      );
+      if (!loaded) return load.abandoned();
+      if (load.request !== projectRequest.current) return false;
+      for (const sourceId of layerReferences.keys())
+        layerOwners.current.set(sourceId, data.artwork.projectId);
+      cloudBaseSources.current.set(editor.getSourceIdentity(), data.asset);
       setArtwork(data.artwork);
       setAsset(data.asset);
       setRevision(data.revision);
@@ -491,10 +575,11 @@ export function App() {
       notify(`已打开「${data.artwork.title}」版本 ${data.artwork.headVersion}。`, 'success');
       return true;
     } catch (e) {
-      if (req === projectRequest.current) notify(errorMessage(e), 'error');
+      if (!load.isCurrent()) return load.abandoned();
+      if (load.request === projectRequest.current) notify(errorMessage(e), 'error');
       return false;
     } finally {
-      if (req === projectRequest.current) setOpening(false);
+      if (load.request === projectRequest.current) setOpening(false);
     }
   }
 
@@ -504,22 +589,32 @@ export function App() {
       notify('作品正在保存，请稍等片刻。');
       return;
     }
-    if (dirty && !window.confirm('当前还有未保存的编辑。打开素材原图会替换本地草稿，继续吗？'))
+    if (
+      isEditorDirty() &&
+      !window.confirm('当前还有未保存的编辑。打开素材原图会替换本地草稿，继续吗？')
+    )
       return;
-    const request = ++projectRequest.current;
-    editor.cancelPendingLoad();
+    const load = beginSourceLoad();
     setOpening(true);
     try {
       const response = await fetch(next.url, { credentials: 'include' });
       if (!response.ok) throw new Error('无法读取素材，请刷新当前项目权限后重试。');
       const blob = await response.blob();
-      if (request !== projectRequest.current) return;
-      await editor.loadFile(
+      if (!load.isCurrent()) {
+        load.abandoned();
+        return;
+      }
+      const loaded = await editor.loadFile(
         new File([blob], next.name, { type: blob.type || next.mime }),
         undefined,
-        () => request === projectRequest.current,
+        load.isCurrent,
       );
-      if (request !== projectRequest.current) return;
+      if (!loaded) {
+        load.abandoned();
+        return;
+      }
+      if (load.request !== projectRequest.current) return;
+      cloudBaseSources.current.set(editor.getSourceIdentity(), next);
       setAsset(next);
       setArtwork(null);
       setRevision(null);
@@ -530,53 +625,134 @@ export function App() {
       setAiOpen(false);
       notify('原始素材已打开。保存时会建立独立作品，不会改写已有版本。', 'success');
     } catch (error) {
-      if (request === projectRequest.current) notify(errorMessage(error), 'error');
+      if (!load.isCurrent()) {
+        load.abandoned();
+        return;
+      }
+      if (load.request === projectRequest.current) notify(errorMessage(error), 'error');
     } finally {
-      if (request === projectRequest.current) setOpening(false);
+      if (load.request === projectRequest.current) setOpening(false);
     }
   }
 
+  async function copyCloudAsset(sourceAssetId: string, targetProjectId: string): Promise<Asset> {
+    if (!session.user) throw new Error('请先登录再复制云端素材。');
+    let storage: Storage | undefined;
+    try {
+      storage = window.sessionStorage;
+    } catch {
+      /* Same-tab memory still preserves the key. */
+    }
+    const request = assetCopyAttempt(session.user.id, sourceAssetId, targetProjectId, storage);
+    const result = await api<{ asset: Asset }>(
+      `/assets/${sourceAssetId}/copy`,
+      jsonRequest('POST', request),
+    );
+    return result.asset;
+  }
   async function saveToProject(target: Project, asNew = false) {
     if (!editor.file || saveLock.current) return;
     if (editor.isLoading() || opening) {
       notify('图片正在准备中，请加载完成后再保存。');
       return;
     }
-    const snapshot = structuredClone(editor.recipe);
+    let snapshot = structuredClone(editor.getRecipe());
     const savedFile = editor.file;
     const savedSource = editor.getSourceIdentity();
     const savedContext = projectRequest.current;
     saveLock.current = true;
     setSaving(true);
     try {
-      let currentAsset = asset;
+      const knownSource = cloudBaseSources.current.get(savedSource);
+      let currentAsset =
+        knownSource?.projectId === target.id
+          ? knownSource
+          : (uploadedBaseAssets.current.get(`${target.id}:${savedSource}`) ?? null);
       if (!currentAsset || currentAsset.projectId !== target.id) {
-        if (
-          editor.dimensions &&
-          editor.dimensions.width * editor.dimensions.height >
-            (config?.limits.maxPixels ?? 40_000_000)
-        )
-          throw new Error(
-            '原图超过当前服务端像素预算。本地编辑与导出仍可继续，请明确准备较小副本再保存云端。',
+        if (knownSource) {
+          // Known cloud bytes retain their copy policy and provenance; never
+          // fall back to uploading their already-downloaded File on rejection.
+          currentAsset = await copyCloudAsset(knownSource.id, target.id);
+        } else {
+          if (
+            editor.dimensions &&
+            editor.dimensions.width * editor.dimensions.height >
+              (config?.limits.maxPixels ?? 40_000_000)
+          )
+            throw new Error(
+              '原图超过当前服务端像素预算。本地编辑与导出仍可继续，请明确准备较小副本再保存云端。',
+            );
+          const uploadFile = await editor.getCloudUploadFile(
+            !!config?.media && !config.media.serverImport.includes(editor.sourceFormat),
           );
-        const uploadFile = await editor.getCloudUploadFile(
-          !!config?.media && !config.media.serverImport.includes(editor.sourceFormat),
-        );
-        if (uploadFile.size > (config?.limits.maxUploadBytes ?? 20 * 1024 * 1024))
-          throw new Error(
-            `上传文件超过当前云端 ${Math.floor((config?.limits.maxUploadBytes ?? 20 * 1024 * 1024) / 1024 / 1024)} MiB 上限，本地作品仍然保留。`,
-          );
-        const form = new FormData();
-        form.append('file', uploadFile);
-        currentAsset = (
-          await api<{ asset: Asset }>(`/projects/${target.id}/assets`, {
-            method: 'POST',
-            body: form,
-          })
-        ).asset;
+          if (uploadFile.size > (config?.limits.maxUploadBytes ?? 20 * 1024 * 1024))
+            throw new Error(
+              `上传文件超过当前云端 ${Math.floor((config?.limits.maxUploadBytes ?? 20 * 1024 * 1024) / 1024 / 1024)} MiB 上限，本地作品仍然保留。`,
+            );
+          const form = new FormData();
+          form.append('file', uploadFile);
+          currentAsset = (
+            await api<{ asset: Asset }>(`/projects/${target.id}/assets`, {
+              method: 'POST',
+              body: form,
+            })
+          ).asset;
+        }
         if (savedSource !== editor.getSourceIdentity() || savedContext !== projectRequest.current)
           throw new Error('源图片或项目已切换，本次素材保留在原项目，未绑定到当前画面。');
-        setAsset(currentAsset);
+        uploadedBaseAssets.current.set(`${target.id}:${savedSource}`, currentAsset);
+      }
+      if (snapshot.schemaVersion === 3 && snapshot.imageLayers.length) {
+        const mapping = new Map<string, string>(),
+          files = editor.getLayerFiles();
+        for (const sourceId of new Set(snapshot.imageLayers.map((layer) => layer.sourceId))) {
+          const route = sourcePersistenceRoute(
+            sourceId,
+            layerOwners.current.get(sourceId),
+            target.id,
+          );
+          if (route === 'reuse') continue;
+          const cached = uploadedLayerAliases.current.get(`${target.id}:${sourceId}`);
+          if (cached) {
+            mapping.set(sourceId, cached);
+            continue;
+          }
+          let uploadedAsset: Asset;
+          if (route === 'copy') uploadedAsset = await copyCloudAsset(sourceId, target.id);
+          else {
+            let layerFile = files.get(sourceId);
+            if (!layerFile) throw new Error('缺少合成素材原文件，无法保存完整作品。');
+            const layerFormat = layerFile.type.split('/')[1];
+            if (
+              layerFormat === 'bmp' ||
+              (config?.media && !config.media.serverImport.includes(layerFormat ?? ''))
+            )
+              layerFile = await normalizeImageSourceFile(layerFile);
+            if (layerFile.size > (config?.limits.maxUploadBytes ?? 20 * 1024 * 1024))
+              throw new Error('合成素材超出服务器上传预算。');
+            const form = new FormData();
+            form.append('file', layerFile);
+            const uploaded = await api<{ asset: Asset }>(`/projects/${target.id}/assets`, {
+              method: 'POST',
+              body: form,
+            });
+            uploadedAsset = uploaded.asset;
+          }
+          if (savedSource !== editor.getSourceIdentity() || savedContext !== projectRequest.current)
+            throw new Error('上传期间作品已切换，素材保留于原项目。');
+          mapping.set(sourceId, uploadedAsset.id);
+          layerOwners.current.set(uploadedAsset.id, target.id);
+          uploadedLayerAliases.current.set(`${target.id}:${sourceId}`, uploadedAsset.id);
+        }
+        snapshot = {
+          ...snapshot,
+          imageLayers: snapshot.imageLayers.map((layer) => ({
+            ...layer,
+            sourceId: mapping.get(layer.sourceId) ?? layer.sourceId,
+          })),
+        };
+        // Rekey only references; a user may have continued editing while uploads were in flight.
+        editor.rekeyImageSources(mapping);
       }
       const result =
         artwork && !asNew && artwork.projectId === target.id
@@ -601,6 +777,8 @@ export function App() {
         setRefreshToken((value) => value + 1);
         return;
       }
+      setAsset(currentAsset);
+      cloudBaseSources.current.set(savedSource, currentAsset);
       setArtwork(result.artwork);
       setRevision(result.revision);
       setSavedRecipe(JSON.stringify(snapshot));
@@ -619,32 +797,63 @@ export function App() {
 
   async function serverImport() {
     if (!pendingImport || !project) throw new Error('请先选择文件和保存项目。');
-    if (pendingImport.size > (config?.media?.maxUploadBytes ?? config?.limits.maxUploadBytes ?? 0))
+    const incoming = pendingImport;
+    const destination = project;
+    const guard = createSourceLoadGuard(() => ({
+      context: projectRequest.current,
+      source: editor.getSourceIdentity(),
+      recipe: editor.getRecipe(),
+    }));
+    if (incoming.size > (config?.media?.maxUploadBytes ?? config?.limits.maxUploadBytes ?? 0))
       throw new Error('这份文件超过当前服务端上传上限。没有上传，请使用较小副本或调整服务配置。');
     const form = new FormData();
-    form.append('file', pendingImport);
-    const uploaded = await api<{ asset: Asset }>(`/projects/${project.id}/assets`, {
+    form.append('file', incoming);
+    const uploaded = await api<{ asset: Asset }>(`/projects/${destination.id}/assets`, {
       method: 'POST',
       body: form,
     });
     const result = await api<{ artwork: Artwork; revision: Revision }>(
-      `/projects/${project.id}/artworks`,
+      `/projects/${destination.id}/artworks`,
       jsonRequest('POST', {
         assetId: uploaded.asset.id,
-        title: filenameBase(pendingImport.name),
-        recipe: createRecipeV2(),
+        title: filenameBase(incoming.name),
+        recipe: createRecipeV3(),
       }),
     );
+    setRefreshToken((value) => value + 1);
+    if (guard.status() === 'superseded') {
+      notify(
+        `规范化素材与新作品已保存到「${destination.title}」，当前工作区已改变，因此未自动打开。`,
+        'success',
+      );
+      return;
+    }
     setPendingImport(null);
     setImportReason(null);
-    await refreshProject(project.id);
-    setRefreshToken((value) => value + 1);
-    if (uploaded.asset.width * uploaded.asset.height <= editor.pixelBudget) {
+    await refreshProject(destination.id);
+    if (!guard.isCurrent()) {
+      notify(
+        `规范化素材与新作品已保存到「${destination.title}」。上传期间的新编辑已保留，可从项目中打开该作品。`,
+        'success',
+      );
+      return;
+    }
+    const exceedsEngine =
+      uploaded.asset.width * uploaded.asset.height > MAX_V3_PIXELS ||
+      uploaded.asset.width > 8192 ||
+      uploaded.asset.height > 8192;
+    if (
+      !exceedsEngine &&
+      uploaded.asset.width * uploaded.asset.height <=
+        Math.min(editor.pixelBudget, localPixelBudget(), MAX_V3_PIXELS)
+    ) {
       await openArtwork(result.artwork);
     } else {
       setView('works');
       notify(
-        '规范化PNG与新作品已保存到项目。当前设备预算不足以打开全尺寸，请调高合理预算或在其他设备继续。',
+        exceedsEngine
+          ? '规范化PNG与新作品已保存到项目。原图超过当前工作台 v3 的16.8MP / 单边8192px编辑上限，请明确准备较小副本；提高设备预算不会改变此工作台上限。'
+          : '规范化PNG与新作品已保存到项目。当前设备预算不足，可在16.8MP引擎上限内调整预算或使用较小副本。',
         'success',
       );
     }
@@ -739,11 +948,96 @@ export function App() {
     setInspectorOpen(false);
     setAiOpen(false);
   }
-  function openRevision(next: Revision) {
-    editor.commit(next.recipe, `查看云端版本 ${next.version}`);
-    setRevision(next);
-    setView('editor');
-    notify(`版本 ${next.version} 已作为本地编辑打开。云端最新版本尚未改变。`);
+  async function openRevision(next: Revision) {
+    const current = artworkRef.current;
+    if (!current || saveLock.current || opening) return;
+    if (isEditorDirty() && !window.confirm('查看历史会替换本地未保存草稿，继续吗？')) return;
+    const load = beginSourceLoad();
+    setOpening(true);
+    try {
+      const data = await api<{ revision: Revision; asset: Asset }>(
+        `/artworks/${current.id}/revisions/${next.id}`,
+      );
+      if (!load.isCurrent()) {
+        load.abandoned();
+        return;
+      }
+      assertRevisionSourceBinding({
+        artworkId: current.id,
+        projectId: current.projectId,
+        revision: data.revision,
+        asset: data.asset,
+      });
+      const response = await fetch(data.asset.url, { credentials: 'include' });
+      if (!response.ok) throw new Error('无法读取这个历史版本的底图。');
+      const blob = await response.blob();
+      if (!load.isCurrent()) {
+        load.abandoned();
+        return;
+      }
+      const references = await resolveLayerReferences(data.revision.recipe, load.isCurrent);
+      if (!load.isCurrent()) {
+        load.abandoned();
+        return;
+      }
+      const loaded = await editor.loadFile(
+        new File([blob], data.asset.name, { type: blob.type || data.asset.mime }),
+        data.revision.recipe,
+        load.isCurrent,
+        references,
+      );
+      if (!loaded) {
+        load.abandoned();
+        return;
+      }
+      if (load.request !== projectRequest.current) return;
+      for (const sourceId of references.keys())
+        layerOwners.current.set(sourceId, current.projectId);
+      cloudBaseSources.current.set(editor.getSourceIdentity(), data.asset);
+      setAsset(data.asset);
+      setRevision(data.revision);
+      setView('editor');
+      setComparing(false);
+      // A historical source becomes a separate draft; saving is explicitly a fork, not a recipe on the new source.
+      setArtwork(null);
+      setSavedRecipe(null);
+      notify(`历史版本 ${next.version} 的底图、合成素材与配方已打开，保存将建立独立作品。`);
+    } catch (error) {
+      if (!load.isCurrent()) {
+        load.abandoned();
+        return;
+      }
+      if (load.request === projectRequest.current) notify(errorMessage(error), 'error');
+    } finally {
+      if (load.request === projectRequest.current) setOpening(false);
+    }
+  }
+  async function restoreRevision(next: Revision) {
+    const current = artworkRef.current;
+    if (!current || isEditorDirty() || saveLock.current || opening)
+      throw new Error('请先保存当前草稿再恢复历史。');
+    const source = editor.getSourceIdentity(),
+      before = editor.getRecipe();
+    saveLock.current = true;
+    setSaving(true);
+    try {
+      const restored = await api<{ artwork: Artwork }>(
+        `/artworks/${current.id}/restore`,
+        jsonRequest('POST', { revisionId: next.id, expectedVersion: current.headVersion }),
+      );
+      if (
+        source === editor.getSourceIdentity() &&
+        before === editor.getRecipe() &&
+        artworkRef.current?.id === current.id
+      ) {
+        saveLock.current = false;
+        await openArtwork(restored.artwork);
+      } else notify('历史已在云端恢复成新版本，当前继续编辑的草稿已保留。');
+      setRefreshToken((v) => v + 1);
+    } finally {
+      saveLock.current = false;
+      setSaving(false);
+    }
   }
   const requireProject = (
     <EmptyState
@@ -780,20 +1074,11 @@ export function App() {
   const lastDialog = useRef<Dialog>(null);
   if (dialog) lastDialog.current = dialog;
   const renderedDialog = dialog ?? (dialogPresence.present ? lastDialog.current : null);
-  const canvasInsets = {
-    left: activePanel?.dock === 'left' ? activePanel.width + 24 : 0,
-    right: activePanel?.dock === 'right' ? activePanel.width + 24 : 0,
-    bottom:
-      activePanel?.dock === 'bottom'
-        ? activePanel.height + panelBottomOffset(workspaceLayout.view) + 10
-        : workspaceLayout.focused
-          ? 0
-          : workspaceLayout.view.bucket === 'phone'
-            ? 66
-            : workspaceLayout.view.height < 500
-              ? 58
-              : 78,
-  };
+  const canvasInsets = workspaceCanvasInsets(
+    activePanel,
+    workspaceLayout.view,
+    workspaceLayout.focused,
+  );
   const chooseTool = (tool: ToolGroup) => {
     setGroup(tool);
     setInspectorOpen(group !== tool || !inspectorOpen);
@@ -1066,7 +1351,13 @@ export function App() {
                     />
                   )}{' '}
                   {view === 'compare' && (
-                    <CompareView editor={editor} artwork={artwork} onOpenRevision={openRevision} />
+                    <CompareView
+                      editor={editor}
+                      artwork={artwork}
+                      onOpenRevision={openRevision}
+                      isDirty={dirty}
+                      onRestoreRevision={restoreRevision}
+                    />
                   )}{' '}
                   {view === 'collaborate' &&
                     (project ? (
@@ -1096,6 +1387,7 @@ export function App() {
                     <DeliveryView
                       editor={editor}
                       artwork={artwork}
+                      sourcePending={opening || editor.loading}
                       onExport={() => setDialog('export')}
                       onRecipeImport={() => recipeInput.current?.click()}
                     />
@@ -1104,6 +1396,7 @@ export function App() {
               )}
               {shownPanelId && shownPanel && (
                 <FloatingPanel
+                  panelKey={shownPanelId}
                   open={!!activePanelId}
                   motionState={panelPresence.phase}
                   title={
@@ -1125,6 +1418,7 @@ export function App() {
                     <ToolInspector
                       editor={editor}
                       group={group}
+                      onGroupChange={setGroup}
                       mobileOpen
                       onClose={() => setInspectorOpen(false)}
                       pickedColor={pickedColor}
@@ -1149,6 +1443,14 @@ export function App() {
                       project={project}
                       artwork={artwork}
                       recipe={editor.recipe}
+                      isDirty={dirty}
+                      onDecisionApplied={async (id) => {
+                        if (isEditorDirty() || artworkRef.current?.id !== id) {
+                          notify('云端已采用AI结果，当前本地草稿继续保留，可稍后从作品中打开。');
+                          return;
+                        }
+                        await openArtwork(id);
+                      }}
                       config={config}
                       initialOperation={initialAIOperation}
                       referenceFile={referenceFile}
@@ -1304,6 +1606,7 @@ export function App() {
         {renderedDialog === 'export' && editor.file && (
           <ExportDialog
             editor={editor}
+            sourcePending={opening || editor.loading}
             onClose={closeDialog}
             onSuccess={(message) => notify(message, 'success')}
           />

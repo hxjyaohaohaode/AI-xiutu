@@ -1,5 +1,5 @@
 import { secureUuid } from '../lib/uuid';
-import { useEffect, useState, type FormEvent } from 'react';
+import { useEffect, useRef, useState, type FormEvent } from 'react';
 import {
   Copy,
   DownloadSimple,
@@ -14,6 +14,7 @@ import {
 import { api, downloadBlob, errorMessage, filenameBase, formatDate, jsonRequest } from '../lib/api';
 import type { Project, Space } from '../lib/types';
 import type { EditorState } from '../editor/useEditor';
+import { createSourceLoadGuard, type SourceLoadCheckpoint } from '../editor/source-flow';
 import { Busy, IconButton, InlineError, Modal } from './Ui';
 
 export function NameDialog({
@@ -99,12 +100,45 @@ export function NameDialog({
   );
 }
 
+type PreparedImageExport = { url: string; name: string; bytes: number };
+export type ImageExportCheckpoint<Recipe> = SourceLoadCheckpoint<Recipe> & {
+  live: boolean;
+  sourcePending: boolean;
+};
+
+/** Encoding may finish after a different source, recipe or dialog owns the view. */
+export async function prepareBoundImageExport<Recipe>(
+  read: () => ImageExportCheckpoint<Recipe>,
+  encode: () => Promise<Blob>,
+  name: string,
+  createUrl: (blob: Blob) => string = (blob) => URL.createObjectURL(blob),
+): Promise<PreparedImageExport | null> {
+  const guard = createSourceLoadGuard(read);
+  const current = () => {
+    const state = read();
+    return state.live && !state.sourcePending && guard.isCurrent();
+  };
+  if (!current()) return null;
+  let blob: Blob;
+  try {
+    blob = await encode();
+  } catch (failure) {
+    if (!current()) return null;
+    throw failure;
+  }
+  // Do not even allocate an object URL for a result whose owner has changed.
+  if (!current()) return null;
+  return { url: createUrl(blob), name, bytes: blob.size };
+}
+
 export function ExportDialog({
   editor,
+  sourcePending,
   onClose,
   onSuccess,
 }: {
   editor: EditorState;
+  sourcePending: boolean;
   onClose: () => void;
   onSuccess: (message: string) => void;
 }) {
@@ -112,44 +146,117 @@ export function ExportDialog({
   const [quality, setQuality] = useState(0.94);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [prepared, setPrepared] = useState<PreparedImageExport | null>(null);
+  const preparedRef = useRef<PreparedImageExport | null>(null);
+  const preparedOwner = useRef<{ isCurrent: () => boolean } | null>(null);
+  const live = useRef(true);
+  const generation = useRef(0);
+  const locked = useRef(false);
+  const current = useRef({ editor, sourcePending, format, quality });
+  current.current = { editor, sourcePending, format, quality };
+  function releasePrepared() {
+    const previous = preparedRef.current;
+    preparedRef.current = null;
+    preparedOwner.current = null;
+    // A clicked download may still be reading this URL when its view closes.
+    if (previous) window.setTimeout(() => URL.revokeObjectURL(previous.url), 30000);
+  }
+  useEffect(() => {
+    live.current = true;
+    return () => {
+      live.current = false;
+      generation.current += 1;
+      releasePrepared();
+    };
+  }, []);
+  useEffect(() => {
+    releasePrepared();
+    setPrepared(null);
+  }, [format, quality, editor.file, editor.recipe]);
   async function save() {
+    if (locked.current || sourcePending || editor.loading || !editor.file) return;
+    locked.current = true;
+    const request = ++generation.current;
+    const read = () => ({
+      context: generation.current,
+      source: current.current.editor.getSourceIdentity(),
+      recipe: current.current.editor.getRecipe(),
+      live: live.current,
+      sourcePending: current.current.sourcePending || current.current.editor.loading,
+    });
+    const guard = createSourceLoadGuard(read);
+    const name = `${filenameBase(editor.file.name)}-编辑.${format === 'jpeg' ? 'jpg' : format}`;
+    releasePrepared();
+    setPrepared(null);
     setBusy(true);
     setError(null);
     try {
-      const blob = await editor.exportImage(format, quality);
-      downloadBlob(
-        blob,
-        `${filenameBase(editor.file?.name ?? '作品')}-编辑.${format === 'jpeg' ? 'jpg' : format}`,
+      const result = await prepareBoundImageExport(
+        read,
+        () => editor.exportImage(format, quality),
+        name,
       );
-      onSuccess(
-        `图片已准备下载（${(blob.size / 1024 / 1024).toFixed(1)} MB）。请在浏览器下载中查看。`,
-      );
-      onClose();
+      if (!live.current || request !== generation.current) {
+        if (result) URL.revokeObjectURL(result.url);
+        return;
+      }
+      if (!result || !guard.isCurrent() || read().sourcePending) {
+        if (result) URL.revokeObjectURL(result.url);
+        setError('图片或调整在导出期间发生了变化，旧结果已丢弃。请为当前画面重新生成文件。');
+        return;
+      }
+      preparedRef.current = result;
+      preparedOwner.current = {
+        isCurrent: () =>
+          guard.isCurrent() &&
+          current.current.format === format &&
+          current.current.quality === quality,
+      };
+      setPrepared(result);
     } catch (e) {
-      setError(errorMessage(e));
+      if (live.current && request === generation.current) setError(errorMessage(e));
     } finally {
-      setBusy(false);
+      if (request === generation.current) {
+        locked.current = false;
+        if (live.current) setBusy(false);
+      }
     }
   }
+  const ready =
+    prepared && preparedOwner.current?.isCurrent() && !sourcePending && !editor.loading
+      ? prepared
+      : null;
   return (
     <Modal
       title="把这张画面，带走"
       subtitle="从原始照片重新计算，保留当前的每一项调整。"
       onClose={onClose}
-      canClose={() => !busy}
+      canClose={() => !locked.current}
     >
       <div className="export-options">
-        <button className={format === 'png' ? 'selected' : ''} onClick={() => setFormat('png')}>
+        <button
+          disabled={busy}
+          className={format === 'png' ? 'selected' : ''}
+          onClick={() => setFormat('png')}
+        >
           <strong>PNG</strong>
           <span>无损图片 · 保留透明</span>
           {format === 'png' && <Check size={19} />}
         </button>
-        <button className={format === 'jpeg' ? 'selected' : ''} onClick={() => setFormat('jpeg')}>
+        <button
+          disabled={busy}
+          className={format === 'jpeg' ? 'selected' : ''}
+          onClick={() => setFormat('jpeg')}
+        >
           <strong>JPEG</strong>
           <span>轻巧分享 · 白色底图</span>
           {format === 'jpeg' && <Check size={19} />}
         </button>
-        <button className={format === 'webp' ? 'selected' : ''} onClick={() => setFormat('webp')}>
+        <button
+          disabled={busy}
+          className={format === 'webp' ? 'selected' : ''}
+          onClick={() => setFormat('webp')}
+        >
           <strong>WebP</strong>
           <span>较小体积 · 浏览器支持时</span>
           {format === 'webp' && <Check size={19} />}
@@ -164,6 +271,7 @@ export function ExportDialog({
             max="1"
             step="0.01"
             value={quality}
+            disabled={busy}
             onChange={(e) => setQuality(Number(e.target.value))}
           />
           <small>
@@ -182,13 +290,47 @@ export function ExportDialog({
         <strong>当前调色、构图和局部调整</strong>
       </div>
       <InlineError message={error} />
-      <button className="button button-primary button-full" disabled={busy} onClick={save}>
+      {ready && (
+        <div className="stack-form" role="status">
+          <p>
+            文件已生成 · {(ready.bytes / 1024 / 1024).toFixed(2)}{' '}
+            MB。点击下载，未收到文件时可以再次点击，无需重新计算。
+          </p>
+          <a
+            className="button button-primary button-full"
+            href={ready.url}
+            download={ready.name}
+            onClick={(event) => {
+              if (
+                !preparedOwner.current?.isCurrent() ||
+                current.current.sourcePending ||
+                current.current.editor.loading
+              ) {
+                event.preventDefault();
+                releasePrepared();
+                setPrepared(null);
+                setError('当前画面已变化，请重新生成导出文件。');
+                return;
+              }
+              onSuccess('已请求浏览器下载，请检查下载记录；工作台无法确认文件已写入相册。');
+            }}
+          >
+            <DownloadSimple size={18} />
+            下载图片
+          </a>
+        </div>
+      )}
+      <button
+        className={`button ${ready ? 'button-quiet' : 'button-primary'} button-full`}
+        disabled={busy || sourcePending || editor.loading || !editor.file}
+        onClick={save}
+      >
         {busy ? (
           <Busy label="正在计算与导出" />
         ) : (
           <>
             <DownloadSimple size={18} />
-            下载图片
+            {ready ? '重新生成文件' : '生成导出文件'}
           </>
         )}
       </button>

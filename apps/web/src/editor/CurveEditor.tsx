@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { Plus, Trash, ArrowCounterClockwise } from '@phosphor-icons/react';
-import { type CurvePoint, type EditorRecipe, type RecipeV1 } from '@ai-xiutu/editor';
+import { type CurvePoint, type Curves, type EditorRecipe, type RecipeV1 } from '@ai-xiutu/editor';
 import type { EditorState } from './useEditor';
 import { IconButton } from '../components/Ui';
 import { PrecisionRange } from './PrecisionRange';
@@ -17,6 +17,8 @@ type CurveGestureContext = {
   recipe: EditorRecipe;
   preview: (recipe: EditorRecipe) => void;
   commit: () => void;
+  scopeKey?: string;
+  getCurves?: (recipe: EditorRecipe) => Curves;
 };
 type CurveGesture = {
   pointerId: number;
@@ -26,6 +28,12 @@ type CurveGesture = {
   base: EditorRecipe;
   lastPreview: EditorRecipe;
   capture: CurveCapture;
+  scopeKey?: string;
+};
+export type CurveScope = {
+  key: string;
+  getCurves: (recipe: EditorRecipe) => Curves;
+  replaceCurves: (recipe: EditorRecipe, curves: Curves) => EditorRecipe;
 };
 
 /** One owned pointer transaction. Exported for event-order regression tests without a fake DOM. */
@@ -34,6 +42,7 @@ export function createCurveGestureController(context: () => CurveGestureContext)
   const compatible = (gesture: CurveGesture, current: CurveGestureContext) =>
     gesture.sourceIdentity === current.sourceIdentity &&
     gesture.channel === current.channel &&
+    gesture.scopeKey === current.scopeKey &&
     gesture.lastPreview === current.recipe;
   function finish(mode: 'commit' | 'cancel' | 'discard', pointerId?: number): boolean {
     const gesture = active;
@@ -61,7 +70,8 @@ export function createCurveGestureController(context: () => CurveGestureContext)
       if (
         !Number.isInteger(index) ||
         index < 0 ||
-        index >= current.recipe.curves[current.channel].length
+        index >=
+          (current.getCurves?.(current.recipe) ?? current.recipe.curves)[current.channel].length
       )
         return false;
       active = {
@@ -72,6 +82,7 @@ export function createCurveGestureController(context: () => CurveGestureContext)
         channel: current.channel,
         base: current.recipe,
         lastPreview: current.recipe,
+        scopeKey: current.scopeKey,
       };
       try {
         capture.setPointerCapture(pointerId);
@@ -114,13 +125,15 @@ const channels: { key: Channel; label: string; color: string }[] = [
   { key: 'green', label: '绿', color: '#479878' },
   { key: 'blue', label: '蓝', color: '#518cc9' },
 ];
-export function CurveEditor({ editor }: { editor: EditorState }) {
+export function CurveEditor({ editor, scope }: { editor: EditorState; scope?: CurveScope }) {
   const [channel, setChannel] = useState<Channel>('rgb');
   const [selected, setSelected] = useState(1);
   const editorRef = useRef(editor);
   editorRef.current = editor;
   const channelRef = useRef(channel);
   channelRef.current = channel;
+  const scopeRef = useRef(scope);
+  scopeRef.current = scope;
   const gestures = useRef<ReturnType<typeof createCurveGestureController> | null>(null);
   if (!gestures.current)
     gestures.current = createCurveGestureController(() => ({
@@ -129,12 +142,14 @@ export function CurveEditor({ editor }: { editor: EditorState }) {
       recipe: editorRef.current.getRecipe(),
       preview: editorRef.current.preview,
       commit: () => editorRef.current.commitCurrent('调整曲线'),
+      scopeKey: scopeRef.current?.key,
+      getCurves: scopeRef.current?.getCurves,
     }));
   const sourceIdentity = editor.getSourceIdentity();
   useEffect(() => {
     // Do not restore the preceding source's recipe into a newly loaded image.
     gestures.current?.discard();
-  }, [sourceIdentity, channel]);
+  }, [sourceIdentity, channel, scope?.key]);
   useEffect(() => {
     const blur = () => gestures.current?.cancel();
     const escape = (event: KeyboardEvent) => {
@@ -148,17 +163,19 @@ export function CurveEditor({ editor }: { editor: EditorState }) {
       gestures.current?.cancel();
     };
   }, []);
-  const points = editor.recipe.curves[channel];
+  const points = (scope?.getCurves(editor.recipe) ?? editor.recipe.curves)[channel];
   const color = channels.find((c) => c.key === channel)!.color;
   const update = (next: CurvePoint[], commit = false, pointerId?: number) => {
     const current = editor.getRecipe();
-    const recipe = { ...current, curves: { ...current.curves, [channel]: next } };
+    const curves = { ...(scopeRef.current?.getCurves(current) ?? current.curves), [channel]: next };
+    const recipe = scopeRef.current?.replaceCurves(current, curves) ?? { ...current, curves };
     if (pointerId !== undefined) gestures.current?.preview(pointerId, recipe);
     else if (commit) editor.commit(recipe, '调整曲线');
     else editor.preview(recipe);
   };
   function changePoint(index: number, x: number, y: number, commit = false, pointerId?: number) {
-    const currentPoints = editor.getRecipe().curves[channel];
+    const current = editor.getRecipe();
+    const currentPoints = (scopeRef.current?.getCurves(current) ?? current.curves)[channel];
     if (index < 0 || index >= currentPoints.length || !Number.isFinite(x) || !Number.isFinite(y))
       return;
     const next = currentPoints.map((p) => [...p] as CurvePoint);

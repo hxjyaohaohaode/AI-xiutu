@@ -1,10 +1,48 @@
 import pg from 'pg';
 import { schemaSql, schemaV2Sql } from './schema.js';
 import { schemaV3Sql } from './schema-v3.js';
+import { schemaV4Sql } from './schema-v4.js';
+import { schemaV5Sql } from './schema-v5.js';
+import { schemaV6Sql } from './schema-v6.js';
+import { schemaV7Sql } from './schema-v7.js';
 
 export type { PoolClient, QueryResultRow } from 'pg';
 export type Database = pg.Pool;
 export type Queryable = Pick<pg.PoolClient, 'query'>;
+
+// This is the sole ordered migration registry. Readiness and migration execution
+// derive their expected version from the same entries; published SQL stays intact.
+const migrations = [
+  { version: 1, sql: schemaSql },
+  { version: 2, sql: schemaV2Sql },
+  { version: 3, sql: schemaV3Sql },
+  { version: 4, sql: schemaV4Sql },
+  { version: 5, sql: schemaV5Sql },
+  { version: 6, sql: schemaV6Sql },
+  { version: 7, sql: schemaV7Sql },
+] as const;
+export const REQUIRED_SCHEMA_VERSIONS: readonly number[] = Object.freeze(
+  migrations.map(({ version }) => version),
+);
+export const LATEST_SCHEMA_VERSION = migrations[migrations.length - 1]!.version;
+
+/** A high maximum alone cannot prove that earlier migrations were applied. */
+export async function getSchemaReadiness(db: Queryable) {
+  const rows = await db.query('SELECT version FROM schema_migrations ORDER BY version');
+  const applied = new Set<number>(rows.rows.map((row) => Number(row.version)));
+  const currentVersion = Math.max(0, ...applied);
+  const missingVersions = REQUIRED_SCHEMA_VERSIONS.filter((version) => !applied.has(version));
+  const unexpectedVersions = [...applied].filter(
+    (version) => !REQUIRED_SCHEMA_VERSIONS.includes(version),
+  );
+  return {
+    ready: missingVersions.length === 0 && unexpectedVersions.length === 0,
+    currentVersion,
+    requiredVersion: LATEST_SCHEMA_VERSION,
+    missingVersions,
+    unexpectedVersions,
+  };
+}
 
 export function createDatabase(connectionString: string): Database {
   return new pg.Pool({
@@ -68,18 +106,17 @@ export async function migrate(db: Database): Promise<void> {
     await tx.query(
       'CREATE TABLE IF NOT EXISTS schema_migrations (version integer PRIMARY KEY, applied_at timestamptz NOT NULL DEFAULT now())',
     );
-    const { rowCount } = await tx.query('SELECT version FROM schema_migrations WHERE version=1');
-    if (!rowCount) {
-      await tx.query(schemaSql);
-      await tx.query('INSERT INTO schema_migrations(version) VALUES(1)');
-    }
-    if (!(await tx.query('SELECT version FROM schema_migrations WHERE version=2')).rowCount) {
-      await tx.query(schemaV2Sql);
-      await tx.query('INSERT INTO schema_migrations(version) VALUES(2)');
-    }
-    if (!(await tx.query('SELECT version FROM schema_migrations WHERE version=3')).rowCount) {
-      await tx.query(schemaV3Sql);
-      await tx.query('INSERT INTO schema_migrations(version) VALUES(3)');
+    for (const migration of migrations) {
+      if (
+        !(
+          await tx.query('SELECT version FROM schema_migrations WHERE version=$1', [
+            migration.version,
+          ])
+        ).rowCount
+      ) {
+        await tx.query(migration.sql);
+        await tx.query('INSERT INTO schema_migrations(version) VALUES($1)', [migration.version]);
+      }
     }
   });
 }

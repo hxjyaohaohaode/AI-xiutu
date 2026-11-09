@@ -1,6 +1,8 @@
 import type { FastifyInstance } from 'fastify';
 import { z } from 'zod';
 import { transaction, audit, emit, type Database } from '@ai-xiutu/db';
+import { parseEditorRecipe } from '@ai-xiutu/editor';
+import { remapRecipeReferences, validateRecipeReferences } from './recipe-references.js';
 import {
   HttpError,
   id,
@@ -210,6 +212,19 @@ export function registerSharing(app: FastifyInstance, db: Database): void {
           return projectDto(await projectAccess(tx, prior.copied_project_id, user.id));
         }
       }
+      if (
+        grant &&
+        (
+          await tx.query('SELECT copy_id FROM asset_copy_requests WHERE grant_id=$1 LIMIT 1', [
+            grant.id,
+          ])
+        ).rowCount
+      )
+        throw new HttpError(
+          409,
+          'COPY_ALREADY_USED',
+          '此授权已用于复制素材到指定项目；完整项目复制需要另一个授权',
+        );
       if (grant?.copied_project_id) {
         const prior = await projectAccess(tx, grant.copied_project_id, user.id);
         if (prior.space_id !== destination.id)
@@ -249,7 +264,10 @@ export function registerSharing(app: FastifyInstance, db: Database): void {
               a.height,
               a.bytes,
               a.content_hash,
-              JSON.stringify(a.provenance ?? {}),
+              JSON.stringify({
+                ...a.provenance,
+                copiedFrom: { assetId: a.id, projectId: p.id, contentHash: a.content_hash },
+              }),
               user.id,
               JSON.stringify(a.annotations ?? {}),
             ],
@@ -266,6 +284,8 @@ export function registerSharing(app: FastifyInstance, db: Database): void {
       for (const a of arts) {
         const assetId = assetMap.get(a.asset_id);
         if (!assetId) throw new HttpError(409, 'COPY_SOURCE_CHANGED', '源资源已改变，请刷新');
+        const recipe = remapRecipeReferences(parseEditorRecipe(a.recipe), assetMap);
+        await validateRecipeReferences(tx, row.id, recipe);
         const art = (
           await tx.query(
             'INSERT INTO artworks(project_id,asset_id,title) VALUES($1,$2,$3) RETURNING id',
@@ -275,7 +295,7 @@ export function registerSharing(app: FastifyInstance, db: Database): void {
         const rev = (
           await tx.query(
             'INSERT INTO revisions(artwork_id,version,recipe,label,author_id) VALUES($1,1,$2,$3,$4) RETURNING id',
-            [art.id, JSON.stringify(a.recipe), '授权复制的当前版本', user.id],
+            [art.id, JSON.stringify(recipe), '授权复制的当前版本', user.id],
           )
         ).rows[0]!;
         await tx.query('UPDATE artworks SET head_revision_id=$2 WHERE id=$1', [art.id, rev.id]);
@@ -311,6 +331,16 @@ export function registerSharing(app: FastifyInstance, db: Database): void {
         assetCount: assets.length,
       });
       await emit(tx, destination.id, row.id, 'project.created', row.id);
+      if (
+        grant &&
+        !(
+          await tx.query(
+            'SELECT id FROM share_grants WHERE id=$1 AND revoked_at IS NULL AND expires_at>clock_timestamp()',
+            [grant.id],
+          )
+        ).rowCount
+      )
+        throw new HttpError(403, 'COPY_GRANT_REQUIRED', '复制授权已到期，本次复制未提交');
       return projectDto({ ...row, role: await spaceRole(tx, destination.id, user.id) });
     });
     return reply.code(201).send({ project });

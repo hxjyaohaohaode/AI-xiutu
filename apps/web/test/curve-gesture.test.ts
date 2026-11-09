@@ -244,3 +244,20 @@ test('unavailable capture and explicit discard leave no dangling transaction', (
   assert.equal(f.commits, 0);
   assert.deepEqual(f.restores, []);
 });
+
+test('a local curve transaction owns the whole recipe and cannot commit after its scope changes', () => {
+  let scopeKey = 'region:first';
+  let recipe: EditorRecipe = createRecipeV2();
+  const localCurves = { ...recipe.curves, rgb: [[0, 0], [.3, .6], [1, 1]] as [number, number][] };
+  let commits = 0;
+  const pointers = new Set<number>();
+  const capture = { setPointerCapture: (id: number) => { pointers.add(id); }, hasPointerCapture: (id: number) => pointers.has(id), releasePointerCapture: (id: number) => { pointers.delete(id); } };
+  const controller = createCurveGestureController(() => ({ sourceIdentity: 1, channel: 'rgb', recipe, scopeKey, getCurves: () => localCurves, preview: (next) => { recipe = next; }, commit: () => { commits += 1; } }));
+  // Point 2 exists in the local curve even though the global curve has two points.
+  assert.equal(controller.begin(33, 2, capture), true);
+  scopeKey = 'region:second';
+  assert.equal(controller.current(33), null);
+  assert.equal(controller.commit(33), false);
+  assert.equal(commits, 0);
+  assert.equal(pointers.size, 0);
+});

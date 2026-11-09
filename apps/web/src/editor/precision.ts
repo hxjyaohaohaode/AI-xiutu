@@ -1,4 +1,4 @@
-import { parseRecipeV2, type Point, type RGBAImage } from '@ai-xiutu/editor';
+import { parseRecipeV2, type SelectionMaskV3, type Point, type RGBAImage } from '@ai-xiutu/editor';
 import type {
   CropRect,
   Dimensions,
@@ -89,9 +89,30 @@ export function setNumericRecipeValue(
 export function replaceSelectionMask(
   recipe: EditorRecipe,
   activeId: string | null,
-  mask: RecipeV2['regions'][number]['mask'],
+  mask: SelectionMaskV3,
+  path: readonly number[] = [],
+  protection = false,
 ): EditorRecipe {
-  if (activeId && recipe.schemaVersion === 2)
+  if (recipe.schemaVersion === 3) {
+    if (protection)
+      return {
+        ...recipe,
+        warp: {
+          ...recipe.warp,
+          protection: replaceMaskAtPath(recipe.warp.protection ?? mask, path, mask),
+        },
+      };
+    if (activeId)
+      return {
+        ...recipe,
+        regionEdits: recipe.regionEdits.map((region) =>
+          region.id === activeId
+            ? { ...region, enabled: true, mask: replaceMaskAtPath(region.mask, path, mask) }
+            : region,
+        ),
+      };
+  }
+  if (activeId && recipe.schemaVersion === 2 && mask.type !== 'compound')
     return {
       ...recipe,
       regions: recipe.regions.map((region) =>
@@ -100,4 +121,28 @@ export function replaceSelectionMask(
     };
   if (mask.type !== 'radial') return recipe;
   return { ...recipe, local: { ...recipe.local, enabled: true, mask } };
+}
+
+export function maskAtPath(mask: SelectionMaskV3, path: readonly number[]): SelectionMaskV3 {
+  let current = mask;
+  for (const index of path) {
+    if (current.type !== 'compound' || !current.masks[index]) return current;
+    current = current.masks[index]!;
+  }
+  return current;
+}
+export function replaceMaskAtPath(
+  mask: SelectionMaskV3,
+  path: readonly number[],
+  next: SelectionMaskV3,
+): SelectionMaskV3 {
+  if (!path.length) return next;
+  if (mask.type !== 'compound' || !mask.masks[path[0]!])
+    throw new Error('选区结构已改变，请重新选择子区域。');
+  return {
+    ...mask,
+    masks: mask.masks.map((child, i) =>
+      i === path[0] ? replaceMaskAtPath(child, path.slice(1), next) : child,
+    ),
+  };
 }

@@ -1,3 +1,5 @@
+import { renderRecipeV3, renderRecipeV3Tiled } from './v3-engine.js';
+import type { RenderOptionsV3, TiledRenderOptionsV3 } from './v3-types.js';
 import {
   createRenderSession,
   renderValidatedRegion,
@@ -525,20 +527,24 @@ export function renderRecipeV2Tiled(
 export function renderEditorRecipe(
   image: RGBAImage,
   input: EditorRecipe,
-  options: RenderOptions = {},
+  options: RenderOptionsV3 = {},
 ): RGBAImage {
   const recipe = parseEditorRecipe(input);
   return recipe.schemaVersion === 1
     ? renderRecipe(image, recipe, options)
-    : renderRecipeV2(image, recipe, options);
+    : recipe.schemaVersion === 2
+      ? renderRecipeV2(image, recipe, options)
+      : renderRecipeV3(image, recipe, options);
 }
 export function renderEditorRecipeTiled(
   image: RGBAImage,
   input: EditorRecipe,
-  options: TiledRenderOptions = {},
+  options: TiledRenderOptionsV3 = {},
 ): RGBAImage {
   const recipe = parseEditorRecipe(input);
   return recipe.schemaVersion === 1
     ? renderRecipeTiled(image, recipe, options)
-    : renderRecipeV2Tiled(image, recipe, options);
+    : recipe.schemaVersion === 2
+      ? renderRecipeV2Tiled(image, recipe, options)
+      : renderRecipeV3Tiled(image, recipe, options);
 }

@@ -11,3 +11,4 @@ artifacts/
 playwright-report/
 test-results/
 .DS_Store
+apps/web/public/vision/

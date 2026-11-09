@@ -1,137 +1,108 @@
-# 逐组件动效清单
+# 工作台逐角色动效清单
 
-对应 src/motion/registry.ts 与 motion.css 的54个通用逻辑角色，另有末节的6个编辑器专属逻辑角色。多个DOM实例可以复用同一角色轨迹。通用角色各有进入/退出时间、延迟、位移、缩放、模糊及交互响应。高斯模糊只用于界面文字、控件与边界；含照片/画布的容器标记 pixelSafe，模糊值为 0。
+当前通用注册表有 78 个逻辑角色，另保留编辑器 CSS 的 6 个专属角色。下面从 src/motion/registry.ts 当前值生成；三种设备档分别定义进入、退出、延迟、位移、缩放、模糊和交互时间，不按统一比例压缩桌面参数。每个逻辑角色可有多个 DOM 实例，不能将逻辑角色数称为每个 DOM 都有独特轨迹。
 
-| 组件/角色          | 进入轨迹 | 进入/退出 ms | 延迟 ms | 模糊 px | 位移 x/y px | 起始缩放 | 交互 ms | 像素安全 |
-| ------------------ | -------- | -----------: | ------: | ------: | ----------: | -------: | ------: | -------- |
-| topbar             | settle   |    280 / 140 |       0 |       4 |      0 / -8 |    0.995 |     110 | 仅 UI    |
-| brand              | reveal   |    320 / 130 |      24 |       3 |       0 / 0 |        1 |     120 | 仅 UI    |
-| navigation         | slide    |    300 / 180 |       0 |       5 |     -20 / 0 |        1 |     120 | 仅 UI    |
-| space-row          | slide    |    240 / 120 |      32 |       3 |      -9 / 0 |        1 |     100 | 仅 UI    |
-| project-row        | slide    |    220 / 100 |      46 |       2 |      -6 / 0 |        1 |     100 | 仅 UI    |
-| tool-dock          | lift     |    290 / 150 |      42 |       4 |      0 / 12 |     0.98 |     110 | 仅 UI    |
-| tool-item          | settle   |    230 / 110 |      12 |       2 |       0 / 5 |     0.94 |      90 | 仅 UI    |
-| panel-frame        | settle   |    250 / 160 |       0 |       0 |      0 / 10 |    0.985 |       0 | 是       |
-| panel-header       | slide    |    240 / 120 |      18 |       3 |       6 / 0 |        1 |     100 | 仅 UI    |
-| panel-menu         | scale    |    180 / 120 |       0 |       3 |      0 / -3 |     0.95 |      90 | 仅 UI    |
-| inspector-header   | slide    |    260 / 130 |      20 |       3 |       8 / 0 |        1 |     100 | 仅 UI    |
-| inspector-section  | reveal   |    300 / 160 |      36 |       4 |       0 / 8 |        1 |     120 | 仅 UI    |
-| slider-row         | slide    |    235 / 110 |      15 |       2 |       7 / 0 |        1 |      75 | 仅 UI    |
-| curve-controls     | settle   |    275 / 145 |      30 |       3 |       0 / 7 |     0.98 |      85 | 仅 UI    |
-| color-picker       | scale    |    290 / 140 |      12 |       5 |       0 / 5 |     0.97 |      95 | 仅 UI    |
-| selection-controls | reveal   |    310 / 150 |      18 |       4 |       0 / 9 |        1 |     100 | 仅 UI    |
-| canvas-toolbar     | lift     |    270 / 130 |      48 |       3 |       0 / 7 |     0.98 |      90 | 仅 UI    |
-| ai-tabs            | slide    |    230 / 110 |       0 |       3 |      0 / -5 |        1 |      85 | 仅 UI    |
-| ai-status          | reveal   |    200 / 110 |      15 |       2 |       0 / 4 |        1 |      95 | 仅 UI    |
-| ai-context         | slide    |    240 / 130 |      30 |       3 |       7 / 0 |        1 |     100 | 仅 UI    |
-| ai-user-message    | slide    |    280 / 150 |       0 |       3 |      12 / 0 |        1 |     120 | 仅 UI    |
-| ai-answer          | reveal   |    360 / 180 |      24 |       5 |      0 / 10 |        1 |     130 | 仅 UI    |
-| ai-result-media    | settle   |    310 / 160 |      30 |       0 |       0 / 8 |     0.99 |     120 | 是       |
-| ai-composer        | lift     |    260 / 140 |      38 |       3 |       0 / 9 |        1 |     110 | 仅 UI    |
-| ai-options         | reveal   |    290 / 150 |       0 |       4 |      0 / -7 |    0.995 |      95 | 仅 UI    |
-| ai-reference       | settle   |    245 / 125 |      20 |       0 |       0 / 6 |     0.96 |     100 | 是       |
-| voice-controls     | scale    |    330 / 180 |      15 |       4 |       0 / 9 |     0.95 |     120 | 仅 UI    |
-| voice-result       | reveal   |    300 / 160 |      26 |       4 |       0 / 8 |        1 |     100 | 仅 UI    |
-| drawing-frame      | settle   |    280 / 170 |       0 |       0 |      0 / 12 |     0.99 |       0 | 是       |
-| drawing-tools      | slide    |    260 / 120 |      22 |       3 |      -8 / 0 |        1 |      85 | 仅 UI    |
-| drawing-colors     | scale    |    250 / 140 |      38 |       4 |       0 / 5 |     0.97 |      85 | 仅 UI    |
-| auth-fields        | slide    |    280 / 150 |      30 |       4 |       0 / 9 |        1 |     110 | 仅 UI    |
-| auth-tabs          | settle   |    235 / 130 |      16 |       3 |       0 / 5 |     0.98 |      90 | 仅 UI    |
-| view-header        | slide    |    280 / 140 |       0 |       4 |      0 / -7 |        1 |     120 | 仅 UI    |
-| artwork-meta       | lift     |    300 / 160 |      18 |       3 |       0 / 9 |        1 |     110 | 仅 UI    |
-| artwork-media      | settle   |    320 / 170 |       0 |       0 |       0 / 8 |     0.99 |     110 | 是       |
-| discussion         | reveal   |    320 / 170 |      15 |       4 |      0 / 12 |        1 |     110 | 仅 UI    |
-| comment            | slide    |    270 / 140 |      18 |       3 |      -9 / 0 |        1 |     100 | 仅 UI    |
-| task-item          | slide    |    240 / 125 |      12 |       2 |       8 / 0 |        1 |      90 | 仅 UI    |
-| document-list      | slide    |    285 / 155 |       8 |       4 |     -10 / 0 |        1 |     110 | 仅 UI    |
-| document-editor    | reveal   |    340 / 170 |      32 |       4 |      0 / 10 |        1 |     110 | 仅 UI    |
-| delivery           | lift     |    315 / 165 |      20 |       4 |      0 / 13 |     0.99 |     120 | 仅 UI    |
-| ops-navigation     | slide    |    275 / 145 |       0 |       4 |     -12 / 0 |        1 |     100 | 仅 UI    |
-| ops-content        | reveal   |    325 / 175 |      24 |       4 |       0 / 9 |        1 |     120 | 仅 UI    |
-| ops-row            | slide    |    225 / 115 |      16 |       2 |       6 / 0 |        1 |      90 | 仅 UI    |
-| quota              | scale    |    320 / 170 |      18 |       4 |       0 / 6 |     0.98 |     110 | 仅 UI    |
-| modal-frame        | settle   |    270 / 170 |       0 |       0 |      0 / 12 |    0.985 |     100 | 是       |
-| modal-header       | reveal   |    285 / 140 |      18 |       4 |      0 / -7 |        1 |     110 | 仅 UI    |
-| modal-content      | reveal   |    300 / 150 |      32 |       4 |       0 / 8 |        1 |     110 | 仅 UI    |
-| popover            | scale    |    205 / 120 |       0 |       4 |      0 / -4 |     0.95 |      95 | 仅 UI    |
-| empty-state        | reveal   |    400 / 190 |      40 |       6 |      0 / 15 |        1 |     120 | 仅 UI    |
-| notice             | slide    |    240 / 150 |       0 |       3 |      0 / -8 |        1 |     100 | 仅 UI    |
-| inline-error       | settle   |    210 / 120 |       0 |       2 |       0 / 4 |     0.99 |      95 | 仅 UI    |
-| capability         | reveal   |    260 / 140 |      12 |       3 |       0 / 5 |        1 |     105 | 仅 UI    |
+含照片/画布的祖先必须 pixelSafe，模糊为 0；角色的界面装饰模糊不参与图像渲染。拖动时取消时间动画和滤镜，坐标即时跟手。减少动态偏好取消位移、缩放、延迟与模糊。
 
-## 状态与可访问性
+## 三端完整参数
 
-- 通过 usePresence 管理的 FloatingPanel、Modal关闭入口、通用Disclosure和反馈提示使用 enter → idle → exit → hidden。关闭开始即 inert / aria-hidden，动画结束再隐藏或移除；重新打开会取消旧关闭定时器。编辑器原生details有独立展开轨迹，不把其直接收起描述为完整的保留退出状态机。
-- CSS支持通过 --motion-index 额外错开，封顶5×18ms。当前列表实例没有设置该索引，实际采用各角色自己的延迟，不宣称已逐项交错。
-- 拖动、缩放中 data-gesture=active 取消动画与模糊，坐标响应立即生效。
-- 减少动态偏好下不做位移、缩放、延迟或模糊，直接呈现最终状态。
-- 状态反馈依据实际录音/提交/排队/未知/完成状态，不以动画冒充计算进度。
-- 面板退出不刷新工作台，不修改配方，被隐藏的内容不可继续 Tab 进入。
+每格依次是轨迹、进入/退出/延迟、位移 X/Y、起始缩放、模糊、交互响应。
 
-## 验证边界
+| 逻辑角色 | 桌面 | 平板 | 手机 | 像素安全 |
+| --- | --- | --- | --- | --- |
+| topbar | settle · 280/140/0ms · 0/-8px · 0.995× · blur 4px · 响应 110ms | settle · 265/130/0ms · 0/-6px · 0.995× · blur 3px · 响应 110ms | slide · 225/110/0ms · 0/-4px · 1× · blur 2px · 响应 70ms | 界面装饰 |
+| brand | reveal · 320/130/24ms · 0/0px · 1× · blur 3px · 响应 120ms | reveal · 305/120/16ms · 0/0px · 1× · blur 2px · 响应 120ms | reveal · 265/100/0ms · 0/0px · 1× · blur 1px · 响应 70ms | 界面装饰 |
+| navigation | slide · 300/180/0ms · -20/0px · 1× · blur 5px · 响应 120ms | slide · 275/170/0ms · -20/0px · 1× · blur 4px · 响应 120ms | slide · 230/155/0ms · -10/0px · 1× · blur 3px · 响应 85ms | 界面装饰 |
+| space-row | slide · 240/120/32ms · -9/0px · 1× · blur 3px · 响应 100ms | slide · 215/110/26ms · -9/0px · 1× · blur 2px · 响应 100ms | slide · 170/95/12ms · -4.5/0px · 1× · blur 2px · 响应 85ms | 界面装饰 |
+| project-row | slide · 220/100/46ms · -6/0px · 1× · blur 2px · 响应 100ms | slide · 195/90/40ms · -6/0px · 1× · blur 1px · 响应 100ms | slide · 150/90/12ms · -3/0px · 1× · blur 2px · 响应 85ms | 界面装饰 |
+| tool-dock | lift · 290/150/42ms · 0/12px · 0.98× · blur 4px · 响应 110ms | lift · 275/140/34ms · 0/9px · 0.98× · blur 3px · 响应 110ms | slide · 235/120/0ms · 0/6px · 1× · blur 2px · 响应 70ms | 界面装饰 |
+| tool-item | settle · 230/110/12ms · 0/5px · 0.94× · blur 2px · 响应 90ms | settle · 215/100/4ms · 0/3.75px · 0.94× · blur 1px · 响应 90ms | reveal · 175/80/0ms · 0/2.5px · 1× · blur 1px · 响应 70ms | 界面装饰 |
+| panel-frame | settle · 250/160/0ms · 0/10px · 0.985× · blur 0px · 响应 0ms | settle · 240/150/0ms · 0/8px · 0.985× · blur 0px · 响应 0ms | slide · 210/145/0ms · 0/16px · 1× · blur 0px · 响应 0ms | 是 |
+| panel-header | slide · 240/120/18ms · 6/0px · 1× · blur 3px · 响应 100ms | slide · 225/110/10ms · 6/0px · 1× · blur 2px · 响应 100ms | slide · 185/90/0ms · 3/0px · 1× · blur 1px · 响应 70ms | 界面装饰 |
+| panel-menu | scale · 180/120/0ms · 0/-3px · 0.95× · blur 3px · 响应 90ms | scale · 165/110/0ms · 0/-2.25px · 0.95× · blur 2px · 响应 90ms | slide · 125/90/0ms · 0/-1.5px · 1× · blur 1px · 响应 70ms | 界面装饰 |
+| inspector-header | slide · 260/130/20ms · 8/0px · 1× · blur 3px · 响应 100ms | slide · 235/120/14ms · 8/0px · 1× · blur 2px · 响应 100ms | slide · 190/105/12ms · 4/0px · 1× · blur 2px · 响应 85ms | 界面装饰 |
+| inspector-section | reveal · 300/160/36ms · 0/8px · 1× · blur 4px · 响应 120ms | reveal · 275/150/30ms · 0/6.4px · 1× · blur 3px · 响应 120ms | reveal · 230/135/12ms · 0/4px · 1× · blur 2px · 响应 85ms | 界面装饰 |
+| slider-row | slide · 235/110/15ms · 7/0px · 1× · blur 2px · 响应 75ms | slide · 215/110/5ms · 7/0px · 1× · blur 1px · 响应 85ms | slide · 170/90/8ms · 3.5/0px · 1× · blur 2px · 响应 65ms | 界面装饰 |
+| curve-controls | settle · 275/145/30ms · 0/7px · 0.98× · blur 3px · 响应 85ms | settle · 255/145/20ms · 0/7px · 0.98× · blur 2px · 响应 85ms | slide · 210/120/8ms · 0/4.2px · 1× · blur 2px · 响应 65ms | 界面装饰 |
+| color-picker | scale · 290/140/12ms · 0/5px · 0.97× · blur 5px · 响应 95ms | scale · 270/140/2ms · 0/5px · 0.97× · blur 4px · 响应 85ms | reveal · 225/115/8ms · 0/3px · 1× · blur 2px · 响应 65ms | 界面装饰 |
+| selection-controls | reveal · 310/150/18ms · 0/9px · 1× · blur 4px · 响应 100ms | reveal · 290/150/8ms · 0/9px · 1× · blur 3px · 响应 85ms | slide · 245/125/8ms · 0/5.4px · 1× · blur 2px · 响应 65ms | 界面装饰 |
+| canvas-toolbar | lift · 270/130/48ms · 0/7px · 0.98× · blur 3px · 响应 90ms | lift · 255/120/40ms · 0/5.25px · 0.98× · blur 2px · 响应 90ms | slide · 215/100/0ms · 0/3.5px · 1× · blur 1px · 响应 70ms | 界面装饰 |
+| ai-tabs | slide · 230/110/0ms · 0/-5px · 1× · blur 3px · 响应 85ms | slide · 215/100/0ms · 0/-3.75px · 1× · blur 2px · 响应 85ms | slide · 175/80/0ms · 0/-2.5px · 1× · blur 1px · 响应 70ms | 界面装饰 |
+| ai-status | reveal · 200/110/15ms · 0/4px · 1× · blur 2px · 响应 95ms | reveal · 185/100/7ms · 0/3px · 1× · blur 1px · 响应 95ms | slide · 145/80/0ms · 0/2px · 1× · blur 1px · 响应 70ms | 界面装饰 |
+| ai-context | slide · 240/130/30ms · 7/0px · 1× · blur 3px · 响应 100ms | slide · 225/120/22ms · 7/0px · 1× · blur 2px · 响应 100ms | slide · 185/100/0ms · 3.5/0px · 1× · blur 1px · 响应 70ms | 界面装饰 |
+| ai-user-message | slide · 280/150/0ms · 12/0px · 1× · blur 3px · 响应 120ms | slide · 255/140/0ms · 12/0px · 1× · blur 2px · 响应 120ms | slide · 210/125/0ms · 6/0px · 1× · blur 2px · 响应 85ms | 界面装饰 |
+| ai-answer | reveal · 360/180/24ms · 0/10px · 1× · blur 5px · 响应 130ms | reveal · 335/170/18ms · 0/8px · 1× · blur 4px · 响应 130ms | reveal · 290/155/12ms · 0/5px · 1× · blur 3px · 响应 85ms | 界面装饰 |
+| ai-result-media | settle · 310/160/30ms · 0/8px · 0.99× · blur 0px · 响应 120ms | settle · 300/150/20ms · 0/6.4px · 0.99× · blur 0px · 响应 120ms | slide · 270/145/0ms · 0/5px · 1× · blur 0px · 响应 80ms | 是 |
+| ai-composer | lift · 260/140/38ms · 0/9px · 1× · blur 3px · 响应 110ms | lift · 240/140/28ms · 0/9px · 1× · blur 2px · 响应 85ms | slide · 195/115/8ms · 0/5.4px · 1× · blur 2px · 响应 65ms | 界面装饰 |
+| ai-options | reveal · 290/150/0ms · 0/-7px · 0.995× · blur 4px · 响应 95ms | reveal · 270/150/0ms · 0/-7px · 0.995× · blur 3px · 响应 85ms | reveal · 225/125/0ms · 0/-4.2px · 1× · blur 2px · 响应 65ms | 界面装饰 |
+| ai-reference | settle · 245/125/20ms · 0/6px · 0.96× · blur 0px · 响应 100ms | settle · 235/115/10ms · 0/4.8px · 0.96× · blur 0px · 响应 100ms | slide · 205/110/0ms · 0/5px · 1× · blur 0px · 响应 80ms | 是 |
+| voice-controls | scale · 330/180/15ms · 0/9px · 0.95× · blur 4px · 响应 120ms | scale · 310/180/5ms · 0/9px · 0.95× · blur 3px · 响应 85ms | reveal · 265/155/8ms · 0/5.4px · 1× · blur 2px · 响应 65ms | 界面装饰 |
+| voice-result | reveal · 300/160/26ms · 0/8px · 1× · blur 4px · 响应 100ms | reveal · 275/150/20ms · 0/6.4px · 1× · blur 3px · 响应 100ms | reveal · 230/135/12ms · 0/4px · 1× · blur 2px · 响应 85ms | 界面装饰 |
+| drawing-frame | settle · 280/170/0ms · 0/12px · 0.99× · blur 0px · 响应 0ms | settle · 270/160/0ms · 0/9.6px · 0.99× · blur 0px · 响应 0ms | slide · 240/155/0ms · 0/16px · 1× · blur 0px · 响应 0ms | 是 |
+| drawing-tools | slide · 260/120/22ms · -8/0px · 1× · blur 3px · 响应 85ms | slide · 240/120/12ms · -8/0px · 1× · blur 2px · 响应 85ms | slide · 195/95/8ms · -4/0px · 1× · blur 2px · 响应 65ms | 界面装饰 |
+| drawing-colors | scale · 250/140/38ms · 0/5px · 0.97× · blur 4px · 响应 85ms | scale · 230/140/28ms · 0/5px · 0.97× · blur 3px · 响应 85ms | slide · 185/115/8ms · 0/3px · 1× · blur 2px · 响应 65ms | 界面装饰 |
+| auth-fields | slide · 280/150/30ms · 0/9px · 1× · blur 4px · 响应 110ms | slide · 255/140/24ms · 0/7.2px · 1× · blur 3px · 响应 110ms | reveal · 210/125/12ms · 0/4.5px · 1× · blur 2px · 响应 85ms | 界面装饰 |
+| auth-tabs | settle · 235/130/16ms · 0/5px · 0.98× · blur 3px · 响应 90ms | settle · 215/130/6ms · 0/5px · 0.98× · blur 2px · 响应 85ms | slide · 170/105/8ms · 0/3px · 1× · blur 2px · 响应 65ms | 界面装饰 |
+| view-header | slide · 280/140/0ms · 0/-7px · 1× · blur 4px · 响应 120ms | slide · 255/130/0ms · 0/-5.6px · 1× · blur 3px · 响应 120ms | reveal · 210/115/0ms · 0/-3.5px · 1× · blur 2px · 响应 85ms | 界面装饰 |
+| artwork-meta | lift · 300/160/18ms · 0/9px · 1× · blur 3px · 响应 110ms | lift · 275/150/12ms · 0/7.2px · 1× · blur 2px · 响应 110ms | reveal · 230/135/12ms · 0/4.5px · 1× · blur 2px · 响应 85ms | 界面装饰 |
+| artwork-media | settle · 320/170/0ms · 0/8px · 0.99× · blur 0px · 响应 110ms | settle · 310/160/0ms · 0/6.4px · 0.99× · blur 0px · 响应 110ms | slide · 280/155/0ms · 0/5px · 1× · blur 0px · 响应 80ms | 是 |
+| discussion | reveal · 320/170/15ms · 0/12px · 1× · blur 4px · 响应 110ms | reveal · 295/160/9ms · 0/9.6px · 1× · blur 3px · 响应 110ms | reveal · 250/145/12ms · 0/6px · 1× · blur 2px · 响应 85ms | 界面装饰 |
+| comment | slide · 270/140/18ms · -9/0px · 1× · blur 3px · 响应 100ms | slide · 245/130/12ms · -9/0px · 1× · blur 2px · 响应 100ms | slide · 200/115/12ms · -4.5/0px · 1× · blur 2px · 响应 85ms | 界面装饰 |
+| task-item | slide · 240/125/12ms · 8/0px · 1× · blur 2px · 响应 90ms | slide · 215/115/6ms · 8/0px · 1× · blur 1px · 响应 90ms | slide · 170/100/12ms · 4/0px · 1× · blur 2px · 响应 85ms | 界面装饰 |
+| document-list | slide · 285/155/8ms · -10/0px · 1× · blur 4px · 响应 110ms | slide · 260/145/2ms · -10/0px · 1× · blur 3px · 响应 110ms | slide · 215/130/8ms · -5/0px · 1× · blur 2px · 响应 85ms | 界面装饰 |
+| document-editor | reveal · 340/170/32ms · 0/10px · 1× · blur 4px · 响应 110ms | reveal · 315/160/26ms · 0/8px · 1× · blur 3px · 响应 110ms | reveal · 270/145/12ms · 0/5px · 1× · blur 2px · 响应 85ms | 界面装饰 |
+| delivery | lift · 315/165/20ms · 0/13px · 0.99× · blur 4px · 响应 120ms | lift · 290/155/14ms · 0/10.4px · 0.99× · blur 3px · 响应 120ms | reveal · 245/140/12ms · 0/6.5px · 1× · blur 2px · 响应 85ms | 界面装饰 |
+| ops-navigation | slide · 275/145/0ms · -12/0px · 1× · blur 4px · 响应 100ms | slide · 250/135/0ms · -12/0px · 1× · blur 3px · 响应 100ms | slide · 205/120/0ms · -6/0px · 1× · blur 2px · 响应 85ms | 界面装饰 |
+| ops-content | reveal · 325/175/24ms · 0/9px · 1× · blur 4px · 响应 120ms | reveal · 300/165/18ms · 0/7.2px · 1× · blur 3px · 响应 120ms | reveal · 255/150/12ms · 0/4.5px · 1× · blur 2px · 响应 85ms | 界面装饰 |
+| ops-row | slide · 225/115/16ms · 6/0px · 1× · blur 2px · 响应 90ms | slide · 200/105/10ms · 6/0px · 1× · blur 1px · 响应 90ms | slide · 155/90/12ms · 3/0px · 1× · blur 2px · 响应 85ms | 界面装饰 |
+| quota | scale · 320/170/18ms · 0/6px · 0.98× · blur 4px · 响应 110ms | scale · 295/160/12ms · 0/4.8px · 0.98× · blur 3px · 响应 110ms | reveal · 250/145/12ms · 0/3px · 1× · blur 2px · 响应 85ms | 界面装饰 |
+| modal-frame | settle · 270/170/0ms · 0/12px · 0.985× · blur 0px · 响应 100ms | settle · 260/160/0ms · 0/9.6px · 0.985× · blur 0px · 响应 100ms | slide · 230/155/0ms · 0/16px · 1× · blur 0px · 响应 80ms | 是 |
+| modal-header | reveal · 285/140/18ms · 0/-7px · 1× · blur 4px · 响应 110ms | reveal · 260/130/12ms · 0/-5.6px · 1× · blur 3px · 响应 110ms | reveal · 215/115/12ms · 0/-3.5px · 1× · blur 2px · 响应 85ms | 界面装饰 |
+| modal-content | reveal · 300/150/32ms · 0/8px · 1× · blur 4px · 响应 110ms | reveal · 275/140/26ms · 0/6.4px · 1× · blur 3px · 响应 110ms | reveal · 230/125/12ms · 0/4px · 1× · blur 2px · 响应 85ms | 界面装饰 |
+| popover | scale · 205/120/0ms · 0/-4px · 0.95× · blur 4px · 响应 95ms | scale · 180/110/0ms · 0/-3.2px · 0.95× · blur 3px · 响应 95ms | reveal · 135/95/0ms · 0/-2px · 1× · blur 2px · 响应 85ms | 界面装饰 |
+| empty-state | reveal · 400/190/40ms · 0/15px · 1× · blur 6px · 响应 120ms | reveal · 375/180/34ms · 0/12px · 1× · blur 5px · 响应 120ms | reveal · 330/165/12ms · 0/7.5px · 1× · blur 3px · 响应 85ms | 界面装饰 |
+| notice | slide · 240/150/0ms · 0/-8px · 1× · blur 3px · 响应 100ms | slide · 215/140/0ms · 0/-6.4px · 1× · blur 2px · 响应 100ms | reveal · 170/125/0ms · 0/-4px · 1× · blur 2px · 响应 85ms | 界面装饰 |
+| inline-error | settle · 210/120/0ms · 0/4px · 0.99× · blur 2px · 响应 95ms | settle · 185/110/0ms · 0/3.2px · 0.99× · blur 1px · 响应 95ms | reveal · 140/95/0ms · 0/2px · 1× · blur 2px · 响应 85ms | 界面装饰 |
+| capability | reveal · 260/140/12ms · 0/5px · 1× · blur 3px · 响应 105ms | reveal · 235/130/6ms · 0/4px · 1× · blur 2px · 响应 105ms | reveal · 190/115/12ms · 0/2.5px · 1× · blur 2px · 响应 85ms | 界面装饰 |
+| panel-body | reveal · 225/130/14ms · 0/5px · 1× · blur 0px · 响应 90ms | reveal · 205/120/10ms · 0/4px · 1× · blur 0px · 响应 85ms | slide · 185/110/6ms · 0/3px · 1× · blur 0px · 响应 70ms | 是 |
+| panel-actions | slide · 165/90/6ms · 4/0px · 1× · blur 1px · 响应 75ms | slide · 155/85/4ms · 3/0px · 1× · blur 1px · 响应 70ms | reveal · 145/80/0ms · 0/2px · 1× · blur 1px · 响应 65ms | 界面装饰 |
+| panel-docking | slide · 205/110/12ms · -5/0px · 1× · blur 2px · 响应 90ms | slide · 190/100/8ms · -4/0px · 1× · blur 1px · 响应 85ms | reveal · 170/95/4ms · 0/2.5px · 1× · blur 1px · 响应 70ms | 界面装饰 |
+| panel-sizing | lift · 255/135/24ms · 0/7px · 0.99× · blur 2px · 响应 95ms | lift · 235/125/18ms · 0/5px · 0.995× · blur 2px · 响应 85ms | slide · 205/110/10ms · 0/4px · 1× · blur 1px · 响应 70ms | 界面装饰 |
+| panel-composition | settle · 235/125/32ms · 0/5px · 0.995× · blur 2px · 响应 95ms | settle · 220/115/22ms · 0/4px · 0.995× · blur 1px · 响应 85ms | reveal · 190/105/12ms · 2/0px · 1× · blur 1px · 响应 70ms | 界面装饰 |
+| result-actions | slide · 215/105/28ms · 0/5px · 1× · blur 2px · 响应 85ms | reveal · 205/100/18ms · 0/4px · 1× · blur 1px · 响应 80ms | slide · 175/95/8ms · 0/3px · 1× · blur 1px · 响应 65ms | 界面装饰 |
+| result-provenance | reveal · 245/115/36ms · 3/0px · 1× · blur 2px · 响应 90ms | reveal · 225/105/24ms · 2/0px · 1× · blur 1px · 响应 80ms | settle · 195/100/10ms · 0/3px · 0.998× · blur 1px · 响应 70ms | 界面装饰 |
+| result-confirmation | settle · 285/145/30ms · 0/9px · 0.993× · blur 3px · 响应 100ms | lift · 255/130/20ms · 0/8px · 0.995× · blur 2px · 响应 90ms | slide · 220/115/12ms · 0/6px · 1× · blur 1px · 响应 75ms | 界面装饰 |
+| revision-entry | slide · 260/110/18ms · -5/0px · 1× · blur 2px · 响应 90ms | settle · 240/105/14ms · 0/4px · 0.997× · blur 1px · 响应 85ms | reveal · 200/95/6ms · 0/3px · 1× · blur 1px · 响应 70ms | 界面装饰 |
+| revision-restore | lift · 290/150/26ms · 0/7px · 0.99× · blur 3px · 响应 105ms | settle · 260/135/18ms · 0/6px · 0.995× · blur 2px · 响应 95ms | slide · 225/115/8ms · 0/5px · 1× · blur 1px · 响应 75ms | 界面装饰 |
+| parameter-options | settle · 245/110/18ms · 0/4px · 0.996× · blur 2px · 响应 85ms | slide · 225/105/12ms · 0/3px · 1× · blur 1px · 响应 80ms | reveal · 185/90/4ms · 0/2px · 1× · blur 1px · 响应 65ms | 界面装饰 |
+| parameter-current | slide · 205/95/12ms · 4/0px · 1× · blur 2px · 响应 75ms | reveal · 195/95/8ms · 2/0px · 1× · blur 1px · 响应 70ms | settle · 170/85/0ms · 0/2px · 0.999× · blur 1px · 响应 60ms | 界面装饰 |
+| scope-selector | reveal · 220/110/14ms · -3/0px · 1× · blur 2px · 响应 85ms | slide · 210/100/8ms · -2/0px · 1× · blur 1px · 响应 80ms | reveal · 180/90/0ms · 0/3px · 1× · blur 1px · 响应 65ms | 界面装饰 |
+| mask-editor | slide · 260/120/24ms · 0/5px · 1× · blur 0px · 响应 90ms | settle · 245/110/16ms · 0/4px · 1× · blur 0px · 响应 85ms | slide · 205/100/6ms · 0/3px · 1× · blur 0px · 响应 70ms | 是 |
+| color-family | reveal · 255/115/20ms · 0/3px · 1× · blur 0px · 响应 85ms | slide · 235/110/12ms · 2/0px · 1× · blur 0px · 响应 80ms | reveal · 195/95/4ms · 0/2px · 1× · blur 0px · 响应 65ms | 是 |
+| geometry-controls | settle · 280/125/22ms · 0/6px · 0.996× · blur 2px · 响应 95ms | slide · 255/115/16ms · 0/5px · 1× · blur 1px · 响应 85ms | reveal · 205/105/8ms · 0/3px · 1× · blur 1px · 响应 75ms | 界面装饰 |
+| region-controls | slide · 270/125/26ms · 4/0px · 1× · blur 0px · 响应 95ms | reveal · 245/115/18ms · 2/0px · 1× · blur 0px · 响应 85ms | slide · 200/100/8ms · 0/4px · 1× · blur 0px · 响应 70ms | 是 |
+| paint-controls | reveal · 265/120/28ms · 0/4px · 1× · blur 0px · 响应 90ms | settle · 250/115/18ms · 0/3px · 1× · blur 0px · 响应 85ms | reveal · 210/100/6ms · 0/2px · 1× · blur 0px · 响应 70ms | 是 |
+| warp-controls | settle · 275/130/24ms · -3/3px · 0.997× · blur 2px · 响应 100ms | slide · 250/120/14ms · -2/2px · 1× · blur 1px · 响应 90ms | reveal · 210/105/6ms · 0/3px · 1× · blur 1px · 响应 70ms | 界面装饰 |
+| composite-controls | slide · 285/125/30ms · 5/0px · 1× · blur 0px · 响应 95ms | settle · 260/115/20ms · 3/0px · 1× · blur 0px · 响应 85ms | slide · 215/100/8ms · 0/4px · 1× · blur 0px · 响应 75ms | 是 |
+| portrait-controls | reveal · 295/135/24ms · 0/5px · 1× · blur 0px · 响应 100ms | settle · 270/125/18ms · 0/4px · 1× · blur 0px · 响应 90ms | reveal · 225/110/8ms · 0/3px · 1× · blur 0px · 响应 75ms | 是 |
+| portrait-manual | slide · 240/110/35ms · 0/5px · 1× · blur 2px · 响应 90ms | reveal · 220/105/22ms · 0/4px · 1× · blur 1px · 响应 80ms | slide · 180/90/10ms · 0/3px · 1× · blur 1px · 响应 65ms | 界面装饰 |
+| advanced-history | reveal · 250/120/18ms · -4/0px · 1× · blur 2px · 响应 90ms | slide · 230/110/12ms · -3/0px · 1× · blur 1px · 响应 85ms | reveal · 195/95/4ms · 0/3px · 1× · blur 1px · 响应 70ms | 界面装饰 |
+| ai-cancellation | reveal · 215/105/8ms · -3/2px · 1× · blur 1.5px · 响应 85ms | slide · 195/100/6ms · -2/1px · 1× · blur 1px · 响应 75ms | reveal · 175/85/0ms · 0/2px · 1× · blur 0.5px · 响应 65ms | 界面装饰 |
 
-单元测试校验注册表与像素安全约束。真实桌面、平板、窄手机、横屏、减少动态与拖缩行为由根任务浏览器验收。
+## 新交互的状态边界
 
-## 独立响应式参数
+- panel-body / panel-actions / panel-docking / panel-sizing / panel-composition 分别承担内容、动作、停靠、连续宽高和叠放关系。内容关闭立即 inert / aria-hidden，退出完成再隐藏；尺寸与拖动不用延迟动画追赶指针。最大化/折叠保留普通尺寸以还原。
+- parameter-options / parameter-current / scope-selector 区分参数选择、当前滑条和全图/局部/组作用范围；更换参数显露新的当前控件，已有图像像素不被淡入模糊。
+- mask-editor / color-family / geometry-controls / region-controls / paint-controls / warp-controls / composite-controls / portrait-controls / portrait-manual / advanced-history 分别定义自己的三端参数；颜色、蒙版和画笔外层保持零模糊。
+- result-actions / result-provenance / result-confirmation / revision-entry / revision-restore 区分结果决定、来源记录、确认和历史恢复。成功动画只在服务器明确返回后出现，不等同于重新调用模型或退款。
+- usePresence 管理的浮层、Modal、Disclosure 使用 enter → idle → exit → hidden。原生 details 或直接卸载没有保留退出状态时，不声称执行完整退出轨迹。
+- 支持 --motion-index 的错开封顶，但未设置该索引的实例仍使用自身角色延迟，不虚报逐项交错。
+- ai-cancellation 为排队取消的请求、错误与服务器确认状态定义独立三端轨迹；收到未知结果不出现退款成功动画。
+- 每种真实录音、排队、未知结果、模型错误与空状态使用实际数据；不以持续动画或伪百分比假装工作已完成。
 
-平板与手机使用显式角色参数，触控控件短延迟，浮层在手机从底部进入，图片容器始终0模糊；并非把整套桌面时长统一缩放。
+## 验证责任
 
-| 角色               | 桌面进入/退出/延迟 ms | 平板进入/退出/延迟 ms | 手机进入/退出/延迟 ms | 手机轨迹 |
-| ------------------ | --------------------- | --------------------- | --------------------- | -------- |
-| topbar             | 280/140/0             | 265/130/0             | 225/110/0             | slide    |
-| brand              | 320/130/24            | 305/120/16            | 265/100/0             | reveal   |
-| navigation         | 300/180/0             | 275/170/0             | 230/155/0             | slide    |
-| space-row          | 240/120/32            | 215/110/26            | 170/95/12             | slide    |
-| project-row        | 220/100/46            | 195/90/40             | 150/90/12             | slide    |
-| tool-dock          | 290/150/42            | 275/140/34            | 235/120/0             | slide    |
-| tool-item          | 230/110/12            | 215/100/4             | 175/80/0              | reveal   |
-| panel-frame        | 250/160/0             | 240/150/0             | 210/145/0             | slide    |
-| panel-header       | 240/120/18            | 225/110/10            | 185/90/0              | slide    |
-| panel-menu         | 180/120/0             | 165/110/0             | 125/90/0              | slide    |
-| inspector-header   | 260/130/20            | 235/120/14            | 190/105/12            | slide    |
-| inspector-section  | 300/160/36            | 275/150/30            | 230/135/12            | reveal   |
-| slider-row         | 235/110/15            | 215/110/5             | 170/90/8              | slide    |
-| curve-controls     | 275/145/30            | 255/145/20            | 210/120/8             | slide    |
-| color-picker       | 290/140/12            | 270/140/2             | 225/115/8             | reveal   |
-| selection-controls | 310/150/18            | 290/150/8             | 245/125/8             | slide    |
-| canvas-toolbar     | 270/130/48            | 255/120/40            | 215/100/0             | slide    |
-| ai-tabs            | 230/110/0             | 215/100/0             | 175/80/0              | slide    |
-| ai-status          | 200/110/15            | 185/100/7             | 145/80/0              | slide    |
-| ai-context         | 240/130/30            | 225/120/22            | 185/100/0             | slide    |
-| ai-user-message    | 280/150/0             | 255/140/0             | 210/125/0             | slide    |
-| ai-answer          | 360/180/24            | 335/170/18            | 290/155/12            | reveal   |
-| ai-result-media    | 310/160/30            | 300/150/20            | 270/145/0             | slide    |
-| ai-composer        | 260/140/38            | 240/140/28            | 195/115/8             | slide    |
-| ai-options         | 290/150/0             | 270/150/0             | 225/125/0             | reveal   |
-| ai-reference       | 245/125/20            | 235/115/10            | 205/110/0             | slide    |
-| voice-controls     | 330/180/15            | 310/180/5             | 265/155/8             | reveal   |
-| voice-result       | 300/160/26            | 275/150/20            | 230/135/12            | reveal   |
-| drawing-frame      | 280/170/0             | 270/160/0             | 240/155/0             | slide    |
-| drawing-tools      | 260/120/22            | 240/120/12            | 195/95/8              | slide    |
-| drawing-colors     | 250/140/38            | 230/140/28            | 185/115/8             | slide    |
-| auth-fields        | 280/150/30            | 255/140/24            | 210/125/12            | reveal   |
-| auth-tabs          | 235/130/16            | 215/130/6             | 170/105/8             | slide    |
-| view-header        | 280/140/0             | 255/130/0             | 210/115/0             | reveal   |
-| artwork-meta       | 300/160/18            | 275/150/12            | 230/135/12            | reveal   |
-| artwork-media      | 320/170/0             | 310/160/0             | 280/155/0             | slide    |
-| discussion         | 320/170/15            | 295/160/9             | 250/145/12            | reveal   |
-| comment            | 270/140/18            | 245/130/12            | 200/115/12            | slide    |
-| task-item          | 240/125/12            | 215/115/6             | 170/100/12            | slide    |
-| document-list      | 285/155/8             | 260/145/2             | 215/130/8             | slide    |
-| document-editor    | 340/170/32            | 315/160/26            | 270/145/12            | reveal   |
-| delivery           | 315/165/20            | 290/155/14            | 245/140/12            | reveal   |
-| ops-navigation     | 275/145/0             | 250/135/0             | 205/120/0             | slide    |
-| ops-content        | 325/175/24            | 300/165/18            | 255/150/12            | reveal   |
-| ops-row            | 225/115/16            | 200/105/10            | 155/90/12             | slide    |
-| quota              | 320/170/18            | 295/160/12            | 250/145/12            | reveal   |
-| modal-frame        | 270/170/0             | 260/160/0             | 230/155/0             | slide    |
-| modal-header       | 285/140/18            | 260/130/12            | 215/115/12            | reveal   |
-| modal-content      | 300/150/32            | 275/140/26            | 230/125/12            | reveal   |
-| popover            | 205/120/0             | 180/110/0             | 135/95/0              | reveal   |
-| empty-state        | 400/190/40            | 375/180/34            | 330/165/12            | reveal   |
-| notice             | 240/150/0             | 215/140/0             | 170/125/0             | reveal   |
-| inline-error       | 210/120/0             | 185/110/0             | 140/95/0              | reveal   |
-| capability         | 260/140/12            | 235/130/6             | 190/115/12            | reveal   |
+注册表与 CSS 轨迹存在性、减少动态逃生路径、图像外层零模糊由 apps/web/test/motion.test.ts 校验。真实桌面/平板/窄手机/短横屏、键盘、触控、缩放和动态偏好由 [本轮六轮验证记录](../../docs/VERIFICATION.md) 给出结果。此文档不替代截图和实际操作，旧轮数不沿用作新增功能证据。
 
 ## 编辑器专属角色
 

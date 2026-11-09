@@ -1,12 +1,17 @@
 import {
   renderEditorRecipe,
   renderEditorRecipeTiled,
+  getEditorOutputDimensions,
+  MAX_V3_PIXELS,
   type RGBAImage,
   type EditorRecipe,
 } from '@ai-xiutu/editor';
+import { prepareBudgetedPreview, MAX_PREVIEW_PIXELS } from './previewBudget';
 
 let preview: RGBAImage | null = null;
 let original: RGBAImage | null = null;
+let images = new Map<string, RGBAImage>(),
+  originalImages = new Map<string, RGBAImage>();
 type Message = {
   type: string;
   id: number;
@@ -16,26 +21,62 @@ type Message = {
   originalOnly?: boolean;
   format?: 'png' | 'jpeg' | 'webp';
   quality?: number;
+  images?: Map<string, RGBAImage>;
+  originalImages?: Map<string, RGBAImage>;
+  sourceId?: string;
+  mapping?: Map<string, string>;
 };
 self.onmessage = async (event: MessageEvent<Message>) => {
   const message = event.data;
   if (message.type === 'source') {
     preview = message.image ?? null;
     original = message.original ?? null;
+    images = message.images ?? new Map();
+    originalImages = message.originalImages ?? new Map();
+    return;
+  }
+  if (message.type === 'image-source') {
+    if (message.sourceId && message.image) {
+      images.set(message.sourceId, message.image);
+      if (message.original) originalImages.set(message.sourceId, message.original);
+    }
+    return;
+  }
+  if (message.type === 'rekey-sources') {
+    for (const [from, to] of message.mapping ?? []) {
+      const p = images.get(from),
+        o = originalImages.get(from);
+      if (p) images.set(to, p);
+      if (o) originalImages.set(to, o);
+    }
+    return;
+  }
+  if (message.type === 'layer-sources') {
+    images = message.images ?? new Map();
     return;
   }
   try {
     const source = message.type === 'export' ? original : preview;
     if (!source || !message.recipe) throw new Error('请先导入图片。');
+    if (message.type !== 'export' && original) {
+      if (message.recipe.schemaVersion === 3 && original.width * original.height > MAX_V3_PIXELS)
+        throw new Error('原图超过 V3 的 16.8MP 编辑上限，请明确准备较小副本。');
+      // A smaller preview must not make an unexportable full-resolution transform appear valid.
+      getEditorOutputDimensions(original, message.recipe);
+    }
     const result =
       message.type === 'export'
         ? message.originalOnly
           ? source
           : renderEditorRecipeTiled(source, message.recipe, {
-              maxPixels: 67_108_864,
+              maxPixels: message.recipe.schemaVersion === 3 ? 16_777_216 : 67_108_864,
+              images: originalImages,
               tileSize: 512,
             })
-        : renderEditorRecipe(source, message.recipe, { maxPixels: 4_194_304 });
+        : renderEditorRecipe(prepareBudgetedPreview(source, message.recipe), message.recipe, {
+            maxPixels: MAX_PREVIEW_PIXELS,
+            images,
+          });
     if (message.type === 'export' && typeof OffscreenCanvas !== 'undefined') {
       const format = message.format ?? 'png';
       const canvas = new OffscreenCanvas(result.width, result.height);
