@@ -1,6 +1,6 @@
-import { useEffect, useState, type FormEvent } from 'react';
+import { useEffect, useRef, useState, type FormEvent } from 'react';
 import { ArrowRight, LockKey, DeviceMobile, Eye, EyeSlash } from '@phosphor-icons/react';
-import { api, errorMessage, jsonRequest } from '../lib/api';
+import { api, ApiError, errorMessage, jsonRequest } from '../lib/api';
 import type { PublicConfig, Session } from '../lib/types';
 import { Brand, Busy, IconButton, InlineError, Modal } from './Ui';
 import { brandLogoUrl } from '../lib/brand';
@@ -27,26 +27,32 @@ export function AuthPanel({
   const [cooldown, setCooldown] = useState(0);
   const [error, setError] = useState<string | null>(null);
   const [message, setMessage] = useState('');
+  const request = useRef<'sms' | 'submit' | null>(null);
+  const smsUnavailable = config?.capabilities.smsConfigured === false;
   useEffect(() => {
     if (cooldown <= 0) return;
     const timer = setTimeout(() => setCooldown(cooldown - 1), 1000);
     return () => clearTimeout(timer);
   }, [cooldown]);
   const switchMode = (next: Mode) => {
-    if (busy || sending) return;
+    if (request.current) return;
     setMode(next);
     setError(null);
     setMessage('');
     setPassword('');
     setCode('');
+    setVisible(false);
   };
   async function sendCode() {
+    if (request.current || cooldown > 0 || smsUnavailable) return;
     if (!phone.trim()) {
       setError('请先填写手机号。');
       return;
     }
+    request.current = 'sms';
     setSending(true);
     setError(null);
+    setMessage('');
     try {
       const result = await api<{ message: string }>(
         '/auth/otp',
@@ -59,14 +65,19 @@ export function AuthPanel({
       setCooldown(60);
     } catch (e) {
       setError(errorMessage(e));
+      if (e instanceof ApiError && e.code === 'SMS_SEND_UNKNOWN') setCooldown(60);
     } finally {
+      request.current = null;
       setSending(false);
     }
   }
   async function submit(event: FormEvent) {
     event.preventDefault();
+    if (request.current) return;
+    request.current = 'submit';
     setBusy(true);
     setError(null);
+    setMessage('');
     try {
       if (mode === 'reset') {
         await api(
@@ -103,13 +114,19 @@ export function AuthPanel({
     } catch (e) {
       setError(errorMessage(e));
     } finally {
+      request.current = null;
       setBusy(false);
     }
   }
   const title =
     mode === 'register' ? '把灵感留在这里' : mode === 'reset' ? '找回你的账号' : '欢迎回到创作中';
   return (
-    <Modal title={title} onClose={onClose} canClose={() => !busy && !sending}>
+    <Modal
+      title={title}
+      onClose={onClose}
+      canClose={() => !request.current}
+      className="studio-dialog auth-dialog"
+    >
       <div className="auth-brand">
         <Brand name={config?.brand.name} logoUrl={brandLogoUrl(config?.brand)} compact />
         <p>保存作品，延续每一份灵感。</p>
@@ -117,24 +134,38 @@ export function AuthPanel({
       {(mode === 'password' || mode === 'otp') && (
         <div
           className="segmented"
+          role="group"
+          aria-label="登录方式"
           data-motion="auth-tabs"
           inert={busy || sending}
           aria-disabled={busy || sending}
         >
           <button
+            type="button"
+            aria-pressed={mode === 'password'}
             className={mode === 'password' ? 'selected' : ''}
             onClick={() => switchMode('password')}
           >
             <LockKey size={17} />
             密码登录
           </button>
-          <button className={mode === 'otp' ? 'selected' : ''} onClick={() => switchMode('otp')}>
+          <button
+            type="button"
+            aria-pressed={mode === 'otp'}
+            className={mode === 'otp' ? 'selected' : ''}
+            onClick={() => switchMode('otp')}
+          >
             <DeviceMobile size={17} />
             验证码登录
           </button>
         </div>
       )}
-      <form className="stack-form" onSubmit={submit} data-motion="auth-fields">
+      <form
+        className="stack-form"
+        onSubmit={submit}
+        data-motion="auth-fields"
+        aria-busy={busy || sending}
+      >
         <fieldset disabled={busy || sending} className="unframed-fields">
           <label>
             手机号
@@ -145,7 +176,8 @@ export function AuthPanel({
               value={phone}
               onChange={(e) => setPhone(e.target.value)}
               placeholder="请输入手机号"
-              maxLength={18}
+              minLength={8}
+              maxLength={24}
               required
             />
           </label>
@@ -157,7 +189,7 @@ export function AuthPanel({
                 value={displayName}
                 onChange={(e) => setDisplayName(e.target.value)}
                 placeholder="你的昵称"
-                maxLength={40}
+                maxLength={120}
                 required
               />
             </label>
@@ -169,14 +201,27 @@ export function AuthPanel({
                 <input
                   autoComplete="one-time-code"
                   inputMode="numeric"
+                  aria-label="短信验证码"
+                  pattern="[0-9]{6}"
+                  minLength={6}
                   value={code}
                   onChange={(e) => setCode(e.target.value)}
                   placeholder="6 位验证码"
-                  maxLength={10}
+                  maxLength={6}
                   required
                 />
-                <button type="button" onClick={sendCode} disabled={sending || cooldown > 0}>
-                  {sending ? '发送中…' : cooldown > 0 ? `${cooldown} 秒后重发` : '获取验证码'}
+                <button
+                  type="button"
+                  onClick={sendCode}
+                  disabled={sending || cooldown > 0 || smsUnavailable || !phone.trim()}
+                >
+                  {smsUnavailable
+                    ? '短信暂不可用'
+                    : sending
+                      ? '发送中…'
+                      : cooldown > 0
+                        ? `${cooldown} 秒后重发`
+                        : '获取验证码'}
                 </button>
               </div>
             </label>
@@ -187,6 +232,7 @@ export function AuthPanel({
               <div className="input-action">
                 <input
                   type={visible ? 'text' : 'password'}
+                  aria-label={mode === 'reset' ? '新密码' : '密码'}
                   autoComplete={mode === 'password' ? 'current-password' : 'new-password'}
                   value={password}
                   onChange={(e) => setPassword(e.target.value)}
@@ -214,11 +260,12 @@ export function AuthPanel({
                 autoComplete="off"
                 required={config?.registrationMode === 'invite'}
                 maxLength={100}
+                minLength={10}
               />
             </label>
           )}
-          {mode !== 'password' && config?.capabilities.smsConfigured === false && (
-            <p className="form-hint">
+          {mode !== 'password' && smsUnavailable && (
+            <p className="form-hint" role="status">
               短信服务尚未开通，验证码暂时无法发送。已有账号可使用密码登录。
             </p>
           )}

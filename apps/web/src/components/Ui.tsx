@@ -121,6 +121,7 @@ export function Modal({
   wide = false,
   className = '',
   canClose,
+  initialFocusRef,
 }: {
   title: string;
   subtitle?: string;
@@ -129,6 +130,7 @@ export function Modal({
   wide?: boolean;
   className?: string;
   canClose?: () => boolean;
+  initialFocusRef?: { readonly current: HTMLElement | null };
 }) {
   const dialog = useRef<HTMLDialogElement>(null);
   const context = useContext(DialogMotionContext);
@@ -137,6 +139,25 @@ export function Modal({
   const open = context?.open ?? !closing;
   const phase = context?.phase ?? presence.phase;
   const closedOnce = useRef(false);
+  const initiallyFocused = useRef(false);
+  useEffect(() => {
+    if (!open || phase === 'hidden' || phase === 'exit' || initiallyFocused.current) return;
+    const frame = requestAnimationFrame(() => {
+      const element = dialog.current;
+      if (!element?.open) return;
+      const focusTarget =
+        initialFocusRef?.current ??
+        element.querySelector<HTMLElement>(
+          'button:not(:disabled), input:not(:disabled), select:not(:disabled), textarea:not(:disabled), a[href]',
+        );
+      if (focusTarget) {
+        if (initialFocusRef?.current || !element.contains(document.activeElement))
+          focusTarget.focus();
+        initiallyFocused.current = true;
+      }
+    });
+    return () => cancelAnimationFrame(frame);
+  }, [open, phase, initialFocusRef]);
   useEffect(() => {
     if (!context && closing && !presence.present && !closedOnce.current) {
       closedOnce.current = true;

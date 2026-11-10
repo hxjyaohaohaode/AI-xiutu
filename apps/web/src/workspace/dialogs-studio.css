@@ -1,0 +1,345 @@
+/* Dialog surfaces share the studio's neutral palette and reachable mobile controls. */
+.studio-dialog {
+  --dialog-padding: 26px;
+  --dialog-paper: color-mix(in srgb, var(--surface) 98%, #d2bc97);
+  width: min(500px, calc(100vw - 32px));
+  max-height: calc(100dvh - 40px);
+  padding: var(--dialog-padding);
+  border: 1px solid color-mix(in srgb, var(--ink) 9%, var(--surface));
+  border-radius: 19px;
+  color: var(--ink);
+  background: var(--dialog-paper);
+  box-shadow: 0 28px 100px #201e1929;
+  scrollbar-width: thin;
+  scroll-padding-block: 110px 24px;
+  overflow-x: hidden;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+}
+
+.studio-dialog.modal-wide {
+  width: min(700px, calc(100vw - 32px));
+}
+
+.studio-dialog::backdrop {
+  background: #24241f59;
+  backdrop-filter: blur(3px);
+}
+
+.studio-dialog > .modal-header {
+  position: sticky;
+  top: calc(-1 * var(--dialog-padding));
+  z-index: 6;
+  margin: calc(-1 * var(--dialog-padding)) calc(-1 * var(--dialog-padding)) 22px;
+  padding: var(--dialog-padding) var(--dialog-padding) 19px;
+  background: var(--dialog-paper);
+  border-bottom: 1px solid color-mix(in srgb, var(--ink) 8%, var(--surface));
+}
+
+.studio-dialog > .modal-header > div {
+  min-width: 0;
+}
+
+.studio-dialog .modal-header h2 {
+  color: var(--ink);
+  font-size: 21px;
+  line-height: 1.4;
+  font-weight: 600;
+  letter-spacing: -0.035em;
+  overflow-wrap: anywhere;
+}
+
+.studio-dialog .modal-header p,
+.studio-dialog .auth-brand p,
+.studio-dialog .form-hint,
+.studio-dialog .fine-print,
+.studio-dialog .control-note,
+.studio-dialog .quiet-copy {
+  color: color-mix(in srgb, var(--ink) 65%, var(--surface));
+  line-height: 1.65;
+}
+
+.studio-dialog .modal-header > .icon-button {
+  width: 36px;
+  height: 36px;
+  flex: 0 0 36px;
+  margin: -3px -5px 0 0;
+  border-radius: 50%;
+  background: color-mix(in srgb, var(--ink) 5%, var(--surface));
+}
+
+.studio-dialog .stack-form label {
+  color: var(--ink);
+  font-size: 13px;
+  font-weight: 500;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.studio-dialog .stack-form :is(input:not([type='checkbox']), select, textarea),
+.studio-dialog .invite-actions select,
+.studio-dialog .member-row select {
+  min-height: 44px;
+  color: var(--ink);
+  background: color-mix(in srgb, var(--ink) 3%, var(--surface));
+  border: 1px solid color-mix(in srgb, var(--ink) 11%, var(--surface));
+  border-radius: 9px;
+  padding: 10px 12px;
+  font-size: 14px;
+  font-weight: 400;
+}
+
+.studio-dialog input::placeholder {
+  color: color-mix(in srgb, var(--ink) 45%, var(--surface));
+}
+
+.studio-dialog .input-action {
+  background: var(--surface);
+  border: 1px solid color-mix(in srgb, var(--ink) 11%, var(--surface));
+  border-radius: 9px;
+}
+
+.studio-dialog .input-action input {
+  background: transparent;
+  border: 0;
+}
+
+.studio-dialog .input-action > button {
+  min-height: 40px;
+  color: var(--ink);
+  font-size: 12px;
+}
+
+.studio-dialog .stack-form :is(input, select, textarea):disabled {
+  opacity: 0.58;
+}
+
+.studio-dialog .segmented {
+  background: color-mix(in srgb, var(--ink) 5%, var(--surface));
+  border-radius: 11px;
+  padding: 4px;
+}
+
+.studio-dialog .segmented button {
+  min-height: 40px;
+  color: color-mix(in srgb, var(--ink) 67%, var(--surface));
+  border-radius: 8px;
+}
+
+.studio-dialog .segmented button.selected {
+  color: var(--ink);
+  background: var(--surface);
+  box-shadow: 0 1px 5px #211d1510;
+}
+
+.studio-dialog .auth-brand {
+  align-items: flex-start;
+  margin: 2px 0 24px;
+}
+
+.studio-dialog .auth-links button {
+  color: var(--ink);
+}
+
+.studio-dialog .export-options {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.studio-dialog .export-options button {
+  padding: 17px 12px;
+  min-height: 115px;
+  color: var(--ink);
+  border: 1px solid transparent;
+  background: color-mix(in srgb, var(--ink) 4%, var(--surface));
+  border-radius: 12px;
+}
+
+.studio-dialog .export-options button.selected {
+  color: var(--ink);
+  border-color: color-mix(in srgb, var(--accent) 72%, var(--ink));
+  background: color-mix(in srgb, var(--accent) 14%, var(--surface));
+}
+
+.studio-dialog .export-options strong {
+  font-size: 15px;
+}
+
+.studio-dialog .export-options span {
+  color: color-mix(in srgb, var(--ink) 65%, var(--surface));
+  font-size: 11px;
+  line-height: 1.6;
+}
+
+.studio-dialog .export-options svg {
+  width: 15px;
+  right: 10px;
+  top: 17px;
+}
+
+.studio-dialog
+  :is(
+    .quality-control,
+    .quality-control strong,
+    .export-summary strong,
+    .invite-block h3,
+    .grants-list h3
+  ) {
+  color: var(--ink);
+}
+
+.studio-dialog .quality-control input {
+  min-height: 34px;
+  margin: 6px 0;
+}
+
+.studio-dialog
+  :is(.quality-control small, .export-summary span, .member-row small, .grant-row small) {
+  color: color-mix(in srgb, var(--ink) 62%, var(--surface));
+  font-size: 12px;
+}
+
+.studio-dialog .export-summary {
+  font-size: 12px;
+  gap: 9px 16px;
+}
+
+.studio-dialog :is(.member-row, .grant-row, .invite-block) {
+  border-color: color-mix(in srgb, var(--ink) 8%, var(--surface));
+}
+
+.studio-dialog .generated-code {
+  background: color-mix(in srgb, var(--accent) 13%, var(--surface));
+  border-color: transparent;
+}
+
+.studio-dialog .generated-code code {
+  color: var(--ink);
+  user-select: all;
+}
+
+.studio-dialog .stack-form .switch-row {
+  flex-direction: row;
+  align-items: center;
+  justify-content: space-between;
+  min-height: 44px;
+}
+
+.studio-dialog .switch-row input,
+.studio-dialog .media-check input {
+  accent-color: var(--ink);
+}
+
+.studio-dialog .inline-error {
+  margin-block: 12px;
+}
+
+.studio-dialog .button {
+  min-height: 44px;
+  white-space: normal;
+  text-align: center;
+}
+
+.studio-dialog .server-import-section {
+  padding-top: 20px;
+  margin-top: 22px;
+  border-color: color-mix(in srgb, var(--ink) 8%, var(--surface));
+}
+
+.studio-dialog .server-import-section > h3 {
+  color: var(--ink);
+}
+
+@media (max-width: 599px) {
+  .studio-dialog,
+  .studio-dialog.modal-wide {
+    --dialog-padding: 19px;
+    width: calc(100vw - 20px);
+    max-height: calc(100dvh - 24px);
+    border-radius: 17px;
+  }
+
+  .studio-dialog .modal-header h2 {
+    font-size: 19px;
+  }
+
+  .studio-dialog .modal-header > .icon-button {
+    width: 40px;
+    height: 40px;
+    flex-basis: 40px;
+  }
+
+  .studio-dialog .stack-form :is(input:not([type='checkbox']), select, textarea) {
+    font-size: 16px;
+  }
+
+  .studio-dialog .export-options {
+    grid-template-columns: 1fr;
+  }
+
+  .studio-dialog .export-options button {
+    min-height: 66px;
+    padding: 12px 40px 12px 14px;
+  }
+
+  .studio-dialog .export-options span {
+    margin-top: 2px;
+    font-size: 12px;
+  }
+
+  .studio-dialog .export-options svg {
+    top: 23px;
+    right: 16px;
+  }
+
+  .studio-dialog .member-row {
+    flex-wrap: wrap;
+    gap: 8px;
+  }
+
+  .studio-dialog .member-row > div:nth-child(2) {
+    min-width: calc(100% - 50px);
+    flex: 1;
+  }
+
+  .studio-dialog .member-row select {
+    margin-left: 40px;
+    min-width: 110px;
+  }
+
+  .studio-dialog .invite-actions {
+    flex-wrap: wrap;
+  }
+
+  .studio-dialog .invite-actions > :is(select, button) {
+    width: 100%;
+    flex: 1 1 100%;
+  }
+
+  .studio-dialog .field-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .studio-dialog .media-import-actions > .text-button {
+    min-height: 44px;
+  }
+}
+
+@media (max-height: 500px) and (orientation: landscape) {
+  .studio-dialog,
+  .studio-dialog.modal-wide {
+    --dialog-padding: 17px;
+    max-height: calc(100dvh - 16px);
+  }
+
+  .studio-dialog .modal-header p {
+    margin-top: 3px;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .studio-dialog::backdrop {
+    backdrop-filter: none;
+  }
+}

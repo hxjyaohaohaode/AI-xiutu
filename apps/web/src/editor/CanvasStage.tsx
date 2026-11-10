@@ -67,6 +67,7 @@ import {
 import type { CollaborationState } from '../collaboration/useCollaboration';
 import { CollaborationOverlay } from '../collaboration/CollaborationOverlay';
 import './editor-controls.css';
+import { StudioWelcome } from '../workspace/StudioWelcome';
 
 export function PixelCanvas({
   image,
@@ -209,7 +210,7 @@ export function CanvasStage({
   collaboration,
   group,
   onImport,
-  onAI: _onAI,
+  onAI,
   onDraw,
   comparing,
   setComparing,
@@ -1396,24 +1397,7 @@ export function CanvasStage({
         }}
       >
         {!editor.file ? (
-          <div className="import-state minimal-import">
-            <span className="import-outline" aria-hidden>
-              <Plus size={32} weight="light" />
-            </span>
-            <h1>打开图片，开始创作</h1>
-            <p>画面留给你，工具随需要展开。</p>
-            <div className="import-actions">
-              <button className="button button-primary" onClick={() => onImport()}>
-                <Plus size={18} />
-                选择图片
-              </button>
-              <button className="button button-secondary" onClick={onDraw}>
-                <PencilSimple size={18} />
-                画一张草图
-              </button>
-            </div>
-            <small>拖入图片也可以 · 导入不会自动上传</small>
-          </div>
+          <StudioWelcome onImport={() => onImport()} onDraw={onDraw} onAI={onAI} />
         ) : image ? (
           <div
             className="image-frame"

@@ -26,7 +26,7 @@ export function DrawingBoard({
 }: {
   onClose: () => void;
   onUse: (file: File) => Promise<boolean>;
-  onReference: (file: File) => void;
+  onReference: (file: File) => boolean;
   initialColor?: string;
 }) {
   const canvas = useRef<HTMLCanvasElement>(null);
@@ -151,8 +151,7 @@ export function DrawingBoard({
       else if (action === 'local') {
         if (await onUse(file)) onClose();
       } else {
-        onReference(file);
-        onClose();
+        if (onReference(file)) onClose();
       }
     } catch (e) {
       setError(errorMessage(e));

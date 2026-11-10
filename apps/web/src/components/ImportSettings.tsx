@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useRef, useState } from 'react';
 import { CloudArrowUp, FolderOpen, ImageSquare } from '@phosphor-icons/react';
 import { PIXEL_BUDGETS, MAX_LOCAL_FILE_BYTES } from '../editor/useEditor';
 import { MAX_V3_PIXELS } from '@ai-xiutu/editor';
@@ -37,8 +37,14 @@ export function ImportSettings({
 }) {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const locked = useRef(false);
+  const canWrite = !!project && ['owner', 'admin', 'editor'].includes(project.role);
+  const serverByteLimit = config?.media?.maxUploadBytes ?? config?.limits.maxUploadBytes;
+  const exceedsServerLimit = !!file && !!serverByteLimit && file.size > serverByteLimit;
   const small = window.matchMedia('(pointer: coarse) and (max-width: 959px)').matches;
   async function serverImport() {
+    if (locked.current || !canWrite || exceedsServerLimit) return;
+    locked.current = true;
     setBusy(true);
     setError(null);
     try {
@@ -47,10 +53,13 @@ export function ImportSettings({
     } catch (e) {
       setError(errorMessage(e));
     } finally {
+      locked.current = false;
       setBusy(false);
     }
   }
   async function retry() {
+    if (locked.current) return;
+    locked.current = true;
     setBusy(true);
     setError(null);
     try {
@@ -58,6 +67,7 @@ export function ImportSettings({
     } catch (e) {
       setError(errorMessage(e));
     } finally {
+      locked.current = false;
       setBusy(false);
     }
   }
@@ -66,7 +76,8 @@ export function ImportSettings({
       title="图片导入与分辨率"
       subtitle="原图保留。更高的资源预算需要你明确选择。"
       onClose={onClose}
-      canClose={() => !busy}
+      canClose={() => !locked.current}
+      className="studio-dialog import-dialog"
     >
       {file && (
         <div className="import-file-summary">
@@ -138,12 +149,17 @@ export function ImportSettings({
         </p>
         <button
           className="button button-secondary"
-          disabled={busy}
+          disabled={busy || (!!project && !canWrite)}
           onClick={!loggedIn ? onAuth : !project ? onCreateProject : onProfessionalImport}
         >
           <CloudArrowUp size={18} />
           {!loggedIn ? '登录后导入原片' : !project ? '先选择保存项目' : '打开原片与专业格式'}
         </button>
+        {project && !canWrite && (
+          <p className="form-hint" role="status">
+            当前项目为只读。选择有编辑权限的项目后，可上传原件；本机编辑仍可使用。
+          </p>
+        )}
       </section>
       {file && (
         <section className="server-import-section">
@@ -156,12 +172,15 @@ export function ImportSettings({
             当前服务端格式：
             {config?.media?.serverImport?.join(' / ').toUpperCase() ||
               '能力尚未读取'}；上传上限{' '}
-            {Math.floor(
-              (config?.media?.maxUploadBytes ?? config?.limits.maxUploadBytes ?? 0) / 1024 / 1024,
-            )}{' '}
-            MiB。规范化后仍要同时符合本机预算与 v3/v4
+            {serverByteLimit ? `${Math.floor(serverByteLimit / 1024 / 1024)} MiB` : '尚未读取'}。
+            规范化后仍要同时符合本机预算与 v3/v4
             的16.8百万像素上限才能本地编辑；更大素材可保存在项目中，需明确准备较小副本后编辑。
           </p>
+          {exceedsServerLimit && (
+            <p className="form-hint" role="status">
+              这份文件超过当前服务端规范化的上传上限。可使用上方“原片与专业格式”入口查看独立原件导入能力。
+            </p>
+          )}
           {!loggedIn ? (
             <button className="button button-secondary" onClick={onAuth}>
               登录后选择上传
@@ -173,7 +192,9 @@ export function ImportSettings({
           ) : (
             <button
               className="button button-primary"
-              disabled={busy || !config?.media?.serverImport?.length}
+              disabled={
+                busy || !canWrite || exceedsServerLimit || !config?.media?.serverImport?.length
+              }
               onClick={() => void serverImport()}
             >
               {busy ? (

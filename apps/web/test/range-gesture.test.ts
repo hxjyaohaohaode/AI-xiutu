@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
-import { RangeGesture } from '../src/editor/range-gesture.ts';
+import { RangeGesture, resolveRangeNumber } from '../src/editor/range-gesture.ts';
 
 test('a secondary pointer cannot steal, finish or cancel the owned slider preview', () => {
   const gesture = new RangeGesture();
@@ -54,4 +54,34 @@ test('neutral gestures create no changed result and source unmount discards owne
   assert.equal(gesture.beginPointer(3, -1), true);
   gesture.change(Number.NaN);
   assert.deepEqual(gesture.cancel(), { action: 'cancel', initial: -1, changed: false });
+});
+
+test('precision drafts cannot replace a newer value or write after a control loses permission', () => {
+  const draft = { draft: '-0.375', initial: 0, current: 0, min: -8, max: 8 };
+  assert.deepEqual(resolveRangeNumber(draft), { status: 'valid', value: -0.375 });
+  assert.deepEqual(resolveRangeNumber({ ...draft, current: 1.25 }), { status: 'stale' });
+  assert.deepEqual(resolveRangeNumber({ ...draft, disabled: true }), { status: 'disabled' });
+  assert.deepEqual(resolveRangeNumber({ ...draft, current: 1.25, disabled: true }), {
+    status: 'disabled',
+  });
+  assert.deepEqual(resolveRangeNumber({ ...draft, initial: 1.25, current: 1.25 }), {
+    status: 'valid',
+    value: -0.375,
+  });
+});
+
+test('numeric precision preserves allowed substeps but rejects empty, non-finite and out-of-range values', () => {
+  const bounds = { initial: 0, current: 0, min: -8, max: 8 };
+  for (const draft of ['', ' ', 'NaN', 'Infinity', '-Infinity', '-8.01', '8.01', 'abc']) {
+    assert.deepEqual(resolveRangeNumber({ ...bounds, draft }), { status: 'invalid' }, draft);
+  }
+  assert.deepEqual(resolveRangeNumber({ ...bounds, draft: '-8' }), { status: 'valid', value: -8 });
+  assert.deepEqual(resolveRangeNumber({ ...bounds, draft: '8' }), { status: 'valid', value: 8 });
+  assert.deepEqual(resolveRangeNumber({ ...bounds, draft: '0.001' }), {
+    status: 'valid',
+    value: 0.001,
+  });
+  assert.deepEqual(resolveRangeNumber({ ...bounds, draft: '0.001', integer: true }), {
+    status: 'invalid',
+  });
 });

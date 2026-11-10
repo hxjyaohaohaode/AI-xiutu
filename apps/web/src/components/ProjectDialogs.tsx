@@ -30,9 +30,9 @@ export function NameDialog({
   defaultName?: string;
 }) {
   const [value, setValue] = useState(defaultName);
-  const [description, setDescription] = useState('');
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const locked = useRef(false);
   const titles = {
     project: '为新的灵感，建一个项目',
     team: '创建共同创作的空间',
@@ -40,6 +40,8 @@ export function NameDialog({
   };
   async function submit(e: FormEvent) {
     e.preventDefault();
+    if (locked.current || !value.trim()) return;
+    locked.current = true;
     setBusy(true);
     setError(null);
     try {
@@ -48,6 +50,7 @@ export function NameDialog({
     } catch (error) {
       setError(errorMessage(error));
     } finally {
+      locked.current = false;
       setBusy(false);
     }
   }
@@ -62,8 +65,10 @@ export function NameDialog({
             : '一个项目，可以保存多张作品和每次编辑的版本。'
       }
       onClose={onClose}
+      canClose={() => !locked.current}
+      className="studio-dialog name-dialog"
     >
-      <form className="stack-form" onSubmit={submit}>
+      <form className="stack-form" onSubmit={submit} aria-busy={busy}>
         <label>
           {kind === 'join' ? '团队邀请码' : kind === 'team' ? '团队名称' : '项目名称'}
           <input
@@ -77,7 +82,10 @@ export function NameDialog({
                   ? '例如：周末影像小组'
                   : '例如：一场春日散步'
             }
-            maxLength={kind === 'join' ? 100 : 100}
+            minLength={kind === 'join' ? 20 : 1}
+            maxLength={kind === 'join' ? 100 : 120}
+            autoComplete="off"
+            disabled={busy}
             required
           />
         </label>
@@ -233,10 +241,13 @@ export function ExportDialog({
       subtitle="从原始照片重新计算，保留当前的每一项调整。"
       onClose={onClose}
       canClose={() => !locked.current}
+      className="studio-dialog export-dialog"
     >
-      <div className="export-options">
+      <div className="export-options" role="group" aria-label="导出图片格式">
         <button
+          type="button"
           disabled={busy}
+          aria-pressed={format === 'png'}
           className={format === 'png' ? 'selected' : ''}
           onClick={() => setFormat('png')}
         >
@@ -245,7 +256,9 @@ export function ExportDialog({
           {format === 'png' && <Check size={19} />}
         </button>
         <button
+          type="button"
           disabled={busy}
+          aria-pressed={format === 'jpeg'}
           className={format === 'jpeg' ? 'selected' : ''}
           onClick={() => setFormat('jpeg')}
         >
@@ -254,7 +267,9 @@ export function ExportDialog({
           {format === 'jpeg' && <Check size={19} />}
         </button>
         <button
+          type="button"
           disabled={busy}
+          aria-pressed={format === 'webp'}
           className={format === 'webp' ? 'selected' : ''}
           onClick={() => setFormat('webp')}
         >
@@ -268,6 +283,8 @@ export function ExportDialog({
           图片质量 <strong>{Math.round(quality * 100)}%</strong>
           <input
             type="range"
+            aria-label="导出图片质量"
+            aria-valuetext={`${Math.round(quality * 100)}%`}
             min="0.5"
             max="1"
             step="0.01"
@@ -362,6 +379,9 @@ export function TeamDialog({
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [policy, setPolicy] = useState<SharingPolicy | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [message, setMessage] = useState('');
+  const locked = useRef(false);
   const [tab, setTab] = useState<'members' | 'sharing' | 'activity'>('members');
   const [activityRefresh, setActivityRefresh] = useState(0);
   const canManage = space.role === 'owner' || space.role === 'admin';
@@ -370,14 +390,20 @@ export function TeamDialog({
     setMembers(result.members);
   };
   useEffect(() => {
-    load().catch((e) => setError(errorMessage(e)));
+    setLoading(true);
+    load()
+      .catch((e) => setError(errorMessage(e)))
+      .finally(() => setLoading(false));
     api<{ policy: SharingPolicy }>(`/spaces/${space.id}/sharing-policy`)
       .then((v) => setPolicy(v.policy))
       .catch((e) => setError(errorMessage(e)));
   }, [space.id]);
   async function invite() {
+    if (locked.current || !canManage || space.kind !== 'team') return;
+    locked.current = true;
     setBusy(true);
     setError(null);
+    setMessage('');
     try {
       const result = await api<{ invitation: { code: string } }>(
         `/spaces/${space.id}/invitations`,
@@ -387,13 +413,16 @@ export function TeamDialog({
     } catch (e) {
       setError(errorMessage(e));
     } finally {
+      locked.current = false;
       setBusy(false);
     }
   }
   async function changeMember(member: Member, next: string) {
-    if (busy) return;
+    if (locked.current || !canManage || (space.role !== 'owner' && member.role === 'admin')) return;
+    locked.current = true;
     setBusy(true);
     setError(null);
+    setMessage('');
     try {
       await api(
         `/spaces/${space.id}/members/${member.userId}`,
@@ -405,13 +434,16 @@ export function TeamDialog({
     } catch (e) {
       setError(errorMessage(e));
     } finally {
+      locked.current = false;
       setBusy(false);
     }
   }
   async function remove(member: Member) {
-    if (busy) return;
+    if (locked.current || !canManage || (space.role !== 'owner' && member.role === 'admin')) return;
     if (!window.confirm(`确定移除 ${member.displayName}？后续将无法访问团队资料。`)) return;
+    locked.current = true;
     setError(null);
+    setMessage('');
     setBusy(true);
     try {
       await api(`/spaces/${space.id}/members/${member.userId}`, jsonRequest('DELETE'));
@@ -421,11 +453,12 @@ export function TeamDialog({
     } catch (e) {
       setError(errorMessage(e));
     } finally {
+      locked.current = false;
       setBusy(false);
     }
   }
   async function transfer(member: Member) {
-    if (busy || space.role !== 'owner') return;
+    if (locked.current || space.role !== 'owner') return;
     const owner = members.find((m) => m.role === 'owner');
     if (
       !owner ||
@@ -434,8 +467,10 @@ export function TeamDialog({
       )
     )
       return;
+    locked.current = true;
     setBusy(true);
     setError(null);
+    setMessage('');
     try {
       await api(
         `/spaces/${space.id}/transfer-owner`,
@@ -446,40 +481,84 @@ export function TeamDialog({
     } catch (e) {
       setError(errorMessage(e));
     } finally {
+      locked.current = false;
       setBusy(false);
     }
   }
   async function savePolicy() {
-    if (!policy) return;
+    if (locked.current || !canManage || !policy) return;
+    if (
+      ![policy.maxActiveGrants, policy.maxCopyAssets].every(
+        (value) => Number.isInteger(value) && value >= 0 && value <= 100,
+      )
+    ) {
+      setError('授权上限与素材上限须为 0 至 100 的整数。');
+      return;
+    }
+    locked.current = true;
     setBusy(true);
+    setError(null);
+    setMessage('');
     try {
       await api(`/spaces/${space.id}/sharing-policy`, jsonRequest('PUT', policy));
-      setError(null);
+      setMessage('共享规则已保存。');
     } catch (e) {
       setError(errorMessage(e));
     } finally {
+      locked.current = false;
       setBusy(false);
     }
   }
   return (
-    <Modal title={space.name} subtitle="共同创作，也清楚知道谁能访问。" onClose={onClose} wide>
-      <div className="segmented">
-        <button className={tab === 'members' ? 'selected' : ''} onClick={() => setTab('members')}>
+    <Modal
+      title={space.name}
+      subtitle="共同创作，也清楚知道谁能访问。"
+      onClose={onClose}
+      canClose={() => !locked.current}
+      className="studio-dialog team-dialog"
+      wide
+    >
+      <div className="segmented" role="group" aria-label="团队管理视图">
+        <button
+          disabled={busy}
+          aria-pressed={tab === 'members'}
+          className={tab === 'members' ? 'selected' : ''}
+          onClick={() => setTab('members')}
+        >
           <UsersThree size={17} />
           团队成员
         </button>
-        <button className={tab === 'sharing' ? 'selected' : ''} onClick={() => setTab('sharing')}>
+        <button
+          disabled={busy}
+          aria-pressed={tab === 'sharing'}
+          className={tab === 'sharing' ? 'selected' : ''}
+          onClick={() => setTab('sharing')}
+        >
           <ShieldCheck size={17} />
           共享规则
         </button>
-        <button className={tab === 'activity' ? 'selected' : ''} onClick={() => setTab('activity')}>
+        <button
+          disabled={busy}
+          aria-pressed={tab === 'activity'}
+          className={tab === 'activity' ? 'selected' : ''}
+          onClick={() => setTab('activity')}
+        >
           成员动态
         </button>
       </div>
       <InlineError message={error} />
+      {message && (
+        <p className="success-note" role="status">
+          {message}
+        </p>
+      )}
+      {!canManage && (
+        <p className="form-hint">你可以查看团队信息；成员与共享规则由所有者或管理员管理。</p>
+      )}
       {tab === 'members' ? (
         <>
-          <div className="member-list">
+          {loading && <Busy label="正在读取团队成员" />}
+          <div className="member-list" aria-busy={loading}>
             {members.map((member) => (
               <div className="member-row" key={member.userId}>
                 <div className="comment-avatar">{member.displayName.slice(0, 1)}</div>
@@ -487,7 +566,9 @@ export function TeamDialog({
                   <strong>{member.displayName}</strong>
                   <small>{member.phoneMasked}</small>
                 </div>
-                {canManage && member.role !== 'owner' ? (
+                {canManage &&
+                member.role !== 'owner' &&
+                (space.role === 'owner' || member.role !== 'admin') ? (
                   <>
                     <select
                       aria-label={`${member.displayName} 的角色`}
@@ -540,6 +621,7 @@ export function TeamDialog({
                 <select
                   aria-label="被邀请者角色"
                   value={role}
+                  disabled={busy}
                   onChange={(e) => setRole(e.target.value)}
                 >
                   <option value="editor">可以编辑作品</option>
@@ -548,8 +630,14 @@ export function TeamDialog({
                   {space.role === 'owner' && <option value="admin">团队管理员</option>}
                 </select>
                 <button className="button button-secondary" disabled={busy} onClick={invite}>
-                  <Plus size={16} />
-                  生成邀请码
+                  {busy ? (
+                    <Busy label="正在处理" />
+                  ) : (
+                    <>
+                      <Plus size={16} />
+                      生成邀请码
+                    </>
+                  )}
                 </button>
               </div>
               {code && (
@@ -583,7 +671,7 @@ export function TeamDialog({
             <span>允许项目参考共享</span>
             <input
               type="checkbox"
-              disabled={!canManage}
+              disabled={!canManage || busy}
               checked={policy.allowReference}
               onChange={(e) => setPolicy({ ...policy, allowReference: e.target.checked })}
             />
@@ -592,7 +680,7 @@ export function TeamDialog({
             <span>允许接收者复制项目</span>
             <input
               type="checkbox"
-              disabled={!canManage}
+              disabled={!canManage || busy}
               checked={policy.allowCopy}
               onChange={(e) => setPolicy({ ...policy, allowCopy: e.target.checked })}
             />
@@ -607,7 +695,8 @@ export function TeamDialog({
                 type="number"
                 min="0"
                 max="100"
-                disabled={!canManage}
+                step="1"
+                disabled={!canManage || busy}
                 value={policy.maxActiveGrants}
                 onChange={(e) => setPolicy({ ...policy, maxActiveGrants: Number(e.target.value) })}
               />
@@ -618,7 +707,8 @@ export function TeamDialog({
                 type="number"
                 min="0"
                 max="100"
-                disabled={!canManage}
+                step="1"
+                disabled={!canManage || busy}
                 value={policy.maxCopyAssets}
                 onChange={(e) => setPolicy({ ...policy, maxCopyAssets: Number(e.target.value) })}
               />
@@ -630,8 +720,10 @@ export function TeamDialog({
             </button>
           )}
         </div>
-      ) : (
+      ) : !error ? (
         <Busy label="读取共享规则" />
+      ) : (
+        <p className="form-hint">共享规则读取失败，请关闭后重试。当前规则没有被更改。</p>
       )}
     </Modal>
   );
@@ -641,7 +733,7 @@ type Grant = {
   id: string;
   mode: string;
   targetName?: string;
-  targetPhoneMasked?: string;
+  phoneMasked?: string;
   expiresAt: string;
   revokedAt?: string | null;
 };
@@ -660,12 +752,20 @@ export function CopyProjectDialog({
   const [target, setTarget] = useState(
     destinations.find((space) => space.kind === 'personal')?.id ?? destinations[0]?.id ?? '',
   );
-  const [title, setTitle] = useState(`${project.title} · 副本`);
+  const [title, setTitle] = useState(
+    `${project.title
+      .slice(0, 115)
+      .replace(/[\uD800-\uDBFF]$/, '')
+      .trimEnd()} · 副本`,
+  );
   const [key, setKey] = useState(() => secureUuid());
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const locked = useRef(false);
   async function copy(event: FormEvent) {
     event.preventDefault();
+    if (locked.current || !target || !title.trim()) return;
+    locked.current = true;
     setBusy(true);
     setError(null);
     try {
@@ -678,6 +778,7 @@ export function CopyProjectDialog({
     } catch (e) {
       setError(errorMessage(e));
     } finally {
+      locked.current = false;
       setBusy(false);
     }
   }
@@ -686,14 +787,16 @@ export function CopyProjectDialog({
       title="把项目复制到另一个空间"
       subtitle="副本包含允许复制的素材和作品版本，与来源项目独立保存。"
       onClose={onClose}
-      canClose={() => !busy}
+      canClose={() => !locked.current}
+      className="studio-dialog copy-dialog"
     >
-      <form className="stack-form" onSubmit={copy}>
+      <form className="stack-form" onSubmit={copy} aria-busy={busy}>
         <label>
           副本名称
           <input
             value={title}
-            maxLength={160}
+            maxLength={120}
+            disabled={busy}
             onChange={(e) => {
               setTitle(e.target.value);
               setKey(secureUuid());
@@ -705,11 +808,13 @@ export function CopyProjectDialog({
           目标空间
           <select
             value={target}
+            disabled={busy || !destinations.length}
             onChange={(e) => {
               setTarget(e.target.value);
               setKey(secureUuid());
             }}
           >
+            {!destinations.length && <option value="">没有可写入的目标空间</option>}
             {destinations.map((space) => (
               <option key={space.id} value={space.id}>
                 {space.name}
@@ -718,6 +823,11 @@ export function CopyProjectDialog({
             ))}
           </select>
         </label>
+        {!destinations.length && (
+          <p className="form-hint" role="status">
+            当前没有可保存副本的空间。请切换到有编辑权限的个人或团队空间。
+          </p>
+        )}
         <p className="form-hint">
           来源空间必须允许复制；外部共享还需要有效的复制授权。完成后撤销来源共享不会删除这个副本。
         </p>
@@ -744,6 +854,8 @@ export function ShareDialog({ project, onClose }: { project: Project; onClose: (
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [message, setMessage] = useState('');
+  const locked = useRef(false);
+  const canManage = project.role === 'owner' || project.role === 'admin';
   const load = async () => {
     const result = await api<{ grants: Grant[] }>(`/projects/${project.id}/grants`);
     setGrants(result.grants);
@@ -753,8 +865,11 @@ export function ShareDialog({ project, onClose }: { project: Project; onClose: (
   }, [project.id]);
   async function share(event: FormEvent) {
     event.preventDefault();
+    if (locked.current || !canManage || !phone.trim()) return;
+    locked.current = true;
     setBusy(true);
     setError(null);
+    setMessage('');
     try {
       await api(
         `/projects/${project.id}/grants`,
@@ -766,16 +881,25 @@ export function ShareDialog({ project, onClose }: { project: Project; onClose: (
     } catch (e) {
       setError(errorMessage(e));
     } finally {
+      locked.current = false;
       setBusy(false);
     }
   }
   async function revoke(grant: Grant) {
+    if (locked.current || !canManage) return;
+    locked.current = true;
+    setBusy(true);
     setError(null);
+    setMessage('');
     try {
       await api(`/projects/${project.id}/grants/${grant.id}`, jsonRequest('DELETE'));
       await load();
+      setMessage('已撤销该授权，后续访问将重新检查权限。');
     } catch (e) {
       setError(errorMessage(e));
+    } finally {
+      locked.current = false;
+      setBusy(false);
     }
   }
   return (
@@ -783,12 +907,21 @@ export function ShareDialog({ project, onClose }: { project: Project; onClose: (
       title="共享这个项目"
       subtitle={`${project.title} · 仅向明确的接收者授权`}
       onClose={onClose}
+      canClose={() => !locked.current}
+      className="studio-dialog share-dialog"
     >
-      <form className="stack-form" onSubmit={share}>
+      {!canManage && (
+        <p className="form-hint">只有项目所属空间的所有者或管理员可以管理外部授权。</p>
+      )}
+      <form className="stack-form" onSubmit={share} aria-busy={busy}>
         <label>
           接收者手机号
           <input
             type="tel"
+            inputMode="tel"
+            minLength={8}
+            maxLength={24}
+            disabled={busy || !canManage}
             value={phone}
             onChange={(e) => setPhone(e.target.value)}
             placeholder="对方需要已注册账号"
@@ -798,7 +931,11 @@ export function ShareDialog({ project, onClose }: { project: Project; onClose: (
         <div className="field-grid">
           <label>
             共享方式
-            <select value={mode} onChange={(e) => setMode(e.target.value as 'reference' | 'copy')}>
+            <select
+              disabled={busy || !canManage}
+              value={mode}
+              onChange={(e) => setMode(e.target.value as 'reference' | 'copy')}
+            >
               <option value="reference">参考：浏览与评论</option>
               <option value="copy">允许复制独立项目</option>
             </select>
@@ -810,13 +947,16 @@ export function ShareDialog({ project, onClose }: { project: Project; onClose: (
               value={days}
               min="1"
               max="30"
+              step="1"
+              required
+              disabled={busy || !canManage}
               onChange={(e) => setDays(Number(e.target.value))}
             />
           </label>
         </div>
         <p className="form-hint">
           {mode === 'copy'
-            ? '对方可以明确复制到个人空间。已经完成的独立副本不会因撤销共享而消失。'
+            ? '对方可以明确复制到有编辑权限的空间。已经完成的独立副本不会因撤销共享而消失。'
             : '撤销授权后，对方将无法继续访问源项目；已经下载的资料无法远程收回。'}
         </p>
         <InlineError message={error} />
@@ -825,7 +965,11 @@ export function ShareDialog({ project, onClose }: { project: Project; onClose: (
             {message}
           </p>
         )}
-        <button className="button button-primary" disabled={busy}>
+        <button
+          type="submit"
+          className="button button-primary"
+          disabled={busy || !canManage || !phone.trim()}
+        >
           {busy ? (
             <Busy />
           ) : (
@@ -843,18 +987,25 @@ export function ShareDialog({ project, onClose }: { project: Project; onClose: (
           .map((g) => (
             <div className="grant-row" key={g.id}>
               <div>
-                <strong>{g.targetName ?? g.targetPhoneMasked ?? '已授权的接收者'}</strong>
+                <strong>{g.targetName ?? g.phoneMasked ?? '已授权的接收者'}</strong>
                 <small>
+                  {Date.parse(g.expiresAt) <= Date.now() ? '已过期 · ' : ''}
                   {g.mode === 'copy' ? '允许复制' : '参考共享'} · 至 {formatDate(g.expiresAt)}
                 </small>
               </div>
-              <button className="text-button" onClick={() => revoke(g)}>
+              <button
+                type="button"
+                className="text-button"
+                disabled={busy || !canManage}
+                aria-label={`撤销对${g.targetName ?? g.phoneMasked ?? '接收者'}的${g.mode === 'copy' ? '复制' : '参考'}授权`}
+                onClick={() => revoke(g)}
+              >
                 撤销
               </button>
             </div>
           ))}
         {!grants.filter((g) => !g.revokedAt).length && (
-          <p className="quiet-copy">暂时没有有效的外部授权。</p>
+          <p className="quiet-copy">暂时没有未撤销的外部授权。</p>
         )}
       </div>
     </Modal>

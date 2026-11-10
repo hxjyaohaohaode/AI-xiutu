@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { UploadSimple, CheckCircle } from '@phosphor-icons/react';
 import type { Asset, Project } from '../lib/types';
-import { api, jsonRequest, errorMessage } from '../lib/api';
+import { api, ApiError, jsonRequest, errorMessage } from '../lib/api';
 import { secureUuid } from '../lib/uuid';
 import { Modal, InlineError, Busy } from './Ui';
 import { MediaSourceViewer } from '../media/MediaSourceViewer';
@@ -10,7 +10,11 @@ interface Capabilities {
   available: boolean;
   enabled: boolean;
   nativeConfigured: boolean;
+  nativeReady: boolean;
   maxPixels: number;
+  maxRawPixels: number;
+  maxHdrPixels: number;
+  maxPsdPixels: number;
   maxInputBytes: number;
   rasterFormats: string[];
   maxChunkBytes: number;
@@ -41,19 +45,34 @@ export function MediaImportDialog({
     [job, setJob] = useState<ImportJob | null>(null),
     [asset, setAsset] = useState<Asset | null>(null),
     [uploading, setUploading] = useState(false),
+    [cancelling, setCancelling] = useState(false),
+    [opening, setOpening] = useState(false),
+    [restorePending, setRestorePending] = useState(true),
+    [restoreBlocked, setRestoreBlocked] = useState(false),
+    [restoreAttempt, setRestoreAttempt] = useState(0),
+    [message, setMessage] = useState(''),
     [tiles, setTiles] = useState(true);
   const controller = useRef<AbortController | null>(null),
     selected = useRef<HTMLInputElement>(null),
     attempt = useRef({ file: '', id: secureUuid() });
   const alive = useRef(true);
+  const uploadLock = useRef(false),
+    cancelLock = useRef(false),
+    openLock = useRef(false);
+  const canWrite = ['owner', 'admin', 'editor'].includes(project.role);
   const checkpoint = `media-import:${project.id}`;
   useEffect(() => {
     alive.current = true;
+    setRestorePending(true);
+    setRestoreBlocked(false);
     const cancel = new AbortController();
     api<Capabilities>('/media-capabilities', { signal: cancel.signal })
-      .then(setCaps)
+      .then((value) => {
+        if (!cancel.signal.aborted) setCaps(value);
+      })
       .catch((e) => {
-        if (e.name !== 'AbortError') setError(errorMessage(e));
+        if (!cancel.signal.aborted && !(e instanceof Error && e.name === 'AbortError'))
+          setError(errorMessage(e));
       });
     try {
       const saved = sessionStorage.getItem(checkpoint);
@@ -62,19 +81,35 @@ export function MediaImportDialog({
           signal: cancel.signal,
         })
           .then((value) => {
+            if (cancel.signal.aborted) return;
             setJob(value.job);
             setAsset(value.asset);
           })
-          .catch(() => sessionStorage.removeItem(checkpoint));
+          .catch((e) => {
+            if (cancel.signal.aborted || (e instanceof Error && e.name === 'AbortError')) return;
+            if (e instanceof ApiError && e.status === 404 && e.code === 'IMPORT_NOT_FOUND') {
+              try {
+                sessionStorage.removeItem(checkpoint);
+              } catch {}
+            } else {
+              setRestoreBlocked(true);
+              setError(`上次导入的恢复记录已保留。${errorMessage(e)}`);
+            }
+          })
+          .finally(() => {
+            if (!cancel.signal.aborted) setRestorePending(false);
+          });
+      else setRestorePending(false);
     } catch {
       /* resume still available during this view */
+      setRestorePending(false);
     }
     return () => {
       alive.current = false;
       cancel.abort();
       controller.current?.abort();
     };
-  }, [checkpoint]);
+  }, [checkpoint, restoreAttempt]);
   useEffect(() => {
     if (job?.state !== 'processing') return;
     const cancel = new AbortController();
@@ -86,6 +121,10 @@ export function MediaImportDialog({
           { signal: cancel.signal },
         );
         if (cancel.signal.aborted) return;
+        if (cancelLock.current) {
+          timer = setTimeout(() => void poll(), 1200);
+          return;
+        }
         setJob(value.job);
         setAsset(value.asset);
         if (value.job.state === 'failed') setError(value.job.errorMessage);
@@ -104,9 +143,20 @@ export function MediaImportDialog({
     };
   }, [job?.id, job?.state]);
   async function upload() {
-    if (!file || !caps?.available || uploading) return;
+    if (
+      !file ||
+      !caps?.available ||
+      uploadLock.current ||
+      cancelLock.current ||
+      restorePending ||
+      restoreBlocked ||
+      !canWrite
+    )
+      return;
+    uploadLock.current = true;
     setUploading(true);
     setError(null);
+    setMessage('');
     const abort = new AbortController();
     controller.current = abort;
     try {
@@ -135,6 +185,7 @@ export function MediaImportDialog({
         current = (
           await api<{ job: ImportJob }>(`/media-imports/${current.id}`, { signal: abort.signal })
         ).job;
+      if (abort.signal.aborted || !alive.current) return;
       if (current.name !== file.name || current.size !== file.size)
         throw new Error('续传时请选择同一份原文件，或先取消之前的导入。');
       if (current.state !== 'uploading') {
@@ -165,60 +216,107 @@ export function MediaImportDialog({
         );
         offset = result.uploadedBytes;
         current = { ...current, uploadedBytes: offset };
-        if (alive.current) setJob(current);
+        if (alive.current && !abort.signal.aborted) setJob(current);
       }
       const result = await api<{ job: ImportJob }>(`/media-imports/${current.id}/complete`, {
         ...jsonRequest('POST'),
         signal: abort.signal,
       });
-      if (alive.current) setJob(result.job);
+      if (alive.current && !abort.signal.aborted) setJob(result.job);
     } catch (e) {
-      if (alive.current && !(e instanceof DOMException && e.name === 'AbortError'))
-        setError(errorMessage(e));
+      if (alive.current && !abort.signal.aborted) setError(errorMessage(e));
     } finally {
+      uploadLock.current = false;
       if (alive.current) setUploading(false);
       controller.current = null;
     }
   }
   async function cancelJob() {
+    if (cancelLock.current || !job || !canWrite) return;
+    cancelLock.current = true;
+    setCancelling(true);
     controller.current?.abort();
-    if (!job) return;
     setError(null);
+    setMessage('');
     try {
-      await api(`/media-imports/${job.id}/cancel`, jsonRequest('POST'));
+      const result = await api<{ ok: boolean; cleanupPending: boolean }>(
+        `/media-imports/${job.id}/cancel`,
+        jsonRequest('POST'),
+      );
+      if (!alive.current) return;
       setJob(null);
       setAsset(null);
+      setMessage(
+        result.cleanupPending
+          ? '导入已取消，服务器仍在清理临时文件。存储预占将在确认清理后释放。'
+          : '导入已取消，临时存储预占已释放。',
+      );
       try {
         sessionStorage.removeItem(checkpoint);
       } catch {}
     } catch (e) {
-      setError(errorMessage(e));
+      if (alive.current) setError(errorMessage(e));
+    } finally {
+      cancelLock.current = false;
+      if (alive.current) setCancelling(false);
+    }
+  }
+  async function openAsset() {
+    if (!asset || openLock.current) return;
+    openLock.current = true;
+    setOpening(true);
+    setError(null);
+    try {
+      await onImported(asset);
+    } catch (e) {
+      if (alive.current) setError(errorMessage(e));
+    } finally {
+      openLock.current = false;
+      if (alive.current) setOpening(false);
     }
   }
   const progress = job ? Math.round((job.uploadedBytes / job.size) * 100) : 0;
   return (
-    <Modal title="保留原件，轻量编辑" subtitle={project.title} onClose={onClose}>
+    <Modal
+      title="保留原件，轻量编辑"
+      subtitle={project.title}
+      onClose={onClose}
+      canClose={() => !cancelLock.current && !openLock.current}
+      className="studio-dialog media-import-dialog"
+    >
       <div className="media-import" data-motion="media-import">
         <p>
           高像素与专业格式经过独立处理。保留原件、16
           位母版和色彩信息，编辑器使用轻量预览；原文件不会被覆盖。
         </p>
-        <div className="media-import-limits">
-          <span>最高 2 亿像素静态栅格</span>
-          <span>单文件 512 MiB</span>
-          <span>4 MiB 分片续传</span>
-        </div>
-        <p className="control-note">
-          RAW / HDR 上限 5000 万像素，PSD 上限约 1677
-          万像素；格式支持还取决于部署的解码器。此入口不会承诺所有专业格式可无损往返。
-        </p>
+        {caps ? (
+          <>
+            <div className="media-import-limits">
+              <span>静态栅格最多 {(caps.maxPixels / 1e6).toLocaleString('zh-CN')} 百万像素</span>
+              <span>单文件 {Math.floor(caps.maxInputBytes / 1024 ** 2)} MiB</span>
+              <span>{Math.floor(caps.maxChunkBytes / 1024 ** 2)} MiB 分片续传</span>
+            </div>
+            <p className="control-note">
+              RAW / HDR 上限分别为 {(caps.maxRawPixels / 1e6).toLocaleString('zh-CN')} /{' '}
+              {(caps.maxHdrPixels / 1e6).toLocaleString('zh-CN')} 百万像素，PSD 上限约{' '}
+              {(caps.maxPsdPixels / 1e6).toFixed(1)} 百万像素；格式支持以当前服务器解码结果为准。
+            </p>
+          </>
+        ) : (
+          !error && <Busy label="正在读取原件导入能力" />
+        )}
+        {!canWrite && (
+          <p className="form-hint" role="status">
+            当前项目为只读。请选择有编辑权限的项目后导入原件。
+          </p>
+        )}
         {caps && !caps.available && (
           <p role="status" className="control-note">
             当前服务器尚未启用高精度素材处理。普通导入仍可使用，运营需配置 Linux
             隔离处理环境和存储容量。
           </p>
         )}
-        {caps?.available && !caps.nativeConfigured && (
+        {caps?.available && !caps.nativeReady && (
           <p className="control-note">
             当前可处理 {caps.rasterFormats.join('、')} 与支持的 PSD 合成图；RAW / EXR / Radiance
             需要安装原生解码器。
@@ -231,22 +329,45 @@ export function MediaImportDialog({
               type="file"
               className="sr-only"
               aria-label="选择高精度原件"
+              disabled={
+                !caps?.available ||
+                !canWrite ||
+                uploading ||
+                cancelling ||
+                restorePending ||
+                restoreBlocked ||
+                job?.state === 'processing'
+              }
               onChange={(event) => {
                 const next = event.target.files?.[0];
+                event.target.value = '';
                 if (next) {
-                  if (next.size > (caps?.maxInputBytes ?? 536870912)) {
-                    setError('文件超过 512 MiB');
+                  if (!caps) return;
+                  if (next.size < 1 || next.size > caps.maxInputBytes) {
+                    setError(
+                      next.size < 1
+                        ? '请选择有内容的原件文件。'
+                        : `文件超过当前 ${Math.floor(caps.maxInputBytes / 1024 ** 2)} MiB 上限。`,
+                    );
                     return;
                   }
                   setFile(next);
                   setError(null);
+                  setMessage('');
                 }
-                event.target.value = '';
               }}
             />
             <button
               className="media-file-picker"
-              disabled={!caps?.available || uploading || job?.state === 'processing'}
+              disabled={
+                !caps?.available ||
+                !canWrite ||
+                uploading ||
+                cancelling ||
+                restorePending ||
+                restoreBlocked ||
+                job?.state === 'processing'
+              }
               onClick={() => selected.current?.click()}
             >
               <UploadSimple size={24} />
@@ -263,7 +384,9 @@ export function MediaImportDialog({
               <input
                 type="checkbox"
                 checked={tiles}
-                disabled={!!job || uploading}
+                disabled={
+                  !canWrite || !!job || uploading || cancelling || restorePending || restoreBlocked
+                }
                 onChange={(event) => setTiles(event.target.checked)}
               />
               建立分级图块，便于按原尺寸查看细节
@@ -288,7 +411,7 @@ export function MediaImportDialog({
               </span>
               <span>{progress}%</span>
             </div>
-            <progress max={100} value={progress} />
+            <progress max={100} value={progress} aria-label="原件上传进度" />
             <small>
               {job.name} · {(job.uploadedBytes / 1024 ** 2).toFixed(1)} /{' '}
               {(job.size / 1024 ** 2).toFixed(1)} MiB
@@ -296,24 +419,66 @@ export function MediaImportDialog({
           </div>
         )}
         <InlineError message={error} />
+        {restorePending && <Busy label="正在恢复上次导入状态" />}
+        {(restoreBlocked || (!caps && error)) && (
+          <button
+            type="button"
+            className="button button-secondary"
+            disabled={restorePending}
+            onClick={() => {
+              setError(null);
+              setRestoreAttempt((value) => value + 1);
+            }}
+          >
+            {restoreBlocked ? '重新读取导入状态' : '重新读取导入能力'}
+          </button>
+        )}
+        {message && (
+          <p className="success-note" role="status">
+            {message}
+          </p>
+        )}
         {asset ? (
           <>
             <MediaSourceViewer assetId={asset.id} />
-            <button className="button button-primary" onClick={() => void onImported(asset)}>
-              <CheckCircle size={17} />
-              使用工作预览继续编辑
+            <button
+              className="button button-primary"
+              disabled={opening}
+              onClick={() => void openAsset()}
+            >
+              {opening ? (
+                <Busy label="正在打开工作预览" />
+              ) : (
+                <>
+                  <CheckCircle size={17} />
+                  使用工作预览继续编辑
+                </>
+              )}
             </button>
           </>
         ) : (
           <div className="media-import-actions">
             {job && ['uploading', 'processing'].includes(job.state) && (
-              <button className="text-button" onClick={() => void cancelJob()}>
-                取消导入并清理临时文件
+              <button
+                className="text-button"
+                disabled={cancelling || !canWrite}
+                onClick={() => void cancelJob()}
+              >
+                {cancelling ? '正在取消…' : '取消导入'}
               </button>
             )}
             <button
               className="button button-primary"
-              disabled={!file || !caps?.available || uploading || job?.state === 'processing'}
+              disabled={
+                !file ||
+                !caps?.available ||
+                !canWrite ||
+                uploading ||
+                cancelling ||
+                restorePending ||
+                restoreBlocked ||
+                job?.state === 'processing'
+              }
               onClick={() => void upload()}
             >
               {uploading ? (

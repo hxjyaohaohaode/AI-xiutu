@@ -10,15 +10,16 @@ import {
   Images,
   Plus,
   ShareNetwork,
-  UsersThree,
   DownloadSimple,
   UploadSimple,
   CheckCircle,
   NotePencil,
-  Sparkle,
   Copy,
+  ArrowClockwise,
+  Eye,
+  MagnifyingGlass,
 } from '@phosphor-icons/react';
-import { api, errorMessage, formatDate, jsonRequest } from '../lib/api';
+import { api, ApiError, errorMessage, formatDate, jsonRequest } from '../lib/api';
 import type {
   Asset,
   Artwork,
@@ -33,6 +34,26 @@ import { PixelCanvas } from '../editor/CanvasStage';
 import { localPixelBudget, type EditorState } from '../editor/useEditor';
 import type { RGBAImage } from '@ai-xiutu/editor';
 import '../ai/decisions.css';
+
+// These gates reflect the API's current project role. The API remains authoritative.
+export function workspacePermissions(role: string) {
+  return {
+    edit: ['owner', 'admin', 'editor'].includes(role),
+    comment: ['owner', 'admin', 'editor', 'reviewer'].includes(role),
+    share: ['owner', 'admin'].includes(role),
+  };
+}
+
+export function canResolveProjectComment(
+  role: string,
+  currentUserId: string | undefined,
+  authorId: string | undefined,
+) {
+  const permissions = workspacePermissions(role);
+  return (
+    permissions.comment && (permissions.edit || (!!currentUserId && authorId === currentUserId))
+  );
+}
 
 export function WorksView({
   project,
@@ -54,10 +75,10 @@ export function WorksView({
   onShare: () => void;
 }) {
   return (
-    <div className="content-view">
+    <div className="content-view studio-view works-view">
       <div className="view-heading" data-motion="view-header">
         <div>
-          <span className="eyebrow">YOUR WORK, IN ONE PLACE</span>
+          <span className="eyebrow">作品收藏</span>
           <h1>{project?.title ?? '作品，从一张照片开始'}</h1>
           <p>{project?.description || '把每次探索留成版本，随时回到喜欢的那一步。'}</p>
         </div>
@@ -82,6 +103,15 @@ export function WorksView({
           </button>
         </div>
       </div>
+      {project && artworks.length > 0 && (
+        <div className="studio-view-meta">
+          <span>
+            <Images size={16} />
+            {artworks.length} 件作品
+          </span>
+          <span>每一次修改，都有迹可循</span>
+        </div>
+      )}
       {!project ? (
         <EmptyState
           icon={<Images size={34} />}
@@ -184,12 +214,14 @@ export function CompareView({
   onOpenRevision,
   onRestoreRevision,
   isDirty = true,
+  canRestore = false,
 }: {
   editor: EditorState;
   artwork: Artwork | null;
   onOpenRevision: (revision: Revision) => void | Promise<void>;
   onRestoreRevision?: (revision: Revision) => Promise<void>;
   isDirty?: boolean;
+  canRestore?: boolean;
 }) {
   const [revisions, setRevisions] = useState<Revision[]>([]);
   const [error, setError] = useState<string | null>(null);
@@ -203,7 +235,7 @@ export function CompareView({
   const scope = useRef(artwork?.id);
   scope.current = artwork?.id;
   const [mode, setMode] = useState<'side' | 'original' | 'edited'>(() =>
-    window.innerWidth < 760 ? 'edited' : 'side',
+    typeof window !== 'undefined' && window.innerWidth < 760 ? 'edited' : 'side',
   );
   useEffect(() => {
     setRevisions([]);
@@ -245,7 +277,7 @@ export function CompareView({
     }
   }
   async function restoreRevision() {
-    if (!restore || !onRestoreRevision || busyRevision || isDirty) return;
+    if (!restore || !canRestore || !onRestoreRevision || busyRevision || isDirty) return;
     if (artwork?.id !== restore.artworkId || artwork.headVersion !== restore.headVersion) {
       setError('当前作品版本已改变，请重新查看历史后恢复。');
       return;
@@ -264,30 +296,42 @@ export function CompareView({
   }
   if (!editor.file)
     return (
-      <EmptyState
-        icon={<Images size={34} />}
-        title="先打开一张图片"
-        description="原件与当前编辑会在这里完整显示，不需要滚动查看整张画面。"
-      />
+      <div className="content-view studio-view">
+        <EmptyState
+          icon={<Images size={34} />}
+          title="先打开一张图片"
+          description="原件与当前编辑会在这里完整显示，不需要滚动查看整张画面。"
+        />
+      </div>
     );
   return (
-    <div className="content-view compare-view">
+    <div className="content-view studio-view compare-view">
       <div className="view-heading" data-motion="view-header">
         <div>
-          <h1>对比</h1>
-          <p>构图不同的版本会各自适应画布，原件始终保留。</p>
+          <span className="eyebrow">回看每一步</span>
+          <h1>让变化，看得见。</h1>
+          <p>{artwork?.title ?? editor.file.name} · 原图与当前画面各自完整显示。</p>
         </div>
-        <div className="compare-mode-choice">
-          <button className={mode === 'side' ? 'selected' : ''} onClick={() => setMode('side')}>
+        <div className="compare-mode-choice" role="group" aria-label="对比显示方式">
+          <button
+            aria-pressed={mode === 'side'}
+            className={mode === 'side' ? 'selected' : ''}
+            onClick={() => setMode('side')}
+          >
             并排
           </button>
           <button
             className={mode === 'original' ? 'selected' : ''}
+            aria-pressed={mode === 'original'}
             onClick={() => setMode('original')}
           >
             原图
           </button>
-          <button className={mode === 'edited' ? 'selected' : ''} onClick={() => setMode('edited')}>
+          <button
+            aria-pressed={mode === 'edited'}
+            className={mode === 'edited' ? 'selected' : ''}
+            onClick={() => setMode('edited')}
+          >
             当前
           </button>
         </div>
@@ -297,7 +341,7 @@ export function CompareView({
           <section>
             <header>
               <span>原始图片</span>
-              <small>完整原件</small>
+              <small>原图预览 · 完整构图</small>
             </header>
             <ComparisonFrame image={editor.originalPreview} />
           </section>
@@ -306,7 +350,9 @@ export function CompareView({
           <section>
             <header>
               <span>当前编辑</span>
-              <small>{editor.rendering ? '正在更新' : '本地预览'}</small>
+              <small aria-live="polite">
+                {editor.rendering ? '正在更新' : isDirty ? '本地草稿' : '当前预览'}
+              </small>
             </header>
             <ComparisonFrame image={editor.rendered} />
           </section>
@@ -316,7 +362,8 @@ export function CompareView({
       {artwork && (
         <details className="saved-versions">
           <summary>
-            查看云端历史版本 <span>每个版本绑定当时的原图与配方</span>
+            云端版本 {revisions.length > 0 ? `· ${revisions.length}` : ''}
+            <span>当前 V{artwork.headVersion} · 恢复会保留已有版本</span>
           </summary>
           {loadingRevisions && <Busy label="正在读取版本" />}
           {!loadingRevisions && !revisions.length && (
@@ -336,7 +383,11 @@ export function CompareView({
                     <small>{formatDate(revision.createdAt)}</small>
                   </div>
                   <span>
-                    {busyRevision === revision.id ? <Busy label="" /> : `V${revision.version}`}
+                    {busyRevision === revision.id ? (
+                      <Busy label="" />
+                    ) : (
+                      `V${revision.version}${revision.version === artwork.headVersion ? ' · 当前' : ''}`
+                    )}
                   </span>
                 </button>
                 <span className="revision-source-note">
@@ -345,7 +396,7 @@ export function CompareView({
                     : '与当前作品使用同一原图'}{' '}
                   · 打开为本地草稿
                 </span>
-                {onRestoreRevision && revision.version !== artwork.headVersion && (
+                {canRestore && onRestoreRevision && revision.version !== artwork.headVersion && (
                   <button
                     className="revision-restore text-button"
                     disabled={!!busyRevision || isDirty}
@@ -364,12 +415,12 @@ export function CompareView({
               </div>
             ))}
           </div>
-          {isDirty && onRestoreRevision && (
+          {isDirty && canRestore && onRestoreRevision && (
             <p className="control-note">先保存或撤销本地修改后，才能将历史恢复为云端新版本。</p>
           )}
         </details>
       )}
-      {restore && (
+      {restore && canRestore && (
         <Modal
           title={`恢复 V${restore.revision.version}`}
           subtitle="恢复会追加新版本，所有已有版本继续保留。"
@@ -419,55 +470,93 @@ export function CollaborateView({
   revision,
   refreshToken,
   onShare,
+  currentUserId,
 }: {
   project: Project;
   artwork: Artwork | null;
   revision: Revision | null;
   refreshToken: number;
   onShare: () => void;
+  currentUserId?: string;
 }) {
+  const permissions = workspacePermissions(project.role);
   const [comments, setComments] = useState<Comment[]>([]);
   const [tasks, setTasks] = useState<Task[]>([]);
   const [body, setBody] = useState('');
   const [taskTitle, setTaskTitle] = useState('');
   const [error, setError] = useState<string | null>(null);
-  const [busy, setBusy] = useState(false);
+  const [pending, setPending] = useState<string | null>(null);
+  const busy = pending !== null;
+  const mutationLock = useRef(false);
   const [loading, setLoading] = useState(true);
+  const [hasLoaded, setHasLoaded] = useState(false);
+  const [reloadToken, setReloadToken] = useState(0);
   const [scope, setScope] = useState<'project' | 'version'>('project');
-  const load = async () => {
+  const [commentFilter, setCommentFilter] = useState<'all' | 'open' | 'resolved'>('all');
+  const [showCompleted, setShowCompleted] = useState(true);
+  const requestGeneration = useRef(0);
+  const activeProject = useRef<string | null>(project.id);
+  activeProject.current = project.id;
+
+  async function load(signal?: AbortSignal) {
+    const generation = ++requestGeneration.current;
     const [c, t] = await Promise.all([
-      api<{ comments: Comment[] }>(`/projects/${project.id}/comments`),
-      api<{ tasks: Task[] }>(`/projects/${project.id}/tasks`),
+      api<{ comments: Comment[] }>(`/projects/${project.id}/comments`, { signal }),
+      api<{ tasks: Task[] }>(`/projects/${project.id}/tasks`, { signal }),
     ]);
+    if (
+      signal?.aborted ||
+      generation !== requestGeneration.current ||
+      activeProject.current !== project.id
+    )
+      return;
     setComments(c.comments);
     setTasks(t.tasks);
-  };
+    setHasLoaded(true);
+  }
   useEffect(() => {
-    let live = true;
+    const controller = new AbortController();
     setLoading(true);
     setError(null);
-    Promise.all([
-      api<{ comments: Comment[] }>(`/projects/${project.id}/comments`),
-      api<{ tasks: Task[] }>(`/projects/${project.id}/tasks`),
-    ])
-      .then(([c, t]) => {
-        if (live) {
-          setComments(c.comments);
-          setTasks(t.tasks);
-        }
-      })
-      .catch((e) => live && setError(errorMessage(e)))
-      .finally(() => live && setLoading(false));
+    void load(controller.signal)
+      .catch((e) => !controller.signal.aborted && setError(errorMessage(e)))
+      .finally(() => !controller.signal.aborted && setLoading(false));
+    return () => controller.abort();
+  }, [project.id, refreshToken, reloadToken]);
+  useEffect(() => {
+    activeProject.current = project.id;
     return () => {
-      live = false;
+      activeProject.current = null;
+      requestGeneration.current++;
     };
-  }, [project.id, refreshToken]);
-  async function addComment(event: FormEvent) {
-    event.preventDefault();
-    if (!body.trim()) return;
-    setBusy(true);
+  }, [project.id]);
+  useEffect(() => {
+    if (!artwork || !revision || revision.artworkId !== artwork.id) setScope('project');
+  }, [artwork?.id, revision?.id]);
+
+  async function mutate(key: string, action: () => Promise<void>) {
+    if (mutationLock.current) return;
+    mutationLock.current = true;
+    setPending(key);
     setError(null);
     try {
+      await action();
+      if (activeProject.current === project.id) await load();
+    } catch (e) {
+      if (activeProject.current === project.id) setError(errorMessage(e));
+    } finally {
+      mutationLock.current = false;
+      if (activeProject.current === project.id) setPending(null);
+    }
+  }
+  async function addComment(event: FormEvent) {
+    event.preventDefault();
+    if (!permissions.comment || !body.trim() || body.trim().length > 5000) return;
+    if (scope === 'version' && (!artwork || !revision || revision.artworkId !== artwork.id)) {
+      setError('当前作品版本已变化，请重新选择讨论范围。');
+      return;
+    }
+    await mutate('comment', async () => {
       await api(
         `/projects/${project.id}/comments`,
         jsonRequest('POST', {
@@ -477,32 +566,20 @@ export function CollaborateView({
             : {}),
         }),
       );
-      setBody('');
-      await load();
-    } catch (e) {
-      setError(errorMessage(e));
-    } finally {
-      setBusy(false);
-    }
+      if (activeProject.current === project.id) setBody('');
+    });
   }
   async function addTask(event: FormEvent) {
     event.preventDefault();
-    if (!taskTitle.trim()) return;
-    setBusy(true);
-    setError(null);
-    try {
+    if (!permissions.edit || !taskTitle.trim() || taskTitle.trim().length > 120) return;
+    await mutate('task', async () => {
       await api(`/projects/${project.id}/tasks`, jsonRequest('POST', { title: taskTitle.trim() }));
-      setTaskTitle('');
-      await load();
-    } catch (e) {
-      setError(errorMessage(e));
-    } finally {
-      setBusy(false);
-    }
+      if (activeProject.current === project.id) setTaskTitle('');
+    });
   }
   async function changeTask(task: Task) {
-    setError(null);
-    try {
+    if (!permissions.edit) return;
+    await mutate(`task:${task.id}`, async () => {
       await api(
         `/tasks/${task.id}`,
         jsonRequest('PATCH', {
@@ -510,179 +587,361 @@ export function CollaborateView({
           status: task.status === 'done' ? 'todo' : task.status === 'todo' ? 'doing' : 'done',
         }),
       );
-      await load();
-    } catch (e) {
-      setError(errorMessage(e));
-    }
+    });
   }
   async function resolve(comment: Comment) {
-    setError(null);
-    try {
+    if (!canResolveProjectComment(project.role, currentUserId, comment.authorId)) return;
+    await mutate(`comment:${comment.id}`, async () => {
       await api(`/comments/${comment.id}`, jsonRequest('PATCH', { resolved: !comment.resolved }));
-      await load();
-    } catch (e) {
-      setError(errorMessage(e));
-    }
+    });
   }
+  const openComments = comments.filter((comment) => !comment.resolved).length;
+  const completedTasks = tasks.filter((task) => task.status === 'done').length;
+  const visibleComments = comments.filter(
+    (comment) =>
+      commentFilter === 'all' ||
+      (commentFilter === 'resolved' ? comment.resolved : !comment.resolved),
+  );
+  const visibleTasks = tasks.filter((task) => showCompleted || task.status !== 'done');
   return (
-    <div className="content-view">
+    <div className="content-view studio-view collaboration-view">
       <div className="view-heading" data-motion="view-header">
         <div>
-          <span className="eyebrow">BETTER, TOGETHER</span>
-          <h1>想法放在一起。</h1>
-          <p>{project.title} · 意见、下一步和作品版本，在同一个地方。</p>
+          <span className="eyebrow">项目协作</span>
+          <h1>让想法，在这里汇合。</h1>
+          <p>{project.title} · 把意见留下，把下一步说清楚。</p>
         </div>
-        <button className="button button-secondary" onClick={onShare}>
-          <ShareNetwork size={17} />
-          共享项目
-        </button>
+        <div className="view-actions">
+          <button
+            className="button button-secondary"
+            onClick={() => setReloadToken((value) => value + 1)}
+            disabled={loading || busy}
+          >
+            <ArrowClockwise size={17} />
+            刷新
+          </button>
+          {permissions.share && (
+            <button className="button button-secondary" onClick={onShare}>
+              <ShareNetwork size={17} />
+              共享项目
+            </button>
+          )}
+        </div>
       </div>
+      {!permissions.edit && (
+        <p className="studio-access-note">
+          <Eye size={16} />
+          {permissions.comment
+            ? '你可以查看项目、发表意见，并处理自己留下的讨论。'
+            : '当前为浏览模式，可以查看项目讨论和任务进度。'}
+        </p>
+      )}
       <InlineError message={error} />
       {loading ? (
-        <Busy label="正在读取项目讨论" />
+        <div className="studio-loading" role="status">
+          <Busy label="正在读取讨论与任务" />
+        </div>
+      ) : !hasLoaded ? (
+        <EmptyState
+          icon={<ChatCircleDots size={32} />}
+          title="暂时无法读取项目协作"
+          description="请重新读取；如果项目权限已变化，可以从空间导航切换到可访问的项目。"
+          action={
+            <button
+              className="button button-secondary"
+              onClick={() => setReloadToken((value) => value + 1)}
+            >
+              <ArrowClockwise size={16} />
+              重新读取
+            </button>
+          }
+        />
       ) : (
-        <div className="collaboration-grid">
-          <section className="surface discussion" data-motion="discussion">
-            <div className="section-heading">
-              <h2>
-                <ChatCircleDots size={20} />
-                项目讨论
-              </h2>
-              <span>{comments.length} 条</span>
+        <>
+          <div className="collaboration-summary" aria-label="项目协作概览">
+            <div>
+              <ChatCircleDots size={19} />
+              <strong>{openComments}</strong>
+              <span>条待解决意见</span>
             </div>
-            <div className="comments-list">
-              {comments.length ? (
-                comments.map((comment) => (
-                  <article
-                    key={comment.id}
-                    data-motion="comment"
-                    className={`comment ${comment.resolved ? 'resolved' : ''}`}
+            <div>
+              <Clock size={19} />
+              <strong>{tasks.filter((task) => task.status === 'doing').length}</strong>
+              <span>件正在进行</span>
+            </div>
+            <div>
+              <CheckCircle size={19} />
+              <strong>{completedTasks}</strong>
+              <span>件已完成</span>
+            </div>
+          </div>
+          <div className="collaboration-grid">
+            <section className="surface discussion" data-motion="discussion">
+              <div className="section-heading">
+                <h2>
+                  <ChatCircleDots size={20} />
+                  项目讨论
+                </h2>
+                <span>{comments.length} 条</span>
+              </div>
+              <div className="studio-segments" role="group" aria-label="筛选讨论状态">
+                {(
+                  [
+                    ['all', '全部'],
+                    ['open', '待解决'],
+                    ['resolved', '已解决'],
+                  ] as const
+                ).map(([value, label]) => (
+                  <button
+                    key={value}
+                    aria-pressed={commentFilter === value}
+                    onClick={() => setCommentFilter(value)}
                   >
-                    <div className="comment-avatar">
-                      {(comment.authorName ?? '创作者').slice(0, 1)}
-                    </div>
-                    <div className="comment-body">
-                      <header>
-                        <strong>{comment.authorName ?? '项目成员'}</strong>
-                        <time>{formatDate(comment.createdAt)}</time>
-                      </header>
-                      <p>{comment.body}</p>
-                      <footer>
-                        <span>{comment.revisionId ? '绑定作品版本' : '项目讨论'}</span>
-                        <button onClick={() => resolve(comment)}>
-                          {comment.resolved ? (
-                            <>
-                              <Check size={13} />
-                              已解决
-                            </>
+                    {label}
+                  </button>
+                ))}
+              </div>
+              <div className="comments-list" aria-busy={busy}>
+                {visibleComments.length ? (
+                  visibleComments.map((comment) => (
+                    <article
+                      key={comment.id}
+                      data-motion="comment"
+                      className={`comment ${comment.resolved ? 'resolved' : ''}`}
+                    >
+                      <div className="comment-avatar" aria-hidden="true">
+                        {(comment.authorName ?? '创作者').slice(0, 1)}
+                      </div>
+                      <div className="comment-body">
+                        <header>
+                          <strong>
+                            {comment.authorName ?? '项目成员'}
+                            {comment.authorId === currentUserId && currentUserId ? (
+                              <small className="comment-you">你</small>
+                            ) : null}
+                          </strong>
+                          <time dateTime={comment.createdAt}>{formatDate(comment.createdAt)}</time>
+                        </header>
+                        <p>{comment.body}</p>
+                        <footer>
+                          <span>
+                            {comment.revisionId === revision?.id && revision
+                              ? `当前作品 · V${revision.version}`
+                              : comment.revisionId
+                                ? '绑定作品版本'
+                                : '项目讨论'}
+                          </span>
+                          {canResolveProjectComment(
+                            project.role,
+                            currentUserId,
+                            comment.authorId,
+                          ) ? (
+                            <button
+                              disabled={busy}
+                              onClick={() => void resolve(comment)}
+                              aria-label={
+                                comment.resolved ? '重新打开这条讨论' : '将这条讨论标记为已解决'
+                              }
+                            >
+                              {pending === `comment:${comment.id}` ? (
+                                <Busy label="保存中" />
+                              ) : comment.resolved ? (
+                                <>
+                                  <Check size={14} />
+                                  已解决 · 重新打开
+                                </>
+                              ) : (
+                                '标记解决'
+                              )}
+                            </button>
                           ) : (
-                            '标记解决'
+                            <span
+                              className={`comment-resolution ${comment.resolved ? 'is-resolved' : ''}`}
+                            >
+                              {comment.resolved ? (
+                                <>
+                                  <Check size={14} />
+                                  已解决
+                                </>
+                              ) : (
+                                '待解决'
+                              )}
+                            </span>
                           )}
-                        </button>
-                      </footer>
-                    </div>
-                  </article>
-                ))
-              ) : (
-                <div className="quiet-empty">
-                  <ChatCircleDots size={29} />
-                  <p>
-                    还没有讨论
-                    <br />
-                    <small>说说这张作品，哪里让你心动？</small>
-                  </p>
+                        </footer>
+                      </div>
+                    </article>
+                  ))
+                ) : (
+                  <div className="quiet-empty">
+                    <ChatCircleDots size={29} />
+                    <p>
+                      {comments.length
+                        ? commentFilter === 'open'
+                          ? '没有待解决的意见'
+                          : '还没有已解决的意见'
+                        : '第一条想法，从这里开始'}
+                      <br />
+                      <small>
+                        {comments.length
+                          ? '切换筛选，可以查看其他讨论。'
+                          : permissions.comment
+                            ? '提一个建议，或记下你希望保留的细节。'
+                            : '团队发表的意见会出现在这里。'}
+                      </small>
+                    </p>
+                  </div>
+                )}
+              </div>
+              {permissions.comment && (
+                <form className="comment-composer" onSubmit={(event) => void addComment(event)}>
+                  <label className="sr-only" htmlFor="comment-body">
+                    向项目成员发送意见
+                  </label>
+                  <textarea
+                    id="comment-body"
+                    value={body}
+                    onChange={(event) => setBody(event.target.value)}
+                    placeholder="给这件作品留个想法…"
+                    maxLength={5000}
+                    disabled={busy}
+                    required
+                  />
+                  <footer>
+                    <select
+                      aria-label="讨论范围"
+                      value={scope}
+                      disabled={busy}
+                      onChange={(event) => setScope(event.target.value as 'project' | 'version')}
+                    >
+                      <option value="project">整个项目</option>
+                      {artwork && revision && revision.artworkId === artwork.id && (
+                        <option value="version">当前作品 · V{revision.version}</option>
+                      )}
+                    </select>
+                    <span className="composer-count">{body.length}/5000</span>
+                    <button
+                      type="submit"
+                      className="button button-primary"
+                      disabled={busy || !body.trim()}
+                    >
+                      {pending === 'comment' ? (
+                        <Busy label="发送中" />
+                      ) : (
+                        <>
+                          发送意见
+                          <ArrowRight size={16} />
+                        </>
+                      )}
+                    </button>
+                  </footer>
+                </form>
+              )}
+            </section>
+            <section className="surface task-panel">
+              <div className="section-heading">
+                <h2>
+                  <CheckCircle size={20} />
+                  接下来做什么
+                </h2>
+                <span>
+                  {completedTasks}/{tasks.length}
+                </span>
+              </div>
+              {tasks.length > 0 && (
+                <div
+                  className="task-progress"
+                  role="progressbar"
+                  aria-label="项目任务完成进度"
+                  aria-valuemin={0}
+                  aria-valuemax={tasks.length}
+                  aria-valuenow={completedTasks}
+                >
+                  <span style={{ width: `${(completedTasks / tasks.length) * 100}%` }} />
                 </div>
               )}
-            </div>
-            <form className="comment-composer" onSubmit={addComment}>
-              <label className="sr-only" htmlFor="comment-body">
-                向项目成员发送意见
-              </label>
-              <textarea
-                id="comment-body"
-                value={body}
-                onChange={(e) => setBody(e.target.value)}
-                placeholder="给队员留个想法…"
-                maxLength={8000}
-                required
-              />
-              <footer>
-                <select
-                  aria-label="讨论范围"
-                  value={scope}
-                  onChange={(e) => setScope(e.target.value as 'project' | 'version')}
-                >
-                  <option value="project">整个项目</option>
-                  {artwork && revision && (
-                    <option value="version">当前作品 · V{revision.version}</option>
-                  )}
-                </select>
+              {completedTasks > 0 && (
                 <button
-                  type="submit"
-                  className="button button-primary"
-                  disabled={busy || !body.trim()}
+                  className="text-button task-filter"
+                  aria-pressed={!showCompleted}
+                  onClick={() => setShowCompleted((value) => !value)}
                 >
-                  发送意见
-                  <ArrowRight size={16} />
+                  {showCompleted ? '收起已完成' : `显示 ${completedTasks} 件已完成`}
                 </button>
-              </footer>
-            </form>
-          </section>
-          <section className="surface task-panel">
-            <div className="section-heading">
-              <h2>
-                <CheckCircle size={20} />
-                接下来做什么
-              </h2>
-              <span>
-                {tasks.filter((t) => t.status === 'done').length}/{tasks.length}
-              </span>
-            </div>
-            <div className="task-list">
-              {tasks.map((task) => (
-                <div className={`task-item ${task.status}`} data-motion="task-item" key={task.id}>
-                  <button
-                    aria-label={`${task.title}：${task.status === 'todo' ? '开始处理' : task.status === 'doing' ? '标记完成' : '重新打开'}`}
-                    onClick={() => changeTask(task)}
-                  >
-                    {task.status === 'done' ? (
-                      <CheckCircle size={22} weight="fill" />
-                    ) : task.status === 'doing' ? (
-                      <Clock size={22} />
+              )}
+              <div className="task-list">
+                {visibleTasks.map((task) => (
+                  <div className={`task-item ${task.status}`} data-motion="task-item" key={task.id}>
+                    {permissions.edit ? (
+                      <button
+                        disabled={busy}
+                        aria-label={`${task.title}：${task.status === 'todo' ? '开始处理' : task.status === 'doing' ? '标记完成' : '重新打开'}`}
+                        onClick={() => void changeTask(task)}
+                      >
+                        {pending === `task:${task.id}` ? (
+                          <Busy label="" />
+                        ) : task.status === 'done' ? (
+                          <CheckCircle size={23} weight="fill" />
+                        ) : task.status === 'doing' ? (
+                          <Clock size={23} />
+                        ) : (
+                          <Circle size={23} />
+                        )}
+                      </button>
                     ) : (
-                      <Circle size={22} />
+                      <span className="task-status-icon" aria-hidden="true">
+                        {task.status === 'done' ? (
+                          <CheckCircle size={23} weight="fill" />
+                        ) : task.status === 'doing' ? (
+                          <Clock size={23} />
+                        ) : (
+                          <Circle size={23} />
+                        )}
+                      </span>
                     )}
-                  </button>
-                  <div>
-                    <strong>{task.title}</strong>
-                    <small>
-                      {task.status === 'todo'
-                        ? '待开始'
-                        : task.status === 'doing'
-                          ? '进行中'
-                          : '已完成'}
-                    </small>
+                    <div>
+                      <strong>{task.title}</strong>
+                      <small>
+                        {task.status === 'todo'
+                          ? '待开始'
+                          : task.status === 'doing'
+                            ? '进行中'
+                            : '已完成'}
+                      </small>
+                      {task.description && <p className="task-description">{task.description}</p>}
+                    </div>
                   </div>
-                </div>
-              ))}
-              {!tasks.length && <p className="quiet-copy">把讨论变成一个可以完成的小任务。</p>}
-            </div>
-            <form className="task-add" onSubmit={addTask}>
-              <input
-                aria-label="新任务标题"
-                placeholder="添加一件要做的事"
-                value={taskTitle}
-                onChange={(e) => setTaskTitle(e.target.value)}
-                maxLength={200}
-                required
-              />
-              <IconButton label="添加任务" type="submit" disabled={busy || !taskTitle.trim()}>
-                <Plus size={19} />
-              </IconButton>
-            </form>
-            <p className="fine-print">点按任务状态：待开始 → 进行中 → 已完成。</p>
-          </section>
-        </div>
+                ))}
+                {!visibleTasks.length && (
+                  <p className="quiet-copy">
+                    {tasks.length
+                      ? '当前任务都已完成。'
+                      : permissions.edit
+                        ? '把讨论变成一件可以完成的小事。'
+                        : '团队添加的任务会出现在这里。'}
+                  </p>
+                )}
+              </div>
+              {permissions.edit && (
+                <form className="task-add" onSubmit={(event) => void addTask(event)}>
+                  <input
+                    aria-label="新任务标题"
+                    placeholder="添加一件要做的事"
+                    value={taskTitle}
+                    disabled={busy}
+                    onChange={(event) => setTaskTitle(event.target.value)}
+                    maxLength={120}
+                    required
+                  />
+                  <IconButton label="添加任务" type="submit" disabled={busy || !taskTitle.trim()}>
+                    {pending === 'task' ? <Busy label="" /> : <Plus size={19} />}
+                  </IconButton>
+                </form>
+              )}
+              {permissions.edit && <p className="fine-print">点击圆形状态，推进任务或重新打开。</p>}
+            </section>
+          </div>
+        </>
       )}
     </div>
   );
@@ -697,13 +956,24 @@ export function DocumentsView({
   refreshToken: number;
   onDirtyChange: (dirty: boolean) => void;
 }) {
+  const canEdit = workspacePermissions(project.role).edit;
   const [docs, setDocs] = useState<ProjectDocument[]>([]);
   const [selected, setSelected] = useState<ProjectDocument | null>(null);
+  const [creating, setCreating] = useState(false);
+  const [query, setQuery] = useState('');
   const [title, setTitle] = useState('');
   const [body, setBody] = useState('');
   const [error, setError] = useState<string | null>(null);
-  const [busy, setBusy] = useState(false);
+  const [pending, setPending] = useState<'save' | 'read' | null>(null);
+  const busy = pending !== null;
+  const [loading, setLoading] = useState(true);
   const [dirty, setDirty] = useState(false);
+  const [conflict, setConflict] = useState(false);
+  const [reloadToken, setReloadToken] = useState(0);
+  const saveLock = useRef(false);
+  const requestGeneration = useRef(0);
+  const activeProject = useRef<string | null>(project.id);
+  activeProject.current = project.id;
   const currentDraft = useRef({ title, body });
   currentDraft.current = { title, body };
   useEffect(() => {
@@ -711,34 +981,59 @@ export function DocumentsView({
     return () => onDirtyChange(false);
   }, [dirty, onDirtyChange]);
   useEffect(() => {
-    let live = true;
-    api<{ documents: ProjectDocument[] }>(`/projects/${project.id}/documents`)
-      .then((v) => {
-        if (live) setDocs(v.documents);
+    const controller = new AbortController();
+    const generation = ++requestGeneration.current;
+    setLoading(true);
+    api<{ documents: ProjectDocument[] }>(`/projects/${project.id}/documents`, {
+      signal: controller.signal,
+    })
+      .then((value) => {
+        if (!controller.signal.aborted && generation === requestGeneration.current)
+          setDocs(value.documents);
       })
-      .catch((e) => live && setError(errorMessage(e)));
-    return () => {
-      live = false;
-    };
-  }, [project.id, refreshToken]);
+      .catch((e) => !controller.signal.aborted && setError(errorMessage(e)))
+      .finally(() => !controller.signal.aborted && setLoading(false));
+    return () => controller.abort();
+  }, [project.id, refreshToken, reloadToken]);
   useEffect(() => {
+    activeProject.current = project.id;
     setSelected(null);
+    setCreating(false);
+    setDocs([]);
+    setQuery('');
     setTitle('');
     setBody('');
     setDirty(false);
+    setConflict(false);
+    setError(null);
+    return () => {
+      activeProject.current = null;
+      requestGeneration.current++;
+    };
   }, [project.id]);
   function choose(doc: ProjectDocument | null) {
-    if (busy) return;
+    if (saveLock.current || (!doc && !canEdit)) return;
     if (dirty && !window.confirm('这份文档还有未保存的修改。放弃修改并切换吗？')) return;
     setSelected(doc);
+    setCreating(!doc);
     setTitle(doc?.title ?? '');
     setBody(doc?.body ?? '');
     setDirty(false);
     setError(null);
+    setConflict(false);
   }
   async function save(event: FormEvent) {
     event.preventDefault();
-    setBusy(true);
+    if (
+      saveLock.current ||
+      !canEdit ||
+      !title.trim() ||
+      title.trim().length > 120 ||
+      (!dirty && selected)
+    )
+      return;
+    saveLock.current = true;
+    setPending('save');
     setError(null);
     const snapshot = { title: title.trim(), body };
     try {
@@ -749,100 +1044,265 @@ export function DocumentsView({
           ...(selected ? { expectedVersion: selected.version } : {}),
         }),
       );
+      if (activeProject.current !== project.id) return;
       setSelected(result.document);
+      setCreating(false);
+      setConflict(false);
       setDirty(
         currentDraft.current.title.trim() !== snapshot.title ||
           currentDraft.current.body !== snapshot.body,
       );
+      setDocs((previous) => [
+        result.document,
+        ...previous.filter((doc) => doc.id !== result.document.id),
+      ]);
+      const generation = ++requestGeneration.current;
       const list = await api<{ documents: ProjectDocument[] }>(`/projects/${project.id}/documents`);
-      setDocs(list.documents);
+      if (activeProject.current === project.id && generation === requestGeneration.current)
+        setDocs(list.documents);
     } catch (e) {
-      setError(errorMessage(e));
+      if (activeProject.current === project.id) {
+        setError(errorMessage(e));
+        if (e instanceof ApiError && e.code === 'VERSION_CONFLICT') setConflict(true);
+      }
     } finally {
-      setBusy(false);
+      saveLock.current = false;
+      if (activeProject.current === project.id) setPending(null);
     }
   }
+  async function readLatest() {
+    if (!selected || saveLock.current) return;
+    if (dirty && !window.confirm('读取最新版本会替换当前未保存的文字。确定继续吗？')) return;
+    saveLock.current = true;
+    setPending('read');
+    setError(null);
+    try {
+      const generation = ++requestGeneration.current;
+      const list = await api<{ documents: ProjectDocument[] }>(`/projects/${project.id}/documents`);
+      if (activeProject.current !== project.id || generation !== requestGeneration.current) return;
+      const latest = list.documents.find((doc) => doc.id === selected.id);
+      if (!latest) throw new Error('这份文档已不可访问，请重新选择文档。');
+      setDocs(list.documents);
+      setSelected(latest);
+      setTitle(latest.title);
+      setBody(latest.body);
+      setDirty(false);
+      setConflict(false);
+    } catch (e) {
+      if (activeProject.current === project.id) setError(errorMessage(e));
+    } finally {
+      saveLock.current = false;
+      if (activeProject.current === project.id) setPending(null);
+    }
+  }
+  const visibleDocs = docs.filter((doc) =>
+    doc.title.toLocaleLowerCase().includes(query.trim().toLocaleLowerCase()),
+  );
+  const newerVersion =
+    selected && docs.some((doc) => doc.id === selected.id && doc.version > selected.version);
   return (
-    <div className="content-view">
+    <div className="content-view studio-view documents-view">
       <div className="view-heading" data-motion="view-header">
         <div>
-          <span className="eyebrow">A SHARED UNDERSTANDING</span>
-          <h1>把想法，写清楚。</h1>
-          <p>创作要求、参考说明和最终文案，都与项目一起保存。</p>
+          <span className="eyebrow">项目文档</span>
+          <h1>把共同的方向，写下来。</h1>
+          <p>{project.title} · 创作要求、参考说明与最终文案，都在这里。</p>
         </div>
+        <span className="studio-count">
+          <FileText size={17} />
+          {loading ? '读取中' : `${docs.length} 份文档`}
+        </span>
       </div>
+      {!canEdit && (
+        <p className="studio-access-note">
+          <Eye size={16} />
+          {dirty
+            ? '当前编辑权限已变化，未保存的文字仍保留，可选择并复制。'
+            : '当前为浏览模式，可以查看和复制项目文档。'}
+        </p>
+      )}
+      {!selected && !creating && <InlineError message={error} />}
       <div className="documents-layout">
-        <aside className="surface document-list" data-motion="document-list">
-          <button
-            className="button button-secondary button-full"
-            disabled={busy}
-            onClick={() => choose(null)}
-          >
-            <Plus size={17} />
-            新建文档
-          </button>
-          {docs.map((doc) => (
+        <aside
+          className="surface document-list"
+          data-motion="document-list"
+          aria-label="项目文档列表"
+        >
+          {canEdit && (
             <button
-              key={doc.id}
-              className={`document-row ${selected?.id === doc.id ? 'selected' : ''}`}
+              className="button button-secondary button-full"
               disabled={busy}
-              onClick={() => choose(doc)}
+              onClick={() => choose(null)}
             >
-              <FileText size={18} />
-              <span>
-                {doc.title}
-                <small>
-                  V{doc.version} · {formatDate(doc.updatedAt)}
-                </small>
-              </span>
+              <Plus size={17} />
+              新建文档
             </button>
-          ))}
-          {!docs.length && <p className="quiet-copy">你的第一份创作说明，会出现在这里。</p>}
+          )}
+          {docs.length > 0 && (
+            <label className="document-search">
+              <MagnifyingGlass size={16} />
+              <input
+                aria-label="搜索项目文档"
+                placeholder="查找文档…"
+                value={query}
+                onChange={(event) => setQuery(event.target.value)}
+              />
+            </label>
+          )}
+          {loading && (
+            <div className="document-loading" role="status">
+              <Busy label="正在读取" />
+            </div>
+          )}
+          <div className="document-rows">
+            {visibleDocs.map((doc) => (
+              <button
+                key={doc.id}
+                className={`document-row ${selected?.id === doc.id ? 'selected' : ''}`}
+                aria-pressed={selected?.id === doc.id}
+                disabled={busy}
+                onClick={() => choose(doc)}
+              >
+                <FileText size={18} />
+                <span title={doc.title}>
+                  {doc.title}
+                  <small>
+                    V{doc.version} · {formatDate(doc.updatedAt)}
+                  </small>
+                </span>
+              </button>
+            ))}
+          </div>
+          {!loading && !visibleDocs.length && (
+            <p className="quiet-copy">
+              {query ? '没有找到这份文档。' : '保存后的创作说明，会出现在这里。'}
+            </p>
+          )}
+          <button
+            className="text-button document-refresh"
+            disabled={loading || busy}
+            onClick={() => {
+              setError(null);
+              setReloadToken((value) => value + 1);
+            }}
+          >
+            <ArrowClockwise size={15} />
+            刷新列表
+          </button>
         </aside>
-        <form className="surface document-editor" onSubmit={save} data-motion="document-editor">
-          <input
-            className="document-title"
-            aria-label="文档标题"
-            placeholder="给这份想法起个标题"
-            value={title}
-            onChange={(e) => {
-              setTitle(e.target.value);
-              setDirty(true);
-            }}
-            maxLength={200}
-            required
-          />
-          <textarea
-            aria-label="文档内容"
-            placeholder="想传达什么？希望保留哪些细节？在这里写下团队共同的方向…"
-            value={body}
-            onChange={(e) => {
-              setBody(e.target.value);
-              setDirty(true);
-            }}
-            maxLength={100000}
-          />
-          <InlineError message={error} />
-          <footer>
-            <span>
-              {dirty ? '有未保存的修改' : selected ? `已保存 · 版本 ${selected.version}` : '新文档'}
-            </span>
-            <button
-              type="submit"
-              className="button button-primary"
-              disabled={busy || !title.trim()}
-            >
-              {busy ? (
-                <Busy />
-              ) : (
-                <>
-                  <Check size={17} />
-                  保存文档
-                </>
+        {selected || (creating && canEdit) || dirty ? (
+          <form
+            className="surface document-editor"
+            onSubmit={(event) => void save(event)}
+            data-motion="document-editor"
+          >
+            <div className="document-editor-label">
+              <FileText size={16} />
+              <span>{selected ? `版本 ${selected.version}` : '新建文档'}</span>
+              <span className={dirty ? 'document-save-state is-dirty' : 'document-save-state'}>
+                {dirty ? '有未保存修改' : selected ? '已保存' : '尚未保存'}
+              </span>
+            </div>
+            <input
+              className="document-title"
+              aria-label="文档标题"
+              placeholder="给这份想法起个标题"
+              value={title}
+              readOnly={!canEdit || pending === 'read'}
+              onChange={(event) => {
+                setTitle(event.target.value);
+                setDirty(
+                  event.target.value !== (selected?.title ?? '') || body !== (selected?.body ?? ''),
+                );
+              }}
+              maxLength={120}
+              required
+            />
+            <textarea
+              aria-label="文档内容"
+              placeholder="想传达什么？希望保留哪些细节？写下团队共同的方向…"
+              value={body}
+              readOnly={!canEdit || pending === 'read'}
+              onChange={(event) => {
+                setBody(event.target.value);
+                setDirty(
+                  event.target.value !== (selected?.body ?? '') ||
+                    title !== (selected?.title ?? ''),
+                );
+              }}
+              maxLength={100000}
+            />
+            {(newerVersion || conflict) && (
+              <div className="document-conflict">
+                <span>云端已有更新。当前文字已保留，读取前可先复制需要的内容。</span>
+                <button
+                  type="button"
+                  className="text-button"
+                  disabled={busy}
+                  onClick={() => void readLatest()}
+                >
+                  <ArrowClockwise size={15} />
+                  读取最新版本
+                </button>
+              </div>
+            )}
+            <InlineError message={error} />
+            <footer>
+              <span aria-live="polite">
+                {busy
+                  ? pending === 'read'
+                    ? '正在读取最新版本…'
+                    : '正在保存…'
+                  : !canEdit
+                    ? '只读文档'
+                    : dirty
+                      ? '有未保存的修改'
+                      : selected
+                        ? `已保存 · 版本 ${selected.version}`
+                        : '新文档'}
+                <small>{body.length.toLocaleString()} 字</small>
+              </span>
+              {canEdit && (
+                <button
+                  type="submit"
+                  className="button button-primary"
+                  disabled={busy || !title.trim() || (!dirty && !!selected)}
+                >
+                  {busy ? (
+                    <Busy label={pending === 'read' ? '读取中' : '保存中'} />
+                  ) : (
+                    <>
+                      <Check size={17} />
+                      保存文档
+                    </>
+                  )}
+                </button>
               )}
-            </button>
-          </footer>
-        </form>
+            </footer>
+          </form>
+        ) : (
+          <div className="surface document-placeholder">
+            <EmptyState
+              icon={<NotePencil size={34} />}
+              title={docs.length ? '选择一份文档，继续创作。' : '让想法有一个共同的起点'}
+              description={
+                docs.length
+                  ? '从列表打开创作说明、参考笔记或作品文案。'
+                  : canEdit
+                    ? '从想要的感觉、一定保留的细节，或下一步要做的事开始。'
+                    : '团队保存文档后，你可以在这里阅读。'
+              }
+              action={
+                canEdit ? (
+                  <button className="button button-secondary" onClick={() => choose(null)}>
+                    <Plus size={17} />
+                    写一份创作说明
+                  </button>
+                ) : undefined
+              }
+            />
+          </div>
+        )}
       </div>
     </div>
   );
@@ -862,14 +1322,47 @@ export function DeliveryView({
   onRecipeImport: () => void;
 }) {
   return (
-    <div className="content-view">
+    <div className="content-view studio-view delivery-view">
       <div className="view-heading" data-motion="view-header">
         <div>
-          <span className="eyebrow">READY FOR THE NEXT CHAPTER</span>
+          <span className="eyebrow">作品交付</span>
           <h1>带着作品，出发。</h1>
           <p>导出当前画面，或保留可编辑的调整配方。</p>
         </div>
       </div>
+      {editor.file ? (
+        <section className="delivery-current" aria-label="当前交付作品">
+          <div className="delivery-current-preview" role="img" aria-label="当前编辑的预览图">
+            <ComparisonFrame image={editor.rendered} />
+          </div>
+          <div>
+            <span className="small-label">本次交付</span>
+            <h2>{artwork?.title ?? editor.file.name}</h2>
+            <p>
+              {editor.dimensions
+                ? `${editor.dimensions.width} × ${editor.dimensions.height} · 原始尺寸`
+                : '本地图片'}
+            </p>
+            <span className="studio-status" aria-live="polite">
+              {sourcePending || editor.loading ? (
+                <Busy label="正在读取图片" />
+              ) : editor.rendering ? (
+                <Busy label="正在更新预览" />
+              ) : (
+                <>
+                  <CheckCircle size={16} />
+                  可导出当前编辑
+                </>
+              )}
+            </span>
+          </div>
+        </section>
+      ) : (
+        <p className="studio-access-note">
+          <Images size={18} />
+          先在精修中打开一张照片，再选择交付方式。
+        </p>
+      )}
       <div className="delivery-grid">
         <section className="surface delivery-card" data-motion="delivery">
           <div className="delivery-icon">
@@ -877,9 +1370,18 @@ export function DeliveryView({
           </div>
           <span className="small-label">完成后的画面</span>
           <h2>导出图片</h2>
-          <p>
-            PNG 保留透明背景，JPEG 适合分享，WebP 取决于浏览器编码能力。按原图尺寸重新计算当前调整。
-          </p>
+          <p>以完整编辑尺寸重新计算当前调整，选择适合分享或继续创作的格式。</p>
+          <div className="delivery-formats" aria-label="可选图片格式">
+            <span>
+              PNG <small>保留透明</small>
+            </span>
+            <span>
+              JPEG <small>轻巧分享</small>
+            </span>
+            <span>
+              WebP <small>按浏览器支持</small>
+            </span>
+          </div>
           <button
             className="button button-primary"
             onClick={onExport}

@@ -6,6 +6,10 @@ import './features.css';
 import './workspace/workspace.css';
 import './refinement.css';
 import './motion/motion.css';
+import './workspace/studio.css';
+import './editor/precision-studio.css';
+import './workspace/workspace-views-studio.css';
+import './workspace/dialogs-studio.css';
 
 ReactDOM.createRoot(document.getElementById('root')!).render(
   <React.StrictMode>

@@ -27,6 +27,8 @@ import {
   CornersOut,
   GearSix,
   ChartBar,
+  MagnifyingGlass,
+  ClockCounterClockwise,
 } from '@phosphor-icons/react';
 import { api, ApiError, errorMessage, filenameBase, jsonRequest } from './lib/api';
 import type {
@@ -46,6 +48,8 @@ import { createSourceLoadGuard, assertRevisionSourceBinding } from './editor/sou
 import { assetCopyAttempt, sourcePersistenceRoute } from './lib/asset-copy';
 import { FloatingPanel } from './workspace/FloatingPanel';
 import { ToolDock } from './workspace/ToolDock';
+import { CommandMenu, type StudioCommand } from './workspace/CommandMenu';
+import { boundedTitle } from './lib/titles';
 import { workspaceCanvasInsets, useWorkspaceLayout } from './workspace/useWorkspaceLayout';
 import { usePresence } from './motion/usePresence';
 import { ImportSettings } from './components/ImportSettings';
@@ -124,6 +128,7 @@ type Dialog =
   | 'copy'
   | 'importSettings'
   | 'mediaImport'
+  | 'commands'
   | null;
 export function App() {
   const rawEditor = useEditor();
@@ -378,7 +383,12 @@ export function App() {
   }, [session.user?.id, spaceId]);
   useEffect(() => {
     const handle = (e: KeyboardEvent) => {
-      if (document.querySelector('dialog[open]')) return;
+      if (document.querySelector('dialog[open]') || e.isComposing || e.keyCode === 229) return;
+      if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 'k') {
+        e.preventDefault();
+        setDialog('commands');
+        return;
+      }
       const target = e.target as HTMLElement;
       if (target.isContentEditable || ['INPUT', 'TEXTAREA', 'SELECT'].includes(target.tagName))
         return;
@@ -386,7 +396,7 @@ export function App() {
         e.preventDefault();
         e.shiftKey ? editor.redo() : editor.undo();
       }
-      if (e.key.toLowerCase() === 'f' && !e.metaKey && !e.ctrlKey && !e.altKey) {
+      if (e.key.toLowerCase() === 'f' && !e.metaKey && !e.ctrlKey && !e.altKey && !e.repeat) {
         e.preventDefault();
         workspaceLayout.setFocused((value) => !value);
       }
@@ -536,6 +546,8 @@ export function App() {
       fileInput.current?.click();
       return false;
     }
+    if (documentDirty && !window.confirm('文档还有未保存的修改。打开照片会离开文档，确定继续吗？'))
+      return false;
     if (
       isEditorDirty() &&
       !window.confirm('当前还有未保存的编辑。打开新图片将替换本地编辑，确认继续吗？')
@@ -543,6 +555,8 @@ export function App() {
       return false;
     // Close the previous source's panel before decoding. A tool explicitly opened
     // while the new image becomes visible must not be closed by the late load completion.
+    // Leave a confirmed document now, so no new document edits can be lost while decoding.
+    setView('editor');
     setInspectorOpen(false);
     const load = beginSourceLoad();
     try {
@@ -553,7 +567,6 @@ export function App() {
       setAsset(null);
       setRevision(null);
       setSavedRecipe(null);
-      setView('editor');
       setComparing(false);
       setSampling(false);
       setPendingImport(null);
@@ -892,7 +905,7 @@ export function App() {
               `/projects/${target.id}/artworks`,
               jsonRequest('POST', {
                 assetId: currentAsset.id,
-                title: `${filenameBase(savedFile.name)}${asNew ? ' · 独立分支' : ''}`,
+                title: boundedTitle(filenameBase(savedFile.name), asNew ? ' · 独立分支' : ''),
                 recipe: snapshot,
               }),
             );
@@ -940,7 +953,7 @@ export function App() {
       `/projects/${destination.id}/artworks`,
       jsonRequest('POST', {
         assetId: uploaded.asset.id,
-        title: filenameBase(incoming.name),
+        title: boundedTitle(filenameBase(incoming.name)),
         recipe: createRecipeV4(),
       }),
     );
@@ -1067,10 +1080,11 @@ export function App() {
       documentDirty &&
       !window.confirm('文档还有未保存的修改，确定离开文档吗？')
     )
-      return;
+      return false;
     setView(next);
     setInspectorOpen(false);
     setAiOpen(false);
+    return true;
   }
   async function openRevision(next: Revision) {
     const current = artworkRef.current;
@@ -1205,17 +1219,23 @@ export function App() {
     workspaceLayout.view,
     workspaceLayout.focused,
   );
-  const chooseTool = (tool: ToolGroup) => {
-    const closing = group === tool && inspectorOpen && !aiOpen;
+  const openInspector = (tool: ToolGroup) => {
+    workspaceLayout.setFocused(false);
     setGroup(tool);
-    setInspectorOpen(!closing);
+    setInspectorOpen(true);
     setAiOpen(false);
     setSampling(false);
-    if (!closing && workspaceLayout.panel('inspector').presentation === 'collapsed')
+    if (workspaceLayout.panel('inspector').presentation === 'collapsed')
       workspaceLayout.updatePanel('inspector', {
         ...workspaceLayout.panel('inspector'),
         presentation: 'normal',
       });
+  };
+  const chooseTool = (tool: ToolGroup) => {
+    if (group === tool && inspectorOpen && !aiOpen) {
+      setInspectorOpen(false);
+      setSampling(false);
+    } else openInspector(tool);
   };
   const resetWorkspace = () => {
     workspaceLayout.reset();
@@ -1224,6 +1244,112 @@ export function App() {
     setSidebarOpen(false);
     notify('已恢复当前屏幕的默认布局。');
   };
+  const openAI = () => {
+    workspaceLayout.setFocused(false);
+    setAiOpen(true);
+    setInspectorOpen(false);
+    setSampling(false);
+    if (workspaceLayout.panel('ai').presentation === 'collapsed')
+      workspaceLayout.updatePanel('ai', { ...workspaceLayout.panel('ai'), presentation: 'normal' });
+  };
+  const commands: StudioCommand[] = [
+    ...toolGroups.map((tool) => ({
+      id: 'tool-' + tool.id,
+      label: tool.label,
+      description: tool.description,
+      keywords: tool.id,
+      section: '精修工具',
+      icon: tool.icon,
+      run: () => {
+        if (!changeView('editor')) return;
+        openInspector(tool.id);
+      },
+    })),
+    {
+      id: 'ai',
+      label: 'AI 共创',
+      description: '图片、文字、语音与创作助手',
+      keywords: 'ai agent chat',
+      section: '创作空间',
+      icon: <Sparkle size={20} />,
+      run: () => {
+        if (changeView('editor')) openAI();
+      },
+    },
+    ...views
+      .filter((item) => item.id !== 'editor')
+      .map((item) => ({
+        id: 'view-' + item.id,
+        label: item.id === 'compare' ? '对比与云端版本' : item.label,
+        description: '打开' + item.label + '工作视图',
+        keywords: item.id,
+        section: '创作空间',
+        icon: item.icon,
+        run: () => {
+          changeView(item.id);
+        },
+      })),
+    {
+      id: 'import',
+      label: '打开照片',
+      description: '从设备选择图片，在本地开始编辑',
+      keywords: 'open import',
+      section: '常用操作',
+      icon: <Plus size={20} />,
+      run: () => {
+        void importFile();
+      },
+    },
+    {
+      id: 'draw',
+      label: '画一张草图',
+      description: '自由画板，也可作为 AI 生图参考',
+      keywords: 'draw sketch',
+      section: '常用操作',
+      icon: <PencilSimple size={20} />,
+      run: () => setDialog('drawing'),
+    },
+    {
+      id: 'export',
+      label: '导出图片',
+      description: editor.file ? '选择格式与质量，下载编辑结果' : '先打开一张图片',
+      keywords: 'download export png jpeg webp',
+      section: '常用操作',
+      icon: <DownloadSimple size={20} />,
+      disabled: !editor.file || opening || editor.loading,
+      run: () => setDialog('export'),
+    },
+    {
+      id: 'save',
+      label: '保存版本',
+      description: editor.file ? '保存到当前创作空间' : '先打开一张图片',
+      keywords: 'save cloud',
+      section: '常用操作',
+      icon: <CloudArrowUp size={20} />,
+      disabled: !editor.file || saving || opening || editor.loading,
+      run: () => {
+        void save();
+      },
+    },
+    {
+      id: 'focus',
+      label: '专注画面',
+      description: '暂时收起工具，按 F 返回',
+      keywords: 'focus',
+      section: '常用操作',
+      icon: <CornersOut size={20} />,
+      run: () => workspaceLayout.setFocused(true),
+    },
+    {
+      id: 'help',
+      label: '使用说明',
+      description: '编辑、协作与格式的实际能力',
+      keywords: 'help',
+      section: '常用操作',
+      icon: <Info size={20} />,
+      run: () => setDialog('help'),
+    },
+  ];
   return (
     <>
       {ops && session.user?.isOperator ? (
@@ -1238,7 +1364,8 @@ export function App() {
         </Suspense>
       ) : (
         <div
-          className={`app-shell canvas-workspace view-${view} theme-${workspaceLayout.layout.theme} ${workspaceLayout.focused ? 'is-focused' : ''}`}
+          className={`app-shell canvas-workspace studio-workspace view-${view} theme-${workspaceLayout.layout.theme} ${workspaceLayout.focused ? 'is-focused' : ''}`}
+          data-has-image={!!editor.file}
         >
           <Sidebar
             brand={brand}
@@ -1268,14 +1395,30 @@ export function App() {
                 </IconButton>
                 <Brand name={brand} logoUrl={brandLogoUrl(config?.brand)} compact />
                 <div className="workspace-project-title">
-                  <strong>{project?.title ?? '本地创作'}</strong>
-                  <span>
+                  <strong
+                    title={artwork?.title ?? project?.title ?? editor.file?.name ?? '本地创作'}
+                  >
+                    {artwork?.title ?? project?.title ?? '本地创作'}
+                  </strong>
+                  <span
+                    className="workspace-save-state"
+                    data-state={
+                      saving
+                        ? 'saving'
+                        : artwork && !dirty
+                          ? 'saved'
+                          : editor.file
+                            ? 'draft'
+                            : 'local'
+                    }
+                    role="status"
+                  >
                     {saving
                       ? '正在保存'
                       : artwork && !dirty
-                        ? '版本已保存'
+                        ? `版本 ${artwork.headVersion} 已保存`
                         : editor.file
-                          ? '尚有本地编辑'
+                          ? '本地草稿'
                           : '图片不会自动上传'}
                   </span>
                 </div>
@@ -1308,6 +1451,13 @@ export function App() {
                 ))}
               </select>
               <div className="workspace-top-actions">
+                <IconButton
+                  label="搜索工具与操作（Ctrl / ⌘ K）"
+                  className="studio-search-trigger"
+                  onClick={() => setDialog('commands')}
+                >
+                  <MagnifyingGlass size={19} />
+                </IconButton>
                 <IconButton
                   label={workspaceLayout.layout.theme === 'light' ? '切换深灰背景' : '切换浅灰背景'}
                   className="theme-toggle"
@@ -1375,6 +1525,14 @@ export function App() {
                   <DownloadSimple size={18} />
                   <span>导出</span>
                 </button>
+                <button
+                  type="button"
+                  className={`studio-account ${session.user ? 'is-signed-in' : ''}`}
+                  aria-label={session.user ? `账户：${session.user.displayName}` : '登录创作空间'}
+                  onClick={() => (session.user ? setSidebarOpen(true) : setDialog('auth'))}
+                >
+                  {session.user ? session.user.displayName.slice(0, 1) : '登录'}
+                </button>
               </div>
             </header>
             {cloudError && (
@@ -1425,7 +1583,7 @@ export function App() {
                       collaboration={collaboration}
                       group={group}
                       onImport={(file) => void importFile(file)}
-                      onAI={() => setAiOpen(true)}
+                      onAI={openAI}
                       onDraw={() => setDialog('drawing')}
                       comparing={comparing}
                       setComparing={setComparing}
@@ -1447,13 +1605,8 @@ export function App() {
                       compact={workspaceLayout.view.bucket === 'phone'}
                       onTool={chooseTool}
                       onAI={() => {
-                        setAiOpen(!aiOpen);
-                        setInspectorOpen(false);
-                        if (!aiOpen && workspaceLayout.panel('ai').presentation === 'collapsed')
-                          workspaceLayout.updatePanel('ai', {
-                            ...workspaceLayout.panel('ai'),
-                            presentation: 'normal',
-                          });
+                        if (aiOpen) setAiOpen(false);
+                        else openAI();
                       }}
                     />
                   )}
@@ -1533,12 +1686,14 @@ export function App() {
                       onOpenRevision={openRevision}
                       isDirty={dirty}
                       onRestoreRevision={restoreRevision}
+                      canRestore={!!project && ['owner', 'admin', 'editor'].includes(project.role)}
                     />
                   )}{' '}
                   {view === 'collaborate' &&
                     (project ? (
                       <CollaborateView
                         key={project.id}
+                        currentUserId={session.user?.id}
                         project={project}
                         artwork={artwork}
                         revision={revision}
@@ -1598,6 +1753,38 @@ export function App() {
                     setAiOpen(false);
                     setSampling(false);
                   }}
+                  navigation={
+                    <nav className="studio-context-tabs" aria-label="当前作品快捷操作">
+                      <button
+                        type="button"
+                        aria-pressed={shownPanelId === 'inspector' && group !== 'history'}
+                        onClick={() => openInspector(group === 'history' ? 'light' : group)}
+                      >
+                        <SlidersHorizontal size={15} />
+                        <span>调整</span>
+                      </button>
+                      <button type="button" aria-pressed={shownPanelId === 'ai'} onClick={openAI}>
+                        <Sparkle size={15} />
+                        <span>AI 共创</span>
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => changeView('collaborate')}
+                        title="打开项目讨论与任务"
+                      >
+                        <UsersThree size={15} />
+                        <span>协作</span>
+                      </button>
+                      <button
+                        type="button"
+                        aria-pressed={shownPanelId === 'inspector' && group === 'history'}
+                        onClick={() => openInspector('history')}
+                      >
+                        <ClockCounterClockwise size={15} />
+                        <span>记录</span>
+                      </button>
+                    </nav>
+                  }
                 >
                   {shownPanelId === 'inspector' ? (
                     <ToolInspector
@@ -1712,6 +1899,7 @@ export function App() {
         }}
       />
       <DialogMotionContext.Provider value={{ open: !!dialog, phase: dialogPresence.phase }}>
+        {renderedDialog === 'commands' && <CommandMenu commands={commands} onClose={closeDialog} />}
         {renderedDialog === 'drawing' && (
           <Suspense
             fallback={
@@ -1725,12 +1913,13 @@ export function App() {
               onClose={closeDialog}
               onUse={(file) => importFile(file)}
               onReference={(file) => {
+                if (!changeView('editor')) return false;
                 setReferenceFile(file);
                 setReferenceSource('sketch');
                 setInitialAIOperation('generate-image');
-                setAiOpen(true);
-                setInspectorOpen(false);
+                openAI();
                 notify('草图已作为本地参考。确认提交生图时才会上传。');
+                return true;
               }}
             />
           </Suspense>
@@ -1773,7 +1962,7 @@ export function App() {
         {renderedDialog === 'project' && (
           <NameDialog
             kind="project"
-            defaultName={editor.file ? filenameBase(editor.file.name) : ''}
+            defaultName={editor.file ? boundedTitle(filenameBase(editor.file.name)) : ''}
             onSubmit={createProject}
             onClose={() => setDialog(pendingImport ? 'importSettings' : null)}
           />

@@ -106,7 +106,7 @@ test('the shelf retains named native controls, exact signed ranges, selected sta
       },
     }),
   );
-  assert.match(html, /aria-label="影调精调参数"/);
+  assert.match(html, /role="group" aria-label="影调精调选项"/);
   assert.equal((html.match(/aria-pressed="true"/g) ?? []).length, 1);
   assert.match(html, /aria-pressed="false" disabled=""/);
   const slider = html.match(/<input[^>]+type="range"[^>]*>/)?.[0];
@@ -118,6 +118,20 @@ test('the shelf retains named native controls, exact signed ranges, selected sta
   assert.match(slider, /value="-0.35"/);
   assert.match(html, /aria-label="重置曝光"/);
   assert.match(html, /点击精确输入/);
+  const picker = html.match(/<select\b[^>]*>[\s\S]*?<\/select>/)?.[0];
+  assert.ok(picker, 'compact panels retain a native way to choose another parameter');
+  assert.match(picker, /aria-label="选择影调精调"/);
+  assert.match(picker.match(/<option[^>]+selected=""[^>]*>/)?.[0] ?? '', /value="exposure"/);
+  assert.match(picker.match(/<option[^>]+value="restricted"[^>]*>/)?.[0] ?? '', /disabled=""/);
+  const description = html.match(/<details\b[^>]*>[\s\S]*?<\/details>/)?.[0];
+  assert.ok(description, 'parameter guidance remains available through a named disclosure');
+  assert.match(description, /<summary>曝光说明<\/summary>/);
+  assert.doesNotMatch(description, /^<details[^>]*\bopen(?:=|[ >])/);
+  assert.equal(
+    html.split('正负曝光均可连续微调。').length - 1,
+    1,
+    'the guidance is not repeated in visible text or control descriptions',
+  );
   assert.equal(mutations, 0);
   assert.doesNotMatch(
     renderTestMarkup(
@@ -128,4 +142,47 @@ test('the shelf retains named native controls, exact signed ranges, selected sta
     ),
     /type="range"/,
   );
+});
+
+test('an unavailable first parameter does not hide the usable control and adjusted status is named', () => {
+  const html = renderTestMarkup(
+    createElement(ParameterShelf, {
+      label: '参数可用性',
+      controls: [
+        {
+          id: 'unavailable',
+          label: '不可用',
+          disabled: true,
+          value: 0,
+          min: 0,
+          max: 100,
+          step: 1,
+          onChange() {},
+        },
+        {
+          id: 'available',
+          label: '曝光',
+          value: -0.35,
+          min: -8,
+          max: 8,
+          step: 0.01,
+          unit: 'EV',
+          onChange() {},
+        },
+      ],
+    }),
+  );
+  const slider = html.match(/<input[^>]+type="range"[^>]*>/)?.[0];
+  assert.ok(slider);
+  assert.match(slider, /aria-label="曝光"/);
+  assert.doesNotMatch(slider, /disabled=/);
+  assert.match(
+    html.match(/<option[^>]+selected=""[^>]*>/)?.[0] ?? '',
+    /value="available"/,
+    'compact picker and slider use the same first available parameter',
+  );
+  assert.match(html, /aria-label="曝光，-0.35EV，已调整"/);
+  assert.match(html, /class="precision-scale" aria-hidden="true"/);
+  assert.match(html, /--range-fill-start:47.8125%/);
+  assert.match(html, /--range-fill-end:50%/);
 });

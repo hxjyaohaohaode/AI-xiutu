@@ -11,6 +11,10 @@ import {
   PencilSimple,
   Plus,
   ShareNetwork,
+  X,
+  Eye,
+  SquaresFour,
+  GridFour,
 } from '@phosphor-icons/react';
 import { api, ApiError, errorMessage, formatDate, jsonRequest } from '../lib/api';
 import type { Asset, Artwork, Project, Space } from '../lib/types';
@@ -27,6 +31,25 @@ export const SOURCE_LABELS = {
 type Source = keyof typeof SOURCE_LABELS;
 type Period = 'all' | 'today' | 'week' | 'month';
 type GroupBy = 'project' | 'date' | 'source';
+
+function LibraryThumbnail({ asset, title }: { asset: Asset; title: string }) {
+  const src = asset.thumbnailUrl ?? '/v1/assets/' + asset.id + '/thumbnail';
+  const [failedSource, setFailedSource] = useState<string | null>(null);
+  return failedSource === src ? (
+    <div className="library-thumbnail-fallback">
+      <Images size={30} />
+      <small>缩略图暂不可用</small>
+    </div>
+  ) : (
+    <img
+      src={src}
+      alt={title}
+      loading="lazy"
+      decoding="async"
+      onError={() => setFailedSource(src)}
+    />
+  );
+}
 function localInputDate(value?: string | null) {
   if (!value) return '';
   const date = new Date(value);
@@ -221,6 +244,7 @@ export function AssetLibrary({
   const [editing, setEditing] = useState<Asset | null>(null),
     [refresh, setRefresh] = useState(0);
   const [sourceDetails, setSourceDetails] = useState<Asset | null>(null);
+  const [density, setDensity] = useState<'comfortable' | 'compact'>('comfortable');
   const requestGeneration = useRef(0),
     moreLock = useRef(false);
   const externalProject = !!project && project.spaceId !== space?.id;
@@ -322,8 +346,17 @@ export function AssetLibrary({
     }
     return Array.from(result);
   }, [assets, groupBy, projects, space?.id, project?.id]);
+  const filtered =
+    !!query.trim() || source !== 'all' || period !== 'all' || projectFilter !== (project?.id ?? '');
+  const resetFilters = () => {
+    setQuery('');
+    setDebouncedQuery('');
+    setSource('all');
+    setPeriod('all');
+    setProjectFilter(project?.id ?? '');
+  };
   return (
-    <div className="content-view asset-library">
+    <div className={`content-view studio-view asset-library library-density-${density}`}>
       <header className="view-heading" data-motion="view-header">
         <div>
           <span className="eyebrow">
@@ -331,7 +364,7 @@ export function AssetLibrary({
             {space && !externalProject ? ' · ' + space.name : ''}
           </span>
           <h1>{project?.title ?? '作品与素材'}</h1>
-          <p>{project?.description || '在自己的空间里，按项目、来源和日期找回作品。'}</p>
+          <p>{project?.description || '照片、草图与每一次创作，都有自己的位置。'}</p>
         </div>
         <div className="view-actions">
           {project && (
@@ -350,10 +383,18 @@ export function AssetLibrary({
           )}
           <button className="button button-primary" onClick={onImport}>
             <Plus size={18} />
-            导入照片
+            {project && !['owner', 'admin', 'editor'].includes(project.role)
+              ? '打开本地照片'
+              : '导入照片'}
           </button>
         </div>
       </header>
+      {project && !['owner', 'admin', 'editor'].includes(project.role) && (
+        <p className="studio-access-note">
+          <Eye size={16} />
+          当前项目可浏览。你可以打开照片在本地尝试，保存时需要选择可编辑的项目。
+        </p>
+      )}
       {!space && !project ? (
         <EmptyState
           icon={<Images size={32} />}
@@ -378,6 +419,19 @@ export function AssetLibrary({
                 onChange={(event) => setQuery(event.target.value)}
                 placeholder="搜索名称、标题、标签…"
               />
+              {query && (
+                <button
+                  type="button"
+                  className="library-clear-search"
+                  aria-label="清除素材搜索"
+                  onClick={() => {
+                    setQuery('');
+                    setDebouncedQuery('');
+                  }}
+                >
+                  <X size={16} />
+                </button>
+              )}
             </label>
             <label className="library-project-select">
               <span>项目</span>
@@ -432,22 +486,50 @@ export function AssetLibrary({
               </label>
             </div>
           </div>
-          <div className="library-status" aria-live="polite">
-            {loading ? (
-              <Busy label="读取当前授权范围" />
-            ) : (
-              <span>
-                已载入 {assets.length} 张{cursor ? ' · 还有更多' : ''}
-              </span>
-            )}
-            <button
-              className="text-button"
-              onClick={() => setRefresh((value) => value + 1)}
-              disabled={loading}
-            >
-              <ArrowClockwise size={16} />
-              刷新
-            </button>
+          <div className="library-status">
+            <div className="library-result-count" aria-live="polite">
+              {loading ? (
+                <Busy label="读取当前授权范围" />
+              ) : (
+                <span>
+                  <strong>{assets.length}</strong> 张已载入{cursor ? ' · 还有更多' : ''}
+                </span>
+              )}
+            </div>
+            <div className="library-status-actions">
+              {filtered && (
+                <button className="text-button" onClick={resetFilters}>
+                  <X size={15} />
+                  重置筛选
+                </button>
+              )}
+              <div className="library-density-choice" role="group" aria-label="素材显示密度">
+                <button
+                  aria-label="大图显示"
+                  title="大图显示"
+                  aria-pressed={density === 'comfortable'}
+                  onClick={() => setDensity('comfortable')}
+                >
+                  <SquaresFour size={19} />
+                </button>
+                <button
+                  aria-label="紧凑显示"
+                  title="紧凑显示"
+                  aria-pressed={density === 'compact'}
+                  onClick={() => setDensity('compact')}
+                >
+                  <GridFour size={19} />
+                </button>
+              </div>
+              <button
+                className="text-button"
+                onClick={() => setRefresh((value) => value + 1)}
+                disabled={loading}
+              >
+                <ArrowClockwise size={16} />
+                刷新
+              </button>
+            </div>
           </div>
           <InlineError message={error} />
           {!loading && !assets.length && !error && (
@@ -462,6 +544,18 @@ export function AssetLibrary({
                 query || source !== 'all' || period !== 'all'
                   ? '试试其他关键词、来源或日期。'
                   : '导入照片并保存到项目，或创建一张草图。'
+              }
+              action={
+                filtered ? (
+                  <button className="button button-secondary" onClick={resetFilters}>
+                    清除筛选
+                  </button>
+                ) : (
+                  <button className="button button-secondary" onClick={onImport}>
+                    <Plus size={17} />
+                    打开一张照片
+                  </button>
+                )
               }
             />
           )}
@@ -499,13 +593,9 @@ export function AssetLibrary({
                         data-motion="artwork-media"
                         data-motion-pixels="true"
                       >
-                        <img
-                          src={asset.thumbnailUrl ?? '/v1/assets/' + asset.id + '/thumbnail'}
-                          alt={title}
-                          loading="lazy"
-                        />
+                        <LibraryThumbnail asset={asset} title={title} />
                         <span>
-                          {sameProject ? '编辑原图' : '进入项目'}
+                          {sameProject ? '打开原图' : '进入项目'}
                           <ArrowSquareOut size={15} />
                         </span>
                       </button>

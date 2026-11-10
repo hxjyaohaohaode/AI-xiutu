@@ -1,6 +1,11 @@
 import { useEffect, useId, useRef, useState, type CSSProperties } from 'react';
 import { ArrowCounterClockwise, Check } from '@phosphor-icons/react';
-import { RangeGesture, RANGE_KEYS, type RangeCompletion } from './range-gesture';
+import {
+  RangeGesture,
+  RANGE_KEYS,
+  resolveRangeNumber,
+  type RangeCompletion,
+} from './range-gesture';
 
 /** A slider is the primary control. Numeric entry is an explicit precision affordance. */
 export function PrecisionRange({
@@ -41,11 +46,11 @@ export function PrecisionRange({
   const id = useId();
   const [editing, setEditing] = useState(false);
   const [draft, setDraft] = useState('');
-  const [invalid, setInvalid] = useState(false);
+  const [numberError, setNumberError] = useState<string | null>(null);
   const gesture = useRef(new RangeGesture());
   const range = useRef<HTMLInputElement>(null);
   const ignoredPointer = useRef<number | null>(null);
-  const numberEditing = useRef(false);
+  const numberEditing = useRef<{ initial: number } | null>(null);
   const input = useRef<HTMLInputElement>(null);
   const latest = useRef(value);
   latest.current = value;
@@ -94,28 +99,60 @@ export function PrecisionRange({
     };
   }, []);
   useEffect(() => {
-    if (disabled) cancelRef.current();
+    if (disabled) {
+      cancelRef.current();
+      numberEditing.current = null;
+      setEditing(false);
+      setNumberError(null);
+    }
   }, [disabled]);
   function finishNumber() {
     if (!numberEditing.current) return;
-    const number = draft.trim() === '' ? NaN : Number(draft);
-    if (
-      !Number.isFinite(number) ||
-      number < min ||
-      number > max ||
-      (integer && !Number.isInteger(number))
-    ) {
-      setInvalid(true);
+    const result = resolveRangeNumber({
+      draft,
+      initial: numberEditing.current.initial,
+      current: latest.current,
+      min,
+      max,
+      integer,
+      disabled,
+    });
+    if (result.status === 'disabled') {
+      cancelNumber();
       return;
     }
-    numberEditing.current = false;
+    if (result.status === 'stale') {
+      // Keep the current value; editing can resume after the user sees the update.
+      setDraft(String(latest.current));
+      numberEditing.current = { initial: latest.current };
+      setNumberError('参数已更新，已保留最新值。请重新输入。');
+      return;
+    }
+    if (result.status === 'invalid') {
+      setNumberError(`请输入 ${min} 至 ${max} 的${integer ? '整数' : '数值'}。`);
+      return;
+    }
+    const number = result.value;
+    numberEditing.current = null;
     if (number !== latest.current) {
       latest.current = number;
       onChange(number);
       onCommit?.();
     }
-    setInvalid(false);
+    setNumberError(null);
     setEditing(false);
+    return true;
+  }
+  function cancelNumber() {
+    numberEditing.current = null;
+    setEditing(false);
+    setNumberError(null);
+  }
+  function resetControl() {
+    if (disabled || !onReset) return;
+    cancelNumber();
+    cancelGesture();
+    onReset();
   }
   function change(number: number) {
     if (!Number.isFinite(number)) return;
@@ -127,16 +164,26 @@ export function PrecisionRange({
     gesture.current.change(next);
     onChange(next);
   }
-  const position = max > min ? ((value - min) / (max - min)) * 100 : 0;
+  const percentage = (number: number) =>
+    max > min ? Math.max(0, Math.min(100, ((number - min) / (max - min)) * 100)) : 0;
+  const position = percentage(value);
+  const neutralPosition = percentage(neutral);
+  const describedBy =
+    [description && `${id}-description`, numberError && `${id}-error`].filter(Boolean).join(' ') ||
+    undefined;
   return (
     <div
       className="precision-control"
       data-motion="slider-row"
+      data-adjusted={Math.abs(value - neutral) > 1e-10 ? 'true' : undefined}
+      data-disabled={disabled || max <= min ? 'true' : undefined}
       style={
         {
           '--control-index': Math.min(index, 7),
           '--range-position': `${position}%`,
-          '--range-neutral': `${max > min ? ((neutral - min) / (max - min)) * 100 : 0}%`,
+          '--range-neutral': `${neutralPosition}%`,
+          '--range-fill-start': `${Math.min(position, neutralPosition)}%`,
+          '--range-fill-end': `${Math.max(position, neutralPosition)}%`,
           '--range-gradient': gradient,
         } as CSSProperties
       }
@@ -151,8 +198,10 @@ export function PrecisionRange({
               <input
                 ref={input}
                 type="number"
+                inputMode={min < 0 ? 'text' : integer ? 'numeric' : 'decimal'}
                 aria-label={`${label}精确数值`}
-                aria-invalid={invalid}
+                aria-invalid={!!numberError}
+                aria-describedby={describedBy}
                 min={min}
                 max={max}
                 step={step}
@@ -160,18 +209,18 @@ export function PrecisionRange({
                 disabled={disabled}
                 onChange={(event) => {
                   setDraft(event.target.value);
-                  setInvalid(false);
+                  setNumberError(null);
                 }}
                 onKeyDown={(event) => {
+                  if (event.nativeEvent.isComposing || event.nativeEvent.keyCode === 229) return;
                   if (event.key === 'Enter') {
                     event.preventDefault();
-                    finishNumber();
+                    if (finishNumber()) range.current?.focus();
                   }
                   if (event.key === 'Escape') {
                     event.preventDefault();
-                    numberEditing.current = false;
-                    setEditing(false);
-                    setInvalid(false);
+                    cancelNumber();
+                    range.current?.focus();
                   }
                 }}
                 onBlur={finishNumber}
@@ -179,8 +228,11 @@ export function PrecisionRange({
               <button
                 type="button"
                 aria-label={`确认${label}数值`}
+                disabled={disabled}
                 onMouseDown={(event) => event.preventDefault()}
-                onClick={finishNumber}
+                onClick={() => {
+                  if (finishNumber()) range.current?.focus();
+                }}
               >
                 <Check size={13} />
               </button>
@@ -192,8 +244,10 @@ export function PrecisionRange({
               aria-label={`${label}数值 ${readable}${unit}，点击精确输入`}
               disabled={disabled}
               onClick={() => {
-                numberEditing.current = true;
-                setDraft(String(value));
+                if (gesture.current.active) return;
+                numberEditing.current = { initial: latest.current };
+                setDraft(String(latest.current));
+                setNumberError(null);
                 setEditing(true);
               }}
             >
@@ -208,7 +262,8 @@ export function PrecisionRange({
               title={`重置${label}`}
               aria-label={`重置${label}`}
               disabled={disabled || Math.abs(value - neutral) < 1e-10}
-              onClick={onReset}
+              onPointerDown={(event) => event.preventDefault()}
+              onClick={resetControl}
             >
               <ArrowCounterClockwise size={13} />
             </button>
@@ -223,7 +278,8 @@ export function PrecisionRange({
           type="range"
           aria-label={label}
           aria-valuetext={`${readable}${unit}`}
-          aria-describedby={invalid ? `${id}-error` : undefined}
+          aria-describedby={describedBy}
+          title={onReset ? '拖动调整 · 双击重置 · Alt + 方向键精调' : '拖动调整 · Alt + 方向键精调'}
           min={min}
           max={max}
           step={step}
@@ -285,12 +341,21 @@ export function PrecisionRange({
             if (gesture.current.pointerId !== null) cancelGesture();
             else complete(gesture.current.commit());
           }}
-          onDoubleClick={onReset}
+          onDoubleClick={resetControl}
         />
       </div>
-      {invalid && (
+      <div className="precision-scale" aria-hidden="true">
+        <span>{min}</span>
+        <span>{max}</span>
+      </div>
+      {description && (
+        <span id={`${id}-description`} className="sr-only">
+          {description}
+        </span>
+      )}
+      {numberError && (
         <small id={`${id}-error`} role="alert" className="precision-error">
-          请输入 {min} 至 {max} 的{integer ? '整数' : '数值'}。
+          {numberError}
         </small>
       )}
     </div>

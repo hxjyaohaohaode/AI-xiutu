@@ -1,5 +1,5 @@
-import { useEffect, useRef } from 'react';
-import { Sparkle } from '@phosphor-icons/react';
+import { useEffect, useRef, useState } from 'react';
+import { CaretLeft, CaretRight, Sparkle } from '@phosphor-icons/react';
 import { toolGroups, type ToolGroup } from '../editor/ToolInspector';
 
 export const ADJUSTMENT_GROUPS: ToolGroup[] = ['light', 'color', 'curves', 'detail'];
@@ -23,7 +23,8 @@ export function ToolDock({
   onTool: (group: ToolGroup) => void;
   onAI: () => void;
 }) {
-  const nav = useRef<HTMLElement>(null);
+  const nav = useRef<HTMLDivElement>(null);
+  const [overflow, setOverflow] = useState({ left: false, right: false });
   const active = dockTool(group, compact);
   const choices = toolGroups.filter(
     (tool) => !compact || !['color', 'curves', 'detail'].includes(tool.id),
@@ -32,14 +33,32 @@ export function ToolDock({
     const rail = nav.current;
     const button = rail?.querySelector<HTMLElement>('[aria-pressed="true"]');
     if (!rail || !button) return;
-    const left = button.offsetLeft,
-      right = left + button.offsetWidth;
-    if (left < rail.scrollLeft) rail.scrollLeft = left;
-    else if (right > rail.scrollLeft + rail.clientWidth) rail.scrollLeft = right - rail.clientWidth;
+    const viewport = rail.getBoundingClientRect();
+    const item = button.getBoundingClientRect();
+    if (item.left < viewport.left) rail.scrollLeft += item.left - viewport.left;
+    else if (item.right > viewport.right) rail.scrollLeft += item.right - viewport.right;
   }, [active, inspectorOpen, aiOpen]);
+  useEffect(() => {
+    const rail = nav.current;
+    if (!rail) return;
+    const measure = () => {
+      const left = rail.scrollLeft > 2;
+      const right = rail.scrollLeft + rail.clientWidth < rail.scrollWidth - 2;
+      setOverflow((previous) =>
+        previous.left === left && previous.right === right ? previous : { left, right },
+      );
+    };
+    const observer = new ResizeObserver(measure);
+    observer.observe(rail);
+    rail.addEventListener('scroll', measure, { passive: true });
+    measure();
+    return () => {
+      observer.disconnect();
+      rail.removeEventListener('scroll', measure);
+    };
+  }, [compact]);
   return (
     <nav
-      ref={nav}
       className="floating-tool-dock"
       aria-label="编辑工具"
       data-motion="tool-dock"
@@ -59,24 +78,55 @@ export function ToolDock({
         buttons[next]?.focus();
       }}
     >
-      {choices.map((tool) => (
-        <button
-          type="button"
-          key={tool.id}
-          data-motion="tool-item"
-          className={active === tool.id && inspectorOpen ? 'active' : ''}
-          aria-pressed={active === tool.id && inspectorOpen}
-          onClick={() =>
-            onTool(
-              compact && tool.id === 'light' && ADJUSTMENT_GROUPS.includes(group) ? group : tool.id,
-            )
-          }
-        >
-          {tool.icon}
-          <span>{compact && tool.id === 'light' ? '调节' : tool.label}</span>
-        </button>
-      ))}
-      {!compact && <span className="dock-divider" />}
+      <div
+        className="dock-tool-region"
+        data-overflow-left={overflow.left || undefined}
+        data-overflow-right={overflow.right || undefined}
+      >
+        {overflow.left && (
+          <button
+            type="button"
+            className="dock-scroll dock-scroll-left"
+            aria-label="查看前面的编辑工具"
+            onClick={() => nav.current?.scrollBy({ left: -200, behavior: 'smooth' })}
+          >
+            <CaretLeft size={14} />
+          </button>
+        )}
+        <div className="dock-tool-scroll" ref={nav}>
+          {choices.map((tool) => (
+            <button
+              type="button"
+              key={tool.id}
+              data-motion="tool-item"
+              className={active === tool.id && inspectorOpen ? 'active' : ''}
+              aria-pressed={active === tool.id && inspectorOpen}
+              title={tool.description}
+              onClick={() =>
+                onTool(
+                  compact && tool.id === 'light' && ADJUSTMENT_GROUPS.includes(group)
+                    ? group
+                    : tool.id,
+                )
+              }
+            >
+              {tool.icon}
+              <span>{compact && tool.id === 'light' ? '调节' : tool.label}</span>
+            </button>
+          ))}
+        </div>
+        {overflow.right && (
+          <button
+            type="button"
+            className="dock-scroll dock-scroll-right"
+            aria-label="查看更多编辑工具"
+            onClick={() => nav.current?.scrollBy({ left: 200, behavior: 'smooth' })}
+          >
+            <CaretRight size={14} />
+          </button>
+        )}
+      </div>
+      <span className="dock-divider" aria-hidden="true" />
       <button
         type="button"
         className={aiOpen ? 'active ai-tool' : 'ai-tool'}

@@ -73,6 +73,7 @@ export function FloatingPanel({
   onGeometry,
   onClose,
   children,
+  navigation,
   panelKey = 'inspector',
   open = true,
   motionState = 'enter',
@@ -84,6 +85,7 @@ export function FloatingPanel({
   onGeometry: (value: PanelGeometry) => void;
   onClose: () => void;
   children: ReactNode;
+  navigation?: ReactNode;
   panelKey?: PanelId;
   open?: boolean;
   motionState?: MotionPhase;
@@ -537,6 +539,7 @@ export function FloatingPanel({
         aria-hidden={collapsed || !open}
         hidden={!contentPresence.present}
       >
+        {navigation && <div className="panel-context-navigation">{navigation}</div>}
         {children}
       </div>
       {!collapsed &&

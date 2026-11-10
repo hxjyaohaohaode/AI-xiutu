@@ -15,6 +15,43 @@ export type RangeCompletion = {
   changed: boolean;
 };
 
+export type RangeNumberResult =
+  | { status: 'valid'; value: number }
+  | { status: 'disabled' }
+  | { status: 'stale' }
+  | { status: 'invalid' };
+
+/** A typed draft never overwrites a value changed while the input was open. */
+export function resolveRangeNumber({
+  draft,
+  initial,
+  current,
+  min,
+  max,
+  integer = false,
+  disabled = false,
+}: {
+  draft: string;
+  initial: number;
+  current: number;
+  min: number;
+  max: number;
+  integer?: boolean;
+  disabled?: boolean;
+}): RangeNumberResult {
+  if (disabled) return { status: 'disabled' };
+  if (initial !== current) return { status: 'stale' };
+  const value = draft.trim() === '' ? NaN : Number(draft);
+  if (
+    !Number.isFinite(value) ||
+    value < min ||
+    value > max ||
+    (integer && !Number.isInteger(value))
+  )
+    return { status: 'invalid' };
+  return { status: 'valid', value };
+}
+
 /** One pointer or keyboard gesture owns a preview. Late events cannot commit a cancelled edit. */
 export class RangeGesture {
   private gesture:

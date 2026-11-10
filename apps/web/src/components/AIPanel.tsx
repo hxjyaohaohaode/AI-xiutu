@@ -38,6 +38,17 @@ import { recipeDifferences, additionalRecipeChanges } from '../ai/recipeDiff';
 import { ImageParameters } from '../ai/ImageParameters';
 import { LiveAssistant, type CaptureCurrentImage } from '../ai/LiveAssistant';
 import {
+  acceptJobSubmission,
+  clearJobSubmission,
+  freezeJobSubmission,
+  isJobAdmissionRejected,
+  jobSubmissionRequest,
+  jobSubmissionResolved,
+  readJobSubmission,
+  saveJobSubmission,
+  type JobSubmission,
+} from '../ai/jobSubmission';
+import {
   allowedImageSizes,
   imageBatchError,
   defaultImageOptions,
@@ -94,7 +105,31 @@ const tasks = [
     chips: [],
   },
 ];
-const draftCache = new Map<string, { prompt: string; operation: AIOperation }>();
+interface AIPanelDraft {
+  prompt: string;
+  operation: AIOperation;
+  assistantOpen: boolean;
+  modelId: string;
+  width: number;
+  height: number;
+  imageOptions: ImageOptions;
+  referenceIds: string[];
+  parentJobId: string | null;
+  threadId: string | null | 'recent';
+  documentId: string;
+  generationGrantId?: string;
+  auxiliary: { kind: 'mask' | 'markup'; assetId: string } | null;
+}
+// Scoped in-memory drafts contain text, settings and asset ids, never image bytes.
+const draftCache = new Map<string, AIPanelDraft>();
+function initialRecovery(actorId: string | null) {
+  if (!actorId) return { pending: null, ready: false, error: null };
+  try {
+    return { pending: readJobSubmission(sessionStorage, actorId), ready: true, error: null };
+  } catch (error) {
+    return { pending: null, ready: false, error: errorMessage(error) };
+  }
+}
 export function AIPanel({
   project,
   artwork,
@@ -150,19 +185,37 @@ export function AIPanel({
   onBeforeArtworkWrite?: () => void | Promise<void>;
   onAfterArtworkWrite?: () => void | Promise<void>;
 }) {
-  const [assistantOpen, setAssistantOpen] = useState(false);
-  const [generationGrantId, setGenerationGrantId] = useState<string | undefined>();
   const scope = (userId ?? 'local') + ':' + (project?.id ?? 'none');
   const cached = draftCache.get(scope);
-  const [modelResponse, setModelResponse] = useState<ModelResponse | null>(null);
-  const [modelId, setModelId] = useState('');
-  const [operation, setOperation] = useState<AIOperation>(
-    referenceFile ? 'generate-image' : (cached?.operation ?? initialOperation),
+  const [recovery, setRecovery] = useState(() => initialRecovery(userId));
+  const pendingSubmission = recovery.pending;
+  const pending = useRef<JobSubmission | null>(pendingSubmission);
+  const mounted = useRef(true);
+  const [assistantOpen, setAssistantOpen] = useState(!!cached?.assistantOpen && !pendingSubmission);
+  const [generationGrantId, setGenerationGrantId] = useState<string | undefined>(
+    cached?.generationGrantId,
   );
-  const [prompt, setPrompt] = useState(cached?.prompt ?? '');
+  const [modelResponse, setModelResponse] = useState<ModelResponse | null>(null);
+  const [modelId, setModelId] = useState(
+    pendingSubmission && pendingSubmission.projectId === project?.id
+      ? pendingSubmission.modelId
+      : (cached?.modelId ?? ''),
+  );
+  const [operation, setOperation] = useState<AIOperation>(
+    pendingSubmission && pendingSubmission.projectId === project?.id
+      ? pendingSubmission.operation
+      : referenceFile
+        ? 'generate-image'
+        : (cached?.operation ?? initialOperation),
+  );
+  const [prompt, setPrompt] = useState(
+    pendingSubmission && pendingSubmission.projectId === project?.id && !pendingSubmission.jobId
+      ? pendingSubmission.prompt
+      : (cached?.prompt ?? ''),
+  );
   const [jobs, setJobs] = useState<AIJob[]>([]);
-  const [threadId, setThreadId] = useState<string | null | 'recent'>('recent');
-  const [parentJobId, setParentJobId] = useState<string | null>(null);
+  const [threadId, setThreadId] = useState<string | null | 'recent'>(cached?.threadId ?? 'recent');
+  const [parentJobId, setParentJobId] = useState<string | null>(cached?.parentJobId ?? null);
   const [candidate, setCandidate] = useState<{
     recipe: EditorRecipe;
     job: AIJob;
@@ -173,20 +226,21 @@ export function AIPanel({
     [loading, setLoading] = useState(true);
   const [refresh, setRefresh] = useState(0);
   const [idempotency, setIdempotency] = useState(() => secureUuid());
-  const [width, setWidth] = useState(2048),
-    [height, setHeight] = useState(2048);
-  const [imageOptions, setImageOptions] = useState<ImageOptions>({});
+  const [width, setWidth] = useState(cached?.width ?? 2048),
+    [height, setHeight] = useState(cached?.height ?? 2048);
+  const [imageOptions, setImageOptions] = useState<ImageOptions>(cached?.imageOptions ?? {});
+  const previousModel = useRef(cached?.modelId ?? '');
   const [audioBase64, setAudioBase64] = useState<string | null>(null);
   const [voiceEpoch, setVoiceEpoch] = useState(0);
-  const [referenceIds, setReferenceIds] = useState<string[]>([]);
+  const [referenceIds, setReferenceIds] = useState<string[]>(cached?.referenceIds ?? []);
   const [uploadedReference, setUploadedReference] = useState<Asset | null>(null);
   const [preparedReferenceAssets, setPreparedReferenceAssets] = useState<Asset[]>([]);
   const [preparingDraft, setPreparingDraft] = useState(false);
   const [auxiliary, setAuxiliary] = useState<{ kind: 'mask' | 'markup'; assetId: string } | null>(
-    null,
+    cached?.auxiliary ?? null,
   );
   const [documents, setDocuments] = useState<{ id: string; title: string; version: number }[]>([]);
-  const [documentId, setDocumentId] = useState('');
+  const [documentId, setDocumentId] = useState(cached?.documentId ?? '');
   const fileInput = useRef<HTMLInputElement>(null);
   const promptInput = useRef<HTMLTextAreaElement>(null);
   const submitLock = useRef(false);
@@ -196,10 +250,26 @@ export function AIPanel({
   const panelContext = useRef({ scope, assistantOpen });
   panelContext.current = { scope, assistantOpen };
   const submittedRecipes = useRef(new Map<string, string>());
-  const draft = useRef({ prompt, operation });
-  draft.current = { prompt, operation };
+  const draftValue: AIPanelDraft = {
+    prompt,
+    operation,
+    assistantOpen,
+    modelId,
+    width,
+    height,
+    imageOptions,
+    referenceIds,
+    parentJobId,
+    threadId,
+    documentId,
+    generationGrantId,
+    auxiliary,
+  };
+  const draft = useRef(draftValue);
+  draft.current = draftValue;
   const taskChanged = useRef(onTaskChanged);
   taskChanged.current = onTaskChanged;
+  const inputLocked = busy || !!pendingSubmission || (isLoggedIn && !recovery.ready);
   const selected = (modelResponse?.models ?? []).find((model) => model.id === modelId);
   const eligible = (modelResponse?.models ?? []).filter(
     (model) => model.enabled !== false && (model.operations ?? ['edit-plan']).includes(operation),
@@ -261,6 +331,8 @@ export function AIPanel({
               : task.label + '暂未开通';
   const canSubmit =
     !busy &&
+    recovery.ready &&
+    !pendingSubmission &&
     quote !== null &&
     !!project &&
     ready &&
@@ -278,17 +350,55 @@ export function AIPanel({
     .slice()
     .sort((a, b) => a.createdAt.localeCompare(b.createdAt));
   function changed() {
+    if (pending.current) return;
     setIdempotency(secureUuid());
     setError(null);
   }
-  useEffect(
-    () => () => {
+  function rememberSubmission(value: JobSubmission) {
+    saveJobSubmission(sessionStorage, value);
+    pending.current = value;
+    if (mounted.current) setRecovery({ pending: value, ready: true, error: null });
+  }
+  function resolveSubmission(value: JobSubmission) {
+    clearJobSubmission(sessionStorage, value);
+    if (pending.current?.idempotencyKey !== value.idempotencyKey) return;
+    pending.current = null;
+    if (mounted.current) {
+      setRecovery({ pending: null, ready: true, error: null });
+      setIdempotency(secureUuid());
+    }
+  }
+  function rememberReceipt(saved: JobSubmission, job: AIJob) {
+    const accepted = acceptJobSubmission(saved, job);
+    rememberSubmission(accepted);
+    if (jobSubmissionResolved(job.state)) resolveSubmission(accepted);
+    const key = `${saved.actorId}:${saved.projectId}`;
+    const old = draftCache.get(key);
+    if (old?.prompt.trim() === saved.prompt) draftCache.set(key, { ...old, prompt: '' });
+    if (draft.current.prompt.trim() === saved.prompt)
+      draft.current = { ...draft.current, prompt: '' };
+    return accepted;
+  }
+  function restoreRecovery() {
+    const previous = pending.current;
+    const next = initialRecovery(userId);
+    pending.current = next.pending;
+    setRecovery(next);
+    if (next.ready && !next.pending && previous) {
+      const savedDraft = draftCache.get(scope);
+      if (savedDraft && savedDraft.prompt !== previous.prompt)
+        setPrompt((old) => (old.trim() === previous.prompt ? savedDraft.prompt : old));
+    }
+  }
+  useEffect(() => {
+    mounted.current = true;
+    return () => {
+      mounted.current = false;
       draftCache.set(scope, draft.current);
       if (draftCache.size > 20) draftCache.delete(draftCache.keys().next().value!);
       generation.current += 1;
-    },
-    [scope],
-  );
+    };
+  }, [scope]);
   useEffect(() => {
     let live = true;
     setLoading(true);
@@ -303,10 +413,14 @@ export function AIPanel({
     };
   }, []);
   useEffect(() => {
+    if (!modelResponse || pending.current) return;
     if (!eligible.some((model) => model.id === modelId))
       setModelId(eligible.find(modelReady)?.id ?? eligible[0]?.id ?? '');
-  }, [operation, modelResponse, modelId]);
+  }, [operation, modelResponse, modelId, pendingSubmission]);
   useEffect(() => {
+    if (modelId === previousModel.current) return;
+    previousModel.current = modelId;
+    if (pending.current) return;
     setImageOptions(defaultImageOptions(selected));
     const allowed = allowedImageSizes(selected);
     if (imageSizeError(selected, width, height) && allowed[0]) {
@@ -318,7 +432,7 @@ export function AIPanel({
   }, [modelId]);
   useEffect(() => {
     setUploadedReference(null);
-    if (referenceFile) {
+    if (referenceFile && !pending.current) {
       setOperation('generate-image');
       changed();
     }
@@ -338,6 +452,14 @@ export function AIPanel({
           signal: controller.signal,
         });
         if (!live) return;
+        const saved = pending.current;
+        if (saved?.projectId === project.id && saved.jobId) {
+          const receipt = result.jobs.find((job) => job.id === saved.jobId);
+          if (receipt && (receipt.state !== saved.state || jobSubmissionResolved(receipt.state))) {
+            rememberReceipt(saved, receipt);
+            setPrompt((old) => (old.trim() === saved.prompt ? '' : old));
+          }
+        }
         setJobs(result.jobs);
         const next = result.jobs.map((job) => job.id + ':' + job.state).join('|');
         if (digest && next !== digest) taskChanged.current();
@@ -368,10 +490,12 @@ export function AIPanel({
     };
   }, [project?.id, refresh]);
   const audioReady = useCallback((value: string | null) => {
+    if (pending.current) return;
     setAudioBase64(value);
     setIdempotency(secureUuid());
   }, []);
   function changeOperation(next: AIOperation) {
+    if (pending.current) return;
     setGenerationGrantId(undefined);
     generationDraftEpoch.current += 1;
     setOperation(next);
@@ -474,6 +598,10 @@ export function AIPanel({
     }
   }
   function continueJob(job: AIJob, image?: GeneratedImage) {
+    if (pending.current || !recovery.ready) {
+      setError('上一轮创作结果仍待确认，请先恢复原请求，再继续新的创作。');
+      return;
+    }
     if (job.state !== 'completed') return;
     const next = job.operation ?? 'edit-plan';
     setOperation(next);
@@ -491,7 +619,7 @@ export function AIPanel({
   }
   async function submit(event: FormEvent) {
     event.preventDefault();
-    if (!canSubmit || !project || submitLock.current) return;
+    if (!canSubmit || !project || !userId || pending.current || submitLock.current) return;
     submitLock.current = true;
     setBusy(true);
     setError(null);
@@ -552,23 +680,76 @@ export function AIPanel({
         body.audioBase64 = audioBase64;
       }
       if (expectedGeneration !== generation.current) return;
-      const result = await api<{ job: AIJob }>(
-        '/projects/' + project.id + '/ai-jobs',
-        jsonRequest('POST', body),
-      );
-      if (expectedGeneration !== generation.current) return;
-      submittedRecipes.current.set(result.job.id, snapshot);
-      setJobs((previous) => [result.job, ...previous.filter((job) => job.id !== result.job.id)]);
-      setThreadId(result.job.threadId ?? result.job.id);
-      setParentJobId(null);
-      setPrompt('');
-      if (operation === 'transcribe') {
-        setAudioBase64(null);
-        setVoiceEpoch((value) => value + 1);
+      const frozen = freezeJobSubmission({
+        actorId: userId,
+        projectId: project.id,
+        projectTitle: project.title,
+        body,
+        recipeSnapshot: snapshot,
+      });
+      rememberSubmission(frozen);
+      await runSubmission(frozen, expectedGeneration, true);
+    } catch (error) {
+      if (expectedGeneration === generation.current) setError(errorMessage(error));
+    } finally {
+      submitLock.current = false;
+      if (expectedGeneration === generation.current) setBusy(false);
+    }
+  }
+  async function runSubmission(
+    saved: JobSubmission,
+    expectedGeneration: number,
+    firstAttempt = false,
+  ) {
+    let job: AIJob;
+    try {
+      const request = jobSubmissionRequest(saved);
+      if (saved.jobId) {
+        const result = await api<{ jobs: AIJob[] }>(request.path, request.init);
+        const found = result.jobs.find((item) => item.id === saved.jobId);
+        if (!found)
+          throw new Error(
+            '最近 100 条项目记录中没有找到本轮任务。已保留原请求，请在用量记录中核对或联系平台；不会创建新任务。',
+          );
+        job = found;
+      } else {
+        job = (await api<{ job: AIJob }>(request.path, request.init)).job;
       }
-      changed();
-      setRefresh((value) => value + 1);
-      taskChanged.current();
+    } catch (error) {
+      if (!saved.jobId && isJobAdmissionRejected(error, !firstAttempt)) resolveSubmission(saved);
+      throw error;
+    }
+    // Persist a late acknowledgement even if the panel closed while POST was pending.
+    rememberReceipt(saved, job);
+    if (expectedGeneration !== generation.current || !mounted.current) return;
+    submittedRecipes.current.set(job.id, saved.recipeSnapshot);
+    setJobs((previous) => [job, ...previous.filter((item) => item.id !== job.id)]);
+    setThreadId(job.threadId ?? job.id);
+    setParentJobId(null);
+    setPrompt((old) => (old.trim() === saved.prompt ? '' : old));
+    if (saved.operation === 'transcribe') {
+      setAudioBase64(null);
+      setVoiceEpoch((value) => value + 1);
+    }
+    setRefresh((value) => value + 1);
+    taskChanged.current();
+  }
+  async function recoverSubmission() {
+    if (!userId || !project || submitLock.current) return;
+    const expectedGeneration = generation.current;
+    submitLock.current = true;
+    setBusy(true);
+    setError(null);
+    try {
+      // Another mounted lifetime may have received the original response meanwhile.
+      const saved = readJobSubmission(sessionStorage, userId);
+      if (!saved) {
+        restoreRecovery();
+        return;
+      }
+      if (saved.projectId !== project.id) return;
+      pending.current = saved;
+      await runSubmission(saved, expectedGeneration);
     } catch (error) {
       if (expectedGeneration === generation.current) setError(errorMessage(error));
     } finally {
@@ -631,11 +812,60 @@ export function AIPanel({
   ].filter((asset, index, array) => array.findIndex((item) => item.id === asset.id) === index);
   return (
     <aside className="ai-panel ai-workbench" aria-label="AI创作助手">
+      {pendingSubmission && (
+        <section className="assistant-candidate" aria-label="创作请求恢复" aria-live="polite">
+          <h4>
+            {pendingSubmission.state === 'unknown'
+              ? '本轮创作待平台核验'
+              : pendingSubmission.jobId
+                ? '本轮已受理，正在保留任务进度'
+                : '发送结果待确认，原请求已保留'}
+          </h4>
+          <p>
+            {pendingSubmission.jobId
+              ? pendingSubmission.state === 'unknown'
+                ? '执行与用量结果尚未明确。请先核对本轮任务，核验完成前暂停新的付费创作。'
+                : '刷新只读取项目内的原任务记录，不会再次提交模型请求。'
+              : '原要求、模型、素材和生成参数已冻结。按原请求核对时，已受理的请求返回原结果；尚未受理时会继续原请求并使用原额度。'}
+          </p>
+          {!pendingSubmission.jobId && pendingSubmission.requestBody === null && (
+            <p>
+              原始录音仅保留在页面内存中，刷新后已不可重放。请先查看任务和用量记录并联系平台核验。
+            </p>
+          )}
+          {pendingSubmission.projectId === project?.id ? (
+            <div>
+              <button type="button" disabled={busy} onClick={() => setRefresh((old) => old + 1)}>
+                刷新项目任务
+              </button>
+              <button
+                type="button"
+                disabled={
+                  busy || (!pendingSubmission.jobId && pendingSubmission.requestBody === null)
+                }
+                onClick={() => void recoverSubmission()}
+              >
+                {pendingSubmission.jobId ? '读取本轮结果' : '按原请求核对并继续'}
+              </button>
+            </div>
+          ) : (
+            <p>请返回项目「{pendingSubmission.projectTitle}」恢复本轮，再开始新的创作。</p>
+          )}
+        </section>
+      )}
+      {recovery.error && (
+        <div role="alert" className="assistant-error">
+          <p>{recovery.error}</p>
+          <button type="button" className="text-button" onClick={restoreRecovery}>
+            重新读取恢复记录
+          </button>
+        </div>
+      )}
       <nav className="ai-task-tabs" aria-label="AI任务类型" data-motion="ai-tabs">
         <button
           type="button"
           aria-pressed={assistantOpen}
-          disabled={busy || preparingDraft}
+          disabled={inputLocked || preparingDraft}
           onClick={() => setAssistantOpen(true)}
         >
           <Microphone size={18} />
@@ -646,7 +876,7 @@ export function AIPanel({
             key={item.id}
             type="button"
             aria-pressed={!assistantOpen && operation === item.id}
-            disabled={busy || preparingDraft}
+            disabled={inputLocked || preparingDraft}
             onClick={() => {
               setAssistantOpen(false);
               changeOperation(item.id);
@@ -688,7 +918,7 @@ export function AIPanel({
             {needsContext && (
               <button
                 type="button"
-                disabled={busy}
+                disabled={inputLocked}
                 onClick={
                   needsContext === 'login'
                     ? onAuth
@@ -713,12 +943,15 @@ export function AIPanel({
             <select
               aria-label={task.label + '模型'}
               value={modelId}
-              disabled={busy || !eligible.length}
+              disabled={inputLocked || !eligible.length}
               onChange={(event) => {
                 setModelId(event.target.value);
                 changed();
               }}
             >
+              {pendingSubmission && modelId && !eligible.some((model) => model.id === modelId) && (
+                <option value={modelId}>{modelId} · 原请求模型</option>
+              )}
               {!eligible.length && <option value="">暂无适用模型</option>}
               {eligible.map((model) => (
                 <option key={model.id} value={model.id}>
@@ -734,7 +967,7 @@ export function AIPanel({
               <select
                 aria-label="选择已保存创作线程"
                 value={visibleThread ?? ''}
-                disabled={busy}
+                disabled={inputLocked}
                 onChange={(event) => {
                   setThreadId(event.target.value || null);
                   setParentJobId(null);
@@ -752,7 +985,7 @@ export function AIPanel({
               </select>
               <IconButton
                 label="新建创作线程"
-                disabled={busy}
+                disabled={inputLocked}
                 onClick={() => {
                   setThreadId(null);
                   setParentJobId(null);
@@ -784,6 +1017,10 @@ export function AIPanel({
                   onTaskChanged();
                 }}
                 onTranscript={(target, text) => {
+                  if (pending.current || !recovery.ready) {
+                    setError('请先核对上一轮创作结果，再使用识别文字发起新任务。');
+                    return;
+                  }
                   changeOperation(target);
                   setPrompt(text);
                   promptInput.current?.focus();
@@ -800,7 +1037,7 @@ export function AIPanel({
                       <button
                         key={text}
                         type="button"
-                        disabled={busy}
+                        disabled={inputLocked}
                         onClick={() => {
                           setPrompt(text);
                           changed();
@@ -814,7 +1051,9 @@ export function AIPanel({
                 )}
               </div>
             )}
-            {operation === 'transcribe' && <VoiceCapture key={voiceEpoch} onReady={audioReady} />}
+            {operation === 'transcribe' && !pendingSubmission && (
+              <VoiceCapture key={voiceEpoch} onReady={audioReady} />
+            )}
             {operation === 'generate-image' && (
               <Disclosure
                 title="生成设置"
@@ -826,7 +1065,7 @@ export function AIPanel({
                   width={width}
                   height={height}
                   options={imageOptions}
-                  disabled={busy}
+                  disabled={inputLocked}
                   onSize={(w, h) => {
                     setWidth(w);
                     setHeight(h);
@@ -850,7 +1089,9 @@ export function AIPanel({
                     type="button"
                     className="text-button"
                     disabled={
-                      busy || !caps?.references.supported || referencedCount >= referenceLimit
+                      inputLocked ||
+                      !caps?.references.supported ||
+                      referencedCount >= referenceLimit
                     }
                     onClick={() => fileInput.current?.click()}
                   >
@@ -861,7 +1102,9 @@ export function AIPanel({
                     type="button"
                     className="text-button"
                     disabled={
-                      busy || !caps?.references.supported || referencedCount >= referenceLimit
+                      inputLocked ||
+                      !caps?.references.supported ||
+                      referencedCount >= referenceLimit
                     }
                     onClick={onDraw}
                   >
@@ -906,7 +1149,7 @@ export function AIPanel({
                     </span>
                     <IconButton
                       label="移除本地参考"
-                      disabled={busy}
+                      disabled={inputLocked}
                       onClick={() => {
                         onClearReference();
                         setUploadedReference(null);
@@ -955,7 +1198,7 @@ export function AIPanel({
                       遮罩 / 标注图
                       <select
                         value={auxiliary ? auxiliary.kind + ':' + auxiliary.assetId : ''}
-                        disabled={busy || !referencedCount}
+                        disabled={inputLocked || !referencedCount}
                         onChange={(event) => {
                           const [kind, assetId] = event.target.value.split(':');
                           setAuxiliary(
@@ -999,7 +1242,7 @@ export function AIPanel({
                   本轮上下文
                   <select
                     value={documentId}
-                    disabled={busy}
+                    disabled={inputLocked}
                     onChange={(event) => {
                       setDocumentId(event.target.value);
                       changed();
@@ -1029,7 +1272,7 @@ export function AIPanel({
                 </span>
                 <IconButton
                   label="取消续接，作为新创作"
-                  disabled={busy}
+                  disabled={inputLocked}
                   onClick={() => {
                     setParentJobId(null);
                     changed();
@@ -1044,7 +1287,7 @@ export function AIPanel({
               <textarea
                 ref={promptInput}
                 aria-label="本轮创作要求"
-                disabled={busy}
+                disabled={inputLocked}
                 value={prompt}
                 placeholder={task.placeholder}
                 maxLength={operation === 'generate-image' ? 4000 : 1500}
@@ -1064,7 +1307,7 @@ export function AIPanel({
               {operation !== 'transcribe' && (
                 <IconButton
                   label="改用语音输入，识别后再确认"
-                  disabled={busy}
+                  disabled={inputLocked}
                   onClick={() => changeOperation('transcribe')}
                 >
                   <Microphone size={18} />

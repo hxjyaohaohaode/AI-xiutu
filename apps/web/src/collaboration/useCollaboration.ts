@@ -21,6 +21,13 @@ import {
   operationTarget,
   same,
 } from './model';
+import {
+  canRecoverCollaborationConnection,
+  canReportTransportFailure,
+  isTransientCollaborationFailure,
+  type CollaborationConnectionStatus as Status,
+  type CollaborationFailureOrigin,
+} from './connection-state';
 
 type Head = { artwork: Artwork; revision: Revision; asset: Asset };
 type Snapshot = CollaborationSnapshot<Artwork, Revision, Asset>;
@@ -33,16 +40,6 @@ type Draft = {
   intent: 'edit' | 'undo' | 'redo';
 };
 type OwnEdit = { before: EditorRecipe; after: EditorRecipe; label: string };
-type Status =
-  | 'off'
-  | 'connecting'
-  | 'ready'
-  | 'acquiring'
-  | 'previewing'
-  | 'saving'
-  | 'reconnecting'
-  | 'conflict'
-  | 'forbidden';
 type Options = {
   editor: EditorState;
   artwork: Artwork | null;
@@ -70,8 +67,13 @@ const wait = (ms: number, signal: AbortSignal) =>
 export function useCollaboration(options: Options) {
   const latest = useRef(options);
   latest.current = options;
-  const [status, setStatus] = useState<Status>('off'),
+  const [status, setStatusState] = useState<Status>('off'),
     [error, setError] = useState<string | null>(null);
+  const statusRef = useRef<Status>('off');
+  function setStatus(next: Status) {
+    statusRef.current = next;
+    setStatusState(next);
+  }
   const [snapshot, setSnapshot] = useState<Snapshot | null>(null),
     [session, setSession] = useState<CollaborationSession | null>(null);
   const [remotePreview, setRemotePreview] = useState<EditorRecipe | null>(null);
@@ -101,6 +103,7 @@ export function useCollaboration(options: Options) {
   const activeFlush = useRef<Promise<void> | null>(null),
     flushRequested = useRef(false),
     lastFailure = useRef<unknown>(null),
+    failureOrigin = useRef<CollaborationFailureOrigin>(null),
     discardRequested = useRef(false);
   const lastCommand = useRef<{
     command: CollaborationCommand;
@@ -126,8 +129,24 @@ export function useCollaboration(options: Options) {
   function updateHistory() {
     setHistoryState({ undo: undo.current.length, redo: redo.current.length });
   }
-  function stateError(e: unknown) {
+  function clearFailure() {
+    lastFailure.current = null;
+    failureOrigin.current = null;
+    setError(null);
+  }
+  function stateError(e: unknown, origin: Exclude<CollaborationFailureOrigin, null> = 'operation') {
+    const transport = origin === 'transport' && isTransientCollaborationFailure(e);
+    if (
+      transport &&
+      !canReportTransportFailure({
+        status: statusRef.current,
+        failureOrigin: failureOrigin.current,
+        unknownCommand: !!lastCommand.current,
+      })
+    )
+      return;
     lastFailure.current = e;
+    failureOrigin.current = transport ? 'transport' : 'operation';
     setError(errorMessage(e));
     setStatus(
       e instanceof ApiError && (e.status === 401 || e.status === 403)
@@ -136,6 +155,22 @@ export function useCollaboration(options: Options) {
           ? 'conflict'
           : 'reconnecting',
     );
+  }
+  function connectionRecovered(r: NonNullable<typeof room.current>) {
+    if (
+      !isCurrent(r) ||
+      !canRecoverCollaborationConnection({
+        status: statusRef.current,
+        failureOrigin: failureOrigin.current,
+        pendingDraft: !!draft.current,
+        unknownCommand: !!lastCommand.current,
+        processing: processing.current,
+        suspended: suspended.current,
+      })
+    )
+      return;
+    clearFailure();
+    setStatus('ready');
   }
   function recoverOwnership(
     e: unknown,
@@ -285,6 +320,7 @@ export function useCollaboration(options: Options) {
       return;
     processing.current = true;
     lastFailure.current = null;
+    failureOrigin.current = null;
     let submittedLeaseId: string | undefined;
     try {
       let work = draft.current;
@@ -403,7 +439,7 @@ export function useCollaboration(options: Options) {
         }
         await release(r);
         setStatus('ready');
-        setError(null);
+        clearFailure();
         setRemotePreview(null);
         if (draft.current) schedule();
       } else {
@@ -426,7 +462,7 @@ export function useCollaboration(options: Options) {
         if (!isCurrent(r)) return;
         lastPreview.current = Date.now();
         setStatus('previewing');
-        setError(null);
+        clearFailure();
         if (draft.current !== work) schedule(320);
       }
     } catch (e) {
@@ -444,7 +480,7 @@ export function useCollaboration(options: Options) {
             await release(r);
             if (isCurrent(r)) {
               setStatus('ready');
-              setError(null);
+              clearFailure();
             }
           } catch (e) {
             if (isCurrent(r)) stateError(e);
@@ -512,7 +548,7 @@ export function useCollaboration(options: Options) {
     discardRequested.current = false;
     if (!sameSource) lastCommand.current = null;
     setStatus('connecting');
-    setError(null);
+    clearFailure();
     setSession(null);
     setSnapshot(null);
     setRemotePreview(null);
@@ -542,10 +578,13 @@ export function useCollaboration(options: Options) {
             if (!isCurrent(r)) break;
             r.cursor = value.cursor;
             await receive(value.snapshot, r);
+            // Only an authoritative room read proves that synchronization resumed.
+            // Heartbeats alone must not hide a pending command or an edit conflict.
+            connectionRecovered(r);
             if (!value.hasMore) await wait(150, controller.signal);
           } catch (e) {
             if (!isCurrent(r)) break;
-            stateError(e);
+            stateError(e, 'transport');
             if (e instanceof ApiError && (e.status === 401 || e.status === 403)) break;
             await wait(2000, controller.signal);
           }
@@ -581,7 +620,7 @@ export function useCollaboration(options: Options) {
         }
       } catch (e) {
         if (isCurrent(r)) {
-          stateError(e);
+          stateError(e, 'transport');
           recoverOwnership(e, r, renewingLeaseId);
         }
       }
@@ -613,7 +652,7 @@ export function useCollaboration(options: Options) {
       signal: r.controller.signal,
     }).catch((e) => {
       if (isCurrent(r)) {
-        stateError(e);
+        stateError(e, 'transport');
         recoverOwnership(e, r);
       }
     });
@@ -638,7 +677,7 @@ export function useCollaboration(options: Options) {
     void release()
       .then(() => {
         setStatus('ready');
-        setError(null);
+        clearFailure();
       })
       .catch(stateError);
   }, []);
@@ -720,7 +759,7 @@ export function useCollaboration(options: Options) {
     pendingCount,
     setCursor,
     retry() {
-      setError(null);
+      clearFailure();
       if (room.current?.session) {
         if (draft.current) schedule();
         else setStatus('ready');

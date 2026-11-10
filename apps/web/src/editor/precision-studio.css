@@ -1,0 +1,325 @@
+/* Shared precision controls keep native range behavior and honest parameter bounds. */
+.precision-control {
+  --precision-track: color-mix(in srgb, var(--ink) 9%, var(--surface));
+  --precision-fill: color-mix(in srgb, var(--ink) 66%, var(--surface));
+  padding: 7px 0 4px;
+}
+
+.precision-control .precision-heading {
+  min-height: 34px;
+  gap: 8px;
+}
+
+.precision-control .precision-heading > label {
+  font-size: 13px;
+  font-weight: 550;
+  letter-spacing: 0.01em;
+}
+
+.precision-control .precision-readout {
+  gap: 4px;
+  flex-shrink: 0;
+}
+
+.precision-control .precision-readout .precision-value {
+  min-height: 34px;
+  min-width: 54px;
+  padding-inline: 9px;
+  border-radius: 8px;
+  background: color-mix(in srgb, var(--ink) 4%, var(--surface));
+  font-size: 13px;
+  font-weight: 550;
+  letter-spacing: -0.02em;
+}
+
+.precision-control[data-adjusted='true'] .precision-value {
+  background: color-mix(in srgb, var(--accent) 16%, var(--surface));
+}
+
+.precision-control .precision-readout .precision-reset {
+  min-width: 32px;
+  min-height: 34px;
+  border-radius: 8px;
+  opacity: 0.72;
+}
+
+.precision-control .precision-readout .precision-reset:disabled {
+  opacity: 0.2;
+}
+
+.precision-control .precision-readout input {
+  width: 88px;
+  min-height: 34px;
+  padding: 5px 7px;
+  border-radius: 6px;
+  box-shadow: 0 0 0 1px color-mix(in srgb, var(--ink) 24%, var(--surface));
+  font-size: 13px;
+}
+
+.precision-control .precision-readout input[aria-invalid='true'] {
+  box-shadow: 0 0 0 1px #b84d3a;
+}
+
+.precision-control .precision-track,
+.precision-control .precision-track input[type='range'] {
+  height: 38px;
+  min-height: 38px;
+}
+
+.precision-control .precision-track input[type='range'] {
+  position: relative;
+  z-index: 1;
+}
+
+.precision-control .precision-track input[type='range']::-webkit-slider-runnable-track {
+  height: 5px;
+  border-radius: 8px;
+  background: var(
+    --range-gradient,
+    linear-gradient(
+      90deg,
+      var(--precision-track) 0 var(--range-fill-start),
+      var(--precision-fill) var(--range-fill-start) var(--range-fill-end),
+      var(--precision-track) var(--range-fill-end) 100%
+    )
+  );
+}
+
+.precision-control .precision-track input[type='range']::-moz-range-track {
+  height: 5px;
+  border-radius: 8px;
+  background: var(
+    --range-gradient,
+    linear-gradient(
+      90deg,
+      var(--precision-track) 0 var(--range-fill-start),
+      var(--precision-fill) var(--range-fill-start) var(--range-fill-end),
+      var(--precision-track) var(--range-fill-end) 100%
+    )
+  );
+}
+
+.precision-control .precision-track input[type='range']::-webkit-slider-thumb {
+  width: 20px;
+  height: 20px;
+  margin-top: -7.5px;
+  border: 2px solid var(--surface);
+  background: var(--ink);
+  box-shadow:
+    0 1px 4px #0002,
+    0 0 0 1px color-mix(in srgb, var(--ink) 16%, var(--surface));
+}
+
+.precision-control .precision-track input[type='range']::-moz-range-thumb {
+  width: 16px;
+  height: 16px;
+  border: 2px solid var(--surface);
+  background: var(--ink);
+  box-shadow:
+    0 1px 4px #0002,
+    0 0 0 1px color-mix(in srgb, var(--ink) 16%, var(--surface));
+}
+
+.precision-control .precision-track input[type='range']:active::-webkit-slider-thumb {
+  box-shadow: 0 0 0 5px color-mix(in srgb, var(--accent) 24%, transparent);
+}
+
+.precision-control .precision-track input[type='range']:active::-moz-range-thumb {
+  box-shadow: 0 0 0 5px color-mix(in srgb, var(--accent) 24%, transparent);
+}
+
+.precision-control .precision-neutral {
+  top: 13px;
+  height: 12px;
+  z-index: 0;
+  background: color-mix(in srgb, var(--ink) 30%, var(--surface));
+  transform: translateX(-0.5px);
+}
+
+.precision-scale {
+  display: flex;
+  justify-content: space-between;
+  margin-top: -5px;
+  color: color-mix(in srgb, var(--ink) 55%, var(--surface));
+  font-size: 10px;
+  line-height: 1.35;
+  font-variant-numeric: tabular-nums;
+  user-select: none;
+}
+
+.precision-control[data-disabled='true'] .precision-scale {
+  opacity: 0.45;
+}
+
+.parameter-shelf .parameter-shelf-options {
+  gap: 5px;
+  padding: 3px;
+  scroll-padding-inline: 3px;
+}
+
+.parameter-shelf .parameter-shelf-options button {
+  min-height: 58px;
+  padding: 9px 6px;
+  gap: 5px;
+  border-radius: 11px;
+  color: color-mix(in srgb, var(--ink) 73%, var(--surface));
+  background: color-mix(in srgb, var(--ink) 3%, var(--surface));
+}
+
+.parameter-shelf .parameter-shelf-options button > span {
+  font-size: 12px;
+  font-weight: 500;
+  line-height: 1.35;
+}
+
+.parameter-shelf .parameter-shelf-options small {
+  color: inherit;
+  font-size: 11px;
+  line-height: 1.2;
+  opacity: 0.75;
+}
+
+.parameter-shelf .parameter-shelf-options button:hover:not(:disabled) {
+  color: var(--ink);
+  background: color-mix(in srgb, var(--ink) 7%, var(--surface));
+}
+
+.parameter-shelf .parameter-shelf-options button[aria-pressed='true'] {
+  color: var(--surface);
+  background: var(--ink);
+}
+
+.parameter-shelf .parameter-shelf-options button[aria-pressed='true']:hover {
+  color: var(--surface);
+  background: color-mix(in srgb, var(--ink) 89%, var(--surface));
+}
+
+.parameter-shelf .parameter-shelf-options button > i {
+  width: 4px;
+  height: 4px;
+  right: 7px;
+  top: 7px;
+  opacity: 1;
+  background: #bb8433;
+}
+
+.parameter-shelf .parameter-shelf-options button[aria-pressed='true'] > i {
+  background: var(--accent);
+}
+
+.parameter-shelf .parameter-shelf-current {
+  padding: 4px 1px 8px;
+}
+
+.parameter-shelf .parameter-shelf-current .control-note {
+  color: color-mix(in srgb, var(--ink) 62%, var(--surface));
+  font-size: 12px;
+  line-height: 1.6;
+}
+
+.parameter-description {
+  color: color-mix(in srgb, var(--ink) 62%, var(--surface));
+  font-size: 11px;
+}
+
+.parameter-description > summary {
+  width: fit-content;
+  min-height: 30px;
+  display: list-item;
+  align-content: center;
+  cursor: pointer;
+}
+
+.parameter-description[open] > summary {
+  color: var(--ink);
+}
+
+.parameter-description > p {
+  padding: 4px 0 7px;
+}
+
+.parameter-compact-picker {
+  display: var(--shelf-picker-display, none);
+  position: absolute;
+  z-index: 2;
+  top: 0;
+  left: 0;
+  width: 148px;
+  max-width: calc(100% - 120px);
+  min-height: 38px;
+  padding: 6px 7px;
+  border: 0;
+  border-radius: 7px;
+  background: var(--surface-secondary);
+  color: var(--ink);
+  font-size: 12px;
+  font-weight: 600;
+}
+.parameter-shelf-current .precision-heading > label {
+  visibility: var(--shelf-label-visibility, visible);
+}
+
+@media (max-width: 759px) {
+  .parameter-shelf-current {
+    --shelf-picker-display: block;
+    --shelf-label-visibility: hidden;
+  }
+  .precision-control .precision-readout .precision-value,
+  .precision-control .precision-readout .precision-reset {
+    min-height: 38px;
+  }
+
+  .precision-control .precision-readout .precision-reset {
+    min-width: 36px;
+  }
+
+  .precision-control .precision-track,
+  .precision-control .precision-track input[type='range'] {
+    height: 40px;
+    min-height: 40px;
+  }
+
+  .precision-control .precision-neutral {
+    top: 14px;
+  }
+
+  .parameter-shelf .parameter-shelf-options button {
+    min-height: 52px;
+    min-width: 66px;
+    padding: 7px 6px;
+    border-radius: 9px;
+  }
+
+  .parameter-shelf .parameter-shelf-current {
+    padding-block: 0 5px;
+  }
+}
+
+@container edit-tools (max-height: 420px) {
+  .parameter-shelf-current {
+    --shelf-picker-display: block;
+    --shelf-label-visibility: hidden;
+  }
+}
+
+@media (max-height: 520px) and (orientation: landscape) {
+  .precision-control .precision-heading,
+  .precision-control .precision-readout .precision-value,
+  .precision-control .precision-readout .precision-reset {
+    min-height: 30px;
+  }
+
+  .precision-control .precision-track,
+  .precision-control .precision-track input[type='range'] {
+    height: 32px;
+    min-height: 32px;
+  }
+
+  .precision-control .precision-neutral {
+    top: 10px;
+  }
+
+  .parameter-shelf .parameter-shelf-options button {
+    min-height: 48px;
+  }
+}
