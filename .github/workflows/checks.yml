@@ -8,7 +8,8 @@ on:
 permissions:
   contents: read
 concurrency:
-  group: checks-${{ github.ref }}
+  # Preserve complete acceptance evidence for every main commit during integration.
+  group: checks-${{ github.ref }}-${{ github.ref == 'refs/heads/main' && github.sha || 'latest' }}
   cancel-in-progress: true
 jobs:
   browser:
