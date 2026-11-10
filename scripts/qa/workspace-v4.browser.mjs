@@ -8,7 +8,11 @@ import { fileURLToPath } from 'node:url';
 import sharp from 'sharp';
 import { chromium } from 'playwright';
 import { createDatabase, transaction, adjustUnits } from '@ai-xiutu/db';
-import { createRecipeV4, createAdjustmentRegionV3 } from '@ai-xiutu/editor';
+import {
+  createRecipeV4,
+  createAdjustmentRegionV3,
+  renderEditorRecipeTiled,
+} from '@ai-xiutu/editor';
 
 if (process.env.CI !== 'true' || process.env.NODE_ENV === 'production')
   throw new Error('This browser harness is restricted to isolated non-production CI.');
@@ -547,7 +551,10 @@ try {
   const browserChannel = process.env.BROWSER_CHANNEL;
   if (browserChannel && !['chrome', 'msedge'].includes(browserChannel))
     throw new Error('BROWSER_CHANNEL must be chrome or msedge; omit it for bundled Chromium.');
-  browser = await chromium.launch({ headless: true, ...(browserChannel ? { channel: browserChannel } : {}) });
+  browser = await chromium.launch({
+    headless: true,
+    ...(browserChannel ? { channel: browserChannel } : {}),
+  });
   report.browser = { name: 'Chromium', version: browser.version() };
   for (const size of [
     { width: 320, height: 700 },
@@ -830,6 +837,185 @@ try {
     await context.close();
     return { corners: 4, subpixel: 0.1, cancelVerified: true, undoVerified: true };
   });
+
+  for (const viewport of [
+    { width: 1440, height: 960 },
+    { width: 1024, height: 768 },
+    { width: 390, height: 844 },
+    { width: 320, height: 700 },
+    { width: 844, height: 390 },
+  ]) {
+    await caseRun(
+      `freehand-coalescing-export-undo-${viewport.width}x${viewport.height}`,
+      async () => {
+        const context = await browser.newContext({
+          viewport,
+          acceptDownloads: true,
+          reducedMotion: 'reduce',
+        });
+        const page = await watchPage(context);
+        await page.goto(origin);
+        await page
+          .getByLabel('选择照片', { exact: true })
+          .setInputFiles({ name: 'freehand.png', mimeType: 'image/png', buffer: png });
+        await page.locator('.image-frame canvas').waitFor();
+        await tool(page, '绘制');
+        await page
+          .locator('[data-motion="paint-controls"]')
+          .getByRole('button', { name: '新建', exact: true })
+          .click();
+        await precision(page, '柔边', 0);
+        const empty = await recipeDownload(page);
+        const curve = [
+          { x: 0.25, y: 0.35 },
+          { x: 0.3, y: 0.5 },
+          { x: 0.25, y: 0.65 },
+        ];
+        const endpoint = { x: 0.25 + 0.5 / width, y: 0.65 };
+        const closeTools = async () => {
+          await tool(page, '绘制');
+          await page
+            .locator('.free-panel[aria-hidden="false"]')
+            .getByRole('button', { name: /^收起.*可从工具栏重新打开$/ })
+            .click();
+          await imageReady(page);
+          await page.evaluate(
+            () => new Promise((done) => requestAnimationFrame(() => requestAnimationFrame(done))),
+          );
+        };
+        const draw = async (cancel = false) => {
+          await closeTools();
+          const frame = page.locator('.image-frame');
+          const box = await frame.boundingBox();
+          assert.ok(box);
+          const client = (p) => ({
+            clientX: box.x + p.x * box.width,
+            clientY: box.y + p.y * box.height,
+          });
+          // Real pointerdown owns capture. Inject only the hardware event batch;
+          // the production React handler, history, Worker and export stay intact.
+          await frame.evaluate((element) =>
+            element.addEventListener(
+              'pointerdown',
+              (event) => {
+                element.dataset.qaPointer = String(event.pointerId);
+              },
+              { once: true },
+            ),
+          );
+          const start = client(curve[0]);
+          await page.mouse.move(start.clientX, start.clientY);
+          await page.mouse.down();
+          await frame.evaluate(
+            (element, data) => {
+              const pointerId = Number(element.dataset.qaPointer);
+              if (!Number.isInteger(pointerId) || !element.hasPointerCapture(pointerId))
+                throw new Error('Real input did not acquire canvas pointer capture');
+              const init = {
+                bubbles: true,
+                pointerId,
+                pointerType: 'mouse',
+                buttons: 1,
+                button: -1,
+              };
+              const event = new PointerEvent('pointermove', { ...init, ...data.summary });
+              Object.defineProperty(event, 'getCoalescedEvents', {
+                value: () =>
+                  data.points.map(
+                    (point) => new PointerEvent('pointermove', { ...init, ...point }),
+                  ),
+              });
+              element.dispatchEvent(event);
+            },
+            { points: curve.slice(1).map(client), summary: client({ x: 0.35, y: 0.5 }) },
+          );
+          if (cancel) await page.keyboard.press('Escape');
+          else
+            await frame.evaluate((element, point) => {
+              element.dispatchEvent(
+                new PointerEvent('pointerup', {
+                  bubbles: true,
+                  pointerId: Number(element.dataset.qaPointer),
+                  pointerType: 'mouse',
+                  buttons: 0,
+                  button: 0,
+                  ...point,
+                }),
+              );
+            }, client(endpoint));
+          await page.mouse.up();
+          await imageReady(page);
+        };
+        await draw();
+        const drawn = await recipeDownload(page);
+        const stroke = drawn.paintLayers[0].strokes[0];
+        assert.equal(
+          stroke.points.length,
+          4,
+          'one actual stroke contains the bend and short release endpoint, without the summary point',
+        );
+        for (const [i, point] of [...curve, endpoint].entries()) {
+          assert.ok(Math.abs(stroke.points[i].x - point.x) < 1e-6);
+          assert.ok(Math.abs(stroke.points[i].y - point.y) < 1e-6);
+        }
+        const exported = await pixelEvidence(await imageDownload(page));
+        const reference = renderEditorRecipeTiled(
+          { width, height, data: new Uint8ClampedArray(pixels) },
+          drawn,
+          { tileSize: 37 },
+        );
+        assert.equal(
+          exported.evidence.rgbaSha256,
+          sha256(reference.data),
+          'actual downloaded PNG matches the reference engine at every RGBA byte',
+        );
+        assert.notEqual(exported.evidence.rgbaSha256, sha256(pixels));
+        await tool(page, '绘制');
+        const grip = page.locator('.free-panel[aria-hidden="false"] .panel-title-drag');
+        await grip.focus();
+        await page.keyboard.press('Control+z');
+        assert.deepEqual(
+          await recipeDownload(page),
+          empty,
+          'all coalesced samples are one history operation',
+        );
+        await draw(true);
+        assert.deepEqual(
+          await recipeDownload(page),
+          empty,
+          'Escape restores the exact pre-stroke state',
+        );
+        await draw();
+        await tool(page, '绘制');
+        await page.getByRole('button', { name: '橡皮', exact: true }).click();
+        await draw();
+        const erased = await recipeDownload(page);
+        assert.equal(erased.paintLayers[0].strokes.length, 2);
+        assert.equal(erased.paintLayers[0].strokes[1].mode, 'erase');
+        const erasedPng = await pixelEvidence(await imageDownload(page));
+        assert.equal(
+          erasedPng.evidence.rgbaSha256,
+          sha256(pixels),
+          'erasing the same hard stroke restores all source bytes',
+        );
+        await tool(page, '绘制');
+        await page.screenshot({
+          path: join(artifacts, `freehand-${viewport.width}x${viewport.height}.png`),
+        });
+        await context.close();
+        return {
+          viewport,
+          samples: stroke.points.length,
+          input: 'real pointer capture with injected coalesced hardware samples',
+          sourcePixels: width * height,
+          exportMatchesReference: true,
+          eraseRestoresSource: true,
+          undoVerified: true,
+          cancelVerified: true,
+        };
+      },
+    );
+  }
 
   const clients = [];
   for (const actor of actors) {

@@ -77,6 +77,7 @@ npm run dev:lite
 npm run typecheck
 npm run test:lite
 npm run build
+npm run test:coverage # 须显式设置隔离的 TEST_DATABASE_URL；不读取 .env 或调用付费供应商
 npm run verify:lite -- local-round
 
 # 指向隔离的原生测试库后：
@@ -84,6 +85,8 @@ npm run verify -- native-round
 ```
 
 `verify` 包含全工作区严格类型检查、完整自动测试、生产前端构建和生产依赖审计；没有 `TEST_DATABASE_URL` 时拒绝把数据库测试算作通过。报告保存到被 Git 忽略的 `artifacts/verification`。各测试文件串行运行，文件内显式的并发场景继续验证锁和幂等。
+
+`test:coverage` 输出 `artifacts/coverage/native/{inventory.json,summary.json,files.csv,lcov.info}`，记录每个源码文件是否实际加载、行/分支/函数执行数、源码与测试文件哈希。百分比只针对 LCOV 中出现的文件，未加载文件独立列出；浏览器组件、真实设备、照片审美与付费模型质量不能从 Node 覆盖率推定。
 
 ## 仓库结构
 

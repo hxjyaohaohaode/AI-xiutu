@@ -91,6 +91,8 @@ npm run dev
 
 所有开关默认关闭，已配置目录不代表运行时供应商已启用。`npm run doctor` 检查本地配置、数据库迁移、目录和能力描述；V4 还检查助手日志一致性、原生媒体 import 与代理配置形状。它不发送短信、审核或模型请求，也不测试目标网络，不能证明真实账户已获准调用。
 
+模型目录检查采用只读一致快照，每页200条遍历全部配置，仅展示40条精简样本和`modelCount/modelsOmitted/invalidModelCount`。助手配置即使位于未展示页，校验失败仍使诊断退出失败；样本截断不是跳过检查。完整模型参数仍由运营目录接口提供。
+
 ### OpenAI Images 的独立开关
 
 使用 OpenAI 时，除 `AI_IMAGE_ENABLED` 外，还需要 `OPENAI_IMAGE_ENABLED=true`、服务端 `OPENAI_API_KEY`、非空的 `OPENAI_IMAGE_MODELS` 精确白名单、已启用运营目录和真实文字/图片审核配置。个人 ChatGPT 订阅不是 API 凭据。请求固定到官方 `api.openai.com`，浏览器不能选择代理地址、上传供应商密钥或把任意 URL 交给 Worker。

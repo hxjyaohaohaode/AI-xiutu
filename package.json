@@ -17,6 +17,7 @@
     "build": "npm run typecheck && npm run build -w @ai-xiutu/web",
     "typecheck": "node scripts/typecheck.mjs",
     "test": "node scripts/test.mjs",
+    "test:coverage": "node scripts/qa/native-coverage.mjs",
     "check": "npm run typecheck && npm test && npm run build -w @ai-xiutu/web",
     "db:migrate": "tsx packages/db/src/migrate.ts",
     "admin:create": "tsx apps/api/src/bootstrap.ts",

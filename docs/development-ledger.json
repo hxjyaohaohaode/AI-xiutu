@@ -122,8 +122,8 @@
     {
       "id": "painting",
       "requirement": "像素绘画、橡皮、克隆、图层与混合",
-      "status": "baseline_audit_pending",
-      "evidence": "保留 v4 操作与历史；细粒度实际画布验收待扩展。"
+      "status": "local_verified_subset",
+      "evidence": "接收真实coalesced中间轨迹、保留短抬笔末端、不可变批量预览；五种视口绘制/擦除/撤销/取消与600×400导出每字节对照通过。实际压感、倾斜与全部跨画幅轨迹行为仍未完成。"
     },
     {
       "id": "healing",
@@ -189,7 +189,7 @@
       "id": "testing",
       "requirement": "全仓、多轮、真实图像、极值、状态、端间和并发检测",
       "status": "local_verified_snapshot",
-      "evidence": "Linux 640项通过、0失败、0跳过，全工作区类型检查与构建通过；工作台16项、助手14项浏览器用例通过；真实照片431项另加80个数值控制/组合的2630次对照。新局部工具5项像素/组合测试，助手API42项含原尺寸处理与语音切换；CI继续验证最终提交。"
+      "evidence": "Linux 645项通过、0失败、0跳过，全工作区类型检查与构建通过；工作台21项、助手14项浏览器用例通过；真实照片431项另加80个数值控制/组合的2630次对照。助手API42项含原尺寸处理与语音切换；新增可重复的Node逐文件覆盖审计，未加载文件独立列出；CI验证最终提交。"
     },
     {
       "id": "deployment",
@@ -199,9 +199,10 @@
     }
   ],
   "evidence": {
-    "localCheck": "artifacts/inspection/spatial-final-linux-check.log",
-    "productionBuild": "artifacts/inspection/spatial-final-production-build.log",
-    "browserWorkspace": "artifacts/browser-runtime-regression/report.json",
+    "localCheck": "artifacts/inspection/freehand-final-linux-check.log",
+    "productionBuild": "artifacts/inspection/freehand-final-production-build.log",
+    "browserWorkspace": "artifacts/browser-freehand-regression/report.json",
+    "nativeCoverage": "artifacts/coverage/native/summary.json",
     "browserAssistant": "artifacts/browser-assistant/report.json",
     "realPhotographs": "artifacts/spatial-quality/report.json",
     "allControlPhotographs": "artifacts/editor-v4-sweep/evidence.json",

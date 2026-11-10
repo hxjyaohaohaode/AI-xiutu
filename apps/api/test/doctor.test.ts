@@ -2,6 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { execFile } from 'node:child_process';
 import { join, resolve } from 'node:path';
+import { randomUUID } from 'node:crypto';
 import { collaborationFixture } from './collaboration-fixture.js';
 
 const databaseUrl = process.env.TEST_DATABASE_URL;
@@ -13,7 +14,16 @@ test(
   { skip: !databaseUrl },
   async () => {
     const fixture = await collaborationFixture(databaseUrl!);
+    const catalogPrefix = `zz-doctor-${randomUUID()}-`;
     try {
+      // More than two database pages, while deliberately keeping stdout's
+      // original cap. The diagnostic must scan all models without dumping all.
+      await fixture.db.query(
+        `INSERT INTO model_configs(id,config)
+        SELECT $1 || lpad(n::text,4,'0'), $2::jsonb
+        FROM generate_series(1,450) n`,
+        [catalogPrefix, JSON.stringify({ enabled: false, provider: 'qwen', operations: [] })],
+      );
       const base = {
         ...process.env,
         DATABASE_URL: databaseUrl!,
@@ -72,6 +82,13 @@ test(
         disabled.checks.find((item) => item.check === 'live-vendor-validation')!.detail,
         /NOT PERFORMED/,
       );
+      const catalog = JSON.parse(disabled.checks.find((item) => item.check === 'adapters')!.detail);
+      const count = Number(
+        (await fixture.db.query('SELECT count(*) FROM model_configs')).rows[0]!.count,
+      );
+      assert.equal(catalog.modelCount, count);
+      assert.equal(catalog.models.length, 40);
+      assert.equal(catalog.modelsOmitted, count - 40);
 
       const voiceWithoutCredentials = await run({
         AI_ASSISTANT_ENABLED: 'true',
@@ -100,7 +117,47 @@ test(
         invalidProxy.checks.find((item) => item.check === 'egress-configuration')!.ok,
         false,
       );
+      await fixture.db.query(
+        `INSERT INTO assistant_model_configs(id,config)
+        SELECT $1 || lpad(n::text,4,'0'), $2::jsonb
+        FROM generate_series(1,450) n`,
+        [
+          catalogPrefix,
+          JSON.stringify({
+            enabled: false,
+            provider: 'openai',
+            operations: ['assistant-turn'],
+            unitCost: 1,
+          }),
+        ],
+      );
+      await fixture.db.query('INSERT INTO assistant_model_configs(id,config) VALUES($1,$2)', [
+        `${catalogPrefix}9999`,
+        JSON.stringify({ enabled: true, operations: ['not-an-operation'] }),
+      ]);
+      const invalidLateCatalog = await run();
+      assert.equal(invalidLateCatalog.code, 1);
+      const lateCheck = invalidLateCatalog.checks.find(
+        (item) => item.check === 'assistant-and-dispatch-journal',
+      )!;
+      assert.equal(
+        lateCheck.ok,
+        false,
+        'invalid configurations beyond the printed sample cannot be hidden',
+      );
+      const late = JSON.parse(lateCheck.detail);
+      assert.equal(late.invalidModelCount, 1);
+      assert.equal(late.models.length, 40);
+      assert.ok(late.modelCount > 450);
+      assert.equal(
+        late.models.some((model: { id: string }) => model.id === `${catalogPrefix}9999`),
+        false,
+      );
     } finally {
+      await fixture.db.query('DELETE FROM assistant_model_configs WHERE starts_with(id,$1)', [
+        catalogPrefix,
+      ]);
+      await fixture.db.query('DELETE FROM model_configs WHERE starts_with(id,$1)', [catalogPrefix]);
       await fixture.close();
     }
   },

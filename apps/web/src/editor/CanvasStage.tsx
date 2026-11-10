@@ -39,6 +39,7 @@ import { Busy, IconButton, InlineError } from '../components/Ui';
 import { editorGeometryKey, type EditorState } from './useEditor';
 import { sourcePointer, projectOverlayPoint, projectOverlayPath } from './coordinates';
 import { CanvasPointerOwnership, ownedCanvasRollback } from './canvas-gesture';
+import { appendFreehandPoints, pointerPathSamples } from './freehand';
 import { secureUuid } from '../lib/uuid';
 import type { ToolGroup } from './ToolInspector';
 import {
@@ -744,7 +745,7 @@ export function CanvasStage({
     editGesture.current = state;
     setNotice(null);
   }
-  function moveEdit(event: PointerEvent<HTMLDivElement>) {
+  function moveEdit(event: PointerEvent<HTMLDivElement>, terminal = false) {
     const state = editGesture.current;
     if (
       !state ||
@@ -758,8 +759,80 @@ export function CanvasStage({
       setProjectiveFrame(null);
       return;
     }
-    if ((event.buttons & 1) === 0) {
+    if (!terminal && (event.buttons & 1) === 0) {
       endEdit(event, true);
+      return;
+    }
+    if ((state.kind === 'paint' || state.kind === 'brush') && state.points) {
+      const painting = state.kind === 'paint';
+      const stroke = painting ? state.paint : state.stroke;
+      if (!stroke) return;
+      const originalMask = state.mask;
+      const localPoints =
+        !painting && originalMask?.type === 'brush'
+          ? originalMask.strokes.reduce((n, item) => n + item.points.length, 0)
+          : 0;
+      const allPoints =
+        !painting && state.base.schemaVersion === 2
+          ? state.base.regions.reduce(
+              (n, item) =>
+                n +
+                (item.mask.type === 'brush'
+                  ? item.mask.strokes.reduce((m, item) => m + item.points.length, 0)
+                  : 0),
+              0,
+            )
+          : 0;
+      const limit = painting
+        ? 1024
+        : Math.min(
+            MAX_BRUSH_POINTS_PER_STROKE,
+            MAX_BRUSH_POINTS_PER_MASK - localPoints,
+            MAX_TOTAL_BRUSH_POINTS - allPoints,
+          );
+      const sampled = appendFreehandPoints(
+        state.points,
+        pointerPathSamples(event.nativeEvent),
+        (sample) => {
+          const point = toSource(sample.clientX, sample.clientY, painting, 'strict');
+          return point ? brushPointAtSource(point, dimensions, stroke.radius) : null;
+        },
+        dimensions,
+        Math.max(
+          painting ? 0.5 : 1,
+          (stroke.radius * Math.min(dimensions.width, dimensions.height)) / 8,
+        ),
+        limit,
+        terminal,
+      );
+      if (sampled.limitReached) setNotice('本笔已达采样预算，请松开后继续下一笔；已画部分保留。');
+      if (!sampled.changed) return;
+      state.points = sampled.points;
+      if (
+        painting &&
+        state.paint &&
+        (state.base.schemaVersion === 3 || state.base.schemaVersion === 4)
+      ) {
+        previewEdit(state, {
+          ...state.base,
+          paintLayers: state.base.paintLayers.map((layer) =>
+            layer.id === state.paintLayerId
+              ? {
+                  ...layer,
+                  strokes: [...layer.strokes, { ...state.paint!, points: sampled.points }],
+                }
+              : layer,
+          ),
+        });
+      } else if (originalMask?.type === 'brush' && state.stroke) {
+        previewEdit(
+          state,
+          replaceMask(state.base, {
+            ...originalMask,
+            strokes: [...originalMask.strokes, { ...state.stroke, points: sampled.points }],
+          }),
+        );
+      }
       return;
     }
     if (state.projective && state.base.schemaVersion === 4) {
@@ -853,33 +926,6 @@ export function CanvasStage({
       return;
     }
     if (
-      state.kind === 'paint' &&
-      state.paint &&
-      state.points &&
-      (state.base.schemaVersion === 3 || state.base.schemaVersion === 4)
-    ) {
-      const p = brushPointAtSource(point, dimensions, state.paint.radius),
-        last = state.points.at(-1)!;
-      if (
-        Math.hypot((p.x - last.x) * dimensions.width, (p.y - last.y) * dimensions.height) <
-        Math.max(0.5, (state.paint.radius * Math.min(dimensions.width, dimensions.height)) / 8)
-      )
-        return;
-      if (state.points.length >= 1024) {
-        setNotice('本笔已达采样预算，请松开后继续下一笔。');
-        return;
-      }
-      state.points.push(p);
-      const stroke = { ...state.paint, points: [...state.points] };
-      previewEdit(state, {
-        ...state.base,
-        paintLayers: state.base.paintLayers.map((l) =>
-          l.id === state.paintLayerId ? { ...l, strokes: [...l.strokes, stroke] } : l,
-        ),
-      });
-      return;
-    }
-    if (
       state.kind === 'warp' &&
       state.warp &&
       (state.base.schemaVersion === 3 || state.base.schemaVersion === 4)
@@ -956,44 +1002,6 @@ export function CanvasStage({
           i === index ? { x: clamp(point.x), y: clamp(point.y) } : p,
         ),
       };
-    } else if (original.type === 'brush' && state.points && state.stroke) {
-      const previous = state.points.at(-1)!;
-      if (
-        Math.hypot(
-          (point.x - previous.x) * dimensions.width,
-          (point.y - previous.y) * dimensions.height,
-        ) <
-        Math.max(
-          1,
-          (editor.brushSettings.radius * Math.min(dimensions.width, dimensions.height)) / 8,
-        )
-      )
-        return;
-      const localPoints = original.strokes.reduce((n, s) => n + s.points.length, 0);
-      const allPoints =
-        state.base.schemaVersion === 2
-          ? state.base.regions.reduce(
-              (n, item) =>
-                n +
-                (item.mask.type === 'brush'
-                  ? item.mask.strokes.reduce((m, s) => m + s.points.length, 0)
-                  : 0),
-              0,
-            )
-          : 0;
-      if (
-        state.points.length >= MAX_BRUSH_POINTS_PER_STROKE ||
-        localPoints + state.points.length >= MAX_BRUSH_POINTS_PER_MASK ||
-        allPoints + state.points.length >= MAX_TOTAL_BRUSH_POINTS
-      ) {
-        setNotice('这笔已达到采样预算，请松开后继续下一笔；已画部分保留。');
-        return;
-      }
-      state.points.push(point);
-      next = {
-        ...original,
-        strokes: [...original.strokes, { ...state.stroke, points: [...state.points] }],
-      };
     }
     try {
       parseSelectionMaskV3(next);
@@ -1006,6 +1014,7 @@ export function CanvasStage({
   function endEdit(event: PointerEvent<HTMLDivElement>, cancel = false) {
     const state = editGesture.current;
     if (!state || state.pointer !== event.pointerId) return;
+    if (!cancel && (state.kind === 'paint' || state.kind === 'brush')) moveEdit(event, true);
     editGesture.current = null;
     setProjectiveFrame(null);
     if (ownsEdit(state)) {

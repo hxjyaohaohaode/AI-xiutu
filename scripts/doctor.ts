@@ -2,7 +2,7 @@ import 'dotenv/config';
 import { mkdtemp, open, rm } from 'node:fs/promises';
 import { join, resolve } from 'node:path';
 import { randomBytes } from 'node:crypto';
-import { createDatabase, getSchemaReadiness } from '@ai-xiutu/db';
+import { createDatabase, getSchemaReadiness, transaction, type Database } from '@ai-xiutu/db';
 import { createAiService } from '@ai-xiutu/ai';
 import {
   createTencentSms,
@@ -19,6 +19,43 @@ import { createAssistantService } from '../apps/api/src/assistant/service.js';
 // Checks local readiness only. No SMS, moderation or model requests are sent.
 const results: { check: string; ok: boolean; detail: string }[] = [];
 let db: ReturnType<typeof createDatabase> | undefined;
+/** Inspect every row in a stable snapshot, but keep a bounded diagnostic sample.
+ * Repeated integration runs and large operator catalogs must not grow stdout
+ * or retained capability trees without limit. This never calls a provider. */
+async function catalogSummary<T>(
+  database: Database,
+  table: 'model_configs' | 'assistant_model_configs',
+  inspect: (row: { id: string; config: unknown }) => { valid: boolean; value: T },
+) {
+  return transaction(database, async (tx) => {
+    await tx.query('SET TRANSACTION ISOLATION LEVEL REPEATABLE READ READ ONLY');
+    const models: T[] = [];
+    let after: string | null = null;
+    let modelCount = 0;
+    let invalidModelCount = 0;
+    for (;;) {
+      const page: { rows: { id: string; config: unknown }[] } = await tx.query(
+        `SELECT id,config FROM ${table} WHERE ($1::text IS NULL OR id>$1) ORDER BY id LIMIT 200`,
+        [after],
+      );
+      for (const row of page.rows) {
+        const description = inspect(row);
+        modelCount++;
+        if (!description.valid) invalidModelCount++;
+        if (models.length < 40) models.push(description.value);
+        after = row.id;
+      }
+      if (page.rows.length < 200) break;
+    }
+    return {
+      models,
+      modelCount,
+      invalidModelCount,
+      modelsOmitted: modelCount - models.length,
+      sampleLimit: 40,
+    };
+  });
+}
 try {
   const config = loadConfig();
   results.push({
@@ -54,10 +91,22 @@ try {
     detail: 'Private-directory create/write/fsync/remove succeeded; no user asset was changed.',
   });
   const ai = createAiService(db);
-  const catalog = (await db.query('SELECT id,config FROM model_configs')).rows.map((model) => ({
-    id: model.id,
-    ...ai.describeModel(model.id, model.config),
-  }));
+  const catalog = await catalogSummary(db, 'model_configs', (model) => {
+    const description = ai.describeModel(
+      model.id,
+      model.config as Parameters<typeof ai.describeModel>[1],
+    );
+    return {
+      valid: true,
+      value: {
+        id: model.id.slice(0, 160),
+        idTruncated: model.id.length > 160,
+        runtimeAvailable: description.runtimeAvailable,
+        runtimeOperations: description.runtimeOperations,
+        runtimeReason: description.runtimeReason,
+      },
+    };
+  });
   results.push({
     check: 'adapters',
     ok: true,
@@ -66,7 +115,7 @@ try {
       textModerationConfigured: createTencentTextModerator().configured,
       imageModerationConfigured: createTencentImageModerator().configured,
       availableOperations: ai.availableOperations,
-      models: catalog,
+      ...catalog,
     }),
   });
   const assistant = createAssistantService(
@@ -76,29 +125,31 @@ try {
     join(process.env.AI_JOURNAL_DIR ?? config.storageDir, 'assistant'),
   );
   await assistant.assertJournal();
-  const assistantModels = (
-    await db.query('SELECT id,config FROM assistant_model_configs ORDER BY id')
-  ).rows.map((row) => {
+  const assistantModels = await catalogSummary(db, 'assistant_model_configs', (row) => {
     const parsed = assistantModelConfigSchema.safeParse(row.config);
     return {
-      id: row.id,
-      configValid: parsed.success,
-      enabled: parsed.success && parsed.data.enabled,
-      operations: parsed.success ? parsed.data.operations : [],
-      voiceProfileKnown: VOICE_MODELS.some((model) => model.id === row.id),
+      valid: parsed.success,
+      value: {
+        id: row.id.slice(0, 160),
+        idTruncated: row.id.length > 160,
+        configValid: parsed.success,
+        enabled: parsed.success && parsed.data.enabled,
+        operations: parsed.success ? parsed.data.operations : [],
+        voiceProfileKnown: VOICE_MODELS.some((model) => model.id === row.id),
+      },
     };
   });
   results.push({
     check: 'assistant-and-dispatch-journal',
     ok:
-      assistantModels.every((model) => model.configValid) &&
+      assistantModels.invalidModelCount === 0 &&
       (process.env.AI_ASSISTANT_ENABLED !== 'true' || assistant.ready) &&
       (process.env.AI_VOICE_ENABLED !== 'true' || assistant.voiceReady),
     detail: JSON.stringify({
       ready: assistant.ready,
       voiceReady: assistant.voiceReady,
       reason: assistant.reason,
-      models: assistantModels,
+      ...assistantModels,
       journalConsistent: true,
       liveAccountTested: false,
     }),
