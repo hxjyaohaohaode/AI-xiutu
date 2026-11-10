@@ -66,8 +66,10 @@ function JobFlow({ detail }: { detail: UsageJobDetail }) {
         </text>
         {largest.map((stage, index) => {
           const y = index * 35 + 20;
+          const model = stage.modelId.length > 24 ? `${stage.modelId.slice(0, 23)}…` : stage.modelId;
           return (
             <g key={stage.stageId}>
+              <title>{stage.modelId} · {stage.totals.total?.toLocaleString('zh-CN')} token</title>
               <path
                 d={`M126 ${height / 2 + (index - (largest.length - 1) / 2) * 4} C226 ${height / 2}, 255 ${y}, 365 ${y}`}
                 fill="none"
@@ -79,7 +81,7 @@ function JobFlow({ detail }: { detail: UsageJobDetail }) {
                 {purpose[stage.purpose] ?? stage.purpose}
               </text>
               <text x="378" y={y + 13}>
-                {stage.modelId} · {stage.totals.total?.toLocaleString('zh-CN')}
+                {model} · {stage.totals.total?.toLocaleString('zh-CN')}
               </text>
             </g>
           );
@@ -128,6 +130,8 @@ export function UsageJob({
     <Modal
       title={id === 'prices' ? '模型公开费率' : '任务调用与费用'}
       subtitle={id === 'prices' ? '按模型和计量项查看' : id}
+      className="studio-dialog"
+      wide
       onClose={onClose}
     >
       <InlineError message={error} />

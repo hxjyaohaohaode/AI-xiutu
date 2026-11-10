@@ -193,7 +193,7 @@ try {
                 },
                 outputText,
               ],
-              usage: { input_tokens: 50, output_tokens: 20 },
+              usage: { input_tokens: 50, output_tokens: 20, total_tokens: 70 },
             },
             { headers: { 'x-request-id': `fixture-search-${dispatches}` } },
           );
@@ -269,7 +269,7 @@ try {
                     id: `local-${dispatches}`,
                     status: 'completed',
                     output,
-                    usage: { input_tokens: 100, output_tokens: 50 },
+                    usage: { input_tokens: 100, output_tokens: 50, total_tokens: 150 },
                   },
                 });
                 controller.close();
@@ -635,7 +635,14 @@ try {
     await scope.getByLabel('同时查找公开图片').check();
     const research = await details('本轮分工');
     await research.getByLabel('在已授权空间检索素材').fill('湖面参考');
+    const pending = page.waitForResponse((response) =>
+      response.request().method() === 'POST' &&
+      new URL(response.url()).pathname.endsWith('/assistant-turns'),
+    );
     await submit('这是私有项目描述，请根据公开图片提供参考。');
+    const admission = await pending;
+    assert.equal(admission.status(), 202);
+    const { id: turnId } = await admission.json();
     const evidence = page.locator('.assistant-search-evidence').filter({
       has: page.getByRole('link', { name: '来源网页', exact: true }),
     }).last();
@@ -649,16 +656,47 @@ try {
       await evidence.getByRole('link', { name: '查看图片', exact: true }).getAttribute('href'),
       'https://images.example.com/lake.jpg',
     );
+    await until(
+      async () =>
+        (await fixture.call('GET', `/v1/assistant-turns/${turnId}`)).json().state === 'completed',
+      'research turn has settled',
+    );
+    await page.locator('.assistant-research-graph summary').filter({ hasText: '研究分工 · 完成' }).waitFor();
     const graph = await details('研究分工');
     await graph.getByText('公开来源', { exact: true }).waitFor();
     await graph.getByText('授权素材', { exact: true }).waitFor();
     await graph.getByText(/2 个分支汇合/).waitFor();
-    await page.screenshot({ path: resolve(artifacts, 'cloud-public-search.png') });
+    await graph.screenshot({ path: resolve(artifacts, 'research-graph.png') });
+    await evidence.screenshot({ path: resolve(artifacts, 'cloud-public-search.png') });
     await research.getByLabel('在已授权空间检索素材').clear();
     await scope.getByRole('button', { name: '移出参考', exact: true }).click();
     await scope.getByLabel('允许公开网络检索，保留来源链接').uncheck();
     await details('共享范围', false);
-    return { protectedThumbnail: true, explicitPublicQuery: true, publicSourceLink: true, mergedBranches: 2 };
+    const billing = await page.context().newPage();
+    billing.on('pageerror', (error) => report.pageErrors.push(String(error)));
+    try {
+      await openProject(billing, false);
+      await billing
+        .getByRole('navigation', { name: '工作视图', exact: true })
+        .getByRole('button', { name: '用量', exact: true })
+        .click();
+      await billing.getByRole('img', { name: '预占、结算、释放和到期的时序河流图' }).waitFor();
+      await billing.getByRole('button', { name: `任务 ${turnId.slice(0, 8)}`, exact: true }).first().click();
+      const job = billing.getByRole('dialog', { name: '任务调用与费用' });
+      await job.getByRole('img', { name: '任务与调用阶段之间的 token 流向' }).waitFor();
+      await job.getByRole('region', { name: '模型调用阶段' })
+        .getByRole('row').filter({ hasText: '公开检索' }).filter({ hasText: '70 token' }).waitFor();
+      await job.screenshot({ path: resolve(artifacts, 'task-model-ledger.png') });
+    } finally {
+      await billing.close();
+    }
+    return {
+      protectedThumbnail: true,
+      explicitPublicQuery: true,
+      publicSourceLink: true,
+      mergedBranches: 2,
+      meteredTaskFromLedger: true,
+    };
   });
   await testCase('stop-in-flight-hides-partial-result-and-survives-refresh', async () => {
     await page.getByRole('button', { name: '开始新会话，保留已保存的历史', exact: true }).click();

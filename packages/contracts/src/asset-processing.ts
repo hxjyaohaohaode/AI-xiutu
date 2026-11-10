@@ -1,5 +1,8 @@
 import { z } from 'zod';
 
+export const assetSources = ['upload', 'generated', 'sketch', 'derived', 'unknown'] as const;
+export type AssetSource = (typeof assetSources)[number];
+
 const assetId = z.string().uuid();
 const raster = z.number().int().min(1).max(8192);
 const offset = z.number().int().min(0).max(8191);

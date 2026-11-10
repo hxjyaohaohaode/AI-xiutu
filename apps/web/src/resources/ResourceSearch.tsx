@@ -300,6 +300,7 @@ export function ResourceSearch({
           <option value="upload">上传</option>
           <option value="generated">AI生成</option>
           <option value="sketch">草图</option>
+          <option value="derived">加工素材</option>
         </select>
       </div>
       <InlineError message={error} />

@@ -1,13 +1,14 @@
 import type { FastifyInstance } from 'fastify';
 import { z } from 'zod';
 import { transaction, audit, type Database, type Queryable } from '@ai-xiutu/db';
-import { resourceMemorySchema } from '@ai-xiutu/contracts';
+import { assetSources, resourceMemorySchema } from '@ai-xiutu/contracts';
 import {
   id,
   hash,
   requireUser,
   projectAccess,
   assetDto,
+  assetSourceSql,
   HttpError,
   assertVersion,
 } from './core.js';
@@ -25,7 +26,7 @@ export const resourceFiltersSchema = z
       .regex(/^[^\u0000-\u001f\u007f]*$/)
       .default(''),
     remembered: z.enum(['true', 'false']).optional(),
-    source: z.enum(['upload', 'generated', 'sketch', 'unknown']).optional(),
+    source: z.enum(assetSources).optional(),
     createdFrom: timestamp.optional(),
     createdTo: timestamp.optional(),
     limit: z.coerce.number().int().min(1).max(100).default(50),
@@ -50,8 +51,6 @@ const memoryDto = (row: Record<string, any> | undefined) =>
         updatedAt: row.updated_at,
       }
     : null;
-const sourceSql =
-  "CASE WHEN a.provenance->>'kind'='ai-generated' THEN 'generated' WHEN a.provenance->>'kind'='uploaded' AND a.provenance->>'declaredSource'='sketch' THEN 'sketch' WHEN a.provenance->>'kind'='uploaded' THEN 'upload' ELSE 'unknown' END";
 
 /** Shared by the HTTP API and explicitly authorized assistant search. No operator bypass. */
 export async function searchResources(db: Queryable, actorId: string, input: unknown) {
@@ -84,7 +83,7 @@ export async function searchResources(db: Queryable, actorId: string, input: unk
     AND ($2='all' OR s.kind=$2) AND ($3::uuid IS NULL OR s.id=$3) AND ($4::uuid IS NULL OR p.id=$4)
     AND ($5::text='' OR strpos(lower(a.name||' '||COALESCE(a.annotations->>'title','')||' '||COALESCE(a.annotations->'tags','[]'::jsonb)::text||' '||COALESCE(rm.title,'')||' '||COALESCE(rm.tags,'[]'::jsonb)::text||' '||COALESCE(rm.note,'')),lower($5))>0
       OR EXISTS(SELECT 1 FROM asset_recognitions r WHERE r.asset_id=a.id AND r.source_hash=a.content_hash AND strpos(lower(r.text_content),lower($5))>0))
-    AND ($6::boolean IS NULL OR COALESCE(rm.remembered,false)=$6) AND ($7::text IS NULL OR (${sourceSql})=$7)
+    AND ($6::boolean IS NULL OR COALESCE(rm.remembered,false)=$6) AND ($7::text IS NULL OR (${assetSourceSql})=$7)
     AND ($8::timestamptz IS NULL OR a.created_at>=$8) AND ($9::timestamptz IS NULL OR a.created_at<$9)
     AND ($10::timestamptz IS NULL OR (a.created_at,a.id)<($10::timestamptz,$11::uuid))
     ORDER BY a.created_at DESC,a.id DESC LIMIT $12`,

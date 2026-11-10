@@ -1487,6 +1487,34 @@ try {
   });
   await caseRun('project-library-imports-real-gif-and-edits-its-frames', async () => {
     const { page } = a;
+    const desktop = page.viewportSize();
+    const viewportEvidence = [];
+    async function checkDialog(layout, name, action) {
+      for (const [width, height] of [
+        [1440, 960],
+        [1024, 768],
+        [390, 844],
+        [320, 700],
+        [844, 390],
+      ]) {
+        await page.setViewportSize({ width, height });
+        await layout.getByRole('button', { name: action }).scrollIntoViewIfNeeded();
+        const bounds = await layout.evaluate((node) => {
+          const rect = node.getBoundingClientRect();
+          return {
+            width: rect.width,
+            height: rect.height,
+            horizontalOverflow: node.scrollWidth - node.clientWidth,
+          };
+        });
+        assert.ok(bounds.width <= width && bounds.height <= height, JSON.stringify(bounds));
+        assert.ok(bounds.horizontalOverflow <= 1, JSON.stringify(bounds));
+        await layout.getByRole('button', { name: '关闭窗口', exact: true }).scrollIntoViewIfNeeded();
+        await page.screenshot({ path: join(artifacts, `${name}-${width}x${height}.png`) });
+        viewportEvidence.push({ name, viewport: `${width}×${height}`, ...bounds });
+      }
+      await page.setViewportSize(desktop);
+    }
     await changeView(page, 'works', '作品');
     await page.getByRole('button', { name: '拼图与 GIF', exact: true }).click();
     const dialog = page.getByRole('dialog', { name: '拼图与 GIF', exact: true });
@@ -1501,6 +1529,31 @@ try {
       .setInputFiles({ name: 'QA-motion.gif', mimeType: 'image/gif', buffer: gif });
     await dialog.getByRole('button', { name: '保留全部帧并导入' }).click();
     await dialog.getByRole('status').filter({ hasText: 'QA-motion.gif' }).waitFor();
+    await checkDialog(dialog, 'project-asset-tools', '保留全部帧并导入');
+    await dialog.getByText(/选择拼图素材/).click();
+    await dialog.getByRole('checkbox', { name: 'CI-gradient.png', exact: true }).check();
+    await dialog.getByRole('checkbox', { name: 'QA-motion.gif', exact: true }).check();
+    await dialog.getByRole('spinbutton', { name: '画布宽' }).fill('64');
+    await dialog.getByRole('spinbutton', { name: '画布高' }).fill('40');
+    await dialog.getByRole('spinbutton', { name: '间距' }).fill('3');
+    await dialog.getByRole('checkbox', { name: '透明间距' }).check();
+    const collagePending = page.waitForResponse((response) =>
+      new URL(response.url()).pathname.endsWith('/derived-assets'),
+    );
+    await dialog.getByRole('button', { name: '生成拼图素材', exact: true }).click();
+    const collageResponse = await collagePending;
+    assert.equal(collageResponse.status(), 201);
+    const { asset: collage } = await collageResponse.json();
+    assert.equal(collage.width, 64);
+    assert.equal(collage.height, 40);
+    assert.equal(collage.source, 'derived');
+    const collageFile = await a.context.request.get(new URL(collage.url, origin).href);
+    assert.equal(collageFile.status(), 200);
+    const collagePixels = await sharp(await collageFile.body()).ensureAlpha().raw().toBuffer();
+    assert.equal(collagePixels[3], 0);
+    const gifCell = (20 * 64 + 50) * 4;
+    assert.deepEqual([...collagePixels.subarray(gifCell, gifCell + 4)], [221, 21, 19, 255]);
+    await dialog.getByRole('status').filter({ hasText: '拼图.png' }).waitFor();
     await dialog.getByRole('button', { name: '关闭窗口', exact: true }).click();
     await page
       .locator('.library-asset')
@@ -1530,11 +1583,13 @@ try {
     const frames = await sharp(bytes, { animated: true }).ensureAlpha().raw().toBuffer();
     assert.deepEqual([...frames.subarray(0, 4)], [16, 29, 209, 255]);
     assert.deepEqual([...frames.subarray(16 * 12 * 4, 16 * 12 * 4 + 4)], [221, 21, 19, 255]);
-    await page.screenshot({ path: join(artifacts, 'project-animation-editor.png') });
+    await checkDialog(editor, 'project-animation-editor', '另存为项目动图');
     return {
       frames: result.animation.frames,
       delay: result.animation.delay,
       gifSha256: sha256(bytes),
+      collageRgbaSha256: sha256(collagePixels),
+      viewportEvidence,
     };
   });
   assert.deepEqual(report.pageErrors, [], 'no unhandled browser runtime errors');

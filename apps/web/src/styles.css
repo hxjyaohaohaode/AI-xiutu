@@ -4476,4 +4476,44 @@
     }
   }
 }
-.asset-animation-preview { display: block; max-width: 100%; max-height: 38vh; object-fit: contain; }
+.asset-tools-dialog .stack-form {
+  gap: 12px;
+}
+.asset-tools-dialog .stack-form :is(label, input, select, textarea) {
+  min-width: 0;
+}
+.asset-tools-dialog .stack-form label:has(> input[type='checkbox']) {
+  flex-direction: row;
+  align-items: center;
+  min-height: 36px;
+  overflow-wrap: anywhere;
+}
+.asset-tools-dialog .asset-size-fields {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+}
+.asset-tools-dialog .asset-source-options {
+  gap: 4px;
+  margin-block-start: 8px;
+}
+.asset-animation-preview {
+  display: grid;
+  gap: 8px;
+  margin: 0;
+}
+.asset-animation-preview img {
+  display: block;
+  width: 100%;
+  height: clamp(64px, 20dvh, 190px);
+  object-fit: contain;
+  border-radius: 9px;
+  background: color-mix(in srgb, var(--ink) 5%, var(--surface));
+}
+.asset-animation-preview figcaption {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  justify-content: space-between;
+  gap: 8px;
+}

@@ -88,8 +88,14 @@ export function AssetRecognitionDialog({
     }
   }
   return (
-    <Modal title="识别文字与表格" subtitle={asset.name} onClose={onClose} canClose={() => !busy}>
-      <div className="form-stack">
+    <Modal
+      title="识别文字与表格"
+      subtitle={asset.name}
+      onClose={onClose}
+      className="studio-dialog asset-tools-dialog"
+      canClose={() => !busy}
+    >
+      <div className="stack-form">
         <InlineError message={error} />
         {editable && (
           <>
@@ -282,28 +288,37 @@ export function AnimationDialog({
   }
   const visible = output?.animation ?? descriptor;
   return (
-    <Modal title="GIF 帧编辑" subtitle={asset.name} onClose={onClose} canClose={() => !busy}>
-      <div className="form-stack">
+    <Modal
+      title="GIF 帧编辑"
+      subtitle={asset.name}
+      onClose={onClose}
+      className="studio-dialog asset-tools-dialog"
+      canClose={() => !busy}
+    >
+      <div className="stack-form">
         <InlineError message={error} />
         {!descriptor && !error && <Busy label="读取 GIF" />}
         {descriptor && visible && (
           <>
-            <img
-              className="asset-animation-preview"
-              src={`/v1/assets/${output?.asset.id ?? asset.id}/animation/file`}
-              alt="GIF 预览"
-            />
-            <small>
-              {visible.width}×{visible.height} · {visible.frames} 帧 ·{' '}
-              {visible.delay.reduce((sum, value) => sum + value, 0)}ms
-            </small>
-            <a
-              className="text-button"
-              href={`/v1/assets/${output?.asset.id ?? asset.id}/animation/file`}
-              download={output?.asset.name ?? asset.name}
-            >
-              下载 GIF
-            </a>
+            <figure className="asset-animation-preview">
+              <img
+                src={`/v1/assets/${output?.asset.id ?? asset.id}/animation/file`}
+                alt="GIF 预览"
+              />
+              <figcaption>
+                <small>
+                  {visible.width}×{visible.height} · {visible.frames} 帧 ·{' '}
+                  {visible.delay.reduce((sum, value) => sum + value, 0)}ms
+                </small>
+                <a
+                  className="text-button"
+                  href={`/v1/assets/${output?.asset.id ?? asset.id}/animation/file`}
+                  download={output?.asset.name ?? asset.name}
+                >
+                  下载 GIF
+                </a>
+              </figcaption>
+            </figure>
             {editable && (
               <>
                 <label>
@@ -460,8 +475,13 @@ export function ProjectAssetTools({
     }
   }
   return (
-    <Modal title="拼图与 GIF" onClose={onClose} canClose={() => !busy}>
-      <div className="form-stack">
+    <Modal
+      title="拼图与 GIF"
+      onClose={onClose}
+      className="studio-dialog asset-tools-dialog"
+      canClose={() => !busy}
+    >
+      <div className="stack-form">
         <InlineError message={error} />
         {status && <p role="status">{status}</p>}
         <label>
@@ -485,7 +505,7 @@ export function ProjectAssetTools({
         </button>
         <details>
           <summary>选择拼图素材（已选 {selected.length}）</summary>
-          <div className="form-stack">
+          <div className="stack-form asset-source-options">
             {assets.map((asset) => (
               <label key={asset.id}>
                 <input
@@ -505,26 +525,28 @@ export function ProjectAssetTools({
             ))}
           </div>
         </details>
-        {(
-          [
-            ['width', '画布宽'],
-            ['height', '画布高'],
-            ['columns', '列数'],
-            ['gap', '间距'],
-          ] as const
-        ).map(([key, label]) => (
-          <label key={key}>
-            {label}
-            <input
-              type="number"
-              min={key === 'gap' ? 0 : 1}
-              max={key === 'columns' ? 6 : 8192}
-              disabled={busy}
-              value={size[key]}
-              onChange={(event) => setSize({ ...size, [key]: Number(event.target.value) })}
-            />
-          </label>
-        ))}
+        <div className="asset-size-fields">
+          {(
+            [
+              ['width', '画布宽'],
+              ['height', '画布高'],
+              ['columns', '列数'],
+              ['gap', '间距'],
+            ] as const
+          ).map(([key, label]) => (
+            <label key={key}>
+              {label}
+              <input
+                type="number"
+                min={key === 'gap' ? 0 : 1}
+                max={key === 'columns' ? 6 : 8192}
+                disabled={busy}
+                value={size[key]}
+                onChange={(event) => setSize({ ...size, [key]: Number(event.target.value) })}
+              />
+            </label>
+          ))}
+        </div>
         <label>
           适应方式
           <select

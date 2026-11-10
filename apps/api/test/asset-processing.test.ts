@@ -51,6 +51,14 @@ test(
       const result = await f.call('POST', path, request);
       assert.equal(result.statusCode, 201, result.body);
       const cutout = result.json().asset;
+      assert.equal(cutout.source, 'derived');
+      const listing = await f.call('GET', `/v1/projects/${f.projectId}/assets?source=derived`);
+      assert.deepEqual(listing.json().assets.map((item: { id: string }) => item.id), [cutout.id]);
+      const found = await f.call('GET', `/v1/resources?projectId=${f.projectId}&source=derived`);
+      assert.deepEqual(
+        found.json().resources.map((item: { asset: { id: string } }) => item.asset.id),
+        [cutout.id],
+      );
       assert.equal((await f.call('POST', path, request)).json().asset.id, cutout.id);
       assert.equal(
         (await f.call('POST', path, { ...request, name: 'another.png' })).statusCode,

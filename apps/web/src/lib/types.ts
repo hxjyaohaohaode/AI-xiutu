@@ -1,4 +1,5 @@
 import type { EditorRecipe } from '@ai-xiutu/editor';
+import type { AssetSource } from '@ai-xiutu/contracts';
 
 export type User = {
   id: string;
@@ -52,7 +53,7 @@ export type Asset = {
   bytes: number;
   url: string;
   thumbnailUrl?: string;
-  source?: 'upload' | 'generated' | 'sketch' | 'unknown';
+  source?: AssetSource;
   createdAt?: string;
   annotations?: {
     title: string | null;

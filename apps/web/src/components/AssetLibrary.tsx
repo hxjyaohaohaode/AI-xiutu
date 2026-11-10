@@ -27,6 +27,7 @@ export const SOURCE_LABELS = {
   upload: '上传照片',
   generated: 'AI 生成',
   sketch: '手绘草图',
+  derived: '加工素材',
   unknown: '来源未记录',
 } as const;
 type Source = keyof typeof SOURCE_LABELS;

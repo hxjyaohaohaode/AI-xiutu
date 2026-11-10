@@ -1,6 +1,7 @@
 import type { FastifyInstance } from 'fastify';
 import { z } from 'zod';
 import { transaction, audit, emit, type Database } from '@ai-xiutu/db';
+import { assetSources } from '@ai-xiutu/contracts';
 import {
   id,
   hash,
@@ -8,6 +9,7 @@ import {
   projectAccess,
   spaceRole,
   assetDto,
+  assetSourceSql,
   assertVersion,
   HttpError,
 } from './core.js';
@@ -50,7 +52,7 @@ const filters = z
       .max(120)
       .regex(/^[^\u0000-\u001f\u007f]*$/)
       .optional(),
-    source: z.enum(['upload', 'generated', 'sketch', 'unknown']).optional(),
+    source: z.enum(assetSources).optional(),
     createdFrom: timestamp.optional(),
     createdTo: timestamp.optional(),
     limit: z.coerce.number().int().min(1).max(100).default(50),
@@ -67,8 +69,6 @@ const filters = z
 const cursorSchema = z
   .object({ at: timestamp, id, scope: z.string().regex(/^[a-f0-9]{64}$/) })
   .strict();
-const sourceSql =
-  "CASE WHEN a.provenance->>'kind'='ai-generated' THEN 'generated' WHEN a.provenance->>'kind'='uploaded' AND a.provenance->>'declaredSource'='sketch' THEN 'sketch' WHEN a.provenance->>'kind'='uploaded' THEN 'upload' ELSE 'unknown' END";
 
 export function registerAssetAnnotations(app: FastifyInstance, db: Database): void {
   app.patch('/v1/assets/:id/annotations', async (req) => {
@@ -150,7 +150,7 @@ export function registerAssetAnnotations(app: FastifyInstance, db: Database): vo
          AND (m.user_id IS NOT NULL OR ($2::uuid IS NOT NULL AND EXISTS(SELECT 1 FROM share_grants g WHERE g.project_id=p.id AND g.target_user_id=$1 AND g.revoked_at IS NULL AND g.expires_at>clock_timestamp() AND ((g.mode='reference' AND (s.sharing_policy->>'allowReference')::boolean) OR (g.mode='copy' AND (s.sharing_policy->>'allowCopy')::boolean)))))
          AND ($4::text='' OR strpos(lower(a.name||' '||COALESCE(a.annotations->>'title','')||' '||COALESCE(a.annotations->'tags','[]'::jsonb)::text),lower($4))>0
           OR EXISTS(SELECT 1 FROM asset_recognitions r WHERE r.asset_id=a.id AND r.source_hash=a.content_hash AND strpos(lower(r.text_content),lower($4))>0))
-         AND ($5::text IS NULL OR (${sourceSql})=$5)
+         AND ($5::text IS NULL OR (${assetSourceSql})=$5)
          AND ($6::timestamptz IS NULL OR a.created_at >= $6) AND ($7::timestamptz IS NULL OR a.created_at < $7)
          AND ($8::timestamptz IS NULL OR (a.created_at,a.id)<($8::timestamptz,$9::uuid))
          ORDER BY a.created_at DESC,a.id DESC LIMIT $10`,

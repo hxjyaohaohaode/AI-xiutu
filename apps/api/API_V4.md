@@ -487,6 +487,8 @@ settings under the project's read permission. The actor's request ID is idempote
 loop and a shared editor recipe. Indices are zero based. The output gets a new
 asset ID and keeps its own immutable GIF and first-frame PNG. Authorized asset
 copies retain the GIF and charge its logical storage to the destination space.
+These assets report `source: "derived"`. Project listings and authorized resource
+search accept the same value as a `source` filter.
 
 `POST /v1/assets/:id/recognitions` runs local Tesseract with `language` and `layout`.
 `GET /v1/assets/:id/recognitions` reads results, including original pixel boxes and

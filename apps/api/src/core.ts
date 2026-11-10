@@ -236,6 +236,12 @@ export const projectDto = (p: ProjectAccess) => ({
   updatedAt: p.updated_at,
   role: p.role,
 });
+export const assetSourceSql = `CASE a.provenance->>'kind'
+  WHEN 'ai-generated' THEN 'generated'
+  WHEN 'asset-derived' THEN 'derived'
+  WHEN 'uploaded' THEN CASE WHEN a.provenance->>'declaredSource'='sketch' THEN 'sketch' ELSE 'upload' END
+  WHEN 'media-import' THEN CASE WHEN a.provenance->>'declaredSource'='sketch' THEN 'sketch' ELSE 'upload' END
+  ELSE 'unknown' END`;
 export const assetDto = (a: Record<string, any>) => ({
   id: a.id,
   projectId: a.project_id,
@@ -250,11 +256,13 @@ export const assetDto = (a: Record<string, any>) => ({
   source:
     a.provenance?.kind === 'ai-generated'
       ? 'generated'
-      : a.provenance?.kind === 'uploaded' || a.provenance?.kind === 'media-import'
-        ? a.provenance.declaredSource === 'sketch'
-          ? 'sketch'
-          : 'upload'
-        : 'unknown',
+      : a.provenance?.kind === 'asset-derived'
+        ? 'derived'
+        : a.provenance?.kind === 'uploaded' || a.provenance?.kind === 'media-import'
+          ? a.provenance.declaredSource === 'sketch'
+            ? 'sketch'
+            : 'upload'
+          : 'unknown',
   annotations: {
     title: a.annotations?.title ?? null,
     tags: a.annotations?.tags ?? [],
