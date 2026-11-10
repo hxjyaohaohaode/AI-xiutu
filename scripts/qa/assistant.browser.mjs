@@ -754,6 +754,8 @@ try {
           await page.getByRole('button', { name: '发送协作请求', exact: true }).isEnabled(),
           false,
         );
+        const retainedOwner = await page.locator('.live-assistant').elementHandle();
+        assert.ok(retainedOwner);
         await closeAIPanel();
         const banner = page.locator('.ai-activity-banner');
         await banner.getByText('AI 正在处理请求', { exact: true }).waitFor();
@@ -762,14 +764,92 @@ try {
           1,
           'request owner stays mounted',
         );
+        // The activity banner renders before presence commits its hidden phase,
+        // including reduced motion. Wait for that same retained subtree to exit.
+        const hiddenPanel = await until(async () => {
+          const state = await retainedOwner.evaluate((element) => {
+            const panel = element.closest('[data-panel-id="ai"]');
+            const content = element.closest('.panel-content');
+            return {
+              ownerConnected: element.isConnected,
+              panelInert: panel instanceof HTMLElement && panel.inert,
+              panelAriaHidden: panel?.getAttribute('aria-hidden'),
+              panelMotionPhase: panel?.getAttribute('data-motion-state'),
+              contentInert: content instanceof HTMLElement && content.inert,
+              contentAriaHidden: content?.getAttribute('aria-hidden'),
+              contentHidden: content instanceof HTMLElement && content.hidden,
+            };
+          });
+          return state.ownerConnected &&
+            state.panelInert &&
+            state.panelAriaHidden === 'true' &&
+            state.panelMotionPhase === 'hidden' &&
+            state.contentInert &&
+            state.contentAriaHidden === 'true' &&
+            state.contentHidden &&
+            !(await page.locator('.live-assistant').isVisible())
+            ? state
+            : false;
+        }, 'the retained AI panel finishes exiting and becomes hidden and inert');
+        assert.equal(await page.locator('.live-assistant').count(), 1);
         assert.equal(await page.locator('.live-assistant').isVisible(), false);
-        await banner.getByRole('button', { name: '返回 AI 助手', exact: true }).click();
+        const returnButton = banner.getByRole('button', { name: '返回 AI 助手', exact: true });
+        const activityGeometry = await returnButton.evaluate((button) => {
+          const activity = button.closest('.ai-activity-banner');
+          if (!activity) throw new Error('The return button has no activity banner');
+          const rect = (element) => {
+            const { x, y, width, height, top, right, bottom, left } =
+              element.getBoundingClientRect();
+            return { x, y, width, height, top, right, bottom, left };
+          };
+          const buttonRect = rect(button);
+          const bannerRect = rect(activity);
+          const center = {
+            x: buttonRect.left + buttonRect.width / 2,
+            y: buttonRect.top + buttonRect.height / 2,
+          };
+          const hit = document.elementFromPoint(center.x, center.y);
+          const toasts = [...document.querySelectorAll('.toast')]
+            .filter((toast) =>
+              toast.checkVisibility({ checkOpacity: true, checkVisibilityCSS: true }),
+            )
+            .map(rect)
+            .filter((toast) => toast.width > 0 && toast.height > 0);
+          return {
+            buttonRect,
+            bannerRect,
+            center,
+            returnButtonHit: hit === button || button.contains(hit),
+            toastPresent: toasts.length > 0,
+            toastRects: toasts,
+            visibleToastsDoNotOverlap: toasts.every(
+              (toast) =>
+                toast.top >= bannerRect.bottom ||
+                toast.bottom <= bannerRect.top ||
+                toast.left >= bannerRect.right ||
+                toast.right <= bannerRect.left,
+            ),
+          };
+        });
+        assert.ok(activityGeometry.returnButtonHit, 'the activity return button is not covered');
+        if (activityGeometry.toastPresent)
+          assert.ok(
+            activityGeometry.visibleToastsDoNotOverlap,
+            'actual visible notifications do not overlap the activity banner',
+          );
+        await returnButton.click();
         await stop.waitFor();
         await until(
           partialVisible,
           'the retained incremental assistant reply is visible after returning',
         );
         assert.ok((await page.locator('.assistant-messages').innerText()).includes(sentence));
+        assert.equal(
+          await retainedOwner.evaluate((element) => element.isConnected),
+          true,
+          'returning preserves the original request-owner subtree',
+        );
+        await retainedOwner.dispose();
         assert.equal(await stop.isEnabled(), true);
         assert.equal(await page.locator('.live-assistant .ai-pending-strip').count(), 0);
         assert.equal(turnAdmissions, before.admissions + 1);
@@ -783,6 +863,8 @@ try {
           retainedReplyAfterReturn: true,
           knownRunningRequestWithoutDuplicateRecovery: true,
           retainedMountedOwner: true,
+          hiddenPanel,
+          activityGeometry,
           admissions: 1,
           fixtureDispatches: 2,
           persistedWrite: false,
@@ -798,7 +880,8 @@ try {
     const revoke = controls.getByRole('button', { name: '停止授权', exact: true });
     const policy = controls.getByRole('combobox', { name: 'AI 可以做到哪一步', exact: true });
     await until(
-      async () => (await revoke.isVisible()) || ((await policy.isVisible()) && (await policy.isEnabled())),
+      async () =>
+        (await revoke.isVisible()) || ((await policy.isVisible()) && (await policy.isEnabled())),
       'execution settings open with the current grant state',
     );
     if (await revoke.isVisible()) {
@@ -1172,7 +1255,11 @@ try {
     assert.equal(stopAccepted.status(), 200);
     const stopReceipt = await stopAccepted.json();
     assert.equal(stopReceipt.id, stoppedTurn.id);
-    assert.equal(stopReceipt.stopRequested, true, 'the stop is durable before completing the fixture');
+    assert.equal(
+      stopReceipt.stopRequested,
+      true,
+      'the stop is durable before completing the fixture',
+    );
     holdCompletion = false;
     await until(
       async () => (await page.locator('.assistant-messages').innerText()).includes('本轮已停止'),
@@ -1180,13 +1267,17 @@ try {
     );
     const artworkId = fixture.artwork.artwork.id;
     const activeSessions = () =>
-      fixture.db.query(
-        'SELECT id,user_id FROM collaboration_sessions WHERE artwork_id=$1 AND expires_at>clock_timestamp()',
-        [artworkId],
-      ).then(({ rows }) => rows);
-    const oldOwnerIds = new Set((await activeSessions())
-      .filter((row) => row.user_id === fixture.actors.owner.id)
-      .map((row) => row.id));
+      fixture.db
+        .query(
+          'SELECT id,user_id FROM collaboration_sessions WHERE artwork_id=$1 AND expires_at>clock_timestamp()',
+          [artworkId],
+        )
+        .then(({ rows }) => rows);
+    const oldOwnerIds = new Set(
+      (await activeSessions())
+        .filter((row) => row.user_id === fixture.actors.owner.id)
+        .map((row) => row.id),
+    );
     assert.ok(oldOwnerIds.size > 0);
     const endpoint = `/v1/artworks/${artworkId}/collaboration/sessions`;
     const peer = await fixture.call('POST', endpoint, { clientId: randomUUID() }, 'editor');
@@ -1196,9 +1287,11 @@ try {
       await openProject(page, false);
       await until(async () => {
         const sessions = await activeSessions();
-        return sessions.some((row) => row.id === peerId) &&
+        return (
+          sessions.some((row) => row.id === peerId) &&
           sessions.filter((row) => row.user_id === fixture.actors.owner.id).length === 1 &&
-          sessions.every((row) => !oldOwnerIds.has(row.id));
+          sessions.every((row) => !oldOwnerIds.has(row.id))
+        );
       }, 'reloading releases the old owner session and preserves the independent editor');
     } finally {
       await fixture.call('DELETE', `${endpoint}/${peerId}`, undefined, 'editor');
@@ -1216,9 +1309,13 @@ try {
     // mounted assistant, including the history-restored observer path.
     const isolationBefore = { dispatches, admissions: turnAdmissions };
     let releaseStopReply;
-    const stopReplyGate = new Promise((resolve) => { releaseStopReply = resolve; });
+    const stopReplyGate = new Promise((resolve) => {
+      releaseStopReply = resolve;
+    });
     let routeFinished;
-    const stopRouteDone = new Promise((resolve) => { routeFinished = resolve; });
+    const stopRouteDone = new Promise((resolve) => {
+      routeFinished = resolve;
+    });
     let routeStarted = false;
     let actualStopReceipt = null;
     let stopUrl;
@@ -1246,7 +1343,10 @@ try {
       await until(() => firstDelta, 'the restored-stop fixture is in flight');
       await openProject(page, false);
       const partial = page.locator('.assistant-messages').getByText(sentence, { exact: true });
-      await until(() => partial.isVisible(), 'the running turn is restored from actual stream events');
+      await until(
+        () => partial.isVisible(),
+        'the running turn is restored from actual stream events',
+      );
       const stop = page.getByRole('button', { name: '停止本轮执行', exact: true });
       assert.equal(await stop.isEnabled(), true);
       assert.equal(turnAdmissions, isolationBefore.admissions + 1);
@@ -1277,7 +1377,10 @@ try {
       holdCompletion = true;
       const nextTurn = await submitAdmittedTurn('继续新的预览协作，不要沿用上一轮的停止状态。');
       assert.notEqual(nextTurn.id, delayedTurn.id);
-      await until(() => partial.isVisible(), 'the next same-scope turn has actual incremental text');
+      await until(
+        () => partial.isVisible(),
+        'the next same-scope turn has actual incremental text',
+      );
       const progress = await page.locator('.assistant-tool-status').innerText();
       assert.ok(!progress.includes('已停止') && !progress.includes('停止请求'));
       assert.equal(await stop.isEnabled(), true);

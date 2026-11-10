@@ -297,6 +297,24 @@
   border-color: var(--on-image);
 }
 
+/* The zero-height anchor follows the real header/status stack. Notifications
+   stay clear of live controls without moving the canvas or guessing bar heights. */
+.workspace-notice-anchor {
+  --toast-gap: 12px;
+  position: relative;
+  flex: 0 0 0;
+  min-width: 0;
+  margin-inline: max(12px, env(safe-area-inset-left)) max(12px, env(safe-area-inset-right));
+}
+.workspace-notice-anchor > .toast {
+  position: absolute;
+  top: calc(var(--toast-gap) + env(safe-area-inset-top));
+  max-width: min(520px, 100%);
+}
+.toast > span {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
 .toast {
   top: calc(clamp(56px, 5.3vw, 64px) + 12px + env(safe-area-inset-top));
   bottom: auto;
@@ -304,6 +322,9 @@
 }
 
 @media (max-width: 759px) {
+  .workspace-notice-anchor {
+    --toast-gap: 8px;
+  }
   .toast {
     top: calc(60px + env(safe-area-inset-top));
     bottom: auto;

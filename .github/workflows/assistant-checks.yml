@@ -1,0 +1,80 @@
+name: AI interaction checks
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'apps/web/**'
+      - 'scripts/qa/assistant.browser.mjs'
+      - 'scripts/qa/team-voice.browser.mjs'
+      - 'apps/api/test/collaboration-fixture.ts'
+      - '.github/workflows/assistant-checks.yml'
+  pull_request:
+    branches: [main]
+    paths:
+      - 'apps/web/**'
+      - 'scripts/qa/assistant.browser.mjs'
+      - 'scripts/qa/team-voice.browser.mjs'
+      - 'apps/api/test/collaboration-fixture.ts'
+      - '.github/workflows/assistant-checks.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: assistant-interaction-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  assistant-interaction:
+    runs-on: ubuntu-latest
+    timeout-minutes: 12
+    services:
+      postgres:
+        image: postgres:18
+        env:
+          POSTGRES_USER: xiutu
+          POSTGRES_PASSWORD: ci-only-disposable
+          POSTGRES_DB: xiutu_assistant_test
+        ports: ['5432:5432']
+        options: >-
+          --health-cmd "pg_isready -U xiutu -d xiutu_assistant_test"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+    env:
+      CI: 'true'
+      NODE_ENV: test
+      TEST_DATABASE_URL: postgresql://xiutu:ci-only-disposable@127.0.0.1:5432/xiutu_assistant_test
+      DB_POOL_MAX: '8'
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
+        with:
+          node-version-file: .nvmrc
+          cache: npm
+      - run: npm ci
+      - id: browser-runtime
+        run: npx playwright install --with-deps chromium
+      - name: Verify assistant interaction, retained requests and responsive controls
+        run: node --import tsx scripts/qa/assistant.browser.mjs
+      - name: Preserve actual assistant reports and screenshots
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: assistant-interaction-${{ github.sha }}
+          path: artifacts/browser-assistant
+          retention-days: 14
+          if-no-files-found: error
+      - name: Verify team voice, retained calls and microphone controls
+        if: ${{ !cancelled() && steps.browser-runtime.outcome == 'success' }}
+        run: node --import tsx scripts/qa/team-voice.browser.mjs
+      - name: Preserve actual team voice reports and screenshots
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: team-voice-interaction-${{ github.sha }}
+          path: artifacts/browser-team-voice
+          retention-days: 14
+          if-no-files-found: error

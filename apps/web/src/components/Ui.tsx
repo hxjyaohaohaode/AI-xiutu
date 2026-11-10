@@ -8,6 +8,7 @@ import {
   type ButtonHTMLAttributes,
   type ReactNode,
 } from 'react';
+import { createPortal } from 'react-dom';
 import { usePresence } from '../motion/usePresence';
 import type { MotionPhase } from '../motion/registry';
 import { X, WarningCircle, CheckCircle, Info, SpinnerGap } from '@phosphor-icons/react';
@@ -86,7 +87,15 @@ export function InlineError({ message }: { message: string | null }) {
     </div>
   ) : null;
 }
-export function Toast({ notice, dismiss }: { notice: Notice | null; dismiss: () => void }) {
+export function Toast({
+  notice,
+  dismiss,
+  container,
+}: {
+  notice: Notice | null;
+  dismiss: () => void;
+  container?: HTMLElement | null;
+}) {
   useEffect(() => {
     if (!notice) return;
     const t = setTimeout(dismiss, notice.tone === 'error' ? 9000 : 5000);
@@ -99,7 +108,7 @@ export function Toast({ notice, dismiss }: { notice: Notice | null; dismiss: () 
   if (!presence.present || !visible) return null;
   const Symbol =
     visible.tone === 'success' ? CheckCircle : visible.tone === 'error' ? WarningCircle : Info;
-  return (
+  const content = (
     <div
       className={`toast ${visible.tone}`}
       role={visible.tone === 'error' ? 'alert' : 'status'}
@@ -115,6 +124,7 @@ export function Toast({ notice, dismiss }: { notice: Notice | null; dismiss: () 
       </IconButton>
     </div>
   );
+  return container ? createPortal(content, container) : content;
 }
 export function Modal({
   title,

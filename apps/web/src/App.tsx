@@ -185,6 +185,7 @@ export function App() {
   const [saving, setSaving] = useState(false);
   const [opening, setOpening] = useState(false);
   const [notice, setNotice] = useState<Notice | null>(null);
+  const [noticeContainer, setNoticeContainer] = useState<HTMLDivElement | null>(null);
   const [refreshToken, setRefreshToken] = useState(0);
   const [entitlements, setEntitlements] = useState<{
     available: number;
@@ -1696,6 +1697,7 @@ export function App() {
                 </button>
               </div>
             )}
+            <div className="workspace-notice-anchor" ref={setNoticeContainer} />
             <div className="workspace-body">
               <MotionSwitch
                 switchKey={view}
@@ -2366,7 +2368,7 @@ export function App() {
         )}
       </DialogMotionContext.Provider>
       {confirmation.dialog}
-      <Toast notice={notice} dismiss={dismissNotice} />
+      <Toast notice={notice} dismiss={dismissNotice} container={noticeContainer} />
     </>
   );
 }
