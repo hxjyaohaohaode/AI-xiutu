@@ -291,6 +291,12 @@
   border-color: var(--on-image);
 }
 
+.toast {
+  top: calc(clamp(56px, 5.3vw, 64px) + 12px + env(safe-area-inset-top));
+  bottom: auto;
+  max-width: min(520px, calc(100vw - 24px));
+}
+
 @media (max-width: 759px) {
   .toast {
     top: calc(60px + env(safe-area-inset-top));

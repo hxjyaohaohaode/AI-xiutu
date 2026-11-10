@@ -1772,12 +1772,15 @@ try {
       assert.equal(branch.revision.origin.kind, 'history-fork');
       assert.equal(branch.revision.origin.sourceRevisionId, historicalRevisionId);
       assert.deepEqual(branch.revision.recipe, historicalRecipe);
-      const listing = await request(a, `/projects/${projectId}/artworks`);
+      // Project detail is the actual read endpoint; /artworks beneath a project
+      // is a POST-only creation route.
+      const listing = await request(a, `/projects/${projectId}`);
       assert.equal(listing.status(), 200);
-      assert.equal(
-        (await listing.json()).artworks.filter((item) => item.title === branchTitle).length,
-        1,
-      );
+      const projectDetail = await listing.json();
+      assert.equal(projectDetail.project.id, projectId);
+      const branches = projectDetail.artworks.filter((item) => item.title === branchTitle);
+      assert.equal(branches.length, 1);
+      assert.equal(branches[0].id, firstReceipt.artwork.id);
       await a.page.screenshot({ path: join(artifacts, 'history-fork-opened-once.png') });
       return {
         renderInfo: {
@@ -1793,7 +1796,7 @@ try {
         lostAcceptedReceiptRecovered: true,
         refusedOpenPreservesDraftAndReceipt: true,
         sourceHeadUnchanged: true,
-        independentBranchCount: 1,
+        independentBranchCount: branches.length,
         historicalSourceAndRecipePreserved: true,
       };
     } finally {

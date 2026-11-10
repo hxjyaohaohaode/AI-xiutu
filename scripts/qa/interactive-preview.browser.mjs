@@ -58,7 +58,16 @@ try {
     // Record actual paints on the visible canvas. No readbacks or serialization in the hot path.
     await page.addInitScript(() => {
       const paint = CanvasRenderingContext2D.prototype.putImageData;
-      window.previewTrace = { paints: [], inputs: [], valueChanges: [], start: null, end: null };
+      window.previewTrace = {
+        paints: [],
+        inputs: [],
+        valueChanges: [],
+        armed: false,
+        pointerId: null,
+        pointerType: null,
+        start: null,
+        end: null,
+      };
       CanvasRenderingContext2D.prototype.putImageData = function (image, ...args) {
         paint.call(this, image, ...args);
         if (this.canvas.getAttribute('aria-label') !== '照片编辑预览') return;
@@ -71,12 +80,27 @@ try {
         });
       };
       document.addEventListener(
+        'pointerdown',
+        (event) => {
+          const trace = window.previewTrace;
+          if (!trace.armed || trace.start !== null || event.button !== 0) return;
+          // Start at the actual DOM input, before the control handles the gesture.
+          // The first pointermove is later and can follow a valid pointerdown paint.
+          trace.start = event.timeStamp;
+          trace.pointerId = event.pointerId;
+          trace.pointerType = event.pointerType;
+          trace.armed = false;
+        },
+        true,
+      );
+      document.addEventListener(
         'pointermove',
         (event) => {
           const trace = window.previewTrace;
           if (
             trace.start !== null &&
             trace.end === null &&
+            event.pointerId === trace.pointerId &&
             (event.buttons & 1 || event.pointerType === 'touch')
           )
             trace.inputs.push(performance.now());
@@ -94,9 +118,10 @@ try {
       }).observe(document, { subtree: true, attributeFilter: ['aria-valuetext'] });
       document.addEventListener(
         'pointerup',
-        () => {
+        (event) => {
           const trace = window.previewTrace;
-          if (trace.start !== null && trace.end === null) trace.end = performance.now();
+          if (trace.start !== null && trace.end === null && event.pointerId === trace.pointerId)
+            trace.end = performance.now();
         },
         true,
       );
@@ -112,6 +137,7 @@ try {
       buffer,
     });
     await page.waitForFunction(() => window.previewTrace.paints.length >= 2);
+    await page.locator('.canvas-stage[aria-busy="false"]').waitFor();
     const canvas = page.locator('.image-frame canvas[aria-label="照片编辑预览"]');
     const readCanvas = () => canvas.evaluate((node) => node.toDataURL('image/png').split(',')[1]);
     const original = Buffer.from(await readCanvas(), 'base64');
@@ -128,10 +154,23 @@ try {
       const graph = panel.locator('.curve-graph');
       const box = await graph.boundingBox();
       assert.ok(box);
+      const preparationStartedAt = await page.evaluate(() => performance.now());
       await page.mouse.dblclick(box.x + box.width * 0.5, box.y + box.height * 0.5);
       await page.waitForFunction(
         () => document.querySelectorAll('.curve-graph [data-curve-point]').length === 3,
       );
+      // Adding a curve point is a separate edit. Its final paint must not be
+      // counted as feedback from the drag that follows, even if it looks identical.
+      await page.waitForFunction((after) => {
+        const paints = window.previewTrace.paints;
+        const latest = paints.at(-1);
+        return (
+          document.querySelector('.canvas-stage')?.getAttribute('aria-busy') === 'false' &&
+          latest &&
+          latest.t >= after &&
+          latest.width === Math.max(...paints.map((frame) => frame.width))
+        );
+      }, preparationStartedAt);
       const point = await graph.locator('[data-curve-point="1"] circle').first().boundingBox();
       assert.ok(point);
       start = { x: point.x + point.width / 2, y: point.y + point.height / 2 };
@@ -158,13 +197,20 @@ try {
       assert.ok(hit.ok, JSON.stringify(hit));
     }
     await page.mouse.move(start.x, start.y);
+    await page.locator('.canvas-stage[aria-busy="false"]').waitFor();
     await page.evaluate(() => {
       const trace = window.previewTrace;
       trace.baseline = trace.paints.reduce((full, frame) =>
         frame.width >= full.width ? frame : full,
       );
       trace.paints = [];
-      trace.start = performance.now();
+      trace.inputs = [];
+      trace.valueChanges = [];
+      trace.pointerId = null;
+      trace.pointerType = null;
+      trace.start = null;
+      trace.end = null;
+      trace.armed = true;
     });
     const cdp = device.hasTouch ? await page.context().newCDPSession(page) : null;
     const touch = (type, point) =>
@@ -212,13 +258,21 @@ try {
         throw error;
       });
     const trace = await page.evaluate(() => window.previewTrace);
+    const inputTime = trace.start;
+    assert.ok(Number.isFinite(inputTime), 'the measured gesture has an actual pointerdown');
+    assert.ok(Number.isFinite(trace.end) && trace.end > inputTime, 'the same pointer ended');
+    assert.ok(
+      trace.inputs.length > 0 && trace.inputs.every((t) => t >= inputTime && t <= trace.end),
+      'actual pointermove inputs belong to the measured pointerdown/up interval',
+    );
     const changed = (p) => p.sample.some((v, i) => v !== trace.baseline.sample[i]);
-    const frames = trace.paints.filter((p) => p.t < trace.end && changed(p));
+    const frames = trace.paints.filter((p) => p.t >= inputTime && p.t < trace.end && changed(p));
     const distinct = new Set(frames.map((p) => p.sample.join(','))).size;
-    const inputTime = trace.inputs[0];
     const caseReport = {
       test,
       viewport: `${w}×${h}`,
+      inputStartEvent: 'pointerdown',
+      pointerType: trace.pointerType,
       inputEvents: trace.inputs.length,
       gestureMs: trace.end - inputTime,
       firstChangedMs: frames.length ? frames[0].t - inputTime : null,
@@ -304,7 +358,10 @@ try {
         JSON.stringify(test),
       );
       assert.ok(test.distinctLiveFrames >= 6, JSON.stringify(test));
-      assert.ok(test.firstChangedMs !== null && test.firstChangedMs < 240, JSON.stringify(test));
+      assert.ok(
+        test.firstChangedMs !== null && test.firstChangedMs >= 0 && test.firstChangedMs < 240,
+        JSON.stringify(test),
+      );
       assert.ok(test.maxFrameGapMs !== null && test.maxFrameGapMs < 350, JSON.stringify(test));
     }
   }

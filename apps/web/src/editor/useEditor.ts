@@ -23,6 +23,7 @@ import { bytesToHex } from '@noble/hashes/utils.js';
 import { usePortraitAnalysis } from './usePortraitAnalysis';
 import { decodeImageSource } from './imageSources';
 import { editorGeometryKey } from './coordinates';
+import { ensureWorker, releaseWorker } from './workerLifecycle';
 export { editorGeometryKey } from './coordinates';
 
 const MAX_PREVIEW_PIXELS = 4_194_304;
@@ -167,6 +168,10 @@ export function useEditor() {
   const sourceRef = useRef<{ width: number; height: number } | null>(null);
   const worker = useRef<Worker | null>(null);
   const liveWorker = useRef<Worker | null>(null);
+  // A newly created worker cannot render/export the source retained in React state.
+  // It becomes ready only after its complete source message has been queued.
+  const sourceWorker = useRef<Worker | null>(null);
+  const mounted = useRef(false);
   const requestId = useRef(0);
   const previewVersion = useRef(0);
   const settledVersion = useRef(0);
@@ -181,95 +186,151 @@ export function useEditor() {
   const getSourceIdentity = useCallback(() => sourceIdentity.current, []);
   const getSourceFrame = useCallback(() => (loadBusy.current ? null : sourceFrame.current), []);
   const pending = useRef(new Map<number, PendingExport>());
-  const pumpPreview = useCallback((live: boolean) => {
-    const target = live ? liveWorker.current : worker.current;
-    const lane = live ? liveLane.current : settledLane.current;
-    if (!target || lane.inFlight || !lane.pending) return;
-    const next = lane.pending;
-    lane.pending = null;
-    if (next.source !== sourceIdentity.current) return;
-    const id = ++requestId.current;
-    lane.inFlight = { ...next, id };
-    target.postMessage({ type: live ? 'interactive-preview' : 'preview', id, recipe: next.recipe });
+  const rejectExports = useCallback((failure: Error) => {
+    const requests = [...pending.current.values()];
+    pending.current.clear();
+    for (const request of requests) request.reject(failure);
   }, []);
-
-  useEffect(() => {
-    const w = new Worker(new URL('./render.worker.ts', import.meta.url), { type: 'module' });
-    const fast = new Worker(new URL('./render.worker.ts', import.meta.url), { type: 'module' });
-    worker.current = w;
-    liveWorker.current = fast;
-    fast.onmessage = (event: MessageEvent<RenderReply>) => {
-      const { id, result } = event.data;
-      const lane = liveLane.current;
-      const completed = lane.inFlight;
-      if (!completed || completed.id !== id) return;
-      lane.inFlight = null;
-      // A gesture may update faster than a frame finishes. Accept ordered feedback,
-      // but never replace a settled frame or show another source's pixels.
-      if (
-        result &&
-        completed.source === sourceIdentity.current &&
-        completed.version > settledVersion.current
-      )
-        setLiveFrame({ image: result, recipe: completed.recipe });
-      pumpPreview(true);
-    };
-    fast.onerror = () => {
-      fast.terminate();
-      liveWorker.current = null;
-      liveLane.current = { inFlight: null, pending: null };
-      setLiveFrame(null);
-    };
-    w.onmessage = (event: MessageEvent<RenderReply>) => {
-      const { id, type, result, blob, error: failure } = event.data;
-      if (type === 'export') {
-        const p = pending.current.get(id);
-        pending.current.delete(id);
-        if (failure || (!result && !blob)) p?.reject(new Error(failure ?? '导出失败'));
-        else p?.resolve({ image: result, blob });
-      } else if (id === settledLane.current.inFlight?.id) {
-        const completed = settledLane.current.inFlight;
-        settledLane.current.inFlight = null;
-        if (
-          completed.version === previewVersion.current &&
-          completed.source === sourceIdentity.current &&
-          completed.recipe === recipeRef.current
-        ) {
-          settledVersion.current = completed.version;
-          setLiveFrame(null);
-          setRendering(false);
-          if (failure) setError(failure);
-          else if (result) {
-            setRendered(result);
-            setRenderedRecipe(completed.recipe);
-            setRenderedGeometryKey(editorGeometryKey(completed.recipe));
-            setError(null);
-          }
-        }
-        pumpPreview(false);
+  const stopLiveWorker = useCallback(() => {
+    releaseWorker(liveWorker);
+    liveLane.current = { inFlight: null, pending: null };
+    setLiveFrame(null);
+  }, []);
+  const failWorker = useCallback(() => {
+    releaseWorker(worker);
+    sourceWorker.current = null;
+    stopLiveWorker();
+    settledLane.current = { inFlight: null, pending: null };
+    // Decodes already in progress belong to the failed processing session.
+    loadGeneration.current += 1;
+    loadBusy.current = false;
+    sourceIdentity.current += 1;
+    sourceRef.current = null;
+    sourceFrame.current = null;
+    settledVersion.current = 0;
+    previewVersion.current += 1;
+    setLoading(false);
+    setRendering(false);
+    setRenderedRecipe(null);
+    setError('图像处理暂时中断。请重新导入照片，已下载的配方仍可恢复。');
+    rejectExports(new Error('图像处理进程已中断'));
+  }, [rejectExports, stopLiveWorker]);
+  const pumpPreview = useCallback(
+    (live: boolean) => {
+      const target = live ? liveWorker.current : worker.current;
+      const lane = live ? liveLane.current : settledLane.current;
+      if (!target || !sourceWorker.current || lane.inFlight || !lane.pending) return;
+      if (!live && target !== sourceWorker.current) return;
+      const next = lane.pending;
+      lane.pending = null;
+      if (next.source !== sourceIdentity.current) return;
+      const id = ++requestId.current;
+      lane.inFlight = { ...next, id };
+      try {
+        target.postMessage({
+          type: live ? 'interactive-preview' : 'preview',
+          id,
+          recipe: next.recipe,
+        });
+      } catch {
+        if (live) stopLiveWorker();
+        else failWorker();
       }
-    };
-    w.onerror = () => {
-      setRendering(false);
-      settledLane.current = { inFlight: null, pending: null };
-      setError('图像处理暂时中断。请重新导入照片，已下载的配方仍可恢复。');
-      for (const p of pending.current.values()) p.reject(new Error('图像处理进程已中断'));
-      pending.current.clear();
-    };
-    return () => {
-      w.terminate();
-      fast.terminate();
-      worker.current = null;
-      liveWorker.current = null;
-      settledLane.current = { inFlight: null, pending: null };
-      liveLane.current = { inFlight: null, pending: null };
-      for (const p of pending.current.values()) p.reject(new Error('编辑器已关闭'));
-      pending.current.clear();
-    };
-  }, [pumpPreview]);
+    },
+    [failWorker, stopLiveWorker],
+  );
+  const ensureWorkers = useCallback(() => {
+    if (!mounted.current) throw new Error('编辑器已关闭');
+    const create = () =>
+      new Worker(new URL('./render.worker.ts', import.meta.url), { type: 'module' });
+    const main = ensureWorker(
+      worker,
+      create,
+      ({ id, type, result, blob, error: failure }: RenderReply) => {
+        if (type === 'export') {
+          const p = pending.current.get(id);
+          pending.current.delete(id);
+          if (failure || (!result && !blob)) p?.reject(new Error(failure ?? '导出失败'));
+          else p?.resolve({ image: result, blob });
+        } else if (id === settledLane.current.inFlight?.id) {
+          const completed = settledLane.current.inFlight;
+          settledLane.current.inFlight = null;
+          if (
+            completed.version === previewVersion.current &&
+            completed.source === sourceIdentity.current &&
+            completed.recipe === recipeRef.current
+          ) {
+            settledVersion.current = completed.version;
+            setLiveFrame(null);
+            setRendering(false);
+            if (failure) setError(failure);
+            else if (result) {
+              setRendered(result);
+              setRenderedRecipe(completed.recipe);
+              setRenderedGeometryKey(editorGeometryKey(completed.recipe));
+              setError(null);
+            }
+          }
+          pumpPreview(false);
+        }
+      },
+      failWorker,
+    );
+    try {
+      ensureWorker(
+        liveWorker,
+        create,
+        ({ id, result }: RenderReply) => {
+          const lane = liveLane.current;
+          const completed = lane.inFlight;
+          if (!completed || completed.id !== id) return;
+          lane.inFlight = null;
+          // Ordered feedback must never replace a settled frame or another source.
+          if (
+            result &&
+            completed.source === sourceIdentity.current &&
+            completed.version > settledVersion.current
+          )
+            setLiveFrame({ image: result, recipe: completed.recipe });
+          pumpPreview(true);
+        },
+        stopLiveWorker,
+      );
+    } catch {
+      // The settled worker remains usable when the optional fast lane cannot start.
+      stopLiveWorker();
+    }
+    return main;
+  }, [failWorker, pumpPreview, stopLiveWorker]);
 
   useEffect(() => {
-    if (!originalPreview || !worker.current) return;
+    mounted.current = true;
+    // Fast Refresh may retain React state, but the terminated worker owned the
+    // transferred original pixels. Keep the draft and require an explicit import.
+    if (sourceRef.current) failWorker();
+    setLoading(false);
+    setRendering(false);
+    try {
+      ensureWorkers();
+    } catch {
+      failWorker();
+    }
+    return () => {
+      mounted.current = false;
+      releaseWorker(worker);
+      releaseWorker(liveWorker);
+      sourceWorker.current = null;
+      loadGeneration.current += 1;
+      loadBusy.current = false;
+      settledLane.current = { inFlight: null, pending: null };
+      liveLane.current = { inFlight: null, pending: null };
+      rejectExports(new Error('编辑器已关闭'));
+    };
+  }, [ensureWorkers, failWorker, rejectExports]);
+
+  useEffect(() => {
+    const target = worker.current;
+    if (!originalPreview || !target || target !== sourceWorker.current) return;
     setRendering(true);
     const job = {
       recipe,
@@ -282,6 +343,12 @@ export function useEditor() {
       pumpPreview(true);
     }
     function settle() {
+      if (
+        worker.current !== target ||
+        job.source !== sourceIdentity.current ||
+        job.version !== previewVersion.current
+      )
+        return;
       settledLane.current.pending = job;
       pumpPreview(false);
     }
@@ -325,6 +392,7 @@ export function useEditor() {
       isCurrent: () => boolean = () => true,
       references: ReadonlyMap<string, File> = new Map(),
     ) => {
+      if (!mounted.current) throw new Error('编辑器已关闭');
       if (incoming.size > MAX_LOCAL_FILE_BYTES)
         throw new LocalImportError(
           'LOCAL_SIZE_LIMIT',
@@ -425,7 +493,6 @@ export function useEditor() {
         miniContext.drawImage(bitmap, 0, 0, mini.width, mini.height);
         const pixels = miniContext.getImageData(0, 0, mini.width, mini.height);
         if (generation !== loadGeneration.current || !isCurrent()) return false;
-        if (!worker.current) throw new Error('本地图像处理器尚未就绪，请重试。');
         const preview = { width: pixels.width, height: pixels.height, data: pixels.data };
         const resolved = new Map<string, Awaited<ReturnType<typeof decodeImageSource>>>();
         let layerPixelCount = 0;
@@ -444,12 +511,44 @@ export function useEditor() {
           resolved.set(layer.sourceId, decoded);
         }
         if (generation !== loadGeneration.current || !isCurrent()) return false;
-        sourceRef.current = { width: full.width, height: full.height };
+        const sourceDimensions = { width: full.width, height: full.height };
         const fingerprint = sha256
           .create()
           .update(new TextEncoder().encode(`${full.width}x${full.height}:srgb-rgba8:`))
           .update(new Uint8Array(full.data.buffer, full.data.byteOffset, full.data.byteLength))
           .digest();
+        const images = new Map([...resolved].map(([id, item]) => [id, item.preview]));
+        // Recreate only for an explicit, fully decoded import. Posting the complete
+        // source first preserves FIFO ordering with its first settled preview.
+        try {
+          const main = ensureWorkers();
+          sourceWorker.current = null;
+          main.postMessage(
+            {
+              type: 'source',
+              image: preview,
+              original: { width: full.width, height: full.height, data: full.data },
+              images,
+              originalImages: new Map([...resolved].map(([id, item]) => [id, item.original])),
+            },
+            [full.data.buffer],
+          );
+          sourceWorker.current = main;
+        } catch {
+          failWorker();
+          throw new Error('本地图像处理器未能接收照片，请重新导入。');
+        }
+        try {
+          liveWorker.current?.postMessage({
+            type: 'interactive-source',
+            image: preview,
+            sourceDimensions,
+            images,
+          });
+        } catch {
+          stopLiveWorker();
+        }
+        sourceRef.current = sourceDimensions;
         setSourceHash(bytesToHex(fingerprint));
         layerFiles.current = new Map([...resolved].map(([id, item]) => [id, item.file]));
         layerDimensions.current = new Map(
@@ -458,24 +557,7 @@ export function useEditor() {
             { width: item.original.width, height: item.original.height },
           ]),
         );
-        const images = new Map([...resolved].map(([id, item]) => [id, item.preview]));
         setLayerImages(images);
-        worker.current.postMessage(
-          {
-            type: 'source',
-            image: preview,
-            original: { width: full.width, height: full.height, data: full.data },
-            images,
-            originalImages: new Map([...resolved].map(([id, item]) => [id, item.original])),
-          },
-          [full.data.buffer],
-        );
-        liveWorker.current?.postMessage({
-          type: 'interactive-source',
-          image: preview,
-          sourceDimensions: sourceRef.current,
-          images,
-        });
         sourceIdentity.current += 1;
         sourceFrame.current = Object.freeze({
           coordinates: 'source-normalized',
@@ -527,7 +609,7 @@ export function useEditor() {
         }
       }
     },
-    [resetHistory, pixelBudget],
+    [resetHistory, pixelBudget, ensureWorkers, failWorker, stopLiveWorker],
   );
 
   const commit = useCallback(
@@ -730,19 +812,26 @@ export function useEditor() {
       originalOnly = false,
       cutout?: CutoutSettings,
     ) => {
-      if (!sourceRef.current || !worker.current) throw new Error('请先导入图片。');
+      if (loadBusy.current) throw new Error('照片正在导入，请等待完成后再导出。');
+      const target = worker.current;
+      if (!sourceRef.current || !target || target !== sourceWorker.current)
+        throw new Error('请重新导入照片后再导出。');
       const id = ++requestId.current;
       const output = await new Promise<ExportResult>((resolve, reject) => {
         pending.current.set(id, { resolve, reject });
-        worker.current!.postMessage({
-          type: 'export',
-          id,
-          recipe: recipeRef.current,
-          format,
-          quality,
-          originalOnly,
-          cutout,
-        });
+        try {
+          target.postMessage({
+            type: 'export',
+            id,
+            recipe: recipeRef.current,
+            format,
+            quality,
+            originalOnly,
+            cutout,
+          });
+        } catch {
+          failWorker();
+        }
       });
       if (output.blob) return output.blob;
       const image = output.image;
@@ -779,7 +868,7 @@ export function useEditor() {
         canvas.height = 1;
       }
     },
-    [],
+    [failWorker],
   );
   const getCloudUploadFile = useCallback(
     async (forceNormalize = false) => {

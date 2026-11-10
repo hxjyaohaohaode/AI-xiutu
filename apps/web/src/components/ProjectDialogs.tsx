@@ -333,7 +333,7 @@ export function ExportDialog({
                 setError('当前画面已变化，请重新生成导出文件。');
                 return;
               }
-              onSuccess('已请求浏览器下载，请检查下载记录；工作台无法确认文件已写入相册。');
+              onSuccess('下载已发起，可在浏览器下载记录中查看。');
             }}
           >
             <DownloadSimple size={18} />
