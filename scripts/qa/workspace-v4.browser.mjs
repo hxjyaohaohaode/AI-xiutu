@@ -1273,6 +1273,197 @@ try {
     await a.page.screenshot({ path: join(artifacts, 'usage-ledger.png') });
     return { privateMemory: true, realLedgerCsv: true };
   });
+  await caseRun('cloud-history-summary-pagination-opens-full-revision-draft', async () => {
+    const historyTitle = `CI history ${randomUUID().slice(0, 8)}`;
+    const firstRecipe = createRecipeV4({ adjustments: { exposure: -0.25, contrast: 13 } });
+    const created = await request(a, `/projects/${projectId}/artworks`, 'POST', {
+      assetId,
+      title: historyTitle,
+      recipe: firstRecipe,
+    });
+    assert.equal(created.status(), 201, 'the owner creates an isolated history work over HTTP');
+    let saved = await created.json();
+    const historyArtworkId = saved.artwork.id;
+    const firstRevisionId = saved.revision.id;
+    assert.equal(saved.artwork.headVersion, 1);
+    for (let version = 2; version <= 105; version++) {
+      const response = await request(a, `/artworks/${historyArtworkId}/revisions`, 'POST', {
+        expectedVersion: version - 1,
+        recipe: createRecipeV4({ adjustments: { exposure: version / 1000 } }),
+        label: `CI history version ${version}`,
+      });
+      assert.equal(response.status(), 201, `immutable history version ${version} is created`);
+      saved = await response.json();
+      assert.equal(saved.artwork.headVersion, version);
+    }
+    const headResponse = await request(a, `/artworks/${historyArtworkId}`);
+    assert.equal(headResponse.status(), 200);
+    const head = await headResponse.json();
+    assert.equal(head.artwork.headVersion, 105);
+
+    // The earlier cases leave this page on usage. Reload and select the real
+    // project again so its library fetch includes the newly created work.
+    await a.page.reload();
+    await a.page.getByRole('button', { name: '打开空间与项目', exact: true }).click();
+    await a.page
+      .locator('.sidebar')
+      .getByRole('button', { name: new RegExp(`^${teamName}`) })
+      .click();
+    await a.page.getByRole('button', { name: '打开空间与项目', exact: true }).click();
+    await a.page
+      .getByRole('navigation', { name: '项目', exact: true })
+      .getByRole('button', { name: projectName, exact: true })
+      .click();
+    await a.page
+      .locator('.library-version-links')
+      .getByRole('button', { name: new RegExp(`^${historyTitle}`) })
+      .click();
+    await imageReady(a.page);
+    await a.page.locator('.collaboration-status[data-state="ready"]').waitFor();
+
+    const historyPath = `/v1/artworks/${historyArtworkId}/revisions`;
+    const isHistoryPage = (response, beforeVersion) => {
+      const url = new URL(response.url());
+      return (
+        response.request().method() === 'GET' &&
+        url.pathname === historyPath &&
+        url.searchParams.get('summary') === 'true' &&
+        url.searchParams.get('beforeVersion') === beforeVersion
+      );
+    };
+    const [firstPageResponse] = await Promise.all([
+      a.page.waitForResponse((response) => isHistoryPage(response, null)),
+      changeView(a.page, 'compare', '对比'),
+    ]);
+    assert.equal(firstPageResponse.status(), 200);
+    const firstPage = await firstPageResponse.json();
+    assert.equal(firstPage.revisions.length, 100);
+    assert.equal(firstPage.page.headVersion, 105);
+    assert.equal(firstPage.page.nextBeforeVersion, 6);
+    assert.deepEqual(
+      firstPage.revisions.map((revision) => revision.version),
+      Array.from({ length: 100 }, (_, index) => 105 - index),
+    );
+    assert.ok(firstPage.revisions.every((revision) => !Object.hasOwn(revision, 'recipe')));
+
+    const history = a.page.locator('.saved-versions');
+    await history.locator('summary').click();
+    await eventually(
+      async () =>
+        (await history.locator('.revision-entry').count()) === 100 &&
+        (await history.locator('summary').innerText()).includes('已载入 100'),
+      'the first 100 summary rows are visible',
+    );
+    const olderPageUrl = (url) =>
+      url.pathname === historyPath &&
+      url.searchParams.get('summary') === 'true' &&
+      url.searchParams.get('beforeVersion') === '6';
+    let olderPageRequests = 0;
+    const loseFirstOlderPage = async (route) => {
+      olderPageRequests++;
+      if (olderPageRequests === 1) await route.abort('failed');
+      else await route.continue();
+    };
+    let secondPageResponse;
+    await a.page.route(olderPageUrl, loseFirstOlderPage);
+    try {
+      await history.getByRole('button', { name: '加载更早版本', exact: true }).click();
+      await history.getByRole('button', { name: '重试读取版本', exact: true }).waitFor();
+      assert.equal(await history.locator('.revision-entry').count(), 100);
+      assert.ok((await history.locator('summary').innerText()).includes('已载入 100'));
+      [secondPageResponse] = await Promise.all([
+        a.page.waitForResponse((response) => isHistoryPage(response, '6')),
+        history.getByRole('button', { name: '重试读取版本', exact: true }).click(),
+      ]);
+      assert.equal(olderPageRequests, 2, 'retry keeps the same older-page cursor after one failure');
+    } finally {
+      await a.page.unroute(olderPageUrl, loseFirstOlderPage);
+    }
+    assert.equal(secondPageResponse.status(), 200);
+    const secondPage = await secondPageResponse.json();
+    assert.deepEqual(secondPage.revisions.map((revision) => revision.version), [5, 4, 3, 2, 1]);
+    assert.equal(secondPage.page.nextBeforeVersion, null);
+    assert.ok(secondPage.revisions.every((revision) => !Object.hasOwn(revision, 'recipe')));
+    await eventually(
+      async () =>
+        (await history.locator('.revision-entry').count()) === 105 &&
+        (await history.locator('summary').innerText()).includes('已载入 105'),
+      'the older page appends without dropping or duplicating history',
+    );
+    assert.equal(
+      await history.getByRole('button', { name: '加载更早版本', exact: true }).count(),
+      0,
+      'no further page remains after version one',
+    );
+    await a.page.screenshot({ path: join(artifacts, 'history-pagination-105.png') });
+
+    const detailPath = `${historyPath}/${firstRevisionId}`;
+    const sourcePath = new URL(head.asset.url, origin).pathname;
+    let detailRequests = 0;
+    const countDetail = (request) => {
+      if (request.method() === 'GET' && new URL(request.url()).pathname === detailPath)
+        detailRequests++;
+    };
+    a.page.on('request', countDetail);
+    try {
+      const [detailResponse, sourceResponse] = await Promise.all([
+        a.page.waitForResponse(
+          (response) =>
+            response.request().method() === 'GET' &&
+            new URL(response.url()).pathname === detailPath,
+        ),
+        a.page.waitForResponse(
+          (response) =>
+            response.request().method() === 'GET' &&
+            new URL(response.url()).pathname === sourcePath,
+        ),
+        history.locator('.revision-open').filter({ hasText: /V1$/ }).click(),
+      ]);
+      assert.equal(detailResponse.status(), 200);
+      const detail = await detailResponse.json();
+      assert.equal(detail.revision.id, firstRevisionId);
+      assert.equal(detail.revision.version, 1);
+      assert.equal(detail.revision.artworkId, historyArtworkId);
+      assert.equal(detail.revision.assetId, assetId);
+      assert.equal(detail.asset.id, assetId);
+      assert.equal(detail.asset.projectId, projectId);
+      assert.deepEqual(detail.revision.recipe, firstRecipe);
+      assert.equal(sourceResponse.status(), 200);
+      const sourcePixels = await pixelEvidence(await sourceResponse.body());
+      assert.equal(sourcePixels.evidence.rgbaSha256, sha256(pixels));
+      await a.page.locator('.compare-view').waitFor({ state: 'hidden' });
+      await a.page
+        .getByText('历史版本 1 的底图、合成素材与配方已打开，保存将建立独立作品。', { exact: true })
+        .waitFor();
+      await imageReady(a.page);
+      assert.equal(detailRequests, 1, 'opening a summary reads one complete immutable revision');
+      const draftRecipe = await recipeDownload(a.page);
+      assert.deepEqual(draftRecipe, firstRecipe, 'the old full recipe enters the real editor');
+      const unchanged = await request(a, `/artworks/${historyArtworkId}`);
+      assert.equal(unchanged.status(), 200);
+      const unchangedHead = await unchanged.json();
+      assert.equal(unchangedHead.artwork.headVersion, 105);
+      assert.equal(unchangedHead.revision.id, saved.revision.id);
+      await a.page.screenshot({ path: join(artifacts, 'history-old-version-draft.png') });
+      return {
+        createdVersions: 105,
+        summaryPageSizes: [100, 5],
+        nextBeforeVersion: [6, null],
+        summaryRecipesOmitted: true,
+        olderPageNetworkFailureInjected: true,
+        olderPageRequests,
+        rowsRetainedAfterReadFailure: 100,
+        fullRevisionRequests: detailRequests,
+        openedVersion: 1,
+        historicalSourceRgbaSha256: sourcePixels.evidence.rgbaSha256,
+        historicalRecipeSha256: sha256(Buffer.from(JSON.stringify(draftRecipe))),
+        openedAsIndependentDraft: true,
+        cloudHeadUnchanged: true,
+      };
+    } finally {
+      a.page.off('request', countDetail);
+    }
+  });
   assert.deepEqual(report.pageErrors, [], 'no unhandled browser runtime errors');
   report.state = 'passed';
 } catch (error) {

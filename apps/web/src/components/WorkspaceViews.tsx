@@ -27,11 +27,13 @@ import type {
   Project,
   ProjectDocument,
   Revision,
+  RevisionSummary,
   Task,
 } from '../lib/types';
 import { Busy, EmptyState, IconButton, InlineError, Modal } from './Ui';
 import { PixelCanvas } from '../editor/CanvasStage';
 import { localPixelBudget, type EditorState } from '../editor/useEditor';
+import { appendRevisionHistoryPage, type RevisionHistoryPage } from '../lib/revisionHistory';
 import type { RGBAImage } from '@ai-xiutu/editor';
 import '../ai/decisions.css';
 
@@ -218,27 +220,84 @@ export function CompareView({
 }: {
   editor: EditorState;
   artwork: Artwork | null;
-  onOpenRevision: (revision: Revision) => void | Promise<void>;
-  onRestoreRevision?: (revision: Revision) => Promise<void>;
+  onOpenRevision: (revision: RevisionSummary) => void | Promise<void>;
+  onRestoreRevision?: (revision: RevisionSummary) => Promise<void>;
   isDirty?: boolean;
   canRestore?: boolean;
 }) {
-  const [revisions, setRevisions] = useState<Revision[]>([]);
+  const [revisions, setRevisions] = useState<RevisionSummary[]>([]);
   const [error, setError] = useState<string | null>(null);
   const [loadingRevisions, setLoadingRevisions] = useState(false);
+  const [nextBeforeVersion, setNextBeforeVersion] = useState<number | null>(null);
+  const [historyHeadVersion, setHistoryHeadVersion] = useState<number | null>(null);
+  const [historyReadFailed, setHistoryReadFailed] = useState(false);
+  const historyRows = useRef<RevisionSummary[]>([]);
+  const historyRequest = useRef<AbortController | null>(null);
+  const historyScope = useRef('');
+  historyScope.current = `${artwork?.id ?? ''}:${artwork?.headVersion ?? ''}`;
   const [busyRevision, setBusyRevision] = useState<string | null>(null);
   const [restore, setRestore] = useState<{
-    revision: Revision;
+    revision: RevisionSummary;
     artworkId: string;
     headVersion: number;
   } | null>(null);
-  const scope = useRef(artwork?.id);
-  scope.current = artwork?.id;
+  const scope = useRef(historyScope.current);
+  scope.current = historyScope.current;
   const [mode, setMode] = useState<'side' | 'original' | 'edited'>(() =>
     typeof window !== 'undefined' && window.innerWidth < 760 ? 'edited' : 'side',
   );
+  const historyChanged =
+    !!artwork && historyHeadVersion !== null && historyHeadVersion > artwork.headVersion;
+  async function loadHistory(beforeVersion?: number) {
+    if (!artwork || historyRequest.current) return;
+    const expected = historyScope.current;
+    const controller = new AbortController();
+    historyRequest.current = controller;
+    setLoadingRevisions(true);
+    setHistoryReadFailed(false);
+    setError(null);
+    try {
+      const query =
+        beforeVersion === undefined
+          ? '?summary=true'
+          : `?summary=true&beforeVersion=${beforeVersion}`;
+      const response = await api<RevisionHistoryPage>(`/artworks/${artwork.id}/revisions${query}`, {
+        signal: controller.signal,
+      });
+      if (controller.signal.aborted || historyScope.current !== expected) return;
+      const page = appendRevisionHistoryPage(
+        beforeVersion === undefined ? [] : historyRows.current,
+        response,
+        artwork.id,
+        beforeVersion,
+      );
+      historyRows.current = page.revisions;
+      setRevisions(page.revisions);
+      setNextBeforeVersion(page.nextBeforeVersion);
+      setHistoryHeadVersion((previous) =>
+        page.headVersion === null ? previous : Math.max(previous ?? 0, page.headVersion),
+      );
+    } catch (failure) {
+      if (!controller.signal.aborted && historyScope.current === expected) {
+        setHistoryReadFailed(true);
+        setError(errorMessage(failure));
+      }
+    } finally {
+      if (historyRequest.current === controller) {
+        historyRequest.current = null;
+        if (!controller.signal.aborted && historyScope.current === expected)
+          setLoadingRevisions(false);
+      }
+    }
+  }
   useEffect(() => {
+    historyRequest.current?.abort();
+    historyRequest.current = null;
+    historyRows.current = [];
     setRevisions([]);
+    setNextBeforeVersion(null);
+    setHistoryHeadVersion(null);
+    setHistoryReadFailed(false);
     setError(null);
     setRestore(null);
     setBusyRevision(null);
@@ -246,26 +305,15 @@ export function CompareView({
       setLoadingRevisions(false);
       return;
     }
-    setLoadingRevisions(true);
-    const controller = new AbortController();
-    api<{ revisions: Revision[] }>(`/artworks/${artwork.id}/revisions`, {
-      signal: controller.signal,
-    })
-      .then((value) => {
-        if (!controller.signal.aborted) setRevisions(value.revisions);
-      })
-      .catch((error) => {
-        if (!controller.signal.aborted && error.name !== 'AbortError')
-          setError(errorMessage(error));
-      })
-      .finally(() => {
-        if (!controller.signal.aborted) setLoadingRevisions(false);
-      });
-    return () => controller.abort();
+    void loadHistory();
+    return () => {
+      historyRequest.current?.abort();
+      historyRequest.current = null;
+    };
   }, [artwork?.id, artwork?.headVersion]);
-  async function openRevision(revision: Revision) {
+  async function openRevision(revision: RevisionSummary) {
     if (busyRevision) return;
-    const expected = artwork?.id;
+    const expected = scope.current;
     setBusyRevision(revision.id);
     setError(null);
     try {
@@ -277,12 +325,13 @@ export function CompareView({
     }
   }
   async function restoreRevision() {
-    if (!restore || !canRestore || !onRestoreRevision || busyRevision || isDirty) return;
+    if (!restore || !canRestore || !onRestoreRevision || busyRevision || isDirty || historyChanged)
+      return;
     if (artwork?.id !== restore.artworkId || artwork.headVersion !== restore.headVersion) {
       setError('当前作品版本已改变，请重新查看历史后恢复。');
       return;
     }
-    const expected = artwork.id;
+    const expected = scope.current;
     setBusyRevision(restore.revision.id);
     setError(null);
     try {
@@ -362,11 +411,11 @@ export function CompareView({
       {artwork && (
         <details className="saved-versions">
           <summary>
-            云端版本 {revisions.length > 0 ? `· ${revisions.length}` : ''}
+            云端版本 {revisions.length > 0 ? `· 已载入 ${revisions.length}` : ''}
             <span>当前 V{artwork.headVersion} · 恢复会保留已有版本</span>
           </summary>
           {loadingRevisions && <Busy label="正在读取版本" />}
-          {!loadingRevisions && !revisions.length && (
+          {!loadingRevisions && !revisions.length && !historyReadFailed && (
             <p className="control-note">尚未读取到保存版本。</p>
           )}
           <div className="version-list">
@@ -399,8 +448,14 @@ export function CompareView({
                 {canRestore && onRestoreRevision && revision.version !== artwork.headVersion && (
                   <button
                     className="revision-restore text-button"
-                    disabled={!!busyRevision || isDirty}
-                    title={isDirty ? '先保存或撤销本地修改后再恢复云端版本' : undefined}
+                    disabled={!!busyRevision || isDirty || historyChanged}
+                    title={
+                      historyChanged
+                        ? '云端版本已更新，请重新打开作品后再恢复'
+                        : isDirty
+                          ? '先保存或撤销本地修改后再恢复云端版本'
+                          : undefined
+                    }
                     onClick={() =>
                       setRestore({
                         revision,
@@ -415,6 +470,24 @@ export function CompareView({
               </div>
             ))}
           </div>
+          {(nextBeforeVersion !== null || historyReadFailed) && (
+            <button
+              className="button button-secondary"
+              disabled={loadingRevisions || !!busyRevision}
+              onClick={() => void loadHistory(nextBeforeVersion ?? undefined)}
+            >
+              {loadingRevisions
+                ? '正在读取版本…'
+                : historyReadFailed
+                  ? '重试读取版本'
+                  : '加载更早版本'}
+            </button>
+          )}
+          {historyChanged && (
+            <p className="control-note" role="status">
+              云端已更新至 V{historyHeadVersion}。历史仍可查看；请重新打开作品后再恢复版本。
+            </p>
+          )}
           {isDirty && canRestore && onRestoreRevision && (
             <p className="control-note">先保存或撤销本地修改后，才能将历史恢复为云端新版本。</p>
           )}
@@ -435,6 +508,11 @@ export function CompareView({
             {isDirty && (
               <p className="parameter-error">本地又有了未保存修改，请先保存或撤销，再恢复历史。</p>
             )}
+            {historyChanged && (
+              <p className="parameter-error">
+                云端已更新至 V{historyHeadVersion}，请重新打开作品后再恢复。
+              </p>
+            )}
             <InlineError message={error} />
             <div className="ai-result-actions">
               <button
@@ -448,6 +526,7 @@ export function CompareView({
                 className="button button-primary"
                 disabled={
                   !!busyRevision ||
+                  historyChanged ||
                   isDirty ||
                   artwork?.id !== restore.artworkId ||
                   artwork?.headVersion !== restore.headVersion

@@ -1416,9 +1416,18 @@ export function LiveAssistant(props: LiveAssistantProps) {
           },
         });
         if (!applied) return;
-        if (automatic && savedId) {
-          await props.onApplied(savedId);
-          setToolStatus('已自动保存新版本，可在历史中对比和恢复');
+        if (typeof applied === 'object') {
+          savedId = applied.artworkId;
+          appliedRevisionId = applied.revisionId;
+        }
+        if (savedId) {
+          await current.current.onApplied(savedId);
+          if (!requestIsActive(token)) return;
+          setToolStatus(
+            automatic
+              ? '已自动保存新版本，可在历史中对比和恢复'
+              : '这份候选已在云端保存，未再次预览；本地未保存的草稿继续保留，可从版本历史核对。',
+          );
         }
       } else {
         let commit: (() => void) | null = null;

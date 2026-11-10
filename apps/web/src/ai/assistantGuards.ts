@@ -88,7 +88,13 @@ export function assistantEditorKey(value: AssistantEditorState): string {
   return canonical({ ...value, recipe: parseEditorRecipe(value.recipe) });
 }
 
-/** The only await is before the final identity check; applying the preview is synchronous. */
+export interface AppliedEditCandidateReceipt {
+  readonly applied: true;
+  readonly artworkId: string;
+  readonly revisionId: string;
+}
+
+/** A saved receipt is not a local preview. Both paths follow the final identity check. */
 export async function acknowledgeEditCandidate(
   candidate: AssistantCandidate,
   options: {
@@ -101,7 +107,7 @@ export async function acknowledgeEditCandidate(
     }) => Promise<unknown>;
     apply: (recipe: EditorRecipe) => void;
   },
-): Promise<boolean> {
+): Promise<boolean | AppliedEditCandidateReceipt> {
   if (!options.isActive()) return false;
   const before = options.readCurrent();
   if (
@@ -119,16 +125,32 @@ export async function acknowledgeEditCandidate(
     throw new Error('图片或参数已经变化，请更新上下文后重新生成建议。');
   const baseline = assistantEditorKey(before);
   const proposed = parseEditorRecipe(candidate.recipe);
-  await options.acknowledge({
+  const acknowledgement = await options.acknowledge({
     decision: 'previewed',
     recipe: parseEditorRecipe(before.recipe),
     expectedVersion: before.version,
   });
   if (!options.isActive()) return false;
+  const receipt =
+    acknowledgement && typeof acknowledgement === 'object'
+      ? (acknowledgement as Record<string, unknown>)
+      : null;
+  const alreadySaved = receipt?.applied === true;
   if (assistantEditorKey(options.readCurrent()) !== baseline)
     throw new Error(
-      '确认记录已保存，但图片或参数在等待期间发生变化；建议没有应用，请重新获取当前画面建议。',
+      alreadySaved
+        ? '这份候选已在云端保存，但图片或参数在等待期间发生变化；当前本地草稿已保留，请从版本历史核对。'
+        : '确认记录已保存，但图片或参数在等待期间发生变化；建议没有应用，请重新获取当前画面建议。',
     );
+  if (alreadySaved) {
+    if (typeof receipt.revisionId !== 'string' || !receipt.revisionId.trim())
+      throw new Error('这份候选已在云端保存，但回执缺少版本标识；当前画面未改变，请从版本历史核对。');
+    return Object.freeze({
+      applied: true,
+      artworkId: before.artworkId,
+      revisionId: receipt.revisionId,
+    });
+  }
   options.apply(proposed);
   return true;
 }

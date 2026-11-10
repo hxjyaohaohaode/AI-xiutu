@@ -1095,7 +1095,7 @@ export function App() {
     setAiOpen(false);
     return true;
   }
-  async function openRevision(next: Revision) {
+  async function openRevision(next: Pick<Revision, 'id' | 'version'>) {
     const current = artworkRef.current;
     if (!current || saveLock.current || opening) return;
     if (isEditorDirty() && !window.confirm('查看历史会替换本地未保存草稿，继续吗？')) return;
@@ -1159,7 +1159,7 @@ export function App() {
       if (load.request === projectRequest.current) setOpening(false);
     }
   }
-  async function restoreRevision(next: Revision) {
+  async function restoreRevision(next: Pick<Revision, 'id' | 'version'>) {
     const current = artworkRef.current;
     if (!current || isEditorDirty() || saveLock.current || opening)
       throw new Error('请先保存当前草稿再恢复历史。');

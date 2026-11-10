@@ -218,6 +218,7 @@ test('equivalent normalized recipes can preview after acknowledgement despite ob
       events.push('acknowledged');
       assert.equal(body.expectedVersion, 3);
       assert.equal(body.recipe.schemaVersion, 4);
+      return { ok: true, decision: 'previewed', applied: false };
     },
     apply: (recipe) => {
       events.push('preview');
@@ -226,6 +227,108 @@ test('equivalent normalized recipes can preview after acknowledgement despite ob
   });
   assert.equal(applied, true);
   assert.deepEqual(events, ['acknowledged', 'preview']);
+});
+
+test('an already-saved decision receipt never previews again or changes an unsaved base', async () => {
+  const current = state();
+  current.recipe.adjustments.exposure = 0.25;
+  const baseline = assistantEditorKey(current);
+  let previews = 0;
+  const result = await acknowledgeEditCandidate(candidate(current), {
+    readCurrent: () => current,
+    isActive: () => true,
+    acknowledge: async () => ({
+      ok: true,
+      decision: 'previewed',
+      applied: true,
+      revisionId: 'saved-revision',
+    }),
+    apply: () => {
+      previews++;
+    },
+  });
+  assert.deepEqual(result, {
+    applied: true,
+    artworkId: current.artworkId,
+    revisionId: 'saved-revision',
+  });
+  assert.equal(previews, 0);
+  assert.equal(assistantEditorKey(current), baseline);
+});
+
+test('an already-saved receipt cannot replace a changed artwork, login or local recipe', async () => {
+  const changes = [
+    (current: AssistantEditorState) => {
+      current.artworkId = 'other-artwork';
+    },
+    (current: AssistantEditorState) => {
+      current.loggedIn = false;
+    },
+    (current: AssistantEditorState) => {
+      current.recipe.adjustments.contrast = 24;
+    },
+  ];
+  for (const change of changes) {
+    const current = state();
+    const receipt = deferred<{ applied: true; revisionId: string }>();
+    let previews = 0;
+    const pending = acknowledgeEditCandidate(candidate(current), {
+      readCurrent: () => current,
+      isActive: () => true,
+      acknowledge: () => receipt.promise,
+      apply: () => {
+        previews++;
+      },
+    });
+    change(current);
+    const changed = assistantEditorKey(current);
+    receipt.resolve({ applied: true, revisionId: 'saved-revision' });
+    await assert.rejects(pending, /已在云端保存.*等待期间发生变化.*本地草稿已保留/);
+    assert.equal(previews, 0);
+    assert.equal(assistantEditorKey(current), changed);
+  }
+});
+
+test('a saved receipt after account-scope replacement cannot affect the new operation', async () => {
+  const current = state(),
+    receipt = deferred<{ applied: true; revisionId: string }>(),
+    gate = new AssistantOperationGate();
+  gate.setScope('account-a/project-a');
+  const token = gate.begin()!;
+  let previews = 0;
+  const pending = acknowledgeEditCandidate(candidate(current), {
+    readCurrent: () => current,
+    isActive: () => gate.owns(token),
+    acknowledge: () => receipt.promise,
+    apply: () => {
+      previews++;
+    },
+  }).finally(() => gate.finish(token));
+  gate.setScope('account-b/project-a');
+  const fresh = gate.begin()!;
+  receipt.resolve({ applied: true, revisionId: 'saved-revision' });
+  assert.equal(await pending, false);
+  assert.equal(previews, 0);
+  assert.equal(gate.owns(fresh), true);
+});
+
+test('an incomplete saved receipt fails closed instead of becoming a local preview', async () => {
+  for (const revisionId of [undefined, null, '', ' ', 7]) {
+    const current = state();
+    let previews = 0;
+    await assert.rejects(
+      acknowledgeEditCandidate(candidate(current), {
+        readCurrent: () => current,
+        isActive: () => true,
+        acknowledge: async () => ({ applied: true, revisionId }),
+        apply: () => {
+          previews++;
+        },
+      }),
+      /回执缺少版本标识/,
+    );
+    assert.equal(previews, 0);
+  }
 });
 
 test('wrong base or rejected network acknowledgement never applies an edit', async () => {

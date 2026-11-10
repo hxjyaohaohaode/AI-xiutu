@@ -307,7 +307,7 @@ export function RepairControls({ controller }: { controller: InspectorController
           )}
           {mode === 'retouch' && (
             <div className="tonal-tabs" aria-label="质感算法">
-              {(['guided-v2', 'guided-v1', 'legacy'] as const).map((algorithm) => (
+              {(['guided-v3', 'guided-v2', 'guided-v1', 'legacy'] as const).map((algorithm) => (
                 <button
                   key={algorithm}
                   aria-pressed={((item as RetouchRegionV4).algorithm ?? 'legacy') === algorithm}
@@ -328,6 +328,7 @@ export function RepairControls({ controller }: { controller: InspectorController
                 >
                   {
                     {
+                      'guided-v3': '细纹与反光分离',
                       'guided-v2': '选区保边与双尺度纹理',
                       'guided-v1': '保边美肤',
                       legacy: '原版质感',
