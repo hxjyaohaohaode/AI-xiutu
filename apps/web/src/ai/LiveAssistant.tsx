@@ -1,14 +1,21 @@
-import { useEffect, useLayoutEffect, useRef, useState } from 'react';
+import { MotionDetails } from '../motion/Presence';
+import { useCallback, useEffect, useLayoutEffect, useRef, useState, type ReactNode } from 'react';
 import {
   Microphone,
   MicrophoneSlash,
   PhoneDisconnect,
-  Waveform,
   ArrowUp,
   Eye,
   MagnifyingGlass,
   Sparkle,
   Pause,
+  Plus,
+  GearSix,
+  CaretDown,
+  ClockCounterClockwise,
+  Paperclip,
+  WarningCircle,
+  X,
 } from '@phosphor-icons/react';
 import type {
   AssistantCandidate,
@@ -20,6 +27,8 @@ import type {
   AssistantGrant,
   AssistantWorkspace,
   MemorySuggestion,
+  AssistantBranchEvent,
+  AssistantResearchBranch,
 } from '@ai-xiutu/contracts';
 import { assistantSearchEvidenceSchema } from '@ai-xiutu/contracts';
 import { parseEditorRecipe, type EditorRecipe } from '@ai-xiutu/editor';
@@ -37,11 +46,16 @@ import {
   type AssistantOperationToken,
 } from './assistantGuards';
 import './live-assistant.css';
+import { IconButton, Modal } from '../components/Ui';
+import { ChoiceSelect } from '../components/ChoiceSelect';
+import { ComposerInput } from './ComposerInput';
+import { ComposerVisual } from './ComposerVisual';
+import { IDLE_AI_ACTIVITY, type AIActivity } from './AIVisibility';
+import { PanelSettings } from './PanelSettings';
 import { CreativeControls, initialCreativeSettings } from './CreativeControls';
 import { observeAssistantTurn, type RunEvent } from './turnStream';
 import { ContextEvidence } from './ContextEvidence';
 import { ResearchGraph } from './ResearchGraph';
-import type { AssistantBranchEvent, AssistantResearchBranch } from '@ai-xiutu/contracts';
 import { MemoryControls } from './MemoryControls';
 import { WorkspaceCards } from './WorkspaceCards';
 import { CloudImageResults, SearchEvidence } from './SearchEvidence';
@@ -135,6 +149,10 @@ const assistantDrafts = new Map<
   }
 >();
 export interface LiveAssistantProps {
+  navigation?: ReactNode;
+  visible?: boolean;
+  onActivityChange?: (activity: AIActivity) => void;
+  onClose?: () => void;
   project: Project | null;
   artwork: Artwork | null;
   recipe: EditorRecipe;
@@ -200,14 +218,13 @@ export function LiveAssistant(props: LiveAssistantProps) {
   const [modelId, setModelId] = useState(''),
     [voiceId, setVoiceId] = useState(''),
     [voice, setVoice] = useState('marin');
-  const [mode, setMode] = useState<'text' | 'voice'>('voice'),
+  const [mode, setMode] = useState<'text' | 'voice'>('text'),
     [callState, setCallState] = useState<'idle' | 'connecting' | 'active' | 'closing'>('idle');
   const callPanel = useRef<HTMLDivElement>(null);
-  useLayoutEffect(() => {
-    if (callState !== 'connecting') return;
-    const scroll = callPanel.current?.closest('.ai-workbench');
-    if (scroll) scroll.scrollTop = 0;
-  }, [callState]);
+  const composerInput = useRef<HTMLTextAreaElement>(null);
+  const conversationBody = useRef<HTMLDivElement>(null);
+  const followingConversation = useRef(true);
+  const [overlay, setOverlay] = useState<'settings' | 'history' | 'recovery' | null>(null);
   const [prompt, setPrompt] = useState(''),
     [busy, setBusy] = useState(false),
     [error, setError] = useState('');
@@ -232,7 +249,10 @@ export function LiveAssistant(props: LiveAssistantProps) {
   const [secondPublicQuery, setSecondPublicQuery] = useState('');
   const [researchLibrary, setResearchLibrary] = useState('');
   const [researchCanvas, setResearchCanvas] = useState(false);
-  const [researchGraph, setResearchGraph] = useState<{ turnId: string; nodes: AssistantBranchEvent[] } | null>(null);
+  const [researchGraph, setResearchGraph] = useState<{
+    turnId: string;
+    nodes: AssistantBranchEvent[];
+  } | null>(null);
   const [publicImages, setPublicImages] = useState(false);
   const [voiceCaptions, setVoiceCaptions] = useState<CaptionState>({});
   const [voiceSearchUsed, setVoiceSearchUsed] = useState(false);
@@ -363,6 +383,53 @@ export function LiveAssistant(props: LiveAssistantProps) {
     if (voiceOptions.length && !voiceOptions.includes(voice)) setVoice(voiceOptions[0]!);
   }, [voiceId, voiceOptions.join(','), voice]);
   const inCall = callState !== 'idle';
+  const currentVoiceControls = useRef({ callState, muted, end: endVoice });
+  currentVoiceControls.current = { callState, muted, end: endVoice };
+  const toggleVoiceMute = useCallback(() => {
+    const state = currentVoiceControls.current;
+    if (!alive.current || voiceEnding.current || state.callState !== 'active' || !client.current)
+      return;
+    const next = !state.muted;
+    // Keep two rapid clicks coherent before React commits the next render.
+    state.muted = next;
+    client.current.mute(next);
+    setMuted(next);
+  }, []);
+  const endCurrentVoice = useCallback(() => {
+    const state = currentVoiceControls.current;
+    if (
+      !alive.current ||
+      voiceEnding.current ||
+      (state.callState !== 'connecting' && state.callState !== 'active')
+    )
+      return;
+    state.end();
+  }, []);
+  const activityReporter = useRef(props.onActivityChange);
+  activityReporter.current = props.onActivityChange;
+  useEffect(() => {
+    props.onActivityChange?.({
+      callActive: inCall,
+      requestActive: busy,
+      callState,
+      muted: inCall && muted,
+      onMute: toggleVoiceMute,
+      onEnd: endCurrentVoice,
+    });
+  }, [inCall, callState, muted, busy, toggleVoiceMute, endCurrentVoice, props.onActivityChange]);
+  useEffect(() => () => activityReporter.current?.(IDLE_AI_ACTIVITY), []);
+  useEffect(() => {
+    if (props.visible === false) setOverlay(null);
+  }, [props.visible]);
+  useLayoutEffect(() => {
+    const element = conversationBody.current;
+    if (!element || props.visible === false || !element.clientHeight) return;
+    if (!messages.length && !candidates.length && !workspace) {
+      element.scrollTop = 0;
+    } else if (followingConversation.current) {
+      element.scrollTop = element.scrollHeight;
+    }
+  }, [messages, candidates, workspace, props.visible]);
   useEffect(() => {
     alive.current = true;
     if (!isLoggedIn) return;
@@ -429,6 +496,10 @@ export function LiveAssistant(props: LiveAssistantProps) {
     setShareImage(false);
     setAllowWebSearch(false);
     setPublicQuery('');
+    setSecondPublicQuery('');
+    setResearchLibrary('');
+    setResearchCanvas(false);
+    setResearchGraph(null);
     setPublicImages(false);
     setActiveTurn(null);
     setContextStatus('未共享画面');
@@ -897,6 +968,7 @@ export function LiveAssistant(props: LiveAssistantProps) {
     setMode('voice');
     setVoiceCaptions({});
     setVoiceSearchUsed(false);
+    setMuted(false);
     setCallState('connecting');
     const voiceIsActive = () =>
       alive.current &&
@@ -1030,6 +1102,7 @@ export function LiveAssistant(props: LiveAssistantProps) {
     turnAbort.current = null;
     setBusy(false);
     if (callState === 'connecting') voiceEpoch.current++;
+    setMuted(true);
     setCallState(callState === 'connecting' ? 'idle' : 'closing');
     client.current?.end();
   }
@@ -1086,7 +1159,13 @@ export function LiveAssistant(props: LiveAssistantProps) {
       setResearchGraph((previous) => {
         const nodes = previous?.turnId === event.runId ? previous.nodes : [];
         const existing = nodes.findIndex((item) => item.id === node.id);
-        return { turnId: event.runId, nodes: existing < 0 ? [...nodes, node] : nodes.map((item, index) => index === existing ? node : item) };
+        return {
+          turnId: event.runId,
+          nodes:
+            existing < 0
+              ? [...nodes, node]
+              : nodes.map((item, index) => (index === existing ? node : item)),
+        };
       });
     } else if (event.type === 'run.stopping') {
       setActiveTurn({ id: event.runId, stopping: true });
@@ -1155,10 +1234,16 @@ export function LiveAssistant(props: LiveAssistantProps) {
       const context = await getContext();
       const research: AssistantResearchBranch[] = [];
       if (allowWebSearch && selected?.webSearch && secondPublicQuery.trim()) {
-        if (secondPublicQuery.trim() === publicQuery.trim()) throw new Error('第二项公开查询需要不同的内容。');
-        research.push({ kind: 'web', query: secondPublicQuery.trim(), resultKind: publicImages && selected.webImageSearch ? 'images' : 'text' });
+        if (secondPublicQuery.trim() === publicQuery.trim())
+          throw new Error('第二项公开查询需要不同的内容。');
+        research.push({
+          kind: 'web',
+          query: secondPublicQuery.trim(),
+          resultKind: publicImages && selected.webImageSearch ? 'images' : 'text',
+        });
       }
-      if (researchLibrary.trim() && spaceIds.length) research.push({ kind: 'cloud', query: researchLibrary.trim(), limit: 8 });
+      if (researchLibrary.trim() && spaceIds.length)
+        research.push({ kind: 'cloud', query: researchLibrary.trim(), limit: 8 });
       if (researchCanvas && shareImage && selected?.imageInput) {
         if (!context?.imageDataUrl) throw new Error('请准备好当前图片后再检查画面。');
         research.push({ kind: 'canvas' });
@@ -1599,21 +1684,45 @@ export function LiveAssistant(props: LiveAssistantProps) {
       if (searchAbort.current?.controller === controller) searchAbort.current = null;
     }
   }
-  if (!isLoggedIn)
-    return (
-      <div className="live-assistant empty">
-        <Waveform size={32} />
-        <p>与 AI 边说边创作，也可以继续打字交流。</p>
-        <button className="button button-primary" onClick={onAuth}>
-          登录后开始
-        </button>
-      </div>
-    );
+  function newConversation() {
+    freshConversation.current = true;
+    setConversationId('');
+    setParentTurnId(undefined);
+    setMessages([]);
+    setCandidates([]);
+    setContextManifest(null);
+    setResearchGraph(null);
+    setWorkspace(null);
+    setMemorySuggestions({ items: [] });
+    followingConversation.current = true;
+    setOverlay(null);
+  }
+  const canSend =
+    !busy &&
+    !submissionBlocked &&
+    !!prompt.trim() &&
+    !!project &&
+    !!catalog?.ready &&
+    !!selected &&
+    (!inCall || callState === 'active');
+  const hasVoiceRecovery =
+    !inCall && (!!pendingVoiceSubmission || !!pendingTeamVoiceSubmission || !!voiceRecoveryError);
+  const recoveryLabel = pendingSubmission
+    ? pendingSubmission.state === 'unknown'
+      ? '本轮结果待核验，发送已暂停'
+      : busy
+        ? '正在处理本轮请求'
+        : '本轮请求已保留，请先核对结果'
+    : hasVoiceRecovery
+      ? '语音结果待确认，暂停发起新通话'
+      : '';
+  const executionLabel = { suggest: '只建议', confirm: '预览确认', auto: '预算内自动执行' }[
+    creative.mode
+  ];
+  const researchTurnId = activeTurn?.id ?? researchGraph?.turnId ?? parentTurnId;
   const voicePanel = mode === 'voice' && (
-    <div ref={callPanel} className={`assistant-call ${callState}`} data-assistant-motion="call">
-      <div className="assistant-voice-orb" aria-hidden>
-        <Waveform size={28} />
-      </div>
+    <div ref={callPanel} className={`assistant-call ${callState}`} data-motion="ai-status">
+      {!inCall && <ComposerVisual kind="voice" />}
       <div className="assistant-call-status" aria-live="polite">
         {callState === 'active'
           ? `正在通话 ${Math.floor(elapsed / 60)}:${String(elapsed % 60).padStart(2, '0')}`
@@ -1621,19 +1730,20 @@ export function LiveAssistant(props: LiveAssistantProps) {
             ? '正在连接麦克风与语音服务…'
             : callState === 'closing'
               ? '正在结束并核对用量…'
-              : '说出想法，一起看图、找素材、调参数'}
+              : '实时语音'}
         <small>
           {inCall
             ? contextStatus
             : selectedVoice
               ? `本次 ${selectedVoice.unitCost} 服务点 · 最长 ${selectedVoice.maxSeconds} 秒 · 最多 ${selectedVoice.maxDelegations} 次后端协作`
-              : '由运营配置可用模型与额度'}
+              : '选择可用的语音模型后开始'}
         </small>
       </div>
       {!inCall ? (
         <div className="assistant-call-start">
-          <select
-            aria-label="语音音色"
+          <ChoiceSelect
+            ariaLabel="语音音色"
+            size="compact"
             value={voice}
             disabled={
               busy ||
@@ -1641,14 +1751,10 @@ export function LiveAssistant(props: LiveAssistantProps) {
               !!pendingTeamVoiceSubmission ||
               !voiceSubmissionReady
             }
-            onChange={(event) => setVoice(event.target.value)}
-          >
-            {voiceOptions.map((option) => (
-              <option key={option} value={option}>
-                {option}
-              </option>
-            ))}
-          </select>
+            onValueChange={setVoice}
+            placeholder="选择音色"
+            options={voiceOptions.map((option) => ({ value: option, label: option }))}
+          />
           <button
             className="button button-primary"
             onClick={() => void startVoice()}
@@ -1674,10 +1780,7 @@ export function LiveAssistant(props: LiveAssistantProps) {
             aria-label={muted ? '开启麦克风' : '静音麦克风'}
             aria-pressed={muted}
             disabled={callState !== 'active'}
-            onClick={() => {
-              client.current?.mute(!muted);
-              setMuted(!muted);
-            }}
+            onClick={toggleVoiceMute}
           >
             {muted ? <MicrophoneSlash size={20} /> : <Microphone size={20} />}
           </button>
@@ -1692,17 +1795,21 @@ export function LiveAssistant(props: LiveAssistantProps) {
             className="end-call"
             aria-label="结束实时通话"
             disabled={callState === 'closing'}
-            onClick={endVoice}
+            onClick={endCurrentVoice}
           >
             <PhoneDisconnect size={20} />
           </button>
         </div>
       )}
+    </div>
+  );
+  const voiceSupplement = mode === 'voice' && (
+    <>
       {(inCall || voiceCaptions.user || voiceCaptions.assistant) && (
         <VoiceCaptions captions={voiceCaptions} />
       )}
       {callState === 'active' && allowWebSearch && selected?.webSearch && (
-        <details className="assistant-voice-search">
+        <MotionDetails className="assistant-voice-search">
           <summary>通话中公开搜索</summary>
           <form
             className="assistant-public-query"
@@ -1740,579 +1847,786 @@ export function LiveAssistant(props: LiveAssistantProps) {
               {voiceSearchUsed ? '本次已发起检索' : '搜索'}
             </button>
           </form>
-        </details>
+        </MotionDetails>
       )}
-    </div>
+    </>
   );
   return (
     <section
-      className="live-assistant"
+      className="live-assistant live-assistant-v2"
       data-in-call={inCall || undefined}
       aria-label="实时语音与智能体协作"
     >
-      {inCall && voicePanel}
-      <header className="assistant-mode" data-assistant-motion="mode">
-        <button aria-pressed={mode === 'voice'} onClick={() => setMode('voice')}>
-          实时对话
-        </button>
-        <button aria-pressed={mode === 'text'} disabled={inCall} onClick={() => setMode('text')}>
-          文字协作
-        </button>
-      </header>
-      <div className="assistant-models" data-assistant-motion="models">
-        {mode === 'voice' && (
-          <label>
-            语音模型
-            <select
-              value={voiceId}
-              onChange={(event) => setVoiceId(event.target.value)}
-              disabled={inCall || busy || submissionBlocked || !!grant}
-            >
-              <option value="">选择语音模型</option>
-              {voices.map((item) => (
-                <option key={item.id} value={item.id}>
-                  {item.label}
-                </option>
-              ))}
-            </select>
-          </label>
+      <header className="ai-workbench-header">
+        {props.navigation ?? (
+          <strong className="ai-task-title">
+            <Sparkle size={18} />
+            AI 助手
+          </strong>
         )}
-        <label>
-          思考与工具模型
-          <select
-            value={modelId}
-            onChange={(event) => setModelId(event.target.value)}
-            disabled={inCall || busy || submissionBlocked || !!grant}
+        <div className="ai-header-actions">
+          <IconButton
+            label="新会话"
+            disabled={busy || inCall || submissionBlocked}
+            onClick={newConversation}
           >
-            <option value="">选择智能体模型</option>
-            {models.map((item) => (
-              <option key={item.id} value={item.id}>
-                {item.label}
-              </option>
-            ))}
-          </select>
-        </label>
-      </div>
-      {!catalog?.ready && (
-        <p className="assistant-readiness" role="status">
-          {catalog?.reason ?? '正在读取实际模型配置…'}
-        </p>
-      )}
-      {!project && (
-        <p className="assistant-readiness">
-          请先建立或打开一个项目。<button onClick={onSave}>保存到项目</button>
-        </p>
-      )}
-      <CreativeControls
-        value={creative}
-        onChange={setCreative}
-        disabled={inCall || busy || submissionBlocked}
-        grant={grant}
-        onAuthorize={() => {
-          void explicitAuthorize();
-        }}
-        onRevoke={() => {
-          void revokeGrant();
-        }}
-      />
-      <ContextEvidence turnId={parentTurnId} live={contextManifest} />
-      <ResearchGraph
-        turnId={activeTurn?.id ?? parentTurnId}
-        live={researchGraph && researchGraph.turnId === (activeTurn?.id ?? parentTurnId) ? researchGraph.nodes : []}
-        running={Boolean(activeTurn)}
-      />
-      {project && (
-        <MemoryControls
-          key={`${project.id}:${artwork?.id ?? ''}`}
-          projectId={project.id}
-          artworkId={artwork?.id}
-          sourceTurnId={parentTurnId}
-          disabled={busy || inCall}
-          suggestions={memorySuggestions}
-        />
-      )}
-      <button
-        className="text-button"
-        disabled={busy || inCall || submissionBlocked}
-        onClick={() => {
-          freshConversation.current = true;
-          setConversationId('');
-          setParentTurnId(undefined);
-          setMessages([]);
-          setCandidates([]);
-          setContextManifest(null);
-          setWorkspace(null);
-          setMemorySuggestions({ items: [] });
+            <Plus size={18} />
+          </IconButton>
+          <IconButton
+            label="会话记录"
+            disabled={busy || inCall}
+            onClick={() => setOverlay('history')}
+          >
+            <ClockCounterClockwise size={18} />
+          </IconButton>
+          <IconButton label="助手设置" onClick={() => setOverlay('settings')}>
+            <GearSix size={18} />
+          </IconButton>
+          {props.onClose && (
+            <IconButton className="ai-panel-close" label="收起 AI 面板" onClick={props.onClose}>
+              <X size={18} />
+            </IconButton>
+          )}
+        </div>
+      </header>
+      {inCall && voicePanel}
+      <div
+        ref={conversationBody}
+        className="ai-conversation-body"
+        aria-label="助手对话内容"
+        onScroll={(event) => {
+          const node = event.currentTarget;
+          if (props.visible === false || !node.clientHeight) return;
+          followingConversation.current =
+            node.scrollHeight - node.clientHeight - node.scrollTop < 64;
         }}
       >
-        开始新会话，保留已保存的历史
-      </button>
-      <label className="assistant-conversation-select">
-        会话记录
-        <select
-          aria-label="会话记录"
-          value={conversationId ?? ''}
-          disabled={busy || inCall}
-          onChange={(event) => {
-            setConversationId(event.target.value);
-            freshConversation.current = !event.target.value;
-            setParentTurnId(undefined);
-            setMessages([]);
-            setCandidates([]);
-            setWorkspace(null);
-            setMemorySuggestions({ items: [] });
-            setContextManifest(null);
-            setError('');
-          }}
-        >
-          <option value="">新会话</option>
-          {conversations.map((item) => (
-            <option key={item.id} value={item.id}>
-              {item.title} · {item.turnCount} 轮
-            </option>
-          ))}
-        </select>
-      </label>
-      <button
-        className="text-button"
-        disabled={busy || inCall || !project}
-        onClick={() => void loadProjectCandidates()}
-      >
-        查看项目候选（含语音协作）
-      </button>
-      {candidateHistoryStatus && (
-        <p className="assistant-readiness" role="status">
-          {candidateHistoryStatus}
-        </p>
-      )}
-      <details className="assistant-context" data-assistant-motion="context">
-        <summary>
-          <Eye size={15} /> 共享范围 · {shareImage ? '画面与参数' : '仅参数'}
-          {allowWebSearch ? ' · 联网' : ''}
-        </summary>
-        <div className="assistant-context-options">
-          <label>
-            <input
-              type="checkbox"
-              checked={shareImage}
-              disabled={inCall || busy || submissionBlocked || !artwork || !selected?.imageInput}
-              onChange={(event) => setShareImage(event.target.checked)}
-            />
-            共享当前预览，通话中编辑后持续更新
-          </label>
-          <label>
-            <input
-              type="checkbox"
-              checked={allowWebSearch}
-              disabled={inCall || busy || submissionBlocked || !selected?.webSearch}
-              onChange={(event) => setAllowWebSearch(event.target.checked)}
-            />
-            允许公开网络检索，保留来源链接
-          </label>
-          {mode === 'text' && allowWebSearch && selected?.webSearch && (
-            <div className="assistant-public-query">
-              <label>
-                可公开的查询词
-                <input
-                  aria-label="公开检索查询词"
-                  value={publicQuery}
-                  maxLength={240}
-                  disabled={inCall || busy || submissionBlocked}
-                  onChange={(event) => setPublicQuery(event.target.value)}
-                  placeholder="例如：复古产品静物布光参考"
-                />
-              </label>
-              <label>
-                第二项公开查询（可选）
-                <input value={secondPublicQuery} maxLength={240} disabled={inCall || busy || submissionBlocked}
-                  onChange={(event) => setSecondPublicQuery(event.target.value)} />
-              </label>
-              {selected.webImageSearch && (
-                <label>
-                  <input
-                    type="checkbox"
-                    checked={publicImages}
-                    disabled={inCall || busy || submissionBlocked}
-                    onChange={(event) => setPublicImages(event.target.checked)}
-                  />
-                  同时查找公开图片
-                </label>
-              )}
-              <small>公开检索使用这里填写的查询词。共享画面和项目资料在编辑协作步骤中处理。</small>
+        {!isLoggedIn ? (
+          <div className="ai-conversation-empty ai-login-empty">
+            <ComposerVisual kind="assistant" />
+            <div>
+              <h3>登录后使用 AI 助手</h3>
+              <p>对话与结果保存到项目。</p>
             </div>
-          )}
-          {mode === 'text' && (spaceIds.length > 0 || (shareImage && selected?.imageInput)) && (
-            <details className="assistant-public-query">
-              <summary>本轮分工</summary>
-              {spaceIds.length > 0 && <label>在已授权空间检索素材<input value={researchLibrary} maxLength={200}
-                disabled={busy || submissionBlocked} onChange={(event) => setResearchLibrary(event.target.value)} /></label>}
-              {shareImage && selected?.imageInput && <label><input type="checkbox" checked={researchCanvas} disabled={busy || submissionBlocked}
-                onChange={(event) => setResearchCanvas(event.target.checked)} />检查当前共享画面</label>}
-            </details>
-          )}
-          <label>
-            <input
-              type="checkbox"
-              checked={memory}
-              disabled={inCall || busy || submissionBlocked}
-              onChange={(event) => setMemory(event.target.checked)}
-            />
-            使用已确认的偏好、项目要求与素材标注
-          </label>
-          <fieldset disabled={inCall || busy || submissionBlocked}>
-            <legend>可搜索的空间 · {spaceIds.length} / 12</legend>
-            {spaces.map((space) => (
-              <label key={space.id}>
-                <input
-                  type="checkbox"
-                  checked={spaceIds.includes(space.id)}
-                  disabled={!spaceIds.includes(space.id) && spaceIds.length >= 12}
-                  onChange={(event) => {
-                    cancelSearch();
-                    setSpaceIds((old) =>
-                      event.target.checked
-                        ? old.length < 12
-                          ? [...old, space.id]
-                          : old
-                        : old.filter((id) => id !== space.id),
-                    );
-                    setReferenceIds([]);
-                  }}
-                />
-                {space.name}
-                <small>{space.kind === 'team' ? '团队' : '个人'}</small>
-              </label>
-            ))}
-          </fieldset>
-          <div className="assistant-resource-search">
-            <input
-              aria-label="搜索授权素材"
-              value={resourceQuery}
-              maxLength={200}
-              onChange={(event) => {
-                cancelSearch();
-                setResourceQuery(event.target.value);
-              }}
-              disabled={inCall}
-              placeholder="找一张以前用过的图片"
-            />
-            <button aria-label="查找素材" onClick={search} disabled={inCall || !spaceIds.length}>
-              <MagnifyingGlass size={17} />
+            <button className="button button-primary" onClick={onAuth}>
+              登录
             </button>
           </div>
-          {searchStatus && <p role="status">{searchStatus}</p>}
-          {!!resources.length && (
-            <CloudImageResults
-              resources={resources}
-              selected={referenceIds}
-              disabled={inCall || busy}
-              onSelect={toggleReference}
-            />
-          )}
-          <p>
-            检索只返回名称与标注；只有选中的 {referenceIds.length}{' '}
-            张参考图和勾选的当前预览会发送给模型。
-          </p>
-        </div>
-      </details>
-      {voiceRecoveryError && (
-        <section className="assistant-candidate" aria-label="语音恢复记录读取失败" role="alert">
-          <h4>暂时无法核对上次通话</h4>
-          <p>{voiceRecoveryError}</p>
-          <p>读取成功前暂停新通话。重新读取本机记录不会向模型发送请求。</p>
-          <button type="button" disabled={inCall} onClick={restoreVoiceSubmission}>
-            重新读取本机记录
-          </button>
-        </section>
-      )}
-      {pendingTeamVoiceSubmission && (
-        <section className="assistant-candidate" aria-label="团队语音未决邀请" role="status">
-          <h4>原团队 AI 邀请仍待确认</h4>
-          <p>
-            请返回作品的团队语音面板查看邀请状态，或在「用量」中核对。核验前暂停新的个人 AI 通话。
-          </p>
-          <p style={{ overflowWrap: 'anywhere' }}>
-            请求标识：<code>{pendingTeamVoiceSubmission.idempotencyKey}</code>
-          </p>
-        </section>
-      )}
-      {pendingVoiceSubmission && !inCall && (
-        <section className="assistant-candidate" aria-label="语音请求恢复" aria-live="polite">
-          <h4>
-            {pendingVoiceSubmission.sessionId || pendingVoiceSubmission.state === 'already-prepared'
-              ? '上次通话待平台核验'
-              : '上次通话的准备结果待确认'}
-          </h4>
-          <p>
-            已保留项目「{pendingVoiceSubmission.projectTitle}」的原请求，核验完成前暂停创建新通话。
-            结束通话、断网或等待一段时间，都不能证明预占已结清。
-          </p>
-          <p style={{ overflowWrap: 'anywhere' }}>
-            请求标识：<code>{pendingVoiceSubmission.idempotencyKey}</code>
-            {pendingVoiceSubmission.sessionId && (
-              <>
-                <br />
-                会话标识：<code>{pendingVoiceSubmission.sessionId}</code>
-              </>
-            )}
-          </p>
-          <p>
-            可从工作区导航的「用量」查看相关预占，并将以上标识提供给平台运营核验。
-            当前服务没有可读取单个语音会话核验结果的接口，也不会重新发放旧连接票据；
-            即使后台已完成核验，这里仍需平台处理恢复，不能自行确认解除。
-          </p>
-          {!pendingVoiceSubmission.sessionId &&
-            pendingVoiceSubmission.state !== 'already-prepared' && (
-              <>
-                <p>
-                  沿原请求核对只使用当时的模型、画面、参数和授权。如服务器尚未受理，
-                  将继续原通话并使用原授权额度；已准备过的通话会保持待核验状态。
-                </p>
-                {pendingVoiceSubmission.requestBody === null ? (
-                  <p>原始共享画面只保留在页面内存中，当前无法重放，请凭原标识联系平台核验。</p>
-                ) : pendingVoiceSubmission.projectId !== project?.id ? (
-                  <p>请先返回原项目，再沿原请求核对。</p>
-                ) : (
-                  <button
-                    type="button"
-                    disabled={busy || submissionBlocked || !voiceSubmissionReady}
-                    onClick={() => void startVoice(pendingVoiceSubmission)}
-                  >
-                    沿原请求核对 / 继续
+        ) : (
+          <>
+            {(!catalog?.ready || !project) && (
+              <div className="ai-availability" role="status">
+                <span>
+                  {!project ? '选择项目后开始对话' : (catalog?.reason ?? '正在读取可用模型…')}
+                </span>
+                {!project && (
+                  <button type="button" onClick={onSave}>
+                    选择项目
                   </button>
                 )}
-              </>
+              </div>
             )}
-        </section>
-      )}
-      {!inCall && voicePanel}
-      <div className="assistant-messages" aria-label="协作对话" data-assistant-motion="messages">
-        {messages.map((message) => (
-          <article key={message.id} className={`assistant-message ${message.role}`}>
-            <small>{message.role === 'user' ? '你' : '创作助手'}</small>
-            {message.text && <p>{message.text}</p>}
-            {!!message.search?.length && (
-              <SearchEvidence
-                evidence={message.search}
-                selected={referenceIds}
-                disabled={inCall || busy}
-                onSelect={toggleReference}
+            {!inCall && voicePanel}
+            {voiceSupplement}
+            <ResearchGraph
+              turnId={researchTurnId}
+              live={
+                researchGraph && researchGraph.turnId === researchTurnId ? researchGraph.nodes : []
+              }
+              running={Boolean(activeTurn && activeTurn.id === researchTurnId)}
+            />
+            {!messages.length && !remainingCandidates.length && mode === 'text' && !busy && (
+              <div className="ai-conversation-empty">
+                <ComposerVisual kind="assistant" />
+                <h3>描述需要修改的地方</h3>
+                <p>
+                  {artwork
+                    ? '共享预览后，也可以针对画面提出建议。'
+                    : '可以先讨论想法，也可以切换到生图。'}
+                </p>
+              </div>
+            )}
+            <div className="assistant-messages" aria-label="协作对话" data-motion="ai-answer">
+              {messages.map((message) => (
+                <article key={message.id} className={`assistant-message ${message.role}`}>
+                  <small>{message.role === 'user' ? '你' : '创作助手'}</small>
+                  {message.text && <p>{message.text}</p>}
+                  {!!message.search?.length && (
+                    <SearchEvidence
+                      evidence={message.search}
+                      selected={referenceIds}
+                      disabled={inCall || busy}
+                      onSelect={toggleReference}
+                    />
+                  )}
+                  {!message.search?.some((item) => item.kind === 'web') &&
+                    !!message.citations?.length && (
+                      <div className="assistant-citations">
+                        {message.citations.map((citation) => (
+                          <a
+                            key={citation.url}
+                            href={/^https?:\/\//.test(citation.url) ? citation.url : undefined}
+                            target="_blank"
+                            rel="noreferrer noopener"
+                          >
+                            {citation.title}
+                          </a>
+                        ))}
+                      </div>
+                    )}
+                </article>
+              ))}
+            </div>
+            {workspace && workspaceReady && (
+              <WorkspaceCards
+                spec={workspace.spec}
+                candidates={workspace.candidateIds.map((id) =>
+                  candidates.find((item) => item.id === id)!,
+                )}
+                grant={grant}
+                disabled={busy || submissionBlocked}
+                canExecute={creative.mode !== 'suggest'}
+                onDecision={(candidate, decision) => {
+                  void decide(candidate, decision);
+                }}
+                onPrompt={(text) => {
+                  setPrompt(text);
+                  composerInput.current?.focus({ preventScroll: true });
+                }}
               />
             )}
-            {!message.search?.some((item) => item.kind === 'web') &&
-              !!message.citations?.length && (
-                <div className="assistant-citations">
-                  {message.citations.map((citation) => (
-                    <a
-                      key={citation.url}
-                      href={/^https?:\/\//.test(citation.url) ? citation.url : undefined}
-                      target="_blank"
-                      rel="noreferrer noopener"
-                    >
-                      {citation.title}
-                    </a>
-                  ))}
-                </div>
-              )}
-          </article>
-        ))}
-      </div>
-      {workspace && workspaceReady && (
-        <WorkspaceCards
-          spec={workspace.spec}
-          candidates={workspace.candidateIds.map((id) =>
-            candidates.find((item) => item.id === id)!,
-          )}
-          grant={grant}
-          disabled={busy || submissionBlocked}
-          canExecute={creative.mode !== 'suggest'}
-          onDecision={(candidate, decision) => {
-            void decide(candidate, decision);
-          }}
-          onPrompt={setPrompt}
-        />
-      )}
-      {remainingCandidates.length > 0 && (
-        <div className="assistant-candidates" data-assistant-motion="candidates">
-          {remainingCandidates.map((candidate) => (
-            <article key={candidate.id} className="assistant-candidate">
-              <h4>
-                <Sparkle size={15} />
-                {candidate.kind === 'edit' ? '待确认的编辑' : '生图草案'}
-              </h4>
-              <p>{candidate.summary}</p>
-              {!!candidate.changes?.length && (
-                <details>
-                  <summary>查看 {candidate.changes.length} 项参数变化</summary>
-                  <table>
-                    <thead>
-                      <tr>
-                        <th>参数</th>
-                        <th>原值</th>
-                        <th>建议</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {candidate.changes.map((change) => (
-                        <tr key={change.path}>
-                          <td>{change.label}</td>
-                          <td>{change.before}</td>
-                          <td>{change.after}</td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
-                </details>
-              )}
-              <div>
-                <button
-                  disabled={busy || submissionBlocked}
-                  onClick={() => void decide(candidate, 'rejected')}
-                >
-                  退回
-                </button>
-                <button
-                  disabled={creative.mode === 'suggest' || busy || submissionBlocked}
-                  onClick={() => void decide(candidate, 'previewed')}
-                >
-                  {candidate.kind === 'edit'
-                    ? '在编辑器预览'
-                    : candidate.decision === 'previewed'
-                      ? '重新打开生图草案'
-                      : '选择模型与生成参数'}
-                </button>
+            {remainingCandidates.length > 0 && (
+              <div className="assistant-candidates" data-motion="ai-answer">
+                {remainingCandidates.map((candidate) => (
+                  <article key={candidate.id} className="assistant-candidate">
+                    <h4>
+                      <Sparkle size={15} />
+                      {candidate.kind === 'edit' ? '待确认的编辑' : '生图草案'}
+                    </h4>
+                    <p>{candidate.summary}</p>
+                    {!!candidate.changes?.length && (
+                      <MotionDetails>
+                        <summary>查看 {candidate.changes.length} 项参数变化</summary>
+                        <table>
+                          <thead>
+                            <tr>
+                              <th>参数</th>
+                              <th>原值</th>
+                              <th>建议</th>
+                            </tr>
+                          </thead>
+                          <tbody>
+                            {candidate.changes.map((change) => (
+                              <tr key={change.path}>
+                                <td>{change.label}</td>
+                                <td>{change.before}</td>
+                                <td>{change.after}</td>
+                              </tr>
+                            ))}
+                          </tbody>
+                        </table>
+                      </MotionDetails>
+                    )}
+                    <div>
+                      <button
+                        disabled={busy || submissionBlocked}
+                        onClick={() => void decide(candidate, 'rejected')}
+                      >
+                        退回
+                      </button>
+                      <button
+                        className="ai-candidate-primary"
+                        disabled={creative.mode === 'suggest' || busy || submissionBlocked}
+                        onClick={() => void decide(candidate, 'previewed')}
+                      >
+                        {candidate.kind === 'edit'
+                          ? '在编辑器预览'
+                          : candidate.decision === 'previewed'
+                            ? '重新打开生图草案'
+                            : '选择模型与生成参数'}
+                      </button>
+                    </div>
+                  </article>
+                ))}
               </div>
-            </article>
-          ))}
-        </div>
-      )}
-      <p className="assistant-tool-status" aria-live="polite">
-        {toolStatus || (busy ? '正在读取上下文并协作…' : '')}
-      </p>
-      {activeTurn && (
-        <button
-          type="button"
-          className="button button-secondary"
-          disabled={activeTurn.stopping}
-          onClick={() => void stopActiveTurn()}
-        >
-          {activeTurn.stopping ? '正在核对停止结果' : '停止本轮执行'}
-        </button>
-      )}
-      {pendingSubmission && (
-        <section className="assistant-candidate" aria-label="协作请求恢复" aria-live="polite">
-          <h4>
-            {pendingSubmission.state === 'unknown'
-              ? '本轮结果待平台核验'
-              : busy
-                ? '正在核对本轮协作'
-                : pendingSubmission.turnId
-                  ? '本轮已受理，可恢复查看进度'
-                  : '发送结果待确认，原请求已保留'}
-          </h4>
-          <p>
-            {pendingSubmission.state === 'unknown'
-              ? '服务方的执行与用量结果尚未确认。核验完成前保留本轮请求，可刷新结果或查看用量记录。'
-              : pendingSubmission.turnId
-                ? '恢复时只读取这一轮的结果与进度，不再提交新的模型请求。'
-                : '原文字、画面、模型和授权已冻结。按原请求核对时，已受理的请求会返回原结果；如尚未受理，将继续原请求并使用原授权额度。'}
-          </p>
-          {pendingSubmission.automatic && !pendingSubmission.turnId && (
-            <p>原请求使用预算内自动执行授权，继续时沿用当时的画面与执行范围。</p>
-          )}
-          {!pendingSubmission.turnId &&
-            pendingSubmission.projectId === project?.id &&
-            pendingSubmission.editorKey !== assistantEditorKey(editorState(props)) && (
-              <p>当前画布已变化。按原请求继续时，仍使用发送前保存的画面与参数。</p>
             )}
-          {!pendingSubmission.turnId && pendingSubmission.requestBody === null && (
-            <p>
-              原始共享画面仅保留在页面内存中，刷新后已不可重放。请先核对会话与用量记录并联系平台处理。
-            </p>
-          )}
-          {pendingSubmission.projectId !== project?.id ? (
-            <p>请返回项目「{pendingSubmission.projectTitle}」恢复本轮，再开始新的付费协作。</p>
-          ) : (
-            <div>
-              <button type="button" disabled={busy || inCall} onClick={refreshHistory}>
-                刷新会话记录
-              </button>
-              <button
-                type="button"
-                disabled={
-                  busy ||
-                  inCall ||
-                  !submissionReady ||
-                  (!pendingSubmission.turnId && pendingSubmission.requestBody === null)
-                }
-                onClick={() => void recoverSubmission()}
-              >
-                {pendingSubmission.turnId ? '读取本轮结果' : '按原请求核对并继续'}
-              </button>
-            </div>
-          )}
-        </section>
-      )}
-      {error && (
-        <p className="assistant-error" role="alert">
-          {error}
-          <button className="text-button" onClick={refreshHistory}>
-            刷新会话记录
-          </button>
-          {actorId && !submissionReady && (
-            <button className="text-button" onClick={restoreSubmission}>
-              重新读取恢复记录
+            {candidateHistoryStatus && (
+              <p className="ai-secondary-copy" role="status">
+                {candidateHistoryStatus}
+              </p>
+            )}
+          </>
+        )}
+      </div>
+      <footer className="ai-composer-region">
+        <div className="ai-execution-status">
+          <p className="assistant-tool-status" aria-live="polite">
+            {toolStatus || (busy ? '正在处理…' : '')}
+          </p>
+          {activeTurn && (
+            <button
+              type="button"
+              disabled={activeTurn.stopping}
+              onClick={() => void stopActiveTurn()}
+            >
+              {activeTurn.stopping ? '正在核对停止结果' : '停止本轮执行'}
             </button>
           )}
-        </p>
-      )}
-      <form
-        className="assistant-composer"
-        data-assistant-motion="composer"
-        onSubmit={(event) => {
-          event.preventDefault();
-          void submit();
-        }}
-      >
-        <textarea
-          aria-label="向智能体描述修改需求"
-          placeholder={
-            inCall ? '也可以打字补充要求…' : '让 AI 看当前画面、提出建议，或找素材继续创作…'
-          }
-          rows={2}
-          value={prompt}
-          maxLength={4000}
-          readOnly={!!pendingSubmission || !submissionReady}
-          onChange={(event) => setPrompt(event.target.value)}
-        />
-        <button
-          aria-label="发送协作请求"
-          type="submit"
-          disabled={
-            busy ||
-            submissionBlocked ||
-            !prompt.trim() ||
-            !project ||
-            !catalog?.ready ||
-            !selected ||
-            (inCall && callState !== 'active')
-          }
+        </div>
+        {recoveryLabel && (
+          <div className="ai-pending-strip" role="status">
+            <WarningCircle size={16} />
+            <span>{recoveryLabel}</span>
+            <button type="button" onClick={() => setOverlay('recovery')}>
+              核对请求
+            </button>
+          </div>
+        )}
+        {error && (
+          <p className="assistant-error" role="alert">
+            {error}
+            <button className="text-button" onClick={refreshHistory}>
+              刷新会话记录
+            </button>
+            {actorId && !submissionReady && (
+              <button className="text-button" onClick={restoreSubmission}>
+                重新读取恢复记录
+              </button>
+            )}
+          </p>
+        )}
+        <form
+          className="assistant-composer ai-composer-surface"
+          data-ai-composer
+          onSubmit={(event) => {
+            event.preventDefault();
+            void submit();
+          }}
         >
-          <ArrowUp size={19} />
-        </button>
-      </form>
-      <p className="assistant-note">
-        {inCall
-          ? '麦克风实时传输，离开面板会结束通话。'
-          : selected
-            ? `文字协作每轮 ${selected.unitCost} 服务点。`
-            : ''}
-        {creative.mode === 'auto'
-          ? '授权内的参数编辑保存为新版本，可从历史恢复。'
-          : creative.mode === 'suggest'
-            ? '当前只提供建议，保持图片不变。'
-            : '候选需要你确认，保存前仍可撤销。'}
-      </p>
+          {(shareImage ||
+            referenceIds.length > 0 ||
+            memory ||
+            allowWebSearch ||
+            (mode === 'text' && researchLibrary.trim() && spaceIds.length > 0)) && (
+            <button
+              className="ai-selected-context"
+              type="button"
+              onClick={() => setOverlay('settings')}
+            >
+              <Eye size={14} />
+              <span>
+                {[
+                  shareImage ? '当前预览' : '',
+                  referenceIds.length ? `${referenceIds.length} 张参考` : '',
+                  memory ? '已确认偏好' : '',
+                  allowWebSearch
+                    ? mode === 'text' && secondPublicQuery.trim()
+                      ? '2 项公开检索'
+                      : '公开检索'
+                    : '',
+                  mode === 'text' && researchLibrary.trim() && spaceIds.length > 0
+                    ? '素材检索'
+                    : '',
+                  mode === 'text' && researchCanvas && shareImage ? '画面检查' : '',
+                ]
+                  .filter(Boolean)
+                  .join(' · ')}
+              </span>
+            </button>
+          )}
+          <ComposerInput
+            ref={composerInput}
+            label="向智能体描述修改需求"
+            placeholder={inCall ? '补充通话要求…' : '输入调整要求…'}
+            value={prompt}
+            onChange={setPrompt}
+            maxLength={4000}
+            canSubmit={canSend}
+            readOnly={!!pendingSubmission || !submissionReady}
+          />
+          <div className="ai-composer-toolbar">
+            <button
+              type="button"
+              className="ai-model-trigger"
+              aria-label="选择助手模型与执行方式"
+              onClick={() => setOverlay('settings')}
+            >
+              <span>{selected?.label ?? '选择模型'}</span>
+              <CaretDown size={12} />
+            </button>
+            <div className="ai-composer-tools">
+              <IconButton label="共享画面与参考素材" onClick={() => setOverlay('settings')}>
+                <Paperclip size={18} />
+              </IconButton>
+              <IconButton
+                label={mode === 'voice' ? '返回文字协作' : '打开实时语音'}
+                disabled={inCall || busy}
+                onClick={() => setMode((old) => (old === 'voice' ? 'text' : 'voice'))}
+              >
+                <Microphone size={18} />
+              </IconButton>
+              <button
+                className="ai-send-button"
+                aria-label="发送协作请求"
+                title="发送（Ctrl / ⌘ Enter）"
+                type="submit"
+                disabled={!canSend}
+              >
+                <ArrowUp size={19} />
+              </button>
+            </div>
+          </div>
+        </form>
+        <div className="ai-composer-meta">
+          <span>
+            {executionLabel}
+            {grant && creative.mode === 'auto' ? ` · ${grant.usedUnits}/${grant.unitLimit} 点` : ''}
+          </span>
+          {grant && creative.mode === 'auto' && (
+            <button className="ai-grant-stop" type="button" onClick={() => void revokeGrant()}>
+              停止授权
+            </button>
+          )}
+          <span>{selected ? `文字 ${selected.unitCost} 点 / 轮` : '点数待确认'}</span>
+        </div>
+        {inCall && (
+          <p className="ai-input-disclosure">收起后通话继续，可在顶部活动条静音或结束。</p>
+        )}
+      </footer>
+      <Modal
+        title="助手设置"
+        open={props.visible !== false && overlay === 'settings'}
+        keepMounted
+        onClose={() => setOverlay(null)}
+        className="ai-options-dialog"
+      >
+        <div className="ai-options-content">
+          <PanelSettings onClose={() => setOverlay(null)} />
+          <div className="assistant-mode" role="group" aria-label="交流方式">
+            <button
+              type="button"
+              aria-pressed={mode === 'text'}
+              disabled={inCall}
+              onClick={() => setMode('text')}
+            >
+              文字协作
+            </button>
+            <button type="button" aria-pressed={mode === 'voice'} onClick={() => setMode('voice')}>
+              实时对话
+            </button>
+          </div>
+          <div className="assistant-models">
+            <ChoiceSelect
+              label="助手模型"
+              ariaLabel="助手模型"
+              value={modelId}
+              onValueChange={setModelId}
+              disabled={inCall || busy || submissionBlocked || !!grant}
+              placeholder="暂无可用模型"
+              options={models.map((item) => ({
+                value: item.id,
+                label: item.label,
+                description: `${item.unitCost} 服务点 / 轮`,
+              }))}
+            />
+            {mode === 'voice' && (
+              <ChoiceSelect
+                label="语音模型"
+                ariaLabel="语音模型"
+                value={voiceId}
+                onValueChange={setVoiceId}
+                disabled={inCall || busy || submissionBlocked || !!grant}
+                placeholder="暂无语音模型"
+                options={voices.map((item) => ({
+                  value: item.id,
+                  label: item.label,
+                  description: `${item.unitCost} 服务点 · 最长 ${item.maxSeconds} 秒`,
+                }))}
+              />
+            )}
+          </div>
+          <CreativeControls
+            value={creative}
+            onChange={setCreative}
+            disabled={inCall || busy || submissionBlocked}
+            grant={grant}
+            onAuthorize={() => {
+              void explicitAuthorize();
+            }}
+            onRevoke={() => {
+              void revokeGrant();
+            }}
+          />
+          <ContextEvidence turnId={parentTurnId} live={contextManifest} />
+          {project && (
+            <MemoryControls
+              key={`${project.id}:${artwork?.id ?? ''}`}
+              projectId={project.id}
+              artworkId={artwork?.id}
+              sourceTurnId={parentTurnId}
+              disabled={busy || inCall}
+              suggestions={memorySuggestions}
+            />
+          )}
+          <MotionDetails className="assistant-context">
+            <summary>
+              <Eye size={15} /> 共享范围 · {shareImage ? '画面与参数' : '仅参数'}
+              {allowWebSearch ? ' · 联网' : ''}
+            </summary>
+            <div className="assistant-context-options">
+              <label>
+                <input
+                  type="checkbox"
+                  checked={shareImage}
+                  disabled={
+                    inCall || busy || submissionBlocked || !artwork || !selected?.imageInput
+                  }
+                  onChange={(event) => setShareImage(event.target.checked)}
+                />
+                共享当前预览，通话中编辑后持续更新
+              </label>
+              <label>
+                <input
+                  type="checkbox"
+                  checked={allowWebSearch}
+                  disabled={inCall || busy || submissionBlocked || !selected?.webSearch}
+                  onChange={(event) => setAllowWebSearch(event.target.checked)}
+                />
+                允许公开网络检索，保留来源链接
+              </label>
+              {mode === 'text' && allowWebSearch && selected?.webSearch && (
+                <div className="assistant-public-query">
+                  <label>
+                    可公开的查询词
+                    <input
+                      aria-label="公开检索查询词"
+                      value={publicQuery}
+                      maxLength={240}
+                      disabled={inCall || busy || submissionBlocked}
+                      onChange={(event) => setPublicQuery(event.target.value)}
+                      placeholder="例如：复古产品静物布光参考"
+                    />
+                  </label>
+                  <label>
+                    第二项公开查询（可选）
+                    <input
+                      value={secondPublicQuery}
+                      maxLength={240}
+                      disabled={inCall || busy || submissionBlocked}
+                      onChange={(event) => setSecondPublicQuery(event.target.value)}
+                    />
+                  </label>
+                  {selected.webImageSearch && (
+                    <label>
+                      <input
+                        type="checkbox"
+                        checked={publicImages}
+                        disabled={inCall || busy || submissionBlocked}
+                        onChange={(event) => setPublicImages(event.target.checked)}
+                      />
+                      同时查找公开图片
+                    </label>
+                  )}
+                  <small>
+                    公开检索使用这里填写的查询词。共享画面和项目资料在编辑协作步骤中处理。
+                  </small>
+                </div>
+              )}
+              {mode === 'text' && (spaceIds.length > 0 || (shareImage && selected?.imageInput)) && (
+                <MotionDetails className="assistant-context assistant-research-plan">
+                  <summary>本轮分工</summary>
+                  <div className="assistant-research-options">
+                    {spaceIds.length > 0 && (
+                      <label>
+                        在已授权空间检索素材
+                        <input
+                          value={researchLibrary}
+                          maxLength={200}
+                          disabled={inCall || busy || submissionBlocked}
+                          onChange={(event) => setResearchLibrary(event.target.value)}
+                        />
+                      </label>
+                    )}
+                    {shareImage && selected?.imageInput && (
+                      <label>
+                        <input
+                          type="checkbox"
+                          checked={researchCanvas}
+                          disabled={inCall || busy || submissionBlocked}
+                          onChange={(event) => setResearchCanvas(event.target.checked)}
+                        />
+                        检查当前共享画面
+                      </label>
+                    )}
+                  </div>
+                </MotionDetails>
+              )}
+              <label>
+                <input
+                  type="checkbox"
+                  checked={memory}
+                  disabled={inCall || busy || submissionBlocked}
+                  onChange={(event) => setMemory(event.target.checked)}
+                />
+                使用已确认的偏好、项目要求与素材标注
+              </label>
+              <fieldset disabled={inCall || busy || submissionBlocked}>
+                <legend>可搜索的空间 · {spaceIds.length} / 12</legend>
+                {spaces.map((space) => (
+                  <label key={space.id}>
+                    <input
+                      type="checkbox"
+                      checked={spaceIds.includes(space.id)}
+                      disabled={!spaceIds.includes(space.id) && spaceIds.length >= 12}
+                      onChange={(event) => {
+                        cancelSearch();
+                        setSpaceIds((old) =>
+                          event.target.checked
+                            ? old.length < 12
+                              ? [...old, space.id]
+                              : old
+                            : old.filter((id) => id !== space.id),
+                        );
+                        setReferenceIds([]);
+                      }}
+                    />
+                    {space.name}
+                    <small>{space.kind === 'team' ? '团队' : '个人'}</small>
+                  </label>
+                ))}
+              </fieldset>
+              <div className="assistant-resource-search">
+                <input
+                  aria-label="搜索授权素材"
+                  value={resourceQuery}
+                  maxLength={200}
+                  onChange={(event) => {
+                    cancelSearch();
+                    setResourceQuery(event.target.value);
+                  }}
+                  disabled={inCall}
+                  placeholder="找一张以前用过的图片"
+                />
+                <button
+                  aria-label="查找素材"
+                  onClick={search}
+                  disabled={inCall || !spaceIds.length}
+                >
+                  <MagnifyingGlass size={17} />
+                </button>
+              </div>
+              {searchStatus && <p role="status">{searchStatus}</p>}
+              {!!resources.length && (
+                <CloudImageResults
+                  resources={resources}
+                  selected={referenceIds}
+                  disabled={inCall || busy}
+                  onSelect={toggleReference}
+                />
+              )}
+              <p>
+                检索只返回名称与标注；只有选中的 {referenceIds.length}{' '}
+                张参考图和勾选的当前预览会发送给模型。
+              </p>
+            </div>
+          </MotionDetails>
+        </div>
+      </Modal>
+      <Modal
+        title="会话记录"
+        open={props.visible !== false && overlay === 'history'}
+        keepMounted
+        onClose={() => setOverlay(null)}
+        className="ai-options-dialog"
+      >
+        <div className="ai-history-options">
+          <button
+            type="button"
+            className="ai-history-row"
+            disabled={busy || inCall || submissionBlocked}
+            onClick={newConversation}
+          >
+            <Plus size={18} />
+            新会话
+          </button>
+          <ChoiceSelect
+            label="会话记录"
+            ariaLabel="会话记录"
+            value={conversationId ?? ''}
+            disabled={busy || inCall}
+            options={[
+              { value: '', label: '新会话' },
+              ...conversations.map((item) => ({
+                value: item.id,
+                label: item.title,
+                description: `${item.turnCount} 轮`,
+              })),
+            ]}
+            onValueChange={(value) => {
+              setConversationId(value);
+              freshConversation.current = !value;
+              setParentTurnId(undefined);
+              setMessages([]);
+              setCandidates([]);
+              setWorkspace(null);
+              setMemorySuggestions({ items: [] });
+              setContextManifest(null);
+              setResearchGraph(null);
+              setError('');
+              followingConversation.current = true;
+              setOverlay(null);
+            }}
+          />
+          <button
+            type="button"
+            className="text-button"
+            disabled={busy || inCall || !project}
+            onClick={() => {
+              void loadProjectCandidates();
+              setOverlay(null);
+            }}
+          >
+            查看项目候选（含语音协作）
+          </button>
+        </div>
+      </Modal>
+      <Modal
+        title="核对原请求"
+        open={props.visible !== false && overlay === 'recovery'}
+        keepMounted
+        onClose={() => setOverlay(null)}
+        className="ai-options-dialog"
+      >
+        <div className="ai-options-content">
+          {voiceRecoveryError && (
+            <section className="assistant-candidate" aria-label="语音恢复记录读取失败" role="alert">
+              <h4>暂时无法核对上次通话</h4>
+              <p>{voiceRecoveryError}</p>
+              <p>读取成功前暂停新通话。重新读取本机记录不会向模型发送请求。</p>
+              <button type="button" disabled={inCall} onClick={restoreVoiceSubmission}>
+                重新读取本机记录
+              </button>
+            </section>
+          )}
+          {pendingTeamVoiceSubmission && (
+            <section className="assistant-candidate" aria-label="团队语音未决邀请" role="status">
+              <h4>原团队 AI 邀请仍待确认</h4>
+              <p>
+                请返回作品的团队语音面板查看邀请状态，或在「用量」中核对。核验前暂停新的个人 AI
+                通话。
+              </p>
+              <p style={{ overflowWrap: 'anywhere' }}>
+                请求标识：<code>{pendingTeamVoiceSubmission.idempotencyKey}</code>
+              </p>
+            </section>
+          )}
+          {pendingVoiceSubmission && !inCall && (
+            <section className="assistant-candidate" aria-label="语音请求恢复" aria-live="polite">
+              <h4>
+                {pendingVoiceSubmission.sessionId ||
+                pendingVoiceSubmission.state === 'already-prepared'
+                  ? '上次通话待平台核验'
+                  : '上次通话的准备结果待确认'}
+              </h4>
+              <p>
+                已保留项目「{pendingVoiceSubmission.projectTitle}
+                」的原请求，核验完成前暂停创建新通话。
+                结束通话、断网或等待一段时间，都不能证明预占已结清。
+              </p>
+              <p style={{ overflowWrap: 'anywhere' }}>
+                请求标识：<code>{pendingVoiceSubmission.idempotencyKey}</code>
+                {pendingVoiceSubmission.sessionId && (
+                  <>
+                    <br />
+                    会话标识：<code>{pendingVoiceSubmission.sessionId}</code>
+                  </>
+                )}
+              </p>
+              <p>
+                可从工作区导航的「用量」查看相关预占，并将以上标识提供给平台运营核验。
+                当前服务没有可读取单个语音会话核验结果的接口，也不会重新发放旧连接票据；
+                即使后台已完成核验，这里仍需平台处理恢复，不能自行确认解除。
+              </p>
+              {!pendingVoiceSubmission.sessionId &&
+                pendingVoiceSubmission.state !== 'already-prepared' && (
+                  <>
+                    <p>
+                      沿原请求核对只使用当时的模型、画面、参数和授权。如服务器尚未受理，
+                      将继续原通话并使用原授权额度；已准备过的通话会保持待核验状态。
+                    </p>
+                    {pendingVoiceSubmission.requestBody === null ? (
+                      <p>原始共享画面只保留在页面内存中，当前无法重放，请凭原标识联系平台核验。</p>
+                    ) : pendingVoiceSubmission.projectId !== project?.id ? (
+                      <p>请先返回原项目，再沿原请求核对。</p>
+                    ) : (
+                      <button
+                        type="button"
+                        disabled={busy || submissionBlocked || !voiceSubmissionReady}
+                        onClick={() => void startVoice(pendingVoiceSubmission)}
+                      >
+                        沿原请求核对 / 继续
+                      </button>
+                    )}
+                  </>
+                )}
+            </section>
+          )}
+          {pendingSubmission && (
+            <section className="assistant-candidate" aria-label="协作请求恢复" aria-live="polite">
+              <h4>
+                {pendingSubmission.state === 'unknown'
+                  ? '本轮结果待平台核验'
+                  : busy
+                    ? '正在核对本轮协作'
+                    : pendingSubmission.turnId
+                      ? '本轮已受理，可恢复查看进度'
+                      : '发送结果待确认，原请求已保留'}
+              </h4>
+              <p>
+                {pendingSubmission.state === 'unknown'
+                  ? '服务方的执行与用量结果尚未确认。核验完成前保留本轮请求，可刷新结果或查看用量记录。'
+                  : pendingSubmission.turnId
+                    ? '恢复时只读取这一轮的结果与进度，不再提交新的模型请求。'
+                    : '原文字、画面、模型和授权已冻结。按原请求核对时，已受理的请求会返回原结果；如尚未受理，将继续原请求并使用原授权额度。'}
+              </p>
+              {pendingSubmission.automatic && !pendingSubmission.turnId && (
+                <p>原请求使用预算内自动执行授权，继续时沿用当时的画面与执行范围。</p>
+              )}
+              {!pendingSubmission.turnId &&
+                pendingSubmission.projectId === project?.id &&
+                pendingSubmission.editorKey !== assistantEditorKey(editorState(props)) && (
+                  <p>当前画布已变化。按原请求继续时，仍使用发送前保存的画面与参数。</p>
+                )}
+              {!pendingSubmission.turnId && pendingSubmission.requestBody === null && (
+                <p>
+                  原始共享画面仅保留在页面内存中，刷新后已不可重放。请先核对会话与用量记录并联系平台处理。
+                </p>
+              )}
+              {pendingSubmission.projectId !== project?.id ? (
+                <p>请返回项目「{pendingSubmission.projectTitle}」恢复本轮，再开始新的付费协作。</p>
+              ) : (
+                <div>
+                  <button type="button" disabled={busy || inCall} onClick={refreshHistory}>
+                    刷新会话记录
+                  </button>
+                  <button
+                    type="button"
+                    disabled={
+                      busy ||
+                      inCall ||
+                      !submissionReady ||
+                      (!pendingSubmission.turnId && pendingSubmission.requestBody === null)
+                    }
+                    onClick={() => void recoverSubmission()}
+                  >
+                    {pendingSubmission.turnId ? '读取本轮结果' : '按原请求核对并继续'}
+                  </button>
+                </div>
+              )}
+            </section>
+          )}
+        </div>
+      </Modal>
     </section>
   );
 }

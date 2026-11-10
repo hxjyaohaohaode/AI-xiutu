@@ -1,0 +1,1117 @@
+/* AI conversation layout: source order is header, content, then the composer. */
+.ai-workbench.ai-workbench-v2,
+.live-assistant.live-assistant-v2 {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  width: 100%;
+  min-width: 0;
+  min-height: 0;
+  height: 100%;
+  padding: 0;
+  gap: 0;
+  overflow: hidden;
+  background: var(--surface);
+  color: var(--ink);
+  font-size: 13px;
+  line-height: 1.5;
+}
+.ai-workbench-header {
+  display: flex;
+  flex: 0 0 auto;
+  align-items: center;
+  justify-content: space-between;
+  gap: 4px;
+  min-height: 44px;
+  padding: 3px 8px;
+  border-bottom: 1px solid var(--line);
+}
+.ai-task-trigger,
+.ai-task-title {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  min-width: 0;
+  min-height: 36px;
+  padding: 4px 7px;
+  border: 0;
+  border-radius: 8px;
+  background: transparent;
+  color: var(--ink);
+  font-size: 13px;
+  font-weight: 620;
+  text-align: left;
+}
+.ai-task-trigger > span {
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.ai-task-trigger > svg,
+.ai-task-title > svg {
+  flex: 0 0 auto;
+}
+.ai-task-trigger:hover:not(:disabled) {
+  background: var(--surface-hover);
+}
+.ai-header-actions,
+.ai-composer-tools {
+  display: flex;
+  align-items: center;
+  flex: 0 0 auto;
+  gap: 2px;
+}
+.ai-workbench-header .icon-button {
+  width: 34px;
+  height: 36px;
+  min-width: 34px;
+  min-height: 36px;
+  padding: 6px;
+  color: var(--muted);
+  border: 0;
+  border-radius: 8px;
+  background: transparent;
+}
+.ai-workbench-header .ai-panel-close {
+  display: none;
+}
+.free-panel[data-condensed-header='true'] .ai-workbench-header .ai-panel-close {
+  display: inline-flex;
+}
+.ai-conversation-body {
+  display: flex;
+  flex: 1 1 0;
+  flex-direction: column;
+  min-width: 0;
+  min-height: 0;
+  overflow: auto;
+  overscroll-behavior: contain;
+  scrollbar-gutter: stable;
+  padding: 14px 12px;
+  gap: 14px;
+  scroll-padding-block: 12px;
+}
+.ai-conversation-body > * {
+  flex: 0 0 auto;
+  min-width: 0;
+}
+.ai-conversation-body > .ai-conversation-empty {
+  flex: 1 0 auto;
+}
+.ai-conversation-empty {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  justify-content: center;
+  min-height: 100px;
+  padding: 5px 4px 16px;
+  gap: 8px;
+}
+.composer-visual {
+  width: 64px;
+  height: 48px;
+  flex: 0 0 auto;
+  color: var(--ink);
+}
+.ai-conversation-empty h3 {
+  margin: 0;
+  font-size: 15px;
+  font-weight: 600;
+  line-height: 1.45;
+}
+.ai-conversation-empty p {
+  margin: 0;
+  max-width: 34em;
+  font-size: 12px;
+  line-height: 1.7;
+  color: var(--muted);
+}
+.ai-conversation-empty > .button {
+  margin-top: 3px;
+}
+.ai-conversation-body > .ai-login-empty {
+  display: grid;
+  grid-template-columns: 40px minmax(0, 1fr) auto;
+  align-items: center;
+  flex: 0 0 auto;
+  gap: 9px;
+  min-height: 62px;
+  padding: 3px 0;
+}
+.ai-login-empty .composer-visual {
+  width: 40px;
+  height: 30px;
+}
+.ai-login-empty h3 {
+  font-size: 13px;
+}
+.ai-login-empty p {
+  margin-top: 3px;
+  font-size: 11px;
+}
+.ai-login-empty > .button {
+  margin: 0;
+  min-height: 38px;
+  padding: 7px 10px;
+  font-size: 12px;
+}
+.ai-prompt-suggestions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-top: 4px;
+}
+.ai-prompt-suggestions > button {
+  min-height: 34px;
+  padding: 6px 9px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: transparent;
+  color: var(--muted);
+  font-size: 12px;
+  text-align: left;
+}
+.ai-availability {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 5px 10px;
+  padding: 9px 10px;
+  border-radius: 9px;
+  background: var(--surface-secondary);
+  color: var(--muted);
+  font-size: 12px;
+  overflow-wrap: anywhere;
+}
+.ai-availability button,
+.ai-pending-strip button,
+.ai-execution-status button {
+  flex: 0 0 auto;
+  min-height: 32px;
+  padding: 5px 7px;
+  border: 0;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--ink);
+  font: inherit;
+  font-weight: 600;
+  text-decoration: underline;
+  text-underline-offset: 3px;
+}
+.ai-composer-region {
+  flex: 0 0 auto;
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  gap: 5px;
+  padding: 8px 10px 9px;
+  border-top: 1px solid var(--line);
+  background: var(--surface);
+}
+.ai-composer-surface,
+.assistant-composer.ai-composer-surface {
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  min-width: 0;
+  gap: 3px;
+  margin: 0;
+  padding: 8px 7px 5px;
+  border: 1px solid var(--line-strong);
+  border-radius: 12px;
+  background: var(--surface-secondary);
+  color: var(--ink);
+  transition:
+    border-color 140ms ease,
+    box-shadow 140ms ease;
+}
+.ai-composer-surface:focus-within {
+  border-color: var(--focus-ring);
+  box-shadow: 0 0 0 2px color-mix(in srgb, var(--focus-ring) 14%, transparent);
+}
+.ai-composer-surface .ai-composer-input {
+  display: block;
+  flex: none;
+  width: 100%;
+  min-width: 0;
+  min-height: 36px;
+  max-height: 136px;
+  padding: 3px 4px;
+  margin: 0;
+  border: 0;
+  border-radius: 0;
+  outline: none;
+  background: transparent;
+  color: var(--ink);
+  font: inherit;
+  font-size: 14px;
+  line-height: 1.5;
+  resize: none;
+  box-shadow: none;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  white-space: pre-wrap;
+}
+.ai-composer-input::placeholder {
+  color: var(--subtle);
+  opacity: 1;
+}
+.ai-composer-input:disabled {
+  opacity: 0.7;
+  -webkit-text-fill-color: currentColor;
+}
+.ai-composer-toolbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 4px;
+  min-width: 0;
+}
+.ai-composer-surface .ai-model-trigger {
+  display: inline-flex;
+  align-items: center;
+  justify-content: flex-start;
+  gap: 5px;
+  flex: 0 1 auto;
+  min-width: 0;
+  width: auto;
+  min-height: 36px;
+  height: auto;
+  padding: 5px 7px;
+  border: 0;
+  border-radius: 7px;
+  background: transparent;
+  color: var(--muted);
+  font-size: 11px;
+  text-align: left;
+}
+.ai-model-trigger > span {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.ai-model-trigger > svg {
+  flex: 0 0 auto;
+}
+.ai-composer-surface .ai-composer-tools .icon-button,
+.ai-composer-surface .ai-send-button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex: 0 0 auto;
+  min-height: 36px;
+  min-width: 36px;
+  width: 36px;
+  height: 36px;
+  padding: 7px;
+  border: 0;
+  border-radius: 8px;
+  color: var(--muted);
+  background: transparent;
+}
+.ai-composer-surface .ai-send-button {
+  background: var(--accent);
+  color: var(--on-accent);
+}
+.ai-composer-surface .ai-send-button:hover:not(:disabled) {
+  background: var(--accent-hover);
+}
+.ai-composer-surface .ai-send-button:disabled {
+  background: var(--surface-hover);
+  color: var(--subtle);
+  opacity: 1;
+}
+.ai-composer-surface button:not(.ai-send-button):hover:not(:disabled),
+.ai-header-actions .icon-button:hover:not(:disabled) {
+  background: var(--surface-hover);
+  color: var(--ink);
+}
+.ai-composer-meta {
+  display: flex;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 3px 10px;
+  padding-inline: 3px;
+  color: var(--muted);
+  font-size: 11px;
+  line-height: 1.5;
+  font-variant-numeric: tabular-nums;
+}
+.ai-input-disclosure,
+.ai-secondary-copy {
+  margin: 0;
+  color: var(--muted);
+  font-size: 11px;
+  line-height: 1.5;
+  overflow-wrap: anywhere;
+}
+.ai-input-disclosure {
+  padding-inline: 3px;
+}
+.ai-context-strip,
+.ai-composer-surface .ai-selected-context {
+  display: flex;
+  align-items: center;
+  justify-content: flex-start;
+  min-width: 0;
+  width: auto;
+  height: auto;
+  min-height: 28px;
+  gap: 6px;
+  padding: 3px 5px;
+  margin: 0;
+  border: 0;
+  border-radius: 6px;
+  color: var(--muted);
+  background: transparent;
+  font-size: 11px;
+  text-align: left;
+}
+.ai-context-strip > span,
+.ai-selected-context > span {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+.ai-context-strip .icon-button {
+  min-height: 28px;
+  min-width: 28px;
+  width: 28px;
+  height: 28px;
+}
+.ai-pending-strip {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+  padding: 4px 7px;
+  border-radius: 8px;
+  background: var(--warning-soft);
+  color: var(--warning);
+  font-size: 11px;
+  line-height: 1.5;
+}
+.ai-pending-strip > svg {
+  flex: 0 0 auto;
+}
+.ai-pending-strip > span {
+  flex: 1;
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+.ai-pending-strip button {
+  color: inherit;
+}
+.ai-execution-status {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 4px;
+  font-size: 11px;
+}
+.ai-execution-status .assistant-tool-status {
+  flex: 1;
+  min-width: 0;
+  min-height: 0;
+  margin: 0;
+  color: var(--muted);
+  overflow-wrap: anywhere;
+}
+.ai-execution-status:empty,
+.ai-execution-status:not(:has(button)):has(.assistant-tool-status:empty) {
+  display: none;
+}
+.ai-inline-error,
+.ai-composer-region .assistant-error {
+  color: var(--danger);
+  font-size: 12px;
+  line-height: 1.6;
+  margin: 0;
+  overflow-wrap: anywhere;
+}
+.ai-composer-region .inline-error {
+  padding: 5px 7px;
+  font-size: 12px;
+}
+.live-assistant-v2 .assistant-messages {
+  max-height: none;
+  overflow: visible;
+  gap: 18px;
+}
+.live-assistant-v2 .assistant-messages:empty {
+  display: none;
+}
+.live-assistant-v2 .assistant-message {
+  padding: 0;
+}
+.live-assistant-v2 .assistant-message p {
+  font-size: 13px;
+  line-height: 1.75;
+  margin: 5px 0 0;
+}
+.live-assistant-v2 .assistant-message small {
+  color: var(--subtle);
+  font-size: 11px;
+}
+.live-assistant-v2 .assistant-message.user {
+  max-width: 92%;
+  padding: 9px 12px;
+  border-radius: 12px 12px 3px 12px;
+  background: var(--surface-secondary);
+}
+.live-assistant-v2 .assistant-candidate,
+.ai-options-dialog .assistant-candidate {
+  padding: 12px;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: transparent;
+}
+.live-assistant-v2 .assistant-candidate h4,
+.ai-options-dialog .assistant-candidate h4 {
+  font-size: 13px;
+  font-weight: 600;
+  overflow-wrap: anywhere;
+}
+.live-assistant-v2 .assistant-candidate p {
+  line-height: 1.7;
+}
+.live-assistant-v2 .assistant-candidate > div,
+.workspace-candidate > div {
+  flex-wrap: wrap;
+}
+.live-assistant-v2 .assistant-candidate button,
+.ai-options-dialog .assistant-candidate button {
+  min-height: 36px;
+  background: var(--surface-secondary);
+  font-size: 12px;
+}
+.live-assistant-v2 .assistant-candidate button.ai-candidate-primary {
+  background: var(--accent);
+  color: var(--on-accent);
+}
+.live-assistant-v2 .assistant-candidate th,
+.live-assistant-v2 .assistant-candidate td {
+  overflow-wrap: anywhere;
+  border-bottom: 1px solid var(--line);
+}
+.live-assistant-v2 .assistant-call {
+  padding: 10px 4px;
+  gap: 10px;
+}
+.live-assistant-v2 > .assistant-call {
+  flex: 0 0 auto;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 5px 8px;
+  padding: 8px 12px;
+  border-bottom: 1px solid var(--line);
+}
+.live-assistant-v2 > .assistant-call .assistant-call-status {
+  text-align: left;
+}
+.live-assistant-v2 > .assistant-call .voice-captions,
+.live-assistant-v2 > .assistant-call .assistant-voice-search {
+  grid-column: 1 / -1;
+}
+.live-assistant-v2 .assistant-call-status {
+  color: var(--ink);
+  font-size: 12px;
+}
+.live-assistant-v2 .assistant-call-status small {
+  color: var(--muted);
+  font-size: 11px;
+}
+.live-assistant-v2 .assistant-call-actions {
+  gap: 5px;
+}
+.live-assistant-v2 .assistant-call-actions button {
+  width: 36px;
+  height: 36px;
+  border-radius: 9px;
+  background: var(--surface-secondary);
+}
+.live-assistant-v2 .assistant-call-actions .end-call {
+  color: var(--danger);
+  background: var(--danger-soft);
+}
+.live-assistant-v2 .assistant-call-start {
+  justify-content: center;
+  flex-wrap: wrap;
+  min-width: 0;
+  width: 100%;
+}
+.live-assistant-v2 .assistant-call-start .choice-select {
+  max-width: 130px;
+}
+.ai-options-content,
+.ai-history-options {
+  display: grid;
+  gap: 16px;
+  min-width: 0;
+  padding: 0 20px 20px;
+}
+.ai-panel-settings {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 7px;
+  padding-bottom: 12px;
+  border-bottom: 1px solid var(--line);
+}
+.ai-panel-settings > button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex: 1 1 auto;
+  gap: 7px;
+  min-height: 40px;
+  padding: 6px 9px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--surface-secondary);
+  color: var(--ink);
+  font-size: 12px;
+}
+.ai-options-dialog > .assistant-candidate {
+  margin: 0 20px 20px;
+}
+.ai-grant-stop {
+  padding: 0;
+  border: 0;
+  border-radius: 2px;
+  color: var(--danger);
+  background: transparent;
+  font: inherit;
+  text-decoration: underline;
+  text-underline-offset: 3px;
+}
+.ai-options-dialog .assistant-models {
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 170px), 1fr));
+  gap: 12px;
+}
+.ai-options-dialog .assistant-context {
+  padding: 0 0 12px;
+  border-bottom: 1px solid var(--line);
+}
+.ai-options-dialog .assistant-context > summary {
+  display: flex;
+  align-items: center;
+  min-height: 38px;
+  gap: 8px;
+  color: var(--ink);
+  font-size: 13px;
+  font-weight: 560;
+  overflow-wrap: anywhere;
+}
+.ai-options-dialog .assistant-context > summary::after {
+  content: '+';
+  margin-left: auto;
+  color: var(--subtle);
+}
+.ai-options-dialog .assistant-context > summary[aria-expanded='true']::after {
+  content: '−';
+}
+.ai-options-dialog .assistant-context > .motion-disclosure > .motion-disclosure-content > p,
+.ai-options-dialog .assistant-context-options > p,
+.ai-context-budget {
+  margin: 5px 0 12px;
+  font-size: 12px;
+  color: var(--muted);
+  line-height: 1.65;
+}
+.ai-options-dialog .assistant-context-options {
+  padding: 6px 0 0;
+  gap: 12px;
+}
+.ai-options-dialog .assistant-context-options label {
+  align-items: flex-start;
+  font-size: 12px;
+  line-height: 1.7;
+}
+.ai-options-dialog input[type='checkbox'] {
+  flex: 0 0 auto;
+  width: 16px;
+  height: 16px;
+  margin-top: 3px;
+  accent-color: var(--accent);
+}
+.ai-options-dialog .assistant-mode {
+  border-radius: 9px;
+  background: var(--surface-secondary);
+}
+.ai-options-dialog .assistant-mode button {
+  min-height: 36px;
+  border-radius: 7px;
+}
+.ai-options-dialog .assistant-mode button[aria-pressed='true'] {
+  background: var(--surface);
+  color: var(--ink);
+  box-shadow: var(--shadow-sm);
+}
+.ai-options-dialog .creative-fields {
+  padding: 8px 0 4px;
+  gap: 12px;
+}
+.ai-options-dialog .creative-fields label,
+.ai-dimension-fields label,
+.ai-options-dialog .context-document-select,
+.ai-options-dialog .auxiliary-picker label {
+  min-width: 0;
+  font-size: 12px;
+  color: var(--muted);
+}
+.ai-options-dialog input:not([type='checkbox'], [type='file'], [type='range']),
+.ai-options-dialog textarea,
+.ai-options-dialog select {
+  min-width: 0;
+  width: 100%;
+  min-height: 40px;
+  padding: 8px 10px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--surface-secondary);
+  color: var(--ink);
+  font: inherit;
+  font-size: 13px;
+  line-height: 1.5;
+}
+.ai-options-dialog textarea {
+  resize: vertical;
+  max-height: 34dvh;
+}
+.ai-options-dialog .creative-grant {
+  padding: 9px 0;
+  color: var(--warning);
+  font-size: 12px;
+}
+.ai-options-dialog .creative-explanation {
+  margin: 9px 0 0;
+  color: var(--muted);
+  font-size: 12px;
+}
+.ai-options-dialog .creative-controls {
+  gap: 12px;
+}
+.ai-options-dialog .assistant-resource-search {
+  min-width: 0;
+}
+.ai-options-dialog .assistant-resource-search button {
+  min-width: 40px;
+  min-height: 40px;
+  border-radius: 8px;
+  background: var(--surface-secondary);
+}
+.ai-options-dialog .assistant-memory-list,
+.ai-options-dialog .memory-version-history,
+.ai-options-dialog .context-source-content,
+.ai-options-dialog .context-source-list {
+  max-height: none;
+  overflow: visible;
+}
+.ai-options-dialog .assistant-memory-list article {
+  border-bottom-color: var(--line);
+  font-size: 12px;
+}
+.ai-options-dialog .assistant-memory-list article > div,
+.ai-options-dialog .memory-suggestion > div {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+.ai-options-dialog .memory-suggestion,
+.ai-options-dialog .memory-version-history {
+  padding: 10px;
+  border-color: var(--line);
+  background: var(--surface-secondary);
+  font-size: 12px;
+}
+.ai-options-dialog .assistant-memory-list button,
+.ai-options-dialog .memory-suggestion button,
+.ai-options-dialog .memory-version-history button,
+.ai-options-dialog .context-source-list button {
+  min-height: 36px;
+  margin: 2px 6px 2px 0;
+  padding: 5px 8px;
+  border: 1px solid var(--line);
+  border-radius: 7px;
+  background: transparent;
+  color: var(--ink);
+  font-size: 12px;
+}
+.ai-task-picker {
+  display: grid;
+  gap: 5px;
+  padding: 0 14px 16px;
+}
+.ai-task-picker > button {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  min-width: 0;
+  min-height: 62px;
+  padding: 10px 12px;
+  border: 0;
+  border-radius: 10px;
+  background: transparent;
+  color: var(--ink);
+  text-align: left;
+}
+.ai-task-picker > button[aria-pressed='true'] {
+  background: var(--accent-soft);
+}
+.ai-task-picker > button:hover:not(:disabled) {
+  background: var(--surface-hover);
+}
+.ai-task-picker > button > svg {
+  flex: 0 0 auto;
+}
+.ai-task-picker strong,
+.ai-task-picker small {
+  display: block;
+}
+.ai-task-picker strong {
+  font-size: 13px;
+  font-weight: 600;
+}
+.ai-task-picker small {
+  margin-top: 3px;
+  color: var(--muted);
+  font-size: 11px;
+  line-height: 1.5;
+}
+.ai-history-row {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  min-width: 0;
+  min-height: 44px;
+  padding: 9px 10px;
+  border: 0;
+  border-radius: 8px;
+  background: var(--surface-secondary);
+  color: var(--ink);
+  font-size: 13px;
+  text-align: left;
+}
+.ai-history-row > svg {
+  flex: 0 0 auto;
+}
+.ai-history-row > span {
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+.ai-history-row[aria-pressed='true'] {
+  background: var(--accent-soft);
+}
+.ai-options-dialog .image-parameters {
+  display: grid;
+  gap: 12px;
+  min-width: 0;
+}
+.ai-options-dialog .image-parameters > .parameter-label {
+  margin-bottom: -6px;
+}
+.ai-options-dialog .option-chips {
+  gap: 5px;
+}
+.ai-options-dialog .option-chips button {
+  min-height: 38px;
+  border-radius: 8px;
+  padding: 6px 9px;
+  color: var(--ink);
+  font-size: 12px;
+}
+.ai-options-dialog .option-chips button[aria-pressed='true'] {
+  background: var(--accent-soft);
+  border-color: var(--accent);
+}
+.ai-dimension-fields {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  gap: 10px;
+}
+.ai-dimension-fields label {
+  display: block;
+}
+.ai-dimension-fields input {
+  display: block;
+  margin-top: 5px;
+}
+.ai-numeric-setting {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  color: var(--ink);
+  font-size: 12px;
+}
+.ai-numeric-setting small,
+.ai-dimension-fields small {
+  color: var(--muted);
+  font-size: 11px;
+}
+.ai-options-dialog .ai-numeric-setting input {
+  width: 96px;
+  font-variant-numeric: tabular-nums;
+}
+.ai-options-dialog .control-note {
+  margin: 0;
+  font-size: 11px;
+  line-height: 1.6;
+  color: var(--muted);
+}
+.ai-option-price {
+  margin: 0;
+  padding-top: 10px;
+  border-top: 1px solid var(--line);
+  color: var(--ink);
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
+}
+.ai-options-dialog .reference-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px 12px;
+}
+.ai-options-dialog .reference-actions > button {
+  min-height: 38px;
+}
+.ai-options-dialog .reference-picker {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(90px, 1fr));
+  gap: 8px;
+  max-height: none;
+  overflow: visible;
+}
+.ai-options-dialog .reference-picker > button {
+  display: grid;
+  min-width: 0;
+  padding: 5px;
+  gap: 6px;
+  border: 1px solid var(--line);
+  border-radius: 9px;
+  background: var(--surface-secondary);
+  color: var(--muted);
+  font-size: 11px;
+}
+.ai-options-dialog .reference-picker > button[aria-pressed='true'] {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 1px var(--accent);
+}
+.ai-options-dialog .reference-picker img {
+  display: block;
+  width: 100%;
+  height: 80px;
+  border-radius: 5px;
+  object-fit: contain;
+}
+.ai-options-dialog .reference-picker span {
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+.ai-options-dialog .ai-reference-pending {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 9px;
+  border-radius: 8px;
+  background: var(--surface-secondary);
+  color: var(--muted);
+  font-size: 12px;
+}
+.ai-reference-pending > span {
+  flex: 1;
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+.ai-reference-pending small {
+  display: block;
+  color: var(--subtle);
+}
+.ai-workbench-v2 .ai-thread {
+  gap: 22px;
+}
+.ai-workbench-v2 .ai-user-message {
+  background: var(--surface-secondary);
+  border-radius: 12px 12px 3px 12px;
+  padding: 10px 12px;
+}
+.ai-workbench-v2 .ai-answer {
+  padding: 12px 0 2px;
+  background: transparent;
+}
+.ai-workbench-v2 .ai-answer-state {
+  color: var(--muted);
+  font-size: 11px;
+}
+.ai-workbench-v2 .ai-answer-state strong {
+  font-weight: 550;
+}
+.ai-workbench-v2 .ai-result-actions {
+  flex-wrap: wrap;
+}
+.ai-workbench-v2 .ai-generated-image {
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  overflow: hidden;
+  background: var(--surface-secondary);
+}
+.ai-workbench-v2 .ai-image-open img {
+  object-fit: contain;
+}
+.ai-workbench-v2
+  :is(.ai-task-trigger, .ai-send-button, .ai-model-trigger, .icon-button):focus-visible {
+  outline: 2px solid var(--focus-ring);
+  outline-offset: 2px;
+}
+@container workspace-panel (max-height: 360px) {
+  .ai-workbench-v2 .ai-conversation-body {
+    padding-block: 8px;
+    gap: 8px;
+  }
+  .ai-workbench-v2 .ai-conversation-empty {
+    min-height: 64px;
+    padding-block: 0;
+    gap: 6px;
+  }
+  .ai-workbench-v2 .ai-conversation-empty:not(.ai-login-empty) .composer-visual {
+    width: 44px;
+    height: 33px;
+  }
+  .ai-workbench-v2 .ai-composer-region {
+    padding-top: 5px;
+    padding-bottom: 5px;
+    gap: 3px;
+  }
+  .ai-workbench-v2 .ai-composer-input {
+    max-height: 88px;
+  }
+}
+@media (max-width: 699px), (pointer: coarse) {
+  .ai-workbench-header {
+    min-height: 46px;
+    padding: 2px 8px;
+  }
+  .ai-workbench-header .icon-button,
+  .ai-task-trigger {
+    min-height: 40px;
+  }
+  .ai-workbench-header .icon-button {
+    min-width: 40px;
+    width: 40px;
+    height: 40px;
+  }
+  .ai-composer-region {
+    padding: 6px 8px 7px;
+    gap: 4px;
+  }
+  .ai-composer-surface {
+    padding: 5px;
+  }
+  .ai-composer-surface .ai-composer-input {
+    min-height: 36px;
+    max-height: 112px;
+    font-size: 16px;
+  }
+  .ai-composer-surface .ai-composer-tools .icon-button,
+  .ai-composer-surface .ai-send-button {
+    min-width: 40px;
+    min-height: 40px;
+    width: 40px;
+    height: 40px;
+  }
+  .ai-composer-surface .ai-model-trigger {
+    min-height: 40px;
+    padding-inline: 5px;
+  }
+  .ai-pending-strip button,
+  .ai-execution-status button {
+    min-height: 40px;
+  }
+  .live-assistant-v2 .assistant-call-actions button {
+    min-width: 40px;
+    min-height: 40px;
+  }
+  .ai-options-content,
+  .ai-history-options {
+    gap: 14px;
+    padding-inline: 16px;
+  }
+  .ai-options-dialog input:not([type='checkbox'], [type='file'], [type='range']),
+  .ai-options-dialog textarea,
+  .ai-options-dialog select {
+    font-size: 16px;
+  }
+}
+@media (max-width: 699px) {
+  .ai-workbench-header {
+    min-height: 42px;
+    padding: 0 6px;
+  }
+  .ai-workbench-header .ai-panel-close {
+    display: inline-flex;
+  }
+  .ai-header-actions {
+    gap: 0;
+  }
+  .ai-conversation-body {
+    padding-block: 10px;
+  }
+}
+@container workspace-panel (max-height: 260px) {
+  .ai-workbench-v2 .ai-composer-surface .ai-composer-input {
+    /* A short panel reserves space for the conversation; long drafts scroll
+       inside this full-size input instead of pushing its send action away. */
+    min-height: 36px;
+    max-height: 36px;
+  }
+  .ai-workbench-v2 .ai-composer-region {
+    padding-block: 4px;
+    gap: 3px;
+  }
+  .ai-workbench-v2 .ai-conversation-body {
+    padding-block: 6px;
+  }
+  .ai-workbench-v2 .ai-conversation-body:has(.ai-login-empty) {
+    padding-block: 1px;
+  }
+  .ai-workbench-v2 .ai-login-empty {
+    grid-template-columns: minmax(0, 1fr) auto;
+    min-height: 40px;
+    padding: 0;
+  }
+  .ai-workbench-v2 .ai-login-empty :is(.composer-visual, p) {
+    display: none;
+  }
+}
+/* A keyboard can leave less room than the controls themselves. Keep every
+   action reachable by scrolling the panel instead of clipping or shrinking it. */
+@container workspace-panel (max-height: 200px) {
+  .ai-workbench.ai-workbench-v2 {
+    overflow-y: auto;
+    overscroll-behavior-y: contain;
+  }
+  .ai-workbench-v2 > .live-assistant.live-assistant-v2 {
+    flex: none;
+    height: auto;
+    min-height: 100%;
+    overflow: visible;
+  }
+  .ai-workbench-v2 .ai-conversation-body {
+    flex: 0 0 auto;
+    max-height: 120px;
+    overflow-y: auto;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .ai-composer-surface {
+    transition: none;
+  }
+}

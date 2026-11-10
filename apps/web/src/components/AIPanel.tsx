@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState, type FormEvent } from 'react';
+import { useCallback, useEffect, useLayoutEffect, useRef, useState, type FormEvent } from 'react';
 import {
   ArrowUp,
   Sparkle,
@@ -12,6 +12,10 @@ import {
   Paperclip,
   ArrowBendDownRight,
   WarningCircle,
+  CaretDown,
+  ClockCounterClockwise,
+  GearSix,
+  ArrowClockwise,
 } from '@phosphor-icons/react';
 import {
   MAX_HEADER_BYTES,
@@ -26,7 +30,13 @@ import { api, errorMessage, jsonRequest } from '../lib/api';
 import { assetCopyAttempt } from '../lib/asset-copy';
 import type { Artwork, Asset, Project, PublicConfig } from '../lib/types';
 import { Busy, IconButton, InlineError, Modal } from './Ui';
-import { Disclosure } from './Controls';
+import { ChoiceSelect } from './ChoiceSelect';
+import { useConfirmation } from './ConfirmationDialog';
+import { ComposerInput } from '../ai/ComposerInput';
+import { ComposerVisual } from '../ai/ComposerVisual';
+import { AIVisibilityContext, IDLE_AI_ACTIVITY, type AIActivity } from '../ai/AIVisibility';
+import { useRetainedDialogValue } from '../ai/useRetainedDialogValue';
+import { PanelSettings } from '../ai/PanelSettings';
 import { VoiceCapture } from './VoiceCapture';
 import {
   prepareGenerationDraft,
@@ -145,6 +155,8 @@ export function AIPanel({
   onClearReference,
   onDraw,
   onClose,
+  visible = true,
+  onActivityChange,
   onPreview,
   onSave,
   onCreateProject,
@@ -172,6 +184,8 @@ export function AIPanel({
   onClearReference: () => void;
   onDraw: () => void;
   onClose: () => void;
+  visible?: boolean;
+  onActivityChange?: (activity: AIActivity) => void;
   onPreview: (recipe: EditorRecipe) => void;
   onSave: () => void;
   onCreateProject: () => void;
@@ -186,12 +200,22 @@ export function AIPanel({
   onAfterArtworkWrite?: () => void | Promise<void>;
 }) {
   const scope = (userId ?? 'local') + ':' + (project?.id ?? 'none');
+  const { confirm, cancel: cancelConfirmation, dialog: confirmationDialog } = useConfirmation();
   const cached = draftCache.get(scope);
   const [recovery, setRecovery] = useState(() => initialRecovery(userId));
   const pendingSubmission = recovery.pending;
   const pending = useRef<JobSubmission | null>(pendingSubmission);
   const mounted = useRef(true);
-  const [assistantOpen, setAssistantOpen] = useState(!!cached?.assistantOpen && !pendingSubmission);
+  const [assistantOpen, setAssistantOpen] = useState(
+    !pendingSubmission &&
+      !referenceFile &&
+      (cached?.assistantOpen ?? initialOperation === 'edit-plan'),
+  );
+  const [overlay, setOverlay] = useState<
+    'tasks' | 'settings' | 'references' | 'history' | 'recovery' | null
+  >(null);
+  const [assistantActivity, setAssistantActivity] = useState<AIActivity>(IDLE_AI_ACTIVITY);
+  const assistantLocked = assistantActivity.callActive || assistantActivity.requestActive;
   const [generationGrantId, setGenerationGrantId] = useState<string | undefined>(
     cached?.generationGrantId,
   );
@@ -221,6 +245,7 @@ export function AIPanel({
     job: AIJob;
     snapshot: string;
   } | null>(null);
+  const displayedCandidate = useRetainedDialogValue(candidate);
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false),
     [loading, setLoading] = useState(true);
@@ -236,6 +261,18 @@ export function AIPanel({
   const [uploadedReference, setUploadedReference] = useState<Asset | null>(null);
   const [preparedReferenceAssets, setPreparedReferenceAssets] = useState<Asset[]>([]);
   const [preparingDraft, setPreparingDraft] = useState(false);
+  const activityReporter = useRef(onActivityChange);
+  activityReporter.current = onActivityChange;
+  useEffect(() => {
+    onActivityChange?.({
+      ...assistantActivity,
+      requestActive: assistantActivity.requestActive || busy || preparingDraft,
+    });
+  }, [assistantActivity, busy, preparingDraft, onActivityChange]);
+  useEffect(() => () => activityReporter.current?.(IDLE_AI_ACTIVITY), []);
+  useEffect(() => {
+    if (!visible) setOverlay(null);
+  }, [visible]);
   const [auxiliary, setAuxiliary] = useState<{ kind: 'mask' | 'markup'; assetId: string } | null>(
     cached?.auxiliary ?? null,
   );
@@ -249,6 +286,38 @@ export function AIPanel({
   const referenceCopies = useRef<ReferenceCopyJournal>(new Map());
   const panelContext = useRef({ scope, assistantOpen });
   panelContext.current = { scope, assistantOpen };
+  const consentIdentity = JSON.stringify([
+    userId,
+    isLoggedIn,
+    project?.id,
+    project?.spaceId,
+    project?.role,
+    artwork?.id,
+    artwork?.assetId,
+    artwork?.headVersion,
+    currentAsset?.id,
+    currentAsset?.projectId,
+    recipe,
+  ]);
+  const consentContext = useRef({
+    identity: consentIdentity,
+    referenceFile,
+    referenceSource,
+    visible,
+  });
+  // Keep a distinct lifetime even if the user leaves an artwork and returns to
+  // the same values while a question is open. Unrelated renders do not revoke it.
+  if (
+    consentContext.current.identity !== consentIdentity ||
+    consentContext.current.referenceFile !== referenceFile ||
+    consentContext.current.referenceSource !== referenceSource ||
+    consentContext.current.visible !== visible
+  )
+    consentContext.current = { identity: consentIdentity, referenceFile, referenceSource, visible };
+  const previewPending = useRef(false);
+  useLayoutEffect(() => {
+    if (!visible) cancelConfirmation();
+  }, [visible, cancelConfirmation]);
   const submittedRecipes = useRef(new Map<string, string>());
   const draftValue: AIPanelDraft = {
     prompt,
@@ -433,6 +502,7 @@ export function AIPanel({
   useEffect(() => {
     setUploadedReference(null);
     if (referenceFile && !pending.current) {
+      setAssistantOpen(false);
       setOperation('generate-image');
       changed();
     }
@@ -507,15 +577,21 @@ export function AIPanel({
     const expectedScope = scope;
     const expectedGeneration = generation.current;
     const expectedEpoch = ++generationDraftEpoch.current;
+    const expectedContext = consentContext.current;
+    const expectedInput = JSON.stringify(input);
     let copiedAny = false;
     const assertCurrent = () => {
       if (
+        !mounted.current ||
+        !consentContext.current.visible ||
+        consentContext.current !== expectedContext ||
+        JSON.stringify(input) !== expectedInput ||
         generation.current !== expectedGeneration ||
         generationDraftEpoch.current !== expectedEpoch ||
         panelContext.current.scope !== expectedScope ||
         !panelContext.current.assistantOpen
       )
-        throw new Error('当前项目或工作面板已变化，请回到原草案后再继续。');
+        throw new Error('当前项目、来源或草稿已变化，请回到原草案后再继续。');
     };
     setPreparingDraft(true);
     try {
@@ -536,9 +612,11 @@ export function AIPanel({
         loadProjectAssets: async () =>
           (await api<{ assets: Asset[] }>('/projects/' + project.id)).assets,
         confirmCopy: (count) =>
-          window.confirm(
-            `这份草案引用的 ${count} 张图片需独立复制到“${project.title}”，副本会占用目标空间的素材与存储额度。已有副本由服务器核验后复用，不重复占用。\n\n复制需要来源授权；若授权或空间不足，将保留草案供重试，不会丢弃任何参考图。已完成的独立副本会留在目标项目，不会随草案取消而自动删除。继续准备吗？`,
-          ),
+          confirm({
+            title: '复制草案参考图',
+            description: `这份草案引用的 ${count} 张图片需独立复制到“${project.title}”，副本会占用目标空间的素材与存储额度。已有副本由服务器核验后复用，不重复占用。\n\n复制需要来源授权；若授权或空间不足，将保留草案供重试，不会丢弃任何参考图。已完成的独立副本会留在目标项目，不会随草案取消而自动删除。`,
+            confirmLabel: '确认复制并继续',
+          }),
         copyAsset: async (sourceId, idempotencyKey) => {
           const result = await api<{ asset: Asset; copy: AssetCopyRecord }>(
             '/assets/' + encodeURIComponent(sourceId) + '/copy',
@@ -757,7 +835,8 @@ export function AIPanel({
       if (expectedGeneration === generation.current) setBusy(false);
     }
   }
-  function preview(job: AIJob) {
+  async function preview(job: AIJob) {
+    if (previewPending.current || !visible) return;
     if (job.output?.kind !== 'edit-plan' || !artwork) return;
     if ((job.artworkId ?? job.output.artworkId) !== artwork.id) {
       setError('请先打开这条建议对应的作品。');
@@ -767,28 +846,54 @@ export function AIPanel({
       setError('建议基于旧版本，请到对比视图核对后再决定。');
       return;
     }
-    const submitted = submittedRecipes.current.get(job.id);
-    if (
-      (!submitted || submitted !== JSON.stringify(recipe)) &&
-      !window.confirm(
-        '本地编辑与建议起点可能不同。预览将作为可撤销的一步替换对应参数，云端不变。继续吗？',
+    const expectedContext = consentContext.current;
+    const expectedGeneration = generation.current;
+    const snapshot = JSON.stringify(recipe);
+    const assertCurrent = () => {
+      if (
+        !mounted.current ||
+        generation.current !== expectedGeneration ||
+        !consentContext.current.visible ||
+        consentContext.current !== expectedContext
       )
-    )
-      return;
+        throw new Error('作品、来源或草稿已变化，请重新选择建议。');
+    };
+    previewPending.current = true;
     try {
+      const submitted = submittedRecipes.current.get(job.id);
+      if (!submitted || submitted !== snapshot) {
+        if (
+          !(await confirm({
+            title: '核对建议起点',
+            description:
+              '本地编辑与建议起点可能不同。预览将作为可撤销的一步替换对应参数，云端不变。',
+            confirmLabel: '继续核对建议',
+          }))
+        )
+          return;
+        assertCurrent();
+      }
       let next = parseEditorRecipe(job.output.recipe);
       if (recipe.schemaVersion >= 2 && next.schemaVersion === 1) {
         if (
-          !window.confirm(
-            '这是旧版AI建议。仅更新13项基础明暗与色彩，保留当前曲线、构图、选区和新版参数。继续吗？',
-          )
+          !(await confirm({
+            title: '预览旧版建议',
+            description:
+              '这是旧版 AI 建议。仅更新 13 项基础明暗与色彩，保留当前曲线、构图、选区和新版参数。',
+            confirmLabel: '继续查看差异',
+          }))
         )
           return;
+        assertCurrent();
         next = patchEditorAdjustments(recipe, next.adjustments);
       }
-      setCandidate({ recipe: next, job, snapshot: JSON.stringify(recipe) });
+      assertCurrent();
+      setCandidate({ recipe: next, job, snapshot });
     } catch (error) {
-      setError(errorMessage(error));
+      if (mounted.current && generation.current === expectedGeneration)
+        setError(errorMessage(error));
+    } finally {
+      previewPending.current = false;
     }
   }
   const availableAssets = [
@@ -810,230 +915,147 @@ export function AIPanel({
         : [],
     ),
   ].filter((asset, index, array) => array.findIndex((item) => item.id === asset.id) === index);
+  const taskPicker = (
+    <button
+      type="button"
+      className="ai-task-trigger"
+      aria-label="切换 AI 任务"
+      aria-haspopup="dialog"
+      disabled={inputLocked || preparingDraft || assistantLocked}
+      onClick={() => setOverlay('tasks')}
+    >
+      {assistantOpen ? <Sparkle size={18} /> : task.icon}
+      <span>{assistantOpen ? 'AI 助手' : task.label}</span>
+      <CaretDown size={13} />
+    </button>
+  );
+  const modelOptions = [
+    ...(pendingSubmission && modelId && !eligible.some((model) => model.id === modelId)
+      ? [{ value: modelId, label: modelId + ' · 原请求模型' }]
+      : []),
+    ...eligible.map((model) => ({
+      value: model.id,
+      label: model.label,
+      description: modelReady(model) ? undefined : '当前未开通',
+    })),
+  ];
   return (
-    <aside className="ai-panel ai-workbench" aria-label="AI创作助手">
-      {pendingSubmission && (
-        <section className="assistant-candidate" aria-label="创作请求恢复" aria-live="polite">
-          <h4>
-            {pendingSubmission.state === 'unknown'
-              ? '本轮创作待平台核验'
-              : pendingSubmission.jobId
-                ? '本轮已受理，正在保留任务进度'
-                : '发送结果待确认，原请求已保留'}
-          </h4>
-          <p>
-            {pendingSubmission.jobId
-              ? pendingSubmission.state === 'unknown'
-                ? '执行与用量结果尚未明确。请先核对本轮任务，核验完成前暂停新的付费创作。'
-                : '刷新只读取项目内的原任务记录，不会再次提交模型请求。'
-              : '原要求、模型、素材和生成参数已冻结。按原请求核对时，已受理的请求返回原结果；尚未受理时会继续原请求并使用原额度。'}
-          </p>
-          {!pendingSubmission.jobId && pendingSubmission.requestBody === null && (
-            <p>
-              原始录音仅保留在页面内存中，刷新后已不可重放。请先查看任务和用量记录并联系平台核验。
-            </p>
-          )}
-          {pendingSubmission.projectId === project?.id ? (
-            <div>
-              <button type="button" disabled={busy} onClick={() => setRefresh((old) => old + 1)}>
-                刷新项目任务
-              </button>
-              <button
-                type="button"
-                disabled={
-                  busy || (!pendingSubmission.jobId && pendingSubmission.requestBody === null)
-                }
-                onClick={() => void recoverSubmission()}
-              >
-                {pendingSubmission.jobId ? '读取本轮结果' : '按原请求核对并继续'}
-              </button>
-            </div>
-          ) : (
-            <p>请返回项目「{pendingSubmission.projectTitle}」恢复本轮，再开始新的创作。</p>
-          )}
-        </section>
-      )}
-      {recovery.error && (
-        <div role="alert" className="assistant-error">
-          <p>{recovery.error}</p>
-          <button type="button" className="text-button" onClick={restoreRecovery}>
-            重新读取恢复记录
-          </button>
-        </div>
-      )}
-      <nav className="ai-task-tabs" aria-label="AI任务类型" data-motion="ai-tabs">
-        <button
-          type="button"
-          aria-pressed={assistantOpen}
-          disabled={inputLocked || preparingDraft}
-          onClick={() => setAssistantOpen(true)}
-        >
-          <Microphone size={18} />
-          <span>实时协作</span>
-        </button>
-        {tasks.map((item) => (
-          <button
-            key={item.id}
-            type="button"
-            aria-pressed={!assistantOpen && operation === item.id}
-            disabled={inputLocked || preparingDraft}
-            onClick={() => {
-              setAssistantOpen(false);
-              changeOperation(item.id);
-            }}
-          >
-            {item.icon}
-            <span>{item.label}</span>
-          </button>
-        ))}
-      </nav>
-      {assistantOpen ? (
-        <LiveAssistant
-          project={project}
-          artwork={artwork}
-          recipe={recipe}
-          isLoggedIn={isLoggedIn}
-          onAuth={onAuth}
-          onSave={onSave}
-          onPreview={onPreview}
-          imageModelIds={(modelResponse?.models ?? [])
-            .filter(
-              (model) => model.enabled !== false && model.operations?.includes('generate-image'),
-            )
-            .map((model) => model.id)}
-          onBeforeArtworkWrite={onBeforeArtworkWrite}
-          onAfterArtworkWrite={onAfterArtworkWrite}
-          onApplied={onDecisionApplied ?? onOpenArtwork}
-          captureCurrentImage={captureCurrentImage}
-          onPrepareGenerationDraft={prepareAssistantGenerationDraft}
-        />
-      ) : (
-        <>
-          <div
-            className={'ai-readiness ' + (ready && !needsContext ? 'ready' : '')}
-            data-motion="ai-status"
-          >
-            <span className="ai-readiness-dot" aria-hidden />
-            <span>{statusText}</span>
-            {needsContext && (
-              <button
-                type="button"
-                disabled={inputLocked}
-                onClick={
-                  needsContext === 'login'
-                    ? onAuth
-                    : needsContext === 'project'
-                      ? onCreateProject
-                      : onSave
-                }
-              >
-                {needsContext === 'login' ? '登录' : needsContext === 'project' ? '选项目' : '保存'}
-              </button>
-            )}
-            {!needsContext && !ready && !loading && (
-              <details>
-                <summary aria-label="查看能力未开放原因">
-                  <WarningCircle size={16} />
-                </summary>
-                <p>{reason}</p>
-              </details>
-            )}
-          </div>
-          <div className="ai-model-row">
-            <select
-              aria-label={task.label + '模型'}
-              value={modelId}
-              disabled={inputLocked || !eligible.length}
-              onChange={(event) => {
-                setModelId(event.target.value);
-                changed();
-              }}
-            >
-              {pendingSubmission && modelId && !eligible.some((model) => model.id === modelId) && (
-                <option value={modelId}>{modelId} · 原请求模型</option>
+    <AIVisibilityContext.Provider value={visible}>
+      <aside className="ai-panel ai-workbench ai-workbench-v2" aria-label="AI创作助手">
+        {assistantOpen ? (
+          <LiveAssistant
+            navigation={taskPicker}
+            visible={visible}
+            onClose={onClose}
+            onActivityChange={setAssistantActivity}
+            project={project}
+            artwork={artwork}
+            recipe={recipe}
+            isLoggedIn={isLoggedIn}
+            onAuth={onAuth}
+            onSave={onSave}
+            onPreview={onPreview}
+            imageModelIds={(modelResponse?.models ?? [])
+              .filter(
+                (model) => model.enabled !== false && model.operations?.includes('generate-image'),
+              )
+              .map((model) => model.id)}
+            onBeforeArtworkWrite={onBeforeArtworkWrite}
+            onAfterArtworkWrite={onAfterArtworkWrite}
+            onApplied={onDecisionApplied ?? onOpenArtwork}
+            captureCurrentImage={captureCurrentImage}
+            onPrepareGenerationDraft={prepareAssistantGenerationDraft}
+          />
+        ) : (
+          <>
+            <header className="ai-workbench-header">
+              {taskPicker}
+              <div className="ai-header-actions">
+                <IconButton label="创作记录" onClick={() => setOverlay('history')}>
+                  <ClockCounterClockwise size={18} />
+                </IconButton>
+                <IconButton label="任务设置" onClick={() => setOverlay('settings')}>
+                  <GearSix size={18} />
+                </IconButton>
+                <IconButton className="ai-panel-close" label="收起 AI 面板" onClick={onClose}>
+                  <X size={18} />
+                </IconButton>
+              </div>
+            </header>
+            <div className="ai-conversation-body" aria-label="创作内容">
+              {(needsContext || (!ready && !loading)) && (
+                <div className="ai-availability" role="status">
+                  <span>{needsContext ? statusText : reason}</span>
+                  {needsContext && (
+                    <button
+                      type="button"
+                      disabled={inputLocked}
+                      onClick={
+                        needsContext === 'login'
+                          ? onAuth
+                          : needsContext === 'project'
+                            ? onCreateProject
+                            : onSave
+                      }
+                    >
+                      {needsContext === 'login'
+                        ? '登录'
+                        : needsContext === 'project'
+                          ? '选择项目'
+                          : '保存作品'}
+                    </button>
+                  )}
+                </div>
               )}
-              {!eligible.length && <option value="">暂无适用模型</option>}
-              {eligible.map((model) => (
-                <option key={model.id} value={model.id}>
-                  {model.label}
-                  {modelReady(model) ? '' : ' · 未开通'}
-                </option>
-              ))}
-            </select>
-            <span className="ai-price">{quote === null ? '点数待确认' : quote + ' 点 / 次'}</span>
-          </div>
-          {allThreads.length > 0 && (
-            <div className="ai-conversation-toolbar" data-motion="ai-context">
-              <select
-                aria-label="选择已保存创作线程"
-                value={visibleThread ?? ''}
-                disabled={inputLocked}
-                onChange={(event) => {
-                  setThreadId(event.target.value || null);
-                  setParentJobId(null);
-                }}
-              >
-                <option value="">新的创作</option>
-                {allThreads.map((id) => {
-                  const first = jobs.filter((job) => (job.threadId ?? job.id) === id).at(-1);
-                  return (
-                    <option key={id} value={id}>
-                      {(first?.request?.prompt || first?.prompt || '语音 / 创作记录').slice(0, 28)}
-                    </option>
-                  );
-                })}
-              </select>
-              <IconButton
-                label="新建创作线程"
-                disabled={inputLocked}
-                onClick={() => {
-                  setThreadId(null);
-                  setParentJobId(null);
-                  setPrompt('');
-                  changed();
-                }}
-              >
-                <Plus size={17} />
-              </IconButton>
-            </div>
-          )}
-          <div className="ai-scroll">
-            {visibleJobs.length && project ? (
-              <AIThread
-                jobs={visibleJobs}
-                project={project}
-                artwork={artwork}
-                userId={userId}
-                isDirty={isDirty}
-                documents={documents}
-                onDecisionApplied={onDecisionApplied}
-                onBeforeArtworkWrite={onBeforeArtworkWrite}
-                onAfterArtworkWrite={onAfterArtworkWrite}
-                onOpen={onOpenArtwork}
-                onPreview={preview}
-                onContinue={continueJob}
-                onChanged={() => {
-                  setRefresh((value) => value + 1);
-                  onTaskChanged();
-                }}
-                onTranscript={(target, text) => {
-                  if (pending.current || !recovery.ready) {
-                    setError('请先核对上一轮创作结果，再使用识别文字发起新任务。');
-                    return;
-                  }
-                  changeOperation(target);
-                  setPrompt(text);
-                  promptInput.current?.focus();
-                }}
-              />
-            ) : (
-              <div className="ai-quiet-start" data-motion="empty-state">
-                <p>
-                  {operation === 'transcribe' ? '说出来，先确认文字再继续。' : '从一句想法开始。'}
-                </p>
-                {!!task.chips.length && (
-                  <div className="prompt-chips">
-                    {task.chips.map((text) => (
+              {loading && <Busy label="正在读取模型" />}
+              {visibleJobs.length && project ? (
+                <AIThread
+                  jobs={visibleJobs}
+                  project={project}
+                  artwork={artwork}
+                  userId={userId}
+                  isDirty={isDirty}
+                  documents={documents}
+                  onDecisionApplied={onDecisionApplied}
+                  onBeforeArtworkWrite={onBeforeArtworkWrite}
+                  onAfterArtworkWrite={onAfterArtworkWrite}
+                  onOpen={onOpenArtwork}
+                  onPreview={preview}
+                  onContinue={continueJob}
+                  onChanged={() => {
+                    setRefresh((value) => value + 1);
+                    onTaskChanged();
+                  }}
+                  onTranscript={(target, text) => {
+                    if (pending.current || !recovery.ready) {
+                      setError('请先核对上一轮创作结果，再使用识别文字发起新任务。');
+                      return;
+                    }
+                    changeOperation(target);
+                    setPrompt(text);
+                    promptInput.current?.focus({ preventScroll: true });
+                  }}
+                />
+              ) : operation === 'transcribe' ? null : (
+                <div className="ai-conversation-empty">
+                  <ComposerVisual
+                    kind={
+                      operation === 'generate-image'
+                        ? 'image'
+                        : operation === 'generate-text'
+                          ? 'text'
+                          : 'adjust'
+                    }
+                  />
+                  <h3>
+                    {operation === 'generate-image'
+                      ? '描述要生成的画面'
+                      : operation === 'generate-text'
+                        ? '描述文案内容与用途'
+                        : '描述需要调整的地方'}
+                  </h3>
+                  <div className="ai-prompt-suggestions" aria-label="填写示例要求">
+                    {task.chips.slice(0, 2).map((text) => (
                       <button
                         key={text}
                         type="button"
@@ -1041,25 +1063,300 @@ export function AIPanel({
                         onClick={() => {
                           setPrompt(text);
                           changed();
-                          promptInput.current?.focus();
+                          promptInput.current?.focus({ preventScroll: true });
                         }}
                       >
                         {text}
                       </button>
                     ))}
                   </div>
+                </div>
+              )}
+              {operation === 'transcribe' && !pendingSubmission && (
+                <VoiceCapture key={voiceEpoch} onReady={audioReady} />
+              )}
+            </div>
+            <footer className="ai-composer-region">
+              {pendingSubmission && (
+                <div className="ai-pending-strip" role="status">
+                  <WarningCircle size={16} />
+                  <span>
+                    {pendingSubmission.state === 'unknown'
+                      ? '结果待核验，暂不能提交新任务'
+                      : pendingSubmission.jobId
+                        ? '本轮任务已受理'
+                        : '发送结果待确认，原请求已保留'}
+                  </span>
+                  <button type="button" onClick={() => setOverlay('recovery')}>
+                    核对请求
+                  </button>
+                </div>
+              )}
+              {recovery.error && (
+                <div className="ai-pending-strip" role="alert">
+                  <span>{recovery.error}</span>
+                  <button type="button" onClick={restoreRecovery}>
+                    重读记录
+                  </button>
+                </div>
+              )}
+              <InlineError message={error} />
+              {(sizeFailure || optionsFailure || batchFailure || referenceFailure) &&
+                operation === 'generate-image' && (
+                  <p className="ai-inline-error" role="status">
+                    {sizeFailure || optionsFailure || batchFailure || referenceFailure}
+                  </p>
+                )}
+              <form
+                className="ai-task-composer ai-composer-surface"
+                data-ai-composer
+                onSubmit={submit}
+              >
+                {parent && (
+                  <div className="ai-context-strip">
+                    <ArrowBendDownRight size={14} />
+                    <span>
+                      {operation === 'generate-text'
+                        ? '续写上次文案'
+                        : operation === 'generate-image'
+                          ? '修改所选候选'
+                          : '沿用当前草稿'}
+                    </span>
+                    <IconButton
+                      label="取消续接，作为新创作"
+                      disabled={inputLocked}
+                      onClick={() => {
+                        setParentJobId(null);
+                        changed();
+                      }}
+                    >
+                      <X size={14} />
+                    </IconButton>
+                  </div>
+                )}
+                {operation === 'generate-image' && referencedCount > 0 && (
+                  <button
+                    type="button"
+                    className="ai-selected-context"
+                    onClick={() => setOverlay('references')}
+                  >
+                    <Paperclip size={14} />
+                    {referencedCount} 张参考{referenceFile ? ' · 发送后上传' : ''}
+                  </button>
+                )}
+                {operation !== 'transcribe' && (
+                  <ComposerInput
+                    ref={promptInput}
+                    label="本轮创作要求"
+                    disabled={inputLocked}
+                    value={prompt}
+                    placeholder={task.placeholder}
+                    maxLength={operation === 'generate-image' ? 4000 : 1500}
+                    canSubmit={canSubmit}
+                    onChange={(value) => {
+                      setPrompt(value);
+                      changed();
+                    }}
+                  />
+                )}
+                <div className="ai-composer-toolbar">
+                  <button
+                    type="button"
+                    className="ai-model-trigger"
+                    onClick={() => setOverlay('settings')}
+                    aria-label="选择任务模型与参数"
+                  >
+                    <span>{selected?.label ?? '选择模型'}</span>
+                    <CaretDown size={12} />
+                  </button>
+                  <div className="ai-composer-tools">
+                    {operation === 'generate-image' && (
+                      <IconButton label="添加或管理参考图" onClick={() => setOverlay('references')}>
+                        <Paperclip size={18} />
+                      </IconButton>
+                    )}
+                    {operation !== 'transcribe' && (
+                      <IconButton
+                        label="改用语音输入，识别后再确认"
+                        disabled={inputLocked}
+                        onClick={() => changeOperation('transcribe')}
+                      >
+                        <Microphone size={18} />
+                      </IconButton>
+                    )}
+                    <button
+                      type="submit"
+                      className="ai-send-button"
+                      title={task.button}
+                      aria-label={task.button}
+                      disabled={!canSubmit}
+                    >
+                      {busy ? <Busy label="" /> : <ArrowUp size={19} />}
+                    </button>
+                  </div>
+                </div>
+              </form>
+              <div className="ai-composer-meta">
+                <span>
+                  {quote === null ? '点数待确认' : `${quote} 点 / 次`}
+                  {operation === 'generate-image'
+                    ? ` · ${width}×${height} · ${imageOptions.n ?? 1} 张`
+                    : ''}
+                </span>
+                {prompt.length > (operation === 'generate-image' ? 3200 : 1200) && (
+                  <span>
+                    {prompt.length}/{operation === 'generate-image' ? 4000 : 1500}
+                  </span>
                 )}
               </div>
+              {operation === 'generate-image' && referenceFile && (
+                <p className="ai-input-disclosure">发送时会上传选中的参考图。</p>
+              )}
+            </footer>
+            {displayedCandidate && (
+              <Modal
+                title="对照调整建议"
+                open={visible && !!candidate}
+                subtitle="与当前草稿逐项对比，确认后才进入本地编辑记录。"
+                onClose={() => setCandidate(null)}
+              >
+                <div className="ai-proposal-review" data-motion="modal-content">
+                  <p>
+                    {displayedCandidate.job.output?.kind === 'edit-plan'
+                      ? displayedCandidate.job.output.summary
+                      : ''}
+                  </p>
+                  <div className="proposal-differences" role="table" aria-label="参数变化">
+                    <div role="row" className="proposal-diff-heading">
+                      <span role="columnheader">参数</span>
+                      <span role="columnheader">当前</span>
+                      <span role="columnheader">建议</span>
+                    </div>
+                    {recipeDifferences(recipe, displayedCandidate.recipe).map((change) => (
+                      <div role="row" key={change.path}>
+                        <span role="cell">{change.label}</span>
+                        <span role="cell">
+                          {Number(change.before.toFixed(4))}
+                          {change.unit === 'ratio' ? '' : change.unit}
+                        </span>
+                        <strong role="cell">
+                          {Number(change.after.toFixed(4))}
+                          {change.unit === 'ratio' ? '' : change.unit}
+                        </strong>
+                      </div>
+                    ))}
+                  </div>
+                  {!recipeDifferences(recipe, displayedCandidate.recipe).length && (
+                    <p className="control-note">基础与新版数值参数没有变化。</p>
+                  )}
+                  {!!additionalRecipeChanges(recipe, displayedCandidate.recipe).length && (
+                    <p className="parameter-error">
+                      完整候选还与当前的{' '}
+                      {additionalRecipeChanges(recipe, displayedCandidate.recipe).join('、')}{' '}
+                      不同；确认将一起替换，可撤销。
+                    </p>
+                  )}
+                  <p className="control-note">
+                    云端版本不会自动改写。预览后可以继续精修，再由你保存新版本。
+                  </p>
+                  <button
+                    className="button button-primary"
+                    onClick={() => {
+                      if (!visible || !candidate) return;
+                      if (
+                        !artwork ||
+                        candidate.job.output?.kind !== 'edit-plan' ||
+                        artwork.id !== candidate.job.output.artworkId ||
+                        artwork.headVersion !== candidate.job.output.baseVersion ||
+                        candidate.snapshot !== JSON.stringify(recipe)
+                      ) {
+                        setCandidate(null);
+                        setError('作品或草稿已经改变，请重新预览这条建议。');
+                        return;
+                      }
+                      onPreview(candidate.recipe);
+                      setCandidate(null);
+                    }}
+                  >
+                    作为可撤销的一步预览
+                  </button>
+                </div>
+              </Modal>
             )}
-            {operation === 'transcribe' && !pendingSubmission && (
-              <VoiceCapture key={voiceEpoch} onReady={audioReady} />
+          </>
+        )}
+        <Modal
+          title="选择 AI 任务"
+          open={visible && overlay === 'tasks'}
+          keepMounted
+          onClose={() => setOverlay(null)}
+          className="ai-options-dialog"
+        >
+          <div className="ai-task-picker" role="group" aria-label="AI任务类型">
+            <button
+              type="button"
+              aria-pressed={assistantOpen}
+              disabled={inputLocked || preparingDraft || assistantLocked}
+              onClick={() => {
+                setAssistantOpen(true);
+                setOverlay(null);
+              }}
+            >
+              <Sparkle size={21} />
+              <span>
+                <strong>AI 助手</strong>
+                <small>文字交流、看图建议与实时通话</small>
+              </span>
+            </button>
+            {tasks.map((item) => (
+              <button
+                key={item.id}
+                type="button"
+                aria-pressed={!assistantOpen && operation === item.id}
+                disabled={inputLocked || preparingDraft || assistantLocked}
+                onClick={() => {
+                  setAssistantOpen(false);
+                  changeOperation(item.id);
+                  setOverlay(null);
+                }}
+              >
+                {item.icon}
+                <span>
+                  <strong>{item.label}</strong>
+                  <small>{item.hint}</small>
+                </span>
+              </button>
+            ))}
+          </div>
+        </Modal>
+        <Modal
+          title="任务设置"
+          open={visible && overlay === 'settings'}
+          keepMounted
+          onClose={() => setOverlay(null)}
+          className="ai-options-dialog"
+        >
+          <div className="ai-options-content">
+            <PanelSettings onClose={() => setOverlay(null)} />
+            <ChoiceSelect
+              label="模型"
+              ariaLabel={task.label + '模型'}
+              value={modelId}
+              disabled={inputLocked || !eligible.length}
+              placeholder="暂无适用模型"
+              options={modelOptions}
+              onValueChange={(value) => {
+                setModelId(value);
+                changed();
+              }}
+            />
+            {!ready && !loading && !needsContext && (
+              <p className="ai-inline-error" role="status">
+                {reason}
+              </p>
             )}
             {operation === 'generate-image' && (
-              <Disclosure
-                title="生成设置"
-                summary={width + '×' + height + ' · ' + (imageOptions.n ?? 1) + ' 张'}
-                role="ai-options"
-              >
+              <section className="ai-option-section">
                 <ImageParameters
                   model={selected}
                   width={width}
@@ -1076,333 +1373,305 @@ export function AIPanel({
                     changed();
                   }}
                 />
-              </Disclosure>
-            )}
-            {operation === 'generate-image' && (
-              <Disclosure
-                title="参考与局部编辑"
-                summary={referencedCount ? referencedCount + ' 张参考' : '可选'}
-                role="ai-reference"
-              >
-                <div className="reference-actions">
-                  <button
-                    type="button"
-                    className="text-button"
-                    disabled={
-                      inputLocked ||
-                      !caps?.references.supported ||
-                      referencedCount >= referenceLimit
-                    }
-                    onClick={() => fileInput.current?.click()}
-                  >
-                    <Paperclip size={16} />
-                    选择图片
-                  </button>
-                  <button
-                    type="button"
-                    className="text-button"
-                    disabled={
-                      inputLocked ||
-                      !caps?.references.supported ||
-                      referencedCount >= referenceLimit
-                    }
-                    onClick={onDraw}
-                  >
-                    <PencilSimple size={16} />
-                    画草图
-                  </button>
-                  {currentAsset && (
-                    <button
-                      type="button"
-                      className="text-button"
-                      disabled={
-                        busy ||
-                        !caps?.references.supported ||
-                        referenceIds.includes(currentAsset.id) ||
-                        referencedCount >= referenceLimit
-                      }
-                      onClick={() => {
-                        setReferenceIds((ids) => [...ids, currentAsset.id]);
-                        changed();
-                      }}
-                    >
-                      使用当前原图
-                    </button>
-                  )}
-                </div>
-                <input
-                  ref={fileInput}
-                  className="sr-only"
-                  type="file"
-                  accept="image/png,image/jpeg,image/webp"
-                  onChange={(event) => {
-                    void chooseLocal(event.target.files?.[0]);
-                    event.target.value = '';
-                  }}
-                />
-                {referenceFile && (
-                  <div className="pending-reference">
-                    <Paperclip size={18} />
-                    <span>
-                      {referenceFile.name}
-                      <small>确认发送后上传</small>
-                    </span>
-                    <IconButton
-                      label="移除本地参考"
-                      disabled={inputLocked}
-                      onClick={() => {
-                        onClearReference();
-                        setUploadedReference(null);
-                        changed();
-                      }}
-                    >
-                      <X size={16} />
-                    </IconButton>
-                  </div>
-                )}
-                <div className="reference-picker">
-                  {availableAssets.map((asset) => (
-                    <button
-                      key={asset.id}
-                      type="button"
-                      aria-pressed={referenceIds.includes(asset.id)}
-                      disabled={
-                        busy ||
-                        !caps?.references.supported ||
-                        (!referenceIds.includes(asset.id) && referencedCount >= referenceLimit)
-                      }
-                      onClick={() => {
-                        setReferenceIds((ids) =>
-                          ids.includes(asset.id)
-                            ? ids.filter((id) => id !== asset.id)
-                            : [...ids, asset.id],
-                        );
-                        changed();
-                      }}
-                    >
-                      <img
-                        src={asset.thumbnailUrl ?? '/v1/assets/' + asset.id + '/thumbnail'}
-                        alt=""
-                        loading="lazy"
-                      />
-                      <span>{asset.name}</span>
-                    </button>
-                  ))}
-                </div>
-                {(!caps?.references.supported || !referenceLimit) && (
-                  <p className="control-note">当前模型没有开放参考图，选择已开通的模型后可使用。</p>
-                )}
-                {(caps?.references.allowMask || caps?.references.allowMarkup) && (
-                  <div className="auxiliary-picker">
-                    <label>
-                      遮罩 / 标注图
-                      <select
-                        value={auxiliary ? auxiliary.kind + ':' + auxiliary.assetId : ''}
-                        disabled={inputLocked || !referencedCount}
-                        onChange={(event) => {
-                          const [kind, assetId] = event.target.value.split(':');
-                          setAuxiliary(
-                            kind && assetId ? { kind: kind as 'mask' | 'markup', assetId } : null,
-                          );
-                          changed();
-                        }}
-                      >
-                        <option value="">不附加</option>
-                        {caps.references.allowMask &&
-                          availableAssets.map((asset) => (
-                            <option key={'mask' + asset.id} value={'mask:' + asset.id}>
-                              遮罩 · {asset.name}
-                            </option>
-                          ))}
-                        {caps.references.allowMarkup &&
-                          availableAssets.map((asset) => (
-                            <option key={'markup' + asset.id} value={'markup:' + asset.id}>
-                              标注 · {asset.name}
-                            </option>
-                          ))}
-                      </select>
-                    </label>
-                    <p className="control-note">
-                      二者互斥，需先选参考图；遮罩透明区域表示修改范围，必须符合模型对尺寸和格式的要求。
-                    </p>
-                  </div>
-                )}
-                <p className="control-note">
-                  参考只表示创作依据，不保证像素级保留。当前原图不包含尚未导出的本地调整。
-                </p>
-              </Disclosure>
+              </section>
             )}
             {operation === 'generate-text' && documents.length > 0 && (
-              <Disclosure
-                title="引用项目文档"
-                summary={documentId ? '已选 1 份' : '可选'}
-                role="ai-options"
-              >
-                <label className="context-document-select">
-                  本轮上下文
-                  <select
-                    value={documentId}
-                    disabled={inputLocked}
-                    onChange={(event) => {
-                      setDocumentId(event.target.value);
-                      changed();
-                    }}
-                  >
-                    <option value="">不引用文档</option>
-                    {documents.map((doc) => (
-                      <option key={doc.id} value={doc.id}>
-                        {doc.title} · V{doc.version}
-                      </option>
-                    ))}
-                  </select>
-                </label>
-              </Disclosure>
-            )}
-          </div>
-          <form className="ai-composer" onSubmit={submit} data-motion="ai-composer">
-            {parent && (
-              <div className="ai-parent-context">
-                <ArrowBendDownRight size={15} />
-                <span>
-                  {operation === 'generate-text'
-                    ? '基于上次生成文案'
-                    : operation === 'generate-image'
-                      ? '继续修改所选候选'
-                      : '基于当前草稿继续调整'}
-                </span>
-                <IconButton
-                  label="取消续接，作为新创作"
+              <section className="ai-option-section">
+                <ChoiceSelect
+                  className="context-document-select"
+                  label="本轮上下文"
+                  value={documentId}
                   disabled={inputLocked}
+                  onValueChange={(value) => {
+                    setDocumentId(value);
+                    changed();
+                  }}
+                  options={[
+                    { value: '', label: '不引用文档' },
+                    ...documents.map((doc) => ({
+                      value: doc.id,
+                      label: `${doc.title} · V${doc.version}`,
+                    })),
+                  ]}
+                />
+              </section>
+            )}
+            <p className="ai-option-price">
+              {quote === null ? '选择可用模型后确认点数' : `本轮 ${quote} 服务点`}
+            </p>
+          </div>
+        </Modal>
+        <Modal
+          title="参考图与局部编辑"
+          open={visible && overlay === 'references'}
+          keepMounted
+          onClose={() => setOverlay(null)}
+          className="ai-options-dialog"
+        >
+          <div className="ai-options-content">
+            <div className="reference-actions">
+              <button
+                type="button"
+                className="text-button"
+                disabled={
+                  inputLocked || !caps?.references.supported || referencedCount >= referenceLimit
+                }
+                onClick={() => fileInput.current?.click()}
+              >
+                <Paperclip size={16} />
+                选择图片
+              </button>
+              <button
+                type="button"
+                className="text-button"
+                disabled={
+                  inputLocked || !caps?.references.supported || referencedCount >= referenceLimit
+                }
+                onClick={onDraw}
+              >
+                <PencilSimple size={16} />
+                画草图
+              </button>
+              {currentAsset && (
+                <button
+                  type="button"
+                  className="text-button"
+                  disabled={
+                    inputLocked ||
+                    !caps?.references.supported ||
+                    referenceIds.includes(currentAsset.id) ||
+                    referencedCount >= referenceLimit
+                  }
                   onClick={() => {
-                    setParentJobId(null);
+                    setReferenceIds((ids) => [...ids, currentAsset.id]);
                     changed();
                   }}
                 >
-                  <X size={14} />
-                </IconButton>
-              </div>
-            )}
-            <InlineError message={error} />
-            {operation !== 'transcribe' && (
-              <textarea
-                ref={promptInput}
-                aria-label="本轮创作要求"
-                disabled={inputLocked}
-                value={prompt}
-                placeholder={task.placeholder}
-                maxLength={operation === 'generate-image' ? 4000 : 1500}
-                rows={2}
-                onChange={(event) => {
-                  setPrompt(event.target.value);
-                  changed();
-                }}
-              />
-            )}
-            <div className="ai-composer-actions">
-              <span>
-                {needsArtwork && artwork
-                  ? '作品 V' + artwork.headVersion
-                  : (project?.title ?? '本地想法')}
-              </span>
-              {operation !== 'transcribe' && (
-                <IconButton
-                  label="改用语音输入，识别后再确认"
-                  disabled={inputLocked}
-                  onClick={() => changeOperation('transcribe')}
-                >
-                  <Microphone size={18} />
-                </IconButton>
+                  使用当前原图
+                </button>
               )}
-              <button
-                type="submit"
-                className="ai-send"
-                title={task.button}
-                aria-label={task.button}
-                disabled={!canSubmit}
-              >
-                {busy ? <Busy label="" /> : <ArrowUp size={20} />}
-                <span>{operation === 'transcribe' ? '识别' : '发送'}</span>
-              </button>
             </div>
-            <p className="ai-submit-note">
-              {task.hint}
-              {operation === 'generate-image' && referenceFile ? '；发送即确认上传' : ''}。
-            </p>
-            {(sizeFailure || optionsFailure || batchFailure || referenceFailure) &&
-              operation === 'generate-image' && (
-                <p className="parameter-error">
-                  {sizeFailure || optionsFailure || batchFailure || referenceFailure}
-                </p>
-              )}
-          </form>
-          {candidate && (
-            <Modal
-              title="对照调整建议"
-              subtitle="与当前草稿逐项对比，确认后才进入本地编辑记录。"
-              onClose={() => setCandidate(null)}
-            >
-              <div className="ai-proposal-review" data-motion="modal-content">
-                <p>
-                  {candidate.job.output?.kind === 'edit-plan' ? candidate.job.output.summary : ''}
-                </p>
-                <div className="proposal-differences" role="table" aria-label="参数变化">
-                  <div role="row" className="proposal-diff-heading">
-                    <span role="columnheader">参数</span>
-                    <span role="columnheader">当前</span>
-                    <span role="columnheader">建议</span>
-                  </div>
-                  {recipeDifferences(recipe, candidate.recipe).map((change) => (
-                    <div role="row" key={change.path}>
-                      <span role="cell">{change.label}</span>
-                      <span role="cell">
-                        {Number(change.before.toFixed(4))}
-                        {change.unit === 'ratio' ? '' : change.unit}
-                      </span>
-                      <strong role="cell">
-                        {Number(change.after.toFixed(4))}
-                        {change.unit === 'ratio' ? '' : change.unit}
-                      </strong>
-                    </div>
-                  ))}
-                </div>
-                {!recipeDifferences(recipe, candidate.recipe).length && (
-                  <p className="control-note">基础与新版数值参数没有变化。</p>
-                )}
-                {!!additionalRecipeChanges(recipe, candidate.recipe).length && (
-                  <p className="parameter-error">
-                    完整候选还与当前的{' '}
-                    {additionalRecipeChanges(recipe, candidate.recipe).join('、')}{' '}
-                    不同；确认将一起替换，可撤销。
-                  </p>
-                )}
-                <p className="control-note">
-                  云端版本不会自动改写。预览后可以继续精修，再由你保存新版本。
-                </p>
-                <button
-                  className="button button-primary"
+            <input
+              ref={fileInput}
+              className="sr-only"
+              type="file"
+              accept="image/png,image/jpeg,image/webp"
+              onChange={(event) => {
+                void chooseLocal(event.target.files?.[0]);
+                event.target.value = '';
+              }}
+            />
+            {referenceFile && (
+              <div className="pending-reference ai-reference-pending">
+                <Paperclip size={18} />
+                <span>
+                  {referenceFile.name}
+                  <small>确认发送后上传</small>
+                </span>
+                <IconButton
+                  label="移除本地参考"
+                  disabled={inputLocked}
                   onClick={() => {
-                    if (
-                      !artwork ||
-                      candidate.job.output?.kind !== 'edit-plan' ||
-                      artwork.id !== candidate.job.output.artworkId ||
-                      artwork.headVersion !== candidate.job.output.baseVersion ||
-                      candidate.snapshot !== JSON.stringify(recipe)
-                    ) {
-                      setCandidate(null);
-                      setError('作品或草稿已经改变，请重新预览这条建议。');
-                      return;
-                    }
-                    onPreview(candidate.recipe);
-                    setCandidate(null);
+                    onClearReference();
+                    setUploadedReference(null);
+                    changed();
                   }}
                 >
-                  作为可撤销的一步预览
-                </button>
+                  <X size={16} />
+                </IconButton>
               </div>
-            </Modal>
+            )}
+            <div className="reference-picker">
+              {availableAssets.map((asset) => (
+                <button
+                  key={asset.id}
+                  type="button"
+                  aria-pressed={referenceIds.includes(asset.id)}
+                  disabled={
+                    inputLocked ||
+                    !caps?.references.supported ||
+                    (!referenceIds.includes(asset.id) && referencedCount >= referenceLimit)
+                  }
+                  onClick={() => {
+                    setReferenceIds((ids) =>
+                      ids.includes(asset.id)
+                        ? ids.filter((id) => id !== asset.id)
+                        : [...ids, asset.id],
+                    );
+                    changed();
+                  }}
+                >
+                  <img
+                    src={asset.thumbnailUrl ?? '/v1/assets/' + asset.id + '/thumbnail'}
+                    alt=""
+                    loading="lazy"
+                  />
+                  <span>{asset.name}</span>
+                </button>
+              ))}
+            </div>
+            {(!caps?.references.supported || !referenceLimit) && (
+              <p className="control-note">当前模型没有开放参考图，选择已开通的模型后可使用。</p>
+            )}
+            {(caps?.references.allowMask || caps?.references.allowMarkup) && (
+              <div className="auxiliary-picker">
+                <ChoiceSelect
+                  label="遮罩 / 标注图"
+                  value={auxiliary ? auxiliary.kind + ':' + auxiliary.assetId : ''}
+                  disabled={inputLocked || !referencedCount}
+                  onValueChange={(value) => {
+                    const [kind, assetId] = value.split(':');
+                    setAuxiliary(
+                      kind && assetId ? { kind: kind as 'mask' | 'markup', assetId } : null,
+                    );
+                    changed();
+                  }}
+                  options={[
+                    { value: '', label: '不附加' },
+                    ...(caps.references.allowMask
+                      ? availableAssets.map((asset) => ({
+                          value: `mask:${asset.id}`,
+                          label: `遮罩 · ${asset.name}`,
+                        }))
+                      : []),
+                    ...(caps.references.allowMarkup
+                      ? availableAssets.map((asset) => ({
+                          value: `markup:${asset.id}`,
+                          label: `标注 · ${asset.name}`,
+                        }))
+                      : []),
+                  ]}
+                />
+                <p className="control-note">
+                  二者互斥，需先选参考图；遮罩透明区域表示修改范围，必须符合模型对尺寸和格式的要求。
+                </p>
+              </div>
+            )}
+            <p className="control-note">
+              参考只表示创作依据，不保证像素级保留。当前原图不包含尚未导出的本地调整。
+            </p>
+          </div>
+        </Modal>
+        <Modal
+          title="创作记录"
+          open={visible && overlay === 'history'}
+          keepMounted
+          onClose={() => setOverlay(null)}
+          className="ai-options-dialog"
+        >
+          <div className="ai-history-options">
+            <button
+              type="button"
+              className="ai-history-row"
+              disabled={inputLocked}
+              onClick={() => {
+                setThreadId(null);
+                setParentJobId(null);
+                setPrompt('');
+                changed();
+                setOverlay(null);
+              }}
+            >
+              <Plus size={18} />
+              新建创作
+            </button>
+            {allThreads.map((id) => {
+              const first = jobs.filter((job) => (job.threadId ?? job.id) === id).at(-1);
+              return (
+                <button
+                  key={id}
+                  type="button"
+                  className="ai-history-row"
+                  aria-pressed={visibleThread === id}
+                  disabled={inputLocked}
+                  onClick={() => {
+                    setThreadId(id);
+                    setParentJobId(null);
+                    setOverlay(null);
+                  }}
+                >
+                  <ClockCounterClockwise size={17} />
+                  <span>
+                    {(first?.request?.prompt || first?.prompt || '录音记录').slice(0, 60)}
+                  </span>
+                </button>
+              );
+            })}
+            {!allThreads.length && <p className="ai-secondary-copy">已保存的创作会显示在这里。</p>}
+            <button
+              type="button"
+              className="text-button"
+              disabled={busy}
+              onClick={() => setRefresh((value) => value + 1)}
+            >
+              <ArrowClockwise size={16} />
+              刷新记录
+            </button>
+          </div>
+        </Modal>
+        <Modal
+          title="核对原请求"
+          open={visible && overlay === 'recovery'}
+          keepMounted
+          onClose={() => setOverlay(null)}
+          className="ai-options-dialog"
+        >
+          {pendingSubmission && (
+            <section className="assistant-candidate" aria-label="创作请求恢复" aria-live="polite">
+              <h4>
+                {pendingSubmission.state === 'unknown'
+                  ? '本轮创作待平台核验'
+                  : pendingSubmission.jobId
+                    ? '本轮已受理，正在保留任务进度'
+                    : '发送结果待确认，原请求已保留'}
+              </h4>
+              <p>
+                {pendingSubmission.jobId
+                  ? pendingSubmission.state === 'unknown'
+                    ? '执行与用量结果尚未明确。请先核对本轮任务，核验完成前暂停新的付费创作。'
+                    : '刷新只读取项目内的原任务记录，不会再次提交模型请求。'
+                  : '原要求、模型、素材和生成参数已冻结。按原请求核对时，已受理的请求返回原结果；尚未受理时会继续原请求并使用原额度。'}
+              </p>
+              {!pendingSubmission.jobId && pendingSubmission.requestBody === null && (
+                <p>
+                  原始录音仅保留在页面内存中，刷新后已不可重放。请先查看任务和用量记录并联系平台核验。
+                </p>
+              )}
+              {pendingSubmission.projectId === project?.id ? (
+                <div>
+                  <button
+                    type="button"
+                    disabled={busy}
+                    onClick={() => setRefresh((old) => old + 1)}
+                  >
+                    刷新项目任务
+                  </button>
+                  <button
+                    type="button"
+                    disabled={
+                      busy || (!pendingSubmission.jobId && pendingSubmission.requestBody === null)
+                    }
+                    onClick={() => void recoverSubmission()}
+                  >
+                    {pendingSubmission.jobId ? '读取本轮结果' : '按原请求核对并继续'}
+                  </button>
+                </div>
+              ) : (
+                <p>请返回项目「{pendingSubmission.projectTitle}」恢复本轮，再开始新的创作。</p>
+              )}
+            </section>
           )}
-        </>
-      )}
-    </aside>
+          {recovery.error && (
+            <div role="alert" className="assistant-error">
+              <p>{recovery.error}</p>
+              <button type="button" className="text-button" onClick={restoreRecovery}>
+                重新读取恢复记录
+              </button>
+            </div>
+          )}
+        </Modal>
+        {confirmationDialog}
+      </aside>
+    </AIVisibilityContext.Provider>
   );
 }

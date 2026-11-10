@@ -144,10 +144,10 @@ export function VoiceCapture({ onReady }: { onReady: (base64: string | null) => 
       </div>
       <strong>
         {state === 'recording'
-          ? '我在听，慢慢说。'
+          ? '正在录音'
           : state === 'ready'
-            ? '先听一遍，再确认发送。'
-            : '把想法说出来。'}
+            ? '录音已就绪'
+            : '录制语音'}
       </strong>
       <p>最多 30 秒。录音先保留在本机，点击下方发送后才进行语音识别。</p>
       {!supported ? (

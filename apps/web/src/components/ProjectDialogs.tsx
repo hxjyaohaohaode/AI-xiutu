@@ -16,7 +16,10 @@ import type { Project, Space } from '../lib/types';
 import type { EditorState } from '../editor/useEditor';
 import { createSourceLoadGuard, type SourceLoadCheckpoint } from '../editor/source-flow';
 import { Busy, IconButton, InlineError, Modal } from './Ui';
+import { ChoiceSelect } from './ChoiceSelect';
 import { TeamActivity } from '../resources/TeamActivity';
+import { useConfirmation } from './ConfirmationDialog';
+import { confirmStableScope } from '../lib/confirmation-scope';
 
 export function NameDialog({
   kind,
@@ -34,9 +37,9 @@ export function NameDialog({
   const [error, setError] = useState<string | null>(null);
   const locked = useRef(false);
   const titles = {
-    project: '为新的灵感，建一个项目',
-    team: '创建共同创作的空间',
-    join: '加入一个团队',
+    project: '新建项目',
+    team: '创建团队',
+    join: '加入团队',
   };
   async function submit(e: FormEvent) {
     e.preventDefault();
@@ -237,7 +240,7 @@ export function ExportDialog({
       : null;
   return (
     <Modal
-      title="把这张画面，带走"
+      title="导出图片"
       subtitle="从原始照片重新计算，保留当前的每一项调整。"
       onClose={onClose}
       canClose={() => !locked.current}
@@ -385,19 +388,68 @@ export function TeamDialog({
   const [tab, setTab] = useState<'members' | 'sharing' | 'activity'>('members');
   const [activityRefresh, setActivityRefresh] = useState(0);
   const canManage = space.role === 'owner' || space.role === 'admin';
+  const confirmation = useConfirmation();
+  const mounted = useRef(false);
+  const identity = `${space.id}:${space.kind}:${space.role}`;
+  const scope = useRef({ identity, generation: 0 });
+  if (scope.current.identity !== identity)
+    scope.current = { identity, generation: scope.current.generation + 1 };
+  const latest = useRef({ space, members, busy, onClose, onMembershipChanged });
+  latest.current = { space, members, busy, onClose, onMembershipChanged };
+  useEffect(() => {
+    mounted.current = true;
+    return () => {
+      mounted.current = false;
+      scope.current.generation++;
+    };
+  }, []);
+  useEffect(() => {
+    confirmation.cancel();
+  }, [identity, confirmation.cancel]);
+  const readMember = (userId: string) => ({
+    mounted: mounted.current,
+    scope: scope.current.generation,
+    spaceId: latest.current.space.id,
+    kind: latest.current.space.kind,
+    role: latest.current.space.role,
+    member: latest.current.members.find((entry) => entry.userId === userId),
+    owner: latest.current.members.find((entry) => entry.role === 'owner'),
+    busy: latest.current.busy,
+    locked: locked.current,
+  });
   const load = async () => {
+    const generation = scope.current.generation;
     const result = await api<{ members: Member[] }>(`/spaces/${space.id}/members`);
-    setMembers(result.members);
+    if (mounted.current && generation === scope.current.generation) setMembers(result.members);
   };
   useEffect(() => {
+    const generation = scope.current.generation;
+    let active = true;
+    const isCurrent = () => active && mounted.current && generation === scope.current.generation;
     setLoading(true);
+    setMembers([]);
+    setPolicy(null);
+    setCode('');
+    setMessage('');
+    setError(null);
     load()
-      .catch((e) => setError(errorMessage(e)))
-      .finally(() => setLoading(false));
+      .catch((e) => {
+        if (isCurrent()) setError(errorMessage(e));
+      })
+      .finally(() => {
+        if (isCurrent()) setLoading(false);
+      });
     api<{ policy: SharingPolicy }>(`/spaces/${space.id}/sharing-policy`)
-      .then((v) => setPolicy(v.policy))
-      .catch((e) => setError(errorMessage(e)));
-  }, [space.id]);
+      .then((v) => {
+        if (isCurrent()) setPolicy(v.policy);
+      })
+      .catch((e) => {
+        if (isCurrent()) setError(errorMessage(e));
+      });
+    return () => {
+      active = false;
+    };
+  }, [identity]);
   async function invite() {
     if (locked.current || !canManage || space.kind !== 'team') return;
     locked.current = true;
@@ -439,50 +491,106 @@ export function TeamDialog({
     }
   }
   async function remove(member: Member) {
-    if (locked.current || !canManage || (space.role !== 'owner' && member.role === 'admin')) return;
-    if (!window.confirm(`确定移除 ${member.displayName}？后续将无法访问团队资料。`)) return;
+    const currentSpace = latest.current.space;
+    const currentMember = latest.current.members.find((entry) => entry.userId === member.userId);
+    if (
+      !mounted.current ||
+      locked.current ||
+      latest.current.busy ||
+      !currentMember ||
+      currentMember.role === 'owner' ||
+      currentSpace.kind !== 'team' ||
+      !['owner', 'admin'].includes(currentSpace.role) ||
+      (currentSpace.role !== 'owner' && currentMember.role === 'admin')
+    )
+      return;
+    const outcome = await confirmStableScope(
+      () => readMember(currentMember.userId),
+      () =>
+        confirmation.confirm({
+          description: `确定移除 ${currentMember.displayName}？后续将无法访问团队资料。`,
+          confirmLabel: '移除成员',
+          tone: 'danger',
+        }),
+    );
+    if (outcome !== 'confirmed') {
+      if (outcome === 'changed' && mounted.current)
+        setError('团队、成员或权限已经变化，请重新核对后操作。');
+      return;
+    }
+    if (!mounted.current || locked.current || latest.current.busy) return;
+    const generation = scope.current.generation;
+    const isCurrent = () => mounted.current && generation === scope.current.generation;
     locked.current = true;
     setError(null);
     setMessage('');
     setBusy(true);
     try {
-      await api(`/spaces/${space.id}/members/${member.userId}`, jsonRequest('DELETE'));
+      await api(
+        `/spaces/${currentSpace.id}/members/${currentMember.userId}`,
+        jsonRequest('DELETE'),
+      );
+      if (!isCurrent()) return;
       await load();
+      if (!isCurrent()) return;
       setActivityRefresh((n) => n + 1);
-      onMembershipChanged?.();
+      latest.current.onMembershipChanged?.();
     } catch (e) {
-      setError(errorMessage(e));
+      if (isCurrent()) setError(errorMessage(e));
     } finally {
       locked.current = false;
-      setBusy(false);
+      if (mounted.current) setBusy(false);
     }
   }
   async function transfer(member: Member) {
-    if (locked.current || space.role !== 'owner') return;
-    const owner = members.find((m) => m.role === 'owner');
+    const currentSpace = latest.current.space;
+    const currentMember = latest.current.members.find((entry) => entry.userId === member.userId);
+    const owner = latest.current.members.find((entry) => entry.role === 'owner');
     if (
-      !owner ||
-      !window.confirm(
-        `将团队所有权交给 ${member.displayName}？你将变为管理员；团队作品和素材继续保留。`,
-      )
+      !mounted.current ||
+      locked.current ||
+      latest.current.busy ||
+      currentSpace.role !== 'owner' ||
+      currentSpace.kind !== 'team' ||
+      !currentMember ||
+      currentMember.role === 'owner' ||
+      !owner
     )
       return;
+    const outcome = await confirmStableScope(
+      () => readMember(currentMember.userId),
+      () =>
+        confirmation.confirm({
+          description: `将团队所有权交给 ${currentMember.displayName}？你将变为管理员；团队作品和素材继续保留。`,
+          confirmLabel: '移交所有权',
+          tone: 'danger',
+        }),
+    );
+    if (outcome !== 'confirmed') {
+      if (outcome === 'changed' && mounted.current)
+        setError('团队所有权或成员状态已经变化，请重新核对。');
+      return;
+    }
+    if (!mounted.current || locked.current || latest.current.busy) return;
+    const generation = scope.current.generation;
+    const isCurrent = () => mounted.current && generation === scope.current.generation;
     locked.current = true;
     setBusy(true);
     setError(null);
     setMessage('');
     try {
       await api(
-        `/spaces/${space.id}/transfer-owner`,
-        jsonRequest('POST', { targetUserId: member.userId, expectedOwnerId: owner.userId }),
+        `/spaces/${currentSpace.id}/transfer-owner`,
+        jsonRequest('POST', { targetUserId: currentMember.userId, expectedOwnerId: owner.userId }),
       );
-      onMembershipChanged?.();
-      onClose();
+      if (!isCurrent()) return;
+      latest.current.onMembershipChanged?.();
+      latest.current.onClose();
     } catch (e) {
-      setError(errorMessage(e));
+      if (isCurrent()) setError(errorMessage(e));
     } finally {
       locked.current = false;
-      setBusy(false);
+      if (mounted.current) setBusy(false);
     }
   }
   async function savePolicy() {
@@ -510,222 +618,230 @@ export function TeamDialog({
     }
   }
   return (
-    <Modal
-      title={space.name}
-      subtitle="共同创作，也清楚知道谁能访问。"
-      onClose={onClose}
-      canClose={() => !locked.current}
-      className="studio-dialog team-dialog"
-      wide
-    >
-      <div className="segmented" role="group" aria-label="团队管理视图">
-        <button
-          disabled={busy}
-          aria-pressed={tab === 'members'}
-          className={tab === 'members' ? 'selected' : ''}
-          onClick={() => setTab('members')}
-        >
-          <UsersThree size={17} />
-          团队成员
-        </button>
-        <button
-          disabled={busy}
-          aria-pressed={tab === 'sharing'}
-          className={tab === 'sharing' ? 'selected' : ''}
-          onClick={() => setTab('sharing')}
-        >
-          <ShieldCheck size={17} />
-          共享规则
-        </button>
-        <button
-          disabled={busy}
-          aria-pressed={tab === 'activity'}
-          className={tab === 'activity' ? 'selected' : ''}
-          onClick={() => setTab('activity')}
-        >
-          成员动态
-        </button>
-      </div>
-      <InlineError message={error} />
-      {message && (
-        <p className="success-note" role="status">
-          {message}
-        </p>
-      )}
-      {!canManage && (
-        <p className="form-hint">你可以查看团队信息；成员与共享规则由所有者或管理员管理。</p>
-      )}
-      {tab === 'members' ? (
-        <>
-          {loading && <Busy label="正在读取团队成员" />}
-          <div className="member-list" aria-busy={loading}>
-            {members.map((member) => (
-              <div className="member-row" key={member.userId}>
-                <div className="comment-avatar">{member.displayName.slice(0, 1)}</div>
-                <div>
-                  <strong>{member.displayName}</strong>
-                  <small>{member.phoneMasked}</small>
-                </div>
-                {canManage &&
-                member.role !== 'owner' &&
-                (space.role === 'owner' || member.role !== 'admin') ? (
-                  <>
-                    <select
-                      aria-label={`${member.displayName} 的角色`}
-                      value={member.role}
-                      disabled={busy}
-                      onChange={(e) => changeMember(member, e.target.value)}
-                    >
-                      <option value="editor">编辑成员</option>
-                      <option value="reviewer">审阅者</option>
-                      <option value="viewer">浏览成员</option>
-                      {space.role === 'owner' && <option value="admin">管理员</option>}
-                    </select>
-                    {space.role === 'owner' && (
-                      <button
-                        className="text-button"
-                        disabled={busy}
-                        onClick={() => void transfer(member)}
-                      >
-                        移交所有权
-                      </button>
-                    )}
-                    <IconButton
-                      label={`移除${member.displayName}`}
-                      disabled={busy}
-                      onClick={() => remove(member)}
-                    >
-                      <Trash size={17} />
-                    </IconButton>
-                  </>
-                ) : (
-                  <span className="soft-tag">
-                    {member.role === 'owner'
-                      ? '所有者'
-                      : member.role === 'admin'
-                        ? '管理员'
-                        : member.role === 'editor'
-                          ? '编辑成员'
-                          : member.role === 'reviewer'
-                            ? '审阅者'
-                            : '浏览成员'}
-                  </span>
-                )}
-              </div>
-            ))}
-          </div>
-          {canManage && space.kind === 'team' && (
-            <div className="invite-block">
-              <h3>邀请一位队友</h3>
-              <div className="invite-actions">
-                <select
-                  aria-label="被邀请者角色"
-                  value={role}
-                  disabled={busy}
-                  onChange={(e) => setRole(e.target.value)}
-                >
-                  <option value="editor">可以编辑作品</option>
-                  <option value="reviewer">可以审阅</option>
-                  <option value="viewer">仅浏览</option>
-                  {space.role === 'owner' && <option value="admin">团队管理员</option>}
-                </select>
-                <button className="button button-secondary" disabled={busy} onClick={invite}>
-                  {busy ? (
-                    <Busy label="正在处理" />
-                  ) : (
-                    <>
-                      <Plus size={16} />
-                      生成邀请码
-                    </>
-                  )}
-                </button>
-              </div>
-              {code && (
-                <div className="generated-code">
-                  <code>{code}</code>
-                  <IconButton
-                    label="复制团队邀请码"
-                    onClick={() =>
-                      navigator.clipboard
-                        ? navigator.clipboard
-                            .writeText(code)
-                            .catch(() => setError('无法自动复制，请手动选中邀请码。'))
-                        : setError('当前环境不能自动复制，请手动选择邀请码。')
-                    }
-                  >
-                    <Copy size={18} />
-                  </IconButton>
-                </div>
-              )}
-              <p className="fine-print">
-                邀请码有效 7 天，可使用一次。请只发送给你希望邀请的成员。
-              </p>
-            </div>
-          )}
-        </>
-      ) : tab === 'activity' ? (
-        <TeamActivity spaceId={space.id} refreshToken={activityRefresh} />
-      ) : policy ? (
-        <div className="stack-form">
-          <label className="switch-row">
-            <span>允许项目参考共享</span>
-            <input
-              type="checkbox"
-              disabled={!canManage || busy}
-              checked={policy.allowReference}
-              onChange={(e) => setPolicy({ ...policy, allowReference: e.target.checked })}
-            />
-          </label>
-          <label className="switch-row">
-            <span>允许接收者复制项目</span>
-            <input
-              type="checkbox"
-              disabled={!canManage || busy}
-              checked={policy.allowCopy}
-              onChange={(e) => setPolicy({ ...policy, allowCopy: e.target.checked })}
-            />
-          </label>
-          <p className="form-hint">
-            参考共享可以撤销后续访问。接收者已经明确复制的独立副本，无法远程收回。
-          </p>
-          <div className="field-grid">
-            <label>
-              有效授权上限
-              <input
-                type="number"
-                min="0"
-                max="100"
-                step="1"
-                disabled={!canManage || busy}
-                value={policy.maxActiveGrants}
-                onChange={(e) => setPolicy({ ...policy, maxActiveGrants: Number(e.target.value) })}
-              />
-            </label>
-            <label>
-              每次复制素材上限
-              <input
-                type="number"
-                min="0"
-                max="100"
-                step="1"
-                disabled={!canManage || busy}
-                value={policy.maxCopyAssets}
-                onChange={(e) => setPolicy({ ...policy, maxCopyAssets: Number(e.target.value) })}
-              />
-            </label>
-          </div>
-          {canManage && (
-            <button className="button button-primary" disabled={busy} onClick={savePolicy}>
-              {busy ? <Busy /> : '保存共享规则'}
-            </button>
-          )}
+    <>
+      <Modal
+        title={space.name}
+        subtitle="管理成员、角色与邀请。"
+        onClose={onClose}
+        canClose={() => !locked.current}
+        className="studio-dialog team-dialog"
+        wide
+      >
+        <div className="segmented" role="group" aria-label="团队管理视图">
+          <button
+            disabled={busy}
+            aria-pressed={tab === 'members'}
+            className={tab === 'members' ? 'selected' : ''}
+            onClick={() => setTab('members')}
+          >
+            <UsersThree size={17} />
+            团队成员
+          </button>
+          <button
+            disabled={busy}
+            aria-pressed={tab === 'sharing'}
+            className={tab === 'sharing' ? 'selected' : ''}
+            onClick={() => setTab('sharing')}
+          >
+            <ShieldCheck size={17} />
+            共享规则
+          </button>
+          <button
+            disabled={busy}
+            aria-pressed={tab === 'activity'}
+            className={tab === 'activity' ? 'selected' : ''}
+            onClick={() => setTab('activity')}
+          >
+            成员动态
+          </button>
         </div>
-      ) : !error ? (
-        <Busy label="读取共享规则" />
-      ) : (
-        <p className="form-hint">共享规则读取失败，请关闭后重试。当前规则没有被更改。</p>
-      )}
-    </Modal>
+        <InlineError message={error} />
+        {message && (
+          <p className="success-note" role="status">
+            {message}
+          </p>
+        )}
+        {!canManage && (
+          <p className="form-hint">你可以查看团队信息；成员与共享规则由所有者或管理员管理。</p>
+        )}
+        {tab === 'members' ? (
+          <>
+            {loading && <Busy label="正在读取团队成员" />}
+            <div className="member-list" aria-busy={loading}>
+              {members.map((member) => (
+                <div className="member-row" key={member.userId}>
+                  <div className="comment-avatar">{member.displayName.slice(0, 1)}</div>
+                  <div>
+                    <strong>{member.displayName}</strong>
+                    <small>{member.phoneMasked}</small>
+                  </div>
+                  {canManage &&
+                  member.role !== 'owner' &&
+                  (space.role === 'owner' || member.role !== 'admin') ? (
+                    <>
+                      <ChoiceSelect
+                        ariaLabel={`${member.displayName} 的角色`}
+                        value={member.role}
+                        disabled={busy}
+                        size="compact"
+                        onValueChange={(value) => changeMember(member, value)}
+                        options={[
+                          { value: 'editor', label: '编辑成员' },
+                          { value: 'reviewer', label: '审阅者' },
+                          { value: 'viewer', label: '浏览成员' },
+                          ...(space.role === 'owner' ? [{ value: 'admin', label: '管理员' }] : []),
+                        ]}
+                      />
+                      {space.role === 'owner' && (
+                        <button
+                          className="text-button"
+                          disabled={busy}
+                          onClick={() => void transfer(member)}
+                        >
+                          移交所有权
+                        </button>
+                      )}
+                      <IconButton
+                        label={`移除${member.displayName}`}
+                        disabled={busy}
+                        onClick={() => remove(member)}
+                      >
+                        <Trash size={17} />
+                      </IconButton>
+                    </>
+                  ) : (
+                    <span className="soft-tag">
+                      {member.role === 'owner'
+                        ? '所有者'
+                        : member.role === 'admin'
+                          ? '管理员'
+                          : member.role === 'editor'
+                            ? '编辑成员'
+                            : member.role === 'reviewer'
+                              ? '审阅者'
+                              : '浏览成员'}
+                    </span>
+                  )}
+                </div>
+              ))}
+            </div>
+            {canManage && space.kind === 'team' && (
+              <div className="invite-block">
+                <h3>邀请一位队友</h3>
+                <div className="invite-actions">
+                  <ChoiceSelect
+                    ariaLabel="被邀请者角色"
+                    value={role}
+                    disabled={busy}
+                    onValueChange={setRole}
+                    options={[
+                      { value: 'editor', label: '可以编辑作品' },
+                      { value: 'reviewer', label: '可以审阅' },
+                      { value: 'viewer', label: '仅浏览' },
+                      ...(space.role === 'owner' ? [{ value: 'admin', label: '团队管理员' }] : []),
+                    ]}
+                  />
+                  <button className="button button-secondary" disabled={busy} onClick={invite}>
+                    {busy ? (
+                      <Busy label="正在处理" />
+                    ) : (
+                      <>
+                        <Plus size={16} />
+                        生成邀请码
+                      </>
+                    )}
+                  </button>
+                </div>
+                {code && (
+                  <div className="generated-code">
+                    <code>{code}</code>
+                    <IconButton
+                      label="复制团队邀请码"
+                      onClick={() =>
+                        navigator.clipboard
+                          ? navigator.clipboard
+                              .writeText(code)
+                              .catch(() => setError('无法自动复制，请手动选中邀请码。'))
+                          : setError('当前环境不能自动复制，请手动选择邀请码。')
+                      }
+                    >
+                      <Copy size={18} />
+                    </IconButton>
+                  </div>
+                )}
+                <p className="fine-print">
+                  邀请码有效 7 天，可使用一次。请只发送给你希望邀请的成员。
+                </p>
+              </div>
+            )}
+          </>
+        ) : tab === 'activity' ? (
+          <TeamActivity spaceId={space.id} refreshToken={activityRefresh} />
+        ) : policy ? (
+          <div className="stack-form">
+            <label className="switch-row">
+              <span>允许项目参考共享</span>
+              <input
+                type="checkbox"
+                disabled={!canManage || busy}
+                checked={policy.allowReference}
+                onChange={(e) => setPolicy({ ...policy, allowReference: e.target.checked })}
+              />
+            </label>
+            <label className="switch-row">
+              <span>允许接收者复制项目</span>
+              <input
+                type="checkbox"
+                disabled={!canManage || busy}
+                checked={policy.allowCopy}
+                onChange={(e) => setPolicy({ ...policy, allowCopy: e.target.checked })}
+              />
+            </label>
+            <p className="form-hint">
+              参考共享可以撤销后续访问。接收者已经明确复制的独立副本，无法远程收回。
+            </p>
+            <div className="field-grid">
+              <label>
+                有效授权上限
+                <input
+                  type="number"
+                  min="0"
+                  max="100"
+                  step="1"
+                  disabled={!canManage || busy}
+                  value={policy.maxActiveGrants}
+                  onChange={(e) =>
+                    setPolicy({ ...policy, maxActiveGrants: Number(e.target.value) })
+                  }
+                />
+              </label>
+              <label>
+                每次复制素材上限
+                <input
+                  type="number"
+                  min="0"
+                  max="100"
+                  step="1"
+                  disabled={!canManage || busy}
+                  value={policy.maxCopyAssets}
+                  onChange={(e) => setPolicy({ ...policy, maxCopyAssets: Number(e.target.value) })}
+                />
+              </label>
+            </div>
+            {canManage && (
+              <button className="button button-primary" disabled={busy} onClick={savePolicy}>
+                {busy ? <Busy /> : '保存共享规则'}
+              </button>
+            )}
+          </div>
+        ) : !error ? (
+          <Busy label="读取共享规则" />
+        ) : (
+          <p className="form-hint">共享规则读取失败，请关闭后重试。当前规则没有被更改。</p>
+        )}
+      </Modal>
+      {confirmation.dialog}
+    </>
   );
 }
 
@@ -806,22 +922,21 @@ export function CopyProjectDialog({
         </label>
         <label>
           目标空间
-          <select
+          <ChoiceSelect
+            ariaLabel="目标空间"
             value={target}
             disabled={busy || !destinations.length}
-            onChange={(e) => {
-              setTarget(e.target.value);
+            placeholder="没有可写入的目标空间"
+            onValueChange={(value) => {
+              setTarget(value);
               setKey(secureUuid());
             }}
-          >
-            {!destinations.length && <option value="">没有可写入的目标空间</option>}
-            {destinations.map((space) => (
-              <option key={space.id} value={space.id}>
-                {space.name}
-                {space.kind === 'personal' ? '（个人）' : '（团队）'}
-              </option>
-            ))}
-          </select>
+            options={destinations.map((space) => ({
+              value: space.id,
+              label: space.name,
+              description: space.kind === 'personal' ? '个人空间' : '团队空间',
+            }))}
+          />
         </label>
         {!destinations.length && (
           <p className="form-hint" role="status">
@@ -931,14 +1046,16 @@ export function ShareDialog({ project, onClose }: { project: Project; onClose: (
         <div className="field-grid">
           <label>
             共享方式
-            <select
+            <ChoiceSelect
+              ariaLabel="共享方式"
               disabled={busy || !canManage}
               value={mode}
-              onChange={(e) => setMode(e.target.value as 'reference' | 'copy')}
-            >
-              <option value="reference">参考：浏览与评论</option>
-              <option value="copy">允许复制独立项目</option>
-            </select>
+              onValueChange={setMode}
+              options={[
+                { value: 'reference', label: '参考', description: '允许浏览与评论' },
+                { value: 'copy', label: '允许复制', description: '可复制为独立项目' },
+              ]}
+            />
           </label>
           <label>
             有效天数

@@ -1,4 +1,14 @@
+import { MotionDetails } from '../motion/Presence';
 import type { AssistantCandidate, AssistantGrant, AssistantWorkspace } from '@ai-xiutu/contracts';
+import { StudioGlyph, type StudioGlyphName } from '../components/StudioGlyph';
+
+const sectionGlyph: Record<AssistantWorkspace['sections'][number]['type'], StudioGlyphName> = {
+  clarification: 'ai',
+  budget: 'usage',
+  references: 'works',
+  parameters: 'editor',
+  candidates: 'compare',
+};
 
 export function WorkspaceCards({
   spec,
@@ -22,7 +32,10 @@ export function WorkspaceCards({
       <h3>{spec.title}</h3>
       {spec.sections.map((section, index) => (
         <article key={`${index}:${section.type}`} className="assistant-candidate">
-          <h4>{section.title}</h4>
+          <h4>
+            <StudioGlyph name={sectionGlyph[section.type]} size={16} />
+            {section.title}
+          </h4>
           {section.type === 'clarification' && (
             <>
               <p>{section.question}</p>
@@ -82,13 +95,14 @@ export function WorkspaceCards({
                 <div key={candidate.id} className="workspace-candidate">
                   <p>{candidate.summary}</p>
                   {candidate.kind === 'generation' && (
-                    <details>
+                    <MotionDetails>
                       <summary>生图要求</summary>
                       <p>{candidate.prompt}</p>
-                    </details>
+                    </MotionDetails>
                   )}
                   <div>
                     <button
+                      className="ai-candidate-primary"
                       disabled={
                         disabled ||
                         !canExecute ||

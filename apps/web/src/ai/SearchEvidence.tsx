@@ -1,10 +1,13 @@
-import { useState } from 'react';
+import { MotionDetails } from '../motion/Presence';
+import { useContext, useEffect, useState } from 'react';
 import {
   assistantSearchEvidenceSchema,
   type AssistantCloudResource,
   type AssistantSearchEvidence,
 } from '@ai-xiutu/contracts';
 import { Modal } from '../components/Ui';
+import { AIVisibilityContext } from './AIVisibility';
+import { useRetainedDialogValue } from './useRetainedDialogValue';
 import './live-assistant.css';
 
 interface ReferenceControls {
@@ -22,7 +25,12 @@ export function CloudImageResults({
   resources: AssistantCloudResource[];
 }) {
   const [preview, setPreview] = useState<AssistantCloudResource | null>(null);
+  const displayedPreview = useRetainedDialogValue(preview);
   const [unavailable, setUnavailable] = useState(false);
+  const visible = useContext(AIVisibilityContext);
+  useEffect(() => {
+    if (!visible) setPreview(null);
+  }, [visible]);
   const thumbnail = (id: string) => `/v1/assets/${encodeURIComponent(id)}/thumbnail`;
   const canSelect = (id: string) => !disabled && (selected.includes(id) || selected.length < 8);
   const label = (item: AssistantCloudResource) => item.title || item.name;
@@ -62,30 +70,35 @@ export function CloudImageResults({
           </li>
         ))}
       </ul>
-      {preview && (
-        <Modal title={label(preview)} onClose={() => setPreview(null)}>
+      {displayedPreview && (
+        <Modal
+          title={label(displayedPreview)}
+          open={visible && !!preview}
+          onClose={() => setPreview(null)}
+        >
           <div className="assistant-cloud-detail">
             {unavailable ? (
               <p role="alert">图片暂不可查看，请检查素材状态和访问权限。</p>
             ) : (
               <img
-                src={thumbnail(preview.id)}
-                alt={label(preview)}
+                src={thumbnail(displayedPreview.id)}
+                alt={label(displayedPreview)}
                 onError={() => setUnavailable(true)}
               />
             )}
-            <p>{details(preview)}</p>
+            <p>{details(displayedPreview)}</p>
             {onSelect && (
               <button
                 type="button"
                 className="button button-primary"
-                disabled={unavailable || !canSelect(preview.id)}
+                disabled={unavailable || !canSelect(displayedPreview.id)}
                 onClick={() => {
+                  if (!visible || !preview) return;
                   onSelect(preview.id);
                   setPreview(null);
                 }}
               >
-                {selected.includes(preview.id) ? '移出参考' : '选为参考'}
+                {selected.includes(displayedPreview.id) ? '移出参考' : '选为参考'}
               </button>
             )}
           </div>
@@ -108,7 +121,7 @@ export function SearchEvidence({
   return (
     <div className="assistant-search-evidence">
       {safe.map((item, index) => (
-        <details key={`${item.kind}:${item.query}:${index}`} open>
+        <MotionDetails key={`${item.kind}:${item.query}:${index}`} defaultOpen>
           <summary>
             {item.kind === 'cloud' ? '云端图片' : '公开来源'} · {item.query}
           </summary>
@@ -144,7 +157,7 @@ export function SearchEvidence({
               {!item.images.length && !item.sources.length && <p>本次未取得可引用的公开结果。</p>}
             </>
           )}
-        </details>
+        </MotionDetails>
       ))}
     </div>
   );

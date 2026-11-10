@@ -1,3 +1,5 @@
+import { MotionDetails } from '../motion/Presence';
+import { ChoiceSelect } from '../components/ChoiceSelect';
 import { useEffect, useRef, useState } from 'react';
 import {
   ArrowUp,
@@ -56,17 +58,13 @@ export function BlendPicker({
   return (
     <label className="advanced-select">
       混合模式
-      <select
-        aria-label="图层混合模式"
+      <ChoiceSelect
+        ariaLabel="图层混合模式"
+        size="compact"
         value={value}
-        onChange={(event) => onChange(event.target.value as BlendModeV3)}
-      >
-        {BLEND_MODES_V3.map((mode) => (
-          <option key={mode} value={mode}>
-            {blendLabels[mode]}
-          </option>
-        ))}
-      </select>
+        onValueChange={(value) => onChange(value as BlendModeV3)}
+        options={BLEND_MODES_V3.map((mode) => ({ value: mode, label: blendLabels[mode] }))}
+      />
     </label>
   );
 }
@@ -302,7 +300,7 @@ export function PaintControls({
             数位笔压感与平滑边缘（大于 1 px 的画笔）
           </label>
           {settings.mode === 'paint' && (
-            <details className="advanced-disclosure" open>
+            <MotionDetails className="advanced-disclosure" defaultOpen>
               <summary>
                 <i className="paint-color-chip" style={{ background: rgbaHex(settings.color) }} />
                 画笔颜色与 Alpha
@@ -327,7 +325,7 @@ export function PaintControls({
                   使用所取颜色
                 </button>
               </div>
-            </details>
+            </MotionDetails>
           )}
           {settings.mode === 'clone' && (
             <>
@@ -351,7 +349,7 @@ export function PaintControls({
             value={layer.blendMode}
             onChange={(blendMode) => patch({ blendMode }, '切换绘制混合模式')}
           />
-          <details className="advanced-disclosure">
+          <MotionDetails className="advanced-disclosure">
             <summary>逐像素落点</summary>
             <ParameterShelf
               label="原图像素位置"
@@ -406,31 +404,27 @@ export function PaintControls({
                 </button>
               )}
             </div>
-          </details>
-          <details className="advanced-disclosure">
+          </MotionDetails>
+          <MotionDetails className="advanced-disclosure">
             <summary>限制绘制范围</summary>
             <label className="advanced-select">
               使用局部选区
-              <select
-                aria-label="绘制范围来源"
+              <ChoiceSelect
+                ariaLabel="绘制范围来源"
+                size="compact"
                 value=""
-                onChange={(event) => {
-                  const selected = currentV3(editor).regionEdits.find(
-                    (r) => r.id === event.target.value,
-                  );
+                onValueChange={(value) => {
+                  const selected = currentV3(editor).regionEdits.find((r) => r.id === value);
                   if (selected) {
                     patch({ mask: structuredClone(selected.mask) }, '复制绘制范围');
                     setPath([]);
                   }
                 }}
-              >
-                <option value="">选择一个范围副本</option>
-                {recipe.regionEdits.map((r) => (
-                  <option key={r.id} value={r.id}>
-                    {r.name}
-                  </option>
-                ))}
-              </select>
+                options={[
+                  { value: '', label: '选择一个范围副本' },
+                  ...recipe.regionEdits.map((r) => ({ value: r.id, label: r.name })),
+                ]}
+              />
             </label>
             {layer.mask && (
               <>
@@ -452,8 +446,8 @@ export function PaintControls({
                 </button>
               </>
             )}
-          </details>
-          <details className="advanced-disclosure">
+          </MotionDetails>
+          <MotionDetails className="advanced-disclosure">
             <summary>图层与笔画管理</summary>
             <label className="advanced-select">
               名称
@@ -535,7 +529,7 @@ export function PaintControls({
                 <Trash size={16} />
               </IconButton>
             </div>
-          </details>
+          </MotionDetails>
           <small className="control-note">
             总笔画预算 {recipe.paintLayers.reduce((n, p) => n + p.strokes.length, 0)} /{' '}
             {MAX_V3_PAINT_STROKES}；重置参数不改已绘制的笔画。
@@ -622,7 +616,7 @@ export function LiquifyControls({ controller }: { controller: InspectorControlle
         />
         显示液化效果
       </label>
-      <details className="advanced-disclosure">
+      <MotionDetails className="advanced-disclosure">
         <summary>背景与局部保护</summary>
         <p className="control-note">
           保护范围保持原来显示像素。可以用画笔涂入，也可以从现有局部复制；边缘羽化决定过渡。
@@ -665,11 +659,12 @@ export function LiquifyControls({ controller }: { controller: InspectorControlle
         </div>
         <label className="advanced-select">
           从局部复制
-          <select
-            aria-label="液化保护来源"
+          <ChoiceSelect
+            ariaLabel="液化保护来源"
+            size="compact"
             value=""
-            onChange={(event) => {
-              const r = recipe.regionEdits.find((r) => r.id === event.target.value);
+            onValueChange={(value) => {
+              const r = recipe.regionEdits.find((r) => r.id === value);
               if (r) {
                 apply(
                   { ...recipe, warp: { ...recipe.warp, protection: structuredClone(r.mask) } },
@@ -679,14 +674,11 @@ export function LiquifyControls({ controller }: { controller: InspectorControlle
                 editor.setActiveMaskPath([]);
               }
             }}
-          >
-            <option value="">选择范围</option>
-            {recipe.regionEdits.map((r) => (
-              <option key={r.id} value={r.id}>
-                {r.name}
-              </option>
-            ))}
-          </select>
+            options={[
+              { value: '', label: '选择范围' },
+              ...recipe.regionEdits.map((r) => ({ value: r.id, label: r.name })),
+            ]}
+          />
         </label>
         {recipe.warp.protection && settings.protecting && (
           <MaskControls
@@ -700,7 +692,7 @@ export function LiquifyControls({ controller }: { controller: InspectorControlle
             }}
           />
         )}
-      </details>
+      </MotionDetails>
       <div className="advanced-row">
         <small>
           {recipe.warp.strokes.length} / {MAX_V3_WARP_STROKES} 次变形
@@ -867,7 +859,7 @@ export function ImageLayerControls({ controller }: { controller: InspectorContro
             value={layer.blendMode}
             onChange={(blendMode) => patch({ blendMode }, '切换合成混合模式')}
           />
-          <details className="advanced-disclosure">
+          <MotionDetails className="advanced-disclosure">
             <summary>合成范围与羽化</summary>
             <div className="tonal-tabs">
               {(['radial', 'linear', 'polygon', 'color-range'] as const).map((type) => (
@@ -888,24 +880,22 @@ export function ImageLayerControls({ controller }: { controller: InspectorContro
             </div>
             <label className="advanced-select">
               复制局部范围
-              <select
-                aria-label="合成蒙版来源"
+              <ChoiceSelect
+                ariaLabel="合成蒙版来源"
+                size="compact"
                 value=""
-                onChange={(event) => {
-                  const r = recipe.regionEdits.find((p) => p.id === event.target.value);
+                onValueChange={(value) => {
+                  const r = recipe.regionEdits.find((p) => p.id === value);
                   if (r) {
                     patch({ mask: structuredClone(r.mask) }, '复制合成范围');
                     setPath([]);
                   }
                 }}
-              >
-                <option value="">选择范围副本</option>
-                {recipe.regionEdits.map((r) => (
-                  <option key={r.id} value={r.id}>
-                    {r.name}
-                  </option>
-                ))}
-              </select>
+                options={[
+                  { value: '', label: '选择范围副本' },
+                  ...recipe.regionEdits.map((r) => ({ value: r.id, label: r.name })),
+                ]}
+              />
             </label>
             {layer.mask && (
               <>
@@ -927,8 +917,8 @@ export function ImageLayerControls({ controller }: { controller: InspectorContro
                 </button>
               </>
             )}
-          </details>
-          <details className="advanced-disclosure">
+          </MotionDetails>
+          <MotionDetails className="advanced-disclosure">
             <summary>图层管理</summary>
             <label className="advanced-select">
               名称
@@ -1024,7 +1014,7 @@ export function ImageLayerControls({ controller }: { controller: InspectorContro
                 <Trash size={16} />
               </IconButton>
             </div>
-          </details>
+          </MotionDetails>
         </>
       )}
     </section>

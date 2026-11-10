@@ -1,4 +1,5 @@
 import { useState, type CSSProperties } from 'react';
+import { MotionDetails } from '../motion/Presence';
 import {
   HSL_BANDS,
   createAdjustmentRegionV3,
@@ -137,10 +138,10 @@ export function ColorControls({
   return (
     <section className="color-controls-v3" data-motion="color-family">
       {family !== 'detail' && (
-        <details className="advanced-disclosure histogram-disclosure">
+        <MotionDetails className="advanced-disclosure histogram-disclosure">
           <summary>查看明度与 RGB 分布</summary>
           <Histogram image={editor.rendered} />
-        </details>
+        </MotionDetails>
       )}
       {family === 'light' && (
         <div className="tonal-tabs" aria-label="明暗类别">

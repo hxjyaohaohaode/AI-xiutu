@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import type { SourceFrame } from '@ai-xiutu/contracts';
 import {
   createRecipe,
   createRecipeV2,
@@ -151,7 +152,9 @@ export function useEditor() {
   const [originalPreview, setOriginalPreview] = useState<RGBAImage | null>(null);
   const [rendered, setRendered] = useState<RGBAImage | null>(null);
   const [renderedRecipe, setRenderedRecipe] = useState<EditorRecipe | null>(null);
-  const [liveFrame, setLiveFrame] = useState<{ image: RGBAImage; recipe: EditorRecipe } | null>(null);
+  const [liveFrame, setLiveFrame] = useState<{ image: RGBAImage; recipe: EditorRecipe } | null>(
+    null,
+  );
   const [geometryMode, setGeometryMode] = useState<
     'crop' | 'transform' | 'projective' | 'placement'
   >('crop');
@@ -173,8 +176,10 @@ export function useEditor() {
   const loadGeneration = useRef(0);
   const loadBusy = useRef(false);
   const sourceIdentity = useRef(0);
+  const sourceFrame = useRef<SourceFrame | null>(null);
   const isLoading = useCallback(() => loadBusy.current, []);
   const getSourceIdentity = useCallback(() => sourceIdentity.current, []);
+  const getSourceFrame = useCallback(() => (loadBusy.current ? null : sourceFrame.current), []);
   const pending = useRef(new Map<number, PendingExport>());
   const pumpPreview = useCallback((live: boolean) => {
     const target = live ? liveWorker.current : worker.current;
@@ -201,7 +206,11 @@ export function useEditor() {
       lane.inFlight = null;
       // A gesture may update faster than a frame finishes. Accept ordered feedback,
       // but never replace a settled frame or show another source's pixels.
-      if (result && completed.source === sourceIdentity.current && completed.version > settledVersion.current)
+      if (
+        result &&
+        completed.source === sourceIdentity.current &&
+        completed.version > settledVersion.current
+      )
         setLiveFrame({ image: result, recipe: completed.recipe });
       pumpPreview(true);
     };
@@ -288,7 +297,10 @@ export function useEditor() {
     recipeRef.current = next;
     setRecipe(next);
   }, []);
-  const previewRecipe = useCallback((next: EditorRecipe) => replaceRecipe(next, true), [replaceRecipe]);
+  const previewRecipe = useCallback(
+    (next: EditorRecipe) => replaceRecipe(next, true),
+    [replaceRecipe],
+  );
   const resetHistory = useCallback(
     (next: EditorRecipe) => {
       const items = [{ recipe: next, label: '导入时状态' }];
@@ -459,9 +471,19 @@ export function useEditor() {
           [full.data.buffer],
         );
         liveWorker.current?.postMessage({
-          type: 'interactive-source', image: preview, sourceDimensions: sourceRef.current, images,
+          type: 'interactive-source',
+          image: preview,
+          sourceDimensions: sourceRef.current,
+          images,
         });
         sourceIdentity.current += 1;
+        sourceFrame.current = Object.freeze({
+          coordinates: 'source-normalized',
+          orientation: 'normalized',
+          width: full.width,
+          height: full.height,
+          contentHash: bytesToHex(fingerprint),
+        });
         settledLane.current.pending = null;
         liveLane.current.pending = null;
         settledVersion.current = 0;
@@ -702,7 +724,12 @@ export function useEditor() {
   }, [replaceRecipe]);
 
   const exportImage = useCallback(
-    async (format: 'png' | 'jpeg' | 'webp', quality = 0.94, originalOnly = false, cutout?: CutoutSettings) => {
+    async (
+      format: 'png' | 'jpeg' | 'webp',
+      quality = 0.94,
+      originalOnly = false,
+      cutout?: CutoutSettings,
+    ) => {
       if (!sourceRef.current || !worker.current) throw new Error('请先导入图片。');
       const id = ++requestId.current;
       const output = await new Promise<ExportResult>((resolve, reject) => {
@@ -866,6 +893,7 @@ export function useEditor() {
     loading,
     isLoading,
     getSourceIdentity,
+    getSourceFrame,
     error,
     canUndo: hasUncommittedPreview || historyIndex > 0,
     canRedo: !hasUncommittedPreview && historyIndex < history.length - 1,

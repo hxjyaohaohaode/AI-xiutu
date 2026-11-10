@@ -1,4 +1,5 @@
 import { useEffect, useId, useRef, useState, type PointerEvent } from 'react';
+import { MotionDetails } from '../motion/Presence';
 import { Copy, Plus, Check } from '@phosphor-icons/react';
 import { IconButton, InlineError } from './Ui';
 import '../editor/editor-controls.css';
@@ -414,7 +415,7 @@ export function ColorPicker({
           </button>
         ))}
       </div>
-      <details className="editor-section color-saved">
+      <MotionDetails className="editor-section color-saved">
         <summary>
           <span>我的色板</span>
           <small>{swatches.length}/16</small>
@@ -437,7 +438,7 @@ export function ColorPicker({
           </div>
           <small>保存在当前浏览器；不会自动修改照片。</small>
         </div>
-      </details>
+      </MotionDetails>
       <small className="palette-precision-note">连续色谱 · sRGB / RGBA8 · 色值与透明度可精调</small>
       <span className="sr-only" role="status">
         {copied ? '颜色已复制' : ''}

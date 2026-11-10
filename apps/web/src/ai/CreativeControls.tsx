@@ -1,4 +1,6 @@
+import { MotionDetails } from '../motion/Presence';
 import type { AssistantGrant, CreativeBrief } from '@ai-xiutu/contracts';
+import { ChoiceSelect } from '../components/ChoiceSelect';
 
 export interface CreativeSettings {
   mode: 'suggest' | 'confirm' | 'auto';
@@ -38,8 +40,8 @@ export function CreativeControls({
     onChange({ ...value, brief: { ...value.brief, ...patch } });
   return (
     <div className="creative-controls">
-      <details className="assistant-context">
-        <summary>创作方向 · {value.brief.feeling || '用自己的话描述感觉'}</summary>
+      <MotionDetails className="assistant-context">
+        <summary>创作方向{value.brief.feeling ? ` · ${value.brief.feeling}` : ''}</summary>
         <fieldset disabled={disabled} className="creative-fields">
           <label>
             想要的感觉
@@ -77,75 +79,81 @@ export function CreativeControls({
             />
           </label>
           <div className="creative-pair">
-            <label>
-              变化程度
-              <select
-                value={value.brief.strength}
-                onChange={(e) => brief({ strength: e.target.value as CreativeBrief['strength'] })}
-              >
-                <option value="subtle">轻微自然</option>
-                <option value="balanced">适度调整</option>
-                <option value="bold">大胆创作</option>
-              </select>
-            </label>
-            <label>
-              参考图主要用于
-              <select
-                value={value.brief.referenceIntent}
-                onChange={(e) =>
-                  brief({ referenceIntent: e.target.value as CreativeBrief['referenceIntent'] })
-                }
-              >
-                <option value="style">借鉴风格</option>
-                <option value="subject">保留主体</option>
-                <option value="composition">借鉴构图</option>
-                <option value="all">整体参考</option>
-              </select>
-            </label>
+            <ChoiceSelect
+              label="变化程度"
+              value={value.brief.strength}
+              disabled={disabled}
+              onValueChange={(strength) =>
+                brief({ strength: strength as CreativeBrief['strength'] })
+              }
+              options={[
+                { value: 'subtle', label: '轻微自然' },
+                { value: 'balanced', label: '适度调整' },
+                { value: 'bold', label: '大胆创作' },
+              ]}
+            />
+            <ChoiceSelect
+              label="参考图主要用于"
+              value={value.brief.referenceIntent}
+              disabled={disabled}
+              onValueChange={(referenceIntent) =>
+                brief({ referenceIntent: referenceIntent as CreativeBrief['referenceIntent'] })
+              }
+              options={[
+                { value: 'style', label: '借鉴风格' },
+                { value: 'subject', label: '保留主体' },
+                { value: 'composition', label: '借鉴构图' },
+                { value: 'all', label: '整体参考' },
+              ]}
+            />
           </div>
         </fieldset>
-      </details>
-      <details className="assistant-context">
+      </MotionDetails>
+      <MotionDetails className="assistant-context">
         <summary>
           执行方式 ·{' '}
           {{ suggest: '只建议', confirm: '预览确认', auto: '预算内自动执行' }[value.mode]}
         </summary>
         <fieldset disabled={disabled || !!grant} className="creative-fields">
-          <label>
-            AI 可以做到哪一步
-            <select
-              value={value.mode}
-              onChange={(e) =>
-                onChange({ ...value, mode: e.target.value as CreativeSettings['mode'] })
-              }
-            >
-              <option value="suggest">只建议，保持当前图片</option>
-              <option value="confirm">预览确认后执行</option>
-              <option value="auto">在授权范围与预算内执行</option>
-            </select>
-          </label>
-          <div className="creative-pair">
-            <label>
-              本次最多服务点
-              <input
-                type="number"
-                min={1}
-                max={100000}
-                value={value.unitLimit}
-                onChange={(e) => onChange({ ...value, unitLimit: Number(e.target.value) })}
-              />
-            </label>
-            <label>
-              最多操作次数
-              <input
-                type="number"
-                min={1}
-                max={100}
-                value={value.stepLimit}
-                onChange={(e) => onChange({ ...value, stepLimit: Number(e.target.value) })}
-              />
-            </label>
-          </div>
+          <ChoiceSelect
+            label="AI 可以做到哪一步"
+            value={value.mode}
+            disabled={disabled || !!grant}
+            onValueChange={(mode) => onChange({ ...value, mode: mode as CreativeSettings['mode'] })}
+            options={[
+              { value: 'suggest', label: '只建议', description: '提供建议，保持当前图片' },
+              { value: 'confirm', label: '预览确认', description: '确认候选后再修改图片' },
+              {
+                value: 'auto',
+                label: '预算内自动执行',
+                description: '需要明确授权范围、点数和操作次数',
+              },
+            ]}
+          />
+          {value.mode === 'auto' && (
+            <div className="creative-pair">
+              <label>
+                本次最多服务点
+                <input
+                  type="number"
+                  min={1}
+                  max={100000}
+                  value={value.unitLimit}
+                  onChange={(e) => onChange({ ...value, unitLimit: Number(e.target.value) })}
+                />
+              </label>
+              <label>
+                最多操作次数
+                <input
+                  type="number"
+                  min={1}
+                  max={100}
+                  value={value.stepLimit}
+                  onChange={(e) => onChange({ ...value, stepLimit: Number(e.target.value) })}
+                />
+              </label>
+            </div>
+          )}
         </fieldset>
         {grant ? (
           <div className="creative-grant" role="status">
@@ -170,9 +178,11 @@ export function CreativeControls({
         <p className="creative-explanation">
           {value.mode === 'auto'
             ? '参数候选会自动保存为新版本，可从历史恢复。生图仍需选择模型与规格，费用计入本次预算；超过范围、版本冲突或结果未知时停止。'
-            : '模型调用消耗服务点。修改图片前保留候选与对比；授权到期或停止后不再继续操作。'}
+            : value.mode === 'suggest'
+              ? '只提供建议，不执行图片修改。模型调用仍会使用服务点。'
+              : '先查看候选，确认后进入编辑器。模型调用使用服务点。'}
         </p>
-      </details>
+      </MotionDetails>
     </div>
   );
 }

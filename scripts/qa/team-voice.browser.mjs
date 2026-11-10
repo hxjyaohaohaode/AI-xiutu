@@ -32,14 +32,17 @@ const vendor = new WebSocketServer({ port: 0, host: '127.0.0.1' });
 await new Promise((done) => vendor.once('listening', done));
 const sockets = [],
   inbound = [];
+let holdSoloReady = false,
+  holdSoloClose = false;
 vendor.on('connection', (ws) => {
+  const solo = sockets.length > 0;
   sockets.push(ws);
   ws.on('message', (raw) => {
     const event = JSON.parse(String(raw));
     inbound.push(event);
-    if (event.type === 'session.start')
+    if (event.type === 'session.start' && (!solo || !holdSoloReady))
       ws.send(JSON.stringify({ type: 'session.started', session: { id: 'team-browser-live' } }));
-    if (event.type === 'session.close')
+    if (event.type === 'session.close' && (!solo || !holdSoloClose))
       ws.send(JSON.stringify({ type: 'session.closed', usage: { seconds: 5 } }));
   });
 });
@@ -61,6 +64,55 @@ async function check(name, run) {
   } catch (error) {
     report.cases.push({ name, state: 'failed', message: String(error) });
     throw error;
+  }
+}
+async function openAssistant(page) {
+  await page
+    .locator('.floating-tool-dock')
+    .getByRole('button', { name: 'AI 助手', exact: true })
+    .click();
+  await page.getByLabel('向智能体描述修改需求').waitFor();
+  return page.locator('.live-assistant');
+}
+async function openAssistantSettings(page) {
+  await page
+    .locator('.live-assistant')
+    .getByRole('button', { name: '助手设置', exact: true })
+    .click();
+  const dialog = page.getByRole('dialog', { name: '助手设置', exact: true });
+  await dialog.waitFor();
+  return dialog;
+}
+async function choose(scope, label, option) {
+  const control = scope.getByRole('combobox', { name: label, exact: true });
+  await control.click();
+  const list = scope.getByRole('listbox', { name: label, exact: true });
+  await list.getByText(option, { exact: true }).click();
+  await list.waitFor({ state: 'hidden' });
+}
+async function closeAIPanel(page) {
+  const mobile = page
+    .locator('.live-assistant')
+    .getByRole('button', { name: '收起 AI 面板', exact: true });
+  if (await mobile.isVisible()) await mobile.click();
+  else
+    await page
+      .locator('[data-panel-id="ai"]')
+      .getByRole('button', { name: '收起AI 助手，可从工具栏重新打开', exact: true })
+      .click();
+}
+async function changeView(page, label) {
+  const direct = page
+    .getByRole('navigation', { name: '工作视图', exact: true })
+    .getByRole('button', { name: label, exact: true });
+  if (await direct.isVisible()) await direct.click();
+  else {
+    await page.getByRole('button', { name: '切换工作视图', exact: true }).click();
+    await page
+      .getByRole('dialog', { name: '工作视图', exact: true })
+      .getByRole('navigation', { name: '切换工作视图', exact: true })
+      .getByRole('button', { name: new RegExp('^' + label) })
+      .click();
   }
 }
 try {
@@ -288,8 +340,8 @@ try {
     'open microphones share continuous audio with one invited AI after consent',
     async () => {
       await owner.panel.getByText('邀请 AI 加入', { exact: true }).click();
-      await owner.panel.getByLabel('团队语音模型').selectOption('gpt-live-1');
-      await owner.panel.getByLabel('团队思考模型').selectOption(model);
+      await choose(owner.panel, '团队语音模型', '本地 Live 协议');
+      await choose(owner.panel, '团队思考模型', '本地团队思考模型');
       await owner.panel.getByRole('button', { name: '确认邀请 AI' }).click();
       await editor.panel.getByText('团队 AI 已加入', { exact: true }).waitFor();
       await wait(
@@ -359,10 +411,7 @@ try {
           path: resolve(artifact, 'team-' + target.page.viewportSize().width + '.png'),
         });
       }
-      await owner.page
-        .getByRole('navigation', { name: '工作视图', exact: true })
-        .getByRole('button', { name: '文档', exact: true })
-        .click();
+      await changeView(owner.page, '文档');
       const ongoing = owner.page.getByRole('region', { name: '当前团队通话', exact: true });
       await ongoing.getByText('麦克风已开启', { exact: true }).waitFor();
       assert.equal(
@@ -402,10 +451,17 @@ try {
     const page = owner.page;
     await owner.panel.getByRole('status', { name: '团队 AI 邀请恢复' }).waitFor();
     await page.locator('.collaboration-summary').click();
-    await page.getByRole('button', { name: 'AI共创', exact: true }).click();
-    await page.getByRole('button', { name: '实时协作', exact: true }).click();
-    const panel = page.locator('.live-assistant');
-    await panel.getByRole('heading', { name: '原团队 AI 邀请仍待确认', exact: true }).waitFor();
+    const panel = await openAssistant(page);
+    await panel
+      .locator('.ai-pending-strip')
+      .getByText('语音结果待确认，暂停发起新通话', { exact: true })
+      .waitFor();
+    await panel.getByRole('button', { name: '核对请求', exact: true }).click();
+    const recovery = page.getByRole('dialog', { name: '核对原请求', exact: true });
+    await recovery.getByRole('heading', { name: '原团队 AI 邀请仍待确认', exact: true }).waitFor();
+    await recovery.getByRole('button', { name: '关闭窗口', exact: true }).click();
+    await recovery.waitFor({ state: 'hidden' });
+    await panel.getByRole('button', { name: '打开实时语音', exact: true }).click();
     assert.equal(
       await panel.getByRole('button', { name: '开始实时通话', exact: true }).isEnabled(),
       false,
@@ -425,20 +481,23 @@ try {
       await editor.panel.getByRole('button', { name: '离开团队语音', exact: true }).click();
       await page.setViewportSize({ width: 1440, height: 960 });
       await page.locator('.collaboration-summary').click();
-      await page.getByRole('button', { name: 'AI共创', exact: true }).click();
-      await page.getByRole('button', { name: '实时协作', exact: true }).click();
-      const panel = page.locator('.live-assistant');
-      await panel.getByLabel('思考与工具模型').selectOption(model);
-      const sharing = panel.locator('.assistant-context > summary').filter({ hasText: '共享范围' });
+      const panel = await openAssistant(page);
+      await panel.getByRole('button', { name: '打开实时语音', exact: true }).click();
+      const settings = await openAssistantSettings(page);
+      await choose(settings, '助手模型', '本地团队思考模型');
+      await choose(settings, '语音模型', '本地 Live 协议');
+      const sharing = settings
+        .locator('.assistant-context > summary')
+        .filter({ hasText: '共享范围' });
       await sharing.click();
-      await panel.getByLabel('允许公开网络检索，保留来源链接').check();
+      await settings.getByLabel('允许公开网络检索，保留来源链接').check();
       await sharing.click();
+      await settings.getByRole('button', { name: '关闭窗口', exact: true }).click();
+      await settings.waitFor({ state: 'hidden' });
+      const beforeSoloStarts = inbound.filter((event) => event.type === 'session.start').length;
+      holdSoloReady = true;
       await panel.getByRole('button', { name: '开始实时通话', exact: true }).click();
-      await panel.getByRole('button', { name: '打断播报', exact: true }).waitFor();
-      await wait(
-        async () => await panel.getByRole('button', { name: '打断播报', exact: true }).isEnabled(),
-        'solo active',
-      );
+      await panel.getByText('正在连接麦克风与语音服务…', { exact: true }).waitFor();
       const endCall = panel.getByRole('button', { name: '结束实时通话', exact: true });
       const hangupExposed = () =>
         endCall.evaluate((button) => {
@@ -447,8 +506,82 @@ try {
           return !!hit && button.contains(hit);
         });
       assert.ok(await hangupExposed(), 'hang-up is reachable when the call starts');
+      await wait(() => sockets.length === 2, 'solo provider connection');
+      await wait(
+        () =>
+          inbound.filter((event) => event.type === 'session.start').length === beforeSoloStarts + 1,
+        'the solo handshake reached the local provider before readiness is released',
+      );
       assert.equal(sockets.length, 2);
       const voice = sockets[1];
+      const beforeHiddenFrames = inbound.filter(
+        (event) => event.type === 'session.input_audio.append',
+      ).length;
+      await closeAIPanel(page);
+      const ongoing = page.locator('.ai-activity-banner');
+      await ongoing.getByText('AI 语音正在连接', { exact: true }).waitFor();
+      assert.equal(
+        await ongoing.getByRole('button', { name: '静音麦克风', exact: true }).isEnabled(),
+        false,
+        'mute is unavailable before the provider is ready',
+      );
+      assert.equal(
+        await ongoing.getByRole('button', { name: '结束实时通话', exact: true }).isEnabled(),
+        true,
+        'a pending connection can be ended without reopening the panel',
+      );
+      holdSoloReady = false;
+      voice.send(JSON.stringify({ type: 'session.started', session: { id: 'team-browser-live' } }));
+      await ongoing.getByText('AI 通话进行中', { exact: true }).waitFor();
+      assert.equal(await panel.count(), 1, 'voice owner stays mounted while its panel is hidden');
+      assert.equal(await panel.isVisible(), false);
+      await wait(
+        () =>
+          inbound.filter((event) => event.type === 'session.input_audio.append').length >
+          beforeHiddenFrames + 4,
+        'microphone continues with an explicit activity banner',
+      );
+      assert.equal(voice.readyState, WebSocket.OPEN);
+      const beforeMute = inbound.filter(
+        (event) => event.type === 'session.input_audio.mute',
+      ).length;
+      await ongoing.getByRole('button', { name: '静音麦克风', exact: true }).click();
+      await ongoing.getByText('AI 麦克风已静音', { exact: true }).waitFor();
+      await wait(
+        () =>
+          inbound.filter((event) => event.type === 'session.input_audio.mute').length ===
+          beforeMute + 1,
+        'the existing voice connection receives the banner mute',
+      );
+      assert.equal(
+        await panel
+          .getByRole('button', { name: '开启麦克风', exact: true, includeHidden: true })
+          .getAttribute('aria-pressed'),
+        'true',
+        'the hidden owner and the activity banner share the same microphone state',
+      );
+      const beforeUnmute = inbound.filter(
+        (event) => event.type === 'session.input_audio.unmute',
+      ).length;
+      await ongoing.getByRole('button', { name: '开启麦克风', exact: true }).click();
+      await ongoing.getByText('AI 通话进行中', { exact: true }).waitFor();
+      await wait(
+        () =>
+          inbound.filter((event) => event.type === 'session.input_audio.unmute').length ===
+          beforeUnmute + 1,
+        'the banner resumes the original microphone',
+      );
+      await ongoing.getByRole('button', { name: '返回 AI 助手', exact: true }).click();
+      await endCall.waitFor();
+      assert.equal(sockets.length, 2, 'returning never creates another provider connection');
+      assert.ok(await hangupExposed(), 'hang-up is reachable after returning');
+      report.soloPanelRestore = {
+        retainedMountedOwner: true,
+        continuedPcm: true,
+        additionalConnections: 0,
+        connectingControlsChecked: true,
+        bannerMuteAndUnmute: true,
+      };
       voice.send(JSON.stringify({ type: 'session.input_transcript.delta', delta: '看看光线。' }));
       voice.send(
         JSON.stringify({ type: 'session.output_transcript.delta', delta: '好，先看主光。' }),
@@ -478,18 +611,41 @@ try {
         { width: 844, height: 390 },
       ]) {
         await page.setViewportSize(viewport);
-        await panel.evaluate((element) => {
-          const scroll = element.closest('.ai-workbench');
-          if (scroll) scroll.scrollTop = 0;
-        });
+        await page.evaluate(
+          () => new Promise((done) => requestAnimationFrame(() => requestAnimationFrame(done))),
+        );
         assert.ok(await hangupExposed(), 'hang-up is exposed at ' + viewport.width + 'px');
         assert.ok(
           await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth + 1),
         );
         await page.screenshot({ path: resolve(artifact, 'solo-' + viewport.width + '.png') });
       }
-      await endCall.click();
+      holdSoloClose = true;
+      const beforeSoloClose = inbound.filter((event) => event.type === 'session.close').length;
+      await closeAIPanel(page);
+      await ongoing.getByRole('button', { name: '结束实时通话', exact: true }).click();
+      await ongoing.getByText('AI 通话正在结束', { exact: true }).waitFor();
+      assert.equal(
+        await ongoing.getByRole('button', { name: '结束实时通话', exact: true }).isEnabled(),
+        false,
+        'ending cannot dispatch another close while settlement is pending',
+      );
+      assert.equal(
+        await ongoing.getByRole('button', { name: /^(静音麦克风|开启麦克风)$/ }).isEnabled(),
+        false,
+      );
+      await wait(
+        () =>
+          inbound.filter((event) => event.type === 'session.close').length === beforeSoloClose + 1,
+        'the banner ends the original provider session exactly once',
+      );
+      holdSoloClose = false;
+      voice.send(JSON.stringify({ type: 'session.closed', usage: { seconds: 5 } }));
+      await ongoing.waitFor({ state: 'hidden' });
+      await openAssistant(page);
       await panel.getByRole('button', { name: '开始实时通话', exact: true }).waitFor();
+      assert.equal(sockets.length, 2, 'ending and returning never prepare a replacement call');
+      report.soloPanelRestore.bannerEndAndSettlement = true;
     },
   );
   assert.deepEqual(report.pageErrors, []);

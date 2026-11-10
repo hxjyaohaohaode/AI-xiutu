@@ -1,0 +1,263 @@
+.revision-tools {
+  display: grid;
+  gap: 12px;
+  min-width: 0;
+}
+.revision-tools .revision-fork-trigger {
+  justify-self: start;
+  min-height: 44px;
+}
+.revision-render {
+  min-width: 0;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-surface, 14px);
+  color: var(--ink);
+  background: var(--surface);
+}
+.revision-render > summary {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  min-height: 48px;
+  padding: 10px 15px;
+  border-radius: inherit;
+  font-size: 12px;
+  list-style: none;
+  cursor: pointer;
+}
+.revision-render > summary::-webkit-details-marker {
+  display: none;
+}
+.revision-render > summary > span {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+}
+.revision-render > summary > span:last-child {
+  flex-shrink: 0;
+  color: var(--muted);
+  font-size: 11px;
+}
+.revision-render-body {
+  padding: 0 16px 16px;
+}
+.revision-render-state {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  margin: 0 0 15px;
+  padding-top: 15px;
+  border-top: 1px solid var(--line);
+  color: var(--muted);
+  font-size: 12px;
+  line-height: 1.7;
+}
+.revision-render-state[data-state='available'] {
+  color: var(--success);
+}
+.revision-render-facts {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 16px 20px;
+  margin: 0;
+}
+.revision-render-facts dt,
+.revision-budget dt,
+.revision-request-details dt {
+  color: var(--muted);
+  font-size: 11px;
+  margin-bottom: 5px;
+}
+.revision-render-facts dd,
+.revision-budget dd,
+.revision-request-details dd {
+  margin: 0;
+  font-size: 12px;
+  line-height: 1.7;
+  overflow-wrap: anywhere;
+}
+.revision-tool-note {
+  color: var(--muted);
+  font-size: 11px;
+  line-height: 1.8;
+  margin: 15px 0;
+}
+.revision-render-limits {
+  padding-left: 18px;
+  color: var(--muted);
+  font-size: 12px;
+  line-height: 1.8;
+  margin: 15px 0;
+}
+.revision-budget,
+.revision-request-details {
+  margin-top: 12px;
+  color: var(--muted);
+  font-size: 11px;
+}
+.revision-budget > summary,
+.revision-request-details > summary {
+  min-height: 44px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  list-style: none;
+  cursor: pointer;
+}
+.revision-budget > summary::-webkit-details-marker,
+.revision-request-details > summary::-webkit-details-marker {
+  display: none;
+}
+.revision-budget > summary::after,
+.revision-request-details > summary::after {
+  content: '';
+  width: 6px;
+  height: 6px;
+  border-right: 1.5px solid currentColor;
+  border-bottom: 1.5px solid currentColor;
+  transform: rotate(45deg);
+  margin-right: 4px;
+}
+.revision-budget[open] > summary::after,
+.revision-request-details[open] > summary::after {
+  transform: rotate(225deg);
+}
+.revision-budget dl,
+.revision-request-details dl {
+  display: grid;
+  gap: 14px;
+  padding: 10px 0;
+  margin: 0;
+}
+.revision-tool-actions {
+  display: flex;
+  align-items: center;
+  justify-content: end;
+  flex-wrap: wrap;
+  gap: 10px;
+  margin-top: 18px;
+}
+.revision-tool-actions :is(button, .button, .text-button) {
+  min-height: 44px;
+}
+.revision-tool-status {
+  font-size: 12px;
+  color: var(--muted);
+  line-height: 1.8;
+  margin: 14px 0;
+}
+.revision-fork-dialog {
+  width: min(540px, calc(100vw - 24px));
+}
+.revision-fork-dialog .field {
+  display: grid;
+  gap: 8px;
+  min-width: 0;
+  color: var(--muted);
+  font-size: 12px;
+}
+.revision-fork-dialog .field input {
+  width: 100%;
+  min-width: 0;
+  min-height: 44px;
+  padding: 10px 12px;
+  background: var(--surface-secondary);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-control, 10px);
+  color: var(--ink);
+  font: inherit;
+}
+.revision-fork-origin {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 16px;
+  margin-bottom: 20px;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  background: var(--surface-secondary);
+}
+.revision-fork-origin > svg {
+  flex: 0 0 auto;
+  color: var(--muted);
+}
+.revision-fork-origin > div {
+  min-width: 0;
+}
+.revision-fork-origin strong {
+  display: block;
+  font-size: 13px;
+  font-weight: 550;
+  overflow-wrap: anywhere;
+}
+.revision-fork-origin span {
+  display: block;
+  margin-top: 6px;
+  font-size: 11px;
+  color: var(--muted);
+}
+.revision-recovery {
+  display: flex;
+  align-items: start;
+  gap: 10px;
+  margin-top: 16px;
+  padding: 14px;
+  border-radius: 10px;
+  background: var(--warning-soft);
+  color: var(--ink);
+}
+.revision-recovery > svg {
+  flex-shrink: 0;
+  margin-top: 2px;
+  color: var(--warning);
+}
+.revision-recovery strong {
+  font-size: 12px;
+  font-weight: 550;
+}
+.revision-recovery p {
+  font-size: 12px;
+  color: var(--muted);
+  line-height: 1.8;
+  margin: 6px 0 0;
+}
+.revision-created {
+  display: flex;
+  align-items: start;
+  gap: 8px;
+  font-size: 12px;
+  color: var(--success);
+  line-height: 1.8;
+  margin: 16px 0;
+}
+.revision-created > svg {
+  flex-shrink: 0;
+  margin-top: 3px;
+}
+.revision-request-details code {
+  font-size: 11px;
+  user-select: text;
+  overflow-wrap: anywhere;
+}
+.revision-render summary:focus-visible,
+.revision-request-details summary:focus-visible {
+  outline: 2px solid var(--focus-ring);
+  outline-offset: 3px;
+}
+@media (width < 600px) {
+  .revision-render-facts {
+    grid-template-columns: minmax(0, 1fr);
+    gap: 13px;
+  }
+  .revision-fork-dialog .field input {
+    font-size: 16px;
+  }
+  .revision-tool-actions {
+    gap: 8px;
+  }
+  .revision-tool-actions .button {
+    flex: 1 1 auto;
+  }
+}

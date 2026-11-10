@@ -1,34 +1,23 @@
 import { lazy, Suspense, useCallback, useEffect, useRef, useState } from 'react';
 import {
-  ArrowCounterClockwise,
-  ArrowClockwise,
-  ArrowsHorizontal,
-  Bell,
-  ChatCircleDots,
-  Check,
   CloudArrowUp,
   DownloadSimple,
-  FileText,
-  Images,
   Info,
   List,
-  Package,
   Plus,
-  SidebarSimple,
   SlidersHorizontal,
   Sparkle,
   UsersThree,
-  X,
   ArrowRight,
   ShieldCheck,
   PencilSimple,
-  Sun,
-  Moon,
   CornersOut,
-  GearSix,
   ChartBar,
   MagnifyingGlass,
   ClockCounterClockwise,
+  Microphone,
+  MicrophoneSlash,
+  PhoneDisconnect,
 } from '@phosphor-icons/react';
 import { api, ApiError, downloadBlob, errorMessage, filenameBase, jsonRequest } from './lib/api';
 import { secureUuid } from './lib/uuid';
@@ -50,9 +39,17 @@ import { assetCopyAttempt, sourcePersistenceRoute } from './lib/asset-copy';
 import { FloatingPanel } from './workspace/FloatingPanel';
 import { ToolDock } from './workspace/ToolDock';
 import { CommandMenu, type StudioCommand } from './workspace/CommandMenu';
+import {
+  WorkspaceNavigation,
+  WorkspaceSettings,
+  workspaceViews,
+} from './workspace/WorkspaceNavigation';
+import { useStudioTheme } from './workspace/useStudioTheme';
+import { StudioGlyph } from './components/StudioGlyph';
 import { boundedTitle } from './lib/titles';
 import { workspaceCanvasInsets, useWorkspaceLayout } from './workspace/useWorkspaceLayout';
 import { usePresence } from './motion/usePresence';
+import { MotionSwitch } from './motion/Presence';
 import { ImportSettings } from './components/ImportSettings';
 import { MediaImportDialog } from './components/MediaImportDialog';
 import {
@@ -68,6 +65,9 @@ import { ToolInspector, toolGroups, type ToolGroup } from './editor/ToolInspecto
 import { AuthPanel } from './components/AuthPanel';
 import type { AIOperation } from './components/AIPanel';
 import { AIPanelFeature } from './components/AIPanelFeature';
+import { IDLE_AI_ACTIVITY, type AIActivity } from './ai/AIVisibility';
+import { useConfirmation } from './components/ConfirmationDialog';
+import { confirmStableScope } from './lib/confirmation-scope';
 import { Sidebar } from './components/Sidebar';
 import {
   Brand,
@@ -75,7 +75,6 @@ import {
   DialogMotionContext,
   EmptyState,
   IconButton,
-  InlineError,
   Modal,
   Toast,
 } from './components/Ui';
@@ -107,15 +106,10 @@ const DrawingBoard = lazy(() =>
   import('./components/DrawingBoard').then((module) => ({ default: module.DrawingBoard })),
 );
 
-const views: { id: View; label: string; icon: React.ReactNode }[] = [
-  { id: 'editor', label: '精修', icon: <SlidersHorizontal size={17} /> },
-  { id: 'works', label: '作品', icon: <Images size={17} /> },
-  { id: 'compare', label: '对比', icon: <ArrowsHorizontal size={17} /> },
-  { id: 'collaborate', label: '协作', icon: <UsersThree size={17} /> },
-  { id: 'docs', label: '文档', icon: <FileText size={17} /> },
-  { id: 'deliver', label: '交付', icon: <Package size={17} /> },
-  { id: 'usage', label: '用量', icon: <ChartBar size={17} /> },
-];
+const views = workspaceViews.map((item) => ({
+  ...item,
+  icon: <StudioGlyph name={item.id} size={19} />,
+}));
 type Dialog =
   | 'auth'
   | 'project'
@@ -132,10 +126,13 @@ type Dialog =
   | 'importSettings'
   | 'mediaImport'
   | 'commands'
+  | 'navigation'
+  | 'settings'
   | null;
 export function App() {
   const rawEditor = useEditor();
   const workspaceLayout = useWorkspaceLayout();
+  const studioTheme = useStudioTheme(workspaceLayout.layout.theme);
   const [pickedColor, setPickedColor] = useState('#34372EFF');
   const [sampling, setSampling] = useState(false);
   const [pendingImport, setPendingImport] = useState<File | null>(null);
@@ -181,6 +178,7 @@ export function App() {
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [inspectorOpen, setInspectorOpen] = useState(false);
   const [aiOpen, setAiOpen] = useState(false);
+  const [aiActivity, setAiActivity] = useState<AIActivity>(IDLE_AI_ACTIVITY);
   const [comparing, setComparing] = useState(false);
   const [ops, setOps] = useState(false);
   const [dialog, setDialog] = useState<Dialog>(null);
@@ -240,6 +238,39 @@ export function App() {
     resolveReferences: resolveLayerReferences,
   });
   const editor = collaboration.editor;
+  const confirmation = useConfirmation();
+  const navigationScope = useRef({
+    actor: session.user?.id,
+    spaceId,
+    projectId: project?.id,
+    artworkId: artwork?.id,
+    version: artwork?.headVersion,
+    view,
+    documentDirty,
+  });
+  navigationScope.current = {
+    actor: session.user?.id,
+    spaceId,
+    projectId: project?.id,
+    artworkId: artwork?.id,
+    version: artwork?.headVersion,
+    view,
+    documentDirty,
+  };
+  async function confirmNavigation(description: string) {
+    const result = await confirmStableScope(
+      () => ({
+        ...navigationScope.current,
+        source: editor.getSourceIdentity(),
+        recipe: editor.getRecipe(),
+        request: projectRequest.current,
+        saving: saveLock.current,
+      }),
+      () => confirmation.confirm({ description }),
+    );
+    if (result === 'changed') notify('工作区已更新，请核对当前内容后重新操作。');
+    return result === 'confirmed';
+  }
   const captureCurrentImage = async () => {
     const current = artworkRef.current;
     if (
@@ -447,7 +478,8 @@ export function App() {
       notify('作品正在保存，请稍等片刻。');
       return;
     }
-    if (documentDirty && !window.confirm('文档还有未保存的修改，确定退出账号吗？')) return;
+    if (documentDirty && !(await confirmNavigation('文档还有未保存的修改，确定退出账号吗？')))
+      return;
     ++projectRequest.current;
     editor.cancelPendingLoad();
     try {
@@ -469,8 +501,9 @@ export function App() {
       notify(errorMessage(e), 'error');
     }
   }
-  function selectSpace(space: Space | null) {
-    if (documentDirty && !window.confirm('文档还有未保存的修改，确定切换空间吗？')) return;
+  async function selectSpace(space: Space | null) {
+    if (documentDirty && !(await confirmNavigation('文档还有未保存的修改，确定切换空间吗？')))
+      return;
     if (saveLock.current) {
       notify('作品正在保存，请稍等片刻。');
       return;
@@ -491,7 +524,8 @@ export function App() {
     setAiOpen(false);
   }
   async function loadProject(next: Project) {
-    if (documentDirty && !window.confirm('文档还有未保存的修改，确定切换项目吗？')) return;
+    if (documentDirty && !(await confirmNavigation('文档还有未保存的修改，确定切换项目吗？')))
+      return;
     if (saveLock.current) {
       notify('作品正在保存，请稍等片刻。');
       return;
@@ -557,11 +591,14 @@ export function App() {
       fileInput.current?.click();
       return false;
     }
-    if (documentDirty && !window.confirm('文档还有未保存的修改。打开照片会离开文档，确定继续吗？'))
+    if (
+      documentDirty &&
+      !(await confirmNavigation('文档还有未保存的修改。打开照片会离开文档，确定继续吗？'))
+    )
       return false;
     if (
       isEditorDirty() &&
-      !window.confirm('当前还有未保存的编辑。打开新图片将替换本地编辑，确认继续吗？')
+      !(await confirmNavigation('当前还有未保存的编辑。打开新图片将替换本地编辑，确认继续吗？'))
     )
       return false;
     // Close the previous source's panel before decoding. A tool explicitly opened
@@ -625,10 +662,15 @@ export function App() {
       return false;
     }
     if (
+      navigationScope.current.documentDirty &&
+      !(await confirmNavigation('文档还有未保存的修改。打开作品会离开文档，确定继续吗？'))
+    )
+      return false;
+    if (
       isEditorDirty() &&
-      !window.confirm(
+      !(await confirmNavigation(
         '当前还有未保存的编辑。打开云端作品前，请确认已导出或不再需要这些修改。继续打开吗？',
-      )
+      ))
     )
       return false;
     const id = typeof next === 'string' ? next : next.id;
@@ -684,9 +726,8 @@ export function App() {
 
   async function openLibraryAsset(next: Asset) {
     if (
-      next.projectId !== project?.id &&
       documentDirty &&
-      !window.confirm('文档还有未保存的修改，确定切换项目吗？')
+      !(await confirmNavigation('文档还有未保存的修改。打开素材会离开文档，继续吗？'))
     )
       return;
     if (saveLock.current) {
@@ -695,7 +736,7 @@ export function App() {
     }
     if (
       isEditorDirty() &&
-      !window.confirm('当前还有未保存的编辑。打开素材原图会替换本地草稿，继续吗？')
+      !(await confirmNavigation('当前还有未保存的编辑。打开素材原图会替换本地草稿，继续吗？'))
     )
       return;
     const load = beginSourceLoad();
@@ -751,6 +792,61 @@ export function App() {
     } finally {
       if (load.request === projectRequest.current) setOpening(false);
     }
+  }
+
+  async function createCutout() {
+    const analysis = editor.portrait.analysis;
+    const selection = analysis?.segmentation?.subject;
+    const frame = editor.getSourceFrame();
+    if (
+      !selection ||
+      !frame ||
+      analysis.frame.contentHash !== frame.contentHash ||
+      analysis.frame.width !== frame.width ||
+      analysis.frame.height !== frame.height ||
+      !editor.file
+    )
+      throw new Error('请先分析当前原图的人物边缘。');
+    const settings = { selection, radius: 0.015, decontaminate: 0.8 };
+    const identity = editor.getSourceIdentity();
+    const name = `${filenameBase(editor.file.name).slice(0, 106)}-抠图.png`;
+    const sourceAsset = cloudBaseSources.current.get(identity);
+    if (
+      asset &&
+      project &&
+      sourceAsset?.id === asset.id &&
+      project.id === asset.projectId &&
+      ['owner', 'admin', 'editor'].includes(project.role) &&
+      asset.width === frame.width &&
+      asset.height === frame.height
+    ) {
+      const key = JSON.stringify([
+        session.user?.id,
+        project.id,
+        asset.id,
+        identity,
+        name,
+        settings,
+      ]);
+      if (cutoutAttempt.current?.key !== key) cutoutAttempt.current = { key, id: secureUuid() };
+      await api(
+        `/projects/${project.id}/derived-assets`,
+        jsonRequest('POST', {
+          kind: 'cutout',
+          requestId: cutoutAttempt.current.id,
+          name,
+          sourceAssetId: asset.id,
+          settings,
+        }),
+      );
+      setRefreshToken((value) => value + 1);
+      return '透明 PNG 已保存到项目素材。';
+    }
+    const blob = await editor.exportImage('png', 0.94, false, settings);
+    if (editor.getSourceIdentity() !== identity || editor.isLoading())
+      throw new Error('图片已切换，请重新运行抠图。');
+    downloadBlob(blob, name);
+    return '透明 PNG 已下载。';
   }
 
   async function copyCloudAsset(sourceAssetId: string, targetProjectId: string): Promise<Asset> {
@@ -1026,7 +1122,7 @@ export function App() {
     }
     void saveToProject(project);
   }
-  function openCreateProject() {
+  async function openCreateProject() {
     if (saveLock.current) {
       notify('作品正在保存，请稍等片刻。');
       return;
@@ -1035,6 +1131,11 @@ export function App() {
       setDialog('auth');
       return;
     }
+    if (
+      documentDirty &&
+      !(await confirmNavigation('文档还有未保存的修改。新建项目后会离开当前文档，确定继续吗？'))
+    )
+      return;
     saveAfterProject.current = false;
     setDialog('project');
   }
@@ -1071,7 +1172,7 @@ export function App() {
     const result = await api<{ space: Space }>('/spaces', jsonRequest('POST', { name }));
     const next = await api<Session>('/session');
     setSession(next);
-    selectSpace(result.space);
+    await selectSpace(result.space);
     notify('团队空间已创建。可以邀请队友加入。', 'success');
   }
   async function joinTeam(code: string) {
@@ -1081,15 +1182,15 @@ export function App() {
     );
     const next = await api<Session>('/session');
     setSession(next);
-    selectSpace(result.space);
+    await selectSpace(result.space);
     notify('已加入团队空间。', 'success');
   }
-  function changeView(next: View) {
+  async function changeView(next: View) {
     if (
       view === 'docs' &&
       next !== view &&
       documentDirty &&
-      !window.confirm('文档还有未保存的修改，确定离开文档吗？')
+      !(await confirmNavigation('文档还有未保存的修改，确定离开文档吗？'))
     )
       return false;
     setView(next);
@@ -1100,7 +1201,8 @@ export function App() {
   async function openRevision(next: Pick<Revision, 'id' | 'version'>) {
     const current = artworkRef.current;
     if (!current || saveLock.current || opening) return;
-    if (isEditorDirty() && !window.confirm('查看历史会替换本地未保存草稿，继续吗？')) return;
+    if (isEditorDirty() && !(await confirmNavigation('查看历史会替换本地未保存草稿，继续吗？')))
+      return;
     const load = beginSourceLoad();
     setOpening(true);
     try {
@@ -1193,7 +1295,7 @@ export function App() {
   const requireProject = (
     <EmptyState
       icon={<UsersThree size={36} />}
-      title="让大家接上你的想法"
+      title="选择项目"
       description={
         session.user
           ? '先选择或创建项目，讨论、文档和任务就会围绕同一份作品展开。'
@@ -1208,19 +1310,18 @@ export function App() {
     />
   );
 
-  const activePanelId = workspaceLayout.focused
-    ? null
-    : aiOpen
-      ? 'ai'
-      : inspectorOpen
-        ? 'inspector'
-        : null;
+  const activePanelId =
+    workspaceLayout.focused || view !== 'editor'
+      ? null
+      : aiOpen
+        ? 'ai'
+        : inspectorOpen
+          ? 'inspector'
+          : null;
   const activePanel = activePanelId ? workspaceLayout.panel(activePanelId) : null;
-  const panelPresence = usePresence(!!activePanelId, 'panel-frame');
-  const lastPanelId = useRef<typeof activePanelId>(null);
-  if (activePanelId) lastPanelId.current = activePanelId;
-  const shownPanelId = activePanelId ?? (panelPresence.present ? lastPanelId.current : null);
-  const shownPanel = shownPanelId ? workspaceLayout.panel(shownPanelId) : null;
+  const inspectorPresence = usePresence(activePanelId === 'inspector', 'panel-frame');
+  const aiPresence = usePresence(activePanelId === 'ai', 'panel-frame');
+  const keepAIActive = aiActivity.callActive || aiActivity.requestActive;
   const dialogPresence = usePresence(!!dialog, 'modal-frame');
   const lastDialog = useRef<Dialog>(null);
   if (dialog) lastDialog.current = dialog;
@@ -1255,13 +1356,17 @@ export function App() {
     setSidebarOpen(false);
     notify('已恢复当前屏幕的默认布局。');
   };
-  const openAI = () => {
+  const showAI = () => {
     workspaceLayout.setFocused(false);
     setAiOpen(true);
     setInspectorOpen(false);
     setSampling(false);
     if (workspaceLayout.panel('ai').presentation === 'collapsed')
       workspaceLayout.updatePanel('ai', { ...workspaceLayout.panel('ai'), presentation: 'normal' });
+  };
+  const openAI = async () => {
+    if (view !== 'editor' && !(await changeView('editor'))) return;
+    showAI();
   };
   const commands: StudioCommand[] = [
     ...toolGroups.map((tool) => ({
@@ -1271,20 +1376,20 @@ export function App() {
       keywords: tool.id,
       section: '精修工具',
       icon: tool.icon,
-      run: () => {
-        if (!changeView('editor')) return;
+      run: async () => {
+        if (!(await changeView('editor'))) return;
         openInspector(tool.id);
       },
     })),
     {
       id: 'ai',
-      label: 'AI 共创',
+      label: 'AI 助手',
       description: '图片、文字、语音与创作助手',
       keywords: 'ai agent chat',
       section: '创作空间',
       icon: <Sparkle size={20} />,
       run: () => {
-        if (changeView('editor')) openAI();
+        void openAI();
       },
     },
     ...views
@@ -1371,11 +1476,15 @@ export function App() {
             </div>
           }
         >
-          <OpsDashboard onBack={() => setOps(false)} onConfigChanged={refreshConfig} />
+          <OpsDashboard
+            key={session.user.id}
+            onBack={() => setOps(false)}
+            onConfigChanged={refreshConfig}
+          />
         </Suspense>
       ) : (
         <div
-          className={`app-shell canvas-workspace studio-workspace view-${view} theme-${workspaceLayout.layout.theme} ${workspaceLayout.focused ? 'is-focused' : ''}`}
+          className={`app-shell canvas-workspace studio-workspace view-${view} theme-${studioTheme.theme} ${workspaceLayout.focused ? 'is-focused' : ''}`}
           data-has-image={!!editor.file}
         >
           <Sidebar
@@ -1396,7 +1505,18 @@ export function App() {
             onTeamSettings={() => setDialog('teamSettings')}
             onAuth={() => setDialog('auth')}
             onLogout={() => void logout()}
-            onOps={() => setOps(true)}
+            onOps={async () => {
+              if (aiActivity.callActive || aiActivity.requestActive || teamVoice.state !== 'idle') {
+                notify('请先结束当前 AI 请求或语音通话，再打开运营管理。');
+                return;
+              }
+              if (
+                documentDirty &&
+                !(await confirmNavigation('文档还有未保存的修改，确定进入运营管理吗？'))
+              )
+                return;
+              setOps(true);
+            }}
           />
           <div className="workspace">
             <header className="floating-topbar" data-motion="topbar">
@@ -1449,18 +1569,18 @@ export function App() {
                   </button>
                 ))}
               </nav>
-              <select
-                className="mobile-view-select"
+              <button
+                type="button"
+                className="mobile-view-trigger"
                 aria-label="切换工作视图"
-                value={view}
-                onChange={(event) => changeView(event.target.value as View)}
+                aria-haspopup="dialog"
+                aria-expanded={dialog === 'navigation'}
+                onClick={() => setDialog('navigation')}
               >
-                {views.map((item) => (
-                  <option key={item.id} value={item.id}>
-                    {item.label}
-                  </option>
-                ))}
-              </select>
+                <StudioGlyph name={view} size={19} />
+                <span>{views.find((item) => item.id === view)?.label}</span>
+                <StudioGlyph name="chevron" size={14} />
+              </button>
               <div className="workspace-top-actions">
                 <IconButton
                   label="搜索工具与操作（Ctrl / ⌘ K）"
@@ -1470,19 +1590,11 @@ export function App() {
                   <MagnifyingGlass size={19} />
                 </IconButton>
                 <IconButton
-                  label={workspaceLayout.layout.theme === 'light' ? '切换深灰背景' : '切换浅灰背景'}
+                  label={studioTheme.theme === 'light' ? '切换深色模式' : '切换浅色模式'}
                   className="theme-toggle"
-                  onClick={() =>
-                    workspaceLayout.setTheme(
-                      workspaceLayout.layout.theme === 'light' ? 'dark' : 'light',
-                    )
-                  }
+                  onClick={studioTheme.toggle}
                 >
-                  {workspaceLayout.layout.theme === 'light' ? (
-                    <Moon size={19} />
-                  ) : (
-                    <Sun size={19} />
-                  )}
+                  <StudioGlyph name={studioTheme.theme === 'light' ? 'moon' : 'sun'} />
                 </IconButton>
                 <IconButton
                   label="专注画面（F）"
@@ -1491,40 +1603,21 @@ export function App() {
                 >
                   <CornersOut size={20} />
                 </IconButton>
-                <details className="workspace-settings">
-                  <summary aria-label="布局与工作台设置">
-                    <GearSix size={19} />
-                  </summary>
-                  <div>
-                    <button
-                      onClick={() =>
-                        workspaceLayout.setTheme(
-                          workspaceLayout.layout.theme === 'light' ? 'dark' : 'light',
-                        )
-                      }
-                    >
-                      {workspaceLayout.layout.theme === 'light' ? '切换深灰画布' : '切换浅灰画布'}
-                    </button>
-                    <button onClick={() => setDialog('importSettings')}>
-                      图片格式与分辨率预算
-                    </button>
-                    <button onClick={resetWorkspace}>重置当前屏幕布局</button>
-                    <button onClick={() => workspaceLayout.setFocused(true)}>专注画面 · F</button>
-                    <button onClick={() => setDialog('help')}>使用说明与能力</button>
-                    {session.user && entitlements && (
-                      <button onClick={() => setDialog('quota')}>
-                        服务点 · {entitlements.available}
-                      </button>
-                    )}
-                  </div>
-                </details>
+                <IconButton
+                  label="布局与工作台设置"
+                  className="workspace-settings-trigger"
+                  aria-haspopup="dialog"
+                  onClick={() => setDialog('settings')}
+                >
+                  <StudioGlyph name="settings" />
+                </IconButton>
                 <button
                   className="button button-secondary top-save"
                   aria-label="保存"
                   disabled={!editor.file || saving || opening || editor.loading}
                   onClick={save}
                 >
-                  {saving ? <Busy label="" /> : <CloudArrowUp size={18} />}
+                  {saving ? <Busy label="" /> : <CloudArrowUp size={20} />}
                   <span>保存</span>
                 </button>
                 <button
@@ -1533,7 +1626,7 @@ export function App() {
                   disabled={!editor.file || opening || editor.loading}
                   onClick={() => setDialog('export')}
                 >
-                  <DownloadSimple size={18} />
+                  <StudioGlyph name="export" size={20} />
                   <span>导出</span>
                 </button>
                 <button
@@ -1564,330 +1657,412 @@ export function App() {
             {view !== 'editor' && teamVoice.state !== 'idle' && (
               <TeamVoiceBanner room={teamVoice} onReturn={() => changeView('editor')} />
             )}
+            {keepAIActive && activePanelId !== 'ai' && (
+              <div className="ai-activity-banner" role="status">
+                <StudioGlyph name={aiActivity.callActive ? 'voice' : 'ai'} size={18} />
+                <span>
+                  {aiActivity.callState === 'connecting'
+                    ? 'AI 语音正在连接'
+                    : aiActivity.callState === 'closing'
+                      ? 'AI 通话正在结束'
+                      : aiActivity.callState === 'active'
+                        ? aiActivity.muted
+                          ? 'AI 麦克风已静音'
+                          : 'AI 通话进行中'
+                        : 'AI 正在处理请求'}
+                </span>
+                {aiActivity.callActive && (
+                  <div className="ai-activity-controls">
+                    <IconButton
+                      label={aiActivity.muted ? '开启麦克风' : '静音麦克风'}
+                      aria-pressed={aiActivity.muted}
+                      disabled={aiActivity.callState !== 'active' || !aiActivity.onMute}
+                      onClick={aiActivity.onMute}
+                    >
+                      {aiActivity.muted ? <MicrophoneSlash size={18} /> : <Microphone size={18} />}
+                    </IconButton>
+                    <IconButton
+                      label="结束实时通话"
+                      className="voice-end"
+                      disabled={aiActivity.callState === 'closing' || !aiActivity.onEnd}
+                      onClick={aiActivity.onEnd}
+                    >
+                      <PhoneDisconnect size={18} />
+                    </IconButton>
+                  </div>
+                )}
+                <button type="button" className="ai-activity-return" onClick={openAI}>
+                  返回 AI 助手
+                </button>
+              </div>
+            )}
             <div className="workspace-body">
-              {view === 'editor' ? (
-                <>
-                  <div
-                    className="editor-content"
-                    style={{
-                      left: canvasInsets.left,
-                      right: canvasInsets.right,
-                      bottom: canvasInsets.bottom,
-                    }}
-                  >
-                    {editor.file && !workspaceLayout.focused && (
-                      <div className="image-action-strip" data-motion="canvas-toolbar">
-                        <IconButton label="打开另一张图片" onClick={() => void importFile()}>
-                          <Plus size={20} />
-                        </IconButton>
-                        <IconButton label="打开草图板" onClick={() => setDialog('drawing')}>
-                          <PencilSimple size={19} />
-                        </IconButton>
-                      </div>
-                    )}
-                    {(collaboration.enabled || teamVoiceArtwork) && (
-                      <CollaborationStatus
+              <MotionSwitch
+                switchKey={view}
+                className="workspace-view-transition"
+                data-motion-pixels="true"
+              >
+                {view === 'editor' ? (
+                  <>
+                    <div
+                      className="editor-content"
+                      style={{
+                        left: canvasInsets.left,
+                        right: canvasInsets.right,
+                        bottom: canvasInsets.bottom,
+                      }}
+                    >
+                      {editor.file && !workspaceLayout.focused && (
+                        <div className="image-action-strip" data-motion="canvas-toolbar">
+                          <IconButton label="打开另一张图片" onClick={() => void importFile()}>
+                            <Plus size={20} />
+                          </IconButton>
+                          <IconButton label="打开草图板" onClick={() => setDialog('drawing')}>
+                            <PencilSimple size={19} />
+                          </IconButton>
+                        </div>
+                      )}
+                      {(collaboration.enabled || teamVoiceArtwork) && (
+                        <CollaborationStatus
+                          collaboration={collaboration}
+                          onReload={() => void openArtwork(artwork!.id)}
+                          onFork={() => project && void saveToProject(project, true)}
+                          teamVoice={teamVoiceArtwork ? teamVoice : undefined}
+                          captureVoiceContext={captureCurrentImage}
+                        />
+                      )}
+                      <CanvasStage
+                        editor={editor}
                         collaboration={collaboration}
-                        onReload={() => void openArtwork(artwork!.id)}
-                        onFork={() => project && void saveToProject(project, true)}
-                        teamVoice={teamVoiceArtwork ? teamVoice : undefined}
-                        captureVoiceContext={captureCurrentImage}
+                        group={group}
+                        onImport={(file) => void importFile(file)}
+                        onAI={openAI}
+                        onDraw={() => setDialog('drawing')}
+                        comparing={comparing}
+                        setComparing={setComparing}
+                        sampling={sampling}
+                        onSample={(color) => {
+                          setPickedColor(color);
+                          setSampling(false);
+                          setGroup('color');
+                          setInspectorOpen(true);
+                          notify(`已取色 ${color}`);
+                        }}
+                      />
+                    </div>
+                    {!workspaceLayout.focused && (
+                      <ToolDock
+                        group={group}
+                        inspectorOpen={inspectorOpen}
+                        aiOpen={aiOpen}
+                        compact={workspaceLayout.view.bucket === 'phone'}
+                        onTool={chooseTool}
+                        onAI={() => {
+                          if (aiOpen) setAiOpen(false);
+                          else openAI();
+                        }}
                       />
                     )}
-                    <CanvasStage
-                      editor={editor}
-                      collaboration={collaboration}
-                      group={group}
-                      onImport={(file) => void importFile(file)}
-                      onAI={openAI}
-                      onDraw={() => setDialog('drawing')}
-                      comparing={comparing}
-                      setComparing={setComparing}
-                      sampling={sampling}
-                      onSample={(color) => {
-                        setPickedColor(color);
-                        setSampling(false);
-                        setGroup('color');
-                        setInspectorOpen(true);
-                        notify(`已取色 ${color}`);
-                      }}
-                    />
-                  </div>
-                  {!workspaceLayout.focused && (
-                    <ToolDock
-                      group={group}
-                      inspectorOpen={inspectorOpen}
-                      aiOpen={aiOpen}
-                      compact={workspaceLayout.view.bucket === 'phone'}
-                      onTool={chooseTool}
-                      onAI={() => {
-                        if (aiOpen) setAiOpen(false);
-                        else openAI();
-                      }}
-                    />
-                  )}
-                </>
-              ) : (
-                <div className="view-container">
-                  {view === 'works' && (
-                    <div className="library-hub">
-                      <nav
-                        className="library-context-tabs"
-                        aria-label="素材视图"
-                        data-motion="context-navigation"
-                      >
-                        <button
-                          type="button"
-                          aria-pressed={libraryTab === 'project'}
-                          onClick={() => setLibraryTab('project')}
+                  </>
+                ) : (
+                  <div className="view-container">
+                    {view === 'works' && (
+                      <div className="library-hub">
+                        <nav
+                          className="library-context-tabs"
+                          aria-label="素材视图"
+                          data-motion="context-navigation"
                         >
-                          项目作品
-                        </button>
-                        <button
-                          type="button"
-                          aria-pressed={libraryTab === 'all'}
-                          onClick={() => setLibraryTab('all')}
-                        >
-                          跨空间查找
-                        </button>
-                        <button
-                          type="button"
-                          aria-pressed={libraryTab === 'memory'}
-                          onClick={() => setLibraryTab('memory')}
-                        >
-                          长期素材
-                        </button>
-                        <button
-                          type="button"
-                          onClick={() => {
-                            if (!session.user) setDialog('auth');
-                            else if (!project) openCreateProject();
-                            else setDialog('mediaImport');
-                          }}
-                        >
-                          原片与专业格式
-                        </button>
-                      </nav>
-                      {libraryTab === 'project' ? (
-                        <AssetLibrary
+                          <button
+                            type="button"
+                            aria-pressed={libraryTab === 'project'}
+                            onClick={() => setLibraryTab('project')}
+                          >
+                            项目作品
+                          </button>
+                          <button
+                            type="button"
+                            aria-pressed={libraryTab === 'all'}
+                            onClick={() => setLibraryTab('all')}
+                          >
+                            跨空间查找
+                          </button>
+                          <button
+                            type="button"
+                            aria-pressed={libraryTab === 'memory'}
+                            onClick={() => setLibraryTab('memory')}
+                          >
+                            长期素材
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => {
+                              if (!session.user) setDialog('auth');
+                              else if (!project) openCreateProject();
+                              else setDialog('mediaImport');
+                            }}
+                          >
+                            原片与专业格式
+                          </button>
+                        </nav>
+                        {libraryTab === 'project' ? (
+                          <AssetLibrary
+                            project={project}
+                            artworks={artworks}
+                            space={currentSpace}
+                            projects={projects}
+                            refreshToken={refreshToken}
+                            onSelectProject={(item) => void loadProject(item)}
+                            onOpenAsset={(item) => void openLibraryAsset(item)}
+                            onOpen={(item) => void openArtwork(item)}
+                            onImport={() => void importFile()}
+                            onCreate={openCreateProject}
+                            onCopy={() => setDialog('copy')}
+                            onShare={() => setDialog('share')}
+                          />
+                        ) : !session.user ? (
+                          <EmptyState
+                            icon={<StudioGlyph name="works" size={30} />}
+                            title="登录后查找素材"
+                            description="浏览你有权限访问的项目、图片与长期素材。"
+                            action={
+                              <button
+                                className="button button-primary"
+                                onClick={() => setDialog('auth')}
+                              >
+                                登录
+                              </button>
+                            }
+                          />
+                        ) : (
+                          <ResourceSearch
+                            key={`${session.user.id}:${libraryTab}`}
+                            spaces={session.spaces}
+                            rememberedOnly={libraryTab === 'memory'}
+                            onOpen={async (item) => {
+                              await openLibraryAsset(item.asset);
+                            }}
+                          />
+                        )}
+                      </div>
+                    )}{' '}
+                    {view === 'compare' && (
+                      <CompareView
+                        editor={editor}
+                        artwork={artwork}
+                        onOpenRevision={openRevision}
+                        isDirty={dirty}
+                        onRestoreRevision={restoreRevision}
+                        currentUserId={session.user?.id}
+                        onForkCreated={async (created) => {
+                          setRefreshToken((value) => value + 1);
+                          return openArtwork(created.artworkId);
+                        }}
+                        canRestore={
+                          !!project && ['owner', 'admin', 'editor'].includes(project.role)
+                        }
+                      />
+                    )}{' '}
+                    {view === 'collaborate' &&
+                      (project ? (
+                        <CollaborateView
+                          key={project.id}
+                          currentUserId={session.user?.id}
                           project={project}
-                          artworks={artworks}
-                          space={currentSpace}
-                          projects={projects}
+                          artwork={artwork}
+                          revision={revision}
                           refreshToken={refreshToken}
-                          onSelectProject={(item) => void loadProject(item)}
-                          onOpenAsset={(item) => void openLibraryAsset(item)}
-                          onOpen={(item) => void openArtwork(item)}
-                          onImport={() => void importFile()}
-                          onCreate={openCreateProject}
-                          onCopy={() => setDialog('copy')}
                           onShare={() => setDialog('share')}
                         />
                       ) : (
-                        <ResourceSearch
-                          key={libraryTab}
-                          spaces={session.spaces}
-                          rememberedOnly={libraryTab === 'memory'}
-                          onOpen={async (item) => {
-                            await openLibraryAsset(item.asset);
-                          }}
+                        requireProject
+                      ))}{' '}
+                    {view === 'docs' &&
+                      (project ? (
+                        <DocumentsView
+                          key={project.id}
+                          project={project}
+                          refreshToken={refreshToken}
+                          onDirtyChange={setDocumentDirty}
                         />
-                      )}
-                    </div>
-                  )}{' '}
-                  {view === 'compare' && (
-                    <CompareView
-                      editor={editor}
-                      artwork={artwork}
-                      onOpenRevision={openRevision}
-                      isDirty={dirty}
-                      onRestoreRevision={restoreRevision}
-                      canRestore={!!project && ['owner', 'admin', 'editor'].includes(project.role)}
-                    />
-                  )}{' '}
-                  {view === 'collaborate' &&
-                    (project ? (
-                      <CollaborateView
-                        key={project.id}
-                        currentUserId={session.user?.id}
+                      ) : (
+                        requireProject
+                      ))}{' '}
+                    {view === 'deliver' && (
+                      <DeliveryView
+                        editor={editor}
+                        artwork={artwork}
+                        sourcePending={opening || editor.loading}
+                        onExport={() => setDialog('export')}
+                        onRecipeImport={() => recipeInput.current?.click()}
+                      />
+                    )}
+                    {view === 'usage' && (
+                      <div className="content-view">
+                        {session.user ? (
+                          <UsageDashboard
+                            key={`${session.user.id}:${currentSpace?.id ?? 'personal'}`}
+                            space={currentSpace}
+                            spaces={session.spaces}
+                            currentUserId={session.user.id}
+                            refreshToken={refreshToken}
+                          />
+                        ) : (
+                          <EmptyState
+                            icon={<StudioGlyph name="usage" size={30} />}
+                            title="登录后查看用量"
+                            description="查看服务点余额，以及任务、模型和成员的使用明细。"
+                            action={
+                              <button
+                                className="button button-primary"
+                                onClick={() => setDialog('auth')}
+                              >
+                                登录
+                              </button>
+                            }
+                          />
+                        )}
+                      </div>
+                    )}
+                  </div>
+                )}
+              </MotionSwitch>
+              {(['inspector', 'ai'] as const)
+                .filter((id) =>
+                  id === 'ai' ? aiPresence.present || keepAIActive : inspectorPresence.present,
+                )
+                .map((shownPanelId) => (
+                  <FloatingPanel
+                    key={shownPanelId}
+                    panelKey={shownPanelId}
+                    open={activePanelId === shownPanelId}
+                    motionState={(shownPanelId === 'ai' ? aiPresence : inspectorPresence).phase}
+                    title={
+                      shownPanelId === 'ai'
+                        ? 'AI 助手'
+                        : (toolGroups.find((tool) => tool.id === group)?.label ?? '调整')
+                    }
+                    label={shownPanelId === 'ai' ? 'AI可移动面板' : '可移动编辑面板'}
+                    geometry={workspaceLayout.panel(shownPanelId)}
+                    viewport={workspaceLayout.view}
+                    onGeometry={(next) => workspaceLayout.updatePanel(shownPanelId, next)}
+                    onClose={() => {
+                      setInspectorOpen(false);
+                      setAiOpen(false);
+                      setSampling(false);
+                    }}
+                    navigation={
+                      workspaceLayout.view.bucket !== 'phone' && shownPanelId !== 'ai' ? (
+                        <nav className="studio-context-tabs" aria-label="当前作品快捷操作">
+                          <button
+                            type="button"
+                            aria-pressed={shownPanelId === 'inspector' && group !== 'history'}
+                            onClick={() => openInspector(group === 'history' ? 'light' : group)}
+                          >
+                            <SlidersHorizontal size={15} />
+                            <span>调整</span>
+                          </button>
+                          <button type="button" aria-pressed={false} onClick={openAI}>
+                            <StudioGlyph name="ai" size={17} />
+                            <span>AI 助手</span>
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => changeView('collaborate')}
+                            title="打开项目讨论与任务"
+                          >
+                            <UsersThree size={15} />
+                            <span>协作</span>
+                          </button>
+                          <button
+                            type="button"
+                            aria-pressed={shownPanelId === 'inspector' && group === 'history'}
+                            onClick={() => openInspector('history')}
+                          >
+                            <ClockCounterClockwise size={15} />
+                            <span>记录</span>
+                          </button>
+                        </nav>
+                      ) : undefined
+                    }
+                  >
+                    {shownPanelId === 'inspector' ? (
+                      <ToolInspector
+                        editor={editor}
+                        group={group}
+                        onGroupChange={setGroup}
+                        onCutout={createCutout}
+                        mobileOpen
+                        onClose={() => setInspectorOpen(false)}
+                        pickedColor={pickedColor}
+                        onColorChange={setPickedColor}
+                        sampling={sampling}
+                        onSample={() => {
+                          setSampling(!sampling);
+                          if (workspaceLayout.view.bucket === 'phone') setInspectorOpen(false);
+                        }}
+                      />
+                    ) : (
+                      <AIPanelFeature
+                        key={(session.user?.id ?? 'local') + ':' + (project?.id ?? 'none')}
+                        visible={activePanelId === 'ai'}
+                        onActivityChange={setAiActivity}
+                        userId={session.user?.id ?? null}
+                        projectAssets={assets}
+                        currentAsset={asset}
+                        referenceSource={referenceSource}
+                        onReferenceFile={(file, source) => {
+                          setReferenceFile(file);
+                          setReferenceSource(source);
+                        }}
                         project={project}
                         artwork={artwork}
-                        revision={revision}
-                        refreshToken={refreshToken}
-                        onShare={() => setDialog('share')}
-                      />
-                    ) : (
-                      requireProject
-                    ))}{' '}
-                  {view === 'docs' &&
-                    (project ? (
-                      <DocumentsView
-                        key={project.id}
-                        project={project}
-                        refreshToken={refreshToken}
-                        onDirtyChange={setDocumentDirty}
-                      />
-                    ) : (
-                      requireProject
-                    ))}{' '}
-                  {view === 'deliver' && (
-                    <DeliveryView
-                      editor={editor}
-                      artwork={artwork}
-                      sourcePending={opening || editor.loading}
-                      onExport={() => setDialog('export')}
-                      onRecipeImport={() => recipeInput.current?.click()}
-                    />
-                  )}
-                  {view === 'usage' && (
-                    <div className="content-view">
-                      <UsageDashboard
-                        key={currentSpace?.id ?? 'personal'}
-                        space={currentSpace}
-                        refreshToken={refreshToken}
-                      />
-                    </div>
-                  )}
-                </div>
-              )}
-              {shownPanelId && shownPanel && (
-                <FloatingPanel
-                  panelKey={shownPanelId}
-                  open={!!activePanelId}
-                  motionState={panelPresence.phase}
-                  title={
-                    shownPanelId === 'ai'
-                      ? 'AI 创作'
-                      : (toolGroups.find((tool) => tool.id === group)?.label ?? '调整')
-                  }
-                  label={shownPanelId === 'ai' ? 'AI可移动面板' : '可移动编辑面板'}
-                  geometry={shownPanel}
-                  viewport={workspaceLayout.view}
-                  onGeometry={(next) => workspaceLayout.updatePanel(shownPanelId, next)}
-                  onClose={() => {
-                    setInspectorOpen(false);
-                    setAiOpen(false);
-                    setSampling(false);
-                  }}
-                  navigation={
-                    <nav className="studio-context-tabs" aria-label="当前作品快捷操作">
-                      <button
-                        type="button"
-                        aria-pressed={shownPanelId === 'inspector' && group !== 'history'}
-                        onClick={() => openInspector(group === 'history' ? 'light' : group)}
-                      >
-                        <SlidersHorizontal size={15} />
-                        <span>调整</span>
-                      </button>
-                      <button type="button" aria-pressed={shownPanelId === 'ai'} onClick={openAI}>
-                        <Sparkle size={15} />
-                        <span>AI 共创</span>
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => changeView('collaborate')}
-                        title="打开项目讨论与任务"
-                      >
-                        <UsersThree size={15} />
-                        <span>协作</span>
-                      </button>
-                      <button
-                        type="button"
-                        aria-pressed={shownPanelId === 'inspector' && group === 'history'}
-                        onClick={() => openInspector('history')}
-                      >
-                        <ClockCounterClockwise size={15} />
-                        <span>记录</span>
-                      </button>
-                    </nav>
-                  }
-                >
-                  {shownPanelId === 'inspector' ? (
-                    <ToolInspector
-                      editor={editor}
-                      group={group}
-                      onGroupChange={setGroup}
-                      onCutout={async () => {
-                        const analysis = editor.portrait.analysis;
-                        const selection = analysis?.segmentation?.subject;
-                        if (!selection || analysis.frame.contentHash !== editor.sourceHash || !editor.file)
-                          throw new Error('请先分析当前原图的人物边缘。');
-                        const settings = { selection, radius: 0.015, decontaminate: 0.8 };
-                        const identity = editor.getSourceIdentity();
-                        const name = `${filenameBase(editor.file.name).slice(0, 106)}-抠图.png`;
-                        if (asset && project && project.id === asset.projectId && ['owner', 'admin', 'editor'].includes(project.role) &&
-                            asset.width === editor.dimensions?.width && asset.height === editor.dimensions.height) {
-                          const key = JSON.stringify([asset.id, identity, name, settings]);
-                          if (cutoutAttempt.current?.key !== key) cutoutAttempt.current = { key, id: secureUuid() };
-                          await api(`/projects/${project.id}/derived-assets`, jsonRequest('POST', { kind: 'cutout', requestId: cutoutAttempt.current.id, name, sourceAssetId: asset.id, settings }));
+                        recipe={editor.recipe}
+                        captureCurrentImage={captureCurrentImage}
+                        onBeforeArtworkWrite={collaboration.beforeExternalWrite}
+                        onAfterArtworkWrite={collaboration.afterExternalWrite}
+                        isDirty={dirty}
+                        onDecisionApplied={async (id) => {
                           setRefreshToken((value) => value + 1);
-                          return '透明 PNG 已保存到项目素材。';
-                        }
-                        const blob = await editor.exportImage('png', 0.94, false, settings);
-                        if (editor.getSourceIdentity() !== identity) throw new Error('图片已切换，请重新运行抠图。');
-                        downloadBlob(blob, name);
-                        return '透明 PNG 已下载。';
-                      }}
-                      mobileOpen
-                      onClose={() => setInspectorOpen(false)}
-                      pickedColor={pickedColor}
-                      onColorChange={setPickedColor}
-                      sampling={sampling}
-                      onSample={() => {
-                        setSampling(!sampling);
-                        if (workspaceLayout.view.bucket === 'phone') setInspectorOpen(false);
-                      }}
-                    />
-                  ) : (
-                    <AIPanelFeature
-                      key={(session.user?.id ?? 'local') + ':' + (project?.id ?? 'none')}
-                      userId={session.user?.id ?? null}
-                      projectAssets={assets}
-                      currentAsset={asset}
-                      referenceSource={referenceSource}
-                      onReferenceFile={(file, source) => {
-                        setReferenceFile(file);
-                        setReferenceSource(source);
-                      }}
-                      project={project}
-                      artwork={artwork}
-                      recipe={editor.recipe}
-                      captureCurrentImage={captureCurrentImage}
-                      onBeforeArtworkWrite={collaboration.beforeExternalWrite}
-                      onAfterArtworkWrite={collaboration.afterExternalWrite}
-                      isDirty={dirty}
-                      onDecisionApplied={async (id) => {
-                        if (isEditorDirty() || artworkRef.current?.id !== id) {
-                          notify('云端已采用AI结果，当前本地草稿继续保留，可稍后从作品中打开。');
-                          return;
-                        }
-                        await openArtwork(id);
-                      }}
-                      config={config}
-                      initialOperation={initialAIOperation}
-                      referenceFile={referenceFile}
-                      onClearReference={() => setReferenceFile(null)}
-                      onDraw={() => setDialog('drawing')}
-                      onCreateProject={openCreateProject}
-                      onOpenArtwork={(id) => {
-                        void openArtwork(id).then((opened) => {
-                          if (opened) setAiOpen(false);
-                        });
-                      }}
-                      onTaskChanged={() => setRefreshToken((value) => value + 1)}
-                      onClose={() => setAiOpen(false)}
-                      onPreview={(next) => {
-                        editor.preview(next);
-                        setView('editor');
-                        notify('建议已作为待确认预览进入当前画面；可以继续调整、取消或保存。');
-                      }}
-                      onSave={save}
-                      isLoggedIn={!!session.user}
-                      onAuth={() => setDialog('auth')}
-                    />
-                  )}
-                </FloatingPanel>
-              )}
+                          if (
+                            navigationScope.current.view !== 'editor' ||
+                            navigationScope.current.documentDirty ||
+                            isEditorDirty() ||
+                            artworkRef.current?.id !== id
+                          ) {
+                            notify('云端已采用AI结果，当前本地草稿继续保留，可稍后从作品中打开。');
+                            return;
+                          }
+                          await openArtwork(id);
+                        }}
+                        config={config}
+                        initialOperation={initialAIOperation}
+                        referenceFile={referenceFile}
+                        onClearReference={() => setReferenceFile(null)}
+                        onDraw={() => setDialog('drawing')}
+                        onCreateProject={openCreateProject}
+                        onOpenArtwork={(id) => {
+                          void openArtwork(id).then((opened) => {
+                            if (opened) setAiOpen(false);
+                          });
+                        }}
+                        onTaskChanged={() => setRefreshToken((value) => value + 1)}
+                        onClose={() => setAiOpen(false)}
+                        onPreview={(next) => {
+                          editor.preview(next);
+                          notify(
+                            navigationScope.current.view === 'editor'
+                              ? '建议已进入预览，可以继续调整、取消或保存。'
+                              : 'AI 建议已在编辑器中准备好，当前页面和未保存内容已保留。',
+                          );
+                        }}
+                        onSave={save}
+                        isLoggedIn={!!session.user}
+                        onAuth={() => setDialog('auth')}
+                      />
+                    )}
+                  </FloatingPanel>
+                ))}
               {workspaceLayout.focused && (
                 <div className="focus-exit">
                   <button onClick={() => workspaceLayout.setFocused(false)}>
@@ -1936,6 +2111,36 @@ export function App() {
         }}
       />
       <DialogMotionContext.Provider value={{ open: !!dialog, phase: dialogPresence.phase }}>
+        {renderedDialog === 'navigation' && (
+          <WorkspaceNavigation
+            view={view}
+            onClose={closeDialog}
+            onView={async (next) => {
+              if (await changeView(next)) closeDialog();
+            }}
+          />
+        )}
+        {renderedDialog === 'settings' && (
+          <WorkspaceSettings
+            preference={studioTheme.preference}
+            onPreference={studioTheme.setPreference}
+            onClose={closeDialog}
+            onImportSettings={() => setDialog('importSettings')}
+            onReset={() => {
+              resetWorkspace();
+              closeDialog();
+            }}
+            onFocus={() => {
+              workspaceLayout.setFocused(true);
+              closeDialog();
+            }}
+            onHelp={() => setDialog('help')}
+            available={session.user && entitlements ? entitlements.available : undefined}
+            onUsage={async () => {
+              if (await changeView('usage')) closeDialog();
+            }}
+          />
+        )}
         {renderedDialog === 'commands' && <CommandMenu commands={commands} onClose={closeDialog} />}
         {renderedDialog === 'drawing' && (
           <Suspense
@@ -1949,12 +2154,12 @@ export function App() {
               initialColor={pickedColor}
               onClose={closeDialog}
               onUse={(file) => importFile(file)}
-              onReference={(file) => {
-                if (!changeView('editor')) return false;
+              onReference={async (file) => {
+                if (!(await changeView('editor'))) return false;
                 setReferenceFile(file);
                 setReferenceSource('sketch');
                 setInitialAIOperation('generate-image');
-                openAI();
+                showAI();
                 notify('草图已作为本地参考。确认提交生图时才会上传。');
                 return true;
               }}
@@ -2101,11 +2306,8 @@ export function App() {
             </p>
             <button
               className="button button-secondary"
-              onClick={() => {
-                setDialog(null);
-                setInspectorOpen(false);
-                setAiOpen(false);
-                setView('usage');
+              onClick={async () => {
+                if (await changeView('usage')) closeDialog();
               }}
             >
               <ChartBar size={17} />
@@ -2114,12 +2316,12 @@ export function App() {
           </Modal>
         )}
         {renderedDialog === 'help' && (
-          <Modal title={`在${brand}，自在创作`} onClose={closeDialog}>
+          <Modal title="工作台帮助" onClose={closeDialog}>
             <div className="help-list">
               <section>
                 <SlidersHorizontal size={24} />
                 <div>
-                  <h3>先从一张照片开始</h3>
+                  <h3>编辑照片</h3>
                   <p>
                     先在照片下方选择调节、人像、局部或构图，再展开需要的工具。支持多区域、曲线、四角透视、绘制、修复和图层合成；照片先在本机处理。
                   </p>
@@ -2128,7 +2330,7 @@ export function App() {
               <section>
                 <CloudArrowUp size={24} />
                 <div>
-                  <h3>喜欢哪一步，就留下它</h3>
+                  <h3>保存与版本</h3>
                   <p>
                     登录后把作品保存到项目。进入已保存的作品后，每次确认调整会同步为新版本；冲突时保留本地草稿，可以另存分支。
                   </p>
@@ -2137,7 +2339,7 @@ export function App() {
               <section>
                 <UsersThree size={24} />
                 <div>
-                  <h3>让队友接上你的想法</h3>
+                  <h3>团队协作</h3>
                   <p>
                     创建团队、邀请成员，在同一张作品上查看队员游标和编辑范围。相同区域会先取得编辑权；也可以在项目里讨论、写文档和跟进任务。
                   </p>
@@ -2146,7 +2348,7 @@ export function App() {
               <section>
                 <ShieldCheck size={24} />
                 <div>
-                  <h3>清楚知道作品去了哪里</h3>
+                  <h3>图片与 AI 授权</h3>
                   <p>
                     打开本地照片不会自动上传。AI
                     默认使用你提交的文字和参数；主动开启共享画面后会发送当前图片预览，选择参考图或开始语音也会发送对应内容。模型、服务点与能力在执行前显示。
@@ -2163,6 +2365,7 @@ export function App() {
           </Modal>
         )}
       </DialogMotionContext.Provider>
+      {confirmation.dialog}
       <Toast notice={notice} dismiss={dismissNotice} />
     </>
   );

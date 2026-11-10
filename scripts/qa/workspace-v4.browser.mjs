@@ -110,9 +110,13 @@ async function caseRun(name, run) {
   }
 }
 async function changeView(page, id, label) {
-  const compact = page.getByRole('combobox', { name: '切换工作视图' });
-  if (await compact.isVisible()) await compact.selectOption(id);
-  else
+  const compact = page.getByRole('button', { name: '切换工作视图', exact: true });
+  if (await compact.isVisible()) {
+    await compact.click();
+    const dialog = page.getByRole('dialog', { name: '工作视图', exact: true });
+    await dialog.locator(`button[data-view="${id}"]`).click();
+    await dialog.waitFor({ state: 'hidden' });
+  } else
     await page
       .getByRole('navigation', { name: '工作视图', exact: true })
       .getByRole('button', { name: label, exact: true })
@@ -127,11 +131,18 @@ async function tool(page, label) {
 }
 async function precision(page, label, value) {
   const panel = page.locator('.free-panel[aria-hidden="false"]');
-  if (!(await panel.getByRole('slider', { name: label, exact: true }).count()))
-    await panel
-      .locator('.parameter-shelf-options')
-      .getByRole('button', { name: new RegExp(`^${label}`) })
-      .click();
+  if (!(await panel.getByRole('slider', { name: label, exact: true }).count())) {
+    const compact = panel.locator('.parameter-compact-picker').getByRole('combobox');
+    if (await compact.isVisible()) {
+      await compact.click();
+      await page.getByRole('option', { name: label, exact: true }).click();
+    } else {
+      await panel
+        .locator('.parameter-shelf-options')
+        .getByRole('button', { name: new RegExp(`^${label}`) })
+        .click();
+    }
+  }
   await panel.getByRole('button', { name: new RegExp(`^${label}数值`) }).click();
   await panel.getByRole('spinbutton', { name: `${label}精确数值` }).fill(String(value));
   await panel.getByRole('spinbutton', { name: `${label}精确数值` }).press('Enter');
@@ -163,7 +174,7 @@ async function recipeDownload(page) {
 }
 async function imageDownload(page) {
   await page.getByRole('button', { name: '导出', exact: true }).click();
-  const dialog = page.getByRole('dialog', { name: '把这张画面，带走', exact: true });
+  const dialog = page.getByRole('dialog', { name: '导出图片', exact: true });
   await dialog.getByRole('button', { name: '生成导出文件', exact: true }).click();
   const bytes = await downloadBytes(page, () =>
     dialog.getByRole('link', { name: '下载图片', exact: true }).click(),
@@ -332,6 +343,12 @@ function exposureDirection(dark, neutral, light, label) {
   assert.equal(lightReversed, 0, `${label}: positive exposure does not darken pixels`);
   return { darkerPixels, brighterPixels, darkReversed, lightReversed };
 }
+async function acceptDefaultConfirmations(page) {
+  await page.addLocatorHandler(
+    page.getByRole('dialog', { name: '确认操作', exact: true }),
+    async (dialog) => dialog.getByRole('button', { name: '确认继续', exact: true }).click(),
+  );
+}
 async function watchPage(context) {
   const page = await context.newPage();
   page.setDefaultTimeout(20_000);
@@ -339,6 +356,7 @@ async function watchPage(context) {
     report.pageErrors.push({ case: activeCase, message: error.message.slice(0, 1500) }),
   );
   page.on('dialog', (dialog) => void dialog.accept());
+  await acceptDefaultConfirmations(page);
   pages.push(page);
   return page;
 }
@@ -611,20 +629,42 @@ try {
           Math.abs(resized.panel.height - 339) < 2,
           'phone resize is continuous CSS pixels',
         );
-        await grip.press('Alt+ArrowLeft');
-        const narrower = await page.locator('.free-panel[aria-hidden="false"]').boundingBox();
-        assert.ok(
-          Math.abs(narrower.width - (resized.panel.width - 1)) < 0.1,
-          'keyboard width has a true 1px step',
+        assert.equal(
+          resized.panel.width,
+          size.width,
+          'an attached phone sheet uses the complete viewport width',
         );
-        await grip.press('Alt+ArrowRight');
-        await page.getByRole('button', { name: /^(看全图：|折叠到标题栏)/ }).click();
+        await grip.press('Alt+ArrowUp');
+        const taller = await page.locator('.free-panel[aria-hidden="false"]').boundingBox();
+        assert.ok(
+          Math.abs(taller.height - (resized.panel.height + 1)) < 0.1,
+          'keyboard height has a true 1px step',
+        );
+        await grip.press('Alt+ArrowDown');
+        await page.getByRole('button', { name: '面板位置与连续尺寸', exact: true }).click();
+        await page.getByRole('button', { name: '浮动', exact: true }).click();
+        const beforeFloatingResize = await page
+          .locator('.free-panel[aria-hidden="false"]')
+          .boundingBox();
+        const eastHandle = page.getByRole('separator', { name: /^从右边调整/ });
+        await eastHandle.press('Alt+ArrowLeft');
+        const afterFloatingResize = await page
+          .locator('.free-panel[aria-hidden="false"]')
+          .boundingBox();
+        assert.ok(
+          Math.abs(afterFloatingResize.width - (beforeFloatingResize.width - 1)) < 0.1,
+          'a floating phone panel keeps precise 1px width adjustment',
+        );
+        await eastHandle.press('Alt+ArrowRight');
+        await page.getByRole('button', { name: '面板位置与连续尺寸', exact: true }).click();
+        await page.getByRole('button', { name: '底部', exact: true }).click();
+        await grip.press('Enter');
         await eventually(
           async () =>
             (await page.locator('.free-panel').getAttribute('data-presentation')) === 'collapsed',
           'collapse',
         );
-        await page.getByRole('button', { name: /^继续调节：/ }).click();
+        await grip.press('Enter');
         await eventually(
           async () =>
             Number(await page.getByRole('slider', { name: '曝光', exact: true }).inputValue()) ===
@@ -1351,11 +1391,11 @@ try {
     assert.ok(firstPage.revisions.every((revision) => !Object.hasOwn(revision, 'recipe')));
 
     const history = a.page.locator('.saved-versions');
-    await history.locator('summary').click();
+    await history.locator(':scope > summary').click();
     await eventually(
       async () =>
         (await history.locator('.revision-entry').count()) === 100 &&
-        (await history.locator('summary').innerText()).includes('已载入 100'),
+        (await history.locator(':scope > summary').innerText()).includes('已载入 100'),
       'the first 100 summary rows are visible',
     );
     const olderPageUrl = (url) =>
@@ -1374,7 +1414,7 @@ try {
       await history.getByRole('button', { name: '加载更早版本', exact: true }).click();
       await history.getByRole('button', { name: '重试读取版本', exact: true }).waitFor();
       assert.equal(await history.locator('.revision-entry').count(), 100);
-      assert.ok((await history.locator('summary').innerText()).includes('已载入 100'));
+      assert.ok((await history.locator(':scope > summary').innerText()).includes('已载入 100'));
       [secondPageResponse] = await Promise.all([
         a.page.waitForResponse((response) => isHistoryPage(response, '6')),
         history.getByRole('button', { name: '重试读取版本', exact: true }).click(),
@@ -1398,7 +1438,7 @@ try {
     await eventually(
       async () =>
         (await history.locator('.revision-entry').count()) === 105 &&
-        (await history.locator('summary').innerText()).includes('已载入 105'),
+        (await history.locator(':scope > summary').innerText()).includes('已载入 105'),
       'the older page appends without dropping or duplicating history',
     );
     assert.equal(
@@ -1485,6 +1525,680 @@ try {
       a.page.off('request', countDetail);
     }
   });
+  await caseRun('history-render-and-original-key-fork-preserve-local-draft', async () => {
+    const sourceTitle = `CI render fork ${randomUUID().slice(0, 8)}`;
+    const branchTitle = `${sourceTitle} branch`;
+    const historicalRecipe = createRecipeV4({ adjustments: { exposure: -0.4, contrast: 12 } });
+    const created = await request(a, `/projects/${projectId}/artworks`, 'POST', {
+      assetId,
+      title: sourceTitle,
+      recipe: historicalRecipe,
+    });
+    assert.equal(created.status(), 201);
+    const initial = await created.json();
+    const sourceArtworkId = initial.artwork.id;
+    const historicalRevisionId = initial.revision.id;
+    const changed = await request(a, `/artworks/${sourceArtworkId}/revisions`, 'POST', {
+      expectedVersion: 1,
+      recipe: createRecipeV4({ adjustments: { exposure: 0.3 } }),
+      label: 'CI later head remains untouched',
+    });
+    assert.equal(changed.status(), 201);
+    const originalHead = await changed.json();
+    await a.page.reload();
+    await a.page.getByRole('button', { name: '打开空间与项目', exact: true }).click();
+    await a.page
+      .locator('.sidebar')
+      .getByRole('button', { name: new RegExp(`^${teamName}`) })
+      .click();
+    await a.page.getByRole('button', { name: '打开空间与项目', exact: true }).click();
+    await a.page
+      .getByRole('navigation', { name: '项目', exact: true })
+      .getByRole('button', { name: projectName, exact: true })
+      .click();
+    await a.page
+      .locator('.library-version-links')
+      .getByRole('button', { name: new RegExp(`^${sourceTitle}`) })
+      .click();
+    await imageReady(a.page);
+    await a.page.locator('.collaboration-status[data-state="ready"]').waitFor();
+
+    // A real second editor owns a conflicting lease. This leaves a genuine local
+    // draft, without inventing React state or silently publishing that draft.
+    const sessionResponse = await request(
+      b,
+      `/artworks/${sourceArtworkId}/collaboration/sessions`,
+      'POST',
+      {
+        clientId: randomUUID(),
+      },
+    );
+    assert.equal(sessionResponse.status(), 201);
+    const peer = (await sessionResponse.json()).session;
+    let held;
+    try {
+      const response = await request(
+        b,
+        `/artworks/${sourceArtworkId}/collaboration/leases`,
+        'POST',
+        {
+          sessionId: peer.id,
+          target: { kind: 'parameter', id: 'adjustments.exposure' },
+        },
+      );
+      assert.ok(response.ok());
+      held = (await response.json()).lease;
+      await tool(a.page, '明暗');
+      await precision(a.page, '曝光', -0.8);
+      await a.page.locator('.collaboration-status[data-state="conflict"]').waitFor();
+    } finally {
+      if (held) {
+        const response = await request(
+          b,
+          `/artworks/${sourceArtworkId}/collaboration/leases/${held.id}`,
+          'DELETE',
+          {
+            sessionId: peer.id,
+            fence: held.fence,
+          },
+        );
+        assert.ok(response.ok());
+      }
+      const response = await request(
+        b,
+        `/artworks/${sourceArtworkId}/collaboration/sessions/${peer.id}`,
+        'DELETE',
+      );
+      assert.ok(response.ok());
+    }
+    const localDraft = await recipeDownload(a.page);
+    assert.equal(localDraft.adjustments.exposure, -0.8);
+    await changeView(a.page, 'compare', '对比');
+    const history = a.page.locator('.saved-versions');
+    await history.locator(':scope > summary').click();
+    const historicalRow = history.locator('.revision-entry').filter({
+      has: a.page.locator('.revision-open').filter({ hasText: /V1$/ }),
+    });
+    await historicalRow.locator('.revision-more > summary').click();
+    const renderInfoPath = `/v1/artworks/${sourceArtworkId}/revisions/${historicalRevisionId}/render-info`;
+    const [infoResponse] = await Promise.all([
+      a.page.waitForResponse((response) => new URL(response.url()).pathname === renderInfoPath),
+      historicalRow.locator('.revision-render > summary').click(),
+    ]);
+    assert.equal(infoResponse.status(), 200);
+    const renderInfo = await infoResponse.json();
+    assert.equal(renderInfo.artworkId, sourceArtworkId);
+    assert.equal(renderInfo.revisionId, historicalRevisionId);
+    assert.equal(renderInfo.version, 1);
+    assert.equal(renderInfo.source.assetId, assetId);
+    assert.equal(renderInfo.source.kind, 'canonical');
+    assert.equal(renderInfo.pixelFormat, 'srgb-rgba8');
+    assert.equal(renderInfo.available, true);
+    assert.deepEqual(renderInfo.output, { width, height });
+    const renderPath = renderInfoPath.replace(/-info$/, '');
+    const [renderResponse, renderedBytes] = await Promise.all([
+      a.page.waitForResponse((response) => new URL(response.url()).pathname === renderPath),
+      downloadBytes(a.page, () =>
+        historicalRow.getByRole('button', { name: '下载 PNG', exact: true }).click(),
+      ),
+    ]);
+    assert.equal(renderResponse.status(), 200);
+    assert.equal(renderResponse.headers()['x-xiutu-revision'], historicalRevisionId);
+    assert.equal(renderResponse.headers()['x-xiutu-pixel-format'], 'srgb-rgba8');
+    const rendered = await pixelEvidence(renderedBytes);
+    const reference = renderEditorRecipeTiled(
+      { width, height, data: new Uint8ClampedArray(pixels) },
+      historicalRecipe,
+      { tileSize: 37 },
+    );
+    assert.equal(rendered.evidence.rgbaSha256, sha256(reference.data));
+    await writeFile(join(artifacts, 'history-server-render-v1.png'), renderedBytes);
+
+    const forkPath = `/v1/artworks/${sourceArtworkId}/fork-revision`;
+    const forkUrl = (url) => url.pathname === forkPath;
+    const submitted = [];
+    let firstReceipt;
+    let replayReceipt;
+    let releaseLostReply;
+    const lostReplyGate = new Promise((resolve) => {
+      releaseLostReply = resolve;
+    });
+    const forkRoute = async (route) => {
+      const attempt = submitted.push(route.request().postDataJSON());
+      const response = await route.fetch();
+      if (attempt === 1) {
+        assert.equal(response.status(), 201, 'the first request really creates a branch');
+        firstReceipt = await response.json();
+        await lostReplyGate;
+        await route.abort('failed');
+      } else {
+        assert.equal(response.status(), 200, 'the same request replays its original receipt');
+        replayReceipt = await response.json();
+        await route.fulfill({ response });
+      }
+    };
+    const refusedOpen = [];
+    await a.page.route(forkUrl, forkRoute);
+    try {
+      await historicalRow.getByRole('button', { name: '从此版本建分支', exact: true }).click();
+      let dialog = a.page.getByRole('dialog', { name: '从历史版本创建分支', exact: true });
+      await dialog.getByLabel('新作品名称', { exact: true }).fill(branchTitle);
+      await dialog.getByRole('button', { name: '创建并打开', exact: true }).click();
+      await eventually(() => firstReceipt, 'the original fork was accepted by the real server');
+      assert.equal(await dialog.locator('button[type="submit"]').isDisabled(), true);
+      // Native form submissions while the HTTP acknowledgement is pending must
+      // be guarded synchronously, including before the next React paint.
+      await dialog.locator('form').evaluate((form) => {
+        form.requestSubmit();
+        form.requestSubmit();
+      });
+      await a.page.evaluate(
+        () => new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve))),
+      );
+      assert.equal(submitted.length, 1, 'an in-flight operation cannot submit a second request');
+      releaseLostReply();
+      await dialog.getByRole('button', { name: '继续原请求', exact: true }).waitFor();
+      assert.equal(await dialog.getByLabel('新作品名称', { exact: true }).isDisabled(), true);
+      await dialog.getByRole('button', { name: '稍后处理', exact: true }).click();
+      await dialog.waitFor({ state: 'hidden' });
+      await historicalRow.getByRole('button', { name: '从此版本建分支', exact: true }).click();
+      dialog = a.page.getByRole('dialog', { name: '从历史版本创建分支', exact: true });
+      await dialog.getByRole('button', { name: '继续原请求', exact: true }).waitFor();
+      assert.equal(
+        await dialog.getByLabel('新作品名称', { exact: true }).inputValue(),
+        branchTitle,
+      );
+      await a.page.removeLocatorHandler(
+        a.page.getByRole('dialog', { name: '确认操作', exact: true }),
+      );
+      await dialog.getByRole('button', { name: '继续原请求', exact: true }).click();
+      const replaceConfirmation = a.page.getByRole('dialog', { name: '确认操作', exact: true });
+      await replaceConfirmation.waitFor();
+      refusedOpen.push(await replaceConfirmation.innerText());
+      await replaceConfirmation.getByRole('button', { name: '取消', exact: true }).click();
+      await replaceConfirmation.waitFor({ state: 'hidden' });
+      const savedDialog = a.page.getByRole('dialog', { name: '分支已创建', exact: true });
+      await savedDialog.getByRole('button', { name: '打开已创建分支', exact: true }).waitFor();
+      assert.equal(refusedOpen.length, 1);
+      assert.match(refusedOpen[0], /未保存/);
+      assert.equal(submitted.length, 2);
+      assert.deepEqual(
+        submitted[1],
+        submitted[0],
+        'recovery keeps the frozen source, title and original key',
+      );
+      assert.deepEqual(Object.keys(submitted[0]).sort(), ['idempotencyKey', 'revisionId', 'title']);
+      assert.equal(submitted[0].revisionId, historicalRevisionId);
+      assert.equal(replayReceipt.artwork.id, firstReceipt.artwork.id);
+      assert.equal(replayReceipt.revision.id, firstReceipt.revision.id);
+      assert.equal(replayReceipt.replayed, true);
+      await savedDialog.getByRole('button', { name: '稍后处理', exact: true }).click();
+      await savedDialog.waitFor({ state: 'hidden' });
+      const retainedDraft = await recipeDownload(a.page);
+      assert.deepEqual(
+        retainedDraft,
+        localDraft,
+        'declining to open keeps every field of the local draft',
+      );
+      await acceptDefaultConfirmations(a.page);
+      await changeView(a.page, 'compare', '对比');
+      await history.locator(':scope > summary').click();
+      await historicalRow.locator('.revision-more > summary').click();
+      await historicalRow.getByRole('button', { name: '从此版本建分支', exact: true }).click();
+      const recovered = a.page.getByRole('dialog', { name: '分支已创建', exact: true });
+      await recovered.getByRole('button', { name: '打开已创建分支', exact: true }).click();
+      // An actionability check lets the common confirmation handler accept this
+      // explicitly requested replacement before waiting for the new work.
+      await a.page.getByRole('button', { name: '保存', exact: true }).click({ trial: true });
+      await recovered.waitFor({ state: 'hidden' });
+      await imageReady(a.page);
+      await a.page.getByText(`已打开「${branchTitle}」版本 1。`, { exact: true }).waitFor();
+      assert.equal(submitted.length, 2, 'opening an accepted receipt never creates another branch');
+      assert.deepEqual(await recipeDownload(a.page), historicalRecipe);
+      const unchanged = await request(a, `/artworks/${sourceArtworkId}`);
+      assert.equal(unchanged.status(), 200);
+      const head = await unchanged.json();
+      assert.equal(head.artwork.headVersion, 2);
+      assert.equal(head.revision.id, originalHead.revision.id);
+      assert.deepEqual(head.revision.recipe, originalHead.revision.recipe);
+      const opened = await request(a, `/artworks/${firstReceipt.artwork.id}`);
+      assert.equal(opened.status(), 200);
+      const branch = await opened.json();
+      assert.notEqual(branch.artwork.id, sourceArtworkId);
+      assert.equal(branch.artwork.projectId, projectId);
+      assert.equal(branch.artwork.headVersion, 1);
+      assert.equal(branch.asset.id, assetId);
+      assert.equal(branch.revision.assetId, assetId);
+      assert.equal(branch.revision.origin.kind, 'history-fork');
+      assert.equal(branch.revision.origin.sourceRevisionId, historicalRevisionId);
+      assert.deepEqual(branch.revision.recipe, historicalRecipe);
+      const listing = await request(a, `/projects/${projectId}/artworks`);
+      assert.equal(listing.status(), 200);
+      assert.equal(
+        (await listing.json()).artworks.filter((item) => item.title === branchTitle).length,
+        1,
+      );
+      await a.page.screenshot({ path: join(artifacts, 'history-fork-opened-once.png') });
+      return {
+        renderInfo: {
+          available: renderInfo.available,
+          sourceKind: renderInfo.source.kind,
+          output: renderInfo.output,
+          pixelFormat: renderInfo.pixelFormat,
+        },
+        rendered: rendered.evidence,
+        actualPngMatchesReference: true,
+        forkPostCount: submitted.length,
+        originalKeyAndBodyRetained: true,
+        lostAcceptedReceiptRecovered: true,
+        refusedOpenPreservesDraftAndReceipt: true,
+        sourceHeadUnchanged: true,
+        independentBranchCount: 1,
+        historicalSourceAndRecipePreserved: true,
+      };
+    } finally {
+      releaseLostReply();
+      await a.page.unroute(forkUrl, forkRoute);
+      await a.page.removeLocatorHandler(
+        a.page.getByRole('dialog', { name: '确认操作', exact: true }),
+      );
+      await acceptDefaultConfirmations(a.page);
+    }
+  });
+
+  await caseRun('phone-document-list-keeps-unsaved-draft-and-cas-save', async () => {
+    await a.page.setViewportSize({ width: 390, height: 844 });
+    await changeView(a.page, 'docs', '文档');
+    const list = a.page.getByRole('complementary', { name: '项目文档列表', exact: true });
+    await list.getByRole('button', { name: '新建文档', exact: true }).click();
+    const title = `CI phone document ${randomUUID().slice(0, 8)}`;
+    const initialBody = '真实手机文档初稿。';
+    const editedBody = `${initialBody}\n返回列表和刷新列表后，这一段仍应保留。`;
+    await a.page.getByLabel('文档标题', { exact: true }).fill(title);
+    await a.page.getByLabel('文档内容', { exact: true }).fill(initialBody);
+    const [createdResponse] = await Promise.all([
+      a.page.waitForResponse(
+        (response) =>
+          response.request().method() === 'POST' &&
+          new URL(response.url()).pathname === `/v1/projects/${projectId}/documents`,
+      ),
+      a.page.getByRole('button', { name: '保存文档', exact: true }).click(),
+    ]);
+    assert.equal(createdResponse.status(), 201);
+    const document = (await createdResponse.json()).document;
+    await eventually(
+      async () =>
+        (await a.page.locator('.document-editor footer > span').innerText()).includes(
+          '已保存 · 版本 1',
+        ),
+      'first document acknowledgement settles',
+    );
+    await a.page.getByLabel('文档内容', { exact: true }).fill(editedBody);
+    await a.page.getByRole('button', { name: '文档列表', exact: true }).click();
+    assert.equal(
+      await a.page.locator('.documents-layout').getAttribute('data-mobile-view'),
+      'list',
+    );
+    assert.equal(await a.page.getByLabel('文档内容', { exact: true }).isVisible(), false);
+    const [refreshResponse] = await Promise.all([
+      a.page.waitForResponse(
+        (response) =>
+          response.request().method() === 'GET' &&
+          new URL(response.url()).pathname === `/v1/projects/${projectId}/documents`,
+      ),
+      list.getByRole('button', { name: '刷新列表', exact: true }).click(),
+    ]);
+    assert.equal(refreshResponse.status(), 200);
+    const persistedBefore = (await refreshResponse.json()).documents.find(
+      (item) => item.id === document.id,
+    );
+    assert.equal(persistedBefore.body, initialBody, 'returning to the list must not silently save');
+    const confirmations = [];
+    await a.page.removeLocatorHandler(
+      a.page.getByRole('dialog', { name: '确认操作', exact: true }),
+    );
+    try {
+      await list.getByRole('button', { name: '新建文档', exact: true }).click();
+      const discardConfirmation = a.page.getByRole('dialog', { name: '确认操作', exact: true });
+      await discardConfirmation.waitFor();
+      confirmations.push(await discardConfirmation.innerText());
+      await discardConfirmation.getByRole('button', { name: '取消', exact: true }).click();
+      await discardConfirmation.waitFor({ state: 'hidden' });
+      assert.equal(confirmations.length, 1);
+      assert.match(confirmations[0], /未保存/);
+      await list.getByRole('button', { name: '继续编辑当前文档', exact: true }).click();
+      assert.equal(await a.page.getByLabel('文档标题', { exact: true }).inputValue(), title);
+      assert.equal(await a.page.getByLabel('文档内容', { exact: true }).inputValue(), editedBody);
+      await a.page.getByRole('button', { name: '打开空间与项目', exact: true }).click();
+      const sidebar = a.page.locator('.sidebar');
+      // This existing owner fixture is also an actual operator. Both entries
+      // must ask before unmounting the dirty document, and cancellation must
+      // preserve it without opening a new-project form or the operator page.
+      for (const label of ['新建项目', '运营管理']) {
+        await sidebar.getByRole('button', { name: label, exact: true }).click();
+        await discardConfirmation.waitFor();
+        const message = await discardConfirmation.innerText();
+        assert.match(message, /未保存/);
+        assert.ok(message.includes(label));
+        await discardConfirmation.getByRole('button', { name: '取消', exact: true }).click();
+        await discardConfirmation.waitFor({ state: 'hidden' });
+        assert.equal(await a.page.getByLabel('文档标题', { exact: true }).inputValue(), title);
+        assert.equal(await a.page.getByLabel('文档内容', { exact: true }).inputValue(), editedBody);
+        assert.equal(
+          await a.page.getByRole('dialog', { name: '新建项目', exact: true }).count(),
+          0,
+        );
+      }
+      await sidebar.getByRole('button', { name: '关闭导航', exact: true }).click();
+      await a.page.screenshot({ path: join(artifacts, 'phone-document-cancelled-navigation.png') });
+      const [savedResponse] = await Promise.all([
+        a.page.waitForResponse(
+          (response) =>
+            response.request().method() === 'PATCH' &&
+            new URL(response.url()).pathname === `/v1/documents/${document.id}`,
+        ),
+        a.page.getByRole('button', { name: '保存文档', exact: true }).click(),
+      ]);
+      assert.equal(savedResponse.status(), 200);
+      assert.deepEqual(savedResponse.request().postDataJSON(), {
+        title,
+        body: editedBody,
+        expectedVersion: 1,
+      });
+      const saved = (await savedResponse.json()).document;
+      assert.equal(saved.version, 2);
+      assert.equal(saved.body, editedBody);
+      await eventually(
+        async () =>
+          (await a.page.locator('.document-editor footer > span').innerText()).includes(
+            '已保存 · 版本 2',
+          ),
+        'CAS save acknowledgement settles',
+      );
+      await a.page.getByRole('button', { name: '文档列表', exact: true }).click();
+      await list.locator('.document-row').filter({ hasText: title }).click();
+      assert.equal(await a.page.getByLabel('文档内容', { exact: true }).inputValue(), editedBody);
+      const geometry = await a.page.evaluate(() => ({
+        viewport: innerWidth,
+        scrollWidth: document.documentElement.scrollWidth,
+      }));
+      assert.ok(
+        geometry.scrollWidth <= geometry.viewport + 1,
+        'phone document editor has no page overflow',
+      );
+      await a.page.screenshot({ path: join(artifacts, 'phone-document-retained-draft.png') });
+      return {
+        viewport: { width: 390, height: 844 },
+        draftSurvivesListAndRefresh: true,
+        refusedReplacement: true,
+        newProjectNavigationCancelled: true,
+        operatorNavigationCancelled: true,
+        expectedVersion: 1,
+        savedVersion: 2,
+        geometry,
+      };
+    } finally {
+      await acceptDefaultConfirmations(a.page);
+    }
+  });
+
+  await caseRun('document-theme-persists-through-navigation-dialog-and-usage', async () => {
+    const page = a.page;
+    const readTheme = () =>
+      page.evaluate(() => ({
+        theme: document.documentElement.dataset.theme,
+        preference: localStorage.getItem('image-workspace:theme'),
+      }));
+    const surfaceEvidence = async (locator, token) =>
+      eventually(async () => {
+        const value = await locator.evaluate((element, token) => {
+          const probe = document.createElement('span');
+          probe.style.backgroundColor = `var(${token})`;
+          probe.style.color = 'var(--ink)';
+          document.body.append(probe);
+          const expected = getComputedStyle(probe);
+          const actual = getComputedStyle(element);
+          const result = {
+            background: actual.backgroundColor,
+            foreground: actual.color,
+            expectedBackground: expected.backgroundColor,
+            expectedForeground: expected.color,
+          };
+          probe.remove();
+          return result;
+        }, token);
+        return value.background === value.expectedBackground &&
+          value.foreground === value.expectedForeground
+          ? value
+          : false;
+      }, `the ${token} surface finishes its theme transition`);
+    const assertSurface = (value, label) => {
+      assert.equal(
+        value.background,
+        value.expectedBackground,
+        `${label} follows the document surface token`,
+      );
+      assert.equal(
+        value.foreground,
+        value.expectedForeground,
+        `${label} follows the document text token`,
+      );
+      assert.notEqual(
+        value.background,
+        value.foreground,
+        `${label} has distinct text and surface colors`,
+      );
+    };
+    await page.getByRole('button', { name: '布局与工作台设置', exact: true }).click();
+    let settings = page.getByRole('dialog', { name: '工作台设置', exact: true });
+    await settings
+      .getByRole('group', { name: '外观模式', exact: true })
+      .getByRole('button', { name: '深色', exact: true })
+      .click();
+    await eventually(async () => {
+      const value = await readTheme();
+      return value.theme === 'dark' && value.preference === 'dark';
+    }, 'dark preference is stored at document scope');
+    const darkDialog = await surfaceEvidence(settings, '--surface-raised');
+    assertSurface(darkDialog, 'settings dialog');
+    await page.screenshot({ path: join(artifacts, 'theme-dark-settings-phone.png') });
+    await settings.getByRole('button', { name: '关闭窗口', exact: true }).click();
+    await settings.waitFor({ state: 'hidden' });
+    await page.getByRole('button', { name: '切换工作视图', exact: true }).click();
+    const navigation = page.getByRole('dialog', { name: '工作视图', exact: true });
+    const darkNavigation = await surfaceEvidence(navigation, '--surface-raised');
+    assertSurface(darkNavigation, 'navigation dialog');
+    await navigation.locator('button[data-view="usage"]').click();
+    await navigation.waitFor({ state: 'hidden' });
+    const usage = page.getByRole('region', { name: '用量与额度历史', exact: true });
+    await usage.locator('.usage-card:not(.usage-wallet)').first().waitFor();
+    const darkUsage = await surfaceEvidence(
+      usage.locator('.usage-card:not(.usage-wallet)').first(),
+      '--surface',
+    );
+    assertSurface(darkUsage, 'usage card');
+    assert.deepEqual(await readTheme(), { theme: 'dark', preference: 'dark' });
+    await page.screenshot({ path: join(artifacts, 'theme-dark-usage-phone.png') });
+    await page.setViewportSize({ width: 1440, height: 960 });
+    assert.deepEqual(await readTheme(), { theme: 'dark', preference: 'dark' });
+    await page.reload();
+    await eventually(async () => {
+      const value = await readTheme();
+      return value.theme === 'dark' && value.preference === 'dark';
+    }, 'theme survives resize and a real reload');
+    await page.getByRole('button', { name: '布局与工作台设置', exact: true }).click();
+    settings = page.getByRole('dialog', { name: '工作台设置', exact: true });
+    assert.equal(
+      await settings
+        .getByRole('button', { name: '深色', exact: true })
+        .getAttribute('aria-pressed'),
+      'true',
+    );
+    await settings.getByRole('button', { name: '浅色', exact: true }).click();
+    await eventually(
+      async () => (await readTheme()).theme === 'light',
+      'light preference applies to the open dialog',
+    );
+    const lightDialog = await surfaceEvidence(settings, '--surface-raised');
+    assertSurface(lightDialog, 'light settings dialog');
+    assert.notEqual(lightDialog.background, darkDialog.background);
+    await settings.getByRole('button', { name: '跟随系统', exact: true }).click();
+    await page.emulateMedia({ colorScheme: 'dark' });
+    await eventually(async () => {
+      const value = await readTheme();
+      return value.theme === 'dark' && value.preference === 'system';
+    }, 'system dark preference is observed');
+    await page.emulateMedia({ colorScheme: 'light' });
+    await eventually(async () => {
+      const value = await readTheme();
+      return value.theme === 'light' && value.preference === 'system';
+    }, 'system light preference is observed');
+    await settings.getByRole('button', { name: '关闭窗口', exact: true }).click();
+    await settings.waitFor({ state: 'hidden' });
+    await changeView(page, 'usage', '用量');
+    await usage.locator('.usage-card:not(.usage-wallet)').first().waitFor();
+    const lightUsage = await surfaceEvidence(
+      usage.locator('.usage-card:not(.usage-wallet)').first(),
+      '--surface',
+    );
+    assertSurface(lightUsage, 'light usage card');
+    await page.screenshot({ path: join(artifacts, 'theme-light-usage-desktop.png') });
+    return {
+      darkDialog,
+      darkNavigation,
+      darkUsage,
+      lightDialog,
+      lightUsage,
+      persistsAcrossViewportAndReload: true,
+      followsBothSystemSchemes: true,
+    };
+  });
+
+  await caseRun('continuous-pointer-drag-renders-intermediate-canvas-pixels', async () => {
+    const context = await browser.newContext({
+      viewport: { width: 1440, height: 960 },
+      reducedMotion: 'no-preference',
+      acceptDownloads: true,
+    });
+    try {
+      const page = await watchPage(context);
+      await page.goto(origin);
+      await page
+        .getByLabel('选择照片', { exact: true })
+        .setInputFiles({ name: 'CI-continuous-preview.png', mimeType: 'image/png', buffer: png });
+      await imageReady(page);
+      await tool(page, '明暗');
+      await precision(page, '曝光', 0);
+      await imageReady(page);
+      const range = page.getByRole('slider', { name: '曝光', exact: true });
+      await range.evaluate((element) => {
+        element.addEventListener(
+          'pointerdown',
+          (event) => {
+            element.dataset.qaPreviewPointer = String(event.pointerId);
+            element.dataset.qaPreviewStart = String(performance.now());
+          },
+          { once: true },
+        );
+      });
+      const sample = async () => {
+        const value = await range.evaluate(async (element) => {
+          await new Promise((resolve) => requestAnimationFrame(resolve));
+          const visible = document.querySelector('.image-frame canvas');
+          if (!(visible instanceof HTMLCanvasElement)) throw new Error('No actual preview canvas');
+          const sampleCanvas = document.createElement('canvas');
+          sampleCanvas.width = 16;
+          sampleCanvas.height = 16;
+          const drawing = sampleCanvas.getContext('2d', { willReadFrequently: true });
+          if (!drawing) throw new Error('Sampling context unavailable');
+          drawing.drawImage(visible, 0, 0, 16, 16);
+          const rgba = Array.from(drawing.getImageData(0, 0, 16, 16).data);
+          return {
+            rgba,
+            width: visible.width,
+            height: visible.height,
+            exposure: Number(element.value),
+            held: element.hasPointerCapture(Number(element.dataset.qaPreviewPointer)),
+            elapsedMs: element.dataset.qaPreviewStart
+              ? performance.now() - Number(element.dataset.qaPreviewStart)
+              : 0,
+          };
+        });
+        let sum = 0;
+        for (let index = 0; index < value.rgba.length; index += 4)
+          sum +=
+            0.2126 * value.rgba[index] +
+            0.7152 * value.rgba[index + 1] +
+            0.0722 * value.rgba[index + 2];
+        const { rgba, ...detail } = value;
+        return { ...detail, rgbaSha256: sha256(Buffer.from(rgba)), meanLuma: sum / 256 };
+      };
+      const neutral = await sample();
+      const box = await range.boundingBox();
+      assert.ok(box);
+      await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2);
+      await page.mouse.down();
+      const samples = [];
+      try {
+        for (let index = 0; index < 32; index++) {
+          await page.mouse.move(box.x + box.width * (0.53 + index * 0.009), box.y + box.height / 2);
+          await sleep(45);
+          samples.push(await sample());
+        }
+      } finally {
+        await page.mouse.up();
+      }
+      assert.ok(
+        samples.every((value) => value.held),
+        'all intermediate evidence is taken before pointer release',
+      );
+      const changed = samples.filter(
+        (value) =>
+          value.rgbaSha256 !== neutral.rgbaSha256 && value.meanLuma > neutral.meanLuma + 0.5,
+      );
+      assert.ok(
+        new Set(changed.map((value) => value.rgbaSha256)).size >= 2,
+        'at least two genuinely brightened canvas frames are visible during the continuous drag',
+      );
+      assert.ok(
+        Math.max(...changed.map((value) => value.meanLuma)) -
+          Math.min(...changed.map((value) => value.meanLuma)) >
+          0.1,
+        'intermediate pixel evidence includes changing brightness, not only control labels',
+      );
+      await imageReady(page);
+      const finalRecipe = await recipeDownload(page);
+      const exported = await pixelEvidence(await imageDownload(page));
+      const reference = renderEditorRecipeTiled(
+        { width, height, data: new Uint8ClampedArray(pixels) },
+        finalRecipe,
+        { tileSize: 37 },
+      );
+      assert.equal(exported.evidence.rgbaSha256, sha256(reference.data));
+      await tool(page, '明暗');
+      const finalCanvas = await canvasEvidence(page);
+      assert.equal(
+        finalCanvas.evidence.rgbaSha256,
+        exported.evidence.rgbaSha256,
+        'settled preview matches the actual final export at full fixture size',
+      );
+      await page.screenshot({ path: join(artifacts, 'continuous-preview-settled.png') });
+      return {
+        source: '600x400 technical gradient; no recognition model',
+        neutral,
+        heldSamples: samples,
+        changedHeldFrames: new Set(changed.map((value) => value.rgbaSha256)).size,
+        firstVisibleChangeMs: changed[0].elapsedMs,
+        finalExposure: finalRecipe.adjustments.exposure,
+        finalCanvas: finalCanvas.evidence,
+        exported: exported.evidence,
+        finalExportMatchesReference: true,
+        latencyIsMeasurementNotFpsGate: true,
+      };
+    } finally {
+      await context.close();
+    }
+  });
   await caseRun('project-library-imports-real-gif-and-edits-its-frames', async () => {
     const { page } = a;
     const desktop = page.viewportSize();
@@ -1509,7 +2223,9 @@ try {
         });
         assert.ok(bounds.width <= width && bounds.height <= height, JSON.stringify(bounds));
         assert.ok(bounds.horizontalOverflow <= 1, JSON.stringify(bounds));
-        await layout.getByRole('button', { name: '关闭窗口', exact: true }).scrollIntoViewIfNeeded();
+        await layout
+          .getByRole('button', { name: '关闭窗口', exact: true })
+          .scrollIntoViewIfNeeded();
         await page.screenshot({ path: join(artifacts, `${name}-${width}x${height}.png`) });
         viewportEvidence.push({ name, viewport: `${width}×${height}`, ...bounds });
       }
@@ -1530,9 +2246,11 @@ try {
     await dialog.getByRole('button', { name: '保留全部帧并导入' }).click();
     await dialog.getByRole('status').filter({ hasText: 'QA-motion.gif' }).waitFor();
     await checkDialog(dialog, 'project-asset-tools', '保留全部帧并导入');
-    await dialog.getByText(/选择拼图素材/).click();
-    await dialog.getByRole('checkbox', { name: 'CI-gradient.png', exact: true }).check();
-    await dialog.getByRole('checkbox', { name: 'QA-motion.gif', exact: true }).check();
+    const sourcePicker = dialog.locator('.asset-tool-assets');
+    const sourceSummary = sourcePicker.locator(':scope > summary');
+    if ((await sourceSummary.getAttribute('aria-expanded')) !== 'true') await sourceSummary.click();
+    await sourcePicker.getByRole('checkbox', { name: /^CI-gradient\.png/ }).check();
+    await sourcePicker.getByRole('checkbox', { name: /^QA-motion\.gif/ }).check();
     await dialog.getByRole('spinbutton', { name: '画布宽' }).fill('64');
     await dialog.getByRole('spinbutton', { name: '画布高' }).fill('40');
     await dialog.getByRole('spinbutton', { name: '间距' }).fill('3');
@@ -1549,7 +2267,10 @@ try {
     assert.equal(collage.source, 'derived');
     const collageFile = await a.context.request.get(new URL(collage.url, origin).href);
     assert.equal(collageFile.status(), 200);
-    const collagePixels = await sharp(await collageFile.body()).ensureAlpha().raw().toBuffer();
+    const collagePixels = await sharp(await collageFile.body())
+      .ensureAlpha()
+      .raw()
+      .toBuffer();
     assert.equal(collagePixels[3], 0);
     const gifCell = (20 * 64 + 50) * 4;
     assert.deepEqual([...collagePixels.subarray(gifCell, gifCell + 4)], [221, 21, 19, 255]);

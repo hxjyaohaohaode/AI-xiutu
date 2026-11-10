@@ -1,3 +1,5 @@
+import { MotionDetails } from '../motion/Presence';
+import { ChoiceSelect } from '../components/ChoiceSelect';
 import {
   createHealingOperationV4,
   createRetouchRegionV4,
@@ -181,10 +183,16 @@ export function RepairControls({ controller }: { controller: InspectorController
         step: 0.1,
         onChange: (value) => patch({ [id]: value }, '调整' + label),
       });
-    if (retouch.algorithm === 'guided-v4') controls.push({
-      id: 'chromaSpots', label: '局部色斑', value: retouch.chromaSpots ?? 0, min: 0, max: 100, step: 0.1,
-      onChange: (value) => patch({ chromaSpots: value }, '调整局部色斑'),
-    });
+    if (retouch.algorithm === 'guided-v4')
+      controls.push({
+        id: 'chromaSpots',
+        label: '局部色斑',
+        value: retouch.chromaSpots ?? 0,
+        min: 0,
+        max: 100,
+        step: 0.1,
+        onChange: (value) => patch({ chromaSpots: value }, '调整局部色斑'),
+      });
     controls.push({
       id: 'radius',
       label: '处理半径',
@@ -223,22 +231,20 @@ export function RepairControls({ controller }: { controller: InspectorController
         ))}
       </nav>
       <div className="advanced-row">
-        <select
-          aria-label="修复区域"
+        <ChoiceSelect
+          ariaLabel="修复区域"
+          size="compact"
           value={item?.id ?? ''}
-          onChange={(event) => {
+          onValueChange={(value) => {
             editor.commitCurrent('完成当前修复');
-            editor.setActiveRepairId(event.target.value);
+            editor.setActiveRepairId(value);
             editor.setActiveMaskPath([]);
           }}
-        >
-          {!item && <option value="">选择或建立区域</option>}
-          {recipe[mode].map((op) => (
-            <option key={op.id} value={op.id}>
-              {op.name}
-            </option>
-          ))}
-        </select>
+          options={[
+            ...(!item ? [{ value: '', label: '选择或建立区域' }] : []),
+            ...recipe[mode].map((op) => ({ value: op.id, label: op.name })),
+          ]}
+        />
         <button className="text-button" onClick={add}>
           新区域
         </button>
@@ -311,40 +317,47 @@ export function RepairControls({ controller }: { controller: InspectorController
           )}
           {mode === 'retouch' && (
             <div className="tonal-tabs" aria-label="质感算法">
-              {(['guided-v4', 'guided-v3', 'guided-v2', 'guided-v1', 'legacy'] as const).map((algorithm) => (
-                <button
-                  key={algorithm}
-                  aria-pressed={((item as RetouchRegionV4).algorithm ?? 'legacy') === algorithm}
-                  onClick={() =>
-                    apply(
-                      {
-                        ...recipe,
-                        retouch: recipe.retouch.map((op) => {
-                          if (op.id !== item.id) return op;
-                          const { algorithm: _old, chromaSpots, ...rest } = op;
-                          return { ...rest, ...(algorithm !== 'legacy' ? { algorithm } : {}),
-                            ...(algorithm === 'guided-v4' && chromaSpots !== undefined ? { chromaSpots } : {}) };
-                        }),
-                      },
-                      '切换质感算法',
-                      true,
-                    )
-                  }
-                >
-                  {
+              {(['guided-v4', 'guided-v3', 'guided-v2', 'guided-v1', 'legacy'] as const).map(
+                (algorithm) => (
+                  <button
+                    key={algorithm}
+                    aria-pressed={((item as RetouchRegionV4).algorithm ?? 'legacy') === algorithm}
+                    onClick={() =>
+                      apply(
+                        {
+                          ...recipe,
+                          retouch: recipe.retouch.map((op) => {
+                            if (op.id !== item.id) return op;
+                            const { algorithm: _old, chromaSpots, ...rest } = op;
+                            return {
+                              ...rest,
+                              ...(algorithm !== 'legacy' ? { algorithm } : {}),
+                              ...(algorithm === 'guided-v4' && chromaSpots !== undefined
+                                ? { chromaSpots }
+                                : {}),
+                            };
+                          }),
+                        },
+                        '切换质感算法',
+                        true,
+                      )
+                    }
+                  >
                     {
-                      'guided-v4': '纹理与斑点分离',
-                      'guided-v3': '细纹与反光分离',
-                      'guided-v2': '选区保边与双尺度纹理',
-                      'guided-v1': '保边美肤',
-                      legacy: '原版质感',
-                    }[algorithm]
-                  }
-                </button>
-              ))}
+                      {
+                        'guided-v4': '纹理与斑点分离',
+                        'guided-v3': '细纹与反光分离',
+                        'guided-v2': '选区保边与双尺度纹理',
+                        'guided-v1': '保边美肤',
+                        legacy: '原版质感',
+                      }[algorithm]
+                    }
+                  </button>
+                ),
+              )}
             </div>
           )}
-          <details>
+          <MotionDetails>
             <summary>涂抹范围与保护</summary>
             <div className="tonal-tabs">
               <button
@@ -381,7 +394,7 @@ export function RepairControls({ controller }: { controller: InspectorController
                 )
               }
             />
-          </details>
+          </MotionDetails>
           <div className="advanced-row">
             <button
               className="text-button"

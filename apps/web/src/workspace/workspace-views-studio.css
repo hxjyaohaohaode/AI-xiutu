@@ -1,14 +1,14 @@
 /* Project views share the studio's quiet surfaces, clear hierarchy and real state. */
 .studio-view {
-  --view-ink: #292b28;
-  --view-muted: #6c7067;
-  --view-surface: #fff;
-  --view-soft: #f2f1eb;
-  --view-line: #e7e5dd;
-  --view-accent: #e8b84d;
-  --view-accent-soft: #faf0d5;
-  --view-accent-ink: #796029;
-  --view-green: #526b58;
+  --view-ink: var(--ink);
+  --view-muted: var(--muted);
+  --view-surface: var(--surface);
+  --view-soft: var(--surface-secondary);
+  --view-line: var(--line);
+  --view-accent: var(--accent);
+  --view-accent-soft: var(--accent-soft);
+  --view-accent-ink: var(--accent-ink);
+  --view-green: var(--success);
   color: var(--view-ink);
 }
 
@@ -168,7 +168,7 @@
 .studio-view .button-primary {
   background: var(--view-accent);
   border-color: transparent;
-  color: #292b28;
+  color: var(--ink);
 }
 .studio-view :is(button, input, textarea, select):focus-visible {
   outline: 2px solid var(--view-accent-ink);
@@ -335,8 +335,8 @@
   justify-content: space-between;
   padding: 9px 12px;
   border-radius: 9px;
-  background: #292b28e6;
-  color: #fff;
+  background: var(--scrim);
+  color: var(--surface);
   font-size: 12px;
 }
 .library-thumbnail-fallback {
@@ -515,6 +515,20 @@
   color: var(--view-accent-ink);
   min-height: 34px;
   font-size: 12px;
+}
+.studio-view .revision-more > summary {
+  padding: 7px 10px;
+  color: var(--view-muted);
+  font-size: 11px;
+  cursor: pointer;
+}
+.studio-view .revision-more .motion-disclosure-content {
+  padding-inline: 10px;
+}
+.studio-view .revision-source-note {
+  display: block;
+  padding-block: 4px;
+  line-height: 1.6;
 }
 
 /* Discussions: visible permissions, readable messages, one clear composer. */

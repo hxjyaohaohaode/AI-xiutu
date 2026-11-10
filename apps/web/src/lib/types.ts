@@ -1,5 +1,5 @@
 import type { EditorRecipe } from '@ai-xiutu/editor';
-import type { AssetSource } from '@ai-xiutu/contracts';
+import type { RevisionOriginKind, AssetSource } from '@ai-xiutu/contracts';
 
 export type User = {
   id: string;
@@ -83,7 +83,9 @@ export type Revision = {
   recipe: EditorRecipe;
   label?: string;
   createdAt: string;
-  createdBy?: string;
+  parentId?: string | null;
+  authorId?: string;
+  origin?: { kind: RevisionOriginKind; sourceRevisionId: string | null };
 };
 export type RevisionSummary = Omit<Revision, 'recipe'>;
 export type View = 'editor' | 'works' | 'compare' | 'collaborate' | 'docs' | 'deliver' | 'usage';

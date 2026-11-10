@@ -37,8 +37,10 @@
   [data-motion] {
     animation-duration: var(--motion-entry, 240ms);
     animation-delay: calc(var(--motion-delay, 0ms) + min(var(--motion-index, 0), 5) * 18ms);
-    animation-timing-function: cubic-bezier(0.2, 0.75, 0.2, 1);
-    animation-fill-mode: both;
+    animation-timing-function: var(--ease-enter, cubic-bezier(0.2, 0.75, 0.2, 1));
+    /* Clear identity transforms/filters after entry: fixed popovers must not
+       inherit a permanent transformed containing block. */
+    animation-fill-mode: backwards;
     transition:
       background-color var(--motion-interact, 100ms),
       border-color var(--motion-interact, 100ms),
@@ -53,7 +55,8 @@
     animation-name: ui-exit;
     animation-duration: var(--motion-exit, 140ms);
     animation-delay: 0ms;
-    animation-timing-function: cubic-bezier(0.4, 0, 1, 1);
+    animation-timing-function: var(--ease-exit, cubic-bezier(0.4, 0, 1, 1));
+    animation-fill-mode: forwards;
     pointer-events: none;
   }
   [data-motion][data-motion-state='hidden'] {
@@ -1946,6 +1949,7 @@
     animation-name: ui-exit;
     animation-duration: var(--motion-exit, 140ms);
     animation-delay: 0ms;
+    animation-fill-mode: forwards;
   }
   [data-motion-pixels='true'],
   canvas,
@@ -3383,4 +3387,98 @@
       --motion-interact: 70ms;
     }
   }
+}
+
+/* Shared owners retain the outgoing subtree. Only one level moves at a time. */
+@layer motion {
+  [data-motion='view-transition'] {
+    --motion-entry: 220ms;
+    --motion-exit: 110ms;
+    --motion-delay: 0ms;
+    --motion-blur: 0px;
+    --motion-x: 0px;
+    --motion-y: 6px;
+    --motion-scale: 1;
+    animation-name: ui-slide;
+  }
+  .motion-switch,
+  .motion-switch-content {
+    min-width: 0;
+    min-height: 0;
+  }
+  [data-motion='disclosure'] {
+    display: grid;
+    grid-template-rows: 1fr;
+    --motion-entry: 220ms;
+    --motion-exit: 160ms;
+    --motion-delay: 0ms;
+    --motion-blur: 0px;
+    --motion-x: 0px;
+    --motion-y: 0px;
+    --motion-scale: 1;
+    animation-name: studio-expand;
+  }
+  [data-motion='disclosure'][data-motion-state='exit'] {
+    animation-name: studio-collapse;
+  }
+  [data-motion='disclosure'][data-motion-state='hidden'] {
+    display: none;
+  }
+  .motion-disclosure-content {
+    min-height: 0;
+    overflow: hidden;
+  }
+  @keyframes studio-expand {
+    from {
+      grid-template-rows: 0fr;
+      opacity: 0;
+    }
+    to {
+      grid-template-rows: 1fr;
+      opacity: 1;
+    }
+  }
+  @keyframes studio-collapse {
+    from {
+      grid-template-rows: 1fr;
+      opacity: 1;
+    }
+    to {
+      grid-template-rows: 0fr;
+      opacity: 0;
+    }
+  }
+  @media (760px <= width < 1120px) {
+    [data-motion='view-transition'] {
+      --motion-entry: 200ms;
+      --motion-exit: 100ms;
+      --motion-y: 5px;
+    }
+    [data-motion='disclosure'] {
+      --motion-entry: 200ms;
+      --motion-exit: 150ms;
+    }
+  }
+  @media (width < 760px) {
+    [data-motion='view-transition'] {
+      --motion-entry: 180ms;
+      --motion-exit: 90ms;
+      --motion-y: 4px;
+    }
+    [data-motion='disclosure'] {
+      --motion-entry: 180ms;
+      --motion-exit: 140ms;
+    }
+  }
+}
+
+/* Legacy role rules are unlayered; one retained owner must still own the motion. */
+[data-motion-owner][data-motion-state='enter'] [data-motion],
+[data-motion-owner][data-motion-state='exit'] [data-motion] {
+  animation: none;
+}
+
+/* A hidden lifecycle cannot be reopened by a component's display declaration. */
+[data-motion][data-motion-state='hidden'] {
+  display: none !important;
 }

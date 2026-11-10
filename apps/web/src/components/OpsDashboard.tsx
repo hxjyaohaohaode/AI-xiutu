@@ -1,3 +1,4 @@
+import { ChoiceSelect } from './ChoiceSelect';
 import { secureUuid } from '../lib/uuid';
 import { useCallback, useEffect, useState, type FormEvent } from 'react';
 import {
@@ -461,18 +462,10 @@ export function OpsDashboard({
                   </label>
                   <label>
                     注册方式
-                    <select
-                      value={config.registrationMode}
-                      onChange={(e) =>
-                        setConfig({
-                          ...config,
-                          registrationMode: e.target.value as 'open' | 'invite',
-                        })
-                      }
-                    >
-                      <option value="open">开放注册</option>
-                      <option value="invite">仅限邀请码</option>
-                    </select>
+                    <ChoiceSelect ariaLabel="注册方式" value={config.registrationMode}
+                      onValueChange={(value) => setConfig({...config,registrationMode:value})}
+                      options={[{value:'open',label:'开放注册'},{value:'invite',label:'仅限邀请码'}]}
+                    />
                   </label>
                 </div>
                 <label>
@@ -495,20 +488,10 @@ export function OpsDashboard({
                         alt="待使用的品牌图标"
                       />
                     )}
-                    <select
-                      aria-label="品牌图标存放项目"
-                      value={logoProject}
-                      onChange={(e) => setLogoProject(e.target.value)}
-                    >
-                      {!managedProjects.length && (
-                        <option value="">请先创建一个你管理的项目</option>
-                      )}
-                      {managedProjects.map((project) => (
-                        <option key={project.id} value={project.id}>
-                          {project.title}
-                        </option>
-                      ))}
-                    </select>
+                    <ChoiceSelect ariaLabel="品牌图标存放项目" value={logoProject} onValueChange={setLogoProject}
+                      placeholder="请先创建一个你管理的项目" disabled={!managedProjects.length}
+                      options={managedProjects.map((project)=>({value:project.id,label:project.title}))}
+                    />
                   </label>
                   <label className="logo-file-label">
                     选择图标图片
@@ -785,13 +768,13 @@ export function OpsDashboard({
                     >
                       <label>
                         选择模型档案
-                        <select
-                          aria-label="供应商模型档案"
+                        <ChoiceSelect
+                          ariaLabel="供应商模型档案"
                           value=""
                           disabled={busy}
-                          onChange={(event) => {
+                          onValueChange={(value) => {
                             const item = providerCatalog.find(
-                              (model) => model.id === event.target.value,
+                              (model) => model.id === value,
                             );
                             if (!item) return;
                             const existing = models.find((model) => model.id === item.id);
@@ -816,15 +799,8 @@ export function OpsDashboard({
                                   },
                             );
                           }}
-                        >
-                          <option value="">选择后填写服务点和运营范围</option>
-                          {providerCatalog.map((item) => (
-                            <option key={item.id} value={item.id}>
-                              {item.label}
-                              {item.providerReady ? ' · 执行环境已配置' : ' · 执行环境未配置'}
-                            </option>
-                          ))}
-                        </select>
+                          options={[{value:'',label:'选择后填写服务点和运营范围'},...providerCatalog.map((item)=>({value:item.id,label:item.label,description:item.providerReady ? '执行环境已配置' : '执行环境未配置'}))]}
+                        />
                       </label>
                       <p className="control-note">
                         供应商档案只证明当前适配器认识这些标识，不代表你的账号已经取得权限或完成真实调用。添加默认停用，密钥与执行白名单仍需服务端配置。
@@ -912,22 +888,10 @@ export function OpsDashboard({
                     </label>
                     <label>
                       供应商
-                      <select
-                        value={modelEdit.provider ?? 'qwen'}
-                        onChange={(e) => {
-                          const provider = e.target.value as ModelConfig['provider'];
-                          setModelEdit({
-                            ...modelEdit,
-                            provider,
-                            operations: provider !== 'qwen' ? ['generate-image'] : ['edit-plan'],
-                            imageUnitCosts: undefined,
-                          });
-                        }}
-                      >
-                        <option value="qwen">阿里云 · Qwen</option>
-                        <option value="ark">火山方舟 · Ark</option>
-                        <option value="openai">OpenAI · 图片模型</option>
-                      </select>
+                      <ChoiceSelect ariaLabel="模型供应商" value={modelEdit.provider ?? 'qwen'}
+                        onValueChange={(provider) => {setModelEdit({...modelEdit,provider,operations:provider !== 'qwen' ? ['generate-image'] : ['edit-plan'],imageUnitCosts:undefined});}}
+                        options={[{value:'qwen',label:'阿里云 · Qwen'},{value:'ark',label:'火山方舟 · Ark'},{value:'openai',label:'OpenAI · 图片模型'}]}
+                      />
                     </label>
                     <fieldset className="model-operations">
                       <legend>用于哪些任务</legend>

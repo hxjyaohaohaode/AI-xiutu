@@ -1,3 +1,5 @@
+import { MotionDetails } from '../motion/Presence';
+import { ChoiceSelect } from './ChoiceSelect';
 import { secureUuid } from '../lib/uuid';
 import { useState, type FormEvent } from 'react';
 import { MagnifyingGlass, UserCircle, CheckCircle } from '@phosphor-icons/react';
@@ -132,22 +134,12 @@ export function QuotaManager() {
             <>
               <label className="quota-space-label">
                 选择空间
-                <select
-                  aria-label="额度调整目标空间"
-                  value={spaceId}
-                  disabled={busy}
-                  onChange={(event) => {
-                    setSpaceId(event.target.value);
-                    setKey(secureUuid());
-                  }}
-                >
-                  {account.spaces.map((item) => (
-                    <option key={item.id} value={item.id}>
-                      {item.name || (item.kind === 'personal' ? '个人空间' : '团队空间')} ·{' '}
-                      {item.kind === 'personal' ? '个人' : '拥有的团队'}
-                    </option>
-                  ))}
-                </select>
+                <ChoiceSelect ariaLabel="额度调整目标空间" value={spaceId} disabled={busy}
+                  onValueChange={(value) => { setSpaceId(value); setKey(secureUuid()); }}
+                  options={account.spaces.map((item) => ({value:item.id,
+                    label: item.name || (item.kind === 'personal' ? '个人空间' : '团队空间'),
+                    description: item.kind === 'personal' ? '个人' : '拥有的团队'}))}
+                />
               </label>
               {entitlements && (
                 <div className="quota-account-balances">
@@ -216,7 +208,7 @@ export function QuotaManager() {
             required
           />
         </label>
-        <details className="advanced-space-id">
+        <MotionDetails className="advanced-space-id">
           <summary>高级：直接填写已核实的空间 ID</summary>
           <label>
             空间 ID
@@ -230,7 +222,7 @@ export function QuotaManager() {
               placeholder="核实归属后填写 UUID"
             />
           </label>
-        </details>
+        </MotionDetails>
         <InlineError message={error} />
         {success && (
           <p className="success-note" role="status">

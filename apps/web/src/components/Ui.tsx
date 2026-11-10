@@ -2,6 +2,7 @@ import {
   createContext,
   useContext,
   useEffect,
+  useId,
   useRef,
   useState,
   type ButtonHTMLAttributes,
@@ -12,6 +13,8 @@ import type { MotionPhase } from '../motion/registry';
 import { X, WarningCircle, CheckCircle, Info, SpinnerGap } from '@phosphor-icons/react';
 import type { Notice } from '../lib/types';
 import { DEFAULT_BRAND } from '../lib/brand';
+import { StudioGlyph } from './StudioGlyph';
+import { ModalCloseRequests } from './modal-close';
 
 export const DialogMotionContext = createContext<{ open: boolean; phase: MotionPhase } | null>(
   null,
@@ -122,6 +125,8 @@ export function Modal({
   className = '',
   canClose,
   initialFocusRef,
+  open: controlledOpen,
+  keepMounted = false,
 }: {
   title: string;
   subtitle?: string;
@@ -129,17 +134,78 @@ export function Modal({
   onClose: () => void;
   wide?: boolean;
   className?: string;
-  canClose?: () => boolean;
+  canClose?: () => boolean | Promise<boolean>;
   initialFocusRef?: { readonly current: HTMLElement | null };
+  /** Controlled visibility can preserve an expensive editor or an unsaved draft. */
+  open?: boolean;
+  keepMounted?: boolean;
 }) {
   const dialog = useRef<HTMLDialogElement>(null);
   const context = useContext(DialogMotionContext);
   const [closing, setClosing] = useState(false);
-  const presence = usePresence(!closing, 'modal-frame');
-  const open = context?.open ?? !closing;
-  const phase = context?.phase ?? presence.phase;
+  const open = controlledOpen ?? context?.open ?? !closing;
+  const motionRole = className.includes('drawing') ? 'drawing-frame' : 'modal-frame';
+  const presence = usePresence(open, motionRole);
+  // An explicitly controlled child dialog owns its lifecycle, even inside the
+  // provider used by a different application dialog.
+  const phase = controlledOpen === undefined ? (context?.phase ?? presence.phase) : presence.phase;
+  const present = controlledOpen === undefined && context ? phase !== 'hidden' : presence.present;
+  const titleId = useId();
+  const subtitleId = useId();
+  const returnFocus = useRef<HTMLElement | null>(null);
   const closedOnce = useRef(false);
   const initiallyFocused = useRef(false);
+  const [closeRequests] = useState(() => new ModalCloseRequests());
+  const mode = controlledOpen !== undefined ? 'controlled' : context ? 'context' : 'self';
+  const owner = useRef({ open, mode, mounted: false, generation: 0, requested: false });
+  if (owner.current.open !== open || owner.current.mode !== mode) {
+    owner.current = {
+      ...owner.current,
+      open,
+      mode,
+      generation: owner.current.generation + 1,
+      requested: false,
+    };
+    closeRequests.invalidate();
+  }
+  const closeRef = useRef(onClose);
+  closeRef.current = onClose;
+  const guardRef = useRef(canClose);
+  guardRef.current = canClose;
+  useEffect(() => {
+    owner.current.mounted = true;
+    return () => {
+      owner.current.mounted = false;
+      owner.current.generation++;
+      closeRequests.invalidate();
+    };
+  }, [closeRequests]);
+
+  function closeNativeDialog(element = dialog.current) {
+    if (!element) return;
+    const shouldRestore =
+      !document.activeElement ||
+      document.activeElement === document.body ||
+      element.contains(document.activeElement);
+    if (element.open) element.close();
+    const target = returnFocus.current;
+    if (shouldRestore && target?.isConnected && !target.closest('[inert]'))
+      target.focus({ preventScroll: true });
+    returnFocus.current = null;
+    initiallyFocused.current = false;
+  }
+
+  useEffect(() => {
+    const element = dialog.current;
+    if (!element) return;
+    if (open && !element.open) {
+      returnFocus.current =
+        document.activeElement instanceof HTMLElement ? document.activeElement : null;
+      closedOnce.current = false;
+      element.showModal();
+    } else if (!present) closeNativeDialog();
+  }, [open, present, keepMounted]);
+
   useEffect(() => {
     if (!open || phase === 'hidden' || phase === 'exit' || initiallyFocused.current) return;
     const frame = requestAnimationFrame(() => {
@@ -152,48 +218,69 @@ export function Modal({
         );
       if (focusTarget) {
         if (initialFocusRef?.current || !element.contains(document.activeElement))
-          focusTarget.focus();
+          focusTarget.focus({ preventScroll: true });
         initiallyFocused.current = true;
       }
     });
     return () => cancelAnimationFrame(frame);
   }, [open, phase, initialFocusRef]);
   useEffect(() => {
-    if (!context && closing && !presence.present && !closedOnce.current) {
+    if (
+      controlledOpen === undefined &&
+      !context &&
+      closing &&
+      !presence.present &&
+      !closedOnce.current
+    ) {
       closedOnce.current = true;
       closeRef.current();
     }
-  }, [context, closing, presence.present]);
+  }, [context, closing, presence.present, controlledOpen]);
   const requestClose = () => {
-    if (canClose && !canClose()) return;
-    if (context) onClose();
-    else setClosing(true);
+    const generation = owner.current.generation;
+    const element = dialog.current;
+    void closeRequests.request({
+      isCurrent: () =>
+        owner.current.mounted &&
+        owner.current.open &&
+        !owner.current.requested &&
+        owner.current.generation === generation &&
+        element === dialog.current &&
+        !!element?.open,
+      canClose: () => guardRef.current?.() ?? true,
+      close: () => {
+        owner.current.requested = true;
+        if (owner.current.mode === 'self') setClosing(true);
+        else closeRef.current();
+      },
+    });
   };
   const requestCloseRef = useRef(requestClose);
   requestCloseRef.current = requestClose;
-  const closeRef = useRef(onClose);
-  closeRef.current = onClose;
   useEffect(() => {
     const element = dialog.current;
-    element?.showModal();
+    if (!element) return;
     const onCancel = (event: Event) => {
       event.preventDefault();
       requestCloseRef.current();
     };
-    element?.addEventListener('cancel', onCancel);
+    element.addEventListener('cancel', onCancel);
     return () => {
-      element?.removeEventListener('cancel', onCancel);
-      element?.close();
+      element.removeEventListener('cancel', onCancel);
+      closeNativeDialog(element);
     };
-  }, []);
+  }, [present || keepMounted]);
+  if (!present && !keepMounted) return null;
   return (
     <dialog
       ref={dialog}
       className={`modal ${wide ? 'modal-wide' : ''} ${className}`}
-      aria-label={title}
-      data-motion={className.includes('drawing') ? 'drawing-frame' : 'modal-frame'}
+      aria-labelledby={titleId}
+      aria-describedby={subtitle ? subtitleId : undefined}
+      data-motion={motionRole}
       data-motion-state={phase}
       data-motion-pixels="true"
+      data-motion-owner
       inert={!open}
       aria-hidden={!open}
       onClick={(e) => {
@@ -211,11 +298,11 @@ export function Modal({
     >
       <header className="modal-header" data-motion="modal-header" data-motion-state={phase}>
         <div>
-          <h2>{title}</h2>
-          {subtitle && <p>{subtitle}</p>}
+          <h2 id={titleId}>{title}</h2>
+          {subtitle && <p id={subtitleId}>{subtitle}</p>}
         </div>
         <IconButton label="关闭窗口" onClick={requestClose}>
-          <X size={20} />
+          <StudioGlyph name="close" size={20} />
         </IconButton>
       </header>
       {children}

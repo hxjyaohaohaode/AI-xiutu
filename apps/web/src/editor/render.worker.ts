@@ -15,6 +15,7 @@ import {
   INTERACTIVE_PREVIEW_PIXELS,
   MAX_PREVIEW_PIXELS,
 } from './previewBudget';
+import { editorGeometryKey } from './coordinates';
 
 let preview: RGBAImage | null = null;
 let original: RGBAImage | null = null;
@@ -22,6 +23,16 @@ let sourceDimensions: Dimensions | null = null;
 let liveBudget = INTERACTIVE_PREVIEW_PIXELS;
 let images = new Map<string, RGBAImage>(),
   originalImages = new Map<string, RGBAImage>();
+const previewSources = new Map<string, RGBAImage>();
+function preparedSource(source: RGBAImage, recipe: EditorRecipe, maxPixels: number) {
+  const key = `${maxPixels}:${editorGeometryKey(recipe)}`;
+  const cached = previewSources.get(key);
+  if (cached) return cached;
+  const image = prepareBudgetedPreview(source, recipe, maxPixels);
+  if (previewSources.size >= 3) previewSources.delete(previewSources.keys().next().value!);
+  previewSources.set(key, image);
+  return image;
+}
 type Message = {
   type: string;
   id: number;
@@ -32,6 +43,7 @@ type Message = {
   originalOnly?: boolean;
   format?: 'png' | 'jpeg' | 'webp';
   quality?: number;
+  maxPixels?: number;
   images?: Map<string, RGBAImage>;
   originalImages?: Map<string, RGBAImage>;
   sourceId?: string;
@@ -41,9 +53,14 @@ type Message = {
 self.onmessage = async (event: MessageEvent<Message>) => {
   const message = event.data;
   if (message.type === 'interactive-source') {
+    original = null;
+    originalImages.clear();
+    previewSources.clear();
     sourceDimensions = message.sourceDimensions ?? null;
     preview = message.image ? prepareInteractiveSource(message.image) : null;
-    images = new Map([...message.images ?? []].map(([id, value]) => [id, prepareInteractiveSource(value)]));
+    images = new Map(
+      [...(message.images ?? [])].map(([id, value]) => [id, prepareInteractiveSource(value)]),
+    );
     liveBudget = INTERACTIVE_PREVIEW_PIXELS;
     return;
   }
@@ -53,12 +70,16 @@ self.onmessage = async (event: MessageEvent<Message>) => {
     sourceDimensions = original;
     images = message.images ?? new Map();
     originalImages = message.originalImages ?? new Map();
+    previewSources.clear();
     liveBudget = INTERACTIVE_PREVIEW_PIXELS;
     return;
   }
   if (message.type === 'image-source') {
     if (message.sourceId && message.image) {
-      images.set(message.sourceId, sourceDimensions && !original ? prepareInteractiveSource(message.image) : message.image);
+      images.set(
+        message.sourceId,
+        sourceDimensions && !original ? prepareInteractiveSource(message.image) : message.image,
+      );
       if (message.original) originalImages.set(message.sourceId, message.original);
     }
     return;
@@ -89,7 +110,7 @@ self.onmessage = async (event: MessageEvent<Message>) => {
       getEditorOutputDimensions(sourceDimensions, message.recipe);
     }
     const interactive = message.type === 'interactive-preview';
-    const budget = interactive ? liveBudget : MAX_PREVIEW_PIXELS;
+    const budget = interactive ? liveBudget : (message.maxPixels ?? MAX_PREVIEW_PIXELS);
     const started = performance.now();
     let renderImages = images;
     if (interactive && 'imageLayers' in message.recipe) {
@@ -105,17 +126,19 @@ self.onmessage = async (event: MessageEvent<Message>) => {
         ? message.cutout
           ? renderCutout(source, message.cutout)
           : message.originalOnly
-          ? source
-          : renderEditorRecipeTiled(source, message.recipe, {
-              maxPixels:
-                message.recipe.schemaVersion === 3 || message.recipe.schemaVersion === 4
-                  ? 16_777_216
-                  : 67_108_864,
-              images: originalImages,
-              tileSize: 512,
-            })
-        : renderEditorRecipe(prepareBudgetedPreview(source, message.recipe, budget), message.recipe, {
-            maxPixels: budget,
+            ? source
+            : renderEditorRecipeTiled(source, message.recipe, {
+                maxPixels:
+                  message.recipe.schemaVersion === 3 || message.recipe.schemaVersion === 4
+                    ? 16_777_216
+                    : 67_108_864,
+                images: originalImages,
+                tileSize: 512,
+              })
+        : renderEditorRecipe(preparedSource(source, message.recipe, budget), message.recipe, {
+            // Output is budgeted before rendering; validated auxiliary previews
+            // keep their own dimensions and normalized placement.
+            maxPixels: MAX_PREVIEW_PIXELS,
             images: renderImages,
           });
     // Lower the raster budget after an expensive frame. All recipe stages are still evaluated.

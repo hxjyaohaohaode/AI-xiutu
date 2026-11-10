@@ -98,7 +98,7 @@ export function Sidebar({
             </span>
             <span>
               {personal?.name ?? '个人创作'}
-              <small>{session.user ? '只属于你的灵感' : '本地编辑工作台'}</small>
+              <small>{session.user ? '个人项目与素材' : '本地编辑工作台'}</small>
             </span>
             {(!selectedSpace || selectedSpace.kind === 'personal') && (
               <i className="selection-dot" />
@@ -139,9 +139,9 @@ export function Sidebar({
           ))}
           {!teams.length && (
             <div className="team-empty">
-              <span>灵感，也可以一起完成。</span>
+              <span>创建团队，共享项目与素材。</span>
               <button onClick={session.user ? onNewTeam : onAuth}>
-                创建你的第一个团队
+                创建团队
                 <ArrowRight size={13} />
               </button>
             </div>
@@ -174,7 +174,7 @@ export function Sidebar({
           ) : (
             <p className="sidebar-empty-copy">
               {session.user
-                ? '还没有项目。把作品放进一个项目，方便继续创作。'
+                ? '尚无项目。创建后可保存作品与版本。'
                 : '登录后，可以保存项目和历史版本。'}
             </p>
           )}
@@ -226,16 +226,13 @@ export function Sidebar({
             <button className="account-login" onClick={onAuth}>
               <UserCircle size={29} weight="light" />
               <span>
-                <strong>登录你的创作空间</strong>
+                <strong>登录工作空间</strong>
                 <small>保存、同步，与团队协作</small>
               </span>
               <SignIn size={18} />
             </button>
           )}
-          <div className="sidebar-footnote">
-            <i />
-            为想法留一点空间
-          </div>
+
         </div>
       </aside>
     </>

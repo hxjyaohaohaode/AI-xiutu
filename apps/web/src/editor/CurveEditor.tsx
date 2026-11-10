@@ -1,3 +1,5 @@
+import { MotionDetails } from '../motion/Presence';
+import { ChoiceSelect } from '../components/ChoiceSelect';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { Plus, Trash, ArrowCounterClockwise } from '@phosphor-icons/react';
 import { type CurvePoint, type Curves, type EditorRecipe, type RecipeV1 } from '@ai-xiutu/editor';
@@ -120,7 +122,7 @@ export function createCurveGestureController(context: () => CurveGestureContext)
 }
 
 const channels: { key: Channel; label: string; color: string }[] = [
-  { key: 'rgb', label: 'RGB', color: '#62665c' },
+  { key: 'rgb', label: 'RGB', color: 'var(--ink)' },
   { key: 'red', label: '红', color: '#d45a4c' },
   { key: 'green', label: '绿', color: '#479878' },
   { key: 'blue', label: '蓝', color: '#518cc9' },
@@ -295,7 +297,7 @@ export function CurveEditor({ editor, scope }: { editor: EditorState; scope?: Cu
             <line y1={n} y2={n} x1="0" x2="256" className="graph-grid" />
           </g>
         ))}
-        <line x1="0" y1="256" x2="256" y2="0" stroke="#cecec5" strokeDasharray="4 5" />
+        <line x1="0" y1="256" x2="256" y2="0" stroke="var(--line-strong)" strokeDasharray="4 5" />
         <polyline
           points={points.map((p) => `${p[0] * 256},${(1 - p[1]) * 256}`).join(' ')}
           fill="none"
@@ -353,7 +355,7 @@ export function CurveEditor({ editor, scope }: { editor: EditorState; scope?: Cu
               cx={p[0] * 256}
               cy={(1 - p[1]) * 256}
               r={selected === i ? 6 : 4.5}
-              fill={selected === i ? '#e9b634' : '#fff'}
+              fill={selected === i ? 'var(--accent)' : 'var(--surface-raised)'}
               stroke={color}
               strokeWidth="2"
             />
@@ -362,17 +364,16 @@ export function CurveEditor({ editor, scope }: { editor: EditorState; scope?: Cu
       </svg>
       <label className="curve-point-select">
         选择控制点
-        <select
-          aria-label="选择曲线控制点"
-          value={Math.min(selected, points.length - 1)}
-          onChange={(e) => setSelected(Number(e.target.value))}
-        >
-          {points.map((point, index) => (
-            <option key={index} value={index}>
-              点 {index + 1} · {Math.round(point[0] * 255)} → {Math.round(point[1] * 255)}
-            </option>
-          ))}
-        </select>
+        <ChoiceSelect
+          ariaLabel="选择曲线控制点"
+          size="compact"
+          value={String(Math.min(selected, points.length - 1))}
+          onValueChange={(value) => setSelected(Number(value))}
+          options={points.map((point, index) => ({
+            value: String(index),
+            label: `点 ${index + 1} · ${Math.round(point[0] * 255)} → ${Math.round(point[1] * 255)}`,
+          }))}
+        />
       </label>
       <PrecisionRange
         label="控制点输入值"
@@ -422,7 +423,7 @@ export function CurveEditor({ editor, scope }: { editor: EditorState; scope?: Cu
           <Trash size={18} />
         </IconButton>
       </div>
-      <details className="editor-section">
+      <MotionDetails className="editor-section">
         <summary>
           <span>曲线起点</span>
           <small>应用于当前通道</small>
@@ -476,7 +477,7 @@ export function CurveEditor({ editor, scope }: { editor: EditorState; scope?: Cu
             </button>
           ))}
         </div>
-      </details>
+      </MotionDetails>
       <button
         className="text-button"
         onClick={() => {

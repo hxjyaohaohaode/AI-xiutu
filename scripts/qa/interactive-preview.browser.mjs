@@ -244,16 +244,26 @@ try {
         await touch('touchStart', target);
         await touch('touchMove', start);
         const control = await slider.elementHandle();
-        await page.waitForFunction(([node, value]) => node.value !== value, [control, settledValue]);
+        await page.waitForFunction(
+          ([node, value]) => node.value !== value,
+          [control, settledValue],
+        );
         await touch('touchCancel');
-        await page.waitForFunction(([node, value]) => node.value === value, [control, settledValue]);
+        await page.waitForFunction(
+          ([node, value]) => node.value === value,
+          [control, settledValue],
+        );
         await page.locator('.canvas-stage[aria-busy="false"]').waitFor();
         assert.equal(await readCanvas(), rendered.toString('base64'));
         caseReport.touchCancellationRestoredPixels = true;
       }
-      const view = page.getByRole('combobox', { name: '切换工作视图' });
-      if (await view.isVisible()) await view.selectOption('deliver');
-      else
+      const view = page.getByRole('button', { name: '切换工作视图' });
+      if (await view.isVisible()) {
+        await view.click();
+        const navigation = page.getByRole('dialog', { name: '工作视图', exact: true });
+        await navigation.locator('button[data-view="deliver"]').click();
+        await navigation.waitFor({ state: 'hidden' });
+      } else
         await page
           .getByRole('navigation', { name: '工作视图', exact: true })
           .getByRole('button', { name: '交付', exact: true })

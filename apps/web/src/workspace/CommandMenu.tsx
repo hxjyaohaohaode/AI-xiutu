@@ -42,7 +42,7 @@ export function CommandMenu({
   }
   return (
     <Modal
-      title="找到工具，接着创作"
+      title="搜索工具与操作"
       subtitle="搜索工具、工作视图或常用操作"
       onClose={onClose}
       className="studio-command-modal"

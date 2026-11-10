@@ -1,6 +1,8 @@
+import { MotionDetails } from '../motion/Presence';
 import { useEffect, useRef, useState } from 'react';
 import type { AssistantMemory, MemorySuggestion } from '@ai-xiutu/contracts';
 import { api, errorMessage, jsonRequest } from '../lib/api';
+import { ChoiceSelect } from '../components/ChoiceSelect';
 
 const scopes = {
   user: '仅我的偏好',
@@ -193,9 +195,9 @@ export function MemoryControls({
     }
   }
   return (
-    <details className="assistant-context">
+    <MotionDetails className="assistant-context">
       <summary>
-        可复用的偏好与要求 · {items.length} 条
+        偏好与要求 · {items.length} 条
         {suggested.length ? ` · ${suggested.length} 条待确认建议` : ''}
       </summary>
       <p>保存后可在共享范围中启用。更正会替换当前版本，忘记后不再召回；团队要求由管理员维护。</p>
@@ -316,35 +318,32 @@ export function MemoryControls({
         </section>
       )}
       <fieldset className="creative-fields" disabled={disabled || busy}>
-        <legend>{editing ? '更正这条记忆' : '明确记住一条要求'}</legend>
-        <label>
-          生效范围
-          <select
+        <legend>{editing ? '更正要求' : '新增要求'}</legend>
+        <div className="creative-pair">
+          <ChoiceSelect
+            label="生效范围"
             value={scope}
-            disabled={!!editing}
-            onChange={(event) => setScope(event.target.value as AssistantMemory['scope'])}
-          >
-            {Object.entries(scopes)
+            disabled={disabled || busy || !!editing}
+            onValueChange={(nextScope) => setScope(nextScope as AssistantMemory['scope'])}
+            options={Object.entries(scopes)
               .filter(([key]) => key !== 'artwork' || artworkId)
-              .map(([key, label]) => (
-                <option key={key} value={key}>
-                  {label}
-                </option>
-              ))}
-          </select>
-        </label>
-        <label>
-          类型
-          <select
+              .map(([value, label]) => ({ value, label }))}
+          />
+          <ChoiceSelect
+            label="类型"
             value={category}
-            onChange={(event) => setCategory(event.target.value as AssistantMemory['category'])}
-          >
-            <option value="constraint">必须遵守的编辑要求</option>
-            <option value="preference">偏好</option>
-            <option value="workflow">工作习惯</option>
-            <option value="correction">对之前理解的纠正</option>
-          </select>
-        </label>
+            disabled={disabled || busy}
+            onValueChange={(nextCategory) =>
+              setCategory(nextCategory as AssistantMemory['category'])
+            }
+            options={[
+              { value: 'constraint', label: '编辑要求' },
+              { value: 'preference', label: '偏好' },
+              { value: 'workflow', label: '工作习惯' },
+              { value: 'correction', label: '更正理解' },
+            ]}
+          />
+        </div>
         <label>
           名称
           <input maxLength={160} value={title} onChange={(event) => setTitle(event.target.value)} />
@@ -393,6 +392,6 @@ export function MemoryControls({
           {error}
         </p>
       )}
-    </details>
+    </MotionDetails>
   );
 }

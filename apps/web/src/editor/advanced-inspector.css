@@ -25,7 +25,7 @@
   }
   .context-adjustment-tabs button[aria-pressed='true'] {
     color: var(--text);
-    background: color-mix(in srgb, var(--text, #29343b) 7%, transparent);
+    background: color-mix(in srgb, var(--text) 7%, transparent);
   }
 }
 .free-panel:has(.advanced-inspector) {
@@ -83,11 +83,11 @@
     color 95ms;
 }
 .advanced-inspector .tonal-tabs button[aria-pressed='true'] {
-  background: rgba(97, 105, 84, 0.1);
+  background: color-mix(in srgb, var(--ink) 10%, transparent);
   color: var(--text);
 }
 .advanced-inspector .tonal-tabs button:hover {
-  background: rgba(97, 105, 84, 0.07);
+  background: color-mix(in srgb, var(--ink) 7%, transparent);
 }
 .parameter-shelf {
   display: flex;
@@ -129,11 +129,11 @@
     color 100ms;
 }
 .parameter-shelf-options button[aria-pressed='true'] {
-  background: rgba(97, 105, 84, 0.1);
+  background: color-mix(in srgb, var(--ink) 10%, transparent);
   color: var(--text);
 }
 .parameter-shelf-options button:hover {
-  background: rgba(97, 105, 84, 0.06);
+  background: color-mix(in srgb, var(--ink) 6%, transparent);
 }
 .parameter-shelf-options small {
   font-size: 10px;
@@ -208,6 +208,9 @@
 .advanced-inspector .advanced-disclosure > :not(summary) {
   margin-bottom: 8px;
 }
+.advanced-inspector .advanced-disclosure > .motion-disclosure > .motion-disclosure-content > * + * {
+  margin-top: 8px;
+}
 .advanced-inspector .advanced-select,
 .advanced-inspector .object-title-edit,
 .advanced-inspector .scope-selector label {
@@ -229,12 +232,22 @@
   border-radius: 7px;
   min-height: 33px;
   padding: 6px 9px;
-  background: rgba(110, 116, 99, 0.06);
+  background: color-mix(in srgb, var(--ink) 6%, transparent);
   color: var(--text);
   font: inherit;
 }
 .advanced-inspector .object-title-edit {
   width: 100%;
+}
+.advanced-inspector .advanced-select > .choice-select,
+.advanced-inspector .scope-selector label > .choice-select,
+.advanced-inspector .advanced-row > .choice-select {
+  flex: 0 1 68%;
+  max-width: 68%;
+}
+.advanced-inspector :is(.advanced-select, .scope-selector, .advanced-row) .choice-trigger {
+  border-color: transparent;
+  background: var(--surface-secondary);
 }
 .advanced-inspector .scope-selector {
   display: flex;
@@ -273,7 +286,7 @@
   border-radius: 8px;
 }
 .advanced-object-list .advanced-row[data-selected='true'] {
-  background: rgba(97, 105, 84, 0.07);
+  background: color-mix(in srgb, var(--ink) 7%, transparent);
 }
 .advanced-object-list .object-name {
   display: flex;
@@ -340,7 +353,7 @@
   border-radius: 8px;
 }
 .hsl-range-chips button[aria-pressed='true'] {
-  background: rgba(97, 105, 84, 0.1);
+  background: color-mix(in srgb, var(--ink) 10%, transparent);
   color: var(--text);
 }
 .hsl-range-chips button i {
@@ -356,6 +369,21 @@
   align-items: center;
   flex-wrap: wrap;
   gap: 7px;
+}
+.portrait-selections {
+  display: grid;
+  gap: 6px;
+  min-width: 0;
+}
+.portrait-selections .advanced-row > button {
+  flex: 1 1 110px;
+  min-height: 40px;
+  justify-content: center;
+  border: 1px solid var(--line);
+  background: var(--surface-secondary);
+}
+.portrait-selections .control-note {
+  margin: 0;
 }
 .advanced-inspector .portrait-manual-actions .text-button {
   font-size: 12px;
@@ -384,7 +412,7 @@
   color: var(--text);
 }
 .advanced-history-list li[data-selected='true'] button {
-  background: rgba(97, 105, 84, 0.09);
+  background: color-mix(in srgb, var(--ink) 9%, transparent);
 }
 .advanced-history-list button > span {
   color: var(--muted);
@@ -418,12 +446,12 @@
     --compact-tool-overflow: auto;
     --compact-scope-padding: 4px;
     --compact-secondary-order: 2;
-    --shelf-options-display: flex;
+    --shelf-options-display: none;
     --shelf-options-overflow-y: hidden;
     --shelf-option-width: 62px;
     --shelf-current-order: -1;
     --shelf-current-position: sticky;
-    --shelf-current-background: var(--surface, #fdfdfc);
+    --shelf-current-background: var(--surface);
   }
   .advanced-inspector .advanced-tool-family,
   .advanced-inspector .color-controls-v3 {
@@ -456,7 +484,7 @@
   }
   .advanced-inspector .advanced-select,
   .advanced-inspector .scope-selector label {
-    font-size: 11px;
+    font-size: 12px;
   }
   .advanced-inspector .advanced-select select,
   .advanced-inspector .scope-selector select {
@@ -488,12 +516,12 @@
     --compact-tool-overflow: auto;
     --compact-scope-padding: 4px;
     --compact-secondary-order: 2;
-    --shelf-options-display: flex;
+    --shelf-options-display: none;
     --shelf-options-overflow-y: hidden;
     --shelf-option-width: 62px;
     --shelf-current-order: -1;
     --shelf-current-position: sticky;
-    --shelf-current-background: var(--surface, #fdfdfc);
+    --shelf-current-background: var(--surface);
   }
 }
 @media (max-height: 520px) and (orientation: landscape) {

@@ -1,3 +1,4 @@
+import { ChoiceSelect } from '../components/ChoiceSelect';
 import {
   ArrowCounterClockwise,
   ArrowClockwise,
@@ -250,23 +251,22 @@ export function GeometryControls({ controller }: { controller: InspectorControll
       </div>
       <label className="advanced-select">
         变换后的画幅
-        <select
-          aria-label="变换后的画幅"
+        <ChoiceSelect
+          ariaLabel="变换后的画幅"
+          size="compact"
           value={recipe.transform.fit}
-          onChange={(event) =>
+          onValueChange={(value) =>
             apply(
-              {
-                ...recipe,
-                transform: { ...recipe.transform, fit: event.target.value as 'contain' | 'crop' },
-              },
+              { ...recipe, transform: { ...recipe.transform, fit: value as 'contain' | 'crop' } },
               '选择变换画幅',
               true,
             )
           }
-        >
-          <option value="contain">包含完整变换结果</option>
-          <option value="crop">保留原来画幅</option>
-        </select>
+          options={[
+            { value: 'contain', label: '包含完整变换结果' },
+            { value: 'crop', label: '保留原来画幅' },
+          ]}
+        />
       </label>
       <p className="control-note">
         超出原图的部分保持透明；需要真实补画内容时可交给 AI

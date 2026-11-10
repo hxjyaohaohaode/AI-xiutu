@@ -85,7 +85,11 @@ export function PixelCanvas({
       .getContext('2d')
       ?.putImageData(
         new ImageData(
-          new Uint8ClampedArray(image.data.buffer as ArrayBuffer, image.data.byteOffset, image.data.byteLength),
+          new Uint8ClampedArray(
+            image.data.buffer as ArrayBuffer,
+            image.data.byteOffset,
+            image.data.byteLength,
+          ),
           image.width,
           image.height,
         ),
@@ -283,9 +287,10 @@ export function CanvasStage({
     collaboration?.remotePreview ?? null,
     editor.liveFrame !== null,
   );
-  const liveFrame = !comparing && !cropEditing && !sourceSelectionFrame && !previews.remote
-    ? editor.liveFrame
-    : null;
+  const liveFrame =
+    !comparing && !cropEditing && !sourceSelectionFrame && !previews.remote
+      ? editor.liveFrame
+      : null;
   const image = comparing
     ? previews.compare
     : cropEditing
@@ -312,9 +317,8 @@ export function CanvasStage({
       ? collaboration.remotePreview
       : localViewRecipe;
   const liveGeometry = liveFrame ? editorGeometryKey(liveFrame.recipe) : null;
-  const layoutRecipe = !comparing && (cropEditing || sourceSelectionFrame)
-    ? viewRecipe
-    : liveFrame?.recipe;
+  const layoutRecipe =
+    !comparing && (cropEditing || sourceSelectionFrame) ? viewRecipe : liveFrame?.recipe;
   const layoutGeometry = layoutRecipe ? editorGeometryKey(layoutRecipe) : null;
   const referenceSize = useMemo(() => {
     if (!source || !layoutRecipe) return null;
@@ -326,9 +330,10 @@ export function CanvasStage({
   }, [source, layoutGeometry]);
   // Resolution can change while a stroke is still collecting points. Keep its
   // CSS frame in the same geometry rather than the live raster's rounded ratio.
-  const frameRaster = liveGeometry && liveGeometry === editor.renderedGeometryKey
-    ? editor.rendered ?? referenceSize ?? image
-    : referenceSize ?? image;
+  const frameRaster =
+    liveGeometry && liveGeometry === editor.renderedGeometryKey
+      ? (editor.rendered ?? referenceSize ?? image)
+      : (referenceSize ?? image);
   const coordinateMap = useMemo(() => {
     try {
       return dimensions
@@ -390,11 +395,17 @@ export function CanvasStage({
   const scale = frameRaster
     ? Math.max(
         0.0001,
-        Math.min((bounds.width - 24) / frameRaster.width, (bounds.height - 24) / frameRaster.height),
+        Math.min(
+          (bounds.width - 24) / frameRaster.width,
+          (bounds.height - 24) / frameRaster.height,
+        ),
       )
     : 1;
   const fittedDisplay = frameRaster
-    ? { width: Math.max(1, frameRaster.width * scale), height: Math.max(1, frameRaster.height * scale) }
+    ? {
+        width: Math.max(1, frameRaster.width * scale),
+        height: Math.max(1, frameRaster.height * scale),
+      }
     : { width: 1, height: 1 };
   // Keep one destination coordinate frame throughout a corner gesture. Contain-fit
   // output bounds may grow on each render; moving its origin must not move the grip.

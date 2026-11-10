@@ -6,14 +6,16 @@ export async function collectUsageCsv(
   fetcher: typeof fetch = fetch,
   signal?: AbortSignal,
 ): Promise<Blob> {
+  const frozenFilter = { ...filter };
   const chunks: string[] = [],
     seen = new Set<string>();
   let cursor: string | undefined,
     header = '',
     bytes = 0;
   do {
+    signal?.throwIfAborted();
     const url = new URL(
-      '/v1' + usageEndpoint(filter, cursor, 'csv'),
+      '/v1' + usageEndpoint(frozenFilter, cursor, 'csv'),
       'https://same-origin.invalid',
     );
     url.searchParams.set('limit', '500');
@@ -25,6 +27,7 @@ export async function collectUsageCsv(
     if (!(response.headers.get('content-type') ?? '').includes('text/csv'))
       throw new Error('服务器没有返回 CSV，未保存不完整的导出。');
     const page = (await response.text()).replace(/^\uFEFF/, '');
+    signal?.throwIfAborted();
     const breakAt = page.indexOf('\r\n');
     if (breakAt < 0) throw new Error('用量文件结构不完整，请重试。');
     const nextHeader = page.slice(0, breakAt);

@@ -1,3 +1,4 @@
+import { ChoiceSelect } from '../components/ChoiceSelect';
 import { useMemo, useState } from 'react';
 import type { RGBAImage } from '@ai-xiutu/editor';
 import { sharedHistogram } from './histogram-cache';
@@ -23,17 +24,19 @@ export function Histogram({ image }: { image: RGBAImage | null }) {
     >
       <div className="histogram-title">
         <label className="histogram-channel">
-          <select
-            aria-label="直方图通道"
+          <ChoiceSelect
+            ariaLabel="直方图通道"
+            size="compact"
             value={channel}
-            onChange={(event) => setChannel(event.target.value as typeof channel)}
-          >
-            <option value="rgb">RGB 直方图</option>
-            <option value="luminance">亮度分布</option>
-            <option value="red">红色通道</option>
-            <option value="green">绿色通道</option>
-            <option value="blue">蓝色通道</option>
-          </select>
+            onValueChange={(value) => setChannel(value as typeof channel)}
+            options={[
+              { value: 'rgb', label: 'RGB 直方图' },
+              { value: 'luminance', label: '亮度分布' },
+              { value: 'red', label: '红色通道' },
+              { value: 'green', label: '绿色通道' },
+              { value: 'blue', label: '蓝色通道' },
+            ]}
+          />
         </label>
         <label>
           <input

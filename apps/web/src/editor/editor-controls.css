@@ -146,7 +146,7 @@
   background: var(--surface);
   border: 2px solid color-mix(in srgb, var(--ink) 65%, var(--surface));
   border-radius: 50%;
-  box-shadow: 0 1px 4px #0002;
+  box-shadow: 0 1px 4px rgb(var(--color-shadow) / 13.33%);
   transition: box-shadow 90ms;
 }
 .precision-track input[type='range']::-moz-range-thumb {
@@ -174,7 +174,7 @@
 }
 .precision-error {
   font-size: 12px;
-  color: #a33730;
+  color: var(--danger);
 }
 .editor-section {
   margin: 10px 0 0;
@@ -213,9 +213,6 @@
 }
 .editor-section-body {
   padding: 2px 0 8px;
-}
-.editor-section[open] > .editor-section-body {
-  animation: editor-detail-reveal 210ms cubic-bezier(0.2, 0.8, 0.2, 1) both;
 }
 .editor-subtabs {
   display: flex;
@@ -317,7 +314,7 @@
   z-index: 1;
   border-radius: 50%;
   background: hsl(var(--grade-hue), var(--grade-saturation), 55%);
-  box-shadow: inset 0 0 18px #fff4;
+  box-shadow: inset 0 0 18px rgb(255 255 255 / 25%);
   transition: background-color 80ms;
 }
 .crop-output-readout {
@@ -523,6 +520,10 @@
   min-height: 34px;
   padding: 4px 7px;
 }
+.inline-select > .choice-select {
+  flex: 0 1 60%;
+  max-width: 60%;
+}
 .portrait-intro {
   margin: 3px 0 10px;
 }
@@ -599,7 +600,7 @@
   outline: none;
 }
 .refined-curve .curve-graph [role='button']:focus-visible circle:last-child {
-  stroke: #1d5d92;
+  stroke: var(--focus-ring);
   stroke-width: 3;
 }
 .refined-curve .curve-point-select {
@@ -616,6 +617,10 @@
   border-radius: 5px;
   min-height: 34px;
   padding: 5px;
+  max-width: 70%;
+}
+.refined-curve .curve-point-select > .choice-select {
+  flex: 0 1 70%;
   max-width: 70%;
 }
 .refined-curve .curve-point-controls {
@@ -659,6 +664,13 @@
   padding: 4px 0;
   min-height: 30px;
 }
+.histogram-channel .choice-trigger {
+  border-color: transparent;
+  background: transparent;
+  padding-inline: 0;
+  font-size: 12px;
+  color: var(--muted);
+}
 .refined-histogram .histogram-title > label {
   font-size: 11px;
 }
@@ -667,7 +679,7 @@
   width: 100%;
 }
 .refined-histogram .channel-luminance {
-  fill: #8a909580;
+  fill: color-mix(in srgb, var(--muted) 65%, transparent);
 }
 .histogram-endpoints {
   display: flex;
@@ -772,7 +784,7 @@
   width: 20px;
   border-radius: 50%;
   background: var(--swatch-color);
-  box-shadow: inset 0 0 0 1px #0001;
+  box-shadow: inset 0 0 0 1px rgb(var(--color-shadow) / 6.67%);
 }
 .quick-colors button[aria-pressed='true'],
 .quick-colors button:hover {
@@ -820,16 +832,16 @@
   width: 9px;
   height: 9px;
   border-radius: 50%;
-  background: white;
+  background: var(--on-image);
   box-shadow:
-    0 0 0 1px #14191caa,
-    0 1px 5px #0004;
+    0 0 0 1px rgb(var(--color-shadow) / 66.67%),
+    0 1px 5px rgb(var(--color-shadow) / 26.67%);
 }
 .image-handle:hover i,
 .image-handle:focus-visible i {
   width: 12px;
   height: 12px;
-  background: #f3cf66;
+  background: var(--accent);
 }
 .crop-handle i {
   border-radius: 1px;
@@ -912,7 +924,8 @@
   --editor-motion-y: 0px;
   --editor-motion-scale-x: 1;
   --editor-motion-scale-y: 0.93;
-  animation: histogram-emerge var(--editor-motion-enter) var(--editor-motion-delay) cubic-bezier(0.16, 0.8, 0.2, 1) both;
+  animation: histogram-emerge var(--editor-motion-enter) var(--editor-motion-delay)
+    cubic-bezier(0.16, 0.8, 0.2, 1) both;
 }
 [data-motion='crop-transforms'] {
   --editor-motion-enter: 220ms;
@@ -923,7 +936,8 @@
   --editor-motion-y: 3px;
   --editor-motion-scale-x: 1;
   --editor-motion-scale-y: 1;
-  animation: crop-actions-enter var(--editor-motion-enter) var(--editor-motion-delay) cubic-bezier(0.22, 0.9, 0.28, 1) both;
+  animation: crop-actions-enter var(--editor-motion-enter) var(--editor-motion-delay)
+    cubic-bezier(0.22, 0.9, 0.28, 1) both;
 }
 [data-motion='canvas-file-info'] {
   --editor-motion-enter: 210ms;
@@ -934,7 +948,8 @@
   --editor-motion-y: -3px;
   --editor-motion-scale-x: 1;
   --editor-motion-scale-y: 1;
-  animation: canvas-caption-enter var(--editor-motion-enter) var(--editor-motion-delay) cubic-bezier(0.18, 0.65, 0.28, 1) both;
+  animation: canvas-caption-enter var(--editor-motion-enter) var(--editor-motion-delay)
+    cubic-bezier(0.18, 0.65, 0.28, 1) both;
 }
 [data-motion='selection-hint'] {
   --editor-motion-enter: 230ms;
@@ -945,7 +960,8 @@
   --editor-motion-y: 4px;
   --editor-motion-scale-x: 1;
   --editor-motion-scale-y: 1;
-  animation: selection-hint-enter var(--editor-motion-enter) var(--editor-motion-delay) cubic-bezier(0.2, 0.72, 0.3, 1) both;
+  animation: selection-hint-enter var(--editor-motion-enter) var(--editor-motion-delay)
+    cubic-bezier(0.2, 0.72, 0.3, 1) both;
 }
 [data-motion='crop-hint'] {
   --editor-motion-enter: 280ms;
@@ -956,7 +972,8 @@
   --editor-motion-y: -4px;
   --editor-motion-scale-x: 1;
   --editor-motion-scale-y: 1;
-  animation: crop-hint-enter var(--editor-motion-enter) var(--editor-motion-delay) cubic-bezier(0.24, 0.8, 0.34, 1) both;
+  animation: crop-hint-enter var(--editor-motion-enter) var(--editor-motion-delay)
+    cubic-bezier(0.24, 0.8, 0.34, 1) both;
 }
 [data-motion='sample-hint'] {
   --editor-motion-enter: 180ms;
@@ -967,26 +984,30 @@
   --editor-motion-y: 0px;
   --editor-motion-scale-x: 0.97;
   --editor-motion-scale-y: 0.97;
-  animation: sample-hint-enter var(--editor-motion-enter) var(--editor-motion-delay) cubic-bezier(0.16, 0.9, 0.32, 1) both;
+  animation: sample-hint-enter var(--editor-motion-enter) var(--editor-motion-delay)
+    cubic-bezier(0.16, 0.9, 0.32, 1) both;
 }
-:is([data-motion='histogram'], [data-motion='crop-transforms'], [data-motion='canvas-file-info'], [data-motion='selection-hint'], [data-motion='crop-hint'], [data-motion='sample-hint'])[data-motion-state='exit'],
-[data-motion-state='exit'] :is([data-motion='histogram'], [data-motion='crop-transforms'], [data-motion='canvas-file-info'], [data-motion='selection-hint'], [data-motion='crop-hint'], [data-motion='sample-hint']) {
+:is(
+  [data-motion='histogram'],
+  [data-motion='crop-transforms'],
+  [data-motion='canvas-file-info'],
+  [data-motion='selection-hint'],
+  [data-motion='crop-hint'],
+  [data-motion='sample-hint']
+)[data-motion-state='exit'],
+[data-motion-state='exit']
+  :is(
+    [data-motion='histogram'],
+    [data-motion='crop-transforms'],
+    [data-motion='canvas-file-info'],
+    [data-motion='selection-hint'],
+    [data-motion='crop-hint'],
+    [data-motion='sample-hint']
+  ) {
   animation-duration: var(--editor-motion-exit);
   animation-delay: 0ms;
   animation-direction: reverse;
   pointer-events: none;
-}
-@keyframes editor-detail-reveal {
-  from {
-    opacity: 0;
-    translate: 0 -3px;
-    filter: blur(2px);
-  }
-  to {
-    opacity: 1;
-    translate: 0 0;
-    filter: none;
-  }
 }
 @keyframes histogram-emerge {
   from {
@@ -1405,7 +1426,6 @@
   }
 }
 @media (prefers-reduced-motion: reduce) {
-  .editor-section[open] > .editor-section-body,
   [data-motion='histogram'],
   [data-motion='crop-transforms'],
   [data-motion='canvas-file-info'],
@@ -1423,7 +1443,35 @@
   }
 }
 /* Precision overlays never interpolate or blur the edited image. */
-.composite-overlay { position:absolute; inset:0; width:100%; height:100%; pointer-events:none; overflow:visible; }
-.composite-overlay polygon { pointer-events:all; cursor:move; touch-action:none; }
-.source-frame-note { display:block; max-width: min(70vw, 480px); margin:0 auto 4px; color:var(--muted, #777b75); font-size:11px; line-height:1.4; text-align:center; background:var(--surface, #f7f8f5); border-radius:5px; padding:3px 7px; }
-@media (max-width:759px) { .source-frame-note {font-size:10px;max-width:80vw;padding:2px 5px;} }
+.composite-overlay {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  pointer-events: none;
+  overflow: visible;
+}
+.composite-overlay polygon {
+  pointer-events: all;
+  cursor: move;
+  touch-action: none;
+}
+.source-frame-note {
+  display: block;
+  max-width: min(70vw, 480px);
+  margin: 0 auto 4px;
+  color: var(--muted);
+  font-size: 11px;
+  line-height: 1.4;
+  text-align: center;
+  background: var(--surface);
+  border-radius: 5px;
+  padding: 3px 7px;
+}
+@media (max-width: 759px) {
+  .source-frame-note {
+    font-size: 10px;
+    max-width: 80vw;
+    padding: 2px 5px;
+  }
+}

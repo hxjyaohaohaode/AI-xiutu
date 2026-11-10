@@ -25,9 +25,9 @@ class AIPanelErrorBoundary extends Component<BoundaryProps, { error: Error | nul
           <p>
             {this.state.error instanceof SecureRandomUnavailableError
               ? this.state.error.message
-              : '面板遇到了问题。可以重试打开，或先收起面板继续编辑。'}
+              : '请重试打开，或收起面板继续编辑。'}
           </p>
-          <p>当前图片和本地编辑仍然保留，重试不会刷新工作台。</p>
+          <p>当前图片和本地编辑已保留。</p>
         </div>
         <div className="ai-panel-error-actions">
           <button

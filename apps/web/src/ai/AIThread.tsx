@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useContext, useEffect, useState } from 'react';
 import {
   ArrowBendDownRight,
   ArrowSquareOut,
@@ -13,11 +13,13 @@ import {
 import { formatDate } from '../lib/api';
 import type { Artwork, Project } from '../lib/types';
 import { Busy, InlineError, Modal } from '../components/Ui';
+import { ChoiceSelect } from '../components/ChoiceSelect';
 import { Disclosure } from '../components/Controls';
 import type { AIOperation, AIJob, GeneratedImage, JobOutput } from './types';
 import { useResultDecisions, type ResultDecisionController } from './useResultDecisions';
 import { ResultActions } from './ResultActions';
 import { QueuedCancellation } from './QueuedCancellation';
+import { AIVisibilityContext } from './AIVisibility';
 
 export function SpeakButton({ text }: { text: string }) {
   const supported = 'speechSynthesis' in window;
@@ -55,6 +57,7 @@ function TextResult({
   documents: { id: string; title: string; version: number }[];
   canEdit: boolean;
 }) {
+  const visible = useContext(AIVisibilityContext);
   const [title, setTitle] = useState(output.title),
     [body, setBody] = useState(output.body);
   const [editing, setEditing] = useState(false),
@@ -164,83 +167,83 @@ function TextResult({
           核验并重试同一文档保存
         </button>
       )}
-      {confirming && (
-        <Modal
-          title="保存 AI 文案"
-          subtitle="保留生成来源与本次手动修改标记。"
-          canClose={() => !busy}
-          onClose={() => setConfirming(false)}
-        >
-          <div className="ai-decision-confirm" data-motion="result-confirmation">
-            <label>
-              保存位置
-              <select
-                aria-label="文案保存位置"
-                disabled={locked}
-                value={targetId}
-                onChange={(event) => setTargetId(event.target.value)}
-              >
-                <option value="">新建项目文档</option>
-                {documents.map((document) => (
-                  <option key={document.id} value={document.id}>
-                    {document.title} · V{document.version}
-                  </option>
-                ))}
-              </select>
-            </label>
-            <p>
-              {target
-                ? `将“${target.title}”的 V${target.version} 保存为新版本，旧版本保留。若队员已修改该文档，系统会阻止本次覆盖。`
-                : '建立独立的项目文档，原始 AI 输出保持不变。'}
+      <Modal
+        title="保存 AI 文案"
+        open={visible && confirming}
+        subtitle="保留生成来源与本次手动修改标记。"
+        canClose={() => !busy}
+        onClose={() => setConfirming(false)}
+      >
+        <div className="ai-decision-confirm" data-motion="result-confirmation">
+          <ChoiceSelect
+            label="保存位置"
+            ariaLabel="文案保存位置"
+            disabled={locked}
+            value={targetId}
+            onValueChange={setTargetId}
+            options={[
+              { value: '', label: '新建项目文档' },
+              ...documents.map((document) => ({
+                value: document.id,
+                label: `${document.title} · V${document.version}`,
+              })),
+            ]}
+          />
+          <p>
+            {target
+              ? `将“${target.title}”的 V${target.version} 保存为新版本，旧版本保留。若队员已修改该文档，系统会阻止本次覆盖。`
+              : '建立独立的项目文档，原始 AI 输出保持不变。'}
+          </p>
+          {(title !== output.title || body !== output.body) && (
+            <p className="control-note">
+              这是你编辑后的文稿，系统会标记“经手动编辑”，不会将它标记为模型原始审核结果。
             </p>
-            {(title !== output.title || body !== output.body) && (
-              <p className="control-note">
-                这是你编辑后的文稿，系统会标记“经手动编辑”，不会将它标记为模型原始审核结果。
-              </p>
-            )}
-            {body === '' && (
-              <p className="control-note">
-                当前正文为空。
-                {target
-                  ? '确认后将建立一个正文已清空的新版本，旧版本仍保留。'
-                  : '确认后将建立正文为空的独立文档。'}
-              </p>
-            )}
-            <InlineError message={controller.error} />
-            <div className="ai-result-actions">
-              <button
-                className="button button-secondary"
-                disabled={busy}
-                onClick={() => setConfirming(false)}
-              >
-                返回
-              </button>
-              <button
-                className="button button-primary"
-                disabled={locked || !canEdit || (!!targetId && !target)}
-                onClick={() => void save()}
-              >
-                {busy ? <Busy label="保存中" /> : target ? '保存为文档新版本' : '新建文档'}
-              </button>
-            </div>
-            {controller.uncertain?.action === 'save-text' && (
-              <button
-                className="text-button"
-                disabled={busy}
-                onClick={async () => {
-                  const response = await controller.decide(controller.uncertain!);
-                  if (response) {
-                    setSaved(true);
-                    setConfirming(false);
-                  }
-                }}
-              >
-                核验并重试同一文档保存
-              </button>
-            )}
+          )}
+          {body === '' && (
+            <p className="control-note">
+              当前正文为空。
+              {target
+                ? '确认后将建立一个正文已清空的新版本，旧版本仍保留。'
+                : '确认后将建立正文为空的独立文档。'}
+            </p>
+          )}
+          <InlineError message={controller.error} />
+          <div className="ai-result-actions">
+            <button
+              className="button button-secondary"
+              disabled={busy}
+              onClick={() => setConfirming(false)}
+            >
+              返回
+            </button>
+            <button
+              className="button button-primary"
+              disabled={locked || !canEdit || (!!targetId && !target)}
+              onClick={() => {
+                if (visible && confirming) void save();
+              }}
+            >
+              {busy ? <Busy label="保存中" /> : target ? '保存为文档新版本' : '新建文档'}
+            </button>
           </div>
-        </Modal>
-      )}
+          {controller.uncertain?.action === 'save-text' && (
+            <button
+              className="text-button"
+              disabled={busy}
+              onClick={async () => {
+                if (!visible || !confirming) return;
+                const response = await controller.decide(controller.uncertain!);
+                if (response) {
+                  setSaved(true);
+                  setConfirming(false);
+                }
+              }}
+            >
+              核验并重试同一文档保存
+            </button>
+          )}
+        </div>
+      </Modal>
     </div>
   );
 }
@@ -437,6 +440,8 @@ export function AIThread({
   onTranscript,
   onChanged,
   onDecisionApplied,
+  onBeforeArtworkWrite,
+  onAfterArtworkWrite,
 }: {
   jobs: AIJob[];
   project: Project;
@@ -556,6 +561,8 @@ export function AIThread({
                     onTranscript,
                     onChanged,
                     onDecisionApplied,
+                    onBeforeArtworkWrite,
+                    onAfterArtworkWrite,
                   }}
                 />
               )}

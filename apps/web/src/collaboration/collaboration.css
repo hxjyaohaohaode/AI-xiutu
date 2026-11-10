@@ -42,7 +42,7 @@
   padding: 12px;
   border-radius: 14px;
   background: var(--surface);
-  box-shadow: 0 10px 35px #00000012;
+  box-shadow: 0 10px 35px rgb(var(--color-shadow) / 7.06%);
 }
 .collaboration-details > p,
 .collaboration-conflict > p {
@@ -112,7 +112,7 @@
 }
 .collaboration-cursor span {
   background: var(--cursor-color);
-  color: white;
+  color: var(--on-image);
   border-radius: 3px 9px 9px 9px;
   font:
     11px/1.3 system-ui,
@@ -152,9 +152,9 @@
   width: 10px;
   height: 10px;
   border-radius: 3px;
-  border: 2px solid white;
-  background: #285dca;
-  box-shadow: 0 0 0 1px #10203288;
+  border: 2px solid var(--on-image);
+  background: var(--handle-color);
+  box-shadow: 0 0 0 1px rgb(var(--color-shadow) / 53.33%);
 }
 @media (max-width: 959px) {
   .collaboration-status {

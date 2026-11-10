@@ -1,3 +1,6 @@
+import { MotionDetails } from '../motion/Presence';
+import { StudioGlyph } from '../components/StudioGlyph';
+import { ChoiceSelect } from '../components/ChoiceSelect';
 import { useState, type ReactNode } from 'react';
 import {
   TOOLS,
@@ -16,13 +19,6 @@ import {
   type AdjustmentRegionV2,
 } from '@ai-xiutu/editor';
 import {
-  SlidersHorizontal,
-  Palette,
-  BezierCurve,
-  Crop,
-  Scan,
-  DiamondsFour,
-  ClockCounterClockwise,
   ArrowCounterClockwise,
   ArrowClockwise,
   ArrowsLeftRight,
@@ -41,8 +37,6 @@ import {
   Gradient,
   UserFocus,
   Eyedropper,
-  HandPointing,
-  Stack,
 } from '@phosphor-icons/react';
 import { IconButton } from '../components/Ui';
 import { CurveEditor } from './CurveEditor';
@@ -79,64 +73,74 @@ export const toolGroups: { id: ToolGroup; label: string; icon: ReactNode; descri
     {
       id: 'beauty',
       label: '美颜',
-      icon: <UserFocus size={22} />,
-      description: '分人精修，保留自然与个性',
+      icon: <StudioGlyph name="beauty" />,
+      description: '按人物调节肤质、五官与妆容',
     },
     {
       id: 'light',
       label: '明暗',
-      icon: <SlidersHorizontal size={22} />,
-      description: '从光线开始，保留每一层细节',
+      icon: <StudioGlyph name="light" />,
+      description: '曝光与明暗层次',
     },
     {
       id: 'color',
       label: '色彩',
-      icon: <Palette size={22} />,
-      description: '整体色调，到单个色段',
+      icon: <StudioGlyph name="color" />,
+      description: '白平衡、饱和度与分区色彩',
     },
     {
       id: 'curves',
       label: '曲线',
-      icon: <BezierCurve size={22} />,
-      description: '直接塑造明暗与通道映射',
+      icon: <StudioGlyph name="curves" />,
+      description: '逐点调整亮度与颜色通道',
     },
-    { id: 'crop', label: '构图', icon: <Crop size={22} />, description: '比例、像素边界与方向' },
-    { id: 'local', label: '局部', icon: <Scan size={22} />, description: '把调整留在你选择的地方' },
+    {
+      id: 'crop',
+      label: '构图',
+      icon: <StudioGlyph name="crop" />,
+      description: '画幅、旋转与透视',
+    },
+    {
+      id: 'local',
+      label: '局部',
+      icon: <StudioGlyph name="local" />,
+      description: '选定范围，独立调整',
+    },
     {
       id: 'detail',
       label: '细节',
-      icon: <DiamondsFour size={22} />,
-      description: '清晰、柔和、颗粒与氛围',
+      icon: <StudioGlyph name="detail" />,
+      description: '锐化、柔化与颗粒',
     },
     {
       id: 'repair',
       label: '修复',
-      icon: <PaintBrush size={22} />,
-      description: '局部纹理修补与独立质感处理',
+      icon: <StudioGlyph name="repair" />,
+      description: '纹理修补与肤质处理',
     },
     {
       id: 'paint',
       label: '绘制',
-      icon: <PaintBrush size={22} />,
-      description: '逐像素画笔、克隆与自由混合',
+      icon: <StudioGlyph name="paint" />,
+      description: '画笔、克隆与混合',
     },
     {
       id: 'liquify',
       label: '液化',
-      icon: <HandPointing size={22} />,
-      description: '推移、膨胀与收缩，保护重要背景',
+      icon: <StudioGlyph name="liquify" />,
+      description: '推移、膨胀与收缩',
     },
     {
       id: 'composite',
       label: '合成',
-      icon: <Stack size={22} />,
-      description: '多张原图、独立图层与混合范围',
+      icon: <StudioGlyph name="composite" />,
+      description: '图层、混合与蒙版',
     },
     {
       id: 'history',
       label: '记录',
-      icon: <ClockCounterClockwise size={22} />,
-      description: '原件保留，修改始终可回看',
+      icon: <StudioGlyph name="history" />,
+      description: '撤销、重做与编辑记录',
     },
   ];
 const groupIds = {
@@ -160,14 +164,14 @@ function Section({
   suffix?: string;
 }) {
   return (
-    <details className="editor-section" open={open || undefined} data-motion="inspector-section">
+    <MotionDetails className="editor-section" defaultOpen={open} data-motion="inspector-section">
       <summary>
         <span>{title}</span>
         {suffix && <small>{suffix}</small>}
         <CaretDown size={14} />
       </summary>
       <div className="editor-section-body">{children}</div>
-    </details>
+    </MotionDetails>
   );
 }
 export type ToolInspectorProps = {
@@ -1372,17 +1376,16 @@ function LegacyToolInspector({
                         <>
                           <label className="inline-select">
                             轮廓控制点
-                            <select
-                              aria-label="多边形控制点"
-                              value={Math.min(polygonPoint, mask.points.length - 1)}
-                              onChange={(event) => setPolygonPoint(Number(event.target.value))}
-                            >
-                              {mask.points.map((_, index) => (
-                                <option value={index} key={index}>
-                                  点 {index + 1}
-                                </option>
-                              ))}
-                            </select>
+                            <ChoiceSelect
+                              ariaLabel="多边形控制点"
+                              size="compact"
+                              value={String(Math.min(polygonPoint, mask.points.length - 1))}
+                              onValueChange={(value) => setPolygonPoint(Number(value))}
+                              options={mask.points.map((_, index) => ({
+                                value: String(index),
+                                label: `点 ${index + 1}`,
+                              }))}
+                            />
                           </label>
                           {(['x', 'y'] as const).map((axis) =>
                             maskSlider(

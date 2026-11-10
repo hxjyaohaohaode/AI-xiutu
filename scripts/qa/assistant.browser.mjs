@@ -63,7 +63,9 @@ const workspace = {
 let dispatches = 0,
   holdCompletion = false,
   firstDelta = false;
+let turnAdmissions = 0;
 let spatialFixture = false;
+let fixtureExposure = -1.5;
 const bodies = [];
 const sentence = '已保留人物特征，准备降低曝光并保持自然肤质。';
 const outputText = {
@@ -116,17 +118,87 @@ async function openProject(target, selectModel = true) {
     .getByRole('button', { name: /Collaborative portrait/ })
     .click();
   await target.locator('.collaboration-status[data-state="ready"]').waitFor();
-  await target.getByRole('button', { name: 'AI共创', exact: true }).click();
-  await target.getByRole('button', { name: '实时协作', exact: true }).click();
-  await target.getByRole('button', { name: '文字协作', exact: true }).click();
-  if (selectModel) await target.getByLabel('思考与工具模型').selectOption(modelId);
+  await target
+    .locator('.floating-tool-dock')
+    .getByRole('button', { name: 'AI 助手', exact: true })
+    .click();
+  await target.getByLabel('向智能体描述修改需求').waitFor();
+  if (selectModel) {
+    const settings = await openSettings(target);
+    await choose(settings, '助手模型', '本地协议验收（无费用）');
+    await closeSettings(target);
+  }
+}
+async function openSettings(target = page) {
+  const dialog = target.getByRole('dialog', { name: '助手设置', exact: true });
+  if (!(await dialog.isVisible()))
+    await target
+      .locator('.live-assistant')
+      .getByRole('button', { name: '助手设置', exact: true })
+      .click();
+  await dialog.waitFor();
+  return dialog;
+}
+async function closeSettings(target = page) {
+  const dialog = target.getByRole('dialog', { name: '助手设置', exact: true });
+  if (await dialog.isVisible()) {
+    await dialog.getByRole('button', { name: '关闭窗口', exact: true }).click();
+    await dialog.waitFor({ state: 'hidden' });
+  }
+}
+async function choose(scope, label, option) {
+  const control = scope.getByRole('combobox', { name: label, exact: true });
+  if ((await control.getAttribute('aria-expanded')) !== 'true') await control.click();
+  const options = scope.getByRole('listbox', { name: label, exact: true });
+  await options.getByText(option, { exact: true }).click();
+  await options.waitFor({ state: 'hidden' });
+}
+async function newConversation() {
+  await closeSettings();
+  await page
+    .locator('.live-assistant > .ai-workbench-header')
+    .getByRole('button', { name: '新会话', exact: true })
+    .click();
+}
+async function closeAIPanel(target = page) {
+  await closeSettings(target);
+  const mobile = target
+    .locator('.live-assistant')
+    .getByRole('button', { name: '收起 AI 面板', exact: true });
+  if (await mobile.isVisible()) await mobile.click();
+  else
+    await target
+      .locator('[data-panel-id="ai"]')
+      .getByRole('button', { name: '收起AI 助手，可从工具栏重新打开', exact: true })
+      .click();
+}
+async function changeView(id, label) {
+  const compact = page.getByRole('button', { name: '切换工作视图', exact: true });
+  if (await compact.isVisible()) {
+    await compact.click();
+    const dialog = page.getByRole('dialog', { name: '工作视图', exact: true });
+    await dialog.locator(`button[data-view="${id}"]`).click();
+    await dialog.waitFor({ state: 'hidden' });
+  } else {
+    await page
+      .getByRole('navigation', { name: '工作视图', exact: true })
+      .getByRole('button', { name: label, exact: true })
+      .click();
+  }
 }
 async function details(prefix, open = true) {
-  const summary = page.locator('.live-assistant summary').filter({ hasText: prefix }).first();
-  if ((await summary.evaluate((node) => node.parentElement.open)) !== open) await summary.click();
-  return summary.locator('..');
+  const settings = await openSettings();
+  const summary = settings
+    .locator('.assistant-context > summary')
+    .filter({ hasText: prefix })
+    .first();
+  if (((await summary.getAttribute('aria-expanded')) === 'true') !== open) await summary.click();
+  const panel = summary.locator('..');
+  if (!open) await closeSettings();
+  return panel;
 }
 async function submit(prompt) {
+  await closeSettings();
   await page.getByLabel('向智能体描述修改需求').fill(prompt);
   await page.getByRole('button', { name: '发送协作请求', exact: true }).click();
 }
@@ -138,7 +210,10 @@ async function head() {
 async function finished() {
   await until(
     async () =>
-      !(await page.getByLabel('思考与工具模型').isEnabled()) &&
+      (await page
+        .locator('.live-assistant > .ai-workbench-header')
+        .getByRole('button', { name: '新会话', exact: true })
+        .isEnabled()) &&
       (await page.locator('.assistant-workspace').count()) === 1 &&
       !(await page.locator('.assistant-tool-status').innerText()).includes('正在读取'),
     'run completion',
@@ -227,7 +302,7 @@ try {
                         summary: '降低曝光并保留原有主体',
                         target: 'global',
                         targetId: null,
-                        changes: [{ path: 'adjustments.exposure', value: -1.5 }],
+                        changes: [{ path: 'adjustments.exposure', value: fixtureExposure }],
                       },
                 ),
               },
@@ -343,6 +418,10 @@ try {
   ]);
   page = await context.newPage();
   page.on('pageerror', (error) => report.pageErrors.push(String(error)));
+  page.on('request', (request) => {
+    if (request.method() === 'POST' && new URL(request.url()).pathname.endsWith('/assistant-turns'))
+      turnAdmissions++;
+  });
   page.on('response', async (response) => {
     if (response.url().includes('/assistant-turns') && response.request().method() === 'POST') {
       const body = response.request().postDataJSON();
@@ -360,8 +439,61 @@ try {
   await openProject(page);
   const original = await head();
 
+  await testCase(
+    'composer-composition-and-settings-preserve-unsent-drafts-without-admission',
+    async () => {
+      const input = page.getByLabel('向智能体描述修改需求');
+      const prompt = '这条要求先保留，不发送。';
+      await input.fill(prompt);
+      await until(
+        () => page.getByRole('button', { name: '发送协作请求', exact: true }).isEnabled(),
+        'ready text composer',
+      );
+      const before = { admissions: turnAdmissions, dispatches };
+      // Browser composition events exercise the IME guard; this is not a real-device keyboard claim.
+      await input.dispatchEvent('compositionstart', { data: '中' });
+      await input.dispatchEvent('keydown', {
+        key: 'Enter',
+        code: 'Enter',
+        ctrlKey: true,
+        isComposing: true,
+        keyCode: 229,
+      });
+      await input.dispatchEvent('compositionend', { data: '中' });
+      await input.press('Enter');
+      assert.equal(await input.inputValue(), prompt + '\n');
+      const memory = await details('偏好与要求');
+      await memory.getByLabel('名称', { exact: true }).fill('尚未确认的偏好草稿');
+      await memory.getByLabel('准确内容').fill('这条草稿只用于检查关闭设置后保留输入。');
+      await closeSettings();
+      assert.equal(await input.inputValue(), prompt + '\n');
+      await details('偏好与要求');
+      assert.equal(
+        await memory.getByLabel('名称', { exact: true }).inputValue(),
+        '尚未确认的偏好草稿',
+      );
+      assert.equal(
+        await memory.getByLabel('准确内容').inputValue(),
+        '这条草稿只用于检查关闭设置后保留输入。',
+      );
+      assert.equal(turnAdmissions, before.admissions);
+      assert.equal(dispatches, before.dispatches);
+      await memory.getByLabel('名称', { exact: true }).fill('');
+      await memory.getByLabel('准确内容').fill('');
+      await details('偏好与要求', false);
+      await input.fill('');
+      return {
+        simulatedCompositionEvents: true,
+        enterAddsNewline: true,
+        settingsDraftPreserved: true,
+        addedAdmissions: 0,
+        addedDispatches: 0,
+      };
+    },
+  );
+
   await testCase('memory-confirm-correct-forget-and-source-opt-in', async () => {
-    const panel = await details('可复用的偏好与要求');
+    const panel = await details('偏好与要求');
     await panel.getByLabel('名称', { exact: true }).fill('人像保护');
     await panel.getByLabel('准确内容').fill('始终保留雀斑与真实肤质');
     await panel.getByRole('button', { name: '确认记住', exact: true }).click();
@@ -376,20 +508,25 @@ try {
     const share = await details('共享范围');
     await share.getByLabel('使用已确认的偏好、项目要求与素材标注').check();
     await details('共享范围', false);
-    await details('可复用的偏好与要求', false);
+    await details('偏好与要求', false);
     await submit('自然一点，保留人物特征。');
     await finished();
     assert.ok(JSON.stringify(bodies.at(-1)).includes('保留雀斑，局部减淡阴影'));
     assert.ok(!JSON.stringify(bodies.at(-1)).includes('始终保留雀斑与真实肤质'));
-    await details('可复用的偏好与要求');
+    await details('偏好与要求');
     await panel.getByRole('button', { name: '忘记', exact: true }).click();
     await until(async () => (await panel.locator('article').count()) === 0, 'forget memory');
-    await details('可复用的偏好与要求', false);
+    await details('偏好与要求', false);
     return { versionedCorrection: true, oldMemoryNotSent: true };
   });
   await testCase('default-confirm-genui-uses-real-preview-and-undo', async () => {
     const controls = await details('执行方式');
-    assert.equal(await controls.getByLabel('AI 可以做到哪一步').inputValue(), 'confirm');
+    assert.equal(
+      (
+        await controls.getByRole('combobox', { name: 'AI 可以做到哪一步', exact: true }).innerText()
+      ).trim(),
+      '预览确认',
+    );
     assert.equal((await head()).artwork.headVersion, original.artwork.headVersion);
     await details('执行方式', false);
     assert.equal(
@@ -417,9 +554,7 @@ try {
     async () => {
       spatialFixture = true;
       try {
-        await page
-          .getByRole('button', { name: '开始新会话，保留已保存的历史', exact: true })
-          .click();
+        await newConversation();
         await submit('在左侧已有选区内调整局部质感。');
         await finished();
         await page.getByText('在左侧已有选区内调整局部质感', { exact: true }).waitFor();
@@ -440,9 +575,9 @@ try {
   await testCase('suggest-mode-immutable-and-no-forgotten-memory', async () => {
     const panel = await details('执行方式');
     await panel.getByRole('button', { name: '停止授权', exact: true }).click();
-    await panel.getByLabel('AI 可以做到哪一步').selectOption('suggest');
+    await choose(panel, 'AI 可以做到哪一步', '只建议');
     await details('执行方式', false);
-    await page.getByRole('button', { name: '开始新会话，保留已保存的历史', exact: true }).click();
+    await newConversation();
     await submit('仅提供建议，不修改图片。');
     await finished();
     assert.ok(await page.getByRole('button', { name: '在画布预览', exact: true }).isDisabled());
@@ -453,12 +588,13 @@ try {
   await testCase('auto-explicit-grant-versioned-write-and-budget', async () => {
     const controls = await details('执行方式');
     await controls.getByRole('button', { name: '停止授权', exact: true }).click();
-    await controls.getByLabel('AI 可以做到哪一步').selectOption('auto');
-    await page.getByRole('button', { name: '开始新会话，保留已保存的历史', exact: true }).click();
+    await choose(controls, 'AI 可以做到哪一步', '预算内自动执行');
+    await newConversation();
     const before = dispatches;
     await submit('降低曝光。');
     await page.getByRole('alert').filter({ hasText: '请先明确授权' }).waitFor();
     assert.equal(dispatches, before);
+    await details('执行方式');
     await controls.getByLabel('最多操作次数').fill('2');
     await controls
       .getByRole('button', { name: '授权当前项目，30 分钟内有效', exact: true })
@@ -497,9 +633,9 @@ try {
   await testCase('stream-refresh-replays-without-resubmitting', async () => {
     const controls = await details('执行方式');
     await controls.getByRole('button', { name: '停止授权', exact: true }).click();
-    await controls.getByLabel('AI 可以做到哪一步').selectOption('confirm');
+    await choose(controls, 'AI 可以做到哪一步', '预览确认');
     await details('执行方式', false);
-    await page.getByRole('button', { name: '开始新会话，保留已保存的历史', exact: true }).click();
+    await newConversation();
     firstDelta = false;
     holdCompletion = true;
     const before = dispatches;
@@ -523,17 +659,29 @@ try {
     return { modelRequests: dispatches - before, browserRefreshAddedRequests: 0 };
   });
   await testCase('conversation-switch-isolates-history-and-candidates', async () => {
-    const select = page.getByLabel('会话记录', { exact: true });
-    const active = await select.inputValue(),
+    await closeSettings();
+    const history = page.getByRole('dialog', { name: '会话记录', exact: true });
+    await page
+      .locator('.live-assistant > .ai-workbench-header')
+      .getByRole('button', { name: '会话记录', exact: true })
+      .click();
+    const select = history.getByRole('combobox', { name: '会话记录', exact: true });
+    const active = (await select.innerText()).trim(),
       before = dispatches;
-    const other = await select
-      .locator('option')
-      .evaluateAll(
-        (nodes, activeId) => nodes.find((node) => node.value && node.value !== activeId)?.value,
-        active,
+    await select.click();
+    const other = await history
+      .getByRole('listbox', { name: '会话记录', exact: true })
+      .getByRole('option')
+      .evaluateAll((nodes) =>
+        nodes
+          .slice(1)
+          .find((node) => node.getAttribute('aria-selected') !== 'true')
+          ?.querySelector('.choice-option-label')
+          ?.textContent?.trim(),
       );
     assert.ok(other);
-    await select.selectOption(other);
+    await choose(history, '会话记录', other);
+    await history.waitFor({ state: 'hidden' });
     await until(
       async () => (await page.locator('.assistant-messages').innerText()).length > 0,
       'selected history',
@@ -541,7 +689,12 @@ try {
     assert.ok(
       !(await page.locator('.assistant-messages').innerText()).includes('刷新页面也不要重复调用'),
     );
-    await select.selectOption(active);
+    await page
+      .locator('.live-assistant > .ai-workbench-header')
+      .getByRole('button', { name: '会话记录', exact: true })
+      .click();
+    await choose(history, '会话记录', active);
+    await history.waitFor({ state: 'hidden' });
     await until(
       async () =>
         (await page.locator('.assistant-messages').innerText()).includes('刷新页面也不要重复调用'),
@@ -550,8 +703,155 @@ try {
     assert.equal(dispatches, before);
     return { historyIsolation: true, readOnlySwitch: true };
   });
+  await testCase(
+    'active-text-request-survives-panel-hide-and-return-without-a-new-admission',
+    async () => {
+      await newConversation();
+      firstDelta = false;
+      holdCompletion = true;
+      const before = {
+        admissions: turnAdmissions,
+        dispatches,
+        version: (await head()).artwork.headVersion,
+      };
+      try {
+        const input = page.getByLabel('向智能体描述修改需求');
+        await input.fill('收起面板时继续这轮请求。');
+        await input.press('Control+Enter');
+        await until(() => firstDelta, 'keyboard-submitted response in flight');
+        await closeAIPanel();
+        const banner = page.locator('.ai-activity-banner');
+        await banner.getByText('AI 正在处理请求', { exact: true }).waitFor();
+        assert.equal(
+          await page.locator('.live-assistant').count(),
+          1,
+          'request owner stays mounted',
+        );
+        assert.equal(await page.locator('.live-assistant').isVisible(), false);
+        await banner.getByRole('button', { name: '返回 AI 助手', exact: true }).click();
+        await page.getByRole('button', { name: '停止本轮执行', exact: true }).waitFor();
+        assert.ok((await page.locator('.assistant-messages').innerText()).includes(sentence));
+        assert.equal(turnAdmissions, before.admissions + 1);
+        assert.equal(dispatches, before.dispatches + 2);
+        holdCompletion = false;
+        await finished();
+        assert.equal((await head()).artwork.headVersion, before.version);
+        return {
+          keyboardSubmit: true,
+          retainedMountedOwner: true,
+          admissions: 1,
+          fixtureDispatches: 2,
+          persistedWrite: false,
+        };
+      } finally {
+        holdCompletion = false;
+      }
+    },
+  );
+  await testCase('late-applied-receipt-preserves-an-unsaved-document-and-its-view', async () => {
+    await newConversation();
+    const controls = await details('执行方式');
+    const revoke = controls.getByRole('button', { name: '停止授权', exact: true });
+    if (await revoke.isVisible()) await revoke.click();
+    await choose(controls, 'AI 可以做到哪一步', '预算内自动执行');
+    await controls.getByLabel('最多操作次数').fill('2');
+    await controls
+      .getByRole('button', { name: '授权当前项目，30 分钟内有效', exact: true })
+      .click();
+    await controls.getByRole('button', { name: '停止授权', exact: true }).waitFor();
+    await details('执行方式', false);
+    const before = {
+      admissions: turnAdmissions,
+      dispatches,
+      version: (await head()).artwork.headVersion,
+    };
+    const title = 'AI 回执期间的文档草稿';
+    const body = '先写下这段项目说明。\nAI 的版本回执不能带走这个页面，也不能覆盖未保存的文字。';
+    fixtureExposure = -1.75;
+    firstDelta = false;
+    holdCompletion = true;
+    try {
+      const admitted = page.waitForResponse(
+        (response) =>
+          response.request().method() === 'POST' &&
+          new URL(response.url()).pathname.endsWith('/assistant-turns'),
+      );
+      await submit('在授权预算内调整曝光，我会在等待期间继续写项目文档。');
+      const admission = await admitted;
+      assert.equal(admission.status(), 202);
+      const turn = await admission.json();
+      assert.equal(typeof turn.id, 'string');
+      await until(() => firstDelta, 'automatic result is held before its completion receipt');
+      await changeView('docs', '文档');
+      await page
+        .locator('.document-list')
+        .getByRole('button', { name: '新建文档', exact: true })
+        .click();
+      const documentTitle = page.getByLabel('文档标题', { exact: true });
+      const documentBody = page.getByLabel('文档内容', { exact: true });
+      await documentTitle.fill(title);
+      await documentBody.fill(body);
+      await page.locator('.document-save-state.is-dirty').waitFor();
+      const banner = page.locator('.ai-activity-banner');
+      await banner.getByText('AI 正在处理请求', { exact: true }).waitFor();
+      assert.equal(await page.locator('.live-assistant').count(), 1);
+      assert.equal(await page.locator('.live-assistant').isVisible(), false);
+      assert.equal(turnAdmissions, before.admissions + 1);
+      assert.equal(dispatches, before.dispatches + 2);
+      holdCompletion = false;
+      await until(
+        async () => (await head()).artwork.headVersion === before.version + 1,
+        'the real backend applies exactly one authorized revision',
+      );
+      await page
+        .getByText('云端已采用AI结果，当前本地草稿继续保留，可稍后从作品中打开。', { exact: true })
+        .waitFor();
+      await banner.waitFor({ state: 'hidden' });
+      assert.equal(await documentTitle.isVisible(), true, 'the receipt does not leave documents');
+      assert.equal(await documentTitle.inputValue(), title);
+      assert.equal(await documentBody.inputValue(), body);
+      assert.equal(await page.locator('.document-save-state.is-dirty').count(), 1);
+      assert.equal(await page.getByRole('dialog', { name: '确认操作', exact: true }).count(), 0);
+      const settled = await fixture.call('GET', `/v1/assistant-turns/${turn.id}`);
+      assert.equal(settled.statusCode, 200, settled.body);
+      assert.equal(settled.json().state, 'completed');
+      assert.equal(settled.json().output.execution.state, 'applied');
+      assert.equal(settled.json().output.execution.artworkId, fixture.artwork.artwork.id);
+      const documents = await fixture.call('GET', `/v1/projects/${fixture.projectId}/documents`);
+      assert.equal(documents.statusCode, 200, documents.body);
+      assert.ok(
+        !documents.json().documents.some((item) => item.title === title),
+        'the local draft is not silently saved',
+      );
+      assert.equal(turnAdmissions, before.admissions + 1);
+      assert.equal(dispatches, before.dispatches + 2);
+      await page.screenshot({ path: resolve(artifacts, 'late-ai-receipt-document-draft.png') });
+      await page.getByRole('button', { name: '保存文档', exact: true }).click();
+      await until(
+        async () => (await page.locator('.document-save-state').innerText()) === '已保存',
+        'explicit document save for clean test continuation',
+      );
+      await page.evaluate(
+        () => new Promise((done) => requestAnimationFrame(() => requestAnimationFrame(done))),
+      );
+      await openProject(page);
+      return {
+        protocol: 'real HTTP, SSE and PostgreSQL with the existing local provider fixture',
+        backendExecution: 'applied',
+        exactRevisionWrites: 1,
+        explicitAdmissions: 1,
+        fixtureDispatches: 2,
+        stayedInDocuments: true,
+        unsavedDraftPreserved: true,
+        silentlySavedDocument: false,
+      };
+    } finally {
+      holdCompletion = false;
+      fixtureExposure = -1.5;
+    }
+  });
   await testCase('suggested-memory-requires-review-expiry-and-version-history', async () => {
-    await page.getByRole('button', { name: '开始新会话，保留已保存的历史', exact: true }).click();
+    await newConversation();
     const before = (
       await fixture.db.query(
         'SELECT count(*)::int AS n FROM assistant_memories WHERE owner_id=$1',
@@ -560,9 +860,12 @@ try {
     ).rows[0].n;
     await submit('请记住：这个项目每次都保留主体五官。');
     await finished();
-    const panel = await details('可复用的偏好与要求');
+    const panel = await details('偏好与要求');
     await panel.getByRole('button', { name: '检查内容与范围', exact: true }).click();
-    assert.equal(await panel.getByLabel('生效范围').inputValue(), 'project');
+    assert.equal(
+      (await panel.getByRole('combobox', { name: '生效范围', exact: true }).innerText()).trim(),
+      '当前项目',
+    );
     assert.equal(
       (
         await fixture.db.query(
@@ -599,7 +902,7 @@ try {
       async () => (await panel.locator('.assistant-memory-list article').count()) === 0,
       'forget expired record',
     );
-    await details('可复用的偏好与要求', false);
+    await details('偏好与要求', false);
     return {
       suggestedNotSavedAutomatically: true,
       expiryExcludesRecall: true,
@@ -635,17 +938,24 @@ try {
     await scope.getByLabel('同时查找公开图片').check();
     const research = await details('本轮分工');
     await research.getByLabel('在已授权空间检索素材').fill('湖面参考');
-    const pending = page.waitForResponse((response) =>
-      response.request().method() === 'POST' &&
-      new URL(response.url()).pathname.endsWith('/assistant-turns'),
+    const admissionResponse = page.waitForResponse(
+      (response) =>
+        response.request().method() === 'POST' &&
+        new URL(response.url()).pathname.endsWith('/assistant-turns'),
     );
     await submit('这是私有项目描述，请根据公开图片提供参考。');
-    const admission = await pending;
-    assert.equal(admission.status(), 202);
-    const { id: turnId } = await admission.json();
-    const evidence = page.locator('.assistant-search-evidence').filter({
-      has: page.getByRole('link', { name: '来源网页', exact: true }),
-    }).last();
+    const admitted = await admissionResponse;
+    assert.equal(admitted.status(), 202);
+    const turn = await admitted.json();
+    assert.deepEqual(admitted.request().postDataJSON().research, [
+      { kind: 'cloud', query: '湖面参考', limit: 8 },
+    ]);
+    const evidence = page
+      .locator('.assistant-search-evidence')
+      .filter({
+        has: page.getByRole('link', { name: '来源网页', exact: true }),
+      })
+      .last();
     await evidence.getByRole('link', { name: '来源网页', exact: true }).waitFor();
     await finished();
     const search = bodies.findLast((body) => typeof body.input === 'string');
@@ -656,19 +966,39 @@ try {
       await evidence.getByRole('link', { name: '查看图片', exact: true }).getAttribute('href'),
       'https://images.example.com/lake.jpg',
     );
-    await until(
-      async () =>
-        (await fixture.call('GET', `/v1/assistant-turns/${turnId}`)).json().state === 'completed',
-      'research turn has settled',
-    );
-    await page.locator('.assistant-research-graph summary').filter({ hasText: '研究分工 · 完成' }).waitFor();
-    const graph = await details('研究分工');
+    await until(async () => {
+      const result = await fixture.call('GET', `/v1/assistant-turns/${turn.id}`);
+      assert.equal(result.statusCode, 200, result.body);
+      return result.json().state === 'completed';
+    }, 'research turn has settled');
+    const graph = page.locator('.assistant-research-graph');
+    const graphSummary = graph.locator(':scope > summary');
+    await graphSummary.locator('small[data-state="completed"]').waitFor();
+    assert.equal(await graphSummary.locator('small').innerText(), '完成');
+    if ((await graphSummary.getAttribute('aria-expanded')) !== 'true') await graphSummary.click();
     await graph.getByText('公开来源', { exact: true }).waitFor();
     await graph.getByText('授权素材', { exact: true }).waitFor();
     await graph.getByText(/2 个分支汇合/).waitFor();
+    const branches = await fixture.call('GET', `/v1/assistant-turns/${turn.id}/branches`);
+    assert.equal(branches.statusCode, 200, branches.body);
+    assert.equal(branches.json().turnId, turn.id);
+    assert.equal(branches.json().state, 'completed');
+    assert.equal(
+      branches.json().branches.find((branch) => branch.kind === 'merge').state,
+      'completed',
+    );
+    assert.deepEqual(
+      branches
+        .json()
+        .branches.filter((branch) => ['web', 'cloud'].includes(branch.kind))
+        .map((branch) => branch.kind)
+        .sort(),
+      ['cloud', 'web'],
+    );
     await graph.screenshot({ path: resolve(artifacts, 'research-graph.png') });
     await evidence.screenshot({ path: resolve(artifacts, 'cloud-public-search.png') });
-    await research.getByLabel('在已授权空间检索素材').clear();
+    await details('共享范围');
+    await (await details('本轮分工')).getByLabel('在已授权空间检索素材').clear();
     await scope.getByRole('button', { name: '移出参考', exact: true }).click();
     await scope.getByLabel('允许公开网络检索，保留来源链接').uncheck();
     await details('共享范围', false);
@@ -676,16 +1006,76 @@ try {
     billing.on('pageerror', (error) => report.pageErrors.push(String(error)));
     try {
       await openProject(billing, false);
+      const usageResponse = billing.waitForResponse((response) => {
+        const url = new URL(response.url());
+        return (
+          response.request().method() === 'GET' &&
+          url.pathname === '/v1/usage' &&
+          url.searchParams.get('scope') === 'space' &&
+          url.searchParams.get('spaceId') === fixture.teamId &&
+          !url.searchParams.has('cursor')
+        );
+      });
       await billing
         .getByRole('navigation', { name: '工作视图', exact: true })
         .getByRole('button', { name: '用量', exact: true })
         .click();
-      await billing.getByRole('img', { name: '预占、结算、释放和到期的时序河流图' }).waitFor();
-      await billing.getByRole('button', { name: `任务 ${turnId.slice(0, 8)}`, exact: true }).first().click();
-      const job = billing.getByRole('dialog', { name: '任务调用与费用' });
-      await job.getByRole('img', { name: '任务与调用阶段之间的 token 流向' }).waitFor();
-      await job.getByRole('region', { name: '模型调用阶段' })
-        .getByRole('row').filter({ hasText: '公开检索' }).filter({ hasText: '70 token' }).waitFor();
+      const usage = await usageResponse;
+      assert.equal(usage.status(), 200);
+      const ledger = await usage.json();
+      assert.equal(ledger.scope, 'space');
+      assert.ok(ledger.entries.every((row) => row.spaceId === fixture.teamId));
+      const entry = ledger.entries.find((row) => row.jobId === turn.id);
+      assert.ok(entry, 'the actual usage response links this research turn to a ledger record');
+      assert.equal(entry.actorId, fixture.actors.owner.id);
+      assert.equal(entry.spaceId, fixture.teamId);
+      assert.equal(entry.operation, 'assistant-turn');
+      const river = billing.getByRole('region', { name: '预占与结算变化', exact: true });
+      await river.waitFor();
+      assert.equal(await river.getByRole('img').count(), 4);
+      await billing.getByRole('button', { name: `展开记录 ${entry.id}`, exact: true }).click();
+      const ledgerDetail = billing.locator('.usage-detail-inner');
+      await ledgerDetail.getByText(turn.id, { exact: true }).waitFor();
+      const jobResponse = billing.waitForResponse(
+        (response) =>
+          response.request().method() === 'GET' &&
+          new URL(response.url()).pathname === `/v1/usage/jobs/${turn.id}`,
+      );
+      await ledgerDetail.getByRole('button', { name: '查看任务调用与费用', exact: true }).click();
+      const receipt = await jobResponse;
+      assert.equal(receipt.status(), 200);
+      const detail = await receipt.json();
+      assert.equal(detail.jobId, turn.id);
+      assert.equal(detail.actorId, fixture.actors.owner.id);
+      assert.equal(detail.spaceId, fixture.teamId);
+      assert.equal(detail.holdId, entry.holdId);
+      assert.equal(detail.state, 'completed');
+      const webStage = detail.stages.find((stage) => stage.purpose === 'web-search');
+      assert.ok(webStage, 'the actual task receipt contains the public-search provider stage');
+      assert.equal(webStage.status, 'received');
+      assert.deepEqual(webStage.totals, { input: 50, output: 20, total: 70 });
+      const webBranch = branches.json().branches.find((branch) => branch.kind === 'web');
+      assert.equal(webStage.branchId, webBranch.id);
+      const job = billing.getByRole('dialog', { name: '任务调用与费用', exact: true });
+      const distribution = job.getByRole('region', {
+        name: '研究分支的已记录 token 分布',
+        exact: true,
+      });
+      await distribution.getByText(`分支 ${webBranch.id}`, { exact: true }).waitFor();
+      const stage = job
+        .getByRole('region', { name: '模型调用阶段', exact: true })
+        .locator('.usage-stage')
+        .filter({ has: billing.getByText('公开检索', { exact: true }) });
+      const stageSummary = stage.locator(':scope > summary');
+      await stageSummary.getByText('70 token', { exact: true }).waitFor();
+      await stageSummary.getByText('已收到回执', { exact: true }).waitFor();
+      if ((await stageSummary.getAttribute('aria-expanded')) !== 'true') await stageSummary.click();
+      assert.deepEqual(await stage.locator('.usage-token-totals dd').allTextContents(), [
+        '50',
+        '20',
+        '70',
+      ]);
+      await stage.getByRole('table', { name: '回执计量项', exact: true }).waitFor();
       await job.screenshot({ path: resolve(artifacts, 'task-model-ledger.png') });
     } finally {
       await billing.close();
@@ -699,7 +1089,7 @@ try {
     };
   });
   await testCase('stop-in-flight-hides-partial-result-and-survives-refresh', async () => {
-    await page.getByRole('button', { name: '开始新会话，保留已保存的历史', exact: true }).click();
+    await newConversation();
     firstDelta = false;
     holdCompletion = true;
     const original = await head();
@@ -728,34 +1118,88 @@ try {
     { width: 1024, height: 768 },
     { width: 390, height: 844 },
     { width: 320, height: 700 },
+    { width: 320, height: 568 },
+    { width: 728, height: 900 },
     { width: 844, height: 390 },
   ]) {
     await testCase(`assistant-controls-${viewport.width}x${viewport.height}`, async () => {
       await page.setViewportSize(viewport);
+      await page.evaluate(
+        () => new Promise((done) => requestAnimationFrame(() => requestAnimationFrame(done))),
+      );
       const notice = page.getByRole('button', { name: '关闭提示', exact: true });
       if (await notice.count()) await notice.click();
-      await page.getByLabel('向智能体描述修改需求').scrollIntoViewIfNeeded();
+      await closeSettings();
+      await page.getByLabel('向智能体描述修改需求').waitFor();
       const geometry = await page.evaluate(() => {
         const box = (selector) => {
-          const r = document.querySelector(selector)?.getBoundingClientRect();
+          const node = document.querySelector(selector);
+          const r = node?.getBoundingClientRect();
+          const hit = r && document.elementFromPoint(r.x + r.width / 2, r.y + r.height / 2);
           return r
-            ? { x: r.x, y: r.y, width: r.width, height: r.height, bottom: r.bottom, right: r.right }
+            ? {
+                x: r.x,
+                y: r.y,
+                width: r.width,
+                height: r.height,
+                bottom: r.bottom,
+                right: r.right,
+                centerExposed: !!hit && node.contains(hit),
+              }
             : null;
         };
         return {
           width: innerWidth,
           overflow: document.documentElement.scrollWidth,
           composer: box('.assistant-composer'),
+          input: box('.assistant-composer textarea'),
+          send: box('.assistant-composer .ai-send-button'),
+          toolbar: box('.assistant-composer .ai-composer-toolbar'),
+          close: box('.ai-workbench-header .ai-panel-close'),
           panel: box('.ai-workbench'),
           canvas: box('.canvas-photo-frame'),
+          inputFontSize: parseFloat(
+            getComputedStyle(document.querySelector('.assistant-composer textarea')).fontSize,
+          ),
         };
       });
+      (report.measurements ??= []).push(geometry);
+      console.log(JSON.stringify({ assistantGeometry: geometry }));
       assert.ok(geometry.overflow <= viewport.width + 1, 'no page horizontal overflow');
       assert.ok(
         geometry.composer &&
           geometry.composer.x >= 0 &&
           geometry.composer.right <= viewport.width + 1,
       );
+      assert.ok(
+        geometry.panel &&
+          geometry.composer.bottom <= geometry.panel.bottom + 1 &&
+          geometry.composer.bottom <= viewport.height + 1,
+        'composer remains inside the visible panel without scrolling its ancestors',
+      );
+      for (const name of ['input', 'send']) {
+        const control = geometry[name];
+        assert.ok(
+          control &&
+            control.centerExposed &&
+            control.x >= geometry.panel.x &&
+            control.right <= geometry.panel.right + 1 &&
+            control.y >= geometry.panel.y &&
+            control.bottom <= geometry.panel.bottom + 1,
+          `${name} is exposed inside the panel`,
+        );
+      }
+      assert.ok(
+        geometry.send.height >= (viewport.width < 700 ? 40 : 36),
+        'send keeps its touch target',
+      );
+      if (viewport.width < 760) {
+        assert.ok(geometry.inputFontSize >= 16, 'phone input avoids focus zoom');
+        assert.ok(
+          geometry.close?.centerExposed && geometry.close.height >= 32,
+          'the condensed phone header retains its visible close action',
+        );
+      }
       await page.screenshot({
         path: resolve(artifacts, `assistant-${viewport.width}x${viewport.height}.png`),
       });
@@ -840,6 +1284,7 @@ try {
   holdCompletion = false;
   report.finishedAt = new Date().toISOString();
   report.dispatches = dispatches;
+  report.turnAdmissions = turnAdmissions;
   await writeFile(resolve(artifacts, 'report.json'), JSON.stringify(report, null, 2));
   await browser?.close();
   await vite?.close();

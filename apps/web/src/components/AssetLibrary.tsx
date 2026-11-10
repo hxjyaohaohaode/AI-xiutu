@@ -19,9 +19,13 @@ import {
 import { api, ApiError, errorMessage, formatDate, jsonRequest } from '../lib/api';
 import type { Asset, Artwork, Project, Space } from '../lib/types';
 import { Busy, EmptyState, InlineError, Modal } from './Ui';
+import { ChoiceSelect } from './ChoiceSelect';
 import { OptionChips } from './Controls';
 import { MediaSourceViewer } from '../media/MediaSourceViewer';
+import { useConfirmation } from './ConfirmationDialog';
+import { confirmStableScope } from '../lib/confirmation-scope';
 import { AnimationDialog, AssetRecognitionDialog, ProjectAssetTools } from './AssetTools';
+import { StudioGlyph } from './StudioGlyph';
 
 export const SOURCE_LABELS = {
   upload: '上传照片',
@@ -88,10 +92,84 @@ function MetadataDialog({
     tags !== original.tags ||
     capturedAt !== original.capturedAt ||
     location !== original.location;
-  const canClose = () => !busy && (!dirty || window.confirm('整理信息尚未保存，确定关闭吗？'));
+  const confirmation = useConfirmation();
+  const mounted = useRef(false);
+  const locked = useRef(false);
+  const latest = useRef({
+    asset,
+    title,
+    tags,
+    capturedAt,
+    location,
+    busy,
+    dirty,
+    onClose,
+    onSaved,
+    onReload,
+  });
+  latest.current = {
+    asset,
+    title,
+    tags,
+    capturedAt,
+    location,
+    busy,
+    dirty,
+    onClose,
+    onSaved,
+    onReload,
+  };
+  useEffect(() => {
+    mounted.current = true;
+    return () => {
+      mounted.current = false;
+    };
+  }, []);
+  const readDraft = () => ({
+    mounted: mounted.current,
+    asset: latest.current.asset,
+    assetId: latest.current.asset.id,
+    projectId: latest.current.asset.projectId,
+    version: latest.current.asset.annotationVersion,
+    title: latest.current.title,
+    tags: latest.current.tags,
+    capturedAt: latest.current.capturedAt,
+    location: latest.current.location,
+    busy: latest.current.busy,
+    locked: locked.current,
+  });
+  async function confirmDiscard(description: string, confirmLabel: string) {
+    if (!mounted.current || locked.current || latest.current.busy) return false;
+    const outcome = await confirmStableScope(readDraft, () =>
+      confirmation.confirm({
+        description,
+        confirmLabel,
+        tone: 'danger',
+      }),
+    );
+    if (outcome === 'changed' && mounted.current)
+      setError('素材或整理草稿已经变化，请检查后重试。');
+    return outcome === 'confirmed';
+  }
+  const canClose = async () =>
+    !locked.current &&
+    !latest.current.busy &&
+    (!latest.current.dirty ||
+      (await confirmDiscard('整理信息尚未保存，确定关闭吗？', '放弃并关闭')));
+  async function reloadLatest() {
+    if (
+      await confirmDiscard('信息已被其他成员修改。关闭当前草稿并读取最新信息吗？', '读取最新信息')
+    ) {
+      latest.current.onReload();
+      latest.current.onClose();
+    }
+  }
   async function save(event: FormEvent) {
     event.preventDefault();
-    if (busy || !dirty || !asset.annotationVersion) return;
+    if (!mounted.current || locked.current || busy || !dirty || !asset.annotationVersion) return;
+    locked.current = true;
+    const savedAsset = asset;
+    const isCurrent = () => mounted.current && latest.current.asset === savedAsset;
     setBusy(true);
     setError(null);
     try {
@@ -118,91 +196,97 @@ function MetadataDialog({
         '/assets/' + asset.id + '/annotations',
         jsonRequest('PATCH', patch),
       );
-      onSaved(result.asset);
-      onClose();
+      if (isCurrent()) {
+        latest.current.onSaved(result.asset);
+        latest.current.onClose();
+      }
     } catch (error) {
-      setError(errorMessage(error));
-      if (error instanceof ApiError && error.code === 'VERSION_CONFLICT') setConflict(true);
+      if (isCurrent()) {
+        setError(errorMessage(error));
+        if (error instanceof ApiError && error.code === 'VERSION_CONFLICT') setConflict(true);
+      }
     } finally {
-      setBusy(false);
+      locked.current = false;
+      if (mounted.current) setBusy(false);
     }
   }
   return (
-    <Modal title="整理素材信息" subtitle={asset.name} onClose={onClose} canClose={canClose}>
-      <form
-        className="stack-form asset-metadata-form"
-        onSubmit={(event) => void save(event)}
-        data-motion="modal-content"
-      >
-        <label>
-          标题
-          <input
-            value={title}
-            maxLength={200}
-            disabled={busy}
-            onChange={(event) => setTitle(event.target.value)}
-            placeholder="给这张素材一个好找的名字"
-          />
-        </label>
-        <label>
-          标签
-          <input
-            value={tags}
-            disabled={busy}
-            onChange={(event) => setTags(event.target.value)}
-            placeholder="用逗号分隔，例如：人像，旅行，待精修"
-          />
-        </label>
-        <label>
-          拍摄时间（自行填写）
-          <input
-            type="datetime-local"
-            value={capturedAt}
-            disabled={busy}
-            onChange={(event) => setCapturedAt(event.target.value)}
-          />
-          <small>
-            按当前设备时区 {Intl.DateTimeFormat().resolvedOptions().timeZone}{' '}
-            解释，保存时包含时区。不从照片推测。
-          </small>
-        </label>
-        <label>
-          地点（自行填写）
-          <input
-            value={location}
-            maxLength={200}
-            disabled={busy}
-            onChange={(event) => setLocation(event.target.value)}
-            placeholder="可留空；不会读取设备定位"
-          />
-        </label>
-        <p className="control-note">
-          来源：{SOURCE_LABELS[asset.source ?? 'unknown']} · 入库于{' '}
-          {formatDate(asset.createdAt) || '未记录'}
-          。这些说明随项目权限可见，不会改写原图或自动公开。
-        </p>
-        <InlineError message={error} />
-        {conflict ? (
-          <button
-            type="button"
-            className="button button-secondary"
-            onClick={() => {
-              if (window.confirm('信息已被其他成员修改。关闭当前草稿并读取最新信息吗？')) {
-                onReload();
-                onClose();
-              }
-            }}
-          >
-            <ArrowClockwise size={16} />
-            读取最新信息
-          </button>
-        ) : (
-          <button className="button button-primary" disabled={busy || !dirty}>
-            {busy ? <Busy /> : '保存整理信息'}
-          </button>
-        )}
-      </form>
-    </Modal>
+    <>
+      <Modal title="整理素材信息" subtitle={asset.name} onClose={onClose} canClose={canClose}>
+        <form
+          className="stack-form asset-metadata-form"
+          onSubmit={(event) => void save(event)}
+          data-motion="modal-content"
+        >
+          <label>
+            标题
+            <input
+              value={title}
+              maxLength={200}
+              disabled={busy}
+              onChange={(event) => setTitle(event.target.value)}
+              placeholder="给这张素材一个好找的名字"
+            />
+          </label>
+          <label>
+            标签
+            <input
+              value={tags}
+              disabled={busy}
+              onChange={(event) => setTags(event.target.value)}
+              placeholder="用逗号分隔，例如：人像，旅行，待精修"
+            />
+          </label>
+          <label>
+            拍摄时间（自行填写）
+            <input
+              type="datetime-local"
+              value={capturedAt}
+              disabled={busy}
+              onChange={(event) => setCapturedAt(event.target.value)}
+            />
+            <small>
+              按当前设备时区 {Intl.DateTimeFormat().resolvedOptions().timeZone}{' '}
+              解释，保存时包含时区。不从照片推测。
+            </small>
+          </label>
+          <label>
+            地点（自行填写）
+            <input
+              value={location}
+              maxLength={200}
+              disabled={busy}
+              onChange={(event) => setLocation(event.target.value)}
+              placeholder="可留空；不会读取设备定位"
+            />
+          </label>
+          <p className="control-note">
+            来源：{SOURCE_LABELS[asset.source ?? 'unknown']} · 入库于{' '}
+            {formatDate(asset.createdAt) || '未记录'}
+            。这些说明随项目权限可见，不会改写原图或自动公开。
+          </p>
+          <InlineError message={error} />
+          {conflict ? (
+            <button
+              type="button"
+              className="button button-secondary"
+              disabled={busy}
+              onClick={() => {
+                void reloadLatest();
+              }}
+            >
+              <ArrowClockwise size={16} />
+              读取最新信息
+            </button>
+          ) : (
+            <button className="button button-primary" disabled={busy || !dirty}>
+              {busy ? <Busy /> : '保存整理信息'}
+            </button>
+          )}
+        </form>
+      </Modal>
+      {confirmation.dialog}
+    </>
   );
 }
 export function AssetLibrary({
@@ -246,7 +330,7 @@ export function AssetLibrary({
   const [editing, setEditing] = useState<Asset | null>(null),
     [refresh, setRefresh] = useState(0);
   const [sourceDetails, setSourceDetails] = useState<Asset | null>(null);
-  const [tools, setTools] = useState<{ asset: Asset; editable: boolean; kind: 'ocr' | 'animation' } | null>(null);
+  const [tools, setTools] = useState<{ asset: Asset; kind: 'ocr' | 'animation' } | null>(null);
   const [projectTools, setProjectTools] = useState(false);
   const [density, setDensity] = useState<'comfortable' | 'compact'>('comfortable');
   const requestGeneration = useRef(0),
@@ -255,6 +339,16 @@ export function AssetLibrary({
   const scopedProjects = externalProject
     ? [project!]
     : projects.filter((item) => item.spaceId === space?.id);
+  const toolProject =
+    tools &&
+    (project?.id === tools.asset.projectId
+      ? project
+      : scopedProjects.find((item) => item.id === tools.asset.projectId));
+  const toolsEditable = !!toolProject && ['owner', 'admin', 'editor'].includes(toolProject.role);
+  useEffect(() => {
+    setTools(null);
+    setProjectTools(false);
+  }, [space?.id, project?.id]);
   useEffect(() => {
     const timer = setTimeout(() => setDebouncedQuery(query.trim()), 250);
     return () => clearTimeout(timer);
@@ -368,13 +462,16 @@ export function AssetLibrary({
             {space && !externalProject ? ' · ' + space.name : ''}
           </span>
           <h1>{project?.title ?? '作品与素材'}</h1>
-          <p>{project?.description || '照片、草图与每一次创作，都有自己的位置。'}</p>
+          <p>{project?.description || '管理项目中的作品、照片与草图。'}</p>
         </div>
         <div className="view-actions">
           {project && (
             <>
               {['owner', 'admin', 'editor'].includes(project.role) && (
-                <button className="text-button" onClick={() => setProjectTools(true)}>拼图与 GIF</button>
+                <button className="text-button" onClick={() => setProjectTools(true)}>
+                  <StudioGlyph name="collage" size={18} />
+                  拼图与 GIF
+                </button>
               )}
               <button className="text-button" onClick={onCopy}>
                 <Copy size={17} />
@@ -405,7 +502,7 @@ export function AssetLibrary({
       {!space && !project ? (
         <EmptyState
           icon={<Images size={32} />}
-          title="为创作选一个空间"
+          title="选择工作空间"
           description="登录后选择个人或团队空间。照片仍可直接在本机打开编辑。"
           action={
             <button className="button button-secondary" onClick={onCreate}>
@@ -442,18 +539,15 @@ export function AssetLibrary({
             </label>
             <label className="library-project-select">
               <span>项目</span>
-              <select
-                aria-label="素材所属项目"
+              <ChoiceSelect
+                ariaLabel="素材所属项目"
                 value={projectFilter}
-                onChange={(event) => setProjectFilter(event.target.value)}
-              >
-                {!externalProject && <option value="">当前空间全部项目</option>}
-                {scopedProjects.map((item) => (
-                  <option key={item.id} value={item.id}>
-                    {item.title}
-                  </option>
-                ))}
-              </select>
+                onValueChange={setProjectFilter}
+                options={[
+                  ...(!externalProject ? [{ value: '', label: '当前空间全部项目' }] : []),
+                  ...scopedProjects.map((item) => ({ value: item.id, label: item.title })),
+                ]}
+              />
             </label>
             <OptionChips
               label="按来源筛选"
@@ -481,15 +575,17 @@ export function AssetLibrary({
               />
               <label>
                 分组
-                <select
-                  aria-label="素材分组方式"
+                <ChoiceSelect
+                  ariaLabel="素材分组方式"
                   value={groupBy}
-                  onChange={(event) => setGroupBy(event.target.value as GroupBy)}
-                >
-                  <option value="date">入库日期</option>
-                  <option value="project">所属项目</option>
-                  <option value="source">素材来源</option>
-                </select>
+                  size="compact"
+                  onValueChange={setGroupBy}
+                  options={[
+                    { value: 'date', label: '入库日期' },
+                    { value: 'project', label: '所属项目' },
+                    { value: 'source', label: '素材来源' },
+                  ]}
+                />
               </label>
             </div>
           </div>
@@ -602,7 +698,11 @@ export function AssetLibrary({
                       >
                         <LibraryThumbnail asset={asset} title={title} />
                         <span>
-                          {sameProject ? asset.provenance?.animation === true ? '打开封面' : '打开原图' : '进入项目'}
+                          {sameProject
+                            ? asset.provenance?.animation === true
+                              ? '打开封面'
+                              : '打开原图'
+                            : '进入项目'}
                           <ArrowSquareOut size={15} />
                         </span>
                       </button>
@@ -623,10 +723,24 @@ export function AssetLibrary({
                           {SOURCE_LABELS[asset.source ?? 'unknown']} · {asset.width}×{asset.height}
                         </p>
                         <small>{parent?.title ?? '当前授权项目'}</small>
-                        <button className="text-button" onClick={() => setTools({ asset, editable, kind: 'ocr' })}>识别文字与表格</button>
-                        {asset.provenance?.animation === true && (
-                          <button className="text-button" onClick={() => setTools({ asset, editable, kind: 'animation' })}>GIF 帧编辑</button>
-                        )}
+                        <div className="library-asset-tools">
+                          <button
+                            className="text-button"
+                            onClick={() => setTools({ asset, kind: 'ocr' })}
+                          >
+                            <StudioGlyph name="docs" size={16} />
+                            识别文字与表格
+                          </button>
+                          {asset.provenance?.animation === true && (
+                            <button
+                              className="text-button"
+                              onClick={() => setTools({ asset, kind: 'animation' })}
+                            >
+                              <StudioGlyph name="works" size={16} />
+                              GIF 帧编辑
+                            </button>
+                          )}
+                        </div>
                         {asset.provenance?.kind === 'media-import' && (
                           <button className="text-button" onClick={() => setSourceDetails(asset)}>
                             查看原件与母版
@@ -688,13 +802,32 @@ export function AssetLibrary({
         </>
       )}
       {projectTools && project && ['owner', 'admin', 'editor'].includes(project.role) && (
-        <ProjectAssetTools key={project.id} projectId={project.id} assets={assets.filter((asset) => asset.projectId === project.id)}
-          onClose={() => setProjectTools(false)} onCreated={() => setRefresh((value) => value + 1)} />
+        <ProjectAssetTools
+          key={project.id}
+          projectId={project.id}
+          assets={assets.filter((asset) => asset.projectId === project.id)}
+          onClose={() => setProjectTools(false)}
+          onCreated={() => setRefresh((value) => value + 1)}
+        />
       )}
-      {tools?.kind === 'ocr' && <AssetRecognitionDialog key={tools.asset.id} asset={tools.asset} editable={tools.editable}
-        onClose={() => setTools(null)} onChange={() => setRefresh((value) => value + 1)} />}
-      {tools?.kind === 'animation' && <AnimationDialog key={tools.asset.id} asset={tools.asset} editable={tools.editable}
-        onClose={() => setTools(null)} onChange={() => setRefresh((value) => value + 1)} />}
+      {tools?.kind === 'ocr' && (
+        <AssetRecognitionDialog
+          key={tools.asset.id}
+          asset={tools.asset}
+          editable={toolsEditable}
+          onClose={() => setTools(null)}
+          onChange={() => setRefresh((value) => value + 1)}
+        />
+      )}
+      {tools?.kind === 'animation' && (
+        <AnimationDialog
+          key={tools.asset.id}
+          asset={tools.asset}
+          editable={toolsEditable}
+          onClose={() => setTools(null)}
+          onChange={() => setRefresh((value) => value + 1)}
+        />
+      )}
       {sourceDetails && (
         <Modal
           title="原件与母版"

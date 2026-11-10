@@ -1,52 +1,104 @@
+import { useId, useMemo } from 'react';
+import { ChartLineUp } from '@phosphor-icons/react';
 import type { UsageResponse } from '@ai-xiutu/contracts';
-
-const stages = [
-  { key: 'held', name: '预占', color: '#57759b' },
-  { key: 'consumed', name: '结算', color: '#597044' },
-  { key: 'released', name: '释放', color: '#a08039' },
-  { key: 'expired', name: '过期', color: '#976c62' },
-] as const;
+import { MotionDetails } from '../motion/Presence';
+import { pointText, usageLabels } from './model';
+import { riverKinds, usageRiverLanes } from './riverModel';
 
 export function UsageRiver({ series }: { series: UsageResponse['series'] }) {
-  const [width, height] = [620, 132];
-  const points = series.length === 1 ? [series[0]!, series[0]!] : series;
-  const total = points.map((point) =>
-    stages.reduce((sum, stage) => sum + Math.max(0, point[stage.key]), 0),
-  );
-  const peak = Math.max(0, ...total);
-  if (!peak) return null;
-  const bases = points.map((_, index) => (height - (total[index]! / peak) * height) / 2);
-  const x = (index: number) => (index * width) / (points.length - 1);
-  const paths = stages.map((stage) => {
-    const top = points.map((_, index) => `${x(index)},${bases[index]}`);
-    const bottom = points.map((point, index) => {
-      bases[index]! += (Math.max(0, point[stage.key]) / peak) * height;
-      return `${x(index)},${bases[index]}`;
-    });
-    return `M${top.join(' L')} L${bottom.reverse().join(' L')} Z`;
-  });
+  const id = useId();
+  const lanes = useMemo(() => usageRiverLanes(series), [series]);
+  if (!series.length) return null;
   return (
-    <figure className="usage-job-flow">
-      <svg
-        viewBox={`0 0 ${width} ${height}`}
-        role="img"
-        aria-label="预占、结算、释放和到期的时序河流图"
-      >
-        {stages.map((stage, index) => (
-          <path key={stage.key} d={paths[index]} fill={stage.color}>
-            <title>{stage.name}</title>
-          </path>
+    <section className="usage-card usage-river" aria-labelledby={`${id}-title`}>
+      <div className="usage-section-heading">
+        <div>
+          <h2 id={`${id}-title`}>
+            <ChartLineUp size={18} aria-hidden /> 预占与结算变化
+          </h2>
+          <p>独立流水 · 同一数值比例</p>
+        </div>
+        <span>服务点</span>
+      </div>
+      <div className="usage-river-lanes">
+        {lanes.map((lane) => (
+          <figure key={lane.kind} data-kind={lane.kind}>
+            <figcaption>
+              <span>{usageLabels[lane.kind]}</span>
+              <strong>{pointText(lane.knownTotal)}</strong>
+            </figcaption>
+            <svg
+              viewBox={`0 0 ${lane.width} ${lane.height}`}
+              role="img"
+              aria-label={`${usageLabels[lane.kind]}变化，已记录合计 ${pointText(lane.knownTotal)} 点${lane.missing ? `，${lane.missing} 个日期数值未知` : ''}`}
+            >
+              <line
+                x1="0"
+                x2={lane.width}
+                y1={lane.baseline}
+                y2={lane.baseline}
+                className="usage-river-baseline"
+              />
+              {lane.paths.map((path, index) => (
+                <path key={index} d={path} className="usage-river-area" />
+              ))}
+              {lane.points.map((point) =>
+                point.x === null ? null : point.value === null ? (
+                  <circle
+                    key={point.label}
+                    cx={point.x}
+                    cy={lane.baseline}
+                    r="3"
+                    className="usage-unknown-dot"
+                  >
+                    <title>{`${point.label}：未知`}</title>
+                  </circle>
+                ) : (
+                  <g key={point.label}>
+                    <title>{`${point.label}：${pointText(point.value)} 点`}</title>
+                  </g>
+                ),
+              )}
+            </svg>
+            <div className="usage-river-dates">
+              <span>{series[0]!.bucket}</span>
+              {series.length > 1 && <span>{series.at(-1)!.bucket}</span>}
+            </div>
+          </figure>
         ))}
-      </svg>
-      <figcaption>
-        {stages.map((stage) => (
-          <span key={stage.key}>
-            <i style={{ background: stage.color }} />
-            {stage.name}
-          </span>
-        ))}
-        <small>按日期呈现各类变动量</small>
-      </figcaption>
-    </figure>
+      </div>
+      <p className="usage-footnote">
+        预占、结算、释放与到期分别计量，不能相加作为余额。金额不完整的记录不补零。
+      </p>
+      <MotionDetails className="usage-small-details">
+        <summary>查看各类流水数值</summary>
+        <div className="usage-values-scroll" role="region" aria-label="各类流水数值" tabIndex={0}>
+          <table>
+            <thead>
+              <tr>
+                <th scope="col">日期</th>
+                {riverKinds.map((kind) => (
+                  <th key={kind} scope="col">
+                    {usageLabels[kind]}
+                  </th>
+                ))}
+                <th scope="col">待核对</th>
+              </tr>
+            </thead>
+            <tbody>
+              {series.map((row) => (
+                <tr key={row.bucket}>
+                  <th scope="row">{row.bucket}</th>
+                  {riverKinds.map((kind) => (
+                    <td key={kind}>{pointText(row[kind])}</td>
+                  ))}
+                  <td>{pointText(row.unknownAmountEntries)}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      </MotionDetails>
+    </section>
   );
 }

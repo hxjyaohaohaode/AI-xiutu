@@ -40,6 +40,7 @@ import {
 } from './useWorkspaceLayout';
 import { usePresence } from '../motion/usePresence';
 import type { MotionPhase } from '../motion/registry';
+import { PanelChromeContext } from './PanelChromeContext';
 import './panel.css';
 
 type Gesture = {
@@ -104,13 +105,14 @@ export function FloatingPanel({
   geometryCallback.current = onGeometry;
   const currentPanelKey = useRef(panelKey);
   currentPanelKey.current = panelKey;
-  const value = boundPanel(geometry, viewport);
+  const value = boundPanel(geometry, viewport, panelKey);
   const rect = panelRectangle(value, viewport);
   const mobile = viewport.bucket === 'phone';
   const maximized = value.presentation === 'maximized',
     collapsed = value.presentation === 'collapsed';
   const attached = mobile && value.dock === 'bottom';
-  const bounds = panelBounds(viewport, value.dock);
+  const condensed = mobile && panelKey === 'ai' && !collapsed;
+  const bounds = panelBounds(viewport, value.dock, panelKey);
   const contentPresence = usePresence(!collapsed && open, 'panel-body');
   const needsPhotoSpace = panelNeedsPhotoSpace(value, viewport);
   const menuBelow =
@@ -122,7 +124,7 @@ export function FloatingPanel({
     top: rect.y,
     width: rect.width,
     height: rect.height,
-    '--panel-header-height': `${panelHeaderHeight(viewport)}px`,
+    '--panel-header-height': `${condensed ? 16 : panelHeaderHeight(viewport)}px`,
   } as CSSProperties;
 
   function finishGesture(cancel: boolean) {
@@ -190,7 +192,7 @@ export function FloatingPanel({
     onGeometry(
       g.kind === 'move'
         ? movePanel(g.original, dx, dy, viewport)
-        : resizePanel(g.original, g.edge ?? 'se', dx, dy, viewport),
+        : resizePanel(g.original, g.edge ?? 'se', dx, dy, viewport, panelKey),
     );
   }
   function end(event: PointerEvent<HTMLElement>, cancel = false) {
@@ -277,7 +279,7 @@ export function FloatingPanel({
   }
   function dock(next: Dock) {
     finishGesture(false);
-    onGeometry(boundPanel({ ...value, dock: next, presentation: 'normal' }, viewport));
+    onGeometry(boundPanel({ ...value, dock: next, presentation: 'normal' }, viewport, panelKey));
     setMenu(false);
   }
   function resizeByKeyboard(key: string, shift: boolean, alt: boolean) {
@@ -287,7 +289,7 @@ export function FloatingPanel({
     if (key === 'ArrowRight') next.width += delta;
     if (key === 'ArrowUp') next.height += delta;
     if (key === 'ArrowDown') next.height -= delta;
-    onGeometry(boundPanel(next, viewport));
+    onGeometry(boundPanel(next, viewport, panelKey));
   }
   return (
     <section
@@ -307,6 +309,8 @@ export function FloatingPanel({
       data-attached={attached ? 'true' : undefined}
       data-composition={value.composition}
       data-device={viewport.bucket}
+      data-panel-id={panelKey}
+      data-condensed-header={condensed || undefined}
       onKeyDown={(event) => {
         if (event.key === 'Escape' && menu) {
           event.preventDefault();
@@ -361,6 +365,7 @@ export function FloatingPanel({
         </div>
         <div className="panel-presentation-actions" data-motion="panel-actions">
           <IconButton
+            className="panel-collapse-action"
             label={
               collapsed
                 ? `继续调节：恢复面板到${Math.round(value.height)}像素，保留当前操作`
@@ -451,25 +456,28 @@ export function FloatingPanel({
             </button>
           </div>
           <div className="panel-size-controls" data-motion="panel-sizing">
-            <label>
-              宽度 <output>{Math.round(value.width)} px</output>
-              <input
-                type="range"
-                min={bounds.minWidth}
-                max={bounds.maxWidth}
-                step={1}
-                value={value.width}
-                aria-label="面板宽度，像素"
-                onChange={(event) =>
-                  onGeometry(
-                    boundPanel(
-                      { ...value, width: Number(event.target.value), presentation: 'normal' },
-                      viewport,
-                    ),
-                  )
-                }
-              />
-            </label>
+            {!attached && (
+              <label>
+                宽度 <output>{Math.round(value.width)} px</output>
+                <input
+                  type="range"
+                  min={bounds.minWidth}
+                  max={bounds.maxWidth}
+                  step={1}
+                  value={value.width}
+                  aria-label="面板宽度，像素"
+                  onChange={(event) =>
+                    onGeometry(
+                      boundPanel(
+                        { ...value, width: Number(event.target.value), presentation: 'normal' },
+                        viewport,
+                        panelKey,
+                      ),
+                    )
+                  }
+                />
+              </label>
+            )}
             <label>
               高度 <output>{Math.round(value.height)} px</output>
               <input
@@ -484,6 +492,7 @@ export function FloatingPanel({
                     boundPanel(
                       { ...value, height: Number(event.target.value), presentation: 'normal' },
                       viewport,
+                      panelKey,
                     ),
                   )
                 }
@@ -540,12 +549,21 @@ export function FloatingPanel({
         hidden={!contentPresence.present}
       >
         {navigation && <div className="panel-context-navigation">{navigation}</div>}
-        {children}
+        <PanelChromeContext.Provider
+          value={{
+            mobile,
+            maximized,
+            openLayout: () => setMenu(true),
+            toggleMaximized: () => setPresentation(maximized ? 'normal' : 'maximized'),
+          }}
+        >
+          {children}
+        </PanelChromeContext.Provider>
       </div>
       {!collapsed &&
         !maximized &&
         edges
-          .filter((edge) => !attached || !edge.includes('s'))
+          .filter((edge) => !attached || edge === 'n')
           .map((edge) => (
             <div
               key={edge}

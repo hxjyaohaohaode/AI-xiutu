@@ -12,14 +12,14 @@
     justify-content: space-between;
     gap: 10px;
     font-size: 10px;
-    color: #68745d;
+    color: var(--ink);
     margin-top: 14px;
   }
   .curve-point-select select {
     max-width: 150px;
     font-size: 10px;
-    background: #fafbf7;
-    border: 1px solid #dfe5d6;
+    background: var(--surface-secondary);
+    border: 1px solid var(--line);
     border-radius: 6px;
     min-height: 34px;
     padding: 6px;
@@ -49,36 +49,36 @@
     border-radius: 8px;
     min-height: 38px;
     font-size: 11px;
-    color: #707764;
+    color: var(--muted);
   }
   .ai-task-tabs > button.selected {
-    background: #f5ecd0;
-    color: #6b5626;
+    background: var(--accent-soft);
+    color: var(--accent-ink);
     font-weight: 600;
   }
   .ai-task-tabs > button:hover {
-    background: #f5f4ec;
+    background: var(--surface-hover);
   }
   .ai-intro .ai-data-note {
     line-height: 1.7;
     display: block;
     margin-top: 15px;
     font-size: 10px;
-    color: #6c7560;
+    color: var(--muted);
   }
   .ai-size-field {
     display: flex;
     align-items: center;
     gap: 8px;
     font-size: 10px;
-    color: #737a68;
+    color: var(--muted);
     padding: 9px 0 14px;
   }
   .ai-size-field select {
-    border: 1px solid #e1e5d8;
+    border: 1px solid var(--line);
     border-radius: 6px;
     padding: 5px;
-    background: #fff;
+    background: var(--surface);
     max-width: 170px;
   }
   .ai-size-field > span {
@@ -97,10 +97,10 @@
     gap: 9px;
     width: 100%;
     min-height: 142px;
-    border: 1px dashed #cfd7c4;
-    background: #f9faf6;
+    border: 1px dashed var(--line);
+    background: var(--surface-secondary);
     border-radius: 12px;
-    color: #718164;
+    color: var(--muted);
   }
   .sketch-entry strong {
     font-size: 12px;
@@ -108,11 +108,11 @@
   }
   .sketch-entry span {
     font-size: 10px;
-    color: #78816e;
+    color: var(--muted);
   }
   .sketch-entry:hover {
-    background: #f2f5e9;
-    border-color: #aebd96;
+    background: var(--surface-hover);
+    border-color: var(--line-strong);
   }
   .sketch-reference > .text-button {
     margin-top: 6px;
@@ -120,12 +120,12 @@
   .sketch-reference > span {
     display: block;
     font-size: 10px;
-    color: #737d66;
+    color: var(--muted);
     margin-top: 9px;
   }
   .sketch-preview {
     position: relative;
-    background: #f1f2eb;
+    background: var(--surface-secondary);
     border-radius: 10px;
     overflow: hidden;
     padding: 12px;
@@ -135,40 +135,40 @@
     width: auto;
     max-width: 100%;
     max-height: 180px;
-    box-shadow: 0 2px 9px #2c331d17;
+    box-shadow: 0 2px 9px rgb(var(--color-shadow) / 9.02%);
   }
   .sketch-preview .icon-button {
     position: absolute;
     right: 6px;
     top: 6px;
-    background: #ffffffe8;
-    border: 1px solid #e1e5d8;
+    background: color-mix(in srgb, var(--surface) 90.98%, transparent);
+    border: 1px solid var(--line);
   }
   .ai-image-result > img {
     width: 100%;
     height: auto;
     max-height: 340px;
     object-fit: contain;
-    background: #eff0e9;
+    background: var(--surface-secondary);
     border-radius: 8px;
     margin: 14px 0 8px;
   }
   .ai-image-result > span {
     display: block;
     font-size: 9px;
-    color: #727c67;
+    color: var(--muted);
     margin-bottom: 11px;
   }
   .ai-text-result input,
   .ai-text-result textarea,
   .ai-transcript-result textarea {
     width: 100%;
-    background: #fafbf7;
-    border: 1px solid #e1e5d9;
+    background: var(--surface-secondary);
+    border: 1px solid var(--line);
     border-radius: 7px;
     padding: 10px;
     font-size: 12px;
-    color: #404b36;
+    color: var(--ink);
     line-height: 1.8;
   }
   .ai-text-result input {
@@ -198,7 +198,7 @@
   .ai-transcript-result > label {
     display: block;
     font-size: 11px;
-    color: #68745c;
+    color: var(--ink);
     margin: 12px 0 8px;
   }
   .ai-transcript-result textarea {
@@ -228,42 +228,42 @@
     width: 76px;
     display: grid;
     place-items: center;
-    background: #f5edcf;
-    color: #8f793c;
-    border: 1px solid #ebddb1;
+    background: var(--accent-soft);
+    color: var(--accent-ink);
+    border: 1px solid var(--accent);
     border-radius: 50%;
     margin-bottom: 17px;
-    box-shadow: 0 0 0 10px #faf8ee;
+    box-shadow: 0 0 0 10px var(--accent-soft);
   }
   .voice-orb.recording {
-    background: #fbe4d8;
-    color: #b96443;
-    box-shadow: 0 0 0 10px #fdf1e9;
+    background: var(--danger-soft);
+    color: var(--danger);
+    box-shadow: 0 0 0 10px var(--danger-soft);
     animation: recording-glow 1.8s ease-in-out infinite;
   }
   .voice-capture > strong {
     font-size: 14px;
     font-weight: 600;
-    color: #4f5b43;
+    color: var(--ink);
   }
   .voice-capture > p {
     font-size: 11px;
     line-height: 1.8;
-    color: #737e65;
+    color: var(--muted);
     margin: 10px 0;
     max-width: 255px;
   }
   .recording-time {
     font-variant-numeric: tabular-nums;
     font-size: 12px;
-    color: #8c947f;
+    color: var(--danger);
     margin: 5px 0 15px;
     letter-spacing: 0.08em;
   }
   .button-recording {
-    background: #fae8df;
-    color: #a25035;
-    border: 1px solid #e7c7b9;
+    background: var(--danger-soft);
+    color: var(--danger);
+    border: 1px solid color-mix(in srgb, var(--danger) 28%, var(--line));
   }
   .voice-playback {
     display: flex;
@@ -283,7 +283,7 @@
   }
   @keyframes recording-glow {
     50% {
-      box-shadow: 0 0 0 14px #fdf1e9;
+      box-shadow: 0 0 0 14px var(--danger-soft);
     }
   }
   .drawing-toolbar {
@@ -299,12 +299,12 @@
     align-items: center;
   }
   .drawing-tools .selected {
-    background: #f7edcc;
-    color: #8b6b24;
+    background: var(--accent-soft);
+    color: var(--accent-ink);
   }
   .drawing-toolbar select {
-    background: #fafbf7;
-    border: 1px solid #e0e5d5;
+    background: var(--surface-secondary);
+    border: 1px solid var(--line);
     border-radius: 7px;
     padding: 9px;
     font-size: 12px;
@@ -327,22 +327,22 @@
     width: 27px;
     border-radius: 50%;
     background: var(--swatch);
-    border: 3px solid #fff;
-    box-shadow: 0 0 0 1px #d9dfcf;
+    border: 3px solid var(--line);
+    box-shadow: 0 0 0 1px var(--line-strong);
   }
   .drawing-colors > button.selected {
-    box-shadow: 0 0 0 2px #515e41;
+    box-shadow: 0 0 0 2px var(--focus-ring);
   }
   .custom-color {
     height: 29px;
     width: 29px;
     border-radius: 50%;
-    border: 1px dashed #c9d2bd;
+    border: 1px dashed var(--line-strong);
     display: grid;
     place-items: center;
     position: relative;
     cursor: pointer;
-    color: #687655;
+    color: var(--ink);
     font-size: 20px;
   }
   .custom-color input {
@@ -358,12 +358,12 @@
     align-items: center;
     gap: 10px;
     font-size: 11px;
-    color: #727e62;
+    color: var(--muted);
     white-space: nowrap;
   }
   .drawing-width input {
     width: 100px;
-    accent-color: #c5a13c;
+    accent-color: var(--accent);
   }
   .drawing-width span {
     width: 20px;
@@ -373,8 +373,8 @@
   .drawing-surface {
     height: min(49dvh, 460px);
     min-height: 180px;
-    background: #eeefe8;
-    border: 1px solid #dfe3d5;
+    background: var(--surface-secondary);
+    border: 1px solid var(--line);
     border-radius: 11px;
     overflow: hidden;
     display: flex;
@@ -388,7 +388,7 @@
     max-width: 100%;
     object-fit: contain;
     background: #fff;
-    box-shadow: 0 3px 15px #2f39221a;
+    box-shadow: 0 3px 15px rgb(var(--color-shadow) / 10.2%);
     touch-action: none;
     cursor: crosshair;
     aspect-ratio: 1;
@@ -404,7 +404,7 @@
     justify-content: space-between;
     gap: 12px;
     font-size: 10px;
-    color: #788467;
+    color: var(--muted);
     margin: 12px 1px 18px;
   }
   .drawing-actions {
@@ -429,10 +429,10 @@
     flex-wrap: wrap;
   }
   .brand-logo-config {
-    border: 1px solid #e0e6d6;
+    border: 1px solid var(--line);
     padding: 17px;
     border-radius: 10px;
-    background: #f9fbf5;
+    background: var(--surface-secondary);
     display: flex;
     flex-direction: column;
     gap: 12px;
@@ -442,15 +442,15 @@
     flex-direction: column;
     gap: 9px;
     font-size: 12px;
-    color: #5d6b4f;
+    color: var(--ink);
   }
   .brand-logo-preview {
     height: 70px;
     width: 70px;
     object-fit: contain;
-    border: 1px solid #dce3d1;
+    border: 1px solid var(--line);
     border-radius: 10px;
-    background: #fff;
+    background: var(--surface);
     padding: 5px;
   }
   .logo-file-label input {
@@ -463,7 +463,7 @@
     align-self: flex-start;
   }
   .model-operations {
-    border: 1px solid #dfe5d4;
+    border: 1px solid var(--line);
     border-radius: 9px;
     padding: 12px 15px;
     margin: 0;
@@ -473,7 +473,7 @@
   }
   .model-operations legend {
     font-size: 12px;
-    color: #68765a;
+    color: var(--ink);
     padding: 0 5px;
   }
   .model-operations label {
@@ -481,10 +481,10 @@
     gap: 7px;
     align-items: center;
     font-size: 12px;
-    color: #5b6c4c;
+    color: var(--ink);
   }
   .model-operations input {
-    accent-color: #b58f32;
+    accent-color: var(--accent);
     width: 16px;
     height: 16px;
   }
@@ -505,7 +505,7 @@
   .form-hint,
   .drop-description,
   .local-assurance {
-    color: #727b66;
+    color: var(--muted);
   }
 }
 @layer responsive {

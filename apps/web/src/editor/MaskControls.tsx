@@ -1,3 +1,5 @@
+import { MotionDetails } from '../motion/Presence';
+import { ChoiceSelect } from '../components/ChoiceSelect';
 import { useState } from 'react';
 import { Plus, Trash, ArrowUUpLeft } from '@phosphor-icons/react';
 import { MAX_POLYGON_POINTS, type SelectionMaskV3 } from '@ai-xiutu/editor';
@@ -244,17 +246,16 @@ export function MaskControls({
         <div className="advanced-row">
           <label>
             顶点
-            <select
-              aria-label="多边形顶点"
-              value={Math.min(pointIndex, mask.points.length - 1)}
-              onChange={(event) => setPointIndex(Number(event.target.value))}
-            >
-              {mask.points.map((_, index) => (
-                <option key={index} value={index}>
-                  点 {index + 1}
-                </option>
-              ))}
-            </select>
+            <ChoiceSelect
+              ariaLabel="多边形顶点"
+              size="compact"
+              value={String(Math.min(pointIndex, mask.points.length - 1))}
+              onValueChange={(value) => setPointIndex(Number(value))}
+              options={mask.points.map((_, index) => ({
+                value: String(index),
+                label: `点 ${index + 1}`,
+              }))}
+            />
           </label>
           <IconButton
             label="增加多边形顶点"
@@ -393,7 +394,7 @@ export function MaskControls({
       {mask.type === 'color-range' && (
         <div className="continuous-hue-reference" aria-label="完整色相环" />
       )}
-      <details className="advanced-disclosure">
+      <MotionDetails className="advanced-disclosure">
         <summary>
           <Plus size={14} />
           增加或扣除范围
@@ -416,7 +417,7 @@ export function MaskControls({
         <p className="control-note">
           添加后回到组合范围，可选相加、相交、相减或互斥。每个子区都可独立修改。
         </p>
-      </details>
+      </MotionDetails>
     </section>
   );
 }

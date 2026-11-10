@@ -1,4 +1,5 @@
-import { useRef, useState } from 'react';
+import { MotionDetails } from '../motion/Presence';
+import { useContext, useRef, useState } from 'react';
 import {
   ArrowSquareOut,
   CheckCircle,
@@ -18,6 +19,8 @@ import {
 } from './decisions';
 import type { ResultDecisionController } from './useResultDecisions';
 import './decisions.css';
+import { AIVisibilityContext } from './AIVisibility';
+import { useRetainedDialogValue } from './useRetainedDialogValue';
 
 export function DecisionHistory({
   controller,
@@ -30,7 +33,7 @@ export function DecisionHistory({
     (row) => (row.outputIndex ?? undefined) === outputIndex,
   );
   return (
-    <details className="ai-decision-history" data-motion="result-provenance">
+    <MotionDetails className="ai-decision-history" data-motion="result-provenance">
       <summary>
         {records.length ? decisionLabels[records[0].action] : '尚未记录采用决定'}
         <small>记录与来源</small>
@@ -58,7 +61,7 @@ export function DecisionHistory({
       >
         刷新记录
       </button>
-    </details>
+    </MotionDetails>
   );
 }
 
@@ -81,7 +84,9 @@ export function ResultActions({
   onOpen: (id: string) => void;
   onDecisionApplied?: (id: string) => void | Promise<void>;
 }) {
+  const visible = useContext(AIVisibilityContext);
   const [draft, setDraft] = useState<DecisionDraft | null>(null);
+  const displayedDraft = useRetainedDialogValue(draft);
   const [result, setResult] = useState<DecisionResponse | null>(null);
   const [localError, setLocalError] = useState<string | null>(null);
   const current = useRef({ artwork, isDirty });
@@ -244,21 +249,22 @@ export function ResultActions({
       )}
       <InlineError message={localError} />
       <DecisionHistory controller={controller} outputIndex={outputIndex} />
-      {draft && (
+      {displayedDraft && (
         <Modal
+          open={visible && !!draft}
           title={
-            draft.action === 'fork'
+            displayedDraft.action === 'fork'
               ? '另存独立作品'
-              : draft.action === 'reject'
+              : displayedDraft.action === 'reject'
                 ? '暂不采用这个结果'
-                : draft.action === 'layer'
+                : displayedDraft.action === 'layer'
                   ? '把候选加入当前合成'
-                  : draft.action === 'replace'
+                  : displayedDraft.action === 'replace'
                     ? '替换当前作品的图片来源'
                     : '采纳调整建议'
           }
           subtitle={
-            draft.action === 'reject'
+            displayedDraft.action === 'reject'
               ? '候选与已完成任务仍会保留，之后可以再次选择采用。'
               : '确认后保存到云端，并留下可追溯的决定记录。'
           }
@@ -266,34 +272,38 @@ export function ResultActions({
           onClose={() => setDraft(null)}
         >
           <div className="ai-decision-confirm" data-motion="result-confirmation">
-            {draft.action === 'fork' && (
+            {displayedDraft.action === 'fork' && (
               <label>
                 新作品名称
                 <input
                   aria-label="新作品名称"
-                  value={draft.title ?? ''}
+                  value={displayedDraft.title ?? ''}
                   maxLength={120}
                   disabled={locked}
-                  onChange={(event) => setDraft({ ...draft, title: event.target.value })}
+                  onChange={(event) =>
+                    setDraft((current) =>
+                      current ? { ...current, title: event.target.value } : null,
+                    )
+                  }
                 />
               </label>
             )}
-            {draft.action === 'replace' && (
+            {displayedDraft.action === 'replace' && (
               <p>
-                将“{artwork?.title}”的 V{draft.expectedVersion}{' '}
+                将“{artwork?.title}”的 V{displayedDraft.expectedVersion}{' '}
                 作为起点，建立一个使用此候选原图的新版本。旧配方不会继续叠加，旧图片和旧版本都可以在历史中找回。
               </p>
             )}
-            {draft.action === 'layer' && (
+            {displayedDraft.action === 'layer' && (
               <p>
-                保留“{artwork?.title}”的 V{draft.expectedVersion}{' '}
+                保留“{artwork?.title}”的 V{displayedDraft.expectedVersion}{' '}
                 原图与已有编辑，将这张候选作为独立合成图层加入新版本。之后可以调整位置、大小、范围、透明度和混合方式。
               </p>
             )}
-            {draft.action === 'apply-plan' && (
+            {displayedDraft.action === 'apply-plan' && (
               <>
                 <p>
-                  基于“{artwork?.title}”的 V{draft.expectedVersion}{' '}
+                  基于“{artwork?.title}”的 V{displayedDraft.expectedVersion}{' '}
                   新建版本，使用这条建议的完整配方。
                 </p>
                 {job.output?.kind === 'edit-plan' && (
@@ -316,7 +326,7 @@ export function ResultActions({
                 )}
               </>
             )}
-            {draft.action === 'reject' && (
+            {displayedDraft.action === 'reject' && (
               <>
                 <p>这是“暂不使用”的记录。已完成的模型调用不会因此退款，也不会自动再次生成。</p>
                 <div className="decision-reasons" aria-label="不采用原因">
@@ -324,9 +334,11 @@ export function ResultActions({
                     <button
                       type="button"
                       key={reason}
-                      aria-pressed={draft.reason === reason}
+                      aria-pressed={displayedDraft.reason === reason}
                       disabled={locked}
-                      onClick={() => setDraft({ ...draft, reason })}
+                      onClick={() =>
+                        setDraft((current) => (current ? { ...current, reason } : null))
+                      }
                     >
                       {reason}
                     </button>
@@ -334,9 +346,9 @@ export function ResultActions({
                 </div>
               </>
             )}
-            {(draft.action === 'replace' ||
-              draft.action === 'layer' ||
-              draft.action === 'apply-plan') &&
+            {(displayedDraft.action === 'replace' ||
+              displayedDraft.action === 'layer' ||
+              displayedDraft.action === 'apply-plan') &&
               (blocked || targetChanged) && (
                 <p className="parameter-error">{blocked ?? '作品版本已改变，请关闭后重新选择。'}</p>
               )}
@@ -354,13 +366,15 @@ export function ResultActions({
                 disabled={
                   locked ||
                   !canEdit ||
-                  (draft.action === 'fork' && !draft.title?.trim()) ||
-                  ((draft.action === 'replace' ||
-                    draft.action === 'layer' ||
-                    draft.action === 'apply-plan') &&
+                  (displayedDraft.action === 'fork' && !displayedDraft.title?.trim()) ||
+                  ((displayedDraft.action === 'replace' ||
+                    displayedDraft.action === 'layer' ||
+                    displayedDraft.action === 'apply-plan') &&
                     (!!blocked || !!targetChanged))
                 }
-                onClick={() => void confirm(draft)}
+                onClick={() => {
+                  if (visible && draft) void confirm(draft);
+                }}
               >
                 {controller.busy ? <Busy label="保存决定" /> : '确认'}
               </button>
@@ -369,7 +383,10 @@ export function ResultActions({
               <button
                 className="text-button"
                 disabled={controller.busy}
-                onClick={() => void confirm(controller.uncertain!, true)}
+                onClick={() => {
+                  if (visible && draft && controller.uncertain)
+                    void confirm(controller.uncertain, true);
+                }}
               >
                 核验并重试同一决定
               </button>

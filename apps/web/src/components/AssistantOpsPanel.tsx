@@ -1,3 +1,4 @@
+import { ChoiceSelect } from './ChoiceSelect';
 import { useEffect, useRef, useState } from 'react';
 import { Plus, ArrowClockwise } from '@phosphor-icons/react';
 import { api, jsonRequest, errorMessage, formatDate } from '../lib/api';
@@ -125,6 +126,7 @@ export function AssistantOpsPanel() {
   }
   async function save() {
     if (busy) return;
+    if (!modelId.trim()) { setError('请选择或填写模型 ID。'); return; }
     setBusy(true);
     setError(null);
     setSaved(false);
@@ -212,35 +214,18 @@ export function AssistantOpsPanel() {
         >
           <label>
             用途
-            <select
-              disabled={!!selected || busy}
-              value={voice ? 'realtime-voice' : 'assistant-turn'}
-              onChange={(e) => {
-                setSettings({ ...initial(), operations: [e.target.value] });
-                setModelId('');
-                setHash(null);
-              }}
-            >
-              <option value="assistant-turn">思考与工具协作（Responses）</option>
-              <option value="realtime-voice">实时语音（Live / Realtime）</option>
-            </select>
+            <ChoiceSelect ariaLabel="模型用途" disabled={!!selected || busy} value={voice ? 'realtime-voice' : 'assistant-turn'}
+              onValueChange={(value) => { setSettings({ ...initial(), operations:[value] }); setModelId(''); setHash(null); }}
+              options={[{value:'assistant-turn',label:'思考与工具协作',description:'Responses'},{value:'realtime-voice',label:'实时语音',description:'Live / Realtime'}]}
+            />
           </label>
           <label>
             模型 ID
             {voice ? (
-              <select
-                required
-                disabled={!!selected || busy}
-                value={modelId}
-                onChange={(e) => setModelId(e.target.value)}
-              >
-                <option value="">选择已适配的协议</option>
-                {profiles.map((profile) => (
-                  <option key={profile.id} value={profile.id}>
-                    {profile.label} · {profile.protocol}
-                  </option>
-                ))}
-              </select>
+              <ChoiceSelect ariaLabel="实时语音模型协议" disabled={!!selected || busy} value={modelId} onValueChange={setModelId}
+                placeholder="选择已适配的协议"
+                options={[{value:'',label:'选择已适配的协议',disabled:true},...profiles.map((profile)=>({value:profile.id,label:profile.label,description:profile.protocol}))]}
+              />
             ) : (
               <input
                 required
@@ -341,21 +326,14 @@ export function AssistantOpsPanel() {
               </label>
               <label>
                 推理参数
-                <select
-                  value={settings.reasoningEffort ?? ''}
-                  onChange={(e) => {
-                    const next = { ...settings };
-                    if (e.target.value)
-                      next.reasoningEffort = e.target.value as Settings['reasoningEffort'];
-                    else delete next.reasoningEffort;
+                <ChoiceSelect ariaLabel="推理参数" value={settings.reasoningEffort ?? ''}
+                  onValueChange={(value) => {
+                    const next = {...settings};
+                    if (value) next.reasoningEffort = value as Settings['reasoningEffort']; else delete next.reasoningEffort;
                     setSettings(next);
                   }}
-                >
-                  <option value="">不传此参数</option>
-                  {['none', 'low', 'medium', 'high'].map((value) => (
-                    <option key={value}>{value}</option>
-                  ))}
-                </select>
+                  options={[{value:'',label:'不传此参数'},...['none','low','medium','high'].map((value)=>({value,label:value}))]}
+                />
               </label>
             </>
           )}
@@ -426,18 +404,10 @@ export function AssistantOpsPanel() {
         >
           <label>
             会话类型
-            <select
-              value={recordKind}
-              disabled={busy}
-              onChange={(event) => {
-                setRecordKind(event.target.value as 'turn' | 'voice');
-                setCursor(null);
-                setPrevious([]);
-              }}
-            >
-              <option value="turn">文字协作</option>
-              <option value="voice">实时语音</option>
-            </select>
+            <ChoiceSelect ariaLabel="核验会话类型" value={recordKind} disabled={busy}
+              onValueChange={(value) => {setRecordKind(value); setCursor(null); setPrevious([]);}}
+              options={[{value:'turn',label:'文字协作'},{value:'voice',label:'实时语音'}]}
+            />
           </label>
           <label>
             会话编号

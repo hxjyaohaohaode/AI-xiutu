@@ -1,4 +1,6 @@
-import { useRef, useState } from 'react';
+import { MotionDetails } from '../motion/Presence';
+import { ChoiceSelect } from '../components/ChoiceSelect';
+import { useEffect, useId, useRef, useState } from 'react';
 import { Sparkle, PaintBrush, HandPointing, ArrowsClockwise } from '@phosphor-icons/react';
 import {
   PORTRAIT_TOOLS,
@@ -8,22 +10,31 @@ import {
   portraitToolAvailability,
   detachPortraitTarget,
 } from '@ai-xiutu/portrait';
-import { MAX_V3_PAINT_LAYERS, type PaintLayerV3 } from '@ai-xiutu/editor';
+import { MAX_V3_PAINT_LAYERS, MAX_V3_REGION_EDITS, type PaintLayerV3 } from '@ai-xiutu/editor';
 import { secureUuid } from '../lib/uuid';
 import { errorMessage } from '../lib/api';
 import { Busy, InlineError } from '../components/Ui';
+import { StudioGlyph } from '../components/StudioGlyph';
 import { ColorPicker } from '../components/ColorPicker';
 import { ParameterShelf } from './ParameterShelf';
 import { currentV3, rgbaHex, hexRgba, type InspectorController } from './advanced-model';
 import type { ToolGroup } from './ToolInspector';
+import {
+  portraitSelectionLabels,
+  portraitSelectionMatchesSource,
+  preparePortraitSelection,
+  type PortraitSelectionKind,
+} from './portrait-selection';
 
 export function PortraitControls({
   controller,
   onGroupChange,
+  onSelectionCreated,
   onCutout,
 }: {
   controller: InspectorController;
   onGroupChange?: (group: ToolGroup) => void;
+  onSelectionCreated?: (id: string) => void;
   onCutout?: () => Promise<string>;
 }) {
   const { editor, apply, report } = controller,
@@ -37,10 +48,26 @@ export function PortraitControls({
   const [annotationBusy, setAnnotationBusy] = useState(false);
   const [annotationStatus, setAnnotationStatus] = useState<string | null>(null);
   const [cutting, setCutting] = useState(false);
+  const cutoutLocked = useRef(false);
+  const mounted = useRef(true);
+  useEffect(() => {
+    mounted.current = true;
+    return () => {
+      mounted.current = false;
+    };
+  }, []);
   const kind = category === 'body' ? 'body' : 'face';
   const targets = state.analysis?.targets.filter((target) => target.kind === kind) ?? [];
   const target = targets.find((person) => person.id === state.activeTargetId) ?? targets[0];
   const recipe = currentV3(editor);
+  const selectionHintId = useId();
+  const sourceIdentity = editor.getSourceIdentity();
+  const analysisCurrent = portraitSelectionMatchesSource(state.analysis, editor.getSourceFrame());
+  const selectionAvailable =
+    !!state.analysis?.segmentation &&
+    analysisCurrent &&
+    !state.progress &&
+    recipe.regionEdits.length < MAX_V3_REGION_EDITS;
   const targetOperations = [
     ...recipe.regionEdits,
     ...recipe.paintLayers,
@@ -63,6 +90,53 @@ export function PortraitControls({
     recipe.schemaVersion === 4 && category === 'body' && (values.neckLength ?? 0) !== 0;
   const colorKey = [state.analysis?.frame.contentHash, target?.id, makeupTool].join(':');
   const color = existingColors[makeupTool] ?? draftColors[colorKey] ?? [178, 66, 86, 255];
+  async function createCutout() {
+    if (cutoutLocked.current || !mounted.current || !onCutout) return;
+    if (
+      editor.isLoading() ||
+      editor.getSourceIdentity() !== sourceIdentity ||
+      !portraitSelectionMatchesSource(state.analysis, editor.getSourceFrame())
+    ) {
+      report('人物分析与当前原图不一致，请重新识别后提取素材。');
+      return;
+    }
+    if (state.progress || !state.analysis?.segmentation?.subject) return;
+    cutoutLocked.current = true;
+    setCutting(true);
+    setAnnotationStatus(null);
+    try {
+      const message = await onCutout();
+      if (mounted.current && editor.getSourceIdentity() === sourceIdentity)
+        setAnnotationStatus(message);
+    } catch (failure) {
+      if (mounted.current && editor.getSourceIdentity() === sourceIdentity)
+        report(errorMessage(failure));
+    } finally {
+      cutoutLocked.current = false;
+      if (mounted.current) setCutting(false);
+    }
+  }
+  function createSelection(kind: PortraitSelectionKind) {
+    try {
+      if (editor.isLoading() || editor.getSourceIdentity() !== sourceIdentity)
+        throw new Error('原图已经切换，请重新识别后建立选区。');
+      if (state.progress) throw new Error('请等待这次识别完成，再建立选区。');
+      const prepared = preparePortraitSelection(
+        currentV3(editor),
+        state.analysis,
+        editor.getSourceFrame(),
+        kind,
+        secureUuid(),
+      );
+      if (!apply(prepared.recipe, '建立' + portraitSelectionLabels[kind], true)) return;
+      editor.setActiveRegionId(prepared.regionId);
+      editor.setActiveMaskPath([]);
+      if (onSelectionCreated) onSelectionCreated(prepared.regionId);
+      else onGroupChange?.('local');
+    } catch (failure) {
+      report(errorMessage(failure));
+    }
+  }
   function detach() {
     if (!target) return;
     const next = detachPortraitTarget(currentV3(editor), target.id);
@@ -216,32 +290,66 @@ export function PortraitControls({
       </div>
       {state.progress && <Busy label={state.progress} />}
       {state.analysis?.segmentation?.subject && onCutout && (
-        <button className="text-button" disabled={cutting || !!state.progress} onClick={async () => {
-          setCutting(true);
-          setAnnotationStatus(null);
-          try { setAnnotationStatus(await onCutout()); }
-          catch (error) { report(errorMessage(error)); }
-          finally { setCutting(false); }
-        }}>{cutting ? '正在精修透明边缘' : '从原图提取人物素材'}</button>
+        <button
+          type="button"
+          className="text-button"
+          disabled={cutting || !!state.progress || !analysisCurrent || editor.isLoading()}
+          onClick={createCutout}
+        >
+          <StudioGlyph name="select" size={18} />
+          {cutting ? '正在精修透明边缘' : '从原图提取人物素材'}
+        </button>
       )}
       <InlineError message={state.error} />
+      <div className="portrait-selections">
+        <div
+          className="advanced-row"
+          role="group"
+          aria-label="从识别结果建立局部选区"
+          aria-describedby={selectionHintId}
+        >
+          <button
+            type="button"
+            className="text-button"
+            disabled={!selectionAvailable}
+            onClick={() => createSelection('hair')}
+          >
+            <StudioGlyph name="hair" size={18} /> 头发选区
+          </button>
+          <button
+            type="button"
+            className="text-button"
+            disabled={!selectionAvailable}
+            onClick={() => createSelection('background')}
+          >
+            <StudioGlyph name="background" size={18} /> 背景选区
+          </button>
+        </div>
+        <p className="control-note" id={selectionHintId}>
+          {recipe.regionEdits.length >= MAX_V3_REGION_EDITS
+            ? `已有 ${MAX_V3_REGION_EDITS} 个局部，请先整理选区。`
+            : state.analysis && !analysisCurrent
+              ? '原图已经切换，请重新识别后建立选区。'
+              : state.analysis?.segmentation
+                ? '建立独立选区后，可调色、调整范围。建立时保持照片外观。'
+                : state.analysis
+                  ? '这次分析未提供头发或背景范围，可到“局部”手动选择。'
+                  : '识别后可建立头发和背景选区。模型不可用时，可到“局部”手动选择。'}
+        </p>
+      </div>
       {target && (
         <label className="advanced-select">
           当前人物
-          <select
-            aria-label="选择独立调整的人物"
+          <ChoiceSelect
+            ariaLabel="选择独立调整的人物"
+            size="compact"
             value={target.id}
-            onChange={(event) => {
+            onValueChange={(value) => {
               editor.commitCurrent('完成人物调节');
-              state.setTarget(event.target.value);
+              state.setTarget(value);
             }}
-          >
-            {targets.map((item) => (
-              <option key={item.id} value={item.id}>
-                {item.label}
-              </option>
-            ))}
-          </select>
+            options={targets.map((item) => ({ value: item.id, label: item.label }))}
+          />
         </label>
       )}
       {target && (
@@ -321,7 +429,7 @@ export function PortraitControls({
             </div>
           )}
           {category === 'makeup' && (
-            <details className="advanced-disclosure" open>
+            <MotionDetails className="advanced-disclosure" defaultOpen>
               <summary>
                 <i className="paint-color-chip" style={{ background: rgbaHex(color) }} />
                 {PORTRAIT_TOOLS.find((tool) => tool.id === makeupTool)?.label}颜色
@@ -345,9 +453,9 @@ export function PortraitControls({
               <p className="control-note">
                 只改变当前妆容。其他人物、口红、眉妆与高光等各自保留颜色。
               </p>
-            </details>
+            </MotionDetails>
           )}
-          <details className="advanced-disclosure">
+          <MotionDetails className="advanced-disclosure">
             <summary>识别与手动修正说明</summary>
             <p className="control-note">
               自动位置是可编辑的起点。美肤生成局部调色区，美妆生成带范围的绘制层，塑形生成可撤销的液化笔画。先转为独立精修，再到“局部、绘制、液化”修改，避免后续自动调参重建手工细节。
@@ -357,7 +465,7 @@ export function PortraitControls({
                 {warning}
               </p>
             ))}
-          </details>
+          </MotionDetails>
         </>
       )}
       {!target && !state.progress && (
@@ -365,10 +473,10 @@ export function PortraitControls({
           {category === 'body'
             ? '选择“识别身体位置”后，按可见的肩、手臂、腰胯与腿部锚点分别调整。'
             : '先在本机识别人脸，再选择人物独立调整。没有识别到的内容仍可手动精修。'}
-          模型未部署或浏览器不能运行时会显示真实错误，不用虚构的人脸框替代。
+          模型不可用时，可以先用下方的手动精修。
         </p>
       )}
-      <details className="advanced-disclosure">
+      <MotionDetails className="advanced-disclosure">
         <summary>人物标注与分析接入</summary>
         <input
           hidden
@@ -423,7 +531,7 @@ export function PortraitControls({
         <p className="control-note">
           仅接受当前同一张原图的兼容标注，文件需通过来源、尺寸、方向、结构和版本校验。导入是显式提供标注，不代表浏览器自动识别成功；导入后仍需检查并可转为独立精修。
         </p>
-      </details>
+      </MotionDetails>
       <div className="portrait-manual-actions" data-motion="portrait-manual">
         <button
           className="text-button"

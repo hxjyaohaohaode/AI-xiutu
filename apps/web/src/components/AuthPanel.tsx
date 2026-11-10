@@ -119,7 +119,7 @@ export function AuthPanel({
     }
   }
   const title =
-    mode === 'register' ? '把灵感留在这里' : mode === 'reset' ? '找回你的账号' : '欢迎回到创作中';
+    mode === 'register' ? '注册账号' : mode === 'reset' ? '重置密码' : '登录工作空间';
   return (
     <Modal
       title={title}
@@ -129,7 +129,7 @@ export function AuthPanel({
     >
       <div className="auth-brand">
         <Brand name={config?.brand.name} logoUrl={brandLogoUrl(config?.brand)} compact />
-        <p>保存作品，延续每一份灵感。</p>
+        <p>保存作品、协作编辑与使用 AI。</p>
       </div>
       {(mode === 'password' || mode === 'otp') && (
         <div

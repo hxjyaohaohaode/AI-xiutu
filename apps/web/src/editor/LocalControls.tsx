@@ -1,3 +1,5 @@
+import { MotionDetails } from '../motion/Presence';
+import { ChoiceSelect } from '../components/ChoiceSelect';
 import { useState } from 'react';
 import { ArrowUp, ArrowDown, Copy, Eye, EyeSlash, Plus, Trash } from '@phosphor-icons/react';
 import {
@@ -402,7 +404,7 @@ export function LocalControls({
             onCommit={(label) => editor.commitCurrent(label)}
             onCancel={editor.cancelPreview}
           />
-          <details className="advanced-disclosure" open>
+          <MotionDetails className="advanced-disclosure" defaultOpen>
             <summary>范围与过渡</summary>
             <MaskControls
               key={region.id}
@@ -413,7 +415,7 @@ export function LocalControls({
               onChange={(mask, commit) => patch({ mask }, '调整局部范围', commit)}
             />
             {region.mask.type === 'color-range' && (
-              <details className="advanced-disclosure">
+              <MotionDetails className="advanced-disclosure">
                 <summary>取色与完整色谱</summary>
                 <ColorPicker
                   value={pickedColor}
@@ -435,10 +437,10 @@ export function LocalControls({
                     使用所选色相
                   </button>
                 </div>
-              </details>
+              </MotionDetails>
             )}
-          </details>
-          <details className="advanced-disclosure">
+          </MotionDetails>
+          <MotionDetails className="advanced-disclosure">
             <summary>名称与分组</summary>
             <label className="advanced-select">
               局部名称
@@ -455,20 +457,18 @@ export function LocalControls({
             </label>
             <label className="advanced-select">
               所在分组
-              <select
-                aria-label="局部所在分组"
+              <ChoiceSelect
+                ariaLabel="局部所在分组"
+                size="compact"
                 value={region.groupId ?? ''}
-                onChange={(event) => patch({ groupId: event.target.value || null }, '移动局部分组')}
-              >
-                <option value="">独立调整</option>
-                {recipe.regionGroups.map((g) => (
-                  <option key={g.id} value={g.id}>
-                    {g.name}
-                  </option>
-                ))}
-              </select>
+                onValueChange={(value) => patch({ groupId: value || null }, '移动局部分组')}
+                options={[
+                  { value: '', label: '独立调整' },
+                  ...recipe.regionGroups.map((g) => ({ value: g.id, label: g.name })),
+                ]}
+              />
             </label>
-          </details>
+          </MotionDetails>
         </>
       )}
       {colorScope && (

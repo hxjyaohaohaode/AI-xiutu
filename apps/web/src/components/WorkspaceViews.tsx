@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState, type FormEvent } from 'react';
 import {
   ArrowRight,
+  ArrowLeft,
   ArrowSquareOut,
   Check,
   ChatCircleDots,
@@ -31,6 +32,11 @@ import type {
   Task,
 } from '../lib/types';
 import { Busy, EmptyState, IconButton, InlineError, Modal } from './Ui';
+import { ChoiceSelect } from './ChoiceSelect';
+import { RevisionTools, RevisionForkDialog, type CreatedRevisionBranch } from './RevisionTools';
+import { MotionDetails } from '../motion/Presence';
+import { useConfirmation } from './ConfirmationDialog';
+import { confirmStableScope } from '../lib/confirmation-scope';
 import { PixelCanvas } from '../editor/CanvasStage';
 import { localPixelBudget, type EditorState } from '../editor/useEditor';
 import { appendRevisionHistoryPage, type RevisionHistoryPage } from '../lib/revisionHistory';
@@ -81,8 +87,8 @@ export function WorksView({
       <div className="view-heading" data-motion="view-header">
         <div>
           <span className="eyebrow">作品收藏</span>
-          <h1>{project?.title ?? '作品，从一张照片开始'}</h1>
-          <p>{project?.description || '把每次探索留成版本，随时回到喜欢的那一步。'}</p>
+          <h1>{project?.title ?? '项目作品'}</h1>
+          <p>{project?.description || '查看作品、原件与已保存版本。'}</p>
         </div>
         <div className="view-actions">
           {project && (
@@ -111,13 +117,13 @@ export function WorksView({
             <Images size={16} />
             {artworks.length} 件作品
           </span>
-          <span>每一次修改，都有迹可循</span>
+          <span>原件与编辑版本分别保存</span>
         </div>
       )}
       {!project ? (
         <EmptyState
           icon={<Images size={34} />}
-          title="给作品一个自己的位置"
+          title="创建项目"
           description="创建项目后，可以保存照片、调整配方和每次修改的版本。"
           action={
             <button className="button button-secondary" onClick={onCreate}>
@@ -215,6 +221,8 @@ export function CompareView({
   artwork,
   onOpenRevision,
   onRestoreRevision,
+  currentUserId,
+  onForkCreated,
   isDirty = true,
   canRestore = false,
 }: {
@@ -222,6 +230,8 @@ export function CompareView({
   artwork: Artwork | null;
   onOpenRevision: (revision: RevisionSummary) => void | Promise<void>;
   onRestoreRevision?: (revision: RevisionSummary) => Promise<void>;
+  currentUserId?: string;
+  onForkCreated?: (result: CreatedRevisionBranch) => Promise<boolean | void>;
   isDirty?: boolean;
   canRestore?: boolean;
 }) {
@@ -236,6 +246,7 @@ export function CompareView({
   const historyScope = useRef('');
   historyScope.current = `${artwork?.id ?? ''}:${artwork?.headVersion ?? ''}`;
   const [busyRevision, setBusyRevision] = useState<string | null>(null);
+  const [forkRevision, setForkRevision] = useState<RevisionSummary | null>(null);
   const [restore, setRestore] = useState<{
     revision: RevisionSummary;
     artworkId: string;
@@ -300,6 +311,7 @@ export function CompareView({
     setHistoryReadFailed(false);
     setError(null);
     setRestore(null);
+    setForkRevision(null);
     setBusyRevision(null);
     if (!artwork) {
       setLoadingRevisions(false);
@@ -310,7 +322,7 @@ export function CompareView({
       historyRequest.current?.abort();
       historyRequest.current = null;
     };
-  }, [artwork?.id, artwork?.headVersion]);
+  }, [artwork?.id, artwork?.headVersion, currentUserId]);
   async function openRevision(revision: RevisionSummary) {
     if (busyRevision) return;
     const expected = scope.current;
@@ -357,8 +369,8 @@ export function CompareView({
     <div className="content-view studio-view compare-view">
       <div className="view-heading" data-motion="view-header">
         <div>
-          <span className="eyebrow">回看每一步</span>
-          <h1>让变化，看得见。</h1>
+          <span className="eyebrow">版本记录</span>
+          <h1>效果对比</h1>
           <p>{artwork?.title ?? editor.file.name} · 原图与当前画面各自完整显示。</p>
         </div>
         <div className="compare-mode-choice" role="group" aria-label="对比显示方式">
@@ -409,7 +421,7 @@ export function CompareView({
       </div>
       <InlineError message={error} />
       {artwork && (
-        <details className="saved-versions">
+        <MotionDetails className="saved-versions">
           <summary>
             云端版本 {revisions.length > 0 ? `· 已载入 ${revisions.length}` : ''}
             <span>当前 V{artwork.headVersion} · 恢复会保留已有版本</span>
@@ -439,34 +451,47 @@ export function CompareView({
                     )}
                   </span>
                 </button>
-                <span className="revision-source-note">
-                  {revision.assetId !== artwork.assetId
-                    ? '使用此版本自己的原图来源'
-                    : '与当前作品使用同一原图'}{' '}
-                  · 打开为本地草稿
-                </span>
-                {canRestore && onRestoreRevision && revision.version !== artwork.headVersion && (
-                  <button
-                    className="revision-restore text-button"
-                    disabled={!!busyRevision || isDirty || historyChanged}
-                    title={
-                      historyChanged
-                        ? '云端版本已更新，请重新打开作品后再恢复'
-                        : isDirty
-                          ? '先保存或撤销本地修改后再恢复云端版本'
-                          : undefined
-                    }
-                    onClick={() =>
-                      setRestore({
-                        revision,
-                        artworkId: artwork.id,
-                        headVersion: artwork.headVersion,
-                      })
-                    }
-                  >
-                    恢复为新版本
-                  </button>
-                )}
+                <MotionDetails className="revision-more">
+                  <summary>版本详情与操作</summary>
+                  <span className="revision-source-note">
+                    {revision.assetId !== artwork.assetId
+                      ? '使用此版本自己的原图来源'
+                      : '与当前作品使用同一原图'}{' '}
+                    · 打开为本地草稿
+                  </span>
+                  {currentUserId && (
+                    <RevisionTools
+                      actorId={currentUserId}
+                      artworkId={artwork.id}
+                      artworkTitle={artwork.title}
+                      revision={revision}
+                      canFork={canRestore && !!onForkCreated}
+                      onForkRequested={() => setForkRevision(revision)}
+                    />
+                  )}
+                  {canRestore && onRestoreRevision && revision.version !== artwork.headVersion && (
+                    <button
+                      className="revision-restore text-button"
+                      disabled={!!busyRevision || isDirty || historyChanged}
+                      title={
+                        historyChanged
+                          ? '云端版本已更新，请重新打开作品后再恢复'
+                          : isDirty
+                            ? '先保存或撤销本地修改后再恢复云端版本'
+                            : undefined
+                      }
+                      onClick={() =>
+                        setRestore({
+                          revision,
+                          artworkId: artwork.id,
+                          headVersion: artwork.headVersion,
+                        })
+                      }
+                    >
+                      恢复为新版本
+                    </button>
+                  )}
+                </MotionDetails>
               </div>
             ))}
           </div>
@@ -491,8 +516,21 @@ export function CompareView({
           {isDirty && canRestore && onRestoreRevision && (
             <p className="control-note">先保存或撤销本地修改后，才能将历史恢复为云端新版本。</p>
           )}
-        </details>
+        </MotionDetails>
       )}
+      {forkRevision &&
+        artwork &&
+        forkRevision.artworkId === artwork.id &&
+        currentUserId &&
+        onForkCreated && (
+          <RevisionForkDialog
+            actorId={currentUserId}
+            artwork={artwork}
+            revision={forkRevision}
+            onClose={() => setForkRevision(null)}
+            onCreated={onForkCreated}
+          />
+        )}
       {restore && canRestore && (
         <Modal
           title={`恢复 V${restore.revision.version}`}
@@ -687,8 +725,8 @@ export function CollaborateView({
       <div className="view-heading" data-motion="view-header">
         <div>
           <span className="eyebrow">项目协作</span>
-          <h1>让想法，在这里汇合。</h1>
-          <p>{project.title} · 把意见留下，把下一步说清楚。</p>
+          <h1>项目协作</h1>
+          <p>{project.title} · 讨论、任务与成员权限。</p>
         </div>
         <div className="view-actions">
           <button
@@ -859,7 +897,7 @@ export function CollaborateView({
                         ? commentFilter === 'open'
                           ? '没有待解决的意见'
                           : '还没有已解决的意见'
-                        : '第一条想法，从这里开始'}
+                        : '尚无讨论'}
                       <br />
                       <small>
                         {comments.length
@@ -881,23 +919,30 @@ export function CollaborateView({
                     id="comment-body"
                     value={body}
                     onChange={(event) => setBody(event.target.value)}
-                    placeholder="给这件作品留个想法…"
+                    placeholder="输入意见或修改要求…"
                     maxLength={5000}
                     disabled={busy}
                     required
                   />
                   <footer>
-                    <select
-                      aria-label="讨论范围"
+                    <ChoiceSelect<'project' | 'version'>
+                      ariaLabel="讨论范围"
                       value={scope}
                       disabled={busy}
-                      onChange={(event) => setScope(event.target.value as 'project' | 'version')}
-                    >
-                      <option value="project">整个项目</option>
-                      {artwork && revision && revision.artworkId === artwork.id && (
-                        <option value="version">当前作品 · V{revision.version}</option>
-                      )}
-                    </select>
+                      size="compact"
+                      onValueChange={setScope}
+                      options={[
+                        { value: 'project', label: '整个项目' },
+                        ...(artwork && revision && revision.artworkId === artwork.id
+                          ? [
+                              {
+                                value: 'version' as const,
+                                label: `当前作品 · V${revision.version}`,
+                              },
+                            ]
+                          : []),
+                      ]}
+                    />
                     <span className="composer-count">{body.length}/5000</span>
                     <button
                       type="submit"
@@ -1039,6 +1084,7 @@ export function DocumentsView({
   const [docs, setDocs] = useState<ProjectDocument[]>([]);
   const [selected, setSelected] = useState<ProjectDocument | null>(null);
   const [creating, setCreating] = useState(false);
+  const [mobileList, setMobileList] = useState(true);
   const [query, setQuery] = useState('');
   const [title, setTitle] = useState('');
   const [body, setBody] = useState('');
@@ -1055,6 +1101,23 @@ export function DocumentsView({
   activeProject.current = project.id;
   const currentDraft = useRef({ title, body });
   currentDraft.current = { title, body };
+  const confirmation = useConfirmation();
+  const documentScope = useRef({ selectedId: selected?.id, version: selected?.version, canEdit });
+  documentScope.current = { selectedId: selected?.id, version: selected?.version, canEdit };
+  async function confirmDiscard(description: string) {
+    const result = await confirmStableScope(
+      () => ({
+        projectId: activeProject.current,
+        ...documentScope.current,
+        ...currentDraft.current,
+        generation: requestGeneration.current,
+        saving: saveLock.current,
+      }),
+      () => confirmation.confirm({ description }),
+    );
+    if (result === 'changed') setError('文档或项目已更新，请核对当前文字后重新操作。');
+    return result === 'confirmed';
+  }
   useEffect(() => {
     onDirtyChange(dirty);
     return () => onDirtyChange(false);
@@ -1078,6 +1141,7 @@ export function DocumentsView({
     activeProject.current = project.id;
     setSelected(null);
     setCreating(false);
+    setMobileList(true);
     setDocs([]);
     setQuery('');
     setTitle('');
@@ -1090,11 +1154,12 @@ export function DocumentsView({
       requestGeneration.current++;
     };
   }, [project.id]);
-  function choose(doc: ProjectDocument | null) {
+  async function choose(doc: ProjectDocument | null) {
     if (saveLock.current || (!doc && !canEdit)) return;
-    if (dirty && !window.confirm('这份文档还有未保存的修改。放弃修改并切换吗？')) return;
+    if (dirty && !(await confirmDiscard('这份文档还有未保存的修改。放弃修改并切换吗？'))) return;
     setSelected(doc);
     setCreating(!doc);
+    setMobileList(false);
     setTitle(doc?.title ?? '');
     setBody(doc?.body ?? '');
     setDirty(false);
@@ -1151,7 +1216,8 @@ export function DocumentsView({
   }
   async function readLatest() {
     if (!selected || saveLock.current) return;
-    if (dirty && !window.confirm('读取最新版本会替换当前未保存的文字。确定继续吗？')) return;
+    if (dirty && !(await confirmDiscard('读取最新版本会替换当前未保存的文字。确定继续吗？')))
+      return;
     saveLock.current = true;
     setPending('read');
     setError(null);
@@ -1181,11 +1247,12 @@ export function DocumentsView({
     selected && docs.some((doc) => doc.id === selected.id && doc.version > selected.version);
   return (
     <div className="content-view studio-view documents-view">
+      {confirmation.dialog}
       <div className="view-heading" data-motion="view-header">
         <div>
           <span className="eyebrow">项目文档</span>
-          <h1>把共同的方向，写下来。</h1>
-          <p>{project.title} · 创作要求、参考说明与最终文案，都在这里。</p>
+          <h1>项目文档</h1>
+          <p>{project.title} · 编辑项目说明、参考资料与交付文案。</p>
         </div>
         <span className="studio-count">
           <FileText size={17} />
@@ -1201,12 +1268,21 @@ export function DocumentsView({
         </p>
       )}
       {!selected && !creating && <InlineError message={error} />}
-      <div className="documents-layout">
+      <div className="documents-layout" data-mobile-view={mobileList ? 'list' : 'editor'}>
         <aside
           className="surface document-list"
           data-motion="document-list"
           aria-label="项目文档列表"
         >
+          {(selected || creating || dirty) && (
+            <button
+              type="button"
+              className="document-continue text-button"
+              onClick={() => setMobileList(false)}
+            >
+              继续编辑当前文档 <ArrowRight size={16} />
+            </button>
+          )}
           {canEdit && (
             <button
               className="button button-secondary button-full"
@@ -1276,6 +1352,13 @@ export function DocumentsView({
             data-motion="document-editor"
           >
             <div className="document-editor-label">
+              <button
+                type="button"
+                className="document-back text-button"
+                onClick={() => setMobileList(true)}
+              >
+                <ArrowLeft size={16} /> 文档列表
+              </button>
               <FileText size={16} />
               <span>{selected ? `版本 ${selected.version}` : '新建文档'}</span>
               <span className={dirty ? 'document-save-state is-dirty' : 'document-save-state'}>
@@ -1285,7 +1368,7 @@ export function DocumentsView({
             <input
               className="document-title"
               aria-label="文档标题"
-              placeholder="给这份想法起个标题"
+              placeholder="文档标题"
               value={title}
               readOnly={!canEdit || pending === 'read'}
               onChange={(event) => {
@@ -1299,7 +1382,7 @@ export function DocumentsView({
             />
             <textarea
               aria-label="文档内容"
-              placeholder="想传达什么？希望保留哪些细节？写下团队共同的方向…"
+              placeholder="输入项目说明、参考要求或交付文案…"
               value={body}
               readOnly={!canEdit || pending === 'read'}
               onChange={(event) => {
@@ -1363,19 +1446,19 @@ export function DocumentsView({
           <div className="surface document-placeholder">
             <EmptyState
               icon={<NotePencil size={34} />}
-              title={docs.length ? '选择一份文档，继续创作。' : '让想法有一个共同的起点'}
+              title={docs.length ? '选择文档' : '创建第一份文档'}
               description={
                 docs.length
                   ? '从列表打开创作说明、参考笔记或作品文案。'
                   : canEdit
-                    ? '从想要的感觉、一定保留的细节，或下一步要做的事开始。'
+                    ? '点击新建文档，记录项目说明与编辑要求。'
                     : '团队保存文档后，你可以在这里阅读。'
               }
               action={
                 canEdit ? (
                   <button className="button button-secondary" onClick={() => choose(null)}>
                     <Plus size={17} />
-                    写一份创作说明
+                    新建文档
                   </button>
                 ) : undefined
               }
@@ -1405,7 +1488,7 @@ export function DeliveryView({
       <div className="view-heading" data-motion="view-header">
         <div>
           <span className="eyebrow">作品交付</span>
-          <h1>带着作品，出发。</h1>
+          <h1>导出与交付</h1>
           <p>导出当前画面，或保留可编辑的调整配方。</p>
         </div>
       </div>

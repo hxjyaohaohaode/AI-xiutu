@@ -57,7 +57,7 @@
 }
 
 .precision-control .precision-readout input[aria-invalid='true'] {
-  box-shadow: 0 0 0 1px #b84d3a;
+  box-shadow: 0 0 0 1px var(--danger);
 }
 
 .precision-control .precision-track,
@@ -106,7 +106,7 @@
   border: 2px solid var(--surface);
   background: var(--ink);
   box-shadow:
-    0 1px 4px #0002,
+    0 1px 4px rgb(var(--color-shadow) / 13%),
     0 0 0 1px color-mix(in srgb, var(--ink) 16%, var(--surface));
 }
 
@@ -116,7 +116,7 @@
   border: 2px solid var(--surface);
   background: var(--ink);
   box-shadow:
-    0 1px 4px #0002,
+    0 1px 4px rgb(var(--color-shadow) / 13%),
     0 0 0 1px color-mix(in srgb, var(--ink) 16%, var(--surface));
 }
 
@@ -200,7 +200,7 @@
   right: 7px;
   top: 7px;
   opacity: 1;
-  background: #bb8433;
+  background: var(--warning);
 }
 
 .parameter-shelf .parameter-shelf-options button[aria-pressed='true'] > i {
@@ -234,11 +234,11 @@
   color: var(--ink);
 }
 
-.parameter-description > p {
+.parameter-description .motion-disclosure-content > p {
   padding: 4px 0 7px;
 }
 
-.parameter-compact-picker {
+.parameter-shelf-current > .parameter-compact-picker {
   display: var(--shelf-picker-display, none);
   position: absolute;
   z-index: 2;
@@ -247,11 +247,19 @@
   width: 148px;
   max-width: calc(100% - 120px);
   min-height: 38px;
+  padding: 0;
+  border: 0;
+  border-radius: 7px;
+  background: transparent;
+  color: var(--ink);
+}
+
+.parameter-shelf-current > .parameter-compact-picker.choice-select .choice-trigger {
+  min-height: 38px;
   padding: 6px 7px;
   border: 0;
   border-radius: 7px;
   background: var(--surface-secondary);
-  color: var(--ink);
   font-size: 12px;
   font-weight: 600;
 }
@@ -311,12 +319,12 @@
 
   .precision-control .precision-track,
   .precision-control .precision-track input[type='range'] {
-    height: 32px;
-    min-height: 32px;
+    height: 40px;
+    min-height: 40px;
   }
 
   .precision-control .precision-neutral {
-    top: 10px;
+    top: 14px;
   }
 
   .parameter-shelf .parameter-shelf-options button {

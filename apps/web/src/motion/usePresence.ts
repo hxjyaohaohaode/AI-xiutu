@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useSyncExternalStore } from 'react';
 import {
   motionEntryDuration,
   motionExitDuration,
@@ -6,20 +6,35 @@ import {
   type MotionRole,
 } from './registry';
 
+let motionQuery: MediaQueryList | undefined;
+const motionSubscribers = new Set<() => void>();
+
+function getMotionQuery() {
+  if (typeof window === 'undefined' || typeof window.matchMedia !== 'function') return;
+  return (motionQuery ??= window.matchMedia('(prefers-reduced-motion: reduce)'));
+}
+
+/** Use the same preference for CSS transitions and imperative scroll/animation. */
+export function prefersReducedMotion() {
+  return getMotionQuery()?.matches ?? true;
+}
+
+function notifyMotionPreference() {
+  for (const notify of motionSubscribers) notify();
+}
+
+function subscribeMotionPreference(notify: () => void) {
+  const query = getMotionQuery();
+  if (!motionSubscribers.size) query?.addEventListener('change', notifyMotionPreference);
+  motionSubscribers.add(notify);
+  return () => {
+    motionSubscribers.delete(notify);
+    if (!motionSubscribers.size) query?.removeEventListener('change', notifyMotionPreference);
+  };
+}
+
 export function useReducedMotion() {
-  const [reduced, setReduced] = useState(() =>
-    typeof window === 'undefined'
-      ? true
-      : window.matchMedia('(prefers-reduced-motion: reduce)').matches,
-  );
-  useEffect(() => {
-    const query = window.matchMedia('(prefers-reduced-motion: reduce)');
-    const update = () => setReduced(query.matches);
-    query.addEventListener('change', update);
-    update();
-    return () => query.removeEventListener('change', update);
-  }, []);
-  return reduced;
+  return useSyncExternalStore(subscribeMotionPreference, prefersReducedMotion, () => true);
 }
 
 /** Retain an exiting surface briefly; callers make it inert as soon as open=false. */
@@ -33,19 +48,21 @@ export function usePresence(open: boolean, role: MotionRole) {
       setPhase(open ? 'idle' : 'hidden');
       return;
     }
-    let timer: ReturnType<typeof setTimeout>;
+    let timer: ReturnType<typeof setTimeout> | undefined;
     if (open) {
       setPresent(true);
       setPhase('enter');
       timer = setTimeout(() => setPhase('idle'), motionEntryDuration(role));
-    } else {
+    } else if (present) {
       setPhase('exit');
       timer = setTimeout(() => {
         setPresent(false);
         setPhase('hidden');
       }, motionExitDuration(role));
-    }
+    } else setPhase('hidden');
     return () => clearTimeout(timer);
+    // `present` is intentionally captured when visibility changes. Including it
+    // would restart the entry timer as soon as an opening surface is mounted.
   }, [open, role, reduced]);
   return { present, phase, reduced };
 }

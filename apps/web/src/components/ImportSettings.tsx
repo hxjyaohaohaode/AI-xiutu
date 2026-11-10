@@ -1,3 +1,4 @@
+import { ChoiceSelect } from './ChoiceSelect';
 import { useRef, useState } from 'react';
 import { CloudArrowUp, FolderOpen, ImageSquare } from '@phosphor-icons/react';
 import { PIXEL_BUDGETS, MAX_LOCAL_FILE_BYTES } from '../editor/useEditor';
@@ -92,27 +93,15 @@ export function ImportSettings({
       <div className="stack-form" data-motion="modal-content">
         <label>
           本机处理预算
-          <select
-            aria-label="本机图像像素预算"
-            value={budget}
-            disabled={busy}
-            onChange={(event) => onBudget(Number(event.target.value))}
-          >
-            {PIXEL_BUDGETS.map((value) => (
-              <option
-                key={value}
-                value={value}
-                disabled={(small || !!file) && value > MAX_V3_PIXELS}
-              >
-                {(value / 1e6).toFixed(1)} 百万像素
-                {value === 4_194_304
-                  ? ' · 手机建议'
-                  : value === 16_777_216
-                    ? ' · 标准桌面'
-                    : ' · 仅已有 v1/v2 作品'}
-              </option>
-            ))}
-          </select>
+          <ChoiceSelect
+            ariaLabel="本机图像像素预算" value={String(budget)} disabled={busy}
+            onValueChange={(value) => onBudget(Number(value))}
+            options={PIXEL_BUDGETS.map((value) => ({
+              value: String(value), disabled: (small || !!file) && value > MAX_V3_PIXELS,
+              label: `${(value / 1e6).toFixed(1)} 百万像素`,
+              description: value === 4_194_304 ? '手机建议' : value === 16_777_216 ? '标准桌面' : '仅已有 v1/v2 作品',
+            }))}
+          />
         </label>
         <p className="resource-budget-note" role="status">
           新导入与 v3/v4 作品最多 {(MAX_V3_PIXELS / 1e6).toFixed(1)} 百万像素、单边8192px。

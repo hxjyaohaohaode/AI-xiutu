@@ -1,46 +1,55 @@
-/* Dialog surfaces share the studio's neutral palette and reachable mobile controls. */
-.studio-dialog {
-  --dialog-padding: 26px;
-  --dialog-paper: color-mix(in srgb, var(--surface) 98%, #d2bc97);
-  width: min(500px, calc(100vw - 32px));
-  max-height: calc(100dvh - 40px);
-  padding: var(--dialog-padding);
-  border: 1px solid color-mix(in srgb, var(--ink) 9%, var(--surface));
-  border-radius: 19px;
+/* One native dialog surface for forms, commands and retained AI settings. */
+.modal {
+  --dialog-padding: 24px;
+  --dialog-paper: var(--surface-raised);
   color: var(--ink);
   background: var(--dialog-paper);
-  box-shadow: 0 28px 100px #201e1929;
+  border: 1px solid var(--line);
+  box-shadow: var(--shadow-lg);
+  scrollbar-color: var(--line-strong) transparent;
   scrollbar-width: thin;
-  scroll-padding-block: 110px 24px;
-  overflow-x: hidden;
-  overflow-y: auto;
   overscroll-behavior: contain;
 }
 
-.studio-dialog.modal-wide {
+.modal:not(.drawing-modal) {
+  width: min(500px, calc(100vw - 32px));
+  max-height: calc(100dvh - 40px);
+  padding: var(--dialog-padding);
+  border-radius: var(--radius-overlay);
+  scroll-padding-block: 110px 24px;
+  overflow-x: hidden;
+  overflow-y: auto;
+}
+
+.modal.modal-wide:not(.drawing-modal) {
   width: min(700px, calc(100vw - 32px));
 }
 
-.studio-dialog::backdrop {
-  background: #24241f59;
-  backdrop-filter: blur(3px);
+.modal::backdrop {
+  background: var(--scrim);
+  backdrop-filter: blur(2px);
+  animation: dialog-backdrop-in var(--duration-enter) var(--ease-enter) both;
 }
 
-.studio-dialog > .modal-header {
+.modal[data-motion-state='exit']::backdrop {
+  animation: dialog-backdrop-out var(--duration-exit) var(--ease-exit) both;
+}
+
+.modal:not(.drawing-modal) > .modal-header {
   position: sticky;
   top: calc(-1 * var(--dialog-padding));
-  z-index: 6;
-  margin: calc(-1 * var(--dialog-padding)) calc(-1 * var(--dialog-padding)) 22px;
-  padding: var(--dialog-padding) var(--dialog-padding) 19px;
+  z-index: var(--layer-sticky);
+  margin: calc(-1 * var(--dialog-padding)) calc(-1 * var(--dialog-padding)) 20px;
+  padding: var(--dialog-padding) var(--dialog-padding) 18px;
   background: var(--dialog-paper);
-  border-bottom: 1px solid color-mix(in srgb, var(--ink) 8%, var(--surface));
+  border-bottom: 1px solid var(--line);
 }
 
-.studio-dialog > .modal-header > div {
+.modal > .modal-header > div {
   min-width: 0;
 }
 
-.studio-dialog .modal-header h2 {
+.modal .modal-header h2 {
   color: var(--ink);
   font-size: 21px;
   line-height: 1.4;
@@ -49,23 +58,29 @@
   overflow-wrap: anywhere;
 }
 
-.studio-dialog .modal-header p,
+.modal .modal-header p,
 .studio-dialog .auth-brand p,
 .studio-dialog .form-hint,
 .studio-dialog .fine-print,
 .studio-dialog .control-note,
 .studio-dialog .quiet-copy {
-  color: color-mix(in srgb, var(--ink) 65%, var(--surface));
+  color: var(--muted);
   line-height: 1.65;
 }
 
-.studio-dialog .modal-header > .icon-button {
-  width: 36px;
-  height: 36px;
-  flex: 0 0 36px;
-  margin: -3px -5px 0 0;
-  border-radius: 50%;
-  background: color-mix(in srgb, var(--ink) 5%, var(--surface));
+.modal .modal-header > .icon-button {
+  width: 40px;
+  height: 40px;
+  flex: 0 0 40px;
+  margin: -2px -4px 0 0;
+  border-radius: 12px;
+  color: var(--muted);
+  background: var(--surface-secondary);
+}
+
+.modal .modal-header > .icon-button:hover:not(:disabled) {
+  color: var(--ink);
+  background: var(--surface-hover);
 }
 
 .studio-dialog .stack-form label {
@@ -82,8 +97,8 @@
 .studio-dialog .member-row select {
   min-height: 44px;
   color: var(--ink);
-  background: color-mix(in srgb, var(--ink) 3%, var(--surface));
-  border: 1px solid color-mix(in srgb, var(--ink) 11%, var(--surface));
+  background: var(--surface-secondary);
+  border: 1px solid var(--line);
   border-radius: 9px;
   padding: 10px 12px;
   font-size: 14px;
@@ -91,12 +106,12 @@
 }
 
 .studio-dialog input::placeholder {
-  color: color-mix(in srgb, var(--ink) 45%, var(--surface));
+  color: var(--subtle);
 }
 
 .studio-dialog .input-action {
   background: var(--surface);
-  border: 1px solid color-mix(in srgb, var(--ink) 11%, var(--surface));
+  border: 1px solid var(--line);
   border-radius: 9px;
 }
 
@@ -116,21 +131,21 @@
 }
 
 .studio-dialog .segmented {
-  background: color-mix(in srgb, var(--ink) 5%, var(--surface));
+  background: var(--surface-secondary);
   border-radius: 11px;
   padding: 4px;
 }
 
 .studio-dialog .segmented button {
   min-height: 40px;
-  color: color-mix(in srgb, var(--ink) 67%, var(--surface));
+  color: var(--muted);
   border-radius: 8px;
 }
 
 .studio-dialog .segmented button.selected {
   color: var(--ink);
   background: var(--surface);
-  box-shadow: 0 1px 5px #211d1510;
+  box-shadow: var(--shadow-sm);
 }
 
 .studio-dialog .auth-brand {
@@ -152,7 +167,7 @@
   min-height: 115px;
   color: var(--ink);
   border: 1px solid transparent;
-  background: color-mix(in srgb, var(--ink) 4%, var(--surface));
+  background: var(--surface-secondary);
   border-radius: 12px;
 }
 
@@ -167,7 +182,7 @@
 }
 
 .studio-dialog .export-options span {
-  color: color-mix(in srgb, var(--ink) 65%, var(--surface));
+  color: var(--muted);
   font-size: 11px;
   line-height: 1.6;
 }
@@ -196,7 +211,7 @@
 
 .studio-dialog
   :is(.quality-control small, .export-summary span, .member-row small, .grant-row small) {
-  color: color-mix(in srgb, var(--ink) 62%, var(--surface));
+  color: var(--muted);
   font-size: 12px;
 }
 
@@ -206,7 +221,7 @@
 }
 
 .studio-dialog :is(.member-row, .grant-row, .invite-block) {
-  border-color: color-mix(in srgb, var(--ink) 8%, var(--surface));
+  border-color: var(--line);
 }
 
 .studio-dialog .generated-code {
@@ -244,33 +259,41 @@
 .studio-dialog .server-import-section {
   padding-top: 20px;
   margin-top: 22px;
-  border-color: color-mix(in srgb, var(--ink) 8%, var(--surface));
+  border-color: var(--line);
 }
 
 .studio-dialog .server-import-section > h3 {
   color: var(--ink);
 }
 
-@media (max-width: 599px) {
-  .studio-dialog,
-  .studio-dialog.modal-wide {
-    --dialog-padding: 19px;
-    width: calc(100vw - 20px);
-    max-height: calc(100dvh - 24px);
-    border-radius: 17px;
+@media (width < 760px) {
+  .modal:not(.drawing-modal),
+  .modal.modal-wide:not(.drawing-modal) {
+    --dialog-padding: 18px;
+    inset: auto 0 0;
+    margin: auto 0 0;
+    width: 100%;
+    max-width: 100%;
+    max-height: calc(100dvh - max(12px, env(safe-area-inset-top)));
+    border-radius: var(--radius-overlay) var(--radius-overlay) 0 0;
+    border-inline: 0;
+    border-bottom: 0;
+    padding-bottom: calc(var(--dialog-padding) + env(safe-area-inset-bottom));
+    --motion-scale: 1;
+    --motion-y: 16px;
   }
 
-  .studio-dialog .modal-header h2 {
+  .modal .modal-header h2 {
     font-size: 19px;
   }
 
-  .studio-dialog .modal-header > .icon-button {
+  .modal .modal-header > .icon-button {
     width: 40px;
     height: 40px;
     flex-basis: 40px;
   }
 
-  .studio-dialog .stack-form :is(input:not([type='checkbox']), select, textarea) {
+  .modal :is(input:not([type='checkbox']):not([type='range']), select, textarea) {
     font-size: 16px;
   }
 
@@ -327,10 +350,10 @@
 }
 
 @media (max-height: 500px) and (orientation: landscape) {
-  .studio-dialog,
-  .studio-dialog.modal-wide {
-    --dialog-padding: 17px;
-    max-height: calc(100dvh - 16px);
+  .modal:not(.drawing-modal),
+  .modal.modal-wide:not(.drawing-modal) {
+    --dialog-padding: 14px;
+    max-height: calc(100dvh - 8px);
   }
 
   .studio-dialog .modal-header p {
@@ -339,7 +362,26 @@
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .studio-dialog::backdrop {
+  .modal::backdrop {
     backdrop-filter: none;
+    animation: none;
+  }
+}
+
+@keyframes dialog-backdrop-in {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+@keyframes dialog-backdrop-out {
+  from {
+    opacity: 1;
+  }
+  to {
+    opacity: 0;
   }
 }

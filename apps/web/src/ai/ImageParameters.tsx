@@ -5,7 +5,7 @@ import {
   imageSizeError,
   imageBatchError,
 } from './capabilities';
-import { Disclosure, OptionChips, ValueSlider } from '../components/Controls';
+import { Disclosure, OptionChips } from '../components/Controls';
 
 const names: Record<string, string> = {
   auto: '自动',
@@ -84,27 +84,37 @@ export function ImageParameters({
       />
       {!c?.size.allowedSizes && (
         <Disclosure title="自定义尺寸" summary={width + ' × ' + height} role="ai-options">
-          <ValueSlider
-            label="宽度"
-            value={width}
-            min={Math.ceil((model?.minWidth ?? 64) / step) * step}
-            max={Math.floor(Math.min(model?.maxWidth ?? 8192, maxDimension) / step) * step}
-            step={step}
-            unit=" px"
-            disabled={disabled}
-            onChange={(value) => onSize(value, height)}
-          />
-          <ValueSlider
-            label="高度"
-            value={height}
-            min={Math.ceil((model?.minHeight ?? 64) / step) * step}
-            max={Math.floor(Math.min(model?.maxHeight ?? 8192, maxDimension) / step) * step}
-            step={step}
-            unit=" px"
-            disabled={disabled}
-            onChange={(value) => onSize(width, value)}
-          />
-          <p className="control-note">仅发送符合当前模型像素、比例和步进要求的尺寸。</p>
+          <div className="ai-dimension-fields">
+            <label>
+              宽度 <small>px</small>
+              <input
+                aria-label="宽度"
+                type="number"
+                inputMode="numeric"
+                value={width || ''}
+                min={Math.ceil((model?.minWidth ?? 64) / step) * step}
+                max={Math.floor(Math.min(model?.maxWidth ?? 8192, maxDimension) / step) * step}
+                step={step}
+                disabled={disabled}
+                onChange={(event) => onSize(Number(event.target.value), height)}
+              />
+            </label>
+            <label>
+              高度 <small>px</small>
+              <input
+                aria-label="高度"
+                type="number"
+                inputMode="numeric"
+                value={height || ''}
+                min={Math.ceil((model?.minHeight ?? 64) / step) * step}
+                max={Math.floor(Math.min(model?.maxHeight ?? 8192, maxDimension) / step) * step}
+                step={step}
+                disabled={disabled}
+                onChange={(event) => onSize(width, Number(event.target.value))}
+              />
+            </label>
+          </div>
+          <p className="control-note">尺寸步进 {step} px；可用范围以当前模型为准。</p>
         </Disclosure>
       )}
       {sizeError && (
@@ -153,28 +163,44 @@ export function ImageParameters({
         );
       })}
       {c?.n.supported && (c.n.max ?? 1) > 1 && (
-        <ValueSlider
-          label="输出数量"
-          value={options.n ?? 1}
-          min={c.n.min ?? 1}
-          max={c.n.max ?? 1}
-          unit=" 张"
-          disabled={disabled}
-          onChange={(n) => onOptions({ ...options, n })}
-        />
+        <label className="ai-numeric-setting">
+          <span>
+            输出数量 <small>张</small>
+          </span>
+          <input
+            aria-label="输出数量"
+            type="number"
+            inputMode="numeric"
+            value={options.n ?? 1}
+            min={c.n.min ?? 1}
+            max={c.n.max ?? 1}
+            step={1}
+            disabled={disabled}
+            onChange={(event) => onOptions({ ...options, n: Number(event.target.value) })}
+          />
+        </label>
       )}
       {c?.outputCompression.supported && (
         <div className="parameter-row">
           {c.outputCompression.formats?.includes(options.outputFormat ?? 'png') ? (
-            <ValueSlider
-              label="编码质量"
-              value={options.outputCompression ?? 100}
-              min={c.outputCompression.min ?? 0}
-              max={c.outputCompression.max ?? 100}
-              unit="%"
-              disabled={disabled}
-              onChange={(outputCompression) => onOptions({ ...options, outputCompression })}
-            />
+            <label className="ai-numeric-setting">
+              <span>
+                编码质量 <small>%</small>
+              </span>
+              <input
+                aria-label="编码质量"
+                type="number"
+                inputMode="numeric"
+                value={options.outputCompression ?? 100}
+                min={c.outputCompression.min ?? 0}
+                max={c.outputCompression.max ?? 100}
+                step={1}
+                disabled={disabled}
+                onChange={(event) =>
+                  onOptions({ ...options, outputCompression: Number(event.target.value) })
+                }
+              />
+            </label>
           ) : (
             <p className="control-note">压缩参数仅适用于 JPEG / WebP；PNG 不发送此项。</p>
           )}

@@ -3,6 +3,7 @@ import { randomUUID } from 'node:crypto';
 import { test } from 'node:test';
 import type { AssetCopyRecord } from '@ai-xiutu/contracts';
 import type { Asset } from '../src/lib/types.ts';
+import { ConfirmationRequests } from '../src/components/ConfirmationDialog.tsx';
 import {
   prepareGenerationDraft,
   type PreparedGenerationDraft,
@@ -133,6 +134,38 @@ test('canceling cross-project preparation sends no copy and leaves the composer 
   const commit = await prepareGenerationDraft(input([randomUUID()]), h.options);
   assert.equal(commit, null);
   assert.equal(confirmations, 1);
+  assert.equal(h.journal.size, 0);
+  assert.equal(h.ready.length, 0);
+  assert.equal(h.committed.length, 0);
+});
+
+test('consent after the editing scope changes cannot start a reference copy', async () => {
+  const h = harness();
+  const confirmations = new ConfirmationRequests<number>();
+  let active = true;
+  let show!: () => void;
+  const shown = new Promise<void>((resolve) => {
+    show = resolve;
+  });
+  let copies = 0;
+  h.options.assertCurrent = () => {
+    if (!active) throw new Error('作品、来源或草稿已变化');
+  };
+  h.options.confirmCopy = (count) => {
+    const question = confirmations.request(count)!;
+    show();
+    return question.result;
+  };
+  h.options.copyAsset = async (sourceId) => {
+    copies++;
+    return receipt(sourceId, asset(randomUUID()));
+  };
+  const pending = prepareGenerationDraft(input([randomUUID()]), h.options);
+  await shown;
+  active = false;
+  confirmations.settle(confirmations.current!.id, true);
+  await assert.rejects(pending, /作品、来源或草稿已变化/);
+  assert.equal(copies, 0);
   assert.equal(h.journal.size, 0);
   assert.equal(h.ready.length, 0);
   assert.equal(h.committed.length, 0);

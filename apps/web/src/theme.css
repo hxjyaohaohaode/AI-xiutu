@@ -1,0 +1,222 @@
+/* Document-level tokens. Photo pixels, brush colours and channel data never use these. */
+:root,
+:root[data-theme='light'] {
+  color-scheme: light;
+  --color-app: #f5f5f0;
+  --color-canvas: #e9ebe5;
+  --color-surface: #fffefa;
+  --color-raised: #ffffff;
+  --color-surface-secondary: #f1f2ec;
+  --color-surface-hover: #e9ece3;
+  --color-surface-active: #e1e6d9;
+  --color-ink: #272d24;
+  --color-muted: #606a59;
+  --color-subtle: #66715d;
+  --color-disabled: #899281;
+  --color-line: #dde2d5;
+  --color-line-strong: #adb9a1;
+  --color-accent: #e6b850;
+  --color-accent-hover: #d9a83b;
+  --color-accent-soft: #f6ebcc;
+  --color-accent-ink: #806017;
+  --color-on-accent: #34280d;
+  --color-success: #366b4c;
+  --color-success-soft: #eaf3eb;
+  --color-warning: #876115;
+  --color-warning-soft: #faf0d9;
+  --color-danger: #a33c35;
+  --color-danger-soft: #faeae6;
+  --color-info: #356a82;
+  --color-info-soft: #e8f1f5;
+  --color-focus: #977020;
+  --color-scrim: rgb(19 25 16 / 38%);
+  --color-shadow: 35 45 27;
+  --color-checker-light: #f7f8f4;
+  --color-checker-dark: #dfe3d8;
+}
+
+:root[data-theme='dark'] {
+  color-scheme: dark;
+  --color-app: #181c17;
+  --color-canvas: #11150f;
+  --color-surface: #22281f;
+  --color-raised: #2a3226;
+  --color-surface-secondary: #1c221a;
+  --color-surface-hover: #333d2d;
+  --color-surface-active: #3d4935;
+  --color-ink: #edf2e7;
+  --color-muted: #b9c5ae;
+  --color-subtle: #9cab8f;
+  --color-disabled: #77876b;
+  --color-line: #3b4833;
+  --color-line-strong: #627653;
+  --color-accent: #e4bd66;
+  --color-accent-hover: #edcd83;
+  --color-accent-soft: #3e3823;
+  --color-accent-ink: #edcc84;
+  --color-on-accent: #2b230d;
+  --color-success: #96d3ad;
+  --color-success-soft: #223a2b;
+  --color-warning: #e5c47d;
+  --color-warning-soft: #3d3320;
+  --color-danger: #f0a297;
+  --color-danger-soft: #422b26;
+  --color-info: #9bcbdc;
+  --color-info-soft: #233942;
+  --color-focus: #e4bd66;
+  --color-scrim: rgb(5 9 4 / 62%);
+  --color-shadow: 0 0 0;
+  --color-checker-light: #30382b;
+  --color-checker-dark: #252d20;
+}
+
+:root {
+  /* Compatibility names are aliases, so existing modules follow the same theme. */
+  --ink: var(--color-ink);
+  --text: var(--color-ink);
+  --muted: var(--color-muted);
+  --text-muted: var(--color-muted);
+  --subtle: var(--color-subtle);
+  --disabled-ink: var(--color-disabled);
+  --surface: var(--color-surface);
+  --surface-raised: var(--color-raised);
+  --surface-secondary: var(--color-surface-secondary);
+  --surface-hover: var(--color-surface-hover);
+  --surface-active: var(--color-surface-active);
+  --canvas: var(--color-canvas);
+  --workspace-bg: var(--color-canvas);
+  --canvas-ink: var(--color-ink);
+  --canvas-hint: var(--color-muted);
+  --sidebar: var(--color-surface);
+  --line: var(--color-line);
+  --border: var(--color-line);
+  --line-strong: var(--color-line-strong);
+  --accent: var(--color-accent);
+  --accent-hover: var(--color-accent-hover);
+  --accent-soft: var(--color-accent-soft);
+  --accent-ink: var(--color-accent-ink);
+  --on-accent: var(--color-on-accent);
+  --success: var(--color-success);
+  --success-soft: var(--color-success-soft);
+  --green: var(--color-success);
+  --warning: var(--color-warning);
+  --warning-soft: var(--color-warning-soft);
+  --danger: var(--color-danger);
+  --danger-soft: var(--color-danger-soft);
+  --info: var(--color-info);
+  --info-soft: var(--color-info-soft);
+  --focus-ring: var(--color-focus);
+  --scrim: var(--color-scrim);
+  --checker-light: var(--color-checker-light);
+  --checker-dark: var(--color-checker-dark);
+  /* Image overlays need stable contrast against arbitrary photo pixels. */
+  --image-overlay: rgb(16 21 12 / 78%);
+  --on-image: #ffffff;
+  --handle-color: #285dca;
+  --ui-ink: var(--color-ink);
+  --ui-secondary: var(--color-muted);
+  --ui-muted: var(--color-subtle);
+  --ui-line: var(--color-line);
+  --ui-hover: var(--color-surface-hover);
+  --ui-selected: var(--color-accent-soft);
+  --shadow-sm: 0 1px 3px rgb(var(--color-shadow) / 8%);
+  --shadow-md: 0 6px 24px rgb(var(--color-shadow) / 12%);
+  --shadow-lg: 0 20px 64px rgb(var(--color-shadow) / 22%);
+  --shadow: var(--shadow-md);
+  --studio-shadow: var(--shadow-md);
+  --radius-control: 10px;
+  --radius-surface: 16px;
+  --radius-overlay: 22px;
+  --control-height: 40px;
+  --control-compact: 36px;
+  --icon-size: 20px;
+  --input-font-size: 14px;
+  --space-1: 4px;
+  --space-2: 8px;
+  --space-3: 12px;
+  --space-4: 16px;
+  --space-5: 20px;
+  --space-6: 24px;
+  --space-8: 32px;
+  --layer-sticky: 6;
+  --layer-menu: 60;
+  --layer-notice: 100;
+  --ease-enter: cubic-bezier(0.18, 0.72, 0.24, 1);
+  --ease-exit: cubic-bezier(0.4, 0, 0.8, 0.3);
+  --ease-move: cubic-bezier(0.2, 0, 0, 1);
+  --duration-control: 140ms;
+  --duration-enter: 240ms;
+  --duration-exit: 160ms;
+  --duration-expand: 220ms;
+  --motion-distance: 8px;
+  color: var(--ink);
+  background: var(--color-app);
+  accent-color: var(--accent);
+}
+
+body {
+  color: var(--ink);
+  background: var(--color-app);
+}
+
+::selection {
+  color: var(--ink);
+  background: var(--accent-soft);
+}
+
+:where(input, textarea, select) {
+  color: var(--ink);
+  caret-color: var(--ink);
+}
+
+:where(input, textarea)::placeholder {
+  color: var(--subtle);
+  opacity: 1;
+}
+
+select,
+select option,
+select optgroup {
+  color: var(--ink);
+  background-color: var(--surface);
+  color-scheme: inherit;
+}
+
+:where(button, a, input, textarea, select, summary, [tabindex]):focus-visible {
+  outline: 2px solid var(--focus-ring);
+  outline-offset: 3px;
+}
+
+:where(input, textarea, select):disabled {
+  color: var(--disabled-ink);
+  cursor: not-allowed;
+}
+
+.studio-glyph {
+  display: inline-block;
+  flex: 0 0 auto;
+  vertical-align: middle;
+  overflow: visible;
+}
+
+@media (width < 760px) {
+  :root {
+    --input-font-size: 16px;
+    --radius-overlay: 22px;
+  }
+
+  :root[data-theme]
+    :is(input:not([type='range']):not([type='checkbox']):not([type='radio']), textarea, select) {
+    font-size: var(--input-font-size);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  :root {
+    --duration-control: 0ms;
+    --duration-enter: 0ms;
+    --duration-exit: 0ms;
+    --duration-expand: 0ms;
+    --motion-distance: 0px;
+  }
+}

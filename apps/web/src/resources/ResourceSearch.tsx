@@ -9,8 +9,11 @@ import {
 import { api, errorMessage, formatDate, jsonRequest } from '../lib/api';
 import type { Asset, Space } from '../lib/types';
 import { Busy, EmptyState, InlineError, Modal } from '../components/Ui';
+import { ChoiceSelect } from '../components/ChoiceSelect';
 import { localPixelBudget } from '../editor/useEditor';
 import { MediaSourceViewer } from '../media/MediaSourceViewer';
+import { useConfirmation } from '../components/ConfirmationDialog';
+import { confirmStableScope } from '../lib/confirmation-scope';
 import './resources.css';
 
 import { resourceQuery, type ResourceItem, type ResourcePage as Page } from './model';
@@ -31,9 +34,36 @@ function MemoryEditor({
   const [remembered, setRemembered] = useState(item.memory?.remembered ?? true),
     [busy, setBusy] = useState(false),
     [error, setError] = useState<string | null>(null);
+  const confirmation = useConfirmation();
+  const mounted = useRef(false);
+  const locked = useRef(false);
+  const latest = useRef({ item, title, tags, note, remembered, busy, onClose, onSaved });
+  latest.current = { item, title, tags, note, remembered, busy, onClose, onSaved };
+  useEffect(() => {
+    mounted.current = true;
+    return () => {
+      mounted.current = false;
+    };
+  }, []);
+  const readMemory = () => ({
+    mounted: mounted.current,
+    item: latest.current.item,
+    assetId: latest.current.item.asset.id,
+    projectId: latest.current.item.asset.projectId,
+    version: latest.current.item.memory?.version,
+    title: latest.current.title,
+    tags: latest.current.tags,
+    note: latest.current.note,
+    remembered: latest.current.remembered,
+    busy: latest.current.busy,
+    locked: locked.current,
+  });
   async function save(event: FormEvent) {
     event.preventDefault();
-    if (busy) return;
+    if (!mounted.current || locked.current || busy) return;
+    locked.current = true;
+    const savedItem = item;
+    const isCurrent = () => mounted.current && latest.current.item === savedItem;
     setBusy(true);
     setError(null);
     try {
@@ -57,97 +87,129 @@ function MemoryEditor({
           note: note.trim(),
         }),
       );
-      onSaved();
-      onClose();
+      if (isCurrent()) {
+        latest.current.onSaved();
+        latest.current.onClose();
+      }
     } catch (e) {
-      setError(errorMessage(e));
+      if (isCurrent()) setError(errorMessage(e));
     } finally {
-      setBusy(false);
+      locked.current = false;
+      if (mounted.current) setBusy(false);
     }
   }
   async function remove() {
-    if (!item.memory || busy || !window.confirm('删除这份个人长期标注？原图和团队素材仍然保留。'))
+    if (!mounted.current || !latest.current.item.memory || latest.current.busy || locked.current)
       return;
+    const outcome = await confirmStableScope(readMemory, () =>
+      confirmation.confirm({
+        description: '删除这份个人长期标注？原图和团队素材仍然保留。',
+        confirmLabel: '删除个人标注',
+        tone: 'danger',
+      }),
+    );
+    if (outcome !== 'confirmed') {
+      if (outcome === 'changed' && mounted.current)
+        setError('素材或个人标注已经变化，请重新核对。');
+      return;
+    }
+    if (!mounted.current || locked.current || latest.current.busy || !latest.current.item.memory)
+      return;
+    const deletedItem = latest.current.item;
+    const expectedVersion = deletedItem.memory!.version;
+    const isCurrent = () => mounted.current && latest.current.item === deletedItem;
+    locked.current = true;
     setBusy(true);
     setError(null);
     try {
       await api(
-        `/assets/${item.asset.id}/memory`,
-        jsonRequest('DELETE', { expectedVersion: item.memory.version }),
+        `/assets/${deletedItem.asset.id}/memory`,
+        jsonRequest('DELETE', { expectedVersion }),
       );
-      onSaved();
-      onClose();
+      if (isCurrent()) {
+        latest.current.onSaved();
+        latest.current.onClose();
+      }
     } catch (e) {
-      setError(errorMessage(e));
+      if (isCurrent()) setError(errorMessage(e));
     } finally {
-      setBusy(false);
+      locked.current = false;
+      if (mounted.current) setBusy(false);
     }
   }
   return (
-    <Modal title="长期复用说明" subtitle={item.asset.name} onClose={onClose} canClose={() => !busy}>
-      <form className="stack-form" onSubmit={(e) => void save(e)} data-motion="resource-memory">
-        <label className="switch-row">
-          <span>加入我的长期素材</span>
-          <input
-            type="checkbox"
-            checked={remembered}
-            disabled={busy}
-            onChange={(e) => setRemembered(e.target.checked)}
-          />
-        </label>
-        <label>
-          便于查找的名称
-          <input
-            value={title}
-            maxLength={200}
-            disabled={busy}
-            onChange={(e) => setTitle(e.target.value)}
-          />
-        </label>
-        <label>
-          个人标签
-          <input
-            value={tags}
-            maxLength={1230}
-            disabled={busy}
-            onChange={(e) => setTags(e.target.value)}
-            placeholder="用逗号分隔"
-          />
-        </label>
-        <label>
-          复用时要记得的说明
-          <textarea
-            value={note}
-            maxLength={2000}
-            rows={4}
-            disabled={busy}
-            onChange={(e) => setNote(e.target.value)}
-            placeholder="例如：保留这个配色；适合产品封面。不自动分析身份。"
-          />
-        </label>
-        <p className="form-hint">
-          这些标注仅属于你的账号，不会修改团队素材信息或自动发给
-          AI；只有你明确选择引用时才带入共创。原项目权限撤销后，长期标注也不会恢复素材访问权。
-        </p>
-        <InlineError message={error} />
-        <div className="dialog-actions">
-          {item.memory && (
-            <button
-              type="button"
-              className="text-button"
+    <>
+      <Modal
+        title="长期复用说明"
+        subtitle={item.asset.name}
+        onClose={onClose}
+        canClose={() => !locked.current && !latest.current.busy}
+      >
+        <form className="stack-form" onSubmit={(e) => void save(e)} data-motion="resource-memory">
+          <label className="switch-row">
+            <span>加入我的长期素材</span>
+            <input
+              type="checkbox"
+              checked={remembered}
               disabled={busy}
-              onClick={() => void remove()}
-            >
-              <Trash size={16} />
-              删除个人标注
+              onChange={(e) => setRemembered(e.target.checked)}
+            />
+          </label>
+          <label>
+            便于查找的名称
+            <input
+              value={title}
+              maxLength={200}
+              disabled={busy}
+              onChange={(e) => setTitle(e.target.value)}
+            />
+          </label>
+          <label>
+            个人标签
+            <input
+              value={tags}
+              maxLength={1230}
+              disabled={busy}
+              onChange={(e) => setTags(e.target.value)}
+              placeholder="用逗号分隔"
+            />
+          </label>
+          <label>
+            复用时要记得的说明
+            <textarea
+              value={note}
+              maxLength={2000}
+              rows={4}
+              disabled={busy}
+              onChange={(e) => setNote(e.target.value)}
+              placeholder="例如：保留这个配色；适合产品封面。不自动分析身份。"
+            />
+          </label>
+          <p className="form-hint">
+            这些标注仅属于你的账号，不会修改团队素材信息或自动发给
+            AI；只有你明确选择引用时才带入共创。原项目权限撤销后，长期标注也不会恢复素材访问权。
+          </p>
+          <InlineError message={error} />
+          <div className="dialog-actions">
+            {item.memory && (
+              <button
+                type="button"
+                className="text-button"
+                disabled={busy}
+                onClick={() => void remove()}
+              >
+                <Trash size={16} />
+                删除个人标注
+              </button>
+            )}
+            <button className="button button-primary" disabled={busy}>
+              {busy ? <Busy label="保存中" /> : '保存个人说明'}
             </button>
-          )}
-          <button className="button button-primary" disabled={busy}>
-            {busy ? <Busy label="保存中" /> : '保存个人说明'}
-          </button>
-        </div>
-      </form>
-    </Modal>
+          </div>
+        </form>
+      </Modal>
+      {confirmation.dialog}
+    </>
   );
 }
 
@@ -253,7 +315,7 @@ export function ResourceSearch({
     >
       <header className="view-heading" data-motion="resource-heading">
         <div>
-          <h1>{rememberedOnly ? '长期素材' : '找回灵感与素材'}</h1>
+          <h1>{rememberedOnly ? '长期素材' : '查找素材'}</h1>
           <p>
             {rememberedOnly
               ? '只保留你主动加入的素材和个人说明；访问仍遵守来源空间权限。'
@@ -273,35 +335,42 @@ export function ResourceSearch({
             aria-label="搜索资源"
           />
         </label>
-        <select
-          aria-label="资源范围"
+        <ChoiceSelect
+          ariaLabel="资源范围"
           value={scope}
-          onChange={(e) => {
-            setScope(e.target.value as typeof scope);
+          onValueChange={(value) => {
+            setScope(value);
             setSpaceId('');
           }}
-        >
-          <option value="all">全部可访问</option>
-          <option value="personal">个人空间</option>
-          <option value="team">团队空间</option>
-        </select>
-        <select aria-label="指定空间" value={spaceId} onChange={(e) => setSpaceId(e.target.value)}>
-          <option value="">不限定空间</option>
-          {spaces
-            .filter((s) => scope === 'all' || s.kind === scope)
-            .map((s) => (
-              <option key={s.id} value={s.id}>
-                {s.name}
-              </option>
-            ))}
-        </select>
-        <select aria-label="素材来源" value={source} onChange={(e) => setSource(e.target.value)}>
-          <option value="">所有来源</option>
-          <option value="upload">上传</option>
-          <option value="generated">AI生成</option>
-          <option value="sketch">草图</option>
-          <option value="derived">加工素材</option>
-        </select>
+          options={[
+            { value: 'all', label: '全部可访问' },
+            { value: 'personal', label: '个人空间' },
+            { value: 'team', label: '团队空间' },
+          ]}
+        />
+        <ChoiceSelect
+          ariaLabel="指定空间"
+          value={spaceId}
+          onValueChange={setSpaceId}
+          options={[
+            { value: '', label: '不限定空间' },
+            ...spaces
+              .filter((s) => scope === 'all' || s.kind === scope)
+              .map((s) => ({ value: s.id, label: s.name })),
+          ]}
+        />
+        <ChoiceSelect
+          ariaLabel="素材来源"
+          value={source}
+          onValueChange={setSource}
+          options={[
+            { value: '', label: '所有来源' },
+            { value: 'upload', label: '上传' },
+            { value: 'generated', label: 'AI 生成' },
+            { value: 'sketch', label: '草图' },
+            { value: 'derived', label: '加工素材' },
+          ]}
+        />
       </div>
       <InlineError message={error} />
       {busy && <Busy label="正在检索可访问资源" />}

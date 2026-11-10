@@ -1,3 +1,4 @@
+import { MotionDetails } from '../motion/Presence';
 import { useEffect, useState } from 'react';
 import type { AssistantContext } from '@ai-xiutu/contracts';
 import { api, errorMessage, jsonRequest } from '../lib/api';
@@ -5,6 +6,7 @@ import { secureUuid } from '../lib/uuid';
 import type { TeamVoiceState } from './useTeamVoice';
 import { VoiceCaptions } from '../ai/VoiceCaptions';
 import { SearchEvidence } from '../ai/SearchEvidence';
+import { ChoiceSelect } from '../components/ChoiceSelect';
 
 interface Model {
   id: string;
@@ -124,7 +126,7 @@ export function TeamVoiceControls({
           agent.state === 'off') && (
           <div className="team-voice-caption" role="status" aria-label="团队 AI 邀请恢复">
             <p>原团队 AI 邀请结果待确认，已暂停新的付费邀请。可继续加入成员通话。</p>
-            <details>
+            <MotionDetails>
               <summary>查看核验说明与请求标识</summary>
               <p style={{ overflowWrap: 'anywhere' }}>
                 请求标识：<code>{room.pendingInvitation.idempotencyKey}</code>
@@ -140,7 +142,7 @@ export function TeamVoiceControls({
                 当前接口未提供历史邀请核验查询；房间邀请标识也不是计费会话标识。
                 重新加入、结束按钮的成功提示或新邀请的失败提示，都不能解除旧请求的待核验状态。
               </p>
-            </details>
+            </MotionDetails>
           </div>
         )}
       {room.state !== 'connected' ? (
@@ -167,42 +169,32 @@ export function TeamVoiceControls({
             <p role="status">上一轮 AI 费用待核验。</p>
           )}
           {agent.state === 'off' && room.canInvite && catalog?.voiceReady && (
-            <details>
+            <MotionDetails>
               <summary>邀请 AI 加入</summary>
-              <label>
-                团队语音模型
-                <select
-                  value={voiceId}
-                  onChange={(event) => setVoiceId(event.target.value)}
-                  disabled={pending || invitationBlocked}
-                >
-                  <option value="">选择语音模型</option>
-                  {catalog.models
+              <ChoiceSelect
+                label="团队语音模型"
+                value={voiceId}
+                onValueChange={setVoiceId}
+                disabled={pending || invitationBlocked}
+                options={[
+                  { value: '', label: '选择语音模型' },
+                  ...catalog.models
                     .filter((item) => item.operations.includes('realtime-voice'))
-                    .map((item) => (
-                      <option key={item.id} value={item.id}>
-                        {item.label}
-                      </option>
-                    ))}
-                </select>
-              </label>
-              <label>
-                团队思考模型
-                <select
-                  value={modelId}
-                  onChange={(event) => setModelId(event.target.value)}
-                  disabled={pending || invitationBlocked}
-                >
-                  <option value="">选择思考模型</option>
-                  {catalog.models
+                    .map((item) => ({ value: item.id, label: item.label })),
+                ]}
+              />
+              <ChoiceSelect
+                label="团队思考模型"
+                value={modelId}
+                onValueChange={setModelId}
+                disabled={pending || invitationBlocked}
+                options={[
+                  { value: '', label: '选择思考模型' },
+                  ...catalog.models
                     .filter((item) => item.operations.includes('assistant-turn'))
-                    .map((item) => (
-                      <option key={item.id} value={item.id}>
-                        {item.label}
-                      </option>
-                    ))}
-                </select>
-              </label>
+                    .map((item) => ({ value: item.id, label: item.label })),
+                ]}
+              />
               <label className="team-voice-checkbox">
                 <input
                   type="checkbox"
@@ -231,7 +223,7 @@ export function TeamVoiceControls({
               >
                 确认邀请 AI
               </button>
-            </details>
+            </MotionDetails>
           )}
           {agent.state !== 'off' && (
             <>

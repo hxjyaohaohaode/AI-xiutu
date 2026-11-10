@@ -1,3 +1,5 @@
+import { MotionDetails } from '../motion/Presence';
+import { ChoiceSelect } from '../components/ChoiceSelect';
 import { useLayoutEffect, useRef, useState } from 'react';
 import { PrecisionRange } from './PrecisionRange';
 
@@ -150,18 +152,18 @@ export function ParameterShelf({
         ))}
       </div>
       <div ref={current} className="parameter-shelf-current" data-motion="parameter-current">
-        <select
+        <ChoiceSelect
           className="parameter-compact-picker"
-          aria-label={'选择' + label}
+          ariaLabel={'选择' + label}
+          size="compact"
           value={active.id}
-          onChange={(event) => selectControl(event.target.value)}
-        >
-          {controls.map((control) => (
-            <option key={control.id} value={control.id} disabled={control.disabled}>
-              {control.label}
-            </option>
-          ))}
-        </select>
+          onValueChange={selectControl}
+          options={controls.map((control) => ({
+            value: control.id,
+            label: control.label,
+            disabled: control.disabled,
+          }))}
+        />
         <PrecisionRange
           key={active.id}
           label={active.label}
@@ -180,10 +182,10 @@ export function ParameterShelf({
         />
       </div>
       {active.description && (
-        <details key={active.id + '-description'} className="parameter-description">
+        <MotionDetails key={active.id + '-description'} className="parameter-description">
           <summary>{active.label}说明</summary>
           <p className="control-note">{active.description}</p>
-        </details>
+        </MotionDetails>
       )}
     </section>
   );

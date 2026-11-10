@@ -1,5 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
-import { CaretLeft, CaretRight, Sparkle } from '@phosphor-icons/react';
+import { CaretLeft, CaretRight } from '@phosphor-icons/react';
+import { StudioGlyph } from '../components/StudioGlyph';
+import { useReducedMotion } from '../motion/usePresence';
 import { toolGroups, type ToolGroup } from '../editor/ToolInspector';
 
 export const ADJUSTMENT_GROUPS: ToolGroup[] = ['light', 'color', 'curves', 'detail'];
@@ -24,6 +26,7 @@ export function ToolDock({
   onAI: () => void;
 }) {
   const nav = useRef<HTMLDivElement>(null);
+  const reducedMotion = useReducedMotion();
   const [overflow, setOverflow] = useState({ left: false, right: false });
   const active = dockTool(group, compact);
   const choices = toolGroups.filter(
@@ -75,7 +78,15 @@ export function ToolDock({
             : event.key === 'End'
               ? buttons.length - 1
               : (index + (event.key === 'ArrowLeft' ? -1 : 1) + buttons.length) % buttons.length;
-        buttons[next]?.focus();
+        const target = buttons[next];
+        target?.focus({ preventScroll: true });
+        const rail = nav.current;
+        if (target && rail?.contains(target)) {
+          const item = target.getBoundingClientRect();
+          const viewport = rail.getBoundingClientRect();
+          if (item.left < viewport.left) rail.scrollLeft += item.left - viewport.left - 20;
+          else if (item.right > viewport.right) rail.scrollLeft += item.right - viewport.right + 20;
+        }
       }}
     >
       <div
@@ -88,7 +99,9 @@ export function ToolDock({
             type="button"
             className="dock-scroll dock-scroll-left"
             aria-label="查看前面的编辑工具"
-            onClick={() => nav.current?.scrollBy({ left: -200, behavior: 'smooth' })}
+            onClick={() =>
+              nav.current?.scrollBy({ left: -200, behavior: reducedMotion ? 'auto' : 'smooth' })
+            }
           >
             <CaretLeft size={14} />
           </button>
@@ -110,7 +123,7 @@ export function ToolDock({
                 )
               }
             >
-              {tool.icon}
+              <StudioGlyph name={tool.id} size={21} />
               <span>{compact && tool.id === 'light' ? '调节' : tool.label}</span>
             </button>
           ))}
@@ -120,7 +133,9 @@ export function ToolDock({
             type="button"
             className="dock-scroll dock-scroll-right"
             aria-label="查看更多编辑工具"
-            onClick={() => nav.current?.scrollBy({ left: 200, behavior: 'smooth' })}
+            onClick={() =>
+              nav.current?.scrollBy({ left: 200, behavior: reducedMotion ? 'auto' : 'smooth' })
+            }
           >
             <CaretRight size={14} />
           </button>
@@ -133,8 +148,8 @@ export function ToolDock({
         aria-pressed={aiOpen}
         onClick={onAI}
       >
-        <Sparkle size={22} />
-        <span>AI共创</span>
+        <StudioGlyph name="ai" size={21} />
+        <span>AI 助手</span>
       </button>
     </nav>
   );

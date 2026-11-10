@@ -51,7 +51,7 @@ export function workspaceSize(view: Viewport): { width: number; height: number }
     ),
   };
 }
-export function panelBounds(view: Viewport, dock: Dock = 'floating') {
+export function panelBounds(view: Viewport, dock: Dock = 'floating', id?: PanelId) {
   const body = workspaceSize(view);
   const attached = view.bucket === 'phone' && dock === 'bottom';
   const maxWidth = Math.max(0, body.width - (attached ? 0 : PANEL_MARGIN * 2));
@@ -62,16 +62,19 @@ export function panelBounds(view: Viewport, dock: Dock = 'floating') {
   return {
     width: body.width,
     height: body.height,
-    minWidth: Math.min(view.bucket === 'phone' ? 224 : 240, maxWidth),
+    minWidth: attached ? maxWidth : Math.min(view.bucket === 'phone' ? 224 : 240, maxWidth),
     maxWidth,
-    minHeight: Math.min(view.height <= 520 ? 96 : 112, maxHeight),
+    minHeight: Math.min(
+      id === 'ai' ? (view.bucket === 'phone' ? 224 : 260) : view.height <= 520 ? 96 : 112,
+      maxHeight,
+    ),
     maxHeight,
   };
 }
 
 /** Bounds are viewport/reachability constraints, not fixed product size presets. */
-export function boundPanel(value: PanelGeometry, view: Viewport): PanelGeometry {
-  const b = panelBounds(view, value.dock);
+export function boundPanel(value: PanelGeometry, view: Viewport, id?: PanelId): PanelGeometry {
+  const b = panelBounds(view, value.dock, id);
   const width = clamp(finite(value.width, 330), b.minWidth, b.maxWidth);
   const height = clamp(finite(value.height, 300), b.minHeight, b.maxHeight);
   const presentation = ['normal', 'maximized', 'collapsed'].includes(value.presentation ?? '')
@@ -238,9 +241,10 @@ export function resizePanel(
   dx: number,
   dy: number,
   view: Viewport,
+  id?: PanelId,
 ): PanelGeometry {
-  const initial = boundPanel(value, view);
-  const b = panelBounds(view, initial.dock);
+  const initial = boundPanel(value, view, id);
+  const b = panelBounds(view, initial.dock, id);
   const rect = panelRectangle(initial, view);
   let left = rect.x,
     top = rect.y,
@@ -266,7 +270,7 @@ export function resizePanel(
     const horizontal = edge.includes('w') ? -dx : edge.includes('e') ? dx : 0;
     width = clamp(rect.width + finite(horizontal, 0) * 2, b.minWidth, b.maxWidth);
     if (!edge.includes('n') && !edge.includes('s')) height = rect.height;
-    return boundPanel({ ...initial, width, height, presentation: 'normal' }, view);
+    return boundPanel({ ...initial, width, height, presentation: 'normal' }, view, id);
   }
   if (initial.dock === 'floating') {
     // Bounds constrain the moving edge, not the anchored edge. This avoids sliding a
@@ -285,7 +289,11 @@ export function resizePanel(
     if (edge.includes('s'))
       height = Math.min(height, b.height - panelBottomOffset(view) - top - PANEL_MARGIN);
   }
-  return boundPanel({ ...initial, x: left, y: top, width, height, presentation: 'normal' }, view);
+  return boundPanel(
+    { ...initial, x: left, y: top, width, height, presentation: 'normal' },
+    view,
+    id,
+  );
 }
 export function movePanel(
   value: PanelGeometry,
@@ -317,9 +325,12 @@ export function defaultPanel(id: PanelId, view: Viewport): PanelGeometry {
     bottom: panelBottomOffset(view) + PANEL_MARGIN,
   }).height;
   const height = phone
-    ? Math.min(
-        preferredHeight,
-        Math.max(0, Math.floor(phonePhotoBudget - minimumImageArea(view).height)),
+    ? Math.max(
+        id === 'ai' ? Math.min(224, panelBounds(view, 'bottom').maxHeight) : 0,
+        Math.min(
+          preferredHeight,
+          Math.max(0, Math.floor(phonePhotoBudget - minimumImageArea(view).height)),
+        ),
       )
     : preferredHeight;
   return boundPanel(
@@ -333,5 +344,6 @@ export function defaultPanel(id: PanelId, view: Viewport): PanelGeometry {
       composition: 'reflow',
     },
     view,
+    id,
   );
 }

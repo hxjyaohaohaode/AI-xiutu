@@ -1,3 +1,4 @@
+import { MotionDetails } from '../motion/Presence';
 import { useEffect, useRef, useState } from 'react';
 import { api, errorMessage } from '../lib/api';
 
@@ -35,17 +36,9 @@ export function ContextEvidence({
   const current = live ?? manifest;
   if (!current) return null;
   return (
-    <details className="assistant-context">
-      <summary>上下文依据 · {(current.sourceTurnIds ?? []).length} 轮原文</summary>
-      <p>
-        用户要求逐字保留，旧助手说明可按原文引用回查。文字估算{' '}
-        {current.retainedTokens + current.mandatoryTokens} tokens，另预留输出与图片{' '}
-        {current.reservedTokens} tokens。
-      </p>
-      <p>
-        已归档 {current.compactedSourceIds?.length ?? 0}{' '}
-        段助手说明。图片预留值用于控制预算，实际用量以供应商回执为准。
-      </p>
+    <MotionDetails className="assistant-context">
+      <summary>本轮依据 · {(current.sourceTurnIds ?? []).length} 轮对话</summary>
+      <p>查看本轮引用的要求、偏好和原始对话。</p>
       {Boolean(current.memorySources?.length || current.resourceMemorySources?.length) && (
         <ul aria-label="本轮使用的记忆">
           {[...(current.memorySources ?? []), ...(current.resourceMemorySources ?? [])].map(
@@ -97,7 +90,15 @@ export function ContextEvidence({
           </p>
         </div>
       )}
+      <MotionDetails className="ai-context-budget">
+        <summary>上下文用量估算</summary>
+        <p>
+          文字 {current.retainedTokens + current.mandatoryTokens} tokens；输出与图片预留{' '}
+          {current.reservedTokens} tokens。已归档 {current.compactedSourceIds?.length ?? 0}{' '}
+          段助手说明，仍可查阅原文。实际用量以供应商回执为准。
+        </p>
+      </MotionDetails>
       {error && <p role="alert">{error}</p>}
-    </details>
+    </MotionDetails>
   );
 }

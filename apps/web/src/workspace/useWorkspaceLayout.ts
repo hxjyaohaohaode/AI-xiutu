@@ -7,9 +7,13 @@ import {
   type Viewport,
 } from './panelGeometry';
 export * from './panelGeometry';
-export type WorkspaceLayout = { theme: 'light' | 'dark'; panels: Record<PanelId, PanelGeometry> };
+export type WorkspaceLayout = {
+  theme: 'light' | 'dark';
+  panels: Record<PanelId, PanelGeometry>;
+  viewport?: { height: number };
+};
 export const layoutStorageKey = (view: Viewport) =>
-  `image-workspace:v5:${view.bucket}:${view.width > view.height ? 'landscape' : 'portrait'}`;
+  `image-workspace:v7:${view.bucket}:${view.width > view.height ? 'landscape' : 'portrait'}`;
 
 function viewport(): Viewport {
   const width = window.innerWidth;
@@ -36,7 +40,33 @@ function viewport(): Viewport {
 export function defaultWorkspaceLayout(view: Viewport): WorkspaceLayout {
   return {
     theme: 'light',
+    viewport: { height: view.height },
     panels: { inspector: defaultPanel('inspector', view), ai: defaultPanel('ai', view) },
+  };
+}
+/** Preserve a manually chosen proportion when the phone window changes height. */
+export function adaptWorkspaceLayout(layout: WorkspaceLayout, view: Viewport): WorkspaceLayout {
+  const previousHeight = layout.viewport?.height;
+  const scale =
+    view.bucket === 'phone' && Number.isFinite(previousHeight) && previousHeight! > 54
+      ? Math.max(1, view.height - 54) / (previousHeight! - 54)
+      : 1;
+  const adapt = (id: PanelId, panel: PanelGeometry) =>
+    boundPanel(
+      {
+        ...panel,
+        height: panel.dock === 'bottom' ? panel.height * scale : panel.height,
+      },
+      view,
+      id,
+    );
+  return {
+    ...layout,
+    viewport: { height: view.height },
+    panels: {
+      inspector: adapt('inspector', layout.panels.inspector),
+      ai: adapt('ai', layout.panels.ai),
+    },
   };
 }
 export function parseWorkspaceLayout(raw: string | null, view: Viewport): WorkspaceLayout {
@@ -53,13 +83,17 @@ export function parseWorkspaceLayout(raw: string | null, view: Viewport): Worksp
       )
         return fallback;
     }
-    return {
-      theme: parsed.theme,
-      panels: {
-        inspector: boundPanel(parsed.panels.inspector, view),
-        ai: boundPanel(parsed.panels.ai, view),
+    return adaptWorkspaceLayout(
+      {
+        theme: parsed.theme,
+        viewport: parsed.viewport,
+        panels: {
+          inspector: parsed.panels.inspector,
+          ai: parsed.panels.ai,
+        },
       },
-    };
+      view,
+    );
   } catch {
     return fallback;
   }
@@ -71,8 +105,15 @@ function read(view: Viewport): WorkspaceLayout {
       localStorage.getItem(layoutStorageKey(view)) ??
         (view.bucket !== 'phone'
           ? (localStorage.getItem(
+              `image-workspace:v6:${view.bucket}:${view.width > view.height ? 'landscape' : 'portrait'}`,
+            ) ??
+            localStorage.getItem(
+              `image-workspace:v5:${view.bucket}:${view.width > view.height ? 'landscape' : 'portrait'}`,
+            ) ??
+            localStorage.getItem(
               `image-workspace:v4:${view.bucket}:${view.width > view.height ? 'landscape' : 'portrait'}`,
-            ) ?? localStorage.getItem(`image-workspace:v3:${view.bucket}`))
+            ) ??
+            localStorage.getItem(`image-workspace:v3:${view.bucket}`))
           : null),
       view,
     );
@@ -91,7 +132,8 @@ export function useWorkspaceLayout() {
   viewRef.current = view;
   const currentKey = layoutStorageKey(view);
   // A bucket/orientation transition must never render or persist another device's layout.
-  const layout = preferences.key === currentKey ? preferences.value : read(view);
+  const layout =
+    preferences.key === currentKey ? adaptWorkspaceLayout(preferences.value, view) : read(view);
   useEffect(() => {
     let frame = 0;
     const resize = () => {
@@ -108,11 +150,18 @@ export function useWorkspaceLayout() {
       });
     };
     const observer = new ResizeObserver(resize);
-    const body = document.querySelector<HTMLElement>('.workspace-body');
+    let body = document.querySelector<HTMLElement>('.workspace-body');
     if (body) observer.observe(body);
     let shelf = document.querySelector<HTMLElement>('.floating-tool-dock');
     if (shelf) observer.observe(shelf);
     const nodes = new MutationObserver(() => {
+      const nextBody = document.querySelector<HTMLElement>('.workspace-body');
+      if (nextBody !== body) {
+        if (body) observer.unobserve(body);
+        body = nextBody;
+        if (body) observer.observe(body);
+        resize();
+      }
       const next = document.querySelector<HTMLElement>('.floating-tool-dock');
       if (next !== shelf) {
         if (shelf) observer.unobserve(shelf);
@@ -121,7 +170,8 @@ export function useWorkspaceLayout() {
         resize();
       }
     });
-    if (body) nodes.observe(body, { childList: true, subtree: true });
+    const root = document.getElementById('root');
+    if (root ?? body) nodes.observe((root ?? body)!, { childList: true, subtree: true });
     window.addEventListener('resize', resize);
     window.visualViewport?.addEventListener('resize', resize);
     resize();
@@ -149,15 +199,15 @@ export function useWorkspaceLayout() {
     }, 220);
     return () => clearTimeout(timer);
   }, [preferences, currentKey]);
-  const panel = (id: PanelId) => boundPanel(layout.panels[id], view);
+  const panel = (id: PanelId) => boundPanel(layout.panels[id], view, id);
   const updatePanel = useCallback((id: PanelId, value: PanelGeometry) => {
     const v = viewRef.current,
       key = layoutStorageKey(v);
     setPreferences((previous) => {
-      const current = previous.key === key ? previous.value : read(v);
+      const current = previous.key === key ? adaptWorkspaceLayout(previous.value, v) : read(v);
       return {
         key,
-        value: { ...current, panels: { ...current.panels, [id]: boundPanel(value, v) } },
+        value: { ...current, panels: { ...current.panels, [id]: boundPanel(value, v, id) } },
       };
     });
   }, []);

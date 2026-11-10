@@ -1,381 +1,686 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { ArrowClockwise, DownloadSimple, ChartBar } from '@phosphor-icons/react';
-import { api, downloadBlob, errorMessage, formatDate } from '../lib/api';
-import type { Space } from '../lib/types';
-import { Busy, EmptyState, InlineError } from '../components/Ui';
 import {
-  usageChartValues,
+  ArrowClockwise,
+  DownloadSimple,
+  Wallet,
+  HourglassMedium,
+  CalendarBlank,
+} from '@phosphor-icons/react';
+import { api, downloadBlob, errorMessage } from '../lib/api';
+import type { Space } from '../lib/types';
+import { Busy, InlineError } from '../components/Ui';
+import { ChoiceSelect, type ChoiceOption } from '../components/ChoiceSelect';
+import { MotionDetails } from '../motion/Presence';
+import {
+  appendUsagePage,
+  assertUsageScope,
+  pointText,
+  shanghaiDate,
+  usageDateError,
   usageEndpoint,
+  usageKindDescriptions,
   usageKinds,
   usageLabels,
+  usageUuid,
   type UsageFilter,
   type UsageKind,
   type UsageReport,
 } from './model';
+import { usageQuotes, type UsageAssistantCatalog, type UsageModelCatalog } from './catalog';
 import { collectUsageCsv } from './export';
+import { useUsageResource } from './useUsageResource';
+import { UsageCapacity } from './UsageCapacity';
+import { UsageInsights } from './UsageInsights';
+import { UsageLedger, type UsageMember } from './UsageLedger';
+import { UsagePricing } from './UsagePricing';
 import { UsageJob } from './UsageJob';
 import { UsageRiver } from './UsageRiver';
+import { usageJobReference, type UsageJobTarget } from './providerBilling';
 import './usage.css';
 
-function shanghaiDate(date: Date) {
-  return new Date(date.getTime() + 8 * 3_600_000).toISOString().slice(0, 10);
-}
-export function UsageDashboard({
-  space,
-  operator = false,
-  refreshToken = 0,
-}: {
+type Props = {
   space?: Space | null;
+  spaces?: readonly Space[];
+  currentUserId?: string | null;
   operator?: boolean;
   refreshToken?: number;
-}) {
-  const [scope, setScope] = useState<UsageFilter['scope']>(
-    operator ? 'operator' : space?.kind === 'team' ? 'space' : 'personal',
+};
+type ReportState = {
+  key: string;
+  report: UsageReport | null;
+  loading: boolean;
+  more: boolean;
+  error: string | null;
+  pageError: string | null;
+};
+type Request = { key: string; controller: AbortController };
+
+export function UsageDashboard(props: Props) {
+  const identity = JSON.stringify([
+    props.currentUserId ?? '',
+    !!props.operator,
+    props.space?.id ?? '',
+    props.space?.role ?? '',
+  ]);
+  return <UsageWorkspace {...props} identity={identity} key={identity} />;
+}
+
+function UsageWorkspace({
+  space,
+  spaces = [],
+  currentUserId,
+  operator = false,
+  refreshToken = 0,
+  identity,
+}: Props & { identity: string }) {
+  const [scope, setScope] = useState<'personal' | 'space'>(
+    space?.kind === 'team' ? 'space' : 'personal',
   );
   const [from, setFrom] = useState(() => shanghaiDate(new Date(Date.now() - 29 * 86_400_000)));
   const [to, setTo] = useState(() => shanghaiDate(new Date()));
   const [bucket, setBucket] = useState<'day' | 'month'>('day');
-  const [spaceFilter, setSpaceFilter] = useState(''),
-    [actorFilter, setActorFilter] = useState('');
-  const [filter, setFilter] = useState({ spaceId: '', actorId: '' });
+  const [member, setMember] = useState('');
+  const [memberDraft, setMemberDraft] = useState('');
+  const [historicalMember, setHistoricalMember] = useState('');
+  const [memberError, setMemberError] = useState<string | null>(null);
+  const [spaceDraft, setSpaceDraft] = useState('');
+  const [actorDraft, setActorDraft] = useState('');
+  const [operatorFilter, setOperatorFilter] = useState({ spaceId: '', actorId: '' });
+  const [operatorError, setOperatorError] = useState<string | null>(null);
   const [kind, setKind] = useState<UsageKind>('consumed');
-  const [jobDetail, setJobDetail] = useState<string | null>(null);
-  const [report, setReport] = useState<UsageReport | null>(null),
-    [busy, setBusy] = useState(false),
-    [more, setMore] = useState(false),
-    [exporting, setExporting] = useState(false);
-  const [error, setError] = useState<string | null>(null),
-    [refresh, setRefresh] = useState(0);
-  const generation = useRef(0),
-    moreLock = useRef(false);
-  const exportController = useRef<AbortController | null>(null);
-  useEffect(() => () => exportController.current?.abort(), []);
+  const [jobDetail, setJobDetail] = useState<{ key: string; target: UsageJobTarget } | null>(null);
+  const [refresh, setRefresh] = useState(0);
+  const [catalogRefresh, setCatalogRefresh] = useState(0);
+  const [snapshot, setSnapshot] = useState<ReportState | null>(null);
+  const [exportState, setExportState] = useState<{
+    key: string;
+    busy: boolean;
+    error: string | null;
+    message: string | null;
+  } | null>(null);
+  const moreRequest = useRef<Request | null>(null);
+  const exportRequest = useRef<Request | null>(null);
+  const seenCursors = useRef(new Set<string>());
+  const revision = `${refreshToken}:${refresh}`;
+  const personalSpace =
+    space?.kind === 'personal' ? space : spaces.find((item) => item.kind === 'personal');
+  const memberScope = !operator && scope === 'space' && space?.kind === 'team';
+  const canSelectMember = !!memberScope && ['owner', 'admin'].includes(space!.role);
+  const memberId = memberScope ? (member === 'custom' ? historicalMember : member) : '';
+  const knownSpaces = useMemo(
+    () => (space && !spaces.some((item) => item.id === space.id) ? [...spaces, space] : spaces),
+    [space, spaces],
+  );
+  const members = useUsageResource<{ members: UsageMember[] }>(
+    memberScope ? `/spaces/${encodeURIComponent(space!.id)}/members` : null,
+    identity,
+    revision,
+  );
+  const legacy = useUsageResource<UsageModelCatalog>(
+    '/models',
+    identity,
+    `${revision}:${catalogRefresh}`,
+  );
+  const assistant = useUsageResource<UsageAssistantCatalog>(
+    '/assistant/models',
+    identity,
+    `${revision}:${catalogRefresh}`,
+  );
+  const quotes = useMemo(
+    () => usageQuotes(legacy.data, assistant.data),
+    [legacy.data, assistant.data],
+  );
   const query = useMemo<UsageFilter>(
     () => ({
       scope: operator ? 'operator' : scope,
-      spaceId: operator ? filter.spaceId : space?.id,
-      actorId: operator ? filter.actorId : undefined,
+      spaceId: operator
+        ? operatorFilter.spaceId || undefined
+        : scope === 'space'
+          ? space?.id
+          : personalSpace?.id,
+      actorId: operator ? operatorFilter.actorId || undefined : undefined,
+      memberId: memberId || undefined,
       from,
       to,
       bucket,
     }),
-    [scope, operator, space?.id, filter, from, to, bucket],
+    [operator, scope, operatorFilter, space?.id, personalSpace?.id, memberId, from, to, bucket],
   );
-  const validDates = !!from && !!to && from <= to;
-  const endpoint = validDates ? usageEndpoint(query) : null;
+  const dateError = usageDateError(from, to);
+  const awaitingMember = memberScope && member === 'custom' && !historicalMember;
+  const endpoint = !dateError && !awaitingMember ? usageEndpoint(query) : null;
+  const requestKey = JSON.stringify([identity, endpoint, revision]);
+  const activeKey = useRef(requestKey);
+  activeKey.current = requestKey;
+  const state: ReportState =
+    snapshot?.key === requestKey
+      ? snapshot
+      : {
+          key: requestKey,
+          report: null,
+          loading: !!endpoint,
+          more: false,
+          error: null,
+          pageError: null,
+        };
+  const report = state.report;
+  const exporting = exportState?.key === requestKey && exportState.busy;
+  const exportError = exportState?.key === requestKey ? exportState.error : null;
+  const exportMessage = exportState?.key === requestKey ? exportState.message : null;
+
   useEffect(() => {
-    const id = ++generation.current,
-      controller = new AbortController();
-    setReport(null);
-    setError(null);
-    setMore(false);
-    moreLock.current = false;
-    if (!endpoint) {
-      setBusy(false);
-      return;
-    }
-    setBusy(true);
-    api<UsageReport>(endpoint, { signal: controller.signal })
-      .then((value) => {
-        if (id === generation.current) setReport(value);
-      })
-      .catch((e) => {
-        if (id === generation.current && e.name !== 'AbortError') setError(errorMessage(e));
-      })
-      .finally(() => {
-        if (id === generation.current) setBusy(false);
-      });
-    return () => controller.abort();
-  }, [endpoint, refresh, refreshToken]);
+    const controller = new AbortController();
+    let current = true;
+    seenCursors.current = new Set();
+    moreRequest.current?.controller.abort();
+    moreRequest.current = null;
+    exportRequest.current?.controller.abort();
+    exportRequest.current = null;
+    setExportState(null);
+    setJobDetail(null);
+    setSnapshot({
+      key: requestKey,
+      report: null,
+      loading: !!endpoint,
+      more: false,
+      error: null,
+      pageError: null,
+    });
+    if (endpoint)
+      api<UsageReport>(endpoint, { signal: controller.signal })
+        .then((value) => {
+          if (!current || activeKey.current !== requestKey) return;
+          assertUsageScope(value, query);
+          if (value.nextCursor) seenCursors.current.add(value.nextCursor);
+          setSnapshot({
+            key: requestKey,
+            report: value,
+            loading: false,
+            more: false,
+            error: null,
+            pageError: null,
+          });
+        })
+        .catch((error: unknown) => {
+          if (current && activeKey.current === requestKey && !controller.signal.aborted)
+            setSnapshot({
+              key: requestKey,
+              report: null,
+              loading: false,
+              more: false,
+              error: errorMessage(error),
+              pageError: null,
+            });
+        });
+    return () => {
+      current = false;
+      controller.abort();
+      if (moreRequest.current?.key === requestKey) moreRequest.current.controller.abort();
+      if (exportRequest.current?.key === requestKey) exportRequest.current.controller.abort();
+    };
+  }, [endpoint, requestKey, query]);
+
   async function loadMore() {
-    if (!report?.nextCursor || moreLock.current) return;
-    const id = generation.current;
-    moreLock.current = true;
-    setMore(true);
-    setError(null);
+    if (!report?.nextCursor || moreRequest.current?.key === requestKey) return;
+    const cursor = report.nextCursor;
+    const request = { key: requestKey, controller: new AbortController() };
+    moreRequest.current?.controller.abort();
+    moreRequest.current = request;
+    setSnapshot((old) => (old?.key === requestKey ? { ...old, more: true, pageError: null } : old));
     try {
-      const result = await api<UsageReport>(usageEndpoint(query, report.nextCursor));
-      if (id === generation.current)
-        setReport((old) =>
-          old
-            ? {
-                ...old,
-                entries: [
-                  ...old.entries,
-                  ...result.entries.filter(
-                    (entry) => !old.entries.some((item) => item.id === entry.id),
-                  ),
-                ],
-                nextCursor: result.nextCursor,
-              }
-            : result,
+      const result = await api<UsageReport>(usageEndpoint(query, cursor), {
+        signal: request.controller.signal,
+      });
+      if (request.controller.signal.aborted || activeKey.current !== requestKey) return;
+      if (result.nextCursor && seenCursors.current.has(result.nextCursor))
+        throw new Error('账本分页重复，请刷新后重试。');
+      const combined = appendUsagePage(report, result, cursor, query);
+      if (result.nextCursor) seenCursors.current.add(result.nextCursor);
+      setSnapshot((old) =>
+        old?.key === requestKey ? { ...old, report: combined, pageError: null } : old,
+      );
+    } catch (error) {
+      if (!request.controller.signal.aborted && activeKey.current === requestKey)
+        setSnapshot((old) =>
+          old?.key === requestKey ? { ...old, pageError: errorMessage(error) } : old,
         );
-    } catch (e) {
-      if (id === generation.current) setError(errorMessage(e));
     } finally {
-      if (id === generation.current) {
-        setMore(false);
-        moreLock.current = false;
-      }
+      if (moreRequest.current === request) moreRequest.current = null;
+      if (activeKey.current === requestKey)
+        setSnapshot((old) => (old?.key === requestKey ? { ...old, more: false } : old));
     }
   }
   async function exportCsv() {
-    if (exporting || !endpoint) return;
-    setExporting(true);
-    setError(null);
-    const controller = new AbortController();
-    exportController.current = controller;
+    if (!endpoint || !report || exportRequest.current?.key === requestKey) return;
+    const request = { key: requestKey, controller: new AbortController() };
+    exportRequest.current?.controller.abort();
+    exportRequest.current = request;
+    setExportState({ key: requestKey, busy: true, error: null, message: null });
     try {
-      const blob = await collectUsageCsv(query, fetch, controller.signal);
-      downloadBlob(blob, `usage-${from}-${to}.csv`);
-    } catch (e) {
-      if (!controller.signal.aborted) setError(errorMessage(e));
+      const blob = await collectUsageCsv(query, fetch, request.controller.signal);
+      if (
+        request.controller.signal.aborted ||
+        activeKey.current !== requestKey ||
+        exportRequest.current !== request
+      )
+        return;
+      const subject = query.memberId || query.actorId;
+      downloadBlob(
+        blob,
+        `usage-${query.scope}${query.spaceId ? `-${query.spaceId.slice(0, 8)}` : ''}${subject ? `-member-${subject.slice(0, 8)}` : ''}-${from}-${to}.csv`,
+      );
+      setExportState({
+        key: requestKey,
+        busy: false,
+        error: null,
+        message: 'CSV 已生成，包含所选范围的全部明细。',
+      });
+    } catch (error) {
+      if (!request.controller.signal.aborted && activeKey.current === requestKey)
+        setExportState({ key: requestKey, busy: false, error: errorMessage(error), message: null });
     } finally {
-      if (exportController.current === controller) exportController.current = null;
-      setExporting(false);
+      if (exportRequest.current === request) exportRequest.current = null;
     }
   }
-  const chart = report ? usageChartValues(report, kind) : [];
+  function cancelExport() {
+    exportRequest.current?.controller.abort();
+    exportRequest.current = null;
+    setExportState({ key: requestKey, busy: false, error: null, message: '已取消导出。' });
+  }
+  function selectPeriod(days: number | 'month') {
+    const today = shanghaiDate(new Date());
+    setTo(today);
+    setFrom(
+      days === 'month'
+        ? `${today.slice(0, 7)}-01`
+        : shanghaiDate(new Date(Date.now() - (days - 1) * 86_400_000)),
+    );
+  }
+  const selectedSpaceId = operator
+    ? operatorFilter.spaceId || undefined
+    : scope === 'space'
+      ? space?.id
+      : personalSpace?.id;
+  const selectedSpaceName = knownSpaces.find((item) => item.id === selectedSpaceId)?.name;
+  const walletName = operator
+    ? selectedSpaceId
+      ? selectedSpaceName || '所选空间钱包'
+      : '全部空间钱包'
+    : scope === 'personal'
+      ? '个人钱包'
+      : `${space?.name ?? '空间'}的钱包`;
+  const filteredMemberName = report?.filterActorId
+    ? members.data?.members.find((item) => item.userId === report.filterActorId)?.displayName ||
+      (report.filterActorId === currentUserId ? '我' : `成员 ${report.filterActorId.slice(0, 8)}`)
+    : null;
+  const memberOptions: ChoiceOption[] = [
+    { value: '', label: '全部成员' },
+    ...(currentUserId ? [{ value: currentUserId, label: '仅我' }] : []),
+    ...(canSelectMember
+      ? (members.data?.members ?? [])
+          .filter((item) => item.userId !== currentUserId)
+          .map((item) => ({
+            value: item.userId,
+            label: item.displayName,
+            description: `成员 ${item.userId.slice(0, 8)}`,
+          }))
+      : []),
+  ];
+  if (
+    canSelectMember &&
+    member &&
+    member !== 'custom' &&
+    !memberOptions.some((item) => item.value === member)
+  )
+    memberOptions.push({
+      value: member,
+      label: `成员 ${member.slice(0, 8)}`,
+      description: '当前名单中未载入此成员',
+    });
+  if (canSelectMember)
+    memberOptions.push({
+      value: 'custom',
+      label: '按成员 ID…',
+      description: '也可查询已离开成员的历史记录',
+    });
   return (
     <section className="usage-dashboard" aria-label="用量与额度历史">
-      <header className="view-heading" data-motion="usage-heading">
+      <header className="view-heading usage-heading" data-motion="usage-heading">
         <div>
+          <span className="usage-eyebrow">使用记录</span>
           <h1>用量与额度</h1>
-          <p>
-            {operator
-              ? '按实际账本查看各空间与成员的使用记录。'
-              : '每一次预占、消耗和释放都有来处。服务点不是现金余额。'}
-          </p>
+          <p>{operator ? '查看空间与成员的服务点流水。' : '查看服务点、创作消耗与空间容量。'}</p>
         </div>
-        <div className="view-actions">
-          <button className="text-button" onClick={() => setRefresh((n) => n + 1)} disabled={busy}>
-            <ArrowClockwise size={17} />
-            刷新
-          </button>
+        <div className="view-actions usage-actions">
           <button
-            className="button button-secondary"
-            onClick={() => void exportCsv()}
-            disabled={!report || exporting}
+            type="button"
+            className="text-button"
+            onClick={() => setRefresh((value) => value + 1)}
+            disabled={state.loading}
           >
-            {exporting ? (
-              <Busy label="导出中" />
-            ) : (
-              <>
-                <DownloadSimple size={17} />
-                导出CSV
-              </>
-            )}
+            <ArrowClockwise size={17} aria-hidden /> 刷新
           </button>
+          {exporting ? (
+            <button type="button" className="button button-secondary" onClick={cancelExport}>
+              <Busy label="导出中" />
+              <span>取消</span>
+            </button>
+          ) : (
+            <button
+              type="button"
+              className="button button-secondary"
+              onClick={() => void exportCsv()}
+              disabled={!report || !!dateError}
+            >
+              <DownloadSimple size={17} aria-hidden /> 导出CSV
+            </button>
+          )}
         </div>
       </header>
-      <div className="usage-filters" data-motion="usage-filters">
-        {!operator && (
-          <label>
-            范围
-            <select
+      <div className="usage-card usage-filter-card" data-motion="usage-filters">
+        <div className="usage-filters">
+          {!operator && (
+            <ChoiceSelect<'personal' | 'space'>
+              className="usage-scope-field"
+              label="范围"
               value={scope}
-              onChange={(e) => setScope(e.target.value as UsageFilter['scope'])}
-            >
-              <option value="personal">我的个人用量</option>
-              {space && <option value="space">{space.name} · 空间用量</option>}
-            </select>
+              onValueChange={(value) => {
+                setScope(value);
+                setMember('');
+                setMemberError(null);
+              }}
+              options={[
+                { value: 'personal', label: '我的个人用量' },
+                ...(space ? [{ value: 'space' as const, label: `${space.name} · 空间用量` }] : []),
+              ]}
+            />
+          )}
+          {memberScope && (
+            <ChoiceSelect
+              className="usage-member-field"
+              label="成员"
+              value={member}
+              onValueChange={(value) => {
+                setMember(value);
+                setMemberError(null);
+              }}
+              options={memberOptions}
+            />
+          )}
+          <label>
+            开始日期
+            <input
+              type="date"
+              value={from}
+              max={to}
+              onChange={(event) => setFrom(event.target.value)}
+            />
           </label>
+          <label>
+            结束日期
+            <input
+              type="date"
+              value={to}
+              min={from}
+              onChange={(event) => setTo(event.target.value)}
+            />
+          </label>
+          <div className="usage-presets" role="group" aria-label="快捷日期">
+            <CalendarBlank size={15} aria-hidden />
+            {[
+              [7, '7 天'],
+              [30, '30 天'],
+              ['month', '本月'],
+            ].map(([value, label]) => (
+              <button
+                key={value}
+                type="button"
+                onClick={() => selectPeriod(value as number | 'month')}
+              >
+                {label}
+              </button>
+            ))}
+          </div>
+        </div>
+        {canSelectMember && member === 'custom' && (
+          <form
+            className="usage-id-filter"
+            onSubmit={(event) => {
+              event.preventDefault();
+              const value = memberDraft.trim();
+              if (!usageUuid(value)) {
+                setMemberError('请输入完整有效的成员 UUID。');
+                return;
+              }
+              setHistoricalMember(value);
+              setMemberError(null);
+            }}
+          >
+            <label>
+              成员 ID
+              <input
+                value={memberDraft}
+                maxLength={36}
+                placeholder="包括已离开成员的历史记录"
+                autoComplete="off"
+                spellCheck={false}
+                onChange={(event) => setMemberDraft(event.target.value)}
+              />
+            </label>
+            <button type="submit" className="button button-secondary">
+              应用成员
+            </button>
+            {awaitingMember && !memberError && (
+              <span className="usage-filter-hint">输入成员 ID 后应用。</span>
+            )}
+          </form>
         )}
-        <label>
-          开始日期
-          <input type="date" value={from} max={to} onChange={(e) => setFrom(e.target.value)} />
-        </label>
-        <label>
-          结束日期
-          <input type="date" value={to} min={from} onChange={(e) => setTo(e.target.value)} />
-        </label>
-        <label>
-          趋势粒度
-          <select value={bucket} onChange={(e) => setBucket(e.target.value as 'day' | 'month')}>
-            <option value="day">按日</option>
-            <option value="month">按月</option>
-          </select>
-        </label>
         {operator && (
           <form
-            className="usage-operator-filter"
-            onSubmit={(e) => {
-              e.preventDefault();
-              setFilter({ spaceId: spaceFilter.trim(), actorId: actorFilter.trim() });
+            className="usage-id-filter usage-operator-filter"
+            onSubmit={(event) => {
+              event.preventDefault();
+              const spaceId = spaceDraft.trim(),
+                actorId = actorDraft.trim();
+              if ((spaceId && !usageUuid(spaceId)) || (actorId && !usageUuid(actorId))) {
+                setOperatorError('空间与成员 ID 需要是完整的 UUID；留空表示全部。');
+                return;
+              }
+              setOperatorFilter({ spaceId, actorId });
+              setOperatorError(null);
             }}
           >
             <label>
               空间ID
               <input
-                value={spaceFilter}
-                maxLength={80}
-                onChange={(e) => setSpaceFilter(e.target.value)}
+                value={spaceDraft}
+                maxLength={36}
+                onChange={(event) => setSpaceDraft(event.target.value)}
                 placeholder="全部空间"
+                autoComplete="off"
+                spellCheck={false}
               />
             </label>
             <label>
               成员ID
               <input
-                value={actorFilter}
-                maxLength={80}
-                onChange={(e) => setActorFilter(e.target.value)}
+                value={actorDraft}
+                maxLength={36}
+                onChange={(event) => setActorDraft(event.target.value)}
                 placeholder="全部成员"
+                autoComplete="off"
+                spellCheck={false}
               />
             </label>
-            <button className="button button-secondary">筛选</button>
+            <button type="submit" className="button button-secondary">
+              筛选
+            </button>
           </form>
         )}
+        {members.error && (
+          <p className="usage-filter-hint" role="status">
+            成员名单暂未读取：{members.error} 仍可查看全部或本人记录。
+          </p>
+        )}
+        <InlineError message={memberError || operatorError || dateError} />
+        <p className="usage-filter-timezone">日期按北京时间计算，结束日期包含当天。</p>
       </div>
-      {!validDates && <InlineError message="请选择有效的起止日期。" />}
-      <InlineError message={error} />
-      {busy && <Busy label="正在核对用量账本" />}
+      <InlineError message={state.error || exportError} />
+      {state.error && (
+        <button
+          type="button"
+          className="button button-secondary usage-retry"
+          onClick={() => setRefresh((value) => value + 1)}
+        >
+          重新读取账本
+        </button>
+      )}
+      {exportMessage && (
+        <p className="usage-status" role="status">
+          {exportMessage}
+        </p>
+      )}
+      {state.loading && (
+        <div className="usage-loading" role="status">
+          <Busy label="读取用量账本" />
+        </div>
+      )}
       {report && (
         <>
-          <div className="usage-totals" data-motion="usage-totals">
-            {usageKinds.map((key) => (
-              <button
-                type="button"
-                key={key}
-                aria-pressed={kind === key}
-                onClick={() => setKind(key)}
-              >
-                <span>{usageLabels[key]}</span>
-                <strong>
-                  {report.totals[key] === null
-                    ? '未记录'
-                    : report.totals[key].toLocaleString('zh-CN')}
-                </strong>
-                <small>{key === 'held' ? '累计预占点' : '服务点变动'}</small>
-              </button>
-            ))}
-          </div>
-          <section
-            className="usage-chart"
-            data-motion="usage-chart"
-            aria-label={`${usageLabels[kind]}趋势，${report.timezone}`}
-          >
-            <div className="section-heading">
-              <h2>{usageLabels[kind]}趋势</h2>
-              <span>{report.timezone}</span>
-            </div>
-            {chart.length ? (
-              <div
-                className="usage-bars"
-                role="img"
-                aria-label={chart
-                  .map((point) => `${point.label}：${point.value ?? '未记录'}`)
-                  .join('；')}
-              >
-                {chart.map((point, i) => (
-                  <div className="usage-bar-column" key={point.label}>
-                    <span className="usage-bar-value">
-                      {point.value === null ? '—' : point.value}
-                    </span>
-                    <div className="usage-bar-track">
-                      <i
-                        style={{ height: `${(point.fraction ?? 0) * 100}%` }}
-                        title={`${point.label}：${point.value ?? '未记录'}`}
-                        data-negative={point.value !== null && point.value < 0 ? 'true' : undefined}
-                      />
-                    </div>
-                    <span className="usage-bar-label">
-                      {chart.length < 13 ||
-                      i === 0 ||
-                      i === chart.length - 1 ||
-                      i % Math.ceil(chart.length / 8) === 0
-                        ? point.label.slice(bucket === 'day' ? 5 : 0)
-                        : ''}
-                    </span>
-                  </div>
-                ))}
+          <div className="usage-overview">
+            <section className="usage-card usage-wallet" aria-label="当前钱包">
+              <div className="usage-card-heading">
+                <h2>{walletName}</h2>
+                <span className="usage-context-label">当前余额</span>
               </div>
-            ) : (
-              <EmptyState
-                icon={<ChartBar size={24} />}
-                title="所选日期没有汇总记录"
-                description="没有数据时不补造消耗或发放曲线。"
-              />
+              <div className="usage-wallet-values">
+                <div>
+                  <span>
+                    <Wallet size={17} aria-hidden /> 当前可用
+                  </span>
+                  <strong>
+                    {pointText(report.balance.available)}
+                    <small> 点</small>
+                  </strong>
+                </div>
+                <div>
+                  <span>
+                    <HourglassMedium size={17} aria-hidden /> 当前预占
+                  </span>
+                  <strong>
+                    {pointText(report.balance.held)}
+                    <small> 点</small>
+                  </strong>
+                </div>
+              </div>
+              <p className="usage-wallet-note">完整钱包余额，不随日期或成员筛选变化。</p>
+              <MotionDetails className="usage-small-details">
+                <summary>其他钱包状态</summary>
+                <dl className="usage-wallet-other">
+                  <div>
+                    <dt>已结算</dt>
+                    <dd>{pointText(report.balance.consumed)} 点</dd>
+                  </div>
+                  <div>
+                    <dt>已到期</dt>
+                    <dd>{pointText(report.balance.expired)} 点</dd>
+                  </div>
+                  <div>
+                    <dt>已撤回</dt>
+                    <dd>{pointText(report.balance.revoked)} 点</dd>
+                  </div>
+                </dl>
+              </MotionDetails>
+            </section>
+            <UsageCapacity
+              spaceId={selectedSpaceId}
+              spaceName={selectedSpaceName}
+              operator={operator}
+              identity={identity}
+              refresh={revision}
+            />
+          </div>
+          <section className="usage-period" aria-label="所选期间的服务点汇总">
+            <div className="usage-section-heading">
+              <h2>期间汇总</h2>
+              <span>
+                {filteredMemberName ? `${filteredMemberName} · ` : ''}
+                {from} — {to}
+              </span>
+            </div>
+            <div className="usage-totals" data-motion="usage-totals">
+              {usageKinds.map((key) => (
+                <button
+                  type="button"
+                  key={key}
+                  aria-pressed={kind === key}
+                  onClick={() => setKind(key)}
+                  title={usageKindDescriptions[key]}
+                >
+                  <span>{key === 'held' ? '累计预占' : usageLabels[key]}</span>
+                  <strong>{pointText(report.totals[key])}</strong>
+                  <small>{kind === key ? '正在查看趋势' : '服务点'}</small>
+                </button>
+              ))}
+            </div>
+            {report.unknownAmountEntries > 0 && (
+              <p className="usage-footnote" role="status">
+                本期 {report.unknownAmountEntries} 条记录的金额或分摊不完整，汇总仅包含已确认数值。
+              </p>
             )}
           </section>
+          <UsageInsights
+            report={report}
+            kind={kind}
+            quotes={quotes}
+            bucket={bucket}
+            onBucket={setBucket}
+          />
           <UsageRiver series={report.series} />
-          <p className="control-note">
-            上方为所选日期内的账本变动，预占为累计发起量，不是当前冻结余额；各项不能相加当余额。当前钱包：可用{' '}
-            {report.balance.available.toLocaleString('zh-CN')} 点，预占{' '}
-            {report.balance.held.toLocaleString('zh-CN')} 点。
-          </p>
-          {report.unknownAmountEntries > 0 && (
-            <p className="control-note" role="status">
-              其中 {report.unknownAmountEntries}{' '}
-              条旧记录没有完整的金额或到期分摊；汇总仅包含能够确认的数值，未知值未当作 0。
-            </p>
-          )}
-          <button className="text-button" onClick={() => setJobDetail('prices')}>查看模型公开费率</button>
-          <div
-            className="usage-table-scroll"
-            tabIndex={0}
-            role="region"
-            aria-label="用量明细，可横向滚动"
-            data-motion="usage-ledger"
-          >
-            <table className="usage-table">
-              <caption>用量明细 · 当前已加载 {report.entries.length} 条</caption>
-              <thead>
-                <tr>
-                  <th>时间</th>
-                  <th>类型</th>
-                  <th>服务点</th>
-                  <th>模型 / 操作</th>
-                  <th>空间 / 成员</th>
-                  <th>来源与备注</th>
-                </tr>
-              </thead>
-              <tbody>
-                {report.entries.map((entry) => (
-                  <tr key={entry.id}>
-                    <td>
-                      <time dateTime={entry.createdAt}>{formatDate(entry.createdAt)}</time>
-                    </td>
-                    <td>{usageLabels[entry.kind as UsageKind] ?? entry.kind}</td>
-                    <td className="usage-number">
-                      {!entry.amountKnown || entry.units === null
-                        ? '未记录'
-                        : entry.units.toLocaleString('zh-CN')}
-                      {!entry.movementComplete && <small>分摊明细不完整</small>}
-                    </td>
-                    <td>
-                      {entry.modelId || '—'}
-                      <small>{entry.operation ?? ''}</small>
-                    </td>
-                    <td>
-                      <span title={entry.spaceId}>{entry.spaceId.slice(0, 8)}</span>
-                      <small title={entry.actorId ?? ''}>
-                        {entry.actorId?.slice(0, 8) ?? '系统'}
-                      </small>
-                    </td>
-                    <td>
-                      {entry.reason || entry.sourceKind || '—'}
-                      {entry.jobId && (
-                        <small><button className="text-button" title={entry.jobId} onClick={() => setJobDetail(entry.jobId)}>任务 {entry.jobId.slice(0, 8)}</button></small>
-                      )}
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-            {!report.entries.length && <p className="quiet-copy">这个范围没有明细记录。</p>}
-          </div>
-          {report.nextCursor && (
-            <button
-              className="button button-secondary usage-load-more"
-              disabled={more}
-              onClick={() => void loadMore()}
-            >
-              {more ? <Busy label="读取中" /> : '更多明细'}
-            </button>
-          )}
+          <UsageLedger
+            key={requestKey}
+            report={report}
+            quotes={quotes}
+            members={members.data?.members ?? []}
+            spaces={knownSpaces}
+            currentUserId={currentUserId}
+            more={state.more}
+            error={state.pageError}
+            onMore={() => void loadMore()}
+            onJob={(entry) => {
+              const reference = usageJobReference(entry);
+              if (reference) setJobDetail({ key: requestKey, target: { kind: 'job', reference } });
+            }}
+          />
         </>
       )}
-      {jobDetail && <UsageJob key={jobDetail} id={jobDetail} operator={operator} onClose={() => setJobDetail(null)} />}
+      <UsagePricing
+        quotes={quotes}
+        loading={legacy.loading || assistant.loading}
+        errors={[legacy.error, assistant.error].filter((value): value is string => !!value)}
+        onRefresh={() => setCatalogRefresh((value) => value + 1)}
+      />
+      <section className="usage-card usage-provider-entry" aria-label="供应商公开费率">
+        <div>
+          <h2>供应商公开费率</h2>
+          <p>输入、缓存、输出与音频等计量项；历史费用在关联任务中查看。</p>
+        </div>
+        <button
+          type="button"
+          className="button button-secondary"
+          onClick={() => setJobDetail({ key: requestKey, target: { kind: 'prices' } })}
+        >
+          查看模型公开费率
+        </button>
+      </section>
+      {jobDetail?.key === requestKey && (
+        <UsageJob
+          target={jobDetail.target}
+          identity={requestKey}
+          operator={operator}
+          onClose={() => setJobDetail(null)}
+        />
+      )}
     </section>
   );
 }

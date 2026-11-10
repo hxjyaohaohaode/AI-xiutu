@@ -1,3 +1,5 @@
+import { MotionDetails } from '../motion/Presence';
+import { ChoiceSelect } from '../components/ChoiceSelect';
 import { useState } from 'react';
 import { ArrowCounterClockwise, ArrowClockwise, CaretDown } from '@phosphor-icons/react';
 import { createColorBlockV3 } from '@ai-xiutu/editor';
@@ -121,34 +123,32 @@ export function AdvancedInspector({
               <div className="scope-selector" data-motion="scope-selector">
                 <label>
                   作用范围
-                  <select
-                    aria-label="参数作用范围"
+                  <ChoiceSelect
+                    ariaLabel="参数作用范围"
+                    size="compact"
                     value={scopeKey(scope)}
-                    onChange={(event) => {
-                      const [kind, id] = event.target.value.split(':');
+                    onValueChange={(value) => {
+                      const [kind, id] = value.split(':');
                       chooseScope(
                         kind === 'global'
                           ? { kind: 'global' }
                           : { kind: kind as 'region' | 'group', id: id! },
                       );
                     }}
-                  >
-                    <option value="global">整张照片</option>
-                    <optgroup label="单个局部">
-                      {recipe.regionEdits.map((r) => (
-                        <option key={r.id} value={'region:' + r.id}>
-                          {r.name}
-                        </option>
-                      ))}
-                    </optgroup>
-                    <optgroup label="多个局部分组">
-                      {recipe.regionGroups.map((g) => (
-                        <option key={g.id} value={'group:' + g.id}>
-                          {g.name}
-                        </option>
-                      ))}
-                    </optgroup>
-                  </select>
+                    options={[
+                      { value: 'global', label: '整张照片' },
+                      ...recipe.regionEdits.map((r) => ({
+                        value: 'region:' + r.id,
+                        label: r.name,
+                        description: '单个局部',
+                      })),
+                      ...recipe.regionGroups.map((g) => ({
+                        value: 'group:' + g.id,
+                        label: g.name,
+                        description: '多个局部分组',
+                      })),
+                    ]}
+                  />
                 </label>
                 {scope.kind !== 'global' && (
                   <small>仅改变所选范围的完整参数，其他局部保持独立。</small>
@@ -184,7 +184,15 @@ export function AdvancedInspector({
               />
             )}
             {group === 'beauty' && (
-              <PortraitControls controller={controller} onGroupChange={onGroupChange} onCutout={onCutout} />
+              <PortraitControls
+                controller={controller}
+                onGroupChange={onGroupChange}
+                onCutout={onCutout}
+                onSelectionCreated={(id) => {
+                  setRequestedScope({ kind: 'region', id });
+                  onGroupChange?.('local');
+                }}
+              />
             )}
             {group === 'repair' && <RepairControls controller={controller} />}
             {group === 'paint' && (
@@ -229,7 +237,7 @@ export function AdvancedInspector({
               </section>
             )}
             {scopedFamily && (
-              <details className="advanced-disclosure">
+              <MotionDetails className="advanced-disclosure">
                 <summary>恢复当前作用范围</summary>
                 <button
                   className="text-button"
@@ -246,7 +254,7 @@ export function AdvancedInspector({
                 <p className="control-note">
                   保留选区形状、其他人物、构图和合成图层；该操作可以撤销。
                 </p>
-              </details>
+              </MotionDetails>
             )}
           </>
         )}

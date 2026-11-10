@@ -1,3 +1,4 @@
+import { ChoiceSelect } from './ChoiceSelect';
 import { useEffect, useRef, useState } from 'react';
 import { api, errorMessage, formatDate, jsonRequest } from '../lib/api';
 import { Busy, InlineError } from './Ui';
@@ -143,14 +144,9 @@ export function UnknownJobsPanel() {
         </label>
         <label>
           任务类型
-          <select value={operation} onChange={(event) => setOperation(event.target.value)}>
-            <option value="">全部类型</option>
-            {Object.entries(operations).map(([id, label]) => (
-              <option key={id} value={id}>
-                {label}
-              </option>
-            ))}
-          </select>
+          <ChoiceSelect ariaLabel="待核验任务类型" value={operation} onValueChange={setOperation}
+            options={[{value:'',label:'全部类型'},...Object.entries(operations).map(([value,label])=>({value,label}))]}
+          />
         </label>
         <button type="submit" disabled={busy || loading}>
           查询任务
@@ -252,16 +248,10 @@ export function UnknownJobsPanel() {
           <fieldset disabled={busy}>
             <label>
               核验结论
-              <select
-                value={resolution}
-                onChange={(event) => {
-                  setResolution(event.target.value as 'settle' | 'release');
-                  setReviewed(false);
-                }}
-              >
-                <option value="settle">供应商已计费：结算预占额度</option>
-                <option value="release">证据确认未计费：释放预占额度</option>
-              </select>
+              <ChoiceSelect ariaLabel="任务核验结论" value={resolution} disabled={busy}
+                onValueChange={(value) => {setResolution(value); setReviewed(false);}}
+                options={[{value:'settle',label:'结算预占额度',description:'供应商已计费'},{value:'release',label:'释放预占额度',description:'证据确认未计费'}]}
+              />
             </label>
             <label>
               证据编号

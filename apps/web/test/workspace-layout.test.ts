@@ -2,6 +2,7 @@ import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import {
   boundPanel,
+  adaptWorkspaceLayout,
   canvasImageArea,
   defaultPanel,
   floatPanel,
@@ -23,6 +24,61 @@ import {
 const savedPanel: PanelGeometry = { dock: 'right', x: 700, y: 500, width: 330, height: 600 };
 const desktop: Viewport = { width: 1440, height: 900, bucket: 'desktop' };
 const phone: Viewport = { width: 390, height: 844, bucket: 'phone' };
+
+test('AI resize, numeric preferences and restored geometry preserve the usable composer minimum', () => {
+  for (const view of [phone, desktop]) {
+    const minimum = view.bucket === 'phone' ? 224 : 260;
+    const requested = { ...defaultPanel('ai', view), height: 1 };
+    assert.equal(boundPanel(requested, view, 'ai').height, minimum);
+    const resized = resizePanel(defaultPanel('ai', view), 'n', 0, 2000, view, 'ai');
+    assert.equal(resized.height, minimum);
+    const restored = parseWorkspaceLayout(
+      JSON.stringify({
+        theme: 'dark',
+        panels: { ai: requested, inspector: savedPanel },
+      }),
+      view,
+    );
+    assert.equal(restored.panels.ai.height, minimum);
+    const collapsed = panelRectangle({ ...restored.panels.ai, presentation: 'collapsed' }, view);
+    assert.equal(collapsed.height, 44, 'explicit collapse remains available');
+    const keyboard = { ...view, workspaceHeight: 180 };
+    const constrained = boundPanel(requested, keyboard, 'ai');
+    assert.equal(constrained.height, panelBounds(keyboard, requested.dock, 'ai').maxHeight);
+    assert.ok(
+      panelRectangle(constrained, keyboard).y + constrained.height <=
+        180 - panelBottomOffset(keyboard),
+    );
+  }
+});
+
+test('short phones retain a usable AI composer and scale attached preferences without erasing manual sizes', () => {
+  const short: Viewport = { width: 320, height: 568, bucket: 'phone' };
+  const panel = defaultPanel('ai', short);
+  assert.equal(panel.presentation, 'normal');
+  assert.ok(panel.height >= 224, 'header and composer must both fit');
+  assert.ok(canvasImageArea(short, workspaceCanvasInsets(panel, short)).height >= 90);
+  const saved = {
+    theme: 'dark' as const,
+    viewport: { height: phone.height },
+    panels: {
+      inspector: defaultPanel('inspector', phone),
+      ai: defaultPanel('ai', phone),
+    },
+  };
+  const smaller = adaptWorkspaceLayout(saved, short);
+  assert.ok(smaller.panels.ai.height < 260);
+  assert.equal(smaller.panels.ai.width, 320);
+  const returned = adaptWorkspaceLayout(smaller, phone);
+  assert.ok(Math.abs(returned.panels.ai.height - saved.panels.ai.height) < 1e-8);
+  assert.equal(saved.panels.ai.height, 390, 'adapting never mutates stored preferences');
+  const keyboard = adaptWorkspaceLayout(saved, { ...phone, workspaceHeight: 450 });
+  assert.equal(
+    keyboard.viewport?.height,
+    phone.height,
+    'keyboard constraints do not redefine the saved viewport',
+  );
+});
 
 test('844×390 restores all dock modes inside the workspace and above the reachable toolbar', () => {
   const view: Viewport = { width: 844, height: 390, bucket: 'tablet' };
@@ -46,7 +102,7 @@ test('continuous panel sizes are bounded by available pixels, not a 330px produc
   assert.equal(maximum.height, 740);
 });
 
-test('phone width, height, floating positions and side docking remain user choices', () => {
+test('phone floating width and positions remain adjustable while an attached sheet follows viewport width', () => {
   const value = boundPanel(
     { ...savedPanel, dock: 'floating', x: 19, y: 63, width: 271, height: 510 },
     phone,
@@ -57,7 +113,8 @@ test('phone width, height, floating positions and side docking remain user choic
   assert.equal(value.x, 19);
   assert.equal(value.y, 63);
   assert.equal(boundPanel({ ...value, dock: 'left' }, phone).dock, 'left');
-  assert.equal(boundPanel({ ...value, dock: 'bottom' }, phone).width, 271);
+  assert.equal(boundPanel({ ...value, dock: 'bottom' }, phone).width, phone.width);
+  assert.equal(boundPanel({ ...value, dock: 'bottom' }, { ...phone, width: 430 }).width, 430);
 });
 
 test('a very large docked panel never automatically covers the photo; explicit overlay remains available', () => {
