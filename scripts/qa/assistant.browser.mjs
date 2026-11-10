@@ -720,11 +720,40 @@ try {
       try {
         const input = page.getByLabel('向智能体描述修改需求');
         await input.fill('收起面板时继续这轮请求。');
+        const admitted = page.waitForResponse(
+          (response) =>
+            response.request().method() === 'POST' &&
+            new URL(response.url()).pathname.endsWith('/assistant-turns'),
+        );
         await input.press('Control+Enter');
+        const admission = await admitted;
+        assert.equal(admission.status(), 202);
+        const turn = await admission.json();
+        assert.equal(typeof turn.id, 'string');
         await until(() => firstDelta, 'keyboard-submitted response in flight');
-        const partialVisible = () =>
-          page.locator('.assistant-messages').innerText().then((text) => text.includes(sentence));
-        await until(partialVisible, 'the in-flight text is painted before hiding the panel');
+        // The provider enqueue precedes durable SSE delivery. Establish content
+        // in the actual conversation before testing that hiding retains it.
+        const incrementalReply = page
+          .locator('.assistant-messages .assistant-message.assistant')
+          .getByText(sentence, { exact: true });
+        const partialVisible = async () =>
+          (await incrementalReply.isVisible()) &&
+          (await page.locator('.assistant-messages').innerText()).includes(sentence);
+        await until(
+          partialVisible,
+          'the complete incremental assistant reply is visible before hiding',
+        );
+        const inFlight = await fixture.call('GET', `/v1/assistant-turns/${turn.id}`);
+        assert.equal(inFlight.statusCode, 200);
+        assert.equal(inFlight.json().state, 'running');
+        const stop = page.getByRole('button', { name: '停止本轮执行', exact: true });
+        assert.equal(await stop.isEnabled(), true);
+        assert.equal(await page.locator('.live-assistant .ai-pending-strip').count(), 0);
+        assert.equal(await input.isEditable(), false, 'the original request still locks sending');
+        assert.equal(
+          await page.getByRole('button', { name: '发送协作请求', exact: true }).isEnabled(),
+          false,
+        );
         await closeAIPanel();
         const banner = page.locator('.ai-activity-banner');
         await banner.getByText('AI 正在处理请求', { exact: true }).waitFor();
@@ -735,8 +764,14 @@ try {
         );
         assert.equal(await page.locator('.live-assistant').isVisible(), false);
         await banner.getByRole('button', { name: '返回 AI 助手', exact: true }).click();
-        await page.getByRole('button', { name: '停止本轮执行', exact: true }).waitFor();
-        await until(partialVisible, 'the same in-flight text remains after reopening the panel');
+        await stop.waitFor();
+        await until(
+          partialVisible,
+          'the retained incremental assistant reply is visible after returning',
+        );
+        assert.ok((await page.locator('.assistant-messages').innerText()).includes(sentence));
+        assert.equal(await stop.isEnabled(), true);
+        assert.equal(await page.locator('.live-assistant .ai-pending-strip').count(), 0);
         assert.equal(turnAdmissions, before.admissions + 1);
         assert.equal(dispatches, before.dispatches + 2);
         holdCompletion = false;
@@ -744,6 +779,9 @@ try {
         assert.equal((await head()).artwork.headVersion, before.version);
         return {
           keyboardSubmit: true,
+          visibleReplyBeforeHide: true,
+          retainedReplyAfterReturn: true,
+          knownRunningRequestWithoutDuplicateRecovery: true,
           retainedMountedOwner: true,
           admissions: 1,
           fixtureDispatches: 2,

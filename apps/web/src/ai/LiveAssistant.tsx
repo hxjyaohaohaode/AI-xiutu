@@ -1707,15 +1707,25 @@ export function LiveAssistant(props: LiveAssistantProps) {
     (!inCall || callState === 'active');
   const hasVoiceRecovery =
     !inCall && (!!pendingVoiceSubmission || !!pendingTeamVoiceSubmission || !!voiceRecoveryError);
-  const recoveryLabel = pendingSubmission
-    ? pendingSubmission.state === 'unknown'
-      ? '本轮结果待核验，发送已暂停'
-      : busy
-        ? '正在处理本轮请求'
-        : '本轮请求已保留，请先核对结果'
-    : hasVoiceRecovery
-      ? '语音结果待确认，暂停发起新通话'
-      : '';
+  // The matching live observer already exposes progress and stop. Its checkpoint
+  // still blocks new submissions; uncertain or unobserved requests keep recovery visible.
+  const observingCurrentSubmission =
+    busy &&
+    activeTurn !== null &&
+    pendingSubmission?.state === 'running' &&
+    pendingSubmission.actorId === actorId &&
+    pendingSubmission.projectId === project?.id &&
+    activeTurn.id === pendingSubmission.turnId;
+  const recoveryLabel =
+    pendingSubmission && !observingCurrentSubmission
+      ? pendingSubmission.state === 'unknown'
+        ? '本轮结果待核验，发送已暂停'
+        : busy
+          ? '正在处理本轮请求'
+          : '本轮请求已保留，请先核对结果'
+      : hasVoiceRecovery
+        ? '语音结果待确认，暂停发起新通话'
+        : '';
   const executionLabel = { suggest: '只建议', confirm: '预览确认', auto: '预算内自动执行' }[
     creative.mode
   ];
