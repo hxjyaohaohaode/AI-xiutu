@@ -297,6 +297,44 @@
   border-color: var(--on-image);
 }
 
+/* Canvas errors and source-coordinate guidance take their real height before
+   transient notices. The stable slot is hidden during an outgoing editor view. */
+.workspace-canvas-status {
+  flex: 0 0 auto;
+  min-width: 0;
+}
+.workspace-canvas-status[hidden] {
+  display: none;
+}
+.workspace-canvas-status > .canvas-error {
+  position: static;
+  inset: auto;
+  z-index: auto;
+  width: auto;
+  max-width: none;
+  display: grid;
+  gap: 6px;
+  pointer-events: auto;
+}
+.workspace-canvas-status > .canvas-error:not(:empty) {
+  padding: 8px max(12px, env(safe-area-inset-right)) 8px max(12px, env(safe-area-inset-left));
+}
+.workspace-canvas-status .canvas-error > :is(.inline-error, .source-frame-note) {
+  min-width: 0;
+  max-width: min(100%, 520px);
+  margin: 0 auto;
+  overflow-wrap: anywhere;
+}
+.workspace-canvas-status .canvas-error > .inline-error {
+  width: 100%;
+}
+.workspace-canvas-status .inline-error > svg {
+  flex: none;
+}
+.workspace-canvas-status .inline-error > span {
+  min-width: 0;
+}
+
 /* The zero-height anchor follows the real header/status stack. Notifications
    stay clear of live controls without moving the canvas or guessing bar heights. */
 .workspace-notice-anchor {

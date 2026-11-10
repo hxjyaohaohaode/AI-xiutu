@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useRef, useState, type DragEvent, type PointerEvent } from 'react';
+import { createPortal } from 'react-dom';
 import {
   Plus,
   UploadSimple,
@@ -215,6 +216,7 @@ const isTyping = (target: EventTarget | null) =>
 
 export function CanvasStage({
   editor,
+  statusContainer,
   collaboration,
   group,
   onImport,
@@ -226,6 +228,7 @@ export function CanvasStage({
   onSample,
 }: {
   editor: EditorState;
+  statusContainer: HTMLElement | null;
   collaboration?: CollaborationState;
   group: ToolGroup;
   onImport: (file?: File) => void;
@@ -1297,14 +1300,18 @@ export function CanvasStage({
       {previews.remote && (
         <div className="collaboration-preview-note">队员调整预览 · 尚未保存为版本</div>
       )}
-      <div className="canvas-error">
-        {sourceSelectionFrame && (
-          <span className="source-frame-note">
-            正在液化前的源坐标编辑 · 返回其他工具查看最终效果
-          </span>
+      {statusContainer &&
+        createPortal(
+          <div className="canvas-error">
+            {sourceSelectionFrame && (
+              <span className="source-frame-note">
+                正在液化前的源坐标编辑 · 返回其他工具查看最终效果
+              </span>
+            )}
+            <InlineError message={editor.error ?? previews.error ?? notice} />
+          </div>,
+          statusContainer,
         )}
-        <InlineError message={editor.error ?? previews.error ?? notice} />
-      </div>
       <div
         className={`image-viewport ${editingSelection ? 'placement-mode' : ''} ${zoom > 1 || handMode || space ? 'can-pan' : ''} ${sampling ? 'sampling' : ''}`}
         ref={viewport}

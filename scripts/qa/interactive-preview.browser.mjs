@@ -215,7 +215,146 @@ async function verifyWorkerRecovery({ png, source }) {
     result.visibleError = await error.innerText();
     assert.match(result.visibleError, /图像处理暂时中断/);
     assert.match(result.visibleError, /重新导入/);
+    // A real layout-reset action creates a fresh notification without changing
+    // the failed source or draft. Do not race the original import toast's timer.
+    await page.getByRole('button', { name: '布局与工作台设置', exact: true }).click();
+    const settings = page.getByRole('dialog', { name: '工作台设置', exact: true });
+    await settings.getByRole('button', { name: '重置当前屏幕布局', exact: true }).click();
+    await settings.waitFor({ state: 'hidden' });
+    await page.waitForFunction(() => !document.querySelector('dialog[open]'));
+    const noticeText = '已恢复当前屏幕的默认布局。';
+    await page.locator('.toast').getByText(noticeText, { exact: true }).waitFor();
+    await page.waitForFunction(
+      (message) =>
+        [...document.querySelectorAll('.toast')].some(
+          (toast) =>
+            toast.querySelector(':scope > span')?.textContent?.trim() === message &&
+            toast.checkVisibility({ checkOpacity: true, checkVisibilityCSS: true }) &&
+            !toast.inert &&
+            toast.getAttribute('aria-hidden') !== 'true',
+        ),
+      noticeText,
+    );
+    const errorVisibility = await error.evaluate((element, expectedNotice) => {
+      const rect = (bounds) => {
+        const { x, y, top, right, bottom, left, width, height } = bounds;
+        return { x, y, top, right, bottom, left, width, height };
+      };
+      const box = rect(element.getBoundingClientRect());
+      const clipping = (node) => {
+        const clip = { top: 0, right: innerWidth, bottom: innerHeight, left: 0 };
+        const ancestors = [];
+        for (let parent = node.parentElement; parent; parent = parent.parentElement) {
+          const style = getComputedStyle(parent);
+          const bounds = parent.getBoundingClientRect();
+          const viewport = {
+            left: bounds.left + parent.clientLeft,
+            top: bounds.top + parent.clientTop,
+            right: bounds.left + parent.clientLeft + parent.clientWidth,
+            bottom: bounds.top + parent.clientTop + parent.clientHeight,
+          };
+          if (/^(auto|scroll|hidden|clip|overlay)$/.test(style.overflowX)) {
+            clip.left = Math.max(clip.left, viewport.left);
+            clip.right = Math.min(clip.right, viewport.right);
+          }
+          if (/^(auto|scroll|hidden|clip|overlay)$/.test(style.overflowY)) {
+            clip.top = Math.max(clip.top, viewport.top);
+            clip.bottom = Math.min(clip.bottom, viewport.bottom);
+          }
+          ancestors.push({
+            tag: parent.tagName,
+            className: parent.className,
+            overflowX: style.overflowX,
+            overflowY: style.overflowY,
+            viewport,
+          });
+        }
+        return { clip, ancestors };
+      };
+      const { clip, ancestors } = clipping(element);
+      const message = element.querySelector(':scope > span');
+      if (!message) throw new Error('The actual canvas error has no message span');
+      const range = document.createRange();
+      range.selectNodeContents(message);
+      const textRects = [...range.getClientRects()]
+        .map(rect)
+        .filter((line) => line.width > 0 && line.height > 0);
+      const toasts = [...document.querySelectorAll('.toast')]
+        .filter((toast) => toast.checkVisibility({ checkOpacity: true, checkVisibilityCSS: true }))
+        .map((toast) => ({
+          box: rect(toast.getBoundingClientRect()),
+          clip: clipping(toast).clip,
+          text: toast.querySelector(':scope > span')?.textContent?.trim(),
+          active: !toast.inert && toast.getAttribute('aria-hidden') !== 'true',
+        }))
+        .filter((toast) => toast.box.width > 0 && toast.box.height > 0);
+      const hit = (x, y) => {
+        const target = document.elementFromPoint(x, y);
+        return { x, y, unobscured: target === element || element.contains(target) };
+      };
+      return {
+        notificationSource: 'actual user action: reset current screen layout',
+        expectedNotice,
+        message: range.toString(),
+        visible: element.checkVisibility({ checkOpacity: true, checkVisibilityCSS: true }),
+        box,
+        clip,
+        ancestors,
+        textRects,
+        toasts,
+        center: hit(box.x + box.width / 2, box.y + box.height / 2),
+        textSamples: textRects.flatMap((line) =>
+          [0.1, 0.5, 0.9].map((fraction) =>
+            hit(line.left + line.width * fraction, line.top + line.height / 2),
+          ),
+        ),
+      };
+    }, noticeText);
+    result.errorVisibility = errorVisibility;
     await page.screenshot({ path: resolve(artifacts, 'worker-recovery-error.png') });
+    const fits = (box, clip) =>
+      box.left >= clip.left - 1 &&
+      box.top >= clip.top - 1 &&
+      box.right <= clip.right + 1 &&
+      box.bottom <= clip.bottom + 1;
+    const overlaps = (a, b) =>
+      a.left < b.right && a.right > b.left && a.top < b.bottom && a.bottom > b.top;
+    assert.equal(errorVisibility.visible, true, 'the actual canvas error stays visible');
+    assert.equal(
+      errorVisibility.message,
+      result.visibleError,
+      'the full failure explanation survives layout reset',
+    );
+    assert.ok(errorVisibility.textRects.length > 0, 'the error explanation has real text layout');
+    assert.ok(
+      errorVisibility.toasts.some(
+        (toast) => toast.active && toast.text === noticeText && fits(toast.box, toast.clip),
+      ),
+      'the real layout-reset notification and canvas error are visible together',
+    );
+    assert.ok(
+      fits(errorVisibility.box, errorVisibility.clip),
+      'the full alert fits every clipping ancestor',
+    );
+    assert.ok(
+      errorVisibility.textRects.every(
+        (line) => fits(line, errorVisibility.clip) && fits(line, errorVisibility.box),
+      ),
+      'every line of the error explanation fits the alert and effective viewport',
+    );
+    assert.ok(
+      errorVisibility.toasts.every(
+        (toast) =>
+          !overlaps(errorVisibility.box, toast.box) &&
+          errorVisibility.textRects.every((line) => !overlaps(line, toast.box)),
+      ),
+      'actual visible notifications do not cover any part of the canvas error',
+    );
+    assert.ok(
+      errorVisibility.center.unobscured &&
+        errorVisibility.textSamples.every((sample) => sample.unobscured),
+      'the alert centre and three points on every text line are unobscured',
+    );
     const afterFailure = await downloadRecipe();
     assert.deepEqual(
       afterFailure.recipe,

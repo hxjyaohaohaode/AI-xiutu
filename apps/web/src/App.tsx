@@ -186,6 +186,7 @@ export function App() {
   const [opening, setOpening] = useState(false);
   const [notice, setNotice] = useState<Notice | null>(null);
   const [noticeContainer, setNoticeContainer] = useState<HTMLDivElement | null>(null);
+  const [canvasStatusContainer, setCanvasStatusContainer] = useState<HTMLDivElement | null>(null);
   const [refreshToken, setRefreshToken] = useState(0);
   const [entitlements, setEntitlements] = useState<{
     available: number;
@@ -1697,6 +1698,12 @@ export function App() {
                 </button>
               </div>
             )}
+            <div
+              className="workspace-canvas-status"
+              ref={setCanvasStatusContainer}
+              hidden={view !== 'editor'}
+              inert={view !== 'editor'}
+            />
             <div className="workspace-notice-anchor" ref={setNoticeContainer} />
             <div className="workspace-body">
               <MotionSwitch
@@ -1735,6 +1742,7 @@ export function App() {
                       )}
                       <CanvasStage
                         editor={editor}
+                        statusContainer={canvasStatusContainer}
                         collaboration={collaboration}
                         group={group}
                         onImport={(file) => void importFile(file)}
