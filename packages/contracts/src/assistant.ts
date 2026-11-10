@@ -84,6 +84,7 @@ export const voiceClientEventSchema = z.discriminatedUnion('type', [
     })
     .strict(),
   z.object({ type: z.literal('text'), text: z.string().trim().min(1).max(4000) }).strict(),
+  z.object({ type: z.literal('search'), search: assistantPublicSearchSchema }).strict(),
   z.object({ type: z.literal('context.invalidate') }).strict(),
   z
     .object({
@@ -93,6 +94,13 @@ export const voiceClientEventSchema = z.discriminatedUnion('type', [
     })
     .strict(),
   z.object({ type: z.literal('mute'), muted: z.boolean() }).strict(),
+  z
+    .object({
+      type: z.literal('playback-cut'),
+      itemId: z.string().max(128),
+      playedMs: z.number().int().min(0).max(600_000),
+    })
+    .strict(),
   z
     .object({
       type: z.literal('interrupt'),
@@ -153,6 +161,7 @@ export const assistantSearchEvidenceSchema = z.discriminatedUnion('kind', [
   z.object({
     kind: z.literal('web'),
     query: z.string().max(240),
+    requested: z.enum(['text', 'images']).optional(),
     sources: z.array(z.object({ url: searchLink, title: z.string().max(300) })).max(20),
     images: z
       .array(
@@ -194,7 +203,8 @@ export type VoiceServerEvent =
       startMs?: number;
       endMs?: number;
     }
-  | { type: 'interrupted' }
+  | { type: 'interrupted'; bySpeech?: true }
+  | { type: 'search-started' }
   | { type: 'context'; accepted: boolean; imageShared: boolean; contextTag?: string }
   | { type: 'tool'; name: string; state: 'running' | 'completed' | 'failed' }
   | {

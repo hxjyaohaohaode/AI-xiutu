@@ -55,6 +55,16 @@ jobs:
           if-no-files-found: error
       - name: Assistant permissions, memory, streaming, conversations and generated workspace
         run: node --import tsx scripts/qa/assistant.browser.mjs
+      - name: Team voice microphones, permissions and shared AI speaker
+        run: node --import tsx scripts/qa/team-voice.browser.mjs
+      - name: Preserve team voice evidence
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: browser-team-voice-${{ github.sha }}
+          path: artifacts/browser-team-voice
+          retention-days: 14
+          if-no-files-found: error
       - name: Real portrait inference and full/tiled pixel comparison
         run: |
           npm run vision:prepare

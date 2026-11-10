@@ -85,6 +85,29 @@ test('voice recovery freezes its own schema, context, grant and key before prepa
   );
 });
 
+test('new voice preparation retains web permission but never carries a stale text-search query', () => {
+  const original = input();
+  const prepared = freezeVoiceSubmission({
+    ...original,
+    body: {
+      ...original.body,
+      scope: {
+        ...original.body.scope,
+        allowWebSearch: true,
+        publicSearch: { query: '文字模式留下的检索词', kind: 'images' },
+      },
+    },
+  });
+  const request = voiceSubmissionRequest(prepared);
+  const posted = JSON.parse(request.init.body as string);
+  assert.equal(posted.scope.allowWebSearch, true);
+  assert.equal(posted.scope.publicSearch, undefined);
+  assert.equal(posted.scope.executionGrantId, grantId);
+  const checkpoint = storage();
+  saveVoiceSubmission(checkpoint, prepared);
+  assert.deepEqual(voiceSubmissionRequest(readVoiceSubmission(checkpoint, 'actor-a')!), request);
+});
+
 test('a lost preparation receipt keeps the same key; existing preparations return 409 without a new ticket', async () => {
   const checkpoint = storage();
   const original = freezeVoiceSubmission(input());

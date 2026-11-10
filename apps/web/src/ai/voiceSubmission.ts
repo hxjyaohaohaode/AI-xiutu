@@ -7,6 +7,11 @@ import {
   restoreRequestBody,
   type RequestPayloadCache,
 } from './requestPayload';
+import {
+  assertNoOtherVoiceSubmission,
+  notifyVoiceSubmissionChanged,
+  voiceSubmissionStorageKey,
+} from './voiceSubmissionStorage';
 
 type CheckpointStorage = Pick<Storage, 'getItem' | 'setItem' | 'removeItem'>;
 
@@ -24,7 +29,7 @@ export interface VoiceSubmission {
   readonly state: 'unconfirmed' | 'prepared' | 'active' | 'unknown' | 'already-prepared';
 }
 
-const storageKey = (actorId: string) => `xiutu:voice-submission:${actorId}`;
+const storageKey = (actorId: string) => voiceSubmissionStorageKey(actorId, 'individual');
 const payloadKey = (value: Pick<VoiceSubmission, 'actorId' | 'idempotencyKey'>) =>
   `${storageKey(value.actorId)}:${value.idempotencyKey}`;
 const validId = (value: unknown): value is string =>
@@ -38,7 +43,10 @@ export function freezeVoiceSubmission(
     createdAt?: number;
   },
 ): VoiceSubmission {
-  const body = voiceSessionSchema.parse(input.body);
+  const parsed = voiceSessionSchema.parse(input.body);
+  // Public lookup is an explicit in-call action. A query left in the text
+  // composer must not be dispatched by a newly prepared voice session.
+  const body = { ...parsed, scope: { ...parsed.scope, publicSearch: undefined } };
   const requestBody = JSON.stringify(body);
   return Object.freeze({
     schema: 'voice-session-v1',
@@ -103,6 +111,7 @@ export function saveVoiceSubmission(
   payloads: RequestPayloadCache = requestPayloads,
 ): void {
   const previous = readVoiceSubmission(storage, value.actorId, payloads);
+  if (!previous) assertNoOtherVoiceSubmission(storage, value.actorId, 'individual');
   if (previous && previous.idempotencyKey !== value.idempotencyKey)
     throw new Error('上次通话的最终状态尚未确认，请先核对原通话。');
   if (previous && previous.requestHash !== value.requestHash)
@@ -123,6 +132,7 @@ export function saveVoiceSubmission(
       state: value.state,
     }),
   );
+  notifyVoiceSubmissionChanged();
 }
 
 export function voiceSubmissionRequest(value: VoiceSubmission): {
@@ -180,6 +190,7 @@ export function clearVoiceSubmission(
   if (previous?.idempotencyKey === value.idempotencyKey) {
     storage.removeItem(storageKey(value.actorId));
     payloads.delete(payloadKey(value));
+    notifyVoiceSubmissionChanged();
   }
 }
 

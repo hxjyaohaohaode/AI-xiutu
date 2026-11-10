@@ -584,7 +584,7 @@ test(
       assert.equal(done.state, 'completed', JSON.stringify(done));
       assert.equal(wire.length, 3);
       assert.equal(wire[0].input, 'lake at dusk');
-      assert.deepEqual(wire[0].tools[0].search_content_types, ['text', 'image']);
+      assert.deepEqual(wire[0].tools[0].search_content_types, ['image', 'text']);
       assert.ok(!JSON.stringify(wire[0]).includes('私密项目意图'));
       assert.ok(!wire[1].tools.some((tool: any) => tool.type === 'web_search'));
       assert.match(JSON.stringify(wire[2].input), /湖面 参考/);
@@ -593,6 +593,7 @@ test(
         ['web', 'cloud'],
       );
       assert.equal(done.output.search[0].images.length, 1);
+      assert.equal(done.output.search[0].requested, 'images');
       assert.equal(done.output.search[1].resources[0].id, f.assetId);
       const events = await f.call('GET', `/v1/assistant-turns/${id}/events`);
       assert.equal((events.body.match(/"type":"search.results"/g) ?? []).length, 2);
@@ -1885,7 +1886,9 @@ test(
       vendorSockets: WebSocket[] = [];
     let autoReady = true,
       finalUsage = true,
+      voiceSearchFixture = false,
       deferredFetch: Promise<Response> | undefined;
+    const voiceSearchBodies: any[] = [];
     vendor.on('connection', (ws) => {
       vendorSockets.push(ws);
       ws.on('message', (data) => {
@@ -1895,6 +1898,15 @@ test(
           ws.send(JSON.stringify({ type: 'session.started', session: { id: 'local-live' } }));
         if (event.type === 'session.update' && autoReady)
           ws.send(JSON.stringify({ type: 'session.updated', session: { id: 'local-realtime' } }));
+        if (event.type === 'session.instructions.append') {
+          assert.match(event.event_id, /^evt_[a-f0-9-]{36}$/);
+          ws.send(
+            JSON.stringify({
+              type: 'error',
+              error: { code: 'context_injection_incomplete', client_event_id: event.event_id },
+            }),
+          );
+        }
         if (event.type === 'session.close')
           ws.send(
             JSON.stringify({
@@ -1913,7 +1925,36 @@ test(
       },
       fetcher: async (_url, init) => {
         requests++;
-        const input = JSON.parse(String(init?.body)).input;
+        const body = JSON.parse(String(init?.body));
+        const input = body.input;
+        if (voiceSearchFixture) {
+          if (typeof input === 'string') {
+            voiceSearchBodies.push(body);
+            return response([
+              { type: 'web_search_call', status: 'completed' },
+              {
+                type: 'message',
+                role: 'assistant',
+                content: [
+                  {
+                    type: 'output_text',
+                    text: '资料说明逆光时应考虑补光。',
+                    annotations: [
+                      {
+                        type: 'url_citation',
+                        url: 'https://example.com/lighting',
+                        title: '补光资料',
+                        start_index: 0,
+                        end_index: 4,
+                      },
+                    ],
+                  },
+                ],
+              },
+            ]);
+          }
+          return response([outputText('我找到了补光参考。')]);
+        }
         const continuation =
           Array.isArray(input) && input.some((item) => item.type === 'function_call_output');
         return (
@@ -1998,6 +2039,11 @@ test(
           );
           const result = await stream.wait('assistant-result');
           assert.equal(result.candidates[0].recipe.adjustments.exposure, -1.5);
+          ws.send(JSON.stringify({ type: 'interrupt' }));
+          await stream.wait('interrupted');
+          assert.equal((await stream.wait('error')).code, 'VOICE_CONTEXT_UPDATE_UNCONFIRMED');
+          ws.send(JSON.stringify({ type: 'ping' }));
+          await stream.wait('pong');
           assert.equal(
             (
               await f.db.query('SELECT head_version FROM artworks WHERE id=$1', [
@@ -2121,6 +2167,12 @@ test(
         'Realtime uses its own protocol and streams audio without recording upload',
         async () => {
           const stream = await openVoice('gpt-realtime-2.1');
+          const beforeSearch = requests;
+          stream.ws.send(
+            JSON.stringify({ type: 'search', search: { kind: 'text', query: '未授权查找' } }),
+          );
+          assert.equal((await stream.wait('error')).code, 'VOICE_PUBLIC_SEARCH_UNAVAILABLE');
+          assert.equal(requests, beforeSearch);
           stream.ws.send(
             JSON.stringify({ type: 'audio', pcm: Buffer.alloc(960).toString('base64') }),
           );
@@ -2142,8 +2194,14 @@ test(
             }),
           );
           assert.equal((await stream.wait('audio')).itemId, 'item-fixture');
+          vendorSockets.at(-1)!.send(JSON.stringify({ type: 'input_audio_buffer.speech_started' }));
+          assert.equal((await stream.wait('interrupted')).bySpeech, true);
+          const cutStart = received.length;
           stream.ws.send(
-            JSON.stringify({ type: 'interrupt', itemId: 'item-fixture', playedMs: 10000 }),
+            JSON.stringify({ type: 'playback-cut', itemId: 'wrong-item', playedMs: 10 }),
+          );
+          stream.ws.send(
+            JSON.stringify({ type: 'playback-cut', itemId: 'item-fixture', playedMs: 10000 }),
           );
           await until(
             async () => received.find((event) => event.type === 'conversation.item.truncate'),
@@ -2153,6 +2211,12 @@ test(
             received.find((event) => event.type === 'conversation.item.truncate').audio_end_ms,
             20,
           );
+          assert.equal(
+            received.slice(cutStart).filter((event) => event.type === 'conversation.item.truncate')
+              .length,
+            1,
+          );
+          assert.ok(!received.slice(cutStart).some((event) => event.type === 'response.cancel'));
           vendorSockets.at(-1)!.send(
             JSON.stringify({
               type: 'response.done',
@@ -2178,6 +2242,94 @@ test(
           assert.equal(receipt.responseReceiptsComplete, true);
           assert.equal(receipt.responseReceipts, 1);
           assert.equal(receipt.billingBasis, 'configured_session_unit');
+        },
+      );
+      await t.test(
+        'live typed and explicit spoken public search isolate the query and use one allowance',
+        async () => {
+          f.scope.allowWebSearch = true;
+          voiceSearchFixture = true;
+          try {
+            const typed = await openVoice('gpt-live-1', 'editor');
+            typed.ws.send(
+              JSON.stringify({
+                type: 'search',
+                search: { kind: 'text', query: '公开人物补光参考' },
+              }),
+            );
+            await typed.wait('search-started');
+            assert.equal(
+              (await typed.wait('assistant-result')).search[0].sources[0].url,
+              'https://example.com/lighting',
+            );
+            typed.ws.send(
+              JSON.stringify({ type: 'search', search: { kind: 'text', query: '第二次不可派发' } }),
+            );
+            assert.equal((await typed.wait('error')).code, 'VOICE_PUBLIC_SEARCH_UNAVAILABLE');
+            typed.ws.send(JSON.stringify({ type: 'end' }));
+            assert.equal((await typed.wait('closed')).state, 'closed');
+            const spoken = await openVoice('gpt-live-1', 'editor');
+            vendorSockets.at(-1)!.send(
+              JSON.stringify({
+                type: 'session.input_transcript.delta',
+                delta: '内部的画布配方',
+                start_ms: 30,
+                end_ms: 490,
+              }),
+            );
+            vendorSockets.at(-1)!.send(
+              JSON.stringify({
+                type: 'session.input_transcript.delta',
+                delta: '公开搜索：逆光补光资料',
+                start_ms: 2400,
+                end_ms: 4800,
+              }),
+            );
+            vendorSockets.at(-1)!.send(
+              JSON.stringify({
+                type: 'session.delegation.created',
+                delegation: { id: 'public-literal', target: 'client' },
+              }),
+            );
+            await spoken.wait('search-started');
+            assert.equal((await spoken.wait('assistant-result')).search[0].query, '逆光补光资料');
+            for (const id of ['allowed-second', 'allowed-third', 'over-limit'])
+              vendorSockets
+                .at(-1)!
+                .send(
+                  JSON.stringify({
+                    type: 'session.delegation.created',
+                    delegation: { id, target: 'client' },
+                  }),
+                );
+            assert.equal((await spoken.wait('error')).code, 'VOICE_DELEGATION_LIMIT');
+            await until(
+              async () =>
+                spoken.messages.filter((event) => event.type === 'assistant-result').length,
+              (count) => count === 3,
+            );
+            spoken.ws.send(JSON.stringify({ type: 'ping' }));
+            await spoken.wait('pong');
+            assert.ok(!spoken.messages.some((event) => event.type === 'closed'));
+            spoken.ws.send(JSON.stringify({ type: 'end' }));
+            assert.equal((await spoken.wait('closed')).state, 'closed');
+            assert.deepEqual(
+              voiceSearchBodies.map((body) => body.input),
+              ['公开人物补光参考', '逆光补光资料'],
+            );
+            assert.ok(
+              voiceSearchBodies.every(
+                (body) =>
+                  body.tools.length === 1 &&
+                  body.tools[0].type === 'web_search' &&
+                  !JSON.stringify(body).includes('内部的画布配方') &&
+                  !JSON.stringify(body).includes(f.assetId),
+              ),
+            );
+          } finally {
+            f.scope.allowWebSearch = false;
+            voiceSearchFixture = false;
+          }
         },
       );
       await t.test(

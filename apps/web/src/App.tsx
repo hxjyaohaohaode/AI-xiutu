@@ -89,6 +89,8 @@ import { UsageDashboard } from './usage/UsageDashboard';
 import { ResourceSearch } from './resources/ResourceSearch';
 import { useCollaboration } from './collaboration/useCollaboration';
 import { CollaborationStatus } from './collaboration/CollaborationStatus';
+import { TeamVoiceBanner } from './collaboration/TeamVoiceBanner';
+import { useTeamVoice } from './collaboration/useTeamVoice';
 import { captureRenderedImage } from './editor/capture';
 import {
   ExportDialog,
@@ -151,6 +153,13 @@ export function App() {
   const [assets, setAssets] = useState<Asset[]>([]);
   const [artworks, setArtworks] = useState<Artwork[]>([]);
   const [artwork, setArtwork] = useState<Artwork | null>(null);
+  const teamVoiceArtwork =
+    session.user &&
+    project &&
+    session.spaces.some((space) => space.id === project.spaceId && space.kind === 'team')
+      ? artwork?.id
+      : undefined;
+  const teamVoice = useTeamVoice(teamVoiceArtwork, session.user?.id);
   const [asset, setAsset] = useState<Asset | null>(null);
   const [revision, setRevision] = useState<Revision | null>(null);
   const [savedRecipe, setSavedRecipeState] = useState<string | null>(null);
@@ -1550,6 +1559,9 @@ export function App() {
                 </button>
               </div>
             )}
+            {view !== 'editor' && teamVoice.state !== 'idle' && (
+              <TeamVoiceBanner room={teamVoice} onReturn={() => changeView('editor')} />
+            )}
             <div className="workspace-body">
               {view === 'editor' ? (
                 <>
@@ -1571,11 +1583,13 @@ export function App() {
                         </IconButton>
                       </div>
                     )}
-                    {collaboration.enabled && (
+                    {(collaboration.enabled || teamVoiceArtwork) && (
                       <CollaborationStatus
                         collaboration={collaboration}
                         onReload={() => void openArtwork(artwork!.id)}
                         onFork={() => project && void saveToProject(project, true)}
+                        teamVoice={teamVoiceArtwork ? teamVoice : undefined}
+                        captureVoiceContext={captureCurrentImage}
                       />
                     )}
                     <CanvasStage

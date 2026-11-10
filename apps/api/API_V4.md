@@ -327,14 +327,16 @@ The client sends only these application events, not arbitrary provider events:
 | --------- | ----------------------------------------------------------------------------------------------------------------- |
 | audio     | `pcm`: canonical base64 PCM16 mono24kHz, maximum9600 decoded bytes per chunk; rate budget144000 bytes per2seconds |
 | text      | `text`:1..4000 characters; reviewed before sending, with control/in-flight-response backpressure                  |
+| search    | `search:{query,kind}` submits an explicit public query during a call. One public lookup per call, with prior web permission and matching model capability. |
 | context   | `context`: a fresh explicit editor snapshot, no more often than once per2.5seconds. Optional `contextTag` is echoed in the acceptance event. |
 | context.invalidate | Invalidate the previous snapshot and advance the context generation. A pending or published old candidate cannot be applied to the changed canvas. |
 | mute      | `muted:boolean`; muted audio is not forwarded                                                                     |
 | interrupt | optional `itemId,playedMs`; only the actual current output item may be truncated, bounded by delivered audio      |
+| playback-cut | `itemId,playedMs` acknowledges the currently interrupted Realtime output item after speech starts. It truncates at the heard position without cancelling a newer response. |
 | end       | explicit end; no automatic redial or retry                                                                        |
 | ping      | renew browser heartbeat; missing heartbeat beyond35seconds closes the session                                     |
 
-Server events are ready, audio, transcript, interrupted, context, tool,
+Server events are ready, audio, transcript, interrupted, context, search-started, tool,
 assistant-result, closed, error and pong. Shared discriminated unions are in
 `packages/contracts/src/assistant.ts`. Tool proposals use the same candidate
 format and confirmation boundary as ordinary turns. Presence of an audio delta
@@ -354,7 +356,42 @@ snapshot and its recipe share that combined budget, rather than each receiving a
 separate allowance. Text responses have a single in-flight request and a finite
 response/delegation budget. Membership, login and model availability are rechecked
 on a5second interval and before contextual backend work. Thus revocation is
-bounded polling, not a promise of instantaneous cross-network cancellation.
+bounded polling. A search sends the literal user-approved query in a separate
+Responses request. A recognized spoken request beginning with `公开搜索` can
+supply that query when the caller enabled public search. Private context stays
+in the editor delegation. Search evidence is returned as source cards.
+
+### 6.3.1 Team voice on a shared artwork
+
+| Route | Contract |
+| --- | --- |
+| `POST /v1/artworks/:artworkId/team-voice/join` | Active team members get a 30-second single-use ticket bound to the login and artwork. |
+| `GET /v1/artworks/:artworkId/team-voice/stream` (upgrade) | Same-origin WebSocket with cookie and subprotocols `xiutu-team-voice` and the ticket. |
+| `POST /v1/artworks/:artworkId/team-voice/agent` | A connected editor, admin or owner confirms one AI session. Body includes `confirmed:true,idempotencyKey,modelId,backendModelId,voice,context?`. Optional shared preview is moderated and bound to current artwork and version. |
+| `PUT /v1/artworks/:artworkId/team-voice/agent/context` | Host synchronizes the current version. An empty body uses saved parameters. Output and microphone forwarding to the AI pause until the new context is accepted. |
+| `DELETE /v1/artworks/:artworkId/team-voice/agent` | Host, admin or owner can end the AI connection. Human conversation continues. |
+
+Mic input is binary little-endian 24 kHz mono PCM16. Output adds a little-endian
+uint16 speaker slot before the PCM. Slot 0 is AI. The client plays each human
+source independently and omits its own relay. Control JSON uses `mute`, `ping`,
+and `ai-listen:{invitationId,enabled}`. Roster acknowledgment identifies which
+members have granted the current invitation access to their open microphones.
+Consent starts off for every invitation. The AI receives a 20 ms frame stream
+mixed from the current authorized tracks, with at most 160 ms queued per speaker.
+Mute, withdrawal, loss of membership and context changes discard pending audio.
+The application stores no room audio files. Human-only caption recognition uses
+the listener's on-device browser support. Provider captions and collaboration
+results are delivered separately when AI participates.
+
+Rooms are process-local with a six-person limit. One member may join one room
+at a time, and one API instance admits up to 72 participants. Human-only calls
+have no provider hold. A team AI invitation shares the existing voice time,
+delegation and team-wallet rules. Team audio and its delegated tools are scoped
+to the artwork and team resources. Personal memory and public web lookup are
+outside the team voice scope. Revocation checks run once per second with a
+2.5-second maximum age for the last authorization. Reaching the backend
+delegation limit declines further tool work while the voice channel continues
+within its duration and response limits.
 
 ### 6.4 Operations, settlement and recovery
 

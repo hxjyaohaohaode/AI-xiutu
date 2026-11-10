@@ -1,5 +1,6 @@
 import { randomUUID } from 'node:crypto';
-import WebSocket, { WebSocketServer } from 'ws';
+import { EventEmitter } from 'node:events';
+import WebSocket, { WebSocketServer, type RawData } from 'ws';
 import { HttpsProxyAgent } from 'https-proxy-agent';
 import type { FastifyInstance } from 'fastify';
 import {
@@ -11,8 +12,10 @@ import {
   type Database,
 } from '@ai-xiutu/db';
 import {
+  assistantPublicSearchSchema,
   voiceClientEventSchema,
   type AssistantContext,
+  type VoiceClientEvent,
   type VoiceServerEvent,
 } from '@ai-xiutu/contracts';
 import {
@@ -21,6 +24,7 @@ import {
   voiceAudioEvent,
   voiceTextEvents,
   voiceResultEvents,
+  liveContextAppend,
   normalizeVoiceEvent,
   voiceModel,
   runEditorAgent,
@@ -35,6 +39,55 @@ import {
   validateScope,
 } from './context.js';
 import type { AssistantService, VoiceRow } from './service.js';
+import { registerTeamVoice } from './team-voice.js';
+
+type PublicSearch = Extract<VoiceClientEvent, { type: 'search' }>['search'];
+function spokenPublicSearch(text: string): PublicSearch | undefined {
+  // Only a literal spoken query may leave the workspace, never the conversation or a model guess.
+  const command =
+    /^(?:公开搜索(图片|资料)?[：:，, \t]*|public search( images)?[: ,]+)([^\r\n]*)$/iu.exec(
+      text.trim(),
+    );
+  if (!command) return;
+  const search = assistantPublicSearchSchema.safeParse({
+    query: command[3],
+    kind: command[1] === '图片' || command[2] ? 'images' : 'text',
+  });
+  if (search.success) return search.data;
+}
+
+interface VoicePort {
+  readonly readyState: number;
+  readonly bufferedAmount: number;
+  send(data: string): void;
+  close(code?: number, reason?: string): void;
+  terminate(): void;
+  on(event: 'message', listener: (data: RawData) => void): unknown;
+  on(event: 'close' | 'error', listener: () => void): unknown;
+}
+
+class RoomVoicePort extends EventEmitter implements VoicePort {
+  readyState: number = WebSocket.OPEN;
+  readonly bufferedAmount = 0;
+  constructor(private readonly deliver: (event: VoiceServerEvent) => void) {
+    super();
+  }
+  send(data: string) {
+    this.deliver(JSON.parse(data) as VoiceServerEvent);
+  }
+  input(event: import('@ai-xiutu/contracts').VoiceClientEvent) {
+    if (this.readyState === WebSocket.OPEN)
+      this.emit('message', Buffer.from(JSON.stringify(event)));
+  }
+  close() {
+    if (this.readyState === WebSocket.CLOSED) return;
+    this.readyState = WebSocket.CLOSED;
+    this.emit('close');
+  }
+  terminate() {
+    this.close();
+  }
+}
 
 export function attachVoiceBridge(
   app: FastifyInstance,
@@ -72,7 +125,7 @@ export function attachVoiceBridge(
   app.addHook('onClose', async () => {
     server.close();
   });
-  const send = (ws: WebSocket, event: VoiceServerEvent) => {
+  const send = (ws: VoicePort, event: VoiceServerEvent) => {
     if (ws.readyState !== WebSocket.OPEN) return;
     if (ws.bufferedAmount > 1_000_000) {
       ws.close(1008, 'slow consumer');
@@ -80,11 +133,14 @@ export function attachVoiceBridge(
     }
     ws.send(JSON.stringify(event));
   };
-  function connect(row: VoiceRow, client: WebSocket, authHash: string) {
+  function connect(row: VoiceRow, client: VoicePort, authHash: string) {
     const live = voiceModel(row.model_id).protocol === 'live';
     let context = snapshots.get(row.id)?.context;
     let contextEpoch = row.context_epoch;
     let publicSearchAttempted = false;
+    let lastCommittedInput = '';
+    let pendingSpeechCutItem = '';
+    let delegationLimitAnnounced = false;
     snapshots.delete(row.id);
     let active = false,
       activating = false,
@@ -119,6 +175,7 @@ export function attachVoiceBridge(
       transportClosedConfirmed = false;
     const itemAudioMs = new Map<string, number>(),
       responses = new Set<string>();
+    const pendingLiveContext = new Set<string>();
     let delegationChain = Promise.resolve();
     function invalidateContext() {
       context = undefined;
@@ -161,6 +218,16 @@ export function attachVoiceBridge(
     const upstreamSend = (event: unknown) => {
       if (upstream.readyState !== WebSocket.OPEN || upstream.bufferedAmount > 1_000_000)
         throw new Error('VOICE_UPSTREAM_BACKPRESSURE');
+      const packet = event as { type?: string; event_id?: string };
+      if (
+        live &&
+        packet.event_id &&
+        /^session\.(thinking|commentary|instructions)\.append$/.test(packet.type ?? '')
+      ) {
+        pendingLiveContext.add(packet.event_id);
+        if (pendingLiveContext.size > 32)
+          pendingLiveContext.delete(pendingLiveContext.values().next().value!);
+      }
       upstream.send(JSON.stringify(event));
     };
     const assertAccess = async () => {
@@ -236,6 +303,7 @@ export function attachVoiceBridge(
                   !responsePending && !responses.size && !unconfirmedAudio && !receiptMissing,
                 responseReceipts,
                 billingBasis: 'configured_session_unit',
+                voiceChannel: row.config.teamArtworkId ? 'team' : 'individual',
                 providerSessionId,
               }),
               reason,
@@ -323,14 +391,53 @@ export function attachVoiceBridge(
         else upstreamSend(event);
       }
     };
-    const delegate = (callId: string, request: string) => {
-      if (knownCalls.has(callId) || ended || closing) return;
-      knownCalls.add(callId);
-      delegationCount++;
-      if (delegationCount > row.config.voiceModel.maxDelegations) {
-        stop('DELEGATION_BUDGET');
+    const delegate = (callId: string, request: string, explicitSearch?: PublicSearch) => {
+      if (!callId || callId.length > 128 || knownCalls.has(callId) || ended || closing) return;
+      const manualSearch = Boolean(explicitSearch);
+      const maxDelegations = row.config.voiceModel.maxDelegations;
+      if (delegationCount >= maxDelegations) {
+        const message = '本次通话的后台协作额度已用完，仍可继续语音交流。';
+        if (manualSearch || !delegationLimitAnnounced) {
+          delegationLimitAnnounced = true;
+          send(client, { type: 'error', code: 'VOICE_DELEGATION_LIMIT', message });
+        }
+        // Resolve a bounded number of vendor tool calls without dispatching Responses.
+        if (!manualSearch && knownCalls.size < maxDelegations + 8) {
+          knownCalls.add(callId);
+          sendEvents(voiceResultEvents(row.model_id, callId, message));
+        }
         return;
       }
+      const latestSpeech = transcript.latestUser();
+      const search =
+        explicitSearch ??
+        (!callId.startsWith('typed_') &&
+        latestSpeech &&
+        (live || (lastCommittedInput && latestSpeech.itemId === lastCommittedInput))
+          ? spokenPublicSearch(latestSpeech.text)
+          : undefined) ??
+        row.scope.publicSearch;
+      const canSearch =
+        !publicSearchAttempted &&
+        Boolean(row.scope.allowWebSearch && row.config.backendModel.webSearch) &&
+        Boolean(search && (search.kind !== 'images' || row.config.backendModel.webImageSearch));
+      if (manualSearch && !canSearch) {
+        send(client, {
+          type: 'error',
+          code: 'VOICE_PUBLIC_SEARCH_UNAVAILABLE',
+          message: '请核对联网授权、模型能力和本次通话的公开检索额度。',
+        });
+        return;
+      }
+      knownCalls.add(callId);
+      delegationCount++;
+      if (canSearch) {
+        publicSearchAttempted = true;
+        send(client, { type: 'search-started' });
+      }
+      const speakResult = (text: string) => {
+        if (!manualSearch || live) sendEvents(voiceResultEvents(row.model_id, callId, text));
+      };
       const frozenContext = context ? structuredClone(context) : undefined;
       const frozenEpoch = contextEpoch;
       const startSequence = dispatchSequence;
@@ -361,8 +468,7 @@ export function attachVoiceBridge(
                   ]),
                 ].sort();
             };
-            if (publicSearchAttempted) agentContext.publicSearch = undefined;
-            if (agentContext.publicSearch) publicSearchAttempted = true;
+            agentContext.publicSearch = canSearch ? search : undefined;
             const check = agentContext.assertAccess;
             agentContext.assertAccess = async () => {
               if (ended || closing) throw new Error('VOICE_ENDED');
@@ -439,18 +545,16 @@ export function attachVoiceBridge(
               search: result.search,
               candidates,
             });
-            sendEvents(voiceResultEvents(row.model_id, callId, result.text));
+            speakResult(result.text);
             send(client, { type: 'tool', name: 'consult_editor', state: 'completed' });
           } catch {
             send(client, { type: 'tool', name: 'consult_editor', state: 'failed' });
-            if (!ended && !closing)
-              sendEvents(
-                voiceResultEvents(
-                  row.model_id,
-                  callId,
-                  '本轮后端任务未能完成，没有应用任何修改。请查看界面状态，勿自动重试可能计费的请求。',
-                ),
-              );
+            if (!ended && !closing) {
+              const message = '本轮后端任务未能完成，请查看会话状态。';
+              if (manualSearch)
+                send(client, { type: 'error', code: 'VOICE_PUBLIC_SEARCH_FAILED', message });
+              speakResult(message);
+            }
           }
         })
         .catch(() => stop('ACCESS_OR_TOOL_FAILED'));
@@ -459,7 +563,12 @@ export function attachVoiceBridge(
       try {
         if (!ended && !closing)
           upstreamSend(
-            voiceStartEvent(row.model_id, row.config.voice, row.config.voiceModel.maxOutputTokens),
+            voiceStartEvent(
+              row.model_id,
+              row.config.voice,
+              row.config.voiceModel.maxOutputTokens,
+              Boolean(row.config.teamArtworkId),
+            ),
           );
       } catch {
         void finish('unknown', 'VOICE_START_FAILED');
@@ -521,7 +630,22 @@ export function attachVoiceBridge(
           return;
         }
         if (event.type === 'error' && event.error?.code === 'response_cancel_not_active') return;
+        if (live && /^session\.(thinking|commentary|instructions)\.appended$/.test(event.type)) {
+          pendingLiveContext.delete(event.client_event_id);
+          return;
+        }
         if (event.type === 'error') {
+          if (live && pendingLiveContext.delete(event.error?.client_event_id)) {
+            // A missing speech-context acknowledgment has no authority over
+            // the application task, playback or the final usage receipt.
+            if (!closing)
+              send(client, {
+                type: 'error',
+                code: 'VOICE_CONTEXT_UPDATE_UNCONFIRMED',
+                message: '语音服务未确认这次播报更新，界面结果可继续查看。',
+              });
+            return;
+          }
           send(client, {
             type: 'error',
             code: 'VOICE_PROVIDER_ERROR',
@@ -543,6 +667,8 @@ export function attachVoiceBridge(
         }
         const normalized = normalizeVoiceEvent(event);
         if (normalized) {
+          if (!live && normalized.type === 'interrupted' && normalized.bySpeech)
+            pendingSpeechCutItem = currentAssistantItem;
           if (normalized.type === 'transcript') transcript.push(normalized);
           if (normalized.type === 'audio') {
             if (!live) unconfirmedAudio = true;
@@ -558,7 +684,10 @@ export function attachVoiceBridge(
           }
           send(client, normalized);
         }
-        if (!live && event.type === 'input_audio_buffer.committed') requestResponse();
+        if (!live && event.type === 'input_audio_buffer.committed') {
+          lastCommittedInput = typeof event.item_id === 'string' ? event.item_id : '';
+          requestResponse();
+        }
         if (!live && event.type === 'response.done') {
           const receipt = event.response?.usage;
           if (!receipt || !Number.isFinite(receipt.total_tokens) || receipt.total_tokens < 0)
@@ -695,8 +824,23 @@ export function attachVoiceBridge(
           else if (muted) upstreamSend({ type: 'input_audio_buffer.clear' });
           return;
         }
+        if (event.type === 'playback-cut') {
+          if (!live && event.itemId && event.itemId === pendingSpeechCutItem) {
+            pendingSpeechCutItem = '';
+            const duration = itemAudioMs.get(event.itemId);
+            if (duration !== undefined)
+              upstreamSend({
+                type: 'conversation.item.truncate',
+                item_id: event.itemId,
+                content_index: 0,
+                audio_end_ms: Math.min(event.playedMs, Math.floor(duration)),
+              });
+          }
+          return;
+        }
         if (event.type === 'interrupt') {
           queuedResponse = false;
+          pendingSpeechCutItem = '';
           if (!live) {
             if (responsePending || responses.size) upstreamSend({ type: 'response.cancel' });
             if (
@@ -712,11 +856,12 @@ export function attachVoiceBridge(
                 audio_end_ms: Math.min(event.playedMs, Math.floor(itemAudioMs.get(event.itemId)!)),
               });
           } else
-            upstreamSend({
-              type: 'session.instructions.append',
-              delegation_id: null,
-              content: '用户点击了停止播报。停止当前发言，继续聆听，等用户下一次提问再回应。',
-            });
+            upstreamSend(
+              liveContextAppend(
+                'instructions',
+                '用户点击了停止播报。停止当前发言，继续聆听，等用户下一次提问再回应。',
+              ),
+            );
           send(client, { type: 'interrupted' });
           return;
         }
@@ -773,6 +918,12 @@ export function attachVoiceBridge(
               imageShared: Boolean(context?.imageDataUrl),
               contextTag: event.contextTag,
             });
+          } else if (event.type === 'search') {
+            delegate(
+              `typed_${randomUUID()}`,
+              '用户明确要求查找公开来源。用检索证据回答，保留可核查的来源，不生成编辑候选。',
+              event.search,
+            );
           } else if (event.type === 'text') {
             lastTextAt = Date.now();
             await service.moderate(event.text);
@@ -798,6 +949,101 @@ export function attachVoiceBridge(
       }
     });
   }
+  function retain(id: string, context?: AssistantContext) {
+    if (snapshots.size >= 128) {
+      const oldest = snapshots.keys().next().value;
+      if (oldest) snapshots.delete(oldest);
+    }
+    snapshots.set(id, { context, expiresAt: Date.now() + 65_000 });
+  }
+
+  async function claimConnection(sessionId: string, actorId: string, ticket: string) {
+    const ticketHash = hash(ticket);
+    const hint = (
+      await db.query(
+        "SELECT project_id,scope FROM voice_sessions WHERE id=$1 AND actor_id=$2 AND connection_hash=$3 AND state='prepared' AND connect_expires_at>clock_timestamp()",
+        [sessionId, actorId, ticketHash],
+      )
+    ).rows[0];
+    if (!hint) throw new Error('session');
+    await service.assertJournal();
+    return transaction(db, async (tx) => {
+      await lockedAssistantAccess(tx, actorId, hint.project_id, hint.scope);
+      const found = (
+        await tx.query(
+          "SELECT * FROM voice_sessions WHERE id=$1 AND actor_id=$2 AND connection_hash=$3 AND state='prepared' AND connect_expires_at>clock_timestamp() FOR UPDATE",
+          [sessionId, actorId, ticketHash],
+        )
+      ).rows[0] as VoiceRow | undefined;
+      if (!found) throw new Error('session');
+      if (found.context?.imageShared && !snapshots.has(found.id))
+        throw new Error('snapshot lost; recreate session');
+      for (const modelId of [...new Set([found.model_id, found.backend_model_id])].sort())
+        await tx.query('SELECT id FROM assistant_model_configs WHERE id=$1 FOR SHARE', [modelId]);
+      await service.model(tx, found.model_id, 'realtime-voice');
+      await service.model(tx, found.backend_model_id, 'assistant-turn');
+      await tx.query(
+        "UPDATE voice_sessions SET state='connecting',updated_at=clock_timestamp() WHERE id=$1",
+        [found.id],
+      );
+      return found;
+    });
+  }
+
+  const teamVoice = registerTeamVoice(app, db, config, {
+    ready: () => accepting && service.voiceReady,
+    async start(input) {
+      if (!accepting || !input.stillWanted() || connections.size + upgrading.size >= 32)
+        throw new Error('team voice capacity');
+      const work = (async () => {
+        const prepared = await service.prepareVoice(
+          input.actorId,
+          input.projectId,
+          input.request,
+          input.artworkId,
+        );
+        let claimed = false;
+        try {
+          if (!accepting || !input.stillWanted()) throw new Error('team voice ended');
+          retain(prepared.row.id, prepared.context);
+          const row = await claimConnection(prepared.row.id, input.actorId, prepared.ticket);
+          claimed = true;
+          await service.beforeVoiceConnection(row);
+          if (!accepting || !input.stillWanted()) throw new Error('team voice ended');
+          const port = new RoomVoicePort(input.event);
+          connect(row, port, input.authHash);
+          return {
+            audio: (pcm: string) => port.input({ type: 'audio', pcm }),
+            ping: () => port.input({ type: 'ping' }),
+            invalidate: () => port.input({ type: 'context.invalidate' }),
+            update: (context: AssistantContext, contextTag: string) => {
+              port.input({ type: 'context.invalidate' });
+              port.input({ type: 'context', context, contextTag });
+            },
+            end: () => port.input({ type: 'end' }),
+          };
+        } catch (error) {
+          snapshots.delete(prepared.row.id);
+          if (claimed) {
+            await service.failVoiceConnection(prepared.row.id);
+            input.event({ type: 'closed', state: 'unknown', reason: 'CONNECTION_UNCONFIRMED' });
+          } else await service.cancelPreparedVoice(prepared.row.id);
+          throw error;
+        }
+      })();
+      const tracked = work.then(
+        () => undefined,
+        () => undefined,
+      );
+      upgrading.add(tracked);
+      try {
+        return await work;
+      } finally {
+        upgrading.delete(tracked);
+      }
+    },
+  });
+
   app.server.on('upgrade', (request, socket, head) => {
     let path: string;
     try {
@@ -806,6 +1052,7 @@ export function attachVoiceBridge(
       socket.destroy();
       return;
     }
+    if (teamVoice.upgrade(path, request, socket, head)) return;
     const match = /^\/v1\/voice-sessions\/([0-9a-f-]{36})\/stream$/.exec(path);
     if (!match) {
       socket.destroy();
@@ -857,35 +1104,7 @@ export function attachVoiceBridge(
         )
       ).rows[0];
       if (!user) throw new Error('auth');
-      const hint = (
-        await db.query(
-          "SELECT project_id,scope FROM voice_sessions WHERE id=$1 AND actor_id=$2 AND connection_hash=$3 AND state='prepared' AND connect_expires_at>clock_timestamp()",
-          [match[1], user.id, hash(protocols[1]!)],
-        )
-      ).rows[0];
-      if (!hint) throw new Error('session');
-      await service.assertJournal();
-      const row = await transaction(db, async (tx) => {
-        await lockedAssistantAccess(tx, user.id, hint.project_id, hint.scope);
-        const found = (
-          await tx.query(
-            "SELECT * FROM voice_sessions WHERE id=$1 AND actor_id=$2 AND connection_hash=$3 AND state='prepared' AND connect_expires_at>clock_timestamp() FOR UPDATE",
-            [match[1], user.id, hash(protocols[1]!)],
-          )
-        ).rows[0] as VoiceRow | undefined;
-        if (!found) throw new Error('session');
-        if (found.context?.imageShared && !snapshots.has(found.id))
-          throw new Error('snapshot lost; recreate session');
-        for (const modelId of [...new Set([found.model_id, found.backend_model_id])].sort())
-          await tx.query('SELECT id FROM assistant_model_configs WHERE id=$1 FOR SHARE', [modelId]);
-        await service.model(tx, found.model_id, 'realtime-voice');
-        await service.model(tx, found.backend_model_id, 'assistant-turn');
-        await tx.query(
-          "UPDATE voice_sessions SET state='connecting',updated_at=clock_timestamp() WHERE id=$1",
-          [found.id],
-        );
-        return found;
-      });
+      const row = await claimConnection(match[1]!, user.id, protocols[1]!);
       try {
         if (!accepting || socket.destroyed) throw new Error('socket closed');
         await service.beforeVoiceConnection(row);
@@ -947,13 +1166,5 @@ export function attachVoiceBridge(
     upgrading.add(work);
     void work.finally(() => upgrading.delete(work));
   });
-  return {
-    retain(id: string, context?: AssistantContext) {
-      if (snapshots.size >= 128) {
-        const oldest = snapshots.keys().next().value;
-        if (oldest) snapshots.delete(oldest);
-      }
-      snapshots.set(id, { context, expiresAt: Date.now() + 65_000 });
-    },
-  };
+  return { retain };
 }

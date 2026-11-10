@@ -810,12 +810,13 @@
   box-shadow: var(--studio-shadow);
   color: var(--ink);
 }
-.studio-workspace .collaboration-details p {
+.studio-workspace .collaboration-details > p {
   color: var(--muted);
   font-size: 12px;
   line-height: 1.7;
 }
-.studio-workspace .collaboration-details li {
+.studio-workspace .collaboration-details > ul > li,
+.studio-workspace .team-voice > ul > li {
   border-color: var(--line);
 }
 .studio-workspace .collaboration-actions button {
@@ -824,6 +825,182 @@
   border: 0;
   min-height: 34px;
   border-radius: 7px;
+}
+.studio-workspace .team-voice {
+  gap: 9px;
+  color: var(--ink);
+}
+.studio-workspace .team-voice :is(button, select) {
+  min-height: 38px;
+  border-radius: 8px;
+  font: inherit;
+}
+.studio-workspace
+  .team-voice
+  button:where(:not(.assistant-cloud-preview, .assistant-reference-toggle)) {
+  padding: 8px 10px;
+  border: 1px solid var(--line);
+  background: var(--surface-secondary);
+  color: var(--ink);
+  line-height: 1.4;
+  white-space: normal;
+}
+.studio-workspace
+  .team-voice
+  button:where(:not(.assistant-cloud-preview, .assistant-reference-toggle):hover:not(:disabled)) {
+  background: var(--surface-hover);
+}
+.studio-workspace .team-voice button[aria-pressed='true'] {
+  background: var(--accent-soft);
+  border-color: #d8c38c;
+  color: #705321;
+}
+.studio-workspace .team-voice details > summary {
+  padding-block: 6px;
+  font-weight: 600;
+}
+.studio-workspace .team-voice details label:not(.team-voice-checkbox) {
+  gap: 6px;
+  margin-block: 10px;
+  color: var(--muted);
+}
+.studio-workspace .team-voice select {
+  padding: 8px 10px;
+  border: 1px solid var(--line);
+  background: var(--surface);
+  color: var(--ink);
+}
+.studio-workspace .team-voice .team-voice-checkbox {
+  min-height: 32px;
+  gap: 8px;
+  line-height: 1.5;
+}
+.studio-workspace .team-voice input[type='checkbox'] {
+  width: 16px;
+  height: 16px;
+  min-width: 16px;
+  flex: 0 0 16px;
+  margin: 0;
+  accent-color: var(--accent);
+}
+.studio-workspace .team-voice > ul > li {
+  padding-block: 7px;
+  border-top: 1px solid var(--line);
+}
+.studio-workspace .team-voice > ul > li > small {
+  color: var(--muted);
+}
+.studio-workspace .team-voice-banner {
+  display: flex;
+  flex: 0 0 auto;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px 16px;
+  min-width: 0;
+  padding: 9px 18px;
+  border-bottom: 1px solid var(--line);
+  background: #f8f6ec;
+  color: var(--ink);
+}
+.team-voice-banner-status {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  min-width: 0;
+}
+.team-voice-banner-status > svg {
+  color: var(--muted);
+}
+.team-voice-banner[data-mic='on'] .team-voice-banner-status > svg {
+  color: #92702b;
+}
+.team-voice-banner-status strong,
+.team-voice-banner-status small {
+  display: block;
+}
+.team-voice-banner-status strong {
+  font-size: 12px;
+  font-weight: 600;
+}
+.team-voice-banner-status small {
+  color: var(--muted);
+  font-size: 11px;
+}
+.team-voice-banner-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+}
+.team-voice-banner-actions > button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  min-width: 0;
+  min-height: 36px;
+  padding: 7px 10px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--surface);
+  color: var(--ink);
+  font-size: 12px;
+  line-height: 1.4;
+}
+.team-voice-banner-actions > button:hover:not(:disabled) {
+  background: var(--surface-hover);
+}
+.team-voice-banner-actions > button[aria-pressed='true'] {
+  background: var(--accent-soft);
+  border-color: #d8c38c;
+  color: #705321;
+}
+.team-voice-banner-actions > .team-voice-banner-leave {
+  color: #8b4f3e;
+}
+.team-voice-banner-message {
+  flex-basis: 100%;
+  min-width: 0;
+  color: #8b4f3e;
+  font-size: 12px;
+  line-height: 1.5;
+  overflow-wrap: anywhere;
+}
+@media (max-width: 759px), (max-height: 520px) and (orientation: landscape) {
+  .studio-workspace .team-voice :is(button, select),
+  .studio-workspace .team-voice details > summary,
+  .studio-workspace .team-voice .team-voice-checkbox {
+    min-height: 44px;
+  }
+  .studio-workspace .team-voice details > summary {
+    padding-block: 12px;
+  }
+  .studio-workspace .team-voice select {
+    font-size: 16px;
+  }
+  .team-voice-banner-actions > button {
+    min-height: 44px;
+    padding-inline: 8px;
+  }
+}
+@media (max-width: 599px) {
+  .studio-workspace .team-voice-banner {
+    align-items: stretch;
+    gap: 8px;
+    padding: 9px 12px;
+  }
+  .team-voice-banner-status {
+    flex-basis: 100%;
+  }
+  .team-voice-banner-actions {
+    display: grid;
+    flex: 1 1 100%;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+  .team-voice-banner[data-state='connecting'] .team-voice-banner-actions {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
 }
 .studio-workspace .ai-workbench {
   background: var(--surface);

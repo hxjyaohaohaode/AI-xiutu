@@ -1,14 +1,23 @@
 .collaboration-status {
   position: absolute;
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  min-height: 0;
   z-index: 9;
   right: 16px;
   top: 9px;
   max-width: min(400px, calc(100% - 72px));
+  /* The canvas can be much shorter than the viewport beside a bottom tool panel. */
+  max-height: calc(100% - 24px);
   font-size: 12px;
   color: var(--ui-secondary);
 }
 .collaboration-summary {
   display: flex;
+  align-self: flex-end;
+  flex-shrink: 0;
+  max-width: 100%;
   align-items: center;
   gap: 6px;
   border: 0;
@@ -23,24 +32,33 @@
 }
 .collaboration-details,
 .collaboration-conflict {
+  flex: 0 1 auto;
+  min-height: 0;
+  overflow: auto;
+  overscroll-behavior: contain;
+  scrollbar-width: thin;
+  scroll-padding: 10px;
   margin-top: 7px;
   padding: 12px;
   border-radius: 14px;
   background: var(--surface);
   box-shadow: 0 10px 35px #00000012;
 }
-.collaboration-details p,
-.collaboration-conflict p {
+.collaboration-details > p,
+.collaboration-conflict > p {
   line-height: 1.6;
   margin: 0 0 8px;
 }
-.collaboration-details ul {
+.collaboration-details > ul,
+.team-voice > ul {
   padding: 0;
   list-style: none;
   margin: 8px 0;
 }
-.collaboration-details li {
+.collaboration-details > ul > li,
+.team-voice > ul > li {
   display: flex;
+  min-width: 0;
   justify-content: space-between;
   gap: 10px;
   padding: 4px 0;
@@ -167,10 +185,9 @@
   .collaboration-conflict {
     padding: 10px;
     border-radius: 12px;
-    max-height: 45dvh;
-    overflow: auto;
   }
-  .collaboration-details li {
+  .collaboration-details > ul > li,
+  .team-voice > ul > li {
     font-size: 11px;
   }
   .collaboration-actions button {
@@ -198,4 +215,47 @@
   .collaboration-cursor {
     transition: none;
   }
+}
+.team-voice {
+  display: grid;
+  min-width: 0;
+  gap: 6px;
+  margin-block: 8px;
+  padding-block: 8px;
+  border-block: 1px solid var(--line);
+}
+.team-voice details {
+  min-width: 0;
+}
+.team-voice details summary {
+  cursor: pointer;
+}
+.team-voice details label {
+  display: grid;
+  gap: 4px;
+  margin-block: 6px;
+}
+.team-voice details select {
+  min-width: 0;
+  max-width: 100%;
+  width: 100%;
+}
+.team-voice .team-voice-checkbox {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+}
+.team-voice > ul > li {
+  flex-wrap: wrap;
+  align-items: center;
+}
+.team-voice > ul > li > span {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+.team-voice-caption {
+  overflow-wrap: anywhere;
+}
+.team-voice .voice-captions-lines p {
+  margin: 0;
 }

@@ -295,6 +295,14 @@
   background: #c9574b;
   color: #fff;
 }
+.assistant-voice-search {
+  align-self: stretch;
+  min-width: 0;
+  font-size: 12px;
+}
+.assistant-voice-search form {
+  margin-top: 5px;
+}
 .assistant-messages {
   display: flex;
   flex-direction: column;
@@ -605,6 +613,24 @@
   [data-assistant-motion='composer'] {
     animation-duration: 0.28s;
     animation-delay: 0.09s;
+  }
+}
+@media (max-width: 699px), (max-height: 520px) {
+  .live-assistant[data-in-call='true'] .assistant-call {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto;
+    gap: 6px;
+    padding: 6px 3px;
+  }
+  .live-assistant[data-in-call='true'] .assistant-voice-orb {
+    display: none;
+  }
+  .live-assistant[data-in-call='true'] .assistant-call-status {
+    text-align: left;
+  }
+  .live-assistant[data-in-call='true'] .voice-captions,
+  .live-assistant[data-in-call='true'] .assistant-voice-search {
+    grid-column: 1 / -1;
   }
 }
 @media (prefers-reduced-motion: reduce) {

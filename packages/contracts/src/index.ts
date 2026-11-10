@@ -7,3 +7,4 @@ export * from './resource.js';
 export * from './creative.js';
 export * from './memory.js';
 export * from './assistant-ui.js';
+export * from './team-voice.js';

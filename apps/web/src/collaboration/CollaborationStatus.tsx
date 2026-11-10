@@ -1,8 +1,11 @@
-import { useRef, useState } from 'react';
+import { useId, useRef, useState } from 'react';
 import { UsersThree, CloudCheck, CloudSlash, ArrowClockwise } from '@phosphor-icons/react';
 import type { CollaborationState } from './useCollaboration';
 import { targetLabel } from './model';
 import { usePresence } from '../motion/usePresence';
+import type { AssistantContext } from '@ai-xiutu/contracts';
+import { TeamVoiceControls } from './TeamVoiceControls';
+import type { TeamVoiceState } from './useTeamVoice';
 import './collaboration.css';
 const labels = {
   off: '本地编辑',
@@ -19,18 +22,23 @@ export function CollaborationStatus({
   collaboration: c,
   onReload,
   onFork,
+  teamVoice,
+  captureVoiceContext,
 }: {
   collaboration: CollaborationState;
   onReload: () => void;
   onFork: () => void;
+  teamVoice?: TeamVoiceState;
+  captureVoiceContext?: () => Promise<AssistantContext>;
 }) {
   const [open, setOpen] = useState(false);
+  const detailsId = useId();
   const details = usePresence(open, 'collaboration-details'),
     conflict = usePresence(!!c.error, 'collaboration-conflict');
   const lastError = useRef(c.error);
   if (c.error) lastError.current = c.error;
-  const members = c.snapshot?.presences ?? [],
-    leases = c.snapshot?.leases ?? [];
+  const members = c.enabled ? (c.snapshot?.presences ?? []) : [],
+    leases = c.enabled ? (c.snapshot?.leases ?? []) : [];
   return (
     <aside
       className="collaboration-status"
@@ -40,27 +48,38 @@ export function CollaborationStatus({
       <button
         className="collaboration-summary"
         aria-expanded={open}
+        aria-controls={detailsId}
         onClick={() => setOpen((value) => !value)}
       >
         <UsersThree size={17} />
-        <span>{labels[c.status]}</span>
-        <small>{members.length || '—'}</small>
-        {c.status === 'ready' ? (
+        <span>{!c.enabled && teamVoice ? '团队语音' : labels[c.status]}</span>
+        <small>
+          {teamVoice?.state === 'connected'
+            ? '语音 ' + teamVoice.roster.members.length
+            : members.length || '—'}
+        </small>
+        {c.enabled && c.status === 'ready' ? (
           <CloudCheck size={16} />
-        ) : c.status === 'reconnecting' ? (
+        ) : c.enabled && c.status === 'reconnecting' ? (
           <CloudSlash size={16} />
         ) : null}
       </button>
       {details.present && (
         <section
+          id={detailsId}
           className="collaboration-details"
           data-motion="collaboration-details"
           data-motion-state={details.phase}
           inert={!open}
           aria-hidden={!open}
-          aria-label="实时编辑协作状态"
+          aria-label={c.enabled ? '实时编辑协作状态' : '团队语音状态'}
         >
-          <p>每次确认调整会发布为新版本。游标与半透明范围表示队员正在编辑的位置；预览尚未保存。</p>
+          {teamVoice && <TeamVoiceControls room={teamVoice} capture={captureVoiceContext} />}
+          <p>
+            {c.enabled
+              ? '已发布的协作调整会同步到当前作品。游标与半透明范围表示队员的位置和未发布的预览。'
+              : '在当前作品中与队员通话。编辑协作尚未连接。'}
+          </p>
           <ul>
             {members.map((member) => (
               <li key={member.id}>
@@ -82,7 +101,7 @@ export function CollaborationStatus({
               ))}
             </ul>
           )}
-          {c.pendingCount > 0 && (
+          {c.enabled && c.pendingCount > 0 && (
             <div className="collaboration-actions">
               <button
                 disabled={c.status === 'saving' || c.status === 'forbidden'}
