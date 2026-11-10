@@ -304,7 +304,7 @@
   font-size: 11px;
 }
 .studio-workspace .canvas-view-controls .compare-press.active {
-  color: var(--on-accent);
+  color: var(--accent-ink);
   background: var(--accent-soft);
 }
 .studio-workspace .canvas-context-hint {

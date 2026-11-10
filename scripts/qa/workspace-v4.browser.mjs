@@ -2111,8 +2111,23 @@ try {
       reducedMotion: 'no-preference',
       acceptDownloads: true,
     });
+    let page;
+    const diagnostic = { state: 'running', neutral: null, heldSamples: [], gesture: null };
+    const saveDiagnostic = async (state) => {
+      diagnostic.state = state;
+      if (page && !page.isClosed())
+        diagnostic.gesture = await page.evaluate(() => {
+          const trace = window.continuousPreviewTrace;
+          if (!trace) return null;
+          return { down: trace.down, endedAt: trace.endedAt, events: trace.events };
+        });
+      await writeFile(
+        join(artifacts, 'continuous-preview-gesture.json'),
+        JSON.stringify(diagnostic, null, 2) + '\n',
+      );
+    };
     try {
-      const page = await watchPage(context);
+      page = await watchPage(context);
       await page.goto(origin);
       await page
         .getByLabel('选择照片', { exact: true })
@@ -2122,22 +2137,83 @@ try {
       await precision(page, '曝光', 0);
       await imageReady(page);
       const range = page.getByRole('slider', { name: '曝光', exact: true });
+      await range.scrollIntoViewIfNeeded();
       await range.click({ trial: true });
       await range.evaluate((element) => {
+        const trace = (window.continuousPreviewTrace = {
+          control: element,
+          down: null,
+          endedAt: null,
+          buttons: 0,
+          events: [],
+        });
         element.addEventListener(
           'pointerdown',
           (event) => {
             element.dataset.qaPreviewPointer = String(event.pointerId);
             element.dataset.qaPreviewStart = String(performance.now());
+            trace.buttons = event.buttons;
+            trace.down = {
+              at: Number(element.dataset.qaPreviewStart),
+              pointerId: event.pointerId,
+              pointerType: event.pointerType,
+              trusted: event.isTrusted,
+              buttons: event.buttons,
+            };
           },
           { once: true },
         );
         function end(event) {
-          if (String(event.pointerId) === element.dataset.qaPreviewPointer)
+          if (String(event.pointerId) === element.dataset.qaPreviewPointer) {
+            trace.endedAt = performance.now();
+            trace.buttons = event.buttons;
             delete element.dataset.qaPreviewPointer;
+          }
         }
         document.addEventListener('pointerup', end, true);
         document.addEventListener('pointercancel', end, true);
+        const describe = (node) =>
+          node instanceof Element
+            ? `${node.tagName.toLowerCase()}#${node.id}[${node.getAttribute('aria-label') ?? ''}]`
+            : node === window
+              ? 'window'
+              : node === document
+                ? 'document'
+                : String(node?.nodeName);
+        const record = (event) => {
+          if (event.type === 'pointermove' && event.pointerId === trace.down?.pointerId)
+            trace.buttons = event.buttons;
+          const box = element.getBoundingClientRect();
+          trace.events.push({
+            type: event.type,
+            at: performance.now(),
+            pointerId: event.pointerId ?? null,
+            buttons: event.buttons ?? null,
+            x: event.clientX ?? null,
+            y: event.clientY ?? null,
+            target: describe(event.target),
+            path: event.composedPath().slice(0, 8).map(describe),
+            trusted: event.isTrusted,
+            captured: trace.down ? element.hasPointerCapture(trace.down.pointerId) : false,
+            connected: element.isConnected,
+            focus: describe(document.activeElement),
+            visibility: document.visibilityState,
+            box: { x: box.x, y: box.y, width: box.width, height: box.height },
+          });
+        };
+        for (const type of [
+          'pointerdown',
+          'pointermove',
+          'pointerup',
+          'pointercancel',
+          'gotpointercapture',
+          'lostpointercapture',
+          'focus',
+          'blur',
+          'visibilitychange',
+        ])
+          document.addEventListener(type, record, true);
+        window.addEventListener('blur', record);
       });
       const sample = async () => {
         const value = await range.evaluate(async (element) => {
@@ -2151,12 +2227,21 @@ try {
           if (!drawing) throw new Error('Sampling context unavailable');
           drawing.drawImage(visible, 0, 0, 16, 16);
           const rgba = Array.from(drawing.getImageData(0, 0, 16, 16).data);
+          const trace = window.continuousPreviewTrace;
+          const box = element.getBoundingClientRect();
           return {
             rgba,
             width: visible.width,
             height: visible.height,
             exposure: Number(element.value),
             held: element.dataset.qaPreviewPointer !== undefined,
+            captured: trace.down ? element.hasPointerCapture(trace.down.pointerId) : false,
+            pointerId: element.dataset.qaPreviewPointer ?? null,
+            pointerEndedAt: trace.endedAt,
+            buttons: trace.buttons,
+            sameControl: trace.control === element,
+            connected: element.isConnected,
+            box: { x: box.x, y: box.y, width: box.width, height: box.height },
             elapsedMs: element.dataset.qaPreviewStart
               ? performance.now() - Number(element.dataset.qaPreviewStart)
               : 0,
@@ -2172,13 +2257,26 @@ try {
         return { ...detail, rgbaSha256: sha256(Buffer.from(rgba)), meanLuma: sum / 256 };
       };
       const neutral = await sample();
+      diagnostic.neutral = neutral;
       const box = await range.boundingBox();
       assert.ok(box);
-      await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2);
+      const point = { x: box.x + box.width / 2, y: box.y + box.height / 2 };
+      diagnostic.pressPoint = point;
+      diagnostic.hitTest = await range.evaluate((element, at) => {
+        const target = document.elementFromPoint(at.x, at.y);
+        return { isControl: target === element || element.contains(target), tag: target?.tagName };
+      }, point);
+      assert.equal(diagnostic.hitTest.isControl, true, 'the actual press position hits the slider');
+      await page.mouse.move(point.x, point.y);
       await page.mouse.down();
-      const samples = [];
+      const samples = diagnostic.heldSamples;
       try {
         assert.ok(await range.getAttribute('data-qa-preview-pointer'), 'the range received pointerdown');
+        const down = await page.evaluate(() => window.continuousPreviewTrace.down);
+        assert.ok(
+          down?.trusted && down.pointerType === 'mouse' && down.buttons === 1,
+          'the control receives an actual left-button pointerdown',
+        );
         for (let index = 0; index < 32; index++) {
           await page.mouse.move(box.x + box.width * (0.53 + index * 0.009), box.y + box.height / 2);
           await sleep(45);
@@ -2186,10 +2284,22 @@ try {
         }
       } finally {
         await page.mouse.up();
+        await saveDiagnostic('sampled');
       }
       assert.ok(
         samples.every((value) => value.held),
         'all intermediate evidence is taken before pointer release',
+      );
+      assert.ok(
+        samples.every(
+          (value) =>
+            value.sameControl &&
+            value.connected &&
+            value.pointerEndedAt === null &&
+            value.pointerId === String(diagnostic.gesture.down.pointerId) &&
+            (value.buttons & 1) === 1,
+        ),
+        'all samples retain the same control and pressed pointer without an up or cancel',
       );
       const changed = samples.filter(
         (value) =>
@@ -2222,6 +2332,7 @@ try {
         'settled preview matches the actual final export at full fixture size',
       );
       await page.screenshot({ path: join(artifacts, 'continuous-preview-settled.png') });
+      await saveDiagnostic('passed');
       return {
         source: '600x400 technical gradient; no recognition model',
         neutral,
@@ -2234,6 +2345,18 @@ try {
         finalExportMatchesReference: true,
         latencyIsMeasurementNotFpsGate: true,
       };
+    } catch (error) {
+      diagnostic.failure = String(error.stack ?? error);
+      const captures = await Promise.allSettled([
+        saveDiagnostic('failed'),
+        page && !page.isClosed()
+          ? page.screenshot({ path: join(artifacts, 'continuous-preview-failure.png'), fullPage: true })
+          : Promise.resolve(),
+      ]);
+      for (const capture of captures)
+        if (capture.status === 'rejected')
+          process.stderr.write(`Continuous-preview diagnostic capture failed: ${capture.reason}\n`);
+      throw error;
     } finally {
       await context.close();
     }
