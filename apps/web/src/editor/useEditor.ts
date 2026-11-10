@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   createRecipe,
   createRecipeV2,
@@ -645,6 +645,11 @@ export function useEditor() {
     [commit],
   );
   const undo = useCallback(() => {
+    const committed = historyRef.current[indexRef.current]?.recipe;
+    if (committed && JSON.stringify(recipeRef.current) !== JSON.stringify(committed)) {
+      replaceRecipe(committed);
+      return;
+    }
     if (indexRef.current <= 0) return;
     indexRef.current -= 1;
     setHistoryIndex(indexRef.current);
@@ -763,6 +768,10 @@ export function useEditor() {
     [commit],
   );
 
+  const hasUncommittedPreview = useMemo(
+    () => JSON.stringify(recipe) !== JSON.stringify(history[historyIndex]?.recipe),
+    [recipe, history, historyIndex],
+  );
   return {
     file,
     dimensions,
@@ -817,8 +826,8 @@ export function useEditor() {
     isLoading,
     getSourceIdentity,
     error,
-    canUndo: historyIndex > 0,
-    canRedo: historyIndex < history.length - 1,
+    canUndo: hasUncommittedPreview || historyIndex > 0,
+    canRedo: !hasUncommittedPreview && historyIndex < history.length - 1,
     cancelPendingLoad,
     loadFile,
     preview: replaceRecipe,

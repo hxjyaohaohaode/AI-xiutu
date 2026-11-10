@@ -8,6 +8,7 @@ import {
 } from '@ai-xiutu/editor';
 import {
   applyAssistantProposal,
+  applyAssistantSequence,
   runEditorAgent,
   recipeHash,
   RESPONSES_URL,
@@ -29,6 +30,82 @@ const settings = assistantModelConfigSchema.parse({
   unitCost: 5,
   imageInput: true,
   webSearch: true,
+});
+
+test('composed creative edits preserve their immutable base and accumulate ordered steps', () => {
+  const base = createRecipeV4();
+  const before = recipeHash(base);
+  const candidate = applyAssistantSequence(base, {
+    summary: '低曝光、柔和曲线和竖向裁切',
+    steps: [
+      {
+        type: 'adjust',
+        summary: '调整曝光',
+        target: 'global',
+        targetId: null,
+        changes: [{ path: 'adjustments.exposure', value: -1 }],
+      },
+      {
+        type: 'adjust',
+        summary: '保留颜色',
+        target: 'global',
+        targetId: null,
+        changes: [{ path: 'adjustments.saturation', value: 20 }],
+      },
+      {
+        type: 'curve',
+        summary: '柔和暗部',
+        channel: 'rgb',
+        points: [
+          { x: 0, y: 0.05 },
+          { x: 1, y: 0.95 },
+        ],
+      },
+      {
+        type: 'geometry',
+        crop: { x: 0.25, y: 0, width: 0.5, height: 1 },
+        rotation: 0,
+        flipX: false,
+        flipY: false,
+      },
+    ],
+  });
+  assert.equal(recipeHash(base), before);
+  assert.equal(candidate.recipe.adjustments.exposure, -1);
+  assert.equal(candidate.recipe.adjustments.saturation, 20);
+  assert.deepEqual(candidate.recipe.curves.rgb, [
+    [0, 0.05],
+    [1, 0.95],
+  ]);
+  assert.equal(candidate.recipe.geometry.crop?.width, 0.5);
+  assert.throws(() =>
+    applyAssistantSequence(base, {
+      summary: 'invalid',
+      steps: [
+        {
+          type: 'geometry',
+          crop: { x: 0.9, y: 0, width: 0.5, height: 1 },
+          rotation: 0,
+          flipX: false,
+          flipY: false,
+        },
+      ],
+    }),
+  );
+  assert.throws(() =>
+    applyAssistantSequence(base, {
+      summary: 'invalid',
+      steps: [
+        {
+          type: 'adjust',
+          summary: 'bad',
+          target: 'global',
+          targetId: null,
+          changes: [{ path: '__proto__.bad', value: 1 }],
+        },
+      ],
+    }),
+  );
 });
 function context(overrides: Partial<AgentContext> = {}): AgentContext {
   return {
@@ -60,6 +137,134 @@ function text(value: string, annotations: unknown[] = []) {
 function tool(name: string, args: unknown, callId = name) {
   return { type: 'function_call', name, call_id: callId, arguments: JSON.stringify(args) };
 }
+
+test('candidate inspection feeds real returned images into a later round before nomination and refinement', async () => {
+  const bodies: any[] = [],
+    inspected: number[] = [];
+  const proposal = (value: number, id: string) =>
+    tool(
+      'propose_edit',
+      {
+        summary: '保留纹理，校正曝光',
+        target: 'global',
+        targetId: null,
+        changes: [{ path: 'adjustments.exposure', value }],
+      },
+      id,
+    );
+  const result = await runEditorAgent(
+    'fixture',
+    'fixture',
+    settings,
+    context({
+      imageDataUrl: 'data:image/png;base64,AA==',
+      executionMode: 'auto',
+      async inspectCandidate(recipe) {
+        inspected.push(recipe.adjustments.exposure);
+        return { observation: { changedPixels: 30 }, imageDataUrl: 'data:image/jpeg;base64,AQ==' };
+      },
+    }),
+    async (_url, options) => {
+      bodies.push(JSON.parse(String(options?.body)));
+      if (bodies.length === 1)
+        return response([
+          proposal(-2, 'first'),
+          tool('inspect_candidate', { candidateIndex: 0 }, 'inspect-first'),
+          tool('select_candidate', { candidateIndex: 0, reason: '提前判断' }, 'too-early'),
+        ]);
+      if (bodies.length === 2)
+        return response([
+          proposal(-0.5, 'refined'),
+          tool('inspect_candidate', { candidateIndex: 1 }, 'inspect-refined'),
+        ]);
+      if (bodies.length === 3)
+        return response([
+          tool('select_candidate', { candidateIndex: 1, reason: '观察后的第二个方案更自然' }),
+        ]);
+      return response([text('已对照候选画面，选定第二种曝光。')]);
+    },
+  );
+  assert.deepEqual(inspected, [-2, -0.5]);
+  assert.equal(result.selectedCandidateIndex, 1);
+  assert.equal(result.candidates[1]!.recipe!.adjustments.exposure, -0.5);
+  assert.deepEqual(
+    result.candidates.map((c) => c.observation),
+    [{ changedPixels: 30 }, { changedPixels: 30 }],
+  );
+  assert.match(
+    bodies[1].input.find((i: any) => i.call_id === 'too-early' && i.type === 'function_call_output')
+      .output,
+    /REJECTED/,
+  );
+  const countImages = (body: any) =>
+    body.input.flatMap((i: any) => i.content ?? []).filter((c: any) => c.type === 'input_image')
+      .length;
+  assert.deepEqual(bodies.map(countImages), [1, 2, 3, 3]);
+  const nextInput = bodies[1].input;
+  assert.equal(nextInput.at(-1).content[1].image_url, 'data:image/jpeg;base64,AQ==');
+  assert.ok(nextInput.slice(0, -1).some((i: any) => i.type === 'function_call_output'));
+});
+
+test('candidate inspection respects sharing and caps three local renders per turn', async () => {
+  for (const shared of [false, true]) {
+    let inspections = 0,
+      rounds = 0;
+    const result = await runEditorAgent(
+      'fixture',
+      'fixture',
+      settings,
+      context({
+        ...(shared ? { imageDataUrl: 'data:image/png;base64,AA==' } : {}),
+        async inspectCandidate() {
+          inspections++;
+          return { observation: {}, imageDataUrl: 'data:image/png;base64,AA==' };
+        },
+      }),
+      async () =>
+        ++rounds === 1
+          ? response([
+              tool('propose_edit', {
+                summary: '微调',
+                target: 'global',
+                targetId: null,
+                changes: [{ path: 'adjustments.exposure', value: 0.2 }],
+              }),
+              ...[0, 1, 2, 3].map((i) =>
+                tool('inspect_candidate', { candidateIndex: 0 }, `inspect-${i}`),
+              ),
+            ])
+          : response([text('完成有限预览。')]),
+    );
+    assert.equal(inspections, shared ? 3 : 0);
+    assert.equal(result.candidates[0]!.observation !== undefined, shared);
+    assert.equal(result.selectedCandidateIndex, undefined);
+  }
+});
+test('memory suggestions require exact user evidence and remain drafts for explicit confirmation', async () => {
+  for (const valid of [true, false]) {
+    let calls = 0;
+    const result = await runEditorAgent(
+      'fixture-not-a-key',
+      'fixture-response',
+      settings,
+      context({ prompt: '以后人像都要保留雀斑与自然肤质。' }),
+      async () =>
+        ++calls === 1
+          ? response([
+              tool('suggest_memory', {
+                scope: 'project',
+                category: 'constraint',
+                title: '自然人像',
+                content: '保留雀斑与自然肤质',
+                evidence: valid ? '保留雀斑与自然肤质' : '这是从参考图片推测的习惯',
+              }),
+            ])
+          : response([text('请先检查要求及生效范围，再决定是否记住。')]),
+    );
+    assert.equal(result.memorySuggestions.length, valid ? 1 : 0);
+    assert.equal(result.candidates.length, 0, 'remembering must not become an image action');
+  }
+});
 
 test('assistant candidates use exact shared ranges, signed values and immutable V4 bases', () => {
   const base = createRecipeV4();

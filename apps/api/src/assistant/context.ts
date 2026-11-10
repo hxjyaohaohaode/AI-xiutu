@@ -73,6 +73,20 @@ export async function validateScope(db: Queryable, actorId: string, scope: Assis
   }
   await validateReferences(db, actorId, scope.referenceAssetIds, scope.spaceIds);
 }
+/** Combine permissions required by retained history, without expanding the tools'
+ * current search scope. This is internal data and can exceed one turn's UI limits. */
+export function mergeAssistantScopes(
+  current: AssistantScope,
+  prior: AssistantScope[],
+): AssistantScope {
+  return {
+    ...current,
+    spaceIds: [...new Set([current, ...prior].flatMap((scope) => scope.spaceIds))].sort(),
+    referenceAssetIds: [
+      ...new Set([current, ...prior].flatMap((scope) => scope.referenceAssetIds)),
+    ].sort(),
+  };
+}
 export async function validateReferences(
   db: Queryable,
   actorId: string,

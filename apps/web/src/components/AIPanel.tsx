@@ -151,6 +151,7 @@ export function AIPanel({
   onAfterArtworkWrite?: () => void | Promise<void>;
 }) {
   const [assistantOpen, setAssistantOpen] = useState(false);
+  const [generationGrantId, setGenerationGrantId] = useState<string | undefined>();
   const scope = (userId ?? 'local') + ':' + (project?.id ?? 'none');
   const cached = draftCache.get(scope);
   const [modelResponse, setModelResponse] = useState<ModelResponse | null>(null);
@@ -371,6 +372,7 @@ export function AIPanel({
     setIdempotency(secureUuid());
   }, []);
   function changeOperation(next: AIOperation) {
+    setGenerationGrantId(undefined);
     generationDraftEpoch.current += 1;
     setOperation(next);
     setParentJobId(null);
@@ -436,6 +438,7 @@ export function AIPanel({
           setReferenceIds(prepared.referenceAssetIds);
           setThreadId(null);
           changeOperation('generate-image');
+          setGenerationGrantId(prepared.executionGrantId);
           setPrompt(prepared.prompt);
           setAssistantOpen(false);
         },
@@ -507,6 +510,7 @@ export function AIPanel({
         });
       } else if (operation === 'generate-image') {
         Object.assign(body, { prompt: prompt.trim(), width, height });
+        if (generationGrantId) body.executionGrantId = generationGrantId;
         const options = requestImageOptions(selected, imageOptions);
         if (options) body.imageOptions = options;
         const ids = [...referenceIds];
@@ -662,6 +666,14 @@ export function AIPanel({
           onAuth={onAuth}
           onSave={onSave}
           onPreview={onPreview}
+          imageModelIds={(modelResponse?.models ?? [])
+            .filter(
+              (model) => model.enabled !== false && model.operations?.includes('generate-image'),
+            )
+            .map((model) => model.id)}
+          onBeforeArtworkWrite={onBeforeArtworkWrite}
+          onAfterArtworkWrite={onAfterArtworkWrite}
+          onApplied={onDecisionApplied ?? onOpenArtwork}
           captureCurrentImage={captureCurrentImage}
           onPrepareGenerationDraft={prepareAssistantGenerationDraft}
         />
@@ -1035,7 +1047,7 @@ export function AIPanel({
                 disabled={busy}
                 value={prompt}
                 placeholder={task.placeholder}
-                maxLength={1500}
+                maxLength={operation === 'generate-image' ? 4000 : 1500}
                 rows={2}
                 onChange={(event) => {
                   setPrompt(event.target.value);

@@ -1,0 +1,93 @@
+.unknown-jobs {
+  min-width: 0;
+}
+.unknown-job-filters {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(170px, 1fr));
+  gap: 12px;
+  align-items: end;
+  margin: 18px 0;
+}
+.unknown-job-filters label,
+.unknown-job-resolution label {
+  display: grid;
+  gap: 6px;
+  min-width: 0;
+  font-size: 13px;
+}
+.unknown-jobs input:not([type='checkbox']),
+.unknown-jobs select,
+.unknown-jobs textarea {
+  width: 100%;
+  min-width: 0;
+  border: 1px solid var(--border);
+  border-radius: 9px;
+  padding: 9px;
+  background: var(--surface);
+  color: inherit;
+  font: inherit;
+  box-sizing: border-box;
+}
+.unknown-jobs button {
+  min-height: 38px;
+  padding: 8px 12px;
+  border-radius: 9px;
+}
+.unknown-jobs .table-scroll {
+  overflow-x: auto;
+  max-width: 100%;
+}
+.unknown-jobs table {
+  width: 100%;
+  min-width: 740px;
+  border-collapse: collapse;
+  font-size: 12px;
+}
+.unknown-jobs td,
+.unknown-jobs th {
+  padding: 10px;
+  border-bottom: 1px solid var(--border);
+  text-align: left;
+  max-width: 230px;
+  overflow-wrap: anywhere;
+}
+.unknown-jobs td small {
+  display: block;
+  margin-top: 5px;
+  color: var(--muted);
+}
+.unknown-jobs nav {
+  display: flex;
+  gap: 12px;
+  align-items: center;
+  justify-content: flex-end;
+  margin: 16px 0;
+}
+.unknown-job-resolution {
+  margin-top: 24px;
+  border-top: 1px solid var(--border);
+  padding-top: 20px;
+}
+.unknown-job-resolution h3 {
+  overflow-wrap: anywhere;
+}
+.unknown-job-resolution fieldset {
+  border: 0;
+  padding: 0;
+  display: grid;
+  gap: 12px;
+  min-width: 0;
+}
+.unknown-job-resolution .check-row {
+  display: flex;
+  align-items: flex-start;
+}
+@media (max-width: 540px) {
+  .unknown-job-filters {
+    grid-template-columns: 1fr;
+  }
+  .unknown-jobs td,
+  .unknown-jobs th {
+    padding: 8px;
+  }
+}

@@ -50,7 +50,9 @@ test('real JPEG/PNG/WebP/AVIF/static GIF/single-page TIFF codecs normalize to pr
       assert.equal(metadata.pages, undefined);
       assert.equal(stored.hash, createHash('sha256').update(bytes).digest('hex'));
       assert.equal(stored.bytes, bytes.length);
-      assert.equal((await stat(storage.path(stored.key))).mode & 0o777, 0o600);
+      // Windows uses inherited ACLs; POSIX mode bits do not describe its access.
+      if (process.platform !== 'win32')
+        assert.equal((await stat(storage.path(stored.key))).mode & 0o777, 0o600);
       await storage.discard(stored.key);
       assert.deepEqual(await readdir(directory), []);
     }
@@ -195,7 +197,7 @@ test('private thumbnails preserve aspect and alpha, do not enlarge, and reuse im
     const before = await stat(filename);
     const metadata = await sharp(filename).metadata();
     assert.equal(metadata.hasAlpha, true);
-    assert.equal(before.mode & 0o777, 0o600);
+    if (process.platform !== 'win32') assert.equal(before.mode & 0o777, 0o600);
     assert.deepEqual(await storage.thumbnail(wide.key), a);
     assert.equal((await stat(filename)).mtimeMs, before.mtimeMs);
     assert.throws(() => storage.path(wide.key.replace(/\.png$/, '.thumb.webp')), {

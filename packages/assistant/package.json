@@ -14,8 +14,9 @@
     "@ai-xiutu/editor": "*",
     "@ai-xiutu/multimodal": "*",
     "@ai-xiutu/providers": "*",
-    "ws": "8.22.2",
-    "https-proxy-agent": "9.1.0"
+    "https-proxy-agent": "9.1.0",
+    "js-tiktoken": "1.0.21",
+    "ws": "8.22.2"
   },
   "devDependencies": {
     "@types/ws": "8.18.2"

@@ -9,6 +9,8 @@ import {
 } from './v4-types.js';
 import type { SelectionMaskV3 } from './v3-types.js';
 import type { RGBAImage, RenderOptions } from './types.js';
+import { exemplarFill } from './exemplar.js';
+import { guidedRetouch } from './guided-retouch.js';
 
 export interface SpatialRegionV4 {
   left: number;
@@ -219,6 +221,7 @@ export function applyHealingV4(
 ): RGBAImage {
   let current = image,
     totalWork = 0;
+  const exemplarBudget = { used: 0 };
   for (const op of operations) {
     if (!op.enabled || op.opacity === 0) continue;
     const roi = region(
@@ -231,6 +234,10 @@ export function applyHealingV4(
       MAX_V4_HEAL_ROI_PIXELS,
     );
     if (!roi) continue;
+    if (op.method === 'exemplar-v1') {
+      current = exemplarFill(current, roi, op, options, exemplarBudget);
+      continue;
+    }
     const { width, height, left, top, weights } = roi,
       size = width * height;
     totalWork += size * op.iterations;
@@ -361,6 +368,10 @@ export function applyRetouchV4(
       throw new RangeError(
         'Retouch combined target budget exceeded; split this edit into versions',
       );
+    if (op.algorithm === 'guided-v1') {
+      current = guidedRetouch(current, roi, op, options);
+      continue;
+    }
     const data = new Uint8ClampedArray(current.data),
       radius = Math.max(1, Math.round(op.radius * Math.min(image.width, image.height))),
       rgb = [0, 0, 0],

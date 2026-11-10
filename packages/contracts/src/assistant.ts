@@ -1,4 +1,7 @@
 import { z } from 'zod';
+import { creativeBriefSchema } from './creative.js';
+import type { AssistantWorkspace } from './assistant-ui.js';
+import type { MemorySuggestion } from './memory.js';
 
 /** Browser → application protocol, deliberately not an arbitrary vendor-event tunnel. */
 export const assistantContextSchema = z
@@ -21,6 +24,8 @@ export const assistantScopeSchema = z
     referenceAssetIds: z.array(z.uuid()).max(8).default([]),
     allowWebSearch: z.boolean().default(false),
     usePersonalMemory: z.boolean().default(false),
+    executionGrantId: z.uuid().optional(),
+    creativeBrief: creativeBriefSchema.optional(),
   })
   .strict();
 export type AssistantScope = z.infer<typeof assistantScopeSchema>;
@@ -93,6 +98,11 @@ export interface AssistantCitation {
   url: string;
 }
 export interface AssistantCandidate {
+  observation?: unknown;
+  /** Text-turn automatic actions are completed/blocked by the server atomically. */
+  executionManagedBy?: 'server';
+  executionGrantId?: string;
+  appliedRevisionId?: string | null;
   id: string;
   kind: 'edit' | 'generation';
   summary: string;
@@ -123,6 +133,8 @@ export type VoiceServerEvent =
   | { type: 'tool'; name: string; state: 'running' | 'completed' | 'failed' }
   | {
       type: 'assistant-result';
+      memorySuggestions?: MemorySuggestion[];
+      workspace?: AssistantWorkspace;
       text: string;
       citations: AssistantCitation[];
       candidates: AssistantCandidate[];

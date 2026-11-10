@@ -8,6 +8,9 @@ import { schemaV7Sql } from './schema-v7.js';
 import { schemaV8Sql } from './schema-v8.js';
 import { schemaV9Sql } from './schema-v9.js';
 import { schemaV10Sql } from './schema-v10.js';
+import { schemaV11Sql } from './schema-v11.js';
+import { schemaV12Sql } from './schema-v12.js';
+import { schemaV13Sql } from './schema-v13.js';
 
 export type { PoolClient, QueryResultRow } from 'pg';
 export type Database = pg.Pool;
@@ -26,6 +29,9 @@ const migrations = [
   { version: 8, sql: schemaV8Sql },
   { version: 9, sql: schemaV9Sql },
   { version: 10, sql: schemaV10Sql },
+  { version: 11, sql: schemaV11Sql },
+  { version: 12, sql: schemaV12Sql },
+  { version: 13, sql: schemaV13Sql },
 ] as const;
 export const REQUIRED_SCHEMA_VERSIONS: readonly number[] = Object.freeze(
   migrations.map(({ version }) => version),
@@ -61,6 +67,7 @@ export function createDatabase(connectionString: string): Database {
   });
 }
 export * from './quota.js';
+export * from './assistant-grants.js';
 export async function transaction<T>(
   db: Database,
   work: (tx: pg.PoolClient) => Promise<T>,

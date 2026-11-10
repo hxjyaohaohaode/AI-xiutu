@@ -237,15 +237,39 @@ test('V4 rejects unimplemented anatomically constrained neck length while stored
       neckWidth: 15,
       shoulders: -25,
     }),
-    expected = applyPortraitValues(createRecipeV4(), a, id, {
-      neckLength: 0,
-      neckWidth: 15,
-      shoulders: -25,
-    });
+    expected = applyPortraitValues(
+      migrateRecipeToV4(
+        applyPortraitValues(createRecipeV3(), a, id, {
+          neckWidth: 15,
+          shoulders: -25,
+        }),
+      ),
+      a,
+      id,
+      {
+        neckLength: 0,
+        neckWidth: 15,
+        shoulders: -25,
+      },
+    );
   assert.deepEqual(
     cleared,
     expected,
     'clearing the old unsupported control preserves the complete other-body snapshot',
   );
   assert.deepEqual(renderEditorRecipe(image, cleared), renderEditorRecipe(image, expected));
+});
+
+test('new V4 portrait flows retain their algorithm during edits and legacy targets never switch silently', () => {
+  const a = analysis(),
+    id = a.targets[0]!.id;
+  const next = applyPortraitValues(createRecipeV4(), a, id, { jaw: 100 });
+  assert.ok(
+    next.warp.strokes.length > 0 && next.warp.strokes.every((s) => s.algorithm === 'flow-v1'),
+  );
+  const updated = applyPortraitValues(next, a, id, { jaw: -100, eyeSize: 30 });
+  assert.ok(updated.warp.strokes.every((s) => s.algorithm === 'flow-v1'));
+  const legacy = migrateRecipeToV4(applyPortraitValues(createRecipeV3(), a, id, { jaw: 50 }));
+  const preserved = applyPortraitValues(legacy, a, id, { jaw: 60, eyeSize: 30 });
+  assert.ok(preserved.warp.strokes.every((s) => s.algorithm === undefined));
 });

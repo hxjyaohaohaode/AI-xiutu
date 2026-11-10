@@ -487,10 +487,12 @@
     padding: 6px 10px 4px;
     border: 0;
     background: transparent;
+    overflow-x: auto;
   }
   .ai-workbench .ai-task-tabs button {
     display: flex;
-    flex: 1;
+    flex: 1 0 auto;
+    white-space: nowrap;
     justify-content: center;
     align-items: center;
     gap: 5px;

@@ -1,7 +1,14 @@
 import { z } from 'zod';
 import { join } from 'node:path';
 import type { FastifyInstance } from 'fastify';
-import { transaction, audit, type Database } from '@ai-xiutu/db';
+import {
+  transaction,
+  audit,
+  claimAssistantGrant,
+  assertAssistantGrant,
+  type Database,
+} from '@ai-xiutu/db';
+import { applyAuthorizedCandidate } from './apply.js';
 import {
   assistantModelConfigSchema,
   VOICE_MODELS,
@@ -12,9 +19,16 @@ import {
 import type { AppConfig } from '../config.js';
 import { HttpError, requireUser, requireOperator, id, hash, rateLimit } from '../core.js';
 import { LocalPrivateStorage } from '../storage.js';
-import { assistantAccess, lockedAssistantAccess } from './context.js';
+import { assistantAccess, lockedAssistantAccess, validateScope } from './context.js';
 import { createAssistantService, type AssistantDependencies } from './service.js';
 import { attachVoiceBridge } from './voice.js';
+import { assistantGrantSchema } from '@ai-xiutu/contracts';
+import { registerAssistantEvents } from './events.js';
+import { registerAssistantMemory } from './memory.js';
+import {
+  assistantReconciliationFilters,
+  listUnknownAssistantRecords,
+} from '../ai-reconciliation.js';
 export type { AssistantDependencies } from './service.js';
 
 export function registerAssistant(
@@ -23,6 +37,8 @@ export function registerAssistant(
   config: AppConfig,
   dependencies: AssistantDependencies = {},
 ) {
+  registerAssistantEvents(app, db);
+  registerAssistantMemory(app, db);
   const storage = new LocalPrivateStorage(config);
   const service = createAssistantService(
     db,
@@ -33,6 +49,77 @@ export function registerAssistant(
   const bridge = attachVoiceBridge(app, db, config, service);
   app.addHook('onClose', async () => {
     await service.waitForIdle();
+  });
+  const grantDto = (row: Record<string, any>) => ({
+    id: row.id,
+    mode: row.mode,
+    unitLimit: row.unit_limit,
+    usedUnits: row.used_units,
+    stepLimit: row.step_limit,
+    usedSteps: row.used_steps,
+    expiresAt: row.expires_at,
+    revokedAt: row.revoked_at,
+  });
+  app.post('/v1/projects/:projectId/assistant-grants', async (req) => {
+    const user = requireUser(req),
+      projectId = id.parse((req.params as any).projectId);
+    const body = assistantGrantSchema.parse(req.body);
+    return transaction(db, async (tx) => {
+      await lockedAssistantAccess(tx, user.id, projectId);
+      const known = (
+        await tx.query(
+          `SELECT id FROM assistant_model_configs WHERE id=ANY($1::text[]) AND config->>'enabled'='true'
+         UNION SELECT id FROM model_configs WHERE id=ANY($1::text[]) AND COALESCE(config->>'enabled','true')='true'`,
+          [body.modelIds],
+        )
+      ).rows;
+      if (new Set(known.map((item) => item.id)).size !== new Set(body.modelIds).size)
+        throw new HttpError(400, 'GRANT_MODEL_UNAVAILABLE', '请为本次授权选择已启用的模型');
+      const row = (
+        await tx.query(
+          `INSERT INTO assistant_grants(actor_id,project_id,mode,unit_limit,step_limit,allowed_actions,model_ids,expires_at)
+         VALUES($1,$2,$3,$4,$5,$6,$7,clock_timestamp()+($8::integer*interval '1 minute')) RETURNING *`,
+          [
+            user.id,
+            projectId,
+            body.mode,
+            body.unitLimit,
+            body.stepLimit,
+            JSON.stringify([...new Set(body.allowedActions)]),
+            JSON.stringify([...new Set(body.modelIds)]),
+            body.minutes,
+          ],
+        )
+      ).rows[0];
+      await audit(tx, user.id, 'assistant.grant.created', 'project', projectId, {
+        grantId: row.id,
+        mode: body.mode,
+        unitLimit: body.unitLimit,
+        stepLimit: body.stepLimit,
+      });
+      return { grant: grantDto(row) };
+    });
+  });
+  app.get('/v1/assistant-grants/:grantId', async (req) => {
+    const user = requireUser(req);
+    const row = (
+      await db.query('SELECT * FROM assistant_grants WHERE id=$1 AND actor_id=$2', [
+        id.parse((req.params as any).grantId),
+        user.id,
+      ])
+    ).rows[0];
+    if (!row) throw new HttpError(404, 'GRANT_NOT_FOUND', '授权不存在');
+    await assistantAccess(db, user.id, row.project_id);
+    return { grant: grantDto(row) };
+  });
+  app.delete('/v1/assistant-grants/:grantId', async (req) => {
+    const user = requireUser(req);
+    const result = await db.query(
+      'UPDATE assistant_grants SET revoked_at=COALESCE(revoked_at,clock_timestamp()) WHERE id=$1 AND actor_id=$2 RETURNING id',
+      [id.parse((req.params as any).grantId), user.id],
+    );
+    if (!result.rowCount) throw new HttpError(404, 'GRANT_NOT_FOUND', '授权不存在');
+    return { ok: true };
   });
   app.get('/v1/assistant/models', async (req) => {
     requireUser(req);
@@ -68,26 +155,71 @@ export function registerAssistant(
       sources: VOICE_DOCS,
     };
   });
-  app.get('/v1/projects/:projectId/assistant-turns', async (req) => {
+  app.get('/v1/projects/:projectId/assistant-conversations', async (req) => {
     const user = requireUser(req),
       projectId = id.parse((req.params as any).projectId);
     await assistantAccess(db, user.id, projectId);
     const rows = (
       await db.query(
-        'SELECT id,model_id,state,prompt,output,error_code,created_at FROM assistant_turns WHERE project_id=$1 AND actor_id=$2 ORDER BY created_at DESC LIMIT 30',
+        `SELECT t.conversation_id AS id, max(t.created_at) AS updated_at, count(*)::int AS turn_count,
+      root.prompt AS title FROM assistant_turns t JOIN assistant_turns root ON root.id=t.conversation_id
+      WHERE t.project_id=$1 AND t.actor_id=$2 GROUP BY t.conversation_id,root.prompt
+      ORDER BY max(t.created_at) DESC,t.conversation_id LIMIT 100`,
         [projectId, user.id],
+      )
+    ).rows;
+    return {
+      conversations: rows.map((row) => ({
+        id: row.id,
+        title: String(row.title).slice(0, 100),
+        turnCount: row.turn_count,
+        updatedAt: row.updated_at,
+      })),
+    };
+  });
+  app.get('/v1/projects/:projectId/assistant-turns', async (req) => {
+    const user = requireUser(req),
+      projectId = id.parse((req.params as any).projectId);
+    await assistantAccess(db, user.id, projectId);
+    const query = z.object({ conversationId: id.optional() }).strict().parse(req.query);
+    const rows = (
+      await db.query(
+        'SELECT id,conversation_id,model_id,state,prompt,output,error_code,created_at,scope,config FROM assistant_turns WHERE project_id=$1 AND actor_id=$2 AND ($3::uuid IS NULL OR conversation_id=$3) ORDER BY created_at DESC LIMIT 30',
+        [projectId, user.id, query.conversationId ?? null],
       )
     ).rows;
     const decisions = (
       await db.query(
-        'SELECT id,decision FROM assistant_candidates WHERE project_id=$1 AND actor_id=$2 AND turn_id=ANY($3::uuid[])',
+        'SELECT id,decision,applied_revision_id FROM assistant_candidates WHERE project_id=$1 AND actor_id=$2 AND turn_id=ANY($3::uuid[])',
         [projectId, user.id, rows.map((row) => row.id)],
       )
     ).rows;
-    const current = new Map(decisions.map((candidate) => [candidate.id, candidate.decision]));
+    const current = new Map(decisions.map((candidate) => [candidate.id, candidate]));
+    // Repeated scopes are checked once per response, never cached across requests.
+    const checked = new Map<string, boolean>();
+    for (const row of rows) {
+      const scope = row.config?.historyScope ?? row.scope,
+        key = JSON.stringify(scope);
+      if (!checked.has(key)) {
+        try {
+          await validateScope(db, user.id, scope);
+          checked.set(key, true);
+        } catch (error) {
+          if (!(error instanceof HttpError) || ![403, 404].includes(error.statusCode)) throw error;
+          checked.set(key, false);
+        }
+      }
+      if (!checked.get(key)) {
+        row.prompt = '此会话引用的素材权限已变化。';
+        row.output = null;
+        row.state = 'unavailable';
+        row.error_code = 'CONTEXT_SCOPE_REVOKED';
+      }
+    }
     return {
       turns: rows.map((row) => ({
         id: row.id,
+        conversationId: row.conversation_id,
         modelId: row.model_id,
         state: row.state,
         prompt: row.prompt,
@@ -96,7 +228,8 @@ export function registerAssistant(
               ...row.output,
               candidates: (row.output.candidates ?? []).map((candidate: any) => ({
                 ...candidate,
-                decision: current.get(candidate.id) ?? 'rejected',
+                decision: current.get(candidate.id)?.decision ?? 'rejected',
+                appliedRevisionId: current.get(candidate.id)?.applied_revision_id ?? null,
               })),
             }
           : null,
@@ -123,14 +256,32 @@ export function registerAssistant(
     const user = requireUser(req),
       projectId = id.parse((req.params as any).projectId);
     await assistantAccess(db, user.id, projectId);
+    const query = z.object({ conversationId: id.optional() }).strict().parse(req.query);
     const rows = (
       await db.query(
-        `SELECT * FROM assistant_candidates WHERE project_id=$1 AND actor_id=$2 AND expires_at>clock_timestamp() ORDER BY created_at DESC,id DESC LIMIT 50`,
-        [projectId, user.id],
+        `SELECT c.*,COALESCE(t.config->'historyScope',t.scope,v.scope) AS access_scope FROM assistant_candidates c
+        LEFT JOIN assistant_turns t ON t.id=c.turn_id LEFT JOIN voice_sessions v ON v.id=c.voice_id
+        WHERE c.project_id=$1 AND c.actor_id=$2 AND c.expires_at>clock_timestamp() AND ($3::uuid IS NULL OR t.conversation_id=$3) ORDER BY c.created_at DESC,c.id DESC LIMIT 50`,
+        [projectId, user.id, query.conversationId ?? null],
       )
     ).rows;
+    const visible = [];
+    const checked = new Map<string, boolean>();
+    for (const row of rows) {
+      const key = JSON.stringify(row.access_scope);
+      if (!checked.has(key)) {
+        try {
+          await validateScope(db, user.id, row.access_scope);
+          checked.set(key, true);
+        } catch (error) {
+          if (!(error instanceof HttpError) || ![403, 404].includes(error.statusCode)) throw error;
+          checked.set(key, false);
+        }
+      }
+      if (checked.get(key)) visible.push(row);
+    }
     return {
-      candidates: rows.map((row) => ({
+      candidates: visible.map((row) => ({
         ...row.payload,
         id: row.id,
         kind: row.kind,
@@ -138,6 +289,7 @@ export function registerAssistant(
         baseVersion: row.base_version,
         baseRecipeHash: row.base_recipe_hash,
         decision: row.decision,
+        appliedRevisionId: row.applied_revision_id,
       })),
     };
   });
@@ -166,18 +318,19 @@ export function registerAssistant(
         decision: z.enum(['previewed', 'rejected']),
         recipe: z.unknown().optional(),
         expectedVersion: z.number().int().positive().optional(),
+        automatic: z.boolean().default(false),
       })
       .strict()
       .parse(req.body);
     const hint = (
-      await db.query('SELECT project_id FROM assistant_candidates WHERE id=$1 AND actor_id=$2', [
-        candidateId,
-        user.id,
-      ])
+      await db.query(
+        `SELECT c.project_id,COALESCE(t.config->'historyScope',t.scope,v.scope) AS access_scope FROM assistant_candidates c LEFT JOIN assistant_turns t ON t.id=c.turn_id LEFT JOIN voice_sessions v ON v.id=c.voice_id WHERE c.id=$1 AND c.actor_id=$2`,
+        [candidateId, user.id],
+      )
     ).rows[0];
     if (!hint) throw new HttpError(404, 'CANDIDATE_NOT_FOUND', '候选不存在或无权访问');
     return transaction(db, async (tx) => {
-      await lockedAssistantAccess(tx, user.id, hint.project_id);
+      await lockedAssistantAccess(tx, user.id, hint.project_id, hint.access_scope);
       const row = (
         await tx.query(
           'SELECT * FROM assistant_candidates WHERE id=$1 AND actor_id=$2 AND expires_at>clock_timestamp() FOR UPDATE',
@@ -187,6 +340,39 @@ export function registerAssistant(
       if (!row) throw new HttpError(404, 'CANDIDATE_NOT_FOUND', '候选不存在、已过期或无权访问');
       if (row.decision === 'rejected' && body.decision !== 'rejected')
         throw new HttpError(409, 'CANDIDATE_REJECTED', '候选已退回');
+      if (body.decision === 'previewed') {
+        const owner = (
+          await tx.query(
+            row.turn_id
+              ? 'SELECT scope FROM assistant_turns WHERE id=$1'
+              : 'SELECT scope FROM voice_sessions WHERE id=$1',
+            [row.turn_id ?? row.voice_id],
+          )
+        ).rows[0];
+        const grantId = owner?.scope?.executionGrantId;
+        if (body.automatic && !grantId)
+          throw new HttpError(403, 'AUTOMATIC_GRANT_REQUIRED', '自动执行需要有效的范围与预算授权');
+        if (grantId) {
+          const mode = await assertAssistantGrant(tx, grantId, user.id, row.project_id, true);
+          if (mode === 'suggest' || (body.automatic && mode !== 'auto'))
+            throw new HttpError(
+              403,
+              'ASSISTANT_ACTION_FORBIDDEN',
+              '当前授权只允许建议或需要逐次确认',
+            );
+          if (row.kind === 'edit')
+            await claimAssistantGrant(tx, {
+              grantId,
+              actorId: user.id,
+              projectId: row.project_id,
+              key: `candidate:${candidateId}`,
+              action: 'edit',
+              modelId: '',
+              units: 0,
+              automatic: body.automatic,
+            });
+        }
+      }
       if (body.decision === 'previewed' && row.kind === 'edit') {
         const artwork = (
           await tx.query('SELECT head_version FROM artworks WHERE id=$1', [row.artwork_id])
@@ -207,6 +393,15 @@ export function registerAssistant(
       // must still acquire its collaboration lease and use normal versioned save.
       return { ok: true, decision: body.decision, payload: row.payload, applied: false };
     });
+  });
+  app.post('/v1/assistant-candidates/:candidateId/apply', async (req) => {
+    const actorId = requireUser(req).id,
+      candidateId = id.parse((req.params as any).candidateId);
+    const body = z
+      .object({ expectedVersion: z.number().int().positive(), recipe: z.unknown() })
+      .strict()
+      .parse(req.body);
+    return transaction(db, (tx) => applyAuthorizedCandidate(tx, { candidateId, actorId, ...body }));
   });
   app.get('/v1/ops/assistant-models', async (req) => {
     requireOperator(req);
@@ -284,18 +479,23 @@ export function registerAssistant(
     return { ok: true };
   });
   app.get('/v1/ops/assistant-reconciliation', async (req) => {
-    requireOperator(req);
-    const turns = (
-      await db.query(
-        "SELECT id,project_id,actor_id,model_id,state,error_code,created_at FROM assistant_turns WHERE state='unknown' ORDER BY created_at LIMIT 100",
-      )
-    ).rows;
-    const voices = (
-      await db.query(
-        "SELECT id,project_id,actor_id,model_id,state,error_code,elapsed_seconds,created_at FROM voice_sessions WHERE state='unknown' ORDER BY created_at LIMIT 100",
-      )
-    ).rows;
-    return { turns, voices };
+    const user = requireOperator(req),
+      query = assistantReconciliationFilters.parse(req.query);
+    const empty = { records: [], nextCursor: null };
+    const turns =
+      query.kind === 'voice'
+        ? empty
+        : await listUnknownAssistantRecords(db, user.id, 'turn', query);
+    const voices =
+      query.kind === 'turn'
+        ? empty
+        : await listUnknownAssistantRecords(db, user.id, 'voice', query);
+    return {
+      turns: turns.records,
+      voices: voices.records,
+      nextCursor: query.kind === 'voice' ? voices.nextCursor : turns.nextCursor,
+      nextCursors: { turn: turns.nextCursor, voice: voices.nextCursor },
+    };
   });
   app.post('/v1/ops/assistant-reconciliation/:kind/:recordId', async (req) => {
     const user = requireOperator(req),

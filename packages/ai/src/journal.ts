@@ -1,6 +1,7 @@
 import { mkdir, open, readdir, readFile, stat } from 'node:fs/promises';
 import { join, resolve } from 'node:path';
 import type { Database } from '@ai-xiutu/db';
+import { syncStorageDirectory } from '@ai-xiutu/storage';
 
 /** Separate from PostgreSQL backups. A pilot journal, not independent disaster recovery. */
 export class DispatchJournal {
@@ -47,12 +48,7 @@ export class DispatchJournal {
     } finally {
       await file.close();
     }
-    const directory = await open(this.directory, 'r');
-    try {
-      await directory.sync();
-    } finally {
-      await directory.close();
-    }
+    await syncStorageDirectory(this.directory);
     return true;
   }
   /** A restored DB missing even one external dispatch stops all new external work. */

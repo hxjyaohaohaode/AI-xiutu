@@ -14,11 +14,11 @@ import { hash } from '../src/core.js';
 
 export async function collaborationFixture(
   databaseUrl: string,
-  options: { assistant?: AssistantDependencies } = {},
+  options: { assistant?: AssistantDependencies; origin?: string } = {},
 ) {
   const db = createDatabase(databaseUrl),
     directory = await mkdtemp(join(tmpdir(), 'xiutu-v4-sql-'));
-  const origin = 'http://v4.test';
+  const origin = options.origin ?? 'http://v4.test';
   const config = loadConfig({
     DATABASE_URL: databaseUrl,
     SESSION_SECRET: 'isolated-v4-fixture-not-production-credentials',

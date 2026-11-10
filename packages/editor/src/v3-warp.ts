@@ -2,6 +2,7 @@ import { compileSelectionMaskV3 } from './v3-mask.js';
 import { checkV3, sampleBilinearV3, clamp01 } from './v3-pixels.js';
 import type { WarpV3 } from './v3-types.js';
 import type { RGBAImage, RenderOptions, Point, Dimensions } from './types.js';
+import { flowWarpPoint } from './v3-flow.js';
 
 /** Reverse sampling field. A drag defines a smooth compactly-supported displacement, not scene geometry. */
 export function compileWarpFieldV3(
@@ -39,6 +40,20 @@ export function compileWarpFieldV3(
       if (Math.abs(dx) >= stroke.r || Math.abs(dy) >= stroke.r) continue;
       const d = Math.hypot(dx, dy) / stroke.r;
       if (d >= 1) continue;
+      if (stroke.algorithm === 'flow-v1') {
+        const mapped = flowWarpPoint(
+          dx / stroke.r,
+          dy / stroke.r,
+          stroke.dx / stroke.r,
+          stroke.dy / stroke.r,
+          stroke.mode,
+          stroke.strength * (1 - protection),
+          stroke.feather,
+        );
+        x = stroke.cx + mapped.x * stroke.r;
+        y = stroke.cy + mapped.y * stroke.r;
+        continue;
+      }
       // Smooth compact support remains continuous even at requested hard brush falloff.
       const base = (1 - d * d) ** 2,
         soft = stroke.feather === 0 ? 1 : clamp01((1 - d) / stroke.feather),

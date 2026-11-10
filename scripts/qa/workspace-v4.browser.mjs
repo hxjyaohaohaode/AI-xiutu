@@ -544,7 +544,10 @@ try {
       requestHash: randomUUID(),
     });
   });
-  browser = await chromium.launch({ headless: true });
+  const browserChannel = process.env.BROWSER_CHANNEL;
+  if (browserChannel && !['chrome', 'msedge'].includes(browserChannel))
+    throw new Error('BROWSER_CHANNEL must be chrome or msedge; omit it for bundled Chromium.');
+  browser = await chromium.launch({ headless: true, ...(browserChannel ? { channel: browserChannel } : {}) });
   report.browser = { name: 'Chromium', version: browser.version() };
   for (const size of [
     { width: 320, height: 700 },

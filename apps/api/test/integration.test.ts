@@ -47,6 +47,9 @@ test(
     const app = await buildApp({ db, config, sms });
     await app.ready();
     const origin = 'http://localhost:5173';
+    // Rate buckets are durable by design. Each independent run owns an address,
+    // while recreated apps in this run keep that address to exercise persistence.
+    const peerAddress = `fd00:${randomUUID().replaceAll('-', '').match(/.{4}/g)!.slice(0, 7).join(':')}`;
     const call = (
       method: any,
       url: string,
@@ -57,6 +60,7 @@ test(
       app.inject({
         method,
         url,
+        remoteAddress: peerAddress,
         headers: { origin, ...(cookie ? { cookie } : {}), ...headers },
         ...(body === undefined ? {} : { payload: body as any }),
       });
@@ -601,7 +605,7 @@ test(
           );
           const unknownJobs = await call(
             'GET',
-            '/v1/ops/ai-jobs/unknown',
+            `/v1/ops/ai-jobs/unknown?jobId=${jobId}`,
             undefined,
             operator.cookie,
           );
@@ -612,6 +616,30 @@ test(
           assert.equal(receipt.heldUnits, 5);
           assert.equal(unknownJobs.body.includes('private fixture text'), false);
           assert.equal(receipt.input, undefined);
+          const page = await call(
+            'GET',
+            '/v1/ops/ai-jobs/unknown?limit=1',
+            undefined,
+            operator.cookie,
+          );
+          assert.equal(page.json().jobs.length, 1);
+          if (page.json().nextCursor) {
+            const second = await call(
+              'GET',
+              `/v1/ops/ai-jobs/unknown?limit=1&cursor=${page.json().nextCursor}`,
+              undefined,
+              operator.cookie,
+            );
+            assert.equal(second.statusCode, 200, second.body);
+            assert.notEqual(second.json().jobs[0].id, page.json().jobs[0].id);
+            const changedScope = await call(
+              'GET',
+              `/v1/ops/ai-jobs/unknown?jobId=${jobId}&cursor=${page.json().nextCursor}`,
+              undefined,
+              operator.cookie,
+            );
+            assert.equal(changedScope.statusCode, 400);
+          }
           const body = {
             spaceId: viewer.spaceId,
             units: 50,
@@ -892,6 +920,7 @@ test(
             const blocked = await restarted.inject({
               method: 'POST',
               url: '/v1/auth/login',
+              remoteAddress: peerAddress,
               headers: { origin },
               payload: { phone, password: 'invalid' },
             });

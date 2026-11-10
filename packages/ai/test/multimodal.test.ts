@@ -692,10 +692,11 @@ test(
               1,
               'normalized output remains an unreferenced private file during review',
             );
-            assert.equal(
-              (await stat(join(f.storageDirectory, privateFiles[0]!))).mode & 0o777,
-              0o600,
-            );
+            if (process.platform !== 'win32')
+              assert.equal(
+                (await stat(join(f.storageDirectory, privateFiles[0]!))).mode & 0o777,
+                0o600,
+              );
           };
           assert.equal(await f.service.runOnce(), true);
           assert.equal(f.calls.image, 1);

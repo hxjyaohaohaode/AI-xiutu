@@ -90,6 +90,8 @@ export const assistantModelConfigSchema = z
     maxSeconds: z.number().int().min(30).max(600).default(180),
     maxDelegations: z.number().int().min(1).max(20).default(6),
     maxOutputTokens: z.number().int().min(256).max(8192).default(2048),
+    contextWindowTokens: z.number().int().min(8192).max(2_000_000).default(32768),
+    visualTokenReserve: z.number().int().min(1024).max(32768).default(4096),
     imageInput: z.boolean().default(false),
     webSearch: z.boolean().default(false),
     reasoningEffort: z.enum(['none', 'low', 'medium', 'high']).optional(),
@@ -102,10 +104,15 @@ export function voiceModel(id: string) {
   return found;
 }
 export const ASSISTANT_TOOL_NAMES = [
+  'suggest_memory',
+  'compose_workspace',
+  'read_history',
+  'read_tool_result',
   'search_resources',
   'describe_editor',
   'propose_edit',
   'propose_curve',
+  'propose_sequence',
   'draft_generation',
 ] as const;
 export const VOICE_VERIFIED_AT = '2026-11-10';

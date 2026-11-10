@@ -10,6 +10,8 @@ import { assistantModelConfigSchema } from '@ai-xiutu/assistant';
 import { collaborationFixture } from './collaboration-fixture.js';
 import type { AssistantDependencies } from '../src/assistant/index.js';
 import { createAssistantService } from '../src/assistant/service.js';
+import sharp from 'sharp';
+import { inspectCandidatePixels } from '../src/assistant/preview.js';
 
 const databaseUrl = process.env.TEST_DATABASE_URL;
 const sha = (value: string | Uint8Array) => createHash('sha256').update(value).digest('hex');
@@ -152,6 +154,845 @@ async function fixture(extra: Partial<AssistantDependencies> = {}) {
   const readTurn = async (id: string) => (await f.call('GET', `/v1/assistant-turns/${id}`)).json();
   return { ...f, modelId, settings, context, scope, turn, prepare, readTurn };
 }
+
+test(
+  'confirmed memory scopes, corrections, expiry and removal remain authoritative',
+  { skip: !databaseUrl },
+  async () => {
+    const f = await fixture();
+    try {
+      const path = `/v1/projects/${f.projectId}/assistant-memory`;
+      const make = (
+        scope: string,
+        title: string,
+        extra = {},
+        actor: 'owner' | 'editor' = 'owner',
+      ) =>
+        f.call(
+          'POST',
+          path,
+          { scope, category: 'constraint', title, content: '保留自然肤质与当前构图', ...extra },
+          actor,
+        );
+      const personal = await make('user', '私人习惯');
+      assert.equal(personal.statusCode, 200, personal.body);
+      const project = await make('project', '项目规则');
+      assert.equal(project.statusCode, 200, project.body);
+      assert.equal((await make('team', '越权团队规则', {}, 'editor')).statusCode, 403);
+      assert.equal(
+        (await make('artwork', '错误作品', { artworkId: randomUUID() })).statusCode,
+        404,
+      );
+      assert.equal(
+        (await make('project', '错误来源', { sourceTurnId: randomUUID() })).statusCode,
+        404,
+      );
+      const peer = (await f.call('GET', path, undefined, 'editor')).json().memories;
+      assert.ok(peer.some((item: any) => item.id === project.json().memory.id));
+      assert.ok(!peer.some((item: any) => item.id === personal.json().memory.id));
+      const other = (
+        await f.call('GET', `/v1/projects/${f.privateProjectId}/assistant-memory`)
+      ).json().memories;
+      assert.ok(other.some((item: any) => item.id === personal.json().memory.id));
+      assert.ok(!other.some((item: any) => item.id === project.json().memory.id));
+      const mid = project.json().memory.id;
+      const changed = await f.call('PUT', `${path}/${mid}`, {
+        expectedVersion: 1,
+        title: '已纠正',
+        content: '允许调整构图，仍保留自然肤质',
+        category: 'correction',
+      });
+      assert.equal(changed.statusCode, 200, changed.body);
+      assert.equal(changed.json().memory.version, 2);
+      const versions = await f.call('GET', `${path}/${mid}/history`);
+      assert.deepEqual(
+        versions.json().versions.map((item: any) => item.version),
+        [2, 1],
+      );
+      assert.equal(versions.json().versions[1].content, '保留自然肤质与当前构图');
+      assert.equal(
+        (await f.call('GET', `${path}/${personal.json().memory.id}/history`, undefined, 'editor'))
+          .statusCode,
+        404,
+      );
+      assert.equal(
+        (await f.call('DELETE', `${path}/${mid}`, { expectedVersion: 1 })).statusCode,
+        409,
+      );
+      assert.equal(
+        (await f.call('DELETE', `${path}/${mid}`, { expectedVersion: 2 })).statusCode,
+        200,
+      );
+      assert.ok(!(await f.call('GET', path)).json().memories.some((item: any) => item.id === mid));
+      assert.equal(
+        (
+          await f.db.query(
+            'SELECT version FROM assistant_memory_versions WHERE memory_id=$1 ORDER BY version',
+            [mid],
+          )
+        ).rowCount,
+        3,
+      );
+      const expired = await make('project', '已过期', {
+        expiresAt: new Date(Date.now() - 1000).toISOString(),
+      });
+      assert.ok(
+        !(await f.call('GET', path))
+          .json()
+          .memories.some((item: any) => item.id === expired.json().memory.id),
+      );
+      const managed = (await f.call('GET', `${path}?includeExpired=true`)).json();
+      assert.ok(managed.memories.some((item: any) => item.id === expired.json().memory.id));
+      assert.equal((await f.call('GET', path, undefined, 'operator')).statusCode, 404);
+    } finally {
+      await f.close();
+    }
+  },
+);
+
+test(
+  'operator assistant queue paginates with scoped cursors and never exposes private prompts',
+  { skip: !databaseUrl },
+  async () => {
+    const f = await fixture({
+      fetcher: async () => {
+        throw new Error('local ambiguous protocol failure');
+      },
+    });
+    try {
+      const ids: string[] = [];
+      for (let i = 0; i < 2; i++) {
+        const started = await f.call(
+          'POST',
+          `/v1/projects/${f.projectId}/assistant-turns`,
+          f.turn('PRIVATE_PROMPT_FOR_QUEUE_TEST'),
+        );
+        const done = await until(
+          () => f.readTurn(started.json().id),
+          (row) => row.state !== 'running',
+        );
+        assert.equal(done.state, 'unknown');
+        ids.push(done.id);
+      }
+      const path = `/v1/ops/assistant-reconciliation?kind=turn&actorId=${f.actors.owner.id}&limit=1`;
+      assert.equal((await f.call('GET', path)).statusCode, 403);
+      const first = await f.call('GET', path, undefined, 'operator');
+      assert.equal(first.statusCode, 200, first.body);
+      assert.equal(first.json().turns.length, 1);
+      assert.equal(first.body.includes('PRIVATE_PROMPT_FOR_QUEUE_TEST'), false);
+      const second = await f.call(
+        'GET',
+        `${path}&cursor=${first.json().nextCursor}`,
+        undefined,
+        'operator',
+      );
+      assert.equal(second.statusCode, 200, second.body);
+      assert.deepEqual([first.json().turns[0].id, second.json().turns[0].id], ids);
+      assert.equal(second.json().nextCursor, null);
+      const altered = await f.call(
+        'GET',
+        `/v1/ops/assistant-reconciliation?kind=voice&cursor=${first.json().nextCursor}`,
+        undefined,
+        'operator',
+      );
+      assert.equal(altered.statusCode, 400);
+    } finally {
+      await f.close();
+    }
+  },
+);
+
+test(
+  'persisted run events replay without new model calls and retain context provenance',
+  { skip: !databaseUrl },
+  async () => {
+    let sends = 0;
+    const f = await fixture({
+      fetcher: async () => {
+        sends++;
+        return new Response(
+          `data: ${JSON.stringify({ type: 'response.output_text.delta', delta: '先保留原图。' })}\n\n` +
+            `data: ${JSON.stringify({ type: 'response.completed', response: { status: 'completed', output: [outputText('先保留原图。')], usage: { output_tokens: 7 } } })}\n\n`,
+          {
+            headers: {
+              'content-type': 'text/event-stream',
+              'x-request-id': 'fixture-stream-receipt',
+            },
+          },
+        );
+      },
+    });
+    try {
+      const started = await f.call('POST', `/v1/projects/${f.projectId}/assistant-turns`, f.turn());
+      assert.ok([200, 202].includes(started.statusCode), started.body);
+      const done = await until(
+        () => f.readTurn(started.json().id),
+        (row) => row.state !== 'running',
+      );
+      assert.equal(done.state, 'completed', JSON.stringify(done));
+      const events = await f.call('GET', `/v1/assistant-turns/${done.id}/events`);
+      assert.equal(events.statusCode, 200);
+      assert.match(events.headers['content-type'] ?? '', /text\/event-stream/);
+      assert.match(events.body, /text.delta/);
+      assert.match(events.body, /run.completed/);
+      const first = events.body.match(/id: (\d+)/)![1]!;
+      const replay = await f.call('GET', `/v1/assistant-turns/${done.id}/events?after=${first}`);
+      assert.ok(!replay.body.includes(`id: ${first}\n`));
+      assert.equal(sends, 1);
+      assert.equal(
+        (await f.call('GET', `/v1/assistant-turns/${done.id}/events`, undefined, 'editor'))
+          .statusCode,
+        404,
+      );
+      const evidence = (await f.call('GET', `/v1/assistant-turns/${done.id}/context`)).json()
+        .manifest;
+      assert.equal(evidence.preservesAllUserInstructions, true);
+      assert.equal(evidence.tokenizer, 'o200k_base');
+    } finally {
+      await f.close();
+    }
+  },
+);
+
+test(
+  'AI delegation is scoped, atomic under concurrent admission, revocable and replay-safe',
+  { skip: !databaseUrl },
+  async () => {
+    const f = await fixture();
+    try {
+      const grantBody = {
+        mode: 'confirm',
+        unitLimit: 5,
+        stepLimit: 5,
+        minutes: 30,
+        allowedActions: ['assistant-turn', 'edit', 'generate-image'],
+        modelIds: [f.modelId],
+      };
+      const create = () =>
+        f.call('POST', `/v1/projects/${f.projectId}/assistant-grants`, grantBody);
+      assert.equal(
+        (await f.call('POST', `/v1/projects/${f.projectId}/assistant-grants`, grantBody, 'viewer'))
+          .statusCode,
+        403,
+      );
+      const created = await create();
+      assert.equal(created.statusCode, 200, created.body);
+      const grant = created.json().grant;
+      const body = () => ({ ...f.turn(), scope: { ...f.scope, executionGrantId: grant.id } });
+      const submissions = [body(), body()];
+      const results = await Promise.all(
+        submissions.map((input) =>
+          f.call('POST', `/v1/projects/${f.projectId}/assistant-turns`, input),
+        ),
+      );
+      const acceptedIndex = results.findIndex((result) => [200, 202].includes(result.statusCode));
+      assert.ok(acceptedIndex >= 0);
+      assert.equal(results.filter((result) => [200, 202].includes(result.statusCode)).length, 1);
+      assert.ok(
+        ['ASSISTANT_BUSY', 'ASSISTANT_BUDGET_EXHAUSTED'].includes(
+          results[1 - acceptedIndex]!.json().error.code,
+        ),
+      );
+      const done = await until(
+        () => f.readTurn(results[acceptedIndex]!.json().id),
+        (row) => row.state !== 'running',
+      );
+      assert.equal(done.state, 'completed');
+      const exhausted = await f.call('POST', `/v1/projects/${f.projectId}/assistant-turns`, body());
+      assert.equal(exhausted.json().error.code, 'ASSISTANT_BUDGET_EXHAUSTED');
+      const replay = await f.call(
+        'POST',
+        `/v1/projects/${f.projectId}/assistant-turns`,
+        submissions[acceptedIndex],
+      );
+      assert.equal(replay.json().id, done.id);
+      const usage = (await f.call('GET', `/v1/assistant-grants/${grant.id}`)).json().grant;
+      assert.equal(usage.usedUnits, 5);
+      assert.equal(usage.usedSteps, 1);
+      assert.equal(
+        (await f.call('GET', `/v1/assistant-grants/${grant.id}`, undefined, 'editor')).statusCode,
+        404,
+      );
+      const fresh = (await create()).json().grant;
+      assert.equal((await f.call('DELETE', `/v1/assistant-grants/${fresh.id}`)).statusCode, 200);
+      const revoked = await f.call('POST', `/v1/projects/${f.projectId}/assistant-turns`, {
+        ...f.turn(),
+        scope: { ...f.scope, executionGrantId: fresh.id },
+      });
+      assert.equal(revoked.json().error.code, 'ASSISTANT_GRANT_EXPIRED');
+      assert.equal(
+        (await f.call('GET', `/v1/assistant-grants/${fresh.id}`)).json().grant.usedUnits,
+        0,
+      );
+    } finally {
+      await f.close();
+    }
+  },
+);
+
+test(
+  'AI execution modes enforce suggestions, explicit previews and immutable automatic revisions',
+  { skip: !databaseUrl },
+  async () => {
+    let requests = 0;
+    const f = await fixture({
+      fetcher: async () =>
+        ++requests % 2 ? response([editCall()]) : response([outputText('候选完成')]),
+    });
+    try {
+      for (const mode of ['suggest', 'confirm', 'auto']) {
+        const created = await f.call('POST', `/v1/projects/${f.projectId}/assistant-grants`, {
+          mode,
+          unitLimit: 20,
+          stepLimit: 5,
+          minutes: 30,
+          allowedActions: ['assistant-turn', 'edit'],
+          modelIds: [f.modelId],
+        });
+        assert.equal(created.statusCode, 200, created.body);
+        const grantId = created.json().grant.id;
+        const started = await f.call('POST', `/v1/projects/${f.projectId}/assistant-turns`, {
+          ...f.turn(),
+          scope: { ...f.scope, executionGrantId: grantId },
+        });
+        assert.ok([200, 202].includes(started.statusCode), started.body);
+        const done = await until(
+          () => f.readTurn(started.json().id),
+          (row) => row.state !== 'running',
+        );
+        assert.equal(done.state, 'completed', JSON.stringify(done));
+        const candidate = done.output.candidates[0];
+        assert.equal(candidate.executionGrantId, grantId);
+        if (mode === 'auto') {
+          assert.equal(done.output.execution.state, 'applied');
+          assert.ok(
+            candidate.appliedRevisionId,
+            'server committed without a browser apply request',
+          );
+          assert.equal(
+            (
+              await f.db.query('SELECT head_version FROM artworks WHERE id=$1', [
+                f.context.artworkId,
+              ])
+            ).rows[0]!.head_version,
+            2,
+          );
+        }
+        const decision = { recipe: f.recipe, expectedVersion: f.context.expectedVersion };
+        const applied = await f.call(
+          'POST',
+          `/v1/assistant-candidates/${candidate.id}/apply`,
+          decision,
+        );
+        if (mode !== 'auto') {
+          assert.equal(applied.json().error.code, 'ASSISTANT_ACTION_FORBIDDEN');
+          const preview = await f.call(
+            'POST',
+            `/v1/assistant-candidates/${candidate.id}/decision`,
+            { ...decision, decision: 'previewed' },
+          );
+          assert.equal(preview.statusCode, mode === 'suggest' ? 403 : 200, preview.body);
+          assert.equal(
+            (
+              await f.db.query('SELECT head_version FROM artworks WHERE id=$1', [
+                f.context.artworkId,
+              ])
+            ).rows[0]!.head_version,
+            f.context.expectedVersion,
+          );
+        } else {
+          assert.equal(applied.statusCode, 200, applied.body);
+          const twice = await f.call(
+            'POST',
+            `/v1/assistant-candidates/${candidate.id}/apply`,
+            decision,
+          );
+          assert.equal(twice.json().revisionId, applied.json().revisionId);
+          assert.equal(twice.json().replayed, true);
+          const revisions = (
+            await f.db.query(
+              'SELECT version,recipe FROM revisions WHERE artwork_id=$1 ORDER BY version',
+              [f.context.artworkId],
+            )
+          ).rows;
+          assert.equal(revisions.length, 2);
+          assert.equal(revisions[0]!.recipe.adjustments.exposure, 0);
+          assert.equal(revisions[1]!.recipe.adjustments.exposure, -1.5);
+          const usage = (await f.call('GET', `/v1/assistant-grants/${grantId}`)).json().grant;
+          assert.equal(usage.usedSteps, 2);
+          assert.equal(usage.usedUnits, 5);
+        }
+      }
+    } finally {
+      await f.close();
+    }
+  },
+);
+
+test(
+  'server automatic execution preserves paid receipts and candidates when drafts, collaboration, alternatives or step budget block saving',
+  { skip: !databaseUrl },
+  async (t) => {
+    for (const scenario of ['draft', 'lease', 'alternatives', 'budget'] as const)
+      await t.test(scenario, async () => {
+        let requests = 0;
+        const f = await fixture({
+          fetcher: async () => {
+            requests++;
+            if (requests > 1) return response([outputText('已生成候选')]);
+            const calls = [editCall()];
+            if (scenario === 'alternatives')
+              calls.push({
+                ...editCall(),
+                call_id: 'second-option',
+                arguments: JSON.stringify({
+                  summary: '另一种方案',
+                  target: 'global',
+                  targetId: null,
+                  changes: [{ path: 'adjustments.exposure', value: -0.5 }],
+                }),
+              });
+            return response(calls);
+          },
+        });
+        try {
+          const grant = (
+            await f.call('POST', `/v1/projects/${f.projectId}/assistant-grants`, {
+              mode: 'auto',
+              unitLimit: 20,
+              stepLimit: scenario === 'budget' ? 1 : 5,
+              minutes: 30,
+              allowedActions: ['assistant-turn', 'edit'],
+              modelIds: [f.modelId],
+            })
+          ).json().grant;
+          if (scenario === 'lease') {
+            const path = `/v1/artworks/${f.context.artworkId}/collaboration`;
+            const session = (
+              await f.call('POST', `${path}/sessions`, { clientId: randomUUID() }, 'editor')
+            ).json().session;
+            const lease = await f.call(
+              'POST',
+              `${path}/leases`,
+              { sessionId: session.id, target: { kind: 'document' } },
+              'editor',
+            );
+            assert.equal(lease.statusCode, 201, lease.body);
+          }
+          const context = structuredClone(f.context);
+          if (scenario === 'draft') context.recipe.adjustments.brightness = 15;
+          const started = await f.call('POST', `/v1/projects/${f.projectId}/assistant-turns`, {
+            ...f.turn(),
+            context,
+            scope: { ...f.scope, executionGrantId: grant.id },
+          });
+          assert.equal(started.statusCode, 202, started.body);
+          // Poll storage, not a browser endpoint. Execution must finish independently.
+          const row = await until(
+            async () =>
+              (
+                await f.db.query('SELECT state,output,hold_id FROM assistant_turns WHERE id=$1', [
+                  started.json().id,
+                ])
+              ).rows[0]!,
+            (row) => row.state !== 'running',
+          );
+          assert.equal(row.state, 'completed', JSON.stringify(row));
+          assert.equal(
+            row.output.execution.state,
+            scenario === 'alternatives' ? 'review_required' : 'blocked',
+          );
+          assert.ok(
+            row.output.candidates.every(
+              (c: any) => c.decision === 'pending' && c.executionManagedBy === 'server',
+            ),
+          );
+          assert.equal(
+            (
+              await f.db.query('SELECT head_version FROM artworks WHERE id=$1', [
+                f.context.artworkId,
+              ])
+            ).rows[0]!.head_version,
+            1,
+          );
+          const usage = (await f.call('GET', `/v1/assistant-grants/${grant.id}`)).json().grant;
+          assert.equal(usage.usedSteps, 1, 'rolled-back local edit consumes no step');
+          assert.equal(
+            usage.usedUnits,
+            5,
+            'completed provider work still costs its admitted amount',
+          );
+          assert.equal(requests, 2, 'no model retry on edit conflict');
+          const events = (
+            await f.db.query(
+              'SELECT type FROM assistant_run_events WHERE turn_id=$1 ORDER BY seq',
+              [started.json().id],
+            )
+          ).rows.map((r) => r.type);
+          assert.ok(events.includes('action.blocked'));
+          assert.equal(events.at(-1), 'run.completed');
+        } finally {
+          await f.close();
+        }
+      });
+  },
+);
+
+test(
+  'candidate observation renders authorized source pixels, moderates the actual transmitted preview and refuses revoked sharing',
+  { skip: !databaseUrl },
+  async () => {
+    const f = await fixture();
+    try {
+      const bytes = await sharp({
+        create: { width: 64, height: 48, channels: 4, background: '#559988' },
+      })
+        .png()
+        .toBuffer();
+      const context = {
+        ...f.context,
+        imageDataUrl: `data:image/png;base64,${bytes.toString('base64')}`,
+      };
+      const recipe = structuredClone(f.recipe);
+      recipe.adjustments.exposure = -1;
+      let reviewed: Uint8Array | undefined;
+      const result = await inspectCandidatePixels(
+        f.db,
+        f.storage,
+        {
+          configured: true,
+          async check(bytes) {
+            reviewed = bytes;
+            return imageModerator.check(bytes);
+          },
+        },
+        f.actors.owner.id,
+        f.projectId,
+        context,
+        recipe,
+      );
+      assert.equal(result.observation.changedPixels, 64 * 48);
+      assert.ok(
+        (result.observation as any).after.meanLuma < (result.observation as any).before.meanLuma,
+      );
+      assert.equal(
+        result.observation.imageSha256,
+        sha(Buffer.from(result.imageDataUrl.split(',')[1]!, 'base64')),
+      );
+      assert.equal(sha(reviewed!), result.observation.imageSha256);
+      assert.equal(
+        (await sharp(Buffer.from(result.imageDataUrl.split(',')[1]!, 'base64')).metadata()).width,
+        64,
+      );
+      await assert.rejects(
+        inspectCandidatePixels(
+          f.db,
+          f.storage,
+          imageModerator,
+          f.actors.owner.id,
+          f.projectId,
+          f.context,
+          recipe,
+        ),
+        /共享/,
+      );
+      await assert.rejects(
+        inspectCandidatePixels(
+          f.db,
+          f.storage,
+          {
+            configured: true,
+            async check(bytes) {
+              return { decision: 'blocked', inputHash: sha(bytes), requestId: 'blocked' };
+            },
+          },
+          f.actors.owner.id,
+          f.projectId,
+          context,
+          recipe,
+        ),
+        /审核/,
+      );
+      await f.db.query('DELETE FROM memberships WHERE space_id=$1 AND user_id=$2', [
+        f.teamId,
+        f.actors.editor.id,
+      ]);
+      await assert.rejects(
+        inspectCandidatePixels(
+          f.db,
+          f.storage,
+          imageModerator,
+          f.actors.editor.id,
+          f.projectId,
+          context,
+          recipe,
+        ),
+      );
+    } finally {
+      await f.close();
+    }
+  },
+);
+
+test(
+  'server auto mode chooses an observed alternative and never saves an unreviewed shared-image proposal',
+  { skip: !databaseUrl },
+  async (t) => {
+    for (const review of [false, true])
+      await t.test(`observed=${review}`, async () => {
+        let requests = 0;
+        const f = await fixture({
+          fetcher: async (_url, options) => {
+            requests++;
+            const body = JSON.parse(String(options?.body));
+            const call = (name: string, args: unknown, id: string) => ({
+              type: 'function_call',
+              name,
+              call_id: id,
+              arguments: JSON.stringify(args),
+            });
+            if (requests === 1)
+              return response([
+                editCall(),
+                ...(review
+                  ? [
+                      call(
+                        'propose_edit',
+                        {
+                          summary: '保留明暗层次',
+                          target: 'global',
+                          targetId: null,
+                          changes: [{ path: 'adjustments.exposure', value: -0.25 }],
+                        },
+                        'alternative',
+                      ),
+                      call('inspect_candidate', { candidateIndex: 0 }, 'inspect-zero'),
+                      call('inspect_candidate', { candidateIndex: 1 }, 'inspect-one'),
+                    ]
+                  : []),
+              ]);
+            if (review && requests === 2) {
+              const images = body.input
+                .flatMap((i: any) => i.content ?? [])
+                .filter((c: any) => c.type === 'input_image');
+              assert.equal(images.length, 3, 'frozen preview plus two real editor results');
+              const first = await sharp(
+                Buffer.from(images[1].image_url.split(',')[1], 'base64'),
+              ).stats();
+              const second = await sharp(
+                Buffer.from(images[2].image_url.split(',')[1], 'base64'),
+              ).stats();
+              assert.ok(
+                second.channels[0]!.mean > first.channels[0]!.mean,
+                'actual decoded candidate pixels differ as proposed',
+              );
+              return response([
+                call(
+                  'select_candidate',
+                  { candidateIndex: 1, reason: '第二个实际画面保留更多亮度层次' },
+                  'select',
+                ),
+              ]);
+            }
+            return response([outputText('候选已检查。')]);
+          },
+        });
+        try {
+          const grant = (
+            await f.call('POST', `/v1/projects/${f.projectId}/assistant-grants`, {
+              mode: 'auto',
+              unitLimit: 20,
+              stepLimit: 5,
+              minutes: 30,
+              allowedActions: ['assistant-turn', 'edit'],
+              modelIds: [f.modelId],
+            })
+          ).json().grant;
+          const snapshot = await sharp({
+            create: { width: 64, height: 48, channels: 4, background: '#559988' },
+          })
+            .png()
+            .toBuffer();
+          const started = await f.call('POST', `/v1/projects/${f.projectId}/assistant-turns`, {
+            ...f.turn(),
+            context: {
+              ...f.context,
+              imageDataUrl: `data:image/png;base64,${snapshot.toString('base64')}`,
+            },
+            scope: { ...f.scope, executionGrantId: grant.id },
+          });
+          assert.equal(started.statusCode, 202, started.body);
+          const row = await until(
+            async () =>
+              (
+                await f.db.query(
+                  'SELECT state,output,error_code FROM assistant_turns WHERE id=$1',
+                  [started.json().id],
+                )
+              ).rows[0],
+            (row) => row.state !== 'running',
+            25000,
+          );
+          assert.equal(row.state, 'completed', JSON.stringify(row));
+          assert.equal(row.output.execution.state, review ? 'applied' : 'review_required');
+          const head = (
+            await f.db.query('SELECT head_version FROM artworks WHERE id=$1', [f.context.artworkId])
+          ).rows[0]!.head_version;
+          assert.equal(head, review ? 2 : 1);
+          if (review) {
+            assert.equal(row.output.selectedCandidateId, row.output.candidates[1].id);
+            assert.equal(row.output.execution.candidateId, row.output.candidates[1].id);
+            assert.equal(row.output.candidates[1].recipe.adjustments.exposure, -0.25);
+            assert.ok(
+              row.output.candidates.every((c: any) => c.observation.changedPixels === 3072),
+            );
+          } else assert.equal(row.output.execution.code, 'CANDIDATE_REVIEW_REQUIRED');
+          assert.equal(requests, review ? 3 : 2);
+        } finally {
+          await f.close();
+        }
+      });
+  },
+);
+
+test(
+  'retained history and candidates stop at revoked resource access instead of dropping requirements',
+  { skip: !databaseUrl },
+  async () => {
+    let requests = 0;
+    const f = await fixture({
+      fetcher: async () => {
+        requests++;
+        return response(requests % 2 ? [editCall()] : [outputText('私人素材中的要求仍需保留')]);
+      },
+    });
+    try {
+      const started = await f.call('POST', `/v1/projects/${f.projectId}/assistant-turns`, {
+        ...f.turn('保留这条不能遗忘的要求'),
+        scope: {
+          ...f.scope,
+          spaceIds: [f.teamId, f.actors.owner.spaceId],
+          referenceAssetIds: [f.privateAssetId],
+        },
+      });
+      assert.equal(started.statusCode, 202, started.body);
+      const done = await until(
+        () => f.readTurn(started.json().id),
+        (row) => row.state !== 'running',
+      );
+      assert.equal(done.state, 'completed', JSON.stringify(done));
+      assert.equal(done.prompt, '保留这条不能遗忘的要求');
+      await f.db.query('DELETE FROM memberships WHERE space_id=$1 AND user_id=$2', [
+        f.actors.owner.spaceId,
+        f.actors.owner.id,
+      ]);
+      const count = requests;
+      const followup = await f.call('POST', `/v1/projects/${f.projectId}/assistant-turns`, {
+        ...f.turn('继续'),
+        parentTurnId: done.id,
+      });
+      assert.equal(followup.statusCode, 409, followup.body);
+      assert.equal(followup.json().error.code, 'CONTEXT_SCOPE_REVOKED');
+      assert.equal(requests, count, 'no paid dispatch and no silent loss of earlier requirements');
+      for (const suffix of ['', '/context', '/events']) {
+        const hidden = await f.call('GET', `/v1/assistant-turns/${done.id}${suffix}`);
+        assert.equal(hidden.statusCode, 403, hidden.body);
+      }
+      const history = (await f.call('GET', `/v1/projects/${f.projectId}/assistant-turns`)).json();
+      assert.equal(history.turns[0].output, null);
+      assert.equal(history.turns[0].state, 'unavailable');
+      assert.equal(
+        (await f.call('GET', `/v1/projects/${f.projectId}/assistant-candidates`)).json().candidates
+          .length,
+        0,
+      );
+      const decision = await f.call(
+        'POST',
+        `/v1/assistant-candidates/${done.output.candidates[0].id}/decision`,
+        { decision: 'previewed', recipe: f.recipe, expectedVersion: f.context.expectedVersion },
+      );
+      assert.equal(decision.statusCode, 403, decision.body);
+    } finally {
+      await f.close();
+    }
+  },
+);
+
+test(
+  'assistant retains several authorized conversation turns and carries creative direction as data',
+  { skip: !databaseUrl },
+  async () => {
+    const sent: any[] = [];
+    const f = await fixture({
+      fetcher: async (_url, init) => {
+        sent.push(JSON.parse(String(init?.body)));
+        return response([outputText(`response-${sent.length}`)]);
+      },
+    });
+    try {
+      let parentTurnId: string | undefined;
+      let conversationId: string | undefined;
+      for (const prompt of [
+        '第一轮：午后的安静感',
+        '第二轮：保持自然肤质',
+        '第三轮：颜色再克制一点',
+      ]) {
+        const started = await f.call('POST', `/v1/projects/${f.projectId}/assistant-turns`, {
+          ...f.turn(prompt),
+          ...(parentTurnId ? { parentTurnId } : {}),
+          scope: {
+            ...f.scope,
+            creativeBrief: { feeling: '温暖而安静', preserve: '本人五官与自然肤质' },
+          },
+        });
+        assert.ok([200, 202].includes(started.statusCode), started.body);
+        const done = await until(
+          () => f.readTurn(started.json().id),
+          (row) => row.state !== 'running',
+        );
+        assert.equal(done.state, 'completed', JSON.stringify(done));
+        if (conversationId) assert.equal(done.conversationId, conversationId);
+        conversationId = done.conversationId;
+        parentTurnId = done.id;
+      }
+      const last = JSON.stringify(sent.at(-1));
+      for (const expected of [
+        '第一轮：午后的安静感',
+        '第二轮：保持自然肤质',
+        'response-1',
+        'response-2',
+        '温暖而安静',
+        '本人五官与自然肤质',
+      ])
+        assert.ok(last.includes(expected), expected);
+      const separate = await f.call(
+        'POST',
+        `/v1/projects/${f.projectId}/assistant-turns`,
+        f.turn('新的独立会话'),
+      );
+      const newDone = await until(
+        () => f.readTurn(separate.json().id),
+        (row) => row.state !== 'running',
+      );
+      assert.notEqual(newDone.conversationId, conversationId);
+      const selected = (
+        await f.call(
+          'GET',
+          `/v1/projects/${f.projectId}/assistant-turns?conversationId=${conversationId}`,
+        )
+      ).json().turns;
+      assert.equal(selected.length, 3);
+      assert.ok(selected.every((item: any) => item.conversationId === conversationId));
+      assert.equal(
+        (await f.call('GET', `/v1/projects/${f.projectId}/assistant-conversations`)).json()
+          .conversations.length,
+        2,
+      );
+    } finally {
+      await f.close();
+    }
+  },
+);
 
 test(
   'assistant HTTP: real database holds, idempotency, private context, current candidate decisions and model CAS',
@@ -691,24 +1532,20 @@ test(
             Boolean,
           );
           assert.equal(endpoints[0], 'wss://api.openai.com/v1/live/sessions');
-          vendorSockets
-            .at(-1)!
-            .send(
-              JSON.stringify({
-                type: 'session.input_transcript.delta',
-                delta: '降低照片的曝光',
-                start_ms: 0,
-                end_ms: 500,
-              }),
-            );
-          vendorSockets
-            .at(-1)!
-            .send(
-              JSON.stringify({
-                type: 'session.delegation.created',
-                delegation: { id: 'local-delegation', target: 'client' },
-              }),
-            );
+          vendorSockets.at(-1)!.send(
+            JSON.stringify({
+              type: 'session.input_transcript.delta',
+              delta: '降低照片的曝光',
+              start_ms: 0,
+              end_ms: 500,
+            }),
+          );
+          vendorSockets.at(-1)!.send(
+            JSON.stringify({
+              type: 'session.delegation.created',
+              delegation: { id: 'local-delegation', target: 'client' },
+            }),
+          );
           const result = await stream.wait('assistant-result');
           assert.equal(result.candidates[0].recipe.adjustments.exposure, -1.5);
           assert.equal(
@@ -749,15 +1586,13 @@ test(
             .send(
               JSON.stringify({ type: 'response.created', response: { id: 'response-fixture' } }),
             );
-          vendorSockets
-            .at(-1)!
-            .send(
-              JSON.stringify({
-                type: 'response.output_audio.delta',
-                delta: Buffer.alloc(960).toString('base64'),
-                item_id: 'item-fixture',
-              }),
-            );
+          vendorSockets.at(-1)!.send(
+            JSON.stringify({
+              type: 'response.output_audio.delta',
+              delta: Buffer.alloc(960).toString('base64'),
+              item_id: 'item-fixture',
+            }),
+          );
           assert.equal((await stream.wait('audio')).itemId, 'item-fixture');
           stream.ws.send(
             JSON.stringify({ type: 'interrupt', itemId: 'item-fixture', playedMs: 10000 }),
@@ -770,18 +1605,16 @@ test(
             received.find((event) => event.type === 'conversation.item.truncate').audio_end_ms,
             20,
           );
-          vendorSockets
-            .at(-1)!
-            .send(
-              JSON.stringify({
-                type: 'response.done',
-                response: {
-                  id: 'response-fixture',
-                  status: 'cancelled',
-                  usage: { total_tokens: 5, input_tokens: 3, output_tokens: 2 },
-                },
-              }),
-            );
+          vendorSockets.at(-1)!.send(
+            JSON.stringify({
+              type: 'response.done',
+              response: {
+                id: 'response-fixture',
+                status: 'cancelled',
+                usage: { total_tokens: 5, input_tokens: 3, output_tokens: 2 },
+              },
+            }),
+          );
           await delay(30);
           stream.ws.send(JSON.stringify({ type: 'end' }));
           assert.equal((await stream.wait('closed')).state, 'closed');
@@ -1056,14 +1889,12 @@ test(
           });
           const stream = await openVoice();
           const count = requests;
-          vendorSockets
-            .at(-1)!
-            .send(
-              JSON.stringify({
-                type: 'session.delegation.created',
-                delegation: { id: 'shutdown-delegation', target: 'client' },
-              }),
-            );
+          vendorSockets.at(-1)!.send(
+            JSON.stringify({
+              type: 'session.delegation.created',
+              delegation: { id: 'shutdown-delegation', target: 'client' },
+            }),
+          );
           await until(
             async () => requests,
             (value) => value > count,

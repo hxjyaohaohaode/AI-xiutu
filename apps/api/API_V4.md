@@ -190,7 +190,10 @@ that an external account or network route has passed a live paid test.
 - `GET /v1/assistant/models` requires login and returns `{ready,voiceReady,reason,models,voiceProfiles,verifiedAt,sources}`. Public entries contain model labels, allowed operations, service-unit cost and application budgets, never credentials. Voice profiles describe the protocol adapter; use the model-specific voice list supported by the request validator.
 - `POST /v1/projects/:projectId/assistant-turns` accepts `{idempotencyKey:UUID,modelId,prompt,context?,scope?,parentTurnId?}`. Prompt is 1..4000 characters. Returns202 while running, otherwise200, with `{id,state,modelId,output,errorCode,createdAt}`. A current verified owner/admin/editor is required; reference-only grants and platform-operator status do not grant assistant execution rights.
 - `GET /v1/assistant-turns/:turnId` returns that DTO for the current actor while project edit access remains valid. Turn states: running, completed, failed, unknown.
-- `GET /v1/projects/:projectId/assistant-turns` returns `{turns}`: the actor's most recent30 turns, including their prompt/output and current candidate decisions. This is bounded recent history, not a fully paginated archive.
+- `GET /v1/projects/:projectId/assistant-turns?conversationId=UUID` returns `{turns}`: the actor's most recent30 turns within that stable root, including prompt/output and current candidate decisions. Without a conversation filter it returns recent project history. This is a bounded view, not a fully paginated archive.
+- `GET /v1/projects/:projectId/assistant-conversations` returns the actor's most recent100 conversation roots. `conversationId` is assigned by the server; a child inherits its authorized parent's root.
+- `GET /v1/assistant-turns/:turnId/events?after=N` streams persisted sequence events. `Last-Event-ID` also resumes the cursor. This endpoint is read-only: reconnecting never resubmits or charges. Connections rotate after25seconds with actor/process concurrency limits and current access checks.
+- `GET /v1/assistant-turns/:turnId/context` exposes the actor-authorized context manifest, including original/retained token estimates and archived turn sources.
 
 `context={artworkId,assetId,expectedVersion,recipe,imageDataUrl?}` binds an immutable
 base asset, current saved head and the user's current local recipe. All image-layer
@@ -200,15 +203,20 @@ JPEG/PNG/WebP snapshot, bounded to1.5million base64 characters,1.1MB decoded and
 sharing. The server retains the recipe and image hash, not that base64 snapshot.
 This is user-triggered snapshot sharing, not continuous screen capture.
 
-`scope={spaceIds:UUID[],referenceAssetIds:UUID[],allowWebSearch,usePersonalMemory}`
+`scope={spaceIds:UUID[],referenceAssetIds:UUID[],allowWebSearch,usePersonalMemory,creativeBrief?,executionGrantId?}`
 defaults to empty resource lists and false flags. There are at most12 spaces and8
 explicit image references, without duplicates. Each space requires current
 membership, and each reference must remain readable inside that chosen scope.
 Search results are metadata; only explicitly selected references become image
 input when the configured backend model supports it. Personal resource notes are
 read only with usePersonalMemory=true and current scope access; the bounded
-context includes at most12 recent notes and3000 characters. The immediate parent
-turn contributes one prior user/assistant pair, not an unlimited thread history.
+context includes at most12 resource notes and3000 characters, plus explicitly
+confirmed scoped memories. Parent traversal retains the authorized conversation
+chain up to256 turns. User constraints remain verbatim; older assistant text can
+be archived with source pointers and retrieved by a tool. Text, visual, tool and
+output reservations are checked before each dispatch. This is deterministic
+archiving, not an evaluated model-generated semantic summary. Revoked history
+access or a changed memory fingerprint stops the run instead of dropping constraints.
 
 One ordinary turn runs at a time per actor. The API admission limit is30 per hour.
 The agent can make at most4 bounded Responses requests and prepares proposals
@@ -228,13 +236,43 @@ preview requires the exact recorded local base-recipe hash and saved base versio
 stale input returns409 `CANDIDATE_STALE`. A rejected candidate cannot be restored
 to previewed through this endpoint.
 
-Previewed does not mean saved. Actual adoption still obtains the applicable
-collaboration lease and uses the normal versioned editor command/save chain.
+Previewed does not mean saved. Explicit adoption uses the normal versioned editor
+command/save chain. `POST /v1/assistant-candidates/:candidateId/apply` executes a
+candidate under a current automatic grant, locking access, source/version and
+collaboration conflicts. Replay returns the original `appliedRevisionId`.
+For text turns, the server uses this same authority during completion, inside a
+savepoint, then commits candidates, revision, step claim and completed result
+together. A blocked local edit preserves the completed provider receipt and its
+charge, leaves a reviewable candidate and consumes no rolled-back edit step.
 Generation candidates contain a prompt and authorized references, not a generated
 image. The user chooses an image model/parameters and confirms its separate price
 through the existing AI job workflow. Candidates cannot execute arbitrary tools,
 change ownership or bypass content review. Rejecting one does not refund work
 already completed by a provider.
+
+`inspect_candidate` requires explicit current-image sharing. A bounded Worker
+decodes currently accessible source/layers and renders both recipes using the
+actual editor at a <=512px proxy. It measures pixel changes and luminance/clipping,
+moderates the resulting JPEG and supplies it to the next visual request. These
+measurements are not aesthetic scores or full-resolution proof. At most three
+inspections are allowed per turn. Selection in the same round as inspection is
+rejected: the model must first receive the result. When an image was shared,
+automatic saving requires an explicitly selected, observed candidate. Multiple
+unselected alternatives, dirty local bases, active peer leases, stale versions,
+expired grants or exhausted budgets remain reviewable instead of overwriting.
+
+### 6.2.1 Execution grants and confirmed memory
+
+- `POST /v1/projects/:projectId/assistant-grants`: `{mode:'suggest'|'confirm'|'auto',unitLimit,stepLimit,minutes,allowedActions,modelIds}`. Actions are assistant-turn, realtime-voice, edit and generate-image. Authority is actor/project/model/action scoped, atomically claimed and never inferred from model text.
+- `GET /v1/assistant-grants/:grantId` returns current usage and expiry; `DELETE` revokes future actions. Default product mode is preview-confirm. Browser closure does not prevent a text auto run from finishing; voice auto application still depends on the active browser coordinator.
+- `GET /v1/projects/:projectId/assistant-memory?artworkId=UUID&includeExpired=true&page=0` returns pages of100 visible memories and `hasMore`. Runtime recall is capped at100 with explicit overflow, not silent truncation.
+- `POST /v1/projects/:projectId/assistant-memory` explicitly confirms `{scope,category,title,content,artworkId?,sourceTurnId?,expiresAt}`. Scopes are user/team/project/artwork; team writes require owner/admin. Source turns belong to the current actor/project.
+- `PUT` and `DELETE /v1/projects/:projectId/assistant-memory/:memoryId` require `expectedVersion`; updates also include title/content/category/expiry. Deletion removes recall but retains the auditable version history.
+- `GET .../:memoryId/history?beforeVersion=N` returns up to100 versions. Memory suggestions are drafts with exact quoted user evidence; saving always requires a user action.
+
+Creative direction includes feeling, use, intensity, preservation/avoidance and
+reference role. Generated workspace cards use the shared strict whitelist and
+existing candidate/reference IDs; they cannot run arbitrary HTML or commands.
 
 ### 6.3 Voice preparation and application WebSocket
 
@@ -293,7 +331,8 @@ bounded polling, not a promise of instantaneous cross-network cancellation.
 
 - `GET /v1/ops/assistant-models` returns configurations with their current content hash, protocol profiles and server readiness.
 - `PUT /v1/ops/assistant-models/:modelId` accepts `{config,expectedHash:null|string}`. The first write requiresnull; updates compare the prior hash. Concurrent edits return409 `MODEL_CONFIG_CHANGED`. Only assistant-turn/realtime-voice operations and supported voice profiles are accepted. Costs and application limits come from this server configuration.
-- `GET /v1/ops/assistant-reconciliation` lists up to100 unknown turns and100 unknown voice sessions with execution/account/model/error metadata, without private prompts or output.
+- `GET /v1/ops/assistant-reconciliation?kind=turn|voice&recordId=UUID&actorId=UUID&limit=50&cursor=...` paginates unknown records by stable creation time/id. Limit1..100; without a kind both groups are returned with `nextCursors`. Cursors bind actor/filter/kind. Execution/account/model/error metadata excludes private prompts/output.
+- `GET /v1/ops/ai-jobs/unknown?jobId=UUID&actorId=UUID&operation=...&limit=50&cursor=...` provides the corresponding paginated image/job queue, including resolver readiness. Neither queue's first page is an upper bound on all unresolved work.
 - `POST /v1/ops/assistant-reconciliation/:kind/:recordId`, kind turn|voice, accepts `{resolution:'release'|'settle',reason,evidenceRef}`. It requires an operator, a currently unknown record, a10..1000character reason and3..200character evidence reference. The action locks the record, adjusts its hold once and audits the decision. A repeated action against an already resolved record returns409; callers must reread and must not treat a conflict as permission to charge again.
 
 The strict assistant-model configuration contains these fields. Budgets here are

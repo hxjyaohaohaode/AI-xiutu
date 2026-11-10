@@ -26,7 +26,9 @@ export interface HealingOperationV4 {
   /** Both masks and donor center refer to normalized original source coordinates. */
   mask: SelectionMaskV3;
   protection: SelectionMaskV3 | null;
-  method: 'diffusion' | 'patch-poisson';
+  method: 'diffusion' | 'patch-poisson' | 'exemplar-v1';
+  /** Opt-in exemplar patch radius. Absent on published legacy operations. */
+  patchRadius?: number;
   /** null selects a bounded deterministic surrounding donor search. */
   source: Point | null;
   /** Search radius in units of the shorter source edge. */
@@ -39,6 +41,8 @@ export interface HealingOperationV4 {
 
 /** Distinct local signal operations; no automatic acne/identity/3D reconstruction. */
 export interface RetouchRegionV4 {
+  /** Missing keeps the published sparse bilateral implementation. */
+  algorithm?: 'guided-v1';
   origin?: OperationOriginV3;
   id: string;
   name: string;

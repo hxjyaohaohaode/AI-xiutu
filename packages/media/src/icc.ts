@@ -109,6 +109,7 @@ export async function attachPngIcc(path: string, profile: Buffer): Promise<void>
   const source = await open(path, 'r'),
     temp = `${path}.icc`;
   let destination: Awaited<ReturnType<typeof open>> | undefined;
+  let sourceClosed = false;
   try {
     const header = Buffer.alloc(33);
     await readExactly(source, header, 0);
@@ -147,9 +148,12 @@ export async function attachPngIcc(path: string, profile: Buffer): Promise<void>
     await destination.sync();
     await destination.close();
     destination = undefined;
+    // Windows cannot replace a file that this process still holds open.
+    await source.close();
+    sourceClosed = true;
     await rename(temp, path);
   } finally {
-    await source.close();
+    if (!sourceClosed) await source.close();
     await destination?.close();
     await rm(temp, { force: true });
   }

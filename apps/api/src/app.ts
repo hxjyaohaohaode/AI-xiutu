@@ -2,6 +2,7 @@ import Fastify, { type FastifyInstance } from 'fastify';
 import cookie from '@fastify/cookie';
 import multipart from '@fastify/multipart';
 import { z, ZodError } from 'zod';
+import { listUnknownAiJobs } from './ai-reconciliation.js';
 import { createDatabase, migrate, QuotaError, type Database } from '@ai-xiutu/db';
 import {
   createTencentSms,
@@ -190,17 +191,15 @@ export async function buildApp(options: BuildOptions = {}): Promise<FastifyInsta
       e.code === 'P0001' &&
       ['COLLABORATION_LOCKED', 'COLLABORATION_LEASE_EXPIRED'].includes(e.message ?? '')
     )
-      return reply
-        .code(409)
-        .send({
-          error: {
-            code: e.message,
-            message:
-              e.message === 'COLLABORATION_LOCKED'
-                ? '作品有正在编辑的租约，请先完成或取消该操作；保存、AI采纳和历史恢复均不能覆盖协作中的内容'
-                : '编辑租约已失效，请刷新后重新取得编辑权',
-          },
-        });
+      return reply.code(409).send({
+        error: {
+          code: e.message,
+          message:
+            e.message === 'COLLABORATION_LOCKED'
+              ? '作品有正在编辑的租约，请先完成或取消该操作；保存、AI采纳和历史恢复均不能覆盖协作中的内容'
+              : '编辑租约已失效，请刷新后重新取得编辑权',
+        },
+      });
     if (e.code === 'P0001' && e.message === 'SPACE_STORAGE_LIMIT')
       return reply.code(409).send({
         error: {
@@ -391,13 +390,9 @@ export async function buildApp(options: BuildOptions = {}): Promise<FastifyInsta
     return ai.cancel({ actorId: user.id, jobId: p.id, body: req.body });
   });
   app.get('/v1/ops/ai-jobs/unknown', async (req) => {
-    requireOperator(req);
     return {
-      jobs: (
-        await db.query(
-          `SELECT j.id,j.project_id AS "projectId",j.actor_id AS "actorId",j.model_id AS "modelId",j.operation,j.provider_request_id AS "providerRequestId",j.error_code AS "errorCode",h.units AS "heldUnits",j.created_at AS "createdAt" FROM ai_jobs j LEFT JOIN quota_holds h ON h.id=j.hold_id WHERE j.state='unknown' ORDER BY j.created_at LIMIT 100`,
-        )
-      ).rows,
+      ...(await listUnknownAiJobs(db, requireOperator(req).id, req.query)),
+      resolutionAvailable: Boolean(ai?.resolve),
     };
   });
   app.post('/v1/ops/ai-jobs/:id/resolve', async (req) => {

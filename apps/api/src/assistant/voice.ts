@@ -2,7 +2,14 @@ import { randomUUID } from 'node:crypto';
 import WebSocket, { WebSocketServer } from 'ws';
 import { HttpsProxyAgent } from 'https-proxy-agent';
 import type { FastifyInstance } from 'fastify';
-import { transaction, releaseHold, settleHold, markUnknownHold, type Database } from '@ai-xiutu/db';
+import {
+  transaction,
+  releaseHold,
+  settleHold,
+  markUnknownHold,
+  assertAssistantGrant,
+  type Database,
+} from '@ai-xiutu/db';
 import {
   voiceClientEventSchema,
   type AssistantContext,
@@ -146,6 +153,8 @@ export function attachVoiceBridge(
       );
       if (!auth.rowCount) throw new Error('VOICE_AUTH_EXPIRED');
       await assistantAccess(db, row.actor_id, row.project_id);
+      if (row.scope.executionGrantId)
+        await assertAssistantGrant(db, row.scope.executionGrantId, row.actor_id, row.project_id);
       await validateScope(db, row.actor_id, row.scope);
       await service.model(db, row.model_id, 'realtime-voice');
       await service.model(db, row.backend_model_id, 'assistant-turn');
@@ -353,6 +362,8 @@ export function attachVoiceBridge(
             if (ended || closing) return;
             send(client, {
               type: 'assistant-result',
+              workspace: result.workspace,
+              memorySuggestions: result.memorySuggestions,
               text: result.text,
               citations: result.citations,
               candidates,

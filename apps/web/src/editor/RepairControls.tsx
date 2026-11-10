@@ -54,7 +54,12 @@ export function RepairControls({ controller }: { controller: InspectorController
       const op =
         mode === 'healing'
           ? createHealingOperationV4({ id, name: '纹理修复 ' + (current.healing.length + 1), mask })
-          : createRetouchRegionV4({ id, name: '局部质感 ' + (current.retouch.length + 1), mask });
+          : createRetouchRegionV4({
+              id,
+              name: '局部质感 ' + (current.retouch.length + 1),
+              mask,
+              algorithm: 'guided-v1',
+            });
       if (apply({ ...current, [mode]: [...current[mode], op] }, '新建' + op.name, true)) {
         editor.setActiveRepairId(id);
         editor.setActiveMaskPath([]);
@@ -101,9 +106,9 @@ export function RepairControls({ controller }: { controller: InspectorController
       },
       {
         id: 'iterations',
-        label: '边界融合迭代',
+        label: heal.method === 'exemplar-v1' ? '纹理搜索精度' : '边界融合迭代',
         value: heal.iterations,
-        min: 1,
+        min: heal.method === 'exemplar-v1' ? 16 : 1,
         max: 512,
         step: 1,
         integer: true,
@@ -121,6 +126,18 @@ export function RepairControls({ controller }: { controller: InspectorController
         onChange: (value) => patch({ texture: value / 100 }, '调整修复纹理'),
       },
     );
+    if (heal.method === 'exemplar-v1')
+      controls.push({
+        id: 'patchRadius',
+        label: '纹理补片半径',
+        value: heal.patchRadius ?? 4,
+        min: 1,
+        max: 8,
+        step: 1,
+        integer: true,
+        unit: 'px',
+        onChange: (value) => patch({ patchRadius: value }, '调整纹理补片'),
+      });
     if (heal.source)
       for (const axis of ['x', 'y'] as const)
         controls.push({
@@ -238,13 +255,33 @@ export function RepairControls({ controller }: { controller: InspectorController
           {mode === 'healing' && (
             <>
               <div className="tonal-tabs" aria-label="修复算法">
-                {(['patch-poisson', 'diffusion'] as const).map((method) => (
+                {(['exemplar-v1', 'patch-poisson', 'diffusion'] as const).map((method) => (
                   <button
                     key={method}
                     aria-pressed={(item as HealingOperationV4).method === method}
-                    onClick={() => patch({ method }, '切换修复算法', true)}
+                    onClick={() => {
+                      const next = recipe.healing.map((op) => {
+                        if (op.id !== item.id) return op;
+                        const { patchRadius, ...rest } = op;
+                        return {
+                          ...rest,
+                          method,
+                          ...(method === 'exemplar-v1'
+                            ? {
+                                patchRadius: patchRadius ?? 4,
+                                iterations: Math.max(16, op.iterations),
+                              }
+                            : {}),
+                        };
+                      });
+                      apply({ ...recipe, healing: next }, '切换修复算法', true);
+                    }}
                   >
-                    {method === 'patch-poisson' ? '纹理融合' : '平滑填补'}
+                    {method === 'exemplar-v1'
+                      ? '纹理重建'
+                      : method === 'patch-poisson'
+                        ? '纹理融合'
+                        : '平滑填补'}
                   </button>
                 ))}
               </div>
@@ -267,6 +304,32 @@ export function RepairControls({ controller }: { controller: InspectorController
                 </button>
               </div>
             </>
+          )}
+          {mode === 'retouch' && (
+            <div className="tonal-tabs" aria-label="质感算法">
+              {(['guided-v1', 'legacy'] as const).map((algorithm) => (
+                <button
+                  key={algorithm}
+                  aria-pressed={((item as RetouchRegionV4).algorithm ?? 'legacy') === algorithm}
+                  onClick={() =>
+                    apply(
+                      {
+                        ...recipe,
+                        retouch: recipe.retouch.map((op) => {
+                          if (op.id !== item.id) return op;
+                          const { algorithm: _old, ...rest } = op;
+                          return { ...rest, ...(algorithm === 'guided-v1' ? { algorithm } : {}) };
+                        }),
+                      },
+                      '切换质感算法',
+                      true,
+                    )
+                  }
+                >
+                  {algorithm === 'guided-v1' ? '保边美肤' : '原版质感'}
+                </button>
+              ))}
+            </div>
           )}
           <details>
             <summary>涂抹范围与保护</summary>

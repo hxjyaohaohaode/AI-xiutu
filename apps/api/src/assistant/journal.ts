@@ -4,6 +4,7 @@ import { mkdir, open, readdir, lstat, link, unlink } from 'node:fs/promises';
 import { dirname, join, resolve } from 'node:path';
 import { z } from 'zod';
 import type { Queryable } from '@ai-xiutu/db';
+import { syncStorageDirectory } from '@ai-xiutu/storage';
 
 const uuid = z.string().regex(/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/);
 const digest = z.string().regex(/^[0-9a-f]{64}$/);
@@ -69,12 +70,7 @@ export class AssistantJournal {
       // Another process may just have created this path and not synced it yet.
       // Flush all ancestors once per instance, without relying on mkdir's winner.
       for (let path = this.directory; ; path = dirname(path)) {
-        const handle = await open(path, constants.O_RDONLY | constants.O_NOFOLLOW);
-        try {
-          await handle.sync();
-        } finally {
-          await handle.close();
-        }
+        await syncStorageDirectory(path);
         if (dirname(path) === path) break;
       }
     })().catch((error: unknown) => {
@@ -88,12 +84,7 @@ export class AssistantJournal {
   }
 
   private async syncDirectory(): Promise<void> {
-    const handle = await open(this.directory, constants.O_RDONLY | constants.O_NOFOLLOW);
-    try {
-      await handle.sync();
-    } finally {
-      await handle.close();
-    }
+    await syncStorageDirectory(this.directory);
   }
 
   private async read(name: string): Promise<JournalRecord> {

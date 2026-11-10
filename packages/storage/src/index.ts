@@ -5,6 +5,8 @@ import { pipeline } from 'node:stream/promises';
 import { Transform, type Readable } from 'node:stream';
 import { createHash, randomUUID } from 'node:crypto';
 import sharp, { type OutputInfo } from 'sharp';
+import { syncStorageDirectory } from './durability.js';
+export { syncStorageDirectory } from './durability.js';
 
 export interface StorageConfig {
   storageDir: string;
@@ -238,18 +240,13 @@ export class LocalPrivateStorage {
     });
     await pipeline(output, limit, createWriteStream(destination, { flags: 'wx', mode: 0o600 }));
     if (!info) throw new StorageError(400, 'INVALID_IMAGE', '图像解码未完成');
-    const file = await open(destination, 'r');
+    const file = await open(destination, 'r+');
     try {
       await file.sync();
     } finally {
       await file.close();
     }
-    const directory = await open(this.directory, 'r');
-    try {
-      await directory.sync();
-    } finally {
-      await directory.close();
-    }
+    await syncStorageDirectory(this.directory);
     return {
       key,
       mime: 'image/png',
@@ -374,19 +371,14 @@ export class LocalPrivateStorage {
       if (info.width > 512 || info.height > 512 || data.length > MAX_THUMBNAIL_BYTES)
         throw new StorageError(400, 'THUMBNAIL_OUTPUT_INVALID', '缩略图超过当前处理限制');
       await writeFile(temporary, data, { flag: 'wx', mode: 0o600 });
-      const file = await open(temporary, 'r');
+      const file = await open(temporary, 'r+');
       try {
         await file.sync();
       } finally {
         await file.close();
       }
       await rename(temporary, this.thumbnailPath(key));
-      const directory = await open(this.directory, 'r');
-      try {
-        await directory.sync();
-      } finally {
-        await directory.close();
-      }
+      await syncStorageDirectory(this.directory);
       return { mime: 'image/webp', width: info.width, height: info.height, bytes: data.length };
     } catch (error) {
       if (error instanceof StorageError) throw error;

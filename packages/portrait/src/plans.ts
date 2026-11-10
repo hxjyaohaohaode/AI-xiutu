@@ -367,6 +367,10 @@ export function applyPortraitValues<T extends LayeredRecipe>(
     warps: WarpStrokeV3[] = [],
     retouches: RetouchRegionV4[] = [],
     value = (id: string) => (values[id] ?? 0) / 100;
+  const useFlowWarp =
+    recipe.schemaVersion === 4 &&
+    (!recipe.warp.strokes.some((s) => belongsTo(s, targetId)) ||
+      recipe.warp.strokes.some((s) => belongsTo(s, targetId) && s.algorithm === 'flow-v1'));
   const dims = analysis.frame,
     short = Math.min(dims.width, dims.height);
   const px = (p: Point) => ({ x: p.x * dims.width, y: p.y * dims.height });
@@ -402,6 +406,7 @@ export function applyPortraitValues<T extends LayeredRecipe>(
     if (Math.abs(strength) < 1e-8) return;
     warps.push({
       id: prefix + id,
+      ...(useFlowWarp ? { algorithm: 'flow-v1' as const } : {}),
       mode,
       from: { x: unit(from.x), y: unit(from.y) },
       to: { x: unit(to.x), y: unit(to.y) },
@@ -440,6 +445,12 @@ export function applyPortraitValues<T extends LayeredRecipe>(
             id: prefix + 'skin-retouch',
             name: `${target.label} · 皮肤质感`,
             origin: provenance('skin-retouch', 0),
+            // Existing automatic targets retain their saved pixel algorithm;
+            // a new target opts into the versioned guided implementation.
+            ...(recipe.retouch.find((i) => belongsTo(i, targetId))?.algorithm === 'guided-v1' ||
+            ownedPrimitives(recipe, targetId).length === 0
+              ? { algorithm: 'guided-v1' as const }
+              : {}),
             mask: masks.skin,
             radius: Math.max(
               0.000001,
@@ -573,7 +584,9 @@ export function applyPortraitValues<T extends LayeredRecipe>(
     bilateral('faceNarrow', 0, 0.43, 0.3);
     bilateral('vFace', 0.3, 0.28, 0.3);
     bilateral('cheekbones', 0.03, 0.4, 0.2);
-    bilateral('jaw', 0.29, 0.34, 0.22);
+    // Blend the jaw into the cheek/chin instead of concentrating a large shift
+    // inside a small disc, which creates an unnatural S-shaped contour.
+    bilateral('jaw', 0.29, 0.34, useFlowWarp ? 0.38 : 0.22);
     warp('faceSmall', 'pinch', c, c, radius * 0.6, value('faceSmall') * 0.35);
     for (const [i, side] of [-1, 1].entries()) {
       const p = anchor(side * 0.43, -0.23);

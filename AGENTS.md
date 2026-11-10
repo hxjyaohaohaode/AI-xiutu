@@ -10,7 +10,8 @@ This is a real application baseline. Keep visible functionality and verification
 - Negative, neutral and positive editor values need meaningful documented semantics. Unimplemented person/skin detectors stay unavailable.
 - Preview and export must use the same reference engine, coordinate conventions and algorithm version. Capability limits must be shown before decoding/charging.
 - No simulated SMS, fixed OTP, production mock AI, hardcoded admin password, fake usage or fake payment success. Inject doubles only in tests.
-- External AI input must be frozen, moderated and bound to its hash. Model output is untrusted. A suggestion is a candidate; applying it requires the user's action.
+- External AI input must be frozen, moderated and bound to its hash. Model output is untrusted. Suggestions stay candidates. The user explicitly requested three execution modes: suggest, preview-confirm (default), and budgeted auto. Only a current explicit server-side grant can authorize automatic actions; version, lease, scope, revocation and cost checks remain mandatory.
+- Preserve the existing frontend visual/layout direction unless the user explicitly requests redesign. Prioritize real algorithms, interactions and cross-feature correctness. Treat pixel tests, visual review and paid-model acceptance as separate evidence.
 - Never automatically retry a billable request with an unknown result. Preserve holds and dispatch evidence; require reconciliation.
 - Do not log secrets, OTPs, phone numbers, private prompts or image contents. Never put credentials or private user photographs in Git.
 - Migrations are append-only after publication. API, worker and schema changes ship together.

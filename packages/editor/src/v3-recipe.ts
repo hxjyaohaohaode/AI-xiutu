@@ -537,7 +537,16 @@ export function parseRecipeV3(input: unknown): RecipeV3 {
       const p = `warp.strokes[${i}]`,
         r = recordOrigin(
           v,
-          ['id', 'mode', 'from', 'to', 'radius', 'feather', 'strength'],
+          [
+            'id',
+            'mode',
+            'from',
+            'to',
+            'radius',
+            'feather',
+            'strength',
+            ...(v && typeof v === 'object' && Object.hasOwn(v, 'algorithm') ? ['algorithm'] : []),
+          ],
           p,
           errors,
         ),
@@ -545,8 +554,11 @@ export function parseRecipeV3(input: unknown): RecipeV3 {
       unique(id, warpIds, p);
       if (!['push', 'pinch', 'bulge', 'twirl'].includes(String(r.mode)))
         errors.push(`${p}.mode: unsupported warp`);
+      if (Object.hasOwn(r, 'algorithm') && r.algorithm !== 'flow-v1')
+        errors.push(`${p}.algorithm: unsupported warp algorithm`);
       return {
         id,
+        ...(Object.hasOwn(r, 'algorithm') ? { algorithm: 'flow-v1' as const } : {}),
         mode: r.mode as 'push',
         from: point(r.from, `${p}.from`, errors),
         to: point(r.to, `${p}.to`, errors),

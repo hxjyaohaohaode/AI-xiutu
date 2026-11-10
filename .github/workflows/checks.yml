@@ -53,6 +53,28 @@ jobs:
           path: artifacts/browser-v4
           retention-days: 14
           if-no-files-found: error
+      - name: Assistant permissions, memory, streaming, conversations and generated workspace
+        run: node --import tsx scripts/qa/assistant.browser.mjs
+      - name: Real portrait inference and full/tiled pixel comparison
+        run: |
+          npm run vision:prepare
+          node --import tsx scripts/qa/spatial-quality.browser.mjs
+      - name: Preserve real-photo pixel measurements and contact sheets
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: spatial-quality-${{ github.sha }}
+          path: artifacts/spatial-quality
+          retention-days: 14
+          if-no-files-found: error
+      - name: Preserve assistant browser evidence
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: browser-assistant-${{ github.sha }}
+          path: artifacts/browser-assistant
+          retention-days: 14
+          if-no-files-found: error
   baseline:
     runs-on: ubuntu-latest
     timeout-minutes: 15

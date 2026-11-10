@@ -73,6 +73,7 @@ function contours(points: Point[]) {
   };
 }
 let active = false;
+let loaderGeneration = 0;
 self.onmessage = async (event: MessageEvent<Request>) => {
   if (active) {
     self.postMessage({ id: event.data.id, error: '另一项人像分析尚未结束。' });
@@ -143,8 +144,17 @@ self.onmessage = async (event: MessageEvent<Request>) => {
       0,
     );
     const wasm = await FilesetResolver.forVisionTasks('/vision/wasm', true);
+    // The pinned SDK clears self.ModuleFactory after each task initialization.
+    // Module-worker import() caches the loader, so a second task otherwise fails
+    // with "ModuleFactory not set". Give each initialization a distinct module
+    // URL; the actual WASM binary remains the same pinned, same-origin resource.
+    const freshWasm = () => {
+      const loader = new URL(wasm.wasmLoaderPath, self.location.origin);
+      loader.searchParams.set('instance', String(++loaderGeneration));
+      return { ...wasm, wasmLoaderPath: loader.toString() };
+    };
     progress('正在定位面部关键点');
-    const face = await FaceLandmarker.createFromOptions(wasm, {
+    const face = await FaceLandmarker.createFromOptions(freshWasm(), {
       canvas: new OffscreenCanvas(1, 1),
       baseOptions: { modelAssetPath: '/vision/face_landmarker.task', delegate: 'CPU' },
       runningMode: 'IMAGE',
@@ -184,7 +194,7 @@ self.onmessage = async (event: MessageEvent<Request>) => {
       progress('正在分离皮肤、头发与背景');
       let segment: ImageSegmenter | null = null;
       try {
-        segment = await ImageSegmenter.createFromOptions(wasm, {
+        segment = await ImageSegmenter.createFromOptions(freshWasm(), {
           canvas: new OffscreenCanvas(1, 1),
           baseOptions: {
             modelAssetPath: '/vision/selfie_multiclass_256x256.tflite',
@@ -204,7 +214,8 @@ self.onmessage = async (event: MessageEvent<Request>) => {
             background: limitMask(data, mask.width, mask.height, [0]),
           };
         });
-      } catch {
+      } catch (error) {
+        if (import.meta.env.DEV) console.error('Portrait segmentation unavailable', error);
         result.warnings.push('皮肤分割未完成，当前只使用面部轮廓并排除五官；请检查蒙版。');
       } finally {
         segment?.close();
@@ -214,7 +225,7 @@ self.onmessage = async (event: MessageEvent<Request>) => {
       progress('正在定位身体关键点');
       let pose: PoseLandmarker | null = null;
       try {
-        pose = await PoseLandmarker.createFromOptions(wasm, {
+        pose = await PoseLandmarker.createFromOptions(freshWasm(), {
           canvas: new OffscreenCanvas(1, 1),
           baseOptions: { modelAssetPath: '/vision/pose_landmarker_lite.task', delegate: 'CPU' },
           runningMode: 'IMAGE',
@@ -254,7 +265,8 @@ self.onmessage = async (event: MessageEvent<Request>) => {
             label: `身形 ${i + 1}`,
           })),
         );
-      } catch {
+      } catch (error) {
+        if (import.meta.env.DEV) console.error('Portrait pose unavailable', error);
         result.warnings.push('身体关键点未完成；面部结果仍可使用。');
       } finally {
         pose?.close();

@@ -643,6 +643,10 @@ export function useCollaboration(options: Options) {
       .catch(stateError);
   }, []);
   function historyMove(direction: 'undo' | 'redo') {
+    if (direction === 'undo' && draft.current && !draft.current.committed && !lastCommand.current) {
+      cancelPreview();
+      return;
+    }
     if (!options.enabled || !options.canEdit) {
       options.editor[direction]();
       if (options.enabled) queue(options.editor.getRecipe(), '本地撤销重做', false);
@@ -685,7 +689,8 @@ export function useCollaboration(options: Options) {
     redo: () => historyMove('redo'),
     canUndo:
       options.enabled && options.canEdit
-        ? historyState.undo > 0 && !pendingCount
+        ? (!!draft.current && !draft.current.committed && !lastCommand.current) ||
+          (historyState.undo > 0 && !pendingCount)
         : options.editor.canUndo,
     canRedo:
       options.enabled && options.canEdit
@@ -736,9 +741,25 @@ export function useCollaboration(options: Options) {
         throw e;
       }
     },
-    afterExternalWrite() {
+    async afterExternalWrite() {
       suspended.current = false;
-      if (draft.current) schedule();
+      if (draft.current) {
+        schedule();
+        return;
+      }
+      const r = room.current;
+      if (!r?.session || !isCurrent(r)) return;
+      // A normal poll may be waiting for its timeout. Refresh before enabling the
+      // next AI action so it cannot capture the version preceding our own write.
+      const next = await api<Head>(`/artworks/${r.id}`, { signal: r.controller.signal });
+      if (!isCurrent(r) || draft.current || processing.current || lastCommand.current) return;
+      if (next.asset.id !== head.current?.asset.id) {
+        setStatus('conflict');
+        setError('底图已更新，请重新打开作品后继续。');
+        return;
+      }
+      if (next.artwork.headVersion > (head.current?.artwork.headVersion ?? 0))
+        await install(next, parseEditorRecipe(next.revision.recipe), r);
     },
     async publishCurrent() {
       const r = room.current;

@@ -143,14 +143,23 @@ export function parseRecipeV4(input: unknown): RecipeV4 {
         'searchRadius',
         'iterations',
         'texture',
+        ...(v && typeof v === 'object' && Object.hasOwn(v, 'patchRadius') ? ['patchRadius'] : []),
       ],
       path,
       errors,
     );
-    if (r.method !== 'diffusion' && r.method !== 'patch-poisson')
+    if (!['diffusion', 'patch-poisson', 'exemplar-v1'].includes(r.method as string))
       errors.push(`${path}.method: unknown repair method`);
     const iterations = number(r.iterations, 1, 512, `${path}.iterations`, errors);
     if (!Number.isSafeInteger(iterations)) errors.push(`${path}.iterations: expected integer`);
+    const patchRadius =
+      r.patchRadius === undefined
+        ? undefined
+        : number(r.patchRadius, 1, 8, `${path}.patchRadius`, errors);
+    if (patchRadius !== undefined && (!Number.isInteger(patchRadius) || r.method !== 'exemplar-v1'))
+      errors.push(`${path}.patchRadius: integer radius is only valid for exemplar-v1`);
+    if (r.method === 'exemplar-v1' && iterations < 16)
+      errors.push(`${path}.iterations: exemplar search requires at least 16 candidates`);
     return {
       ...originField(r, path, errors),
       id: unique(identifier(r.id, `${path}.id`, errors)),
@@ -159,7 +168,13 @@ export function parseRecipeV4(input: unknown): RecipeV4 {
       opacity: number(r.opacity, 0, 1, `${path}.opacity`, errors),
       mask: readMask(r.mask),
       protection: r.protection === null ? null : readMask(r.protection),
-      method: r.method === 'diffusion' ? 'diffusion' : 'patch-poisson',
+      method:
+        r.method === 'exemplar-v1'
+          ? 'exemplar-v1'
+          : r.method === 'diffusion'
+            ? 'diffusion'
+            : 'patch-poisson',
+      ...(patchRadius === undefined ? {} : { patchRadius }),
       source: r.source === null ? null : point(r.source, 0, 1, `${path}.source`, errors),
       searchRadius: number(r.searchRadius, 0.001, 2, `${path}.searchRadius`, errors),
       iterations,
@@ -190,12 +205,16 @@ export function parseRecipeV4(input: unknown): RecipeV4 {
         'shine',
         'speckle',
         'fineLines',
+        ...(v && typeof v === 'object' && Object.hasOwn(v, 'algorithm') ? ['algorithm'] : []),
       ],
       path,
       errors,
     );
+    if (r.algorithm !== undefined && r.algorithm !== 'guided-v1')
+      errors.push(`${path}.algorithm: unsupported retouch algorithm`);
     return {
       ...originField(r, path, errors),
+      ...(r.algorithm === 'guided-v1' ? { algorithm: 'guided-v1' as const } : {}),
       id: unique(identifier(r.id, `${path}.id`, errors)),
       name: name(r.name, `${path}.name`, errors),
       enabled: boolean(r.enabled, `${path}.enabled`, errors),

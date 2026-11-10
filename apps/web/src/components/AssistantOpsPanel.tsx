@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { Plus, ArrowClockwise } from '@phosphor-icons/react';
 import { api, jsonRequest, errorMessage, formatDate } from '../lib/api';
 import { InlineError, Busy } from './Ui';
@@ -12,6 +12,8 @@ type Settings = {
   maxSeconds: number;
   maxDelegations: number;
   maxOutputTokens: number;
+  contextWindowTokens: number;
+  visualTokenReserve: number;
   imageInput: boolean;
   webSearch: boolean;
   reasoningEffort?: 'none' | 'low' | 'medium' | 'high';
@@ -42,6 +44,8 @@ const initial = (): Settings => ({
   maxSeconds: 180,
   maxDelegations: 6,
   maxOutputTokens: 2048,
+  contextWindowTokens: 32768,
+  visualTokenReserve: 4096,
   imageInput: false,
   webSearch: false,
 });
@@ -67,22 +71,49 @@ export function AssistantOpsPanel() {
     [reason, setReason] = useState(''),
     [evidence, setEvidence] = useState('');
   const voice = settings.operations.includes('realtime-voice');
+  const [recordKind, setRecordKind] = useState<'turn' | 'voice'>('turn'),
+    [recordFilter, setRecordFilter] = useState(''),
+    [recordDraft, setRecordDraft] = useState('');
+  const [cursor, setCursor] = useState<string | null>(null),
+    [nextCursor, setNextCursor] = useState<string | null>(null),
+    [previous, setPrevious] = useState<(string | null)[]>([]);
+  const [recordsLoading, setRecordsLoading] = useState(false);
+  const loadId = useRef(0);
   async function load() {
-    const [catalog, records] = await Promise.all([
-      api<{ models: Model[]; profiles: Profile[]; ready: boolean; voiceReady: boolean }>(
-        '/ops/assistant-models',
-      ),
-      api<{ turns: Unknown[]; voices: Unknown[] }>('/ops/assistant-reconciliation'),
-    ]);
-    setModels(catalog.models);
-    setProfiles(catalog.profiles);
-    setReady(catalog.ready);
-    setVoiceReady(catalog.voiceReady);
-    setUnknown(records);
+    const request = ++loadId.current;
+    setRecordsLoading(true);
+    setError(null);
+    const query = new URLSearchParams({ kind: recordKind });
+    if (recordFilter) query.set('recordId', recordFilter);
+    if (cursor) query.set('cursor', cursor);
+    try {
+      const [catalog, records] = await Promise.all([
+        api<{ models: Model[]; profiles: Profile[]; ready: boolean; voiceReady: boolean }>(
+          '/ops/assistant-models',
+        ),
+        api<{ turns: Unknown[]; voices: Unknown[]; nextCursor: string | null }>(
+          `/ops/assistant-reconciliation?${query}`,
+        ),
+      ]);
+      if (request !== loadId.current) return;
+      setModels(catalog.models);
+      setProfiles(catalog.profiles);
+      setReady(catalog.ready);
+      setVoiceReady(catalog.voiceReady);
+      setUnknown(records);
+      setNextCursor(records.nextCursor);
+    } catch (err) {
+      if (request === loadId.current) throw err;
+    } finally {
+      if (request === loadId.current) setRecordsLoading(false);
+    }
   }
   useEffect(() => {
     void load().catch((e) => setError(errorMessage(e)));
-  }, []);
+    return () => {
+      loadId.current++;
+    };
+  }, [recordKind, recordFilter, cursor]);
   function select(id: string) {
     setSelected(id);
     setSaved(false);
@@ -335,6 +366,34 @@ export function AssistantOpsPanel() {
               {voice ? '（Realtime 最多发送 4096；Live 输出不使用此参数）' : ''}
             </output>
           </label>
+          <label>
+            应用上下文预算
+            <input
+              type="number"
+              min={8192}
+              max={2000000}
+              step={1}
+              value={settings.contextWindowTokens ?? 32768}
+              onChange={(event) =>
+                setSettings({ ...settings, contextWindowTokens: Number(event.target.value) })
+              }
+            />
+            <small>按实际模型能力设置，包含指令、工具、历史、图片预留与输出。</small>
+          </label>
+          <label>
+            每张图的输入预留
+            <input
+              type="number"
+              min={1024}
+              max={32768}
+              step={1}
+              value={settings.visualTokenReserve ?? 4096}
+              onChange={(event) =>
+                setSettings({ ...settings, visualTokenReserve: Number(event.target.value) })
+              }
+            />
+            <small>用于派发前的保守预算；实际 token 消耗以供应商回执为准。</small>
+          </label>
           <button className="button button-primary" disabled={busy || !modelId}>
             {busy ? <Busy /> : saved ? '已保存配置' : '保存配置'}
           </button>
@@ -346,6 +405,40 @@ export function AssistantOpsPanel() {
         <p className="control-note">
           超时不等于未计费。先核对供应商回执和使用量，再选择结算或释放；系统不会自动重发。
         </p>
+        <form
+          className="assistant-record-filters"
+          onSubmit={(event) => {
+            event.preventDefault();
+            setCursor(null);
+            setPrevious([]);
+            setRecordFilter(recordDraft.trim());
+          }}
+        >
+          <label>
+            会话类型
+            <select
+              value={recordKind}
+              disabled={busy}
+              onChange={(event) => {
+                setRecordKind(event.target.value as 'turn' | 'voice');
+                setCursor(null);
+                setPrevious([]);
+              }}
+            >
+              <option value="turn">文字协作</option>
+              <option value="voice">实时语音</option>
+            </select>
+          </label>
+          <label>
+            会话编号
+            <input
+              value={recordDraft}
+              onChange={(event) => setRecordDraft(event.target.value)}
+              placeholder="完整会话 UUID，可留空"
+            />
+          </label>
+          <button disabled={busy || recordsLoading}>查询会话</button>
+        </form>
         {unknown.turns.length + unknown.voices.length === 0 ? (
           <p>当前没有待核验会话。</p>
         ) : (
@@ -374,6 +467,7 @@ export function AssistantOpsPanel() {
                       <td>
                         <button
                           className="text-button"
+                          disabled={busy || recordsLoading}
                           onClick={() => {
                             setResolution({ kind, record });
                             setReason('');
@@ -390,6 +484,27 @@ export function AssistantOpsPanel() {
             </table>
           </div>
         )}
+        <nav aria-label="待核验会话分页">
+          <button
+            disabled={!previous.length || busy || recordsLoading}
+            onClick={() => {
+              setCursor(previous.at(-1) ?? null);
+              setPrevious((value) => value.slice(0, -1));
+            }}
+          >
+            上一页
+          </button>
+          <span>第 {previous.length + 1} 页</span>
+          <button
+            disabled={!nextCursor || busy || recordsLoading}
+            onClick={() => {
+              setPrevious((value) => [...value, cursor]);
+              setCursor(nextCursor);
+            }}
+          >
+            下一页
+          </button>
+        </nav>
         {resolution && (
           <div className="assistant-resolution">
             <p>核验 {resolution.record.id}</p>

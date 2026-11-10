@@ -9,6 +9,8 @@ import {
   markUnknownHold,
   emit,
   audit,
+  claimAssistantGrant,
+  assertAssistantGrant,
   lockAssetStorageKeys,
   discardUnreferencedStorageKeys,
   type Database,
@@ -80,7 +82,8 @@ const imageInput = z
   .object({
     ...common,
     operation: z.literal('generate-image'),
-    prompt,
+    prompt: z.string().trim().min(1).max(4000),
+    executionGrantId: z.uuid().optional(),
     width: z.number().int().min(64).max(8192),
     height: z.number().int().min(64).max(8192),
     referenceAssetId: z.string().uuid().optional(),
@@ -300,6 +303,11 @@ export function createMultimodalService(
   }
   async function authorizeDispatch(job: Job) {
     await permission(db, job.actor_id, job.project_id);
+    if (job.operation === 'generate-image') {
+      const input = imageInput.parse(job.input.input);
+      if (input.executionGrantId)
+        await assertAssistantGrant(db, input.executionGrantId, job.actor_id, job.project_id);
+    }
     const value = (await db.query('SELECT config FROM model_configs WHERE id=$1', [job.model_id]))
       .rows[0]?.config;
     const checked = modelSchema.safeParse(value);
@@ -781,6 +789,16 @@ export function createMultimodalService(
         if (count >= dailyLimit || active >= 5)
           throw new AiError('AI_CAPACITY_LIMIT', '今日请求或待处理任务达到上限', 429);
         if (access.kind === 'personal') await ensureMonthlyGrant(tx, args.actorId);
+        if (input.operation === 'generate-image' && input.executionGrantId)
+          await claimAssistantGrant(tx, {
+            grantId: input.executionGrantId,
+            actorId: args.actorId,
+            projectId: args.projectId,
+            key: `image:${input.idempotencyKey}`,
+            action: 'generate-image',
+            modelId: input.modelId,
+            units: quotedUnits,
+          });
         const hold = await reserveUnits(tx, {
           spaceId: args.spaceId,
           userId: args.actorId,

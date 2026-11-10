@@ -127,6 +127,8 @@ export interface PaintLayerV3 {
   strokes: PaintStrokeV3[];
 }
 export interface WarpStrokeV3 {
+  /** Omitted preserves the published displacement field. New flows integrate a smooth velocity. */
+  algorithm?: 'flow-v1';
   origin?: OperationOriginV3;
   id: string;
   mode: 'push' | 'pinch' | 'bulge' | 'twirl';

@@ -696,6 +696,7 @@ export function CanvasStage({
     if (kind === 'warp' && (recipe.schemaVersion === 3 || recipe.schemaVersion === 4)) {
       state.warp = {
         id: newId!,
+        ...(recipe.schemaVersion === 4 ? { algorithm: 'flow-v1' as const } : {}),
         mode: editor.warpSettings.mode,
         from: point,
         to: point,

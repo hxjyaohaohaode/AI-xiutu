@@ -2,6 +2,7 @@ import type { AssetCopyRecord } from '@ai-xiutu/contracts';
 import type { Asset } from '../lib/types';
 
 export interface GenerationDraftInput {
+  executionGrantId?: string;
   candidateId: string;
   prompt: string;
   referenceAssetIds: string[];

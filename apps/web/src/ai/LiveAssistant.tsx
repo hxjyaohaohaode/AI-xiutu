@@ -15,6 +15,9 @@ import type {
   AssistantContext,
   AssistantCitation,
   VoiceServerEvent,
+  AssistantGrant,
+  AssistantWorkspace,
+  MemorySuggestion,
 } from '@ai-xiutu/contracts';
 import { parseEditorRecipe, type EditorRecipe } from '@ai-xiutu/editor';
 import { api, errorMessage, jsonRequest } from '../lib/api';
@@ -30,6 +33,11 @@ import {
   type AssistantOperationToken,
 } from './assistantGuards';
 import './live-assistant.css';
+import { CreativeControls, initialCreativeSettings } from './CreativeControls';
+import { observeAssistantTurn, type RunEvent } from './turnStream';
+import { ContextEvidence } from './ContextEvidence';
+import { MemoryControls } from './MemoryControls';
+import { WorkspaceCards } from './WorkspaceCards';
 
 export type CaptureCurrentImage = () => Promise<AssistantContext & { imageDataUrl: string }>;
 interface Model {
@@ -51,9 +59,23 @@ interface Catalog {
 }
 interface Turn {
   id: string;
+  modelId?: string;
+  conversationId?: string;
   state: string;
   prompt?: string;
-  output?: { text: string; citations: AssistantCitation[]; candidates: AssistantCandidate[] };
+  output?: {
+    text: string;
+    citations: AssistantCitation[];
+    candidates: AssistantCandidate[];
+    workspace?: AssistantWorkspace;
+    memorySuggestions?: MemorySuggestion[];
+    execution?: {
+      state: 'applied' | 'blocked' | 'review_required';
+      code?: string;
+      artworkId?: string;
+      revisionId?: string;
+    };
+  };
   errorCode?: string;
 }
 interface Message {
@@ -70,7 +92,12 @@ export interface LiveAssistantProps {
   onAuth: () => void;
   onSave: () => void;
   onPreview: (recipe: EditorRecipe) => void;
+  imageModelIds: string[];
+  onBeforeArtworkWrite?: () => void | Promise<void>;
+  onAfterArtworkWrite?: () => void | Promise<void>;
+  onApplied: (artworkId: string) => void | Promise<void>;
   onPrepareGenerationDraft: (draft: {
+    executionGrantId?: string;
     candidateId: string;
     prompt: string;
     referenceAssetIds: string[];
@@ -101,6 +128,25 @@ export function LiveAssistant(props: LiveAssistantProps) {
   } = props;
   const [catalog, setCatalog] = useState<Catalog | null>(null),
     [spaces, setSpaces] = useState<Space[]>([]);
+  const [creative, setCreative] = useState(initialCreativeSettings);
+  const [grant, setGrant] = useState<AssistantGrant | null>(null);
+  const [contextManifest, setContextManifest] = useState<Record<string, any> | null>(null);
+  const [workspace, setWorkspace] = useState<{
+    spec: AssistantWorkspace;
+    candidateIds: string[];
+  } | null>(null);
+  const freshConversation = useRef(false);
+  const [conversationId, setConversationId] = useState<string | undefined>();
+  const [conversations, setConversations] = useState<
+    { id: string; title: string; turnCount: number }[]
+  >([]);
+  const [memorySuggestions, setMemorySuggestions] = useState<{
+    items: MemorySuggestion[];
+    sourceTurnId?: string;
+  }>({ items: [] });
+  const streamText = useRef(new Map<string, string>());
+  const activeGrant = useRef<AssistantGrant | null>(null);
+  activeGrant.current = grant;
   const [modelId, setModelId] = useState(''),
     [voiceId, setVoiceId] = useState(''),
     [voice, setVoice] = useState('marin');
@@ -222,6 +268,15 @@ export function LiveAssistant(props: LiveAssistantProps) {
     setReferenceIds([]);
     setResources([]);
     setParentTurnId(undefined);
+    setConversationId(undefined);
+    setConversations([]);
+    setGrant(null);
+    setContextManifest(null);
+    setWorkspace(null);
+    setMemorySuggestions({ items: [] });
+    streamText.current.clear();
+    freshConversation.current = false;
+    setCreative(initialCreativeSettings());
     setMessages([]);
     setCandidates([]);
     if (!isLoggedIn) {
@@ -242,12 +297,26 @@ export function LiveAssistant(props: LiveAssistantProps) {
     async function load() {
       if (!isLoggedIn || !project) return;
       try {
+        const catalog = await api<{ conversations: typeof conversations }>(
+          `/projects/${project.id}/assistant-conversations`,
+          { signal: controller.signal },
+        );
+        if (controller.signal.aborted) return;
+        setConversations(catalog.conversations);
+        if (conversationId === undefined) {
+          setConversationId(catalog.conversations[0]?.id ?? '');
+          return;
+        }
+        if (!conversationId) return;
         const [{ turns }, savedCandidates] = await Promise.all([
-          api<{ turns: Turn[] }>(`/projects/${project.id}/assistant-turns`, {
-            signal: controller.signal,
-          }),
+          api<{ turns: Turn[] }>(
+            `/projects/${project.id}/assistant-turns?conversationId=${conversationId}`,
+            {
+              signal: controller.signal,
+            },
+          ),
           api<{ candidates: AssistantCandidate[] }>(
-            `/projects/${project.id}/assistant-candidates`,
+            `/projects/${project.id}/assistant-candidates?conversationId=${conversationId}`,
             { signal: controller.signal },
           ),
         ]);
@@ -258,6 +327,17 @@ export function LiveAssistant(props: LiveAssistantProps) {
         )
           return;
         const complete = turns.filter((turn) => turn.state === 'completed');
+        if (complete[0])
+          setMemorySuggestions({
+            items: complete[0].output?.memorySuggestions ?? [],
+            sourceTurnId: complete[0].id,
+          });
+        if (complete[0]?.output?.workspace)
+          setWorkspace({
+            spec: complete[0].output.workspace,
+            candidateIds: complete[0].output.candidates.map((item) => item.id),
+          });
+        if (!freshConversation.current) setParentTurnId((current) => current ?? complete[0]?.id);
         setMessages((old) => {
           const merged = new Map<string, Message>();
           for (const turn of [...complete].reverse()) {
@@ -281,8 +361,32 @@ export function LiveAssistant(props: LiveAssistantProps) {
           for (const candidate of savedCandidates.candidates) merged.set(candidate.id, candidate);
           return [...merged.values()].slice(0, 50);
         });
-        if (turns.some((turn) => turn.state === 'running'))
-          timer = setTimeout(() => void load(), 1500);
+        const running = turns.find((turn) => turn.state === 'running');
+        if (running && !requests.current.busy) {
+          if (running.modelId) setModelId(running.modelId);
+          const token = requests.current.begin();
+          if (token) {
+            streamText.current.delete(running.id);
+            setBusy(true);
+            void observeAssistantTurn<Turn>(running.id, controller.signal, (event) => {
+              if (requestIsActive(token)) showRunEvent(event);
+            })
+              .then((result) => {
+                if (requestIsActive(token)) {
+                  if (result.state === 'completed') setParentTurnId(result.id);
+                  setHistoryEpoch((old) => old + 1);
+                }
+              })
+              .catch((error) => {
+                if (!controller.signal.aborted && requestIsActive(token))
+                  setError(errorMessage(error));
+              })
+              .finally(() => {
+                if (requests.current.finish(token) && alive.current) setBusy(false);
+              });
+          }
+        }
+        if (running) timer = setTimeout(() => void load(), 1500);
       } catch (err) {
         if (
           !controller.signal.aborted &&
@@ -297,7 +401,7 @@ export function LiveAssistant(props: LiveAssistantProps) {
       controller.abort();
       clearTimeout(timer);
     };
-  }, [project?.id, isLoggedIn, historyEpoch]);
+  }, [project?.id, isLoggedIn, historyEpoch, conversationId]);
   useEffect(
     () => () => {
       alive.current = false;
@@ -375,7 +479,80 @@ export function LiveAssistant(props: LiveAssistantProps) {
     referenceAssetIds: referenceIds,
     allowWebSearch,
     usePersonalMemory: memory,
+    creativeBrief: creative.brief,
+    ...(grant ? { executionGrantId: grant.id } : {}),
   };
+  async function authorize() {
+    if (!project || !modelId) throw new Error('请先选择项目和思考模型');
+    const scopeKey = requestScope;
+    const result = await api<{ grant: AssistantGrant }>(
+      `/projects/${project.id}/assistant-grants`,
+      jsonRequest('POST', {
+        mode: creative.mode,
+        unitLimit: creative.unitLimit,
+        stepLimit: creative.stepLimit,
+        minutes: 30,
+        allowedActions:
+          creative.mode === 'suggest'
+            ? ['assistant-turn', 'realtime-voice']
+            : ['assistant-turn', 'realtime-voice', 'edit', 'generate-image'],
+        modelIds: [...new Set([modelId, voiceId, ...props.imageModelIds].filter(Boolean))],
+      }),
+    );
+    if (!alive.current || assistantScopeKey(editorState(current.current)) !== scopeKey) return null;
+    activeGrant.current = result.grant;
+    setGrant(result.grant);
+    return result.grant;
+  }
+  async function requestScopeWithGrant() {
+    let currentGrant = activeGrant.current;
+    if (
+      !currentGrant ||
+      currentGrant.revokedAt ||
+      new Date(currentGrant.expiresAt).getTime() <= Date.now()
+    ) {
+      if (creative.mode === 'auto') throw new Error('请先明确授权自动执行的范围与预算');
+      currentGrant = await authorize();
+    }
+    if (!currentGrant) throw new Error('项目已切换，请重新发送');
+    return { ...scope, executionGrantId: currentGrant.id };
+  }
+  async function refreshGrant() {
+    const id = activeGrant.current?.id;
+    if (!id) return;
+    try {
+      const result = await api<{ grant: AssistantGrant }>(`/assistant-grants/${id}`);
+      if (alive.current && activeGrant.current?.id === id) setGrant(result.grant);
+    } catch {
+      /* Task results remain visible if a usage refresh is temporarily unavailable. */
+    }
+  }
+  async function revokeGrant() {
+    const id = activeGrant.current?.id;
+    if (!id) return;
+    if (inCall) endVoice();
+    try {
+      await api(`/assistant-grants/${id}`, jsonRequest('DELETE', {}));
+      if (activeGrant.current?.id === id) {
+        activeGrant.current = null;
+        setGrant(null);
+      }
+    } catch (err) {
+      setError(errorMessage(err));
+    }
+  }
+  async function explicitAuthorize() {
+    const token = requests.current.begin();
+    if (!token) return;
+    setBusy(true);
+    try {
+      await authorize();
+    } catch (err) {
+      if (requestIsActive(token)) setError(errorMessage(err));
+    } finally {
+      if (requests.current.finish(token) && alive.current) setBusy(false);
+    }
+  }
   function receive(event: VoiceServerEvent) {
     if (!alive.current) return;
     if (voiceEnding.current && event.type !== 'closed' && event.type !== 'error') return;
@@ -412,6 +589,12 @@ export function LiveAssistant(props: LiveAssistantProps) {
         );
       });
     if (event.type === 'assistant-result') {
+      setMemorySuggestions({ items: event.memorySuggestions ?? [] });
+      setWorkspace(
+        event.workspace
+          ? { spec: event.workspace, candidateIds: event.candidates.map((item) => item.id) }
+          : null,
+      );
       setMessages((old) =>
         [
           ...old,
@@ -461,6 +644,11 @@ export function LiveAssistant(props: LiveAssistantProps) {
         voiceClient.dispose();
         return;
       }
+      const authorizedScope = await requestScopeWithGrant();
+      if (!requestIsActive(token)) {
+        voiceClient.dispose();
+        return;
+      }
       const session = await api<{ id: string; ticket: string; websocketPath: string }>(
         `/projects/${project.id}/voice-sessions`,
         jsonRequest('POST', {
@@ -469,7 +657,7 @@ export function LiveAssistant(props: LiveAssistantProps) {
           backendModelId: modelId,
           voice,
           context,
-          scope,
+          scope: authorizedScope,
         }),
       );
       if (!requestIsActive(token) || epoch !== voiceEpoch.current) {
@@ -497,12 +685,41 @@ export function LiveAssistant(props: LiveAssistantProps) {
     setCallState(callState === 'connecting' ? 'idle' : 'closing');
     client.current?.end();
   }
+  function showRunEvent(event: RunEvent) {
+    if (event.type === 'text.delta' && typeof event.payload.delta === 'string') {
+      const text = (streamText.current.get(event.runId) ?? '') + event.payload.delta;
+      streamText.current.set(event.runId, text);
+      setMessages((old) =>
+        [
+          ...old.filter((item) => item.id !== event.runId),
+          { id: event.runId, role: 'assistant' as const, text },
+        ].slice(-60),
+      );
+    } else if (event.type.startsWith('tool.')) {
+      const names: Record<string, string> = {
+        describe_editor: '读取编辑参数',
+        search_resources: '检索素材',
+        propose_sequence: '组合编辑步骤',
+        propose_edit: '准备参数候选',
+        propose_curve: '准备曲线',
+        draft_generation: '整理生图要求',
+        inspect_candidate: '渲染并检查真实候选图像',
+        select_candidate: '确定本轮编辑方案',
+        read_history: '回查原文',
+        read_tool_result: '读取工具结果',
+      };
+      setToolStatus(
+        `${names[event.payload.name] ?? '处理工具结果'} · ${{ 'tool.running': '进行中', 'tool.completed': '已完成', 'tool.failed': '未通过检查' }[event.type] ?? ''}`,
+      );
+    } else if (event.type === 'context.prepared') setContextManifest(event.payload);
+  }
   async function submit() {
     if (requests.current.busy || !isLoggedIn || !project || !prompt.trim() || !modelId) return;
     const text = prompt.trim();
+    const userMessageId = secureUuid();
     setError('');
     setPrompt('');
-    setMessages((old) => [...old, { id: secureUuid(), role: 'user' as const, text }].slice(-40));
+    setMessages((old) => [...old, { id: userMessageId, role: 'user' as const, text }].slice(-40));
     if (callState === 'active') {
       client.current?.send({ type: 'text', text });
       return;
@@ -512,32 +729,58 @@ export function LiveAssistant(props: LiveAssistantProps) {
     setBusy(true);
     const controller = new AbortController();
     turnAbort.current = controller;
+    let writePrepared = false;
     try {
       const context = await getContext();
       if (!requestIsActive(token) || controller.signal.aborted) return;
+      const authorizedScope = await requestScopeWithGrant();
+      if (!requestIsActive(token) || controller.signal.aborted) return;
+      if (creative.mode === 'auto') {
+        await props.onBeforeArtworkWrite?.();
+        writePrepared = true;
+      }
       let result = await api<Turn>(`/projects/${project.id}/assistant-turns`, {
         ...jsonRequest('POST', {
           idempotencyKey: secureUuid(),
           modelId,
           prompt: text,
           context,
-          scope,
+          scope: authorizedScope,
           parentTurnId,
         }),
         signal: controller.signal,
       });
-      const deadline = Date.now() + 280_000;
-      while (result.state === 'running' && Date.now() < deadline) {
-        await new Promise((resolve) => setTimeout(resolve, 1200));
-        if (controller.signal.aborted || !requestIsActive(token)) return;
-        result = await api<Turn>(`/assistant-turns/${result.id}`, { signal: controller.signal });
-      }
+      if (requestIsActive(token))
+        setMessages((old) =>
+          old.map((message) =>
+            message.id === userMessageId ? { ...message, id: `${result.id}-u` } : message,
+          ),
+        );
+      if (result.state === 'running')
+        result = await observeAssistantTurn<Turn>(result.id, controller.signal, (event) => {
+          if (requestIsActive(token)) showRunEvent(event);
+        });
       if (controller.signal.aborted || !requestIsActive(token)) return;
       if (result.state === 'completed' && result.output) {
+        setMemorySuggestions({
+          items: result.output.memorySuggestions ?? [],
+          sourceTurnId: result.id,
+        });
+        setWorkspace(
+          result.output.workspace
+            ? {
+                spec: result.output.workspace,
+                candidateIds: result.output.candidates.map((item) => item.id),
+              }
+            : null,
+        );
+        streamText.current.delete(result.id);
+        freshConversation.current = false;
         setParentTurnId(result.id);
+        setConversationId(result.conversationId);
         setMessages((old) =>
           [
-            ...old,
+            ...old.filter((message) => message.id !== result.id),
             {
               id: result.id,
               role: 'assistant' as const,
@@ -547,6 +790,25 @@ export function LiveAssistant(props: LiveAssistantProps) {
           ].slice(-40),
         );
         setCandidates((old) => [...result.output!.candidates, ...old].slice(0, 30));
+        if (result.output.execution?.state === 'applied') {
+          if (
+            result.output.execution.artworkId &&
+            result.output.execution.artworkId === current.current.artwork?.id
+          )
+            await props.onApplied(result.output.execution.artworkId);
+          setToolStatus('已自动保存新版本，可在历史中对比和恢复');
+        } else if (result.output.execution) {
+          const code = result.output.execution.code;
+          setError(
+            code === 'ALTERNATIVE_CANDIDATES'
+              ? '本轮提出了多个备选方案，请选择预览后继续。'
+              : code === 'CANDIDATE_REVIEW_REQUIRED'
+                ? '本轮尚未完成对候选画面的检查，已保留方案，请预览确认。'
+                : code === 'AUTOMATIC_UNSAVED_BASE'
+                  ? '本轮基于未保存参数，已保留候选，请先预览确认。'
+                  : `自动修改已停止，候选已保留，请检查版本、占用或授权后继续。${code ?? ''}`,
+          );
+        }
       } else
         setError(
           result.state === 'unknown'
@@ -556,29 +818,64 @@ export function LiveAssistant(props: LiveAssistantProps) {
     } catch (err) {
       if (!controller.signal.aborted && requestIsActive(token)) setError(errorMessage(err));
     } finally {
+      if (writePrepared) {
+        try {
+          await props.onAfterArtworkWrite?.();
+        } catch (err) {
+          if (alive.current) setError(errorMessage(err));
+        }
+      }
       if (requests.current.finish(token) && alive.current) setBusy(false);
       if (turnAbort.current === controller) turnAbort.current = null;
+      void refreshGrant();
     }
   }
-  async function decide(candidate: AssistantCandidate, decision: 'previewed' | 'rejected') {
+  async function decide(
+    candidate: AssistantCandidate,
+    decision: 'previewed' | 'rejected',
+    automatic = false,
+  ) {
     if (!isLoggedIn || !project) return;
     const token = requests.current.begin();
     if (!token) return;
     setError('');
+    setBusy(true);
+    let appliedRevisionId: string | undefined;
     try {
       if (decision === 'previewed' && candidate.kind === 'edit') {
+        if (automatic) await props.onBeforeArtworkWrite?.();
+        let savedId: string | undefined;
         const applied = await acknowledgeEditCandidate(candidate, {
           readCurrent: () => editorState(current.current),
           isActive: () => requestIsActive(token),
-          acknowledge: (body) =>
-            api(`/assistant-candidates/${candidate.id}/decision`, jsonRequest('POST', body)),
-          apply: (next) => current.current.onPreview(next),
+          acknowledge: async (body) => {
+            if (!automatic)
+              return api(
+                `/assistant-candidates/${candidate.id}/decision`,
+                jsonRequest('POST', body),
+              );
+            const result = await api<{ artworkId: string; revisionId: string }>(
+              `/assistant-candidates/${candidate.id}/apply`,
+              jsonRequest('POST', { recipe: body.recipe, expectedVersion: body.expectedVersion }),
+            );
+            savedId = result.artworkId;
+            appliedRevisionId = result.revisionId;
+            return result;
+          },
+          apply: (next) => {
+            if (!automatic) current.current.onPreview(next);
+          },
         });
         if (!applied) return;
+        if (automatic && savedId) {
+          await props.onApplied(savedId);
+          setToolStatus('已自动保存新版本，可在历史中对比和恢复');
+        }
       } else {
         let commit: (() => void) | null = null;
         if (decision === 'previewed') {
           commit = await onPrepareGenerationDraft({
+            executionGrantId: candidate.executionGrantId,
             candidateId: candidate.id,
             prompt: candidate.prompt ?? '',
             referenceAssetIds: candidate.referenceAssetIds ?? [],
@@ -594,14 +891,58 @@ export function LiveAssistant(props: LiveAssistantProps) {
       }
       if (!requestIsActive(token)) return;
       setCandidates((old) =>
-        old.map((item) => (item.id === candidate.id ? { ...item, decision } : item)),
+        old.map((item) =>
+          item.id === candidate.id
+            ? { ...item, decision, ...(appliedRevisionId ? { appliedRevisionId } : {}) }
+            : item,
+        ),
       );
     } catch (err) {
       if (requestIsActive(token)) setError(errorMessage(err));
     } finally {
       requests.current.finish(token);
+      try {
+        if (automatic) await props.onAfterArtworkWrite?.();
+      } catch (err) {
+        if (alive.current) setError(errorMessage(err));
+      }
+      if (alive.current) setBusy(false);
+      void refreshGrant();
     }
   }
+  const autoAttempted = useRef(new Set<string>());
+  const workspaceReady =
+    workspace && workspace.candidateIds.every((id) => candidates.some((item) => item.id === id));
+  const workspaceCandidateIds = new Set(
+    workspaceReady
+      ? workspace.spec.sections.flatMap((section) =>
+          section.type === 'candidates'
+            ? section.candidateIndices.map((index) => workspace.candidateIds[index])
+            : [],
+        )
+      : [],
+  );
+  const remainingCandidates = candidates.filter(
+    (item) =>
+      !workspaceCandidateIds.has(item.id) &&
+      (item.decision === 'pending' ||
+        (item.kind === 'generation' && item.decision === 'previewed')),
+  );
+  useEffect(() => {
+    if (creative.mode !== 'auto' || !grant || grant.revokedAt || busy || requests.current.busy)
+      return;
+    const candidate = candidates.find(
+      (item) =>
+        item.kind === 'edit' &&
+        item.executionManagedBy !== 'server' &&
+        item.executionGrantId === grant.id &&
+        item.decision === 'pending' &&
+        !autoAttempted.current.has(item.id),
+    );
+    if (!candidate) return;
+    autoAttempted.current.add(candidate.id);
+    void decide(candidate, 'previewed', true);
+  }, [candidates, creative.mode, grant, busy]);
   function cancelSearch() {
     searches.current.invalidate();
     searchAbort.current?.controller.abort();
@@ -675,7 +1016,7 @@ export function LiveAssistant(props: LiveAssistantProps) {
             <select
               value={voiceId}
               onChange={(event) => setVoiceId(event.target.value)}
-              disabled={inCall}
+              disabled={inCall || !!grant}
             >
               <option value="">选择语音模型</option>
               {voices.map((item) => (
@@ -691,7 +1032,7 @@ export function LiveAssistant(props: LiveAssistantProps) {
           <select
             value={modelId}
             onChange={(event) => setModelId(event.target.value)}
-            disabled={inCall || busy}
+            disabled={inCall || busy || !!grant}
           >
             <option value="">选择智能体模型</option>
             {models.map((item) => (
@@ -712,6 +1053,71 @@ export function LiveAssistant(props: LiveAssistantProps) {
           请先建立或打开一个项目。<button onClick={onSave}>保存到项目</button>
         </p>
       )}
+      <CreativeControls
+        value={creative}
+        onChange={setCreative}
+        disabled={inCall || busy}
+        grant={grant}
+        onAuthorize={() => {
+          void explicitAuthorize();
+        }}
+        onRevoke={() => {
+          void revokeGrant();
+        }}
+      />
+      <ContextEvidence turnId={parentTurnId} live={contextManifest} />
+      {project && (
+        <MemoryControls
+          key={`${project.id}:${artwork?.id ?? ''}`}
+          projectId={project.id}
+          artworkId={artwork?.id}
+          sourceTurnId={parentTurnId}
+          disabled={busy || inCall}
+          suggestions={memorySuggestions}
+        />
+      )}
+      <button
+        className="text-button"
+        disabled={busy || inCall}
+        onClick={() => {
+          freshConversation.current = true;
+          setConversationId('');
+          setParentTurnId(undefined);
+          setMessages([]);
+          setCandidates([]);
+          setContextManifest(null);
+          setWorkspace(null);
+          setMemorySuggestions({ items: [] });
+        }}
+      >
+        开始新会话，保留已保存的历史
+      </button>
+      <label className="assistant-conversation-select">
+        会话记录
+        <select
+          aria-label="会话记录"
+          value={conversationId ?? ''}
+          disabled={busy || inCall}
+          onChange={(event) => {
+            setConversationId(event.target.value);
+            freshConversation.current = !event.target.value;
+            setParentTurnId(undefined);
+            setMessages([]);
+            setCandidates([]);
+            setWorkspace(null);
+            setMemorySuggestions({ items: [] });
+            setContextManifest(null);
+            setError('');
+          }}
+        >
+          <option value="">新会话</option>
+          {conversations.map((item) => (
+            <option key={item.id} value={item.id}>
+              {item.title} · {item.turnCount} 轮
+            </option>
+          ))}
+        </select>
+      </label>
       <details className="assistant-context" data-assistant-motion="context">
         <summary>
           <Eye size={15} /> 共享范围 · {shareImage ? '画面与参数' : '仅参数'}
@@ -743,7 +1149,7 @@ export function LiveAssistant(props: LiveAssistantProps) {
               disabled={inCall}
               onChange={(event) => setMemory(event.target.checked)}
             />
-            使用我明确记住的素材标注
+            使用已确认的偏好、项目要求与素材标注
           </label>
           <fieldset disabled={inCall}>
             <legend>可搜索的空间</legend>
@@ -909,60 +1315,70 @@ export function LiveAssistant(props: LiveAssistantProps) {
           </article>
         ))}
       </div>
-      {candidates.some(
-        (item) =>
-          item.decision === 'pending' ||
-          (item.kind === 'generation' && item.decision === 'previewed'),
-      ) && (
+      {workspace && workspaceReady && (
+        <WorkspaceCards
+          spec={workspace.spec}
+          candidates={workspace.candidateIds.map((id) =>
+            candidates.find((item) => item.id === id)!,
+          )}
+          grant={grant}
+          disabled={busy}
+          canExecute={creative.mode !== 'suggest'}
+          onDecision={(candidate, decision) => {
+            void decide(candidate, decision);
+          }}
+          onPrompt={setPrompt}
+        />
+      )}
+      {remainingCandidates.length > 0 && (
         <div className="assistant-candidates" data-assistant-motion="candidates">
-          {candidates
-            .filter(
-              (item) =>
-                item.decision === 'pending' ||
-                (item.kind === 'generation' && item.decision === 'previewed'),
-            )
-            .map((candidate) => (
-              <article key={candidate.id} className="assistant-candidate">
-                <h4>
-                  <Sparkle size={15} />
-                  {candidate.kind === 'edit' ? '待确认的编辑' : '生图草案'}
-                </h4>
-                <p>{candidate.summary}</p>
-                {!!candidate.changes?.length && (
-                  <details>
-                    <summary>查看 {candidate.changes.length} 项参数变化</summary>
-                    <table>
-                      <thead>
-                        <tr>
-                          <th>参数</th>
-                          <th>原值</th>
-                          <th>建议</th>
+          {remainingCandidates.map((candidate) => (
+            <article key={candidate.id} className="assistant-candidate">
+              <h4>
+                <Sparkle size={15} />
+                {candidate.kind === 'edit' ? '待确认的编辑' : '生图草案'}
+              </h4>
+              <p>{candidate.summary}</p>
+              {!!candidate.changes?.length && (
+                <details>
+                  <summary>查看 {candidate.changes.length} 项参数变化</summary>
+                  <table>
+                    <thead>
+                      <tr>
+                        <th>参数</th>
+                        <th>原值</th>
+                        <th>建议</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {candidate.changes.map((change) => (
+                        <tr key={change.path}>
+                          <td>{change.label}</td>
+                          <td>{change.before}</td>
+                          <td>{change.after}</td>
                         </tr>
-                      </thead>
-                      <tbody>
-                        {candidate.changes.map((change) => (
-                          <tr key={change.path}>
-                            <td>{change.label}</td>
-                            <td>{change.before}</td>
-                            <td>{change.after}</td>
-                          </tr>
-                        ))}
-                      </tbody>
-                    </table>
-                  </details>
-                )}
-                <div>
-                  <button onClick={() => void decide(candidate, 'rejected')}>退回</button>
-                  <button onClick={() => void decide(candidate, 'previewed')}>
-                    {candidate.kind === 'edit'
-                      ? '在编辑器预览'
-                      : candidate.decision === 'previewed'
-                        ? '重新打开生图草案'
-                        : '选择模型与生成参数'}
-                  </button>
-                </div>
-              </article>
-            ))}
+                      ))}
+                    </tbody>
+                  </table>
+                </details>
+              )}
+              <div>
+                <button disabled={busy} onClick={() => void decide(candidate, 'rejected')}>
+                  退回
+                </button>
+                <button
+                  disabled={creative.mode === 'suggest' || busy}
+                  onClick={() => void decide(candidate, 'previewed')}
+                >
+                  {candidate.kind === 'edit'
+                    ? '在编辑器预览'
+                    : candidate.decision === 'previewed'
+                      ? '重新打开生图草案'
+                      : '选择模型与生成参数'}
+                </button>
+              </div>
+            </article>
+          ))}
         </div>
       )}
       <p className="assistant-tool-status" aria-live="polite">
@@ -1015,7 +1431,11 @@ export function LiveAssistant(props: LiveAssistantProps) {
           : selected
             ? `文字协作每轮 ${selected.unitCost} 服务点。`
             : ''}
-        候选需要你确认，保存前仍可撤销。
+        {creative.mode === 'auto'
+          ? '授权内的参数编辑保存为新版本，可从历史恢复。'
+          : creative.mode === 'suggest'
+            ? '当前只提供建议，保持图片不变。'
+            : '候选需要你确认，保存前仍可撤销。'}
       </p>
     </section>
   );
