@@ -725,6 +725,7 @@ export function registerRealtimeCollaboration(app: FastifyInstance, db: Database
         recipe: candidate,
         assetId: room.asset_id,
         label: `协作 · ${body.operation.type}`,
+        origin: { kind: 'collaboration', operationId: body.idempotencyKey },
       });
       await tx.query('DELETE FROM collaboration_previews WHERE lease_id=$1', [body.leaseId]);
       const cursor = String(

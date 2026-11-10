@@ -1,5 +1,10 @@
 export const MEDIA_PROTOCOL = 'media-v1' as const;
-export const MEDIA_MAX_PIXELS = 200_000_000;
+export const MEDIA_DEFAULT_MAX_PIXELS = 200_000_000;
+// The 2 GiB worker file limit leaves room for a 4-channel uint16 TIFF and its
+// bounded tile/codec overhead at this ceiling. Format budgets can be lower.
+export const MEDIA_MAX_PIXELS = 256_000_000;
+export const MEDIA_MAX_SIDE = 65_535;
+export const MEDIA_MAX_TILE_COUNT = 8_192;
 export const MEDIA_MAX_INPUT_BYTES = 536_870_912;
 export const MEDIA_MAX_PROXY_PIXELS = 4_194_304;
 export interface MediaProcessingOptions {

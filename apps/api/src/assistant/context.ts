@@ -4,7 +4,7 @@ import { parseEditorRecipe } from '@ai-xiutu/editor';
 import type { Database, Queryable } from '@ai-xiutu/db';
 import type { AssistantContext, AssistantScope } from '@ai-xiutu/contracts';
 import type { ImageModerator, TextModerator } from '@ai-xiutu/providers';
-import { HttpError, projectAccess } from '../core.js';
+import { HttpError, id, lockActiveSession, projectAccess } from '../core.js';
 import type { LocalPrivateStorage } from '../storage.js';
 
 export async function assistantAccess(db: Queryable, actorId: string, projectId: string) {
@@ -26,6 +26,7 @@ export async function lockedAssistantAccess(
   actorId: string,
   projectId: string,
   scope?: AssistantScope,
+  authHash?: string,
 ) {
   const permission = await assistantAccess(tx, actorId, projectId);
   const user = await tx.query(
@@ -34,6 +35,7 @@ export async function lockedAssistantAccess(
   );
   if (!user.rowCount)
     throw new HttpError(403, 'ASSISTANT_MEMBERSHIP_REQUIRED', '账号当前不可使用 AI');
+  if (authHash) await lockActiveSession(tx, actorId, authHash);
   const spaces = [...new Set([permission.space_id, ...(scope?.spaceIds ?? [])])].sort();
   await tx.query('SELECT id FROM spaces WHERE id=ANY($1::uuid[]) ORDER BY id FOR SHARE', [spaces]);
   const referenceIds = scope?.referenceAssetIds ?? [];
@@ -107,11 +109,14 @@ export async function validateContext(
   actorId: string,
   projectId: string,
   context?: AssistantContext,
+  lock = false,
 ): Promise<AssistantContext | undefined> {
   if (!context) return undefined;
   const permission = await assistantAccess(db, actorId, projectId);
   const found = await db.query(
-    `SELECT a.asset_id,a.head_version FROM artworks a JOIN assets s ON s.id=a.asset_id WHERE a.id=$1 AND a.project_id=$2 AND s.deleted_at IS NULL`,
+    `SELECT a.asset_id,a.head_version FROM artworks a JOIN assets s ON s.id=a.asset_id
+    WHERE a.id=$1 AND a.project_id=$2 AND s.project_id=a.project_id AND s.deleted_at IS NULL` +
+      (lock ? ' FOR NO KEY UPDATE OF a FOR SHARE OF s' : ''),
     [context.artworkId, permission.id],
   );
   if (!found.rows[0] || found.rows[0].asset_id !== context.assetId)
@@ -121,10 +126,11 @@ export async function validateContext(
   const recipe = parseEditorRecipe(context.recipe);
   if ('imageLayers' in recipe && recipe.imageLayers.length) {
     const sourceIds = [...new Set(recipe.imageLayers.map((item) => item.sourceId))];
-    if (sourceIds.some((sourceId) => !/^[0-9a-f-]{36}$/i.test(sourceId)))
+    if (sourceIds.some((sourceId) => !id.safeParse(sourceId).success))
       throw new HttpError(409, 'LOCAL_LAYERS_NOT_SAVED', '请先上传合成图层');
     const sources = await db.query(
-      'SELECT id FROM assets WHERE id=ANY($1::uuid[]) AND project_id=$2 AND deleted_at IS NULL',
+      'SELECT id FROM assets WHERE id=ANY($1::uuid[]) AND project_id=$2 AND deleted_at IS NULL ORDER BY id' +
+        (lock ? ' FOR SHARE' : ''),
       [sourceIds, projectId],
     );
     if (sources.rowCount !== sourceIds.length)
@@ -161,23 +167,26 @@ export async function normalizeSharedImage(
   const data = Buffer.from(content, 'base64');
   if (data.length > 1_100_000 || data.toString('base64') !== content)
     throw new HttpError(400, 'SNAPSHOT_SIZE', '共享画面过大');
-  const metadata = await sharp(data, {
-    limitInputPixels: 4_194_304,
-    animated: true,
-    failOn: 'warning',
-  }).metadata();
-  if ((metadata.pages ?? 1) !== 1 || !['jpeg', 'png', 'webp'].includes(metadata.format ?? ''))
-    throw new HttpError(415, 'SNAPSHOT_FORMAT', '共享画面必须为单张 JPEG、PNG 或 WebP');
-  const preview = await sharp(data, {
-    limitInputPixels: 4_194_304,
-    animated: true,
-    failOn: 'warning',
-  })
-    .rotate()
-    .resize({ width: 1024, height: 1024, fit: 'inside', withoutEnlargement: true })
-    .flatten({ background: '#ffffff' })
-    .jpeg({ quality: 80 })
-    .toBuffer();
+  let preview: Buffer;
+  try {
+    const image = sharp(data, { limitInputPixels: 4_194_304, animated: true, failOn: 'warning' });
+    const metadata = await image.metadata();
+    if ((metadata.pages ?? 1) !== 1 || !['jpeg', 'png', 'webp'].includes(metadata.format ?? ''))
+      throw new HttpError(415, 'SNAPSHOT_FORMAT', '共享画面必须为单张 JPEG、PNG 或 WebP');
+    if (metadata.width * metadata.height > 4_194_304)
+      throw new HttpError(413, 'SNAPSHOT_PIXEL_BUDGET', '共享画面超出像素预算');
+    preview = await image
+      .rotate()
+      .resize({ width: 1024, height: 1024, fit: 'inside', withoutEnlargement: true })
+      .flatten({ background: '#ffffff' })
+      .jpeg({ quality: 80 })
+      .toBuffer();
+  } catch (error) {
+    if (error instanceof HttpError) throw error;
+    if (error instanceof Error && /pixel limit/i.test(error.message))
+      throw new HttpError(413, 'SNAPSHOT_PIXEL_BUDGET', '共享画面超出像素预算');
+    throw new HttpError(415, 'SNAPSHOT_FORMAT', '共享画面无法安全解码');
+  }
   const result = await moderator.check(preview, 'image/jpeg');
   if (
     result.decision !== 'passed' ||
@@ -239,11 +248,19 @@ export async function selectedReferenceImages(
   const images: { id: string; dataUrl: string }[] = [];
   for (const id of scope.referenceAssetIds) {
     const row = (
-      await db.query('SELECT storage_key FROM assets WHERE id=$1 AND deleted_at IS NULL', [id])
+      await db.query(
+        'SELECT storage_key,content_hash,bytes FROM assets WHERE id=$1 AND deleted_at IS NULL',
+        [id],
+      )
     ).rows[0];
     if (!row) throw new HttpError(404, 'REFERENCE_REMOVED', '素材已移除');
     // The path comes exclusively from immutable server storage, never a model URL.
     const data = await storage.readBytes(row.storage_key, 64 * 1024 * 1024);
+    if (
+      data.byteLength !== Number(row.bytes) ||
+      createHash('sha256').update(data).digest('hex') !== row.content_hash
+    )
+      throw new HttpError(409, 'REFERENCE_SOURCE_CHANGED', '参考图内容与素材摘要不一致');
     const preview = await sharp(data, { limitInputPixels: 40_000_000 })
       .resize({ width: 768, height: 768, fit: 'inside', withoutEnlargement: true })
       .jpeg({ quality: 75 })

@@ -1,4 +1,5 @@
 import type { FastifyInstance } from 'fastify';
+import { createHmac, timingSafeEqual } from 'node:crypto';
 import { z } from 'zod';
 import { transaction, ensureMonthlyGrant, getEntitlements, type Database } from '@ai-xiutu/db';
 import { usageKinds, type UsageCounters } from '@ai-xiutu/contracts';
@@ -10,11 +11,12 @@ const filters = z
     scope: z.enum(['personal', 'space']).optional(),
     spaceId: id.optional(),
     actorId: id.optional(),
+    memberId: id.optional(),
     from: timestamp.optional(),
     to: timestamp.optional(),
     bucket: z.enum(['day', 'month']).default('day'),
     limit: z.coerce.number().int().min(1).max(500).default(100),
-    cursor: z.string().max(1024).optional(),
+    cursor: z.string().max(8192).optional(),
     format: z.enum(['json', 'csv']).default('json'),
   })
   .strict();
@@ -23,7 +25,15 @@ const ledgerCursor = z
   .regex(/^\d{1,19}$/)
   .refine((s) => BigInt(s) <= 9223372036854775807n);
 const cursorSchema = z
-  .object({ id: ledgerCursor, high: ledgerCursor, scope: z.string().length(64) })
+  .object({
+    id: ledgerCursor,
+    high: ledgerCursor,
+    scope: z.string().length(64),
+    snapshot: z
+      .string()
+      .max(4096)
+      .regex(/^\d+:\d+:(?:\d+(?:,\d+)*)?$/),
+  })
   .strict();
 const counters = (row: Record<string, any>): UsageCounters =>
   Object.fromEntries(usageKinds.map((kind) => [kind, Number(row[kind] ?? 0)])) as UsageCounters;
@@ -57,6 +67,7 @@ const reportCte = `WITH raw AS (
   LEFT JOIN LATERAL(SELECT id,model_id FROM voice_sessions WHERE hold_id=h.id ORDER BY created_at,id LIMIT 1) v ON true
   WHERE ($1::uuid IS NULL OR e.space_id=$1) AND ($2::uuid IS NULL OR e.actor_id=$2)
     AND e.created_at>=$3::timestamptz AND e.created_at<$4::timestamptz AND e.id<=$5::bigint
+    AND (e.recorded_tx IS NULL OR pg_visible_in_snapshot(e.recorded_tx,$8::pg_snapshot))
     AND ($6::boolean OR EXISTS(SELECT 1 FROM memberships m WHERE m.space_id=e.space_id AND m.user_id=$7::uuid))
 ), normalized AS (
   SELECT raw.*,
@@ -70,7 +81,9 @@ const reportCte = `WITH raw AS (
 )`;
 const sums = usageKinds.map((kind) => `COALESCE(sum(${kind}),0)::text AS ${kind}`).join(',');
 
-export function registerUsage(app: FastifyInstance, db: Database): void {
+export function registerUsage(app: FastifyInstance, db: Database, cursorSecret: string): void {
+  const cursorSignature = (payload: string) =>
+    createHmac('sha256', cursorSecret).update('usage-v2:').update(payload).digest();
   for (const operator of [false, true])
     app.get(operator ? '/v1/ops/usage' : '/v1/usage', async (req, reply) => {
       const actor = operator ? requireOperator(req) : requireUser(req),
@@ -80,7 +93,18 @@ export function registerUsage(app: FastifyInstance, db: Database): void {
       if (operator && query.scope)
         throw new HttpError(400, 'SCOPE_INVALID', '运营报表使用空间或执行者筛选');
       const scope = operator ? 'operator' : (query.scope ?? 'personal');
+      if (query.memberId && scope !== 'space')
+        throw new HttpError(400, 'MEMBER_FILTER_SCOPE', '成员筛选需要明确的空间范围');
       let spaceId = query.spaceId ?? null;
+      const checkSpaceReport = async (selectedSpace: string) => {
+        const role = await spaceRole(db, selectedSpace, actor.id);
+        if (query.memberId && query.memberId !== actor.id && !['owner', 'admin'].includes(role))
+          throw new HttpError(
+            403,
+            'MEMBER_FILTER_FORBIDDEN',
+            '只能查看自己的明细，或由团队管理员查看成员用量',
+          );
+      };
       if (scope === 'personal') {
         const own = await transaction(db, (tx) => ensureMonthlyGrant(tx, actor.id));
         if (spaceId && spaceId !== own)
@@ -88,7 +112,7 @@ export function registerUsage(app: FastifyInstance, db: Database): void {
         spaceId = own;
       } else if (scope === 'space') {
         if (!spaceId) throw new HttpError(400, 'SPACE_REQUIRED', '请选择团队或个人空间');
-        await spaceRole(db, spaceId, actor.id);
+        await checkSpaceReport(spaceId);
       }
       if (spaceId) {
         const exists = (await db.query('SELECT id FROM spaces WHERE id=$1', [spaceId])).rowCount;
@@ -107,7 +131,7 @@ export function registerUsage(app: FastifyInstance, db: Database): void {
           actorId: actor.id,
           operator,
           spaceId,
-          filterActor: query.actorId ?? null,
+          filterActor: query.actorId ?? query.memberId ?? null,
           from: query.from ?? null,
           to: query.to ?? null,
           bucket: query.bucket,
@@ -117,8 +141,14 @@ export function registerUsage(app: FastifyInstance, db: Database): void {
       let cursor: z.infer<typeof extendedCursor> | undefined;
       if (query.cursor) {
         try {
+          const [payload, signature, extra] = query.cursor.split('.');
+          if (!payload || !signature || extra !== undefined) throw new Error('Invalid cursor');
+          const supplied = Buffer.from(signature, 'base64url'),
+            expected = cursorSignature(payload);
+          if (supplied.length !== expected.length || !timingSafeEqual(supplied, expected))
+            throw new Error('Invalid cursor signature');
           cursor = extendedCursor.parse(
-            JSON.parse(Buffer.from(query.cursor, 'base64url').toString('utf8')),
+            JSON.parse(Buffer.from(payload, 'base64url').toString('utf8')),
           );
         } catch {
           throw new HttpError(400, 'INVALID_CURSOR', '分页游标无效');
@@ -133,32 +163,63 @@ export function registerUsage(app: FastifyInstance, db: Database): void {
         Date.parse(rangeTo) - Date.parse(rangeFrom) > 732 * 86400_000
       )
         throw new HttpError(400, 'INVALID_CURSOR', '分页游标的时间范围无效');
-      const high =
-        cursor?.high ??
-        String(
-          (await db.query('SELECT COALESCE(max(id),0)::text AS value FROM ledger_entries')).rows[0]!
-            .value,
-        );
-      const args = [spaceId, query.actorId ?? null, rangeFrom, rangeTo, high, operator, actor.id];
-      const totals = (
-        await db.query(
-          `${reportCte} SELECT ${sums},count(*) FILTER (WHERE NOT COALESCE(complete,false))::int AS unknown FROM normalized`,
-          args,
-        )
-      ).rows[0]!;
-      const series = (
-        await db.query(
-          `${reportCte} SELECT to_char(date_trunc($8,created_at AT TIME ZONE 'Asia/Shanghai'),'YYYY-MM-DD') AS bucket,
-      ${sums},count(*) FILTER (WHERE NOT COALESCE(complete,false))::int AS unknown FROM normalized GROUP BY 1 ORDER BY 1`,
-          [...args, query.bucket],
-        )
-      ).rows;
-      const rows = (
-        await db.query(
-          `${reportCte} SELECT * FROM normalized WHERE ($8::bigint IS NULL OR id<$8) ORDER BY id DESC LIMIT $9`,
-          [...args, cursor?.id ?? null, query.limit + 1],
-        )
-      ).rows;
+      const filterActor = query.actorId ?? query.memberId ?? null;
+      const { high, snapshot, totals, series, rows, balanceRow } = await transaction(
+        db,
+        async (tx) => {
+          await tx.query('SET TRANSACTION ISOLATION LEVEL REPEATABLE READ, READ ONLY');
+          const boundary =
+            cursor ??
+            (
+              await tx.query<{ high: string; snapshot: string }>(
+                'SELECT COALESCE(max(id),0)::text AS high, pg_current_snapshot()::text AS snapshot FROM ledger_entries',
+              )
+            ).rows[0]!;
+          const { high, snapshot } = boundary;
+          const args = [
+            spaceId,
+            filterActor,
+            rangeFrom,
+            rangeTo,
+            high,
+            operator,
+            actor.id,
+            snapshot,
+          ];
+          const totals = (
+            await tx.query(
+              `${reportCte} SELECT ${sums},count(*) FILTER (WHERE NOT COALESCE(complete,false))::int AS unknown FROM normalized`,
+              args,
+            )
+          ).rows[0]!;
+          const series = (
+            await tx.query(
+              `${reportCte} SELECT to_char(date_trunc($9,created_at AT TIME ZONE 'Asia/Shanghai'),'YYYY-MM-DD') AS bucket,
+          ${sums},count(*) FILTER (WHERE NOT COALESCE(complete,false))::int AS unknown FROM normalized GROUP BY 1 ORDER BY 1`,
+              [...args, query.bucket],
+            )
+          ).rows;
+          const rows = (
+            await tx.query(
+              `${reportCte} SELECT * FROM normalized WHERE ($9::bigint IS NULL OR id<$9) ORDER BY id DESC LIMIT $10`,
+              [...args, cursor?.id ?? null, query.limit + 1],
+            )
+          ).rows;
+          const balanceRow = (
+            await tx.query(
+              `WITH moment AS(SELECT transaction_timestamp() AS at)
+          SELECT COALESCE(sum(CASE WHEN l.expires_at<=moment.at THEN 0 ELSE l.available END),0)::text AS available,
+            COALESCE(sum(l.held),0)::text AS held, COALESCE(sum(l.spent),0)::text AS consumed,
+            COALESCE(sum(l.expired+CASE WHEN l.expires_at<=moment.at THEN l.available ELSE 0 END),0)::text AS expired,
+            COALESCE(sum(l.revoked),0)::text AS revoked
+          FROM quota_lots l CROSS JOIN moment WHERE ($1::uuid IS NULL OR l.space_id=$1) AND
+            ($2::boolean OR EXISTS(SELECT 1 FROM memberships m WHERE m.space_id=l.space_id AND m.user_id=$3))`,
+              [spaceId, operator, actor.id],
+            )
+          ).rows[0]!;
+          return { high, snapshot, totals, series, rows, balanceRow };
+        },
+      );
       const page = rows.slice(0, query.limit);
       const entries = page.map((row) => ({
         id: String(row.id),
@@ -178,29 +239,27 @@ export function registerUsage(app: FastifyInstance, db: Database): void {
         amountKnown: row.amount !== null,
         movementComplete: Boolean(row.complete),
       }));
-      const balanceRow = (
-        await db.query(
-          `WITH moment AS(SELECT clock_timestamp() AS at)
-      SELECT COALESCE(sum(CASE WHEN l.expires_at<=moment.at THEN 0 ELSE l.available END),0)::text AS available,COALESCE(sum(l.held),0)::text AS held,
-      COALESCE(sum(l.spent),0)::text AS consumed,COALESCE(sum(l.expired+CASE WHEN l.expires_at<=moment.at THEN l.available ELSE 0 END),0)::text AS expired,COALESCE(sum(l.revoked),0)::text AS revoked
-      FROM quota_lots l CROSS JOIN moment WHERE ($1::uuid IS NULL OR l.space_id=$1) AND
-        ($2::boolean OR EXISTS(SELECT 1 FROM memberships m WHERE m.space_id=l.space_id AND m.user_id=$3))`,
-          [spaceId, operator, actor.id],
-        )
-      ).rows[0]!;
-      const nextCursor =
+      const nextPayload =
         rows.length > query.limit
           ? Buffer.from(
               JSON.stringify({
                 id: String(page.at(-1)!.id),
                 high,
+                snapshot,
                 scope: filterHash,
                 from: rangeFrom,
                 to: rangeTo,
               }),
             ).toString('base64url')
           : null;
-      if (!operator && spaceId) await spaceRole(db, spaceId, actor.id);
+      const nextCursor =
+        nextPayload && nextPayload + '.' + cursorSignature(nextPayload).toString('base64url');
+      if (!operator && spaceId) await checkSpaceReport(spaceId);
+      if (
+        operator &&
+        !(await db.query('SELECT 1 FROM operator_users WHERE user_id=$1', [actor.id])).rowCount
+      )
+        throw new HttpError(403, 'OPERATOR_REQUIRED', '此操作需要平台运营权限');
       if (query.format === 'csv') {
         const columns = [
           'id',
@@ -233,6 +292,7 @@ export function registerUsage(app: FastifyInstance, db: Database): void {
         unit: 'credit',
         timezone: 'Asia/Shanghai',
         scope,
+        ...(filterActor ? { filterActorId: filterActor } : {}),
         range: { from: rangeFrom, to: rangeTo, bucket: query.bucket },
         totals: counters(totals),
         unknownAmountEntries: Number(totals.unknown),

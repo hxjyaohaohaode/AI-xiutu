@@ -117,7 +117,7 @@ export {
   compileEditorCoordinateMap,
 } from './v3-geometry.js';
 export type { Matrix3V3, TransformContextV3, EditorCoordinateMap } from './v3-geometry.js';
-export { compileSelectionMaskV3 } from './v3-mask.js';
+export { compileSelectionMaskV3, getSelectionBoundsV3 } from './v3-mask.js';
 export { blendRgbaV3 } from './v3-blend.js';
 export { compileWarpFieldV3 } from './v3-warp.js';
 export type * from './v4-types.js';

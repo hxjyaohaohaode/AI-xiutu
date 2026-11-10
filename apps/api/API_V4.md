@@ -129,6 +129,7 @@ membership; private downloads keep normal asset ACL.
 
 - `GET /v1/usage?scope=personal` (default) queries the current user's personal wallet; due monthly rights are issued idempotently.
 - `GET /v1/usage?scope=space&spaceId=UUID` requires current membership. Normal callers cannot pass actorId or read a foreign personal wallet.
+- Space reports also accept `memberId=UUID`. Current members can select themselves. Space owners and administrators can select a member's historical usage, including movements recorded before departure. The response adds `filterActorId` when filtered.
 - `GET /v1/ops/usage?spaceId?&actorId?` is operator-only and may aggregate all spaces. It returns billing/model metadata, not prompts/output/images.
 - Shared filters: from/to ISO, bucket day|month, limit1..500 default100, cursor, format json|csv. Default last30days; positive span≤732days.
 
@@ -145,9 +146,12 @@ movement; unrecoverable old expiry amounts stay explicitly incomplete/unknown.
 `balance={available,held,consumed,expired,revoked}` is the current complete wallet
 view, independent of interval/actor filters. These are service points, not cash.
 
-The keyset cursor binds filters, resolved time interval and observed high ledger
-ID. It is not a retained cross-request database snapshot. CSV is one bounded page
-with UTF-8 BOM and formula-safe cells; X-Next-Cursor identifies the next page.
+The signed keyset cursor binds filters, the resolved time interval, the high ledger
+ID and the visible transaction boundary. Totals, series and rows within one response
+read a consistent snapshot. Movements recorded after migration 16 that commit between
+pages stay outside the original report even if their IDs are lower. Wallet balance
+is live on each page. Start at the first page to refresh. CSV returns one bounded
+page with UTF-8 BOM and formula-safe cells. X-Next-Cursor identifies the next page.
 Existing monthly grants, entitlements and operator adjustment routes remain the
 same quota system, not a second independent ledger.
 
@@ -160,6 +164,7 @@ original ownership; only explicitly authorized asset/project copy commands creat
 additional media links, with explicit source asset IDs and audited provenance.
 
 - `GET /v1/media-capabilities`: enabled/effective available, decoder details, per-format pixel/byte budgets and maxChunkBytes. Runtime readiness does not prove every file is decodable.
+- `MEDIA_RASTER_MAX_PIXELS` sets admission for retained raster import. Default 200,000,000 and ceiling 256,000,000. Side length, frame-oriented decoders, address space, tile count and available staging space impose independent limits.
 - `POST /v1/projects/:id/media-imports` `{name,size,idempotencyKey,generateTiles?:boolean}` ->201 `{job}`. Current editor; size1..512MiB, name has no paths/control characters. Reserves input bytes. One active import per actor, at most4 database-wide. Same key/body returns existing job; changed body409.
 - `PUT /v1/media-imports/:id/chunk?offset=N`, application/octet-stream,1..4MiB -> `{uploadedBytes,chunkSha256}`. Task actor and current project editor only. Contiguous append or exact-byte retry wholly inside confirmed bytes; overlaps/mismatch409. No caller path/URL.
 - `POST /v1/media-imports/:id/complete` ->202 `{job}`. Fully uploaded input required; repeated complete never launches another decoder.
@@ -243,12 +248,21 @@ settlement even if publication was stopped.
 authorized, and only valid before the candidate expires after7days. An edit
 preview requires the exact recorded local base-recipe hash and saved base version;
 stale input returns409 `CANDIDATE_STALE`. A rejected candidate cannot be restored
-to previewed through this endpoint.
+to previewed through this endpoint. Repeating preview on a saved candidate returns
+`applied:true` and its revision ID. Rejecting an applied candidate returns
+409 `CANDIDATE_ALREADY_APPLIED`.
 
 Previewed does not mean saved. Explicit adoption uses the normal versioned editor
 command/save chain. `POST /v1/assistant-candidates/:candidateId/apply` executes a
 candidate under a current automatic grant, locking access, source/version and
 collaboration conflicts. Replay returns the original `appliedRevisionId`.
+The explicit `POST /v1/assistant-candidates/:candidateId/commit` accepts
+`{expectedVersion,recipe,includeUnsavedBase?:boolean}`. It requires the same
+previewed candidate, exact base hash, edit permission, current grant when present
+and an available collaboration write. `includeUnsavedBase:true` authorizes
+combining the precise local recipe with the candidate in one immutable revision.
+The default requires the saved recipe as the base. The response is
+`{artworkId,revisionId,replayed}`; a repeated identical request reads the original receipt.
 The source comes from the candidate's immutable base revision. A voice session's
 opening context does not override a subsequently accepted artwork context.
 For text turns, the server uses this same authority during completion, inside a
@@ -261,15 +275,22 @@ through the existing AI job workflow. Candidates cannot execute arbitrary tools,
 change ownership or bypass content review. Rejecting one does not refund work
 already completed by a provider.
 
+Draft evidence includes the prompt SHA-256, policy version and the source of each
+reference. References come from explicit selection, current cloud search or retained
+authorized cloud cards in the current resource scope. Prior card metadata can be reused
+without attaching image bytes. The turn context endpoint identifies the saved revision,
+exact working recipe hash, unsaved edits, and hashes of the shared image payloads.
+
 `inspect_candidate` requires explicit current-image sharing. A bounded Worker
 decodes currently accessible source/layers and renders both recipes using the
-actual editor. Ordinary parameter candidates use a <=512px proxy. New/changed
-healing and retouch stages instead render both recipes at original resolution
+actual editor. Ordinary parameter candidates use a <=512px proxy. Changes that
+add, remove or affect active healing and retouch stages render both recipes at editable-source resolution
 using the tiled reference engine: source/output <=16MP, combined layers <=16MP,
 compressed inputs <=32MiB, one native render per process, 30s timeout (ordinary
 proxy: 15s; total Workers <=2). The editor's smaller spatial/work budgets also
 apply. The model still receives a moderated JPEG reduced to <=512px, while native
-measurements cover the complete rendered images. `fullResolutionChecked` and
+measurements cover the complete rendered images. `sourceKind` distinguishes the
+canonical raster from the editable proxy of retained media. `fullResolutionChecked` and
 `inspectedRecipeHash` must match a new spatial candidate before `/apply` can save
 it; otherwise409 `NATIVE_PIXEL_CHECK_REQUIRED`. Unshared/failed inspections retain
 reviewable proposals. Measurements are not aesthetic or high-bit-depth guarantees. At most three
@@ -435,3 +456,14 @@ DB派发标记、独立fsync日志和发送前的第二次权限/状态校验共
 部署者必须先按原始日志/数据库备份核对丢失标记，不能删除日志、伪造收据或直接重试。
 文件日志不包含私密内容，也不在本接口中开放修改或清除。服务点结算、传输关闭、
 供应商响应收据及供应商最终账单是不同事实；界面与运营报告应分别呈现。
+
+## 7. Artwork revisions, branching and reference rendering
+
+- `GET /v1/artworks/:id/revisions?limit=100&beforeVersion=N&summary=true` lists immutable revisions in descending version order. The cursor is exclusive. With `summary=true` recipe bodies are omitted. The default returns recipes within a 4 MiB page budget. `page.nextBeforeVersion` is null at the end and `page.headVersion` records the head observed for that request.
+- `GET /v1/artworks/:id/revisions/:revisionId` retrieves one full recipe and its saved source. `revision.origin` is present when recorded. `parentId` is the preceding version. For a restore or historical fork, `origin.sourceRevisionId` identifies the content copied from history. The origin of older rows remains unknown.
+- `POST /v1/artworks/:id/restore` with `{revisionId,expectedVersion}` appends a version. An identical manual save, rename or restore retried by the same actor returns its existing receipt while that revision is still the head. Other stale writes return 409.
+- `POST /v1/artworks/:id/fork-revision` with `{revisionId,title,idempotencyKey}` creates a separate work in the same project from the selected revision and frozen source/layers. Replays return the creation snapshot. Read the new artwork to see later changes. Reusing the key for different input returns 409.
+- `GET /v1/artworks/:id/revisions/:revisionId/render-info` reports actual editable source/output dimensions, source kind, encoded bytes, estimated working bytes, readiness and budget codes before loading the image data. `GET .../render` verifies the stored hashes and produces a private lossless PNG using the shared tiled recipe engine. It emits `X-Xiutu-Revision` and `X-Xiutu-Pixel-Format: srgb-rgba8`. One worker per API process, 30 seconds per render. Engine-specific paint, mask and repair limits also apply.
+
+Retained media appears as `retained-proxy` at this editor entry point. The high-bit
+master remains accessible through the media export endpoint in section 5.

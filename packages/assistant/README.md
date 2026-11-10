@@ -29,7 +29,7 @@
 
 所有编辑候选基于同一冻结配方；它们不是按返回顺序自动串行应用的操作。当前 `propose_curve` 为全局 RGB/红/绿/蓝曲线；区域参数使用既有区域/组 ID，不自动创建任意图层、任意脚本或人像身份。
 
-`propose_retouch` 与 `propose_healing` 复用 V4 源坐标选区，可新增操作或设置已有手动操作的绝对强度。`operationId:null` 表示新增。既有 ID 必须属于相应集合并可手动修改。选区从 `regions/regionEdits/healing/retouch` 引用。额外保护区与既有保护区取并集。回调保留算法和手动供体。新质感操作采用 `guided-v2`，修复支持 diffusion、patch-poisson 和 exemplar-v1。缺少合适选区时需先圈选。
+`propose_retouch` 与 `propose_healing` 复用 V4 源坐标选区，可新增操作或设置已有手动操作的绝对强度。`operationId:null` 表示新增。既有 ID 必须属于相应集合并可手动修改。选区从 `regions/regionEdits/healing/retouch` 引用。额外保护区与既有保护区取并集。回调保留算法和手动供体。新质感操作采用 `guided-v3`，修复支持 diffusion、patch-poisson 和 exemplar-v1。缺少合适选区时需先圈选。
 
 `propose_sequence` 可在一个候选内组合调参、曲线、局部修复/质感和基础构图。步骤顺序组合配方状态，像素流水线仍固定为调色→修复→质感→图层→形变→构图，不能靠排列步骤改变这一顺序。`inspect_candidate` 在显式共享当前画面后，读取仍有权访问的原件及图层，通过同一个编辑器实际渲染前后画面，输出亮度、明暗截断、改变像素数与差值；经审核后的候选 JPEG 进入下一轮视觉输入。`select_candidate` 在收到该画面后才可选定它，同一轮先检查后选择会被拒绝。共享图片时自动保存必须有经过此检查的明确选择。
 

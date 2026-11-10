@@ -1,4 +1,4 @@
-import { compileSelectionMaskV3 } from './v3-mask.js';
+import { compileSelectionMaskV3, getSelectionBoundsV3 } from './v3-mask.js';
 import { checkV3, clamp01 } from './v3-pixels.js';
 import {
   MAX_V4_HEAL_ROI_PIXELS,
@@ -31,6 +31,16 @@ function region(
   maxTarget: number,
   maxRoi: number,
 ): SpatialRegionV4 | null {
+  const support = getSelectionBoundsV3(mask, image);
+  // Expand by one source pixel to cover exact boundaries and floating-point
+  // rounding; the original sampler still determines every individual weight.
+  const scanLeft = Math.max(0, Math.floor(support.x * image.width) - 1);
+  const scanTop = Math.max(0, Math.floor(support.y * image.height) - 1);
+  const scanRight = Math.min(image.width, Math.ceil((support.x + support.width) * image.width) + 1);
+  const scanBottom = Math.min(
+    image.height,
+    Math.ceil((support.y + support.height) * image.height) + 1,
+  );
   const selected = compileSelectionMaskV3(mask, image, original),
     protectedAt = protection ? compileSelectionMaskV3(protection, image, original) : null;
   const weight = (x: number, y: number) => {
@@ -44,9 +54,9 @@ function region(
     right = -1,
     bottom = -1,
     count = 0;
-  for (let y = 0; y < image.height; y++) {
-    if ((y & 15) === 0) checkV3(options);
-    for (let x = 0; x < image.width; x++) {
+  for (let y = scanTop; y < scanBottom; y++) {
+    if (((y - scanTop) & 15) === 0) checkV3(options);
+    for (let x = scanLeft; x < scanRight; x++) {
       if (weight(x, y) <= 1 / 65535) continue;
       if (++count > maxTarget)
         throw new RangeError(
@@ -368,7 +378,7 @@ export function applyRetouchV4(
       throw new RangeError(
         'Retouch combined target budget exceeded; split this edit into versions',
       );
-    if (op.algorithm === 'guided-v1' || op.algorithm === 'guided-v2') {
+    if (op.algorithm) {
       current = guidedRetouch(current, roi, op, options);
       continue;
     }

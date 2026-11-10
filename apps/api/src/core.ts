@@ -196,6 +196,36 @@ export async function projectAccess(
   if (!permitted) throw new HttpError(403, 'PROJECT_FORBIDDEN', '没有此项目的操作权限');
   return { ...found, role: currentRole } as ProjectAccess;
 }
+/** Transaction-only gate. A session, membership or project mutation commits on
+ * one side of this fence. Take it before artwork, decision and asset locks. */
+export async function lockProjectMutation(
+  tx: Queryable,
+  projectId: string,
+  actorId: string,
+  authHash?: string,
+  permission: 'edit' | 'admin' = 'edit',
+) {
+  const hint = await projectAccess(tx, projectId, actorId, permission);
+  const active = await tx.query("SELECT id FROM users WHERE id=$1 AND status='active' FOR SHARE", [
+    actorId,
+  ]);
+  if (!active.rowCount) throw new HttpError(401, 'AUTH_REQUIRED', '登录已失效，请重新登录');
+  if (authHash !== undefined) await lockActiveSession(tx, actorId, authHash);
+  await tx.query('SELECT id FROM spaces WHERE id=$1 FOR SHARE', [hint.space_id]);
+  await tx.query('SELECT id FROM projects WHERE id=$1 FOR SHARE', [projectId]);
+  await tx.query('SELECT role FROM memberships WHERE space_id=$1 AND user_id=$2 FOR SHARE', [
+    hint.space_id,
+    actorId,
+  ]);
+  return projectAccess(tx, projectId, actorId, permission);
+}
+export async function lockActiveSession(tx: Queryable, actorId: string, authHash: string) {
+  const session = await tx.query(
+    'SELECT token_hash FROM sessions WHERE token_hash=$1 AND user_id=$2 AND expires_at>clock_timestamp() FOR SHARE',
+    [authHash, actorId],
+  );
+  if (!session.rowCount) throw new HttpError(401, 'AUTH_REQUIRED', '登录已失效，请重新登录');
+}
 export const projectDto = (p: ProjectAccess) => ({
   id: p.id,
   spaceId: p.space_id,
@@ -255,6 +285,9 @@ export const revisionDto = (r: Record<string, any>) => ({
   label: r.label,
   authorId: r.author_id,
   createdAt: r.created_at,
+  ...(r.origin_kind
+    ? { origin: { kind: r.origin_kind, sourceRevisionId: r.source_revision_id ?? null } }
+    : {}),
 });
 export function assertVersion(actual: number, expected: number): void {
   if (actual !== expected)

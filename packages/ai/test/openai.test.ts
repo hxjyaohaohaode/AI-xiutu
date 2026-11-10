@@ -448,6 +448,44 @@ test(
           }
         },
       );
+      await t.test(
+        'generation grant revocation after dispatch preserves a real receipt and blocks the batch',
+        async () => {
+          const f = await fixture(db, png, transparent);
+          try {
+            const grantId = (
+              await db.query(
+                `INSERT INTO assistant_grants(actor_id,project_id,mode,unit_limit,step_limit,allowed_actions,model_ids,expires_at)
+            VALUES($1,$2,'confirm',10,2,'["generate-image"]',$3,clock_timestamp()+interval '1 hour') RETURNING id`,
+                [f.actorId, f.projectId, JSON.stringify([model])],
+              )
+            ).rows[0]!.id;
+            f.controls.beforeOutput = async () => {
+              await db.query(
+                'UPDATE assistant_grants SET revoked_at=clock_timestamp() WHERE id=$1',
+                [grantId],
+              );
+            };
+            const { job } = await f.submit({
+              ...f.body(),
+              executionGrantId: grantId,
+              imageOptions: { n: 2 },
+            });
+            await f.service.runOnce();
+            const row = await f.row(job.id);
+            assert.equal(f.calls.provider, 1);
+            assert.equal(row.state, 'unknown');
+            assert.equal(row.error_code, 'ASSISTANT_GRANT_EXPIRED');
+            assert.equal(row.hold_state, 'unknown');
+            assert.equal(row.held_units, 6);
+            assert.equal(row.provider_request_id, 'req-lifecycle-openai');
+            assert.equal(await f.generated(), 0);
+            assert.equal(await f.service.runOnce(), false);
+          } finally {
+            await f.cleanup();
+          }
+        },
+      );
 
       await t.test(
         'batch cardinality and transport uncertainty keep the complete hold; malformed options create none',

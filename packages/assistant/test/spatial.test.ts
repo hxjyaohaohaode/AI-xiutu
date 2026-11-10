@@ -95,7 +95,7 @@ test('retouch candidates retain exact source masks/protection, edit actual pixel
   assert.equal(candidate.recipe.schemaVersion, 4);
   if (candidate.recipe.schemaVersion !== 4) throw new Error('v4');
   const operation = candidate.recipe.retouch[1]!;
-  assert.equal(operation.algorithm, 'guided-v2');
+  assert.equal(operation.algorithm, 'guided-v3');
   assert.deepEqual(operation.mask, mask);
   assert.deepEqual(operation.protection, protection);
   assert.deepEqual(candidate.recipe.retouch[0], original.retouch[0]);

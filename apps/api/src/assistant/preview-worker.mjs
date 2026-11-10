@@ -1,29 +1,23 @@
 import { parentPort, workerData } from 'node:worker_threads';
 import { createHash } from 'node:crypto';
 import sharp from 'sharp';
-import { renderEditorRecipeTiled, parseEditorRecipe } from '@ai-xiutu/editor';
+import { renderEditorRecipeTiled, parseEditorRecipe, MAX_V4_PIXELS } from '@ai-xiutu/editor';
 
 const fullResolution = workerData.fullResolution === true;
-if (fullResolution) {
-  // Bound decoded buffers before any full-size image is materialized. The
-  // browser uses the same aggregate layer limit, independent of compressed bytes.
-  let layerPixels = 0;
-  for (const entry of workerData.layers) {
-    const metadata = await sharp(Buffer.from(entry.bytes), {
-      limitInputPixels: 16777216,
-      failOn: 'warning',
-    }).metadata();
-    layerPixels += metadata.width * metadata.height;
-    if ((metadata.pages ?? 1) !== 1 || layerPixels > 16777216)
-      throw new Error('NATIVE_PREVIEW_LAYER_BUDGET');
-  }
-}
-
-async function decode(bytes) {
-  let pipeline = sharp(Buffer.from(bytes), {
-    limitInputPixels: 16777216,
+async function decode({ width, height, bytes }) {
+  let pipeline = sharp(Buffer.from(bytes.buffer, bytes.byteOffset, bytes.byteLength), {
+    limitInputPixels: workerData.decodeLimit,
     failOn: 'warning',
-  }).autoOrient();
+    sequentialRead: true,
+  });
+  const metadata = await pipeline.metadata();
+  if (
+    metadata.format !== 'png' ||
+    (metadata.pages ?? 1) !== 1 ||
+    metadata.width !== width ||
+    metadata.height !== height
+  )
+    throw new Error('PREVIEW_SOURCE_METADATA');
   if (!fullResolution)
     pipeline = pipeline.resize(512, 512, { fit: 'inside', withoutEnlargement: true });
   const { data, info } = await pipeline
@@ -60,12 +54,12 @@ function measure(image) {
     whiteFraction: weight ? highlights / weight : 0,
   };
 }
-const input = await decode(workerData.source),
-  images = new Map();
-for (const entry of workerData.layers) images.set(entry.id, await decode(entry.bytes));
+const images = new Map();
+for (const entry of workerData.inputs) images.set(entry.id, await decode(entry));
+const input = images.get(workerData.sourceId);
 const base = parseEditorRecipe(workerData.base),
   candidate = parseEditorRecipe(workerData.candidate);
-const options = { images, maxPixels: fullResolution ? 16777216 : 1048576, tileSize: 128 };
+const options = { images, maxPixels: fullResolution ? MAX_V4_PIXELS : 1048576, tileSize: 128 };
 const before = renderEditorRecipeTiled(input, base, options);
 const after = renderEditorRecipeTiled(input, candidate, options);
 let changedPixels = null,
@@ -101,7 +95,7 @@ parentPort.postMessage({
     imageSha256: createHash('sha256').update(bytes).digest('hex'),
     fullResolutionChecked: fullResolution,
     fidelity: fullResolution
-      ? 'sRGB RGBA8 editor render at original source resolution; measurements cover full rendered images. The supplied JPEG is reduced to <=512px. Render success is not an aesthetic or high-bit-depth guarantee.'
+      ? 'sRGB RGBA8 render at the editable source resolution; measurements cover full rendered images. The supplied JPEG is reduced to <=512px.'
       : 'sRGB RGBA8 preview rendered from source at <=512px; detail depends on resolution. Statistics are not an aesthetic score or a full-resolution guarantee.',
   },
 });

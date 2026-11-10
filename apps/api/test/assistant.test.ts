@@ -12,7 +12,7 @@ import type { AssistantDependencies } from '../src/assistant/index.js';
 import { createAssistantService } from '../src/assistant/service.js';
 import sharp from 'sharp';
 import { inspectCandidatePixels } from '../src/assistant/preview.js';
-import { createRecipeV4, createAdjustmentRegionV3 } from '@ai-xiutu/editor';
+import { createRecipeV4, createAdjustmentRegionV3, migrateRecipeToV4 } from '@ai-xiutu/editor';
 import { createArtworkBranch } from '../src/revision-commands.js';
 
 const databaseUrl = process.env.TEST_DATABASE_URL;
@@ -163,6 +163,232 @@ async function fixture(extra: Partial<AssistantDependencies> = {}) {
   const readTurn = async (id: string) => (await f.call('GET', `/v1/assistant-turns/${id}`)).json();
   return { ...f, modelId, settings, context, scope, turn, prepare, readTurn };
 }
+
+test(
+  'explicit candidate commit binds unsaved edits, preview, budget, lease and original retry',
+  { skip: !databaseUrl },
+  async () => {
+    let requests = 0;
+    const f = await fixture({
+      fetcher: async () =>
+        ++requests % 2 ? response([editCall()]) : response([outputText('候选完成')]),
+    });
+    try {
+      const artwork = `/v1/artworks/${f.context.artworkId}`;
+      const grants = `/v1/projects/${f.projectId}/assistant-grants`;
+      const issue = () =>
+        f.call('POST', grants, {
+          mode: 'confirm',
+          unitLimit: 10,
+          stepLimit: 4,
+          minutes: 20,
+          allowedActions: ['assistant-turn', 'edit'],
+          modelIds: [f.modelId],
+        });
+      const source = createRecipeV4({
+        ...migrateRecipeToV4(f.recipe),
+        adjustments: { ...f.recipe.adjustments, contrast: 35 },
+      });
+      const proposal = async (grantId: string, expectedVersion: number) => {
+        const start = await f.call('POST', `/v1/projects/${f.projectId}/assistant-turns`, {
+          ...f.turn(),
+          context: { ...f.context, expectedVersion, recipe: source },
+          scope: { ...f.scope, executionGrantId: grantId },
+        });
+        assert.equal(start.statusCode, 202, start.body);
+        const done = await until(
+          () => f.readTurn(start.json().id),
+          (turn) => turn.state !== 'running',
+        );
+        assert.equal(done.state, 'completed', JSON.stringify(done));
+        return `/v1/assistant-candidates/${done.output.candidates[0].id}`;
+      };
+      const grant = await issue();
+      assert.equal(grant.statusCode, 200, grant.body);
+      const grantId = grant.json().grant.id;
+      const path = await proposal(grantId, 1);
+      const body = { expectedVersion: 1, recipe: source, includeUnsavedBase: true };
+      assert.equal(
+        (await f.call('POST', path + '/commit', body)).json().error.code,
+        'CANDIDATE_PREVIEW_REQUIRED',
+      );
+      assert.equal(
+        (
+          await f.call('POST', path + '/decision', {
+            decision: 'previewed',
+            recipe: source,
+            expectedVersion: 1,
+          })
+        ).statusCode,
+        200,
+      );
+      assert.equal(
+        (
+          await f.call('POST', path + '/commit', {
+            ...body,
+            includeUnsavedBase: false,
+          })
+        ).json().error.code,
+        'CANDIDATE_UNSAVED_BASE',
+      );
+      assert.equal(
+        (await f.call('POST', path + '/commit', { ...body, recipe: f.recipe })).json().error.code,
+        'CANDIDATE_STALE',
+      );
+      assert.equal((await f.call('POST', path + '/commit', body, 'editor')).statusCode, 404);
+
+      const collab = artwork + '/collaboration';
+      const join = await f.call('POST', collab + '/sessions', { clientId: randomUUID() }, 'editor');
+      const sessionId = join.json().session.id;
+      const lease = await f.call(
+        'POST',
+        collab + '/leases',
+        { sessionId, target: { kind: 'document' } },
+        'editor',
+      );
+      assert.equal(lease.statusCode, 201, lease.body);
+      const blocked = await f.call('POST', path + '/commit', body);
+      assert.equal(blocked.statusCode, 409, blocked.body);
+      assert.equal(blocked.json().error.code, 'COLLABORATION_LOCKED');
+      const { id, fence } = lease.json().lease;
+      assert.equal(
+        (await f.call('DELETE', collab + '/leases/' + id, { sessionId, fence }, 'editor'))
+          .statusCode,
+        200,
+      );
+
+      const receipts = await Promise.all([
+        f.call('POST', path + '/commit', body),
+        f.call('POST', path + '/commit', body),
+      ]);
+      assert.ok(
+        receipts.every((receipt) => receipt.statusCode === 200),
+        JSON.stringify(receipts.map((r) => r.body)),
+      );
+      assert.deepEqual(receipts.map((r) => r.json().replayed).sort(), [false, true]);
+      assert.equal(receipts[0]!.json().revisionId, receipts[1]!.json().revisionId);
+      const current = (await f.call('GET', artwork)).json().revision;
+      assert.equal(current.id, receipts[0]!.json().revisionId);
+      assert.equal(current.version, 2);
+      assert.equal(current.origin.kind, 'assistant-confirm');
+      assert.equal(current.recipe.adjustments.exposure, -1.5);
+      assert.equal(current.recipe.adjustments.contrast, 35);
+      assert.equal(
+        (await f.call('GET', `/v1/assistant-grants/${grantId}`)).json().grant.usedSteps,
+        2,
+      );
+      assert.equal(
+        (await f.call('POST', path + '/decision', { decision: 'rejected' })).json().error.code,
+        'CANDIDATE_ALREADY_APPLIED',
+      );
+      assert.equal(requests, 2);
+
+      const revokedId = (await issue()).json().grant.id;
+      const revoked = await proposal(revokedId, 2);
+      assert.equal(
+        (
+          await f.call('POST', revoked + '/decision', {
+            decision: 'previewed',
+            recipe: source,
+            expectedVersion: 2,
+          })
+        ).statusCode,
+        200,
+      );
+      assert.equal((await f.call('DELETE', `/v1/assistant-grants/${revokedId}`)).statusCode, 200);
+      assert.equal(
+        (
+          await f.call('POST', revoked + '/commit', {
+            ...body,
+            expectedVersion: 2,
+          })
+        ).json().error.code,
+        'ASSISTANT_GRANT_EXPIRED',
+      );
+      assert.equal((await f.call('GET', artwork)).json().revision.id, current.id);
+    } finally {
+      await f.close();
+    }
+  },
+);
+
+test(
+  'a later generation draft reuses an authorized cloud card with frozen canvas provenance',
+  { skip: !databaseUrl },
+  async () => {
+    let calls = 0;
+    let assetId = '';
+    let sent: Record<string, any> | undefined;
+    const f = await fixture({
+      fetcher: async (_url, init) => {
+        const body = JSON.parse(String(init?.body));
+        switch (calls++) {
+          case 0:
+            return response([
+              {
+                type: 'function_call',
+                name: 'search_resources',
+                call_id: 'cloud-search-1',
+                arguments: JSON.stringify({ query: 'resource photo', limit: 4 }),
+              },
+            ]);
+          case 1:
+            return response([outputText('已找到素材')]);
+          case 2:
+            sent = body;
+            return response([
+              {
+                type: 'function_call',
+                name: 'draft_generation',
+                call_id: 'draft-from-history',
+                arguments: JSON.stringify({
+                  summary: '保留刚才那张的色彩关系',
+                  prompt: '以刚才的参考图为配色依据，生成清晨室内静物，保留自然明暗和中性色背景。',
+                  referenceAssetIds: [assetId],
+                }),
+              },
+            ]);
+          default:
+            return response([outputText('草案准备完成')]);
+        }
+      },
+    });
+    try {
+      const submit = async (prompt: string, parentTurnId?: string) => {
+        const start = await f.call('POST', `/v1/projects/${f.projectId}/assistant-turns`, {
+          ...f.turn(prompt),
+          ...(parentTurnId ? { parentTurnId } : {}),
+        });
+        assert.equal(start.statusCode, 202, start.body);
+        const done = await until(
+          () => f.readTurn(start.json().id),
+          (turn) => turn.state !== 'running',
+        );
+        assert.equal(done.state, 'completed', JSON.stringify(done));
+        return done;
+      };
+      assetId = f.assetId;
+      const first = await submit('在团队里找这张素材');
+      assert.equal(first.output.search[0].resources[0].id, assetId);
+      const second = await submit('用刚才那张的色彩关系整理生图提示词', first.id);
+      assert.equal(second.output.candidates.length, 1);
+      const draft = second.output.candidates[0];
+      assert.equal(draft.kind, 'generation');
+      assert.deepEqual(draft.generationEvidence.references, [
+        { assetId, from: 'history', sourceTurnId: first.id },
+      ]);
+      assert.equal(draft.generationEvidence.promptSha256, sha(draft.prompt));
+      assert.ok(JSON.stringify(sent?.input).includes('priorResourceCards'));
+      assert.equal(JSON.stringify(sent?.input).includes('input_image'), false);
+      const { manifest } = (await f.call('GET', `/v1/assistant-turns/${second.id}/context`)).json();
+      assert.equal(manifest.editorFrame.revisionId, f.artwork.revision.id);
+      assert.equal(manifest.editorFrame.containsUnsavedChanges, false);
+      assert.deepEqual(manifest.priorResourceCards, [{ assetId, sourceTurnId: first.id }]);
+    } finally {
+      await f.close();
+    }
+  },
+);
 
 test(
   'confirmed memory scopes, corrections, expiry and removal remain authoritative',
@@ -1615,17 +1841,18 @@ test(
             ).statusCode,
             409,
           );
-          await f.db.query('UPDATE artworks SET head_version=head_version+1 WHERE id=$1', [
-            f.artwork.artwork.id,
-          ]);
+          const changed = await f.call('POST', `/v1/artworks/${f.context.artworkId}/revisions`, {
+            expectedVersion: f.context.expectedVersion,
+            recipe: f.recipe,
+            label: 'Actual version advanced during retry',
+          });
+          assert.equal(changed.statusCode, 201, changed.body);
           assert.equal(
             (await f.call('POST', `/v1/projects/${f.projectId}/assistant-turns`, body)).json().id,
             id,
             'replay must survive a later canvas revision',
           );
-          await f.db.query('UPDATE artworks SET head_version=head_version-1 WHERE id=$1', [
-            f.artwork.artwork.id,
-          ]);
+          f.context.expectedVersion = changed.json().artwork.headVersion;
         },
       );
       await t.test(
@@ -2294,14 +2521,12 @@ test(
             await spoken.wait('search-started');
             assert.equal((await spoken.wait('assistant-result')).search[0].query, '逆光补光资料');
             for (const id of ['allowed-second', 'allowed-third', 'over-limit'])
-              vendorSockets
-                .at(-1)!
-                .send(
-                  JSON.stringify({
-                    type: 'session.delegation.created',
-                    delegation: { id, target: 'client' },
-                  }),
-                );
+              vendorSockets.at(-1)!.send(
+                JSON.stringify({
+                  type: 'session.delegation.created',
+                  delegation: { id, target: 'client' },
+                }),
+              );
             assert.equal((await spoken.wait('error')).code, 'VOICE_DELEGATION_LIMIT');
             await until(
               async () =>

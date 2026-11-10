@@ -2,6 +2,7 @@ import type { RGBAImage, RenderOptions } from './types.js';
 import type { RetouchRegionV4 } from './v4-types.js';
 import type { SpatialRegionV4 } from './v4-spatial.js';
 import { checkV3 } from './v3-pixels.js';
+import { linearToSrgb, srgbToLinear } from './engine.js';
 
 /** Separable running sums: O(pixels), independent of radius, no full integral image. */
 export function boxSum(
@@ -45,7 +46,8 @@ export function guidedRetouch(
   options: RenderOptions,
 ): RGBAImage {
   const radius = Math.max(1, Math.round(op.radius * Math.min(image.width, image.height)));
-  const respectMask = op.algorithm === 'guided-v2';
+  const detailV3 = op.algorithm === 'guided-v3';
+  const respectMask = detailV3 || op.algorithm === 'guided-v2';
   // q depends on averages of local coefficients: the real footprint is 2r.
   // V2 gives every sample outside the effective mask exactly zero statistical weight.
   const halo = respectMask ? 0 : 2 * radius;
@@ -100,9 +102,9 @@ export function guidedRetouch(
       for (let at = 0; at < size; at++) ma[at] = ma[at]! * guide[at]! + mb[at]!;
       return ma;
     }
-    return { meanGuide, filter };
+    return { meanGuide, mean, filter };
   }
-  const { meanGuide, filter } = guidance(radius, respectMask ? 0.0012 : 0.0025);
+  const { meanGuide, mean, filter } = guidance(radius, respectMask ? 0.0012 : 0.0025);
   const low = filter(guide),
     delta = new Float32Array(size);
   const fine =
@@ -119,6 +121,60 @@ export function guidedRetouch(
     [distance, distance],
     [distance, -distance],
   ] as const;
+  const localReflection = detailV3 && op.shine > 0 ? new Float32Array(size) : null;
+  if (localReflection) {
+    const light = new Float32Array(size);
+    for (let at = 0; at < size; at++) {
+      if ((at & 16383) === 0) checkV3(options);
+      if (!alpha[at]) continue;
+      const src = sourceAt(at);
+      const r = srgbToLinear(image.data[src]! / 255),
+        g = srgbToLinear(image.data[src + 1]! / 255),
+        b = srgbToLinear(image.data[src + 2]! / 255),
+        max = Math.max(r, g, b);
+      light[at] = 0.2126 * r + 0.7152 * g + 0.0722 * b;
+      localReflection[at] = max ? (max - Math.min(r, g, b)) / max : 0;
+    }
+    const diffuseLight = mean(light),
+      diffuseSaturation = mean(localReflection);
+    for (let at = 0; at < size; at++) {
+      if ((at & 16383) === 0) checkV3(options);
+      const saturationDrop =
+        (diffuseSaturation[at]! - localReflection[at]!) / Math.max(0.1, diffuseSaturation[at]!);
+      const whiteness = Math.min(1, Math.max(0, (saturationDrop - 0.025) / 0.18));
+      const prominence = Math.max(0, light[at]! - diffuseLight[at]! - 0.004);
+      const src = sourceAt(at);
+      const floor = srgbToLinear(
+        Math.min(image.data[src]!, image.data[src + 1]!, image.data[src + 2]!) / 255,
+      );
+      localReflection[at] =
+        (Math.min(floor * 0.75, prominence * 0.88) *
+          whiteness *
+          whiteness *
+          (3 - 2 * whiteness) *
+          op.shine) /
+        100;
+    }
+  }
+  const validSample = (x: number, y: number) =>
+    x >= 0 && x < width && y >= 0 && y < height && alpha[y * width + x]! > 1 / 65535;
+  function trough(x: number, y: number, dx: number, dy: number): number {
+    if (!validSample(x, y) || !validSample(x + dx, y + dy) || !validSample(x - dx, y - dy))
+      return 0;
+    const center = guide[y * width + x]!;
+    return Math.max(
+      0,
+      Math.min(guide[(y + dy) * width + x + dx]!, guide[(y - dy) * width + x - dx]!) - center,
+    );
+  }
+  function coherentLine(x: number, y: number, dx: number, dy: number): number {
+    const across = trough(x, y, dx, dy);
+    if (across <= 0.01) return 0;
+    const tx = -Math.sign(dy),
+      ty = Math.sign(dx);
+    const continuity = Math.min(trough(x + tx, y + ty, dx, dy), trough(x - tx, y - ty, dx, dy));
+    return across * Math.min(1, Math.max(0, (continuity / across - 0.2) / 0.5));
+  }
   for (let y = 0; y < height; y++) {
     if ((y & 15) === 0) checkV3(options);
     for (let x = 0; x < width; x++) {
@@ -140,6 +196,13 @@ export function guidedRetouch(
       // Both sides must be brighter: a single dark/light edge is not a wrinkle.
       if (op.fineLines)
         for (const [dx, dy] of directions) {
+          if (detailV3) {
+            const xDirection = Math.sign(dx),
+              yDirection = Math.sign(dy);
+            line = Math.max(line, coherentLine(x, y, xDirection, yDirection));
+            if (distance > 1) line = Math.max(line, coherentLine(x, y, dx, dy));
+            continue;
+          }
           const i = atXY(x + dx, y + dy),
             j = atXY(x - dx, y - dy);
           if (alpha[i]! <= 0 || alpha[j]! <= 0) continue;
@@ -149,7 +212,7 @@ export function guidedRetouch(
       const smoothing = ((-0.85 * op.smoothing) / 100) * (fine ? fine[at]! - low[at]! : residual);
       const detail =
         (((op.texture >= 0 ? 1.5 : 1) * op.texture) / 100) * (fine ? lum - fine[at]! : residual);
-      const shine = Math.max(0, lum - Math.max(0.58, meanGuide[at]! + 0.045));
+      const shine = detailV3 ? 0 : Math.max(0, lum - Math.max(0.58, meanGuide[at]! + 0.045));
       delta[at] =
         smoothing +
         detail +
@@ -174,8 +237,15 @@ export function guidedRetouch(
         if (amount <= 1 / 65535) continue;
         const at = (y + roi.top - top) * width + x + roi.left - left,
           src = sourceAt(at);
+        const reflection = localReflection?.[at] ?? 0;
+        const channel = image.data[src + c]! / 255;
+        const specularChange =
+          reflection > 0
+            ? linearToSrgb(Math.max(0, srgbToLinear(channel) - reflection)) - channel
+            : 0;
         const change =
           delta[at]! +
+          specularChange +
           (smoothChroma ? ((smoothChroma[at]! - chroma[at]!) * op.uniformity) / 100 : 0);
         if (changes) changes[c]![at] = change * 255 * amount;
         else data[src + c] = image.data[src + c]! + change * 255 * amount;

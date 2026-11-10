@@ -60,9 +60,13 @@ export async function claimAssistantGrant(tx: Queryable, claim: GrantClaim): Pro
     )
   ).rows[0];
   if (existing) {
+    // Older previews recorded an empty model for candidate edits. A current
+    // allowlist check above still binds the real model when the edit is saved.
+    const legacyCandidateModel =
+      existing.model_id === '' && claim.action === 'edit' && claim.key.startsWith('candidate:');
     if (
       existing.action !== claim.action ||
-      existing.model_id !== claim.modelId ||
+      (existing.model_id !== claim.modelId && !legacyCandidateModel) ||
       existing.units !== claim.units
     )
       throw new QuotaError('ASSISTANT_CLAIM_CONFLICT', '已执行操作不能更改费用或模型');

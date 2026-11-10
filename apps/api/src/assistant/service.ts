@@ -15,6 +15,7 @@ import {
   type Queryable,
 } from '@ai-xiutu/db';
 import {
+  assistantSearchEvidenceSchema,
   assistantTurnSchema,
   voiceSessionSchema,
   type AssistantCandidate,
@@ -281,7 +282,7 @@ export function createAssistantService(
     async function checkSnapshot(tx: Queryable, lock = false) {
       if (sessionHash) await assertTurnSession(tx, row.actor_id, sessionHash, lock);
       await checkSettings(tx);
-      if (context) await validateContext(tx, row.actor_id, row.project_id, context);
+      if (context) await validateContext(tx, row.actor_id, row.project_id, context, lock);
       if (!scope.usePersonalMemory) return;
       const currentMemories = await readMemory(tx, lock);
       const currentNotes = await rememberedResources(
@@ -325,6 +326,7 @@ export function createAssistantService(
           }
         : {}),
       selectedImages,
+      selectedReferenceIds: scope.referenceAssetIds,
       accessScope,
       checkSnapshot,
       memory:
@@ -673,6 +675,10 @@ export function createAssistantService(
         )
           throw new HttpError(429, 'ASSISTANT_BUSY', '请等待上一轮协作完成');
         let history: NonNullable<AgentContext['history']> = [];
+        const priorCards = new Map<
+          string,
+          { assetId: string; name: string; sourceTurnId: string }
+        >();
         let historyScope = mergeAssistantScopes(body.scope, []);
         if (body.parentTurnId) {
           const ancestors = (
@@ -725,6 +731,18 @@ export function createAssistantService(
           for (const parent of ancestors) {
             const userText = String(parent.prompt);
             const references = byTurn.get(parent.id) ?? [];
+            for (const raw of Array.isArray(parent.output?.search) ? parent.output.search : []) {
+              const evidence = assistantSearchEvidenceSchema.safeParse(raw);
+              if (!evidence.success || evidence.data.kind !== 'cloud') continue;
+              for (const card of evidence.data.resources) {
+                if (!priorCards.has(card.id) && historyScope.referenceAssetIds.includes(card.id))
+                  priorCards.set(card.id, {
+                    assetId: card.id,
+                    name: card.title || card.name,
+                    sourceTurnId: parent.id,
+                  });
+              }
+            }
             history.unshift(
               { role: 'user', content: userText, sourceTurnId: parent.id },
               {
@@ -738,6 +756,22 @@ export function createAssistantService(
         }
         await lockedAssistantAccess(tx, actorId, projectId, historyScope);
         await assertTurnSession(tx, actorId, sessionHash, true);
+        const cardScope =
+          priorCards.size && body.scope.spaceIds.length
+            ? new Set(
+                (
+                  await tx.query(
+                    `SELECT a.id FROM assets a JOIN projects p ON p.id=a.project_id
+              WHERE a.id=ANY($1::uuid[]) AND p.space_id=ANY($2::uuid[])
+                AND a.deleted_at IS NULL AND p.deleted_at IS NULL`,
+                    [[...priorCards.keys()], body.scope.spaceIds],
+                  )
+                ).rows.map((item) => item.id),
+              )
+            : new Set<string>();
+        const priorResourceCards = [...priorCards.values()]
+          .filter((item) => cardScope.has(item.assetId))
+          .slice(0, 8);
         const settings = await model(tx, body.modelId, 'assistant-turn', true);
         if (
           body.scope.publicSearch &&
@@ -787,7 +821,7 @@ export function createAssistantService(
           )
         ).rows[0] as PaidRow;
         await appendRunEvent(tx, row.id, 'run.started', { modelId: body.modelId });
-        return { row, replay: false as const, history, settings, historyScope };
+        return { row, replay: false as const, history, settings, historyScope, priorResourceCards };
       });
       if (admission.replay) return this.getTurn(actorId, admission.row.id);
       const row = admission.row;
@@ -804,6 +838,7 @@ export function createAssistantService(
             admission.settings,
           );
           agentContext.history = admission.history;
+          agentContext.priorResourceCards = admission.priorResourceCards;
           agentContext.onTool = (name, state) =>
             publishRunEvent(db, row.id, `tool.${state}`, { name });
           agentContext.onText = (delta) => publishRunEvent(db, row.id, 'text.delta', { delta });
@@ -834,7 +869,13 @@ export function createAssistantService(
           };
           agentContext.onContext = async (manifest) =>
             transaction(db, async (tx) => {
-              await lockedAssistantAccess(tx, actorId, projectId, admission.historyScope);
+              await lockedAssistantAccess(
+                tx,
+                actorId,
+                projectId,
+                admission.historyScope,
+                sessionHash,
+              );
               assertRunningTurn(
                 (
                   await tx.query(
@@ -844,15 +885,55 @@ export function createAssistantService(
                 ).rows[0],
               );
               await agentContext.checkSnapshot(tx, true);
+              const head = context
+                ? (
+                    await tx.query(
+                      `SELECT r.id,r.recipe FROM artworks a JOIN revisions r ON r.id=a.head_revision_id
+                  WHERE a.id=$1 AND a.project_id=$2 AND r.artwork_id=a.id AND r.version=$3`,
+                      [context.artworkId, projectId, context.expectedVersion],
+                    )
+                  ).rows[0]
+                : undefined;
+              if (context && !head)
+                throw new HttpError(
+                  409,
+                  'CONTEXT_VERSION_CONFLICT',
+                  '作品版本不可用，请重新共享画面',
+                );
+              const snapshotRecipeHash = context ? recipeHash(context.recipe) : null;
+              const evidence = {
+                ...manifest,
+                editorFrame:
+                  context && head
+                    ? {
+                        artworkId: context.artworkId,
+                        assetId: context.assetId,
+                        revisionId: head.id,
+                        version: context.expectedVersion,
+                        recipeHash: snapshotRecipeHash,
+                        containsUnsavedChanges: recipeHash(head.recipe) !== snapshotRecipeHash,
+                        sharedDataUrlSha256: context.imageDataUrl
+                          ? hash(context.imageDataUrl)
+                          : null,
+                      }
+                    : null,
+                selectedReferences: (agentContext.selectedImages ?? []).map((item) => ({
+                  assetId: item.id,
+                  sharedDataUrlSha256: hash(item.dataUrl),
+                })),
+                priorResourceCards: admission.priorResourceCards.map(
+                  ({ assetId, sourceTurnId }) => ({ assetId, sourceTurnId }),
+                ),
+              };
               await tx.query(
                 "UPDATE assistant_turns SET config=jsonb_set(config,'{historyScope}',$2::jsonb) WHERE id=$1",
                 [row.id, JSON.stringify(admission.historyScope)],
               );
               await tx.query(
                 'INSERT INTO assistant_context_snapshots(turn_id,manifest) VALUES($1,$2) ON CONFLICT(turn_id) DO NOTHING',
-                [row.id, JSON.stringify(manifest)],
+                [row.id, JSON.stringify(evidence)],
               );
-              await appendRunEvent(tx, row.id, 'context.prepared', manifest);
+              await appendRunEvent(tx, row.id, 'context.prepared', evidence);
             });
           agentContext.readHistory = async (sourceId, offset, limit) => {
             if (!admission.history?.some((item) => item.sourceTurnId === sourceId))
@@ -915,6 +996,15 @@ export function createAssistantService(
           await transaction(db, async (tx) => {
             await lockedAssistantAccess(tx, actorId, projectId, admission.historyScope);
             await assertTurnSession(tx, actorId, sessionHash, true);
+            if (row.scope.executionGrantId)
+              await assertAssistantGrant(
+                tx,
+                row.scope.executionGrantId,
+                actorId,
+                projectId,
+                true,
+                body.modelId,
+              );
             const current = (
               await tx.query(
                 'SELECT state,stop_requested_at FROM assistant_turns WHERE id=$1 FOR UPDATE',

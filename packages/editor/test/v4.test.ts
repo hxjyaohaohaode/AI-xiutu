@@ -19,6 +19,9 @@ import {
   getEditorPreProjectiveDimensions,
   createHealingOperationV4,
   createRetouchRegionV4,
+  createRasterMask,
+  getSelectionBoundsV3,
+  compileSelectionMaskV3,
   createAdjustmentRegionV3,
   RenderAbortedError,
   type RGBAImage,
@@ -45,6 +48,106 @@ const radial = (x = 0.5, y = 0.5, radius = 0.12): SelectionMaskV3 => ({
 });
 const close = (actual: number, expected: number, eps = 1e-8) =>
   assert.ok(Math.abs(actual - expected) < eps, `${actual} != ${expected}`);
+
+test('bounded local sampling matches a full-frame scan byte for byte across mask families and aspect ratios', () => {
+  for (const [width, height] of [
+    [149, 41],
+    [41, 149],
+    [33, 27],
+  ] as const) {
+    const source = image(width, height);
+    for (let i = 0; i < width * height; i += 11) source.data[i * 4 + 3] = i % 2 ? 0 : 83;
+    const rle = createRasterMask(
+      9,
+      7,
+      Uint8Array.from({ length: 63 }, (_, i) =>
+        [12, 13, 14, 21, 22, 23, 30, 31, 32].includes(i) ? 195 : 0,
+      ),
+    );
+    const polygon: SelectionMaskV3 = {
+      type: 'polygon',
+      feather: 0.04,
+      invert: false,
+      points: [
+        { x: 0.05, y: 0.09 },
+        { x: 0.72, y: 0.12 },
+        { x: 0.61, y: 0.62 },
+        { x: 0.1, y: 0.7 },
+      ],
+    };
+    const brush: SelectionMaskV3 = {
+      type: 'brush',
+      invert: false,
+      strokes: [
+        {
+          points: [
+            { x: 0.12, y: 0.4 },
+            { x: 0.8, y: 0.6 },
+          ],
+          radius: 0.1,
+          feather: 0.6,
+          opacity: 0.8,
+          mode: 'add',
+        },
+        { points: [{ x: 0.3, y: 0.5 }], radius: 0.06, feather: 0.3, opacity: 1, mode: 'subtract' },
+      ],
+    };
+    const whole = createRasterMask(1, 1, Uint8Array.of(255));
+    for (const mask of [
+      radial(0.19, 0.41, 0.12),
+      polygon,
+      brush,
+      rle,
+      { type: 'compound', operation: 'intersection', masks: [brush, rle], invert: false },
+      { type: 'compound', operation: 'xor', masks: [polygon, rle], invert: false },
+      { type: 'compound', operation: 'subtract', masks: [polygon, brush], invert: false },
+    ] satisfies SelectionMaskV3[]) {
+      const bounds = getSelectionBoundsV3(mask, source);
+      const sample = compileSelectionMaskV3(mask, source);
+      for (let y = 0; y < height; y++) {
+        for (let x = 0; x < width; x++) {
+          const u = (x + 0.5) / width,
+            v = (y + 0.5) / height;
+          if (sample(u, v) > 1 / 65535) {
+            assert.ok(u >= bounds.x - 1e-10 && u <= bounds.x + bounds.width + 1e-10);
+            assert.ok(v >= bounds.y - 1e-10 && v <= bounds.y + bounds.height + 1e-10);
+          }
+        }
+      }
+      const make = (selection: SelectionMaskV3) =>
+        createRecipeV4({
+          retouch: [
+            createRetouchRegionV4({
+              algorithm: 'guided-v2',
+              mask: selection,
+              protection: radial(0.34, 0.4, 0.04),
+              smoothing: 70,
+              texture: -45,
+              fineLines: 83,
+              radius: 0.04,
+              speckle: 50,
+            }),
+          ],
+        });
+      // Complement twice with a full mask. The outer inverse forces a complete
+      // scan while retaining the same weights at every pixel.
+      const fullScan: SelectionMaskV3 = {
+        type: 'compound',
+        operation: 'intersection',
+        invert: true,
+        masks: [{ ...mask, invert: true }, whole],
+      };
+      const local = renderEditorRecipeTiled(source, make(mask), { tileSize: 16 });
+      assert.deepEqual(
+        local,
+        renderEditorRecipeTiled(source, make(fullScan), { tileSize: 32 }),
+        mask.type,
+      );
+      for (let at = 3; at < local.data.length; at += 4)
+        assert.equal(local.data[at], source.data[at]);
+    }
+  }
+});
 
 test('V4 migration is exact for old colors, masks, integer/fine geometry, paint and warp, and generic edits retain additions', () => {
   const source = image(),

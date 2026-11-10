@@ -71,11 +71,12 @@ test(
           }
           await assert.rejects(
             f.db.query(
-              'INSERT INTO revisions(artwork_id,version,recipe,author_id) VALUES($1,2,$2::jsonb,$3)',
+              'INSERT INTO revisions(artwork_id,version,recipe,author_id,parent_id) VALUES($1,2,$2::jsonb,$3,$4)',
               [
                 roomId,
                 JSON.stringify(createRecipeV4({ imageLayers: [layer(f.privateAssetId)] })),
                 f.actors.owner.id,
+                f.artwork.revision.id,
               ],
             ),
             /revision layer unavailable/,

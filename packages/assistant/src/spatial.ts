@@ -137,7 +137,7 @@ export function applyAssistantRetouch(base: EditorRecipe, raw: unknown) {
     name: `AI · ${proposal.name}`,
     enabled: true,
     ...(!existing
-      ? { algorithm: 'guided-v2' as const }
+      ? { algorithm: 'guided-v3' as const }
       : existing.algorithm
         ? { algorithm: existing.algorithm }
         : {}),
@@ -262,10 +262,27 @@ export function describeSpatialSelections(recipe?: EditorRecipe) {
 /** Pixel-neighbourhood and donor budgets depend on ORIGINAL resolution. A new
  * spatial stage cannot be declared executable from a downsampled proxy alone. */
 export function needsNativeSpatialCheck(base: EditorRecipe, candidate: EditorRecipe): boolean {
-  if (candidate.schemaVersion !== 4) return false;
   const previous = base.schemaVersion === 4 ? base : { healing: [], retouch: [] };
+  const next = candidate.schemaVersion === 4 ? candidate : { healing: [], retouch: [] };
   return (
-    JSON.stringify(previous.healing) !== JSON.stringify(candidate.healing) ||
-    JSON.stringify(previous.retouch) !== JSON.stringify(candidate.retouch)
+    JSON.stringify(previous.healing) !== JSON.stringify(next.healing) ||
+    JSON.stringify(previous.retouch) !== JSON.stringify(next.retouch) ||
+    // Earlier tone/color changes can alter what the existing repair uses as
+    // neighbours or a donor, even if the spatial node itself did not change.
+    ((next.healing.some((item) => item.enabled && item.opacity > 0) ||
+      next.retouch.some(
+        (item) =>
+          item.enabled &&
+          item.opacity > 0 &&
+          [
+            item.smoothing,
+            item.texture,
+            item.uniformity,
+            item.shine,
+            item.speckle,
+            item.fineLines,
+          ].some((value) => value !== 0),
+      )) &&
+      JSON.stringify(base) !== JSON.stringify(candidate))
   );
 }

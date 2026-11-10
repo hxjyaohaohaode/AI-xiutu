@@ -27,7 +27,7 @@ import {
 } from './context.js';
 import { createAssistantService, type AssistantDependencies } from './service.js';
 import { attachVoiceBridge } from './voice.js';
-import { assistantGrantSchema } from '@ai-xiutu/contracts';
+import { assistantCandidateCommitSchema, assistantGrantSchema } from '@ai-xiutu/contracts';
 import { registerAssistantEvents } from './events.js';
 import { registerAssistantMemory } from './memory.js';
 import {
@@ -70,7 +70,13 @@ export function registerAssistant(
       projectId = id.parse((req.params as any).projectId);
     const body = assistantGrantSchema.parse(req.body);
     return transaction(db, async (tx) => {
-      await lockedAssistantAccess(tx, user.id, projectId);
+      await lockedAssistantAccess(
+        tx,
+        user.id,
+        projectId,
+        undefined,
+        hash(req.cookies.xiutu_session ?? ''),
+      );
       const known = (
         await tx.query(
           `SELECT id FROM assistant_model_configs WHERE id=ANY($1::text[]) AND config->>'enabled'='true'
@@ -360,94 +366,126 @@ export function registerAssistant(
         '一次有时限的实时会话服务点；供应商费用另行记账。准备过期且无派发证据时释放，连接或计费结果不明确时保留预占待运营核验。',
     };
   });
-  app.post('/v1/assistant-candidates/:candidateId/decision', async (req) => {
-    const user = requireUser(req),
-      candidateId = id.parse((req.params as any).candidateId);
-    const body = z
-      .object({
-        decision: z.enum(['previewed', 'rejected']),
-        recipe: z.unknown().optional(),
-        expectedVersion: z.number().int().positive().optional(),
-        automatic: z.boolean().default(false),
-      })
-      .strict()
-      .parse(req.body);
-    const hint = (
-      await db.query(
-        `SELECT c.project_id,COALESCE(t.config->'historyScope',t.scope,v.config->'historyScope',v.scope) AS access_scope FROM assistant_candidates c LEFT JOIN assistant_turns t ON t.id=c.turn_id LEFT JOIN voice_sessions v ON v.id=c.voice_id WHERE c.id=$1 AND c.actor_id=$2`,
-        [candidateId, user.id],
-      )
-    ).rows[0];
-    if (!hint) throw new HttpError(404, 'CANDIDATE_NOT_FOUND', '候选不存在或无权访问');
-    return transaction(db, async (tx) => {
-      await lockedAssistantAccess(tx, user.id, hint.project_id, hint.access_scope);
-      const row = (
-        await tx.query(
-          'SELECT * FROM assistant_candidates WHERE id=$1 AND actor_id=$2 AND expires_at>clock_timestamp() FOR UPDATE',
+  app.post(
+    '/v1/assistant-candidates/:candidateId/decision',
+    { bodyLimit: 4_000_000 },
+    async (req) => {
+      const user = requireUser(req),
+        candidateId = id.parse((req.params as any).candidateId);
+      const body = z
+        .object({
+          decision: z.enum(['previewed', 'rejected']),
+          recipe: z.unknown().optional(),
+          expectedVersion: z.number().int().positive().optional(),
+          automatic: z.boolean().default(false),
+        })
+        .strict()
+        .parse(req.body);
+      const hint = (
+        await db.query(
+          `SELECT c.project_id,
+          COALESCE(t.config->'historyScope',t.scope,v.config->'historyScope',v.scope) AS access_scope,
+          COALESCE(t.scope,v.scope) AS execution_scope,
+          COALESCE(t.model_id,v.backend_model_id) AS model_id
+        FROM assistant_candidates c LEFT JOIN assistant_turns t ON t.id=c.turn_id
+        LEFT JOIN voice_sessions v ON v.id=c.voice_id WHERE c.id=$1 AND c.actor_id=$2`,
           [candidateId, user.id],
         )
       ).rows[0];
-      if (!row) throw new HttpError(404, 'CANDIDATE_NOT_FOUND', '候选不存在、已过期或无权访问');
-      if (row.decision === 'rejected' && body.decision !== 'rejected')
-        throw new HttpError(409, 'CANDIDATE_REJECTED', '候选已退回');
-      if (body.decision === 'previewed') {
-        await assertVoiceCandidateContext(tx, row);
-        if (body.automatic && row.payload.autoEligible === false)
-          throw new HttpError(409, 'CANDIDATE_UNAVAILABLE', '此候选需要人工确认');
-        const owner = (
+      if (!hint) throw new HttpError(404, 'CANDIDATE_NOT_FOUND', '候选不存在或无权访问');
+      return transaction(db, async (tx) => {
+        await lockedAssistantAccess(
+          tx,
+          user.id,
+          hint.project_id,
+          hint.access_scope,
+          hash(req.cookies.xiutu_session ?? ''),
+        );
+        const row = (
           await tx.query(
-            row.turn_id
-              ? 'SELECT scope FROM assistant_turns WHERE id=$1'
-              : 'SELECT scope FROM voice_sessions WHERE id=$1',
-            [row.turn_id ?? row.voice_id],
+            'SELECT * FROM assistant_candidates WHERE id=$1 AND actor_id=$2 AND expires_at>clock_timestamp() FOR UPDATE',
+            [candidateId, user.id],
           )
         ).rows[0];
-        const grantId = owner?.scope?.executionGrantId;
-        if (body.automatic && !grantId)
-          throw new HttpError(403, 'AUTOMATIC_GRANT_REQUIRED', '自动执行需要有效的范围与预算授权');
-        if (grantId) {
-          const mode = await assertAssistantGrant(tx, grantId, user.id, row.project_id, true);
-          if (mode === 'suggest' || (body.automatic && mode !== 'auto'))
+        if (!row) throw new HttpError(404, 'CANDIDATE_NOT_FOUND', '候选不存在、已过期或无权访问');
+        if (row.applied_revision_id) {
+          if (body.decision === 'rejected')
+            throw new HttpError(409, 'CANDIDATE_ALREADY_APPLIED', '候选已应用，请通过版本历史恢复');
+          return {
+            ok: true,
+            decision: row.decision,
+            payload: row.payload,
+            applied: true,
+            revisionId: row.applied_revision_id,
+          };
+        }
+        if (row.decision === 'rejected' && body.decision !== 'rejected')
+          throw new HttpError(409, 'CANDIDATE_REJECTED', '候选已退回');
+        if (body.decision === 'previewed') {
+          if (body.automatic && row.payload.autoEligible === false)
+            throw new HttpError(409, 'CANDIDATE_UNAVAILABLE', '此候选需要人工确认');
+          const grantId = hint.execution_scope?.executionGrantId;
+          if (body.automatic && !grantId)
             throw new HttpError(
               403,
-              'ASSISTANT_ACTION_FORBIDDEN',
-              '当前授权只允许建议或需要逐次确认',
+              'AUTOMATIC_GRANT_REQUIRED',
+              '自动执行需要有效的范围与预算授权',
             );
-          if (row.kind === 'edit')
-            await claimAssistantGrant(tx, {
+          if (grantId) {
+            const mode = await assertAssistantGrant(
+              tx,
               grantId,
-              actorId: user.id,
-              projectId: row.project_id,
-              key: `candidate:${candidateId}`,
-              action: 'edit',
-              modelId: '',
-              units: 0,
-              automatic: body.automatic,
-            });
+              user.id,
+              row.project_id,
+              true,
+              hint.model_id,
+            );
+            if (mode === 'suggest' || (body.automatic && mode !== 'auto'))
+              throw new HttpError(
+                403,
+                'ASSISTANT_ACTION_FORBIDDEN',
+                '当前授权只允许建议或需要逐次确认',
+              );
+            if (row.kind === 'edit')
+              await claimAssistantGrant(tx, {
+                grantId,
+                actorId: user.id,
+                projectId: row.project_id,
+                key: `candidate:${candidateId}`,
+                action: 'edit',
+                modelId: hint.model_id,
+                units: 0,
+                automatic: body.automatic,
+              });
+          }
+          await assertVoiceCandidateContext(tx, row);
         }
-      }
-      if (body.decision === 'previewed' && row.kind === 'edit') {
-        const artwork = (
-          await tx.query('SELECT head_version FROM artworks WHERE id=$1', [row.artwork_id])
-        ).rows[0];
-        if (
-          artwork?.head_version !== row.base_version ||
-          body.expectedVersion !== row.base_version ||
-          !body.recipe ||
-          recipeHash(body.recipe) !== row.base_recipe_hash
-        )
-          throw new HttpError(409, 'CANDIDATE_STALE', '图片或本地参数已变化，请重新生成建议');
-      }
-      await tx.query('UPDATE assistant_candidates SET decision=$2 WHERE id=$1', [
-        candidateId,
-        body.decision,
-      ]);
-      // Preview is deliberately distinct from an applied/saved revision. The editor
-      // must still acquire its collaboration lease and use normal versioned save.
-      return { ok: true, decision: body.decision, payload: row.payload, applied: false };
-    });
-  });
-  app.post('/v1/assistant-candidates/:candidateId/apply', async (req) => {
+        if (body.decision === 'previewed' && row.kind === 'edit') {
+          const artwork = (
+            await tx.query(
+              'SELECT head_version FROM artworks WHERE id=$1 AND project_id=$2 FOR SHARE',
+              [row.artwork_id, row.project_id],
+            )
+          ).rows[0];
+          if (
+            artwork?.head_version !== row.base_version ||
+            body.expectedVersion !== row.base_version ||
+            !body.recipe ||
+            recipeHash(body.recipe) !== row.base_recipe_hash
+          )
+            throw new HttpError(409, 'CANDIDATE_STALE', '图片或本地参数已变化，请重新生成建议');
+        }
+        await tx.query('UPDATE assistant_candidates SET decision=$2 WHERE id=$1', [
+          candidateId,
+          body.decision,
+        ]);
+        // Preview is deliberately distinct from an applied/saved revision. The editor
+        // must still acquire its collaboration lease and use normal versioned save.
+        return { ok: true, decision: body.decision, payload: row.payload, applied: false };
+      });
+    },
+  );
+  app.post('/v1/assistant-candidates/:candidateId/apply', { bodyLimit: 4_000_000 }, async (req) => {
     const actorId = requireUser(req).id,
       candidateId = id.parse((req.params as any).candidateId);
     const body = z
@@ -455,9 +493,37 @@ export function registerAssistant(
       .strict()
       .parse(req.body);
     return transaction(db, (tx) =>
-      applyAuthorizedCandidate(tx, { candidateId, actorId, ...body, requireSavedBase: true }),
+      applyAuthorizedCandidate(tx, {
+        candidateId,
+        actorId,
+        ...body,
+        requireSavedBase: true,
+        authHash: hash(req.cookies.xiutu_session ?? ''),
+      }),
     );
   });
+  app.post(
+    '/v1/assistant-candidates/:candidateId/commit',
+    { bodyLimit: 4_000_000 },
+    async (req) => {
+      const actorId = requireUser(req).id;
+      const candidateId = id.parse((req.params as any).candidateId);
+      const { expectedVersion, recipe, includeUnsavedBase } = assistantCandidateCommitSchema.parse(
+        req.body,
+      );
+      return transaction(db, (tx) =>
+        applyAuthorizedCandidate(tx, {
+          candidateId,
+          actorId,
+          expectedVersion,
+          recipe,
+          confirmed: true,
+          requireSavedBase: !includeUnsavedBase,
+          authHash: hash(req.cookies.xiutu_session ?? ''),
+        }),
+      );
+    },
+  );
   app.get('/v1/ops/assistant-models', async (req) => {
     requireOperator(req);
     return {

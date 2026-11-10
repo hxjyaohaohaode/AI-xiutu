@@ -357,6 +357,57 @@ test(
         },
       );
       await t.test(
+        'member usage and ledger snapshots survive an older transaction committing between pages',
+        async () => {
+          const write = (
+            tx: Pick<typeof f.db, 'query'>,
+            actorId: string,
+            units: number,
+            reason: string,
+          ) =>
+            tx.query(
+              "INSERT INTO ledger_entries(space_id,kind,units,event_key,actor_id,reason) VALUES($1,'gift',$2,$3,$4,$5) RETURNING id",
+              [f.teamId, units, randomUUID(), actorId, reason],
+            );
+          const member = f.actors.editor.id;
+          const delayed = await f.db.connect();
+          try {
+            await delayed.query('BEGIN');
+            const low = (await write(delayed, member, 11, 'late committed movement')).rows[0]!.id;
+            await write(f.db, member, 5, 'visible movement one');
+            const high = (await write(f.db, member, 9, 'visible movement two')).rows[0]!.id;
+            assert.ok(BigInt(low) < BigInt(high));
+            const route = `${usage}&memberId=${member}&limit=1`;
+            const first = await f.call('GET', route);
+            assert.equal(first.statusCode, 200, first.body);
+            assert.equal(first.json().filterActorId, member);
+            assert.equal(first.json().totals.adjusted, 14);
+            const cursor = first.json().nextCursor;
+            assert.ok(cursor);
+            await delayed.query('COMMIT');
+            const second = await f.call('GET', route + '&cursor=' + encodeURIComponent(cursor));
+            assert.equal(second.statusCode, 200, second.body);
+            assert.deepEqual(second.json().totals, first.json().totals);
+            assert.deepEqual(second.json().series, first.json().series);
+            assert.equal(second.json().entries[0].reason, 'visible movement one');
+            assert.equal(second.json().nextCursor, null);
+            assert.equal(
+              (await f.call('GET', route, undefined, 'editor')).json().totals.adjusted,
+              25,
+            );
+            assert.equal((await f.call('GET', route, undefined, 'viewer')).statusCode, 403);
+            const tampered = (cursor[0] === 'A' ? 'B' : 'A') + cursor.slice(1);
+            assert.equal(
+              (await f.call('GET', route + '&cursor=' + encodeURIComponent(tampered))).statusCode,
+              400,
+            );
+          } finally {
+            await delayed.query('ROLLBACK').catch(() => undefined);
+            delayed.release();
+          }
+        },
+      );
+      await t.test(
         'ownership transfer is atomic, last owner cannot be removed, team resources survive departure',
         async () => {
           assert.equal(

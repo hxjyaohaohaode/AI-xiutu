@@ -37,7 +37,7 @@ export async function publishRunEvent(
 export function registerAssistantEvents(app: FastifyInstance, db: Database) {
   const streams = new Set<() => void>(),
     byActor = new Map<string, number>();
-  app.addHook('onClose', async () => {
+  app.addHook('preClose', async () => {
     for (const close of streams) close();
   });
   async function access(actorId: string, turnId: string) {
@@ -112,12 +112,7 @@ export function registerAssistantEvents(app: FastifyInstance, db: Database) {
             )
           ).rows[0];
           if (!initial) return null;
-          await lockedAssistantAccess(tx, actorId, initial.project_id, initial.scope);
-          const session = await tx.query(
-            'SELECT 1 FROM sessions WHERE token_hash=$1 AND user_id=$2 AND expires_at>clock_timestamp() FOR SHARE',
-            [authHash, actorId],
-          );
-          if (!session.rowCount) return null;
+          await lockedAssistantAccess(tx, actorId, initial.project_id, initial.scope, authHash);
           const state = (
             await tx.query(
               "SELECT state,error_code,COALESCE(config->'historyScope',scope)=$2::jsonb AS same_scope FROM assistant_turns WHERE id=$1 FOR SHARE",
