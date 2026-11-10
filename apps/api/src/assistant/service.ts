@@ -17,6 +17,7 @@ import {
 import {
   assistantSearchEvidenceSchema,
   assistantTurnSchema,
+  publicPricingSnapshot,
   voiceSessionSchema,
   type AssistantCandidate,
   type AssistantContext,
@@ -387,7 +388,7 @@ export function createAssistantService(
       search: (query, limit) => searchAssistantResources(db, row.actor_id, scope, query, limit),
       validateReferenceIds: (ids) => validateReferences(db, row.actor_id, ids, scope.spaceIds),
       onTool: events,
-      async beforeDispatch(index, bodyHash) {
+      async beforeDispatch(index, bodyHash, meta) {
         // Recovery and dispatch serialize on the SAME paid row. A task waiting
         // for moderation cannot resume sending after recovery released its hold.
         await transaction(db, async (tx) => {
@@ -426,8 +427,9 @@ export function createAssistantService(
           await checkSnapshot(tx, true);
           if (voice) await model(tx, row.model_id, 'realtime-voice');
           await tx.query(
-            `INSERT INTO assistant_dispatches(${voice ? 'voice_id' : 'turn_id'},sequence,input_hash) VALUES($1,$2,$3)`,
-            [row.id, sequenceOffset + index, bodyHash],
+            `INSERT INTO assistant_dispatches(${voice ? 'voice_id' : 'turn_id'},sequence,input_hash,purpose,branch_key,pricing) VALUES($1,$2,$3,$4,$5,$6)`,
+            [row.id, sequenceOffset + index, bodyHash, meta.purpose, meta.branchId,
+              JSON.stringify(publicPricingSnapshot(voice ? String((row as VoiceRow).backend_model_id) : row.model_id, 'openai'))],
           );
           await tx.query(
             `UPDATE ${voice ? 'voice_sessions' : 'assistant_turns'} SET updated_at=clock_timestamp() WHERE id=$1`,
@@ -465,10 +467,10 @@ export function createAssistantService(
           if (voice) await model(tx, row.model_id, 'realtime-voice');
         });
       },
-      async onReceipt(index, requestId, usage) {
+      async onReceipt(index, requestId, usage, toolCalls, tier) {
         await db.query(
-          `UPDATE assistant_dispatches SET request_id=$3,usage=$4,completed_at=clock_timestamp() WHERE ${'backend_model_id' in row ? 'voice_id' : 'turn_id'}=$1 AND sequence=$2`,
-          [row.id, sequenceOffset + index, requestId, JSON.stringify(usage)],
+          `UPDATE assistant_dispatches SET request_id=$3,usage=$4,tool_calls=$5,service_tier=$6,completed_at=clock_timestamp() WHERE ${'backend_model_id' in row ? 'voice_id' : 'turn_id'}=$1 AND sequence=$2`,
+          [row.id, sequenceOffset + index, requestId, JSON.stringify(usage), toolCalls, tier],
         );
       },
     };
@@ -773,17 +775,25 @@ export function createAssistantService(
           .filter((item) => cardScope.has(item.assetId))
           .slice(0, 8);
         const settings = await model(tx, body.modelId, 'assistant-turn', true);
+        const webBranches = (body.research ?? []).filter((branch) => branch.kind === 'web');
+        if (webBranches.length + Number(Boolean(body.scope.publicSearch)) > 2 ||
+            (body.research?.length ?? 0) + Number(Boolean(body.scope.publicSearch)) > 4)
+          throw new HttpError(400, 'RESEARCH_BUDGET', '每轮最多四项研究，其中至多两项公开检索');
         if (
-          body.scope.publicSearch &&
+          (body.scope.publicSearch || webBranches.length) &&
           (!body.scope.allowWebSearch ||
             !settings.webSearch ||
-            (body.scope.publicSearch.kind === 'images' && !settings.webImageSearch))
+            ((body.scope.publicSearch?.kind === 'images' || webBranches.some((branch) => branch.resultKind === 'images')) && !settings.webImageSearch))
         )
           throw new HttpError(
             400,
             'PUBLIC_SEARCH_UNAVAILABLE',
             '当前授权或模型不支持该公开检索方式',
           );
+        if (body.research?.some((branch) => branch.kind === 'cloud') && !body.scope.spaceIds.length)
+          throw new HttpError(400, 'CLOUD_SEARCH_UNAVAILABLE', '请先选择要搜索的素材空间');
+        if (body.research?.some((branch) => branch.kind === 'canvas') && (!context?.imageDataUrl || !settings.imageInput))
+          throw new HttpError(400, 'CANVAS_INSPECTION_UNAVAILABLE', '查看画面需要明确共享当前画面，并选择支持看图的模型');
         if (body.scope.executionGrantId)
           await claimAssistantGrant(tx, {
             grantId: body.scope.executionGrantId,
@@ -816,7 +826,7 @@ export function createAssistantService(
               JSON.stringify(body.scope),
               body.parentTurnId ?? null,
               hold.id,
-              JSON.stringify({ ...settings, historyScope }),
+              JSON.stringify({ ...settings, historyScope, ...(body.research ? { research: body.research } : {}) }),
             ],
           )
         ).rows[0] as PaidRow;
@@ -838,9 +848,11 @@ export function createAssistantService(
             admission.settings,
           );
           agentContext.history = admission.history;
+          agentContext.research = body.research;
           agentContext.priorResourceCards = admission.priorResourceCards;
           agentContext.onTool = (name, state) =>
             publishRunEvent(db, row.id, `tool.${state}`, { name });
+          agentContext.onBranch = (branch) => publishRunEvent(db, row.id, 'branch.changed', branch);
           agentContext.onText = (delta) => publishRunEvent(db, row.id, 'text.delta', { delta });
           agentContext.onSearch = async (evidence: AssistantSearchEvidence) => {
             const extra =
@@ -1295,7 +1307,7 @@ export function createAssistantService(
         };
         const row = (
           await tx.query(
-            `INSERT INTO voice_sessions(project_id,actor_id,model_id,backend_model_id,idempotency_key,request_hash,hold_id,state,config,scope,context,connection_hash,connect_expires_at) VALUES($1,$2,$3,$4,$5,$6,$7,'prepared',$8,$9,$10,$11,clock_timestamp()+interval '60 seconds') RETURNING *`,
+            `INSERT INTO voice_sessions(project_id,actor_id,model_id,backend_model_id,idempotency_key,request_hash,hold_id,state,config,scope,context,connection_hash,connect_expires_at,provider_pricing) VALUES($1,$2,$3,$4,$5,$6,$7,'prepared',$8,$9,$10,$11,clock_timestamp()+interval '60 seconds',$12) RETURNING *`,
             [
               projectId,
               actorId,
@@ -1308,6 +1320,7 @@ export function createAssistantService(
               JSON.stringify(body.scope),
               JSON.stringify(retainedContext(context)),
               hash(ticket),
+              JSON.stringify(publicPricingSnapshot(body.modelId, 'openai')),
             ],
           )
         ).rows[0] as VoiceRow;

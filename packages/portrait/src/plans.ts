@@ -32,6 +32,7 @@ export interface PortraitApplyOptions {
   makeupColors?: Partial<Record<string, MakeupColor>>;
 }
 const catalog = new Map(PORTRAIT_TOOLS.map((t) => [t.id, t]));
+const skinSpotTools = ['skinShine', 'skinBlemish', 'skinColorSpot'];
 type OwnedPrimitive =
   AdjustmentRegionV3 | PaintLayerV3 | WarpStrokeV3 | RetouchRegionV4 | HealingOperationV4;
 const sealKeys = [
@@ -264,7 +265,9 @@ export function portraitToolAvailability(
   if (!target) throw new Error('人物不属于当前分析结果。');
   return PORTRAIT_TOOLS.filter((t) => t.target === target.kind).map((tool) => {
     let reason: string | null = null;
-    if (schemaVersion === 4 && tool.id === 'neckLength') {
+    if (schemaVersion === 3 && skinSpotTools.includes(tool.id)) {
+      reason = '该参数需要 V4 人像配方。';
+    } else if (schemaVersion === 4 && tool.id === 'neckLength') {
       reason =
         '自动颈长暂不可用：耳肩锚点不足以保护面部与肩膀，尚未实现头颈分区和受约束网格。可使用手动液化并设置保护区。';
     } else if (target.kind === 'body') {
@@ -439,11 +442,19 @@ export function applyPortraitValues<T extends LayeredRecipe>(
       skin.detail.texture = 0;
       skin.detail.clarity = 0;
       skin.optics.denoiseChroma = 0;
-      if (['smooth', 'texture', 'wrinkles', 'even'].some((key) => value(key) !== 0)) {
-        const previous = recipe.retouch.find((item) => belongsTo(item, targetId));
+      if (['smooth', 'texture', 'wrinkles', 'even', ...skinSpotTools].some((key) => value(key) !== 0)) {
+        const previous = recipe.retouch.find((item) => item.id === prefix + 'skin-retouch' && belongsTo(item, targetId));
+        const useSpotControls = skinSpotTools.some((key) => value(key) !== 0);
         const algorithm =
           previous?.algorithm ??
-          (ownedPrimitives(recipe, targetId).length === 0 ? 'guided-v3' : undefined);
+          (ownedPrimitives(recipe, targetId).length === 0 ? 'guided-v4' : undefined);
+        const radius = Math.max(0.000001, Math.min(0.1,
+          Math.min(target.bounds.width * dims.width, target.bounds.height * dims.height) * 0.025 / short));
+        const spot = {
+          shine: values.skinShine ?? 0,
+          speckle: values.skinBlemish ?? 0,
+          chromaSpots: values.skinColorSpot ?? 0,
+        };
         retouches.push(
           createRetouchRegionV4({
             id: prefix + 'skin-retouch',
@@ -453,21 +464,18 @@ export function applyPortraitValues<T extends LayeredRecipe>(
             // a new target opts into the versioned guided implementation.
             ...(algorithm ? { algorithm } : {}),
             mask: masks.skin,
-            radius: Math.max(
-              0.000001,
-              Math.min(
-                0.1,
-                (Math.min(target.bounds.width * dims.width, target.bounds.height * dims.height) *
-                  0.025) /
-                  short,
-              ),
-            ),
+            radius,
             smoothing: values.smooth ?? 0,
             texture: values.texture ?? 0,
             uniformity: values.even ?? 0,
             fineLines: values.wrinkles ?? 0,
+            ...(algorithm === 'guided-v4' && useSpotControls ? spot : {}),
           }),
         );
+        if (algorithm !== 'guided-v4' && useSpotControls) {
+          retouches.push(createRetouchRegionV4({ id: prefix + 'skin-spots', name: `${target.label} · 局部色斑与反光`,
+            origin: provenance('skin-spots', 0), algorithm: 'guided-v4', mask: masks.skin, radius, ...spot }));
+        }
       }
     }
     if (

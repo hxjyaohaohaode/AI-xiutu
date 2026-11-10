@@ -46,7 +46,8 @@ export function guidedRetouch(
   options: RenderOptions,
 ): RGBAImage {
   const radius = Math.max(1, Math.round(op.radius * Math.min(image.width, image.height)));
-  const detailV3 = op.algorithm === 'guided-v3';
+  const robust = op.algorithm === 'guided-v4';
+  const detailV3 = robust || op.algorithm === 'guided-v3';
   const respectMask = detailV3 || op.algorithm === 'guided-v2';
   // q depends on averages of local coefficients: the real footprint is 2r.
   // V2 gives every sample outside the effective mask exactly zero statistical weight.
@@ -104,8 +105,10 @@ export function guidedRetouch(
     }
     return { meanGuide, mean, filter };
   }
-  const { meanGuide, mean, filter } = guidance(radius, respectMask ? 0.0012 : 0.0025);
-  const low = filter(guide),
+  const stats = !robust || op.smoothing || op.texture || op.uniformity || op.shine
+    ? guidance(radius, respectMask ? 0.0012 : 0.0025)
+    : null;
+  const low = !robust || op.smoothing || op.texture ? stats!.filter(guide) : guide,
     delta = new Float32Array(size);
   const fine =
     respectMask && radius > 1 && (op.smoothing || op.texture)
@@ -135,8 +138,8 @@ export function guidedRetouch(
       light[at] = 0.2126 * r + 0.7152 * g + 0.0722 * b;
       localReflection[at] = max ? (max - Math.min(r, g, b)) / max : 0;
     }
-    const diffuseLight = mean(light),
-      diffuseSaturation = mean(localReflection);
+    const diffuseLight = stats!.mean(light),
+      diffuseSaturation = stats!.mean(localReflection);
     for (let at = 0; at < size; at++) {
       if ((at & 16383) === 0) checkV3(options);
       const saturationDrop =
@@ -175,6 +178,25 @@ export function guidedRetouch(
     const continuity = Math.min(trough(x + tx, y + ty, dx, dy), trough(x - tx, y - ty, dx, dy));
     return across * Math.min(1, Math.max(0, (continuity / across - 0.2) / 0.5));
   }
+  // A compact impulse disagrees with opposite neighbors on several axes.
+  // A straight edge or line has a same-side/tangent pair and is protected.
+  function spotCorrection(values: Float32Array, x: number, y: number, step: number, threshold: number) {
+    const at = y * width + x, value = values[at]!;
+    let sum = 0, consistent = 0, examined = 0;
+    for (const [dx, dy] of directions) {
+      const xx = x + Math.sign(dx) * step, yy = y + Math.sign(dy) * step;
+      const ox = x - Math.sign(dx) * step, oy = y - Math.sign(dy) * step;
+      if (!validSample(xx, yy) || !validSample(ox, oy)) continue;
+      examined++;
+      const a = values[yy * width + xx]! - value, b = values[oy * width + ox]! - value;
+      if (a * b <= 0 || Math.min(Math.abs(a), Math.abs(b)) <= threshold || Math.abs(a - b) > threshold * 2) continue;
+      const n = yy * width + xx, o = oy * width + ox;
+      if (values !== guide && Math.abs(guide[n]! - guide[o]!) > 0.11) continue;
+      consistent++;
+      sum += (a + b) / 2;
+    }
+    return consistent >= 3 && consistent === examined ? sum / consistent : 0;
+  }
   for (let y = 0; y < height; y++) {
     if ((y & 15) === 0) checkV3(options);
     for (let x = 0; x < width; x++) {
@@ -182,7 +204,9 @@ export function guidedRetouch(
         lum = guide[at]!;
       if (respectMask && alpha[at] === 0) continue;
       let impulse = 0;
-      if (op.speckle) {
+      if (op.speckle && robust) {
+        impulse = spotCorrection(guide, x, y, 1, 0.034) || spotCorrection(guide, x, y, distance, 0.05);
+      } else if (op.speckle) {
         let index = 0;
         for (let dy = -1; dy <= 1; dy++)
           for (let dx = -1; dx <= 1; dx++) {
@@ -212,7 +236,7 @@ export function guidedRetouch(
       const smoothing = ((-0.85 * op.smoothing) / 100) * (fine ? fine[at]! - low[at]! : residual);
       const detail =
         (((op.texture >= 0 ? 1.5 : 1) * op.texture) / 100) * (fine ? lum - fine[at]! : residual);
-      const shine = detailV3 ? 0 : Math.max(0, lum - Math.max(0.58, meanGuide[at]! + 0.045));
+      const shine = detailV3 ? 0 : Math.max(0, lum - Math.max(0.58, stats!.meanGuide[at]! + 0.045));
       delta[at] =
         smoothing +
         detail +
@@ -226,10 +250,12 @@ export function guidedRetouch(
   const changes = respectMask
     ? [new Float32Array(size), new Float32Array(size), new Float32Array(size)]
     : null;
+  const chromaSpotDelta = op.chromaSpots ? new Float32Array(size) : null;
+  const lumaWeights = [0.2126, 0.7152, 0.0722] as const;
   for (let c = 0; c < 3; c++) {
     for (let at = 0; at < size; at++)
       chroma[at] = alpha[at] ? image.data[sourceAt(at) + c]! / 255 - guide[at]! : 0;
-    const smoothChroma = op.uniformity ? filter(chroma) : null;
+    const smoothChroma = op.uniformity ? stats!.filter(chroma) : null;
     for (let y = 0; y < roi.height; y++) {
       if ((y & 31) === 0) checkV3(options);
       for (let x = 0; x < roi.width; x++) {
@@ -239,12 +265,17 @@ export function guidedRetouch(
           src = sourceAt(at);
         const reflection = localReflection?.[at] ?? 0;
         const channel = image.data[src + c]! / 255;
+        const chromaSpot = op.chromaSpots
+          ? spotCorrection(chroma, x + roi.left - left, y + roi.top - top, distance, 0.018) * op.chromaSpots / 100
+          : 0;
+        if (chromaSpotDelta) chromaSpotDelta[at]! += lumaWeights[c]! * chromaSpot * amount * 255;
         const specularChange =
           reflection > 0
             ? linearToSrgb(Math.max(0, srgbToLinear(channel) - reflection)) - channel
             : 0;
         const change =
           delta[at]! +
+          chromaSpot +
           specularChange +
           (smoothChroma ? ((smoothChroma[at]! - chroma[at]!) * op.uniformity) / 100 : 0);
         if (changes) changes[c]![at] = change * 255 * amount;
@@ -259,12 +290,13 @@ export function guidedRetouch(
       // Clip the magnitude of the color change as a vector, preserving its
       // direction instead of flattening independent saturated channels.
       let gain = 1;
+      const lumaCorrection = chromaSpotDelta?.[at] ?? 0;
       for (let c = 0; c < 3; c++) {
-        const change = changes[c]![at]!;
+        const change = changes[c]![at]! - lumaCorrection;
         if (change > 0) gain = Math.min(gain, (255 - image.data[src + c]!) / change);
         else if (change < 0) gain = Math.min(gain, image.data[src + c]! / -change);
       }
-      for (let c = 0; c < 3; c++) data[src + c] = image.data[src + c]! + changes[c]![at]! * gain;
+      for (let c = 0; c < 3; c++) data[src + c] = image.data[src + c]! + (changes[c]![at]! - lumaCorrection) * gain;
     }
   }
   return { width: image.width, height: image.height, data };

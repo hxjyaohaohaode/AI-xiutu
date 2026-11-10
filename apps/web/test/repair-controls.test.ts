@@ -77,22 +77,22 @@ function harness(initial: RecipeV4, activeId: string | null = initial.retouch[0]
   return { render, commits, recipe: () => recipe };
 }
 
-test('a new portrait guided-v3 region has one visibly and accessibly selected algorithm', () => {
+test('a new portrait guided-v4 region has one visibly and accessibly selected algorithm', () => {
   const source = analysis();
   const recipe = applyPortraitValues(createRecipeV4(), source, source.targets[0]!.id, {
     smooth: 25,
     wrinkles: 20,
   });
-  assert.equal(recipe.retouch[0]!.algorithm, 'guided-v3');
+  assert.equal(recipe.retouch[0]!.algorithm, 'guided-v4');
   const before = structuredClone(recipe);
   const controls = harness(recipe);
   const view = controls.render();
-  assert.equal(view.algorithms.length, 4);
+  assert.equal(view.algorithms.length, 5);
   assert.deepEqual(
     view.algorithms.filter((node) => node.props['aria-pressed']).map((node) => node.props.children),
-    ['细纹与反光分离'],
+    ['纹理与斑点分离'],
   );
-  assert.match(view.markup, /aria-pressed="true">细纹与反光分离<\/button>/);
+  assert.match(view.markup, /aria-pressed="true">纹理与斑点分离<\/button>/);
   assert.deepEqual(controls.recipe(), before, 'opening the selector must not migrate saved pixels');
   assert.deepEqual(controls.commits, []);
 });
@@ -113,6 +113,7 @@ test('explicit algorithm changes can return to guided-v3 and preserve other reci
     ['保边美肤', 'guided-v1'],
     ['原版质感', undefined],
     ['细纹与反光分离', 'guided-v3'],
+    ['纹理与斑点分离', 'guided-v4'],
   ] as const) {
     controls.render().click(label);
     assert.deepEqual(controls.recipe(), {
@@ -134,21 +135,21 @@ test('explicit algorithm changes can return to guided-v3 and preserve other reci
   assert.deepEqual(controls.recipe(), before);
   assert.deepEqual(
     controls.commits,
-    Array.from({ length: 4 }, () => ({ label: '切换质感算法', commit: true })),
+    Array.from({ length: 5 }, () => ({ label: '切换质感算法', commit: true })),
   );
 });
 
-test('creating a manual retouch region keeps guided-v2 as its explicit default', () => {
+test('creating a manual retouch region selects guided-v4 explicitly', () => {
   const controls = harness(createRecipeV4());
   controls.render().click('新区域');
   assert.equal(controls.recipe().retouch.length, 1);
-  assert.equal(controls.recipe().retouch[0]!.algorithm, 'guided-v2');
+  assert.equal(controls.recipe().retouch[0]!.algorithm, 'guided-v4');
   assert.deepEqual(
     controls
       .render()
       .algorithms.filter((node) => node.props['aria-pressed'])
       .map((node) => node.props.children),
-    ['选区保边与双尺度纹理'],
+    ['纹理与斑点分离'],
   );
   assert.equal(controls.commits.length, 1);
   assert.equal(controls.commits[0]!.commit, true);

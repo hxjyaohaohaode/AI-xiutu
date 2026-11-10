@@ -548,6 +548,7 @@
   }
   .toast {
     position: fixed;
+    pointer-events: none;
     bottom: 25px;
     left: 50%;
     transform: translateX(-50%);
@@ -563,6 +564,9 @@
     max-width: min(600px, 90vw);
     font-size: 12px;
     line-height: 1.75;
+  }
+  .toast button {
+    pointer-events: auto;
   }
   .toast > svg {
     color: #71825e;
@@ -4472,3 +4476,4 @@
     }
   }
 }
+.asset-animation-preview { display: block; max-width: 100%; max-height: 38vh; object-fit: contain; }

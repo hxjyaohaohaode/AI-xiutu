@@ -40,6 +40,8 @@ import './live-assistant.css';
 import { CreativeControls, initialCreativeSettings } from './CreativeControls';
 import { observeAssistantTurn, type RunEvent } from './turnStream';
 import { ContextEvidence } from './ContextEvidence';
+import { ResearchGraph } from './ResearchGraph';
+import type { AssistantBranchEvent, AssistantResearchBranch } from '@ai-xiutu/contracts';
 import { MemoryControls } from './MemoryControls';
 import { WorkspaceCards } from './WorkspaceCards';
 import { CloudImageResults, SearchEvidence } from './SearchEvidence';
@@ -227,6 +229,10 @@ export function LiveAssistant(props: LiveAssistantProps) {
     [allowWebSearch, setAllowWebSearch] = useState(false),
     [memory, setMemory] = useState(false);
   const [publicQuery, setPublicQuery] = useState('');
+  const [secondPublicQuery, setSecondPublicQuery] = useState('');
+  const [researchLibrary, setResearchLibrary] = useState('');
+  const [researchCanvas, setResearchCanvas] = useState(false);
+  const [researchGraph, setResearchGraph] = useState<{ turnId: string; nodes: AssistantBranchEvent[] } | null>(null);
   const [publicImages, setPublicImages] = useState(false);
   const [voiceCaptions, setVoiceCaptions] = useState<CaptionState>({});
   const [voiceSearchUsed, setVoiceSearchUsed] = useState(false);
@@ -1074,6 +1080,14 @@ export function LiveAssistant(props: LiveAssistantProps) {
           },
         ].slice(-60);
       });
+    } else if (event.type === 'branch.changed') {
+      const node = event.payload as AssistantBranchEvent;
+      if (typeof node.id !== 'string' || !Array.isArray(node.dependsOn)) return;
+      setResearchGraph((previous) => {
+        const nodes = previous?.turnId === event.runId ? previous.nodes : [];
+        const existing = nodes.findIndex((item) => item.id === node.id);
+        return { turnId: event.runId, nodes: existing < 0 ? [...nodes, node] : nodes.map((item, index) => index === existing ? node : item) };
+      });
     } else if (event.type === 'run.stopping') {
       setActiveTurn({ id: event.runId, stopping: true });
       setToolStatus('已收到停止请求，正在核对已发送的请求');
@@ -1081,6 +1095,7 @@ export function LiveAssistant(props: LiveAssistantProps) {
       const names: Record<string, string> = {
         describe_editor: '读取编辑参数',
         search_resources: '检索素材',
+        delegate_research: '并行查找素材与检查画面',
         public_search: '检索公开来源',
         propose_sequence: '组合编辑步骤',
         propose_retouch: '准备局部质感候选',
@@ -1138,6 +1153,16 @@ export function LiveAssistant(props: LiveAssistantProps) {
     let writePrepared = false;
     try {
       const context = await getContext();
+      const research: AssistantResearchBranch[] = [];
+      if (allowWebSearch && selected?.webSearch && secondPublicQuery.trim()) {
+        if (secondPublicQuery.trim() === publicQuery.trim()) throw new Error('第二项公开查询需要不同的内容。');
+        research.push({ kind: 'web', query: secondPublicQuery.trim(), resultKind: publicImages && selected.webImageSearch ? 'images' : 'text' });
+      }
+      if (researchLibrary.trim() && spaceIds.length) research.push({ kind: 'cloud', query: researchLibrary.trim(), limit: 8 });
+      if (researchCanvas && shareImage && selected?.imageInput) {
+        if (!context?.imageDataUrl) throw new Error('请准备好当前图片后再检查画面。');
+        research.push({ kind: 'canvas' });
+      }
       if (!requestIsActive(token) || controller.signal.aborted) return;
       const authorizedScope = await requestScopeWithGrant();
       if (!requestIsActive(token) || controller.signal.aborted) return;
@@ -1161,6 +1186,7 @@ export function LiveAssistant(props: LiveAssistantProps) {
           context,
           scope: authorizedScope,
           parentTurnId,
+          ...(research.length ? { research } : {}),
         },
       });
       // A storage failure stops before dispatch, so closing/reopening this panel cannot
@@ -1790,6 +1816,11 @@ export function LiveAssistant(props: LiveAssistantProps) {
         }}
       />
       <ContextEvidence turnId={parentTurnId} live={contextManifest} />
+      <ResearchGraph
+        turnId={activeTurn?.id ?? parentTurnId}
+        live={researchGraph && researchGraph.turnId === (activeTurn?.id ?? parentTurnId) ? researchGraph.nodes : []}
+        running={Boolean(activeTurn)}
+      />
       {project && (
         <MemoryControls
           key={`${project.id}:${artwork?.id ?? ''}`}
@@ -1891,6 +1922,11 @@ export function LiveAssistant(props: LiveAssistantProps) {
                   placeholder="例如：复古产品静物布光参考"
                 />
               </label>
+              <label>
+                第二项公开查询（可选）
+                <input value={secondPublicQuery} maxLength={240} disabled={inCall || busy || submissionBlocked}
+                  onChange={(event) => setSecondPublicQuery(event.target.value)} />
+              </label>
               {selected.webImageSearch && (
                 <label>
                   <input
@@ -1904,6 +1940,15 @@ export function LiveAssistant(props: LiveAssistantProps) {
               )}
               <small>公开检索使用这里填写的查询词。共享画面和项目资料在编辑协作步骤中处理。</small>
             </div>
+          )}
+          {mode === 'text' && (spaceIds.length > 0 || (shareImage && selected?.imageInput)) && (
+            <details className="assistant-public-query">
+              <summary>本轮分工</summary>
+              {spaceIds.length > 0 && <label>在已授权空间检索素材<input value={researchLibrary} maxLength={200}
+                disabled={busy || submissionBlocked} onChange={(event) => setResearchLibrary(event.target.value)} /></label>}
+              {shareImage && selected?.imageInput && <label><input type="checkbox" checked={researchCanvas} disabled={busy || submissionBlocked}
+                onChange={(event) => setResearchCanvas(event.target.checked)} />检查当前共享画面</label>}
+            </details>
           )}
           <label>
             <input

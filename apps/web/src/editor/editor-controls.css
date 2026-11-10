@@ -117,7 +117,7 @@
   cursor: ew-resize;
   border: 0;
   box-shadow: none;
-  touch-action: pan-y;
+  touch-action: none;
 }
 .precision-track input[type='range']::-webkit-slider-runnable-track {
   height: 3px;

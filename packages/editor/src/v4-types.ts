@@ -42,7 +42,7 @@ export interface HealingOperationV4 {
 /** Distinct local signal operations; no automatic acne/identity/3D reconstruction. */
 export interface RetouchRegionV4 {
   /** Missing keeps the published sparse bilateral implementation. */
-  algorithm?: 'guided-v1' | 'guided-v2' | 'guided-v3';
+  algorithm?: 'guided-v1' | 'guided-v2' | 'guided-v3' | 'guided-v4';
   origin?: OperationOriginV3;
   id: string;
   name: string;
@@ -58,6 +58,8 @@ export interface RetouchRegionV4 {
   shine: number;
   speckle: number;
   fineLines: number;
+  /** Local color impulses separate from texture and broad chroma uniformity. Guided v4 only. */
+  chromaSpots?: number;
 }
 
 /** New math is opt-in. Neutral migration delegates to the published v3 renderer. */

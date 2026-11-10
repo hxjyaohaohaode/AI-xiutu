@@ -633,22 +633,32 @@ try {
     await scope.getByLabel('允许公开网络检索，保留来源链接').check();
     await scope.getByLabel('公开检索查询词').fill('lake backlight');
     await scope.getByLabel('同时查找公开图片').check();
+    const research = await details('本轮分工');
+    await research.getByLabel('在已授权空间检索素材').fill('湖面参考');
     await submit('这是私有项目描述，请根据公开图片提供参考。');
-    const evidence = page.locator('.assistant-search-evidence').last();
+    const evidence = page.locator('.assistant-search-evidence').filter({
+      has: page.getByRole('link', { name: '来源网页', exact: true }),
+    }).last();
     await evidence.getByRole('link', { name: '来源网页', exact: true }).waitFor();
     await finished();
     const search = bodies.findLast((body) => typeof body.input === 'string');
     assert.equal(search.input, 'lake backlight');
     assert.ok(!JSON.stringify(search).includes('私有项目描述'));
+    assert.ok(!JSON.stringify(search).includes('湖面参考'));
     assert.equal(
       await evidence.getByRole('link', { name: '查看图片', exact: true }).getAttribute('href'),
       'https://images.example.com/lake.jpg',
     );
+    const graph = await details('研究分工');
+    await graph.getByText('公开来源', { exact: true }).waitFor();
+    await graph.getByText('授权素材', { exact: true }).waitFor();
+    await graph.getByText(/2 个分支汇合/).waitFor();
     await page.screenshot({ path: resolve(artifacts, 'cloud-public-search.png') });
+    await research.getByLabel('在已授权空间检索素材').clear();
     await scope.getByRole('button', { name: '移出参考', exact: true }).click();
     await scope.getByLabel('允许公开网络检索，保留来源链接').uncheck();
     await details('共享范围', false);
-    return { protectedThumbnail: true, explicitPublicQuery: true, publicSourceLink: true };
+    return { protectedThumbnail: true, explicitPublicQuery: true, publicSourceLink: true, mergedBranches: 2 };
   });
   await testCase('stop-in-flight-hides-partial-result-and-survives-refresh', async () => {
     await page.getByRole('button', { name: '开始新会话，保留已保存的历史', exact: true }).click();

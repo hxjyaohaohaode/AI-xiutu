@@ -41,6 +41,25 @@
 
 每组改动前后回读对应行。补测按正向、反向、侧向分类，单项通过只说明该项证据。每次阶段性记录保留仍打开的需求。
 
+## 本轮验收清单
+
+- [x] R01 桌面滑杆、曲线和浏览器模拟手机触摸在松手前持续出帧。触摸取值直接跟随指针，取消后像素恢复。独立比较最终预览全部 RGBA 通道。拖动帧和可共享帧分开存放。
+- [x] R02 新建人像及质感区域使用显式 `guided-v4`。独立处理局部油光、孤立亮暗点及色斑。验证了三种合成肤色、真实样片的分档效果、硬边、线条和透明通道。
+- [x] R03 全局、局部和分组由同一注册表提供 −5 到 +5 EV，滑杆 0.01 EV 步长。正、负和中性像素检查沿用原参考引擎。
+- [x] R04 人物抠图和手工三分图抠图、网格拼图、OCR 与几何表格形成有来源的素材。授权检索读取 OCR 索引，结果删除同步移除搜索贡献。
+- [x] R05 GIF 输入原始字节、实际多帧裁切与编辑、透明、时长、循环、逆序和重复帧通过独立解码验证。项目复制同步携带动图和容量记账。
+- [x] R06 公开检索、私有资源和实际画面的有界分支及汇合记录写入现有流。真实 GPT-5.4 Mini 单请求验证接受工具契约，返回 7,385 输入和 37 输出 token，按标准档公开价格估算 0.00570525 美元。 [模型费率](https://developers.openai.com/api/docs/models/gpt-5.4-mini)
+- [x] R07 任务可读取服务点分摊、阶段、模型、计量类别和价格版本。用量使用河流图、任务流向图和阶段表。提供已知项估算与待核验标记。
+- [x] R08 合并并行前端的 `fab274237abd7973e2171b4cc783c11bf8f0c903`，沿用其工作台和视觉结构。新增界面接入现有素材库、Agent 和用量页，使用 [V4 API 契约](../apps/api/API_V4.md)。本地真实 PostgreSQL 和 Linux 原生依赖回归 755 项，0 失败、0 跳过，生产构建通过。工作台浏览器 23 项通过，覆盖五种视口、两账号协作、105 版历史和 GIF 导出。
+
+GitHub 的提交与六轮浏览器、数据库及容器结果以该提交的 Checks 为准。分支清理前复核并行分支的最终提交已包含于 `main`。
+
+仍需扩大验收的范围包括多类型真实人像、遮挡与发丝质量基线、任意物体自动抠图、复杂合并表格、APNG 和动画 WebP、物理移动设备与公网多人语音。高位深与 HDR 全配方、CMYK 印前和可编辑 PSD 的状态仍按 B05 记录。
+
+对照《开源项目参考》里的 LangGraph 图执行与持久状态、Vercel AI SDK 的流恢复，沿用现有业务事务隔离执行状态、长记忆、图片版本及付费记录。本轮分支共享同一轮显式授权，公开请求与私有画面分别派发，已派发结果未知时保留原有核验规则。 [LangGraph 图执行](https://docs.langchain.com/oss/javascript/langgraph/graph-api) · [流恢复](https://ai-sdk.dev/docs/ai-sdk-ui/chatbot-resume-streams)
+
+抠图使用 MediaPipe 的背景置信度和线性 RGB 边缘解算。OCR 使用固定校验摘要的 Tesseract 英文及简体中文权重。识别低置信度的大字形时，额外比较一次对比度重采样后的输出，并将位置换算回原图。GIF 逐帧解码与编码使用 libvips，经同一编辑器配方渲染。 [MediaPipe](https://developers.google.com/edge/mediapipe/solutions/vision/image_segmenter) · [Tesseract 模型](https://tesseract-ocr.github.io/tessdoc/Data-Files.html) · [sharp 动图输出](https://sharp.pixelplumbing.com/api-output/)
+
 ## 数据拓扑
 
 ```mermaid

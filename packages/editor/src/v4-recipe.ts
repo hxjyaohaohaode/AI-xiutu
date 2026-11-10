@@ -205,17 +205,20 @@ export function parseRecipeV4(input: unknown): RecipeV4 {
         'shine',
         'speckle',
         'fineLines',
+        ...(v && typeof v === 'object' && Object.hasOwn(v, 'chromaSpots') ? ['chromaSpots'] : []),
         ...(v && typeof v === 'object' && Object.hasOwn(v, 'algorithm') ? ['algorithm'] : []),
       ],
       path,
       errors,
     );
     const algorithm =
-      r.algorithm === 'guided-v1' || r.algorithm === 'guided-v2' || r.algorithm === 'guided-v3'
+      r.algorithm === 'guided-v1' || r.algorithm === 'guided-v2' || r.algorithm === 'guided-v3' || r.algorithm === 'guided-v4'
         ? r.algorithm
         : undefined;
     if (r.algorithm !== undefined && !algorithm)
       errors.push(`${path}.algorithm: unsupported retouch algorithm`);
+    if (r.chromaSpots !== undefined && algorithm !== 'guided-v4')
+      errors.push(`${path}.chromaSpots: requires guided-v4`);
     return {
       ...originField(r, path, errors),
       ...(algorithm ? { algorithm } : {}),
@@ -232,6 +235,7 @@ export function parseRecipeV4(input: unknown): RecipeV4 {
       shine: number(r.shine, 0, 100, `${path}.shine`, errors),
       speckle: number(r.speckle, 0, 100, `${path}.speckle`, errors),
       fineLines: number(r.fineLines, 0, 100, `${path}.fineLines`, errors),
+      ...(r.chromaSpots === undefined ? {} : { chromaSpots: number(r.chromaSpots, 0, 100, `${path}.chromaSpots`, errors) }),
     };
   });
   const projective = readProjective(root.projective, errors);

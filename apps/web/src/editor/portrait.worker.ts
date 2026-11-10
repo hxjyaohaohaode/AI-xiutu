@@ -58,6 +58,27 @@ function limitMask(
     }
   }
 }
+function subjectMatte(background: Float32Array, width: number, height: number) {
+  for (const edge of [160, 128, 96, 64, 40]) {
+    const w = Math.max(1, Math.round(edge * Math.min(1, width / height)));
+    const h = Math.max(1, Math.round(edge * Math.min(1, height / width)));
+    const pixels = new Uint8Array(w * h);
+    let foreground = false, outside = false;
+    for (let y = 0; y < h; y++) {
+      for (let x = 0; x < w; x++) {
+        const probability = background[Math.floor((y + 0.5) * height / h) * width + Math.floor((x + 0.5) * width / w)]!;
+        if (!Number.isFinite(probability)) return undefined;
+        const value = Math.min(1, Math.max(0, (0.94 - probability) / 0.88));
+        foreground ||= value > 0.96;
+        outside ||= value < 0.04;
+        pixels[y * w + x] = Math.round(value * 15) * 17;
+      }
+    }
+    if (!foreground || !outside) return undefined;
+    try { return createRasterMask(w, h, pixels); }
+    catch (error) { if (edge === 40) throw error; }
+  }
+}
 function contours(points: Point[]) {
   const first = (connections: { start: number; end: number }[]) =>
     contourLoops(points, connections)[0] ?? [];
@@ -202,16 +223,19 @@ self.onmessage = async (event: MessageEvent<Request>) => {
           },
           runningMode: 'IMAGE',
           outputCategoryMask: true,
-          outputConfidenceMasks: false,
+          outputConfidenceMasks: true,
         });
         segment.segment(canvas, (output) => {
           const mask = output.categoryMask;
           if (!mask) throw new Error('没有分割结果');
           const data = mask.getAsUint8Array();
+          const confidence = output.confidenceMasks?.[0];
+          const subject = confidence ? subjectMatte(confidence.getAsFloat32Array(), confidence.width, confidence.height) : undefined;
           result.segmentation = {
             skin: limitMask(data, mask.width, mask.height, [2, 3]),
             hair: limitMask(data, mask.width, mask.height, [1]),
             background: limitMask(data, mask.width, mask.height, [0]),
+            ...(subject ? { subject } : {}),
           };
         });
       } catch (error) {

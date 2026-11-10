@@ -349,7 +349,7 @@ export function applyHealingV4(
 export const retouchActiveV4 = (r: RetouchRegionV4) =>
   r.enabled &&
   r.opacity > 0 &&
-  [r.smoothing, r.texture, r.uniformity, r.shine, r.speckle, r.fineLines].some((v) => v !== 0);
+  [r.smoothing, r.texture, r.uniformity, r.shine, r.speckle, r.fineLines, r.chromaSpots ?? 0].some((v) => v !== 0);
 
 /** Separate edge-aware luminance, signed detail, chroma, highlight and impulse operators.
  * The 5x5 spatial sampling is deterministic and bounded, not a trained skin detector. */

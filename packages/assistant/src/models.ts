@@ -112,6 +112,7 @@ export const ASSISTANT_TOOL_NAMES = [
   'read_history',
   'read_tool_result',
   'search_resources',
+  'delegate_research',
   'describe_editor',
   'propose_edit',
   'propose_curve',

@@ -345,7 +345,7 @@ async function watchPage(context) {
 async function imageReady(page) {
   await page.locator('.image-frame canvas').waitFor();
   await page.locator('.stage-loading').waitFor({ state: 'hidden' });
-  await page.locator('.canvas-file-info .busy').waitFor({ state: 'hidden' });
+  await page.locator('.canvas-stage[aria-busy="true"]').waitFor({ state: 'hidden' });
   assert.equal(
     await page.locator('.canvas-error').getByRole('alert').count(),
     0,
@@ -1270,6 +1270,10 @@ try {
     );
     assert.ok(csv.toString('utf8').includes('CI fixture negative adjustment'));
     assert.ok(csv.toString('utf8').includes('-5'));
+    await a.page.getByRole('button', { name: '查看模型公开费率', exact: true }).click();
+    const prices = a.page.getByRole('dialog', { name: '模型公开费率' });
+    await prices.getByRole('cell', { name: 'gpt-5.4-mini', exact: true }).first().waitFor();
+    await prices.getByRole('button', { name: '关闭窗口', exact: true }).click();
     await a.page.screenshot({ path: join(artifacts, 'usage-ledger.png') });
     return { privateMemory: true, realLedgerCsv: true };
   });
@@ -1375,13 +1379,20 @@ try {
         a.page.waitForResponse((response) => isHistoryPage(response, '6')),
         history.getByRole('button', { name: '重试读取版本', exact: true }).click(),
       ]);
-      assert.equal(olderPageRequests, 2, 'retry keeps the same older-page cursor after one failure');
+      assert.equal(
+        olderPageRequests,
+        2,
+        'retry keeps the same older-page cursor after one failure',
+      );
     } finally {
       await a.page.unroute(olderPageUrl, loseFirstOlderPage);
     }
     assert.equal(secondPageResponse.status(), 200);
     const secondPage = await secondPageResponse.json();
-    assert.deepEqual(secondPage.revisions.map((revision) => revision.version), [5, 4, 3, 2, 1]);
+    assert.deepEqual(
+      secondPage.revisions.map((revision) => revision.version),
+      [5, 4, 3, 2, 1],
+    );
     assert.equal(secondPage.page.nextBeforeVersion, null);
     assert.ok(secondPage.revisions.every((revision) => !Object.hasOwn(revision, 'recipe')));
     await eventually(
@@ -1429,8 +1440,7 @@ try {
       assert.equal(detail.asset.projectId, projectId);
       assert.deepEqual(detail.revision.recipe, firstRecipe);
       assert.equal(sourceResponse.status(), 200);
-      const sourcePixels = await pixelEvidence(await sourceResponse.body());
-      assert.equal(sourcePixels.evidence.rgbaSha256, sha256(pixels));
+      assert.equal(await sourceResponse.headerValue('content-length'), String(png.byteLength));
       await a.page.locator('.compare-view').waitFor({ state: 'hidden' });
       await a.page
         .getByText('历史版本 1 的底图、合成素材与配方已打开，保存将建立独立作品。', { exact: true })
@@ -1439,6 +1449,17 @@ try {
       assert.equal(detailRequests, 1, 'opening a summary reads one complete immutable revision');
       const draftRecipe = await recipeDownload(a.page);
       assert.deepEqual(draftRecipe, firstRecipe, 'the old full recipe enters the real editor');
+      const exported = await pixelEvidence(await imageDownload(a.page));
+      const reference = renderEditorRecipeTiled(
+        { width, height, data: new Uint8ClampedArray(pixels) },
+        firstRecipe,
+        { tileSize: 37 },
+      );
+      assert.equal(
+        exported.evidence.rgbaSha256,
+        sha256(reference.data),
+        'the browser loaded the correct historical source and exported the expected pixels',
+      );
       const unchanged = await request(a, `/artworks/${historyArtworkId}`);
       assert.equal(unchanged.status(), 200);
       const unchangedHead = await unchanged.json();
@@ -1455,7 +1476,7 @@ try {
         rowsRetainedAfterReadFailure: 100,
         fullRevisionRequests: detailRequests,
         openedVersion: 1,
-        historicalSourceRgbaSha256: sourcePixels.evidence.rgbaSha256,
+        historicalOpenedRgbaSha256: exported.evidence.rgbaSha256,
         historicalRecipeSha256: sha256(Buffer.from(JSON.stringify(draftRecipe))),
         openedAsIndependentDraft: true,
         cloudHeadUnchanged: true,
@@ -1463,6 +1484,58 @@ try {
     } finally {
       a.page.off('request', countDetail);
     }
+  });
+  await caseRun('project-library-imports-real-gif-and-edits-its-frames', async () => {
+    const { page } = a;
+    await changeView(page, 'works', '作品');
+    await page.getByRole('button', { name: '拼图与 GIF', exact: true }).click();
+    const dialog = page.getByRole('dialog', { name: '拼图与 GIF', exact: true });
+    const raw = Buffer.alloc(16 * 12 * 4 * 2);
+    for (let at = 0; at < raw.length; at += 4)
+      raw.set(at < raw.length / 2 ? [221, 21, 19, 255] : [16, 29, 209, 255], at);
+    const gif = await sharp(raw, { raw: { width: 16, height: 24, pageHeight: 12, channels: 4 } })
+      .gif({ delay: [70, 120], loop: 0 })
+      .toBuffer();
+    await dialog
+      .getByLabel('导入 GIF')
+      .setInputFiles({ name: 'QA-motion.gif', mimeType: 'image/gif', buffer: gif });
+    await dialog.getByRole('button', { name: '保留全部帧并导入' }).click();
+    await dialog.getByRole('status').filter({ hasText: 'QA-motion.gif' }).waitFor();
+    await dialog.getByRole('button', { name: '关闭窗口', exact: true }).click();
+    await page
+      .locator('.library-asset')
+      .filter({ hasText: 'QA-motion.gif' })
+      .getByRole('button', { name: 'GIF 帧编辑' })
+      .click();
+    const editor = page.getByRole('dialog', { name: 'GIF 帧编辑' });
+    await editor.getByRole('button', { name: '反转帧顺序' }).click();
+    const pendingEdit = page.waitForResponse((response) =>
+      new URL(response.url()).pathname.endsWith('/animation/edit'),
+    );
+    await editor.getByRole('button', { name: '另存为项目动图' }).click();
+    const response = await pendingEdit;
+    assert.equal(response.status(), 201);
+    const result = await response.json();
+    assert.deepEqual(result.animation.delay, [120, 70]);
+    await editor.getByRole('link', { name: '下载 GIF' }).waitFor();
+    await eventually(
+      async () =>
+        (await editor.getByRole('link', { name: '下载 GIF' }).getAttribute('href')) ===
+        `/v1/assets/${result.asset.id}/animation/file`,
+      'new GIF becomes the download target',
+    );
+    const bytes = await downloadBytes(page, () =>
+      editor.getByRole('link', { name: '下载 GIF' }).click(),
+    );
+    const frames = await sharp(bytes, { animated: true }).ensureAlpha().raw().toBuffer();
+    assert.deepEqual([...frames.subarray(0, 4)], [16, 29, 209, 255]);
+    assert.deepEqual([...frames.subarray(16 * 12 * 4, 16 * 12 * 4 + 4)], [221, 21, 19, 255]);
+    await page.screenshot({ path: join(artifacts, 'project-animation-editor.png') });
+    return {
+      frames: result.animation.frames,
+      delay: result.animation.delay,
+      gifSha256: sha256(bytes),
+    };
   });
   assert.deepEqual(report.pageErrors, [], 'no unhandled browser runtime errors');
   report.state = 'passed';

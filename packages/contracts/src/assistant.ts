@@ -28,6 +28,25 @@ export const assistantCandidateCommitSchema = z
 export const assistantPublicSearchSchema = z
   .object({ query: z.string().trim().min(1).max(240), kind: z.enum(['text', 'images']) })
   .strict();
+export const assistantResearchBranch = z.discriminatedUnion('kind', [
+  assistantPublicSearchSchema.extend({ kind: z.literal('web'), resultKind: z.enum(['text', 'images']) }).strict(),
+  z.object({ kind: z.literal('cloud'), query: z.string().trim().min(1).max(200), limit: z.number().int().min(1).max(10) }).strict(),
+  z.object({ kind: z.literal('canvas') }).strict(),
+]);
+export const assistantResearchPlan = z.array(assistantResearchBranch).min(1).max(4).refine((nodes) =>
+  nodes.filter((node) => node.kind === 'web').length <= 2 && nodes.filter((node) => node.kind === 'canvas').length <= 1,
+);
+export type AssistantResearchBranch = z.infer<typeof assistantResearchBranch>;
+export type AssistantDispatchPurpose = 'conversation' | 'web-search' | 'research-merge';
+export interface AssistantBranchEvent {
+  id: string;
+  parentId: string | null;
+  dependsOn: string[];
+  kind: 'root' | 'web' | 'cloud' | 'canvas' | 'merge';
+  state: 'running' | 'completed' | 'failed';
+  execution: 'provider' | 'server';
+  resultCount?: number;
+}
 export const assistantScopeSchema = z
   .object({
     spaceIds: z.array(z.uuid()).max(12).default([]),
@@ -53,6 +72,7 @@ export const assistantTurnSchema = z
       usePersonalMemory: false,
     }),
     parentTurnId: z.uuid().optional(),
+    research: assistantResearchPlan.optional(),
   })
   .strict();
 export const voiceSessionSchema = z

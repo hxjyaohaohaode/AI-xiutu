@@ -43,6 +43,46 @@ const outputText = (text: string) => ({
   role: 'assistant',
   content: [{ type: 'output_text', text }],
 });
+
+test('research graph and exact provider estimate link to authorized service-credit movements', { skip: !databaseUrl }, async () => {
+  const pricedId = 'gpt-5.4-mini';
+  const f = await fixture({ fetcher: async (_url, options) => {
+    const input = JSON.parse(String(options?.body)).input;
+    const publicResult = { type: 'message', role: 'assistant', content: [{ type: 'output_text', text: '公开参考',
+      annotations: [{ type: 'url_citation', url: 'https://example.org/reference', title: '参考' }] }] };
+    const output = typeof input === 'string' ? [{ type: 'web_search_call', status: 'completed' }, publicResult] : [outputText('已核对公开与项目素材。')];
+    return new Response(JSON.stringify({ status: 'completed', service_tier: 'default', output,
+      usage: { input_tokens: 60, output_tokens: 20, total_tokens: 80, input_tokens_details: { cached_tokens: 10 }, output_tokens_details: { reasoning_tokens: 5 } } }),
+      { headers: { 'content-type': 'application/json', 'x-request-id': 'local-research-proof' } });
+  } });
+  try {
+    await f.db.query('INSERT INTO assistant_model_configs(id,config) VALUES($1,$2) ON CONFLICT(id) DO UPDATE SET config=EXCLUDED.config', [pricedId, JSON.stringify(f.settings)]);
+    const research = [{ kind: 'web', query: 'public example', resultKind: 'text' }, { kind: 'cloud', query: 'resource photo', limit: 2 }];
+    const endpoint = `/v1/projects/${f.projectId}/assistant-turns`;
+    const denied = await f.call('POST', endpoint, { ...f.turn(), modelId: pricedId, research });
+    assert.equal(denied.statusCode, 400, denied.body);
+    const started = await f.call('POST', endpoint, { ...f.turn(), modelId: pricedId, research, scope: { ...f.scope, allowWebSearch: true } });
+    assert.equal(started.statusCode, 202, started.body);
+    const id = started.json().id;
+    const done = await until(() => f.readTurn(id), (result) => result.state !== 'running');
+    assert.equal(done.state, 'completed', JSON.stringify(done));
+    const graphPath = `/v1/assistant-turns/${id}/branches`;
+    const graph = (await f.call('GET', graphPath)).json();
+    assert.equal(graph.branches.find((node: any) => node.kind === 'merge').dependsOn.length, 2);
+    assert.equal((await f.call('GET', graphPath, undefined, 'operator')).statusCode, 404);
+    const details = `/v1/usage/jobs/${id}`;
+    const data = await f.call('GET', details);
+    assert.equal(data.statusCode, 200, data.body);
+    const detail = data.json();
+    assert.deepEqual(detail.stages.map((stage: any) => [stage.purpose, stage.estimatedNanoUsd, stage.estimateComplete]),
+      [['web-search', '10128250', true], ['research-merge', '128250', true]]);
+    assert.deepEqual(detail.movements.map((entry: any) => [entry.kind, entry.units]), [['hold', 5], ['settled', 5]]);
+    assert.equal((await f.call('GET', details, undefined, 'editor')).statusCode, 403);
+    const ops = await f.call('GET', `/v1/ops/usage/jobs/${id}`, undefined, 'operator');
+    assert.equal(ops.statusCode, 200, ops.body);
+    assert.doesNotMatch(ops.body, /降低这张照片|public example|resource photo|local-research-proof/);
+  } finally { await f.close(); }
+});
 const response = (output: unknown[]) =>
   new Response(
     JSON.stringify({ status: 'completed', output, usage: { input_tokens: 50, output_tokens: 20 } }),

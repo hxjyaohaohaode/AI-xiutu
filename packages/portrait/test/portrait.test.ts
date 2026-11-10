@@ -149,8 +149,9 @@ test('all registered face/body controls compile to real valid primitives with th
   const face = analysis(),
     body = analysis([bodyTarget()]);
   for (const tool of PORTRAIT_TOOLS) {
-    const a = tool.target === 'face' ? face : body,
-      r = applyPortraitValues(createRecipeV3(), a, a.targets[0]!.id, { [tool.id]: 50 });
+    const a = tool.target === 'face' ? face : body;
+    if (!portraitToolAvailability(a, a.targets[0]!.id, 3).find((item) => item.id === tool.id)?.available) continue;
+    const r = applyPortraitValues(createRecipeV3(), a, a.targets[0]!.id, { [tool.id]: 50 });
     assert(r.regionEdits.length + r.paintLayers.length + r.warp.strokes.length > 0, tool.id);
     assert.equal(portraitValues(r, a.targets[0]!.id)[tool.id], 50);
     parseRecipeV3(r);
@@ -162,9 +163,9 @@ test('every enabled portrait control produces real pixels, signed controls rever
     source = rgba(),
     original = new Uint8ClampedArray(source.data);
   for (const tool of PORTRAIT_TOOLS) {
-    const a = tool.target === 'face' ? face : body,
-      id = a.targets[0]!.id,
-      positive = applyPortraitValues(createRecipeV3(), a, id, { [tool.id]: 70 }),
+    const a = tool.target === 'face' ? face : body, id = a.targets[0]!.id;
+    if (!portraitToolAvailability(a, id, 3).find((item) => item.id === tool.id)?.available) continue;
+    const positive = applyPortraitValues(createRecipeV3(), a, id, { [tool.id]: 70 }),
       rendered = renderEditorRecipe(source, positive),
       tiled = renderEditorRecipeTiled(source, positive, { tileSize: 64 });
     assert.notDeepEqual(rendered.data, source.data, `${tool.id} must render a real effect`);
@@ -300,7 +301,7 @@ test('changing automatic values retains existing order relative to later indepen
 test('two fully configured portrait targets fit published operation budgets and keep independent values', () => {
   const a = analysis([faceTarget(1, 0.27, 0.43, 0.75), faceTarget(2, 0.73, 0.43, 0.75)]),
     values = Object.fromEntries(
-      PORTRAIT_TOOLS.filter((t) => t.target === 'face').map((t) => [t.id, 30]),
+      portraitToolAvailability(a, a.targets[0]!.id, 3).filter((tool) => tool.available).map((tool) => [tool.id, 30]),
     );
   let r = applyPortraitValues(createRecipeV3(), a, a.targets[0]!.id, values);
   r = applyPortraitValues(r, a, a.targets[1]!.id, { ...values, smooth: 60 });

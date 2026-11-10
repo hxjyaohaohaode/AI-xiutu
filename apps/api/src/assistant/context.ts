@@ -214,7 +214,8 @@ export async function searchAssistantResources(
     `SELECT a.id,a.name,a.width,a.height,a.annotations,a.created_at,p.id AS project_id,p.title AS project_title,p.space_id,s.name AS space_name,s.kind
     FROM assets a JOIN projects p ON p.id=a.project_id JOIN spaces s ON s.id=p.space_id JOIN memberships m ON m.space_id=s.id
     WHERE m.user_id=$1 AND s.id=ANY($2::uuid[]) AND a.deleted_at IS NULL AND p.deleted_at IS NULL
-    AND (a.name || ' ' || COALESCE(a.annotations->>'title','') || ' ' || COALESCE(a.annotations->>'tags','')) ILIKE ALL($3::text[])
+    AND ((a.name || ' ' || COALESCE(a.annotations->>'title','') || ' ' || COALESCE(a.annotations->>'tags','')) ILIKE ALL($3::text[])
+      OR EXISTS(SELECT 1 FROM asset_recognitions r WHERE r.asset_id=a.id AND r.source_hash=a.content_hash AND r.text_content ILIKE ALL($3::text[])))
     ORDER BY CASE WHEN $4<>'' AND a.name ILIKE $4 THEN 0
                   WHEN $4<>'' AND COALESCE(a.annotations->>'title','') ILIKE $4 THEN 1
                   WHEN $4<>'' AND a.name ILIKE '%'||$4||'%' THEN 2 ELSE 3 END,

@@ -65,6 +65,23 @@ export function registerAssistantEvents(app: FastifyInstance, db: Database) {
         ).rows[0]?.manifest ?? null,
     };
   });
+  app.get('/v1/assistant-turns/:turnId/branches', async (req, reply) => {
+    const actorId = requireUser(req).id, turnId = id.parse((req.params as any).turnId);
+    const row = await access(actorId, turnId);
+    const events = (await db.query(
+      `SELECT payload,created_at FROM assistant_run_events WHERE turn_id=$1 AND type='branch.changed' ORDER BY seq LIMIT 40`, [turnId],
+    )).rows;
+    const nodes = new Map<string, any>();
+    for (const event of events) {
+      const previous = nodes.get(event.payload.id);
+      nodes.set(event.payload.id, { ...event.payload,
+        startedAt: previous?.startedAt ?? event.created_at,
+        finishedAt: event.payload.state === 'running' ? null : event.created_at });
+    }
+    const terminal = row.state !== 'running';
+    return reply.header('Cache-Control', 'private, no-store').send({ turnId, state: row.state,
+      branches: [...nodes.values()].map((node) => node.state === 'running' && terminal ? { ...node, state: 'interrupted' } : node) });
+  });
   app.get('/v1/assistant-turns/:turnId/events', async (req, reply) => {
     const actorId = requireUser(req).id,
       turnId = id.parse((req.params as any).turnId);

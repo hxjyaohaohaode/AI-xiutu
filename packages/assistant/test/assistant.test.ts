@@ -138,6 +138,60 @@ function tool(name: string, args: unknown, callId = name) {
   return { type: 'function_call', name, call_id: callId, arguments: JSON.stringify(args) };
 }
 
+test('parallel research isolates literal public inputs, joins scoped evidence and records dispatch purposes', async () => {
+  const observed: any[] = [], phases: any[] = [], purposes: string[] = [];
+  let publicRequests = 0;
+  let opened!: () => void;
+  const allPublic = new Promise<void>((resolve) => { opened = resolve; });
+  const timeout = AbortSignal.timeout(3000);
+  const result = await runEditorAgent('fixture', 'fixture', settings, context({
+    prompt: '私人项目提示，不可发给公开检索分支',
+    imageDataUrl: 'data:image/png;base64,AA==',
+    allowWebSearch: true,
+    publicSearch: { query: 'public one', kind: 'text' },
+    research: [{ kind: 'web', query: 'public two', resultKind: 'text' }, { kind: 'cloud', query: 'private-asset', limit: 2 }, { kind: 'canvas' }],
+    async search(query) { assert.equal(query, 'private-asset'); return { resources: [] }; },
+    async inspectCandidate() { return { observation: { changedPixels: 17 }, imageDataUrl: 'data:image/png;base64,AA==' }; },
+    async onBranch(value) { phases.push(value); },
+    async beforeDispatch(_index, _hash, meta) { purposes.push(meta.purpose); },
+  }), async (_url, options) => {
+    const body = JSON.parse(String(options?.body));
+    observed.push(body);
+    if (typeof body.input === 'string') {
+      assert.match(body.input, /^public (one|two)$/);
+      assert.doesNotMatch(JSON.stringify(body), /private-asset|私人项目|base64/);
+      if (++publicRequests === 2) opened();
+      await Promise.race([allPublic, new Promise<void>((_, reject) => timeout.addEventListener('abort', () => reject(timeout.reason), { once: true }))]);
+      return response([{ type: 'web_search_call', status: 'completed' }, text('公开结果', [{ type: 'url_citation', url: `https://example.org/${body.input.split(' ')[1]}`, title: '公用来源' }])]);
+    }
+    assert.equal(publicRequests, 2);
+    assert.match(JSON.stringify(body.input), /private-asset/);
+    assert.match(JSON.stringify(body.input), /changedPixels/);
+    return response([text('三类来源已核对。')]);
+  });
+  assert.equal(observed.length, 3);
+  assert.deepEqual(purposes, ['web-search', 'web-search', 'research-merge']);
+  assert.equal(result.citations.length, 2);
+  const join = phases.find((phase) => phase.kind === 'merge' && phase.state === 'completed');
+  assert.equal(join.dependsOn.length, 4);
+  assert.equal(phases.at(-1).kind, 'root');
+  assert.equal(phases.at(-1).state, 'completed');
+});
+
+test('model-delegated private search is scoped and cannot start a public request', async () => {
+  let sent = 0;
+  const nodes: string[] = [];
+  await runEditorAgent('fixture', 'fixture', settings, context({
+    allowWebSearch: false,
+    async onBranch(node) { if (node.state === 'completed') nodes.push(node.kind); },
+  }), async (_url, options) => {
+    const body = JSON.parse(String(options?.body));
+    assert.ok(Array.isArray(body.input));
+    return ++sent === 1 ? response([tool('delegate_research', { queries: [{ query: 'scoped', limit: 2 }], inspectCanvas: false })]) : response([text('已汇总素材。')]);
+  });
+  assert.deepEqual(nodes, ['cloud', 'merge', 'root']);
+});
+
 test('candidate inspection feeds real returned images into a later round before nomination and refinement', async () => {
   const bodies: any[] = [],
     inspected: number[] = [];

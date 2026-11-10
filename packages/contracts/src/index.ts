@@ -4,6 +4,8 @@ export * from './catalog.js';
 export * from './assistant.js';
 export * from './collaboration.js';
 export * from './resource.js';
+export * from './asset-processing.js';
+export * from './provider-billing.js';
 export * from './creative.js';
 export * from './memory.js';
 export * from './assistant-ui.js';

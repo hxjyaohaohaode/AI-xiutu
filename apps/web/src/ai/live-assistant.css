@@ -930,3 +930,5 @@
   gap: 6px;
   font-size: 12px;
 }
+.assistant-research-graph ul { list-style: none; padding-inline-start: 12px; border-inline-start: 1px solid currentColor; margin-inline-start: 8px; }
+.assistant-research-graph li { padding-block: 3px; overflow-wrap: anywhere; }

@@ -6,7 +6,7 @@ export interface RGBAImage {
 }
 
 export interface Adjustments {
-  /** Linear-light gain in EV, -3 through +3. */
+  /** Linear-light gain in EV, -5 through +5. */
   exposure: number;
   brightness: number;
   contrast: number;

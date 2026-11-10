@@ -456,6 +456,24 @@ export function createOpenAIImageProvider(
           if (typeof count === 'number' && Number.isSafeInteger(count) && count >= 0)
             usage[name] = count;
         }
+      if (record(data.usage)) {
+        for (const field of ['input_tokens_details', 'output_tokens_details']) {
+          const details = data.usage[field];
+          if (!record(details)) continue;
+          const counts: Record<string, unknown> = Object.fromEntries(['text_tokens', 'image_tokens', 'cached_tokens'].flatMap((name) => {
+            const value = details[name];
+            return typeof value === 'number' && Number.isSafeInteger(value) && value >= 0 ? [[name, value]] : [];
+          }));
+          if (record(details.cached_tokens_details)) {
+            const cached = details.cached_tokens_details;
+            counts.cached_tokens_details = Object.fromEntries(['text_tokens', 'image_tokens'].flatMap((name) => {
+              const value = cached[name];
+              return typeof value === 'number' && Number.isSafeInteger(value) && value >= 0 ? [[name, value]] : [];
+            }));
+          }
+          if (Object.keys(counts).length) usage[field] = counts;
+        }
+      }
       return { ...images[0]!, requestId, images, usage };
     },
   };

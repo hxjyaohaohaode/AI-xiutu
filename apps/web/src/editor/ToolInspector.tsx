@@ -180,6 +180,7 @@ export type ToolInspectorProps = {
   sampling?: boolean;
   onSample?: () => void;
   onGroupChange?: (group: ToolGroup) => void;
+  onCutout?: () => Promise<string>;
 };
 export function ToolInspector(props: ToolInspectorProps) {
   const [upgradeError, setUpgradeError] = useState<string | null>(null);

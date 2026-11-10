@@ -10,7 +10,9 @@ import {
 } from '@ai-xiutu/editor';
 
 export const MAX_PREVIEW_PIXELS = 4_194_304;
+export const INTERACTIVE_PREVIEW_PIXELS = 131_072;
 const linear = Float64Array.from({ length: 256 }, (_, i) => srgbToLinear(i / 255));
+const lastResample = new WeakMap<RGBAImage, RGBAImage>();
 
 /** Area reconstruction is premultiplied in linear light; transparent RGB cannot bleed into the preview. */
 function downsample(source: RGBAImage, target: Dimensions): RGBAImage {
@@ -53,6 +55,24 @@ function downsample(source: RGBAImage, target: Dimensions): RGBAImage {
   return { width, height, data };
 }
 
+function previewRaster(source: RGBAImage, dimensions: Dimensions): RGBAImage {
+  if (dimensions.width === source.width && dimensions.height === source.height) return source;
+  const cached = lastResample.get(source);
+  if (cached?.width === dimensions.width && cached.height === dimensions.height) return cached;
+  const image = downsample(source, dimensions);
+  lastResample.set(source, image);
+  return image;
+}
+
+/** Prewarm the input of the interactive worker once per imported source. */
+export function prepareInteractiveSource(source: RGBAImage, budget = INTERACTIVE_PREVIEW_PIXELS): RGBAImage {
+  const scale = Math.min(1, Math.sqrt(budget / (source.width * source.height)));
+  return previewRaster(source, {
+    width: Math.max(1, Math.floor(source.width * scale)),
+    height: Math.max(1, Math.floor(source.height * scale)),
+  });
+}
+
 /**
  * Keep both the input and transformed preview inside the advertised pixel budget.
  * Only display input is reduced. Recipe coordinates, layer references and full export input stay unchanged.
@@ -75,9 +95,7 @@ export function prepareBudgetedPreview(
       const output = getEditorOutputDimensions(dimensions, recipe),
         largestArea = Math.max(dimensions.width * dimensions.height, output.width * output.height);
       if (largestArea <= maxPixels) {
-        return dimensions.width === source.width && dimensions.height === source.height
-          ? source
-          : downsample(source, dimensions);
+        return previewRaster(source, dimensions);
       }
       // Re-evaluate after integer sizing: crop quantization and transformed corner ceil() may need another pass.
       factor = Math.sqrt(maxPixels / largestArea);

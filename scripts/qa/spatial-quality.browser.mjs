@@ -12,6 +12,7 @@ import {
   createRetouchRegionV4,
   renderEditorRecipe,
   renderEditorRecipeTiled,
+  renderCutout,
   compileSelectionMaskV3,
 } from '@ai-xiutu/editor';
 import {
@@ -180,6 +181,19 @@ try {
       targets: analysis.targets.map((t) => ({ id: t.id, kind: t.kind })),
       warnings: analysis.warnings,
     });
+    if (analysis.segmentation.subject) {
+      const matte = renderCutout(image, { selection: analysis.segmentation.subject, radius: 0.015, decontaminate: 0.8 });
+      let transparent = 0, partial = 0, opaque = 0;
+      for (let at = 3; at < matte.data.length; at += 4) {
+        assert.ok(matte.data[at] <= image.data[at]);
+        if (matte.data[at] === 0) transparent++;
+        else if (matte.data[at] === 255) opaque++;
+        else partial++;
+      }
+      assert.ok(transparent && opaque && partial, `${source.name}: matte has foreground, background and soft edges`);
+      report.cases.push({ photo: source.name, tool: 'linear-trimap-v1', state: 'passed', transparent, partial, opaque, hash: sha(matte.data) });
+      await sheet(`${source.name}-matte`, [{ label: 'Original', image }, { label: 'Subject alpha', image: matte }]);
+    } else report.cases.push({ photo: source.name, tool: 'linear-trimap-v1', state: 'unavailable', reason: 'Insufficient foreground/background confidence' });
     for (const target of analysis.targets) {
       const available = new Map(
         portraitToolAvailability(analysis, target.id, 4).map((t) => [t.id, t]),

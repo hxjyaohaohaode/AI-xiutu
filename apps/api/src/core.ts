@@ -48,7 +48,7 @@ export function normalizePhone(value: string): string {
 }
 export const phoneSchema = z.string().min(8).max(24).transform(normalizePhone);
 export const passwordSchema = z.string().min(10, '密码至少10个字符').max(128);
-export const hash = (input: string) => createHash('sha256').update(input).digest('hex');
+export const hash = (input: string | Uint8Array) => createHash('sha256').update(input).digest('hex');
 export const secretHash = (secret: string, input: string) =>
   createHmac('sha256', secret).update(input).digest('hex');
 export const opaqueToken = () => randomBytes(32).toString('base64url');

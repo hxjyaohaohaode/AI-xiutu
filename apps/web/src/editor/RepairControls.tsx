@@ -58,7 +58,7 @@ export function RepairControls({ controller }: { controller: InspectorController
               id,
               name: '局部质感 ' + (current.retouch.length + 1),
               mask,
-              algorithm: 'guided-v2',
+              algorithm: 'guided-v4',
             });
       if (apply({ ...current, [mode]: [...current[mode], op] }, '新建' + op.name, true)) {
         editor.setActiveRepairId(id);
@@ -181,6 +181,10 @@ export function RepairControls({ controller }: { controller: InspectorController
         step: 0.1,
         onChange: (value) => patch({ [id]: value }, '调整' + label),
       });
+    if (retouch.algorithm === 'guided-v4') controls.push({
+      id: 'chromaSpots', label: '局部色斑', value: retouch.chromaSpots ?? 0, min: 0, max: 100, step: 0.1,
+      onChange: (value) => patch({ chromaSpots: value }, '调整局部色斑'),
+    });
     controls.push({
       id: 'radius',
       label: '处理半径',
@@ -307,7 +311,7 @@ export function RepairControls({ controller }: { controller: InspectorController
           )}
           {mode === 'retouch' && (
             <div className="tonal-tabs" aria-label="质感算法">
-              {(['guided-v3', 'guided-v2', 'guided-v1', 'legacy'] as const).map((algorithm) => (
+              {(['guided-v4', 'guided-v3', 'guided-v2', 'guided-v1', 'legacy'] as const).map((algorithm) => (
                 <button
                   key={algorithm}
                   aria-pressed={((item as RetouchRegionV4).algorithm ?? 'legacy') === algorithm}
@@ -317,8 +321,9 @@ export function RepairControls({ controller }: { controller: InspectorController
                         ...recipe,
                         retouch: recipe.retouch.map((op) => {
                           if (op.id !== item.id) return op;
-                          const { algorithm: _old, ...rest } = op;
-                          return { ...rest, ...(algorithm !== 'legacy' ? { algorithm } : {}) };
+                          const { algorithm: _old, chromaSpots, ...rest } = op;
+                          return { ...rest, ...(algorithm !== 'legacy' ? { algorithm } : {}),
+                            ...(algorithm === 'guided-v4' && chromaSpots !== undefined ? { chromaSpots } : {}) };
                         }),
                       },
                       '切换质感算法',
@@ -328,6 +333,7 @@ export function RepairControls({ controller }: { controller: InspectorController
                 >
                   {
                     {
+                      'guided-v4': '纹理与斑点分离',
                       'guided-v3': '细纹与反光分离',
                       'guided-v2': '选区保边与双尺度纹理',
                       'guided-v1': '保边美肤',

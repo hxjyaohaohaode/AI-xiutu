@@ -79,12 +79,16 @@ export function PixelCanvas({
   const ref = useRef<HTMLCanvasElement>(null);
   useEffect(() => {
     if (!image || !ref.current) return;
-    ref.current.width = image.width;
-    ref.current.height = image.height;
+    if (ref.current.width !== image.width) ref.current.width = image.width;
+    if (ref.current.height !== image.height) ref.current.height = image.height;
     ref.current
       .getContext('2d')
       ?.putImageData(
-        new ImageData(new Uint8ClampedArray(image.data), image.width, image.height),
+        new ImageData(
+          new Uint8ClampedArray(image.data.buffer as ArrayBuffer, image.data.byteOffset, image.data.byteLength),
+          image.width,
+          image.height,
+        ),
         0,
         0,
       );
@@ -277,14 +281,18 @@ export function CanvasStage({
     editor.layerImages,
     sourceSelectionFrame,
     collaboration?.remotePreview ?? null,
+    editor.liveFrame !== null,
   );
+  const liveFrame = !comparing && !cropEditing && !sourceSelectionFrame && !previews.remote
+    ? editor.liveFrame
+    : null;
   const image = comparing
     ? previews.compare
     : cropEditing
       ? (previews.crop ?? null)
       : sourceSelectionFrame
         ? previews.selection
-        : (previews.remote ?? editor.rendered);
+        : (previews.remote ?? liveFrame?.image ?? editor.rendered);
   const viewGeometry: Geometry =
     cropEditing && !comparing ? { ...recipe.geometry, crop: null } : recipe.geometry;
   const localViewRecipe: EditorRecipe =
@@ -303,6 +311,24 @@ export function CanvasStage({
     !sourceSelectionFrame
       ? collaboration.remotePreview
       : localViewRecipe;
+  const liveGeometry = liveFrame ? editorGeometryKey(liveFrame.recipe) : null;
+  const layoutRecipe = !comparing && (cropEditing || sourceSelectionFrame)
+    ? viewRecipe
+    : liveFrame?.recipe;
+  const layoutGeometry = layoutRecipe ? editorGeometryKey(layoutRecipe) : null;
+  const referenceSize = useMemo(() => {
+    if (!source || !layoutRecipe) return null;
+    try {
+      return getEditorOutputDimensions(source, layoutRecipe);
+    } catch {
+      return null;
+    }
+  }, [source, layoutGeometry]);
+  // Resolution can change while a stroke is still collecting points. Keep its
+  // CSS frame in the same geometry rather than the live raster's rounded ratio.
+  const frameRaster = liveGeometry && liveGeometry === editor.renderedGeometryKey
+    ? editor.rendered ?? referenceSize ?? image
+    : referenceSize ?? image;
   const coordinateMap = useMemo(() => {
     try {
       return dimensions
@@ -342,7 +368,7 @@ export function CanvasStage({
     (cropEditing ||
       (sourceSelectionFrame
         ? !!previews.selection
-        : editor.renderedGeometryKey === editorGeometryKey(recipe)));
+        : (liveGeometry ?? editor.renderedGeometryKey) === editorGeometryKey(recipe)));
   const editingSelection =
     (group === 'local' ||
       (group === 'repair' && !!repair && !editor.repairChoosingSource) ||
@@ -361,19 +387,19 @@ export function CanvasStage({
       return null;
     }
   }, [dimensions, recipe]);
-  const scale = image
+  const scale = frameRaster
     ? Math.max(
         0.0001,
-        Math.min((bounds.width - 24) / image.width, (bounds.height - 24) / image.height),
+        Math.min((bounds.width - 24) / frameRaster.width, (bounds.height - 24) / frameRaster.height),
       )
     : 1;
-  const fittedDisplay = image
-    ? { width: Math.max(1, image.width * scale), height: Math.max(1, image.height * scale) }
+  const fittedDisplay = frameRaster
+    ? { width: Math.max(1, frameRaster.width * scale), height: Math.max(1, frameRaster.height * scale) }
     : { width: 1, height: 1 };
   // Keep one destination coordinate frame throughout a corner gesture. Contain-fit
   // output bounds may grow on each render; moving its origin must not move the grip.
-  const renderedProjective =
-    editor.renderedRecipe?.schemaVersion === 4 ? editor.renderedRecipe : null;
+  const visibleRecipe = liveFrame?.recipe ?? editor.renderedRecipe;
+  const renderedProjective = visibleRecipe?.schemaVersion === 4 ? visibleRecipe : null;
   const renderedProjection =
     projectiveFrame && renderedProjective
       ? compileProjectiveTransformV4(projectiveFrame.dimensions, renderedProjective.projective)
@@ -1230,6 +1256,7 @@ export function CanvasStage({
   return (
     <main
       className={`canvas-stage content-first ${dragging ? 'is-dragging' : ''} ${editor.file ? 'has-image' : ''}`}
+      aria-busy={editor.loading || editor.rendering}
       onDragOver={(event) => {
         prevent(event);
         setDragging(true);
@@ -1252,7 +1279,7 @@ export function CanvasStage({
             <small>
               {output?.width} × {output?.height}
             </small>
-            {editor.rendering && <Busy label="更新预览" />}
+            {editor.rendering && !liveFrame && <Busy label="更新预览" />}
           </>
         )}
       </div>
@@ -1488,7 +1515,7 @@ export function CanvasStage({
                 source={source}
                 dimensions={dimensions}
                 recipe={viewRecipe}
-                ratio={image.width / image.height}
+                ratio={display.width / display.height}
                 opacity={region?.opacity ?? 1}
               />
             )}

@@ -28,6 +28,8 @@ import { registerSpaces } from './spaces.js';
 import { registerProjects } from './projects.js';
 import { registerRevisionRender } from './revision-render.js';
 import { registerAssetAnnotations } from './asset-annotations.js';
+import { registerAssetProcessing } from './asset-processing.js';
+import { registerAssetRecognition } from './asset-recognition.js';
 import { registerAiDecisions } from './ai-decisions.js';
 import { registerAssetCopy } from './asset-copy.js';
 import { registerEditorContract } from './editor-contract.js';
@@ -36,6 +38,7 @@ import { registerCollaboration } from './collaboration.js';
 import { registerRealtimeCollaboration } from './realtime-collaboration.js';
 import { registerResources } from './resources.js';
 import { registerUsage } from './usage.js';
+import { registerUsageJobs } from './usage-jobs.js';
 import { registerMediaImport } from './media-import.js';
 import { registerAssistant, type AssistantDependencies } from './assistant/index.js';
 import { registerSharing } from './sharing.js';
@@ -422,6 +425,7 @@ export async function buildApp(options: BuildOptions = {}): Promise<FastifyInsta
   registerRealtimeCollaboration(app, db);
   registerResources(app, db);
   registerUsage(app, db, config.sessionSecret);
+  registerUsageJobs(app, db);
   const mediaRuntime = registerMediaImport(app, db, config);
   const assistantRuntime = registerAssistant(app, db, config, options.assistant);
   registerSharing(app, db);
@@ -439,6 +443,8 @@ export async function buildApp(options: BuildOptions = {}): Promise<FastifyInsta
     ai?.providerModelCatalog ?? [],
   );
   registerAssetAnnotations(app, db);
+  registerAssetProcessing(app, db, config, storage);
+  registerAssetRecognition(app, db, storage);
   registerAiDecisions(app, db);
   registerAssetCopy(app, db);
   registerEditorContract(app);

@@ -160,6 +160,7 @@ export function attachVoiceBridge(
     let lastPing = Date.now(),
       accessBusy = false,
       stopReason = '';
+    const usageTimes: string[] = [];
     const usage: unknown[] = [],
       knownCalls = new Set<string>(),
       transcript = new VoiceTranscriptBuffer();
@@ -297,6 +298,7 @@ export function attachVoiceBridge(
               seconds,
               JSON.stringify({
                 events: usage,
+                eventTimes: usageTimes,
                 vendorFinalUsageConfirmed: finalUsage,
                 transportClosedConfirmed,
                 responseReceiptsComplete:
@@ -479,10 +481,10 @@ export function attachVoiceBridge(
               if (frozenEpoch !== contextEpoch) throw new Error('VOICE_CONTEXT_CHANGED');
             };
             const dispatch = agentContext.beforeDispatch;
-            agentContext.beforeDispatch = async (index, bodyHash) => {
+            agentContext.beforeDispatch = async (index, bodyHash, meta) => {
               if (ended || closing) throw new Error('VOICE_ENDED');
               if (frozenEpoch !== contextEpoch) throw new Error('VOICE_CONTEXT_CHANGED');
-              await dispatch?.(index, bodyHash);
+              await dispatch?.(index, bodyHash, meta);
               if (ended || closing) throw new Error('VOICE_ENDED');
               if (frozenEpoch !== contextEpoch) throw new Error('VOICE_CONTEXT_CHANGED');
             };
@@ -693,7 +695,10 @@ export function attachVoiceBridge(
           if (!receipt || !Number.isFinite(receipt.total_tokens) || receipt.total_tokens < 0)
             receiptMissing = true;
           else responseReceipts++;
-          if (usage.length < 100) usage.push(receipt ?? null);
+          if (usage.length < 100) {
+            usage.push(receipt ?? null);
+            usageTimes.push(new Date().toISOString());
+          } else receiptMissing = true;
           if (typeof event.response?.id === 'string') responses.delete(event.response.id);
           else receiptMissing = true;
           responsePending = false;
@@ -703,7 +708,10 @@ export function attachVoiceBridge(
         if (live && event.type === 'session.closed') {
           const seconds = event.usage?.seconds;
           finalUsage = Number.isFinite(seconds) && seconds >= 0;
-          if (usage.length < 100) usage.push(event.usage ?? null);
+          if (usage.length < 100) {
+            usage.push(event.usage ?? null);
+            usageTimes.push(new Date().toISOString());
+          }
           void finish(
             finalUsage ? 'closed' : 'unknown',
             finalUsage ? stopReason || 'SESSION_CLOSED' : 'FINAL_USAGE_UNCONFIRMED',
@@ -712,7 +720,10 @@ export function attachVoiceBridge(
         if (live && event.type === 'session.usage.updated') {
           const last = usage.findIndex((item: any) => item?.kind === 'live-duration');
           if (last >= 0) usage[last] = { kind: 'live-duration', value: event.usage };
-          else if (usage.length < 100) usage.push({ kind: 'live-duration', value: event.usage });
+          else if (usage.length < 100) {
+            usage.push({ kind: 'live-duration', value: event.usage });
+            usageTimes.push(new Date().toISOString());
+          }
         }
         if (
           live &&

@@ -1,15 +1,25 @@
 import {
   renderEditorRecipe,
   renderEditorRecipeTiled,
+  renderCutout,
+  type CutoutSettings,
   getEditorOutputDimensions,
   MAX_V3_PIXELS,
+  type Dimensions,
   type RGBAImage,
   type EditorRecipe,
 } from '@ai-xiutu/editor';
-import { prepareBudgetedPreview, MAX_PREVIEW_PIXELS } from './previewBudget';
+import {
+  prepareBudgetedPreview,
+  prepareInteractiveSource,
+  INTERACTIVE_PREVIEW_PIXELS,
+  MAX_PREVIEW_PIXELS,
+} from './previewBudget';
 
 let preview: RGBAImage | null = null;
 let original: RGBAImage | null = null;
+let sourceDimensions: Dimensions | null = null;
+let liveBudget = INTERACTIVE_PREVIEW_PIXELS;
 let images = new Map<string, RGBAImage>(),
   originalImages = new Map<string, RGBAImage>();
 type Message = {
@@ -17,6 +27,7 @@ type Message = {
   id: number;
   image?: RGBAImage;
   original?: RGBAImage;
+  sourceDimensions?: Dimensions;
   recipe?: EditorRecipe;
   originalOnly?: boolean;
   format?: 'png' | 'jpeg' | 'webp';
@@ -25,19 +36,29 @@ type Message = {
   originalImages?: Map<string, RGBAImage>;
   sourceId?: string;
   mapping?: Map<string, string>;
+  cutout?: CutoutSettings;
 };
 self.onmessage = async (event: MessageEvent<Message>) => {
   const message = event.data;
+  if (message.type === 'interactive-source') {
+    sourceDimensions = message.sourceDimensions ?? null;
+    preview = message.image ? prepareInteractiveSource(message.image) : null;
+    images = new Map([...message.images ?? []].map(([id, value]) => [id, prepareInteractiveSource(value)]));
+    liveBudget = INTERACTIVE_PREVIEW_PIXELS;
+    return;
+  }
   if (message.type === 'source') {
     preview = message.image ?? null;
     original = message.original ?? null;
+    sourceDimensions = original;
     images = message.images ?? new Map();
     originalImages = message.originalImages ?? new Map();
+    liveBudget = INTERACTIVE_PREVIEW_PIXELS;
     return;
   }
   if (message.type === 'image-source') {
     if (message.sourceId && message.image) {
-      images.set(message.sourceId, message.image);
+      images.set(message.sourceId, sourceDimensions && !original ? prepareInteractiveSource(message.image) : message.image);
       if (message.original) originalImages.set(message.sourceId, message.original);
     }
     return;
@@ -58,18 +79,32 @@ self.onmessage = async (event: MessageEvent<Message>) => {
   try {
     const source = message.type === 'export' ? original : preview;
     if (!source || !message.recipe) throw new Error('请先导入图片。');
-    if (message.type !== 'export' && original) {
+    if (message.type !== 'export' && sourceDimensions) {
       if (
         (message.recipe.schemaVersion === 3 || message.recipe.schemaVersion === 4) &&
-        original.width * original.height > MAX_V3_PIXELS
+        sourceDimensions.width * sourceDimensions.height > MAX_V3_PIXELS
       )
         throw new Error('原图超过 V3 的 16.8MP 编辑上限，请明确准备较小副本。');
       // A smaller preview must not make an unexportable full-resolution transform appear valid.
-      getEditorOutputDimensions(original, message.recipe);
+      getEditorOutputDimensions(sourceDimensions, message.recipe);
+    }
+    const interactive = message.type === 'interactive-preview';
+    const budget = interactive ? liveBudget : MAX_PREVIEW_PIXELS;
+    const started = performance.now();
+    let renderImages = images;
+    if (interactive && 'imageLayers' in message.recipe) {
+      renderImages = new Map();
+      for (const layer of message.recipe.imageLayers) {
+        const image = images.get(layer.sourceId);
+        if (image && !renderImages.has(layer.sourceId))
+          renderImages.set(layer.sourceId, prepareInteractiveSource(image, budget));
+      }
     }
     const result =
       message.type === 'export'
-        ? message.originalOnly
+        ? message.cutout
+          ? renderCutout(source, message.cutout)
+          : message.originalOnly
           ? source
           : renderEditorRecipeTiled(source, message.recipe, {
               maxPixels:
@@ -79,10 +114,12 @@ self.onmessage = async (event: MessageEvent<Message>) => {
               images: originalImages,
               tileSize: 512,
             })
-        : renderEditorRecipe(prepareBudgetedPreview(source, message.recipe), message.recipe, {
-            maxPixels: MAX_PREVIEW_PIXELS,
-            images,
+        : renderEditorRecipe(prepareBudgetedPreview(source, message.recipe, budget), message.recipe, {
+            maxPixels: budget,
+            images: renderImages,
           });
+    // Lower the raster budget after an expensive frame. All recipe stages are still evaluated.
+    if (interactive && performance.now() - started > 42 && liveBudget > 32_768) liveBudget /= 2;
     if (message.type === 'export' && typeof OffscreenCanvas !== 'undefined') {
       const format = message.format ?? 'png';
       const canvas = new OffscreenCanvas(result.width, result.height);

@@ -30,7 +30,8 @@ import {
   MagnifyingGlass,
   ClockCounterClockwise,
 } from '@phosphor-icons/react';
-import { api, ApiError, errorMessage, filenameBase, jsonRequest } from './lib/api';
+import { api, ApiError, downloadBlob, errorMessage, filenameBase, jsonRequest } from './lib/api';
+import { secureUuid } from './lib/uuid';
 import type {
   Artwork,
   Asset,
@@ -161,6 +162,7 @@ export function App() {
       : undefined;
   const teamVoice = useTeamVoice(teamVoiceArtwork, session.user?.id);
   const [asset, setAsset] = useState<Asset | null>(null);
+  const cutoutAttempt = useRef<{ key: string; id: string } | null>(null);
   const [revision, setRevision] = useState<Revision | null>(null);
   const [savedRecipe, setSavedRecipeState] = useState<string | null>(null);
   const savedRecipeRef = useRef<string | null>(null);
@@ -1805,6 +1807,27 @@ export function App() {
                       editor={editor}
                       group={group}
                       onGroupChange={setGroup}
+                      onCutout={async () => {
+                        const analysis = editor.portrait.analysis;
+                        const selection = analysis?.segmentation?.subject;
+                        if (!selection || analysis.frame.contentHash !== editor.sourceHash || !editor.file)
+                          throw new Error('请先分析当前原图的人物边缘。');
+                        const settings = { selection, radius: 0.015, decontaminate: 0.8 };
+                        const identity = editor.getSourceIdentity();
+                        const name = `${filenameBase(editor.file.name).slice(0, 106)}-抠图.png`;
+                        if (asset && project && project.id === asset.projectId && ['owner', 'admin', 'editor'].includes(project.role) &&
+                            asset.width === editor.dimensions?.width && asset.height === editor.dimensions.height) {
+                          const key = JSON.stringify([asset.id, identity, name, settings]);
+                          if (cutoutAttempt.current?.key !== key) cutoutAttempt.current = { key, id: secureUuid() };
+                          await api(`/projects/${project.id}/derived-assets`, jsonRequest('POST', { kind: 'cutout', requestId: cutoutAttempt.current.id, name, sourceAssetId: asset.id, settings }));
+                          setRefreshToken((value) => value + 1);
+                          return '透明 PNG 已保存到项目素材。';
+                        }
+                        const blob = await editor.exportImage('png', 0.94, false, settings);
+                        if (editor.getSourceIdentity() !== identity) throw new Error('图片已切换，请重新运行抠图。');
+                        downloadBlob(blob, name);
+                        return '透明 PNG 已下载。';
+                      }}
                       mobileOpen
                       onClose={() => setInspectorOpen(false)}
                       pickedColor={pickedColor}

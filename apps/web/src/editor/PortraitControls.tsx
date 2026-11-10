@@ -20,9 +20,11 @@ import type { ToolGroup } from './ToolInspector';
 export function PortraitControls({
   controller,
   onGroupChange,
+  onCutout,
 }: {
   controller: InspectorController;
   onGroupChange?: (group: ToolGroup) => void;
+  onCutout?: () => Promise<string>;
 }) {
   const { editor, apply, report } = controller,
     state = editor.portrait;
@@ -34,6 +36,7 @@ export function PortraitControls({
   const annotationInput = useRef<HTMLInputElement>(null);
   const [annotationBusy, setAnnotationBusy] = useState(false);
   const [annotationStatus, setAnnotationStatus] = useState<string | null>(null);
+  const [cutting, setCutting] = useState(false);
   const kind = category === 'body' ? 'body' : 'face';
   const targets = state.analysis?.targets.filter((target) => target.kind === kind) ?? [];
   const target = targets.find((person) => person.id === state.activeTargetId) ?? targets[0];
@@ -212,6 +215,15 @@ export function PortraitControls({
         )}
       </div>
       {state.progress && <Busy label={state.progress} />}
+      {state.analysis?.segmentation?.subject && onCutout && (
+        <button className="text-button" disabled={cutting || !!state.progress} onClick={async () => {
+          setCutting(true);
+          setAnnotationStatus(null);
+          try { setAnnotationStatus(await onCutout()); }
+          catch (error) { report(errorMessage(error)); }
+          finally { setCutting(false); }
+        }}>{cutting ? '正在精修透明边缘' : '从原图提取人物素材'}</button>
+      )}
       <InlineError message={state.error} />
       {target && (
         <label className="advanced-select">

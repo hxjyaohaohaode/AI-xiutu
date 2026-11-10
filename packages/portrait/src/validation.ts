@@ -173,11 +173,12 @@ export function validatePortraitAnalysis(
   }
   let segmentation: PortraitAnalysis['segmentation'] = null;
   if (r.segmentation !== null) {
-    const s = object(r.segmentation, ['skin', 'hair', 'background']);
+    const s = object(r.segmentation, ['skin', 'hair', 'background'], ['subject']);
     segmentation = {
       skin: parseSelectionMaskV3(s.skin),
       hair: parseSelectionMaskV3(s.hair),
       background: parseSelectionMaskV3(s.background),
+      ...(s.subject === undefined ? {} : { subject: parseSelectionMaskV3(s.subject) }),
     };
   }
   return {

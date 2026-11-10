@@ -39,6 +39,38 @@ test('running box sums match brute-force clipped neighbourhoods including single
     /abort/i,
   );
 });
+
+test('guided-v4 independently attenuates compact luma and chroma spots while preserving line, alpha and protected pixels', () => {
+  const width = 66, height = 48;
+  const mask = createRasterMask(1, 1, Uint8Array.of(255));
+  for (const base of [57, 126, 195]) {
+    const image: RGBAImage = { width, height, data: new Uint8ClampedArray(width * height * 4) };
+    const at = (x: number, y: number) => (y * width + x) * 4;
+    for (let y = 0; y < height; y++) for (let x = 0; x < width; x++) {
+      const value = base + (x >= 52 ? 26 : 0) - (x === 31 && y > 7 && y < 41 ? 30 : 0);
+      image.data.set([value + 22, value, value - 16, (x + y) % 8 ? 255 : 220], at(x, y));
+    }
+    image.data.set([base - 8, base - 30, base - 46, 255], at(11, 21));
+    image.data.set([base + 48, base - 8, base - 14, 255], at(44, 20));
+    const luma = (data: Uint8ClampedArray, offset: number) => 0.2126 * data[offset]! + 0.7152 * data[offset + 1]! + 0.0722 * data[offset + 2]!;
+    const center = at(11, 21), color = at(44, 20), baseline = at(43, 20);
+    const test = (value: number) => region({ algorithm: 'guided-v4', mask, radius: 0.025, speckle: value, chromaSpots: value });
+    const neutral = renderEditorRecipe(image, test(0));
+    const mid = renderEditorRecipe(image, test(50));
+    const max = renderEditorRecipeTiled(image, test(100), { tileSize: 16 });
+    assert.deepEqual(neutral.data, image.data);
+    assert.deepEqual(max.data, renderEditorRecipe(image, test(100)).data);
+    const protectedRecipe = region({ algorithm: 'guided-v4', mask, protection: mask, radius: 0.025, speckle: 100, chromaSpots: 100 });
+    assert.deepEqual(renderEditorRecipe(image, protectedRecipe).data, image.data);
+    assert.ok(mid.data[center + 1]! > image.data[center + 1]!);
+    assert.ok(max.data[center + 1]! > mid.data[center + 1]!);
+    const rg = (data: Uint8ClampedArray, offset: number) => data[offset]! - data[offset + 1]!;
+    assert.ok(Math.abs(rg(max.data, color) - rg(image.data, baseline)) < Math.abs(rg(image.data, color) - rg(image.data, baseline)));
+    assert.ok(Math.abs(luma(max.data, color) - luma(image.data, color)) < 2);
+    for (const pixel of [at(31, 24), at(51, 24), at(52, 24)]) assert.deepEqual(max.data.slice(pixel, pixel + 4), image.data.slice(pixel, pixel + 4));
+    for (let pixel = 3; pixel < max.data.length; pixel += 4) assert.equal(max.data[pixel], image.data[pixel]);
+  }
+});
 function sample() {
   const image: RGBAImage = { width: 128, height: 96, data: new Uint8ClampedArray(128 * 96 * 4) };
   for (let y = 0; y < 96; y++)

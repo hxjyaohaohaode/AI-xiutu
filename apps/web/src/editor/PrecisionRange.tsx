@@ -49,6 +49,7 @@ export function PrecisionRange({
   const [numberError, setNumberError] = useState<string | null>(null);
   const gesture = useRef(new RangeGesture());
   const range = useRef<HTMLInputElement>(null);
+  const touchTrack = useRef<{ left: number; travel: number; offset: number } | null>(null);
   const ignoredPointer = useRef<number | null>(null);
   const numberEditing = useRef<{ initial: number } | null>(null);
   const input = useRef<HTMLInputElement>(null);
@@ -77,6 +78,7 @@ export function PrecisionRange({
   }
   function cancelGesture() {
     const pointerId = gesture.current.pointerId;
+    touchTrack.current = null;
     if (pointerId !== null) ignoredPointer.current = pointerId;
     complete(gesture.current.cancel());
     if (pointerId !== null && range.current?.hasPointerCapture(pointerId))
@@ -163,6 +165,14 @@ export function PrecisionRange({
     latest.current = next;
     gesture.current.change(next);
     onChange(next);
+  }
+  function moveTouch(clientX: number) {
+    const track = touchTrack.current;
+    if (!track) return;
+    const fraction = Math.max(0, Math.min(1, (clientX - track.left - track.offset) / track.travel));
+    const steps = Math.min(Math.floor((max - min) / step + 1e-9), Math.round(fraction * (max - min) / step));
+    const next = Number((min + steps * step).toFixed(10));
+    if (next !== latest.current) change(next);
   }
   const percentage = (number: number) =>
     max > min ? Math.max(0, Math.min(100, ((number - min) / (max - min)) * 100)) : 0;
@@ -289,7 +299,7 @@ export function PrecisionRange({
             if (!gesture.current.active) ignoredPointer.current = null;
           }}
           onChange={(event) => {
-            if (ignoredPointer.current !== null) return;
+            if (ignoredPointer.current !== null || touchTrack.current) return;
             change(Number(event.target.value));
             if (!gesture.current.active) onCommit?.();
           }}
@@ -299,9 +309,29 @@ export function PrecisionRange({
               return;
             }
             ignoredPointer.current = null;
-            event.currentTarget.setPointerCapture(event.pointerId);
+            const control = event.currentTarget;
+            control.setPointerCapture(event.pointerId);
+            if (event.pointerType === 'touch') {
+              // Track the finger immediately. Native range input waits for a touch movement threshold.
+              event.preventDefault();
+              control.focus({ preventScroll: true });
+              const bounds = control.getBoundingClientRect();
+              const inset = Math.min(6.5, bounds.width / 4);
+              const left = bounds.left + inset;
+              const travel = bounds.width - 2 * inset;
+              if (travel <= 0) return;
+              const thumb = left + (percentage(latest.current) / 100) * travel;
+              const offset = event.clientX - thumb;
+              touchTrack.current = { left, travel, offset: Math.abs(offset) <= inset ? offset : 0 };
+              if (Math.abs(offset) > inset) moveTouch(event.clientX);
+            }
+          }}
+          onPointerMove={(event) => {
+            if (event.pointerType === 'touch' && gesture.current.pointerId === event.pointerId)
+              moveTouch(event.clientX);
           }}
           onPointerUp={(event) => {
+            if (gesture.current.pointerId === event.pointerId) touchTrack.current = null;
             complete(gesture.current.endPointer(event.pointerId));
             if (ignoredPointer.current === event.pointerId) ignoredPointer.current = null;
             if (event.currentTarget.hasPointerCapture(event.pointerId))

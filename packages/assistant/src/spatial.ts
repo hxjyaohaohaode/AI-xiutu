@@ -36,6 +36,7 @@ export const retouchProposalSchema = z
     shine: z.number().min(0).max(100),
     speckle: z.number().min(0).max(100),
     fineLines: z.number().min(0).max(100),
+    chromaSpots: z.number().min(0).max(100).nullable().optional(),
   })
   .strict();
 export const healingProposalSchema = z
@@ -129,15 +130,18 @@ export function applyAssistantRetouch(base: EditorRecipe, raw: unknown) {
       : recipe.retouch.find((item) => item.id === proposal.operationId);
   if (proposal.operationId !== null && !existing) throw new Error('SPATIAL_OPERATION_NOT_FOUND');
   if (existing?.origin) throw new Error('SPATIAL_AUTOMATIC_OPERATION_OWNED');
-  if (!existing && retouchKeys.every((key) => proposal[key] === 0))
+  if (existing && existing.algorithm !== 'guided-v4' && (proposal.chromaSpots ?? 0) > 0)
+    throw new Error('SPATIAL_CHROMA_REQUIRES_NEW_OPERATION');
+  if (!existing && retouchKeys.every((key) => proposal[key] === 0) && !proposal.chromaSpots)
     throw new Error('SPATIAL_NO_EFFECT');
+  const chromaSpots = proposal.chromaSpots ?? existing?.chromaSpots;
   const id = existing?.id ?? identifier(recipe, 'retouch', proposal);
   const operation = {
     id,
     name: `AI · ${proposal.name}`,
     enabled: true,
     ...(!existing
-      ? { algorithm: 'guided-v3' as const }
+      ? { algorithm: 'guided-v4' as const }
       : existing.algorithm
         ? { algorithm: existing.algorithm }
         : {}),
@@ -150,13 +154,14 @@ export function applyAssistantRetouch(base: EditorRecipe, raw: unknown) {
     shine: proposal.shine,
     speckle: proposal.speckle,
     fineLines: proposal.fineLines,
+    ...((!existing || existing.algorithm === 'guided-v4') && chromaSpots !== undefined ? { chromaSpots } : {}),
   };
   if (existing) recipe.retouch[recipe.retouch.indexOf(existing)] = operation;
   else recipe.retouch.push(operation);
   return {
     summary: proposal.summary,
     recipe: parseEditorRecipe(recipe),
-    changes: retouchKeys
+    changes: [...retouchKeys
       .map((key, index) => ({
         path: `retouch:${id}:${key}`,
         before: existing?.[key] ?? 0,
@@ -164,6 +169,9 @@ export function applyAssistantRetouch(base: EditorRecipe, raw: unknown) {
         label: `${proposal.name} · ${retouchLabels[index]}`,
       }))
       .filter((item) => item.after !== item.before),
+      ...(chromaSpots !== undefined && chromaSpots !== (existing?.chromaSpots ?? 0) ? [{
+        path: `retouch:${id}:chromaSpots`, before: existing?.chromaSpots ?? 0, after: chromaSpots, label: `${proposal.name} · 局部色斑`,
+      }] : [])],
   };
 }
 export function applyAssistantHealing(base: EditorRecipe, raw: unknown) {
@@ -245,6 +253,7 @@ export function describeSpatialSelections(recipe?: EditorRecipe) {
                     'shine',
                     'speckle',
                     'fineLines',
+                    'chromaSpots',
                     'radius',
                     'searchRadius',
                     'iterations',
@@ -281,6 +290,7 @@ export function needsNativeSpatialCheck(base: EditorRecipe, candidate: EditorRec
             item.shine,
             item.speckle,
             item.fineLines,
+            item.chromaSpots ?? 0,
           ].some((value) => value !== 0),
       )) &&
       JSON.stringify(base) !== JSON.stringify(candidate))

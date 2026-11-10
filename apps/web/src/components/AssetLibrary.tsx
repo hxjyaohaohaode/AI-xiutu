@@ -21,6 +21,7 @@ import type { Asset, Artwork, Project, Space } from '../lib/types';
 import { Busy, EmptyState, InlineError, Modal } from './Ui';
 import { OptionChips } from './Controls';
 import { MediaSourceViewer } from '../media/MediaSourceViewer';
+import { AnimationDialog, AssetRecognitionDialog, ProjectAssetTools } from './AssetTools';
 
 export const SOURCE_LABELS = {
   upload: '上传照片',
@@ -244,6 +245,8 @@ export function AssetLibrary({
   const [editing, setEditing] = useState<Asset | null>(null),
     [refresh, setRefresh] = useState(0);
   const [sourceDetails, setSourceDetails] = useState<Asset | null>(null);
+  const [tools, setTools] = useState<{ asset: Asset; editable: boolean; kind: 'ocr' | 'animation' } | null>(null);
+  const [projectTools, setProjectTools] = useState(false);
   const [density, setDensity] = useState<'comfortable' | 'compact'>('comfortable');
   const requestGeneration = useRef(0),
     moreLock = useRef(false);
@@ -369,6 +372,9 @@ export function AssetLibrary({
         <div className="view-actions">
           {project && (
             <>
+              {['owner', 'admin', 'editor'].includes(project.role) && (
+                <button className="text-button" onClick={() => setProjectTools(true)}>拼图与 GIF</button>
+              )}
               <button className="text-button" onClick={onCopy}>
                 <Copy size={17} />
                 复制项目
@@ -595,7 +601,7 @@ export function AssetLibrary({
                       >
                         <LibraryThumbnail asset={asset} title={title} />
                         <span>
-                          {sameProject ? '打开原图' : '进入项目'}
+                          {sameProject ? asset.provenance?.animation === true ? '打开封面' : '打开原图' : '进入项目'}
                           <ArrowSquareOut size={15} />
                         </span>
                       </button>
@@ -616,6 +622,10 @@ export function AssetLibrary({
                           {SOURCE_LABELS[asset.source ?? 'unknown']} · {asset.width}×{asset.height}
                         </p>
                         <small>{parent?.title ?? '当前授权项目'}</small>
+                        <button className="text-button" onClick={() => setTools({ asset, editable, kind: 'ocr' })}>识别文字与表格</button>
+                        {asset.provenance?.animation === true && (
+                          <button className="text-button" onClick={() => setTools({ asset, editable, kind: 'animation' })}>GIF 帧编辑</button>
+                        )}
                         {asset.provenance?.kind === 'media-import' && (
                           <button className="text-button" onClick={() => setSourceDetails(asset)}>
                             查看原件与母版
@@ -676,6 +686,14 @@ export function AssetLibrary({
           </p>
         </>
       )}
+      {projectTools && project && ['owner', 'admin', 'editor'].includes(project.role) && (
+        <ProjectAssetTools key={project.id} projectId={project.id} assets={assets.filter((asset) => asset.projectId === project.id)}
+          onClose={() => setProjectTools(false)} onCreated={() => setRefresh((value) => value + 1)} />
+      )}
+      {tools?.kind === 'ocr' && <AssetRecognitionDialog key={tools.asset.id} asset={tools.asset} editable={tools.editable}
+        onClose={() => setTools(null)} onChange={() => setRefresh((value) => value + 1)} />}
+      {tools?.kind === 'animation' && <AnimationDialog key={tools.asset.id} asset={tools.asset} editable={tools.editable}
+        onClose={() => setTools(null)} onChange={() => setRefresh((value) => value + 1)} />}
       {sourceDetails && (
         <Modal
           title="原件与母版"

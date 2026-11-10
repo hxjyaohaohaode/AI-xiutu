@@ -99,7 +99,8 @@ export async function prepareAuthorizedMediaCopies(
     async link(sourceAssetId: string, targetAssetId: string): Promise<boolean> {
       if (!allowedIds.has(sourceAssetId)) throw new Error('Unauthorized media copy source');
       const original = sources.get(sourceAssetId);
-      if (!original) return false;
+      const animated = (await tx.query('SELECT 1 FROM animation_assets WHERE asset_id=$1', [sourceAssetId])).rowCount;
+      if (!original && !animated) return false;
       // Explicit source id authorizes the original. Hash equality is only an
       // integrity check on this specific copy; it never discovers an original.
       const valid = await tx.query(
@@ -110,6 +111,11 @@ export async function prepareAuthorizedMediaCopies(
       );
       if (!valid.rowCount)
         throw new HttpError(409, 'COPY_SOURCE_CHANGED', '目标素材与明确授权的来源不一致');
+      if (animated) {
+        await tx.query(`INSERT INTO animation_assets(asset_id,storage_name,content_hash,bytes,descriptor)
+          SELECT $2,storage_name,content_hash,bytes,descriptor FROM animation_assets WHERE asset_id=$1`, [sourceAssetId, targetAssetId]);
+      }
+      if (!original) return true;
       await tx.query(
         'INSERT INTO media_sources(asset_id,object_id,retained_bytes) VALUES($1,$2,$3)',
         [targetAssetId, original.object_id, original.retained_bytes],

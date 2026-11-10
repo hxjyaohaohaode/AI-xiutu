@@ -467,3 +467,47 @@ DB派发标记、独立fsync日志和发送前的第二次权限/状态校验共
 
 Retained media appears as `retained-proxy` at this editor entry point. The high-bit
 master remains accessible through the media export endpoint in section 5.
+## Asset processing and provider usage
+
+### Asset processing
+
+`GET /v1/asset-processing/capabilities` reports installed OCR languages and the
+GIF processing limits. `POST /v1/projects/:id/derived-assets` accepts the shared
+`derivedAssetRequest` contract. A cutout takes a source-normalized trimap, optional
+foreground/background masks, refinement radius and edge decontamination strength.
+A collage takes ordered pixel rectangles, fit, focal points and RGBA background.
+All sources must belong to the authorized project. The output is a normal PNG asset.
+`GET /v1/assets/:id/derivation` reads the algorithm, source IDs and hashes, and
+settings under the project's read permission. The actor's request ID is idempotent.
+
+`POST /v1/projects/:id/animations?requestId=<uuid>` accepts one GIF multipart file.
+`GET /v1/assets/:id/animation` gives the frame dimensions, delay array and loop count.
+`GET /v1/assets/:id/animation/file` returns verified GIF bytes. `POST
+/v1/assets/:id/animation/edit` accepts a frame index sequence, per-frame delay,
+loop and a shared editor recipe. Indices are zero based. The output gets a new
+asset ID and keeps its own immutable GIF and first-frame PNG. Authorized asset
+copies retain the GIF and charge its logical storage to the destination space.
+
+`POST /v1/assets/:id/recognitions` runs local Tesseract with `language` and `layout`.
+`GET /v1/assets/:id/recognitions` reads results, including original pixel boxes and
+confidence. `DELETE /v1/assets/:id/recognitions/:recognitionId` removes the result
+and its search contribution. The table is inferred from aligned word boxes and
+can be null. Records are scoped to the source hash, runtime and language model
+digest. Docker and CI install pinned Tesseract language weights. A native setup
+can run `node scripts/prepare-ocr.mjs` and set `TESSDATA_PREFIX` to its output path.
+
+### Research branches and usage
+
+Text turns can include up to four `research` branches with at most two web queries.
+Web leaves receive only the explicitly approved queries. Private library and shared
+canvas leaves run in the application and use the existing access checks. The
+assistant can request bounded private and canvas delegation through `delegate_research`.
+`branch.changed` events and `GET /v1/assistant-turns/:turnId/branches` report
+the graph and terminal state. Reconnection reads recorded events.
+
+`GET /v1/usage/jobs/:id` and its `/v1/ops` counterpart link service-credit movements
+to task and hold status, model stages, provider timestamps and available usage
+categories. `GET /v1/usage/model-prices` reads the versioned public rates. Amounts
+are decimal strings in nano USD. Stage pricing is frozen at dispatch or voice
+admission. Missing counts, tier, or price are explicitly incomplete. Published
+estimates are separate from the service-credit wallet and provider invoices.

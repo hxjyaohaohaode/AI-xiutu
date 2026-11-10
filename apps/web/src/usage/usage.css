@@ -220,3 +220,9 @@
     font-size: 11px;
   }
 }
+.usage-job-flow { margin: 12px 0; }
+.usage-job-flow svg { display: block; width: 100%; color: var(--ink); }
+.usage-job-flow text { fill: currentColor; font-size: 12px; }
+.usage-job-flow figcaption { font-size: 12px; }
+.usage-job-flow figcaption span { display: inline-flex; align-items: center; gap: 4px; margin-inline-end: 10px; }
+.usage-job-flow figcaption i { display: inline-block; width: 9px; height: 9px; border-radius: 2px; }

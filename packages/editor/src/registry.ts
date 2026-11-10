@@ -6,9 +6,9 @@ export const TOOLS: readonly Readonly<ToolDefinition>[] = Object.freeze(
     {
       id: 'exposure',
       label: '曝光',
-      min: -3,
-      max: 3,
-      step: 0.05,
+      min: -5,
+      max: 5,
+      step: 0.01,
       neutral: 0,
       unit: 'EV',
       group: 'light',

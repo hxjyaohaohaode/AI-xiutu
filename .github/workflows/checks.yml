@@ -40,6 +40,15 @@ jobs:
           cache: npm
       - run: npm ci
       - run: npx playwright install --with-deps chromium
+      - name: Measure continuous slider, curve and touch paints
+        run: node --import tsx scripts/qa/interactive-preview.browser.mjs
+      - name: Preserve preview timing evidence
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: interactive-preview-${{ github.sha }}
+          path: artifacts/interactive-preview
+          retention-days: 14
       - name: Six complete browser flows on this commit
         run: |
           for round in 1 2 3 4 5 6; do
@@ -104,6 +113,7 @@ jobs:
     env:
       TEST_DATABASE_URL: postgresql://xiutu:ci-only-disposable@127.0.0.1:5432/xiutu_test
       REQUIRE_DB_TESTS: '1'
+      REQUIRE_NATIVE_OCR: '1'
       DB_POOL_MAX: '10'
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
@@ -112,6 +122,11 @@ jobs:
           node-version-file: .nvmrc
           cache: npm
       - run: npm ci
+      - name: Install English and simplified Chinese OCR runtimes
+        run: |
+          sudo apt-get update -qq && sudo apt-get install -y --no-install-recommends tesseract-ocr tesseract-ocr-eng tesseract-ocr-chi-sim fonts-dejavu-core fonts-noto-cjk
+          node --use-env-proxy scripts/prepare-ocr.mjs "$RUNNER_TEMP/ocr-tessdata"
+          echo "TESSDATA_PREFIX=$RUNNER_TEMP/ocr-tessdata" >> "$GITHUB_ENV"
       - run: npm run vision:prepare
       - run: npm run check
       - run: npm audit --omit=dev --audit-level=high

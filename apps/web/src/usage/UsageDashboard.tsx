@@ -13,6 +13,8 @@ import {
   type UsageReport,
 } from './model';
 import { collectUsageCsv } from './export';
+import { UsageJob } from './UsageJob';
+import { UsageRiver } from './UsageRiver';
 import './usage.css';
 
 function shanghaiDate(date: Date) {
@@ -37,6 +39,7 @@ export function UsageDashboard({
     [actorFilter, setActorFilter] = useState('');
   const [filter, setFilter] = useState({ spaceId: '', actorId: '' });
   const [kind, setKind] = useState<UsageKind>('consumed');
+  const [jobDetail, setJobDetail] = useState<string | null>(null);
   const [report, setReport] = useState<UsageReport | null>(null),
     [busy, setBusy] = useState(false),
     [more, setMore] = useState(false),
@@ -294,6 +297,7 @@ export function UsageDashboard({
               />
             )}
           </section>
+          <UsageRiver series={report.series} />
           <p className="control-note">
             上方为所选日期内的账本变动，预占为累计发起量，不是当前冻结余额；各项不能相加当余额。当前钱包：可用{' '}
             {report.balance.available.toLocaleString('zh-CN')} 点，预占{' '}
@@ -305,6 +309,7 @@ export function UsageDashboard({
               条旧记录没有完整的金额或到期分摊；汇总仅包含能够确认的数值，未知值未当作 0。
             </p>
           )}
+          <button className="text-button" onClick={() => setJobDetail('prices')}>查看模型公开费率</button>
           <div
             className="usage-table-scroll"
             tabIndex={0}
@@ -350,7 +355,7 @@ export function UsageDashboard({
                     <td>
                       {entry.reason || entry.sourceKind || '—'}
                       {entry.jobId && (
-                        <small title={entry.jobId}>任务 {entry.jobId.slice(0, 8)}</small>
+                        <small><button className="text-button" title={entry.jobId} onClick={() => setJobDetail(entry.jobId)}>任务 {entry.jobId.slice(0, 8)}</button></small>
                       )}
                     </td>
                   </tr>
@@ -370,6 +375,7 @@ export function UsageDashboard({
           )}
         </>
       )}
+      {jobDetail && <UsageJob key={jobDetail} id={jobDetail} operator={operator} onClose={() => setJobDetail(null)} />}
     </section>
   );
 }

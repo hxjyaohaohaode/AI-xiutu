@@ -30,6 +30,7 @@ export function AdvancedInspector({
   onSample,
   sampling,
   onGroupChange,
+  onCutout,
 }: ToolInspectorProps) {
   const [requestedScope, setRequestedScope] = useState<EditScope>({ kind: 'global' });
   const [error, setError] = useState<string | null>(null);
@@ -183,7 +184,7 @@ export function AdvancedInspector({
               />
             )}
             {group === 'beauty' && (
-              <PortraitControls controller={controller} onGroupChange={onGroupChange} />
+              <PortraitControls controller={controller} onGroupChange={onGroupChange} onCutout={onCutout} />
             )}
             {group === 'repair' && <RepairControls controller={controller} />}
             {group === 'paint' && (

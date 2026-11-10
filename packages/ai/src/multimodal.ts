@@ -18,6 +18,7 @@ import {
   type Queryable,
 } from '@ai-xiutu/db';
 import { createRecipeV3 } from '@ai-xiutu/editor';
+import { publicPricingSnapshot } from '@ai-xiutu/contracts';
 import { freezePreviouslyDispatchedJob } from './lifecycle.js';
 import {
   ProviderError,
@@ -385,7 +386,12 @@ export function createMultimodalService(
     }
     return checked.data;
   }
-  const fenceDispatch = (job: Job) => transaction(db, (tx) => authorizeDispatch(tx, job, true));
+  const fenceDispatch = (job: Job) => transaction(db, async (tx) => {
+    const current = await authorizeDispatch(tx, job, true);
+    await tx.query('UPDATE ai_jobs SET provider_pricing=$2,provider_dispatched_at=clock_timestamp() WHERE id=$1',
+      [job.id, JSON.stringify(publicPricingSnapshot(job.model_id, current.provider))]);
+    return current;
+  });
   return {
     availableOperations,
     operationStatus,
@@ -1129,6 +1135,9 @@ export function createMultimodalService(
           const result = await provider.generate(request);
           modelCompleted = true;
           requestId = result.requestId;
+          if (result.usage && Object.keys(result.usage).length)
+            await db.query('UPDATE ai_jobs SET provider_usage=$2,provider_received_at=clock_timestamp() WHERE id=$1 AND provider_received_at IS NULL',
+              [job.id, JSON.stringify(result.usage)]);
           const results = result.images ?? [{ bytes: result.bytes, mime: result.mime }];
           if (results.length !== quote.n)
             throw new ProviderError('IMAGE_BATCH_COUNT_MISMATCH', 'unknown');

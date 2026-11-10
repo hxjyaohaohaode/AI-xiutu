@@ -13,6 +13,7 @@ import {
   MAX_HEADER_BYTES,
   type EditorRecipe,
   type RGBAImage,
+  type CutoutSettings,
 } from '@ai-xiutu/editor';
 import { downloadBlob, filenameBase } from '../lib/api';
 import { secureUuid } from '../lib/uuid';
@@ -88,6 +89,11 @@ const INITIAL_WARP: WarpSettings = {
 type HistoryItem = { recipe: EditorRecipe; label: string };
 type ExportResult = { image?: RGBAImage; blob?: Blob };
 type PendingExport = { resolve: (value: ExportResult) => void; reject: (error: Error) => void };
+type PreviewJob = { version: number; source: number; recipe: EditorRecipe };
+type PreviewRequest = PreviewJob & { id: number };
+type PreviewLane = { inFlight: PreviewRequest | null; pending: PreviewJob | null };
+type RenderReply = { id: number; type: string; result?: RGBAImage; blob?: Blob; error?: string };
+const SETTLE_DELAY_MS = 140;
 
 export function useEditor() {
   const [pixelBudget, setBudget] = useState(localPixelBudget);
@@ -145,6 +151,7 @@ export function useEditor() {
   const [originalPreview, setOriginalPreview] = useState<RGBAImage | null>(null);
   const [rendered, setRendered] = useState<RGBAImage | null>(null);
   const [renderedRecipe, setRenderedRecipe] = useState<EditorRecipe | null>(null);
+  const [liveFrame, setLiveFrame] = useState<{ image: RGBAImage; recipe: EditorRecipe } | null>(null);
   const [geometryMode, setGeometryMode] = useState<
     'crop' | 'transform' | 'projective' | 'placement'
   >('crop');
@@ -156,67 +163,72 @@ export function useEditor() {
   const [error, setError] = useState<string | null>(null);
   const sourceRef = useRef<{ width: number; height: number } | null>(null);
   const worker = useRef<Worker | null>(null);
+  const liveWorker = useRef<Worker | null>(null);
   const requestId = useRef(0);
-  const latestPreviewId = useRef(0);
   const previewVersion = useRef(0);
-  const previewInFlight = useRef<{
-    id: number;
-    version: number;
-    source: number;
-    recipe: EditorRecipe;
-  } | null>(null);
-  const previewPending = useRef<{ recipe: EditorRecipe; version: number; source: number } | null>(
-    null,
-  );
-  const pumpPreview = useRef<() => void>(() => {});
+  const settledVersion = useRef(0);
+  const interactiveInput = useRef(false);
+  const settledLane = useRef<PreviewLane>({ inFlight: null, pending: null });
+  const liveLane = useRef<PreviewLane>({ inFlight: null, pending: null });
   const loadGeneration = useRef(0);
   const loadBusy = useRef(false);
   const sourceIdentity = useRef(0);
   const isLoading = useCallback(() => loadBusy.current, []);
   const getSourceIdentity = useCallback(() => sourceIdentity.current, []);
   const pending = useRef(new Map<number, PendingExport>());
-  pumpPreview.current = () => {
-    if (!worker.current || previewInFlight.current || !previewPending.current) return;
-    const next = previewPending.current;
-    previewPending.current = null;
+  const pumpPreview = useCallback((live: boolean) => {
+    const target = live ? liveWorker.current : worker.current;
+    const lane = live ? liveLane.current : settledLane.current;
+    if (!target || lane.inFlight || !lane.pending) return;
+    const next = lane.pending;
+    lane.pending = null;
     if (next.source !== sourceIdentity.current) return;
     const id = ++requestId.current;
-    latestPreviewId.current = id;
-    previewInFlight.current = {
-      id,
-      version: next.version,
-      source: next.source,
-      recipe: next.recipe,
-    };
-    worker.current.postMessage({ type: 'preview', id, recipe: next.recipe });
-  };
+    lane.inFlight = { ...next, id };
+    target.postMessage({ type: live ? 'interactive-preview' : 'preview', id, recipe: next.recipe });
+  }, []);
 
   useEffect(() => {
     const w = new Worker(new URL('./render.worker.ts', import.meta.url), { type: 'module' });
+    const fast = new Worker(new URL('./render.worker.ts', import.meta.url), { type: 'module' });
     worker.current = w;
-    w.onmessage = (
-      event: MessageEvent<{
-        id: number;
-        type: string;
-        result?: RGBAImage;
-        blob?: Blob;
-        error?: string;
-      }>,
-    ) => {
+    liveWorker.current = fast;
+    fast.onmessage = (event: MessageEvent<RenderReply>) => {
+      const { id, result } = event.data;
+      const lane = liveLane.current;
+      const completed = lane.inFlight;
+      if (!completed || completed.id !== id) return;
+      lane.inFlight = null;
+      // A gesture may update faster than a frame finishes. Accept ordered feedback,
+      // but never replace a settled frame or show another source's pixels.
+      if (result && completed.source === sourceIdentity.current && completed.version > settledVersion.current)
+        setLiveFrame({ image: result, recipe: completed.recipe });
+      pumpPreview(true);
+    };
+    fast.onerror = () => {
+      fast.terminate();
+      liveWorker.current = null;
+      liveLane.current = { inFlight: null, pending: null };
+      setLiveFrame(null);
+    };
+    w.onmessage = (event: MessageEvent<RenderReply>) => {
       const { id, type, result, blob, error: failure } = event.data;
       if (type === 'export') {
         const p = pending.current.get(id);
         pending.current.delete(id);
         if (failure || (!result && !blob)) p?.reject(new Error(failure ?? '导出失败'));
         else p?.resolve({ image: result, blob });
-      } else if (id === previewInFlight.current?.id) {
-        const completed = previewInFlight.current;
-        previewInFlight.current = null;
+      } else if (id === settledLane.current.inFlight?.id) {
+        const completed = settledLane.current.inFlight;
+        settledLane.current.inFlight = null;
         if (
           completed.version === previewVersion.current &&
           completed.source === sourceIdentity.current &&
           completed.recipe === recipeRef.current
         ) {
+          settledVersion.current = completed.version;
+          setLiveFrame(null);
+          setRendering(false);
           if (failure) setError(failure);
           else if (result) {
             setRendered(result);
@@ -225,43 +237,58 @@ export function useEditor() {
             setError(null);
           }
         }
-        pumpPreview.current();
-        setRendering(!!previewInFlight.current || !!previewPending.current);
+        pumpPreview(false);
       }
     };
     w.onerror = () => {
       setRendering(false);
-      previewInFlight.current = null;
-      previewPending.current = null;
+      settledLane.current = { inFlight: null, pending: null };
       setError('图像处理暂时中断。请重新导入照片，已下载的配方仍可恢复。');
       for (const p of pending.current.values()) p.reject(new Error('图像处理进程已中断'));
       pending.current.clear();
     };
     return () => {
       w.terminate();
+      fast.terminate();
       worker.current = null;
-      previewInFlight.current = null;
-      previewPending.current = null;
+      liveWorker.current = null;
+      settledLane.current = { inFlight: null, pending: null };
+      liveLane.current = { inFlight: null, pending: null };
       for (const p of pending.current.values()) p.reject(new Error('编辑器已关闭'));
       pending.current.clear();
     };
-  }, []);
+  }, [pumpPreview]);
 
   useEffect(() => {
     if (!originalPreview || !worker.current) return;
     setRendering(true);
-    previewPending.current = {
+    const job = {
       recipe,
       version: ++previewVersion.current,
       source: sourceIdentity.current,
     };
-    pumpPreview.current();
-  }, [recipe, originalPreview, layerImages]);
+    settledLane.current.pending = null;
+    if (settledVersion.current || interactiveInput.current) {
+      liveLane.current.pending = job;
+      pumpPreview(true);
+    }
+    function settle() {
+      settledLane.current.pending = job;
+      pumpPreview(false);
+    }
+    if (!interactiveInput.current) settle();
+    else {
+      const timer = window.setTimeout(settle, SETTLE_DELAY_MS);
+      return () => window.clearTimeout(timer);
+    }
+  }, [recipe, originalPreview, layerImages, pumpPreview]);
 
-  const replaceRecipe = useCallback((next: EditorRecipe) => {
+  const replaceRecipe = useCallback((next: EditorRecipe, interactive = false) => {
+    interactiveInput.current = interactive;
     recipeRef.current = next;
     setRecipe(next);
   }, []);
+  const previewRecipe = useCallback((next: EditorRecipe) => replaceRecipe(next, true), [replaceRecipe]);
   const resetHistory = useCallback(
     (next: EditorRecipe) => {
       const items = [{ recipe: next, label: '导入时状态' }];
@@ -431,15 +458,20 @@ export function useEditor() {
           },
           [full.data.buffer],
         );
+        liveWorker.current?.postMessage({
+          type: 'interactive-source', image: preview, sourceDimensions: sourceRef.current, images,
+        });
         sourceIdentity.current += 1;
-        previewPending.current = null;
+        settledLane.current.pending = null;
+        liveLane.current.pending = null;
+        settledVersion.current = 0;
         previewVersion.current += 1;
-        latestPreviewId.current = ++requestId.current;
         setFile(typedSource);
         setSourceFormat(header.format);
         setDimensions({ width: full.width, height: full.height });
         setOriginalPreview(preview);
         setRendered(preview);
+        setLiveFrame(null);
         setRenderedRecipe(null);
         setRenderedGeometryKey(editorGeometryKey(createRecipeV3()));
         resetHistory(safeRecipe);
@@ -529,6 +561,7 @@ export function useEditor() {
         { type: 'image-source', sourceId, image: decoded.preview, original: decoded.original },
         [decoded.original.data.buffer],
       );
+      liveWorker.current?.postMessage({ type: 'image-source', sourceId, image: decoded.preview });
       setLayerImages((old) => new Map([...old, [sourceId, decoded.preview]]));
       const dims = sourceRef.current;
       const ratio = decoded.preview.width / decoded.preview.height;
@@ -598,6 +631,7 @@ export function useEditor() {
           { type: 'image-source', sourceId, image: value.preview, original: value.original },
           [value.original.data.buffer],
         );
+        liveWorker.current?.postMessage({ type: 'image-source', sourceId, image: value.preview });
       }
       if (decoded.size)
         setLayerImages(
@@ -618,6 +652,7 @@ export function useEditor() {
         if (dim) layerDimensions.current.set(to, dim);
       }
       worker.current?.postMessage({ type: 'rekey-sources', mapping });
+      liveWorker.current?.postMessage({ type: 'rekey-sources', mapping });
       setLayerImages((old) => {
         const next = new Map(old);
         for (const [from, to] of mapping) {
@@ -667,7 +702,7 @@ export function useEditor() {
   }, [replaceRecipe]);
 
   const exportImage = useCallback(
-    async (format: 'png' | 'jpeg' | 'webp', quality = 0.94, originalOnly = false) => {
+    async (format: 'png' | 'jpeg' | 'webp', quality = 0.94, originalOnly = false, cutout?: CutoutSettings) => {
       if (!sourceRef.current || !worker.current) throw new Error('请先导入图片。');
       const id = ++requestId.current;
       const output = await new Promise<ExportResult>((resolve, reject) => {
@@ -679,6 +714,7 @@ export function useEditor() {
           format,
           quality,
           originalOnly,
+          cutout,
         });
       });
       if (output.blob) return output.blob;
@@ -821,6 +857,7 @@ export function useEditor() {
     historyIndex,
     rendered,
     renderedRecipe,
+    liveFrame,
     geometryMode,
     setGeometryMode,
     renderedGeometryKey,
@@ -834,7 +871,7 @@ export function useEditor() {
     canRedo: !hasUncommittedPreview && historyIndex < history.length - 1,
     cancelPendingLoad,
     loadFile,
-    preview: replaceRecipe,
+    preview: previewRecipe,
     cancelPreview,
     commit,
     commitCurrent,

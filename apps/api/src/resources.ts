@@ -82,7 +82,8 @@ export async function searchResources(db: Queryable, actorId: string, input: unk
       AND g.revoked_at IS NULL AND g.expires_at>clock_timestamp() AND
       ((g.mode='reference' AND (s.sharing_policy->>'allowReference')::boolean) OR (g.mode='copy' AND (s.sharing_policy->>'allowCopy')::boolean))))
     AND ($2='all' OR s.kind=$2) AND ($3::uuid IS NULL OR s.id=$3) AND ($4::uuid IS NULL OR p.id=$4)
-    AND ($5::text='' OR strpos(lower(a.name||' '||COALESCE(a.annotations->>'title','')||' '||COALESCE(a.annotations->'tags','[]'::jsonb)::text||' '||COALESCE(rm.title,'')||' '||COALESCE(rm.tags,'[]'::jsonb)::text||' '||COALESCE(rm.note,'')),lower($5))>0)
+    AND ($5::text='' OR strpos(lower(a.name||' '||COALESCE(a.annotations->>'title','')||' '||COALESCE(a.annotations->'tags','[]'::jsonb)::text||' '||COALESCE(rm.title,'')||' '||COALESCE(rm.tags,'[]'::jsonb)::text||' '||COALESCE(rm.note,'')),lower($5))>0
+      OR EXISTS(SELECT 1 FROM asset_recognitions r WHERE r.asset_id=a.id AND r.source_hash=a.content_hash AND strpos(lower(r.text_content),lower($5))>0))
     AND ($6::boolean IS NULL OR COALESCE(rm.remembered,false)=$6) AND ($7::text IS NULL OR (${sourceSql})=$7)
     AND ($8::timestamptz IS NULL OR a.created_at>=$8) AND ($9::timestamptz IS NULL OR a.created_at<$9)
     AND ($10::timestamptz IS NULL OR (a.created_at,a.id)<($10::timestamptz,$11::uuid))

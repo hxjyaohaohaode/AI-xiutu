@@ -20,6 +20,7 @@ export interface PortraitAnalysis {
     skin: SelectionMaskV3;
     hair: SelectionMaskV3;
     background: SelectionMaskV3;
+    subject?: SelectionMaskV3;
   } | null;
   warnings: string[];
 }

@@ -148,7 +148,8 @@ export function registerAssetAnnotations(app: FastifyInstance, db: Database): vo
          WHERE a.deleted_at IS NULL AND p.deleted_at IS NULL
          AND ($2::uuid IS NULL OR p.id=$2) AND ($3::uuid IS NULL OR p.space_id=$3)
          AND (m.user_id IS NOT NULL OR ($2::uuid IS NOT NULL AND EXISTS(SELECT 1 FROM share_grants g WHERE g.project_id=p.id AND g.target_user_id=$1 AND g.revoked_at IS NULL AND g.expires_at>clock_timestamp() AND ((g.mode='reference' AND (s.sharing_policy->>'allowReference')::boolean) OR (g.mode='copy' AND (s.sharing_policy->>'allowCopy')::boolean)))))
-         AND ($4::text='' OR strpos(lower(a.name||' '||COALESCE(a.annotations->>'title','')||' '||COALESCE(a.annotations->'tags','[]'::jsonb)::text),lower($4))>0)
+         AND ($4::text='' OR strpos(lower(a.name||' '||COALESCE(a.annotations->>'title','')||' '||COALESCE(a.annotations->'tags','[]'::jsonb)::text),lower($4))>0
+          OR EXISTS(SELECT 1 FROM asset_recognitions r WHERE r.asset_id=a.id AND r.source_hash=a.content_hash AND strpos(lower(r.text_content),lower($4))>0))
          AND ($5::text IS NULL OR (${sourceSql})=$5)
          AND ($6::timestamptz IS NULL OR a.created_at >= $6) AND ($7::timestamptz IS NULL OR a.created_at < $7)
          AND ($8::timestamptz IS NULL OR (a.created_at,a.id)<($8::timestamptz,$9::uuid))

@@ -16,6 +16,7 @@ type PreviewJob = {
   key: string;
   source: RGBAImage;
   recipe: EditorRecipe;
+  live: boolean;
 };
 type PreviewResult = { source: RGBAImage; image: RGBAImage; key: string; geometryKey: string };
 
@@ -27,6 +28,7 @@ export function useStagePreviews(
   images: ReadonlyMap<string, RGBAImage>,
   selectionOpen = false,
   remoteRecipe: EditorRecipe | null = null,
+  live = false,
 ) {
   const worker = useRef<Worker | null>(null);
   const nextId = useRef(0);
@@ -70,11 +72,11 @@ export function useStagePreviews(
     if (!job) return;
     pending.current[job.kind] = null;
     inFlight.current = job;
-    worker.current.postMessage({ type: `${job.kind}-preview`, id: job.id, recipe: job.recipe });
+    worker.current.postMessage({ type: job.live ? 'interactive-preview' : `${job.kind}-preview`, id: job.id, recipe: job.recipe });
   }
-  function enqueue(kind: PreviewKind, key: string, value: EditorRecipe) {
+  function enqueue(kind: PreviewKind, key: string, value: EditorRecipe, draft = false) {
     if (!source) return;
-    const job = { id: ++nextId.current, kind, key, source, recipe: value };
+    const job = { id: ++nextId.current, kind, key, source, recipe: value, live: draft };
     latest.current[kind] = job.id;
     pending.current[kind] = job;
     pump();
@@ -87,8 +89,8 @@ export function useStagePreviews(
       const job = inFlight.current;
       if (!job || job.id !== id) return;
       inFlight.current = null;
-      if (id === latest.current[job.kind] && job.source === sourceRef.current) {
-        if (failure) setError(failure);
+      if ((job.live || id === latest.current[job.kind]) && job.source === sourceRef.current) {
+        if (failure && !job.live) setError(failure);
         else if (result) {
           setError(null);
           (job.kind === 'remote'
@@ -155,12 +157,12 @@ export function useStagePreviews(
       return;
     }
     // Crop movement alone does not redraw: this key excludes the crop rectangle.
-    enqueue('crop', cropKey, uncropped);
-  }, [source, cropOpen, cropKey, images]);
+    enqueue('crop', cropKey, uncropped, live);
+  }, [source, cropOpen, cropKey, images, live]);
   useEffect(() => {
-    if (source && selectionOpen) enqueue('selection', selectionKey, selectionRecipe);
+    if (source && selectionOpen) enqueue('selection', selectionKey, selectionRecipe, live);
     else pending.current.selection = null;
-  }, [source, selectionOpen, selectionKey, images]);
+  }, [source, selectionOpen, selectionKey, images, live]);
   useEffect(() => {
     if (source && remoteRecipe) enqueue('remote', remoteKey, remoteRecipe);
     else {
@@ -175,7 +177,7 @@ export function useStagePreviews(
         ? selection.image
         : null,
     compare: compare?.source === source && compare.key === geometryKey ? compare.image : null,
-    crop: crop?.source === source && crop.key === cropKey ? crop.image : null,
+    crop: crop?.source === source && crop.geometryKey === editorGeometryKey(uncropped) ? crop.image : null,
     error,
   };
 }
