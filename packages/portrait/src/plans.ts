@@ -443,7 +443,7 @@ export function applyPortraitValues<T extends LayeredRecipe>(
         const previous = recipe.retouch.find((item) => belongsTo(item, targetId));
         const algorithm =
           previous?.algorithm ??
-          (ownedPrimitives(recipe, targetId).length === 0 ? 'guided-v2' : undefined);
+          (ownedPrimitives(recipe, targetId).length === 0 ? 'guided-v3' : undefined);
         retouches.push(
           createRetouchRegionV4({
             id: prefix + 'skin-retouch',

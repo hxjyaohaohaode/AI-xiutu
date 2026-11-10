@@ -3,7 +3,14 @@ import { constants } from 'node:fs';
 import { execFile } from 'node:child_process';
 import { isAbsolute } from 'node:path';
 import sharp from 'sharp';
-import { MEDIA_MAX_PIXELS, MEDIA_MAX_INPUT_BYTES, MEDIA_MAX_PROXY_PIXELS } from './types.js';
+import {
+  MEDIA_DEFAULT_MAX_PIXELS,
+  MEDIA_MAX_PIXELS,
+  MEDIA_MAX_INPUT_BYTES,
+  MEDIA_MAX_PROXY_PIXELS,
+  MEDIA_MAX_SIDE,
+  MEDIA_MAX_TILE_COUNT,
+} from './types.js';
 const probes = new Map<string, { at: number; versions: Record<string, string> | null }>();
 async function probeNative(path: string): Promise<Record<string, string> | null> {
   const cached = probes.get(path);
@@ -53,7 +60,9 @@ async function probeNative(path: string): Promise<Record<string, string> | null>
 }
 
 /** Deployment availability, distinct from an image's successful decode or an editor's precision. */
-export async function getMediaCapabilities(options: { pythonExecutable?: string } = {}) {
+export async function getMediaCapabilities(
+  options: { pythonExecutable?: string; maxPixels?: number } = {},
+) {
   let isolated = false,
     nativeConfigured = false;
   if (process.platform === 'linux')
@@ -75,12 +84,16 @@ export async function getMediaCapabilities(options: { pythonExecutable?: string 
     protocol: 'media-v1' as const,
     available: isolated,
     isolation: isolated ? ('linux-prlimit' as const) : null,
-    maxPixels: MEDIA_MAX_PIXELS,
+    maxPixels: options.maxPixels ?? MEDIA_DEFAULT_MAX_PIXELS,
+    absoluteRasterPixelCeiling: MEDIA_MAX_PIXELS,
+    maxRasterSide: MEDIA_MAX_SIDE,
+    maxTileCount: MEDIA_MAX_TILE_COUNT,
+    formatAndResourceLimitsApply: true,
     maxInputBytes: MEDIA_MAX_INPUT_BYTES,
     maxProxyPixels: MEDIA_MAX_PROXY_PIXELS,
-    maxRawPixels: 50_000_000,
-    maxPsdPixels: 16_777_216,
-    maxHdrPixels: 50_000_000,
+    maxRawPixels: Math.min(options.maxPixels ?? MEDIA_DEFAULT_MAX_PIXELS, 50_000_000),
+    maxPsdPixels: Math.min(options.maxPixels ?? MEDIA_DEFAULT_MAX_PIXELS, 16_777_216),
+    maxHdrPixels: Math.min(options.maxPixels ?? MEDIA_DEFAULT_MAX_PIXELS, 50_000_000),
     maxConcurrent: 1,
     maxQueued: 8,
     nativeConfigured,

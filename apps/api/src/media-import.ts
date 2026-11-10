@@ -10,6 +10,7 @@ import {
   getMediaCapabilities,
   MediaProcessingError,
   MEDIA_MAX_INPUT_BYTES,
+  MEDIA_MAX_PIXELS,
   type MediaDescriptorV1,
 } from '@ai-xiutu/media';
 import {
@@ -23,7 +24,15 @@ import {
 } from '@ai-xiutu/db';
 import { LocalPrivateStorage } from './storage.js';
 import type { AppConfig } from './config.js';
-import { HttpError, requireUser, projectAccess, assetDto, id, hash } from './core.js';
+import {
+  HttpError,
+  requireUser,
+  projectAccess,
+  lockProjectMutation,
+  assetDto,
+  id,
+  hash,
+} from './core.js';
 
 const CHUNK_BYTES = 4 * 1024 * 1024;
 const safeName = z
@@ -79,7 +88,15 @@ export function registerMediaImport(app: FastifyInstance, db: Database, config: 
   const exporting = new Set<string>();
   const enabled = process.env.MEDIA_ADVANCED_ENABLED === 'true';
   const pythonExecutable = process.env.MEDIA_PYTHON;
-  const capabilities = getMediaCapabilities({ pythonExecutable });
+  const maxPixels = process.env.MEDIA_RASTER_MAX_PIXELS
+    ? z.coerce
+        .number()
+        .int()
+        .min(1)
+        .max(MEDIA_MAX_PIXELS)
+        .parse(process.env.MEDIA_RASTER_MAX_PIXELS)
+    : undefined;
+  const capabilities = getMediaCapabilities({ pythonExecutable, maxPixels });
   let closing = false;
   async function assertAvailable() {
     if (!enabled || !(await capabilities).available)
@@ -89,32 +106,13 @@ export function registerMediaImport(app: FastifyInstance, db: Database, config: 
         '高精度素材处理尚未启用，请联系运营配置 Linux 隔离处理环境。',
       );
   }
-  async function lockedProjectEditor(tx: Queryable, projectId: string, actor: string) {
-    const project = await projectAccess(tx, projectId, actor, 'edit');
-    // Membership is locked before the job/object/storage rows. A removal that
-    // committed first is denied; one that comes later waits for publication.
-    const member = await tx.query(
-      "SELECT m.role FROM memberships m JOIN users u ON u.id=m.user_id WHERE m.space_id=$1 AND m.user_id=$2 AND m.role IN ('owner','admin','editor') AND u.status='active' FOR SHARE OF m,u",
-      [project.space_id, actor],
-    );
-    if (!member.rowCount) throw new HttpError(403, 'PROJECT_FORBIDDEN', '项目编辑权限已改变');
-    if (
-      !(
-        await tx.query('SELECT id FROM projects WHERE id=$1 AND deleted_at IS NULL FOR SHARE', [
-          projectId,
-        ])
-      ).rowCount
-    )
-      throw new HttpError(404, 'PROJECT_NOT_FOUND', '项目已不可用');
-    return project;
-  }
-  async function jobAccess(tx: Queryable, jobId: string, actor: string, lock = false) {
+  async function jobAccess(tx: Queryable, jobId: string, actor: string, authHash?: string) {
     const row = (
       await tx.query('SELECT * FROM media_import_jobs WHERE id=$1 AND actor_id=$2', [jobId, actor])
     ).rows[0];
     if (!row) throw new HttpError(404, 'IMPORT_NOT_FOUND', '导入任务不存在');
-    if (lock) {
-      await lockedProjectEditor(tx, row.project_id, actor);
+    if (authHash !== undefined) {
+      await lockProjectMutation(tx, row.project_id, actor, authHash);
       return (
         await tx.query('SELECT * FROM media_import_jobs WHERE id=$1 AND actor_id=$2 FOR UPDATE', [
           jobId,
@@ -181,14 +179,14 @@ export function registerMediaImport(app: FastifyInstance, db: Database, config: 
         workDir: workDir(row.id),
         originalName: row.name,
         signal,
-        options: { pythonExecutable, generateTiles: row.generate_tiles },
+        options: { pythonExecutable, maxPixels, generateTiles: row.generate_tiles },
       });
       const retainedBytes = await directoryBytes(workDir(row.id));
       const proxy = await readFile(join(workDir(row.id), descriptor.proxy.relativePath));
       const stored = await storage.storeGenerated(proxy);
       storedKey = stored.key;
       await transaction(db, async (tx) => {
-        const project = await lockedProjectEditor(tx, row.project_id, row.actor_id);
+        const project = await lockProjectMutation(tx, row.project_id, row.actor_id);
         await tx.query('SELECT pg_advisory_xact_lock(hashtextextended($1,0))', [
           `media-object:${row.id}`,
         ]);
@@ -349,7 +347,12 @@ export function registerMediaImport(app: FastifyInstance, db: Database, config: 
       );
     const result = await transaction(db, async (tx) => {
       await tx.query("SELECT pg_advisory_xact_lock(hashtextextended('media-import-admission',0))");
-      const project = await lockedProjectEditor(tx, params.id, actor.id);
+      const project = await lockProjectMutation(
+        tx,
+        params.id,
+        actor.id,
+        hash(req.cookies.xiutu_session ?? ''),
+      );
       const previous = (
         await tx.query('SELECT * FROM media_import_jobs WHERE actor_id=$1 AND idempotency_key=$2', [
           actor.id,
@@ -442,7 +445,7 @@ export function registerMediaImport(app: FastifyInstance, db: Database, config: 
         throw new HttpError(400, 'CHUNK_INVALID', '上传分片不能为空或超过 4 MiB');
       const bytes = req.body;
       return transaction(db, async (tx) => {
-        const row = await jobAccess(tx, jobId, actor.id, true);
+        const row = await jobAccess(tx, jobId, actor.id, hash(req.cookies.xiutu_session ?? ''));
         if (row.state !== 'uploading')
           throw new HttpError(409, 'IMPORT_STATE', '当前任务不再接受上传');
         const uploaded = Number(row.uploaded_bytes);
@@ -503,7 +506,7 @@ export function registerMediaImport(app: FastifyInstance, db: Database, config: 
     const actor = requireUser(req);
     const { id: jobId } = jobParams.parse(req.params);
     const row = await transaction(db, async (tx) => {
-      const current = await jobAccess(tx, jobId, actor.id, true);
+      const current = await jobAccess(tx, jobId, actor.id, hash(req.cookies.xiutu_session ?? ''));
       if (current.state === 'ready' || current.state === 'processing')
         return { ...current, launchNew: false };
       if (
@@ -528,7 +531,7 @@ export function registerMediaImport(app: FastifyInstance, db: Database, config: 
     const actor = requireUser(req);
     const { id: jobId } = jobParams.parse(req.params);
     const cancellation = await transaction(db, async (tx) => {
-      const row = await jobAccess(tx, jobId, actor.id, true);
+      const row = await jobAccess(tx, jobId, actor.id, hash(req.cookies.xiutu_session ?? ''));
       if (row.state === 'ready')
         throw new HttpError(409, 'IMPORT_COMPLETE', '素材已导入，取消不会删除已发布的原件');
       // A repeat must not erase the evidence that another process still owns

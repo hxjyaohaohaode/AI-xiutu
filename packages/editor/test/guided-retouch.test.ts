@@ -7,6 +7,9 @@ import {
   renderEditorRecipe,
   renderEditorRecipeTiled,
   compileSelectionMaskV3,
+  createRasterMask,
+  srgbToLinear,
+  linearToSrgb,
   type RGBAImage,
   type RetouchRegionV4,
 } from '../src/index.js';
@@ -65,6 +68,86 @@ const region = (settings: Partial<RetouchRegionV4> = {}) =>
       }),
     ],
   });
+
+test('guided-v3 separates coherent dark lines from isolated dots and hard edges', () => {
+  const width = 73,
+    height = 57;
+  const source: RGBAImage = { width, height, data: new Uint8ClampedArray(width * height * 4) };
+  for (let y = 0; y < height; y++) {
+    for (let x = 0; x < width; x++) {
+      const line = x === 18 && y >= 10 && y <= 43;
+      const dot = x === 36 && y === 25;
+      const value = (x < 50 ? 104 : 188) - (line || dot ? 35 : 0);
+      source.data.set([value + 19, value, value - 16, 255], (y * width + x) * 4);
+    }
+  }
+  const full = createRasterMask(1, 1, Uint8Array.of(255));
+  const options = { radius: 0.09, fineLines: 100, mask: full };
+  const legacy = renderEditorRecipe(source, region({ ...options, algorithm: 'guided-v2' }));
+  const recipe = region({ ...options, algorithm: 'guided-v3' });
+  const corrected = renderEditorRecipe(source, recipe);
+  const px = (x: number, y: number) => (y * width + x) * 4 + 1;
+  assert.ok(corrected.data[px(18, 25)]! >= source.data[px(18, 25)]! + 23);
+  assert.ok(legacy.data[px(36, 25)]! > source.data[px(36, 25)]!);
+  assert.equal(corrected.data[px(36, 25)], source.data[px(36, 25)]);
+  for (const x of [48, 49, 50, 51]) assert.equal(corrected.data[px(x, 25)], source.data[px(x, 25)]);
+  const strength = [0, 25, 50, 75, 100].map(
+    (fineLines) =>
+      renderEditorRecipe(source, region({ ...options, algorithm: 'guided-v3', fineLines })).data[
+        px(18, 25)
+      ]!,
+  );
+  assert.ok(strength.every((value, index) => index === 0 || value > strength[index - 1]!));
+  assert.deepEqual(renderEditorRecipeTiled(source, recipe, { tileSize: 23 }), corrected);
+});
+
+test('guided-v3 attenuates modeled neutral reflections in linear light across light and dark skin values', () => {
+  const width = 65,
+    height = 63;
+  const full = createRasterMask(1, 1, Uint8Array.of(255));
+  for (const diffuse of [
+    [65, 42, 29],
+    [130, 91, 67],
+    [191, 150, 121],
+  ] as const) {
+    const source: RGBAImage = { width, height, data: new Uint8ClampedArray(width * height * 4) };
+    const matte = diffuse.map((value) => srgbToLinear(value / 255));
+    for (let y = 0; y < height; y++) {
+      for (let x = 0; x < width; x++) {
+        const reflection = 0.11 * Math.max(0, 1 - Math.hypot(x - 32, y - 31) / 3.2);
+        source.data.set(
+          [...matte.map((value) => linearToSrgb(value + reflection) * 255), 192],
+          (y * width + x) * 4,
+        );
+      }
+    }
+    const recipe = region({ algorithm: 'guided-v3', shine: 100, radius: 0.09, mask: full });
+    const result = renderEditorRecipe(source, recipe);
+    const highlight = (31 * width + 32) * 4;
+    const error = (rendered: RGBAImage) =>
+      diffuse.reduce((sum, value, c) => sum + Math.abs(rendered.data[highlight + c]! - value), 0);
+    assert.ok(
+      error(result) < error(source) * 0.45,
+      `${diffuse}: ${error(result)} versus ${error(source)}`,
+    );
+    for (let at = 0; at < source.data.length; at += 4) {
+      assert.equal(result.data[at + 3], 192);
+      if (Math.hypot(((at / 4) % width) - 32, Math.floor(at / 4 / width) - 31) > 3.2)
+        assert.deepEqual(result.data.subarray(at, at + 4), source.data.subarray(at, at + 4));
+    }
+    const protectedRecipe = structuredClone(recipe);
+    protectedRecipe.retouch[0]!.protection = {
+      type: 'radial',
+      centerX: 0.5,
+      centerY: 0.5,
+      radiusX: 0.07,
+      radiusY: 0.07,
+      feather: 0,
+      invert: false,
+    };
+    assert.deepEqual(renderEditorRecipe(source, protectedRecipe), source);
+  }
+});
 function rms(image: RGBAImage) {
   let sum = 0,
     n = 0;

@@ -71,6 +71,7 @@ export interface UsageResponse {
   unit: 'credit';
   timezone: 'Asia/Shanghai';
   scope: 'personal' | 'space' | 'operator';
+  filterActorId?: string;
   range: { from: string; to: string; bucket: 'day' | 'month' };
   totals: UsageCounters;
   unknownAmountEntries: number;

@@ -162,24 +162,55 @@ function jobDto(job: JobRow, canCancel = false) {
   };
 }
 
-async function member(
+export async function requireAiMember(
   tx: Queryable,
   actorId: string,
   projectId: string,
   edit: boolean,
   lock = false,
+  sessionHash?: string,
 ) {
-  const result = await tx.query(
-    `SELECT p.space_id, m.role, s.kind FROM projects p JOIN spaces s ON s.id=p.space_id
+  const read = () =>
+    tx.query(
+      `SELECT p.space_id, m.role, s.kind FROM projects p JOIN spaces s ON s.id=p.space_id
     JOIN memberships m ON m.space_id=p.space_id AND m.user_id=$1 JOIN users u ON u.id=m.user_id
-    WHERE p.id=$2 AND p.deleted_at IS NULL AND u.status='active' AND u.phone_verified_at IS NOT NULL
-    ${lock ? 'FOR SHARE OF p,m,u' : ''}`,
-    [actorId, projectId],
-  );
-  const row = result.rows[0];
+    WHERE p.id=$2 AND p.deleted_at IS NULL AND u.status='active' AND u.phone_verified_at IS NOT NULL`,
+      [actorId, projectId],
+    );
+  let row = (await read()).rows[0];
   if (!row || (edit && !['owner', 'admin', 'editor'].includes(row.role)))
     throw new AiError('FORBIDDEN', '当前账号没有使用此项目 AI 的权限', 403);
+  if (lock) {
+    await tx.query('SELECT id FROM users WHERE id=$1 FOR SHARE', [actorId]);
+    if (
+      sessionHash !== undefined &&
+      !(
+        await tx.query(
+          'SELECT token_hash FROM sessions WHERE token_hash=$1 AND user_id=$2 AND expires_at>clock_timestamp() FOR SHARE',
+          [sessionHash, actorId],
+        )
+      ).rowCount
+    )
+      throw new AiError('AUTH_REQUIRED', '登录已失效，请重新登录', 401);
+    await tx.query('SELECT id FROM spaces WHERE id=$1 FOR SHARE', [row.space_id]);
+    await tx.query('SELECT id FROM projects WHERE id=$1 FOR SHARE', [projectId]);
+    await tx.query('SELECT role FROM memberships WHERE space_id=$1 AND user_id=$2 FOR SHARE', [
+      row.space_id,
+      actorId,
+    ]);
+    row = (await read()).rows[0];
+    if (!row || (edit && !['owner', 'admin', 'editor'].includes(row.role)))
+      throw new AiError('FORBIDDEN', '当前账号没有使用此项目 AI 的权限', 403);
+  }
   return row as { space_id: string; role: string; kind: string };
+}
+
+export async function lockRunningAiJob(tx: Queryable, job: { id: string; input_hash: string }) {
+  const current = await tx.query(
+    "SELECT id FROM ai_jobs WHERE id=$1 AND state='running' AND input_hash=$2 FOR UPDATE",
+    [job.id, job.input_hash],
+  );
+  if (!current.rowCount) throw new AiError('JOB_STATE_CHANGED', '任务状态已变化');
 }
 
 export interface AiDependencies extends MultimodalDependencies {
@@ -215,7 +246,13 @@ function createEditPlanService(
   const service = {
     configured,
     reason,
-    async submit(args: { actorId: string; projectId: string; spaceId: string; body: unknown }) {
+    async submit(args: {
+      actorId: string;
+      projectId: string;
+      spaceId: string;
+      body: unknown;
+      sessionHash?: string;
+    }) {
       if (!configured) throw new AiError('AI_NOT_CONFIGURED', reason!, 503);
       const body = requestSchema.parse(args.body);
       const recipe = parseEditorRecipe(body.recipe);
@@ -226,7 +263,14 @@ function createEditPlanService(
         throw new AiError('INPUT_TOO_LARGE', '完整输入超过审核上限');
       await journal.assertDatabaseMatches(db);
       return transaction(db, async (tx) => {
-        const permission = await member(tx, args.actorId, args.projectId, true);
+        const permission = await requireAiMember(
+          tx,
+          args.actorId,
+          args.projectId,
+          true,
+          true,
+          args.sessionHash,
+        );
         if (permission.space_id !== args.spaceId)
           throw new AiError('SCOPE_MISMATCH', '付费空间不匹配', 403);
         // One admission lock serializes the daily cap and idempotency checks, never an HTTP call.
@@ -352,7 +396,7 @@ function createEditPlanService(
       });
     },
     async list(args: { actorId: string; projectId: string }) {
-      const permission = await member(db, args.actorId, args.projectId, false);
+      const permission = await requireAiMember(db, args.actorId, args.projectId, false);
       const rows = await db.query(
         `SELECT j.*,h.units FROM ai_jobs j LEFT JOIN quota_holds h ON h.id=j.hold_id
         WHERE j.project_id=$1 ORDER BY j.created_at DESC LIMIT 100`,
@@ -369,18 +413,28 @@ function createEditPlanService(
         ),
       };
     },
-    async cancel(args: { actorId: string; jobId: string; body: unknown }) {
+    async cancel(args: { actorId: string; jobId: string; body: unknown; sessionHash?: string }) {
       const body = z
         .object({ reason: z.string().trim().max(500).optional() })
         .strict()
         .parse(args.body ?? {});
       const result = await transaction(db, async (tx) => {
+        const hint = (await tx.query('SELECT project_id FROM ai_jobs WHERE id=$1', [args.jobId]))
+          .rows[0];
+        if (!hint) throw new AiError('JOB_NOT_FOUND', '任务不存在', 404);
+        const permission = await requireAiMember(
+          tx,
+          args.actorId,
+          hint.project_id,
+          true,
+          true,
+          args.sessionHash,
+        );
         const selected = await tx.query('SELECT * FROM ai_jobs WHERE id=$1 FOR UPDATE', [
           args.jobId,
         ]);
         const job = selected.rows[0] as JobRow | undefined;
         if (!job) throw new AiError('JOB_NOT_FOUND', '任务不存在', 404);
-        const permission = await member(tx, args.actorId, job.project_id, true, true);
         if (job.actor_id !== args.actorId && !['owner', 'admin'].includes(permission.role))
           throw new AiError(
             'FORBIDDEN',
@@ -497,7 +551,7 @@ function createEditPlanService(
         const job = selected.rows[0] as JobRow;
         if (await freezePreviouslyDispatchedJob(tx, journal, job)) return null;
         try {
-          await member(tx, job.actor_id, job.project_id, true);
+          await requireAiMember(tx, job.actor_id, job.project_id, true);
         } catch {
           await releaseHold(tx, job.hold_id);
           await tx.query(
@@ -545,16 +599,19 @@ function createEditPlanService(
         const before = await moderator.check(job.input.prepared.body, job.id);
         if (before.inputHash !== digest(job.input.prepared.body) || before.decision !== 'passed')
           throw new AiError('INPUT_REVIEW_REQUIRED', '请求未通过内容审核');
-        await member(db, job.actor_id, job.project_id, true);
-        const currentModel = (
-          await db.query('SELECT config FROM model_configs WHERE id=$1', [job.model_id])
-        ).rows[0]?.config;
-        if (
-          !currentModel?.enabled ||
-          (currentModel.provider ?? 'qwen') !== 'qwen' ||
-          !(currentModel.operations ?? ['edit-plan']).includes('edit-plan')
-        )
-          throw new AiError('MODEL_DISABLED', '模型已被运营人员关闭');
+        await transaction(db, async (tx) => {
+          await requireAiMember(tx, job.actor_id, job.project_id, true, true);
+          const currentModel = (
+            await tx.query('SELECT config FROM model_configs WHERE id=$1 FOR SHARE', [job.model_id])
+          ).rows[0]?.config;
+          if (
+            !currentModel?.enabled ||
+            (currentModel.provider ?? 'qwen') !== 'qwen' ||
+            !(currentModel.operations ?? ['edit-plan']).includes('edit-plan')
+          )
+            throw new AiError('MODEL_DISABLED', '模型已被运营人员关闭');
+          await lockRunningAiJob(tx, job);
+        });
         vendorAttempted = true;
         const result = await provider.complete(job.input.prepared);
         providerRequestId = result.requestId;
@@ -579,12 +636,8 @@ function createEditPlanService(
         if (after.inputHash !== digest(outputText) || after.decision !== 'passed')
           throw new AiError('OUTPUT_REVIEW_REQUIRED', '建议未通过内容审核');
         await transaction(db, async (tx) => {
-          const current = await tx.query('SELECT state FROM ai_jobs WHERE id=$1 FOR UPDATE', [
-            job.id,
-          ]);
-          if (current.rows[0]?.state !== 'running')
-            throw new AiError('JOB_STATE_CHANGED', '任务状态已变化');
-          const permission = await member(tx, job.actor_id, job.project_id, true);
+          const permission = await requireAiMember(tx, job.actor_id, job.project_id, true, true);
+          await lockRunningAiJob(tx, job);
           const output = {
             kind: 'edit-plan',
             ...proposal,
@@ -678,7 +731,13 @@ export function createAiService(
         runtimeReason: description.runtimeOperations.length ? null : description.runtimeReason,
       };
     },
-    submit(args: { actorId: string; projectId: string; spaceId: string; body: unknown }) {
+    submit(args: {
+      actorId: string;
+      projectId: string;
+      spaceId: string;
+      body: unknown;
+      sessionHash?: string;
+    }) {
       const operation = (args.body as { operation?: string } | null)?.operation ?? 'edit-plan';
       return operation === 'edit-plan' ? plan.submit(args) : multimodal.submit(args);
     },

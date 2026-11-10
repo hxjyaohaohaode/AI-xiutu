@@ -6,6 +6,7 @@ import { fileURLToPath } from 'node:url';
 import { tmpdir } from 'node:os';
 import {
   MEDIA_MAX_INPUT_BYTES,
+  MEDIA_DEFAULT_MAX_PIXELS,
   MEDIA_MAX_PIXELS,
   MEDIA_MAX_PROXY_PIXELS,
   type ProcessMediaRequest,
@@ -63,7 +64,13 @@ export function normalizeMediaOptions(
   if (![256, 512, 1024].includes(tileSize))
     throw new MediaProcessingError('Unsupported tile size', 'limit');
   return {
-    maxPixels: integer(options.maxPixels, MEDIA_MAX_PIXELS, 1, MEDIA_MAX_PIXELS, 'Pixel count'),
+    maxPixels: integer(
+      options.maxPixels,
+      MEDIA_DEFAULT_MAX_PIXELS,
+      1,
+      MEDIA_MAX_PIXELS,
+      'Pixel count',
+    ),
     maxInputBytes: integer(
       options.maxInputBytes,
       MEDIA_MAX_INPUT_BYTES,
@@ -246,6 +253,13 @@ async function isolated<T>(
       child.once('close', (code, killedBy) => {
         finish();
         if (terminal) reject(terminal);
+        else if (code === 2 || killedBy === 'SIGXFSZ')
+          reject(
+            new MediaProcessingError(
+              stderr.trim().slice(0, 1200) || 'Media resource budget exceeded',
+              'limit',
+            ),
+          );
         else if (code !== 0)
           reject(
             new MediaProcessingError(
@@ -305,7 +319,7 @@ export async function processMedia(request: ProcessMediaRequest): Promise<MediaD
 export async function exportMedia(request: ExportMediaRequest): Promise<MediaExportResult> {
   if (!['png16', 'tiff16', 'jpeg', 'webp'].includes(request.format))
     throw new MediaProcessingError('Unsupported export format', 'unsupported');
-  const options = normalizeMediaOptions(request.options),
+  const options = normalizeMediaOptions({ ...request.options, maxPixels: MEDIA_MAX_PIXELS }),
     outputPath = resolve(request.outputPath),
     workDir = resolve(request.workDir);
   await absent(outputPath);

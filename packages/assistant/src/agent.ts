@@ -6,6 +6,7 @@ import type {
   AssistantCitation,
   AssistantSearchEvidence,
   CreativeBrief,
+  GenerationDraftEvidence,
 } from '@ai-xiutu/contracts';
 import {
   assistantCloudResourceSchema,
@@ -136,7 +137,10 @@ export const generationDraftSchema = z
   .object({
     summary: z.string().trim().min(1).max(800),
     prompt: z.string().trim().min(1).max(4000),
-    referenceAssetIds: z.array(z.uuid()).max(8),
+    referenceAssetIds: z
+      .array(z.uuid())
+      .max(8)
+      .refine((ids) => new Set(ids).size === ids.length),
   })
   .strict();
 function getAt(object: unknown, path: string): unknown {
@@ -333,7 +337,7 @@ export const ASSISTANT_TOOLS: ReadonlyArray<Record<string, unknown>> = [
     name: 'propose_retouch',
     strict: true,
     description:
-      'Propose a reversible local signal operation. operationId=null adds guided-v1; an existing canUpdateOperation retouch ID updates its absolute values, preserving its algorithm and protection. Portrait-owned operations cannot be overwritten. Use an existing spatialSelections reference and optional protected selection. Controls: smoothing, signed texture, chroma uniformity, shine, speckle and fine lines; deterministic filters, not neural skin/hair reconstruction. Radius is a fraction of the source short edge. If the needed selection does not exist, ask the user to create it. Inspect actual original-resolution pixels before automatic nomination.',
+      'Propose a reversible local signal operation. operationId=null adds guided-v3; an existing canUpdateOperation retouch ID updates its absolute values, preserving its algorithm and protection. Portrait-owned operations cannot be overwritten. Use an existing spatialSelections reference and optional protected selection. Controls: smoothing, signed texture, chroma uniformity, localized specular attenuation, speckle and coherent fine lines. Radius is a fraction of the source short edge. If the needed selection does not exist, ask the user to create it. Inspect actual editable-source-resolution pixels before automatic nomination.',
     parameters: toolSchema(retouchProposalSchema),
   },
   {
@@ -447,6 +451,7 @@ export interface AgentCandidateDraft {
   changes?: { path: string; before: number; after: number; label: string }[];
   prompt?: string;
   referenceAssetIds?: string[];
+  generationEvidence?: GenerationDraftEvidence;
 }
 export interface AgentContext {
   prompt: string;
@@ -455,6 +460,8 @@ export interface AgentContext {
   recipe?: EditorRecipe;
   imageDataUrl?: string;
   selectedImages?: { id: string; dataUrl: string }[];
+  selectedReferenceIds?: string[];
+  priorResourceCards?: { assetId: string; name: string; sourceTurnId: string }[];
   inspectCandidate?(recipe: EditorRecipe): Promise<{ observation: unknown; imageDataUrl: string }>;
   history?: HistoryMessage[];
   memory?: string;
@@ -496,7 +503,7 @@ export interface AgentResult {
   requestIds: string[];
 }
 const MAX_MODEL_REQUESTS = 4;
-const POLICY_VERSION = 'editor-agent-v3';
+const POLICY_VERSION = 'editor-agent-v4';
 
 function availableTools(context: AgentContext, canInspect: boolean) {
   return ASSISTANT_TOOLS.filter(({ name }) => {
@@ -526,6 +533,8 @@ export async function runEditorAgent(
     kind: 'current-editor-data',
     editor: describeEditor(context.recipe),
     creativeBrief: context.creativeBrief ?? null,
+    selectedReferenceIds: context.selectedReferenceIds ?? [],
+    priorResourceCards: context.priorResourceCards ?? [],
   });
   await context.moderate(editorData);
   content.push({ type: 'input_text', text: editorData });
@@ -556,6 +565,16 @@ export async function runEditorAgent(
     requestIds: [],
   };
   const toolCache = new Map<string, { signature: string; output: string }>();
+  const draftReferences = new Map<string, GenerationDraftEvidence['references'][number]>();
+  for (const item of context.priorResourceCards ?? [])
+    draftReferences.set(item.assetId, {
+      assetId: item.assetId,
+      from: 'history',
+      sourceTurnId: item.sourceTurnId,
+    });
+  for (const assetId of context.selectedReferenceIds ??
+    (context.selectedImages ?? []).map((image) => image.id))
+    draftReferences.set(assetId, { assetId, from: 'selected' });
   const sharedCurrent = Boolean(model.imageInput && context.imageDataUrl);
   const canInspect = sharedCurrent && Boolean(context.inspectCandidate);
   const tools = availableTools(context, canInspect);
@@ -885,6 +904,9 @@ ${creativeDirection}`;
           await context.assertAccess();
           await context.onSearch?.(evidence);
           result.search.push(evidence);
+          for (const { id } of evidence.resources)
+            if (!draftReferences.has(id))
+              draftReferences.set(id, { assetId: id, from: 'cloud-search' });
         } else if (call.name === 'propose_retouch' || call.name === 'propose_healing') {
           if (!context.recipe) throw new Error('NO_CURRENT_IMAGE');
           const candidate = (
@@ -936,8 +958,21 @@ ${creativeDirection}`;
         } else if (call.name === 'draft_generation') {
           const draft = generationDraftSchema.parse(args);
           await context.validateReferenceIds(draft.referenceAssetIds);
+          const references = draft.referenceAssetIds.map((assetId) => {
+            const evidence = draftReferences.get(assetId);
+            if (!evidence) throw new Error('GENERATION_REFERENCE_UNGROUNDED');
+            return evidence;
+          });
           await context.moderate(`${draft.summary}\n${draft.prompt}`);
-          result.candidates.push({ kind: 'generation', ...draft });
+          result.candidates.push({
+            kind: 'generation',
+            ...draft,
+            generationEvidence: {
+              policyVersion: POLICY_VERSION,
+              promptSha256: createHash('sha256').update(draft.prompt).digest('hex'),
+              references,
+            },
+          });
           output = {
             candidateIndex: result.candidates.length - 1,
             status: 'draft_only_user_must_choose_image_model_and_confirm_price',

@@ -15,7 +15,15 @@ import {
 } from '@ai-xiutu/editor';
 import { canonical, digest } from '@ai-xiutu/ai';
 import { transaction, audit, emit, type Database, type Queryable } from '@ai-xiutu/db';
-import { id, requireUser, projectAccess, assertVersion, HttpError } from './core.js';
+import {
+  id,
+  requireUser,
+  projectAccess,
+  assertVersion,
+  HttpError,
+  hash,
+  lockProjectMutation,
+} from './core.js';
 import {
   appendArtworkRevision,
   createArtworkBranch,
@@ -93,10 +101,19 @@ export function registerAiDecisions(app: FastifyInstance, db: Database): void {
     const body = aiResultDecisionSchema.parse(req.body);
     const requestHash = digest(canonical({ jobId: params.id, body }));
     const result = await transaction(db, async (tx) => {
+      const hint = (await tx.query('SELECT project_id FROM ai_jobs WHERE id=$1', [params.id]))
+        .rows[0];
+      if (!hint) throw new HttpError(404, 'JOB_NOT_FOUND', '任务不存在');
+      const project = await lockProjectMutation(
+        tx,
+        hint.project_id,
+        user.id,
+        hash(req.cookies.xiutu_session ?? ''),
+      );
       const job = (await tx.query('SELECT * FROM ai_jobs WHERE id=$1 FOR SHARE', [params.id]))
         .rows[0];
-      if (!job) throw new HttpError(404, 'JOB_NOT_FOUND', '任务不存在');
-      const project = await projectAccess(tx, job.project_id, user.id, 'edit');
+      if (!job || job.project_id !== project.id)
+        throw new HttpError(404, 'JOB_NOT_FOUND', '任务不存在');
       await tx.query('SELECT pg_advisory_xact_lock(hashtextextended($1,0))', [
         `ai-decision:${user.id}:${body.idempotencyKey}`,
       ]);
@@ -161,6 +178,7 @@ export function registerAiDecisions(app: FastifyInstance, db: Database): void {
             recipe,
             title: body.title ?? 'AI 结果分支',
             label: '明确采纳 AI 结果为新分支',
+            origin: { kind: 'ai-fork', operationId: decisionId },
           });
           await emit(tx, project.space_id, project.id, 'artwork.created', response.artwork.id);
         } else {
@@ -176,6 +194,7 @@ export function registerAiDecisions(app: FastifyInstance, db: Database): void {
             assetId,
             recipe,
             label: '明确采纳 AI 图像替换当前来源',
+            origin: { kind: 'ai-replace', operationId: decisionId },
           });
           await emit(tx, project.space_id, project.id, 'artwork.revised', artwork.id);
         }
@@ -219,7 +238,7 @@ export function registerAiDecisions(app: FastifyInstance, db: Database): void {
         ];
         const references = (
           await tx.query(
-            'SELECT id,width,height FROM assets WHERE id=ANY($1::uuid[]) AND project_id=$2 AND deleted_at IS NULL FOR SHARE',
+            'SELECT id,width,height FROM assets WHERE id=ANY($1::uuid[]) AND project_id=$2 AND deleted_at IS NULL ORDER BY id FOR SHARE',
             [referenceIds, project.id],
           )
         ).rows;
@@ -263,6 +282,7 @@ export function registerAiDecisions(app: FastifyInstance, db: Database): void {
           assetId: source.id,
           recipe: parseEditorRecipe(recipe),
           label: '明确采纳 AI 候选为独立合成图层',
+          origin: { kind: 'ai-layer', operationId: decisionId },
         });
         targetArtworkId = artwork.id;
         revisionId = response.revision.id;
@@ -291,6 +311,7 @@ export function registerAiDecisions(app: FastifyInstance, db: Database): void {
           assetId: artwork.asset_id,
           recipe: parseEditorRecipe(output.recipe),
           label: '明确采纳 AI 参数建议',
+          origin: { kind: 'ai-parameters', operationId: decisionId },
         });
         targetArtworkId = artwork.id;
         revisionId = response.revision.id;

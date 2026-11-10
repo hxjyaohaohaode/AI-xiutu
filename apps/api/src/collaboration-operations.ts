@@ -1,6 +1,7 @@
 import { isDeepStrictEqual } from 'node:util';
 import {
   getEditorParameter,
+  getSelectionBoundsV3,
   setEditorParameter,
   parseEditorRecipe,
   type EditorRecipe,
@@ -43,47 +44,20 @@ function pointsBounds(
     Math.max(...points.map((a) => a.y)) + radiusY,
   );
 }
-/** Conservative support. Global/inverse/colour/raster masks intentionally lock the
+/** Conservative support. Global/inverse/colour masks intentionally lock the
  * whole source; we never infer unproven empty pixels from a low-resolution preview. */
 export function maskBounds(mask: SelectionMaskV3, width: number, height: number): SourceBounds {
-  if (mask.invert) return full;
-  switch (mask.type) {
-    case 'radial':
-      return box(
-        mask.centerX - mask.radiusX,
-        mask.centerY - mask.radiusY,
-        mask.centerX + mask.radiusX,
-        mask.centerY + mask.radiusY,
-      );
-    case 'polygon':
-      return pointsBounds(mask.points);
-    case 'brush':
-      return union(
-        mask.strokes
-          .filter((s) => s.mode === 'add')
-          .map((s) =>
-            pointsBounds(
-              s.points,
-              (s.radius * Math.min(width, height)) / width,
-              (s.radius * Math.min(width, height)) / height,
-            ),
-          ),
-      );
-    case 'compound': {
-      if (mask.operation === 'subtract')
-        return mask.masks[0] ? maskBounds(mask.masks[0], width, height) : full;
-      const boxes = mask.masks.map((m) => maskBounds(m, width, height));
-      if (mask.operation !== 'intersection') return union(boxes);
-      return box(
-        Math.max(...boxes.map((a) => a.x)),
-        Math.max(...boxes.map((a) => a.y)),
-        Math.min(...boxes.map((a) => a.x + a.width)),
-        Math.min(...boxes.map((a) => a.y + a.height)),
-      );
-    }
-    default:
-      return full;
-  }
+  const bounds = getSelectionBoundsV3(mask, { width, height });
+  if (!bounds.width || !bounds.height) return bounds;
+  // Two polygon edges can touch on the center of the same source pixel.
+  // Lock the full cells whose centers the mask might write.
+  const epsilon = 1e-8;
+  return box(
+    Math.ceil(bounds.x * width - 0.5 - epsilon) / width,
+    Math.ceil(bounds.y * height - 0.5 - epsilon) / height,
+    (Math.floor((bounds.x + bounds.width) * width - 0.5 + epsilon) + 1) / width,
+    (Math.floor((bounds.y + bounds.height) * height - 0.5 + epsilon) + 1) / height,
+  );
 }
 export function boundsOverlap(a: SourceBounds, b: SourceBounds): boolean {
   return (

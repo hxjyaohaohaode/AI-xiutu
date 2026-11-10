@@ -7,23 +7,27 @@ import {
   rename,
   rm,
   lstat,
+  statfs,
   readdir,
   open,
 } from 'node:fs/promises';
 import { createReadStream } from 'node:fs';
 import { createHash, randomUUID } from 'node:crypto';
-import { join, extname, basename } from 'node:path';
+import { join, extname, basename, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { spawn } from 'node:child_process';
 import sharp, { type Metadata } from 'sharp';
 import { readPsd, initializeCanvas, type Layer } from 'ag-psd';
 import { attachPngIcc, attachTiffIcc, srgbProfile } from './icc.js';
 import type { NormalizedMediaOptions } from './process.js';
-import type {
-  MediaDescriptorV1,
-  MediaFileV1,
-  MediaExportFormat,
-  MediaExportResult,
+import {
+  MEDIA_MAX_PIXELS,
+  MEDIA_MAX_SIDE,
+  MEDIA_MAX_TILE_COUNT,
+  type MediaDescriptorV1,
+  type MediaFileV1,
+  type MediaExportFormat,
+  type MediaExportResult,
 } from './types.js';
 
 sharp.cache({ memory: 32, files: 8, items: 64 });
@@ -48,6 +52,7 @@ interface Job {
   format?: MediaExportFormat;
   quality?: number;
 }
+class MediaLimitError extends Error {}
 const digest = async (path: string) => {
   const h = createHash('sha256');
   for await (const chunk of createReadStream(path)) h.update(chunk);
@@ -69,11 +74,72 @@ function boundedDimensions(width: number, height: number, limit: number) {
     !Number.isSafeInteger(height) ||
     width < 1 ||
     height < 1 ||
-    width > 65535 ||
-    height > 65535 ||
+    width > MEDIA_MAX_SIDE ||
+    height > MEDIA_MAX_SIDE ||
     width * height > limit
   )
-    throw new Error('Decoded dimensions exceed the media budget');
+    throw new MediaLimitError('Decoded dimensions exceed the media budget');
+}
+
+function fitProxy(width: number, height: number, limit: number) {
+  const scale = Math.min(1, Math.sqrt(limit / (width * height)));
+  const w = Math.max(1, Math.floor(width * scale));
+  const h = Math.max(1, Math.floor(height * scale));
+  // Once a side reaches one pixel, uniform scaling can still exceed the area
+  // limit because the other side was computed before that clamp.
+  return {
+    width: width >= height ? Math.min(w, Math.floor(limit / h)) : w,
+    height: height > width ? Math.min(h, Math.floor(limit / w)) : h,
+  };
+}
+
+function pyramidSize(width: number, height: number, tileSize: number) {
+  let tiles = 0,
+    pixels = 0;
+  for (;;) {
+    tiles += Math.ceil(width / tileSize) * Math.ceil(height / tileSize);
+    pixels += width * height;
+    if (width === 1 && height === 1) return { tiles, pixels };
+    width = Math.ceil(width / 2);
+    height = Math.ceil(height / 2);
+  }
+}
+
+async function diskBudget(path: string, bytes: number) {
+  const volume = await statfs(path, { bigint: true });
+  if (BigInt(Math.ceil(bytes)) > volume.bavail * volume.bsize)
+    throw new MediaLimitError('Insufficient disk capacity for bounded media staging');
+}
+
+async function preflightRaster(metadata: Metadata, options: NormalizedMediaOptions, stage: string) {
+  const { width, height, orientation, format, channels } = metadata;
+  boundedDimensions(width, height, options.maxPixels);
+  const pixels = width * height;
+  // Frame-oriented codecs, progressive decoders and vertical orientation can
+  // require full-frame buffers. Leave address space for the worker and libvips.
+  if (
+    format === 'heif' ||
+    format === 'webp' ||
+    format === 'gif' ||
+    metadata.isProgressive ||
+    (orientation !== undefined && orientation >= 3)
+  ) {
+    const decoded = pixels * Math.max(4, channels) * Math.ceil(depth(metadata) / 8);
+    if (decoded * 2 + pixels * 8 > options.memoryBytes * 0.7)
+      throw new MediaLimitError(
+        'Format and orientation require more decoded working memory than available',
+      );
+  }
+  const pyramid = options.generateTiles ? pyramidSize(width, height, options.tileSize) : null;
+  if (pyramid && pyramid.tiles > MEDIA_MAX_TILE_COUNT)
+    throw new MediaLimitError('Tile count exceeds budget; use a larger tile size or disable tiles');
+  await diskBudget(
+    stage,
+    pixels * 8.125 +
+      options.maxProxyPixels * 8 +
+      (pyramid ? pyramid.pixels * 4.1 + pyramid.tiles * 8192 : 0) +
+      8 * 1024 * 1024,
+  );
 }
 async function fileInfo(
   path: string,
@@ -81,7 +147,7 @@ async function fileInfo(
   mime: string,
   colorSpace?: string,
 ): Promise<MediaFileV1> {
-  const m = await sharp(path, { limitInputPixels: 200_000_000 }).metadata();
+  const m = await sharp(path, { limitInputPixels: MEDIA_MAX_PIXELS }).metadata();
   return {
     relativePath,
     bytes: (await lstat(path)).size,
@@ -205,7 +271,7 @@ async function countTiles(directory: string) {
       if (entry.isDirectory()) pending.push(child);
       else if (entry.isFile()) {
         bytes += (await lstat(child)).size;
-        if (++count > 8192) throw new Error('Tile count exceeds budget');
+        if (++count > MEDIA_MAX_TILE_COUNT) throw new MediaLimitError('Tile count exceeds budget');
       } else throw new Error('Unexpected non-file in generated tile pyramid');
     }
   }
@@ -281,7 +347,9 @@ async function importMedia(job: Job): Promise<MediaDescriptorV1> {
     );
   }
   const metadata = await sharp(inputPath, {
-    limitInputPixels: options.maxPixels,
+    // Metadata is read without pixel allocation, in the isolated worker.
+    // Apply the configured bound below before creating a decode pipeline.
+    limitInputPixels: false,
     failOn: 'warning',
     sequentialRead: true,
   }).metadata();
@@ -289,7 +357,6 @@ async function importMedia(job: Job): Promise<MediaDescriptorV1> {
     throw new Error('Unsupported static raster format');
   if ((metadata.pages ?? 1) !== 1)
     throw new Error('Animated or multi-page images require an explicit frame extraction workflow');
-  boundedDimensions(metadata.width, metadata.height, options.maxPixels);
   if (!sourceOverride && depth(metadata) > 16)
     throw new Error(
       'Floating-point TIFF requires an explicit HDR interpretation; use EXR/Radiance',
@@ -305,6 +372,7 @@ async function importMedia(job: Job): Promise<MediaDescriptorV1> {
     );
   if (metadata.icc && !['RGB ', 'CMYK'].includes(metadata.icc.toString('ascii', 16, 20)))
     throw new Error('The embedded ICC color model is not supported by this RGB/CMYK pipeline');
+  await preflightRaster(metadata, options, stage);
   if (!sourceOverride) sourceIcc = metadata.icc ?? null;
   const profile = await srgbProfile(),
     masterPath = join(stage, 'master.tif');
@@ -335,16 +403,14 @@ async function importMedia(job: Job): Promise<MediaDescriptorV1> {
   const master = await fileInfo(masterPath, 'master.tif', 'image/tiff', 'sRGB');
   if (master.bitDepth !== 16) throw new Error('Master encoding failed the uint16 verification');
   boundedDimensions(master.width, master.height, options.maxPixels);
-  const factor = Math.min(1, Math.sqrt(options.maxProxyPixels / (master.width * master.height))),
-    proxyWidth = Math.max(1, Math.floor(master.width * factor)),
-    proxyHeight = Math.max(1, Math.floor(master.height * factor)),
-    proxyPath = join(stage, 'proxy.png');
+  const proxySize = fitProxy(master.width, master.height, options.maxProxyPixels);
+  const proxyPath = join(stage, 'proxy.png');
   await sharp(masterPath, {
     limitInputPixels: options.maxPixels,
     sequentialRead: true,
     ignoreIcc: true,
   })
-    .resize(proxyWidth, proxyHeight, { fit: 'fill' })
+    .resize(proxySize.width, proxySize.height, { fit: 'fill' })
     .toColourspace('srgb')
     .ensureAlpha()
     .png()
@@ -494,7 +560,18 @@ async function exportMaster(job: Job): Promise<MediaExportResult> {
     output = `${job.outputPath!}.partial`,
     format = job.format!,
     profile = await srgbProfile();
-  boundedDimensions(descriptor.master.width, descriptor.master.height, 200_000_000);
+  boundedDimensions(descriptor.master.width, descriptor.master.height, job.options.maxPixels);
+  const pixels = descriptor.master.width * descriptor.master.height;
+  if (
+    format === 'webp' &&
+    (Math.max(descriptor.master.width, descriptor.master.height) > 16383 ||
+      pixels * 16 > job.options.memoryBytes * 0.7)
+  )
+    throw new MediaLimitError('WebP encoder dimensions or working memory exceed the media budget');
+  await diskBudget(
+    dirname(output),
+    pixels * (format === 'png16' ? 16.25 : 8.125) + 8 * 1024 * 1024,
+  );
   const masterStat = await lstat(master);
   if (
     !masterStat.isFile() ||
@@ -504,11 +581,20 @@ async function exportMaster(job: Job): Promise<MediaExportResult> {
   )
     throw new Error('Retained master failed its immutable integrity check');
   const pipeline = sharp(master, {
-    limitInputPixels: 200_000_000,
+    limitInputPixels: pixels,
     failOn: 'warning',
     sequentialRead: true,
     ignoreIcc: true,
   });
+  const actual = await pipeline.metadata();
+  if (
+    actual.width !== descriptor.master.width ||
+    actual.height !== descriptor.master.height ||
+    actual.format !== 'tiff' ||
+    depth(actual) !== 16 ||
+    (actual.pages ?? 1) !== 1
+  )
+    throw new Error('Retained master metadata does not match the descriptor');
   if (format === 'png16') {
     await pipeline.toColourspace('rgb16').png().toFile(output);
     await attachPngIcc(output, profile);
@@ -565,5 +651,5 @@ try {
 } catch (error) {
   // Diagnostic text stays in the parent process boundary. No binary image or credentials are printed.
   process.stderr.write(`${error instanceof Error ? error.message : 'Media processing failed'}\n`);
-  process.exitCode = 1;
+  process.exitCode = error instanceof MediaLimitError ? 2 : 1;
 }

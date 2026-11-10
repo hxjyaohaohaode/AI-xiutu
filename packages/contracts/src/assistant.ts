@@ -18,6 +18,13 @@ export const assistantContextSchema = z
   })
   .strict();
 export type AssistantContext = z.infer<typeof assistantContextSchema>;
+export const assistantCandidateCommitSchema = z
+  .object({
+    expectedVersion: z.number().int().positive(),
+    recipe: z.unknown().refine((value) => value !== undefined),
+    includeUnsavedBase: z.boolean().default(false),
+  })
+  .strict();
 export const assistantPublicSearchSchema = z
   .object({ query: z.string().trim().min(1).max(240), kind: z.enum(['text', 'images']) })
   .strict();
@@ -171,6 +178,15 @@ export const assistantSearchEvidenceSchema = z.discriminatedUnion('kind', [
   }),
 ]);
 export type AssistantSearchEvidence = z.infer<typeof assistantSearchEvidenceSchema>;
+export interface GenerationDraftEvidence {
+  policyVersion: string;
+  promptSha256: string;
+  references: {
+    assetId: string;
+    from: 'selected' | 'cloud-search' | 'history';
+    sourceTurnId?: string;
+  }[];
+}
 export interface AssistantCandidate {
   autoEligible?: boolean;
   observation?: unknown;
@@ -189,6 +205,7 @@ export interface AssistantCandidate {
   changes?: { path: string; before: number; after: number; label: string }[];
   prompt?: string;
   referenceAssetIds?: string[];
+  generationEvidence?: GenerationDraftEvidence;
   decision: 'pending' | 'previewed' | 'rejected';
 }
 export type VoiceServerEvent =

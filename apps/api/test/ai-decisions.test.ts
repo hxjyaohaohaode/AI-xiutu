@@ -836,12 +836,21 @@ test(
           assert.equal(restored.json().asset.id, sourceId);
           assert.equal(restored.json().artwork.headVersion, 3);
           assert.equal(restored.json().revision.recipe.schemaVersion, 1);
+          const replay = await call(
+            'POST',
+            `/v1/artworks/${artworkId}/restore`,
+            { revisionId, expectedVersion: 2 },
+            owner.cookie,
+          );
+          assert.equal(replay.statusCode, 200, replay.body);
+          assert.equal(replay.json().revision.id, restored.json().revision.id);
+          assert.equal(replay.json().replayed, true);
           assert.equal(
             (
               await call(
                 'POST',
                 `/v1/artworks/${artworkId}/restore`,
-                { revisionId, expectedVersion: 2 },
+                { revisionId: restored.json().revision.parentId, expectedVersion: 2 },
                 owner.cookie,
               )
             ).statusCode,

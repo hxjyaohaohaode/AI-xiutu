@@ -210,13 +210,15 @@ export function parseRecipeV4(input: unknown): RecipeV4 {
       path,
       errors,
     );
-    if (r.algorithm !== undefined && r.algorithm !== 'guided-v1' && r.algorithm !== 'guided-v2')
+    const algorithm =
+      r.algorithm === 'guided-v1' || r.algorithm === 'guided-v2' || r.algorithm === 'guided-v3'
+        ? r.algorithm
+        : undefined;
+    if (r.algorithm !== undefined && !algorithm)
       errors.push(`${path}.algorithm: unsupported retouch algorithm`);
     return {
       ...originField(r, path, errors),
-      ...(r.algorithm === 'guided-v1' || r.algorithm === 'guided-v2'
-        ? { algorithm: r.algorithm }
-        : {}),
+      ...(algorithm ? { algorithm } : {}),
       id: unique(identifier(r.id, `${path}.id`, errors)),
       name: name(r.name, `${path}.name`, errors),
       enabled: boolean(r.enabled, `${path}.enabled`, errors),

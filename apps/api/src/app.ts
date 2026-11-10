@@ -26,6 +26,7 @@ import {
 import { registerAuth } from './auth.js';
 import { registerSpaces } from './spaces.js';
 import { registerProjects } from './projects.js';
+import { registerRevisionRender } from './revision-render.js';
 import { registerAssetAnnotations } from './asset-annotations.js';
 import { registerAiDecisions } from './ai-decisions.js';
 import { registerAssetCopy } from './asset-copy.js';
@@ -71,9 +72,15 @@ export interface AiService {
     projectId: string;
     spaceId: string;
     body: unknown;
+    sessionHash?: string;
   }): Promise<unknown>;
   list(args: { actorId: string; projectId: string }): Promise<unknown>;
-  cancel?(args: { actorId: string; jobId: string; body: unknown }): Promise<unknown>;
+  cancel?(args: {
+    actorId: string;
+    jobId: string;
+    body: unknown;
+    sessionHash?: string;
+  }): Promise<unknown>;
   resolve?(args: { actorId: string; jobId: string; body: unknown }): Promise<unknown>;
 }
 export interface BuildOptions {
@@ -374,6 +381,7 @@ export async function buildApp(options: BuildOptions = {}): Promise<FastifyInsta
         projectId: p.id,
         spaceId: project.space_id,
         body: req.body,
+        sessionHash: hash(req.cookies.xiutu_session ?? ''),
       }),
     );
   });
@@ -387,7 +395,12 @@ export async function buildApp(options: BuildOptions = {}): Promise<FastifyInsta
     const user = requireUser(req);
     const p = z.object({ id }).parse(req.params);
     if (!ai?.cancel) throw new HttpError(503, 'AI_LIFECYCLE_UNAVAILABLE', '任务维护服务未配置');
-    return ai.cancel({ actorId: user.id, jobId: p.id, body: req.body });
+    return ai.cancel({
+      actorId: user.id,
+      jobId: p.id,
+      body: req.body,
+      sessionHash: hash(req.cookies.xiutu_session ?? ''),
+    });
   });
   app.get('/v1/ops/ai-jobs/unknown', async (req) => {
     return {
@@ -404,10 +417,11 @@ export async function buildApp(options: BuildOptions = {}): Promise<FastifyInsta
   registerAuth(app, db, config, sms);
   registerSpaces(app, db);
   registerProjects(app, db, storage);
+  registerRevisionRender(app, db, storage);
   registerCollaboration(app, db);
   registerRealtimeCollaboration(app, db);
   registerResources(app, db);
-  registerUsage(app, db);
+  registerUsage(app, db, config.sessionSecret);
   const mediaRuntime = registerMediaImport(app, db, config);
   const assistantRuntime = registerAssistant(app, db, config, options.assistant);
   registerSharing(app, db);

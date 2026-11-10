@@ -7,6 +7,7 @@ import {
   settleHold,
   releaseHold,
   markUnknownHold,
+  QuotaError,
   emit,
   audit,
   claimAssistantGrant,
@@ -54,7 +55,7 @@ import {
   type PlanProvider,
 } from './provider.js';
 import { DispatchJournal } from './journal.js';
-import { AiError } from './index.js';
+import { AiError, lockRunningAiJob, requireAiMember } from './index.js';
 
 export interface MultimodalDependencies {
   imageProvider?: ImageProvider;
@@ -180,15 +181,36 @@ function dto(job: Job) {
     updatedAt: job.updated_at,
   };
 }
-async function permission(tx: Queryable, actorId: string, projectId: string) {
-  const result = await tx.query(
-    `SELECT p.space_id,s.kind FROM projects p JOIN spaces s ON s.id=p.space_id JOIN memberships m ON m.space_id=s.id
-    JOIN users u ON u.id=m.user_id WHERE p.id=$1 AND m.user_id=$2 AND m.role IN ('owner','admin','editor')
-    AND p.deleted_at IS NULL AND u.status='active' AND u.phone_verified_at IS NOT NULL`,
-    [projectId, actorId],
+function jobReferences(job: Job) {
+  const { references, reference, mask, markup } = job.input;
+  return [
+    ...(references ?? (reference ? [reference] : [])),
+    ...(mask ? [mask] : []),
+    ...(markup ? [markup] : []),
+  ];
+}
+
+async function assertReferenceBindings(tx: Queryable, job: Job, lock: boolean) {
+  const references = jobReferences(job);
+  if (!references.length) return;
+  const ids = [...new Set(references.map((meta) => meta.id))].sort();
+  const assets = await tx.query(
+    'SELECT id,content_hash,storage_key,mime,bytes FROM assets WHERE id=ANY($1::uuid[]) AND project_id=$2 AND deleted_at IS NULL ORDER BY id' +
+      (lock ? ' FOR SHARE' : ''),
+    [ids, job.project_id],
   );
-  if (!result.rows[0]) throw new AiError('FORBIDDEN', '没有此项目的创作权限', 403);
-  return result.rows[0] as { space_id: string; kind: string };
+  const byId = new Map(assets.rows.map((asset) => [asset.id, asset]));
+  for (const meta of references) {
+    const asset = byId.get(meta.id);
+    if (
+      !asset ||
+      asset.content_hash !== meta.hash ||
+      asset.storage_key !== meta.key ||
+      asset.mime !== meta.mime ||
+      Number(asset.bytes) !== meta.bytes
+    )
+      throw new AiError('REFERENCE_REVOKED', '参考素材或引导图已失效');
+  }
 }
 const modelSchema = z.object({
   enabled: z.literal(true),
@@ -301,15 +323,50 @@ export function createMultimodalService(
     if (result.decision !== 'passed' || result.inputHash !== binaryHash)
       throw new AiError('IMAGE_REVIEW_REQUIRED', '图片未通过审核');
   }
-  async function authorizeDispatch(job: Job) {
-    await permission(db, job.actor_id, job.project_id);
-    if (job.operation === 'generate-image') {
-      const input = imageInput.parse(job.input.input);
-      if (input.executionGrantId)
-        await assertAssistantGrant(db, input.executionGrantId, job.actor_id, job.project_id);
+  async function assertJobGrant(tx: Queryable, job: Job, lock: boolean) {
+    if (job.operation !== 'generate-image') return;
+    const input = imageInput.parse(job.input.input);
+    if (
+      Object.hasOwn(job.input.manifest, 'requestHash') &&
+      (job.input.manifest.requestHash !== digest(canonical(input)) ||
+        job.input.manifest.requestHash !== job.input.requestHash)
+    )
+      throw new AiError('INPUT_INTEGRITY_FAILED', '创作授权或请求参数与冻结清单不符');
+    if (input.executionGrantId) {
+      const mode = await assertAssistantGrant(
+        tx,
+        input.executionGrantId,
+        job.actor_id,
+        job.project_id,
+        lock,
+        job.model_id,
+      );
+      const claim = (
+        await tx.query(
+          `SELECT 1 FROM assistant_grant_claims c JOIN quota_holds h ON h.id=$3
+          WHERE c.grant_id=$1 AND c.claim_key=$2 AND c.action='generate-image' AND c.model_id=$4
+            AND h.user_id=$5 AND h.state='held' AND h.units=c.units`,
+          [
+            input.executionGrantId,
+            `image:${input.idempotencyKey}`,
+            job.hold_id,
+            job.model_id,
+            job.actor_id,
+          ],
+        )
+      ).rowCount;
+      if (!claim || mode === 'suggest')
+        throw new AiError('GENERATION_GRANT_INCONSISTENT', '缺少与当前模型和额度对应的创作授权');
     }
-    const value = (await db.query('SELECT config FROM model_configs WHERE id=$1', [job.model_id]))
-      .rows[0]?.config;
+  }
+  async function authorizeDispatch(tx: Queryable, job: Job, lock = false) {
+    await requireAiMember(tx, job.actor_id, job.project_id, true, lock);
+    await assertJobGrant(tx, job, lock);
+    const value = (
+      await tx.query('SELECT config FROM model_configs WHERE id=$1' + (lock ? ' FOR SHARE' : ''), [
+        job.model_id,
+      ])
+    ).rows[0]?.config;
     const checked = modelSchema.safeParse(value);
     if (
       !checked.success ||
@@ -322,8 +379,13 @@ export function createMultimodalService(
           : 'qwen')
     )
       throw new AiError('MODEL_DISABLED', '模型已被停用或其任务能力已改变');
+    if (lock) {
+      await lockRunningAiJob(tx, job);
+      await assertReferenceBindings(tx, job, true);
+    }
     return checked.data;
   }
+  const fenceDispatch = (job: Job) => transaction(db, (tx) => authorizeDispatch(tx, job, true));
   return {
     availableOperations,
     operationStatus,
@@ -437,7 +499,13 @@ export function createMultimodalService(
           : {}),
       };
     },
-    async submit(args: { actorId: string; projectId: string; spaceId: string; body: unknown }) {
+    async submit(args: {
+      actorId: string;
+      projectId: string;
+      spaceId: string;
+      body: unknown;
+      sessionHash?: string;
+    }) {
       const input = inputSchema.parse(args.body);
       if (!operationStatus[input.operation].available)
         throw new AiError('AI_NOT_CONFIGURED', operationStatus[input.operation].reason!, 503);
@@ -453,7 +521,14 @@ export function createMultimodalService(
       const requestHash = digest(canonical(input));
       await journal.assertDatabaseMatches(db);
       return transaction(db, async (tx) => {
-        const access = await permission(tx, args.actorId, args.projectId);
+        const access = await requireAiMember(
+          tx,
+          args.actorId,
+          args.projectId,
+          true,
+          true,
+          args.sessionHash,
+        );
         if (access.space_id !== args.spaceId)
           throw new AiError('SCOPE_MISMATCH', '空间不匹配', 403);
         await tx.query("SELECT pg_advisory_xact_lock(hashtext('ai-xiutu-ai-admission'))");
@@ -541,6 +616,7 @@ export function createMultimodalService(
           }
         }
         if (input.operation === 'generate-image') {
+          manifest.requestHash = requestHash;
           if (
             input.width < config.minWidth ||
             input.width > config.maxWidth ||
@@ -862,7 +938,7 @@ export function createMultimodalService(
         hash: string;
       }> = [];
       try {
-        const setting = await authorizeDispatch(job);
+        const setting = await authorizeDispatch(db, job);
         if (digest(canonical(job.input.manifest)) !== job.input_hash)
           throw new AiError('INPUT_INTEGRITY_FAILED', '冻结输入验证失败');
         const manifest = job.input.manifest;
@@ -901,7 +977,7 @@ export function createMultimodalService(
           if (prepared.endpoint !== qwenEndpoint)
             throw new AiError('PROVIDER_CONFIG_CHANGED', '模型接入配置已变化');
           await assertText(prepared.body, job.id);
-          await authorizeDispatch(job);
+          await fenceDispatch(job);
           uncertain = true;
           const result = await llm.complete(prepared);
           modelCompleted = true;
@@ -925,7 +1001,7 @@ export function createMultimodalService(
             .digest('hex');
           if (audioHash !== job.input.manifest.audioHash)
             throw new AiError('INPUT_INTEGRITY_FAILED', '音频摘要不匹配');
-          await authorizeDispatch(job);
+          await fenceDispatch(job);
           uncertain = true;
           const result = await speech.transcribe({ model: job.model_id, wav });
           modelCompleted = true;
@@ -985,19 +1061,7 @@ export function createMultimodalService(
           ];
           if (allMetas.reduce((sum, value) => sum + value.bytes, 0) > 28_000_000)
             throw new AiError('REFERENCE_TOTAL_LIMIT', '参考图字节预算超限');
-          const assertReferencesCurrent = async (tx: Queryable) => {
-            for (const meta of allMetas) {
-              const live = (
-                await tx.query(
-                  'SELECT content_hash,storage_key FROM assets WHERE id=$1 AND project_id=$2 AND deleted_at IS NULL',
-                  [meta.id, job.project_id],
-                )
-              ).rows[0];
-              if (!live || live.content_hash !== meta.hash || live.storage_key !== meta.key)
-                throw new AiError('REFERENCE_REVOKED', '参考素材或引导图已失效');
-            }
-          };
-          await assertReferencesCurrent(db);
+          await assertReferenceBindings(db, job, false);
           const readReference = async (meta: FrozenReference): Promise<ImageReference> => {
             const bytes = await storage.readBytes(meta.key, 7_000_000);
             if (
@@ -1060,8 +1124,7 @@ export function createMultimodalService(
             ...(markup ? [markup] : []),
           ])
             await assertImage(reference.bytes, reference.mime, job.id);
-          assertLimits(await authorizeDispatch(job));
-          await assertReferencesCurrent(db);
+          assertLimits(await fenceDispatch(job));
           uncertain = true;
           const result = await provider.generate(request);
           modelCompleted = true;
@@ -1142,7 +1205,7 @@ export function createMultimodalService(
             await assertImage(bytes, meta.mime, job.id);
             reference = { bytes, mime: 'image/png' };
           }
-          const latest = await authorizeDispatch(job);
+          const latest = await fenceDispatch(job);
           if (
             input.width < latest.minWidth ||
             input.width > latest.maxWidth ||
@@ -1151,16 +1214,6 @@ export function createMultimodalService(
             input.width * input.height > imagePixelLimit
           )
             throw new AiError('MODEL_PARAMETER_RANGE', '当前模型尺寸或像素范围已收紧');
-          if (job.input.reference) {
-            const current = (
-              await db.query(
-                'SELECT content_hash FROM assets WHERE id=$1 AND project_id=$2 AND deleted_at IS NULL',
-                [job.input.reference.id, job.project_id],
-              )
-            ).rows[0];
-            if (!current || current.content_hash !== job.input.reference.hash)
-              throw new AiError('REFERENCE_REVOKED', '参考素材已被移除');
-          }
           uncertain = true;
           const result = await images.generate({
             model: job.model_id,
@@ -1185,31 +1238,14 @@ export function createMultimodalService(
           };
         }
         await transaction(db, async (tx) => {
-          const state = (
-            await tx.query('SELECT state FROM ai_jobs WHERE id=$1 FOR UPDATE', [job.id])
-          ).rows[0];
-          if (state?.state !== 'running') throw new AiError('JOB_STATE_CHANGED', '任务状态已变化');
+          const access = await requireAiMember(tx, job.actor_id, job.project_id, true, true);
+          await assertJobGrant(tx, job, true);
+          await lockRunningAiJob(tx, job);
+          await assertReferenceBindings(tx, job, true);
           await lockAssetStorageKeys(
             tx,
             storedBatch.map((file) => file.key),
           );
-          const access = await permission(tx, job.actor_id, job.project_id);
-          const inputReferences =
-            job.input.references ?? (job.input.reference ? [job.input.reference] : []);
-          for (const meta of [
-            ...inputReferences,
-            ...(job.input.mask ? [job.input.mask] : []),
-            ...(job.input.markup ? [job.input.markup] : []),
-          ]) {
-            const live = (
-              await tx.query(
-                'SELECT content_hash FROM assets WHERE id=$1 AND project_id=$2 AND deleted_at IS NULL',
-                [meta.id, job.project_id],
-              )
-            ).rows[0];
-            if (!live || live.content_hash !== meta.hash)
-              throw new AiError('REFERENCE_REVOKED', '参考素材已失效，未发布本批结果');
-          }
           const published: Array<Record<string, unknown>> = [];
           for (const [index, file] of storedBatch.entries()) {
             const provenance = {
@@ -1246,8 +1282,9 @@ export function createMultimodalService(
             ).rows[0]!;
             const rev = (
               await tx.query(
-                "INSERT INTO revisions(artwork_id,version,recipe,author_id,label) VALUES($1,1,$2,$3,'AI 生成原始版本') RETURNING id",
-                [art.id, JSON.stringify(createRecipeV3()), job.actor_id],
+                `INSERT INTO revisions(artwork_id,version,recipe,author_id,label,origin_kind,origin_ref)
+                VALUES($1,1,$2,$3,'AI 生成原始版本','ai-generated',$4) RETURNING id`,
+                [art.id, JSON.stringify(createRecipeV3()), job.actor_id, job.id],
               )
             ).rows[0]!;
             await tx.query('UPDATE artworks SET head_revision_id=$2 WHERE id=$1', [art.id, rev.id]);
@@ -1280,7 +1317,9 @@ export function createMultimodalService(
         const code =
           error instanceof AiError || error instanceof ProviderError
             ? error.code
-            : 'AI_PROCESSING_FAILED';
+            : error instanceof QuotaError
+              ? error.code
+              : 'AI_PROCESSING_FAILED';
         await transaction(db, async (tx) => {
           const state = (
             await tx.query('SELECT state FROM ai_jobs WHERE id=$1 FOR UPDATE', [job.id])

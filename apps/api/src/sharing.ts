@@ -2,7 +2,8 @@ import type { FastifyInstance } from 'fastify';
 import { z } from 'zod';
 import { transaction, audit, emit, type Database } from '@ai-xiutu/db';
 import { parseEditorRecipe } from '@ai-xiutu/editor';
-import { remapRecipeReferences, validateRecipeReferences } from './recipe-references.js';
+import { remapRecipeReferences } from './recipe-references.js';
+import { createArtworkBranch } from './revision-commands.js';
 import { prepareAuthorizedMediaCopies } from './media-copy.js';
 import {
   HttpError,
@@ -294,20 +295,15 @@ export function registerSharing(app: FastifyInstance, db: Database): void {
         const assetId = assetMap.get(a.asset_id);
         if (!assetId) throw new HttpError(409, 'COPY_SOURCE_CHANGED', '源资源已改变，请刷新');
         const recipe = remapRecipeReferences(parseEditorRecipe(a.recipe), assetMap);
-        await validateRecipeReferences(tx, row.id, recipe);
-        const art = (
-          await tx.query(
-            'INSERT INTO artworks(project_id,asset_id,title) VALUES($1,$2,$3) RETURNING id',
-            [row.id, assetId, a.title],
-          )
-        ).rows[0]!;
-        const rev = (
-          await tx.query(
-            'INSERT INTO revisions(artwork_id,version,recipe,label,author_id) VALUES($1,1,$2,$3,$4) RETURNING id',
-            [art.id, JSON.stringify(recipe), '授权复制的当前版本', user.id],
-          )
-        ).rows[0]!;
-        await tx.query('UPDATE artworks SET head_revision_id=$2 WHERE id=$1', [art.id, rev.id]);
+        await createArtworkBranch(tx, {
+          projectId: row.id,
+          actorId: user.id,
+          assetId,
+          title: a.title,
+          recipe,
+          label: '授权复制的当前版本',
+          origin: { kind: 'project-copy' },
+        });
       }
       const docs = (
         await tx.query('SELECT * FROM documents WHERE project_id=$1 ORDER BY id FOR SHARE', [p.id])

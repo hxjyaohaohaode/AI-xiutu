@@ -1,6 +1,11 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { createRecipeV3, createAdjustmentRegionV3 } from '@ai-xiutu/editor';
+import {
+  createRecipeV3,
+  createAdjustmentRegionV3,
+  createRasterMask,
+  type SelectionMaskV3,
+} from '@ai-xiutu/editor';
 import { collaborationCommandSchema } from '@ai-xiutu/contracts';
 import {
   applyCollaborationOperation,
@@ -155,4 +160,27 @@ test('fencing and curve schemas reject unsafe numeric cursors and arbitrary comm
   assert.equal(csvCell('=HYPERLINK("x")'), '"\'=HYPERLINK(""x"")"');
   assert.equal(csvCell(' \t+SUM(A1)'), '"\' \t+SUM(A1)"');
   assert.equal(csvCell('ordinary,"label"'), '"ordinary,""label"""');
+});
+
+test('raster regions can edit disjoint pixels while polygon edges sharing a pixel conflict', () => {
+  const a = { kind: 'region' as const, collection: 'regionEdits' as const, id: 'a' };
+  const b = { ...a, id: 'b' };
+  const left = createRasterMask(6, 1, Uint8Array.of(255, 255, 0, 0, 0, 0));
+  const right = createRasterMask(6, 1, Uint8Array.of(0, 0, 0, 0, 255, 255));
+  assert.equal(targetsConflict(a, maskBounds(left, 60, 7), b, maskBounds(right, 60, 7)), false);
+  const polygon = (from: number, to: number): SelectionMaskV3 => ({
+    type: 'polygon',
+    feather: 0,
+    invert: false,
+    points: [
+      { x: from, y: 0 },
+      { x: to, y: 0 },
+      { x: to, y: 1 },
+      { x: from, y: 1 },
+    ],
+  });
+  assert.equal(
+    targetsConflict(a, maskBounds(polygon(0, 0.5), 5, 3), b, maskBounds(polygon(0.5, 1), 5, 3)),
+    true,
+  );
 });

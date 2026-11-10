@@ -42,7 +42,7 @@ export interface HealingOperationV4 {
 /** Distinct local signal operations; no automatic acne/identity/3D reconstruction. */
 export interface RetouchRegionV4 {
   /** Missing keeps the published sparse bilateral implementation. */
-  algorithm?: 'guided-v1' | 'guided-v2';
+  algorithm?: 'guided-v1' | 'guided-v2' | 'guided-v3';
   origin?: OperationOriginV3;
   id: string;
   name: string;

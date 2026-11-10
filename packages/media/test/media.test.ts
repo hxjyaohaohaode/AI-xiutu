@@ -30,6 +30,46 @@ const raw16 = async (path: string) => {
   return [...new Uint16Array(b.buffer, b.byteOffset, b.length / 2)];
 };
 
+test('skinny, tiny and odd raster sizes obey independent input and proxy budgets', async () =>
+  fixture(async (dir) => {
+    const caps = await getMediaCapabilities({ maxPixels: 224_000_000 });
+    assert.equal(caps.maxPixels, 224_000_000);
+    assert.equal(caps.formatAndResourceLimitsApply, true);
+    for (const [width, height, expectedWidth, expectedHeight] of [
+      [1, 1, 1, 1],
+      [2048, 1, 17, 1],
+      [1, 2049, 1, 17],
+      [27, 33, 3, 4],
+    ] as const) {
+      const key = `${width}x${height}`,
+        inputPath = join(dir, key + '.png');
+      await sharp({ create: { width, height, channels: 4, background: '#517dbbc0' } })
+        .png()
+        .toFile(inputPath);
+      const workDir = join(dir, key);
+      const result = await processMedia({
+        inputPath,
+        workDir,
+        options: { maxPixels: width * height, maxProxyPixels: 17, generateTiles: false },
+      });
+      assert.deepEqual(result.proxy.normalizedDimensions, { width, height });
+      assert.deepEqual([result.proxy.width, result.proxy.height], [expectedWidth, expectedHeight]);
+      const rgba = await sharp(join(workDir, 'proxy.png')).ensureAlpha().raw().toBuffer();
+      const tolerance = width === expectedWidth && height === expectedHeight ? 0 : 1;
+      for (let at = 0; at < rgba.length; at += 4)
+        assert.ok(Math.abs(rgba[at + 3]! - 192) <= tolerance, key);
+    }
+    await assert.rejects(
+      processMedia({
+        inputPath: join(dir, '2048x1.png'),
+        workDir: join(dir, 'over'),
+        options: { maxPixels: 2047, generateTiles: false },
+      }),
+      (error) => error instanceof MediaProcessingError && error.code === 'limit',
+    );
+    await assert.rejects(lstat(join(dir, 'over')), /ENOENT/);
+  }));
+
 test('real isolated ingestion keeps source bytes, uint16 adjacent values, ICC, bounded proxy and multi-level tiles', async () =>
   fixture(async (dir) => {
     const values = Uint16Array.from({ length: 96 * 64 * 3 }, (_, i) => 12000 + (i % 1000)),
