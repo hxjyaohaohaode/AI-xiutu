@@ -12,6 +12,8 @@ import type { AssistantDependencies } from '../src/assistant/index.js';
 import { createAssistantService } from '../src/assistant/service.js';
 import sharp from 'sharp';
 import { inspectCandidatePixels } from '../src/assistant/preview.js';
+import { createRecipeV4, createAdjustmentRegionV3 } from '@ai-xiutu/editor';
+import { createArtworkBranch } from '../src/revision-commands.js';
 
 const databaseUrl = process.env.TEST_DATABASE_URL;
 const sha = (value: string | Uint8Array) => createHash('sha256').update(value).digest('hex');
@@ -731,6 +733,201 @@ test(
     } finally {
       await f.close();
     }
+  },
+);
+
+test(
+  'local spatial candidates use original-resolution rendering and cannot bypass pixel admission before automatic save',
+  { skip: !databaseUrl },
+  async (t) => {
+    for (const scenario of ['native-retouch', 'oversized-healing', 'unshared-retouch'])
+      await t.test(scenario, async () => {
+        let requests = 0;
+        const call = (name: string, args: unknown) => ({
+          type: 'function_call',
+          name,
+          call_id: name,
+          arguments: JSON.stringify(args),
+        });
+        const failedRender = scenario === 'oversized-healing',
+          shared = scenario !== 'unshared-retouch';
+        const selection = { collection: 'regionEdits', id: 'selected' };
+        const proposal = {
+          summary: '保留原尺寸和选区边界',
+          name: '局部候选',
+          operationId: null,
+          selection,
+          protectedSelection: null,
+          opacity: 1,
+          ...(failedRender
+            ? {
+                method: 'diffusion',
+                searchRadius: 0.5,
+                iterations: 32,
+                texture: 0,
+                patchRadius: null,
+              }
+            : {
+                radius: 0.006,
+                smoothing: 60,
+                texture: 0,
+                uniformity: 20,
+                shine: 0,
+                speckle: 0,
+                fineLines: 0,
+              }),
+        };
+        const f = await fixture({
+          fetcher: async (_url, init) => {
+            requests++;
+            if (requests === 1)
+              return response([
+                call(failedRender ? 'propose_healing' : 'propose_retouch', proposal),
+                ...(shared ? [call('inspect_candidate', { candidateIndex: 0 })] : []),
+              ]);
+            if (requests === 2) {
+              const body = JSON.parse(String(init?.body));
+              const images = body.input
+                .flatMap((item: any) => item.content ?? [])
+                .filter((item: any) => item.type === 'input_image');
+              assert.equal(images.length, shared ? (failedRender ? 1 : 2) : 0);
+              return response([
+                call('select_candidate', {
+                  candidateIndex: 0,
+                  reason: '依据当前检查结果提出最终候选',
+                }),
+              ]);
+            }
+            return response([outputText('候选检查结束，以应用的校验结果为准。')]);
+          },
+        });
+        try {
+          const width = 1024,
+            height = 768,
+            data = Buffer.alloc(width * height * 3);
+          for (let y = 0; y < height; y++)
+            for (let x = 0; x < width; x++) {
+              const at = (y * width + x) * 3;
+              data[at] = 120 + ((x * 11 + y * 3) % 40);
+              data[at + 1] = 90 + ((x * 7 + y * 9) % 30);
+              data[at + 2] = 70 + (y % 15);
+            }
+          const png = await sharp(data, { raw: { width, height, channels: 3 } })
+            .png()
+            .toBuffer();
+          const stored = await f.storage.storeGenerated(png),
+            assetId = randomUUID();
+          const recipe = createRecipeV4({
+            regionEdits: [
+              createAdjustmentRegionV3({
+                id: 'selected',
+                name: '手工原图选区',
+                mask: {
+                  type: 'radial',
+                  centerX: 0.5,
+                  centerY: 0.5,
+                  radiusX: failedRender ? 0.5 : 0.25,
+                  radiusY: failedRender ? 0.5 : 0.25,
+                  feather: 0.2,
+                  invert: false,
+                },
+              }),
+            ],
+          });
+          const artwork = await transaction(f.db, async (tx) => {
+            await tx.query(
+              `INSERT INTO assets(id,project_id,name,storage_key,mime,width,height,bytes,content_hash,provenance,created_by)
+              VALUES($1,$2,'native-pixels.png',$3,$4,$5,$6,$7,$8,$9,$10)`,
+              [
+                assetId,
+                f.projectId,
+                stored.key,
+                stored.mime,
+                stored.width,
+                stored.height,
+                stored.bytes,
+                stored.hash,
+                JSON.stringify({ kind: 'uploaded', declaredSource: 'upload' }),
+                f.actors.owner.id,
+              ],
+            );
+            return createArtworkBranch(tx, {
+              projectId: f.projectId,
+              actorId: f.actors.owner.id,
+              assetId,
+              recipe,
+              title: 'Native pixel fixture',
+              label: 'original',
+            });
+          });
+          const grant = (
+            await f.call('POST', `/v1/projects/${f.projectId}/assistant-grants`, {
+              mode: 'auto',
+              unitLimit: 20,
+              stepLimit: 5,
+              minutes: 30,
+              allowedActions: ['assistant-turn', 'edit'],
+              modelIds: [f.modelId],
+            })
+          ).json().grant;
+          const context = {
+            artworkId: artwork.artwork.id,
+            assetId,
+            expectedVersion: 1,
+            recipe,
+            ...(shared
+              ? {
+                  imageDataUrl: `data:image/png;base64,${await sharp(png)
+                    .resize(512, 512, { fit: 'inside' })
+                    .png()
+                    .toBuffer()
+                    .then((bytes) => bytes.toString('base64'))}`,
+                }
+              : {}),
+          };
+          const started = await f.call('POST', `/v1/projects/${f.projectId}/assistant-turns`, {
+            ...f.turn(),
+            context,
+            scope: { ...f.scope, executionGrantId: grant.id },
+          });
+          assert.equal(started.statusCode, 202, started.body);
+          const completed = await until(
+            () => f.readTurn(started.json().id),
+            (row) => row.state !== 'running',
+            45000,
+          );
+          assert.equal(completed.state, 'completed', JSON.stringify(completed));
+          const candidate = completed.output.candidates[0];
+          assert.ok(
+            candidate,
+            'a failed render retains a reviewable proposal, not a saved revision',
+          );
+          if (scenario === 'native-retouch') {
+            assert.equal(completed.output.execution.state, 'applied');
+            assert.equal(candidate.observation.fullResolutionChecked, true);
+            assert.equal(candidate.observation.after.width, width);
+            assert.equal(candidate.observation.after.height, height);
+            assert.ok(candidate.observation.changedPixels > 0);
+          } else {
+            assert.equal(candidate.appliedRevisionId, null);
+            assert.equal(
+              completed.output.execution.code,
+              shared ? 'CANDIDATE_REVIEW_REQUIRED' : 'NATIVE_PIXEL_CHECK_REQUIRED',
+            );
+          }
+          const head = (
+            await f.db.query('SELECT head_version FROM artworks WHERE id=$1', [context.artworkId])
+          ).rows[0]!.head_version;
+          assert.equal(head, scenario === 'native-retouch' ? 2 : 1);
+          assert.equal(
+            (await f.call('GET', `/v1/assistant-grants/${grant.id}`)).json().grant.usedSteps,
+            scenario === 'native-retouch' ? 2 : 1,
+          );
+          assert.equal(requests, 3);
+        } finally {
+          await f.close();
+        }
+      });
   },
 );
 
@@ -1567,6 +1764,104 @@ test(
           assert.equal(record.hold_state, 'settled');
           assert.ok(record.usage.vendorFinalUsageConfirmed);
           assert.ok(!JSON.stringify(record.context).includes('base64'));
+        },
+      );
+      await t.test(
+        'voice candidates bind the updated artwork source, not the opening session snapshot',
+        async () => {
+          const alternativeId = randomUUID();
+          const alternative = await transaction(f.db, async (tx) => {
+            await tx.query(
+              `INSERT INTO assets(id,project_id,name,storage_key,mime,width,height,bytes,content_hash,provenance,created_by)
+            SELECT $1,project_id,'second source',storage_key,mime,width,height,bytes,content_hash,provenance,created_by FROM assets WHERE id=$2`,
+              [alternativeId, f.assetId],
+            );
+            return createArtworkBranch(tx, {
+              projectId: f.projectId,
+              actorId: f.actors.owner.id,
+              assetId: alternativeId,
+              recipe: f.recipe,
+              title: 'Second voice artwork',
+              label: 'original',
+            });
+          });
+          const grantResponse = await f.call(
+            'POST',
+            `/v1/projects/${f.projectId}/assistant-grants`,
+            {
+              mode: 'auto',
+              unitLimit: 20,
+              stepLimit: 5,
+              minutes: 30,
+              allowedActions: ['realtime-voice', 'edit'],
+              modelIds: ['gpt-live-1', f.modelId],
+            },
+          );
+          assert.equal(grantResponse.statusCode, 200, grantResponse.body);
+          const grant = grantResponse.json().grant;
+          Object.assign(f.scope, { executionGrantId: grant.id });
+          const stream = await openVoice();
+          try {
+            const updated = {
+              ...f.context,
+              artworkId: alternative.artwork.id,
+              assetId: alternativeId,
+            };
+            stream.ws.send(JSON.stringify({ type: 'context', context: updated }));
+            assert.equal((await stream.wait('context')).accepted, true);
+            stream.ws.send(JSON.stringify({ type: 'text', text: '降低新作品的曝光' }));
+            const result = await stream.wait('assistant-result');
+            const candidate = result.candidates[0];
+            assert.equal(candidate.artworkId, alternative.artwork.id);
+            assert.equal(candidate.baseVersion, 1);
+            const payload = { recipe: f.recipe, expectedVersion: 1 };
+            const applied = await f.call(
+              'POST',
+              `/v1/assistant-candidates/${candidate.id}/apply`,
+              payload,
+            );
+            assert.equal(applied.statusCode, 200, applied.body);
+            assert.equal(applied.json().artworkId, alternative.artwork.id);
+            const replay = await f.call(
+              'POST',
+              `/v1/assistant-candidates/${candidate.id}/apply`,
+              payload,
+            );
+            assert.equal(replay.json().revisionId, applied.json().revisionId);
+            assert.equal(replay.json().replayed, true);
+            const opening = (
+              await f.db.query('SELECT context FROM voice_sessions WHERE id=$1', [stream.data.id])
+            ).rows[0]!.context;
+            assert.equal(
+              opening.assetId,
+              f.assetId,
+              'immutable opening audit context stays intact',
+            );
+            assert.equal(
+              (
+                await f.db.query('SELECT head_version FROM artworks WHERE id=$1', [
+                  f.context.artworkId,
+                ])
+              ).rows[0]!.head_version,
+              1,
+            );
+            assert.equal(
+              (
+                await f.db.query('SELECT head_version FROM artworks WHERE id=$1', [
+                  alternative.artwork.id,
+                ])
+              ).rows[0]!.head_version,
+              2,
+            );
+            assert.equal(
+              (await f.call('GET', `/v1/assistant-grants/${grant.id}`)).json().grant.usedSteps,
+              2,
+            );
+          } finally {
+            delete (f.scope as any).executionGrantId;
+            stream.ws.send(JSON.stringify({ type: 'end' }));
+            await stream.wait('closed');
+          }
         },
       );
       await t.test(

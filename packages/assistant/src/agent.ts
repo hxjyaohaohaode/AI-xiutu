@@ -20,6 +20,13 @@ import {
 } from './context-budget.js';
 import { streamResponse } from './stream.js';
 import type { AssistantModelConfig } from './models.js';
+import {
+  retouchProposalSchema,
+  healingProposalSchema,
+  applyAssistantRetouch,
+  applyAssistantHealing,
+  describeSpatialSelections,
+} from './spatial.js';
 
 export const RESPONSES_URL = 'https://api.openai.com/v1/responses';
 export const recipeHash = (recipe: unknown) =>
@@ -61,6 +68,8 @@ const sequenceSchema = z
         z.discriminatedUnion('type', [
           editProposalSchema.extend({ type: z.literal('adjust') }),
           curveProposalSchema.extend({ type: z.literal('curve') }),
+          retouchProposalSchema.extend({ type: z.literal('retouch') }),
+          healingProposalSchema.extend({ type: z.literal('healing') }),
           z
             .object({
               type: z.literal('geometry'),
@@ -96,6 +105,13 @@ export function applyAssistantSequence(base: EditorRecipe, raw: unknown) {
       changes.push(...next.changes);
     } else if (step.type === 'curve') {
       recipe.curves[step.channel] = step.points.map(({ x, y }) => [x, y]);
+    } else if (step.type === 'retouch' || step.type === 'healing') {
+      const next = (step.type === 'retouch' ? applyAssistantRetouch : applyAssistantHealing)(
+        recipe,
+        operation,
+      );
+      recipe = next.recipe;
+      changes.push(...next.changes);
     } else {
       recipe.geometry = {
         crop: step.crop,
@@ -201,9 +217,12 @@ export function describeEditor(recipe?: EditorRecipe) {
         : [],
     curves: recipe?.curves ?? null,
     geometry: recipe?.geometry ?? null,
+    spatialSelections: describeSpatialSelections(recipe),
     limitations: [
       'Proposals are applied only by the application under the current explicit user grant, version and collaboration checks.',
       'Do not infer identities, medical conditions or hidden image details.',
+      'Spatial tools copy an existing SOURCE selection and its protection; never guess a mask from transformed preview coordinates. Region opacity and color are not copied. They add an independent editable operation, not neural repair or semantic skin detection.',
+      'Sequence steps compose recipe state. The fixed render pipeline is color, healing, retouch, layers, warp, geometry; listing a step later does not reorder pixel stages.',
     ],
   };
 }
@@ -303,17 +322,33 @@ export const ASSISTANT_TOOLS: ReadonlyArray<Record<string, unknown>> = [
   },
   {
     type: 'function',
+    name: 'propose_retouch',
+    strict: true,
+    description:
+      'Propose a reversible local signal operation. operationId=null adds guided-v1; an existing canUpdateOperation retouch ID updates its absolute values, preserving its algorithm and protection. Portrait-owned operations cannot be overwritten. Use an existing spatialSelections reference and optional protected selection. Controls: smoothing, signed texture, chroma uniformity, shine, speckle and fine lines; deterministic filters, not neural skin/hair reconstruction. Radius is a fraction of the source short edge. If the needed selection does not exist, ask the user to create it. Inspect actual original-resolution pixels before automatic nomination.',
+    parameters: toolSchema(retouchProposalSchema),
+  },
+  {
+    type: 'function',
+    name: 'propose_healing',
+    strict: true,
+    description:
+      'Propose local repair using an existing spatialSelections reference. operationId=null adds an independent operation; an existing canUpdateOperation healing ID updates absolute settings, preserving its donor and protection. New donor search is bounded and automatic. Optionally protect another selection. diffusion works well for small smooth defects; patch-poisson transfers gradients; exemplar-v1 samples original texture and is not universally better. patchRadius is 1..8 for exemplar-v1 only, otherwise null; exemplar iterations must be at least 16. searchRadius is in source short-edge units. Large semantic removal needs a different generation workflow. Inspect original-resolution pixels before automatic nomination.',
+    parameters: toolSchema(healingProposalSchema),
+  },
+  {
+    type: 'function',
     name: 'propose_sequence',
     strict: true,
     description:
-      'Prepare ONE atomic candidate containing sequential adjustments, curves and basic geometry. All steps compose on the preceding result. Crop coordinates are normalized immutable SOURCE coordinates; do not guess source coordinates from a transformed preview. Preserve existing geometry unless explicitly requested.',
+      'Prepare ONE atomic candidate combining adjustments, curves, local retouch/healing and basic geometry. Steps compose recipe state, not arbitrary pixel-stage order: the engine always runs color before healing before retouch before layers/warp/geometry. Use existing spatialSelections references for local operations. Crop coordinates are normalized immutable SOURCE coordinates; do not guess source coordinates from a transformed preview. Preserve existing geometry unless explicitly requested.',
     parameters: toolSchema(sequenceSchema),
   },
   {
     type: 'function',
     name: 'describe_editor',
     description:
-      'Get the current supported controls, ranges, values and existing local region/group IDs.',
+      'Get supported controls, ranges, current values and existing local region/group/selection IDs. Selection geometry stays in its immutable original source frame.',
     strict: true,
     parameters: jsonObject({}, []),
   },
@@ -595,9 +630,14 @@ export async function runEditorAgent(
         const args: unknown = JSON.parse(call.arguments);
         if (
           result.candidates.length >= 12 &&
-          ['propose_edit', 'propose_curve', 'propose_sequence', 'draft_generation'].includes(
-            call.name,
-          )
+          [
+            'propose_edit',
+            'propose_curve',
+            'propose_sequence',
+            'propose_retouch',
+            'propose_healing',
+            'draft_generation',
+          ].includes(call.name)
         )
           throw new Error('CANDIDATE_LIMIT');
         if (call.name === 'inspect_candidate') {
@@ -709,10 +749,26 @@ export async function runEditorAgent(
             .strict()
             .parse(args);
           output = await context.search(parsed.query, parsed.limit);
+        } else if (call.name === 'propose_retouch' || call.name === 'propose_healing') {
+          if (!context.recipe) throw new Error('NO_CURRENT_IMAGE');
+          const candidate = (
+            call.name === 'propose_retouch' ? applyAssistantRetouch : applyAssistantHealing
+          )(context.recipe, args);
+          await context.moderate(
+            JSON.stringify({ summary: candidate.summary, changes: candidate.changes }),
+          );
+          result.candidates.push({ kind: 'edit', ...candidate });
+          output = {
+            candidateIndex: result.candidates.length - 1,
+            status: 'pending_application_permission_checks',
+            changes: candidate.changes,
+          };
         } else if (call.name === 'propose_sequence') {
           if (!context.recipe) throw new Error('NO_CURRENT_IMAGE');
           const candidate = applyAssistantSequence(context.recipe, args);
-          await context.moderate(candidate.summary);
+          await context.moderate(
+            JSON.stringify({ summary: candidate.summary, changes: candidate.changes }),
+          );
           result.candidates.push({ kind: 'edit', ...candidate });
           output = {
             candidateIndex: result.candidates.length - 1,

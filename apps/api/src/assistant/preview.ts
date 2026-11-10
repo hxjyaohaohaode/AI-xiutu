@@ -2,6 +2,7 @@ import { Worker } from 'node:worker_threads';
 import { createHash } from 'node:crypto';
 import type { Queryable } from '@ai-xiutu/db';
 import { parseEditorRecipe, type EditorRecipe } from '@ai-xiutu/editor';
+import { needsNativeSpatialCheck, recipeHash } from '@ai-xiutu/assistant';
 import type { AssistantContext } from '@ai-xiutu/contracts';
 import type { ImageModerator } from '@ai-xiutu/providers';
 import { HttpError } from '../core.js';
@@ -9,6 +10,7 @@ import type { LocalPrivateStorage } from '../storage.js';
 import { normalizeSharedImage, validateContext } from './context.js';
 
 let active = 0;
+let nativeActive = false;
 interface PixelMeasurements {
   width: number;
   height: number;
@@ -25,6 +27,7 @@ interface CandidatePixelObservation {
   meanAbsoluteDelta: number | null;
   imageSha256: string;
   fidelity: string;
+  fullResolutionChecked: boolean;
 }
 export async function inspectCandidatePixels(
   db: Queryable,
@@ -39,11 +42,18 @@ export async function inspectCandidatePixels(
     throw new HttpError(403, 'IMAGE_SHARING_REQUIRED', '需要先允许共享当前画面');
   if (active >= 2) throw new HttpError(429, 'PREVIEW_BUSY', '图像检查繁忙，请稍后再试');
   active++;
+  let native = false;
   let worker: Worker | undefined, timer: ReturnType<typeof setTimeout> | undefined;
   try {
     await validateContext(db, actorId, projectId, context);
     const parsed = parseEditorRecipe(candidate),
       base = parseEditorRecipe(context.recipe);
+    native = needsNativeSpatialCheck(base, parsed);
+    if (native && nativeActive) {
+      native = false;
+      throw new HttpError(429, 'NATIVE_PREVIEW_BUSY', '原尺寸图像检查繁忙，请稍后再试');
+    }
+    if (native) nativeActive = true;
     const layerIds = [
       ...new Set(
         [base, parsed].flatMap((recipe) =>
@@ -75,13 +85,14 @@ export async function inspectCandidatePixels(
         layers: layerIds.map((id) => ({ id, bytes: sources.get(id) })),
         base,
         candidate: parsed,
+        fullResolution: native,
       },
     });
     const result = await new Promise<{ bytes: Uint8Array; observation: CandidatePixelObservation }>(
       (resolve, reject) => {
         timer = setTimeout(
           () => reject(new HttpError(408, 'PREVIEW_TIMEOUT', '图像检查超时，未修改作品')),
-          15000,
+          native ? 30000 : 15000,
         );
         worker!.once('message', resolve);
         worker!.once('error', reject);
@@ -97,6 +108,7 @@ export async function inspectCandidatePixels(
     return {
       observation: {
         ...result.observation,
+        inspectedRecipeHash: recipeHash(parsed),
         imageSha256: createHash('sha256')
           .update(Buffer.from(imageDataUrl.split(',')[1]!, 'base64'))
           .digest('hex'),
@@ -106,6 +118,7 @@ export async function inspectCandidatePixels(
   } finally {
     clearTimeout(timer);
     await worker?.terminate();
+    if (native) nativeActive = false;
     active--;
   }
 }

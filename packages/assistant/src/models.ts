@@ -104,6 +104,8 @@ export function voiceModel(id: string) {
   return found;
 }
 export const ASSISTANT_TOOL_NAMES = [
+  'inspect_candidate',
+  'select_candidate',
   'suggest_memory',
   'compose_workspace',
   'read_history',
@@ -113,6 +115,8 @@ export const ASSISTANT_TOOL_NAMES = [
   'propose_edit',
   'propose_curve',
   'propose_sequence',
+  'propose_retouch',
+  'propose_healing',
   'draft_generation',
 ] as const;
 export const VOICE_VERIFIED_AT = '2026-11-10';

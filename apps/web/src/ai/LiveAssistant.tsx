@@ -700,6 +700,8 @@ export function LiveAssistant(props: LiveAssistantProps) {
         describe_editor: '读取编辑参数',
         search_resources: '检索素材',
         propose_sequence: '组合编辑步骤',
+        propose_retouch: '准备局部质感候选',
+        propose_healing: '准备局部修复候选',
         propose_edit: '准备参数候选',
         propose_curve: '准备曲线',
         draft_generation: '整理生图要求',
@@ -804,9 +806,11 @@ export function LiveAssistant(props: LiveAssistantProps) {
               ? '本轮提出了多个备选方案，请选择预览后继续。'
               : code === 'CANDIDATE_REVIEW_REQUIRED'
                 ? '本轮尚未完成对候选画面的检查，已保留方案，请预览确认。'
-                : code === 'AUTOMATIC_UNSAVED_BASE'
-                  ? '本轮基于未保存参数，已保留候选，请先预览确认。'
-                  : `自动修改已停止，候选已保留，请检查版本、占用或授权后继续。${code ?? ''}`,
+                : code === 'NATIVE_PIXEL_CHECK_REQUIRED'
+                  ? '局部方案尚未通过原尺寸检查，已保留候选。可共享画面后重新检查，或先在画布预览。'
+                  : code === 'AUTOMATIC_UNSAVED_BASE'
+                    ? '本轮基于未保存参数，已保留候选，请先预览确认。'
+                    : `自动修改已停止，候选已保留，请检查版本、占用或授权后继续。${code ?? ''}`,
           );
         }
       } else

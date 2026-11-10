@@ -1,6 +1,6 @@
 import { audit, emit, claimAssistantGrant, type Queryable } from '@ai-xiutu/db';
 import { parseEditorRecipe } from '@ai-xiutu/editor';
-import { recipeHash } from '@ai-xiutu/assistant';
+import { recipeHash, needsNativeSpatialCheck } from '@ai-xiutu/assistant';
 import { HttpError } from '../core.js';
 import { appendArtworkRevision } from '../revision-commands.js';
 import { lockedAssistantAccess } from './context.js';
@@ -21,7 +21,7 @@ export async function applyAuthorizedCandidate(
   const hint = (
     await tx.query(
       `SELECT c.project_id,COALESCE(t.config->'historyScope',t.scope,v.scope) AS access_scope,
-    COALESCE(t.scope,v.scope) AS execution_scope, COALESCE(t.context,v.context) AS context
+    COALESCE(t.scope,v.scope) AS execution_scope
     FROM assistant_candidates c LEFT JOIN assistant_turns t ON t.id=c.turn_id LEFT JOIN voice_sessions v ON v.id=c.voice_id
     WHERE c.id=$1 AND c.actor_id=$2`,
       [candidateId, actorId],
@@ -43,6 +43,20 @@ export async function applyAuthorizedCandidate(
     new Date(row.expires_at).getTime() <= Date.now()
   )
     throw new HttpError(409, 'CANDIDATE_UNAVAILABLE', '此候选不能自动执行');
+  if (
+    row.payload.baseRecipe &&
+    needsNativeSpatialCheck(
+      parseEditorRecipe(row.payload.baseRecipe),
+      parseEditorRecipe(row.payload.recipe),
+    ) &&
+    (row.payload.observation?.fullResolutionChecked !== true ||
+      row.payload.observation?.inspectedRecipeHash !== recipeHash(row.payload.recipe))
+  )
+    throw new HttpError(
+      409,
+      'NATIVE_PIXEL_CHECK_REQUIRED',
+      '局部修复或质感候选尚未通过原尺寸渲染检查，请先检查或预览确认',
+    );
   const grantId = hint.execution_scope?.executionGrantId;
   if (!grantId) throw new HttpError(403, 'AUTOMATIC_GRANT_REQUIRED', '自动执行需要有效授权');
   await claimAssistantGrant(tx, {
@@ -61,22 +75,28 @@ export async function applyAuthorizedCandidate(
       row.project_id,
     ])
   ).rows[0];
+  // A voice session may have accepted a newer context or a different artwork.
+  // Its opening snapshot is not the candidate's source. Resolve the immutable
+  // revision that was current when THIS candidate was created, for old and new rows.
+  const base = (
+    await tx.query(
+      `SELECT r.recipe,s.asset_id FROM revisions r
+      JOIN revision_sources s ON s.revision_id=r.id
+      WHERE r.artwork_id=$1 AND r.version=$2`,
+      [row.artwork_id, row.base_version],
+    )
+  ).rows[0];
   if (
     !artwork ||
+    !base ||
     artwork.head_version !== row.base_version ||
     (input.expectedVersion !== undefined && input.expectedVersion !== row.base_version) ||
     (input.recipe !== undefined && recipeHash(input.recipe) !== row.base_recipe_hash) ||
-    artwork.asset_id !== hint.context?.assetId
+    artwork.asset_id !== base.asset_id
   )
     throw new HttpError(409, 'CANDIDATE_STALE', '图片或本地参数已变化，自动执行已停止');
   if (input.requireSavedBase) {
-    const base = (
-      await tx.query('SELECT recipe FROM revisions WHERE id=$1 AND artwork_id=$2', [
-        artwork.head_revision_id,
-        artwork.id,
-      ])
-    ).rows[0];
-    if (!base || recipeHash(base.recipe) !== row.base_recipe_hash)
+    if (recipeHash(base.recipe) !== row.base_recipe_hash)
       throw new HttpError(
         409,
         'AUTOMATIC_UNSAVED_BASE',

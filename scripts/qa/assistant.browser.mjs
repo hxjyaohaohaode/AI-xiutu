@@ -9,6 +9,7 @@ import { setTimeout as delay } from 'node:timers/promises';
 import { chromium } from 'playwright';
 import { transaction, adjustUnits, reserveUnits, markUnknownHold } from '@ai-xiutu/db';
 import { assistantModelConfigSchema } from '@ai-xiutu/assistant';
+import { migrateRecipeToV4 } from '@ai-xiutu/editor';
 
 if (process.env.CI !== 'true' || process.env.NODE_ENV === 'production')
   throw new Error('Run only in isolated non-production CI.');
@@ -62,6 +63,7 @@ const workspace = {
 let dispatches = 0,
   holdCompletion = false,
   firstDelta = false;
+let spatialFixture = false;
 const bodies = [];
 const sentence = '已保留人物特征，准备降低曝光并保持自然肤质。';
 const outputText = {
@@ -179,14 +181,32 @@ try {
           : [
               {
                 type: 'function_call',
-                name: 'propose_edit',
+                name: spatialFixture ? 'propose_retouch' : 'propose_edit',
                 call_id: 'fixture-edit',
-                arguments: JSON.stringify({
-                  summary: '降低曝光并保留原有主体',
-                  target: 'global',
-                  targetId: null,
-                  changes: [{ path: 'adjustments.exposure', value: -1.5 }],
-                }),
+                arguments: JSON.stringify(
+                  spatialFixture
+                    ? {
+                        summary: '在左侧已有选区内调整局部质感',
+                        name: '左侧质感',
+                        operationId: null,
+                        selection: { collection: 'regionEdits', id: 'left' },
+                        protectedSelection: null,
+                        opacity: 0.8,
+                        radius: 0.02,
+                        smoothing: 40,
+                        texture: 10,
+                        uniformity: 20,
+                        shine: 10,
+                        speckle: 0,
+                        fineLines: 0,
+                      }
+                    : {
+                        summary: '降低曝光并保留原有主体',
+                        target: 'global',
+                        targetId: null,
+                        changes: [{ path: 'adjustments.exposure', value: -1.5 }],
+                      },
+                ),
               },
               {
                 type: 'function_call',
@@ -245,6 +265,16 @@ try {
       },
     },
   });
+  const migrated = await fixture.call(
+    'POST',
+    `/v1/artworks/${fixture.artwork.artwork.id}/revisions`,
+    {
+      expectedVersion: fixture.artwork.artwork.headVersion,
+      recipe: migrateRecipeToV4(fixture.recipe),
+      label: 'Isolated v4 browser baseline',
+    },
+  );
+  assert.equal(migrated.statusCode, 201, migrated.body);
   await fixture.db.query('INSERT INTO assistant_model_configs(id,config) VALUES($1,$2)', [
     modelId,
     JSON.stringify(
@@ -358,6 +388,31 @@ try {
     await page.getByRole('button', { name: '撤销本次编辑', exact: true }).click();
     return { persistedWrite: false, undoAvailable: true };
   });
+  await testCase(
+    'local-spatial-candidate-previews-in-existing-canvas-and-undoes-without-writing',
+    async () => {
+      spatialFixture = true;
+      try {
+        await page
+          .getByRole('button', { name: '开始新会话，保留已保存的历史', exact: true })
+          .click();
+        await submit('在左侧已有选区内调整局部质感。');
+        await finished();
+        await page.getByText('在左侧已有选区内调整局部质感', { exact: true }).waitFor();
+        await page.getByRole('button', { name: '在画布预览', exact: true }).click();
+        await page.getByRole('button', { name: '已放入画布预览', exact: true }).waitFor();
+        assert.equal((await head()).artwork.headVersion, original.artwork.headVersion);
+        await page.screenshot({
+          path: resolve(artifacts, 'local-spatial-preview.png'),
+          fullPage: true,
+        });
+        await page.getByRole('button', { name: '撤销本次编辑', exact: true }).click();
+        return { selectedSourceRegion: 'left', persistedWrite: false, undoAvailable: true };
+      } finally {
+        spatialFixture = false;
+      }
+    },
+  );
   await testCase('suggest-mode-immutable-and-no-forgotten-memory', async () => {
     const panel = await details('执行方式');
     await panel.getByRole('button', { name: '停止授权', exact: true }).click();

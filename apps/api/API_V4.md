@@ -240,6 +240,8 @@ Previewed does not mean saved. Explicit adoption uses the normal versioned edito
 command/save chain. `POST /v1/assistant-candidates/:candidateId/apply` executes a
 candidate under a current automatic grant, locking access, source/version and
 collaboration conflicts. Replay returns the original `appliedRevisionId`.
+The source comes from the candidate's immutable base revision. A voice session's
+opening context does not override a subsequently accepted artwork context.
 For text turns, the server uses this same authority during completion, inside a
 savepoint, then commits candidates, revision, step claim and completed result
 together. A blocked local edit preserves the completed provider receipt and its
@@ -252,14 +254,31 @@ already completed by a provider.
 
 `inspect_candidate` requires explicit current-image sharing. A bounded Worker
 decodes currently accessible source/layers and renders both recipes using the
-actual editor at a <=512px proxy. It measures pixel changes and luminance/clipping,
-moderates the resulting JPEG and supplies it to the next visual request. These
-measurements are not aesthetic scores or full-resolution proof. At most three
+actual editor. Ordinary parameter candidates use a <=512px proxy. New/changed
+healing and retouch stages instead render both recipes at original resolution
+using the tiled reference engine: source/output <=16MP, combined layers <=16MP,
+compressed inputs <=32MiB, one native render per process, 30s timeout (ordinary
+proxy: 15s; total Workers <=2). The editor's smaller spatial/work budgets also
+apply. The model still receives a moderated JPEG reduced to <=512px, while native
+measurements cover the complete rendered images. `fullResolutionChecked` and
+`inspectedRecipeHash` must match a new spatial candidate before `/apply` can save
+it; otherwise409 `NATIVE_PIXEL_CHECK_REQUIRED`. Unshared/failed inspections retain
+reviewable proposals. Measurements are not aesthetic or high-bit-depth guarantees. At most three
 inspections are allowed per turn. Selection in the same round as inspection is
 rejected: the model must first receive the result. When an image was shared,
 automatic saving requires an explicitly selected, observed candidate. Multiple
 unselected alternatives, dirty local bases, active peer leases, stale versions,
 expired grants or exhausted budgets remain reviewable instead of overwriting.
+
+`propose_retouch` and `propose_healing` reference an existing source-space
+selection in `regions/regionEdits/healing/retouch`; arbitrary model masks or
+preview coordinates are not accepted. `operationId:null` adds an independent
+operation; an existing manually owned ID updates absolute settings, retaining
+its protection, algorithm (retouch) and donor (healing). Portrait-owned operations
+cannot be overwritten. Additional protection is combined by union. Both tools
+also work inside `propose_sequence`. Sequence order constructs recipe state; it
+does not reorder the engine's fixed pixel stages. These are actual deterministic
+editor filters, not neural portrait or large-object reconstruction claims.
 
 ### 6.2.1 Execution grants and confirmed memory
 

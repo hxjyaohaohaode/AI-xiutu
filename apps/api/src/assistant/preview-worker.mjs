@@ -1,15 +1,32 @@
 import { parentPort, workerData } from 'node:worker_threads';
 import { createHash } from 'node:crypto';
 import sharp from 'sharp';
-import { renderEditorRecipe, parseEditorRecipe } from '@ai-xiutu/editor';
+import { renderEditorRecipeTiled, parseEditorRecipe } from '@ai-xiutu/editor';
+
+const fullResolution = workerData.fullResolution === true;
+if (fullResolution) {
+  // Bound decoded buffers before any full-size image is materialized. The
+  // browser uses the same aggregate layer limit, independent of compressed bytes.
+  let layerPixels = 0;
+  for (const entry of workerData.layers) {
+    const metadata = await sharp(Buffer.from(entry.bytes), {
+      limitInputPixels: 16777216,
+      failOn: 'warning',
+    }).metadata();
+    layerPixels += metadata.width * metadata.height;
+    if ((metadata.pages ?? 1) !== 1 || layerPixels > 16777216)
+      throw new Error('NATIVE_PREVIEW_LAYER_BUDGET');
+  }
+}
 
 async function decode(bytes) {
-  const { data, info } = await sharp(Buffer.from(bytes), {
+  let pipeline = sharp(Buffer.from(bytes), {
     limitInputPixels: 16777216,
     failOn: 'warning',
-  })
-    .autoOrient()
-    .resize(512, 512, { fit: 'inside', withoutEnlargement: true })
+  }).autoOrient();
+  if (!fullResolution)
+    pipeline = pipeline.resize(512, 512, { fit: 'inside', withoutEnlargement: true });
+  const { data, info } = await pipeline
     .toColourspace('srgb')
     .ensureAlpha()
     .raw()
@@ -48,8 +65,9 @@ const input = await decode(workerData.source),
 for (const entry of workerData.layers) images.set(entry.id, await decode(entry.bytes));
 const base = parseEditorRecipe(workerData.base),
   candidate = parseEditorRecipe(workerData.candidate);
-const before = renderEditorRecipe(input, base, { images, maxPixels: 1048576 });
-const after = renderEditorRecipe(input, candidate, { images, maxPixels: 1048576 });
+const options = { images, maxPixels: fullResolution ? 16777216 : 1048576, tileSize: 128 };
+const before = renderEditorRecipeTiled(input, base, options);
+const after = renderEditorRecipeTiled(input, candidate, options);
 let changedPixels = null,
   meanAbsoluteDelta = null;
 if (before.width === after.width && before.height === after.height) {
@@ -69,6 +87,7 @@ if (before.width === after.width && before.height === after.height) {
 const bytes = await sharp(after.data, {
   raw: { width: after.width, height: after.height, channels: 4 },
 })
+  .resize(512, 512, { fit: 'inside', withoutEnlargement: true })
   .flatten({ background: '#e8e8e8' })
   .jpeg({ quality: 85 })
   .toBuffer();
@@ -80,7 +99,9 @@ parentPort.postMessage({
     changedPixels,
     meanAbsoluteDelta,
     imageSha256: createHash('sha256').update(bytes).digest('hex'),
-    fidelity:
-      'sRGB RGBA8 preview rendered from source at <=512px; detail depends on resolution. Statistics are not an aesthetic score or a full-resolution guarantee.',
+    fullResolutionChecked: fullResolution,
+    fidelity: fullResolution
+      ? 'sRGB RGBA8 editor render at original source resolution; measurements cover full rendered images. The supplied JPEG is reduced to <=512px. Render success is not an aesthetic or high-bit-depth guarantee.'
+      : 'sRGB RGBA8 preview rendered from source at <=512px; detail depends on resolution. Statistics are not an aesthetic score or a full-resolution guarantee.',
   },
 });

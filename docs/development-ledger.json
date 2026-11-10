@@ -27,7 +27,7 @@
       "id": "ai-autonomy",
       "requirement": "理解意图→计划→执行→观察→迭代，暂停/恢复与未知结果核验",
       "status": "in_progress",
-      "evidence": "四轮有界工具链；共享画面后真实渲染候选，下一轮看到图像再选择；服务端执行检查 CAS、租约、基线、预算。512px观察、最多三次，并非无限自主迭代或真实模型质量验收。"
+      "evidence": "四轮有界工具链；共享画面后渲染候选，下一轮看图选择；服务端执行检查 CAS、租约、基线、预算。接通局部质感/修复与回调已有手动操作，保护区继承；新局部自动保存要求原尺寸检查。模型JPEG仍512px、最多三次观察，不是无限迭代或真实模型审美验收。"
     },
     {
       "id": "creative-intent",
@@ -45,7 +45,7 @@
       "id": "realtime",
       "requirement": "GPT-Live/Realtime 实时双向通话、看图、工具、打断",
       "status": "baseline_protocol_verified",
-      "evidence": "本地真实 WebSocket 夹具通过；非真实供应商语音质量验收。"
+      "evidence": "本地真实 WebSocket 夹具通过；修正更新作品后的候选错用通话开场素材ID，按不可变基础版本绑定并验证幂等。语音自动应用仍由活动浏览器协调；非真实供应商语音质量验收。"
     },
     {
       "id": "context-budget",
@@ -110,14 +110,14 @@
     {
       "id": "global-color",
       "requirement": "明暗、色彩、曲线、HSL、色阶等完整参数跨度",
-      "status": "baseline_audit_pending",
-      "evidence": "需要更多样本、逐控件范围扫描和视觉评价。"
+      "status": "local_verified_subset",
+      "evidence": "80个全局数值控制在两张人像、建筑、花卉照片按五点采样，另含姿态与组合；总2630次整图/分块逐字节对照无差异。<=320px、有限采样与部分接触表审阅，不等于全部连续值/原尺寸审美验收。"
     },
     {
       "id": "local-color",
       "requirement": "局部选区、蒙版、保护、局部分组与参数联动",
-      "status": "baseline_audit_pending",
-      "evidence": "保留 v4 基础；交互与重叠区域深检待扩展。"
+      "status": "local_verified_subset",
+      "evidence": "局部参数、复合选区与分组包含在2630次照片对照；新增Agent局部算子单独验证零选区/保护/透明字节及构图组合。任意重叠区域与全交互状态仍需扩大。"
     },
     {
       "id": "painting",
@@ -189,7 +189,7 @@
       "id": "testing",
       "requirement": "全仓、多轮、真实图像、极值、状态、端间和并发检测",
       "status": "local_verified_snapshot",
-      "evidence": "Linux 630项通过、0失败、0跳过，类型检查/生产构建通过；工作台16项、助手13项浏览器用例通过；真实照片431项。最后下颌范围修正另有27项人像回归和整组照片重跑。CI补入相同照片验收。"
+      "evidence": "Linux 640项通过、0失败、0跳过，全工作区类型检查与构建通过；工作台16项、助手14项浏览器用例通过；真实照片431项另加80个数值控制/组合的2630次对照。新局部工具5项像素/组合测试，助手API42项含原尺寸处理与语音切换；CI继续验证最终提交。"
     },
     {
       "id": "deployment",
@@ -199,10 +199,12 @@
     }
   ],
   "evidence": {
-    "localCheck": "artifacts/inspection/full-depth-linux-check.log",
+    "localCheck": "artifacts/inspection/spatial-final-linux-check.log",
+    "productionBuild": "artifacts/inspection/spatial-final-production-build.log",
     "browserWorkspace": "artifacts/browser-runtime-regression/report.json",
     "browserAssistant": "artifacts/browser-assistant/report.json",
     "realPhotographs": "artifacts/spatial-quality/report.json",
+    "allControlPhotographs": "artifacts/editor-v4-sweep/evidence.json",
     "paidProviderCalls": 0,
     "review": "docs/verification/depth-20261110.md"
   }
