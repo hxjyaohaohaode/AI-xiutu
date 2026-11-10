@@ -2543,9 +2543,8 @@ export function LiveAssistant(props: LiveAssistantProps) {
                 )}
               </p>
               <p>
-                可从工作区导航的「用量」查看相关预占，并将以上标识提供给平台运营核验。
-                当前服务没有可读取单个语音会话核验结果的接口，也不会重新发放旧连接票据；
-                即使后台已完成核验，这里仍需平台处理恢复，不能自行确认解除。
+                可在「用量」查看已知任务的状态与预占，并将以上标识提供给平台运营核验。
+                当前界面不支持自动恢复这次通话，原连接凭证也不能重新发放，仍需平台协助处理。
               </p>
               {!pendingVoiceSubmission.sessionId &&
                 pendingVoiceSubmission.state !== 'already-prepared' && (

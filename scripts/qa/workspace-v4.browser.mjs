@@ -2040,12 +2040,13 @@ try {
     await navigation.locator('button[data-view="usage"]').click();
     await navigation.waitFor({ state: 'hidden' });
     const usage = page.getByRole('region', { name: '用量与额度历史', exact: true });
-    await usage.locator('.usage-card:not(.usage-wallet)').first().waitFor();
-    const darkUsage = await surfaceEvidence(
-      usage.locator('.usage-card:not(.usage-wallet)').first(),
-      '--surface',
-    );
-    assertSurface(darkUsage, 'usage card');
+    const usageFilter = usage.locator('.usage-filter-card');
+    const usageCapacity = usage.locator('.usage-capacity');
+    await usageCapacity.waitFor();
+    const darkUsageFilter = await surfaceEvidence(usageFilter, '--surface-secondary');
+    assertSurface(darkUsageFilter, 'usage filter card');
+    const darkUsage = await surfaceEvidence(usageCapacity, '--surface');
+    assertSurface(darkUsage, 'usage capacity card');
     assert.deepEqual(await readTheme(), { theme: 'dark', preference: 'dark' });
     await page.screenshot({ path: join(artifacts, 'theme-dark-usage-phone.png') });
     await page.setViewportSize({ width: 1440, height: 960 });
@@ -2085,19 +2086,20 @@ try {
     await settings.getByRole('button', { name: '关闭窗口', exact: true }).click();
     await settings.waitFor({ state: 'hidden' });
     await changeView(page, 'usage', '用量');
-    await usage.locator('.usage-card:not(.usage-wallet)').first().waitFor();
-    const lightUsage = await surfaceEvidence(
-      usage.locator('.usage-card:not(.usage-wallet)').first(),
-      '--surface',
-    );
-    assertSurface(lightUsage, 'light usage card');
+    await usageCapacity.waitFor();
+    const lightUsageFilter = await surfaceEvidence(usageFilter, '--surface-secondary');
+    assertSurface(lightUsageFilter, 'light usage filter card');
+    const lightUsage = await surfaceEvidence(usageCapacity, '--surface');
+    assertSurface(lightUsage, 'light usage capacity card');
     await page.screenshot({ path: join(artifacts, 'theme-light-usage-desktop.png') });
     return {
       darkDialog,
       darkNavigation,
       darkUsage,
+      darkUsageFilter,
       lightDialog,
       lightUsage,
+      lightUsageFilter,
       persistsAcrossViewportAndReload: true,
       followsBothSystemSchemes: true,
     };
