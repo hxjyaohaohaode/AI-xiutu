@@ -75,6 +75,7 @@ const report = {
   authentication: 'random CI fixture passwords, actual HTTP login; no SMS delivered',
   browser: null,
   cases: [],
+  layoutMeasurements: [],
   pageErrors: [],
   manualVisualReview: false,
 };
@@ -370,6 +371,7 @@ async function layoutAssertions(page, phone) {
       return r ? { x: r.x, y: r.y, width: r.width, height: r.height, bottom: r.bottom } : null;
     };
     const photo = document.querySelector('.image-frame canvas');
+    const scroller = document.querySelector('.inspector-scroll');
     return {
       width: innerWidth,
       height: innerHeight,
@@ -378,10 +380,16 @@ async function layoutAssertions(page, phone) {
       dock: rect('.floating-tool-dock'),
       frame: rect('.image-frame'),
       slider: rect('.free-panel[aria-hidden="false"] .parameter-shelf-current input[type="range"]'),
+      control: rect('.free-panel[aria-hidden="false"] .parameter-shelf-current .precision-control'),
       scroll: rect('.inspector-scroll'),
+      scrollTop: scroller?.scrollTop ?? null,
+      scrollHeight: scroller?.scrollHeight ?? null,
       photoFilter: photo ? getComputedStyle(photo).filter : null,
     };
   });
+  // Preserve the failing geometry as well as successful measurements. A visible
+  // track can still have a clipped native input hit area on a short panel.
+  report.layoutMeasurements.push({ case: activeCase, ...measured });
   assert.ok(
     measured.scrollWidth <= measured.width + 1,
     'the page must not acquire horizontal overflow',

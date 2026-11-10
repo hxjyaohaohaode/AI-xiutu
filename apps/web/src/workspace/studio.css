@@ -519,6 +519,18 @@
   scrollbar-color: #c5cbbc transparent;
   scrollbar-width: thin;
 }
+/* Short panels keep the value row and the full range hit area above the dock.
+   Reduce only spacing around color controls; native control sizes stay intact. */
+@container edit-tools (max-height: 420px) {
+  .studio-workspace .advanced-inspector .color-controls-v3 {
+    gap: 2px;
+  }
+  .studio-workspace .advanced-inspector-scroll:has(> .color-controls-v3) > .scope-selector,
+  .studio-workspace .advanced-inspector .color-controls-v3 > .tonal-tabs,
+  .studio-workspace .color-controls-v3 .parameter-shelf-current .precision-control {
+    padding-block: 0;
+  }
+}
 .studio-workspace .scope-selector {
   background: transparent;
   padding: 5px 0 11px;
