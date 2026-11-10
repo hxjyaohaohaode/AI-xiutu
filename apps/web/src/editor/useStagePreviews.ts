@@ -8,6 +8,7 @@ import {
 } from '@ai-xiutu/editor';
 
 import { editorGeometryKey } from './useEditor';
+import { ensureWorker, releaseWorker } from './workerLifecycle';
 
 type PreviewKind = 'compare' | 'crop' | 'selection' | 'remote';
 type PreviewJob = {
@@ -62,6 +63,12 @@ export function useStagePreviews(
     [recipe],
   );
   const selectionKey = JSON.stringify(selectionRecipe);
+  function failWorker() {
+    releaseWorker(worker);
+    inFlight.current = null;
+    pending.current = { crop: null, compare: null, selection: null, remote: null };
+    setError('辅助预览中断，可重新打开图片；原件未被修改。');
+  }
   function pump() {
     if (inFlight.current || !worker.current) return;
     const job =
@@ -72,68 +79,82 @@ export function useStagePreviews(
     if (!job) return;
     pending.current[job.kind] = null;
     inFlight.current = job;
-    worker.current.postMessage({ type: job.live ? 'interactive-preview' : `${job.kind}-preview`, id: job.id, recipe: job.recipe });
+    try {
+      worker.current.postMessage({
+        type: job.live ? 'interactive-preview' : `${job.kind}-preview`,
+        id: job.id,
+        recipe: job.recipe,
+      });
+    } catch {
+      failWorker();
+    }
   }
   function enqueue(kind: PreviewKind, key: string, value: EditorRecipe, draft = false) {
-    if (!source) return;
+    if (!source || !worker.current) return;
     const job = { id: ++nextId.current, kind, key, source, recipe: value, live: draft };
     latest.current[kind] = job.id;
     pending.current[kind] = job;
     pump();
   }
   useEffect(() => {
-    const w = new Worker(new URL('./render.worker.ts', import.meta.url), { type: 'module' });
-    worker.current = w;
-    w.onmessage = (event: MessageEvent<{ id: number; result?: RGBAImage; error?: string }>) => {
-      const { id, result, error: failure } = event.data;
-      const job = inFlight.current;
-      if (!job || job.id !== id) return;
-      inFlight.current = null;
-      if ((job.live || id === latest.current[job.kind]) && job.source === sourceRef.current) {
-        if (failure && !job.live) setError(failure);
-        else if (result) {
-          setError(null);
-          (job.kind === 'remote'
-            ? setRemote
-            : job.kind === 'compare'
-              ? setCompare
-              : job.kind === 'crop'
-                ? setCrop
-                : setSelection)({
-            source: job.source,
-            image: result,
-            key: job.key,
-            geometryKey: editorGeometryKey(job.recipe),
-          });
-        }
-      }
-      pump();
-    };
-    w.onerror = () => {
-      setError('辅助预览中断，可重新打开图片；原件未被修改。');
-      inFlight.current = null;
-      pending.current = { crop: null, compare: null, selection: null, remote: null };
-    };
-    return () => {
-      w.terminate();
-      worker.current = null;
-      inFlight.current = null;
-      pending.current = { compare: null, crop: null, selection: null, remote: null };
-    };
-  }, []);
-  useEffect(() => {
+    // Only a new source (or a new mounted stage) starts another worker. Ordinary
+    // recipe changes and processing failures must not create a restart loop.
     latest.current = { compare: 0, crop: 0, selection: 0, remote: 0 };
     pending.current = { compare: null, crop: null, selection: null, remote: null };
+    inFlight.current = null;
     setRemote(null);
     setCrop(null);
     setSelection(null);
     setCompare(null);
     setError(null);
-    // Keep the old in-flight slot until its response. This source message is processed before new jobs.
-    worker.current?.postMessage({ type: 'source', image: source, images });
+    if (!source) return;
+    try {
+      const w = ensureWorker(
+        worker,
+        () => new Worker(new URL('./render.worker.ts', import.meta.url), { type: 'module' }),
+        ({ id, result, error: failure }: { id: number; result?: RGBAImage; error?: string }) => {
+          const job = inFlight.current;
+          if (!job || job.id !== id) return;
+          inFlight.current = null;
+          if ((job.live || id === latest.current[job.kind]) && job.source === sourceRef.current) {
+            if (failure && !job.live) setError(failure);
+            else if (result) {
+              setError(null);
+              (job.kind === 'remote'
+                ? setRemote
+                : job.kind === 'compare'
+                  ? setCompare
+                  : job.kind === 'crop'
+                    ? setCrop
+                    : setSelection)({
+                source: job.source,
+                image: result,
+                key: job.key,
+                geometryKey: editorGeometryKey(job.recipe),
+              });
+            }
+          }
+          pump();
+        },
+        failWorker,
+      );
+      // This complete source is queued before the later preview effects run.
+      w.postMessage({ type: 'source', image: source, images });
+    } catch {
+      failWorker();
+    }
+    return () => {
+      releaseWorker(worker);
+      inFlight.current = null;
+      pending.current = { compare: null, crop: null, selection: null, remote: null };
+    };
   }, [source]);
   useEffect(() => {
-    worker.current?.postMessage({ type: 'layer-sources', images: new Map(images) });
+    try {
+      worker.current?.postMessage({ type: 'layer-sources', images: new Map(images) });
+    } catch {
+      failWorker();
+    }
   }, [images]);
   useEffect(() => {
     if (source)
@@ -177,7 +198,10 @@ export function useStagePreviews(
         ? selection.image
         : null,
     compare: compare?.source === source && compare.key === geometryKey ? compare.image : null,
-    crop: crop?.source === source && crop.geometryKey === editorGeometryKey(uncropped) ? crop.image : null,
+    crop:
+      crop?.source === source && crop.geometryKey === editorGeometryKey(uncropped)
+        ? crop.image
+        : null,
     error,
   };
 }

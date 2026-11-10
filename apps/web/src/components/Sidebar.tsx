@@ -79,7 +79,7 @@ export function Sidebar({
       >
         <div className="sidebar-brand">
           <Brand name={brand} logoUrl={logoUrl} />
-          <IconButton className="mobile-only" label="关闭导航" onClick={onClose}>
+          <IconButton className="sidebar-close" label="关闭导航" onClick={onClose}>
             <X size={20} />
           </IconButton>
         </div>
@@ -232,7 +232,6 @@ export function Sidebar({
               <SignIn size={18} />
             </button>
           )}
-
         </div>
       </aside>
     </>

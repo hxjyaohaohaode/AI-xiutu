@@ -122,6 +122,27 @@ async function changeView(page, id, label) {
       .getByRole('button', { name: label, exact: true })
       .click();
 }
+async function navigationClosed(page) {
+  const sidebar = page.locator('.sidebar');
+  await sidebar.waitFor({ state: 'hidden' });
+  const state = await sidebar.evaluate((node) => ({
+    ariaHidden: node.getAttribute('aria-hidden'),
+    inert: node.inert,
+    open: node.classList.contains('open'),
+    motionPhase: node.dataset.motionState,
+  }));
+  assert.deepEqual(state, {
+    ariaHidden: 'true',
+    inert: true,
+    open: false,
+    motionPhase: 'hidden',
+  });
+  const scrim = page.locator('.sidebar-scrim');
+  assert.equal(await scrim.getAttribute('aria-hidden'), 'true');
+  assert.equal(await scrim.isDisabled(), true);
+  await page.getByRole('button', { name: '打开空间与项目', exact: true }).click({ trial: true });
+  return state;
+}
 async function tool(page, label) {
   const button = page
     .getByRole('navigation', { name: '编辑工具' })
@@ -1892,7 +1913,11 @@ try {
           0,
         );
       }
+      await a.page.screenshot({ path: join(artifacts, 'sidebar-close-phone.png'), fullPage: true });
       await sidebar.getByRole('button', { name: '关闭导航', exact: true }).click();
+      const closedNavigation = await navigationClosed(a.page);
+      await a.page.getByLabel('文档内容', { exact: true }).click({ trial: true });
+      assert.equal(await a.page.getByLabel('文档内容', { exact: true }).inputValue(), editedBody);
       await a.page.screenshot({ path: join(artifacts, 'phone-document-cancelled-navigation.png') });
       const [savedResponse] = await Promise.all([
         a.page.waitForResponse(
@@ -1936,6 +1961,7 @@ try {
         refusedReplacement: true,
         newProjectNavigationCancelled: true,
         operatorNavigationCancelled: true,
+        closedNavigation,
         expectedVersion: 1,
         savedVersion: 2,
         geometry,
@@ -2206,6 +2232,41 @@ try {
     const { page } = a;
     const desktop = page.viewportSize();
     const viewportEvidence = [];
+    // The theme case deliberately reloads the app. Re-select this isolated
+    // fixture through the real navigation instead of inheriting a prior view.
+    await page.getByRole('button', { name: '打开空间与项目', exact: true }).click();
+    await page
+      .locator('.sidebar')
+      .getByRole('button', { name: new RegExp(`^${teamName}`) })
+      .click();
+    const afterTeamSelection = await navigationClosed(page);
+    await page.getByRole('button', { name: '打开空间与项目', exact: true }).click();
+    const [projectResponse, assetsResponse] = await Promise.all([
+      page.waitForResponse(
+        (response) =>
+          response.request().method() === 'GET' &&
+          new URL(response.url()).pathname === `/v1/projects/${projectId}`,
+      ),
+      page.waitForResponse(
+        (response) =>
+          response.request().method() === 'GET' &&
+          new URL(response.url()).pathname === `/v1/projects/${projectId}/assets`,
+      ),
+      page
+        .getByRole('navigation', { name: '项目', exact: true })
+        .getByRole('button', { name: projectName, exact: true })
+        .click(),
+    ]);
+    assert.equal(projectResponse.status(), 200);
+    assert.equal((await projectResponse.json()).project.id, projectId);
+    assert.equal(assetsResponse.status(), 200);
+    assert.ok(
+      (await assetsResponse.json()).assets.some(
+        (asset) => asset.id === assetId && asset.projectId === projectId,
+      ),
+      'the project asset listing contains the actual collage source',
+    );
+    const afterProjectSelection = await navigationClosed(page);
     async function checkDialog(layout, name, action) {
       for (const [width, height] of [
         [1440, 960],
@@ -2314,6 +2375,9 @@ try {
       gifSha256: sha256(bytes),
       collageRgbaSha256: sha256(collagePixels),
       viewportEvidence,
+      projectSelectedThroughUi: true,
+      sourceReadFromProjectListing: true,
+      navigationAfterSelection: { team: afterTeamSelection, project: afterProjectSelection },
     };
   });
   assert.deepEqual(report.pageErrors, [], 'no unhandled browser runtime errors');

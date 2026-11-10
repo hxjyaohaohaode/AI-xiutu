@@ -20,8 +20,298 @@ const vite = await createServer({
   cacheDir: resolve(temporary, 'vite'),
   server: { host: '127.0.0.1', port: 0 },
 });
-const report = { cases: [] };
+const report = {
+  cases: [],
+  workerRecovery: { state: 'not-run', reason: 'The independent recovery check has not started.' },
+};
 let browser;
+async function verifyWorkerRecovery({ png, source }) {
+  const page = await browser.newPage({
+    viewport: { width: 1440, height: 900 },
+    deviceScaleFactor: 2,
+    acceptDownloads: true,
+    reducedMotion: 'reduce',
+  });
+  const result = (report.workerRecovery = {
+    state: 'running',
+    fault: 'terminate actual main worker, then dispatch its error event',
+    source: { width: source.width, height: source.height, format: 'PNG' },
+    pageErrors: [],
+  });
+  page.on('pageerror', (error) => result.pageErrors.push(String(error)));
+  try {
+    await page.addInitScript(() => {
+      const NativeWorker = window.Worker;
+      const records = new WeakMap();
+      const probe = (window.workerRecoveryTrace = {
+        workers: [],
+        paints: [],
+        terminateNextPreview: null,
+        fault: null,
+      });
+      window.Worker = class extends NativeWorker {
+        constructor(url, options) {
+          super(url, options);
+          if (!new URL(String(url), location.href).pathname.endsWith('/render.worker.ts')) return;
+          const record = {
+            id: probe.workers.length + 1,
+            instance: this,
+            terminated: false,
+            role: 'unassigned',
+            sources: 0,
+            sent: [],
+            replies: [],
+          };
+          records.set(this, record);
+          probe.workers.push(record);
+          this.addEventListener('message', ({ data }) => {
+            record.replies.push({
+              id: data.id,
+              type: data.type,
+              t: performance.now(),
+              result: !!data.result,
+              width: data.result?.width,
+              height: data.result?.height,
+              error: data.error,
+            });
+          });
+        }
+        postMessage(message, ...options) {
+          // Forward every real message. Record only recipe/receipt metadata, never
+          // substitute successful replies or the worker's source/pixel buffers.
+          super.postMessage(message, ...options);
+          const record = records.get(this);
+          if (!record) return;
+          if (message.type === 'source') {
+            record.sources++;
+            // CanvasStage also owns this worker URL, but only the editor's
+            // main worker receives original pixels; stage previews do not.
+            record.role = message.original ? 'main' : 'auxiliary';
+          } else if (message.type === 'interactive-source') record.role = 'interactive';
+          record.sent.push({
+            id: message.id,
+            type: message.type,
+            recipe: message.recipe ? structuredClone(message.recipe) : null,
+          });
+          if (message.type === 'preview' && probe.terminateNextPreview === record.id) {
+            probe.terminateNextPreview = null;
+            this.terminate();
+            probe.fault = { workerId: record.id, requestId: message.id };
+          }
+        }
+        terminate() {
+          const record = records.get(this);
+          if (record) record.terminated = true;
+          super.terminate();
+        }
+      };
+      const paint = CanvasRenderingContext2D.prototype.putImageData;
+      CanvasRenderingContext2D.prototype.putImageData = function (image, ...args) {
+        paint.call(this, image, ...args);
+        if (this.canvas.getAttribute('aria-label') === '照片编辑预览')
+          probe.paints.push({ t: performance.now(), width: image.width, height: image.height });
+      };
+    });
+    await page.route('**/v1/**', (route) =>
+      route.fulfill({ status: 503, json: { message: 'offline' } }),
+    );
+    const file = { name: 'worker-recovery.png', mimeType: 'image/png', buffer: png };
+    const waitForSettled = async (exposure, excludeWorkerId = null) => {
+      const handle = await page.waitForFunction(
+        ({ exposure, excludeWorkerId }) => {
+          const trace = window.workerRecoveryTrace;
+          const worker = trace.workers.findLast(
+            (item) =>
+              item.role === 'main' &&
+              item.sources > 0 &&
+              !item.terminated &&
+              item.id !== excludeWorkerId,
+          );
+          const reply = worker?.replies.findLast(
+            (item) =>
+              item.type === 'preview' &&
+              item.result &&
+              !item.error &&
+              worker.sent.find((request) => request.id === item.id)?.recipe?.adjustments
+                .exposure === exposure,
+          );
+          const paint = trace.paints.at(-1);
+          return (
+            reply &&
+            paint &&
+            paint.t >= reply.t &&
+            paint.width === reply.width &&
+            paint.height === reply.height &&
+            document.querySelector('.canvas-stage')?.getAttribute('aria-busy') === 'false' && {
+              workerId: worker.id,
+              requestId: reply.id,
+              width: paint.width,
+              height: paint.height,
+            }
+          );
+        },
+        { exposure, excludeWorkerId },
+      );
+      const value = await handle.jsonValue();
+      await handle.dispose();
+      return value;
+    };
+    const downloadRecipe = async () => {
+      const views = page.getByRole('navigation', { name: '工作视图', exact: true });
+      await views.getByRole('button', { name: '交付', exact: true }).click();
+      const pending = page.waitForEvent('download');
+      await page.getByRole('button', { name: '下载配方 JSON', exact: true }).click();
+      const download = await pending;
+      const stream = await download.createReadStream();
+      assert.ok(stream, 'the draft is downloaded through the real product action');
+      const chunks = [];
+      for await (const chunk of stream) chunks.push(chunk);
+      assert.equal(await download.failure(), null);
+      const bytes = Buffer.concat(chunks);
+      await views.getByRole('button', { name: '精修', exact: true }).click();
+      await page.locator('.canvas-stage').waitFor();
+      return { bytes, recipe: JSON.parse(bytes.toString('utf8')) };
+    };
+    await page.goto(`http://127.0.0.1:${vite.httpServer.address().port}`);
+    await page.getByLabel('选择照片', { exact: true }).setInputFiles(file);
+    const original = await waitForSettled(0);
+    const canvas = page.locator('.image-frame canvas[aria-label="照片编辑预览"]');
+    assert.deepEqual([original.width, original.height], [source.width, source.height]);
+    const tools = page.getByRole('navigation', { name: '编辑工具', exact: true });
+    const light = tools.getByRole('button', { name: '明暗', exact: true });
+    if ((await light.getAttribute('aria-pressed')) !== 'true') await light.click();
+    const panel = page.locator('.free-panel[aria-hidden="false"]');
+    const beforeOwners = await page.evaluate((workerId) => {
+      const trace = window.workerRecoveryTrace;
+      trace.terminateNextPreview = workerId;
+      return trace.workers
+        .filter((item) => item.role === 'main' || item.role === 'interactive')
+        .map((item) => item.id);
+    }, original.workerId);
+    await panel.getByRole('button', { name: /^曝光数值/ }).click();
+    await panel.getByRole('spinbutton', { name: '曝光精确数值', exact: true }).fill('-0.65');
+    await panel.getByRole('spinbutton', { name: '曝光精确数值', exact: true }).press('Enter');
+    await page.waitForFunction(
+      () =>
+        !!window.workerRecoveryTrace.fault &&
+        document.querySelector('.canvas-stage')?.getAttribute('aria-busy') === 'true',
+    );
+    const beforeFailure = await downloadRecipe();
+    assert.equal(beforeFailure.recipe.adjustments.exposure, -0.65);
+    assert.equal(await page.locator('.canvas-stage').getAttribute('aria-busy'), 'true');
+    // Termination was real and occurred at a real pending preview. Notify the hook
+    // only after its busy DOM state and recoverable draft have both been observed.
+    await page.evaluate(() => {
+      const trace = window.workerRecoveryTrace;
+      const record = trace.workers.find((item) => item.id === trace.fault.workerId);
+      if (!record?.terminated) throw new Error('The actual main worker was not terminated');
+      record.instance.dispatchEvent(
+        new ErrorEvent('error', { message: 'Isolated QA: main render worker terminated' }),
+      );
+    });
+    await page.locator('.canvas-stage[aria-busy="false"]').waitFor();
+    const error = page.locator('.canvas-error').getByRole('alert');
+    await error.waitFor();
+    result.visibleError = await error.innerText();
+    assert.match(result.visibleError, /图像处理暂时中断/);
+    assert.match(result.visibleError, /重新导入/);
+    await page.screenshot({ path: resolve(artifacts, 'worker-recovery-error.png') });
+    const afterFailure = await downloadRecipe();
+    assert.deepEqual(
+      afterFailure.recipe,
+      beforeFailure.recipe,
+      'the complete draft survives failure',
+    );
+    // CanvasStage legitimately recreates its auxiliary worker after a view
+    // change. Resolve its source role, then compare only the editor's owners.
+    await page.waitForFunction(() =>
+      window.workerRecoveryTrace.workers.every(
+        (item) => item.terminated || item.role !== 'unassigned',
+      ),
+    );
+    assert.deepEqual(
+      await page.evaluate(() =>
+        window.workerRecoveryTrace.workers
+          .filter((item) => item.role === 'main' || item.role === 'interactive')
+          .map((item) => item.id),
+      ),
+      beforeOwners,
+      'failure and view changes do not automatically replace the main/interactive owners',
+    );
+    await writeFile(resolve(artifacts, 'worker-recovery-draft.recipe.json'), afterFailure.bytes);
+
+    // This is an explicit user reimport, including the existing dirty-draft consent.
+    await page.getByLabel('选择照片', { exact: true }).setInputFiles(file);
+    const confirm = page.getByRole('dialog', { name: '确认操作', exact: true });
+    await confirm.getByRole('button', { name: '确认继续', exact: true }).click();
+    await confirm.waitFor({ state: 'hidden' });
+    const reopened = await waitForSettled(0, original.workerId);
+    assert.notEqual(reopened.workerId, original.workerId);
+    await page.getByLabel('选择配方文件', { exact: true }).setInputFiles({
+      name: 'worker-recovery-draft.recipe.json',
+      mimeType: 'application/json',
+      buffer: afterFailure.bytes,
+    });
+    const recovered = await waitForSettled(-0.65, original.workerId);
+    assert.equal(
+      recovered.workerId,
+      reopened.workerId,
+      'the new source owner renders the restored draft',
+    );
+    assert.equal(await page.locator('.canvas-error').getByRole('alert').count(), 0);
+    const pixels = Buffer.from(
+      await canvas.evaluate((node) => node.toDataURL('image/png').split(',')[1]),
+      'base64',
+    );
+    const expected = renderEditorRecipe(source, beforeFailure.recipe);
+    const actual = await sharp(pixels).ensureAlpha().raw().toBuffer({ resolveWithObject: true });
+    assert.deepEqual([actual.info.width, actual.info.height], [expected.width, expected.height]);
+    assert.ok(
+      actual.data.equals(Buffer.from(expected.data)),
+      'new worker settled pixels match the recovered recipe exactly',
+    );
+    assert.ok(
+      !actual.data.equals(Buffer.from(source.data)),
+      'the recovered nonzero edit changes pixels',
+    );
+    await page.screenshot({ path: resolve(artifacts, 'worker-recovery-complete.png') });
+    assert.deepEqual(result.pageErrors, []);
+    Object.assign(result, {
+      state: 'passed',
+      busyObservedBeforeFaultNotification: true,
+      busyReleasedAfterFault: true,
+      completeDraftPreserved: true,
+      recreatedOnlyAfterExplicitImport: true,
+      originalWorkerId: original.workerId,
+      recoveredWorkerId: recovered.workerId,
+      restoredExposure: beforeFailure.recipe.adjustments.exposure,
+      exactSettledPixels: expected.width * expected.height,
+      actualWorkerReplyAndCanvasPaint: recovered,
+    });
+    process.stdout.write(JSON.stringify({ workerRecovery: result }) + '\n');
+  } catch (error) {
+    result.state = 'failed';
+    result.message = String(error);
+    result.trace = await page
+      .evaluate(() => {
+        const trace = window.workerRecoveryTrace;
+        return {
+          fault: trace?.fault,
+          paints: trace?.paints,
+          workers: trace?.workers.map(({ instance: _instance, ...record }) => record),
+          busy: document.querySelector('.canvas-stage')?.getAttribute('aria-busy'),
+          visibleError: document.querySelector('.canvas-error')?.textContent,
+        };
+      })
+      .catch(() => null);
+    await page
+      .screenshot({ path: resolve(artifacts, 'worker-recovery-failure.png') })
+      .catch(() => {});
+    throw error;
+  } finally {
+    await page.close();
+  }
+}
 try {
   await vite.listen();
   const channel = process.env.BROWSER_CHANNEL;
@@ -364,6 +654,17 @@ try {
       );
       assert.ok(test.maxFrameGapMs !== null && test.maxFrameGapMs < 350, JSON.stringify(test));
     }
+  }
+  if (process.env.PREVIEW_RECORD_ONLY !== '1' && process.env.PREVIEW_CASE !== 'phone') {
+    await verifyWorkerRecovery({
+      png: buffer,
+      source: { width, height, data: new Uint8ClampedArray(rgba) },
+    });
+  } else {
+    report.workerRecovery = {
+      state: 'not-run',
+      reason: 'This selective run requests timing-only recording or the phone gesture only.',
+    };
   }
 } finally {
   await writeFile(resolve(artifacts, 'report.json'), JSON.stringify(report, null, 2) + '\n');
