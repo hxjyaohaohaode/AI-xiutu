@@ -313,6 +313,8 @@ type ThreadResultProps = {
   onTranscript: (operation: AIOperation, text: string) => void;
   onChanged: () => void;
   onDecisionApplied?: (id: string) => void | Promise<void>;
+  onBeforeArtworkWrite?: () => void | Promise<void>;
+  onAfterArtworkWrite?: () => void | Promise<void>;
 };
 function CompletedResult({
   job,
@@ -327,8 +329,13 @@ function CompletedResult({
   onTranscript,
   onChanged,
   onDecisionApplied,
+  onBeforeArtworkWrite,
+  onAfterArtworkWrite,
 }: ThreadResultProps) {
-  const controller = useResultDecisions(job, (userId ?? 'session') + ':' + project.id, onChanged);
+  const controller = useResultDecisions(job, (userId ?? 'session') + ':' + project.id, onChanged, {
+    onBeforeArtworkWrite,
+    onAfterArtworkWrite,
+  });
   const canEdit = ['owner', 'admin', 'editor'].includes(project.role);
   const images = job.output?.kind === 'image' ? (job.output.images ?? [job.output]) : [];
   const actionProps = { job, controller, artwork, isDirty, canEdit, onOpen, onDecisionApplied };
@@ -438,6 +445,8 @@ export function AIThread({
   isDirty?: boolean;
   documents?: { id: string; title: string; version: number }[];
   onDecisionApplied?: (id: string) => void | Promise<void>;
+  onBeforeArtworkWrite?: () => void | Promise<void>;
+  onAfterArtworkWrite?: () => void | Promise<void>;
   onOpen: (id: string) => void;
   onPreview: (job: AIJob) => void;
   onContinue: (job: AIJob, image?: GeneratedImage) => void;

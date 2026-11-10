@@ -107,7 +107,8 @@ export function FloatingPanel({
   const mobile = viewport.bucket === 'phone';
   const maximized = value.presentation === 'maximized',
     collapsed = value.presentation === 'collapsed';
-  const bounds = panelBounds(viewport);
+  const attached = mobile && value.dock === 'bottom';
+  const bounds = panelBounds(viewport, value.dock);
   const contentPresence = usePresence(!collapsed && open, 'panel-body');
   const needsPhotoSpace = panelNeedsPhotoSpace(value, viewport);
   const menuBelow =
@@ -143,6 +144,7 @@ export function FloatingPanel({
       (event.target as HTMLElement).closest('button,select,input,a,summary')
     )
       return;
+    if (attached && collapsed) return;
     event.preventDefault();
     const outwardDockEdge =
       (value.dock === 'left' && edge?.includes('w')) ||
@@ -300,6 +302,9 @@ export function FloatingPanel({
       data-presentation={value.presentation}
       data-size-motion={animatingPresentation ? 'active' : undefined}
       data-panel-width={rect.width < 300 ? 'narrow' : rect.width >= 640 ? 'wide' : 'regular'}
+      data-attached={attached ? 'true' : undefined}
+      data-composition={value.composition}
+      data-device={viewport.bucket}
       onKeyDown={(event) => {
         if (event.key === 'Escape' && menu) {
           event.preventDefault();
@@ -315,16 +320,10 @@ export function FloatingPanel({
           className="panel-title-drag"
           role="button"
           tabIndex={0}
-          aria-label={`${title}面板，拖动${mobile && value.dock === 'bottom' && !collapsed ? '上缘调整高度，切换浮动后可移动' : '移动'}；方向键移动，Alt加方向键1像素微调，回车${collapsed ? '展开' : '折叠'}`}
+          aria-label={`${title}面板，${attached ? '上下拖动调整高度，方向键调整尺寸' : '拖动和方向键移动'}；Alt加方向键1像素微调，回车${collapsed ? '展开' : '折叠'}`}
           aria-expanded={!collapsed}
           aria-controls={contentId}
-          onPointerDown={(event) =>
-            begin(
-              event,
-              mobile && value.dock === 'bottom' && !collapsed && !maximized ? 'resize' : 'move',
-              'n',
-            )
-          }
+          onPointerDown={(event) => begin(event, attached ? 'resize' : 'move', 'n')}
           onPointerMove={move}
           onPointerUp={(event) => end(event)}
           onPointerCancel={(event) => end(event, true)}
@@ -338,6 +337,10 @@ export function FloatingPanel({
             }
             if (!['ArrowLeft', 'ArrowRight', 'ArrowUp', 'ArrowDown'].includes(event.key)) return;
             event.preventDefault();
+            if (attached) {
+              resizeByKeyboard(event.key, event.shiftKey, event.altKey);
+              return;
+            }
             const delta = event.altKey ? 1 : event.shiftKey ? 32 : 8;
             onGeometry(
               movePanel(
@@ -370,7 +373,13 @@ export function FloatingPanel({
             {collapsed ? <CaretUp size={17} /> : <CaretDown size={17} />}
           </IconButton>
           <IconButton
-            label={maximized ? '还原面板尺寸' : '最大化面板'}
+            label={
+              maximized
+                ? '返回常规调节，恢复面板尺寸'
+                : mobile
+                  ? '展开精调，允许遮挡画面'
+                  : '最大化面板'
+            }
             aria-pressed={maximized}
             onClick={() => setPresentation(maximized ? 'normal' : 'maximized')}
           >
@@ -490,14 +499,14 @@ export function FloatingPanel({
               aria-pressed={value.composition !== 'overlay'}
               onClick={() => onGeometry({ ...value, composition: 'reflow' })}
             >
-              画面自动让位
+              画面让位
             </button>
             <button
               type="button"
               aria-pressed={value.composition === 'overlay'}
               onClick={() => onGeometry({ ...value, composition: 'overlay' })}
             >
-              面板自由叠放
+              覆盖画面精调
             </button>
           </div>
           <p>
@@ -532,36 +541,39 @@ export function FloatingPanel({
       </div>
       {!collapsed &&
         !maximized &&
-        edges.map((edge) => (
-          <div
-            key={edge}
-            className={`panel-resize-edge resize-${edge}${edge === 'se' ? ' panel-resize-handle' : ''}`}
-            role="separator"
-            aria-label={`从${edgeLabels[edge]}调整${title}面板，Alt加方向键可1像素微调`}
-            aria-orientation={edge === 'n' || edge === 's' ? 'horizontal' : 'vertical'}
-            aria-valuenow={Math.round(edge === 'n' || edge === 's' ? rect.height : rect.width)}
-            aria-valuemin={Math.round(
-              edge === 'n' || edge === 's' ? bounds.minHeight : bounds.minWidth,
-            )}
-            aria-valuemax={Math.round(
-              edge === 'n' || edge === 's' ? bounds.maxHeight : bounds.maxWidth,
-            )}
-            aria-valuetext={`宽 ${Math.round(rect.width)} 像素，高 ${Math.round(rect.height)} 像素`}
-            tabIndex={edge === 'se' ? 0 : -1}
-            onPointerDown={(event) => begin(event, 'resize', edge)}
-            onPointerMove={move}
-            onPointerUp={(event) => end(event)}
-            onPointerCancel={(event) => end(event, true)}
-            onLostPointerCapture={(event) => end(event, true)}
-            onKeyDown={(event) => {
-              if (!['ArrowLeft', 'ArrowRight', 'ArrowUp', 'ArrowDown'].includes(event.key)) return;
-              event.preventDefault();
-              resizeByKeyboard(event.key, event.shiftKey, event.altKey);
-            }}
-          >
-            {edge === 'se' && <CornersOut size={12} />}
-          </div>
-        ))}
+        edges
+          .filter((edge) => !attached || !edge.includes('s'))
+          .map((edge) => (
+            <div
+              key={edge}
+              className={`panel-resize-edge resize-${edge}${edge === 'se' ? ' panel-resize-handle' : ''}`}
+              role="separator"
+              aria-label={`从${edgeLabels[edge]}调整${title}面板，Alt加方向键可1像素微调`}
+              aria-orientation={edge === 'n' || edge === 's' ? 'horizontal' : 'vertical'}
+              aria-valuenow={Math.round(edge === 'n' || edge === 's' ? rect.height : rect.width)}
+              aria-valuemin={Math.round(
+                edge === 'n' || edge === 's' ? bounds.minHeight : bounds.minWidth,
+              )}
+              aria-valuemax={Math.round(
+                edge === 'n' || edge === 's' ? bounds.maxHeight : bounds.maxWidth,
+              )}
+              aria-valuetext={`宽 ${Math.round(rect.width)} 像素，高 ${Math.round(rect.height)} 像素`}
+              tabIndex={edge === 'se' || (attached && edge === 'n') ? 0 : -1}
+              onPointerDown={(event) => begin(event, 'resize', edge)}
+              onPointerMove={move}
+              onPointerUp={(event) => end(event)}
+              onPointerCancel={(event) => end(event, true)}
+              onLostPointerCapture={(event) => end(event, true)}
+              onKeyDown={(event) => {
+                if (!['ArrowLeft', 'ArrowRight', 'ArrowUp', 'ArrowDown'].includes(event.key))
+                  return;
+                event.preventDefault();
+                resizeByKeyboard(event.key, event.shiftKey, event.altKey);
+              }}
+            >
+              {edge === 'se' && <CornersOut size={12} />}
+            </div>
+          ))}
     </section>
   );
 }

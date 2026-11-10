@@ -21,6 +21,7 @@ export function registerSpaces(app: FastifyInstance, db: Database): void {
     const user = requireUser(req);
     const p = z.object({ name: title }).strict().parse(req.body);
     const space = await transaction(db, async (tx) => {
+      await tx.query("SELECT set_config('ai_xiutu.membership_actor',$1,true)", [user.id]);
       await tx.query('SELECT id FROM users WHERE id=$1 FOR UPDATE', [user.id]);
       const count = await tx.query(
         "SELECT count(*) FROM spaces WHERE owner_id=$1 AND kind='team'",
@@ -73,11 +74,12 @@ export function registerSpaces(app: FastifyInstance, db: Database): void {
       .parse(req.body);
     const code = opaqueToken();
     const invitation = await transaction(db, async (tx) => {
+      const space = (await tx.query('SELECT kind FROM spaces WHERE id=$1 FOR UPDATE', [p.id]))
+        .rows[0];
       const current = await spaceRole(tx, p.id, user.id, ['owner', 'admin']);
       if (current !== 'owner' && body.role === 'admin')
         throw new HttpError(403, 'ROLE_FORBIDDEN', '仅所有者可邀请管理员');
-      const space = (await tx.query('SELECT kind FROM spaces WHERE id=$1 FOR UPDATE', [p.id]))
-        .rows[0]!;
+      if (!space) throw new HttpError(404, 'SPACE_NOT_FOUND', '空间不存在');
       if (space.kind === 'personal')
         throw new HttpError(400, 'PERSONAL_SPACE_PRIVATE', '个人空间不能添加成员，请创建团队');
       const row = (
@@ -101,6 +103,14 @@ export function registerSpaces(app: FastifyInstance, db: Database): void {
       .strict()
       .parse(req.body);
     const space = await transaction(db, async (tx) => {
+      await tx.query("SELECT set_config('ai_xiutu.membership_actor',$1,true)", [user.id]);
+      const hint = (
+        await tx.query("SELECT space_id FROM invitations WHERE code_hash=$1 AND kind='space'", [
+          hash(p.code),
+        ])
+      ).rows[0];
+      if (!hint) throw new HttpError(400, 'INVITE_INVALID', '邀请无效或已过期');
+      await tx.query('SELECT id FROM spaces WHERE id=$1 FOR UPDATE', [hint.space_id]);
       const invitation = (
         await tx.query(
           "SELECT * FROM invitations WHERE code_hash=$1 AND kind='space' AND revoked_at IS NULL AND expires_at>clock_timestamp() FOR UPDATE",
@@ -173,6 +183,8 @@ export function registerSpaces(app: FastifyInstance, db: Database): void {
         const next =
           method === 'PATCH' ? z.object({ role: invitedRole }).strict().parse(req.body).role : null;
         await transaction(db, async (tx) => {
+          await tx.query('SELECT id FROM spaces WHERE id=$1 FOR UPDATE', [p.id]);
+          await tx.query("SELECT set_config('ai_xiutu.membership_actor',$1,true)", [user.id]);
           const leaving = method === 'DELETE' && p.userId === user.id;
           const acting = await spaceRole(
             tx,
@@ -225,4 +237,77 @@ export function registerSpaces(app: FastifyInstance, db: Database): void {
         return { ok: true };
       },
     });
+  app.post('/v1/spaces/:id/transfer-owner', async (req) => {
+    const actor = requireUser(req),
+      params = z.object({ id }).parse(req.params);
+    const body = z.object({ targetUserId: id, expectedOwnerId: id }).strict().parse(req.body);
+    await transaction(db, async (tx) => {
+      const space = (await tx.query('SELECT * FROM spaces WHERE id=$1 FOR UPDATE', [params.id]))
+        .rows[0];
+      await spaceRole(tx, params.id, actor.id, ['owner']);
+      if (!space || space.kind !== 'team')
+        throw new HttpError(400, 'TEAM_REQUIRED', '仅团队空间可交接所有权');
+      if (space.owner_id !== body.expectedOwnerId || space.owner_id !== actor.id)
+        throw new HttpError(409, 'OWNER_CHANGED', '空间所有者已改变，请刷新');
+      if (body.targetUserId === actor.id)
+        throw new HttpError(400, 'OWNER_UNCHANGED', '请选择另一位现有成员');
+      const target = (
+        await tx.query(
+          `SELECT m.role FROM memberships m JOIN users u ON u.id=m.user_id
+        WHERE m.space_id=$1 AND m.user_id=$2 AND u.status='active' FOR UPDATE OF m`,
+          [params.id, body.targetUserId],
+        )
+      ).rows[0];
+      if (!target) throw new HttpError(400, 'MEMBER_REQUIRED', '新所有者须是当前有效成员');
+      await tx.query("SELECT set_config('ai_xiutu.membership_actor',$1,true)", [actor.id]);
+      await tx.query("UPDATE memberships SET role='admin' WHERE space_id=$1 AND user_id=$2", [
+        params.id,
+        actor.id,
+      ]);
+      await tx.query("UPDATE memberships SET role='owner' WHERE space_id=$1 AND user_id=$2", [
+        params.id,
+        body.targetUserId,
+      ]);
+      await tx.query('UPDATE spaces SET owner_id=$2 WHERE id=$1', [params.id, body.targetUserId]);
+      await tx.query(
+        'UPDATE invitations SET revoked_at=clock_timestamp() WHERE space_id=$1 AND created_by=$2 AND revoked_at IS NULL',
+        [params.id, actor.id],
+      );
+      await audit(tx, actor.id, 'space.owner.transfer', 'space', params.id, {
+        previousOwnerId: actor.id,
+        ownerId: body.targetUserId,
+      });
+      await emit(tx, params.id, null, 'membership.changed', body.targetUserId);
+    });
+    return { ok: true, ownerId: body.targetUserId };
+  });
+  app.get('/v1/spaces/:id/activity', async (req) => {
+    const actor = requireUser(req),
+      params = z.object({ id }).parse(req.params);
+    const query = z
+      .object({
+        limit: z.coerce.number().int().min(1).max(100).default(50),
+        cursor: z
+          .string()
+          .regex(/^\d{1,19}$/)
+          .refine((s) => BigInt(s) <= 9223372036854775807n)
+          .optional(),
+      })
+      .strict()
+      .parse(req.query);
+    await spaceRole(db, params.id, actor.id);
+    const rows = (
+      await db.query(
+        `SELECT a.id::text,a.kind,a.actor_id AS "actorId",u.display_name AS "actorName",
+      a.target_user_id AS "targetUserId",t.display_name AS "targetName",a.previous_role AS "previousRole",a.role,a.created_at AS "createdAt"
+      FROM membership_activity a LEFT JOIN users u ON u.id=a.actor_id JOIN users t ON t.id=a.target_user_id
+      WHERE a.space_id=$1 AND ($2::bigint IS NULL OR a.id<$2)
+      AND EXISTS(SELECT 1 FROM memberships m WHERE m.space_id=a.space_id AND m.user_id=$3)
+      ORDER BY a.id DESC LIMIT $4`,
+        [params.id, query.cursor ?? null, actor.id, query.limit + 1],
+      )
+    ).rows;
+    const page = rows.slice(0, query.limit);
+    return { activities: page, nextCursor: rows.length > query.limit ? page.at(-1)!.id : null };
+  });
 }

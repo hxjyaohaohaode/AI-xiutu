@@ -12,6 +12,7 @@ import { compileWarpFieldV3 } from './v3-warp.js';
 import type { RGBAImage, Dimensions, Point } from './types.js';
 import type { EditorRecipe } from './v2-types.js';
 import type { FineTransformV3 } from './v3-types.js';
+import { compileProjectiveTransformV4, multiplyMatrixV4, invertMatrixV4 } from './v4-geometry.js';
 
 export type Matrix3V3 = [number, number, number, number, number, number, number, number, number];
 const identity = (): Matrix3V3 => [1, 0, 0, 0, 1, 0, 0, 0, 1];
@@ -126,45 +127,40 @@ export function compileFineTransformV3(
     identity: width === w && height === h && matrix.every((v, i) => Math.abs(v - unit[i]!) < 1e-12),
   };
 }
-export function getEditorOutputDimensions(image: Dimensions, input: EditorRecipe): Dimensions {
+/** Dimensions after the legacy and fine transform, before a v4 corner transform. */
+export function getEditorPreProjectiveDimensions(
+  image: Dimensions,
+  input: EditorRecipe,
+): Dimensions {
   const recipe = parseEditorRecipe(input),
     base = getOutputDimensions(image, recipe.geometry);
-  return recipe.schemaVersion === 3
+  return recipe.schemaVersion === 3 || recipe.schemaVersion === 4
     ? compileFineTransformV3(base, recipe.transform).dimensions
     : base;
 }
-/** Coordinate-frame mapping only. Artistic displacement fields are intentionally separate from frame geometry. */
+export function getEditorOutputDimensions(image: Dimensions, input: EditorRecipe): Dimensions {
+  return compileEditorCoordinateMap(image, input).dimensions;
+}
+/** Frame mapping only; artistic displacement is separate. */
 export function mapEditorSourceToOutput(
   point: Point,
   image: Dimensions,
   input: EditorRecipe,
 ): Point {
-  const recipe = parseEditorRecipe(input),
-    base = getOutputDimensions(image, recipe.geometry),
-    p = mapSourceToOutput(point, image, recipe.geometry);
-  if (recipe.schemaVersion !== 3) return p;
-  const fine = compileFineTransformV3(base, recipe.transform),
-    q = applyMatrixV3(fine.matrix, { x: p.x * base.width, y: p.y * base.height });
-  return { x: q.x / fine.dimensions.width, y: q.y / fine.dimensions.height };
+  return compileEditorCoordinateMap(image, input).toOutput(point);
 }
 export function mapEditorOutputToSource(
   point: Point,
   image: Dimensions,
   input: EditorRecipe,
 ): Point {
-  const recipe = parseEditorRecipe(input);
-  if (recipe.schemaVersion !== 3) return mapOutputToSource(point, image, recipe.geometry);
-  const base = getOutputDimensions(image, recipe.geometry),
-    fine = compileFineTransformV3(base, recipe.transform);
-  const q = applyMatrixV3(fine.inverse, {
-    x: point.x * fine.dimensions.width,
-    y: point.y * fine.dimensions.height,
-  });
-  return mapOutputToSource({ x: q.x / base.width, y: q.y / base.height }, image, recipe.geometry);
+  return compileEditorCoordinateMap(image, input).toSource(point);
 }
 
 export interface EditorCoordinateMap {
   dimensions: Dimensions;
+  /** Geometric clipping only (including intermediate viewports), independent of source alpha. */
+  containsOutput(point: Point): boolean;
   /** Source coordinate frame to the displayed output frame; does not deform the control geometry. */
   toOutput(point: Point): Point;
   toSource(point: Point): Point;
@@ -180,9 +176,24 @@ export function compileEditorCoordinateMap(
 ): EditorCoordinateMap {
   const recipe = parseEditorRecipe(input),
     base = getOutputDimensions(image, recipe.geometry);
-  const fine = recipe.schemaVersion === 3 ? compileFineTransformV3(base, recipe.transform) : null;
-  const warp = recipe.schemaVersion === 3 ? compileWarpFieldV3(recipe.warp, image, original) : null;
-  const dimensions = fine?.dimensions ?? base;
+  const layered = recipe.schemaVersion === 3 || recipe.schemaVersion === 4;
+  const oldFine = layered ? compileFineTransformV3(base, recipe.transform) : null;
+  const projective =
+    recipe.schemaVersion === 4
+      ? compileProjectiveTransformV4(oldFine!.dimensions, recipe.projective)
+      : null;
+  const matrix =
+    oldFine && projective && !projective.identity
+      ? multiplyMatrixV4(projective.matrix, oldFine.matrix)
+      : oldFine?.matrix;
+  const fine = matrix
+    ? {
+        matrix,
+        inverse: projective && !projective.identity ? invertMatrixV4(matrix) : oldFine!.inverse,
+      }
+    : null;
+  let warp: ((point: Point) => Point) | null = null;
+  const dimensions = projective?.dimensions ?? oldFine?.dimensions ?? base;
   const crop = pixelCrop(image, recipe.geometry),
     geometry = recipe.geometry;
   const assertPoint = (point: Point) => {
@@ -231,6 +242,41 @@ export function compileEditorCoordinateMap(
   };
   return {
     dimensions,
+    containsOutput(point) {
+      if (
+        !Number.isFinite(point.x) ||
+        !Number.isFinite(point.y) ||
+        point.x < 0 ||
+        point.y < 0 ||
+        point.x > 1 ||
+        point.y > 1
+      )
+        return false;
+      let p = { x: point.x * dimensions.width, y: point.y * dimensions.height };
+      try {
+        if (projective) {
+          const z =
+            projective.inverse[6] * p.x + projective.inverse[7] * p.y + projective.inverse[8];
+          if (z < 1e-10) return false;
+          p = applyMatrixV3(projective.inverse, p);
+          if (
+            p.x < 0 ||
+            p.y < 0 ||
+            p.x > oldFine!.dimensions.width ||
+            p.y > oldFine!.dimensions.height
+          )
+            return false;
+        }
+        if (oldFine) {
+          const z = oldFine.inverse[6] * p.x + oldFine.inverse[7] * p.y + oldFine.inverse[8];
+          if (z < 1e-10) return false;
+          p = applyMatrixV3(oldFine.inverse, p);
+        }
+      } catch {
+        return false;
+      }
+      return p.x >= 0 && p.y >= 0 && p.x <= base.width && p.y <= base.height;
+    },
     toSource,
     toOutput(point) {
       const p = sourceToBase(point);
@@ -240,7 +286,9 @@ export function compileEditorCoordinateMap(
     },
     toContent(point) {
       const source = toSource(point);
-      return warp ? warp(source) : source;
+      if (!layered) return source;
+      warp ??= compileWarpFieldV3(recipe.warp, image, original);
+      return warp(source);
     },
   };
 }

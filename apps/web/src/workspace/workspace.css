@@ -1851,11 +1851,14 @@
       transform: none;
       min-height: 62px;
       border-radius: 0;
-      justify-content: space-around;
+      justify-content: flex-start;
       padding: 4px 3px calc(4px + env(safe-area-inset-bottom));
       gap: 0;
-      box-shadow: 0 -1px 0 #dce2e7;
-      background: #fffffffa;
+      box-shadow: none;
+      background: var(--surface, #fdfdfc);
+      overflow-x: auto;
+      scrollbar-width: none;
+      overscroll-behavior-inline: contain;
     }
     .floating-tool-dock > button {
       min-width: 40px;
@@ -2279,6 +2282,14 @@
     }
     .drawing-modal .drawing-meta {
       margin: 5px 0;
+    }
+  }
+  @media (max-width: 759px) and (max-height: 520px) {
+    .floating-tool-dock {
+      bottom: 0;
+      min-height: 48px;
+      padding: 2px 3px calc(2px + env(safe-area-inset-bottom));
+      border-radius: 0;
     }
   }
   @media (max-width: 360px) {

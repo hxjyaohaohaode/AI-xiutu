@@ -1,3 +1,6 @@
 export * from './protocol.js';
 export * from './registry.js';
 export * from './catalog.js';
+export * from './assistant.js';
+export * from './collaboration.js';
+export * from './resource.js';

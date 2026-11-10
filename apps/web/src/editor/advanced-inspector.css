@@ -1,6 +1,33 @@
 .advanced-inspector {
   --tool-density: 1;
 }
+.context-adjustment-tabs {
+  display: none;
+}
+@media (max-width: 759px) {
+  .context-adjustment-tabs {
+    display: flex;
+    flex: 0 0 auto;
+    gap: 2px;
+    align-items: center;
+    overflow-x: auto;
+    scrollbar-width: none;
+  }
+  .context-adjustment-tabs button {
+    flex: 1 0 auto;
+    min-height: 34px;
+    border: 0;
+    border-radius: 7px;
+    padding: 5px 9px;
+    color: var(--muted);
+    background: transparent;
+    font-size: 12px;
+  }
+  .context-adjustment-tabs button[aria-pressed='true'] {
+    color: var(--text);
+    background: color-mix(in srgb, var(--text, #29343b) 7%, transparent);
+  }
+}
 .free-panel:has(.advanced-inspector) {
   container-name: edit-tools;
   container-type: size;

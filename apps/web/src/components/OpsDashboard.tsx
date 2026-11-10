@@ -13,6 +13,7 @@ import {
   Copy,
   MagnifyingGlass,
   ArrowClockwise,
+  ChatCircleDots,
 } from '@phosphor-icons/react';
 import { api, errorMessage, formatDate, jsonRequest } from '../lib/api';
 import { Busy, IconButton, InlineError } from './Ui';
@@ -20,8 +21,11 @@ import type { Asset, Project, PublicConfig, User } from '../lib/types';
 import { Disclosure, OptionChips, ValueSlider } from './Controls';
 import type { ImageCapabilities } from '../ai/types';
 import { QuotaManager } from './QuotaManager';
+import { UsageDashboard } from '../usage/UsageDashboard';
+import { AssistantOpsPanel } from './AssistantOpsPanel';
 
-type OpsTab = 'overview' | 'users' | 'config' | 'plans' | 'models' | 'quota' | 'audit';
+type OpsTab =
+  'overview' | 'users' | 'config' | 'plans' | 'models' | 'assistant' | 'quota' | 'audit' | 'usage';
 type ModelConfig = {
   id: string;
   label: string;
@@ -82,7 +86,9 @@ const tabs: { id: OpsTab; label: string; icon: React.ReactNode }[] = [
   { id: 'config', label: '站点与注册', icon: <GearSix size={19} /> },
   { id: 'plans', label: '权益套餐', icon: <Stack size={19} /> },
   { id: 'models', label: '模型能力', icon: <SlidersHorizontal size={19} /> },
+  { id: 'assistant', label: '语音与协作模型', icon: <ChatCircleDots size={19} /> },
   { id: 'quota', label: '额度调整', icon: <Plus size={19} /> },
+  { id: 'usage', label: '用量账本', icon: <ChartBar size={19} /> },
   { id: 'audit', label: '操作审计', icon: <Receipt size={19} /> },
 ];
 export function OpsDashboard({
@@ -1088,6 +1094,8 @@ export function OpsDashboard({
               </>
             )}
             {tab === 'quota' && <QuotaManager />}
+            {tab === 'assistant' && <AssistantOpsPanel />}
+            {tab === 'usage' && <UsageDashboard operator />}
             {tab === 'audit' && (
               <div className="surface ops-section">
                 <h2>最新操作记录</h2>

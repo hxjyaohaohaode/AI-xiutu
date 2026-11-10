@@ -276,6 +276,33 @@
   }
 }
 @media (max-width: 759px) {
+  /* A phone tool sheet is one attached surface with the bottom category rail. */
+  .free-panel.phone-panel[data-attached='true'] {
+    border-radius: 15px 15px 0 0;
+    border-width: 1px 0 0;
+    border-color: color-mix(in srgb, var(--ink, #34414b) 12%, transparent);
+    box-shadow: 0 -8px 28px #233d4b0d;
+    background: var(--surface, #fdfdfc);
+  }
+  .free-panel.phone-panel[data-attached='true'] .panel-drag-header {
+    border-radius: 14px 14px 0 0;
+    background: var(--surface, #fdfdfc);
+  }
+  .free-panel.phone-panel[data-attached='true'] .panel-content {
+    border-radius: 0;
+  }
+  .free-panel.phone-panel[data-attached='true'] .panel-title-drag::before {
+    content: '';
+    width: 22px;
+    height: 3px;
+    flex: 0 0 22px;
+    margin-inline: 2px 5px;
+    border-radius: 2px;
+    background: #aeb8bd;
+  }
+  .free-panel.phone-panel[data-attached='true'] .panel-grip {
+    display: none;
+  }
   .free-panel.phone-panel {
     border-radius: 12px;
     border-color: #d8e0e5;

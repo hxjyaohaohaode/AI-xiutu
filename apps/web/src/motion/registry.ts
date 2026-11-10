@@ -1,5 +1,7 @@
+import { workspaceMotionV4 } from './workspaceV4';
 /** Explicit desktop, tablet and phone trajectories; no blur on image-bearing surfaces. */
 export const motionRegistry = {
+  ...workspaceMotionV4,
   topbar: {
     family: 'settle',
     entryMs: 280,

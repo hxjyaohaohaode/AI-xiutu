@@ -20,6 +20,8 @@ export type Viewport = {
   /** Optional measured dimensions include status banners and on-screen keyboard changes. */
   workspaceWidth?: number;
   workspaceHeight?: number;
+  /** Measured tool shelf includes safe-area padding on touch devices. */
+  toolShelfHeight?: number;
 };
 export type PanelEdge = 'n' | 's' | 'e' | 'w' | 'ne' | 'nw' | 'se' | 'sw';
 export type PanelRectangle = { x: number; y: number; width: number; height: number };
@@ -31,7 +33,11 @@ export const PANEL_MARGIN = 8;
 
 /** Leaves the always-reachable tool shelf clear, even while a panel fills the work area. */
 export function panelBottomOffset(view: Viewport): number {
-  return view.bucket === 'phone' ? 70 : view.height <= 520 ? 64 : 84;
+  return view.bucket === 'phone'
+    ? Math.max(48, finite(view.toolShelfHeight ?? 62, 62))
+    : view.height <= 520
+      ? 64
+      : 84;
 }
 export function panelHeaderHeight(view: Viewport): number {
   return view.bucket === 'phone' ? 44 : view.height <= 520 ? 40 : 44;
@@ -45,10 +51,14 @@ export function workspaceSize(view: Viewport): { width: number; height: number }
     ),
   };
 }
-export function panelBounds(view: Viewport) {
+export function panelBounds(view: Viewport, dock: Dock = 'floating') {
   const body = workspaceSize(view);
-  const maxWidth = Math.max(0, body.width - PANEL_MARGIN * 2);
-  const maxHeight = Math.max(0, body.height - panelBottomOffset(view) - PANEL_MARGIN * 2);
+  const attached = view.bucket === 'phone' && dock === 'bottom';
+  const maxWidth = Math.max(0, body.width - (attached ? 0 : PANEL_MARGIN * 2));
+  const maxHeight = Math.max(
+    0,
+    body.height - panelBottomOffset(view) - (attached ? PANEL_MARGIN : PANEL_MARGIN * 2),
+  );
   return {
     width: body.width,
     height: body.height,
@@ -61,7 +71,7 @@ export function panelBounds(view: Viewport) {
 
 /** Bounds are viewport/reachability constraints, not fixed product size presets. */
 export function boundPanel(value: PanelGeometry, view: Viewport): PanelGeometry {
-  const b = panelBounds(view);
+  const b = panelBounds(view, value.dock);
   const width = clamp(finite(value.width, 330), b.minWidth, b.maxWidth);
   const height = clamp(finite(value.height, 300), b.minHeight, b.maxHeight);
   const presentation = ['normal', 'maximized', 'collapsed'].includes(value.presentation ?? '')
@@ -89,10 +99,11 @@ export function boundPanel(value: PanelGeometry, view: Viewport): PanelGeometry 
 /** Display mode is derived; maximizing/collapsing does not discard the user's rectangle. */
 export function panelRectangle(value: PanelGeometry, view: Viewport): PanelRectangle {
   const normal = boundPanel(value, view);
-  const b = panelBounds(view);
+  const b = panelBounds(view, normal.dock);
+  const attached = view.bucket === 'phone' && normal.dock === 'bottom';
   if (normal.presentation === 'maximized')
     return {
-      x: PANEL_MARGIN,
+      x: attached ? 0 : PANEL_MARGIN,
       y: PANEL_MARGIN,
       width: b.maxWidth,
       height: b.maxHeight,
@@ -112,7 +123,7 @@ export function panelRectangle(value: PanelGeometry, view: Viewport): PanelRecta
             : normal.x,
     y:
       normal.dock === 'bottom'
-        ? b.height - panelBottomOffset(view) - height - PANEL_MARGIN
+        ? b.height - panelBottomOffset(view) - height - (attached ? 0 : PANEL_MARGIN)
         : normal.dock === 'left' || normal.dock === 'right'
           ? PANEL_MARGIN
           : normal.y,
@@ -122,7 +133,7 @@ export function panelRectangle(value: PanelGeometry, view: Viewport): PanelRecta
 }
 
 function canvasNavigationInset(view: Viewport): number {
-  return view.bucket === 'phone' ? 66 : view.height <= 520 ? 58 : 78;
+  return view.bucket === 'phone' ? panelBottomOffset(view) : view.height <= 520 ? 58 : 78;
 }
 
 function dockedCanvasInsets(rect: PanelRectangle, dock: Dock, view: Viewport): CanvasInsets {
@@ -131,7 +142,9 @@ function dockedCanvasInsets(rect: PanelRectangle, dock: Dock, view: Viewport): C
     right: dock === 'right' ? rect.width + PANEL_MARGIN * 2 : 0,
     bottom:
       dock === 'bottom'
-        ? rect.height + panelBottomOffset(view) + PANEL_MARGIN * 2
+        ? rect.height +
+          panelBottomOffset(view) +
+          (view.bucket === 'phone' ? PANEL_MARGIN : PANEL_MARGIN * 2)
         : canvasNavigationInset(view),
   };
 }
@@ -227,7 +240,7 @@ export function resizePanel(
   view: Viewport,
 ): PanelGeometry {
   const initial = boundPanel(value, view);
-  const b = panelBounds(view);
+  const b = panelBounds(view, initial.dock);
   const rect = panelRectangle(initial, view);
   let left = rect.x,
     top = rect.y,
@@ -290,7 +303,7 @@ export function movePanel(
 export function defaultPanel(id: PanelId, view: Viewport): PanelGeometry {
   const body = workspaceSize(view),
     phone = view.bucket === 'phone';
-  const width = phone ? body.width - 16 : id === 'ai' ? 390 : 344;
+  const width = phone ? body.width : id === 'ai' ? 390 : view.bucket === 'tablet' ? 320 : 344;
   const preferredHeight = phone
     ? Math.min(id === 'ai' ? 390 : 300, body.height * (id === 'ai' ? 0.57 : 0.44))
     : Math.min(id === 'ai' ? 680 : 600, body.height - panelBottomOffset(view) - 24);
@@ -301,7 +314,7 @@ export function defaultPanel(id: PanelId, view: Viewport): PanelGeometry {
   const phonePhotoBudget = canvasImageArea(view, {
     left: 0,
     right: 0,
-    bottom: panelBottomOffset(view) + PANEL_MARGIN * 2,
+    bottom: panelBottomOffset(view) + PANEL_MARGIN,
   }).height;
   const height = phone
     ? Math.min(

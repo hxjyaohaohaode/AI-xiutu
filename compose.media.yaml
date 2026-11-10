@@ -1,0 +1,16 @@
+# Optional Linux RAW/HDR runtime. The API and decoder share a 4 GiB default
+# container budget; PostgreSQL and other services need additional host memory.
+# This total-memory guard is separate from the decoder's per-process address limit.
+# docker compose -f compose.yaml -f compose.media.yaml up --build -d
+services:
+  api:
+    mem_limit: ${MEDIA_CONTAINER_MEMORY:-4g}
+    cpus: ${MEDIA_CONTAINER_CPUS:-2}
+    pids_limit: 192
+    cap_drop: [ALL]
+    security_opt: [no-new-privileges:true]
+    build:
+      target: server-media
+    environment:
+      MEDIA_ADVANCED_ENABLED: 'true'
+      MEDIA_PYTHON: /opt/media/bin/python

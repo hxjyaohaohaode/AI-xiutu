@@ -1,4 +1,5 @@
 import { parseRecipeV3 } from './v3-recipe.js';
+import { parseRecipeV4 } from './v4-recipe.js';
 import {
   createRecipe,
   parseRecipe,
@@ -547,6 +548,7 @@ export function parseEditorRecipe(input: unknown): EditorRecipe {
     if (version === 1) return parseRecipe(input);
     if (version === 2) return parseRecipeV2(input);
     if (version === 3) return parseRecipeV3(input);
+    if (version === 4) return parseRecipeV4(input);
     throw new RecipeValidationError([
       'recipe.schemaVersion: unsupported; migration must be explicit',
     ]);
@@ -568,8 +570,10 @@ export function validateEditorRecipe(input: unknown): EditorRecipeValidationResu
 export function migrateRecipeToV2(input: EditorRecipe): RecipeV2 {
   const recipe = parseEditorRecipe(input);
   if (recipe.schemaVersion === 2) return recipe;
-  if (recipe.schemaVersion === 3)
-    throw new RecipeValidationError(['migration: v3 cannot be silently downgraded to v2']);
+  if (recipe.schemaVersion === 3 || recipe.schemaVersion === 4)
+    throw new RecipeValidationError([
+      'migration: a newer recipe cannot be silently downgraded to v2',
+    ]);
   return createRecipeV2(
     Object.fromEntries(COMMON_KEYS.map((key) => [key, recipe[key]])) as RecipeV2Overrides,
   );

@@ -9,12 +9,13 @@ import {
 export * from './panelGeometry';
 export type WorkspaceLayout = { theme: 'light' | 'dark'; panels: Record<PanelId, PanelGeometry> };
 export const layoutStorageKey = (view: Viewport) =>
-  `image-workspace:v4:${view.bucket}:${view.width > view.height ? 'landscape' : 'portrait'}`;
+  `image-workspace:v5:${view.bucket}:${view.width > view.height ? 'landscape' : 'portrait'}`;
 
 function viewport(): Viewport {
   const width = window.innerWidth;
   const height = window.innerHeight;
   const body = document.querySelector<HTMLElement>('.workspace-body')?.getBoundingClientRect();
+  const shelf = document.querySelector<HTMLElement>('.floating-tool-dock')?.getBoundingClientRect();
   const visibleBottom = Math.min(
     height,
     (window.visualViewport?.height ?? height) + (window.visualViewport?.offsetTop ?? 0),
@@ -23,6 +24,7 @@ function viewport(): Viewport {
     width,
     height,
     bucket: width < 760 ? 'phone' : width < 1120 ? 'tablet' : 'desktop',
+    ...(shelf && shelf.height > 0 ? { toolShelfHeight: shelf.height } : {}),
     ...(body
       ? {
           workspaceWidth: body.width,
@@ -64,10 +66,14 @@ export function parseWorkspaceLayout(raw: string | null, view: Viewport): Worksp
 }
 function read(view: Viewport): WorkspaceLayout {
   try {
-    // v3 has no presentation/composition fields; the same validator supplies defaults.
+    // Phone starts with the new attached layout. Keep old desktop/tablet user choices.
     return parseWorkspaceLayout(
       localStorage.getItem(layoutStorageKey(view)) ??
-        localStorage.getItem(`image-workspace:v3:${view.bucket}`),
+        (view.bucket !== 'phone'
+          ? (localStorage.getItem(
+              `image-workspace:v4:${view.bucket}:${view.width > view.height ? 'landscape' : 'portrait'}`,
+            ) ?? localStorage.getItem(`image-workspace:v3:${view.bucket}`))
+          : null),
       view,
     );
   } catch {
@@ -104,12 +110,25 @@ export function useWorkspaceLayout() {
     const observer = new ResizeObserver(resize);
     const body = document.querySelector<HTMLElement>('.workspace-body');
     if (body) observer.observe(body);
+    let shelf = document.querySelector<HTMLElement>('.floating-tool-dock');
+    if (shelf) observer.observe(shelf);
+    const nodes = new MutationObserver(() => {
+      const next = document.querySelector<HTMLElement>('.floating-tool-dock');
+      if (next !== shelf) {
+        if (shelf) observer.unobserve(shelf);
+        shelf = next;
+        if (shelf) observer.observe(shelf);
+        resize();
+      }
+    });
+    if (body) nodes.observe(body, { childList: true, subtree: true });
     window.addEventListener('resize', resize);
     window.visualViewport?.addEventListener('resize', resize);
     resize();
     return () => {
       cancelAnimationFrame(frame);
       observer.disconnect();
+      nodes.disconnect();
       window.removeEventListener('resize', resize);
       window.visualViewport?.removeEventListener('resize', resize);
     };

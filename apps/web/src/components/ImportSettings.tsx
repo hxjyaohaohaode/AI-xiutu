@@ -18,6 +18,7 @@ export function ImportSettings({
   onCreateProject,
   onRetry,
   onServerImport,
+  onProfessionalImport,
   onClose,
 }: {
   budget: number;
@@ -31,6 +32,7 @@ export function ImportSettings({
   onCreateProject: () => void;
   onRetry: () => Promise<boolean>;
   onServerImport: () => Promise<void>;
+  onProfessionalImport: () => void;
   onClose: () => void;
 }) {
   const [busy, setBusy] = useState(false);
@@ -102,9 +104,9 @@ export function ImportSettings({
           </select>
         </label>
         <p className="resource-budget-note" role="status">
-          新导入与 v3 作品最多 {(MAX_V3_PIXELS / 1e6).toFixed(1)} 百万像素、单边8192px。
+          新导入与 v3/v4 作品最多 {(MAX_V3_PIXELS / 1e6).toFixed(1)} 百万像素、单边8192px。
           当前新导入实际预算为 {(Math.min(budget, MAX_V3_PIXELS) / 1e6).toFixed(1)} 百万像素。
-          40/67百万像素选项仅供已有的 v1/v2 作品，提高设备预算不会提高 v3 引擎上限。
+          40/67百万像素选项仅供已有的 v1/v2 作品，提高设备预算不会提高 v3/v4 引擎上限。
         </p>
         <p className="resource-budget-note">
           选择的上限不是设备性能保证。分块处理减少中间缓冲，但解码、原始像素和导出仍至少可能占用约{' '}
@@ -129,6 +131,20 @@ export function ImportSettings({
           </button>
         )}
       </div>
+      <section className="server-import-section">
+        <h3>原片与专业格式</h3>
+        <p>
+          需要保留高像素原件、色彩档案或专业格式时，使用独立原片导入；编辑器载入工作预览，原件和母版另行保存。
+        </p>
+        <button
+          className="button button-secondary"
+          disabled={busy}
+          onClick={!loggedIn ? onAuth : !project ? onCreateProject : onProfessionalImport}
+        >
+          <CloudArrowUp size={18} />
+          {!loggedIn ? '登录后导入原片' : !project ? '先选择保存项目' : '打开原片与专业格式'}
+        </button>
+      </section>
       {file && (
         <section className="server-import-section">
           <h3>需要服务端规范化？</h3>
@@ -143,7 +159,7 @@ export function ImportSettings({
             {Math.floor(
               (config?.media?.maxUploadBytes ?? config?.limits.maxUploadBytes ?? 0) / 1024 / 1024,
             )}{' '}
-            MiB。规范化后仍要同时符合本机预算与 v3
+            MiB。规范化后仍要同时符合本机预算与 v3/v4
             的16.8百万像素上限才能本地编辑；更大素材可保存在项目中，需明确准备较小副本后编辑。
           </p>
           {!loggedIn ? (

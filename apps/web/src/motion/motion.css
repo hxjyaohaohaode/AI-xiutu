@@ -2749,3 +2749,638 @@
     }
   }
 }
+
+/* V4 component motion. Values match workspaceV4.ts and are checked in regression. */
+@layer motion {
+  [data-motion='context-navigation'] {
+    animation-name: ui-slide;
+    --motion-entry: 225ms;
+    --motion-exit: 100ms;
+    --motion-delay: 5ms;
+    --motion-blur: 0px;
+    --motion-x: -4px;
+    --motion-y: 0px;
+    --motion-scale: 1;
+    --motion-interact: 85ms;
+  }
+  [data-motion='projective-controls'] {
+    animation-name: ui-reveal;
+    --motion-entry: 250ms;
+    --motion-exit: 115ms;
+    --motion-delay: 12ms;
+    --motion-blur: 1px;
+    --motion-x: 0px;
+    --motion-y: 5px;
+    --motion-scale: 1;
+    --motion-interact: 90ms;
+  }
+  [data-motion='repair-controls'] {
+    animation-name: ui-settle;
+    --motion-entry: 275ms;
+    --motion-exit: 120ms;
+    --motion-delay: 18ms;
+    --motion-blur: 0px;
+    --motion-x: 3px;
+    --motion-y: 4px;
+    --motion-scale: 0.998;
+    --motion-interact: 90ms;
+  }
+  [data-motion='usage-heading'] {
+    animation-name: ui-slide;
+    --motion-entry: 245ms;
+    --motion-exit: 105ms;
+    --motion-delay: 0ms;
+    --motion-blur: 2px;
+    --motion-x: -7px;
+    --motion-y: 0px;
+    --motion-scale: 1;
+    --motion-interact: 95ms;
+  }
+  [data-motion='usage-filters'] {
+    animation-name: ui-reveal;
+    --motion-entry: 260ms;
+    --motion-exit: 115ms;
+    --motion-delay: 18ms;
+    --motion-blur: 1px;
+    --motion-x: 0px;
+    --motion-y: 5px;
+    --motion-scale: 1;
+    --motion-interact: 100ms;
+  }
+  [data-motion='usage-totals'] {
+    animation-name: ui-settle;
+    --motion-entry: 295ms;
+    --motion-exit: 125ms;
+    --motion-delay: 27ms;
+    --motion-blur: 1px;
+    --motion-x: 0px;
+    --motion-y: 8px;
+    --motion-scale: 0.997;
+    --motion-interact: 100ms;
+  }
+  [data-motion='usage-chart'] {
+    animation-name: ui-reveal;
+    --motion-entry: 310ms;
+    --motion-exit: 135ms;
+    --motion-delay: 36ms;
+    --motion-blur: 0px;
+    --motion-x: 0px;
+    --motion-y: 9px;
+    --motion-scale: 1;
+    --motion-interact: 105ms;
+  }
+  [data-motion='usage-ledger'] {
+    animation-name: ui-slide;
+    --motion-entry: 280ms;
+    --motion-exit: 125ms;
+    --motion-delay: 43ms;
+    --motion-blur: 1px;
+    --motion-x: 0px;
+    --motion-y: 7px;
+    --motion-scale: 1;
+    --motion-interact: 95ms;
+  }
+  [data-motion='resource-heading'] {
+    animation-name: ui-slide;
+    --motion-entry: 240ms;
+    --motion-exit: 105ms;
+    --motion-delay: 0ms;
+    --motion-blur: 2px;
+    --motion-x: -6px;
+    --motion-y: 0px;
+    --motion-scale: 1;
+    --motion-interact: 90ms;
+  }
+  [data-motion='resource-search'] {
+    animation-name: ui-reveal;
+    --motion-entry: 255ms;
+    --motion-exit: 110ms;
+    --motion-delay: 15ms;
+    --motion-blur: 1px;
+    --motion-x: 0px;
+    --motion-y: 4px;
+    --motion-scale: 1;
+    --motion-interact: 95ms;
+  }
+  [data-motion='resource-card'] {
+    animation-name: ui-settle;
+    --motion-entry: 300ms;
+    --motion-exit: 130ms;
+    --motion-delay: 23ms;
+    --motion-blur: 0px;
+    --motion-x: 0px;
+    --motion-y: 9px;
+    --motion-scale: 0.995;
+    --motion-interact: 110ms;
+  }
+  [data-motion='resource-memory'] {
+    animation-name: ui-reveal;
+    --motion-entry: 285ms;
+    --motion-exit: 125ms;
+    --motion-delay: 20ms;
+    --motion-blur: 1px;
+    --motion-x: 0px;
+    --motion-y: 6px;
+    --motion-scale: 0.998;
+    --motion-interact: 100ms;
+  }
+  [data-motion='collaboration-status'] {
+    animation-name: ui-settle;
+    --motion-entry: 235ms;
+    --motion-exit: 105ms;
+    --motion-delay: 0ms;
+    --motion-blur: 1px;
+    --motion-x: 3px;
+    --motion-y: -2px;
+    --motion-scale: 0.995;
+    --motion-interact: 90ms;
+  }
+  [data-motion='collaboration-details'] {
+    animation-name: ui-reveal;
+    --motion-entry: 265ms;
+    --motion-exit: 120ms;
+    --motion-delay: 4ms;
+    --motion-blur: 1px;
+    --motion-x: 0px;
+    --motion-y: -5px;
+    --motion-scale: 0.997;
+    --motion-interact: 95ms;
+  }
+  [data-motion='collaboration-conflict'] {
+    animation-name: ui-slide;
+    --motion-entry: 245ms;
+    --motion-exit: 130ms;
+    --motion-delay: 0ms;
+    --motion-blur: 1px;
+    --motion-x: 5px;
+    --motion-y: 0px;
+    --motion-scale: 1;
+    --motion-interact: 95ms;
+  }
+  [data-motion='collaboration-cursor'] {
+    animation-name: ui-reveal;
+    --motion-entry: 165ms;
+    --motion-exit: 85ms;
+    --motion-delay: 0ms;
+    --motion-blur: 0px;
+    --motion-x: 0px;
+    --motion-y: 0px;
+    --motion-scale: 1;
+    --motion-interact: 60ms;
+  }
+  [data-motion='media-import'] {
+    animation-name: ui-settle;
+    --motion-entry: 305ms;
+    --motion-exit: 135ms;
+    --motion-delay: 14ms;
+    --motion-blur: 0px;
+    --motion-x: 0px;
+    --motion-y: 6px;
+    --motion-scale: 0.997;
+    --motion-interact: 105ms;
+  }
+  [data-motion='media-detail'] {
+    animation-name: ui-reveal;
+    --motion-entry: 290ms;
+    --motion-exit: 125ms;
+    --motion-delay: 19ms;
+    --motion-blur: 0px;
+    --motion-x: 0px;
+    --motion-y: 5px;
+    --motion-scale: 1;
+    --motion-interact: 100ms;
+  }
+  [data-motion='team-activity'] {
+    animation-name: ui-slide;
+    --motion-entry: 275ms;
+    --motion-exit: 125ms;
+    --motion-delay: 11ms;
+    --motion-blur: 1px;
+    --motion-x: -5px;
+    --motion-y: 0px;
+    --motion-scale: 1;
+    --motion-interact: 95ms;
+  }
+  @media (760px <= width < 1120px) {
+    [data-motion='context-navigation'] {
+      animation-name: ui-reveal;
+      --motion-entry: 205ms;
+      --motion-exit: 95ms;
+      --motion-delay: 3ms;
+      --motion-blur: 0px;
+      --motion-x: -2px;
+      --motion-y: 0px;
+      --motion-scale: 1;
+      --motion-interact: 75ms;
+    }
+    [data-motion='projective-controls'] {
+      animation-name: ui-settle;
+      --motion-entry: 225ms;
+      --motion-exit: 105ms;
+      --motion-delay: 8ms;
+      --motion-blur: 0.5px;
+      --motion-x: 0px;
+      --motion-y: 4px;
+      --motion-scale: 0.998;
+      --motion-interact: 80ms;
+    }
+    [data-motion='repair-controls'] {
+      animation-name: ui-reveal;
+      --motion-entry: 245ms;
+      --motion-exit: 110ms;
+      --motion-delay: 10ms;
+      --motion-blur: 0px;
+      --motion-x: 2px;
+      --motion-y: 3px;
+      --motion-scale: 1;
+      --motion-interact: 85ms;
+    }
+    [data-motion='usage-heading'] {
+      animation-name: ui-reveal;
+      --motion-entry: 225ms;
+      --motion-exit: 100ms;
+      --motion-delay: 0ms;
+      --motion-blur: 1px;
+      --motion-x: -3px;
+      --motion-y: 0px;
+      --motion-scale: 1;
+      --motion-interact: 85ms;
+    }
+    [data-motion='usage-filters'] {
+      animation-name: ui-slide;
+      --motion-entry: 235ms;
+      --motion-exit: 105ms;
+      --motion-delay: 11ms;
+      --motion-blur: 1px;
+      --motion-x: -3px;
+      --motion-y: 0px;
+      --motion-scale: 1;
+      --motion-interact: 85ms;
+    }
+    [data-motion='usage-totals'] {
+      animation-name: ui-settle;
+      --motion-entry: 265ms;
+      --motion-exit: 115ms;
+      --motion-delay: 16ms;
+      --motion-blur: 0.5px;
+      --motion-x: 0px;
+      --motion-y: 6px;
+      --motion-scale: 0.998;
+      --motion-interact: 85ms;
+    }
+    [data-motion='usage-chart'] {
+      animation-name: ui-reveal;
+      --motion-entry: 275ms;
+      --motion-exit: 120ms;
+      --motion-delay: 23ms;
+      --motion-blur: 0px;
+      --motion-x: 0px;
+      --motion-y: 6px;
+      --motion-scale: 1;
+      --motion-interact: 90ms;
+    }
+    [data-motion='usage-ledger'] {
+      animation-name: ui-reveal;
+      --motion-entry: 255ms;
+      --motion-exit: 115ms;
+      --motion-delay: 25ms;
+      --motion-blur: 0.5px;
+      --motion-x: 0px;
+      --motion-y: 5px;
+      --motion-scale: 1;
+      --motion-interact: 85ms;
+    }
+    [data-motion='resource-heading'] {
+      animation-name: ui-reveal;
+      --motion-entry: 215ms;
+      --motion-exit: 100ms;
+      --motion-delay: 0ms;
+      --motion-blur: 1px;
+      --motion-x: -3px;
+      --motion-y: 0px;
+      --motion-scale: 1;
+      --motion-interact: 80ms;
+    }
+    [data-motion='resource-search'] {
+      animation-name: ui-slide;
+      --motion-entry: 230ms;
+      --motion-exit: 105ms;
+      --motion-delay: 8ms;
+      --motion-blur: 1px;
+      --motion-x: -2px;
+      --motion-y: 0px;
+      --motion-scale: 1;
+      --motion-interact: 85ms;
+    }
+    [data-motion='resource-card'] {
+      animation-name: ui-settle;
+      --motion-entry: 270ms;
+      --motion-exit: 120ms;
+      --motion-delay: 16ms;
+      --motion-blur: 0px;
+      --motion-x: 0px;
+      --motion-y: 7px;
+      --motion-scale: 0.997;
+      --motion-interact: 95ms;
+    }
+    [data-motion='resource-memory'] {
+      animation-name: ui-settle;
+      --motion-entry: 255ms;
+      --motion-exit: 115ms;
+      --motion-delay: 12ms;
+      --motion-blur: 1px;
+      --motion-x: 0px;
+      --motion-y: 5px;
+      --motion-scale: 1;
+      --motion-interact: 90ms;
+    }
+    [data-motion='collaboration-status'] {
+      animation-name: ui-slide;
+      --motion-entry: 215ms;
+      --motion-exit: 100ms;
+      --motion-delay: 0ms;
+      --motion-blur: 0.5px;
+      --motion-x: 2px;
+      --motion-y: -1px;
+      --motion-scale: 1;
+      --motion-interact: 80ms;
+    }
+    [data-motion='collaboration-details'] {
+      animation-name: ui-reveal;
+      --motion-entry: 240ms;
+      --motion-exit: 110ms;
+      --motion-delay: 2ms;
+      --motion-blur: 0.5px;
+      --motion-x: 0px;
+      --motion-y: -4px;
+      --motion-scale: 1;
+      --motion-interact: 85ms;
+    }
+    [data-motion='collaboration-conflict'] {
+      animation-name: ui-reveal;
+      --motion-entry: 225ms;
+      --motion-exit: 120ms;
+      --motion-delay: 0ms;
+      --motion-blur: 0.5px;
+      --motion-x: 3px;
+      --motion-y: 0px;
+      --motion-scale: 1;
+      --motion-interact: 85ms;
+    }
+    [data-motion='collaboration-cursor'] {
+      animation-name: ui-reveal;
+      --motion-entry: 155ms;
+      --motion-exit: 80ms;
+      --motion-delay: 0ms;
+      --motion-blur: 0px;
+      --motion-x: 0px;
+      --motion-y: 0px;
+      --motion-scale: 1;
+      --motion-interact: 55ms;
+    }
+    [data-motion='media-import'] {
+      animation-name: ui-reveal;
+      --motion-entry: 270ms;
+      --motion-exit: 125ms;
+      --motion-delay: 8ms;
+      --motion-blur: 0px;
+      --motion-x: 0px;
+      --motion-y: 5px;
+      --motion-scale: 1;
+      --motion-interact: 95ms;
+    }
+    [data-motion='media-detail'] {
+      animation-name: ui-settle;
+      --motion-entry: 260ms;
+      --motion-exit: 115ms;
+      --motion-delay: 12ms;
+      --motion-blur: 0px;
+      --motion-x: 0px;
+      --motion-y: 4px;
+      --motion-scale: 1;
+      --motion-interact: 90ms;
+    }
+    [data-motion='team-activity'] {
+      animation-name: ui-reveal;
+      --motion-entry: 245ms;
+      --motion-exit: 115ms;
+      --motion-delay: 6ms;
+      --motion-blur: 1px;
+      --motion-x: -3px;
+      --motion-y: 0px;
+      --motion-scale: 1;
+      --motion-interact: 85ms;
+    }
+  }
+  @media (width < 760px) {
+    [data-motion='context-navigation'] {
+      animation-name: ui-slide;
+      --motion-entry: 175ms;
+      --motion-exit: 85ms;
+      --motion-delay: 0ms;
+      --motion-blur: 0px;
+      --motion-x: 0px;
+      --motion-y: 3px;
+      --motion-scale: 1;
+      --motion-interact: 65ms;
+    }
+    [data-motion='projective-controls'] {
+      animation-name: ui-slide;
+      --motion-entry: 185ms;
+      --motion-exit: 90ms;
+      --motion-delay: 2ms;
+      --motion-blur: 0.5px;
+      --motion-x: 0px;
+      --motion-y: 3px;
+      --motion-scale: 1;
+      --motion-interact: 65ms;
+    }
+    [data-motion='repair-controls'] {
+      animation-name: ui-slide;
+      --motion-entry: 195ms;
+      --motion-exit: 95ms;
+      --motion-delay: 4ms;
+      --motion-blur: 0px;
+      --motion-x: 0px;
+      --motion-y: 3px;
+      --motion-scale: 1;
+      --motion-interact: 70ms;
+    }
+    [data-motion='usage-heading'] {
+      animation-name: ui-slide;
+      --motion-entry: 180ms;
+      --motion-exit: 85ms;
+      --motion-delay: 0ms;
+      --motion-blur: 0.5px;
+      --motion-x: 0px;
+      --motion-y: 3px;
+      --motion-scale: 1;
+      --motion-interact: 65ms;
+    }
+    [data-motion='usage-filters'] {
+      animation-name: ui-reveal;
+      --motion-entry: 190ms;
+      --motion-exit: 90ms;
+      --motion-delay: 7ms;
+      --motion-blur: 0.5px;
+      --motion-x: 0px;
+      --motion-y: 3px;
+      --motion-scale: 1;
+      --motion-interact: 70ms;
+    }
+    [data-motion='usage-totals'] {
+      animation-name: ui-slide;
+      --motion-entry: 210ms;
+      --motion-exit: 100ms;
+      --motion-delay: 10ms;
+      --motion-blur: 0.5px;
+      --motion-x: 0px;
+      --motion-y: 4px;
+      --motion-scale: 1;
+      --motion-interact: 70ms;
+    }
+    [data-motion='usage-chart'] {
+      animation-name: ui-reveal;
+      --motion-entry: 225ms;
+      --motion-exit: 105ms;
+      --motion-delay: 13ms;
+      --motion-blur: 0px;
+      --motion-x: 0px;
+      --motion-y: 4px;
+      --motion-scale: 1;
+      --motion-interact: 75ms;
+    }
+    [data-motion='usage-ledger'] {
+      animation-name: ui-slide;
+      --motion-entry: 205ms;
+      --motion-exit: 95ms;
+      --motion-delay: 14ms;
+      --motion-blur: 0.5px;
+      --motion-x: 0px;
+      --motion-y: 3px;
+      --motion-scale: 1;
+      --motion-interact: 70ms;
+    }
+    [data-motion='resource-heading'] {
+      animation-name: ui-slide;
+      --motion-entry: 175ms;
+      --motion-exit: 85ms;
+      --motion-delay: 0ms;
+      --motion-blur: 0.5px;
+      --motion-x: 0px;
+      --motion-y: 2px;
+      --motion-scale: 1;
+      --motion-interact: 65ms;
+    }
+    [data-motion='resource-search'] {
+      animation-name: ui-reveal;
+      --motion-entry: 185ms;
+      --motion-exit: 90ms;
+      --motion-delay: 4ms;
+      --motion-blur: 0.5px;
+      --motion-x: 0px;
+      --motion-y: 3px;
+      --motion-scale: 1;
+      --motion-interact: 70ms;
+    }
+    [data-motion='resource-card'] {
+      animation-name: ui-slide;
+      --motion-entry: 220ms;
+      --motion-exit: 100ms;
+      --motion-delay: 8ms;
+      --motion-blur: 0px;
+      --motion-x: 0px;
+      --motion-y: 4px;
+      --motion-scale: 1;
+      --motion-interact: 75ms;
+    }
+    [data-motion='resource-memory'] {
+      animation-name: ui-slide;
+      --motion-entry: 215ms;
+      --motion-exit: 100ms;
+      --motion-delay: 5ms;
+      --motion-blur: 0.5px;
+      --motion-x: 0px;
+      --motion-y: 3px;
+      --motion-scale: 1;
+      --motion-interact: 75ms;
+    }
+    [data-motion='collaboration-status'] {
+      animation-name: ui-reveal;
+      --motion-entry: 180ms;
+      --motion-exit: 90ms;
+      --motion-delay: 0ms;
+      --motion-blur: 0.5px;
+      --motion-x: 0px;
+      --motion-y: -2px;
+      --motion-scale: 1;
+      --motion-interact: 65ms;
+    }
+    [data-motion='collaboration-details'] {
+      animation-name: ui-slide;
+      --motion-entry: 200ms;
+      --motion-exit: 95ms;
+      --motion-delay: 0ms;
+      --motion-blur: 0.5px;
+      --motion-x: 0px;
+      --motion-y: -3px;
+      --motion-scale: 1;
+      --motion-interact: 70ms;
+    }
+    [data-motion='collaboration-conflict'] {
+      animation-name: ui-slide;
+      --motion-entry: 195ms;
+      --motion-exit: 105ms;
+      --motion-delay: 0ms;
+      --motion-blur: 0.5px;
+      --motion-x: 0px;
+      --motion-y: 3px;
+      --motion-scale: 1;
+      --motion-interact: 70ms;
+    }
+    [data-motion='collaboration-cursor'] {
+      animation-name: ui-reveal;
+      --motion-entry: 145ms;
+      --motion-exit: 75ms;
+      --motion-delay: 0ms;
+      --motion-blur: 0px;
+      --motion-x: 0px;
+      --motion-y: 0px;
+      --motion-scale: 1;
+      --motion-interact: 50ms;
+    }
+    [data-motion='media-import'] {
+      animation-name: ui-slide;
+      --motion-entry: 225ms;
+      --motion-exit: 110ms;
+      --motion-delay: 4ms;
+      --motion-blur: 0px;
+      --motion-x: 0px;
+      --motion-y: 3px;
+      --motion-scale: 1;
+      --motion-interact: 75ms;
+    }
+    [data-motion='media-detail'] {
+      animation-name: ui-reveal;
+      --motion-entry: 210ms;
+      --motion-exit: 100ms;
+      --motion-delay: 5ms;
+      --motion-blur: 0px;
+      --motion-x: 0px;
+      --motion-y: 2px;
+      --motion-scale: 1;
+      --motion-interact: 70ms;
+    }
+    [data-motion='team-activity'] {
+      animation-name: ui-slide;
+      --motion-entry: 205ms;
+      --motion-exit: 100ms;
+      --motion-delay: 3ms;
+      --motion-blur: 0.5px;
+      --motion-x: 0px;
+      --motion-y: 4px;
+      --motion-scale: 1;
+      --motion-interact: 70ms;
+    }
+  }
+}

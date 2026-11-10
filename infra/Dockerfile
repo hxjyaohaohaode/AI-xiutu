@@ -9,10 +9,20 @@ RUN npm run build
 FROM node:24-bookworm-slim AS server
 WORKDIR /app
 ENV NODE_ENV=production
+RUN apt-get update && apt-get install -y --no-install-recommends util-linux && rm -rf /var/lib/apt/lists/*
 COPY --from=build --chown=node:node /app /app
 RUN mkdir -p /app/.data/private /app/.data/ai-dispatch-journal && chown -R node:node /app/.data
 USER node
 CMD ["node", "--import", "tsx", "apps/api/src/index.ts"]
+
+# Optional native RAW/HDR decoder runtime. The standard server supports libvips
+# formats; this target keeps the additional Python/native footprint opt-in.
+FROM server AS server-media
+USER root
+RUN apt-get update && apt-get install -y --no-install-recommends python3 python3-venv libgomp1 && rm -rf /var/lib/apt/lists/*
+RUN python3 -m venv /opt/media && /opt/media/bin/pip install --no-cache-dir -r /app/packages/media/native/requirements.txt
+ENV MEDIA_PYTHON=/opt/media/bin/python
+USER node
 
 FROM caddy:2-alpine AS web
 COPY --from=build /app/apps/web/dist /srv

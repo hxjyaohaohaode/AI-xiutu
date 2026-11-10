@@ -93,7 +93,7 @@ export function replaceSelectionMask(
   path: readonly number[] = [],
   protection = false,
 ): EditorRecipe {
-  if (recipe.schemaVersion === 3) {
+  if (recipe.schemaVersion === 3 || recipe.schemaVersion === 4) {
     if (protection)
       return {
         ...recipe,

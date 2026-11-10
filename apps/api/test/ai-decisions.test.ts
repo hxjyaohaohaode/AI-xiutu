@@ -286,7 +286,7 @@ test(
           assert.ok(!result.body.includes(config.sessionSecret));
           const editor = await call('GET', '/v1/editor-contract');
           assert.equal(editor.statusCode, 200, editor.body);
-          assert.equal(editor.json().preferredRecipeVersion, 3);
+          assert.equal(editor.json().preferredRecipeVersion, 4);
           const angle = editor
             .json()
             .parameters.find((p: any) => p.path === 'transform.rotationDegrees');

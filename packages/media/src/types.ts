@@ -1,0 +1,110 @@
+export const MEDIA_PROTOCOL = 'media-v1' as const;
+export const MEDIA_MAX_PIXELS = 200_000_000;
+export const MEDIA_MAX_INPUT_BYTES = 536_870_912;
+export const MEDIA_MAX_PROXY_PIXELS = 4_194_304;
+export interface MediaProcessingOptions {
+  maxPixels?: number;
+  maxInputBytes?: number;
+  maxProxyPixels?: number;
+  tileSize?: 256 | 512 | 1024;
+  generateTiles?: boolean;
+  /** Wall time includes subprocess bootstrap and all decodes/encodes. */
+  timeoutMs?: number;
+  /** Linux address-space limit. Native decoders run only in the isolated subprocess. */
+  memoryBytes?: number;
+  /** Optional trusted interpreter with the pinned native requirements installed. */
+  pythonExecutable?: string;
+}
+export interface MediaFileV1 {
+  relativePath: string;
+  bytes: number;
+  sha256: string;
+  mime: string;
+  width: number;
+  height: number;
+  bitDepth: number;
+  colorSpace: string;
+}
+export interface MediaDescriptorV1 {
+  protocol: typeof MEDIA_PROTOCOL;
+  id: string;
+  sourceSha256: string;
+  originalName: string;
+  original: MediaFileV1 & {
+    format: string;
+    /** Native formats disambiguate half/float/RGBE or sensor samples from decoded precision. */
+    sampleEncoding?: 'uint' | 'half-float' | 'float' | 'rgbe' | 'sensor-raw';
+    decodedBitDepth?: number;
+    /** null means that this decoder did not inspect an embedded ICC resource. */
+    hasIcc: boolean | null;
+    metadataSummary: {
+      inspection: 'full' | 'icc-only' | 'not-inspected';
+      orientation: number | null;
+      hasExif: boolean | null;
+      hasXmp: boolean | null;
+      iccSha256: string | null;
+      pages: number;
+    };
+  };
+  /** sRGB uint16 TIFF working master. HDR source is retained; this master is explicitly SDR. */
+  master: MediaFileV1;
+  /** Only for validated EXR/Radiance imports; decoded float32 source before SDR tone mapping. */
+  linearMaster?: MediaFileV1;
+  /** Display sRGB RGBA8 PNG, separate from the immutable encoded source/master. */
+  proxy: MediaFileV1 & { normalizedDimensions: { width: number; height: number } };
+  tiles: {
+    relativePath: 'tiles.dzi';
+    directory: 'tiles_files';
+    tileSize: number;
+    overlap: 1;
+    levels: number;
+    format: 'jpeg';
+    bytes: number;
+    count: number;
+  } | null;
+  /** PSD metadata is bounded, descriptive, and does not claim editable round-trip fidelity. */
+  layers: {
+    name: string;
+    left: number;
+    top: number;
+    right: number;
+    bottom: number;
+    hidden: boolean;
+  }[];
+  warnings: string[];
+  processor: {
+    sharp: string;
+    vips: string;
+    native: string | null;
+    isolation: 'linux-prlimit';
+    memoryBytes: number;
+    timeoutMs: number;
+    durationMs?: number;
+    peakRssBytes?: number;
+    nativePeakRssBytes?: number;
+  };
+}
+export interface ProcessMediaRequest {
+  /** An API-owned regular file, never an arbitrary client path or URL. */
+  inputPath: string;
+  /** A new private output directory. Existing output is never overwritten. */
+  workDir: string;
+  originalName?: string;
+  signal?: AbortSignal;
+  options?: MediaProcessingOptions;
+}
+export type MediaExportFormat = 'png16' | 'tiff16' | 'jpeg' | 'webp';
+export interface ExportMediaRequest {
+  workDir: string;
+  /** A new API-owned output path. No replacement of existing files. */
+  outputPath: string;
+  format: MediaExportFormat;
+  signal?: AbortSignal;
+  options?: Pick<MediaProcessingOptions, 'timeoutMs' | 'memoryBytes'> & { quality?: number };
+}
+export interface MediaExportResult extends MediaFileV1 {
+  format: MediaExportFormat;
+  sourceSha256: string;
+  /** This converts the retained master; browser edits are not injected into a high-bit master. */
+  includesEditorRecipe: false;
+}

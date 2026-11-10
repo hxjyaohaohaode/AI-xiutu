@@ -16,6 +16,7 @@ import type { Project, Space } from '../lib/types';
 import type { EditorState } from '../editor/useEditor';
 import { createSourceLoadGuard, type SourceLoadCheckpoint } from '../editor/source-flow';
 import { Busy, IconButton, InlineError, Modal } from './Ui';
+import { TeamActivity } from '../resources/TeamActivity';
 
 export function NameDialog({
   kind,
@@ -346,14 +347,23 @@ type SharingPolicy = {
   maxActiveGrants: number;
   maxCopyAssets: number;
 };
-export function TeamDialog({ space, onClose }: { space: Space; onClose: () => void }) {
+export function TeamDialog({
+  space,
+  onClose,
+  onMembershipChanged,
+}: {
+  space: Space;
+  onClose: () => void;
+  onMembershipChanged?: () => void;
+}) {
   const [members, setMembers] = useState<Member[]>([]);
   const [role, setRole] = useState('editor');
   const [code, setCode] = useState('');
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [policy, setPolicy] = useState<SharingPolicy | null>(null);
-  const [tab, setTab] = useState<'members' | 'sharing'>('members');
+  const [tab, setTab] = useState<'members' | 'sharing' | 'activity'>('members');
+  const [activityRefresh, setActivityRefresh] = useState(0);
   const canManage = space.role === 'owner' || space.role === 'admin';
   const load = async () => {
     const result = await api<{ members: Member[] }>(`/spaces/${space.id}/members`);
@@ -381,6 +391,8 @@ export function TeamDialog({ space, onClose }: { space: Space; onClose: () => vo
     }
   }
   async function changeMember(member: Member, next: string) {
+    if (busy) return;
+    setBusy(true);
     setError(null);
     try {
       await api(
@@ -388,18 +400,53 @@ export function TeamDialog({ space, onClose }: { space: Space; onClose: () => vo
         jsonRequest('PATCH', { role: next }),
       );
       await load();
+      setActivityRefresh((n) => n + 1);
+      onMembershipChanged?.();
     } catch (e) {
       setError(errorMessage(e));
+    } finally {
+      setBusy(false);
     }
   }
   async function remove(member: Member) {
+    if (busy) return;
     if (!window.confirm(`确定移除 ${member.displayName}？后续将无法访问团队资料。`)) return;
     setError(null);
+    setBusy(true);
     try {
       await api(`/spaces/${space.id}/members/${member.userId}`, jsonRequest('DELETE'));
       await load();
+      setActivityRefresh((n) => n + 1);
+      onMembershipChanged?.();
     } catch (e) {
       setError(errorMessage(e));
+    } finally {
+      setBusy(false);
+    }
+  }
+  async function transfer(member: Member) {
+    if (busy || space.role !== 'owner') return;
+    const owner = members.find((m) => m.role === 'owner');
+    if (
+      !owner ||
+      !window.confirm(
+        `将团队所有权交给 ${member.displayName}？你将变为管理员；团队作品和素材继续保留。`,
+      )
+    )
+      return;
+    setBusy(true);
+    setError(null);
+    try {
+      await api(
+        `/spaces/${space.id}/transfer-owner`,
+        jsonRequest('POST', { targetUserId: member.userId, expectedOwnerId: owner.userId }),
+      );
+      onMembershipChanged?.();
+      onClose();
+    } catch (e) {
+      setError(errorMessage(e));
+    } finally {
+      setBusy(false);
     }
   }
   async function savePolicy() {
@@ -425,6 +472,9 @@ export function TeamDialog({ space, onClose }: { space: Space; onClose: () => vo
           <ShieldCheck size={17} />
           共享规则
         </button>
+        <button className={tab === 'activity' ? 'selected' : ''} onClick={() => setTab('activity')}>
+          成员动态
+        </button>
       </div>
       <InlineError message={error} />
       {tab === 'members' ? (
@@ -442,6 +492,7 @@ export function TeamDialog({ space, onClose }: { space: Space; onClose: () => vo
                     <select
                       aria-label={`${member.displayName} 的角色`}
                       value={member.role}
+                      disabled={busy}
                       onChange={(e) => changeMember(member, e.target.value)}
                     >
                       <option value="editor">编辑成员</option>
@@ -449,7 +500,20 @@ export function TeamDialog({ space, onClose }: { space: Space; onClose: () => vo
                       <option value="viewer">浏览成员</option>
                       {space.role === 'owner' && <option value="admin">管理员</option>}
                     </select>
-                    <IconButton label={`移除${member.displayName}`} onClick={() => remove(member)}>
+                    {space.role === 'owner' && (
+                      <button
+                        className="text-button"
+                        disabled={busy}
+                        onClick={() => void transfer(member)}
+                      >
+                        移交所有权
+                      </button>
+                    )}
+                    <IconButton
+                      label={`移除${member.displayName}`}
+                      disabled={busy}
+                      onClick={() => remove(member)}
+                    >
                       <Trash size={17} />
                     </IconButton>
                   </>
@@ -511,6 +575,8 @@ export function TeamDialog({ space, onClose }: { space: Space; onClose: () => vo
             </div>
           )}
         </>
+      ) : tab === 'activity' ? (
+        <TeamActivity spaceId={space.id} refreshToken={activityRefresh} />
       ) : policy ? (
         <div className="stack-form">
           <label className="switch-row">

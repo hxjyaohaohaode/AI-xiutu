@@ -10,6 +10,10 @@
     "test": "tsx --test test/*.test.ts"
   },
   "dependencies": {
+    "@ai-xiutu/assistant": "*",
+    "@ai-xiutu/media": "*",
+    "ws": "8.22.2",
+    "https-proxy-agent": "9.1.0",
     "@ai-xiutu/contracts": "*",
     "@ai-xiutu/db": "*",
     "@ai-xiutu/providers": "*",

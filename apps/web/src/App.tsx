@@ -26,6 +26,7 @@ import {
   Moon,
   CornersOut,
   GearSix,
+  ChartBar,
 } from '@phosphor-icons/react';
 import { api, ApiError, errorMessage, filenameBase, jsonRequest } from './lib/api';
 import type {
@@ -44,11 +45,13 @@ import { normalizeImageSourceFile } from './editor/imageSources';
 import { createSourceLoadGuard, assertRevisionSourceBinding } from './editor/source-flow';
 import { assetCopyAttempt, sourcePersistenceRoute } from './lib/asset-copy';
 import { FloatingPanel } from './workspace/FloatingPanel';
+import { ToolDock } from './workspace/ToolDock';
 import { workspaceCanvasInsets, useWorkspaceLayout } from './workspace/useWorkspaceLayout';
 import { usePresence } from './motion/usePresence';
 import { ImportSettings } from './components/ImportSettings';
+import { MediaImportDialog } from './components/MediaImportDialog';
 import {
-  createRecipeV3,
+  createRecipeV4,
   parseEditorRecipe,
   MAX_V3_PIXELS,
   type EditorRecipe,
@@ -78,6 +81,11 @@ import {
   DocumentsView,
 } from './components/WorkspaceViews';
 import { AssetLibrary } from './components/AssetLibrary';
+import { UsageDashboard } from './usage/UsageDashboard';
+import { ResourceSearch } from './resources/ResourceSearch';
+import { useCollaboration } from './collaboration/useCollaboration';
+import { CollaborationStatus } from './collaboration/CollaborationStatus';
+import { captureRenderedImage } from './editor/capture';
 import {
   ExportDialog,
   NameDialog,
@@ -99,6 +107,7 @@ const views: { id: View; label: string; icon: React.ReactNode }[] = [
   { id: 'collaborate', label: '协作', icon: <UsersThree size={17} /> },
   { id: 'docs', label: '文档', icon: <FileText size={17} /> },
   { id: 'deliver', label: '交付', icon: <Package size={17} /> },
+  { id: 'usage', label: '用量', icon: <ChartBar size={17} /> },
 ];
 type Dialog =
   | 'auth'
@@ -114,9 +123,10 @@ type Dialog =
   | 'drawing'
   | 'copy'
   | 'importSettings'
+  | 'mediaImport'
   | null;
 export function App() {
-  const editor = useEditor();
+  const rawEditor = useEditor();
   const workspaceLayout = useWorkspaceLayout();
   const [pickedColor, setPickedColor] = useState('#34372EFF');
   const [sampling, setSampling] = useState(false);
@@ -150,6 +160,7 @@ export function App() {
   const cloudBaseSources = useRef(new Map<number, Asset>());
   const [documentDirty, setDocumentDirty] = useState(false);
   const [view, setView] = useState<View>('editor');
+  const [libraryTab, setLibraryTab] = useState<'project' | 'all' | 'memory'>('project');
   const [group, setGroup] = useState<ToolGroup>('light');
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [inspectorOpen, setInspectorOpen] = useState(false);
@@ -181,6 +192,70 @@ export function App() {
   );
   const dismissNotice = useCallback(() => setNotice(null), []);
   const closeDialog = useCallback(() => setDialog(null), []);
+  const collaboration = useCollaboration({
+    editor: rawEditor,
+    artwork,
+    revision,
+    asset,
+    enabled:
+      !!session.user &&
+      !!artwork &&
+      !!revision &&
+      !!asset &&
+      !!project &&
+      session.spaces.some((space) => space.id === project.spaceId) &&
+      cloudBaseSources.current.get(rawEditor.getSourceIdentity())?.id === asset.id,
+    canEdit: !!project && ['owner', 'admin', 'editor'].includes(project.role),
+    tool: group,
+    onHead(head) {
+      setArtwork(head.artwork);
+      setRevision(head.revision);
+      setAsset(head.asset);
+      setSavedRecipe(JSON.stringify(parseEditorRecipe(head.revision.recipe)));
+      setArtworks((items) =>
+        items.map((item) => (item.id === head.artwork.id ? head.artwork : item)),
+      );
+      setRefreshToken((v) => v + 1);
+    },
+    prepareRecipe: (next) =>
+      project
+        ? persistRecipeLayers(next, project, rawEditor.getSourceIdentity(), projectRequest.current)
+        : Promise.reject(new Error('项目已改变，请重新打开作品。')),
+    resolveReferences: resolveLayerReferences,
+  });
+  const editor = collaboration.editor;
+  const captureCurrentImage = async () => {
+    const current = artworkRef.current;
+    if (
+      !current ||
+      !asset ||
+      !editor.rendered ||
+      !editor.renderedRecipe ||
+      editor.rendering ||
+      editor.isLoading() ||
+      opening
+    )
+      throw new Error('画面还在更新，请就绪后共享当前图片。');
+    const before = editor.getRecipe(),
+      identity = editor.getSourceIdentity();
+    if (JSON.stringify(before) !== JSON.stringify(editor.renderedRecipe))
+      throw new Error('最新编辑还没有完成渲染，请稍后再共享。');
+    const imageDataUrl = await captureRenderedImage(editor.rendered);
+    if (
+      identity !== editor.getSourceIdentity() ||
+      before !== editor.getRecipe() ||
+      artworkRef.current?.id !== current.id ||
+      artworkRef.current.headVersion !== current.headVersion
+    )
+      throw new Error('共享期间画面已变化，请重新获取上下文。');
+    return {
+      imageDataUrl,
+      assetId: asset.id,
+      artworkId: current.id,
+      expectedVersion: current.headVersion,
+      recipe: structuredClone(before),
+    };
+  };
   const brand = config?.brand.name || DEFAULT_BRAND;
   const currentSpace = session.spaces.find((s) => s.id === spaceId) ?? null;
   const dirty = !!editor.file && JSON.stringify(editor.recipe) !== savedRecipe;
@@ -504,7 +579,7 @@ export function App() {
     isCurrent: () => boolean,
   ): Promise<Map<string, File>> {
     const references = new Map<string, File>();
-    if (value.schemaVersion !== 3) return references;
+    if (value.schemaVersion !== 3 && value.schemaVersion !== 4) return references;
     for (const id of new Set(value.imageLayers.map((layer) => layer.sourceId))) {
       if (!/^[a-f0-9-]{36}$/i.test(id)) throw new Error('云端作品包含不可解析的合成素材引用。');
       if (!isCurrent()) return references;
@@ -584,7 +659,12 @@ export function App() {
   }
 
   async function openLibraryAsset(next: Asset) {
-    if (!project || next.projectId !== project.id) return;
+    if (
+      next.projectId !== project?.id &&
+      documentDirty &&
+      !window.confirm('文档还有未保存的修改，确定切换项目吗？')
+    )
+      return;
     if (saveLock.current) {
       notify('作品正在保存，请稍等片刻。');
       return;
@@ -597,6 +677,13 @@ export function App() {
     const load = beginSourceLoad();
     setOpening(true);
     try {
+      const destination =
+        next.projectId !== project?.id
+          ? await api<{ project: Project; assets: Asset[]; artworks: Artwork[] }>(
+              `/projects/${next.projectId}`,
+            )
+          : null;
+      if (!load.isCurrent()) return load.abandoned();
       const response = await fetch(next.url, { credentials: 'include' });
       if (!response.ok) throw new Error('无法读取素材，请刷新当前项目权限后重试。');
       const blob = await response.blob();
@@ -615,6 +702,13 @@ export function App() {
       }
       if (load.request !== projectRequest.current) return;
       cloudBaseSources.current.set(editor.getSourceIdentity(), next);
+      if (destination) {
+        setProject(destination.project);
+        setAssets(destination.assets);
+        setArtworks(destination.artworks);
+        if (session.spaces.some((space) => space.id === destination.project.spaceId))
+          setSpaceId(destination.project.spaceId);
+      }
       setAsset(next);
       setArtwork(null);
       setRevision(null);
@@ -650,7 +744,88 @@ export function App() {
     );
     return result.asset;
   }
+  async function persistRecipeLayers(
+    snapshot: EditorRecipe,
+    target: Project,
+    savedSource: number,
+    savedContext: number,
+  ): Promise<EditorRecipe> {
+    if (
+      (snapshot.schemaVersion === 3 || snapshot.schemaVersion === 4) &&
+      snapshot.imageLayers.length
+    ) {
+      const mapping = new Map<string, string>(),
+        files = rawEditor.getLayerFiles();
+      for (const sourceId of new Set(snapshot.imageLayers.map((layer) => layer.sourceId))) {
+        const route = sourcePersistenceRoute(
+          sourceId,
+          layerOwners.current.get(sourceId),
+          target.id,
+        );
+        if (route === 'reuse') continue;
+        const cached = uploadedLayerAliases.current.get(`${target.id}:${sourceId}`);
+        if (cached) {
+          mapping.set(sourceId, cached);
+          continue;
+        }
+        let uploadedAsset: Asset;
+        if (route === 'copy') uploadedAsset = await copyCloudAsset(sourceId, target.id);
+        else {
+          let layerFile = files.get(sourceId);
+          if (!layerFile) throw new Error('缺少合成素材原文件，无法保存完整作品。');
+          const layerFormat = layerFile.type.split('/')[1];
+          if (
+            layerFormat === 'bmp' ||
+            (config?.media && !config.media.serverImport.includes(layerFormat ?? ''))
+          )
+            layerFile = await normalizeImageSourceFile(layerFile);
+          if (layerFile.size > (config?.limits.maxUploadBytes ?? 20 * 1024 * 1024))
+            throw new Error('合成素材超出服务器上传预算。');
+          const form = new FormData();
+          form.append('file', layerFile);
+          const uploaded = await api<{ asset: Asset }>(`/projects/${target.id}/assets`, {
+            method: 'POST',
+            body: form,
+          });
+          uploadedAsset = uploaded.asset;
+        }
+        if (
+          savedSource !== rawEditor.getSourceIdentity() ||
+          savedContext !== projectRequest.current
+        )
+          throw new Error('上传期间作品已切换，素材保留于原项目。');
+        mapping.set(sourceId, uploadedAsset.id);
+        layerOwners.current.set(uploadedAsset.id, target.id);
+        uploadedLayerAliases.current.set(`${target.id}:${sourceId}`, uploadedAsset.id);
+      }
+      snapshot = {
+        ...snapshot,
+        imageLayers: snapshot.imageLayers.map((layer) => ({
+          ...layer,
+          sourceId: mapping.get(layer.sourceId) ?? layer.sourceId,
+        })),
+      };
+      // Rekey only references; a user may have continued editing while uploads were in flight.
+      rawEditor.rekeyImageSources(mapping);
+    }
+    return snapshot;
+  }
   async function saveToProject(target: Project, asNew = false) {
+    if (!asNew && collaboration.enabled && artwork?.projectId === target.id) {
+      if (saveLock.current || editor.isLoading() || opening) return;
+      saveLock.current = true;
+      setSaving(true);
+      try {
+        await collaboration.publishCurrent();
+        notify('当前调整已同步为云端版本。', 'success');
+      } catch (error) {
+        notify(errorMessage(error), 'error');
+      } finally {
+        saveLock.current = false;
+        setSaving(false);
+      }
+      return;
+    }
     if (!editor.file || saveLock.current) return;
     if (editor.isLoading() || opening) {
       notify('图片正在准备中，请加载完成后再保存。');
@@ -702,58 +877,7 @@ export function App() {
           throw new Error('源图片或项目已切换，本次素材保留在原项目，未绑定到当前画面。');
         uploadedBaseAssets.current.set(`${target.id}:${savedSource}`, currentAsset);
       }
-      if (snapshot.schemaVersion === 3 && snapshot.imageLayers.length) {
-        const mapping = new Map<string, string>(),
-          files = editor.getLayerFiles();
-        for (const sourceId of new Set(snapshot.imageLayers.map((layer) => layer.sourceId))) {
-          const route = sourcePersistenceRoute(
-            sourceId,
-            layerOwners.current.get(sourceId),
-            target.id,
-          );
-          if (route === 'reuse') continue;
-          const cached = uploadedLayerAliases.current.get(`${target.id}:${sourceId}`);
-          if (cached) {
-            mapping.set(sourceId, cached);
-            continue;
-          }
-          let uploadedAsset: Asset;
-          if (route === 'copy') uploadedAsset = await copyCloudAsset(sourceId, target.id);
-          else {
-            let layerFile = files.get(sourceId);
-            if (!layerFile) throw new Error('缺少合成素材原文件，无法保存完整作品。');
-            const layerFormat = layerFile.type.split('/')[1];
-            if (
-              layerFormat === 'bmp' ||
-              (config?.media && !config.media.serverImport.includes(layerFormat ?? ''))
-            )
-              layerFile = await normalizeImageSourceFile(layerFile);
-            if (layerFile.size > (config?.limits.maxUploadBytes ?? 20 * 1024 * 1024))
-              throw new Error('合成素材超出服务器上传预算。');
-            const form = new FormData();
-            form.append('file', layerFile);
-            const uploaded = await api<{ asset: Asset }>(`/projects/${target.id}/assets`, {
-              method: 'POST',
-              body: form,
-            });
-            uploadedAsset = uploaded.asset;
-          }
-          if (savedSource !== editor.getSourceIdentity() || savedContext !== projectRequest.current)
-            throw new Error('上传期间作品已切换，素材保留于原项目。');
-          mapping.set(sourceId, uploadedAsset.id);
-          layerOwners.current.set(uploadedAsset.id, target.id);
-          uploadedLayerAliases.current.set(`${target.id}:${sourceId}`, uploadedAsset.id);
-        }
-        snapshot = {
-          ...snapshot,
-          imageLayers: snapshot.imageLayers.map((layer) => ({
-            ...layer,
-            sourceId: mapping.get(layer.sourceId) ?? layer.sourceId,
-          })),
-        };
-        // Rekey only references; a user may have continued editing while uploads were in flight.
-        editor.rekeyImageSources(mapping);
-      }
+      snapshot = await persistRecipeLayers(snapshot, target, savedSource, savedContext);
       const result =
         artwork && !asNew && artwork.projectId === target.id
           ? await api<{ artwork: Artwork; revision: Revision }>(
@@ -817,7 +941,7 @@ export function App() {
       jsonRequest('POST', {
         assetId: uploaded.asset.id,
         title: filenameBase(incoming.name),
-        recipe: createRecipeV3(),
+        recipe: createRecipeV4(),
       }),
     );
     setRefreshToken((value) => value + 1);
@@ -852,7 +976,7 @@ export function App() {
       setView('works');
       notify(
         exceedsEngine
-          ? '规范化PNG与新作品已保存到项目。原图超过当前工作台 v3 的16.8MP / 单边8192px编辑上限，请明确准备较小副本；提高设备预算不会改变此工作台上限。'
+          ? '规范化PNG与新作品已保存到项目。原图超过当前工作台的16.8MP / 单边8192px编辑上限，请明确准备较小副本；提高设备预算不会改变此工作台上限。'
           : '规范化PNG与新作品已保存到项目。当前设备预算不足，可在16.8MP引擎上限内调整预算或使用较小副本。',
         'success',
       );
@@ -1021,6 +1145,7 @@ export function App() {
     saveLock.current = true;
     setSaving(true);
     try {
+      await collaboration.beforeExternalWrite();
       const restored = await api<{ artwork: Artwork }>(
         `/artworks/${current.id}/restore`,
         jsonRequest('POST', { revisionId: next.id, expectedVersion: current.headVersion }),
@@ -1035,6 +1160,7 @@ export function App() {
       } else notify('历史已在云端恢复成新版本，当前继续编辑的草稿已保留。');
       setRefreshToken((v) => v + 1);
     } finally {
+      collaboration.afterExternalWrite();
       saveLock.current = false;
       setSaving(false);
     }
@@ -1080,10 +1206,16 @@ export function App() {
     workspaceLayout.focused,
   );
   const chooseTool = (tool: ToolGroup) => {
+    const closing = group === tool && inspectorOpen && !aiOpen;
     setGroup(tool);
-    setInspectorOpen(group !== tool || !inspectorOpen);
+    setInspectorOpen(!closing);
     setAiOpen(false);
     setSampling(false);
+    if (!closing && workspaceLayout.panel('inspector').presentation === 'collapsed')
+      workspaceLayout.updatePanel('inspector', {
+        ...workspaceLayout.panel('inspector'),
+        presentation: 'normal',
+      });
   };
   const resetWorkspace = () => {
     workspaceLayout.reset();
@@ -1281,8 +1413,16 @@ export function App() {
                         </IconButton>
                       </div>
                     )}
+                    {collaboration.enabled && (
+                      <CollaborationStatus
+                        collaboration={collaboration}
+                        onReload={() => void openArtwork(artwork!.id)}
+                        onFork={() => project && void saveToProject(project, true)}
+                      />
+                    )}
                     <CanvasStage
                       editor={editor}
+                      collaboration={collaboration}
                       group={group}
                       onImport={(file) => void importFile(file)}
                       onAI={() => setAiOpen(true)}
@@ -1300,55 +1440,91 @@ export function App() {
                     />
                   </div>
                   {!workspaceLayout.focused && (
-                    <nav
-                      className="floating-tool-dock"
-                      aria-label="编辑工具"
-                      data-motion="tool-dock"
-                    >
-                      {toolGroups.map((tool) => (
-                        <button
-                          key={tool.id}
-                          data-motion="tool-item"
-                          className={group === tool.id && inspectorOpen ? 'active' : ''}
-                          aria-pressed={group === tool.id && inspectorOpen}
-                          onClick={() => chooseTool(tool.id)}
-                        >
-                          {tool.icon}
-                          <span>{tool.label}</span>
-                        </button>
-                      ))}
-                      <span className="dock-divider" />
-                      <button
-                        className={aiOpen ? 'active ai-tool' : 'ai-tool'}
-                        aria-pressed={aiOpen}
-                        onClick={() => {
-                          setAiOpen(!aiOpen);
-                          setInspectorOpen(false);
-                        }}
-                      >
-                        <Sparkle size={22} />
-                        <span>AI</span>
-                      </button>
-                    </nav>
+                    <ToolDock
+                      group={group}
+                      inspectorOpen={inspectorOpen}
+                      aiOpen={aiOpen}
+                      compact={workspaceLayout.view.bucket === 'phone'}
+                      onTool={chooseTool}
+                      onAI={() => {
+                        setAiOpen(!aiOpen);
+                        setInspectorOpen(false);
+                        if (!aiOpen && workspaceLayout.panel('ai').presentation === 'collapsed')
+                          workspaceLayout.updatePanel('ai', {
+                            ...workspaceLayout.panel('ai'),
+                            presentation: 'normal',
+                          });
+                      }}
+                    />
                   )}
                 </>
               ) : (
                 <div className="view-container">
                   {view === 'works' && (
-                    <AssetLibrary
-                      project={project}
-                      artworks={artworks}
-                      space={currentSpace}
-                      projects={projects}
-                      refreshToken={refreshToken}
-                      onSelectProject={(item) => void loadProject(item)}
-                      onOpenAsset={(item) => void openLibraryAsset(item)}
-                      onOpen={(item) => void openArtwork(item)}
-                      onImport={() => void importFile()}
-                      onCreate={openCreateProject}
-                      onCopy={() => setDialog('copy')}
-                      onShare={() => setDialog('share')}
-                    />
+                    <div className="library-hub">
+                      <nav
+                        className="library-context-tabs"
+                        aria-label="素材视图"
+                        data-motion="context-navigation"
+                      >
+                        <button
+                          type="button"
+                          aria-pressed={libraryTab === 'project'}
+                          onClick={() => setLibraryTab('project')}
+                        >
+                          项目作品
+                        </button>
+                        <button
+                          type="button"
+                          aria-pressed={libraryTab === 'all'}
+                          onClick={() => setLibraryTab('all')}
+                        >
+                          跨空间查找
+                        </button>
+                        <button
+                          type="button"
+                          aria-pressed={libraryTab === 'memory'}
+                          onClick={() => setLibraryTab('memory')}
+                        >
+                          长期素材
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            if (!session.user) setDialog('auth');
+                            else if (!project) openCreateProject();
+                            else setDialog('mediaImport');
+                          }}
+                        >
+                          原片与专业格式
+                        </button>
+                      </nav>
+                      {libraryTab === 'project' ? (
+                        <AssetLibrary
+                          project={project}
+                          artworks={artworks}
+                          space={currentSpace}
+                          projects={projects}
+                          refreshToken={refreshToken}
+                          onSelectProject={(item) => void loadProject(item)}
+                          onOpenAsset={(item) => void openLibraryAsset(item)}
+                          onOpen={(item) => void openArtwork(item)}
+                          onImport={() => void importFile()}
+                          onCreate={openCreateProject}
+                          onCopy={() => setDialog('copy')}
+                          onShare={() => setDialog('share')}
+                        />
+                      ) : (
+                        <ResourceSearch
+                          key={libraryTab}
+                          spaces={session.spaces}
+                          rememberedOnly={libraryTab === 'memory'}
+                          onOpen={async (item) => {
+                            await openLibraryAsset(item.asset);
+                          }}
+                        />
+                      )}
+                    </div>
                   )}{' '}
                   {view === 'compare' && (
                     <CompareView
@@ -1391,6 +1567,15 @@ export function App() {
                       onExport={() => setDialog('export')}
                       onRecipeImport={() => recipeInput.current?.click()}
                     />
+                  )}
+                  {view === 'usage' && (
+                    <div className="content-view">
+                      <UsageDashboard
+                        key={currentSpace?.id ?? 'personal'}
+                        space={currentSpace}
+                        refreshToken={refreshToken}
+                      />
+                    </div>
                   )}
                 </div>
               )}
@@ -1443,6 +1628,9 @@ export function App() {
                       project={project}
                       artwork={artwork}
                       recipe={editor.recipe}
+                      captureCurrentImage={captureCurrentImage}
+                      onBeforeArtworkWrite={collaboration.beforeExternalWrite}
+                      onAfterArtworkWrite={collaboration.afterExternalWrite}
                       isDirty={dirty}
                       onDecisionApplied={async (id) => {
                         if (isEditorDirty() || artworkRef.current?.id !== id) {
@@ -1465,9 +1653,9 @@ export function App() {
                       onTaskChanged={() => setRefreshToken((value) => value + 1)}
                       onClose={() => setAiOpen(false)}
                       onPreview={(next) => {
-                        editor.commit(next, '预览AI建议');
+                        editor.preview(next);
                         setView('editor');
-                        notify('建议已进入本地编辑，可以继续调整或撤销。');
+                        notify('建议已作为待确认预览进入当前画面；可以继续调整、取消或保存。');
                       }}
                       onSave={save}
                       isLoggedIn={!!session.user}
@@ -1560,7 +1748,19 @@ export function App() {
             onCreateProject={openCreateProject}
             onRetry={() => importFile(pendingImport ?? undefined)}
             onServerImport={serverImport}
+            onProfessionalImport={() => setDialog('mediaImport')}
             onClose={closeDialog}
+          />
+        )}
+        {renderedDialog === 'mediaImport' && project && (
+          <MediaImportDialog
+            project={project}
+            onClose={closeDialog}
+            onImported={async (imported) => {
+              await openLibraryAsset(imported);
+              setRefreshToken((value) => value + 1);
+              setDialog(null);
+            }}
           />
         )}
         {renderedDialog === 'auth' && (
@@ -1585,7 +1785,16 @@ export function App() {
           <NameDialog kind="join" onSubmit={joinTeam} onClose={closeDialog} />
         )}
         {renderedDialog === 'teamSettings' && currentSpace && (
-          <TeamDialog space={currentSpace} onClose={closeDialog} />
+          <TeamDialog
+            space={currentSpace}
+            onClose={closeDialog}
+            onMembershipChanged={() => {
+              void api<Session>('/session')
+                .then(setSession)
+                .catch((error) => notify(errorMessage(error), 'error'));
+              setRefreshToken((n) => n + 1);
+            }}
+          />
         )}
         {renderedDialog === 'copy' && project && (
           <CopyProjectDialog
@@ -1664,6 +1873,18 @@ export function App() {
             <p className="form-hint">
               点数用于已开放的云端能力，本地手动编辑不消耗服务点。团队额度与个人额度分别计算。
             </p>
+            <button
+              className="button button-secondary"
+              onClick={() => {
+                setDialog(null);
+                setInspectorOpen(false);
+                setAiOpen(false);
+                setView('usage');
+              }}
+            >
+              <ChartBar size={17} />
+              查看用量历史与趋势
+            </button>
           </Modal>
         )}
         {renderedDialog === 'help' && (
@@ -1674,7 +1895,7 @@ export function App() {
                 <div>
                   <h3>先从一张照片开始</h3>
                   <p>
-                    当前支持明暗、色彩、RGB曲线、裁切旋转、径向局部调整、锐化与柔化。照片先在本机处理。
+                    先在照片下方选择调节、人像、局部或构图，再展开需要的工具。支持多区域、曲线、四角透视、绘制、修复和图层合成；照片先在本机处理。
                   </p>
                 </div>
               </section>
@@ -1682,7 +1903,9 @@ export function App() {
                 <CloudArrowUp size={24} />
                 <div>
                   <h3>喜欢哪一步，就留下它</h3>
-                  <p>登录后把作品保存到项目。每次保存创建新版本，发生冲突时可以另存分支。</p>
+                  <p>
+                    登录后把作品保存到项目。进入已保存的作品后，每次确认调整会同步为新版本；冲突时保留本地草稿，可以另存分支。
+                  </p>
                 </div>
               </section>
               <section>
@@ -1690,7 +1913,7 @@ export function App() {
                 <div>
                   <h3>让队友接上你的想法</h3>
                   <p>
-                    创建团队、邀请成员，在项目里讨论、写文档和跟进任务。共享时选择具体接收者与范围。
+                    创建团队、邀请成员，在同一张作品上查看队员游标和编辑范围。相同区域会先取得编辑权；也可以在项目里讨论、写文档和跟进任务。
                   </p>
                 </div>
               </section>
@@ -1699,8 +1922,8 @@ export function App() {
                 <div>
                   <h3>清楚知道作品去了哪里</h3>
                   <p>
-                    打开照片不会自动上传。AI
-                    调整只发送文字和参数；生图会发送你确认的参考草图；语音需要单独确认发送。具体能力按服务设置开放。
+                    打开本地照片不会自动上传。AI
+                    默认使用你提交的文字和参数；主动开启共享画面后会发送当前图片预览，选择参考图或开始语音也会发送对应内容。模型、服务点与能力在执行前显示。
                   </p>
                 </div>
               </section>

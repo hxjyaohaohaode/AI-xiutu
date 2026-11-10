@@ -1,4 +1,3 @@
-import { useState } from 'react';
 import {
   ArrowCounterClockwise,
   ArrowClockwise,
@@ -15,12 +14,14 @@ import {
   type InspectorController,
 } from './advanced-model';
 import { ParameterShelf, type ShelfControl } from './ParameterShelf';
+import { ProjectiveControls } from './ProjectiveControls';
 
 export function GeometryControls({ controller }: { controller: InspectorController }) {
   const { editor, apply, report } = controller,
     recipe = currentV3(editor);
   const dimensions = editor.dimensions ?? { width: 1, height: 1 };
-  const [tab, setTab] = useState<'crop' | 'transform' | 'placement'>('crop');
+  const tab = editor.geometryMode,
+    setTab = editor.setGeometryMode;
   function pixelRect() {
     const crop = currentV3(editor).geometry.crop;
     if (!crop) return { x: 0, y: 0, width: dimensions.width, height: dimensions.height };
@@ -116,6 +117,7 @@ export function GeometryControls({ controller }: { controller: InspectorControll
           [
             ['crop', '自由裁切'],
             ['transform', '角度与透视'],
+            ['projective', '自由四角'],
             ['placement', '缩放与位置'],
           ] as const
         ).map(([id, label]) => (
@@ -171,6 +173,8 @@ export function GeometryControls({ controller }: { controller: InspectorControll
             恢复完整画幅
           </button>
         </>
+      ) : tab === 'projective' ? (
+        <ProjectiveControls controller={controller} />
       ) : (
         <ParameterShelf
           key={tab}

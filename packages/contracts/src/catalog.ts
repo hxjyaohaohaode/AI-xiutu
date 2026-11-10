@@ -73,6 +73,7 @@ export function createBuiltinRegistry(): ModuleRegistry {
           permission: 'admin',
           inputs: [],
           outputs: [],
+          limitations: ['撤权会移除协作会话与租约；团队已拥有的资源仍归团队；所有者需明确交接'],
         }),
         cap('workspace.project', '项目与作品组织', { ...cloud, inputs: [], outputs: ['artwork'] }),
         cap('workspace.reference', '可撤销的参考授权', {
@@ -98,7 +99,9 @@ export function createBuiltinRegistry(): ModuleRegistry {
           ...cloud,
           inputs: [],
           outputs: ['asset'],
-          limitations: ['服务端以实际安装的解码器为准；RAW、PSD、HEIC 等未实现'],
+          limitations: [
+            '快速导入以实际安装的解码器为准；大文件与高位深原件走独立 media.retained-import 能力',
+          ],
         }),
         cap('asset.catalog', '项目、时间、标签与搜索', {
           execution: 'api',
@@ -124,12 +127,56 @@ export function createBuiltinRegistry(): ModuleRegistry {
       ],
     ),
     module(
+      'resources',
+      '跨空间资源与个人记忆',
+      ['asset', 'workspace'],
+      [
+        cap('resources.search', '按当前权限搜索个人与团队素材', {
+          ...cloud,
+          permission: 'read',
+          inputs: [],
+          outputs: ['asset'],
+          confirmation: 'none',
+          limitations: [
+            '当前成员或有效参考授权范围内检索；运营身份不能读取私人素材；分页游标绑定过滤条件',
+          ],
+        }),
+        cap('resources.memory', '显式长期标注、私有标签与备注', {
+          ...cloud,
+          permission: 'read',
+          inputs: ['asset'],
+          outputs: ['asset'],
+          limitations: [
+            '个人独占的版本化标注；默认不发送给AI或团队；失去素材权限后仍可删除自己的标注',
+          ],
+        }),
+      ],
+    ),
+    module(
+      'media',
+      '原件保留与高精度转换',
+      ['asset'],
+      [
+        cap('media.retained-import', '分片上传、原件、16位母版与深度缩放图块', {
+          ...cloud,
+          implementation: 'adapter-required',
+          inputs: [],
+          outputs: ['job', 'asset'],
+          requires: ['media.retained-import'],
+          limitations: [
+            '需启用Linux隔离解码环境与对应格式解码器；原件、母版、图块及授权副本独立计入保留容量',
+            '编辑器使用RGBA8代理；母版转换不包含浏览器编辑配方，不能冒充高位深编辑往返',
+          ],
+        }),
+      ],
+    ),
+    module(
       'editor',
       '非破坏图像编辑',
       ['asset'],
       [
         cap('editor.recipe', '版本化配方与同源预览导出', {
-          limitations: ['v1/v2/v3显式解码；当前工作输出为RGBA8 SDR'],
+          limitations: ['v1/v2/v3/v4显式解码；当前浏览器工作输出为RGBA8 SDR'],
         }),
         cap('editor.color', '色阶、HSL、分级、曲线与细节', {}),
         cap('editor.geometry', '裁切与精细几何', {
@@ -139,6 +186,14 @@ export function createBuiltinRegistry(): ModuleRegistry {
         cap('editor.paint', '绘制、透明度与混合', {}),
         cap('editor.warp', '局部推移与保护区域', {
           limitations: ['局部位移场；不保证自动辨认面部或背景'],
+        }),
+        cap('editor.projective', '四角透视与可控画幅', {
+          limitations: ['RecipeV4；有限凸四边形与像素预算；改变透视需整作品协作租约'],
+        }),
+        cap('editor.healing', '局部扩散与纹理补丁修复', {
+          inputs: ['asset', 'mask', 'recipe'],
+          outputs: ['recipe'],
+          limitations: ['RecipeV4；手动选区、保护范围及有限邻域搜索；不冒充自动祛痘检测或神经生成'],
         }),
         cap('editor.high-bit-depth', 'HDR、ICC与高位深处理', {
           ...future,
@@ -158,7 +213,9 @@ export function createBuiltinRegistry(): ModuleRegistry {
           limitations: ['需要实际模型资产；关键点不等价于皮肤或妆容分割'],
         }),
         cap('portrait.retouch', '按人物区域的手工精修', {
-          limitations: ['手工指定区域与通用算法，不冒充专用祛痘或祛皱网络'],
+          limitations: [
+            'RecipeV4局部平滑、纹理、匀肤、光泽、斑点及细纹信号处理；选区和强度需用户检查，不等于皮肤分割或专用美容网络',
+          ],
         }),
         cap('portrait.feature-warp', '五官锚点与双向形变', {
           ...portrait,
@@ -172,11 +229,12 @@ export function createBuiltinRegistry(): ModuleRegistry {
           inputs: ['asset'],
           outputs: ['mask', 'analysis'],
         }),
-        cap('portrait.blemish-healing', '祛斑祛痘、祛皱与纹理修复', {
-          ...future,
-          inputs: ['asset', 'mask'],
-          outputs: ['asset'],
-          limitations: ['需专用修复算法，不能用全局模糊替代'],
+        cap('portrait.blemish-healing', '选区瑕疵修复与纹理保留', {
+          inputs: ['asset', 'mask', 'recipe'],
+          outputs: ['recipe'],
+          limitations: [
+            '使用实际局部扩散或补丁Poisson算法；必须指定或确认选区，不宣称自动定位所有痘痘、皱纹',
+          ],
         }),
         cap('portrait.body-analysis', '身形、姿态与遮挡分析', {
           ...future,
@@ -254,11 +312,107 @@ export function createBuiltinRegistry(): ModuleRegistry {
           persistence: 'transaction',
           confirmation: 'none',
         }),
+        cap('collaboration.presence', '同作品游标、选区与即时临时预览', {
+          ...cloud,
+          permission: 'read',
+          inputs: ['artwork'],
+          outputs: [],
+          confirmation: 'none',
+          limitations: [
+            '有界长轮询；单进程事件唤醒、跨进程每350ms检查；会话60秒，预览跟随30秒租约；不生成历史版本',
+          ],
+        }),
+        cap('collaboration.leases', '工具与源图范围的短期编辑权', {
+          ...cloud,
+          inputs: ['artwork', 'recipe'],
+          outputs: [],
+          limitations: [
+            'fence校验、TTL和撤权；保守包围盒可能拒绝实际不相交的复杂蒙版，不冒充逐像素无冲突',
+          ],
+        }),
+        cap('collaboration.commands', '定点操作、幂等提交与安全重放', {
+          ...cloud,
+          inputs: ['artwork', 'recipe'],
+          outputs: ['revision'],
+          persistence: 'revision',
+          limitations: [
+            '只有目标内容与坐标基准未改变的独立操作可重放；整结构、几何、修复及重塑需整作品租约；旧保存与AI采纳同样受锁保护',
+          ],
+        }),
         cap('collaboration.crdt', '多人并发参数与图层合并', {
           ...future,
           ...cloud,
           inputs: ['recipe'],
           outputs: ['recipe'],
+          limitations: ['当前使用服务端权威租约与目标级重放；未实现离线任意冲突的CRDT合并'],
+        }),
+      ],
+    ),
+    module(
+      'assistant',
+      '智能体与实时语音',
+      ['ai', 'resources', 'history'],
+      [
+        cap('assistant.turns', '上下文问答、资源检索与待确认建议', {
+          implementation: 'adapter-required',
+          execution: 'external',
+          permission: 'edit',
+          inputs: ['asset', 'recipe', 'document'],
+          outputs: ['job', 'recipe', 'document'],
+          requires: ['assistant.turns'],
+          confirmation: 'explicit',
+          persistence: 'candidate',
+          limitations: [
+            '需服务器密钥、审核配置和启用的模型档案；共享图片、空间和个人记忆需显式授权；建议仍需用户预览与版本化提交',
+          ],
+        }),
+        cap('assistant.voice', '实时语音与后端委托协作', {
+          implementation: 'adapter-required',
+          execution: 'external',
+          permission: 'edit',
+          inputs: ['asset', 'recipe'],
+          outputs: ['job', 'recipe'],
+          requires: ['assistant.voice'],
+          confirmation: 'explicit',
+          persistence: 'candidate',
+          limitations: [
+            '独立Live/Realtime协议，模型能力不混用；服务端同源WSS、时限和预占预算；未知派发保留额度等待核验，未进行真实付费模型验收',
+          ],
+        }),
+      ],
+    ),
+    module(
+      'usage',
+      '服务点明细与时间聚合',
+      ['workspace'],
+      [
+        cap('usage.personal', '个人周期额度、明细与CSV', {
+          ...cloud,
+          permission: 'read',
+          inputs: [],
+          outputs: [],
+          confirmation: 'none',
+          limitations: [
+            'issued/held/consumed/released/expired/adjusted为服务点流量，不是现金；未知历史过期金额明确标记',
+          ],
+        }),
+        cap('usage.space', '团队额度与成员用量', {
+          ...cloud,
+          permission: 'read',
+          inputs: [],
+          outputs: [],
+          confirmation: 'none',
+          limitations: [
+            '需当前空间成员权限；时间聚合采用Asia/Shanghai；当前钱包余额与筛选时段流量分别呈现',
+          ],
+        }),
+        cap('usage.operations', '运营跨空间核对与数据导出', {
+          ...cloud,
+          permission: 'operator',
+          inputs: [],
+          outputs: [],
+          confirmation: 'none',
+          limitations: ['只提供计费与模型元数据，不授予私人内容或提示词访问权；CSV按游标分页'],
         }),
       ],
     ),

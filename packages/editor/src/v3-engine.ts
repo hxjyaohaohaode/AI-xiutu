@@ -33,7 +33,11 @@ const opticsActive = (r: RecipeV3) =>
   r.optics.denoiseChroma !== 0 ||
   r.optics.aberrationRed !== 0 ||
   r.optics.aberrationBlue !== 0;
-function legacyGeometry(image: RGBAImage, geometry: Geometry, options: RenderOptionsV3): RGBAImage {
+export function legacyGeometry(
+  image: RGBAImage,
+  geometry: Geometry,
+  options: RenderOptionsV3,
+): RGBAImage {
   if (geometry.crop === null && geometry.rotation === 0 && !geometry.flipX && !geometry.flipY)
     return image;
   const dimensions = getOutputDimensions(image, geometry),

@@ -1,4 +1,5 @@
 import type { RecipeV3 } from './v3-types.js';
+import type { RecipeV4 } from './v4-types.js';
 import type {
   Adjustments,
   Curves,
@@ -140,7 +141,7 @@ export interface RecipeV2 {
   /** Ordered manual adjustment regions, after global v2 tone/detail stages. */
   regions: AdjustmentRegionV2[];
 }
-export type EditorRecipe = RecipeV1 | RecipeV2 | RecipeV3;
+export type EditorRecipe = RecipeV1 | RecipeV2 | RecipeV3 | RecipeV4;
 
 type DeepPartial<T> = T extends readonly unknown[]
   ? T

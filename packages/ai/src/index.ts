@@ -249,7 +249,7 @@ function createEditPlanService(
         if (!artwork.rows[0]) throw new AiError('ARTWORK_NOT_FOUND', '请先保存作品', 404);
         if (artwork.rows[0].head_version !== body.expectedVersion)
           throw new AiError('VERSION_CONFLICT', '作品版本已变化，请先同步', 409);
-        if (recipe.schemaVersion === 3) {
+        if (recipe.schemaVersion >= 3 && 'imageLayers' in recipe) {
           const sourceIds = [...new Set(recipe.imageLayers.map((layer) => layer.sourceId))].sort();
           if (sourceIds.some((sourceId) => !z.uuid().safeParse(sourceId).success))
             throw new AiError(

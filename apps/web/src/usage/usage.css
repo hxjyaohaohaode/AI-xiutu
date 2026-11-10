@@ -1,0 +1,222 @@
+.usage-dashboard {
+  display: flex;
+  flex-direction: column;
+  gap: 22px;
+  min-width: 0;
+}
+.usage-dashboard .view-heading {
+  margin: 0;
+}
+.usage-filters {
+  display: flex;
+  align-items: end;
+  flex-wrap: wrap;
+  gap: 14px;
+}
+.usage-filters label {
+  display: grid;
+  gap: 6px;
+  font-size: 12px;
+  min-width: 110px;
+}
+.usage-filters input,
+.usage-filters select {
+  min-height: 38px;
+  min-width: 0;
+  max-width: 190px;
+  background: var(--surface, #f6f7f5);
+  border: 0;
+  border-radius: 7px;
+  padding: 7px 9px;
+  color: inherit;
+}
+.usage-operator-filter {
+  display: flex;
+  align-items: end;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+.usage-totals {
+  display: grid;
+  grid-template-columns: repeat(6, 1fr);
+  gap: 6px;
+}
+.usage-totals button {
+  display: flex;
+  flex-direction: column;
+  align-items: start;
+  gap: 6px;
+  border: 0;
+  background: transparent;
+  border-radius: 10px;
+  padding: 13px 15px;
+  color: inherit;
+}
+.usage-totals button[aria-pressed='true'] {
+  background: color-mix(in srgb, var(--text, #344337) 7%, transparent);
+}
+.usage-totals span,
+.usage-totals small {
+  color: var(--muted, #69776a);
+  font-size: 12px;
+}
+.usage-totals strong {
+  font-size: 26px;
+  font-weight: 540;
+  font-variant-numeric: tabular-nums;
+}
+.usage-chart {
+  min-width: 0;
+}
+.usage-chart h2 {
+  font-size: 15px;
+  font-weight: 550;
+}
+.usage-chart .section-heading > span {
+  font-size: 11px;
+  color: var(--muted, #667268);
+}
+.usage-bars {
+  display: flex;
+  align-items: end;
+  gap: 4px;
+  height: 204px;
+  padding: 14px 2px 0;
+  overflow-x: auto;
+}
+.usage-bar-column {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  align-items: center;
+  min-width: 14px;
+  height: 100%;
+  gap: 5px;
+}
+.usage-bar-track {
+  display: flex;
+  align-items: end;
+  justify-content: center;
+  flex: 1;
+  width: 100%;
+  min-height: 0;
+}
+.usage-bar-track i {
+  width: min(100%, 32px);
+  background: #8fa497;
+  border-radius: 3px 3px 0 0;
+  min-height: 1px;
+}
+.usage-bar-track i[data-negative='true'] {
+  background: #bd927d;
+}
+.usage-bar-value {
+  font-size: 10px;
+  color: var(--muted, #68736a);
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+.usage-bar-label {
+  min-height: 16px;
+  font-size: 9px;
+  color: var(--muted, #68736a);
+  white-space: nowrap;
+}
+.usage-table-scroll {
+  max-width: 100%;
+  overflow: auto;
+  border-top: 1px solid #7c8f8024;
+}
+.usage-table {
+  border-collapse: collapse;
+  width: 100%;
+  font-size: 12px;
+  text-align: left;
+}
+.usage-table caption {
+  text-align: left;
+  font-size: 13px;
+  padding: 16px 0 10px;
+}
+.usage-table th {
+  font-weight: 550;
+  color: var(--muted, #677468);
+  white-space: nowrap;
+  padding: 11px 14px 11px 0;
+}
+.usage-table td {
+  padding: 12px 14px 12px 0;
+  vertical-align: top;
+  min-width: 82px;
+}
+.usage-table tr:nth-child(even) td {
+  background: #8d9f8806;
+}
+.usage-table small {
+  display: block;
+  font-size: 10px;
+  margin-top: 4px;
+  color: var(--muted, #68766a);
+}
+.usage-number {
+  font-variant-numeric: tabular-nums;
+}
+.usage-load-more {
+  align-self: center;
+}
+@media (760px <= width < 1120px) {
+  .usage-dashboard {
+    gap: 18px;
+  }
+  .usage-totals {
+    grid-template-columns: repeat(3, 1fr);
+  }
+  .usage-bars {
+    height: 184px;
+  }
+}
+@media (width < 760px) {
+  .usage-dashboard {
+    gap: 16px;
+  }
+  .usage-filters {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 10px;
+  }
+  .usage-filters input,
+  .usage-filters select {
+    width: 100%;
+    max-width: none;
+    min-height: 40px;
+    font-size: 12px;
+  }
+  .usage-operator-filter {
+    grid-column: 1 / -1;
+  }
+  .usage-totals {
+    grid-template-columns: repeat(3, 1fr);
+    gap: 3px;
+  }
+  .usage-totals button {
+    padding: 9px;
+    gap: 4px;
+  }
+  .usage-totals strong {
+    font-size: 21px;
+  }
+  .usage-totals span,
+  .usage-totals small {
+    font-size: 10px;
+  }
+  .usage-bars {
+    height: 156px;
+    gap: 3px;
+  }
+  .usage-bar-value {
+    font-size: 8px;
+  }
+  .usage-table {
+    font-size: 11px;
+  }
+}

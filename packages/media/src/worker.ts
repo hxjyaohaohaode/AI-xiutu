@@ -1,0 +1,569 @@
+/** Fixed subprocess entry. Never import this module in the API process. */
+import {
+  readFile,
+  writeFile,
+  mkdir,
+  copyFile,
+  rename,
+  rm,
+  lstat,
+  readdir,
+  open,
+} from 'node:fs/promises';
+import { createReadStream } from 'node:fs';
+import { createHash, randomUUID } from 'node:crypto';
+import { join, extname, basename } from 'node:path';
+import { fileURLToPath } from 'node:url';
+import { spawn } from 'node:child_process';
+import sharp, { type Metadata } from 'sharp';
+import { readPsd, initializeCanvas, type Layer } from 'ag-psd';
+import { attachPngIcc, attachTiffIcc, srgbProfile } from './icc.js';
+import type { NormalizedMediaOptions } from './process.js';
+import type {
+  MediaDescriptorV1,
+  MediaFileV1,
+  MediaExportFormat,
+  MediaExportResult,
+} from './types.js';
+
+sharp.cache({ memory: 32, files: 8, items: 64 });
+sharp.concurrency(1);
+initializeCanvas(
+  () => {
+    throw new Error('Canvas rasterization is not part of the PSD composite importer');
+  },
+  (width, height) => {
+    boundedDimensions(width, height, 16_777_216);
+    return { width, height, colorSpace: 'srgb', data: new Uint8ClampedArray(width * height * 4) };
+  },
+);
+interface Job {
+  kind: 'import' | 'export';
+  inputPath?: string;
+  workDir: string;
+  originalName?: string;
+  options: NormalizedMediaOptions;
+  resultPath: string;
+  outputPath?: string;
+  format?: MediaExportFormat;
+  quality?: number;
+}
+const digest = async (path: string) => {
+  const h = createHash('sha256');
+  for await (const chunk of createReadStream(path)) h.update(chunk);
+  return h.digest('hex');
+};
+const sha = (bytes: Buffer) => createHash('sha256').update(bytes).digest('hex');
+const depth = (m: Metadata) =>
+  m.bitsPerSample ??
+  (m.depth === 'ushort'
+    ? 16
+    : m.depth === 'float' || m.depth === 'int' || m.depth === 'uint'
+      ? 32
+      : m.depth === 'double'
+        ? 64
+        : 8);
+function boundedDimensions(width: number, height: number, limit: number) {
+  if (
+    !Number.isSafeInteger(width) ||
+    !Number.isSafeInteger(height) ||
+    width < 1 ||
+    height < 1 ||
+    width > 65535 ||
+    height > 65535 ||
+    width * height > limit
+  )
+    throw new Error('Decoded dimensions exceed the media budget');
+}
+async function fileInfo(
+  path: string,
+  relativePath: string,
+  mime: string,
+  colorSpace?: string,
+): Promise<MediaFileV1> {
+  const m = await sharp(path, { limitInputPixels: 200_000_000 }).metadata();
+  return {
+    relativePath,
+    bytes: (await lstat(path)).size,
+    sha256: await digest(path),
+    mime,
+    width: m.width,
+    height: m.height,
+    bitDepth: depth(m),
+    colorSpace: colorSpace ?? m.space,
+  };
+}
+async function nativeDecode(job: Job, inputPath: string, stage: string, kind: 'raw' | 'hdr') {
+  if (!job.options.pythonExecutable)
+    throw new Error(`${kind.toUpperCase()} requires the separately installed native decoder`);
+  const outputPath = join(stage, 'native.tif'),
+    resultPath = join(stage, 'native-result.json'),
+    requestPath = join(stage, 'native-request.json');
+  await writeFile(
+    requestPath,
+    JSON.stringify({
+      inputPath,
+      outputPath,
+      kind,
+      maxPixels: Math.min(job.options.maxPixels, 50_000_000),
+      resultPath,
+    }),
+    { mode: 0o600 },
+  );
+  await new Promise<void>((resolveDone, reject) => {
+    const child = spawn(
+      job.options.pythonExecutable!,
+      [fileURLToPath(new URL('../native/convert.py', import.meta.url)), requestPath],
+      { stdio: ['ignore', 'ignore', 'pipe'] },
+    );
+    let error = '';
+    child.stderr.on('data', (chunk: Buffer) => {
+      if (error.length < 4096) error += chunk.toString('utf8').slice(0, 4096 - error.length);
+    });
+    child.once('error', reject);
+    child.once('close', (code) =>
+      code === 0
+        ? resolveDone()
+        : reject(new Error(`Native decoder rejected input: ${error.trim().slice(-1500)}`)),
+    );
+  });
+  const result = JSON.parse(await readFile(resultPath, 'utf8')) as {
+    source: { width: number; height: number; bitDepth: number; colorSpace: string };
+    native: Record<string, string>;
+    warnings: string[];
+    peakRssBytes: number;
+  };
+  await rm(requestPath);
+  await rm(resultPath);
+  return { path: outputPath, result };
+}
+async function psdComposite(inputPath: string, stage: string, limit: number) {
+  const stat = await lstat(inputPath);
+  if (stat.size > 134_217_728) throw new Error('PSD compressed file exceeds 128MiB');
+  const bytes = await readFile(inputPath);
+  if (bytes.length < 26 || bytes.toString('ascii', 0, 4) !== '8BPS' || bytes.readUInt16BE(4) !== 1)
+    throw new Error('Only standard PSD version 1 is currently supported');
+  const height = bytes.readUInt32BE(14),
+    width = bytes.readUInt32BE(18),
+    bits = bytes.readUInt16BE(22),
+    mode = bytes.readUInt16BE(24);
+  boundedDimensions(width, height, Math.min(limit, 16_777_216));
+  if (![8, 16].includes(bits) || ![1, 3].includes(mode))
+    throw new Error(
+      'PSD import supports RGB/grayscale 8/16-bit composites; CMYK/32-bit PSD are not silently approximated',
+    );
+  const psd = readPsd(bytes, {
+    useImageData: true,
+    skipLayerImageData: true,
+    skipLinkedFilesData: true,
+    skipThumbnail: true,
+    totalMemoryLimit: 536_870_912,
+    imageResourcesWhitelist: ['iccProfile'],
+  });
+  const composite = psd.imageData;
+  if (!composite || composite.width !== width || composite.height !== height)
+    throw new Error('PSD needs an intact stored composite; layer rendering is not substituted');
+  const layers: MediaDescriptorV1['layers'] = [],
+    pending = [...(psd.children ?? [])] as Layer[];
+  while (pending.length) {
+    const layer = pending.shift()!;
+    if (layers.length >= 256 || pending.length > 256)
+      throw new Error('PSD layer metadata exceeds 256 nodes');
+    layers.push({
+      name: (layer.name ?? '').slice(0, 120),
+      left: layer.left ?? 0,
+      top: layer.top ?? 0,
+      right: layer.right ?? 0,
+      bottom: layer.bottom ?? 0,
+      hidden: layer.hidden ?? false,
+    });
+    if (layer.children) pending.push(...layer.children);
+  }
+  if (
+    !(composite.data instanceof Uint8ClampedArray) &&
+    !(composite.data instanceof Uint8Array) &&
+    !(composite.data instanceof Uint16Array)
+  )
+    throw new Error('Unsupported PSD composite sample type');
+  const path = join(stage, 'psd-composite.png');
+  await sharp(composite.data, { raw: { width, height, channels: 4 } })
+    .toColourspace(bits === 16 ? 'rgb16' : 'srgb')
+    .png()
+    .toFile(path);
+  const icc = psd.imageResources?.iccProfile ? Buffer.from(psd.imageResources.iccProfile) : null;
+  if (icc) await attachPngIcc(path, icc);
+  return { path, layers, icc, width, height, bits };
+}
+async function countTiles(directory: string) {
+  let bytes = 0,
+    count = 0;
+  const pending = [directory];
+  while (pending.length) {
+    const path = pending.pop()!;
+    for (const entry of await readdir(path, { withFileTypes: true })) {
+      const child = join(path, entry.name);
+      if (entry.isDirectory()) pending.push(child);
+      else if (entry.isFile()) {
+        bytes += (await lstat(child)).size;
+        if (++count > 8192) throw new Error('Tile count exceeds budget');
+      } else throw new Error('Unexpected non-file in generated tile pyramid');
+    }
+  }
+  return { bytes, count };
+}
+async function importMedia(job: Job): Promise<MediaDescriptorV1> {
+  const started = performance.now();
+  const options = job.options,
+    stage = join(job.workDir, '.partial');
+  await mkdir(stage, { mode: 0o700 });
+  const originalPath = join(stage, 'original.bin');
+  await copyFile(job.inputPath!, originalPath);
+  const sourceStat = await lstat(originalPath);
+  if (sourceStat.size < 1 || sourceStat.size > options.maxInputBytes)
+    throw new Error('Source size changed beyond budget');
+  const sourceSha256 = await digest(originalPath),
+    h = Buffer.alloc(32),
+    handle = await open(originalPath, 'r');
+  try {
+    await handle.read(h, 0, h.length, 0);
+  } finally {
+    await handle.close();
+  }
+  const extension = extname(job.originalName ?? '').toLowerCase(),
+    rawExtension = [
+      '.dng',
+      '.nef',
+      '.nrw',
+      '.arw',
+      '.cr2',
+      '.cr3',
+      '.raf',
+      '.orf',
+      '.rw2',
+      '.pef',
+      '.srw',
+    ].includes(extension),
+    hdr =
+      h.readUInt32LE(0) === 20000630 ||
+      h.toString('ascii', 0, 10).startsWith('#?RADIANCE') ||
+      h.toString('ascii', 0, 6) === '#?RGBE';
+  let inputPath = originalPath,
+    native: string | null = null,
+    sourceOverride: { width: number; height: number; bitDepth: number; colorSpace: string } | null =
+      null,
+    layers: MediaDescriptorV1['layers'] = [],
+    sourceFormat = '',
+    sourceIcc: Buffer | null = null;
+  const warnings: string[] = [];
+  let nativePeakRssBytes: number | undefined;
+  if (rawExtension || hdr) {
+    const result = await nativeDecode(job, originalPath, stage, hdr ? 'hdr' : 'raw');
+    inputPath = result.path;
+    native = JSON.stringify(result.result.native);
+    sourceOverride = result.result.source;
+    sourceFormat = hdr ? (h.readUInt32LE(0) === 20000630 ? 'exr' : 'radiance') : extension.slice(1);
+    warnings.push(...result.result.warnings);
+    nativePeakRssBytes = result.result.peakRssBytes;
+  } else if (h.toString('ascii', 0, 4) === '8BPS') {
+    const decoded = await psdComposite(originalPath, stage, options.maxPixels);
+    inputPath = decoded.path;
+    layers = decoded.layers;
+    sourceIcc = decoded.icc;
+    sourceFormat = 'psd';
+    sourceOverride = {
+      width: decoded.width,
+      height: decoded.height,
+      bitDepth: decoded.bits,
+      colorSpace: 'RGB',
+    };
+    warnings.push(
+      'PSD uses the saved composite and bounded layer metadata. Editable text, smart objects, effects and layer round-trip are not rendered by this importer.',
+    );
+  }
+  const metadata = await sharp(inputPath, {
+    limitInputPixels: options.maxPixels,
+    failOn: 'warning',
+    sequentialRead: true,
+  }).metadata();
+  if (!sourceFormat && !['jpeg', 'png', 'webp', 'tiff', 'gif', 'heif'].includes(metadata.format))
+    throw new Error('Unsupported static raster format');
+  if ((metadata.pages ?? 1) !== 1)
+    throw new Error('Animated or multi-page images require an explicit frame extraction workflow');
+  boundedDimensions(metadata.width, metadata.height, options.maxPixels);
+  if (!sourceOverride && depth(metadata) > 16)
+    throw new Error(
+      'Floating-point TIFF requires an explicit HDR interpretation; use EXR/Radiance',
+    );
+  const isCmyk = metadata.space === 'cmyk';
+  if (isCmyk && !metadata.icc)
+    throw new Error(
+      'CMYK import requires an embedded ICC profile; an unknown print profile is not guessed',
+    );
+  if (isCmyk && depth(metadata) > 8)
+    throw new Error(
+      'The current CMYK converter is validated for 8-bit JPEG/TIFF; high-bit CMYK is not silently quantized',
+    );
+  if (metadata.icc && !['RGB ', 'CMYK'].includes(metadata.icc.toString('ascii', 16, 20)))
+    throw new Error('The embedded ICC color model is not supported by this RGB/CMYK pipeline');
+  if (!sourceOverride) sourceIcc = metadata.icc ?? null;
+  const profile = await srgbProfile(),
+    masterPath = join(stage, 'master.tif');
+  // sharp 0.35 uses P3 as its implicit RGB16 processing profile. For RGB, skip that
+  // implicit conversion and perform exactly one embedded-profile -> sRGB transform.
+  // Untagged RGB is explicitly sRGB. Known sRGB masters are subsequently read with
+  // ignoreIcc to avoid an unnecessary sRGB -> P3 -> sRGB round-trip.
+  let toMaster = sharp(inputPath, {
+    limitInputPixels: options.maxPixels,
+    failOn: 'warning',
+    sequentialRead: true,
+    ignoreIcc: !isCmyk,
+  })
+    .autoOrient()
+    .toColourspace('rgb16');
+  if (metadata.icc) toMaster = toMaster.withIccProfile('srgb');
+  await toMaster
+    .tiff({
+      compression: 'deflate',
+      predictor: 'horizontal',
+      tile: true,
+      tileWidth: 256,
+      tileHeight: 256,
+    })
+    .timeout({ seconds: Math.ceil(options.timeoutMs / 1000) })
+    .toFile(masterPath);
+  await attachTiffIcc(masterPath, profile);
+  const master = await fileInfo(masterPath, 'master.tif', 'image/tiff', 'sRGB');
+  if (master.bitDepth !== 16) throw new Error('Master encoding failed the uint16 verification');
+  boundedDimensions(master.width, master.height, options.maxPixels);
+  const factor = Math.min(1, Math.sqrt(options.maxProxyPixels / (master.width * master.height))),
+    proxyWidth = Math.max(1, Math.floor(master.width * factor)),
+    proxyHeight = Math.max(1, Math.floor(master.height * factor)),
+    proxyPath = join(stage, 'proxy.png');
+  await sharp(masterPath, {
+    limitInputPixels: options.maxPixels,
+    sequentialRead: true,
+    ignoreIcc: true,
+  })
+    .resize(proxyWidth, proxyHeight, { fit: 'fill' })
+    .toColourspace('srgb')
+    .ensureAlpha()
+    .png()
+    .toFile(proxyPath);
+  await attachPngIcc(proxyPath, profile);
+  const proxy = {
+    ...(await fileInfo(proxyPath, 'proxy.png', 'image/png', 'sRGB')),
+    normalizedDimensions: { width: master.width, height: master.height },
+  };
+  if (proxy.bitDepth !== 8 || proxy.width * proxy.height > options.maxProxyPixels)
+    throw new Error('Proxy encoding failed budget/precision validation');
+  let tiles: MediaDescriptorV1['tiles'] = null;
+  if (options.generateTiles) {
+    await sharp(masterPath, {
+      limitInputPixels: options.maxPixels,
+      sequentialRead: true,
+      ignoreIcc: true,
+    })
+      .toColourspace('srgb')
+      .flatten({ background: '#ffffff' })
+      .jpeg({ quality: 88 })
+      .tile({
+        size: options.tileSize,
+        overlap: 1,
+        depth: 'onepixel',
+        layout: 'dz',
+        container: 'fs',
+      })
+      .toFile(join(stage, 'tiles.dz'));
+    const stats = await countTiles(join(stage, 'tiles_files'));
+    tiles = {
+      relativePath: 'tiles.dzi',
+      directory: 'tiles_files',
+      tileSize: options.tileSize,
+      overlap: 1,
+      levels: Math.ceil(Math.log2(Math.max(master.width, master.height))) + 1,
+      format: 'jpeg',
+      ...stats,
+    };
+  }
+  const source = sourceOverride ?? {
+    width: metadata.width,
+    height: metadata.height,
+    bitDepth: depth(metadata),
+    colorSpace: metadata.space,
+  };
+  if (source.bitDepth < 16 && !hdr)
+    warnings.push(
+      `The 16-bit working container does not add captured precision beyond the source's ${source.bitDepth}-bit samples.`,
+    );
+  if (sourceFormat === 'radiance')
+    warnings.push(
+      'Radiance stores 8-bit RGB mantissas with a shared exponent (RGBE); decoded floating-point samples preserve dynamic range. It is not ordinary 8-bit SDR, nor a 32-bit-per-channel encoded original.',
+    );
+  if (!sourceIcc && !sourceOverride)
+    warnings.push('Input has no embedded ICC; RGB is explicitly interpreted as sRGB.');
+  if (sourceOverride && hdr)
+    warnings.push(
+      'linear-master.exr stores the decoded floating-point source separately from the SDR working master.',
+    );
+  const originalFormat = sourceFormat || metadata.format,
+    original: MediaDescriptorV1['original'] = {
+      relativePath: 'original.bin',
+      bytes: sourceStat.size,
+      sha256: sourceSha256,
+      mime:
+        sourceFormat === 'psd'
+          ? 'image/vnd.adobe.photoshop'
+          : sourceFormat
+            ? 'application/octet-stream'
+            : (metadata.mediaType ?? 'application/octet-stream'),
+      ...source,
+      format: originalFormat,
+      hasIcc: native ? null : sourceIcc !== null,
+      metadataSummary: {
+        inspection: native ? 'not-inspected' : sourceOverride ? 'icc-only' : 'full',
+        orientation: sourceOverride ? null : (metadata.orientation ?? null),
+        hasExif: sourceOverride ? null : !!metadata.exif,
+        hasXmp: sourceOverride ? null : !!metadata.xmp,
+        iccSha256: sourceIcc ? sha(sourceIcc) : null,
+        pages: metadata.pages ?? 1,
+      },
+    };
+  const descriptor: MediaDescriptorV1 = {
+    protocol: 'media-v1',
+    id: randomUUID(),
+    sourceSha256,
+    originalName: basename(job.originalName ?? 'image').slice(0, 255),
+    original,
+    master,
+    proxy,
+    tiles,
+    layers,
+    warnings,
+    processor: {
+      sharp: sharp.versions.sharp!,
+      vips: sharp.versions.vips!,
+      native,
+      isolation: 'linux-prlimit',
+      memoryBytes: options.memoryBytes,
+      timeoutMs: options.timeoutMs,
+      durationMs: Math.round(performance.now() - started),
+      peakRssBytes: process.resourceUsage().maxRSS * 1024,
+      ...(nativePeakRssBytes ? { nativePeakRssBytes } : {}),
+    },
+  };
+  if (hdr) {
+    const linearPath = join(stage, 'linear-master.exr');
+    descriptor.linearMaster = {
+      relativePath: 'linear-master.exr',
+      bytes: (await lstat(linearPath)).size,
+      sha256: await digest(linearPath),
+      mime: 'image/x-exr',
+      width: source.width,
+      height: source.height,
+      bitDepth: 32,
+      colorSpace: 'linear-sRGB/Rec709-assumed',
+    };
+  }
+  if (inputPath !== originalPath) await rm(inputPath, { force: true });
+  await writeFile(join(stage, 'descriptor.json'), JSON.stringify(descriptor), { mode: 0o600 });
+  // Parent owns the private directory reservation. Descriptor is published only after all data.
+  const entries = await readdir(stage);
+  for (const entry of entries.filter((entry) => entry !== 'descriptor.json'))
+    await rename(join(stage, entry), join(job.workDir, entry));
+  await rename(join(stage, 'descriptor.json'), join(job.workDir, 'descriptor.json'));
+  await rm(stage, { recursive: true });
+  return descriptor;
+}
+async function exportMaster(job: Job): Promise<MediaExportResult> {
+  const descriptor = JSON.parse(
+    await readFile(join(job.workDir, 'descriptor.json'), 'utf8'),
+  ) as MediaDescriptorV1;
+  if (
+    descriptor.protocol !== 'media-v1' ||
+    !/^[a-f0-9]{64}$/.test(descriptor.sourceSha256) ||
+    descriptor.master?.relativePath !== 'master.tif' ||
+    !/^[a-f0-9]{64}$/.test(descriptor.master.sha256) ||
+    descriptor.master.bitDepth !== 16 ||
+    descriptor.master.colorSpace !== 'sRGB' ||
+    !Number.isSafeInteger(descriptor.master.bytes) ||
+    descriptor.master.bytes < 1 ||
+    descriptor.master.bytes > 2_147_483_648
+  )
+    throw new Error('Invalid media descriptor');
+  const master = join(job.workDir, 'master.tif'),
+    output = `${job.outputPath!}.partial`,
+    format = job.format!,
+    profile = await srgbProfile();
+  boundedDimensions(descriptor.master.width, descriptor.master.height, 200_000_000);
+  const masterStat = await lstat(master);
+  if (
+    !masterStat.isFile() ||
+    masterStat.isSymbolicLink() ||
+    masterStat.size !== descriptor.master.bytes ||
+    (await digest(master)) !== descriptor.master.sha256
+  )
+    throw new Error('Retained master failed its immutable integrity check');
+  const pipeline = sharp(master, {
+    limitInputPixels: 200_000_000,
+    failOn: 'warning',
+    sequentialRead: true,
+    ignoreIcc: true,
+  });
+  if (format === 'png16') {
+    await pipeline.toColourspace('rgb16').png().toFile(output);
+    await attachPngIcc(output, profile);
+  } else if (format === 'tiff16') {
+    await pipeline
+      .toColourspace('rgb16')
+      .tiff({
+        compression: 'deflate',
+        predictor: 'horizontal',
+        tile: true,
+        tileWidth: 256,
+        tileHeight: 256,
+      })
+      .toFile(output);
+    await attachTiffIcc(output, profile);
+  } else if (format === 'jpeg')
+    await pipeline
+      .keepIccProfile()
+      .toColourspace('srgb')
+      .flatten({ background: '#ffffff' })
+      .jpeg({ quality: job.quality! })
+      .toFile(output);
+  else
+    await pipeline
+      .keepIccProfile()
+      .toColourspace('srgb')
+      .webp({ quality: job.quality! })
+      .toFile(output);
+  const result = await fileInfo(
+    output,
+    basename(job.outputPath!),
+    format === 'png16' ? 'image/png' : format === 'tiff16' ? 'image/tiff' : `image/${format}`,
+    'sRGB',
+  );
+  if ((format === 'png16' || format === 'tiff16') && result.bitDepth !== 16)
+    throw new Error('Export bit-depth verification failed');
+  await rename(output, job.outputPath!);
+  return { ...result, format, sourceSha256: descriptor.sourceSha256, includesEditorRecipe: false };
+}
+
+try {
+  const request = process.argv[2];
+  if (!request) throw new Error('Missing fixed media job');
+  const job = JSON.parse(await readFile(request, 'utf8')) as Job;
+  const result =
+    job.kind === 'import'
+      ? await importMedia(job)
+      : job.kind === 'export'
+        ? await exportMaster(job)
+        : (() => {
+            throw new Error('Unknown media operation');
+          })();
+  await writeFile(job.resultPath, JSON.stringify(result), { mode: 0o600 });
+} catch (error) {
+  // Diagnostic text stays in the parent process boundary. No binary image or credentials are printed.
+  process.stderr.write(`${error instanceof Error ? error.message : 'Media processing failed'}\n`);
+  process.exitCode = 1;
+}

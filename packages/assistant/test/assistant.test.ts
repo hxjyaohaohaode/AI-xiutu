@@ -1,0 +1,448 @@
+import test from 'node:test';
+import assert from 'node:assert/strict';
+import {
+  createRecipeV3,
+  createRecipeV4,
+  createAdjustmentRegionV3,
+  renderRecipeV3,
+} from '@ai-xiutu/editor';
+import {
+  applyAssistantProposal,
+  runEditorAgent,
+  recipeHash,
+  RESPONSES_URL,
+  type AgentContext,
+  PcmResampler,
+  voiceAudioEvent,
+  voiceStartEvent,
+  voiceEndpoint,
+  voiceResultEvents,
+  normalizeVoiceEvent,
+  assistantModelConfigSchema,
+  VoiceTranscriptBuffer,
+  VOICE_MODELS,
+} from '../src/index.js';
+const settings = assistantModelConfigSchema.parse({
+  enabled: true,
+  provider: 'openai',
+  operations: ['assistant-turn'],
+  unitCost: 5,
+  imageInput: true,
+  webSearch: true,
+});
+function context(overrides: Partial<AgentContext> = {}): AgentContext {
+  return {
+    prompt: '把这张图调得自然一点',
+    recipe: createRecipeV4(),
+    allowWebSearch: false,
+    async assertAccess() {},
+    async moderate() {},
+    async search() {
+      return { resources: [] };
+    },
+    async validateReferenceIds() {},
+    ...overrides,
+  };
+}
+function response(output: unknown[], extra: Record<string, unknown> = {}) {
+  return new Response(
+    JSON.stringify({ status: 'completed', output, usage: { output_tokens: 10 }, ...extra }),
+    { headers: { 'content-type': 'application/json', 'x-request-id': 'fixture-request' } },
+  );
+}
+function text(value: string, annotations: unknown[] = []) {
+  return {
+    type: 'message',
+    role: 'assistant',
+    content: [{ type: 'output_text', text: value, annotations }],
+  };
+}
+function tool(name: string, args: unknown, callId = name) {
+  return { type: 'function_call', name, call_id: callId, arguments: JSON.stringify(args) };
+}
+
+test('assistant candidates use exact shared ranges, signed values and immutable V4 bases', () => {
+  const base = createRecipeV4();
+  const before = recipeHash(base);
+  const result = applyAssistantProposal(base, {
+    summary: '降低曝光',
+    target: 'global',
+    targetId: null,
+    changes: [{ path: 'adjustments.exposure', value: -2 }],
+  });
+  assert.equal(result.recipe.adjustments.exposure, -2);
+  assert.equal(recipeHash(base), before);
+  assert.equal(result.recipe.schemaVersion, 4);
+  assert.equal(result.changes[0]?.before, 0);
+  for (const change of [
+    { path: '__proto__.polluted', value: 1 },
+    { path: 'adjustments.exposure', value: Infinity },
+    { path: 'adjustments.exposure', value: 1000 },
+    { path: 'assetId', value: 2 },
+  ])
+    assert.throws(() =>
+      applyAssistantProposal(base, {
+        summary: 'bad',
+        target: 'global',
+        targetId: null,
+        changes: [change],
+      }),
+    );
+  assert.equal(({} as any).polluted, undefined);
+  assert.throws(() =>
+    applyAssistantProposal(base, {
+      summary: 'bad',
+      target: 'global',
+      targetId: 'x',
+      changes: [{ path: 'adjustments.exposure', value: 1 }],
+    }),
+  );
+  assert.throws(() =>
+    applyAssistantProposal(base, {
+      summary: 'bad',
+      target: 'global',
+      targetId: null,
+      changes: [
+        { path: 'adjustments.exposure', value: 1 },
+        { path: 'adjustments.exposure', value: 2 },
+      ],
+    }),
+  );
+});
+test('local AI changes affect only their selected region and actual rendered pixels', () => {
+  const base = createRecipeV3({
+    regionEdits: [
+      createAdjustmentRegionV3({
+        id: 'left',
+        mask: {
+          type: 'radial',
+          centerX: 0.2,
+          centerY: 0.5,
+          radiusX: 0.2,
+          radiusY: 0.4,
+          feather: 0,
+          invert: false,
+        },
+      }),
+    ],
+  });
+  const proposed = applyAssistantProposal(base, {
+    summary: '左侧提亮',
+    target: 'region',
+    targetId: 'left',
+    changes: [{ path: 'adjustments.exposure', value: 1 }],
+  }).recipe;
+  const image = { width: 20, height: 10, data: new Uint8ClampedArray(20 * 10 * 4).fill(100) };
+  for (let i = 3; i < image.data.length; i += 4) image.data[i] = 255;
+  const a = renderRecipeV3(image, base),
+    b = renderRecipeV3(image, proposed as any);
+  assert.ok(b.data[(5 * 20 + 4) * 4]! > a.data[(5 * 20 + 4) * 4]!);
+  assert.equal(b.data[(5 * 20 + 18) * 4], a.data[(5 * 20 + 18) * 4]);
+  assert.equal(base.regionEdits[0]!.color.adjustments.exposure, 0);
+  assert.throws(() =>
+    applyAssistantProposal(base, {
+      summary: 'bad',
+      target: 'region',
+      targetId: 'missing',
+      changes: [{ path: 'adjustments.exposure', value: 1 }],
+    }),
+  );
+});
+test('Responses workflow invokes tools, keeps independently selected image model untouched, and cites sources', async () => {
+  const bodies: any[] = [];
+  const dispatch: number[] = [];
+  const receipts: number[] = [];
+  let n = 0;
+  const result = await runEditorAgent(
+    'fixture-not-a-key',
+    'fixture-response',
+    settings,
+    context({
+      allowWebSearch: true,
+      imageDataUrl: 'data:image/jpeg;base64,AA==',
+      beforeDispatch: async (index) => {
+        dispatch.push(index);
+      },
+      onReceipt: async (index) => {
+        receipts.push(index);
+      },
+    }),
+    async (url, init) => {
+      assert.equal(String(url), RESPONSES_URL);
+      const body = JSON.parse(String(init?.body));
+      bodies.push(body);
+      assert.equal(body.store, false);
+      assert.equal(init?.redirect, 'error');
+      if (n++ === 0)
+        return response([
+          tool('describe_editor', {}),
+          tool('propose_edit', {
+            summary: '降低高光',
+            target: 'global',
+            targetId: null,
+            changes: [{ path: 'adjustments.highlights', value: -30 }],
+          }),
+          tool('draft_generation', {
+            summary: '海报草案',
+            prompt: '保留主角，添加雨夜背景',
+            referenceAssetIds: [],
+          }),
+        ]);
+      return response([
+        text('候选已准备，请确认后应用。', [
+          { type: 'url_citation', url: 'https://example.org/research', title: '研究资料' },
+          { url: 'javascript:alert(1)', title: 'bad' },
+          { url: 'https://secret:token@example.org/', title: 'bad' },
+        ]),
+      ]);
+    },
+  );
+  assert.deepEqual(dispatch, [0, 1]);
+  assert.deepEqual(receipts, [0, 1]);
+  assert.equal(result.candidates.length, 2);
+  assert.equal(result.candidates[0]?.kind, 'edit');
+  assert.equal(result.candidates[1]?.kind, 'generation');
+  assert.equal(result.citations.length, 1);
+  assert.ok(bodies[0].tools.some((item: any) => item.type === 'web_search'));
+  assert.ok(bodies[0].input[0].content.some((item: any) => item.type === 'input_image'));
+  assert.ok(bodies[1].input.some((item: any) => item.type === 'function_call_output'));
+  assert.ok(!('modelId' in result.candidates[1]!));
+});
+test('without image/search consent neither is sent; unsupported arbitrary tools produce no mutations', async () => {
+  let count = 0;
+  const result = await runEditorAgent(
+    'fixture',
+    'fixture',
+    settings,
+    context(),
+    async (_url, init) => {
+      const body = JSON.parse(String(init?.body));
+      assert.ok(!body.tools.some((item: any) => item.type === 'web_search'));
+      assert.ok(!JSON.stringify(body.input).includes('input_image'));
+      return count++ === 0
+        ? response([tool('execute_shell', { command: 'rm -rf x' })])
+        : response([text('不能执行该操作。')]);
+    },
+  );
+  assert.equal(result.candidates.length, 0);
+});
+test('tool arguments, joint curve constraints and foreign references fail closed', async () => {
+  let count = 0;
+  let checked = false;
+  const result = await runEditorAgent(
+    'fixture',
+    'fixture',
+    settings,
+    context({
+      validateReferenceIds: async () => {
+        checked = true;
+        throw new Error('forbidden');
+      },
+    }),
+    async () =>
+      count++ === 0
+        ? response([
+            tool('propose_curve', {
+              summary: 'invalid',
+              channel: 'rgb',
+              points: [
+                { x: 0, y: 0 },
+                { x: 0, y: 1 },
+                { x: 1, y: 1 },
+              ],
+            }),
+            tool('draft_generation', {
+              summary: 'private',
+              prompt: 'use private',
+              referenceAssetIds: ['11111111-1111-4111-8111-111111111111'],
+            }),
+          ])
+        : response([text('请重新选择参数或素材。')]),
+  );
+  assert.ok(checked);
+  assert.equal(result.candidates.length, 0);
+});
+test('repeated tool IDs cannot duplicate candidates and conflicting IDs fail', async () => {
+  const call = tool(
+    'propose_edit',
+    {
+      summary: '提亮',
+      target: 'global',
+      targetId: null,
+      changes: [{ path: 'adjustments.exposure', value: 1 }],
+    },
+    'once',
+  );
+  let n = 0;
+  const result = await runEditorAgent('fixture', 'fixture', settings, context(), async () =>
+    n++ < 2 ? response([call]) : response([text('完成候选')]),
+  );
+  assert.equal(result.candidates.length, 1);
+  n = 0;
+  await assert.rejects(
+    runEditorAgent('fixture', 'fixture', settings, context(), async () =>
+      response([n++ === 0 ? call : tool('describe_editor', {}, 'once')]),
+    ),
+    /CALL_ID_CONFLICT/,
+  );
+});
+test('output moderation covers all text, not just first chunk; revocation stops subsequent dispatch', async () => {
+  const seen: string[] = [];
+  const long = '普通文字'.repeat(3000) + '末尾审核标记';
+  await runEditorAgent(
+    'fixture',
+    'fixture',
+    settings,
+    context({
+      moderate: async (value) => {
+        seen.push(value);
+      },
+    }),
+    async () => response([text(long)]),
+  );
+  assert.ok(seen.some((value) => value.endsWith('末尾审核标记')));
+  let access = 0,
+    calls = 0;
+  await assert.rejects(
+    runEditorAgent(
+      'fixture',
+      'fixture',
+      settings,
+      context({
+        assertAccess: async () => {
+          if (++access > 2) throw new Error('REVOKED');
+        },
+      }),
+      async () => {
+        calls++;
+        return response([tool('describe_editor', {})]);
+      },
+    ),
+    /REVOKED/,
+  );
+  assert.equal(calls, 1);
+});
+test('incomplete/invalid envelopes and bounded failures do not pretend success', async () => {
+  await assert.rejects(
+    runEditorAgent(
+      'fixture',
+      'fixture',
+      settings,
+      context(),
+      async () => new Response('{invalid', { headers: { 'content-type': 'application/json' } }),
+    ),
+    /不确定/,
+  );
+  await assert.rejects(
+    runEditorAgent('fixture', 'fixture', settings, context(), async () =>
+      response([text('x'.repeat(20_001))]),
+    ),
+    /OUTPUT_BUDGET/,
+  );
+});
+test('Live and Realtime are distinct protocols; client cannot choose endpoint or oversized PCM', () => {
+  assert.equal(voiceEndpoint('gpt-live-1'), 'wss://api.openai.com/v1/live/sessions');
+  assert.match(voiceEndpoint('gpt-realtime-2.1'), /\/realtime\?model=gpt-realtime-2.1$/);
+  assert.throws(() => voiceEndpoint('https://attacker.invalid'));
+  const live = voiceStartEvent('gpt-live-1', 'marin', 2048) as any,
+    realtime = voiceStartEvent('gpt-realtime-2.1', 'cedar', 8192) as any;
+  assert.equal(live.type, 'session.start');
+  assert.equal(live.session.store, false);
+  assert.equal(live.session.delegation.type, 'client');
+  assert.equal(realtime.type, 'session.update');
+  assert.equal(realtime.session.max_output_tokens, 4096);
+  assert.throws(() => voiceStartEvent('gpt-live-1', 'unverified-voice', 100));
+  const pcm = Buffer.alloc(960).toString('base64');
+  assert.equal(voiceAudioEvent('gpt-live-1', pcm).type, 'session.input_audio.append');
+  assert.equal(voiceAudioEvent('gpt-realtime', pcm).type, 'input_audio_buffer.append');
+  assert.throws(() => voiceAudioEvent('gpt-live-1', Buffer.alloc(9601).toString('base64')));
+  assert.throws(() => voiceAudioEvent('gpt-live-1', 'AA=='));
+  assert.equal(
+    (voiceResultEvents('gpt-live-1', 'typed_1', '中文'.repeat(1000))[0] as any).delegation_id,
+    null,
+  );
+  assert.ok(
+    Buffer.byteLength(
+      (voiceResultEvents('gpt-live-1', 'delegation-1', '中文'.repeat(1000))[0] as any).content,
+    ) <= 450,
+  );
+  assert.equal(
+    normalizeVoiceEvent({ type: 'session.updated', session: { api_key: 'private' } }),
+    null,
+  );
+});
+test('PCM conversion preserves packet-boundary continuity at 44.1, 48, 96 and 24 kHz', () => {
+  for (const rate of [24000, 44100, 48000, 96000]) {
+    const samples = Float32Array.from(
+      { length: rate },
+      (_, index) => 0.7 * Math.sin((index / rate) * 2 * Math.PI * 440),
+    );
+    const whole = new PcmResampler(rate).push(samples),
+      converter = new PcmResampler(rate);
+    const chunks: number[] = [];
+    for (let index = 0; index < samples.length; index += 137)
+      chunks.push(...converter.push(samples.slice(index, index + 137)));
+    assert.ok(Math.abs(whole.length - 24000) <= 2);
+    assert.equal(chunks.length, whole.length);
+    assert.ok(chunks.every((value, index) => Math.abs(value - whole[index]!) <= 1));
+  }
+  assert.throws(() => new PcmResampler(48000, 0));
+});
+
+test('voice profiles expose only per-model voices and transcript chunks preserve ordinary sentences', () => {
+  for (const model of VOICE_MODELS)
+    for (const voice of model.voices)
+      assert.doesNotThrow(() => voiceStartEvent(model.id, voice, 1024));
+  assert.throws(() => voiceStartEvent('gpt-realtime-2.1', 'quartz', 1024));
+  const transcript = new VoiceTranscriptBuffer();
+  transcript.push({
+    type: 'transcript',
+    role: 'user',
+    text: '把照片',
+    delta: true,
+    startMs: 0,
+    endMs: 100,
+  });
+  transcript.push({
+    type: 'transcript',
+    role: 'user',
+    text: '调亮一点',
+    delta: true,
+    startMs: 100,
+    endMs: 600,
+  });
+  assert.equal(transcript.toString(), 'user: 把照片调亮一点');
+  transcript.push({
+    type: 'transcript',
+    role: 'assistant',
+    text: '好的',
+    delta: true,
+    itemId: 'reply',
+  });
+  transcript.push({
+    type: 'transcript',
+    role: 'assistant',
+    text: '，我建议提高曝光。',
+    delta: true,
+    itemId: 'reply',
+  });
+  transcript.push({
+    type: 'transcript',
+    role: 'assistant',
+    text: '我建议提高曝光。',
+    delta: false,
+    itemId: 'reply',
+  });
+  assert.equal(transcript.toString(), 'user: 把照片调亮一点\nassistant: 我建议提高曝光。');
+  transcript.push({
+    type: 'transcript',
+    role: 'user',
+    text: '保留高光',
+    delta: true,
+    startMs: 3000,
+    endMs: 4000,
+  });
+  assert.ok(transcript.toString().endsWith('\nuser: 保留高光'));
+  transcript.clear();
+  assert.equal(transcript.toString(), '');
+});

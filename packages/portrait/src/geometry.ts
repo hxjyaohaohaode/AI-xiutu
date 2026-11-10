@@ -1,4 +1,4 @@
-import type { Point, SelectionMaskV3 } from '@ai-xiutu/editor';
+import type { Dimensions, Point, SelectionMaskV3 } from '@ai-xiutu/editor';
 import type { PortraitTarget } from './types.js';
 
 export const unit = (v: number) => Math.max(0, Math.min(1, v));
@@ -83,9 +83,13 @@ export function combine(
   if (!masks.length) throw new Error('没有可组合的部位。');
   return masks.length === 1 ? masks[0]! : { type: 'compound', operation, masks, invert: false };
 }
-export function facialMasks(target: PortraitTarget, skin: SelectionMaskV3 | null) {
+function facialMasksWithFeather(
+  target: PortraitTarget,
+  skin: SelectionMaskV3 | null,
+  feather: number,
+) {
   const c = target.contours,
-    face = polygon(c.oval ?? [], 0.009);
+    face = polygon(c.oval ?? [], feather);
   const exclusions = ['leftEye', 'rightEye', 'lips', 'leftBrow', 'rightBrow']
     .filter((k) => c[k]?.length)
     .map((k) => polygon(c[k]!, 0.001));
@@ -105,6 +109,48 @@ export function facialMasks(target: PortraitTarget, skin: SelectionMaskV3 | null
       ? combine('subtract', [polygon(c.lips ?? [], 0.001), polygon(c.innerLips, 0)])
       : polygon(c.lips ?? [], 0.001),
   };
+}
+
+/** Published V3 compilation remains fixed; saved masks are ordinary recipe data. */
+export function facialMasks(target: PortraitTarget, skin: SelectionMaskV3 | null) {
+  return facialMasksWithFeather(target, skin, 0.009);
+}
+
+/**
+ * V4-only, inward face-edge falloff measured on the actual pixel face axes.
+ * The polygon and supplied skin support are never expanded into unobserved skin.
+ * Eye/brow/lip exclusions retain their independent, narrow protected contours.
+ */
+export function facialMasksV4(
+  target: PortraitTarget,
+  skin: SelectionMaskV3 | null,
+  dimensions: Dimensions,
+) {
+  const { width, height } = dimensions;
+  if (!Number.isSafeInteger(width) || !Number.isSafeInteger(height) || width < 1 || height < 1)
+    throw new Error('面部羽化需要有效的完整原图尺寸。');
+  const left = center(target.contours.leftEye ?? []),
+    right = center(target.contours.rightEye ?? []),
+    dx = (right.x - left.x) * width,
+    dy = (right.y - left.y) * height,
+    length = Math.hypot(dx, dy);
+  if (length < 1e-9) throw new Error('缺少有效双眼轴，不能计算面部过渡。');
+  const ux = dx / length,
+    uy = dy / length,
+    oval = target.contours.oval ?? [];
+  if (oval.length < 3) throw new Error('部位轮廓不足。');
+  const axes = oval.map((point) => ({
+    u: point.x * width * ux + point.y * height * uy,
+    v: -point.x * width * uy + point.y * height * ux,
+  }));
+  const faceWidth = Math.max(...axes.map((p) => p.u)) - Math.min(...axes.map((p) => p.u)),
+    faceHeight = Math.max(...axes.map((p) => p.v)) - Math.min(...axes.map((p) => p.v)),
+    faceShort = Math.min(faceWidth, faceHeight);
+  if (!(faceShort > 0) || !Number.isFinite(faceShort)) throw new Error('面部像素范围无效。');
+  // A broad smoothstep transition avoids the old image-size-based forehead band.
+  // Its normalized short-edge unit also preserves the same falloff in preview/export.
+  const feather = Math.min(0.25, Math.max(0.000001, (faceShort * 0.14) / Math.min(width, height)));
+  return facialMasksWithFeather(target, skin, feather);
 }
 
 export { validateTarget } from './validation.js';

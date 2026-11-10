@@ -5,6 +5,9 @@ import { schemaV4Sql } from './schema-v4.js';
 import { schemaV5Sql } from './schema-v5.js';
 import { schemaV6Sql } from './schema-v6.js';
 import { schemaV7Sql } from './schema-v7.js';
+import { schemaV8Sql } from './schema-v8.js';
+import { schemaV9Sql } from './schema-v9.js';
+import { schemaV10Sql } from './schema-v10.js';
 
 export type { PoolClient, QueryResultRow } from 'pg';
 export type Database = pg.Pool;
@@ -20,6 +23,9 @@ const migrations = [
   { version: 5, sql: schemaV5Sql },
   { version: 6, sql: schemaV6Sql },
   { version: 7, sql: schemaV7Sql },
+  { version: 8, sql: schemaV8Sql },
+  { version: 9, sql: schemaV9Sql },
+  { version: 10, sql: schemaV10Sql },
 ] as const;
 export const REQUIRED_SCHEMA_VERSIONS: readonly number[] = Object.freeze(
   migrations.map(({ version }) => version),

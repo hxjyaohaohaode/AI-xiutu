@@ -608,6 +608,8 @@ export function createRecipeV3(overrides?: RecipeV3Overrides): RecipeV3 {
 }
 export function migrateRecipeToV3(input: EditorRecipe): RecipeV3 {
   const r = parseEditorRecipe(input);
+  if (r.schemaVersion === 4)
+    throw new RecipeValidationError(['migration: v4 cannot be silently downgraded to v3']);
   if (r.schemaVersion === 3) return r;
   const base = r.schemaVersion === 2 ? r : migrateRecipeToV2(r);
   return createRecipeV3({ ...base, schemaVersion: 3, engineVersion: '3.0.0' });
@@ -673,3 +675,10 @@ export function setEditorParameter(input: EditorRecipe, path: string, value: num
   (parent as Record<string, unknown>)[keys.at(-1)!] = value;
   return parseEditorRecipe(r);
 }
+
+// Shared bounded readers for the explicit v4 protocol. Existing v3 semantics stay unchanged.
+export {
+  cloneData as cloneRecipeDataV3,
+  merge as mergeRecipeDataV3,
+  origin as readOperationOriginV3,
+};

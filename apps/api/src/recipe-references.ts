@@ -9,7 +9,7 @@ export async function validateRecipeReferences(
   projectId: string,
   recipe: EditorRecipe,
 ): Promise<void> {
-  if (recipe.schemaVersion !== 3) return;
+  if (recipe.schemaVersion < 3 || !('imageLayers' in recipe)) return;
   const ids = [...new Set(recipe.imageLayers.map((layer) => layer.sourceId))].sort();
   for (const sourceId of ids) {
     if (!id.safeParse(sourceId).success)
@@ -33,7 +33,7 @@ export function remapRecipeReferences(
   mapping: ReadonlyMap<string, string>,
 ): EditorRecipe {
   const copied = structuredClone(recipe);
-  if (copied.schemaVersion === 3) {
+  if (copied.schemaVersion >= 3 && 'imageLayers' in copied) {
     for (const layer of copied.imageLayers) {
       const replacement = mapping.get(layer.sourceId);
       if (!replacement)

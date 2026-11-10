@@ -4,7 +4,15 @@ import { api, ApiError, errorMessage, jsonRequest } from '../lib/api';
 import type { AIJob } from './types';
 import { decisionAttempt, type DecisionDraft, type DecisionResponse } from './decisions';
 
-export function useResultDecisions(job: AIJob, scope: string, onChanged: () => void) {
+export function useResultDecisions(
+  job: AIJob,
+  scope: string,
+  onChanged: () => void,
+  workflow: {
+    onBeforeArtworkWrite?: () => void | Promise<void>;
+    onAfterArtworkWrite?: () => void | Promise<void>;
+  } = {},
+) {
   const [decisions, setDecisions] = useState<AiResultDecision[]>([]);
   const [busy, setBusy] = useState(false);
   const [loading, setLoading] = useState(false);
@@ -12,6 +20,8 @@ export function useResultDecisions(job: AIJob, scope: string, onChanged: () => v
   const [uncertain, setUncertain] = useState<DecisionDraft | null>(null);
   const generation = useRef(0);
   const lock = useRef(false);
+  const workflowRef = useRef(workflow);
+  workflowRef.current = workflow;
   const onChangedRef = useRef(onChanged);
   onChangedRef.current = onChanged;
   const [refresh, setRefresh] = useState(0);
@@ -68,7 +78,13 @@ export function useResultDecisions(job: AIJob, scope: string, onChanged: () => v
       setBusy(true);
       setError(null);
       let dispatched = false;
+      let preparedArtwork = false;
+      const currentWorkflow = workflowRef.current;
       try {
+        if (['replace', 'layer', 'apply-plan'].includes(draft.action)) {
+          await currentWorkflow.onBeforeArtworkWrite?.();
+          preparedArtwork = true;
+        }
         let storage: Storage | undefined;
         try {
           storage = window.sessionStorage;
@@ -113,6 +129,17 @@ export function useResultDecisions(job: AIJob, scope: string, onChanged: () => v
         }
         return null;
       } finally {
+        if (preparedArtwork) {
+          try {
+            await currentWorkflow.onAfterArtworkWrite?.();
+          } catch {
+            if (epoch === generation.current)
+              setError(
+                (previous) =>
+                  previous ?? '决定已处理，但作品刷新失败，请重新打开作品核对当前版本。',
+              );
+          }
+        }
         if (epoch === generation.current) {
           lock.current = false;
           setBusy(false);

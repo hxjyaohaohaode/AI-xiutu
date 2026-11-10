@@ -1,0 +1,704 @@
+import { constants, createReadStream } from 'node:fs';
+import { mkdir, open, readFile, rm, lstat, readdir, statfs } from 'node:fs/promises';
+import { join } from 'node:path';
+import { randomUUID, createHash } from 'node:crypto';
+import type { FastifyInstance } from 'fastify';
+import { z } from 'zod';
+import {
+  processMedia,
+  exportMedia,
+  getMediaCapabilities,
+  MediaProcessingError,
+  MEDIA_MAX_INPUT_BYTES,
+  type MediaDescriptorV1,
+} from '@ai-xiutu/media';
+import {
+  transaction,
+  audit,
+  emit,
+  lockAssetStorageKeys,
+  discardUnreferencedStorageKeys,
+  type Database,
+  type Queryable,
+} from '@ai-xiutu/db';
+import { LocalPrivateStorage } from './storage.js';
+import type { AppConfig } from './config.js';
+import { HttpError, requireUser, projectAccess, assetDto, id, hash } from './core.js';
+
+const CHUNK_BYTES = 4 * 1024 * 1024;
+const safeName = z
+  .string()
+  .trim()
+  .min(1)
+  .max(200)
+  .refine((value) => !/[\x00-\x1f\x7f/\\]/.test(value));
+const jobParams = z.object({ id });
+const checksum = (bytes: Buffer) => createHash('sha256').update(bytes).digest('hex');
+const jobDto = (row: Record<string, any>) => ({
+  id: row.id,
+  projectId: row.project_id,
+  name: row.name,
+  size: Number(row.expected_bytes),
+  uploadedBytes: Number(row.uploaded_bytes),
+  state: row.state,
+  assetId: row.asset_id,
+  errorCode: row.error_code,
+  errorMessage: row.error_message,
+  updatedAt: row.updated_at,
+  maxChunkBytes: CHUNK_BYTES,
+});
+async function directoryBytes(directory: string): Promise<number> {
+  let total = 0;
+  for (const entry of await readdir(directory, { withFileTypes: true })) {
+    const path = join(directory, entry.name);
+    if (entry.isSymbolicLink()) throw new Error('MEDIA_SYMLINK');
+    if (entry.isDirectory()) total += await directoryBytes(path);
+    else if (entry.isFile()) total += (await lstat(path)).size;
+    else throw new Error('MEDIA_SPECIAL_FILE');
+  }
+  return total;
+}
+async function releaseReservation(tx: Queryable, row: Record<string, any>) {
+  const amount = Number(row.reservation_bytes);
+  if (!amount) return;
+  await tx.query(
+    'UPDATE space_storage_accounts SET media_reserved_bytes=media_reserved_bytes-$2,updated_at=clock_timestamp() WHERE space_id=(SELECT space_id FROM projects WHERE id=$1)',
+    [row.project_id, amount],
+  );
+  await tx.query('UPDATE media_import_jobs SET reservation_bytes=0 WHERE id=$1', [row.id]);
+}
+
+/** Resumable bounded uploads. No browser paths/URLs/native commands are accepted. */
+export function registerMediaImport(app: FastifyInstance, db: Database, config: AppConfig) {
+  const storage = new LocalPrivateStorage(config);
+  const root = join(config.storageDir, 'media-v1');
+  const inputs = join(root, 'uploads');
+  const inputPath = (jobId: string) => join(inputs, `${id.parse(jobId)}.upload`);
+  const workDir = (jobId: string) => join(root, id.parse(jobId));
+  const active = new Map<string, { controller: AbortController; promise: Promise<void> }>();
+  const exporting = new Set<string>();
+  const enabled = process.env.MEDIA_ADVANCED_ENABLED === 'true';
+  const pythonExecutable = process.env.MEDIA_PYTHON;
+  const capabilities = getMediaCapabilities({ pythonExecutable });
+  let closing = false;
+  async function assertAvailable() {
+    if (!enabled || !(await capabilities).available)
+      throw new HttpError(
+        503,
+        'MEDIA_NOT_CONFIGURED',
+        '高精度素材处理尚未启用，请联系运营配置 Linux 隔离处理环境。',
+      );
+  }
+  async function lockedProjectEditor(tx: Queryable, projectId: string, actor: string) {
+    const project = await projectAccess(tx, projectId, actor, 'edit');
+    // Membership is locked before the job/object/storage rows. A removal that
+    // committed first is denied; one that comes later waits for publication.
+    const member = await tx.query(
+      "SELECT m.role FROM memberships m JOIN users u ON u.id=m.user_id WHERE m.space_id=$1 AND m.user_id=$2 AND m.role IN ('owner','admin','editor') AND u.status='active' FOR SHARE OF m,u",
+      [project.space_id, actor],
+    );
+    if (!member.rowCount) throw new HttpError(403, 'PROJECT_FORBIDDEN', '项目编辑权限已改变');
+    if (
+      !(
+        await tx.query('SELECT id FROM projects WHERE id=$1 AND deleted_at IS NULL FOR SHARE', [
+          projectId,
+        ])
+      ).rowCount
+    )
+      throw new HttpError(404, 'PROJECT_NOT_FOUND', '项目已不可用');
+    return project;
+  }
+  async function jobAccess(tx: Queryable, jobId: string, actor: string, lock = false) {
+    const row = (
+      await tx.query('SELECT * FROM media_import_jobs WHERE id=$1 AND actor_id=$2', [jobId, actor])
+    ).rows[0];
+    if (!row) throw new HttpError(404, 'IMPORT_NOT_FOUND', '导入任务不存在');
+    if (lock) {
+      await lockedProjectEditor(tx, row.project_id, actor);
+      return (
+        await tx.query('SELECT * FROM media_import_jobs WHERE id=$1 AND actor_id=$2 FOR UPDATE', [
+          jobId,
+          actor,
+        ])
+      ).rows[0]!;
+    }
+    await projectAccess(tx, row.project_id, actor, 'edit');
+    return row;
+  }
+  async function failJob(jobId: string, code: string, message: string) {
+    await transaction(db, async (tx) => {
+      await tx.query('SELECT pg_advisory_xact_lock(hashtextextended($1,0))', [
+        `media-object:${jobId}`,
+      ]);
+      const row = (
+        await tx.query('SELECT * FROM media_import_jobs WHERE id=$1 FOR UPDATE', [jobId])
+      ).rows[0];
+      if (
+        !row ||
+        row.state === 'ready' ||
+        (await tx.query('SELECT 1 FROM media_objects WHERE id=$1', [jobId])).rowCount
+      )
+        return;
+      if (code === 'IMPORT_INTERRUPTED') {
+        const age = Date.now() - new Date(row.updated_at).getTime();
+        if (
+          (row.state === 'uploading' && age < 30 * 60_000) ||
+          (row.state === 'processing' && age < 5 * 60_000) ||
+          !['uploading', 'processing', 'cancelled'].includes(row.state)
+        )
+          return;
+      }
+      await releaseReservation(tx, row);
+      await tx.query(
+        "UPDATE media_import_jobs SET state=CASE WHEN state='cancelled' THEN state ELSE 'failed' END,error_code=$2,error_message=$3,updated_at=clock_timestamp() WHERE id=$1",
+        [jobId, code, message],
+      );
+      // All publication paths use the same lock. If the database state is unknown,
+      // this transaction fails and private files are preserved for reconciliation.
+      await rm(inputPath(jobId), { force: true });
+      await rm(workDir(jobId), { recursive: true, force: true });
+    });
+  }
+  async function runJob(row: Record<string, any>, signal: AbortSignal) {
+    let storedKey: string | undefined;
+    const heartbeat = setInterval(() => {
+      // A cancel from another API process is a durable cancellation request.
+      // Its reservation remains until this decoder has actually stopped.
+      void db
+        .query(
+          "UPDATE media_import_jobs SET updated_at=clock_timestamp() WHERE id=$1 AND state IN ('processing','cancelled') RETURNING state",
+          [row.id],
+        )
+        .then(({ rows }) => {
+          if (rows[0]?.state !== 'processing') active.get(row.id)?.controller.abort();
+        })
+        .catch(() => undefined);
+    }, 10000);
+    heartbeat.unref();
+    try {
+      const descriptor = await processMedia({
+        inputPath: inputPath(row.id),
+        workDir: workDir(row.id),
+        originalName: row.name,
+        signal,
+        options: { pythonExecutable, generateTiles: row.generate_tiles },
+      });
+      const retainedBytes = await directoryBytes(workDir(row.id));
+      const proxy = await readFile(join(workDir(row.id), descriptor.proxy.relativePath));
+      const stored = await storage.storeGenerated(proxy);
+      storedKey = stored.key;
+      await transaction(db, async (tx) => {
+        const project = await lockedProjectEditor(tx, row.project_id, row.actor_id);
+        await tx.query('SELECT pg_advisory_xact_lock(hashtextextended($1,0))', [
+          `media-object:${row.id}`,
+        ]);
+        await lockAssetStorageKeys(tx, [stored.key]);
+        const current = (
+          await tx.query('SELECT * FROM media_import_jobs WHERE id=$1 FOR UPDATE', [row.id])
+        ).rows[0];
+        if (current?.state !== 'processing' || signal.aborted)
+          throw new HttpError(409, 'IMPORT_CANCELLED', '导入已取消');
+        await releaseReservation(tx, current);
+        await tx.query('INSERT INTO media_objects(id,descriptor,retained_bytes) VALUES($1,$2,$3)', [
+          row.id,
+          JSON.stringify(descriptor),
+          retainedBytes,
+        ]);
+        const asset = (
+          await tx.query(
+            'INSERT INTO assets(project_id,name,storage_key,mime,width,height,bytes,content_hash,created_by,provenance) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10) RETURNING *',
+            [
+              row.project_id,
+              row.name,
+              stored.key,
+              stored.mime,
+              stored.width,
+              stored.height,
+              stored.bytes,
+              stored.hash,
+              row.actor_id,
+              JSON.stringify({
+                kind: 'media-import',
+                protocol: 'media-v1',
+                sourceSha256: descriptor.sourceSha256,
+                sourceWidth: descriptor.original.width,
+                sourceHeight: descriptor.original.height,
+                sourceBitDepth: descriptor.original.bitDepth,
+                sourceColorSpace: descriptor.original.colorSpace,
+                editorProxy: true,
+              }),
+            ],
+          )
+        ).rows[0]!;
+        await tx.query(
+          'INSERT INTO media_sources(asset_id,object_id,retained_bytes) VALUES($1,$2,$3)',
+          [asset.id, row.id, retainedBytes],
+        );
+        await tx.query(
+          "UPDATE media_import_jobs SET state='ready',asset_id=$2,updated_at=clock_timestamp() WHERE id=$1",
+          [row.id, asset.id],
+        );
+        await emit(tx, project.space_id, row.project_id, 'asset.created', asset.id);
+        await audit(tx, row.actor_id, 'media.import', 'asset', asset.id, {
+          sourceHash: descriptor.sourceSha256,
+          retainedBytes,
+          pixels: descriptor.original.width * descriptor.original.height,
+          editorProxyPixels: stored.width * stored.height,
+        });
+      });
+      await rm(inputPath(row.id), { force: true });
+    } catch (error) {
+      const code =
+        error instanceof MediaProcessingError
+          ? `MEDIA_${error.code.toUpperCase()}`
+          : error instanceof HttpError
+            ? error.code
+            : (error as { message?: string })?.message?.includes('SPACE_STORAGE_LIMIT')
+              ? 'SPACE_STORAGE_LIMIT'
+              : 'MEDIA_PROCESSING_FAILED';
+      const message =
+        code === 'SPACE_STORAGE_LIMIT'
+          ? '保留原件、母版和图块后的容量超过空间额度；请调整空间存储额度后重新导入。'
+          : code === 'MEDIA_UNSUPPORTED'
+            ? '此文件的格式、位深或解码器暂不可用，原编辑器内容未改变。'
+            : code === 'MEDIA_LIMIT' || code === 'MEDIA_TIMEOUT'
+              ? '此文件超出隔离处理资源预算，请使用较小副本或调整部署资源。'
+              : code === 'IMPORT_CANCELLED'
+                ? '导入已取消。'
+                : '导入未完成，未覆盖任何原有素材。请检查格式与处理环境后重新导入。';
+      try {
+        await failJob(row.id, code, message);
+      } catch {
+        process.stderr.write('{"event":"media_import_reconciliation_required"}\n');
+      }
+      if (storedKey)
+        try {
+          await discardUnreferencedStorageKeys(db, [storedKey], (key) => storage.discard(key));
+        } catch {
+          /* preserve uncertain private bytes */
+        }
+    } finally {
+      clearInterval(heartbeat);
+    }
+  }
+  function launch(row: Record<string, any>) {
+    if (active.has(row.id) || closing) return;
+    const controller = new AbortController();
+    const promise = runJob(row, controller.signal).finally(() => {
+      active.delete(row.id);
+    });
+    active.set(row.id, { controller, promise });
+  }
+  const cleanup = setInterval(() => {
+    if (closing) return;
+    void db
+      .query(
+        "SELECT id FROM media_import_jobs WHERE (state='uploading' AND updated_at<clock_timestamp()-interval '30 minutes') OR (state IN ('processing','cancelled') AND updated_at<clock_timestamp()-interval '5 minutes' AND (reservation_bytes>0 OR state='processing')) LIMIT 20",
+      )
+      .then(async ({ rows }) => {
+        for (const row of rows)
+          if (!active.has(row.id))
+            await failJob(row.id, 'IMPORT_INTERRUPTED', '导入因超时或服务重启中断，请重新导入。');
+      })
+      .catch(() => undefined);
+  }, 30000);
+  cleanup.unref();
+  app.addHook('onClose', async () => {
+    closing = true;
+    clearInterval(cleanup);
+    for (const value of active.values()) value.controller.abort();
+    await Promise.allSettled([...active.values()].map((value) => value.promise));
+  });
+
+  app.get('/v1/media-capabilities', async () => ({
+    ...(await capabilities),
+    enabled,
+    available: enabled && (await capabilities).available,
+    maxChunkBytes: CHUNK_BYTES,
+    retention:
+      'original-and-master-retained; logical charges include copies; soft deletion does not reclaim originals',
+  }));
+  app.post('/v1/projects/:id/media-imports', async (req, reply) => {
+    await assertAvailable();
+    const actor = requireUser(req);
+    const params = jobParams.parse(req.params);
+    const body = z
+      .object({
+        name: safeName,
+        size: z.number().int().min(1).max(MEDIA_MAX_INPUT_BYTES),
+        idempotencyKey: id,
+        generateTiles: z.boolean().default(true),
+      })
+      .strict()
+      .parse(req.body);
+    const requestHash = hash(
+      JSON.stringify({
+        name: body.name,
+        size: body.size,
+        generateTiles: body.generateTiles,
+        projectId: params.id,
+      }),
+    );
+    await mkdir(inputs, { recursive: true, mode: 0o700 });
+    const disk = await statfs(inputs);
+    if (Number(disk.bavail) * Number(disk.bsize) < body.size * 2 + 2 * 1024 ** 3)
+      throw new HttpError(
+        503,
+        'MEDIA_DISK_BUDGET',
+        '服务器临时磁盘空间不足，当前不能安全接收高精度素材。',
+      );
+    const result = await transaction(db, async (tx) => {
+      await tx.query("SELECT pg_advisory_xact_lock(hashtextextended('media-import-admission',0))");
+      const project = await lockedProjectEditor(tx, params.id, actor.id);
+      const previous = (
+        await tx.query('SELECT * FROM media_import_jobs WHERE actor_id=$1 AND idempotency_key=$2', [
+          actor.id,
+          body.idempotencyKey,
+        ])
+      ).rows[0];
+      if (previous) {
+        if (previous.request_hash !== requestHash)
+          throw new HttpError(409, 'IDEMPOTENCY_CONFLICT', '这个导入标识已用于另一个文件');
+        return previous;
+      }
+      if (
+        (
+          await tx.query(
+            "SELECT 1 FROM media_import_jobs WHERE actor_id=$1 AND (state IN ('uploading','processing') OR (state='cancelled' AND reservation_bytes>0))",
+            [actor.id],
+          )
+        ).rowCount
+      )
+        throw new HttpError(409, 'IMPORT_BUSY', '请先完成或等待取消中的导入清理完成');
+      if (
+        Number(
+          (
+            await tx.query(
+              "SELECT count(*) AS n FROM media_import_jobs WHERE state IN ('uploading','processing') OR (state='cancelled' AND reservation_bytes>0)",
+            )
+          ).rows[0]!.n,
+        ) >= 4
+      )
+        throw new HttpError(
+          503,
+          'IMPORT_QUEUE_FULL',
+          '当前有 4 个大文件导入占用临时容量，请稍后再试',
+        );
+      await tx.query(
+        'INSERT INTO space_storage_accounts(space_id) VALUES($1) ON CONFLICT DO NOTHING',
+        [project.space_id],
+      );
+      if (
+        !(
+          await tx.query(
+            'UPDATE space_storage_accounts SET media_reserved_bytes=media_reserved_bytes+$2 WHERE space_id=$1 AND retained_bytes+media_reserved_bytes+$2<=max_bytes AND retained_assets<max_assets',
+            [project.space_id, body.size],
+          )
+        ).rowCount
+      )
+        throw new HttpError(409, 'SPACE_STORAGE_LIMIT', '空间容量不足以预留这份原件，请先调整额度');
+      return (
+        await tx.query(
+          'INSERT INTO media_import_jobs(project_id,actor_id,idempotency_key,request_hash,name,expected_bytes,generate_tiles,reservation_bytes) VALUES($1,$2,$3,$4,$5,$6,$7,$6) RETURNING *',
+          [
+            params.id,
+            actor.id,
+            body.idempotencyKey,
+            requestHash,
+            body.name,
+            body.size,
+            body.generateTiles,
+          ],
+        )
+      ).rows[0]!;
+    });
+    return reply.code(201).send({ job: jobDto(result) });
+  });
+  app.get('/v1/media-imports/:id', async (req) => {
+    const actor = requireUser(req);
+    const { id: jobId } = jobParams.parse(req.params);
+    const row = await jobAccess(db, jobId, actor.id);
+    const asset = row.asset_id
+      ? (await db.query('SELECT * FROM assets WHERE id=$1 AND deleted_at IS NULL', [row.asset_id]))
+          .rows[0]
+      : null;
+    return { job: jobDto(row), asset: asset ? assetDto(asset) : null };
+  });
+  app.register(async (chunks) => {
+    chunks.addContentTypeParser(
+      'application/octet-stream',
+      { parseAs: 'buffer', bodyLimit: CHUNK_BYTES },
+      (_request, body, done) => done(null, body),
+    );
+    chunks.put('/v1/media-imports/:id/chunk', { bodyLimit: CHUNK_BYTES }, async (req) => {
+      await assertAvailable();
+      const actor = requireUser(req);
+      const { id: jobId } = jobParams.parse(req.params);
+      const { offset } = z
+        .object({ offset: z.coerce.number().int().nonnegative().max(MEDIA_MAX_INPUT_BYTES) })
+        .strict()
+        .parse(req.query);
+      if (!Buffer.isBuffer(req.body) || !req.body.length || req.body.length > CHUNK_BYTES)
+        throw new HttpError(400, 'CHUNK_INVALID', '上传分片不能为空或超过 4 MiB');
+      const bytes = req.body;
+      return transaction(db, async (tx) => {
+        const row = await jobAccess(tx, jobId, actor.id, true);
+        if (row.state !== 'uploading')
+          throw new HttpError(409, 'IMPORT_STATE', '当前任务不再接受上传');
+        const uploaded = Number(row.uploaded_bytes);
+        if (offset > uploaded || offset + bytes.length > Number(row.expected_bytes))
+          throw new HttpError(409, 'CHUNK_OFFSET', '上传位置不一致，请读取任务进度后续传', {
+            uploadedBytes: uploaded,
+          });
+        await mkdir(inputs, { recursive: true, mode: 0o700 });
+        const file = await open(
+          inputPath(jobId),
+          constants.O_RDWR | constants.O_CREAT | constants.O_NOFOLLOW,
+          0o600,
+        );
+        try {
+          if (offset < uploaded) {
+            if (offset + bytes.length > uploaded)
+              throw new HttpError(409, 'CHUNK_OVERLAP', '分片不能跨过已经确认的边界');
+            const old = Buffer.alloc(bytes.length);
+            const read = await file.read(old, 0, old.length, offset);
+            if (read.bytesRead !== bytes.length || checksum(old) !== checksum(bytes))
+              throw new HttpError(
+                409,
+                'CHUNK_MISMATCH',
+                '此位置已上传不同的数据，请取消后重新导入',
+              );
+          } else {
+            // Rollback/crash may leave an uncommitted tail: only confirmed bytes survive.
+            await file.truncate(uploaded);
+            let written = 0;
+            while (written < bytes.length) {
+              const part = await file.write(
+                bytes,
+                written,
+                bytes.length - written,
+                offset + written,
+              );
+              if (!part.bytesWritten) throw new Error('SHORT_WRITE');
+              written += part.bytesWritten;
+            }
+            await file.sync();
+            await tx.query(
+              'UPDATE media_import_jobs SET uploaded_bytes=$2,updated_at=clock_timestamp() WHERE id=$1',
+              [jobId, offset + bytes.length],
+            );
+          }
+        } finally {
+          await file.close();
+        }
+        return {
+          uploadedBytes: Math.max(uploaded, offset + bytes.length),
+          chunkSha256: checksum(bytes),
+        };
+      });
+    });
+  });
+  app.post('/v1/media-imports/:id/complete', async (req, reply) => {
+    await assertAvailable();
+    const actor = requireUser(req);
+    const { id: jobId } = jobParams.parse(req.params);
+    const row = await transaction(db, async (tx) => {
+      const current = await jobAccess(tx, jobId, actor.id, true);
+      if (current.state === 'ready' || current.state === 'processing')
+        return { ...current, launchNew: false };
+      if (
+        current.state !== 'uploading' ||
+        Number(current.uploaded_bytes) !== Number(current.expected_bytes)
+      )
+        throw new HttpError(409, 'IMPORT_INCOMPLETE', '文件尚未完整上传');
+      return {
+        ...(
+          await tx.query(
+            "UPDATE media_import_jobs SET state='processing',updated_at=clock_timestamp() WHERE id=$1 RETURNING *",
+            [jobId],
+          )
+        ).rows[0]!,
+        launchNew: true,
+      };
+    });
+    if (row.launchNew) launch(row);
+    return reply.code(202).send({ job: jobDto(row) });
+  });
+  app.post('/v1/media-imports/:id/cancel', async (req) => {
+    const actor = requireUser(req);
+    const { id: jobId } = jobParams.parse(req.params);
+    const cancellation = await transaction(db, async (tx) => {
+      const row = await jobAccess(tx, jobId, actor.id, true);
+      if (row.state === 'ready')
+        throw new HttpError(409, 'IMPORT_COMPLETE', '素材已导入，取消不会删除已发布的原件');
+      // A repeat must not erase the evidence that another process still owns
+      // an in-flight decoder, or keep extending an orphan's cleanup deadline.
+      const cleanupPending =
+        row.state === 'processing' ||
+        (row.state === 'cancelled' && Number(row.reservation_bytes) > 0);
+      if (row.state !== 'cancelled')
+        await tx.query(
+          "UPDATE media_import_jobs SET state='cancelled',updated_at=clock_timestamp() WHERE id=$1",
+          [jobId],
+        );
+      if (!cleanupPending) await releaseReservation(tx, row);
+      return { cleanupPending };
+    });
+    const running = active.get(jobId);
+    if (running) {
+      running.controller.abort();
+      await running.promise;
+    } else if (!cancellation.cleanupPending)
+      await failJob(jobId, 'IMPORT_CANCELLED', '导入已取消。');
+    const current = (
+      await db.query('SELECT reservation_bytes FROM media_import_jobs WHERE id=$1', [jobId])
+    ).rows[0];
+    return { ok: true, cleanupPending: Number(current?.reservation_bytes ?? 0) > 0 };
+  });
+  async function sourceAccess(assetId: string, actor: string) {
+    const row = (
+      await db.query(
+        'SELECT a.project_id,m.object_id,o.descriptor FROM media_sources m JOIN assets a ON a.id=m.asset_id JOIN media_objects o ON o.id=m.object_id WHERE m.asset_id=$1 AND a.deleted_at IS NULL AND m.released_at IS NULL AND o.purged_at IS NULL',
+        [assetId],
+      )
+    ).rows[0];
+    if (!row) throw new HttpError(404, 'MEDIA_NOT_FOUND', '此素材没有可用的原件保留记录');
+    await projectAccess(db, row.project_id, actor);
+    return { ...row, descriptor: row.descriptor as MediaDescriptorV1 };
+  }
+  app.get('/v1/assets/:id/media', async (req) => {
+    const actor = requireUser(req);
+    const { id: assetId } = jobParams.parse(req.params);
+    const row = await sourceAccess(assetId, actor.id);
+    return {
+      descriptor: row.descriptor,
+      downloads: {
+        original: `/v1/assets/${assetId}/media/original`,
+        master: `/v1/assets/${assetId}/media/master`,
+        linearMaster: row.descriptor.linearMaster
+          ? `/v1/assets/${assetId}/media/linearMaster`
+          : null,
+        tiles: row.descriptor.tiles ? `/v1/assets/${assetId}/media/tiles.dzi` : null,
+      },
+      editor: { bitDepth: 8, colorSpace: 'sRGB', proxy: true, masterExportIncludesRecipe: false },
+    };
+  });
+  app.get('/v1/assets/:id/media/:kind', async (req, reply) => {
+    const actor = requireUser(req);
+    const params = z
+      .object({ id, kind: z.enum(['original', 'master', 'linearMaster', 'tiles.dzi']) })
+      .parse(req.params);
+    const row = await sourceAccess(params.id, actor.id);
+    const item = params.kind === 'tiles.dzi' ? row.descriptor.tiles : row.descriptor[params.kind];
+    if (!item) throw new HttpError(404, 'MEDIA_NOT_FOUND', '此素材没有图块');
+    const path = join(workDir(row.object_id), item.relativePath);
+    const stat = await lstat(path);
+    if (!stat.isFile() || stat.isSymbolicLink())
+      throw new HttpError(404, 'MEDIA_NOT_FOUND', '文件不可用');
+    const name =
+      params.kind === 'original'
+        ? row.descriptor.originalName
+        : `${params.id}-${params.kind}${params.kind === 'master' ? '.tiff' : params.kind === 'linearMaster' ? '.exr' : ''}`;
+    const encodedName = encodeURIComponent(name).replace(
+      /[!'()*]/g,
+      (char) => `%${char.charCodeAt(0).toString(16).toUpperCase()}`,
+    );
+    return reply
+      .type(params.kind === 'tiles.dzi' ? 'application/xml' : 'application/octet-stream')
+      .header('Cache-Control', 'private, no-store')
+      .header('X-Content-Type-Options', 'nosniff')
+      .header(
+        'Content-Disposition',
+        `${params.kind === 'tiles.dzi' ? 'inline' : 'attachment'}; filename="${params.id}-${params.kind}"; filename*=UTF-8''${encodedName}`,
+      )
+      .header('Content-Length', String(stat.size))
+      .send(createReadStream(path));
+  });
+  app.get('/v1/assets/:id/media/tiles_files/:level/:tile', async (req, reply) => {
+    const actor = requireUser(req);
+    const params = z
+      .object({
+        id,
+        level: z.coerce.number().int().min(0).max(30),
+        tile: z.string().regex(/^\d{1,6}_\d{1,6}\.jpe?g$/),
+      })
+      .parse(req.params);
+    const row = await sourceAccess(params.id, actor.id);
+    const tile = row.descriptor.tiles;
+    if (!tile || params.level >= tile.levels)
+      throw new HttpError(404, 'TILE_NOT_FOUND', '图块不存在');
+    const path = join(workDir(row.object_id), tile.directory, String(params.level), params.tile);
+    let stat;
+    try {
+      stat = await lstat(path);
+    } catch {
+      throw new HttpError(404, 'TILE_NOT_FOUND', '图块不存在');
+    }
+    if (!stat.isFile() || stat.isSymbolicLink())
+      throw new HttpError(404, 'TILE_NOT_FOUND', '图块不存在');
+    return reply
+      .type('image/jpeg')
+      .header('Cache-Control', 'private, no-store')
+      .header('Content-Length', String(stat.size))
+      .send(createReadStream(path));
+  });
+  app.post('/v1/assets/:id/media/export', async (req, reply) => {
+    await assertAvailable();
+    const actor = requireUser(req);
+    const { id: assetId } = jobParams.parse(req.params);
+    const body = z
+      .object({
+        format: z.enum(['png16', 'tiff16', 'jpeg', 'webp']),
+        quality: z.number().int().min(1).max(100).default(90),
+      })
+      .strict()
+      .parse(req.body);
+    const row = await sourceAccess(assetId, actor.id);
+    if (exporting.has(actor.id) || exporting.size >= 2)
+      throw new HttpError(429, 'MEDIA_EXPORT_BUSY', '已有母版转换正在处理，请等待完成后再试。');
+    exporting.add(actor.id);
+    // Master conversion remains separate from the RGBA8 editor; never imply a
+    // high-bit round trip of the browser recipe. Result is private and temporary.
+    const outputPath = join(root, `${randomUUID()}.export`);
+    const controller = new AbortController();
+    req.raw.on('aborted', () => controller.abort());
+    try {
+      const result = await exportMedia({
+        workDir: workDir(row.object_id),
+        outputPath,
+        format: body.format,
+        signal: controller.signal,
+        options: { quality: body.quality, timeoutMs: 45000 },
+      });
+      await sourceAccess(assetId, actor.id);
+      const stream = createReadStream(outputPath);
+      const cleanupExport = () => {
+        void rm(outputPath, { force: true });
+      };
+      stream.once('close', cleanupExport);
+      stream.once('error', cleanupExport);
+      return reply
+        .type(result.mime)
+        .header('X-Editor-Recipe-Included', 'false')
+        .header('Cache-Control', 'private, no-store')
+        .header(
+          'Content-Disposition',
+          `attachment; filename="${assetId}-master.${body.format === 'png16' ? 'png' : body.format === 'tiff16' ? 'tiff' : body.format}"`,
+        )
+        .header('Content-Length', String(result.bytes))
+        .send(stream);
+    } catch (error) {
+      await rm(outputPath, { force: true });
+      if (error instanceof MediaProcessingError)
+        throw new HttpError(
+          422,
+          'MASTER_EXPORT_FAILED',
+          '母版转换未完成，此格式或资源预算不适用。',
+        );
+      throw error;
+    } finally {
+      exporting.delete(actor.id);
+    }
+  });
+  return { capabilities, enabled };
+}

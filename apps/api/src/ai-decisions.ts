@@ -198,7 +198,11 @@ export function registerAiDecisions(app: FastifyInstance, db: Database): void {
           ])
         ).rows[0];
         if (!head) throw new HttpError(409, 'SOURCE_UNAVAILABLE', '当前作品版本不可用');
-        const recipe = migrateRecipeToV3(parseEditorRecipe(head.recipe));
+        const originalRecipe = parseEditorRecipe(head.recipe);
+        const recipe =
+          originalRecipe.schemaVersion >= 3 && 'imageLayers' in originalRecipe
+            ? originalRecipe
+            : migrateRecipeToV3(originalRecipe);
         if (recipe.imageLayers.length >= MAX_V3_IMAGE_LAYERS)
           throw new HttpError(409, 'LAYER_LIMIT', '当前合成图层已达到预算，请先整理图层再采用');
         if (source.width * source.height > MAX_V3_PIXELS)

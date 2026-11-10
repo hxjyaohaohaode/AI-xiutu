@@ -10,7 +10,11 @@ import {
   createTencentImageModerator,
 } from '@ai-xiutu/providers';
 import { createPrivateStorage } from '@ai-xiutu/storage';
+import { getMediaCapabilities } from '@ai-xiutu/media';
+import { assistantModelConfigSchema, VOICE_MODELS } from '@ai-xiutu/assistant';
 import { loadConfig } from '../apps/api/src/config.js';
+import { LocalPrivateStorage } from '../apps/api/src/storage.js';
+import { createAssistantService } from '../apps/api/src/assistant/service.js';
 
 // Checks local readiness only. No SMS, moderation or model requests are sent.
 const results: { check: string; ok: boolean; detail: string }[] = [];
@@ -63,6 +67,75 @@ try {
       imageModerationConfigured: createTencentImageModerator().configured,
       availableOperations: ai.availableOperations,
       models: catalog,
+    }),
+  });
+  const assistant = createAssistantService(
+    db,
+    new LocalPrivateStorage(config),
+    {},
+    join(process.env.AI_JOURNAL_DIR ?? config.storageDir, 'assistant'),
+  );
+  await assistant.assertJournal();
+  const assistantModels = (
+    await db.query('SELECT id,config FROM assistant_model_configs ORDER BY id')
+  ).rows.map((row) => {
+    const parsed = assistantModelConfigSchema.safeParse(row.config);
+    return {
+      id: row.id,
+      configValid: parsed.success,
+      enabled: parsed.success && parsed.data.enabled,
+      operations: parsed.success ? parsed.data.operations : [],
+      voiceProfileKnown: VOICE_MODELS.some((model) => model.id === row.id),
+    };
+  });
+  results.push({
+    check: 'assistant-and-dispatch-journal',
+    ok:
+      assistantModels.every((model) => model.configValid) &&
+      (process.env.AI_ASSISTANT_ENABLED !== 'true' || assistant.ready) &&
+      (process.env.AI_VOICE_ENABLED !== 'true' || assistant.voiceReady),
+    detail: JSON.stringify({
+      ready: assistant.ready,
+      voiceReady: assistant.voiceReady,
+      reason: assistant.reason,
+      models: assistantModels,
+      journalConsistent: true,
+      liveAccountTested: false,
+    }),
+  });
+  const media = await getMediaCapabilities({
+    pythonExecutable: process.env.MEDIA_PYTHON || undefined,
+  });
+  const mediaEnabled = process.env.MEDIA_ADVANCED_ENABLED === 'true';
+  results.push({
+    check: 'advanced-media',
+    ok: !mediaEnabled || (media.available && (!process.env.MEDIA_PYTHON || media.nativeReady)),
+    detail: JSON.stringify({ enabled: mediaEnabled, ...media }),
+  });
+  const proxy = process.env.ASSISTANT_EGRESS_PROXY;
+  let voiceProxyValid = true;
+  if (proxy) {
+    try {
+      const url = new URL(proxy);
+      voiceProxyValid =
+        ['http:', 'https:'].includes(url.protocol) &&
+        !url.hash &&
+        (!url.pathname || url.pathname === '/');
+    } catch {
+      voiceProxyValid = false;
+    }
+  }
+  results.push({
+    check: 'egress-configuration',
+    ok: voiceProxyValid,
+    detail: JSON.stringify({
+      voiceProxyConfigured: Boolean(proxy),
+      voiceProxyValid,
+      httpProxyOptIn: process.env.NODE_USE_ENV_PROXY === '1',
+      startupRequired: true,
+      httpProxyConfigured: Boolean(process.env.HTTP_PROXY || process.env.HTTPS_PROXY),
+      connectivityTested: false,
+      mainlandReachabilityTested: false,
     }),
   });
   results.push({

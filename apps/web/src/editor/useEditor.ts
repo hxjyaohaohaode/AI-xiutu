@@ -3,7 +3,8 @@ import {
   createRecipe,
   createRecipeV2,
   createRecipeV3,
-  migrateRecipeToV3,
+  createRecipeV4,
+  migrateRecipeToV4,
   type Point,
   type PaintStrokeV3,
   type WarpStrokeV3,
@@ -93,6 +94,10 @@ export function useEditor() {
   const [activeMaskPath, setActiveMaskPath] = useState<number[]>([]);
   const [activePaintLayerId, setActivePaintLayerId] = useState<string | null>(null);
   const [activeImageLayerId, setActiveImageLayerId] = useState<string | null>(null);
+  const [activeRepairId, setActiveRepairId] = useState<string | null>(null);
+  const [repairMode, setRepairMode] = useState<'healing' | 'retouch'>('healing');
+  const [repairProtection, setRepairProtection] = useState(false);
+  const [repairChoosingSource, setRepairChoosingSource] = useState(false);
   const [paintSettings, setPaintSettings] = useState<PaintSettings>({ ...INITIAL_PAINT });
   const [warpSettings, setWarpSettings] = useState<WarpSettings>({ ...INITIAL_WARP });
   const [layerImages, setLayerImages] = useState<ReadonlyMap<string, RGBAImage>>(new Map());
@@ -122,7 +127,7 @@ export function useEditor() {
       localStorage.setItem('editor:pixel-budget:v2', String(value));
     } catch {}
   }, []);
-  const initial = useRef(createRecipeV3());
+  const initial = useRef(createRecipeV4());
   const [recipe, setRecipe] = useState<EditorRecipe>(initial.current);
   const recipeRef = useRef(recipe);
   const getRecipe = useCallback(() => recipeRef.current, []);
@@ -135,6 +140,10 @@ export function useEditor() {
   const [file, setFile] = useState<File | null>(null);
   const [originalPreview, setOriginalPreview] = useState<RGBAImage | null>(null);
   const [rendered, setRendered] = useState<RGBAImage | null>(null);
+  const [renderedRecipe, setRenderedRecipe] = useState<EditorRecipe | null>(null);
+  const [geometryMode, setGeometryMode] = useState<
+    'crop' | 'transform' | 'projective' | 'placement'
+  >('crop');
   const [renderedGeometryKey, setRenderedGeometryKey] = useState<string | null>(null);
   const [dimensions, setDimensions] = useState<{ width: number; height: number } | null>(null);
   const portrait = usePortraitAnalysis(originalPreview, dimensions, sourceHash);
@@ -207,6 +216,7 @@ export function useEditor() {
           if (failure) setError(failure);
           else if (result) {
             setRendered(result);
+            setRenderedRecipe(completed.recipe);
             setRenderedGeometryKey(editorGeometryKey(completed.recipe));
             setError(null);
           }
@@ -303,7 +313,11 @@ export function useEditor() {
         const maxPixels = Math.min(
           pixelBudget,
           localPixelBudget(),
-          !existingRecipe || existingRecipe.schemaVersion === 3 ? 16_777_216 : 67_108_864,
+          !existingRecipe ||
+            existingRecipe.schemaVersion === 3 ||
+            existingRecipe.schemaVersion === 4
+            ? 16_777_216
+            : 67_108_864,
         );
         const maxDimension = maxPixels > 16_777_216 ? 16384 : 8192;
         if (
@@ -316,7 +330,7 @@ export function useEditor() {
             `原图 ${header.width}×${header.height}，超过当前 ${(maxPixels / 1e6).toFixed(1)} 百万像素 / 单边 ${maxDimension}px 预算。可在导入设置中明确调整设备预算；不会自动缩小原图。`,
           );
         if (generation !== loadGeneration.current || !isCurrent()) return false;
-        const safeRecipe = existingRecipe ? parseEditorRecipe(existingRecipe) : createRecipeV3();
+        const safeRecipe = existingRecipe ? parseEditorRecipe(existingRecipe) : createRecipeV4();
         const mime =
           header.format === 'jpeg'
             ? 'image/jpeg'
@@ -372,7 +386,9 @@ export function useEditor() {
         const preview = { width: pixels.width, height: pixels.height, data: pixels.data };
         const resolved = new Map<string, Awaited<ReturnType<typeof decodeImageSource>>>();
         let layerPixelCount = 0;
-        for (const layer of safeRecipe.schemaVersion === 3 ? safeRecipe.imageLayers : []) {
+        for (const layer of safeRecipe.schemaVersion === 3 || safeRecipe.schemaVersion === 4
+          ? safeRecipe.imageLayers
+          : []) {
           if (resolved.has(layer.sourceId)) continue;
           if (generation !== loadGeneration.current || !isCurrent()) return false;
           const reference = references.get(layer.sourceId);
@@ -420,16 +436,22 @@ export function useEditor() {
         setDimensions({ width: full.width, height: full.height });
         setOriginalPreview(preview);
         setRendered(preview);
+        setRenderedRecipe(null);
         setRenderedGeometryKey(editorGeometryKey(createRecipeV3()));
         resetHistory(safeRecipe);
         setActiveRegionId(null);
         setActiveMaskPath([]);
         setActivePaintLayerId(null);
         setActiveImageLayerId(null);
+        setActiveRepairId(null);
+        setRepairMode('healing');
+        setRepairProtection(false);
+        setRepairChoosingSource(false);
         setPaintSettings({ ...INITIAL_PAINT });
         setWarpSettings({ ...INITIAL_WARP });
         setBrushState({ ...DEFAULT_BRUSH });
         setMaskOverlay(true);
+        setGeometryMode('crop');
         return true;
       } finally {
         bitmap?.close();
@@ -474,7 +496,10 @@ export function useEditor() {
       const decoded = await decodeImageSource(incoming);
       if (identity !== sourceIdentity.current || loadBusy.current)
         throw new Error('素材读取期间底图已改变，请重新添加。');
-      const current = migrateRecipeToV3(recipeRef.current);
+      const current =
+        recipeRef.current.schemaVersion === 3
+          ? recipeRef.current
+          : migrateRecipeToV4(recipeRef.current);
       if (current.imageLayers.length >= 8) throw new Error('当前工作稿最多保留 8 个合成图层。');
       const uniqueFiles = new Set<File>();
       const total =
@@ -534,6 +559,50 @@ export function useEditor() {
     },
     [commit],
   );
+  /** Attach verified shared image sources without reopening or replacing the base photograph. */
+  const ensureLayerSources = useCallback(
+    async (references: ReadonlyMap<string, File>, isCurrent: () => boolean = () => true) => {
+      const identity = sourceIdentity.current;
+      const decoded = new Map<string, Awaited<ReturnType<typeof decodeImageSource>>>();
+      for (const [sourceId, incoming] of references) {
+        if (layerFiles.current.has(sourceId)) continue;
+        const value = await decodeImageSource(incoming);
+        if (identity !== sourceIdentity.current || loadBusy.current || !isCurrent())
+          throw new Error('合成素材载入期间作品已改变。');
+        decoded.set(sourceId, value);
+      }
+      const files = new Set<File>();
+      let total = 0;
+      for (const [id, dims] of layerDimensions.current) {
+        const file = layerFiles.current.get(id);
+        if (!file || files.has(file)) continue;
+        files.add(file);
+        total += dims.width * dims.height;
+      }
+      for (const value of decoded.values()) total += value.original.width * value.original.height;
+      if (total > 16_777_216)
+        throw new Error('共享图层超出本次会话 16.8MP 素材预算，请保存草稿后重新打开作品。');
+      if (identity !== sourceIdentity.current || loadBusy.current || !isCurrent())
+        throw new Error('共享素材已失效，请重试。');
+      for (const [sourceId, value] of decoded) {
+        layerFiles.current.set(sourceId, value.file);
+        layerDimensions.current.set(sourceId, {
+          width: value.original.width,
+          height: value.original.height,
+        });
+        worker.current?.postMessage(
+          { type: 'image-source', sourceId, image: value.preview, original: value.original },
+          [value.original.data.buffer],
+        );
+      }
+      if (decoded.size)
+        setLayerImages(
+          (old) =>
+            new Map([...old, ...[...decoded].map(([id, value]) => [id, value.preview] as const)]),
+        );
+    },
+    [],
+  );
   const getLayerFiles = useCallback(() => new Map(layerFiles.current), []);
   const rekeyImageSources = useCallback(
     (mapping: ReadonlyMap<string, string>) => {
@@ -553,7 +622,7 @@ export function useEditor() {
         }
         return next;
       });
-      if (recipeRef.current.schemaVersion === 3)
+      if (recipeRef.current.schemaVersion === 3 || recipeRef.current.schemaVersion === 4)
         commit(
           {
             ...recipeRef.current,
@@ -677,14 +746,14 @@ export function useEditor() {
         );
       const next = parseEditorRecipe(JSON.parse(text));
       if (
-        next.schemaVersion === 3 &&
+        (next.schemaVersion === 3 || next.schemaVersion === 4) &&
         next.imageLayers.some((l) => !layerFiles.current.has(l.sourceId))
       )
         throw new Error(
           '配方引用的合成素材不在本会话中。请从云端项目打开完整作品，或先恢复所引用的素材。',
         );
       if (
-        next.schemaVersion === 3 &&
+        (next.schemaVersion === 3 || next.schemaVersion === 4) &&
         sourceRef.current &&
         sourceRef.current.width * sourceRef.current.height > 16_777_216
       )
@@ -705,6 +774,14 @@ export function useEditor() {
     setActivePaintLayerId,
     activeImageLayerId,
     setActiveImageLayerId,
+    activeRepairId,
+    setActiveRepairId,
+    repairMode,
+    setRepairMode,
+    repairProtection,
+    setRepairProtection,
+    repairChoosingSource,
+    setRepairChoosingSource,
     paintSettings,
     setPaintSettings,
     warpSettings,
@@ -712,6 +789,8 @@ export function useEditor() {
     layerImages,
     importImageLayer,
     getLayerFiles,
+    ensureLayerSources,
+    acceptRemoteRecipe: resetHistory,
     rekeyImageSources,
     sourceFormat,
     activeRegionId,
@@ -728,6 +807,9 @@ export function useEditor() {
     history,
     historyIndex,
     rendered,
+    renderedRecipe,
+    geometryMode,
+    setGeometryMode,
     renderedGeometryKey,
     originalPreview,
     rendering,
@@ -750,11 +832,13 @@ export function useEditor() {
     importRecipe,
     reset: () =>
       commit(
-        recipeRef.current.schemaVersion === 3
-          ? createRecipeV3()
-          : recipeRef.current.schemaVersion === 2
-            ? createRecipeV2()
-            : createRecipe(),
+        recipeRef.current.schemaVersion === 4
+          ? createRecipeV4()
+          : recipeRef.current.schemaVersion === 3
+            ? createRecipeV3()
+            : recipeRef.current.schemaVersion === 2
+              ? createRecipeV2()
+              : createRecipe(),
         '恢复原图',
       ),
   };

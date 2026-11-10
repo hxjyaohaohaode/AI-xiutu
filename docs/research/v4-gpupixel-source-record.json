@@ -1,0 +1,27 @@
+[
+  {
+    "url": "https://raw.githubusercontent.com/pixpark/gpupixel/main/src/filter/beauty_face_filter.cc",
+    "bytes": 2369,
+    "sha256": "56a3063b8a25cde359a7d6b0b1490d2acbdecc8a0dea5d55c4817a5dfa5890f9"
+  },
+  {
+    "url": "https://raw.githubusercontent.com/pixpark/gpupixel/main/src/filter/face_makeup_filter.cc",
+    "bytes": 16347,
+    "sha256": "221abdb1de167970a9f47d337ceaf58f2176155e1e433ac11e2700dfd1009327"
+  },
+  {
+    "url": "https://raw.githubusercontent.com/pixpark/gpupixel/main/src/filter/face_reshape_filter.cc",
+    "bytes": 9163,
+    "sha256": "117dfbd9f28259672daef5f2daeb92cec216bbd085d2f0fca02b2ad0f4b21eed"
+  },
+  {
+    "url": "https://raw.githubusercontent.com/pixpark/gpupixel/main/src/face_detector/face_detector.cc",
+    "bytes": 2255,
+    "sha256": "21fe96c130044e8e7f44e41aa8b3581f5e8cc76dcf3da03516095153052428b9"
+  },
+  {
+    "url": "https://raw.githubusercontent.com/pixpark/gpupixel/main/LICENSE",
+    "bytes": 11357,
+    "sha256": "c71d239df91726fc519c6eb72d318ec65820627232b2f796219e87dcf35d0ab4"
+  }
+]

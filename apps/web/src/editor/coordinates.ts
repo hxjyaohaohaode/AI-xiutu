@@ -1,12 +1,32 @@
 import { compileEditorCoordinateMap, type EditorRecipe, type Point } from '@ai-xiutu/editor';
 
+/** Off-frame handles are valid; a projective horizon has no finite UI location. */
+export function projectOverlayPoint(point: Point, project: (point: Point) => Point): Point | null {
+  try {
+    const value = project(point);
+    return Number.isFinite(value.x) && Number.isFinite(value.y) ? value : null;
+  } catch {
+    return null;
+  }
+}
+export function projectOverlayPath(
+  points: Point[],
+  project: (point: Point) => Point,
+): Point[] | null {
+  const mapped = points.map((point) => projectOverlayPoint(point, project));
+  return mapped.every((point): point is Point => point !== null) ? mapped : null;
+}
+
 /** Everything that changes the relationship between rendered pixels and source pixels. */
 export function editorGeometryKey(recipe: EditorRecipe) {
   return JSON.stringify({
     geometry: recipe.geometry,
-    transform: recipe.schemaVersion === 3 ? recipe.transform : null,
+    projective: recipe.schemaVersion === 4 ? recipe.projective : null,
+    transform: recipe.schemaVersion === 3 || recipe.schemaVersion === 4 ? recipe.transform : null,
     warp:
-      recipe.schemaVersion === 3 && recipe.warp.enabled && recipe.warp.strokes.length > 0
+      (recipe.schemaVersion === 3 || recipe.schemaVersion === 4) &&
+      recipe.warp.enabled &&
+      recipe.warp.strokes.length > 0
         ? recipe.warp
         : null,
   });
@@ -24,7 +44,16 @@ export function sourcePointer(
     x: (client.x - frame.left) / frame.width,
     y: (client.y - frame.top) / frame.height,
   };
-  const mapped = content ? map.toContent(output) : map.toSource(output);
+  // The inverse alone can point into a valid original pixel which an earlier
+  // crop removed. Test every geometry viewport before evaluating that inverse.
+  // This is geometric visibility, not alpha: transparent source pixels can be painted.
+  if (bounds === 'strict' && !map.containsOutput(output)) return null;
+  let mapped: Point;
+  try {
+    mapped = content ? map.toContent(output) : map.toSource(output);
+  } catch {
+    return null;
+  }
   if (!Number.isFinite(mapped.x) || !Number.isFinite(mapped.y)) return null;
   if (bounds === 'strict') {
     // A contained rotation has transparent corners: these have no source pixel.

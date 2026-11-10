@@ -9,6 +9,7 @@ import {
   type Adjustments,
   type RecipeV2,
   type RecipeV3,
+  type RecipeV4,
 } from '@ai-xiutu/editor';
 import { ProviderError } from '@ai-xiutu/providers';
 import { postBoundedJson, MultimodalProviderError } from '@ai-xiutu/multimodal';
@@ -51,7 +52,7 @@ export interface PreparedPlan {
   hash: string;
   moderationText: string;
 }
-function readNumericPath(recipe: RecipeV2 | RecipeV3, path: string): number {
+function readNumericPath(recipe: RecipeV2 | RecipeV3 | RecipeV4, path: string): number {
   let value: unknown = recipe;
   for (const key of path.split('.')) value = (value as Record<string, unknown>)[key];
   return value as number;

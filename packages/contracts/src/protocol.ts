@@ -180,6 +180,8 @@ export interface StorageAccountSummary {
   maxBytes: number;
   maxAssets: number;
   retainedBytes: number;
+  /** Outstanding advanced media import reservations; included in the capacity gate. */
+  reservedMediaBytes?: number;
   retainedAssets: number;
   accounting: 'retained-logical-assets';
   softDeleteReclaimsCapacity: false;

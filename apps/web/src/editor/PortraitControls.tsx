@@ -42,15 +42,22 @@ export function PortraitControls({
     ...recipe.regionEdits,
     ...recipe.paintLayers,
     ...recipe.warp.strokes,
+    ...(recipe.schemaVersion === 4 ? [...recipe.retouch, ...recipe.healing] : []),
   ].filter((item) => item.origin?.instanceId === target?.id);
   const hasAutomatic = targetOperations.some(
-    (item) => item.origin?.moduleId === 'portrait.basic.v1',
+    (item) =>
+      item.origin?.moduleId === 'portrait.basic.v1' ||
+      item.origin?.moduleId === 'portrait.basic.v2',
   );
   const hasManual = targetOperations.some((item) => item.origin?.moduleId === 'portrait.manual.v1');
   const values = target ? portraitValues(recipe, target.id) : {};
   const existingColors = target ? portraitMakeupColors(recipe, target.id) : {};
   const availability =
-    state.analysis && target ? portraitToolAvailability(state.analysis, target.id) : [];
+    state.analysis && target
+      ? portraitToolAvailability(state.analysis, target.id, recipe.schemaVersion)
+      : [];
+  const hasLegacyNeck =
+    recipe.schemaVersion === 4 && category === 'body' && (values.neckLength ?? 0) !== 0;
   const colorKey = [state.analysis?.frame.contentHash, target?.id, makeupTool].join(':');
   const color = existingColors[makeupTool] ?? draftColors[colorKey] ?? [178, 66, 86, 255];
   function detach() {
@@ -137,6 +144,27 @@ export function PortraitControls({
       report(error instanceof Error ? error.message : '这个人物控制当前无法使用，请检查识别范围。');
     }
   }
+  function clearLegacyNeck() {
+    if (!state.analysis || !target) return;
+    try {
+      const latest = currentV3(editor);
+      if (latest.schemaVersion !== 4) return;
+      apply(
+        applyPortraitValues(
+          latest,
+          state.analysis,
+          target.id,
+          { ...portraitValues(latest, target.id), neckLength: 0 },
+          undefined,
+          { makeupColors: portraitMakeupColors(latest, target.id) },
+        ),
+        '清除旧颈部效果',
+        true,
+      );
+    } catch (failure) {
+      report(errorMessage(failure));
+    }
+  }
   return (
     <section className="advanced-tool-family portrait-controls-v3" data-motion="portrait-controls">
       <div className="tonal-tabs portrait-categories" aria-label="人像工具类别">
@@ -206,6 +234,16 @@ export function PortraitControls({
       )}
       {target && (
         <>
+          {hasLegacyNeck && (
+            <div className="portrait-ownership-note" role="status">
+              <p className="control-note">
+                当前作品仍保留旧颈部效果。这个自动工具已暂停新增调整；清除旧效果后可继续调节其他身形参数，其他人物参数与妆容保持，可撤销。
+              </p>
+              <button className="text-button" onClick={clearLegacyNeck}>
+                清除旧颈部效果
+              </button>
+            </div>
+          )}
           {category === 'makeup' && (
             <div className="tonal-tabs" aria-label="妆容区域">
               {PORTRAIT_TOOLS.filter((tool) => tool.group === 'makeup').map((tool) => (

@@ -6,6 +6,7 @@ import {
   timingSafeEqual,
 } from 'node:crypto';
 import type { FastifyRequest, FastifyReply } from 'fastify';
+import type {} from '@fastify/cookie';
 import { z } from 'zod';
 import type { Database, Queryable } from '@ai-xiutu/db';
 import type { AppConfig } from './config.js';
@@ -219,7 +220,7 @@ export const assetDto = (a: Record<string, any>) => ({
   source:
     a.provenance?.kind === 'ai-generated'
       ? 'generated'
-      : a.provenance?.kind === 'uploaded'
+      : a.provenance?.kind === 'uploaded' || a.provenance?.kind === 'media-import'
         ? a.provenance.declaredSource === 'sketch'
           ? 'sketch'
           : 'upload'

@@ -1,0 +1,124 @@
+# @ai-xiutu/media：受控原件、母版、预览和瓦片
+
+本包在独立 Linux 子进程中完成真实解码、ICC 转换、16 位母版生成、代理图与 Deep Zoom 瓦片。它与浏览器 RGBA8 编辑器分开：**200MP 导入/查看、16 位母版导出，不等于 200MP 或 16 位浏览器配方编辑**。
+
+## 使用与输出身份
+
+公开入口在 `src/index.ts`：
+
+```ts
+const descriptor = await processMedia({
+  inputPath: '/private/imports/upload.bin',
+  workDir: '/private/media/new-uuid',
+  originalName: 'camera.NEF',
+  signal,
+  options: {
+    maxPixels: 200_000_000,
+    maxProxyPixels: 4_194_304,
+    generateTiles: true,
+    tileSize: 512,
+    pythonExecutable: '/opt/media-venv/bin/python',
+  },
+});
+const output = await exportMedia({
+  workDir: '/private/media/new-uuid',
+  outputPath: '/private/exports/new.png',
+  format: 'png16',
+  signal,
+});
+// output.includesEditorRecipe === false
+```
+
+路径只来自服务器可信存储层，绝不能接受用户任意路径或 URL。`workDir` 必须是新的私有目录，`outputPath` 必须未存在；两个并发任务竞争同一目录时只能有一个成功，失败者不删除另一个的结果。创建 `.partial` 内容，所有文件成功后最后发布 `descriptor.json`。取消/超时杀死进程组并清理本任务拥有的目录或导出文件。
+
+`MediaDescriptorV1` 的固定协议为 `media-v1`：
+
+| 输出                      | 保存内容                                                   | 精度与使用方式                                       |
+| ------------------------- | ---------------------------------------------------------- | ---------------------------------------------------- |
+| `original.bin`            | 上传的原编码逐字节复制与 SHA-256                           | 原始元数据、RAW 传感器内容和源 ICC 保留在这里        |
+| `master.tif`              | 应用方向与明确色彩转换后的 sRGB、deflate、256px tiled TIFF | uint16 SDR 工作母版；低位深源不会凭空增加真实信息    |
+| `proxy.png`               | 限定像素数的 sRGB RGBA8                                    | 用于浏览器现有编辑器；尺寸与母版分别记录             |
+| `linear-master.exr`       | 仅 HDR 导入：解码后、未色调映射的 float32 线性数据窗口     | 保留线性 RGB(A) 动态范围，和 SDR 母版分开            |
+| `tiles.dzi / tiles_files` | 整幅母版的 JPEG 金字塔                                     | 用于大图查看；透明区域对白底合成，仅影响这些查看瓦片 |
+
+`proxy.normalizedDimensions` 是方向归一化后的母版尺寸，`proxy.width/height` 才是预览像素尺寸。浏览器配方绑定的是它实际加载的源像素哈希，不能把代理哈希冒充原文件哈希。
+
+DZI：`tileSize` 为 256/512/1024，`overlap:1`；`levels = ceil(log2(max(width,height))) + 1`，最大层编号为 `levels−1`。边缘瓦片有 overlap 时，请按完整 DZI 坐标放置与裁切。描述中的 tile bytes/count 不包括所有母版/原件；存储额度应由上层对真实文件树计量。
+
+母版导出支持 `png16/tiff16/jpeg/webp`。编码前核对固定母版路径、尺寸、位深、文件类型、字节数和 SHA-256。发生篡改/损坏时拒绝用旧来源身份导出。PNG/TIFF 保留 16 位编码；JPEG/WebP 为 8 位，JPEG 透明转白。返回值明确 `includesEditorRecipe:false`。浏览器的修图配方目前没有被完整重放到高位深母版；这个开关不能删除或改成含糊文案。
+
+## 实际格式矩阵
+
+| 输入                                         | 已落地的处理                                                   | 边界                                                                  |
+| -------------------------------------------- | -------------------------------------------------------------- | --------------------------------------------------------------------- |
+| JPEG、PNG、WebP、TIFF、单帧 GIF、AVIF        | sharp/libvips 实际解码；常规原图、alpha、方向处理              | 单幅静态；运行时编解码能力决定具体可用格式                            |
+| RGB/灰度 8/16 位                             | uint16 SDR 母版；有 RGB ICC 时转换到 sRGB                      | 无 ICC 的 RGB 明确按 sRGB 解释                                        |
+| CMYK JPEG/TIFF                               | 只接受带 ICC 的 8 位输入，由真实 CMS 转 sRGB                   | 无 ICC 拒绝；高位深 CMYK 拒绝；不是 CMYK 印前编辑/输出                |
+| PSD v1 RGB/灰度 8/16 位                      | ag-psd 读取文件已保存合成图；有界图层名/边界/隐藏状态          | 不重新渲染文字、智能对象、效果；没有可编辑图层往返；PSB/CMYK/32位拒绝 |
+| Camera RAW                                   | 可选 rawpy/LibRaw，16 位 demosaic、相机白平衡、固定 sRGB gamma | 全传感器至多50MP；不是厂商原生色彩/镜头匹配；相机支持取决于 LibRaw    |
+| EXR/Radiance                                 | 可选 OpenImageIO，flat 1/3/4 通道 float 解码与独立线性母版     | 至多50MP；deep、multipart、未知显式色域/曲线拒绝                      |
+| 浮点 TIFF、SVG/PDF、JXL/JP2、动画/多页、HEIC | 当前没有完整开启的导入工作流                                   | 不能凭扩展名、依赖中的 decoder 名称或文件选择器宣称支持               |
+
+本机验证过 JPEG、PNG、WebP、AVIF、GIF、16 位 TIFF/PNG、RGB8/RGB16 PSD、P3 ICC、CMYK JPEG/TIFF、实际 Nikon NEF、float EXR 与 Radiance。RAW 实测只覆盖一个真实相机样本，不能推广为所有相机 RAW 已通过。具体证据见 `test/media.test.ts`、`scripts/qa/media-verify.ts` 和核查报告。
+
+### ICC 与元数据
+
+对嵌入 RGB ICC 做一次显式转换；untagged RGB 使用明确 sRGB 假设。处理已知 sRGB 母版时禁用隐式 ICC 二次变换。当前 sharp 0.35 的 RGB16 默认处理中间 profile 可能是 P3，本实现避免把原来 sRGB 数值再隐式改变。测试对相邻 ushort 值做逐值相等比较，P3/CMYK 则和实际 CMS 参考输出比较。
+
+PNG iCCP 与单页 classic TIFF ICC 元数据插入不改变已编码样本；相关读写处理短读/短写，不依赖一次系统调用一定写完整。不是任意 TIFF 编辑器，不支持 BigTIFF/多页重写。
+
+`original.metadataSummary` 说明检查深度：普通 raster 为 `full`（只提取方向/EXIF是否存在/XMP是否存在/ICC摘要/页数），PSD 为 `icc-only`，可选原生解码为 `not-inspected`。这里的 full 是这个摘要的完整范围，**不是任意 EXIF/GPS 标签已全部解析**。未知值用 null，不能假报为不存在。原编码仍完整保留。相机时间/GPS 的编辑、选择性剥离以及完整 IPTC/XMP 标签表是后续独立工作；敏感元数据不应默认公开到团队。
+
+RAW `bitDepth` 来自 LibRaw 白电平可表达位数，`sampleEncoding:'sensor-raw'`、`decodedBitDepth:16` 区分传感器与输出。Radiance 是 RGBE 共享指数：描述为 8 位 RGB 尾数、`sampleEncoding:'rgbe'`、解码 float32；不能当成普通8位SDR，也不能称源文件每通道32位浮点。
+
+### HDR 的明确解释
+
+仅接受明确/默认线性 Rec.709/sRGB 的输入；显式 ACEScg、非 Rec.709 chromaticities、未认可的 transfer/primaries 拒绝，要求先用可信色彩配置转换。没有色域标签的 HDR 会标示假设，不能推断其物理准确性。
+
+SDR 母版采用固定亮度 Reinhard：非负线性 RGB 除以 `1+Y`，再 sRGB 编码并裁切 SDR 范围。RGBA 按 OIIO 默认 associated alpha 读取，做非线性色调映射前解除预乘，并将 TIFF 声明为 straight alpha。负值/超出 SDR 色域的值只在 SDR 结果裁切，float 母版与原件分别保留。此模块没有浏览器 HDR 显示、PQ/HLG 编辑、全套 OCIO 配置和 HDR 配方往返。
+
+## 部署与资源治理
+
+默认 Node 24 + 固定依赖 `sharp@0.35.5/ag-psd@34.1.0`。可选原生环境单独创建：
+
+```sh
+python3 -m venv /opt/media-venv
+/opt/media-venv/bin/pip install -r packages/media/native/requirements.txt
+```
+
+requirements 固定 rawpy 0.28.0、OpenImageIO 3.2.2.0、numpy 2.4.2。`getMediaCapabilities({pythonExecutable})` 同时返回 `nativeConfigured`（可信路径可执行）和 `nativeReady/nativeVersions`（实际 import 探测结果）。路径存在不等于依赖能导入，依赖能导入也不等于任意文件能解码。
+
+当前 worker 是项目内 TypeScript 固定入口，父进程用 `--import tsx` 启动；部署要保留此包的 `src/worker.ts`、`native/convert.py`、tsx 及本项目目录结构。它不是可随意只复制一个编译后 index.js 的独立二进制包。
+
+| 资源               | 当前值                                                                        |
+| ------------------ | ----------------------------------------------------------------------------- |
+| 普通 raster 源像素 | 至多200,000,000；宽高各不超过65535                                            |
+| 输入文件           | 至多512MiB                                                                    |
+| 代理图             | 至多4,194,304像素                                                             |
+| RAW/HDR            | 至多50MP，原生步骤仍会分配整幅数组                                            |
+| PSD                | 至多16,777,216像素、128MiB编码、256元数据节点、解析器内存预算512MiB           |
+| 并发队列           | 每个API进程1执行、8等待；不是分布式队列                                       |
+| wall timeout       | 默认180s，可配置1～600s                                                       |
+| Linux prlimit      | 默认每进程地址空间4GiB，可配置1～8GiB；单文件2GiB、文件描述符128、CPU时间有界 |
+| Node/decoder       | JS堆512MiB、jitless；sharp1线程、cache32MiB                                   |
+| 瓦片数             | 至多8192                                                                      |
+
+`prlimit` 是资源隔离，**不是 syscall、文件系统或网络沙箱**。生产部署还需非 root 容器、只读根目录、仅挂载工作目录、网络禁止、进程组总 cgroup 内存与真实磁盘配额。Node 和 Python 各自受地址空间限制，不代表两者总 RSS 严格等于那个值。单文件限额不等于整个作业目录磁盘限额。
+
+worker 不获得应用密钥/代理密码/AI provider key；API 上层负责登录、空间授权、资产 ACL、计费、任务持久状态和被撤权后停止服务。UUID 不是权限凭据。进程崩溃时留在私有工作目录的半成品需要上层重启清理策略。
+
+## 真实验证与可重复命令
+
+普通 `npm test -w @ai-xiutu/media` 不下载模型、不访问收费 API。覆盖真实编码/ICC/高位深/透明度/PSD、来源保留、取消、资源拒绝、并发输出冲突、损坏输入和母版完整性。
+
+可选独立验收：
+
+```sh
+MEDIA_QA_PYTHON=/absolute/venv/bin/python \
+MEDIA_QA_RAW=/absolute/authorized/sample.NEF \
+node --import tsx scripts/qa/media-verify.ts --large
+```
+
+输出 `artifacts/media-v4/evidence.json`。`--large` 创建真实20,000×10,000 uint16非均匀梯度TIFF，走完整母版、代理和瓦片，并测试真实处理中取消/超时。该梯度高度可压缩，不能把它的耗时/内存推广成200MP摄影文件的最坏上限，也没有测试200MP逐像素浏览器编辑。
+
+依赖许可与待接入项目的代码/权重区别见 [研究矩阵](../../docs/research/v4-image-media.md)。

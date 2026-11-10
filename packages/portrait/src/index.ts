@@ -6,6 +6,7 @@ export {
   contourLoops,
   contourHull,
   facialMasks,
+  facialMasksV4,
   validateTarget,
 } from './geometry.js';
 export {
@@ -20,3 +21,9 @@ export { validatePortraitAnalysis } from './validation.js';
 export { createPortraitAnalysisAdapter } from './adapter.js';
 export type { PortraitAnalysisDriver, PortraitAnalysisInput } from './adapter.js';
 export type { MakeupColor, PortraitApplyOptions, PortraitToolAvailability } from './plans.js';
+export { createPortraitPixelAdapter } from './retouch-adapter.js';
+export type {
+  PortraitPixelDriver,
+  PortraitPixelInput,
+  PortraitPixelOperation,
+} from './retouch-adapter.js';

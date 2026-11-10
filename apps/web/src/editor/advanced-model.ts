@@ -4,9 +4,10 @@ import {
   V3_TOOLS,
   createColorBlockV3,
   parseRecipeV3,
+  parseRecipeV4,
   getEditorOutputDimensions,
   type ColorBlockV3,
-  type RecipeV3,
+  type LayeredRecipe,
   type SelectionMaskV3,
   type Dimensions,
 } from '@ai-xiutu/editor';
@@ -37,17 +38,18 @@ export const NUMERIC_CONTROLS: readonly NumericDefinition[] = [
 ];
 export type InspectorController = {
   editor: EditorState;
-  apply: (next: RecipeV3, label: string, commit?: boolean) => boolean;
+  apply: (next: LayeredRecipe, label: string, commit?: boolean) => boolean;
   report: (message: string | null) => void;
 };
-export const currentV3 = (editor: EditorState): RecipeV3 => {
+export const currentV3 = (editor: EditorState): LayeredRecipe => {
   const recipe = editor.getRecipe();
-  if (recipe.schemaVersion !== 3) throw new Error('当前配方版本已经改变，请重新打开工具。');
+  if (recipe.schemaVersion !== 3 && recipe.schemaVersion !== 4)
+    throw new Error('当前配方版本已经改变，请重新打开工具。');
   return recipe;
 };
 export const scopeKey = (scope: EditScope) =>
   scope.kind === 'global' ? 'global' : scope.kind + ':' + scope.id;
-export function scopeColor(recipe: RecipeV3, scope: EditScope): ColorBlockV3 {
+export function scopeColor(recipe: LayeredRecipe, scope: EditScope): ColorBlockV3 {
   if (scope.kind === 'global')
     return {
       adjustments: recipe.adjustments,
@@ -66,7 +68,11 @@ export function scopeColor(recipe: RecipeV3, scope: EditScope): ColorBlockV3 {
   if (!value) throw new Error('作用范围已不存在，请重新选择。');
   return value.color;
 }
-export function withScopeColor(recipe: RecipeV3, scope: EditScope, color: ColorBlockV3): RecipeV3 {
+export function withScopeColor(
+  recipe: LayeredRecipe,
+  scope: EditScope,
+  color: ColorBlockV3,
+): LayeredRecipe {
   if (scope.kind === 'global') return { ...recipe, ...color };
   scopeColor(recipe, scope); // fail closed on a deleted scope
   return scope.kind === 'region'
@@ -107,11 +113,11 @@ export function withNumeric<T extends object>(
   return next;
 }
 export function checkedRecipe(
-  next: RecipeV3,
+  next: LayeredRecipe,
   dimensions: Dimensions | null,
   budget = 16_777_216,
-): RecipeV3 {
-  const recipe = parseRecipeV3(next);
+): LayeredRecipe {
+  const recipe = next.schemaVersion === 4 ? parseRecipeV4(next) : parseRecipeV3(next);
   if (dimensions) {
     const result = getEditorOutputDimensions(dimensions, recipe);
     if (result.width * result.height > Math.min(16_777_216, budget))

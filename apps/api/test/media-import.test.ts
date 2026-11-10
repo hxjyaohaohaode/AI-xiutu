@@ -1,0 +1,338 @@
+import test from 'node:test';
+import assert from 'node:assert/strict';
+import { randomUUID, createHash } from 'node:crypto';
+import { setTimeout as delay } from 'node:timers/promises';
+import { mkdir, writeFile, readFile, rm } from 'node:fs/promises';
+import { join } from 'node:path';
+import sharp from 'sharp';
+import { collaborationFixture } from './collaboration-fixture.js';
+
+const databaseUrl = process.env.TEST_DATABASE_URL;
+const chunkSize = 4 * 1024 * 1024;
+const sha = (buffer: Buffer) => createHash('sha256').update(buffer).digest('hex');
+test(
+  'media HTTP workflow uses real isolated decoding, resumable bytes, retained originals and ACL',
+  { skip: !databaseUrl || process.platform !== 'linux' },
+  async (t) => {
+    const originalEnabled = process.env.MEDIA_ADVANCED_ENABLED;
+    process.env.MEDIA_ADVANCED_ENABLED = 'true';
+    const f = await collaborationFixture(databaseUrl!);
+    const put = (
+      jobId: string,
+      offset: number,
+      bytes: Buffer,
+      actor: 'owner' | 'editor' | 'outsider' = 'owner',
+    ) =>
+      f.app.inject({
+        method: 'PUT',
+        url: `/v1/media-imports/${jobId}/chunk?offset=${offset}`,
+        headers: {
+          origin: f.origin,
+          cookie: f.actors[actor].cookie,
+          'content-type': 'application/octet-stream',
+        },
+        payload: bytes,
+      });
+    const start = (size: number, idempotencyKey = randomUUID(), name = 'high precision.png') =>
+      f.call('POST', `/v1/projects/${f.projectId}/media-imports`, {
+        size,
+        name,
+        idempotencyKey,
+        generateTiles: true,
+      });
+    async function waitDone(jobId: string) {
+      const until = Date.now() + 30000;
+      while (Date.now() < until) {
+        const response = await f.call('GET', `/v1/media-imports/${jobId}`);
+        assert.equal(response.statusCode, 200, response.body);
+        const result = response.json();
+        if (result.job.state !== 'processing') return result;
+        await delay(40);
+      }
+      throw new Error('Media processing exceeded the local verification deadline');
+    }
+    try {
+      const available = await f.call('GET', '/v1/media-capabilities');
+      assert.equal(available.statusCode, 200, available.body);
+      assert.equal(available.json().available, true);
+      // Real PNG16 fixture, deliberately uncompressed and larger than one chunk.
+      const raw = Buffer.alloc(1024 * 768 * 4);
+      for (let p = 0; p < raw.length; p += 4) {
+        raw[p] = (p / 4) % 251;
+        raw[p + 1] = (p / 4096) % 241;
+        raw[p + 2] = (p / 64) % 239;
+        raw[p + 3] = 255;
+      }
+      const original = await sharp(raw, { raw: { width: 1024, height: 768, channels: 4 } })
+        .toColourspace('rgb16')
+        .png({ compressionLevel: 0 })
+        .toBuffer();
+      assert.equal((await sharp(original).metadata()).depth, 'ushort');
+      assert.ok(original.length > chunkSize);
+      let jobId = '',
+        importedAsset = '',
+        descriptor: any;
+      const baseline = (await f.call('GET', `/v1/spaces/${f.teamId}/storage`)).json().storage;
+      await t.test(
+        'start binds idempotency and reserves bytes; chunk retry verifies exact content and offsets',
+        async () => {
+          const key = randomUUID(),
+            created = await start(original.length, key);
+          assert.equal(created.statusCode, 201, created.body);
+          jobId = created.json().job.id;
+          assert.equal((await start(original.length, key)).json().job.id, jobId);
+          assert.equal((await start(original.length, key, 'different.png')).statusCode, 409);
+          const budget = (await f.call('GET', `/v1/spaces/${f.teamId}/storage`)).json().storage;
+          assert.equal(budget.reservedMediaBytes, original.length);
+          assert.equal(
+            (await f.call('GET', `/v1/media-imports/${jobId}`, undefined, 'outsider')).statusCode,
+            404,
+          );
+          assert.equal(
+            (await put(jobId, 0, original.subarray(0, chunkSize), 'editor')).statusCode,
+            404,
+          );
+          assert.equal((await put(jobId, 1, original.subarray(0, 32))).statusCode, 409);
+          assert.equal((await put(jobId, 0, Buffer.alloc(chunkSize + 1))).statusCode, 413);
+          const first = await put(jobId, 0, original.subarray(0, chunkSize));
+          assert.equal(first.statusCode, 200, first.body);
+          assert.equal(first.json().uploadedBytes, chunkSize);
+          assert.equal((await put(jobId, 0, original.subarray(0, chunkSize))).statusCode, 200);
+          const changed = Buffer.from(original.subarray(0, 32));
+          changed[0] = changed[0]! ^ 1;
+          assert.equal((await put(jobId, 0, changed)).json().error.code, 'CHUNK_MISMATCH');
+          assert.equal(
+            (await put(jobId, chunkSize - 10, original.subarray(0, 20))).json().error.code,
+            'CHUNK_OVERLAP',
+          );
+          assert.equal(
+            (await f.call('POST', `/v1/media-imports/${jobId}/complete`)).statusCode,
+            409,
+          );
+          const second = await put(jobId, chunkSize, original.subarray(chunkSize));
+          assert.equal(second.statusCode, 200, second.body);
+          assert.equal(second.json().uploadedBytes, original.length);
+        },
+      );
+      await t.test(
+        'complete publishes only the actual normalized proxy and retains original, 16-bit master and DZI tiles',
+        async () => {
+          const first = await f.call('POST', `/v1/media-imports/${jobId}/complete`);
+          assert.equal(first.statusCode, 202, first.body);
+          assert.equal(
+            (await f.call('POST', `/v1/media-imports/${jobId}/complete`)).statusCode,
+            202,
+          );
+          const result = await waitDone(jobId);
+          assert.equal(result.job.state, 'ready', JSON.stringify(result.job));
+          importedAsset = result.asset.id;
+          const metadata = await f.call('GET', `/v1/assets/${importedAsset}/media`);
+          assert.equal(metadata.statusCode, 200, metadata.body);
+          descriptor = metadata.json().descriptor;
+          assert.equal(descriptor.original.bitDepth, 16);
+          assert.equal(descriptor.master.bitDepth, 16);
+          assert.equal(descriptor.proxy.bitDepth, 8);
+          assert.equal(metadata.json().editor.masterExportIncludesRecipe, false);
+          assert.equal(descriptor.original.width, 1024);
+          assert.equal(descriptor.original.height, 768);
+          const downloaded = await f.call('GET', metadata.json().downloads.original);
+          assert.equal(downloaded.statusCode, 200);
+          assert.equal(sha(downloaded.rawPayload), sha(original));
+          const master = await f.call('GET', metadata.json().downloads.master);
+          assert.equal(master.statusCode, 200);
+          assert.equal((await sharp(master.rawPayload).metadata()).depth, 'ushort');
+          const dzi = await f.call('GET', metadata.json().downloads.tiles);
+          assert.equal(dzi.statusCode, 200);
+          assert.match(dzi.body, /<Image/);
+          const tile = await f.call(
+            'GET',
+            `/v1/assets/${importedAsset}/media/tiles_files/${descriptor.tiles.levels - 1}/0_0.${descriptor.tiles.format}`,
+          );
+          assert.equal(tile.statusCode, 200);
+          assert.equal((await sharp(tile.rawPayload).metadata()).format, 'jpeg');
+          const budget = (await f.call('GET', `/v1/spaces/${f.teamId}/storage`)).json().storage;
+          const retained = Number(
+            (
+              await f.db.query('SELECT retained_bytes FROM media_sources WHERE asset_id=$1', [
+                importedAsset,
+              ])
+            ).rows[0]!.retained_bytes,
+          );
+          assert.equal(budget.reservedMediaBytes, 0);
+          assert.equal(
+            budget.retainedBytes - baseline.retainedBytes,
+            retained + result.asset.bytes,
+          );
+          assert.equal(budget.retainedAssets - baseline.retainedAssets, 1);
+        },
+      );
+      await t.test(
+        'download, tile and export authorization is checked separately; master export is explicit',
+        async () => {
+          for (const path of [
+            'media',
+            'media/original',
+            'media/master',
+            'media/tiles.dzi',
+            'media/tiles_files/0/0_0.jpeg',
+          ]) {
+            const r = await f.call(
+              'GET',
+              `/v1/assets/${importedAsset}/${path}`,
+              undefined,
+              'outsider',
+            );
+            assert.equal(r.statusCode, 404, `${path}: ${r.body}`);
+          }
+          assert.equal(
+            (
+              await f.call(
+                'POST',
+                `/v1/assets/${importedAsset}/media/export`,
+                { format: 'png16' },
+                'outsider',
+              )
+            ).statusCode,
+            404,
+          );
+          const converted = await f.call('POST', `/v1/assets/${importedAsset}/media/export`, {
+            format: 'png16',
+            quality: 100,
+          });
+          assert.equal(converted.statusCode, 200, converted.body.slice(0, 100));
+          assert.equal(converted.headers['x-editor-recipe-included'], 'false');
+          assert.equal((await sharp(converted.rawPayload).metadata()).depth, 'ushort');
+        },
+      );
+      await t.test(
+        'cancelling incomplete upload releases only its reservation and does not alter existing assets',
+        async () => {
+          const created = await start(1000);
+          assert.equal(created.statusCode, 201, created.body);
+          const cancelId = created.json().job.id;
+          assert.equal((await put(cancelId, 0, Buffer.from('incomplete'))).statusCode, 200);
+          assert.equal(
+            (await f.call('POST', `/v1/media-imports/${cancelId}/cancel`)).statusCode,
+            200,
+          );
+          assert.equal(
+            (await f.call('POST', `/v1/media-imports/${cancelId}/cancel`)).statusCode,
+            200,
+          );
+          const state = (await f.call('GET', `/v1/media-imports/${cancelId}`)).json();
+          assert.equal(state.job.state, 'cancelled');
+          assert.equal(
+            (await f.call('GET', `/v1/spaces/${f.teamId}/storage`)).json().storage
+              .reservedMediaBytes,
+            0,
+          );
+          assert.equal(
+            (await f.call('GET', `/v1/assets/${importedAsset}/media`)).json().descriptor
+              .sourceSha256,
+            descriptor.sourceSha256,
+          );
+          assert.equal((await f.call('POST', `/v1/media-imports/${jobId}/cancel`)).statusCode, 409);
+        },
+      );
+      await t.test(
+        're-importing identical pixels produces a separate original object, with no hash-based private link',
+        async () => {
+          const compact = await sharp(original).png({ compressionLevel: 9 }).toBuffer();
+          assert.notEqual(sha(compact), sha(original));
+          const created = await start(
+            compact.length,
+            randomUUID(),
+            'same pixels another encoding.png',
+          );
+          assert.equal(created.statusCode, 201, created.body);
+          const anotherId = created.json().job.id;
+          for (let offset = 0; offset < compact.length; offset += chunkSize)
+            assert.equal(
+              (await put(anotherId, offset, compact.subarray(offset, offset + chunkSize)))
+                .statusCode,
+              200,
+            );
+          assert.equal(
+            (await f.call('POST', `/v1/media-imports/${anotherId}/complete`)).statusCode,
+            202,
+          );
+          const result = await waitDone(anotherId);
+          assert.equal(result.job.state, 'ready', JSON.stringify(result.job));
+          const another = (await f.call('GET', `/v1/assets/${result.asset.id}/media`)).json()
+            .descriptor;
+          assert.equal(another.sourceSha256, sha(compact));
+          assert.notEqual(another.sourceSha256, descriptor.sourceSha256);
+          const objects = (
+            await f.db.query('SELECT object_id FROM media_sources WHERE asset_id=ANY($1::uuid[])', [
+              [importedAsset, result.asset.id],
+            ])
+          ).rows;
+          assert.equal(new Set(objects.map((row) => row.object_id)).size, 2);
+          assert.equal(
+            (await f.call('GET', `/v1/spaces/${f.teamId}/storage`)).json().storage
+              .reservedMediaBytes,
+            0,
+          );
+        },
+      );
+      await t.test(
+        'repeated cancellation of a durable remote-processing fixture does not release or delete in-flight resources',
+        async () => {
+          const created = await start(4096);
+          assert.equal(created.statusCode, 201, created.body);
+          const remoteId = created.json().job.id;
+          // Explicit fault fixture: another process owns this durable processing
+          // record. The local API must not infer that its empty active Map means idle.
+          await f.db.query("UPDATE media_import_jobs SET state='processing' WHERE id=$1", [
+            remoteId,
+          ]);
+          const directory = join(f.directory, 'media-v1', remoteId),
+            marker = join(directory, 'decoder-active');
+          await mkdir(directory, { recursive: true });
+          await writeFile(marker, 'owned by the simulated remote processor');
+          try {
+            const first = await f.call('POST', `/v1/media-imports/${remoteId}/cancel`);
+            const changedAt = (
+              await f.db.query('SELECT updated_at FROM media_import_jobs WHERE id=$1', [remoteId])
+            ).rows[0]!.updated_at;
+            const repeat = await f.call('POST', `/v1/media-imports/${remoteId}/cancel`);
+            for (const response of [first, repeat]) {
+              assert.equal(response.statusCode, 200, response.body);
+              assert.equal(response.json().cleanupPending, true);
+            }
+            const row = (
+              await f.db.query(
+                'SELECT state,reservation_bytes,updated_at FROM media_import_jobs WHERE id=$1',
+                [remoteId],
+              )
+            ).rows[0]!;
+            assert.equal(row.state, 'cancelled');
+            assert.equal(Number(row.reservation_bytes), 4096);
+            assert.deepEqual(row.updated_at, changedAt);
+            assert.equal(
+              (await f.call('GET', `/v1/spaces/${f.teamId}/storage`)).json().storage
+                .reservedMediaBytes,
+              4096,
+            );
+            assert.equal(await readFile(marker, 'utf8'), 'owned by the simulated remote processor');
+            assert.equal((await start(1024)).json().error.code, 'IMPORT_BUSY');
+          } finally {
+            // Remove only this artificial remote fixture. No live worker was started.
+            await f.db.query(
+              'UPDATE space_storage_accounts SET media_reserved_bytes=media_reserved_bytes-4096 WHERE space_id=$1',
+              [f.teamId],
+            );
+            await f.db.query('UPDATE media_import_jobs SET reservation_bytes=0 WHERE id=$1', [
+              remoteId,
+            ]);
+            await rm(directory, { recursive: true, force: true });
+          }
+        },
+      );
+    } finally {
+      await f.close();
+      if (originalEnabled === undefined) delete process.env.MEDIA_ADVANCED_ENABLED;
+      else process.env.MEDIA_ADVANCED_ENABLED = originalEnabled;
+    }
+  },
+);

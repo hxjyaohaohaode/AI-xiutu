@@ -18,13 +18,17 @@ async function walletLock(tx: Queryable, spaceId: string): Promise<void> {
 }
 async function expireAvailable(tx: Queryable, spaceId: string): Promise<void> {
   const rows = await tx.query(
-    'UPDATE quota_lots SET expired=expired+available,available=0 WHERE space_id=$1 AND expires_at<=clock_timestamp() AND available>0 RETURNING id,expired',
+    `WITH due AS (SELECT id,available AS amount FROM quota_lots
+      WHERE space_id=$1 AND expires_at<=clock_timestamp() AND available>0 FOR UPDATE)
+     UPDATE quota_lots l SET expired=l.expired+l.available,available=0 FROM due
+     WHERE l.id=due.id RETURNING l.id,due.amount`,
     [spaceId],
   );
   for (const lot of rows.rows)
     await tx.query(
-      "INSERT INTO ledger_entries(space_id,lot_id,kind,units,event_key,reason) VALUES($1,$2,'expire',0,$3,'周期或权益到期') ON CONFLICT DO NOTHING",
-      [spaceId, lot.id, `expire:${lot.id}`],
+      `INSERT INTO ledger_entries(space_id,lot_id,kind,units,event_key,reason,movement)
+       VALUES($1,$2,'expire',0,$3,'周期或权益到期',jsonb_build_object('expired',$4::integer)) ON CONFLICT DO NOTHING`,
+      [spaceId, lot.id, `expire:${lot.id}`, lot.amount],
     );
 }
 export async function ensureMonthlyGrant(tx: Queryable, userId: string): Promise<string> {
@@ -183,7 +187,12 @@ async function finishHold(
         [a.lot_id, a.units, releasedAt],
       );
     await tx.query(
-      'INSERT INTO ledger_entries(space_id,lot_id,kind,units,event_key,actor_id,reason) VALUES($1,$2,$3,$4,$5,$6,$7)',
+      `INSERT INTO ledger_entries(space_id,lot_id,kind,units,event_key,actor_id,reason,movement)
+       SELECT $1,$2,$3,$4,$5,$6,$7,
+         CASE WHEN $3='settled' THEN jsonb_build_object('consumed',$8::integer)
+         ELSE jsonb_build_object('released',$8::integer,'expired',
+           CASE WHEN expires_at<=$9::timestamptz THEN $8::integer ELSE 0 END) END
+       FROM quota_lots WHERE id=$2`,
       [
         hold.space_id,
         a.lot_id,
@@ -192,6 +201,8 @@ async function finishHold(
         `${target}:${holdId}:${a.lot_id}`,
         hold.user_id,
         target === 'settled' ? '任务权益结算' : '未交付任务释放到原批次',
+        a.units,
+        releasedAt,
       ],
     );
   }

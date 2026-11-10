@@ -19,6 +19,7 @@ import {
   assertVersion,
 } from './core.js';
 import { sharingPolicy } from './sharing.js';
+import { prepareAuthorizedMediaCopies } from './media-copy.js';
 
 async function storageAccount(tx: Queryable, spaceId: string) {
   if (!(await tx.query('SELECT id FROM spaces WHERE id=$1', [spaceId])).rowCount)
@@ -35,6 +36,7 @@ const storageDto = (row: Record<string, any>): StorageAccountSummary => ({
   maxBytes: Number(row.max_bytes),
   maxAssets: Number(row.max_assets),
   retainedBytes: Number(row.retained_bytes),
+  reservedMediaBytes: Number(row.media_reserved_bytes ?? 0),
   retainedAssets: Number(row.retained_assets),
   accounting: 'retained-logical-assets' as const,
   softDeleteReclaimsCapacity: false,
@@ -261,6 +263,13 @@ export function registerAssetCopy(app: FastifyInstance, db: Database): void {
         ).rowCount;
         if (!previouslyCopied && count >= policy.maxCopyAssets)
           throw new HttpError(409, 'COPY_CAP_REACHED', '此来源项目到目标项目的素材数已达复制上限');
+        const mediaCopy = await prepareAuthorizedMediaCopies(tx, {
+          actorId: user.id,
+          sourceProjectId: source.id,
+          targetProjectId: target.id,
+          sourceAssetIds: [sourceAsset.id],
+          grantId: grant?.id ?? null,
+        });
         copied = (
           await tx.query(
             'INSERT INTO assets(project_id,name,storage_key,mime,width,height,bytes,content_hash,provenance,created_by,annotations) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11) RETURNING *',
@@ -286,6 +295,7 @@ export function registerAssetCopy(app: FastifyInstance, db: Database): void {
             ],
           )
         ).rows[0]!;
+        await mediaCopy.link(sourceAsset.id, copied.id);
         copy = (
           await tx.query(
             'INSERT INTO asset_copies(source_asset_id,source_project_id,target_project_id,copied_asset_id,actor_id,grant_id,source_hash) VALUES($1,$2,$3,$4,$5,$6,$7) RETURNING *',

@@ -7,7 +7,7 @@ import {
   createRecipeV2,
   createAdjustmentRegionV2,
   migrateRecipeToV2,
-  migrateRecipeToV3,
+  migrateRecipeToV4,
   neutralAdjustments,
   parseSelectionMask,
   type Adjustments,
@@ -70,6 +70,7 @@ export type ToolGroup =
   | 'local'
   | 'detail'
   | 'paint'
+  | 'repair'
   | 'liquify'
   | 'composite'
   | 'history';
@@ -106,6 +107,12 @@ export const toolGroups: { id: ToolGroup; label: string; icon: ReactNode; descri
       label: '细节',
       icon: <DiamondsFour size={22} />,
       description: '清晰、柔和、颗粒与氛围',
+    },
+    {
+      id: 'repair',
+      label: '修复',
+      icon: <PaintBrush size={22} />,
+      description: '局部纹理修补与独立质感处理',
     },
     {
       id: 'paint',
@@ -176,9 +183,9 @@ export type ToolInspectorProps = {
 };
 export function ToolInspector(props: ToolInspectorProps) {
   const [upgradeError, setUpgradeError] = useState<string | null>(null);
-  if (props.editor.recipe.schemaVersion === 3)
+  if (props.editor.recipe.schemaVersion === 3 || props.editor.recipe.schemaVersion === 4)
     return <AdvancedInspector key={props.editor.getSourceIdentity()} {...props} />;
-  if (['paint', 'liquify', 'composite'].includes(props.group))
+  if (['paint', 'liquify', 'composite', 'repair'].includes(props.group))
     return (
       <aside className="inspector refined-inspector">
         <div className="inspector-scroll">
@@ -192,11 +199,11 @@ export function ToolInspector(props: ToolInspectorProps) {
               try {
                 props.editor.commit(
                   checkedRecipe(
-                    migrateRecipeToV3(props.editor.getRecipe()),
+                    migrateRecipeToV4(props.editor.getRecipe()),
                     props.editor.dimensions,
                     props.editor.pixelBudget,
                   ),
-                  '升级到第三代编辑配方',
+                  '升级到第四代编辑配方',
                 );
                 setUpgradeError(null);
               } catch (error) {

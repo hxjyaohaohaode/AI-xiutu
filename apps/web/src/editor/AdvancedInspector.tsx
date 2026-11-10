@@ -16,6 +16,7 @@ import { ColorControls } from './ColorControls';
 import { GeometryControls } from './GeometryControls';
 import { LocalControls } from './LocalControls';
 import { PaintControls, LiquifyControls, ImageLayerControls } from './LayerControls';
+import { RepairControls } from './RepairControls';
 import { PortraitControls } from './PortraitControls';
 import './advanced-inspector.css';
 
@@ -86,6 +87,27 @@ export function AdvancedInspector({
         </IconButton>
       </header>
       <div className="inspector-scroll advanced-inspector-scroll">
+        {scopedFamily && onGroupChange && (
+          <nav
+            className="context-adjustment-tabs"
+            aria-label="调节类别"
+            data-motion="context-navigation"
+          >
+            {(['light', 'color', 'curves', 'detail'] as const).map((id) => (
+              <button
+                type="button"
+                key={id}
+                aria-pressed={group === id}
+                onClick={() => {
+                  editor.commitCurrent('完成当前调节');
+                  onGroupChange(id);
+                }}
+              >
+                {toolGroups.find((tool) => tool.id === id)?.label}
+              </button>
+            ))}
+          </nav>
+        )}
         {!editor.file ? (
           <div className="inspector-empty">
             <span>{descriptor.icon}</span>
@@ -163,6 +185,7 @@ export function AdvancedInspector({
             {group === 'beauty' && (
               <PortraitControls controller={controller} onGroupChange={onGroupChange} />
             )}
+            {group === 'repair' && <RepairControls controller={controller} />}
             {group === 'paint' && (
               <PaintControls
                 controller={controller}

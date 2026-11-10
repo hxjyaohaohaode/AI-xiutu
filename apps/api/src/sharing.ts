@@ -3,6 +3,7 @@ import { z } from 'zod';
 import { transaction, audit, emit, type Database } from '@ai-xiutu/db';
 import { parseEditorRecipe } from '@ai-xiutu/editor';
 import { remapRecipeReferences, validateRecipeReferences } from './recipe-references.js';
+import { prepareAuthorizedMediaCopies } from './media-copy.js';
 import {
   HttpError,
   id,
@@ -251,6 +252,13 @@ export function registerSharing(app: FastifyInstance, db: Database): void {
         )
       ).rows[0]!;
       const assetMap = new Map<string, string>();
+      const mediaCopy = await prepareAuthorizedMediaCopies(tx, {
+        actorId: user.id,
+        sourceProjectId: source.id,
+        targetProjectId: row.id,
+        sourceAssetIds: assets.map((asset) => String(asset.id)),
+        grantId: grant?.id ?? null,
+      });
       for (const a of assets) {
         const copied = (
           await tx.query(
@@ -273,6 +281,7 @@ export function registerSharing(app: FastifyInstance, db: Database): void {
             ],
           )
         ).rows[0]!;
+        await mediaCopy.link(a.id, copied.id);
         assetMap.set(a.id, copied.id);
       }
       const arts = (

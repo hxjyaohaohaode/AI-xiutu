@@ -287,9 +287,11 @@ export function ColorControls({
           scope={{
             key: scopeKey(scope),
             getCurves: (current) =>
-              current.schemaVersion === 3 ? scopeColor(current, scope).curves : current.curves,
+              current.schemaVersion === 3 || current.schemaVersion === 4
+                ? scopeColor(current, scope).curves
+                : current.curves,
             replaceCurves: (current: EditorRecipe, curves) =>
-              current.schemaVersion === 3
+              current.schemaVersion === 3 || current.schemaVersion === 4
                 ? withScopeColor(current, scope, { ...scopeColor(current, scope), curves })
                 : { ...current, curves },
           }}

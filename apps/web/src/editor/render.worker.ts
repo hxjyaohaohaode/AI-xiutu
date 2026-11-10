@@ -59,7 +59,10 @@ self.onmessage = async (event: MessageEvent<Message>) => {
     const source = message.type === 'export' ? original : preview;
     if (!source || !message.recipe) throw new Error('请先导入图片。');
     if (message.type !== 'export' && original) {
-      if (message.recipe.schemaVersion === 3 && original.width * original.height > MAX_V3_PIXELS)
+      if (
+        (message.recipe.schemaVersion === 3 || message.recipe.schemaVersion === 4) &&
+        original.width * original.height > MAX_V3_PIXELS
+      )
         throw new Error('原图超过 V3 的 16.8MP 编辑上限，请明确准备较小副本。');
       // A smaller preview must not make an unexportable full-resolution transform appear valid.
       getEditorOutputDimensions(original, message.recipe);
@@ -69,7 +72,10 @@ self.onmessage = async (event: MessageEvent<Message>) => {
         ? message.originalOnly
           ? source
           : renderEditorRecipeTiled(source, message.recipe, {
-              maxPixels: message.recipe.schemaVersion === 3 ? 16_777_216 : 67_108_864,
+              maxPixels:
+                message.recipe.schemaVersion === 3 || message.recipe.schemaVersion === 4
+                  ? 16_777_216
+                  : 67_108_864,
               images: originalImages,
               tileSize: 512,
             })

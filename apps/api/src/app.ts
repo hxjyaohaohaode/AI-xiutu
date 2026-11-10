@@ -10,6 +10,7 @@ import {
   type SmsAdapter,
 } from '@ai-xiutu/providers';
 import { RecipeValidationError } from '@ai-xiutu/editor';
+import { assistantModelConfigSchema, VOICE_MODELS } from '@ai-xiutu/assistant';
 import { loadConfig, type AppConfig } from './config.js';
 import {
   HttpError,
@@ -30,6 +31,11 @@ import { registerAssetCopy } from './asset-copy.js';
 import { registerEditorContract } from './editor-contract.js';
 import { createBuiltinRegistry, type RuntimeGate } from '@ai-xiutu/contracts';
 import { registerCollaboration } from './collaboration.js';
+import { registerRealtimeCollaboration } from './realtime-collaboration.js';
+import { registerResources } from './resources.js';
+import { registerUsage } from './usage.js';
+import { registerMediaImport } from './media-import.js';
+import { registerAssistant, type AssistantDependencies } from './assistant/index.js';
 import { registerSharing } from './sharing.js';
 import { registerOperations, publicSettings, modelDto } from './operations.js';
 import { LocalPrivateStorage, StorageError } from './storage.js';
@@ -74,6 +80,7 @@ export interface BuildOptions {
   config?: AppConfig;
   sms?: SmsAdapter;
   aiService?: AiService;
+  assistant?: AssistantDependencies;
 }
 export async function buildApp(options: BuildOptions = {}): Promise<FastifyInstance> {
   const config = options.config ?? loadConfig();
@@ -103,7 +110,16 @@ export async function buildApp(options: BuildOptions = {}): Promise<FastifyInsta
       const origin = req.headers.origin;
       if (typeof origin !== 'string' || !config.origins.includes(origin))
         throw new HttpError(403, 'ORIGIN_FORBIDDEN', '请求来源未获准');
-      await rateLimit(db, `write-ip:${hash(req.ip)}`, 180, 60);
+      const transient =
+        /^\/v1\/artworks\/[a-f0-9-]+\/collaboration\/(sessions|leases|previews)(?:\/|\?|$)/i.test(
+          req.url,
+        );
+      await rateLimit(
+        db,
+        `${transient ? 'collaboration-ip' : 'write-ip'}:${hash(req.ip)}`,
+        transient ? 3600 : 180,
+        60,
+      );
     }
     const token = req.cookies.xiutu_session;
     if (token && /^[A-Za-z0-9_-]{40,64}$/.test(token)) {
@@ -113,6 +129,12 @@ export async function buildApp(options: BuildOptions = {}): Promise<FastifyInsta
         [hash(token)],
       );
       req.currentUser = (rows[0] as User | undefined) ?? null;
+      if (
+        req.currentUser &&
+        !['GET', 'HEAD', 'OPTIONS'].includes(req.method) &&
+        req.url.includes('/collaboration/')
+      )
+        await rateLimit(db, `collaboration-user:${req.currentUser.id}`, 600, 60);
     }
   });
   app.setErrorHandler((error, req, reply) => {
@@ -164,6 +186,21 @@ export async function buildApp(options: BuildOptions = {}): Promise<FastifyInsta
         .code(error.code === 'HOLD_NOT_FOUND' ? 404 : 409)
         .send({ error: { code: error.code, message: error.message } });
     const e = error as { code?: string; statusCode?: number; name?: string; message?: string };
+    if (
+      e.code === 'P0001' &&
+      ['COLLABORATION_LOCKED', 'COLLABORATION_LEASE_EXPIRED'].includes(e.message ?? '')
+    )
+      return reply
+        .code(409)
+        .send({
+          error: {
+            code: e.message,
+            message:
+              e.message === 'COLLABORATION_LOCKED'
+                ? '作品有正在编辑的租约，请先完成或取消该操作；保存、AI采纳和历史恢复均不能覆盖协作中的内容'
+                : '编辑租约已失效，请刷新后重新取得编辑权',
+          },
+        });
     if (e.code === 'P0001' && e.message === 'SPACE_STORAGE_LIMIT')
       return reply.code(409).send({
         error: {
@@ -232,6 +269,23 @@ export async function buildApp(options: BuildOptions = {}): Promise<FastifyInsta
   }));
   const moduleRegistry = createBuiltinRegistry();
   app.get('/v1/modules', async () => {
+    const configuredModels = (await db.query('SELECT id,config FROM model_configs')).rows;
+    const assistantRows = (await db.query('SELECT id,config FROM assistant_model_configs')).rows;
+    const assistantModels = assistantRows.flatMap((model) => {
+      const parsed = assistantModelConfigSchema.safeParse(model.config);
+      return parsed.success && parsed.data.enabled
+        ? [{ id: String(model.id), config: parsed.data }]
+        : [];
+    });
+    const assistantAvailable = assistantModels.some((model) =>
+      model.config.operations.includes('assistant-turn'),
+    );
+    const voiceAvailable = assistantModels.some(
+      (model) =>
+        model.config.operations.includes('realtime-voice') &&
+        VOICE_MODELS.some((profile) => profile.id === model.id),
+    );
+    const mediaCapabilities = await mediaRuntime.capabilities;
     const gates: Record<string, RuntimeGate> = {
       sms: { available: sms.configured, reason: sms.configured ? null : '短信供应商未配置' },
       moderation: { available: capabilities().moderationConfigured, reason: '审核供应商未配置' },
@@ -239,12 +293,42 @@ export async function buildApp(options: BuildOptions = {}): Promise<FastifyInsta
         available: false,
         reason: '由浏览器检查同源模型资产和分析适配器，服务器不宣称客户端模型可用',
       },
+      'media.retained-import': {
+        available: mediaRuntime.enabled && mediaCapabilities.available,
+        reason: mediaRuntime.enabled
+          ? '隔离解码环境不可用，请检查媒体能力报告'
+          : '高精度媒体导入开关未启用',
+      },
+      'assistant.turns': {
+        available: assistantRuntime.ready && assistantAvailable,
+        reason: assistantRuntime.ready ? '没有启用的智能体模型档案' : assistantRuntime.reason,
+      },
+      'assistant.voice': {
+        available: assistantRuntime.voiceReady && assistantAvailable && voiceAvailable,
+        reason: assistantRuntime.voiceReady
+          ? '需要启用的语音协议档案与后端智能体模型'
+          : (assistantRuntime.reason ?? '实时语音开关未启用'),
+      },
     };
     for (const operation of ['generate-image', 'edit-plan', 'generate-text', 'transcribe']) {
       const status = ai?.operationStatus?.[operation];
-      gates[operation] = status ?? {
+      const executorStatus = status ?? {
         available: ai?.availableOperations?.includes(operation) ?? false,
         reason: ai?.reason ?? '执行适配器未配置',
+      };
+      const configured = configuredModels.some(
+        (model) =>
+          model.config?.enabled === true &&
+          Array.isArray(model.config.operations) &&
+          model.config.operations.includes(operation),
+      );
+      gates[operation] = {
+        available: executorStatus.available && configured,
+        reason: executorStatus.available
+          ? configured
+            ? null
+            : '没有启用的对应操作模型档案'
+          : executorStatus.reason,
       };
     }
     return { protocolVersion: 1, modules: moduleRegistry.discover(gates) };
@@ -326,6 +410,11 @@ export async function buildApp(options: BuildOptions = {}): Promise<FastifyInsta
   registerSpaces(app, db);
   registerProjects(app, db, storage);
   registerCollaboration(app, db);
+  registerRealtimeCollaboration(app, db);
+  registerResources(app, db);
+  registerUsage(app, db);
+  const mediaRuntime = registerMediaImport(app, db, config);
+  const assistantRuntime = registerAssistant(app, db, config, options.assistant);
   registerSharing(app, db);
   registerOperations(
     app,

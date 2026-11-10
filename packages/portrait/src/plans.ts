@@ -1,8 +1,11 @@
 import {
   createColorBlockV3,
   createAdjustmentRegionV3,
-  parseRecipeV3,
-  type RecipeV3,
+  parseEditorRecipe,
+  createRetouchRegionV4,
+  type LayeredRecipe,
+  type RetouchRegionV4,
+  type HealingOperationV4,
   type Point,
   type SelectionMaskV3,
   type PaintLayerV3,
@@ -11,17 +14,26 @@ import {
   type OperationOriginV3,
 } from '@ai-xiutu/editor';
 import { PORTRAIT_TOOLS } from './catalog.js';
-import { center, unit, combine, facialMasks, polygon } from './geometry.js';
+import { center, unit, combine, facialMasks, facialMasksV4, polygon } from './geometry.js';
 import { validatePortraitAnalysis, copyPortraitData } from './validation.js';
 import type { PortraitAnalysis, PortraitTarget, PortraitValues } from './types.js';
 
 const MODULE = 'portrait.basic.v1';
+const MODULE_V4 = 'portrait.basic.v2';
+const automatic = (moduleId: string | undefined) => moduleId === MODULE || moduleId === MODULE_V4;
+function parseLayeredRecipe(input: unknown): LayeredRecipe {
+  const parsed = parseEditorRecipe(input);
+  if (parsed.schemaVersion !== 3 && parsed.schemaVersion !== 4)
+    throw new Error('Portrait primitives require Recipe v3 or v4');
+  return parsed;
+}
 export type MakeupColor = [number, number, number, number];
 export interface PortraitApplyOptions {
   makeupColors?: Partial<Record<string, MakeupColor>>;
 }
 const catalog = new Map(PORTRAIT_TOOLS.map((t) => [t.id, t]));
-type OwnedPrimitive = AdjustmentRegionV3 | PaintLayerV3 | WarpStrokeV3;
+type OwnedPrimitive =
+  AdjustmentRegionV3 | PaintLayerV3 | WarpStrokeV3 | RetouchRegionV4 | HealingOperationV4;
 const sealKeys = [
   'portraitSealVersion',
   'portraitSeal0',
@@ -30,14 +42,17 @@ const sealKeys = [
   'portraitSeal3',
 ];
 const belongsTo = (item: { origin?: OperationOriginV3 }, targetId: string) =>
-  item.origin?.moduleId === MODULE && item.origin.instanceId === targetId;
-function ownedPrimitives(recipe: RecipeV3, targetId: string): OwnedPrimitive[] {
-  return [...recipe.regionEdits, ...recipe.paintLayers, ...recipe.warp.strokes].filter((item) =>
-    belongsTo(item, targetId),
-  );
+  automatic(item.origin?.moduleId) && item.origin?.instanceId === targetId;
+function ownedPrimitives(recipe: LayeredRecipe, targetId: string): OwnedPrimitive[] {
+  return [
+    ...recipe.regionEdits,
+    ...recipe.paintLayers,
+    ...recipe.warp.strokes,
+    ...(recipe.schemaVersion === 4 ? [...recipe.healing, ...recipe.retouch] : []),
+  ].filter((item) => belongsTo(item, targetId));
 }
 /** A deterministic accidental-edit checksum, not an authorization or cryptographic signature. */
-function targetSeal(recipe: RecipeV3, targetId: string): number[] {
+function targetSeal(recipe: LayeredRecipe, targetId: string): number[] {
   const withoutSeal = (item: OwnedPrimitive) => ({
     ...item,
     origin: {
@@ -62,6 +77,12 @@ function targetSeal(recipe: RecipeV3, targetId: string): number[] {
       regions: recipe.regionEdits.filter((i) => belongsTo(i, targetId)).map(withoutSeal),
       paints: recipe.paintLayers.filter((i) => belongsTo(i, targetId)).map(withoutSeal),
       warps: recipe.warp.strokes.filter((i) => belongsTo(i, targetId)).map(withoutSeal),
+      ...(recipe.schemaVersion === 4 && recipe.retouch.some((i) => belongsTo(i, targetId))
+        ? { retouch: recipe.retouch.filter((i) => belongsTo(i, targetId)).map(withoutSeal) }
+        : {}),
+      ...(recipe.schemaVersion === 4 && recipe.healing.some((i) => belongsTo(i, targetId))
+        ? { healing: recipe.healing.filter((i) => belongsTo(i, targetId)).map(withoutSeal) }
+        : {}),
     }),
   );
   let first = 0x811c9dc5,
@@ -72,7 +93,7 @@ function targetSeal(recipe: RecipeV3, targetId: string): number[] {
   }
   return [first & 0xffff, first >>> 16, second & 0xffff, second >>> 16];
 }
-function assertAutomaticPrimitivesIntact(recipe: RecipeV3, targetId: string) {
+function assertAutomaticPrimitivesIntact(recipe: LayeredRecipe, targetId: string) {
   const items = ownedPrimitives(recipe, targetId);
   if (!items.length) return;
   const checksum = targetSeal(recipe, targetId);
@@ -86,7 +107,7 @@ function assertAutomaticPrimitivesIntact(recipe: RecipeV3, targetId: string) {
       '该人物的自动图层已被手动修改，或缺少精修校验标记。请先“转为独立精修”，再新增自动效果，避免覆盖已有修改。',
     );
 }
-function sealAutomaticPrimitives(recipe: RecipeV3, targetId: string): RecipeV3 {
+function sealAutomaticPrimitives(recipe: LayeredRecipe, targetId: string): LayeredRecipe {
   const checksum = targetSeal(recipe, targetId);
   for (const item of ownedPrimitives(recipe, targetId))
     item.origin!.parameters = {
@@ -94,7 +115,7 @@ function sealAutomaticPrimitives(recipe: RecipeV3, targetId: string): RecipeV3 {
       portraitSealVersion: 1,
       ...Object.fromEntries(checksum.map((n, i) => [`portraitSeal${i}`, n])),
     };
-  return parseRecipeV3(recipe);
+  return parseLayeredRecipe(recipe);
 }
 /** Existing primitives retain their position relative to manual layers during slider updates. */
 function replaceOwned<T extends OwnedPrimitive>(
@@ -117,18 +138,19 @@ function replaceOwned<T extends OwnedPrimitive>(
   return [...merged, ...remaining.values()];
 }
 /** Freeze a whole semantic target into independent editable primitives without changing any pixels. */
-export function detachPortraitTarget(recipeInput: RecipeV3, targetId: string): RecipeV3 {
-  const recipe = parseRecipeV3(recipeInput),
+export function detachPortraitTarget<T extends LayeredRecipe>(recipeInput: T, targetId: string): T {
+  const recipe = parseLayeredRecipe(recipeInput),
     ids = new Set(
       [
         ...recipe.regionEdits,
         ...recipe.paintLayers,
         ...recipe.imageLayers,
         ...recipe.warp.strokes,
+        ...(recipe.schemaVersion === 4 ? [...recipe.healing, ...recipe.retouch] : []),
       ].map((item) => item.id),
     );
   const detach = <T extends { id: string; origin?: OperationOriginV3 }>(item: T): T => {
-    if (item.origin?.moduleId !== MODULE || item.origin.instanceId !== targetId) return item;
+    if (!automatic(item.origin?.moduleId) || item.origin?.instanceId !== targetId) return item;
     const prefix = `manual-${item.id.slice(0, 100)}`;
     let n = 1;
     while (ids.has(`${prefix}-${n}`)) n++;
@@ -136,18 +158,21 @@ export function detachPortraitTarget(recipeInput: RecipeV3, targetId: string): R
     ids.add(id);
     return { ...item, id, origin: { ...item.origin, moduleId: 'portrait.manual.v1' } };
   };
-  return parseRecipeV3({
+  return parseLayeredRecipe({
     ...recipe,
     regionEdits: recipe.regionEdits.map(detach),
     paintLayers: recipe.paintLayers.map(detach),
     warp: { ...recipe.warp, strokes: recipe.warp.strokes.map(detach) },
-  });
+    ...(recipe.schemaVersion === 4
+      ? { healing: recipe.healing.map(detach), retouch: recipe.retouch.map(detach) }
+      : {}),
+  }) as T;
 }
-export function portraitValues(recipe: RecipeV3, targetId: string): PortraitValues {
-  const safe = parseRecipeV3(recipe),
+export function portraitValues(recipe: LayeredRecipe, targetId: string): PortraitValues {
+  const safe = parseLayeredRecipe(recipe),
     values: PortraitValues = {};
-  for (const item of [...safe.regionEdits, ...safe.paintLayers, ...safe.warp.strokes]) {
-    if (item.origin?.moduleId !== MODULE || item.origin.instanceId !== targetId) continue;
+  for (const item of ownedPrimitives(safe, targetId)) {
+    if (!automatic(item.origin?.moduleId) || item.origin?.instanceId !== targetId) continue;
     for (const [key, value] of Object.entries(item.origin.parameters ?? {})) {
       const tool = catalog.get(key);
       if (tool && value >= tool.min && value <= tool.max) values[key] = value;
@@ -156,15 +181,15 @@ export function portraitValues(recipe: RecipeV3, targetId: string): PortraitValu
   return values;
 }
 export function portraitMakeupColors(
-  recipe: RecipeV3,
+  recipe: LayeredRecipe,
   targetId: string,
 ): Partial<Record<string, MakeupColor>> {
   const result: Partial<Record<string, MakeupColor>> = {};
-  for (const layer of parseRecipeV3(recipe).paintLayers) {
+  for (const layer of parseLayeredRecipe(recipe).paintLayers) {
     const origin = layer.origin;
     if (
-      origin?.moduleId !== MODULE ||
-      origin.instanceId !== targetId ||
+      !automatic(origin?.moduleId) ||
+      origin?.instanceId !== targetId ||
       catalog.get(origin.parameterId)?.group !== 'makeup'
     )
       continue;
@@ -231,13 +256,18 @@ export interface PortraitToolAvailability {
 export function portraitToolAvailability(
   analysis: PortraitAnalysis,
   targetId: string,
+  schemaVersion: 3 | 4 = 4,
 ): PortraitToolAvailability[] {
+  if (schemaVersion !== 3 && schemaVersion !== 4) throw new Error('未支持的人像配方版本。');
   const safe = validatePortraitAnalysis(analysis),
     target = safe.targets.find((t) => t.id === targetId);
   if (!target) throw new Error('人物不属于当前分析结果。');
   return PORTRAIT_TOOLS.filter((t) => t.target === target.kind).map((tool) => {
     let reason: string | null = null;
-    if (target.kind === 'body') {
+    if (schemaVersion === 4 && tool.id === 'neckLength') {
+      reason =
+        '自动颈长暂不可用：耳肩锚点不足以保护面部与肩膀，尚未实现头颈分区和受约束网格。可使用手动液化并设置保护区。';
+    } else if (target.kind === 'body') {
       const required = bodyRequirements[tool.id] ?? [];
       if (
         required.some(
@@ -261,15 +291,15 @@ export function portraitToolAvailability(
   });
 }
 /** Compile semantic controls into ordinary deterministic V3 primitives, replacing this target's prior operations. */
-export function applyPortraitValues(
-  recipeInput: RecipeV3,
+export function applyPortraitValues<T extends LayeredRecipe>(
+  recipeInput: T,
   analysisInput: PortraitAnalysis,
   targetId: string,
   input: PortraitValues,
   color: MakeupColor = [178, 66, 86, 255],
   options: PortraitApplyOptions = {},
-): RecipeV3 {
-  const recipe = parseRecipeV3(recipeInput),
+): T {
+  const recipe = parseLayeredRecipe(recipeInput),
     analysis = validatePortraitAnalysis(analysisInput);
   const found = analysis.targets.find((t) => t.id === targetId);
   if (!found) throw new Error('人物已不在当前分析结果中，请重新选择。');
@@ -277,7 +307,7 @@ export function applyPortraitValues(
     values = validateValues(input, target.kind),
     defaultColor = validateColor(color);
   assertAutomaticPrimitivesIntact(recipe, targetId);
-  const unavailable = portraitToolAvailability(analysis, targetId).find(
+  const unavailable = portraitToolAvailability(analysis, targetId, recipe.schemaVersion).find(
     (t) => !t.available && (values[t.id] ?? 0) !== 0,
   );
   if (unavailable) throw new Error(unavailable.reason!);
@@ -304,7 +334,7 @@ export function applyPortraitValues(
     value: number,
     shade?: MakeupColor,
   ): OperationOriginV3 => ({
-    moduleId: MODULE,
+    moduleId: recipe.schemaVersion === 4 ? MODULE_V4 : MODULE,
     instanceId: target.id,
     parameterId,
     value,
@@ -317,18 +347,25 @@ export function applyPortraitValues(
   });
   const prefix = `p-${target.id}-`,
     owned = (item: { origin?: OperationOriginV3 }) =>
-      item.origin?.moduleId === MODULE && item.origin.instanceId === target.id;
+      automatic(item.origin?.moduleId) && item.origin?.instanceId === target.id;
   if (Object.values(values).every((n) => n === 0)) {
-    return parseRecipeV3({
+    return parseLayeredRecipe({
       ...recipe,
       regionEdits: recipe.regionEdits.filter((i) => !owned(i)),
       paintLayers: recipe.paintLayers.filter((i) => !owned(i)),
       warp: { ...recipe.warp, strokes: recipe.warp.strokes.filter((i) => !owned(i)) },
-    });
+      ...(recipe.schemaVersion === 4
+        ? {
+            healing: recipe.healing.filter((i) => !owned(i)),
+            retouch: recipe.retouch.filter((i) => !owned(i)),
+          }
+        : {}),
+    }) as T;
   }
   const regions: AdjustmentRegionV3[] = [],
     paints: PaintLayerV3[] = [],
     warps: WarpStrokeV3[] = [],
+    retouches: RetouchRegionV4[] = [],
     value = (id: string) => (values[id] ?? 0) / 100;
   const dims = analysis.frame,
     short = Math.min(dims.width, dims.height);
@@ -378,7 +415,10 @@ export function applyPortraitValues(
     warp(id, 'push', p, add(p, dxPx, dyPx), r, strength);
   }
   if (target.kind === 'face') {
-    const masks = facialMasks(target, analysis.segmentation?.skin ?? null),
+    const masks =
+        recipe.schemaVersion === 4
+          ? facialMasksV4(target, analysis.segmentation?.skin ?? null, dims)
+          : facialMasks(target, analysis.segmentation?.skin ?? null),
       skin = createColorBlockV3();
     skin.adjustments.soften = value('smooth') * 75;
     skin.adjustments.exposure = value('skinLight') * 0.7;
@@ -388,6 +428,36 @@ export function applyPortraitValues(
     skin.detail.texture = bounded(value('texture') * 70 - value('wrinkles') * 65, -100, 100);
     skin.detail.clarity = -value('even') * 20;
     skin.optics.denoiseChroma = value('even') * 60;
+    if (recipe.schemaVersion === 4) {
+      // Versioned dedicated signal operators replace the old shared texture/soften approximation.
+      skin.adjustments.soften = 0;
+      skin.detail.texture = 0;
+      skin.detail.clarity = 0;
+      skin.optics.denoiseChroma = 0;
+      if (['smooth', 'texture', 'wrinkles', 'even'].some((key) => value(key) !== 0)) {
+        retouches.push(
+          createRetouchRegionV4({
+            id: prefix + 'skin-retouch',
+            name: `${target.label} · 皮肤质感`,
+            origin: provenance('skin-retouch', 0),
+            mask: masks.skin,
+            radius: Math.max(
+              0.000001,
+              Math.min(
+                0.1,
+                (Math.min(target.bounds.width * dims.width, target.bounds.height * dims.height) *
+                  0.025) /
+                  short,
+              ),
+            ),
+            smoothing: values.smooth ?? 0,
+            texture: values.texture ?? 0,
+            uniformity: values.even ?? 0,
+            fineLines: values.wrinkles ?? 0,
+          }),
+        );
+      }
+    }
     if (
       ['smooth', 'skinLight', 'skinWarmth', 'complexion', 'texture', 'wrinkles', 'even'].some(
         (k) => value(k) !== 0,
@@ -731,9 +801,12 @@ export function applyPortraitValues(
         );
   }
   return sealAutomaticPrimitives(
-    parseRecipeV3({
+    parseLayeredRecipe({
       ...recipe,
       regionEdits: replaceOwned(recipe.regionEdits, regions, targetId),
+      ...(recipe.schemaVersion === 4
+        ? { retouch: replaceOwned(recipe.retouch, retouches, targetId) }
+        : {}),
       paintLayers: replaceOwned(recipe.paintLayers, paints, targetId),
       warp: {
         ...recipe.warp,
@@ -742,5 +815,5 @@ export function applyPortraitValues(
       },
     }),
     targetId,
-  );
+  ) as T;
 }

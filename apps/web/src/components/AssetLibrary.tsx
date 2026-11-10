@@ -16,6 +16,7 @@ import { api, ApiError, errorMessage, formatDate, jsonRequest } from '../lib/api
 import type { Asset, Artwork, Project, Space } from '../lib/types';
 import { Busy, EmptyState, InlineError, Modal } from './Ui';
 import { OptionChips } from './Controls';
+import { MediaSourceViewer } from '../media/MediaSourceViewer';
 
 export const SOURCE_LABELS = {
   upload: '上传照片',
@@ -219,6 +220,7 @@ export function AssetLibrary({
     [error, setError] = useState<string | null>(null);
   const [editing, setEditing] = useState<Asset | null>(null),
     [refresh, setRefresh] = useState(0);
+  const [sourceDetails, setSourceDetails] = useState<Asset | null>(null);
   const requestGeneration = useRef(0),
     moreLock = useRef(false);
   const externalProject = !!project && project.spaceId !== space?.id;
@@ -524,6 +526,11 @@ export function AssetLibrary({
                           {SOURCE_LABELS[asset.source ?? 'unknown']} · {asset.width}×{asset.height}
                         </p>
                         <small>{parent?.title ?? '当前授权项目'}</small>
+                        {asset.provenance?.kind === 'media-import' && (
+                          <button className="text-button" onClick={() => setSourceDetails(asset)}>
+                            查看原件与母版
+                          </button>
+                        )}
                         {!!asset.annotations?.tags.length && (
                           <div className="library-tags">
                             {asset.annotations.tags.map((tag) => (
@@ -578,6 +585,15 @@ export function AssetLibrary({
             缩略图展示原始素材；作品按钮打开对应编辑版本。分组数量只统计已经载入的结果，不代表空间总量。
           </p>
         </>
+      )}
+      {sourceDetails && (
+        <Modal
+          title="原件与母版"
+          subtitle={sourceDetails.name}
+          onClose={() => setSourceDetails(null)}
+        >
+          <MediaSourceViewer assetId={sourceDetails.id} />
+        </Modal>
       )}
       {editing && (
         <MetadataDialog

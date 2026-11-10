@@ -1,0 +1,23 @@
+{
+  "name": "@ai-xiutu/assistant",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "exports": "./src/index.ts",
+  "types": "./src/index.ts",
+  "scripts": {
+    "typecheck": "tsc --noEmit -p tsconfig.json",
+    "test": "tsx --test test/*.test.ts"
+  },
+  "dependencies": {
+    "@ai-xiutu/contracts": "*",
+    "@ai-xiutu/editor": "*",
+    "@ai-xiutu/multimodal": "*",
+    "@ai-xiutu/providers": "*",
+    "ws": "8.22.2",
+    "https-proxy-agent": "9.1.0"
+  },
+  "devDependencies": {
+    "@types/ws": "8.18.2"
+  }
+}

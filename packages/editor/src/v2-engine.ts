@@ -21,6 +21,7 @@ import { radialMaskWeight } from './mask.js';
 import { ADJUSTMENT_IDS } from './registry.js';
 import { HSL_BANDS } from './v2-registry.js';
 import { parseEditorRecipe, parseRecipeV2, recipeV1Stage } from './v2-recipe.js';
+import { renderRecipeV4, renderRecipeV4Tiled } from './v4-engine.js';
 import { compileSelectionMask } from './v2-mask.js';
 import type { Dimensions, RenderOptions, RGBAImage, TiledRenderOptions } from './types.js';
 import type { EditorRecipe, RecipeV2 } from './v2-types.js';
@@ -534,7 +535,9 @@ export function renderEditorRecipe(
     ? renderRecipe(image, recipe, options)
     : recipe.schemaVersion === 2
       ? renderRecipeV2(image, recipe, options)
-      : renderRecipeV3(image, recipe, options);
+      : recipe.schemaVersion === 3
+        ? renderRecipeV3(image, recipe, options)
+        : renderRecipeV4(image, recipe, options);
 }
 export function renderEditorRecipeTiled(
   image: RGBAImage,
@@ -546,5 +549,7 @@ export function renderEditorRecipeTiled(
     ? renderRecipeTiled(image, recipe, options)
     : recipe.schemaVersion === 2
       ? renderRecipeV2Tiled(image, recipe, options)
-      : renderRecipeV3Tiled(image, recipe, options);
+      : recipe.schemaVersion === 3
+        ? renderRecipeV3Tiled(image, recipe, options)
+        : renderRecipeV4Tiled(image, recipe, options);
 }

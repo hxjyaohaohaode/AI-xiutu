@@ -62,6 +62,7 @@ export type Asset = {
   };
   annotationVersion?: number;
   annotationUpdatedAt?: string;
+  provenance?: { kind?: string; [key: string]: unknown };
 };
 export type Artwork = {
   id: string;
@@ -83,7 +84,7 @@ export type Revision = {
   createdAt: string;
   createdBy?: string;
 };
-export type View = 'editor' | 'works' | 'compare' | 'collaborate' | 'docs' | 'deliver';
+export type View = 'editor' | 'works' | 'compare' | 'collaborate' | 'docs' | 'deliver' | 'usage';
 export type Notice = { message: string; tone: 'success' | 'error' | 'info' };
 export type Comment = {
   id: string;

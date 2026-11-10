@@ -1,0 +1,413 @@
+{
+  "schemaVersion": 1,
+  "recordedDate": "2026-11-10",
+  "coverage": "Scoped V4 frontend review, not a claim of all-repository or six manual line-by-line reviews",
+  "files": [
+    {
+      "path": "apps/web/src/App.tsx",
+      "status": "联动复核",
+      "scope": "V4初始配方；当前画面快照；作品/来源/版本绑定；协作发布；AI与恢复释放租约；专业导入、原件、资源、用量与运营入口。旧认证等非本轮修改分支不宣称逐行重审。",
+      "lines": 1943,
+      "sha256": "4b82b0c1d8bd9f646c7acd121b6a7a3777f46d1b50a2d15c12f98413a8b1c932"
+    },
+    {
+      "path": "apps/web/src/editor/useEditor.ts",
+      "status": "联动复核",
+      "scope": "V4版本保留、当前渲染配方身份、来源切换、图层解析预算与共享配方载入；旧解码路径依赖既有和本轮回归。",
+      "lines": 846,
+      "sha256": "e7117f36d0341d5af67274253106f3048fe93a5aa7c9f0ed54f823bbf141c4fc"
+    },
+    {
+      "path": "apps/web/src/editor/CanvasStage.tsx",
+      "status": "联动复核",
+      "scope": "四角固定参考框手势、键盘/取消/撤销；多指所有权；修复目标与供体；协作坐标；中间裁切命中；不可投影覆盖物安全跳过。",
+      "lines": 1843,
+      "sha256": "aa5ebd16ca2769c408bc55f3b476d1e03e5ba1e9e60b6b7783025b21ba535a29"
+    },
+    {
+      "path": "apps/web/src/editor/ProjectiveControls.tsx",
+      "status": "实现复核",
+      "scope": "明确升级V4；四角像素数值和0.1px；预算/奇异拒绝；contain/crop与重置；共用提交链。",
+      "lines": 126,
+      "sha256": "3082021ca29f4f912bd3e9a1373e43bc85babf7728d295b87947752406fafe71"
+    },
+    {
+      "path": "apps/web/src/editor/projective-model.ts",
+      "status": "实现复核",
+      "scope": "参数框与显示坐标转换；固定参考矩形；严格解析与最大输出预算；合法四角才进入预览。",
+      "lines": 65,
+      "sha256": "7bc094b0329482c8fe3d0d4d789152457419b2627e5b48dcb8993735c9d3a7c6"
+    },
+    {
+      "path": "apps/web/src/editor/GeometryControls.tsx",
+      "status": "联动复核",
+      "scope": "自由裁切、角度/透视、四角、缩放/位置分级；切类别确认当前操作；保留原始像素裁切。",
+      "lines": 285,
+      "sha256": "729c5c3cc92459d1b372b0bbd4a6b448318a8b7a0b04e3f7541bbfa672204dbd"
+    },
+    {
+      "path": "apps/web/src/editor/RepairControls.tsx",
+      "status": "实现复核",
+      "scope": "真实healing/retouch操作；蒙版/保护/供体；参数范围由真实算法限制；不透明ROI和有界预算说明。",
+      "lines": 345,
+      "sha256": "dcf2dd67c4d909d938923ef08ab65e96e02ecaf73083f6048af8b78898952c68"
+    },
+    {
+      "path": "apps/web/src/editor/AdvancedInspector.tsx",
+      "status": "联动复核",
+      "scope": "V3/V4分派；全局/局部/组范围；主参数棚；分级调节入口；严格配方后再预览。",
+      "lines": 255,
+      "sha256": "9091dc10faaa38ee5d8f8c6cc362d6e012a69b98058edd4b1acee960e4fecd18"
+    },
+    {
+      "path": "apps/web/src/editor/ToolInspector.tsx",
+      "status": "联动复核",
+      "scope": "顶层修复工具与V4入口；旧版本显式升级；保留V1/V2兼容路径。",
+      "lines": 1661,
+      "sha256": "512a1b4847dbff67642a4355259fbbe4df6dbc0ab6aa1368b0b0b5f2026aa7fd"
+    },
+    {
+      "path": "apps/web/src/editor/ColorControls.tsx",
+      "status": "联动复核",
+      "scope": "局部/组完整颜色块继续可用；V4字段与版本保留；当前主参数优先。",
+      "lines": 375,
+      "sha256": "45c68545a4ae35a527b0ab627e6d7ec3eeee7bf01010c433bd60bd551f861cd3"
+    },
+    {
+      "path": "apps/web/src/editor/PortraitControls.tsx",
+      "status": "联动复核",
+      "scope": "V4专用算法执行、已有语义归属/手动独立化；识别失败不伪装成功；导入分析不冒充本机推理。",
+      "lines": 408,
+      "sha256": "8db69ee69a262cb055a1c8e5a591d7c49bd728ae98acca7c4530aa94cd29b681"
+    },
+    {
+      "path": "apps/web/src/editor/advanced-model.ts",
+      "status": "实现复核",
+      "scope": "LayeredRecipe统一版本；范围更新保留兄弟节点；实际参数注册与解析/尺寸预算。",
+      "lines": 187,
+      "sha256": "bde5464e711ba03e63c9a8ce60181929b7055a0dbe785e9143b353103cf5fea1"
+    },
+    {
+      "path": "apps/web/src/editor/precision.ts",
+      "status": "联动复核",
+      "scope": "V4局部蒙版更新保留所有字段；来源像素与嵌套路径更新的既有不变量。",
+      "lines": 148,
+      "sha256": "05ffb2d11eb7ed819e3553c1b02d74b83ad3b7af060cc1f436772fc33730eaec"
+    },
+    {
+      "path": "apps/web/src/editor/coordinates.ts",
+      "status": "实现复核",
+      "scope": "严格落笔先containsOutput；透视地平线返回无命中；覆盖物投影失败跳过；正常画幅外把手保留自由度。",
+      "lines": 67,
+      "sha256": "8af531ffc1494c5d88ef15da01c8548a506ef80dfb7a61d16699b2cc78c59434"
+    },
+    {
+      "path": "apps/web/src/editor/useStagePreviews.ts",
+      "status": "联动复核",
+      "scope": "远端临时配方与本地草稿/原图对比隔离；过期渲染不覆盖新画面。",
+      "lines": 181,
+      "sha256": "37d31287d67b2ac13d63e3a67d8dd54312b0049bc46acfd3d84590e628244dea"
+    },
+    {
+      "path": "apps/web/src/editor/render.worker.ts",
+      "status": "联动复核",
+      "scope": "V4渲染分派、预览输出预算与分块导出；图层来源保持；执行器验证由内核代理补充。",
+      "lines": 130,
+      "sha256": "16771f539f36e8be8a81e5ca74df0162a0ee525c918a2493aeed1747d0f12e56"
+    },
+    {
+      "path": "apps/web/src/editor/capture.ts",
+      "status": "实现复核",
+      "scope": "只取已经渲染照片像素；最长边1024；透明JPEG白底明确；不包含UI、游标或评论。",
+      "lines": 28,
+      "sha256": "a02db1b8b983b507163212e225a4e7c0185d1aea837c0427468597a404cbd2b4"
+    },
+    {
+      "path": "apps/web/src/editor/advanced-inspector.css",
+      "status": "规则复核",
+      "scope": "紧凑单主控、横向候选、手机类别导航与无叠层边框；实际视觉需浏览器CI和人工复核。",
+      "lines": 515,
+      "sha256": "68b572c3799b48d822d91c487c8a8d9023c3996ffcd621abf6575bedaaf68125"
+    },
+    {
+      "path": "apps/web/src/collaboration/model.ts",
+      "status": "实现复核",
+      "scope": "结构比较不受JSONB键顺序影响；窄目标diff；不相关修改重放；撤销归属；几何变化禁止静默合并。",
+      "lines": 202,
+      "sha256": "d74430f32e8a66d599cc3ab85bfee3773823ddd792652362cd4a012052413345"
+    },
+    {
+      "path": "apps/web/src/collaboration/useCollaboration.ts",
+      "status": "实现复核",
+      "scope": "会话/租约/心跳/轮询；临时预览与持久确认分离；未决请求原幂等键；过期重连；自身草稿/并发引用解析保护；发布等待真实回执。",
+      "lines": 767,
+      "sha256": "461f434438041f539c05d3b9e4fe0747d1072a2171de44c7bde5e6881072b34b"
+    },
+    {
+      "path": "apps/web/src/collaboration/CollaborationStatus.tsx",
+      "status": "实现复核",
+      "scope": "真实成员、租约、连接、冲突、确认/取消、重试/重连/另存；退出阶段inert；未确认不写成功。",
+      "lines": 125,
+      "sha256": "3a49c25245bdebf6e89ed079c1dbb7ad082f51c93408f57bc2ddc7affb4e8fec"
+    },
+    {
+      "path": "apps/web/src/collaboration/CollaborationOverlay.tsx",
+      "status": "实现复核",
+      "scope": "源坐标范围与姓名；本窗口不重画；缩放保持游标可读；异常透视跳过；文本经React转义。",
+      "lines": 100,
+      "sha256": "364c71cc5e2aaa585f7af628ec2415b0a00ca2abdf6c81c0b311106ae70f12a9"
+    },
+    {
+      "path": "apps/web/src/collaboration/collaboration.css",
+      "status": "规则复核",
+      "scope": "紧凑状态、展开详情、错误操作与源图叠层；CSS不能替代真人视觉验收。",
+      "lines": 201,
+      "sha256": "526c4016bd1ffccd6ef312747455a8a542d912716c669294c23e5f2d15ef32bb"
+    },
+    {
+      "path": "apps/web/src/workspace/ToolDock.tsx",
+      "status": "实现复核",
+      "scope": "手机调节归类/逐级展开；当前工具可见；原生按钮语义；方向/Home/End键焦点移动。",
+      "lines": 91,
+      "sha256": "f6848ad849c84bfd7a1aa8b68c843c6beca2669859004c487576e016c08f55dc"
+    },
+    {
+      "path": "apps/web/src/workspace/FloatingPanel.tsx",
+      "status": "实现复核",
+      "scope": "底部连接、连续调尺寸、主动浮动/最大化、收起/恢复；单指所有权、取消、标题键盘与设置；无自动覆盖。",
+      "lines": 579,
+      "sha256": "d4783fdf712e049fe515e49190a542d40542a5aa6657863edad4307818bc32fd"
+    },
+    {
+      "path": "apps/web/src/workspace/panelGeometry.ts",
+      "status": "实现复核",
+      "scope": "使用实际工作区和工具带高度；三端独立默认；仅视口/可达约束；用户正常尺寸不因演示模式改写。",
+      "lines": 337,
+      "sha256": "c8a7022d47a6bb713814154e2759abc4c2db7a9285b6b68fae9b5ed8d2f4fb1f"
+    },
+    {
+      "path": "apps/web/src/workspace/useWorkspaceLayout.ts",
+      "status": "实现复核",
+      "scope": "v5按设备/朝向保存；旧手机偏好迁移；实际body/shelf/visualViewport测量；存储损坏降级。",
+      "lines": 186,
+      "sha256": "47e2fe273e2d5661be8bf0a0d69898d6c8a60510b9fe9213f127d564a6ad8f46"
+    },
+    {
+      "path": "apps/web/src/workspace/panel.css",
+      "status": "规则复核",
+      "scope": "手机贴底、标题/把手/菜单密度；桌面平板独立；允许显式overlay；可触控命中。",
+      "lines": 370,
+      "sha256": "287fb9c70248a0ed674b998abf072902d0ba1a7627479d76ef65f483e794bb54"
+    },
+    {
+      "path": "apps/web/src/workspace/workspace.css",
+      "status": "规则复核",
+      "scope": "手机底部工具带、画布与页面布局；三端分支，不靠统一缩放。",
+      "lines": 2342,
+      "sha256": "b2f7b5fa8c09e3045ecffc8e4c9e24b86b7e06e99e930ea5fcf43d99193869e0"
+    },
+    {
+      "path": "apps/web/src/motion/workspaceV4.ts",
+      "status": "实现复核",
+      "scope": "19个新增逻辑角色，desktop/tablet/phone独立进入退出与交互参数；含图片角色零模糊。",
+      "lines": 687,
+      "sha256": "17008dfe0a323ed1a021dc9a0cf72b3febc39a36be9908e39b19ecccba5a7ecf"
+    },
+    {
+      "path": "apps/web/src/motion/registry.ts",
+      "status": "联动复核",
+      "scope": "新增角色合并到统一轨迹入口；既有角色保留。",
+      "lines": 2827,
+      "sha256": "8370a6afa514103659a29cfedbc066962837b25f00e9e610d2b3e37849a06749"
+    },
+    {
+      "path": "apps/web/src/motion/motion.css",
+      "status": "规则复核",
+      "scope": "新增角色有实际CSS轨迹；reduced-motion、退出与交互状态；图片不施加模糊。",
+      "lines": 3386,
+      "sha256": "739a8ac7c03ae30cee3901fc1c2fed9b5e9a019e0b4d21ea5c783b7a209b309e"
+    },
+    {
+      "path": "apps/web/src/resources/model.ts",
+      "status": "实现复核",
+      "scope": "直接复用共享资源DTO；URLSearchParams编码查询；查询范围不代替权限。",
+      "lines": 25,
+      "sha256": "155bd8d5fa1b8ac6c985e7471f5baebc6f57d4eb3510d0e66801f274f57d17a0"
+    },
+    {
+      "path": "apps/web/src/resources/ResourceSearch.tsx",
+      "status": "实现复核",
+      "scope": "真实跨空间搜索；分页/晚响应保护；用户私有标注CAS；原件详情；清除标注不删源文件。",
+      "lines": 409,
+      "sha256": "4c56c4d68caaa211d6ee4bc02501bbbae12b58ce0d5252cf0c03a931d10eda16"
+    },
+    {
+      "path": "apps/web/src/resources/TeamActivity.tsx",
+      "status": "实现复核",
+      "scope": "真实成员动态与游标分页；类型来自共享契约；角色变化语义明确。",
+      "lines": 113,
+      "sha256": "d507450173445cad62b0f788065c816d488dface46d05f956b2525429585a7d6"
+    },
+    {
+      "path": "apps/web/src/resources/resources.css",
+      "status": "规则复核",
+      "scope": "搜索、素材卡与动态各自响应式；包含照片的容器不模糊。",
+      "lines": 219,
+      "sha256": "b44c5c26c1a4ae133e5fd583f2203b5b8d218ef10a47cc4d538c1cfd82b57674"
+    },
+    {
+      "path": "apps/web/src/usage/model.ts",
+      "status": "实现复核",
+      "scope": "上海时区含结束日转换；个人/团队/运营筛选；负调整保留；未知量不是零。",
+      "lines": 55,
+      "sha256": "759148edb0f854602449cbfaf17823ceb7ba9b782783ea123c420543656738ce"
+    },
+    {
+      "path": "apps/web/src/usage/UsageDashboard.tsx",
+      "status": "实现复核",
+      "scope": "授权端点分开；当前余额与时间累计区别；真实分页/取消；明细与图表；错误不补造数据。",
+      "lines": 375,
+      "sha256": "6819c09dca2c48a533b7581338871b99735fe102844fa8fa0e0fc07bda7f2527"
+    },
+    {
+      "path": "apps/web/src/usage/export.ts",
+      "status": "实现复核",
+      "scope": "固定游标全部分页；一个表头且保留引号内换行；失败/循环/64MiB预算拒绝残缺文件。",
+      "lines": 50,
+      "sha256": "de498bc544e4869ba9f8321f1ed63587935d0d4bcef57d6e9c0f77e111e4cc8f"
+    },
+    {
+      "path": "apps/web/src/usage/usage.css",
+      "status": "规则复核",
+      "scope": "三端筛选、正负图表与可横滚表格；不以图形隐藏精确账本数值。",
+      "lines": 222,
+      "sha256": "8d0edb0f7b8ff00426900367671e3513c2bcc32975e81053ba0065fa8e740d1c"
+    },
+    {
+      "path": "apps/web/src/components/AssetLibrary.tsx",
+      "status": "联动复核",
+      "scope": "原件/母版查看器按实际provenance显示；旧素材/作品操作不混淆。",
+      "lines": 611,
+      "sha256": "343a6486690a4ae3aa116ea5de57016329ed7bd5784bc418660c1c4fbdd3822b"
+    },
+    {
+      "path": "apps/web/src/components/ImportSettings.tsx",
+      "status": "联动复核",
+      "scope": "本地预算和专业原片分开；保存项目前置；V4兼容说明不夸称浏览器高位深编辑。",
+      "lines": 194,
+      "sha256": "0df9c0a9657d6a624e93da4db845d05ac5fb4ac2ffe3a64a3515a1cabfd2697f"
+    },
+    {
+      "path": "apps/web/src/components/ProjectDialogs.tsx",
+      "status": "联动复核",
+      "scope": "团队成员动态/所有权交接及期望所有者；既有导出和权限路径本轮只核接线，完整旧文件非逐行重审。",
+      "lines": 862,
+      "sha256": "8bb9a06112f3e4ae4c25368733adcf25f9364246b5664a8aa5063dbfe6bd4dbb"
+    },
+    {
+      "path": "apps/web/src/components/OpsDashboard.tsx",
+      "status": "联动复核",
+      "scope": "独立Agent/语音模型页签；使用真实权限和root子组件；用量页签不与模型价格混用。",
+      "lines": 1128,
+      "sha256": "1c7b3034db69d363cbe55d53b6f2dd73769f802efc587f1044c22649a9d083be"
+    },
+    {
+      "path": "apps/web/src/lib/types.ts",
+      "status": "契约复核",
+      "scope": "资源provenance在旧Asset DTO中可表示；运行时可信字段仍由服务器控制。",
+      "lines": 115,
+      "sha256": "0147a31362c6e698fa0561bfa438c3eff2b51dac92a9b1ebdfd327d1f818746b"
+    },
+    {
+      "path": "apps/web/test/collaboration-model.test.ts",
+      "status": "用例复核",
+      "scope": "JSONB顺序、窄目标、并发重放、结构文档租约和自身撤销。",
+      "lines": 131,
+      "sha256": "ef04aa6851d7bbbbc31e40c1973b509f44eed9fc6a3c147d0af8ca93386d9ed5"
+    },
+    {
+      "path": "apps/web/test/collaboration-overlay.test.ts",
+      "status": "用例复核",
+      "scope": "真实React SSR：坐标/缩放、姓名转义、自窗口排除、不可投影异常安全。",
+      "lines": 79,
+      "sha256": "410e70654466ca88c04f39a3fe44ac5286c726a0264462fdad90f1893f66a099"
+    },
+    {
+      "path": "apps/web/test/projective-controls.test.ts",
+      "status": "用例复核",
+      "scope": "实际内核坐标来回、亚像素、拒绝交叉/非有限/超预算。",
+      "lines": 60,
+      "sha256": "6057c60f3cbc98712b8649958ffb56d7e7f318efae5f595f3e71f6816e4f8b4d"
+    },
+    {
+      "path": "apps/web/test/resource-usage.test.ts",
+      "status": "用例复核",
+      "scope": "日期、权限过滤编码、负数/空数、CSV跨页/换行/失败/循环。",
+      "lines": 126,
+      "sha256": "b6e75a45d193f39a0fa261db828d3d4782247fc6d37ff43fb4f1bdd5ea729820"
+    },
+    {
+      "path": "apps/web/test/source-coordinates.test.ts",
+      "status": "用例复核",
+      "scope": "像素落笔严格范围、中间裁切、源透明可画、真实有效四角的裁后源horizon。",
+      "lines": 149,
+      "sha256": "002a15b2affc8dd17b7f3ca13a52a6a1f238159f0eea12400802895c3d619c98"
+    },
+    {
+      "path": "apps/web/test/workspace-layout.test.ts",
+      "status": "用例复核",
+      "scope": "五种停靠/展示选择、六组视口计算、连续尺寸、贴底/照片避让和偏好保存。",
+      "lines": 348,
+      "sha256": "c89b58a0df6187758a723b6fb9823ff921c46ed17d8af4dbb6f25bbfe11691c3"
+    },
+    {
+      "path": "apps/web/README.md",
+      "status": "文档复核",
+      "scope": "更新V4、双工语音、共享画面、协作、资源和用量；旧V3验收不能算本轮证据。",
+      "lines": 97,
+      "sha256": "1e386a0da7c83132df805754e7147c1c3593926dac9eae861603e9c20c989eaa"
+    },
+    {
+      "path": "docs/research/COMPETITORS-V4.md",
+      "status": "来源复核",
+      "scope": "实际打开9个第一方页面；功能与本版对应/未实现分开；未操作第三方原生App。",
+      "lines": 31,
+      "sha256": "f4de9d36c82348249ccf7c04704181cbef7059ff68a26cb842585499909733a1"
+    },
+    {
+      "path": "scripts/qa/workspace-v4.browser.mjs",
+      "status": "静态复核/待CI",
+      "scope": "真实Chromium/同源API/PG/密码登录；五视口导入下载、四角手势、双账号/故障/标注/账本；仅语法校验已执行。",
+      "lines": 710,
+      "sha256": "35c9fb46fb93830fc869100a34b4a7c1cc8fc4f030907a79ad8f1b811da4c409"
+    },
+    {
+      "path": "scripts/qa/WORKSPACE-V4-BROWSER.md",
+      "status": "文档复核",
+      "scope": "启动约定、临时账号、真实HTTP链路与明确的测试/人工边界。",
+      "lines": 41,
+      "sha256": "3fadbae72bc506fae0f7f2cb99be9da8f7a60f97fcf0e85c60dc942ab67f9165"
+    },
+    {
+      "path": "apps/web/src/components/AIPanel.tsx",
+      "status": "联动复核",
+      "scope": "新增跨项目生图草案两阶段handoff：权威素材列表、明确复制数量/空间与副本保留说明、真实授权复制、共享幂等键、全部参考映射、立即本地展示、项目/用户/任务epoch保护；旧面板其余逻辑不宣称本次逐行重审。",
+      "lines": 1153,
+      "sha256": "a03246af52cba9e6abae248c4029d382edc18e1216af0201742f791d1cb78024"
+    },
+    {
+      "path": "apps/web/src/components/generationDraft.ts",
+      "status": "实现复核",
+      "scope": "不丢任何参考；同项目权威读取；顺序复制；校验copy与asset回执绑定；未知请求原key；部分成功留副本；先准备后decision成功再commit；取消/错误不切composer。",
+      "lines": 123,
+      "sha256": "a733ccb9e4d9a4d8c83c5f2964d9b6327f2fa606f22c313d8b91130fba50ca34"
+    },
+    {
+      "path": "apps/web/test/generation-draft.test.ts",
+      "status": "用例复核",
+      "scope": "9项针对性用例覆盖完整映射/顺序/重复、明确取消、部分失败原key、权限拒绝、迟到响应、错误回执、候选决定失败不切界面和最终上下文保护。仅此测试的复制为替身，不等于真实HTTP/浏览器验收。",
+      "lines": 280,
+      "sha256": "113f5d86378ca7011c702abcdb5854d7d5554496c4a27f9fd5f24d80c9abc609"
+    }
+  ]
+}

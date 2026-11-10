@@ -26,7 +26,10 @@ export function recipeDifferences(before: EditorRecipe, after: EditorRecipe): Re
     // V3 retains the complete V2 color/effects block. A V3 proposal must not
     // appear unchanged simply because its version number is no longer 2.
     ...(before.schemaVersion >= 2 && after.schemaVersion >= 2 ? V2_TOOLS : []),
-    ...(before.schemaVersion === 3 && after.schemaVersion === 3 ? V3_TOOLS : []),
+    ...((before.schemaVersion === 3 || before.schemaVersion === 4) &&
+    (after.schemaVersion === 3 || after.schemaVersion === 4)
+      ? V3_TOOLS
+      : []),
   ];
   return definitions.flatMap((tool) => {
     const from = readNumber(before, tool.path),
@@ -70,6 +73,9 @@ export function additionalRecipeChanges(before: EditorRecipe, after: EditorRecip
     imageLayers: '合成素材、图层顺序与混合',
     paintLayers: '绘制、妆容与克隆图层',
     warp: '液化笔触与背景保护',
+    projective: '四角投影与自由变换',
+    healing: '修复范围、来源与纹理融合',
+    retouch: '肤质精修与保护区域',
   };
   const changes = Object.entries(labels).flatMap(([key, label]) => {
     const from = (before as unknown as Record<string, unknown>)[key];
@@ -86,8 +92,8 @@ export function additionalRecipeChanges(before: EditorRecipe, after: EditorRecip
   )
     changes.push('颗粒颜色模式');
   if (
-    before.schemaVersion === 3 &&
-    after.schemaVersion === 3 &&
+    (before.schemaVersion === 3 || before.schemaVersion === 4) &&
+    (after.schemaVersion === 3 || after.schemaVersion === 4) &&
     before.transform.fit !== after.transform.fit
   )
     changes.push('自由变换画幅模式');

@@ -20,6 +20,8 @@
     "react-dom": "^19.3.1"
   },
   "devDependencies": {
+    "@ai-xiutu/assistant": "0.1.0",
+    "@ai-xiutu/media": "0.1.0",
     "@types/react": "^19.0.0",
     "@types/react-dom": "^19.0.0",
     "@vitejs/plugin-react": "latest",

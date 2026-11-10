@@ -110,6 +110,7 @@ export {
   compileFineTransformV3,
   applyMatrixV3,
   getEditorOutputDimensions,
+  getEditorPreProjectiveDimensions,
   mapEditorSourceToOutput,
   mapEditorOutputToSource,
   mapEditorOutputToContent,
@@ -119,3 +120,34 @@ export type { Matrix3V3, TransformContextV3, EditorCoordinateMap } from './v3-ge
 export { compileSelectionMaskV3 } from './v3-mask.js';
 export { blendRgbaV3 } from './v3-blend.js';
 export { compileWarpFieldV3 } from './v3-warp.js';
+export type * from './v4-types.js';
+export {
+  SCHEMA_VERSION_V4,
+  ENGINE_VERSION_V4,
+  createRecipeV4,
+  parseRecipeV4,
+  validateRecipeV4,
+  migrateRecipeToV4,
+  createProjectiveTransformV4,
+  createHealingOperationV4,
+  createRetouchRegionV4,
+} from './v4-recipe.js';
+export {
+  compileProjectiveTransformV4,
+  validateProjectiveQuadV4,
+  applyProjectiveMatrixV4,
+  mapProjectiveOutputToCornerFrame,
+  mapProjectiveCornerFrameToOutput,
+} from './v4-geometry.js';
+export type { ProjectiveContextV4 } from './v4-geometry.js';
+export {
+  MAX_V4_PIXELS,
+  MAX_V4_HEALING_OPERATIONS,
+  MAX_V4_RETOUCH_REGIONS,
+  MAX_V4_NEW_MASK_NODES,
+  MAX_V4_HEAL_ROI_PIXELS,
+  MAX_V4_HEAL_TARGET_PIXELS,
+  MAX_V4_HEAL_WORK,
+} from './v4-types.js';
+export { MAX_V4_RETOUCH_PIXELS } from './v4-spatial.js';
+export { renderRecipeV4, renderRecipeV4Tiled } from './v4-engine.js';
