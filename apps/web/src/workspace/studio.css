@@ -996,7 +996,13 @@
   .team-voice-banner-actions {
     display: grid;
     flex: 1 1 100%;
-    grid-template-columns: repeat(3, minmax(0, 1fr));
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1.2fr) minmax(0, 1fr);
+  }
+  .team-voice-banner-actions > button {
+    gap: 4px;
+  }
+  .team-voice-banner-actions > button > span {
+    white-space: nowrap;
   }
   .team-voice-banner[data-state='connecting'] .team-voice-banner-actions {
     grid-template-columns: repeat(2, minmax(0, 1fr));
