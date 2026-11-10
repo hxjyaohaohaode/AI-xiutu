@@ -1,0 +1,822 @@
+{
+  "schema": "frontend-studio-evidence-v1",
+  "writtenAt": "2026-11-10T14:40:18.590474+00:00",
+  "branch": "work/frontend-studio-v2",
+  "latestRemoteMain": {
+    "commit": "5e6c994d94a3c45e2847b4871641640d838aa375",
+    "subject": "Keep live voice controls visible in compact panels",
+    "lastFetchedAt": "2026-11-10T14:33:06.226937+00:00"
+  },
+  "productSourceCommit": "c03a91d7fc8c1659d48a21de30b54279a66beacc",
+  "finalFrontendGate": {
+    "label": "Final frontend gate after latest upstream UI scroll patch",
+    "createdAt": "2026-11-10T14:37:33.460Z",
+    "runtime": "v24.22.1",
+    "baseCommit": "5e6c994d94a3c45e2847b4871641640d838aa375",
+    "testStartCommit": "c03a91d7fc8c1659d48a21de30b54279a66beacc",
+    "endHead": "c03a91d7fc8c1659d48a21de30b54279a66beacc",
+    "finalFrontendGatePassed": true,
+    "sourceBoundary": {
+      "fileCount": 426,
+      "startFingerprint": "5e129a779df840579c651a6ef2ab5a880a2effeeba39b25c8e8ef7e2b5b0485a",
+      "finalFingerprint": "5e129a779df840579c651a6ef2ab5a880a2effeeba39b25c8e8ef7e2b5b0485a",
+      "changedDuringRun": [],
+      "entireInventoriedSourceUnchangedDuringFinalFrontendRun": true,
+      "changedSincePriorGate": [
+        "apps/web/src/ai/LiveAssistant.tsx",
+        "scripts/qa/team-voice.browser.mjs"
+      ],
+      "reason": "Latest main 5e6c994 changes the LiveAssistant connecting scroll container from .ai-scroll to .ai-workbench and adds hang-up hit-testing assertions in the existing frontend browser QA script. These two files were merged into c03a91d7; full frontend tests, 14 type projects, and production build were rerun on that final source."
+    },
+    "completeWeb": {
+      "command": "node --import tsx --test --test-concurrency=1 apps/web/test/*.test.ts",
+      "exitCode": 0,
+      "tests": 215,
+      "suites": 0,
+      "pass": 215,
+      "fail": 0,
+      "cancelled": 0,
+      "skipped": 0,
+      "todo": 0,
+      "duration_ms": 27965.749007,
+      "log": "test-web-synced-ui.log"
+    },
+    "rootTypecheckAndBuild": {
+      "command": "npm run build",
+      "exitCode": 0,
+      "typecheckProjectCount": 14,
+      "typecheckProjects": [
+        "packages/ai/tsconfig.json",
+        "packages/assistant/tsconfig.json",
+        "packages/contracts/tsconfig.json",
+        "packages/db/tsconfig.json",
+        "packages/editor/tsconfig.json",
+        "packages/media/tsconfig.json",
+        "packages/multimodal/tsconfig.json",
+        "packages/portrait/tsconfig.json",
+        "packages/providers/tsconfig.json",
+        "packages/storage/tsconfig.json",
+        "apps/api/tsconfig.json",
+        "apps/web/tsconfig.json",
+        "apps/worker-ai/tsconfig.json",
+        "scripts/tsconfig.json"
+      ],
+      "modules": 4830,
+      "mainJsKB": 1072.41,
+      "mainJsGzipKB": 314.04,
+      "mainCssKB": 343.97,
+      "mainCssGzipKB": 58.72,
+      "log": "build-synced-ui.log"
+    },
+    "nativeCoverage": {
+      "reexecutedForFinalUiPatch": false,
+      "priorGateReport": "gate-synced.json",
+      "command": "npm test via run-native-tests.mjs synced",
+      "tests": 722,
+      "suites": 0,
+      "pass": 722,
+      "fail": 0,
+      "cancelled": 0,
+      "skipped": 0,
+      "todo": 0,
+      "duration_ms": 187778.649853,
+      "startedAt": "2026-11-10T14:28:03.501Z",
+      "finishedAt": "2026-11-10T14:31:13.002Z",
+      "status": 0,
+      "failure": null,
+      "databaseVersion": "PostgreSQL 18.6 on x86_64-pc-linux-gnu, compiled by gcc (Ubuntu 7.5.0-3ubuntu1~18.04) 7.5.0, 64-bit",
+      "poolSize": 8,
+      "clusterStopped": true,
+      "temporaryDirectoryRemoved": true,
+      "log": "test-native-synced.log",
+      "baseCommit": "1f7e8f4f609ae95b2236cfd9077888e075ac5b82",
+      "testStartCommit": "70359f9446ba8a2ed06a9fa660a532d43f93387a",
+      "sourceBoundary": {
+        "fileCount": 426,
+        "startFingerprint": "808aa2459d0efc6cf1d20328b231e2169b1ff8ad367a960983373e1f8079d292",
+        "finalFingerprint": "ba407cb208ae2712d736e642023651eddf9d17a79fa09572aac8d3f5050a2c70",
+        "changedFromTestStart": ["apps/web/src/workspace/studio.css"],
+        "changedAfterCssBuildStart": [],
+        "logicAndTestsUnchangedDuringRun": true,
+        "entireSourceUnchangedDuringRun": false,
+        "explanation": "The complete native test, web test and root build began at 70359f9. While they ran, root committed the single studio.css change in 79b0fab to keep 320px call controls on one line. No TS/JS, API, package or test logic changed. A separate production Vite build was then run against 79b0fab, and the final inventory stayed unchanged thereafter."
+      },
+      "explanation": "722/722 complete repository tests ran on the 1f7e8f4-based merged product snapshot starting at 70359f9, with a single studio.css change during that run and a separate final CSS production build at 79b0fab. The final c03a91d7 update contains only the frontend scroll-container selector and frontend browser QA assertions; native SQL tests were not rerun for that UI-only delta. This report does not claim npm test was executed against c03a91d7."
+    },
+    "repositoryBoundary": {
+      "backendChangedFromLatestMain": [],
+      "backendChangedBetweenUpstreamBases": [],
+      "changedScriptPaths": ["scripts/qa/team-voice.browser.mjs"]
+    },
+    "staticChecks": {
+      "gitDiffCheck": "passed",
+      "teamVoiceBrowserQaSyntax": "passed",
+      "teamVoiceBrowserQaExecuted": false
+    },
+    "warnings": [
+      "npm unknown environment config http-proxy",
+      "Vite main minified JS chunk remains above 500 kB; no warning threshold was raised"
+    ],
+    "evidenceLimits": [
+      "Native 722 and final frontend 215 results correspond to the separately recorded snapshots above; they are not presented as one completely unchanged source run.",
+      "Frontend browser QA script syntax was checked; its microphone/provider Playwright scenario was not executed locally for this gate.",
+      "Root browser fixtures at 320x700 and 844x390 validate layout and controlled states only, not authenticated microphone/provider end-to-end operation.",
+      "The native temporary PostgreSQL 18.6 cluster from the prior synced gate was stopped and removed; no developer preview database was reused."
+    ],
+    "logSha256": {
+      "test-web-synced-ui.log": "0d4f028f0e69cdf3022baa7754a22a745c2ca2721876c638abe73d448c3233a9",
+      "build-synced-ui.log": "b8c21a99d2e5869d473813375ee14d91db1a4ab3b658c27b77a0c3cf67c7cb48",
+      "gate-synced.json": "1090d38fba932d44f063da17cdbce2581201884e221fa06b64bfc0ef4a301244",
+      "source-synced-ui-start.json": "0cc162bef5fc00ebc86094acdf4b9ae50ef94a21200f0e04b9b5bcaf001f4923",
+      "source-synced-ui-end.json": "e668d8457ffb308dbffec6f02967864daf4f8b83c7ce2a66420b52b0b1f94345"
+    }
+  },
+  "nativeAndMergeGate": {
+    "label": "Synced frontend gate after upstream team-voice merge",
+    "createdAt": "2026-11-10T14:33:18.638Z",
+    "runtime": "v24.22.1",
+    "baseCommit": "1f7e8f4f609ae95b2236cfd9077888e075ac5b82",
+    "testStartCommit": "70359f9446ba8a2ed06a9fa660a532d43f93387a",
+    "finalCssCommit": "79b0fab538fc56a7292ed5b5aa280afa6b99b0c2",
+    "endHead": "79b0fab538fc56a7292ed5b5aa280afa6b99b0c2",
+    "finalGatePassed": true,
+    "sourceBoundary": {
+      "fileCount": 426,
+      "startFingerprint": "808aa2459d0efc6cf1d20328b231e2169b1ff8ad367a960983373e1f8079d292",
+      "finalFingerprint": "ba407cb208ae2712d736e642023651eddf9d17a79fa09572aac8d3f5050a2c70",
+      "changedFromTestStart": ["apps/web/src/workspace/studio.css"],
+      "changedAfterCssBuildStart": [],
+      "logicAndTestsUnchangedDuringRun": true,
+      "entireSourceUnchangedDuringRun": false,
+      "explanation": "The complete native test, web test and root build began at 70359f9. While they ran, root committed the single studio.css change in 79b0fab to keep 320px call controls on one line. No TS/JS, API, package or test logic changed. A separate production Vite build was then run against 79b0fab, and the final inventory stayed unchanged thereafter."
+    },
+    "finalNative": {
+      "command": "npm test via run-native-tests.mjs synced",
+      "tests": 722,
+      "suites": 0,
+      "pass": 722,
+      "fail": 0,
+      "cancelled": 0,
+      "skipped": 0,
+      "todo": 0,
+      "duration_ms": 187778.649853,
+      "startedAt": "2026-11-10T14:28:03.501Z",
+      "finishedAt": "2026-11-10T14:31:13.002Z",
+      "status": 0,
+      "failure": null,
+      "databaseVersion": "PostgreSQL 18.6 on x86_64-pc-linux-gnu, compiled by gcc (Ubuntu 7.5.0-3ubuntu1~18.04) 7.5.0, 64-bit",
+      "poolSize": 8,
+      "clusterStopped": true,
+      "temporaryDirectoryRemoved": true,
+      "log": "test-native-synced.log"
+    },
+    "completeWeb": {
+      "command": "node --import tsx --test --test-concurrency=1 apps/web/test/*.test.ts",
+      "exitCode": 0,
+      "tests": 215,
+      "suites": 0,
+      "pass": 215,
+      "fail": 0,
+      "cancelled": 0,
+      "skipped": 0,
+      "todo": 0,
+      "duration_ms": 66445.709714,
+      "log": "test-web-synced.log"
+    },
+    "rootTypecheckAndBuild": {
+      "command": "npm run build",
+      "exitCode": 0,
+      "typecheckProjects": 14,
+      "log": "build-synced.log"
+    },
+    "finalCssProductionBuild": {
+      "command": "npm run build -w @ai-xiutu/web",
+      "exitCode": 0,
+      "commit": "79b0fab538fc56a7292ed5b5aa280afa6b99b0c2",
+      "modules": 4830,
+      "mainJsKB": 1072.41,
+      "mainJsGzipKB": 314.04,
+      "mainCssKB": 343.97,
+      "mainCssGzipKB": 58.72,
+      "log": "build-synced-final-css.log"
+    },
+    "repositoryBoundary": {
+      "backendChangedPaths": [],
+      "changedScriptPaths": ["scripts/qa/team-voice.browser.mjs"],
+      "authorizedFrontendQaScript": "scripts/qa/team-voice.browser.mjs"
+    },
+    "isolation": {
+      "database": "native PostgreSQL 18.6; fresh owned temporary directory, random local port and random DB name; verified data_directory",
+      "poolSize": 8,
+      "clusterStopped": true,
+      "temporaryDirectoryRemoved": true,
+      "preview": "No preview process or developer database was stopped, reconfigured or reused by this gate"
+    },
+    "warnings": [
+      "npm unknown environment config http-proxy",
+      "Vite main minified JS chunk remains above 500 kB; no warning threshold was raised"
+    ],
+    "evidenceLimits": [
+      "scripts/qa/team-voice.browser.mjs was syntax-checked by root but not executed locally during this gate.",
+      "Root separately used browser layout fixtures at 320x700 and 844x390. These are layout evidence, not authenticated microphone/provider end-to-end evidence.",
+      "These native and frontend tests do not certify deployed infrastructure or external paid model quality.",
+      "Old 710-test and 206-web-test results remain in prior logs for the older 215e2bb-based snapshot; none are counted as synced results."
+    ],
+    "logHashes": {
+      "test-web-synced.log": "73c23fa38683f5ca1a7855efe2be17568e03c8addd0d1ecef1299fb5de0a8a5a",
+      "build-synced.log": "93fb11fe9dbbfdc243a45bd24b370b98bfa44d255829808f848a0bf82cc9926d",
+      "test-native-synced.log": "70224969943218ce653b697f5d2fa21a2f82d87a40db552b14a2027d77f9291e",
+      "build-synced-final-css.log": "e88997de8d16110df8cc266cdcd5a80649a184ccf24a85e09c31f32e233e21b8"
+    }
+  },
+  "preSyncGateHistory": {
+    "label": "Final frozen frontend verification",
+    "createdAt": "2026-11-10T13:55:53.540Z",
+    "runtime": "v24.22.1",
+    "baseCommit": "215e2bb0e64a4d97e0fee7fc98a45842314fdd0a",
+    "finalGatePassed": true,
+    "sourceSnapshot": {
+      "fileCount": 403,
+      "fingerprint": "b65ba845142371e1595c7374c2907b5529457e5f8c918a8fc8f4891e6bef7bed",
+      "changedDuringFinalGates": [],
+      "extensions": "TypeScript/JavaScript, CSS, JSON, SQL under apps/packages/scripts plus root package manifests"
+    },
+    "finalNative": {
+      "command": "npm test via owned temporary PostgreSQL runner",
+      "tests": 710,
+      "suites": 0,
+      "pass": 710,
+      "fail": 0,
+      "cancelled": 0,
+      "skipped": 0,
+      "todo": 0,
+      "duration_ms": 130929.187521,
+      "startedAt": "2026-11-10T13:52:11.835Z",
+      "finishedAt": "2026-11-10T13:54:24.134Z",
+      "status": 0,
+      "failure": null,
+      "databaseVersion": "PostgreSQL 18.6 on x86_64-pc-linux-gnu, compiled by gcc (Ubuntu 7.5.0-3ubuntu1~18.04) 7.5.0, 64-bit",
+      "poolSize": 8,
+      "clusterStopped": true,
+      "temporaryDirectoryRemoved": true,
+      "log": "test-native-complete.log"
+    },
+    "finalWeb": {
+      "command": "node --import tsx --test --test-concurrency=1 apps/web/test/*.test.ts",
+      "exitCode": 0,
+      "tests": 206,
+      "suites": 0,
+      "pass": 206,
+      "fail": 0,
+      "cancelled": 0,
+      "skipped": 0,
+      "todo": 0,
+      "duration_ms": 27296.871065,
+      "log": "test-web-complete.log"
+    },
+    "finalBuild": {
+      "command": "npm run build",
+      "exitCode": 0,
+      "typecheckProjects": 14,
+      "modules": 4821,
+      "mainJsKB": 1025.25,
+      "mainJsGzipKB": 299.07,
+      "mainCssKB": 324.5,
+      "mainCssGzipKB": 55.35,
+      "log": "build-complete.log"
+    },
+    "checks": {
+      "gitDiffCheck": "passed",
+      "backendChangedPaths": [],
+      "developmentPreview": "not stopped or reconfigured; no dev database reused"
+    },
+    "priorRuns": [
+      {
+        "log": "test-lite.log",
+        "exitCode": 1,
+        "tests": 669,
+        "suites": 0,
+        "pass": 658,
+        "fail": 11,
+        "cancelled": 0,
+        "skipped": 0,
+        "todo": 0,
+        "duration_ms": 147359.556659,
+        "explanation": "PGlite runner fixes DB_POOL_MAX=1; database-blocked websocket handshake waits for another pooled connection, times out and leaves dependent voice-session test state. Ten child failures plus their parent. Final native pool-8 run passes every case."
+      },
+      {
+        "log": "test-native.log",
+        "exitCode": 0,
+        "tests": 669,
+        "suites": 0,
+        "pass": 669,
+        "fail": 0,
+        "cancelled": 0,
+        "skipped": 0,
+        "todo": 0,
+        "duration_ms": 128858.831744,
+        "explanation": "First full discovery run before final frontend recovery changes."
+      },
+      {
+        "log": "test-native-final.log",
+        "exitCode": 1,
+        "tests": 702,
+        "suites": 0,
+        "pass": 701,
+        "fail": 1,
+        "cancelled": 0,
+        "skipped": 0,
+        "todo": 0,
+        "duration_ms": 130143.727479,
+        "explanation": "Only stale ParameterShelf accessible group-name expectation failed. Updated to the intended label and added collapsed/nonduplicate guidance and native compact picker parity assertions; final full native and web runs pass."
+      }
+    ],
+    "warnings": [
+      "npm: unknown environment config http-proxy; no command failed from it",
+      "Vite: minified main chunk exceeds 500 kB; warning preserved, limit not raised"
+    ],
+    "limits": [
+      "Browser interaction, responsive layout, actual downloaded image checks and aesthetics are reported separately by the root reviewer.",
+      "Native tests use real SQL and local protocol/codec fixtures; they do not certify deployed infrastructure or external paid model quality."
+    ],
+    "logHashes": {
+      "typecheck.log": "7f80f0f4df5e1422254f0aa0ae44c406fb80eb111efc170cf5f8a6bbfb17055e",
+      "test-lite.log": "7b53381c78a524f8c4ee6533512494337be8c6d17fcac5c6922dfe0d4fcbcc16",
+      "test-native.log": "e037f2b22560af45d0ff2398d8cebe9dc0a3ecf4ec67df37df131323f0b4ca91",
+      "test-native-final.log": "f1d85ec733545ac8339b87a05f8bd7a9536c5d197c839a0e9cc5450b2277a5ad",
+      "test-native-complete.log": "3b36f2c4e2d8e980452970148843c869928fbef9ed9878a83dcf6591a9b4a0d9",
+      "test-web-complete.log": "ac7a829a0206987d62817ff4b259481cf5a3cf8f8994e6bf2761bf4275d83831",
+      "build-complete.log": "d1e26e64b73c42c20ff7f42003bef491175ec24a79b0525129bd2baff76f11d2",
+      "parameter-shelf-final.log": "417ab9d06eb11181a6cc4d16f7f2c7411df5a781522fb1afbee388fe3ce7bdd4"
+    }
+  },
+  "browser": {
+    "input": "Reference portrait from the user-provided prototype assets/photo.jpg; never installed as a product default",
+    "realAnonymousApp": [
+      "import",
+      "exposure precise input",
+      "undo/redo",
+      "curve midpoint input",
+      "Chinese command search",
+      "focus/panel restoration",
+      "AI draft retention",
+      "unavailable model state",
+      "PNG/JPEG/WebP real downloads"
+    ],
+    "responsiveMeasurements": [
+      {
+        "bodyWidth": 320,
+        "height": 700,
+        "navLabels": [
+          {
+            "display": "block",
+            "text": "精修"
+          },
+          {
+            "display": "block",
+            "text": "作品"
+          },
+          {
+            "display": "block",
+            "text": "对比"
+          },
+          {
+            "display": "block",
+            "text": "协作"
+          },
+          {
+            "display": "block",
+            "text": "文档"
+          },
+          {
+            "display": "block",
+            "text": "交付"
+          },
+          {
+            "display": "block",
+            "text": "用量"
+          }
+        ],
+        "panel": {
+          "height": 300,
+          "width": 320
+        },
+        "scrollHeight": 700,
+        "scrollWidth": 320,
+        "width": 320
+      },
+      {
+        "bodyWidth": 390,
+        "height": 844,
+        "navLabels": [
+          {
+            "display": "block",
+            "text": "精修"
+          },
+          {
+            "display": "block",
+            "text": "作品"
+          },
+          {
+            "display": "block",
+            "text": "对比"
+          },
+          {
+            "display": "block",
+            "text": "协作"
+          },
+          {
+            "display": "block",
+            "text": "文档"
+          },
+          {
+            "display": "block",
+            "text": "交付"
+          },
+          {
+            "display": "block",
+            "text": "用量"
+          }
+        ],
+        "panel": {
+          "height": 300,
+          "width": 390
+        },
+        "scrollHeight": 844,
+        "scrollWidth": 390,
+        "width": 390
+      },
+      {
+        "bodyWidth": 768,
+        "height": 1024,
+        "navLabels": [
+          {
+            "display": "block",
+            "text": "精修"
+          },
+          {
+            "display": "block",
+            "text": "作品"
+          },
+          {
+            "display": "block",
+            "text": "对比"
+          },
+          {
+            "display": "block",
+            "text": "协作"
+          },
+          {
+            "display": "block",
+            "text": "文档"
+          },
+          {
+            "display": "block",
+            "text": "交付"
+          },
+          {
+            "display": "block",
+            "text": "用量"
+          }
+        ],
+        "panel": {
+          "height": 600,
+          "width": 320
+        },
+        "scrollHeight": 1024,
+        "scrollWidth": 768,
+        "width": 768
+      },
+      {
+        "bodyWidth": 844,
+        "height": 390,
+        "navLabels": [
+          {
+            "display": "block",
+            "text": "精修"
+          },
+          {
+            "display": "block",
+            "text": "作品"
+          },
+          {
+            "display": "block",
+            "text": "对比"
+          },
+          {
+            "display": "block",
+            "text": "协作"
+          },
+          {
+            "display": "block",
+            "text": "文档"
+          },
+          {
+            "display": "block",
+            "text": "交付"
+          },
+          {
+            "display": "block",
+            "text": "用量"
+          }
+        ],
+        "panel": {
+          "height": 242,
+          "width": 320
+        },
+        "scrollHeight": 390,
+        "scrollWidth": 844,
+        "width": 844
+      },
+      {
+        "bodyWidth": 1024,
+        "height": 768,
+        "navLabels": [
+          {
+            "display": "block",
+            "text": "精修"
+          },
+          {
+            "display": "block",
+            "text": "作品"
+          },
+          {
+            "display": "block",
+            "text": "对比"
+          },
+          {
+            "display": "block",
+            "text": "协作"
+          },
+          {
+            "display": "block",
+            "text": "文档"
+          },
+          {
+            "display": "block",
+            "text": "交付"
+          },
+          {
+            "display": "block",
+            "text": "用量"
+          }
+        ],
+        "panel": {
+          "height": 242,
+          "width": 320
+        },
+        "scrollHeight": 768,
+        "scrollWidth": 1024,
+        "width": 1024
+      },
+      {
+        "bodyWidth": 1440,
+        "height": 900,
+        "navLabels": [
+          {
+            "display": "block",
+            "text": "精修"
+          },
+          {
+            "display": "block",
+            "text": "作品"
+          },
+          {
+            "display": "block",
+            "text": "对比"
+          },
+          {
+            "display": "block",
+            "text": "协作"
+          },
+          {
+            "display": "block",
+            "text": "文档"
+          },
+          {
+            "display": "block",
+            "text": "交付"
+          },
+          {
+            "display": "block",
+            "text": "用量"
+          }
+        ],
+        "panel": {
+          "height": 600,
+          "width": 344
+        },
+        "scrollHeight": 900,
+        "scrollWidth": 1440,
+        "width": 1440
+      }
+    ],
+    "responsiveNote": "Root geometry was measured inside controlled browser viewports. Panel dimensions include saved layout preferences at the measurement time; 320px and 1024px were also reviewed after UI layout reset. Viewport harness bounds are not device hardware measurements.",
+    "actualDownloads": {
+      "sourceMeanRGB": [92.539, 69.869, 71.774],
+      "exportAdjustment": {
+        "exposureEV": -0.35
+      },
+      "outputs": [
+        {
+          "file": "export.png",
+          "format": "png",
+          "width": 1000,
+          "height": 1249,
+          "channels": 4,
+          "meanRGB": [82.344, 61.852, 63.542],
+          "entropy": 7.353016837292671,
+          "sha256": "1eede3f8de1b7325678a56b73f42767f7e802c4372f5b82db9c21915a0ae06cd",
+          "bytes": 2016947
+        },
+        {
+          "file": "export.jpg",
+          "format": "jpeg",
+          "width": 1000,
+          "height": 1249,
+          "channels": 3,
+          "meanRGB": [82.315, 61.798, 63.525],
+          "entropy": 7.354499649394711,
+          "sha256": "9c519e21b00ed7ef432ab43af034273fb3379c8120618ceea4c2faeddeb1b760",
+          "bytes": 229320
+        },
+        {
+          "file": "export.webp",
+          "format": "webp",
+          "width": 1000,
+          "height": 1249,
+          "channels": 3,
+          "meanRGB": [82.383, 61.948, 63.468],
+          "entropy": 7.3487433878508455,
+          "sha256": "1404fdbdc1668a48f2864dd4021f66fe47084167ad753228e220ba8fdaac5043",
+          "bytes": 165740
+        }
+      ]
+    },
+    "postSyncSmoke": {
+      "sourceCommit": "79b0fab",
+      "realAnonymousApp": {
+        "importedPhoto": "prototype reference fixture, 1000x1249",
+        "exposureValue": "-0.35EV",
+        "realTimeAssistantUnauthenticated": "登录后开始",
+        "applicationWarningsOrErrors": []
+      },
+      "layoutFixturesOnly": {
+        "teamControls": "320x700 and 844x390; overflow contained and bottom reachable",
+        "banner": "320px; all three buttons44px; controlled state callbacks only, no microphone use"
+      }
+    },
+    "teamComponentLayoutOnly": {
+      "kind": "static component layout fixture; no account, media permission or model call",
+      "checks": [
+        {
+          "actions": [
+            {
+              "bottom": 185.140625,
+              "height": 44,
+              "text": "开启麦克风"
+            },
+            {
+              "bottom": 185.140625,
+              "height": 44,
+              "text": "离开团队语音"
+            }
+          ],
+          "canvasBottom": 345,
+          "clientHeight": 218,
+          "overflowY": "auto",
+          "panelBottom": 333,
+          "panelTop": 113.140625,
+          "scrollHeight": 749,
+          "summaryHeight": 40.140625,
+          "viewport": "320x700"
+        },
+        {
+          "actions": [
+            {
+              "bottom": 184.140625,
+              "height": 44,
+              "text": "开启麦克风"
+            },
+            {
+              "bottom": 184.140625,
+              "height": 44,
+              "text": "离开团队语音"
+            }
+          ],
+          "canvasBottom": 310,
+          "clientHeight": 185,
+          "overflowY": "auto",
+          "panelBottom": 298,
+          "scrollHeight": 680,
+          "viewport": "844x390"
+        }
+      ],
+      "longContentBottomReachable": true
+    },
+    "teamBannerLayoutOnly": {
+      "kind": "static layout fixture only; no actual microphone permission",
+      "geometry": {
+        "buttons": [
+          {
+            "height": 44,
+            "text": "返回精修",
+            "width": 88.75
+          },
+          {
+            "height": 44,
+            "text": "关闭麦克风",
+            "width": 106.5
+          },
+          {
+            "height": 44,
+            "text": "离开通话",
+            "width": 88.75
+          }
+        ],
+        "scrollWidth": 320,
+        "status": "团队通话中麦克风已开启",
+        "width": 320
+      }
+    },
+    "screenshots": [
+      {
+        "file": "docs/screenshots/studio-delivery.jpg",
+        "format": "JPEG",
+        "width": 1363,
+        "height": 936,
+        "bytes": 58228,
+        "sha256": "673a78b46cb534b4abe762f783175caee5fda6b5b30f5e7d5a5f1c681063e879",
+        "kind": "actual anonymous application screenshot; prototype photo used only as QA input"
+      },
+      {
+        "file": "docs/screenshots/studio-desktop.jpg",
+        "format": "JPEG",
+        "width": 1363,
+        "height": 936,
+        "bytes": 99815,
+        "sha256": "1571769a23b05d6df6a347a90fedf08a7b42c6a3aecc4eee73830418f9a099a8",
+        "kind": "actual anonymous application screenshot; prototype photo used only as QA input"
+      },
+      {
+        "file": "docs/screenshots/studio-export-mobile.jpg",
+        "format": "JPEG",
+        "width": 1363,
+        "height": 936,
+        "bytes": 42441,
+        "sha256": "6c41f02f40932011591d98063ce5c81bbb6ce856904d2774854f5a819381f3c1",
+        "kind": "actual anonymous application screenshot; prototype photo used only as QA input"
+      },
+      {
+        "file": "docs/screenshots/studio-landscape.jpg",
+        "format": "JPEG",
+        "width": 1363,
+        "height": 936,
+        "bytes": 47911,
+        "sha256": "cbcf44f5e651764f072535c50d39fcf1c7650d811cbf793ba9efb0b82b9e6b46",
+        "kind": "actual anonymous application screenshot; prototype photo used only as QA input"
+      },
+      {
+        "file": "docs/screenshots/studio-mobile.jpg",
+        "format": "JPEG",
+        "width": 390,
+        "height": 844,
+        "bytes": 41036,
+        "sha256": "8f635df2f061f7244ade1557b23740d967623a5803f777b2463fd9bb404b4c56",
+        "kind": "actual anonymous application screenshot; prototype photo used only as QA input"
+      },
+      {
+        "file": "docs/screenshots/studio-tablet.jpg",
+        "format": "JPEG",
+        "width": 1348,
+        "height": 1097,
+        "bytes": 90856,
+        "sha256": "aa7d8f9a6e5da641404c35f3ff7030b2a9357974e367f486276ef612aa3497b6",
+        "kind": "actual anonymous application screenshot; prototype photo used only as QA input"
+      },
+      {
+        "file": "docs/screenshots/studio-welcome.jpg",
+        "format": "JPEG",
+        "width": 1363,
+        "height": 936,
+        "bytes": 40681,
+        "sha256": "74a60870fd605a77d4f1a2d0aa5fe548ede65ac803a96a3586d9ea7c06df09ee",
+        "kind": "actual anonymous application screenshot; prototype photo used only as QA input"
+      }
+    ],
+    "notExecuted": [
+      "authenticated multi-user browser sessions",
+      "real microphone/media permission",
+      "paid vendor calls",
+      "real SMS",
+      "physical iOS/Android hardware",
+      "local execution of scripts/qa/team-voice.browser.mjs"
+    ]
+  },
+  "contractLimits": [
+    "No user read-only individual/team voice status or original-key lookup exists; unresolved voice remains blocked even after an operator reconciles it until authoritative readback is available.",
+    "Team room invitationId is not a billable voice session ID. A later off/failed from a rejected preparation does not settle an earlier unknown request.",
+    "AI job restoration reads the latest 100 project jobs, without a single-job or cursor endpoint.",
+    "Browser session/local storage is not a cross-tab atomic or cross-device request lock; non-media recovery data may include prompts, recipes and scope."
+  ]
+}
