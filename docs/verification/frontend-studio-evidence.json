@@ -3,47 +3,79 @@
   "writtenAt": "2026-11-10T14:40:18.590474+00:00",
   "branch": "work/frontend-studio-v2",
   "latestRemoteMain": {
-    "commit": "5e6c994d94a3c45e2847b4871641640d838aa375",
-    "subject": "Keep live voice controls visible in compact panels",
-    "lastFetchedAt": "2026-11-10T14:33:06.226937+00:00"
+    "commit": "01b0d7e12ce891c74a50a6965dae0dcb3b813a62",
+    "subject": "Strengthen editor revisions, pixels and AI authorization end to end",
+    "observedByRootAt": "2026-11-10T16:02:34Z",
+    "scope": "Merged main for the currently recorded product source, not a claim that the remote can never advance again."
   },
   "productSourceCommit": "c03a91d7fc8c1659d48a21de30b54279a66beacc",
-  "updatedAt": "2026-11-10T16:04:54.667828+00:00",
+  "updatedAt": "2026-11-10T16:51:04.425918+00:00",
   "fieldScopes": {
     "productSourceCommit": "Historical pre-publication source for the preserved finalFrontendGate, not the current product source.",
     "finalFrontendGate": "Final local frontend gate within the pre-publication c03a91d7 stage. The label is retained from its original report; it is not an all-current-checks claim.",
     "nativeAndMergeGate": "Historical local native gate at 70359f9 with the recorded 79b0fab CSS delta.",
     "preSyncGateHistory": "Historical 215e2bb-based gate and earlier failures.",
     "browser": "Preserved pre-publication local anonymous app, export, responsive and static team component evidence. Post-publication geometry and CI results are separate.",
-    "postPublicationChecks": "Point-in-time evidence for two failed remote browser runs and their scoped fixes, followed by a preserved 15:37 third-CI snapshot and separately added completed-success evidence. Historical and current source boundaries remain explicit; provider fixtures, real local model inference and manual anonymous browsing remain distinct."
+    "postPublicationChecks": "Historical evidence for the first three remote CI runs on the5e6c994 base, including two failures and third completed-success. Preserved unchanged; does not cover current01b0d7e source.",
+    "currentProductSource": "Current01b0d7e-based product snapshot. Its local web227/type/build results and new CI state are in upstreamSync01b0d7e; prior source identity is preserved there.",
+    "upstreamSync01b0d7e": "Separate current stage after main01b0d7e merge: local web227/type/build, actual anonymous guided-v3 UI check, publication mappings and timestamped remote CI42853424180 state. No old full-suite success is attributed to this source."
   },
   "currentProductSource": {
-    "localCommit": "3d151c77b2eaf538087b151bc51020fcea206de0",
-    "remoteCommit": "aa529491e76792d44057c93f676d33cb148424fe",
-    "identicalGitTree": "f361ea9d2dee88bb2e5ebc01938fc8e235696bec",
+    "localCommit": "7367c804e77743646a8d695ed503c55b1c0b70b2",
+    "remoteCommit": "30abd1ba1b18f7d5e9aa25b844951937ecb26d60",
+    "baseCommit": "01b0d7e12ce891c74a50a6965dae0dcb3b813a62",
+    "identicalGitTree": "ee5b6e1e014e019607e8604c6f42c42b6aaee5a7",
     "publicationMapping": "docs/verification/frontend-studio-publication.md",
-    "changedPathsInFix": [
-      "apps/web/src/editor/PrecisionRange.tsx",
-      "apps/web/src/workspace/studio.css",
+    "changedPathsInFrontendAdaptation": [
+      "apps/web/src/App.tsx",
+      "apps/web/src/ai/LiveAssistant.tsx",
+      "apps/web/src/ai/assistantGuards.ts",
+      "apps/web/src/components/WorkspaceViews.tsx",
+      "apps/web/src/editor/RepairControls.tsx",
+      "apps/web/src/lib/revisionHistory.ts",
+      "apps/web/src/lib/types.ts",
+      "apps/web/test/assistant-guards.test.ts",
+      "apps/web/test/repair-controls.test.ts",
+      "apps/web/test/revision-history.test.ts",
       "scripts/qa/workspace-v4.browser.mjs"
     ],
     "sourceSha256": {
-      "apps/web/src/editor/PrecisionRange.tsx": "afdd99dee86fb458e873765450b2162ba7b34f68a8d28874160dcada5021b15d",
-      "apps/web/src/workspace/studio.css": "50534eec1974e4ad5387a8d31bbed5297ebdef1d0a7ca307fffcba7d0006969d",
-      "scripts/qa/workspace-v4.browser.mjs": "f1a8449ac52dff9b4d2483b1bfaec2c7ee3f2d7b10b861484d5f68f844be3ec9"
+      "apps/web/src/App.tsx": "bd8bfde8b49bfa85be16b34b914655758210095d6ffaea3ff68b4ad19a274698",
+      "apps/web/src/ai/LiveAssistant.tsx": "9e8ad5027b6a38ab31a781d784f4accea37b7c912ff2993f07936f3059bc994c",
+      "apps/web/src/ai/assistantGuards.ts": "7b697099a2122fce108f7b3053a7e7e3b20517fca0ed63d28283147c812a9b97",
+      "apps/web/src/components/WorkspaceViews.tsx": "d5fa18c89cd41badd25e2b32181088b52cf40bfa4b25156020b30bcdfb9e5239",
+      "apps/web/src/editor/RepairControls.tsx": "051ae4be58c266c4ace57e12880198af86e67c3d23c1ab4d885350fabb9cb512",
+      "apps/web/src/lib/revisionHistory.ts": "7ef34689c3eb405df64bd0db91522273abdee6cae03b1e31445788f4552038f7",
+      "apps/web/src/lib/types.ts": "d339e08165275f3732a63769333740035310d5f76bd4bef619455386660615e7",
+      "apps/web/test/assistant-guards.test.ts": "bdc81f62a63961fdc3478e7f4258c19c9e02aa83f6f6840a05e820c1de1d8d36",
+      "apps/web/test/repair-controls.test.ts": "9fb9324fecd73085646f0275bdced185906f7ef871c9bd9be66b955ff8769fa1",
+      "apps/web/test/revision-history.test.ts": "9231fd6e0a038d82345f7d388a1fc165a607b14b2ec71d7f46195cd644a81d10",
+      "scripts/qa/workspace-v4.browser.mjs": "75061ffbdc862d0b08cb64ea97044a9d578404b5aa36ae77e97e0387d1877f03"
     },
-    "changeScope": "Add preventScroll:true to the four explicit number/range focus transfers. Set overflow:clip only on the phone editor workspace-body, which is a fixed flex surface rather than an intended scroll container, so native focus cannot shift it toward the resize handle overflow. Nested inspector scrolling, other views, native Tab behavior, resize hit boxes and all CI tolerances remain unchanged. QA adds clear horizontal assertion text, workspace scroll measurements and failure stack.",
+    "changeScope": "Align summary history pagination and retries with immutable revision sources; consume applied:true candidate receipts without replaying local preview; expose guided-v3 explicitly while retaining manual guided-v2 default; add a real105-revision browser QA scenario without loosening prior layout thresholds.",
+    "upstreamChangesAreInherited": true,
+    "backendDiffAgainstRecordedMain": [],
     "prePublicationSourceFingerprintDoesNotDescribeThisNewSource": true,
-    "scopeNote": "This identifies the latest product-fix snapshot. Later documentation-only commits may have different complete Git trees without changing these product files.",
+    "scopeNote": "Product source snapshot; later documentation-only commits may change the whole Git tree without changing these product files.",
     "latestObservedCi": {
-      "runId": 42845426490,
-      "actualCheckoutSha": "d747d7bdcc3c72f5bd18103329448279c99d263f",
-      "jobsObservedAt": "2026-11-10T16:00:58Z",
-      "scope": "GitHub Git commit API readback verified identical trees for the CI merge checkout, published head and local product source. Final jobs show baseline, browser and containers completed successfully. Later documentation-only additions do not change this product source.",
-      "actualCheckoutTree": "f361ea9d2dee88bb2e5ebc01938fc8e235696bec",
-      "treeMatchesPublishedHead": true,
+      "runId": 42853424180,
+      "runUrl": "https://github.com/hxjyaohaohaode/AI-xiutu/actions/runs/42853424180",
+      "headCommit": "30abd1ba1b18f7d5e9aa25b844951937ecb26d60",
+      "baseCommit": "01b0d7e12ce891c74a50a6965dae0dcb3b813a62",
+      "jobsObservedAt": "2026-11-10T16:45:09Z",
       "workflowStatus": "completed",
-      "workflowConclusion": "success"
+      "workflowConclusion": "success",
+      "actualCheckoutSha": "b4425537e12ee5c95626a98d6dc1d00609970c09",
+      "actualCheckoutTree": "ee5b6e1e014e019607e8604c6f42c42b6aaee5a7",
+      "scope": "Fourth CI is a distinct completed successful workflow on head30abd1ba/base01b0d7e, actual checkoutb4425537 with the sameee5b6e Git tree. Localweb227 and CI745 overlap; fixture success is not external-provider, physical-device or visual-quality acceptance.",
+      "treeMatchesPublishedHead": true,
+      "baselineConclusion": "success",
+      "containersConclusion": "success",
+      "browserStatus": "completed",
+      "browserConclusion": "success",
+      "runStartedAt": "2026-11-10T16:19:48Z",
+      "runUpdatedAt": "2026-11-10T16:45:07Z",
+      "independentTerminalObservedAt": "2026-11-10T16:45:46Z"
     }
   },
   "postPublicationChecks": {
@@ -3551,5 +3583,2964 @@
     "Team room invitationId is not a billable voice session ID. A later off/failed from a rejected preparation does not settle an earlier unknown request.",
     "AI job restoration reads the latest 100 project jobs, without a single-job or cursor endpoint.",
     "Browser session/local storage is not a cross-tab atomic or cross-device request lock; non-media recovery data may include prompts, recipes and scope."
-  ]
+  ],
+  "upstreamSync01b0d7e": {
+    "recordedAt": "2026-11-10T16:25:40.658207+00:00",
+    "baseCommit": "01b0d7e12ce891c74a50a6965dae0dcb3b813a62",
+    "localProductCommit": "7367c804e77743646a8d695ed503c55b1c0b70b2",
+    "remoteProductCommit": "30abd1ba1b18f7d5e9aa25b844951937ecb26d60",
+    "identicalGitTree": "ee5b6e1e014e019607e8604c6f42c42b6aaee5a7",
+    "previousProductSourceSnapshot": {
+      "localCommit": "3d151c77b2eaf538087b151bc51020fcea206de0",
+      "remoteCommit": "aa529491e76792d44057c93f676d33cb148424fe",
+      "identicalGitTree": "f361ea9d2dee88bb2e5ebc01938fc8e235696bec",
+      "publicationMapping": "docs/verification/frontend-studio-publication.md",
+      "changedPathsInFix": [
+        "apps/web/src/editor/PrecisionRange.tsx",
+        "apps/web/src/workspace/studio.css",
+        "scripts/qa/workspace-v4.browser.mjs"
+      ],
+      "sourceSha256": {
+        "apps/web/src/editor/PrecisionRange.tsx": "afdd99dee86fb458e873765450b2162ba7b34f68a8d28874160dcada5021b15d",
+        "apps/web/src/workspace/studio.css": "50534eec1974e4ad5387a8d31bbed5297ebdef1d0a7ca307fffcba7d0006969d",
+        "scripts/qa/workspace-v4.browser.mjs": "f1a8449ac52dff9b4d2483b1bfaec2c7ee3f2d7b10b861484d5f68f844be3ec9"
+      },
+      "changeScope": "Add preventScroll:true to the four explicit number/range focus transfers. Set overflow:clip only on the phone editor workspace-body, which is a fixed flex surface rather than an intended scroll container, so native focus cannot shift it toward the resize handle overflow. Nested inspector scrolling, other views, native Tab behavior, resize hit boxes and all CI tolerances remain unchanged. QA adds clear horizontal assertion text, workspace scroll measurements and failure stack.",
+      "prePublicationSourceFingerprintDoesNotDescribeThisNewSource": true,
+      "scopeNote": "This identifies the latest product-fix snapshot. Later documentation-only commits may have different complete Git trees without changing these product files.",
+      "latestObservedCi": {
+        "runId": 42845426490,
+        "actualCheckoutSha": "d747d7bdcc3c72f5bd18103329448279c99d263f",
+        "jobsObservedAt": "2026-11-10T16:00:58Z",
+        "scope": "GitHub Git commit API readback verified identical trees for the CI merge checkout, published head and local product source. Final jobs show baseline, browser and containers completed successfully. Later documentation-only additions do not change this product source.",
+        "actualCheckoutTree": "f361ea9d2dee88bb2e5ebc01938fc8e235696bec",
+        "treeMatchesPublishedHead": true,
+        "workflowStatus": "completed",
+        "workflowConclusion": "success"
+      }
+    },
+    "previousRemoteMainSnapshot": {
+      "commit": "5e6c994d94a3c45e2847b4871641640d838aa375",
+      "subject": "Keep live voice controls visible in compact panels",
+      "lastFetchedAt": "2026-11-10T14:33:06.226937+00:00"
+    },
+    "publication": {
+      "manifestPath": "artifacts/verification/frontend-studio/sync-01b0d7e/publication-manifest.json",
+      "remoteMap": {
+        "404fc6f015de2ab7055cf5654524a3511a8ec1c0": {
+          "remoteSha": "7d2199e0637d8426e8ef95840e3d863e7b885690",
+          "tree": "44d4bb789640f30a2d8b3506e4d742c6fe6d8453",
+          "parents": ["aa529491e76792d44057c93f676d33cb148424fe"]
+        },
+        "34767bff7a9c74e15494a9d5a99ee9701d0fc787": {
+          "remoteSha": "f358fd2d422ee7a9cdeff4a058e6793559fa371e",
+          "tree": "747856afcf6fabfc8f6f77ed2e2f81b0b39321f4",
+          "parents": [
+            "7d2199e0637d8426e8ef95840e3d863e7b885690",
+            "01b0d7e12ce891c74a50a6965dae0dcb3b813a62"
+          ]
+        },
+        "7367c804e77743646a8d695ed503c55b1c0b70b2": {
+          "remoteSha": "30abd1ba1b18f7d5e9aa25b844951937ecb26d60",
+          "tree": "ee5b6e1e014e019607e8604c6f42c42b6aaee5a7",
+          "parents": ["f358fd2d422ee7a9cdeff4a058e6793559fa371e"]
+        }
+      },
+      "localAndRemoteTreesVerifiedEqual": true,
+      "manifestCommits": [
+        {
+          "localSha": "404fc6f015de2ab7055cf5654524a3511a8ec1c0",
+          "parents": ["aa529491e76792d44057c93f676d33cb148424fe"],
+          "expectedTree": "44d4bb789640f30a2d8b3506e4d742c6fe6d8453",
+          "message": "Record complete frontend browser verification and compact control fixes"
+        },
+        {
+          "localSha": "34767bff7a9c74e15494a9d5a99ee9701d0fc787",
+          "parents": [
+            "404fc6f015de2ab7055cf5654524a3511a8ec1c0",
+            "01b0d7e12ce891c74a50a6965dae0dcb3b813a62"
+          ],
+          "expectedTree": "747856afcf6fabfc8f6f77ed2e2f81b0b39321f4",
+          "message": "Sync backend revision, pixel and assistant authorization improvements"
+        },
+        {
+          "localSha": "7367c804e77743646a8d695ed503c55b1c0b70b2",
+          "parents": ["34767bff7a9c74e15494a9d5a99ee9701d0fc787"],
+          "expectedTree": "ee5b6e1e014e019607e8604c6f42c42b6aaee5a7",
+          "message": "Align frontend history, saved AI receipts and retouch controls with latest main"
+        }
+      ]
+    },
+    "localChecks": {
+      "sourceCommit": "7367c804e77743646a8d695ed503c55b1c0b70b2",
+      "sourceTree": "ee5b6e1e014e019607e8604c6f42c42b6aaee5a7",
+      "main": "01b0d7e12ce891c74a50a6965dae0dcb3b813a62",
+      "web": {
+        "tests": 227,
+        "pass": 227,
+        "fail": 0,
+        "skipped": 0,
+        "durationMs": 30650.531043
+      },
+      "typecheckProjects": 14,
+      "build": "passed",
+      "sourcesUnchangedWhileWebAndBuildRan": true,
+      "scopeNote": "Product source was frozen before both commands; the added browser QA case was completed separately and syntax checked. Full native SQL and browser flows await remote CI for this new main combination.",
+      "logs": {
+        "web-tests.log": {
+          "sha256": "a9d489c8105fd1bef267467a94237bd6b27ac7c473f3f9638956cde0d989892d",
+          "bytes": 22403
+        },
+        "build.log": {
+          "sha256": "e492e375cab8c5bf2a39898fde6e607990c448acce9c65648b470621a8956324",
+          "bytes": 2302
+        }
+      }
+    },
+    "newBrowserScenario": {
+      "name": "cloud-history-summary-pagination-opens-full-revision-draft",
+      "createdVersions": 105,
+      "summaryPageSizes": [100, 5],
+      "nextBeforeVersion": [6, null],
+      "retry": "One deliberate older-page network failure; retain first100 rows and retry the same exclusive cursor.",
+      "open": "GET one complete immutable old revision and its source; open as local draft without changing cloud head.",
+      "syntaxChecked": true,
+      "fullLocalBrowserExecuted": false,
+      "ciOutcome": "passed",
+      "scope": "Six current CI reports pass the actual105-revision HTTP fixture,100+5 summary pagination, same-cursor retry and independent localV1 draft. Historical revisions share the same source asset in this fixture; do not claim a browser cross-source replacement case. Full local browser was not executed.",
+      "ciRoundsPassed": 6,
+      "olderPageRequestsPerRound": 2,
+      "retainedRowsAfterFailurePerRound": 100,
+      "fullRevisionRequestsPerRound": 1,
+      "openedVersion": 1,
+      "cloudHeadVersionUnchanged": 105
+    },
+    "realAnonymousGuidedV3": {
+      "geometry": {
+        "button": {
+          "bottom": 556.25,
+          "height": 34,
+          "width": 100.015625,
+          "x": 14,
+          "y": 522.25
+        },
+        "documentWidth": 320,
+        "scroller": {
+          "bottom": 635.984375,
+          "height": 193.234375,
+          "y": 442.75
+        },
+        "selected": "true",
+        "text": "细纹与反光分离",
+        "viewportWidth": 320,
+        "workspaceScrollLeft": 0
+      },
+      "logs": [],
+      "checked": "manual new local region defaults to guided-v2; explicit v2→v3→v2→v3 selection through actual UI",
+      "productionAccounts": false
+    },
+    "guidedV3Screenshot": {
+      "path": "docs/screenshots/studio-guided-v3-mobile.jpg",
+      "format": "JPEG",
+      "width": 1363,
+      "height": 936,
+      "bytes": 45069,
+      "sha256": "d4961e1baf71a133f69d2f13a322cabc7587aae8edce25149023f1c335b2bcc9",
+      "scope": "Whole desktop browser capture containing a320px QA iframe; not a320px physical-device full-screen screenshot or image-quality acceptance."
+    },
+    "newApiUiBoundary": {
+      "notExposedAsNewDedicatedUi": [
+        "POST /assistant-candidates/:id/commit",
+        "POST /artworks/:id/fork-revision",
+        "GET /artworks/:id/revisions/:revisionId/render-info",
+        "GET /artworks/:id/revisions/:revisionId/render"
+      ],
+      "existingFlowPreserved": "Candidate preview followed by ordinary versioned editor command/save. Local old-revision draft and separate save are not described as calling the new server fork API."
+    },
+    "remainingRecoveryBoundary": {
+      "readbackPath": "apps/api/src/assistant/service.ts",
+      "preparedActiveCheckStates": ["prepared", "connecting", "active"],
+      "unknownIncludedInAdmissionCheck": false,
+      "scope": "The existing unknown-session/account-admission handoff still applies on01b0d7e. No backend change was made by this frontend adaptation."
+    },
+    "remoteCi": {
+      "runId": 42853424180,
+      "runUrl": "https://github.com/hxjyaohaohaode/AI-xiutu/actions/runs/42853424180",
+      "headCommit": "30abd1ba1b18f7d5e9aa25b844951937ecb26d60",
+      "baseCommit": "01b0d7e12ce891c74a50a6965dae0dcb3b813a62",
+      "jobsObservedAt": "2026-11-10T16:45:09Z",
+      "status": "completed",
+      "conclusion": "success",
+      "wholeWorkflowPassed": true,
+      "initialJobs": {
+        "jobs": [
+          {
+            "id": 129959940223,
+            "name": "browser",
+            "status": "in_progress",
+            "conclusion": null,
+            "run_id": 42853424180,
+            "logs_url": null,
+            "steps": [
+              {
+                "name": "Set up job",
+                "status": "completed",
+                "conclusion": "success",
+                "number": 1
+              },
+              {
+                "name": "Initialize containers",
+                "status": "completed",
+                "conclusion": "success",
+                "number": 2
+              },
+              {
+                "name": "Run actions/checkout@11d5960a326750d5838078e36cf38b85af677262",
+                "status": "completed",
+                "conclusion": "success",
+                "number": 3
+              },
+              {
+                "name": "Run actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020",
+                "status": "completed",
+                "conclusion": "success",
+                "number": 4
+              },
+              {
+                "name": "Run npm ci",
+                "status": "completed",
+                "conclusion": "success",
+                "number": 5
+              },
+              {
+                "name": "Run npx playwright install --with-deps chromium",
+                "status": "completed",
+                "conclusion": "success",
+                "number": 6
+              },
+              {
+                "name": "Six complete browser flows on this commit",
+                "status": "in_progress",
+                "conclusion": null,
+                "number": 7
+              },
+              {
+                "name": "Preserve measurements, downloaded-image checks and screenshots",
+                "status": "pending",
+                "conclusion": null,
+                "number": 8
+              },
+              {
+                "name": "Assistant permissions, memory, streaming, conversations and generated workspace",
+                "status": "pending",
+                "conclusion": null,
+                "number": 9
+              },
+              {
+                "name": "Team voice microphones, permissions and shared AI speaker",
+                "status": "pending",
+                "conclusion": null,
+                "number": 10
+              },
+              {
+                "name": "Preserve team voice evidence",
+                "status": "pending",
+                "conclusion": null,
+                "number": 11
+              },
+              {
+                "name": "Real portrait inference and full/tiled pixel comparison",
+                "status": "pending",
+                "conclusion": null,
+                "number": 12
+              },
+              {
+                "name": "Preserve real-photo pixel measurements and contact sheets",
+                "status": "pending",
+                "conclusion": null,
+                "number": 13
+              },
+              {
+                "name": "Preserve assistant browser evidence",
+                "status": "pending",
+                "conclusion": null,
+                "number": 14
+              },
+              {
+                "name": "Post Run actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020",
+                "status": "pending",
+                "conclusion": null,
+                "number": 26
+              },
+              {
+                "name": "Post Run actions/checkout@11d5960a326750d5838078e36cf38b85af677262",
+                "status": "pending",
+                "conclusion": null,
+                "number": 27
+              },
+              {
+                "name": "Stop containers",
+                "status": "pending",
+                "conclusion": null,
+                "number": 28
+              }
+            ]
+          },
+          {
+            "id": 129959941035,
+            "name": "baseline",
+            "status": "in_progress",
+            "conclusion": null,
+            "run_id": 42853424180,
+            "logs_url": null,
+            "steps": [
+              {
+                "name": "Set up job",
+                "status": "completed",
+                "conclusion": "success",
+                "number": 1
+              },
+              {
+                "name": "Initialize containers",
+                "status": "completed",
+                "conclusion": "success",
+                "number": 2
+              },
+              {
+                "name": "Run actions/checkout@11d5960a326750d5838078e36cf38b85af677262",
+                "status": "completed",
+                "conclusion": "success",
+                "number": 3
+              },
+              {
+                "name": "Run actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020",
+                "status": "completed",
+                "conclusion": "success",
+                "number": 4
+              },
+              {
+                "name": "Run npm ci",
+                "status": "completed",
+                "conclusion": "success",
+                "number": 5
+              },
+              {
+                "name": "Run npm run vision:prepare",
+                "status": "completed",
+                "conclusion": "success",
+                "number": 6
+              },
+              {
+                "name": "Run npm run check",
+                "status": "in_progress",
+                "conclusion": null,
+                "number": 7
+              },
+              {
+                "name": "Run npm audit --omit=dev --audit-level=high",
+                "status": "pending",
+                "conclusion": null,
+                "number": 8
+              },
+              {
+                "name": "Post Run actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020",
+                "status": "pending",
+                "conclusion": null,
+                "number": 14
+              },
+              {
+                "name": "Post Run actions/checkout@11d5960a326750d5838078e36cf38b85af677262",
+                "status": "pending",
+                "conclusion": null,
+                "number": 15
+              },
+              {
+                "name": "Stop containers",
+                "status": "pending",
+                "conclusion": null,
+                "number": 16
+              }
+            ]
+          }
+        ]
+      },
+      "actualCheckoutSha": "b4425537e12ee5c95626a98d6dc1d00609970c09",
+      "actualCheckoutTree": "ee5b6e1e014e019607e8604c6f42c42b6aaee5a7",
+      "scope": "Fourth CI is a distinct completed successful workflow on head30abd1ba/base01b0d7e, actual checkoutb4425537 with the sameee5b6e Git tree. Localweb227 and CI745 overlap; fixture success is not external-provider, physical-device or visual-quality acceptance.",
+      "treeMatchesPublishedHead": true,
+      "baselineConclusion": "success",
+      "containersConclusion": "success",
+      "browserStatus": "completed",
+      "browserConclusion": "success",
+      "runStartedAt": "2026-11-10T16:19:48Z",
+      "runUpdatedAt": "2026-11-10T16:45:07Z",
+      "independentTerminalObservedAt": "2026-11-10T16:45:46Z"
+    },
+    "evidenceSha256": {
+      "artifacts/verification/frontend-studio/sync-01b0d7e/local-checks.json": "17dcd15be2ef301038661a389500f8992ae6b31c3b622a5b59aa1799ba884442",
+      "artifacts/verification/frontend-studio/sync-01b0d7e/publication-manifest.json": "665ecf383cac61ba440fde384ec906994c28d789a6fda42446b5b2777cd9e4b7",
+      "artifacts/verification/frontend-studio/sync-01b0d7e/publication-remote-map.json": "44aaaf3f57a4fdd305d28ea3a3d5e8d730f14cd6f856926a06edf3bdd796e090",
+      "artifacts/verification/frontend-studio/sync-01b0d7e/cua-guided-v3.json": "0eef4cad30641d38171eaaf11bb04fadccca7a8746e09353057e2b7d7763ee7a",
+      "artifacts/verification/frontend-studio/sync-01b0d7e/web-tests.log": "a9d489c8105fd1bef267467a94237bd6b27ac7c473f3f9638956cde0d989892d",
+      "artifacts/verification/frontend-studio/sync-01b0d7e/build.log": "e492e375cab8c5bf2a39898fde6e607990c448acce9c65648b470621a8956324"
+    },
+    "initialCiEvidenceSha256": {
+      "artifacts/verification/frontend-studio/ci-42853424180/jobs-initial.json": "d2fed56ff09d34b3d38cd1300de5595e729bdd4e7a865a4bf700556bb964fa8c"
+    },
+    "initialRemoteCiSnapshot": {
+      "runId": 42853424180,
+      "runUrl": "https://github.com/hxjyaohaohaode/AI-xiutu/actions/runs/42853424180",
+      "headCommit": "30abd1ba1b18f7d5e9aa25b844951937ecb26d60",
+      "baseCommit": "01b0d7e12ce891c74a50a6965dae0dcb3b813a62",
+      "jobsObservedAt": "2026-11-10T16:21:20Z",
+      "status": "in_progress",
+      "conclusion": null,
+      "wholeWorkflowPassed": false,
+      "initialJobs": {
+        "jobs": [
+          {
+            "id": 129959940223,
+            "name": "browser",
+            "status": "in_progress",
+            "conclusion": null,
+            "run_id": 42853424180,
+            "logs_url": null,
+            "steps": [
+              {
+                "name": "Set up job",
+                "status": "completed",
+                "conclusion": "success",
+                "number": 1
+              },
+              {
+                "name": "Initialize containers",
+                "status": "completed",
+                "conclusion": "success",
+                "number": 2
+              },
+              {
+                "name": "Run actions/checkout@11d5960a326750d5838078e36cf38b85af677262",
+                "status": "completed",
+                "conclusion": "success",
+                "number": 3
+              },
+              {
+                "name": "Run actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020",
+                "status": "completed",
+                "conclusion": "success",
+                "number": 4
+              },
+              {
+                "name": "Run npm ci",
+                "status": "completed",
+                "conclusion": "success",
+                "number": 5
+              },
+              {
+                "name": "Run npx playwright install --with-deps chromium",
+                "status": "completed",
+                "conclusion": "success",
+                "number": 6
+              },
+              {
+                "name": "Six complete browser flows on this commit",
+                "status": "in_progress",
+                "conclusion": null,
+                "number": 7
+              },
+              {
+                "name": "Preserve measurements, downloaded-image checks and screenshots",
+                "status": "pending",
+                "conclusion": null,
+                "number": 8
+              },
+              {
+                "name": "Assistant permissions, memory, streaming, conversations and generated workspace",
+                "status": "pending",
+                "conclusion": null,
+                "number": 9
+              },
+              {
+                "name": "Team voice microphones, permissions and shared AI speaker",
+                "status": "pending",
+                "conclusion": null,
+                "number": 10
+              },
+              {
+                "name": "Preserve team voice evidence",
+                "status": "pending",
+                "conclusion": null,
+                "number": 11
+              },
+              {
+                "name": "Real portrait inference and full/tiled pixel comparison",
+                "status": "pending",
+                "conclusion": null,
+                "number": 12
+              },
+              {
+                "name": "Preserve real-photo pixel measurements and contact sheets",
+                "status": "pending",
+                "conclusion": null,
+                "number": 13
+              },
+              {
+                "name": "Preserve assistant browser evidence",
+                "status": "pending",
+                "conclusion": null,
+                "number": 14
+              },
+              {
+                "name": "Post Run actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020",
+                "status": "pending",
+                "conclusion": null,
+                "number": 26
+              },
+              {
+                "name": "Post Run actions/checkout@11d5960a326750d5838078e36cf38b85af677262",
+                "status": "pending",
+                "conclusion": null,
+                "number": 27
+              },
+              {
+                "name": "Stop containers",
+                "status": "pending",
+                "conclusion": null,
+                "number": 28
+              }
+            ]
+          },
+          {
+            "id": 129959941035,
+            "name": "baseline",
+            "status": "in_progress",
+            "conclusion": null,
+            "run_id": 42853424180,
+            "logs_url": null,
+            "steps": [
+              {
+                "name": "Set up job",
+                "status": "completed",
+                "conclusion": "success",
+                "number": 1
+              },
+              {
+                "name": "Initialize containers",
+                "status": "completed",
+                "conclusion": "success",
+                "number": 2
+              },
+              {
+                "name": "Run actions/checkout@11d5960a326750d5838078e36cf38b85af677262",
+                "status": "completed",
+                "conclusion": "success",
+                "number": 3
+              },
+              {
+                "name": "Run actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020",
+                "status": "completed",
+                "conclusion": "success",
+                "number": 4
+              },
+              {
+                "name": "Run npm ci",
+                "status": "completed",
+                "conclusion": "success",
+                "number": 5
+              },
+              {
+                "name": "Run npm run vision:prepare",
+                "status": "completed",
+                "conclusion": "success",
+                "number": 6
+              },
+              {
+                "name": "Run npm run check",
+                "status": "in_progress",
+                "conclusion": null,
+                "number": 7
+              },
+              {
+                "name": "Run npm audit --omit=dev --audit-level=high",
+                "status": "pending",
+                "conclusion": null,
+                "number": 8
+              },
+              {
+                "name": "Post Run actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020",
+                "status": "pending",
+                "conclusion": null,
+                "number": 14
+              },
+              {
+                "name": "Post Run actions/checkout@11d5960a326750d5838078e36cf38b85af677262",
+                "status": "pending",
+                "conclusion": null,
+                "number": 15
+              },
+              {
+                "name": "Stop containers",
+                "status": "pending",
+                "conclusion": null,
+                "number": 16
+              }
+            ]
+          }
+        ]
+      },
+      "actualCheckoutSha": null,
+      "actualCheckoutTree": null,
+      "scope": "Initial observation only; baseline and browser were in progress. Container and complete native/browser results await this run, not borrowed from prior success."
+    },
+    "baselineAndContainersSnapshot": {
+      "schema": "frontend-studio-ci-evidence-v1",
+      "repository": "hxjyaohaohaode/AI-xiutu",
+      "pull_request": 1,
+      "run_id": 42853424180,
+      "collected_at_utc": "2026-11-10T16:26:00.719529+00:00",
+      "jobs_observed_at_utc": "2026-11-10T16:25:01Z",
+      "requested_head_sha": "30abd1ba1b18f7d5e9aa25b844951937ecb26d60",
+      "actual_checkout_sha": "b4425537e12ee5c95626a98d6dc1d00609970c09",
+      "checkout_kind": "GitHub pull request merge commit",
+      "merge_head_sha": "30abd1ba1b18f7d5e9aa25b844951937ecb26d60",
+      "merge_base_sha": "01b0d7e12ce891c74a50a6965dae0dcb3b813a62",
+      "published_tree": "ee5b6e1e014e019607e8604c6f42c42b6aaee5a7",
+      "local_verified_commit": "7367c804",
+      "published_tree_matches_local_verified": true,
+      "baseline": {
+        "job_id": 129959941035,
+        "status": "completed",
+        "conclusion": "success",
+        "check_command": "npm run typecheck && npm test && npm run build -w @ai-xiutu/web",
+        "typecheck": {
+          "result": "success",
+          "project_count": 14,
+          "projects": [
+            "packages/ai/tsconfig.json",
+            "packages/assistant/tsconfig.json",
+            "packages/contracts/tsconfig.json",
+            "packages/db/tsconfig.json",
+            "packages/editor/tsconfig.json",
+            "packages/media/tsconfig.json",
+            "packages/multimodal/tsconfig.json",
+            "packages/portrait/tsconfig.json",
+            "packages/providers/tsconfig.json",
+            "packages/storage/tsconfig.json",
+            "apps/api/tsconfig.json",
+            "apps/web/tsconfig.json",
+            "apps/worker-ai/tsconfig.json",
+            "scripts/tsconfig.json"
+          ]
+        },
+        "tests": {
+          "tests": 745,
+          "suites": 0,
+          "pass": 745,
+          "fail": 0,
+          "cancelled": 0,
+          "skipped": 0,
+          "todo": 0,
+          "duration_ms": 97440.941623,
+          "command": "npm test (node scripts/test.mjs)",
+          "scope": "Repository Node test suite with required native PostgreSQL database tests; excludes separate browser cases."
+        },
+        "build": {
+          "result": "success",
+          "workspace": "@ai-xiutu/web",
+          "duration_ms": 815
+        },
+        "production_audit": {
+          "result": "success",
+          "command": "npm audit --omit=dev --audit-level=high",
+          "vulnerabilities": 0
+        },
+        "postgres": "18.6",
+        "database_tests_required": true,
+        "log": {
+          "path": "artifacts/verification/frontend-studio/ci-42853424180/baseline-129959941035.log",
+          "encoding": "UTF-8 decoded GitHub job log; BOM preserved",
+          "bytes": 149974,
+          "sha256": "561836e9c1ab62ff3d1c59661e5a77824f6cc08e2a725522cafc6538a551afed"
+        }
+      },
+      "containers": {
+        "job_id": 129961606124,
+        "status": "completed",
+        "conclusion": "success",
+        "actual_checkout_sha": "b4425537e12ee5c95626a98d6dc1d00609970c09",
+        "steps": [
+          {
+            "name": "Set up job",
+            "status": "completed",
+            "conclusion": "success",
+            "number": 1
+          },
+          {
+            "name": "Run actions/checkout@11d5960a326750d5838078e36cf38b85af677262",
+            "status": "completed",
+            "conclusion": "success",
+            "number": 2
+          },
+          {
+            "name": "Create isolated configuration with external execution disabled",
+            "status": "completed",
+            "conclusion": "success",
+            "number": 3
+          },
+          {
+            "name": "Validate and build both Docker targets",
+            "status": "completed",
+            "conclusion": "success",
+            "number": 4
+          },
+          {
+            "name": "Build optional native media runtime and verify its actual libraries",
+            "status": "completed",
+            "conclusion": "success",
+            "number": 5
+          },
+          {
+            "name": "Start PostgreSQL, migration, API, worker and web",
+            "status": "completed",
+            "conclusion": "success",
+            "number": 6
+          },
+          {
+            "name": "Verify HTTP, health, disabled external services and private network bindings",
+            "status": "completed",
+            "conclusion": "success",
+            "number": 7
+          },
+          {
+            "name": "Show container diagnostics on failure",
+            "status": "completed",
+            "conclusion": "skipped",
+            "number": 8
+          },
+          {
+            "name": "Remove isolated containers and volumes",
+            "status": "completed",
+            "conclusion": "success",
+            "number": 9
+          },
+          {
+            "name": "Post Run actions/checkout@11d5960a326750d5838078e36cf38b85af677262",
+            "status": "completed",
+            "conclusion": "success",
+            "number": 18
+          },
+          {
+            "name": "Complete job",
+            "status": "completed",
+            "conclusion": "success",
+            "number": 19
+          }
+        ],
+        "log": {
+          "path": "artifacts/verification/frontend-studio/ci-42853424180/containers-129961606124.log",
+          "encoding": "UTF-8 decoded GitHub job log; BOM preserved",
+          "bytes": 90613,
+          "sha256": "b89000b9743c5ee93803860f8abdd982f0bb1b167d0c2b775b76687768926337"
+        }
+      },
+      "browser": {
+        "job_id": 129959940223,
+        "status": "in_progress",
+        "conclusion": null
+      },
+      "publication_scope_path": "artifacts/verification/frontend-studio/ci-42853424180/publication-scope.json",
+      "protected_backend_dependencies_diff_exit_code": 0,
+      "static_contract_review": "No additional frontend protocol blockers identified after revision-history summary paging, applied candidate receipts and guided-v3 adaptation. Existing unresolved-voice/readback limits remain explicit; browser verification is pending separately.",
+      "scope_note": "Baseline and containers succeeded. Browser was still in progress at this snapshot. These native test counts do not include browser scenarios or real paid-provider acceptance; this is not an overall workflow success claim.",
+      "jobs_snapshot_path": "artifacts/verification/frontend-studio/ci-42853424180/baseline-jobs.json"
+    },
+    "publicationScope": {
+      "schema": "frontend-studio-publication-scope-v1",
+      "base_sha": "01b0d7e12ce891c74a50a6965dae0dcb3b813a62",
+      "head_sha": "30abd1ba1b18f7d5e9aa25b844951937ecb26d60",
+      "head_tree": "ee5b6e1e014e019607e8604c6f42c42b6aaee5a7",
+      "local_verified_commit": "7367c804",
+      "local_verified_tree": "ee5b6e1e014e019607e8604c6f42c42b6aaee5a7",
+      "tree_match": true,
+      "protected_paths": [
+        "apps/api",
+        "apps/worker-ai",
+        "packages",
+        "infra",
+        "package.json",
+        "package-lock.json",
+        "npm-shrinkwrap.json",
+        "pnpm-lock.yaml",
+        "yarn.lock",
+        "bun.lock",
+        "bun.lockb"
+      ],
+      "protected_paths_diff_exit_code": 0,
+      "diff_check_exit_code": 0,
+      "changed_file_count": 69,
+      "changed_files": [
+        {
+          "status": "M",
+          "path": "apps/web/README.md"
+        },
+        {
+          "status": "M",
+          "path": "apps/web/src/App.tsx"
+        },
+        {
+          "status": "M",
+          "path": "apps/web/src/ai/LiveAssistant.tsx"
+        },
+        {
+          "status": "M",
+          "path": "apps/web/src/ai/assistantGuards.ts"
+        },
+        {
+          "status": "A",
+          "path": "apps/web/src/ai/assistantSubmission.ts"
+        },
+        {
+          "status": "A",
+          "path": "apps/web/src/ai/jobSubmission.ts"
+        },
+        {
+          "status": "A",
+          "path": "apps/web/src/ai/requestPayload.ts"
+        },
+        {
+          "status": "A",
+          "path": "apps/web/src/ai/teamVoiceSubmission.ts"
+        },
+        {
+          "status": "A",
+          "path": "apps/web/src/ai/voiceSubmission.ts"
+        },
+        {
+          "status": "A",
+          "path": "apps/web/src/ai/voiceSubmissionStorage.ts"
+        },
+        {
+          "status": "M",
+          "path": "apps/web/src/collaboration/CollaborationStatus.tsx"
+        },
+        {
+          "status": "A",
+          "path": "apps/web/src/collaboration/TeamVoiceBanner.tsx"
+        },
+        {
+          "status": "M",
+          "path": "apps/web/src/collaboration/TeamVoiceControls.tsx"
+        },
+        {
+          "status": "M",
+          "path": "apps/web/src/collaboration/collaboration.css"
+        },
+        {
+          "status": "A",
+          "path": "apps/web/src/collaboration/connection-state.ts"
+        },
+        {
+          "status": "M",
+          "path": "apps/web/src/collaboration/useCollaboration.ts"
+        },
+        {
+          "status": "M",
+          "path": "apps/web/src/collaboration/useTeamVoice.ts"
+        },
+        {
+          "status": "M",
+          "path": "apps/web/src/components/AIPanel.tsx"
+        },
+        {
+          "status": "M",
+          "path": "apps/web/src/components/AssetLibrary.tsx"
+        },
+        {
+          "status": "M",
+          "path": "apps/web/src/components/AuthPanel.tsx"
+        },
+        {
+          "status": "M",
+          "path": "apps/web/src/components/DrawingBoard.tsx"
+        },
+        {
+          "status": "M",
+          "path": "apps/web/src/components/ImportSettings.tsx"
+        },
+        {
+          "status": "M",
+          "path": "apps/web/src/components/MediaImportDialog.tsx"
+        },
+        {
+          "status": "M",
+          "path": "apps/web/src/components/ProjectDialogs.tsx"
+        },
+        {
+          "status": "M",
+          "path": "apps/web/src/components/Ui.tsx"
+        },
+        {
+          "status": "M",
+          "path": "apps/web/src/components/WorkspaceViews.tsx"
+        },
+        {
+          "status": "M",
+          "path": "apps/web/src/editor/CanvasStage.tsx"
+        },
+        {
+          "status": "M",
+          "path": "apps/web/src/editor/ParameterShelf.tsx"
+        },
+        {
+          "status": "M",
+          "path": "apps/web/src/editor/PrecisionRange.tsx"
+        },
+        {
+          "status": "M",
+          "path": "apps/web/src/editor/RepairControls.tsx"
+        },
+        {
+          "status": "A",
+          "path": "apps/web/src/editor/precision-studio.css"
+        },
+        {
+          "status": "M",
+          "path": "apps/web/src/editor/range-gesture.ts"
+        },
+        {
+          "status": "A",
+          "path": "apps/web/src/lib/revisionHistory.ts"
+        },
+        {
+          "status": "A",
+          "path": "apps/web/src/lib/titles.ts"
+        },
+        {
+          "status": "M",
+          "path": "apps/web/src/lib/types.ts"
+        },
+        {
+          "status": "M",
+          "path": "apps/web/src/main.tsx"
+        },
+        {
+          "status": "A",
+          "path": "apps/web/src/workspace/CommandMenu.tsx"
+        },
+        {
+          "status": "M",
+          "path": "apps/web/src/workspace/FloatingPanel.tsx"
+        },
+        {
+          "status": "A",
+          "path": "apps/web/src/workspace/StudioWelcome.tsx"
+        },
+        {
+          "status": "M",
+          "path": "apps/web/src/workspace/ToolDock.tsx"
+        },
+        {
+          "status": "A",
+          "path": "apps/web/src/workspace/dialogs-studio.css"
+        },
+        {
+          "status": "A",
+          "path": "apps/web/src/workspace/studio.css"
+        },
+        {
+          "status": "A",
+          "path": "apps/web/src/workspace/workspace-views-studio.css"
+        },
+        {
+          "status": "M",
+          "path": "apps/web/test/assistant-guards.test.ts"
+        },
+        {
+          "status": "A",
+          "path": "apps/web/test/assistant-submission.test.ts"
+        },
+        {
+          "status": "A",
+          "path": "apps/web/test/collaboration-connection.test.ts"
+        },
+        {
+          "status": "A",
+          "path": "apps/web/test/job-submission.test.ts"
+        },
+        {
+          "status": "M",
+          "path": "apps/web/test/parameter-shelf.test.ts"
+        },
+        {
+          "status": "M",
+          "path": "apps/web/test/range-gesture.test.ts"
+        },
+        {
+          "status": "A",
+          "path": "apps/web/test/repair-controls.test.ts"
+        },
+        {
+          "status": "A",
+          "path": "apps/web/test/revision-history.test.ts"
+        },
+        {
+          "status": "A",
+          "path": "apps/web/test/team-voice-submission.test.ts"
+        },
+        {
+          "status": "A",
+          "path": "apps/web/test/voice-submission.test.ts"
+        },
+        {
+          "status": "A",
+          "path": "apps/web/test/workspace-permissions.test.ts"
+        },
+        {
+          "status": "A",
+          "path": "docs/screenshots/studio-320-controls-fixed.jpg"
+        },
+        {
+          "status": "A",
+          "path": "docs/screenshots/studio-delivery.jpg"
+        },
+        {
+          "status": "A",
+          "path": "docs/screenshots/studio-desktop.jpg"
+        },
+        {
+          "status": "A",
+          "path": "docs/screenshots/studio-export-mobile.jpg"
+        },
+        {
+          "status": "A",
+          "path": "docs/screenshots/studio-guided-v3-mobile.jpg"
+        },
+        {
+          "status": "A",
+          "path": "docs/screenshots/studio-landscape-controls-fixed.jpg"
+        },
+        {
+          "status": "A",
+          "path": "docs/screenshots/studio-landscape.jpg"
+        },
+        {
+          "status": "A",
+          "path": "docs/screenshots/studio-mobile.jpg"
+        },
+        {
+          "status": "A",
+          "path": "docs/screenshots/studio-tablet.jpg"
+        },
+        {
+          "status": "A",
+          "path": "docs/screenshots/studio-welcome.jpg"
+        },
+        {
+          "status": "A",
+          "path": "docs/verification/frontend-studio-20261110.md"
+        },
+        {
+          "status": "A",
+          "path": "docs/verification/frontend-studio-evidence.json"
+        },
+        {
+          "status": "A",
+          "path": "docs/verification/frontend-studio-publication.md"
+        },
+        {
+          "status": "M",
+          "path": "scripts/qa/team-voice.browser.mjs"
+        },
+        {
+          "status": "M",
+          "path": "scripts/qa/workspace-v4.browser.mjs"
+        }
+      ],
+      "review_scope": "Read-only review of the exact published commit relative to the explicitly identified main base; no source or documentation changes.",
+      "contract_review": {
+        "identified_frontend_protocol_blockers": [],
+        "resolved_adaptations": [
+          "Revision history uses summary=true and nextBeforeVersion; opening an old version uses the existing full revision endpoint and validates source binding.",
+          "An applied:true candidate decision receipt is not replayed as a local preview; revisionId is retained and existing dirty/identity guards protect the local draft.",
+          "The guided-v3 algorithm emitted by the current shared portrait/editor code is selectable and identifiable in the frontend."
+        ],
+        "retained_safeguards": [
+          "Frozen paid requests preserve their original key and payload; unknown outcomes do not automatically create new paid requests.",
+          "Actor-scoped local voice checkpoints are not claimed as atomic cross-device admission authority.",
+          "No user voice status endpoint or per-job GET was invented."
+        ],
+        "existing_backend_capability_limits": [
+          "Individual/team unresolved voice readback remains limited by the absence of user-facing stable historical session or invitation lookup.",
+          "Legacy AI job lookup remains limited to the existing latest-100 project list."
+        ],
+        "pending_verification": "Fourth-run browser job, including the new 105-version history case, is tracked separately by control_polish."
+      }
+    },
+    "ciGitObject": {
+      "verificationMethod": "Root direct GitHub REST Git commit GET; baseline and containers logs independently identify the same checkout.",
+      "endpoint": "https://api.github.com/repos/hxjyaohaohaode/AI-xiutu/git/commits/b4425537e12ee5c95626a98d6dc1d00609970c09",
+      "sha": "b4425537e12ee5c95626a98d6dc1d00609970c09",
+      "treeSha": "ee5b6e1e014e019607e8604c6f42c42b6aaee5a7",
+      "parents": [
+        "01b0d7e12ce891c74a50a6965dae0dcb3b813a62",
+        "30abd1ba1b18f7d5e9aa25b844951937ecb26d60"
+      ],
+      "matchesPublishedAndLocalTree": true,
+      "scope": "Content identity only; no extra test execution and no inference of browser completion."
+    },
+    "baselineEvidenceSha256": {
+      "artifacts/verification/frontend-studio/ci-42853424180/baseline-summary.json": "7cd7d704a40e7d3825074ada2578d6e312d2f72c44d60496448b62a7fff18f39",
+      "artifacts/verification/frontend-studio/ci-42853424180/baseline-jobs.json": "7c216195c902295a194ef0e50208a1f7a5bbbac43d0dc4f5b50705ea95ac1279",
+      "artifacts/verification/frontend-studio/ci-42853424180/publication-scope.json": "ab17cf4e32ba87fe7ff1d8a64c176fb456904e9e8c5ba9f8effddf7e831e773e",
+      "artifacts/verification/frontend-studio/ci-42853424180/baseline-129959941035.log": "561836e9c1ab62ff3d1c59661e5a77824f6cc08e2a725522cafc6538a551afed",
+      "artifacts/verification/frontend-studio/ci-42853424180/containers-129961606124.log": "b89000b9743c5ee93803860f8abdd982f0bb1b167d0c2b775b76687768926337",
+      "artifacts/verification/frontend-studio/ci-42853424180/baseline-SHA256SUMS": "33d8c42dbf6759ef36a0dd88e3017eb427980afaa14730a004901f28c04bdf25"
+    },
+    "finalizedAt": "2026-11-10T16:51:04.425918+00:00",
+    "preFinalRemoteCiSnapshot": {
+      "runId": 42853424180,
+      "runUrl": "https://github.com/hxjyaohaohaode/AI-xiutu/actions/runs/42853424180",
+      "headCommit": "30abd1ba1b18f7d5e9aa25b844951937ecb26d60",
+      "baseCommit": "01b0d7e12ce891c74a50a6965dae0dcb3b813a62",
+      "jobsObservedAt": "2026-11-10T16:25:01Z",
+      "status": "in_progress",
+      "conclusion": null,
+      "wholeWorkflowPassed": false,
+      "initialJobs": {
+        "jobs": [
+          {
+            "id": 129959940223,
+            "name": "browser",
+            "status": "in_progress",
+            "conclusion": null,
+            "run_id": 42853424180,
+            "logs_url": null,
+            "steps": [
+              {
+                "name": "Set up job",
+                "status": "completed",
+                "conclusion": "success",
+                "number": 1
+              },
+              {
+                "name": "Initialize containers",
+                "status": "completed",
+                "conclusion": "success",
+                "number": 2
+              },
+              {
+                "name": "Run actions/checkout@11d5960a326750d5838078e36cf38b85af677262",
+                "status": "completed",
+                "conclusion": "success",
+                "number": 3
+              },
+              {
+                "name": "Run actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020",
+                "status": "completed",
+                "conclusion": "success",
+                "number": 4
+              },
+              {
+                "name": "Run npm ci",
+                "status": "completed",
+                "conclusion": "success",
+                "number": 5
+              },
+              {
+                "name": "Run npx playwright install --with-deps chromium",
+                "status": "completed",
+                "conclusion": "success",
+                "number": 6
+              },
+              {
+                "name": "Six complete browser flows on this commit",
+                "status": "in_progress",
+                "conclusion": null,
+                "number": 7
+              },
+              {
+                "name": "Preserve measurements, downloaded-image checks and screenshots",
+                "status": "pending",
+                "conclusion": null,
+                "number": 8
+              },
+              {
+                "name": "Assistant permissions, memory, streaming, conversations and generated workspace",
+                "status": "pending",
+                "conclusion": null,
+                "number": 9
+              },
+              {
+                "name": "Team voice microphones, permissions and shared AI speaker",
+                "status": "pending",
+                "conclusion": null,
+                "number": 10
+              },
+              {
+                "name": "Preserve team voice evidence",
+                "status": "pending",
+                "conclusion": null,
+                "number": 11
+              },
+              {
+                "name": "Real portrait inference and full/tiled pixel comparison",
+                "status": "pending",
+                "conclusion": null,
+                "number": 12
+              },
+              {
+                "name": "Preserve real-photo pixel measurements and contact sheets",
+                "status": "pending",
+                "conclusion": null,
+                "number": 13
+              },
+              {
+                "name": "Preserve assistant browser evidence",
+                "status": "pending",
+                "conclusion": null,
+                "number": 14
+              },
+              {
+                "name": "Post Run actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020",
+                "status": "pending",
+                "conclusion": null,
+                "number": 26
+              },
+              {
+                "name": "Post Run actions/checkout@11d5960a326750d5838078e36cf38b85af677262",
+                "status": "pending",
+                "conclusion": null,
+                "number": 27
+              },
+              {
+                "name": "Stop containers",
+                "status": "pending",
+                "conclusion": null,
+                "number": 28
+              }
+            ]
+          },
+          {
+            "id": 129959941035,
+            "name": "baseline",
+            "status": "in_progress",
+            "conclusion": null,
+            "run_id": 42853424180,
+            "logs_url": null,
+            "steps": [
+              {
+                "name": "Set up job",
+                "status": "completed",
+                "conclusion": "success",
+                "number": 1
+              },
+              {
+                "name": "Initialize containers",
+                "status": "completed",
+                "conclusion": "success",
+                "number": 2
+              },
+              {
+                "name": "Run actions/checkout@11d5960a326750d5838078e36cf38b85af677262",
+                "status": "completed",
+                "conclusion": "success",
+                "number": 3
+              },
+              {
+                "name": "Run actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020",
+                "status": "completed",
+                "conclusion": "success",
+                "number": 4
+              },
+              {
+                "name": "Run npm ci",
+                "status": "completed",
+                "conclusion": "success",
+                "number": 5
+              },
+              {
+                "name": "Run npm run vision:prepare",
+                "status": "completed",
+                "conclusion": "success",
+                "number": 6
+              },
+              {
+                "name": "Run npm run check",
+                "status": "in_progress",
+                "conclusion": null,
+                "number": 7
+              },
+              {
+                "name": "Run npm audit --omit=dev --audit-level=high",
+                "status": "pending",
+                "conclusion": null,
+                "number": 8
+              },
+              {
+                "name": "Post Run actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020",
+                "status": "pending",
+                "conclusion": null,
+                "number": 14
+              },
+              {
+                "name": "Post Run actions/checkout@11d5960a326750d5838078e36cf38b85af677262",
+                "status": "pending",
+                "conclusion": null,
+                "number": 15
+              },
+              {
+                "name": "Stop containers",
+                "status": "pending",
+                "conclusion": null,
+                "number": 16
+              }
+            ]
+          }
+        ]
+      },
+      "actualCheckoutSha": "b4425537e12ee5c95626a98d6dc1d00609970c09",
+      "actualCheckoutTree": "ee5b6e1e014e019607e8604c6f42c42b6aaee5a7",
+      "scope": "Initial16:21 jobs remain preserved separately. At16:25:01 baseline and containers succeeded but browser is still in progress.745 excludes browser and overlaps the standalone local web227 suite.",
+      "treeMatchesPublishedHead": true,
+      "baselineConclusion": "success",
+      "containersConclusion": "success",
+      "browserStatus": "in_progress",
+      "browserConclusion": null
+    },
+    "finalRemoteCi": {
+      "runReadback": {
+        "method": "Root direct GitHub run GET after16:46UTC; independent jobs readback16:45:09UTC and final summary16:45:46UTC.",
+        "runId": 42853424180,
+        "status": "completed",
+        "conclusion": "success",
+        "runStartedAt": "2026-11-10T16:19:48Z",
+        "runUpdatedAt": "2026-11-10T16:45:07Z",
+        "jobsObservedAt": "2026-11-10T16:45:09Z",
+        "independentTerminalObservedAt": "2026-11-10T16:45:46Z",
+        "baselineConclusion": "success",
+        "containersConclusion": "success",
+        "browserStatus": "completed",
+        "browserConclusion": "success",
+        "scope": "Fourth CI is a distinct completed successful workflow on head30abd1ba/base01b0d7e, actual checkoutb4425537 with the sameee5b6e Git tree. Localweb227 and CI745 overlap; fixture success is not external-provider, physical-device or visual-quality acceptance."
+      },
+      "summary": {
+        "schema": "frontend-studio-complete-ci-v1",
+        "repository": "hxjyaohaohaode/AI-xiutu",
+        "runId": 42853424180,
+        "runUrl": "https://github.com/hxjyaohaohaode/AI-xiutu/actions/runs/42853424180",
+        "headCommit": "30abd1ba1b18f7d5e9aa25b844951937ecb26d60",
+        "baseCommit": "01b0d7e12ce891c74a50a6965dae0dcb3b813a62",
+        "checkoutMergeCommit": "b4425537e12ee5c95626a98d6dc1d00609970c09",
+        "publishedTree": "ee5b6e1e014e019607e8604c6f42c42b6aaee5a7",
+        "conclusion": "success",
+        "terminalObservedAt": "2026-11-10T16:45:46Z",
+        "summarizedAt": "2026-11-10T16:47:37.333137+00:00",
+        "jobs": [
+          {
+            "id": 129959940223,
+            "name": "browser",
+            "status": "completed",
+            "conclusion": "success",
+            "run_id": 42853424180,
+            "logs_url": null,
+            "steps": [
+              {
+                "name": "Set up job",
+                "status": "completed",
+                "conclusion": "success",
+                "number": 1
+              },
+              {
+                "name": "Initialize containers",
+                "status": "completed",
+                "conclusion": "success",
+                "number": 2
+              },
+              {
+                "name": "Run actions/checkout@11d5960a326750d5838078e36cf38b85af677262",
+                "status": "completed",
+                "conclusion": "success",
+                "number": 3
+              },
+              {
+                "name": "Run actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020",
+                "status": "completed",
+                "conclusion": "success",
+                "number": 4
+              },
+              {
+                "name": "Run npm ci",
+                "status": "completed",
+                "conclusion": "success",
+                "number": 5
+              },
+              {
+                "name": "Run npx playwright install --with-deps chromium",
+                "status": "completed",
+                "conclusion": "success",
+                "number": 6
+              },
+              {
+                "name": "Six complete browser flows on this commit",
+                "status": "completed",
+                "conclusion": "success",
+                "number": 7
+              },
+              {
+                "name": "Preserve measurements, downloaded-image checks and screenshots",
+                "status": "completed",
+                "conclusion": "success",
+                "number": 8
+              },
+              {
+                "name": "Assistant permissions, memory, streaming, conversations and generated workspace",
+                "status": "completed",
+                "conclusion": "success",
+                "number": 9
+              },
+              {
+                "name": "Team voice microphones, permissions and shared AI speaker",
+                "status": "completed",
+                "conclusion": "success",
+                "number": 10
+              },
+              {
+                "name": "Preserve team voice evidence",
+                "status": "completed",
+                "conclusion": "success",
+                "number": 11
+              },
+              {
+                "name": "Real portrait inference and full/tiled pixel comparison",
+                "status": "completed",
+                "conclusion": "success",
+                "number": 12
+              },
+              {
+                "name": "Preserve real-photo pixel measurements and contact sheets",
+                "status": "completed",
+                "conclusion": "success",
+                "number": 13
+              },
+              {
+                "name": "Preserve assistant browser evidence",
+                "status": "completed",
+                "conclusion": "success",
+                "number": 14
+              },
+              {
+                "name": "Post Run actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020",
+                "status": "completed",
+                "conclusion": "success",
+                "number": 26
+              },
+              {
+                "name": "Post Run actions/checkout@11d5960a326750d5838078e36cf38b85af677262",
+                "status": "completed",
+                "conclusion": "success",
+                "number": 27
+              },
+              {
+                "name": "Stop containers",
+                "status": "completed",
+                "conclusion": "success",
+                "number": 28
+              },
+              {
+                "name": "Complete job",
+                "status": "completed",
+                "conclusion": "success",
+                "number": 29
+              }
+            ]
+          },
+          {
+            "id": 129959941035,
+            "name": "baseline",
+            "status": "completed",
+            "conclusion": "success",
+            "run_id": 42853424180,
+            "logs_url": null,
+            "steps": [
+              {
+                "name": "Set up job",
+                "status": "completed",
+                "conclusion": "success",
+                "number": 1
+              },
+              {
+                "name": "Initialize containers",
+                "status": "completed",
+                "conclusion": "success",
+                "number": 2
+              },
+              {
+                "name": "Run actions/checkout@11d5960a326750d5838078e36cf38b85af677262",
+                "status": "completed",
+                "conclusion": "success",
+                "number": 3
+              },
+              {
+                "name": "Run actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020",
+                "status": "completed",
+                "conclusion": "success",
+                "number": 4
+              },
+              {
+                "name": "Run npm ci",
+                "status": "completed",
+                "conclusion": "success",
+                "number": 5
+              },
+              {
+                "name": "Run npm run vision:prepare",
+                "status": "completed",
+                "conclusion": "success",
+                "number": 6
+              },
+              {
+                "name": "Run npm run check",
+                "status": "completed",
+                "conclusion": "success",
+                "number": 7
+              },
+              {
+                "name": "Run npm audit --omit=dev --audit-level=high",
+                "status": "completed",
+                "conclusion": "success",
+                "number": 8
+              },
+              {
+                "name": "Post Run actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020",
+                "status": "completed",
+                "conclusion": "success",
+                "number": 14
+              },
+              {
+                "name": "Post Run actions/checkout@11d5960a326750d5838078e36cf38b85af677262",
+                "status": "completed",
+                "conclusion": "success",
+                "number": 15
+              },
+              {
+                "name": "Stop containers",
+                "status": "completed",
+                "conclusion": "success",
+                "number": 16
+              },
+              {
+                "name": "Complete job",
+                "status": "completed",
+                "conclusion": "success",
+                "number": 17
+              }
+            ]
+          },
+          {
+            "id": 129961606124,
+            "name": "containers",
+            "status": "completed",
+            "conclusion": "success",
+            "run_id": 42853424180,
+            "logs_url": null,
+            "steps": [
+              {
+                "name": "Set up job",
+                "status": "completed",
+                "conclusion": "success",
+                "number": 1
+              },
+              {
+                "name": "Run actions/checkout@11d5960a326750d5838078e36cf38b85af677262",
+                "status": "completed",
+                "conclusion": "success",
+                "number": 2
+              },
+              {
+                "name": "Create isolated configuration with external execution disabled",
+                "status": "completed",
+                "conclusion": "success",
+                "number": 3
+              },
+              {
+                "name": "Validate and build both Docker targets",
+                "status": "completed",
+                "conclusion": "success",
+                "number": 4
+              },
+              {
+                "name": "Build optional native media runtime and verify its actual libraries",
+                "status": "completed",
+                "conclusion": "success",
+                "number": 5
+              },
+              {
+                "name": "Start PostgreSQL, migration, API, worker and web",
+                "status": "completed",
+                "conclusion": "success",
+                "number": 6
+              },
+              {
+                "name": "Verify HTTP, health, disabled external services and private network bindings",
+                "status": "completed",
+                "conclusion": "success",
+                "number": 7
+              },
+              {
+                "name": "Show container diagnostics on failure",
+                "status": "completed",
+                "conclusion": "skipped",
+                "number": 8
+              },
+              {
+                "name": "Remove isolated containers and volumes",
+                "status": "completed",
+                "conclusion": "success",
+                "number": 9
+              },
+              {
+                "name": "Post Run actions/checkout@11d5960a326750d5838078e36cf38b85af677262",
+                "status": "completed",
+                "conclusion": "success",
+                "number": 18
+              },
+              {
+                "name": "Complete job",
+                "status": "completed",
+                "conclusion": "success",
+                "number": 19
+              }
+            ]
+          }
+        ],
+        "jobLogSha256": "5984be4bbbe8ee919391507eb390d55772c4bf036940bda7e961e38f0967d347",
+        "jobLogByteLength": 86453,
+        "jobLogFirstTimestamp": "2026-11-10T16:19:51.5095839Z",
+        "jobLogLastTimestamp": "2026-11-10T16:45:04.8503021Z",
+        "workspace": {
+          "summaryFile": "workspace/summary-final.json",
+          "summarySha256": "46712e04bb011bc6c0751fa6a9144a0ec51757a83f021d3c3554b454bea8d422",
+          "artifactId": 13784305365,
+          "artifactBytes": 219402833,
+          "artifactSha256": "2c88d1a2d38915083d9eaa9763088858a17242d986c58168f4ba591fae076ea3",
+          "browserVersion": "158.0.8127.18",
+          "rounds": 6,
+          "distinctNamedCases": 22,
+          "namedCaseExecutions": 132,
+          "pageErrors": 0,
+          "layoutMeasurementsRechecked": 108,
+          "layoutViolations": 0,
+          "nonzeroWorkspaceScrollLeftMeasurements": 0,
+          "photographicExportsIndependentlyDecoded": 180,
+          "exportMismatchCount": 0,
+          "exportedRecipeFilesRechecked": 36,
+          "history105RevisionCasesPassed": 6
+        },
+        "specializedBrowserArtifacts": {
+          "summaryFile": "final-assistant-team-spatial.json",
+          "summarySha256": "c12229557b4df99edc53642e34d4a929ac68405470934afbd9de2b1e1ff8eef3",
+          "assistant": {
+            "caseCount": 16,
+            "caseStates": {
+              "passed": 16
+            },
+            "pageErrors": 0
+          },
+          "team": {
+            "caseCount": 5,
+            "caseStates": {
+              "passed": 5
+            },
+            "pageErrors": 0
+          },
+          "spatial": {
+            "caseCount": 431,
+            "caseStates": {
+              "passed": 419,
+              "unavailable": 12
+            },
+            "unavailableCount": 12,
+            "pageErrorFieldPresent": false
+          },
+          "scopeLimits": [
+            "Assistant and team exercise real browser/HTTP/database/control flows with local provider protocol fixtures, not actual paid provider quality, latency, availability or billing.",
+            "Team uses synthetic browser microphone input; physical microphone and native speech recognition acceptance are not established.",
+            "Spatial uses actual SHA-pinned MediaPipe CPU/WASM model inference, not provider fixtures, and covers only the three public photos at their reported normalized resolutions.",
+            "Only 419 spatial rows passed; 12 were unavailable due to unsupported neck mesh or missing required landmarks. Unavailable rows are not pixel passes.",
+            "Full/tiled equality compares shared renderer implementations on these exact inputs; it does not establish equality for every photo, resolution or platform.",
+            "Automated pixel equality and numerical measurements are separate from human aesthetic acceptance; assistant and spatial explicitly report manualVisualReview=false.",
+            "Workspace artifact review and whole browser logs/jobs are maintained separately by control_polish; no workspace evidence is duplicated here.",
+            "Historical baseline-summary.json remains the 16:25:01 snapshot with browser pending; this independent appended summary records final observed jobs without overwriting it."
+          ]
+        },
+        "priorEvidencePreserved": [
+          "jobs-initial.json",
+          "monitor-first-window.json",
+          "monitor-extended-window.json",
+          "baseline-summary.json",
+          "../ci-42845426490/summary-final.json"
+        ],
+        "ciRuntimeAssertionInvocationCount": null,
+        "assertionCountExplanation": "The harness records 22 distinct named cases, repeated six times (132 executions), but does not emit a count of dynamically executed assertions. History case fields and export metadata were checked from reports; photographic PNGs were independently decoded from the ZIP.",
+        "sourceEdits": false,
+        "localUiAutomationExecuted": false
+      },
+      "workspace": {
+        "verifiedAt": "2026-11-10T16:45:52.371569+00:00",
+        "runId": 42853424180,
+        "browserJobId": 129959940223,
+        "headCommit": "30abd1ba1b18f7d5e9aa25b844951937ecb26d60",
+        "baseCommit": "01b0d7e12ce891c74a50a6965dae0dcb3b813a62",
+        "checkoutMergeCommit": "b4425537e12ee5c95626a98d6dc1d00609970c09",
+        "artifactId": 13784305365,
+        "artifactBytes": 219402833,
+        "artifactSha256": "2c88d1a2d38915083d9eaa9763088858a17242d986c58168f4ba591fae076ea3",
+        "browserVersion": "158.0.8127.18",
+        "rounds": [
+          {
+            "round": "round-1",
+            "startedAt": "2026-11-10T16:20:42.143Z",
+            "finishedAt": "2026-11-10T16:24:23.401Z",
+            "durationSeconds": 221.258,
+            "state": "passed",
+            "passedCases": 22,
+            "browser": {
+              "name": "Chromium",
+              "version": "158.0.8127.18"
+            },
+            "pageErrors": 0,
+            "layoutMeasurements": 18,
+            "reportSha256": "ee78437459fbfd99f9ed2a4b5c496cacbd1ae29d9131a0fe25fae8c1735c1173"
+          },
+          {
+            "round": "round-2",
+            "startedAt": "2026-11-10T16:24:25.233Z",
+            "finishedAt": "2026-11-10T16:28:00.755Z",
+            "durationSeconds": 215.522,
+            "state": "passed",
+            "passedCases": 22,
+            "browser": {
+              "name": "Chromium",
+              "version": "158.0.8127.18"
+            },
+            "pageErrors": 0,
+            "layoutMeasurements": 18,
+            "reportSha256": "2c3765549fe8b8c110a26abbf34c12609caeab7f4ee288ecd55ffdc1705c2a9e"
+          },
+          {
+            "round": "round-3",
+            "startedAt": "2026-11-10T16:28:02.621Z",
+            "finishedAt": "2026-11-10T16:31:38.598Z",
+            "durationSeconds": 215.977,
+            "state": "passed",
+            "passedCases": 22,
+            "browser": {
+              "name": "Chromium",
+              "version": "158.0.8127.18"
+            },
+            "pageErrors": 0,
+            "layoutMeasurements": 18,
+            "reportSha256": "cd4c3e4ac06a153ce1e84379da4c3b3fe05979ccd7713507cda86722681392cf"
+          },
+          {
+            "round": "round-4",
+            "startedAt": "2026-11-10T16:31:40.458Z",
+            "finishedAt": "2026-11-10T16:35:15.756Z",
+            "durationSeconds": 215.298,
+            "state": "passed",
+            "passedCases": 22,
+            "browser": {
+              "name": "Chromium",
+              "version": "158.0.8127.18"
+            },
+            "pageErrors": 0,
+            "layoutMeasurements": 18,
+            "reportSha256": "8f21db7e38f772fa33f579abbfc003f31442d5efa73818f2e22722e1cc1f38ad"
+          },
+          {
+            "round": "round-5",
+            "startedAt": "2026-11-10T16:35:17.338Z",
+            "finishedAt": "2026-11-10T16:38:53.110Z",
+            "durationSeconds": 215.772,
+            "state": "passed",
+            "passedCases": 22,
+            "browser": {
+              "name": "Chromium",
+              "version": "158.0.8127.18"
+            },
+            "pageErrors": 0,
+            "layoutMeasurements": 18,
+            "reportSha256": "00f808bac7d782143c81b677a52732caa8250e7f1d9b1195db375a35b36a6594"
+          },
+          {
+            "round": "round-6",
+            "startedAt": "2026-11-10T16:38:55.014Z",
+            "finishedAt": "2026-11-10T16:42:31.576Z",
+            "durationSeconds": 216.562,
+            "state": "passed",
+            "passedCases": 22,
+            "browser": {
+              "name": "Chromium",
+              "version": "158.0.8127.18"
+            },
+            "pageErrors": 0,
+            "layoutMeasurements": 18,
+            "reportSha256": "a889293f949a6c7dfef5ff4339c9c6f3b08290f75a912dbc54f8bfb4eb75c8b3"
+          }
+        ],
+        "distinctNamedCases": 22,
+        "namedCaseExecutions": 132,
+        "caseNames": [
+          "layout-320x700",
+          "layout-390x844",
+          "layout-844x390",
+          "layout-1024x768",
+          "layout-1440x960",
+          "photo-portrait-hopper-390x844",
+          "photo-portrait-hopper-1440x960",
+          "photo-mediapipe-portrait-390x844",
+          "photo-mediapipe-portrait-1440x960",
+          "photo-mediapipe-pose-390x844",
+          "photo-mediapipe-pose-1440x960",
+          "four-corner-preview-cancel-undo-keyboard",
+          "freehand-coalescing-export-undo-1440x960",
+          "freehand-coalescing-export-undo-1024x768",
+          "freehand-coalescing-export-undo-390x844",
+          "freehand-coalescing-export-undo-320x700",
+          "freehand-coalescing-export-undo-844x390",
+          "two-accounts-shared-edit-cursor-and-owned-undo",
+          "lease-conflict-visible-and-explicit-retry",
+          "unknown-command-retries-original-key-without-duplicate-revision",
+          "resource-memory-privacy-and-ledger-export",
+          "cloud-history-summary-pagination-opens-full-revision-draft"
+        ],
+        "pageErrorCount": 0,
+        "layoutMeasurementsRechecked": 108,
+        "layoutViolationCount": 0,
+        "layoutViolations": [],
+        "nonzeroWorkspaceScrollLeftMeasurements": 0,
+        "phone320Regression": [
+          {
+            "round": "round-1",
+            "phase": "initial",
+            "panelX": 0,
+            "panelHeight": 284.234375,
+            "sliderHeight": 40,
+            "sliderBottom": 623.75,
+            "controlBottom": 632.25,
+            "scrollerBottom": 635.984375,
+            "workspaceScrollLeft": 0,
+            "workspaceClientWidth": 320,
+            "workspaceScrollWidth": 325,
+            "inspectorScrollTop": 0
+          },
+          {
+            "round": "round-1",
+            "phase": "normal",
+            "panelX": 0,
+            "panelHeight": 284.234375,
+            "sliderHeight": 40,
+            "sliderBottom": 598.75,
+            "controlBottom": 607.25,
+            "scrollerBottom": 635.984375,
+            "workspaceScrollLeft": 0,
+            "workspaceClientWidth": 320,
+            "workspaceScrollWidth": 325,
+            "inspectorScrollTop": 25
+          },
+          {
+            "round": "round-1",
+            "phase": "resized",
+            "panelX": 0,
+            "panelHeight": 339,
+            "sliderHeight": 40,
+            "sliderBottom": 543.984375,
+            "controlBottom": 552.484375,
+            "scrollerBottom": 635.984375,
+            "workspaceScrollLeft": 0,
+            "workspaceClientWidth": 320,
+            "workspaceScrollWidth": 325,
+            "inspectorScrollTop": 25
+          },
+          {
+            "round": "round-2",
+            "phase": "initial",
+            "panelX": 0,
+            "panelHeight": 284.234375,
+            "sliderHeight": 40,
+            "sliderBottom": 623.75,
+            "controlBottom": 632.25,
+            "scrollerBottom": 635.984375,
+            "workspaceScrollLeft": 0,
+            "workspaceClientWidth": 320,
+            "workspaceScrollWidth": 325,
+            "inspectorScrollTop": 0
+          },
+          {
+            "round": "round-2",
+            "phase": "normal",
+            "panelX": 0,
+            "panelHeight": 284.234375,
+            "sliderHeight": 40,
+            "sliderBottom": 598.75,
+            "controlBottom": 607.25,
+            "scrollerBottom": 635.984375,
+            "workspaceScrollLeft": 0,
+            "workspaceClientWidth": 320,
+            "workspaceScrollWidth": 325,
+            "inspectorScrollTop": 25
+          },
+          {
+            "round": "round-2",
+            "phase": "resized",
+            "panelX": 0,
+            "panelHeight": 339,
+            "sliderHeight": 40,
+            "sliderBottom": 543.984375,
+            "controlBottom": 552.484375,
+            "scrollerBottom": 635.984375,
+            "workspaceScrollLeft": 0,
+            "workspaceClientWidth": 320,
+            "workspaceScrollWidth": 325,
+            "inspectorScrollTop": 25
+          },
+          {
+            "round": "round-3",
+            "phase": "initial",
+            "panelX": 0,
+            "panelHeight": 284.234375,
+            "sliderHeight": 40,
+            "sliderBottom": 623.75,
+            "controlBottom": 632.25,
+            "scrollerBottom": 635.984375,
+            "workspaceScrollLeft": 0,
+            "workspaceClientWidth": 320,
+            "workspaceScrollWidth": 325,
+            "inspectorScrollTop": 0
+          },
+          {
+            "round": "round-3",
+            "phase": "normal",
+            "panelX": 0,
+            "panelHeight": 284.234375,
+            "sliderHeight": 40,
+            "sliderBottom": 598.75,
+            "controlBottom": 607.25,
+            "scrollerBottom": 635.984375,
+            "workspaceScrollLeft": 0,
+            "workspaceClientWidth": 320,
+            "workspaceScrollWidth": 325,
+            "inspectorScrollTop": 25
+          },
+          {
+            "round": "round-3",
+            "phase": "resized",
+            "panelX": 0,
+            "panelHeight": 339,
+            "sliderHeight": 40,
+            "sliderBottom": 543.984375,
+            "controlBottom": 552.484375,
+            "scrollerBottom": 635.984375,
+            "workspaceScrollLeft": 0,
+            "workspaceClientWidth": 320,
+            "workspaceScrollWidth": 325,
+            "inspectorScrollTop": 25
+          },
+          {
+            "round": "round-4",
+            "phase": "initial",
+            "panelX": 0,
+            "panelHeight": 284.234375,
+            "sliderHeight": 40,
+            "sliderBottom": 623.75,
+            "controlBottom": 632.25,
+            "scrollerBottom": 635.984375,
+            "workspaceScrollLeft": 0,
+            "workspaceClientWidth": 320,
+            "workspaceScrollWidth": 325,
+            "inspectorScrollTop": 0
+          },
+          {
+            "round": "round-4",
+            "phase": "normal",
+            "panelX": 0,
+            "panelHeight": 284.234375,
+            "sliderHeight": 40,
+            "sliderBottom": 598.75,
+            "controlBottom": 607.25,
+            "scrollerBottom": 635.984375,
+            "workspaceScrollLeft": 0,
+            "workspaceClientWidth": 320,
+            "workspaceScrollWidth": 325,
+            "inspectorScrollTop": 25
+          },
+          {
+            "round": "round-4",
+            "phase": "resized",
+            "panelX": 0,
+            "panelHeight": 339,
+            "sliderHeight": 40,
+            "sliderBottom": 543.984375,
+            "controlBottom": 552.484375,
+            "scrollerBottom": 635.984375,
+            "workspaceScrollLeft": 0,
+            "workspaceClientWidth": 320,
+            "workspaceScrollWidth": 325,
+            "inspectorScrollTop": 25
+          },
+          {
+            "round": "round-5",
+            "phase": "initial",
+            "panelX": 0,
+            "panelHeight": 284.234375,
+            "sliderHeight": 40,
+            "sliderBottom": 623.75,
+            "controlBottom": 632.25,
+            "scrollerBottom": 635.984375,
+            "workspaceScrollLeft": 0,
+            "workspaceClientWidth": 320,
+            "workspaceScrollWidth": 325,
+            "inspectorScrollTop": 0
+          },
+          {
+            "round": "round-5",
+            "phase": "normal",
+            "panelX": 0,
+            "panelHeight": 284.234375,
+            "sliderHeight": 40,
+            "sliderBottom": 598.75,
+            "controlBottom": 607.25,
+            "scrollerBottom": 635.984375,
+            "workspaceScrollLeft": 0,
+            "workspaceClientWidth": 320,
+            "workspaceScrollWidth": 325,
+            "inspectorScrollTop": 25
+          },
+          {
+            "round": "round-5",
+            "phase": "resized",
+            "panelX": 0,
+            "panelHeight": 339,
+            "sliderHeight": 40,
+            "sliderBottom": 543.984375,
+            "controlBottom": 552.484375,
+            "scrollerBottom": 635.984375,
+            "workspaceScrollLeft": 0,
+            "workspaceClientWidth": 320,
+            "workspaceScrollWidth": 325,
+            "inspectorScrollTop": 25
+          },
+          {
+            "round": "round-6",
+            "phase": "initial",
+            "panelX": 0,
+            "panelHeight": 284.234375,
+            "sliderHeight": 40,
+            "sliderBottom": 623.75,
+            "controlBottom": 632.25,
+            "scrollerBottom": 635.984375,
+            "workspaceScrollLeft": 0,
+            "workspaceClientWidth": 320,
+            "workspaceScrollWidth": 325,
+            "inspectorScrollTop": 0
+          },
+          {
+            "round": "round-6",
+            "phase": "normal",
+            "panelX": 0,
+            "panelHeight": 284.234375,
+            "sliderHeight": 40,
+            "sliderBottom": 598.75,
+            "controlBottom": 607.25,
+            "scrollerBottom": 635.984375,
+            "workspaceScrollLeft": 0,
+            "workspaceClientWidth": 320,
+            "workspaceScrollWidth": 325,
+            "inspectorScrollTop": 25
+          },
+          {
+            "round": "round-6",
+            "phase": "resized",
+            "panelX": 0,
+            "panelHeight": 339,
+            "sliderHeight": 40,
+            "sliderBottom": 543.984375,
+            "controlBottom": 552.484375,
+            "scrollerBottom": 635.984375,
+            "workspaceScrollLeft": 0,
+            "workspaceClientWidth": 320,
+            "workspaceScrollWidth": 325,
+            "inspectorScrollTop": 25
+          }
+        ],
+        "history105RevisionCases": [
+          {
+            "round": "round-1",
+            "name": "cloud-history-summary-pagination-opens-full-revision-draft",
+            "state": "passed",
+            "durationMs": 10628,
+            "createdVersions": 105,
+            "summaryPageSizes": [100, 5],
+            "nextBeforeVersion": [6, null],
+            "summaryRecipesOmitted": true,
+            "olderPageNetworkFailureInjected": true,
+            "olderPageRequests": 2,
+            "rowsRetainedAfterReadFailure": 100,
+            "fullRevisionRequests": 1,
+            "openedVersion": 1,
+            "historicalSourceRgbaSha256": "1a00452e562d5b9ac8870efd706b42ba1a397fa6fd0a1c05b7220136b24df349",
+            "historicalRecipeSha256": "472ed9bad72dde39b240bfe0470672d10bae50ad49d93c4f41dca687edf6d3ed",
+            "openedAsIndependentDraft": true,
+            "cloudHeadUnchanged": true
+          },
+          {
+            "round": "round-2",
+            "name": "cloud-history-summary-pagination-opens-full-revision-draft",
+            "state": "passed",
+            "durationMs": 10587,
+            "createdVersions": 105,
+            "summaryPageSizes": [100, 5],
+            "nextBeforeVersion": [6, null],
+            "summaryRecipesOmitted": true,
+            "olderPageNetworkFailureInjected": true,
+            "olderPageRequests": 2,
+            "rowsRetainedAfterReadFailure": 100,
+            "fullRevisionRequests": 1,
+            "openedVersion": 1,
+            "historicalSourceRgbaSha256": "1a00452e562d5b9ac8870efd706b42ba1a397fa6fd0a1c05b7220136b24df349",
+            "historicalRecipeSha256": "472ed9bad72dde39b240bfe0470672d10bae50ad49d93c4f41dca687edf6d3ed",
+            "openedAsIndependentDraft": true,
+            "cloudHeadUnchanged": true
+          },
+          {
+            "round": "round-3",
+            "name": "cloud-history-summary-pagination-opens-full-revision-draft",
+            "state": "passed",
+            "durationMs": 10626,
+            "createdVersions": 105,
+            "summaryPageSizes": [100, 5],
+            "nextBeforeVersion": [6, null],
+            "summaryRecipesOmitted": true,
+            "olderPageNetworkFailureInjected": true,
+            "olderPageRequests": 2,
+            "rowsRetainedAfterReadFailure": 100,
+            "fullRevisionRequests": 1,
+            "openedVersion": 1,
+            "historicalSourceRgbaSha256": "1a00452e562d5b9ac8870efd706b42ba1a397fa6fd0a1c05b7220136b24df349",
+            "historicalRecipeSha256": "472ed9bad72dde39b240bfe0470672d10bae50ad49d93c4f41dca687edf6d3ed",
+            "openedAsIndependentDraft": true,
+            "cloudHeadUnchanged": true
+          },
+          {
+            "round": "round-4",
+            "name": "cloud-history-summary-pagination-opens-full-revision-draft",
+            "state": "passed",
+            "durationMs": 10677,
+            "createdVersions": 105,
+            "summaryPageSizes": [100, 5],
+            "nextBeforeVersion": [6, null],
+            "summaryRecipesOmitted": true,
+            "olderPageNetworkFailureInjected": true,
+            "olderPageRequests": 2,
+            "rowsRetainedAfterReadFailure": 100,
+            "fullRevisionRequests": 1,
+            "openedVersion": 1,
+            "historicalSourceRgbaSha256": "1a00452e562d5b9ac8870efd706b42ba1a397fa6fd0a1c05b7220136b24df349",
+            "historicalRecipeSha256": "472ed9bad72dde39b240bfe0470672d10bae50ad49d93c4f41dca687edf6d3ed",
+            "openedAsIndependentDraft": true,
+            "cloudHeadUnchanged": true
+          },
+          {
+            "round": "round-5",
+            "name": "cloud-history-summary-pagination-opens-full-revision-draft",
+            "state": "passed",
+            "durationMs": 10538,
+            "createdVersions": 105,
+            "summaryPageSizes": [100, 5],
+            "nextBeforeVersion": [6, null],
+            "summaryRecipesOmitted": true,
+            "olderPageNetworkFailureInjected": true,
+            "olderPageRequests": 2,
+            "rowsRetainedAfterReadFailure": 100,
+            "fullRevisionRequests": 1,
+            "openedVersion": 1,
+            "historicalSourceRgbaSha256": "1a00452e562d5b9ac8870efd706b42ba1a397fa6fd0a1c05b7220136b24df349",
+            "historicalRecipeSha256": "472ed9bad72dde39b240bfe0470672d10bae50ad49d93c4f41dca687edf6d3ed",
+            "openedAsIndependentDraft": true,
+            "cloudHeadUnchanged": true
+          },
+          {
+            "round": "round-6",
+            "name": "cloud-history-summary-pagination-opens-full-revision-draft",
+            "state": "passed",
+            "durationMs": 10578,
+            "createdVersions": 105,
+            "summaryPageSizes": [100, 5],
+            "nextBeforeVersion": [6, null],
+            "summaryRecipesOmitted": true,
+            "olderPageNetworkFailureInjected": true,
+            "olderPageRequests": 2,
+            "rowsRetainedAfterReadFailure": 100,
+            "fullRevisionRequests": 1,
+            "openedVersion": 1,
+            "historicalSourceRgbaSha256": "1a00452e562d5b9ac8870efd706b42ba1a397fa6fd0a1c05b7220136b24df349",
+            "historicalRecipeSha256": "472ed9bad72dde39b240bfe0470672d10bae50ad49d93c4f41dca687edf6d3ed",
+            "openedAsIndependentDraft": true,
+            "cloudHeadUnchanged": true
+          }
+        ],
+        "photographicExportsIndependentlyDecoded": 180,
+        "photographicExportHashAndDimensionMismatches": 0,
+        "exportedRecipeFilesRechecked": 36,
+        "ciRuntimeAssertionInvocationCount": null,
+        "assertionCountExplanation": "The harness records 22 distinct named cases, repeated six times (132 executions), but does not emit a count of dynamically executed assertions. History case fields and export metadata were checked from reports; photographic PNGs were independently decoded from the ZIP.",
+        "sourceEdits": false,
+        "localUiAutomationExecuted": false,
+        "jobLogSha256": "5984be4bbbe8ee919391507eb390d55772c4bf036940bda7e961e38f0967d347",
+        "jobLogByteLength": 86453,
+        "jobLogFirstTimestamp": "2026-11-10T16:19:51.5095839Z",
+        "jobLogLastTimestamp": "2026-11-10T16:45:04.8503021Z",
+        "browserJobConclusion": "success",
+        "publishedTree": "ee5b6e1e014e019607e8604c6f42c42b6aaee5a7",
+        "verificationScript": "verify-workspace.py",
+        "verificationScriptSha256": "fe41373baba1e02c0cdc40f9df5fa0ac4b9b166315d7547fab52dd8a1b9b1490",
+        "omittedDetailedLists": {
+          "exportedRecipes": {
+            "count": 36,
+            "source": "artifacts/verification/frontend-studio/ci-42853424180/workspace/summary-final.json"
+          },
+          "technicalImageExportMetadataRechecked": {
+            "count": 30,
+            "source": "artifacts/verification/frontend-studio/ci-42853424180/workspace/summary-final.json"
+          },
+          "photoCases": {
+            "count": 36,
+            "source": "artifacts/verification/frontend-studio/ci-42853424180/workspace/summary-final.json"
+          },
+          "decodedExports": {
+            "count": 180,
+            "source": "artifacts/verification/frontend-studio/ci-42853424180/workspace/summary-final.json"
+          }
+        }
+      },
+      "specialized": {
+        "schema": "frontend-studio-specialized-ci-v1",
+        "repository": "hxjyaohaohaode/AI-xiutu",
+        "run_id": 42853424180,
+        "requested_head_sha": "30abd1ba1b18f7d5e9aa25b844951937ecb26d60",
+        "actual_checkout_sha": "b4425537e12ee5c95626a98d6dc1d00609970c09",
+        "merge_base_sha": "01b0d7e12ce891c74a50a6965dae0dcb3b813a62",
+        "published_tree": "ee5b6e1e014e019607e8604c6f42c42b6aaee5a7",
+        "checkout_basis": "Baseline and containers full logs record this PR merge checkout; each artifact name embeds it and workflow_run.head_sha matches the requested head.",
+        "jobs_observed_at_utc": "2026-11-10T16:45:09Z",
+        "collected_at_utc": "2026-11-10T16:46:26.190763+00:00",
+        "jobs": [
+          {
+            "id": 129959940223,
+            "name": "browser",
+            "status": "completed",
+            "conclusion": "success"
+          },
+          {
+            "id": 129959941035,
+            "name": "baseline",
+            "status": "completed",
+            "conclusion": "success"
+          },
+          {
+            "id": 129961606124,
+            "name": "containers",
+            "status": "completed",
+            "conclusion": "success"
+          }
+        ],
+        "browser_version": "158.0.8127.18",
+        "script_evidence": {
+          "scripts/qa/assistant.browser.mjs": {
+            "published_sha": "30abd1ba1b18f7d5e9aa25b844951937ecb26d60",
+            "sha256": "ad213eddc8afc09d69b167a5f7771e0e616c417c7ddebd9e4fc496621c4f8966",
+            "local_matches_published": true
+          },
+          "scripts/qa/team-voice.browser.mjs": {
+            "published_sha": "30abd1ba1b18f7d5e9aa25b844951937ecb26d60",
+            "sha256": "012464611c7dad410c65fdcc6832c9856993b393f3266521f11ce62145bf42a8",
+            "local_matches_published": true
+          },
+          "scripts/qa/spatial-quality.browser.mjs": {
+            "published_sha": "30abd1ba1b18f7d5e9aa25b844951937ecb26d60",
+            "sha256": "741fe8874c32bced5a2edde6bb4060b653adad5243e50fe88d327406871a1d37",
+            "local_matches_published": true
+          }
+        },
+        "assistant": {
+          "artifact": {
+            "id": 13781974968,
+            "name": "browser-assistant-b4425537e12ee5c95626a98d6dc1d00609970c09",
+            "size_in_bytes": 820690,
+            "url": "https://api.github.com/repos/hxjyaohaohaode/AI-xiutu/actions/artifacts/13781974968",
+            "archive_download_url": "https://api.github.com/repos/hxjyaohaohaode/AI-xiutu/actions/artifacts/13781974968/zip",
+            "expired": false,
+            "created_at": "2026-11-10T16:45:03Z",
+            "expires_at": "2026-11-24T16:45:03Z",
+            "updated_at": "2026-11-10T16:45:03Z",
+            "digest": "sha256:7c07babd603b651a1a03164f6f1b4d501e9b4647255e2006890ebad4f967d729",
+            "workflow_run": {
+              "id": 42853424180,
+              "repository_id": 1451260826,
+              "head_repository_id": 1451260826,
+              "head_branch": "work/frontend-studio-v2",
+              "head_sha": "30abd1ba1b18f7d5e9aa25b844951937ecb26d60"
+            },
+            "local_zip_path": "artifacts/verification/frontend-studio/ci-42853424180/assistant/artifact.zip",
+            "download_sha256": "7c07babd603b651a1a03164f6f1b4d501e9b4647255e2006890ebad4f967d729",
+            "size_verified": true,
+            "report_path": "artifacts/verification/frontend-studio/ci-42853424180/assistant/report.json",
+            "report_sha256": "255caf2c42ab22c8ec5484a97be4e37d9d19d5cec31be6a0857c95968fa8c683",
+            "collected_at_utc": "2026-11-10T16:45:32.030167+00:00"
+          },
+          "case_count": 16,
+          "case_states": {
+            "passed": 16
+          },
+          "recorded_failure": null,
+          "page_error_field_present": true,
+          "page_error_count": 0,
+          "provider": "injected local SSE protocol fixture; zero paid calls",
+          "fixture_dispatches": 17,
+          "paid_calls": 0,
+          "paid_calls_basis": "Provider field declares injected local SSE protocol fixture; zero paid calls. 17 dispatches are local fixture requests, not billed provider calls.",
+          "started_at": "2026-11-10T16:42:41.908Z",
+          "finished_at": "2026-11-10T16:43:09.717Z",
+          "manual_visual_review": false,
+          "cases": [
+            {
+              "name": "memory-confirm-correct-forget-and-source-opt-in",
+              "state": "passed",
+              "ms": 1967,
+              "versionedCorrection": true,
+              "oldMemoryNotSent": true
+            },
+            {
+              "name": "default-confirm-genui-uses-real-preview-and-undo",
+              "state": "passed",
+              "ms": 505,
+              "persistedWrite": false,
+              "undoAvailable": true
+            },
+            {
+              "name": "local-spatial-candidate-previews-in-existing-canvas-and-undoes-without-writing",
+              "state": "passed",
+              "ms": 1241,
+              "selectedSourceRegion": "left",
+              "persistedWrite": false,
+              "undoAvailable": true
+            },
+            {
+              "name": "suggest-mode-immutable-and-no-forgotten-memory",
+              "state": "passed",
+              "ms": 956,
+              "cannotExecute": true,
+              "forgottenMemoryNotSent": true
+            },
+            {
+              "name": "auto-explicit-grant-versioned-write-and-budget",
+              "state": "passed",
+              "ms": 1497,
+              "exactRevisionWrites": 1,
+              "exhaustedBeforeProvider": true,
+              "usedSteps": 2,
+              "usedUnits": 5
+            },
+            {
+              "name": "stream-refresh-replays-without-resubmitting",
+              "state": "passed",
+              "ms": 4406,
+              "modelRequests": 2,
+              "browserRefreshAddedRequests": 0
+            },
+            {
+              "name": "conversation-switch-isolates-history-and-candidates",
+              "state": "passed",
+              "ms": 230,
+              "historyIsolation": true,
+              "readOnlySwitch": true
+            },
+            {
+              "name": "suggested-memory-requires-review-expiry-and-version-history",
+              "state": "passed",
+              "ms": 1515,
+              "suggestedNotSavedAutomatically": true,
+              "expiryExcludesRecall": true,
+              "versionHistory": [1, 2]
+            },
+            {
+              "name": "cloud-thumbnail-and-public-image-search-use-separate-scopes",
+              "state": "passed",
+              "ms": 2233,
+              "protectedThumbnail": true,
+              "explicitPublicQuery": true,
+              "publicSourceLink": true
+            },
+            {
+              "name": "stop-in-flight-hides-partial-result-and-survives-refresh",
+              "state": "passed",
+              "ms": 4373,
+              "stoppedDuringProviderRound": true,
+              "noExtraDispatch": true,
+              "savedVersionUnchanged": true
+            },
+            {
+              "name": "assistant-controls-1440x960",
+              "state": "passed",
+              "ms": 171,
+              "width": 1440,
+              "overflow": 1440,
+              "composer": {
+                "x": 1045,
+                "y": 668.15625,
+                "width": 384,
+                "height": 59.1875,
+                "bottom": 727.34375,
+                "right": 1429
+              },
+              "panel": {
+                "x": 1043,
+                "y": 170,
+                "width": 388,
+                "height": 585,
+                "bottom": 755,
+                "right": 1431
+              },
+              "canvas": null
+            },
+            {
+              "name": "assistant-controls-1024x768",
+              "state": "passed",
+              "ms": 168,
+              "width": 1024,
+              "overflow": 1024,
+              "composer": {
+                "x": 629,
+                "y": 580.15625,
+                "width": 384,
+                "height": 59.1875,
+                "bottom": 639.34375,
+                "right": 1013
+              },
+              "panel": {
+                "x": 627,
+                "y": 164,
+                "width": 388,
+                "height": 503,
+                "bottom": 667,
+                "right": 1015
+              },
+              "canvas": null
+            },
+            {
+              "name": "assistant-controls-390x844",
+              "state": "passed",
+              "ms": 150,
+              "width": 390,
+              "overflow": 390,
+              "composer": {
+                "x": 2,
+                "y": 696.15625,
+                "width": 386,
+                "height": 59.1875,
+                "bottom": 755.34375,
+                "right": 388
+              },
+              "panel": {
+                "x": 0,
+                "y": 481,
+                "width": 390,
+                "height": 299,
+                "bottom": 780,
+                "right": 390
+              },
+              "canvas": null
+            },
+            {
+              "name": "assistant-controls-320x700",
+              "state": "passed",
+              "ms": 113,
+              "width": 320,
+              "overflow": 320,
+              "composer": {
+                "x": 2,
+                "y": 552.15625,
+                "width": 316,
+                "height": 59.1875,
+                "bottom": 611.34375,
+                "right": 318
+              },
+              "panel": {
+                "x": 0,
+                "y": 337,
+                "width": 320,
+                "height": 299,
+                "bottom": 636,
+                "right": 320
+              },
+              "canvas": null
+            },
+            {
+              "name": "assistant-controls-844x390",
+              "state": "passed",
+              "ms": 153,
+              "width": 844,
+              "overflow": 844,
+              "composer": {
+                "x": 449,
+                "y": 222.15625,
+                "width": 384,
+                "height": 59.1875,
+                "bottom": 281.34375,
+                "right": 833
+              },
+              "panel": {
+                "x": 447,
+                "y": 138,
+                "width": 388,
+                "height": 171,
+                "bottom": 309,
+                "right": 835
+              },
+              "canvas": null
+            },
+            {
+              "name": "operator-paginates-all-unknown-jobs-without-private-content",
+              "state": "passed",
+              "ms": 3615,
+              "pages": [50, 10],
+              "privateInputExposed": false,
+              "unavailableResolverDisabled": true
+            }
+          ]
+        },
+        "team": {
+          "artifact": {
+            "id": 13783741650,
+            "name": "browser-team-voice-b4425537e12ee5c95626a98d6dc1d00609970c09",
+            "size_in_bytes": 590237,
+            "url": "https://api.github.com/repos/hxjyaohaohaode/AI-xiutu/actions/artifacts/13783741650",
+            "archive_download_url": "https://api.github.com/repos/hxjyaohaohaode/AI-xiutu/actions/artifacts/13783741650/zip",
+            "expired": false,
+            "created_at": "2026-11-10T16:43:25Z",
+            "expires_at": "2026-11-24T16:43:24Z",
+            "updated_at": "2026-11-10T16:43:25Z",
+            "digest": "sha256:354a9628c47e29b6c7df6bd280f66705e9d78bdaa094a83feac4ab4537522782",
+            "workflow_run": {
+              "id": 42853424180,
+              "repository_id": 1451260826,
+              "head_repository_id": 1451260826,
+              "head_branch": "work/frontend-studio-v2",
+              "head_sha": "30abd1ba1b18f7d5e9aa25b844951937ecb26d60"
+            },
+            "local_zip_path": "artifacts/verification/frontend-studio/ci-42853424180/team/artifact.zip",
+            "download_sha256": "354a9628c47e29b6c7df6bd280f66705e9d78bdaa094a83feac4ab4537522782",
+            "size_verified": true,
+            "report_path": "artifacts/verification/frontend-studio/ci-42853424180/team/report.json",
+            "report_sha256": "3c95fb6d26b45485d77095b72d3edc030bb47ee965ecc0541358a3abd21e2817",
+            "collected_at_utc": "2026-11-10T16:44:04.228286+00:00"
+          },
+          "case_count": 5,
+          "case_states": {
+            "passed": 5
+          },
+          "recorded_failure": null,
+          "page_error_field_present": true,
+          "page_error_count": 0,
+          "provider": "local WebSocket fixture",
+          "paid_calls": 0,
+          "microphone_source": "Chromium fake media devices and fake permission UI; no physical microphone acceptance.",
+          "native_speech_recognition_acceptance": false,
+          "native_speech_recognition_basis": "The script disables native SpeechRecognition unless optional BROWSER_SPEECH_FIXTURE is set; this report does not record such a real speech acceptance.",
+          "manual_visual_review": null,
+          "manual_visual_review_note": "This report has no manualVisualReview field; do not infer an actual human visual review.",
+          "cases": [
+            {
+              "name": "peer browser microphones relay PCM to a separate team page",
+              "state": "passed"
+            },
+            {
+              "name": "members-only captions are optional and do not add a voice provider",
+              "state": "passed"
+            },
+            {
+              "name": "open microphones share continuous audio with one invited AI after consent",
+              "state": "passed"
+            },
+            {
+              "name": "an unresolved team invitation blocks a new solo paid request",
+              "state": "passed"
+            },
+            {
+              "name": "solo live call keeps captions and public search inside the conversation",
+              "state": "passed"
+            }
+          ]
+        },
+        "spatial": {
+          "artifact": {
+            "id": 13784021062,
+            "name": "spatial-quality-b4425537e12ee5c95626a98d6dc1d00609970c09",
+            "size_in_bytes": 67943350,
+            "url": "https://api.github.com/repos/hxjyaohaohaode/AI-xiutu/actions/artifacts/13784021062",
+            "archive_download_url": "https://api.github.com/repos/hxjyaohaohaode/AI-xiutu/actions/artifacts/13784021062/zip",
+            "expired": false,
+            "created_at": "2026-11-10T16:45:02Z",
+            "expires_at": "2026-11-24T16:44:59Z",
+            "updated_at": "2026-11-10T16:45:02Z",
+            "digest": "sha256:f00bf824c0c6ccbd3449ff5cc98fdcc2d227ee1be3529fc0687a0428e8debb7f",
+            "workflow_run": {
+              "id": 42853424180,
+              "repository_id": 1451260826,
+              "head_repository_id": 1451260826,
+              "head_branch": "work/frontend-studio-v2",
+              "head_sha": "30abd1ba1b18f7d5e9aa25b844951937ecb26d60"
+            },
+            "local_zip_path": "artifacts/verification/frontend-studio/ci-42853424180/spatial/artifact.zip",
+            "download_sha256": "f00bf824c0c6ccbd3449ff5cc98fdcc2d227ee1be3529fc0687a0428e8debb7f",
+            "size_verified": true,
+            "report_path": "artifacts/verification/frontend-studio/ci-42853424180/spatial/report.json",
+            "report_sha256": "06bc26f3d0b11bf0faf6781ab482ec0d0c94a4b7a18e1f43c908548d52a9f9ca",
+            "collected_at_utc": "2026-11-10T16:45:34.341614+00:00"
+          },
+          "case_count": 431,
+          "case_states": {
+            "passed": 419,
+            "unavailable": 12
+          },
+          "recorded_failure": null,
+          "page_error_field_present": false,
+          "page_error_count": null,
+          "page_error_count_note": "This report does not collect pageErrors; do not report a measured zero.",
+          "source": "actual browser MediaPipe CPU/WASM inference on pinned public photographs",
+          "paid_calls": 0,
+          "manual_visual_review": false,
+          "photo_count": 3,
+          "photos": [
+            {
+              "name": "portrait-hopper",
+              "url": "https://raw.githubusercontent.com/matplotlib/matplotlib/main/lib/matplotlib/mpl-data/sample_data/grace_hopper.jpg",
+              "sha256": "a8ca6d734765703b09728ab47fe59f473d93ae3967fc24c7c0288c3c7adb7130",
+              "bytes": 61306,
+              "source": "Matplotlib official public sample_data; image is not redistributed in this repository",
+              "frame": {
+                "width": 437,
+                "height": 512,
+                "coordinates": "source-normalized",
+                "orientation": "normalized",
+                "contentHash": "1f4b9b04a25ddedac826d2f7329ff2a197c36c6248367d0ae8beb18b7704a508"
+              },
+              "targets": [
+                {
+                  "id": "face-1f4b9b04a25d-1",
+                  "kind": "face"
+                },
+                {
+                  "id": "body-1f4b9b04a25d-1",
+                  "kind": "body"
+                }
+              ],
+              "warnings": []
+            },
+            {
+              "name": "mediapipe-portrait",
+              "url": "https://storage.googleapis.com/mediapipe-assets/portrait.jpg",
+              "sha256": "a6f11efaa834706db23f275b6115058fa87fc7f14362681e6abe14e82749de3e",
+              "bytes": 176561,
+              "source": "Google MediaPipe official example asset; image is not redistributed in this repository",
+              "frame": {
+                "width": 410,
+                "height": 512,
+                "coordinates": "source-normalized",
+                "orientation": "normalized",
+                "contentHash": "2c9e60fc8ab720dfa422d84c2edf308f15b48eab623f4047ed88537e64e7c1f3"
+              },
+              "targets": [
+                {
+                  "id": "face-2c9e60fc8ab7-1",
+                  "kind": "face"
+                },
+                {
+                  "id": "body-2c9e60fc8ab7-1",
+                  "kind": "body"
+                }
+              ],
+              "warnings": []
+            },
+            {
+              "name": "mediapipe-pose",
+              "url": "https://storage.googleapis.com/mediapipe-assets/pose.jpg",
+              "sha256": "c8a830ed683c0276d713dd5aeda28f415f10cd6291972084a40d0d8b934ed62b",
+              "bytes": 44100,
+              "source": "Google MediaPipe official example asset; image is not redistributed in this repository",
+              "frame": {
+                "width": 512,
+                "height": 342,
+                "coordinates": "source-normalized",
+                "orientation": "normalized",
+                "contentHash": "2f00c5f8ffc0ed21527d05c046d5157fe78c67ebfb74d60210b55ec1e7fae26e"
+              },
+              "targets": [
+                {
+                  "id": "body-2f00c5f8ffc0-1",
+                  "kind": "body"
+                }
+              ],
+              "warnings": []
+            }
+          ],
+          "model_manifest": {
+            "schemaVersion": 1,
+            "sdkVersion": "1.2.2",
+            "algorithmVersion": "mediapipe-v1-selfie256",
+            "assets": [
+              {
+                "file": "face_landmarker.task",
+                "sha256": "64184e229b263107bc2b804c6625db1341ff2bb731874b0bcc2fe6544e0bc9ff",
+                "bytes": 3758596
+              },
+              {
+                "file": "pose_landmarker_lite.task",
+                "sha256": "59929e1d1ee95287735ddd833b19cf4ac46d29bc7afddbbf6753c459690d574a",
+                "bytes": 5777746
+              },
+              {
+                "file": "selfie_multiclass_256x256.tflite",
+                "sha256": "c6748b1253a99067ef71f7e26ca71096cd449baefa8f101900ea23016507e0e0",
+                "bytes": 16371837
+              }
+            ]
+          },
+          "target_counts": {
+            "face": 2,
+            "body": 3
+          },
+          "photo_warning_count": 0,
+          "by_photo_case_states": {
+            "portrait-hopper": {
+              "passed": 178,
+              "unavailable": 7
+            },
+            "mediapipe-portrait": {
+              "passed": 193,
+              "unavailable": 4
+            },
+            "mediapipe-pose": {
+              "passed": 48,
+              "unavailable": 1
+            }
+          },
+          "repeated_model_inference": "Each of the 3 public photos is inferred twice in the actual browser portrait worker; skin segmentation and target existence are asserted for both runs; the second result is validated against the image frame.",
+          "frame_scope": "sRGB RGBA8, orientation normalized, scaled to fit within 512x512.",
+          "portrait_sweep_cases": 410,
+          "portrait_sweep_values": "Unique minimum, minimum/2, zero, maximum/2 and maximum of each available tool.",
+          "zero_value_cases": 90,
+          "zero_value_all_identity": true,
+          "zero_value_max_channel_delta": 0,
+          "nonzero_value_cases": 320,
+          "nonzero_all_change_pixels": true,
+          "nonzero_edit_delta_ranges": {
+            "maximum_channel_delta": [2, 254],
+            "mean_absolute_rgba_delta": [0.000851514862804878, 3.571135985769451],
+            "changed_pixels": [70, 46382],
+            "interpretation": "Intentional edit change against the original image, not a rendering error or repair quality metric."
+          },
+          "full_vs_tiled_equality": {
+            "case_count": 419,
+            "max_channel_difference": 0,
+            "tile_size": 37,
+            "basis": "Derived from successful assert.deepEqual comparisons in scripts/qa/spatial-quality.browser.mjs at lines 207 and 307. The shared reference renderer runs in Node; actual landmark and segmentation inference runs in the browser worker."
+          },
+          "repair_case_count": 9,
+          "repair_outside_mask": {
+            "max_channel_difference": 0,
+            "basis": "Successful per-pixel RGBA equality assertions outside the selected mask at scripts/qa/spatial-quality.browser.mjs:300."
+          },
+          "repair_configuration": {
+            "mask": {
+              "type": "radial",
+              "centerX": 0.2,
+              "centerY": 0.75,
+              "radiusX": 0.025,
+              "radiusY": 0.025,
+              "feather": 0,
+              "invert": false
+            },
+            "damage_rgba": [245, 20, 210, 255],
+            "iterations": 256,
+            "searchRadius": 0.25
+          },
+          "repair_mae": [
+            {
+              "photo": "portrait-hopper",
+              "tool": "diffusion",
+              "maeToGroundTruth": 2.9045454545454548
+            },
+            {
+              "photo": "portrait-hopper",
+              "tool": "patch-poisson",
+              "maeToGroundTruth": 3.6575757575757577
+            },
+            {
+              "photo": "portrait-hopper",
+              "tool": "exemplar-v1",
+              "maeToGroundTruth": 4.491666666666666
+            },
+            {
+              "photo": "mediapipe-portrait",
+              "tool": "diffusion",
+              "maeToGroundTruth": 18.358173076923077
+            },
+            {
+              "photo": "mediapipe-portrait",
+              "tool": "patch-poisson",
+              "maeToGroundTruth": 18.088141025641026
+            },
+            {
+              "photo": "mediapipe-portrait",
+              "tool": "exemplar-v1",
+              "maeToGroundTruth": 31.783653846153847
+            },
+            {
+              "photo": "mediapipe-pose",
+              "tool": "diffusion",
+              "maeToGroundTruth": 5.9193083573487035
+            },
+            {
+              "photo": "mediapipe-pose",
+              "tool": "patch-poisson",
+              "maeToGroundTruth": 6.592699327569645
+            },
+            {
+              "photo": "mediapipe-pose",
+              "tool": "exemplar-v1",
+              "maeToGroundTruth": 6.771373679154659
+            }
+          ],
+          "repair_mae_range": [2.9045454545454548, 31.783653846153847],
+          "repair_mae_definition": "Mean absolute RGB channel error inside the deliberately damaged mask against the original public photo on a 0..255 channel scale.",
+          "repair_quality_gate": "MAE is recorded without a numerical pass threshold; passed does not mean visually satisfactory restoration. Maximum individual repair-pixel error is not recorded.",
+          "unavailable_count": 12,
+          "unavailable_reasons": {
+            "neck_length_not_implemented": 3,
+            "required_landmarks_unavailable": 9
+          },
+          "unavailable_cases": [
+            {
+              "photo": "portrait-hopper",
+              "target": "body",
+              "tool": "neckLength",
+              "state": "unavailable",
+              "reason": "自动颈长暂不可用：耳肩锚点不足以保护面部与肩膀，尚未实现头颈分区和受约束网格。可使用手动液化并设置保护区。"
+            },
+            {
+              "photo": "portrait-hopper",
+              "target": "body",
+              "tool": "arms",
+              "state": "unavailable",
+              "reason": "该操作所需身体关键点不可见，请手动液化或换图。"
+            },
+            {
+              "photo": "portrait-hopper",
+              "target": "body",
+              "tool": "waist",
+              "state": "unavailable",
+              "reason": "该操作所需身体关键点不可见，请手动液化或换图。"
+            },
+            {
+              "photo": "portrait-hopper",
+              "target": "body",
+              "tool": "hips",
+              "state": "unavailable",
+              "reason": "该操作所需身体关键点不可见，请手动液化或换图。"
+            },
+            {
+              "photo": "portrait-hopper",
+              "target": "body",
+              "tool": "legLength",
+              "state": "unavailable",
+              "reason": "该操作所需身体关键点不可见，请手动液化或换图。"
+            },
+            {
+              "photo": "portrait-hopper",
+              "target": "body",
+              "tool": "legs",
+              "state": "unavailable",
+              "reason": "该操作所需身体关键点不可见，请手动液化或换图。"
+            },
+            {
+              "photo": "portrait-hopper",
+              "target": "body",
+              "tool": "height",
+              "state": "unavailable",
+              "reason": "该操作所需身体关键点不可见，请手动液化或换图。"
+            },
+            {
+              "photo": "mediapipe-portrait",
+              "target": "body",
+              "tool": "neckLength",
+              "state": "unavailable",
+              "reason": "自动颈长暂不可用：耳肩锚点不足以保护面部与肩膀，尚未实现头颈分区和受约束网格。可使用手动液化并设置保护区。"
+            },
+            {
+              "photo": "mediapipe-portrait",
+              "target": "body",
+              "tool": "legLength",
+              "state": "unavailable",
+              "reason": "该操作所需身体关键点不可见，请手动液化或换图。"
+            },
+            {
+              "photo": "mediapipe-portrait",
+              "target": "body",
+              "tool": "legs",
+              "state": "unavailable",
+              "reason": "该操作所需身体关键点不可见，请手动液化或换图。"
+            },
+            {
+              "photo": "mediapipe-portrait",
+              "target": "body",
+              "tool": "height",
+              "state": "unavailable",
+              "reason": "该操作所需身体关键点不可见，请手动液化或换图。"
+            },
+            {
+              "photo": "mediapipe-pose",
+              "target": "body",
+              "tool": "neckLength",
+              "state": "unavailable",
+              "reason": "自动颈长暂不可用：耳肩锚点不足以保护面部与肩膀，尚未实现头颈分区和受约束网格。可使用手动液化并设置保护区。"
+            }
+          ]
+        },
+        "scope_limits": [
+          "Assistant and team exercise real browser/HTTP/database/control flows with local provider protocol fixtures, not actual paid provider quality, latency, availability or billing.",
+          "Team uses synthetic browser microphone input; physical microphone and native speech recognition acceptance are not established.",
+          "Spatial uses actual SHA-pinned MediaPipe CPU/WASM model inference, not provider fixtures, and covers only the three public photos at their reported normalized resolutions.",
+          "Only 419 spatial rows passed; 12 were unavailable due to unsupported neck mesh or missing required landmarks. Unavailable rows are not pixel passes.",
+          "Full/tiled equality compares shared renderer implementations on these exact inputs; it does not establish equality for every photo, resolution or platform.",
+          "Automated pixel equality and numerical measurements are separate from human aesthetic acceptance; assistant and spatial explicitly report manualVisualReview=false.",
+          "Workspace artifact review and whole browser logs/jobs are maintained separately by control_polish; no workspace evidence is duplicated here.",
+          "Historical baseline-summary.json remains the 16:25:01 snapshot with browser pending; this independent appended summary records final observed jobs without overwriting it."
+        ]
+      },
+      "historyScope": "Initial jobs,16:25baseline snapshots, earlier three CI runs, local gates and original anonymous CUA are preserved separately. No existing historical result is relabeled as current.",
+      "documentationOnlyFinalization": true,
+      "productCommitRemains": "30abd1ba1b18f7d5e9aa25b844951937ecb26d60"
+    },
+    "finalEvidenceSha256": {
+      "artifacts/verification/frontend-studio/ci-42853424180/summary-final.json": "4f41894be763c8c9b4e8a6904c27cd82e1e750cb032c2771df517380c07889ea",
+      "artifacts/verification/frontend-studio/ci-42853424180/jobs-final.json": "6e1fc16e89293783622276b4c37bf7cbe2731c511347e472d1e910742895b479",
+      "artifacts/verification/frontend-studio/ci-42853424180/github-job-final.log": "5984be4bbbe8ee919391507eb390d55772c4bf036940bda7e961e38f0967d347",
+      "artifacts/verification/frontend-studio/ci-42853424180/workspace/summary-final.json": "46712e04bb011bc6c0751fa6a9144a0ec51757a83f021d3c3554b454bea8d422",
+      "artifacts/verification/frontend-studio/ci-42853424180/workspace/artifact.zip": "2c88d1a2d38915083d9eaa9763088858a17242d986c58168f4ba591fae076ea3",
+      "artifacts/verification/frontend-studio/ci-42853424180/final-assistant-team-spatial.json": "c12229557b4df99edc53642e34d4a929ac68405470934afbd9de2b1e1ff8eef3",
+      "artifacts/verification/frontend-studio/ci-42853424180/verify-workspace.py": "fe41373baba1e02c0cdc40f9df5fa0ac4b9b166315d7547fab52dd8a1b9b1490",
+      "artifacts/verification/frontend-studio/ci-42853424180/final-evidence-sha256.json": "00e48debf41d5915468c2c74e057c19433ca401cca489c99028ffee1203a462a"
+    }
+  }
 }
