@@ -1,0 +1,1061 @@
+{
+  "startedAt": "2026-11-10T21:19:06.770Z",
+  "provider": "injected local SSE protocol fixture; zero paid calls",
+  "cases": [
+    {
+      "name": "composer-composition-and-settings-preserve-unsent-drafts-without-admission",
+      "state": "passed",
+      "ms": 537,
+      "simulatedCompositionEvents": true,
+      "enterAddsNewline": true,
+      "settingsDraftPreserved": true,
+      "addedAdmissions": 0,
+      "addedDispatches": 0
+    },
+    {
+      "name": "memory-confirm-correct-forget-and-source-opt-in",
+      "state": "passed",
+      "ms": 2607,
+      "versionedCorrection": true,
+      "oldMemoryNotSent": true
+    },
+    {
+      "name": "default-confirm-genui-uses-real-preview-and-undo",
+      "state": "passed",
+      "ms": 832,
+      "persistedWrite": false,
+      "undoAvailable": true
+    },
+    {
+      "name": "local-spatial-candidate-previews-in-existing-canvas-and-undoes-without-writing",
+      "state": "passed",
+      "ms": 1279,
+      "selectedSourceRegion": "left",
+      "persistedWrite": false,
+      "undoAvailable": true
+    },
+    {
+      "name": "suggest-mode-immutable-and-no-forgotten-memory",
+      "state": "passed",
+      "ms": 1438,
+      "cannotExecute": true,
+      "forgottenMemoryNotSent": true
+    },
+    {
+      "name": "auto-explicit-grant-versioned-write-and-budget",
+      "state": "passed",
+      "ms": 2311,
+      "exactRevisionWrites": 1,
+      "exhaustedBeforeProvider": true,
+      "usedSteps": 2,
+      "usedUnits": 5
+    },
+    {
+      "name": "stream-refresh-replays-without-resubmitting",
+      "state": "passed",
+      "ms": 4699,
+      "modelRequests": 2,
+      "browserRefreshAddedRequests": 0
+    },
+    {
+      "name": "conversation-switch-isolates-history-and-candidates",
+      "state": "passed",
+      "ms": 397,
+      "historyIsolation": true,
+      "readOnlySwitch": true
+    },
+    {
+      "name": "active-text-request-survives-panel-hide-and-return-without-a-new-admission",
+      "state": "passed",
+      "ms": 1413,
+      "keyboardSubmit": true,
+      "visibleReplyBeforeHide": true,
+      "retainedReplyAfterReturn": true,
+      "knownRunningRequestWithoutDuplicateRecovery": true,
+      "retainedMountedOwner": true,
+      "hiddenPanel": {
+        "ownerConnected": true,
+        "panelInert": true,
+        "panelAriaHidden": "true",
+        "panelMotionPhase": "hidden",
+        "contentInert": true,
+        "contentAriaHidden": "true",
+        "contentHidden": true
+      },
+      "activityGeometry": {
+        "buttonRect": {
+          "x": 740.21875,
+          "y": 69,
+          "width": 88.234375,
+          "height": 26.1875,
+          "top": 69,
+          "right": 828.453125,
+          "bottom": 95.1875,
+          "left": 740.21875
+        },
+        "bannerRect": {
+          "x": 0,
+          "y": 64,
+          "width": 1440,
+          "height": 36.1875,
+          "top": 64,
+          "right": 1440,
+          "bottom": 100.1875,
+          "left": 0
+        },
+        "center": {
+          "x": 784.3359375,
+          "y": 82.09375
+        },
+        "returnButtonHit": true,
+        "toastPresent": true,
+        "toastRects": [
+          {
+            "x": 546.1015625,
+            "y": 112.1875,
+            "width": 347.796875,
+            "height": 66,
+            "top": 112.1875,
+            "right": 893.8984375,
+            "bottom": 178.1875,
+            "left": 546.1015625
+          }
+        ],
+        "visibleToastsDoNotOverlap": true
+      },
+      "admissions": 1,
+      "fixtureDispatches": 2,
+      "persistedWrite": false
+    },
+    {
+      "name": "late-applied-receipt-preserves-an-unsaved-document-and-its-view",
+      "state": "passed",
+      "ms": 4762,
+      "protocol": "real HTTP, SSE and PostgreSQL with the existing local provider fixture",
+      "backendExecution": "applied",
+      "exactRevisionWrites": 1,
+      "explicitAdmissions": 1,
+      "fixtureDispatches": 2,
+      "stayedInDocuments": true,
+      "unsavedDraftPreserved": true,
+      "silentlySavedDocument": false
+    },
+    {
+      "name": "suggested-memory-requires-review-expiry-and-version-history",
+      "state": "passed",
+      "ms": 1817,
+      "suggestedNotSavedAutomatically": true,
+      "expiryExcludesRecall": true,
+      "versionHistory": [
+        1,
+        2
+      ]
+    },
+    {
+      "name": "cloud-thumbnail-and-public-image-search-use-separate-scopes",
+      "state": "passed",
+      "ms": 5319,
+      "protectedThumbnail": true,
+      "explicitPublicQuery": true,
+      "publicSourceLink": true,
+      "mergedBranches": 2,
+      "meteredTaskFromLedger": true
+    },
+    {
+      "name": "stop-in-flight-hides-partial-result-and-survives-refresh",
+      "state": "passed",
+      "ms": 8698,
+      "stoppedDuringProviderRound": true,
+      "noExtraDispatch": true,
+      "savedVersionUnchanged": true,
+      "reloadReleasedOldSessionAndKeptPeer": true,
+      "lateReplyIsolation": {
+        "restoredRunningObserverStopped": true,
+        "realStopReceiptDeferred": true,
+        "nextRunningTurnUnaffected": true,
+        "explicitAdmissions": 2,
+        "fixtureDispatches": 4
+      }
+    },
+    {
+      "name": "assistant-controls-1440x960",
+      "state": "passed",
+      "ms": 165,
+      "width": 1440,
+      "overflow": 1440,
+      "composer": {
+        "x": 1053,
+        "y": 630.5,
+        "width": 368,
+        "height": 90,
+        "bottom": 720.5,
+        "right": 1421,
+        "centerExposed": true
+      },
+      "input": {
+        "x": 1061,
+        "y": 639.5,
+        "width": 352,
+        "height": 36,
+        "bottom": 675.5,
+        "right": 1413,
+        "centerExposed": true
+      },
+      "send": {
+        "x": 1377,
+        "y": 678.5,
+        "width": 36,
+        "height": 36,
+        "bottom": 714.5,
+        "right": 1413,
+        "centerExposed": true
+      },
+      "toolbar": {
+        "x": 1061,
+        "y": 678.5,
+        "width": 352,
+        "height": 36,
+        "bottom": 714.5,
+        "right": 1413,
+        "centerExposed": true
+      },
+      "close": {
+        "x": 0,
+        "y": 0,
+        "width": 0,
+        "height": 0,
+        "bottom": 0,
+        "right": 0,
+        "centerExposed": false
+      },
+      "panel": {
+        "x": 1043,
+        "y": 117,
+        "width": 388,
+        "height": 634,
+        "bottom": 751,
+        "right": 1431,
+        "centerExposed": true
+      },
+      "canvas": null,
+      "inputFontSize": 14
+    },
+    {
+      "name": "assistant-controls-1024x768",
+      "state": "passed",
+      "ms": 150,
+      "width": 1024,
+      "overflow": 1024,
+      "composer": {
+        "x": 637,
+        "y": 546.5,
+        "width": 368,
+        "height": 90,
+        "bottom": 636.5,
+        "right": 1005,
+        "centerExposed": true
+      },
+      "input": {
+        "x": 645,
+        "y": 555.5,
+        "width": 352,
+        "height": 36,
+        "bottom": 591.5,
+        "right": 997,
+        "centerExposed": true
+      },
+      "send": {
+        "x": 961,
+        "y": 594.5,
+        "width": 36,
+        "height": 36,
+        "bottom": 630.5,
+        "right": 997,
+        "centerExposed": true
+      },
+      "toolbar": {
+        "x": 645,
+        "y": 594.5,
+        "width": 352,
+        "height": 36,
+        "bottom": 630.5,
+        "right": 997,
+        "centerExposed": true
+      },
+      "close": {
+        "x": 0,
+        "y": 0,
+        "width": 0,
+        "height": 0,
+        "bottom": 0,
+        "right": 0,
+        "centerExposed": false
+      },
+      "panel": {
+        "x": 627,
+        "y": 109,
+        "width": 388,
+        "height": 558,
+        "bottom": 667,
+        "right": 1015,
+        "centerExposed": true
+      },
+      "canvas": null,
+      "inputFontSize": 14
+    },
+    {
+      "name": "assistant-controls-390x844",
+      "state": "passed",
+      "ms": 104,
+      "width": 390,
+      "overflow": 390,
+      "composer": {
+        "x": 8,
+        "y": 658.5,
+        "width": 374,
+        "height": 94,
+        "bottom": 752.5,
+        "right": 382,
+        "centerExposed": true
+      },
+      "input": {
+        "x": 16,
+        "y": 667.5,
+        "width": 358,
+        "height": 36,
+        "bottom": 703.5,
+        "right": 374,
+        "centerExposed": true
+      },
+      "send": {
+        "x": 334,
+        "y": 706.5,
+        "width": 40,
+        "height": 40,
+        "bottom": 746.5,
+        "right": 374,
+        "centerExposed": true
+      },
+      "toolbar": {
+        "x": 16,
+        "y": 706.5,
+        "width": 358,
+        "height": 40,
+        "bottom": 746.5,
+        "right": 374,
+        "centerExposed": true
+      },
+      "close": {
+        "x": 344,
+        "y": 407.5,
+        "width": 40,
+        "height": 40,
+        "bottom": 447.5,
+        "right": 384,
+        "centerExposed": true
+      },
+      "panel": {
+        "x": 0,
+        "y": 407,
+        "width": 390,
+        "height": 373,
+        "bottom": 780,
+        "right": 390,
+        "centerExposed": true
+      },
+      "canvas": null,
+      "inputFontSize": 16
+    },
+    {
+      "name": "assistant-controls-320x700",
+      "state": "passed",
+      "ms": 80,
+      "width": 320,
+      "overflow": 320,
+      "composer": {
+        "x": 8,
+        "y": 517.484375,
+        "width": 304,
+        "height": 94,
+        "bottom": 611.484375,
+        "right": 312,
+        "centerExposed": true
+      },
+      "input": {
+        "x": 16,
+        "y": 526.484375,
+        "width": 288,
+        "height": 36,
+        "bottom": 562.484375,
+        "right": 304,
+        "centerExposed": true
+      },
+      "send": {
+        "x": 264,
+        "y": 565.484375,
+        "width": 40,
+        "height": 40,
+        "bottom": 605.484375,
+        "right": 304,
+        "centerExposed": true
+      },
+      "toolbar": {
+        "x": 16,
+        "y": 565.484375,
+        "width": 288,
+        "height": 40,
+        "bottom": 605.484375,
+        "right": 304,
+        "centerExposed": true
+      },
+      "close": {
+        "x": 274,
+        "y": 334.578125,
+        "width": 40,
+        "height": 40,
+        "bottom": 374.578125,
+        "right": 314,
+        "centerExposed": true
+      },
+      "panel": {
+        "x": 0,
+        "y": 334.078125,
+        "width": 320,
+        "height": 301.90625,
+        "bottom": 635.984375,
+        "right": 320,
+        "centerExposed": true
+      },
+      "canvas": null,
+      "inputFontSize": 16
+    },
+    {
+      "name": "assistant-controls-320x568",
+      "state": "passed",
+      "ms": 49,
+      "width": 320,
+      "overflow": 320,
+      "composer": {
+        "x": 8,
+        "y": 386.484375,
+        "width": 304,
+        "height": 94,
+        "bottom": 480.484375,
+        "right": 312,
+        "centerExposed": true
+      },
+      "input": {
+        "x": 16,
+        "y": 395.484375,
+        "width": 288,
+        "height": 36,
+        "bottom": 431.484375,
+        "right": 304,
+        "centerExposed": true
+      },
+      "send": {
+        "x": 264,
+        "y": 434.484375,
+        "width": 40,
+        "height": 40,
+        "bottom": 474.484375,
+        "right": 304,
+        "centerExposed": true
+      },
+      "toolbar": {
+        "x": 16,
+        "y": 434.484375,
+        "width": 288,
+        "height": 40,
+        "bottom": 474.484375,
+        "right": 304,
+        "centerExposed": true
+      },
+      "close": {
+        "x": 274,
+        "y": 267.75,
+        "width": 40,
+        "height": 40,
+        "bottom": 307.75,
+        "right": 314,
+        "centerExposed": true
+      },
+      "panel": {
+        "x": 0,
+        "y": 267.25,
+        "width": 320,
+        "height": 236.734375,
+        "bottom": 503.984375,
+        "right": 320,
+        "centerExposed": true
+      },
+      "canvas": null,
+      "inputFontSize": 16
+    },
+    {
+      "name": "assistant-controls-728x900",
+      "state": "passed",
+      "ms": 79,
+      "width": 728,
+      "overflow": 728,
+      "composer": {
+        "x": 10,
+        "y": 715.484375,
+        "width": 708,
+        "height": 90,
+        "bottom": 805.484375,
+        "right": 718,
+        "centerExposed": true
+      },
+      "input": {
+        "x": 18,
+        "y": 724.484375,
+        "width": 692,
+        "height": 36,
+        "bottom": 760.484375,
+        "right": 710,
+        "centerExposed": true
+      },
+      "send": {
+        "x": 674,
+        "y": 763.484375,
+        "width": 36,
+        "height": 36,
+        "bottom": 799.484375,
+        "right": 710,
+        "centerExposed": true
+      },
+      "toolbar": {
+        "x": 18,
+        "y": 763.484375,
+        "width": 692,
+        "height": 36,
+        "bottom": 799.484375,
+        "right": 710,
+        "centerExposed": true
+      },
+      "close": {
+        "x": 686,
+        "y": 438.84375,
+        "width": 34,
+        "height": 36,
+        "bottom": 474.84375,
+        "right": 720,
+        "centerExposed": true
+      },
+      "panel": {
+        "x": 0,
+        "y": 435.34375,
+        "width": 728,
+        "height": 400.640625,
+        "bottom": 835.984375,
+        "right": 728,
+        "centerExposed": true
+      },
+      "canvas": null,
+      "inputFontSize": 16
+    },
+    {
+      "name": "assistant-controls-844x390",
+      "state": "passed",
+      "ms": 92,
+      "width": 844,
+      "overflow": 844,
+      "composer": {
+        "x": 457,
+        "y": 201.5,
+        "width": 368,
+        "height": 90,
+        "bottom": 291.5,
+        "right": 825,
+        "centerExposed": true
+      },
+      "input": {
+        "x": 465,
+        "y": 210.5,
+        "width": 352,
+        "height": 36,
+        "bottom": 246.5,
+        "right": 817,
+        "centerExposed": true
+      },
+      "send": {
+        "x": 781,
+        "y": 249.5,
+        "width": 36,
+        "height": 36,
+        "bottom": 285.5,
+        "right": 817,
+        "centerExposed": true
+      },
+      "toolbar": {
+        "x": 465,
+        "y": 249.5,
+        "width": 352,
+        "height": 36,
+        "bottom": 285.5,
+        "right": 817,
+        "centerExposed": true
+      },
+      "close": {
+        "x": 0,
+        "y": 0,
+        "width": 0,
+        "height": 0,
+        "bottom": 0,
+        "right": 0,
+        "centerExposed": false
+      },
+      "panel": {
+        "x": 447,
+        "y": 97,
+        "width": 388,
+        "height": 218,
+        "bottom": 315,
+        "right": 835,
+        "centerExposed": true
+      },
+      "canvas": null,
+      "inputFontSize": 14
+    },
+    {
+      "name": "operator-paginates-all-unknown-jobs-without-private-content",
+      "state": "passed",
+      "ms": 3114,
+      "pages": [
+        50,
+        10
+      ],
+      "privateInputExposed": false,
+      "unavailableResolverDisabled": true
+    }
+  ],
+  "pageErrors": [],
+  "manualVisualReview": false,
+  "browser": "158.0.8127.18",
+  "measurements": [
+    {
+      "width": 1440,
+      "overflow": 1440,
+      "composer": {
+        "x": 1053,
+        "y": 630.5,
+        "width": 368,
+        "height": 90,
+        "bottom": 720.5,
+        "right": 1421,
+        "centerExposed": true
+      },
+      "input": {
+        "x": 1061,
+        "y": 639.5,
+        "width": 352,
+        "height": 36,
+        "bottom": 675.5,
+        "right": 1413,
+        "centerExposed": true
+      },
+      "send": {
+        "x": 1377,
+        "y": 678.5,
+        "width": 36,
+        "height": 36,
+        "bottom": 714.5,
+        "right": 1413,
+        "centerExposed": true
+      },
+      "toolbar": {
+        "x": 1061,
+        "y": 678.5,
+        "width": 352,
+        "height": 36,
+        "bottom": 714.5,
+        "right": 1413,
+        "centerExposed": true
+      },
+      "close": {
+        "x": 0,
+        "y": 0,
+        "width": 0,
+        "height": 0,
+        "bottom": 0,
+        "right": 0,
+        "centerExposed": false
+      },
+      "panel": {
+        "x": 1043,
+        "y": 117,
+        "width": 388,
+        "height": 634,
+        "bottom": 751,
+        "right": 1431,
+        "centerExposed": true
+      },
+      "canvas": null,
+      "inputFontSize": 14
+    },
+    {
+      "width": 1024,
+      "overflow": 1024,
+      "composer": {
+        "x": 637,
+        "y": 546.5,
+        "width": 368,
+        "height": 90,
+        "bottom": 636.5,
+        "right": 1005,
+        "centerExposed": true
+      },
+      "input": {
+        "x": 645,
+        "y": 555.5,
+        "width": 352,
+        "height": 36,
+        "bottom": 591.5,
+        "right": 997,
+        "centerExposed": true
+      },
+      "send": {
+        "x": 961,
+        "y": 594.5,
+        "width": 36,
+        "height": 36,
+        "bottom": 630.5,
+        "right": 997,
+        "centerExposed": true
+      },
+      "toolbar": {
+        "x": 645,
+        "y": 594.5,
+        "width": 352,
+        "height": 36,
+        "bottom": 630.5,
+        "right": 997,
+        "centerExposed": true
+      },
+      "close": {
+        "x": 0,
+        "y": 0,
+        "width": 0,
+        "height": 0,
+        "bottom": 0,
+        "right": 0,
+        "centerExposed": false
+      },
+      "panel": {
+        "x": 627,
+        "y": 109,
+        "width": 388,
+        "height": 558,
+        "bottom": 667,
+        "right": 1015,
+        "centerExposed": true
+      },
+      "canvas": null,
+      "inputFontSize": 14
+    },
+    {
+      "width": 390,
+      "overflow": 390,
+      "composer": {
+        "x": 8,
+        "y": 658.5,
+        "width": 374,
+        "height": 94,
+        "bottom": 752.5,
+        "right": 382,
+        "centerExposed": true
+      },
+      "input": {
+        "x": 16,
+        "y": 667.5,
+        "width": 358,
+        "height": 36,
+        "bottom": 703.5,
+        "right": 374,
+        "centerExposed": true
+      },
+      "send": {
+        "x": 334,
+        "y": 706.5,
+        "width": 40,
+        "height": 40,
+        "bottom": 746.5,
+        "right": 374,
+        "centerExposed": true
+      },
+      "toolbar": {
+        "x": 16,
+        "y": 706.5,
+        "width": 358,
+        "height": 40,
+        "bottom": 746.5,
+        "right": 374,
+        "centerExposed": true
+      },
+      "close": {
+        "x": 344,
+        "y": 407.5,
+        "width": 40,
+        "height": 40,
+        "bottom": 447.5,
+        "right": 384,
+        "centerExposed": true
+      },
+      "panel": {
+        "x": 0,
+        "y": 407,
+        "width": 390,
+        "height": 373,
+        "bottom": 780,
+        "right": 390,
+        "centerExposed": true
+      },
+      "canvas": null,
+      "inputFontSize": 16
+    },
+    {
+      "width": 320,
+      "overflow": 320,
+      "composer": {
+        "x": 8,
+        "y": 517.484375,
+        "width": 304,
+        "height": 94,
+        "bottom": 611.484375,
+        "right": 312,
+        "centerExposed": true
+      },
+      "input": {
+        "x": 16,
+        "y": 526.484375,
+        "width": 288,
+        "height": 36,
+        "bottom": 562.484375,
+        "right": 304,
+        "centerExposed": true
+      },
+      "send": {
+        "x": 264,
+        "y": 565.484375,
+        "width": 40,
+        "height": 40,
+        "bottom": 605.484375,
+        "right": 304,
+        "centerExposed": true
+      },
+      "toolbar": {
+        "x": 16,
+        "y": 565.484375,
+        "width": 288,
+        "height": 40,
+        "bottom": 605.484375,
+        "right": 304,
+        "centerExposed": true
+      },
+      "close": {
+        "x": 274,
+        "y": 334.578125,
+        "width": 40,
+        "height": 40,
+        "bottom": 374.578125,
+        "right": 314,
+        "centerExposed": true
+      },
+      "panel": {
+        "x": 0,
+        "y": 334.078125,
+        "width": 320,
+        "height": 301.90625,
+        "bottom": 635.984375,
+        "right": 320,
+        "centerExposed": true
+      },
+      "canvas": null,
+      "inputFontSize": 16
+    },
+    {
+      "width": 320,
+      "overflow": 320,
+      "composer": {
+        "x": 8,
+        "y": 386.484375,
+        "width": 304,
+        "height": 94,
+        "bottom": 480.484375,
+        "right": 312,
+        "centerExposed": true
+      },
+      "input": {
+        "x": 16,
+        "y": 395.484375,
+        "width": 288,
+        "height": 36,
+        "bottom": 431.484375,
+        "right": 304,
+        "centerExposed": true
+      },
+      "send": {
+        "x": 264,
+        "y": 434.484375,
+        "width": 40,
+        "height": 40,
+        "bottom": 474.484375,
+        "right": 304,
+        "centerExposed": true
+      },
+      "toolbar": {
+        "x": 16,
+        "y": 434.484375,
+        "width": 288,
+        "height": 40,
+        "bottom": 474.484375,
+        "right": 304,
+        "centerExposed": true
+      },
+      "close": {
+        "x": 274,
+        "y": 267.75,
+        "width": 40,
+        "height": 40,
+        "bottom": 307.75,
+        "right": 314,
+        "centerExposed": true
+      },
+      "panel": {
+        "x": 0,
+        "y": 267.25,
+        "width": 320,
+        "height": 236.734375,
+        "bottom": 503.984375,
+        "right": 320,
+        "centerExposed": true
+      },
+      "canvas": null,
+      "inputFontSize": 16
+    },
+    {
+      "width": 728,
+      "overflow": 728,
+      "composer": {
+        "x": 10,
+        "y": 715.484375,
+        "width": 708,
+        "height": 90,
+        "bottom": 805.484375,
+        "right": 718,
+        "centerExposed": true
+      },
+      "input": {
+        "x": 18,
+        "y": 724.484375,
+        "width": 692,
+        "height": 36,
+        "bottom": 760.484375,
+        "right": 710,
+        "centerExposed": true
+      },
+      "send": {
+        "x": 674,
+        "y": 763.484375,
+        "width": 36,
+        "height": 36,
+        "bottom": 799.484375,
+        "right": 710,
+        "centerExposed": true
+      },
+      "toolbar": {
+        "x": 18,
+        "y": 763.484375,
+        "width": 692,
+        "height": 36,
+        "bottom": 799.484375,
+        "right": 710,
+        "centerExposed": true
+      },
+      "close": {
+        "x": 686,
+        "y": 438.84375,
+        "width": 34,
+        "height": 36,
+        "bottom": 474.84375,
+        "right": 720,
+        "centerExposed": true
+      },
+      "panel": {
+        "x": 0,
+        "y": 435.34375,
+        "width": 728,
+        "height": 400.640625,
+        "bottom": 835.984375,
+        "right": 728,
+        "centerExposed": true
+      },
+      "canvas": null,
+      "inputFontSize": 16
+    },
+    {
+      "width": 844,
+      "overflow": 844,
+      "composer": {
+        "x": 457,
+        "y": 201.5,
+        "width": 368,
+        "height": 90,
+        "bottom": 291.5,
+        "right": 825,
+        "centerExposed": true
+      },
+      "input": {
+        "x": 465,
+        "y": 210.5,
+        "width": 352,
+        "height": 36,
+        "bottom": 246.5,
+        "right": 817,
+        "centerExposed": true
+      },
+      "send": {
+        "x": 781,
+        "y": 249.5,
+        "width": 36,
+        "height": 36,
+        "bottom": 285.5,
+        "right": 817,
+        "centerExposed": true
+      },
+      "toolbar": {
+        "x": 465,
+        "y": 249.5,
+        "width": 352,
+        "height": 36,
+        "bottom": 285.5,
+        "right": 817,
+        "centerExposed": true
+      },
+      "close": {
+        "x": 0,
+        "y": 0,
+        "width": 0,
+        "height": 0,
+        "bottom": 0,
+        "right": 0,
+        "centerExposed": false
+      },
+      "panel": {
+        "x": 447,
+        "y": 97,
+        "width": 388,
+        "height": 218,
+        "bottom": 315,
+        "right": 835,
+        "centerExposed": true
+      },
+      "canvas": null,
+      "inputFontSize": 14
+    }
+  ],
+  "finishedAt": "2026-11-10T21:19:52.069Z",
+  "dispatches": 25,
+  "turnAdmissions": 13
+}

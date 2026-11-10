@@ -1,0 +1,52 @@
+{
+  "run": {
+    "runId": 42897892502,
+    "head": "0cff5f195e469de59aedff49e88f12aa2117fd6f",
+    "tree": "80ee2d006799159b9eb7dd6646d2a1008fd88863",
+    "event": "push",
+    "runConclusion": "success",
+    "runUpdatedAt": "2026-11-10T21:03:20Z",
+    "auditedAt": "2026-11-10T21:11:16.050390+00:00",
+    "browserJobId": 130115980767
+  },
+  "jobs": [
+    {
+      "id": 130115980322,
+      "name": "baseline",
+      "status": "completed",
+      "conclusion": "success"
+    },
+    {
+      "id": 130115980767,
+      "name": "browser",
+      "status": "completed",
+      "conclusion": "success"
+    },
+    {
+      "id": 130118392010,
+      "name": "containers",
+      "status": "completed",
+      "conclusion": "success"
+    }
+  ],
+  "audits": [
+    {
+      "path": "workspace-audit.json",
+      "bytes": 13827,
+      "sha256": "304d63c437f6a8c8085bb83c911d60d681077c1fc233df04c1002f359461770b"
+    },
+    {
+      "path": "preview-audit.json",
+      "bytes": 4282,
+      "sha256": "a0dbb6c2333f73e708858bdfb1122f200b647934d05e9c6e5f8ef1c27a00908b"
+    },
+    {
+      "path": "spatial-audit.json",
+      "bytes": 15878,
+      "sha256": "a2baabb012e95b1dc593e6b01e6cfad6fb826d765153c6b67341a5a3731fa0bc"
+    }
+  ],
+  "allAuditChecksSatisfied": true,
+  "retainedZipFiles": [],
+  "scope": "Older main 0cff full workflow only. Latest candidate remains separate."
+}

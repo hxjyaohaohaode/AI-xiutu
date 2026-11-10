@@ -1,0 +1,492 @@
+{
+  "schemaVersion": 1,
+  "provenance": {
+    "runId": 42897892502,
+    "head": "0cff5f195e469de59aedff49e88f12aa2117fd6f",
+    "tree": "80ee2d006799159b9eb7dd6646d2a1008fd88863",
+    "event": "push",
+    "runConclusion": "success",
+    "runUpdatedAt": "2026-11-10T21:03:20Z",
+    "auditedAt": "2026-11-10T21:11:16.050390+00:00",
+    "browserJobId": 130115980767
+  },
+  "state": "completed-with-explicit-unavailable",
+  "sourceScript": {
+    "path": "scripts/qa/spatial-quality.browser.mjs",
+    "commit": "0cff5f195e469de59aedff49e88f12aa2117fd6f",
+    "sha256": "fa90d2d6e68b6752ed2448457dad86cf54accabf48211154dcc29655b893b1a4"
+  },
+  "source": "actual browser MediaPipe CPU/WASM inference on pinned public photographs",
+  "paidCalls": 0,
+  "modelManifest": {
+    "schemaVersion": 1,
+    "sdkVersion": "1.2.2",
+    "algorithmVersion": "mediapipe-v1-selfie256",
+    "assets": [
+      {
+        "file": "face_landmarker.task",
+        "sha256": "64184e229b263107bc2b804c6625db1341ff2bb731874b0bcc2fe6544e0bc9ff",
+        "bytes": 3758596
+      },
+      {
+        "file": "pose_landmarker_lite.task",
+        "sha256": "59929e1d1ee95287735ddd833b19cf4ac46d29bc7afddbbf6753c459690d574a",
+        "bytes": 5777746
+      },
+      {
+        "file": "selfie_multiclass_256x256.tflite",
+        "sha256": "c6748b1253a99067ef71f7e26ca71096cd449baefa8f101900ea23016507e0e0",
+        "bytes": 16371837
+      }
+    ]
+  },
+  "counts": {
+    "records": 452,
+    "outcomes": {
+      "passed": 440,
+      "unavailable": 12
+    },
+    "portraitParameterValuesPassed": 428,
+    "neutralIdentityValues": 96,
+    "nonzeroChangedValues": 332,
+    "repairCasesPassed": 9,
+    "matteCasesPassed": 3,
+    "fullVsTiledExactEqualityComparisonsAssertedInCi": 437,
+    "realModelInferencesPerPhotoAssertedInCi": 2
+  },
+  "photos": [
+    {
+      "name": "portrait-hopper",
+      "sourceSha256": "a8ca6d734765703b09728ab47fe59f473d93ae3967fc24c7c0288c3c7adb7130",
+      "frame": {
+        "width": 437,
+        "height": 512,
+        "coordinates": "source-normalized",
+        "orientation": "normalized",
+        "contentHash": "1f4b9b04a25ddedac826d2f7329ff2a197c36c6248367d0ae8beb18b7704a508"
+      },
+      "outcomes": {
+        "passed": 188,
+        "unavailable": 7
+      },
+      "targets": [
+        {
+          "kind": "face",
+          "landmarkCount": 478
+        },
+        {
+          "kind": "body",
+          "landmarkCount": 33
+        }
+      ],
+      "segmentation": [
+        "skin",
+        "hair",
+        "background",
+        "subject"
+      ],
+      "warnings": []
+    },
+    {
+      "name": "mediapipe-portrait",
+      "sourceSha256": "a6f11efaa834706db23f275b6115058fa87fc7f14362681e6abe14e82749de3e",
+      "frame": {
+        "width": 410,
+        "height": 512,
+        "coordinates": "source-normalized",
+        "orientation": "normalized",
+        "contentHash": "2c9e60fc8ab720dfa422d84c2edf308f15b48eab623f4047ed88537e64e7c1f3"
+      },
+      "outcomes": {
+        "passed": 203,
+        "unavailable": 4
+      },
+      "targets": [
+        {
+          "kind": "face",
+          "landmarkCount": 478
+        },
+        {
+          "kind": "body",
+          "landmarkCount": 33
+        }
+      ],
+      "segmentation": [
+        "skin",
+        "hair",
+        "background",
+        "subject"
+      ],
+      "warnings": []
+    },
+    {
+      "name": "mediapipe-pose",
+      "sourceSha256": "c8a830ed683c0276d713dd5aeda28f415f10cd6291972084a40d0d8b934ed62b",
+      "frame": {
+        "width": 512,
+        "height": 342,
+        "coordinates": "source-normalized",
+        "orientation": "normalized",
+        "contentHash": "2f00c5f8ffc0ed21527d05c046d5157fe78c67ebfb74d60210b55ec1e7fae26e"
+      },
+      "outcomes": {
+        "passed": 49,
+        "unavailable": 1
+      },
+      "targets": [
+        {
+          "kind": "body",
+          "landmarkCount": 33
+        }
+      ],
+      "segmentation": [
+        "skin",
+        "hair",
+        "background",
+        "subject"
+      ],
+      "warnings": []
+    }
+  ],
+  "unavailableReasonCounts": {
+    "自动颈长暂不可用：耳肩锚点不足以保护面部与肩膀，尚未实现头颈分区和受约束网格。可使用手动液化并设置保护区。": 3,
+    "该操作所需身体关键点不可见，请手动液化或换图。": 9
+  },
+  "unavailable": [
+    {
+      "photo": "portrait-hopper",
+      "target": "body",
+      "tool": "neckLength",
+      "state": "unavailable",
+      "reason": "自动颈长暂不可用：耳肩锚点不足以保护面部与肩膀，尚未实现头颈分区和受约束网格。可使用手动液化并设置保护区。"
+    },
+    {
+      "photo": "portrait-hopper",
+      "target": "body",
+      "tool": "arms",
+      "state": "unavailable",
+      "reason": "该操作所需身体关键点不可见，请手动液化或换图。"
+    },
+    {
+      "photo": "portrait-hopper",
+      "target": "body",
+      "tool": "waist",
+      "state": "unavailable",
+      "reason": "该操作所需身体关键点不可见，请手动液化或换图。"
+    },
+    {
+      "photo": "portrait-hopper",
+      "target": "body",
+      "tool": "hips",
+      "state": "unavailable",
+      "reason": "该操作所需身体关键点不可见，请手动液化或换图。"
+    },
+    {
+      "photo": "portrait-hopper",
+      "target": "body",
+      "tool": "legLength",
+      "state": "unavailable",
+      "reason": "该操作所需身体关键点不可见，请手动液化或换图。"
+    },
+    {
+      "photo": "portrait-hopper",
+      "target": "body",
+      "tool": "legs",
+      "state": "unavailable",
+      "reason": "该操作所需身体关键点不可见，请手动液化或换图。"
+    },
+    {
+      "photo": "portrait-hopper",
+      "target": "body",
+      "tool": "height",
+      "state": "unavailable",
+      "reason": "该操作所需身体关键点不可见，请手动液化或换图。"
+    },
+    {
+      "photo": "mediapipe-portrait",
+      "target": "body",
+      "tool": "neckLength",
+      "state": "unavailable",
+      "reason": "自动颈长暂不可用：耳肩锚点不足以保护面部与肩膀，尚未实现头颈分区和受约束网格。可使用手动液化并设置保护区。"
+    },
+    {
+      "photo": "mediapipe-portrait",
+      "target": "body",
+      "tool": "legLength",
+      "state": "unavailable",
+      "reason": "该操作所需身体关键点不可见，请手动液化或换图。"
+    },
+    {
+      "photo": "mediapipe-portrait",
+      "target": "body",
+      "tool": "legs",
+      "state": "unavailable",
+      "reason": "该操作所需身体关键点不可见，请手动液化或换图。"
+    },
+    {
+      "photo": "mediapipe-portrait",
+      "target": "body",
+      "tool": "height",
+      "state": "unavailable",
+      "reason": "该操作所需身体关键点不可见，请手动液化或换图。"
+    },
+    {
+      "photo": "mediapipe-pose",
+      "target": "body",
+      "tool": "neckLength",
+      "state": "unavailable",
+      "reason": "自动颈长暂不可用：耳肩锚点不足以保护面部与肩膀，尚未实现头颈分区和受约束网格。可使用手动液化并设置保护区。"
+    }
+  ],
+  "portraitChangeVsOriginalRanges": {
+    "nonzeroChangedPixels": [
+      1,
+      46382
+    ],
+    "nonzeroMaximumChannelDelta": [
+      2,
+      254
+    ],
+    "nonzeroMeanAbsoluteRgbaDelta": [
+      5.954649390243903e-06,
+      3.571135985769451
+    ]
+  },
+  "fullVsTiled": {
+    "meaning": "Byte-for-byte equality asserted against the full reference render in the successful CI step.",
+    "comparisonCount": 437,
+    "maximumChannelDifferenceImpliedByExactEquality": 0,
+    "recomputedLocally": false
+  },
+  "repair": {
+    "maeMeaning": "Mean absolute RGB error inside the deliberately damaged mask against retained original pixels; exterior pixels must remain byte-identical.",
+    "maeRange": [
+      2.9045454545454548,
+      31.783653846153847
+    ],
+    "cases": [
+      {
+        "photo": "portrait-hopper",
+        "tool": "diffusion",
+        "state": "passed",
+        "maeToGroundTruth": 2.9045454545454548,
+        "ms": 132.19936900000175
+      },
+      {
+        "photo": "portrait-hopper",
+        "tool": "patch-poisson",
+        "state": "passed",
+        "maeToGroundTruth": 3.6575757575757577,
+        "ms": 145.22498500000074
+      },
+      {
+        "photo": "portrait-hopper",
+        "tool": "exemplar-v1",
+        "state": "passed",
+        "maeToGroundTruth": 4.491666666666666,
+        "ms": 153.15759100000287
+      },
+      {
+        "photo": "mediapipe-portrait",
+        "tool": "diffusion",
+        "state": "passed",
+        "maeToGroundTruth": 18.358173076923077,
+        "ms": 94.88511099999596
+      },
+      {
+        "photo": "mediapipe-portrait",
+        "tool": "patch-poisson",
+        "state": "passed",
+        "maeToGroundTruth": 18.088141025641026,
+        "ms": 80.18462300000829
+      },
+      {
+        "photo": "mediapipe-portrait",
+        "tool": "exemplar-v1",
+        "state": "passed",
+        "maeToGroundTruth": 31.783653846153847,
+        "ms": 112.66250400000717
+      },
+      {
+        "photo": "mediapipe-pose",
+        "tool": "diffusion",
+        "state": "passed",
+        "maeToGroundTruth": 5.9193083573487035,
+        "ms": 70.10148900000786
+      },
+      {
+        "photo": "mediapipe-pose",
+        "tool": "patch-poisson",
+        "state": "passed",
+        "maeToGroundTruth": 6.592699327569645,
+        "ms": 80.87377299999935
+      },
+      {
+        "photo": "mediapipe-pose",
+        "tool": "exemplar-v1",
+        "state": "passed",
+        "maeToGroundTruth": 6.771373679154659,
+        "ms": 98.10801099998935
+      }
+    ],
+    "aestheticQualityThresholdApplied": false
+  },
+  "mattes": [
+    {
+      "photo": "portrait-hopper",
+      "tool": "linear-trimap-v1",
+      "state": "passed",
+      "transparent": 87835,
+      "partial": 9869,
+      "opaque": 126040,
+      "hash": "9a2a50800d9445a7b033916cb1d13811e1a910fc1a003455b368fe6470432adc"
+    },
+    {
+      "photo": "mediapipe-portrait",
+      "tool": "linear-trimap-v1",
+      "state": "passed",
+      "transparent": 99866,
+      "partial": 5038,
+      "opaque": 105016,
+      "hash": "abe1dd5e70838c85831c34a690e1fd0f10b2a70aa04a47f301ce1f38bd36cbf6"
+    },
+    {
+      "photo": "mediapipe-pose",
+      "tool": "linear-trimap-v1",
+      "state": "passed",
+      "transparent": 160918,
+      "partial": 3803,
+      "opaque": 10383,
+      "hash": "348e0a354fc57d2fb8fcd98d666dfb172414d4a81798da5b9f9a8cd8c71b2b5f"
+    }
+  ],
+  "canonicalVerification": {
+    "archiveId": 13802023509,
+    "archiveAlreadyDigestVerified": true,
+    "byteRangeTransfer": 1328725,
+    "canonicalFrames": [
+      {
+        "file": "portrait-hopper.canonical.png",
+        "bytes": 535813,
+        "sha256": "f6f7a48841e567d05087b11413f2fe2dc183697db170dcf95fe01318828fe25d",
+        "dimensions": [
+          437,
+          512
+        ],
+        "rgbaSha256": "b639e3fd843a83415958ef340ad10960495535f1091351ed9937b60c804eba00",
+        "boundFrameContentHash": "1f4b9b04a25ddedac826d2f7329ff2a197c36c6248367d0ae8beb18b7704a508",
+        "neutralCasesByteIdenticalToActualCanonicalPng": 42
+      },
+      {
+        "file": "mediapipe-portrait.canonical.png",
+        "bytes": 519334,
+        "sha256": "f6cc2c7f5270754616405143fcb3535872320e59020857e15d31355ceb81f307",
+        "dimensions": [
+          410,
+          512
+        ],
+        "rgbaSha256": "f4010c5e48dedc04aa08698c7f3d3a7f47635b84ef7fbd9cdf4babe5f4618bfc",
+        "boundFrameContentHash": "2c9e60fc8ab720dfa422d84c2edf308f15b48eab623f4047ed88537e64e7c1f3",
+        "neutralCasesByteIdenticalToActualCanonicalPng": 45
+      },
+      {
+        "file": "mediapipe-pose.canonical.png",
+        "bytes": 257659,
+        "sha256": "0339a29934893114d074643f727b6317847126d2b7c2978c161c54bca858e12d",
+        "dimensions": [
+          512,
+          342
+        ],
+        "rgbaSha256": "52d02078f7fa19a26e83cb1444bcd60cb94ebff16f2ca5ab0b1b3262a8493810",
+        "boundFrameContentHash": "2f00c5f8ffc0ed21527d05c046d5157fe78c67ebfb74d60210b55ec1e7fae26e",
+        "neutralCasesByteIdenticalToActualCanonicalPng": 9
+      }
+    ]
+  },
+  "report": {
+    "path": "spatial/report.json",
+    "bytes": 159714,
+    "sha256": "210cf8b99256b39da76e02c8dbd53a7d91a55621a6db66c4c26451e7d537aead"
+  },
+  "archiveVerification": {
+    "path": "spatial/archive-verification.json",
+    "bytes": 1185,
+    "sha256": "3d44ac126e3fe63425d17a82dc0f2f9ada3539331519e9066c88605eac02ed8b"
+  },
+  "contactSheets": {
+    "verifiedAt": "2026-11-10T21:06:45.672639+00:00",
+    "samePreviouslyVerifiedArchiveId": 13802023509,
+    "expectedArchiveSha256": "d1e905f3af8f27532b8e6003219c23724f4ee1d9df2855538044d7d3108d1c02",
+    "method": "HTTP byte ranges against the same reusable artifact; ZIP entry CRC checked by ZipFile; full ZIP already verified in archive-verification.json",
+    "rangeBytesTransferred": 2755310,
+    "rangeRequests": 27,
+    "extracted": [
+      {
+        "path": "spatial/mediapipe-portrait-face-faceSlim-detail.png",
+        "bytes": 551294,
+        "sha256": "22f223946c548ac470859be3f889edfdc50db20243469a521a37c7e237ab8b81"
+      },
+      {
+        "path": "spatial/mediapipe-portrait-healing.png",
+        "bytes": 345300,
+        "sha256": "81ff5db2697278fcd4f76cbb2667646eef59d40947640a48c0a7909b335cc1f4"
+      },
+      {
+        "path": "spatial/mediapipe-portrait-matte.png",
+        "bytes": 181912,
+        "sha256": "7c7fe81fb98a3fe8acefcdcc140f5a375bc7e838b45e12a825422d3adfc8b7c9"
+      },
+      {
+        "path": "spatial/mediapipe-pose-healing.png",
+        "bytes": 276849,
+        "sha256": "15b96ad387bf5451309e51760490f84b894f8d1c547cbae758418302ae8dc423"
+      },
+      {
+        "path": "spatial/mediapipe-pose-matte.png",
+        "bytes": 147053,
+        "sha256": "14a8fc8a75cce09730700aa3c2e19fdb57d8131aed73548597b2193046f545b1"
+      },
+      {
+        "path": "spatial/portrait-hopper-face-faceSlim-detail.png",
+        "bytes": 750634,
+        "sha256": "183282c2b04fd062c3fb8519635fd2b6043fc72874d831056a40767d8d197ea9"
+      },
+      {
+        "path": "spatial/portrait-hopper-healing.png",
+        "bytes": 340840,
+        "sha256": "9ee4941f91da5e8561b0b385046b9e9a9bcf332ac3885ee09506f6396a04122c"
+      },
+      {
+        "path": "spatial/portrait-hopper-matte.png",
+        "bytes": 182364,
+        "sha256": "581c8b203e459c12f99493395330492ebc9bfab1d07e3d2c39f03bc4bc1af83b"
+      }
+    ]
+  },
+  "allChecks": [
+    true,
+    true,
+    true,
+    true,
+    true,
+    true,
+    true,
+    true,
+    true,
+    true,
+    true,
+    true,
+    true
+  ],
+  "limitations": [
+    "440 passed and 12 unavailable are distinct outcomes; 452 is the total record count, not a pass count.",
+    "Nine unavailable body actions lack required visible keypoints; three automatic neckLength actions intentionally remain unimplemented.",
+    "The pose image has only a body target; absent face-target tool sweeps are not fabricated as unavailable cases or passes.",
+    "Actual MediaPipe CPU/WASM inference ran in CI on three pinned public photos normalized within 512x512, separately from assistant/voice local protocol fixtures.",
+    "This audit decoded canonical PNGs and verified bound frame content hashes and all 96 neutral results; it did not rerun inference or rendering.",
+    "maximumDelta and meanAbsoluteDelta measure edit-versus-original changes, not full/tiled error.",
+    "Repair MAE is a recorded metric for synthetic damage, not a global aesthetic-quality threshold.",
+    "No pageErrors array is collected by this spatial script; absence of report.failure and successful completed CI step are the available error/completion evidence.",
+    "Contact sheets are preserved for review; manualVisualReview remains false. This does not establish physical-device or paid-provider acceptance."
+  ]
+}

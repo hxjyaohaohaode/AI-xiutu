@@ -1,0 +1,96 @@
+{
+  "sourceCommit": "0a30a21bf8c35c0c64a86840983323e3209968d6",
+  "sourceTree": "5fb8544d1d62b00735b0a056b2b0475254409d98",
+  "runId": 42903702292,
+  "runUrl": "https://github.com/hxjyaohaohaode/AI-xiutu/actions/runs/42903702292",
+  "jobId": 130136077360,
+  "conclusion": "success",
+  "artifacts": [
+    {
+      "name": "assistant",
+      "id": 13803971877,
+      "zipSha256": "8be3171f5ddfc95e6c4e588dc03fe9ed26953ec833b5c1844decb99295387ad4"
+    },
+    {
+      "name": "team-voice",
+      "id": 13804525963,
+      "zipSha256": "f832b591a53869ca2a01807941ff6c9d9c3d18de22216ab9c0395d183d6f21c0"
+    }
+  ],
+  "files": [
+    {
+      "path": "assistant-report.json",
+      "bytes": 23435,
+      "sha256": "1785e50c0443fac5759741ab028d25a96b38ae24a21ca46f42f24594a68a24a8",
+      "artifactPath": "assistant/report.json"
+    },
+    {
+      "path": "team-voice-report.json",
+      "bytes": 294121,
+      "sha256": "8ac9cafaf63aa0c893be663e633675b14f4443d0e9d32440fbbea475d5e8f7aa",
+      "artifactPath": "team-voice/report.json"
+    },
+    {
+      "path": "assistant-390x844.png",
+      "bytes": 59912,
+      "sha256": "a55a59ebeadc4c634962566566a50c39b899fa5a2be8d8fc8c2b14575fda3294",
+      "artifactPath": "assistant/assistant-390x844.png"
+    },
+    {
+      "path": "assistant-320x568.png",
+      "bytes": 43902,
+      "sha256": "64afab759ebd3fed88c85b365d65906d7f7badf8b39cc51ff94e01c2aa2aced1",
+      "artifactPath": "assistant/assistant-320x568.png"
+    },
+    {
+      "path": "assistant-1440x960.png",
+      "bytes": 108366,
+      "sha256": "e3078875fe41d7c920d5aafc46cf7c7b20b2e527ff175dc591eb2776d60f6227",
+      "artifactPath": "assistant/assistant-1440x960.png"
+    },
+    {
+      "path": "research-graph.png",
+      "bytes": 11893,
+      "sha256": "3ea70354b4bd43a2a0141653b59fe81df5aabbc787b3aa021c45ada1cd8e8271",
+      "artifactPath": "assistant/research-graph.png"
+    },
+    {
+      "path": "task-model-ledger.png",
+      "bytes": 91547,
+      "sha256": "e8713c0007a62ffcac541e3c28186afac8bcefea07debcb4935066a74093a767",
+      "artifactPath": "assistant/task-model-ledger.png"
+    },
+    {
+      "path": "voice-844x390-composer.png",
+      "bytes": 65719,
+      "sha256": "24dc1ea945cf646e3a5a1b46ea3105c5cd3e0b000d774ee796f87c35abdbab10",
+      "artifactPath": "team-voice/solo-844.png"
+    },
+    {
+      "path": "voice-844x390-call-controls.png",
+      "bytes": 58667,
+      "sha256": "de3dc5a25ba098ca9a79fb4a6a65816f392e04a2e3fe6c2987ba75a95df28f95",
+      "artifactPath": "team-voice/solo-844-call-controls.png"
+    },
+    {
+      "path": "voice-390x844.png",
+      "bytes": 61225,
+      "sha256": "6cb5f1f0d20e6ba825491713034567f3504dc0bb5816704ee2c94e88b3acfb14",
+      "artifactPath": "team-voice/solo-390.png"
+    }
+  ],
+  "counts": {
+    "assistantCases": 21,
+    "voiceCases": 5,
+    "voiceLayoutViewports": 4,
+    "finalComposerControls": 16,
+    "finalHangupControls": 4,
+    "pageErrors": 0,
+    "paidCalls": 0
+  },
+  "limits": [
+    "Screenshots are unchanged actual Chromium CI captures, not design mockups.",
+    "Synthetic microphones and local protocol fixtures do not validate physical devices or paid providers.",
+    "These files belong to the independent AI interaction run; full-workflow evidence is indexed separately."
+  ]
+}

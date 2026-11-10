@@ -1,0 +1,37 @@
+{
+  "sourceCommit": "0a30a21bf8c35c0c64a86840983323e3209968d6",
+  "sourceTree": "5fb8544d1d62b00735b0a056b2b0475254409d98",
+  "runId": 42903702195,
+  "runUrl": "https://github.com/hxjyaohaohaode/AI-xiutu/actions/runs/42903702195",
+  "jobId": 130136076194,
+  "step": "Measure continuous slider, curve and touch paints",
+  "stepConclusion": "success",
+  "artifactId": 13804830762,
+  "zipBytes": 290952,
+  "zipSha256": "668ca8882d5a1d145393c5944c0b73c5a5f051dad29162a2bd25a09601bad318",
+  "files": [
+    {
+      "path": "preview-report.json",
+      "artifactPath": "report.json",
+      "bytes": 6476,
+      "sha256": "0e6c673d9f146155350b169a4c8c9925fa3a80fb31731f52cf38b9d3ef88250e"
+    },
+    {
+      "path": "worker-recovery-error.png",
+      "artifactPath": "worker-recovery-error.png",
+      "bytes": 170609,
+      "sha256": "758dbac9592923727b6a8495eb31b32665f075ca93825bb54912743c37eb9688"
+    },
+    {
+      "path": "worker-recovery-complete.png",
+      "artifactPath": "worker-recovery-complete.png",
+      "bytes": 150663,
+      "sha256": "665b2834bb5cf58f628f031a24efeee7ed5f77c71ab20e4b5de9785becde7933"
+    }
+  ],
+  "limits": [
+    "This manifest covers the completed preview and recovery step, not other steps in its workflow.",
+    "Error and notification geometry was measured at 1440x900 CSS pixels, with device scale factor 2.",
+    "Distinct monitored RGBA states are not FPS or full-resolution frame counts."
+  ]
+}

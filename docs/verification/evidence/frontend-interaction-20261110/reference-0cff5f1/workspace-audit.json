@@ -1,0 +1,497 @@
+{
+  "schemaVersion": 1,
+  "auditedAt": "2026-11-10T21:10:40.525846+00:00",
+  "state": "passed",
+  "runId": 42897892502,
+  "head": "0cff5f195e469de59aedff49e88f12aa2117fd6f",
+  "tree": "80ee2d006799159b9eb7dd6646d2a1008fd88863",
+  "runConclusion": "success",
+  "sourceScript": {
+    "path": "scripts/qa/workspace-v4.browser.mjs",
+    "sha256": "5aed7a562f63aa78acb779e8b82caa9a96239500394c0b394aa0e012fe681638"
+  },
+  "counts": {
+    "uniqueScenarioNames": 27,
+    "rounds": 6,
+    "scenarioExecutions": 162,
+    "executionStates": {
+      "passed": 162
+    },
+    "pageErrors": 0,
+    "layoutMeasurements": 108,
+    "mediaDialogMeasurements": 60,
+    "photoCanvasExportEvidencePairs": 180,
+    "actualDecodedPhotoExportPngs": 180,
+    "actualDecodedServerRenderPngs": 6,
+    "heldSamples": 192,
+    "originalGestureEvents": {
+      "pointerdown": 6,
+      "gotpointercapture": 6,
+      "pointermove": 192,
+      "pointerup": 6
+    }
+  },
+  "maxDocumentOverflowPx": 0,
+  "maxWorkspaceOverflowPx": 0,
+  "mediaDialogDimensions": [
+    {
+      "dialog": "project-animation-editor",
+      "viewport": "1024×768",
+      "observations": 6,
+      "widthRange": [
+        500,
+        500
+      ],
+      "heightRange": [
+        728,
+        728
+      ],
+      "maxHorizontalOverflow": 0
+    },
+    {
+      "dialog": "project-animation-editor",
+      "viewport": "1440×960",
+      "observations": 6,
+      "widthRange": [
+        500,
+        500
+      ],
+      "heightRange": [
+        787.03125,
+        787.03125
+      ],
+      "maxHorizontalOverflow": 0
+    },
+    {
+      "dialog": "project-animation-editor",
+      "viewport": "320×700",
+      "observations": 6,
+      "widthRange": [
+        320,
+        320
+      ],
+      "heightRange": [
+        688,
+        688
+      ],
+      "maxHorizontalOverflow": 0
+    },
+    {
+      "dialog": "project-animation-editor",
+      "viewport": "390×844",
+      "observations": 6,
+      "widthRange": [
+        390,
+        390
+      ],
+      "heightRange": [
+        775.421875,
+        775.421875
+      ],
+      "maxHorizontalOverflow": 0
+    },
+    {
+      "dialog": "project-animation-editor",
+      "viewport": "844×390",
+      "observations": 6,
+      "widthRange": [
+        500,
+        500
+      ],
+      "heightRange": [
+        382,
+        382
+      ],
+      "maxHorizontalOverflow": 0
+    },
+    {
+      "dialog": "project-asset-tools",
+      "viewport": "1024×768",
+      "observations": 6,
+      "widthRange": [
+        500,
+        500
+      ],
+      "heightRange": [
+        728,
+        728
+      ],
+      "maxHorizontalOverflow": 0
+    },
+    {
+      "dialog": "project-asset-tools",
+      "viewport": "1440×960",
+      "observations": 6,
+      "widthRange": [
+        500,
+        500
+      ],
+      "heightRange": [
+        920,
+        920
+      ],
+      "maxHorizontalOverflow": 0
+    },
+    {
+      "dialog": "project-asset-tools",
+      "viewport": "320×700",
+      "observations": 6,
+      "widthRange": [
+        320,
+        320
+      ],
+      "heightRange": [
+        688,
+        688
+      ],
+      "maxHorizontalOverflow": 0
+    },
+    {
+      "dialog": "project-asset-tools",
+      "viewport": "390×844",
+      "observations": 6,
+      "widthRange": [
+        390,
+        390
+      ],
+      "heightRange": [
+        832,
+        832
+      ],
+      "maxHorizontalOverflow": 0
+    },
+    {
+      "dialog": "project-asset-tools",
+      "viewport": "844×390",
+      "observations": 6,
+      "widthRange": [
+        500,
+        500
+      ],
+      "heightRange": [
+        382,
+        382
+      ],
+      "maxHorizontalOverflow": 0
+    }
+  ],
+  "rounds": [
+    {
+      "round": 1,
+      "startedAt": "2026-11-10T20:44:04.851Z",
+      "finishedAt": "2026-11-10T20:46:48.260Z",
+      "caseStates": {
+        "passed": 27
+      },
+      "pageErrors": 0,
+      "heldSamples": 32,
+      "distinctBrightenedSampleHashes": 32,
+      "firstVisibleChangeMs": 131.8,
+      "gestureDurationMs": 2935.1,
+      "lastSampleBeforeEndMs": 3.8,
+      "capturedTrueSamples": 0,
+      "sampleCanvasDimensions": [
+        [
+          313,
+          208
+        ],
+        [
+          443,
+          295
+        ]
+      ],
+      "finalRgbaSha256": "7d1e858944b110612a463401df8c77e9938c6e032c35963c50c0f3f0f129fab8",
+      "gifSha256": "34957b8d864c22a397f3e62ad0e63cfe0a328f8423184887d679597156cae5bd",
+      "collageRgbaSha256": "22a58003355c5e5909e96a171cc999825f62c611bfe52a833af486645c335664"
+    },
+    {
+      "round": 2,
+      "startedAt": "2026-11-10T20:46:49.846Z",
+      "finishedAt": "2026-11-10T20:49:32.320Z",
+      "caseStates": {
+        "passed": 27
+      },
+      "pageErrors": 0,
+      "heldSamples": 32,
+      "distinctBrightenedSampleHashes": 32,
+      "firstVisibleChangeMs": 130,
+      "gestureDurationMs": 2950.4,
+      "lastSampleBeforeEndMs": 4.0,
+      "capturedTrueSamples": 0,
+      "sampleCanvasDimensions": [
+        [
+          313,
+          208
+        ],
+        [
+          443,
+          295
+        ]
+      ],
+      "finalRgbaSha256": "7d1e858944b110612a463401df8c77e9938c6e032c35963c50c0f3f0f129fab8",
+      "gifSha256": "34957b8d864c22a397f3e62ad0e63cfe0a328f8423184887d679597156cae5bd",
+      "collageRgbaSha256": "22a58003355c5e5909e96a171cc999825f62c611bfe52a833af486645c335664"
+    },
+    {
+      "round": 3,
+      "startedAt": "2026-11-10T20:49:33.868Z",
+      "finishedAt": "2026-11-10T20:52:19.133Z",
+      "caseStates": {
+        "passed": 27
+      },
+      "pageErrors": 0,
+      "heldSamples": 32,
+      "distinctBrightenedSampleHashes": 32,
+      "firstVisibleChangeMs": 133.9,
+      "gestureDurationMs": 2937.5,
+      "lastSampleBeforeEndMs": 3.8,
+      "capturedTrueSamples": 0,
+      "sampleCanvasDimensions": [
+        [
+          313,
+          208
+        ],
+        [
+          443,
+          295
+        ]
+      ],
+      "finalRgbaSha256": "7d1e858944b110612a463401df8c77e9938c6e032c35963c50c0f3f0f129fab8",
+      "gifSha256": "34957b8d864c22a397f3e62ad0e63cfe0a328f8423184887d679597156cae5bd",
+      "collageRgbaSha256": "22a58003355c5e5909e96a171cc999825f62c611bfe52a833af486645c335664"
+    },
+    {
+      "round": 4,
+      "startedAt": "2026-11-10T20:52:20.691Z",
+      "finishedAt": "2026-11-10T20:55:05.807Z",
+      "caseStates": {
+        "passed": 27
+      },
+      "pageErrors": 0,
+      "heldSamples": 32,
+      "distinctBrightenedSampleHashes": 32,
+      "firstVisibleChangeMs": 132.4,
+      "gestureDurationMs": 2935.8,
+      "lastSampleBeforeEndMs": 4.0,
+      "capturedTrueSamples": 0,
+      "sampleCanvasDimensions": [
+        [
+          313,
+          208
+        ],
+        [
+          443,
+          295
+        ]
+      ],
+      "finalRgbaSha256": "7d1e858944b110612a463401df8c77e9938c6e032c35963c50c0f3f0f129fab8",
+      "gifSha256": "34957b8d864c22a397f3e62ad0e63cfe0a328f8423184887d679597156cae5bd",
+      "collageRgbaSha256": "22a58003355c5e5909e96a171cc999825f62c611bfe52a833af486645c335664"
+    },
+    {
+      "round": 5,
+      "startedAt": "2026-11-10T20:55:07.158Z",
+      "finishedAt": "2026-11-10T20:57:53.217Z",
+      "caseStates": {
+        "passed": 27
+      },
+      "pageErrors": 0,
+      "heldSamples": 32,
+      "distinctBrightenedSampleHashes": 32,
+      "firstVisibleChangeMs": 131.9,
+      "gestureDurationMs": 2955.3,
+      "lastSampleBeforeEndMs": 3.9,
+      "capturedTrueSamples": 0,
+      "sampleCanvasDimensions": [
+        [
+          313,
+          208
+        ],
+        [
+          443,
+          295
+        ]
+      ],
+      "finalRgbaSha256": "7d1e858944b110612a463401df8c77e9938c6e032c35963c50c0f3f0f129fab8",
+      "gifSha256": "34957b8d864c22a397f3e62ad0e63cfe0a328f8423184887d679597156cae5bd",
+      "collageRgbaSha256": "22a58003355c5e5909e96a171cc999825f62c611bfe52a833af486645c335664"
+    },
+    {
+      "round": 6,
+      "startedAt": "2026-11-10T20:57:54.545Z",
+      "finishedAt": "2026-11-10T21:00:40.094Z",
+      "caseStates": {
+        "passed": 27
+      },
+      "pageErrors": 0,
+      "heldSamples": 32,
+      "distinctBrightenedSampleHashes": 32,
+      "firstVisibleChangeMs": 130.7,
+      "gestureDurationMs": 2972.1,
+      "lastSampleBeforeEndMs": 5.5,
+      "capturedTrueSamples": 0,
+      "sampleCanvasDimensions": [
+        [
+          221,
+          147
+        ],
+        [
+          313,
+          208
+        ],
+        [
+          443,
+          295
+        ]
+      ],
+      "finalRgbaSha256": "7d1e858944b110612a463401df8c77e9938c6e032c35963c50c0f3f0f129fab8",
+      "gifSha256": "34957b8d864c22a397f3e62ad0e63cfe0a328f8423184887d679597156cae5bd",
+      "collageRgbaSha256": "22a58003355c5e5909e96a171cc999825f62c611bfe52a833af486645c335664"
+    }
+  ],
+  "contractChecksEachRound": {
+    "cloud-history-summary-pagination-opens-full-revision-draft": {
+      "createdVersions": 105,
+      "summaryPageSizes": [
+        100,
+        5
+      ],
+      "nextBeforeVersion": [
+        6,
+        null
+      ],
+      "summaryRecipesOmitted": true,
+      "olderPageNetworkFailureInjected": true,
+      "olderPageRequests": 2,
+      "rowsRetainedAfterReadFailure": 100,
+      "fullRevisionRequests": 1,
+      "openedVersion": 1,
+      "openedAsIndependentDraft": true,
+      "cloudHeadUnchanged": true
+    },
+    "history-render-and-original-key-fork-preserve-local-draft": {
+      "actualPngMatchesReference": true,
+      "forkPostCount": 2,
+      "originalKeyAndBodyRetained": true,
+      "lostAcceptedReceiptRecovered": true,
+      "refusedOpenPreservesDraftAndReceipt": true,
+      "sourceHeadUnchanged": true,
+      "independentBranchCount": 1,
+      "historicalSourceAndRecipePreserved": true
+    },
+    "phone-document-list-keeps-unsaved-draft-and-cas-save": {
+      "draftSurvivesListAndRefresh": true,
+      "refusedReplacement": true,
+      "newProjectNavigationCancelled": true,
+      "operatorNavigationCancelled": true,
+      "expectedVersion": 1,
+      "savedVersion": 2,
+      "closedNavigation": {
+        "ariaHidden": "true",
+        "inert": true,
+        "open": false,
+        "motionPhase": "hidden"
+      },
+      "geometry": {
+        "viewport": 390,
+        "scrollWidth": 390
+      }
+    },
+    "two-accounts-shared-edit-cursor-and-owned-undo": {
+      "accounts": 2,
+      "sameArtwork": true,
+      "peerDomViaRealPoll": true,
+      "ownedUndo": true
+    },
+    "lease-conflict-visible-and-explicit-retry": {
+      "realLease": true,
+      "localDraftRetained": true
+    },
+    "unknown-command-retries-original-key-without-duplicate-revision": {
+      "responseLossInjected": true,
+      "version": 7,
+      "duplicateRevisions": 0
+    },
+    "resource-memory-privacy-and-ledger-export": {
+      "privateMemory": true,
+      "realLedgerCsv": true
+    }
+  },
+  "themeAndGifChecksEachRound": true,
+  "inputFiles": [
+    {
+      "path": "workspace/round-1/report.json",
+      "bytes": 99527,
+      "sha256": "23b391c81879afc29f8b26031e958b3ab2806b0fff32e0d99247cba4dd435b12"
+    },
+    {
+      "path": "workspace/round-1/continuous-preview-gesture.json",
+      "bytes": 73945,
+      "sha256": "3c0153f91cb7e43d0cc84059a547565474b00bc2426c7c9a2636842156cefb4d"
+    },
+    {
+      "path": "workspace/round-2/report.json",
+      "bytes": 99481,
+      "sha256": "8e9d6633ab5d2dd6669eb1e7adcf54b090ecae38cefaedfd2c0e44e961d06f31"
+    },
+    {
+      "path": "workspace/round-2/continuous-preview-gesture.json",
+      "bytes": 73743,
+      "sha256": "3e5faf734c4014105d632edcf94589c06c2ae8b774ba6498f730823c827f8b24"
+    },
+    {
+      "path": "workspace/round-3/report.json",
+      "bytes": 99528,
+      "sha256": "8f0bc2522844430a464a0f062b752852a3d6e744b7c85f0f0773b196761c9398"
+    },
+    {
+      "path": "workspace/round-3/continuous-preview-gesture.json",
+      "bytes": 73753,
+      "sha256": "71cbeffc2f3dd536fefcbcefd11f286820c8e64b427e1dde2af8dfe951c49460"
+    },
+    {
+      "path": "workspace/round-4/report.json",
+      "bytes": 99458,
+      "sha256": "bf28feced8f5dc64ebc16c07ea14242e6825042ed372695358b556450ae05812"
+    },
+    {
+      "path": "workspace/round-4/continuous-preview-gesture.json",
+      "bytes": 73779,
+      "sha256": "5a7fa924c7f57157e2cb619c4833d7abc7b48372bb7fd44a6a86ac52397aeddf"
+    },
+    {
+      "path": "workspace/round-5/report.json",
+      "bytes": 99455,
+      "sha256": "08850c47d667c2159394846783f0919ae674057679b6052d38c68ecec441e2fb"
+    },
+    {
+      "path": "workspace/round-5/continuous-preview-gesture.json",
+      "bytes": 73773,
+      "sha256": "ea6a523b4528a6688811fd3dcaff280c832d5adbae618ea8dacd5fbfd26ea7c2"
+    },
+    {
+      "path": "workspace/round-6/report.json",
+      "bytes": 99506,
+      "sha256": "d74e28d390c22ad1d1cbf2301965266e48928f8309320bbda6d29a3059f503fb"
+    },
+    {
+      "path": "workspace/round-6/continuous-preview-gesture.json",
+      "bytes": 73862,
+      "sha256": "4b85cd1c3d228e3eda486a8e2ca8d7ec6a5c84556d9ae95b2bbcbf410b29dc1b"
+    }
+  ],
+  "archiveVerification": {
+    "path": "workspace/archive-verification.json",
+    "bytes": 52594,
+    "sha256": "4daf6034de54b968b9c26d4ae2c7aafd586cb8cdd506e4151a38b013605f4edc"
+  },
+  "issues": [],
+  "limitations": [
+    "27 distinct scenarios repeated six times; measures and pixel comparisons do not add to unique scenario count.",
+    "Gesture pixel hashes cover actual visible canvas sampled to16x16, not full-frame hashes orFPS; capture is diagnostic only.",
+    "180 actual photo export PNGs and6 server-render PNGs were decoded directly from the digest-verified archive and matched report RGBA/dimensions; bulk files were not retained.",
+    "Final continuous export, GIF and collage payloads are not archived as independent files; their hashes/reference agreement remain CI report/script evidence.",
+    "No local browser or physical-device/microphone/pen test or manual visual acceptance occurred.",
+    "This audit proves the exact old0cff candidate evidence, not a later candidate."
+  ]
+}

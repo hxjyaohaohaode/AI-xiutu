@@ -1,0 +1,273 @@
+{
+  "cases": [
+    {
+      "test": "曝光",
+      "viewport": "1440×900",
+      "inputStartEvent": "pointerdown",
+      "pointerType": "mouse",
+      "inputEvents": 48,
+      "gestureMs": 1986.4000000000087,
+      "firstChangedMs": 155.6999999999971,
+      "firstRangeChangeMs": 41.19999999999709,
+      "distinctLiveFrames": 40,
+      "maxFrameGapMs": 155.6999999999971,
+      "settledMs": 796.5,
+      "baseline": [
+        89,
+        120,
+        100,
+        255
+      ],
+      "settled": [
+        255,
+        255,
+        255,
+        255
+      ],
+      "exactSettledPixels": 3740000
+    },
+    {
+      "test": "曲线",
+      "viewport": "1440×900",
+      "inputStartEvent": "pointerdown",
+      "pointerType": "mouse",
+      "inputEvents": 48,
+      "gestureMs": 2041.1000000000058,
+      "firstChangedMs": 118.5,
+      "firstRangeChangeMs": 84.90000000000873,
+      "distinctLiveFrames": 46,
+      "maxFrameGapMs": 118.5,
+      "settledMs": 949.1999999999971,
+      "baseline": [
+        89,
+        120,
+        100,
+        255
+      ],
+      "settled": [
+        153,
+        206,
+        172,
+        255
+      ],
+      "exactSettledPixels": 3740000
+    },
+    {
+      "test": "曝光",
+      "viewport": "390×844",
+      "inputStartEvent": "pointerdown",
+      "pointerType": "touch",
+      "inputEvents": 48,
+      "gestureMs": 1980.0999999999913,
+      "firstChangedMs": 168,
+      "firstRangeChangeMs": 71.39999999999418,
+      "distinctLiveFrames": 42,
+      "maxFrameGapMs": 168,
+      "settledMs": 475.5,
+      "baseline": [
+        89,
+        120,
+        100,
+        255
+      ],
+      "settled": [
+        255,
+        255,
+        255,
+        255
+      ],
+      "touchCancellationRestoredPixels": true,
+      "exactSettledPixels": 2199848
+    }
+  ],
+  "workerRecovery": {
+    "state": "passed",
+    "fault": "terminate actual main worker, then dispatch its error event",
+    "source": {
+      "width": 2200,
+      "height": 1700,
+      "format": "PNG"
+    },
+    "pageErrors": [],
+    "visibleError": "图像处理暂时中断。请重新导入照片，已下载的配方仍可恢复。",
+    "errorVisibility": {
+      "notificationSource": "actual user action: reset current screen layout",
+      "expectedNotice": "已恢复当前屏幕的默认布局。",
+      "message": "图像处理暂时中断。请重新导入照片，已下载的配方仍可恢复。",
+      "visible": true,
+      "box": {
+        "x": 460,
+        "y": 104.140625,
+        "top": 104.140625,
+        "right": 980,
+        "bottom": 140.9375,
+        "left": 460,
+        "width": 520,
+        "height": 36.796875
+      },
+      "clip": {
+        "top": 0,
+        "right": 1440,
+        "bottom": 900,
+        "left": 0
+      },
+      "ancestors": [
+        {
+          "tag": "DIV",
+          "className": "canvas-error",
+          "overflowX": "visible",
+          "overflowY": "visible",
+          "viewport": {
+            "left": 0,
+            "top": 96.140625,
+            "right": 1440,
+            "bottom": 149.140625
+          }
+        },
+        {
+          "tag": "DIV",
+          "className": "workspace-canvas-status",
+          "overflowX": "visible",
+          "overflowY": "visible",
+          "viewport": {
+            "left": 0,
+            "top": 96.140625,
+            "right": 1440,
+            "bottom": 149.140625
+          }
+        },
+        {
+          "tag": "DIV",
+          "className": "workspace",
+          "overflowX": "hidden",
+          "overflowY": "hidden",
+          "viewport": {
+            "left": 0,
+            "top": 0,
+            "right": 1440,
+            "bottom": 900
+          }
+        },
+        {
+          "tag": "DIV",
+          "className": "app-shell canvas-workspace studio-workspace view-editor theme-light ",
+          "overflowX": "hidden",
+          "overflowY": "hidden",
+          "viewport": {
+            "left": 0,
+            "top": 0,
+            "right": 1440,
+            "bottom": 900
+          }
+        },
+        {
+          "tag": "DIV",
+          "className": "",
+          "overflowX": "visible",
+          "overflowY": "visible",
+          "viewport": {
+            "left": 0,
+            "top": 0,
+            "right": 1440,
+            "bottom": 900
+          }
+        },
+        {
+          "tag": "BODY",
+          "className": "",
+          "overflowX": "hidden",
+          "overflowY": "hidden",
+          "viewport": {
+            "left": 0,
+            "top": 0,
+            "right": 1440,
+            "bottom": 900
+          }
+        },
+        {
+          "tag": "HTML",
+          "className": "",
+          "overflowX": "visible",
+          "overflowY": "visible",
+          "viewport": {
+            "left": 0,
+            "top": 0,
+            "right": 1440,
+            "bottom": 900
+          }
+        }
+      ],
+      "textRects": [
+        {
+          "x": 499,
+          "y": 114.140625,
+          "top": 114.140625,
+          "right": 863,
+          "bottom": 129.140625,
+          "left": 499,
+          "width": 364,
+          "height": 15
+        }
+      ],
+      "toasts": [
+        {
+          "box": {
+            "x": 579,
+            "y": 160.9375,
+            "top": 160.9375,
+            "right": 861,
+            "bottom": 226.9375,
+            "left": 579,
+            "width": 282,
+            "height": 66
+          },
+          "clip": {
+            "top": 0,
+            "right": 1440,
+            "bottom": 900,
+            "left": 0
+          },
+          "text": "已恢复当前屏幕的默认布局。",
+          "active": true
+        }
+      ],
+      "center": {
+        "x": 720,
+        "y": 122.5390625,
+        "unobscured": true
+      },
+      "textSamples": [
+        {
+          "x": 535.4,
+          "y": 121.640625,
+          "unobscured": true
+        },
+        {
+          "x": 681,
+          "y": 121.640625,
+          "unobscured": true
+        },
+        {
+          "x": 826.6,
+          "y": 121.640625,
+          "unobscured": true
+        }
+      ]
+    },
+    "busyObservedBeforeFaultNotification": true,
+    "busyReleasedAfterFault": true,
+    "completeDraftPreserved": true,
+    "recreatedOnlyAfterExplicitImport": true,
+    "originalWorkerId": 3,
+    "recoveredWorkerId": 10,
+    "restoredExposure": -0.65,
+    "exactSettledPixels": 3740000,
+    "actualWorkerReplyAndCanvasPaint": {
+      "workerId": 10,
+      "requestId": 6,
+      "width": 2200,
+      "height": 1700
+    }
+  },
+  "browser": "158.0.8127.18"
+}

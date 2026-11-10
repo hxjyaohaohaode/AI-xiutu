@@ -1,0 +1,149 @@
+{
+  "schemaVersion": 1,
+  "provenance": {
+    "runId": 42897892502,
+    "head": "0cff5f195e469de59aedff49e88f12aa2117fd6f",
+    "tree": "80ee2d006799159b9eb7dd6646d2a1008fd88863",
+    "event": "push",
+    "runConclusion": "success",
+    "runUpdatedAt": "2026-11-10T21:03:20Z",
+    "auditedAt": "2026-11-10T21:11:16.050390+00:00",
+    "browserJobId": 130115980767
+  },
+  "state": "passed",
+  "sourceScript": {
+    "path": "scripts/qa/interactive-preview.browser.mjs",
+    "commit": "0cff5f195e469de59aedff49e88f12aa2117fd6f",
+    "sha256": "895989f6aa4301acb3810b84b71aa8b4d72ecfe737fcc81c1ae7f27bba2b687d"
+  },
+  "gestureCaseCount": 3,
+  "cases": [
+    {
+      "test": "曝光",
+      "viewport": "1440×900",
+      "inputStartEvent": "pointerdown",
+      "pointerType": "mouse",
+      "inputEvents": 48,
+      "gestureMs": 1825.0999999999913,
+      "firstChangedMs": 151.79999999998836,
+      "firstRangeChangeMs": 44.69999999999709,
+      "distinctLiveFrames": 40,
+      "maxFrameGapMs": 151.79999999998836,
+      "settledMs": 811.6999999999971,
+      "baseline": [
+        89,
+        120,
+        100,
+        255
+      ],
+      "settled": [
+        255,
+        255,
+        255,
+        255
+      ],
+      "exactSettledPixels": 3740000
+    },
+    {
+      "test": "曲线",
+      "viewport": "1440×900",
+      "inputStartEvent": "pointerdown",
+      "pointerType": "mouse",
+      "inputEvents": 48,
+      "gestureMs": 1739.1000000000058,
+      "firstChangedMs": 111.39999999999418,
+      "firstRangeChangeMs": 78.10000000000582,
+      "distinctLiveFrames": 47,
+      "maxFrameGapMs": 111.39999999999418,
+      "settledMs": 855.5999999999913,
+      "baseline": [
+        89,
+        120,
+        100,
+        255
+      ],
+      "settled": [
+        153,
+        206,
+        172,
+        255
+      ],
+      "exactSettledPixels": 3740000
+    },
+    {
+      "test": "曝光",
+      "viewport": "390×844",
+      "inputStartEvent": "pointerdown",
+      "pointerType": "touch",
+      "inputEvents": 48,
+      "gestureMs": 1930.699999999997,
+      "firstChangedMs": 167.5,
+      "firstRangeChangeMs": 70.19999999999709,
+      "distinctLiveFrames": 42,
+      "maxFrameGapMs": 167.5,
+      "settledMs": 488.5,
+      "baseline": [
+        89,
+        120,
+        100,
+        255
+      ],
+      "settled": [
+        255,
+        255,
+        255,
+        255
+      ],
+      "touchCancellationRestoredPixels": true,
+      "exactSettledPixels": 2199848
+    }
+  ],
+  "workerRecoverySeparateFromGestureCount": {
+    "state": "passed",
+    "fault": "terminate actual main worker, then dispatch its error event",
+    "source": {
+      "width": 2200,
+      "height": 1700,
+      "format": "PNG"
+    },
+    "pageErrors": [],
+    "visibleError": "图像处理暂时中断。请重新导入照片，已下载的配方仍可恢复。",
+    "busyObservedBeforeFaultNotification": true,
+    "busyReleasedAfterFault": true,
+    "completeDraftPreserved": true,
+    "recreatedOnlyAfterExplicitImport": true,
+    "originalWorkerId": 3,
+    "recoveredWorkerId": 10,
+    "restoredExposure": -0.65,
+    "exactSettledPixels": 3740000,
+    "actualWorkerReplyAndCanvasPaint": {
+      "workerId": 10,
+      "requestId": 6,
+      "width": 2200,
+      "height": 1700
+    }
+  },
+  "allChecks": [
+    true,
+    true,
+    true,
+    true
+  ],
+  "report": {
+    "path": "preview/report.json",
+    "bytes": 2623,
+    "sha256": "d7a50740a402213e53aba53e5e0269bf45449f33b2d89aab8d6da812f7813da5"
+  },
+  "archiveVerification": {
+    "path": "preview/archive-verification.json",
+    "bytes": 1182,
+    "sha256": "83eae2db77cb400180c8c8905f5a31aca03fc7e04ef6d2742dedb79a845d3036"
+  },
+  "limitations": [
+    "distinctLiveFrames counts distinct RGBA states at one monitored pixel on actual canvas putImageData, not FPS or full-frame hashes.",
+    "The phone settled comparison covers its actual 2,199,848-pixel result; desktop covers 3,740,000 pixels.",
+    "Recovery terminates the actual Worker, then dispatches a controlled error notification; it is not a physical OOM or proof of every failure channel.",
+    "workerRecovery.pageErrors=[] applies to recovery only; the report has no global preview pageErrors array.",
+    "No new browser execution or physical touch-device verification performed by this audit."
+  ]
+}
