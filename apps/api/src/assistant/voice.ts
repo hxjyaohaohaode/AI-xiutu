@@ -28,7 +28,12 @@ import {
 } from '@ai-xiutu/assistant';
 import type { AppConfig } from '../config.js';
 import { hash } from '../core.js';
-import { assistantAccess, lockedAssistantAccess, validateScope } from './context.js';
+import {
+  assistantAccess,
+  lockedAssistantAccess,
+  mergeAssistantScopes,
+  validateScope,
+} from './context.js';
 import type { AssistantService, VoiceRow } from './service.js';
 
 export function attachVoiceBridge(
@@ -78,6 +83,8 @@ export function attachVoiceBridge(
   function connect(row: VoiceRow, client: WebSocket, authHash: string) {
     const live = voiceModel(row.model_id).protocol === 'live';
     let context = snapshots.get(row.id)?.context;
+    let contextEpoch = row.context_epoch;
+    let publicSearchAttempted = false;
     snapshots.delete(row.id);
     let active = false,
       activating = false,
@@ -113,6 +120,16 @@ export function attachVoiceBridge(
     const itemAudioMs = new Map<string, number>(),
       responses = new Set<string>();
     let delegationChain = Promise.resolve();
+    function invalidateContext() {
+      context = undefined;
+      const epoch = ++contextEpoch;
+      const persisted = db.query(
+        "UPDATE voice_sessions SET context_epoch=GREATEST(context_epoch,$2) WHERE id=$1 AND state='active'",
+        [row.id, epoch],
+      );
+      void persisted.catch(() => stop('CONTEXT_PERSISTENCE_FAILED'));
+      return { epoch, persisted };
+    }
     let resolveDone!: () => void;
     const done = new Promise<void>((resolve) => {
       resolveDone = resolve;
@@ -315,6 +332,7 @@ export function attachVoiceBridge(
         return;
       }
       const frozenContext = context ? structuredClone(context) : undefined;
+      const frozenEpoch = contextEpoch;
       const startSequence = dispatchSequence;
       dispatchSequence += 4;
       delegationChain = delegationChain
@@ -323,25 +341,44 @@ export function attachVoiceBridge(
           if (ended || closing) return;
           send(client, { type: 'tool', name: 'consult_editor', state: 'running' });
           try {
+            if (frozenEpoch !== contextEpoch) throw new Error('VOICE_CONTEXT_CHANGED');
             const agentContext = await service.contextFor(
               row,
               frozenContext,
               request.slice(-4000),
               (name, state) => send(client, { type: 'tool', name, state }),
               startSequence,
+              mergeAssistantScopes(row.scope, []),
+              authHash,
+              row.config.backendModel,
             );
+            agentContext.onSearch = async (evidence) => {
+              if (evidence.kind === 'cloud')
+                agentContext.accessScope.referenceAssetIds = [
+                  ...new Set([
+                    ...agentContext.accessScope.referenceAssetIds,
+                    ...evidence.resources.map((item) => item.id),
+                  ]),
+                ].sort();
+            };
+            if (publicSearchAttempted) agentContext.publicSearch = undefined;
+            if (agentContext.publicSearch) publicSearchAttempted = true;
             const check = agentContext.assertAccess;
             agentContext.assertAccess = async () => {
               if (ended || closing) throw new Error('VOICE_ENDED');
+              if (frozenEpoch !== contextEpoch) throw new Error('VOICE_CONTEXT_CHANGED');
               await assertAccess();
               await check();
               if (ended || closing) throw new Error('VOICE_ENDED');
+              if (frozenEpoch !== contextEpoch) throw new Error('VOICE_CONTEXT_CHANGED');
             };
             const dispatch = agentContext.beforeDispatch;
             agentContext.beforeDispatch = async (index, bodyHash) => {
               if (ended || closing) throw new Error('VOICE_ENDED');
+              if (frozenEpoch !== contextEpoch) throw new Error('VOICE_CONTEXT_CHANGED');
               await dispatch?.(index, bodyHash);
               if (ended || closing) throw new Error('VOICE_ENDED');
+              if (frozenEpoch !== contextEpoch) throw new Error('VOICE_CONTEXT_CHANGED');
             };
             const result = await runEditorAgent(
               service.key,
@@ -352,20 +389,54 @@ export function attachVoiceBridge(
             );
             if (ended || closing) return;
             const candidates = await transaction(db, async (tx) => {
-              await lockedAssistantAccess(tx, row.actor_id, row.project_id, row.scope);
-              const state = (
-                await tx.query('SELECT state FROM voice_sessions WHERE id=$1 FOR UPDATE', [row.id])
-              ).rows[0]?.state;
-              if (state !== 'active' || ended || closing) throw new Error('VOICE_ENDED');
-              return service.saveCandidates(tx, row, result, frozenContext);
+              await lockedAssistantAccess(
+                tx,
+                row.actor_id,
+                row.project_id,
+                agentContext.accessScope,
+              );
+              const current = (
+                await tx.query(
+                  'SELECT state,context_epoch,config FROM voice_sessions WHERE id=$1 FOR UPDATE',
+                  [row.id],
+                )
+              ).rows[0];
+              if (
+                current?.state !== 'active' ||
+                current.context_epoch !== frozenEpoch ||
+                ended ||
+                closing ||
+                frozenEpoch !== contextEpoch
+              )
+                throw new Error('VOICE_CONTEXT_CHANGED');
+              await agentContext.checkSnapshot(tx, true);
+              const historyScope = mergeAssistantScopes(
+                agentContext.accessScope,
+                current.config.historyScope ? [current.config.historyScope] : [],
+              );
+              await tx.query(
+                "UPDATE voice_sessions SET config=jsonb_set(config,'{historyScope}',$2::jsonb) WHERE id=$1",
+                [row.id, JSON.stringify(historyScope)],
+              );
+              const saved = await service.saveCandidates(
+                tx,
+                row,
+                result,
+                frozenContext,
+                frozenEpoch,
+              );
+              if (ended || closing || frozenEpoch !== contextEpoch)
+                throw new Error('VOICE_CONTEXT_CHANGED');
+              return saved;
             });
-            if (ended || closing) return;
+            if (ended || closing || frozenEpoch !== contextEpoch) return;
             send(client, {
               type: 'assistant-result',
               workspace: result.workspace,
               memorySuggestions: result.memorySuggestions,
               text: result.text,
               citations: result.citations,
+              search: result.search,
               candidates,
             });
             sendEvents(voiceResultEvents(row.model_id, callId, result.text));
@@ -596,6 +667,10 @@ export function attachVoiceBridge(
       }
       if (!active) return;
       try {
+        if (event.type === 'context.invalidate') {
+          invalidateContext();
+          return;
+        }
         if (event.type === 'audio') {
           if (muted) return;
           if (Date.now() - windowStart >= 2000) {
@@ -671,12 +746,14 @@ export function attachVoiceBridge(
           if (event.type === 'context') {
             if (Date.now() - lastContextAt < 2500) throw new Error('CONTEXT_RATE');
             lastContextAt = Date.now();
+            const { epoch, persisted } = invalidateContext();
             const checked = await service.currentContext(
               row.actor_id,
               row.project_id,
               event.context,
             );
-            if (ended || closing) return;
+            await persisted;
+            if (ended || closing || epoch !== contextEpoch) return;
             context = checked;
             if (!live && context?.imageDataUrl)
               upstreamSend({
@@ -694,6 +771,7 @@ export function attachVoiceBridge(
               type: 'context',
               accepted: true,
               imageShared: Boolean(context?.imageDataUrl),
+              contextTag: event.contextTag,
             });
           } else if (event.type === 'text') {
             lastTextAt = Date.now();

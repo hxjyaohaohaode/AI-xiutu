@@ -4,6 +4,7 @@ import { transaction, audit, type Database, type Queryable } from '@ai-xiutu/db'
 import { assistantMemorySchema, type AssistantMemory } from '@ai-xiutu/contracts';
 import { assistantAccess, lockedAssistantAccess } from './context.js';
 import { id, requireUser, HttpError, assertVersion, rateLimit } from '../core.js';
+import { mandatoryMemory } from './memory-context.js';
 
 function dto(row: Record<string, any>, actorId: string, role: string): AssistantMemory {
   return {
@@ -33,6 +34,7 @@ export async function assistantMemories(
   projectId: string,
   artworkId?: string,
   management?: { includeExpired: boolean; offset: number },
+  lock = false,
 ) {
   const access = await assistantAccess(db, actorId, projectId);
   if (
@@ -48,7 +50,7 @@ export async function assistantMemories(
     AND ($5::boolean OR expires_at IS NULL OR expires_at>clock_timestamp())
     AND ((scope='user' AND owner_id=$1) OR (scope='team' AND space_id=$2)
       OR (scope='project' AND project_id=$3) OR (scope='artwork' AND project_id=$3 AND artwork_id=$4))
-    ORDER BY CASE category WHEN 'constraint' THEN 0 WHEN 'correction' THEN 1 ELSE 2 END,updated_at DESC,id LIMIT 101 OFFSET $6`,
+    ORDER BY CASE category WHEN 'constraint' THEN 0 WHEN 'correction' THEN 1 ELSE 2 END,updated_at DESC,id LIMIT 101 OFFSET $6${lock ? ' FOR SHARE' : ''}`,
       [
         actorId,
         access.space_id,
@@ -59,9 +61,14 @@ export async function assistantMemories(
       ],
     )
   ).rows;
-  if (!management && rows.length > 100)
-    throw new HttpError(409, 'MEMORY_CONTEXT_LIMIT', '有效记忆超过本次范围，请整理或设置有效期');
-  return rows.map((row) => dto(row, actorId, access.role));
+  const items = rows.map((row) => dto(row, actorId, access.role));
+  if (!management && items.length > 100 && mandatoryMemory(items[100]!))
+    throw new HttpError(
+      409,
+      'MEMORY_CONTEXT_LIMIT',
+      '有效约束与更正超过本次范围，请整理或设置有效期',
+    );
+  return management ? items : items.slice(0, 100);
 }
 export function registerAssistantMemory(app: FastifyInstance, db: Database) {
   app.get('/v1/projects/:projectId/assistant-memory', async (req) => {

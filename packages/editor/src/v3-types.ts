@@ -106,6 +106,13 @@ export type BlendModeV3 =
   | 'luminosity';
 export interface PaintStrokeV3 {
   points: Point[];
+  /** Explicit pressure/continuity semantics. Omitted strokes use the published rasterizer. */
+  sampling?: {
+    algorithm: 'swept-v1';
+    pressure: number[];
+    breaks: number[];
+    antialias: boolean;
+  };
   /** Radius in units of the shorter source edge; 0.5/sourceShortEdge is one pixel. */
   radius: number;
   feather: number;

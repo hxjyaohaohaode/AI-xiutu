@@ -151,8 +151,8 @@ export class EditorVoiceClient {
     if (event.type === 'text') this.outputPaused = false;
     this.socket.send(JSON.stringify(event));
   }
-  updateContext(context: AssistantContext) {
-    this.send({ type: 'context', context });
+  updateContext(context: AssistantContext, contextTag: string) {
+    this.send({ type: 'context', context, contextTag });
   }
   mute(muted: boolean) {
     this.capture?.port.postMessage({ muted });

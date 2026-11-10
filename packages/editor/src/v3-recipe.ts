@@ -441,7 +441,16 @@ export function parseRecipeV3(input: unknown): RecipeV3 {
           const q = `${p}.strokes[${j}]`,
             s = record(
               v,
-              ['points', 'radius', 'feather', 'opacity', 'mode', 'color', 'source'],
+              [
+                'points',
+                'radius',
+                'feather',
+                'opacity',
+                'mode',
+                'color',
+                'source',
+                ...(v && typeof v === 'object' && Object.hasOwn(v, 'sampling') ? ['sampling'] : []),
+              ],
               q,
               errors,
             );
@@ -456,8 +465,43 @@ export function parseRecipeV3(input: unknown): RecipeV3 {
           const color = arrayData(s.color, 4, 4, `${q}.color`, errors).map((n, k) =>
             integer(n, 0, 255, `${q}.color[${k}]`, errors),
           ) as PaintStrokeV3['color'];
+          let sampling: PaintStrokeV3['sampling'];
+          if (Object.hasOwn(s, 'sampling')) {
+            const data = record(
+              s.sampling,
+              ['algorithm', 'pressure', 'breaks', 'antialias'],
+              `${q}.sampling`,
+              errors,
+            );
+            if (data.algorithm !== 'swept-v1') errors.push(`${q}.sampling.algorithm: unsupported`);
+            const pressure = arrayData(
+              data.pressure,
+              pts.length,
+              pts.length,
+              `${q}.sampling.pressure`,
+              errors,
+            ).map((value, k) => number(value, 0, 1, `${q}.sampling.pressure[${k}]`, errors));
+            const breaks = arrayData(
+              data.breaks,
+              0,
+              Math.max(0, pts.length - 1),
+              `${q}.sampling.breaks`,
+              errors,
+            ).map((value, k) =>
+              integer(value, 1, pts.length - 1, `${q}.sampling.breaks[${k}]`, errors),
+            );
+            if (breaks.some((value, k) => k > 0 && value <= breaks[k - 1]!))
+              errors.push(`${q}.sampling.breaks: expected strictly increasing indices`);
+            sampling = {
+              algorithm: 'swept-v1',
+              pressure,
+              breaks,
+              antialias: boolean(data.antialias, `${q}.sampling.antialias`, errors),
+            };
+          }
           return {
             points: pts,
+            ...(sampling ? { sampling } : {}),
             radius: number(s.radius, 0.000001, 0.5, `${q}.radius`, errors),
             feather: number(s.feather, 0, 1, `${q}.feather`, errors),
             opacity: number(s.opacity, 0, 1, `${q}.opacity`, errors),

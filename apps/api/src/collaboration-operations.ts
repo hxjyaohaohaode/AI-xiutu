@@ -189,14 +189,17 @@ export function targetBounds(
         .map((r) => maskBounds(r.mask, width, height)),
     );
   if (target.kind === 'paint-layer') {
-    const strokes = (value.strokes as { points: { x: number; y: number }[]; radius: number }[]).map(
-      (s) =>
-        pointsBounds(
-          s.points,
-          (s.radius * Math.min(width, height)) / width,
-          (s.radius * Math.min(width, height)) / height,
-        ),
-    );
+    const strokes = (
+      value.strokes as {
+        points: { x: number; y: number }[];
+        radius: number;
+        sampling?: { antialias: boolean };
+      }[]
+    ).map((s) => {
+      const radius =
+        s.radius * Math.min(width, height) + (s.sampling?.antialias ? Math.SQRT1_2 : 0);
+      return pointsBounds(s.points, radius / width, radius / height);
+    });
     return value.mask ? maskBounds(value.mask, width, height) : union(strokes);
   }
   // Rotated image-layer AABB in source space; source aspect affects rotation.

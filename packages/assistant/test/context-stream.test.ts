@@ -16,6 +16,9 @@ test('token compaction preserves every original user constraint and a source for
       role: 'assistant' as const,
       sourceTurnId: `turn-${i}`,
       content: '这是尚未采纳的助手建议。'.repeat(300),
+      candidateTrace: JSON.stringify([
+        { id: `choice-${i}`, decision: 'previewed', base_version: i + 1 },
+      ]),
     },
   ]).flat();
   const plan = planHistory(history, { user: '颜色再淡一点' }, 0, {
@@ -28,6 +31,13 @@ test('token compaction preserves every original user constraint and a source for
     history.filter((m) => m.role === 'user'),
   );
   assert.ok(plan.manifest.compactedSourceIds.length > 0);
+  assert.equal(plan.manifest.candidateTraceSourceIds.length, 20);
+  for (const entry of plan.messages.filter((item) => item.role === 'assistant'))
+    assert.equal(
+      entry.candidateTrace,
+      history.find((item) => item.sourceTurnId === entry.sourceTurnId && item.role === 'assistant')
+        ?.candidateTrace,
+    );
   assert.ok(plan.manifest.retainedTokens < plan.manifest.originalTokens);
   assert.ok(
     plan.manifest.retainedTokens + plan.manifest.mandatoryTokens + plan.manifest.reservedTokens <=
@@ -66,7 +76,17 @@ test('real SSE frames preserve split UTF-8, stream approved text, and require a 
       packet({ type: 'response.output_text.delta', delta: '调整背景。' }) +
       packet({
         type: 'response.completed',
-        response: { status: 'completed', output: [], usage: { output_tokens: 10 } },
+        response: {
+          status: 'completed',
+          output: [
+            {
+              type: 'message',
+              role: 'assistant',
+              content: [{ type: 'output_text', text: '保留人物。调整背景。' }],
+            },
+          ],
+          usage: { output_tokens: 10 },
+        },
       }),
   );
   const chunks: string[] = [];

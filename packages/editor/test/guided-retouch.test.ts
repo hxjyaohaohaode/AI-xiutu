@@ -6,6 +6,7 @@ import {
   createRetouchRegionV4,
   renderEditorRecipe,
   renderEditorRecipeTiled,
+  compileSelectionMaskV3,
   type RGBAImage,
   type RetouchRegionV4,
 } from '../src/index.js';
@@ -138,4 +139,62 @@ test('invisible RGB cannot bleed into guided skin colours', () => {
     if (a.data[at + 3]) assert.deepEqual(ra.data.slice(at, at + 4), rb.data.slice(at, at + 4));
     else assert.deepEqual(ra.data.slice(at, at + 4), a.data.slice(at, at + 4));
   }
+});
+
+test('guided-v2 treats protected and exterior pixels as zero-weight samples at every slider setting', () => {
+  const a = sample(),
+    b = sample();
+  const protection = {
+    type: 'radial' as const,
+    centerX: 0.53,
+    centerY: 0.5,
+    radiusX: 0.13,
+    radiusY: 0.12,
+    feather: 0,
+    invert: false,
+  };
+  const base = region({ algorithm: 'guided-v2', protection });
+  const operation = base.retouch[0]!;
+  const selected = compileSelectionMaskV3(operation.mask, a, a);
+  const excluded = compileSelectionMaskV3(protection, a, a);
+  const included = (i: number) =>
+    selected(((i % a.width) + 0.5) / a.width, (Math.floor(i / a.width) + 0.5) / a.height) &&
+    !excluded(((i % a.width) + 0.5) / a.width, (Math.floor(i / a.width) + 0.5) / a.height);
+  for (let i = 0; i < a.width * a.height; i++) {
+    if (!included(i)) {
+      a.data.set([250, 1, 50, 255], i * 4);
+      b.data.set([1, 243, 249, 255], i * 4);
+    }
+  }
+  assert.deepEqual(renderEditorRecipe(a, base), a);
+  for (const amount of [25, 50, 75, 100])
+    for (const texture of [-amount, amount]) {
+      const recipe = region({
+        algorithm: 'guided-v2',
+        protection,
+        texture,
+        smoothing: amount,
+        uniformity: amount,
+        fineLines: amount,
+        speckle: amount,
+        shine: amount,
+      });
+      const ra = renderEditorRecipe(a, recipe),
+        rb = renderEditorRecipe(b, recipe);
+      let changed = 0;
+      for (let i = 0; i < a.width * a.height; i++) {
+        const start = 4 * i,
+          end = start + 4;
+        assert.equal(ra.data[start + 3], a.data[start + 3]);
+        if (included(i)) {
+          assert.deepEqual(ra.data.slice(start, end), rb.data.slice(start, end));
+          if (ra.data[start] !== a.data[start]) changed++;
+        } else {
+          assert.deepEqual(ra.data.slice(start, end), a.data.slice(start, end));
+          assert.deepEqual(rb.data.slice(start, end), b.data.slice(start, end));
+        }
+      }
+      assert.ok(changed > 25, `effect must reach real pixels at ${amount}/${texture}`);
+      assert.deepEqual(renderEditorRecipeTiled(a, recipe, { tileSize: 17 }), ra);
+    }
 });

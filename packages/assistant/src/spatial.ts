@@ -136,7 +136,11 @@ export function applyAssistantRetouch(base: EditorRecipe, raw: unknown) {
     id,
     name: `AI · ${proposal.name}`,
     enabled: true,
-    ...(!existing || existing.algorithm === 'guided-v1' ? { algorithm: 'guided-v1' as const } : {}),
+    ...(!existing
+      ? { algorithm: 'guided-v2' as const }
+      : existing.algorithm
+        ? { algorithm: existing.algorithm }
+        : {}),
     opacity: proposal.opacity,
     ...masks(recipe, proposal.selection, proposal.protectedSelection, existing?.protection),
     radius: proposal.radius,

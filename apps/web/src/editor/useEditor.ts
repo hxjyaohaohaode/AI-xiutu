@@ -61,7 +61,10 @@ export type BrushSettings = {
 };
 const DEFAULT_BRUSH: BrushSettings = { radius: 0.05, feather: 0.65, opacity: 1, mode: 'add' };
 
-export type PaintSettings = Omit<PaintStrokeV3, 'points'> & { choosingSource: boolean };
+export type PaintSettings = Omit<PaintStrokeV3, 'points' | 'sampling'> & {
+  choosingSource: boolean;
+  pressureSensitive: boolean;
+};
 export type WarpSettings = Pick<WarpStrokeV3, 'mode' | 'radius' | 'feather' | 'strength'> & {
   protecting: boolean;
 };
@@ -73,6 +76,7 @@ const INITIAL_PAINT: PaintSettings = {
   opacity: 1,
   source: null,
   choosingSource: false,
+  pressureSensitive: true,
 };
 const INITIAL_WARP: WarpSettings = {
   mode: 'push',

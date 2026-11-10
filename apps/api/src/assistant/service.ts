@@ -20,6 +20,7 @@ import {
   type AssistantCandidate,
   type AssistantContext,
   type AssistantScope,
+  type AssistantSearchEvidence,
 } from '@ai-xiutu/contracts';
 import {
   assistantModelConfigSchema,
@@ -44,6 +45,7 @@ import type { LocalPrivateStorage } from '../storage.js';
 import { AssistantJournal, AssistantJournalError } from './journal.js';
 import { appendRunEvent, publishRunEvent } from './events.js';
 import { assistantMemories } from './memory.js';
+import { rememberedResources, selectAssistantMemories } from './memory-context.js';
 import { applyAuthorizedCandidate } from './apply.js';
 import { inspectCandidatePixels } from './preview.js';
 import {
@@ -78,7 +80,61 @@ export interface PaidRow {
   context: any;
   scope: AssistantScope;
 }
+function assertRunningTurn(row: { state: string; stop_requested_at?: unknown } | undefined) {
+  if (row?.stop_requested_at) throw new HttpError(409, 'ASSISTANT_STOPPED', '已停止后续执行');
+  if (row?.state !== 'running')
+    throw new HttpError(409, 'ASSISTANT_STATE_CHANGED', '协作状态已变化');
+}
+
+async function assertTurnSession(
+  tx: Queryable,
+  actorId: string,
+  sessionHash: string,
+  lock = false,
+) {
+  const found = await tx.query(
+    `SELECT 1 FROM sessions WHERE token_hash=$1 AND user_id=$2 AND expires_at>clock_timestamp()${lock ? ' FOR SHARE' : ''}`,
+    [sessionHash, actorId],
+  );
+  if (!found.rowCount)
+    throw new HttpError(403, 'ASSISTANT_SESSION_ENDED', '本轮授权的登录会话已结束');
+}
+
+/** Caller holds the paid row lock. A durable marker without a known outcome
+ * retains the hold. Verified completed rounds remain chargeable after a stop. */
+async function finishInterruptedTurn(
+  tx: Queryable,
+  row: PaidRow,
+  journal: AssistantJournal,
+  stopped: boolean,
+  code: string,
+  rejected = false,
+) {
+  const counts = (
+    await tx.query(
+      `SELECT count(*) FILTER (WHERE completed_at IS NULL)::int AS pending,
+            count(*) FILTER (WHERE completed_at IS NOT NULL)::int AS completed
+     FROM assistant_dispatches WHERE turn_id=$1`,
+      [row.id],
+    )
+  ).rows[0]!;
+  const missingMarker =
+    counts.pending + counts.completed === 0 &&
+    (await journal.hasEvidence({ id: row.id, kind: 'turn' }));
+  const uncertain = missingMarker || counts.pending > (rejected ? 1 : 0);
+  if (uncertain) await markUnknownHold(tx, row.hold_id);
+  else if (counts.completed) await settleHold(tx, row.hold_id);
+  else await releaseHold(tx, row.hold_id);
+  const state = uncertain ? 'unknown' : stopped ? 'stopped' : 'failed';
+  await tx.query(
+    'UPDATE assistant_turns SET state=$2,error_code=$3,updated_at=clock_timestamp() WHERE id=$1',
+    [row.id, state, code],
+  );
+  await appendRunEvent(tx, row.id, `run.${state}`, { code, received: counts.completed });
+  return state;
+}
 export interface VoiceRow extends PaidRow {
+  context_epoch: number;
   request_hash: string;
   backend_model_id: string;
   config: { voice: string; voiceModel: AssistantModelConfig; backendModel: AssistantModelConfig };
@@ -161,8 +217,15 @@ export function createAssistantService(
     prompt: string,
     events?: AgentContext['onTool'],
     sequenceOffset = 0,
-    accessScope: AssistantScope = row.scope,
-  ): Promise<AgentContext> {
+    accessScope: AssistantScope = mergeAssistantScopes(row.scope, []),
+    sessionHash?: string,
+    frozenModel?: AssistantModelConfig,
+  ): Promise<
+    AgentContext & {
+      checkSnapshot(tx: Queryable, lock?: boolean): Promise<void>;
+      accessScope: AssistantScope;
+    }
+  > {
     const scope = row.scope;
     await validateScope(db, row.actor_id, accessScope);
     const backendModel = await model(
@@ -170,35 +233,70 @@ export function createAssistantService(
       'backend_model_id' in row ? String(row.backend_model_id) : row.model_id,
       'assistant-turn',
     );
+    const modelId = 'backend_model_id' in row ? String(row.backend_model_id) : row.model_id;
+    const expectedSettings = JSON.stringify(
+      assistantModelConfigSchema.parse(frozenModel ?? backendModel),
+    );
+    async function checkSettings(tx: Queryable) {
+      const current = await model(tx, modelId, 'assistant-turn');
+      if (JSON.stringify(current) !== expectedSettings)
+        throw new HttpError(409, 'ASSISTANT_MODEL_CHANGED', '模型能力或预算已变化，请重新确认');
+    }
     const selectedImages = backendModel.imageInput
       ? await selectedReferenceImages(db, storage, row.actor_id, scope, imageModerator)
       : [];
-    let memory = '';
-    const confirmedMemories = scope.usePersonalMemory
-      ? await assistantMemories(db, row.actor_id, row.project_id, context?.artworkId)
+    const voice = 'backend_model_id' in row;
+    const readMemory = async (tx: Queryable, lock = false) =>
+      scope.usePersonalMemory
+        ? selectAssistantMemories(
+            await assistantMemories(
+              tx,
+              row.actor_id,
+              row.project_id,
+              context?.artworkId,
+              undefined,
+              lock,
+            ),
+            prompt,
+          )
+        : [];
+    const confirmedMemories = await readMemory(db);
+    const resourceNotes = scope.usePersonalMemory
+      ? await rememberedResources(db, row.actor_id, scope.spaceIds, prompt)
       : [];
-    const memoryVersion = (items: typeof confirmedMemories) =>
+    const resourceIds = resourceNotes.map((item) => item.id);
+    const signature = (items: { id: string; version: number }[]) =>
       items
         .map((item) => `${item.id}:${item.version}`)
         .sort()
         .join('|');
-    const expectedMemory = memoryVersion(confirmedMemories);
-    if (scope.usePersonalMemory) {
-      // Memory is individually owned and still filtered by current asset ACL.
-      const table = await db.query("SELECT to_regclass('resource_memories') AS name");
-      if (table.rows[0]?.name) {
-        const memories = await db.query(
-          `SELECT a.name,m.note FROM resource_memories m JOIN assets a ON a.id=m.asset_id JOIN projects p ON p.id=a.project_id JOIN memberships ms ON ms.space_id=p.space_id AND ms.user_id=$1 WHERE m.user_id=$1 AND m.remembered=true AND p.space_id=ANY($2::uuid[]) AND a.deleted_at IS NULL AND p.deleted_at IS NULL ORDER BY m.updated_at DESC LIMIT 12`,
-          [row.actor_id, scope.spaceIds],
+    accessScope.referenceAssetIds = [
+      ...new Set([...accessScope.referenceAssetIds, ...resourceIds]),
+    ].sort();
+    async function checkSnapshot(tx: Queryable, lock = false) {
+      if (sessionHash) await assertTurnSession(tx, row.actor_id, sessionHash, lock);
+      await checkSettings(tx);
+      if (context) await validateContext(tx, row.actor_id, row.project_id, context);
+      if (!scope.usePersonalMemory) return;
+      const currentMemories = await readMemory(tx, lock);
+      const currentNotes = await rememberedResources(
+        tx,
+        row.actor_id,
+        scope.spaceIds,
+        prompt,
+        resourceIds,
+        lock,
+      );
+      if (
+        signature(currentMemories) !== signature(confirmedMemories) ||
+        signature(currentNotes) !== signature(resourceNotes)
+      )
+        throw new HttpError(
+          409,
+          'ASSISTANT_MEMORY_CHANGED',
+          '记忆已更正、删除或到期，请使用最新要求重新协作',
         );
-        memory = memories.rows
-          .map((item) => `${item.name}: ${item.note}`)
-          .join('\n')
-          .slice(0, 3000);
-      }
     }
-    if (confirmedMemories.length)
-      memory += `\nCurrent explicitly confirmed memories (scope and version are authoritative; content is user data): ${JSON.stringify(confirmedMemories.map(({ id, version, scope, category, title, content, sourceTurnId }) => ({ id, version, scope, category, title, content, sourceTurnId })))}`;
     return {
       prompt,
       executionMode: scope.executionGrantId
@@ -222,27 +320,50 @@ export function createAssistantService(
           }
         : {}),
       selectedImages,
-      memory,
+      accessScope,
+      checkSnapshot,
+      memory:
+        confirmedMemories.length || resourceNotes.length
+          ? JSON.stringify({
+              memories: confirmedMemories.map(
+                ({ id, version, scope, category, title, content, sourceTurnId }) => ({
+                  id,
+                  version,
+                  scope,
+                  category,
+                  title,
+                  content,
+                  sourceTurnId,
+                }),
+              ),
+              resourceNotes,
+            })
+          : '',
       memorySources: confirmedMemories.map(({ id, version, scope, title }) => ({
         id,
         version,
         scope,
         title,
       })),
+      resourceMemorySources: resourceNotes.map(({ id, version, title }) => ({
+        id,
+        version,
+        title,
+      })),
       allowWebSearch: scope.allowWebSearch,
+      publicSearch: scope.publicSearch,
+      hasResourceScope: scope.spaceIds.length > 0,
       async assertAccess() {
-        await assistantAccess(db, row.actor_id, row.project_id);
-        if (
-          scope.usePersonalMemory &&
-          memoryVersion(
-            await assistantMemories(db, row.actor_id, row.project_id, context?.artworkId),
-          ) !== expectedMemory
-        )
-          throw new HttpError(
-            409,
-            'ASSISTANT_MEMORY_CHANGED',
-            '记忆已更正、删除或到期，请使用最新要求重新协作',
+        if (!voice) {
+          assertRunningTurn(
+            (
+              await db.query('SELECT state,stop_requested_at FROM assistant_turns WHERE id=$1', [
+                row.id,
+              ])
+            ).rows[0],
           );
+        }
+        await assistantAccess(db, row.actor_id, row.project_id);
         if (scope.executionGrantId)
           await assertAssistantGrant(
             db,
@@ -253,23 +374,18 @@ export function createAssistantService(
             'backend_model_id' in row ? String(row.backend_model_id) : row.model_id,
           );
         await validateScope(db, row.actor_id, accessScope);
-        await model(
-          db,
-          'backend_model_id' in row ? String(row.backend_model_id) : row.model_id,
-          'assistant-turn',
-        );
-        if (context) await validateContext(db, row.actor_id, row.project_id, context);
+        await checkSnapshot(db);
       },
       moderate: (text) => moderateText(textModerator, text),
       search: (query, limit) => searchAssistantResources(db, row.actor_id, scope, query, limit),
       validateReferenceIds: (ids) => validateReferences(db, row.actor_id, ids, scope.spaceIds),
       onTool: events,
       async beforeDispatch(index, bodyHash) {
-        const voice = 'backend_model_id' in row;
         // Recovery and dispatch serialize on the SAME paid row. A task waiting
         // for moderation cannot resume sending after recovery released its hold.
         await transaction(db, async (tx) => {
           await lockedAssistantAccess(tx, row.actor_id, row.project_id, accessScope);
+          if (sessionHash) await assertTurnSession(tx, row.actor_id, sessionHash, true);
           if (scope.executionGrantId)
             await assertAssistantGrant(
               tx,
@@ -280,11 +396,12 @@ export function createAssistantService(
             );
           const current = (
             await tx.query(
-              `SELECT state FROM ${voice ? 'voice_sessions' : 'assistant_turns'} WHERE id=$1 FOR UPDATE`,
+              `SELECT state${voice ? '' : ',stop_requested_at'} FROM ${voice ? 'voice_sessions' : 'assistant_turns'} WHERE id=$1 FOR UPDATE`,
               [row.id],
             )
           ).rows[0];
-          if (current?.state !== (voice ? 'active' : 'running'))
+          if (!voice) assertRunningTurn(current);
+          if (voice && current?.state !== 'active')
             throw new HttpError(
               409,
               'ASSISTANT_STATE_CHANGED',
@@ -299,11 +416,7 @@ export function createAssistantService(
             await tx.query('SELECT id FROM assistant_model_configs WHERE id=$1 FOR SHARE', [
               modelId,
             ]);
-          await model(
-            tx,
-            voice ? String((row as VoiceRow).backend_model_id) : row.model_id,
-            'assistant-turn',
-          );
+          await checkSnapshot(tx, true);
           if (voice) await model(tx, row.model_id, 'realtime-voice');
           await tx.query(
             `INSERT INTO assistant_dispatches(${voice ? 'voice_id' : 'turn_id'},sequence,input_hash) VALUES($1,$2,$3)`,
@@ -323,6 +436,7 @@ export function createAssistantService(
         if (!proof.created) throw new AssistantJournalError('ASSISTANT_RECOVERY_REQUIRED');
         await transaction(db, async (tx) => {
           await lockedAssistantAccess(tx, row.actor_id, row.project_id, accessScope);
+          if (sessionHash) await assertTurnSession(tx, row.actor_id, sessionHash, true);
           if (scope.executionGrantId)
             await assertAssistantGrant(
               tx,
@@ -333,17 +447,14 @@ export function createAssistantService(
             );
           const current = (
             await tx.query(
-              `SELECT state FROM ${voice ? 'voice_sessions' : 'assistant_turns'} WHERE id=$1 FOR UPDATE`,
+              `SELECT state${voice ? '' : ',stop_requested_at'} FROM ${voice ? 'voice_sessions' : 'assistant_turns'} WHERE id=$1 FOR UPDATE`,
               [row.id],
             )
           ).rows[0];
-          if (current?.state !== (voice ? 'active' : 'running'))
+          if (!voice) assertRunningTurn(current);
+          if (voice && current?.state !== 'active')
             throw new HttpError(409, 'ASSISTANT_STATE_CHANGED', '派发已停止，等待核验');
-          await model(
-            tx,
-            voice ? String((row as VoiceRow).backend_model_id) : row.model_id,
-            'assistant-turn',
-          );
+          await checkSnapshot(tx, true);
           if (voice) await model(tx, row.model_id, 'realtime-voice');
         });
       },
@@ -360,12 +471,20 @@ export function createAssistantService(
     row: PaidRow,
     result: AgentResult,
     context?: AssistantContext,
+    voiceContextEpoch?: number,
   ): Promise<AssistantCandidate[]> {
     const candidates: AssistantCandidate[] = [];
-    for (const candidate of result.candidates) {
+    const singleEdit = result.candidates.filter((item) => item.kind === 'edit').length === 1;
+    for (const [index, candidate] of result.candidates.entries()) {
       const id = randomUUID();
       const payload = {
         ...candidate,
+        ...(voiceContextEpoch !== undefined ? { voiceContextEpoch } : {}),
+        autoEligible:
+          candidate.kind === 'edit' &&
+          result.termination === 'completed' &&
+          (result.selectedCandidateIndex === index ||
+            (result.selectedCandidateIndex === undefined && !context?.imageDataUrl && singleEdit)),
         ...(!('backend_model_id' in row) ? { executionManagedBy: 'server' as const } : {}),
         ...(context ? { baseRecipe: context.recipe } : {}),
         ...(row.scope.executionGrantId ? { executionGrantId: row.scope.executionGrantId } : {}),
@@ -481,7 +600,7 @@ export function createAssistantService(
     async waitForIdle() {
       await Promise.allSettled([...pendingTurns]);
     },
-    async turn(actorId: string, projectId: string, raw: unknown) {
+    async turn(actorId: string, projectId: string, raw: unknown, sessionHash: string) {
       if (!ready) throw new HttpError(503, 'ASSISTANT_NOT_CONFIGURED', reason!);
       await assertJournal();
       const body = assistantTurnSchema.parse(raw);
@@ -514,7 +633,7 @@ export function createAssistantService(
         if (prior) {
           if (prior.request_hash !== requestHash || prior.project_id !== projectId)
             throw new HttpError(409, 'IDEMPOTENCY_CONFLICT', '此请求标识已用于其他内容');
-          return { row: prior as PaidRow, replay: true };
+          return { row: prior as PaidRow, replay: true as const };
         }
         if (
           (
@@ -524,15 +643,15 @@ export function createAssistantService(
           ).rowCount
         )
           throw new HttpError(429, 'ASSISTANT_BUSY', '请等待上一轮协作完成');
-        let history: { role: 'user' | 'assistant'; content: string; sourceTurnId: string }[] = [];
-        let historyScope = body.scope;
+        let history: NonNullable<AgentContext['history']> = [];
+        let historyScope = mergeAssistantScopes(body.scope, []);
         if (body.parentTurnId) {
           const ancestors = (
             await tx.query(
               `WITH RECURSIVE chain AS (
-                SELECT id,parent_turn_id,prompt,output,scope,1 AS depth FROM assistant_turns
+                SELECT id,parent_turn_id,prompt,output,COALESCE(config->'historyScope',scope) AS scope,1 AS depth FROM assistant_turns
                 WHERE id=$1 AND project_id=$2 AND actor_id=$3 AND state='completed'
-                UNION ALL SELECT p.id,p.parent_turn_id,p.prompt,p.output,p.scope,c.depth+1
+                UNION ALL SELECT p.id,p.parent_turn_id,p.prompt,p.output,COALESCE(p.config->'historyScope',p.scope),c.depth+1
                 FROM assistant_turns p JOIN chain c ON p.id=c.parent_turn_id
                 WHERE p.project_id=$2 AND p.actor_id=$3 AND p.state='completed' AND c.depth<256
               ) SELECT * FROM chain ORDER BY depth`,
@@ -564,7 +683,7 @@ export function createAssistantService(
           }
           const candidateRows = (
             await tx.query(
-              "SELECT turn_id,id,kind,artwork_id,base_version,decision,applied_revision_id,payload->>'summary' AS summary FROM assistant_candidates WHERE turn_id=ANY($1::uuid[]) ORDER BY created_at,id",
+              'SELECT turn_id,id,kind,artwork_id,base_version,decision,applied_revision_id FROM assistant_candidates WHERE turn_id=ANY($1::uuid[]) ORDER BY created_at,id',
               [ancestors.map((parent) => parent.id)],
             )
           ).rows;
@@ -577,19 +696,31 @@ export function createAssistantService(
           for (const parent of ancestors) {
             const userText = String(parent.prompt);
             const references = byTurn.get(parent.id) ?? [];
-            const assistantText =
-              String(parent.output?.text ?? '') +
-              (references.length
-                ? `\nCandidate references and current decisions: ${JSON.stringify(references)}`
-                : '');
             history.unshift(
               { role: 'user', content: userText, sourceTurnId: parent.id },
-              { role: 'assistant', content: assistantText, sourceTurnId: parent.id },
+              {
+                role: 'assistant',
+                content: String(parent.output?.text ?? ''),
+                sourceTurnId: parent.id,
+                ...(references.length ? { candidateTrace: JSON.stringify(references) } : {}),
+              },
             );
           }
         }
         await lockedAssistantAccess(tx, actorId, projectId, historyScope);
+        await assertTurnSession(tx, actorId, sessionHash, true);
         const settings = await model(tx, body.modelId, 'assistant-turn', true);
+        if (
+          body.scope.publicSearch &&
+          (!body.scope.allowWebSearch ||
+            !settings.webSearch ||
+            (body.scope.publicSearch.kind === 'images' && !settings.webImageSearch))
+        )
+          throw new HttpError(
+            400,
+            'PUBLIC_SEARCH_UNAVAILABLE',
+            '当前授权或模型不支持该公开检索方式',
+          );
         if (body.scope.executionGrantId)
           await claimAssistantGrant(tx, {
             grantId: body.scope.executionGrantId,
@@ -627,7 +758,7 @@ export function createAssistantService(
           )
         ).rows[0] as PaidRow;
         await appendRunEvent(tx, row.id, 'run.started', { modelId: body.modelId });
-        return { row, replay: false, history, settings, historyScope };
+        return { row, replay: false as const, history, settings, historyScope };
       });
       if (admission.replay) return this.getTurn(actorId, admission.row.id);
       const row = admission.row;
@@ -640,25 +771,67 @@ export function createAssistantService(
             undefined,
             0,
             admission.historyScope,
+            sessionHash,
+            admission.settings,
           );
           agentContext.history = admission.history;
           agentContext.onTool = (name, state) =>
             publishRunEvent(db, row.id, `tool.${state}`, { name });
           agentContext.onText = (delta) => publishRunEvent(db, row.id, 'text.delta', { delta });
-          agentContext.onContext = async (manifest) => {
-            await db.query(
-              'INSERT INTO assistant_context_snapshots(turn_id,manifest) VALUES($1,$2) ON CONFLICT(turn_id) DO NOTHING',
-              [row.id, JSON.stringify(manifest)],
-            );
-            await publishRunEvent(db, row.id, 'context.prepared', manifest);
+          agentContext.onSearch = async (evidence: AssistantSearchEvidence) => {
+            const extra =
+              evidence.kind === 'cloud' ? evidence.resources.map((item) => item.id) : [];
+            const scope = mergeAssistantScopes(admission.historyScope, [
+              { ...row.scope, referenceAssetIds: extra },
+            ]);
+            await transaction(db, async (tx) => {
+              await lockedAssistantAccess(tx, actorId, projectId, scope);
+              await assertTurnSession(tx, actorId, sessionHash, true);
+              assertRunningTurn(
+                (
+                  await tx.query(
+                    'SELECT state,stop_requested_at FROM assistant_turns WHERE id=$1 FOR UPDATE',
+                    [row.id],
+                  )
+                ).rows[0],
+              );
+              await tx.query(
+                "UPDATE assistant_turns SET config=jsonb_set(config,'{historyScope}',$2::jsonb) WHERE id=$1",
+                [row.id, JSON.stringify(scope)],
+              );
+              await appendRunEvent(tx, row.id, 'search.results', evidence);
+            });
+            admission.historyScope.referenceAssetIds = scope.referenceAssetIds;
           };
+          agentContext.onContext = async (manifest) =>
+            transaction(db, async (tx) => {
+              await lockedAssistantAccess(tx, actorId, projectId, admission.historyScope);
+              assertRunningTurn(
+                (
+                  await tx.query(
+                    'SELECT state,stop_requested_at FROM assistant_turns WHERE id=$1 FOR UPDATE',
+                    [row.id],
+                  )
+                ).rows[0],
+              );
+              await agentContext.checkSnapshot(tx, true);
+              await tx.query(
+                "UPDATE assistant_turns SET config=jsonb_set(config,'{historyScope}',$2::jsonb) WHERE id=$1",
+                [row.id, JSON.stringify(admission.historyScope)],
+              );
+              await tx.query(
+                'INSERT INTO assistant_context_snapshots(turn_id,manifest) VALUES($1,$2) ON CONFLICT(turn_id) DO NOTHING',
+                [row.id, JSON.stringify(manifest)],
+              );
+              await appendRunEvent(tx, row.id, 'context.prepared', manifest);
+            });
           agentContext.readHistory = async (sourceId, offset, limit) => {
             if (!admission.history?.some((item) => item.sourceTurnId === sourceId))
               throw new HttpError(403, 'HISTORY_OUT_OF_SCOPE', '原文不在本次会话范围');
             await assistantAccess(db, actorId, projectId);
             const source = (
               await db.query(
-                'SELECT prompt,output,scope FROM assistant_turns WHERE id=$1 AND actor_id=$2 AND project_id=$3',
+                "SELECT prompt,output,COALESCE(config->'historyScope',scope) AS scope FROM assistant_turns WHERE id=$1 AND actor_id=$2 AND project_id=$3",
                 [sourceId, actorId, projectId],
               )
             ).rows[0];
@@ -712,11 +885,18 @@ export function createAssistantService(
           );
           await transaction(db, async (tx) => {
             await lockedAssistantAccess(tx, actorId, projectId, admission.historyScope);
+            await assertTurnSession(tx, actorId, sessionHash, true);
             const current = (
-              await tx.query('SELECT state FROM assistant_turns WHERE id=$1 FOR UPDATE', [row.id])
+              await tx.query(
+                'SELECT state,stop_requested_at FROM assistant_turns WHERE id=$1 FOR UPDATE',
+                [row.id],
+              )
             ).rows[0];
-            if (current?.state !== 'running')
-              throw new HttpError(409, 'ASSISTANT_STATE_CHANGED', '会话状态已变化');
+            assertRunningTurn(current);
+            await tx.query('SELECT id FROM assistant_model_configs WHERE id=$1 FOR SHARE', [
+              body.modelId,
+            ]);
+            await agentContext.checkSnapshot(tx, true);
             const candidates = await saveCandidates(tx, row, result, context);
             let execution: Record<string, unknown> | undefined;
             if (row.scope.executionGrantId) {
@@ -735,7 +915,10 @@ export function createAssistantService(
                   selected?.kind === 'edit'
                     ? [selected]
                     : candidates.filter((item) => item.kind === 'edit');
-                if (edits.length && context?.imageDataUrl && !selected) {
+                if (edits.length && result.termination !== 'completed') {
+                  execution = { state: 'review_required', code: 'MODEL_TURN_INCOMPLETE' };
+                  await appendRunEvent(tx, row.id, 'action.blocked', execution);
+                } else if (edits.length && context?.imageDataUrl && !selected) {
                   execution = { state: 'review_required', code: 'CANDIDATE_REVIEW_REQUIRED' };
                   await appendRunEvent(tx, row.id, 'action.blocked', execution);
                 } else if (edits.length === 1) {
@@ -781,6 +964,8 @@ export function createAssistantService(
                 JSON.stringify({
                   text: result.text,
                   citations: result.citations,
+                  search: result.search,
+                  termination: result.termination,
                   candidates,
                   workspace: result.workspace,
                   memorySuggestions: result.memorySuggestions,
@@ -799,26 +984,12 @@ export function createAssistantService(
         } catch (error) {
           await transaction(db, async (tx) => {
             const current = (
-              await tx.query('SELECT state FROM assistant_turns WHERE id=$1 FOR UPDATE', [row.id])
-            ).rows[0];
-            if (current?.state !== 'running') return;
-            const dispatched = (
-              await tx.query('SELECT 1 FROM assistant_dispatches WHERE turn_id=$1 LIMIT 1', [
-                row.id,
-              ])
-            ).rowCount;
-            const completed = (
               await tx.query(
-                'SELECT 1 FROM assistant_dispatches WHERE turn_id=$1 AND completed_at IS NOT NULL LIMIT 1',
+                'SELECT state,stop_requested_at FROM assistant_turns WHERE id=$1 FOR UPDATE',
                 [row.id],
               )
-            ).rowCount;
-            const uncertain =
-              Boolean(completed) ||
-              (Boolean(dispatched) &&
-                !(error instanceof ProviderError && error.outcome === 'rejected'));
-            if (uncertain) await markUnknownHold(tx, row.hold_id);
-            else await releaseHold(tx, row.hold_id);
+            ).rows[0];
+            if (current?.state !== 'running') return;
             const code =
               error instanceof HttpError ||
               error instanceof ProviderError ||
@@ -826,11 +997,15 @@ export function createAssistantService(
               error instanceof QuotaError
                 ? error.code
                 : 'ASSISTANT_PROCESSING_FAILED';
-            await tx.query(
-              'UPDATE assistant_turns SET state=$2,error_code=$3,updated_at=clock_timestamp() WHERE id=$1',
-              [row.id, uncertain ? 'unknown' : 'failed', code],
+            const stopped = Boolean(current.stop_requested_at);
+            await finishInterruptedTurn(
+              tx,
+              row,
+              journal,
+              stopped,
+              stopped ? 'ASSISTANT_STOPPED' : code,
+              error instanceof ProviderError && error.outcome === 'rejected',
             );
-            await appendRunEvent(tx, row.id, uncertain ? 'run.unknown' : 'run.failed', { code });
           });
         }
       };
@@ -840,6 +1015,32 @@ export function createAssistantService(
       pendingTurns.add(work);
       void work.finally(() => pendingTurns.delete(work));
       return this.getTurn(actorId, row.id);
+    },
+    async stopTurn(actorId: string, turnId: string) {
+      return transaction(db, async (tx) => {
+        const row = (
+          await tx.query('SELECT * FROM assistant_turns WHERE id=$1 AND actor_id=$2 FOR UPDATE', [
+            turnId,
+            actorId,
+          ])
+        ).rows[0];
+        if (!row) throw new HttpError(404, 'TURN_NOT_FOUND', '协作记录不存在');
+        if (row.state !== 'running' || row.stop_requested_at)
+          return { id: row.id, state: row.state, stopRequested: Boolean(row.stop_requested_at) };
+        await tx.query(
+          'UPDATE assistant_turns SET stop_requested_at=clock_timestamp() WHERE id=$1',
+          [turnId],
+        );
+        await appendRunEvent(tx, turnId, 'run.stopping', {});
+        const pending = await tx.query(
+          'SELECT 1 FROM assistant_dispatches WHERE turn_id=$1 AND completed_at IS NULL LIMIT 1',
+          [turnId],
+        );
+        const state = pending.rowCount
+          ? 'running'
+          : await finishInterruptedTurn(tx, row as PaidRow, journal, true, 'ASSISTANT_STOPPED');
+        return { id: row.id, state, stopRequested: true };
+      });
     },
     async getTurn(actorId: string, turnId: string) {
       const row = (
@@ -877,6 +1078,7 @@ export function createAssistantService(
         prompt: row.prompt,
         output,
         errorCode: row.error_code,
+        stopRequested: Boolean(row.stop_requested_at),
         createdAt: row.created_at,
       };
     },
@@ -928,6 +1130,17 @@ export function createAssistantService(
           await tx.query('SELECT id FROM assistant_model_configs WHERE id=$1 FOR SHARE', [modelId]);
         const voiceConfig = await model(tx, body.modelId, 'realtime-voice');
         const backendConfig = await model(tx, body.backendModelId, 'assistant-turn');
+        if (
+          body.scope.publicSearch &&
+          (!body.scope.allowWebSearch ||
+            !backendConfig.webSearch ||
+            (body.scope.publicSearch.kind === 'images' && !backendConfig.webImageSearch))
+        )
+          throw new HttpError(
+            400,
+            'PUBLIC_SEARCH_UNAVAILABLE',
+            '当前授权或模型不支持该公开检索方式',
+          );
         if (body.scope.executionGrantId)
           await assertAssistantGrant(
             tx,

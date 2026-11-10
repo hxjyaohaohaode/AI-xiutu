@@ -14,11 +14,14 @@ import type {
   AssistantCandidate,
   AssistantContext,
   AssistantCitation,
+  AssistantCloudResource,
+  AssistantSearchEvidence,
   VoiceServerEvent,
   AssistantGrant,
   AssistantWorkspace,
   MemorySuggestion,
 } from '@ai-xiutu/contracts';
+import { assistantSearchEvidenceSchema } from '@ai-xiutu/contracts';
 import { parseEditorRecipe, type EditorRecipe } from '@ai-xiutu/editor';
 import { api, errorMessage, jsonRequest } from '../lib/api';
 import { secureUuid } from '../lib/uuid';
@@ -38,6 +41,7 @@ import { observeAssistantTurn, type RunEvent } from './turnStream';
 import { ContextEvidence } from './ContextEvidence';
 import { MemoryControls } from './MemoryControls';
 import { WorkspaceCards } from './WorkspaceCards';
+import { CloudImageResults, SearchEvidence } from './SearchEvidence';
 
 export type CaptureCurrentImage = () => Promise<AssistantContext & { imageDataUrl: string }>;
 interface Model {
@@ -49,6 +53,7 @@ interface Model {
   maxDelegations: number;
   imageInput: boolean;
   webSearch: boolean;
+  webImageSearch?: boolean;
   voice?: { voices: string[] } | null;
 }
 interface Catalog {
@@ -62,10 +67,12 @@ interface Turn {
   modelId?: string;
   conversationId?: string;
   state: string;
+  stopRequested?: boolean;
   prompt?: string;
   output?: {
     text: string;
     citations: AssistantCitation[];
+    search?: AssistantSearchEvidence[];
     candidates: AssistantCandidate[];
     workspace?: AssistantWorkspace;
     memorySuggestions?: MemorySuggestion[];
@@ -78,11 +85,19 @@ interface Turn {
   };
   errorCode?: string;
 }
+
+function turnStatus(turn: Turn) {
+  if (turn.state === 'unknown') return '本轮结果待核验，可以在用量记录中查看。';
+  if (turn.state === 'stopped') return '本轮已停止。已完成的供应商调用可在用量记录中查看。';
+  if (turn.state === 'unavailable') return '本轮引用的素材权限已变化。';
+  return `本轮未完成（${turn.errorCode ?? turn.state}）`;
+}
 interface Message {
   id: string;
   role: 'user' | 'assistant';
   text: string;
   citations?: AssistantCitation[];
+  search?: AssistantSearchEvidence[];
 }
 export interface LiveAssistantProps {
   project: Project | null;
@@ -158,12 +173,14 @@ export function LiveAssistant(props: LiveAssistantProps) {
   const [shareImage, setShareImage] = useState(false),
     [allowWebSearch, setAllowWebSearch] = useState(false),
     [memory, setMemory] = useState(false);
+  const [publicQuery, setPublicQuery] = useState('');
+  const [publicImages, setPublicImages] = useState(false);
+  const [activeTurn, setActiveTurn] = useState<{ id: string; stopping: boolean } | null>(null);
   const [spaceIds, setSpaceIds] = useState<string[]>(project ? [project.spaceId] : []),
     [referenceIds, setReferenceIds] = useState<string[]>([]);
   const [resourceQuery, setResourceQuery] = useState(''),
-    [resources, setResources] = useState<
-      { id: string; name: string; space: string; thumbnail: string }[]
-    >([]);
+    [resources, setResources] = useState<AssistantCloudResource[]>([]);
+  const [searchStatus, setSearchStatus] = useState('');
   const [messages, setMessages] = useState<Message[]>([]),
     [candidates, setCandidates] = useState<AssistantCandidate[]>([]);
   const [historyEpoch, setHistoryEpoch] = useState(0);
@@ -174,6 +191,9 @@ export function LiveAssistant(props: LiveAssistantProps) {
     [contextStatus, setContextStatus] = useState('未共享画面');
   const voiceEpoch = useRef(0),
     voiceEnding = useRef(false),
+    voiceCanvas = useRef<{ accepted: string; pending?: { key: string; tag: string } }>({
+      accepted: '',
+    }),
     turnAbort = useRef<AbortController | null>(null);
   const client = useRef<EditorVoiceClient | null>(null),
     current = useRef(props),
@@ -263,6 +283,10 @@ export function LiveAssistant(props: LiveAssistantProps) {
     setCallState('idle');
     setMuted(false);
     setShareImage(false);
+    setAllowWebSearch(false);
+    setPublicQuery('');
+    setPublicImages(false);
+    setActiveTurn(null);
     setContextStatus('未共享画面');
     setSpaceIds(project ? [project.spaceId] : []);
     setReferenceIds([]);
@@ -290,7 +314,10 @@ export function LiveAssistant(props: LiveAssistantProps) {
       pending.controller.abort();
       searchAbort.current = null;
     }
-  }, [searchScope]);
+    if (!resourceQuery.trim() || !project || !isLoggedIn || inCall || !spaceIds.length) return;
+    const timer = setTimeout(() => void search(), 280);
+    return () => clearTimeout(timer);
+  }, [searchScope, inCall]);
   useEffect(() => {
     const controller = new AbortController();
     let timer: ReturnType<typeof setTimeout>;
@@ -340,17 +367,19 @@ export function LiveAssistant(props: LiveAssistantProps) {
         if (!freshConversation.current) setParentTurnId((current) => current ?? complete[0]?.id);
         setMessages((old) => {
           const merged = new Map<string, Message>();
-          for (const turn of [...complete].reverse()) {
+          for (const turn of [...turns].reverse()) {
             merged.set(`${turn.id}-u`, {
               id: `${turn.id}-u`,
               role: 'user',
               text: turn.prompt ?? '',
             });
+            if (turn.state === 'running') continue;
             merged.set(turn.id, {
               id: turn.id,
               role: 'assistant',
-              text: turn.output?.text ?? '',
+              text: turn.state === 'completed' ? (turn.output?.text ?? '') : turnStatus(turn),
               citations: turn.output?.citations,
+              search: turn.output?.search,
             });
           }
           for (const message of old) if (!merged.has(message.id)) merged.set(message.id, message);
@@ -367,6 +396,7 @@ export function LiveAssistant(props: LiveAssistantProps) {
           const token = requests.current.begin();
           if (token) {
             streamText.current.delete(running.id);
+            setActiveTurn({ id: running.id, stopping: running.stopRequested === true });
             setBusy(true);
             void observeAssistantTurn<Turn>(running.id, controller.signal, (event) => {
               if (requestIsActive(token)) showRunEvent(event);
@@ -382,7 +412,10 @@ export function LiveAssistant(props: LiveAssistantProps) {
                   setError(errorMessage(error));
               })
               .finally(() => {
-                if (requests.current.finish(token) && alive.current) setBusy(false);
+                if (requests.current.finish(token) && alive.current) {
+                  setBusy(false);
+                  setActiveTurn(null);
+                }
               });
           }
         }
@@ -440,6 +473,12 @@ export function LiveAssistant(props: LiveAssistantProps) {
     const epoch = voiceEpoch.current,
       voiceClient = client.current,
       baseline = assistantEditorKey(editorState(current.current));
+    if (voiceCanvas.current.accepted === baseline && !voiceCanvas.current.pending) return;
+    if (voiceCanvas.current.accepted || voiceCanvas.current.pending) {
+      voiceCanvas.current = { accepted: '' };
+      voiceClient?.send({ type: 'context.invalidate' });
+    }
+    setContextStatus('画布已变化，等待同步');
     let cancelled = false;
     const active = () =>
       !cancelled &&
@@ -452,7 +491,9 @@ export function LiveAssistant(props: LiveAssistantProps) {
       void getContext()
         .then((context) => {
           if (context && active()) {
-            voiceClient?.updateContext(context);
+            const tag = secureUuid();
+            voiceCanvas.current.pending = { key: baseline, tag };
+            voiceClient?.updateContext(context, tag);
             setContextStatus(shareImage ? '正在更新画面…' : '正在更新参数…');
           }
         })
@@ -477,7 +518,15 @@ export function LiveAssistant(props: LiveAssistantProps) {
   const scope = {
     spaceIds,
     referenceAssetIds: referenceIds,
-    allowWebSearch,
+    allowWebSearch: allowWebSearch && Boolean(selected?.webSearch),
+    ...(allowWebSearch && selected?.webSearch && publicQuery.trim()
+      ? {
+          publicSearch: {
+            query: publicQuery.trim(),
+            kind: publicImages && selected.webImageSearch ? 'images' : 'text',
+          },
+        }
+      : {}),
     usePersonalMemory: memory,
     creativeBrief: creative.brief,
     ...(grant ? { executionGrantId: grant.id } : {}),
@@ -569,7 +618,17 @@ export function LiveAssistant(props: LiveAssistantProps) {
         setError('通话已停止，供应商最终状态待核验；系统不会自动重拨或重复扣额。');
     }
     if (event.type === 'error') setError(event.message);
-    if (event.type === 'context') setContextStatus(event.imageShared ? '画面已更新' : '参数已更新');
+    if (event.type === 'context') {
+      const pending = voiceCanvas.current.pending;
+      if (
+        pending &&
+        pending.tag === event.contextTag &&
+        pending.key === assistantEditorKey(editorState(current.current))
+      ) {
+        voiceCanvas.current = { accepted: pending.key };
+        setContextStatus(event.imageShared ? '画面已更新' : '参数已更新');
+      }
+    }
     if (event.type === 'tool')
       setToolStatus(
         event.state === 'running'
@@ -589,6 +648,7 @@ export function LiveAssistant(props: LiveAssistantProps) {
         );
       });
     if (event.type === 'assistant-result') {
+      if (voiceCanvas.current.accepted !== assistantEditorKey(editorState(current.current))) return;
       setMemorySuggestions({ items: event.memorySuggestions ?? [] });
       setWorkspace(
         event.workspace
@@ -603,6 +663,7 @@ export function LiveAssistant(props: LiveAssistantProps) {
             role: 'assistant' as const,
             text: event.text,
             citations: event.citations,
+            search: event.search,
           },
         ].slice(-40),
       );
@@ -633,6 +694,7 @@ export function LiveAssistant(props: LiveAssistantProps) {
       },
     );
     client.current = voiceClient;
+    const baseline = assistantEditorKey(editorState(current.current));
     try {
       await voiceClient.prepareMicrophone();
       if (!requestIsActive(token) || epoch !== voiceEpoch.current) {
@@ -649,6 +711,8 @@ export function LiveAssistant(props: LiveAssistantProps) {
         voiceClient.dispose();
         return;
       }
+      if (assistantEditorKey(editorState(current.current)) !== baseline)
+        throw new Error('准备期间画布已变化，请确认当前画面后重新通话。');
       const session = await api<{ id: string; ticket: string; websocketPath: string }>(
         `/projects/${project.id}/voice-sessions`,
         jsonRequest('POST', {
@@ -664,6 +728,7 @@ export function LiveAssistant(props: LiveAssistantProps) {
         voiceClient.dispose();
         return;
       }
+      voiceCanvas.current = { accepted: baseline };
       voiceClient.connect(session.websocketPath, session.ticket);
     } catch (err) {
       voiceClient.dispose();
@@ -692,13 +757,38 @@ export function LiveAssistant(props: LiveAssistantProps) {
       setMessages((old) =>
         [
           ...old.filter((item) => item.id !== event.runId),
-          { id: event.runId, role: 'assistant' as const, text },
+          {
+            ...old.find((item) => item.id === event.runId),
+            id: event.runId,
+            role: 'assistant' as const,
+            text,
+          },
         ].slice(-60),
       );
+    } else if (event.type === 'search.results') {
+      const parsed = assistantSearchEvidenceSchema.safeParse(event.payload);
+      if (!parsed.success) return;
+      const evidence = parsed.data;
+      setMessages((old) => {
+        const message = old.find((item) => item.id === event.runId);
+        return [
+          ...old.filter((item) => item.id !== event.runId),
+          {
+            id: event.runId,
+            role: 'assistant' as const,
+            text: message?.text ?? '',
+            search: [...(message?.search ?? []), evidence].slice(-16),
+          },
+        ].slice(-60);
+      });
+    } else if (event.type === 'run.stopping') {
+      setActiveTurn({ id: event.runId, stopping: true });
+      setToolStatus('已收到停止请求，正在核对已发送的请求');
     } else if (event.type.startsWith('tool.')) {
       const names: Record<string, string> = {
         describe_editor: '读取编辑参数',
         search_resources: '检索素材',
+        public_search: '检索公开来源',
         propose_sequence: '组合编辑步骤',
         propose_retouch: '准备局部质感候选',
         propose_healing: '准备局部修复候选',
@@ -717,9 +807,14 @@ export function LiveAssistant(props: LiveAssistantProps) {
   }
   async function submit() {
     if (requests.current.busy || !isLoggedIn || !project || !prompt.trim() || !modelId) return;
+    if (allowWebSearch && selected?.webSearch && !publicQuery.trim() && !inCall) {
+      setError('请填写可发送给公开搜索的查询词，或取消公开检索。');
+      return;
+    }
     const text = prompt.trim();
     const userMessageId = secureUuid();
     setError('');
+    setToolStatus('');
     setPrompt('');
     setMessages((old) => [...old, { id: userMessageId, role: 'user' as const, text }].slice(-40));
     if (callState === 'active') {
@@ -731,6 +826,7 @@ export function LiveAssistant(props: LiveAssistantProps) {
     setBusy(true);
     const controller = new AbortController();
     turnAbort.current = controller;
+    const baseline = assistantEditorKey(editorState(current.current));
     let writePrepared = false;
     try {
       const context = await getContext();
@@ -741,6 +837,9 @@ export function LiveAssistant(props: LiveAssistantProps) {
         await props.onBeforeArtworkWrite?.();
         writePrepared = true;
       }
+      if (!requestIsActive(token) || controller.signal.aborted) return;
+      if (assistantEditorKey(editorState(current.current)) !== baseline)
+        throw new Error('准备期间画布已变化，请确认当前画面后重新发送。');
       let result = await api<Turn>(`/projects/${project.id}/assistant-turns`, {
         ...jsonRequest('POST', {
           idempotencyKey: secureUuid(),
@@ -758,11 +857,14 @@ export function LiveAssistant(props: LiveAssistantProps) {
             message.id === userMessageId ? { ...message, id: `${result.id}-u` } : message,
           ),
         );
-      if (result.state === 'running')
+      if (result.state === 'running' && requestIsActive(token)) {
+        setActiveTurn({ id: result.id, stopping: result.stopRequested === true });
         result = await observeAssistantTurn<Turn>(result.id, controller.signal, (event) => {
           if (requestIsActive(token)) showRunEvent(event);
         });
+      }
       if (controller.signal.aborted || !requestIsActive(token)) return;
+      setActiveTurn(null);
       if (result.state === 'completed' && result.output) {
         setMemorySuggestions({
           items: result.output.memorySuggestions ?? [],
@@ -788,6 +890,7 @@ export function LiveAssistant(props: LiveAssistantProps) {
               role: 'assistant' as const,
               text: result.output!.text,
               citations: result.output!.citations,
+              search: result.output!.search,
             },
           ].slice(-40),
         );
@@ -808,17 +911,20 @@ export function LiveAssistant(props: LiveAssistantProps) {
                 ? '本轮尚未完成对候选画面的检查，已保留方案，请预览确认。'
                 : code === 'NATIVE_PIXEL_CHECK_REQUIRED'
                   ? '局部方案尚未通过原尺寸检查，已保留候选。可共享画面后重新检查，或先在画布预览。'
-                  : code === 'AUTOMATIC_UNSAVED_BASE'
-                    ? '本轮基于未保存参数，已保留候选，请先预览确认。'
-                    : `自动修改已停止，候选已保留，请检查版本、占用或授权后继续。${code ?? ''}`,
+                  : code === 'MODEL_TURN_INCOMPLETE'
+                    ? '模型未完成本轮核对，候选保留供查看。'
+                    : code === 'AUTOMATIC_UNSAVED_BASE'
+                      ? '本轮基于未保存参数，已保留候选，请先预览确认。'
+                      : `自动修改已停止，候选已保留，请检查版本、占用或授权后继续。${code ?? ''}`,
           );
         }
-      } else
-        setError(
-          result.state === 'unknown'
-            ? '本轮结果待核验，不会自动重试；可以在用量记录中查看。'
-            : `本轮未完成：${result.errorCode ?? result.state}`,
-        );
+      } else {
+        streamText.current.delete(result.id);
+        setMessages((old) => old.filter((item) => item.id !== result.id));
+        setConversationId(result.conversationId);
+        setHistoryEpoch((old) => old + 1);
+        setError(turnStatus(result));
+      }
     } catch (err) {
       if (!controller.signal.aborted && requestIsActive(token)) setError(errorMessage(err));
     } finally {
@@ -829,7 +935,10 @@ export function LiveAssistant(props: LiveAssistantProps) {
           if (alive.current) setError(errorMessage(err));
         }
       }
-      if (requests.current.finish(token) && alive.current) setBusy(false);
+      if (requests.current.finish(token) && alive.current) {
+        setBusy(false);
+        setActiveTurn(null);
+      }
       if (turnAbort.current === controller) turnAbort.current = null;
       void refreshGrant();
     }
@@ -938,6 +1047,7 @@ export function LiveAssistant(props: LiveAssistantProps) {
     const candidate = candidates.find(
       (item) =>
         item.kind === 'edit' &&
+        item.autoEligible !== false &&
         item.executionManagedBy !== 'server' &&
         item.executionGrantId === grant.id &&
         item.decision === 'pending' &&
@@ -952,6 +1062,35 @@ export function LiveAssistant(props: LiveAssistantProps) {
     searchAbort.current?.controller.abort();
     searchAbort.current = null;
     setResources([]);
+    setSearchStatus('');
+  }
+  function toggleReference(id: string) {
+    setReferenceIds((old) =>
+      old.includes(id) ? old.filter((value) => value !== id) : old.length < 8 ? [...old, id] : old,
+    );
+  }
+  async function stopActiveTurn() {
+    if (!activeTurn || activeTurn.stopping) return;
+    const id = activeTurn.id;
+    const scope = requestScope;
+    setActiveTurn({ id, stopping: true });
+    try {
+      const result = await api<{ state: string; stopRequested: boolean }>(
+        `/assistant-turns/${id}/stop`,
+        jsonRequest('POST', {}),
+      );
+      if (
+        alive.current &&
+        assistantScopeKey(editorState(current.current)) === scope &&
+        result.stopRequested
+      )
+        setToolStatus('已停止后续动作，正在核对本轮状态');
+    } catch (error) {
+      if (alive.current && assistantScopeKey(editorState(current.current)) === scope) {
+        setError(errorMessage(error));
+        setActiveTurn((value) => (value?.id === id ? { id, stopping: false } : value));
+      }
+    }
   }
   async function search() {
     if (!isLoggedIn || !project || inCall || !spaceIds.length) return;
@@ -959,35 +1098,24 @@ export function LiveAssistant(props: LiveAssistantProps) {
     const token = searches.current.beginLatest(),
       controller = new AbortController();
     searchAbort.current = { token, controller };
-    setError('');
+    setSearchStatus('正在检索授权空间…');
     try {
-      const all = await Promise.all(
-        spaceIds.map((spaceId) =>
-          api<{
-            resources: {
-              asset: { id: string; name: string; thumbnailUrl: string };
-              space: { name: string };
-            }[];
-          }>(`/resources?spaceId=${spaceId}&query=${encodeURIComponent(resourceQuery)}&limit=12`, {
-            signal: controller.signal,
-          }),
-        ),
+      const result = await api<{ resources: AssistantCloudResource[] }>(
+        `/projects/${project.id}/assistant-resources/search`,
+        {
+          ...jsonRequest('POST', { spaceIds, query: resourceQuery.trim(), limit: 20 }),
+          signal: controller.signal,
+        },
       );
       if (!searchIsActive(token) || controller.signal.aborted) return;
-      setResources(
-        all
-          .flatMap((page) =>
-            page.resources.map((item) => ({
-              id: item.asset.id,
-              name: item.asset.name,
-              thumbnail: item.asset.thumbnailUrl,
-              space: item.space.name,
-            })),
-          )
-          .slice(0, 36),
+      setResources(result.resources);
+      setSearchStatus(
+        result.resources.length
+          ? `显示 ${result.resources.length} 张图片`
+          : '当前范围内没有匹配图片',
       );
     } catch (err) {
-      if (searchIsActive(token) && !controller.signal.aborted) setError(errorMessage(err));
+      if (searchIsActive(token) && !controller.signal.aborted) setSearchStatus(errorMessage(err));
     } finally {
       searches.current.finish(token);
       if (searchAbort.current?.controller === controller) searchAbort.current = null;
@@ -1146,6 +1274,33 @@ export function LiveAssistant(props: LiveAssistantProps) {
             />
             允许公开网络检索，保留来源链接
           </label>
+          {allowWebSearch && selected?.webSearch && (
+            <div className="assistant-public-query">
+              <label>
+                可公开的查询词
+                <input
+                  aria-label="公开检索查询词"
+                  value={publicQuery}
+                  maxLength={240}
+                  disabled={inCall || busy}
+                  onChange={(event) => setPublicQuery(event.target.value)}
+                  placeholder="例如：复古产品静物布光参考"
+                />
+              </label>
+              {selected.webImageSearch && (
+                <label>
+                  <input
+                    type="checkbox"
+                    checked={publicImages}
+                    disabled={inCall || busy}
+                    onChange={(event) => setPublicImages(event.target.checked)}
+                  />
+                  同时查找公开图片
+                </label>
+              )}
+              <small>公开检索使用这里填写的查询词。共享画面和项目资料在编辑协作步骤中处理。</small>
+            </div>
+          )}
           <label>
             <input
               type="checkbox"
@@ -1181,6 +1336,7 @@ export function LiveAssistant(props: LiveAssistantProps) {
             <input
               aria-label="搜索授权素材"
               value={resourceQuery}
+              maxLength={200}
               onChange={(event) => {
                 cancelSearch();
                 setResourceQuery(event.target.value);
@@ -1192,29 +1348,14 @@ export function LiveAssistant(props: LiveAssistantProps) {
               <MagnifyingGlass size={17} />
             </button>
           </div>
+          {searchStatus && <p role="status">{searchStatus}</p>}
           {!!resources.length && (
-            <div className="assistant-resource-results">
-              {resources.map((item) => (
-                <button
-                  key={item.id}
-                  disabled={inCall || (!referenceIds.includes(item.id) && referenceIds.length >= 8)}
-                  aria-pressed={referenceIds.includes(item.id)}
-                  onClick={() =>
-                    setReferenceIds((old) =>
-                      old.includes(item.id)
-                        ? old.filter((id) => id !== item.id)
-                        : [...old, item.id],
-                    )
-                  }
-                >
-                  <img src={item.thumbnail} alt="" />
-                  <span>
-                    {item.name}
-                    <small>{item.space}</small>
-                  </span>
-                </button>
-              ))}
-            </div>
+            <CloudImageResults
+              resources={resources}
+              selected={referenceIds}
+              disabled={inCall || busy}
+              onSelect={toggleReference}
+            />
           )}
           <p>
             检索只返回名称与标注；只有选中的 {referenceIds.length}{' '}
@@ -1301,21 +1442,30 @@ export function LiveAssistant(props: LiveAssistantProps) {
         {messages.map((message) => (
           <article key={message.id} className={`assistant-message ${message.role}`}>
             <small>{message.role === 'user' ? '你' : '创作助手'}</small>
-            <p>{message.text}</p>
-            {!!message.citations?.length && (
-              <div className="assistant-citations">
-                {message.citations.map((citation) => (
-                  <a
-                    key={citation.url}
-                    href={/^https?:\/\//.test(citation.url) ? citation.url : undefined}
-                    target="_blank"
-                    rel="noreferrer noopener"
-                  >
-                    {citation.title}
-                  </a>
-                ))}
-              </div>
+            {message.text && <p>{message.text}</p>}
+            {!!message.search?.length && (
+              <SearchEvidence
+                evidence={message.search}
+                selected={referenceIds}
+                disabled={inCall || busy}
+                onSelect={toggleReference}
+              />
             )}
+            {!message.search?.some((item) => item.kind === 'web') &&
+              !!message.citations?.length && (
+                <div className="assistant-citations">
+                  {message.citations.map((citation) => (
+                    <a
+                      key={citation.url}
+                      href={/^https?:\/\//.test(citation.url) ? citation.url : undefined}
+                      target="_blank"
+                      rel="noreferrer noopener"
+                    >
+                      {citation.title}
+                    </a>
+                  ))}
+                </div>
+              )}
           </article>
         ))}
       </div>
@@ -1386,8 +1536,18 @@ export function LiveAssistant(props: LiveAssistantProps) {
         </div>
       )}
       <p className="assistant-tool-status" aria-live="polite">
-        {busy ? '正在读取上下文并协作…' : toolStatus}
+        {toolStatus || (busy ? '正在读取上下文并协作…' : '')}
       </p>
+      {activeTurn && (
+        <button
+          type="button"
+          className="button button-secondary"
+          disabled={activeTurn.stopping}
+          onClick={() => void stopActiveTurn()}
+        >
+          {activeTurn.stopping ? '正在核对停止结果' : '停止本轮执行'}
+        </button>
+      )}
       {error && (
         <p className="assistant-error" role="alert">
           {error}

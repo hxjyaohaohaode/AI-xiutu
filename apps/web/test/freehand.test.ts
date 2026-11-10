@@ -1,7 +1,11 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { createRecipeV4, renderEditorRecipe, renderEditorRecipeTiled } from '@ai-xiutu/editor';
-import { appendFreehandPoints, pointerPathSamples } from '../src/editor/freehand.js';
+import {
+  appendFreehandPoints,
+  pointerPathSamples,
+  startFreehandPath,
+} from '../src/editor/freehand.js';
 
 const sample = (x: number, y: number, pointerId = 7) => ({ clientX: x, clientY: y, pointerId });
 const dimensions = { width: 64, height: 64 };
@@ -70,6 +74,34 @@ test('lifting retains a short terminal segment without duplicated alpha or overs
   assert.equal(bounded.limitReached, true);
   assert.deepEqual(bounded.points.at(-1), project(sample(30, 8)));
   assert.equal(previous.length, 1);
+});
+
+test('zero-pressure contact and the last observed pressure survive thinning and lifting', () => {
+  const first = { ...sample(12, 12), pressure: 0 };
+  const path = startFreehandPath(first, true);
+  const almost = appendFreehandPoints(
+    [project(first)],
+    [{ ...sample(12.3, 12.1), pressure: 0.004 }],
+    project,
+    dimensions,
+    1,
+    10,
+    false,
+    path,
+  );
+  assert.equal(almost.changed, false);
+  assert.deepEqual(path.pressures, [0]);
+  const lift = appendFreehandPoints(
+    almost.points,
+    [{ ...sample(12.4, 12.2), pressure: 0 }],
+    project,
+    dimensions,
+    1,
+    10,
+    true,
+    almost.path,
+  );
+  assert.deepEqual(lift.path?.pressures, [0, 0.004]);
 });
 
 test('native curve samples paint the bend instead of an invented chord, identically in export tiles', () => {

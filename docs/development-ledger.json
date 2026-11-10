@@ -5,7 +5,7 @@
   "constraints": [
     "不产生付费模型调用费用",
     "保留现有前端整体视觉与布局，优先算法和功能联动",
-    "最终交付可运行的 main",
+    "最终交付可运行的 main，GitHub 只保留 main 分支",
     "服务端掌握权限、版本、用量与费用",
     "真实模型和真实出片质量必须单独验收",
     "不以测试数量替代图像效果检查"
@@ -27,7 +27,7 @@
       "id": "ai-autonomy",
       "requirement": "理解意图→计划→执行→观察→迭代，暂停/恢复与未知结果核验",
       "status": "in_progress",
-      "evidence": "四轮有界工具链；共享画面后渲染候选，下一轮看图选择；服务端执行检查 CAS、租约、基线、预算。接通局部质感/修复与回调已有手动操作，保护区继承；新局部自动保存要求原尺寸检查。模型JPEG仍512px、最多三次观察，不是无限迭代或真实模型审美验收。"
+      "evidence": "最多四次 Responses 请求，工具声明与执行按实际能力过滤。共享画面后渲染候选，下一轮看图选择。服务端检查 CAS、租约、保存基线、会话、预算、模型设置及停止状态。新局部自动保存要求原尺寸检查，给模型的观察 JPEG 仍为512px代理。"
     },
     {
       "id": "creative-intent",
@@ -45,25 +45,25 @@
       "id": "realtime",
       "requirement": "GPT-Live/Realtime 实时双向通话、看图、工具、打断",
       "status": "baseline_protocol_verified",
-      "evidence": "本地真实 WebSocket 夹具通过；修正更新作品后的候选错用通话开场素材ID，按不可变基础版本绑定并验证幂等。语音自动应用仍由活动浏览器协调；非真实供应商语音质量验收。"
+      "evidence": "本机真实 WebSocket 协议通过。候选绑定其不可变作品版本和通话上下文代数，画面变化后复核迟到回执并阻止旧候选应用。语音自动应用由活动浏览器协调，真实供应商语音质量待验收。"
     },
     {
       "id": "context-budget",
       "requirement": "按 token、工具、视觉与输出预算组织上下文",
       "status": "local_verified",
-      "evidence": "o200k文本估算、视觉/输出/工具预算；保留用户原话，归档助手说明并支持原文回查；长链与撤权明确停止，不静默删约束。"
+      "evidence": "o200k文本估算并预留视觉、工具和输出预算。用户原话逐字保留，旧助手说明可归档，候选决策和版本线索保留，原文按权限回查。"
     },
     {
       "id": "semantic-summary",
       "requirement": "有来源的语义摘要、压缩质量评估、长期任务约束整理",
       "status": "pending",
-      "evidence": "当前采用可追溯归档，不将其描述为高质量模型摘要。"
+      "evidence": "当前提供确定性归档、原文引用和候选决策摘要。模型语义摘要及跨长会话的保真评测待完成。"
     },
     {
       "id": "memory-governance",
       "requirement": "个人/团队/项目/作品记忆、来源、版本、更正、删除、有效期",
       "status": "local_verified",
-      "evidence": "个人/团队/项目/作品记忆 CRUD、CAS、来源、有效期、删除、过期管理、分页历史和当前权限复核；浏览器真实操作通过。"
+      "evidence": "个人、团队、项目、作品记忆支持 CAS、更正、有效期和分页历史。约束与更正逐字保留，偏好和素材标注按词面相关性选择，运行及发布前复核所用版本。"
     },
     {
       "id": "memory-learning",
@@ -75,7 +75,13 @@
       "id": "streaming",
       "requirement": "文本增量、真实工具进度、断线恢复、不重复调用/扣费",
       "status": "local_verified",
-      "evidence": "经审核的 Responses SSE、持久事件、断线只读恢复、会话切换；真实HTTP/数据库/浏览器，外部模型为注入夹具。"
+      "evidence": "累积审核与终包校验、持久事件、断线回放、停止后刷新、撤权下的批次读取。覆盖未派发释放、有效回执结算、结果不明待核验。外部模型使用协议夹具。"
+    },
+    {
+      "id": "image-search",
+      "requirement": "实时检索授权云端图和公开图，支持查看、引用及回应",
+      "status": "local_verified",
+      "evidence": "授权云端关键词查图、私有缩略图、显式参考选择、SSE结果卡和来源回复。公开图查询单独明示，独立派发只传查询词，禁止不安全链接。真实公开搜索账户待验收。"
     },
     {
       "id": "generative-ui",
@@ -123,7 +129,7 @@
       "id": "painting",
       "requirement": "像素绘画、橡皮、克隆、图层与混合",
       "status": "local_verified_subset",
-      "evidence": "接收真实coalesced中间轨迹、保留短抬笔末端、不可变批量预览；五种视口绘制/擦除/撤销/取消与600×400导出每字节对照通过。实际压感、倾斜与全部跨画幅轨迹行为仍未完成。"
+      "evidence": "合并中间样本、保留抬笔和压力，支持连续变半径扫掠、断笔和4×4亚像素覆盖。五种视口使用浏览器 pen 事件验证，600×400导出逐字节对照。实际数位笔和倾斜仍待验收。"
     },
     {
       "id": "healing",
@@ -135,7 +141,7 @@
       "id": "portrait",
       "requirement": "美肤、祛瑕、细纹、发丝、遮挡、身形与独立部位控制",
       "status": "in_progress",
-      "evidence": "新增 guided-v1、flow-v1；修复真实浏览器分割/姿态重复初始化；三张公开照片431个参数/修复采样，逐像素整图/分块比较。神经单纹修复、3D遮挡、发丝重建与全类型审美验收仍未完成。"
+      "evidence": "guided-v2 将选区外、保护区和透明像素排除在统计之外，分开中尺度平滑与细节。三张公开照片419个有效采样通过整图和分块逐像素对照。神经单纹修复、3D遮挡、发丝重建和全类型审美验收待完成。"
     },
     {
       "id": "benchmarks",
@@ -189,7 +195,7 @@
       "id": "testing",
       "requirement": "全仓、多轮、真实图像、极值、状态、端间和并发检测",
       "status": "local_verified_snapshot",
-      "evidence": "Linux 645项通过、0失败、0跳过，全工作区类型检查与构建通过；工作台21项、助手14项浏览器用例通过；真实照片431项另加80个数值控制/组合的2630次对照。助手API42项含原尺寸处理与语音切换；新增可重复的Node逐文件覆盖审计，未加载文件独立列出；CI验证最终提交。"
+      "evidence": "本轮 Linux 原生 PostgreSQL 656项通过、0失败、0跳过，类型检查与构建通过。工作台21项和助手16项浏览器用例通过，实际照片419个有效采样通过。历史80个数值控制和组合的2630次对照另存。Node逐文件审计独立列出未执行源码。GitHub CI 以最终提交的运行记录为准。"
     },
     {
       "id": "deployment",
@@ -199,11 +205,11 @@
     }
   ],
   "evidence": {
-    "localCheck": "artifacts/inspection/freehand-final-linux-check.log",
-    "productionBuild": "artifacts/inspection/freehand-final-production-build.log",
-    "browserWorkspace": "artifacts/browser-freehand-regression/report.json",
+    "localCheck": "artifacts/inspection/depth-final-native.log",
+    "productionBuild": "artifacts/inspection/depth-final-production.log",
+    "browserWorkspace": "artifacts/depth-final/workspace/report.json",
     "nativeCoverage": "artifacts/coverage/native/summary.json",
-    "browserAssistant": "artifacts/browser-assistant/report.json",
+    "browserAssistant": "artifacts/depth-final/assistant/report.json",
     "realPhotographs": "artifacts/spatial-quality/report.json",
     "allControlPhotographs": "artifacts/editor-v4-sweep/evidence.json",
     "paidProviderCalls": 0,

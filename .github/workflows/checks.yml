@@ -1,7 +1,7 @@
 name: Baseline checks
 on:
   push:
-    branches: [main, work/v4-foundation]
+    branches: [main]
   pull_request:
     branches: [main]
   workflow_dispatch:

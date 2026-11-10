@@ -368,7 +368,7 @@ export function applyRetouchV4(
       throw new RangeError(
         'Retouch combined target budget exceeded; split this edit into versions',
       );
-    if (op.algorithm === 'guided-v1') {
+    if (op.algorithm === 'guided-v1' || op.algorithm === 'guided-v2') {
       current = guidedRetouch(current, roi, op, options);
       continue;
     }

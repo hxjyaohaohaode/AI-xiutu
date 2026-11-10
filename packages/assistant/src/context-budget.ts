@@ -10,11 +10,17 @@ export interface HistoryMessage {
   role: 'user' | 'assistant';
   content: string;
   sourceTurnId?: string;
+  candidateTrace?: string;
 }
 export interface ContextBudget {
   contextWindowTokens: number;
   maxOutputTokens: number;
   visualTokenReserve: number;
+}
+export function historyContent(item: HistoryMessage) {
+  return item.candidateTrace
+    ? `${item.content}\nCandidate decisions at admission: ${item.candidateTrace}`
+    : item.content;
 }
 export class ContextBudgetError extends Error {
   constructor(public readonly code: string) {
@@ -43,7 +49,7 @@ export function planHistory(
   const available = budget.contextWindowTokens - reserved - mandatoryTokens;
   if (available < 0) throw new ContextBudgetError('CONTEXT_INPUT_BUDGET');
   const messages = history.map((item) => ({ ...item }));
-  const size = (item: HistoryMessage) => textTokens(item.content) + 12;
+  const size = (item: HistoryMessage) => textTokens(historyContent(item)) + 12;
   const originalTokens = messages.reduce((sum, item) => sum + size(item), 0);
   let tokens = originalTokens;
   const compacted: string[] = [];
@@ -54,7 +60,7 @@ export function planHistory(
     // The archive pointer replaces the whole assistant message. It is not a
     // generated summary and never pretends a missing visual result was observed.
     const replacement = `[Earlier assistant response archived${item.sourceTurnId ? `; read_history sourceTurnId=${item.sourceTurnId}` : ''}. Original user instructions immediately above remain authoritative.]`;
-    if (textTokens(replacement) + 12 >= before) continue;
+    if (size({ ...item, content: replacement }) >= before) continue;
     item.content = replacement;
     tokens += size(item) - before;
     if (item.sourceTurnId) compacted.push(item.sourceTurnId);
@@ -63,7 +69,7 @@ export function planHistory(
   return {
     messages,
     manifest: {
-      strategy: 'verbatim-user/archive-assistant-v1',
+      strategy: 'verbatim-user/candidate-trace/archive-assistant-v2',
       tokenizer: 'o200k_base',
       originalTokens,
       retainedTokens: tokens,
@@ -71,6 +77,9 @@ export function planHistory(
       reservedTokens: reserved,
       contextWindowTokens: budget.contextWindowTokens,
       compactedSourceIds: compacted,
+      candidateTraceSourceIds: history.flatMap((item) =>
+        item.sourceTurnId && item.candidateTrace ? [item.sourceTurnId] : [],
+      ),
       sourceTurnIds: [
         ...new Set(history.flatMap((item) => (item.sourceTurnId ? [item.sourceTurnId] : []))),
       ],

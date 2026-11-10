@@ -7,7 +7,7 @@ export async function streamResponse(
   key: string,
   body: Record<string, unknown>,
   fetcher: typeof fetch,
-  onText: (text: string) => Promise<void>,
+  onText: (delta: string, prefix: string) => Promise<void>,
 ): Promise<{ data: Record<string, any>; requestId: string }> {
   const signal = AbortSignal.timeout(60_000);
   let requestId = '';
@@ -38,13 +38,15 @@ export async function streamResponse(
     const decoder = new TextDecoder('utf-8', { fatal: true });
     let total = 0,
       buffer = '',
-      pendingText = '';
+      text = '',
+      delivered = 0,
+      deliveries = 0;
     let terminal: Record<string, any> | undefined;
     const flush = async () => {
-      if (pendingText) {
-        const text = pendingText;
-        pendingText = '';
-        await onText(text);
+      if (text.length > delivered) {
+        await onText(text.slice(delivered), text);
+        delivered = text.length;
+        deliveries++;
       }
     };
     while (true) {
@@ -68,12 +70,18 @@ export async function streamResponse(
         const event = JSON.parse(data);
         if (event.type === 'response.output_text.delta' && typeof event.delta === 'string') {
           if (terminal) fail('ASSISTANT_STREAM_ORDER');
-          pendingText += event.delta;
-          if (pendingText.length >= 512 || /[。！？\n]$/.test(pendingText)) await flush();
+          text += event.delta;
+          if (text.length > 20_000) fail('ASSISTANT_STREAM_TEXT_BUDGET');
+          const pending = text.length - delivered;
+          if (deliveries < 16 && (pending >= 384 || /[。！？\n]$/.test(text))) await flush();
         } else if (['response.completed', 'response.incomplete'].includes(event.type)) {
           if (terminal || !event.response || typeof event.response !== 'object')
             fail('ASSISTANT_STREAM_ORDER');
           terminal = event.response;
+          if (
+            terminal!.status !== (event.type === 'response.completed' ? 'completed' : 'incomplete')
+          )
+            fail('ASSISTANT_STREAM_ORDER');
         } else if (['error', 'response.failed'].includes(event.type))
           fail('ASSISTANT_STREAM_FAILED');
       }
@@ -94,6 +102,24 @@ export async function streamResponse(
       return { data, requestId };
     }
     if (!response.ok || !terminal || buffer.trim()) fail('ASSISTANT_STREAM_INTERRUPTED');
+    if (
+      text &&
+      (!Array.isArray(terminal!.output) ||
+        terminal!.output
+          .filter(
+            (item: any) =>
+              item?.type === 'message' &&
+              (item.role === undefined || item.role === 'assistant') &&
+              Array.isArray(item.content),
+          )
+          .flatMap((item: any) =>
+            item.content
+              .filter((part: any) => part?.type === 'output_text')
+              .map((part: any) => part.text),
+          )
+          .join('') !== text)
+    )
+      fail('ASSISTANT_STREAM_TEXT_MISMATCH');
     await flush();
     return { data: terminal!, requestId };
   } catch (error) {

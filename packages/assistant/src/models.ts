@@ -94,6 +94,7 @@ export const assistantModelConfigSchema = z
     visualTokenReserve: z.number().int().min(1024).max(32768).default(4096),
     imageInput: z.boolean().default(false),
     webSearch: z.boolean().default(false),
+    webImageSearch: z.boolean().optional(),
     reasoningEffort: z.enum(['none', 'low', 'medium', 'high']).optional(),
   })
   .strict();

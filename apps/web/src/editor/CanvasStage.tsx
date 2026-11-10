@@ -39,7 +39,12 @@ import { Busy, IconButton, InlineError } from '../components/Ui';
 import { editorGeometryKey, type EditorState } from './useEditor';
 import { sourcePointer, projectOverlayPoint, projectOverlayPath } from './coordinates';
 import { CanvasPointerOwnership, ownedCanvasRollback } from './canvas-gesture';
-import { appendFreehandPoints, pointerPathSamples } from './freehand';
+import {
+  appendFreehandPoints,
+  pointerPathSamples,
+  startFreehandPath,
+  type FreehandPathState,
+} from './freehand';
 import { secureUuid } from '../lib/uuid';
 import type { ToolGroup } from './ToolInspector';
 import {
@@ -192,6 +197,7 @@ type EditGesture = {
   start: Point;
   identity: number;
   points?: Point[];
+  path?: FreehandPathState;
   stroke?: BrushStrokeV2;
 };
 const isTyping = (target: EventTarget | null) =>
@@ -673,6 +679,11 @@ export function CanvasStage({
         editor.setActivePaintLayerId(layer.id);
       }
       state.points = [point];
+      const pressure =
+        settings.pressureSensitive &&
+        event.pointerType === 'pen' &&
+        settings.radius * Math.min(dimensions.width, dimensions.height) > 0.5 + 1e-8;
+      state.path = startFreehandPath(event.nativeEvent, pressure);
       state.paintLayerId = layer.id;
       state.paint = {
         mode: settings.mode,
@@ -682,6 +693,16 @@ export function CanvasStage({
         color: settings.color,
         source: settings.mode === 'clone' ? settings.source : null,
         points: state.points,
+        ...(pressure
+          ? {
+              sampling: {
+                algorithm: 'swept-v1',
+                pressure: state.path.pressures,
+                breaks: [],
+                antialias: true,
+              },
+            }
+          : {}),
       };
       // Keep the original recipe for rollback; retain a new empty layer in the stroke's base.
       state.rollback = recipe;
@@ -733,6 +754,7 @@ export function CanvasStage({
         return;
       }
       state.points = [point];
+      state.path = startFreehandPath(event.nativeEvent, false);
       state.stroke = { ...editor.brushSettings, points: state.points };
       previewEdit(
         state,
@@ -804,7 +826,17 @@ export function CanvasStage({
         ),
         limit,
         terminal,
+        state.path,
       );
+      if (
+        !painting &&
+        originalMask?.type === 'brush' &&
+        originalMask.strokes.length + (sampled.path?.breaks.length ?? 0) + 1 > MAX_BRUSH_STROKES
+      ) {
+        setNotice('已达蒙版笔划上限；已画部分保留。');
+        return;
+      }
+      state.path = sampled.path;
       if (sampled.limitReached) setNotice('本笔已达采样预算，请松开后继续下一笔；已画部分保留。');
       if (!sampled.changed) return;
       state.points = sampled.points;
@@ -819,7 +851,23 @@ export function CanvasStage({
             layer.id === state.paintLayerId
               ? {
                   ...layer,
-                  strokes: [...layer.strokes, { ...state.paint!, points: sampled.points }],
+                  strokes: [
+                    ...layer.strokes,
+                    {
+                      ...state.paint!,
+                      points: sampled.points,
+                      ...(state.path && (state.path.pressureSensitive || state.path.breaks.length)
+                        ? {
+                            sampling: {
+                              algorithm: 'swept-v1' as const,
+                              pressure: state.path.pressures,
+                              breaks: state.path.breaks,
+                              antialias: state.path.pressureSensitive,
+                            },
+                          }
+                        : {}),
+                    },
+                  ],
                 }
               : layer,
           ),
@@ -829,7 +877,13 @@ export function CanvasStage({
           state,
           replaceMask(state.base, {
             ...originalMask,
-            strokes: [...originalMask.strokes, { ...state.stroke, points: sampled.points }],
+            strokes: [
+              ...originalMask.strokes,
+              ...[0, ...(state.path?.breaks ?? [])].map((start, index) => ({
+                ...state.stroke!,
+                points: sampled.points.slice(start, state.path?.breaks[index]),
+              })),
+            ],
           }),
         );
       }

@@ -2,7 +2,7 @@ import type { FastifyInstance } from 'fastify';
 import type { Database, Queryable } from '@ai-xiutu/db';
 import { transaction } from '@ai-xiutu/db';
 import { z } from 'zod';
-import { assistantAccess, validateScope } from './context.js';
+import { assistantAccess, lockedAssistantAccess, validateScope } from './context.js';
 import { hash, HttpError, id, requireUser } from '../core.js';
 
 export async function appendRunEvent(
@@ -25,9 +25,12 @@ export async function publishRunEvent(
 ) {
   await transaction(db, async (tx) => {
     const row = (
-      await tx.query('SELECT state FROM assistant_turns WHERE id=$1 FOR UPDATE', [turnId])
+      await tx.query('SELECT state,stop_requested_at FROM assistant_turns WHERE id=$1 FOR UPDATE', [
+        turnId,
+      ])
     ).rows[0];
-    if (row?.state !== 'running') throw new HttpError(409, 'ASSISTANT_STATE_CHANGED', '任务已停止');
+    if (row?.state !== 'running' || row.stop_requested_at)
+      throw new HttpError(409, 'ASSISTANT_STATE_CHANGED', '任务已停止');
     await appendRunEvent(tx, turnId, type, payload);
   });
 }
@@ -101,18 +104,38 @@ export function registerAssistantEvents(app: FastifyInstance, db: Database) {
     const deadline = Date.now() + 25_000;
     try {
       while (!closed && Date.now() < deadline) {
-        const session = await db.query(
-          'SELECT 1 FROM sessions WHERE token_hash=$1 AND user_id=$2 AND expires_at>clock_timestamp()',
-          [authHash, actorId],
-        );
-        if (!session.rowCount) break;
-        const state = await access(actorId, turnId);
-        const events = (
-          await db.query(
-            'SELECT seq::text AS id,type,payload,created_at AS "createdAt" FROM assistant_run_events WHERE turn_id=$1 AND seq>$2 ORDER BY seq LIMIT 100',
-            [turnId, cursor],
-          )
-        ).rows;
+        const batch = await transaction(db, async (tx) => {
+          const initial = (
+            await tx.query(
+              "SELECT project_id,COALESCE(config->'historyScope',scope) AS scope FROM assistant_turns WHERE id=$1 AND actor_id=$2",
+              [turnId, actorId],
+            )
+          ).rows[0];
+          if (!initial) return null;
+          await lockedAssistantAccess(tx, actorId, initial.project_id, initial.scope);
+          const session = await tx.query(
+            'SELECT 1 FROM sessions WHERE token_hash=$1 AND user_id=$2 AND expires_at>clock_timestamp() FOR SHARE',
+            [authHash, actorId],
+          );
+          if (!session.rowCount) return null;
+          const state = (
+            await tx.query(
+              "SELECT state,error_code,COALESCE(config->'historyScope',scope)=$2::jsonb AS same_scope FROM assistant_turns WHERE id=$1 FOR SHARE",
+              [turnId, JSON.stringify(initial.scope)],
+            )
+          ).rows[0];
+          if (!state?.same_scope) return { retry: true as const };
+          const events = (
+            await tx.query(
+              'SELECT seq::text AS id,type,payload,created_at AS "createdAt" FROM assistant_run_events WHERE turn_id=$1 AND seq>$2 ORDER BY seq LIMIT 100',
+              [turnId, cursor],
+            )
+          ).rows;
+          return { retry: false as const, state, events };
+        });
+        if (!batch) break;
+        if (batch.retry) continue;
+        const { state, events } = batch;
         for (const event of events) {
           if (closed) break;
           const accepted = reply.raw.write(

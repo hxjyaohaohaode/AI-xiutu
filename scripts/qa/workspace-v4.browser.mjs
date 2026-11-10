@@ -999,6 +999,48 @@ try {
           'erasing the same hard stroke restores all source bytes',
         );
         await tool(page, '绘制');
+        await page.getByRole('button', { name: '画笔', exact: true }).click();
+        await precision(page, '直径', 8);
+        await closeTools();
+        const frameBox = await page.locator('.image-frame').boundingBox();
+        assert.ok(frameBox);
+        const cdp = await context.newCDPSession(page);
+        const pen = (type, x, y, force) =>
+          cdp.send('Input.dispatchMouseEvent', {
+            type,
+            x: frameBox.x + x * frameBox.width,
+            y: frameBox.y + y * frameBox.height,
+            pointerType: 'pen',
+            button: 'left',
+            buttons: type === 'mouseReleased' ? 0 : 1,
+            clickCount: 1,
+            force,
+          });
+        await pen('mousePressed', 0.23, 0.27, 0.14);
+        await pen('mouseMoved', 0.27, 0.28, 0.35);
+        await pen('mouseMoved', 0.52, -0.02, 0.55);
+        await pen('mouseMoved', 0.76, 0.71, 0.79);
+        await pen('mouseReleased', 0.8, 0.74, 0);
+        await cdp.detach();
+        await imageReady(page);
+        const pressureRecipe = await recipeDownload(page);
+        const pressure = pressureRecipe.paintLayers[0].strokes.at(-1).sampling;
+        assert.equal(pressure?.algorithm, 'swept-v1');
+        assert.equal(pressure.antialias, true);
+        assert.equal(pressure.breaks.length, 1);
+        assert.ok(pressure.pressure.at(-1) > pressure.pressure[0] + 0.5);
+        const pressurePng = await pixelEvidence(await imageDownload(page));
+        assert.equal(
+          pressurePng.evidence.rgbaSha256,
+          sha256(
+            renderEditorRecipeTiled(
+              { width, height, data: new Uint8ClampedArray(pixels) },
+              pressureRecipe,
+              { tileSize: 23 },
+            ).data,
+          ),
+        );
+        await tool(page, '绘制');
         await page.screenshot({
           path: join(artifacts, `freehand-${viewport.width}x${viewport.height}.png`),
         });
@@ -1010,6 +1052,7 @@ try {
           sourcePixels: width * height,
           exportMatchesReference: true,
           eraseRestoresSource: true,
+          penPressureAndGap: true,
           undoVerified: true,
           cancelVerified: true,
         };

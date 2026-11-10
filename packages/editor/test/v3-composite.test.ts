@@ -247,6 +247,57 @@ test('a half-pixel paint stroke controls exactly one RGBA pixel and leaves its n
     for (let x = 0; x < 3; x++)
       if (x !== 1 || y !== 1) assert.deepEqual(pixel(out, x, y), pixel(source, x, y));
 });
+test('swept stylus coverage is invariant to linear resampling, preserves gaps and agrees across tile boundaries', () => {
+  const source = solid(19, 31, 67, 255, 79, 61);
+  const x0 = 0.073,
+    y0 = 0.317,
+    x1 = 0.503,
+    y1 = 0.323;
+  const separate = [
+    { x: 0.781, y: 0.68 },
+    { x: 0.934, y: 0.72 },
+  ];
+  function recipe(segments: number) {
+    const points = Array.from({ length: segments + 1 }, (_, i) => ({
+      x: x0 + ((x1 - x0) * i) / segments,
+      y: y0 + ((y1 - y0) * i) / segments,
+    }));
+    return createRecipeV3({
+      paintLayers: [
+        layer([
+          stroke({
+            points: [...points, ...separate],
+            radius: 0.103,
+            feather: 0.23,
+            opacity: 0.72,
+            sampling: {
+              algorithm: 'swept-v1',
+              antialias: true,
+              breaks: [points.length],
+              pressure: [...points.map((_, i) => 0.09 + (0.82 * i) / segments), 0.6, 0.6],
+            },
+          }),
+        ]),
+      ],
+    });
+  }
+  const sparse = renderEditorRecipe(source, recipe(1));
+  assert.deepEqual(renderEditorRecipe(source, recipe(37)), sparse);
+  for (const tileSize of [16, 19, 64])
+    assert.deepEqual(renderEditorRecipeTiled(source, recipe(1), { tileSize }), sparse);
+  for (let y = 0; y < source.height; y++)
+    for (let x = 49; x < 55; x++)
+      assert.deepEqual(pixel(sparse, x, y), pixel(source, x, y), 'no bridge across the pen gap');
+  const count = (x: number) =>
+    Array.from({ length: source.height }, (_, y) => y).filter((y) => pixel(sparse, x, y)[0] !== 19)
+      .length;
+  assert.ok(count(36) >= count(9) + 4, 'pressure changes actual pixel width');
+  assert.ok(
+    sparse.data.some((channel, i) => i % 4 === 0 && channel > 19 && channel < 189),
+    'subpixel samples produce partial edge coverage',
+  );
+  assert.deepEqual(pixel(sparse, 64, 42)[3], 255);
+});
 test('paint opacity and isolated erasing do not erase the original image', () => {
   const source = solid(0, 0, 200, 255, 10, 10),
     r = createRecipeV3({

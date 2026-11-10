@@ -95,7 +95,7 @@ test('retouch candidates retain exact source masks/protection, edit actual pixel
   assert.equal(candidate.recipe.schemaVersion, 4);
   if (candidate.recipe.schemaVersion !== 4) throw new Error('v4');
   const operation = candidate.recipe.retouch[1]!;
-  assert.equal(operation.algorithm, 'guided-v1');
+  assert.equal(operation.algorithm, 'guided-v2');
   assert.deepEqual(operation.mask, mask);
   assert.deepEqual(operation.protection, protection);
   assert.deepEqual(candidate.recipe.retouch[0], original.retouch[0]);
@@ -302,9 +302,16 @@ test('spatial tools enter the existing candidate render, later visual selection 
     arguments: JSON.stringify(args),
   });
   const makeResponse = (output: unknown[]) =>
-    new Response(JSON.stringify({ status: 'completed', output }), {
-      headers: { 'content-type': 'application/json', 'x-request-id': 'local-spatial-fixture' },
-    });
+    new Response(
+      JSON.stringify({
+        status: 'completed',
+        output,
+        usage: { input_tokens: 20, output_tokens: 10 },
+      }),
+      {
+        headers: { 'content-type': 'application/json', 'x-request-id': 'local-spatial-fixture' },
+      },
+    );
   const settings = assistantModelConfigSchema.parse({
     enabled: true,
     provider: 'openai',

@@ -16,6 +16,7 @@ type Settings = {
   visualTokenReserve: number;
   imageInput: boolean;
   webSearch: boolean;
+  webImageSearch?: boolean;
   reasoningEffort?: 'none' | 'low' | 'medium' | 'high';
 };
 type Model = { id: string; config: Settings; hash: string };
@@ -328,6 +329,15 @@ export function AssistantOpsPanel() {
                   onChange={(e) => setSettings({ ...settings, webSearch: e.target.checked })}
                 />
                 允许用户选择公开网络检索（需模型支持）
+              </label>
+              <label className="check-label">
+                <input
+                  type="checkbox"
+                  checked={settings.webImageSearch === true}
+                  disabled={!settings.webSearch}
+                  onChange={(e) => setSettings({ ...settings, webImageSearch: e.target.checked })}
+                />
+                当前模型支持公开图片检索结果
               </label>
               <label>
                 推理参数

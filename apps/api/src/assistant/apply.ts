@@ -5,6 +5,21 @@ import { HttpError } from '../core.js';
 import { appendArtworkRevision } from '../revision-commands.js';
 import { lockedAssistantAccess } from './context.js';
 
+export async function assertVoiceCandidateContext(
+  tx: Queryable,
+  row: {
+    voice_id?: string | null;
+    payload: { voiceContextEpoch?: number };
+  },
+) {
+  if (!row.voice_id || row.payload.voiceContextEpoch === undefined) return;
+  const voice = (
+    await tx.query('SELECT context_epoch FROM voice_sessions WHERE id=$1 FOR SHARE', [row.voice_id])
+  ).rows[0];
+  if (voice?.context_epoch !== row.payload.voiceContextEpoch)
+    throw new HttpError(409, 'VOICE_CONTEXT_CHANGED', '通话中的编辑画面已更新，请重新生成候选');
+}
+
 /** One authority for browser retry and durable, server-side automatic execution.
  * Must run in a transaction. No model call or retry occurs in this function. */
 export async function applyAuthorizedCandidate(
@@ -20,8 +35,9 @@ export async function applyAuthorizedCandidate(
   const { candidateId, actorId } = input;
   const hint = (
     await tx.query(
-      `SELECT c.project_id,COALESCE(t.config->'historyScope',t.scope,v.scope) AS access_scope,
-    COALESCE(t.scope,v.scope) AS execution_scope
+      `SELECT c.project_id,COALESCE(t.config->'historyScope',t.scope,v.config->'historyScope',v.scope) AS access_scope,
+    COALESCE(t.scope,v.scope) AS execution_scope,
+    COALESCE(t.model_id,v.backend_model_id) AS model_id
     FROM assistant_candidates c LEFT JOIN assistant_turns t ON t.id=c.turn_id LEFT JOIN voice_sessions v ON v.id=c.voice_id
     WHERE c.id=$1 AND c.actor_id=$2`,
       [candidateId, actorId],
@@ -37,9 +53,11 @@ export async function applyAuthorizedCandidate(
   ).rows[0]!;
   if (row.applied_revision_id)
     return { artworkId: row.artwork_id, revisionId: row.applied_revision_id, replayed: true };
+  await assertVoiceCandidateContext(tx, row);
   if (
     row.kind !== 'edit' ||
     row.decision === 'rejected' ||
+    row.payload.autoEligible === false ||
     new Date(row.expires_at).getTime() <= Date.now()
   )
     throw new HttpError(409, 'CANDIDATE_UNAVAILABLE', '此候选不能自动执行');
@@ -65,7 +83,7 @@ export async function applyAuthorizedCandidate(
     projectId: row.project_id,
     key: `candidate:${candidateId}`,
     action: 'edit',
-    modelId: '',
+    modelId: hint.model_id,
     units: 0,
     automatic: true,
   });

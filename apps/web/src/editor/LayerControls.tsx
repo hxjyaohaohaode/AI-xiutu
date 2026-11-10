@@ -136,7 +136,7 @@ export function PaintControls({
     const latest = currentV3(editor),
       current = latest.paintLayers.find((item) => item.id === layer.id);
     if (!current) return;
-    const { choosingSource: _state, ...stroke } = settings;
+    const { choosingSource: _state, pressureSensitive: _pressure, ...stroke } = settings;
     apply(
       {
         ...latest,
@@ -288,6 +288,19 @@ export function PaintControls({
             onCommit={(name) => editor.commitCurrent('调整' + name)}
             onCancel={editor.cancelPreview}
           />
+          <label className="check-label">
+            <input
+              type="checkbox"
+              checked={settings.pressureSensitive}
+              onChange={(event) =>
+                editor.setPaintSettings((previous) => ({
+                  ...previous,
+                  pressureSensitive: event.target.checked,
+                }))
+              }
+            />
+            数位笔压感与平滑边缘（大于 1 px 的画笔）
+          </label>
           {settings.mode === 'paint' && (
             <details className="advanced-disclosure" open>
               <summary>

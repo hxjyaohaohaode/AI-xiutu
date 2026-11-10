@@ -174,6 +174,29 @@ try {
         dispatches++;
         const body = JSON.parse(init.body);
         bodies.push(body);
+        if (typeof body.input === 'string')
+          return Response.json(
+            {
+              status: 'completed',
+              output: [
+                {
+                  type: 'web_search_call',
+                  status: 'completed',
+                  results: [
+                    {
+                      type: 'image_result',
+                      image_url: 'https://images.example.com/lake.jpg',
+                      source_website_url: 'https://example.com/lake',
+                      caption: '公开湖面布光',
+                    },
+                  ],
+                },
+                outputText,
+              ],
+              usage: { input_tokens: 50, output_tokens: 20 },
+            },
+            { headers: { 'x-request-id': `fixture-search-${dispatches}` } },
+          );
         const calls = body.input.filter((item) => item.type === 'function_call');
         const roundDone = calls.some((item) => item.call_id === 'fixture-edit');
         const output = roundDone
@@ -285,7 +308,8 @@ try {
         operations: ['assistant-turn'],
         unitCost: 5,
         imageInput: true,
-        webSearch: false,
+        webSearch: true,
+        webImageSearch: true,
       }),
     ),
   ]);
@@ -581,6 +605,75 @@ try {
       expiryExcludesRecall: true,
       versionHistory: [1, 2],
     };
+  });
+  await testCase('cloud-thumbnail-and-public-image-search-use-separate-scopes', async () => {
+    await fixture.db.query(
+      "UPDATE assets SET annotations=jsonb_build_object('title','湖面参考素材') WHERE id=$1",
+      [fixture.assetId],
+    );
+    const scope = await details('共享范围');
+    await scope.getByRole('checkbox', { name: /V4 team/ }).check();
+    await scope.getByLabel('搜索授权素材').fill('湖面参考');
+    const result = scope.getByRole('button', { name: '查看 湖面参考素材', exact: true });
+    await result.waitFor();
+    await result.click();
+    const dialog = page.getByRole('dialog', { name: '湖面参考素材' });
+    await dialog.waitFor();
+    await until(
+      async () => dialog.locator('img').evaluate((node) => node.naturalWidth > 0),
+      'actual cloud thumbnail',
+    );
+    await dialog.getByRole('button', { name: '选为参考', exact: true }).click();
+    assert.equal(
+      await scope
+        .getByRole('button', { name: '移出参考', exact: true })
+        .getAttribute('aria-pressed'),
+      'true',
+    );
+    await scope.getByLabel('允许公开网络检索，保留来源链接').check();
+    await scope.getByLabel('公开检索查询词').fill('lake backlight');
+    await scope.getByLabel('同时查找公开图片').check();
+    await submit('这是私有项目描述，请根据公开图片提供参考。');
+    const evidence = page.locator('.assistant-search-evidence').last();
+    await evidence.getByRole('link', { name: '来源网页', exact: true }).waitFor();
+    await finished();
+    const search = bodies.findLast((body) => typeof body.input === 'string');
+    assert.equal(search.input, 'lake backlight');
+    assert.ok(!JSON.stringify(search).includes('私有项目描述'));
+    assert.equal(
+      await evidence.getByRole('link', { name: '查看图片', exact: true }).getAttribute('href'),
+      'https://images.example.com/lake.jpg',
+    );
+    await page.screenshot({ path: resolve(artifacts, 'cloud-public-search.png') });
+    await scope.getByRole('button', { name: '移出参考', exact: true }).click();
+    await scope.getByLabel('允许公开网络检索，保留来源链接').uncheck();
+    await details('共享范围', false);
+    return { protectedThumbnail: true, explicitPublicQuery: true, publicSourceLink: true };
+  });
+  await testCase('stop-in-flight-hides-partial-result-and-survives-refresh', async () => {
+    await page.getByRole('button', { name: '开始新会话，保留已保存的历史', exact: true }).click();
+    firstDelta = false;
+    holdCompletion = true;
+    const original = await head();
+    const before = dispatches;
+    await submit('停止后不要应用这项编辑。');
+    await until(() => firstDelta, 'request in flight');
+    await page.getByRole('button', { name: '停止本轮执行', exact: true }).click();
+    await page.getByRole('button', { name: '正在核对停止结果', exact: true }).waitFor();
+    holdCompletion = false;
+    await until(
+      async () => (await page.locator('.assistant-messages').innerText()).includes('本轮已停止'),
+      'durable stop status',
+    );
+    await openProject(page, false);
+    await until(
+      async () => (await page.locator('.assistant-messages').innerText()).includes('本轮已停止'),
+      'restored stop status',
+    );
+    assert.equal(dispatches, before + 2);
+    assert.equal((await head()).artwork.headVersion, original.artwork.headVersion);
+    assert.ok(!(await page.locator('.assistant-messages').innerText()).includes(sentence));
+    return { stoppedDuringProviderRound: true, noExtraDispatch: true, savedVersionUnchanged: true };
   });
   for (const viewport of [
     { width: 1440, height: 960 },

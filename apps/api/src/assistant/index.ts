@@ -8,7 +8,7 @@ import {
   assertAssistantGrant,
   type Database,
 } from '@ai-xiutu/db';
-import { applyAuthorizedCandidate } from './apply.js';
+import { applyAuthorizedCandidate, assertVoiceCandidateContext } from './apply.js';
 import {
   assistantModelConfigSchema,
   VOICE_MODELS,
@@ -19,7 +19,12 @@ import {
 import type { AppConfig } from '../config.js';
 import { HttpError, requireUser, requireOperator, id, hash, rateLimit } from '../core.js';
 import { LocalPrivateStorage } from '../storage.js';
-import { assistantAccess, lockedAssistantAccess, validateScope } from './context.js';
+import {
+  assistantAccess,
+  lockedAssistantAccess,
+  searchAssistantResources,
+  validateScope,
+} from './context.js';
 import { createAssistantService, type AssistantDependencies } from './service.js';
 import { attachVoiceBridge } from './voice.js';
 import { assistantGrantSchema } from '@ai-xiutu/contracts';
@@ -146,6 +151,7 @@ export function registerAssistant(
             maxDelegations: model.maxDelegations,
             imageInput: model.imageInput,
             webSearch: model.webSearch,
+            webImageSearch: model.webSearch && model.webImageSearch === true,
             voice: VOICE_MODELS.find((voice) => voice.id === row.id) ?? null,
           },
         ];
@@ -162,12 +168,21 @@ export function registerAssistant(
     const rows = (
       await db.query(
         `SELECT t.conversation_id AS id, max(t.created_at) AS updated_at, count(*)::int AS turn_count,
-      root.prompt AS title FROM assistant_turns t JOIN assistant_turns root ON root.id=t.conversation_id
-      WHERE t.project_id=$1 AND t.actor_id=$2 GROUP BY t.conversation_id,root.prompt
+      root.prompt AS title, COALESCE(root.config->'historyScope',root.scope) AS access_scope
+      FROM assistant_turns t JOIN assistant_turns root ON root.id=t.conversation_id
+      WHERE t.project_id=$1 AND t.actor_id=$2 GROUP BY t.conversation_id,root.id
       ORDER BY max(t.created_at) DESC,t.conversation_id LIMIT 100`,
         [projectId, user.id],
       )
     ).rows;
+    for (const row of rows) {
+      try {
+        await validateScope(db, user.id, row.access_scope);
+      } catch (error) {
+        if (!(error instanceof HttpError) || ![403, 404].includes(error.statusCode)) throw error;
+        row.title = '素材权限已变化';
+      }
+    }
     return {
       conversations: rows.map((row) => ({
         id: row.id,
@@ -184,7 +199,7 @@ export function registerAssistant(
     const query = z.object({ conversationId: id.optional() }).strict().parse(req.query);
     const rows = (
       await db.query(
-        'SELECT id,conversation_id,model_id,state,prompt,output,error_code,created_at,scope,config FROM assistant_turns WHERE project_id=$1 AND actor_id=$2 AND ($3::uuid IS NULL OR conversation_id=$3) ORDER BY created_at DESC LIMIT 30',
+        'SELECT id,conversation_id,model_id,state,prompt,output,error_code,created_at,scope,config,stop_requested_at FROM assistant_turns WHERE project_id=$1 AND actor_id=$2 AND ($3::uuid IS NULL OR conversation_id=$3) ORDER BY created_at DESC LIMIT 30',
         [projectId, user.id, query.conversationId ?? null],
       )
     ).rows;
@@ -234,6 +249,7 @@ export function registerAssistant(
             }
           : null,
         errorCode: row.error_code,
+        stopRequested: Boolean(row.stop_requested_at),
         createdAt: row.created_at,
       })),
     };
@@ -245,13 +261,47 @@ export function registerAssistant(
       const user = requireUser(req),
         projectId = id.parse((req.params as any).projectId);
       await rateLimit(db, `assistant:${user.id}`, 30, 3600);
-      const turn = await service.turn(user.id, projectId, req.body);
+      const turn = await service.turn(
+        user.id,
+        projectId,
+        req.body,
+        hash(req.cookies.xiutu_session ?? ''),
+      );
       return reply.code(turn.state === 'running' ? 202 : 200).send(turn);
     },
   );
   app.get('/v1/assistant-turns/:turnId', async (req) =>
     service.getTurn(requireUser(req).id, id.parse((req.params as any).turnId)),
   );
+  app.post('/v1/assistant-turns/:turnId/stop', async (req) =>
+    service.stopTurn(requireUser(req).id, id.parse((req.params as any).turnId)),
+  );
+  app.post('/v1/projects/:projectId/assistant-resources/search', async (req) => {
+    const actorId = requireUser(req).id;
+    const projectId = id.parse((req.params as any).projectId);
+    const body = z
+      .object({
+        spaceIds: z.array(id).min(1).max(12),
+        query: z.string().trim().max(200),
+        limit: z.number().int().min(1).max(20).default(12),
+      })
+      .strict()
+      .parse(req.body);
+    await rateLimit(db, `assistant-resources:${actorId}`, 180, 60);
+    await assistantAccess(db, actorId, projectId);
+    return searchAssistantResources(
+      db,
+      actorId,
+      {
+        spaceIds: body.spaceIds,
+        referenceAssetIds: [],
+        allowWebSearch: false,
+        usePersonalMemory: false,
+      },
+      body.query,
+      body.limit,
+    );
+  });
   app.get('/v1/projects/:projectId/assistant-candidates', async (req) => {
     const user = requireUser(req),
       projectId = id.parse((req.params as any).projectId);
@@ -259,7 +309,7 @@ export function registerAssistant(
     const query = z.object({ conversationId: id.optional() }).strict().parse(req.query);
     const rows = (
       await db.query(
-        `SELECT c.*,COALESCE(t.config->'historyScope',t.scope,v.scope) AS access_scope FROM assistant_candidates c
+        `SELECT c.*,COALESCE(t.config->'historyScope',t.scope,v.config->'historyScope',v.scope) AS access_scope FROM assistant_candidates c
         LEFT JOIN assistant_turns t ON t.id=c.turn_id LEFT JOIN voice_sessions v ON v.id=c.voice_id
         WHERE c.project_id=$1 AND c.actor_id=$2 AND c.expires_at>clock_timestamp() AND ($3::uuid IS NULL OR t.conversation_id=$3) ORDER BY c.created_at DESC,c.id DESC LIMIT 50`,
         [projectId, user.id, query.conversationId ?? null],
@@ -324,7 +374,7 @@ export function registerAssistant(
       .parse(req.body);
     const hint = (
       await db.query(
-        `SELECT c.project_id,COALESCE(t.config->'historyScope',t.scope,v.scope) AS access_scope FROM assistant_candidates c LEFT JOIN assistant_turns t ON t.id=c.turn_id LEFT JOIN voice_sessions v ON v.id=c.voice_id WHERE c.id=$1 AND c.actor_id=$2`,
+        `SELECT c.project_id,COALESCE(t.config->'historyScope',t.scope,v.config->'historyScope',v.scope) AS access_scope FROM assistant_candidates c LEFT JOIN assistant_turns t ON t.id=c.turn_id LEFT JOIN voice_sessions v ON v.id=c.voice_id WHERE c.id=$1 AND c.actor_id=$2`,
         [candidateId, user.id],
       )
     ).rows[0];
@@ -341,6 +391,9 @@ export function registerAssistant(
       if (row.decision === 'rejected' && body.decision !== 'rejected')
         throw new HttpError(409, 'CANDIDATE_REJECTED', '候选已退回');
       if (body.decision === 'previewed') {
+        await assertVoiceCandidateContext(tx, row);
+        if (body.automatic && row.payload.autoEligible === false)
+          throw new HttpError(409, 'CANDIDATE_UNAVAILABLE', '此候选需要人工确认');
         const owner = (
           await tx.query(
             row.turn_id
@@ -401,7 +454,9 @@ export function registerAssistant(
       .object({ expectedVersion: z.number().int().positive(), recipe: z.unknown() })
       .strict()
       .parse(req.body);
-    return transaction(db, (tx) => applyAuthorizedCandidate(tx, { candidateId, actorId, ...body }));
+    return transaction(db, (tx) =>
+      applyAuthorizedCandidate(tx, { candidateId, actorId, ...body, requireSavedBase: true }),
+    );
   });
   app.get('/v1/ops/assistant-models', async (req) => {
     requireOperator(req);

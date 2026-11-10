@@ -38,7 +38,7 @@ export function ContextEvidence({
     <details className="assistant-context">
       <summary>上下文依据 · {(current.sourceTurnIds ?? []).length} 轮原文</summary>
       <p>
-        用户要求逐字保留；旧助手说明可按原文引用回查。文字估算{' '}
+        用户要求逐字保留，旧助手说明可按原文引用回查。文字估算{' '}
         {current.retainedTokens + current.mandatoryTokens} tokens，另预留输出与图片{' '}
         {current.reservedTokens} tokens。
       </p>
@@ -46,6 +46,17 @@ export function ContextEvidence({
         已归档 {current.compactedSourceIds?.length ?? 0}{' '}
         段助手说明。图片预留值用于控制预算，实际用量以供应商回执为准。
       </p>
+      {Boolean(current.memorySources?.length || current.resourceMemorySources?.length) && (
+        <ul aria-label="本轮使用的记忆">
+          {[...(current.memorySources ?? []), ...(current.resourceMemorySources ?? [])].map(
+            (item) => (
+              <li key={item.id}>
+                {item.title} · 版本 {item.version}
+              </li>
+            ),
+          )}
+        </ul>
+      )}
       <div className="context-source-list">
         {(current.sourceTurnIds ?? []).map((id: string, index: number) => (
           <button

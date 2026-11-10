@@ -440,6 +440,10 @@ export function applyPortraitValues<T extends LayeredRecipe>(
       skin.detail.clarity = 0;
       skin.optics.denoiseChroma = 0;
       if (['smooth', 'texture', 'wrinkles', 'even'].some((key) => value(key) !== 0)) {
+        const previous = recipe.retouch.find((item) => belongsTo(item, targetId));
+        const algorithm =
+          previous?.algorithm ??
+          (ownedPrimitives(recipe, targetId).length === 0 ? 'guided-v2' : undefined);
         retouches.push(
           createRetouchRegionV4({
             id: prefix + 'skin-retouch',
@@ -447,10 +451,7 @@ export function applyPortraitValues<T extends LayeredRecipe>(
             origin: provenance('skin-retouch', 0),
             // Existing automatic targets retain their saved pixel algorithm;
             // a new target opts into the versioned guided implementation.
-            ...(recipe.retouch.find((i) => belongsTo(i, targetId))?.algorithm === 'guided-v1' ||
-            ownedPrimitives(recipe, targetId).length === 0
-              ? { algorithm: 'guided-v1' as const }
-              : {}),
+            ...(algorithm ? { algorithm } : {}),
             mask: masks.skin,
             radius: Math.max(
               0.000001,

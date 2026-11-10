@@ -16,6 +16,8 @@ interface PreparedStroke {
   cellSize: number;
   columns: number;
   grid: Map<number, number[]>;
+  ends: number[];
+  radii?: number[];
 }
 interface PreparedLayer {
   layer: PaintLayerV3;
@@ -31,17 +33,25 @@ function prepare(
   options: RenderOptions,
   budget: PreparationBudget,
 ): PreparedStroke {
-  const radius = stroke.radius * Math.min(image.width, image.height),
+  const brushRadius = stroke.radius * Math.min(image.width, image.height),
+    radius = brushRadius + (stroke.sampling?.antialias ? Math.SQRT1_2 : 0),
     points = stroke.points.map((p) => ({ x: p.x * image.width, y: p.y * image.height }));
+  const radii = stroke.sampling?.pressure.map((pressure) => brushRadius * (0.2 + 0.8 * pressure));
+  const breaks = new Set(stroke.sampling?.breaks);
+  const ends: number[] = [];
   // Spatial bins avoid scanning a long freehand path for every covered pixel.
   const cellSize = Math.max(8, radius * 2),
     columns = Math.ceil(image.width / cellSize),
     rows = Math.ceil(image.height / cellSize),
     grid = new Map<number, number[]>();
-  for (let i = 0; i < Math.max(1, points.length - 1); i++) {
+  for (let i = 0; i < points.length; i++) {
     if ((i & 15) === 0) checkV3(options);
+    const joinsNext = i + 1 < points.length && !breaks.has(i + 1);
+    if (!joinsNext && i > 0 && !breaks.has(i)) continue;
+    const end = joinsNext ? i + 1 : i;
+    ends[i] = end;
     const a = points[i]!,
-      b = points[Math.min(i + 1, points.length - 1)]!,
+      b = points[end]!,
       steps = Math.max(1, Math.ceil(Math.max(Math.abs(b.x - a.x), Math.abs(b.y - a.y)) / cellSize)),
       cells = new Set<number>();
     for (let k = 0; k <= steps; k++) {
@@ -66,7 +76,8 @@ function prepare(
         y = Math.floor(key / columns);
       budget.work +=
         Math.ceil(Math.min(cellSize, image.width - x * cellSize)) *
-        Math.ceil(Math.min(cellSize, image.height - y * cellSize));
+        Math.ceil(Math.min(cellSize, image.height - y * cellSize)) *
+        (stroke.sampling?.antialias ? 16 : 1);
       if (budget.work > MAX_V3_PAINT_WORK)
         throw new RangeError(
           'Paint workload budget exceeded; reduce the active stroke area or split into a new version',
@@ -79,7 +90,7 @@ function prepare(
   return {
     stroke,
     points,
-    radius,
+    radius: brushRadius,
     left: Math.min(...points.map((p) => p.x)) - radius,
     right: Math.max(...points.map((p) => p.x)) + radius,
     top: Math.min(...points.map((p) => p.y)) - radius,
@@ -87,6 +98,8 @@ function prepare(
     cellSize,
     columns,
     grid,
+    ends,
+    radii,
   };
 }
 /** Admission happens before image-sized intermediates and is bounded across all active layers. */
@@ -111,6 +124,14 @@ function weight(p: PreparedStroke, x: number, y: number): number {
   let nearest = Infinity;
   const candidates =
     p.grid.get(Math.floor(y / p.cellSize) * p.columns + Math.floor(x / p.cellSize)) ?? [];
+  if (p.radii) {
+    if (!p.stroke.sampling!.antialias) return sweptCoverage(p, candidates, x, y) * p.stroke.opacity;
+    let covered = 0;
+    for (const dy of [-0.375, -0.125, 0.125, 0.375])
+      for (const dx of [-0.375, -0.125, 0.125, 0.375])
+        covered += sweptCoverage(p, candidates, x + dx, y + dy);
+    return (covered / 16) * p.stroke.opacity;
+  }
   for (const i of candidates) {
     const a = p.points[i]!,
       b = p.points[Math.min(i + 1, p.points.length - 1)]!,
@@ -125,6 +146,42 @@ function weight(p: PreparedStroke, x: number, y: number): number {
   if (p.stroke.feather === 0 || d <= 1 - p.stroke.feather) return p.stroke.opacity;
   const t = (1 - d) / p.stroke.feather;
   return t * t * (3 - 2 * t) * p.stroke.opacity;
+}
+
+/** Minimize squared distance divided by squared linearly interpolated radius.
+ * The derivative numerator is linear, so endpoints and its one minimum give
+ * the continuous sweep. No gaps or opacity pile-up depend on sample cadence. */
+function sweptCoverage(p: PreparedStroke, candidates: number[], x: number, y: number): number {
+  let nearest = Infinity;
+  for (const index of candidates) {
+    const end = p.ends[index]!;
+    const a = p.points[index]!,
+      b = p.points[end]!;
+    const ra = p.radii![index]!,
+      rb = p.radii![end]!;
+    const dx = b.x - a.x,
+      dy = b.y - a.y,
+      dr = rb - ra;
+    const px = x - a.x,
+      py = y - a.y;
+    const d0 = px * px + py * py;
+    const dot = px * dx + py * dy;
+    const lengthSquared = dx * dx + dy * dy;
+    nearest = Math.min(nearest, d0 / (ra * ra), ((x - b.x) ** 2 + (y - b.y) ** 2) / (rb * rb));
+    const slope = lengthSquared * ra + dot * dr;
+    if (slope > 0) {
+      const t = (dot * ra + dr * d0) / slope;
+      if (t > 0 && t < 1) {
+        const r = ra + dr * t;
+        nearest = Math.min(nearest, ((px - dx * t) ** 2 + (py - dy * t) ** 2) / (r * r));
+      }
+    }
+  }
+  if (nearest >= 1) return 0;
+  const feather = p.stroke.feather;
+  if (!feather) return 1;
+  const t = Math.min(1, (1 - Math.sqrt(nearest)) / feather);
+  return t * t * (3 - 2 * t);
 }
 /** Mutates only an engine-owned destination. Every paint layer is isolated and erasable. */
 export function applyPaintLayersV3(

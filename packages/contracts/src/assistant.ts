@@ -18,11 +18,15 @@ export const assistantContextSchema = z
   })
   .strict();
 export type AssistantContext = z.infer<typeof assistantContextSchema>;
+export const assistantPublicSearchSchema = z
+  .object({ query: z.string().trim().min(1).max(240), kind: z.enum(['text', 'images']) })
+  .strict();
 export const assistantScopeSchema = z
   .object({
     spaceIds: z.array(z.uuid()).max(12).default([]),
     referenceAssetIds: z.array(z.uuid()).max(8).default([]),
     allowWebSearch: z.boolean().default(false),
+    publicSearch: assistantPublicSearchSchema.optional(),
     usePersonalMemory: z.boolean().default(false),
     executionGrantId: z.uuid().optional(),
     creativeBrief: creativeBriefSchema.optional(),
@@ -80,7 +84,14 @@ export const voiceClientEventSchema = z.discriminatedUnion('type', [
     })
     .strict(),
   z.object({ type: z.literal('text'), text: z.string().trim().min(1).max(4000) }).strict(),
-  z.object({ type: z.literal('context'), context: assistantContextSchema }).strict(),
+  z.object({ type: z.literal('context.invalidate') }).strict(),
+  z
+    .object({
+      type: z.literal('context'),
+      context: assistantContextSchema,
+      contextTag: z.uuid().optional(),
+    })
+    .strict(),
   z.object({ type: z.literal('mute'), muted: z.boolean() }).strict(),
   z
     .object({
@@ -97,7 +108,62 @@ export interface AssistantCitation {
   title: string;
   url: string;
 }
+export const assistantCloudResourceSchema = z.object({
+  id: z.uuid(),
+  name: z.string().max(300),
+  title: z.string().max(200),
+  width: z.number().int().positive(),
+  height: z.number().int().positive(),
+  spaceName: z.string().max(200),
+  projectTitle: z.string().max(200),
+});
+export type AssistantCloudResource = z.infer<typeof assistantCloudResourceSchema>;
+export function publicSearchLink(value: unknown): string | null {
+  if (typeof value !== 'string' || value.length > 2048) return null;
+  try {
+    const url = new URL(value);
+    const host = url.hostname.replace(/\.$/, '');
+    if (
+      url.protocol !== 'https:' ||
+      url.username ||
+      url.password ||
+      url.port ||
+      !host.includes('.') ||
+      /^\d+(\.\d+){3}$/.test(host) ||
+      /(?:^|\.)(?:localhost|local|internal|test|invalid|onion)$/.test(host)
+    )
+      return null;
+    return url.href.length <= 2048 ? url.href : null;
+  } catch {
+    return null;
+  }
+}
+const searchLink = z.string().refine((value) => publicSearchLink(value) === value);
+export interface AssistantPublicImage {
+  imageUrl: string;
+  sourceUrl: string;
+  caption: string;
+}
+export const assistantSearchEvidenceSchema = z.discriminatedUnion('kind', [
+  z.object({
+    kind: z.literal('cloud'),
+    query: z.string().max(240),
+    resources: z.array(assistantCloudResourceSchema).max(20),
+  }),
+  z.object({
+    kind: z.literal('web'),
+    query: z.string().max(240),
+    sources: z.array(z.object({ url: searchLink, title: z.string().max(300) })).max(20),
+    images: z
+      .array(
+        z.object({ imageUrl: searchLink, sourceUrl: searchLink, caption: z.string().max(400) }),
+      )
+      .max(8),
+  }),
+]);
+export type AssistantSearchEvidence = z.infer<typeof assistantSearchEvidenceSchema>;
 export interface AssistantCandidate {
+  autoEligible?: boolean;
   observation?: unknown;
   /** Text-turn automatic actions are completed/blocked by the server atomically. */
   executionManagedBy?: 'server';
@@ -129,7 +195,7 @@ export type VoiceServerEvent =
       endMs?: number;
     }
   | { type: 'interrupted' }
-  | { type: 'context'; accepted: boolean; imageShared: boolean }
+  | { type: 'context'; accepted: boolean; imageShared: boolean; contextTag?: string }
   | { type: 'tool'; name: string; state: 'running' | 'completed' | 'failed' }
   | {
       type: 'assistant-result';
@@ -137,6 +203,7 @@ export type VoiceServerEvent =
       workspace?: AssistantWorkspace;
       text: string;
       citations: AssistantCitation[];
+      search?: AssistantSearchEvidence[];
       candidates: AssistantCandidate[];
     }
   | { type: 'closed'; state: 'closed' | 'unknown' | 'failed'; reason: string }

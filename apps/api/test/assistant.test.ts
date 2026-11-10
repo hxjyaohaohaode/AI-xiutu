@@ -59,6 +59,13 @@ const editCall = () => ({
     changes: [{ path: 'adjustments.exposure', value: -1.5 }],
   }),
 });
+function deferred<T>() {
+  let resolve!: (value: T) => void;
+  const promise = new Promise<T>((finish) => {
+    resolve = finish;
+  });
+  return { promise, resolve };
+}
 async function until<T>(
   read: () => Promise<T>,
   accept: (value: T) => boolean,
@@ -350,6 +357,249 @@ test(
         .manifest;
       assert.equal(evidence.preservesAllUserInstructions, true);
       assert.equal(evidence.tokenizer, 'o200k_base');
+    } finally {
+      await f.close();
+    }
+  },
+);
+
+test(
+  'assistant interruption serializes stop, receipts, login revocation and candidate publication',
+  { skip: !databaseUrl },
+  async (t) => {
+    for (const scenario of [
+      'before-dispatch',
+      'valid-receipt',
+      'unknown-receipt',
+      'logout',
+      'memory-changed',
+    ] as const) {
+      await t.test(scenario, async () => {
+        const reached = deferred<void>();
+        const resume = deferred<void>();
+        let sends = 0;
+        const f = await fixture({
+          ...(scenario === 'before-dispatch'
+            ? {
+                textModerator: {
+                  configured: true,
+                  async check(text: string) {
+                    reached.resolve();
+                    await resume.promise;
+                    return textModerator.check(text);
+                  },
+                },
+              }
+            : {}),
+          fetcher: async () => {
+            sends++;
+            reached.resolve();
+            await resume.promise;
+            if (scenario === 'unknown-receipt') throw new Error('fixture connection lost');
+            return response([editCall(), outputText('待核准的编辑。')]);
+          },
+        });
+        try {
+          const request = f.turn('谨慎降低曝光，保护主体');
+          const memoryPath = `/v1/projects/${f.projectId}/assistant-memory`;
+          let memoryId: string | undefined;
+          if (scenario === 'memory-changed') {
+            const newMemory = await f.call('POST', memoryPath, {
+              scope: 'project',
+              category: 'constraint',
+              title: '保护高光',
+              content: '不得裁剪高光。',
+            });
+            assert.equal(newMemory.statusCode, 200, newMemory.body);
+            memoryId = newMemory.json().memory.id;
+            request.scope.usePersonalMemory = true;
+          }
+          const started = await f.call(
+            'POST',
+            `/v1/projects/${f.projectId}/assistant-turns`,
+            request,
+          );
+          assert.ok([200, 202].includes(started.statusCode), started.body);
+          const id = started.json().id;
+          await reached.promise;
+          if (scenario === 'logout') {
+            await f.db.query('DELETE FROM sessions WHERE token_hash=$1', [
+              f.actors.owner.tokenHash,
+            ]);
+          } else if (scenario === 'memory-changed') {
+            const edited = await f.call('PUT', `${memoryPath}/${memoryId}`, {
+              expectedVersion: 1,
+              category: 'correction',
+              title: '保护高光',
+              content: '曝光不变，优先修改中间调。',
+            });
+            assert.equal(edited.statusCode, 200, edited.body);
+          } else {
+            const path = `/v1/assistant-turns/${id}/stop`;
+            assert.equal((await f.call('POST', path, {}, 'editor')).statusCode, 404);
+            const stopped = await f.call('POST', path, {});
+            assert.equal(stopped.statusCode, 200, stopped.body);
+            const state = scenario === 'before-dispatch' ? 'stopped' : 'running';
+            assert.equal(stopped.json().state, state);
+            assert.deepEqual((await f.call('POST', path, {})).json(), stopped.json());
+          }
+          resume.resolve();
+          const record = await until(
+            async () =>
+              (
+                await f.db.query(
+                  'SELECT t.state,t.error_code,h.state AS hold_state FROM assistant_turns t JOIN quota_holds h ON h.id=t.hold_id WHERE t.id=$1',
+                  [id],
+                )
+              ).rows[0]!,
+            (item) => item.state !== 'running',
+          );
+          assert.equal(
+            record.state,
+            scenario === 'unknown-receipt'
+              ? 'unknown'
+              : scenario === 'logout' || scenario === 'memory-changed'
+                ? 'failed'
+                : 'stopped',
+          );
+          assert.equal(
+            record.hold_state,
+            scenario === 'before-dispatch'
+              ? 'released'
+              : scenario === 'unknown-receipt'
+                ? 'unknown'
+                : 'settled',
+          );
+          if (scenario === 'logout') assert.equal(record.error_code, 'ASSISTANT_SESSION_ENDED');
+          if (scenario === 'memory-changed')
+            assert.equal(record.error_code, 'ASSISTANT_MEMORY_CHANGED');
+          assert.equal(
+            (await f.db.query('SELECT id FROM assistant_candidates WHERE turn_id=$1', [id]))
+              .rowCount,
+            0,
+          );
+          assert.equal(sends, scenario === 'before-dispatch' ? 0 : 1);
+          const events = (
+            await f.db.query(
+              'SELECT type FROM assistant_run_events WHERE turn_id=$1 ORDER BY seq',
+              [id],
+            )
+          ).rows;
+          assert.equal(events.filter((event) => event.type === `run.${record.state}`).length, 1);
+          assert.ok(!events.some((event) => event.type === 'action.applied'));
+        } finally {
+          resume.resolve();
+          await f.close();
+        }
+      });
+    }
+  },
+);
+
+test(
+  'cloud and public search publish checked evidence without sending private editor data to public search',
+  { skip: !databaseUrl },
+  async () => {
+    const wire: any[] = [];
+    const f = await fixture({
+      fetcher: async (_url, init) => {
+        wire.push(JSON.parse(String(init?.body)));
+        if (wire.length === 1)
+          return response([
+            {
+              type: 'web_search_call',
+              status: 'completed',
+              results: [
+                {
+                  type: 'image_result',
+                  image_url: 'https://images.example.com/water.jpg',
+                  source_website_url: 'https://example.com/water',
+                  caption: '公开水面参考',
+                },
+                {
+                  type: 'image_result',
+                  image_url: 'https://127.0.0.1/private.png',
+                  source_website_url: 'https://example.com/water',
+                },
+              ],
+            },
+            outputText('公开资料是日落水面。'),
+          ]);
+        if (wire.length === 2)
+          return response([
+            {
+              type: 'function_call',
+              name: 'search_resources',
+              call_id: 'cloud',
+              arguments: JSON.stringify({ query: '湖面 参考', limit: 6 }),
+            },
+          ]);
+        return response([outputText('公开水面可参考光线；团队素材提供现有构图。')]);
+      },
+    });
+    try {
+      await f.db.query('UPDATE assistant_model_configs SET config=$2 WHERE id=$1', [
+        f.modelId,
+        JSON.stringify({ ...f.settings, webImageSearch: true }),
+      ]);
+      await f.db.query('UPDATE assets SET annotations=\'{"title":"湖面 参考"}\' WHERE id=$1', [
+        f.assetId,
+      ]);
+      const searchPath = `/v1/projects/${f.projectId}/assistant-resources/search`;
+      const lookup = await f.call('POST', searchPath, {
+        spaceIds: [f.teamId],
+        query: '湖面 参考',
+        limit: 6,
+      });
+      assert.equal(lookup.statusCode, 200, lookup.body);
+      assert.deepEqual(
+        lookup.json().resources.map((item: any) => item.id),
+        [f.assetId],
+      );
+      assert.equal(
+        (
+          await f.call(
+            'POST',
+            searchPath,
+            { spaceIds: [f.actors.owner.spaceId], query: '湖面', limit: 6 },
+            'editor',
+          )
+        ).statusCode,
+        403,
+      );
+      const started = await f.call('POST', `/v1/projects/${f.projectId}/assistant-turns`, {
+        ...f.turn('私密项目意图，只把明确写出的词发往公开检索。'),
+        scope: {
+          ...f.scope,
+          allowWebSearch: true,
+          publicSearch: { query: 'lake at dusk', kind: 'images' },
+        },
+      });
+      assert.ok([200, 202].includes(started.statusCode), started.body);
+      const id = started.json().id;
+      const done = await until(
+        () => f.readTurn(id),
+        (item) => item.state !== 'running',
+      );
+      assert.equal(done.state, 'completed', JSON.stringify(done));
+      assert.equal(wire.length, 3);
+      assert.equal(wire[0].input, 'lake at dusk');
+      assert.deepEqual(wire[0].tools[0].search_content_types, ['text', 'image']);
+      assert.ok(!JSON.stringify(wire[0]).includes('私密项目意图'));
+      assert.ok(!wire[1].tools.some((tool: any) => tool.type === 'web_search'));
+      assert.match(JSON.stringify(wire[2].input), /湖面 参考/);
+      assert.deepEqual(
+        done.output.search.map((item: any) => item.kind),
+        ['web', 'cloud'],
+      );
+      assert.equal(done.output.search[0].images.length, 1);
+      assert.equal(done.output.search[1].resources[0].id, f.assetId);
+      const events = await f.call('GET', `/v1/assistant-turns/${id}/events`);
+      assert.equal((events.body.match(/"type":"search.results"/g) ?? []).length, 2);
+      assert.ok(!events.body.includes('127.0.0.1/private.png'));
+      const persisted = (await f.db.query('SELECT config FROM assistant_turns WHERE id=$1', [id]))
+        .rows[0]!.config;
+      assert.ok(persisted.historyScope.referenceAssetIds.includes(f.assetId));
     } finally {
       await f.close();
     }
@@ -1661,13 +1911,16 @@ test(
         assert.equal(options.headers?.Authorization, `Bearer ${env.OPENAI_API_KEY}`);
         return new WebSocket(vendorUrl);
       },
-      fetcher: async () => {
+      fetcher: async (_url, init) => {
         requests++;
+        const input = JSON.parse(String(init?.body)).input;
+        const continuation =
+          Array.isArray(input) && input.some((item) => item.type === 'function_call_output');
         return (
           deferredFetch ??
-          (requests % 2
-            ? response([editCall()])
-            : response([outputText('曝光建议已经准备，请在界面确认。')]))
+          (continuation
+            ? response([outputText('曝光建议已经准备，请在界面确认。')])
+            : response([editCall()]))
         );
       },
     });
@@ -2175,6 +2428,91 @@ test(
         await stream.wait('closed');
         assert.ok(!received.slice(count).some((event) => event.session?.model === 'attacker'));
       });
+      await t.test(
+        'a new canvas invalidates already published voice candidates and in-flight delegates',
+        async () => {
+          await f.db.query(
+            "INSERT INTO memberships(space_id,user_id,role) VALUES($1,$2,'editor') ON CONFLICT DO NOTHING",
+            [f.teamId, f.actors.editor.id],
+          );
+          const stream = await openVoice('gpt-live-1', 'editor');
+          const waiting = deferred<Response>();
+          try {
+            stream.ws.send(JSON.stringify({ type: 'text', text: '为现在的画面准备低曝光版本' }));
+            const result = await stream.wait('assistant-result');
+            const candidate = result.candidates[0];
+            assert.ok(candidate?.id);
+            const contextTag = randomUUID();
+            stream.ws.send(JSON.stringify({ type: 'context.invalidate' }));
+            stream.ws.send(JSON.stringify({ type: 'context', context: f.context, contextTag }));
+            const accepted = await stream.wait('context');
+            assert.equal(accepted.contextTag, contextTag);
+            for (const operation of ['decision', 'apply']) {
+              const refused = await f.call(
+                'POST',
+                `/v1/assistant-candidates/${candidate.id}/${operation}`,
+                {
+                  expectedVersion: candidate.baseVersion,
+                  recipe: f.recipe,
+                  ...(operation === 'decision' ? { decision: 'previewed' } : {}),
+                },
+                'editor',
+              );
+              assert.equal(refused.statusCode, 409, refused.body);
+              assert.equal(refused.json().error.code, 'VOICE_CONTEXT_CHANGED');
+            }
+            deferredFetch = waiting.promise;
+            const count = requests;
+            vendorSockets.at(-1)!.send(
+              JSON.stringify({
+                type: 'session.delegation.created',
+                delegation: { id: 'old-canvas-delegation', target: 'client' },
+              }),
+            );
+            await until(
+              async () => requests,
+              (value) => value > count,
+            );
+            stream.ws.send(JSON.stringify({ type: 'context.invalidate' }));
+            const state = async () =>
+              (
+                await f.db.query('SELECT context_epoch FROM voice_sessions WHERE id=$1', [
+                  stream.data.id,
+                ])
+              ).rows[0]!;
+            await until(state, (row) => row.context_epoch === 3);
+            waiting.resolve(response([editCall()]));
+            await until(
+              async () =>
+                (
+                  await f.db.query(
+                    'SELECT count(*)::int AS n FROM assistant_dispatches WHERE voice_id=$1 AND completed_at IS NOT NULL',
+                    [stream.data.id],
+                  )
+                ).rows[0]!.n,
+              (n) => n === 3,
+            );
+            assert.equal(
+              requests,
+              count + 1,
+              'stale delegate does not continue to a new provider request',
+            );
+            assert.equal(
+              (
+                await f.db.query('SELECT id FROM assistant_candidates WHERE voice_id=$1', [
+                  stream.data.id,
+                ])
+              ).rowCount,
+              1,
+            );
+          } finally {
+            waiting.resolve(response([outputText('已结束')]));
+            deferredFetch = undefined;
+            stream.ws.send(JSON.stringify({ type: 'end' }));
+            await stream.wait('closed');
+          }
+        },
+      );
       await t.test(
         'graceful shutdown drains an already dispatched delegation before database settlement',
         async () => {

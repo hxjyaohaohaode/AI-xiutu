@@ -364,6 +364,7 @@ test('Responses workflow invokes tools, keeps independently selected image model
     settings,
     context({
       allowWebSearch: true,
+      publicSearch: { query: 'public studio reference', kind: 'text' },
       imageDataUrl: 'data:image/jpeg;base64,AA==',
       beforeDispatch: async (index) => {
         dispatch.push(index);
@@ -379,6 +380,15 @@ test('Responses workflow invokes tools, keeps independently selected image model
       assert.equal(body.store, false);
       assert.equal(init?.redirect, 'error');
       if (n++ === 0)
+        return response([
+          { type: 'web_search_call', status: 'completed' },
+          text('光线参考', [
+            { type: 'url_citation', url: 'https://example.org/research', title: '研究资料' },
+            { type: 'url_citation', url: 'javascript:alert(1)', title: 'bad' },
+            { type: 'url_citation', url: 'https://secret:token@example.org/', title: 'bad' },
+          ]),
+        ]);
+      if (n === 2)
         return response([
           tool('describe_editor', {}),
           tool('propose_edit', {
@@ -402,15 +412,18 @@ test('Responses workflow invokes tools, keeps independently selected image model
       ]);
     },
   );
-  assert.deepEqual(dispatch, [0, 1]);
-  assert.deepEqual(receipts, [0, 1]);
+  assert.deepEqual(dispatch, [0, 1, 2]);
+  assert.deepEqual(receipts, [0, 1, 2]);
   assert.equal(result.candidates.length, 2);
   assert.equal(result.candidates[0]?.kind, 'edit');
   assert.equal(result.candidates[1]?.kind, 'generation');
   assert.equal(result.citations.length, 1);
   assert.ok(bodies[0].tools.some((item: any) => item.type === 'web_search'));
-  assert.ok(bodies[0].input[0].content.some((item: any) => item.type === 'input_image'));
-  assert.ok(bodies[1].input.some((item: any) => item.type === 'function_call_output'));
+  assert.equal(bodies[0].input, 'public studio reference');
+  assert.ok(!JSON.stringify(bodies[0]).includes('data:image'));
+  assert.ok(bodies[1].input[0].content.some((item: any) => item.type === 'input_image'));
+  assert.ok(!bodies[1].tools.some((item: any) => item.type === 'web_search'));
+  assert.ok(bodies[2].input.some((item: any) => item.type === 'function_call_output'));
   assert.ok(!('modelId' in result.candidates[1]!));
 });
 test('without image/search consent neither is sent; unsupported arbitrary tools produce no mutations', async () => {

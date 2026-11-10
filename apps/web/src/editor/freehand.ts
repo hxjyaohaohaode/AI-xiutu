@@ -4,6 +4,31 @@ export interface PointerSample {
   readonly clientX: number;
   readonly clientY: number;
   readonly pointerId: number;
+  readonly pressure?: number;
+}
+export interface FreehandPathState {
+  pressures: number[];
+  breaks: number[];
+  outside: boolean;
+  pressureSensitive: boolean;
+  observedPressure: number;
+}
+export function startFreehandPath(
+  sample: PointerSample,
+  pressureSensitive: boolean,
+): FreehandPathState {
+  const inputPressure = sample.pressure;
+  const pressure =
+    pressureSensitive && inputPressure !== undefined && inputPressure >= 0 && inputPressure <= 1
+      ? inputPressure
+      : 1;
+  return {
+    pressures: [pressure],
+    breaks: [],
+    outside: false,
+    pressureSensitive,
+    observedPressure: pressure,
+  };
 }
 export interface CoalescedPointer extends PointerSample {
   getCoalescedEvents?: () => readonly PointerSample[];
@@ -38,23 +63,59 @@ export function appendFreehandPoints(
   spacing: number,
   limit: number,
   terminal = false,
-): { points: Point[]; changed: boolean; limitReached: boolean } {
+  previousPath?: FreehandPathState,
+): { points: Point[]; changed: boolean; limitReached: boolean; path?: FreehandPathState } {
   const points = [...previous];
+  const path = previousPath && {
+    ...previousPath,
+    pressures: [...previousPath.pressures],
+    breaks: [...previousPath.breaks],
+  };
   let limitReached = false;
   for (let i = 0; i < samples.length; i++) {
-    const point = project(samples[i]!);
-    if (!point || !Number.isFinite(point.x) || !Number.isFinite(point.y)) continue;
+    const sample = samples[i]!;
+    const point = project(sample);
+    if (!point || !Number.isFinite(point.x) || !Number.isFinite(point.y)) {
+      if (path) path.outside = true;
+      continue;
+    }
+    const lastPressure = path?.pressures.at(-1) ?? 1;
+    // pointerup always reports zero. Finish with the last observed pen pressure.
+    if (
+      path?.pressureSensitive &&
+      !terminal &&
+      sample.pressure !== undefined &&
+      sample.pressure >= 0 &&
+      sample.pressure <= 1
+    )
+      path.observedPressure = sample.pressure;
+    const pressure = path?.observedPressure ?? lastPressure;
+    const pressureChange = Math.abs(pressure - lastPressure) >= 1 / 128;
     const last = points.at(-1);
     const distance = last
       ? Math.hypot((point.x - last.x) * dimensions.width, (point.y - last.y) * dimensions.height)
       : Infinity;
-    if (distance <= 1e-9 || (distance < spacing && !(terminal && i === samples.length - 1)))
+    if (
+      !path?.outside &&
+      !pressureChange &&
+      (distance <= 1e-9 || (distance < spacing && !(terminal && i === samples.length - 1)))
+    )
       continue;
     if (points.length >= limit) {
       limitReached = true;
       break;
     }
+    if (path) {
+      if (path.outside) path.breaks.push(points.length);
+      path.outside = false;
+      path.pressures.push(pressure);
+    }
     points.push({ x: point.x, y: point.y });
   }
-  return { points, changed: points.length !== previous.length, limitReached };
+  return {
+    points,
+    changed: points.length !== previous.length,
+    limitReached,
+    ...(path ? { path } : {}),
+  };
 }

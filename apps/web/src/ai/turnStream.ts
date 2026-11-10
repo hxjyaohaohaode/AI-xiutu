@@ -62,7 +62,8 @@ export function observeAssistantTurn<T extends { state: string }>(
           return;
         cursor = BigInt(event.id);
         onEvent(event);
-        if (['run.completed', 'run.failed', 'run.unknown'].includes(event.type)) void readState();
+        if (['run.completed', 'run.failed', 'run.unknown', 'run.stopped'].includes(event.type))
+          void readState();
       } catch {
         cleanup();
         reject(new Error('进度事件格式不正确，请重新读取会话'));

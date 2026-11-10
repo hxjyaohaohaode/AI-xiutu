@@ -58,7 +58,7 @@ export function RepairControls({ controller }: { controller: InspectorController
               id,
               name: '局部质感 ' + (current.retouch.length + 1),
               mask,
-              algorithm: 'guided-v1',
+              algorithm: 'guided-v2',
             });
       if (apply({ ...current, [mode]: [...current[mode], op] }, '新建' + op.name, true)) {
         editor.setActiveRepairId(id);
@@ -307,7 +307,7 @@ export function RepairControls({ controller }: { controller: InspectorController
           )}
           {mode === 'retouch' && (
             <div className="tonal-tabs" aria-label="质感算法">
-              {(['guided-v1', 'legacy'] as const).map((algorithm) => (
+              {(['guided-v2', 'guided-v1', 'legacy'] as const).map((algorithm) => (
                 <button
                   key={algorithm}
                   aria-pressed={((item as RetouchRegionV4).algorithm ?? 'legacy') === algorithm}
@@ -318,7 +318,7 @@ export function RepairControls({ controller }: { controller: InspectorController
                         retouch: recipe.retouch.map((op) => {
                           if (op.id !== item.id) return op;
                           const { algorithm: _old, ...rest } = op;
-                          return { ...rest, ...(algorithm === 'guided-v1' ? { algorithm } : {}) };
+                          return { ...rest, ...(algorithm !== 'legacy' ? { algorithm } : {}) };
                         }),
                       },
                       '切换质感算法',
@@ -326,7 +326,13 @@ export function RepairControls({ controller }: { controller: InspectorController
                     )
                   }
                 >
-                  {algorithm === 'guided-v1' ? '保边美肤' : '原版质感'}
+                  {
+                    {
+                      'guided-v2': '选区保边与双尺度纹理',
+                      'guided-v1': '保边美肤',
+                      legacy: '原版质感',
+                    }[algorithm]
+                  }
                 </button>
               ))}
             </div>

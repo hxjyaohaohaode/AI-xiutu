@@ -195,14 +195,22 @@ export async function searchAssistantResources(
 ) {
   await validateScope(db, actorId, scope);
   if (!scope.spaceIds.length) return { resources: [], reason: '用户尚未选择个人或团队素材范围' };
-  const escaped = query.replace(/[\\%_]/g, '\\$&');
+  const escaped = (value: string) => value.replace(/[\\%_]/g, '\\$&');
+  const words = query
+    .trim()
+    .split(/\s+/)
+    .filter(Boolean)
+    .map((word) => `%${escaped(word)}%`);
   const found = await db.query(
     `SELECT a.id,a.name,a.width,a.height,a.annotations,a.created_at,p.id AS project_id,p.title AS project_title,p.space_id,s.name AS space_name,s.kind
     FROM assets a JOIN projects p ON p.id=a.project_id JOIN spaces s ON s.id=p.space_id JOIN memberships m ON m.space_id=s.id
     WHERE m.user_id=$1 AND s.id=ANY($2::uuid[]) AND a.deleted_at IS NULL AND p.deleted_at IS NULL
-    AND (a.name ILIKE $3 OR COALESCE(a.annotations->>'title','') ILIKE $3 OR COALESCE(a.annotations->>'tags','') ILIKE $3)
-    ORDER BY a.created_at DESC,a.id LIMIT $4`,
-    [actorId, scope.spaceIds, `%${escaped}%`, limit],
+    AND (a.name || ' ' || COALESCE(a.annotations->>'title','') || ' ' || COALESCE(a.annotations->>'tags','')) ILIKE ALL($3::text[])
+    ORDER BY CASE WHEN $4<>'' AND a.name ILIKE $4 THEN 0
+                  WHEN $4<>'' AND COALESCE(a.annotations->>'title','') ILIKE $4 THEN 1
+                  WHEN $4<>'' AND a.name ILIKE '%'||$4||'%' THEN 2 ELSE 3 END,
+             a.created_at DESC,a.id LIMIT $5`,
+    [actorId, scope.spaceIds, words, escaped(query.trim()), limit],
   );
   return {
     resources: found.rows.map((item) => ({

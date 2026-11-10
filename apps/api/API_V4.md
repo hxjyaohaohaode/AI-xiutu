@@ -189,7 +189,8 @@ that an external account or network route has passed a live paid test.
 
 - `GET /v1/assistant/models` requires login and returns `{ready,voiceReady,reason,models,voiceProfiles,verifiedAt,sources}`. Public entries contain model labels, allowed operations, service-unit cost and application budgets, never credentials. Voice profiles describe the protocol adapter; use the model-specific voice list supported by the request validator.
 - `POST /v1/projects/:projectId/assistant-turns` accepts `{idempotencyKey:UUID,modelId,prompt,context?,scope?,parentTurnId?}`. Prompt is 1..4000 characters. Returns202 while running, otherwise200, with `{id,state,modelId,output,errorCode,createdAt}`. A current verified owner/admin/editor is required; reference-only grants and platform-operator status do not grant assistant execution rights.
-- `GET /v1/assistant-turns/:turnId` returns that DTO for the current actor while project edit access remains valid. Turn states: running, completed, failed, unknown.
+- `GET /v1/assistant-turns/:turnId` returns that DTO while the actor retains project edit and referenced resource access. It includes `stopRequested`. Turn states are running, completed, failed, unknown and stopped.
+- `POST /v1/assistant-turns/:turnId/stop` accepts an empty object and idempotently records the owner's stop. It returns `{id,state,stopRequested}`. An in-flight dispatch stays running while the server reads the receipt. Verified receipts settle, an unsent hold releases, and ambiguous outcomes remain unknown. The stop blocks new tool actions and candidate publication.
 - `GET /v1/projects/:projectId/assistant-turns?conversationId=UUID` returns `{turns}`: the actor's most recent30 turns within that stable root, including prompt/output and current candidate decisions. Without a conversation filter it returns recent project history. This is a bounded view, not a fully paginated archive.
 - `GET /v1/projects/:projectId/assistant-conversations` returns the actor's most recent100 conversation roots. `conversationId` is assigned by the server; a child inherits its authorized parent's root.
 - `GET /v1/assistant-turns/:turnId/events?after=N` streams persisted sequence events. `Last-Event-ID` also resumes the cursor. This endpoint is read-only: reconnecting never resubmits or charges. Connections rotate after25seconds with actor/process concurrency limits and current access checks.
@@ -203,28 +204,36 @@ JPEG/PNG/WebP snapshot, bounded to1.5million base64 characters,1.1MB decoded and
 sharing. The server retains the recipe and image hash, not that base64 snapshot.
 This is user-triggered snapshot sharing, not continuous screen capture.
 
-`scope={spaceIds:UUID[],referenceAssetIds:UUID[],allowWebSearch,usePersonalMemory,creativeBrief?,executionGrantId?}`
+`scope={spaceIds:UUID[],referenceAssetIds:UUID[],allowWebSearch,publicSearch?,usePersonalMemory,creativeBrief?,executionGrantId?}`
 defaults to empty resource lists and false flags. There are at most12 spaces and8
 explicit image references, without duplicates. Each space requires current
 membership, and each reference must remain readable inside that chosen scope.
 Search results are metadata; only explicitly selected references become image
-input when the configured backend model supports it. Personal resource notes are
-read only with usePersonalMemory=true and current scope access; the bounded
-context includes at most12 resource notes and3000 characters, plus explicitly
-confirmed scoped memories. Parent traversal retains the authorized conversation
-chain up to256 turns. User constraints remain verbatim; older assistant text can
-be archived with source pointers and retrieved by a tool. Text, visual, tool and
-output reservations are checked before each dispatch. This is deterministic
-archiving, not an evaluated model-generated semantic summary. Revoked history
-access or a changed memory fingerprint stops the run instead of dropping constraints.
+input when the configured backend model supports it. `publicSearch={query,kind}`
+requires explicit authorization and a matching backend capability. The query is
+1–240 characters and kind is `text` or `images`. Only the explicit query goes
+to the public tool. Validated search results are recorded as `search.results`
+events and returned in `output.search`.
+
+`POST /v1/projects/:projectId/assistant-resources/search` accepts
+`{spaceIds,query,limit?}` for scoped cloud lookup. It returns metadata and
+asset IDs for the existing protected thumbnail route. It uses no model or units.
+With `usePersonalMemory=true`, recall keeps confirmed constraints and corrections
+verbatim, plus up to six relevant preferences or workflows and four resource
+notes. The manifest records IDs and versions. Parent traversal retains up to256
+authorized turns. Compacted assistant prose keeps candidate decisions and
+original source pointers. Text, visual, tool and output reservations are checked
+before dispatch. Resource access and the frozen memory versions are rechecked
+before dispatch and publication.
 
 One ordinary turn runs at a time per actor. The API admission limit is30 per hour.
 The agent can make at most4 bounded Responses requests and prepares proposals
 through a tool allowlist. The configured unitCost is a fixed service-unit charge
 for that admitted turn, not a claim about the provider's token invoice. Same
 actor/key/body replays the existing turn and does not dispatch or charge again;
-changed content under that key returns409. Once a possible external dispatch
-exists, interrupted work becomes unknown unless definite rejection is proven.
+changed content under that key returns409. Interrupted work with an unresolved
+dispatch remains unknown. Completed dispatch receipts remain available for
+settlement even if publication was stopped.
 
 ### 6.2 Suggestions remain candidates
 
@@ -284,7 +293,7 @@ editor filters, not neural portrait or large-object reconstruction claims.
 
 - `POST /v1/projects/:projectId/assistant-grants`: `{mode:'suggest'|'confirm'|'auto',unitLimit,stepLimit,minutes,allowedActions,modelIds}`. Actions are assistant-turn, realtime-voice, edit and generate-image. Authority is actor/project/model/action scoped, atomically claimed and never inferred from model text.
 - `GET /v1/assistant-grants/:grantId` returns current usage and expiry; `DELETE` revokes future actions. Default product mode is preview-confirm. Browser closure does not prevent a text auto run from finishing; voice auto application still depends on the active browser coordinator.
-- `GET /v1/projects/:projectId/assistant-memory?artworkId=UUID&includeExpired=true&page=0` returns pages of100 visible memories and `hasMore`. Runtime recall is capped at100 with explicit overflow, not silent truncation.
+- `GET /v1/projects/:projectId/assistant-memory?artworkId=UUID&includeExpired=true&page=0` returns pages of100 visible memories and `hasMore`. Runtime recall checks a bounded set of100 active entries. More than100 active constraints and corrections stops the run.
 - `POST /v1/projects/:projectId/assistant-memory` explicitly confirms `{scope,category,title,content,artworkId?,sourceTurnId?,expiresAt}`. Scopes are user/team/project/artwork; team writes require owner/admin. Source turns belong to the current actor/project.
 - `PUT` and `DELETE /v1/projects/:projectId/assistant-memory/:memoryId` require `expectedVersion`; updates also include title/content/category/expiry. Deletion removes recall but retains the auditable version history.
 - `GET .../:memoryId/history?beforeVersion=N` returns up to100 versions. Memory suggestions are drafts with exact quoted user evidence; saving always requires a user action.
@@ -318,7 +327,8 @@ The client sends only these application events, not arbitrary provider events:
 | --------- | ----------------------------------------------------------------------------------------------------------------- |
 | audio     | `pcm`: canonical base64 PCM16 mono24kHz, maximum9600 decoded bytes per chunk; rate budget144000 bytes per2seconds |
 | text      | `text`:1..4000 characters; reviewed before sending, with control/in-flight-response backpressure                  |
-| context   | `context`: a fresh explicit editor snapshot, no more often than once per2.5seconds                                |
+| context   | `context`: a fresh explicit editor snapshot, no more often than once per2.5seconds. Optional `contextTag` is echoed in the acceptance event. |
+| context.invalidate | Invalidate the previous snapshot and advance the context generation. A pending or published old candidate cannot be applied to the changed canvas. |
 | mute      | `muted:boolean`; muted audio is not forwarded                                                                     |
 | interrupt | optional `itemId,playedMs`; only the actual current output item may be truncated, bounded by delivered audio      |
 | end       | explicit end; no automatic redial or retry                                                                        |
@@ -370,6 +380,7 @@ model; operators must choose a model with the corresponding actual protocol.
 | maxOutputTokens | integer256..8192, default2048        | Backend Responses bound; Realtime adapter also clamps to4096; not sent as an invented GPT-Live field |
 | imageInput      | boolean, defaultfalse                | Whether the backend Responses model is offered explicitly shared images                              |
 | webSearch       | boolean, defaultfalse                | Backend web tool, enabled only when the user also authorizes web search                              |
+| webImageSearch  | optional boolean                     | Public image search capability, usable with webSearch and a user-supplied image query                |
 | reasoningEffort | optional none/low/medium/high        | Responses setting; configure only for a model that accepts it                                        |
 
 These switches do not authorize private resource access and do not override the
