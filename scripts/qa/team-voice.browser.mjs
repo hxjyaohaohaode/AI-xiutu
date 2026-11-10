@@ -439,6 +439,14 @@ try {
         async () => await panel.getByRole('button', { name: '打断播报', exact: true }).isEnabled(),
         'solo active',
       );
+      const endCall = panel.getByRole('button', { name: '结束实时通话', exact: true });
+      const hangupExposed = () =>
+        endCall.evaluate((button) => {
+          const box = button.getBoundingClientRect();
+          const hit = document.elementFromPoint(box.x + box.width / 2, box.y + box.height / 2);
+          return !!hit && button.contains(hit);
+        });
+      assert.ok(await hangupExposed(), 'hang-up is reachable when the call starts');
       assert.equal(sockets.length, 2);
       const voice = sockets[1];
       voice.send(JSON.stringify({ type: 'session.input_transcript.delta', delta: '看看光线。' }));
@@ -471,15 +479,16 @@ try {
       ]) {
         await page.setViewportSize(viewport);
         await panel.evaluate((element) => {
-          const scroll = element.closest('.ai-scroll');
+          const scroll = element.closest('.ai-workbench');
           if (scroll) scroll.scrollTop = 0;
         });
+        assert.ok(await hangupExposed(), 'hang-up is exposed at ' + viewport.width + 'px');
         assert.ok(
           await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth + 1),
         );
         await page.screenshot({ path: resolve(artifact, 'solo-' + viewport.width + '.png') });
       }
-      await panel.getByRole('button', { name: '结束实时通话', exact: true }).click();
+      await endCall.click();
       await panel.getByRole('button', { name: '开始实时通话', exact: true }).waitFor();
     },
   );
