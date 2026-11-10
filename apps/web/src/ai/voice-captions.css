@@ -1,0 +1,29 @@
+.voice-captions {
+  align-self: stretch;
+  min-width: 0;
+  font-size: 12px;
+}
+.voice-captions > button {
+  padding: 4px 7px;
+  border: 1px solid var(--line, #8885);
+  border-radius: 6px;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+}
+.voice-captions-lines {
+  margin-top: 4px;
+  padding: 5px 7px;
+  background: rgba(128, 128, 128, 0.08);
+  border-radius: 6px;
+  overflow-wrap: anywhere;
+}
+.voice-captions-lines p {
+  margin: 0;
+  max-block-size: 4.35em;
+  overflow: hidden;
+  line-height: 1.45;
+}
+.voice-captions-lines p + p {
+  margin-top: 3px;
+}

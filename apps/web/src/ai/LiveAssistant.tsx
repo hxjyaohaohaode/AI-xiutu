@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useLayoutEffect, useRef, useState } from 'react';
 import {
   Microphone,
   MicrophoneSlash,
@@ -27,6 +27,7 @@ import { api, errorMessage, jsonRequest } from '../lib/api';
 import { secureUuid } from '../lib/uuid';
 import type { Artwork, Project, Session, Space } from '../lib/types';
 import { EditorVoiceClient } from './voiceClient';
+import { appendCaption, type CaptionState, VoiceCaptions } from './VoiceCaptions';
 import {
   acknowledgeEditCandidate,
   assistantEditorKey,
@@ -167,6 +168,12 @@ export function LiveAssistant(props: LiveAssistantProps) {
     [voice, setVoice] = useState('marin');
   const [mode, setMode] = useState<'text' | 'voice'>('voice'),
     [callState, setCallState] = useState<'idle' | 'connecting' | 'active' | 'closing'>('idle');
+  const callPanel = useRef<HTMLDivElement>(null);
+  useLayoutEffect(() => {
+    if (callState !== 'connecting') return;
+    const scroll = callPanel.current?.closest('.ai-scroll');
+    if (scroll) scroll.scrollTop = 0;
+  }, [callState]);
   const [prompt, setPrompt] = useState(''),
     [busy, setBusy] = useState(false),
     [error, setError] = useState('');
@@ -175,6 +182,8 @@ export function LiveAssistant(props: LiveAssistantProps) {
     [memory, setMemory] = useState(false);
   const [publicQuery, setPublicQuery] = useState('');
   const [publicImages, setPublicImages] = useState(false);
+  const [voiceCaptions, setVoiceCaptions] = useState<CaptionState>({});
+  const [voiceSearchUsed, setVoiceSearchUsed] = useState(false);
   const [activeTurn, setActiveTurn] = useState<{ id: string; stopping: boolean } | null>(null);
   const [spaceIds, setSpaceIds] = useState<string[]>(project ? [project.spaceId] : []),
     [referenceIds, setReferenceIds] = useState<string[]>([]);
@@ -302,6 +311,7 @@ export function LiveAssistant(props: LiveAssistantProps) {
     freshConversation.current = false;
     setCreative(initialCreativeSettings());
     setMessages([]);
+    setVoiceCaptions({});
     setCandidates([]);
     if (!isLoggedIn) {
       setCatalog(null);
@@ -618,6 +628,7 @@ export function LiveAssistant(props: LiveAssistantProps) {
         setError('通话已停止，供应商最终状态待核验；系统不会自动重拨或重复扣额。');
     }
     if (event.type === 'error') setError(event.message);
+    if (event.type === 'search-started') setVoiceSearchUsed(true);
     if (event.type === 'context') {
       const pending = voiceCanvas.current.pending;
       if (
@@ -635,18 +646,7 @@ export function LiveAssistant(props: LiveAssistantProps) {
           ? `正在协作：${({ search_resources: '查找素材', describe_editor: '读取编辑参数', propose_edit: '准备参数候选', propose_curve: '准备曲线', draft_generation: '整理生图草案', consult_editor: '分析当前需求' } as Record<string, string>)[event.name] ?? event.name}`
           : '',
       );
-    if (event.type === 'transcript')
-      setMessages((old) => {
-        const last = old.at(-1);
-        if (event.delta && last?.role === event.role && last.id.startsWith('live-'))
-          return [
-            ...old.slice(0, -1),
-            { ...last, text: `${last.text}${event.text}`.slice(-12000) },
-          ].slice(-40);
-        return [...old, { id: `live-${secureUuid()}`, role: event.role, text: event.text }].slice(
-          -40,
-        );
-      });
+    if (event.type === 'transcript') setVoiceCaptions((old) => appendCaption(old, event));
     if (event.type === 'assistant-result') {
       if (voiceCanvas.current.accepted !== assistantEditorKey(editorState(current.current))) return;
       setMemorySuggestions({ items: event.memorySuggestions ?? [] });
@@ -677,6 +677,8 @@ export function LiveAssistant(props: LiveAssistantProps) {
     const epoch = ++voiceEpoch.current;
     voiceEnding.current = false;
     setError('');
+    setVoiceCaptions({});
+    setVoiceSearchUsed(false);
     setCallState('connecting');
     const voiceIsActive = () =>
       alive.current &&
@@ -721,7 +723,7 @@ export function LiveAssistant(props: LiveAssistantProps) {
           backendModelId: modelId,
           voice,
           context,
-          scope: authorizedScope,
+          scope: { ...authorizedScope, publicSearch: undefined },
         }),
       );
       if (!requestIsActive(token) || epoch !== voiceEpoch.current) {
@@ -749,6 +751,22 @@ export function LiveAssistant(props: LiveAssistantProps) {
     if (callState === 'connecting') voiceEpoch.current++;
     setCallState(callState === 'connecting' ? 'idle' : 'closing');
     client.current?.end();
+  }
+  function searchDuringCall() {
+    const query = publicQuery.trim();
+    if (
+      callState !== 'active' ||
+      !selected?.webSearch ||
+      !allowWebSearch ||
+      !query ||
+      voiceSearchUsed
+    )
+      return;
+    setError('');
+    client.current?.send({
+      type: 'search',
+      search: { query, kind: publicImages && selected.webImageSearch ? 'images' : 'text' },
+    });
   }
   function showRunEvent(event: RunEvent) {
     if (event.type === 'text.delta' && typeof event.payload.delta === 'string') {
@@ -807,7 +825,13 @@ export function LiveAssistant(props: LiveAssistantProps) {
   }
   async function submit() {
     if (requests.current.busy || !isLoggedIn || !project || !prompt.trim() || !modelId) return;
-    if (allowWebSearch && selected?.webSearch && !publicQuery.trim() && !inCall) {
+    if (
+      mode === 'text' &&
+      allowWebSearch &&
+      selected?.webSearch &&
+      !publicQuery.trim() &&
+      !inCall
+    ) {
       setError('请填写可发送给公开搜索的查询词，或取消公开检索。');
       return;
     }
@@ -1131,8 +1155,132 @@ export function LiveAssistant(props: LiveAssistantProps) {
         </button>
       </div>
     );
+  const voicePanel = mode === 'voice' && (
+    <div ref={callPanel} className={`assistant-call ${callState}`} data-assistant-motion="call">
+      <div className="assistant-voice-orb" aria-hidden>
+        <Waveform size={28} />
+      </div>
+      <div className="assistant-call-status" aria-live="polite">
+        {callState === 'active'
+          ? `正在通话 ${Math.floor(elapsed / 60)}:${String(elapsed % 60).padStart(2, '0')}`
+          : callState === 'connecting'
+            ? '正在连接麦克风与语音服务…'
+            : callState === 'closing'
+              ? '正在结束并核对用量…'
+              : '说出想法，一起看图、找素材、调参数'}
+        <small>
+          {inCall
+            ? contextStatus
+            : selectedVoice
+              ? `本次 ${selectedVoice.unitCost} 服务点 · 最长 ${selectedVoice.maxSeconds} 秒 · 最多 ${selectedVoice.maxDelegations} 次后端协作`
+              : '由运营配置可用模型与额度'}
+        </small>
+      </div>
+      {!inCall ? (
+        <div className="assistant-call-start">
+          <select
+            aria-label="语音音色"
+            value={voice}
+            onChange={(event) => setVoice(event.target.value)}
+          >
+            {voiceOptions.map((option) => (
+              <option key={option} value={option}>
+                {option}
+              </option>
+            ))}
+          </select>
+          <button
+            className="button button-primary"
+            onClick={startVoice}
+            disabled={!catalog?.voiceReady || !project || !selected || !selectedVoice}
+          >
+            <Microphone size={17} />
+            开始实时通话
+          </button>
+        </div>
+      ) : (
+        <div className="assistant-call-actions">
+          <button
+            aria-label={muted ? '开启麦克风' : '静音麦克风'}
+            aria-pressed={muted}
+            disabled={callState !== 'active'}
+            onClick={() => {
+              client.current?.mute(!muted);
+              setMuted(!muted);
+            }}
+          >
+            {muted ? <MicrophoneSlash size={20} /> : <Microphone size={20} />}
+          </button>
+          <button
+            aria-label="打断播报"
+            disabled={callState !== 'active'}
+            onClick={() => client.current?.interrupt()}
+          >
+            <Pause size={20} />
+          </button>
+          <button
+            className="end-call"
+            aria-label="结束实时通话"
+            disabled={callState === 'closing'}
+            onClick={endVoice}
+          >
+            <PhoneDisconnect size={20} />
+          </button>
+        </div>
+      )}
+      {(inCall || voiceCaptions.user || voiceCaptions.assistant) && (
+        <VoiceCaptions captions={voiceCaptions} />
+      )}
+      {callState === 'active' && allowWebSearch && selected?.webSearch && (
+        <details className="assistant-voice-search">
+          <summary>通话中公开搜索</summary>
+          <form
+            className="assistant-public-query"
+            onSubmit={(event) => {
+              event.preventDefault();
+              searchDuringCall();
+            }}
+          >
+            <label>
+              可公开的查询词
+              <input
+                aria-label="通话公开检索查询词"
+                value={publicQuery}
+                maxLength={240}
+                onChange={(event) => setPublicQuery(event.target.value)}
+                placeholder="例如：静物柔光参考"
+              />
+            </label>
+            {selected.webImageSearch && (
+              <label>
+                <input
+                  type="checkbox"
+                  checked={publicImages}
+                  onChange={(event) => setPublicImages(event.target.checked)}
+                />
+                查找公开图片
+              </label>
+            )}
+            <small>也可说「公开搜索：关键词」。本通话最多一次公开搜索，只发送查询词。</small>
+            <button
+              type="submit"
+              className="button button-secondary"
+              disabled={!publicQuery.trim() || !!toolStatus || voiceSearchUsed}
+            >
+              {voiceSearchUsed ? '本次已发起检索' : '搜索'}
+            </button>
+          </form>
+        </details>
+      )}
+    </div>
+  );
   return (
-    <section className="live-assistant" aria-label="实时语音与智能体协作">
+    <section
+      className="live-assistant"
+      data-in-call={inCall || undefined}
+      aria-label="实时语音与智能体协作"
+    >
+      {inCall && voicePanel}
       <header className="assistant-mode" data-assistant-motion="mode">
         <button aria-pressed={mode === 'voice'} onClick={() => setMode('voice')}>
           实时对话
@@ -1274,7 +1422,7 @@ export function LiveAssistant(props: LiveAssistantProps) {
             />
             允许公开网络检索，保留来源链接
           </label>
-          {allowWebSearch && selected?.webSearch && (
+          {mode === 'text' && allowWebSearch && selected?.webSearch && (
             <div className="assistant-public-query">
               <label>
                 可公开的查询词
@@ -1363,81 +1511,7 @@ export function LiveAssistant(props: LiveAssistantProps) {
           </p>
         </div>
       </details>
-      {mode === 'voice' && (
-        <div className={`assistant-call ${callState}`} data-assistant-motion="call">
-          <div className="assistant-voice-orb" aria-hidden>
-            <Waveform size={28} />
-          </div>
-          <div className="assistant-call-status" aria-live="polite">
-            {callState === 'active'
-              ? `正在通话 ${Math.floor(elapsed / 60)}:${String(elapsed % 60).padStart(2, '0')}`
-              : callState === 'connecting'
-                ? '正在连接麦克风与语音服务…'
-                : callState === 'closing'
-                  ? '正在结束并核对用量…'
-                  : '说出想法，一起看图、找素材、调参数'}
-            <small>
-              {inCall
-                ? contextStatus
-                : selectedVoice
-                  ? `本次 ${selectedVoice.unitCost} 服务点 · 最长 ${selectedVoice.maxSeconds} 秒 · 最多 ${selectedVoice.maxDelegations} 次后端协作`
-                  : '由运营配置可用模型与额度'}
-            </small>
-          </div>
-          {!inCall ? (
-            <div className="assistant-call-start">
-              <select
-                aria-label="语音音色"
-                value={voice}
-                onChange={(event) => setVoice(event.target.value)}
-              >
-                {voiceOptions.map((option) => (
-                  <option key={option} value={option}>
-                    {option}
-                  </option>
-                ))}
-              </select>
-              <button
-                className="button button-primary"
-                onClick={startVoice}
-                disabled={!catalog?.voiceReady || !project || !selected || !selectedVoice}
-              >
-                <Microphone size={17} />
-                开始实时通话
-              </button>
-            </div>
-          ) : (
-            <div className="assistant-call-actions">
-              <button
-                aria-label={muted ? '开启麦克风' : '静音麦克风'}
-                aria-pressed={muted}
-                disabled={callState !== 'active'}
-                onClick={() => {
-                  client.current?.mute(!muted);
-                  setMuted(!muted);
-                }}
-              >
-                {muted ? <MicrophoneSlash size={20} /> : <Microphone size={20} />}
-              </button>
-              <button
-                aria-label="打断播报"
-                disabled={callState !== 'active'}
-                onClick={() => client.current?.interrupt()}
-              >
-                <Pause size={20} />
-              </button>
-              <button
-                className="end-call"
-                aria-label="结束实时通话"
-                disabled={callState === 'closing'}
-                onClick={endVoice}
-              >
-                <PhoneDisconnect size={20} />
-              </button>
-            </div>
-          )}
-        </div>
-      )}
+      {!inCall && voicePanel}
       <div className="assistant-messages" aria-label="协作对话" data-assistant-motion="messages">
         {messages.map((message) => (
           <article key={message.id} className={`assistant-message ${message.role}`}>

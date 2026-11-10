@@ -77,6 +77,17 @@ export class EditorVoiceClient {
         )
           this.enqueueAudio(event.pcm, event.itemId);
         if (event.type === 'interrupted') {
+          if (
+            event.bySpeech &&
+            this.audio &&
+            this.nextAudioTime > this.audio.currentTime &&
+            this.currentItemId
+          )
+            this.send({
+              type: 'playback-cut',
+              itemId: this.currentItemId,
+              playedMs: this.playedMs(),
+            });
           this.blockedItem = this.currentItemId;
           this.clearPlayback();
         }
@@ -148,7 +159,7 @@ export class EditorVoiceClient {
       this.dispose();
       return;
     }
-    if (event.type === 'text') this.outputPaused = false;
+    if (event.type === 'text' || event.type === 'search') this.outputPaused = false;
     this.socket.send(JSON.stringify(event));
   }
   updateContext(context: AssistantContext, contextTag: string) {
@@ -161,15 +172,17 @@ export class EditorVoiceClient {
     });
     this.send({ type: 'mute', muted });
   }
-  interrupt() {
-    const playedMs = this.audio
+  private playedMs() {
+    return this.audio
       ? Math.max(0, Math.floor((this.audio.currentTime - this.itemStartTime) * 1000))
       : 0;
+  }
+  interrupt() {
     this.outputPaused = true;
     this.blockedItem = this.currentItemId;
     this.send({
       type: 'interrupt',
-      ...(this.currentItemId ? { itemId: this.currentItemId, playedMs } : {}),
+      ...(this.currentItemId ? { itemId: this.currentItemId, playedMs: this.playedMs() } : {}),
     });
     this.clearPlayback();
   }

@@ -5,11 +5,12 @@ import {
   type AssistantSearchEvidence,
 } from '@ai-xiutu/contracts';
 import { Modal } from '../components/Ui';
+import './live-assistant.css';
 
 interface ReferenceControls {
   selected: string[];
   disabled: boolean;
-  onSelect: (id: string) => void;
+  onSelect?: (id: string) => void;
 }
 
 export function CloudImageResults({
@@ -47,15 +48,17 @@ export function CloudImageResults({
                 <small>{details(item)}</small>
               </span>
             </button>
-            <button
-              type="button"
-              className="assistant-reference-toggle"
-              aria-pressed={selected.includes(item.id)}
-              disabled={!canSelect(item.id)}
-              onClick={() => onSelect(item.id)}
-            >
-              {selected.includes(item.id) ? '移出参考' : '选为参考'}
-            </button>
+            {onSelect && (
+              <button
+                type="button"
+                className="assistant-reference-toggle"
+                aria-pressed={selected.includes(item.id)}
+                disabled={!canSelect(item.id)}
+                onClick={() => onSelect(item.id)}
+              >
+                {selected.includes(item.id) ? '移出参考' : '选为参考'}
+              </button>
+            )}
           </li>
         ))}
       </ul>
@@ -72,17 +75,19 @@ export function CloudImageResults({
               />
             )}
             <p>{details(preview)}</p>
-            <button
-              type="button"
-              className="button button-primary"
-              disabled={unavailable || !canSelect(preview.id)}
-              onClick={() => {
-                onSelect(preview.id);
-                setPreview(null);
-              }}
-            >
-              {selected.includes(preview.id) ? '移出参考' : '选为参考'}
-            </button>
+            {onSelect && (
+              <button
+                type="button"
+                className="button button-primary"
+                disabled={unavailable || !canSelect(preview.id)}
+                onClick={() => {
+                  onSelect(preview.id);
+                  setPreview(null);
+                }}
+              >
+                {selected.includes(preview.id) ? '移出参考' : '选为参考'}
+              </button>
+            )}
           </div>
         </Modal>
       )}
@@ -133,6 +138,9 @@ export function SearchEvidence({
                   </a>
                 ))}
               </div>
+              {item.requested === 'images' && !item.images.length && !!item.sources.length && (
+                <p>本次只返回来源网页。</p>
+              )}
               {!item.images.length && !item.sources.length && <p>本次未取得可引用的公开结果。</p>}
             </>
           )}

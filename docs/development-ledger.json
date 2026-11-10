@@ -3,7 +3,7 @@
   "updatedAt": "2026-11-10",
   "scope": "用户本轮全部要求，以及“开源项目参考”聊天中的上下文、记忆、流式输出、生成式 UI 要求。",
   "constraints": [
-    "不产生付费模型调用费用",
+    "自动化验证不产生模型调用费用，官方模型仅做用户授权的低成本实测",
     "保留现有前端整体视觉与布局，优先算法和功能联动",
     "最终交付可运行的 main，GitHub 只保留 main 分支",
     "服务端掌握权限、版本、用量与费用",
@@ -33,19 +33,25 @@
       "id": "creative-intent",
       "requirement": "模糊感觉、风格强度、保留/避免项、用途、参考图角色",
       "status": "local_verified",
-      "evidence": "感觉/用途/保留/避免/强度/参考角色、组合编辑和4000字生图交接已接通；真实模型的审美理解与出片未付费验收。"
+      "evidence": "感觉、用途、保留、避免、强度和参考角色已接入生图交接。用 GPT-5.4 mini 观察合成图并优化描述，用 GPT Image 2 真实生成一张对照图。更多题材和高质量出片率仍待实测。"
     },
     {
       "id": "model-parameters",
       "requirement": "官方模型选择、各模型独立参数、规格、报价",
       "status": "baseline_audit_pending",
-      "evidence": "保留 v4 独立模型目录和参数能力；真实账号支持与生成质量未验证。"
+      "evidence": "保留各模型的尺寸、质量、张数、报价和独立参数。真实账号列表检查了选定模型，并用 GPT Image 2 完成一个合成图生成任务。广泛题材和模型矩阵未验收。"
     },
     {
       "id": "realtime",
       "requirement": "GPT-Live/Realtime 实时双向通话、看图、工具、打断",
-      "status": "baseline_protocol_verified",
-      "evidence": "本机真实 WebSocket 协议通过。候选绑定其不可变作品版本和通话上下文代数，画面变化后复核迟到回执并阻止旧候选应用。语音自动应用由活动浏览器协调，真实供应商语音质量待验收。"
+      "status": "protocol_and_paid_sample_verified",
+      "evidence": "本机 WebSocket 和官方 GPT-Live、Realtime 连续送流已验证。单人字幕可关，支持通话内检索。候选绑定不可变作品版本和通话上下文代数，画面变化后复核迟到回执并阻止旧候选应用。语音候选执行仍由活动浏览器协调。"
+    },
+    {
+      "id": "team-voice",
+      "requirement": "开放麦克风的成员会议、团队 AI 连续对话和可选字幕",
+      "status": "protocol_and_paid_sample_verified",
+      "evidence": "按作品隔离，成员音频并行转发，独立授权进入 AI 混音。测试多人重叠 PCM、撤权、版本同步、双浏览器与官方 GPT-Live 共享图委派。成员字幕受浏览器本机语言包限制，跨实例和真实设备尚未验收。"
     },
     {
       "id": "context-budget",
@@ -195,7 +201,7 @@
       "id": "testing",
       "requirement": "全仓、多轮、真实图像、极值、状态、端间和并发检测",
       "status": "local_verified_snapshot",
-      "evidence": "本轮 Linux 原生 PostgreSQL 656项通过、0失败、0跳过，类型检查与构建通过。工作台21项和助手16项浏览器用例通过，实际照片419个有效采样通过。历史80个数值控制和组合的2630次对照另存。Node逐文件审计独立列出未执行源码。GitHub CI 以最终提交的运行记录为准。"
+      "evidence": "本轮 Linux 原生 PostgreSQL 659项通过、0失败、0跳过，类型检查与构建通过。工作台21项、助手16项、语音4组浏览器用例通过，实际照片419个有效采样通过。80个数值控制和组合的2630次对照另存。Node逐文件审计独立列出未执行源码。GitHub CI 以最终提交的运行记录为准。"
     },
     {
       "id": "deployment",
@@ -205,14 +211,21 @@
     }
   ],
   "evidence": {
-    "localCheck": "artifacts/inspection/depth-final-native.log",
-    "productionBuild": "artifacts/inspection/depth-final-production.log",
+    "localCheck": "artifacts/inspection/final-conversation-native.log",
+    "productionBuild": "artifacts/inspection/final-conversation-production.log",
     "browserWorkspace": "artifacts/depth-final/workspace/report.json",
     "nativeCoverage": "artifacts/coverage/native/summary.json",
     "browserAssistant": "artifacts/depth-final/assistant/report.json",
+    "browserVoice": "artifacts/browser-team-voice/report.json",
     "realPhotographs": "artifacts/spatial-quality/report.json",
     "allControlPhotographs": "artifacts/editor-v4-sweep/evidence.json",
-    "paidProviderCalls": 0,
+    "paidProviderSamples": [
+      "artifacts/depth-final/openai-live-report.json",
+      "artifacts/depth-final/openai-image-search-report.json",
+      "artifacts/depth-final/openai-voice-retest-report.json",
+      "artifacts/depth-final/openai-team-budget-continuity-proof.json",
+      "artifacts/depth-final/openai-realtime-barge-proof.json"
+    ],
     "review": "docs/verification/depth-20261110.md"
   }
 }

@@ -3,6 +3,9 @@ import { UsersThree, CloudCheck, CloudSlash, ArrowClockwise } from '@phosphor-ic
 import type { CollaborationState } from './useCollaboration';
 import { targetLabel } from './model';
 import { usePresence } from '../motion/usePresence';
+import type { AssistantContext } from '@ai-xiutu/contracts';
+import { TeamVoiceControls } from './TeamVoiceControls';
+import type { TeamVoiceState } from './useTeamVoice';
 import './collaboration.css';
 const labels = {
   off: '本地编辑',
@@ -19,10 +22,14 @@ export function CollaborationStatus({
   collaboration: c,
   onReload,
   onFork,
+  teamVoice,
+  captureVoiceContext,
 }: {
   collaboration: CollaborationState;
   onReload: () => void;
   onFork: () => void;
+  teamVoice?: TeamVoiceState;
+  captureVoiceContext?: () => Promise<AssistantContext>;
 }) {
   const [open, setOpen] = useState(false);
   const details = usePresence(open, 'collaboration-details'),
@@ -44,7 +51,11 @@ export function CollaborationStatus({
       >
         <UsersThree size={17} />
         <span>{labels[c.status]}</span>
-        <small>{members.length || '—'}</small>
+        <small>
+          {teamVoice?.state === 'connected'
+            ? '语音 ' + teamVoice.roster.members.length
+            : members.length || '—'}
+        </small>
         {c.status === 'ready' ? (
           <CloudCheck size={16} />
         ) : c.status === 'reconnecting' ? (
@@ -60,6 +71,7 @@ export function CollaborationStatus({
           aria-hidden={!open}
           aria-label="实时编辑协作状态"
         >
+          {teamVoice && <TeamVoiceControls room={teamVoice} capture={captureVoiceContext} />}
           <p>每次确认调整会发布为新版本。游标与半透明范围表示队员正在编辑的位置；预览尚未保存。</p>
           <ul>
             {members.map((member) => (

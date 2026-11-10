@@ -137,7 +137,12 @@ export interface VoiceRow extends PaidRow {
   context_epoch: number;
   request_hash: string;
   backend_model_id: string;
-  config: { voice: string; voiceModel: AssistantModelConfig; backendModel: AssistantModelConfig };
+  config: {
+    voice: string;
+    voiceModel: AssistantModelConfig;
+    backendModel: AssistantModelConfig;
+    teamArtworkId?: string;
+  };
   connection_hash: string;
 }
 export function createAssistantService(
@@ -592,6 +597,30 @@ export function createAssistantService(
         await markUnknownHold(tx, current.hold_id);
         await tx.query(
           "UPDATE voice_sessions SET state='unknown',error_code='CONNECTION_UNCONFIRMED',updated_at=clock_timestamp() WHERE id=$1",
+          [id],
+        );
+      });
+    },
+    async cancelPreparedVoice(id: string) {
+      await transaction(db, async (tx) => {
+        const current = (
+          await tx.query(
+            "SELECT hold_id FROM voice_sessions WHERE id=$1 AND state='prepared' FOR UPDATE",
+            [id],
+          )
+        ).rows[0];
+        if (!current) return;
+        if (await journal.hasEvidence({ id, kind: 'voice' })) {
+          await markUnknownHold(tx, current.hold_id);
+          await tx.query(
+            "UPDATE voice_sessions SET state='unknown',error_code='CONNECTION_UNCONFIRMED',updated_at=clock_timestamp() WHERE id=$1",
+            [id],
+          );
+          return;
+        }
+        await releaseHold(tx, current.hold_id);
+        await tx.query(
+          "UPDATE voice_sessions SET state='failed',error_code='VOICE_CANCELLED_BEFORE_CONNECT',updated_at=clock_timestamp() WHERE id=$1",
           [id],
         );
       });
@@ -1082,7 +1111,7 @@ export function createAssistantService(
         createdAt: row.created_at,
       };
     },
-    async prepareVoice(actorId: string, projectId: string, raw: unknown) {
+    async prepareVoice(actorId: string, projectId: string, raw: unknown, teamArtworkId?: string) {
       if (!voiceReady)
         throw new HttpError(503, 'VOICE_NOT_CONFIGURED', reason ?? '实时语音开关尚未启用');
       await assertJournal();
@@ -1095,7 +1124,7 @@ export function createAssistantService(
       }
       if (!(profile.voices as readonly string[]).includes(body.voice))
         throw new HttpError(400, 'VOICE_NOT_ALLOWED', '此音色不适用于选中的语音模型');
-      const requestHash = hash(JSON.stringify(body));
+      const requestHash = hash(JSON.stringify(teamArtworkId ? { ...body, teamArtworkId } : body));
       const context = await currentContext(actorId, projectId, body.context);
       await validateScope(db, actorId, body.scope);
       await model(db, body.modelId, 'realtime-voice');
@@ -1172,6 +1201,7 @@ export function createAssistantService(
           voice: body.voice,
           voiceModel: voiceConfig,
           backendModel: backendConfig,
+          ...(teamArtworkId ? { teamArtworkId } : {}),
         };
         const row = (
           await tx.query(

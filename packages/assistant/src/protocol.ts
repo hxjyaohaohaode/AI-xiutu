@@ -1,3 +1,4 @@
+import { randomUUID } from 'node:crypto';
 import type { VoiceServerEvent } from '@ai-xiutu/contracts';
 import { voiceModel } from './models.js';
 
@@ -13,6 +14,19 @@ function boundedLiveText(value: string): string {
   return output;
 }
 
+export function liveContextAppend(
+  channel: 'thinking' | 'commentary' | 'instructions',
+  content: string,
+  delegationId: string | null = null,
+) {
+  return {
+    type: `session.${channel}.append`,
+    event_id: `evt_${randomUUID()}`,
+    delegation_id: delegationId,
+    content: boundedLiveText(content),
+  };
+}
+
 export const LIVE_URL = 'wss://api.openai.com/v1/live/sessions';
 export function voiceEndpoint(modelId: string): string {
   return voiceModel(modelId).protocol === 'live'
@@ -21,16 +35,25 @@ export function voiceEndpoint(modelId: string): string {
 }
 const voiceInstructions =
   '你是图片创作助手，简洁自然地用中文交流。涉及图片理解、编辑建议、素材搜索和生成时必须委托后端。你不能直接修改图片，不能声称图片已生成、建议已应用或已保存。当前画面是用户主动共享的快照，未共享时不要说看到了。要求用户在可见候选卡片中确认修改，生图必须保留模型与参数选择。不要推断身份或医疗信息。';
-export function voiceStartEvent(modelId: string, voice: string, maxOutputTokens: number) {
+export function voiceStartEvent(
+  modelId: string,
+  voice: string,
+  maxOutputTokens: number,
+  team = false,
+) {
   if (!(voiceModel(modelId).voices as readonly string[]).includes(voice))
     throw new Error('VOICE_NOT_ALLOWED');
+  const instructions = team
+    ? voiceInstructions +
+      ' 你在多人语音会议中。成员可同时说话，你收到的是已授权的合流音频，不保证识别发言者。成员彼此讨论时以聆听为主。被问到、需要澄清或有已完成的协作结果时简短加入。有人打断时跟随最新需求。'
+    : voiceInstructions + ' 支持双向实时交流。有人打断时跟随最新需求。';
   if (voiceModel(modelId).protocol === 'live')
     return {
       type: 'session.start',
       session: {
         model: modelId,
         store: false,
-        instructions: voiceInstructions,
+        instructions,
         audio: { format: { type: 'audio/pcm', rate: 24000 }, output: { voice } },
         delegation: { type: 'client' },
       },
@@ -40,7 +63,7 @@ export function voiceStartEvent(modelId: string, voice: string, maxOutputTokens:
     session: {
       type: 'realtime',
       model: modelId,
-      instructions: voiceInstructions,
+      instructions,
       output_modalities: ['audio'],
       max_output_tokens: Math.min(maxOutputTokens, 4096),
       audio: {
@@ -90,13 +113,7 @@ export function voiceAudioEvent(modelId: string, pcm: string) {
 }
 export function voiceTextEvents(modelId: string, text: string) {
   if (voiceModel(modelId).protocol === 'live')
-    return [
-      {
-        type: 'session.thinking.append',
-        delegation_id: null,
-        content: boundedLiveText(`用户键入：${text}`),
-      },
-    ];
+    return [liveContextAppend('thinking', `用户键入：${text}`)];
   return [
     {
       type: 'conversation.item.create',
@@ -108,11 +125,7 @@ export function voiceTextEvents(modelId: string, text: string) {
 export function voiceResultEvents(modelId: string, callId: string, text: string) {
   if (voiceModel(modelId).protocol === 'live')
     return [
-      {
-        type: 'session.commentary.append',
-        delegation_id: callId.startsWith('typed_') ? null : callId || null,
-        content: boundedLiveText(text),
-      },
+      liveContextAppend('commentary', text, callId.startsWith('typed_') ? null : callId || null),
     ];
   return [
     {
@@ -169,17 +182,21 @@ export function normalizeVoiceEvent(raw: Record<string, any>): VoiceServerEvent 
       ...timing,
     };
   if (
-    raw.type === 'conversation.item.input_audio_transcription.completed' &&
+    [
+      'conversation.item.input_audio_transcription.completed',
+      'response.output_audio_transcript.done',
+    ].includes(raw.type) &&
     typeof raw.transcript === 'string'
   )
     return {
       type: 'transcript',
-      role: 'user',
+      role: raw.type === 'response.output_audio_transcript.done' ? 'assistant' : 'user',
       text: raw.transcript.slice(0, 8000),
       delta: false,
       ...timing,
     };
-  if (raw.type === 'input_audio_buffer.speech_started') return { type: 'interrupted' };
+  if (raw.type === 'input_audio_buffer.speech_started')
+    return { type: 'interrupted', bySpeech: true };
   return null;
 }
 
@@ -213,6 +230,9 @@ export class VoiceTranscriptBuffer {
   }
   clear() {
     this.segments = [];
+  }
+  latestUser() {
+    return this.segments.findLast((segment) => segment.role === 'user');
   }
   toString() {
     return this.segments.map((segment) => `${segment.role}: ${segment.text}`).join('\n');

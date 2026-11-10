@@ -199,3 +199,30 @@
     transition: none;
   }
 }
+.team-voice {
+  display: grid;
+  gap: 6px;
+  margin-block: 8px;
+  padding-block: 8px;
+  border-block: 1px solid var(--line);
+}
+.team-voice details label {
+  display: grid;
+  gap: 4px;
+  margin-block: 6px;
+}
+.team-voice details select {
+  min-width: 0;
+  max-width: 100%;
+}
+.team-voice .team-voice-checkbox {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+}
+.team-voice-caption {
+  overflow-wrap: anywhere;
+}
+.team-voice .voice-captions-lines p {
+  margin: 0;
+}
