@@ -1358,6 +1358,11 @@
   }
 }
 @media (max-width: 759px) {
+  /* This fixed editor surface is not a scroll container. Nested tool scrollers
+     retain focus scrolling without moving the canvas to a resize handle's overflow. */
+  .studio-workspace.view-editor .workspace-body {
+    overflow: clip;
+  }
   .studio-workspace .floating-topbar {
     min-height: 54px;
     height: 54px;

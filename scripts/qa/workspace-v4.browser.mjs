@@ -372,6 +372,7 @@ async function layoutAssertions(page, phone) {
     };
     const photo = document.querySelector('.image-frame canvas');
     const scroller = document.querySelector('.inspector-scroll');
+    const workspace = document.querySelector('.workspace-body');
     return {
       width: innerWidth,
       height: innerHeight,
@@ -384,6 +385,9 @@ async function layoutAssertions(page, phone) {
       scroll: rect('.inspector-scroll'),
       scrollTop: scroller?.scrollTop ?? null,
       scrollHeight: scroller?.scrollHeight ?? null,
+      workspaceScrollLeft: workspace?.scrollLeft ?? null,
+      workspaceClientWidth: workspace?.clientWidth ?? null,
+      workspaceScrollWidth: workspace?.scrollWidth ?? null,
       photoFilter: photo ? getComputedStyle(photo).filter : null,
     };
   });
@@ -405,6 +409,7 @@ async function layoutAssertions(page, phone) {
   );
   assert.ok(
     measured.panel.x >= -1 && measured.panel.x + measured.panel.width <= measured.width + 1,
+    'the floating panel stays within the horizontal viewport bounds',
   );
   assert.ok(
     measured.slider.y >= measured.scroll.y - 1 &&
@@ -1272,7 +1277,11 @@ try {
   report.state = 'passed';
 } catch (error) {
   report.state = 'failed';
-  report.failure = { case: activeCase, message: String(error.message).slice(0, 2500) };
+  report.failure = {
+    case: activeCase,
+    message: String(error.message).slice(0, 2500),
+    stack: String(error.stack ?? '').slice(0, 6000),
+  };
   for (const [index, page] of pages.entries())
     if (!page.isClosed())
       await page.screenshot({ path: join(artifacts, `failure-${index}.png`) }).catch(() => {});

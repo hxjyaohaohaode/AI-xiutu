@@ -60,7 +60,7 @@ export function PrecisionRange({
   });
   useEffect(() => {
     if (editing) {
-      input.current?.focus();
+      input.current?.focus({ preventScroll: true });
       input.current?.select();
     }
   }, [editing]);
@@ -215,12 +215,12 @@ export function PrecisionRange({
                   if (event.nativeEvent.isComposing || event.nativeEvent.keyCode === 229) return;
                   if (event.key === 'Enter') {
                     event.preventDefault();
-                    if (finishNumber()) range.current?.focus();
+                    if (finishNumber()) range.current?.focus({ preventScroll: true });
                   }
                   if (event.key === 'Escape') {
                     event.preventDefault();
                     cancelNumber();
-                    range.current?.focus();
+                    range.current?.focus({ preventScroll: true });
                   }
                 }}
                 onBlur={finishNumber}
@@ -231,7 +231,7 @@ export function PrecisionRange({
                 disabled={disabled}
                 onMouseDown={(event) => event.preventDefault()}
                 onClick={() => {
-                  if (finishNumber()) range.current?.focus();
+                  if (finishNumber()) range.current?.focus({ preventScroll: true });
                 }}
               >
                 <Check size={13} />
