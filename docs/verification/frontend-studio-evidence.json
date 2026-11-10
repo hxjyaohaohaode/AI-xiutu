@@ -8,6 +8,2739 @@
     "lastFetchedAt": "2026-11-10T14:33:06.226937+00:00"
   },
   "productSourceCommit": "c03a91d7fc8c1659d48a21de30b54279a66beacc",
+  "updatedAt": "2026-11-10T16:04:54.667828+00:00",
+  "fieldScopes": {
+    "productSourceCommit": "Historical pre-publication source for the preserved finalFrontendGate, not the current product source.",
+    "finalFrontendGate": "Final local frontend gate within the pre-publication c03a91d7 stage. The label is retained from its original report; it is not an all-current-checks claim.",
+    "nativeAndMergeGate": "Historical local native gate at 70359f9 with the recorded 79b0fab CSS delta.",
+    "preSyncGateHistory": "Historical 215e2bb-based gate and earlier failures.",
+    "browser": "Preserved pre-publication local anonymous app, export, responsive and static team component evidence. Post-publication geometry and CI results are separate.",
+    "postPublicationChecks": "Point-in-time evidence for two failed remote browser runs and their scoped fixes, followed by a preserved 15:37 third-CI snapshot and separately added completed-success evidence. Historical and current source boundaries remain explicit; provider fixtures, real local model inference and manual anonymous browsing remain distinct."
+  },
+  "currentProductSource": {
+    "localCommit": "3d151c77b2eaf538087b151bc51020fcea206de0",
+    "remoteCommit": "aa529491e76792d44057c93f676d33cb148424fe",
+    "identicalGitTree": "f361ea9d2dee88bb2e5ebc01938fc8e235696bec",
+    "publicationMapping": "docs/verification/frontend-studio-publication.md",
+    "changedPathsInFix": [
+      "apps/web/src/editor/PrecisionRange.tsx",
+      "apps/web/src/workspace/studio.css",
+      "scripts/qa/workspace-v4.browser.mjs"
+    ],
+    "sourceSha256": {
+      "apps/web/src/editor/PrecisionRange.tsx": "afdd99dee86fb458e873765450b2162ba7b34f68a8d28874160dcada5021b15d",
+      "apps/web/src/workspace/studio.css": "50534eec1974e4ad5387a8d31bbed5297ebdef1d0a7ca307fffcba7d0006969d",
+      "scripts/qa/workspace-v4.browser.mjs": "f1a8449ac52dff9b4d2483b1bfaec2c7ee3f2d7b10b861484d5f68f844be3ec9"
+    },
+    "changeScope": "Add preventScroll:true to the four explicit number/range focus transfers. Set overflow:clip only on the phone editor workspace-body, which is a fixed flex surface rather than an intended scroll container, so native focus cannot shift it toward the resize handle overflow. Nested inspector scrolling, other views, native Tab behavior, resize hit boxes and all CI tolerances remain unchanged. QA adds clear horizontal assertion text, workspace scroll measurements and failure stack.",
+    "prePublicationSourceFingerprintDoesNotDescribeThisNewSource": true,
+    "scopeNote": "This identifies the latest product-fix snapshot. Later documentation-only commits may have different complete Git trees without changing these product files.",
+    "latestObservedCi": {
+      "runId": 42845426490,
+      "actualCheckoutSha": "d747d7bdcc3c72f5bd18103329448279c99d263f",
+      "jobsObservedAt": "2026-11-10T16:00:58Z",
+      "scope": "GitHub Git commit API readback verified identical trees for the CI merge checkout, published head and local product source. Final jobs show baseline, browser and containers completed successfully. Later documentation-only additions do not change this product source.",
+      "actualCheckoutTree": "f361ea9d2dee88bb2e5ebc01938fc8e235696bec",
+      "treeMatchesPublishedHead": true,
+      "workflowStatus": "completed",
+      "workflowConclusion": "success"
+    }
+  },
+  "postPublicationChecks": {
+    "status": "third-ci-completed-success-with-explicit-browser-and-fixture-scope",
+    "firstRemoteCi": {
+      "schema": "frontend-studio-ci-evidence-v1",
+      "repository": "hxjyaohaohaode/AI-xiutu",
+      "pull_request": 1,
+      "run_id": 42838715652,
+      "collected_at_utc": "2026-11-10T14:59:56.003934+00:00",
+      "requested_head_sha": "38b3451a8ea30b606c69ceeadc57a6d2bcbdd3af",
+      "actual_checkout_sha": "f72478c6ad483a8101da0c90032db6358cc26a31",
+      "checkout_kind": "GitHub pull request merge commit",
+      "merge_head_sha": "38b3451a8ea30b606c69ceeadc57a6d2bcbdd3af",
+      "merge_base_sha": "5e6c994d94a3c45e2847b4871641640d838aa375",
+      "baseline": {
+        "job_id": 129907800395,
+        "status": "completed",
+        "conclusion": "success",
+        "typecheck": {
+          "result": "success",
+          "project_count": 14,
+          "projects": [
+            "packages/ai/tsconfig.json",
+            "packages/assistant/tsconfig.json",
+            "packages/contracts/tsconfig.json",
+            "packages/db/tsconfig.json",
+            "packages/editor/tsconfig.json",
+            "packages/media/tsconfig.json",
+            "packages/multimodal/tsconfig.json",
+            "packages/portrait/tsconfig.json",
+            "packages/providers/tsconfig.json",
+            "packages/storage/tsconfig.json",
+            "apps/api/tsconfig.json",
+            "apps/web/tsconfig.json",
+            "apps/worker-ai/tsconfig.json",
+            "scripts/tsconfig.json"
+          ]
+        },
+        "tests": {
+          "tests": 722,
+          "suites": 0,
+          "pass": 722,
+          "fail": 0,
+          "cancelled": 0,
+          "skipped": 0,
+          "todo": 0,
+          "duration_ms": 87825.11189
+        },
+        "build": {
+          "result": "success",
+          "workspace": "@ai-xiutu/web",
+          "duration_ms": 853
+        },
+        "production_audit": {
+          "result": "success",
+          "command": "npm audit --omit=dev --audit-level=high",
+          "vulnerabilities": 0
+        },
+        "postgres": "18.6",
+        "database_tests_required": true,
+        "log": {
+          "path": "artifacts/verification/frontend-studio/ci-42838715652/baseline-129907800395.log",
+          "encoding": "UTF-8 decoded GitHub job log; BOM preserved",
+          "bytes": 144560,
+          "sha256": "6c41d7973a006cf2c7dd7b366217cb01e8b9a9cbda6c837bddccf8aa63588693"
+        }
+      },
+      "containers": {
+        "job_id": 129909404550,
+        "status": "completed",
+        "conclusion": "success",
+        "steps": [
+          {
+            "name": "Set up job",
+            "status": "completed",
+            "conclusion": "success",
+            "number": 1
+          },
+          {
+            "name": "Run actions/checkout@11d5960a326750d5838078e36cf38b85af677262",
+            "status": "completed",
+            "conclusion": "success",
+            "number": 2
+          },
+          {
+            "name": "Create isolated configuration with external execution disabled",
+            "status": "completed",
+            "conclusion": "success",
+            "number": 3
+          },
+          {
+            "name": "Validate and build both Docker targets",
+            "status": "completed",
+            "conclusion": "success",
+            "number": 4
+          },
+          {
+            "name": "Build optional native media runtime and verify its actual libraries",
+            "status": "completed",
+            "conclusion": "success",
+            "number": 5
+          },
+          {
+            "name": "Start PostgreSQL, migration, API, worker and web",
+            "status": "completed",
+            "conclusion": "success",
+            "number": 6
+          },
+          {
+            "name": "Verify HTTP, health, disabled external services and private network bindings",
+            "status": "completed",
+            "conclusion": "success",
+            "number": 7
+          },
+          {
+            "name": "Show container diagnostics on failure",
+            "status": "completed",
+            "conclusion": "skipped",
+            "number": 8
+          },
+          {
+            "name": "Remove isolated containers and volumes",
+            "status": "completed",
+            "conclusion": "success",
+            "number": 9
+          },
+          {
+            "name": "Post Run actions/checkout@11d5960a326750d5838078e36cf38b85af677262",
+            "status": "completed",
+            "conclusion": "success",
+            "number": 18
+          },
+          {
+            "name": "Complete job",
+            "status": "completed",
+            "conclusion": "success",
+            "number": 19
+          }
+        ]
+      },
+      "browser": {
+        "job_id": 129907799976,
+        "status": "completed",
+        "conclusion": "failure",
+        "first_failed_step": "Six complete browser flows on this commit"
+      },
+      "scope_note": "Baseline and containers succeeded. Browser failed; this is not a claim that the whole workflow run passed.",
+      "jobs_snapshot_path": "artifacts/verification/frontend-studio/ci-42838715652/jobs.json"
+    },
+    "firstBrowserFailure": {
+      "diagnosis": {
+        "step": 7,
+        "case": "layout-320x700",
+        "message": "the active slider is inside its own visible scroller",
+        "source": "scripts/qa/workspace-v4.browser.mjs (original lines 402–404)",
+        "initialSliderBottom": 643.75,
+        "initialScrollerBottom": 635.984,
+        "initialClippedPixels": 7.766,
+        "geometrySource": "Root CUA measurement on the real 320x700 application; CI artifact independently shows the same partially clipped range"
+      },
+      "originalArtifact": {
+        "id": 13773714530,
+        "sha256": "058fef45b8b8cd4dad104e499a81f60b7560923e3d72bd39013e784e77c874d0",
+        "matchesJobLogDigest": true,
+        "files": ["round-1/report.json", "round-1/failure-0.png"]
+      },
+      "explanation": "The new panel navigation plus existing scope, tonal tab and precision-control padding left part of the 40px native slider hit area below its real scroller. Later artifact-upload errors were cascading absent outputs after the first browser flow aborted.",
+      "report": {
+        "schemaVersion": 1,
+        "startedAt": "2026-11-10T14:54:30.402Z",
+        "source": "technical PNG generated in CI plus three public photographs with pinned byte counts and SHA-256",
+        "authentication": "random CI fixture passwords, actual HTTP login; no SMS delivered",
+        "browser": {
+          "name": "Chromium",
+          "version": "158.0.8127.18"
+        },
+        "cases": [
+          {
+            "name": "layout-320x700",
+            "state": "failed",
+            "durationMs": 3074,
+            "message": "the active slider is inside its own visible scroller"
+          }
+        ],
+        "pageErrors": [],
+        "manualVisualReview": false,
+        "state": "failed",
+        "failure": {
+          "case": "layout-320x700",
+          "message": "the active slider is inside its own visible scroller"
+        },
+        "finishedAt": "2026-11-10T14:54:34.813Z"
+      },
+      "geometrySourceBoundary": "The exact 7.765625px clipping was measured by root in the real anonymous application. The first CI artifact independently shows clipping but its old script did not persist these geometry measurements.",
+      "authenticationExecutionBoundary": "The first anonymous layout case aborted before the later actual HTTP login loop. The preserved report.authentication field describes the planned harness, not an executed successful login in this failed round."
+    },
+    "publishedCssFix": {
+      "localCommit": "5991d34f2b9914f9b78350bccc131e6203749155",
+      "remoteCommit": "09247f7b6a8721173b5b4e47418b2ccae681d839",
+      "identicalGitTree": "e13ef999b89767b133edfe89603547488bef9796",
+      "files": ["apps/web/src/workspace/studio.css", "scripts/qa/workspace-v4.browser.mjs"],
+      "description": "For edit-tools containers at most 420px tall, reduce ColorControls gap to 2px and remove only block padding on its scope selector, direct tonal tabs and precision control. Existing native button, input, slider and scale sizes remain unchanged. QA stores measured geometry before the existing unchanged assertions.",
+      "sourceSha256": {
+        "apps/web/src/workspace/studio.css": "c882ab6f703cba74862e25604427e77911b08da4a0a5c239b809cb5e0a9dfdc4",
+        "scripts/qa/workspace-v4.browser.mjs": "619d01cc047c52873aa3357d67874b4bd77a416f4e78004ef6c67e22781afbca"
+      },
+      "localChecks": {
+        "targetedControlTests": {
+          "tests": 10,
+          "pass": 10,
+          "fail": 0,
+          "skipped": 0,
+          "duration_ms": 3148.338998
+        },
+        "webTypecheckExitCode": 0,
+        "finalViteBuildExitCode": 0,
+        "browserScriptSyntax": "passed",
+        "gitDiffCheck": "passed",
+        "browserAutomationExecuted": false,
+        "nativeDatabaseStarted": false
+      },
+      "complete215WebTestSuiteReexecutedLocally": false,
+      "completeNativeTestSuiteReexecutedLocally": false
+    },
+    "realAnonymousControlsRegression": {
+      "scope": "Real anonymous app via CUA, source after compact color spacing fix",
+      "before320": {
+        "scrollBottom": 635.984375,
+        "sliderBottom": 643.75,
+        "sliderHeight": 40,
+        "overflow": 7.765625
+      },
+      "after320": {
+        "control": {
+          "bottom": 632.25,
+          "height": 86.5,
+          "scrollTop": 0,
+          "width": 280,
+          "x": 15,
+          "y": 545.75
+        },
+        "panel": {
+          "bottom": 635.984375,
+          "height": 284.234375,
+          "scrollTop": 0,
+          "width": 320,
+          "x": 0,
+          "y": 351.75
+        },
+        "scroll": {
+          "bottom": 635.984375,
+          "height": 193.234375,
+          "scrollTop": 0,
+          "width": 320,
+          "x": 0,
+          "y": 442.75
+        },
+        "slider": {
+          "bottom": 623.75,
+          "height": 40,
+          "scrollTop": 0,
+          "width": 280,
+          "x": 15,
+          "y": 583.75
+        },
+        "value": "0"
+      },
+      "after390Default": {
+        "panelHeight": 300,
+        "panelWidth": 390,
+        "scrollTop": 0,
+        "scrollBottom": 780,
+        "sliderBottom": 752,
+        "sliderHeight": 40,
+        "controlBottom": 760.5
+      },
+      "after844Landscape": {
+        "panelHeight": 250,
+        "panelWidth": 320,
+        "scrollTop": 0,
+        "scrollBottom": 305,
+        "sliderBottom": 238,
+        "sliderHeight": 32,
+        "controlBottom": 246.5
+      },
+      "screenshots": [
+        {
+          "file": "docs/screenshots/studio-320-controls-fixed.jpg",
+          "format": "JPEG",
+          "width": 320,
+          "height": 700,
+          "bytes": 27436,
+          "sha256": "d55de4f711982d844961af497bcda8590fffb8752c9555af8c968c500b2c184c",
+          "kind": "actual anonymous application screenshot after the compact color spacing fix; not a team voice fixture"
+        },
+        {
+          "file": "docs/screenshots/studio-landscape-controls-fixed.jpg",
+          "format": "JPEG",
+          "width": 844,
+          "height": 390,
+          "bytes": 36623,
+          "sha256": "4f6465e6e53fa02e66c4774f1b35c74d1e1ac6fbd55afff5bed9cf8dda75065a",
+          "kind": "actual anonymous application screenshot after the compact color spacing fix; not a team voice fixture"
+        }
+      ],
+      "limitations": "Anonymous responsive browser; no actual handset or authenticated supplier call",
+      "sourceLocalCommit": "5991d34f2b9914f9b78350bccc131e6203749155",
+      "sourceRemoteCommit": "09247f7b6a8721173b5b4e47418b2ccae681d839",
+      "completeAutomatedBrowserFlowsExecutedLocally": false
+    },
+    "followUpRemoteCi": {
+      "requestedHead": "aa529491e76792d44057c93f676d33cb148424fe",
+      "actualCheckoutSha": "d747d7bdcc3c72f5bd18103329448279c99d263f",
+      "recordedAt": "2026-11-10T16:04:04.438308+00:00",
+      "jobsObservedAt": "2026-11-10T16:00:58Z",
+      "runId": 42845426490,
+      "runUrl": "https://github.com/hxjyaohaohaode/AI-xiutu/actions/runs/42845426490",
+      "baselineConclusion": "success",
+      "containersConclusion": "success",
+      "browserStatus": "completed",
+      "browserConclusion": "success",
+      "wholeWorkflowPassed": true,
+      "wholeWorkflowTerminalConclusion": "success",
+      "status": "completed-success",
+      "latestChecksUrl": "https://github.com/hxjyaohaohaode/AI-xiutu/pull/1/checks",
+      "latestExplanationUrl": "https://github.com/hxjyaohaohaode/AI-xiutu/pull/1",
+      "scopeNote": "Baseline722, 14 type projects, web build, production audit, containers and browser all passed on the stated merge tree. Workspace21 scenarios were repeated six times; assistant/team use local protocol fixtures with zero paid calls; spatial has419 passed plus12 unavailable. This is not paid-provider, physical microphone or production acceptance.",
+      "actualCheckoutTree": "f361ea9d2dee88bb2e5ebc01938fc8e235696bec",
+      "treeMatchesPublishedHead": true,
+      "runStartedAt": "2026-11-10T15:32:39Z",
+      "runUpdatedAt": "2026-11-10T15:58:49Z"
+    },
+    "sourceEvidenceDirectory": "artifacts/verification/frontend-studio/ci-42838715652",
+    "evidenceSha256": {
+      "summary.json": "f885ab489c4f193a9be5acd3d6bfd2bb3bfd5918918c00ee292f83cb60e2ba5c",
+      "diagnosis.json": "ec99b63ce1df86df6c3a585ea393d293b3e42a993862cce2ea0bc1059f0c1e3f",
+      "cua-controls-regression.json": "3dbfe2b8b8b37b2260bb7edf027f568277e5afdd8a9321b23f41dcb657282e75",
+      "baseline-129907800395.log": "6c41d7973a006cf2c7dd7b366217cb01e8b9a9cbda6c837bddccf8aa63588693",
+      "github-job.log": "e7dcabf49b7965350efe14538fd4f4923132900c587bc5a3a0c02ac9c779985d",
+      "targeted-controls.log": "cf379ab802e5f320967349eda6aa1ab1323c37f6ce5f4f0eaa61fec50d4d7628",
+      "web-typecheck.log": "7125f194612fcff2f454c05d848e7cb71facc1967b4d5017e25b34fdee3ba74f",
+      "web-build-final-spacing.log": "3447848ecdddd83ee9259b58b2bcb363f124213fd71798aaf131cce7ee6f6a66",
+      "round-1/report.json": "19ee651b27731954e876d8cb6ad028100faf28bbcbba8fbb3c66b85af05cefd8",
+      "browser-artifact.zip": "058fef45b8b8cd4dad104e499a81f60b7560923e3d72bd39013e784e77c874d0"
+    },
+    "secondRemoteCiFirstObservedStatus": {
+      "requestedHead": "09247f7b6a8721173b5b4e47418b2ccae681d839",
+      "recordedAt": "2026-11-10T15:25:27.295509+00:00",
+      "runId": 42842515740,
+      "runUrl": "https://github.com/hxjyaohaohaode/AI-xiutu/actions/runs/42842515740",
+      "conclusion": "failure",
+      "jobDiagnosisStatus": "under-review-at-recording",
+      "actualCheckoutSha": null,
+      "latestChecksUrl": "https://github.com/hxjyaohaohaode/AI-xiutu/pull/1/checks",
+      "latestExplanationUrl": "https://github.com/hxjyaohaohaode/AI-xiutu/pull/1",
+      "scopeNote": "Root confirmed a follow-up run exists with failure for the requested head. Its detailed job results were still being inspected when written. This is a time-bound record; no claim is made that historical 215 web tests, first-CI 722 tests or the full browser workflows passed again on this CSS fix."
+    },
+    "secondRemoteCi": {
+      "schema": "frontend-studio-ci-evidence-v1",
+      "repository": "hxjyaohaohaode/AI-xiutu",
+      "pull_request": 1,
+      "run_id": 42842515740,
+      "collected_at_utc": "2026-11-10T15:24:56.857239+00:00",
+      "requested_head_sha": "09247f7b6a8721173b5b4e47418b2ccae681d839",
+      "actual_checkout_sha": "f680d8fbddce4332aebefc4b9c4fad73570f082c",
+      "checkout_kind": "GitHub pull request merge commit",
+      "merge_head_sha": "09247f7b6a8721173b5b4e47418b2ccae681d839",
+      "merge_base_sha": "5e6c994d94a3c45e2847b4871641640d838aa375",
+      "baseline": {
+        "job_id": 129921168454,
+        "status": "completed",
+        "conclusion": "success",
+        "check_command": "npm run typecheck && npm test && npm run build -w @ai-xiutu/web",
+        "typecheck": {
+          "result": "success",
+          "project_count": 14,
+          "projects": [
+            "packages/ai/tsconfig.json",
+            "packages/assistant/tsconfig.json",
+            "packages/contracts/tsconfig.json",
+            "packages/db/tsconfig.json",
+            "packages/editor/tsconfig.json",
+            "packages/media/tsconfig.json",
+            "packages/multimodal/tsconfig.json",
+            "packages/portrait/tsconfig.json",
+            "packages/providers/tsconfig.json",
+            "packages/storage/tsconfig.json",
+            "apps/api/tsconfig.json",
+            "apps/web/tsconfig.json",
+            "apps/worker-ai/tsconfig.json",
+            "scripts/tsconfig.json"
+          ]
+        },
+        "tests": {
+          "tests": 722,
+          "suites": 0,
+          "pass": 722,
+          "fail": 0,
+          "cancelled": 0,
+          "skipped": 0,
+          "todo": 0,
+          "duration_ms": 97835.740961,
+          "command": "npm test (node scripts/test.mjs)",
+          "scope": "Repository Node test suite with required PostgreSQL database tests. Does not include the separate browser job."
+        },
+        "build": {
+          "result": "success",
+          "workspace": "@ai-xiutu/web",
+          "duration_ms": 843
+        },
+        "production_audit": {
+          "result": "success",
+          "command": "npm audit --omit=dev --audit-level=high",
+          "vulnerabilities": 0
+        },
+        "postgres": "18.6",
+        "database_tests_required": true,
+        "log": {
+          "path": "artifacts/verification/frontend-studio/ci-42842515740/baseline-129921168454.log",
+          "encoding": "UTF-8 decoded GitHub job log; BOM preserved",
+          "bytes": 144630,
+          "sha256": "2b462e9c69544a6a61595ee5f45fd2d524a039de5e9f5875b4d057d7d78f953d"
+        }
+      },
+      "containers": {
+        "job_id": 129922874139,
+        "status": "completed",
+        "conclusion": "success",
+        "steps": [
+          {
+            "name": "Set up job",
+            "status": "completed",
+            "conclusion": "success",
+            "number": 1
+          },
+          {
+            "name": "Run actions/checkout@11d5960a326750d5838078e36cf38b85af677262",
+            "status": "completed",
+            "conclusion": "success",
+            "number": 2
+          },
+          {
+            "name": "Create isolated configuration with external execution disabled",
+            "status": "completed",
+            "conclusion": "success",
+            "number": 3
+          },
+          {
+            "name": "Validate and build both Docker targets",
+            "status": "completed",
+            "conclusion": "success",
+            "number": 4
+          },
+          {
+            "name": "Build optional native media runtime and verify its actual libraries",
+            "status": "completed",
+            "conclusion": "success",
+            "number": 5
+          },
+          {
+            "name": "Start PostgreSQL, migration, API, worker and web",
+            "status": "completed",
+            "conclusion": "success",
+            "number": 6
+          },
+          {
+            "name": "Verify HTTP, health, disabled external services and private network bindings",
+            "status": "completed",
+            "conclusion": "success",
+            "number": 7
+          },
+          {
+            "name": "Show container diagnostics on failure",
+            "status": "completed",
+            "conclusion": "skipped",
+            "number": 8
+          },
+          {
+            "name": "Remove isolated containers and volumes",
+            "status": "completed",
+            "conclusion": "success",
+            "number": 9
+          },
+          {
+            "name": "Post Run actions/checkout@11d5960a326750d5838078e36cf38b85af677262",
+            "status": "completed",
+            "conclusion": "success",
+            "number": 18
+          },
+          {
+            "name": "Complete job",
+            "status": "completed",
+            "conclusion": "success",
+            "number": 19
+          }
+        ]
+      },
+      "browser": {
+        "job_id": 129921168920,
+        "status": "completed",
+        "conclusion": "failure",
+        "first_failed_step": "Six complete browser flows on this commit"
+      },
+      "scope_note": "Baseline and containers succeeded. Browser failed; this is not a claim that the whole workflow run passed. Test counts belong only to the baseline npm test suite, not browser scenarios or live paid-provider acceptance.",
+      "jobs_snapshot_path": "artifacts/verification/frontend-studio/ci-42842515740/jobs.json"
+    },
+    "secondBrowserFailure": {
+      "runId": 42842515740,
+      "jobId": 129921168920,
+      "prHead": "09247f7b6a8721173b5b4e47418b2ccae681d839",
+      "ciCheckout": "f680d8fbddce4332aebefc4b9c4fad73570f082c",
+      "artifactId": 13776158290,
+      "artifactSha256": "788474aca453d0c4db435b05589b76f39da22d9c50648bf1d12a7a30dabe45a3",
+      "failure": {
+        "case": "layout-320x700",
+        "stage": "second layout assertion after exact exposure input -0.35",
+        "assertion": "panel.x >= -1 && panel.x + panel.width <= viewport.width + 1",
+        "observed": "panel, dock and frame all moved left by exactly 5px while width stayed 320. The range remained fully inside its scroller.",
+        "stackInOriginalArtifact": false
+      },
+      "geometry": [
+        {
+          "case": "layout-320x700",
+          "width": 320,
+          "height": 700,
+          "scrollWidth": 320,
+          "panel": {
+            "x": 0,
+            "y": 351.75,
+            "width": 320,
+            "height": 284.234375,
+            "bottom": 635.984375
+          },
+          "dock": {
+            "x": 0,
+            "y": 636,
+            "width": 320,
+            "height": 64,
+            "bottom": 700
+          },
+          "frame": {
+            "x": 34.75,
+            "y": 116.875,
+            "width": 250.5,
+            "height": 167,
+            "bottom": 283.875
+          },
+          "slider": {
+            "x": 15,
+            "y": 583.75,
+            "width": 290,
+            "height": 40,
+            "bottom": 623.75
+          },
+          "control": {
+            "x": 15,
+            "y": 545.75,
+            "width": 290,
+            "height": 86.5,
+            "bottom": 632.25
+          },
+          "scroll": {
+            "x": 0,
+            "y": 442.75,
+            "width": 320,
+            "height": 193.234375,
+            "bottom": 635.984375
+          },
+          "scrollTop": 0,
+          "scrollHeight": 388,
+          "photoFilter": "none"
+        },
+        {
+          "case": "layout-320x700",
+          "width": 320,
+          "height": 700,
+          "scrollWidth": 320,
+          "panel": {
+            "x": -5,
+            "y": 351.75,
+            "width": 320,
+            "height": 284.234375,
+            "bottom": 635.984375
+          },
+          "dock": {
+            "x": -5,
+            "y": 636,
+            "width": 320,
+            "height": 64,
+            "bottom": 700
+          },
+          "frame": {
+            "x": 29.75,
+            "y": 116.875,
+            "width": 250.5,
+            "height": 167,
+            "bottom": 283.875
+          },
+          "slider": {
+            "x": 10,
+            "y": 558.75,
+            "width": 290,
+            "height": 40,
+            "bottom": 598.75
+          },
+          "control": {
+            "x": 10,
+            "y": 520.75,
+            "width": 290,
+            "height": 86.5,
+            "bottom": 607.25
+          },
+          "scroll": {
+            "x": -5,
+            "y": 442.75,
+            "width": 320,
+            "height": 193.234375,
+            "bottom": 635.984375
+          },
+          "scrollTop": 25,
+          "scrollHeight": 388,
+          "photoFilter": "none"
+        }
+      ],
+      "report": {
+        "schemaVersion": 1,
+        "startedAt": "2026-11-10T15:16:51.843Z",
+        "source": "technical PNG generated in CI plus three public photographs with pinned byte counts and SHA-256",
+        "authentication": "random CI fixture passwords, actual HTTP login; no SMS delivered",
+        "browser": {
+          "name": "Chromium",
+          "version": "158.0.8127.18"
+        },
+        "cases": [
+          {
+            "name": "layout-320x700",
+            "state": "failed",
+            "durationMs": 3726,
+            "message": "The expression evaluated to a falsy value:\n\n  assert.ok(\n"
+          }
+        ],
+        "layoutMeasurements": [
+          {
+            "case": "layout-320x700",
+            "width": 320,
+            "height": 700,
+            "scrollWidth": 320,
+            "panel": {
+              "x": 0,
+              "y": 351.75,
+              "width": 320,
+              "height": 284.234375,
+              "bottom": 635.984375
+            },
+            "dock": {
+              "x": 0,
+              "y": 636,
+              "width": 320,
+              "height": 64,
+              "bottom": 700
+            },
+            "frame": {
+              "x": 34.75,
+              "y": 116.875,
+              "width": 250.5,
+              "height": 167,
+              "bottom": 283.875
+            },
+            "slider": {
+              "x": 15,
+              "y": 583.75,
+              "width": 290,
+              "height": 40,
+              "bottom": 623.75
+            },
+            "control": {
+              "x": 15,
+              "y": 545.75,
+              "width": 290,
+              "height": 86.5,
+              "bottom": 632.25
+            },
+            "scroll": {
+              "x": 0,
+              "y": 442.75,
+              "width": 320,
+              "height": 193.234375,
+              "bottom": 635.984375
+            },
+            "scrollTop": 0,
+            "scrollHeight": 388,
+            "photoFilter": "none"
+          },
+          {
+            "case": "layout-320x700",
+            "width": 320,
+            "height": 700,
+            "scrollWidth": 320,
+            "panel": {
+              "x": -5,
+              "y": 351.75,
+              "width": 320,
+              "height": 284.234375,
+              "bottom": 635.984375
+            },
+            "dock": {
+              "x": -5,
+              "y": 636,
+              "width": 320,
+              "height": 64,
+              "bottom": 700
+            },
+            "frame": {
+              "x": 29.75,
+              "y": 116.875,
+              "width": 250.5,
+              "height": 167,
+              "bottom": 283.875
+            },
+            "slider": {
+              "x": 10,
+              "y": 558.75,
+              "width": 290,
+              "height": 40,
+              "bottom": 598.75
+            },
+            "control": {
+              "x": 10,
+              "y": 520.75,
+              "width": 290,
+              "height": 86.5,
+              "bottom": 607.25
+            },
+            "scroll": {
+              "x": -5,
+              "y": 442.75,
+              "width": 320,
+              "height": 193.234375,
+              "bottom": 635.984375
+            },
+            "scrollTop": 25,
+            "scrollHeight": 388,
+            "photoFilter": "none"
+          }
+        ],
+        "pageErrors": [],
+        "manualVisualReview": false,
+        "state": "failed",
+        "failure": {
+          "case": "layout-320x700",
+          "message": "The expression evaluated to a falsy value:\n\n  assert.ok(\n"
+        },
+        "finishedAt": "2026-11-10T15:16:56.892Z"
+      },
+      "rootCuaObservation": {
+        "browserMajor": 156,
+        "workspaceClientWidth": 320,
+        "workspaceScrollWidth": 325,
+        "workspaceOverflowX": "hidden",
+        "horizontalShiftReproduced": false,
+        "normalEnterInspectorScrollTop": 25
+      },
+      "diagnosis": "The native focus movement in PrecisionRange may scroll the overflow:hidden workspace body into the 5px overflow introduced by the east resize edge at right:-5px. Chromium 158 CI proves the horizontal shift after numeric editing; Chromium 156 CUA confirms the 325px scroll extent but does not reproduce the horizontal shift. The fix prevents incidental scrolling on the four explicit focus transfers inside this same control.",
+      "scopeNote": "The initial layout assertions passed. The second check after exact exposure input failed because panel, dock and frame shifted left by 5px in CI Chromium158. Root page scrollWidth remained 320; the 325px workspace extent was separately observed in CUA Chromium156, which did not reproduce the horizontal shift.",
+      "authenticationExecutionBoundary": "The first anonymous layout case aborted before the later HTTP login loop. Report authentication metadata describes the planned harness, not a completed login in this round."
+    },
+    "publishedFocusFix": {
+      "localCommit": "3d151c77b2eaf538087b151bc51020fcea206de0",
+      "remoteCommit": "aa529491e76792d44057c93f676d33cb148424fe",
+      "identicalGitTree": "f361ea9d2dee88bb2e5ebc01938fc8e235696bec",
+      "files": [
+        "apps/web/src/editor/PrecisionRange.tsx",
+        "apps/web/src/workspace/studio.css",
+        "scripts/qa/workspace-v4.browser.mjs"
+      ],
+      "description": "Add preventScroll:true to the four explicit number/range focus transfers. Set overflow:clip only on the phone editor workspace-body, which is a fixed flex surface rather than an intended scroll container, so native focus cannot shift it toward the resize handle overflow. Nested inspector scrolling, other views, native Tab behavior, resize hit boxes and all CI tolerances remain unchanged. QA adds clear horizontal assertion text, workspace scroll measurements and failure stack.",
+      "sourceSha256": {
+        "apps/web/src/editor/PrecisionRange.tsx": "afdd99dee86fb458e873765450b2162ba7b34f68a8d28874160dcada5021b15d",
+        "apps/web/src/workspace/studio.css": "50534eec1974e4ad5387a8d31bbed5297ebdef1d0a7ca307fffcba7d0006969d",
+        "scripts/qa/workspace-v4.browser.mjs": "f1a8449ac52dff9b4d2483b1bfaec2c7ee3f2d7b10b861484d5f68f844be3ec9"
+      },
+      "localChecks": {
+        "targetedControls": {
+          "tests": 10.0,
+          "pass": 10.0,
+          "fail": 0.0,
+          "skipped": 0.0,
+          "cancelled": 0.0,
+          "duration_ms": 3501.921152
+        },
+        "webTypecheckExitCode": 0,
+        "scriptSyntax": "passed",
+        "diffCheck": "passed",
+        "localUiAutomationExecuted": false
+      },
+      "complete215WebTestSuiteReexecutedLocally": false,
+      "completeNativeTestSuiteReexecutedLocally": false,
+      "productionBuildScope": "No new production build is claimed by this local check record; the prior spacing-fix build remains attached to its own source."
+    },
+    "focusTransferChecksBeforeFinalClip": {
+      "browserMajor": 156,
+      "enterCommitted": -0.25,
+      "escapePreserved": -0.25,
+      "confirmCommitted": -0.35,
+      "sliderFocusedAfterEach": true,
+      "outerScrollLeft": 0,
+      "innerScrollMayBecome": 25,
+      "timing": "After the four focus changes, before the final phone-only overflow:clip addition."
+    },
+    "realAnonymousFocusRegression": {
+      "sourceLocalCommit": "3d151c77b2eaf538087b151bc51020fcea206de0",
+      "sourceRemoteCommit": "aa529491e76792d44057c93f676d33cb148424fe",
+      "record": {
+        "scope": "CUA Chromium 156, anonymous 320x700 app",
+        "geometry": {
+          "focused": true,
+          "panelX": 0,
+          "scrollerBottom": 635.984375,
+          "scrollerScrollTop": 25,
+          "sliderBottom": 598.75,
+          "value": "-0.35",
+          "workOverflow": "clip",
+          "workScrollLeft": 0,
+          "workScrollWidth": 325
+        },
+        "enter": {
+          "input": "-0.25",
+          "result": "-0.25",
+          "focusedSlider": true
+        },
+        "escape": {
+          "draft": "-0.1",
+          "result": "-0.25",
+          "focusedSlider": true
+        },
+        "confirm": {
+          "input": "-0.35",
+          "result": "-0.35",
+          "focusedSlider": true
+        },
+        "limit": "CI Chromium158 horizontal shift was not reproduced in Chromium156; next CI run must verify that regression"
+      },
+      "screenshot": {
+        "file": "artifacts/verification/frontend-studio/ci-42842515740/studio-focus-regression.jpg",
+        "format": "JPEG",
+        "width": 320,
+        "height": 700,
+        "bytes": 28360,
+        "sha256": "66352fd0d3511e6aa7d3f6a346d8ae9a5e5ca5c2ab0f190eb94533b2e819e6d9",
+        "publication": "raw verification evidence only; not added to public screenshot gallery"
+      },
+      "scopeNote": "CUA Chromium156 verified Enter, Escape and confirmation focus behavior. Final recorded geometry has overflow:clip, workspace scrollLeft0 and panelX0 while inner scrollTop remains25. Chromium156 had not reproduced the original Chromium158 horizontal shift, so this does not replace CI verification."
+    },
+    "secondRoundEvidenceDirectory": "artifacts/verification/frontend-studio/ci-42842515740",
+    "secondRoundEvidenceSha256": {
+      "summary.json": "03bb910037ff3ad34a615932fe4d6bdbfe1c258a95d0302cab1452db421b6245",
+      "diagnosis.json": "11b2bf18ccdbb649863f11b065de9f2786bb0490496e331df231ec862ef44f03",
+      "studio-focus-regression.json": "b347c30852c7b2f81657fb866f40a80f1da57a0ae28c7633c68affe0f4e30a12",
+      "studio-focus-regression.jpg": "66352fd0d3511e6aa7d3f6a346d8ae9a5e5ca5c2ab0f190eb94533b2e819e6d9",
+      "baseline-129921168454.log": "2b462e9c69544a6a61595ee5f45fd2d524a039de5e9f5875b4d057d7d78f953d",
+      "github-job.log": "d8b4a2fbd3ce138f0cd93e86c5c21edfa7f21d1c365fb72ec10a9b53fd3a567b",
+      "targeted-controls.log": "33201fb9e2ac8e93b813fde82a2dc9fd6dfff94a5b3ad9ac2a49954068812f7e",
+      "web-typecheck.log": "7125f194612fcff2f454c05d848e7cb71facc1967b4d5017e25b34fdee3ba74f",
+      "round-1/report.json": "68da8ca7c9b436a79b9ee0e89448da469b743998591767866588a483b39a5552",
+      "round-1/failure-0.png": "fafab54f01d70105f49f3343608caabeefb97521a1af71e87a5843760b55950c",
+      "browser-artifact.zip": "788474aca453d0c4db435b05589b76f39da22d9c50648bf1d12a7a30dabe45a3"
+    },
+    "thirdRemoteCi": {
+      "schema": "frontend-studio-ci-evidence-v1",
+      "repository": "hxjyaohaohaode/AI-xiutu",
+      "pull_request": 1,
+      "run_id": 42845426490,
+      "collected_at_utc": "2026-11-10T15:38:10.078692+00:00",
+      "jobs_observed_at_utc": "2026-11-10T15:37:36Z",
+      "requested_head_sha": "aa529491e76792d44057c93f676d33cb148424fe",
+      "actual_checkout_sha": "d747d7bdcc3c72f5bd18103329448279c99d263f",
+      "checkout_kind": "GitHub pull request merge commit",
+      "merge_head_sha": "aa529491e76792d44057c93f676d33cb148424fe",
+      "merge_base_sha": "5e6c994d94a3c45e2847b4871641640d838aa375",
+      "baseline": {
+        "job_id": 129931488684,
+        "status": "completed",
+        "conclusion": "success",
+        "check_command": "npm run typecheck && npm test && npm run build -w @ai-xiutu/web",
+        "typecheck": {
+          "result": "success",
+          "project_count": 14,
+          "projects": [
+            "packages/ai/tsconfig.json",
+            "packages/assistant/tsconfig.json",
+            "packages/contracts/tsconfig.json",
+            "packages/db/tsconfig.json",
+            "packages/editor/tsconfig.json",
+            "packages/media/tsconfig.json",
+            "packages/multimodal/tsconfig.json",
+            "packages/portrait/tsconfig.json",
+            "packages/providers/tsconfig.json",
+            "packages/storage/tsconfig.json",
+            "apps/api/tsconfig.json",
+            "apps/web/tsconfig.json",
+            "apps/worker-ai/tsconfig.json",
+            "scripts/tsconfig.json"
+          ]
+        },
+        "tests": {
+          "tests": 722,
+          "suites": 0,
+          "pass": 722,
+          "fail": 0,
+          "cancelled": 0,
+          "skipped": 0,
+          "todo": 0,
+          "duration_ms": 77555.150958,
+          "command": "npm test (node scripts/test.mjs)",
+          "scope": "Repository Node test suite with required PostgreSQL database tests. Does not include the separate browser job."
+        },
+        "build": {
+          "result": "success",
+          "workspace": "@ai-xiutu/web",
+          "duration_ms": 731
+        },
+        "production_audit": {
+          "result": "success",
+          "command": "npm audit --omit=dev --audit-level=high",
+          "vulnerabilities": 0
+        },
+        "postgres": "18.6",
+        "database_tests_required": true,
+        "log": {
+          "path": "artifacts/verification/frontend-studio/ci-42845426490/baseline-129931488684.log",
+          "encoding": "UTF-8 decoded GitHub job log; BOM preserved",
+          "bytes": 144499,
+          "sha256": "4005f7e49dbebb1b9e2db530f0658367db40632fd09d2363b50c73f1cee646d1"
+        }
+      },
+      "containers": {
+        "job_id": 129932966748,
+        "status": "completed",
+        "conclusion": "success",
+        "steps": [
+          {
+            "name": "Set up job",
+            "status": "completed",
+            "conclusion": "success",
+            "number": 1
+          },
+          {
+            "name": "Run actions/checkout@11d5960a326750d5838078e36cf38b85af677262",
+            "status": "completed",
+            "conclusion": "success",
+            "number": 2
+          },
+          {
+            "name": "Create isolated configuration with external execution disabled",
+            "status": "completed",
+            "conclusion": "success",
+            "number": 3
+          },
+          {
+            "name": "Validate and build both Docker targets",
+            "status": "completed",
+            "conclusion": "success",
+            "number": 4
+          },
+          {
+            "name": "Build optional native media runtime and verify its actual libraries",
+            "status": "completed",
+            "conclusion": "success",
+            "number": 5
+          },
+          {
+            "name": "Start PostgreSQL, migration, API, worker and web",
+            "status": "completed",
+            "conclusion": "success",
+            "number": 6
+          },
+          {
+            "name": "Verify HTTP, health, disabled external services and private network bindings",
+            "status": "completed",
+            "conclusion": "success",
+            "number": 7
+          },
+          {
+            "name": "Show container diagnostics on failure",
+            "status": "completed",
+            "conclusion": "skipped",
+            "number": 8
+          },
+          {
+            "name": "Remove isolated containers and volumes",
+            "status": "completed",
+            "conclusion": "success",
+            "number": 9
+          },
+          {
+            "name": "Post Run actions/checkout@11d5960a326750d5838078e36cf38b85af677262",
+            "status": "completed",
+            "conclusion": "success",
+            "number": 18
+          },
+          {
+            "name": "Complete job",
+            "status": "completed",
+            "conclusion": "success",
+            "number": 19
+          }
+        ]
+      },
+      "browser": {
+        "job_id": 129931489329,
+        "status": "in_progress",
+        "conclusion": null,
+        "first_failed_step": null
+      },
+      "scope_note": "Baseline and containers succeeded. Browser was still in progress at this snapshot; this is not a claim that the whole workflow run passed. Test counts belong only to the baseline npm test suite, not browser scenarios or live paid-provider acceptance. Browser evidence is monitored separately.",
+      "jobs_snapshot_path": "artifacts/verification/frontend-studio/ci-42845426490/jobs.json"
+    },
+    "thirdRoundEvidenceDirectory": "artifacts/verification/frontend-studio/ci-42845426490",
+    "thirdRoundEvidenceSha256": {
+      "summary.json": "49c8ab6c3c4d1ca71499567e7c39c35fced7e7b03dedce1161942e7dae0a7aac",
+      "jobs.json": "fc9dcc41ef396912654b31ac04db7cc70d86dbd8e596dc5ff253a2b6d31006bd",
+      "baseline-evidence.txt": "0168619276c86dc8ba5b780076f4e62c355ee626e3f26a33edcd8a289d669793",
+      "baseline-129931488684.log": "4005f7e49dbebb1b9e2db530f0658367db40632fd09d2363b50c73f1cee646d1",
+      "SHA256SUMS": "1cf88e8d8dff6e9154025467116b53b8e86fb4fbb3258dfabb9676f7743288b7"
+    },
+    "thirdRemoteCiGitObject": {
+      "verificationMethod": "Direct GitHub REST Git commit object GET performed by root; no browser-job conclusion inferred.",
+      "endpoint": "https://api.github.com/repos/hxjyaohaohaode/AI-xiutu/git/commits/d747d7bdcc3c72f5bd18103329448279c99d263f",
+      "sha": "d747d7bdcc3c72f5bd18103329448279c99d263f",
+      "treeSha": "f361ea9d2dee88bb2e5ebc01938fc8e235696bec",
+      "parents": [
+        "5e6c994d94a3c45e2847b4871641640d838aa375",
+        "aa529491e76792d44057c93f676d33cb148424fe"
+      ],
+      "publishedHeadSha": "aa529491e76792d44057c93f676d33cb148424fe",
+      "publishedHeadTreeSha": "f361ea9d2dee88bb2e5ebc01938fc8e235696bec",
+      "localProductCommit": "3d151c77b2eaf538087b151bc51020fcea206de0",
+      "matchesPublishedHeadAndLocalProductTree": true,
+      "scope": "Confirms full content identity of the CI merge checkout and published product source. Content identity is not an additional test execution; the separate initial and final jobs snapshots establish their own outcomes."
+    },
+    "backendHandoffSupplement": {
+      "sourceBase": "5e6c994d94a3c45e2847b4871641640d838aa375",
+      "currentProductSource": "3d151c77b2eaf538087b151bc51020fcea206de0",
+      "unchangedAgainstBase": [
+        "apps/api",
+        "apps/worker-ai",
+        "packages",
+        "infra",
+        "package.json",
+        "package-lock.json"
+      ],
+      "changedScriptsAgainstBase": [
+        "scripts/qa/team-voice.browser.mjs",
+        "scripts/qa/workspace-v4.browser.mjs"
+      ],
+      "requestContractsChangedByTwoPublishedControlFixes": false,
+      "readback": {
+        "path": "apps/api/src/assistant/service.ts",
+        "method": "prepareVoice",
+        "existingAccountTransactionLock": true,
+        "activeSessionAdmissionStates": ["prepared", "connecting", "active"],
+        "unknownIncludedInAdmissionCheck": false,
+        "existingSameKey": "Existing actor/key record rejects prepare with VOICE_ALREADY_PREPARED or IDEMPOTENCY_CONFLICT; no old ticket is returned."
+      },
+      "remainingNeed": "Backend must explicitly enforce admission against unresolved voice requests, including unknown, inside the existing transaction/account lock before accepting another key. Browser localStorage interlocks are not an atomic cross-tab or cross-device guarantee.",
+      "implementationStatus": "Handoff recommendation only; backend unchanged."
+    },
+    "thirdRemoteCiInitialFollowUpSnapshot": {
+      "requestedHead": "aa529491e76792d44057c93f676d33cb148424fe",
+      "actualCheckoutSha": "d747d7bdcc3c72f5bd18103329448279c99d263f",
+      "recordedAt": "2026-11-10T15:41:41.714447+00:00",
+      "jobsObservedAt": "2026-11-10T15:37:36Z",
+      "summaryCollectedAt": "2026-11-10T15:38:10.078692+00:00",
+      "runId": 42845426490,
+      "runUrl": "https://github.com/hxjyaohaohaode/AI-xiutu/actions/runs/42845426490",
+      "baselineConclusion": "success",
+      "containersConclusion": "success",
+      "browserStatus": "in_progress",
+      "browserConclusion": null,
+      "wholeWorkflowPassed": false,
+      "wholeWorkflowTerminalConclusion": null,
+      "status": "browser-in-progress-at-observation",
+      "latestChecksUrl": "https://github.com/hxjyaohaohaode/AI-xiutu/pull/1/checks",
+      "latestExplanationUrl": "https://github.com/hxjyaohaohaode/AI-xiutu/pull/1",
+      "scopeNote": "Third baseline722, 14 type projects, web build and production audit plus containers passed on the stated PR merge. Browser six full flows were still running in this snapshot. This is not a whole-workflow success or a completed browser verification claim.",
+      "actualCheckoutTree": "f361ea9d2dee88bb2e5ebc01938fc8e235696bec",
+      "treeMatchesPublishedHead": true
+    },
+    "thirdRemoteCiFinal": {
+      "runId": 42845426490,
+      "runUrl": "https://github.com/hxjyaohaohaode/AI-xiutu/actions/runs/42845426490",
+      "status": "completed",
+      "conclusion": "success",
+      "runStartedAt": "2026-11-10T15:32:39Z",
+      "runUpdatedAt": "2026-11-10T15:58:49Z",
+      "runStatusVerification": "Root direct GitHub run GET; jobs independently read back by control and contract reviewers.",
+      "actualCheckoutSha": "d747d7bdcc3c72f5bd18103329448279c99d263f",
+      "actualCheckoutTree": "f361ea9d2dee88bb2e5ebc01938fc8e235696bec",
+      "productHead": "aa529491e76792d44057c93f676d33cb148424fe",
+      "jobs": {
+        "observedAt": "2026-11-10 16:00:58 UTC",
+        "runId": 42845426490,
+        "headCommit": "aa529491e76792d44057c93f676d33cb148424fe",
+        "checkoutMergeCommit": "d747d7bdcc3c72f5bd18103329448279c99d263f",
+        "jobs": [
+          {
+            "id": 129931488684,
+            "name": "baseline",
+            "status": "completed",
+            "conclusion": "success",
+            "run_id": 42845426490,
+            "logs_url": null,
+            "steps": [
+              {
+                "name": "Set up job",
+                "status": "completed",
+                "conclusion": "success",
+                "number": 1
+              },
+              {
+                "name": "Initialize containers",
+                "status": "completed",
+                "conclusion": "success",
+                "number": 2
+              },
+              {
+                "name": "Run actions/checkout@11d5960a326750d5838078e36cf38b85af677262",
+                "status": "completed",
+                "conclusion": "success",
+                "number": 3
+              },
+              {
+                "name": "Run actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020",
+                "status": "completed",
+                "conclusion": "success",
+                "number": 4
+              },
+              {
+                "name": "Run npm ci",
+                "status": "completed",
+                "conclusion": "success",
+                "number": 5
+              },
+              {
+                "name": "Run npm run vision:prepare",
+                "status": "completed",
+                "conclusion": "success",
+                "number": 6
+              },
+              {
+                "name": "Run npm run check",
+                "status": "completed",
+                "conclusion": "success",
+                "number": 7
+              },
+              {
+                "name": "Run npm audit --omit=dev --audit-level=high",
+                "status": "completed",
+                "conclusion": "success",
+                "number": 8
+              },
+              {
+                "name": "Post Run actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020",
+                "status": "completed",
+                "conclusion": "success",
+                "number": 14
+              },
+              {
+                "name": "Post Run actions/checkout@11d5960a326750d5838078e36cf38b85af677262",
+                "status": "completed",
+                "conclusion": "success",
+                "number": 15
+              },
+              {
+                "name": "Stop containers",
+                "status": "completed",
+                "conclusion": "success",
+                "number": 16
+              },
+              {
+                "name": "Complete job",
+                "status": "completed",
+                "conclusion": "success",
+                "number": 17
+              }
+            ]
+          },
+          {
+            "id": 129931489329,
+            "name": "browser",
+            "status": "completed",
+            "conclusion": "success",
+            "run_id": 42845426490,
+            "logs_url": null,
+            "steps": [
+              {
+                "name": "Set up job",
+                "status": "completed",
+                "conclusion": "success",
+                "number": 1
+              },
+              {
+                "name": "Initialize containers",
+                "status": "completed",
+                "conclusion": "success",
+                "number": 2
+              },
+              {
+                "name": "Run actions/checkout@11d5960a326750d5838078e36cf38b85af677262",
+                "status": "completed",
+                "conclusion": "success",
+                "number": 3
+              },
+              {
+                "name": "Run actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020",
+                "status": "completed",
+                "conclusion": "success",
+                "number": 4
+              },
+              {
+                "name": "Run npm ci",
+                "status": "completed",
+                "conclusion": "success",
+                "number": 5
+              },
+              {
+                "name": "Run npx playwright install --with-deps chromium",
+                "status": "completed",
+                "conclusion": "success",
+                "number": 6
+              },
+              {
+                "name": "Six complete browser flows on this commit",
+                "status": "completed",
+                "conclusion": "success",
+                "number": 7
+              },
+              {
+                "name": "Preserve measurements, downloaded-image checks and screenshots",
+                "status": "completed",
+                "conclusion": "success",
+                "number": 8
+              },
+              {
+                "name": "Assistant permissions, memory, streaming, conversations and generated workspace",
+                "status": "completed",
+                "conclusion": "success",
+                "number": 9
+              },
+              {
+                "name": "Team voice microphones, permissions and shared AI speaker",
+                "status": "completed",
+                "conclusion": "success",
+                "number": 10
+              },
+              {
+                "name": "Preserve team voice evidence",
+                "status": "completed",
+                "conclusion": "success",
+                "number": 11
+              },
+              {
+                "name": "Real portrait inference and full/tiled pixel comparison",
+                "status": "completed",
+                "conclusion": "success",
+                "number": 12
+              },
+              {
+                "name": "Preserve real-photo pixel measurements and contact sheets",
+                "status": "completed",
+                "conclusion": "success",
+                "number": 13
+              },
+              {
+                "name": "Preserve assistant browser evidence",
+                "status": "completed",
+                "conclusion": "success",
+                "number": 14
+              },
+              {
+                "name": "Post Run actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020",
+                "status": "completed",
+                "conclusion": "success",
+                "number": 26
+              },
+              {
+                "name": "Post Run actions/checkout@11d5960a326750d5838078e36cf38b85af677262",
+                "status": "completed",
+                "conclusion": "success",
+                "number": 27
+              },
+              {
+                "name": "Stop containers",
+                "status": "completed",
+                "conclusion": "success",
+                "number": 28
+              },
+              {
+                "name": "Complete job",
+                "status": "completed",
+                "conclusion": "success",
+                "number": 29
+              }
+            ]
+          },
+          {
+            "id": 129932966748,
+            "name": "containers",
+            "status": "completed",
+            "conclusion": "success",
+            "run_id": 42845426490,
+            "logs_url": null,
+            "steps": [
+              {
+                "name": "Set up job",
+                "status": "completed",
+                "conclusion": "success",
+                "number": 1
+              },
+              {
+                "name": "Run actions/checkout@11d5960a326750d5838078e36cf38b85af677262",
+                "status": "completed",
+                "conclusion": "success",
+                "number": 2
+              },
+              {
+                "name": "Create isolated configuration with external execution disabled",
+                "status": "completed",
+                "conclusion": "success",
+                "number": 3
+              },
+              {
+                "name": "Validate and build both Docker targets",
+                "status": "completed",
+                "conclusion": "success",
+                "number": 4
+              },
+              {
+                "name": "Build optional native media runtime and verify its actual libraries",
+                "status": "completed",
+                "conclusion": "success",
+                "number": 5
+              },
+              {
+                "name": "Start PostgreSQL, migration, API, worker and web",
+                "status": "completed",
+                "conclusion": "success",
+                "number": 6
+              },
+              {
+                "name": "Verify HTTP, health, disabled external services and private network bindings",
+                "status": "completed",
+                "conclusion": "success",
+                "number": 7
+              },
+              {
+                "name": "Show container diagnostics on failure",
+                "status": "completed",
+                "conclusion": "skipped",
+                "number": 8
+              },
+              {
+                "name": "Remove isolated containers and volumes",
+                "status": "completed",
+                "conclusion": "success",
+                "number": 9
+              },
+              {
+                "name": "Post Run actions/checkout@11d5960a326750d5838078e36cf38b85af677262",
+                "status": "completed",
+                "conclusion": "success",
+                "number": 18
+              },
+              {
+                "name": "Complete job",
+                "status": "completed",
+                "conclusion": "success",
+                "number": 19
+              }
+            ]
+          }
+        ]
+      },
+      "browserLogRange": {
+        "firstTimestamp": "2026-11-10T15:32:43.163Z",
+        "lastTimestamp": "2026-11-10T15:58:46.560Z",
+        "note": "Log timestamp range, not substituted for workflow started/updated metadata."
+      },
+      "specialized": {
+        "schema": "frontend-studio-specialized-ci-v1",
+        "run_id": 42845426490,
+        "requested_head_sha": "aa529491e76792d44057c93f676d33cb148424fe",
+        "actual_checkout_sha": "d747d7bdcc3c72f5bd18103329448279c99d263f",
+        "jobs_observed_at_utc": "2026-11-10T15:58:54Z",
+        "collected_at_utc": "2026-11-10T16:01:45.722909+00:00",
+        "jobs": [
+          {
+            "id": 129931488684,
+            "name": "baseline",
+            "status": "completed",
+            "conclusion": "success"
+          },
+          {
+            "id": 129931489329,
+            "name": "browser",
+            "status": "completed",
+            "conclusion": "success"
+          },
+          {
+            "id": 129932966748,
+            "name": "containers",
+            "status": "completed",
+            "conclusion": "success"
+          }
+        ],
+        "jobs_snapshot_path": "artifacts/verification/frontend-studio/ci-42845426490/final-specialized-jobs.json",
+        "browser_version": "158.0.8127.18",
+        "assistant": {
+          "artifact": {
+            "id": 13780550827,
+            "name": "browser-assistant-d747d7bdcc3c72f5bd18103329448279c99d263f",
+            "size_in_bytes": 819016,
+            "url": "https://api.github.com/repos/hxjyaohaohaode/AI-xiutu/actions/artifacts/13780550827",
+            "archive_download_url": "https://api.github.com/repos/hxjyaohaohaode/AI-xiutu/actions/artifacts/13780550827/zip",
+            "expired": false,
+            "created_at": "2026-11-10T15:58:45Z",
+            "expires_at": "2026-11-24T15:58:44Z",
+            "updated_at": "2026-11-10T15:58:45Z",
+            "digest": "sha256:92de026cf17a468d5ac6fdd6be9b9900e8dd75314c06e828c8b92d4473956669",
+            "workflow_run": {
+              "id": 42845426490,
+              "repository_id": 1451260826,
+              "head_repository_id": 1451260826,
+              "head_branch": "work/frontend-studio-v2",
+              "head_sha": "aa529491e76792d44057c93f676d33cb148424fe"
+            },
+            "local_zip_path": "artifacts/verification/frontend-studio/ci-42845426490/assistant/artifact.zip",
+            "download_sha256": "92de026cf17a468d5ac6fdd6be9b9900e8dd75314c06e828c8b92d4473956669",
+            "size_verified": true,
+            "report_path": "artifacts/verification/frontend-studio/ci-42845426490/assistant/report.json",
+            "report_sha256": "a44c7d468bad9306300534e0034806b9a32b3e7d9facc5cc72043dd79dfb5443"
+          },
+          "case_count": 16,
+          "case_states": {
+            "passed": 16
+          },
+          "page_error_count": 0,
+          "failure": null,
+          "provider": "injected local SSE protocol fixture; zero paid calls",
+          "fixture_dispatches": 17,
+          "paid_calls": 0,
+          "paid_calls_basis": "Provider field declares injected local SSE protocol fixture; zero paid calls. 17 dispatches are fixture requests.",
+          "started_at": "2026-11-10T15:56:23.600Z",
+          "finished_at": "2026-11-10T15:56:50.879Z",
+          "manual_visual_review": false,
+          "cases": [
+            {
+              "name": "memory-confirm-correct-forget-and-source-opt-in",
+              "state": "passed",
+              "ms": 1954,
+              "versionedCorrection": true,
+              "oldMemoryNotSent": true
+            },
+            {
+              "name": "default-confirm-genui-uses-real-preview-and-undo",
+              "state": "passed",
+              "ms": 508,
+              "persistedWrite": false,
+              "undoAvailable": true
+            },
+            {
+              "name": "local-spatial-candidate-previews-in-existing-canvas-and-undoes-without-writing",
+              "state": "passed",
+              "ms": 1268,
+              "selectedSourceRegion": "left",
+              "persistedWrite": false,
+              "undoAvailable": true
+            },
+            {
+              "name": "suggest-mode-immutable-and-no-forgotten-memory",
+              "state": "passed",
+              "ms": 899,
+              "cannotExecute": true,
+              "forgottenMemoryNotSent": true
+            },
+            {
+              "name": "auto-explicit-grant-versioned-write-and-budget",
+              "state": "passed",
+              "ms": 1526,
+              "exactRevisionWrites": 1,
+              "exhaustedBeforeProvider": true,
+              "usedSteps": 2,
+              "usedUnits": 5
+            },
+            {
+              "name": "stream-refresh-replays-without-resubmitting",
+              "state": "passed",
+              "ms": 4429,
+              "modelRequests": 2,
+              "browserRefreshAddedRequests": 0
+            },
+            {
+              "name": "conversation-switch-isolates-history-and-candidates",
+              "state": "passed",
+              "ms": 235,
+              "historyIsolation": true,
+              "readOnlySwitch": true
+            },
+            {
+              "name": "suggested-memory-requires-review-expiry-and-version-history",
+              "state": "passed",
+              "ms": 1516,
+              "suggestedNotSavedAutomatically": true,
+              "expiryExcludesRecall": true,
+              "versionHistory": [1, 2]
+            },
+            {
+              "name": "cloud-thumbnail-and-public-image-search-use-separate-scopes",
+              "state": "passed",
+              "ms": 2283,
+              "protectedThumbnail": true,
+              "explicitPublicQuery": true,
+              "publicSourceLink": true
+            },
+            {
+              "name": "stop-in-flight-hides-partial-result-and-survives-refresh",
+              "state": "passed",
+              "ms": 3921,
+              "stoppedDuringProviderRound": true,
+              "noExtraDispatch": true,
+              "savedVersionUnchanged": true
+            },
+            {
+              "name": "assistant-controls-1440x960",
+              "state": "passed",
+              "ms": 175,
+              "width": 1440,
+              "overflow": 1440,
+              "composer": {
+                "x": 1045,
+                "y": 668.15625,
+                "width": 384,
+                "height": 59.1875,
+                "bottom": 727.34375,
+                "right": 1429
+              },
+              "panel": {
+                "x": 1043,
+                "y": 170,
+                "width": 388,
+                "height": 585,
+                "bottom": 755,
+                "right": 1431
+              },
+              "canvas": null
+            },
+            {
+              "name": "assistant-controls-1024x768",
+              "state": "passed",
+              "ms": 166,
+              "width": 1024,
+              "overflow": 1024,
+              "composer": {
+                "x": 629,
+                "y": 580.15625,
+                "width": 384,
+                "height": 59.1875,
+                "bottom": 639.34375,
+                "right": 1013
+              },
+              "panel": {
+                "x": 627,
+                "y": 164,
+                "width": 388,
+                "height": 503,
+                "bottom": 667,
+                "right": 1015
+              },
+              "canvas": null
+            },
+            {
+              "name": "assistant-controls-390x844",
+              "state": "passed",
+              "ms": 167,
+              "width": 390,
+              "overflow": 390,
+              "composer": {
+                "x": 2,
+                "y": 696.15625,
+                "width": 386,
+                "height": 59.1875,
+                "bottom": 755.34375,
+                "right": 388
+              },
+              "panel": {
+                "x": 0,
+                "y": 481,
+                "width": 390,
+                "height": 299,
+                "bottom": 780,
+                "right": 390
+              },
+              "canvas": null
+            },
+            {
+              "name": "assistant-controls-320x700",
+              "state": "passed",
+              "ms": 114,
+              "width": 320,
+              "overflow": 320,
+              "composer": {
+                "x": 2,
+                "y": 552.15625,
+                "width": 316,
+                "height": 59.1875,
+                "bottom": 611.34375,
+                "right": 318
+              },
+              "panel": {
+                "x": 0,
+                "y": 337,
+                "width": 320,
+                "height": 299,
+                "bottom": 636,
+                "right": 320
+              },
+              "canvas": null
+            },
+            {
+              "name": "assistant-controls-844x390",
+              "state": "passed",
+              "ms": 154,
+              "width": 844,
+              "overflow": 844,
+              "composer": {
+                "x": 449,
+                "y": 222.15625,
+                "width": 384,
+                "height": 59.1875,
+                "bottom": 281.34375,
+                "right": 833
+              },
+              "panel": {
+                "x": 447,
+                "y": 138,
+                "width": 388,
+                "height": 171,
+                "bottom": 309,
+                "right": 835
+              },
+              "canvas": null
+            },
+            {
+              "name": "operator-paginates-all-unknown-jobs-without-private-content",
+              "state": "passed",
+              "ms": 3562,
+              "pages": [50, 10],
+              "privateInputExposed": false,
+              "unavailableResolverDisabled": true
+            }
+          ]
+        },
+        "team": {
+          "artifact": {
+            "id": 13779751264,
+            "name": "browser-team-voice-d747d7bdcc3c72f5bd18103329448279c99d263f",
+            "size_in_bytes": 590237,
+            "url": "https://api.github.com/repos/hxjyaohaohaode/AI-xiutu/actions/artifacts/13779751264",
+            "archive_download_url": "https://api.github.com/repos/hxjyaohaohaode/AI-xiutu/actions/artifacts/13779751264/zip",
+            "expired": false,
+            "created_at": "2026-11-10T15:57:06Z",
+            "expires_at": "2026-11-24T15:57:05Z",
+            "updated_at": "2026-11-10T15:57:06Z",
+            "digest": "sha256:fd7023192038fdce45a75654908927dc4dd005fe85a1b3a46b5116cba5fb3c93",
+            "workflow_run": {
+              "id": 42845426490,
+              "repository_id": 1451260826,
+              "head_repository_id": 1451260826,
+              "head_branch": "work/frontend-studio-v2",
+              "head_sha": "aa529491e76792d44057c93f676d33cb148424fe"
+            },
+            "local_zip_path": "artifacts/verification/frontend-studio/ci-42845426490/team/artifact.zip",
+            "download_sha256": "fd7023192038fdce45a75654908927dc4dd005fe85a1b3a46b5116cba5fb3c93",
+            "size_verified": true,
+            "report_path": "artifacts/verification/frontend-studio/ci-42845426490/team/report.json",
+            "report_sha256": "3c95fb6d26b45485d77095b72d3edc030bb47ee965ecc0541358a3abd21e2817"
+          },
+          "case_count": 5,
+          "case_states": {
+            "passed": 5
+          },
+          "page_error_count": 0,
+          "provider": "local WebSocket fixture",
+          "paid_calls": 0,
+          "microphone_source": "Chromium fake media devices; fake permission UI. No physical microphone acceptance.",
+          "native_speech_recognition_acceptance": false,
+          "cases": [
+            {
+              "name": "peer browser microphones relay PCM to a separate team page",
+              "state": "passed"
+            },
+            {
+              "name": "members-only captions are optional and do not add a voice provider",
+              "state": "passed"
+            },
+            {
+              "name": "open microphones share continuous audio with one invited AI after consent",
+              "state": "passed"
+            },
+            {
+              "name": "an unresolved team invitation blocks a new solo paid request",
+              "state": "passed"
+            },
+            {
+              "name": "solo live call keeps captions and public search inside the conversation",
+              "state": "passed"
+            }
+          ]
+        },
+        "spatial": {
+          "artifact": {
+            "id": 13780865107,
+            "name": "spatial-quality-d747d7bdcc3c72f5bd18103329448279c99d263f",
+            "size_in_bytes": 68008959,
+            "url": "https://api.github.com/repos/hxjyaohaohaode/AI-xiutu/actions/artifacts/13780865107",
+            "archive_download_url": "https://api.github.com/repos/hxjyaohaohaode/AI-xiutu/actions/artifacts/13780865107/zip",
+            "expired": false,
+            "created_at": "2026-11-10T15:58:44Z",
+            "expires_at": "2026-11-24T15:58:40Z",
+            "updated_at": "2026-11-10T15:58:44Z",
+            "digest": "sha256:3c45014944a7d5ce08cd9a0fdc09b72fb3b016310de4902a1223b37b86d08e61",
+            "workflow_run": {
+              "id": 42845426490,
+              "repository_id": 1451260826,
+              "head_repository_id": 1451260826,
+              "head_branch": "work/frontend-studio-v2",
+              "head_sha": "aa529491e76792d44057c93f676d33cb148424fe"
+            },
+            "local_zip_path": "artifacts/verification/frontend-studio/ci-42845426490/spatial/artifact.zip",
+            "download_sha256": "3c45014944a7d5ce08cd9a0fdc09b72fb3b016310de4902a1223b37b86d08e61",
+            "size_verified": true,
+            "report_path": "artifacts/verification/frontend-studio/ci-42845426490/spatial/report.json",
+            "report_sha256": "7ae4165690d24d6849c5ff21fc6d0a93ad7622028279cd6a52e01a331bf778a5"
+          },
+          "case_count": 431,
+          "case_states": {
+            "passed": 419,
+            "unavailable": 12
+          },
+          "recorded_failure": null,
+          "page_error_count": null,
+          "page_error_count_note": "This report does not collect pageErrors; do not report a measured zero.",
+          "source": "actual browser MediaPipe CPU/WASM inference on pinned public photographs",
+          "paid_calls": 0,
+          "manual_visual_review": false,
+          "photo_count": 3,
+          "photos": [
+            {
+              "name": "portrait-hopper",
+              "url": "https://raw.githubusercontent.com/matplotlib/matplotlib/main/lib/matplotlib/mpl-data/sample_data/grace_hopper.jpg",
+              "sha256": "a8ca6d734765703b09728ab47fe59f473d93ae3967fc24c7c0288c3c7adb7130",
+              "bytes": 61306,
+              "source": "Matplotlib official public sample_data; image is not redistributed in this repository",
+              "frame": {
+                "width": 437,
+                "height": 512,
+                "coordinates": "source-normalized",
+                "orientation": "normalized",
+                "contentHash": "1f4b9b04a25ddedac826d2f7329ff2a197c36c6248367d0ae8beb18b7704a508"
+              },
+              "targets": [
+                {
+                  "id": "face-1f4b9b04a25d-1",
+                  "kind": "face"
+                },
+                {
+                  "id": "body-1f4b9b04a25d-1",
+                  "kind": "body"
+                }
+              ],
+              "warnings": []
+            },
+            {
+              "name": "mediapipe-portrait",
+              "url": "https://storage.googleapis.com/mediapipe-assets/portrait.jpg",
+              "sha256": "a6f11efaa834706db23f275b6115058fa87fc7f14362681e6abe14e82749de3e",
+              "bytes": 176561,
+              "source": "Google MediaPipe official example asset; image is not redistributed in this repository",
+              "frame": {
+                "width": 410,
+                "height": 512,
+                "coordinates": "source-normalized",
+                "orientation": "normalized",
+                "contentHash": "2c9e60fc8ab720dfa422d84c2edf308f15b48eab623f4047ed88537e64e7c1f3"
+              },
+              "targets": [
+                {
+                  "id": "face-2c9e60fc8ab7-1",
+                  "kind": "face"
+                },
+                {
+                  "id": "body-2c9e60fc8ab7-1",
+                  "kind": "body"
+                }
+              ],
+              "warnings": []
+            },
+            {
+              "name": "mediapipe-pose",
+              "url": "https://storage.googleapis.com/mediapipe-assets/pose.jpg",
+              "sha256": "c8a830ed683c0276d713dd5aeda28f415f10cd6291972084a40d0d8b934ed62b",
+              "bytes": 44100,
+              "source": "Google MediaPipe official example asset; image is not redistributed in this repository",
+              "frame": {
+                "width": 512,
+                "height": 342,
+                "coordinates": "source-normalized",
+                "orientation": "normalized",
+                "contentHash": "2f00c5f8ffc0ed21527d05c046d5157fe78c67ebfb74d60210b55ec1e7fae26e"
+              },
+              "targets": [
+                {
+                  "id": "body-2f00c5f8ffc0-1",
+                  "kind": "body"
+                }
+              ],
+              "warnings": []
+            }
+          ],
+          "model_manifest": {
+            "schemaVersion": 1,
+            "sdkVersion": "1.2.2",
+            "algorithmVersion": "mediapipe-v1-selfie256",
+            "assets": [
+              {
+                "file": "face_landmarker.task",
+                "sha256": "64184e229b263107bc2b804c6625db1341ff2bb731874b0bcc2fe6544e0bc9ff",
+                "bytes": 3758596
+              },
+              {
+                "file": "pose_landmarker_lite.task",
+                "sha256": "59929e1d1ee95287735ddd833b19cf4ac46d29bc7afddbbf6753c459690d574a",
+                "bytes": 5777746
+              },
+              {
+                "file": "selfie_multiclass_256x256.tflite",
+                "sha256": "c6748b1253a99067ef71f7e26ca71096cd449baefa8f101900ea23016507e0e0",
+                "bytes": 16371837
+              }
+            ]
+          },
+          "target_counts": {
+            "face": 2,
+            "body": 3
+          },
+          "photo_warning_count": 0,
+          "repeated_model_inference": "Each of 3 images is inferred twice in the actual portrait worker; target and skin segmentation existence is asserted both times.",
+          "frame_scope": "sRGB RGBA8, orientation normalized, scaled to fit within 512x512.",
+          "portrait_sweep_cases": 410,
+          "zero_value_cases": 90,
+          "zero_value_all_identity": true,
+          "zero_value_max_channel_delta": 0,
+          "nonzero_value_cases": 320,
+          "nonzero_all_change_pixels": true,
+          "full_vs_tiled_equality": {
+            "case_count": 419,
+            "max_channel_difference": 0,
+            "tile_size": 37,
+            "basis": "Derived from passing assert.deepEqual comparisons in scripts/qa/spatial-quality.browser.mjs at lines 207 and 307; pixel rendering runs the shared reference engine in Node, while landmark/segmentation inference runs in the browser worker."
+          },
+          "repair_outside_mask": {
+            "max_channel_difference": 0,
+            "basis": "Passing per-pixel equality assertions outside the repair mask at script line 300."
+          },
+          "repair_mae": [
+            {
+              "photo": "portrait-hopper",
+              "tool": "diffusion",
+              "maeToGroundTruth": 2.9045454545454548
+            },
+            {
+              "photo": "portrait-hopper",
+              "tool": "patch-poisson",
+              "maeToGroundTruth": 3.6575757575757577
+            },
+            {
+              "photo": "portrait-hopper",
+              "tool": "exemplar-v1",
+              "maeToGroundTruth": 4.491666666666666
+            },
+            {
+              "photo": "mediapipe-portrait",
+              "tool": "diffusion",
+              "maeToGroundTruth": 18.358173076923077
+            },
+            {
+              "photo": "mediapipe-portrait",
+              "tool": "patch-poisson",
+              "maeToGroundTruth": 18.088141025641026
+            },
+            {
+              "photo": "mediapipe-portrait",
+              "tool": "exemplar-v1",
+              "maeToGroundTruth": 31.783653846153847
+            },
+            {
+              "photo": "mediapipe-pose",
+              "tool": "diffusion",
+              "maeToGroundTruth": 5.9193083573487035
+            },
+            {
+              "photo": "mediapipe-pose",
+              "tool": "patch-poisson",
+              "maeToGroundTruth": 6.592699327569645
+            },
+            {
+              "photo": "mediapipe-pose",
+              "tool": "exemplar-v1",
+              "maeToGroundTruth": 6.771373679154659
+            }
+          ],
+          "repair_mae_range": [2.9045454545454548, 31.783653846153847],
+          "repair_mae_definition": "Mean absolute RGB channel error within the deliberately damaged mask against the original public photo, on the 0..255 scale.",
+          "repair_quality_gate": "MAE is recorded without a numerical pass threshold. Passed does not mean visually satisfactory restoration.",
+          "unavailable_count": 12,
+          "unavailable_reasons": {
+            "neck_length_not_implemented": 3,
+            "required_landmarks_unavailable": 9
+          },
+          "unavailable_cases": [
+            {
+              "photo": "portrait-hopper",
+              "target": "body",
+              "tool": "neckLength",
+              "state": "unavailable",
+              "reason": "自动颈长暂不可用：耳肩锚点不足以保护面部与肩膀，尚未实现头颈分区和受约束网格。可使用手动液化并设置保护区。"
+            },
+            {
+              "photo": "portrait-hopper",
+              "target": "body",
+              "tool": "arms",
+              "state": "unavailable",
+              "reason": "该操作所需身体关键点不可见，请手动液化或换图。"
+            },
+            {
+              "photo": "portrait-hopper",
+              "target": "body",
+              "tool": "waist",
+              "state": "unavailable",
+              "reason": "该操作所需身体关键点不可见，请手动液化或换图。"
+            },
+            {
+              "photo": "portrait-hopper",
+              "target": "body",
+              "tool": "hips",
+              "state": "unavailable",
+              "reason": "该操作所需身体关键点不可见，请手动液化或换图。"
+            },
+            {
+              "photo": "portrait-hopper",
+              "target": "body",
+              "tool": "legLength",
+              "state": "unavailable",
+              "reason": "该操作所需身体关键点不可见，请手动液化或换图。"
+            },
+            {
+              "photo": "portrait-hopper",
+              "target": "body",
+              "tool": "legs",
+              "state": "unavailable",
+              "reason": "该操作所需身体关键点不可见，请手动液化或换图。"
+            },
+            {
+              "photo": "portrait-hopper",
+              "target": "body",
+              "tool": "height",
+              "state": "unavailable",
+              "reason": "该操作所需身体关键点不可见，请手动液化或换图。"
+            },
+            {
+              "photo": "mediapipe-portrait",
+              "target": "body",
+              "tool": "neckLength",
+              "state": "unavailable",
+              "reason": "自动颈长暂不可用：耳肩锚点不足以保护面部与肩膀，尚未实现头颈分区和受约束网格。可使用手动液化并设置保护区。"
+            },
+            {
+              "photo": "mediapipe-portrait",
+              "target": "body",
+              "tool": "legLength",
+              "state": "unavailable",
+              "reason": "该操作所需身体关键点不可见，请手动液化或换图。"
+            },
+            {
+              "photo": "mediapipe-portrait",
+              "target": "body",
+              "tool": "legs",
+              "state": "unavailable",
+              "reason": "该操作所需身体关键点不可见，请手动液化或换图。"
+            },
+            {
+              "photo": "mediapipe-portrait",
+              "target": "body",
+              "tool": "height",
+              "state": "unavailable",
+              "reason": "该操作所需身体关键点不可见，请手动液化或换图。"
+            },
+            {
+              "photo": "mediapipe-pose",
+              "target": "body",
+              "tool": "neckLength",
+              "state": "unavailable",
+              "reason": "自动颈长暂不可用：耳肩锚点不足以保护面部与肩膀，尚未实现头颈分区和受约束网格。可使用手动液化并设置保护区。"
+            }
+          ]
+        },
+        "scope_limits": [
+          "Assistant and team validate actual browser/HTTP/database/control flows with local provider protocol fixtures; no real paid provider quality, latency or billing acceptance.",
+          "Team uses synthetic microphone input; physical microphone and native speech recognition are not accepted by this evidence.",
+          "Spatial uses actual pinned MediaPipe CPU/WASM model inference, not provider fixtures; only the three listed public photos at the reported normalized resolutions are covered.",
+          "Automated pixel equality and numerical measurements are separate from manual visual review; assistant and spatial explicitly report manualVisualReview=false.",
+          "Workspace artifact review is owned separately by control_polish and is not duplicated here.",
+          "Historical summary.json/jobs.json from 15:37 remain unchanged."
+        ]
+      },
+      "embeddedPathNormalization": "Absolute checkout prefixes removed from embedded summaries; original source files and their SHA-256 hashes remain unchanged.",
+      "initialSnapshotPreserved": "thirdRemoteCi, thirdRemoteCiInitialFollowUpSnapshot and original summary.json/jobs.json preserve the 15:37 observation.",
+      "deliveryScope": "Documentation and screenshot additions only after final product checks. Product source remains aa529491 / local3d151c7; no unknown documentation commit SHA is invented.",
+      "baseCommit": "5e6c994d94a3c45e2847b4871641640d838aa375",
+      "sourceScope": "Verified aa529491 product tree against the5e6c994 base only. This successful run does not cover any subsequent upstream merge or product change.",
+      "controlReview": {
+        "recordedAt": "2026-11-10T16:03:40.098979+00:00",
+        "runId": 42845426490,
+        "headCommit": "aa529491e76792d44057c93f676d33cb148424fe",
+        "checkoutMergeCommit": "d747d7bdcc3c72f5bd18103329448279c99d263f",
+        "baseCommit": "5e6c994d94a3c45e2847b4871641640d838aa375",
+        "scope": "Historical verified third CI snapshot. This success does not automatically cover any later upstream merge or source changes.",
+        "allJobsSucceeded": true,
+        "jobs": [
+          {
+            "id": 129931488684,
+            "name": "baseline",
+            "status": "completed",
+            "conclusion": "success"
+          },
+          {
+            "id": 129931489329,
+            "name": "browser",
+            "status": "completed",
+            "conclusion": "success"
+          },
+          {
+            "id": 129932966748,
+            "name": "containers",
+            "status": "completed",
+            "conclusion": "success"
+          }
+        ],
+        "browserSteps": [
+          {
+            "number": 1,
+            "name": "Set up job",
+            "status": "completed",
+            "conclusion": "success"
+          },
+          {
+            "number": 2,
+            "name": "Initialize containers",
+            "status": "completed",
+            "conclusion": "success"
+          },
+          {
+            "number": 3,
+            "name": "Run actions/checkout@11d5960a326750d5838078e36cf38b85af677262",
+            "status": "completed",
+            "conclusion": "success"
+          },
+          {
+            "number": 4,
+            "name": "Run actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020",
+            "status": "completed",
+            "conclusion": "success"
+          },
+          {
+            "number": 5,
+            "name": "Run npm ci",
+            "status": "completed",
+            "conclusion": "success"
+          },
+          {
+            "number": 6,
+            "name": "Run npx playwright install --with-deps chromium",
+            "status": "completed",
+            "conclusion": "success"
+          },
+          {
+            "number": 7,
+            "name": "Six complete browser flows on this commit",
+            "status": "completed",
+            "conclusion": "success"
+          },
+          {
+            "number": 8,
+            "name": "Preserve measurements, downloaded-image checks and screenshots",
+            "status": "completed",
+            "conclusion": "success"
+          },
+          {
+            "number": 9,
+            "name": "Assistant permissions, memory, streaming, conversations and generated workspace",
+            "status": "completed",
+            "conclusion": "success"
+          },
+          {
+            "number": 10,
+            "name": "Team voice microphones, permissions and shared AI speaker",
+            "status": "completed",
+            "conclusion": "success"
+          },
+          {
+            "number": 11,
+            "name": "Preserve team voice evidence",
+            "status": "completed",
+            "conclusion": "success"
+          },
+          {
+            "number": 12,
+            "name": "Real portrait inference and full/tiled pixel comparison",
+            "status": "completed",
+            "conclusion": "success"
+          },
+          {
+            "number": 13,
+            "name": "Preserve real-photo pixel measurements and contact sheets",
+            "status": "completed",
+            "conclusion": "success"
+          },
+          {
+            "number": 14,
+            "name": "Preserve assistant browser evidence",
+            "status": "completed",
+            "conclusion": "success"
+          },
+          {
+            "number": 26,
+            "name": "Post Run actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020",
+            "status": "completed",
+            "conclusion": "success"
+          },
+          {
+            "number": 27,
+            "name": "Post Run actions/checkout@11d5960a326750d5838078e36cf38b85af677262",
+            "status": "completed",
+            "conclusion": "success"
+          },
+          {
+            "number": 28,
+            "name": "Stop containers",
+            "status": "completed",
+            "conclusion": "success"
+          },
+          {
+            "number": 29,
+            "name": "Complete job",
+            "status": "completed",
+            "conclusion": "success"
+          }
+        ],
+        "browserLog": {
+          "file": "github-job-final.log",
+          "sha256": "5416edd7edd3294b6c147352e398c9673f0211c3fd2f60c752d9e9d9a8672353",
+          "bytes": 86027,
+          "firstTimestamp": "2026-11-10T15:32:43.1630591Z",
+          "lastTimestamp": "2026-11-10T15:58:46.5598171Z"
+        },
+        "workspace": {
+          "summaryFile": "workspace/summary-final.json",
+          "artifactId": 13778704081,
+          "artifactSha256": "176f4023f76adbfb14d013ee8b1738f78b32916acdbe360e5f272c4df42dc70c",
+          "artifactBytes": 218480794,
+          "browserVersion": "158.0.8127.18",
+          "roundCount": 6,
+          "distinctNamedCases": 21,
+          "namedCaseExecutions": 126,
+          "rounds": [
+            {
+              "round": "round-1",
+              "startedAt": "2026-11-10T15:35:28.089Z",
+              "finishedAt": "2026-11-10T15:39:05.750Z",
+              "durationSeconds": 217.661,
+              "state": "passed",
+              "namedCaseCount": 21,
+              "passedCaseCount": 21,
+              "pageErrorCount": 0,
+              "layoutMeasurementCount": 18,
+              "reportSha256": "689c2f0e92d6d4ad26319f7dbc1a9c04fbf5784bdf5d8f3196f838933be33b06"
+            },
+            {
+              "round": "round-2",
+              "startedAt": "2026-11-10T15:39:07.398Z",
+              "finishedAt": "2026-11-10T15:42:31.575Z",
+              "durationSeconds": 204.177,
+              "state": "passed",
+              "namedCaseCount": 21,
+              "passedCaseCount": 21,
+              "pageErrorCount": 0,
+              "layoutMeasurementCount": 18,
+              "reportSha256": "0fb7ead401b26e07b312d29195fbe8dc03a1e4cc0daef28f9f0d3bd488067ca8"
+            },
+            {
+              "round": "round-3",
+              "startedAt": "2026-11-10T15:42:33.282Z",
+              "finishedAt": "2026-11-10T15:45:56.553Z",
+              "durationSeconds": 203.271,
+              "state": "passed",
+              "namedCaseCount": 21,
+              "passedCaseCount": 21,
+              "pageErrorCount": 0,
+              "layoutMeasurementCount": 18,
+              "reportSha256": "4b9a03fc19ff7549b039a30ae9f8c700d38ba69a9dc3bd765050e2ad39e63069"
+            },
+            {
+              "round": "round-4",
+              "startedAt": "2026-11-10T15:45:58.335Z",
+              "finishedAt": "2026-11-10T15:49:21.793Z",
+              "durationSeconds": 203.458,
+              "state": "passed",
+              "namedCaseCount": 21,
+              "passedCaseCount": 21,
+              "pageErrorCount": 0,
+              "layoutMeasurementCount": 18,
+              "reportSha256": "2741b8444ccd4b6629f58dc0202287601f57115b004b4391ade451f1cb8b3bbb"
+            },
+            {
+              "round": "round-5",
+              "startedAt": "2026-11-10T15:49:23.572Z",
+              "finishedAt": "2026-11-10T15:52:46.866Z",
+              "durationSeconds": 203.294,
+              "state": "passed",
+              "namedCaseCount": 21,
+              "passedCaseCount": 21,
+              "pageErrorCount": 0,
+              "layoutMeasurementCount": 18,
+              "reportSha256": "7379604ef576c82ac6e21994495156c9ce240c3d624d3abefbc884ed9cf468d2"
+            },
+            {
+              "round": "round-6",
+              "startedAt": "2026-11-10T15:52:48.620Z",
+              "finishedAt": "2026-11-10T15:56:12.490Z",
+              "durationSeconds": 203.87,
+              "state": "passed",
+              "namedCaseCount": 21,
+              "passedCaseCount": 21,
+              "pageErrorCount": 0,
+              "layoutMeasurementCount": 18,
+              "reportSha256": "080cb36b35011523d9a2a14b5ada3a46600e83d452cb2e179aa403e9b6b7fbbd"
+            }
+          ],
+          "pageErrors": 0,
+          "layoutMeasurementsRechecked": 108,
+          "layoutViolations": 0,
+          "nonzeroWorkspaceScrollLeft": 0,
+          "realPngExportsIndependentlyDecoded": 180,
+          "realPngHashOrDimensionMismatches": 0,
+          "technicalImageExportMetadataRechecked": 30,
+          "recipeFilesRechecked": 36,
+          "dynamicCiAssertInvocationCount": null,
+          "countExplanation": "The CI scripts report named case results, not a dynamic assert-call counter. These are 21 distinct named cases repeated six times (126 executions), not 126 independent kinds of cases. Offline checks re-evaluate 108 layout measurements, 30 technical-image export metadata records, 36 recipe files and 180 actual PNG exports; they are not represented as extra CI test executions."
+        },
+        "otherArtifacts": "Assistant, team voice and spatial reports are independently downloaded and checked by contract_audit in separate artifact subdirectories; no duplicate downloads or edits were made here. Their CI steps are individually success above.",
+        "evidenceFiles": {
+          "jobs-final.json": "4386f04a33fc292418c64a0b8552d8d2edd98d163a3b1579700b3426ab366627",
+          "github-job-final.log": "5416edd7edd3294b6c147352e398c9673f0211c3fd2f60c752d9e9d9a8672353",
+          "workspace/summary-final.json": "caba0a21386803d60e655284d82603bcd86d299ef3cd632c6ce9d14798367f13"
+        },
+        "sourceEdits": false,
+        "localUiAutomationExecuted": false,
+        "workflowRerunTriggered": false
+      },
+      "workspaceReview": {
+        "verifiedAt": "2026-11-10T16:02:39.225872+00:00",
+        "runId": 42845426490,
+        "browserJobId": 129931489329,
+        "headCommit": "aa529491e76792d44057c93f676d33cb148424fe",
+        "checkoutMergeCommit": "d747d7bdcc3c72f5bd18103329448279c99d263f",
+        "artifactId": 13778704081,
+        "artifactBytes": 218480794,
+        "artifactSha256": "176f4023f76adbfb14d013ee8b1738f78b32916acdbe360e5f272c4df42dc70c",
+        "browserVersion": "158.0.8127.18",
+        "rounds": [
+          {
+            "round": "round-1",
+            "startedAt": "2026-11-10T15:35:28.089Z",
+            "finishedAt": "2026-11-10T15:39:05.750Z",
+            "durationSeconds": 217.661,
+            "state": "passed",
+            "namedCaseCount": 21,
+            "passedCaseCount": 21,
+            "pageErrorCount": 0,
+            "layoutMeasurementCount": 18,
+            "reportSha256": "689c2f0e92d6d4ad26319f7dbc1a9c04fbf5784bdf5d8f3196f838933be33b06"
+          },
+          {
+            "round": "round-2",
+            "startedAt": "2026-11-10T15:39:07.398Z",
+            "finishedAt": "2026-11-10T15:42:31.575Z",
+            "durationSeconds": 204.177,
+            "state": "passed",
+            "namedCaseCount": 21,
+            "passedCaseCount": 21,
+            "pageErrorCount": 0,
+            "layoutMeasurementCount": 18,
+            "reportSha256": "0fb7ead401b26e07b312d29195fbe8dc03a1e4cc0daef28f9f0d3bd488067ca8"
+          },
+          {
+            "round": "round-3",
+            "startedAt": "2026-11-10T15:42:33.282Z",
+            "finishedAt": "2026-11-10T15:45:56.553Z",
+            "durationSeconds": 203.271,
+            "state": "passed",
+            "namedCaseCount": 21,
+            "passedCaseCount": 21,
+            "pageErrorCount": 0,
+            "layoutMeasurementCount": 18,
+            "reportSha256": "4b9a03fc19ff7549b039a30ae9f8c700d38ba69a9dc3bd765050e2ad39e63069"
+          },
+          {
+            "round": "round-4",
+            "startedAt": "2026-11-10T15:45:58.335Z",
+            "finishedAt": "2026-11-10T15:49:21.793Z",
+            "durationSeconds": 203.458,
+            "state": "passed",
+            "namedCaseCount": 21,
+            "passedCaseCount": 21,
+            "pageErrorCount": 0,
+            "layoutMeasurementCount": 18,
+            "reportSha256": "2741b8444ccd4b6629f58dc0202287601f57115b004b4391ade451f1cb8b3bbb"
+          },
+          {
+            "round": "round-5",
+            "startedAt": "2026-11-10T15:49:23.572Z",
+            "finishedAt": "2026-11-10T15:52:46.866Z",
+            "durationSeconds": 203.294,
+            "state": "passed",
+            "namedCaseCount": 21,
+            "passedCaseCount": 21,
+            "pageErrorCount": 0,
+            "layoutMeasurementCount": 18,
+            "reportSha256": "7379604ef576c82ac6e21994495156c9ce240c3d624d3abefbc884ed9cf468d2"
+          },
+          {
+            "round": "round-6",
+            "startedAt": "2026-11-10T15:52:48.620Z",
+            "finishedAt": "2026-11-10T15:56:12.490Z",
+            "durationSeconds": 203.87,
+            "state": "passed",
+            "namedCaseCount": 21,
+            "passedCaseCount": 21,
+            "pageErrorCount": 0,
+            "layoutMeasurementCount": 18,
+            "reportSha256": "080cb36b35011523d9a2a14b5ada3a46600e83d452cb2e179aa403e9b6b7fbbd"
+          }
+        ],
+        "distinctNamedCases": 21,
+        "namedCaseExecutions": 126,
+        "caseNames": [
+          "layout-320x700",
+          "layout-390x844",
+          "layout-844x390",
+          "layout-1024x768",
+          "layout-1440x960",
+          "photo-portrait-hopper-390x844",
+          "photo-portrait-hopper-1440x960",
+          "photo-mediapipe-portrait-390x844",
+          "photo-mediapipe-portrait-1440x960",
+          "photo-mediapipe-pose-390x844",
+          "photo-mediapipe-pose-1440x960",
+          "four-corner-preview-cancel-undo-keyboard",
+          "freehand-coalescing-export-undo-1440x960",
+          "freehand-coalescing-export-undo-1024x768",
+          "freehand-coalescing-export-undo-390x844",
+          "freehand-coalescing-export-undo-320x700",
+          "freehand-coalescing-export-undo-844x390",
+          "two-accounts-shared-edit-cursor-and-owned-undo",
+          "lease-conflict-visible-and-explicit-retry",
+          "unknown-command-retries-original-key-without-duplicate-revision",
+          "resource-memory-privacy-and-ledger-export"
+        ],
+        "pageErrorCount": 0,
+        "layoutMeasurementsRechecked": 108,
+        "layoutViolationCount": 0,
+        "nonzeroWorkspaceScrollLeftMeasurements": [],
+        "phone320Regression": [
+          {
+            "round": "round-1",
+            "phase": "initial",
+            "panelX": 0,
+            "panelHeight": 284.234375,
+            "sliderHeight": 40,
+            "sliderBottom": 623.75,
+            "controlBottom": 632.25,
+            "scrollerBottom": 635.984375,
+            "workspaceScrollLeft": 0,
+            "workspaceClientWidth": 320,
+            "workspaceScrollWidth": 325,
+            "inspectorScrollTop": 0
+          },
+          {
+            "round": "round-1",
+            "phase": "normal",
+            "panelX": 0,
+            "panelHeight": 284.234375,
+            "sliderHeight": 40,
+            "sliderBottom": 598.75,
+            "controlBottom": 607.25,
+            "scrollerBottom": 635.984375,
+            "workspaceScrollLeft": 0,
+            "workspaceClientWidth": 320,
+            "workspaceScrollWidth": 325,
+            "inspectorScrollTop": 25
+          },
+          {
+            "round": "round-1",
+            "phase": "resized",
+            "panelX": 0,
+            "panelHeight": 339,
+            "sliderHeight": 40,
+            "sliderBottom": 543.984375,
+            "controlBottom": 552.484375,
+            "scrollerBottom": 635.984375,
+            "workspaceScrollLeft": 0,
+            "workspaceClientWidth": 320,
+            "workspaceScrollWidth": 325,
+            "inspectorScrollTop": 25
+          },
+          {
+            "round": "round-2",
+            "phase": "initial",
+            "panelX": 0,
+            "panelHeight": 284.234375,
+            "sliderHeight": 40,
+            "sliderBottom": 623.75,
+            "controlBottom": 632.25,
+            "scrollerBottom": 635.984375,
+            "workspaceScrollLeft": 0,
+            "workspaceClientWidth": 320,
+            "workspaceScrollWidth": 325,
+            "inspectorScrollTop": 0
+          },
+          {
+            "round": "round-2",
+            "phase": "normal",
+            "panelX": 0,
+            "panelHeight": 284.234375,
+            "sliderHeight": 40,
+            "sliderBottom": 598.75,
+            "controlBottom": 607.25,
+            "scrollerBottom": 635.984375,
+            "workspaceScrollLeft": 0,
+            "workspaceClientWidth": 320,
+            "workspaceScrollWidth": 325,
+            "inspectorScrollTop": 25
+          },
+          {
+            "round": "round-2",
+            "phase": "resized",
+            "panelX": 0,
+            "panelHeight": 339,
+            "sliderHeight": 40,
+            "sliderBottom": 543.984375,
+            "controlBottom": 552.484375,
+            "scrollerBottom": 635.984375,
+            "workspaceScrollLeft": 0,
+            "workspaceClientWidth": 320,
+            "workspaceScrollWidth": 325,
+            "inspectorScrollTop": 25
+          },
+          {
+            "round": "round-3",
+            "phase": "initial",
+            "panelX": 0,
+            "panelHeight": 284.234375,
+            "sliderHeight": 40,
+            "sliderBottom": 623.75,
+            "controlBottom": 632.25,
+            "scrollerBottom": 635.984375,
+            "workspaceScrollLeft": 0,
+            "workspaceClientWidth": 320,
+            "workspaceScrollWidth": 325,
+            "inspectorScrollTop": 0
+          },
+          {
+            "round": "round-3",
+            "phase": "normal",
+            "panelX": 0,
+            "panelHeight": 284.234375,
+            "sliderHeight": 40,
+            "sliderBottom": 598.75,
+            "controlBottom": 607.25,
+            "scrollerBottom": 635.984375,
+            "workspaceScrollLeft": 0,
+            "workspaceClientWidth": 320,
+            "workspaceScrollWidth": 325,
+            "inspectorScrollTop": 25
+          },
+          {
+            "round": "round-3",
+            "phase": "resized",
+            "panelX": 0,
+            "panelHeight": 339,
+            "sliderHeight": 40,
+            "sliderBottom": 543.984375,
+            "controlBottom": 552.484375,
+            "scrollerBottom": 635.984375,
+            "workspaceScrollLeft": 0,
+            "workspaceClientWidth": 320,
+            "workspaceScrollWidth": 325,
+            "inspectorScrollTop": 25
+          },
+          {
+            "round": "round-4",
+            "phase": "initial",
+            "panelX": 0,
+            "panelHeight": 284.234375,
+            "sliderHeight": 40,
+            "sliderBottom": 623.75,
+            "controlBottom": 632.25,
+            "scrollerBottom": 635.984375,
+            "workspaceScrollLeft": 0,
+            "workspaceClientWidth": 320,
+            "workspaceScrollWidth": 325,
+            "inspectorScrollTop": 0
+          },
+          {
+            "round": "round-4",
+            "phase": "normal",
+            "panelX": 0,
+            "panelHeight": 284.234375,
+            "sliderHeight": 40,
+            "sliderBottom": 598.75,
+            "controlBottom": 607.25,
+            "scrollerBottom": 635.984375,
+            "workspaceScrollLeft": 0,
+            "workspaceClientWidth": 320,
+            "workspaceScrollWidth": 325,
+            "inspectorScrollTop": 25
+          },
+          {
+            "round": "round-4",
+            "phase": "resized",
+            "panelX": 0,
+            "panelHeight": 339,
+            "sliderHeight": 40,
+            "sliderBottom": 543.984375,
+            "controlBottom": 552.484375,
+            "scrollerBottom": 635.984375,
+            "workspaceScrollLeft": 0,
+            "workspaceClientWidth": 320,
+            "workspaceScrollWidth": 325,
+            "inspectorScrollTop": 25
+          },
+          {
+            "round": "round-5",
+            "phase": "initial",
+            "panelX": 0,
+            "panelHeight": 284.234375,
+            "sliderHeight": 40,
+            "sliderBottom": 623.75,
+            "controlBottom": 632.25,
+            "scrollerBottom": 635.984375,
+            "workspaceScrollLeft": 0,
+            "workspaceClientWidth": 320,
+            "workspaceScrollWidth": 325,
+            "inspectorScrollTop": 0
+          },
+          {
+            "round": "round-5",
+            "phase": "normal",
+            "panelX": 0,
+            "panelHeight": 284.234375,
+            "sliderHeight": 40,
+            "sliderBottom": 598.75,
+            "controlBottom": 607.25,
+            "scrollerBottom": 635.984375,
+            "workspaceScrollLeft": 0,
+            "workspaceClientWidth": 320,
+            "workspaceScrollWidth": 325,
+            "inspectorScrollTop": 25
+          },
+          {
+            "round": "round-5",
+            "phase": "resized",
+            "panelX": 0,
+            "panelHeight": 339,
+            "sliderHeight": 40,
+            "sliderBottom": 543.984375,
+            "controlBottom": 552.484375,
+            "scrollerBottom": 635.984375,
+            "workspaceScrollLeft": 0,
+            "workspaceClientWidth": 320,
+            "workspaceScrollWidth": 325,
+            "inspectorScrollTop": 25
+          },
+          {
+            "round": "round-6",
+            "phase": "initial",
+            "panelX": 0,
+            "panelHeight": 284.234375,
+            "sliderHeight": 40,
+            "sliderBottom": 623.75,
+            "controlBottom": 632.25,
+            "scrollerBottom": 635.984375,
+            "workspaceScrollLeft": 0,
+            "workspaceClientWidth": 320,
+            "workspaceScrollWidth": 325,
+            "inspectorScrollTop": 0
+          },
+          {
+            "round": "round-6",
+            "phase": "normal",
+            "panelX": 0,
+            "panelHeight": 284.234375,
+            "sliderHeight": 40,
+            "sliderBottom": 598.75,
+            "controlBottom": 607.25,
+            "scrollerBottom": 635.984375,
+            "workspaceScrollLeft": 0,
+            "workspaceClientWidth": 320,
+            "workspaceScrollWidth": 325,
+            "inspectorScrollTop": 25
+          },
+          {
+            "round": "round-6",
+            "phase": "resized",
+            "panelX": 0,
+            "panelHeight": 339,
+            "sliderHeight": 40,
+            "sliderBottom": 543.984375,
+            "controlBottom": 552.484375,
+            "scrollerBottom": 635.984375,
+            "workspaceScrollLeft": 0,
+            "workspaceClientWidth": 320,
+            "workspaceScrollWidth": 325,
+            "inspectorScrollTop": 25
+          }
+        ],
+        "photographicExportsIndependentlyDecoded": 180,
+        "photographicExportHashAndDimensionMismatches": 0,
+        "exportedRecipeFilesRechecked": 36,
+        "ciRuntimeAssertionInvocationCount": null,
+        "assertionCountExplanation": "The CI scripts report named case results, not a dynamic assert-call counter. These are 21 distinct named cases repeated six times (126 executions), not 126 independent kinds of cases. Offline checks re-evaluate 108 layout measurements, 30 technical-image export metadata records, 36 recipe files and 180 actual PNG exports; they are not represented as extra CI test executions.",
+        "jobLogSha256": "5416edd7edd3294b6c147352e398c9673f0211c3fd2f60c752d9e9d9a8672353",
+        "jobLogByteLength": 86027,
+        "jobLogFirstTimestamp": "2026-11-10T15:32:43.1630591Z",
+        "jobLogLastTimestamp": "2026-11-10T15:58:46.5598171Z",
+        "sourceEdits": false,
+        "localUiAutomationExecuted": false,
+        "technicalImageExportMetadataCount": 30,
+        "fullDetailedSummaryPath": "artifacts/verification/frontend-studio/ci-42845426490/workspace/summary-final.json",
+        "fullDetailedSummarySha256": "caba0a21386803d60e655284d82603bcd86d299ef3cd632c6ce9d14798367f13",
+        "omittedFromEmbeddedCopy": [
+          "decodedExports (180 entries)",
+          "photoCases (36 entries)",
+          "technicalImageExportMetadataRechecked (30 entries)"
+        ]
+      },
+      "workspaceArtifactUrl": "https://api.github.com/repos/hxjyaohaohaode/AI-xiutu/actions/artifacts/13778704081"
+    },
+    "thirdRoundFinalEvidenceSha256": {
+      "jobs-final.json": "4386f04a33fc292418c64a0b8552d8d2edd98d163a3b1579700b3426ab366627",
+      "github-job-final.log": "5416edd7edd3294b6c147352e398c9673f0211c3fd2f60c752d9e9d9a8672353",
+      "final-specialized-jobs.json": "513102a614785399a6dd6dcc9ba09ff046a1abcc8475e3def32eeb1c1702dab7",
+      "final-assistant-team-spatial.json": "c5539463967e49059acab68fb6d63fca6e08d1b99b8b23dbc77fbdd6f5481948",
+      "assistant/artifact.zip": "92de026cf17a468d5ac6fdd6be9b9900e8dd75314c06e828c8b92d4473956669",
+      "assistant/artifact-metadata.json": "2dc1ad2b8e5d3ebfdfbdeec08927ec6cc00871da0799ea3db583be14427671c6",
+      "assistant/report.json": "a44c7d468bad9306300534e0034806b9a32b3e7d9facc5cc72043dd79dfb5443",
+      "assistant/SHA256SUMS": "eb7458bf26c13f6f940b1cc5a5e10b0c4fac956c3c793aaec1e0cc9268edcc99",
+      "team/artifact.zip": "fd7023192038fdce45a75654908927dc4dd005fe85a1b3a46b5116cba5fb3c93",
+      "team/artifact-metadata.json": "19bc90468b74b36d314cc011818ef475f9122b81ad5cd7b11fe6bf868da8b968",
+      "team/report.json": "3c95fb6d26b45485d77095b72d3edc030bb47ee965ecc0541358a3abd21e2817",
+      "team/SHA256SUMS": "42eac35c5811393f78bc89963d34ed06fda9c4abadbfc9f03d52ee37f0c8f0ee",
+      "spatial/artifact.zip": "3c45014944a7d5ce08cd9a0fdc09b72fb3b016310de4902a1223b37b86d08e61",
+      "spatial/artifact-metadata.json": "ba691f0996ddd572ee22fecd99bee7313aa417163bf254979a018c9c156a294b",
+      "spatial/report.json": "7ae4165690d24d6849c5ff21fc6d0a93ad7622028279cd6a52e01a331bf778a5",
+      "spatial/SHA256SUMS": "992b17845f4b179a09b91ad3b5ac19e43df6f3186a76308db95188442d2b08a3",
+      "summary-final.json": "0fc49a9dc343fe6452e42b19c6a21f4a32de53c7c8e1c8eed8d9826fe35d18c5",
+      "workspace/summary-final.json": "caba0a21386803d60e655284d82603bcd86d299ef3cd632c6ce9d14798367f13",
+      "workspace/artifact.zip": "176f4023f76adbfb14d013ee8b1738f78b32916acdbe360e5f272c4df42dc70c",
+      "workspace/round-1/report.json": "689c2f0e92d6d4ad26319f7dbc1a9c04fbf5784bdf5d8f3196f838933be33b06",
+      "workspace/round-2/report.json": "0fb7ead401b26e07b312d29195fbe8dc03a1e4cc0daef28f9f0d3bd488067ca8",
+      "workspace/round-3/report.json": "4b9a03fc19ff7549b039a30ae9f8c700d38ba69a9dc3bd765050e2ad39e63069",
+      "workspace/round-4/report.json": "2741b8444ccd4b6629f58dc0202287601f57115b004b4391ade451f1cb8b3bbb",
+      "workspace/round-5/report.json": "7379604ef576c82ac6e21994495156c9ce240c3d624d3abefbc884ed9cf468d2",
+      "workspace/round-6/report.json": "080cb36b35011523d9a2a14b5ada3a46600e83d452cb2e179aa403e9b6b7fbbd"
+    }
+  },
   "finalFrontendGate": {
     "label": "Final frontend gate after latest upstream UI scroll patch",
     "createdAt": "2026-11-10T14:37:33.460Z",
