@@ -1141,15 +1141,38 @@ try {
     };
   });
   await testCase('stop-in-flight-hides-partial-result-and-survives-refresh', async () => {
+    async function submitAdmittedTurn(prompt) {
+      const response = page.waitForResponse(
+        (result) =>
+          result.request().method() === 'POST' &&
+          new URL(result.url()).pathname.endsWith('/assistant-turns'),
+      );
+      await submit(prompt);
+      const accepted = await response;
+      assert.equal(accepted.status(), 202);
+      const turn = await accepted.json();
+      assert.equal(typeof turn.id, 'string');
+      return turn;
+    }
     await newConversation();
     firstDelta = false;
     holdCompletion = true;
     const original = await head();
     const before = dispatches;
-    await submit('停止后不要应用这项编辑。');
+    const stoppedTurn = await submitAdmittedTurn('停止后不要应用这项编辑。');
     await until(() => firstDelta, 'request in flight');
+    const stopResponse = page.waitForResponse(
+      (response) =>
+        response.request().method() === 'POST' &&
+        new URL(response.url()).pathname === `/v1/assistant-turns/${stoppedTurn.id}/stop`,
+    );
     await page.getByRole('button', { name: '停止本轮执行', exact: true }).click();
     await page.getByRole('button', { name: '正在核对停止结果', exact: true }).waitFor();
+    const stopAccepted = await stopResponse;
+    assert.equal(stopAccepted.status(), 200);
+    const stopReceipt = await stopAccepted.json();
+    assert.equal(stopReceipt.id, stoppedTurn.id);
+    assert.equal(stopReceipt.stopRequested, true, 'the stop is durable before completing the fixture');
     holdCompletion = false;
     await until(
       async () => (await page.locator('.assistant-messages').innerText()).includes('本轮已停止'),
@@ -1187,11 +1210,131 @@ try {
     assert.equal(dispatches, before + 2);
     assert.equal((await head()).artwork.headVersion, original.artwork.headVersion);
     assert.ok(!(await page.locator('.assistant-messages').innerText()).includes(sentence));
+
+    // Preserve the original stop/reload checks above. These two additional
+    // explicitly admitted turns exercise a late real stop receipt in the same
+    // mounted assistant, including the history-restored observer path.
+    const isolationBefore = { dispatches, admissions: turnAdmissions };
+    let releaseStopReply;
+    const stopReplyGate = new Promise((resolve) => { releaseStopReply = resolve; });
+    let routeFinished;
+    const stopRouteDone = new Promise((resolve) => { routeFinished = resolve; });
+    let routeStarted = false;
+    let actualStopReceipt = null;
+    let stopUrl;
+    const holdStopReply = async (route) => {
+      routeStarted = true;
+      try {
+        assert.equal(route.request().method(), 'POST');
+        const response = await route.fetch();
+        actualStopReceipt = { status: response.status(), body: await response.json() };
+        await stopReplyGate;
+        await route.fulfill({ response });
+      } catch (error) {
+        actualStopReceipt = { error };
+        await route.abort().catch(() => {});
+      } finally {
+        routeFinished();
+      }
+    };
+    let lateReplyIsolation;
+    try {
+      await newConversation();
+      firstDelta = false;
+      holdCompletion = true;
+      const delayedTurn = await submitAdmittedTurn('这轮从会话恢复后停止，用于核对停止回执。');
+      await until(() => firstDelta, 'the restored-stop fixture is in flight');
+      await openProject(page, false);
+      const partial = page.locator('.assistant-messages').getByText(sentence, { exact: true });
+      await until(() => partial.isVisible(), 'the running turn is restored from actual stream events');
+      const stop = page.getByRole('button', { name: '停止本轮执行', exact: true });
+      assert.equal(await stop.isEnabled(), true);
+      assert.equal(turnAdmissions, isolationBefore.admissions + 1);
+      assert.equal(dispatches, isolationBefore.dispatches + 2);
+
+      stopUrl = `${origin}/v1/assistant-turns/${delayedTurn.id}/stop`;
+      await page.route(stopUrl, holdStopReply);
+      await stop.click();
+      await until(() => actualStopReceipt, 'the real matching stop POST has returned from the API');
+      if (actualStopReceipt.error) throw actualStopReceipt.error;
+      assert.equal(actualStopReceipt.status, 200);
+      assert.equal(actualStopReceipt.body.id, delayedTurn.id);
+      assert.equal(actualStopReceipt.body.stopRequested, true);
+      // Only browser delivery of this successful API receipt is held. Provider
+      // data is unchanged; the original fixture may finish after the durable stop.
+      holdCompletion = false;
+      await until(
+        async () => (await page.locator('.assistant-messages').innerText()).includes('本轮已停止'),
+        'the restored observer receives the stopped turn before its delayed HTTP receipt',
+      );
+      const stopped = await fixture.call('GET', `/v1/assistant-turns/${delayedTurn.id}`);
+      assert.equal(stopped.statusCode, 200);
+      assert.notEqual(stopped.json().state, 'running');
+      assert.equal(stopped.json().stopRequested, true);
+
+      await newConversation();
+      firstDelta = false;
+      holdCompletion = true;
+      const nextTurn = await submitAdmittedTurn('继续新的预览协作，不要沿用上一轮的停止状态。');
+      assert.notEqual(nextTurn.id, delayedTurn.id);
+      await until(() => partial.isVisible(), 'the next same-scope turn has actual incremental text');
+      const progress = await page.locator('.assistant-tool-status').innerText();
+      assert.ok(!progress.includes('已停止') && !progress.includes('停止请求'));
+      assert.equal(await stop.isEnabled(), true);
+      const nextBeforeReply = await fixture.call('GET', `/v1/assistant-turns/${nextTurn.id}`);
+      assert.equal(nextBeforeReply.statusCode, 200);
+      assert.equal(nextBeforeReply.json().state, 'running');
+      assert.equal(nextBeforeReply.json().stopRequested, false);
+
+      const deliveredReply = page.waitForResponse(
+        (response) => response.request().method() === 'POST' && response.url() === stopUrl,
+      );
+      releaseStopReply();
+      const delivered = await deliveredReply;
+      assert.equal(delivered.status(), 200);
+      assert.deepEqual(await delivered.json(), actualStopReceipt.body);
+      await delivered.finished();
+      await stopRouteDone;
+      await page.evaluate(
+        () => new Promise((done) => requestAnimationFrame(() => requestAnimationFrame(done))),
+      );
+      assert.equal(
+        await page.locator('.assistant-tool-status').innerText(),
+        progress,
+        'the old successful stop receipt cannot overwrite the next turn progress',
+      );
+      assert.equal(await stop.isEnabled(), true, 'the next turn retains its own stop control');
+      assert.equal(await partial.isVisible(), true);
+      assert.equal(await page.locator('.live-assistant .assistant-error').count(), 0);
+      const nextAfterReply = await fixture.call('GET', `/v1/assistant-turns/${nextTurn.id}`);
+      assert.equal(nextAfterReply.statusCode, 200);
+      assert.equal(nextAfterReply.json().state, 'running');
+      assert.equal(nextAfterReply.json().stopRequested, false);
+      await page.screenshot({ path: resolve(artifacts, 'late-stop-receipt-isolation.png') });
+      holdCompletion = false;
+      await finished();
+      assert.equal(turnAdmissions, isolationBefore.admissions + 2);
+      assert.equal(dispatches, isolationBefore.dispatches + 4);
+      assert.equal((await head()).artwork.headVersion, original.artwork.headVersion);
+      lateReplyIsolation = {
+        restoredRunningObserverStopped: true,
+        realStopReceiptDeferred: true,
+        nextRunningTurnUnaffected: true,
+        explicitAdmissions: 2,
+        fixtureDispatches: 4,
+      };
+    } finally {
+      holdCompletion = false;
+      releaseStopReply();
+      if (stopUrl) await page.unroute(stopUrl, holdStopReply);
+      if (routeStarted) await stopRouteDone;
+    }
     return {
       stoppedDuringProviderRound: true,
       noExtraDispatch: true,
       savedVersionUnchanged: true,
       reloadReleasedOldSessionAndKeptPeer: true,
+      lateReplyIsolation,
     };
   });
   for (const viewport of [

@@ -277,6 +277,11 @@ export function LiveAssistant(props: LiveAssistantProps) {
       accepted: '',
     }),
     turnAbort = useRef<AbortController | null>(null);
+  const turnObservation = useRef<{
+    id: string;
+    token: AssistantOperationToken;
+    controller: AbortController;
+  } | null>(null);
   const client = useRef<EditorVoiceClient | null>(null),
     current = useRef(props),
     alive = useRef(true);
@@ -654,9 +659,7 @@ export function LiveAssistant(props: LiveAssistantProps) {
             streamText.current.delete(running.id);
             setActiveTurn({ id: running.id, stopping: running.stopRequested === true });
             setBusy(true);
-            void observeAssistantTurn<Turn>(running.id, controller.signal, (event) => {
-              if (requestIsActive(token)) showRunEvent(event);
-            })
+            void observeRunningTurn(running.id, token, controller)
               .then((result) => {
                 if (requestIsActive(token)) {
                   acknowledgeKnownTurn(result);
@@ -1122,6 +1125,35 @@ export function LiveAssistant(props: LiveAssistantProps) {
       search: { query, kind: publicImages && selected.webImageSearch ? 'images' : 'text' },
     });
   }
+  function ownsTurnObservation(owner: NonNullable<typeof turnObservation.current>) {
+    return (
+      turnObservation.current === owner &&
+      turnAbort.current === owner.controller &&
+      !owner.controller.signal.aborted &&
+      requestIsActive(owner.token)
+    );
+  }
+  async function observeRunningTurn(
+    id: string,
+    token: AssistantOperationToken,
+    controller: AbortController,
+  ) {
+    // The observer owns both live submissions and running turns restored from history.
+    // A run.stopping UI update never replaces this operation's identity.
+    const owner = { id, token, controller };
+    turnObservation.current = owner;
+    turnAbort.current = controller;
+    try {
+      return await observeAssistantTurn<Turn>(id, controller.signal, (event) => {
+        if (ownsTurnObservation(owner)) showRunEvent(event);
+      });
+    } finally {
+      if (turnObservation.current === owner) {
+        turnObservation.current = null;
+        if (turnAbort.current === controller) turnAbort.current = null;
+      }
+    }
+  }
   function showRunEvent(event: RunEvent) {
     if (event.type === 'text.delta' && typeof event.payload.delta === 'string') {
       const text = (streamText.current.get(event.runId) ?? '') + event.payload.delta;
@@ -1362,9 +1394,7 @@ export function LiveAssistant(props: LiveAssistantProps) {
     });
     if (result.state === 'running') {
       setActiveTurn({ id: result.id, stopping: result.stopRequested === true });
-      result = await observeAssistantTurn<Turn>(result.id, controller.signal, (event) => {
-        if (requestIsActive(token)) showRunEvent(event);
-      });
+      result = await observeRunningTurn(result.id, token, controller);
     }
     accepted = acceptAssistantSubmission(accepted, result);
     rememberSubmission(accepted);
@@ -1633,7 +1663,15 @@ export function LiveAssistant(props: LiveAssistantProps) {
     );
   }
   async function stopActiveTurn() {
-    if (!activeTurn || activeTurn.stopping) return;
+    const observer = turnObservation.current;
+    if (
+      !activeTurn ||
+      activeTurn.stopping ||
+      !observer ||
+      observer.id !== activeTurn.id ||
+      !ownsTurnObservation(observer)
+    )
+      return;
     const id = activeTurn.id;
     const scope = requestScope;
     setActiveTurn({ id, stopping: true });
@@ -1645,11 +1683,16 @@ export function LiveAssistant(props: LiveAssistantProps) {
       if (
         alive.current &&
         assistantScopeKey(editorState(current.current)) === scope &&
+        ownsTurnObservation(observer) &&
         result.stopRequested
       )
         setToolStatus('已停止后续动作，正在核对本轮状态');
     } catch (error) {
-      if (alive.current && assistantScopeKey(editorState(current.current)) === scope) {
+      if (
+        alive.current &&
+        assistantScopeKey(editorState(current.current)) === scope &&
+        ownsTurnObservation(observer)
+      ) {
         setError(errorMessage(error));
         setActiveTurn((value) => (value?.id === id ? { id, stopping: false } : value));
       }
