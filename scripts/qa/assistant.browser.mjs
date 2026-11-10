@@ -722,6 +722,9 @@ try {
         await input.fill('收起面板时继续这轮请求。');
         await input.press('Control+Enter');
         await until(() => firstDelta, 'keyboard-submitted response in flight');
+        const partialVisible = () =>
+          page.locator('.assistant-messages').innerText().then((text) => text.includes(sentence));
+        await until(partialVisible, 'the in-flight text is painted before hiding the panel');
         await closeAIPanel();
         const banner = page.locator('.ai-activity-banner');
         await banner.getByText('AI 正在处理请求', { exact: true }).waitFor();
@@ -733,7 +736,7 @@ try {
         assert.equal(await page.locator('.live-assistant').isVisible(), false);
         await banner.getByRole('button', { name: '返回 AI 助手', exact: true }).click();
         await page.getByRole('button', { name: '停止本轮执行', exact: true }).waitFor();
-        assert.ok((await page.locator('.assistant-messages').innerText()).includes(sentence));
+        await until(partialVisible, 'the same in-flight text remains after reopening the panel');
         assert.equal(turnAdmissions, before.admissions + 1);
         assert.equal(dispatches, before.dispatches + 2);
         holdCompletion = false;
