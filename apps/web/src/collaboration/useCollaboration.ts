@@ -595,10 +595,11 @@ export function useCollaboration(options: Options) {
     }
     void connect();
     const heartbeat = window.setInterval(async () => {
-      if (!r.session || !isCurrent(r)) return;
+      const sessionId = r.session?.id;
+      if (!sessionId || !isCurrent(r)) return;
       let renewingLeaseId: string | undefined;
       try {
-        await api(endpoint(r, `/sessions/${r.session.id}`), {
+        await api(endpoint(r, `/sessions/${sessionId}`), {
           ...jsonRequest('PATCH', {
             sequence: ++r.sequence,
             ...presence.current,
@@ -612,7 +613,7 @@ export function useCollaboration(options: Options) {
           const renewed = await api<{ lease: CollaborationLease }>(
             endpoint(r, `/leases/${own.id}`),
             {
-              ...jsonRequest('PATCH', { sessionId: r.session.id, fence: own.fence }),
+              ...jsonRequest('PATCH', { sessionId, fence: own.fence }),
               signal: controller.signal,
             },
           );
@@ -625,15 +626,30 @@ export function useCollaboration(options: Options) {
         }
       }
     }, 10_000);
-    return () => {
+    function disconnect() {
       controller.abort();
       window.clearInterval(heartbeat);
       if (timer.current !== null) window.clearTimeout(timer.current);
-      if (r.session)
-        void api(endpoint(r, `/sessions/${r.session.id}`), {
+      const sessionId = r.session?.id;
+      r.session = null;
+      if (sessionId)
+        void api(endpoint(r, `/sessions/${sessionId}`), {
           ...jsonRequest('DELETE'),
           keepalive: true,
         }).catch(() => {});
+    }
+    function restorePage(event: PageTransitionEvent) {
+      // Returning from the browser's back/forward cache restores the local
+      // draft, but its old room membership was closed when the page left.
+      if (event.persisted && room.current === r) setReconnectKey((value) => value + 1);
+    }
+    // A full reload or tab close doesn't run React effect cleanup.
+    window.addEventListener('pagehide', disconnect);
+    window.addEventListener('pageshow', restorePage);
+    return () => {
+      window.removeEventListener('pagehide', disconnect);
+      window.removeEventListener('pageshow', restorePage);
+      disconnect();
       if (room.current === r) room.current = null;
     };
   }, [options.enabled, options.artwork?.id, options.editor.getSourceIdentity(), reconnectKey]);

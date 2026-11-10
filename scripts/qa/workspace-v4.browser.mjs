@@ -2122,6 +2122,7 @@ try {
       await precision(page, '曝光', 0);
       await imageReady(page);
       const range = page.getByRole('slider', { name: '曝光', exact: true });
+      await range.click({ trial: true });
       await range.evaluate((element) => {
         element.addEventListener(
           'pointerdown',
@@ -2131,6 +2132,12 @@ try {
           },
           { once: true },
         );
+        function end(event) {
+          if (String(event.pointerId) === element.dataset.qaPreviewPointer)
+            delete element.dataset.qaPreviewPointer;
+        }
+        document.addEventListener('pointerup', end, true);
+        document.addEventListener('pointercancel', end, true);
       });
       const sample = async () => {
         const value = await range.evaluate(async (element) => {
@@ -2149,7 +2156,7 @@ try {
             width: visible.width,
             height: visible.height,
             exposure: Number(element.value),
-            held: element.hasPointerCapture(Number(element.dataset.qaPreviewPointer)),
+            held: element.dataset.qaPreviewPointer !== undefined,
             elapsedMs: element.dataset.qaPreviewStart
               ? performance.now() - Number(element.dataset.qaPreviewStart)
               : 0,
@@ -2171,6 +2178,7 @@ try {
       await page.mouse.down();
       const samples = [];
       try {
+        assert.ok(await range.getAttribute('data-qa-preview-pointer'), 'the range received pointerdown');
         for (let index = 0; index < 32; index++) {
           await page.mouse.move(box.x + box.width * (0.53 + index * 0.009), box.y + box.height / 2);
           await sleep(45);

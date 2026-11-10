@@ -101,7 +101,7 @@ async function testCase(name, run) {
     throw error;
   }
 }
-async function openProject(target, selectModel = true) {
+async function selectProject(target) {
   await target.goto(origin);
   await target.getByRole('button', { name: '打开空间与项目', exact: true }).click();
   await target
@@ -113,6 +113,9 @@ async function openProject(target, selectModel = true) {
     .getByRole('navigation', { name: '项目', exact: true })
     .getByRole('button', { name: 'V4 project', exact: true })
     .click();
+}
+async function openProject(target, selectModel = true) {
+  await selectProject(target);
   await target
     .locator('.library-version-links')
     .getByRole('button', { name: /Collaborative portrait/ })
@@ -752,7 +755,15 @@ try {
     await newConversation();
     const controls = await details('执行方式');
     const revoke = controls.getByRole('button', { name: '停止授权', exact: true });
-    if (await revoke.isVisible()) await revoke.click();
+    const policy = controls.getByRole('combobox', { name: 'AI 可以做到哪一步', exact: true });
+    await until(
+      async () => (await revoke.isVisible()) || ((await policy.isVisible()) && (await policy.isEnabled())),
+      'execution settings open with the current grant state',
+    );
+    if (await revoke.isVisible()) {
+      await revoke.click();
+      await revoke.waitFor({ state: 'hidden' });
+    }
     await choose(controls, 'AI 可以做到哪一步', '预算内自动执行');
     await controls.getByLabel('最多操作次数').fill('2');
     await controls
@@ -1005,7 +1016,7 @@ try {
     const billing = await page.context().newPage();
     billing.on('pageerror', (error) => report.pageErrors.push(String(error)));
     try {
-      await openProject(billing, false);
+      await selectProject(billing);
       const usageResponse = billing.waitForResponse((response) => {
         const url = new URL(response.url());
         return (
@@ -1103,7 +1114,31 @@ try {
       async () => (await page.locator('.assistant-messages').innerText()).includes('本轮已停止'),
       'durable stop status',
     );
-    await openProject(page, false);
+    const artworkId = fixture.artwork.artwork.id;
+    const activeSessions = () =>
+      fixture.db.query(
+        'SELECT id,user_id FROM collaboration_sessions WHERE artwork_id=$1 AND expires_at>clock_timestamp()',
+        [artworkId],
+      ).then(({ rows }) => rows);
+    const oldOwnerIds = new Set((await activeSessions())
+      .filter((row) => row.user_id === fixture.actors.owner.id)
+      .map((row) => row.id));
+    assert.ok(oldOwnerIds.size > 0);
+    const endpoint = `/v1/artworks/${artworkId}/collaboration/sessions`;
+    const peer = await fixture.call('POST', endpoint, { clientId: randomUUID() }, 'editor');
+    assert.equal(peer.statusCode, 201, peer.body);
+    const peerId = peer.json().session.id;
+    try {
+      await openProject(page, false);
+      await until(async () => {
+        const sessions = await activeSessions();
+        return sessions.some((row) => row.id === peerId) &&
+          sessions.filter((row) => row.user_id === fixture.actors.owner.id).length === 1 &&
+          sessions.every((row) => !oldOwnerIds.has(row.id));
+      }, 'reloading releases the old owner session and preserves the independent editor');
+    } finally {
+      await fixture.call('DELETE', `${endpoint}/${peerId}`, undefined, 'editor');
+    }
     await until(
       async () => (await page.locator('.assistant-messages').innerText()).includes('本轮已停止'),
       'restored stop status',
@@ -1111,7 +1146,12 @@ try {
     assert.equal(dispatches, before + 2);
     assert.equal((await head()).artwork.headVersion, original.artwork.headVersion);
     assert.ok(!(await page.locator('.assistant-messages').innerText()).includes(sentence));
-    return { stoppedDuringProviderRound: true, noExtraDispatch: true, savedVersionUnchanged: true };
+    return {
+      stoppedDuringProviderRound: true,
+      noExtraDispatch: true,
+      savedVersionUnchanged: true,
+      reloadReleasedOldSessionAndKeptPeer: true,
+    };
   });
   for (const viewport of [
     { width: 1440, height: 960 },

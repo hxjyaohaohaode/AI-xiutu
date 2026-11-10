@@ -497,7 +497,9 @@ try {
       const beforeSoloStarts = inbound.filter((event) => event.type === 'session.start').length;
       holdSoloReady = true;
       await panel.getByRole('button', { name: '开始实时通话', exact: true }).click();
-      await panel.getByText('正在连接麦克风与语音服务…', { exact: true }).waitFor();
+      const connecting = panel.locator('.assistant-call.connecting .assistant-call-status');
+      await connecting.waitFor();
+      assert.match(await connecting.innerText(), /正在连接麦克风与语音服务/);
       const endCall = panel.getByRole('button', { name: '结束实时通话', exact: true });
       const hangupExposed = () =>
         endCall.evaluate((button) => {
