@@ -1110,6 +1110,35 @@
     overflow-y: auto;
   }
 }
+/* A live call adds its own controls above the conversation. On a short panel,
+   keep one scroll path to captions and text tools, with hang-up always in reach. */
+@container workspace-panel (max-height: 360px) {
+  .ai-workbench.ai-workbench-v2:has(> .live-assistant[data-in-call='true']) {
+    overflow-y: auto;
+    overscroll-behavior-y: contain;
+    scrollbar-width: thin;
+    scrollbar-gutter: stable;
+    /* Scroll targets clear the pinned call row, including a wrapped connection status. */
+    scroll-padding-block: 72px 8px;
+  }
+  .ai-workbench-v2 > .live-assistant.live-assistant-v2[data-in-call='true'] {
+    flex: none;
+    height: auto;
+    min-height: 100%;
+    overflow: visible;
+  }
+  .ai-workbench-v2 > .live-assistant[data-in-call='true'] > .ai-conversation-body {
+    flex: 0 0 auto;
+    max-height: none;
+    overflow: visible;
+  }
+  .ai-workbench-v2 > .live-assistant[data-in-call='true'] > .assistant-call {
+    position: sticky;
+    top: 0;
+    z-index: var(--layer-sticky);
+    background: var(--surface);
+  }
+}
 @media (prefers-reduced-motion: reduce) {
   .ai-composer-surface {
     transition: none;

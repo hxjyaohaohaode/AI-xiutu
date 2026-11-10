@@ -606,6 +606,88 @@ try {
       await panel.getByText('通话中公开搜索', { exact: true }).click();
       await panel.getByRole('button', { name: '显示字幕', exact: true }).click();
       await captions.getByText('好，先看主光。', { exact: false }).waitFor();
+      const supplement = '通话补充：保留当前画面，稍后再调整。';
+      const composerControls = {
+        input: panel.getByLabel('向智能体描述修改需求', { exact: true }),
+        model: panel.getByRole('button', { name: '选择助手模型与执行方式', exact: true }),
+        attachment: panel.getByRole('button', { name: '共享画面与参考素材', exact: true }),
+        send: panel.getByRole('button', { name: '发送协作请求', exact: true }),
+      };
+      await composerControls.input.fill(supplement);
+      assert.equal(await composerControls.send.isEnabled(), true);
+      const readControlGeometry = (control) =>
+        control.evaluate((element) => {
+          const rect = (node) => {
+            const { x, y, top, right, bottom, left, width, height } = node.getBoundingClientRect();
+            return { x, y, top, right, bottom, left, width, height };
+          };
+          const box = rect(element);
+          const clip = { top: 0, right: innerWidth, bottom: innerHeight, left: 0 };
+          const ancestors = [];
+          for (let parent = element.parentElement; parent; parent = parent.parentElement) {
+            const style = getComputedStyle(parent);
+            const bounds = rect(parent);
+            const viewport = {
+              left: bounds.left + parent.clientLeft,
+              top: bounds.top + parent.clientTop,
+              right: bounds.left + parent.clientLeft + parent.clientWidth,
+              bottom: bounds.top + parent.clientTop + parent.clientHeight,
+            };
+            if (/^(auto|scroll|hidden|clip|overlay)$/.test(style.overflowX)) {
+              clip.left = Math.max(clip.left, viewport.left);
+              clip.right = Math.min(clip.right, viewport.right);
+            }
+            if (/^(auto|scroll|hidden|clip|overlay)$/.test(style.overflowY)) {
+              clip.top = Math.max(clip.top, viewport.top);
+              clip.bottom = Math.min(clip.bottom, viewport.bottom);
+            }
+            ancestors.push({
+              tag: parent.tagName,
+              className: parent.className,
+              overflowX: style.overflowX,
+              overflowY: style.overflowY,
+              scrollTop: parent.scrollTop,
+              scrollLeft: parent.scrollLeft,
+              clientHeight: parent.clientHeight,
+              scrollHeight: parent.scrollHeight,
+            });
+          }
+          const call = element
+            .closest('.live-assistant')
+            ?.querySelector(':scope > .assistant-call');
+          const stickyCall =
+            call && !call.contains(element) && getComputedStyle(call).position === 'sticky'
+              ? rect(call)
+              : null;
+          if (stickyCall && stickyCall.right > box.left && stickyCall.left < box.right)
+            clip.top = Math.max(clip.top, Math.min(clip.bottom, stickyCall.bottom));
+          const hit = document.elementFromPoint(box.x + box.width / 2, box.y + box.height / 2);
+          return {
+            box,
+            clip,
+            stickyCall,
+            ancestors,
+            visible: element.checkVisibility({ checkOpacity: true, checkVisibilityCSS: true }),
+            centerExposed: hit === element || element.contains(hit),
+          };
+        });
+      const assertControlExposed = (geometry, name, viewport) => {
+        const { box, clip } = geometry;
+        const minimum = name === 'input' || viewport.width >= 700 ? 36 : 40;
+        assert.ok(
+          geometry.visible && box.width >= minimum && box.height >= minimum,
+          `${name} keeps its full-size visible control at ${viewport.width}px`,
+        );
+        assert.ok(
+          box.left >= clip.left - 1 &&
+            box.top >= clip.top - 1 &&
+            box.right <= clip.right + 1 &&
+            box.bottom <= clip.bottom + 1,
+          `${name} fits the effective ancestor clip and sticky call at ${viewport.width}px`,
+        );
+        assert.ok(geometry.centerExposed, `${name} is not covered at ${viewport.width}px`);
+      };
+      report.soloControlMeasurements = [];
       for (const viewport of [
         { width: 1440, height: 960 },
         { width: 820, height: 1180 },
@@ -620,7 +702,67 @@ try {
         assert.ok(
           await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth + 1),
         );
-        await page.screenshot({ path: resolve(artifact, 'solo-' + viewport.width + '.png') });
+        const measurement = { viewport, revealed: [], composer: {}, hangup: null };
+        report.soloControlMeasurements.push(measurement);
+        const reveal = async (name, control) => {
+          const before = await readControlGeometry(control);
+          // Centre the actual control using the browser's scrolling behaviour.
+          // This also gives sticky call controls room above the composer.
+          await control.evaluate((element) =>
+            element.scrollIntoView({ block: 'center', inline: 'nearest', behavior: 'instant' }),
+          );
+          await page.evaluate(
+            () => new Promise((done) => requestAnimationFrame(() => requestAnimationFrame(done))),
+          );
+          const after = await readControlGeometry(control);
+          measurement.revealed.push({ name, before, after });
+          // scrollIntoView can programmatically move overflow:hidden ancestors.
+          // Such movement would hide the original reachability defect from QA.
+          for (let i = 0; i < after.ancestors.length; i++) {
+            const ancestor = after.ancestors[i];
+            const old = before.ancestors[i];
+            assert.ok(old && old.tag === ancestor.tag, 'scrolling keeps the control ancestry');
+            if (Math.abs(ancestor.scrollTop - old.scrollTop) > 1)
+              assert.match(
+                ancestor.overflowY,
+                /^(auto|scroll|overlay)$/,
+                'only user-scrollable ancestors move vertically',
+              );
+            if (Math.abs(ancestor.scrollLeft - old.scrollLeft) > 1)
+              assert.match(
+                ancestor.overflowX,
+                /^(auto|scroll|overlay)$/,
+                'only user-scrollable ancestors move horizontally',
+              );
+          }
+          assertControlExposed(after, name, viewport);
+          return after;
+        };
+        try {
+          for (const [name, control] of Object.entries(composerControls))
+            await reveal(name, control);
+          // At the final composer position, the input and every requested tool
+          // must be exposed together, rather than each passing at a different scroll offset.
+          for (const [name, control] of Object.entries(composerControls)) {
+            const geometry = await readControlGeometry(control);
+            measurement.composer[name] = geometry;
+            assertControlExposed(geometry, name, viewport);
+          }
+          assert.equal(await composerControls.input.inputValue(), supplement);
+          assert.equal(await composerControls.send.isEnabled(), true);
+          await page.screenshot({ path: resolve(artifact, 'solo-' + viewport.width + '.png') });
+          measurement.hangup = await reveal('hangup', endCall);
+          assert.ok(await hangupExposed(), 'hang-up remains reachable after composer scrolling');
+          assert.equal(await endCall.isEnabled(), true);
+          await page.screenshot({
+            path: resolve(artifact, 'solo-' + viewport.width + '-call-controls.png'),
+          });
+        } catch (error) {
+          await page
+            .screenshot({ path: resolve(artifact, 'solo-' + viewport.width + '-failure.png') })
+            .catch(() => {});
+          throw error;
+        }
       }
       holdSoloClose = true;
       const beforeSoloClose = inbound.filter((event) => event.type === 'session.close').length;
