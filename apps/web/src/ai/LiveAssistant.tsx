@@ -171,7 +171,7 @@ export function LiveAssistant(props: LiveAssistantProps) {
   const callPanel = useRef<HTMLDivElement>(null);
   useLayoutEffect(() => {
     if (callState !== 'connecting') return;
-    const scroll = callPanel.current?.closest('.ai-scroll');
+    const scroll = callPanel.current?.closest('.ai-workbench');
     if (scroll) scroll.scrollTop = 0;
   }, [callState]);
   const [prompt, setPrompt] = useState(''),
