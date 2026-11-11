@@ -17,6 +17,7 @@ import {
   ClockCounterClockwise,
   GearSix,
   ArrowClockwise,
+  Scan,
 } from '@phosphor-icons/react';
 import {
   MAX_HEADER_BYTES,
@@ -25,7 +26,7 @@ import {
   readImageHeader,
   type EditorRecipe,
 } from '@ai-xiutu/editor';
-import type { AssetCopyRecord } from '@ai-xiutu/contracts';
+import type { AssetCopyRecord, AssistantCloudResource } from '@ai-xiutu/contracts';
 import { secureUuid } from '../lib/uuid';
 import { api, errorMessage, jsonRequest } from '../lib/api';
 import { assetCopyAttempt } from '../lib/asset-copy';
@@ -168,6 +169,8 @@ export function AIPanel({
   isLoggedIn,
   onAuth,
   captureCurrentImage,
+  captureReferenceCanvas,
+  onUseCanvasSource,
   onBeforeArtworkWrite,
   onAfterArtworkWrite,
 }: {
@@ -197,6 +200,8 @@ export function AIPanel({
   isLoggedIn: boolean;
   onAuth: () => void;
   captureCurrentImage?: CaptureCurrentImage;
+  captureReferenceCanvas?: () => Promise<File>;
+  onUseCanvasSource?: (item: AssistantCloudResource) => void;
   onBeforeArtworkWrite?: () => void | Promise<void>;
   onAfterArtworkWrite?: () => void | Promise<void>;
 }) {
@@ -216,7 +221,9 @@ export function AIPanel({
     'tasks' | 'settings' | 'references' | 'history' | 'recovery' | null
   >(null);
   const [assistantActivity, setAssistantActivity] = useState<AIActivity>(IDLE_AI_ACTIVITY);
-  const assistantLocked = assistantActivity.callActive || assistantActivity.requestActive;
+  const [capturingReference, setCapturingReference] = useState(false);
+  const referenceCaptureLock = useRef(false);
+  const assistantLocked = assistantActivity.requestActive;
   const [generationGrantId, setGenerationGrantId] = useState<string | undefined>(
     cached?.generationGrantId,
   );
@@ -672,6 +679,7 @@ export function AIPanel({
   }
   async function chooseLocal(file: File | undefined) {
     if (!file || !onReferenceFile) return;
+    const expected = consentContext.current;
     try {
       const limit = Math.min(
         config?.limits.maxUploadBytes ?? 20 * 1024 * 1024,
@@ -684,9 +692,26 @@ export function AIPanel({
       );
       if (header.animated || !['png', 'jpeg', 'webp'].includes(header.format))
         throw new Error('AI参考请选择已确认的静态 PNG、JPEG 或 WebP。');
+      if (!mounted.current || consentContext.current !== expected || pending.current) return;
       onReferenceFile(new File([file], file.name, { type: 'image/' + header.format }), 'upload');
     } catch (error) {
       setError(errorMessage(error));
+    }
+  }
+  async function useEditedFrame() {
+    if (!captureReferenceCanvas || referenceCaptureLock.current) return;
+    const expected = consentContext.current;
+    referenceCaptureLock.current = true;
+    setCapturingReference(true);
+    setError('');
+    try {
+      const file = await captureReferenceCanvas();
+      if (mounted.current && consentContext.current === expected) await chooseLocal(file);
+    } catch (error) {
+      if (mounted.current && consentContext.current === expected) setError(errorMessage(error));
+    } finally {
+      referenceCaptureLock.current = false;
+      if (mounted.current) setCapturingReference(false);
     }
   }
   function continueJob(job: AIJob, image?: GeneratedImage) {
@@ -980,6 +1005,7 @@ export function AIPanel({
             onAfterArtworkWrite={onAfterArtworkWrite}
             onApplied={onDecisionApplied ?? onOpenArtwork}
             captureCurrentImage={captureCurrentImage}
+            onUseCanvasSource={onUseCanvasSource}
             onPrepareGenerationDraft={prepareAssistantGenerationDraft}
           />
         ) : (
@@ -1474,6 +1500,21 @@ export function AIPanel({
                   }}
                 >
                   {t('使用当前原图')}
+                </button>
+              )}
+              {captureReferenceCanvas && (
+                <button
+                  type="button"
+                  className="text-button"
+                  disabled={
+                    inputLocked ||
+                    capturingReference ||
+                    !caps?.references.supported ||
+                    referencedCount >= referenceLimit
+                  }
+                  onClick={() => void useEditedFrame()}
+                >
+                  <Scan size={16} /> {t(capturingReference ? '正在读取画布' : '用当前编辑图')}
                 </button>
               )}
             </div>

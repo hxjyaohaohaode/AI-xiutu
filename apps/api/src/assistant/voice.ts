@@ -619,6 +619,15 @@ export function attachVoiceBridge(
             if (ended || closing || frozenEpoch !== contextEpoch) return;
             send(client, {
               type: 'assistant-result',
+              ...(frozenContext
+                ? {
+                    canvas: {
+                      artworkId: frozenContext.artworkId,
+                      assetId: frozenContext.assetId,
+                      expectedVersion: frozenContext.expectedVersion,
+                    },
+                  }
+                : {}),
               workspace: result.workspace,
               memorySuggestions: result.memorySuggestions,
               text: result.text,
@@ -952,9 +961,12 @@ export function attachVoiceBridge(
         }
         if (event.type === 'playback-cut') {
           if (!live && event.itemId && Date.now() <= speechCutUntil) {
-            speechCutUntil = 0;
             const duration = itemAudioMs.get(event.itemId);
-            if (duration !== undefined) {
+            if (
+              duration !== undefined &&
+              [...itemAudioMs.keys()].slice(-4).includes(event.itemId)
+            ) {
+              speechCutUntil = 0;
               transcript.discardAssistant(event.itemId);
               upstreamSend({
                 type: 'conversation.item.truncate',
@@ -971,7 +983,11 @@ export function attachVoiceBridge(
           speechCutUntil = 0;
           if (!live) {
             if (responsePending || responses.size) upstreamSend({ type: 'response.cancel' });
-            if (event.itemId && event.playedMs !== undefined && itemAudioMs.has(event.itemId)) {
+            if (
+              event.itemId &&
+              event.playedMs !== undefined &&
+              [...itemAudioMs.keys()].slice(-4).includes(event.itemId)
+            ) {
               transcript.discardAssistant(event.itemId);
               upstreamSend({
                 type: 'conversation.item.truncate',

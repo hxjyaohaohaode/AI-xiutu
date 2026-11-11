@@ -252,6 +252,7 @@ try {
       const Original = window.AudioWorkletNode;
       window.teamVoiceWorklets = [];
       window.teamVoicePlayback = 0;
+      window.teamVoiceAiSpans = [];
       window.AudioWorkletNode = class extends Original {
         constructor(audio, name, options) {
           super(audio, name, options);
@@ -259,10 +260,22 @@ try {
         }
       };
       const start = AudioBufferSourceNode.prototype.start;
+      const stop = AudioBufferSourceNode.prototype.stop;
+      const aiNodes = new WeakMap();
       AudioBufferSourceNode.prototype.start = function (...args) {
-        if (this.buffer?.sampleRate === 24000 && this.buffer.getChannelData(0).some(Boolean))
-          window.teamVoicePlayback++;
+        const samples = this.buffer?.sampleRate === 24000 ? this.buffer.getChannelData(0) : null;
+        if (samples?.some(Boolean)) window.teamVoicePlayback++;
+        if (samples?.[0] === 0x2c2c / 32768 && samples[1] === -0x2c2c / 32768) {
+          const span = { at: args[0], duration: this.buffer.duration, stopped: false };
+          aiNodes.set(this, span);
+          window.teamVoiceAiSpans.push(span);
+        }
         return start.apply(this, args);
+      };
+      AudioBufferSourceNode.prototype.stop = function (...args) {
+        const span = aiNodes.get(this);
+        if (span) span.stopped = true;
+        return stop.apply(this, args);
       };
     }, Boolean(process.env.BROWSER_SPEECH_FIXTURE));
     page.on('pageerror', (error) => report.pageErrors.push(String(error)));
@@ -272,7 +285,17 @@ try {
           if (Buffer.isBuffer(payload)) frames.push(payload);
         });
     });
+    const sessionResponse = page.waitForResponse(
+      (response) => new URL(response.url()).pathname === '/v1/session',
+    );
     await page.goto(`${origin}/#/studio`);
+    const session = await sessionResponse;
+    assert.equal(session.status(), 200, 'the studio should reach the isolated account service');
+    assert.equal(
+      (await session.json()).user?.id,
+      fixture.actors[actor].id,
+      'the expected actor is logged in',
+    );
     await page.getByRole('button', { name: '打开空间与项目', exact: true }).click();
     await page
       .locator('.sidebar')
@@ -369,9 +392,13 @@ try {
       await owner.panel.getByText('AI 已同步参数', { exact: true }).waitFor();
       await editor.panel.getByText('AI 已同步参数', { exact: true }).waitFor();
       const answer = Buffer.alloc(1920, 44);
-      sockets[0].send(
-        JSON.stringify({ type: 'session.output_audio.delta', delta: answer.toString('base64') }),
-      );
+      answer.writeInt16LE(-0x2c2c, 2);
+      const chunk = JSON.stringify({
+        type: 'session.output_audio.delta',
+        delta: answer.toString('base64'),
+      });
+      const chunkCount = 40;
+      for (let i = 0; i < chunkCount; i++) sockets[0].send(chunk);
       sockets[0].send(
         JSON.stringify({ type: 'session.output_transcript.delta', delta: '请先保留原图。' }),
       );
@@ -385,6 +412,27 @@ try {
           ),
         'both receive AI speaker',
       );
+      report.aiPlayback = [];
+      for (const { page } of [owner, editor]) {
+        await wait(
+          () => page.evaluate((count) => window.teamVoiceAiSpans.length === count, chunkCount),
+          'full shared AI utterance scheduled',
+        );
+        const spans = await page.evaluate(() => window.teamVoiceAiSpans);
+        for (const [index, span] of spans.entries()) {
+          assert.equal(
+            span.stopped,
+            false,
+            'AI audio was not cleared by the short peer jitter buffer',
+          );
+          if (index > 0)
+            assert.ok(Math.abs(span.at - spans[index - 1].at - spans[index - 1].duration) < 0.005);
+        }
+        report.aiPlayback.push({
+          chunks: spans.length,
+          durationMs: 1000 * spans.reduce((total, span) => total + span.duration, 0),
+        });
+      }
       const captions = editor.panel.locator('[aria-label="实时字幕"]');
       await captions.getByText('请先保留原图。', { exact: false }).waitFor();
       await captions.getByText('一起看曝光。', { exact: false }).waitFor();

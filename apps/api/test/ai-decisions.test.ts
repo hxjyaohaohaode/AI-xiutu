@@ -382,6 +382,64 @@ test(
         },
       );
       await t.test(
+        'manual source replacement is a replay-safe new version with optional global color',
+        async () => {
+          const created = await call(
+            'POST',
+            `/v1/projects/${projectId}/artworks`,
+            {
+              title: 'Source switch',
+              assetId: sourceId,
+              recipe: createRecipe({
+                adjustments: { exposure: -0.65, sharpness: 20 },
+                geometry: { rotation: 90 },
+              }),
+            },
+            owner.cookie,
+          );
+          assert.equal(created.statusCode, 201, created.body);
+          const initial = created.json();
+          const url = `/v1/artworks/${initial.artwork.id}/source`;
+          const request = { assetId: layerId, expectedVersion: 1, mode: 'carry-color' };
+          assert.equal((await call('POST', url, request, viewer.cookie)).statusCode, 403);
+          assert.equal((await call('POST', url, request, operator.cookie)).statusCode, 404);
+          const foreign = await upload(foreignProject, outsider.cookie, '#006688');
+          assert.equal(
+            (await call('POST', url, { ...request, assetId: foreign }, owner.cookie)).statusCode,
+            409,
+          );
+          const changed = await call('POST', url, request, owner.cookie);
+          assert.equal(changed.statusCode, 201, changed.body);
+          const result = changed.json();
+          assert.equal(result.revision.recipe.schemaVersion, 4);
+          assert.equal(result.revision.recipe.geometry.rotation, 0);
+          assert.equal(result.revision.recipe.adjustments.exposure, -0.65);
+          assert.equal(result.revision.recipe.adjustments.sharpness, 0);
+          assert.equal(result.artwork.assetId, layerId);
+          assert.equal(result.revision.assetId, layerId);
+          const replay = await call('POST', url, request, owner.cookie);
+          assert.equal(replay.statusCode, 200, replay.body);
+          assert.equal(replay.json().revision.id, result.revision.id);
+          assert.equal(
+            (await call('POST', url, { ...request, assetId: generatedId }, owner.cookie))
+              .statusCode,
+            409,
+          );
+          const restore = await call(
+            'POST',
+            `/v1/artworks/${initial.artwork.id}/restore`,
+            {
+              revisionId: initial.revision.id,
+              expectedVersion: 2,
+            },
+            owner.cookie,
+          );
+          assert.equal(restore.statusCode, 201, restore.body);
+          assert.equal(restore.json().asset.id, sourceId);
+          assert.equal(restore.json().revision.recipe.geometry.rotation, 90);
+        },
+      );
+      await t.test(
         'rejection records an immutable decision without changing already settled points',
         async () => {
           let holdId = '';
@@ -470,7 +528,7 @@ test(
           ]);
           assert.deepEqual(results.map((r) => r.statusCode).sort(), [200, 201]);
           assert.equal(results[0]!.json().artwork.id, results[1]!.json().artwork.id);
-          assert.equal(results[0]!.json().revision.recipe.schemaVersion, 3);
+          assert.equal(results[0]!.json().revision.recipe.schemaVersion, 4);
           assert.equal(
             (
               await db.query('SELECT count(*)::int AS n FROM artworks WHERE project_id=$1', [

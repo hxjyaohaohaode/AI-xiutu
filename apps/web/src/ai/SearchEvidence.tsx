@@ -15,6 +15,9 @@ interface ReferenceControls {
   selected: string[];
   disabled: boolean;
   onSelect?: (id: string) => void;
+  useSource?: (item: AssistantCloudResource) => void;
+  sourceProjectId?: string;
+  currentAssetId?: string;
 }
 
 export function CloudImageResults({
@@ -22,6 +25,9 @@ export function CloudImageResults({
   selected,
   disabled,
   onSelect,
+  useSource,
+  sourceProjectId,
+  currentAssetId,
 }: ReferenceControls & {
   resources: AssistantCloudResource[];
 }) {
@@ -88,6 +94,23 @@ export function CloudImageResults({
               />
             )}
             <p>{details(displayedPreview)}</p>
+            {useSource &&
+              sourceProjectId &&
+              displayedPreview.projectId === sourceProjectId &&
+              displayedPreview.id !== currentAssetId && (
+                <button
+                  type="button"
+                  className="button button-secondary"
+                  disabled={unavailable}
+                  onClick={() => {
+                    if (!visible || !preview) return;
+                    useSource(preview);
+                    setPreview(null);
+                  }}
+                >
+                  {t('用作当前底图')}
+                </button>
+              )}
             {onSelect && (
               <button
                 type="button"

@@ -1171,7 +1171,10 @@ export function App({
     }
     return references;
   }
-  async function openArtwork(next: Artwork | string): Promise<boolean> {
+  async function openArtwork(
+    next: Artwork | string,
+    acceptedDraft?: EditorRecipe,
+  ): Promise<boolean> {
     if (saveLock.current) {
       notify(t('作品正在保存，请稍等片刻。'));
       return false;
@@ -1183,6 +1186,7 @@ export function App({
       return false;
     if (
       isEditorDirty() &&
+      editor.getRecipe() !== acceptedDraft &&
       !(await confirmNavigation(
         t('当前还有未保存的编辑。打开云端作品前，请确认已导出或不再需要这些修改。继续打开吗？'),
       ))
@@ -1310,6 +1314,49 @@ export function App({
     } finally {
       if (load.request === projectRequest.current) setOpening(false);
     }
+  }
+
+  async function replaceCurrentSource(
+    next: Pick<Asset, 'id' | 'projectId'>,
+    expected: Artwork,
+    mode: 'reset' | 'carry-color',
+  ) {
+    if (saveLock.current || opening) throw new Error(t('请等当前图片操作完成。'));
+    const basis = editor.getRecipe();
+    const source = editor.getSourceIdentity();
+    const session = sessionFence.snapshot();
+    const current = () =>
+      artworkRef.current?.id === expected.id &&
+      artworkRef.current.headVersion === expected.headVersion &&
+      expected.projectId === next.projectId &&
+      editor.getRecipe() === basis &&
+      editor.getSourceIdentity() === source &&
+      sessionFence.snapshot().epoch === session.epoch;
+    if (!current()) throw new Error(t('当前作品或版本已变化，请重新选择底图。'));
+    saveLock.current = true;
+    let prepared = false;
+    try {
+      await collaboration.beforeExternalWrite();
+      prepared = true;
+      if (!current()) throw new Error(t('当前作品或版本已变化，请重新选择底图。'));
+      await api(
+        `/artworks/${expected.id}/source`,
+        jsonRequest('POST', {
+          assetId: next.id,
+          expectedVersion: expected.headVersion,
+          mode,
+        }),
+      );
+      setRefreshToken((value) => value + 1);
+    } finally {
+      saveLock.current = false;
+      if (prepared)
+        void collaboration
+          .afterExternalWrite()
+          .catch((error) => notify(errorMessage(error), 'error'));
+    }
+    if (current()) await openArtwork(expected.id, basis);
+    else notify(t('底图已保存为新版本，当前工作区的改动仍可继续编辑。'));
   }
 
   async function createCutout(guides: import('./editor/PortraitControls').CutoutGuides) {
@@ -2605,6 +2652,15 @@ export function App({
                               refreshToken={refreshToken}
                               onSelectProject={(item) => void loadProject(item)}
                               onOpenAsset={(item) => void openLibraryAsset(item)}
+                              replacementTarget={
+                                artwork &&
+                                project?.id === artwork.projectId &&
+                                ['owner', 'admin', 'editor'].includes(project.role)
+                                  ? artwork
+                                  : null
+                              }
+                              replacementHasDraft={dirty}
+                              onReplaceSource={replaceCurrentSource}
                               onOpen={(item) => void openArtwork(item)}
                               onImport={() => void importFile()}
                               onCreate={openCreateProject}
@@ -2841,6 +2897,58 @@ export function App({
                           artwork={artwork}
                           recipe={editor.recipe}
                           captureCurrentImage={captureCurrentImage}
+                          onUseCanvasSource={
+                            project && ['owner', 'admin', 'editor'].includes(project.role)
+                              ? (item) => {
+                                  const current = artworkRef.current;
+                                  if (
+                                    !current ||
+                                    item.projectId !== current.projectId ||
+                                    current.assetId === item.id
+                                  )
+                                    return;
+                                  const description = isEditorDirty()
+                                    ? t(
+                                        '将 {v0} 保存为当前作品的新底图。继续会离开未保存的编辑。',
+                                        { v0: item.title || item.name },
+                                      )
+                                    : t('将 {v0} 保存为当前作品的新底图。', {
+                                        v0: item.title || item.name,
+                                      });
+                                  void confirmNavigation(description, {
+                                    title: t('替换当前底图'),
+                                    confirmLabel: t('替换底图'),
+                                  })
+                                    .then((approved) =>
+                                      approved
+                                        ? replaceCurrentSource(
+                                            { id: item.id, projectId: current.projectId },
+                                            current,
+                                            'reset',
+                                          )
+                                        : undefined,
+                                    )
+                                    .catch((error) => notify(errorMessage(error), 'error'));
+                                }
+                              : undefined
+                          }
+                          captureReferenceCanvas={
+                            editor.file
+                              ? async () => {
+                                  const identity = editor.getSourceIdentity(),
+                                    recipe = editor.getRecipe();
+                                  const blob = await editor.exportImage('png');
+                                  if (
+                                    identity !== editor.getSourceIdentity() ||
+                                    recipe !== editor.getRecipe()
+                                  )
+                                    throw new Error(t('参考图生成期间画面已变化，请重新选择。'));
+                                  return new File([blob], 'canvas-reference.png', {
+                                    type: 'image/png',
+                                  });
+                                }
+                              : undefined
+                          }
                           onBeforeArtworkWrite={collaboration.beforeExternalWrite}
                           onAfterArtworkWrite={collaboration.afterExternalWrite}
                           isDirty={dirty}

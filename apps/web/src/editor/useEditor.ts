@@ -111,7 +111,7 @@ const INITIAL_WARP: WarpSettings = {
 type HistoryItem = { recipe: EditorRecipe; label: string };
 type ExportResult = { image?: RGBAImage; blob?: Blob };
 type PendingExport = { resolve: (value: ExportResult) => void; reject: (error: Error) => void };
-type PreviewQuality = 'fast' | 'warp';
+export type PreviewQuality = 'fast' | 'warp' | 'full';
 type PreviewJob = {
   version: number;
   source: number;
@@ -410,8 +410,7 @@ export function useEditor() {
   const replaceRecipe = useCallback(
     (next: EditorRecipe, interactive: PreviewQuality | null = null) => {
       if (next === recipeRef.current && interactive === interactiveInput.current) return;
-      previewQuality.current =
-        interactive ?? (interactiveInput.current === 'warp' ? 'warp' : 'fast');
+      previewQuality.current = interactive ?? interactiveInput.current ?? 'fast';
       interactiveInput.current = interactive;
       recipeRef.current = next;
       eagerPreview.current = null;

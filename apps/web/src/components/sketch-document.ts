@@ -1,7 +1,8 @@
 export type SketchPoint = { x: number; y: number };
-export type SketchShape = 'rectangle' | 'ellipse' | 'line' | 'arrow';
-export type SketchIcon = 'star' | 'heart' | 'check';
-export type SketchItem =
+export type SketchShape =
+  'rectangle' | 'rounded' | 'ellipse' | 'triangle' | 'diamond' | 'line' | 'arrow';
+export type SketchIcon = 'star' | 'heart' | 'check' | 'pin' | 'bolt' | 'speech';
+export type SketchItem = (
   | { kind: 'stroke'; points: SketchPoint[]; color: string; width: number; erase: boolean }
   | {
       kind: 'shape';
@@ -14,7 +15,8 @@ export type SketchItem =
     }
   | { kind: 'text'; at: SketchPoint; text: string; color: string; size: number }
   | { kind: 'icon'; at: SketchPoint; icon: SketchIcon; color: string; size: number }
-  | { kind: 'image'; at: SketchPoint; image: HTMLCanvasElement; size: number; name: string };
+  | { kind: 'image'; at: SketchPoint; image: HTMLCanvasElement; size: number; name: string }
+) & { angle?: number; opacity?: number };
 
 const shortEdge = (context: CanvasRenderingContext2D) =>
   Math.min(context.canvas.width, context.canvas.height);
@@ -30,6 +32,15 @@ function imageBox(context: CanvasRenderingContext2D, item: Extract<SketchItem, {
 
 export function paintSketchItem(item: SketchItem, context: CanvasRenderingContext2D) {
   context.save();
+  context.globalAlpha = item.opacity ?? 1;
+  if (item.angle) {
+    const box = flatSketchBounds(context, item);
+    const x = box.x + box.width / 2,
+      y = box.y + box.height / 2;
+    context.translate(x, y);
+    context.rotate((item.angle * Math.PI) / 180);
+    context.translate(-x, -y);
+  }
   if ('color' in item) context.strokeStyle = context.fillStyle = item.color;
   context.lineCap = context.lineJoin = 'round';
   if (item.kind === 'stroke') {
@@ -55,10 +66,19 @@ export function paintSketchItem(item: SketchItem, context: CanvasRenderingContex
       h = Math.abs(b.y - a.y);
     context.lineWidth = item.width;
     context.beginPath();
-    if (item.shape === 'rectangle') context.rect(Math.min(a.x, b.x), Math.min(a.y, b.y), w, h);
+    const x = Math.min(a.x, b.x),
+      y = Math.min(a.y, b.y);
+    if (item.shape === 'rectangle') context.rect(x, y, w, h);
+    else if (item.shape === 'rounded') context.roundRect(x, y, w, h, Math.min(w, h) / 6);
     else if (item.shape === 'ellipse')
       context.ellipse((a.x + b.x) / 2, (a.y + b.y) / 2, w / 2, h / 2, 0, 0, 2 * Math.PI);
-    else {
+    else if (item.shape === 'triangle' || item.shape === 'diamond') {
+      context.moveTo(x + w / 2, y);
+      context.lineTo(x + w, y + (item.shape === 'diamond' ? h / 2 : h));
+      if (item.shape === 'diamond') context.lineTo(x + w / 2, y + h);
+      context.lineTo(x, y + (item.shape === 'diamond' ? h / 2 : h));
+      context.closePath();
+    } else {
       context.moveTo(a.x, a.y);
       context.lineTo(b.x, b.y);
       if (item.shape === 'arrow') {
@@ -75,7 +95,7 @@ export function paintSketchItem(item: SketchItem, context: CanvasRenderingContex
         );
       }
     }
-    if (item.fill && (item.shape === 'rectangle' || item.shape === 'ellipse')) context.fill();
+    if (item.fill && item.shape !== 'line' && item.shape !== 'arrow') context.fill();
     else context.stroke();
   } else {
     const at = pixel(context, item.at);
@@ -108,6 +128,33 @@ export function paintSketchItem(item: SketchItem, context: CanvasRenderingContex
         context.bezierCurveTo(0.66, 0.01, 0.97, 0.06, 0.97, 0.31);
         context.bezierCurveTo(0.97, 0.57, 0.58, 0.79, 0.5, 0.92);
         context.fill();
+      } else if (item.icon === 'pin') {
+        context.moveTo(0.5, 0.94);
+        context.bezierCurveTo(0.2, 0.64, 0.11, 0.53, 0.11, 0.37);
+        context.arc(0.5, 0.37, 0.39, Math.PI, 2 * Math.PI);
+        context.bezierCurveTo(0.89, 0.53, 0.8, 0.64, 0.5, 0.94);
+        context.moveTo(0.64, 0.37);
+        context.arc(0.5, 0.37, 0.14, 0, 2 * Math.PI);
+        context.fill('evenodd');
+      } else if (item.icon === 'bolt') {
+        for (const [x, y] of [
+          [0.54, 0.04],
+          [0.16, 0.55],
+          [0.46, 0.55],
+          [0.38, 0.96],
+          [0.84, 0.38],
+          [0.54, 0.38],
+        ])
+          context.lineTo(x!, y!);
+        context.closePath();
+        context.fill();
+      } else if (item.icon === 'speech') {
+        context.roundRect(0.04, 0.12, 0.92, 0.64, 0.18);
+        context.moveTo(0.25, 0.66);
+        context.lineTo(0.19, 0.94);
+        context.lineTo(0.55, 0.69);
+        context.closePath();
+        context.fill();
       } else {
         for (let i = 0; i < 10; i++) {
           const angle = (i * Math.PI) / 5 - Math.PI / 2,
@@ -122,7 +169,7 @@ export function paintSketchItem(item: SketchItem, context: CanvasRenderingContex
   context.restore();
 }
 
-export function sketchBounds(context: CanvasRenderingContext2D, item: SketchItem) {
+function flatSketchBounds(context: CanvasRenderingContext2D, item: SketchItem) {
   if (item.kind === 'stroke' || item.kind === 'shape') {
     const points = item.kind === 'stroke' ? item.points : [item.from, item.to];
     const r = item.width / 2 + 2;
@@ -144,6 +191,20 @@ export function sketchBounds(context: CanvasRenderingContext2D, item: SketchItem
   );
   context.restore();
   return { ...at, width, height: lines.length * item.size * 1.2 };
+}
+
+export function sketchBounds(context: CanvasRenderingContext2D, item: SketchItem) {
+  const box = flatSketchBounds(context, item);
+  if (!item.angle) return box;
+  const angle = (item.angle * Math.PI) / 180;
+  const width = box.width * Math.abs(Math.cos(angle)) + box.height * Math.abs(Math.sin(angle));
+  const height = box.width * Math.abs(Math.sin(angle)) + box.height * Math.abs(Math.cos(angle));
+  return {
+    x: box.x + (box.width - width) / 2,
+    y: box.y + (box.height - height) / 2,
+    width,
+    height,
+  };
 }
 
 export function sketchItemAt(

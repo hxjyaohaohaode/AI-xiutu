@@ -64,7 +64,7 @@ type Message = {
   sourceId?: string;
   mapping?: Map<string, string>;
   cutout?: CutoutSettings;
-  previewQuality?: 'fast' | 'warp';
+  previewQuality?: 'fast' | 'warp' | 'full';
   prewarmWarp?: boolean;
 };
 self.onmessage = async (event: MessageEvent<Message>) => {
@@ -145,7 +145,8 @@ self.onmessage = async (event: MessageEvent<Message>) => {
   }
   try {
     const interactive = message.type === 'interactive-preview';
-    const detail = interactive && message.previewQuality === 'warp';
+    const warpDetail = interactive && message.previewQuality === 'warp';
+    const detail = warpDetail || (interactive && message.previewQuality === 'full');
     const native = !!(
       interactive &&
       !detail &&
@@ -201,9 +202,9 @@ self.onmessage = async (event: MessageEvent<Message>) => {
         // Output is budgeted before rendering; auxiliary previews retain their normalized placement.
         maxPixels: MAX_PREVIEW_PIXELS,
         images: renderImages,
-        warpPreviewCache: detail ? warpPreviewCache : undefined,
+        warpPreviewCache: warpDetail ? warpPreviewCache : undefined,
       });
-    if (detail && message.prewarmWarp) {
+    if (warpDetail && message.prewarmWarp) {
       warpPreviewCache.prewarm(renderPreview);
       self.postMessage({ id: message.id, type: message.type });
       return;
@@ -253,7 +254,7 @@ self.onmessage = async (event: MessageEvent<Message>) => {
       self.postMessage({ id: message.id, type: message.type, blob });
     } else {
       const safeResult =
-        message.originalOnly || (detail && warpPreviewCache.keeps(result))
+        message.originalOnly || (warpDetail && warpPreviewCache.keeps(result))
           ? { ...result, data: new Uint8ClampedArray(result.data) }
           : result;
       self.postMessage(

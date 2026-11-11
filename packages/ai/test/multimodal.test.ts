@@ -17,6 +17,7 @@ import {
   createRecipe,
   createRecipeV2,
   createRecipeV3,
+  createRecipeV4,
   createAdjustmentRegionV2,
 } from '@ai-xiutu/editor';
 import { ProviderError, type ImageModerator, type TextModerator } from '@ai-xiutu/providers';
@@ -725,7 +726,7 @@ test(
             await db.query('SELECT * FROM revisions WHERE id=$1', [art.head_revision_id])
           ).rows[0]!;
           assert.equal(revision.version, 1);
-          assert.deepEqual(revision.recipe, createRecipeV3());
+          assert.deepEqual(revision.recipe, createRecipeV4());
           assert.equal((await f.entitlements()).held, 0);
           assert.equal((await f.entitlements()).usage.spent, 3);
           assert.equal((await f.submit(body)).job.id, done.id);

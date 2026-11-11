@@ -252,6 +252,24 @@ export function createAssistantService(
     const expectedSettings = JSON.stringify(
       assistantModelConfigSchema.parse(frozenModel ?? backendModel),
     );
+    const canvasRow = context
+      ? (
+          await db.query(
+            `SELECT s.width,s.height,r.recipe FROM artworks a JOIN assets s ON s.id=a.asset_id
+       JOIN revisions r ON r.id=a.head_revision_id WHERE a.id=$1 AND a.project_id=$2 AND s.id=$3 AND a.head_version=$4 AND s.deleted_at IS NULL`,
+            [context.artworkId, row.project_id, context.assetId, context.expectedVersion],
+          )
+        ).rows[0]
+      : undefined;
+    const canvasState =
+      context && canvasRow
+        ? {
+            width: Number(canvasRow.width),
+            height: Number(canvasRow.height),
+            version: context.expectedVersion,
+            hasUnsavedEdits: recipeHash(canvasRow.recipe) !== recipeHash(context.recipe),
+          }
+        : undefined;
     async function checkSettings(tx: Queryable) {
       const current = await model(tx, modelId, 'assistant-turn');
       if (JSON.stringify(current) !== expectedSettings)
@@ -319,6 +337,7 @@ export function createAssistantService(
         : 'confirm',
       creativeBrief: scope.creativeBrief,
       recipe: context ? parseEditorRecipe(context.recipe) : undefined,
+      canvasState,
       imageDataUrl: context?.imageDataUrl,
       ...(context?.imageDataUrl
         ? {

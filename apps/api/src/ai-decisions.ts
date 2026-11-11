@@ -7,7 +7,7 @@ import {
   type AiResultDecisionRequest,
 } from '@ai-xiutu/contracts';
 import {
-  createRecipeV3,
+  createRecipeV4,
   migrateRecipeToV3,
   parseEditorRecipe,
   MAX_V3_IMAGE_LAYERS,
@@ -155,7 +155,7 @@ export function registerAiDecisions(app: FastifyInstance, db: Database): void {
           outputIndex = body.outputIndex ?? 0;
           const asset = await imageOutput(tx, job, outputIndex);
           assetId = asset.id;
-          recipe = createRecipeV3();
+          recipe = createRecipeV4();
         } else if (body.action === 'fork' && output.kind === 'edit-plan') {
           if (body.outputIndex !== undefined)
             throw new HttpError(400, 'RESULT_INDEX_INVALID', '参数建议没有图像序号');

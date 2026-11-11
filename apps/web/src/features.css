@@ -396,6 +396,11 @@
   .drawing-surface.landscape canvas {
     aspect-ratio: 3/2;
   }
+  .drawing-surface.transparent-sketch canvas {
+    background-color: #f6f6f6;
+    background-image: conic-gradient(#e0e0e0 25%, transparent 0 50%, #e0e0e0 0 75%, transparent 0);
+    background-size: 16px 16px;
+  }
   .drawing-surface.portrait canvas {
     aspect-ratio: 2/3;
   }

@@ -16,6 +16,7 @@ import {
   Eye,
   SquaresFour,
   GridFour,
+  Swap,
 } from '@phosphor-icons/react';
 import { api, ApiError, errorMessage, formatDate, jsonRequest } from '../lib/api';
 import type { Asset, Artwork, Project, Space } from '../lib/types';
@@ -300,6 +301,9 @@ export function AssetLibrary({
   refreshToken,
   onOpen,
   onOpenAsset,
+  replacementTarget,
+  replacementHasDraft,
+  onReplaceSource,
   onSelectProject,
   onImport,
   onCreate,
@@ -313,6 +317,13 @@ export function AssetLibrary({
   refreshToken: number;
   onOpen: (artwork: Artwork) => void;
   onOpenAsset: (asset: Asset) => void;
+  replacementTarget?: Artwork | null;
+  replacementHasDraft?: boolean;
+  onReplaceSource?: (
+    asset: Asset,
+    artwork: Artwork,
+    mode: 'reset' | 'carry-color',
+  ) => Promise<void>;
   onSelectProject: (project: Project) => void;
   onImport: () => void;
   onCreate: () => void;
@@ -334,6 +345,25 @@ export function AssetLibrary({
   const [editing, setEditing] = useState<Asset | null>(null),
     [refresh, setRefresh] = useState(0);
   const [sourceDetails, setSourceDetails] = useState<Asset | null>(null);
+  const [replacement, setReplacement] = useState<{ asset: Asset; artwork: Artwork } | null>(null);
+  const [replacementBusy, setReplacementBusy] = useState(false);
+  const [replacementError, setReplacementError] = useState<string | null>(null);
+  const replacementLock = useRef(false);
+  async function replace(mode: 'reset' | 'carry-color') {
+    if (!replacement || !onReplaceSource || replacementLock.current) return;
+    replacementLock.current = true;
+    setReplacementBusy(true);
+    setReplacementError(null);
+    try {
+      await onReplaceSource(replacement.asset, replacement.artwork, mode);
+      setReplacement(null);
+    } catch (error) {
+      setReplacementError(errorMessage(error));
+    } finally {
+      replacementLock.current = false;
+      setReplacementBusy(false);
+    }
+  }
   const [tools, setTools] = useState<{ asset: Asset; kind: 'ocr' | 'animation' } | null>(null);
   const [projectTools, setProjectTools] = useState(false);
   const [density, setDensity] = useState<'comfortable' | 'compact'>('comfortable');
@@ -720,6 +750,22 @@ export function AssetLibrary({
                       <div className="library-asset-meta" data-motion="artwork-meta">
                         <div>
                           <strong title={title}>{title}</strong>
+                          {sameProject &&
+                            replacementTarget &&
+                            replacementTarget.assetId !== asset.id &&
+                            onReplaceSource && (
+                              <button
+                                className="library-edit-metadata"
+                                aria-label={t('用 {v0} 替换当前底图', { v0: title })}
+                                title={t('替换当前底图')}
+                                onClick={() => {
+                                  setReplacementError(null);
+                                  setReplacement({ asset, artwork: replacementTarget });
+                                }}
+                              >
+                                <Swap size={16} />
+                              </button>
+                            )}
                           {editable && (
                             <button
                               className="library-edit-metadata"
@@ -841,6 +887,38 @@ export function AssetLibrary({
           onClose={() => setTools(null)}
           onChange={() => setRefresh((value) => value + 1)}
         />
+      )}
+      {replacement && (
+        <Modal
+          title={t('替换当前底图')}
+          subtitle={replacement.artwork.title}
+          onClose={() => setReplacement(null)}
+          canClose={() => !replacementBusy}
+        >
+          <p>
+            {t('将 {v0} 保存为新的底图版本。', {
+              v0: replacement.asset.annotations?.title ?? replacement.asset.name,
+            })}
+          </p>
+          {replacementHasDraft && <p>{t('当前有未保存的编辑。继续会离开这份草稿。')}</p>}
+          <InlineError message={replacementError} />
+          <div className="button-row">
+            <button
+              className="button button-secondary"
+              disabled={replacementBusy}
+              onClick={() => void replace('carry-color')}
+            >
+              {t('替换并沿用已保存调色')}
+            </button>
+            <button
+              className="button button-primary"
+              disabled={replacementBusy}
+              onClick={() => void replace('reset')}
+            >
+              {t('替换底图')}
+            </button>
+          </div>
+        </Modal>
       )}
       {sourceDetails && (
         <Modal

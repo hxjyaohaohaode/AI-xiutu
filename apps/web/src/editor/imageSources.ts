@@ -1,11 +1,11 @@
 import { MAX_HEADER_BYTES, readImageHeader, type RGBAImage } from '@ai-xiutu/editor';
 
 export type ResolvedImageSource = { original: RGBAImage; preview: RGBAImage; file: File };
-/** Decode only validated static content. Image layers share a bounded memory budget. */
-export async function decodeImageSource(
+export async function decodeImageSourceBitmap(
   file: File,
   maxPixels = 16_777_216,
-): Promise<ResolvedImageSource> {
+  firstFrame = false,
+) {
   if (file.size > 64 * 1024 * 1024) throw new Error('合成素材单文件上限为 64MiB。');
   const header = readImageHeader(
     new Uint8Array(await file.slice(0, MAX_HEADER_BYTES).arrayBuffer()),
@@ -14,20 +14,31 @@ export async function decodeImageSource(
       maxDimension: 8192,
     },
   );
-  if (header.animated) throw new Error('合成素材需要静态图片，请先明确选择单帧。');
+  if (header.animated && !firstFrame) throw new Error('合成素材需要静态图片，请先明确选择单帧。');
   const mime = header.format === 'jpeg' ? 'image/jpeg' : `image/${header.format}`;
   const typed = new File([file], file.name, { type: mime, lastModified: file.lastModified });
   const bitmap = await createImageBitmap(typed, { imageOrientation: 'from-image' });
+  if (
+    !(
+      (bitmap.width === header.width && bitmap.height === header.height) ||
+      (bitmap.width === header.height && bitmap.height === header.width)
+    ) ||
+    bitmap.width * bitmap.height > maxPixels
+  ) {
+    bitmap.close();
+    throw new Error('素材解码尺寸与头信息不一致。');
+  }
+  return { bitmap, file: typed };
+}
+
+/** Decode only validated static content. Image layers share a bounded memory budget. */
+export async function decodeImageSource(
+  file: File,
+  maxPixels = 16_777_216,
+): Promise<ResolvedImageSource> {
+  const { bitmap, file: typed } = await decodeImageSourceBitmap(file, maxPixels);
   const canvas = document.createElement('canvas');
   try {
-    if (
-      !(
-        (bitmap.width === header.width && bitmap.height === header.height) ||
-        (bitmap.width === header.height && bitmap.height === header.width)
-      ) ||
-      bitmap.width * bitmap.height > maxPixels
-    )
-      throw new Error('素材解码尺寸与头信息不一致。');
     canvas.width = bitmap.width;
     canvas.height = bitmap.height;
     const ctx = canvas.getContext('2d', { willReadFrequently: true });

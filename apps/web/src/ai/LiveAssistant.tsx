@@ -188,6 +188,7 @@ export interface LiveAssistantProps {
     referenceAssetIds: string[];
   }) => Promise<(() => void) | null>;
   captureCurrentImage?: CaptureCurrentImage;
+  onUseCanvasSource?: (item: AssistantCloudResource) => void;
 }
 function editorState(value: LiveAssistantProps): AssistantEditorState {
   return {
@@ -272,7 +273,7 @@ export function LiveAssistant(props: LiveAssistantProps) {
   } | null>(null);
   const [publicImages, setPublicImages] = useState(false);
   const [voiceCaptions, setVoiceCaptions] = useState<CaptionState>({});
-  const [voiceSearchUsed, setVoiceSearchUsed] = useState(false);
+  const [voiceSearchRemaining, setVoiceSearchRemaining] = useState(0);
   const [activeTurn, setActiveTurn] = useState<{ id: string; stopping: boolean } | null>(null);
   const [spaceIds, setSpaceIds] = useState<string[]>(project ? [project.spaceId] : []),
     [referenceIds, setReferenceIds] = useState<string[]>([]);
@@ -290,10 +291,15 @@ export function LiveAssistant(props: LiveAssistantProps) {
     [contextStatus, setContextStatus] = useState('未共享画面');
   const voiceEpoch = useRef(0),
     voiceEnding = useRef(false),
-    voiceCanvas = useRef<{ accepted: string; pending?: { key: string; tag: string } }>({
+    voiceCanvas = useRef<{
+      accepted: string;
+      shared?: boolean;
+      pending?: { key: string; tag: string; shared: boolean };
+    }>({
       accepted: '',
     }),
     turnAbort = useRef<AbortController | null>(null);
+  const lastVoiceContextSend = useRef(-Infinity);
   const turnObservation = useRef<{
     id: string;
     token: AssistantOperationToken;
@@ -747,16 +753,23 @@ export function LiveAssistant(props: LiveAssistantProps) {
   };
   const recipeSnapshot = JSON.stringify(recipe);
   useEffect(() => {
-    if (callState !== 'active' || !artwork) return;
+    if (callState !== 'active') return;
     const epoch = voiceEpoch.current,
       voiceClient = client.current,
       baseline = assistantEditorKey(editorState(current.current));
-    if (voiceCanvas.current.accepted === baseline && !voiceCanvas.current.pending) return;
+    if (
+      artwork &&
+      voiceCanvas.current.accepted === baseline &&
+      voiceCanvas.current.shared === shareImage &&
+      !voiceCanvas.current.pending
+    )
+      return;
     if (voiceCanvas.current.accepted || voiceCanvas.current.pending) {
       voiceCanvas.current = { accepted: '' };
       voiceClient?.send({ type: 'context.invalidate' });
     }
-    setContextStatus('画布已变化，等待同步');
+    setContextStatus(artwork ? '画布已变化，等待同步' : '没有共享中的作品');
+    if (!artwork) return;
     let cancelled = false;
     const active = () =>
       !cancelled &&
@@ -765,20 +778,29 @@ export function LiveAssistant(props: LiveAssistantProps) {
       epoch === voiceEpoch.current &&
       voiceClient === client.current &&
       assistantEditorKey(editorState(current.current)) === baseline;
-    const timer = setTimeout(() => {
+    let timer: ReturnType<typeof setTimeout>;
+    function updateCanvas(attempt = 0) {
+      if (!active()) return;
       void getContext()
         .then((context) => {
           if (context && active()) {
             const tag = secureUuid();
-            voiceCanvas.current.pending = { key: baseline, tag };
+            voiceCanvas.current.pending = { key: baseline, tag, shared: shareImage };
+            lastVoiceContextSend.current = performance.now();
             voiceClient?.updateContext(context, tag);
             setContextStatus(shareImage ? '正在更新画面…' : '正在更新参数…');
           }
         })
         .catch((err) => {
-          if (active()) setContextStatus(errorMessage(err));
+          if (!active()) return;
+          if (attempt < 12) timer = setTimeout(() => updateCanvas(attempt + 1), 250);
+          else setContextStatus(errorMessage(err));
         });
-    }, 3200);
+    }
+    timer = setTimeout(
+      updateCanvas,
+      Math.max(420, 2650 - (performance.now() - lastVoiceContextSend.current)),
+    );
     return () => {
       cancelled = true;
       clearTimeout(timer);
@@ -787,7 +809,6 @@ export function LiveAssistant(props: LiveAssistantProps) {
     recipeSnapshot,
     callState,
     shareImage,
-    captureCurrentImage,
     artwork?.id,
     artwork?.assetId,
     artwork?.headVersion,
@@ -886,6 +907,7 @@ export function LiveAssistant(props: LiveAssistantProps) {
     if (event.type === 'ready') {
       setCallState('active');
       setElapsed(0);
+      setVoiceSearchRemaining(event.maxPublicSearches ?? 1);
       setContextStatus(shareImage ? '当前画面已共享，调整后会更新' : '仅共享参数，未发送画面');
     }
     if (event.type === 'closed') {
@@ -896,15 +918,16 @@ export function LiveAssistant(props: LiveAssistantProps) {
         setError('通话已停止，供应商最终状态待核验；系统不会自动重拨或重复扣额。');
     }
     if (event.type === 'error') setError(event.message);
-    if (event.type === 'search-started') setVoiceSearchUsed(true);
+    if (event.type === 'search-started') setVoiceSearchRemaining((count) => Math.max(0, count - 1));
     if (event.type === 'context') {
       const pending = voiceCanvas.current.pending;
       if (
         pending &&
         pending.tag === event.contextTag &&
+        event.accepted &&
         pending.key === assistantEditorKey(editorState(current.current))
       ) {
-        voiceCanvas.current = { accepted: pending.key };
+        voiceCanvas.current = { accepted: pending.key, shared: pending.shared };
         setContextStatus(event.imageShared ? '画面已更新' : '参数已更新');
       }
     }
@@ -932,7 +955,20 @@ export function LiveAssistant(props: LiveAssistantProps) {
       );
     if (event.type === 'transcript') setVoiceCaptions((old) => appendCaption(old, event));
     if (event.type === 'assistant-result') {
-      if (voiceCanvas.current.accepted !== assistantEditorKey(editorState(current.current))) return;
+      const currentCanvas = current.current.artwork;
+      if (
+        event.canvas &&
+        (!currentCanvas ||
+          event.canvas.artworkId !== currentCanvas.id ||
+          event.canvas.assetId !== currentCanvas.assetId ||
+          event.canvas.expectedVersion !== currentCanvas.headVersion)
+      )
+        return;
+      if (
+        currentCanvas &&
+        voiceCanvas.current.accepted !== assistantEditorKey(editorState(current.current))
+      )
+        return;
       setMemorySuggestions({ items: event.memorySuggestions ?? [] });
       setWorkspace(
         event.workspace
@@ -1009,7 +1045,8 @@ export function LiveAssistant(props: LiveAssistantProps) {
     // reachable as soon as a preserved voice request starts connecting.
     setMode('voice');
     setVoiceCaptions({});
-    setVoiceSearchUsed(false);
+    setVoiceSearchRemaining(0);
+    lastVoiceContextSend.current = -Infinity;
     setMuted(false);
     setCallState('connecting');
     const voiceIsActive = () =>
@@ -1110,7 +1147,13 @@ export function LiveAssistant(props: LiveAssistantProps) {
         voiceClient.dispose();
         return;
       }
-      voiceCanvas.current = { accepted: prepared.editorKey };
+      const admitted = JSON.parse(
+        typeof request.init.body === 'string' ? request.init.body : '{}',
+      ) as { context?: AssistantContext };
+      voiceCanvas.current = {
+        accepted: prepared.editorKey,
+        shared: !!admitted.context?.imageDataUrl,
+      };
       voiceClient.connect(session.websocketPath, session.ticket);
     } catch (err) {
       voiceClient.dispose();
@@ -1159,7 +1202,7 @@ export function LiveAssistant(props: LiveAssistantProps) {
       !selected?.webSearch ||
       !allowWebSearch ||
       !query ||
-      voiceSearchUsed
+      voiceSearchRemaining <= 0
     )
       return;
     setError('');
@@ -1964,9 +2007,9 @@ export function LiveAssistant(props: LiveAssistantProps) {
             <button
               type="submit"
               className="button button-secondary"
-              disabled={!publicQuery.trim() || !!toolStatus || voiceSearchUsed}
+              disabled={!publicQuery.trim() || !!toolStatus || voiceSearchRemaining <= 0}
             >
-              {voiceSearchUsed ? t('本次已发起检索') : t('搜索')}
+              {voiceSearchRemaining ? t('搜索') : t('检索次数已用完')}
             </button>
           </form>
         </MotionDetails>
@@ -2084,6 +2127,9 @@ export function LiveAssistant(props: LiveAssistantProps) {
                       selected={referenceIds}
                       disabled={inCall || busy}
                       onSelect={toggleReference}
+                      useSource={props.onUseCanvasSource}
+                      sourceProjectId={artwork?.projectId}
+                      currentAssetId={artwork?.assetId}
                     />
                   )}
                   {!message.search?.some((item) => item.kind === 'web') &&
@@ -2417,7 +2463,12 @@ export function LiveAssistant(props: LiveAssistantProps) {
                   type="checkbox"
                   checked={shareImage}
                   disabled={
-                    inCall || busy || submissionBlocked || !artwork || !selected?.imageInput
+                    callState === 'connecting' ||
+                    callState === 'closing' ||
+                    busy ||
+                    submissionBlocked ||
+                    !artwork ||
+                    !selected?.imageInput
                   }
                   onChange={(event) => setShareImage(event.target.checked)}
                 />
@@ -2563,6 +2614,9 @@ export function LiveAssistant(props: LiveAssistantProps) {
                   selected={referenceIds}
                   disabled={inCall || busy}
                   onSelect={toggleReference}
+                  useSource={props.onUseCanvasSource}
+                  sourceProjectId={artwork?.projectId}
+                  currentAssetId={artwork?.assetId}
                 />
               )}
               <p>

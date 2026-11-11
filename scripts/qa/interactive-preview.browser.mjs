@@ -6,7 +6,7 @@ import { fileURLToPath } from 'node:url';
 import { chromium } from 'playwright';
 import sharp from 'sharp';
 import { createServer } from 'vite';
-import { renderEditorRecipe } from '@ai-xiutu/editor';
+import { compileEditorCoordinateMap, renderEditorRecipe } from '@ai-xiutu/editor';
 
 const root = fileURLToPath(new URL('../..', import.meta.url));
 const artifacts = resolve(
@@ -235,6 +235,34 @@ async function verifyLocalMaskAndLiquify(input) {
     await page.mouse.up();
     await settled();
     const final = await png();
+    await tool('修复');
+    await selectedPanel.locator('[data-motion="repair-controls"]').waitFor();
+    assert.deepEqual(await png(), final, 'switching to repair keeps the composed liquify frame');
+    const repairFrame = await canvas.boundingBox();
+    assert.ok(repairFrame);
+    const repairPoint = { x: 0.47, y: 0.49 };
+    const repairStart = {
+      x: repairFrame.x + repairFrame.width * repairPoint.x,
+      y: repairFrame.y + repairFrame.height * repairPoint.y,
+    };
+    await page.mouse.move(repairStart.x, repairStart.y);
+    assert.ok(await page.locator('.brush-footprint path').getAttribute('d'));
+    await page.mouse.down();
+    await page.mouse.move(repairStart.x + 17, repairStart.y + 9, { steps: 6 });
+    await page.mouse.up();
+    await settled();
+    const repaired = await png();
+    await page.getByRole('button', { name: '撤销本次编辑' }).click();
+    await settled();
+    assert.deepEqual(
+      await png(),
+      final,
+      'undo of the first repair stroke restores the warped frame',
+    );
+    await page.getByRole('button', { name: '重做本次编辑' }).click();
+    await settled();
+    assert.deepEqual(await png(), repaired, 'redo restores the exact combined result');
+    await page.screenshot({ path: resolve(artifacts, 'liquify-then-repair.png') });
     await page.getByRole('button', { name: '交付', exact: true }).click();
     const pending = page.waitForEvent('download');
     await page.getByRole('button', { name: '下载配方 JSON' }).click();
@@ -253,11 +281,23 @@ async function verifyLocalMaskAndLiquify(input) {
     );
     assert.equal(recipe.warp.strokes[0].resampling, 'bounded-cubic-v1');
     assert.equal(recipe.warp.strokes[0].algorithm, 'flow-v2');
-    const expected = renderEditorRecipe(source, recipe);
+    const brush = recipe.healing[0]?.mask;
+    assert.equal(brush?.type, 'brush', 'a repair region is created on the first stroke');
+    const coordinateMap = compileEditorCoordinateMap(source, recipe, source);
+    const expectedPoint = coordinateMap.toContent(repairPoint);
+    const firstPoint = brush.strokes[0].points[0];
+    assert.ok(Math.hypot(expectedPoint.x - firstPoint.x, expectedPoint.y - firstPoint.y) < 0.005);
+    const expected = renderEditorRecipe(source, { ...recipe, healing: [] });
     const actual = await sharp(final).ensureAlpha().raw().toBuffer();
     assert.ok(
       actual.equals(Buffer.from(expected.data)),
       'settled browser pixels match the shared render engine',
+    );
+    const expectedRepair = renderEditorRecipe(source, recipe);
+    const actualRepair = await sharp(repaired).ensureAlpha().raw().toBuffer();
+    assert.ok(
+      actualRepair.equals(Buffer.from(expectedRepair.data)),
+      'repair and warp use the same browser and reference pixels',
     );
     assert.notDeepEqual(live, before);
     assert.deepEqual(result.errors, []);
@@ -277,6 +317,15 @@ async function verifyLocalMaskAndLiquify(input) {
       width: source.width,
       height: source.height,
       exactSettledPixels: source.width * source.height,
+      repairAfterWarp: {
+        keptWarpWhenSwitching: true,
+        directBrush: true,
+        undoRedoExact: true,
+        changedChannels: actualRepair.reduce(
+          (n, value, index) => n + Number(value !== actual[index]),
+          0,
+        ),
+      },
     });
   } catch (error) {
     result.state = 'failed';
@@ -965,6 +1014,11 @@ try {
     const changed = (p) => p.sample.some((v, i) => v !== trace.baseline.sample[i]);
     const frames = trace.paints.filter((p) => p.t >= inputTime && p.t < trace.end && changed(p));
     const distinct = new Set(frames.map((p) => p.sample.join(','))).size;
+    assert.ok(
+      frames.length &&
+        frames.every((p) => p.width === trace.baseline.width && p.height === trace.baseline.height),
+      'simple global exposure and curves paint at the full working image size throughout the gesture',
+    );
     const caseReport = {
       test,
       viewport: `${w}×${h}`,

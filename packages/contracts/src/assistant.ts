@@ -161,6 +161,7 @@ export interface AssistantCitation {
 }
 export const assistantCloudResourceSchema = z.object({
   id: z.uuid(),
+  projectId: z.uuid().optional(),
   name: z.string().max(300),
   title: z.string().max(200),
   width: z.number().int().positive(),
@@ -268,6 +269,7 @@ export type VoiceServerEvent =
   | { type: 'tool'; name: string; state: 'running' | 'completed' | 'failed' }
   | {
       type: 'assistant-result';
+      canvas?: Pick<AssistantContext, 'artworkId' | 'assetId' | 'expectedVersion'>;
       memorySuggestions?: MemorySuggestion[];
       workspace?: AssistantWorkspace;
       text: string;

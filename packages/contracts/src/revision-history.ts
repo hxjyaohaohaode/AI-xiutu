@@ -31,3 +31,11 @@ export const forkRevisionSchema = z
     title: z.string().trim().min(1).max(120),
   })
   .strict();
+
+export const replaceArtworkSourceSchema = z
+  .object({
+    assetId: z.uuid(),
+    expectedVersion: z.number().int().positive(),
+    mode: z.enum(['reset', 'carry-color']).default('reset'),
+  })
+  .strict();

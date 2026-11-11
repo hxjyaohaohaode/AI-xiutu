@@ -44,45 +44,113 @@ const outputText = (text: string) => ({
   content: [{ type: 'output_text', text }],
 });
 
-test('research graph and exact provider estimate link to authorized service-credit movements', { skip: !databaseUrl }, async () => {
-  const pricedId = 'gpt-5.4-mini';
-  const f = await fixture({ fetcher: async (_url, options) => {
-    const input = JSON.parse(String(options?.body)).input;
-    const publicResult = { type: 'message', role: 'assistant', content: [{ type: 'output_text', text: '公开参考',
-      annotations: [{ type: 'url_citation', url: 'https://example.org/reference', title: '参考' }] }] };
-    const output = typeof input === 'string' ? [{ type: 'web_search_call', status: 'completed' }, publicResult] : [outputText('已核对公开与项目素材。')];
-    return new Response(JSON.stringify({ status: 'completed', service_tier: 'default', output,
-      usage: { input_tokens: 60, output_tokens: 20, total_tokens: 80, input_tokens_details: { cached_tokens: 10 }, output_tokens_details: { reasoning_tokens: 5 } } }),
-      { headers: { 'content-type': 'application/json', 'x-request-id': 'local-research-proof' } });
-  } });
-  try {
-    await f.db.query('INSERT INTO assistant_model_configs(id,config) VALUES($1,$2) ON CONFLICT(id) DO UPDATE SET config=EXCLUDED.config', [pricedId, JSON.stringify(f.settings)]);
-    const research = [{ kind: 'web', query: 'public example', resultKind: 'text' }, { kind: 'cloud', query: 'resource photo', limit: 2 }];
-    const endpoint = `/v1/projects/${f.projectId}/assistant-turns`;
-    const denied = await f.call('POST', endpoint, { ...f.turn(), modelId: pricedId, research });
-    assert.equal(denied.statusCode, 400, denied.body);
-    const started = await f.call('POST', endpoint, { ...f.turn(), modelId: pricedId, research, scope: { ...f.scope, allowWebSearch: true } });
-    assert.equal(started.statusCode, 202, started.body);
-    const id = started.json().id;
-    const done = await until(() => f.readTurn(id), (result) => result.state !== 'running');
-    assert.equal(done.state, 'completed', JSON.stringify(done));
-    const graphPath = `/v1/assistant-turns/${id}/branches`;
-    const graph = (await f.call('GET', graphPath)).json();
-    assert.equal(graph.branches.find((node: any) => node.kind === 'merge').dependsOn.length, 2);
-    assert.equal((await f.call('GET', graphPath, undefined, 'operator')).statusCode, 404);
-    const details = `/v1/usage/jobs/${id}`;
-    const data = await f.call('GET', details);
-    assert.equal(data.statusCode, 200, data.body);
-    const detail = data.json();
-    assert.deepEqual(detail.stages.map((stage: any) => [stage.purpose, stage.estimatedNanoUsd, stage.estimateComplete]),
-      [['web-search', '10128250', true], ['research-merge', '128250', true]]);
-    assert.deepEqual(detail.movements.map((entry: any) => [entry.kind, entry.units]), [['hold', 5], ['settled', 5]]);
-    assert.equal((await f.call('GET', details, undefined, 'editor')).statusCode, 403);
-    const ops = await f.call('GET', `/v1/ops/usage/jobs/${id}`, undefined, 'operator');
-    assert.equal(ops.statusCode, 200, ops.body);
-    assert.doesNotMatch(ops.body, /降低这张照片|public example|resource photo|local-research-proof/);
-  } finally { await f.close(); }
-});
+test(
+  'research graph and exact provider estimate link to authorized service-credit movements',
+  { skip: !databaseUrl },
+  async () => {
+    const pricedId = 'gpt-5.4-mini';
+    const f = await fixture({
+      fetcher: async (_url, options) => {
+        const input = JSON.parse(String(options?.body)).input;
+        const publicResult = {
+          type: 'message',
+          role: 'assistant',
+          content: [
+            {
+              type: 'output_text',
+              text: '公开参考',
+              annotations: [
+                { type: 'url_citation', url: 'https://example.org/reference', title: '参考' },
+              ],
+            },
+          ],
+        };
+        const output =
+          typeof input === 'string'
+            ? [{ type: 'web_search_call', status: 'completed' }, publicResult]
+            : [outputText('已核对公开与项目素材。')];
+        return new Response(
+          JSON.stringify({
+            status: 'completed',
+            service_tier: 'default',
+            output,
+            usage: {
+              input_tokens: 60,
+              output_tokens: 20,
+              total_tokens: 80,
+              input_tokens_details: { cached_tokens: 10 },
+              output_tokens_details: { reasoning_tokens: 5 },
+            },
+          }),
+          {
+            headers: { 'content-type': 'application/json', 'x-request-id': 'local-research-proof' },
+          },
+        );
+      },
+    });
+    try {
+      await f.db.query(
+        'INSERT INTO assistant_model_configs(id,config) VALUES($1,$2) ON CONFLICT(id) DO UPDATE SET config=EXCLUDED.config',
+        [pricedId, JSON.stringify(f.settings)],
+      );
+      const research = [
+        { kind: 'web', query: 'public example', resultKind: 'text' },
+        { kind: 'cloud', query: 'resource photo', limit: 2 },
+      ];
+      const endpoint = `/v1/projects/${f.projectId}/assistant-turns`;
+      const denied = await f.call('POST', endpoint, { ...f.turn(), modelId: pricedId, research });
+      assert.equal(denied.statusCode, 400, denied.body);
+      const started = await f.call('POST', endpoint, {
+        ...f.turn(),
+        modelId: pricedId,
+        research,
+        scope: { ...f.scope, allowWebSearch: true },
+      });
+      assert.equal(started.statusCode, 202, started.body);
+      const id = started.json().id;
+      const done = await until(
+        () => f.readTurn(id),
+        (result) => result.state !== 'running',
+      );
+      assert.equal(done.state, 'completed', JSON.stringify(done));
+      const graphPath = `/v1/assistant-turns/${id}/branches`;
+      const graph = (await f.call('GET', graphPath)).json();
+      assert.equal(graph.branches.find((node: any) => node.kind === 'merge').dependsOn.length, 2);
+      assert.equal((await f.call('GET', graphPath, undefined, 'operator')).statusCode, 404);
+      const details = `/v1/usage/jobs/${id}`;
+      const data = await f.call('GET', details);
+      assert.equal(data.statusCode, 200, data.body);
+      const detail = data.json();
+      assert.deepEqual(
+        detail.stages.map((stage: any) => [
+          stage.purpose,
+          stage.estimatedNanoUsd,
+          stage.estimateComplete,
+        ]),
+        [
+          ['web-search', '10128250', true],
+          ['research-merge', '128250', true],
+        ],
+      );
+      assert.deepEqual(
+        detail.movements.map((entry: any) => [entry.kind, entry.units]),
+        [
+          ['hold', 5],
+          ['settled', 5],
+        ],
+      );
+      assert.equal((await f.call('GET', details, undefined, 'editor')).statusCode, 403);
+      const ops = await f.call('GET', `/v1/ops/usage/jobs/${id}`, undefined, 'operator');
+      assert.equal(ops.statusCode, 200, ops.body);
+      assert.doesNotMatch(
+        ops.body,
+        /降低这张照片|public example|resource photo|local-research-proof/,
+      );
+    } finally {
+      await f.close();
+    }
+  },
+);
 const response = (output: unknown[]) =>
   new Response(
     JSON.stringify({ status: 'completed', output, usage: { input_tokens: 50, output_tokens: 20 } }),
@@ -2296,6 +2364,7 @@ test(
       voiceSearchFixture = false,
       deferredFetch: Promise<Response> | undefined;
     const voiceSearchBodies: any[] = [];
+    const delegatedBodies: any[] = [];
     vendor.on('connection', (ws) => {
       vendorSockets.push(ws);
       ws.on('message', (data) => {
@@ -2334,6 +2403,7 @@ test(
         requests++;
         const body = JSON.parse(String(init?.body));
         const input = body.input;
+        if (Array.isArray(input) && delegatedBodies.length < 100) delegatedBodies.push(input);
         if (voiceSearchFixture) {
           if (typeof input === 'string') {
             voiceSearchBodies.push(body);
@@ -2574,6 +2644,40 @@ test(
         'Realtime uses its own protocol and streams audio without recording upload',
         async () => {
           const stream = await openVoice('gpt-realtime-2.1');
+          const image = await sharp({
+            create: { width: 24, height: 16, channels: 3, background: '#8e7449' },
+          })
+            .png()
+            .toBuffer();
+          stream.ws.send(
+            JSON.stringify({
+              type: 'context',
+              context: {
+                ...f.context,
+                imageDataUrl: `data:image/png;base64,${image.toString('base64')}`,
+              },
+            }),
+          );
+          assert.equal((await stream.wait('context')).imageShared, true);
+          const visual = await until<any>(
+            async () =>
+              received.findLast(
+                (event) =>
+                  event.type === 'conversation.item.create' &&
+                  event.item?.content?.some((part: any) => part.type === 'input_image'),
+              ),
+            Boolean,
+          );
+          assert.equal(typeof visual.item.id, 'string');
+          stream.ws.send(JSON.stringify({ type: 'context.invalidate' }));
+          await until(
+            async () =>
+              received.some(
+                (event) =>
+                  event.type === 'conversation.item.delete' && event.item_id === visual.item.id,
+              ),
+            Boolean,
+          );
           const beforeSearch = requests;
           stream.ws.send(
             JSON.stringify({ type: 'search', search: { kind: 'text', query: '未授权查找' } }),
@@ -2649,6 +2753,57 @@ test(
           assert.equal(receipt.responseReceiptsComplete, true);
           assert.equal(receipt.responseReceipts, 1);
           assert.equal(receipt.billingBasis, 'configured_session_unit');
+        },
+      );
+      await t.test(
+        'Live follows a delayed correction and supplies earlier dialogue separately',
+        async () => {
+          const stream = await openVoice('gpt-live-1', 'editor');
+          const upstream = vendorSockets.at(-1)!;
+          try {
+            const begin = delegatedBodies.length;
+            upstream.send(
+              JSON.stringify({
+                type: 'session.input_transcript.delta',
+                delta: '这张照片保留雨天的冷色。',
+                start_ms: 100,
+                end_ms: 800,
+              }),
+            );
+            upstream.send(
+              JSON.stringify({
+                type: 'session.output_transcript.delta',
+                delta: '我会留住雨天的层次。',
+                start_ms: 1400,
+                end_ms: 2500,
+              }),
+            );
+            upstream.send(
+              JSON.stringify({
+                type: 'session.delegation.created',
+                offset_ms: 58_000,
+                delegation: { id: 'late-correction', target: 'client' },
+              }),
+            );
+            await delay(40);
+            upstream.send(
+              JSON.stringify({
+                type: 'session.input_transcript.delta',
+                delta: '现在把曝光降低一点，保持刚才的色调。',
+                start_ms: 57_400,
+                end_ms: 58_100,
+              }),
+            );
+            const result = await stream.wait('assistant-result');
+            assert.equal(result.canvas.assetId, f.context.assetId);
+            const request = delegatedBodies[begin];
+            assert.equal(request[0].content, '这张照片保留雨天的冷色。');
+            assert.equal(request[1].role, 'assistant');
+            assert.match(JSON.stringify(request.at(-1).content), /现在把曝光降低一点/);
+          } finally {
+            stream.ws.send(JSON.stringify({ type: 'end' }));
+            await stream.wait('closed');
+          }
         },
       );
       await t.test(
@@ -3076,44 +3231,81 @@ test(
           autoReady = true;
           finalUsage = true;
           const current = (
-            await f.db.query('SELECT a.head_version,r.recipe FROM artworks a JOIN revisions r ON r.id=a.head_revision_id WHERE a.id=$1', [f.context.artworkId])
+            await f.db.query(
+              'SELECT a.head_version,r.recipe FROM artworks a JOIN revisions r ON r.id=a.head_revision_id WHERE a.id=$1',
+              [f.context.artworkId],
+            )
           ).rows[0]!;
-          const grant = await f.call('POST', `/v1/projects/${f.projectId}/assistant-grants`, {
-            mode: 'auto',
-            unitLimit: 40,
-            stepLimit: 5,
-            minutes: 5,
-            allowedActions: ['realtime-voice', 'assistant-turn', 'edit'],
-            modelIds: ['gpt-live-1', f.modelId],
-          }, 'editor');
+          const grant = await f.call(
+            'POST',
+            `/v1/projects/${f.projectId}/assistant-grants`,
+            {
+              mode: 'auto',
+              unitLimit: 40,
+              stepLimit: 5,
+              minutes: 5,
+              allowedActions: ['realtime-voice', 'assistant-turn', 'edit'],
+              modelIds: ['gpt-live-1', f.modelId],
+            },
+            'editor',
+          );
           assert.equal(grant.statusCode, 200, grant.body);
-          const prepared = await f.call('POST', `/v1/projects/${f.projectId}/voice-sessions`, {
-            idempotencyKey: randomUUID(),
-            modelId: 'gpt-live-1',
-            backendModelId: f.modelId,
-            voice: 'marin',
-            context: { ...f.context, expectedVersion: current.head_version, recipe: current.recipe },
-            scope: { ...f.scope, executionGrantId: grant.json().grant.id },
-          }, 'editor');
+          const prepared = await f.call(
+            'POST',
+            `/v1/projects/${f.projectId}/voice-sessions`,
+            {
+              idempotencyKey: randomUUID(),
+              modelId: 'gpt-live-1',
+              backendModelId: f.modelId,
+              voice: 'marin',
+              context: {
+                ...f.context,
+                expectedVersion: current.head_version,
+                recipe: current.recipe,
+              },
+              scope: { ...f.scope, executionGrantId: grant.json().grant.id },
+            },
+            'editor',
+          );
           assert.equal(prepared.statusCode, 200, prepared.body);
           const data = prepared.json();
           const ws = new WebSocket(`${wsBase}${data.websocketPath}`, ['xiutu-voice', data.ticket], {
-            origin: f.origin, headers: { cookie: f.actors.editor.cookie },
+            origin: f.origin,
+            headers: { cookie: f.actors.editor.cookie },
           });
           const stream = collect(ws);
           try {
             await stream.wait('ready');
             const upstream = vendorSockets.at(-1)!;
-            const call = JSON.stringify({ type: 'session.delegation.created', delegation: { id: 'auto-save', target: 'client' } });
+            upstream.send(
+              JSON.stringify({
+                type: 'session.input_transcript.delta',
+                delta: '请把当前作品曝光降低 0.4 EV。',
+                start_ms: 100,
+                end_ms: 500,
+              }),
+            );
+            const call = JSON.stringify({
+              type: 'session.delegation.created',
+              delegation: { id: 'auto-save', target: 'client' },
+            });
             upstream.send(call);
             upstream.send(call);
             const reply = await stream.wait('assistant-result');
             assert.equal(reply.execution.state, 'applied');
             assert.equal(reply.candidates[0].appliedRevisionId, reply.execution.revisionId);
-            const after = (await f.db.query('SELECT head_version FROM artworks WHERE id=$1', [f.context.artworkId])).rows[0]!;
+            const after = (
+              await f.db.query('SELECT head_version FROM artworks WHERE id=$1', [
+                f.context.artworkId,
+              ])
+            ).rows[0]!;
             assert.equal(after.head_version, current.head_version + 1);
             f.context.expectedVersion = after.head_version;
-            f.context.recipe = (await f.db.query('SELECT recipe FROM revisions WHERE id=$1', [reply.execution.revisionId])).rows[0]!.recipe;
+            f.context.recipe = (
+              await f.db.query('SELECT recipe FROM revisions WHERE id=$1', [
+                reply.execution.revisionId,
+              ])
+            ).rows[0]!.recipe;
           } finally {
             ws.send(JSON.stringify({ type: 'end' }));
             await stream.wait('closed');
@@ -3129,6 +3321,11 @@ test(
           });
           const stream = await openVoice();
           const count = requests;
+          vendorSockets
+            .at(-1)!
+            .send(
+              JSON.stringify({ type: 'session.input_transcript.delta', delta: '把曝光调低一点。' }),
+            );
           vendorSockets.at(-1)!.send(
             JSON.stringify({
               type: 'session.delegation.created',

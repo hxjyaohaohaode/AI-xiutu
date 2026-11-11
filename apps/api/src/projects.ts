@@ -1,7 +1,17 @@
 import type { FastifyInstance } from 'fastify';
 import { z } from 'zod';
-import { parseEditorRecipe, RecipeValidationError } from '@ai-xiutu/editor';
-import { forkRevisionSchema, revisionHistoryQuerySchema } from '@ai-xiutu/contracts';
+import {
+  createRecipeV4,
+  localEditorSourceLimits,
+  migrateRecipeToV4,
+  parseEditorRecipe,
+  RecipeValidationError,
+} from '@ai-xiutu/editor';
+import {
+  forkRevisionSchema,
+  replaceArtworkSourceSchema,
+  revisionHistoryQuerySchema,
+} from '@ai-xiutu/contracts';
 import { canonical, digest } from '@ai-xiutu/ai';
 import {
   transaction,
@@ -483,6 +493,71 @@ export function registerProjects(
     ).rows[0];
     if (!asset) throw new HttpError(409, 'SOURCE_UNAVAILABLE', '此历史版本的源图片不可用');
     return { revision: revisionDto(row), asset: assetDto(asset) };
+  });
+  app.post('/v1/artworks/:id/source', async (req, reply) => {
+    const user = requireUser(req);
+    const params = z.object({ id }).parse(req.params);
+    const body = replaceArtworkSourceSchema.parse(req.body);
+    const requestDigest = digest(canonical({ kind: 'replace-source', artworkId: params.id, body }));
+    const result = await transaction(db, async (tx) => {
+      const { artwork, project } = await lockArtworkWrite(
+        tx,
+        params.id,
+        user.id,
+        hash(req.cookies.xiutu_session ?? ''),
+      );
+      const replay = await replayHeadWrite(
+        tx,
+        artwork,
+        user.id,
+        body.expectedVersion,
+        requestDigest,
+      );
+      if (replay) return { ...replay, replayed: true };
+      assertVersion(artwork.head_version, body.expectedVersion);
+      if (artwork.asset_id === body.assetId)
+        throw new HttpError(409, 'SOURCE_UNCHANGED', '这张图片已是当前底图');
+      const nextSource = await requireSourceAsset(tx, artwork.project_id, body.assetId);
+      const limits = localEditorSourceLimits(4);
+      if (
+        nextSource.width * nextSource.height > limits.maxPixels ||
+        Math.max(nextSource.width, nextSource.height) > limits.maxDimension
+      )
+        throw new HttpError(
+          413,
+          'SOURCE_EDITOR_BUDGET',
+          '素材超出当前编辑规格，请先准备较小的工作副本',
+        );
+      let recipe = createRecipeV4();
+      if (body.mode === 'carry-color') {
+        const head = await readArtworkRevision(tx, artwork.id, artwork.head_revision_id);
+        if (!head || head.asset_id !== artwork.asset_id)
+          throw new HttpError(409, 'ARTWORK_HEAD_INCONSISTENT', '作品当前版本或来源不可用');
+        const prior = migrateRecipeToV4(validatedRecipe(head.recipe));
+        recipe = createRecipeV4({
+          adjustments: { ...prior.adjustments, sharpness: 0, soften: 0 },
+          curves: prior.curves,
+          levels: prior.levels,
+          hsl: prior.hsl,
+          grading: prior.grading,
+        });
+      }
+      const saved = await appendArtworkRevision(tx, {
+        artwork,
+        actorId: user.id,
+        assetId: body.assetId,
+        recipe,
+        label: body.mode === 'carry-color' ? '更换底图并沿用全局调色' : '更换底图',
+        origin: { kind: 'manual', requestDigest },
+      });
+      await emit(tx, project.space_id, project.id, 'artwork.revised', artwork.id);
+      await audit(tx, user.id, 'artwork.replace-source', 'revision', saved.revision.id, {
+        artworkId: artwork.id,
+        mode: body.mode,
+      });
+      return { ...saved, replayed: false };
+    });
+    return reply.code(result.replayed ? 200 : 201).send(result);
   });
   app.post('/v1/artworks/:id/restore', async (req, reply) => {
     const user = requireUser(req);

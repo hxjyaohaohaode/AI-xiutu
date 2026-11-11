@@ -234,7 +234,7 @@ test('real worker recovers from coarse color to spatial work and exports untouch
     let clearer: any;
     for (let i = 0; i < 8; i++) {
       clock += 80;
-      geometry.transform.rotationDegrees = i * 0.1;
+      geometry.transform.rotationDegrees = (i + 1) * 0.1;
       clearer = await send({
         type: 'interactive-preview',
         id: 20 + i,

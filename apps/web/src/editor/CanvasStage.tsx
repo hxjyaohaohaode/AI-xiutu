@@ -41,7 +41,7 @@ import {
   type BrushStrokeV2,
 } from '@ai-xiutu/editor';
 import { Busy, IconButton, InlineError } from '../components/Ui';
-import { editorGeometryKey, type EditorState } from './useEditor';
+import { editorGeometryKey, type EditorState, type PreviewQuality } from './useEditor';
 import { sourcePointer, projectOverlayPoint, projectOverlayPath } from './coordinates';
 import { appendRepairRegion } from './repair-draft';
 import { CanvasPointerOwnership, ownedCanvasRollback } from './canvas-gesture';
@@ -238,6 +238,7 @@ function selectionRotation(center: Point, start: Point, end: Point, dimensions: 
 type EditGesture = {
   pointer: number;
   kind: string;
+  quality: PreviewQuality;
   base: EditorRecipe;
   rollback?: EditorRecipe;
   lastPreview: EditorRecipe;
@@ -577,7 +578,7 @@ export function CanvasStage({
         if (ownsEdit(editGesture.current))
           editor.preview(
             editGesture.current.rollback ?? editGesture.current.base,
-            editGesture.current.kind === 'warp' ? 'warp' : 'fast',
+            editGesture.current.quality,
           );
         editGesture.current = null;
         setSelectionManipulating(false);
@@ -601,7 +602,7 @@ export function CanvasStage({
         if (ownsEdit(editGesture.current))
           editor.preview(
             editGesture.current.rollback ?? editGesture.current.base,
-            editGesture.current.kind === 'warp' ? 'warp' : 'fast',
+            editGesture.current.quality,
           );
         editGesture.current = null;
         setProjectiveFrame(null);
@@ -639,7 +640,7 @@ export function CanvasStage({
     if (editGesture.current && ownsEdit(editGesture.current))
       editor.preview(
         editGesture.current.rollback ?? editGesture.current.base,
-        editGesture.current.kind === 'warp' ? 'warp' : 'fast',
+        editGesture.current.quality,
       );
     editGesture.current = null;
     setSelectionManipulating(false);
@@ -818,7 +819,7 @@ export function CanvasStage({
     try {
       parseEditorRecipe(next);
       state.lastPreview = next;
-      editor.preview(next, state.kind === 'warp' ? 'warp' : 'fast');
+      editor.preview(next, state.quality);
     } catch (error) {
       setNotice(
         error instanceof Error ? error.message : '本次调整超出安全范围，已保留上一个有效状态。',
@@ -886,6 +887,12 @@ export function CanvasStage({
     const state: EditGesture = {
       pointer: event.pointerId,
       kind,
+      quality:
+        kind === 'warp'
+          ? 'warp'
+          : group === 'repair' || kind === 'paint' || kind === 'brush'
+            ? 'full'
+            : 'fast',
       base: recipe,
       lastPreview: recipe,
       mask,
@@ -1373,8 +1380,7 @@ export function CanvasStage({
     setSelectionManipulating(false);
     setProjectiveFrame(null);
     if (ownsEdit(state)) {
-      if (cancel)
-        editor.preview(state.rollback ?? state.base, state.kind === 'warp' ? 'warp' : 'fast');
+      if (cancel) editor.preview(state.rollback ?? state.base, state.quality);
       else {
         editor.commitCurrent(
           state.kind.startsWith('projective-')
@@ -1817,7 +1823,7 @@ export function CanvasStage({
               editor.getSourceIdentity(),
               editor.getRecipe(),
             );
-            if (rollback) editor.preview(rollback, state.kind === 'warp' ? 'warp' : 'fast');
+            if (rollback) editor.preview(rollback, state.quality);
             pointerPositions.current.clear();
             panGesture.current = null;
             pinch.current = null;

@@ -12,6 +12,10 @@ import {
   ImageSquare,
   Cursor,
   TextT,
+  FolderOpen,
+  CopySimple,
+  CaretUp,
+  CaretDown,
 } from '@phosphor-icons/react';
 import { downloadBlob, errorMessage } from '../lib/api';
 import { Busy, IconButton, InlineError, Modal } from './Ui';
@@ -19,7 +23,7 @@ import { usePresence } from '../motion/usePresence';
 import { ColorPicker } from './ColorPicker';
 import { useConfirmation } from './ConfirmationDialog';
 import { confirmStableScope } from '../lib/confirmation-scope';
-import { decodeImageSource } from '../editor/imageSources';
+import { loadSketchImage, SKETCH_IMAGE_INPUT } from './sketch-images';
 import {
   moveSketchItem,
   paintSketchItem,
@@ -33,6 +37,7 @@ import {
 
 type Tool = 'pencil' | 'erase' | 'select' | 'text' | 'icon' | SketchShape;
 const colors = ['#34372e', '#cd6155', '#d9a52d', '#658764', '#527b9b', '#9474a3'];
+const filledShapes = new Set<Tool>(['rectangle', 'rounded', 'ellipse', 'triangle', 'diamond']);
 
 export function DrawingBoard({
   onClose,
@@ -71,6 +76,7 @@ export function DrawingBoard({
   const [textValue, setTextValue] = useState('');
   const [symbol, setSymbol] = useState<SketchIcon>('star');
   const [filled, setFilled] = useState(false);
+  const [transparent, setTransparent] = useState(false);
   const erase = tool === 'erase';
   const selected = selection === null ? null : items[selection];
   const [ratio, setRatio] = useState('square');
@@ -79,8 +85,28 @@ export function DrawingBoard({
   const confirmation = useConfirmation();
   const mounted = useRef(false);
   const locked = useRef(false);
-  const latest = useRef({ items, history, cursor, ratio, busy, onClose, onUse, onReference });
-  latest.current = { items, history, cursor, ratio, busy, onClose, onUse, onReference };
+  const latest = useRef({
+    items,
+    history,
+    cursor,
+    ratio,
+    transparent,
+    busy,
+    onClose,
+    onUse,
+    onReference,
+  });
+  latest.current = {
+    items,
+    history,
+    cursor,
+    ratio,
+    transparent,
+    busy,
+    onClose,
+    onUse,
+    onReference,
+  };
   useEffect(() => {
     mounted.current = true;
     return () => {
@@ -92,6 +118,7 @@ export function DrawingBoard({
     items: latest.current.items,
     cursor: latest.current.cursor,
     ratio: latest.current.ratio,
+    transparent: latest.current.transparent,
     busy: latest.current.busy,
     locked: locked.current,
     pointer: pointer.current,
@@ -194,7 +221,7 @@ export function DrawingBoard({
     if (selection === null || locked.current || pointer.current !== null) return;
     commitItems(items.map((existing, i) => (i === selection ? item : existing)));
   }
-  async function insertImage(read: () => File | Promise<File>) {
+  async function insertImage(read: () => File | Promise<File>, at = { x: 0.25, y: 0.25 }) {
     const previous = latest.current.items;
     if (locked.current || pointer.current !== null || previous.length >= 300) return;
     const used = new Set(
@@ -210,22 +237,10 @@ export function DrawingBoard({
     setBusy(true);
     setError(null);
     try {
-      const { preview, file } = await decodeImageSource(await read());
+      const file = await read();
+      const image = await loadSketchImage(file);
       if (!mounted.current || latest.current.items !== previous) return;
-      const image = document.createElement('canvas');
-      image.width = preview.width;
-      image.height = preview.height;
-      const context = image.getContext('2d');
-      if (!context) throw new Error(t('无法打开草图素材'));
-      context.putImageData(
-        new ImageData(new Uint8ClampedArray(preview.data), preview.width, preview.height),
-        0,
-        0,
-      );
-      commitItems([
-        ...previous,
-        { kind: 'image', at: { x: 0.25, y: 0.25 }, image, size: 0.5, name: file.name },
-      ]);
+      commitItems([...previous, { kind: 'image', at, image, size: 0.5, name: file.name }]);
       setSelection(previous.length);
       setTool('select');
     } catch (e) {
@@ -234,6 +249,15 @@ export function DrawingBoard({
       locked.current = false;
       if (mounted.current) setBusy(false);
     }
+  }
+  function reorder(offset: number) {
+    if (selection === null || locked.current || pointer.current !== null) return;
+    const next = selection + offset;
+    if (next < 0 || next >= items.length) return;
+    const result = [...items];
+    [result[selection], result[next]] = [result[next]!, result[selection]!];
+    commitItems(result);
+    setSelection(next);
   }
   function finish(event: PointerEvent<HTMLCanvasElement>, cancel = false) {
     if (pointer.current !== event.pointerId) return;
@@ -268,9 +292,11 @@ export function DrawingBoard({
     const context = output.getContext('2d');
     if (!context) throw new Error('无法导出这张草图。');
     for (const item of latest.current.items) paintSketchItem(item, context);
-    context.globalCompositeOperation = 'destination-over';
-    context.fillStyle = '#fff';
-    context.fillRect(0, 0, output.width, output.height);
+    if (!latest.current.transparent) {
+      context.globalCompositeOperation = 'destination-over';
+      context.fillStyle = '#fff';
+      context.fillRect(0, 0, output.width, output.height);
+    }
     const blob = await new Promise<Blob>((resolve, reject) =>
       output.toBlob(
         (value) => (value ? resolve(value) : reject(new Error('草图导出失败。'))),
@@ -404,7 +430,10 @@ export function DrawingBoard({
               { value: 'erase', label: t('橡皮擦') },
               { value: 'select', label: t('选择草图元素') },
               { value: 'rectangle', label: t('矩形') },
+              { value: 'rounded', label: t('圆角矩形') },
               { value: 'ellipse', label: t('椭圆') },
+              { value: 'triangle', label: t('三角形') },
+              { value: 'diamond', label: t('菱形') },
               { value: 'line', label: t('直线') },
               { value: 'arrow', label: t('箭头') },
               { value: 'text', label: t('文字') },
@@ -428,7 +457,7 @@ export function DrawingBoard({
               disabled={busy}
               onClick={() => imageInput.current?.click()}
             >
-              <ImageSquare size={20} />
+              <FolderOpen size={20} />
             </IconButton>
             {readCurrentImage && (
               <button
@@ -442,7 +471,7 @@ export function DrawingBoard({
             <input
               ref={imageInput}
               type="file"
-              accept="image/*"
+              accept={SKETCH_IMAGE_INPUT}
               hidden
               onChange={(event) => {
                 const file = event.currentTarget.files?.[0];
@@ -451,16 +480,42 @@ export function DrawingBoard({
               }}
             />
             {tool === 'select' && selected && (
-              <IconButton
-                label={t('删除选中元素')}
-                disabled={busy}
-                onClick={() => {
-                  commitItems(items.filter((_, i) => i !== selection));
-                  setSelection(null);
-                }}
-              >
-                <Trash size={20} />
-              </IconButton>
+              <>
+                <IconButton
+                  label={t('复制草图元素')}
+                  disabled={busy || items.length >= 300}
+                  onClick={() => {
+                    commitItems([...items, moveSketchItem(selected, { x: 0.025, y: 0.025 })]);
+                    setSelection(items.length);
+                  }}
+                >
+                  <CopySimple size={18} />
+                </IconButton>
+                <IconButton
+                  label={t('上移草图图层')}
+                  disabled={busy || selection === items.length - 1}
+                  onClick={() => reorder(1)}
+                >
+                  <CaretUp size={18} />
+                </IconButton>
+                <IconButton
+                  label={t('下移草图图层')}
+                  disabled={busy || selection === 0}
+                  onClick={() => reorder(-1)}
+                >
+                  <CaretDown size={18} />
+                </IconButton>
+                <IconButton
+                  label={t('删除选中元素')}
+                  disabled={busy}
+                  onClick={() => {
+                    commitItems(items.filter((_, i) => i !== selection));
+                    setSelection(null);
+                  }}
+                >
+                  <Trash size={20} />
+                </IconButton>
+              </>
             )}
           </div>
         </div>
@@ -497,10 +552,13 @@ export function DrawingBoard({
               { value: 'star', label: t('星形') },
               { value: 'heart', label: t('爱心') },
               { value: 'check', label: t('对勾') },
+              { value: 'pin', label: t('位置标记') },
+              { value: 'bolt', label: t('闪电') },
+              { value: 'speech', label: t('对话气泡') },
             ]}
           />
         )}
-        {(tool === 'rectangle' || tool === 'ellipse') && (
+        {filledShapes.has(tool) && (
           <label className="drawing-width">
             <input
               type="checkbox"
@@ -511,6 +569,15 @@ export function DrawingBoard({
           </label>
         )}
         <div className="drawing-controls" data-motion="drawing-colors">
+          <label className="drawing-width">
+            <input
+              type="checkbox"
+              checked={transparent}
+              disabled={busy}
+              onChange={(event) => setTransparent(event.target.checked)}
+            />
+            {t('透明背景')}
+          </label>
           <div className="drawing-colors" aria-label={t('快捷笔触颜色')}>
             {colors.map((value) => (
               <button
@@ -522,6 +589,8 @@ export function DrawingBoard({
                 onClick={() => {
                   setColor(value);
                   if (erase) setTool('pencil');
+                  if (tool === 'select' && selected && 'color' in selected)
+                    patchSelected({ ...selected, color: value });
                 }}
               />
             ))}
@@ -547,6 +616,44 @@ export function DrawingBoard({
               />
               <span>{width}</span>
             </label>
+          )}
+          {tool === 'select' && selected && (
+            <div className="drawing-tools">
+              <label className="drawing-width">
+                {t('角度')}
+                <input
+                  type="number"
+                  aria-label={t('草图元素角度')}
+                  min="-180"
+                  max="180"
+                  step="1"
+                  key={`angle-${selection}-${selected.angle ?? 0}`}
+                  defaultValue={selected.angle ?? 0}
+                  onBlur={(event) => {
+                    const n = event.currentTarget.valueAsNumber;
+                    if (Number.isFinite(n) && n !== (selected.angle ?? 0))
+                      patchSelected({ ...selected, angle: Math.max(-180, Math.min(180, n)) });
+                  }}
+                />
+              </label>
+              <label className="drawing-width">
+                {t('透明度')}
+                <input
+                  type="number"
+                  aria-label={t('草图元素不透明度')}
+                  min="0"
+                  max="100"
+                  step="1"
+                  key={`opacity-${selection}-${selected.opacity ?? 1}`}
+                  defaultValue={Math.round((selected.opacity ?? 1) * 100)}
+                  onBlur={(event) => {
+                    const n = event.currentTarget.valueAsNumber;
+                    if (Number.isFinite(n) && n / 100 !== (selected.opacity ?? 1))
+                      patchSelected({ ...selected, opacity: Math.max(0, Math.min(1, n / 100)) });
+                  }}
+                />
+              </label>
+            </div>
           )}
           {tool === 'select' && selected?.kind === 'image' && (
             <label className="drawing-width">
@@ -584,19 +691,46 @@ export function DrawingBoard({
                 onChange={(value) => {
                   setColor(value);
                   if (erase) setTool('pencil');
+                  if (tool === 'select' && selected && 'color' in selected)
+                    patchSelected({ ...selected, color: value });
                 }}
                 label={t('笔触颜色')}
               />
             </div>
           )}
         </div>
-        <div ref={drawingArea} className={`drawing-surface ${ratio}`}>
+        <div
+          ref={drawingArea}
+          className={`drawing-surface ${ratio}${transparent ? ' transparent-sketch' : ''}`}
+        >
           <canvas
             ref={canvas}
             width={dimensions[0]}
             height={dimensions[1]}
             style={{ width: dimensions[0]! * fit, height: dimensions[1]! * fit }}
             aria-label={t('草图画布，使用鼠标、手指或触控笔绘画')}
+            tabIndex={0}
+            onPaste={(event) => {
+              const file = Array.from(event.clipboardData.files).find((item) =>
+                item.type.startsWith('image/'),
+              );
+              if (!file) return;
+              event.preventDefault();
+              void insertImage(() => file);
+            }}
+            onDragOver={(event) => {
+              if (event.dataTransfer.types.includes('Files')) event.preventDefault();
+            }}
+            onDrop={(event) => {
+              const file = event.dataTransfer.files[0];
+              if (!file) return;
+              event.preventDefault();
+              const point = position(event, event.currentTarget.getBoundingClientRect());
+              void insertImage(() => file, {
+                x: Math.max(0, Math.min(0.8, point.x)),
+                y: Math.max(0, Math.min(0.8, point.y)),
+              });
+            }}
             onPointerDown={(event) => {
               if (busy || locked.current || pointer.current !== null || event.button !== 0) return;
               const target = event.currentTarget,
@@ -699,7 +833,7 @@ export function DrawingBoard({
         </div>
         <div className="drawing-meta">
           <span>
-            {dimensions[0]} × {dimensions[1]} {t('· 白底 PNG')}
+            {dimensions[0]} × {dimensions[1]} {t(transparent ? '· 透明 PNG' : '· 白底 PNG')}
           </span>
           <span>{t('{v0} 个元素', { v0: items.length })}</span>
         </div>
