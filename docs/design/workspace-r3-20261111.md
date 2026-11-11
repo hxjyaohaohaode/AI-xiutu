@@ -76,3 +76,9 @@ head `7a2f324` 的 [Baseline checks 42993045506](https://github.com/hxjyaohaohao
 head `86cad0e` 的 [Baseline 43001349786](https://github.com/hxjyaohaohaode/AI-xiutu/actions/runs/43001349786) 全部完成：1,008 项基础测试无失败/跳过、生产构建与依赖审计通过，容器、六轮 180 次工作台用例，以及后续助手、语音、真实人像/分块像素、不同照片质量检查均成功。六份工作台报告无 `pageErrors`，320px 三语顶栏保持单行，顶部动作完整可点，收起/恢复云提示无写请求，仅显式重试增加一次配置读取。
 
 同一组必看截图仍揭示了两处英文视觉问题：`Hold to compare` 在 320px 被父容器的 `nowrap` 强制为一行，挤出最右侧手形按钮；四个上下文按钮中的 `Collaborate` 被从词中间拆开。后续补丁仅在这个窄屏区间让对比说明自然分行，并将上下文按钮改为完整文字呈现，保留四个入口和 44px 高度。既有三语浏览器用例增加工具条子按钮及文字的真实边界、命中检查；不能只用页面级 `scrollWidth` 判断局部控件是否完整。
+
+## 窄屏工具条的实际尺寸诊断
+
+第八提交 `6fdd83c` 的新增边界检查发现 320px 中文比较按钮超出工具条；第九提交 `0ab5479` 仅补充断言矩形，保持原阈值。真实浏览器记录：工具条宽 265px、高 40px；比较按钮宽 45px、高 58px，四个汉字逐字换行，上下各超出 9px，页面和工具条的横向 overflow 仍为零。这证实了绝对定位 `left: 50%` 与 `width: auto` 的 shrink-to-fit 在允许 CJK 换行后采用过窄的最小内容宽度。
+
+修复只在 ≤359px 为工具条设置 `width: max-content`，保留既有 `max-width: calc(100% - 12px)`、完整按钮与触控尺寸。先采用自然内容宽度，再由视口上限压缩英文比较标签；原先完整内界、1–2 行、按钮命中与四个上下文标签检查继续作为门禁。最新结果见 [PR checks](https://github.com/hxjyaohaohaode/AI-xiutu/pull/7/checks)。

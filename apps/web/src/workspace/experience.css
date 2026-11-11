@@ -1328,6 +1328,10 @@
   }
 }
 @media (max-width: 359px) {
+  /* Keep CJK labels at their natural width before applying the viewport cap. */
+  .studio-workspace .canvas-view-controls {
+    width: max-content;
+  }
   .studio-workspace .canvas-view-controls .compare-press {
     flex: 0 1 auto;
     min-width: 0;
