@@ -83,12 +83,15 @@ export function FloatingPanel({
   onGeometry,
   onUndoGeometry,
   onBack,
+  backLabel,
   onClose,
   children,
   navigation,
   panelKey = 'inspector',
   open = true,
   motionState = 'enter',
+  displayMode = 'panel',
+  identity,
 }: {
   title: string;
   label: string;
@@ -100,12 +103,15 @@ export function FloatingPanel({
   ) => void;
   onUndoGeometry?: () => void;
   onBack?: () => void;
+  backLabel?: string;
   onClose: () => void;
   children: ReactNode;
   navigation?: ReactNode;
   panelKey?: PanelId;
   open?: boolean;
   motionState?: MotionPhase;
+  displayMode?: 'panel' | 'page';
+  identity?: string;
 }) {
   useI18n();
   const panel = useRef<HTMLElement>(null);
@@ -142,9 +148,10 @@ export function FloatingPanel({
   const maximized = value.presentation === 'maximized',
     collapsed = value.presentation === 'collapsed';
   const attached = mobile && value.dock === 'bottom';
-  const condensed = mobile && panelKey === 'ai' && !collapsed;
+  const page = displayMode === 'page';
+  const condensed = mobile && panelKey === 'ai' && !collapsed && !page;
   const bounds = panelBounds(viewport, value.dock, panelKey);
-  const contentPresence = usePresence(!collapsed && open, 'panel-body');
+  const contentPresence = usePresence((page || !collapsed) && open, 'panel-body');
   const needsPhotoSpace = panelNeedsPhotoSpace(value, viewport);
   const menuBelow =
     bounds.height - panelBottomOffset(viewport) - rect.y - panelHeaderHeight(viewport) - 8;
@@ -160,6 +167,17 @@ export function FloatingPanel({
     '--motion-x': value.dock === 'left' ? '-12px' : value.dock === 'right' ? '12px' : '0px',
     '--motion-y': value.dock === 'bottom' ? '14px' : value.dock === 'floating' ? '6px' : '0px',
     '--motion-scale': value.dock === 'floating' ? '0.992' : '1',
+    ...(page
+      ? {
+          left: 0,
+          top: 0,
+          width: '100%',
+          height: '100%',
+          '--motion-x': '0px',
+          '--motion-y': '0px',
+          '--motion-scale': '1',
+        }
+      : {}),
   } as CSSProperties;
 
   function finishGesture(cancel: boolean) {
@@ -186,6 +204,7 @@ export function FloatingPanel({
   function begin(event: PointerEvent<HTMLElement>, kind: Gesture['kind'], edge?: PanelEdge) {
     if (
       !open ||
+      page ||
       gesture.current ||
       event.button !== 0 ||
       !event.isPrimary ||
@@ -295,7 +314,13 @@ export function FloatingPanel({
   useEffect(() => {
     cancelGesture.current();
     setMenu(false);
-  }, [viewport.width, viewport.height, viewport.workspaceWidth, viewport.workspaceHeight]);
+  }, [
+    viewport.width,
+    viewport.height,
+    viewport.workspaceWidth,
+    viewport.workspaceHeight,
+    displayMode,
+  ]);
   const previousKey = useRef(panelKey);
   useEffect(() => {
     if (previousKey.current !== panelKey) {
@@ -393,13 +418,14 @@ export function FloatingPanel({
       data-motion-pixels="true"
       data-motion-state={motionState}
       data-gesture={dragging ? 'active' : undefined}
-      data-presentation={value.presentation}
+      data-presentation={page ? 'normal' : value.presentation}
       data-size-motion={animatingPresentation ? 'active' : undefined}
       data-panel-width={rect.width < 300 ? 'narrow' : rect.width >= 640 ? 'wide' : 'regular'}
-      data-attached={attached ? 'true' : undefined}
+      data-attached={attached && !page ? 'true' : undefined}
       data-composition={value.composition}
       data-device={viewport.bucket}
-      data-panel-id={panelKey}
+      data-panel-id={identity ?? panelKey}
+      data-display-mode={displayMode}
       data-condensed-header={condensed || undefined}
       onKeyDown={(event) => {
         if (event.key === 'Escape' && menu) {
@@ -410,137 +436,143 @@ export function FloatingPanel({
         }
       }}
     >
-      <div className="panel-drag-header" data-motion="panel-header">
-        <div
-          ref={dragHandle}
-          className="panel-title-drag"
-          role="button"
-          tabIndex={0}
-          aria-label={t('{title}面板：{action}。Alt + 方向键微调，回车{state}。', {
-            title,
-            action: t(attached ? '上下拖动调整高度，方向键调整尺寸' : '拖动和方向键移动'),
-            state: t(collapsed ? '展开' : '折叠'),
-          })}
-          aria-expanded={!collapsed}
-          aria-controls={contentId}
-          onPointerDown={(event) => begin(event, attached ? 'resize' : 'move', 'n')}
-          onPointerMove={move}
-          onPointerUp={(event) => end(event)}
-          onPointerCancel={(event) => end(event, true)}
-          onLostPointerCapture={(event) => end(event, true)}
-          onDoubleClick={() => setPresentation(collapsed ? 'normal' : 'collapsed')}
-          onKeyDown={(event) => {
-            if (event.key === 'Enter' || event.key === ' ') {
-              event.preventDefault();
-              setPresentation(collapsed ? 'normal' : 'collapsed');
-              return;
-            }
-            if (!['ArrowLeft', 'ArrowRight', 'ArrowUp', 'ArrowDown'].includes(event.key)) return;
-            event.preventDefault();
-            if (attached) {
-              resizeByKeyboard(event.key, event.shiftKey, event.altKey);
-              return;
-            }
-            const delta = event.altKey ? 1 : event.shiftKey ? 32 : 8;
-            onGeometry(
-              movePanel(
-                value,
-                event.key === 'ArrowRight' ? delta : event.key === 'ArrowLeft' ? -delta : 0,
-                event.key === 'ArrowDown' ? delta : event.key === 'ArrowUp' ? -delta : 0,
-                viewport,
-              ),
-            );
-          }}
-        >
-          <span className="panel-grip" aria-hidden>
-            <DotsSix size={16} />
-          </span>
-          <strong>{title}</strong>
-        </div>
-        <div className="panel-presentation-actions" data-motion="panel-actions">
-          {onBack && (
-            <IconButton label={t('返回上一步工具')} onClick={onBack}>
+      {!page && (
+        <div className="panel-drag-header" data-motion="panel-header">
+          {onBack && !condensed && (
+            <IconButton
+              className="panel-back-action"
+              label={backLabel ?? t('返回上一步工具')}
+              onClick={onBack}
+            >
               <ArrowLeft size={17} />
             </IconButton>
           )}
-          {attached && !condensed && (
-            <div
-              className="panel-mobile-presentations"
-              role="group"
-              aria-label={studioText('panelStates')}
-            >
-              {(
-                [
-                  ['collapsed', 'photo', 'photoLabel'],
-                  ['normal', 'edit', 'editLabel'],
-                  ['maximized', 'tools', 'toolsLabel'],
-                ] as const
-              ).map(([state, text, description]) => (
-                <button
-                  type="button"
-                  key={state}
-                  aria-label={studioText(description)}
-                  title={studioText(description)}
-                  aria-pressed={value.presentation === state}
-                  aria-controls={contentId}
-                  onClick={() => setPresentation(state, state === 'normal')}
-                >
-                  {studioText(text)}
-                </button>
-              ))}
-            </div>
-          )}
-          <IconButton
-            className="panel-collapse-action"
-            label={
-              collapsed
-                ? t('继续调节：恢复面板到{height}像素，保留当前操作', {
-                    height: Math.round(value.height),
-                  })
-                : needsPhotoSpace
-                  ? t('看全图：临时折叠面板，保留当前操作和{height}像素高度', {
-                      height: Math.round(value.height),
-                    })
-                  : t('折叠到标题栏，保留当前操作')
-            }
+          <div
+            ref={dragHandle}
+            className="panel-title-drag"
+            role="button"
+            tabIndex={0}
+            aria-label={t('{title}面板：{action}。Alt + 方向键微调，回车{state}。', {
+              title,
+              action: t(attached ? '上下拖动调整高度，方向键调整尺寸' : '拖动和方向键移动'),
+              state: t(collapsed ? '展开' : '折叠'),
+            })}
             aria-expanded={!collapsed}
             aria-controls={contentId}
-            onClick={() => setPresentation(collapsed ? 'normal' : 'collapsed')}
+            onPointerDown={(event) => begin(event, attached ? 'resize' : 'move', 'n')}
+            onPointerMove={move}
+            onPointerUp={(event) => end(event)}
+            onPointerCancel={(event) => end(event, true)}
+            onLostPointerCapture={(event) => end(event, true)}
+            onDoubleClick={() => setPresentation(collapsed ? 'normal' : 'collapsed')}
+            onKeyDown={(event) => {
+              if (event.key === 'Enter' || event.key === ' ') {
+                event.preventDefault();
+                setPresentation(collapsed ? 'normal' : 'collapsed');
+                return;
+              }
+              if (!['ArrowLeft', 'ArrowRight', 'ArrowUp', 'ArrowDown'].includes(event.key)) return;
+              event.preventDefault();
+              if (attached) {
+                resizeByKeyboard(event.key, event.shiftKey, event.altKey);
+                return;
+              }
+              const delta = event.altKey ? 1 : event.shiftKey ? 32 : 8;
+              onGeometry(
+                movePanel(
+                  value,
+                  event.key === 'ArrowRight' ? delta : event.key === 'ArrowLeft' ? -delta : 0,
+                  event.key === 'ArrowDown' ? delta : event.key === 'ArrowUp' ? -delta : 0,
+                  viewport,
+                ),
+              );
+            }}
           >
-            {collapsed ? <CaretUp size={17} /> : <CaretDown size={17} />}
-          </IconButton>
-          <IconButton
-            className="panel-maximize-action"
-            label={
-              maximized
-                ? t('返回常规调节，恢复面板尺寸')
-                : mobile
-                  ? t('展开精调，允许遮挡画面')
-                  : t('最大化面板')
-            }
-            aria-pressed={maximized}
-            onClick={() => setPresentation(maximized ? 'normal' : 'maximized')}
-          >
-            {maximized ? <CornersIn size={17} /> : <CornersOut size={17} />}
-          </IconButton>
-          <button
-            ref={layoutTrigger}
-            type="button"
-            className="panel-layout-trigger"
-            title={t('面板位置与连续尺寸')}
-            aria-label={t('面板位置与连续尺寸')}
-            aria-expanded={menu}
-            aria-controls={menuId}
-            onClick={() => setMenu(!menu)}
-          >
-            <SlidersHorizontal size={18} />
-          </button>
-          <IconButton label={t('收起{title}，可从工具栏重新打开', { title })} onClick={onClose}>
-            <X size={18} />
-          </IconButton>
+            <span className="panel-grip" aria-hidden>
+              <DotsSix size={16} />
+            </span>
+            <strong>{title}</strong>
+          </div>
+          <div className="panel-presentation-actions" data-motion="panel-actions">
+            {attached && !condensed && (
+              <div
+                className="panel-mobile-presentations"
+                role="group"
+                aria-label={studioText('panelStates')}
+              >
+                {(
+                  [
+                    ['collapsed', 'photo', 'photoLabel'],
+                    ['normal', 'edit', 'editLabel'],
+                    ['maximized', 'tools', 'toolsLabel'],
+                  ] as const
+                ).map(([state, text, description]) => (
+                  <button
+                    type="button"
+                    key={state}
+                    aria-label={studioText(description)}
+                    title={studioText(description)}
+                    aria-pressed={value.presentation === state}
+                    aria-controls={contentId}
+                    onClick={() => setPresentation(state, state === 'normal')}
+                  >
+                    {studioText(text)}
+                  </button>
+                ))}
+              </div>
+            )}
+            <IconButton
+              className="panel-collapse-action"
+              label={
+                collapsed
+                  ? t('继续调节：恢复面板到{height}像素，保留当前操作', {
+                      height: Math.round(value.height),
+                    })
+                  : needsPhotoSpace
+                    ? t('看全图：临时折叠面板，保留当前操作和{height}像素高度', {
+                        height: Math.round(value.height),
+                      })
+                    : t('折叠到标题栏，保留当前操作')
+              }
+              aria-expanded={!collapsed}
+              aria-controls={contentId}
+              onClick={() => setPresentation(collapsed ? 'normal' : 'collapsed')}
+            >
+              {collapsed ? <CaretUp size={17} /> : <CaretDown size={17} />}
+            </IconButton>
+            <IconButton
+              className="panel-maximize-action"
+              label={
+                maximized
+                  ? t('返回常规调节，恢复面板尺寸')
+                  : mobile
+                    ? t('展开精调，允许遮挡画面')
+                    : t('最大化面板')
+              }
+              aria-pressed={maximized}
+              onClick={() => setPresentation(maximized ? 'normal' : 'maximized')}
+            >
+              {maximized ? <CornersIn size={17} /> : <CornersOut size={17} />}
+            </IconButton>
+            <button
+              ref={layoutTrigger}
+              type="button"
+              className="panel-layout-trigger"
+              title={t('面板位置与连续尺寸')}
+              aria-label={t('面板位置与连续尺寸')}
+              aria-expanded={menu}
+              aria-controls={menuId}
+              onClick={() => setMenu(!menu)}
+            >
+              <SlidersHorizontal size={18} />
+            </button>
+            <IconButton label={t('收起{title}，可从工具栏重新打开', { title })} onClick={onClose}>
+              <X size={18} />
+            </IconButton>
+          </div>
         </div>
-      </div>
-      {menuPresence.present && (
+      )}
+      {!page && menuPresence.present && (
         <div
           id={menuId}
           className="panel-layout-menu"
@@ -690,11 +722,11 @@ export function FloatingPanel({
         data-motion="panel-body"
         data-motion-pixels="true"
         data-motion-state={contentPresence.phase}
-        inert={collapsed || !open}
-        aria-hidden={collapsed || !open}
+        inert={(!page && collapsed) || !open}
+        aria-hidden={(!page && collapsed) || !open}
         hidden={!contentPresence.present}
       >
-        {navigation && <div className="panel-context-navigation">{navigation}</div>}
+        {!page && navigation && <div className="panel-context-navigation">{navigation}</div>}
         <PanelChromeContext.Provider
           value={{
             mobile,
@@ -706,7 +738,8 @@ export function FloatingPanel({
           {children}
         </PanelChromeContext.Provider>
       </div>
-      {!collapsed &&
+      {!page &&
+        !collapsed &&
         !maximized &&
         edges
           .filter((edge) => !attached || edge === 'n')

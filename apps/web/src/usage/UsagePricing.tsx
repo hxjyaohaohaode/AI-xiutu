@@ -1,11 +1,12 @@
 import { t, useLocale } from '../i18n';
 import { useMemo, useState } from 'react';
 import { ArrowClockwise, Tag } from '@phosphor-icons/react';
-import { Busy, InlineError } from '../components/Ui';
+import { InlineError } from '../components/Ui';
 import { ChoiceSelect } from '../components/ChoiceSelect';
 import { MotionDetails } from '../motion/Presence';
 import { pointText, usageOperationName } from './model';
 import type { UsageQuote } from './catalog';
+import { UsageSkeleton } from './UsageSkeleton';
 
 const qualityLabels: Record<string, string> = {
   auto: '自动',
@@ -48,7 +49,7 @@ export function UsagePricing({
             <ArrowClockwise size={15} aria-hidden /> {t('刷新报价')}
           </button>
         </div>
-        {loading && <Busy label={t('读取模型报价')} />}
+        {loading && <UsageSkeleton profile="pricing" />}
         {errors.map((message, index) => (
           <InlineError key={index} message={t(message)} />
         ))}

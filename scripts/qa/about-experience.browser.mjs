@@ -7,29 +7,11 @@
 import assert from 'node:assert/strict';
 
 const desktop = { width: 1440, height: 960 };
-const examples = ['coast', 'portrait', 'color-study'];
+
 const localeCases = [
-  {
-    locale: 'zh-CN',
-    viewport: desktop,
-    titles: ['海岸日光', '自然人像', '一抹鲜明'],
-    open: '打开并编辑',
-    selected: 0,
-  },
-  {
-    locale: 'zh-TW',
-    viewport: { width: 390, height: 844 },
-    titles: ['海岸日光', '自然人像', '一抹鮮明'],
-    open: '開啟並編輯',
-    selected: 1,
-  },
-  {
-    locale: 'en',
-    viewport: { width: 320, height: 568 },
-    titles: ['Coastal light', 'A natural portrait', 'A vivid note'],
-    open: 'Open and edit',
-    selected: 2,
-  },
+  { locale: 'zh-CN', viewport: desktop },
+  { locale: 'zh-TW', viewport: { width: 390, height: 844 } },
+  { locale: 'en', viewport: { width: 320, height: 568 } },
 ];
 
 async function canvasPixels(canvas) {
@@ -91,7 +73,7 @@ async function selectLocale(page, locale) {
 async function assertActiveFeature(page, index, until) {
   const article = page.locator('.experience-feature').nth(index);
   await until(
-    async () => (await article.locator('button').getAttribute('aria-pressed')) === 'true',
+    async () => (await article.getAttribute('aria-pressed')) === 'true',
     `feature ${index + 1} responds to the input`,
   );
   const image = page.locator('.experience-tour-image').nth(index);
@@ -107,7 +89,7 @@ async function assertActiveFeature(page, index, until) {
       }),
     `feature ${index + 1} finishes its visible transition`,
   );
-  assert.equal(await page.locator('.experience-feature button[aria-pressed="true"]').count(), 1);
+  assert.equal(await page.locator('.experience-feature[aria-pressed="true"]').count(), 1);
   assert.equal(await page.locator('.experience-tour-image[aria-hidden="false"]').count(), 1);
 }
 
@@ -159,7 +141,7 @@ async function wheelTo(page, selector, until) {
 async function noTextClipping(page) {
   const overflows = await page.locator('.about-page').evaluate((root) => {
     const result = [];
-    for (const element of root.querySelectorAll('h1,h2,h3,p,.experience-sample-caption')) {
+    for (const element of root.querySelectorAll('h1,h2,h3,p,.feature-art-note,.study-range')) {
       const rect = element.getBoundingClientRect();
       if (!rect.width || !rect.height || getComputedStyle(element).visibility === 'hidden')
         continue;
@@ -188,282 +170,185 @@ async function tracePointer(page) {
 }
 
 export async function runAboutExperienceChecks({ newContext, check, capture, until, report }) {
-  const evidence = { tour: null, motion: null, samples: [] };
+  const evidence = { tour: null, motion: null, studies: [], responsive: [], faq: [], agent: null };
   report.aboutExperience = evidence;
   const withPublicPage = async (name, viewport, run) => {
     const { context, page } = await newContext(viewport, 'about');
     const mutations = [];
-    const observe = (request) => {
-      const path = new URL(request.url()).pathname;
-      if (request.method() !== 'GET' && path.startsWith('/v1/'))
-        mutations.push(`${request.method()} ${path}`);
-    };
+    const observe = request => { const path = new URL(request.url()).pathname;
+      if (request.method() !== 'GET' && path.startsWith('/v1/')) mutations.push(`${request.method()} ${path}`); };
     page.on('request', observe);
-    try {
-      const result = await run(page);
-      assert.deepEqual(mutations, [], `${name} must not upload, authenticate or start a paid task`);
-      return result;
-    } catch (error) {
-      await capture(page, `about-experience-${name}-failure`).catch(() => {});
-      throw error;
-    } finally {
-      page.off('request', observe);
-      await context.close();
-    }
+    try { const result = await run(page); assert.deepEqual(mutations, [], `${name} must not upload, authenticate or start a paid task`); return result; }
+    catch (error) { await capture(page, `about-r3-${name}-failure`).catch(() => {}); throw error; }
+    finally { page.off('request', observe); await context.close(); }
   };
+  await check('About has unique editorial art and synchronized slow wheel, hover and keyboard chapters', async () =>
+    withPublicPage('tour', desktop, async page => {
+      const hero = await decodedImage(page.locator('.hero-artwork img'), '/about/hero-editorial.webp', [1536,1024], until);
+      assert.equal(hero.loading, 'eager');
+      assert.ok((await page.locator('.about-header').boundingBox()).height <= 60, 'Header should leave room for the work');
+      await capture(page, 'about-r3-hero-desktop');
+      await wheelTo(page, '.experience-tour-sticky', until);
+      const features = page.locator('.experience-feature');
+      assert.equal(await features.count(), 4);
+      await features.nth(1).hover(); await assertActiveFeature(page, 1, until);
+      await decodedImage(page.locator('.experience-tour-image').nth(1).locator('img'), '/about/local-stilllife.webp', [1536,1024], until);
+      await features.nth(1).focus(); await page.mouse.move(10, 250); await page.keyboard.press('Tab');
+      assert.equal(await features.nth(2).evaluate(el => document.activeElement === el), true);
+      await assertActiveFeature(page, 2, until);
+      await capture(page, 'about-r3-portrait-annotations');
+      await features.nth(3).hover(); await assertActiveFeature(page, 3, until);
+      await page.locator('.feature-artwork-footer button').click();
+      await decodedImage(page.locator('.feature-interface img'), '/about/layers-zh-CN.webp', [1440,960], until);
+      await capture(page, 'about-r3-actual-interface-inline');
+      await page.locator('.feature-interface-close').click();
+      assert.equal(await page.locator('.feature-interface').count(),0);
+      const geometry = await page.locator('.experience-tour').evaluate(el => ({height:el.offsetHeight,viewport:innerHeight}));
+      assert.ok(geometry.height >= geometry.viewport*3.8, 'Each chapter needs a readable scroll interval');
+      const activeBefore = await page.locator('.experience-tour').getAttribute('data-active');
+      await page.mouse.move(10,600); await page.mouse.wheel(0,24);
+      await page.evaluate(() => new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve))));
+      assert.equal(await page.locator('.experience-tour').getAttribute('data-active'), activeBefore, 'A tiny wheel movement must not erase a manual selection');
+      const positions=[];
+      for(const selector of ['#agent h2','#try h2','.about-paths h2','#together h2','.about-devices h2','#questions h2','.about-closing h2','.about-footer'])
+        positions.push({selector,y:await wheelTo(page,selector,until)});
+      await noTextClipping(page);
+      const distinct=await page.locator('.hero-artwork img,.experience-tour-image img,.agent-photo-source img,.team-visual > .about-image img').evaluateAll(images => images.map(img=>new URL(img.src).pathname));
+      assert.equal(new Set(distinct).size, distinct.length, 'Different chapters must not recycle the same photograph');
+      evidence.tour={hero,positions,distinct,hover:true,keyboard:true,nativeWheel:true,apiMutations:0}; return evidence.tour;
+    }));
 
-  await check(
-    'About shows real UI captures and a continuous wheel/hover/keyboard tour',
-    async () => {
-      return withPublicPage('tour', desktop, async (page) => {
-        const hero = await decodedImage(
-          page.locator('.experience-hero-window img'),
-          '/about/workspace-zh-CN.webp',
-          [1440, 960],
-          until,
-        );
-        assert.equal(
-          hero.loading,
-          'eager',
-          'The main product image must not wait for lazy loading',
-        );
-        const positions = [{ section: 'hero', y: await page.evaluate(() => scrollY) }];
-        positions.push({ section: 'create', y: await wheelTo(page, '#create h2', until) });
-        const features = page.locator('.experience-feature > h3 > button');
-        assert.equal(await features.count(), 4);
-        await features.nth(1).hover();
-        await assertActiveFeature(page, 1, until);
-        const local = await decodedImage(
-          page.locator('.experience-tour-image').nth(1).locator('img'),
-          '/about/local-zh-CN.webp',
-          [1440, 960],
-          until,
-        );
-        // Focus is established once; Tab itself must move to and select the next feature.
-        await features.nth(1).focus();
-        await page.mouse.move(12, 220);
-        await page.keyboard.press('Tab');
-        assert.equal(
-          await features.nth(2).evaluate((element) => document.activeElement === element),
-          true,
-        );
-        await assertActiveFeature(page, 2, until);
-        const portrait = await decodedImage(
-          page.locator('.experience-tour-image').nth(2).locator('img'),
-          '/about/portrait-zh-CN.webp',
-          [1440, 960],
-          until,
-        );
-        await capture(page, 'about-experience-keyboard-feature');
-        await features.nth(3).hover();
-        await assertActiveFeature(page, 3, until);
-        const layers = await decodedImage(
-          page.locator('.experience-tour-image').nth(3).locator('img'),
-          '/about/layers-zh-CN.webp',
-          [1440, 960],
-          until,
-        );
-        for (const selector of [
-          '#agent h2',
-          '#try h2',
-          '#samples h2',
-          '#together h2',
-          '.experience-device h2',
-          '#questions h2',
-          '.about-closing h2',
-          '.about-footer',
-        ]) {
-          positions.push({ section: selector, y: await wheelTo(page, selector, until) });
-        }
-        assert.ok(
-          positions.at(-1).y > desktop.height * 2,
-          'The full story must advance beyond the hero',
-        );
-        await noTextClipping(page);
-        const phone = page.locator('.experience-device-phone img');
-        await phone.scrollIntoViewIfNeeded();
-        const mobile = await decodedImage(phone, '/about/phone-zh-CN.webp', [390, 844], until);
-        await capture(page, 'about-experience-device-captures');
-        evidence.tour = {
-          positions,
-          decoded: [hero, local, portrait, layers, mobile],
-          hover: true,
-          keyboardTab: true,
-          nativeWheel: true,
-          apiMutations: 0,
-        };
-        return evidence.tour;
-      });
-    },
-  );
-
-  await check(
-    'About pointer motion changes real pixels and respects idle/offscreen/reduced motion',
-    async () => {
-      return withPublicPage('motion', desktop, async (page) => {
-        // Explicitly exercise both user preferences in this isolated context.
-        await page.emulateMedia({ reducedMotion: 'no-preference' });
-        assert.equal(
-          await page.evaluate(() => matchMedia('(hover: hover) and (pointer: fine)').matches),
-          true,
-          'This gate needs the harness desktop pointer, not a fabricated event',
-        );
-        const canvas = page.locator('.about-hero .about-pointer-ribbons canvas');
-        await until(
-          async () => (await canvasPixels(canvas))?.width > 1,
-          'the bounded pointer canvas sizes',
-        );
-        const baseline = await canvasPixels(canvas);
-        await tracePointer(page);
-        const drawn = await until(async () => {
-          const pixels = await canvasPixels(canvas);
-          return pixels && pixels.opaque > baseline.opaque && pixels.checksum !== baseline.checksum
-            ? pixels
-            : null;
-        }, 'a real pointer movement paints a visible trace');
-        await capture(page, 'about-experience-pointer-trace');
-        const idle = await until(async () => {
-          const pixels = await canvasPixels(canvas);
-          return pixels?.checksum === baseline.checksum ? pixels : null;
-        }, 'idle pointer decoration returns to its original canvas');
-        await tracePointer(page);
-        await until(
-          async () => (await canvasPixels(canvas))?.checksum !== baseline.checksum,
-          'the pointer decoration can wake after becoming idle',
-        );
-        const bounds = await page.locator('.about-hero').boundingBox();
-        await page.mouse.move(12, desktop.height - 60);
-        await page.mouse.wheel(0, Math.ceil(bounds.y + bounds.height + desktop.height / 2));
-        await until(
-          async () =>
-            page
-              .locator('.about-hero')
-              .evaluate((element) => element.getBoundingClientRect().bottom <= 0),
-          'the hero leaves the viewport',
-        );
-        const offscreen = await until(async () => {
-          const pixels = await canvasPixels(canvas);
-          return pixels?.checksum === baseline.checksum ? pixels : null;
-        }, 'offscreen pointer decoration clears its dynamic canvas');
-        await page.emulateMedia({ reducedMotion: 'reduce' });
-        await page.keyboard.press('Control+Home');
-        await page.waitForFunction(() => scrollY === 0);
-        await tracePointer(page);
-        await page.locator('.experience-hero-window').hover();
-        const reduced = await page.locator('.about-hero').evaluate((root) => {
-          const canvas = root.querySelector('.about-pointer-ribbons canvas');
-          const rest = root.querySelector('.about-pointer-ribbons__rest');
-          const preview = root.querySelector('.about-hover-preview__surface');
-          return {
-            canvasDisplay: getComputedStyle(canvas).display,
-            restDisplay: getComputedStyle(rest).display,
-            restOpacity: Number(getComputedStyle(rest).opacity),
-            previewTransform: getComputedStyle(preview).transform,
-            unreadableReveals: [
-              ...document.querySelectorAll('.about-scroll-reveal, [data-reveal-piece]'),
-            ].filter((element) => {
-              const style = getComputedStyle(element);
-              return Number(style.opacity) !== 1 || style.transform !== 'none';
-            }).length,
-          };
-        });
-        assert.equal(reduced.canvasDisplay, 'none', 'Reduced motion hides the dynamic canvas');
-        assert.notEqual(reduced.restDisplay, 'none', 'A static illustration remains');
-        assert.ok(reduced.restOpacity > 0, 'The static illustration remains visible');
-        assert.equal(
-          reduced.previewTransform,
-          'none',
-          'Reduced motion does not tilt the product capture',
-        );
-        assert.equal(
-          reduced.unreadableReveals,
-          0,
-          'Reduced motion keeps all reveal content readable',
-        );
-        await capture(page, 'about-experience-reduced-motion');
-        evidence.motion = { baseline, drawn, idle, offscreen, reduced, apiMutations: 0 };
-        return evidence.motion;
-      });
-    },
-  );
-
-  await check(
-    'Three localized sample galleries open the corresponding full-resolution source',
-    async () => {
-      for (const item of localeCases) {
-        await withPublicPage(`samples-${item.locale}`, item.viewport, async (page) => {
-          await selectLocale(page, item.locale);
-          await decodedImage(
-            page.locator('.experience-hero-window img'),
-            `/about/workspace-${item.locale}.webp`,
-            [1440, 960],
-            until,
-          );
-          const cards = page.locator('.experience-sample button');
-          assert.equal(await cards.count(), 3);
-          const assets = [];
-          for (let index = 0; index < examples.length; index += 1) {
-            const card = cards.nth(index);
-            await card.scrollIntoViewIfNeeded();
-            assert.equal(await card.locator('h3').innerText(), item.titles[index]);
-            assert.equal(
-              await card.getAttribute('aria-label'),
-              `${item.titles[index]} · ${item.open}`,
-            );
-            assets.push(
-              await decodedImage(
-                card.locator('img'),
-                `/about/${examples[index]}.webp`,
-                [1536, 1024],
-                until,
-              ),
-            );
-          }
-          await noTextClipping(page);
-          await capture(page, `about-experience-gallery-${item.locale}-${item.viewport.width}`);
-          const expected = `${examples[item.selected]}.webp`;
-          await cards.nth(item.selected).click();
-          await page.waitForURL((url) => url.hash === '#/studio');
-          await page
-            .locator('.site-studio:not([hidden]) .canvas-stage[aria-busy="false"]')
-            .waitFor();
-          assert.equal(
-            await page.locator('.canvas-file-info > span:not(.busy)').innerText(),
-            expected,
-          );
-          assert.equal(await page.locator('.canvas-file-info > small').innerText(), '1536 × 1024');
-          const preview = page.locator(
-            '.site-studio:not([hidden]) .image-viewport canvas[aria-label]',
-          );
-          assert.equal(
-            await preview.count(),
-            1,
-            'The imported image has one actual editing preview',
-          );
-          const pixels = await until(async () => {
-            const value = await canvasPixels(preview);
-            return value?.opaque > 0 ? value : null;
-          }, `${expected} renders through the actual editor`);
-          await capture(page, `about-experience-opened-${examples[item.selected]}-${item.locale}`);
-          evidence.samples.push({
-            locale: item.locale,
-            viewport: item.viewport,
-            assets,
-            opened: expected,
-            sourceDimensions: [1536, 1024],
-            pixels,
-            apiMutations: 0,
-          });
-        });
+  await check('Agent, voice and team illustrations change content and spatial state without starting services', async () =>
+    withPublicPage('creative-states', desktop, async page => {
+      await page.locator('.agent-visual').scrollIntoViewIfNeeded();
+      const steps=page.locator('.agent-steps button');
+      await steps.nth(0).click();
+      const before=await page.locator('.agent-photo-source').boundingBox();
+      await steps.nth(1).click();
+      await until(async()=>page.locator('.agent-tools').evaluate(el=>getComputedStyle(el).opacity==='1'), 'Agent tool stage enters');
+      const tools=await page.locator('.agent-photo-source').boundingBox();
+      assert.ok(tools.width < before.width * .85, 'The source visibly moves and scales to make room for tools');
+      await steps.nth(2).click();
+      await until(async()=>page.locator('.agent-candidates').evaluate(el=>getComputedStyle(el).opacity==='1'), 'Agent candidates enter');
+      await page.locator('.agent-candidate > button').nth(1).click();
+      assert.equal(await page.locator('.agent-candidate > button').nth(1).getAttribute('aria-pressed'),'true');
+      await decodedImage(page.locator('.agent-candidate').nth(1).locator('img'), '/about/agent-candidate-1.webp',[768,512],until);
+      await capture(page,'about-r3-agent-candidates');
+      await steps.nth(3).click();
+      await until(async()=>page.locator('.agent-decision').evaluate(el=>getComputedStyle(el).opacity==='1'), 'Decision stage enters');
+      await page.locator('.voice-pill button').click();
+      assert.equal(await page.locator('.voice-pill button').getAttribute('aria-pressed'),'true');
+      await page.locator('.voice-pill button').press('Escape');
+      assert.equal(await page.locator('.voice-pill button').getAttribute('aria-pressed'),'false');
+      await page.locator('.voice-modes button').nth(1).click();
+      assert.ok((await page.locator('.voice-transcript').innerText()).includes('只提亮人物'));
+      await page.locator('.voice-modes button').nth(2).click();
+      assert.equal(await page.locator('.voice-pill button').getAttribute('aria-pressed'),'false');
+      await capture(page,'about-r3-voice-states');
+      await page.locator('.team-modes button').nth(0).click();
+      assert.equal(await page.locator('.team-visual').getAttribute('data-team'),'false');
+      await page.locator('.team-modes button').nth(1).click();
+      await page.locator('.team-presence button').nth(1).click();
+      assert.equal(await page.locator('.team-visual').getAttribute('data-member'),'1');
+      await page.locator('.team-versions button').nth(2).click();
+      assert.equal(await page.locator('.team-visual').getAttribute('data-version'),'3');
+      await capture(page,'about-r3-team-regions');
+      const device=[];
+      for(let index=0;index<3;index++) {
+        await page.locator('.device-modes button').nth(index).click();
+        assert.equal(await page.locator('.device-composition').getAttribute('data-device'),String(index));
+        device.push(await page.locator('.device-phone').boundingBox());
       }
-      return {
-        locales: 3,
-        galleries: 3,
-        decodedExamples: 9,
-        distinctSourcesOpened: 3,
-        actualEditorPixels: true,
-        apiMutations: 0,
-      };
-    },
-  );
+      assert.equal(await page.locator('.device-phone figcaption').count(),0, 'Device capture has no text pasted over it');
+      await capture(page,'about-r3-device-phone');
+      evidence.agent={sourceBefore:before,sourceWithTools:tools,candidates:true,voiceStates:true,teamStates:true,device,apiMutations:0};return evidence.agent;
+    }));
+
+  await check('Each preset updates all eight real parameters; comparison keeps precise pixels and keyboard control', async()=>
+    withPublicPage('study', desktop, async page=>{
+      await page.locator('.color-study').scrollIntoViewIfNeeded();
+      await page.locator('.study-compare').waitFor();
+      const presets=[
+        {index:0,values:[.12,10,4,-4,-16,14,12,6]},
+        {index:1,values:[.18,4,18,12,-28,18,24,16]},
+        {index:2,values:[.22,20,-16,-10,-30,26,6,-12]},
+      ];
+      for(const preset of presets){
+        await page.locator('.study-presets button').nth(preset.index).click();
+        const values=await page.locator('.study-adjustments input').evaluateAll(inputs=>inputs.map(input=>Number(input.value)));
+        assert.deepEqual(values,preset.values,'The displayed controls are the exact preset recipe');
+        await page.locator('.study-picture[aria-busy="false"]').waitFor();
+        evidence.studies.push({index:preset.index,values,pixels:await canvasPixels(page.locator('canvas.study-result'))});
+      }
+      assert.equal(new Set(evidence.studies.map(x=>x.pixels.checksum)).size,3,'All looks produce distinct real pixels');
+      const oldValues=await page.locator('.study-adjustments input').evaluateAll(inputs=>inputs.map(input=>Number(input.value)));
+      await page.locator('.study-range-warmth input').press('ArrowRight');
+      const newValues=await page.locator('.study-adjustments input').evaluateAll(inputs=>inputs.map(input=>Number(input.value)));
+      assert.equal(newValues[1],oldValues[1]+1); assert.deepEqual(newValues.filter((_,i)=>i!==1),oldValues.filter((_,i)=>i!==1));
+      assert.equal(await page.locator('.study-adjustments').getAttribute('data-preset'),'custom');
+      await page.locator('.study-compare').press('Home');assert.equal(await page.locator('.study-compare').inputValue(),'0');
+      await page.locator('.study-compare').press('End');assert.equal(await page.locator('.study-compare').inputValue(),'100');
+      await page.locator('.study-compare').press('ArrowLeft');assert.equal(await page.locator('.study-compare').inputValue(),'99');
+      const bounds=await page.locator('.study-picture').boundingBox();
+      await page.mouse.move(bounds.x+bounds.width*.2,bounds.y+bounds.height*.45);
+      await page.mouse.down();await page.mouse.move(bounds.x+bounds.width*.7,bounds.y+bounds.height*.5,{steps:12});
+      const divider=await page.locator('.compare-edge > path').getAttribute('d');
+      await page.mouse.up();
+      assert.ok(divider.includes('C'), 'The visible comparison boundary is a curve');
+      assert.equal(await page.locator('.study-result').evaluate(el=>getComputedStyle(el).filter),'none','No blur is applied to editing pixels');
+      assert.equal(await page.locator('.study-picture').evaluate(el=>getComputedStyle(el).outlineStyle),'none','The image never gets a dark focus frame');
+      await page.mouse.move(10,10);
+      await capture(page,'about-r3-real-eight-parameter-study');
+      await page.locator('.study-open').click(); await page.waitForURL(url=>url.hash==='#/studio');
+      await page.getByLabel('选择照片',{exact:true}).waitFor({state:'attached'});
+      assert.equal(await page.locator('canvas[aria-label="照片编辑预览"]').count(),0,'Starting work leaves image choice to the user');
+      return {presets:evidence.studies,customPreservesValues:true,comparisonKeyboard:true,curvePath:divider,sharpPixels:true,ownWorkEntry:true,apiMutations:0};
+    }));
+
+  await check('About FAQ reserves its width and height, and all three languages fit narrow screens', async()=>{
+    for(const item of localeCases) await withPublicPage(`responsive-${item.locale}`,item.viewport,async page=>{
+      await selectLocale(page,item.locale);
+      await decodedImage(page.locator('.hero-artwork img'),'/about/hero-editorial.webp',[1536,1024],until);
+      await capture(page,`about-r3-${item.locale}-${item.viewport.width}-hero`);
+      await page.locator('.about-faq').scrollIntoViewIfNeeded();
+      const geometry=()=>page.locator('.faq-layout').evaluate(el=>({width:el.getBoundingClientRect().width,height:el.getBoundingClientRect().height,next:document.querySelector('.about-closing').getBoundingClientRect().top+scrollY}));
+      const baseline=await geometry();
+      for(let index=0;index<5;index++){
+        await page.locator('.about-question button').nth(index).click();
+        const next=await geometry();
+        assert.ok(Math.abs(next.width-baseline.width)<1 && Math.abs(next.height-baseline.height)<1 && Math.abs(next.next-baseline.next)<1,'FAQ changes only its answer, never the next section position');
+        assert.equal(await page.locator('.question-answer[aria-hidden="false"]').count(),1);
+      }
+      await noTextClipping(page); await capture(page,`about-r3-${item.locale}-${item.viewport.width}-faq`);
+      await page.locator('.color-study').scrollIntoViewIfNeeded();await page.locator('.study-compare').waitFor();
+      await noTextClipping(page);await capture(page,`about-r3-${item.locale}-${item.viewport.width}-study`);
+      const ranges=await page.locator('.study-adjustments input').evaluateAll(inputs=>inputs.map(el=>{const r=el.getBoundingClientRect();return {width:r.width,height:r.height};}));
+      assert.equal(ranges.length,8);assert.ok(ranges.every(r=>r.width>=80 && r.height>=32),'Each parameter has a reachable track');
+      evidence.faq.push({locale:item.locale,geometry:baseline,stable:true});evidence.responsive.push({locale:item.locale,viewport:item.viewport,ranges});
+    });return {faq:evidence.faq,responsive:evidence.responsive,apiMutations:0};
+  });
+
+  await check('Pointer decoration respects idle, offscreen, reduced motion and readable reveals', async()=>
+    withPublicPage('motion',desktop,async page=>{
+      await page.emulateMedia({reducedMotion:'no-preference'});
+      const canvas=page.locator('.about-hero .about-pointer-ribbons canvas');
+      await until(async()=>(await canvasPixels(canvas))?.width>1,'Pointer canvas sizes');
+      const baseline=await canvasPixels(canvas); await tracePointer(page);
+      const drawn=await until(async()=>{const v=await canvasPixels(canvas);return v&&v.opaque>baseline.opaque&&v.checksum!==baseline.checksum?v:null;},'Pointer paints a real trace');
+      await capture(page,'about-r3-pointer-trace');
+      await until(async()=>(await canvasPixels(canvas))?.checksum===baseline.checksum,'Pointer becomes idle');
+      await tracePointer(page); const bounds=await page.locator('.about-hero').boundingBox();
+      await page.mouse.move(10,desktop.height-60);await page.mouse.wheel(0,Math.ceil(bounds.y+bounds.height+desktop.height/2));
+      await until(async()=>page.locator('.about-hero').evaluate(el=>el.getBoundingClientRect().bottom<=0),'Hero leaves viewport');
+      await until(async()=>(await canvasPixels(canvas))?.checksum===baseline.checksum,'Offscreen canvas clears');
+      await page.emulateMedia({reducedMotion:'reduce'});await page.keyboard.press('Control+Home');await page.waitForFunction(()=>scrollY===0);
+      await tracePointer(page);
+      const reduced=await page.locator('.about-hero').evaluate(root=>({
+        canvasDisplay:getComputedStyle(root.querySelector('.about-pointer-ribbons canvas')).display,
+        restOpacity:Number(getComputedStyle(root.querySelector('.about-pointer-ribbons__rest')).opacity),
+        unreadable:[...document.querySelectorAll('.about-scroll-reveal,[data-reveal-piece]')].filter(el=>{const s=getComputedStyle(el);return Number(s.opacity)!==1||s.transform!=='none'||s.filter!=='none';}).length
+      }));
+      assert.equal(reduced.canvasDisplay,'none');assert.ok(reduced.restOpacity>0);assert.equal(reduced.unreadable,0);
+      await capture(page,'about-r3-reduced-motion');evidence.motion={baseline,drawn,reduced,apiMutations:0};return evidence.motion;
+    }));
 }

@@ -36,8 +36,11 @@ import { UsageLedger, type UsageMember } from './UsageLedger';
 import { UsagePricing } from './UsagePricing';
 import { UsageJob } from './UsageJob';
 import { UsageRiver } from './UsageRiver';
+import { UsageSkeleton } from './UsageSkeleton';
+import { UsageNumber } from './UsageNumber';
 import { usageJobReference, type UsageJobTarget } from './providerBilling';
 import './usage.css';
+import './usage-refinement.css';
 
 type Props = {
   space?: Space | null;
@@ -351,11 +354,7 @@ function UsageWorkspace({
     <section className="usage-dashboard" aria-label={t('用量与额度历史')}>
       <header className="view-heading usage-heading" data-motion="usage-heading">
         <div>
-          <span className="usage-eyebrow">{t('使用记录')}</span>
           <h1>{t('用量与额度')}</h1>
-          <p>
-            {operator ? t('查看空间与成员的服务点流水。') : t('查看服务点、创作消耗与空间容量。')}
-          </p>
         </div>
         <div className="view-actions usage-actions">
           <button
@@ -549,11 +548,7 @@ function UsageWorkspace({
           {t(exportMessage)}
         </p>
       )}
-      {state.loading && (
-        <div className="usage-loading" role="status">
-          <Busy label={t('读取用量账本')} />
-        </div>
-      )}
+      {state.loading && <UsageSkeleton />}
       {report && (
         <>
           <div className="usage-overview">
@@ -568,7 +563,7 @@ function UsageWorkspace({
                     <Wallet size={17} aria-hidden /> {t('当前可用')}
                   </span>
                   <strong>
-                    {pointText(report.balance.available)}
+                    <UsageNumber value={report.balance.available} />
                     <small> {t('点')}</small>
                   </strong>
                 </div>
@@ -577,7 +572,7 @@ function UsageWorkspace({
                     <HourglassMedium size={17} aria-hidden /> {t('当前预占')}
                   </span>
                   <strong>
-                    {pointText(report.balance.held)}
+                    <UsageNumber value={report.balance.held} />
                     <small> {t('点')}</small>
                   </strong>
                 </div>
@@ -633,7 +628,9 @@ function UsageWorkspace({
                   title={t(usageKindDescriptions[key])}
                 >
                   <span>{key === 'held' ? t('累计预占') : t(usageLabels[key])}</span>
-                  <strong>{pointText(report.totals[key])}</strong>
+                  <strong>
+                    <UsageNumber value={report.totals[key]} />
+                  </strong>
                   <small>{kind === key ? t('正在查看趋势') : t('服务点')}</small>
                 </button>
               ))}

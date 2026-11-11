@@ -2,7 +2,7 @@ import { t } from '../i18n';
 import { Component, lazy, Suspense, useState, type ComponentProps, type ReactNode } from 'react';
 import type { AIPanel } from './AIPanel';
 import { SecureRandomUnavailableError } from '../lib/uuid';
-import { Busy } from './Ui';
+import { FeatureSkeleton } from './DeferredFeature';
 
 type BoundaryProps = {
   children: ReactNode;
@@ -57,7 +57,7 @@ export function AIPanelFeature(props: ComponentProps<typeof AIPanel>) {
   const [Panel, setPanel] = useState(createPanel);
   return (
     <AIPanelErrorBoundary onClose={props.onClose} onRetry={() => setPanel(() => createPanel())}>
-      <Suspense fallback={<Busy label={t('正在打开创作助手')} />}>
+      <Suspense fallback={<FeatureSkeleton profile="assistant" label={t('正在打开创作助手')} />}>
         <Panel {...props} />
       </Suspense>
     </AIPanelErrorBoundary>

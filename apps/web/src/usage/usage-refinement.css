@@ -1,0 +1,517 @@
+/* React Bits Counter / Animated List informed the cadence and fixed digit widths.
+   Curves below are built from real ledger buckets; no demo series or invented totals. */
+.usage-dashboard {
+  gap: 22px;
+}
+.usage-heading h1 {
+  margin: 0;
+  font-size: clamp(24px, 3cqi, 30px);
+  font-weight: 560;
+}
+.usage-dashboard .usage-card {
+  border-radius: 14px;
+}
+.usage-overview > .usage-card,
+.usage-insights > .usage-card {
+  animation: usage-section-arrive 360ms cubic-bezier(0.2, 0.75, 0.2, 1) both;
+}
+.usage-overview > :nth-child(2) {
+  animation-delay: 45ms;
+}
+.usage-insights > :first-child {
+  animation-delay: 75ms;
+}
+.usage-insights > :nth-child(2) {
+  animation-delay: 115ms;
+}
+.usage-totals {
+  gap: 0;
+  border: 1px solid var(--line);
+  border-radius: 13px;
+  overflow: hidden;
+}
+.usage-totals button {
+  border: 0;
+  border-radius: 0;
+  padding: 16px 14px;
+  gap: 10px;
+  transition: background-color 180ms ease;
+}
+.usage-totals button + button {
+  border-left: 1px solid var(--line);
+}
+.usage-totals button[aria-pressed='true'] {
+  background: var(--surface-secondary);
+  box-shadow: inset 0 -2px var(--accent);
+}
+.usage-totals button > small {
+  min-height: 1.4em;
+  font-size: 10px;
+}
+.usage-number {
+  display: inline;
+  font-variant-numeric: tabular-nums;
+}
+.usage-number > span[aria-hidden='true'] {
+  white-space: nowrap;
+}
+.usage-number-digit {
+  display: inline-block;
+  animation: usage-digit-arrive 420ms cubic-bezier(0.18, 0.7, 0.2, 1) var(--digit-delay, 0ms) both;
+}
+.usage-chart .usage-section-heading {
+  align-items: start;
+  margin-bottom: 4px;
+}
+.usage-bucket {
+  flex-basis: 88px;
+}
+.usage-bucket .choice-trigger {
+  min-height: 44px;
+  border-radius: 9px;
+}
+.usage-trend-interactive {
+  min-width: 0;
+}
+.usage-trend-readout {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  min-height: 86px;
+}
+.usage-trend-readout > div:first-child {
+  display: grid;
+  gap: 4px;
+  min-width: 0;
+}
+.usage-trend-readout > div:first-child > span {
+  color: var(--muted);
+  font-size: 11px;
+}
+.usage-trend-readout strong {
+  min-width: 0;
+  color: var(--ink, var(--text));
+  font-size: clamp(26px, 4cqi, 34px);
+  font-weight: 520;
+  letter-spacing: -0.045em;
+  line-height: 1.3;
+  overflow-wrap: anywhere;
+}
+.usage-trend-readout small {
+  color: var(--muted);
+  font-size: 11px;
+  font-weight: 400;
+  letter-spacing: 0;
+  white-space: nowrap;
+}
+.usage-trend-navigation {
+  display: flex;
+  align-items: center;
+  flex: 0 0 auto;
+}
+.usage-trend-navigation > span {
+  max-width: 100px;
+  margin-right: 9px;
+  color: var(--muted);
+  font-size: 10px;
+  line-height: 1.4;
+  text-align: end;
+}
+.usage-trend-navigation button {
+  display: grid;
+  place-items: center;
+  width: 44px;
+  height: 44px;
+  padding: 0;
+  border: 0;
+  border-radius: 10px;
+  color: var(--ink, var(--text));
+  background: transparent;
+  cursor: pointer;
+  transition: background-color 140ms ease;
+}
+.usage-trend-navigation button:hover:not(:disabled) {
+  background: var(--surface-hover);
+}
+.usage-trend-navigation button:disabled {
+  opacity: 0.25;
+}
+.usage-trend-canvas {
+  position: relative;
+  display: grid;
+  grid-template-columns: 36px minmax(0, 1fr);
+  min-width: 0;
+  height: clamp(180px, 25cqi, 240px);
+}
+.usage-trend-axis {
+  position: relative;
+  color: var(--muted);
+  font-size: 10px;
+}
+.usage-trend-axis > span {
+  position: absolute;
+  right: 9px;
+  transform: translateY(-50%);
+  font-variant-numeric: tabular-nums;
+}
+.usage-trend-plot {
+  position: relative;
+  min-width: 0;
+  border-radius: 4px;
+  cursor: crosshair;
+  touch-action: pan-y;
+  -webkit-tap-highlight-color: transparent;
+}
+.usage-trend-plot:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 5px;
+}
+.usage-trend-plot svg {
+  display: block;
+  width: 100%;
+  height: 100%;
+  color: var(--ink, var(--text));
+  overflow: visible;
+}
+.usage-trend-plot :is(path, line, circle) {
+  vector-effect: non-scaling-stroke;
+}
+.usage-trend-gridline {
+  stroke: var(--line);
+  stroke-width: 1;
+  stroke-dasharray: 2 5;
+}
+.usage-trend-line {
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.8;
+  stroke-linejoin: round;
+  stroke-linecap: round;
+}
+.usage-trend-point {
+  stroke: var(--ink, var(--text));
+  stroke-width: 4;
+  stroke-linecap: round;
+}
+.usage-trend-point[data-negative='true'] {
+  stroke: var(--accent);
+}
+.usage-trend-cursor {
+  stroke: color-mix(in srgb, var(--muted) 45%, transparent);
+  stroke-width: 1;
+  stroke-dasharray: 3 4;
+}
+.usage-trend-selected {
+  position: absolute;
+  width: 10px;
+  height: 10px;
+  transform: translate(-50%, -50%);
+  border: 2px solid var(--surface);
+  border-radius: 50%;
+  background: var(--ink, var(--text));
+  box-shadow: 0 0 0 1px var(--ink, var(--text));
+  pointer-events: none;
+}
+.usage-trend-selected[data-unknown='true'] {
+  background: var(--surface);
+}
+.usage-trend-dates {
+  display: flex;
+  justify-content: space-between;
+  gap: 10px;
+  margin: 4px 0 0 36px;
+  color: var(--muted);
+  font-size: 10px;
+}
+.usage-trend-hint {
+  margin: 14px 0 0;
+  color: var(--muted);
+  font-size: 10px;
+  line-height: 1.6;
+  text-align: end;
+}
+.usage-trend-values {
+  margin-top: 8px;
+  padding-top: 8px;
+  border-top: 1px solid var(--line);
+}
+.usage-distribution-list {
+  gap: 20px;
+}
+.usage-distribution-list > li {
+  animation: usage-section-arrive 300ms cubic-bezier(0.2, 0.75, 0.2, 1) both;
+}
+.usage-distribution-list > li:nth-child(2) {
+  animation-delay: 40ms;
+}
+.usage-distribution-list > li:nth-child(3) {
+  animation-delay: 80ms;
+}
+.usage-distribution-list > li:nth-child(n + 4) {
+  animation-delay: 120ms;
+}
+.usage-distribution-list svg {
+  height: 3px;
+}
+.usage-river-lanes {
+  gap: 24px;
+}
+.usage-river-lanes figure + figure {
+  border-left: 1px solid var(--line);
+  padding-left: 24px;
+}
+.usage-river-lanes figcaption {
+  align-items: start;
+  flex-direction: column;
+  gap: 6px;
+}
+.usage-river-lanes figcaption strong {
+  font-size: 25px;
+}
+.usage-river-area {
+  stroke-width: 1.2;
+  fill: color-mix(in srgb, currentColor 7%, transparent);
+}
+.usage-river .usage-footnote {
+  max-width: 70ch;
+}
+.usage-skeleton {
+  min-width: 0;
+}
+.usage-skeleton :is(i, b, span:not(.sr-only)) {
+  display: block;
+  border-radius: 5px;
+  background: color-mix(in srgb, var(--muted) 13%, var(--surface));
+  animation: usage-skeleton-breathe 1.65s ease-in-out infinite alternate;
+}
+.usage-skeleton i {
+  width: 37%;
+  height: 10px;
+}
+.usage-skeleton b {
+  width: 64%;
+  height: 26px;
+  margin-top: 20px;
+  animation-delay: 100ms;
+}
+.usage-skeleton span:not(.sr-only) {
+  width: 100%;
+  height: 5px;
+  margin-top: 20px;
+  animation-delay: 200ms;
+}
+.usage-skeleton-overview {
+  display: grid;
+  grid-template-columns: 1.2fr 1fr;
+  gap: 16px;
+}
+.usage-skeleton-overview > div,
+.usage-skeleton-insights > div {
+  min-width: 0;
+  padding: 20px;
+  border: 1px solid var(--line);
+  border-radius: 14px;
+}
+.usage-skeleton-overview > div {
+  height: 204px;
+}
+.usage-skeleton-overview b:last-child {
+  width: 45%;
+  height: 12px;
+}
+.usage-skeleton-metrics {
+  display: grid;
+  grid-template-columns: repeat(6, minmax(0, 1fr));
+  gap: 1px;
+  margin-block: 24px;
+  border: 1px solid var(--line);
+  border-radius: 13px;
+  overflow: hidden;
+}
+.usage-skeleton-metrics > div {
+  padding: 20px 14px;
+}
+.usage-skeleton-metrics i {
+  width: 60%;
+}
+.usage-skeleton-metrics b {
+  width: 75%;
+}
+.usage-skeleton-insights {
+  display: grid;
+  grid-template-columns: 1.4fr 1fr;
+  gap: 16px;
+}
+.usage-skeleton-grid {
+  height: 245px;
+  margin-top: 24px;
+  background: repeating-linear-gradient(
+    to bottom,
+    transparent 0,
+    transparent calc(33.33% - 1px),
+    var(--line) 33.33%
+  );
+  border-bottom: 1px solid var(--line);
+}
+.usage-skeleton-insights > div:last-child b {
+  height: 35px;
+  width: 100%;
+  margin-top: 29px;
+}
+.usage-skeleton-ledger {
+  margin-top: 22px;
+}
+.usage-skeleton-ledger > div {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 20px;
+  padding: 19px 0;
+  border-bottom: 1px solid var(--line);
+}
+.usage-skeleton-ledger i {
+  width: 20%;
+}
+.usage-skeleton-ledger b {
+  width: 35%;
+  height: 12px;
+  margin: 0;
+}
+.usage-skeleton-ledger span:not(.sr-only) {
+  width: 15%;
+  height: 12px;
+  margin: 0;
+}
+.usage-skeleton-capacity {
+  min-height: 130px;
+}
+.usage-skeleton-capacity b {
+  width: 56%;
+  margin-top: 3px;
+}
+.usage-skeleton-pair {
+  display: flex;
+  justify-content: space-between;
+  gap: 32px;
+  margin-top: 20px;
+}
+.usage-skeleton-pair i {
+  width: 35%;
+  height: 10px;
+}
+.usage-skeleton-pricing .usage-skeleton-ledger {
+  margin-top: 8px;
+}
+@keyframes usage-section-arrive {
+  from {
+    opacity: 0.3;
+    transform: translateY(8px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+@keyframes usage-digit-arrive {
+  from {
+    opacity: 0.65;
+    transform: translateY(3px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+@keyframes usage-skeleton-breathe {
+  from {
+    opacity: 0.5;
+  }
+  to {
+    opacity: 1;
+  }
+}
+@container usage-workspace (max-width: 780px) {
+  .usage-skeleton-insights {
+    grid-template-columns: 1fr;
+  }
+  .usage-skeleton-insights > div:last-child {
+    display: none;
+  }
+  .usage-river-lanes {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 24px 18px;
+  }
+  .usage-river-lanes figure + figure {
+    padding-left: 0;
+    border-left: 0;
+  }
+  .usage-river-lanes figure:nth-child(even) {
+    padding-left: 18px;
+    border-left: 1px solid var(--line);
+  }
+}
+@container usage-workspace (max-width: 520px) {
+  .usage-dashboard .usage-card {
+    padding: 17px 14px;
+  }
+  .usage-totals {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+  .usage-totals button {
+    padding: 14px 10px;
+  }
+  .usage-totals button:nth-child(4) {
+    border-left: 0;
+  }
+  .usage-totals button:nth-child(n + 4) {
+    border-top: 1px solid var(--line);
+  }
+  .usage-totals button > strong {
+    font-size: clamp(18px, 5.5cqi, 24px);
+  }
+  .usage-trend-canvas {
+    height: 188px;
+    grid-template-columns: 31px minmax(0, 1fr);
+  }
+  .usage-trend-dates {
+    margin-left: 31px;
+  }
+  .usage-trend-navigation > span {
+    display: none;
+  }
+  .usage-trend-readout {
+    min-height: 82px;
+  }
+  .usage-trend-hint {
+    text-align: start;
+  }
+  .usage-skeleton-overview {
+    grid-template-columns: 1fr;
+  }
+  .usage-skeleton-overview > div {
+    height: 180px;
+  }
+  .usage-skeleton-overview > div:nth-child(2) {
+    display: none;
+  }
+  .usage-skeleton-metrics {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+  .usage-skeleton-grid {
+    height: 222px;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .usage-overview > .usage-card,
+  .usage-insights > .usage-card,
+  .usage-number-digit,
+  .usage-distribution-list > li,
+  .usage-skeleton :is(i, b, span:not(.sr-only)) {
+    animation: none;
+  }
+  .usage-totals button,
+  .usage-trend-navigation button {
+    transition: none;
+  }
+}

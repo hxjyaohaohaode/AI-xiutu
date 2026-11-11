@@ -1,4 +1,4 @@
-import { t } from '../i18n';
+import { t, useLocale } from '../i18n';
 import type { AIModel, ImageOptions } from './types';
 import {
   allowedImageSizes,
@@ -7,6 +7,8 @@ import {
   imageBatchError,
 } from './capabilities';
 import { Disclosure, OptionChips } from '../components/Controls';
+import { modelCopy } from './model-copy';
+import './model-settings.css';
 
 const names: Record<string, string> = {
   auto: '自动',
@@ -45,6 +47,7 @@ export function ImageParameters({
   onSize: (width: number, height: number) => void;
   onOptions: (options: ImageOptions) => void;
 }) {
+  const copy = modelCopy(useLocale());
   const c = model?.parameterCapabilities;
   const choices = allowedImageSizes(model);
   const sizeError = imageSizeError(model, width, height);
@@ -58,13 +61,58 @@ export function ImageParameters({
     ['outputFormat', '供应商编码'],
     ['complexity', '复杂度'],
   ] as const;
+  const hasAdvancedOptions =
+    c &&
+    (c.background.supported ||
+      c.outputFormat.supported ||
+      c.complexity.supported ||
+      (c.outputCompression.supported &&
+        c.outputCompression.formats?.includes(options.outputFormat ?? 'png')));
+  if (!model) return <p className="ai-model-empty">{copy.noModel}</p>;
+  const renderField = (field: (typeof fields)[number][0], label: string) => {
+    const capability = c?.[field];
+    if (!capability?.supported) return null;
+    return (
+      <div className="parameter-row" key={field}>
+        <div className="parameter-label">
+          {field === 'complexity'
+            ? copy.complexity
+            : field === 'outputFormat'
+              ? copy.encoding
+              : t(label)}
+        </div>
+        <OptionChips
+          label={t(label)}
+          value={options[field] ?? ''}
+          options={(capability.values ?? []).map((value) => ({
+            value,
+            label: names[value] ? t(names[value]) : value,
+            disabled:
+              field === 'background' && value === 'transparent' && options.outputFormat === 'jpeg',
+            reason:
+              field === 'background' && value === 'transparent' && options.outputFormat === 'jpeg'
+                ? t('JPEG 不支持透明背景')
+                : undefined,
+          }))}
+          disabled={disabled}
+          onChange={(value) => {
+            const next = { ...options, [field]: value };
+            if (field === 'outputFormat' && value === 'jpeg' && next.background === 'transparent')
+              next.background = 'opaque';
+            onOptions(next);
+          }}
+        />
+        {field === 'complexity' && <p className="control-note">{copy.complexityHint}</p>}
+      </div>
+    );
+  };
   return (
-    <div className="image-parameters">
+    <div className="image-parameters image-parameters-v3">
       <div className="parameter-label">{t('画幅与尺寸')}</div>
       <OptionChips
         label={t('常用生成尺寸')}
         value={width + 'x' + height}
-        options={choices.map((size) => ({
+        options={(c?.size.allowedSizes ? choices : choices.slice(0, 3)).map((size) => ({
           value: size.width + 'x' + size.height,
           label: (
             <>
@@ -121,9 +169,23 @@ export function ImageParameters({
               />
             </label>
           </div>
-          <p className="control-note">
-            {t('尺寸步进 {step} px；可用范围以当前模型为准。', { step })}
-          </p>
+          {choices.length > 3 && (
+            <OptionChips
+              label={t('常用生成尺寸')}
+              value={width + 'x' + height}
+              options={choices
+                .slice(3)
+                .map((size) => ({
+                  value: size.width + 'x' + size.height,
+                  label: size.width + ' × ' + size.height,
+                }))}
+              disabled={disabled}
+              onChange={(value) => {
+                const [w, h] = value.split('x').map(Number);
+                onSize(w!, h!);
+              }}
+            />
+          )}
         </Disclosure>
       )}
       {sizeError && (
@@ -131,46 +193,7 @@ export function ImageParameters({
           {sizeError}
         </p>
       )}
-      {c?.size.reason && <p className="control-note">{t(c.size.reason)}</p>}
-      {fields.map(([field, label]) => {
-        const capability = c?.[field];
-        if (!capability?.supported) return null;
-        return (
-          <div className="parameter-row" key={field}>
-            <div className="parameter-label">{t(label)}</div>
-            <OptionChips
-              label={t(label)}
-              value={options[field] ?? ''}
-              options={(capability.values ?? []).map((value) => ({
-                value,
-                label: names[value] ? t(names[value]) : value,
-                disabled:
-                  field === 'background' &&
-                  value === 'transparent' &&
-                  options.outputFormat === 'jpeg',
-                reason:
-                  field === 'background' &&
-                  value === 'transparent' &&
-                  options.outputFormat === 'jpeg'
-                    ? t('JPEG 不支持透明背景')
-                    : undefined,
-              }))}
-              disabled={disabled}
-              onChange={(value) => {
-                const next = { ...options, [field]: value };
-                if (
-                  field === 'outputFormat' &&
-                  value === 'jpeg' &&
-                  next.background === 'transparent'
-                )
-                  next.background = 'opaque';
-                onOptions(next);
-              }}
-            />
-            {capability.reason && <p className="control-note">{t(capability.reason)}</p>}
-          </div>
-        );
-      })}
+      {renderField('quality', '质量')}
       {c?.n.supported && (c.n.max ?? 1) > 1 && (
         <label className="ai-numeric-setting">
           <span>
@@ -190,32 +213,36 @@ export function ImageParameters({
           />
         </label>
       )}
-      {c?.outputCompression.supported && (
-        <div className="parameter-row">
-          {c.outputCompression.formats?.includes(options.outputFormat ?? 'png') ? (
-            <label className="ai-numeric-setting">
-              <span>
-                {t('编码质量')}
-                <small>%</small>
-              </span>
-              <input
-                aria-label={t('编码质量')}
-                type="number"
-                inputMode="numeric"
-                value={options.outputCompression ?? 100}
-                min={c.outputCompression.min ?? 0}
-                max={c.outputCompression.max ?? 100}
-                step={1}
-                disabled={disabled}
-                onChange={(event) =>
-                  onOptions({ ...options, outputCompression: Number(event.target.value) })
-                }
-              />
-            </label>
-          ) : (
-            <p className="control-note">{t('压缩参数仅适用于 JPEG / WebP；PNG 不发送此项。')}</p>
-          )}
-        </div>
+      {hasAdvancedOptions && (
+        <Disclosure title={copy.more} role="ai-options" className="image-advanced-options">
+          {renderField('background', '背景')}
+          {renderField('outputFormat', '供应商编码')}
+          {renderField('complexity', '复杂度')}
+          {c?.outputCompression.supported &&
+            c.outputCompression.formats?.includes(options.outputFormat ?? 'png') && (
+              <div className="parameter-row">
+                <label className="ai-numeric-setting">
+                  <span>
+                    {t('编码质量')}
+                    <small>%</small>
+                  </span>
+                  <input
+                    aria-label={t('编码质量')}
+                    type="number"
+                    inputMode="numeric"
+                    value={options.outputCompression ?? 100}
+                    min={c.outputCompression.min ?? 0}
+                    max={c.outputCompression.max ?? 100}
+                    step={1}
+                    disabled={disabled}
+                    onChange={(event) =>
+                      onOptions({ ...options, outputCompression: Number(event.target.value) })
+                    }
+                  />
+                </label>
+              </div>
+            )}
+        </Disclosure>
       )}
       {batchError && (
         <p className="parameter-error" role="status">
@@ -227,13 +254,21 @@ export function ImageParameters({
           {optionError}
         </p>
       )}
-      {c?.outputFormat.supported && (
-        <p className="control-note">
-          {t('这里选择供应商编码；项目内素材统一规范化为 PNG。下载时可再选本地导出格式。')}
-        </p>
-      )}
-      <Disclosure title={t('能力与限制')} summary={t('按当前模型')} role="capability">
+      <Disclosure title={copy.limits} role="capability" className="image-capability-details">
         <dl className="capability-list">
+          <div>
+            <dt>{copy.dimensions}</dt>
+            <dd>
+              {t('尺寸步进 {step} px；可用范围以当前模型为准。', { step })}
+              {c?.size.reason && <p>{t(c.size.reason)}</p>}
+            </dd>
+          </div>
+          {c?.outputFormat.supported && (
+            <div>
+              <dt>{copy.encoding}</dt>
+              <dd>{copy.encodingHint}</dd>
+            </div>
+          )}
           {fields
             .filter(([field]) => !c?.[field].supported)
             .map(([field, label]) => (

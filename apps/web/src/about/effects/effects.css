@@ -81,6 +81,7 @@
   .about-scroll-reveal,
   .about-scroll-reveal__piece {
     opacity: 1 !important;
+    filter: none !important;
     transform: none !important;
     will-change: auto !important;
   }

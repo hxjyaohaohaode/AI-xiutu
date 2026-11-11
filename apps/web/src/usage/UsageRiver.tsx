@@ -5,6 +5,7 @@ import type { UsageResponse } from '@ai-xiutu/contracts';
 import { MotionDetails } from '../motion/Presence';
 import { pointText, usageLabels } from './model';
 import { riverKinds, usageRiverLanes } from './riverModel';
+import { UsageNumber } from './UsageNumber';
 
 export function UsageRiver({ series }: { series: UsageResponse['series'] }) {
   useLocale();
@@ -27,7 +28,9 @@ export function UsageRiver({ series }: { series: UsageResponse['series'] }) {
           <figure key={lane.kind} data-kind={lane.kind}>
             <figcaption>
               <span>{t(usageLabels[lane.kind])}</span>
-              <strong>{pointText(lane.knownTotal)}</strong>
+              <strong>
+                <UsageNumber value={lane.knownTotal} />
+              </strong>
             </figcaption>
             <svg
               viewBox={`0 0 ${lane.width} ${lane.height}`}

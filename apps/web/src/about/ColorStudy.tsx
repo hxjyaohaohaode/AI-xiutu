@@ -1,28 +1,46 @@
 import { useEffect, useId, useRef, useState, type CSSProperties } from 'react';
-import { ArrowUpRight, Check, CircleHalf, Cursor, Minus } from '@phosphor-icons/react';
-import { useLocale } from '../i18n';
+import { ArrowUpRight, Check, Cursor } from '@phosphor-icons/react';
+import { formatNumber, useLocale } from '../i18n';
 import { aboutCopy } from './copy';
-import { getSampleImage, type SampleSettings } from './sample-settings';
+import {
+  getSampleImage,
+  samplePreset,
+  changeSampleParameter,
+  SAMPLE_PARAMETER_LIMITS,
+  type SampleSettings,
+  type SampleParameter,
+} from './sample-settings';
+import { studyCopy } from './study-copy';
+import { ElasticCompare } from './ElasticCompare';
 const DEMO_IMAGE = getSampleImage();
+const PARAMETERS: readonly SampleParameter[] = [
+  'exposure',
+  'warmth',
+  'contrast',
+  'saturation',
+  'highlights',
+  'shadows',
+  'vibrance',
+  'clarity',
+];
 
 export function ColorStudy({ onOpen }: { onOpen: (settings: SampleSettings) => void }) {
   const figure = useRef<HTMLElement>(null);
   const [visible, setVisible] = useState(false);
   const locale = useLocale();
   const c = aboutCopy(locale);
+  const study = studyCopy(locale);
   const [split, setSplit] = useState(42);
-  const [warmth, setWarmth] = useState(18);
-  const [exposure, setExposure] = useState(0.1);
-  const [preset, setPreset] = useState<'natural' | 'vivid' | 'soft'>('natural');
-  const [ready, setReady] = useState(false);
+  const [settings, setSettings] = useState(() => samplePreset('natural'));
   const [failed, setFailed] = useState(false);
   const [renderError, setRenderError] = useState(false);
   const [attempt, setAttempt] = useState(0);
   const [rendered, setRendered] = useState(false);
+  const [updating, setUpdating] = useState(false);
   const worker = useRef<Worker | null>(null);
   const canvas = useRef<HTMLCanvasElement>(null);
-  const current = useRef({ warmth, exposure, preset });
-  current.current = { warmth, exposure, preset };
+  const current = useRef(settings);
+  current.current = settings;
   const requestId = useRef(0);
   const pending = useRef(false);
   const dirty = useRef(false);
@@ -35,6 +53,7 @@ export function ColorStudy({ onOpen }: { onOpen: (settings: SampleSettings) => v
     }
     pending.current = true;
     dirty.current = false;
+    setUpdating(true);
     worker.current.postMessage({ id: ++requestId.current, ...current.current });
   };
 
@@ -62,16 +81,20 @@ export function ColorStudy({ onOpen }: { onOpen: (settings: SampleSettings) => v
     let instance: Worker | null = null;
     const image = new Image();
     image.decoding = 'async';
-    setReady(false);
     setFailed(false);
     setRendered(false);
     setRenderError(false);
     image.onload = () => {
       if (!live) return;
-      setReady(true);
       try {
-        const width = Math.min(720, image.naturalWidth);
-        const height = Math.round((width * image.naturalHeight) / image.naturalWidth);
+        if (!image.naturalWidth || !image.naturalHeight) throw new Error('Image unavailable');
+        const scale = Math.min(
+          1,
+          720 / image.naturalWidth,
+          Math.sqrt(400_000 / (image.naturalWidth * image.naturalHeight)),
+        );
+        const width = Math.max(1, Math.floor(image.naturalWidth * scale));
+        const height = Math.max(1, Math.floor(image.naturalHeight * scale));
         const buffer = document.createElement('canvas');
         buffer.width = width;
         buffer.height = height;
@@ -88,10 +111,14 @@ export function ColorStudy({ onOpen }: { onOpen: (settings: SampleSettings) => v
             image?: { width: number; height: number; data: Uint8ClampedArray };
           }>,
         ) => {
-          if (!live || worker.current !== instance) return;
+          if (!live || worker.current !== instance || event.data.id !== requestId.current) return;
           pending.current = false;
-          if (event.data.error) setRenderError(true);
-          else if (!dirty.current && event.data.image && canvas.current) {
+          // Display each newer completed frame during a drag; only the newest
+          // waiting settings are dispatched next. The busy label remains until
+          // those settings finish, so a fast drag does not freeze the photograph.
+          if (event.data.error) {
+            if (!dirty.current) setRenderError(true);
+          } else if (event.data.image && canvas.current) {
             const output = event.data.image;
             canvas.current.width = output.width;
             canvas.current.height = output.height;
@@ -104,19 +131,23 @@ export function ColorStudy({ onOpen }: { onOpen: (settings: SampleSettings) => v
               );
               setRendered(true);
               setRenderError(false);
-            }
+            } else setRenderError(true);
           }
           if (dirty.current) dispatch.current();
+          else setUpdating(false);
         };
         instance.onerror = () => {
           if (live) {
             setRenderError(true);
+            setUpdating(false);
             pending.current = false;
             worker.current = null;
             instance?.terminate();
           }
         };
         pending.current = true;
+        dirty.current = false;
+        setUpdating(true);
         instance.postMessage(
           {
             id: ++requestId.current,
@@ -127,6 +158,7 @@ export function ColorStudy({ onOpen }: { onOpen: (settings: SampleSettings) => v
         );
       } catch {
         setRenderError(true);
+        setUpdating(false);
       }
     };
     image.onerror = () => {
@@ -144,12 +176,11 @@ export function ColorStudy({ onOpen }: { onOpen: (settings: SampleSettings) => v
     };
   }, [attempt, visible]);
   useEffect(() => {
-    if (ready) dispatch.current();
-  }, [warmth, exposure, preset, ready]);
+    // The initial source message already includes the newest complete snapshot.
+    if (worker.current) dispatch.current();
+  }, [settings]);
   const reset = () => {
-    setWarmth(18);
-    setExposure(0.1);
-    setPreset('natural');
+    setSettings(samplePreset('natural'));
     setSplit(42);
   };
 
@@ -162,17 +193,7 @@ export function ColorStudy({ onOpen }: { onOpen: (settings: SampleSettings) => v
       <div
         className="study-picture"
         style={{ '--split': split + '%' } as CSSProperties}
-        aria-busy={!ready && !failed}
-        onPointerMove={(event) => {
-          if (event.pointerType !== 'mouse' || event.buttons !== 0 || !rendered) return;
-          const bounds = event.currentTarget.getBoundingClientRect();
-          setSplit(
-            Math.max(
-              0,
-              Math.min(100, Math.round(((event.clientX - bounds.left) / bounds.width) * 100)),
-            ),
-          );
-        }}
+        aria-busy={!failed && !renderError && (!rendered || updating)}
       >
         <img
           src={DEMO_IMAGE}
@@ -188,7 +209,7 @@ export function ColorStudy({ onOpen }: { onOpen: (settings: SampleSettings) => v
           aria-hidden="true"
           style={{ opacity: rendered ? 1 : 0 }}
         />
-        {!ready && !failed && (
+        {!rendered && !failed && !renderError && (
           <div className="study-loading" role="status">
             <span />
             {c.previewLoading}
@@ -216,21 +237,11 @@ export function ColorStudy({ onOpen }: { onOpen: (settings: SampleSettings) => v
             >
               {c.edited}
             </span>
-            <span className="study-divider" aria-hidden="true">
-              <span>
-                <Minus size={12} />
-                <CircleHalf size={18} />
-                <Minus size={12} />
-              </span>
-            </span>
-            <input
-              className="study-compare"
-              type="range"
-              min="0"
-              max="100"
+            <ElasticCompare
               value={split}
-              aria-label={c.compareLabel}
-              onChange={(event) => setSplit(Number(event.currentTarget.value))}
+              onChange={setSplit}
+              label={c.compareLabel}
+              canvasRef={canvas}
             />
           </>
         )}
@@ -240,66 +251,74 @@ export function ColorStudy({ onOpen }: { onOpen: (settings: SampleSettings) => v
           <Cursor size={14} />
           {c.compare}
         </span>
-        <span>{c.sample}</span>
+        <span aria-live="off">
+          {updating ? study.updating : settings.preset === 'custom' ? study.custom : c.sample}
+        </span>
       </figcaption>
       <div className="study-controls">
-        <div className="study-presets" aria-label={c.adjust}>
+        <div className="study-presets" role="group" aria-label={c.adjust}>
           {(['natural', 'vivid', 'soft'] as const).map((value) => (
             <button
               key={value}
               type="button"
-              aria-pressed={preset === value}
-              onClick={() => setPreset(value)}
+              aria-pressed={settings.preset === value}
+              onClick={() => setSettings(samplePreset(value))}
             >
               <span className={'preset-dot preset-' + value} />
               {value === 'natural' ? c.neutral : value === 'vivid' ? c.vivid : c.soft}
-              {preset === value && <Check size={12} />}
+              <Check size={12} aria-hidden style={{ opacity: settings.preset === value ? 1 : 0 }} />
             </button>
           ))}
         </div>
-        <label className="study-range">
-          <span>{c.warmth}</span>
-          <input
-            type="range"
-            min="-60"
-            max="60"
-            step="1"
-            value={warmth}
-            onChange={(event) => setWarmth(Number(event.currentTarget.value))}
-          />
-          <output>
-            {warmth > 0 ? '+' : ''}
-            {warmth}
-          </output>
-        </label>
-        <label className="study-range exposure-range">
-          <span>{c.exposure}</span>
-          <input
-            type="range"
-            min="-1"
-            max="1"
-            step="0.05"
-            value={exposure}
-            onChange={(event) => setExposure(Number(event.currentTarget.value))}
-          />
-          <output>
-            {exposure > 0 ? '+' : ''}
-            {exposure.toFixed(2)}
-          </output>
-        </label>
+        <div className="study-adjustments" data-preset={settings.preset}>
+          {PARAMETERS.map((key) => {
+            const limits = SAMPLE_PARAMETER_LIMITS[key];
+            const value = formatNumber(settings[key], {
+              minimumFractionDigits: key === 'exposure' ? 2 : 0,
+              maximumFractionDigits: key === 'exposure' ? 2 : 0,
+              signDisplay: 'exceptZero',
+            });
+            const controlId = `${labelId}-${key}`;
+            return (
+              <label className={`study-range study-range-${key}`} key={key} htmlFor={controlId}>
+                <span>{study.labels[key]}</span>
+                <input
+                  id={controlId}
+                  type="range"
+                  min={limits.min}
+                  max={limits.max}
+                  step={limits.step}
+                  value={settings[key]}
+                  aria-valuetext={key === 'exposure' ? `${value} EV` : value}
+                  onChange={(event) => {
+                    const next = event.currentTarget.valueAsNumber;
+                    setSettings((previous) => changeSampleParameter(previous, key, next));
+                  }}
+                />
+                <output htmlFor={controlId} aria-live="off">
+                  {value}
+                  {key === 'exposure' && <small> EV</small>}
+                </output>
+              </label>
+            );
+          })}
+        </div>
         <div className="study-footer">
           <button type="button" className="study-reset" onClick={reset}>
             {c.reset}
           </button>
           <button type="button" className="study-open" onClick={() => onOpen(current.current)}>
-            {c.openSample}
+            {study.open}
             <ArrowUpRight size={15} />
           </button>
         </div>
       </div>
       {renderError && (
         <p className="study-error" role="status">
-          {c.renderFailed}
+          <span>{c.renderFailed}</span>
+          <button type="button" onClick={() => setAttempt((value) => value + 1)}>
+            {c.retry}
+          </button>
         </p>
       )}
     </figure>

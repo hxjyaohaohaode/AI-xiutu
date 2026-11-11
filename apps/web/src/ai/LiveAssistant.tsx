@@ -1,4 +1,4 @@
-import { t, type MessageParams } from '../i18n';
+import { t, formatNumber, type MessageParams } from '../i18n';
 import { MotionDetails } from '../motion/Presence';
 import { useCallback, useEffect, useLayoutEffect, useRef, useState, type ReactNode } from 'react';
 import {
@@ -53,6 +53,8 @@ import { ComposerInput } from './ComposerInput';
 import { ComposerVisual } from './ComposerVisual';
 import { IDLE_AI_ACTIVITY, type AIActivity } from './AIVisibility';
 import { PanelSettings } from './PanelSettings';
+import { PanelSettingsPage } from './PanelSettingsPage';
+import { ModelChoice } from './ModelChoice';
 import { CreativeControls, initialCreativeSettings } from './CreativeControls';
 import { observeAssistantTurn, type RunEvent } from './turnStream';
 import { ContextEvidence } from './ContextEvidence';
@@ -168,6 +170,7 @@ const assistantDrafts = new Map<
 export interface LiveAssistantProps {
   navigation?: ReactNode;
   visible?: boolean;
+  hidden?: boolean;
   onActivityChange?: (activity: AIActivity) => void;
   onClose?: () => void;
   project: Project | null;
@@ -1976,7 +1979,10 @@ export function LiveAssistant(props: LiveAssistantProps) {
   return (
     <section
       className="live-assistant live-assistant-v2"
+      hidden={props.hidden}
+      inert={props.hidden}
       data-in-call={inCall || undefined}
+      data-settings-open={overlay === 'settings' || undefined}
       aria-label={t('实时语音与智能体协作')}
     >
       <header className="ai-workbench-header">
@@ -2327,12 +2333,10 @@ export function LiveAssistant(props: LiveAssistantProps) {
           <p className="ai-input-disclosure">{t('收起后通话继续，可在顶部活动条静音或结束。')}</p>
         )}
       </footer>
-      <Modal
+      <PanelSettingsPage
         title={t('助手设置')}
         open={props.visible !== false && overlay === 'settings'}
-        keepMounted
         onClose={() => setOverlay(null)}
-        className="ai-options-dialog"
       >
         <div className="ai-options-content">
           <PanelSettings onClose={() => setOverlay(null)} />
@@ -2350,11 +2354,11 @@ export function LiveAssistant(props: LiveAssistantProps) {
             </button>
           </div>
           <div className="assistant-models">
-            <ChoiceSelect
+            <ModelChoice
               label={t('助手模型')}
               ariaLabel={t('助手模型')}
               value={modelId}
-              onValueChange={setModelId}
+              onChange={setModelId}
               disabled={inCall || busy || submissionBlocked || !!grant}
               placeholder={t('暂无可用模型')}
               options={models.map((item) => ({
@@ -2364,22 +2368,27 @@ export function LiveAssistant(props: LiveAssistantProps) {
               }))}
             />
             {mode === 'voice' && (
-              <ChoiceSelect
+              <ModelChoice
                 label={t('语音模型')}
                 ariaLabel={t('语音模型')}
                 value={voiceId}
-                onValueChange={setVoiceId}
+                onChange={setVoiceId}
                 disabled={inCall || busy || submissionBlocked || !!grant}
                 placeholder={t('暂无语音模型')}
                 options={voices.map((item) => ({
                   value: item.id,
                   label: item.label,
-                  description: t('{v0} 服务点 · 最长 {v1} 秒', {
-                    v0: item.unitCost,
-                    v1: item.maxSeconds,
-                  }),
+                  description: `${formatNumber(item.unitCost)} ${t('点')}`,
                 }))}
               />
+            )}
+            {mode === 'voice' && selectedVoice && (
+              <p className="ai-selected-model-meta">
+                {t('{v0} 服务点 · 最长 {v1} 秒', {
+                  v0: selectedVoice.unitCost,
+                  v1: selectedVoice.maxSeconds,
+                })}
+              </p>
             )}
           </div>
           <CreativeControls
@@ -2572,7 +2581,7 @@ export function LiveAssistant(props: LiveAssistantProps) {
             </div>
           </MotionDetails>
         </div>
-      </Modal>
+      </PanelSettingsPage>
       <Modal
         title={t('会话记录')}
         open={props.visible !== false && overlay === 'history'}

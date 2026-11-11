@@ -142,6 +142,11 @@ test('a recovered unknown job keeps its warning outside closed settings and bloc
     assert.match(visiblePanel, /结果待核验，暂不能提交新任务/);
     assert.match(visiblePanel, />核对请求<\/button>/);
     assert.match(visiblePanel, /aria-label="生成图片"[^>]*disabled=""/);
+    assert.doesNotMatch(
+      markup,
+      /class="live-assistant /,
+      'an unvisited assistant is not mounted while a frozen unknown task owns recovery',
+    );
     assert.equal(entries.size, 1, 'rendering never clears or replaces the original request');
   } finally {
     if (previous) Object.defineProperty(globalThis, 'sessionStorage', previous);

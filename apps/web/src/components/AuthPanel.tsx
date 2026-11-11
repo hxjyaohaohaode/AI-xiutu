@@ -8,7 +8,6 @@ import {
   type ReactNode,
 } from 'react';
 import {
-  ArrowLeft,
   ArrowRight,
   CheckCircle,
   DeviceMobile,
@@ -122,6 +121,7 @@ export function AuthPanel({
   const smsCooldown = cooldowns.remaining(fields.phone, clock);
   const submitCooldown = cooldowns.remaining(fields.phone, clock, 'submit');
   const isRegisterPhone = mode === 'register' && registerStep === 'phone';
+  const resumeRegistration = isRegisterPhone && smsState !== 'idle';
 
   useEffect(() => {
     onRegisterExitGuard?.(() => accepted.current || !operations.busy);
@@ -161,6 +161,7 @@ export function AuthPanel({
 
   function switchMode(next: AuthMode) {
     if (operations.busy || accepted.current) return;
+    if (next === mode && !resetDone && !uncertain) return;
     setDirection(next === 'password' ? 'back' : 'forward');
     setMode(next);
     setRegisterStep('phone');
@@ -276,7 +277,8 @@ export function AuthPanel({
     event.preventDefault();
     if (operations.busy || uncertain || accepted.current) return;
     if (isRegisterPhone) {
-      await sendCode();
+      if (resumeRegistration) continueRegistration();
+      else await sendCode();
       return;
     }
     if (cooldowns.remaining(fields.phone, Date.now(), 'submit')) return;
@@ -537,13 +539,51 @@ export function AuthPanel({
       description={mode === 'register' ? c.register : mode === 'reset' ? c.reset : c.login}
       config={config}
       onBack={() => {
-        if (!operations.busy) onClose();
+        if (operations.busy) return;
+        if (!uncertain && mode === 'register' && registerStep === 'details') {
+          setDirection('back');
+          setRegisterStep('phone');
+          setError(null);
+          setErrors({});
+        } else if (!uncertain && (mode === 'register' || mode === 'reset')) switchMode('password');
+        else onClose();
       }}
       onHome={onHome}
-      backLabel={backToAbout ? c.home : c.back}
+      backLabel={
+        !uncertain && mode === 'register' && registerStep === 'details'
+          ? c.previous
+          : !uncertain && (mode === 'register' || mode === 'reset')
+            ? t('返回登录')
+            : backToAbout
+              ? c.home
+              : c.back
+      }
       busy={busy}
       className={`account-auth account-auth-${mode}`}
     >
+      {!resetDone && !uncertain && (
+        <div className="auth-entry-links" role="group" aria-label={c.entryLabel}>
+          <button
+            type="button"
+            aria-label={c.switchLogin}
+            aria-pressed={mode !== 'register'}
+            disabled={busy}
+            onClick={() => {
+              if (mode === 'register' || mode === 'reset') switchMode('password');
+            }}
+          >
+            {t('登录')}
+          </button>
+          <button
+            type="button"
+            aria-pressed={mode === 'register'}
+            disabled={busy}
+            onClick={() => switchMode('register')}
+          >
+            {t('创建新账号')}
+          </button>
+        </div>
+      )}
       {!resetDone && !uncertain && (mode === 'password' || mode === 'otp') && (
         <div className="auth-methods" role="group" aria-label={t('登录方式')}>
           <button
@@ -692,7 +732,9 @@ export function AuthPanel({
                   </div>
                 )}
                 {isRegisterPhone ? (
-                  <p className="auth-step-note">{t('验证码将发送到这个号码。')}</p>
+                  !resumeRegistration && (
+                    <p className="auth-step-note">{t('验证码将发送到这个号码。')}</p>
+                  )
                 ) : (
                   <>
                     {mode !== 'password' && codeField}
@@ -789,7 +831,10 @@ export function AuthPanel({
                   className="button button-primary auth-primary"
                   type="submit"
                   disabled={
-                    busy || (isRegisterPhone ? smsUnavailable || !!smsCooldown : !!submitCooldown)
+                    busy ||
+                    (isRegisterPhone
+                      ? !resumeRegistration && (smsUnavailable || !!smsCooldown)
+                      : !!submitCooldown)
                   }
                 >
                   {activeKind === 'submit' || (isRegisterPhone && activeKind === 'sms') ? (
@@ -807,7 +852,9 @@ export function AuthPanel({
                   ) : (
                     <>
                       {isRegisterPhone
-                        ? smsLabel
+                        ? resumeRegistration
+                          ? c.continueDetails
+                          : smsLabel
                         : submitCooldown
                           ? cooldownText(submitCooldown)
                           : mode === 'register'
@@ -819,7 +866,7 @@ export function AuthPanel({
                     </>
                   )}
                 </button>
-                {isRegisterPhone && (
+                {isRegisterPhone && !resumeRegistration && (
                   <button
                     type="button"
                     className="auth-text-button auth-existing-code"
@@ -833,38 +880,16 @@ export function AuthPanel({
           )}
         </AuthStage>
       </MotionSwitch>
-      {!resetDone && !uncertain && (
+      {!resetDone && !uncertain && (mode === 'password' || mode === 'otp') && (
         <div className="auth-navigation">
-          {mode === 'password' || mode === 'otp' ? (
-            <>
-              <button
-                type="button"
-                className="auth-text-button"
-                onClick={() => switchMode('reset')}
-                disabled={busy}
-              >
-                {t('忘记密码？')}
-              </button>
-              <button
-                type="button"
-                className="auth-text-button"
-                onClick={() => switchMode('register')}
-                disabled={busy}
-              >
-                {t('创建新账号')} <ArrowRight size={15} aria-hidden />
-              </button>
-            </>
-          ) : (
-            <button
-              type="button"
-              className="auth-text-button"
-              onClick={() => switchMode('password')}
-              disabled={busy}
-            >
-              <ArrowLeft size={15} aria-hidden />
-              {t('返回登录')}
-            </button>
-          )}
+          <button
+            type="button"
+            className="auth-text-button"
+            onClick={() => switchMode('reset')}
+            disabled={busy}
+          >
+            {t('忘记密码？')}
+          </button>
         </div>
       )}
       <p className="auth-privacy-note">

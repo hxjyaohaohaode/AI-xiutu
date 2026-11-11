@@ -79,9 +79,10 @@ async function openAssistantSettings(page) {
     .locator('.live-assistant')
     .getByRole('button', { name: '助手设置', exact: true })
     .click();
-  const dialog = page.getByRole('dialog', { name: '助手设置', exact: true });
-  await dialog.waitFor();
-  return dialog;
+  const settings = page.getByRole('region', { name: '助手设置', exact: true });
+  await settings.waitFor();
+  assert.equal(await page.getByRole('dialog', { name: '助手设置', exact: true }).count(), 0);
+  return settings;
 }
 async function choose(scope, label, option) {
   const control = scope.getByRole('combobox', { name: label, exact: true });
@@ -492,7 +493,7 @@ try {
       await sharing.click();
       await settings.getByLabel('允许公开网络检索，保留来源链接').check();
       await sharing.click();
-      await settings.getByRole('button', { name: '关闭窗口', exact: true }).click();
+      await settings.getByRole('button', { name: '返回对话', exact: true }).click();
       await settings.waitFor({ state: 'hidden' });
       const beforeSoloStarts = inbound.filter((event) => event.type === 'session.start').length;
       holdSoloReady = true;

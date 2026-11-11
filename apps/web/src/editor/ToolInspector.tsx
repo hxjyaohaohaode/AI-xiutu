@@ -25,7 +25,6 @@ import {
   ArrowClockwise,
   ArrowsLeftRight,
   ArrowsDownUp,
-  Check,
   CaretDown,
   Trash,
   Eye,
@@ -55,6 +54,7 @@ import {
 } from './precision';
 import './editor-controls.css';
 import { AdvancedInspector } from './AdvancedInspector';
+import { HistoryPanel } from './HistoryPanel';
 import { checkedRecipe } from './advanced-model';
 
 export type ToolGroup =
@@ -1623,53 +1623,7 @@ function LegacyToolInspector({
             )}
             {group === 'history' && (
               <>
-                <p className="inspector-note">
-                  {t('按步骤回看；恢复历史只影响本地草稿，不删除云端版本。')}
-                </p>
-                <div className="history-actions">
-                  <button
-                    className="button button-secondary"
-                    disabled={!editor.canUndo}
-                    onClick={editor.undo}
-                  >
-                    <ArrowCounterClockwise size={16} />
-                    {t('撤销')}
-                  </button>
-                  <button
-                    className="button button-secondary"
-                    disabled={!editor.canRedo}
-                    onClick={editor.redo}
-                  >
-                    <ArrowClockwise size={16} />
-                    {t('重做')}
-                  </button>
-                </div>
-                <ol className="history-list">
-                  {editor.history.map((item, index) => (
-                    <li
-                      key={index}
-                      className={
-                        index === editor.historyIndex
-                          ? 'current'
-                          : index > editor.historyIndex
-                            ? 'future'
-                            : ''
-                      }
-                    >
-                      <span>{index === editor.historyIndex ? <Check size={13} /> : index + 1}</span>
-                      <div>
-                        {t(item.label)}
-                        <small>
-                          {index === editor.historyIndex
-                            ? t('当前状态')
-                            : index > editor.historyIndex
-                              ? t('已撤销')
-                              : t('已记录')}
-                        </small>
-                      </div>
-                    </li>
-                  ))}
-                </ol>
+                <HistoryPanel editor={editor} />
                 <button className="text-button" onClick={editor.exportRecipe}>
                   {t('下载可恢复的编辑配方')}
                 </button>

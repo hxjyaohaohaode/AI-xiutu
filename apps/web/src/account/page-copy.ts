@@ -15,6 +15,10 @@ const copy = {
     account: '你的账号、空间与使用记录。',
     loading: '正在读取账号信息',
     waiting: '正在完成当前请求，请稍候。',
+    previous: '上一步',
+    switchLogin: '登录已有账号',
+    continueDetails: '继续填写',
+    entryLabel: '账号入口',
   },
   'zh-TW': {
     back: '返回創作',
@@ -30,6 +34,10 @@ const copy = {
     account: '你的帳號、空間與使用紀錄。',
     loading: '正在讀取帳號資訊',
     waiting: '正在完成目前的請求，請稍候。',
+    previous: '上一步',
+    switchLogin: '登入現有帳號',
+    continueDetails: '繼續填寫',
+    entryLabel: '帳號入口',
   },
   en: {
     back: 'Back to creating',
@@ -45,6 +53,10 @@ const copy = {
     account: 'Your account, spaces and activity.',
     loading: 'Loading your account',
     waiting: 'Finishing the current request. Please wait.',
+    previous: 'Previous step',
+    switchLogin: 'Sign in to an existing account',
+    continueDetails: 'Continue setup',
+    entryLabel: 'Account access',
   },
 } as const;
 

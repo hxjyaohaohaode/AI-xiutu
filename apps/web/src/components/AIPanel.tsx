@@ -38,6 +38,8 @@ import { ComposerVisual } from '../ai/ComposerVisual';
 import { AIVisibilityContext, IDLE_AI_ACTIVITY, type AIActivity } from '../ai/AIVisibility';
 import { useRetainedDialogValue } from '../ai/useRetainedDialogValue';
 import { PanelSettings } from '../ai/PanelSettings';
+import { PanelSettingsPage } from '../ai/PanelSettingsPage';
+import { ModelChoice } from '../ai/ModelChoice';
 import { VoiceCapture } from './VoiceCapture';
 import {
   prepareGenerationDraft,
@@ -212,6 +214,10 @@ export function AIPanel({
       !referenceFile &&
       (cached?.assistantOpen ?? initialOperation === 'edit-plan'),
   );
+  const [assistantVisited, setAssistantVisited] = useState(assistantOpen);
+  useEffect(() => {
+    if (assistantOpen) setAssistantVisited(true);
+  }, [assistantOpen]);
   const [overlay, setOverlay] = useState<
     'tasks' | 'settings' | 'references' | 'history' | 'recovery' | null
   >(null);
@@ -952,16 +958,29 @@ export function AIPanel({
     ...eligible.map((model) => ({
       value: model.id,
       label: model.label,
-      description: modelReady(model) ? undefined : t('当前未开通'),
+      description: modelReady(model)
+        ? model.provider === 'openai'
+          ? 'OpenAI'
+          : model.provider === 'qwen'
+            ? 'Qwen'
+            : model.provider === 'ark'
+              ? 'Ark'
+              : undefined
+        : t('当前未开通'),
     })),
   ];
   return (
     <AIVisibilityContext.Provider value={visible}>
-      <aside className="ai-panel ai-workbench ai-workbench-v2" aria-label={t('AI创作助手')}>
-        {assistantOpen ? (
+      <aside
+        className="ai-panel ai-workbench ai-workbench-v2"
+        data-settings-open={overlay === 'settings' || undefined}
+        aria-label={t('AI创作助手')}
+      >
+        {(assistantOpen || assistantVisited) && (
           <LiveAssistant
             navigation={taskPicker}
-            visible={visible}
+            visible={visible && assistantOpen}
+            hidden={!assistantOpen}
             onClose={onClose}
             onActivityChange={setAssistantActivity}
             project={project}
@@ -982,7 +1001,8 @@ export function AIPanel({
             captureCurrentImage={captureCurrentImage}
             onPrepareGenerationDraft={prepareAssistantGenerationDraft}
           />
-        ) : (
+        )}
+        {!assistantOpen && (
           <>
             <header className="ai-workbench-header">
               {taskPicker}
@@ -1355,23 +1375,21 @@ export function AIPanel({
             ))}
           </div>
         </Modal>
-        <Modal
+        <PanelSettingsPage
           title={t('任务设置')}
           open={visible && overlay === 'settings'}
-          keepMounted
           onClose={() => setOverlay(null)}
-          className="ai-options-dialog"
         >
           <div className="ai-options-content">
             <PanelSettings onClose={() => setOverlay(null)} />
-            <ChoiceSelect
+            <ModelChoice
               label={t('模型')}
               ariaLabel={t('{task}模型', { task: task.label })}
               value={modelId}
               disabled={inputLocked || !eligible.length}
               placeholder={t('暂无适用模型')}
               options={modelOptions}
-              onValueChange={(value) => {
+              onChange={(value) => {
                 setModelId(value);
                 changed();
               }}
@@ -1426,7 +1444,7 @@ export function AIPanel({
               {quote === null ? t('选择可用模型后确认点数') : t('本轮 {v0} 服务点', { v0: quote })}
             </p>
           </div>
-        </Modal>
+        </PanelSettingsPage>
         <Modal
           title={t('参考图与局部编辑')}
           open={visible && overlay === 'references'}

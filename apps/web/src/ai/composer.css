@@ -16,6 +16,9 @@
   font-size: 13px;
   line-height: 1.5;
 }
+.live-assistant.live-assistant-v2[hidden] {
+  display: none;
+}
 .ai-workbench-header {
   display: flex;
   flex: 0 0 auto;
@@ -465,14 +468,14 @@
   background: var(--surface-secondary);
 }
 .live-assistant-v2 .assistant-candidate,
-.ai-options-dialog .assistant-candidate {
+:is(.ai-options-dialog, .ai-settings-page) .assistant-candidate {
   padding: 12px;
   border: 1px solid var(--line);
   border-radius: 10px;
   background: transparent;
 }
 .live-assistant-v2 .assistant-candidate h4,
-.ai-options-dialog .assistant-candidate h4 {
+:is(.ai-options-dialog, .ai-settings-page) .assistant-candidate h4 {
   font-size: 13px;
   font-weight: 600;
   overflow-wrap: anywhere;
@@ -485,7 +488,7 @@
   flex-wrap: wrap;
 }
 .live-assistant-v2 .assistant-candidate button,
-.ai-options-dialog .assistant-candidate button {
+:is(.ai-options-dialog, .ai-settings-page) .assistant-candidate button {
   min-height: 36px;
   background: var(--surface-secondary);
   font-size: 12px;
@@ -577,7 +580,7 @@
   color: var(--ink);
   font-size: 12px;
 }
-.ai-options-dialog > .assistant-candidate {
+:is(.ai-options-dialog, .ai-settings-page) > .assistant-candidate {
   margin: 0 20px 20px;
 }
 .ai-grant-stop {
@@ -590,15 +593,15 @@
   text-decoration: underline;
   text-underline-offset: 3px;
 }
-.ai-options-dialog .assistant-models {
+:is(.ai-options-dialog, .ai-settings-page) .assistant-models {
   grid-template-columns: repeat(auto-fit, minmax(min(100%, 170px), 1fr));
   gap: 12px;
 }
-.ai-options-dialog .assistant-context {
+:is(.ai-options-dialog, .ai-settings-page) .assistant-context {
   padding: 0 0 12px;
   border-bottom: 1px solid var(--line);
 }
-.ai-options-dialog .assistant-context > summary {
+:is(.ai-options-dialog, .ai-settings-page) .assistant-context > summary {
   display: flex;
   align-items: center;
   min-height: 38px;
@@ -608,66 +611,73 @@
   font-weight: 560;
   overflow-wrap: anywhere;
 }
-.ai-options-dialog .assistant-context > summary::after {
+:is(.ai-options-dialog, .ai-settings-page) .assistant-context > summary::after {
   content: '+';
   margin-left: auto;
   color: var(--subtle);
 }
-.ai-options-dialog .assistant-context > summary[aria-expanded='true']::after {
+:is(.ai-options-dialog, .ai-settings-page)
+  .assistant-context
+  > summary[aria-expanded='true']::after {
   content: '−';
 }
-.ai-options-dialog .assistant-context > .motion-disclosure > .motion-disclosure-content > p,
-.ai-options-dialog .assistant-context-options > p,
+:is(.ai-options-dialog, .ai-settings-page)
+  .assistant-context
+  > .motion-disclosure
+  > .motion-disclosure-content
+  > p,
+:is(.ai-options-dialog, .ai-settings-page) .assistant-context-options > p,
 .ai-context-budget {
   margin: 5px 0 12px;
   font-size: 12px;
   color: var(--muted);
   line-height: 1.65;
 }
-.ai-options-dialog .assistant-context-options {
+:is(.ai-options-dialog, .ai-settings-page) .assistant-context-options {
   padding: 6px 0 0;
   gap: 12px;
 }
-.ai-options-dialog .assistant-context-options label {
+:is(.ai-options-dialog, .ai-settings-page) .assistant-context-options label {
   align-items: flex-start;
   font-size: 12px;
   line-height: 1.7;
 }
-.ai-options-dialog input[type='checkbox'] {
+:is(.ai-options-dialog, .ai-settings-page) input[type='checkbox'] {
   flex: 0 0 auto;
   width: 16px;
   height: 16px;
   margin-top: 3px;
   accent-color: var(--accent);
 }
-.ai-options-dialog .assistant-mode {
+:is(.ai-options-dialog, .ai-settings-page) .assistant-mode {
   border-radius: 9px;
   background: var(--surface-secondary);
 }
-.ai-options-dialog .assistant-mode button {
+:is(.ai-options-dialog, .ai-settings-page) .assistant-mode button {
   min-height: 36px;
   border-radius: 7px;
 }
-.ai-options-dialog .assistant-mode button[aria-pressed='true'] {
+:is(.ai-options-dialog, .ai-settings-page) .assistant-mode button[aria-pressed='true'] {
   background: var(--surface);
   color: var(--ink);
   box-shadow: var(--shadow-sm);
 }
-.ai-options-dialog .creative-fields {
+:is(.ai-options-dialog, .ai-settings-page) .creative-fields {
   padding: 8px 0 4px;
   gap: 12px;
 }
-.ai-options-dialog .creative-fields label,
+:is(.ai-options-dialog, .ai-settings-page) .creative-fields label,
 .ai-dimension-fields label,
-.ai-options-dialog .context-document-select,
-.ai-options-dialog .auxiliary-picker label {
+:is(.ai-options-dialog, .ai-settings-page) .context-document-select,
+:is(.ai-options-dialog, .ai-settings-page) .auxiliary-picker label {
   min-width: 0;
   font-size: 12px;
   color: var(--muted);
 }
-.ai-options-dialog input:not([type='checkbox'], [type='file'], [type='range']),
-.ai-options-dialog textarea,
-.ai-options-dialog select {
+:is(.ai-options-dialog, .ai-settings-page)
+  input:not([type='checkbox'], [type='file'], [type='range']),
+:is(.ai-options-dialog, .ai-settings-page) textarea,
+:is(.ai-options-dialog, .ai-settings-page) select {
   min-width: 0;
   width: 100%;
   min-height: 40px;
@@ -680,60 +690,60 @@
   font-size: 13px;
   line-height: 1.5;
 }
-.ai-options-dialog textarea {
+:is(.ai-options-dialog, .ai-settings-page) textarea {
   resize: vertical;
   max-height: 34dvh;
 }
-.ai-options-dialog .creative-grant {
+:is(.ai-options-dialog, .ai-settings-page) .creative-grant {
   padding: 9px 0;
   color: var(--warning);
   font-size: 12px;
 }
-.ai-options-dialog .creative-explanation {
+:is(.ai-options-dialog, .ai-settings-page) .creative-explanation {
   margin: 9px 0 0;
   color: var(--muted);
   font-size: 12px;
 }
-.ai-options-dialog .creative-controls {
+:is(.ai-options-dialog, .ai-settings-page) .creative-controls {
   gap: 12px;
 }
-.ai-options-dialog .assistant-resource-search {
+:is(.ai-options-dialog, .ai-settings-page) .assistant-resource-search {
   min-width: 0;
 }
-.ai-options-dialog .assistant-resource-search button {
+:is(.ai-options-dialog, .ai-settings-page) .assistant-resource-search button {
   min-width: 40px;
   min-height: 40px;
   border-radius: 8px;
   background: var(--surface-secondary);
 }
-.ai-options-dialog .assistant-memory-list,
-.ai-options-dialog .memory-version-history,
-.ai-options-dialog .context-source-content,
-.ai-options-dialog .context-source-list {
+:is(.ai-options-dialog, .ai-settings-page) .assistant-memory-list,
+:is(.ai-options-dialog, .ai-settings-page) .memory-version-history,
+:is(.ai-options-dialog, .ai-settings-page) .context-source-content,
+:is(.ai-options-dialog, .ai-settings-page) .context-source-list {
   max-height: none;
   overflow: visible;
 }
-.ai-options-dialog .assistant-memory-list article {
+:is(.ai-options-dialog, .ai-settings-page) .assistant-memory-list article {
   border-bottom-color: var(--line);
   font-size: 12px;
 }
-.ai-options-dialog .assistant-memory-list article > div,
-.ai-options-dialog .memory-suggestion > div {
+:is(.ai-options-dialog, .ai-settings-page) .assistant-memory-list article > div,
+:is(.ai-options-dialog, .ai-settings-page) .memory-suggestion > div {
   display: flex;
   flex-wrap: wrap;
   gap: 6px;
 }
-.ai-options-dialog .memory-suggestion,
-.ai-options-dialog .memory-version-history {
+:is(.ai-options-dialog, .ai-settings-page) .memory-suggestion,
+:is(.ai-options-dialog, .ai-settings-page) .memory-version-history {
   padding: 10px;
   border-color: var(--line);
   background: var(--surface-secondary);
   font-size: 12px;
 }
-.ai-options-dialog .assistant-memory-list button,
-.ai-options-dialog .memory-suggestion button,
-.ai-options-dialog .memory-version-history button,
-.ai-options-dialog .context-source-list button {
+:is(.ai-options-dialog, .ai-settings-page) .assistant-memory-list button,
+:is(.ai-options-dialog, .ai-settings-page) .memory-suggestion button,
+:is(.ai-options-dialog, .ai-settings-page) .memory-version-history button,
+:is(.ai-options-dialog, .ai-settings-page) .context-source-list button {
   min-height: 36px;
   margin: 2px 6px 2px 0;
   padding: 5px 8px;
@@ -809,25 +819,25 @@
 .ai-history-row[aria-pressed='true'] {
   background: var(--accent-soft);
 }
-.ai-options-dialog .image-parameters {
+:is(.ai-options-dialog, .ai-settings-page) .image-parameters {
   display: grid;
   gap: 12px;
   min-width: 0;
 }
-.ai-options-dialog .image-parameters > .parameter-label {
+:is(.ai-options-dialog, .ai-settings-page) .image-parameters > .parameter-label {
   margin-bottom: -6px;
 }
-.ai-options-dialog .option-chips {
+:is(.ai-options-dialog, .ai-settings-page) .option-chips {
   gap: 5px;
 }
-.ai-options-dialog .option-chips button {
+:is(.ai-options-dialog, .ai-settings-page) .option-chips button {
   min-height: 38px;
   border-radius: 8px;
   padding: 6px 9px;
   color: var(--ink);
   font-size: 12px;
 }
-.ai-options-dialog .option-chips button[aria-pressed='true'] {
+:is(.ai-options-dialog, .ai-settings-page) .option-chips button[aria-pressed='true'] {
   background: var(--accent-soft);
   border-color: var(--accent);
 }
@@ -856,11 +866,11 @@
   color: var(--muted);
   font-size: 11px;
 }
-.ai-options-dialog .ai-numeric-setting input {
+:is(.ai-options-dialog, .ai-settings-page) .ai-numeric-setting input {
   width: 96px;
   font-variant-numeric: tabular-nums;
 }
-.ai-options-dialog .control-note {
+:is(.ai-options-dialog, .ai-settings-page) .control-note {
   margin: 0;
   font-size: 11px;
   line-height: 1.6;
@@ -874,22 +884,22 @@
   font-size: 12px;
   font-variant-numeric: tabular-nums;
 }
-.ai-options-dialog .reference-actions {
+:is(.ai-options-dialog, .ai-settings-page) .reference-actions {
   display: flex;
   flex-wrap: wrap;
   gap: 6px 12px;
 }
-.ai-options-dialog .reference-actions > button {
+:is(.ai-options-dialog, .ai-settings-page) .reference-actions > button {
   min-height: 38px;
 }
-.ai-options-dialog .reference-picker {
+:is(.ai-options-dialog, .ai-settings-page) .reference-picker {
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(90px, 1fr));
   gap: 8px;
   max-height: none;
   overflow: visible;
 }
-.ai-options-dialog .reference-picker > button {
+:is(.ai-options-dialog, .ai-settings-page) .reference-picker > button {
   display: grid;
   min-width: 0;
   padding: 5px;
@@ -900,23 +910,23 @@
   color: var(--muted);
   font-size: 11px;
 }
-.ai-options-dialog .reference-picker > button[aria-pressed='true'] {
+:is(.ai-options-dialog, .ai-settings-page) .reference-picker > button[aria-pressed='true'] {
   border-color: var(--accent);
   box-shadow: 0 0 0 1px var(--accent);
 }
-.ai-options-dialog .reference-picker img {
+:is(.ai-options-dialog, .ai-settings-page) .reference-picker img {
   display: block;
   width: 100%;
   height: 80px;
   border-radius: 5px;
   object-fit: contain;
 }
-.ai-options-dialog .reference-picker span {
+:is(.ai-options-dialog, .ai-settings-page) .reference-picker span {
   overflow: hidden;
   white-space: nowrap;
   text-overflow: ellipsis;
 }
-.ai-options-dialog .ai-reference-pending {
+:is(.ai-options-dialog, .ai-settings-page) .ai-reference-pending {
   display: flex;
   align-items: center;
   gap: 8px;
@@ -1044,9 +1054,10 @@
     gap: 14px;
     padding-inline: 16px;
   }
-  .ai-options-dialog input:not([type='checkbox'], [type='file'], [type='range']),
-  .ai-options-dialog textarea,
-  .ai-options-dialog select {
+  :is(.ai-options-dialog, .ai-settings-page)
+    input:not([type='checkbox'], [type='file'], [type='range']),
+  :is(.ai-options-dialog, .ai-settings-page) textarea,
+  :is(.ai-options-dialog, .ai-settings-page) select {
     font-size: 16px;
   }
 }

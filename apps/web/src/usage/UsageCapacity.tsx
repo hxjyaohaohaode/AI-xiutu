@@ -1,10 +1,11 @@
 import { t, useLocale } from '../i18n';
 import { useId, useState } from 'react';
 import { HardDrives, ArrowClockwise } from '@phosphor-icons/react';
-import { Busy, InlineError } from '../components/Ui';
+import { InlineError } from '../components/Ui';
 import { MotionDetails } from '../motion/Presence';
 import { byteText, pointText, storageUsage, type StorageAccountSummary } from './model';
 import { useUsageResource } from './useUsageResource';
+import { UsageSkeleton } from './UsageSkeleton';
 
 export function UsageCapacity({
   spaceId,
@@ -40,7 +41,7 @@ export function UsageCapacity({
           {spaceName || (operator && spaceId ? t('所选空间') : t('容量'))}
         </span>
       </div>
-      {resource.loading && <Busy label={t('读取容量')} />}
+      {resource.loading && <UsageSkeleton profile="capacity" />}
       {!spaceId && (
         <p className="usage-empty-copy">
           {operator ? t('选择一个空间后查看容量。') : t('请在空间中查看当前容量。')}

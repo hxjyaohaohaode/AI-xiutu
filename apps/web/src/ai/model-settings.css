@@ -1,0 +1,313 @@
+/* Panel-owned configuration. Glide Select informed the compact rows and measured
+   highlight timing; the existing ChoiceSelect retains keyboard and placement ownership. */
+:is(.ai-workbench-v2, .live-assistant-v2)[data-settings-open='true']
+  > :is(.ai-workbench-header, .ai-conversation-body, .ai-composer-region) {
+  display: none;
+}
+.ai-settings-page {
+  display: flex;
+  flex-direction: column;
+  flex: 1 1 0;
+  min-width: 0;
+  min-height: 0;
+  height: 100%;
+  background: var(--surface);
+  color: var(--ink);
+}
+.ai-settings-page[hidden] {
+  display: none !important;
+}
+.ai-settings-page-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex: 0 0 auto;
+  gap: 10px;
+  min-height: 48px;
+  padding: 2px 14px 2px 8px;
+  border-bottom: 1px solid var(--line);
+}
+.ai-settings-page-header button {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  min-width: 0;
+  min-height: 44px;
+  padding: 7px 6px;
+  color: var(--muted);
+  background: transparent;
+  border: 0;
+  border-radius: 8px;
+  font: inherit;
+  font-size: 12px;
+  cursor: pointer;
+}
+.ai-settings-page-header button:hover {
+  color: var(--ink);
+  background: var(--surface-hover);
+}
+.ai-settings-page-header button svg {
+  flex: 0 0 auto;
+  transition: transform 180ms ease;
+}
+.ai-settings-page-header button:hover svg {
+  transform: translateX(-3px);
+}
+.ai-settings-page-header h3 {
+  min-width: 0;
+  margin: 0;
+  font-size: 12px;
+  font-weight: 550;
+  text-align: end;
+  overflow-wrap: anywhere;
+}
+.ai-settings-page-header h3:focus {
+  outline: none;
+}
+.ai-settings-page-scroll {
+  flex: 1 1 0;
+  min-height: 0;
+  min-width: 0;
+  overflow: auto;
+  overscroll-behavior: contain;
+  scrollbar-gutter: stable;
+  scroll-padding-block: 16px;
+}
+.ai-settings-page .ai-options-content {
+  padding: 18px 16px 24px;
+  gap: 22px;
+}
+.ai-settings-page:not([hidden]) .ai-options-content > * {
+  animation: model-page-enter 230ms cubic-bezier(0.2, 0.75, 0.2, 1) both;
+}
+.ai-settings-page:not([hidden]) .ai-options-content > :nth-child(2) {
+  animation-delay: 35ms;
+}
+.ai-settings-page:not([hidden]) .ai-options-content > :nth-child(3) {
+  animation-delay: 65ms;
+}
+.ai-settings-page:not([hidden]) .ai-options-content > :nth-child(n + 4) {
+  animation-delay: 85ms;
+}
+.ai-settings-page .ai-panel-settings {
+  padding-bottom: 0;
+  border: 0;
+}
+.ai-model-field {
+  min-width: 0;
+  display: grid;
+  gap: 5px;
+}
+.ai-model-choice > .choice-trigger {
+  min-height: 46px;
+  font-size: 13px;
+  border-radius: 10px;
+}
+.ai-model-choice .choice-popover {
+  --motion-entry: 180ms;
+  --motion-exit: 120ms;
+  padding: 5px;
+  border-radius: 12px;
+  box-shadow: 0 12px 32px rgb(var(--color-shadow) / 11%);
+}
+.ai-model-choice .choice-option {
+  min-height: 44px;
+  padding: 10px;
+}
+.ai-model-choice .choice-option > span:first-child {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex: 1 1 0;
+  min-width: 0;
+  gap: 8px;
+}
+.ai-model-choice .choice-option-label {
+  min-width: 0;
+  font-size: 13px;
+  overflow-wrap: anywhere;
+}
+.ai-model-choice .choice-option small {
+  flex: 0 0 auto;
+  max-width: 42%;
+  margin: 0;
+  padding: 2px 5px;
+  border-radius: 5px;
+  background: var(--surface-secondary);
+  color: var(--muted);
+  font-size: 10px;
+  line-height: 1.4;
+  text-align: end;
+  overflow-wrap: anywhere;
+}
+.ai-model-choice .choice-highlight[data-animate='true'] {
+  transition-duration: 220ms, 220ms, 220ms, 140ms;
+}
+.ai-model-identifier {
+  max-width: 100%;
+  color: var(--muted);
+  font-size: 10px;
+  line-height: 1.6;
+  overflow-wrap: anywhere;
+  user-select: all;
+}
+.ai-selected-model-meta {
+  margin: -8px 0 0;
+  color: var(--muted);
+  font-size: 11px;
+  line-height: 1.5;
+}
+.ai-model-empty {
+  margin: 4px 0;
+  color: var(--muted);
+  font-size: 12px;
+  line-height: 1.6;
+}
+.image-parameters-v3 {
+  display: grid;
+  gap: 18px;
+  min-width: 0;
+}
+.image-parameters-v3 > .parameter-label {
+  margin-bottom: -10px;
+}
+.image-parameters-v3 .parameter-row {
+  display: grid;
+  gap: 8px;
+  min-width: 0;
+}
+.image-parameters-v3 .parameter-label {
+  color: var(--ink);
+  font-size: 12px;
+  font-weight: 550;
+}
+.image-parameters-v3 .option-chips {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 5px;
+}
+.image-parameters-v3 .option-chips button {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 3px;
+  min-width: 0;
+  min-height: 44px;
+  padding: 7px 5px;
+  border: 0;
+  border-radius: 9px;
+  background: var(--surface-secondary);
+  color: var(--muted);
+  font: inherit;
+  font-size: 12px;
+  line-height: 1.4;
+  overflow-wrap: anywhere;
+  transition:
+    background-color 160ms ease,
+    color 120ms ease,
+    transform 160ms cubic-bezier(0.2, 0.75, 0.2, 1);
+}
+.image-parameters-v3 .option-chips button[aria-pressed='true'] {
+  color: var(--accent-ink);
+  background: var(--accent-soft);
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--accent) 35%, transparent);
+}
+.image-parameters-v3 .option-chips button:hover:not(:disabled) {
+  transform: translateY(-1px);
+  color: var(--ink);
+}
+.image-parameters-v3 .option-chips small {
+  color: inherit;
+  opacity: 0.75;
+  font-size: 10px;
+  font-variant-numeric: tabular-nums;
+}
+.image-parameters-v3 .progressive-section {
+  min-width: 0;
+  border: 0;
+}
+.image-parameters-v3 .progressive-trigger {
+  min-height: 44px;
+  padding: 7px 0;
+  font-size: 12px;
+}
+.image-parameters-v3 .progressive-content {
+  padding-inline: 0;
+}
+.image-advanced-options .progressive-content {
+  display: grid;
+  gap: 18px;
+  padding-block: 10px 14px;
+}
+.image-capability-details {
+  padding-top: 4px;
+  border-top: 1px solid var(--line) !important;
+}
+.image-parameters-v3 .ai-dimension-fields input,
+.image-parameters-v3 .ai-numeric-setting input {
+  min-width: 0;
+  min-height: 44px;
+  width: 100%;
+  padding: 8px 10px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--surface);
+  color: var(--ink);
+  font: inherit;
+  font-size: 14px;
+  font-variant-numeric: tabular-nums;
+}
+.image-parameters-v3 .ai-numeric-setting input {
+  width: 84px;
+  text-align: center;
+}
+.image-parameters-v3 .control-note {
+  margin: 0;
+  color: var(--muted);
+  font-size: 11px;
+  line-height: 1.6;
+}
+.image-parameters-v3 .capability-list {
+  margin: 0;
+}
+.image-parameters-v3 .capability-list p {
+  margin: 5px 0 0;
+}
+.ai-settings-page .ai-option-price {
+  position: sticky;
+  bottom: -24px;
+  background: var(--surface);
+  padding: 13px 0 5px;
+}
+@keyframes model-page-enter {
+  from {
+    opacity: 0;
+    transform: translateY(7px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+@media (pointer: coarse), (max-width: 760px) {
+  .ai-settings-page .ai-options-content {
+    padding: 14px 12px 22px;
+    gap: 18px;
+  }
+  .image-parameters-v3 .ai-dimension-fields input,
+  .image-parameters-v3 .ai-numeric-setting input {
+    font-size: 16px;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .ai-settings-page:not([hidden]) .ai-options-content > * {
+    animation: none;
+  }
+  .ai-model-choice .choice-highlight[data-animate='true'],
+  .ai-settings-page-header button svg,
+  .image-parameters-v3 .option-chips button {
+    transition: none;
+    transform: none;
+  }
+}

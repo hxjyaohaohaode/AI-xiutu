@@ -2,7 +2,8 @@ import { Children, useEffect, useMemo, useRef, type HTMLAttributes, type ReactNo
 import './effects.css';
 
 /**
- * Piece opacity/lift progression adapted from React Bits ScrollReveal.
+ * Piece opacity/lift progression adapted from React Bits ScrollReveal, with the
+ * bounded blur and stagger observed in BlurText / AnimatedContent.
  * Copyright (c) 2026 David Haz. See LICENSE.react-bits.md.
  * Native document scrolling only: no scroll interception or nested scroller.
  */
@@ -41,23 +42,26 @@ export function ScrollReveal({ children, as: Tag = 'div', mode = 'enter', splitW
     let started = -1;
     let live = true;
     let rootLift = 0;
-    const duration = 620 + Math.min(targets.length - 1, 16) * 24;
+    const duration = 520 + Math.min(Math.max(0, targets.length - 1) * 55, 260);
     const clamp = (value: number) => Math.min(1, Math.max(0, value));
     const clear = () => {
       rootLift = 0;
       targets.forEach((piece) => {
         piece.style.opacity = '';
         piece.style.transform = '';
+        piece.style.filter = '';
         piece.style.willChange = '';
       });
     };
     const render = (progress: number) => {
       targets.forEach((piece, index) => {
-        const stagger = pieces.length ? index / Math.max(1, targets.length - 1) * 0.3 : 0;
+        const stagger = pieces.length ? Math.min(index * 55, 260) / duration : 0;
         const p = clamp((progress - stagger) / (1 - stagger));
         const reveal = 1 - Math.pow(1 - p, 3);
-        const lift = (1 - reveal) * (pieces.length ? 9 : 20);
-        // Text stays readable throughout; photographs are never blurred.
+        const lift = (1 - reveal) * 14;
+        // A short presentation blur never touches images, controls, precision values or focus.
+        const presentation = !piece.matches('button,input,select,canvas,img,output') && !piece.querySelector('button,input,select,canvas,img,output');
+        piece.style.filter = presentation && p < 1 ? `blur(${((1 - reveal) * 6).toFixed(2)}px)` : '';
         piece.style.opacity = p >= 1 ? '' : (0.28 + reveal * 0.72).toFixed(3);
         piece.style.transform = p >= 1 ? '' : `translateY(${lift.toFixed(2)}px)`;
         if (piece === root) rootLift = p >= 1 ? 0 : lift;

@@ -1,0 +1,196 @@
+.route-loading {
+  --loading-base: var(--surface-secondary, #eeece7);
+  --loading-highlight: var(--surface, #faf9f6);
+  position: relative;
+  min-height: 100svh;
+  background: var(--app-bg, #f8f6f1);
+  color: var(--muted, #77776d);
+}
+.route-loading-shell {
+  width: 100%;
+  min-height: 100svh;
+  padding: 14px 3vw;
+}
+.route-loading-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 18px;
+  height: 40px;
+}
+.route-loading-header i {
+  width: 100px;
+  height: 24px;
+}
+.route-loading-header span {
+  width: 28%;
+  height: 15px;
+}
+.route-loading i,
+.route-loading-header span {
+  display: block;
+  border-radius: 5px;
+  background: var(--loading-base);
+}
+.route-loading-body {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 290px;
+  gap: 32px;
+  padding-top: 28px;
+  min-height: calc(100svh - 100px);
+}
+.route-loading-primary {
+  display: flex;
+  flex-direction: column;
+  gap: 18px;
+  min-width: 0;
+  padding: 26px 4vw;
+}
+.route-loading-primary i:first-child {
+  width: 28%;
+  height: 20px;
+}
+.route-loading-primary i:nth-child(2) {
+  width: 100%;
+  flex: 1;
+  min-height: 220px;
+  background: linear-gradient(120deg, var(--loading-base), var(--loading-highlight));
+}
+.route-loading-primary i:nth-child(3) {
+  width: 42%;
+  height: 18px;
+  align-self: center;
+}
+.route-loading-secondary {
+  display: flex;
+  flex-direction: column;
+  gap: 24px;
+  padding: 38px 22px;
+  background: var(--loading-highlight);
+  border-radius: 12px;
+}
+.route-loading-secondary i {
+  height: 38px;
+}
+.route-loading-secondary i:first-child {
+  height: 18px;
+  width: 54%;
+  margin-bottom: 18px;
+}
+.route-loading-secondary i:last-child {
+  height: 160px;
+}
+.route-loading[data-layout='auth'] .route-loading-body {
+  max-width: 1200px;
+  margin-inline: auto;
+  grid-template-columns: 1.1fr 1fr;
+  gap: 8vw;
+  padding-top: 54px;
+}
+.route-loading[data-layout='auth'] .route-loading-primary {
+  padding: 0;
+  height: min(620px, 65svh);
+}
+.route-loading[data-layout='auth'] .route-loading-primary i:first-child,
+.route-loading[data-layout='auth'] .route-loading-primary i:last-child {
+  display: none;
+}
+.route-loading[data-layout='auth'] .route-loading-secondary {
+  padding: 40px 0;
+  background: transparent;
+}
+.route-loading[data-layout='auth'] .route-loading-secondary i:last-child {
+  height: 48px;
+  margin-top: 10px;
+}
+.route-loading[data-layout='account'] .route-loading-body {
+  grid-template-columns: minmax(160px, 0.3fr) minmax(0, 1fr);
+  max-width: 1100px;
+  margin-inline: auto;
+}
+.route-loading[data-layout='account'] .route-loading-primary {
+  padding: 24px 0;
+}
+.route-loading[data-layout='account'] .route-loading-primary i {
+  width: 100%;
+  height: 44px;
+  min-height: 0;
+  flex: 0 0 auto;
+}
+.route-loading[data-layout='usage'] .route-loading-body {
+  grid-template-columns: 1fr 1fr;
+}
+.route-loading[data-layout='usage'] .route-loading-primary {
+  padding: 26px 0;
+}
+.route-loading-label {
+  position: absolute;
+  inset: auto 16px 20px;
+  margin: 0;
+  text-align: center;
+  font-size: 12px;
+}
+.route-loading i {
+  animation: route-skeleton-breathe 1.6s ease-in-out infinite alternate;
+}
+.route-loading-secondary i:nth-child(2) {
+  animation-delay: 120ms;
+}
+.route-loading-secondary i:nth-child(3) {
+  animation-delay: 240ms;
+}
+.route-loading-secondary i:nth-child(4) {
+  animation-delay: 360ms;
+}
+@keyframes route-skeleton-breathe {
+  to {
+    opacity: 0.45;
+  }
+}
+@media (max-width: 700px) {
+  .route-loading-shell {
+    padding: 8px 20px;
+  }
+  .route-loading-body {
+    grid-template-columns: 1fr;
+    grid-template-rows: minmax(220px, 1fr) 240px;
+    gap: 16px;
+  }
+  .route-loading-primary {
+    padding: 20px 0;
+  }
+  .route-loading-secondary {
+    padding: 20px 16px;
+    gap: 16px;
+  }
+  .route-loading-secondary i:last-child {
+    height: 50px;
+  }
+  .route-loading[data-layout='auth'] .route-loading-body {
+    display: block;
+    padding-top: 32px;
+  }
+  .route-loading[data-layout='auth'] .route-loading-primary {
+    display: none;
+  }
+  .route-loading[data-layout='auth'] .route-loading-secondary {
+    max-width: 420px;
+    margin: auto;
+  }
+  .route-loading[data-layout='account'] .route-loading-body,
+  .route-loading[data-layout='usage'] .route-loading-body {
+    grid-template-columns: 1fr;
+  }
+  .route-loading[data-layout='account'] .route-loading-primary {
+    flex-direction: row;
+    height: 44px;
+  }
+  .route-loading[data-layout='account'] .route-loading-primary i {
+    width: 28%;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .route-loading i {
+    animation: none;
+  }
+}

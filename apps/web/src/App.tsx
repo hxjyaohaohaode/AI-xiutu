@@ -27,6 +27,7 @@ import {
   Microphone,
   MicrophoneSlash,
   PhoneDisconnect,
+  X,
 } from '@phosphor-icons/react';
 import { api, ApiError, downloadBlob, errorMessage, filenameBase, jsonRequest } from './lib/api';
 import { secureUuid } from './lib/uuid';
@@ -53,6 +54,9 @@ import { createSourceLoadGuard, assertRevisionSourceBinding } from './editor/sou
 import { assetCopyAttempt, sourcePersistenceRoute } from './lib/asset-copy';
 import { FloatingPanel } from './workspace/FloatingPanel';
 import { ToolDock } from './workspace/ToolDock';
+import { ToolOverview } from './workspace/ToolOverview';
+import { PanelNavigation, type PanelSection } from './workspace/PanelNavigation';
+import { interactionText } from './workspace/interaction-copy';
 import { CommandMenu, type StudioCommand } from './workspace/CommandMenu';
 import {
   WorkspaceNavigation,
@@ -66,7 +70,11 @@ import { workspaceCanvasInsets, useWorkspaceLayout } from './workspace/useWorksp
 import { usePresence } from './motion/usePresence';
 import { MotionSwitch } from './motion/Presence';
 import { ImportSettings } from './components/ImportSettings';
-import { createDeferredFeature, DeferredFeatureStatus } from './components/DeferredFeature';
+import {
+  createDeferredFeature,
+  DeferredFeatureStatus,
+  FeatureSkeleton,
+} from './components/DeferredFeature';
 import {
   createRecipeV4,
   parseEditorRecipe,
@@ -125,37 +133,51 @@ const DrawingBoard = lazy(() =>
 const CompareView = createDeferredFeature(
   async () => ({ default: (await import('./components/WorkspaceViews')).CompareView }),
   '版本比较',
+  undefined,
+  'compare',
 );
 const CollaborateView = createDeferredFeature(
   async () => ({ default: (await import('./components/WorkspaceViews')).CollaborateView }),
   '项目协作',
+  undefined,
+  'collaboration',
 );
 const DocumentsView = createDeferredFeature(
   async () => ({ default: (await import('./components/WorkspaceViews')).DocumentsView }),
   '项目文档',
+  undefined,
+  'documents',
 );
 const DeliveryView = createDeferredFeature(
   async () => ({ default: (await import('./components/WorkspaceViews')).DeliveryView }),
   '作品交付',
+  undefined,
+  'delivery',
 );
 const AssetLibrary = createDeferredFeature(
   async () => ({ default: (await import('./components/AssetLibrary')).AssetLibrary }),
   '素材库',
+  undefined,
+  'gallery',
 );
 const UsageDashboard = createDeferredFeature(
   async () => ({ default: (await import('./usage/UsageDashboard')).UsageDashboard }),
   '用量账本',
+  undefined,
+  'usage',
 );
 const ResourceSearch = createDeferredFeature(
   async () => ({ default: (await import('./resources/ResourceSearch')).ResourceSearch }),
   '资源搜索',
+  undefined,
+  'search',
 );
 const MediaImportDialog = createDeferredFeature(
   async () => ({ default: (await import('./components/MediaImportDialog')).MediaImportDialog }),
   '母版导入',
   (state, props) => (
     <Modal title={t('导入母版')} profile="media" onClose={props.onClose}>
-      <DeferredFeatureStatus {...state} />
+      <DeferredFeatureStatus {...state} profile="media" />
     </Modal>
   ),
 );
@@ -171,7 +193,7 @@ const AccountCenter = createDeferredFeature(
       busy={props.loggingOut}
       wide
     >
-      <DeferredFeatureStatus {...state} />
+      <DeferredFeatureStatus {...state} profile="account" />
     </AccountPageFrame>
   ),
 );
@@ -278,6 +300,10 @@ export function App({
   const [logoutError, setLogoutError] = useState<string | null>(null);
   const [booting, setBooting] = useState(true);
   const [cloudError, setCloudError] = useState<string | null>(null);
+  const [cloudNoticeDismissed, setCloudNoticeDismissed] = useState(false);
+  useEffect(() => {
+    if (!cloudError) setCloudNoticeDismissed(false);
+  }, [cloudError]);
   const [spaceId, setSpaceId] = useState<string | null>(null);
   const [projects, setProjects] = useState<Project[]>([]);
   const [sharedProjects, setSharedProjects] = useState<Project[]>([]);
@@ -315,11 +341,29 @@ export function App({
   const [libraryTab, setLibraryTab] = useState<'project' | 'all' | 'memory'>('project');
   const [group, setGroup] = useState<ToolGroup>('light');
   const [previousTools, setPreviousTools] = useState<ToolGroup[]>([]);
+  const [toolOverview, setToolOverview] = useState(false);
   const sourceForTools = rawEditor.getSourceIdentity();
-  useEffect(() => setPreviousTools([]), [sourceForTools]);
+  useEffect(() => {
+    setPreviousTools([]);
+    setToolOverview(false);
+  }, [sourceForTools]);
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [inspectorOpen, setInspectorOpen] = useState(false);
   const [aiOpen, setAiOpen] = useState(false);
+  const [inspectorVisited, setInspectorVisited] = useState(false);
+  const [aiVisited, setAiVisited] = useState(false);
+  const [collaborationOpen, setCollaborationOpen] = useState(false);
+  const [collaborationVisited, setCollaborationVisited] = useState(false);
+  const panelNavigationFocus = useRef<PanelSection | null>(null);
+  useEffect(() => {
+    if (inspectorOpen) setInspectorVisited(true);
+  }, [inspectorOpen]);
+  useEffect(() => {
+    if (aiOpen) setAiVisited(true);
+  }, [aiOpen]);
+  useEffect(() => {
+    if (collaborationOpen || view === 'collaborate') setCollaborationVisited(true);
+  }, [collaborationOpen, view]);
   const [aiActivity, setAiActivity] = useState<AIActivity>(IDLE_AI_ACTIVITY);
   const accountActivity = useRef({ ai: false, voice: false });
   accountActivity.current = {
@@ -517,6 +561,7 @@ export function App({
     saveAfterProject.current = false;
     setOps(false);
     setAiOpen(false);
+    setCollaborationOpen(false);
     setSidebarOpen(false);
   }
 
@@ -1013,6 +1058,7 @@ export function App({
     setView(space ? 'works' : 'editor');
     setSidebarOpen(false);
     setAiOpen(false);
+    setCollaborationOpen(false);
   }
   async function loadProject(next: Project) {
     if (documentDirty && !(await confirmNavigation(t('文档还有未保存的修改，确定切换项目吗？'))))
@@ -1040,6 +1086,7 @@ export function App({
       setView('works');
       setSidebarOpen(false);
       setAiOpen(false);
+      setCollaborationOpen(false);
     } catch (e) {
       notify(errorMessage(e), 'error');
     } finally {
@@ -1782,6 +1829,7 @@ export function App({
     )
       return false;
     setView(next);
+    setCollaborationOpen(false);
     setInspectorOpen(false);
     setAiOpen(false);
     if (siteRoute === 'usage' && next !== 'usage') onPageNavigate?.('studio', true);
@@ -2006,12 +2054,20 @@ export function App({
       ? null
       : aiOpen
         ? 'ai'
-        : inspectorOpen
-          ? 'inspector'
-          : null;
-  const activePanel = activePanelId ? workspaceLayout.panel(activePanelId) : null;
+        : collaborationOpen
+          ? 'collaboration'
+          : inspectorOpen
+            ? 'inspector'
+            : null;
+  const activePanel = activePanelId
+    ? workspaceLayout.panel(activePanelId === 'collaboration' ? 'inspector' : activePanelId)
+    : null;
   const inspectorPresence = usePresence(activePanelId === 'inspector', 'panel-frame');
   const aiPresence = usePresence(activePanelId === 'ai', 'panel-frame');
+  const collaborationPresence = usePresence(
+    activePanelId === 'collaboration' || view === 'collaborate',
+    'panel-frame',
+  );
   const keepAIActive = aiActivity.callActive || aiActivity.requestActive;
   const lastDialog = useRef<Dialog>(null);
   const modalDialog = accountPageOpen ? null : dialog;
@@ -2029,20 +2085,23 @@ export function App({
     workspaceLayout.focused,
   );
   const selectInspectorTool = (tool: ToolGroup) => {
+    setToolOverview(false);
     if (tool === group) return;
     setPreviousTools((items) => [...items, group].slice(-16));
     setGroup(tool);
   };
   const backToTool = () => {
     const previous = previousTools.at(-1);
-    if (!previous) return;
     editor.commitCurrent(t('完成当前调节'));
-    setPreviousTools((items) => items.slice(0, -1));
-    setGroup(previous);
+    if (previous) {
+      setPreviousTools((items) => items.slice(0, -1));
+      setGroup(previous);
+    } else setToolOverview(true);
     setSampling(false);
   };
   const openInspector = (tool: ToolGroup) => {
     workspaceLayout.setFocused(false);
+    setCollaborationOpen(false);
     selectInspectorTool(tool);
     setInspectorOpen(true);
     setAiOpen(false);
@@ -2054,20 +2113,23 @@ export function App({
       });
   };
   const chooseTool = (tool: ToolGroup) => {
-    if (group === tool && inspectorOpen && !aiOpen) {
+    if (group === tool && inspectorOpen && !aiOpen && !toolOverview) {
       setInspectorOpen(false);
       setSampling(false);
     } else openInspector(tool);
   };
   const resetWorkspace = () => {
     workspaceLayout.reset();
+    setCollaborationOpen(false);
     setInspectorOpen(false);
     setAiOpen(false);
     setSidebarOpen(false);
     notify(t('已恢复当前屏幕的默认布局。'));
   };
   const showAI = () => {
+    editor.commitCurrent(t('完成当前调节'));
     workspaceLayout.setFocused(false);
+    setCollaborationOpen(false);
     setAiOpen(true);
     setInspectorOpen(false);
     setSampling(false);
@@ -2077,6 +2139,77 @@ export function App({
   const openAI = async () => {
     if (view !== 'editor' && !(await changeView('editor'))) return;
     showAI();
+  };
+  const openCollaborationPanel = () => {
+    editor.commitCurrent(t('完成当前调节'));
+    workspaceLayout.setFocused(false);
+    setCollaborationOpen(true);
+    setInspectorOpen(false);
+    setAiOpen(false);
+    setSampling(false);
+    if (workspaceLayout.panel('inspector').presentation === 'collapsed')
+      workspaceLayout.updatePanel('inspector', {
+        ...workspaceLayout.panel('inspector'),
+        presentation: 'normal',
+      });
+  };
+  const returnToAdjustments = async () => {
+    if (view !== 'editor' && !(await changeView('editor'))) return;
+    openInspector(
+      group === 'history'
+        ? (previousTools
+            .slice()
+            .reverse()
+            .find((tool) => tool !== 'history') ?? 'light')
+        : group,
+    );
+  };
+  const panelNavigation = (
+    <PanelNavigation
+      focusRequest={panelNavigationFocus}
+      selected={
+        activePanelId === 'ai'
+          ? 'assistant'
+          : activePanelId === 'collaboration'
+            ? 'collaboration'
+            : group === 'history'
+              ? 'history'
+              : 'adjustments'
+      }
+      items={[
+        {
+          id: 'adjustments',
+          label: t('调整'),
+          icon: <SlidersHorizontal size={15} />,
+          onSelect: returnToAdjustments,
+        },
+        {
+          id: 'assistant',
+          label: t('AI 助手'),
+          icon: <StudioGlyph name="ai" size={17} />,
+          onSelect: () => void openAI(),
+        },
+        {
+          id: 'collaboration',
+          label: t('协作'),
+          icon: <UsersThree size={15} />,
+          onSelect: openCollaborationPanel,
+        },
+        {
+          id: 'history',
+          label: t('记录'),
+          icon: <ClockCounterClockwise size={15} />,
+          onSelect: () => openInspector('history'),
+        },
+      ]}
+    />
+  );
+  const retryCloudRead = () => {
+    setCloudNoticeDismissed(false);
+    setCloudError(null);
+    refreshConfig();
+    if (dialogRef.current !== 'auth') void reconcileSession();
+    setRefreshToken((value) => value + 1);
   };
   const commands: StudioCommand[] = [
     ...toolGroups.map((tool) => ({
@@ -2344,6 +2477,15 @@ export function App({
                   <StudioGlyph name="chevron" size={14} />
                 </button>
                 <div className="workspace-top-actions">
+                  {cloudError && cloudNoticeDismissed && (
+                    <IconButton
+                      label={interactionText('showCloud')}
+                      className="cloud-status-trigger"
+                      onClick={() => setCloudNoticeDismissed(false)}
+                    >
+                      <Info size={18} />
+                    </IconButton>
+                  )}
                   <IconButton
                     label={t('搜索工具与操作（Ctrl / ⌘ K）')}
                     className="studio-search-trigger"
@@ -2405,20 +2547,20 @@ export function App({
                   </button>
                 </div>
               </header>
-              {cloudError && (
+              {cloudError && !cloudNoticeDismissed && (
                 <div className="cloud-status" role="status">
-                  <Info size={16} />
+                  <Info size={16} aria-hidden />
                   <span>{t('云端暂不可用，本地编辑可以继续。')}</span>
-                  <button
-                    onClick={() => {
-                      setCloudError(null);
-                      refreshConfig();
-                      if (dialogRef.current !== 'auth') void reconcileSession();
-                      setRefreshToken((value) => value + 1);
-                    }}
-                  >
+                  <button type="button" onClick={retryCloudRead}>
                     {t('重试')}
                   </button>
+                  <IconButton
+                    className="cloud-status-dismiss"
+                    label={interactionText('dismissCloud')}
+                    onClick={() => setCloudNoticeDismissed(true)}
+                  >
+                    <X size={16} />
+                  </IconButton>
                 </div>
               )}
               {view !== 'editor' && teamVoice.state !== 'idle' && (
@@ -2660,23 +2802,7 @@ export function App({
                           }
                         />
                       )}{' '}
-                      {view === 'collaborate' &&
-                        (project ? (
-                          <CollaborateView
-                            onLoadBack={() => {
-                              void changeView('editor');
-                            }}
-                            key={project.id}
-                            currentUserId={session.user?.id}
-                            project={project}
-                            artwork={artwork}
-                            revision={revision}
-                            refreshToken={refreshToken}
-                            onShare={() => setDialog('share')}
-                          />
-                        ) : (
-                          requireProject
-                        ))}{' '}
+                      {view === 'collaborate' && !project && requireProject}
                       {view === 'docs' &&
                         (project ? (
                           <DocumentsView
@@ -2739,7 +2865,9 @@ export function App({
                 </MotionSwitch>
                 {(['inspector', 'ai'] as const)
                   .filter((id) =>
-                    id === 'ai' ? aiPresence.present || keepAIActive : inspectorPresence.present,
+                    id === 'ai'
+                      ? aiPresence.present || keepAIActive || aiVisited
+                      : inspectorPresence.present || inspectorVisited,
                   )
                   .map((shownPanelId) => (
                     <FloatingPanel
@@ -2750,7 +2878,9 @@ export function App({
                       title={
                         shownPanelId === 'ai'
                           ? t('AI 助手')
-                          : t(toolGroups.find((tool) => tool.id === group)?.label ?? '调整')
+                          : toolOverview
+                            ? interactionText('toolOverview')
+                            : t(toolGroups.find((tool) => tool.id === group)?.label ?? '调整')
                       }
                       label={shownPanelId === 'ai' ? t('AI可移动面板') : t('可移动编辑面板')}
                       geometry={workspaceLayout.panel(shownPanelId)}
@@ -2764,66 +2894,61 @@ export function App({
                           : undefined
                       }
                       onBack={
-                        shownPanelId === 'inspector' && previousTools.length
-                          ? backToTool
-                          : undefined
+                        shownPanelId === 'ai'
+                          ? returnToAdjustments
+                          : toolOverview
+                            ? undefined
+                            : backToTool
+                      }
+                      backLabel={
+                        shownPanelId === 'ai'
+                          ? interactionText('backToEditing')
+                          : previousTools.length
+                            ? t('返回上一步工具')
+                            : interactionText('backToTools')
                       }
                       onClose={() => {
                         setInspectorOpen(false);
                         setAiOpen(false);
                         setSampling(false);
                       }}
-                      navigation={
-                        workspaceLayout.view.bucket !== 'phone' && shownPanelId !== 'ai' ? (
-                          <nav className="studio-context-tabs" aria-label={t('当前作品快捷操作')}>
-                            <button
-                              type="button"
-                              aria-pressed={shownPanelId === 'inspector' && group !== 'history'}
-                              onClick={() => openInspector(group === 'history' ? 'light' : group)}
-                            >
-                              <SlidersHorizontal size={15} />
-                              <span>{t('调整')}</span>
-                            </button>
-                            <button type="button" aria-pressed={false} onClick={openAI}>
-                              <StudioGlyph name="ai" size={17} />
-                              <span>{t('AI 助手')}</span>
-                            </button>
-                            <button
-                              type="button"
-                              onClick={() => changeView('collaborate')}
-                              title={t('打开项目讨论与任务')}
-                            >
-                              <UsersThree size={15} />
-                              <span>{t('协作')}</span>
-                            </button>
-                            <button
-                              type="button"
-                              aria-pressed={shownPanelId === 'inspector' && group === 'history'}
-                              onClick={() => openInspector('history')}
-                            >
-                              <ClockCounterClockwise size={15} />
-                              <span>{t('记录')}</span>
-                            </button>
-                          </nav>
-                        ) : undefined
-                      }
+                      navigation={panelNavigation}
                     >
                       {shownPanelId === 'inspector' ? (
-                        <ToolInspector
-                          editor={editor}
-                          group={group}
-                          onGroupChange={selectInspectorTool}
-                          onCutout={createCutout}
-                          mobileOpen
-                          onClose={() => setInspectorOpen(false)}
-                          pickedColor={pickedColor}
-                          onColorChange={setPickedColor}
-                          sampling={sampling}
-                          onSample={() => {
-                            setSampling(!sampling);
-                            if (workspaceLayout.view.bucket === 'phone') setInspectorOpen(false);
-                          }}
-                        />
+                        <>
+                          {toolOverview && (
+                            <ToolOverview
+                              current={group}
+                              onSelect={(tool) => {
+                                setPreviousTools([]);
+                                setGroup(tool);
+                                setToolOverview(false);
+                              }}
+                            />
+                          )}
+                          <div
+                            className="inspector-retained"
+                            hidden={toolOverview}
+                            inert={toolOverview}
+                          >
+                            <ToolInspector
+                              editor={editor}
+                              group={group}
+                              onGroupChange={selectInspectorTool}
+                              onCutout={createCutout}
+                              mobileOpen
+                              onClose={() => setInspectorOpen(false)}
+                              pickedColor={pickedColor}
+                              onColorChange={setPickedColor}
+                              sampling={sampling}
+                              onSample={() => {
+                                setSampling(!sampling);
+                                if (workspaceLayout.view.bucket === 'phone')
+                                  setInspectorOpen(false);
+                              }}
+                            />
+                          </div>
+                        </>
                       ) : (
                         <AIPanelFeature
                           key={(session.user?.id ?? 'local') + ':' + (project?.id ?? 'none')}
@@ -2887,6 +3012,49 @@ export function App({
                       )}
                     </FloatingPanel>
                   ))}
+                {(collaborationVisited || collaborationOpen || view === 'collaborate') && (
+                  <FloatingPanel
+                    panelKey="inspector"
+                    identity="collaboration"
+                    displayMode={view === 'collaborate' ? 'page' : 'panel'}
+                    open={view === 'collaborate' || activePanelId === 'collaboration'}
+                    motionState={collaborationPresence.phase}
+                    title={t('协作')}
+                    label={interactionText('collaborationPanel')}
+                    geometry={workspaceLayout.panel('inspector')}
+                    viewport={workspaceLayout.view}
+                    onGeometry={(next, change) =>
+                      workspaceLayout.updatePanel('inspector', next, change)
+                    }
+                    onBack={returnToAdjustments}
+                    backLabel={interactionText('backToEditing')}
+                    onClose={() => setCollaborationOpen(false)}
+                    navigation={panelNavigation}
+                  >
+                    <div
+                      className="collaboration-retained"
+                      data-mode={view === 'collaborate' ? 'page' : 'panel'}
+                    >
+                      {project ? (
+                        <CollaborateView
+                          key={`${session.user?.id ?? 'guest'}:${project.id}`}
+                          embedded={view !== 'collaborate'}
+                          onExpand={() => void changeView('collaborate')}
+                          onReturnToEditor={() => void returnToAdjustments()}
+                          onLoadBack={returnToAdjustments}
+                          currentUserId={session.user?.id}
+                          project={project}
+                          artwork={artwork}
+                          revision={revision}
+                          refreshToken={refreshToken}
+                          onShare={() => setDialog('share')}
+                        />
+                      ) : (
+                        requireProject
+                      )}
+                    </div>
+                  </FloatingPanel>
+                )}
                 {workspaceLayout.focused && (
                   <div className="focus-exit">
                     <button onClick={() => workspaceLayout.setFocused(false)}>
@@ -2898,7 +3066,7 @@ export function App({
                 )}
                 {opening && (
                   <div className="workspace-busy">
-                    <Busy label={t('正在打开项目与作品…')} />
+                    <FeatureSkeleton profile="gallery" label={t('正在打开项目与作品…')} compact />
                   </div>
                 )}
               </div>

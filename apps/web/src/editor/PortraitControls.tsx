@@ -22,6 +22,7 @@ import { PrecisionRange } from './PrecisionRange';
 import { currentV3, rgbaHex, hexRgba, type InspectorController } from './advanced-model';
 import type { ToolGroup } from './ToolInspector';
 import { portraitTargetDisplayLabel } from './portrait-label';
+import { interactionText } from '../workspace/interaction-copy';
 import {
   portraitSelectionLabels,
   portraitSelectionMatchesSource,
@@ -405,16 +406,19 @@ export function PortraitControls({
             <StudioGlyph name="background" size={18} /> {t('背景选区')}
           </button>
         </div>
-        <p className="control-note" id={selectionHintId}>
+        <p
+          className={state.analysis ? 'control-note portrait-selection-state' : 'sr-only'}
+          id={selectionHintId}
+        >
           {recipe.regionEdits.length >= MAX_V3_REGION_EDITS
             ? t('已有 {v0} 个局部，请先整理选区。', { v0: MAX_V3_REGION_EDITS })
             : state.analysis && !analysisCurrent
               ? t('原图已经切换，请重新识别后建立选区。')
               : state.analysis?.segmentation
-                ? t('建立独立选区后，可调色、调整范围。建立时保持照片外观。')
+                ? ''
                 : state.analysis
                   ? t('这次分析未提供头发或背景范围，可到“局部”手动选择。')
-                  : t('识别后可建立头发和背景选区。模型不可用时，可到“局部”手动选择。')}
+                  : interactionText('selectAfterAnalysis')}
         </p>
       </div>
       {target && (
@@ -561,12 +565,17 @@ export function PortraitControls({
         </>
       )}
       {!target && !state.progress && (
-        <p className="control-note">
-          {category === 'body'
-            ? t('选择“识别身体位置”后，按可见的肩、手臂、腰胯与腿部锚点分别调整。')
-            : t('先在本机识别人脸，再选择人物独立调整。没有识别到的内容仍可手动精修。')}
-          {t('模型不可用时，可以先用下方的手动精修。')}
-        </p>
+        <MotionDetails className="advanced-disclosure portrait-context-help">
+          <summary>{interactionText('portraitHelp')}</summary>
+          <p className="control-note">
+            {category === 'body'
+              ? t('选择“识别身体位置”后，按可见的肩、手臂、腰胯与腿部锚点分别调整。')
+              : t('先在本机识别人脸，再选择人物独立调整。没有识别到的内容仍可手动精修。')}
+          </p>
+          <p className="control-note">
+            {t('识别后可建立头发和背景选区。模型不可用时，可到“局部”手动选择。')}
+          </p>
+        </MotionDetails>
       )}
       <MotionDetails className="advanced-disclosure">
         <summary>{t('人物标注与分析接入')}</summary>

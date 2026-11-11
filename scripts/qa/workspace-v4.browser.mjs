@@ -173,6 +173,75 @@ async function precision(page, label, value) {
     `${label} displayed value`,
   );
 }
+async function editorReturnAndHistory(page) {
+  const canvas = await page.locator('.image-frame canvas').elementHandle();
+  assert.ok(canvas, 'the live canvas exists before changing panel contexts');
+  try {
+    const inspector = page.locator('.free-panel[data-panel-id="inspector"][aria-hidden="false"]');
+    await inspector.getByRole('button', { name: '返回工具总览', exact: true }).click();
+    const overview = inspector.getByRole('region', { name: '全部工具', exact: true });
+    await overview.waitFor();
+    assert.equal(await inspector.locator('.inspector-retained').getAttribute('inert'), '');
+    const first = overview.locator('.tool-overview-list > button').first();
+    await first.focus();
+    await first.press('End');
+    assert.equal(
+      await overview
+        .locator('.tool-overview-list > button')
+        .last()
+        .evaluate((button) => button === document.activeElement),
+      true,
+      'End focuses and reveals the actual last tool',
+    );
+    await overview.getByRole('searchbox', { name: '查找工具', exact: true }).fill('明暗');
+    assert.equal(await overview.locator('.tool-overview-list > button').count(), 1);
+    await overview.getByRole('button', { name: /^明暗/ }).click();
+    await overview.waitFor({ state: 'hidden' });
+    assert.equal(
+      Number(await inspector.getByRole('slider', { name: '曝光', exact: true }).inputValue()),
+      -0.35,
+      'returning through the tool overview preserves the exact current adjustment',
+    );
+    const tabs = inspector.getByRole('navigation', { name: '当前作品面板', exact: true });
+    await tabs.getByRole('button', { name: '记录', exact: true }).click();
+    await inspector
+      .locator('.detailed-history-list > li[data-selected="true"] .history-expand')
+      .click();
+    const changes = inspector.locator('.history-change-details');
+    await changes.waitFor();
+    const exposure = changes
+      .locator(':scope > div')
+      .filter({ has: page.locator('dt').filter({ hasText: /曝光$/ }) });
+    assert.equal(await exposure.locator('dd > span').innerText(), '0EV');
+    assert.equal(await exposure.locator('dd > strong').innerText(), '-0.35EV');
+    await tabs.getByRole('button', { name: '调整', exact: true }).click();
+    assert.equal(
+      Number(await inspector.getByRole('slider', { name: '曝光', exact: true }).inputValue()),
+      -0.35,
+    );
+    assert.equal(
+      await canvas.evaluate(
+        (node) => node.isConnected && node === document.querySelector('.image-frame canvas'),
+      ),
+      true,
+      'tool overview and local history keep the original canvas owner mounted',
+    );
+    const topbar = await page.locator('.floating-topbar').boundingBox();
+    assert.ok(
+      topbar && topbar.height <= 55,
+      'compact studio chrome leaves room for the photograph',
+    );
+    return {
+      toolOverviewReturn: true,
+      keyboardToolTraversal: true,
+      actualHistoryDelta: [0, -0.35],
+      sameCanvas: true,
+      topbarHeight: topbar.height,
+    };
+  } finally {
+    await canvas.dispose();
+  }
+}
 async function downloadBytes(page, action) {
   const pending = page.waitForEvent('download');
   await action();
@@ -703,6 +772,7 @@ try {
       await tool(page, size.width < 760 ? '调节' : '明暗');
       const initial = await layoutAssertions(page, size.width < 760);
       await precision(page, '曝光', -0.35);
+      const panelContext = await editorReturnAndHistory(page);
       const normal = await layoutAssertions(page, size.width < 760);
       let resized = null;
       if (size.width < 760) {
@@ -754,7 +824,9 @@ try {
         await page.getByRole('button', { name: '收起参数，查看完整照片', exact: true }).click();
         await eventually(
           async () =>
-            (await page.locator('.free-panel').getAttribute('data-presentation')) === 'collapsed',
+            (await page
+              .locator('.free-panel[aria-hidden="false"]')
+              .getAttribute('data-presentation')) === 'collapsed',
           'collapse',
         );
         await grip.press('Enter');
@@ -766,7 +838,7 @@ try {
         );
         await page.getByRole('button', { name: '展开参数面板', exact: true }).click();
         assert.equal(
-          await page.locator('.free-panel').getAttribute('data-presentation'),
+          await page.locator('.free-panel[aria-hidden="false"]').getAttribute('data-presentation'),
           'maximized',
         );
         await page.getByRole('button', { name: '恢复参数，保留当前调整', exact: true }).click();
@@ -793,9 +865,103 @@ try {
       return {
         initial,
         normal,
+        panelContext,
         resized,
         download: { format: metadata.format, width: metadata.width, height: metadata.height },
       };
+    });
+  }
+  for (const viewport of [
+    { width: 320, height: 700 },
+    { width: 1440, height: 960 },
+  ]) {
+    await caseRun(`dismissible-cloud-status-${viewport.width}x${viewport.height}`, async () => {
+      const context = await browser.newContext({
+        viewport,
+        hasTouch: viewport.width < 760,
+        reducedMotion: 'reduce',
+        acceptDownloads: true,
+      });
+      const page = await watchPage(context);
+      let offline = true,
+        configReads = 0;
+      const writes = [];
+      page.on('request', (request) => {
+        if (
+          new URL(request.url()).pathname.startsWith('/v1/') &&
+          !['GET', 'HEAD', 'OPTIONS'].includes(request.method())
+        )
+          writes.push(request.method());
+      });
+      const unavailable = async (route) => {
+        configReads++;
+        if (offline) await route.abort('internetdisconnected');
+        else await route.continue();
+      };
+      await page.route('**/v1/public-config', unavailable);
+      try {
+        await page.goto(`${origin}/#/studio`);
+        const notice = page.locator('.cloud-status');
+        await notice.waitFor();
+        await page.getByLabel('选择照片', { exact: true }).setInputFiles({
+          name: 'offline-gradient.png',
+          mimeType: 'image/png',
+          buffer: png,
+        });
+        await imageReady(page);
+        await tool(page, viewport.width < 760 ? '调节' : '明暗');
+        await precision(page, '曝光', -0.15);
+        const readsBeforeDismiss = configReads;
+        await notice.getByRole('button', { name: '收起云端状态', exact: true }).click();
+        await notice.waitFor({ state: 'hidden' });
+        const restore = page.getByRole('button', { name: '查看云端连接状态', exact: true });
+        await restore.waitFor();
+        await restore.click({ trial: true });
+        assert.equal(configReads, readsBeforeDismiss, 'dismissing the banner is not a retry');
+        assert.equal(
+          Number(await page.getByRole('slider', { name: '曝光', exact: true }).inputValue()),
+          -0.15,
+        );
+        assert.equal(
+          await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth + 1),
+          true,
+        );
+        await page.screenshot({ path: join(artifacts, `cloud-dismissed-${viewport.width}.png`) });
+        await restore.click();
+        await notice.waitFor();
+        assert.equal(configReads, readsBeforeDismiss, 'opening connection details is read-free');
+        offline = false;
+        const recovered = page.waitForResponse(
+          (response) =>
+            new URL(response.url()).pathname === '/v1/public-config' && response.status() === 200,
+        );
+        await notice.getByRole('button', { name: '重试', exact: true }).click();
+        await recovered;
+        await notice.waitFor({ state: 'hidden' });
+        assert.equal(
+          configReads,
+          readsBeforeDismiss + 1,
+          'only explicit Retry refreshes public configuration',
+        );
+        assert.equal(
+          Number(await page.getByRole('slider', { name: '曝光', exact: true }).inputValue()),
+          -0.15,
+        );
+        assert.deepEqual(
+          writes,
+          [],
+          'cloud-status recovery must not submit work, assistant turns or charges',
+        );
+        return {
+          dismissed: true,
+          recoveryEntry: true,
+          explicitReadRetries: 1,
+          mutationRequests: 0,
+          exposure: -0.15,
+        };
+      } finally {
+        await context.close();
+      }
     });
   }
   for (const source of await photographicSources()) {
@@ -1252,6 +1418,149 @@ try {
     assert.equal(result.status(), 200);
     return result.json();
   };
+  await caseRun(
+    'same-canvas-collaboration-keeps-two-drafts-through-full-page-and-return',
+    async () => {
+      const page = a.page;
+      const initialHead = await readHead();
+      const originalFilename = await page.locator('.canvas-file-info > span').innerText();
+      const canvas = await page.locator('.image-frame canvas').elementHandle();
+      assert.ok(canvas);
+      const draftWrites = [];
+      const trackWrite = (request) => {
+        const path = new URL(request.url()).pathname;
+        if (
+          request.method() !== 'GET' &&
+          (path === `/v1/projects/${projectId}/comments` ||
+            path === `/v1/projects/${projectId}/tasks`)
+        )
+          draftWrites.push({ method: request.method(), path });
+      };
+      page.on('request', trackWrite);
+      let releaseComments;
+      let commentsRequestStarted = false;
+      let commentOwner;
+      const commentsGate = new Promise((resolve) => {
+        releaseComments = resolve;
+      });
+      const commentsPath = `**/v1/projects/${projectId}/comments`;
+      const holdComments = async (route) => {
+        const response = await route.fetch();
+        commentsRequestStarted = true;
+        await commentsGate;
+        await route.fulfill({ response });
+      };
+      await page.route(commentsPath, holdComments);
+      try {
+        await tool(page, '明暗');
+        await page
+          .locator('.free-panel[aria-hidden="false"]')
+          .getByRole('navigation', { name: '当前作品面板', exact: true })
+          .getByRole('button', { name: '协作', exact: true })
+          .click();
+        const collaboration = page.locator('.free-panel[data-panel-id="collaboration"]');
+        await collaboration.waitFor();
+        assert.equal(await collaboration.getAttribute('data-display-mode'), 'panel');
+        const skeleton = collaboration.locator(
+          '.feature-skeleton[data-skeleton-profile="collaboration"]',
+        );
+        await skeleton.waitFor();
+        await eventually(
+          () => commentsRequestStarted,
+          'the real comments response is held for loading-state inspection',
+        );
+        assert.equal(await skeleton.getAttribute('aria-busy'), 'true');
+        assert.equal(
+          await page.locator('.image-frame canvas').isVisible(),
+          true,
+          'actual collaboration loading keeps the photograph visible',
+        );
+        assert.equal(
+          await canvas.evaluate(
+            (node) => node.isConnected && node === document.querySelector('.image-frame canvas'),
+          ),
+          true,
+          'the contextual collaboration tab keeps the exact canvas mounted',
+        );
+        releaseComments();
+        await skeleton.waitFor({ state: 'hidden' });
+        const comment = collaboration.getByRole('textbox', {
+          name: '向项目成员发送意见',
+          exact: true,
+        });
+        await comment.fill('保留这条未发送的协作草稿。');
+        commentOwner = await comment.elementHandle();
+        assert.ok(commentOwner);
+        await collaboration
+          .locator('.collaboration-panel-tabs')
+          .getByRole('button', { name: /^任务/ })
+          .click();
+        const task = collaboration.getByRole('textbox', { name: '新任务标题', exact: true });
+        await task.fill('这条任务先不提交');
+        await collaboration
+          .getByRole('button', { name: '在完整页面查看协作', exact: true })
+          .click();
+        await page
+          .locator('.free-panel[data-panel-id="collaboration"][data-display-mode="page"]')
+          .waitFor();
+        assert.equal(await comment.inputValue(), '保留这条未发送的协作草稿。');
+        assert.equal(await task.inputValue(), '这条任务先不提交');
+        assert.equal(
+          await commentOwner.evaluate(
+            (node) => node.isConnected && node === document.querySelector('#comment-body'),
+          ),
+          true,
+          'expanding uses the same discussion textarea, not a second owner',
+        );
+        await collaboration.getByRole('button', { name: '继续精修', exact: true }).click();
+        await page.locator('.free-panel[data-panel-id="inspector"][aria-hidden="false"]').waitFor();
+        await imageReady(page);
+        assert.equal(
+          await page.locator('.canvas-file-info > span').innerText(),
+          originalFilename,
+          'returning from the explicitly expanded page retains the original image',
+        );
+        await page
+          .locator('.free-panel[aria-hidden="false"]')
+          .getByRole('navigation', { name: '当前作品面板', exact: true })
+          .getByRole('button', { name: '协作', exact: true })
+          .click();
+        await collaboration.waitFor();
+        assert.equal(await task.inputValue(), '这条任务先不提交');
+        await task.fill('');
+        await collaboration
+          .locator('.collaboration-panel-tabs')
+          .getByRole('button', { name: /^项目讨论/ })
+          .click();
+        assert.equal(await comment.inputValue(), '保留这条未发送的协作草稿。');
+        assert.equal(await page.locator('#comment-body').count(), 1);
+        await comment.fill('');
+        await collaboration.getByRole('button', { name: '返回当前调节', exact: true }).click();
+        await collaboration.waitFor({ state: 'hidden' });
+        assert.deepEqual(draftWrites, [], 'typing and navigating cannot submit a comment or task');
+        assert.equal((await readHead()).artwork.headVersion, initialHead.artwork.headVersion);
+        assert.deepEqual(
+          await recipeDownload(page),
+          initialHead.revision.recipe,
+          'the complete recipe survives both the in-canvas tab and explicit full-page round trip',
+        );
+        await page.screenshot({ path: join(artifacts, 'same-canvas-collaboration-return.png') });
+        return {
+          contextualSkeleton: true,
+          sameCanvas: true,
+          retainedCommentOwner: true,
+          unsentCommentAndTask: true,
+          accidentalWrites: 0,
+        };
+      } finally {
+        releaseComments();
+        await page.unroute(commentsPath, holdComments);
+        page.off('request', trackWrite);
+        await commentOwner?.dispose();
+        await canvas.dispose();
+      }
+    },
+  );
   await caseRun('two-accounts-shared-edit-cursor-and-owned-undo', async () => {
     await eventually(
       async () => Number(await a.page.locator('.collaboration-summary small').textContent()) === 2,
@@ -1284,7 +1593,7 @@ try {
         (await a.page.locator('.collaboration-status').getAttribute('data-state')) === 'ready',
       'owner commit completes',
     );
-    await a.page.locator('.panel-title-drag').focus();
+    await a.page.locator('.free-panel[aria-hidden="false"] .panel-title-drag').focus();
     await a.page.keyboard.press('Control+z');
     await eventually(async () => {
       const r = (await readHead()).revision.recipe;
