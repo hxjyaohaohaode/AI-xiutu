@@ -216,6 +216,8 @@ async function isolated<T>(
             VIPS_CONCURRENCY: '1',
             OPENBLAS_NUM_THREADS: '1',
             OMP_NUM_THREADS: '1',
+            OPENIMAGEIO_THREADS: '2',
+            OPENIMAGEIO_OPTIONS: 'exr_threads=2',
             GOMAXPROCS: '2',
             MALLOC_ARENA_MAX: '2',
           },

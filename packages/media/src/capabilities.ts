@@ -58,6 +58,7 @@ async function probeNative(
           PATH: process.env.PATH ?? '/usr/bin:/bin',
           OPENBLAS_NUM_THREADS: '1',
           OMP_NUM_THREADS: '1',
+          OPENIMAGEIO_THREADS: '2',
         },
       },
       (error, stdout) => {

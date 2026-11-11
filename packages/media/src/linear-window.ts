@@ -74,6 +74,7 @@ function startWindowProcess(python: string, memoryBytes: number) {
         TZ: 'UTC',
         OPENBLAS_NUM_THREADS: '1',
         OMP_NUM_THREADS: '1',
+        OPENIMAGEIO_THREADS: '2',
         MALLOC_ARENA_MAX: '2',
       },
     },

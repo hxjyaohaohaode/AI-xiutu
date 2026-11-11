@@ -9,12 +9,13 @@ RUN npm run build
 FROM node:24-bookworm-slim AS server
 WORKDIR /app
 ENV NODE_ENV=production
-RUN apt-get update && apt-get install -y --no-install-recommends util-linux tesseract-ocr tesseract-ocr-eng tesseract-ocr-chi-sim && rm -rf /var/lib/apt/lists/*
+RUN apt-get update && apt-get install -y --no-install-recommends tini util-linux tesseract-ocr tesseract-ocr-eng tesseract-ocr-chi-sim && rm -rf /var/lib/apt/lists/*
 COPY --from=build --chown=node:node /app /app
 ENV TESSDATA_PREFIX=/opt/ocr-tessdata
 RUN node --use-env-proxy scripts/prepare-ocr.mjs /opt/ocr-tessdata
 RUN mkdir -p /app/.data/private /app/.data/ai-dispatch-journal && chown -R node:node /app/.data
 USER node
+ENTRYPOINT ["/usr/bin/tini", "--", "/usr/local/bin/docker-entrypoint.sh"]
 CMD ["node", "--import", "tsx", "apps/api/src/index.ts"]
 
 FROM node:24-bookworm-slim AS ultrahdr-codec

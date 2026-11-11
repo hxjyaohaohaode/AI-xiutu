@@ -19,7 +19,17 @@ import {
 import { editMaster16 } from '../src/precision.js';
 import { createLinearWindowRuntime, processMedia, exportMedia } from '../src/index.js';
 
-const execute = promisify(execFile);
+const executeFile = promisify(execFile);
+const execute = (file: string, args: string[]) =>
+  executeFile(file, args, {
+    env: {
+      ...process.env,
+      OPENBLAS_NUM_THREADS: '1',
+      OMP_NUM_THREADS: '1',
+      OPENIMAGEIO_THREADS: '2',
+      OPENIMAGEIO_OPTIONS: 'exr_threads=2',
+    },
+  });
 test(
   'JPEG gain maps retain the original and develop a graded HDR crop without EXIF',
   { skip: !process.env.MEDIA_QA_PYTHON || !process.env.MEDIA_UHDR_LIBRARY },
