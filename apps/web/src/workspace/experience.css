@@ -1328,6 +1328,29 @@
   }
 }
 @media (max-width: 359px) {
+  .studio-workspace .canvas-view-controls .compare-press {
+    flex: 0 1 auto;
+    min-width: 0;
+    white-space: normal;
+  }
+  .studio-workspace .canvas-view-controls .compare-press > svg {
+    flex-shrink: 0;
+  }
+  .studio-workspace .canvas-view-controls .compare-press > span {
+    min-width: 0;
+    line-height: 1.15;
+  }
+  .studio-workspace .studio-context-tabs.context-segment > button {
+    min-height: 44px;
+    gap: 0;
+  }
+  .studio-workspace .studio-context-tabs.context-segment > button > svg {
+    display: none;
+  }
+  .studio-workspace .studio-context-tabs.context-segment > button > span {
+    white-space: nowrap;
+    overflow-wrap: normal;
+  }
   /* The restored cloud-status entry needs its own room. Keep the route name
      intact and let only its duplicate glyph yield to the publishing actions. */
   .studio-workspace .floating-topbar:has(.cloud-status-trigger) {

@@ -492,20 +492,36 @@ async function cloudRecoveryHeaderEvidence(page, expectedRoute) {
         ),
       };
     };
+    const textLines = (element) => {
+      const range = document.createRange();
+      range.selectNodeContents(element);
+      return Array.from(range.getClientRects())
+        .filter((box) => box.width > 0 && box.height > 0)
+        .map((box) => ({
+          x: box.x,
+          y: box.y,
+          width: box.width,
+          height: box.height,
+          right: box.right,
+          bottom: box.bottom,
+        }));
+    };
     const label = node.querySelector('.mobile-view-trigger > span');
-    const range = document.createRange();
-    range.selectNodeContents(label);
-    const lines = Array.from(range.getClientRects())
-      .filter((box) => box.width > 0 && box.height > 0)
-      .map((box) => ({ x: box.x, y: box.y, width: box.width, right: box.right }));
+    const toolbar = document.querySelector('.canvas-view-controls');
+    const compare = toolbar.querySelector('.compare-press');
+    const compareLabel = compare.querySelector('span');
+    const contexts = document.querySelector(
+      '.free-panel[aria-hidden="false"] .studio-context-tabs',
+    );
     return {
       locale: document.documentElement.lang,
       viewportWidth: innerWidth,
+      viewportHeight: innerHeight,
       pageOverflow: document.documentElement.scrollWidth - innerWidth,
       headerOverflow: node.scrollWidth - node.clientWidth,
       route: rect(node.querySelector('.mobile-view-trigger')),
       label: label.textContent.trim(),
-      lines,
+      lines: textLines(label),
       brand: rect(node.querySelector('.workspace-home-link')),
       controls: [
         '.workspace-identity > .icon-button',
@@ -514,6 +530,30 @@ async function cloudRecoveryHeaderEvidence(page, expectedRoute) {
         '.top-save',
         '.top-export',
       ].map((selector) => ({ selector, ...rect(node.querySelector(selector)) })),
+      toolbar: {
+        ...rect(toolbar),
+        overflow: toolbar.scrollWidth - toolbar.clientWidth,
+        buttons: Array.from(toolbar.querySelectorAll('button'))
+          .filter((button) => button.getBoundingClientRect().width > 0)
+          .map((button) => ({
+            label: button.getAttribute('aria-label') || button.textContent.trim(),
+            enabled: !button.disabled,
+            ...rect(button),
+          })),
+        compare: {
+          ...rect(compare),
+          text: compareLabel.textContent.trim(),
+          lines: textLines(compareLabel),
+        },
+      },
+      contexts: {
+        ...rect(contexts),
+        buttons: Array.from(contexts.querySelectorAll('button')).map((button) => ({
+          label: button.querySelector('span').textContent.trim(),
+          lines: textLines(button.querySelector('span')),
+          ...rect(button),
+        })),
+      },
     };
   });
   report.layoutMeasurements.push({ case: activeCase, cloudRecoveryHeader: measured });
@@ -537,6 +577,50 @@ async function cloudRecoveryHeaderEvidence(page, expectedRoute) {
   }
   for (const control of measured.controls)
     assert.ok(control.height >= 44, `${control.selector} retains its 44px touch height`);
+  const inside = (inner, outer, label) =>
+    assert.ok(
+      inner.x >= outer.x - 1 &&
+        inner.right <= outer.right + 1 &&
+        inner.y >= outer.y - 1 &&
+        inner.bottom <= outer.bottom + 1,
+      label,
+    );
+  const toolbar = measured.toolbar;
+  assert.ok(
+    toolbar.x >= -1 &&
+      toolbar.right <= measured.viewportWidth + 1 &&
+      toolbar.y >= -1 &&
+      toolbar.bottom <= measured.viewportHeight + 1 &&
+      toolbar.overflow <= 1,
+    'the canvas toolbar and its contents must fit the phone width',
+  );
+  assert.equal(toolbar.buttons.length, 8, 'all eight phone canvas actions remain visible');
+  for (const button of toolbar.buttons) {
+    inside(button, toolbar, `${button.label} fits fully within the canvas toolbar`);
+    assert.ok(button.width >= 28 && button.height >= 32, 'canvas actions retain their touch sizes');
+    if (button.enabled)
+      assert.equal(button.exposed, true, `${button.label} receives a pointer at its center`);
+  }
+  assert.equal(
+    toolbar.compare.text,
+    { 'zh-CN': '按住对比', 'zh-TW': '按住對比', en: 'Hold to compare' }[measured.locale],
+    'the compare instruction retains its complete translated text',
+  );
+  assert.ok(toolbar.compare.lines.length >= 1 && toolbar.compare.lines.length <= 2);
+  for (const line of toolbar.compare.lines)
+    inside(line, toolbar.compare, 'each compare instruction line remains inside its button');
+  assert.equal(measured.contexts.buttons.length, 4, 'all four editing contexts remain available');
+  assert.ok(
+    measured.contexts.x >= -1 && measured.contexts.right <= measured.viewportWidth + 1,
+    'the context row fits the phone width',
+  );
+  for (const button of measured.contexts.buttons) {
+    assert.ok(button.height >= 44, 'each context keeps its 44px touch height');
+    assert.equal(button.lines.length, 1, `${button.label} stays on one intact line`);
+    inside(button, measured.contexts, 'the context button fits its navigation row');
+    inside(button.lines[0], button, 'the entire context label fits inside its button');
+    assert.equal(button.exposed, true, `${button.label} receives a pointer at its center`);
+  }
   return measured;
 }
 async function layoutAssertions(page, phone) {
