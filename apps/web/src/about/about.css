@@ -732,7 +732,7 @@
   border: 1px solid #dfe2d6;
   border-radius: 8px;
   background: #eeeee6;
-  overflow: hidden;
+  overflow: clip;
 }
 .agent-visual-top {
   display: flex;
@@ -832,7 +832,7 @@
   box-shadow: 0 6px 14px #44502c0e;
   z-index: 3;
   opacity: 0;
-  transform: translate(25px, 12px);
+  transform: translate(min(25px, 12%), 12px);
   visibility: hidden;
   transition:
     opacity 260ms,
