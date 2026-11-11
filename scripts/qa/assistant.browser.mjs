@@ -681,16 +681,21 @@ try {
     const active = (await select.innerText()).trim(),
       before = dispatches;
     await select.click();
-    const other = await history
-      .getByRole('listbox', { name: '会话记录', exact: true })
-      .getByRole('option')
-      .evaluateAll((nodes) =>
-        nodes
-          .slice(1)
-          .find((node) => node.getAttribute('aria-selected') !== 'true')
-          ?.querySelector('.choice-option-label')
-          ?.textContent?.trim(),
-      );
+    const options = history.getByRole('listbox', { name: '会话记录', exact: true });
+    // The popover is mounted and placed after the click. evaluateAll itself
+    // does not wait for that observable UI state or for the stored catalog.
+    await options.waitFor({ state: 'visible' });
+    const other = await until(
+      () =>
+        options.getByRole('option').evaluateAll((nodes) =>
+          nodes
+            .slice(1)
+            .find((node) => node.getAttribute('aria-selected') !== 'true')
+            ?.querySelector('.choice-option-label')
+            ?.textContent?.trim(),
+        ),
+      'a stored conversation other than the active one is visible',
+    );
     assert.ok(other);
     await choose(history, '会话记录', other);
     await history.waitFor({ state: 'hidden' });
