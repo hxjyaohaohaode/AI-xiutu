@@ -5,6 +5,7 @@ import { join } from 'node:path';
 import { tmpdir } from 'node:os';
 import { execFile } from 'node:child_process';
 import { promisify } from 'node:util';
+import { fileURLToPath } from 'node:url';
 import sharp from 'sharp';
 import {
   NEUTRAL_PRECISION_EDIT,
@@ -19,6 +20,31 @@ import { editMaster16 } from '../src/precision.js';
 import { createLinearWindowRuntime, processMedia, exportMedia } from '../src/index.js';
 
 const execute = promisify(execFile);
+test(
+  'RAW float master tile-row normalization retains every source code value through partial tiles',
+  { skip: !process.env.MEDIA_QA_PYTHON },
+  async () => {
+    const dir = await mkdtemp(join(tmpdir(), 'xiutu-raw-float-tiles-'));
+    try {
+      await execute(process.env.MEDIA_QA_PYTHON!, [
+        '-B',
+        '-c',
+        `import numpy as n,OpenImageIO as o,sys
+from pathlib import Path
+sys.path.insert(0,sys.argv[1]); from convert import write_image,normalize_raw_tiles
+w,h=339,271; p=n.arange(w*h*3,dtype=n.uint32).astype(n.uint16).reshape(h,w,3)
+out=Path(sys.argv[2]); write_image(out,p,o.FLOAT,"Linear",tile_transform=normalize_raw_tiles)
+i=o.ImageInput.open(str(out)); s=i.spec(); assert (s.width,s.height,s.tile_width,s.tile_height)==(w,h,256,256)
+q=i.read_image(format=o.FLOAT); assert i.close(); assert n.array_equal(q,p.astype(n.float32)/n.float32(65535))`,
+        fileURLToPath(new URL('../native', import.meta.url)),
+        join(dir, 'linear.exr'),
+      ]);
+    } finally {
+      await rm(dir, { recursive: true, force: true });
+    }
+  },
+);
+
 test('precision edits preserve all 65536 adjacent code values and use actual linear-light exposure without an 8bit stage', () => {
   const input = Uint16Array.from({ length: 65536 * 4 }, (_, i) =>
     i % 4 === 3 ? 32768 : Math.floor(i / 4),

@@ -34,6 +34,7 @@ interface NativeWindow {
   outputPath: string;
   width: number;
   height: number;
+  maxPixels: number;
   region: MediaPrecisionWindow;
   edit: PrecisionEdit;
   sdr: true;
@@ -258,6 +259,7 @@ export async function exportLinearWindow(
       outputPath: partial,
       width: source.width,
       height: source.height,
+      maxPixels: MEDIA_MAX_LINEAR_PIXELS,
       region,
       edit: edit ?? NEUTRAL_PRECISION_EDIT,
       sdr: true,

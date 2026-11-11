@@ -19,6 +19,7 @@ import {
   MEDIA_MAX_TILE_COUNT,
   MEDIA_MAX_PRECISION_PIXELS,
   MEDIA_MAX_LINEAR_PIXELS,
+  MEDIA_MAX_HDR_IMPORT_PIXELS,
   MEDIA_MAX_PREVIEW_EDGE,
 } from './types.js';
 const probes = new Map<string, { at: number; versions: Record<string, string> | null }>();
@@ -101,9 +102,12 @@ export async function getMediaCapabilities(
     formatAndResourceLimitsApply: true,
     maxInputBytes: MEDIA_MAX_INPUT_BYTES,
     maxProxyPixels: MEDIA_MAX_PROXY_PIXELS,
-    maxRawPixels: Math.min(options.maxPixels ?? MEDIA_DEFAULT_MAX_PIXELS, 50_000_000),
+    maxRawPixels: Math.min(options.maxPixels ?? MEDIA_DEFAULT_MAX_PIXELS, MEDIA_MAX_LINEAR_PIXELS),
     maxPsdPixels: Math.min(options.maxPixels ?? MEDIA_DEFAULT_MAX_PIXELS, 16_777_216),
-    maxHdrPixels: Math.min(options.maxPixels ?? MEDIA_DEFAULT_MAX_PIXELS, 50_000_000),
+    maxHdrPixels: Math.min(
+      options.maxPixels ?? MEDIA_DEFAULT_MAX_PIXELS,
+      MEDIA_MAX_HDR_IMPORT_PIXELS,
+    ),
     maxConcurrent: 1,
     maxQueued: 8,
     nativeConfigured,

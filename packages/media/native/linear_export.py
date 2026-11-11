@@ -187,7 +187,7 @@ def render(image, request, window_png=False):
         or channels not in (3, 4)
         or spec.deep
         or spec.depth != 1
-        or width * height > 50_000_000
+        or width * height > request["maxPixels"]
     ):
         raise ValueError("Retained float master exceeds precision export contract")
     if image.seek_subimage(1, 0):

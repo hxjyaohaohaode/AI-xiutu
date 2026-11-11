@@ -165,6 +165,7 @@ additional media links, with explicit source asset IDs and audited provenance.
 
 - `GET /v1/media-capabilities`: enabled/effective available, decoder details, per-format pixel/byte budgets and maxChunkBytes. Runtime readiness does not prove every file is decodable.
 - `MEDIA_RASTER_MAX_PIXELS` sets admission for retained raster import. Default 200,000,000 and ceiling 256,000,000. Side length, frame-oriented decoders, address space, tile count and available staging space impose independent limits.
+- Native import checks the sensor dimensions for RAW up to 64,000,000 pixels and the data window for EXR/Radiance up to 50,000,000 pixels. The RAW float master is normalized one tile row at a time. The decoder retains a full-resolution demosaiced uint16 raster during import.
 - `POST /v1/projects/:id/media-imports` `{name,size,idempotencyKey,generateTiles?:boolean}` ->201 `{job}`. Current editor; size1..512MiB, name has no paths/control characters. Reserves input bytes. One active import per actor, at most4 database-wide. Same key/body returns existing job; changed body409.
 - `PUT /v1/media-imports/:id/chunk?offset=N`, application/octet-stream,1..4MiB -> `{uploadedBytes,chunkSha256}`. Task actor and current project editor only. Contiguous append or exact-byte retry wholly inside confirmed bytes; overlaps/mismatch409. No caller path/URL.
 - `POST /v1/media-imports/:id/complete` ->202 `{job}`. Fully uploaded input required; repeated complete never launches another decoder.
@@ -174,7 +175,8 @@ additional media links, with explicit source asset IDs and audited provenance.
 - `GET /v1/assets/:id/media/original`, `/master`, `/linearMaster`, `/tiles.dzi`, `/tiles_files/:level/:tile` serve immutable originals, masters or tiles under the asset ACL.
 - `POST /v1/assets/:id/media/preview` accepts `{expectedSourceSha256,precisionInput,precisionEdit?,maxEdge,region?}`. The PNG16 response applies the grade before downsampling an overview. An optional `{left,top,width,height}` selects native pixels in the orientation-normalized data window. Each edge must fit `maxEdge` (128–2048); the coordinates must fit the master. A window may be read from a raster above the whole-image grading budget.
 - `GET /v1/assets/:id/media/grades?beforeVersion=N` returns `{grades,nextBeforeVersion}` in descending order, at most 30 per response. `POST .../grades` accepts `{expectedVersion,expectedSourceSha256,precisionInput,precisionEdit}` and returns `201 {grade}`. Version 0 means no prior grade. A stale save returns 409. Each new version is appended under current project edit access.
-- `POST /v1/assets/:id/media/export` accepts `{format,quality?,expectedSourceSha256?,precisionInput?,precisionEdit?,gradeVersion?}`. Select either an inline grade or an immutable saved version. `precisionInput` is `master16` or `linear-master`. Legacy PNG/TIFF/JPEG/WebP requests default to the SDR master; EXR32 uses the linear master. Grades, explicit input selection and EXR require the source digest. The response includes `X-Precision-Input`, `X-Precision-Edit-SHA256` and `X-Editor-Recipe-Included:false`.
+- `POST /v1/assets/:id/media/export` accepts `{format,quality?,expectedSourceSha256?,precisionInput?,precisionEdit?,gradeVersion?,delivery?:'attachment'}`. Select either an inline grade or an immutable saved version. `precisionInput` is `master16` or `linear-master`. Legacy PNG/TIFF/JPEG/WebP requests default to the SDR master; EXR32 uses the linear master. Grades, explicit input selection and EXR require the source digest. The default response streams the file with `X-Precision-Input`, `X-Precision-Edit-SHA256` and `X-Editor-Recipe-Included:false`. The optional browser delivery returns `201 {downloadId,expiresAt}` once the file is ready.
+- `GET /v1/assets/:id/media/exports/:downloadId` streams that attachment once, with the same precision headers. The result is held for 60 seconds on the API instance that produced it. The same session, current asset ACL and source identity are required at download. The server permits one held attachment per user and two per API instance. The browser download can continue while preview requests use the conversion lane again.
 
 A grade includes `exposure:-10..10`,
 `temperature/tint/contrast/saturation/shadows/highlights:-100..100`, and
@@ -191,7 +193,7 @@ or `linear` selection shape. Regions blend adjusted RGB in linear light after
 global curves and before optional tone mapping, using full source pixel centers
 for previews and exports. Both versions return `422 MEDIA_FLOAT_INPUT` with `master16`.
 Whole-image grading supports up to 16,777,216
-SDR master pixels or 50,000,000 linear master pixels. PNG/TIFF apply the requested
+SDR master pixels or 64,000,000 linear master pixels. PNG/TIFF apply the requested
 grade in the selected input domain and encode sRGB at 16 bits. EXR32 preserves
 signed float values, headroom, associated alpha and the retained EXR windows.
 Preview and export share the native development math. The server rechecks the

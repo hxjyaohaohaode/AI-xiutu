@@ -8,7 +8,8 @@ export const MEDIA_MAX_TILE_COUNT = 8_192;
 export const MEDIA_MAX_INPUT_BYTES = 536_870_912;
 export const MEDIA_MAX_PROXY_PIXELS = 4_194_304;
 export const MEDIA_MAX_PRECISION_PIXELS = 16_777_216;
-export const MEDIA_MAX_LINEAR_PIXELS = 50_000_000;
+export const MEDIA_MAX_LINEAR_PIXELS = 64_000_000;
+export const MEDIA_MAX_HDR_IMPORT_PIXELS = 50_000_000;
 export const MEDIA_MAX_PREVIEW_EDGE = 2048;
 export class MediaProcessingError extends Error {
   constructor(

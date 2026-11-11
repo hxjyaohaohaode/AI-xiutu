@@ -8,7 +8,7 @@
 
 `exportMedia` 可传 `precisionEdit`，完整字段为 `algorithm:'scene-linear-v1'`、`exposure`（−10…10EV）、`temperature/tint/contrast/saturation/shadows/highlights`（−100…100）和 `toneMap:'none'|'reinhard'`。全零及 none 为中性。温度/色偏沿既有相对 RGB 增益；对比度围绕线性亮度0.18使用指数，饱和度围绕线性亮度，阴影/高光按 `Y/(Y+0.18)` 连续分配正负一档曝光。Reinhard 是显式的亮度色调映射。
 
-选择 `precisionInput:'master16'` 时，按65536项完整传递函数表解码 uint16 样本，调色后量化一次，整图最多16,777,216像素。选择 `'linear-master'` 时，OpenImageIO 从已校验的线性母版逐块读取，最多5000万像素。EXR32 保留有符号浮点亮度、透明度、数据窗口和显示窗口。PNG16/TIFF16 先应用同一线性调色，再作 SDR 编码。线性路径需要配置 `options.pythonExecutable`。
+选择 `precisionInput:'master16'` 时，按65536项完整传递函数表解码 uint16 样本，调色后量化一次，整图最多16,777,216像素。选择 `'linear-master'` 时，OpenImageIO 从已校验的线性母版逐块读取，最多6400万像素。EXR32 保留有符号浮点亮度、透明度、数据窗口和显示窗口。PNG16/TIFF16 先应用同一线性调色，再作 SDR 编码。线性路径需要配置 `options.pythonExecutable`。
 
 `scene-linear-v2` 在全局调色后加入可选的 `curves.luminance/red/green/blue`。每条曲线包含 2–16 个 `[输入EV, 输出EV]` 点，横纵坐标为相对线性灰 0.18 的 −16…16EV，输入严格递增。相邻点按 EV 线性插值，两端延用端点的曝光偏移。先按亮度曲线等比缩放 RGB，再执行各正值通道的独立曲线，最后按需要做 Reinhard 映射。Alpha 和全透明像素的隐藏颜色保留在线性 EXR 中，浮点结果允许大于 1 的高光。EV 调节位置参考场景线性曝光分区，曲线插值和端点延拓按上面的协议执行。 [darktable Tone Equalizer](https://github.com/darktable-org/darktable/blob/1c96821ea863fca682d458f5b91f8a50f248959d/src/iop/toneequal.c)
 
@@ -77,11 +77,11 @@ DZI：`tileSize` 为 256/512/1024，`overlap:1`；`levels = ceil(log2(max(width,
 | RGB/灰度 8/16 位                             | uint16 SDR 母版；有 RGB ICC 时转换到 sRGB                      | 无 ICC 的 RGB 明确按 sRGB 解释                                        |
 | CMYK JPEG/TIFF                               | 只接受带 ICC 的 8 位输入，由真实 CMS 转 sRGB                   | 无 ICC 拒绝；高位深 CMYK 拒绝；不是 CMYK 印前编辑/输出                |
 | PSD v1 RGB/灰度 8/16 位                      | ag-psd 读取文件已保存合成图；有界图层名/边界/隐藏状态          | 不重新渲染文字、智能对象、效果；没有可编辑图层往返；PSB/CMYK/32位拒绝 |
-| Camera RAW                                   | 可选 rawpy/LibRaw，16 位线性去马赛克、相机白平衡，同时保留线性母版和 sRGB 母版 | 全传感器至多50MP。线性母版使用显影结果的有效位深，已裁切高光仍受显影边界限制 |
+| Camera RAW                                   | 可选 rawpy/LibRaw，16 位线性去马赛克、相机白平衡，同时保留线性母版和 sRGB 母版 | 全传感器至多64MP。按瓦片行写入线性母版，已裁切高光仍受显影边界限制 |
 | EXR/Radiance                                 | 可选 OpenImageIO，flat 1/3/4 通道 float 解码与独立线性母版     | 至多50MP；deep、multipart、未知显式色域/曲线拒绝                      |
 | 浮点 TIFF、SVG/PDF、JXL/JP2、动画/多页、HEIC | 当前没有完整开启的导入工作流                                   | 不能凭扩展名、依赖中的 decoder 名称或文件选择器宣称支持               |
 
-本机验证过 JPEG、PNG、WebP、AVIF、GIF、16 位 TIFF/PNG、RGB8/RGB16 PSD、P3 ICC、CMYK JPEG/TIFF、实际 Nikon NEF、float EXR 与 Radiance。原件、母版原像素窗口、调色历史、PNG16/TIFF16/EXR32 的实拍验证另覆盖 Nikon NEF、Canon CR2、Sony A7 III ARW、富士 X-T4 RAF、宾得 K-1 DNG 和 Pixel 6 Pro DNG。Sony、富士、宾得和 Pixel 样本来自 raw.pixls.us 的 CC0 条目 2414、3914、2470 和 5961。具体证据见 `test/media.test.ts`、`scripts/qa/media-verify.ts` 和核查报告。
+本机验证过 JPEG、PNG、WebP、AVIF、GIF、16 位 TIFF/PNG、RGB8/RGB16 PSD、P3 ICC、CMYK JPEG/TIFF、实际 Nikon NEF、float EXR 与 Radiance。原件、母版原像素窗口、调色历史、PNG16/TIFF16/EXR32 的实拍验证另覆盖 Nikon NEF、Canon CR2、Sony A7 III ARW、富士 X-T4 RAF、宾得 K-1 DNG 和 Pixel 6 Pro DNG。Sony、富士、宾得和 Pixel 样本来自 raw.pixls.us 的 CC0 条目 2414、3914、2470 和 5961。另用条目 2790 的 Nikon Z7 NEF（45.75MP）和 3480 的 Sony A7R IV ARW（61.01MP）验证跨瓦片原像素窗口及三种格式的整图下载。具体证据见 `test/media.test.ts`、`scripts/qa/media-verify.ts` 和[验收主表](../../docs/research/PHOTO-EDITING-FEATURE-MATRIX.md#r02-和-f04-真实大幅相机-raw)。
 
 ### ICC 与元数据
 
@@ -117,7 +117,8 @@ requirements 固定 rawpy 0.28.0、OpenImageIO 3.2.2.0、numpy 2.4.2。`getMedia
 | 普通 raster 源像素 | 默认 200,000,000，可通过 `MEDIA_RASTER_MAX_PIXELS` 设置至 256,000,000，宽高各不超过 65,535 |
 | 输入文件           | 至多512MiB                                                                                 |
 | 代理图             | 至多4,194,304像素                                                                          |
-| RAW/HDR            | 至多50MP，原生步骤仍会分配整幅数组                                                         |
+| Camera RAW         | 至多64MP。LibRaw 显影保留整幅 uint16 数组，float32 归一化按瓦片行执行                      |
+| EXR/Radiance       | 至多50MP，原生解码仍分配整幅数组                                                            |
 | PSD                | 至多16,777,216像素、128MiB编码、256元数据节点、解析器内存预算512MiB                        |
 | 并发队列           | 每个API进程1执行、8等待；不是分布式队列                                                    |
 | wall timeout       | 默认180s，可配置1～600s                                                                    |

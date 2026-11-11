@@ -15,7 +15,7 @@ import OpenImageIO as oiio
 from exr_layout import apply_layout, capture_layout
 
 
-def write_image(path, pixels, kind, colorspace, unassociated=False, layout=None):
+def write_image(path, pixels, kind, colorspace, unassociated=False, layout=None, tile_transform=None):
     height, width, channels = pixels.shape
     spec = oiio.ImageSpec(width, height, channels, kind)
     spec.attribute("oiio:ColorSpace", colorspace)
@@ -30,10 +30,27 @@ def write_image(path, pixels, kind, colorspace, unassociated=False, layout=None)
     if output is None or not output.open(str(path), spec):
         raise RuntimeError("Cannot create native intermediate")
     try:
-        if not output.write_image(pixels):
-            raise RuntimeError(output.geterror())
+        if tile_transform is None:
+            if not output.write_image(pixels):
+                raise RuntimeError(output.geterror())
+        else:
+            for top in range(0, height, spec.tile_height):
+                end = min(height, top + spec.tile_height)
+                band = tile_transform(pixels[top:end])
+                if not output.write_tiles(
+                    spec.x, spec.x + width, spec.y + top, spec.y + end, spec.z, spec.z + 1, band
+                ):
+                    raise RuntimeError(output.geterror())
     finally:
-        output.close()
+        closed = output.close()
+    if not closed:
+        raise RuntimeError(output.geterror())
+
+
+def normalize_raw_tiles(pixels):
+    linear = pixels.astype(np.float32)
+    linear /= np.float32(65535)
+    return linear
 
 
 def admit_native(width, height, maximum, directory):
@@ -48,7 +65,7 @@ def admit_native(width, height, maximum, directory):
 def main():
     request = json.loads(Path(sys.argv[1]).read_text())
     source, destination = request["inputPath"], Path(request["outputPath"])
-    max_pixels = min(int(request["maxPixels"]), 50_000_000)
+    max_pixels = int(request["maxPixels"])
     native = {"openimageio": oiio.VERSION_STRING}
     if request["kind"] == "raw":
         import rawpy
@@ -62,10 +79,10 @@ def main():
             source_info = {"width": width, "height": height, "bitDepth": math.ceil(math.log2(int(raw.white_level) + 1)),
                            "colorSpace": "camera-native", "sampleEncoding": "sensor-raw", "decodedBitDepth": 16, "whiteLevel": int(raw.white_level),
                            "blackLevels": list(map(int, raw.black_level_per_channel))}
-        linear = pixels.astype(np.float32)
-        linear /= np.float32(65535)
-        write_image(destination.with_name("linear-master.exr"), linear, oiio.FLOAT, "Linear")
-        del linear
+        write_image(
+            destination.with_name("linear-master.exr"), pixels, oiio.FLOAT, "Linear",
+            tile_transform=normalize_raw_tiles,
+        )
         ramp = np.arange(65536, dtype=np.float64) / 65535
         encoded = np.where(ramp <= 0.0031308, 12.92 * ramp, 1.055 * np.power(ramp, 1 / 2.4) - 0.055)
         lookup = np.rint(encoded * 65535).astype(np.uint16)

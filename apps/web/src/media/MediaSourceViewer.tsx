@@ -7,7 +7,7 @@ import {
   type PrecisionEdit,
 } from '@ai-xiutu/editor';
 import { Minus, Plus, ArrowsOutSimple, DownloadSimple } from '@phosphor-icons/react';
-import { api, errorMessage, jsonRequest, downloadBlob, ApiError } from '../lib/api';
+import { api, errorMessage, jsonRequest, ApiError } from '../lib/api';
 import { InlineError, IconButton } from '../components/Ui';
 import { PrecisionRange } from '../editor/PrecisionRange';
 import { ChoiceSelect } from '../components/ChoiceSelect';
@@ -258,9 +258,10 @@ export function MediaSourceViewer({ assetId }: { assetId: string }) {
     setExporting(true);
     setError(null);
     try {
-      const response = await fetch(`/v1/assets/${assetId}/media/export`, {
+      const { downloadId } = await api<{ downloadId: string }>(`/assets/${assetId}/media/export`, {
         ...jsonRequest('POST', {
           format,
+          delivery: 'attachment',
           ...(adjustment && precision
             ? {
                 precisionEdit: adjustment,
@@ -269,44 +270,18 @@ export function MediaSourceViewer({ assetId }: { assetId: string }) {
               }
             : {}),
         }),
-        headers: { 'Content-Type': 'application/json' },
-        credentials: 'include',
         signal: controller.signal,
       });
-      if (!response.ok) {
-        const data = await response.json().catch(() => null);
-        throw new ApiError(
-          data?.error?.code ?? 'EXPORT_FAILED',
-          data?.error?.message ?? '转换未完成',
-          response.status,
-        );
+      if (!controller.signal.aborted) {
+        const link = document.createElement('a');
+        link.href = `/v1/assets/${assetId}/media/exports/${encodeURIComponent(downloadId)}`;
+        link.download = '';
+        link.referrerPolicy = 'no-referrer';
+        link.hidden = true;
+        document.body.append(link);
+        link.click();
+        link.remove();
       }
-      const length = Number(response.headers.get('content-length') ?? 0);
-      const budget = size.width < 600 ? 128 * 1024 ** 2 : 512 * 1024 ** 2;
-      if (length > budget || !response.body) {
-        await response.body?.cancel();
-        throw new Error('转换结果超过本设备下载预算，请直接下载母版或原件。');
-      }
-      const reader = response.body.getReader(),
-        chunks: Uint8Array<ArrayBuffer>[] = [];
-      let bytes = 0;
-      while (true) {
-        const chunk = await reader.read();
-        if (chunk.done) break;
-        bytes += chunk.value.length;
-        if (bytes > budget) {
-          await reader.cancel();
-          throw new Error('转换结果超过本设备下载预算，请直接下载母版或原件。');
-        }
-        chunks.push(new Uint8Array(chunk.value));
-      }
-      if (!controller.signal.aborted)
-        downloadBlob(
-          new Blob(chunks, {
-            type: response.headers.get('content-type') ?? 'application/octet-stream',
-          }),
-          `${assetId}-${adjustment ? 'graded' : 'master'}.${{ png16: 'png', tiff16: 'tiff', exr32: 'exr' }[format]}`,
-        );
     } catch (e) {
       if (!controller.signal.aborted) setError(errorMessage(e));
     } finally {

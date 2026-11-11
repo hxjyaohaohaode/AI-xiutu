@@ -1,11 +1,14 @@
 /** Native PostgreSQL and Linux media worker. Inputs are supplied explicitly. */
 import assert from 'node:assert/strict';
 import { createHash } from 'node:crypto';
-import { mkdir, readFile, writeFile } from 'node:fs/promises';
+import { createWriteStream } from 'node:fs';
+import { mkdir, readFile, stat, writeFile } from 'node:fs/promises';
 import { basename, join, resolve } from 'node:path';
 import { execFile } from 'node:child_process';
 import { promisify } from 'node:util';
 import { setTimeout as delay } from 'node:timers/promises';
+import { Readable } from 'node:stream';
+import { pipeline } from 'node:stream/promises';
 import sharp, { type Sharp } from 'sharp';
 import {
   compileSelectionMaskV3,
@@ -29,6 +32,7 @@ process.env.MEDIA_PYTHON = python;
 const output = resolve(process.env.MEDIA_QA_OUTPUT ?? 'artifacts/master-pipeline');
 await mkdir(output, { recursive: true });
 const browserOrigin = process.env.MEDIA_QA_BROWSER_ORIGIN;
+const withTiles = process.env.MEDIA_QA_TILES === '1';
 const f = await collaborationFixture(database, { origin: browserOrigin });
 const execute = promisify(execFile);
 const sha = (data: Buffer) => createHash('sha256').update(data).digest('hex');
@@ -37,13 +41,28 @@ const raw16 = (pipeline: Sharp) =>
 const report = [];
 
 try {
+  const port = browserOrigin ? Number(process.env.MEDIA_QA_PORT) : 0;
+  if (browserOrigin) assert.ok(Number.isInteger(port) && port >= 1024 && port <= 65535);
+  await f.app.listen({ host: browserOrigin ? '0.0.0.0' : '127.0.0.1', port });
+  const address = f.app.server.address();
+  assert.ok(address && typeof address === 'object');
+  const httpOrigin = `http://127.0.0.1:${address.port}`;
+  if (process.env.MEDIA_QA_STORAGE_BYTES) {
+    const maxBytes = Number(process.env.MEDIA_QA_STORAGE_BYTES);
+    assert.ok(Number.isSafeInteger(maxBytes) && maxBytes > 0);
+    // The two original RAWs, masters and pyramids share this disposable space.
+    await f.db.query('UPDATE space_storage_accounts SET max_bytes=$2 WHERE space_id=$1', [
+      f.teamId,
+      maxBytes,
+    ]);
+  }
   for (const [index, file] of files.entries()) {
     const bytes = await readFile(file);
     const created = await f.call('POST', '/v1/projects/' + f.projectId + '/media-imports', {
       name: basename(file),
       size: bytes.length,
       idempotencyKey: crypto.randomUUID(),
-      generateTiles: false,
+      generateTiles: withTiles,
     });
     assert.equal(created.statusCode, 201, created.body);
     const task = '/v1/media-imports/' + created.json().job.id;
@@ -85,6 +104,8 @@ try {
       assetId: state.asset.id,
       sourceEncoding: descriptor.original.sampleEncoding,
       linear: !!descriptor.linearMaster,
+      peakRssBytes: descriptor.processor.peakRssBytes,
+      nativePeakRssBytes: descriptor.processor.nativePeakRssBytes,
     };
     const precisionInput = descriptor.linearMaster ? 'linear-master' : 'master16';
     const baseEdit = {
@@ -100,6 +121,32 @@ try {
       width: Math.min(420, Math.floor(width * 0.55)),
       height: Math.min(300, Math.floor(height * 0.4)),
     };
+    let tileComparison;
+    if (withTiles) {
+      const tiles = descriptor.tiles;
+      assert.ok(tiles && metadata.downloads.tiles);
+      const dz = await f.call('GET', metadata.downloads.tiles);
+      assert.equal(dz.statusCode, 200);
+      assert.ok(dz.body.includes(`Width="${width}"`) && dz.body.includes(`Height="${height}"`));
+      const level = tiles.levels - 1;
+      const x = Math.floor((width * 0.4) / tiles.tileSize),
+        y = Math.floor((height * 0.4) / tiles.tileSize);
+      const sizes = [];
+      for (const column of [x, x + 1]) {
+        const response = await f.call('GET', `${path}/tiles_files/${level}/${column}_${y}.jpeg`);
+        assert.equal(response.statusCode, 200);
+        const image = await sharp(response.rawPayload).metadata();
+        const expectedEdge = tiles.tileSize + 2 * tiles.overlap;
+        assert.deepEqual(
+          [image.width, image.height, image.format],
+          [expectedEdge, expectedEdge, 'jpeg'],
+        );
+        sizes.push([image.width, image.height]);
+      }
+      const boundaryX = (x + 1) * tiles.tileSize;
+      region.left = boundaryX - Math.floor(region.width / 2);
+      tileComparison = { level, boundaryX, sizes, overlapPixels: 0, tiles: tiles.count };
+    }
     const withRegions = process.env.MEDIA_QA_REGIONS === '1';
     const withCurves = withRegions || process.env.MEDIA_QA_CURVES === '1';
     if (withCurves) assert.equal(metadata.editor.precisionEditing.curves.available, true);
@@ -177,6 +224,26 @@ try {
     assert.equal(preview.statusCode, 200, preview.body.slice(0, 200));
     const cropped = await raw16(sharp(preview.rawPayload, { ignoreIcc: true }));
     const previewMs = Math.round(performance.now() - previewStarted);
+    if (tileComparison) {
+      const shift = Math.floor(region.width / 3);
+      const adjacent = await f.call('POST', path + '/preview', {
+        ...grade,
+        maxEdge: 512,
+        region: { ...region, left: region.left + shift },
+      });
+      assert.equal(adjacent.statusCode, 200, adjacent.body.slice(0, 200));
+      const shifted = await raw16(sharp(adjacent.rawPayload, { ignoreIcc: true }));
+      const rowBytes = region.width * 8;
+      const overlapBytes = (region.width - shift) * 8;
+      for (let y = 0; y < region.height; y++) {
+        const start = y * rowBytes;
+        assert.deepEqual(
+          cropped.subarray(start + shift * 8, start + rowBytes),
+          shifted.subarray(start, start + overlapBytes),
+        );
+      }
+      tileComparison.overlapPixels = (region.width - shift) * region.height;
+    }
     let localComparison;
     if (precisionEdit.algorithm === 'scene-linear-v3') {
       const baseline = await f.call('POST', path + '/preview', {
@@ -251,6 +318,7 @@ try {
       ...result,
       algorithm: precisionEdit.algorithm,
       ...(warmWindowMs.length ? { warmWindowMs } : {}),
+      ...(tileComparison ? { tileComparison } : {}),
       ...(precisionEdit.algorithm !== 'scene-linear-v1' ? { curves: precisionEdit.curves } : {}),
       ...(precisionEdit.algorithm === 'scene-linear-v3'
         ? { regions: precisionEdit.regions, localComparison }
@@ -258,11 +326,15 @@ try {
       previewMs,
       nativeRegion: region,
       previewSha256: sha(cropped),
-      files: [] as { format: string; bytes: number; bitDepth: number }[],
+      files: [] as { format: string; bytes: number; bitDepth: number; ms: number }[],
       verifiedSamples: 0,
       linearReadback: null as unknown,
     };
-    if (width * height <= (precisionInput === 'linear-master' ? 50_000_000 : 16_777_216)) {
+    const precision = metadata.editor.precisionEditing;
+    if (
+      width * height <=
+      (precisionInput === 'linear-master' ? precision.maxLinearPixels : precision.maxPixels)
+    ) {
       if (withCurves) {
         const invalid = { ...grade, precisionInput: 'master16' };
         assert.equal(
@@ -304,14 +376,28 @@ try {
         assert.equal(history[1].edit.algorithm, 'scene-linear-v1');
       }
       for (const format of ['png16', 'tiff16', ...(descriptor.linearMaster ? ['exr32'] : [])]) {
-        const response = await f.call('POST', path + '/export', {
-          format,
-          gradeVersion: withCurves ? 2 : 1,
-          expectedSourceSha256: descriptor.sourceSha256,
+        const startedExport = performance.now();
+        const response = await fetch(httpOrigin + path + '/export', {
+          method: 'POST',
+          headers: {
+            origin: f.origin,
+            cookie: f.actors.owner.cookie,
+            'content-type': 'application/json',
+          },
+          signal: AbortSignal.timeout(180_000),
+          body: JSON.stringify({
+            format,
+            gradeVersion: withCurves ? 2 : 1,
+            expectedSourceSha256: descriptor.sourceSha256,
+          }),
         });
-        assert.equal(response.statusCode, 200, response.body.slice(0, 250));
         assert.equal(
-          response.headers['x-precision-edit-sha256'],
+          response.status,
+          200,
+          response.ok ? undefined : `${format}: ${(await response.text()).slice(0, 250)}`,
+        );
+        assert.equal(
+          response.headers.get('x-precision-edit-sha256'),
           preview.headers['x-precision-edit-sha256'],
         );
         const target = join(
@@ -320,14 +406,22 @@ try {
             '-developed.' +
             (format === 'tiff16' ? 'tif' : format === 'exr32' ? 'exr' : 'png'),
         );
-        await writeFile(target, response.rawPayload);
+        assert.ok(response.body);
+        await pipeline(Readable.fromWeb(response.body), createWriteStream(target));
+        const { size: exportBytes } = await stat(target);
+        assert.equal(exportBytes, Number(response.headers.get('content-length')));
+        const exportMs = Math.round(performance.now() - startedExport);
         if (format === 'exr32') {
           const native = await execute(python, [
             '-c',
             [
               'import json,sys,OpenImageIO as o,numpy as n',
-              'i=o.ImageInput.open(sys.argv[1]); s=i.spec(); p=i.read_image(format=o.FLOAT); i.close()',
-              'print(json.dumps({"size":[s.width,s.height],"type":str(s.format),"range":[float(p[:,:,:3].min()),float(p[:,:,:3].max())],"channels":list(s.channelnames),"window":[s.x,s.y,s.full_x,s.full_y,s.full_width,s.full_height]}))',
+              'i=o.ImageInput.open(sys.argv[1]); s=i.spec(); low=float("inf"); high=float("-inf")',
+              'for y in range(s.y,s.y+s.height,64):',
+              '    p=i.read_scanlines(y,min(y+64,s.y+s.height),s.z,0,3,o.FLOAT)',
+              '    low=min(low,float(p.min())); high=max(high,float(p.max()))',
+              'i.close()',
+              'print(json.dumps({"size":[s.width,s.height],"type":str(s.format),"range":[low,high],"channels":list(s.channelnames),"window":[s.x,s.y,s.full_x,s.full_y,s.full_width,s.full_height]}))',
             ].join('\n'),
             target,
           ]);
@@ -336,7 +430,7 @@ try {
           assert.equal(linear.type, 'float');
           record.linearReadback = linear;
         } else {
-          const image = sharp(response.rawPayload, { ignoreIcc: true });
+          const image = sharp(target, { ignoreIcc: true });
           const meta = await image.metadata();
           assert.equal(meta.depth, 'ushort');
           assert.deepEqual([meta.width, meta.height], [width, height]);
@@ -345,7 +439,8 @@ try {
         }
         record.files.push({
           format,
-          bytes: response.rawPayload.length,
+          bytes: exportBytes,
+          ms: exportMs,
           bitDepth: format === 'exr32' ? 32 : 16,
         });
       }
@@ -383,14 +478,11 @@ try {
   );
   if (browserOrigin) {
     const tokenHash = process.env.MEDIA_QA_BROWSER_TOKEN_HASH;
-    const port = Number(process.env.MEDIA_QA_PORT);
     assert.match(tokenHash ?? '', /^[a-f0-9]{64}$/);
-    assert.ok(Number.isInteger(port) && port >= 1024 && port <= 65535);
     await f.db.query('UPDATE sessions SET token_hash=$1 WHERE token_hash=$2', [
       tokenHash,
       f.actors.owner.tokenHash,
     ]);
-    await f.app.listen({ host: '0.0.0.0', port });
     console.log('Test media API is listening');
     await new Promise<void>((resolve) => {
       const stop = () => {

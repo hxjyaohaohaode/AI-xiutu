@@ -1,5 +1,8 @@
 import { constants, createReadStream } from 'node:fs';
-import { mkdir, open, readFile, rm, lstat, readdir, statfs } from 'node:fs/promises';
+import {
+  mkdir, open, readFile, rm, lstat, readdir, statfs, type FileHandle,
+} from 'node:fs/promises';
+import type { Readable } from 'node:stream';
 import { join } from 'node:path';
 import { randomUUID, createHash } from 'node:crypto';
 import type { FastifyInstance, FastifyReply, FastifyRequest } from 'fastify';
@@ -18,6 +21,7 @@ import {
   MEDIA_MAX_PREVIEW_EDGE,
   type MediaDescriptorV1,
   type MediaExportFormat,
+  type MediaExportResult,
   type MediaGradeRevision,
   type MediaPrecisionInput,
   type MediaPrecisionPreview,
@@ -44,6 +48,8 @@ import {
 } from './core.js';
 
 const CHUNK_BYTES = 4 * 1024 * 1024;
+const DOWNLOAD_TTL_MS = 60_000;
+const exportExtension = { png16: 'png', tiff16: 'tiff', exr32: 'exr', jpeg: 'jpeg', webp: 'webp' };
 const safeName = z
   .string()
   .trim()
@@ -67,6 +73,17 @@ interface MediaAccess {
   object_id: string;
   descriptor: MediaDescriptorV1;
   canEdit: boolean;
+}
+interface MasterDownload {
+  assetId: string;
+  actorId: string;
+  sessionHash: string;
+  source: MediaAccess;
+  input: MediaPrecisionInput;
+  result: MediaExportResult;
+  file: FileHandle;
+  expiresAt: number;
+  expiry: NodeJS.Timeout;
 }
 interface GradeRow {
   version: number;
@@ -128,6 +145,8 @@ export function registerMediaImport(app: FastifyInstance, db: Database, config: 
   const workDir = (jobId: string) => join(root, id.parse(jobId));
   const active = new Map<string, { controller: AbortController; promise: Promise<void> }>();
   const exporting = new Set<string>();
+  const attachmentHolders = new Set<string>();
+  const downloads = new Map<string, MasterDownload>();
   const enabled = process.env.MEDIA_ADVANCED_ENABLED === 'true';
   const pythonExecutable = process.env.MEDIA_PYTHON;
   const linearWindows = enabled && pythonExecutable ? createLinearWindowRuntime() : undefined;
@@ -141,6 +160,20 @@ export function registerMediaImport(app: FastifyInstance, db: Database, config: 
     : undefined;
   const capabilities = getMediaCapabilities({ pythonExecutable, maxPixels });
   let closing = false;
+  function takeDownload(downloadId: string, download: MasterDownload) {
+    if (downloads.get(downloadId) !== download) return false;
+    downloads.delete(downloadId);
+    clearTimeout(download.expiry);
+    return true;
+  }
+  async function discardDownload(downloadId: string, download: MasterDownload) {
+    if (!takeDownload(downloadId, download)) return;
+    try {
+      await download.file.close();
+    } finally {
+      attachmentHolders.delete(download.actorId);
+    }
+  }
   async function assertAvailable() {
     if (!enabled || !(await capabilities).available)
       throw new HttpError(
@@ -349,6 +382,9 @@ export function registerMediaImport(app: FastifyInstance, db: Database, config: 
     clearInterval(cleanup);
     for (const value of active.values()) value.controller.abort();
     await linearWindows?.close();
+    await Promise.allSettled(
+      [...downloads].map(([key, download]) => discardDownload(key, download)),
+    );
     await Promise.allSettled([...active.values()].map((value) => value.promise));
   });
 
@@ -829,6 +865,51 @@ export function registerMediaImport(app: FastifyInstance, db: Database, config: 
       .header('Content-Length', String(stat.size))
       .send(createReadStream(path));
   });
+  async function assertCurrentExport(
+    assetId: string,
+    actorId: string,
+    sessionHash: string,
+    source: MediaAccess,
+    input: MediaPrecisionInput,
+    result: MediaExportResult,
+  ) {
+    const current = await sourceAccess(assetId, actorId);
+    if (
+      current.object_id !== source.object_id ||
+      current.descriptor.sourceSha256 !== source.descriptor.sourceSha256 ||
+      (input === 'linear-master' &&
+        current.descriptor.linearMaster?.sha256 !== source.descriptor.linearMaster?.sha256) ||
+      result.sourceSha256 !== source.descriptor.sourceSha256
+    )
+      throw new HttpError(409, 'MEDIA_SOURCE_CHANGED', '母版来源已变化，请重新打开素材。');
+    const activeSession = await db.query(
+      "SELECT 1 FROM sessions s JOIN users u ON u.id=s.user_id WHERE s.token_hash=$1 AND s.user_id=$2 AND s.expires_at>clock_timestamp() AND u.status='active'",
+      [sessionHash, actorId],
+    );
+    if (!activeSession.rowCount)
+      throw new HttpError(401, 'AUTH_REQUIRED', '登录已失效，请重新登录');
+  }
+
+  function streamMaster(
+    reply: FastifyReply,
+    stream: Readable,
+    result: MediaExportResult,
+    input: MediaPrecisionInput,
+    disposition: string,
+  ) {
+    reply.raw.once('close', () => stream.destroy());
+    return reply
+      .type(result.mime)
+      .header('X-Editor-Recipe-Included', 'false')
+      .header('X-Precision-Input', input)
+      .header('X-Precision-Edit-SHA256', result.precisionEdit?.sha256 ?? 'none')
+      .header('Cache-Control', 'private, no-store')
+      .header('X-Content-Type-Options', 'nosniff')
+      .header('Content-Disposition', disposition)
+      .header('Content-Length', String(result.bytes))
+      .send(stream);
+  }
+
   async function sendMaster(
     req: FastifyRequest,
     reply: FastifyReply,
@@ -841,11 +922,17 @@ export function registerMediaImport(app: FastifyInstance, db: Database, config: 
       precisionEdit?: PrecisionEdit;
       precisionInput?: MediaPrecisionInput;
       preview?: MediaPrecisionPreview;
+      delivery?: 'attachment';
     },
   ) {
-    if (exporting.has(actorId) || exporting.size >= 2)
+    const attachment = options.delivery === 'attachment';
+    if (
+      exporting.has(actorId) || exporting.size >= 2 ||
+      (attachment && (attachmentHolders.has(actorId) || attachmentHolders.size >= 2))
+    )
       throw new HttpError(429, 'MEDIA_EXPORT_BUSY', '已有母版转换正在处理，请等待完成后再试。');
     exporting.add(actorId);
+    if (attachment) attachmentHolders.add(actorId);
     // Master conversion remains separate from the RGBA8 editor; never imply a
     // high-bit round trip of the browser recipe. Result is private and temporary.
     const outputPath = join(root, `${randomUUID()}.export`);
@@ -854,7 +941,7 @@ export function registerMediaImport(app: FastifyInstance, db: Database, config: 
     req.raw.once('aborted', abortExport);
     req.raw.socket.once('close', abortExport);
     if (req.raw.aborted) controller.abort();
-    let streaming = false;
+    let handedOff = false;
     try {
       const result = await exportMedia(
         {
@@ -873,49 +960,64 @@ export function registerMediaImport(app: FastifyInstance, db: Database, config: 
         },
         linearWindows ? { runtime: linearWindows, descriptor: row.descriptor } : undefined,
       );
-      const current = await sourceAccess(assetId, actorId);
-      if (
-        current.object_id !== row.object_id ||
-        current.descriptor.sourceSha256 !== row.descriptor.sourceSha256 ||
-        (options.precisionInput === 'linear-master' &&
-          current.descriptor.linearMaster?.sha256 !== row.descriptor.linearMaster?.sha256) ||
-        result.sourceSha256 !== row.descriptor.sourceSha256
-      )
-        throw new HttpError(409, 'MEDIA_SOURCE_CHANGED', '母版来源已变化，请重新打开素材。');
-      const activeSession = await db.query(
-        "SELECT 1 FROM sessions s JOIN users u ON u.id=s.user_id WHERE s.token_hash=$1 AND s.user_id=$2 AND s.expires_at>clock_timestamp() AND u.status='active'",
-        [hash(req.cookies.xiutu_session ?? ''), actorId],
-      );
-      if (!activeSession.rowCount)
-        throw new HttpError(401, 'AUTH_REQUIRED', '登录已失效，请重新登录');
+      const sessionHash = hash(req.cookies.xiutu_session ?? '');
+      const input = options.precisionInput ?? 'master16';
+      await assertCurrentExport(assetId, actorId, sessionHash, row, input, result);
       if (controller.signal.aborted)
         throw new HttpError(409, 'MEDIA_EXPORT_CANCELLED', '母版请求已取消。');
+      if (attachment) {
+        const file = await open(outputPath, constants.O_RDONLY | constants.O_NOFOLLOW);
+        try {
+          const info = await file.stat();
+          if (!info.isFile() || info.size !== result.bytes) throw new Error('MEDIA_EXPORT_CHANGED');
+          // The held descriptor owns these bytes. Expiry or process exit releases them.
+          await rm(outputPath);
+          if (controller.signal.aborted)
+            throw new HttpError(409, 'MEDIA_EXPORT_CANCELLED', '母版请求已取消。');
+        } catch (error) {
+          await file.close();
+          throw error;
+        }
+        const downloadId = randomUUID(),
+          expiresAt = Date.now() + DOWNLOAD_TTL_MS;
+        const expiry = setTimeout(() => {
+          const entry = downloads.get(downloadId);
+          if (entry) void discardDownload(downloadId, entry).catch(() => {});
+        }, DOWNLOAD_TTL_MS).unref();
+        downloads.set(downloadId, {
+          assetId,
+          actorId,
+          sessionHash,
+          source: row,
+          input,
+          result,
+          file,
+          expiresAt,
+          expiry,
+        });
+        handedOff = true;
+        return reply.code(201).send({ downloadId, expiresAt: new Date(expiresAt).toISOString() });
+      }
       const stream = createReadStream(outputPath);
       const release = () => {
-        if (streaming) exporting.delete(actorId);
-        streaming = false;
+        if (handedOff) exporting.delete(actorId);
+        handedOff = false;
       };
       stream.once('end', release);
       stream.once('close', () => {
         release();
         void rm(outputPath, { force: true }).catch(() => {});
       });
-      streaming = true;
-      return reply
-        .type(result.mime)
-        .header('X-Editor-Recipe-Included', 'false')
-        .header('X-Precision-Input', options.precisionInput ?? 'master16')
-        .header('X-Precision-Edit-SHA256', result.precisionEdit?.sha256 ?? 'none')
-        .header('Cache-Control', 'private, no-store')
-        .header('X-Content-Type-Options', 'nosniff')
-        .header(
-          'Content-Disposition',
-          options.preview
-            ? 'inline'
-            : `attachment; filename="${assetId}-master.${{ png16: 'png', tiff16: 'tiff', exr32: 'exr', jpeg: 'jpeg', webp: 'webp' }[options.format]}"`,
-        )
-        .header('Content-Length', String(result.bytes))
-        .send(stream);
+      handedOff = true;
+      return streamMaster(
+        reply,
+        stream,
+        result,
+        input,
+        options.preview
+          ? 'inline'
+          : `attachment; filename="${assetId}-master.${exportExtension[result.format]}"`,
+      );
     } catch (error) {
       await rm(outputPath, { force: true });
       if (error instanceof MediaProcessingError)
@@ -928,7 +1030,8 @@ export function registerMediaImport(app: FastifyInstance, db: Database, config: 
     } finally {
       req.raw.off('aborted', abortExport);
       req.raw.socket.off('close', abortExport);
-      if (!streaming) exporting.delete(actorId);
+      if (attachment || !handedOff) exporting.delete(actorId);
+      if (attachment && !handedOff) attachmentHolders.delete(actorId);
     }
   }
   app.post('/v1/assets/:id/media/preview', async (req, reply) => {
@@ -971,6 +1074,7 @@ export function registerMediaImport(app: FastifyInstance, db: Database, config: 
         precisionInput: precisionInputSchema.optional(),
         gradeVersion: gradeVersionSchema.optional(),
         expectedSourceSha256: sourceDigest.optional(),
+        delivery: z.literal('attachment').optional(),
       })
       .strict()
       .parse(req.body);
@@ -998,7 +1102,41 @@ export function registerMediaImport(app: FastifyInstance, db: Database, config: 
       quality: body.quality,
       precisionEdit,
       precisionInput,
+      delivery: body.delivery,
     });
   });
+  app.get(
+    '/v1/assets/:id/media/exports/:downloadId',
+    { exposeHeadRoute: false },
+    async (req, reply) => {
+      const actor = requireUser(req);
+      const params = jobParams.extend({ downloadId: id }).parse(req.params);
+      const unavailable = () =>
+        new HttpError(404, 'MEDIA_EXPORT_UNAVAILABLE', '下载已失效，请重新导出。');
+      const download = downloads.get(params.downloadId);
+      if (
+        !download ||
+        download.assetId !== params.id ||
+        download.actorId !== actor.id ||
+        download.sessionHash !== hash(req.cookies.xiutu_session ?? '')
+      )
+        throw unavailable();
+      try {
+        await assertCurrentExport(
+          params.id, actor.id, download.sessionHash, download.source, download.input, download.result,
+        );
+        if (Date.now() >= download.expiresAt || !takeDownload(params.downloadId, download))
+          throw unavailable();
+      } catch (error) {
+        await discardDownload(params.downloadId, download);
+        throw error;
+      }
+      const stream = download.file.createReadStream();
+      stream.once('close', () => attachmentHolders.delete(actor.id));
+      const { result } = download;
+      const filename = `${params.id}-${result.precisionEdit ? 'graded' : 'master'}.${exportExtension[result.format]}`;
+      return streamMaster(reply, stream, result, download.input, `attachment; filename="${filename}"`);
+    },
+  );
   return { capabilities, enabled };
 }

@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict';
-import { mkdir, readFile, writeFile } from 'node:fs/promises';
+import { mkdir, open as openFile, readFile, stat, writeFile } from 'node:fs/promises';
 import { resolve } from 'node:path';
 import { chromium } from 'playwright';
 import { createServer } from 'vite';
@@ -89,12 +89,75 @@ try {
       const media = page.getByRole('region', { name: '原件与母版', exact: true });
       const preview = media.locator('.media-tile-viewport');
       const grade = media.locator('summary', { hasText: '母版高位深调色' });
+      const windows = [];
+      if (asset.tileComparison)
+        page.on('response', (response) => {
+          if (
+            response.status() === 200 &&
+            response.url().endsWith(`/assets/${asset.assetId}/media/preview`)
+          ) {
+            const region = response.request().postDataJSON().region;
+            if (region) windows.push(region);
+          }
+        });
       await media.getByRole('button', { name: '1:1', exact: true }).click();
       await preview.locator('[data-native-window="true"] img').waitFor();
       await grade.click();
       await page.waitForFunction(
         () => document.querySelector('.media-tile-viewport')?.dataset.mediaPreview === 'ready',
       );
+      let panAndZoom;
+      if (asset.tileComparison && size.width >= 1024) {
+        const initial = windows.at(-1);
+        assert.ok(initial);
+        await preview.scrollIntoViewIfNeeded();
+        const bounds = await preview.boundingBox();
+        assert.ok(bounds);
+        const x = bounds.x + bounds.width * 0.42,
+          y = bounds.y + bounds.height * 0.5;
+        const shift = Math.min(96, bounds.width * 0.2);
+        const moved = page.waitForResponse((response) => {
+          const region =
+            response.url().endsWith(`/assets/${asset.assetId}/media/preview`) &&
+            response.status() === 200 &&
+            response.request().postDataJSON().region;
+          return region && Math.abs(initial.left - region.left) >= Math.floor(shift) - 2;
+        });
+        const cdp = hasTouch ? await context.newCDPSession(page) : null;
+        if (cdp) {
+          await cdp.send('Input.dispatchTouchEvent', {
+            type: 'touchStart',
+            touchPoints: [{ x, y }],
+          });
+          await cdp.send('Input.dispatchTouchEvent', {
+            type: 'touchMove',
+            touchPoints: [{ x: x + shift, y }],
+          });
+          await cdp.send('Input.dispatchTouchEvent', { type: 'touchEnd', touchPoints: [] });
+          await cdp.detach();
+        } else {
+          await page.mouse.move(x, y);
+          await page.mouse.down();
+          await page.mouse.move(x + shift, y, { steps: 8 });
+          await page.mouse.up();
+        }
+        const movedRegion = (await moved).request().postDataJSON().region;
+        assert.ok(Math.abs(movedRegion.width - initial.width) <= 1);
+        const zoomed = page.waitForResponse((response) => {
+          const region =
+            response.url().endsWith(`/assets/${asset.assetId}/media/preview`) &&
+            response.status() === 200 &&
+            response.request().postDataJSON().region;
+          return region && region.width < movedRegion.width;
+        });
+        await media.getByRole('button', { name: '放大源图', exact: true }).click();
+        const zoomRegion = (await zoomed).request().postDataJSON().region;
+        await media.getByRole('button', { name: '1:1', exact: true }).click();
+        await page.waitForFunction(
+          () => document.querySelector('.media-tile-viewport')?.dataset.mediaPreview === 'ready',
+        );
+        panAndZoom = { initial, moved: movedRegion, zoomed: zoomRegion };
+      }
       const slider = media.getByRole('slider', { name: '曝光', exact: true });
       const previous = await slider.inputValue();
       const frame = preview.locator('.media-precision-frame img');
@@ -295,22 +358,44 @@ try {
       await page.screenshot({ path: resolve(output, size.width + '-native.png') });
       await grade.scrollIntoViewIfNeeded();
       await page.screenshot({ path: resolve(output, size.width + '-controls.png') });
-      let downloadBytes;
-      if (size.width === 1440) {
+      let downloadBytes, downloadMs;
+      const downloadFormat = size.width === 1440
+        ? 'PNG 16-bit'
+        : asset.tileComparison && size.width === 1024
+          ? 'EXR 32-bit HDR'
+          : asset.tileComparison && size.width === 320
+            ? 'TIFF 16-bit'
+            : undefined;
+      if (downloadFormat) {
         await media.getByRole('combobox', { name: '母版输出格式', exact: true }).click();
-        await media.getByRole('option', { name: 'PNG 16-bit', exact: true }).click();
-        const download = page.waitForEvent('download');
-        await media.getByRole('button', { name: '导出调色母版', exact: true }).click();
-        const stream = await (await download).createReadStream();
-        const parts = [];
-        for await (const part of stream) parts.push(part);
-        const png = Buffer.concat(parts);
-        const info = await sharp(png).metadata();
-        assert.deepEqual(
-          [info.width, info.height, info.depth],
-          [asset.width, asset.height, 'ushort'],
-        );
-        downloadBytes = png.length;
+        await media.getByRole('option', { name: downloadFormat, exact: true }).click();
+        const started = performance.now();
+        const [download, prepared] = await Promise.all([
+          page.waitForEvent('download', { timeout: 75_000 }),
+          page.waitForResponse((response) => response.url().endsWith(`/assets/${asset.assetId}/media/export`), { timeout: 65_000 }).then(async (response) => {
+            assert.equal(response.status(), 201, await response.text());
+            return response.json();
+          }),
+          media.getByRole('button', { name: '导出调色母版', exact: true }).click(),
+        ]);
+        assert.equal(download.url(), `${origin}/v1/assets/${asset.assetId}/media/exports/${prepared.downloadId}`);
+        assert.equal(await download.failure(), null);
+        const path = await download.path();
+        downloadBytes = (await stat(path)).size;
+        downloadMs = Math.round(performance.now() - started);
+        if (downloadFormat === 'EXR 32-bit HDR') {
+          const file = await openFile(path, 'r');
+          try {
+            const { buffer, bytesRead } = await file.read(Buffer.alloc(4), 0, 4, 0);
+            assert.equal(bytesRead, 4);
+            assert.equal(buffer.readUInt32LE(), 20_000_630);
+          } finally {
+            await file.close();
+          }
+        } else {
+          const info = await sharp(path).metadata();
+          assert.deepEqual([info.width, info.height, info.depth], [asset.width, asset.height, 'ushort']);
+        }
       }
       await page
         .getByRole('dialog')
@@ -326,11 +411,14 @@ try {
         ...size,
         asset: asset.name,
         nativeWindow: true,
+        panAndZoom,
         liveNativeFrames,
         revision: revision.version,
         persistedExposure: Number(after),
         overflow,
+        downloadFormat,
         downloadBytes,
+        downloadMs,
       });
       console.log(JSON.stringify(cases.at(-1)));
     } catch (error) {
