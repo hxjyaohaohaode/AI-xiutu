@@ -165,6 +165,24 @@ try {
       const overflow = await page.evaluate(() => document.documentElement.scrollWidth - innerWidth);
       assert.ok(overflow <= 1, 'Page overflow: ' + overflow);
       await preview.scrollIntoViewIfNeeded();
+      if (size.height >= 740) {
+        const clearPreview = await preview.evaluate((viewport) => {
+          const rect = viewport.getBoundingClientRect();
+          const header = viewport.closest('.modal')?.querySelector('.modal-header');
+          const top = Math.max(rect.top, header?.getBoundingClientRect().bottom ?? 0);
+          const bottom = Math.min(rect.bottom, innerHeight);
+          const x = rect.left + rect.width / 2;
+          if (bottom - top < 20) return false;
+          for (let y = top + 8; y < bottom - 8; y += 8)
+            if (!viewport.contains(document.elementFromPoint(x, y))) return false;
+          return true;
+        });
+        assert.equal(
+          clearPreview,
+          true,
+          'The pinned photo is free of overlaid adjustment controls',
+        );
+      }
       await page.screenshot({ path: resolve(output, size.width + '-native.png') });
       await grade.scrollIntoViewIfNeeded();
       await page.screenshot({ path: resolve(output, size.width + '-controls.png') });

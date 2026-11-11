@@ -127,6 +127,9 @@
     top: 0;
     z-index: 1;
   }
+  .media-source > .editor-section {
+    isolation: isolate;
+  }
 }
 .media-fallback {
   width: 100%;
