@@ -345,359 +345,362 @@ export function DrawingBoard({
         wide
         className="drawing-modal"
       >
-        <div className="drawing-toolbar" data-motion="drawing-tools">
-          <div className="drawing-tools">
-            <IconButton
-              label={t('铅笔')}
-              aria-pressed={tool === 'pencil'}
-              className={tool === 'pencil' ? 'selected' : ''}
-              onClick={() => setTool('pencil')}
-            >
-              <PencilSimple size={21} />
-            </IconButton>
-            <IconButton
-              label={t('橡皮擦')}
-              aria-pressed={erase}
-              className={erase ? 'selected' : ''}
-              onClick={() => setTool('erase')}
-            >
-              <Eraser size={21} />
-            </IconButton>
-            <IconButton
-              label={t('选择草图元素')}
-              aria-pressed={tool === 'select'}
-              className={tool === 'select' ? 'selected' : ''}
-              onClick={() => setTool('select')}
-            >
-              <Cursor size={20} />
-            </IconButton>
-            <span className="toolbar-separator" />
-            <IconButton
-              label={t('撤销草图操作')}
-              disabled={busy || !cursor}
-              onClick={() => {
-                setSelection(null);
-                setCursor((v) => Math.max(0, v - 1));
-              }}
-            >
-              <ArrowCounterClockwise size={20} />
-            </IconButton>
-            <IconButton
-              label={t('重做草图操作')}
-              disabled={busy || cursor >= history.length - 1}
-              onClick={() => {
-                setSelection(null);
-                setCursor((v) => Math.min(history.length - 1, v + 1));
-              }}
-            >
-              <ArrowClockwise size={20} />
-            </IconButton>
-          </div>
-          <ChoiceSelect
-            ariaLabel={t('草图画幅')}
-            className="drawing-ratio"
-            size="compact"
-            value={ratio}
-            disabled={busy}
-            onValueChange={(value) => {
-              void changeRatio(value);
-            }}
-            options={[
-              { value: 'square', label: t('1:1 方形') },
-              { value: 'landscape', label: t('3:2 横向') },
-              { value: 'portrait', label: t('2:3 竖向') },
-            ]}
-          />
-          <IconButton
-            label={t('清空草图')}
-            disabled={busy || !items.length}
-            onClick={() => {
-              void clearDrawing();
-            }}
-          >
-            <Trash size={20} />
-          </IconButton>
-        </div>
-        <div className="drawing-toolbar">
-          <ChoiceSelect
-            ariaLabel={t('草图添加元素')}
-            size="compact"
-            value={tool}
-            disabled={busy}
-            onValueChange={(value) => setTool(value as Tool)}
-            options={[
-              { value: 'pencil', label: t('铅笔') },
-              { value: 'erase', label: t('橡皮擦') },
-              { value: 'select', label: t('选择草图元素') },
-              { value: 'rectangle', label: t('矩形') },
-              { value: 'rounded', label: t('圆角矩形') },
-              { value: 'ellipse', label: t('椭圆') },
-              { value: 'triangle', label: t('三角形') },
-              { value: 'diamond', label: t('菱形') },
-              { value: 'line', label: t('直线') },
-              { value: 'arrow', label: t('箭头') },
-              { value: 'text', label: t('文字') },
-              { value: 'icon', label: t('图标') },
-            ]}
-          />
-          {!!projectImages?.length && readProjectImage && (
-            <ChoiceSelect
-              ariaLabel={t('添加项目图片到草图')}
-              size="compact"
-              value=""
-              disabled={busy}
-              placeholder={t('项目图片')}
-              options={projectImages.map(({ id, name }) => ({ value: id, label: name }))}
-              onValueChange={(id) => void insertImage(() => readProjectImage(id))}
-            />
-          )}
-          <div className="drawing-tools">
-            <IconButton
-              label={t('添加本地图片到草图')}
-              disabled={busy}
-              onClick={() => imageInput.current?.click()}
-            >
-              <FolderOpen size={20} />
-            </IconButton>
-            {readCurrentImage && (
-              <button
-                className="text-button"
-                disabled={busy}
-                onClick={() => void insertImage(readCurrentImage)}
-              >
-                {t('添加当前画布')}
-              </button>
-            )}
-            <input
-              ref={imageInput}
-              type="file"
-              accept={SKETCH_IMAGE_INPUT}
-              hidden
-              onChange={(event) => {
-                const file = event.currentTarget.files?.[0];
-                event.currentTarget.value = '';
-                if (file) void insertImage(() => file);
-              }}
-            />
-            {tool === 'select' && selected && (
-              <>
-                <IconButton
-                  label={t('复制草图元素')}
-                  disabled={busy || items.length >= 300}
-                  onClick={() => {
-                    commitItems([...items, moveSketchItem(selected, { x: 0.025, y: 0.025 })]);
-                    setSelection(items.length);
-                  }}
-                >
-                  <CopySimple size={18} />
-                </IconButton>
-                <IconButton
-                  label={t('上移草图图层')}
-                  disabled={busy || selection === items.length - 1}
-                  onClick={() => reorder(1)}
-                >
-                  <CaretUp size={18} />
-                </IconButton>
-                <IconButton
-                  label={t('下移草图图层')}
-                  disabled={busy || selection === 0}
-                  onClick={() => reorder(-1)}
-                >
-                  <CaretDown size={18} />
-                </IconButton>
-                <IconButton
-                  label={t('删除选中元素')}
-                  disabled={busy}
-                  onClick={() => {
-                    commitItems(items.filter((_, i) => i !== selection));
-                    setSelection(null);
-                  }}
-                >
-                  <Trash size={20} />
-                </IconButton>
-              </>
-            )}
-          </div>
-        </div>
-        {(tool === 'text' || (tool === 'select' && selected?.kind === 'text')) && (
-          <div className="drawing-controls">
-            <TextT size={20} />
-            <textarea
-              aria-label={t('草图文字')}
-              rows={1}
-              maxLength={160}
-              value={textValue}
-              placeholder={t('输入文字')}
-              disabled={busy}
-              onChange={(event) => setTextValue(event.currentTarget.value)}
-            />
-            {tool === 'select' && selected?.kind === 'text' && (
-              <button
-                className="text-button"
-                disabled={busy || !textValue.trim() || textValue.trim() === selected.text}
-                onClick={() => patchSelected({ ...selected, text: textValue.trim() })}
-              >
-                {t('更新文字')}
-              </button>
-            )}
-          </div>
-        )}
-        {tool === 'icon' && (
-          <ChoiceSelect
-            ariaLabel={t('草图图标')}
-            size="compact"
-            value={symbol}
-            onValueChange={(value) => setSymbol(value as SketchIcon)}
-            options={[
-              { value: 'star', label: t('星形') },
-              { value: 'heart', label: t('爱心') },
-              { value: 'check', label: t('对勾') },
-              { value: 'pin', label: t('位置标记') },
-              { value: 'bolt', label: t('闪电') },
-              { value: 'speech', label: t('对话气泡') },
-            ]}
-          />
-        )}
-        {filledShapes.has(tool) && (
-          <label className="drawing-width">
-            <input
-              type="checkbox"
-              checked={filled}
-              onChange={(event) => setFilled(event.currentTarget.checked)}
-            />
-            {t('填充形状')}
-          </label>
-        )}
-        <div className="drawing-controls" data-motion="drawing-colors">
-          <label className="drawing-width">
-            <input
-              type="checkbox"
-              checked={transparent}
-              disabled={busy}
-              onChange={(event) => setTransparent(event.target.checked)}
-            />
-            {t('透明背景')}
-          </label>
-          <div className="drawing-colors" aria-label={t('快捷笔触颜色')}>
-            {colors.map((value) => (
-              <button
-                key={value}
-                style={{ '--swatch': value } as React.CSSProperties}
-                aria-label={t('颜色 {v0}', { v0: value })}
-                aria-pressed={value === color.slice(0, 7) && !erase}
-                className={value === color.slice(0, 7) && !erase ? 'selected' : ''}
-                onClick={() => {
-                  setColor(value);
-                  if (erase) setTool('pencil');
-                  if (tool === 'select' && selected && 'color' in selected)
-                    patchSelected({ ...selected, color: value });
-                }}
-              />
-            ))}
-            <button
-              className="full-palette-trigger"
-              aria-expanded={showColor}
-              aria-label={t('打开完整颜色选择器')}
-              onClick={() => setShowColor(!showColor)}
-            >
-              <span style={{ background: color }} />
-              {t('色谱')}
-            </button>
-          </div>
-          {tool !== 'select' && (
-            <label className="drawing-width">
-              {tool === 'text' || tool === 'icon' ? t('大小') : erase ? t('橡皮') : t('笔触')}
-              <input
-                type="range"
-                min="1"
-                max="70"
-                value={width}
-                onChange={(e) => setWidth(Number(e.target.value))}
-              />
-              <span>{width}</span>
-            </label>
-          )}
-          {tool === 'select' && selected && (
+        <div className="drawing-tool-area">
+          <div className="drawing-toolbar" data-motion="drawing-tools">
             <div className="drawing-tools">
-              <label className="drawing-width">
-                {t('角度')}
-                <input
-                  type="number"
-                  aria-label={t('草图元素角度')}
-                  min="-180"
-                  max="180"
-                  step="1"
-                  key={`angle-${selection}-${selected.angle ?? 0}`}
-                  defaultValue={selected.angle ?? 0}
-                  onBlur={(event) => {
-                    const n = event.currentTarget.valueAsNumber;
-                    if (Number.isFinite(n) && n !== (selected.angle ?? 0))
-                      patchSelected({ ...selected, angle: Math.max(-180, Math.min(180, n)) });
-                  }}
-                />
-              </label>
-              <label className="drawing-width">
-                {t('透明度')}
-                <input
-                  type="number"
-                  aria-label={t('草图元素不透明度')}
-                  min="0"
-                  max="100"
-                  step="1"
-                  key={`opacity-${selection}-${selected.opacity ?? 1}`}
-                  defaultValue={Math.round((selected.opacity ?? 1) * 100)}
-                  onBlur={(event) => {
-                    const n = event.currentTarget.valueAsNumber;
-                    if (Number.isFinite(n) && n / 100 !== (selected.opacity ?? 1))
-                      patchSelected({ ...selected, opacity: Math.max(0, Math.min(1, n / 100)) });
-                  }}
-                />
-              </label>
+              <IconButton
+                label={t('铅笔')}
+                aria-pressed={tool === 'pencil'}
+                className={tool === 'pencil' ? 'selected' : ''}
+                onClick={() => setTool('pencil')}
+              >
+                <PencilSimple size={21} />
+              </IconButton>
+              <IconButton
+                label={t('橡皮擦')}
+                aria-pressed={erase}
+                className={erase ? 'selected' : ''}
+                onClick={() => setTool('erase')}
+              >
+                <Eraser size={21} />
+              </IconButton>
+              <IconButton
+                label={t('选择草图元素')}
+                aria-pressed={tool === 'select'}
+                className={tool === 'select' ? 'selected' : ''}
+                onClick={() => setTool('select')}
+              >
+                <Cursor size={20} />
+              </IconButton>
+              <span className="toolbar-separator" />
+              <IconButton
+                label={t('撤销草图操作')}
+                disabled={busy || !cursor}
+                onClick={() => {
+                  setSelection(null);
+                  setCursor((v) => Math.max(0, v - 1));
+                }}
+              >
+                <ArrowCounterClockwise size={20} />
+              </IconButton>
+              <IconButton
+                label={t('重做草图操作')}
+                disabled={busy || cursor >= history.length - 1}
+                onClick={() => {
+                  setSelection(null);
+                  setCursor((v) => Math.min(history.length - 1, v + 1));
+                }}
+              >
+                <ArrowClockwise size={20} />
+              </IconButton>
+            </div>
+            <ChoiceSelect
+              ariaLabel={t('草图画幅')}
+              className="drawing-ratio"
+              size="compact"
+              value={ratio}
+              disabled={busy}
+              onValueChange={(value) => {
+                void changeRatio(value);
+              }}
+              options={[
+                { value: 'square', label: t('1:1 方形') },
+                { value: 'landscape', label: t('3:2 横向') },
+                { value: 'portrait', label: t('2:3 竖向') },
+              ]}
+            />
+            <IconButton
+              label={t('清空草图')}
+              disabled={busy || !items.length}
+              onClick={() => {
+                void clearDrawing();
+              }}
+            >
+              <Trash size={20} />
+            </IconButton>
+          </div>
+          <div className="drawing-toolbar">
+            <ChoiceSelect
+              ariaLabel={t('草图添加元素')}
+              size="compact"
+              value={tool}
+              disabled={busy}
+              onValueChange={(value) => setTool(value as Tool)}
+              options={[
+                { value: 'pencil', label: t('铅笔') },
+                { value: 'erase', label: t('橡皮擦') },
+                { value: 'select', label: t('选择草图元素') },
+                { value: 'rectangle', label: t('矩形') },
+                { value: 'rounded', label: t('圆角矩形') },
+                { value: 'ellipse', label: t('椭圆') },
+                { value: 'triangle', label: t('三角形') },
+                { value: 'diamond', label: t('菱形') },
+                { value: 'line', label: t('直线') },
+                { value: 'arrow', label: t('箭头') },
+                { value: 'text', label: t('文字') },
+                { value: 'icon', label: t('图标') },
+              ]}
+            />
+            {!!projectImages?.length && readProjectImage && (
+              <ChoiceSelect
+                ariaLabel={t('添加项目图片到草图')}
+                size="compact"
+                value=""
+                disabled={busy}
+                placeholder={t('项目图片')}
+                options={projectImages.map(({ id, name }) => ({ value: id, label: name }))}
+                onValueChange={(id) => void insertImage(() => readProjectImage(id))}
+              />
+            )}
+            <div className="drawing-tools">
+              <IconButton
+                label={t('添加本地图片到草图')}
+                disabled={busy}
+                onClick={() => imageInput.current?.click()}
+              >
+                <FolderOpen size={20} />
+              </IconButton>
+              {readCurrentImage && (
+                <button
+                  className="text-button"
+                  disabled={busy}
+                  onClick={() => void insertImage(readCurrentImage)}
+                >
+                  {t('添加当前画布')}
+                </button>
+              )}
+              <input
+                ref={imageInput}
+                type="file"
+                accept={SKETCH_IMAGE_INPUT}
+                hidden
+                onChange={(event) => {
+                  const file = event.currentTarget.files?.[0];
+                  event.currentTarget.value = '';
+                  if (file) void insertImage(() => file);
+                }}
+              />
+              {tool === 'select' && selected && (
+                <>
+                  <IconButton
+                    label={t('复制草图元素')}
+                    disabled={busy || items.length >= 300}
+                    onClick={() => {
+                      commitItems([...items, moveSketchItem(selected, { x: 0.025, y: 0.025 })]);
+                      setSelection(items.length);
+                    }}
+                  >
+                    <CopySimple size={18} />
+                  </IconButton>
+                  <IconButton
+                    label={t('上移草图图层')}
+                    disabled={busy || selection === items.length - 1}
+                    onClick={() => reorder(1)}
+                  >
+                    <CaretUp size={18} />
+                  </IconButton>
+                  <IconButton
+                    label={t('下移草图图层')}
+                    disabled={busy || selection === 0}
+                    onClick={() => reorder(-1)}
+                  >
+                    <CaretDown size={18} />
+                  </IconButton>
+                  <IconButton
+                    label={t('删除选中元素')}
+                    disabled={busy}
+                    onClick={() => {
+                      commitItems(items.filter((_, i) => i !== selection));
+                      setSelection(null);
+                    }}
+                  >
+                    <Trash size={20} />
+                  </IconButton>
+                </>
+              )}
+            </div>
+          </div>
+          {(tool === 'text' || (tool === 'select' && selected?.kind === 'text')) && (
+            <div className="drawing-controls">
+              <TextT size={20} />
+              <textarea
+                aria-label={t('草图文字')}
+                rows={1}
+                maxLength={160}
+                value={textValue}
+                placeholder={t('输入文字')}
+                disabled={busy}
+                onChange={(event) => setTextValue(event.currentTarget.value)}
+              />
+              {tool === 'select' && selected?.kind === 'text' && (
+                <button
+                  className="text-button"
+                  disabled={busy || !textValue.trim() || textValue.trim() === selected.text}
+                  onClick={() => patchSelected({ ...selected, text: textValue.trim() })}
+                >
+                  {t('更新文字')}
+                </button>
+              )}
             </div>
           )}
-          {tool === 'select' && selected?.kind === 'image' && (
+          {tool === 'icon' && (
+            <ChoiceSelect
+              ariaLabel={t('草图图标')}
+              size="compact"
+              value={symbol}
+              onValueChange={(value) => setSymbol(value as SketchIcon)}
+              options={[
+                { value: 'star', label: t('星形') },
+                { value: 'heart', label: t('爱心') },
+                { value: 'check', label: t('对勾') },
+                { value: 'pin', label: t('位置标记') },
+                { value: 'bolt', label: t('闪电') },
+                { value: 'speech', label: t('对话气泡') },
+              ]}
+            />
+          )}
+          {filledShapes.has(tool) && (
             <label className="drawing-width">
-              {t('大小')}
               <input
-                aria-label={t('图片大小')}
-                type="range"
-                min="0.1"
-                max="1"
-                step="0.01"
-                value={selected.size}
-                disabled={busy}
-                onChange={(event) =>
-                  patchSelected({ ...selected, size: Number(event.currentTarget.value) })
-                }
+                type="checkbox"
+                checked={filled}
+                onChange={(event) => setFilled(event.currentTarget.checked)}
               />
+              {t('填充形状')}
             </label>
           )}
-          {colorPresence.present && (
-            <div
-              className="drawing-color-popover"
-              data-motion="color-picker"
-              data-motion-state={colorPresence.phase}
-              inert={!showColor}
-              aria-hidden={!showColor}
-            >
-              <div className="popover-heading">
-                <strong>{t('完整颜色')}</strong>
-                <button className="text-button" onClick={() => setShowColor(false)}>
-                  {t('完成')}
-                </button>
-              </div>
-              <ColorPicker
-                value={color}
-                onChange={(value) => {
-                  setColor(value);
-                  if (erase) setTool('pencil');
-                  if (tool === 'select' && selected && 'color' in selected)
-                    patchSelected({ ...selected, color: value });
-                }}
-                label={t('笔触颜色')}
+          <div className="drawing-controls" data-motion="drawing-colors">
+            <label className="drawing-width">
+              <input
+                type="checkbox"
+                checked={transparent}
+                disabled={busy}
+                onChange={(event) => setTransparent(event.target.checked)}
               />
+              {t('透明背景')}
+            </label>
+            <div className="drawing-colors" aria-label={t('快捷笔触颜色')}>
+              {colors.map((value) => (
+                <button
+                  key={value}
+                  style={{ '--swatch': value } as React.CSSProperties}
+                  aria-label={t('颜色 {v0}', { v0: value })}
+                  aria-pressed={value === color.slice(0, 7) && !erase}
+                  className={value === color.slice(0, 7) && !erase ? 'selected' : ''}
+                  onClick={() => {
+                    setColor(value);
+                    if (erase) setTool('pencil');
+                    if (tool === 'select' && selected && 'color' in selected)
+                      patchSelected({ ...selected, color: value });
+                  }}
+                />
+              ))}
+              <button
+                className="full-palette-trigger"
+                aria-expanded={showColor}
+                aria-label={t('打开完整颜色选择器')}
+                onClick={() => setShowColor(!showColor)}
+              >
+                <span style={{ background: color }} />
+                {t('色谱')}
+              </button>
             </div>
-          )}
+            {tool !== 'select' && (
+              <label className="drawing-width">
+                {tool === 'text' || tool === 'icon' ? t('大小') : erase ? t('橡皮') : t('笔触')}
+                <input
+                  type="range"
+                  min="1"
+                  max="70"
+                  value={width}
+                  onChange={(e) => setWidth(Number(e.target.value))}
+                />
+                <span>{width}</span>
+              </label>
+            )}
+            {tool === 'select' && selected && (
+              <div className="drawing-tools">
+                <label className="drawing-width">
+                  {t('角度')}
+                  <input
+                    type="number"
+                    aria-label={t('草图元素角度')}
+                    min="-180"
+                    max="180"
+                    step="1"
+                    key={`angle-${selection}-${selected.angle ?? 0}`}
+                    defaultValue={selected.angle ?? 0}
+                    onBlur={(event) => {
+                      const n = event.currentTarget.valueAsNumber;
+                      if (Number.isFinite(n) && n !== (selected.angle ?? 0))
+                        patchSelected({ ...selected, angle: Math.max(-180, Math.min(180, n)) });
+                    }}
+                  />
+                </label>
+                <label className="drawing-width">
+                  {t('透明度')}
+                  <input
+                    type="number"
+                    aria-label={t('草图元素不透明度')}
+                    min="0"
+                    max="100"
+                    step="1"
+                    key={`opacity-${selection}-${selected.opacity ?? 1}`}
+                    defaultValue={Math.round((selected.opacity ?? 1) * 100)}
+                    onBlur={(event) => {
+                      const n = event.currentTarget.valueAsNumber;
+                      if (Number.isFinite(n) && n / 100 !== (selected.opacity ?? 1))
+                        patchSelected({ ...selected, opacity: Math.max(0, Math.min(1, n / 100)) });
+                    }}
+                  />
+                </label>
+              </div>
+            )}
+            {tool === 'select' && selected?.kind === 'image' && (
+              <label className="drawing-width">
+                {t('大小')}
+                <input
+                  aria-label={t('图片大小')}
+                  type="range"
+                  min="0.1"
+                  max="1"
+                  step="0.01"
+                  value={selected.size}
+                  disabled={busy}
+                  onChange={(event) =>
+                    patchSelected({ ...selected, size: Number(event.currentTarget.value) })
+                  }
+                />
+              </label>
+            )}
+            {colorPresence.present && (
+              <div
+                className="drawing-color-popover"
+                data-motion="color-picker"
+                data-motion-state={colorPresence.phase}
+                inert={!showColor}
+                aria-hidden={!showColor}
+              >
+                <div className="popover-heading">
+                  <strong>{t('完整颜色')}</strong>
+                  <button className="text-button" onClick={() => setShowColor(false)}>
+                    {t('完成')}
+                  </button>
+                </div>
+                <ColorPicker
+                  value={color}
+                  onChange={(value) => {
+                    setColor(value);
+                    if (erase) setTool('pencil');
+                    if (tool === 'select' && selected && 'color' in selected)
+                      patchSelected({ ...selected, color: value });
+                  }}
+                  label={t('笔触颜色')}
+                />
+              </div>
+            )}
+          </div>
+          <InlineError message={error} />
         </div>
         <div
           ref={drawingArea}
@@ -837,7 +840,6 @@ export function DrawingBoard({
           </span>
           <span>{t('{v0} 个元素', { v0: items.length })}</span>
         </div>
-        <InlineError message={error} />
         <div className="drawing-actions">
           <button
             className="button button-secondary"

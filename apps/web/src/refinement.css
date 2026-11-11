@@ -1679,6 +1679,52 @@
       display: none;
     }
   }
+  .drawing-modal .drawing-tool-area {
+    display: contents;
+  }
+  @media (min-width: 540px) and (max-height: 520px) and (orientation: landscape) {
+    .drawing-modal[open] {
+      display: grid;
+      grid-template: auto minmax(0, 1fr) auto auto / minmax(200px, 0.85fr) minmax(0, 1.25fr);
+      gap: 6px 12px;
+      height: calc(100dvh - 16px);
+      max-height: calc(100dvh - 16px);
+      padding: 8px 12px;
+    }
+    .drawing-modal .modal-header,
+    .drawing-modal .drawing-actions {
+      grid-column: 1 / -1;
+    }
+    .drawing-modal .modal-header {
+      margin-bottom: 0;
+    }
+    .drawing-modal .drawing-tool-area {
+      display: block;
+      grid-column: 1;
+      grid-row: 2 / span 2;
+      min-width: 0;
+      overflow: auto;
+      overscroll-behavior: contain;
+      padding-inline-end: 5px;
+    }
+    .drawing-modal .drawing-surface {
+      grid-column: 2;
+      grid-row: 2;
+      min-width: 0;
+      min-height: 0;
+      height: auto;
+      max-height: none;
+    }
+    .drawing-modal .drawing-meta {
+      grid-column: 2;
+      grid-row: 3;
+      margin: 0;
+    }
+    .drawing-modal .drawing-color-popover {
+      position: static;
+      max-width: 100%;
+    }
+  }
 }
 
 @layer refinement {
