@@ -107,6 +107,7 @@ export const editorEnglish: Readonly<Record<string, string>> = {
   抠图边缘范围: 'Cutout edge range',
   消除背景杂色: 'Remove background color spill',
   母版高位深调色: 'High-bit-depth grading',
+  文件信息: 'File information',
   母版预览未能更新: 'Master preview could not be updated',
   正在更新母版预览: 'Updating master preview',
   母版调色版本: 'Master grading versions',

@@ -317,7 +317,12 @@ export function MediaSourceViewer({ assetId }: { assetId: string }) {
     }
   }
   return (
-    <section className="media-source" aria-label={t('原件与母版')} data-motion="media-detail">
+    <section
+      className="media-source"
+      aria-label={t('原件与母版')}
+      data-motion="media-detail"
+      data-grading={grading ? 'true' : undefined}
+    >
       <div className="media-zoom-tools">
         <strong>{t('原件细节')}</strong>
         <span>{(view.zoom * 100).toFixed(view.zoom < 0.1 ? 1 : 0)}%</span>
@@ -431,70 +436,6 @@ export function MediaSourceViewer({ assetId }: { assetId: string }) {
       )}
       {descriptor && (
         <>
-          <dl className="media-facts">
-            <div>
-              <dt>{t('原件')}</dt>
-              <dd>
-                {descriptor.original.width} × {descriptor.original.height} ·{' '}
-                {descriptor.original.bitDepth} {t('位 ·')}
-                {descriptor.original.colorSpace}
-              </dd>
-            </div>
-            <div>
-              <dt>{t('母版')}</dt>
-              <dd>
-                {descriptor.master.bitDepth} {t('位')}
-                {descriptor.master.colorSpace} · TIFF
-              </dd>
-            </div>
-            <div>
-              <dt>{t('工作预览')}</dt>
-              <dd>
-                {descriptor.proxy.width} × {descriptor.proxy.height} {t('· 8 位 sRGB')}
-              </dd>
-            </div>
-            <div>
-              <dt>{t('色彩档案')}</dt>
-              <dd>
-                {descriptor.original.hasIcc === null
-                  ? t('原件档案未解析，原编码已保留')
-                  : descriptor.original.hasIcc
-                    ? t('原件保留 ICC；母版转换至 sRGB')
-                    : t('原件无嵌入 ICC，见转换说明')}
-              </dd>
-            </div>
-          </dl>
-          <p className="control-note">
-            {t(
-              '图块用于检查源图细节；这里下载的是原件或母版，不包含编辑器的代理图修改。HDR 原件保留，工作母版与图块采用 SDR。',
-            )}
-          </p>
-          {descriptor.warnings.map((warning, i) => (
-            <p className="control-note" key={i}>
-              {t(warning)}
-            </p>
-          ))}
-          <div className="media-downloads">
-            <a className="text-button" href={record!.downloads.original}>
-              <DownloadSimple size={16} />
-              {t('原件')}
-            </a>
-            <a className="text-button" href={record!.downloads.master}>
-              {t('16 位 TIFF 母版')}
-            </a>
-            {record!.downloads.linearMaster && (
-              <a className="text-button" href={record!.downloads.linearMaster}>
-                {t('32 位线性 EXR 母版')}
-              </a>
-            )}
-            <button
-              className="text-button"
-              disabled={exporting}
-              onClick={() => void exportMaster('png16')}
-            >
-              {exporting ? t('正在转换') : t('母版转 16 位 PNG')}
-            </button>
-          </div>
           {canEdit ? (
             <details
               className="editor-section"
@@ -636,6 +577,73 @@ export function MediaSourceViewer({ assetId }: { assetId: string }) {
               </p>
             )
           )}
+          <div className="media-downloads">
+            <a className="text-button" href={record!.downloads.original}>
+              <DownloadSimple size={16} />
+              {t('原件')}
+            </a>
+            <a className="text-button" href={record!.downloads.master}>
+              {t('16 位 TIFF 母版')}
+            </a>
+            {record!.downloads.linearMaster && (
+              <a className="text-button" href={record!.downloads.linearMaster}>
+                {t('32 位线性 EXR 母版')}
+              </a>
+            )}
+            <button
+              className="text-button"
+              disabled={exporting}
+              onClick={() => void exportMaster('png16')}
+            >
+              {exporting ? t('正在转换') : t('母版转 16 位 PNG')}
+            </button>
+          </div>
+          <details className="editor-section media-information">
+            <summary>{t('文件信息')}</summary>
+            <dl className="media-facts">
+              <div>
+                <dt>{t('原件')}</dt>
+                <dd>
+                  {descriptor.original.width} × {descriptor.original.height} ·{' '}
+                  {descriptor.original.bitDepth} {t('位 ·')}
+                  {descriptor.original.colorSpace}
+                </dd>
+              </div>
+              <div>
+                <dt>{t('母版')}</dt>
+                <dd>
+                  {descriptor.master.bitDepth} {t('位')}
+                  {descriptor.master.colorSpace} · TIFF
+                </dd>
+              </div>
+              <div>
+                <dt>{t('工作预览')}</dt>
+                <dd>
+                  {descriptor.proxy.width} × {descriptor.proxy.height} {t('· 8 位 sRGB')}
+                </dd>
+              </div>
+              <div>
+                <dt>{t('色彩档案')}</dt>
+                <dd>
+                  {descriptor.original.hasIcc === null
+                    ? t('原件档案未解析，原编码已保留')
+                    : descriptor.original.hasIcc
+                      ? t('原件保留 ICC；母版转换至 sRGB')
+                      : t('原件无嵌入 ICC，见转换说明')}
+                </dd>
+              </div>
+            </dl>
+            <p className="control-note">
+              {t(
+                '图块用于检查源图细节；这里下载的是原件或母版，不包含编辑器的代理图修改。HDR 原件保留，工作母版与图块采用 SDR。',
+              )}
+            </p>
+            {descriptor.warnings.map((warning, i) => (
+              <p className="control-note" key={i}>
+                {t(warning)}
+              </p>
+            ))}
+          </details>
         </>
       )}
       <InlineError message={error} />
