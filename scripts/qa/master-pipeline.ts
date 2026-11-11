@@ -7,7 +7,12 @@ import { execFile } from 'node:child_process';
 import { promisify } from 'node:util';
 import { setTimeout as delay } from 'node:timers/promises';
 import sharp, { type Sharp } from 'sharp';
-import { NEUTRAL_PRECISION_EDIT, type PrecisionEdit } from '@ai-xiutu/editor';
+import {
+  compileSelectionMaskV3,
+  NEUTRAL_PRECISION_EDIT,
+  type PrecisionEdit,
+  type PrecisionEditV2,
+} from '@ai-xiutu/editor';
 import { editMaster16 } from '../../packages/media/src/precision.js';
 import { collaborationFixture } from '../../apps/api/test/collaboration-fixture.js';
 
@@ -89,43 +94,123 @@ try {
       shadows: 12,
       highlights: -18,
     };
-    const withCurves = process.env.MEDIA_QA_CURVES === '1';
-    if (withCurves) assert.equal(metadata.editor.precisionEditing.curves.available, true);
-    const precisionEdit: PrecisionEdit = withCurves
-      ? {
-          ...baseEdit,
-          algorithm: 'scene-linear-v2',
-          curves: {
-            luminance: [
-              [-16, -16],
-              [-2, -1.7],
-              [2, 1.8],
-              [16, 16],
-            ],
-            red: [
-              [-16, -16],
-              [0, 0.3],
-              [16, 16],
-            ],
-          },
-        }
-      : baseEdit;
-    const grade = {
-      expectedSourceSha256: descriptor.sourceSha256,
-      precisionInput,
-      precisionEdit,
-    };
     const region = {
       left: Math.floor(width * 0.31),
       top: Math.floor(height * 0.43),
       width: Math.min(420, Math.floor(width * 0.55)),
       height: Math.min(300, Math.floor(height * 0.4)),
     };
+    const withRegions = process.env.MEDIA_QA_REGIONS === '1';
+    const withCurves = withRegions || process.env.MEDIA_QA_CURVES === '1';
+    if (withCurves) assert.equal(metadata.editor.precisionEditing.curves.available, true);
+    if (withRegions) assert.equal(metadata.editor.precisionEditing.regions.available, true);
+    const curveEdit: PrecisionEditV2 = {
+      ...baseEdit,
+      algorithm: 'scene-linear-v2',
+      curves: {
+        luminance: [
+          [-16, -16],
+          [-2, -1.7],
+          [2, 1.8],
+          [16, 16],
+        ],
+        red: [
+          [-16, -16],
+          [0, 0.3],
+          [16, 16],
+        ],
+      },
+    };
+    const precisionEdit: PrecisionEdit = withRegions
+      ? {
+          ...curveEdit,
+          algorithm: 'scene-linear-v3',
+          regions: [
+            {
+              id: 'radial',
+              enabled: true,
+              opacity: 0.72,
+              mask: {
+                type: 'radial',
+                shape: 'ellipse',
+                rotationDegrees: 37,
+                feather: 0.35,
+                invert: false,
+                centerX: (region.left + region.width * 0.56) / width,
+                centerY: (region.top + region.height * 0.54) / height,
+                radiusX: (region.width * 0.35) / width,
+                radiusY: (region.height * 0.36) / height,
+              },
+              adjustments: { exposure: 0.55, temperature: 8, shadows: 16 },
+            },
+            {
+              id: 'linear',
+              enabled: true,
+              opacity: 0.66,
+              mask: {
+                type: 'linear',
+                smooth: true,
+                invert: false,
+                start: {
+                  x: (region.left + region.width * 0.49) / width,
+                  y: (region.top + region.height * 0.47) / height,
+                },
+                end: {
+                  x: (region.left + region.width * 0.94) / width,
+                  y: (region.top + region.height * 0.77) / height,
+                },
+              },
+              adjustments: { exposure: -0.35, saturation: -18, contrast: 10 },
+            },
+          ],
+        }
+      : withCurves
+        ? curveEdit
+        : baseEdit;
+    const grade = {
+      expectedSourceSha256: descriptor.sourceSha256,
+      precisionInput,
+      precisionEdit,
+    };
     const previewStarted = performance.now();
     const preview = await f.call('POST', path + '/preview', { ...grade, maxEdge: 512, region });
     assert.equal(preview.statusCode, 200, preview.body.slice(0, 200));
     const cropped = await raw16(sharp(preview.rawPayload, { ignoreIcc: true }));
     const previewMs = Math.round(performance.now() - previewStarted);
+    let localComparison;
+    if (precisionEdit.algorithm === 'scene-linear-v3') {
+      const baseline = await f.call('POST', path + '/preview', {
+        ...grade,
+        precisionEdit: curveEdit,
+        maxEdge: 512,
+        region,
+      });
+      assert.equal(baseline.statusCode, 200, baseline.body.slice(0, 200));
+      const reference = await raw16(sharp(baseline.rawPayload, { ignoreIcc: true }));
+      const masks = precisionEdit.regions.map(({ mask }) =>
+        compileSelectionMaskV3(mask, { width, height }),
+      );
+      let outsidePixels = 0,
+        changedPixels = 0;
+      for (let y = 0; y < region.height; y++) {
+        for (let x = 0; x < region.width; x++) {
+          const at = (y * region.width + x) * 8;
+          const equal = cropped.subarray(at, at + 8).equals(reference.subarray(at, at + 8));
+          const u = (region.left + x + 0.5) / width,
+            v = (region.top + y + 0.5) / height;
+          if (masks.every((sample) => sample(u, v) === 0)) {
+            assert.ok(equal, 'Pixels outside the authored masks must be unchanged');
+            outsidePixels++;
+          } else if (!equal) changedPixels++;
+        }
+      }
+      assert.ok(outsidePixels > 500 && changedPixels > 500);
+      localComparison = { outsidePixels, changedPixels };
+      await writeFile(
+        join(output, String(index) + '-native-window-before-regions.png'),
+        baseline.rawPayload,
+      );
+    }
     const warmWindowMs: number[] = [];
     if (process.env.MEDIA_QA_WARM_WINDOWS === '1' && precisionInput === 'linear-master') {
       const seen = new Set();
@@ -133,7 +218,20 @@ try {
         const startWindow = performance.now();
         const window = await f.call('POST', path + '/preview', {
           ...grade,
-          precisionEdit: { ...precisionEdit, exposure: precisionEdit.exposure + step / 20 },
+          precisionEdit:
+            precisionEdit.algorithm === 'scene-linear-v3'
+              ? {
+                  ...precisionEdit,
+                  regions: precisionEdit.regions.map((item, index) =>
+                    index === 0
+                      ? {
+                          ...item,
+                          adjustments: { ...item.adjustments, exposure: 0.55 + step / 20 },
+                        }
+                      : item,
+                  ),
+                }
+              : { ...precisionEdit, exposure: precisionEdit.exposure + step / 20 },
           maxEdge: 512,
           region,
         });
@@ -153,7 +251,10 @@ try {
       ...result,
       algorithm: precisionEdit.algorithm,
       ...(warmWindowMs.length ? { warmWindowMs } : {}),
-      ...(precisionEdit.algorithm === 'scene-linear-v2' ? { curves: precisionEdit.curves } : {}),
+      ...(precisionEdit.algorithm !== 'scene-linear-v1' ? { curves: precisionEdit.curves } : {}),
+      ...(precisionEdit.algorithm === 'scene-linear-v3'
+        ? { regions: precisionEdit.regions, localComparison }
+        : {}),
       previewMs,
       nativeRegion: region,
       previewSha256: sha(cropped),

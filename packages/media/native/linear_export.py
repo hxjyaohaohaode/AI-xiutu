@@ -39,7 +39,108 @@ def curve_gain(value, points):
     return np.where(positive, np.exp2(offsets), 1)
 
 
-def develop(pixels, edit, gains, sdr, curves):
+def luminance(rgb):
+    return np.sum(rgb * [0.2126, 0.7152, 0.0722], axis=-1, keepdims=True)
+
+
+def grade_gains(edit):
+    exposure = edit.get("exposure", 0)
+    temperature = edit.get("temperature", 0)
+    tint = edit.get("tint", 0)
+    return np.exp2([
+        exposure + 0.0035 * temperature + 0.0012 * tint,
+        exposure - 0.0018 * tint,
+        exposure - 0.0035 * temperature + 0.0012 * tint,
+    ])
+
+
+def grade_rgb(rgb, edit, gains):
+    rgb *= gains
+    signed_y = luminance(rgb)
+    y = np.maximum(0, signed_y)
+    highlight = y / (y + 0.18)
+    gain = np.exp2(
+        (edit.get("shadows", 0) * (1 - highlight) + edit.get("highlights", 0) * highlight) / 100
+    )
+    if edit.get("contrast"):
+        gain *= np.power(np.where(y > 0, y / 0.18, 1), 2 ** (edit["contrast"] / 100) - 1)
+    if edit.get("saturation"):
+        rgb = signed_y + (rgb - signed_y) * (1 + edit["saturation"] / 100)
+    rgb *= gain
+    return rgb, y, gain
+
+
+def compile_mask(mask, source_width, source_height):
+    def smooth(t):
+        return t * t * (3 - 2 * t)
+
+    if mask["type"] == "linear":
+        short = min(source_width, source_height)
+        ax, ay = source_width / short, source_height / short
+        start, end = mask["start"], mask["end"]
+        x0, y0 = start["x"] * ax, start["y"] * ay
+        dx = (end["x"] - start["x"]) * ax
+        dy = (end["y"] - start["y"]) * ay
+        norm = dx * dx + dy * dy
+
+        def weights(x, y):
+            t = np.clip(((x * ax - x0) * dx + (y * ay - y0) * dy) / norm, 0, 1)
+            return smooth(t) if mask["smooth"] else t
+
+    elif mask["type"] == "radial":
+        angle = mask.get("rotationDegrees", 0)
+        radians = angle * np.pi / 180
+        cos, sin = np.cos(radians), np.sin(radians)
+        if angle % 90 == 0:
+            cos, sin = np.rint(cos), np.rint(sin)
+        rx, ry = mask["radiusX"], mask["radiusY"]
+        xx, xy = cos / rx, sin * source_height / (rx * source_width)
+        yx, yy = -sin * source_width / (ry * source_height), cos / ry
+        feather = mask["feather"]
+        shape = mask.get("shape", "ellipse")
+
+        def weights(x, y):
+            x = x - mask["centerX"]
+            y = y - mask["centerY"]
+            u, v = x * xx + y * xy, x * yx + y * yy
+            if shape == "rectangle":
+                distance = np.maximum(np.abs(u), np.abs(v))
+            elif shape == "diamond":
+                distance = np.abs(u) + np.abs(v)
+            else:
+                distance = np.sqrt(u * u + v * v)
+            if not feather:
+                return (distance < 1).astype(np.float64)
+            return smooth(np.clip((1 - distance) / feather, 0, 1))
+
+    else:
+        raise ValueError("Unsupported scene-linear region mask")
+    if mask["invert"]:
+        return lambda x, y: 1 - weights(x, y)
+    return weights
+
+
+def apply_regions(rgb, regions, x, y):
+    changed = np.zeros(rgb.shape[:2], dtype=bool)
+    for mask, opacity, adjustments, gains in regions:
+        weight = mask(x, y) * opacity
+        support = weight > 0
+        if not np.any(support):
+            continue
+        old = rgb[support]
+        graded, _, _ = grade_rgb(old.copy(), adjustments, gains)
+        factor = weight[support, None]
+        edited = np.where(factor == 1, graded, old + factor * (graded - old))
+        rgb[support] = edited
+        changed[support] |= np.any(edited != old, axis=-1)
+    return changed
+
+
+def pixel_centers(start, count, extent):
+    return (np.arange(start, start + count, dtype=np.float64) + 0.5) / extent
+
+
+def develop(pixels, edit, gains, sdr, curves, regions=(), x=None, y=None):
     if not np.all(np.isfinite(pixels)):
         raise ValueError("Non-finite retained float samples")
     alpha = pixels[:, :, 3:4].astype(np.float64) if pixels.shape[2] == 4 else None
@@ -48,24 +149,20 @@ def develop(pixels, edit, gains, sdr, curves):
         if np.any(alpha < 0) or np.any(alpha > 1):
             raise ValueError("Invalid retained alpha")
         rgb = np.divide(rgb, alpha, out=np.zeros_like(rgb), where=alpha > 0)
-    rgb *= gains
-    signed_y = np.sum(rgb * [0.2126, 0.7152, 0.0722], axis=2, keepdims=True)
-    y = np.maximum(0, signed_y)
-    highlight = y / (y + 0.18)
-    gain = np.exp2((edit["shadows"] * (1 - highlight) + edit["highlights"] * highlight) / 100)
-    if edit["contrast"]:
-        gain *= np.power(np.where(y > 0, y / 0.18, 1), 2 ** (edit["contrast"] / 100) - 1)
-    if edit["saturation"]:
-        rgb = signed_y + (rgb - signed_y) * (1 + edit["saturation"] / 100)
-    rgb *= gain
+    rgb, base_y, gain = grade_rgb(rgb, edit, gains)
     if "luminance" in curves:
-        luminance = np.sum(rgb * [0.2126, 0.7152, 0.0722], axis=2, keepdims=True)
-        rgb *= curve_gain(luminance, curves["luminance"])
+        rgb *= curve_gain(luminance(rgb), curves["luminance"])
     for channel, name in enumerate(("red", "green", "blue")):
         if name in curves:
             rgb[:, :, channel] *= curve_gain(rgb[:, :, channel], curves[name])
-    if edit["toneMap"] == "reinhard":
-        mapped_y = np.maximum(0, np.sum(rgb * [0.2126, 0.7152, 0.0722], axis=2, keepdims=True)) if curves else y * gain
+    tone_map = edit["toneMap"] == "reinhard"
+    if tone_map:
+        mapped_y = np.maximum(0, luminance(rgb)) if curves else base_y * gain
+    if regions:
+        changed = apply_regions(rgb, regions, x, y)
+        if tone_map:
+            mapped_y = np.where(changed[:, :, None], np.maximum(0, luminance(rgb)), mapped_y)
+    if tone_map:
         rgb /= 1 + mapped_y
     if sdr:
         rgb = np.clip(rgb, 0, 1)
@@ -97,18 +194,24 @@ def render(image, request, window_png=False):
         raise ValueError("Multipart float master is not supported")
     image.seek_subimage(0, 0)
     edit = request["edit"]
-    if edit["algorithm"] not in ("scene-linear-v1", "scene-linear-v2"):
+    if edit["algorithm"] not in ("scene-linear-v1", "scene-linear-v2", "scene-linear-v3"):
         raise ValueError("Unsupported precision edit")
     curves = {
         channel: np.asarray(points, dtype=np.float64)
-        for channel, points in (edit["curves"].items() if edit["algorithm"] == "scene-linear-v2" else ())
+        for channel, points in edit.get("curves", {}).items()
         if any(x != y for x, y in points)
     }
-    gains = np.exp2([
-        edit["exposure"] + 0.0035 * edit["temperature"] + 0.0012 * edit["tint"],
-        edit["exposure"] - 0.0018 * edit["tint"],
-        edit["exposure"] - 0.0035 * edit["temperature"] + 0.0012 * edit["tint"],
-    ])
+    gains = grade_gains(edit)
+    regions = [
+        (
+            compile_mask(region["mask"], spec.width, spec.height),
+            region["opacity"],
+            region["adjustments"],
+            grade_gains(region["adjustments"]),
+        )
+        for region in edit.get("regions", ())
+        if region["enabled"] and region["opacity"] and any(region["adjustments"].values())
+    ]
     sdr = request["sdr"]
     region = request.get("region")
     left, top = 0, 0
@@ -122,6 +225,7 @@ def render(image, request, window_png=False):
             or top + height > spec.height
         ):
             raise ValueError("Invalid native precision window")
+    columns = pixel_centers(left, width, spec.width) if regions else None
     out_spec = oiio.ImageSpec(width, height, channels, oiio.UINT16 if sdr else oiio.FLOAT)
     out_spec.attribute("oiio:ColorSpace", "sRGB" if sdr else "Linear")
     out_spec.attribute("compression", "zip")
@@ -143,7 +247,12 @@ def render(image, request, window_png=False):
             )
             band = read_band(image, spec, left, row, width, next_row - row)
             for offset in range(0, band.shape[0], 64):
-                stripe = develop(band[offset:offset + 64], edit, gains, sdr, curves)
+                source = band[offset:offset + 64]
+                rows = (
+                    pixel_centers(row + offset, source.shape[0], spec.height)[:, None]
+                    if regions else None
+                )
+                stripe = develop(source, edit, gains, sdr, curves, regions, columns, rows)
                 y = out_spec.y + row + offset - top
                 if not out.write_scanlines(y, y + stripe.shape[0], out_spec.z, stripe):
                     raise ValueError("Cannot write precision samples")

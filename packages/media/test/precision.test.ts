@@ -9,9 +9,11 @@ import sharp from 'sharp';
 import {
   NEUTRAL_PRECISION_EDIT,
   compilePrecisionEdit,
+  compileSelectionMaskV3,
   parsePrecisionEdit,
   linearToSrgb,
   srgbToLinear,
+  type PrecisionEditV3,
 } from '@ai-xiutu/editor';
 import { editMaster16 } from '../src/precision.js';
 import { createLinearWindowRuntime, processMedia, exportMedia } from '../src/index.js';
@@ -301,6 +303,194 @@ print(json.dumps(result))`,
         }),
       );
     } finally {
+      await rm(dir, { recursive: true, force: true });
+    }
+  },
+);
+
+test(
+  'ordered native region grading shares rotated and linear mask weights across float export and warm windows',
+  { skip: !process.env.MEDIA_QA_PYTHON },
+  async () => {
+    const python = process.env.MEDIA_QA_PYTHON!;
+    const dir = await mkdtemp(join(tmpdir(), 'xiutu-float-regions-test-'));
+    const runtime = createLinearWindowRuntime();
+    const width = 137;
+    const height = 99;
+    try {
+      const inputPath = join(dir, 'input.exr');
+      const workDir = join(dir, 'media');
+      await execute(python, [
+        '-c',
+        `import OpenImageIO as o,numpy as n,sys
+w,h=int(sys.argv[2]),int(sys.argv[3]); s=o.ImageSpec(w,h,4,o.FLOAT)
+s.x,s.y,s.full_x,s.full_y,s.full_width,s.full_height=-11,7,-22,-13,w+40,h+30
+s.tile_width=s.tile_height=32; s.tile_depth=1
+s.attribute("oiio:ColorSpace","Linear")
+y,x=n.mgrid[0:h,0:w]; a=n.where((x+y)%19==0,0,n.where((x+y)%11==0,0.5,1))
+p=n.stack(((x-48)/256,(y+19)/256,(x+y+50)/64,a),axis=-1).astype(n.float32)
+p[:,:,:3]*=n.where(a>0,a,1)[:,:,None]
+out=o.ImageOutput.create(sys.argv[1]); assert out.open(sys.argv[1],s); assert out.write_image(p); assert out.close()`,
+        inputPath,
+        String(width),
+        String(height),
+      ]);
+      const descriptor = await processMedia({
+        inputPath,
+        workDir,
+        options: { pythonExecutable: python, generateTiles: false },
+      });
+      assert.ok(descriptor.linearMaster);
+      const options = { pythonExecutable: python };
+      const settings: PrecisionEditV3 = {
+        ...NEUTRAL_PRECISION_EDIT,
+        algorithm: 'scene-linear-v3',
+        curves: {},
+        regions: [
+          {
+            id: 'rotated',
+            enabled: true,
+            opacity: 0.75,
+            mask: {
+              type: 'radial',
+              centerX: 0.47,
+              centerY: 0.5,
+              radiusX: 0.29,
+              radiusY: 0.15,
+              feather: 0.3,
+              invert: false,
+              shape: 'diamond',
+              rotationDegrees: 36,
+            },
+            adjustments: { contrast: 31, temperature: 18 },
+          },
+          {
+            id: 'gradient',
+            enabled: true,
+            opacity: 0.65,
+            mask: {
+              type: 'linear',
+              start: { x: 0.35, y: 0.3 },
+              end: { x: 0.85, y: 0.75 },
+              smooth: true,
+              invert: false,
+            },
+            adjustments: { exposure: 0.73, saturation: -22 },
+          },
+        ],
+      };
+      assert.deepEqual(parsePrecisionEdit(settings), settings);
+      assert.throws(
+        () =>
+          parsePrecisionEdit({ ...settings, regions: [settings.regions[0], settings.regions[0]] }),
+        /unique region/,
+      );
+      assert.throws(
+        () =>
+          parsePrecisionEdit({
+            ...settings,
+            regions: [
+              { ...settings.regions[0], mask: { type: 'brush', strokes: [], invert: false } },
+            ],
+          }),
+        /radial or linear/,
+      );
+      const request = {
+        workDir,
+        precisionInput: 'linear-master' as const,
+        precisionEdit: settings,
+        options,
+      };
+      const exr = join(dir, 'regions.exr');
+      const result = await exportMedia({ ...request, format: 'exr32', outputPath: exr });
+      assert.equal(result.precisionEdit?.algorithm, settings.algorithm);
+      const readFloat = async (path: string, name: string) => {
+        const raw = join(dir, name + '.bin');
+        await execute(python, [
+          '-c',
+          'import OpenImageIO as o,numpy as n,sys; i=o.ImageInput.open(sys.argv[1]); assert i; n.asarray(i.read_image(format=o.FLOAT),dtype="<f4").tofile(sys.argv[2]); i.close()',
+          path,
+          raw,
+        ]);
+        const bytes = await readFile(raw);
+        return new Float32Array(bytes.buffer, bytes.byteOffset, bytes.length / 4);
+      };
+      const [original, graded] = await Promise.all([
+        readFloat(join(workDir, 'linear-master.exr'), 'original'),
+        readFloat(exr, 'edited'),
+      ]);
+      assert.equal(graded.length, width * height * 4);
+      const regions = settings.regions.map((item) => ({
+        sample: compileSelectionMaskV3(item.mask, { width, height }),
+        apply: compilePrecisionEdit({ ...NEUTRAL_PRECISION_EDIT, ...item.adjustments }),
+        opacity: item.opacity,
+      }));
+      const next = new Float64Array(3);
+      let untouched = 0,
+        edited = 0;
+      for (let y = 0; y < height; y++) {
+        for (let x = 0; x < width; x++) {
+          const at = 4 * (y * width + x),
+            alpha = original[at + 3]!;
+          assert.equal(graded[at + 3], alpha);
+          const weights = regions.map(
+            ({ sample, opacity }) => sample((x + 0.5) / width, (y + 0.5) / height) * opacity,
+          );
+          if (!alpha || weights.every((weight) => weight === 0)) {
+            assert.deepEqual(graded.subarray(at, at + 4), original.subarray(at, at + 4));
+            untouched++;
+            continue;
+          }
+          const values = [
+            original[at]! / alpha,
+            original[at + 1]! / alpha,
+            original[at + 2]! / alpha,
+          ];
+          for (const [i, { apply }] of regions.entries()) {
+            apply(values[0]!, values[1]!, values[2]!, next);
+            for (let c = 0; c < 3; c++) values[c]! += weights[i]! * (next[c]! - values[c]!);
+          }
+          for (let c = 0; c < 3; c++)
+            assert.ok(Math.abs(graded[at + c]! - Math.fround(values[c]! * alpha)) < 1e-6);
+          edited++;
+        }
+      }
+      assert.ok(untouched > 2000 && edited > 2000);
+      assert.ok(graded.some((value, i) => i % 4 !== 3 && value > 1));
+      assert.ok(graded.some((value, i) => i % 4 !== 3 && value < 0));
+      const reversed = join(dir, 'reversed.exr');
+      await exportMedia({
+        ...request,
+        precisionEdit: { ...settings, regions: [...settings.regions].reverse() },
+        format: 'exr32',
+        outputPath: reversed,
+      });
+      assert.notDeepEqual(await readFloat(reversed, 'reverse'), graded);
+      const png = join(dir, 'full.png'),
+        window = join(dir, 'window.png');
+      const region = { left: 39, top: 21, width: 79, height: 66 };
+      const pngRequest = {
+        ...request,
+        format: 'png16' as const,
+        precisionEdit: { ...settings, toneMap: 'reinhard' as const },
+      };
+      const full = await exportMedia({ ...pngRequest, outputPath: png });
+      const preview = await exportMedia(
+        { ...pngRequest, outputPath: window, preview: { maxEdge: 128, region } },
+        { runtime, descriptor },
+      );
+      const raw16 = (path: string, crop?: typeof region) => {
+        const image = sharp(path, { ignoreIcc: true });
+        return (crop ? image.extract(crop) : image)
+          .toColourspace('rgb16')
+          .raw({ depth: 'ushort' })
+          .toBuffer();
+      };
+      assert.deepEqual(await raw16(window), await raw16(png, region));
+      assert.equal(preview.precisionEdit?.sha256, full.precisionEdit?.sha256);
+      assert.deepEqual(await readFile(join(workDir, 'original.bin')), await readFile(inputPath));
+    } finally {
+      await runtime.close();
       await rm(dir, { recursive: true, force: true });
     }
   },

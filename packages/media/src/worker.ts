@@ -741,8 +741,8 @@ async function exportMaster(job: Job): Promise<MediaExportResult> {
   if (job.format === 'exr32' || job.precisionInput === 'linear-master')
     return exportLinearMaster(job, descriptor, region);
   const edit = job.precisionEdit === undefined ? undefined : parsePrecisionEdit(job.precisionEdit);
-  if (edit?.algorithm === 'scene-linear-v2')
-    throw new Error('Scene-linear curves require the retained float master');
+  if (edit && edit.algorithm !== 'scene-linear-v1')
+    throw new Error('Scene-linear curves and regions require the retained float master');
   const master = join(job.workDir, 'master.tif'),
     output = `${job.outputPath!}.partial`,
     format = job.format!;

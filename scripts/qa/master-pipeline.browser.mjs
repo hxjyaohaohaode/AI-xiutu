@@ -265,10 +265,12 @@ try {
       assert.equal(response.status(), 201);
       const revision = (await response.json()).grade;
       assert.equal(revision.edit.exposure, Number(after));
-      if (asset.algorithm === 'scene-linear-v2') {
+      if (asset.algorithm !== 'scene-linear-v1') {
         assert.equal(revision.edit.algorithm, asset.algorithm);
         assert.deepEqual(revision.edit.curves, asset.curves);
       }
+      if (asset.algorithm === 'scene-linear-v3')
+        assert.deepEqual(revision.edit.regions, asset.regions);
       const overflow = await page.evaluate(() => document.documentElement.scrollWidth - innerWidth);
       assert.ok(overflow <= 1, 'Page overflow: ' + overflow);
       await preview.scrollIntoViewIfNeeded();

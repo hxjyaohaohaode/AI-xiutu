@@ -640,8 +640,14 @@ export function registerMediaImport(app: FastifyInstance, db: Database, config: 
   ) {
     if (expectedDigest !== row.descriptor.sourceSha256)
       throw new HttpError(409, 'MEDIA_SOURCE_CHANGED', '母版来源已变化，请重新打开素材。');
-    if (edit?.algorithm === 'scene-linear-v2' && input !== 'linear-master')
-      throw new HttpError(422, 'MEDIA_FLOAT_INPUT', '场景线性曲线需要线性母版作为调色输入。');
+    if (edit && edit.algorithm !== 'scene-linear-v1' && input !== 'linear-master')
+      throw new HttpError(
+        422,
+        'MEDIA_FLOAT_INPUT',
+        edit.algorithm === 'scene-linear-v2'
+          ? '场景线性曲线需要线性母版作为调色输入。'
+          : '场景线性局部调色需要线性母版作为输入。',
+      );
     const master = input === 'linear-master' ? row.descriptor.linearMaster : row.descriptor.master;
     if (!master || (input === 'linear-master' && !(await capabilities).nativeReady))
       throw new HttpError(422, 'MEDIA_FLOAT_UNAVAILABLE', '线性母版或浮点运行环境不可用。');
@@ -690,6 +696,10 @@ export function registerMediaImport(app: FastifyInstance, db: Database, config: 
           curves: {
             ...precision.curves,
             available: enabled && !!row.descriptor.linearMaster && precision.curves.available,
+          },
+          regions: {
+            ...precision.regions,
+            available: enabled && !!row.descriptor.linearMaster && precision.regions.available,
           },
           canSave: enabled && precision.master16 && row.canEdit,
           currentGrade,

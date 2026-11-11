@@ -2,7 +2,13 @@ import { access } from 'node:fs/promises';
 import { constants } from 'node:fs';
 import { execFile } from 'node:child_process';
 import { isAbsolute } from 'node:path';
-import { PRECISION_CURVE_CHANNELS, PRECISION_CURVE_LIMITS } from '@ai-xiutu/editor';
+import {
+  PRECISION_CURVE_CHANNELS,
+  PRECISION_CURVE_LIMITS,
+  MAX_PRECISION_REGIONS,
+  PRECISION_REGION_MASKS,
+  PRECISION_EDIT_CONTROLS,
+} from '@ai-xiutu/editor';
 import sharp from 'sharp';
 import {
   MEDIA_DEFAULT_MAX_PIXELS,
@@ -137,6 +143,15 @@ export async function getMediaCapabilities(
         channels: PRECISION_CURVE_CHANNELS,
         referenceGrey: 0.18,
         ...PRECISION_CURVE_LIMITS,
+      },
+      regions: {
+        algorithm: 'scene-linear-v3',
+        input: 'linear-master',
+        available: isolated && nativeVersions !== null,
+        coordinates: 'source-normalized',
+        maxRegions: MAX_PRECISION_REGIONS,
+        masks: PRECISION_REGION_MASKS,
+        adjustments: PRECISION_EDIT_CONTROLS.map(({ key }) => key),
       },
       controls: [
         'exposure',

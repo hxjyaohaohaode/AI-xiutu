@@ -170,7 +170,7 @@ additional media links, with explicit source asset IDs and audited provenance.
 - `POST /v1/media-imports/:id/complete` ->202 `{job}`. Fully uploaded input required; repeated complete never launches another decoder.
 - `GET /v1/media-imports/:id` -> `{job,asset:null|Asset}`; states uploading|processing|ready|failed|cancelled.
 - `POST /v1/media-imports/:id/cancel` -> `{ok:true,cleanupPending:boolean}`; unfinished work only. Ready409 never deletes published originals. When processing may still be owned by another worker, cancellation remains durable but the reservation and work directory stay until that worker stops or stale recovery confirms ownership loss. Repeated cancellation does not extend its lease or free its capacity early.
-- `GET /v1/assets/:id/media` -> `{descriptor,downloads,editor}`. `editor.precisionEditing` includes `currentGrade`, `canSave`, the installed-runtime flags, the exact source digest and the preview/export budgets. `precisionEditing.curves.available` enables the scene-linear curve controls for this asset.
+- `GET /v1/assets/:id/media` -> `{descriptor,downloads,editor}`. `editor.precisionEditing` includes `currentGrade`, `canSave`, the installed-runtime flags, the exact source digest and the preview/export budgets. `precisionEditing.curves.available` and `precisionEditing.regions.available` advertise the curve and local adjustment capabilities for this asset.
 - `GET /v1/assets/:id/media/original`, `/master`, `/linearMaster`, `/tiles.dzi`, `/tiles_files/:level/:tile` serve immutable originals, masters or tiles under the asset ACL.
 - `POST /v1/assets/:id/media/preview` accepts `{expectedSourceSha256,precisionInput,precisionEdit?,maxEdge,region?}`. The PNG16 response applies the grade before downsampling an overview. An optional `{left,top,width,height}` selects native pixels in the orientation-normalized data window. Each edge must fit `maxEdge` (128–2048); the coordinates must fit the master. A window may be read from a raster above the whole-image grading budget.
 - `GET /v1/assets/:id/media/grades?beforeVersion=N` returns `{grades,nextBeforeVersion}` in descending order, at most 30 per response. `POST .../grades` accepts `{expectedVersion,expectedSourceSha256,precisionInput,precisionEdit}` and returns `201 {grade}`. Version 0 means no prior grade. A stale save returns 409. Each new version is appended under current project edit access.
@@ -182,8 +182,15 @@ A grade includes `exposure:-10..10`,
 `scene-linear-v2` requires `precisionInput:'linear-master'` and accepts
 `curves` with optional `luminance`, `red`, `green` and `blue` entries. Each
 entry has 2–16 `[inputEV,outputEV]` points in −16…16 EV relative to 0.18 linear
-grey. Input EV increases strictly. Sending v2 with `master16` returns
-`422 MEDIA_FLOAT_INPUT`. Whole-image grading supports up to 16,777,216
+grey. Input EV increases strictly. `scene-linear-v3` accepts the same `curves`
+and an ordered `regions` array with at most eight entries. Each region requires
+`id`, `enabled`, `opacity` in 0…1, a `mask` and an `adjustments` object with any
+of the seven numeric grade controls. IDs are unique. The mask uses the existing
+source-normalized `radial` (including rotated ellipse, rectangle and diamond)
+or `linear` selection shape. Regions blend adjusted RGB in linear light after
+global curves and before optional tone mapping, using full source pixel centers
+for previews and exports. Both versions return `422 MEDIA_FLOAT_INPUT` with `master16`.
+Whole-image grading supports up to 16,777,216
 SDR master pixels or 50,000,000 linear master pixels. PNG/TIFF apply the requested
 grade in the selected input domain and encode sRGB at 16 bits. EXR32 preserves
 signed float values, headroom, associated alpha and the retained EXR windows.
