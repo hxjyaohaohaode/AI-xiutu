@@ -1,9 +1,8 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import { createRecipeV4, renderEditorRecipe, type RGBAImage } from '@ai-xiutu/editor';
-import { prepareBudgetedPreview } from '../src/editor/previewBudget.ts';
 
-test('warp-detail worker preserves its independent raster, cached pixels and auxiliary sources', async (t) => {
+test('all live tools preserve the original raster, cached pixels and auxiliary sources', async (t) => {
   const replies: any[] = [];
   const scope = {
     onmessage: null as null | ((event: { data: any }) => void | Promise<void>),
@@ -14,15 +13,7 @@ test('warp-detail worker preserves its independent raster, cached pixels and aux
     },
   };
   const previousSelf = Object.getOwnPropertyDescriptor(globalThis, 'self');
-  const previousClock = Object.getOwnPropertyDescriptor(performance, 'now');
-  let clock = 0;
   Object.defineProperty(globalThis, 'self', { configurable: true, value: scope });
-  // This controls policy pressure only. Rendering, downsampling and transfers
-  // remain real, and the resulting pixels are checked against the shared engine.
-  Object.defineProperty(performance, 'now', {
-    configurable: true,
-    value: () => (clock += 120),
-  });
   try {
     await import('../src/editor/render.worker.ts');
     const send = async (data: any) => {
@@ -41,42 +32,49 @@ test('warp-detail worker preserves its independent raster, cached pixels and aux
     const original = source.data.slice();
     let id = 0;
     await t.test(
-      'equal fast and detail budgets cannot share a reduced prepared source',
+      'saturation and curve changes keep more than four million original pixels',
       async () => {
-        await send({ type: 'interactive-source', image: source, sourceDimensions: source });
-        const recipe = createRecipeV4();
-        await send({ type: 'interactive-preview', id: ++id, recipe });
-        const detail = await send({
+        const large: RGBAImage = {
+          width: 2304,
+          height: 1856,
+          data: Uint8ClampedArray.from({ length: 2304 * 1856 * 4 }, (_, i) =>
+            i % 4 === 3 ? 255 : ((i * 37) ^ (i >> 12)) & 255,
+          ),
+        };
+        await send({ type: 'interactive-source', image: large, sourceDimensions: large });
+        const recipe = createRecipeV4({ adjustments: { saturation: 33, contrast: -4 } });
+        recipe.curves.rgb = [
+          [0, 0],
+          [0.46, 0.52],
+          [1, 1],
+        ];
+        const preview = await send({
           type: 'interactive-preview',
           id: ++id,
-          previewQuality: 'warp',
-          maxPixels: 131_072,
           recipe,
         });
         assert.deepEqual(
-          detail.result,
-          renderEditorRecipe(prepareBudgetedPreview(source, recipe, 131_072), recipe),
-          'detail is reconstructed from the original editing raster, never the prewarmed fast copy',
+          preview.result,
+          renderEditorRecipe(large, recipe, { maxPixels: 16_777_216 }),
         );
       },
     );
 
     await t.test(
-      'slow fast work cannot lower flow-v2 detail or detach a cached neutral frame',
+      'mixed color and flow-v2 retain the same pixels and keep cached buffers attached',
       async () => {
         await send({ type: 'interactive-source', image: source, sourceDimensions: source });
         const color = createRecipeV4();
         color.adjustments.contrast = 15;
-        let coarse: any;
         for (let i = 0; i < 3; i++) {
           color.adjustments.exposure = i * 0.1;
-          coarse = await send({
+          const colorFrame = await send({
             type: 'interactive-preview',
             id: ++id,
             recipe: structuredClone(color),
           });
+          assert.deepEqual(colorFrame.result, renderEditorRecipe(source, color));
         }
-        assert.ok(coarse.result.width * coarse.result.height <= 32_768);
         const warp = structuredClone(color);
         warp.warp.enabled = true;
         warp.warp.strokes.push({
@@ -104,8 +102,7 @@ test('warp-detail worker preserves its independent raster, cached pixels and aux
           id: ++id,
           recipe: structuredClone(color),
         });
-        assert.equal(fastAgain.result.width, coarse.result.width);
-        assert.equal(fastAgain.result.height, coarse.result.height);
+        assert.deepEqual(fastAgain.result, renderEditorRecipe(source, color));
 
         // A zero-displacement warp can return the cached pre-warp buffer itself.
         // Exercise a real transferable reply twice before a changed stroke reuses it.
@@ -192,7 +189,5 @@ test('warp-detail worker preserves its independent raster, cached pixels and aux
   } finally {
     if (previousSelf) Object.defineProperty(globalThis, 'self', previousSelf);
     else Reflect.deleteProperty(globalThis, 'self');
-    if (previousClock) Object.defineProperty(performance, 'now', previousClock);
-    else Reflect.deleteProperty(performance, 'now');
   }
 });

@@ -30,11 +30,15 @@ import { usePortraitAnalysis } from './usePortraitAnalysis';
 import { decodeImageSource } from './imageSources';
 import { editorGeometryKey } from './coordinates';
 import { ensureWorker, releaseWorker } from './workerLifecycle';
-import { fitsNativeColorPreview } from './native-preview';
+import { fitsNativePreview } from './native-preview';
 import { rememberHistogram } from './histogram-cache';
 export { editorGeometryKey } from './coordinates';
 
 const MAX_PREVIEW_PIXELS = 4_194_304;
+function workingRaster(original: RGBAImage, proxy: RGBAImage, native: boolean): RGBAImage {
+  if (!native || (original.width === proxy.width && original.height === proxy.height)) return proxy;
+  return { ...original, data: original.data.slice() };
+}
 function previewEdge() {
   return Math.min(
     4096,
@@ -134,7 +138,6 @@ type RenderReply = {
   error?: string;
   histogram?: Histogram;
 };
-const SETTLE_DELAY_MS = 140;
 
 export function useEditor() {
   const [pixelBudget, setBudget] = useState(localPixelBudget);
@@ -190,6 +193,7 @@ export function useEditor() {
   const indexRef = useRef(0);
   const [file, setFile] = useState<File | null>(null);
   const [originalPreview, setOriginalPreview] = useState<RGBAImage | null>(null);
+  const [analysisPreview, setAnalysisPreview] = useState<RGBAImage | null>(null);
   const [rendered, setRendered] = useState<RGBAImage | null>(null);
   const [renderedRecipe, setRenderedRecipe] = useState<EditorRecipe | null>(null);
   const [liveFrame, setLiveFrame] = useState<{
@@ -204,7 +208,7 @@ export function useEditor() {
   const [cropRatio, setCropRatio] = useState<number | null>(null);
   const [renderedGeometryKey, setRenderedGeometryKey] = useState<string | null>(null);
   const [dimensions, setDimensions] = useState<{ width: number; height: number } | null>(null);
-  const portrait = usePortraitAnalysis(originalPreview, dimensions, sourceHash);
+  const portrait = usePortraitAnalysis(analysisPreview, dimensions, sourceHash);
   const [rendering, setRendering] = useState(false);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -413,16 +417,15 @@ export function useEditor() {
       settledLane.current.pending = job;
       pumpPreview(false);
     }
-    if (!interactiveInput.current) settle();
-    else {
-      const timer = window.setTimeout(settle, SETTLE_DELAY_MS);
-      return () => window.clearTimeout(timer);
-    }
+    // During a gesture the live worker already renders at the working
+    // resolution. A second full render would compete with its next frame.
+    if (!interactiveInput.current || !liveWorker.current) settle();
   }, [recipe, originalPreview, layerImages, pumpPreview]);
 
   const replaceRecipe = useCallback(
     (next: EditorRecipe, interactive: PreviewQuality | null = null) => {
-      if (next === recipeRef.current && interactive === interactiveInput.current) return;
+      const sameRecipe = next === recipeRef.current;
+      if (sameRecipe && interactive === interactiveInput.current) return;
       previewQuality.current = interactive ?? interactiveInput.current ?? 'fast';
       interactiveInput.current = interactive;
       recipeRef.current = next;
@@ -438,6 +441,15 @@ export function useEditor() {
         settledLane.current.pending = null;
         liveLane.current.pending = job;
         pumpPreview(true);
+      } else if (!interactive && sameRecipe && sourceWorker.current) {
+        setRendering(true);
+        settledLane.current.pending = {
+          recipe: next,
+          version: ++previewVersion.current,
+          source: sourceIdentity.current,
+          quality: previewQuality.current,
+        };
+        pumpPreview(false);
       }
       setRecipe(next);
     },
@@ -628,28 +640,31 @@ export function useEditor() {
         }
         if (generation !== loadGeneration.current || !isCurrent()) return false;
         const sourceDimensions = { width: full.width, height: full.height };
+        const original = { ...sourceDimensions, data: full.data };
+        const native = fitsNativePreview(full.width, full.height);
+        const displaySource = workingRaster(original, preview, native);
         const fingerprint = sha256
           .create()
           .update(new TextEncoder().encode(`${full.width}x${full.height}:srgb-rgba8:`))
           .update(new Uint8Array(full.data.buffer, full.data.byteOffset, full.data.byteLength))
           .digest();
         const images = new Map([...resolved].map(([id, item]) => [id, item.preview]));
+        const displayImages = new Map(
+          [...resolved].map(([id, item]) => [
+            id,
+            workingRaster(item.original, item.preview, native),
+          ]),
+        );
         // Recreate only for an explicit, fully decoded import. Posting the complete
         // source first preserves FIFO ordering with its first settled preview.
-        let liveNative: RGBAImage | undefined;
         try {
           const main = ensureWorkers();
-          if (
-            liveWorker.current &&
-            (preview.width !== full.width || preview.height !== full.height) &&
-            fitsNativeColorPreview(full.width, full.height)
-          ) liveNative = { ...sourceDimensions, data: full.data.slice() };
           sourceWorker.current = null;
           main.postMessage(
             {
               type: 'source',
               image: preview,
-              original: { width: full.width, height: full.height, data: full.data },
+              original,
               images,
               originalImages: new Map([...resolved].map(([id, item]) => [id, item.original])),
             },
@@ -661,16 +676,12 @@ export function useEditor() {
           throw new Error('本地图像处理器未能接收照片，请重新导入。');
         }
         try {
-          liveWorker.current?.postMessage(
-            {
-              type: 'interactive-source',
-              image: preview,
-              original: liveNative,
-              sourceDimensions,
-              images,
-            },
-            liveNative ? [liveNative.data.buffer] : [],
-          );
+          liveWorker.current?.postMessage({
+            type: 'interactive-source',
+            image: displaySource,
+            sourceDimensions,
+            images: displayImages,
+          });
         } catch {
           stopLiveWorker();
         }
@@ -683,7 +694,7 @@ export function useEditor() {
             { width: item.original.width, height: item.original.height },
           ]),
         );
-        setLayerImages(images);
+        setLayerImages(displayImages);
         sourceIdentity.current += 1;
         setCropRatio(null);
         sourceFrame.current = Object.freeze({
@@ -701,8 +712,9 @@ export function useEditor() {
         setFile(typedSource);
         setSourceFormat(header.format);
         setDimensions({ width: full.width, height: full.height });
-        setOriginalPreview(preview);
-        setRendered(preview);
+        setOriginalPreview(displaySource);
+        setAnalysisPreview(preview);
+        setRendered(displaySource);
         setLiveFrame(null);
         setRenderedRecipe(null);
         setRenderedGeometryKey(editorGeometryKey(createRecipeV3()));
@@ -800,13 +812,18 @@ export function useEditor() {
         width: decoded.original.width,
         height: decoded.original.height,
       });
+      const dims = sourceRef.current;
+      const display = workingRaster(
+        decoded.original,
+        decoded.preview,
+        fitsNativePreview(dims.width, dims.height),
+      );
       worker.current?.postMessage(
         { type: 'image-source', sourceId, image: decoded.preview, original: decoded.original },
         [decoded.original.data.buffer],
       );
-      liveWorker.current?.postMessage({ type: 'image-source', sourceId, image: decoded.preview });
-      setLayerImages((old) => new Map([...old, [sourceId, decoded.preview]]));
-      const dims = sourceRef.current;
+      liveWorker.current?.postMessage({ type: 'image-source', sourceId, image: display });
+      setLayerImages((old) => new Map([...old, [sourceId, display]]));
       const ratio = decoded.preview.width / decoded.preview.height;
       const width = Math.min(0.7, (0.7 * dims.height * ratio) / dims.width),
         height = (width * dims.width) / (ratio * dims.height);
@@ -864,23 +881,24 @@ export function useEditor() {
         throw new Error('共享图层超出本次会话 16.8MP 素材预算，请保存草稿后重新打开作品。');
       if (identity !== sourceIdentity.current || loadBusy.current || !isCurrent())
         throw new Error('共享素材已失效，请重试。');
+      const source = sourceRef.current;
+      const native = !!source && fitsNativePreview(source.width, source.height);
+      const displayImages = new Map<string, RGBAImage>();
       for (const [sourceId, value] of decoded) {
         layerFiles.current.set(sourceId, value.file);
         layerDimensions.current.set(sourceId, {
           width: value.original.width,
           height: value.original.height,
         });
+        const display = workingRaster(value.original, value.preview, native);
+        displayImages.set(sourceId, display);
         worker.current?.postMessage(
           { type: 'image-source', sourceId, image: value.preview, original: value.original },
           [value.original.data.buffer],
         );
-        liveWorker.current?.postMessage({ type: 'image-source', sourceId, image: value.preview });
+        liveWorker.current?.postMessage({ type: 'image-source', sourceId, image: display });
       }
-      if (decoded.size)
-        setLayerImages(
-          (old) =>
-            new Map([...old, ...[...decoded].map(([id, value]) => [id, value.preview] as const)]),
-        );
+      if (decoded.size) setLayerImages((old) => new Map([...old, ...displayImages]));
     },
     [],
   );

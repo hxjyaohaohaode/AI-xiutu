@@ -4,6 +4,7 @@ import {
   createRecipeV4,
   createRecipe,
   type EditorRecipe,
+  type Dimensions,
   type RGBAImage,
 } from '@ai-xiutu/editor';
 
@@ -24,6 +25,7 @@ type PreviewResult = { source: RGBAImage; image: RGBAImage; key: string; geometr
 /** One in-flight operation, at most one latest job per purpose; obsolete frames never label as current. */
 export function useStagePreviews(
   source: RGBAImage | null,
+  sourceDimensions: Dimensions | null,
   recipe: EditorRecipe,
   cropOpen: boolean,
   images: ReadonlyMap<string, RGBAImage>,
@@ -118,7 +120,7 @@ export function useStagePreviews(
         failWorker,
       );
       // This complete source is queued before the later preview effects run.
-      w.postMessage({ type: 'source', image: source, images });
+      w.postMessage({ type: 'source', image: source, sourceDimensions, images });
     } catch {
       failWorker();
     }
@@ -127,7 +129,7 @@ export function useStagePreviews(
       inFlight.current = null;
       pending.current = { compare: null, crop: null, remote: null };
     };
-  }, [source]);
+  }, [source, sourceDimensions]);
   useEffect(() => {
     try {
       worker.current?.postMessage({ type: 'layer-sources', images: new Map(images) });

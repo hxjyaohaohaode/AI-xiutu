@@ -18,6 +18,7 @@ import type {
 
 const clamp = (value: number): number => Math.min(1, Math.max(0, value));
 const DECODE = Float32Array.from({ length: 256 }, (_, i) => srgbToLinear(i / 255));
+const IDENTITY_BYTES = Int16Array.from(DECODE, (_, index) => index);
 const channels: CurveChannel[] = ['rgb', 'red', 'green', 'blue'];
 const packedRgba = new Uint8Array(Uint32Array.of(1).buffer)[0] === 1;
 type CompiledCurves = Record<CurveChannel, ((value: number) => number) | null>;
@@ -127,8 +128,9 @@ function mapEncodedPoint(
   b: number,
   t: Tone,
   curves: CompiledCurves,
-  output: Float32Array,
+  output: Float32Array | Uint8ClampedArray,
   index: number,
+  outputBytes = false,
 ): void {
   if (t.active) {
     const y = 0.2126 * r + 0.7152 * g + 0.0722 * b;
@@ -162,9 +164,24 @@ function mapEncodedPoint(
   if (curves.red) r = curves.red(r);
   if (curves.green) g = curves.green(g);
   if (curves.blue) b = curves.blue(b);
-  output[index] = srgbToLinear(r);
-  output[index + 1] = srgbToLinear(g);
-  output[index + 2] = srgbToLinear(b);
+  if (outputBytes) {
+    output[index] = encodedPointByte(r);
+    output[index + 1] = encodedPointByte(g);
+    output[index + 2] = encodedPointByte(b);
+  } else {
+    output[index] = srgbToLinear(r);
+    output[index + 1] = srgbToLinear(g);
+    output[index + 2] = srgbToLinear(b);
+  }
+}
+
+function encodedPointByte(sample: number): number {
+  const value = clamp(sample) * 255;
+  // Float32 linear roundoff is at most 2^-24. The largest sRGB slope is
+  // 12.92, so its effect in byte units is below 0.0002. Evaluate the original
+  // encode path near any rounding boundary, including exact half-byte ties.
+  if (Math.abs(value - Math.floor(value) - 0.5) > 0.0004) return Math.round(value);
+  return encodeFloat32Byte(Math.fround(srgbToLinear(sample)));
 }
 
 /**
@@ -249,6 +266,7 @@ export interface ReferenceRenderSession {
   curves: CompiledCurves;
   encoded: [Float64Array, Float64Array, Float64Array] | null;
   pointBytes: Int16Array[] | null;
+  pointCache?: { keys: Uint32Array; values: Uint32Array };
 }
 
 export interface ImageCoordinateContext {
@@ -291,19 +309,31 @@ export function createRenderSession(inputRecipe: RecipeV1): ReferenceRenderSessi
       ) as [Float64Array, Float64Array, Float64Array])
     : null;
   const curves = compileCurves(recipe.curves);
-  const gainOnly =
-    globalTone.active &&
+  const neutralLuminance =
     globalTone.brightness === 1 &&
     globalTone.contrast === 1 &&
     globalTone.shadowKnot === 0.25 &&
     globalTone.highlightKnot === 0.75 &&
     globalTone.whites === 0 &&
-    globalTone.blacks === 0 &&
+    globalTone.blacks === 0;
+  const gainOnly =
+    globalTone.active &&
+    neutralLuminance &&
     globalTone.saturation === 1 &&
     globalTone.vibrance === 0;
+  // With only saturation active, an adjustment of 0.2 or less changes each
+  // encoded channel by at most 0.002 × (1 - 0.0722) × 255 < 0.474 bytes.
+  // The float round trip stays inside the same byte's rounding interval.
+  const subByteSaturation =
+    neutralLuminance &&
+    globalTone.gains.every((gain) => gain === 1) &&
+    globalTone.vibrance === 0 &&
+    Math.abs(recipe.adjustments.saturation) <= 0.2 &&
+    channels.every((channel) => !curves[channel]);
   const byte = (value: number) => encodeFloat32Byte(Math.fround(srgbToLinear(value)));
-  const pointBytes =
-    encoded && (gainOnly || !globalTone.active)
+  const pointBytes = subByteSaturation
+    ? [IDENTITY_BYTES, IDENTITY_BYTES, IDENTITY_BYTES]
+    : encoded && (gainOnly || !globalTone.active)
       ? encoded.map((samples, index) =>
           Int16Array.from(samples, (sample) => {
             const key = channels[index + 1]!;
@@ -371,6 +401,7 @@ export function renderValidatedRegion(
   const globalNeutral = session.globalNeutral;
   const localActive = session.localActive;
   const maps = session.pointBytes;
+  const encoded = session.encoded;
   const identity =
     !recipe.geometry.crop &&
     recipe.geometry.rotation === 0 &&
@@ -386,7 +417,7 @@ export function renderValidatedRegion(
     return { ...dimensions, data: image.data.slice() };
   }
   if (
-    maps &&
+    encoded &&
     !localActive &&
     !extension?.active &&
     recipe.adjustments.sharpness === 0 &&
@@ -394,33 +425,74 @@ export function renderValidatedRegion(
   ) {
     const length = dimensions.width * dimensions.height * 4;
     const data = workspace?.output.subarray(0, length) ?? new Uint8ClampedArray(length);
-    const fallback = new Float32Array(3),
-      encoded = session.encoded!;
-    const [redMap, greenMap, blueMap] = maps;
-    // Stable maps allow one native-width read and write for each RGBA pixel.
-    if (
-      identity &&
-      packedRgba &&
-      image.data.byteOffset % 4 === 0 &&
-      data.byteOffset % 4 === 0 &&
-      maps.every((map) => map.every((value) => value >= 0))
-    ) {
-      const input = new Uint32Array(image.data.buffer, image.data.byteOffset, length / 4);
-      const output = new Uint32Array(data.buffer, data.byteOffset, length / 4);
-      for (let y = 0; y < dimensions.height; y++) {
-        if ((y & 31) === 0) checkAbort(options);
-        const start = y * dimensions.width;
-        const end = start + dimensions.width;
-        for (let at = start; at < end; at++) {
-          const rgba = input[at]!;
-          const alpha = rgba & 0xff000000;
-          output[at] = alpha
-            ? alpha | (blueMap![(rgba >>> 16) & 255]! << 16) | (greenMap![(rgba >>> 8) & 255]! << 8) | redMap![rgba & 255]!
-            : rgba;
+    const [redMap, greenMap, blueMap] = maps ?? [];
+    // Point adjustments can process one packed RGBA pixel per read and write.
+    if (identity && packedRgba && image.data.byteOffset % 4 === 0 && data.byteOffset % 4 === 0) {
+      const pixels = length / 4;
+      const input = new Uint32Array(image.data.buffer, image.data.byteOffset, pixels);
+      const output = new Uint32Array(data.buffer, data.byteOffset, pixels);
+      if (maps?.every((map) => map.every((value) => value >= 0))) {
+        for (let y = 0; y < dimensions.height; y++) {
+          if ((y & 31) === 0) checkAbort(options);
+          const start = y * dimensions.width;
+          const end = start + dimensions.width;
+          for (let at = start; at < end; at++) {
+            const rgba = input[at]!;
+            const alpha = rgba & 0xff000000;
+            output[at] = alpha
+              ? alpha |
+                (blueMap![(rgba >>> 16) & 255]! << 16) |
+                (greenMap![(rgba >>> 8) & 255]! << 8) |
+                redMap![rgba & 255]!
+              : rgba;
+          }
         }
+        checkAbort(options);
+        return { ...dimensions, data };
       }
-      checkAbort(options);
-      return { ...dimensions, data };
+      if (pixels >= 65_536) {
+        // The cache is bounded to 4 MiB per recipe, shared across its tiles.
+        // A collision recomputes the exact transform for the current RGB triplet.
+        const { keys, values } = (session.pointCache ??= {
+          keys: new Uint32Array(1 << 19),
+          values: new Uint32Array(1 << 19),
+        });
+        const sample = new Uint8ClampedArray(3);
+        const [redInput, greenInput, blueInput] = encoded;
+        for (let y = 0; y < dimensions.height; y++) {
+          if ((y & 31) === 0) checkAbort(options);
+          const start = y * dimensions.width;
+          const end = start + dimensions.width;
+          for (let at = start; at < end; at++) {
+            const rgba = input[at]!;
+            const alpha = rgba & 0xff000000;
+            if (!alpha) {
+              output[at] = rgba;
+              continue;
+            }
+            const rgb = rgba & 0xffffff;
+            const slot = Math.imul(rgb, 0x9e3779b1) >>> 13;
+            const key = rgb + 1;
+            if (keys[slot] !== key) {
+              mapEncodedPoint(
+                redInput[rgb & 255]!,
+                greenInput[(rgb >>> 8) & 255]!,
+                blueInput[rgb >>> 16]!,
+                session.globalTone,
+                session.curves,
+                sample,
+                0,
+                true,
+              );
+              keys[slot] = key;
+              values[slot] = sample[0]! | (sample[1]! << 8) | (sample[2]! << 16);
+            }
+            output[at] = alpha | values[slot]!;
+          }
+        }
+        checkAbort(options);
+        return { ...dimensions, data };
+      }
     }
     for (let y = 0; y < dimensions.height; y++) {
       if ((y & 31) === 0) checkAbort(options);
@@ -438,9 +510,9 @@ export function renderValidatedRegion(
           data[out + 1] = g;
           data[out + 2] = b;
         } else {
-          const red = redMap![r]!,
-            green = greenMap![g]!,
-            blue = blueMap![b]!;
+          const red = redMap?.[r] ?? -1,
+            green = greenMap?.[g] ?? -1,
+            blue = blueMap?.[b] ?? -1;
           if (red >= 0 && green >= 0 && blue >= 0) {
             data[out] = red;
             data[out + 1] = green;
@@ -452,12 +524,10 @@ export function renderValidatedRegion(
               encoded[2][b]!,
               session.globalTone,
               session.curves,
-              fallback,
-              0,
+              data,
+              out,
+              true,
             );
-            data[out] = encodeFloat32Byte(fallback[0]!);
-            data[out + 1] = encodeFloat32Byte(fallback[1]!);
-            data[out + 2] = encodeFloat32Byte(fallback[2]!);
           }
         }
         data[out + 3] = a;

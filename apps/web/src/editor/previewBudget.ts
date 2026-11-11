@@ -10,7 +10,6 @@ import {
 } from '@ai-xiutu/editor';
 
 export const MAX_PREVIEW_PIXELS = 4_194_304;
-export const INTERACTIVE_PREVIEW_PIXELS = 131_072;
 const linear = Float64Array.from({ length: 256 }, (_, i) => srgbToLinear(i / 255));
 const lastResample = new WeakMap<RGBAImage, RGBAImage>();
 
@@ -62,15 +61,6 @@ function previewRaster(source: RGBAImage, dimensions: Dimensions): RGBAImage {
   const image = downsample(source, dimensions);
   lastResample.set(source, image);
   return image;
-}
-
-/** Prewarm the input of the interactive worker once per imported source. */
-export function prepareInteractiveSource(source: RGBAImage, budget = INTERACTIVE_PREVIEW_PIXELS): RGBAImage {
-  const scale = Math.min(1, Math.sqrt(budget / (source.width * source.height)));
-  return previewRaster(source, {
-    width: Math.max(1, Math.floor(source.width * scale)),
-    height: Math.max(1, Math.floor(source.height * scale)),
-  });
 }
 
 /**

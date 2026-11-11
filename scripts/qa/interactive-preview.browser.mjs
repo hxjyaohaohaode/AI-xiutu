@@ -156,6 +156,30 @@ async function verifyLocalMaskAndLiquify(input) {
     assert.equal(Number(await exposure.inputValue()), -0.01);
     await exposure.press('Alt+ArrowRight');
     assert.equal(Number(await exposure.inputValue()), -0.009);
+    await settled();
+    await exposure.scrollIntoViewIfNeeded();
+    const localTrack = await exposure.boundingBox();
+    assert.ok(localTrack);
+    const localBefore = await png();
+    await page.evaluate(() => {
+      window.warpPaints = [];
+    });
+    const localX = localTrack.x + localTrack.width * 0.5;
+    const localY = localTrack.y + localTrack.height * 0.5;
+    await page.mouse.move(localX, localY);
+    await page.mouse.down();
+    await page.mouse.move(localTrack.x + localTrack.width * 0.75, localY, { steps: 16 });
+    await page.waitForFunction((before) => {
+      const canvas = document.querySelector('.image-frame canvas[aria-label="照片编辑预览"]');
+      return canvas?.toDataURL().split(',')[1] !== before;
+    }, localBefore.toString('base64'));
+    const localFrames = await page.evaluate(() => window.warpPaints);
+    assert.ok(localFrames.length > 0);
+    assert.ok(
+      localFrames.every(({ width, height }) => width === source.width && height === source.height),
+    );
+    await page.mouse.up();
+    await settled();
     await selectedPanel.getByRole('button', { name: /^曝光数值/ }).click();
     await selectedPanel.getByRole('spinbutton', { name: '曝光精确数值' }).fill('0.64');
     await selectedPanel.getByRole('spinbutton', { name: '曝光精确数值' }).press('Enter');
@@ -317,6 +341,7 @@ async function verifyLocalMaskAndLiquify(input) {
       width: source.width,
       height: source.height,
       exactSettledPixels: source.width * source.height,
+      localDragFramesAtNativeSize: localFrames.length,
       repairAfterWarp: {
         keptWarpWhenSwitching: true,
         directBrush: true,
@@ -773,7 +798,11 @@ try {
   let width, height, rgba;
   if (largePhoto) {
     const photo = await sharp(await readFile(largePhoto))
-      .autoOrient().toColourspace('srgb').removeAlpha().ensureAlpha().raw()
+      .autoOrient()
+      .toColourspace('srgb')
+      .removeAlpha()
+      .ensureAlpha()
+      .raw()
       .toBuffer({ resolveWithObject: true });
     ({ width, height } = photo.info);
     rgba = photo.data;
@@ -798,11 +827,13 @@ try {
   for (const [size, test] of [
     [{ width: 1440, height: 900, deviceScaleFactor: 2 }, '曝光'],
     [{ width: 1440, height: 900, deviceScaleFactor: 2 }, '曲线'],
+    [{ width: 1440, height: 900, deviceScaleFactor: 2 }, '饱和度'],
     [{ width: 390, height: 844, deviceScaleFactor: 2, hasTouch: true }, '曝光'],
   ]) {
     const { width: w, height: h, ...device } = size;
     if (
       process.env.PREVIEW_CASE === 'mask' ||
+      (process.env.PREVIEW_CASE === 'saturation' && test !== '饱和度') ||
       (process.env.PREVIEW_CASE === 'phone' && !device.hasTouch)
     )
       continue;
@@ -816,8 +847,11 @@ try {
     await page.addInitScript((large) => {
       if (large) localStorage.setItem('editor:pixel-budget:v2', '16777216');
       const paint = CanvasRenderingContext2D.prototype.putImageData;
+      const observed = new WeakSet();
+      const post = Worker.prototype.postMessage;
       window.previewTrace = {
         paints: [],
+        worker: [],
         inputs: [],
         valueChanges: [],
         armed: false,
@@ -826,12 +860,31 @@ try {
         start: null,
         end: null,
       };
+      Worker.prototype.postMessage = function (message, ...args) {
+        if (message?.type === 'interactive-preview') {
+          const trace = window.previewTrace;
+          trace.worker.push({
+            id: message.id,
+            sent: performance.now(),
+            saturation: message.recipe?.adjustments?.saturation,
+          });
+          if (!observed.has(this)) {
+            observed.add(this);
+            this.addEventListener('message', ({ data }) => {
+              const job = trace.worker.find(({ id }) => id === data?.id);
+              if (job) job.received = performance.now();
+            });
+          }
+        }
+        return post.call(this, message, ...args);
+      };
       CanvasRenderingContext2D.prototype.putImageData = function (image, ...args) {
         paint.call(this, image, ...args);
         if (this.canvas.getAttribute('aria-label') !== '照片编辑预览') return;
-        const positions = large
-          ? [[0.14, 0.14], [0.38, 0.32], [0.72, 0.25], [0.5, 1 / 3], [0.84, 0.69]]
-          : [[0.5, 1 / 3]];
+        const positions = Array.from({ length: 25 }, (_, i) => [
+          (Math.floor(i / 5) + 0.5) / 5,
+          ((i % 5) + 0.5) / 5,
+        ]);
         const sample = positions.flatMap(([y, x]) => {
           const at = (Math.floor(image.height * y) * image.width + Math.floor(image.width * x)) * 4;
           return Array.from(image.data.subarray(at, at + 4));
@@ -911,7 +964,7 @@ try {
     }
     const tools = page.getByRole('navigation', { name: '编辑工具' });
     const tool = tools.getByRole('button', {
-      name: test === '曲线' ? '曲线' : w < 760 ? '调节' : '明暗',
+      name: test === '曲线' ? '曲线' : test === '饱和度' ? '色彩' : w < 760 ? '调节' : '明暗',
       exact: true,
     });
     if ((await tool.getAttribute('aria-pressed')) !== 'true') await tool.click();
@@ -972,6 +1025,7 @@ try {
         frame.width >= full.width ? frame : full,
       );
       trace.paints = [];
+      trace.worker = [];
       trace.inputs = [];
       trace.valueChanges = [];
       trace.pointerId = null;
@@ -1051,6 +1105,11 @@ try {
       gestureMs: trace.end - inputTime,
       firstChangedMs: frames.length ? frames[0].t - inputTime : null,
       firstRangeChangeMs: trace.valueChanges.length ? trace.valueChanges[0] - inputTime : null,
+      firstWorkerDispatchMs: trace.worker[0] ? trace.worker[0].sent - inputTime : null,
+      firstWorkerRoundTripMs: trace.worker[0]?.received
+        ? trace.worker[0].received - trace.worker[0].sent
+        : null,
+      firstWorkerSaturation: trace.worker[0]?.saturation ?? null,
       distinctLiveFrames: distinct,
       liveRasterPixels: frames.length
         ? {
@@ -1132,7 +1191,12 @@ try {
     }
     report.cases.push(caseReport);
     if (largePhoto)
-      await page.screenshot({ path: resolve(artifacts, `native-${test === '曲线' ? 'curve' : 'exposure'}-${w}.png`) });
+      await page.screenshot({
+        path: resolve(
+          artifacts,
+          `native-${test === '曲线' ? 'curve' : test === '饱和度' ? 'saturation' : 'exposure'}-${w}.png`,
+        ),
+      });
     process.stdout.write(JSON.stringify(caseReport) + '\n');
     await page.close();
   }
@@ -1150,7 +1214,11 @@ try {
       assert.ok(test.maxFrameGapMs !== null && test.maxFrameGapMs < 350, JSON.stringify(test));
     }
   }
-  if (!largePhoto && process.env.PREVIEW_RECORD_ONLY !== '1' && process.env.PREVIEW_CASE !== 'phone') {
+  if (
+    !largePhoto &&
+    process.env.PREVIEW_RECORD_ONLY !== '1' &&
+    process.env.PREVIEW_CASE !== 'phone'
+  ) {
     if (process.env.PREVIEW_CASE !== 'mask')
       await verifyWorkerRecovery({
         png: buffer,

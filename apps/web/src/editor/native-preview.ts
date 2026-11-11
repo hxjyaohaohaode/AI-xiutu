@@ -1,5 +1,4 @@
 import {
-  ADJUSTMENT_IDS,
   DEFAULT_RECIPE_V2,
   MAX_EXPLICIT_PIXELS,
   MAX_DIMENSION,
@@ -12,19 +11,13 @@ const equal = (a: unknown, b: unknown) => JSON.stringify(a) === JSON.stringify(b
 const neutralOptics = createOpticsV3();
 const neutralTransform = createFineTransformV3();
 
-export function fitsNativeColorPreview(width: number, height: number): boolean {
+export function fitsNativePreview(width: number, height: number): boolean {
   return width <= MAX_DIMENSION && height <= MAX_DIMENSION && width * height <= MAX_EXPLICIT_PIXELS;
 }
 
 /** Native point color uses the renderer's exact byte maps and a bounded RGBA frame. */
 export function canPreviewNativeColor(recipe: EditorRecipe): boolean {
-  if (
-    recipe.local.enabled ||
-    ADJUSTMENT_IDS.some(
-      (id) =>
-        id !== 'exposure' && id !== 'temperature' && id !== 'tint' && recipe.adjustments[id] !== 0,
-    )
-  )
+  if (recipe.local.enabled || recipe.adjustments.sharpness !== 0 || recipe.adjustments.soften !== 0)
     return false;
   if (recipe.schemaVersion === 1) return true;
   if (
