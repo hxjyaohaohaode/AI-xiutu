@@ -4,6 +4,8 @@ import { ArrowCounterClockwise, Check } from '@phosphor-icons/react';
 import {
   RangeGesture,
   RANGE_KEYS,
+  keyRangeValue,
+  pointerRangeValue,
   resolveRangeNumber,
   type RangeCompletion,
 } from './range-gesture';
@@ -56,7 +58,7 @@ export function PrecisionRange({
   const input = useRef<HTMLInputElement>(null);
   const latest = useRef(value);
   latest.current = value;
-  const decimals = Math.min(6, Math.max(0, Math.ceil(-Math.log10(step)) + (step < 1 ? 1 : 0)));
+  const decimals = Math.min(10, Math.max(0, Math.ceil(-Math.log10(step)) + (integer ? 0 : 1)));
   const readable = Number(value.toFixed(decimals)).toLocaleString(getLocale(), {
     maximumFractionDigits: decimals,
   });
@@ -163,25 +165,29 @@ export function PrecisionRange({
     onReset();
   }
   function change(number: number) {
-    if (!Number.isFinite(number)) return;
+    if (!Number.isFinite(number)) return false;
     const next = Math.max(
       min,
-      Math.min(max, integer ? Math.round(number) : Number(number.toFixed(10))),
+      Math.min(
+        max,
+        number === max || number === min
+          ? number
+          : integer
+            ? Math.round(number)
+            : Number(number.toFixed(10)),
+      ),
     );
+    if (next === latest.current) return false;
     latest.current = next;
     gesture.current.change(next);
     onChange(next);
+    return true;
   }
   function moveTouch(clientX: number) {
     const track = touchTrack.current;
     if (!track) return;
     const fraction = Math.max(0, Math.min(1, (clientX - track.left - track.offset) / track.travel));
-    const steps = Math.min(
-      Math.floor((max - min) / step + 1e-9),
-      Math.round((fraction * (max - min)) / step),
-    );
-    const next = Number((min + steps * step).toFixed(10));
-    if (next !== latest.current) change(next);
+    change(pointerRangeValue(min + fraction * (max - min), min, max, step));
   }
   const percentage = (number: number) =>
     max > min ? Math.max(0, Math.min(100, ((number - min) / (max - min)) * 100)) : 0;
@@ -307,7 +313,8 @@ export function PrecisionRange({
           }
           min={min}
           max={max}
-          step={step}
+          step="any"
+          data-step={step}
           value={value}
           disabled={disabled || max <= min}
           onFocus={() => {
@@ -315,8 +322,8 @@ export function PrecisionRange({
           }}
           onChange={(event) => {
             if (ignoredPointer.current !== null || touchTrack.current) return;
-            change(Number(event.target.value));
-            if (!gesture.current.active) onCommit?.();
+            const next = pointerRangeValue(Number(event.target.value), min, max, step);
+            if (change(next) && !gesture.current.active) onCommit?.();
           }}
           onPointerDown={(event) => {
             if (!gesture.current.beginPointer(event.pointerId, latest.current, event.isPrimary)) {
@@ -370,14 +377,11 @@ export function PrecisionRange({
               return;
             }
             ignoredPointer.current = null;
-            if (
-              (event.altKey || event.shiftKey) &&
-              ['ArrowLeft', 'ArrowDown', 'ArrowRight', 'ArrowUp'].includes(event.key)
-            ) {
-              event.preventDefault();
-              const direction = event.key === 'ArrowLeft' || event.key === 'ArrowDown' ? -1 : 1;
-              change(latest.current + direction * step * (event.altKey ? (integer ? 1 : 0.1) : 10));
-            }
+            event.preventDefault();
+            const increment = event.key.startsWith('Arrow')
+              ? step * (event.altKey ? (integer ? 1 : 0.1) : event.shiftKey ? 10 : 1)
+              : step;
+            change(keyRangeValue(event.key, latest.current, min, max, increment));
           }}
           onKeyUp={(event) => {
             complete(gesture.current.endKey(event.key));

@@ -310,16 +310,14 @@ test('two fully configured portrait targets fit published operation budgets and 
   assert.equal(r.warp.strokes.length, 64);
   assert.equal(portraitValues(r, a.targets[0]!.id).smooth, 30);
   assert.equal(portraitValues(r, a.targets[1]!.id).smooth, 60);
-  assert.throws(
-    () =>
-      applyPortraitValues(
-        r,
-        analysis([...a.targets, faceTarget(3, 0.5, 0.5, 0.5)]),
-        'face-aaaaaaaaaaaa-3',
-        { faceSlim: 30 },
-      ),
-    /budget|0–64/,
+  const third = applyPortraitValues(
+    r,
+    analysis([...a.targets, faceTarget(3, 0.5, 0.5, 0.5)]),
+    'face-aaaaaaaaaaaa-3',
+    { faceSlim: 30 },
   );
+  assert.equal(third.warp.strokes.length, 66);
+  assert.deepEqual(third.warp.strokes.slice(0, 64), r.warp.strokes);
 });
 test('body tools check only the joints they need, retaining shoulder editing when lower-body joints are hidden', () => {
   const b = bodyTarget();

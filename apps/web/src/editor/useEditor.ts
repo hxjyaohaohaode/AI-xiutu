@@ -92,7 +92,13 @@ const INITIAL_WARP: WarpSettings = {
 type HistoryItem = { recipe: EditorRecipe; label: string };
 type ExportResult = { image?: RGBAImage; blob?: Blob };
 type PendingExport = { resolve: (value: ExportResult) => void; reject: (error: Error) => void };
-type PreviewJob = { version: number; source: number; recipe: EditorRecipe };
+type PreviewQuality = 'fast' | 'warp';
+type PreviewJob = {
+  version: number;
+  source: number;
+  recipe: EditorRecipe;
+  quality: PreviewQuality;
+};
 type PreviewRequest = PreviewJob & { id: number };
 type PreviewLane = { inFlight: PreviewRequest | null; pending: PreviewJob | null };
 type RenderReply = { id: number; type: string; result?: RGBAImage; blob?: Blob; error?: string };
@@ -103,7 +109,7 @@ export function useEditor() {
   const [sourceFormat, setSourceFormat] = useState('');
   const [activeRegionId, setActiveRegionId] = useState<string | null>(null);
   const [brushSettings, setBrushState] = useState<BrushSettings>({ ...DEFAULT_BRUSH });
-  const [maskOverlay, setMaskOverlay] = useState(true);
+  const [maskOverlay, setMaskOverlay] = useState(false);
   const [activeMaskPath, setActiveMaskPath] = useState<number[]>([]);
   const [activePaintLayerId, setActivePaintLayerId] = useState<string | null>(null);
   const [activeImageLayerId, setActiveImageLayerId] = useState<string | null>(null);
@@ -154,9 +160,11 @@ export function useEditor() {
   const [originalPreview, setOriginalPreview] = useState<RGBAImage | null>(null);
   const [rendered, setRendered] = useState<RGBAImage | null>(null);
   const [renderedRecipe, setRenderedRecipe] = useState<EditorRecipe | null>(null);
-  const [liveFrame, setLiveFrame] = useState<{ image: RGBAImage; recipe: EditorRecipe } | null>(
-    null,
-  );
+  const [liveFrame, setLiveFrame] = useState<{
+    image: RGBAImage;
+    recipe: EditorRecipe;
+    quality: PreviewQuality;
+  } | null>(null);
   const [geometryMode, setGeometryMode] = useState<
     'crop' | 'transform' | 'projective' | 'placement'
   >('crop');
@@ -176,7 +184,9 @@ export function useEditor() {
   const requestId = useRef(0);
   const previewVersion = useRef(0);
   const settledVersion = useRef(0);
-  const interactiveInput = useRef(false);
+  const interactiveInput = useRef<PreviewQuality | null>(null);
+  const previewQuality = useRef<PreviewQuality>('fast');
+  const eagerPreview = useRef<PreviewJob | null>(null);
   const settledLane = useRef<PreviewLane>({ inFlight: null, pending: null });
   const liveLane = useRef<PreviewLane>({ inFlight: null, pending: null });
   const loadGeneration = useRef(0);
@@ -232,6 +242,7 @@ export function useEditor() {
           type: live ? 'interactive-preview' : 'preview',
           id,
           recipe: next.recipe,
+          previewQuality: live ? next.quality : undefined,
         });
       } catch {
         if (live) stopLiveWorker();
@@ -292,7 +303,7 @@ export function useEditor() {
             completed.source === sourceIdentity.current &&
             completed.version > settledVersion.current
           )
-            setLiveFrame({ image: result, recipe: completed.recipe });
+            setLiveFrame({ image: result, recipe: completed.recipe, quality: completed.quality });
           pumpPreview(true);
         },
         stopLiveWorker,
@@ -331,15 +342,27 @@ export function useEditor() {
 
   useEffect(() => {
     const target = worker.current;
-    if (!originalPreview || !target || target !== sourceWorker.current) return;
+    if (
+      !originalPreview ||
+      !target ||
+      target !== sourceWorker.current ||
+      recipe !== recipeRef.current
+    )
+      return;
     setRendering(true);
-    const job = {
-      recipe,
-      version: ++previewVersion.current,
-      source: sourceIdentity.current,
-    };
+    const eager = eagerPreview.current;
+    eagerPreview.current = null;
+    const alreadyDispatched = eager?.recipe === recipe && eager.source === sourceIdentity.current;
+    const job = alreadyDispatched
+      ? eager
+      : {
+          recipe,
+          version: ++previewVersion.current,
+          source: sourceIdentity.current,
+          quality: previewQuality.current,
+        };
     settledLane.current.pending = null;
-    if (settledVersion.current || interactiveInput.current) {
+    if (!alreadyDispatched && (settledVersion.current || interactiveInput.current)) {
       liveLane.current.pending = job;
       pumpPreview(true);
     }
@@ -360,13 +383,32 @@ export function useEditor() {
     }
   }, [recipe, originalPreview, layerImages, pumpPreview]);
 
-  const replaceRecipe = useCallback((next: EditorRecipe, interactive = false) => {
-    interactiveInput.current = interactive;
-    recipeRef.current = next;
-    setRecipe(next);
-  }, []);
+  const replaceRecipe = useCallback(
+    (next: EditorRecipe, interactive: PreviewQuality | null = null) => {
+      if (next === recipeRef.current && interactive === interactiveInput.current) return;
+      previewQuality.current =
+        interactive ?? (interactiveInput.current === 'warp' ? 'warp' : 'fast');
+      interactiveInput.current = interactive;
+      recipeRef.current = next;
+      eagerPreview.current = null;
+      if (interactive && sourceRef.current && sourceWorker.current && liveWorker.current) {
+        const job = {
+          recipe: next,
+          version: ++previewVersion.current,
+          source: sourceIdentity.current,
+          quality: interactive,
+        };
+        eagerPreview.current = job;
+        settledLane.current.pending = null;
+        liveLane.current.pending = job;
+        pumpPreview(true);
+      }
+      setRecipe(next);
+    },
+    [pumpPreview],
+  );
   const previewRecipe = useCallback(
-    (next: EditorRecipe) => replaceRecipe(next, true),
+    (next: EditorRecipe, quality: PreviewQuality = 'fast') => replaceRecipe(next, quality),
     [replaceRecipe],
   );
   const resetHistory = useCallback(
@@ -601,7 +643,7 @@ export function useEditor() {
         setPaintSettings({ ...INITIAL_PAINT });
         setWarpSettings({ ...INITIAL_WARP });
         setBrushState({ ...DEFAULT_BRUSH });
-        setMaskOverlay(true);
+        setMaskOverlay(false);
         setGeometryMode('crop');
         return true;
       } finally {

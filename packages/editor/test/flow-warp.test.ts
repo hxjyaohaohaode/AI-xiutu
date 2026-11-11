@@ -2,12 +2,19 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import {
   createRecipeV4,
+  createRetouchRegionV4,
+  WarpPreviewCache,
   renderEditorRecipe,
   renderEditorRecipeTiled,
   parseEditorRecipe,
+  linearToSrgb,
+  srgbToLinear,
+  type RGBAImage,
   type WarpStrokeV3,
 } from '../src/index.js';
-import { compileWarpFieldV3 } from '../src/v3-warp.js';
+import { applyWarpV3, compileWarpFieldV3 } from '../src/v3-warp.js';
+import { sampleBilinearV3, sampleBoundedCubicV3 } from '../src/v3-pixels.js';
+import { flowWarpPoint, flowWarpPointV2 } from '../src/v3-flow.js';
 
 const dimensions = { width: 300, height: 220 };
 function stroke(mode: WarpStrokeV3['mode'], strength: number, feather = 0.7): WarpStrokeV3 {
@@ -99,4 +106,207 @@ test('old displacement strokes keep their exact serialized contract and unknown 
   const bad = structuredClone(legacy);
   (bad.warp.strokes[0] as any).algorithm = 'unknown';
   assert.throws(() => parseEditorRecipe(bad), /algorithm/);
+});
+
+test('scalar flow follows the reference field within a subpixel at the largest supported edge', () => {
+  let error = 0;
+  for (const mode of ['push', 'pinch', 'bulge', 'twirl'] as const)
+    for (const strength of [-1, -0.01, 0, 0.01, 1])
+      for (const feather of [0, 0.005, 0.1, 0.7, 1])
+        for (let y = -1; y <= 1; y += 0.05)
+          for (let x = -1; x <= 1; x += 0.05) {
+            const baseline = flowWarpPoint(x, y, 1.6, -0.8, mode, strength, feather);
+            const fast = flowWarpPointV2(x, y, 1.6, -0.8, mode, strength, feather);
+            error = Math.max(error, Math.hypot(baseline.x - fast.x, baseline.y - fast.y));
+          }
+  assert.ok(error * 16_384 < 1e-6, `pixel displacement delta: ${error * 16_384}`);
+});
+
+test('the expanded warp count accepts compact edits and preserves the total support limit', () => {
+  const strokes = (count: number, radius: number) =>
+    Array.from({ length: count }, (_, i) => ({
+      ...stroke('push', 0.5),
+      id: `compact-${i}`,
+      radius,
+    }));
+  const recipe = (count: number, radius: number) =>
+    createRecipeV4({
+      warp: {
+        enabled: true,
+        protection: null,
+        strokes: strokes(count, radius),
+      },
+    });
+  assert.equal(recipe(64, 1).warp.strokes.length, 64);
+  assert.equal(recipe(128, 0.09).warp.strokes.length, 128);
+  assert.throws(() => recipe(65, 1), /combined brush support/);
+  assert.throws(() => recipe(129, 0.09), /warp\.strokes/);
+});
+
+test('sparse scan is byte exact with full traversal of mixed overlapping signed warps', () => {
+  const source = {
+    width: 133,
+    height: 85,
+    data: Uint8ClampedArray.from(
+      { length: 133 * 85 * 4 },
+      (_, index) => (index * 57 + (index >> 5)) % 256,
+    ),
+  };
+  const strokes = Array.from({ length: 43 }, (_, i) => {
+    const item = stroke(
+      ['push', 'pinch', 'bulge', 'twirl'][i % 4] as WarpStrokeV3['mode'],
+      i % 2 ? -0.81 : 0.75,
+    );
+    if (i % 3 === 0) delete item.algorithm;
+    return {
+      ...item,
+      id: `step-${i}`,
+      radius: 0.008 + (i % 11) / 90,
+      from: { x: ((i * 17) % 43) / 42, y: ((i * 13) % 37) / 36 },
+    };
+  });
+  const warp = createRecipeV4({
+    warp: {
+      enabled: true,
+      strokes,
+      protection: {
+        type: 'radial',
+        centerX: 0.43,
+        centerY: 0.53,
+        radiusX: 0.15,
+        radiusY: 0.07,
+        feather: 0.8,
+        shape: 'diamond',
+        rotationDegrees: -32,
+        invert: false,
+      },
+    },
+  }).warp;
+  const mapping = compileWarpFieldV3(warp, source, source),
+    expected = source.data.slice();
+  const sample = new Float64Array(4);
+  for (let y = 0; y < source.height; y++)
+    for (let x = 0; x < source.width; x++) {
+      const p = { x: (x + 0.5) / source.width, y: (y + 0.5) / source.height };
+      const q = mapping(p);
+      if (Math.abs(q.x - p.x) < 1e-15 && Math.abs(q.y - p.y) < 1e-15) continue;
+      sampleBilinearV3(source, q.x * source.width, q.y * source.height, sample, 'clamp');
+      for (let c = 0; c < 4; c++) expected[(y * source.width + x) * 4 + c] = sample[c]!;
+    }
+  assert.deepEqual(applyWarpV3(source, warp, source, {}).data, expected);
+});
+
+test('detail reconstruction retains more line contrast with a bounded color and alpha envelope', () => {
+  const width = 151;
+  const signal = (x: number) => 0.42 + 0.36 * Math.sin((2 * Math.PI * x) / 5.4);
+  const data = new Uint8ClampedArray(width * 4);
+  for (let x = 0; x < width; x++) {
+    data.fill(linearToSrgb(signal(x)) * 255, x * 4, x * 4 + 3);
+    data[x * 4 + 3] = 255;
+  }
+  const source = { width, height: 1, data },
+    sample = new Float64Array(4),
+    weights = new Float64Array(8);
+  let linearError = 0,
+    cubicError = 0;
+  for (let x = 3; x < width - 3; x++)
+    for (const shift of [0.23, 0.48, 0.69]) {
+      const expected = signal(x + shift);
+      sampleBilinearV3(source, x + 0.5 + shift, 0.5, sample, 'clamp');
+      linearError += Math.abs(srgbToLinear(sample[0]! / 255) - expected);
+      sampleBoundedCubicV3(source, x + 0.5 + shift, 0.5, sample, weights);
+      cubicError += Math.abs(srgbToLinear(sample[0]! / 255) - expected);
+      assert.equal(sample[3], 255);
+    }
+  assert.ok(cubicError < linearError * 0.85, `${cubicError} / ${linearError}`);
+  const edge = {
+    width: 5,
+    height: 1,
+    data: new Uint8ClampedArray([
+      255, 0, 0, 0, 255, 0, 0, 0, 0, 40, 255, 32, 0, 40, 255, 194, 0, 40, 255, 255,
+    ]),
+  };
+  for (let x = 1.03; x < 3.96; x += 0.07) {
+    sampleBoundedCubicV3(edge, x + 0.5, 0.5, sample, weights);
+    if (sample[3]! > 0) {
+      assert.ok(Math.abs(sample[0]!) < 1e-10);
+      assert.ok(Math.abs(sample[1]! - 40) < 1e-10);
+      assert.ok(Math.abs(sample[2]! - 255) < 1e-10);
+    }
+  }
+  const detailed = createRecipeV4({
+    warp: {
+      enabled: true,
+      protection: null,
+      strokes: [{ ...stroke('push', 1), resampling: 'bounded-cubic-v1' }],
+    },
+  });
+  assert.equal(
+    (parseEditorRecipe(detailed) as typeof detailed).warp.strokes[0]!.resampling,
+    'bounded-cubic-v1',
+  );
+  const invalid = structuredClone(detailed);
+  Object.assign(invalid.warp.strokes[0]!, { resampling: 'unknown' });
+  assert.throws(() => parseEditorRecipe(invalid), /resampling/);
+});
+
+test('high-detail preview reuses only the immutable pre-warp source and invalidates changing edits', () => {
+  let builds = 0;
+  class CountingCache extends WarpPreviewCache {
+    override beforeWarp(...args: Parameters<WarpPreviewCache['beforeWarp']>): RGBAImage {
+      const prepare = args[4];
+      return super.beforeWarp(args[0], args[1], args[2], args[3], () => {
+        builds++;
+        return prepare();
+      });
+    }
+  }
+  const warpPreviewCache = new CountingCache();
+  const source = {
+    width: 41,
+    height: 31,
+    data: Uint8ClampedArray.from({ length: 41 * 31 * 4 }, (_, i) => (i * 71) % 256),
+  };
+  const original = source.data.slice();
+  const recipe = createRecipeV4({
+    retouch: [createRetouchRegionV4({ smoothing: 38, texture: -19 })],
+    warp: {
+      enabled: true,
+      protection: null,
+      strokes: [{ ...stroke('push', 0.7), resampling: 'bounded-cubic-v1' }],
+    },
+  });
+  for (const strength of [-0.75, 0.12, 1]) {
+    recipe.warp.strokes[0]!.strength = strength;
+    assert.deepEqual(
+      renderEditorRecipe(source, recipe, { warpPreviewCache }),
+      renderEditorRecipe(source, recipe),
+    );
+  }
+  assert.equal(builds, 1);
+  recipe.retouch[0]!.texture = 41;
+  assert.deepEqual(
+    renderEditorRecipe(source, recipe, { warpPreviewCache }),
+    renderEditorRecipe(source, recipe),
+  );
+  assert.equal(builds, 2);
+  recipe.geometry.rotation = 90;
+  assert.deepEqual(
+    renderEditorRecipe(source, recipe, { warpPreviewCache }),
+    renderEditorRecipe(source, recipe),
+  );
+  assert.equal(builds, 2);
+  assert.deepEqual(
+    renderEditorRecipeTiled(source, recipe, { tileSize: 17, warpPreviewCache }),
+    renderEditorRecipe(source, recipe),
+  );
+  assert.equal(builds, 3);
+  assert.deepEqual(source.data, original);
+  const replacement = { ...source, data: source.data.slice() };
+  replacement.data[1] = 42;
+  assert.deepEqual(
+    renderEditorRecipe(replacement, recipe, { warpPreviewCache }),
+    renderEditorRecipe(replacement, recipe),
+  );
+  assert.equal(builds, 4);
 });

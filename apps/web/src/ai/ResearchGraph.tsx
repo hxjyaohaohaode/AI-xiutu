@@ -1,6 +1,15 @@
 import { t } from '../i18n';
 import { useEffect, useState } from 'react';
-import { CaretDown, GitMerge, Globe, Images, Scan, TreeStructure } from '@phosphor-icons/react';
+import {
+  CaretDown,
+  CheckCircle,
+  GitMerge,
+  Globe,
+  Images,
+  PencilSimple,
+  Scan,
+  TreeStructure,
+} from '@phosphor-icons/react';
 import type { AssistantBranchEvent } from '@ai-xiutu/contracts';
 import { api } from '../lib/api';
 import { MotionDetails } from '../motion/Presence';
@@ -14,9 +23,21 @@ const name = {
   cloud: '授权素材',
   canvas: '实际画面',
   merge: '汇合',
+  candidate: '准备编辑候选',
+  'pixel-review': '复核候选像素',
+  nomination: '推荐候选',
 };
 const state = { running: '进行中', completed: '完成', failed: '未完成', interrupted: '已中断' };
-const icon = { root: TreeStructure, web: Globe, cloud: Images, canvas: Scan, merge: GitMerge };
+const icon = {
+  root: TreeStructure,
+  web: Globe,
+  cloud: Images,
+  canvas: Scan,
+  merge: GitMerge,
+  candidate: PencilSimple,
+  'pixel-review': Scan,
+  nomination: CheckCircle,
+};
 function isBranch(value: unknown): value is Branch {
   if (!value || typeof value !== 'object') return false;
   const branch = value as Branch;
@@ -63,7 +84,7 @@ export function ResearchGraph({
         if (
           result.turnId !== turnId ||
           !Array.isArray(result.branches) ||
-          result.branches.length > 40 ||
+          result.branches.length > 48 ||
           !result.branches.every(isBranch)
         )
           throw new Error('Invalid research graph');
@@ -82,13 +103,16 @@ export function ResearchGraph({
   const children = branches.filter((branch) => branch.kind !== 'root' && branch.kind !== 'merge');
   if (!root || !children.length) return null;
   const merges = branches.filter((branch) => branch.kind === 'merge');
+  const isEditing = children.some((branch) =>
+    ['candidate', 'pixel-review', 'nomination'].includes(branch.kind),
+  );
   const status = (branch: Branch) =>
     branch.state === 'running' && !running && !stored ? '待同步' : state[branch.state];
   return (
     <MotionDetails key={turnId} className="assistant-research-graph" defaultOpen={running}>
       <summary>
         <TreeStructure size={16} aria-hidden="true" />
-        <span>{t('研究分工')}</span>
+        <span>{t(isEditing ? '编辑任务进度' : '研究分工')}</span>
         <small data-state={root.state}>{t(status(root))}</small>
         <CaretDown className="assistant-research-chevron" size={14} aria-hidden="true" />
       </summary>
@@ -96,14 +120,24 @@ export function ResearchGraph({
         <ul aria-label={t('任务分支')}>
           {children.map((branch) => {
             const Icon = icon[branch.kind];
+            const dependencies = branch.dependsOn.flatMap((id) => {
+              const dependency = branches.find((entry) => entry.id === id);
+              return dependency ? [t(name[dependency.kind])] : [];
+            });
             return (
               <li key={branch.id}>
                 <Icon size={16} aria-hidden="true" />
                 <span>{t(name[branch.kind])}</span>
                 <small data-state={branch.state}>{t(status(branch))}</small>
-                {branch.resultCount !== undefined && (
+                {branch.resultCount !== undefined &&
+                  ['web', 'cloud', 'canvas'].includes(branch.kind) && (
+                    <span className="assistant-research-count">
+                      {branch.resultCount} {t('项证据')}
+                    </span>
+                  )}
+                {dependencies.length > 0 && (
                   <span className="assistant-research-count">
-                    {branch.resultCount} {t('项证据')}
+                    {t('依据 {v0}', { v0: dependencies.join('、') })}
                   </span>
                 )}
               </li>

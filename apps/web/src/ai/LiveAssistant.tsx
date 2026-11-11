@@ -1250,6 +1250,7 @@ export function LiveAssistant(props: LiveAssistantProps) {
         propose_retouch: '准备局部质感候选',
         propose_healing: '准备局部修复候选',
         propose_edit: '准备参数候选',
+        propose_scene_balance: '按画面亮度准备调色候选',
         propose_curve: '准备曲线',
         draft_generation: '整理生图要求',
         inspect_candidate: '渲染并检查真实候选图像',

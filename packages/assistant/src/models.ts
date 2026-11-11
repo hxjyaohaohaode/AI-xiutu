@@ -106,6 +106,7 @@ export function voiceModel(id: string) {
 }
 export const ASSISTANT_TOOL_NAMES = [
   'inspect_candidate',
+  'propose_scene_balance',
   'select_candidate',
   'suggest_memory',
   'compose_workspace',

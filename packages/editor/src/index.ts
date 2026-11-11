@@ -33,6 +33,9 @@ export { radialMaskWeight } from './mask.js';
 export { renderRecipeTiled, validateTiledImage, DEFAULT_TILE_SIZE, TILE_HALO } from './tiled.js';
 export { readImageHeader, MAX_HEADER_BYTES, ImageHeaderError } from './headers.js';
 export { encodeRgbaPng } from './png.js';
+export { radialMaskFrameV3 } from './v3-radial.js';
+export { WarpPreviewCache } from './warp-preview.js';
+export { measureSceneTone } from './scene-tone.js';
 export type { ImageHeader, HeaderLimits } from './headers.js';
 export {
   DEFAULT_RECIPE_V2,

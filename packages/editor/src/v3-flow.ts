@@ -56,3 +56,58 @@ export function flowWarpPoint(
   }
   return { x, y };
 }
+
+function integrateScalar(start: number, velocity: (value: number) => number) {
+  const step = 1 / 16;
+  let value = start;
+  for (let i = 0; i < 16; i++) {
+    const a = velocity(value),
+      b = velocity(value + a * step * 0.5),
+      c = velocity(value + b * step * 0.5),
+      d = velocity(value + c * step);
+    value += ((a + 2 * b + 2 * c + d) * step) / 6;
+  }
+  return value;
+}
+
+/** Same stationary field, integrated on a straight trajectory or along a radial ray. */
+export function flowWarpPointV2(
+  x: number,
+  y: number,
+  tx: number,
+  ty: number,
+  mode: 'push' | 'pinch' | 'bulge' | 'twirl',
+  strength: number,
+  feather: number,
+): Point {
+  if (strength === 0) return { x, y };
+  const r2 = x * x + y * y,
+    inner2 = (1 - feather) ** 2;
+  if (r2 >= 1) return { x, y };
+  const falloff = (radius2: number) => {
+    if (radius2 >= 1) return 0;
+    const edge = (1 - radius2) ** 2;
+    if (feather === 0 || radius2 <= inner2) return edge;
+    const soft = (1 - Math.sqrt(radius2)) / feather;
+    return edge * soft * soft * (3 - 2 * soft);
+  };
+  if (mode === 'twirl') {
+    const angle = (-strength * falloff(r2) * Math.PI) / 2;
+    const cos = Math.cos(angle),
+      sin = Math.sin(angle);
+    return { x: cos * x - sin * y, y: sin * x + cos * y };
+  }
+  if (mode === 'push') {
+    const scale = -strength * Math.min(1, 0.8 / Math.max(1e-12, Math.sqrt(tx * tx + ty * ty)));
+    const vx = tx * scale,
+      vy = ty * scale;
+    const dot = 2 * (x * vx + y * vy),
+      speed2 = vx * vx + vy * vy;
+    if (speed2 === 0) return { x, y };
+    const t = integrateScalar(0, (s) => falloff(r2 + s * (dot + s * speed2)));
+    return { x: x + vx * t, y: y + vy * t };
+  }
+  const radial = (mode === 'pinch' ? 1 : -1) * strength * 0.55;
+  const t = integrateScalar(1, (s) => radial * s * falloff(r2 * s * s));
+  return { x: x * t, y: y * t };
+}

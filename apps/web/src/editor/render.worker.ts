@@ -6,6 +6,7 @@ import {
   type CutoutSettings,
   getEditorOutputDimensions,
   MAX_V3_PIXELS,
+  WarpPreviewCache,
   type Dimensions,
   type RGBAImage,
   type EditorRecipe,
@@ -19,14 +20,17 @@ import {
 import { editorGeometryKey } from './coordinates';
 
 let preview: RGBAImage | null = null;
+let detailPreview: RGBAImage | null = null;
 let original: RGBAImage | null = null;
 let sourceDimensions: Dimensions | null = null;
 let liveBudget = INTERACTIVE_PREVIEW_PIXELS;
 let images = new Map<string, RGBAImage>(),
-  originalImages = new Map<string, RGBAImage>();
+  originalImages = new Map<string, RGBAImage>(),
+  detailImages = new Map<string, RGBAImage>();
 const previewSources = new Map<string, RGBAImage>();
+const warpPreviewCache = new WarpPreviewCache();
 function preparedSource(source: RGBAImage, recipe: EditorRecipe, maxPixels: number) {
-  const key = `${maxPixels}:${editorGeometryKey(recipe)}`;
+  const key = `${maxPixels}:${editorGeometryKey(recipe, false)}`;
   const cached = previewSources.get(key);
   if (cached) return cached;
   const image = prepareBudgetedPreview(source, recipe, maxPixels);
@@ -50,6 +54,7 @@ type Message = {
   sourceId?: string;
   mapping?: Map<string, string>;
   cutout?: CutoutSettings;
+  previewQuality?: 'fast' | 'warp';
 };
 self.onmessage = async (event: MessageEvent<Message>) => {
   const message = event.data;
@@ -57,7 +62,10 @@ self.onmessage = async (event: MessageEvent<Message>) => {
     original = null;
     originalImages.clear();
     previewSources.clear();
+    warpPreviewCache.clear();
     sourceDimensions = message.sourceDimensions ?? null;
+    detailPreview = message.image ?? null;
+    detailImages = message.images ?? new Map();
     preview = message.image ? prepareInteractiveSource(message.image) : null;
     images = new Map(
       [...(message.images ?? [])].map(([id, value]) => [id, prepareInteractiveSource(value)]),
@@ -67,11 +75,14 @@ self.onmessage = async (event: MessageEvent<Message>) => {
   }
   if (message.type === 'source') {
     preview = message.image ?? null;
+    detailPreview = null;
+    detailImages.clear();
     original = message.original ?? null;
     sourceDimensions = original;
     images = message.images ?? new Map();
     originalImages = message.originalImages ?? new Map();
     previewSources.clear();
+    warpPreviewCache.clear();
     liveBudget = INTERACTIVE_PREVIEW_PIXELS;
     return;
   }
@@ -82,15 +93,18 @@ self.onmessage = async (event: MessageEvent<Message>) => {
         sourceDimensions && !original ? prepareInteractiveSource(message.image) : message.image,
       );
       if (message.original) originalImages.set(message.sourceId, message.original);
+      if (detailPreview) detailImages.set(message.sourceId, message.image);
     }
     return;
   }
   if (message.type === 'rekey-sources') {
     for (const [from, to] of message.mapping ?? []) {
       const p = images.get(from),
-        o = originalImages.get(from);
+        o = originalImages.get(from),
+        detail = detailImages.get(from);
       if (p) images.set(to, p);
       if (o) originalImages.set(to, o);
+      if (detail) detailImages.set(to, detail);
     }
     return;
   }
@@ -99,7 +113,9 @@ self.onmessage = async (event: MessageEvent<Message>) => {
     return;
   }
   try {
-    const source = message.type === 'export' ? original : preview;
+    const interactive = message.type === 'interactive-preview';
+    const detail = interactive && message.previewQuality === 'warp';
+    const source = message.type === 'export' ? original : detail ? detailPreview : preview;
     if (!source || !message.recipe) throw new Error('请先导入图片。');
     if (message.type === 'export' && message.cutout) {
       if (message.format !== undefined && message.format !== 'png')
@@ -117,11 +133,10 @@ self.onmessage = async (event: MessageEvent<Message>) => {
       // A smaller preview must not make an unexportable full-resolution transform appear valid.
       getEditorOutputDimensions(sourceDimensions, message.recipe);
     }
-    const interactive = message.type === 'interactive-preview';
-    const budget = interactive ? liveBudget : (message.maxPixels ?? MAX_PREVIEW_PIXELS);
+    const budget = interactive && !detail ? liveBudget : (message.maxPixels ?? MAX_PREVIEW_PIXELS);
     const started = performance.now();
-    let renderImages = images;
-    if (interactive && 'imageLayers' in message.recipe) {
+    let renderImages = detail ? detailImages : images;
+    if (interactive && !detail && 'imageLayers' in message.recipe) {
       renderImages = new Map();
       for (const layer of message.recipe.imageLayers) {
         const image = images.get(layer.sourceId);
@@ -146,9 +161,11 @@ self.onmessage = async (event: MessageEvent<Message>) => {
             // keep their own dimensions and normalized placement.
             maxPixels: MAX_PREVIEW_PIXELS,
             images: renderImages,
+            warpPreviewCache: detail ? warpPreviewCache : undefined,
           });
     // Lower the raster budget after an expensive frame. All recipe stages are still evaluated.
-    if (interactive && performance.now() - started > 42 && liveBudget > 32_768) liveBudget /= 2;
+    if (interactive && !detail && performance.now() - started > 42 && liveBudget > 32_768)
+      liveBudget /= 2;
     if (message.type === 'export' && typeof OffscreenCanvas !== 'undefined') {
       const format = message.format ?? 'png';
       const canvas = new OffscreenCanvas(result.width, result.height);
@@ -177,9 +194,10 @@ self.onmessage = async (event: MessageEvent<Message>) => {
         );
       self.postMessage({ id: message.id, type: message.type, blob });
     } else {
-      const safeResult = message.originalOnly
-        ? { ...result, data: new Uint8ClampedArray(result.data) }
-        : result;
+      const safeResult =
+        message.originalOnly || (detail && warpPreviewCache.keeps(result))
+          ? { ...result, data: new Uint8ClampedArray(result.data) }
+          : result;
       self.postMessage(
         { id: message.id, type: message.type, result: safeResult },
         { transfer: [safeResult.data.buffer] },

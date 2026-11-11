@@ -245,6 +245,7 @@ export interface ReferenceRenderSession {
   localTone: Tone;
   curves: CompiledCurves;
   encoded: [Float64Array, Float64Array, Float64Array] | null;
+  pointBytes: Int16Array[] | null;
 }
 
 export interface ImageCoordinateContext {
@@ -286,14 +287,44 @@ export function createRenderSession(inputRecipe: RecipeV1): ReferenceRenderSessi
         Float64Array.from(DECODE, (v) => clamp(linearToSrgb(clamp(v * gain)))),
       ) as [Float64Array, Float64Array, Float64Array])
     : null;
+  const curves = compileCurves(recipe.curves);
+  const gainOnly =
+    globalTone.active &&
+    !Object.values(curves).some(Boolean) &&
+    globalTone.brightness === 1 &&
+    globalTone.contrast === 1 &&
+    globalTone.shadowKnot === 0.25 &&
+    globalTone.highlightKnot === 0.75 &&
+    globalTone.whites === 0 &&
+    globalTone.blacks === 0 &&
+    globalTone.saturation === 1 &&
+    globalTone.vibrance === 0;
+  const byte = (value: number) => encodeFloat32Byte(Math.fround(srgbToLinear(value)));
+  const pointBytes =
+    encoded && (gainOnly || !globalTone.active)
+      ? encoded.map((samples, index) =>
+          Int16Array.from(samples, (sample) => {
+            if (gainOnly) {
+              // The neutral luma algebra can move the encoded value by floating-point
+              // round-off. Fall back for any input near a reference quantization boundary.
+              const lower = byte(clamp(sample - 1e-10));
+              return lower === byte(clamp(sample + 1e-10)) ? lower : -1;
+            }
+            const global = curves.rgb ? sampleCurveLut(curves.rgb, sample) : sample;
+            const channel = curves[channels[index + 1]!]!;
+            return byte(channel ? sampleCurveLut(channel, global) : global);
+          }),
+        )
+      : null;
   return {
     recipe,
     globalNeutral,
     localActive: recipe.local.enabled && !neutral(recipe.local.adjustments),
     globalTone,
     localTone: tone(recipe.local.adjustments),
-    curves: compileCurves(recipe.curves),
+    curves,
     encoded,
+    pointBytes,
   };
 }
 
@@ -321,6 +352,67 @@ export function renderValidatedRegion(
   const dimensions = getOutputDimensions(image, recipe.geometry);
   const globalNeutral = session.globalNeutral;
   const localActive = session.localActive;
+  const maps = session.pointBytes;
+  if (
+    maps &&
+    !localActive &&
+    !extension?.active &&
+    recipe.adjustments.sharpness === 0 &&
+    recipe.adjustments.soften === 0
+  ) {
+    const length = dimensions.width * dimensions.height * 4;
+    const data = workspace?.output.subarray(0, length) ?? new Uint8ClampedArray(length);
+    const fallback = new Float32Array(3),
+      encoded = session.encoded!;
+    const identity =
+      !recipe.geometry.crop &&
+      recipe.geometry.rotation === 0 &&
+      !recipe.geometry.flipX &&
+      !recipe.geometry.flipY;
+    for (let y = 0; y < dimensions.height; y++) {
+      if ((y & 31) === 0) checkAbort(options);
+      for (let x = 0; x < dimensions.width; x++) {
+        const out = (y * dimensions.width + x) * 4;
+        const at = identity
+          ? out
+          : sourcePixel(x, y, dimensions, crop, recipe.geometry, image.width) * 4;
+        const r = image.data[at]!,
+          g = image.data[at + 1]!,
+          b = image.data[at + 2]!,
+          a = image.data[at + 3]!;
+        if (a === 0) {
+          data[out] = r;
+          data[out + 1] = g;
+          data[out + 2] = b;
+        } else {
+          const red = maps[0]![r]!,
+            green = maps[1]![g]!,
+            blue = maps[2]![b]!;
+          if (red >= 0 && green >= 0 && blue >= 0) {
+            data[out] = red;
+            data[out + 1] = green;
+            data[out + 2] = blue;
+          } else {
+            mapEncodedPoint(
+              encoded[0][r]!,
+              encoded[1][g]!,
+              encoded[2][b]!,
+              session.globalTone,
+              session.curves,
+              fallback,
+              0,
+            );
+            data[out] = encodeFloat32Byte(fallback[0]!);
+            data[out + 1] = encodeFloat32Byte(fallback[1]!);
+            data[out + 2] = encodeFloat32Byte(fallback[2]!);
+          }
+        }
+        data[out + 3] = a;
+      }
+    }
+    checkAbort(options);
+    return { ...dimensions, data };
+  }
   let working: Float32Array | null = null;
   let scratch: Float32Array | null = null;
   if (!globalNeutral || localActive || extension?.active) {

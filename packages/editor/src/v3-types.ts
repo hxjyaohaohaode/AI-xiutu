@@ -2,6 +2,7 @@ import type {
   Adjustments,
   Curves,
   Point,
+  RadialMask,
   RenderOptions,
   RGBAImage,
   TiledRenderOptions,
@@ -31,7 +32,13 @@ export interface CompoundMaskV3 {
   masks: SelectionMaskV3[];
   invert: boolean;
 }
-export type SelectionMaskV3 = SelectionMaskV2 | CompoundMaskV3;
+export type RadialShapeV3 = 'ellipse' | 'rectangle' | 'diamond';
+export interface RadialMaskV3 extends RadialMask {
+  /** Clockwise in oriented source-pixel space. Omitted uses the published axis-aligned ellipse. */
+  rotationDegrees?: number;
+  shape?: RadialShapeV3;
+}
+export type SelectionMaskV3 = Exclude<SelectionMaskV2, RadialMask> | RadialMaskV3 | CompoundMaskV3;
 
 export interface FineTransformV3 {
   /** Clockwise rotation, degrees. Applied after the legacy integer crop/quarter turn. */
@@ -135,7 +142,8 @@ export interface PaintLayerV3 {
 }
 export interface WarpStrokeV3 {
   /** Omitted preserves the published displacement field. New flows integrate a smooth velocity. */
-  algorithm?: 'flow-v1';
+  algorithm?: 'flow-v1' | 'flow-v2';
+  resampling?: 'bounded-cubic-v1';
   origin?: OperationOriginV3;
   id: string;
   mode: 'push' | 'pinch' | 'bulge' | 'twirl';
@@ -221,7 +229,9 @@ export interface V3ToolDefinition {
 /** Resolved image data is supplied by a trusted caller; this package performs no I/O. */
 export interface RenderOptionsV3 extends RenderOptions {
   images?: ReadonlyMap<string, RGBAImage>;
+  warpPreviewCache?: import('./warp-preview.js').WarpPreviewCache;
 }
 export interface TiledRenderOptionsV3 extends TiledRenderOptions {
   images?: ReadonlyMap<string, RGBAImage>;
+  warpPreviewCache?: import('./warp-preview.js').WarpPreviewCache;
 }

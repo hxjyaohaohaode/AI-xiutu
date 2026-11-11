@@ -116,9 +116,47 @@ test(
         regionEdits: [
           createAdjustmentRegionV3({
             id: 'local-light',
+            mask: {
+              type: 'radial',
+              centerX: 0.5,
+              centerY: 0.42,
+              radiusX: 0.27,
+              radiusY: 0.19,
+              rotationDegrees: 43.2,
+              shape: 'rectangle',
+              feather: 0.47,
+              invert: false,
+            },
             color: { adjustments: { brightness: 26 } },
           }),
         ],
+        warp: {
+          enabled: true,
+          protection: {
+            type: 'radial',
+            centerX: 0.52,
+            centerY: 0.4,
+            radiusX: 0.1,
+            radiusY: 0.05,
+            rotationDegrees: -37,
+            shape: 'diamond',
+            feather: 0.4,
+            invert: false,
+          },
+          strokes: [
+            {
+              id: 'fine-warp',
+              mode: 'push',
+              algorithm: 'flow-v2',
+              resampling: 'bounded-cubic-v1',
+              from: { x: 0.4, y: 0.36 },
+              to: { x: 0.55, y: 0.39 },
+              radius: 0.24,
+              feather: 0.7,
+              strength: -0.63,
+            },
+          ],
+        },
       });
       const save = { expectedVersion: 1, recipe: edited };
       const acknowledgements = await Promise.all([
@@ -168,6 +206,8 @@ test(
       assert.equal(third.origin.kind, 'ai-layer');
       assert.equal(third.recipe.schemaVersion, 4);
       assert.deepEqual(third.recipe.projective, edited.projective);
+      assert.deepEqual(third.recipe.regionEdits, edited.regionEdits);
+      assert.deepEqual(third.recipe.warp, edited.warp);
       assert.equal(third.recipe.imageLayers[0].sourceId, overlayId);
       const base = await storedImage(sourceId);
       const images = new Map([[overlayId, await storedImage(overlayId)]]);

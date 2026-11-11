@@ -32,6 +32,15 @@ export function faceTarget(index = 1, cx = 0.5, cy = 0.43, scale = 1, angle = 0)
   };
   const landmarks = Array.from({ length: 478 }, () => project(0, 0));
   landmarks[1] = project(0, 0.035);
+  for (const [index, x] of [
+    [468, -0.085],
+    [473, 0.085],
+  ] as const) {
+    landmarks[index] = project(x, -0.065);
+    ring(x, -0.065, 0.008, 0.0064, 4).forEach((p, offset) => {
+      landmarks[index + offset + 1] = p;
+    });
+  }
   const xs = contours.oval.map((p) => p.x),
     ys = contours.oval.map((p) => p.y),
     x = Math.min(...xs),

@@ -97,26 +97,31 @@ function render(
   }
   if (auxiliaryPixels > MAX_V4_PIXELS * 2)
     throw new RangeError('Resolved image layers exceed the combined 32MP budget');
-  const preparedPaint = preparePaintLayersV3(recipe.paintLayers, image, opts);
-  let current = run(image, {
-    ...base,
-    geometry: { crop: null, rotation: 0, flipX: false, flipY: false },
-    transform: createFineTransformV3(),
-    imageLayers: [],
-    paintLayers: [],
-    warp: { ...base.warp, enabled: false },
-  });
-  current = applyHealingV4(current, recipe.healing, image, opts);
-  current = applyRetouchV4(current, recipe.retouch, image, opts);
-  current = applyImageLayersV3(current, recipe.imageLayers, opts.images, image, opts);
-  current = applyPaintLayersV3(
-    current,
-    recipe.paintLayers,
-    image,
-    opts,
-    opts.tileSize ?? 256,
-    preparedPaint,
-  );
+  const composeSource = () => {
+    const preparedPaint = preparePaintLayersV3(recipe.paintLayers, image, opts);
+    let current = run(image, {
+      ...base,
+      geometry: { crop: null, rotation: 0, flipX: false, flipY: false },
+      transform: createFineTransformV3(),
+      imageLayers: [],
+      paintLayers: [],
+      warp: { ...base.warp, enabled: false },
+    });
+    current = applyHealingV4(current, recipe.healing, image, opts);
+    current = applyRetouchV4(current, recipe.retouch, image, opts);
+    current = applyImageLayersV3(current, recipe.imageLayers, opts.images, image, opts);
+    current = applyPaintLayersV3(
+      current,
+      recipe.paintLayers,
+      image,
+      opts,
+      opts.tileSize ?? 256,
+      preparedPaint,
+    );
+    return current;
+  };
+  let current =
+    opts.warpPreviewCache?.beforeWarp(image, recipe, opts, tiled, composeSource) ?? composeSource();
   current = applyWarpV3(current, recipe.warp, image, opts);
   current = legacyGeometry(current, recipe.geometry, opts);
   current = geometryV4(current, recipe, opts);

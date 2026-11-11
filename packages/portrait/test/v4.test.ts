@@ -136,6 +136,7 @@ test('two full face control vectors remain separate and bounded with dedicated V
   let recipe = createRecipeV4();
   for (const face of a.targets) recipe = applyPortraitValues(recipe, a, face.id, values);
   assert.equal(recipe.retouch.length, 2);
+  assert.ok(recipe.warp.strokes.length > 64, 'both full face controls coexist');
   assert.doesNotThrow(() => parseRecipeV4(recipe));
   const other = JSON.stringify(recipe.retouch[1]);
   recipe = applyPortraitValues(recipe, a, a.targets[0]!.id, { smooth: 15 });

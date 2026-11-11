@@ -1,6 +1,31 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
-import { RangeGesture, resolveRangeNumber } from '../src/editor/range-gesture.ts';
+import {
+  RangeGesture,
+  keyRangeValue,
+  pointerRangeValue,
+  resolveRangeNumber,
+} from '../src/editor/range-gesture.ts';
+
+test('pointer and keyboard reach signed, neutral, and partial-step endpoints', () => {
+  for (const [input, expected] of [
+    [-1, -1],
+    [-0.74, -0.75],
+    [0, 0],
+    [0.73, 0.75],
+    [0.9, 0.92],
+    [1, 0.92],
+  ] as const) {
+    assert.equal(pointerRangeValue(input, -1, 0.92, 0.25), expected);
+  }
+  assert.equal(keyRangeValue('ArrowRight', -0.375, -1, 0.92, 0.1), -0.275);
+  assert.equal(keyRangeValue('ArrowLeft', 0, -1, 0.92, 0.00001), -0.00001);
+  assert.equal(keyRangeValue('ArrowRight', 0, -1, 0.92, 0.00001), 0.00001);
+  assert.equal(keyRangeValue('ArrowUp', 0.91, -1, 0.92, 0.1), 0.92);
+  assert.equal(keyRangeValue('PageDown', 0.001, -1, 0.92, 0.01), -0.099);
+  assert.equal(keyRangeValue('Home', 0.9, -1, 0.92, 0.25), -1);
+  assert.equal(keyRangeValue('End', 0.9, -1, 0.92, 0.25), 0.92);
+});
 
 test('a secondary pointer cannot steal, finish or cancel the owned slider preview', () => {
   const gesture = new RangeGesture();

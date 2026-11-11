@@ -1570,6 +1570,146 @@ test(
 );
 
 test(
+  'scene balance measures the scoped source, inspects the rendered result and commits under the current grant',
+  { skip: !databaseUrl },
+  async () => {
+    let rounds = 0;
+    const tool = (name: string, args: unknown) => ({
+      type: 'function_call',
+      name,
+      call_id: name,
+      arguments: JSON.stringify(args),
+    });
+    const f = await fixture({
+      fetcher: async (_url, options) => {
+        const body = JSON.parse(String(options?.body));
+        rounds++;
+        if (rounds === 1) {
+          assert.ok(body.tools.some((item: any) => item.name === 'propose_scene_balance'));
+          return response([
+            tool('propose_scene_balance', { strategy: 'preserve-night', strength: 1 }),
+            tool('inspect_candidate', { candidateIndex: 0 }),
+          ]);
+        }
+        if (rounds === 2) {
+          const result = body.input.find(
+            (item: any) =>
+              item.call_id === 'propose_scene_balance' && item.type === 'function_call_output',
+          );
+          const proposal = JSON.parse(result.output);
+          assert.equal(proposal.strategy, 'preserve-night');
+          assert.ok(proposal.tone.mid < 0.2 && proposal.tone.peak > 0.95);
+          assert.equal(
+            proposal.changes.some((change: any) => change.path === 'adjustments.exposure'),
+            false,
+          );
+          assert.ok(
+            body.input
+              .flatMap((item: any) => item.content ?? [])
+              .filter((item: any) => item.type === 'input_image').length === 2,
+          );
+          return response([
+            tool('select_candidate', { candidateIndex: 0, reason: '保留夜景整体亮度并压住灯光' }),
+          ]);
+        }
+        return response([outputText('夜景候选已核对。')]);
+      },
+    });
+    try {
+      const width = 64,
+        height = 48;
+      const data = Buffer.from(
+        Array.from({ length: width * height * 3 }, (_, i) =>
+          i % (width * 3) < 20 ? 247 : 20 + (i % 17),
+        ),
+      );
+      const png = await sharp(data, { raw: { width, height, channels: 3 } })
+        .png()
+        .toBuffer();
+      const stored = await f.storage.storeGenerated(png),
+        assetId = randomUUID(),
+        recipe = createRecipeV4();
+      const artwork = await transaction(f.db, async (tx) => {
+        await tx.query(
+          `INSERT INTO assets(id,project_id,name,storage_key,mime,width,height,bytes,content_hash,provenance,created_by)
+        VALUES($1,$2,'night-source.png',$3,$4,$5,$6,$7,$8,$9,$10)`,
+          [
+            assetId,
+            f.projectId,
+            stored.key,
+            stored.mime,
+            stored.width,
+            stored.height,
+            stored.bytes,
+            stored.hash,
+            JSON.stringify({ kind: 'uploaded', declaredSource: 'upload' }),
+            f.actors.owner.id,
+          ],
+        );
+        return createArtworkBranch(tx, {
+          projectId: f.projectId,
+          actorId: f.actors.owner.id,
+          assetId,
+          recipe,
+          title: 'Scene balance',
+          label: 'source',
+        });
+      });
+      const grant = (
+        await f.call('POST', `/v1/projects/${f.projectId}/assistant-grants`, {
+          mode: 'auto',
+          unitLimit: 20,
+          stepLimit: 5,
+          minutes: 20,
+          allowedActions: ['assistant-turn', 'edit'],
+          modelIds: [f.modelId],
+        })
+      ).json().grant;
+      const start = await f.call('POST', `/v1/projects/${f.projectId}/assistant-turns`, {
+        ...f.turn('修一下夜景，保留夜色，压低灯光'),
+        context: {
+          artworkId: artwork.artwork.id,
+          assetId,
+          expectedVersion: 1,
+          recipe,
+          imageDataUrl: `data:image/png;base64,${png.toString('base64')}`,
+        },
+        scope: { ...f.scope, executionGrantId: grant.id },
+      });
+      assert.equal(start.statusCode, 202, start.body);
+      const turn = await until(
+        () => f.readTurn(start.json().id),
+        (state) => state.state !== 'running',
+        25000,
+      );
+      assert.equal(turn.state, 'completed', JSON.stringify(turn));
+      assert.equal(turn.output.execution.state, 'applied');
+      const candidate = turn.output.candidates[0];
+      assert.equal(candidate.recipe.adjustments.exposure, 0);
+      assert.ok(candidate.recipe.adjustments.highlights < 0);
+      assert.ok(candidate.observation.before.tone.high > candidate.observation.after.tone.high);
+      assert.ok(candidate.observation.changedPixels > 0);
+      const graph = (await f.call('GET', `/v1/assistant-turns/${turn.id}/branches`)).json()
+        .branches;
+      const [prepared, inspected, nominated] = ['candidate', 'pixel-review', 'nomination'].map(
+        (kind) => graph.find((node: any) => node.kind === kind),
+      );
+      assert.ok([prepared, inspected, nominated].every((node) => node?.state === 'completed'));
+      assert.deepEqual(inspected.dependsOn, [prepared.id]);
+      assert.deepEqual(nominated.dependsOn, [inspected.id]);
+      assert.equal(
+        (await f.db.query('SELECT head_version FROM artworks WHERE id=$1', [artwork.artwork.id]))
+          .rows[0]!.head_version,
+        2,
+      );
+      assert.equal(rounds, 3);
+    } finally {
+      await f.close();
+    }
+  },
+);
+
+test(
   'retained history and candidates stop at revoked resource access instead of dropping requirements',
   { skip: !databaseUrl },
   async () => {

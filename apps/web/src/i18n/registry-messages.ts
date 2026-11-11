@@ -265,6 +265,31 @@ export const registryEnglish: Readonly<Record<string, string>> = {
   嘴角: 'Mouth corners',
   '两侧嘴角的局部向上 / 向下推移。': 'Moves both mouth corners locally upward or downward.',
   眉毛粗细: 'Eyebrow thickness',
+  眼宽: 'Eye width',
+  '沿双眼轴调整内外眼角间的跨度。负值收窄，正值加宽。':
+    'Change the distance between eye corners along the eye axis. Negative narrows and positive widens.',
+  眼高: 'Eye height',
+  '沿面部竖轴对向调整上下眼睑。负值收窄，正值加高。':
+    'Move upper and lower eyelids along the face axis. Negative narrows and positive opens.',
+  眼睑下至: 'Lower eyelid',
+  '移动下眼睑的独立作用区。负值抬高，正值压低。':
+    'Move the lower eyelid independently. Negative lifts and positive lowers.',
+  虹膜大小: 'Iris size',
+  '根据可见虹膜关键点局部缩放，作用范围由眼睑限制。':
+    'Scale around visible iris landmarks within the eyelid boundary.',
+  嘴宽度: 'Mouth width',
+  '双向调整嘴角的横向跨度。': 'Increase or decrease the distance between the corners of the mouth.',
+  丰上唇: 'Upper lip fullness',
+  '独立调整上唇外缘厚度，限制范围以保护口腔。':
+    'Adjust the outer upper lip within a bounded area to protect the mouth opening.',
+  丰下唇: 'Lower lip fullness',
+  '独立调整下唇外缘厚度，限制范围以保护口腔。':
+    'Adjust the outer lower lip within a bounded area to protect the mouth opening.',
+  眉毛位置: 'Eyebrow position',
+  '沿面部竖轴移动眉形中心。负值下移，正值抬高。':
+    'Move the brow center along the face axis. Negative lowers and positive raises.',
+  '该部位的可见轮廓不足，无法精确塑形。':
+    'The visible outline is insufficient for precise reshaping.',
   '局部缩放眉毛区域，不生成新毛发。':
     'Scales eyebrow regions locally without generating new hairs.',
   头部大小: 'Head size',

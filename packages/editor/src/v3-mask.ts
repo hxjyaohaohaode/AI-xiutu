@@ -1,5 +1,6 @@
 import { compileSelectionMask, type SelectionMaskSampler } from './v2-mask.js';
 import { parseSelectionMaskV3 } from './v3-recipe.js';
+import { radialMaskFrameV3 } from './v3-radial.js';
 import type { CropRect, Dimensions, Point, RGBAImage } from './types.js';
 import type { SelectionMaskV3 } from './v3-types.js';
 
@@ -11,6 +12,12 @@ export function compileSelectionMaskV3(
 ): SelectionMaskSampler {
   const mask = parseSelectionMaskV3(input);
   const compile = (m: SelectionMaskV3): SelectionMaskSampler => {
+    if (m.type === 'radial' && (m.rotationDegrees !== undefined || m.shape !== undefined)) {
+      const { rotationDegrees, shape, ...ordinary } = m;
+      if (!rotationDegrees && (!shape || shape === 'ellipse'))
+        return compileSelectionMask(ordinary, dimensions, source);
+      return radialMaskFrameV3(m, dimensions).weight;
+    }
     if (m.type !== 'compound') return compileSelectionMask(m, dimensions, source);
     const children = m.masks.map(compile),
       first = children[0]!,
@@ -81,8 +88,13 @@ function union(items: CropRect[]): CropRect {
 export function getSelectionBoundsV3(mask: SelectionMaskV3, dimensions: Dimensions): CropRect {
   if (mask.invert) return full;
   switch (mask.type) {
-    case 'radial':
-      return pointsBox([{ x: mask.centerX, y: mask.centerY }], mask.radiusX, mask.radiusY);
+    case 'radial': {
+      const extent =
+        mask.rotationDegrees || (mask.shape && mask.shape !== 'ellipse')
+          ? radialMaskFrameV3(mask, dimensions).extent
+          : { x: mask.radiusX, y: mask.radiusY };
+      return pointsBox([{ x: mask.centerX, y: mask.centerY }], extent.x, extent.y);
+    }
     case 'polygon':
       return pointsBox(mask.points);
     case 'brush': {
@@ -125,12 +137,15 @@ export function getSelectionBoundsV3(mask: SelectionMaskV3, dimensions: Dimensio
       if (mask.operation === 'subtract') return getSelectionBoundsV3(mask.masks[0]!, dimensions);
       const boxes = mask.masks.map((item) => getSelectionBoundsV3(item, dimensions));
       if (mask.operation !== 'intersection') return union(boxes);
-      return box(
-        Math.max(...boxes.map((item) => item.x)),
-        Math.max(...boxes.map((item) => item.y)),
-        Math.min(...boxes.map((item) => item.x + item.width)),
-        Math.min(...boxes.map((item) => item.y + item.height)),
-      );
+      if (boxes.some((item) => item.width === 0 || item.height === 0)) return empty;
+      const left = Math.max(...boxes.map((item) => item.x)),
+        top = Math.max(...boxes.map((item) => item.y)),
+        right = Math.min(...boxes.map((item) => item.x + item.width)),
+        bottom = Math.min(...boxes.map((item) => item.y + item.height));
+      // Hard polygon edges are closed and may coincide with a source pixel center.
+      const pad = 1e-12;
+      if (right < left - pad || bottom < top - pad) return empty;
+      return box(left - pad, top - pad, right + pad, bottom + pad);
     }
     default:
       return full;

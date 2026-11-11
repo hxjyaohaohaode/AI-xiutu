@@ -44,13 +44,13 @@ self.onmessage = (
       for (let x = 0; x < width; x++) {
         const p = coordinateMap.toContent({ x: (x + 0.5) / width, y: (y + 0.5) / height });
         const i = (y * width + x) * 4;
-        pixels[i] = 241;
-        pixels[i + 1] = 93;
-        pixels[i + 2] = 77;
+        pixels[i] = 89;
+        pixels[i + 1] = 174;
+        pixels[i + 2] = 242;
         pixels[i + 3] =
           p.x < 0 || p.y < 0 || p.x > 1 || p.y > 1
             ? 0
-            : Math.round(sample(p.x, p.y) * opacity * 78);
+            : Math.round(sample(p.x, p.y) * opacity * 60);
       }
     self.postMessage({ id: message.id, width, height, pixels }, { transfer: [pixels.buffer] });
   } catch {

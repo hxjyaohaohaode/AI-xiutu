@@ -535,7 +535,15 @@ Web leaves receive only the explicitly approved queries. Private library and sha
 canvas leaves run in the application and use the existing access checks. The
 assistant can request bounded private and canvas delegation through `delegate_research`.
 `branch.changed` events and `GET /v1/assistant-turns/:turnId/branches` report
-the graph and terminal state. Reconnection reads recorded events.
+the graph and terminal state. Reconnection reads recorded events. Proposal,
+pixel review, and nomination are linked by their `dependsOn` identifiers.
+Nomination precedes the server's grant, lease, cost, and revision checks.
+
+`propose_scene_balance` uses the scoped source and frozen recipe when the user
+shares the current image. The application's render worker measures luma and
+channel headroom and produces reversible exposure, shadow, and highlight
+changes according to the selected intent. The candidate uses the same pixel
+inspection and application gates as other edit proposals.
 
 `GET /v1/usage/jobs/:id` and its `/v1/ops` counterpart link service-credit movements
 to task and hold status, model stages, provider timestamps and available usage

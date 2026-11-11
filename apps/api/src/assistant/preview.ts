@@ -8,6 +8,7 @@ import {
   MAX_V4_PIXELS,
   parseEditorRecipe,
   type EditorRecipe,
+  type measureSceneTone,
 } from '@ai-xiutu/editor';
 import { needsNativeSpatialCheck, recipeHash } from '@ai-xiutu/assistant';
 import type { AssistantContext } from '@ai-xiutu/contracts';
@@ -18,15 +19,7 @@ import { normalizeSharedImage, validateContext } from './context.js';
 
 let active = 0;
 let nativeActive = false;
-interface PixelMeasurements {
-  width: number;
-  height: number;
-  visiblePixels: number;
-  meanLuma: number;
-  lumaDeviation: number;
-  blackFraction: number;
-  whiteFraction: number;
-}
+type PixelMeasurements = ReturnType<typeof measureSceneTone>;
 interface CandidatePixelObservation {
   before: PixelMeasurements;
   after: PixelMeasurements;

@@ -34,7 +34,7 @@ import {
   type PortraitAnalysis,
 } from '../../packages/portrait/src/index.js';
 
-const output = resolve('artifacts/editor-v4-sweep');
+const output = resolve(process.env.EDITOR_SWEEP_OUTPUT ?? 'artifacts/editor-v4-sweep');
 await mkdir(output, { recursive: true });
 const sha = (bytes: Uint8Array | string) => createHash('sha256').update(bytes).digest('hex');
 const shaFrame = (image: RGBAImage) =>
@@ -116,11 +116,11 @@ for (const [id, path, analysisPath] of specs) {
   });
 }
 const evidence: Record<string, unknown> = {
-  protocol: 'editor-v4-photographic-sweep-v1',
+  protocol: 'editor-v4-photographic-sweep-v2',
   startedAt: new Date().toISOString(),
   node: process.version,
   method:
-    'Actual sRGB RGBA8 photo renders at <=320px edge, five numeric samples per registered control; full/tiled equality checked on every rendered case. Sheets require human inspection, not a commercial-quality assertion.',
+    'Actual sRGB RGBA8 photo renders at <=320px edge, endpoints and first steps plus intermediate and neutral values. Full/tiled equality checked on every case. A step can be below RGBA8 quantization. Sheets require human inspection.',
   fixtures: frames.map((f) => ({
     id: f.id,
     path: f.path,
@@ -279,9 +279,13 @@ function values(t: Numeric): number[] {
           t.max,
         ]
       : [t.min, (t.min + t.neutral) / 2, t.neutral, (t.neutral + t.max) / 2, t.max];
-  return a.map((n, i) =>
+  const rounded = a.map((n, i) =>
     i === 0 ? t.min : i === 4 ? t.max : t.step === 1 ? Math.round(n) : Number(n.toFixed(6)),
   );
+  const stepValues = [t.min + t.step, t.neutral - t.step, t.neutral + t.step, t.max - t.step]
+    .filter((n) => n >= t.min && n <= t.max)
+    .map((n) => Number(n.toFixed(10)));
+  return [...new Set([...rounded, ...stepValues])].sort((a, b) => a - b);
 }
 function context(path: string): RecipeV4 {
   const r = createRecipeV4();
@@ -331,7 +335,7 @@ for (const frame of frames.filter((f) => f.id !== 'pose')) {
         }
       await sheet(
         `${frame.id}-${group}-${offset / 12 + 1}`,
-        `${frame.id} / ${group} / five bounded samples`,
+        `${frame.id} / ${group} / bounds and fine steps`,
         cells,
       );
     }

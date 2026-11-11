@@ -295,6 +295,56 @@ function readMask(
       invert: boolean(r.invert, `${path}.invert`, errors),
     };
   }
+  const hasAngle = own(v, 'rotationDegrees') !== undefined;
+  const hasProfile = own(v, 'shape') !== undefined;
+  if (own(v, 'type') === 'radial' && (hasAngle || hasProfile)) {
+    const r = record(
+      v,
+      [
+        'type',
+        'centerX',
+        'centerY',
+        'radiusX',
+        'radiusY',
+        'feather',
+        'invert',
+        ...(hasAngle ? ['rotationDegrees'] : []),
+        ...(hasProfile ? ['shape'] : []),
+      ],
+      path,
+      errors,
+    );
+    const { rotationDegrees, shape, ...ordinary } = r;
+    if (hasProfile && shape !== 'ellipse' && shape !== 'rectangle' && shape !== 'diamond')
+      errors.push(`${path}.shape: unsupported radial profile`);
+    try {
+      const mask = parseSelectionMask(ordinary);
+      if (mask.type !== 'radial')
+        throw new RecipeValidationError([`${path}: expected a radial mask`]);
+      return {
+        ...mask,
+        ...(rotationDegrees !== undefined
+          ? {
+              rotationDegrees: number(
+                rotationDegrees,
+                -180,
+                180,
+                `${path}.rotationDegrees`,
+                errors,
+              ),
+            }
+          : {}),
+        ...(shape !== undefined ? { shape: shape as 'ellipse' | 'rectangle' | 'diamond' } : {}),
+      };
+    } catch (error) {
+      errors.push(
+        ...(error instanceof RecipeValidationError
+          ? error.errors
+          : [`${path}: invalid radial mask`]),
+      );
+      return { type: 'brush', strokes: [], invert: false };
+    }
+  }
   try {
     const mask = parseSelectionMask(v);
     if (mask.type === 'brush')
@@ -590,6 +640,7 @@ export function parseRecipeV3(input: unknown): RecipeV3 {
             'feather',
             'strength',
             ...(v && typeof v === 'object' && Object.hasOwn(v, 'algorithm') ? ['algorithm'] : []),
+            ...(v && typeof v === 'object' && Object.hasOwn(v, 'resampling') ? ['resampling'] : []),
           ],
           p,
           errors,
@@ -598,11 +649,16 @@ export function parseRecipeV3(input: unknown): RecipeV3 {
       unique(id, warpIds, p);
       if (!['push', 'pinch', 'bulge', 'twirl'].includes(String(r.mode)))
         errors.push(`${p}.mode: unsupported warp`);
-      if (Object.hasOwn(r, 'algorithm') && r.algorithm !== 'flow-v1')
+      if (Object.hasOwn(r, 'algorithm') && r.algorithm !== 'flow-v1' && r.algorithm !== 'flow-v2')
         errors.push(`${p}.algorithm: unsupported warp algorithm`);
+      if (Object.hasOwn(r, 'resampling') && r.resampling !== 'bounded-cubic-v1')
+        errors.push(`${p}.resampling: unsupported warp resampling`);
       return {
         id,
-        ...(Object.hasOwn(r, 'algorithm') ? { algorithm: 'flow-v1' as const } : {}),
+        ...(r.algorithm === 'flow-v1' || r.algorithm === 'flow-v2'
+          ? { algorithm: r.algorithm }
+          : {}),
+        ...(Object.hasOwn(r, 'resampling') ? { resampling: 'bounded-cubic-v1' as const } : {}),
         mode: r.mode as 'push',
         from: point(r.from, `${p}.from`, errors),
         to: point(r.to, `${p}.to`, errors),
@@ -613,6 +669,12 @@ export function parseRecipeV3(input: unknown): RecipeV3 {
       };
     },
   );
+  // Extra compact strokes support multiple faces within the old maximum aggregate brush support.
+  if (
+    warpStrokes.length > 64 &&
+    warpStrokes.reduce((work, stroke) => work + stroke.radius ** 2, 0) > 64
+  )
+    errors.push('warp.strokes: combined brush support exceeds the rendering budget');
   const result: RecipeV3 = {
     ...base,
     schemaVersion: 3,

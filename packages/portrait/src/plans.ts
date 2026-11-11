@@ -14,6 +14,7 @@ import {
   type OperationOriginV3,
 } from '@ai-xiutu/editor';
 import { PORTRAIT_TOOLS } from './catalog.js';
+import { detailFeatureIds, facialDetailMoves, type DetailFeatureId } from './facial-detail.js';
 import { center, unit, combine, facialMasks, facialMasksV4, polygon } from './geometry.js';
 import { validatePortraitAnalysis, copyPortraitData } from './validation.js';
 import type { PortraitAnalysis, PortraitTarget, PortraitValues } from './types.js';
@@ -263,9 +264,18 @@ export function portraitToolAvailability(
   const safe = validatePortraitAnalysis(analysis),
     target = safe.targets.find((t) => t.id === targetId);
   if (!target) throw new Error('人物不属于当前分析结果。');
+  const detail =
+    target.kind === 'face' && schemaVersion === 4 ? facialDetailMoves(target, safe.frame) : null;
   return PORTRAIT_TOOLS.filter((t) => t.target === target.kind).map((tool) => {
     let reason: string | null = null;
-    if (schemaVersion === 3 && skinSpotTools.includes(tool.id)) {
+    if (detailFeatureIds.includes(tool.id as DetailFeatureId)) {
+      reason =
+        schemaVersion === 3
+          ? '该参数需要 V4 人像配方。'
+          : detail?.has(tool.id as DetailFeatureId)
+            ? null
+            : '该部位的可见轮廓不足，无法精确塑形。';
+    } else if (schemaVersion === 3 && skinSpotTools.includes(tool.id)) {
       reason = '该参数需要 V4 人像配方。';
     } else if (schemaVersion === 4 && tool.id === 'neckLength') {
       reason =
@@ -370,10 +380,15 @@ export function applyPortraitValues<T extends LayeredRecipe>(
     warps: WarpStrokeV3[] = [],
     retouches: RetouchRegionV4[] = [],
     value = (id: string) => (values[id] ?? 0) / 100;
+  const previousClassicWarps = recipe.warp.strokes.filter(
+    (stroke) =>
+      belongsTo(stroke, targetId) &&
+      !detailFeatureIds.includes(stroke.origin?.parameterId as DetailFeatureId),
+  );
   const useFlowWarp =
     recipe.schemaVersion === 4 &&
-    (!recipe.warp.strokes.some((s) => belongsTo(s, targetId)) ||
-      recipe.warp.strokes.some((s) => belongsTo(s, targetId) && s.algorithm === 'flow-v1'));
+    (!previousClassicWarps.length ||
+      previousClassicWarps.some((stroke) => stroke.algorithm === 'flow-v1'));
   const dims = analysis.frame,
     short = Math.min(dims.width, dims.height);
   const px = (p: Point) => ({ x: p.x * dims.width, y: p.y * dims.height });
@@ -405,18 +420,27 @@ export function applyPortraitValues<T extends LayeredRecipe>(
     to: Point,
     radius: number,
     strength: number,
+    detail = false,
   ) {
     if (Math.abs(strength) < 1e-8) return;
     warps.push({
       id: prefix + id,
-      ...(useFlowWarp ? { algorithm: 'flow-v1' as const } : {}),
+      ...(detail
+        ? { algorithm: 'flow-v2' as const }
+        : useFlowWarp
+          ? { algorithm: 'flow-v1' as const }
+          : {}),
+      ...(detail ? { resampling: 'bounded-cubic-v1' as const } : {}),
       mode,
       from: { x: unit(from.x), y: unit(from.y) },
       to: { x: unit(to.x), y: unit(to.y) },
       radius: bounded(radius, 0.00001, 0.75),
       feather: 0.7,
       strength: bounded(strength, -1, 1),
-      origin: provenance(id.replace(/-\d+$/, ''), strength * 100),
+      origin: provenance(
+        id.replace(/-\d+$/, ''),
+        detail ? values[id.replace(/-\d+$/, '')]! : strength * 100,
+      ),
     });
   }
   function push(id: string, p: Point, dxPx: number, dyPx: number, r: number, strength: number) {
@@ -680,6 +704,22 @@ export function applyPortraitValues<T extends LayeredRecipe>(
           radius * 0.1,
           value('browThickness') * 0.8,
         );
+    }
+    if (recipe.schemaVersion === 4 && detailFeatureIds.some((id) => value(id) !== 0)) {
+      for (const [id, moves] of facialDetailMoves(target, dims)) {
+        if (!value(id)) continue;
+        moves.forEach((move, index) =>
+          warp(
+            `${id}-${index}`,
+            move.mode,
+            move.from,
+            move.to,
+            move.radius,
+            value(id) * move.gain,
+            true,
+          ),
+        );
+      }
     }
     const cheekPoints = [anchor(-0.28, 0.1), anchor(0.28, 0.1)];
     const makeupMasks: Record<string, SelectionMaskV3> = {

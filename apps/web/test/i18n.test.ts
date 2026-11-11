@@ -265,7 +265,8 @@ test('real parameter controls keep range values and handlers across all three la
       assert.ok(slider.includes(`aria-label="${t(source.label)}"`));
       assert.match(slider, /min="-8"/);
       assert.match(slider, /max="8"/);
-      assert.match(slider, /step="0.01"/);
+      assert.match(slider, /\bdata-step="0.01"/);
+      assert.match(slider, /\sstep="any"/);
       assert.match(slider, /value="-0.35"/);
       assert.equal(props.controls[0]!.label, source.label);
       assert.deepEqual(source, original);

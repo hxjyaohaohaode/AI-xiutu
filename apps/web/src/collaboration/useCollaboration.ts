@@ -727,8 +727,8 @@ export function useCollaboration(options: Options) {
   }
   const editor: EditorState = {
     ...options.editor,
-    preview(next) {
-      options.editor.preview(next);
+    preview(next, quality) {
+      options.editor.preview(next, quality);
       queue(next, '实时调整', false);
     },
     commit(next, label = '调整照片') {

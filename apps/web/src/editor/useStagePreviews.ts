@@ -49,7 +49,8 @@ export function useStagePreviews(
   const [remote, setRemote] = useState<PreviewResult | null>(null);
   const remoteKey = JSON.stringify(remoteRecipe);
   const [error, setError] = useState<string | null>(null);
-  const geometryKey = editorGeometryKey(recipe);
+  // The comparison frame shows unwarped source content with the current output geometry.
+  const comparisonKey = editorGeometryKey(recipe, false);
   const uncropped = useMemo(
     () => ({ ...recipe, geometry: { ...recipe.geometry, crop: null } }),
     [recipe],
@@ -160,7 +161,7 @@ export function useStagePreviews(
     if (source)
       enqueue(
         'compare',
-        geometryKey,
+        comparisonKey,
         recipe.schemaVersion === 4
           ? createRecipeV4({
               geometry: recipe.geometry,
@@ -171,7 +172,7 @@ export function useStagePreviews(
             ? createRecipeV3({ geometry: recipe.geometry, transform: recipe.transform })
             : createRecipe({ geometry: recipe.geometry }),
       );
-  }, [source, geometryKey]);
+  }, [source, comparisonKey]);
   useEffect(() => {
     if (!source || !cropOpen) {
       pending.current.crop = null;
@@ -197,7 +198,7 @@ export function useStagePreviews(
       selection?.source === source && selection.geometryKey === editorGeometryKey(selectionRecipe)
         ? selection.image
         : null,
-    compare: compare?.source === source && compare.key === geometryKey ? compare.image : null,
+    compare: compare?.source === source && compare.key === comparisonKey ? compare.image : null,
     crop:
       crop?.source === source && crop.geometryKey === editorGeometryKey(uncropped)
         ? crop.image

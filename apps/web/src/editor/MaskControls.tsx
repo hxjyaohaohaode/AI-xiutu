@@ -94,6 +94,7 @@ export function MaskControls({
     scalar('centerY', '中心 Y', mask.centerY, 0, 1);
     scalar('radiusX', '水平半径', mask.radiusX, 0.0001, 1);
     scalar('radiusY', '垂直半径', mask.radiusY, 0.0001, 1);
+    scalar('rotationDegrees', '旋转角度', mask.rotationDegrees ?? 0, -180, 180, 0.1, '°');
     scalar('feather', '羽化', mask.feather, 0, 1);
   } else if (mask.type === 'linear') {
     for (const [key, label] of [
@@ -167,6 +168,28 @@ export function MaskControls({
           {t('反选')}
         </label>
       </div>
+      {mask.type === 'radial' && (
+        <label className="advanced-row">
+          {t('选区形状')}
+          <ChoiceSelect
+            ariaLabel={t('选区形状')}
+            size="compact"
+            value={mask.shape ?? 'ellipse'}
+            options={[
+              { value: 'ellipse', label: t('椭圆') },
+              { value: 'rectangle', label: t('矩形') },
+              { value: 'diamond', label: t('菱形') },
+            ]}
+            onValueChange={(shape) => {
+              if (shape === 'ellipse' || shape === 'rectangle' || shape === 'diamond')
+                mutate(
+                  (latest) => (latest.type === 'radial' ? { ...latest, shape } : latest),
+                  true,
+                );
+            }}
+          />
+        </label>
+      )}
       {drawsMask && (
         <label className="compact-check">
           <input

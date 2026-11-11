@@ -18,12 +18,13 @@ export function projectOverlayPath(
 }
 
 /** Everything that changes the relationship between rendered pixels and source pixels. */
-export function editorGeometryKey(recipe: EditorRecipe) {
+export function editorGeometryKey(recipe: EditorRecipe, includeWarp = true) {
   return JSON.stringify({
     geometry: recipe.geometry,
     projective: recipe.schemaVersion === 4 ? recipe.projective : null,
     transform: recipe.schemaVersion === 3 || recipe.schemaVersion === 4 ? recipe.transform : null,
     warp:
+      includeWarp &&
       (recipe.schemaVersion === 3 || recipe.schemaVersion === 4) &&
       recipe.warp.enabled &&
       recipe.warp.strokes.length > 0

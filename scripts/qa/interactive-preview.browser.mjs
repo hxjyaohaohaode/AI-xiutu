@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict';
-import { mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises';
+import { mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -25,6 +25,238 @@ const report = {
   workerRecovery: { state: 'not-run', reason: 'The independent recovery check has not started.' },
 };
 let browser;
+async function verifyLocalMaskAndLiquify(input) {
+  const page = await browser.newPage({
+    viewport: { width: 1440, height: 960 },
+    reducedMotion: 'reduce',
+    acceptDownloads: true,
+  });
+  const result = (report.maskAndLiquify = { state: 'running', errors: [] });
+  page.on('pageerror', (error) => result.errors.push(String(error)));
+  try {
+    await page.addInitScript(() => {
+      const paint = CanvasRenderingContext2D.prototype.putImageData;
+      window.warpPaints = null;
+      window.warpRequests = null;
+      window.workerMessages = [];
+      const terminate = Worker.prototype.terminate;
+      Worker.prototype.terminate = function () {
+        window.workerMessages.push({ type: 'terminated', at: performance.now() });
+        return terminate.call(this);
+      };
+      const send = Worker.prototype.postMessage;
+      Worker.prototype.postMessage = function (message, ...args) {
+        window.workerMessages.push({
+          type: message.type,
+          previewQuality: message.previewQuality,
+          at: performance.now(),
+        });
+        if (
+          window.warpRequests &&
+          message.type === 'interactive-preview' &&
+          message.previewQuality === 'warp'
+        ) {
+          const record = { id: message.id, sent: performance.now() };
+          window.warpRequests.push(record);
+          const reply = ({ data }) => {
+            if (data.id !== record.id) return;
+            record.reply = performance.now();
+            record.width = data.result?.width;
+            record.error = data.error;
+            this.removeEventListener('message', reply);
+          };
+          this.addEventListener('message', reply);
+        }
+        return send.call(this, message, ...args);
+      };
+      CanvasRenderingContext2D.prototype.putImageData = function (image, ...args) {
+        paint.call(this, image, ...args);
+        if (
+          !window.warpPaints ||
+          !this.canvas.matches('.image-frame canvas[aria-label="照片编辑预览"]')
+        )
+          return;
+        const { width, height, data } = image;
+        let signature = 0;
+        for (let y = 42; y <= 55; y++)
+          for (let x = 39; x <= 56; x++) {
+            const at = (Math.floor((y * height) / 100) * width + Math.floor((x * width) / 100)) * 4;
+            signature =
+              Math.imul(signature ^ data[at], 16777619) ^ data[at + 1] ^ (data[at + 2] << 8);
+          }
+        window.warpPaints.push({ width, height, signature, at: performance.now() });
+      };
+    });
+    const bytes = process.env.PREVIEW_PUBLIC_PHOTO
+      ? await readFile(process.env.PREVIEW_PUBLIC_PHOTO)
+      : input;
+    const encoded = await sharp(bytes)
+      .autoOrient()
+      .resize(980, 760, { fit: 'inside' })
+      .removeAlpha()
+      .png()
+      .toBuffer();
+    const { data, info } = await sharp(encoded)
+      .ensureAlpha()
+      .raw()
+      .toBuffer({ resolveWithObject: true });
+    const source = { width: info.width, height: info.height, data: new Uint8ClampedArray(data) };
+    const tool = (name) =>
+      page
+        .getByRole('navigation', { name: '编辑工具' })
+        .getByRole('button', { name, exact: true })
+        .click();
+    const selectedPanel = page.locator('.free-panel[aria-hidden="false"]');
+    const canvas = page.locator('.image-frame canvas[aria-label="照片编辑预览"]');
+    const settled = () => page.locator('.canvas-stage[aria-busy="false"]').waitFor();
+    const png = async () =>
+      Buffer.from(await canvas.evaluate((node) => node.toDataURL().split(',')[1]), 'base64');
+    const boxCenter = async (locator) => {
+      const box = await locator.boundingBox();
+      assert.ok(box);
+      return { x: box.x + box.width / 2, y: box.y + box.height / 2 };
+    };
+    await page.route('**/v1/**', (route) =>
+      route.fulfill({ status: 503, json: { message: 'offline' } }),
+    );
+    await page.goto(`http://127.0.0.1:${vite.httpServer.address().port}/#/studio`);
+    await page
+      .getByLabel('选择照片', { exact: true })
+      .setInputFiles({ name: 'scene-preview.png', mimeType: 'image/png', buffer: encoded });
+    await canvas.waitFor();
+    await settled();
+    await tool('局部');
+    await selectedPanel.getByRole('button', { name: '径向', exact: true }).click();
+    await page.locator('.mask-overlay').waitFor({ state: 'visible' });
+    assert.equal(await page.locator('.selection-preview').count(), 0);
+    await page.locator('.mask-overlay').waitFor({ state: 'hidden' });
+    const overlay = selectedPanel.getByRole('checkbox', { name: '显示范围覆盖', exact: true });
+    assert.equal(await overlay.isChecked(), false);
+    await overlay.check();
+    await page.locator('.selection-preview').waitFor();
+    await overlay.uncheck();
+    await page.locator('.selection-preview').waitFor({ state: 'hidden' });
+    await selectedPanel.getByRole('combobox', { name: '选区形状', exact: true }).click();
+    await page.getByRole('option', { name: '矩形', exact: true }).click();
+    const center = await boxCenter(page.getByRole('button', { name: '拖动选区中心', exact: true }));
+    const grip = await boxCenter(page.getByRole('button', { name: '拖动旋转选区', exact: true }));
+    const turn = Math.PI / 4;
+    const dx = grip.x - center.x,
+      dy = grip.y - center.y;
+    await page.mouse.move(grip.x, grip.y);
+    await page.mouse.down();
+    await page.mouse.move(
+      center.x + dx * Math.cos(turn) - dy * Math.sin(turn),
+      center.y + dx * Math.sin(turn) + dy * Math.cos(turn),
+      { steps: 12 },
+    );
+    await page.mouse.up();
+    const exposure = selectedPanel.getByRole('slider', { name: '曝光', exact: true });
+    await exposure.press('ArrowLeft');
+    assert.equal(Number(await exposure.inputValue()), -0.01);
+    await exposure.press('Alt+ArrowRight');
+    assert.equal(Number(await exposure.inputValue()), -0.009);
+    await selectedPanel.getByRole('button', { name: /^曝光数值/ }).click();
+    await selectedPanel.getByRole('spinbutton', { name: '曝光精确数值' }).fill('0.64');
+    await selectedPanel.getByRole('spinbutton', { name: '曝光精确数值' }).press('Enter');
+    await settled();
+    await page.screenshot({ path: resolve(artifacts, 'local-mask-settled.png') });
+    await tool('液化');
+    const before = await png();
+    const frame = await canvas.boundingBox();
+    assert.ok(frame);
+    const start = { x: frame.x + frame.width * 0.47, y: frame.y + frame.height * 0.49 };
+    await page.evaluate(() => {
+      window.warpPaints = [];
+      window.warpRequests = [];
+    });
+    await page.mouse.move(start.x, start.y);
+    await page.mouse.down();
+    const started = await page.evaluate(() => performance.now());
+    await page.mouse.move(start.x + frame.width * 0.075, start.y - frame.height * 0.04, {
+      steps: 24,
+    });
+    await page.waitForFunction(
+      ({ baseline, w, h }) => {
+        const active = document.querySelector('.image-frame canvas[aria-label="照片编辑预览"]');
+        return (
+          active?.width === w &&
+          active?.height === h &&
+          active.toDataURL().split(',')[1] !== baseline
+        );
+      },
+      { baseline: before.toString('base64'), w: source.width, h: source.height },
+    );
+    const live = await png();
+    const paints = await page.evaluate(() => window.warpPaints);
+    const requests = await page.evaluate(() => window.warpRequests);
+    const workerMessages = await page.evaluate(() => window.workerMessages);
+    assert.ok(paints.length > 0);
+    assert.ok(
+      requests.some((request) => request.width === source.width && !request.error),
+      'the collaboration wrapper reaches the high-detail lane',
+    );
+    assert.ok(
+      new Set(paints.map((paint) => paint.signature)).size >= 2,
+      'multiple changed high-detail frames appear before pointer release',
+    );
+    assert.equal(
+      workerMessages.some(({ type, at }) => type === 'compare-preview' && at >= started),
+      false,
+    );
+    assert.ok(
+      paints.every((paint) => paint.width === source.width && paint.height === source.height),
+    );
+    await page.screenshot({ path: resolve(artifacts, 'liquify-during-drag.png') });
+    await page.mouse.up();
+    await settled();
+    const final = await png();
+    await page.getByRole('button', { name: '交付', exact: true }).click();
+    const pending = page.waitForEvent('download');
+    await page.getByRole('button', { name: '下载配方 JSON' }).click();
+    const download = await pending;
+    const recipe = JSON.parse(await readFile(await download.path(), 'utf8'));
+    const mask = recipe.regionEdits[0].mask;
+    assert.equal(mask.shape, 'rectangle');
+    assert.ok(Math.abs(mask.rotationDegrees - 45) < 2, JSON.stringify(mask));
+    assert.equal(recipe.regionEdits[0].color.adjustments.exposure, 0.64);
+    assert.equal(recipe.warp.strokes[0].resampling, 'bounded-cubic-v1');
+    assert.equal(recipe.warp.strokes[0].algorithm, 'flow-v2');
+    const expected = renderEditorRecipe(source, recipe);
+    const actual = await sharp(final).ensureAlpha().raw().toBuffer();
+    assert.ok(
+      actual.equals(Buffer.from(expected.data)),
+      'settled browser pixels match the shared render engine',
+    );
+    assert.notDeepEqual(live, before);
+    assert.deepEqual(result.errors, []);
+    Object.assign(result, {
+      state: 'passed',
+      mask,
+      firstWarpPaintMs: paints[0].at - started,
+      distinctWarpFrames: new Set(paints.map((paint) => paint.signature)).size,
+      warpRequests: requests.map(({ id, sent, reply, width, error }) => ({
+        id,
+        sentMs: sent - started,
+        durationMs: reply ? reply - sent : null,
+        width,
+        error,
+      })),
+      width: source.width,
+      height: source.height,
+      exactSettledPixels: source.width * source.height,
+    });
+  } catch (error) {
+    result.state = 'failed';
+    result.error = String(error);
+    await page
+      .screenshot({ path: resolve(artifacts, 'local-mask-liquify-failure.png') })
+      .catch(() => {});
+    throw error;
+  } finally {
+    await page.close();
+  }
+}
 async function verifyWorkerRecovery({ png, source }) {
   const page = await browser.newPage({
     viewport: { width: 1440, height: 900 },
@@ -477,7 +709,11 @@ try {
     [{ width: 390, height: 844, deviceScaleFactor: 2, hasTouch: true }, '曝光'],
   ]) {
     const { width: w, height: h, ...device } = size;
-    if (process.env.PREVIEW_CASE === 'phone' && !device.hasTouch) continue;
+    if (
+      process.env.PREVIEW_CASE === 'mask' ||
+      (process.env.PREVIEW_CASE === 'phone' && !device.hasTouch)
+    )
+      continue;
     const page = await browser.newPage({
       viewport: { width: w, height: h },
       acceptDownloads: true,
@@ -795,10 +1031,12 @@ try {
     }
   }
   if (process.env.PREVIEW_RECORD_ONLY !== '1' && process.env.PREVIEW_CASE !== 'phone') {
-    await verifyWorkerRecovery({
-      png: buffer,
-      source: { width, height, data: new Uint8ClampedArray(rgba) },
-    });
+    if (process.env.PREVIEW_CASE !== 'mask')
+      await verifyWorkerRecovery({
+        png: buffer,
+        source: { width, height, data: new Uint8ClampedArray(rgba) },
+      });
+    await verifyLocalMaskAndLiquify(buffer);
   } else {
     report.workerRecovery = {
       state: 'not-run',

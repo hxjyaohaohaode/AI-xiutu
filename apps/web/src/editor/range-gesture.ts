@@ -9,6 +9,22 @@ export const RANGE_KEYS = new Set([
   'PageDown',
 ]);
 
+/** Pointer steps start at min and include both endpoints, even with a partial last step. */
+export function pointerRangeValue(value: number, min: number, max: number, step: number) {
+  if (value <= min) return min;
+  if (value >= max) return max;
+  const grid = Number((min + Math.round((value - min) / step) * step).toFixed(10));
+  return grid > max || max - value < Math.abs(grid - value) ? max : grid;
+}
+
+export function keyRangeValue(key: string, value: number, min: number, max: number, step: number) {
+  if (key === 'Home') return min;
+  if (key === 'End') return max;
+  const direction = key === 'ArrowLeft' || key === 'ArrowDown' || key === 'PageDown' ? -1 : 1;
+  const increment = key === 'PageUp' || key === 'PageDown' ? step * 10 : step;
+  return Math.max(min, Math.min(max, Number((value + direction * increment).toFixed(10))));
+}
+
 export type RangeCompletion = {
   action: 'commit' | 'cancel';
   initial: number;

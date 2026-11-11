@@ -42,7 +42,7 @@ export interface AssistantBranchEvent {
   id: string;
   parentId: string | null;
   dependsOn: string[];
-  kind: 'root' | 'web' | 'cloud' | 'canvas' | 'merge';
+  kind: 'root' | 'web' | 'cloud' | 'canvas' | 'merge' | 'candidate' | 'pixel-review' | 'nomination';
   state: 'running' | 'completed' | 'failed';
   execution: 'provider' | 'server';
   resultCount?: number;

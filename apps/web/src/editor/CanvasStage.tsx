@@ -21,6 +21,7 @@ import {
   compileEditorCoordinateMap,
   parseEditorRecipe,
   parseSelectionMaskV3,
+  radialMaskFrameV3,
   type PaintStrokeV3,
   type WarpStrokeV3,
   type ImageLayerV3,
@@ -189,6 +190,32 @@ function MaskPreview({
   }, [key, source]);
   return <canvas ref={ref} className="selection-preview" aria-hidden />;
 }
+function editPointerBounds(kind: string) {
+  if (kind === 'paint' || kind === 'brush') return 'strict';
+  if (kind.startsWith('image-') || kind.endsWith('-rotation') || kind.startsWith('radius'))
+    return 'unbounded';
+  return 'clamp';
+}
+
+function selectionRotation(center: Point, start: Point, end: Point, dimensions: Dimensions) {
+  const vector = (point: Point) => ({
+    x: (point.x - center.x) * dimensions.width,
+    y: (point.y - center.y) * dimensions.height,
+  });
+  const a = vector(start),
+    b = vector(end);
+  if (Math.hypot(a.x, a.y) < 1 || Math.hypot(b.x, b.y) < 1) return null;
+  return Math.atan2(a.x * b.y - a.y * b.x, a.x * b.x + a.y * b.y);
+}
+
+function polygonFrame(points: Point[]) {
+  const left = Math.min(...points.map((point) => point.x)),
+    right = Math.max(...points.map((point) => point.x)),
+    top = Math.min(...points.map((point) => point.y)),
+    bottom = Math.max(...points.map((point) => point.y));
+  return { left, right, top, bottom, center: { x: (left + right) / 2, y: (top + bottom) / 2 } };
+}
+
 type EditGesture = {
   pointer: number;
   kind: string;
@@ -298,7 +325,11 @@ export function CanvasStage({
     editor.liveFrame !== null,
   );
   const liveFrame =
-    !comparing && !cropEditing && !sourceSelectionFrame && !previews.remote
+    !comparing &&
+    !cropEditing &&
+    !sourceSelectionFrame &&
+    !previews.remote &&
+    (group !== 'liquify' || editor.liveFrame?.quality === 'warp')
       ? editor.liveFrame
       : null;
   const image = comparing
@@ -395,6 +426,26 @@ export function CanvasStage({
     !sampling &&
     !space &&
     !handMode;
+  const [selectionHint, setSelectionHint] = useState(false);
+  const maskPathKey = editor.activeMaskPath.join('.');
+  useEffect(() => {
+    if (!editingSelection) {
+      setSelectionHint(false);
+      return;
+    }
+    setSelectionHint(true);
+    const timeout = window.setTimeout(() => setSelectionHint(false), 1200);
+    return () => window.clearTimeout(timeout);
+  }, [
+    editingSelection,
+    source,
+    region?.id,
+    repair?.id,
+    mask.type,
+    maskPathKey,
+    protecting,
+    editor.repairProtection,
+  ]);
   const output = useMemo(() => {
     try {
       return dimensions ? getEditorOutputDimensions(dimensions, recipe) : null;
@@ -607,7 +658,7 @@ export function CanvasStage({
     try {
       parseEditorRecipe(next);
       state.lastPreview = next;
-      editor.preview(next);
+      editor.preview(next, state.kind === 'warp' ? 'warp' : 'fast');
     } catch (error) {
       setNotice(
         error instanceof Error ? error.message : '本次调整超出安全范围，已保留上一个有效状态。',
@@ -636,16 +687,7 @@ export function CanvasStage({
           preProjectiveDimensions(dimensions, recipe as RecipeV4),
           recipe as RecipeV4,
         )
-      : toSource(
-          event.clientX,
-          event.clientY,
-          kind === 'paint',
-          kind === 'paint' || kind === 'brush'
-            ? 'strict'
-            : kind.startsWith('image-')
-              ? 'unbounded'
-              : 'clamp',
-        );
+      : toSource(event.clientX, event.clientY, kind === 'paint', editPointerBounds(kind));
     if (!rawPoint) {
       setNotice('这里没有可编辑的源像素，请在图片内容上落笔。');
       return;
@@ -768,7 +810,9 @@ export function CanvasStage({
     if (kind === 'warp' && (recipe.schemaVersion === 3 || recipe.schemaVersion === 4)) {
       state.warp = {
         id: newId!,
-        ...(recipe.schemaVersion === 4 ? { algorithm: 'flow-v1' as const } : {}),
+        ...(recipe.schemaVersion === 4
+          ? { algorithm: 'flow-v2' as const, resampling: 'bounded-cubic-v1' as const }
+          : {}),
         mode: editor.warpSettings.mode,
         from: point,
         to: point,
@@ -969,11 +1013,7 @@ export function CanvasStage({
       event.clientX,
       event.clientY,
       state.kind === 'paint',
-      state.kind === 'paint' || state.kind === 'brush'
-        ? 'strict'
-        : state.kind.startsWith('image-')
-          ? 'unbounded'
-          : 'clamp',
+      editPointerBounds(state.kind),
     );
     if (!rawPoint) return;
     const point =
@@ -1084,10 +1124,25 @@ export function CanvasStage({
           centerX: clamp(original.centerX + point.x - state.start.x),
           centerY: clamp(original.centerY + point.y - state.start.y),
         };
-      if (state.kind === 'radiusX')
-        next = { ...original, radiusX: clamp(Math.abs(point.x - original.centerX), 0.0001, 1) };
-      if (state.kind === 'radiusY')
-        next = { ...original, radiusY: clamp(Math.abs(point.y - original.centerY), 0.0001, 1) };
+      if (state.kind === 'radiusX' || state.kind === 'radiusY') {
+        const local = radialMaskFrameV3(original, dimensions).local(point);
+        const axis = state.kind === 'radiusX' ? local.x : local.y;
+        next = {
+          ...original,
+          [state.kind]: clamp(Math.abs(axis) * original[state.kind], 0.0001, 1),
+        };
+      }
+      if (state.kind === 'radial-rotation') {
+        const delta = selectionRotation(
+          { x: original.centerX, y: original.centerY },
+          state.start,
+          point,
+          dimensions,
+        );
+        if (delta === null) return;
+        const angle = (original.rotationDegrees ?? 0) + (delta * 180) / Math.PI;
+        next = { ...original, rotationDegrees: ((angle + 540) % 360) - 180 };
+      }
     } else if (original.type === 'linear') {
       next = {
         ...original,
@@ -1098,14 +1153,41 @@ export function CanvasStage({
         Math.hypot(next.end.x - next.start.x, next.end.y - next.start.y) < 0.0001
       )
         return;
-    } else if (original.type === 'polygon' && state.kind.startsWith('polygon-')) {
-      const index = Number(state.kind.slice(8));
-      next = {
-        ...original,
-        points: original.points.map((p, i) =>
-          i === index ? { x: clamp(point.x), y: clamp(point.y) } : p,
-        ),
-      };
+    } else if (original.type === 'polygon') {
+      if (state.kind === 'polygon-center') {
+        const box = polygonFrame(original.points);
+        const x = clamp(point.x - state.start.x, -box.left, 1 - box.right);
+        const y = clamp(point.y - state.start.y, -box.top, 1 - box.bottom);
+        next = { ...original, points: original.points.map((p) => ({ x: p.x + x, y: p.y + y })) };
+      } else if (state.kind === 'polygon-rotation') {
+        const { center } = polygonFrame(original.points);
+        const delta = selectionRotation(center, state.start, point, dimensions);
+        if (delta === null) return;
+        const cos = Math.cos(delta),
+          sin = Math.sin(delta);
+        const points = original.points.map((p) => {
+          const x = (p.x - center.x) * dimensions.width,
+            y = (p.y - center.y) * dimensions.height;
+          return {
+            x: center.x + (x * cos - y * sin) / dimensions.width,
+            y: center.y + (x * sin + y * cos) / dimensions.height,
+          };
+        });
+        if (points.some(({ x, y }) => x < -1e-9 || x > 1 + 1e-9 || y < -1e-9 || y > 1 + 1e-9)) {
+          setNotice(t('选区旋转超出原图范围'));
+          return;
+        }
+        next = { ...original, points: points.map(({ x, y }) => ({ x: clamp(x), y: clamp(y) })) };
+        setNotice(null);
+      } else if (state.kind.startsWith('polygon-')) {
+        const index = Number(state.kind.slice(8));
+        next = {
+          ...original,
+          points: original.points.map((p, i) =>
+            i === index ? { x: clamp(point.x), y: clamp(point.y) } : p,
+          ),
+        };
+      }
     }
     try {
       parseSelectionMaskV3(next);
@@ -1122,7 +1204,8 @@ export function CanvasStage({
     editGesture.current = null;
     setProjectiveFrame(null);
     if (ownsEdit(state)) {
-      if (cancel) editor.preview(state.rollback ?? state.base);
+      if (cancel)
+        editor.preview(state.rollback ?? state.base, state.kind === 'warp' ? 'warp' : 'fast');
       else
         editor.commitCurrent(
           state.kind.startsWith('projective-')
@@ -1254,10 +1337,34 @@ export function CanvasStage({
     ],
     toDisplay,
   );
-  const center =
-    mask.type === 'radial'
-      ? projectOverlayPoint({ x: mask.centerX, y: mask.centerY }, toDisplay)
-      : null;
+  const radial = dimensions && mask.type === 'radial' ? radialMaskFrameV3(mask, dimensions) : null;
+  const radialOutline =
+    mask.type !== 'radial'
+      ? []
+      : mask.shape === 'rectangle'
+        ? [
+            [-1, -1],
+            [1, -1],
+            [1, 1],
+            [-1, 1],
+          ]
+        : mask.shape === 'diamond'
+          ? [
+              [0, -1],
+              [1, 0],
+              [0, 1],
+              [-1, 0],
+            ]
+          : Array.from({ length: 64 }, (_, i) => {
+              const angle = (i / 64) * Math.PI * 2;
+              return [Math.cos(angle), Math.sin(angle)];
+            });
+  const polygon = mask.type === 'polygon' ? polygonFrame(mask.points) : null;
+  const hasOutline = mask.type === 'radial' || mask.type === 'polygon' || mask.type === 'linear';
+  const showOutline = hasOutline && (selectionHint || editor.maskOverlay || !!editGesture.current);
+  const canRotateRadial =
+    (recipe.schemaVersion === 3 || recipe.schemaVersion === 4) &&
+    Boolean(region || repair || protecting);
   const linearEnds =
     mask.type === 'linear' ? projectOverlayPath([mask.start, mask.end], toDisplay) : null;
   const imageLayer =
@@ -1545,73 +1652,64 @@ export function CanvasStage({
               />
             )}
 
-            {editingSelection && editor.maskOverlay && source && dimensions && (
-              <MaskPreview
-                mask={mask}
-                source={source}
-                dimensions={dimensions}
-                recipe={viewRecipe}
-                ratio={display.width / display.height}
-                opacity={region?.opacity ?? 1}
-              />
-            )}
+            {editingSelection &&
+              (editor.maskOverlay || (selectionHint && !hasOutline)) &&
+              source &&
+              dimensions && (
+                <MaskPreview
+                  mask={mask}
+                  source={source}
+                  dimensions={dimensions}
+                  recipe={viewRecipe}
+                  ratio={display.width / display.height}
+                  opacity={region?.opacity ?? 1}
+                />
+              )}
             {editingSelection && (
               <>
-                <svg
-                  className="mask-overlay"
-                  viewBox="0 0 100 100"
-                  preserveAspectRatio="none"
-                  aria-hidden
-                >
-                  {mask.type === 'radial' && center && (
-                    <polygon
-                      points={overlayPolygon(
-                        Array.from({ length: 64 }, (_, i) => {
-                          const a = (i / 64) * Math.PI * 2;
-                          return {
-                            x: mask.centerX + mask.radiusX * Math.cos(a),
-                            y: mask.centerY + mask.radiusY * Math.sin(a),
-                          };
-                        }),
-                      )}
-                      fill="none"
-                      stroke="#fff"
-                      strokeWidth={0.2 / zoom}
-                      strokeDasharray={`${1 / zoom} ${0.7 / zoom}`}
-                    />
-                  )}
-                  {mask.type === 'linear' && linearEnds && (
-                    <line
-                      x1={linearEnds[0]!.x * 100}
-                      y1={linearEnds[0]!.y * 100}
-                      x2={linearEnds[1]!.x * 100}
-                      y2={linearEnds[1]!.y * 100}
-                      stroke="#fff"
-                      strokeWidth={0.35 / zoom}
-                    />
-                  )}
-                  {mask.type === 'polygon' && (
-                    <polygon
-                      points={overlayPolygon(mask.points)}
-                      fill="none"
-                      stroke="#fff"
-                      strokeWidth={0.25 / zoom}
-                    />
-                  )}
-                </svg>
-                {mask.type === 'radial' && (
+                {showOutline && (
+                  <svg
+                    className="mask-overlay"
+                    viewBox="0 0 100 100"
+                    preserveAspectRatio="none"
+                    aria-hidden
+                  >
+                    {radial && (
+                      <polygon
+                        points={overlayPolygon(radialOutline.map(([x, y]) => radial.point(x!, y!)))}
+                        fill="none"
+                        stroke="#fff"
+                        strokeWidth={0.2 / zoom}
+                        strokeDasharray={`${1 / zoom} ${0.7 / zoom}`}
+                      />
+                    )}
+                    {mask.type === 'linear' && linearEnds && (
+                      <line
+                        x1={linearEnds[0]!.x * 100}
+                        y1={linearEnds[0]!.y * 100}
+                        x2={linearEnds[1]!.x * 100}
+                        y2={linearEnds[1]!.y * 100}
+                        stroke="#fff"
+                        strokeWidth={0.35 / zoom}
+                      />
+                    )}
+                    {mask.type === 'polygon' && (
+                      <polygon
+                        points={overlayPolygon(mask.points)}
+                        fill="none"
+                        stroke="#fff"
+                        strokeWidth={0.25 / zoom}
+                      />
+                    )}
+                  </svg>
+                )}
+                {radial && (
                   <>
-                    {handle({ x: mask.centerX, y: mask.centerY }, t('拖动选区中心'), 'center')}
-                    {handle(
-                      { x: mask.centerX + mask.radiusX, y: mask.centerY },
-                      t('拖动横向半径'),
-                      'radiusX',
-                    )}
-                    {handle(
-                      { x: mask.centerX, y: mask.centerY + mask.radiusY },
-                      t('拖动纵向半径'),
-                      'radiusY',
-                    )}
+                    {handle(radial.point(0, 0), t('拖动选区中心'), 'center')}
+                    {handle(radial.point(1, 0), t('拖动横向半径'), 'radiusX')}
+                    {handle(radial.point(0, 1), t('拖动纵向半径'), 'radiusY')}
+                    {canRotateRadial &&
+                      handle(radial.point(0, -1), t('拖动旋转选区'), 'radial-rotation')}
                   </>
                 )}
                 {mask.type === 'linear' && (
@@ -1620,10 +1718,19 @@ export function CanvasStage({
                     {handle(mask.end, t('拖动渐变终点'), 'linear-end')}
                   </>
                 )}
-                {mask.type === 'polygon' &&
-                  mask.points.map((point, index) =>
-                    handle(point, t('拖动多边形点 {v0}', { v0: index + 1 }), `polygon-${index}`),
-                  )}
+                {mask.type === 'polygon' && polygon && (
+                  <>
+                    {handle(polygon.center, t('拖动选区中心'), 'polygon-center')}
+                    {handle(
+                      { x: polygon.center.x, y: Math.max(0, polygon.top - 0.04) },
+                      t('拖动旋转选区'),
+                      'polygon-rotation',
+                    )}
+                    {mask.points.map((point, index) =>
+                      handle(point, t('拖动多边形点 {v0}', { v0: index + 1 }), `polygon-${index}`),
+                    )}
+                  </>
+                )}
               </>
             )}
             {group === 'composite' && imageLayer?.enabled && !comparing && geometryReady && (
