@@ -70,6 +70,87 @@ test('token compaction preserves every original user constraint and a source for
 });
 
 const packet = (event: unknown) => `data: ${JSON.stringify(event)}\r\n\r\n`;
+test('a short punctuation-free SSE delta is delivered during an upstream pause without duplicate reads or another request', async () => {
+  let controller: ReadableStreamDefaultController<Uint8Array>;
+  let requests = 0,
+    release: () => void = () => {};
+  const observed = new Promise<void>((done) => {
+    release = done;
+  });
+  const delivered: string[] = [],
+    encoder = new TextEncoder();
+  const fetcher = async () => {
+    requests++;
+    return new Response(
+      new ReadableStream<Uint8Array>({
+        start(c) {
+          controller = c;
+          c.enqueue(
+            encoder.encode(packet({ type: 'response.output_text.delta', delta: '正在检查画面' })),
+          );
+        },
+      }),
+      { headers: { 'content-type': 'text/event-stream', 'x-request-id': 'fixture-paused' } },
+    );
+  };
+  const pending = streamResponse(
+    'https://api.openai.com/v1/responses',
+    'test-key',
+    { stream: true },
+    fetcher as typeof fetch,
+    async (delta) => {
+      delivered.push(delta);
+      release();
+    },
+  );
+  let watchdog: ReturnType<typeof setTimeout> | undefined;
+  try {
+    await Promise.race([
+      observed,
+      new Promise<never>((_done, reject) => {
+        watchdog = setTimeout(
+          () => reject(new Error('Short response stayed buffered until completion')),
+          2000,
+        );
+      }),
+    ]);
+    assert.deepEqual(delivered, ['正在检查画面']);
+    controller!.enqueue(
+      encoder.encode(packet({ type: 'response.output_text.delta', delta: '并继续' })),
+    );
+    controller!.enqueue(
+      encoder.encode(
+        packet({
+          type: 'response.completed',
+          response: {
+            status: 'completed',
+            output: [
+              {
+                type: 'message',
+                role: 'assistant',
+                content: [{ type: 'output_text', text: '正在检查画面并继续' }],
+              },
+            ],
+            usage: { input_tokens: 7, output_tokens: 3, total_tokens: 10 },
+          },
+        }),
+      ),
+    );
+    controller!.close();
+    const result = await pending;
+    assert.equal(result.requestId, 'fixture-paused');
+    assert.equal(requests, 1);
+    assert.equal(delivered.join(''), '正在检查画面并继续');
+  } finally {
+    clearTimeout(watchdog);
+    try {
+      controller!.close();
+    } catch {
+      /* already closed */
+    }
+    await pending.catch(() => {});
+  }
+});
 test('real SSE frames preserve split UTF-8, stream approved text, and require a terminal receipt', async () => {
   const bytes = new TextEncoder().encode(
     packet({ type: 'response.output_text.delta', delta: '保留人物。' }) +

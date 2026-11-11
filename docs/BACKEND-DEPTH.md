@@ -69,6 +69,9 @@ GitHub 的提交与六轮浏览器、数据库及容器结果以该提交的 Che
 - [x] R13 uint16母版全局线性调色和float32 EXR真实导出已在Linux/OIIO运行。65536个16位等级、负通道、HDR亮度、半透明alpha、ICC及源摘要破坏有独立校验。此单独协议覆盖曝光、冷暖、色偏、对比、饱和、阴影/高光和显式色调映射；**整套V4配方的高位深/HDR往返、神经发丝、三维遮挡和CMYK/PSD完整编辑仍未完成**。
 - [x] R14 团队混音改为有界PCM环形缓冲，使用单调时钟丢弃超过160ms的未播放旧样本，减少包拼接分配；多说话人叠加、限幅、权限移除、包边界和时间停顿分别检查。其余单人/团队AI、打断与授权仍执行既有端到端回归。
 - [ ] R15 按本次最终提交完成整仓原生、浏览器、Agent、语音、账号和容器检查，并对齐前端活动分支。最终GitHub提交与运行以实际检查结果为准。
+- [x] R16 长历史预算计算复用原文分词计数；ABBA同进程对照中位数1344.75→666.83ms，所有规划结果、原始用户约束与候选来源完全相同。短SSE回复在上游停顿时增加250ms交付调度，审核、16次增量上限和单次收费派发保持原关口。实际调度仍受网络和审核耗时影响。
+
+后端阶段 `311100a` 对应的 Linux PostgreSQL/OIIO/OCR 全仓测试为859项，失败/跳过均为0，类型检查与生产构建通过。该结果不替代R15所要求的最终前后端整合验证。
 
 选型已读所引用聊天及第一方材料。采用适合现有CPU/Worker链路的原函数精确查表、RGB导向系数与频率分离，阅读 [GPUPixel滤波链](https://github.com/pixpark/gpupixel/blob/main/src/filter/beauty_face_filter.cc)、[Fast Guided Filter](https://arxiv.org/abs/1505.00996)、[SVDLUT](https://github.com/WontaeaeKim/SVDLUT)、[BiRefNet](https://github.com/ZhengPeng7/BiRefNet) 与 [NAFNet](https://github.com/megvii-research/NAFNet)。没有把未运行的神经模型或研究展示写成已融合的产品能力。前端账号流程按其 `docs/design/account-contract-20261110.md` 对齐；在线支付与注销协议目前仍未实现，原接口不会伪造成功。
 

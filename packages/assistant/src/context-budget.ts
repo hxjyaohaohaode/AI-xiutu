@@ -50,19 +50,23 @@ export function planHistory(
   if (available < 0) throw new ContextBudgetError('CONTEXT_INPUT_BUDGET');
   const messages = history.map((item) => ({ ...item }));
   const size = (item: HistoryMessage) => textTokens(historyContent(item)) + 12;
-  const originalTokens = messages.reduce((sum, item) => sum + size(item), 0);
+  // Tokenization is appreciably more expensive than JSON traversal. Each
+  // immutable historical message needs one count, even when many are archived.
+  const sizes = messages.map(size);
+  const originalTokens = sizes.reduce((sum, count) => sum + count, 0);
   let tokens = originalTokens;
   const compacted: string[] = [];
   for (let i = 0; i < messages.length && tokens > available; i++) {
     const item = messages[i]!;
     if (item.role !== 'assistant') continue;
-    const before = size(item);
+    const before = sizes[i]!;
     // The archive pointer replaces the whole assistant message. It is not a
     // generated summary and never pretends a missing visual result was observed.
     const replacement = `[Earlier assistant response archived${item.sourceTurnId ? `; read_history sourceTurnId=${item.sourceTurnId}` : ''}. Original user instructions immediately above remain authoritative.]`;
-    if (size({ ...item, content: replacement }) >= before) continue;
+    const after = size({ ...item, content: replacement });
+    if (after >= before) continue;
     item.content = replacement;
-    tokens += size(item) - before;
+    tokens += after - before;
     if (item.sourceTurnId) compacted.push(item.sourceTurnId);
   }
   if (tokens > available) throw new ContextBudgetError('CONTEXT_CONSTRAINT_BUDGET');

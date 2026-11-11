@@ -49,8 +49,35 @@ export async function streamResponse(
         deliveries++;
       }
     };
+    let pendingRead: Promise<ReadableStreamReadResult<Uint8Array>> | undefined;
+    const flushDue = Symbol('flush-due');
     while (true) {
-      const { done, value } = await Promise.race([reader.read(), aborted]);
+      // Keep the same in-flight read across a delivery deadline. Starting a
+      // second read after a timer wins would lose/reorder upstream SSE chunks.
+      pendingRead ??= reader.read();
+      let timer: ReturnType<typeof setTimeout> | undefined;
+      let next: ReadableStreamReadResult<Uint8Array> | typeof flushDue;
+      try {
+        next = await Promise.race([
+          pendingRead,
+          aborted,
+          ...(deliveries < 16 && text.length > delivered
+            ? [
+                new Promise<typeof flushDue>((done) => {
+                  timer = setTimeout(() => done(flushDue), 250);
+                }),
+              ]
+            : []),
+        ]);
+      } finally {
+        clearTimeout(timer);
+      }
+      if (next === flushDue) {
+        await flush();
+        continue;
+      }
+      pendingRead = undefined;
+      const { done, value } = next;
       if (done) break;
       total += value.byteLength;
       if (total > 2_000_000) fail('ASSISTANT_STREAM_BUDGET');
