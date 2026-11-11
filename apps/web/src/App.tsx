@@ -194,8 +194,33 @@ const MediaImportDialog = createDeferredFeature(
     </Modal>
   ),
 );
+let accountModuleRetry = 0;
+let recoveredAccountCenter: typeof import('./account/AccountCenter').AccountCenter | undefined;
 const AccountCenter = createDeferredFeature(
-  async () => ({ default: (await import('./account/AccountCenter')).AccountCenter }),
+  async (retry) => {
+    if (recoveredAccountCenter) return { default: recoveredAccountCenter };
+    try {
+      return { default: (await import('./account/AccountCenter')).AccountCenter };
+    } catch (error) {
+      if (!retry || !(error instanceof TypeError)) throw error;
+      // Chromium remembers a failed module URL for this document. A manual
+      // retry gets a fresh URL for the same account chunk without a page reload.
+      const failedUrl = error.message.match(/https?:\/\/\S+$/)?.[0];
+      if (!failedUrl) throw error;
+      const url = new URL(failedUrl);
+      if (
+        url.origin !== window.location.origin ||
+        !/^\/(?:src\/account\/AccountCenter\.tsx|assets\/AccountCenter-[\w-]+\.js)$/.test(url.pathname)
+      )
+        throw error;
+      url.searchParams.set('retry', String(++accountModuleRetry));
+      const module: typeof import('./account/AccountCenter') = await import(
+        /* @vite-ignore */ url.href
+      );
+      recoveredAccountCenter = module.AccountCenter;
+      return { default: recoveredAccountCenter };
+    }
+  },
   '账号信息',
   (state, props) => (
     <AccountPageFrame

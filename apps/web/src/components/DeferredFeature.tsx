@@ -37,7 +37,7 @@ export type DeferredFeatureState = {
 /** Reserved wrapper prop; it is never forwarded to the loaded feature. */
 export type DeferredFeatureNavigation = { onLoadBack?: () => void };
 
-type FeatureLoader<P extends object> = () => Promise<{ default: ComponentType<P> }>;
+type FeatureLoader<P extends object> = (retry: boolean) => Promise<{ default: ComponentType<P> }>;
 type FeatureStateRenderer<P extends object> = (
   state: DeferredFeatureState,
   props: Readonly<P>,
@@ -278,12 +278,15 @@ export function createDeferredFeature<P extends object>(
     const { onLoadBack, ...rest } = props;
     const featureProps = rest as P;
     const [attempt, setAttempt] = useState(() => ({
-      Feature: lazy(loader),
+      Feature: lazy(() => loader(false)),
       generation: 0,
     }));
     const retry = useCallback(() => {
       // React.lazy caches rejected promises. Resetting only the boundary is insufficient.
-      setAttempt((previous) => ({ Feature: lazy(loader), generation: previous.generation + 1 }));
+      setAttempt((previous) => ({
+        Feature: lazy(() => loader(true)),
+        generation: previous.generation + 1,
+      }));
     }, []);
     const { Feature } = attempt;
     const state = (kind: DeferredFeatureState['kind']): DeferredFeatureState => ({

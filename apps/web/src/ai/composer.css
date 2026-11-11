@@ -1170,6 +1170,7 @@
   .live-assistant-v2:not([data-in-call='true']) > .ai-conversation-body {
     min-height: 64px;
     padding-block: 0;
+    scroll-padding-block: 6px;
   }
   .live-assistant-v2:not([data-in-call='true']) > .ai-composer-region {
     padding-block: 1px;
