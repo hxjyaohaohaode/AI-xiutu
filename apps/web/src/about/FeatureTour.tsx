@@ -161,7 +161,13 @@ export function FeatureTour({ copy: c }: { copy: EditorialCopy }) {
           </div>
         </div>
         <div className="feature-artwork-stage" id="feature-artwork">
-          <div className="feature-artwork-stack" ref={artworkStack}>
+          <div
+            className="feature-artwork-stack"
+            ref={artworkStack}
+            onPointerDownCapture={() => {
+              overrideAt.current = window.scrollY;
+            }}
+          >
             {c.features.map((item, index) => (
               <div
                 className="experience-tour-image"

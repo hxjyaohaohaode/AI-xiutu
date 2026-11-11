@@ -1396,7 +1396,19 @@ try {
       assert.equal(entry.operation, 'assistant-turn');
       const river = billing.getByRole('region', { name: '预占与结算变化', exact: true });
       await river.waitFor();
-      assert.equal(await river.getByRole('img').count(), 4);
+      assert.deepEqual(
+        await river
+          .locator('figure[data-kind]')
+          .evaluateAll((figures) => figures.map((figure) => figure.dataset.kind)),
+        ['held', 'consumed', 'released', 'expired'],
+      );
+      const lanes = river.getByRole('slider');
+      assert.equal(await lanes.count(), 4);
+      await lanes.first().press('Home');
+      for (const lane of await lanes.all()) {
+        assert.equal(await lane.getAttribute('aria-valuenow'), '1');
+        assert.ok(await lane.getAttribute('aria-valuetext'));
+      }
       await billing.getByRole('button', { name: `展开记录 ${entry.id}`, exact: true }).click();
       const ledgerDetail = billing.locator('.usage-detail-inner');
       await ledgerDetail.getByText(turn.id, { exact: true }).waitFor();
