@@ -2,6 +2,7 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 import {
   createRecipeV4,
+  createCutoutTrimap,
   createRasterMask,
   linearToSrgb,
   renderCutout,
@@ -9,7 +10,47 @@ import {
   srgbToLinear,
   type RGBAImage,
 } from '../src/index.js';
-import { findMatteAnchors } from '../src/matte-anchors.js';
+import { findMatteAnchors, findVisibleMatteAnchors } from '../src/matte-anchors.js';
+
+test('the first hard boundary blocks farther matte samples in each ray', () => {
+  const width = 7;
+  const height = 1;
+  const image = { width, height, data: new Uint8ClampedArray(width * 4).fill(255) };
+  const labels = Float32Array.of(1, 0, 0.5, 0.5, 0.5, 1, 0);
+  const rays = findVisibleMatteAnchors(image, labels, labels, 6, {});
+  assert.deepEqual([...rays.samples.subarray(0, 2)], [2, 6]);
+  image.data[7] = 0;
+  const blocked = findVisibleMatteAnchors(image, labels, labels, 6, {});
+  assert.deepEqual([...blocked.samples.subarray(0, 2)], [0, 6]);
+});
+
+test('native trimaps retain more than 4,096 runs and reject source dimension mismatches', () => {
+  const width = 96;
+  const height = 64;
+  const weights = Uint8Array.from({ length: width * height }, (_, i) => [0, 128, 255][i % 3]!);
+  assert.throws(() => createRasterMask(width, height, weights), /run budget/);
+  const selection = createCutoutTrimap(width, height, weights);
+  assert.equal(selection.runs.length, width * height);
+  const image = { width, height, data: new Uint8ClampedArray(weights.length * 4).fill(255) };
+  const settings = { selection, algorithm: 'guided-v4', radius: 0, decontaminate: 0 } as const;
+  const output = renderCutout(image, settings);
+  assert.deepEqual(
+    output.data.filter((_, at) => at % 4 === 3),
+    new Uint8ClampedArray(weights),
+  );
+  assert.throws(
+    () =>
+      renderCutout(image, {
+        ...settings,
+        selection: { ...selection, width: height, height: width },
+      }),
+    /dimensions must match/,
+  );
+  assert.throws(
+    () => renderCutout(image, { ...settings, selection: { ...selection, runs: [4, 4] } }),
+    /adjacent runs must differ/,
+  );
+});
 
 test('wide exposure range agrees with independent linear-light gains at every one-third stop and keeps alpha', () => {
   const image: RGBAImage = {

@@ -3,6 +3,7 @@ import { randomUUID } from 'node:crypto';
 import test from 'node:test';
 import sharp from 'sharp';
 import {
+  createCutoutTrimap,
   createRasterMask,
   createRecipeV4,
   renderCutout,
@@ -106,6 +107,44 @@ test(
       assert.deepEqual(
         await sharp(actual.rawPayload).ensureAlpha().raw().toBuffer(),
         Buffer.from(expected.data),
+      );
+      const nativeSettings: CutoutSettings = {
+        ...settings,
+        algorithm: 'guided-v5',
+        selection: createCutoutTrimap(
+          64,
+          48,
+          Uint8Array.from({ length: 64 * 48 }, (_, at) =>
+            at % 64 < 20 ? 255 : at % 64 < 27 ? 128 : 0,
+          ),
+        ),
+      };
+      const nativeRequest = {
+        kind: 'cutout',
+        sourceAssetId: f.assetId,
+        requestId: randomUUID(),
+        name: 'native-trimap.png',
+        settings: nativeSettings,
+      };
+      const wrongSize = {
+        ...nativeRequest,
+        settings: { ...nativeSettings, selection: createCutoutTrimap(1, 1, Uint8Array.of(255)) },
+      };
+      const nativeQuote = await f.call('POST', `${path}/quote`, wrongSize);
+      assert.equal(nativeQuote.statusCode, 200);
+      assert.deepEqual(nativeQuote.json().limits, ['CUTOUT_TRIMAP_DIMENSIONS']);
+      assert.equal((await f.call('POST', path, wrongSize)).statusCode, 422);
+      const native = await f.call('POST', path, nativeRequest);
+      assert.equal(native.statusCode, 201, native.body);
+      assert.equal(
+        (await f.call('GET', `/v1/assets/${native.json().asset.id}/derivation`)).json().algorithm,
+        'rgb-guided-trimap-v5',
+      );
+      const png = await f.call('GET', native.json().asset.url);
+      assert.equal(png.statusCode, 200);
+      assert.deepEqual(
+        await sharp(png.rawPayload).ensureAlpha().raw().toBuffer(),
+        Buffer.from(renderCutout({ width: 64, height: 48, data: source }, nativeSettings).data),
       );
     } finally {
       await f.close();

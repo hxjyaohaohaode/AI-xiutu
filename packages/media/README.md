@@ -73,7 +73,7 @@ DZI：`tileSize` 为 256/512/1024，`overlap:1`；`levels = ceil(log2(max(width,
 | EXR/Radiance                                 | 可选 OpenImageIO，flat 1/3/4 通道 float 解码与独立线性母版     | 至多50MP；deep、multipart、未知显式色域/曲线拒绝                      |
 | 浮点 TIFF、SVG/PDF、JXL/JP2、动画/多页、HEIC | 当前没有完整开启的导入工作流                                   | 不能凭扩展名、依赖中的 decoder 名称或文件选择器宣称支持               |
 
-本机验证过 JPEG、PNG、WebP、AVIF、GIF、16 位 TIFF/PNG、RGB8/RGB16 PSD、P3 ICC、CMYK JPEG/TIFF、实际 Nikon NEF、float EXR 与 Radiance。RAW 实测只覆盖一个真实相机样本，不能推广为所有相机 RAW 已通过。具体证据见 `test/media.test.ts`、`scripts/qa/media-verify.ts` 和核查报告。
+本机验证过 JPEG、PNG、WebP、AVIF、GIF、16 位 TIFF/PNG、RGB8/RGB16 PSD、P3 ICC、CMYK JPEG/TIFF、实际 Nikon NEF、float EXR 与 Radiance。原件、母版原像素窗口、调色历史、PNG16/TIFF16/EXR32 的实拍验证另覆盖 Nikon NEF、Canon CR2、Sony A7 III ARW、富士 X-T4 RAF、宾得 K-1 DNG 和 Pixel 6 Pro DNG。Sony、富士、宾得和 Pixel 样本来自 raw.pixls.us 的 CC0 条目 2414、3914、2470 和 5961。具体证据见 `test/media.test.ts`、`scripts/qa/media-verify.ts` 和核查报告。
 
 ### ICC 与元数据
 

@@ -180,7 +180,7 @@ async function checkLocalCutout(browser, origin, image) {
     assert.equal(await download.failure(), null);
     const bytes = await readFile(await download.path());
     const settings = await page.evaluate(() => window.observedCutout);
-    assert.equal(settings.algorithm, 'guided-v4');
+    assert.equal(settings.algorithm, 'guided-v5');
     const expected = renderCutout(image, settings);
     const decoded = await sharp(bytes).ensureAlpha().raw().toBuffer();
     assert.deepEqual(decoded, Buffer.from(expected.data));
@@ -246,7 +246,7 @@ async function checkCloudCutout(sourcePng, settings, browserPixels) {
     const decoded = await sharp(download.rawPayload).ensureAlpha().raw().toBuffer();
     assert.deepEqual(decoded, browserPixels);
     const lineage = (await fixture.call('GET', `/v1/assets/${asset.id}/derivation`)).json();
-    assert.equal(lineage.algorithm, 'rgb-guided-trimap-v4');
+    assert.equal(lineage.algorithm, 'rgb-guided-trimap-v5');
     assert.equal(lineage.sources[0].assetId, request.sourceAssetId);
     assert.equal((await fixture.call('POST', path, request)).json().asset.id, asset.id);
     return {
@@ -461,7 +461,7 @@ try {
     await sheet(`${source.name}-beauty`, beautyTiles);
     if (analysis.segmentation?.subject) {
       const tiles = [{ label: 'Original', image }];
-      for (const algorithm of ['guided-v3', 'guided-v4']) {
+      for (const algorithm of ['guided-v4', 'guided-v5']) {
         const start = performance.now(),
           cutout = renderCutout(image, {
             algorithm,

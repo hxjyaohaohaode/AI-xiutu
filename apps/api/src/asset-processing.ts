@@ -18,7 +18,10 @@ import {
   type Queryable,
 } from '@ai-xiutu/db';
 import {
+  CUTOUT_ALGORITHMS,
   MAX_CUTOUT_PIXELS,
+  MAX_CUTOUT_TRIMAP_RUNS,
+  parseCutoutSelection,
   parseEditorRecipe,
   parseSelectionMaskV3,
   restorationCost,
@@ -46,10 +49,11 @@ export const assetProcessingCapabilities = () => ({
   sourcePixelFormat: 'srgb-rgba8',
   maxEncodedBytes: maxEncoded,
   cutout: {
-    algorithms: ['ray-v1', 'guided-v2', 'guided-v3', 'guided-v4'],
+    algorithms: CUTOUT_ALGORITHMS,
     defaultAlgorithm: 'ray-v1',
     maxPixels: MAX_CUTOUT_PIXELS,
     maxUncertainPixels: 1_048_576,
+    trimap: { type: 'trimap', maxRuns: MAX_CUTOUT_TRIMAP_RUNS, coordinates: 'source-pixels' },
     semanticSelectionRequired: true,
   },
   restoration: {
@@ -312,8 +316,9 @@ export function registerAssetProcessing(
     const body = derivedAssetRequest.parse(req.body);
     await projectAccess(db, projectId, user.id, 'edit');
     await rateLimit(db, `derive-quote:${user.id}`, 90, 60);
+    const cutoutSelection =
+      body.kind === 'cutout' ? parseCutoutSelection(body.settings.selection) : undefined;
     if (body.kind === 'cutout') {
-      parseSelectionMaskV3(body.settings.selection);
       if (body.settings.foreground !== undefined) parseSelectionMaskV3(body.settings.foreground);
       if (body.settings.background !== undefined) parseSelectionMaskV3(body.settings.background);
     } else if (body.kind === 'restoration') {
@@ -326,6 +331,11 @@ export function registerAssetProcessing(
         : [body.sourceAssetId];
     const assets = await sources(projectId, ids),
       limits: string[] = [];
+    if (
+      cutoutSelection?.type === 'trimap' &&
+      (cutoutSelection.width !== assets[0]!.width || cutoutSelection.height !== assets[0]!.height)
+    )
+      limits.push('CUTOUT_TRIMAP_DIMENSIONS');
     if (assets.some((asset) => asset.width * asset.height > MAX_CUTOUT_PIXELS))
       limits.push('SOURCE_PIXEL_BUDGET');
     const encodedBytes = assets.reduce((sum, asset) => sum + Number(asset.bytes), 0);
@@ -362,11 +372,13 @@ export function registerAssetProcessing(
     const body = derivedAssetRequest.parse(req.body);
     await projectAccess(db, projectId, user.id, 'edit');
     await rateLimit(db, `derive-asset:${user.id}`, 30, 60);
+    const cutoutSelection =
+      body.kind === 'cutout' ? parseCutoutSelection(body.settings.selection) : undefined;
     const settings =
       body.kind === 'cutout'
         ? {
             ...body.settings,
-            selection: parseSelectionMaskV3(body.settings.selection),
+            selection: cutoutSelection,
             foreground:
               body.settings.foreground === undefined
                 ? undefined
@@ -411,6 +423,11 @@ export function registerAssetProcessing(
         : [...new Set(body.cells.map((cell) => cell.assetId))];
     const assets = await sources(projectId, ids);
     if (
+      cutoutSelection?.type === 'trimap' &&
+      (cutoutSelection.width !== assets[0]!.width || cutoutSelection.height !== assets[0]!.height)
+    )
+      throw new HttpError(422, 'CUTOUT_TRIMAP_DIMENSIONS', '三分图尺寸必须和原图完全一致');
+    if (
       body.kind === 'restoration' &&
       !restorationCost(assets[0]!.width, assets[0]!.height, body.settings).available
     )
@@ -452,6 +469,7 @@ export function registerAssetProcessing(
       body.name,
       body.kind === 'cutout'
         ? {
+            'guided-v5': 'rgb-guided-trimap-v5',
             'guided-v4': 'rgb-guided-trimap-v4',
             'guided-v3': 'rgb-guided-trimap-v3',
             'guided-v2': 'rgb-guided-trimap-v2',

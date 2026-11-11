@@ -170,7 +170,14 @@ export {
 } from './v4-types.js';
 export { MAX_V4_RETOUCH_PIXELS } from './v4-spatial.js';
 export { renderRecipeV4, renderRecipeV4Tiled } from './v4-engine.js';
-export { renderCutout, MAX_CUTOUT_PIXELS, type CutoutSettings } from './matte.js';
+export { CUTOUT_ALGORITHMS, renderCutout, type CutoutSettings } from './matte.js';
+export {
+  createCutoutTrimap,
+  parseCutoutSelection,
+  MAX_CUTOUT_PIXELS,
+  MAX_CUTOUT_TRIMAP_RUNS,
+  type CutoutTrimap,
+} from './matte-trimap.js';
 export {
   renderPhotoRestoration,
   restorationCost,
