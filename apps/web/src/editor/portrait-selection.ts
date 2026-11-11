@@ -1,3 +1,4 @@
+import { t } from '../i18n';
 import type { SourceFrame } from '@ai-xiutu/contracts';
 import {
   createAdjustmentRegionV3,
@@ -41,7 +42,9 @@ export function preparePortraitSelection(
   if (!checked.segmentation)
     throw new Error('这次分析没有提供头发或背景范围，可到“局部”手动建立选区。');
   if (recipe.regionEdits.length >= MAX_V3_REGION_EDITS)
-    throw new Error(`局部选区已达到 ${MAX_V3_REGION_EDITS} 个，请先整理后再添加。`);
+    throw new Error(
+      t('局部选区已达到 {count} 个，请先整理后再添加。', { count: MAX_V3_REGION_EDITS }),
+    );
   if (recipe.regionEdits.some((region) => region.id === id))
     throw new Error('这个选区标识已经存在，请重新建立选区。');
   const region = createAdjustmentRegionV3({

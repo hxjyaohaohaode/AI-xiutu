@@ -1,6 +1,7 @@
 import React from 'react';
 import ReactDOM from 'react-dom/client';
-import { App } from './App';
+import { SiteShell } from './SiteShell';
+import { initializeLocale } from './i18n';
 import './styles.css';
 import './features.css';
 import './workspace/workspace.css';
@@ -22,9 +23,13 @@ import './account/account-center.css';
 import './account/account-entry.css';
 import './account/document-drafts.css';
 import './components/deferred-feature.css';
+import './workspace/experience.css';
+import './about/about.css';
 
-ReactDOM.createRoot(document.getElementById('root')!).render(
-  <React.StrictMode>
-    <App />
-  </React.StrictMode>,
+void initializeLocale().then(() =>
+  ReactDOM.createRoot(document.getElementById('root')!).render(
+    <React.StrictMode>
+      <SiteShell />
+    </React.StrictMode>,
+  ),
 );

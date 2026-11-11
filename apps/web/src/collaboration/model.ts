@@ -5,6 +5,7 @@ import {
   type EditorRecipe,
 } from '@ai-xiutu/editor';
 import type { CollaborationOperation, CollaborationTarget } from '@ai-xiutu/contracts';
+import { t } from '../i18n';
 
 /** PostgreSQL JSONB and browser objects do not share key insertion order. Array order
  * remains significant: it carries layer stacking, brush strokes and curve points. */
@@ -188,15 +189,17 @@ export function inverseOnLatest(
   return mergeOwnDraft(after, before, latest);
 }
 export function targetLabel(target: CollaborationTarget) {
-  if (target.kind === 'document') return '整幅作品';
+  if (target.kind === 'document') return t('整幅作品');
   if (target.kind === 'parameter') return target.id;
-  if (target.kind === 'curve') return `${target.id.toUpperCase()} 曲线`;
-  return (
-    {
-      region: '局部',
-      'region-group': '局部分组',
-      'image-layer': '合成图层',
-      'paint-layer': '绘制图层',
-    } as const
-  )[target.kind];
+  if (target.kind === 'curve') return t('{channel} 曲线', { channel: target.id.toUpperCase() });
+  return t(
+    (
+      {
+        region: '局部',
+        'region-group': '局部分组',
+        'image-layer': '合成图层',
+        'paint-layer': '绘制图层',
+      } as const
+    )[target.kind],
+  );
 }

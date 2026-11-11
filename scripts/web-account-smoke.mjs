@@ -14,6 +14,7 @@ import { setTimeout as delay } from 'node:timers/promises';
 import { chromium } from 'playwright';
 import { createDatabase } from '@ai-xiutu/db';
 import { ProviderError } from '@ai-xiutu/providers';
+import { runSiteEntryChecks } from './qa/site-entry.browser.mjs';
 
 if (process.env.CI !== 'true' || process.env.NODE_ENV === 'production')
   throw new Error('Run only in isolated non-production CI.');
@@ -128,7 +129,8 @@ async function check(name, run) {
     throw error;
   }
 }
-async function newContext(viewport = { width: 1440, height: 960 }) {
+async function newContext(viewport = { width: 1440, height: 960 }, entry = 'studio') {
+  assert.ok(entry === 'about' || entry === 'studio', 'Unknown public entry route');
   const context = await browser.newContext({
     viewport,
     reducedMotion: motion,
@@ -154,8 +156,9 @@ async function newContext(viewport = { width: 1440, height: 960 }) {
     }
   });
   currentPage = page;
-  await page.goto(origin);
-  await page.getByRole('button', { name: '打开空间与项目', exact: true }).waitFor();
+  await page.goto(`${origin}/${entry === 'studio' ? '#/studio' : ''}`);
+  if (entry === 'about') await page.locator('.about-page').waitFor();
+  else await page.getByRole('button', { name: '打开空间与项目', exact: true }).waitFor();
   return { context, page };
 }
 async function capture(page, name) {
@@ -491,6 +494,16 @@ try {
     channel: process.env.BROWSER_CHANNEL || undefined,
   });
   report.browser = browser.version();
+  await runSiteEntryChecks({
+    newContext,
+    check,
+    capture,
+    until,
+    authControl,
+    measureReachable,
+    report,
+    phone: primaryPhone,
+  });
   main = await newContext();
   let primaryUserId, originalCookie, peerCookie, documentActor;
 
@@ -1408,6 +1421,9 @@ try {
           ]);
           await field('phone').fill(phone);
           await button('已有验证码，继续').click();
+          // Optional invitation codes use progressive disclosure. Exercise the
+          // real expansion before checking this field's visible geometry.
+          if (!(await field('invite-code').isVisible())) await button('有邀请码？').click();
           await record('register-details', '注册账号', [
             ['code', field('code')],
             ['name', field('display-name')],

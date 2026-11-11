@@ -1,3 +1,4 @@
+import { t } from '../i18n';
 import { ChoiceSelect } from './ChoiceSelect';
 import { useEffect, useRef, useState, type PointerEvent } from 'react';
 import {
@@ -236,8 +237,8 @@ export function DrawingBoard({
   return (
     <>
       <Modal
-        title="草图"
-        subtitle="先画构图，确认提交后才上传参考图。"
+        title={t('草图')}
+        subtitle={t('先画构图，确认提交后才上传参考图。')}
         onClose={onClose}
         canClose={canCloseDrawing}
         wide
@@ -246,7 +247,7 @@ export function DrawingBoard({
         <div className="drawing-toolbar" data-motion="drawing-tools">
           <div className="drawing-tools">
             <IconButton
-              label="铅笔"
+              label={t('铅笔')}
               aria-pressed={!erase}
               className={!erase ? 'selected' : ''}
               onClick={() => setErase(false)}
@@ -254,7 +255,7 @@ export function DrawingBoard({
               <PencilSimple size={21} />
             </IconButton>
             <IconButton
-              label="橡皮擦"
+              label={t('橡皮擦')}
               aria-pressed={erase}
               className={erase ? 'selected' : ''}
               onClick={() => setErase(true)}
@@ -263,14 +264,14 @@ export function DrawingBoard({
             </IconButton>
             <span className="toolbar-separator" />
             <IconButton
-              label="撤销草图笔画"
+              label={t('撤销草图笔画')}
               disabled={busy || !cursor}
               onClick={() => setCursor((v) => v - 1)}
             >
               <ArrowCounterClockwise size={20} />
             </IconButton>
             <IconButton
-              label="重做草图笔画"
+              label={t('重做草图笔画')}
               disabled={busy || cursor >= strokes.length}
               onClick={() => setCursor((v) => v + 1)}
             >
@@ -278,7 +279,7 @@ export function DrawingBoard({
             </IconButton>
           </div>
           <ChoiceSelect
-            ariaLabel="草图画幅"
+            ariaLabel={t('草图画幅')}
             className="drawing-ratio"
             size="compact"
             value={ratio}
@@ -287,13 +288,13 @@ export function DrawingBoard({
               void changeRatio(value);
             }}
             options={[
-              { value: 'square', label: '1:1 方形' },
-              { value: 'landscape', label: '3:2 横向' },
-              { value: 'portrait', label: '2:3 竖向' },
+              { value: 'square', label: t('1:1 方形') },
+              { value: 'landscape', label: t('3:2 横向') },
+              { value: 'portrait', label: t('2:3 竖向') },
             ]}
           />
           <IconButton
-            label="清空草图"
+            label={t('清空草图')}
             disabled={busy || !cursor}
             onClick={() => {
               void clearDrawing();
@@ -303,12 +304,12 @@ export function DrawingBoard({
           </IconButton>
         </div>
         <div className="drawing-controls" data-motion="drawing-colors">
-          <div className="drawing-colors" aria-label="快捷笔触颜色">
+          <div className="drawing-colors" aria-label={t('快捷笔触颜色')}>
             {colors.map((value) => (
               <button
                 key={value}
                 style={{ '--swatch': value } as React.CSSProperties}
-                aria-label={`颜色 ${value}`}
+                aria-label={t('颜色 {v0}', { v0: value })}
                 aria-pressed={value === color.slice(0, 7) && !erase}
                 className={value === color.slice(0, 7) && !erase ? 'selected' : ''}
                 onClick={() => {
@@ -320,15 +321,15 @@ export function DrawingBoard({
             <button
               className="full-palette-trigger"
               aria-expanded={showColor}
-              aria-label="打开完整颜色选择器"
+              aria-label={t('打开完整颜色选择器')}
               onClick={() => setShowColor(!showColor)}
             >
               <span style={{ background: color }} />
-              色谱
+              {t('色谱')}
             </button>
           </div>
           <label className="drawing-width">
-            {erase ? '橡皮' : '笔触'}
+            {erase ? t('橡皮') : t('笔触')}
             <input
               type="range"
               min="1"
@@ -347,9 +348,9 @@ export function DrawingBoard({
               aria-hidden={!showColor}
             >
               <div className="popover-heading">
-                <strong>完整颜色</strong>
+                <strong>{t('完整颜色')}</strong>
                 <button className="text-button" onClick={() => setShowColor(false)}>
-                  完成
+                  {t('完成')}
                 </button>
               </div>
               <ColorPicker
@@ -358,7 +359,7 @@ export function DrawingBoard({
                   setColor(value);
                   setErase(false);
                 }}
-                label="笔触颜色"
+                label={t('笔触颜色')}
               />
             </div>
           )}
@@ -369,7 +370,7 @@ export function DrawingBoard({
             width={dimensions[0]}
             height={dimensions[1]}
             style={{ width: dimensions[0]! * fit, height: dimensions[1]! * fit }}
-            aria-label="草图画布，使用鼠标、手指或触控笔绘画"
+            aria-label={t('草图画布，使用鼠标、手指或触控笔绘画')}
             onPointerDown={(event) => {
               if (busy || locked.current || pointer.current !== null || event.button !== 0) return;
               if (
@@ -377,7 +378,7 @@ export function DrawingBoard({
                 strokes.slice(0, cursor).reduce((sum, stroke) => sum + stroke.points.length, 0) >=
                   50000
               ) {
-                setError('这张草图已达到本地笔画预算，请先下载或放入编辑器，再开始新草图。');
+                setError(t('这张草图已达到本地笔画预算，请先下载或放入编辑器，再开始新草图。'));
                 return;
               }
               event.preventDefault();
@@ -415,9 +416,11 @@ export function DrawingBoard({
         </div>
         <div className="drawing-meta">
           <span>
-            {dimensions[0]} × {dimensions[1]} · 白底 PNG
+            {dimensions[0]} × {dimensions[1]} {t('· 白底 PNG')}
           </span>
-          <span>{cursor} 条笔画 · 支持鼠标与触控</span>
+          <span>
+            {cursor} {t('条笔画 · 支持鼠标与触控')}
+          </span>
         </div>
         <InlineError message={error} />
         <div className="drawing-actions">
@@ -427,7 +430,7 @@ export function DrawingBoard({
             onClick={() => void useDrawing('download')}
           >
             <DownloadSimple size={17} />
-            下载草图
+            {t('下载草图')}
           </button>
           <button
             className="button button-secondary"
@@ -435,7 +438,7 @@ export function DrawingBoard({
             onClick={() => void useDrawing('local')}
           >
             <ImageSquare size={17} />
-            放进编辑器
+            {t('放进编辑器')}
           </button>
           <button
             className="button button-primary"
@@ -447,7 +450,7 @@ export function DrawingBoard({
             ) : (
               <>
                 <Sparkle size={17} />
-                作为生图参考
+                {t('作为生图参考')}
               </>
             )}
           </button>

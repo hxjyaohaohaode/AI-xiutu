@@ -421,6 +421,14 @@ async function layoutAssertions(page, phone) {
       frame: rect('.image-frame'),
       slider: rect('.free-panel[aria-hidden="false"] .parameter-shelf-current input[type="range"]'),
       control: rect('.free-panel[aria-hidden="false"] .parameter-shelf-current .precision-control'),
+      heading: rect('.free-panel[aria-hidden="false"] .parameter-shelf-current .precision-heading'),
+      scale: rect('.free-panel[aria-hidden="false"] .parameter-shelf-current .precision-scale'),
+      scaleStart: rect(
+        '.free-panel[aria-hidden="false"] .parameter-shelf-current .precision-scale > span:first-child',
+      ),
+      scaleEnd: rect(
+        '.free-panel[aria-hidden="false"] .parameter-shelf-current .precision-scale > span:last-child',
+      ),
       scroll: rect('.inspector-scroll'),
       scrollTop: scroller?.scrollTop ?? null,
       scrollHeight: scroller?.scrollHeight ?? null,
@@ -454,6 +462,20 @@ async function layoutAssertions(page, phone) {
     measured.slider.y >= measured.scroll.y - 1 &&
       measured.slider.bottom <= measured.scroll.bottom + 1,
     'the active slider is inside its own visible scroller',
+  );
+  assert.ok(
+    measured.heading && measured.scale && measured.scaleStart && measured.scaleEnd,
+    'parameter bounds are rendered with the active control',
+  );
+  assert.ok(
+    measured.scale.y >= measured.heading.bottom && measured.scale.y >= measured.slider.bottom - 5.5,
+    'min/max labels stay below the value and reset row, even with About CSS loaded',
+  );
+  assert.ok(
+    measured.scaleStart.x + measured.scaleStart.width < measured.scaleEnd.x &&
+      measured.scaleStart.x >= measured.scale.x - 1 &&
+      measured.scaleEnd.x + measured.scaleEnd.width <= measured.scale.x + measured.scale.width + 1,
+    'signed min/max labels occupy distinct ends of their own full-width row',
   );
   if (phone) {
     assert.ok(
@@ -623,7 +645,7 @@ try {
         acceptDownloads: true,
       });
       const page = await watchPage(context);
-      await page.goto(origin);
+      await page.goto(`${origin}/#/studio`);
       await page
         .getByLabel('选择照片', { exact: true })
         .setInputFiles({ name: 'technical-gradient.png', mimeType: 'image/png', buffer: png });
@@ -740,7 +762,7 @@ try {
           acceptDownloads: true,
         });
         const page = await watchPage(context);
-        await page.goto(origin);
+        await page.goto(`${origin}/#/studio`);
         assert.equal(
           await page.evaluate(() => matchMedia('(prefers-reduced-motion: reduce)').matches),
           false,
@@ -869,7 +891,7 @@ try {
       acceptDownloads: true,
     });
     const page = await watchPage(context);
-    await page.goto(origin);
+    await page.goto(`${origin}/#/studio`);
     await page
       .getByLabel('选择照片', { exact: true })
       .setInputFiles({ name: 'geometry.png', mimeType: 'image/png', buffer: png });
@@ -928,7 +950,7 @@ try {
           reducedMotion: 'reduce',
         });
         const page = await watchPage(context);
-        await page.goto(origin);
+        await page.goto(`${origin}/#/studio`);
         await page
           .getByLabel('选择照片', { exact: true })
           .setInputFiles({ name: 'freehand.png', mimeType: 'image/png', buffer: png });
@@ -1148,7 +1170,7 @@ try {
     assert.equal(login.status(), 200, 'test account must pass actual password verification');
     assert.equal((await login.json()).user.id, actor.id);
     const page = await watchPage(context);
-    await page.goto(origin);
+    await page.goto(`${origin}/#/studio`);
     await page.getByRole('button', { name: '打开空间与项目', exact: true }).click();
     await page
       .locator('.sidebar')
@@ -2128,7 +2150,7 @@ try {
     };
     try {
       page = await watchPage(context);
-      await page.goto(origin);
+      await page.goto(`${origin}/#/studio`);
       await page
         .getByLabel('选择照片', { exact: true })
         .setInputFiles({ name: 'CI-continuous-preview.png', mimeType: 'image/png', buffer: png });
@@ -2271,7 +2293,10 @@ try {
       await page.mouse.down();
       const samples = diagnostic.heldSamples;
       try {
-        assert.ok(await range.getAttribute('data-qa-preview-pointer'), 'the range received pointerdown');
+        assert.ok(
+          await range.getAttribute('data-qa-preview-pointer'),
+          'the range received pointerdown',
+        );
         const down = await page.evaluate(() => window.continuousPreviewTrace.down);
         assert.ok(
           down?.trusted && down.pointerType === 'mouse' && down.buttons === 1,
@@ -2350,7 +2375,10 @@ try {
       const captures = await Promise.allSettled([
         saveDiagnostic('failed'),
         page && !page.isClosed()
-          ? page.screenshot({ path: join(artifacts, 'continuous-preview-failure.png'), fullPage: true })
+          ? page.screenshot({
+              path: join(artifacts, 'continuous-preview-failure.png'),
+              fullPage: true,
+            })
           : Promise.resolve(),
       ]);
       for (const capture of captures)

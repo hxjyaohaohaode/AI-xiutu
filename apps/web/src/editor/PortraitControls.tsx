@@ -1,3 +1,4 @@
+import { t } from '../i18n';
 import { MotionDetails } from '../motion/Presence';
 import { ChoiceSelect } from '../components/ChoiceSelect';
 import { useEffect, useId, useRef, useState } from 'react';
@@ -214,7 +215,7 @@ export function PortraitControls({
       );
       apply(
         next,
-        '调整' + (PORTRAIT_TOOLS.find((tool) => tool.id === id)?.label ?? '人像'),
+        t('调整{v0}', { v0: t(PORTRAIT_TOOLS.find((tool) => tool.id === id)?.label ?? '人像') }),
         commit,
       );
     } catch (error) {
@@ -244,20 +245,20 @@ export function PortraitControls({
   }
   return (
     <section className="advanced-tool-family portrait-controls-v3" data-motion="portrait-controls">
-      <div className="tonal-tabs portrait-categories" aria-label="人像工具类别">
+      <div className="tonal-tabs portrait-categories" aria-label={t('人像工具类别')}>
         {(
           [
-            ['skin', '美肤'],
-            ['features', '面部'],
-            ['body', '身形'],
-            ['makeup', '美妆'],
+            ['skin', t('美肤')],
+            ['features', t('面部')],
+            ['body', t('身形')],
+            ['makeup', t('美妆')],
           ] as const
         ).map(([id, label]) => (
           <button
             key={id}
             aria-pressed={category === id}
             onClick={() => {
-              editor.commitCurrent('完成人像调节');
+              editor.commitCurrent(t('完成人像调节'));
               setCategory(id);
               const next = state.analysis?.targets.find(
                 (t) => t.kind === (id === 'body' ? 'body' : 'face'),
@@ -277,14 +278,14 @@ export function PortraitControls({
         >
           <Sparkle size={16} />
           {state.analysis
-            ? '重新识别人物'
+            ? t('重新识别人物')
             : category === 'body'
-              ? '识别身体位置'
-              : '识别照片中的人物'}
+              ? t('识别身体位置')
+              : t('识别照片中的人物')}
         </button>
         {state.progress && (
           <button className="text-button" onClick={state.cancel}>
-            取消识别
+            {t('取消识别')}
           </button>
         )}
       </div>
@@ -297,7 +298,7 @@ export function PortraitControls({
           onClick={createCutout}
         >
           <StudioGlyph name="select" size={18} />
-          {cutting ? '正在精修透明边缘' : '从原图提取人物素材'}
+          {cutting ? t('正在精修透明边缘') : t('从原图提取人物素材')}
         </button>
       )}
       <InlineError message={state.error} />
@@ -305,7 +306,7 @@ export function PortraitControls({
         <div
           className="advanced-row"
           role="group"
-          aria-label="从识别结果建立局部选区"
+          aria-label={t('从识别结果建立局部选区')}
           aria-describedby={selectionHintId}
         >
           <button
@@ -314,7 +315,7 @@ export function PortraitControls({
             disabled={!selectionAvailable}
             onClick={() => createSelection('hair')}
           >
-            <StudioGlyph name="hair" size={18} /> 头发选区
+            <StudioGlyph name="hair" size={18} /> {t('头发选区')}
           </button>
           <button
             type="button"
@@ -322,30 +323,30 @@ export function PortraitControls({
             disabled={!selectionAvailable}
             onClick={() => createSelection('background')}
           >
-            <StudioGlyph name="background" size={18} /> 背景选区
+            <StudioGlyph name="background" size={18} /> {t('背景选区')}
           </button>
         </div>
         <p className="control-note" id={selectionHintId}>
           {recipe.regionEdits.length >= MAX_V3_REGION_EDITS
-            ? `已有 ${MAX_V3_REGION_EDITS} 个局部，请先整理选区。`
+            ? t('已有 {v0} 个局部，请先整理选区。', { v0: MAX_V3_REGION_EDITS })
             : state.analysis && !analysisCurrent
-              ? '原图已经切换，请重新识别后建立选区。'
+              ? t('原图已经切换，请重新识别后建立选区。')
               : state.analysis?.segmentation
-                ? '建立独立选区后，可调色、调整范围。建立时保持照片外观。'
+                ? t('建立独立选区后，可调色、调整范围。建立时保持照片外观。')
                 : state.analysis
-                  ? '这次分析未提供头发或背景范围，可到“局部”手动选择。'
-                  : '识别后可建立头发和背景选区。模型不可用时，可到“局部”手动选择。'}
+                  ? t('这次分析未提供头发或背景范围，可到“局部”手动选择。')
+                  : t('识别后可建立头发和背景选区。模型不可用时，可到“局部”手动选择。')}
         </p>
       </div>
       {target && (
         <label className="advanced-select">
-          当前人物
+          {t('当前人物')}
           <ChoiceSelect
-            ariaLabel="选择独立调整的人物"
+            ariaLabel={t('选择独立调整的人物')}
             size="compact"
             value={target.id}
             onValueChange={(value) => {
-              editor.commitCurrent('完成人物调节');
+              editor.commitCurrent(t('完成人物调节'));
               state.setTarget(value);
             }}
             options={targets.map((item) => ({ value: item.id, label: item.label }))}
@@ -357,32 +358,34 @@ export function PortraitControls({
           {hasLegacyNeck && (
             <div className="portrait-ownership-note" role="status">
               <p className="control-note">
-                当前作品仍保留旧颈部效果。这个自动工具已暂停新增调整；清除旧效果后可继续调节其他身形参数，其他人物参数与妆容保持，可撤销。
+                {t(
+                  '当前作品仍保留旧颈部效果。这个自动工具已暂停新增调整；清除旧效果后可继续调节其他身形参数，其他人物参数与妆容保持，可撤销。',
+                )}
               </p>
               <button className="text-button" onClick={clearLegacyNeck}>
-                清除旧颈部效果
+                {t('清除旧颈部效果')}
               </button>
             </div>
           )}
           {category === 'makeup' && (
-            <div className="tonal-tabs" aria-label="妆容区域">
+            <div className="tonal-tabs" aria-label={t('妆容区域')}>
               {PORTRAIT_TOOLS.filter((tool) => tool.group === 'makeup').map((tool) => (
                 <button
                   key={tool.id}
                   aria-pressed={makeupTool === tool.id}
                   onClick={() => {
-                    editor.commitCurrent('完成妆容调节');
+                    editor.commitCurrent(t('完成妆容调节'));
                     setMakeupTool(tool.id);
                   }}
                 >
-                  {tool.label}
+                  {t(tool.label)}
                 </button>
               ))}
             </div>
           )}
           <ParameterShelf
             key={target.id + ':' + category + ':' + (category === 'makeup' ? makeupTool : '')}
-            label={category === 'makeup' ? '当前妆容强度' : '人物参数'}
+            label={category === 'makeup' ? t('当前妆容强度') : t('人物参数')}
             controls={PORTRAIT_TOOLS.filter(
               (tool) =>
                 tool.group === category && (category !== 'makeup' || tool.id === makeupTool),
@@ -399,14 +402,14 @@ export function PortraitControls({
                 unit: '%',
                 description:
                   condition?.available === false
-                    ? (condition.reason ?? '当前人物条件不足。')
+                    ? (condition.reason ?? t('当前人物条件不足。'))
                     : tool.description,
                 disabled: condition?.available === false,
                 onChange: (value: number) => change(tool.id, value),
                 onReset: () => change(tool.id, 0, true),
               };
             })}
-            onCommit={(label) => editor.commitCurrent('调整' + label)}
+            onCommit={(label) => editor.commitCurrent(t('调整{v0}', { v0: t(label) }))}
             onCancel={editor.cancelPreview}
           />
           {(hasAutomatic || hasManual) && (
@@ -414,16 +417,20 @@ export function PortraitControls({
               {hasAutomatic && (
                 <>
                   <p className="control-note">
-                    当前自动参数会重建这个人物的自动局部与妆容。手改范围、笔画或形状前，可将整个人物转为独立精修；外观保持不变，可撤销。
+                    {t(
+                      '当前自动参数会重建这个人物的自动局部与妆容。手改范围、笔画或形状前，可将整个人物转为独立精修；外观保持不变，可撤销。',
+                    )}
                   </p>
                   <button className="text-button" onClick={detach}>
-                    当前人物转为独立精修
+                    {t('当前人物转为独立精修')}
                   </button>
                 </>
               )}
               {hasManual && (
                 <p className="control-note">
-                  这个人物已有独立精修结果，以下自动参数会在固定结果之上新增一轮效果，不会替换独立精修层。
+                  {t(
+                    '这个人物已有独立精修结果，以下自动参数会在固定结果之上新增一轮效果，不会替换独立精修层。',
+                  )}
                 </p>
               )}
             </div>
@@ -432,11 +439,12 @@ export function PortraitControls({
             <MotionDetails className="advanced-disclosure" defaultOpen>
               <summary>
                 <i className="paint-color-chip" style={{ background: rgbaHex(color) }} />
-                {PORTRAIT_TOOLS.find((tool) => tool.id === makeupTool)?.label}颜色
+                {t(PORTRAIT_TOOLS.find((tool) => tool.id === makeupTool)?.label ?? '')}
+                {t('颜色')}
               </summary>
               <ColorPicker
                 value={rgbaHex(color)}
-                label="当前妆容颜色"
+                label={t('当前妆容颜色')}
                 onChange={(value) => {
                   const rgba = hexRgba(value);
                   setDraftColors((previous) => ({ ...previous, [colorKey]: rgba }));
@@ -446,23 +454,25 @@ export function PortraitControls({
               />
               <button
                 className="text-button"
-                onClick={() => editor.commitCurrent('确认当前妆容颜色')}
+                onClick={() => editor.commitCurrent(t('确认当前妆容颜色'))}
               >
-                确认这个妆容颜色
+                {t('确认这个妆容颜色')}
               </button>
               <p className="control-note">
-                只改变当前妆容。其他人物、口红、眉妆与高光等各自保留颜色。
+                {t('只改变当前妆容。其他人物、口红、眉妆与高光等各自保留颜色。')}
               </p>
             </MotionDetails>
           )}
           <MotionDetails className="advanced-disclosure">
-            <summary>识别与手动修正说明</summary>
+            <summary>{t('识别与手动修正说明')}</summary>
             <p className="control-note">
-              自动位置是可编辑的起点。美肤生成局部调色区，美妆生成带范围的绘制层，塑形生成可撤销的液化笔画。先转为独立精修，再到“局部、绘制、液化”修改，避免后续自动调参重建手工细节。
+              {t(
+                '自动位置是可编辑的起点。美肤生成局部调色区，美妆生成带范围的绘制层，塑形生成可撤销的液化笔画。先转为独立精修，再到“局部、绘制、液化”修改，避免后续自动调参重建手工细节。',
+              )}
             </p>
             {state.analysis?.warnings.map((warning) => (
-              <p key={warning} className="control-note">
-                {warning}
+              <p key={t(warning)} className="control-note">
+                {t(warning)}
               </p>
             ))}
           </MotionDetails>
@@ -471,13 +481,13 @@ export function PortraitControls({
       {!target && !state.progress && (
         <p className="control-note">
           {category === 'body'
-            ? '选择“识别身体位置”后，按可见的肩、手臂、腰胯与腿部锚点分别调整。'
-            : '先在本机识别人脸，再选择人物独立调整。没有识别到的内容仍可手动精修。'}
-          模型不可用时，可以先用下方的手动精修。
+            ? t('选择“识别身体位置”后，按可见的肩、手臂、腰胯与腿部锚点分别调整。')
+            : t('先在本机识别人脸，再选择人物独立调整。没有识别到的内容仍可手动精修。')}
+          {t('模型不可用时，可以先用下方的手动精修。')}
         </p>
       )}
       <MotionDetails className="advanced-disclosure">
-        <summary>人物标注与分析接入</summary>
+        <summary>{t('人物标注与分析接入')}</summary>
         <input
           hidden
           ref={annotationInput}
@@ -491,7 +501,7 @@ export function PortraitControls({
             setAnnotationStatus(null);
             try {
               await state.importAnalysis(file);
-              setAnnotationStatus('人物标注已导入，请检查人物和范围后再调节。');
+              setAnnotationStatus(t('人物标注已导入，请检查人物和范围后再调节。'));
               report(null);
             } catch (failure) {
               report(errorMessage(failure));
@@ -506,7 +516,7 @@ export function PortraitControls({
             disabled={annotationBusy || !!state.progress || !editor.sourceHash}
             onClick={() => annotationInput.current?.click()}
           >
-            {annotationBusy ? '校验标注中' : '导入人物标注'}
+            {annotationBusy ? t('校验标注中') : t('导入人物标注')}
           </button>
           <button
             className="text-button"
@@ -514,22 +524,24 @@ export function PortraitControls({
             onClick={() => {
               try {
                 state.exportAnalysis();
-                setAnnotationStatus('人物标注下载已发起。');
+                setAnnotationStatus(t('人物标注下载已发起。'));
               } catch (failure) {
                 report(errorMessage(failure));
               }
             }}
           >
-            导出人物标注
+            {t('导出人物标注')}
           </button>
         </div>
         {annotationStatus && (
           <p className="control-note" role="status">
-            {annotationStatus}
+            {t(annotationStatus)}
           </p>
         )}
         <p className="control-note">
-          仅接受当前同一张原图的兼容标注，文件需通过来源、尺寸、方向、结构和版本校验。导入是显式提供标注，不代表浏览器自动识别成功；导入后仍需检查并可转为独立精修。
+          {t(
+            '仅接受当前同一张原图的兼容标注，文件需通过来源、尺寸、方向、结构和版本校验。导入是显式提供标注，不代表浏览器自动识别成功；导入后仍需检查并可转为独立精修。',
+          )}
         </p>
       </MotionDetails>
       <div className="portrait-manual-actions" data-motion="portrait-manual">
@@ -539,7 +551,7 @@ export function PortraitControls({
           onClick={() => openManual('paint')}
         >
           <PaintBrush size={16} />
-          {hasAutomatic ? '转为独立涂妆与细修' : '手动涂妆与细修'}
+          {hasAutomatic ? t('转为独立涂妆与细修') : t('手动涂妆与细修')}
         </button>
         <button
           className="text-button"
@@ -547,7 +559,7 @@ export function PortraitControls({
           onClick={() => openManual('clone')}
         >
           <ArrowsClockwise size={16} />
-          瑕疵克隆修补
+          {t('瑕疵克隆修补')}
         </button>
         <button
           className="text-button"
@@ -555,7 +567,7 @@ export function PortraitControls({
           onClick={() => openManual('liquify')}
         >
           <HandPointing size={16} />
-          手动塑形与保护
+          {t('手动塑形与保护')}
         </button>
       </div>
     </section>

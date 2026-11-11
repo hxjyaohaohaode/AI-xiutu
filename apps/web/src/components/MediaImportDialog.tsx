@@ -1,3 +1,4 @@
+import { getLocale, t } from '../i18n';
 import { useEffect, useRef, useState } from 'react';
 import { UploadSimple, CheckCircle } from '@phosphor-icons/react';
 import type { Asset, Project } from '../lib/types';
@@ -93,7 +94,7 @@ export function MediaImportDialog({
               } catch {}
             } else {
               setRestoreBlocked(true);
-              setError(`上次导入的恢复记录已保留。${errorMessage(e)}`);
+              setError(t('上次导入的恢复记录已保留。{reason}', { reason: t(errorMessage(e)) }));
             }
           })
           .finally(() => {
@@ -278,7 +279,7 @@ export function MediaImportDialog({
   const progress = job ? Math.round((job.uploadedBytes / job.size) * 100) : 0;
   return (
     <Modal
-      title="保留原件，轻量编辑"
+      title={t('保留原件，轻量编辑')}
       subtitle={project.title}
       onClose={onClose}
       canClose={() => !cancelLock.current && !openLock.current}
@@ -286,40 +287,53 @@ export function MediaImportDialog({
     >
       <div className="media-import" data-motion="media-import">
         <p>
-          高像素与专业格式经过独立处理。保留原件、16
-          位母版和色彩信息，编辑器使用轻量预览；原文件不会被覆盖。
+          {t(
+            '高像素与专业格式经过独立处理。保留原件、16 位母版和色彩信息，编辑器使用轻量预览；原文件不会被覆盖。',
+          )}
         </p>
         {caps ? (
           <>
             <div className="media-import-limits">
-              <span>静态栅格最多 {(caps.maxPixels / 1e6).toLocaleString('zh-CN')} 百万像素</span>
-              <span>单文件 {Math.floor(caps.maxInputBytes / 1024 ** 2)} MiB</span>
-              <span>{Math.floor(caps.maxChunkBytes / 1024 ** 2)} MiB 分片续传</span>
+              <span>
+                {t('静态栅格最多')}
+                {(caps.maxPixels / 1e6).toLocaleString(getLocale())} {t('百万像素')}
+              </span>
+              <span>
+                {t('单文件')}
+                {Math.floor(caps.maxInputBytes / 1024 ** 2)} MiB
+              </span>
+              <span>
+                {Math.floor(caps.maxChunkBytes / 1024 ** 2)} {t('MiB 分片续传')}
+              </span>
             </div>
             <p className="control-note">
-              RAW / HDR 上限分别为 {(caps.maxRawPixels / 1e6).toLocaleString('zh-CN')} /{' '}
-              {(caps.maxHdrPixels / 1e6).toLocaleString('zh-CN')} 百万像素，PSD 上限约{' '}
-              {(caps.maxPsdPixels / 1e6).toFixed(1)} 百万像素；格式支持以当前服务器解码结果为准。
+              {t('RAW / HDR 上限分别为')}
+              {(caps.maxRawPixels / 1e6).toLocaleString(getLocale())} /{' '}
+              {(caps.maxHdrPixels / 1e6).toLocaleString(getLocale())} {t('百万像素，PSD 上限约')}{' '}
+              {(caps.maxPsdPixels / 1e6).toFixed(1)}{' '}
+              {t('百万像素；格式支持以当前服务器解码结果为准。')}
             </p>
           </>
         ) : (
-          !error && <Busy label="正在读取原件导入能力" />
+          !error && <Busy label={t('正在读取原件导入能力')} />
         )}
         {!canWrite && (
           <p className="form-hint" role="status">
-            当前项目为只读。请选择有编辑权限的项目后导入原件。
+            {t('当前项目为只读。请选择有编辑权限的项目后导入原件。')}
           </p>
         )}
         {caps && !caps.available && (
           <p role="status" className="control-note">
-            当前服务器尚未启用高精度素材处理。普通导入仍可使用，运营需配置 Linux
-            隔离处理环境和存储容量。
+            {t(
+              '当前服务器尚未启用高精度素材处理。普通导入仍可使用，运营需配置 Linux 隔离处理环境和存储容量。',
+            )}
           </p>
         )}
         {caps?.available && !caps.nativeReady && (
           <p className="control-note">
-            当前可处理 {caps.rasterFormats.join('、')} 与支持的 PSD 合成图；RAW / EXR / Radiance
-            需要安装原生解码器。
+            {t('当前可处理')}
+            {caps.rasterFormats.join('、')}{' '}
+            {t('与支持的 PSD 合成图；RAW / EXR / Radiance 需要安装原生解码器。')}
           </p>
         )}
         {!asset && (
@@ -328,7 +342,7 @@ export function MediaImportDialog({
               ref={selected}
               type="file"
               className="sr-only"
-              aria-label="选择高精度原件"
+              aria-label={t('选择高精度原件')}
               disabled={
                 !caps?.available ||
                 !canWrite ||
@@ -346,8 +360,10 @@ export function MediaImportDialog({
                   if (next.size < 1 || next.size > caps.maxInputBytes) {
                     setError(
                       next.size < 1
-                        ? '请选择有内容的原件文件。'
-                        : `文件超过当前 ${Math.floor(caps.maxInputBytes / 1024 ** 2)} MiB 上限。`,
+                        ? t('请选择有内容的原件文件。')
+                        : t('文件超过当前 {v0} MiB 上限。', {
+                            v0: Math.floor(caps.maxInputBytes / 1024 ** 2),
+                          }),
                     );
                     return;
                   }
@@ -372,11 +388,11 @@ export function MediaImportDialog({
             >
               <UploadSimple size={24} />
               <span>
-                {file?.name ?? '选择原件'}
+                {file?.name ?? t('选择原件')}
                 <small>
                   {file
                     ? `${(file.size / 1024 ** 2).toFixed(2)} MiB`
-                    : 'JPEG、TIFF、PNG、RAW、PSD、HDR 等，按实际解码能力验证'}
+                    : t('JPEG、TIFF、PNG、RAW、PSD、HDR 等，按实际解码能力验证')}
                 </small>
               </span>
             </button>
@@ -389,7 +405,7 @@ export function MediaImportDialog({
                 }
                 onChange={(event) => setTiles(event.target.checked)}
               />
-              建立分级图块，便于按原尺寸查看细节
+              {t('建立分级图块，便于按原尺寸查看细节')}
             </label>
           </>
         )}
@@ -398,20 +414,20 @@ export function MediaImportDialog({
             <div>
               <span>
                 {job.state === 'processing'
-                  ? '已上传，正在隔离处理'
+                  ? t('已上传，正在隔离处理')
                   : job.state === 'ready'
-                    ? '原件与母版已保存'
+                    ? t('原件与母版已保存')
                     : job.state === 'failed'
-                      ? '处理未完成'
+                      ? t('处理未完成')
                       : job.state === 'cancelled'
-                        ? '已取消'
+                        ? t('已取消')
                         : uploading
-                          ? '正在上传'
-                          : '上传已暂停，可选择同一文件继续'}
+                          ? t('正在上传')
+                          : t('上传已暂停，可选择同一文件继续')}
               </span>
               <span>{progress}%</span>
             </div>
-            <progress max={100} value={progress} aria-label="原件上传进度" />
+            <progress max={100} value={progress} aria-label={t('原件上传进度')} />
             <small>
               {job.name} · {(job.uploadedBytes / 1024 ** 2).toFixed(1)} /{' '}
               {(job.size / 1024 ** 2).toFixed(1)} MiB
@@ -419,7 +435,7 @@ export function MediaImportDialog({
           </div>
         )}
         <InlineError message={error} />
-        {restorePending && <Busy label="正在恢复上次导入状态" />}
+        {restorePending && <Busy label={t('正在恢复上次导入状态')} />}
         {(restoreBlocked || (!caps && error)) && (
           <button
             type="button"
@@ -430,12 +446,12 @@ export function MediaImportDialog({
               setRestoreAttempt((value) => value + 1);
             }}
           >
-            {restoreBlocked ? '重新读取导入状态' : '重新读取导入能力'}
+            {restoreBlocked ? t('重新读取导入状态') : t('重新读取导入能力')}
           </button>
         )}
         {message && (
           <p className="success-note" role="status">
-            {message}
+            {t(message)}
           </p>
         )}
         {asset ? (
@@ -447,11 +463,11 @@ export function MediaImportDialog({
               onClick={() => void openAsset()}
             >
               {opening ? (
-                <Busy label="正在打开工作预览" />
+                <Busy label={t('正在打开工作预览')} />
               ) : (
                 <>
                   <CheckCircle size={17} />
-                  使用工作预览继续编辑
+                  {t('使用工作预览继续编辑')}
                 </>
               )}
             </button>
@@ -464,7 +480,7 @@ export function MediaImportDialog({
                 disabled={cancelling || !canWrite}
                 onClick={() => void cancelJob()}
               >
-                {cancelling ? '正在取消…' : '取消导入'}
+                {cancelling ? t('正在取消…') : t('取消导入')}
               </button>
             )}
             <button
@@ -482,18 +498,19 @@ export function MediaImportDialog({
               onClick={() => void upload()}
             >
               {uploading ? (
-                <Busy label="上传中" />
+                <Busy label={t('上传中')} />
               ) : job?.state === 'uploading' ? (
-                '继续上传'
+                t('继续上传')
               ) : (
-                '导入原件'
+                t('导入原件')
               )}
             </button>
           </div>
         )}
         <p className="control-note">
-          原件与派生文件计入所在空间的存储额度。关闭面板会暂停上传；处理中的任务继续运行。AI
-          不会因导入而自动读取图片。
+          {t(
+            '原件与派生文件计入所在空间的存储额度。关闭面板会暂停上传；处理中的任务继续运行。AI 不会因导入而自动读取图片。',
+          )}
         </p>
       </div>
     </Modal>

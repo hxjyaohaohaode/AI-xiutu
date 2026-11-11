@@ -1,3 +1,4 @@
+import { formatDateTime, t } from '../i18n';
 import { MotionDetails } from '../motion/Presence';
 import { useEffect, useRef, useState } from 'react';
 import type { AssistantMemory, MemorySuggestion } from '@ai-xiutu/contracts';
@@ -197,15 +198,21 @@ export function MemoryControls({
   return (
     <MotionDetails className="assistant-context">
       <summary>
-        偏好与要求 · {items.length} 条
-        {suggested.length ? ` · ${suggested.length} 条待确认建议` : ''}
+        {t('偏好与要求 ·')}
+        {items.length} {t('条')}
+        {suggested.length ? t(' · {v0} 条待确认建议', { v0: suggested.length }) : ''}
       </summary>
-      <p>保存后可在共享范围中启用。更正会替换当前版本，忘记后不再召回；团队要求由管理员维护。</p>
+      <p>
+        {t('保存后可在共享范围中启用。更正会替换当前版本，忘记后不再召回；团队要求由管理员维护。')}
+      </p>
       {suggested.map(({ item, key }) => (
         <article key={key} className="memory-suggestion">
           <strong>{item.title}</strong>
           <p>{item.content}</p>
-          <blockquote>依据你说的：“{item.evidence}”</blockquote>
+          <blockquote>
+            {t('依据你说的：“')}
+            {item.evidence}”
+          </blockquote>
           <button
             type="button"
             disabled={disabled || busy || (item.scope === 'artwork' && !artworkId)}
@@ -219,14 +226,14 @@ export function MemoryControls({
               setSuggestionSource({ key, sourceTurnId: suggestions?.sourceTurnId });
             }}
           >
-            检查内容与范围
+            {t('检查内容与范围')}
           </button>
           <button
             type="button"
             disabled={busy}
             onClick={() => setDismissed((old) => new Set([...old, key]))}
           >
-            暂不记住
+            {t('暂不记住')}
           </button>
         </article>
       ))}
@@ -239,17 +246,21 @@ export function MemoryControls({
             setPage(0);
           }}
         />
-        显示已到期的要求
+        {t('显示已到期的要求')}
       </label>
       <div className="assistant-memory-list">
         {items.map((item) => (
           <article key={item.id}>
             <strong>{item.title}</strong>
             <small>
-              {scopes[item.scope]} · v{item.version}
+              {t(scopes[item.scope])} · v{item.version}
               {item.expiresAt
-                ? ` · ${new Date(item.expiresAt).getTime() <= Date.now() ? '已到期' : '有效至'} ${new Date(item.expiresAt).toLocaleString()}`
-                : ' · 长期有效'}
+                ? t(' · {v0} {v1}', {
+                    v0:
+                      new Date(item.expiresAt).getTime() <= Date.now() ? t('已到期') : t('有效至'),
+                    v1: formatDateTime(item.expiresAt),
+                  })
+                : t(' · 长期有效')}
             </small>
             <p>{item.content}</p>
             {item.canEdit && (
@@ -266,45 +277,50 @@ export function MemoryControls({
                     setExpiresAt(localDate(item.expiresAt));
                   }}
                 >
-                  更正
+                  {t('更正')}
                 </button>
                 <button disabled={busy || disabled} onClick={() => void forget(item)}>
-                  忘记
+                  {t('忘记')}
                 </button>
               </div>
             )}
             <button type="button" onClick={() => void showHistory(item)}>
-              版本记录
+              {t('版本记录')}
             </button>
           </article>
         ))}
       </div>
       {(page > 0 || hasMore) && (
-        <nav aria-label="记忆分页">
+        <nav aria-label={t('记忆分页')}>
           <button disabled={page === 0} onClick={() => setPage((value) => value - 1)}>
-            上一页
+            {t('上一页')}
           </button>
-          <span>第 {page + 1} 页</span>
+          <span>
+            {t('第')}
+            {page + 1} {t('页')}
+          </span>
           <button disabled={!hasMore} onClick={() => setPage((value) => value + 1)}>
-            下一页
+            {t('下一页')}
           </button>
         </nav>
       )}
       {history && (
-        <section className="memory-version-history" aria-label="记忆版本记录">
-          <h4>{history.title} · 版本记录</h4>
+        <section className="memory-version-history" aria-label={t('记忆版本记录')}>
+          <h4>
+            {history.title} {t('· 版本记录')}
+          </h4>
           {history.versions.map((item) => (
             <article key={item.version}>
               <strong>
-                v{item.version} · {new Date(item.createdAt).toLocaleString()}
-                {item.deleted ? ' · 已忘记' : ''}
+                v{item.version} · {formatDateTime(item.createdAt)}
+                {item.deleted ? t(' · 已忘记') : ''}
               </strong>
               <p>{item.content}</p>
             </article>
           ))}
           {history.hasMore && (
             <button onClick={() => void showHistory(history, history.versions.at(-1)?.version)}>
-              更早版本
+              {t('更早版本')}
             </button>
           )}
           <button
@@ -313,53 +329,53 @@ export function MemoryControls({
               setHistory(null);
             }}
           >
-            收起记录
+            {t('收起记录')}
           </button>
         </section>
       )}
       <fieldset className="creative-fields" disabled={disabled || busy}>
-        <legend>{editing ? '更正要求' : '新增要求'}</legend>
+        <legend>{editing ? t('更正要求') : t('新增要求')}</legend>
         <div className="creative-pair">
           <ChoiceSelect
-            label="生效范围"
+            label={t('生效范围')}
             value={scope}
             disabled={disabled || busy || !!editing}
             onValueChange={(nextScope) => setScope(nextScope as AssistantMemory['scope'])}
             options={Object.entries(scopes)
               .filter(([key]) => key !== 'artwork' || artworkId)
-              .map(([value, label]) => ({ value, label }))}
+              .map(([value, label]) => ({ value, label: t(label) }))}
           />
           <ChoiceSelect
-            label="类型"
+            label={t('类型')}
             value={category}
             disabled={disabled || busy}
             onValueChange={(nextCategory) =>
               setCategory(nextCategory as AssistantMemory['category'])
             }
             options={[
-              { value: 'constraint', label: '编辑要求' },
-              { value: 'preference', label: '偏好' },
-              { value: 'workflow', label: '工作习惯' },
-              { value: 'correction', label: '更正理解' },
+              { value: 'constraint', label: t('编辑要求') },
+              { value: 'preference', label: t('偏好') },
+              { value: 'workflow', label: t('工作习惯') },
+              { value: 'correction', label: t('更正理解') },
             ]}
           />
         </div>
         <label>
-          名称
+          {t('名称')}
           <input maxLength={160} value={title} onChange={(event) => setTitle(event.target.value)} />
         </label>
         <label>
-          准确内容
+          {t('准确内容')}
           <textarea
             rows={3}
             maxLength={4000}
             value={content}
             onChange={(event) => setContent(event.target.value)}
-            placeholder="例如：本系列只调整背景色调，人物五官、衣服与构图保持不变。"
+            placeholder={t('例如：本系列只调整背景色调，人物五官、衣服与构图保持不变。')}
           />
         </label>
         <label>
-          有效至（留空则长期有效）
+          {t('有效至（留空则长期有效）')}
           <input
             type="datetime-local"
             value={expiresAt}
@@ -371,7 +387,7 @@ export function MemoryControls({
           disabled={!title.trim() || !content.trim()}
           onClick={() => void save()}
         >
-          {busy ? '正在保存…' : editing ? '保存更正' : '确认记住'}
+          {busy ? t('正在保存…') : editing ? t('保存更正') : t('确认记住')}
         </button>
         {editing && (
           <button
@@ -383,7 +399,7 @@ export function MemoryControls({
               setExpiresAt('');
             }}
           >
-            取消更正
+            {t('取消更正')}
           </button>
         )}
       </fieldset>

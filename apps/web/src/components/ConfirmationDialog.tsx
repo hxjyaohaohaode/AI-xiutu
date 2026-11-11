@@ -1,3 +1,4 @@
+import { t } from '../i18n';
 import { useCallback, useEffect, useRef, useState, type ReactNode } from 'react';
 import { Modal } from './Ui';
 
@@ -106,14 +107,16 @@ export function useConfirmation() {
   const dialog = shown ? (
     <Modal
       open={!!request}
-      title={shown.options.title ?? '确认操作'}
+      title={t(shown.options.title ?? '确认操作')}
       className="studio-dialog confirmation-dialog"
       initialFocusRef={cancelButton}
       onClose={() => settle(shown.id, false)}
     >
       <div className="stack-form">
         <div className="confirmation-description" style={{ whiteSpace: 'pre-line' }}>
-          {shown.options.description}
+          {typeof shown.options.description === 'string'
+            ? t(shown.options.description)
+            : shown.options.description}
         </div>
         <div className="dialog-actions">
           <button
@@ -122,7 +125,7 @@ export function useConfirmation() {
             className="button button-secondary"
             onClick={() => settle(shown.id, false)}
           >
-            {shown.options.cancelLabel ?? '取消'}
+            {t(shown.options.cancelLabel ?? '取消')}
           </button>
           <button
             type="button"
@@ -134,7 +137,7 @@ export function useConfirmation() {
             }
             onClick={() => settle(shown.id, true)}
           >
-            {shown.options.confirmLabel ?? '确认继续'}
+            {t(shown.options.confirmLabel ?? '确认继续')}
           </button>
         </div>
       </div>

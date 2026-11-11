@@ -1,3 +1,4 @@
+import { t } from '../i18n';
 import { useEffect, useRef, useState } from 'react';
 import { Microphone, Stop, Trash, Waveform } from '@phosphor-icons/react';
 import { recordingToWav } from '../lib/audio';
@@ -144,39 +145,41 @@ export function VoiceCapture({ onReady }: { onReady: (base64: string | null) => 
       </div>
       <strong>
         {state === 'recording'
-          ? '正在录音'
+          ? t('正在录音')
           : state === 'ready'
-            ? '录音已就绪'
-            : '录制语音'}
+            ? t('录音已就绪')
+            : t('录制语音')}
       </strong>
-      <p>最多 30 秒。录音先保留在本机，点击下方发送后才进行语音识别。</p>
+      <p>{t('最多 30 秒。录音先保留在本机，点击下方发送后才进行语音识别。')}</p>
       {!supported ? (
         <p className="form-hint">
-          当前浏览器无法录音。请使用支持麦克风的浏览器，并通过 HTTPS 打开，也可以直接输入文字。
+          {t(
+            '当前浏览器无法录音。请使用支持麦克风的浏览器，并通过 HTTPS 打开，也可以直接输入文字。',
+          )}
         </p>
       ) : (
         <>
           <span className="recording-time">
-            {Math.floor(seconds).toString().padStart(2, '0')} / 30 秒
+            {Math.floor(seconds).toString().padStart(2, '0')} {t('/ 30 秒')}
           </span>
           {state === 'preparing' ? (
-            <Busy label="正在准备录音" />
+            <Busy label={t('正在准备录音')} />
           ) : state === 'recording' ? (
             <button className="button button-recording" onClick={stop}>
               <Stop size={18} weight="fill" />
-              停止录音
+              {t('停止录音')}
             </button>
           ) : (
             <button className="button button-secondary" onClick={() => void start()}>
               <Microphone size={18} />
-              {state === 'ready' ? '重新录制' : '开始录音'}
+              {state === 'ready' ? t('重新录制') : t('开始录音')}
             </button>
           )}
           {url && (
             <div className="voice-playback">
               <audio controls src={url} preload="metadata" />
               <IconButton
-                label="删除这段本地录音"
+                label={t('删除这段本地录音')}
                 onClick={() => {
                   setUrl(null);
                   ready.current(null);

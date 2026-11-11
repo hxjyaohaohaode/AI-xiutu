@@ -1,3 +1,4 @@
+import { t } from '../i18n';
 import {
   createContext,
   useContext,
@@ -51,7 +52,7 @@ export function Busy({ label = '正在处理' }: { label?: string }) {
   return (
     <span className="busy">
       <SpinnerGap className="spin" size={17} aria-hidden />
-      {label}
+      {t(label)}
     </span>
   );
 }
@@ -91,7 +92,7 @@ export function InlineError({ message }: { message: string | null }) {
       aria-hidden={!message}
     >
       <WarningCircle size={18} aria-hidden />
-      <span>{message ?? last.current}</span>
+      <span>{t(message ?? last.current ?? '')}</span>
     </div>
   ) : null;
 }
@@ -126,8 +127,8 @@ export function Toast({
       aria-hidden={!notice}
     >
       <Symbol size={21} />
-      <span>{visible.message}</span>
-      <IconButton label="关闭提示" onClick={dismiss}>
+      <span>{t(visible.message)}</span>
+      <IconButton label={t('关闭提示')} onClick={dismiss}>
         <X size={16} />
       </IconButton>
     </div>
@@ -369,7 +370,7 @@ export function Modal({
           <h2 id={titleId}>{title}</h2>
           {subtitle && <p id={subtitleId}>{subtitle}</p>}
         </div>
-        <IconButton label="关闭窗口" onClick={requestClose}>
+        <IconButton label={t('关闭窗口')} onClick={requestClose}>
           <StudioGlyph name="close" size={20} />
         </IconButton>
       </header>
@@ -397,7 +398,7 @@ export function Brand({
         </span>
       )}
       <span>{name}</span>
-      {!compact && <small>创作空间</small>}
+      {!compact && <small>{t('创作空间')}</small>}
     </div>
   );
 }

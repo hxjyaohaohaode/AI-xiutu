@@ -1,3 +1,4 @@
+import { t } from '../i18n';
 import { MotionDetails } from '../motion/Presence';
 import { ChoiceSelect } from '../components/ChoiceSelect';
 import { useState } from 'react';
@@ -123,7 +124,7 @@ export function LocalControls({
       : null;
   return (
     <section className="advanced-tool-family" data-motion="region-controls">
-      <div className="tonal-tabs" aria-label="添加局部范围">
+      <div className="tonal-tabs" aria-label={t('添加局部范围')}>
         {(['radial', 'linear', 'brush', 'polygon', 'color-range'] as const).map((type) => (
           <button
             key={type}
@@ -131,19 +132,19 @@ export function LocalControls({
             onClick={() => add(type)}
           >
             <Plus size={12} />
-            {maskLabels[type]}
+            {t(maskLabels[type])}
           </button>
         ))}
       </div>
       <small className="control-note">
-        {recipe.regionEdits.length} / {MAX_V3_REGION_EDITS} 个局部 · 每个局部拥有完整调色参数
+        {recipe.regionEdits.length} / {MAX_V3_REGION_EDITS} {t('个局部 · 每个局部拥有完整调色参数')}
       </small>
-      <div className="advanced-object-list" aria-label="独立局部与编组选择">
+      <div className="advanced-object-list" aria-label={t('独立局部与编组选择')}>
         {recipe.regionEdits.map((item) => (
           <div className="advanced-row" data-selected={item.id === region?.id} key={item.id}>
             <input
               type="checkbox"
-              aria-label={'将' + item.name + '加入编组选择'}
+              aria-label={t('将') + item.name + t('加入编组选择')}
               checked={checked.includes(item.id)}
               onChange={(event) =>
                 setChecked((ids) =>
@@ -158,12 +159,12 @@ export function LocalControls({
             >
               {item.name}
               <small>
-                {maskLabels[item.mask.type]}
-                {item.groupId ? ' · 已编组' : ''}
+                {t(maskLabels[item.mask.type])}
+                {item.groupId ? t(' · 已编组') : ''}
               </small>
             </button>
             <IconButton
-              label={`${item.enabled ? '隐藏' : '显示'}${item.name}`}
+              label={t('{v0}{v1}', { v0: item.enabled ? t('隐藏') : t('显示'), v1: item.name })}
               onClick={() => {
                 const latest = currentV3(editor);
                 apply(
@@ -173,7 +174,7 @@ export function LocalControls({
                       r.id === item.id ? { ...r, enabled: !r.enabled } : r,
                     ),
                   },
-                  '切换局部效果',
+                  t('切换局部效果'),
                   true,
                 );
               }}
@@ -185,18 +186,21 @@ export function LocalControls({
       </div>
       {!!selectedIds.length && (
         <div className="advanced-row">
-          <small>已选 {selectedIds.length} 个局部</small>
+          <small>
+            {t('已选')}
+            {selectedIds.length} {t('个局部')}
+          </small>
           <button
             className="text-button"
             disabled={recipe.regionGroups.length >= MAX_V3_REGION_GROUPS}
             onClick={makeGroup}
           >
-            编为一组统一调整
+            {t('编为一组统一调整')}
           </button>
         </div>
       )}
       {!!recipe.regionGroups.length && (
-        <div className="tonal-tabs" aria-label="局部分组">
+        <div className="tonal-tabs" aria-label={t('局部分组')}>
           {recipe.regionGroups.map((item) => (
             <button
               key={item.id}
@@ -211,14 +215,16 @@ export function LocalControls({
       {group && (
         <>
           <p className="control-note">
-            组参数作用于此组有效范围的并集。单独局部的参数仍会保留，可以返回单个局部继续精修。
+            {t(
+              '组参数作用于此组有效范围的并集。单独局部的参数仍会保留，可以返回单个局部继续精修。',
+            )}
           </p>
           <ParameterShelf
-            label="分组强度"
+            label={t('分组强度')}
             controls={[
               {
                 id: 'opacity',
-                label: '分组透明度',
+                label: t('分组透明度'),
                 value: group.opacity * 100,
                 min: 0,
                 max: 100,
@@ -233,7 +239,7 @@ export function LocalControls({
                         g.id === group.id ? { ...g, opacity: n / 100 } : g,
                       ),
                     },
-                    '调整分组透明度',
+                    t('调整分组透明度'),
                   );
                 },
               },
@@ -243,10 +249,10 @@ export function LocalControls({
           />
           <div className="advanced-row">
             <label className="object-title-edit">
-              分组名称
+              {t('分组名称')}
               <input
                 key={group.id + ':' + group.name}
-                aria-label="分组名称"
+                aria-label={t('分组名称')}
                 type="text"
                 maxLength={120}
                 defaultValue={group.name}
@@ -264,7 +270,7 @@ export function LocalControls({
                         item.id === group.id ? { ...item, name } : item,
                       ),
                     },
-                    '重命名局部分组',
+                    t('重命名局部分组'),
                     true,
                   );
                 }}
@@ -292,12 +298,12 @@ export function LocalControls({
                         g.id === group.id ? { ...g, enabled: event.target.checked } : g,
                       ),
                     },
-                    '切换分组',
+                    t('切换分组'),
                     true,
                   );
                 }}
               />
-              显示组效果
+              {t('显示组效果')}
             </label>
             <button
               className="text-button"
@@ -312,14 +318,14 @@ export function LocalControls({
                         r.groupId === group.id ? { ...r, groupId: null } : r,
                       ),
                     },
-                    '解除范围编组',
+                    t('解除范围编组'),
                     true,
                   )
                 )
                   onScope(region ? { kind: 'region', id: region.id } : { kind: 'global' });
               }}
             >
-              解组，可撤销
+              {t('解组，可撤销')}
             </button>
           </div>
         </>
@@ -328,18 +334,18 @@ export function LocalControls({
         <>
           <div className="advanced-row">
             <IconButton
-              label="复制当前局部"
+              label={t('复制当前局部')}
               disabled={recipe.regionEdits.length >= MAX_V3_REGION_EDITS}
               onClick={() => {
                 const copy = {
                   ...structuredClone(region),
                   id: secureUuid(),
-                  name: region.name.slice(0, 110) + ' 副本',
+                  name: region.name.slice(0, 110) + t(' 副本'),
                 };
                 if (
                   apply(
                     { ...recipe, regionEdits: [...recipe.regionEdits, copy] },
-                    '复制局部范围与参数',
+                    t('复制局部范围与参数'),
                     true,
                   )
                 )
@@ -349,21 +355,21 @@ export function LocalControls({
               <Copy size={16} />
             </IconButton>
             <IconButton
-              label="局部向前"
+              label={t('局部向前')}
               disabled={recipe.regionEdits[0]?.id === region.id}
               onClick={() => shift(-1)}
             >
               <ArrowUp size={16} />
             </IconButton>
             <IconButton
-              label="局部向后"
+              label={t('局部向后')}
               disabled={recipe.regionEdits.at(-1)?.id === region.id}
               onClick={() => shift(1)}
             >
               <ArrowDown size={16} />
             </IconButton>
             <IconButton
-              label="删除当前局部，可撤销"
+              label={t('删除当前局部，可撤销')}
               onClick={() => {
                 if (
                   apply(
@@ -371,7 +377,7 @@ export function LocalControls({
                       ...recipe,
                       regionEdits: recipe.regionEdits.filter((r) => r.id !== region.id),
                     },
-                    '删除局部',
+                    t('删除局部'),
                     true,
                   )
                 ) {
@@ -388,82 +394,82 @@ export function LocalControls({
             </IconButton>
           </div>
           <ParameterShelf
-            label="局部强度"
+            label={t('局部强度')}
             controls={[
               {
                 id: 'opacity',
-                label: '局部透明度',
+                label: t('局部透明度'),
                 value: region.opacity * 100,
                 min: 0,
                 max: 100,
                 step: 0.1,
                 unit: '%',
-                onChange: (n) => patch({ opacity: n / 100 }, '调整局部强度', false),
+                onChange: (n) => patch({ opacity: n / 100 }, t('调整局部强度'), false),
               },
             ]}
             onCommit={(label) => editor.commitCurrent(label)}
             onCancel={editor.cancelPreview}
           />
           <MotionDetails className="advanced-disclosure" defaultOpen>
-            <summary>范围与过渡</summary>
+            <summary>{t('范围与过渡')}</summary>
             <MaskControls
               key={region.id}
               controller={controller}
               path={editor.activeMaskPath}
               onPath={editor.setActiveMaskPath}
               getMask={() => currentV3(editor).regionEdits.find((r) => r.id === region.id)!.mask}
-              onChange={(mask, commit) => patch({ mask }, '调整局部范围', commit)}
+              onChange={(mask, commit) => patch({ mask }, t('调整局部范围'), commit)}
             />
             {region.mask.type === 'color-range' && (
               <MotionDetails className="advanced-disclosure">
-                <summary>取色与完整色谱</summary>
+                <summary>{t('取色与完整色谱')}</summary>
                 <ColorPicker
                   value={pickedColor}
                   onChange={(value) => onColorChange?.(value)}
-                  label="连续选择颜色"
+                  label={t('连续选择颜色')}
                 />
                 <div className="advanced-row">
                   <button className="text-button" onClick={onSample}>
-                    {sampling ? '结束取色' : '从原图取色'}
+                    {sampling ? t('结束取色') : t('从原图取色')}
                   </button>
                   <button
                     className="text-button"
                     onClick={() => {
                       const hue = hsv(rgba(pickedColor)).h;
                       if (region.mask.type === 'color-range')
-                        patch({ mask: { ...region.mask, hue } }, '使用所选色相');
+                        patch({ mask: { ...region.mask, hue } }, t('使用所选色相'));
                     }}
                   >
-                    使用所选色相
+                    {t('使用所选色相')}
                   </button>
                 </div>
               </MotionDetails>
             )}
           </MotionDetails>
           <MotionDetails className="advanced-disclosure">
-            <summary>名称与分组</summary>
+            <summary>{t('名称与分组')}</summary>
             <label className="advanced-select">
-              局部名称
+              {t('局部名称')}
               <input
-                aria-label="局部名称"
+                aria-label={t('局部名称')}
                 key={region.id}
                 defaultValue={region.name}
                 maxLength={120}
                 onBlur={(event) => {
                   if (event.target.value.trim())
-                    patch({ name: event.target.value.trim() }, '重命名局部');
+                    patch({ name: event.target.value.trim() }, t('重命名局部'));
                 }}
               />
             </label>
             <label className="advanced-select">
-              所在分组
+              {t('所在分组')}
               <ChoiceSelect
-                ariaLabel="局部所在分组"
+                ariaLabel={t('局部所在分组')}
                 size="compact"
                 value={region.groupId ?? ''}
-                onValueChange={(value) => patch({ groupId: value || null }, '移动局部分组')}
+                onValueChange={(value) => patch({ groupId: value || null }, t('移动局部分组'))}
                 options={[
-                  { value: '', label: '独立调整' },
+                  { value: '', label: t('独立调整') },
                   ...recipe.regionGroups.map((g) => ({ value: g.id, label: g.name })),
                 ]}
               />
@@ -473,20 +479,20 @@ export function LocalControls({
       )}
       {colorScope && (
         <>
-          <div className="tonal-tabs" aria-label="局部完整参数类别">
+          <div className="tonal-tabs" aria-label={t('局部完整参数类别')}>
             {(
               [
-                ['light', '明暗'],
-                ['color', '色彩'],
-                ['curves', '曲线'],
-                ['detail', '细节'],
+                ['light', t('明暗')],
+                ['color', t('色彩')],
+                ['curves', t('曲线')],
+                ['detail', t('细节')],
               ] as const
             ).map(([id, label]) => (
               <button
                 key={id}
                 aria-pressed={family === id}
                 onClick={() => {
-                  editor.commitCurrent('完成当前局部调节');
+                  editor.commitCurrent(t('完成当前局部调节'));
                   setFamily(id);
                 }}
               >
@@ -508,7 +514,7 @@ export function LocalControls({
       )}
       {!region && !group && (
         <p className="control-note">
-          先添加或选择局部，再在照片上直接编辑范围。多个区域可以分开调，也能勾选后编组。
+          {t('先添加或选择局部，再在照片上直接编辑范围。多个区域可以分开调，也能勾选后编组。')}
         </p>
       )}
     </section>

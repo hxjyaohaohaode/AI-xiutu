@@ -1,3 +1,4 @@
+import { t } from '../i18n';
 import { useId, useRef, useState } from 'react';
 import { UsersThree, CloudCheck, CloudSlash, ArrowClockwise } from '@phosphor-icons/react';
 import type { CollaborationState } from './useCollaboration';
@@ -52,10 +53,10 @@ export function CollaborationStatus({
         onClick={() => setOpen((value) => !value)}
       >
         <UsersThree size={17} />
-        <span>{!c.enabled && teamVoice ? '团队语音' : labels[c.status]}</span>
+        <span>{!c.enabled && teamVoice ? t('团队语音') : t(labels[c.status])}</span>
         <small>
           {teamVoice?.state === 'connected'
-            ? '语音 ' + teamVoice.roster.members.length
+            ? t('语音 ') + teamVoice.roster.members.length
             : members.length || '—'}
         </small>
         {c.enabled && c.status === 'ready' ? (
@@ -72,22 +73,24 @@ export function CollaborationStatus({
           data-motion-state={details.phase}
           inert={!open}
           aria-hidden={!open}
-          aria-label={c.enabled ? '实时编辑协作状态' : '团队语音状态'}
+          aria-label={c.enabled ? t('实时编辑协作状态') : t('团队语音状态')}
         >
           {teamVoice && <TeamVoiceControls room={teamVoice} capture={captureVoiceContext} />}
           <p>
             {c.enabled
-              ? '已发布的协作调整会同步到当前作品。游标与半透明范围表示队员的位置和未发布的预览。'
-              : '在当前作品中与队员通话。编辑协作尚未连接。'}
+              ? t(
+                  '已发布的协作调整会同步到当前作品。游标与半透明范围表示队员的位置和未发布的预览。',
+                )
+              : t('在当前作品中与队员通话。编辑协作尚未连接。')}
           </p>
           <ul>
             {members.map((member) => (
               <li key={member.id}>
                 <strong>
                   {member.displayName}
-                  {member.id === c.session?.id ? '（本窗口）' : ''}
+                  {member.id === c.session?.id ? t('（本窗口）') : ''}
                 </strong>
-                <span>{member.tool ?? '查看画面'}</span>
+                <span>{member.tool ?? t('查看画面')}</span>
               </li>
             ))}
           </ul>
@@ -96,7 +99,7 @@ export function CollaborationStatus({
               {leases.map((lease) => (
                 <li key={lease.id}>
                   <span>{lease.displayName}</span>
-                  <small>正在调整 {targetLabel(lease.target)}</small>
+                  <small>{t('正在调整 {target}', { target: targetLabel(lease.target) })}</small>
                 </li>
               ))}
             </ul>
@@ -111,9 +114,9 @@ export function CollaborationStatus({
                   })
                 }
               >
-                确认并发布
+                {t('确认并发布')}
               </button>
-              <button onClick={c.discardDraft}>取消未发布预览</button>
+              <button onClick={c.discardDraft}>{t('取消未发布预览')}</button>
             </div>
           )}
         </section>
@@ -127,15 +130,15 @@ export function CollaborationStatus({
           inert={!c.error}
           aria-hidden={!c.error}
         >
-          <p>{c.error ?? lastError.current}</p>
+          <p>{t(c.error ?? lastError.current ?? '')}</p>
           <div className="collaboration-actions">
             <button onClick={c.retry}>
               <ArrowClockwise size={14} />
-              重试同步
+              {t('重试同步')}
             </button>
-            <button onClick={c.reconnect}>重新连接</button>
-            <button onClick={onFork}>另存本地草稿</button>
-            <button onClick={onReload}>载入最新版本</button>
+            <button onClick={c.reconnect}>{t('重新连接')}</button>
+            <button onClick={onFork}>{t('另存本地草稿')}</button>
+            <button onClick={onReload}>{t('载入最新版本')}</button>
           </div>
         </section>
       )}

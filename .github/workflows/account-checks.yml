@@ -8,6 +8,7 @@ on:
       - 'apps/api/src/**'
       - 'packages/**'
       - 'scripts/web-account-smoke.mjs'
+      - 'scripts/qa/site-entry.browser.mjs'
       - 'package.json'
       - 'package-lock.json'
       - '.nvmrc'
@@ -19,6 +20,7 @@ on:
       - 'apps/api/src/**'
       - 'packages/**'
       - 'scripts/web-account-smoke.mjs'
+      - 'scripts/qa/site-entry.browser.mjs'
       - 'package.json'
       - 'package-lock.json'
       - '.nvmrc'
@@ -36,7 +38,7 @@ jobs:
   account-lifecycle:
     name: Account lifecycle (${{ matrix.motion }})
     runs-on: ubuntu-latest
-    timeout-minutes: 15
+    timeout-minutes: 20
     strategy:
       fail-fast: false
       matrix:
@@ -68,7 +70,7 @@ jobs:
           cache: npm
       - run: npm ci
       - run: npx playwright install --with-deps chromium
-      - name: Verify real account journeys, recovery, keyboard access and responsive forms
+      - name: Verify public entry, three languages, real account journeys and recovery
         run: node --import tsx scripts/web-account-smoke.mjs
       - name: Preserve account reports and masked screenshots
         if: always()

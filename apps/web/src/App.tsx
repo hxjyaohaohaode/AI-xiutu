@@ -29,6 +29,9 @@ import {
 } from '@phosphor-icons/react';
 import { api, ApiError, downloadBlob, errorMessage, filenameBase, jsonRequest } from './lib/api';
 import { secureUuid } from './lib/uuid';
+import { t, useLocale } from './i18n';
+import { createSampleRecipe, type SampleSettings } from './about/sample';
+import { aboutCopy } from './about/copy';
 import type {
   Artwork,
   Asset,
@@ -147,7 +150,7 @@ const MediaImportDialog = createDeferredFeature(
   async () => ({ default: (await import('./components/MediaImportDialog')).MediaImportDialog }),
   '母版导入',
   (state, props) => (
-    <Modal title="导入母版" profile="media" onClose={props.onClose}>
+    <Modal title={t('导入母版')} profile="media" onClose={props.onClose}>
       <DeferredFeatureStatus {...state} />
     </Modal>
   ),
@@ -157,7 +160,7 @@ const AccountCenter = createDeferredFeature(
   '账号信息',
   (state, props) => (
     <Modal
-      title="账号与使用"
+      title={t('账号与使用')}
       profile="account"
       onClose={props.onClose}
       canClose={() => !props.loggingOut}
@@ -192,7 +195,37 @@ type Dialog =
   | 'navigation'
   | 'settings'
   | null;
-export function App() {
+export type StudioEntry = {
+  key: number;
+  mode: 'studio' | 'password' | 'register' | 'reset' | 'sample';
+  sample?: SampleSettings;
+};
+type AppProps = {
+  active?: boolean;
+  entryRequest?: StudioEntry;
+  publicConfig?: PublicConfig | null;
+  onAbout?: () => void;
+  onEntryCancel?: () => void;
+  onEntryComplete?: () => void;
+  onRegisterLeaveGuard?: (guard: (() => boolean) | null) => void;
+};
+export function App({
+  active = true,
+  entryRequest,
+  publicConfig,
+  onAbout,
+  onEntryCancel,
+  onEntryComplete,
+  onRegisterLeaveGuard,
+}: AppProps = {}) {
+  const locale = useLocale();
+  const introduction = aboutCopy(locale);
+  const activeRef = useRef(active);
+  activeRef.current = active;
+  const entryHandled = useRef<number | null>(null);
+  const entryKey = useRef(entryRequest?.key);
+  entryKey.current = entryRequest?.key;
+  const entryAuth = useRef(false);
   const rawEditor = useEditor();
   const workspaceLayout = useWorkspaceLayout();
   const studioTheme = useStudioTheme(workspaceLayout.layout.theme);
@@ -203,7 +236,7 @@ export function App() {
   const [referenceFile, setReferenceFile] = useState<File | null>(null);
   const [referenceSource, setReferenceSource] = useState<'sketch' | 'upload'>('sketch');
   const [initialAIOperation, setInitialAIOperation] = useState<AIOperation>('edit-plan');
-  const [config, setConfig] = useState<PublicConfig | null>(null);
+  const [config, setConfig] = useState<PublicConfig | null>(publicConfig ?? null);
   const [session, setSession] = useState<Session>({ user: null, spaces: [] });
   const sessionRef = useRef(session);
   sessionRef.current = session;
@@ -300,6 +333,12 @@ export function App() {
   );
   const dismissNotice = useCallback(() => setNotice(null), []);
   const closeDialog = useCallback(() => setDialog(null), []);
+  useEffect(() => {
+    if (active) return;
+    setDialog(null);
+    setSidebarOpen(false);
+    entryAuth.current = false;
+  }, [active]);
   const collaboration = useCollaboration({
     editor: rawEditor,
     artwork,
@@ -328,7 +367,7 @@ export function App() {
     prepareRecipe: (next) =>
       project
         ? persistRecipeLayers(next, project, rawEditor.getSourceIdentity(), projectRequest.current)
-        : Promise.reject(new Error('项目已改变，请重新打开作品。')),
+        : Promise.reject(new Error(t('项目已改变，请重新打开作品。'))),
     resolveReferences: resolveLayerReferences,
   });
   const editor = collaboration.editor;
@@ -371,7 +410,7 @@ export function App() {
       }),
       () => confirmation.confirm({ ...labels, description }),
     );
-    if (result === 'changed') notify('工作区已更新，请核对当前内容后重新操作。');
+    if (result === 'changed') notify(t('工作区已更新，请核对当前内容后重新操作。'));
     return result === 'confirmed';
   }
   const captureCurrentImage = async () => {
@@ -385,11 +424,11 @@ export function App() {
       editor.isLoading() ||
       opening
     )
-      throw new Error('画面还在更新，请就绪后共享当前图片。');
+      throw new Error(t('画面还在更新，请就绪后共享当前图片。'));
     const before = editor.getRecipe(),
       identity = editor.getSourceIdentity();
     if (JSON.stringify(before) !== JSON.stringify(editor.renderedRecipe))
-      throw new Error('最新编辑还没有完成渲染，请稍后再共享。');
+      throw new Error(t('最新编辑还没有完成渲染，请稍后再共享。'));
     const imageDataUrl = await captureRenderedImage(editor.rendered);
     if (
       identity !== editor.getSourceIdentity() ||
@@ -397,7 +436,7 @@ export function App() {
       artworkRef.current?.id !== current.id ||
       artworkRef.current.headVersion !== current.headVersion
     )
-      throw new Error('共享期间画面已变化，请重新获取上下文。');
+      throw new Error(t('共享期间画面已变化，请重新获取上下文。'));
     return {
       imageDataUrl,
       assetId: asset.id,
@@ -451,7 +490,7 @@ export function App() {
     const nextMembership = next.spaces.find((space) => space.id === previousMembership?.id);
     const lostMembership = !changed && !!previousMembership && !nextMembership;
     if (changed || lostMembership) clearCloudWorkspace();
-    if (lostMembership) notify('当前空间的访问权限已变化。照片仍在本机，请选择可访问的空间。');
+    if (lostMembership) notify(t('当前空间的访问权限已变化。照片仍在本机，请选择可访问的空间。'));
     else if (
       previousMembership &&
       nextMembership &&
@@ -484,14 +523,16 @@ export function App() {
     if (!owner) return null;
     try {
       const next = await api<unknown>('/session');
-      if (!isAuthSession(next)) throw new Error('账号状态暂时无法确认，请稍后重试。');
+      if (!isAuthSession(next)) throw new Error(t('账号状态暂时无法确认，请稍后重试。'));
       if (!sessionFence.acceptRead(owner, next.user?.id ?? null)) return null;
       showSession(next, owner.actor);
       if (owner.actor && !next.user) {
         notify(
           getDocumentDraftCount(owner.actor) > 0
-            ? '登录已失效。未保存文档已在本页临时保留，重新登录原账号并打开项目即可恢复；请勿关闭页面。'
-            : '登录已失效。当前照片仍在本机，可以导出或重新登录。',
+            ? t(
+                '登录已失效。未保存文档已在本页临时保留，重新登录原账号并打开项目即可恢复；请勿关闭页面。',
+              )
+            : t('登录已失效。当前照片仍在本机，可以导出或重新登录。'),
         );
       }
       return next;
@@ -519,7 +560,13 @@ export function App() {
     postAuthDialog.current = null;
     setDialog(destination);
     // A reset whose response was lost may already have revoked this session.
-    if (!authCompleted.current) void reconcileSession();
+    if (!authCompleted.current) {
+      void reconcileSession();
+      if (entryAuth.current) {
+        entryAuth.current = false;
+        onEntryCancel?.();
+      }
+    }
   }
 
   function openAccount(tab: typeof accountEntry.tab = 'overview') {
@@ -531,14 +578,20 @@ export function App() {
   }
   async function openPasswordReset() {
     if (saveLock.current || accountActivity.current.ai || accountActivity.current.voice) {
-      setLogoutError('请先完成保存或结束当前请求，再重置密码。');
+      setLogoutError(t('请先完成保存或结束当前请求，再重置密码。'));
       return;
     }
     if (
       (documentDirty || getDocumentDraftCount(sessionFence.snapshot().actor) > 0) &&
       !(await confirmNavigation(
-        '重置密码会使该手机号对应账号的旧登录失效。未保存文档仅临时保留在本页；请先保存或导出，或在重置后重新登录原账号恢复。关闭页面会丢失未导出的草稿。',
-        { title: '重置密码前保留草稿', confirmLabel: '继续重置', cancelLabel: '返回工作区' },
+        t(
+          '重置密码会使该手机号对应账号的旧登录失效。未保存文档仅临时保留在本页；请先保存或导出，或在重置后重新登录原账号恢复。关闭页面会丢失未导出的草稿。',
+        ),
+        {
+          title: t('重置密码前保留草稿'),
+          confirmLabel: t('继续重置'),
+          cancelLabel: t('返回工作区'),
+        },
       ))
     )
       return;
@@ -564,7 +617,7 @@ export function App() {
           )
             showSession(s.value, owner.actor);
           else if (owner && sessionFence.ownsRead(owner))
-            setCloudError('账号状态暂时无法确认，请重试登录。');
+            setCloudError(t('账号状态暂时无法确认，请重试登录。'));
         } else if (owner && sessionFence.ownsRead(owner)) setCloudError(errorMessage(s.reason));
         setBooting(false);
       },
@@ -598,7 +651,8 @@ export function App() {
     };
   }, [sessionFence]);
   useEffect(() => {
-    document.title = `${brand} · ${project?.title ?? '创作工作台'}`;
+    if (!active) return;
+    document.title = brand + ' · ' + (project?.title ?? t('创作工作台'));
     const meta = document.querySelector<HTMLMetaElement>('meta[name=description]');
     if (meta && config?.brand.tagline) meta.content = config.brand.tagline;
     const icon = document.querySelector<HTMLLinkElement>('link[rel=icon]');
@@ -609,6 +663,8 @@ export function App() {
     config?.brand.logoUrl,
     config?.brand.logoAssetId,
     config?.brand.tagline,
+    active,
+    locale,
   ]);
   useEffect(() => {
     if (!session.user || !spaceId) {
@@ -688,7 +744,13 @@ export function App() {
   }, [session.user?.id, spaceId]);
   useEffect(() => {
     const handle = (e: KeyboardEvent) => {
-      if (document.querySelector('dialog[open]') || e.isComposing || e.keyCode === 229) return;
+      if (
+        !activeRef.current ||
+        document.querySelector('dialog[open]') ||
+        e.isComposing ||
+        e.keyCode === 229
+      )
+        return;
       if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 'k') {
         e.preventDefault();
         setDialog('commands');
@@ -736,12 +798,16 @@ export function App() {
       !sessionFence.isCurrent(authOwner.current) ||
       sessionFence.busy
     ) {
-      notify('账号状态已变化，请重新核对当前登录。');
+      notify(t('账号状态已变化，请重新核对当前登录。'));
       return;
     }
     replaceSession(next);
     authOwner.current = sessionFence.snapshot();
     authCompleted.current = true;
+    if (entryAuth.current) {
+      entryAuth.current = false;
+      onEntryComplete?.();
+    }
     postAuthDialog.current = pendingImport
       ? 'importSettings'
       : meta?.method === 'register'
@@ -749,7 +815,7 @@ export function App() {
         : null;
     setCloudError(null);
     setLogoutError(null);
-    if (meta?.method !== 'register') notify('已登录，可以把作品保存到云端。', 'success');
+    if (meta?.method !== 'register') notify(t('已登录，可以把作品保存到云端。'), 'success');
   }
   async function receivePasswordReset(intent: number) {
     if (intent !== authIntent.current || !sessionFence.isCurrent(authOwner.current)) return;
@@ -763,7 +829,7 @@ export function App() {
     try {
       const observed = await api<unknown>('/session');
       if (intent !== authIntent.current || !sessionFence.ownsRead(owner)) return;
-      if (!isAuthSession(observed)) throw new Error('密码已重置，当前登录状态暂时无法确认。');
+      if (!isAuthSession(observed)) throw new Error(t('密码已重置，当前登录状态暂时无法确认。'));
       if (!sessionFence.acceptRead(owner, observed.user?.id ?? null)) return;
       // Update the active form owner in the same turn as the accepted session.
       // Switching from the reset result to login must not inherit an obsolete epoch.
@@ -774,17 +840,19 @@ export function App() {
       if (owner.actor !== (observed.user?.id ?? null)) setView('editor');
     } catch {
       if (intent !== authIntent.current || !sessionFence.ownsRead(owner)) return;
-      setCloudError('密码已重置，当前登录状态尚未确认。草稿保留在本页，关闭此窗口后会再次核对。');
+      setCloudError(
+        t('密码已重置，当前登录状态尚未确认。草稿保留在本页，关闭此窗口后会再次核对。'),
+      );
     }
   }
   async function logout() {
     if (sessionFence.busy || !sessionRef.current.user) return;
     if (saveLock.current) {
-      notify('作品正在保存，请稍等片刻。');
+      notify(t('作品正在保存，请稍等片刻。'));
       return;
     }
     if (accountActivity.current.ai || accountActivity.current.voice) {
-      setLogoutError('请先返回并结束当前 AI 请求或语音通话，再退出登录。退出不会代替任务取消。');
+      setLogoutError(t('请先返回并结束当前 AI 请求或语音通话，再退出登录。退出不会代替任务取消。'));
       return;
     }
     const owner = sessionFence.beginLogout();
@@ -793,49 +861,51 @@ export function App() {
     setLogoutError(null);
     try {
       const detail = [
-        '账号、云端作品和服务点会保留。再次使用时，直接登录即可。',
+        t('账号、云端作品和服务点会保留。再次使用时，直接登录即可。'),
         ...(getDocumentDraftCount(owner.actor) > 0
           ? [
-              `本页面保留了 ${getDocumentDraftCount(owner.actor)} 份未保存文档草稿，退出后将清除。请先保存或导出。`,
+              t('本页面保留了 {v0} 份未保存文档草稿，退出后将清除。请先保存或导出。', {
+                v0: getDocumentDraftCount(owner.actor),
+              }),
             ]
           : documentDirty
-            ? ['文档仍有未保存的修改；退出后这些修改会丢失。']
+            ? [t('文档仍有未保存的修改；退出后这些修改会丢失。')]
             : []),
-        ...(editor.file ? ['当前照片和本地编辑会留在此页面，关闭页面前请导出。'] : []),
-        '已经提交到云端的任务不会因退出而自动取消。',
+        ...(editor.file ? [t('当前照片和本地编辑会留在此页面，关闭页面前请导出。')] : []),
+        t('已经提交到云端的任务不会因退出而自动取消。'),
       ].join('\n\n');
       if (
         !(await confirmNavigation(detail, {
-          title: '退出当前账号？',
-          confirmLabel: '退出登录',
-          cancelLabel: '继续使用',
+          title: t('退出当前账号？'),
+          confirmLabel: t('退出登录'),
+          cancelLabel: t('继续使用'),
         }))
       )
         return;
       if (!sessionFence.ownsLogout(owner)) return;
       if (saveLock.current || accountActivity.current.ai || accountActivity.current.voice) {
-        setLogoutError('工作区状态已变化，请先完成保存或结束正在进行的请求。');
+        setLogoutError(t('工作区状态已变化，请先完成保存或结束正在进行的请求。'));
         return;
       }
       let confirmed: Session = { user: null, spaces: [] };
       try {
         const receipt = await api<{ ok?: unknown }>('/auth/logout', jsonRequest('POST'));
-        if (receipt?.ok !== true) throw new SyntaxError('退出结果暂时无法确认。');
+        if (receipt?.ok !== true) throw new SyntaxError(t('退出结果暂时无法确认。'));
       } catch (failure) {
         if (!sessionFence.ownsLogout(owner)) return;
         // The cookie may already have been cleared: observe once, never repeat the mutation.
         try {
           const observed = await api<unknown>('/session');
           if (!sessionFence.ownsLogout(owner)) return;
-          if (!isAuthSession(observed)) throw new Error('账号状态响应不完整。');
+          if (!isAuthSession(observed)) throw new Error(t('账号状态响应不完整。'));
           if (observed.user?.id === owner.actor) {
-            setLogoutError(`尚未退出登录。${errorMessage(failure)} 可以稍后重试。`);
+            setLogoutError(t('尚未退出登录。{v0} 可以稍后重试。', { v0: errorMessage(failure) }));
             return;
           }
           confirmed = observed;
         } catch {
           if (!sessionFence.ownsLogout(owner)) return;
-          setLogoutError('暂时无法确认是否已退出。当前页面保留原状态，请恢复连接后重试。');
+          setLogoutError(t('暂时无法确认是否已退出。当前页面保留原状态，请恢复连接后重试。'));
           return;
         }
       }
@@ -847,20 +917,20 @@ export function App() {
       setDialog(null);
       notify(
         confirmed.user
-          ? '当前登录已在其他窗口改变，已同步账号状态。'
+          ? t('当前登录已在其他窗口改变，已同步账号状态。')
           : editor.file
-            ? '已退出登录。照片与编辑仍在本机，关闭页面前请导出。'
-            : '已退出登录。账号与云端作品已保留。',
+            ? t('已退出登录。照片与编辑仍在本机，关闭页面前请导出。')
+            : t('已退出登录。账号与云端作品已保留。'),
       );
     } finally {
       if (sessionFence.releaseLogout(owner)) setLoggingOut(false);
     }
   }
   async function selectSpace(space: Space | null) {
-    if (documentDirty && !(await confirmNavigation('文档还有未保存的修改，确定切换空间吗？')))
+    if (documentDirty && !(await confirmNavigation(t('文档还有未保存的修改，确定切换空间吗？'))))
       return;
     if (saveLock.current) {
-      notify('作品正在保存，请稍等片刻。');
+      notify(t('作品正在保存，请稍等片刻。'));
       return;
     }
     ++projectRequest.current;
@@ -879,10 +949,10 @@ export function App() {
     setAiOpen(false);
   }
   async function loadProject(next: Project) {
-    if (documentDirty && !(await confirmNavigation('文档还有未保存的修改，确定切换项目吗？')))
+    if (documentDirty && !(await confirmNavigation(t('文档还有未保存的修改，确定切换项目吗？'))))
       return;
     if (saveLock.current) {
-      notify('作品正在保存，请稍等片刻。');
+      notify(t('作品正在保存，请稍等片刻。'));
       return;
     }
     const req = ++projectRequest.current;
@@ -944,14 +1014,19 @@ export function App() {
       request,
       abandoned: () => {
         if (guard.status() === 'edited')
-          notify('加载期间你继续修改了当前图片，已保留这些编辑。准备好后可重新打开目标图片。');
+          notify(t('加载期间你继续修改了当前图片，已保留这些编辑。准备好后可重新打开目标图片。'));
         return false;
       },
     };
   }
-  async function importFile(file?: File): Promise<boolean> {
+  async function importFile(
+    file?: File,
+    initialRecipe?: EditorRecipe,
+    entryIsCurrent: () => boolean = () => true,
+  ): Promise<boolean> {
+    if (!entryIsCurrent()) return false;
     if (saveLock.current) {
-      notify('作品正在保存，请稍等片刻。');
+      notify(t('作品正在保存，请稍等片刻。'));
       return false;
     }
     if (!file) {
@@ -960,14 +1035,15 @@ export function App() {
     }
     if (
       documentDirty &&
-      !(await confirmNavigation('文档还有未保存的修改。打开照片会离开文档，确定继续吗？'))
+      !(await confirmNavigation(t('文档还有未保存的修改。打开照片会离开文档，确定继续吗？')))
     )
       return false;
     if (
       isEditorDirty() &&
-      !(await confirmNavigation('当前还有未保存的编辑。打开新图片将替换本地编辑，确认继续吗？'))
+      !(await confirmNavigation(t('当前还有未保存的编辑。打开新图片将替换本地编辑，确认继续吗？')))
     )
       return false;
+    if (!entryIsCurrent()) return false;
     // Close the previous source's panel before decoding. A tool explicitly opened
     // while the new image becomes visible must not be closed by the late load completion.
     // Leave a confirmed document now, so no new document edits can be lost while decoding.
@@ -975,7 +1051,12 @@ export function App() {
     setInspectorOpen(false);
     const load = beginSourceLoad();
     try {
-      const loaded = await editor.loadFile(file, undefined, load.isCurrent);
+      const loaded = await editor.loadFile(
+        file,
+        initialRecipe,
+        () => load.isCurrent() && entryIsCurrent(),
+      );
+      if (!entryIsCurrent()) return false;
       if (!loaded) return load.abandoned();
       if (load.request !== projectRequest.current) return false;
       setArtwork(null);
@@ -986,9 +1067,10 @@ export function App() {
       setSampling(false);
       setPendingImport(null);
       setImportReason(null);
-      notify('图片已打开，尚未上传。', 'success');
+      notify(t('图片已打开，尚未上传。'), 'success');
       return true;
     } catch (e) {
+      if (!entryIsCurrent()) return false;
       if (!load.isCurrent()) return load.abandoned();
       if (
         e instanceof LocalImportError &&
@@ -1009,11 +1091,11 @@ export function App() {
     const references = new Map<string, File>();
     if (value.schemaVersion !== 3 && value.schemaVersion !== 4) return references;
     for (const id of new Set(value.imageLayers.map((layer) => layer.sourceId))) {
-      if (!/^[a-f0-9-]{36}$/i.test(id)) throw new Error('云端作品包含不可解析的合成素材引用。');
+      if (!/^[a-f0-9-]{36}$/i.test(id)) throw new Error(t('云端作品包含不可解析的合成素材引用。'));
       if (!isCurrent()) return references;
       const response = await fetch(`/v1/assets/${id}/file`, { credentials: 'include' });
       if (!isCurrent()) return references;
-      if (!response.ok) throw new Error('无法读取作品引用的合成素材，请确认项目访问权限。');
+      if (!response.ok) throw new Error(t('无法读取作品引用的合成素材，请确认项目访问权限。'));
       const blob = await response.blob();
       if (!isCurrent()) return references;
       references.set(
@@ -1025,18 +1107,18 @@ export function App() {
   }
   async function openArtwork(next: Artwork | string): Promise<boolean> {
     if (saveLock.current) {
-      notify('作品正在保存，请稍等片刻。');
+      notify(t('作品正在保存，请稍等片刻。'));
       return false;
     }
     if (
       navigationScope.current.documentDirty &&
-      !(await confirmNavigation('文档还有未保存的修改。打开作品会离开文档，确定继续吗？'))
+      !(await confirmNavigation(t('文档还有未保存的修改。打开作品会离开文档，确定继续吗？')))
     )
       return false;
     if (
       isEditorDirty() &&
       !(await confirmNavigation(
-        '当前还有未保存的编辑。打开云端作品前，请确认已导出或不再需要这些修改。继续打开吗？',
+        t('当前还有未保存的编辑。打开云端作品前，请确认已导出或不再需要这些修改。继续打开吗？'),
       ))
     )
       return false;
@@ -1055,9 +1137,9 @@ export function App() {
         asset: data.asset,
       });
       if (data.artwork.assetId !== data.asset.id)
-        throw new Error('当前作品来源与版本不一致，请刷新后重试。');
+        throw new Error(t('当前作品来源与版本不一致，请刷新后重试。'));
       const response = await fetch(data.asset.url, { credentials: 'include' });
-      if (!response.ok) throw new Error('暂时无法读取这张图片，请检查项目访问权限后重试。');
+      if (!response.ok) throw new Error(t('暂时无法读取这张图片，请检查项目访问权限后重试。'));
       const blob = await response.blob();
       if (!load.isCurrent()) return load.abandoned();
       const file = new File([blob], data.asset.name, { type: blob.type || data.asset.mime });
@@ -1080,7 +1162,10 @@ export function App() {
       setSavedRecipe(JSON.stringify(parseEditorRecipe(data.revision.recipe)));
       setView('editor');
       setComparing(false);
-      notify(`已打开「${data.artwork.title}」版本 ${data.artwork.headVersion}。`, 'success');
+      notify(
+        t('已打开「{v0}」版本 {v1}。', { v0: data.artwork.title, v1: data.artwork.headVersion }),
+        'success',
+      );
       return true;
     } catch (e) {
       if (!load.isCurrent()) return load.abandoned();
@@ -1094,16 +1179,16 @@ export function App() {
   async function openLibraryAsset(next: Asset) {
     if (
       documentDirty &&
-      !(await confirmNavigation('文档还有未保存的修改。打开素材会离开文档，继续吗？'))
+      !(await confirmNavigation(t('文档还有未保存的修改。打开素材会离开文档，继续吗？')))
     )
       return;
     if (saveLock.current) {
-      notify('作品正在保存，请稍等片刻。');
+      notify(t('作品正在保存，请稍等片刻。'));
       return;
     }
     if (
       isEditorDirty() &&
-      !(await confirmNavigation('当前还有未保存的编辑。打开素材原图会替换本地草稿，继续吗？'))
+      !(await confirmNavigation(t('当前还有未保存的编辑。打开素材原图会替换本地草稿，继续吗？')))
     )
       return;
     const load = beginSourceLoad();
@@ -1117,7 +1202,7 @@ export function App() {
           : null;
       if (!load.isCurrent()) return load.abandoned();
       const response = await fetch(next.url, { credentials: 'include' });
-      if (!response.ok) throw new Error('无法读取素材，请刷新当前项目权限后重试。');
+      if (!response.ok) throw new Error(t('无法读取素材，请刷新当前项目权限后重试。'));
       const blob = await response.blob();
       if (!load.isCurrent()) {
         load.abandoned();
@@ -1149,7 +1234,7 @@ export function App() {
       setComparing(false);
       setInspectorOpen(false);
       setAiOpen(false);
-      notify('原始素材已打开。保存时会建立独立作品，不会改写已有版本。', 'success');
+      notify(t('原始素材已打开。保存时会建立独立作品，不会改写已有版本。'), 'success');
     } catch (error) {
       if (!load.isCurrent()) {
         load.abandoned();
@@ -1173,7 +1258,7 @@ export function App() {
       analysis.frame.height !== frame.height ||
       !editor.file
     )
-      throw new Error('请先分析当前原图的人物边缘。');
+      throw new Error(t('请先分析当前原图的人物边缘。'));
     const settings: CutoutSettings = {
       algorithm: 'guided-v2',
       selection,
@@ -1212,17 +1297,17 @@ export function App() {
         }),
       );
       setRefreshToken((value) => value + 1);
-      return '透明 PNG 已保存到项目素材。';
+      return t('透明 PNG 已保存到项目素材。');
     }
     const blob = await editor.exportImage('png', 0.94, false, settings);
     if (editor.getSourceIdentity() !== identity || editor.isLoading())
-      throw new Error('图片已切换，请重新运行抠图。');
+      throw new Error(t('图片已切换，请重新运行抠图。'));
     downloadBlob(blob, name);
-    return '透明 PNG 已下载。';
+    return t('透明 PNG 已下载。');
   }
 
   async function copyCloudAsset(sourceAssetId: string, targetProjectId: string): Promise<Asset> {
-    if (!session.user) throw new Error('请先登录再复制云端素材。');
+    if (!session.user) throw new Error(t('请先登录再复制云端素材。'));
     let storage: Storage | undefined;
     try {
       storage = window.sessionStorage;
@@ -1244,7 +1329,7 @@ export function App() {
   ): Promise<EditorRecipe> {
     const assertCurrent = () => {
       if (savedSource !== rawEditor.getSourceIdentity() || savedContext !== projectRequest.current)
-        throw new Error('图片或账号范围已变化，未继续上传图层。');
+        throw new Error(t('图片或账号范围已变化，未继续上传图层。'));
     };
     assertCurrent();
     if (
@@ -1270,7 +1355,7 @@ export function App() {
         if (route === 'copy') uploadedAsset = await copyCloudAsset(sourceId, target.id);
         else {
           let layerFile = files.get(sourceId);
-          if (!layerFile) throw new Error('缺少合成素材原文件，无法保存完整作品。');
+          if (!layerFile) throw new Error(t('缺少合成素材原文件，无法保存完整作品。'));
           const layerFormat = layerFile.type.split('/')[1];
           if (
             layerFormat === 'bmp' ||
@@ -1279,7 +1364,7 @@ export function App() {
             layerFile = await normalizeImageSourceFile(layerFile);
           assertCurrent();
           if (layerFile.size > (config?.limits.maxUploadBytes ?? 20 * 1024 * 1024))
-            throw new Error('合成素材超出服务器上传预算。');
+            throw new Error(t('合成素材超出服务器上传预算。'));
           const form = new FormData();
           form.append('file', layerFile);
           const uploaded = await api<{ asset: Asset }>(`/projects/${target.id}/assets`, {
@@ -1292,7 +1377,7 @@ export function App() {
           savedSource !== rawEditor.getSourceIdentity() ||
           savedContext !== projectRequest.current
         )
-          throw new Error('上传期间作品已切换，素材保留于原项目。');
+          throw new Error(t('上传期间作品已切换，素材保留于原项目。'));
         mapping.set(sourceId, uploadedAsset.id);
         layerOwners.current.set(uploadedAsset.id, target.id);
         uploadedLayerAliases.current.set(`${target.id}:${sourceId}`, uploadedAsset.id);
@@ -1316,7 +1401,7 @@ export function App() {
       setSaving(true);
       try {
         await collaboration.publishCurrent();
-        notify('当前调整已同步为云端版本。', 'success');
+        notify(t('当前调整已同步为云端版本。'), 'success');
       } catch (error) {
         notify(errorMessage(error), 'error');
       } finally {
@@ -1327,7 +1412,7 @@ export function App() {
     }
     if (!editor.file || saveLock.current) return;
     if (editor.isLoading() || opening) {
-      notify('图片正在准备中，请加载完成后再保存。');
+      notify(t('图片正在准备中，请加载完成后再保存。'));
       return;
     }
     let snapshot = structuredClone(editor.getRecipe());
@@ -1361,7 +1446,9 @@ export function App() {
               (config?.limits.maxPixels ?? 40_000_000)
           )
             throw new Error(
-              '原图超过当前服务端像素预算。本地编辑与导出仍可继续，请明确准备较小副本再保存云端。',
+              t(
+                '原图超过当前服务端像素预算。本地编辑与导出仍可继续，请明确准备较小副本再保存云端。',
+              ),
             );
           const uploadFile = await editor.getCloudUploadFile(
             !!config?.media && !config.media.serverImport.includes(editor.sourceFormat),
@@ -1369,7 +1456,9 @@ export function App() {
           if (!stillCurrent()) return;
           if (uploadFile.size > (config?.limits.maxUploadBytes ?? 20 * 1024 * 1024))
             throw new Error(
-              `上传文件超过当前云端 ${Math.floor((config?.limits.maxUploadBytes ?? 20 * 1024 * 1024) / 1024 / 1024)} MiB 上限，本地作品仍然保留。`,
+              t('上传文件超过当前云端 {v0} MiB 上限，本地作品仍然保留。', {
+                v0: Math.floor((config?.limits.maxUploadBytes ?? 20 * 1024 * 1024) / 1024 / 1024),
+              }),
             );
           const form = new FormData();
           form.append('file', uploadFile);
@@ -1381,7 +1470,7 @@ export function App() {
           ).asset;
         }
         if (!stillCurrent())
-          throw new Error('源图片或项目已切换，本次素材保留在原项目，未绑定到当前画面。');
+          throw new Error(t('源图片或项目已切换，本次素材保留在原项目，未绑定到当前画面。'));
         uploadedBaseAssets.current.set(`${target.id}:${savedSource}`, currentAsset);
       }
       snapshot = await persistRecipeLayers(snapshot, target, savedSource, savedContext);
@@ -1393,14 +1482,14 @@ export function App() {
               jsonRequest('POST', {
                 expectedVersion: artwork.headVersion,
                 recipe: snapshot,
-                label: '手动编辑',
+                label: t('手动编辑'),
               }),
             )
           : await api<{ artwork: Artwork; revision: Revision }>(
               `/projects/${target.id}/artworks`,
               jsonRequest('POST', {
                 assetId: currentAsset.id,
-                title: boundedTitle(filenameBase(savedFile.name), asNew ? ' · 独立分支' : ''),
+                title: boundedTitle(filenameBase(savedFile.name), asNew ? t(' · 独立分支') : ''),
                 recipe: snapshot,
               }),
             );
@@ -1414,7 +1503,10 @@ export function App() {
       if (!stillCurrent()) return;
       setRefreshToken((v) => v + 1);
       if (savedIntent === authIntent.current && savedDialog === dialogRef.current) setDialog(null);
-      notify(`版本 ${result.artwork.headVersion} 已保存到「${target.title}」。`, 'success');
+      notify(
+        t('版本 {v0} 已保存到「{v1}」。', { v0: result.artwork.headVersion, v1: target.title }),
+        'success',
+      );
     } catch (e) {
       if (!stillCurrent() || savedIntent !== authIntent.current) return;
       if (
@@ -1431,7 +1523,7 @@ export function App() {
   }
 
   async function serverImport() {
-    if (!pendingImport || !project) throw new Error('请先选择文件和保存项目。');
+    if (!pendingImport || !project) throw new Error(t('请先选择文件和保存项目。'));
     const incoming = pendingImport;
     const destination = project;
     const guard = createSourceLoadGuard(() => ({
@@ -1440,7 +1532,9 @@ export function App() {
       recipe: editor.getRecipe(),
     }));
     if (incoming.size > (config?.media?.maxUploadBytes ?? config?.limits.maxUploadBytes ?? 0))
-      throw new Error('这份文件超过当前服务端上传上限。没有上传，请使用较小副本或调整服务配置。');
+      throw new Error(
+        t('这份文件超过当前服务端上传上限。没有上传，请使用较小副本或调整服务配置。'),
+      );
     const form = new FormData();
     form.append('file', incoming);
     const uploaded = await api<{ asset: Asset }>(`/projects/${destination.id}/assets`, {
@@ -1458,7 +1552,9 @@ export function App() {
     setRefreshToken((value) => value + 1);
     if (guard.status() === 'superseded') {
       notify(
-        `规范化素材与新作品已保存到「${destination.title}」，当前工作区已改变，因此未自动打开。`,
+        t('规范化素材与新作品已保存到「{v0}」，当前工作区已改变，因此未自动打开。', {
+          v0: destination.title,
+        }),
         'success',
       );
       return;
@@ -1468,7 +1564,9 @@ export function App() {
     await refreshProject(destination.id);
     if (!guard.isCurrent()) {
       notify(
-        `规范化素材与新作品已保存到「${destination.title}」。上传期间的新编辑已保留，可从项目中打开该作品。`,
+        t('规范化素材与新作品已保存到「{v0}」。上传期间的新编辑已保留，可从项目中打开该作品。', {
+          v0: destination.title,
+        }),
         'success',
       );
       return;
@@ -1487,19 +1585,23 @@ export function App() {
       setView('works');
       notify(
         exceedsEngine
-          ? '规范化PNG与新作品已保存到项目。原图超过当前工作台的16.8MP / 单边8192px编辑上限，请明确准备较小副本；提高设备预算不会改变此工作台上限。'
-          : '规范化PNG与新作品已保存到项目。当前设备预算不足，可在16.8MP引擎上限内调整预算或使用较小副本。',
+          ? t(
+              '规范化PNG与新作品已保存到项目。原图超过当前工作台的16.8MP / 单边8192px编辑上限，请明确准备较小副本；提高设备预算不会改变此工作台上限。',
+            )
+          : t(
+              '规范化PNG与新作品已保存到项目。当前设备预算不足，可在16.8MP引擎上限内调整预算或使用较小副本。',
+            ),
         'success',
       );
     }
   }
   function save() {
     if (editor.isLoading() || opening) {
-      notify('图片正在准备中，请加载完成后再保存。');
+      notify(t('图片正在准备中，请加载完成后再保存。'));
       return;
     }
     if (!editor.file) {
-      notify('先打开一张照片，再保存到项目。');
+      notify(t('先打开一张照片，再保存到项目。'));
       return;
     }
     if (!session.user) {
@@ -1515,7 +1617,7 @@ export function App() {
   }
   async function openCreateProject() {
     if (saveLock.current) {
-      notify('作品正在保存，请稍等片刻。');
+      notify(t('作品正在保存，请稍等片刻。'));
       return;
     }
     if (!session.user) {
@@ -1524,15 +1626,15 @@ export function App() {
     }
     if (
       documentDirty &&
-      !(await confirmNavigation('文档还有未保存的修改。新建项目后会离开当前文档，确定继续吗？'))
+      !(await confirmNavigation(t('文档还有未保存的修改。新建项目后会离开当前文档，确定继续吗？')))
     )
       return;
     saveAfterProject.current = false;
     setDialog('project');
   }
   async function createProject(title: string) {
-    if (saveLock.current) throw new Error('作品正在保存，请稍等片刻。');
-    if (!spaceId) throw new Error('请先选择一个创作空间。');
+    if (saveLock.current) throw new Error(t('作品正在保存，请稍等片刻。'));
+    if (!spaceId) throw new Error(t('请先选择一个创作空间。'));
     const context = ++projectRequest.current;
     editor.cancelPendingLoad();
     setOpening(false);
@@ -1542,7 +1644,7 @@ export function App() {
     );
     if (context !== projectRequest.current) {
       setRefreshToken((value) => value + 1);
-      notify('项目已创建，可在相应空间查看。');
+      notify(t('项目已创建，可在相应空间查看。'));
       return;
     }
     setProject(result.project);
@@ -1557,49 +1659,49 @@ export function App() {
     if (saveAfterProject.current) {
       saveAfterProject.current = false;
       await saveToProject(result.project);
-    } else notify('项目已创建，打开照片开始创作。', 'success');
+    } else notify(t('项目已创建，打开照片开始创作。'), 'success');
   }
   async function createTeam(name: string) {
     const owner = sessionFence.snapshot();
-    if (!owner.actor || sessionFence.busy) throw new Error('请先完成当前账号操作。');
+    if (!owner.actor || sessionFence.busy) throw new Error(t('请先完成当前账号操作。'));
     const result = await api<{ space: Space }>('/spaces', jsonRequest('POST', { name }));
     if (!sessionFence.isCurrent(owner) || sessionFence.busy)
-      throw new Error('账号已改变，团队结果可在原账号中查看。');
+      throw new Error(t('账号已改变，团队结果可在原账号中查看。'));
     const next = await reconcileSession();
     if (
       !next ||
       !sessionFence.isCurrent(owner) ||
       !next.spaces.some((space) => space.id === result.space.id)
     )
-      throw new Error('团队已创建，暂时无法确认当前空间。请刷新账号状态后查看。');
+      throw new Error(t('团队已创建，暂时无法确认当前空间。请刷新账号状态后查看。'));
     await selectSpace(result.space);
-    if (sessionFence.isCurrent(owner)) notify('团队空间已创建。可以邀请队友加入。', 'success');
+    if (sessionFence.isCurrent(owner)) notify(t('团队空间已创建。可以邀请队友加入。'), 'success');
   }
   async function joinTeam(code: string) {
     const owner = sessionFence.snapshot();
-    if (!owner.actor || sessionFence.busy) throw new Error('请先完成当前账号操作。');
+    if (!owner.actor || sessionFence.busy) throw new Error(t('请先完成当前账号操作。'));
     const result = await api<{ space: Space }>(
       '/invitations/accept',
       jsonRequest('POST', { code }),
     );
     if (!sessionFence.isCurrent(owner) || sessionFence.busy)
-      throw new Error('账号已改变，请在原账号中核对加入结果。');
+      throw new Error(t('账号已改变，请在原账号中核对加入结果。'));
     const next = await reconcileSession();
     if (
       !next ||
       !sessionFence.isCurrent(owner) ||
       !next.spaces.some((space) => space.id === result.space.id)
     )
-      throw new Error('已提交加入团队，请刷新账号状态后核对结果。');
+      throw new Error(t('已提交加入团队，请刷新账号状态后核对结果。'));
     await selectSpace(result.space);
-    if (sessionFence.isCurrent(owner)) notify('已加入团队空间。', 'success');
+    if (sessionFence.isCurrent(owner)) notify(t('已加入团队空间。'), 'success');
   }
   async function changeView(next: View) {
     if (
       view === 'docs' &&
       next !== view &&
       documentDirty &&
-      !(await confirmNavigation('文档还有未保存的修改，确定离开文档吗？'))
+      !(await confirmNavigation(t('文档还有未保存的修改，确定离开文档吗？')))
     )
       return false;
     setView(next);
@@ -1610,7 +1712,7 @@ export function App() {
   async function openRevision(next: Pick<Revision, 'id' | 'version'>) {
     const current = artworkRef.current;
     if (!current || saveLock.current || opening) return;
-    if (isEditorDirty() && !(await confirmNavigation('查看历史会替换本地未保存草稿，继续吗？')))
+    if (isEditorDirty() && !(await confirmNavigation(t('查看历史会替换本地未保存草稿，继续吗？'))))
       return;
     const load = beginSourceLoad();
     setOpening(true);
@@ -1629,7 +1731,7 @@ export function App() {
         asset: data.asset,
       });
       const response = await fetch(data.asset.url, { credentials: 'include' });
-      if (!response.ok) throw new Error('无法读取这个历史版本的底图。');
+      if (!response.ok) throw new Error(t('无法读取这个历史版本的底图。'));
       const blob = await response.blob();
       if (!load.isCurrent()) {
         load.abandoned();
@@ -1661,7 +1763,9 @@ export function App() {
       // A historical source becomes a separate draft; saving is explicitly a fork, not a recipe on the new source.
       setArtwork(null);
       setSavedRecipe(null);
-      notify(`历史版本 ${next.version} 的底图、合成素材与配方已打开，保存将建立独立作品。`);
+      notify(
+        t('历史版本 {v0} 的底图、合成素材与配方已打开，保存将建立独立作品。', { v0: next.version }),
+      );
     } catch (error) {
       if (!load.isCurrent()) {
         load.abandoned();
@@ -1675,7 +1779,7 @@ export function App() {
   async function restoreRevision(next: Pick<Revision, 'id' | 'version'>) {
     const current = artworkRef.current;
     if (!current || isEditorDirty() || saveLock.current || opening)
-      throw new Error('请先保存当前草稿再恢复历史。');
+      throw new Error(t('请先保存当前草稿再恢复历史。'));
     const source = editor.getSourceIdentity(),
       before = editor.getRecipe();
     saveLock.current = true;
@@ -1693,7 +1797,7 @@ export function App() {
       ) {
         saveLock.current = false;
         await openArtwork(restored.artwork);
-      } else notify('历史已在云端恢复成新版本，当前继续编辑的草稿已保留。');
+      } else notify(t('历史已在云端恢复成新版本，当前继续编辑的草稿已保留。'));
       setRefreshToken((v) => v + 1);
     } finally {
       collaboration.afterExternalWrite();
@@ -1701,18 +1805,64 @@ export function App() {
       setSaving(false);
     }
   }
+  useEffect(() => {
+    if (!active || booting || !entryRequest || entryHandled.current === entryRequest.key) return;
+    if (entryRequest.mode === 'sample') {
+      const controller = new AbortController();
+      const capturedRequest = entryRequest.key;
+      const isCurrent = () =>
+        !controller.signal.aborted && activeRef.current && entryKey.current === capturedRequest;
+      void fetch('/about/color-study.webp', { signal: controller.signal })
+        .then(async (response) => {
+          if (!response.ok) throw new Error(t('示例图片暂时无法加载。'));
+          const blob = await response.blob();
+          if (!isCurrent()) return;
+          const imported = await importFile(
+            new File([blob], 'color-study.webp', { type: 'image/webp' }),
+            createSampleRecipe(entryRequest.sample),
+            isCurrent,
+          );
+          if (!isCurrent()) return;
+          entryHandled.current = capturedRequest;
+          if (imported) onEntryComplete?.();
+        })
+        .catch((error) => {
+          if (isCurrent() && (error as Error).name !== 'AbortError')
+            notify(errorMessage(error), 'error');
+        });
+      return () => controller.abort();
+    }
+    entryHandled.current = entryRequest.key;
+    if (entryRequest.mode === 'studio') return;
+    if (sessionRef.current.user && entryRequest.mode !== 'reset') {
+      onEntryComplete?.();
+      return;
+    }
+    entryAuth.current = true;
+    openAuth(entryRequest.mode);
+  }, [active, booting, entryRequest?.key]);
+  useEffect(() => {
+    onRegisterLeaveGuard?.(() => {
+      if (!accountActivity.current.ai && !accountActivity.current.voice && !saveLock.current)
+        return true;
+      notify(t('请先完成保存或结束当前请求，再返回介绍页。'));
+      return false;
+    });
+    return () => onRegisterLeaveGuard?.(null);
+  }, [onRegisterLeaveGuard]);
+
   const requireProject = (
     <EmptyState
       icon={<UsersThree size={36} />}
-      title="选择项目"
+      title={t('选择项目')}
       description={
         session.user
-          ? '先选择或创建项目，讨论、文档和任务就会围绕同一份作品展开。'
-          : '登录后创建项目，可以邀请团队一起整理作品与意见。'
+          ? t('先选择或创建项目，讨论、文档和任务就会围绕同一份作品展开。')
+          : t('登录后创建项目，可以邀请团队一起整理作品与意见。')
       }
       action={
         <button className="button button-primary" onClick={openCreateProject}>
-          {session.user ? '创建项目' : '登录创作空间'}
+          {session.user ? t('创建项目') : t('登录创作空间')}
           <ArrowRight size={17} />
         </button>
       }
@@ -1766,7 +1916,7 @@ export function App() {
     setInspectorOpen(false);
     setAiOpen(false);
     setSidebarOpen(false);
-    notify('已恢复当前屏幕的默认布局。');
+    notify(t('已恢复当前屏幕的默认布局。'));
   };
   const showAI = () => {
     workspaceLayout.setFocused(false);
@@ -1783,10 +1933,10 @@ export function App() {
   const commands: StudioCommand[] = [
     ...toolGroups.map((tool) => ({
       id: 'tool-' + tool.id,
-      label: tool.label,
-      description: tool.description,
+      label: t(tool.label),
+      description: t(tool.description),
       keywords: tool.id,
-      section: '精修工具',
+      section: t('精修工具'),
       icon: tool.icon,
       run: async () => {
         if (!(await changeView('editor'))) return;
@@ -1795,10 +1945,10 @@ export function App() {
     })),
     {
       id: 'ai',
-      label: 'AI 助手',
-      description: '图片、文字、语音与创作助手',
+      label: t('AI 助手'),
+      description: t('图片、文字、语音与创作助手'),
       keywords: 'ai agent chat',
-      section: '创作空间',
+      section: t('创作空间'),
       icon: <Sparkle size={20} />,
       run: () => {
         void openAI();
@@ -1808,10 +1958,10 @@ export function App() {
       .filter((item) => item.id !== 'editor')
       .map((item) => ({
         id: 'view-' + item.id,
-        label: item.id === 'compare' ? '对比与云端版本' : item.label,
-        description: '打开' + item.label + '工作视图',
+        label: item.id === 'compare' ? t('对比与云端版本') : t(item.label),
+        description: t('打开{name}工作视图', { name: t(item.label) }),
         keywords: item.id,
-        section: '创作空间',
+        section: t('创作空间'),
         icon: item.icon,
         run: () => {
           changeView(item.id);
@@ -1819,10 +1969,10 @@ export function App() {
       })),
     {
       id: 'import',
-      label: '打开照片',
-      description: '从设备选择图片，在本地开始编辑',
+      label: t('打开照片'),
+      description: t('从设备选择图片，在本地开始编辑'),
       keywords: 'open import',
-      section: '常用操作',
+      section: t('常用操作'),
       icon: <Plus size={20} />,
       run: () => {
         void importFile();
@@ -1830,65 +1980,65 @@ export function App() {
     },
     {
       id: 'draw',
-      label: '画一张草图',
-      description: '自由画板，也可作为 AI 生图参考',
+      label: t('画一张草图'),
+      description: t('自由画板，也可作为 AI 生图参考'),
       keywords: 'draw sketch',
-      section: '常用操作',
+      section: t('常用操作'),
       icon: <PencilSimple size={20} />,
       run: () => setDialog('drawing'),
     },
     {
       id: 'export',
-      label: '导出图片',
-      description: editor.file ? '选择格式与质量，下载编辑结果' : '先打开一张图片',
+      label: t('导出图片'),
+      description: editor.file ? t('选择格式与质量，下载编辑结果') : t('先打开一张图片'),
       keywords: 'download export png jpeg webp',
-      section: '常用操作',
+      section: t('常用操作'),
       icon: <DownloadSimple size={20} />,
       disabled: !editor.file || opening || editor.loading,
-      disabledReason: !editor.file ? '请先打开照片' : '照片仍在载入，请稍候',
+      disabledReason: !editor.file ? t('请先打开照片') : t('照片仍在载入，请稍候'),
       run: () => setDialog('export'),
     },
     {
       id: 'save',
-      label: '保存版本',
-      description: editor.file ? '保存到当前创作空间' : '先打开一张图片',
+      label: t('保存版本'),
+      description: editor.file ? t('保存到当前创作空间') : t('先打开一张图片'),
       keywords: 'save cloud',
-      section: '常用操作',
+      section: t('常用操作'),
       icon: <CloudArrowUp size={20} />,
       disabled: !editor.file || saving || opening || editor.loading,
       disabledReason: !editor.file
-        ? '请先打开照片'
+        ? t('请先打开照片')
         : saving
-          ? '当前版本正在保存'
-          : '照片仍在载入，请稍候',
+          ? t('当前版本正在保存')
+          : t('照片仍在载入，请稍候'),
       run: () => {
         void save();
       },
     },
     {
       id: 'focus',
-      label: '专注画面',
-      description: '暂时收起工具，按 F 返回',
+      label: t('专注画面'),
+      description: t('暂时收起工具，按 F 返回'),
       keywords: 'focus',
-      section: '常用操作',
+      section: t('常用操作'),
       icon: <CornersOut size={20} />,
       run: () => workspaceLayout.setFocused(true),
     },
     {
       id: 'account',
-      label: session.user ? '账号与使用' : '登录或注册',
-      description: session.user ? '账号安全、服务点与退出' : '保存项目、同步作品与团队协作',
+      label: session.user ? t('账号与使用') : t('登录或注册'),
+      description: session.user ? t('账号安全、服务点与退出') : t('保存项目、同步作品与团队协作'),
       keywords: 'account login register billing credits logout 付费 注销 退出',
-      section: '常用操作',
+      section: t('常用操作'),
       icon: <ShieldCheck size={20} />,
       run: () => openAccount(),
     },
     {
       id: 'help',
-      label: '使用说明',
-      description: '编辑、协作与格式的实际能力',
+      label: t('使用说明'),
+      description: t('编辑、协作与格式的实际能力'),
       keywords: 'help',
-      section: '常用操作',
+      section: t('常用操作'),
       icon: <Info size={20} />,
       run: () => setDialog('help'),
     },
@@ -1899,7 +2049,7 @@ export function App() {
         <Suspense
           fallback={
             <div className="content-view">
-              <Busy label="正在打开运营管理" />
+              <Busy label={t('正在打开运营管理')} />
             </div>
           }
         >
@@ -1935,12 +2085,12 @@ export function App() {
             onLogout={() => openAccount('data')}
             onOps={async () => {
               if (aiActivity.callActive || aiActivity.requestActive || teamVoice.state !== 'idle') {
-                notify('请先结束当前 AI 请求或语音通话，再打开运营管理。');
+                notify(t('请先结束当前 AI 请求或语音通话，再打开运营管理。'));
                 return;
               }
               if (
                 documentDirty &&
-                !(await confirmNavigation('文档还有未保存的修改，确定进入运营管理吗？'))
+                !(await confirmNavigation(t('文档还有未保存的修改，确定进入运营管理吗？')))
               )
                 return;
               setOps(true);
@@ -1949,15 +2099,46 @@ export function App() {
           <div className="workspace">
             <header className="floating-topbar" data-motion="topbar">
               <div className="workspace-identity">
-                <IconButton label="打开空间与项目" onClick={() => setSidebarOpen(true)}>
+                <IconButton label={t('打开空间与项目')} onClick={() => setSidebarOpen(true)}>
                   <List size={21} />
                 </IconButton>
-                <Brand name={brand} logoUrl={brandLogoUrl(config?.brand)} compact />
+                <button
+                  type="button"
+                  className="workspace-home-link"
+                  aria-label={introduction.homeLabel}
+                  onClick={async () => {
+                    if (!onAbout) return;
+                    if (
+                      accountActivity.current.ai ||
+                      accountActivity.current.voice ||
+                      saveLock.current
+                    ) {
+                      notify(t('请先完成保存或结束当前请求，再返回介绍页。'));
+                      return;
+                    }
+                    if (documentDirty) {
+                      if (
+                        !(await confirmNavigation(
+                          t('文档仍在本页保留。返回介绍页后，请勿关闭页面。'),
+                          {
+                            title: t('返回介绍页'),
+                            confirmLabel: t('返回介绍页'),
+                            cancelLabel: t('继续编辑'),
+                          },
+                        ))
+                      )
+                        return;
+                    }
+                    onAbout();
+                  }}
+                >
+                  <Brand name={brand} logoUrl={brandLogoUrl(config?.brand)} compact />
+                </button>
                 <div className="workspace-project-title">
                   <strong
-                    title={artwork?.title ?? project?.title ?? editor.file?.name ?? '本地创作'}
+                    title={artwork?.title ?? project?.title ?? editor.file?.name ?? t('本地创作')}
                   >
-                    {artwork?.title ?? project?.title ?? '本地创作'}
+                    {artwork?.title ?? project?.title ?? t('本地创作')}
                   </strong>
                   <span
                     className="workspace-save-state"
@@ -1973,66 +2154,66 @@ export function App() {
                     role="status"
                   >
                     {saving
-                      ? '正在保存'
+                      ? t('正在保存')
                       : artwork && !dirty
-                        ? `版本 ${artwork.headVersion} 已保存`
+                        ? t('版本 {v0} 已保存', { v0: artwork.headVersion })
                         : editor.file
-                          ? '本地草稿'
-                          : '图片不会自动上传'}
+                          ? t('本地草稿')
+                          : t('图片不会自动上传')}
                   </span>
                 </div>
               </div>
-              <nav className="compact-view-tabs" aria-label="工作视图">
+              <nav className="compact-view-tabs" aria-label={t('工作视图')}>
                 {views.map((item) => (
                   <button
                     key={item.id}
                     className={view === item.id ? 'active' : ''}
                     onClick={() => changeView(item.id)}
-                    aria-label={item.label}
-                    title={item.label}
+                    aria-label={t(item.label)}
+                    title={t(item.label)}
                     aria-current={view === item.id ? 'page' : undefined}
                   >
                     {item.icon}
-                    <span>{item.label}</span>
+                    <span>{t(item.label)}</span>
                   </button>
                 ))}
               </nav>
               <button
                 type="button"
                 className="mobile-view-trigger"
-                aria-label="切换工作视图"
+                aria-label={t('切换工作视图')}
                 aria-haspopup="dialog"
                 aria-expanded={dialog === 'navigation'}
                 onClick={() => setDialog('navigation')}
               >
                 <StudioGlyph name={view} size={19} />
-                <span>{views.find((item) => item.id === view)?.label}</span>
+                <span>{t(views.find((item) => item.id === view)?.label ?? '')}</span>
                 <StudioGlyph name="chevron" size={14} />
               </button>
               <div className="workspace-top-actions">
                 <IconButton
-                  label="搜索工具与操作（Ctrl / ⌘ K）"
+                  label={t('搜索工具与操作（Ctrl / ⌘ K）')}
                   className="studio-search-trigger"
                   onClick={() => setDialog('commands')}
                 >
                   <MagnifyingGlass size={19} />
                 </IconButton>
                 <IconButton
-                  label={studioTheme.theme === 'light' ? '切换深色模式' : '切换浅色模式'}
+                  label={studioTheme.theme === 'light' ? t('切换深色模式') : t('切换浅色模式')}
                   className="theme-toggle"
                   onClick={studioTheme.toggle}
                 >
                   <StudioGlyph name={studioTheme.theme === 'light' ? 'moon' : 'sun'} />
                 </IconButton>
                 <IconButton
-                  label="专注画面（F）"
+                  label={t('专注画面（F）')}
                   className="focus-toggle"
                   onClick={() => workspaceLayout.setFocused(true)}
                 >
                   <CornersOut size={20} />
                 </IconButton>
                 <IconButton
-                  label="布局与工作台设置"
+                  label={t('布局与工作台设置')}
                   className="workspace-settings-trigger"
                   aria-haspopup="dialog"
                   onClick={() => setDialog('settings')}
@@ -2041,36 +2222,40 @@ export function App() {
                 </IconButton>
                 <button
                   className="button button-secondary top-save"
-                  aria-label="保存"
+                  aria-label={t('保存')}
                   disabled={!editor.file || saving || opening || editor.loading}
                   onClick={save}
                 >
                   {saving ? <Busy label="" /> : <CloudArrowUp size={20} />}
-                  <span>保存</span>
+                  <span>{t('保存')}</span>
                 </button>
                 <button
                   className="button button-primary top-export"
-                  aria-label="导出"
+                  aria-label={t('导出')}
                   disabled={!editor.file || opening || editor.loading}
                   onClick={() => setDialog('export')}
                 >
                   <StudioGlyph name="export" size={20} />
-                  <span>导出</span>
+                  <span>{t('导出')}</span>
                 </button>
                 <button
                   type="button"
                   className={`studio-account ${session.user ? 'is-signed-in' : ''}`}
-                  aria-label={session.user ? `账户：${session.user.displayName}` : '登录创作空间'}
+                  aria-label={
+                    session.user
+                      ? t('账户：{v0}', { v0: session.user.displayName })
+                      : t('登录创作空间')
+                  }
                   onClick={() => openAccount()}
                 >
-                  {session.user ? session.user.displayName.slice(0, 1) : '登录'}
+                  {session.user ? session.user.displayName.slice(0, 1) : t('登录')}
                 </button>
               </div>
             </header>
             {cloudError && (
               <div className="cloud-status" role="status">
                 <Info size={16} />
-                <span>云端暂不可用，本地编辑可以继续。</span>
+                <span>{t('云端暂不可用，本地编辑可以继续。')}</span>
                 <button
                   onClick={() => {
                     setCloudError(null);
@@ -2079,7 +2264,7 @@ export function App() {
                     setRefreshToken((value) => value + 1);
                   }}
                 >
-                  重试
+                  {t('重试')}
                 </button>
               </div>
             )}
@@ -2091,19 +2276,19 @@ export function App() {
                 <StudioGlyph name={aiActivity.callActive ? 'voice' : 'ai'} size={18} />
                 <span>
                   {aiActivity.callState === 'connecting'
-                    ? 'AI 语音正在连接'
+                    ? t('AI 语音正在连接')
                     : aiActivity.callState === 'closing'
-                      ? 'AI 通话正在结束'
+                      ? t('AI 通话正在结束')
                       : aiActivity.callState === 'active'
                         ? aiActivity.muted
-                          ? 'AI 麦克风已静音'
-                          : 'AI 通话进行中'
-                        : 'AI 正在处理请求'}
+                          ? t('AI 麦克风已静音')
+                          : t('AI 通话进行中')
+                        : t('AI 正在处理请求')}
                 </span>
                 {aiActivity.callActive && (
                   <div className="ai-activity-controls">
                     <IconButton
-                      label={aiActivity.muted ? '开启麦克风' : '静音麦克风'}
+                      label={aiActivity.muted ? t('开启麦克风') : t('静音麦克风')}
                       aria-pressed={aiActivity.muted}
                       disabled={aiActivity.callState !== 'active' || !aiActivity.onMute}
                       onClick={aiActivity.onMute}
@@ -2111,7 +2296,7 @@ export function App() {
                       {aiActivity.muted ? <MicrophoneSlash size={18} /> : <Microphone size={18} />}
                     </IconButton>
                     <IconButton
-                      label="结束实时通话"
+                      label={t('结束实时通话')}
                       className="voice-end"
                       disabled={aiActivity.callState === 'closing' || !aiActivity.onEnd}
                       onClick={aiActivity.onEnd}
@@ -2121,7 +2306,7 @@ export function App() {
                   </div>
                 )}
                 <button type="button" className="ai-activity-return" onClick={openAI}>
-                  返回 AI 助手
+                  {t('返回 AI 助手')}
                 </button>
               </div>
             )}
@@ -2150,10 +2335,10 @@ export function App() {
                     >
                       {editor.file && !workspaceLayout.focused && (
                         <div className="image-action-strip" data-motion="canvas-toolbar">
-                          <IconButton label="打开另一张图片" onClick={() => void importFile()}>
+                          <IconButton label={t('打开另一张图片')} onClick={() => void importFile()}>
                             <Plus size={20} />
                           </IconButton>
-                          <IconButton label="打开草图板" onClick={() => setDialog('drawing')}>
+                          <IconButton label={t('打开草图板')} onClick={() => setDialog('drawing')}>
                             <PencilSimple size={19} />
                           </IconButton>
                         </div>
@@ -2186,7 +2371,7 @@ export function App() {
                           setSampling(false);
                           setGroup('color');
                           setInspectorOpen(true);
-                          notify(`已取色 ${color}`);
+                          notify(t('已取色 {v0}', { v0: color }));
                         }}
                       />
                     </div>
@@ -2210,7 +2395,7 @@ export function App() {
                       <div className="library-hub">
                         <nav
                           className="library-context-tabs"
-                          aria-label="素材视图"
+                          aria-label={t('素材视图')}
                           data-motion="context-navigation"
                         >
                           <button
@@ -2218,21 +2403,21 @@ export function App() {
                             aria-pressed={libraryTab === 'project'}
                             onClick={() => setLibraryTab('project')}
                           >
-                            项目作品
+                            {t('项目作品')}
                           </button>
                           <button
                             type="button"
                             aria-pressed={libraryTab === 'all'}
                             onClick={() => setLibraryTab('all')}
                           >
-                            跨空间查找
+                            {t('跨空间查找')}
                           </button>
                           <button
                             type="button"
                             aria-pressed={libraryTab === 'memory'}
                             onClick={() => setLibraryTab('memory')}
                           >
-                            长期素材
+                            {t('长期素材')}
                           </button>
                           <button
                             type="button"
@@ -2242,7 +2427,7 @@ export function App() {
                               else setDialog('mediaImport');
                             }}
                           >
-                            原片与专业格式
+                            {t('原片与专业格式')}
                           </button>
                         </nav>
                         {libraryTab === 'project' ? (
@@ -2266,11 +2451,11 @@ export function App() {
                         ) : !session.user ? (
                           <EmptyState
                             icon={<StudioGlyph name="works" size={30} />}
-                            title="登录后查找素材"
-                            description="浏览你有权限访问的项目、图片与长期素材。"
+                            title={t('登录后查找素材')}
+                            description={t('浏览你有权限访问的项目、图片与长期素材。')}
                             action={
                               <button className="button button-primary" onClick={() => openAuth()}>
-                                登录
+                                {t('登录')}
                               </button>
                             }
                           />
@@ -2369,11 +2554,11 @@ export function App() {
                         ) : (
                           <EmptyState
                             icon={<StudioGlyph name="usage" size={30} />}
-                            title="登录后查看用量"
-                            description="查看服务点余额，以及任务、模型和成员的使用明细。"
+                            title={t('登录后查看用量')}
+                            description={t('查看服务点余额，以及任务、模型和成员的使用明细。')}
                             action={
                               <button className="button button-primary" onClick={() => openAuth()}>
-                                登录
+                                {t('登录')}
                               </button>
                             }
                           />
@@ -2395,10 +2580,10 @@ export function App() {
                     motionState={(shownPanelId === 'ai' ? aiPresence : inspectorPresence).phase}
                     title={
                       shownPanelId === 'ai'
-                        ? 'AI 助手'
-                        : (toolGroups.find((tool) => tool.id === group)?.label ?? '调整')
+                        ? t('AI 助手')
+                        : t(toolGroups.find((tool) => tool.id === group)?.label ?? '调整')
                     }
-                    label={shownPanelId === 'ai' ? 'AI可移动面板' : '可移动编辑面板'}
+                    label={shownPanelId === 'ai' ? t('AI可移动面板') : t('可移动编辑面板')}
                     geometry={workspaceLayout.panel(shownPanelId)}
                     viewport={workspaceLayout.view}
                     onGeometry={(next) => workspaceLayout.updatePanel(shownPanelId, next)}
@@ -2409,26 +2594,26 @@ export function App() {
                     }}
                     navigation={
                       workspaceLayout.view.bucket !== 'phone' && shownPanelId !== 'ai' ? (
-                        <nav className="studio-context-tabs" aria-label="当前作品快捷操作">
+                        <nav className="studio-context-tabs" aria-label={t('当前作品快捷操作')}>
                           <button
                             type="button"
                             aria-pressed={shownPanelId === 'inspector' && group !== 'history'}
                             onClick={() => openInspector(group === 'history' ? 'light' : group)}
                           >
                             <SlidersHorizontal size={15} />
-                            <span>调整</span>
+                            <span>{t('调整')}</span>
                           </button>
                           <button type="button" aria-pressed={false} onClick={openAI}>
                             <StudioGlyph name="ai" size={17} />
-                            <span>AI 助手</span>
+                            <span>{t('AI 助手')}</span>
                           </button>
                           <button
                             type="button"
                             onClick={() => changeView('collaborate')}
-                            title="打开项目讨论与任务"
+                            title={t('打开项目讨论与任务')}
                           >
                             <UsersThree size={15} />
-                            <span>协作</span>
+                            <span>{t('协作')}</span>
                           </button>
                           <button
                             type="button"
@@ -2436,7 +2621,7 @@ export function App() {
                             onClick={() => openInspector('history')}
                           >
                             <ClockCounterClockwise size={15} />
-                            <span>记录</span>
+                            <span>{t('记录')}</span>
                           </button>
                         </nav>
                       ) : undefined
@@ -2486,7 +2671,9 @@ export function App() {
                             isEditorDirty() ||
                             artworkRef.current?.id !== id
                           ) {
-                            notify('云端已采用AI结果，当前本地草稿继续保留，可稍后从作品中打开。');
+                            notify(
+                              t('云端已采用AI结果，当前本地草稿继续保留，可稍后从作品中打开。'),
+                            );
                             return;
                           }
                           await openArtwork(id);
@@ -2508,8 +2695,8 @@ export function App() {
                           editor.preview(next);
                           notify(
                             navigationScope.current.view === 'editor'
-                              ? '建议已进入预览，可以继续调整、取消或保存。'
-                              : 'AI 建议已在编辑器中准备好，当前页面和未保存内容已保留。',
+                              ? t('建议已进入预览，可以继续调整、取消或保存。')
+                              : t('AI 建议已在编辑器中准备好，当前页面和未保存内容已保留。'),
                           );
                         }}
                         onSave={save}
@@ -2523,13 +2710,14 @@ export function App() {
                 <div className="focus-exit">
                   <button onClick={() => workspaceLayout.setFocused(false)}>
                     <CornersOut size={18} />
-                    退出专注 <kbd>F</kbd>
+                    {t('退出专注')}
+                    <kbd>F</kbd>
                   </button>
                 </div>
               )}
               {opening && (
                 <div className="workspace-busy">
-                  <Busy label="正在打开项目与作品…" />
+                  <Busy label={t('正在打开项目与作品…')} />
                 </div>
               )}
             </div>
@@ -2541,7 +2729,7 @@ export function App() {
         type="file"
         className="sr-only"
         tabIndex={-1}
-        aria-label="选择照片"
+        aria-label={t('选择照片')}
         accept="image/jpeg,image/png,image/webp,image/bmp,image/gif,image/avif,image/tiff,.bmp,.gif,.avif,.tif,.tiff"
         onChange={(e) => {
           const file = e.target.files?.[0];
@@ -2554,7 +2742,7 @@ export function App() {
         type="file"
         className="sr-only"
         tabIndex={-1}
-        aria-label="选择配方文件"
+        aria-label={t('选择配方文件')}
         accept="application/json,.json"
         onChange={(e) => {
           const file = e.target.files?.[0];
@@ -2562,7 +2750,7 @@ export function App() {
           if (file)
             editor
               .importRecipe(file)
-              .then(() => notify('配方已应用到本地编辑。', 'success'))
+              .then(() => notify(t('配方已应用到本地编辑。'), 'success'))
               .catch((error) => notify(errorMessage(error), 'error'));
         }}
       />
@@ -2601,7 +2789,7 @@ export function App() {
         {renderedDialog === 'drawing' && (
           <Suspense
             fallback={
-              <Modal title="准备草图板" onClose={closeDialog}>
+              <Modal title={t('准备草图板')} onClose={closeDialog}>
                 <Busy />
               </Modal>
             }
@@ -2616,7 +2804,7 @@ export function App() {
                 setReferenceSource('sketch');
                 setInitialAIOperation('generate-image');
                 showAI();
-                notify('草图已作为本地参考。确认提交生图时才会上传。');
+                notify(t('草图已作为本地参考。确认提交生图时才会上传。'));
                 return true;
               }}
             />
@@ -2682,8 +2870,8 @@ export function App() {
         {renderedDialog === 'account' && session.user && (
           <Suspense
             fallback={
-              <Modal title="账号与使用" profile="account" onClose={closeDialog}>
-                <Busy label="正在读取账号信息" />
+              <Modal title={t('账号与使用')} profile="account" onClose={closeDialog}>
+                <Busy label={t('正在读取账号信息')} />
               </Modal>
             }
           >
@@ -2761,7 +2949,7 @@ export function App() {
               setSpaceId(copied.spaceId);
               setRefreshToken((value) => value + 1);
               void loadProject(copied);
-              notify('独立副本已创建。', 'success');
+              notify(t('独立副本已创建。'), 'success');
             }}
           />
         )}
@@ -2778,17 +2966,17 @@ export function App() {
         )}
         {renderedDialog === 'conflict' && (
           <Modal
-            title="云端已经有了更新"
+            title={t('云端已经有了更新')}
             profile="danger"
-            subtitle="你的本地编辑仍然保留，没有覆盖队友的新版本。"
+            subtitle={t('你的本地编辑仍然保留，没有覆盖队友的新版本。')}
             onClose={closeDialog}
           >
             <p className="dialog-copy">
-              可以先保留当前编辑，也可以把这份修改保存为独立作品，再到项目中比较两份结果。
+              {t('可以先保留当前编辑，也可以把这份修改保存为独立作品，再到项目中比较两份结果。')}
             </p>
             <div className="dialog-actions">
               <button className="button button-secondary" onClick={closeDialog}>
-                保留本地编辑
+                {t('保留本地编辑')}
               </button>
               <button
                 className="button button-primary"
@@ -2797,39 +2985,41 @@ export function App() {
                   if (project) void saveToProject(project, true);
                 }}
               >
-                {saving ? <Busy /> : '另存为独立分支'}
+                {saving ? <Busy /> : t('另存为独立分支')}
               </button>
             </div>
           </Modal>
         )}
         {renderedDialog === 'quota' && entitlements && (
           <Modal
-            title="你的服务点"
+            title={t('你的服务点')}
             profile="billing"
-            subtitle={currentSpace?.name ?? '当前空间'}
+            subtitle={currentSpace?.name ?? t('当前空间')}
             onClose={closeDialog}
           >
             <div className="quota-balance">
               <Sparkle size={30} />
               <strong>{entitlements.available}</strong>
-              <span>可用服务点</span>
+              <span>{t('可用服务点')}</span>
             </div>
             <div className="quota-detail">
               <div>
-                <span>免费权益可用</span>
+                <span>{t('免费权益可用')}</span>
                 <strong>{entitlements.freeAvailable}</strong>
               </div>
               <div>
-                <span>购买权益可用</span>
+                <span>{t('购买权益可用')}</span>
                 <strong>{entitlements.purchasedAvailable}</strong>
               </div>
               <div>
-                <span>任务占用</span>
+                <span>{t('任务占用')}</span>
                 <strong>{entitlements.held}</strong>
               </div>
             </div>
             <p className="form-hint">
-              点数用于已开放的云端能力，本地手动编辑不消耗服务点。团队额度与个人额度分别计算。
+              {t(
+                '点数用于已开放的云端能力，本地手动编辑不消耗服务点。团队额度与个人额度分别计算。',
+              )}
             </p>
             <button
               className="button button-secondary"
@@ -2838,56 +3028,66 @@ export function App() {
               }}
             >
               <ChartBar size={17} />
-              查看用量历史与趋势
+              {t('查看用量历史与趋势')}
             </button>
           </Modal>
         )}
         {renderedDialog === 'help' && (
-          <Modal title="工作台帮助" profile="detail" onClose={closeDialog}>
+          <Modal title={t('工作台帮助')} profile="detail" onClose={closeDialog}>
             <div className="help-list">
               <section>
                 <SlidersHorizontal size={24} />
                 <div>
-                  <h3>编辑照片</h3>
+                  <h3>{t('编辑照片')}</h3>
                   <p>
-                    先在照片下方选择调节、人像、局部或构图，再展开需要的工具。支持多区域、曲线、四角透视、绘制、修复和图层合成；照片先在本机处理。
+                    {t(
+                      '先在照片下方选择调节、人像、局部或构图，再展开需要的工具。支持多区域、曲线、四角透视、绘制、修复和图层合成；照片先在本机处理。',
+                    )}
                   </p>
                 </div>
               </section>
               <section>
                 <CloudArrowUp size={24} />
                 <div>
-                  <h3>保存与版本</h3>
+                  <h3>{t('保存与版本')}</h3>
                   <p>
-                    登录后把作品保存到项目。进入已保存的作品后，每次确认调整会同步为新版本；冲突时保留本地草稿，可以另存分支。
+                    {t(
+                      '登录后把作品保存到项目。进入已保存的作品后，每次确认调整会同步为新版本；冲突时保留本地草稿，可以另存分支。',
+                    )}
                   </p>
                 </div>
               </section>
               <section>
                 <UsersThree size={24} />
                 <div>
-                  <h3>团队协作</h3>
+                  <h3>{t('团队协作')}</h3>
                   <p>
-                    创建团队、邀请成员，在同一张作品上查看队员游标和编辑范围。相同区域会先取得编辑权；也可以在项目里讨论、写文档和跟进任务。
+                    {t(
+                      '创建团队、邀请成员，在同一张作品上查看队员游标和编辑范围。相同区域会先取得编辑权；也可以在项目里讨论、写文档和跟进任务。',
+                    )}
                   </p>
                 </div>
               </section>
               <section>
                 <ShieldCheck size={24} />
                 <div>
-                  <h3>图片与 AI 授权</h3>
+                  <h3>{t('图片与 AI 授权')}</h3>
                   <p>
-                    打开本地照片不会自动上传。AI
-                    默认使用你提交的文字和参数；主动开启共享画面后会发送当前图片预览，选择参考图或开始语音也会发送对应内容。模型、服务点与能力在执行前显示。
+                    {t(
+                      '打开本地照片不会自动上传。AI 默认使用你提交的文字和参数；主动开启共享画面后会发送当前图片预览，选择参考图或开始语音也会发送对应内容。模型、服务点与能力在执行前显示。',
+                    )}
                   </p>
                 </div>
               </section>
             </div>
             <p className="fine-print">
-              本地格式以头部检查与浏览器解码为准，PNG / JPEG / WebP / BMP / 静态 GIF / AVIF
-              可按实际支持导入；TIFF 可明确上传规范化。当前本机预算{' '}
+              {t(
+                '本地格式以头部检查与浏览器解码为准，PNG / JPEG / WebP / BMP / 静态 GIF / AVIF 可按实际支持导入；TIFF 可明确上传规范化。当前本机预算',
+              )}{' '}
               {(editor.pixelBudget / 1e6).toFixed(1)}{' '}
-              百万像素，可在设置中修改；云端另有服务限制。细节滤镜请在导出的原尺寸图片上复核。
+              {t(
+                '百万像素，可在设置中修改；云端另有服务限制。细节滤镜请在导出的原尺寸图片上复核。',
+              )}
             </p>
           </Modal>
         )}

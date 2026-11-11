@@ -1,3 +1,4 @@
+import { t } from '../i18n';
 import { MotionDetails } from '../motion/Presence';
 import { ChoiceSelect } from '../components/ChoiceSelect';
 import { useEffect, useMemo, useRef, useState } from 'react';
@@ -235,7 +236,7 @@ export function CurveEditor({ editor, scope }: { editor: EditorState; scope?: Cu
     : '';
   return (
     <section className="curve-editor refined-curve" data-motion="curve-controls">
-      <div className="channel-tabs" role="tablist" aria-label="曲线通道">
+      <div className="channel-tabs" role="tablist" aria-label={t('曲线通道')}>
         {channels.map((c) => (
           <button
             key={c.key}
@@ -250,7 +251,7 @@ export function CurveEditor({ editor, scope }: { editor: EditorState; scope?: Cu
             }}
           >
             <i style={{ background: c.color }} />
-            {c.label}
+            {t(c.label)}
           </button>
         ))}
       </div>
@@ -258,7 +259,9 @@ export function CurveEditor({ editor, scope }: { editor: EditorState; scope?: Cu
         className="curve-graph"
         viewBox="0 0 256 256"
         role="img"
-        aria-label={`${channels.find((c) => c.key === channel)?.label} 通道曲线。可通过下方数值控制点编辑。`}
+        aria-label={t('{v0} 通道曲线。可通过下方数值控制点编辑。', {
+          v0: t(channels.find((c) => c.key === channel)?.label ?? ''),
+        })}
         onDoubleClick={(event) => {
           if ((event.target as Element).closest('[data-curve-point]')) return;
           const bounds = event.currentTarget.getBoundingClientRect();
@@ -310,7 +313,11 @@ export function CurveEditor({ editor, scope }: { editor: EditorState; scope?: Cu
             data-curve-point={i}
             role="button"
             tabIndex={0}
-            aria-label={`曲线控制点 ${i + 1}，输入 ${Number((p[0] * 255).toFixed(2))}，输出 ${Number((p[1] * 255).toFixed(2))}`}
+            aria-label={t('曲线控制点 {v0}，输入 {v1}，输出 {v2}', {
+              v0: i + 1,
+              v1: Number((p[0] * 255).toFixed(2)),
+              v2: Number((p[1] * 255).toFixed(2)),
+            })}
             onFocus={() => setSelected(i)}
             onKeyDown={(event) => {
               const step = (event.altKey ? 0.1 : event.shiftKey ? 10 : 1) / 255;
@@ -340,7 +347,7 @@ export function CurveEditor({ editor, scope }: { editor: EditorState; scope?: Cu
             }}
             onKeyUp={(event) => {
               if (['ArrowLeft', 'ArrowRight', 'ArrowUp', 'ArrowDown'].includes(event.key))
-                editor.commitCurrent('微调曲线控制点');
+                editor.commitCurrent(t('微调曲线控制点'));
             }}
             onPointerDown={(e) => {
               if (e.button !== 0) return;
@@ -363,20 +370,24 @@ export function CurveEditor({ editor, scope }: { editor: EditorState; scope?: Cu
         ))}
       </svg>
       <label className="curve-point-select">
-        选择控制点
+        {t('选择控制点')}
         <ChoiceSelect
-          ariaLabel="选择曲线控制点"
+          ariaLabel={t('选择曲线控制点')}
           size="compact"
           value={String(Math.min(selected, points.length - 1))}
           onValueChange={(value) => setSelected(Number(value))}
           options={points.map((point, index) => ({
             value: String(index),
-            label: `点 ${index + 1} · ${Math.round(point[0] * 255)} → ${Math.round(point[1] * 255)}`,
+            label: t('点 {v0} · {v1} → {v2}', {
+              v0: index + 1,
+              v1: Math.round(point[0] * 255),
+              v2: Math.round(point[1] * 255),
+            }),
           }))}
         />
       </label>
       <PrecisionRange
-        label="控制点输入值"
+        label={t('控制点输入值')}
         value={active[0] * 255}
         min={0}
         max={255}
@@ -385,11 +396,11 @@ export function CurveEditor({ editor, scope }: { editor: EditorState; scope?: Cu
         onChange={(value) =>
           changePoint(Math.min(selected, points.length - 1), value / 255, active[1])
         }
-        onCommit={() => editor.commitCurrent('微调曲线输入')}
+        onCommit={() => editor.commitCurrent(t('微调曲线输入'))}
         onCancel={editor.cancelPreview}
       />
       <PrecisionRange
-        label="控制点输出值"
+        label={t('控制点输出值')}
         value={active[1] * 255}
         min={0}
         max={255}
@@ -397,20 +408,22 @@ export function CurveEditor({ editor, scope }: { editor: EditorState; scope?: Cu
         onChange={(value) =>
           changePoint(Math.min(selected, points.length - 1), active[0], value / 255)
         }
-        onCommit={() => editor.commitCurrent('微调曲线输出')}
+        onCommit={() => editor.commitCurrent(t('微调曲线输出'))}
         onCancel={editor.cancelPreview}
       />
       <div className="curve-point-controls">
-        <small>{points.length} / 16 个控制点</small>
+        <small>
+          {points.length} {t('/ 16 个控制点')}
+        </small>
         <IconButton
-          label="添加曲线控制点"
+          label={t('添加曲线控制点')}
           onClick={() => addPoint()}
           disabled={points.length >= 16}
         >
           <Plus size={18} />
         </IconButton>
         <IconButton
-          label="删除选中的控制点"
+          label={t('删除选中的控制点')}
           disabled={selected === 0 || selected >= points.length - 1}
           onClick={() => {
             update(
@@ -425,14 +438,14 @@ export function CurveEditor({ editor, scope }: { editor: EditorState; scope?: Cu
       </div>
       <MotionDetails className="editor-section">
         <summary>
-          <span>曲线起点</span>
-          <small>应用于当前通道</small>
+          <span>{t('曲线起点')}</span>
+          <small>{t('应用于当前通道')}</small>
         </summary>
         <div className="curve-preset-list">
           {(
             [
               [
-                '自然对比',
+                t('自然对比'),
                 [
                   [0, 0],
                   [0.25, 0.19],
@@ -441,7 +454,7 @@ export function CurveEditor({ editor, scope }: { editor: EditorState; scope?: Cu
                 ],
               ],
               [
-                '柔和对比',
+                t('柔和对比'),
                 [
                   [0, 0],
                   [0.25, 0.3],
@@ -450,7 +463,7 @@ export function CurveEditor({ editor, scope }: { editor: EditorState; scope?: Cu
                 ],
               ],
               [
-                '抬黑',
+                t('抬黑'),
                 [
                   [0, 0.12],
                   [0.35, 0.37],
@@ -458,7 +471,7 @@ export function CurveEditor({ editor, scope }: { editor: EditorState; scope?: Cu
                 ],
               ],
               [
-                '反相',
+                t('反相'),
                 [
                   [0, 1],
                   [1, 0],
@@ -492,10 +505,12 @@ export function CurveEditor({ editor, scope }: { editor: EditorState; scope?: Cu
         }}
       >
         <ArrowCounterClockwise size={15} />
-        重置当前通道
+        {t('重置当前通道')}
       </button>
       <p className="inspector-note">
-        拖动控制点，双击空白处添点。选中点后方向键微调；首尾输入边界固定。可直接反相，不限制曲线只增强对比。
+        {t(
+          '拖动控制点，双击空白处添点。选中点后方向键微调；首尾输入边界固定。可直接反相，不限制曲线只增强对比。',
+        )}
       </p>
     </section>
   );

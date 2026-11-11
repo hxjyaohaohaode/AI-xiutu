@@ -1,3 +1,4 @@
+import { t } from '../i18n';
 import { useState, type CSSProperties } from 'react';
 import { MotionDetails } from '../motion/Presence';
 import {
@@ -100,7 +101,7 @@ export function ColorControls({
         const latest = currentV3(editor);
         apply(
           withScopeColor(latest, scope, withNumeric(scopeColor(latest, scope), definition, value)),
-          '调整' + definition.label,
+          t('调整{v0}', { v0: t(definition.label) }),
         );
       } catch (error) {
         report(error instanceof Error ? error.message : '参数组合暂时无效。');
@@ -139,23 +140,23 @@ export function ColorControls({
     <section className="color-controls-v3" data-motion="color-family">
       {family !== 'detail' && (
         <MotionDetails className="advanced-disclosure histogram-disclosure">
-          <summary>查看明度与 RGB 分布</summary>
+          <summary>{t('查看明度与 RGB 分布')}</summary>
           <Histogram image={editor.rendered} />
         </MotionDetails>
       )}
       {family === 'light' && (
-        <div className="tonal-tabs" aria-label="明暗类别">
+        <div className="tonal-tabs" aria-label={t('明暗类别')}>
           {(
             [
-              ['light', '影调'],
-              ['levels', '精确色阶'],
+              ['light', t('影调')],
+              ['levels', t('精确色阶')],
             ] as const
           ).map(([id, label]) => (
             <button
               key={id}
               aria-pressed={lightTab === id}
               onClick={() => {
-                editor.commitCurrent('完成当前调整');
+                editor.commitCurrent(t('完成当前调整'));
                 setLightTab(id);
               }}
             >
@@ -166,20 +167,20 @@ export function ColorControls({
       )}
       {family === 'color' && (
         <>
-          <div className="tonal-tabs" aria-label="色彩类别">
+          <div className="tonal-tabs" aria-label={t('色彩类别')}>
             {(
               [
-                ['global', '整体'],
+                ['global', t('整体')],
                 ['hsl', 'HSL'],
-                ['grading', '分级'],
-                ['palette', '完整色谱'],
+                ['grading', t('分级')],
+                ['palette', t('完整色谱')],
               ] as const
             ).map(([id, label]) => (
               <button
                 key={id}
                 aria-pressed={colorTab === id}
                 onClick={() => {
-                  editor.commitCurrent('完成当前色彩');
+                  editor.commitCurrent(t('完成当前色彩'));
                   setColorTab(id);
                 }}
               >
@@ -189,42 +190,44 @@ export function ColorControls({
           </div>
           {colorTab === 'hsl' && (
             <>
-              <div className="hsl-range-chips" aria-label="HSL 色段">
+              <div className="hsl-range-chips" aria-label={t('HSL 色段')}>
                 {HSL_BANDS.map((item) => (
                   <button
                     key={item.id}
-                    aria-label={item.label + '色色段'}
+                    aria-label={t('{name}色段', { name: t(item.label) })}
                     aria-pressed={band === item.id}
                     style={{ '--hue': item.center } as CSSProperties}
                     onClick={() => {
-                      editor.commitCurrent('完成当前色段');
+                      editor.commitCurrent(t('完成当前色段'));
                       setBand(item.id);
                     }}
                   >
                     <i />
-                    <span>{item.label}</span>
+                    <span>{t(item.label)}</span>
                   </button>
                 ))}
               </div>
               <p className="control-note">
-                这些是重叠混合的色段快捷入口；更细颜色可用连续色相与容差选区，不限于八种颜色。
+                {t(
+                  '这些是重叠混合的色段快捷入口；更细颜色可用连续色相与容差选区，不限于八种颜色。',
+                )}
               </p>
             </>
           )}
           {colorTab === 'grading' && (
-            <div className="tonal-tabs" aria-label="分级区域">
+            <div className="tonal-tabs" aria-label={t('分级区域')}>
               {(
                 [
-                  ['shadows', '阴影'],
-                  ['midtones', '中间调'],
-                  ['highlights', '高光'],
+                  ['shadows', t('阴影')],
+                  ['midtones', t('中间调')],
+                  ['highlights', t('高光')],
                 ] as const
               ).map(([id, label]) => (
                 <button
                   key={id}
                   aria-pressed={zone === id}
                   onClick={() => {
-                    editor.commitCurrent('完成当前分级');
+                    editor.commitCurrent(t('完成当前分级'));
                     setZone(id);
                   }}
                 >
@@ -237,43 +240,44 @@ export function ColorControls({
             <>
               <ColorPicker
                 value={pickedColor}
-                label="完整连续色谱"
+                label={t('完整连续色谱')}
                 onChange={(value) => onColorChange?.(value)}
               />
               <button className="text-button" onClick={onSample}>
-                {sampling ? '结束原图取色' : '在原图取色'}
+                {sampling ? t('结束原图取色') : t('在原图取色')}
               </button>
               <button
                 className="text-button"
                 disabled={recipe.regionEdits.length >= MAX_V3_REGION_EDITS}
                 onClick={continuousRegion}
               >
-                建立连续颜色范围
+                {t('建立连续颜色范围')}
               </button>
               <p className="control-note">
-                色谱提供 RGBA、HSV、HSL
-                与透明度；选区使用连续色相、容差、饱和度和明度范围。绘制与美妆可使用任意所选颜色。
+                {t(
+                  '色谱提供 RGBA、HSV、HSL 与透明度；选区使用连续色相、容差、饱和度和明度范围。绘制与美妆可使用任意所选颜色。',
+                )}
               </p>
             </>
           )}
         </>
       )}
       {family === 'detail' && (
-        <div className="tonal-tabs" aria-label="细节类别">
+        <div className="tonal-tabs" aria-label={t('细节类别')}>
           {(
             [
-              ['detail', '清晰与肌理'],
-              ['optics', '降噪与色散'],
-              ['vignette', '明暗角'],
-              ['grain', '颗粒'],
-              ['effects', '黑白与褪色'],
+              ['detail', t('清晰与肌理')],
+              ['optics', t('降噪与色散')],
+              ['vignette', t('明暗角')],
+              ['grain', t('颗粒')],
+              ['effects', t('黑白与褪色')],
             ] as const
           ).map(([id, label]) => (
             <button
               key={id}
               aria-pressed={detailTab === id}
               onClick={() => {
-                editor.commitCurrent('完成当前细节');
+                editor.commitCurrent(t('完成当前细节'));
                 setDetailTab(id);
               }}
             >
@@ -315,9 +319,9 @@ export function ColorControls({
               ':' +
               detailTab
             }
-            label="图像参数"
+            label={t('图像参数')}
             controls={controls}
-            onCommit={(label) => editor.commitCurrent('调整' + label)}
+            onCommit={(label) => editor.commitCurrent(t('调整{v0}', { v0: t(label) }))}
             onCancel={editor.cancelPreview}
           />
         )
@@ -339,12 +343,12 @@ export function ColorControls({
                       grain: { ...c.effects.grain, colored: event.target.checked },
                     },
                   }),
-                  '切换颗粒色彩',
+                  t('切换颗粒色彩'),
                   true,
                 );
               }}
             />
-            彩色颗粒
+            {t('彩色颗粒')}
           </label>
           <button
             className="text-button"
@@ -362,12 +366,12 @@ export function ColorControls({
                     },
                   },
                 }),
-                '更换颗粒分布',
+                t('更换颗粒分布'),
                 true,
               );
             }}
           >
-            换一种颗粒分布
+            {t('换一种颗粒分布')}
           </button>
         </div>
       )}

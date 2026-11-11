@@ -105,7 +105,7 @@
         <a href="?focus=320">320</a><a href="?focus=390">390</a><a href="?focus=768">768</a
         ><a href="?focus=844">844 横屏</a><a href="?focus=1024">1024</a
         ><a href="?focus=1440">1440</a><a href="?">全部</a
-        ><a href="/" target="_blank" rel="noopener">打开工作台</a>
+        ><a href="/#/studio" target="_blank" rel="noopener">打开工作台</a>
       </nav>
     </header>
     <main class="frames" id="frames"></main>
@@ -135,7 +135,7 @@
         frame.width = String(size.width);
         frame.height = String(size.height);
         frame.title = `${size.label} ${size.width}px 工作台`;
-        frame.src = `/?qaViewport=${size.width}`;
+        frame.src = `/?qaViewport=${size.width}#/studio`;
         frame.allow = 'microphone';
         section.append(title, frame);
         document.getElementById('frames').append(section);

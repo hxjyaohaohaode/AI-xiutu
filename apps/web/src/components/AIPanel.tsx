@@ -1,3 +1,4 @@
+import { t } from '../i18n';
 import { useCallback, useEffect, useLayoutEffect, useRef, useState, type FormEvent } from 'react';
 import {
   ArrowUp,
@@ -351,7 +352,15 @@ export function AIPanel({
     modelResponse?.availableOperations?.includes(operation) ??
     (operation === 'edit-plan' && !!modelResponse?.executionEnabled);
   const ready = !!enabled && modelReady(selected);
-  const task = tasks.find((item) => item.id === operation)!;
+  const sourceTask = tasks.find((item) => item.id === operation)!;
+  const task = {
+    ...sourceTask,
+    label: t(sourceTask.label),
+    placeholder: t(sourceTask.placeholder),
+    button: t(sourceTask.button),
+    hint: t(sourceTask.hint),
+    chips: sourceTask.chips.map((chip) => t(chip)),
+  };
   const caps = selected?.parameterCapabilities;
   const sizeFailure =
     operation === 'generate-image' ? imageSizeError(selected, width, height) : null;
@@ -371,7 +380,9 @@ export function AIPanel({
     operation === 'generate-image' &&
     referencedCount &&
     (!caps?.references.supported || referencedCount > referenceLimit)
-      ? '当前模型最多支持 ' + referenceLimit + ' 张参考图，请移除多余参考或切换模型。'
+      ? t('当前模型最多支持 {count} 张参考图，请移除多余参考或切换模型。', {
+          count: referenceLimit,
+        })
       : null;
   const reason =
     selected?.runtimeReason ||
@@ -388,16 +399,16 @@ export function AIPanel({
         : null;
   const statusText =
     needsContext === 'login'
-      ? '登录后保存 AI 创作'
+      ? t('登录后保存 AI 创作')
       : needsContext === 'project'
-        ? '先选择一个保存项目'
+        ? t('先选择一个保存项目')
         : needsContext === 'artwork'
-          ? '先保存当前作品版本'
+          ? t('先保存当前作品版本')
           : loading
-            ? '正在读取模型能力'
+            ? t('正在读取模型能力')
             : ready
-              ? '已准备好'
-              : task.label + '暂未开通';
+              ? t('已准备好')
+              : t('{task}暂未开通', { task: task.label });
   const canSubmit =
     !busy &&
     recovery.ready &&
@@ -613,9 +624,12 @@ export function AIPanel({
           (await api<{ assets: Asset[] }>('/projects/' + project.id)).assets,
         confirmCopy: (count) =>
           confirm({
-            title: '复制草案参考图',
-            description: `这份草案引用的 ${count} 张图片需独立复制到“${project.title}”，副本会占用目标空间的素材与存储额度。已有副本由服务器核验后复用，不重复占用。\n\n复制需要来源授权；若授权或空间不足，将保留草案供重试，不会丢弃任何参考图。已完成的独立副本会留在目标项目，不会随草案取消而自动删除。`,
-            confirmLabel: '确认复制并继续',
+            title: t('复制草案参考图'),
+            description: t(
+              '这份草案引用的 {count} 张图片需独立复制到“{project}”，副本会占用目标空间的素材与存储额度。已有副本由服务器核验后复用，不重复占用。\n\n复制需要来源授权；若授权或空间不足，将保留草案供重试，不会丢弃任何参考图。已完成的独立副本会留在目标项目，不会随草案取消而自动删除。',
+              { count, project: project.title },
+            ),
+            confirmLabel: t('确认复制并继续'),
           }),
         copyAsset: async (sourceId, idempotencyKey) => {
           const result = await api<{ asset: Asset; copy: AssetCopyRecord }>(
@@ -864,10 +878,11 @@ export function AIPanel({
       if (!submitted || submitted !== snapshot) {
         if (
           !(await confirm({
-            title: '核对建议起点',
-            description:
+            title: t('核对建议起点'),
+            description: t(
               '本地编辑与建议起点可能不同。预览将作为可撤销的一步替换对应参数，云端不变。',
-            confirmLabel: '继续核对建议',
+            ),
+            confirmLabel: t('继续核对建议'),
           }))
         )
           return;
@@ -877,10 +892,11 @@ export function AIPanel({
       if (recipe.schemaVersion >= 2 && next.schemaVersion === 1) {
         if (
           !(await confirm({
-            title: '预览旧版建议',
-            description:
+            title: t('预览旧版建议'),
+            description: t(
               '这是旧版 AI 建议。仅更新 13 项基础明暗与色彩，保留当前曲线、构图、选区和新版参数。',
-            confirmLabel: '继续查看差异',
+            ),
+            confirmLabel: t('继续查看差异'),
           }))
         )
           return;
@@ -904,7 +920,7 @@ export function AIPanel({
         ? (job.output.images ?? [job.output]).map((image) => ({
             id: image.assetId,
             projectId: project?.id ?? '',
-            name: 'AI 候选',
+            name: t('AI 候选'),
             mime: 'image/png',
             width: image.width,
             height: image.height,
@@ -919,29 +935,29 @@ export function AIPanel({
     <button
       type="button"
       className="ai-task-trigger"
-      aria-label="切换 AI 任务"
+      aria-label={t('切换 AI 任务')}
       aria-haspopup="dialog"
       disabled={inputLocked || preparingDraft || assistantLocked}
       onClick={() => setOverlay('tasks')}
     >
       {assistantOpen ? <Sparkle size={18} /> : task.icon}
-      <span>{assistantOpen ? 'AI 助手' : task.label}</span>
+      <span>{assistantOpen ? t('AI 助手') : task.label}</span>
       <CaretDown size={13} />
     </button>
   );
   const modelOptions = [
     ...(pendingSubmission && modelId && !eligible.some((model) => model.id === modelId)
-      ? [{ value: modelId, label: modelId + ' · 原请求模型' }]
+      ? [{ value: modelId, label: t('{model} · 原请求模型', { model: modelId }) }]
       : []),
     ...eligible.map((model) => ({
       value: model.id,
       label: model.label,
-      description: modelReady(model) ? undefined : '当前未开通',
+      description: modelReady(model) ? undefined : t('当前未开通'),
     })),
   ];
   return (
     <AIVisibilityContext.Provider value={visible}>
-      <aside className="ai-panel ai-workbench ai-workbench-v2" aria-label="AI创作助手">
+      <aside className="ai-panel ai-workbench ai-workbench-v2" aria-label={t('AI创作助手')}>
         {assistantOpen ? (
           <LiveAssistant
             navigation={taskPicker}
@@ -971,21 +987,21 @@ export function AIPanel({
             <header className="ai-workbench-header">
               {taskPicker}
               <div className="ai-header-actions">
-                <IconButton label="创作记录" onClick={() => setOverlay('history')}>
+                <IconButton label={t('创作记录')} onClick={() => setOverlay('history')}>
                   <ClockCounterClockwise size={18} />
                 </IconButton>
-                <IconButton label="任务设置" onClick={() => setOverlay('settings')}>
+                <IconButton label={t('任务设置')} onClick={() => setOverlay('settings')}>
                   <GearSix size={18} />
                 </IconButton>
-                <IconButton className="ai-panel-close" label="收起 AI 面板" onClick={onClose}>
+                <IconButton className="ai-panel-close" label={t('收起 AI 面板')} onClick={onClose}>
                   <X size={18} />
                 </IconButton>
               </div>
             </header>
-            <div className="ai-conversation-body" aria-label="创作内容">
+            <div className="ai-conversation-body" aria-label={t('创作内容')}>
               {(needsContext || (!ready && !loading)) && (
                 <div className="ai-availability" role="status">
-                  <span>{needsContext ? statusText : reason}</span>
+                  <span>{needsContext ? statusText : t(reason)}</span>
                   {needsContext && (
                     <button
                       type="button"
@@ -999,15 +1015,15 @@ export function AIPanel({
                       }
                     >
                       {needsContext === 'login'
-                        ? '登录'
+                        ? t('登录')
                         : needsContext === 'project'
-                          ? '选择项目'
-                          : '保存作品'}
+                          ? t('选择项目')
+                          : t('保存作品')}
                     </button>
                   )}
                 </div>
               )}
-              {loading && <Busy label="正在读取模型" />}
+              {loading && <Busy label={t('正在读取模型')} />}
               {visibleJobs.length && project ? (
                 <AIThread
                   jobs={visibleJobs}
@@ -1028,7 +1044,7 @@ export function AIPanel({
                   }}
                   onTranscript={(target, text) => {
                     if (pending.current || !recovery.ready) {
-                      setError('请先核对上一轮创作结果，再使用识别文字发起新任务。');
+                      setError(t('请先核对上一轮创作结果，再使用识别文字发起新任务。'));
                       return;
                     }
                     changeOperation(target);
@@ -1049,12 +1065,12 @@ export function AIPanel({
                   />
                   <h3>
                     {operation === 'generate-image'
-                      ? '描述要生成的画面'
+                      ? t('描述要生成的画面')
                       : operation === 'generate-text'
-                        ? '描述文案内容与用途'
-                        : '描述需要调整的地方'}
+                        ? t('描述文案内容与用途')
+                        : t('描述需要调整的地方')}
                   </h3>
-                  <div className="ai-prompt-suggestions" aria-label="填写示例要求">
+                  <div className="ai-prompt-suggestions" aria-label={t('填写示例要求')}>
                     {task.chips.slice(0, 2).map((text) => (
                       <button
                         key={text}
@@ -1082,13 +1098,13 @@ export function AIPanel({
                   <WarningCircle size={16} />
                   <span>
                     {pendingSubmission.state === 'unknown'
-                      ? '结果待核验，暂不能提交新任务'
+                      ? t('结果待核验，暂不能提交新任务')
                       : pendingSubmission.jobId
-                        ? '本轮任务已受理'
-                        : '发送结果待确认，原请求已保留'}
+                        ? t('本轮任务已受理')
+                        : t('发送结果待确认，原请求已保留')}
                   </span>
                   <button type="button" onClick={() => setOverlay('recovery')}>
-                    核对请求
+                    {t('核对请求')}
                   </button>
                 </div>
               )}
@@ -1096,7 +1112,7 @@ export function AIPanel({
                 <div className="ai-pending-strip" role="alert">
                   <span>{recovery.error}</span>
                   <button type="button" onClick={restoreRecovery}>
-                    重读记录
+                    {t('重读记录')}
                   </button>
                 </div>
               )}
@@ -1117,13 +1133,13 @@ export function AIPanel({
                     <ArrowBendDownRight size={14} />
                     <span>
                       {operation === 'generate-text'
-                        ? '续写上次文案'
+                        ? t('续写上次文案')
                         : operation === 'generate-image'
-                          ? '修改所选候选'
-                          : '沿用当前草稿'}
+                          ? t('修改所选候选')
+                          : t('沿用当前草稿')}
                     </span>
                     <IconButton
-                      label="取消续接，作为新创作"
+                      label={t('取消续接，作为新创作')}
                       disabled={inputLocked}
                       onClick={() => {
                         setParentJobId(null);
@@ -1141,13 +1157,14 @@ export function AIPanel({
                     onClick={() => setOverlay('references')}
                   >
                     <Paperclip size={14} />
-                    {referencedCount} 张参考{referenceFile ? ' · 发送后上传' : ''}
+                    {referencedCount} {t('张参考')}
+                    {referenceFile ? t(' · 发送后上传') : ''}
                   </button>
                 )}
                 {operation !== 'transcribe' && (
                   <ComposerInput
                     ref={promptInput}
-                    label="本轮创作要求"
+                    label={t('本轮创作要求')}
                     disabled={inputLocked}
                     value={prompt}
                     placeholder={task.placeholder}
@@ -1164,20 +1181,23 @@ export function AIPanel({
                     type="button"
                     className="ai-model-trigger"
                     onClick={() => setOverlay('settings')}
-                    aria-label="选择任务模型与参数"
+                    aria-label={t('选择任务模型与参数')}
                   >
-                    <span>{selected?.label ?? '选择模型'}</span>
+                    <span>{selected?.label ?? t('选择模型')}</span>
                     <CaretDown size={12} />
                   </button>
                   <div className="ai-composer-tools">
                     {operation === 'generate-image' && (
-                      <IconButton label="添加或管理参考图" onClick={() => setOverlay('references')}>
+                      <IconButton
+                        label={t('添加或管理参考图')}
+                        onClick={() => setOverlay('references')}
+                      >
                         <Paperclip size={18} />
                       </IconButton>
                     )}
                     {operation !== 'transcribe' && (
                       <IconButton
-                        label="改用语音输入，识别后再确认"
+                        label={t('改用语音输入，识别后再确认')}
                         disabled={inputLocked}
                         onClick={() => changeOperation('transcribe')}
                       >
@@ -1198,9 +1218,13 @@ export function AIPanel({
               </form>
               <div className="ai-composer-meta">
                 <span>
-                  {quote === null ? '点数待确认' : `${quote} 点 / 次`}
+                  {quote === null ? t('点数待确认') : t('{v0} 点 / 次', { v0: quote })}
                   {operation === 'generate-image'
-                    ? ` · ${width}×${height} · ${imageOptions.n ?? 1} 张`
+                    ? t(' · {v0}×{v1} · {v2} 张', {
+                        v0: width,
+                        v1: height,
+                        v2: imageOptions.n ?? 1,
+                      })
                     : ''}
                 </span>
                 {prompt.length > (operation === 'generate-image' ? 3200 : 1200) && (
@@ -1210,14 +1234,14 @@ export function AIPanel({
                 )}
               </div>
               {operation === 'generate-image' && referenceFile && (
-                <p className="ai-input-disclosure">发送时会上传选中的参考图。</p>
+                <p className="ai-input-disclosure">{t('发送时会上传选中的参考图。')}</p>
               )}
             </footer>
             {displayedCandidate && (
               <Modal
-                title="对照调整建议"
+                title={t('对照调整建议')}
                 open={visible && !!candidate}
-                subtitle="与当前草稿逐项对比，确认后才进入本地编辑记录。"
+                subtitle={t('与当前草稿逐项对比，确认后才进入本地编辑记录。')}
                 onClose={() => setCandidate(null)}
               >
                 <div className="ai-proposal-review" data-motion="modal-content">
@@ -1226,11 +1250,11 @@ export function AIPanel({
                       ? displayedCandidate.job.output.summary
                       : ''}
                   </p>
-                  <div className="proposal-differences" role="table" aria-label="参数变化">
+                  <div className="proposal-differences" role="table" aria-label={t('参数变化')}>
                     <div role="row" className="proposal-diff-heading">
-                      <span role="columnheader">参数</span>
-                      <span role="columnheader">当前</span>
-                      <span role="columnheader">建议</span>
+                      <span role="columnheader">{t('参数')}</span>
+                      <span role="columnheader">{t('当前')}</span>
+                      <span role="columnheader">{t('建议')}</span>
                     </div>
                     {recipeDifferences(recipe, displayedCandidate.recipe).map((change) => (
                       <div role="row" key={change.path}>
@@ -1247,17 +1271,19 @@ export function AIPanel({
                     ))}
                   </div>
                   {!recipeDifferences(recipe, displayedCandidate.recipe).length && (
-                    <p className="control-note">基础与新版数值参数没有变化。</p>
+                    <p className="control-note">{t('基础与新版数值参数没有变化。')}</p>
                   )}
                   {!!additionalRecipeChanges(recipe, displayedCandidate.recipe).length && (
                     <p className="parameter-error">
-                      完整候选还与当前的{' '}
-                      {additionalRecipeChanges(recipe, displayedCandidate.recipe).join('、')}{' '}
-                      不同；确认将一起替换，可撤销。
+                      {t('完整候选还与当前的 {changes} 不同；确认将一起替换，可撤销。', {
+                        changes: additionalRecipeChanges(recipe, displayedCandidate.recipe)
+                          .map((label) => t(label))
+                          .join(' / '),
+                      })}
                     </p>
                   )}
                   <p className="control-note">
-                    云端版本不会自动改写。预览后可以继续精修，再由你保存新版本。
+                    {t('云端版本不会自动改写。预览后可以继续精修，再由你保存新版本。')}
                   </p>
                   <button
                     className="button button-primary"
@@ -1271,14 +1297,14 @@ export function AIPanel({
                         candidate.snapshot !== JSON.stringify(recipe)
                       ) {
                         setCandidate(null);
-                        setError('作品或草稿已经改变，请重新预览这条建议。');
+                        setError(t('作品或草稿已经改变，请重新预览这条建议。'));
                         return;
                       }
                       onPreview(candidate.recipe);
                       setCandidate(null);
                     }}
                   >
-                    作为可撤销的一步预览
+                    {t('作为可撤销的一步预览')}
                   </button>
                 </div>
               </Modal>
@@ -1286,13 +1312,13 @@ export function AIPanel({
           </>
         )}
         <Modal
-          title="选择 AI 任务"
+          title={t('选择 AI 任务')}
           open={visible && overlay === 'tasks'}
           keepMounted
           onClose={() => setOverlay(null)}
           className="ai-options-dialog"
         >
-          <div className="ai-task-picker" role="group" aria-label="AI任务类型">
+          <div className="ai-task-picker" role="group" aria-label={t('AI任务类型')}>
             <button
               type="button"
               aria-pressed={assistantOpen}
@@ -1304,8 +1330,8 @@ export function AIPanel({
             >
               <Sparkle size={21} />
               <span>
-                <strong>AI 助手</strong>
-                <small>文字交流、看图建议与实时通话</small>
+                <strong>{t('AI 助手')}</strong>
+                <small>{t('文字交流、看图建议与实时通话')}</small>
               </span>
             </button>
             {tasks.map((item) => (
@@ -1322,15 +1348,15 @@ export function AIPanel({
               >
                 {item.icon}
                 <span>
-                  <strong>{item.label}</strong>
-                  <small>{item.hint}</small>
+                  <strong>{t(item.label)}</strong>
+                  <small>{t(item.hint)}</small>
                 </span>
               </button>
             ))}
           </div>
         </Modal>
         <Modal
-          title="任务设置"
+          title={t('任务设置')}
           open={visible && overlay === 'settings'}
           keepMounted
           onClose={() => setOverlay(null)}
@@ -1339,11 +1365,11 @@ export function AIPanel({
           <div className="ai-options-content">
             <PanelSettings onClose={() => setOverlay(null)} />
             <ChoiceSelect
-              label="模型"
-              ariaLabel={task.label + '模型'}
+              label={t('模型')}
+              ariaLabel={t('{task}模型', { task: task.label })}
               value={modelId}
               disabled={inputLocked || !eligible.length}
-              placeholder="暂无适用模型"
+              placeholder={t('暂无适用模型')}
               options={modelOptions}
               onValueChange={(value) => {
                 setModelId(value);
@@ -1352,7 +1378,7 @@ export function AIPanel({
             />
             {!ready && !loading && !needsContext && (
               <p className="ai-inline-error" role="status">
-                {reason}
+                {t(reason)}
               </p>
             )}
             {operation === 'generate-image' && (
@@ -1379,7 +1405,7 @@ export function AIPanel({
               <section className="ai-option-section">
                 <ChoiceSelect
                   className="context-document-select"
-                  label="本轮上下文"
+                  label={t('本轮上下文')}
                   value={documentId}
                   disabled={inputLocked}
                   onValueChange={(value) => {
@@ -1387,7 +1413,7 @@ export function AIPanel({
                     changed();
                   }}
                   options={[
-                    { value: '', label: '不引用文档' },
+                    { value: '', label: t('不引用文档') },
                     ...documents.map((doc) => ({
                       value: doc.id,
                       label: `${doc.title} · V${doc.version}`,
@@ -1397,12 +1423,12 @@ export function AIPanel({
               </section>
             )}
             <p className="ai-option-price">
-              {quote === null ? '选择可用模型后确认点数' : `本轮 ${quote} 服务点`}
+              {quote === null ? t('选择可用模型后确认点数') : t('本轮 {v0} 服务点', { v0: quote })}
             </p>
           </div>
         </Modal>
         <Modal
-          title="参考图与局部编辑"
+          title={t('参考图与局部编辑')}
           open={visible && overlay === 'references'}
           keepMounted
           onClose={() => setOverlay(null)}
@@ -1419,7 +1445,7 @@ export function AIPanel({
                 onClick={() => fileInput.current?.click()}
               >
                 <Paperclip size={16} />
-                选择图片
+                {t('选择图片')}
               </button>
               <button
                 type="button"
@@ -1430,7 +1456,7 @@ export function AIPanel({
                 onClick={onDraw}
               >
                 <PencilSimple size={16} />
-                画草图
+                {t('画草图')}
               </button>
               {currentAsset && (
                 <button
@@ -1447,7 +1473,7 @@ export function AIPanel({
                     changed();
                   }}
                 >
-                  使用当前原图
+                  {t('使用当前原图')}
                 </button>
               )}
             </div>
@@ -1466,10 +1492,10 @@ export function AIPanel({
                 <Paperclip size={18} />
                 <span>
                   {referenceFile.name}
-                  <small>确认发送后上传</small>
+                  <small>{t('确认发送后上传')}</small>
                 </span>
                 <IconButton
-                  label="移除本地参考"
+                  label={t('移除本地参考')}
                   disabled={inputLocked}
                   onClick={() => {
                     onClearReference();
@@ -1511,12 +1537,14 @@ export function AIPanel({
               ))}
             </div>
             {(!caps?.references.supported || !referenceLimit) && (
-              <p className="control-note">当前模型没有开放参考图，选择已开通的模型后可使用。</p>
+              <p className="control-note">
+                {t('当前模型没有开放参考图，选择已开通的模型后可使用。')}
+              </p>
             )}
             {(caps?.references.allowMask || caps?.references.allowMarkup) && (
               <div className="auxiliary-picker">
                 <ChoiceSelect
-                  label="遮罩 / 标注图"
+                  label={t('遮罩 / 标注图')}
                   value={auxiliary ? auxiliary.kind + ':' + auxiliary.assetId : ''}
                   disabled={inputLocked || !referencedCount}
                   onValueChange={(value) => {
@@ -1527,33 +1555,35 @@ export function AIPanel({
                     changed();
                   }}
                   options={[
-                    { value: '', label: '不附加' },
+                    { value: '', label: t('不附加') },
                     ...(caps.references.allowMask
                       ? availableAssets.map((asset) => ({
                           value: `mask:${asset.id}`,
-                          label: `遮罩 · ${asset.name}`,
+                          label: t('遮罩 · {v0}', { v0: asset.name }),
                         }))
                       : []),
                     ...(caps.references.allowMarkup
                       ? availableAssets.map((asset) => ({
                           value: `markup:${asset.id}`,
-                          label: `标注 · ${asset.name}`,
+                          label: t('标注 · {v0}', { v0: asset.name }),
                         }))
                       : []),
                   ]}
                 />
                 <p className="control-note">
-                  二者互斥，需先选参考图；遮罩透明区域表示修改范围，必须符合模型对尺寸和格式的要求。
+                  {t(
+                    '二者互斥，需先选参考图；遮罩透明区域表示修改范围，必须符合模型对尺寸和格式的要求。',
+                  )}
                 </p>
               </div>
             )}
             <p className="control-note">
-              参考只表示创作依据，不保证像素级保留。当前原图不包含尚未导出的本地调整。
+              {t('参考只表示创作依据，不保证像素级保留。当前原图不包含尚未导出的本地调整。')}
             </p>
           </div>
         </Modal>
         <Modal
-          title="创作记录"
+          title={t('创作记录')}
           open={visible && overlay === 'history'}
           keepMounted
           onClose={() => setOverlay(null)}
@@ -1573,7 +1603,7 @@ export function AIPanel({
               }}
             >
               <Plus size={18} />
-              新建创作
+              {t('新建创作')}
             </button>
             {allThreads.map((id) => {
               const first = jobs.filter((job) => (job.threadId ?? job.id) === id).at(-1);
@@ -1592,12 +1622,14 @@ export function AIPanel({
                 >
                   <ClockCounterClockwise size={17} />
                   <span>
-                    {(first?.request?.prompt || first?.prompt || '录音记录').slice(0, 60)}
+                    {(first?.request?.prompt || first?.prompt || t('录音记录')).slice(0, 60)}
                   </span>
                 </button>
               );
             })}
-            {!allThreads.length && <p className="ai-secondary-copy">已保存的创作会显示在这里。</p>}
+            {!allThreads.length && (
+              <p className="ai-secondary-copy">{t('已保存的创作会显示在这里。')}</p>
+            )}
             <button
               type="button"
               className="text-button"
@@ -1605,36 +1637,44 @@ export function AIPanel({
               onClick={() => setRefresh((value) => value + 1)}
             >
               <ArrowClockwise size={16} />
-              刷新记录
+              {t('刷新记录')}
             </button>
           </div>
         </Modal>
         <Modal
-          title="核对原请求"
+          title={t('核对原请求')}
           open={visible && overlay === 'recovery'}
           keepMounted
           onClose={() => setOverlay(null)}
           className="ai-options-dialog"
         >
           {pendingSubmission && (
-            <section className="assistant-candidate" aria-label="创作请求恢复" aria-live="polite">
+            <section
+              className="assistant-candidate"
+              aria-label={t('创作请求恢复')}
+              aria-live="polite"
+            >
               <h4>
                 {pendingSubmission.state === 'unknown'
-                  ? '本轮创作待平台核验'
+                  ? t('本轮创作待平台核验')
                   : pendingSubmission.jobId
-                    ? '本轮已受理，正在保留任务进度'
-                    : '发送结果待确认，原请求已保留'}
+                    ? t('本轮已受理，正在保留任务进度')
+                    : t('发送结果待确认，原请求已保留')}
               </h4>
               <p>
                 {pendingSubmission.jobId
                   ? pendingSubmission.state === 'unknown'
-                    ? '执行与用量结果尚未明确。请先核对本轮任务，核验完成前暂停新的付费创作。'
-                    : '刷新只读取项目内的原任务记录，不会再次提交模型请求。'
-                  : '原要求、模型、素材和生成参数已冻结。按原请求核对时，已受理的请求返回原结果；尚未受理时会继续原请求并使用原额度。'}
+                    ? t('执行与用量结果尚未明确。请先核对本轮任务，核验完成前暂停新的付费创作。')
+                    : t('刷新只读取项目内的原任务记录，不会再次提交模型请求。')
+                  : t(
+                      '原要求、模型、素材和生成参数已冻结。按原请求核对时，已受理的请求返回原结果；尚未受理时会继续原请求并使用原额度。',
+                    )}
               </p>
               {!pendingSubmission.jobId && pendingSubmission.requestBody === null && (
                 <p>
-                  原始录音仅保留在页面内存中，刷新后已不可重放。请先查看任务和用量记录并联系平台核验。
+                  {t(
+                    '原始录音仅保留在页面内存中，刷新后已不可重放。请先查看任务和用量记录并联系平台核验。',
+                  )}
                 </p>
               )}
               {pendingSubmission.projectId === project?.id ? (
@@ -1644,7 +1684,7 @@ export function AIPanel({
                     disabled={busy}
                     onClick={() => setRefresh((old) => old + 1)}
                   >
-                    刷新项目任务
+                    {t('刷新项目任务')}
                   </button>
                   <button
                     type="button"
@@ -1653,11 +1693,15 @@ export function AIPanel({
                     }
                     onClick={() => void recoverSubmission()}
                   >
-                    {pendingSubmission.jobId ? '读取本轮结果' : '按原请求核对并继续'}
+                    {pendingSubmission.jobId ? t('读取本轮结果') : t('按原请求核对并继续')}
                   </button>
                 </div>
               ) : (
-                <p>请返回项目「{pendingSubmission.projectTitle}」恢复本轮，再开始新的创作。</p>
+                <p>
+                  {t('请返回项目「')}
+                  {pendingSubmission.projectTitle}
+                  {t('」恢复本轮，再开始新的创作。')}
+                </p>
               )}
             </section>
           )}
@@ -1665,7 +1709,7 @@ export function AIPanel({
             <div role="alert" className="assistant-error">
               <p>{recovery.error}</p>
               <button type="button" className="text-button" onClick={restoreRecovery}>
-                重新读取恢复记录
+                {t('重新读取恢复记录')}
               </button>
             </div>
           )}

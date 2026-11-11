@@ -1,3 +1,4 @@
+import { t, useLocale, formatNumber } from '../i18n';
 import { useId, useMemo } from 'react';
 import { ChartBar, ArrowsSplit } from '@phosphor-icons/react';
 import { ChoiceSelect } from '../components/ChoiceSelect';
@@ -16,7 +17,7 @@ import {
 } from './model';
 
 const compact = (value: number) =>
-  new Intl.NumberFormat('zh-CN', { notation: 'compact', maximumFractionDigits: 1 }).format(value);
+  formatNumber(value, { notation: 'compact', maximumFractionDigits: 1 });
 function bucketPosition(bucket: string, range: UsageReport['range']) {
   const first = shanghaiDate(new Date(range.from));
   const last = shanghaiDate(new Date(Date.parse(range.to) - 1));
@@ -45,6 +46,7 @@ export function UsageInsights({
   bucket: 'day' | 'month';
   onBucket: (value: 'day' | 'month') => void;
 }) {
+  useLocale();
   const id = useId();
   const chart = useMemo(() => usageChartValues(report, kind), [report, kind]);
   const allocation = useMemo(() => usageAllocations(report), [report]);
@@ -64,7 +66,7 @@ export function UsageInsights({
         <div className="usage-section-heading">
           <div>
             <h2 id={`${id}-trend`}>
-              <ChartBar size={18} aria-hidden /> {usageLabels[kind]}趋势
+              <ChartBar size={18} aria-hidden /> {t('{kind}趋势', { kind: t(usageLabels[kind]) })}
             </h2>
             <p>
               {first} — {last}
@@ -72,12 +74,12 @@ export function UsageInsights({
           </div>
           <ChoiceSelect<'day' | 'month'>
             className="usage-bucket"
-            ariaLabel="趋势粒度"
+            ariaLabel={t('趋势粒度')}
             value={bucket}
             onValueChange={onBucket}
             options={[
-              { value: 'day', label: '按日' },
-              { value: 'month', label: '按月' },
+              { value: 'day', label: t('按日') },
+              { value: 'month', label: t('按月') },
             ]}
           />
         </div>
@@ -89,10 +91,17 @@ export function UsageInsights({
               role="img"
               aria-labelledby={`${id}-chart-title ${id}-chart-description`}
             >
-              <title id={`${id}-chart-title`}>{`${usageLabels[kind]}趋势，单位为服务点`}</title>
+              <title id={`${id}-chart-title`}>
+                {t('{v0}趋势，单位为服务点', { v0: t(usageLabels[kind]) })}
+              </title>
               <desc id={`${id}-chart-description`}>
-                {chart.length} 个有记录的{bucket === 'day' ? '日期' : '月份'}
-                ，完整数值见下方可展开表格。正值向上，负值向下。
+                {bucket === 'day'
+                  ? t('已记录 {count} 个日期。展开下方表格查看数值。正值向上，负值向下。', {
+                      count: chart.length,
+                    })
+                  : t('已记录 {count} 个月份。展开下方表格查看数值。正值向上，负值向下。', {
+                      count: chart.length,
+                    })}
               </desc>
               <line x1="48" x2="748" y1="18" y2="18" className="usage-gridline" />
               <line x1="48" x2="748" y1="89" y2="89" className="usage-gridline" />
@@ -129,11 +138,13 @@ export function UsageInsights({
                         className="usage-trend-bar"
                         data-negative={point.value < 0}
                       >
-                        <title>{`${point.label}：${pointText(point.value)} 点`}</title>
+                        <title>
+                          {t('{v0}：{v1} 点', { v0: point.label, v1: pointText(point.value) })}
+                        </title>
                       </rect>
                     ) : (
                       <circle cx={x} cy={zero} r="3" className="usage-unknown-dot">
-                        <title>{`${point.label}：未知`}</title>
+                        <title>{t('{v0}：未知', { v0: point.label })}</title>
                       </circle>
                     )}
                   </g>
@@ -147,14 +158,16 @@ export function UsageInsights({
               </text>
             </svg>
             <MotionDetails className="usage-small-details usage-trend-values">
-              <summary>查看趋势数值</summary>
+              <summary>{t('查看趋势数值')}</summary>
               <div className="usage-values-scroll">
                 <table>
                   <thead>
                     <tr>
-                      <th scope="col">{bucket === 'day' ? '日期' : '月份'}</th>
-                      <th scope="col">{usageLabels[kind]} / 点</th>
-                      <th scope="col">待核对记录</th>
+                      <th scope="col">{bucket === 'day' ? t('日期') : t('月份')}</th>
+                      <th scope="col">
+                        {t(usageLabels[kind])} {t('/ 点')}
+                      </th>
+                      <th scope="col">{t('待核对记录')}</th>
                     </tr>
                   </thead>
                   <tbody>
@@ -173,7 +186,7 @@ export function UsageInsights({
         ) : (
           <div className="usage-chart-empty">
             <ChartBar size={28} aria-hidden />
-            <p>这个期间没有{usageLabels[kind]}记录</p>
+            <p>{t('这个期间没有{kind}记录', { kind: t(usageLabels[kind]) })}</p>
           </div>
         )}
       </section>
@@ -181,17 +194,17 @@ export function UsageInsights({
         <div className="usage-section-heading">
           <div>
             <h2 id={`${id}-distribution`}>
-              <ArrowsSplit size={18} aria-hidden /> 消耗去向
+              <ArrowsSplit size={18} aria-hidden /> {t('消耗去向')}
             </h2>
             <p>
               {allocation.complete
-                ? '本期完整明细'
-                : `基于已载入的 ${report.entries.length} 条明细`}
+                ? t('本期完整明细')
+                : t('基于已载入的 {v0} 条明细', { v0: report.entries.length })}
             </p>
           </div>
           <strong className="usage-distribution-total">
             {pointText(allocation.total)}
-            <small> 点</small>
+            <small> {t('点')}</small>
           </strong>
         </div>
         {allocation.rows.length ? (
@@ -203,7 +216,9 @@ export function UsageInsights({
                     <strong title={row.modelId ?? undefined}>
                       {usageModelName(quotes, row.modelId, row.operation)}
                     </strong>
-                    <span>{pointText(row.units)} 点</span>
+                    <span>
+                      {pointText(row.units)} {t('点')}
+                    </span>
                   </div>
                   <small>{usageOperationName(row.operation)}</small>
                   <svg viewBox="0 0 100 4" preserveAspectRatio="none" aria-hidden="true">
@@ -229,7 +244,7 @@ export function UsageInsights({
             </ol>
             {allocation.rows.length > 5 && (
               <MotionDetails className="usage-small-details">
-                <summary>查看全部 {allocation.rows.length} 项分配</summary>
+                <summary>{t('查看全部 {count} 项分配', { count: allocation.rows.length })}</summary>
                 <ul className="usage-allocation-list">
                   {allocation.rows.map((row) => (
                     <li key={JSON.stringify([row.modelId, row.operation])}>
@@ -237,7 +252,9 @@ export function UsageInsights({
                         {usageModelName(quotes, row.modelId, row.operation)} ·{' '}
                         {usageOperationName(row.operation)}
                       </span>
-                      <strong>{pointText(row.units)} 点</strong>
+                      <strong>
+                        {pointText(row.units)} {t('点')}
+                      </strong>
                     </li>
                   ))}
                 </ul>
@@ -247,22 +264,24 @@ export function UsageInsights({
         ) : (
           <div className="usage-chart-empty">
             <ArrowsSplit size={28} aria-hidden />
-            <p>已载入明细中暂无可归属的消耗</p>
+            <p>{t('已载入明细中暂无可归属的消耗')}</p>
           </div>
         )}
         {report.nextCursor && (
-          <p className="usage-footnote">继续加载明细可补全分布；这里只计入已结算消耗。</p>
+          <p className="usage-footnote">{t('继续加载明细可补全分布；这里只计入已结算消耗。')}</p>
         )}
         {(allocation.unknown > 0 || allocation.unsupported > 0) && (
           <p className="usage-footnote">
-            {allocation.unknown + allocation.unsupported} 条消耗尚不能归入数值分布。
+            {t('{count} 条消耗尚不能归入数值分布。', {
+              count: allocation.unknown + allocation.unsupported,
+            })}
           </p>
         )}
         {!report.nextCursor &&
           !allocation.complete &&
           !allocation.unknown &&
           !allocation.unsupported && (
-            <p className="usage-footnote">明细合计与本期汇总尚未对齐，请刷新账本后核对。</p>
+            <p className="usage-footnote">{t('明细合计与本期汇总尚未对齐，请刷新账本后核对。')}</p>
           )}
       </section>
     </div>

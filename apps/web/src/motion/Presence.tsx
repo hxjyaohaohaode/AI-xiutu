@@ -1,3 +1,4 @@
+import { t } from '../i18n';
 import {
   Children,
   cloneElement,
@@ -132,7 +133,7 @@ export function MotionDetails({
   const id = useId();
   const nodes = Children.toArray(children);
   const index = nodes.findIndex((node) => isValidElement(node) && node.type === 'summary');
-  const summary = (index >= 0 ? nodes[index] : <summary>详细设置</summary>) as ReactElement<
+  const summary = (index >= 0 ? nodes[index] : <summary>{t('详细设置')}</summary>) as ReactElement<
     HTMLAttributes<HTMLElement>
   >;
   const body = nodes.filter((_, at) => at !== index);

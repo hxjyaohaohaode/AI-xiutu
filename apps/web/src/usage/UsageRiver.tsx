@@ -1,3 +1,4 @@
+import { t, useLocale } from '../i18n';
 import { useId, useMemo } from 'react';
 import { ChartLineUp } from '@phosphor-icons/react';
 import type { UsageResponse } from '@ai-xiutu/contracts';
@@ -6,6 +7,7 @@ import { pointText, usageLabels } from './model';
 import { riverKinds, usageRiverLanes } from './riverModel';
 
 export function UsageRiver({ series }: { series: UsageResponse['series'] }) {
+  useLocale();
   const id = useId();
   const lanes = useMemo(() => usageRiverLanes(series), [series]);
   if (!series.length) return null;
@@ -14,23 +16,27 @@ export function UsageRiver({ series }: { series: UsageResponse['series'] }) {
       <div className="usage-section-heading">
         <div>
           <h2 id={`${id}-title`}>
-            <ChartLineUp size={18} aria-hidden /> 预占与结算变化
+            <ChartLineUp size={18} aria-hidden /> {t('预占与结算变化')}
           </h2>
-          <p>独立流水 · 同一数值比例</p>
+          <p>{t('独立流水 · 同一数值比例')}</p>
         </div>
-        <span>服务点</span>
+        <span>{t('服务点')}</span>
       </div>
       <div className="usage-river-lanes">
         {lanes.map((lane) => (
           <figure key={lane.kind} data-kind={lane.kind}>
             <figcaption>
-              <span>{usageLabels[lane.kind]}</span>
+              <span>{t(usageLabels[lane.kind])}</span>
               <strong>{pointText(lane.knownTotal)}</strong>
             </figcaption>
             <svg
               viewBox={`0 0 ${lane.width} ${lane.height}`}
               role="img"
-              aria-label={`${usageLabels[lane.kind]}变化，已记录合计 ${pointText(lane.knownTotal)} 点${lane.missing ? `，${lane.missing} 个日期数值未知` : ''}`}
+              aria-label={t('{v0}变化，已记录合计 {v1} 点{v2}', {
+                v0: t(usageLabels[lane.kind]),
+                v1: pointText(lane.knownTotal),
+                v2: lane.missing ? t('，{v0} 个日期数值未知', { v0: lane.missing }) : '',
+              })}
             >
               <line
                 x1="0"
@@ -51,11 +57,13 @@ export function UsageRiver({ series }: { series: UsageResponse['series'] }) {
                     r="3"
                     className="usage-unknown-dot"
                   >
-                    <title>{`${point.label}：未知`}</title>
+                    <title>{t('{v0}：未知', { v0: point.label })}</title>
                   </circle>
                 ) : (
                   <g key={point.label}>
-                    <title>{`${point.label}：${pointText(point.value)} 点`}</title>
+                    <title>
+                      {t('{v0}：{v1} 点', { v0: point.label, v1: pointText(point.value) })}
+                    </title>
                   </g>
                 ),
               )}
@@ -68,21 +76,26 @@ export function UsageRiver({ series }: { series: UsageResponse['series'] }) {
         ))}
       </div>
       <p className="usage-footnote">
-        预占、结算、释放与到期分别计量，不能相加作为余额。金额不完整的记录不补零。
+        {t('预占、结算、释放与到期分别计量，不能相加作为余额。金额不完整的记录不补零。')}
       </p>
       <MotionDetails className="usage-small-details">
-        <summary>查看各类流水数值</summary>
-        <div className="usage-values-scroll" role="region" aria-label="各类流水数值" tabIndex={0}>
+        <summary>{t('查看各类流水数值')}</summary>
+        <div
+          className="usage-values-scroll"
+          role="region"
+          aria-label={t('各类流水数值')}
+          tabIndex={0}
+        >
           <table>
             <thead>
               <tr>
-                <th scope="col">日期</th>
+                <th scope="col">{t('日期')}</th>
                 {riverKinds.map((kind) => (
                   <th key={kind} scope="col">
-                    {usageLabels[kind]}
+                    {t(usageLabels[kind])}
                   </th>
                 ))}
-                <th scope="col">待核对</th>
+                <th scope="col">{t('待核对')}</th>
               </tr>
             </thead>
             <tbody>

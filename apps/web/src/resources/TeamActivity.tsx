@@ -1,3 +1,4 @@
+import { t } from '../i18n';
 import { useEffect, useRef, useState } from 'react';
 import { api, errorMessage, formatDate } from '../lib/api';
 import type { MemberActivity } from '@ai-xiutu/contracts';
@@ -82,14 +83,14 @@ export function TeamActivity({
     }
   }
   return (
-    <section className="team-activity" aria-label="成员动态" data-motion="team-activity">
+    <section className="team-activity" aria-label={t('成员动态')} data-motion="team-activity">
       <InlineError message={error} />
       <ol>
         {items.map((item) => (
           <li key={item.id}>
             <div>
-              <strong>{item.actorName ?? '系统'}</strong>
-              <span>{kindLabels[item.kind] ?? item.kind}</span>
+              <strong>{item.actorName ?? t('系统')}</strong>
+              <span>{t(kindLabels[item.kind] ?? item.kind)}</span>
               {item.targetName && <span>{item.targetName}</span>}
             </div>
             {(item.previousRole || item.role) && (
@@ -101,11 +102,13 @@ export function TeamActivity({
           </li>
         ))}
       </ol>
-      {busy && <Busy label="读取成员动态" />}
-      {!busy && !items.length && !error && <p className="quiet-copy">当前没有可显示的成员动态。</p>}
+      {busy && <Busy label={t('读取成员动态')} />}
+      {!busy && !items.length && !error && (
+        <p className="quiet-copy">{t('当前没有可显示的成员动态。')}</p>
+      )}
       {cursor && (
         <button className="button button-secondary" disabled={busy} onClick={() => void more()}>
-          更多动态
+          {t('更多动态')}
         </button>
       )}
     </section>

@@ -1,3 +1,4 @@
+import { t } from '../i18n';
 import { useEffect, useId, useRef, useState, type PointerEvent } from 'react';
 import { MotionDetails } from '../motion/Presence';
 import { Copy, Plus, Check } from '@phosphor-icons/react';
@@ -151,7 +152,7 @@ export function ColorPicker({
     <section
       className="full-color-picker refined-color-picker"
       data-motion="color-picker"
-      aria-label={`${label}选择器`}
+      aria-label={t('{v0}选择器', { v0: label })}
     >
       <div className="color-picker-heading">
         <strong>{label}</strong>
@@ -160,16 +161,16 @@ export function ColorPicker({
         </span>
         <code>{hex(color)}</code>
         <IconButton
-          label="复制当前HEX颜色"
+          label={t('复制当前HEX颜色')}
           onClick={() => {
             if (!navigator.clipboard) {
-              setError('此环境不支持自动复制，可从HEX输入框手动复制。');
+              setError(t('此环境不支持自动复制，可从HEX输入框手动复制。'));
               return;
             }
             void navigator.clipboard
               .writeText(hex(color))
               .then(() => setCopied(true))
-              .catch(() => setError('无法自动复制，请手动复制HEX颜色。'));
+              .catch(() => setError(t('无法自动复制，请手动复制HEX颜色。')));
           }}
         >
           {copied ? <Check size={16} /> : <Copy size={16} />}
@@ -181,11 +182,14 @@ export function ColorPicker({
         style={{ backgroundColor: `hsl(${hue},100%,50%)` }}
         tabIndex={0}
         role="slider"
-        aria-label="饱和度和明度色谱，左右调饱和度，上下调明度"
+        aria-label={t('饱和度和明度色谱，左右调饱和度，上下调明度')}
         aria-valuemin={0}
         aria-valuemax={100}
         aria-valuenow={Math.round(saturationValue.s * 100)}
-        aria-valuetext={`饱和度${Math.round(saturationValue.s * 100)}%，明度${Math.round(saturationValue.v * 100)}%`}
+        aria-valuetext={t('饱和度{v0}%，明度{v1}%', {
+          v0: Math.round(saturationValue.s * 100),
+          v1: Math.round(saturationValue.v * 100),
+        })}
         onPointerDown={(event) => {
           if (event.button !== 0 || !event.isPrimary || active.current !== null) {
             event.preventDefault();
@@ -249,9 +253,9 @@ export function ColorPicker({
         />
       </div>
       <label className="color-range-row">
-        <span>色相</span>
+        <span>{t('色相')}</span>
         <input
-          aria-label="完整色相"
+          aria-label={t('完整色相')}
           className="hue-range"
           type="range"
           min="0"
@@ -263,9 +267,9 @@ export function ColorPicker({
         <output>{Number(hue.toFixed(1))}°</output>
       </label>
       <label className="color-range-row">
-        <span>透明度</span>
+        <span>{t('透明度')}</span>
         <input
-          aria-label="颜色不透明度"
+          aria-label={t('颜色不透明度')}
           className="alpha-range"
           type="range"
           min="0"
@@ -282,7 +286,7 @@ export function ColorPicker({
       <label className="color-hex">
         HEX
         <input
-          aria-label="HEX颜色"
+          aria-label={t('HEX颜色')}
           value={draft}
           maxLength={9}
           spellCheck={false}
@@ -301,7 +305,7 @@ export function ColorPicker({
           }}
         />
       </label>
-      <div className="editor-subtabs" role="tablist" aria-label="颜色数值空间">
+      <div className="editor-subtabs" role="tablist" aria-label={t('颜色数值空间')}>
         {(['hsv', 'hsl', 'rgb'] as const).map((mode) => (
           <button
             key={mode}
@@ -402,12 +406,12 @@ export function ColorPicker({
             </label>
           ))}
       </div>
-      <div className="quick-colors" aria-label="快速色板">
+      <div className="quick-colors" aria-label={t('快速色板')}>
         {quickColors.map((item) => (
           <button
             key={item}
             style={{ '--swatch-color': item } as React.CSSProperties}
-            aria-label={`选取 ${item}`}
+            aria-label={t('选取 {v0}', { v0: item })}
             aria-pressed={hex(color) === item}
             onClick={() => emit(rgba(item))}
           >
@@ -417,7 +421,7 @@ export function ColorPicker({
       </div>
       <MotionDetails className="editor-section color-saved">
         <summary>
-          <span>我的色板</span>
+          <span>{t('我的色板')}</span>
           <small>{swatches.length}/16</small>
         </summary>
         <div className="editor-section-body">
@@ -425,23 +429,25 @@ export function ColorPicker({
             {swatches.map((item) => (
               <button
                 key={item}
-                aria-label={`使用保存的颜色 ${item}`}
+                aria-label={t('使用保存的颜色 {v0}', { v0: item })}
                 style={{ '--swatch-color': item } as React.CSSProperties}
                 onClick={() => emit(rgba(item))}
               >
                 <i />
               </button>
             ))}
-            <button aria-label="保存当前颜色到色板" onClick={saveColor}>
+            <button aria-label={t('保存当前颜色到色板')} onClick={saveColor}>
               <Plus size={16} />
             </button>
           </div>
-          <small>保存在当前浏览器；不会自动修改照片。</small>
+          <small>{t('保存在当前浏览器；不会自动修改照片。')}</small>
         </div>
       </MotionDetails>
-      <small className="palette-precision-note">连续色谱 · sRGB / RGBA8 · 色值与透明度可精调</small>
+      <small className="palette-precision-note">
+        {t('连续色谱 · sRGB / RGBA8 · 色值与透明度可精调')}
+      </small>
       <span className="sr-only" role="status">
-        {copied ? '颜色已复制' : ''}
+        {copied ? t('颜色已复制') : ''}
       </span>
       <InlineError message={error} />
     </section>

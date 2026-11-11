@@ -1,3 +1,4 @@
+import { getLocale, t } from '../i18n';
 import { useEffect, useId, useRef, useState, type CSSProperties } from 'react';
 import { ArrowCounterClockwise, Check } from '@phosphor-icons/react';
 import {
@@ -56,7 +57,7 @@ export function PrecisionRange({
   const latest = useRef(value);
   latest.current = value;
   const decimals = Math.min(6, Math.max(0, Math.ceil(-Math.log10(step)) + (step < 1 ? 1 : 0)));
-  const readable = Number(value.toFixed(decimals)).toLocaleString('zh-CN', {
+  const readable = Number(value.toFixed(decimals)).toLocaleString(getLocale(), {
     maximumFractionDigits: decimals,
   });
   useEffect(() => {
@@ -131,7 +132,12 @@ export function PrecisionRange({
       return;
     }
     if (result.status === 'invalid') {
-      setNumberError(`请输入 ${min} 至 ${max} 的${integer ? '整数' : '数值'}。`);
+      setNumberError(
+        t(integer ? '请输入 {min} 至 {max} 的整数。' : '请输入 {min} 至 {max} 的数值。', {
+          min,
+          max,
+        }),
+      );
       return;
     }
     const number = result.value;
@@ -170,7 +176,10 @@ export function PrecisionRange({
     const track = touchTrack.current;
     if (!track) return;
     const fraction = Math.max(0, Math.min(1, (clientX - track.left - track.offset) / track.travel));
-    const steps = Math.min(Math.floor((max - min) / step + 1e-9), Math.round(fraction * (max - min) / step));
+    const steps = Math.min(
+      Math.floor((max - min) / step + 1e-9),
+      Math.round((fraction * (max - min)) / step),
+    );
     const next = Number((min + steps * step).toFixed(10));
     if (next !== latest.current) change(next);
   }
@@ -209,7 +218,7 @@ export function PrecisionRange({
                 ref={input}
                 type="number"
                 inputMode={min < 0 ? 'text' : integer ? 'numeric' : 'decimal'}
-                aria-label={`${label}精确数值`}
+                aria-label={t('{v0}精确数值', { v0: label })}
                 aria-invalid={!!numberError}
                 aria-describedby={describedBy}
                 min={min}
@@ -237,7 +246,7 @@ export function PrecisionRange({
               />
               <button
                 type="button"
-                aria-label={`确认${label}数值`}
+                aria-label={t('确认{v0}数值', { v0: label })}
                 disabled={disabled}
                 onMouseDown={(event) => event.preventDefault()}
                 onClick={() => {
@@ -251,7 +260,11 @@ export function PrecisionRange({
             <button
               type="button"
               className="precision-value"
-              aria-label={`${label}数值 ${readable}${unit}，点击精确输入`}
+              aria-label={t('{v0}数值 {v1}{v2}，点击精确输入', {
+                v0: label,
+                v1: readable,
+                v2: unit,
+              })}
               disabled={disabled}
               onClick={() => {
                 if (gesture.current.active) return;
@@ -269,8 +282,8 @@ export function PrecisionRange({
             <button
               type="button"
               className="precision-reset"
-              title={`重置${label}`}
-              aria-label={`重置${label}`}
+              title={t('重置{v0}', { v0: label })}
+              aria-label={t('重置{v0}', { v0: label })}
               disabled={disabled || Math.abs(value - neutral) < 1e-10}
               onPointerDown={(event) => event.preventDefault()}
               onClick={resetControl}
@@ -289,7 +302,9 @@ export function PrecisionRange({
           aria-label={label}
           aria-valuetext={`${readable}${unit}`}
           aria-describedby={describedBy}
-          title={onReset ? '拖动调整 · 双击重置 · Alt + 方向键精调' : '拖动调整 · Alt + 方向键精调'}
+          title={
+            onReset ? t('拖动调整 · 双击重置 · Alt + 方向键精调') : t('拖动调整 · Alt + 方向键精调')
+          }
           min={min}
           max={max}
           step={step}
@@ -385,7 +400,7 @@ export function PrecisionRange({
       )}
       {numberError && (
         <small id={`${id}-error`} role="alert" className="precision-error">
-          {numberError}
+          {t(numberError)}
         </small>
       )}
     </div>

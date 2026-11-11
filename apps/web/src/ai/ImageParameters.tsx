@@ -1,3 +1,4 @@
+import { t } from '../i18n';
 import type { AIModel, ImageOptions } from './types';
 import {
   allowedImageSizes,
@@ -59,16 +60,20 @@ export function ImageParameters({
   ] as const;
   return (
     <div className="image-parameters">
-      <div className="parameter-label">画幅与尺寸</div>
+      <div className="parameter-label">{t('画幅与尺寸')}</div>
       <OptionChips
-        label="常用生成尺寸"
+        label={t('常用生成尺寸')}
         value={width + 'x' + height}
         options={choices.map((size) => ({
           value: size.width + 'x' + size.height,
           label: (
             <>
               <span>
-                {size.width === size.height ? '方形' : size.width > size.height ? '横向' : '竖向'}
+                {size.width === size.height
+                  ? t('方形')
+                  : size.width > size.height
+                    ? t('横向')
+                    : t('竖向')}
               </span>
               <small>
                 {size.width}×{size.height}
@@ -83,12 +88,13 @@ export function ImageParameters({
         }}
       />
       {!c?.size.allowedSizes && (
-        <Disclosure title="自定义尺寸" summary={width + ' × ' + height} role="ai-options">
+        <Disclosure title={t('自定义尺寸')} summary={width + ' × ' + height} role="ai-options">
           <div className="ai-dimension-fields">
             <label>
-              宽度 <small>px</small>
+              {t('宽度')}
+              <small>px</small>
               <input
-                aria-label="宽度"
+                aria-label={t('宽度')}
                 type="number"
                 inputMode="numeric"
                 value={width || ''}
@@ -100,9 +106,10 @@ export function ImageParameters({
               />
             </label>
             <label>
-              高度 <small>px</small>
+              {t('高度')}
+              <small>px</small>
               <input
-                aria-label="高度"
+                aria-label={t('高度')}
                 type="number"
                 inputMode="numeric"
                 value={height || ''}
@@ -114,7 +121,9 @@ export function ImageParameters({
               />
             </label>
           </div>
-          <p className="control-note">尺寸步进 {step} px；可用范围以当前模型为准。</p>
+          <p className="control-note">
+            {t('尺寸步进 {step} px；可用范围以当前模型为准。', { step })}
+          </p>
         </Disclosure>
       )}
       {sizeError && (
@@ -122,19 +131,19 @@ export function ImageParameters({
           {sizeError}
         </p>
       )}
-      {c?.size.reason && <p className="control-note">{c.size.reason}</p>}
+      {c?.size.reason && <p className="control-note">{t(c.size.reason)}</p>}
       {fields.map(([field, label]) => {
         const capability = c?.[field];
         if (!capability?.supported) return null;
         return (
           <div className="parameter-row" key={field}>
-            <div className="parameter-label">{label}</div>
+            <div className="parameter-label">{t(label)}</div>
             <OptionChips
-              label={label}
+              label={t(label)}
               value={options[field] ?? ''}
               options={(capability.values ?? []).map((value) => ({
                 value,
-                label: names[value] ?? value,
+                label: names[value] ? t(names[value]) : value,
                 disabled:
                   field === 'background' &&
                   value === 'transparent' &&
@@ -143,7 +152,7 @@ export function ImageParameters({
                   field === 'background' &&
                   value === 'transparent' &&
                   options.outputFormat === 'jpeg'
-                    ? 'JPEG 不支持透明背景'
+                    ? t('JPEG 不支持透明背景')
                     : undefined,
               }))}
               disabled={disabled}
@@ -158,17 +167,18 @@ export function ImageParameters({
                 onOptions(next);
               }}
             />
-            {capability.reason && <p className="control-note">{capability.reason}</p>}
+            {capability.reason && <p className="control-note">{t(capability.reason)}</p>}
           </div>
         );
       })}
       {c?.n.supported && (c.n.max ?? 1) > 1 && (
         <label className="ai-numeric-setting">
           <span>
-            输出数量 <small>张</small>
+            {t('输出数量')}
+            <small>{t('张')}</small>
           </span>
           <input
-            aria-label="输出数量"
+            aria-label={t('输出数量')}
             type="number"
             inputMode="numeric"
             value={options.n ?? 1}
@@ -185,10 +195,11 @@ export function ImageParameters({
           {c.outputCompression.formats?.includes(options.outputFormat ?? 'png') ? (
             <label className="ai-numeric-setting">
               <span>
-                编码质量 <small>%</small>
+                {t('编码质量')}
+                <small>%</small>
               </span>
               <input
-                aria-label="编码质量"
+                aria-label={t('编码质量')}
                 type="number"
                 inputMode="numeric"
                 value={options.outputCompression ?? 100}
@@ -202,7 +213,7 @@ export function ImageParameters({
               />
             </label>
           ) : (
-            <p className="control-note">压缩参数仅适用于 JPEG / WebP；PNG 不发送此项。</p>
+            <p className="control-note">{t('压缩参数仅适用于 JPEG / WebP；PNG 不发送此项。')}</p>
           )}
         </div>
       )}
@@ -218,57 +229,58 @@ export function ImageParameters({
       )}
       {c?.outputFormat.supported && (
         <p className="control-note">
-          这里选择供应商编码；项目内素材统一规范化为 PNG。下载时可再选本地导出格式。
+          {t('这里选择供应商编码；项目内素材统一规范化为 PNG。下载时可再选本地导出格式。')}
         </p>
       )}
-      <Disclosure title="能力与限制" summary="按当前模型" role="capability">
+      <Disclosure title={t('能力与限制')} summary={t('按当前模型')} role="capability">
         <dl className="capability-list">
           {fields
             .filter(([field]) => !c?.[field].supported)
             .map(([field, label]) => (
               <div key={field}>
-                <dt>{label}</dt>
-                <dd>{c?.[field].reason ?? '服务未开放此参数'}</dd>
+                <dt>{t(label)}</dt>
+                <dd>{t(c?.[field].reason ?? '服务未开放此参数')}</dd>
               </div>
             ))}
           {Object.entries(capabilityNames).map(([field, label]) => {
             const capability = c?.[field as keyof typeof capabilityNames];
             return (
               <div key={field}>
-                <dt>{label}</dt>
+                <dt>{t(label)}</dt>
                 <dd>
                   {capability?.supported
-                    ? '当前模型已开放'
-                    : (capability?.reason ?? '当前适配器未开放')}
+                    ? t('当前模型已开放')
+                    : t(capability?.reason ?? '当前适配器未开放')}
                 </dd>
               </div>
             );
           })}
           <div>
-            <dt>生成范围</dt>
+            <dt>{t('生成范围')}</dt>
             <dd>
-              {((model?.minPixels ?? 0) / 1e6).toFixed(2)}–
-              {((model?.maxPixels ?? 0) / 1e6).toFixed(2)} 百万像素，单边上限{' '}
-              {model?.maxDimension ?? '待读取'} px
+              {t('{min}–{max} 百万像素，单边上限 {dimension} px', {
+                min: ((model?.minPixels ?? 0) / 1e6).toFixed(2),
+                max: ((model?.maxPixels ?? 0) / 1e6).toFixed(2),
+                dimension: model?.maxDimension ?? t('待读取'),
+              })}
             </dd>
           </div>
           <div>
-            <dt>参考图</dt>
+            <dt>{t('参考图')}</dt>
             <dd>
               {c?.references.supported
-                ? '最多 ' +
-                  c.references.maxCount +
-                  ' 张；遮罩' +
-                  (c.references.allowMask ? '可用' : '未开放') +
-                  '；标注图' +
-                  (c.references.allowMarkup ? '可用' : '未开放')
-                : '当前模型未开放参考图'}
+                ? t('最多 {count} 张；遮罩{mask}；标注图{markup}', {
+                    count: c.references.maxCount,
+                    mask: c.references.allowMask ? t('可用') : t('未开放'),
+                    markup: c.references.allowMarkup ? t('可用') : t('未开放'),
+                  })
+                : t('当前模型未开放参考图')}
             </dd>
           </div>
           {c?.dependencies.map((dependency) => (
             <div key={dependency.field + dependency.requires}>
-              <dt>参数联动</dt>
-              <dd>{dependency.reason}</dd>
+              <dt>{t('参数联动')}</dt>
+              <dd>{t(dependency.reason)}</dd>
             </div>
           ))}
         </dl>

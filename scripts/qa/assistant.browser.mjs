@@ -102,7 +102,7 @@ async function testCase(name, run) {
   }
 }
 async function selectProject(target) {
-  await target.goto(origin);
+  await target.goto(`${origin}/#/studio`);
   await target.getByRole('button', { name: '打开空间与项目', exact: true }).click();
   await target
     .locator('.sidebar')
@@ -1567,7 +1567,7 @@ try {
     ]);
     page = await operator.newPage();
     page.on('pageerror', (error) => report.pageErrors.push(String(error)));
-    await page.goto(origin);
+    await page.goto(`${origin}/#/studio`);
     await page.getByRole('button', { name: '打开空间与项目', exact: true }).click();
     await page.getByRole('button', { name: '运营管理', exact: true }).click();
     await page.getByRole('button', { name: '生成任务核验', exact: true }).click();

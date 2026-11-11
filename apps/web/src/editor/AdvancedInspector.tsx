@@ -1,3 +1,4 @@
+import { t } from '../i18n';
 import { MotionDetails } from '../motion/Presence';
 import { ChoiceSelect } from '../components/ChoiceSelect';
 import { useState } from 'react';
@@ -75,17 +76,17 @@ export function AdvancedInspector({
   return (
     <aside
       className={`inspector refined-inspector advanced-inspector ${mobileOpen ? 'mobile-open' : ''}`}
-      aria-label="编辑参数"
+      aria-label={t('编辑参数')}
     >
       <header className="inspector-heading" data-motion="inspector-header">
         <div>
           <h2>
-            {descriptor.label}
+            {t(descriptor.label)}
             <span className="tiny-dot" />
           </h2>
-          <p>{descriptor.description}</p>
+          <p>{t(descriptor.description)}</p>
         </div>
-        <IconButton label="收起工具面板" className="mobile-only" onClick={onClose}>
+        <IconButton label={t('收起工具面板')} className="mobile-only" onClick={onClose}>
           <CaretDown size={20} />
         </IconButton>
       </header>
@@ -93,7 +94,7 @@ export function AdvancedInspector({
         {scopedFamily && onGroupChange && (
           <nav
             className="context-adjustment-tabs"
-            aria-label="调节类别"
+            aria-label={t('调节类别')}
             data-motion="context-navigation"
           >
             {(['light', 'color', 'curves', 'detail'] as const).map((id) => (
@@ -102,11 +103,11 @@ export function AdvancedInspector({
                 key={id}
                 aria-pressed={group === id}
                 onClick={() => {
-                  editor.commitCurrent('完成当前调节');
+                  editor.commitCurrent(t('完成当前调节'));
                   onGroupChange(id);
                 }}
               >
-                {toolGroups.find((tool) => tool.id === id)?.label}
+                {t(toolGroups.find((tool) => tool.id === id)?.label ?? '')}
               </button>
             ))}
           </nav>
@@ -114,17 +115,17 @@ export function AdvancedInspector({
         {!editor.file ? (
           <div className="inspector-empty">
             <span>{descriptor.icon}</span>
-            <h3>先放入一张照片</h3>
-            <p>打开后即可调节。图像、工具范围与记录分别保留。</p>
+            <h3>{t('先放入一张照片')}</h3>
+            <p>{t('打开后即可调节。图像、工具范围与记录分别保留。')}</p>
           </div>
         ) : (
           <>
             {scopedFamily && (
               <div className="scope-selector" data-motion="scope-selector">
                 <label>
-                  作用范围
+                  {t('作用范围')}
                   <ChoiceSelect
-                    ariaLabel="参数作用范围"
+                    ariaLabel={t('参数作用范围')}
                     size="compact"
                     value={scopeKey(scope)}
                     onValueChange={(value) => {
@@ -136,22 +137,22 @@ export function AdvancedInspector({
                       );
                     }}
                     options={[
-                      { value: 'global', label: '整张照片' },
+                      { value: 'global', label: t('整张照片') },
                       ...recipe.regionEdits.map((r) => ({
                         value: 'region:' + r.id,
                         label: r.name,
-                        description: '单个局部',
+                        description: t('单个局部'),
                       })),
                       ...recipe.regionGroups.map((g) => ({
                         value: 'group:' + g.id,
                         label: g.name,
-                        description: '多个局部分组',
+                        description: t('多个局部分组'),
                       })),
                     ]}
                   />
                 </label>
                 {scope.kind !== 'global' && (
-                  <small>仅改变所选范围的完整参数，其他局部保持独立。</small>
+                  <small>{t('仅改变所选范围的完整参数，其他局部保持独立。')}</small>
                 )}
               </div>
             )}
@@ -210,49 +211,51 @@ export function AdvancedInspector({
                 <div className="advanced-row">
                   <button className="text-button" disabled={!editor.canUndo} onClick={editor.undo}>
                     <ArrowCounterClockwise size={17} />
-                    撤销
+                    {t('撤销')}
                   </button>
                   <button className="text-button" disabled={!editor.canRedo} onClick={editor.redo}>
                     <ArrowClockwise size={17} />
-                    重做
+                    {t('重做')}
                   </button>
                 </div>
                 <ol className="advanced-history-list">
                   {editor.history.map((item, index) => (
                     <li key={index} data-selected={index === editor.historyIndex}>
                       <button
-                        onClick={() => editor.commit(item.recipe, '从本地记录恢复：' + item.label)}
+                        onClick={() =>
+                          editor.commit(item.recipe, t('从本地记录恢复：') + item.label)
+                        }
                         disabled={index === editor.historyIndex}
                       >
                         <span>{index + 1}</span>
-                        {item.label}
-                        {index === editor.historyIndex && <small>当前</small>}
+                        {t(item.label)}
+                        {index === editor.historyIndex && <small>{t('当前')}</small>}
                       </button>
                     </li>
                   ))}
                 </ol>
                 <p className="control-note">
-                  本地记录属于当前原图。云端历史在“对比”中，可打开对应原图或恢复为新版本。
+                  {t('本地记录属于当前原图。云端历史在“对比”中，可打开对应原图或恢复为新版本。')}
                 </p>
               </section>
             )}
             {scopedFamily && (
               <MotionDetails className="advanced-disclosure">
-                <summary>恢复当前作用范围</summary>
+                <summary>{t('恢复当前作用范围')}</summary>
                 <button
                   className="text-button"
                   onClick={() =>
                     controller.apply(
                       withScopeColor(currentV3(editor), scope, createColorBlockV3()),
-                      '恢复当前范围的中性色彩',
+                      t('恢复当前范围的中性色彩'),
                       true,
                     )
                   }
                 >
-                  恢复当前范围全部明暗、色彩和细节
+                  {t('恢复当前范围全部明暗、色彩和细节')}
                 </button>
                 <p className="control-note">
-                  保留选区形状、其他人物、构图和合成图层；该操作可以撤销。
+                  {t('保留选区形状、其他人物、构图和合成图层；该操作可以撤销。')}
                 </p>
               </MotionDetails>
             )}

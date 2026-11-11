@@ -279,7 +279,7 @@ try {
       ? route.continue()
       : route.abort();
   });
-  await page.goto('http://127.0.0.1:4186');
+  await page.goto('http://127.0.0.1:4186/#/studio');
   for (const source of sources) {
     const decoded = await sharp(await getBytes(source))
       .autoOrient()

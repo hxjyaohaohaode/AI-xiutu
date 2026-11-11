@@ -1,3 +1,4 @@
+import { t, type MessageParams } from '../i18n';
 import { MotionDetails } from '../motion/Presence';
 import { useCallback, useEffect, useLayoutEffect, useRef, useState, type ReactNode } from 'react';
 import {
@@ -127,16 +128,32 @@ interface Turn {
   errorCode?: string;
 }
 
-function turnStatus(turn: Turn) {
+type StatusMessage =
+  | string
+  | {
+      message: string;
+      params: MessageParams;
+      labels?: string[];
+    };
+/** Keep app messages as source text while a request is in flight. A language
+ * change must never rewrite user prompts or model-generated conversation text. */
+function renderStatus(status: StatusMessage): string {
+  if (typeof status === 'string') return t(status);
+  const params = { ...status.params };
+  for (const key of status.labels ?? []) params[key] = t(String(params[key] ?? ''));
+  return t(status.message, params);
+}
+function turnStatus(turn: Turn): StatusMessage {
   if (turn.state === 'unknown') return '本轮结果待核验，可以在用量记录中查看。';
   if (turn.state === 'stopped') return '本轮已停止。已完成的供应商调用可在用量记录中查看。';
   if (turn.state === 'unavailable') return '本轮引用的素材权限已变化。';
-  return `本轮未完成（${turn.errorCode ?? turn.state}）`;
+  return { message: '本轮未完成（{code}）', params: { code: turn.errorCode ?? turn.state } };
 }
 interface Message {
   id: string;
   role: 'user' | 'assistant';
   text: string;
+  appStatus?: StatusMessage;
   citations?: AssistantCitation[];
   search?: AssistantSearchEvidence[];
 }
@@ -227,7 +244,7 @@ export function LiveAssistant(props: LiveAssistantProps) {
   const [overlay, setOverlay] = useState<'settings' | 'history' | 'recovery' | null>(null);
   const [prompt, setPrompt] = useState(''),
     [busy, setBusy] = useState(false),
-    [error, setError] = useState('');
+    [error, setError] = useState<StatusMessage>('');
   const [actorId, setActorId] = useState<string | null>(null),
     [submissionReady, setSubmissionReady] = useState(false),
     [pendingSubmission, setPendingSubmission] = useState<AssistantSubmission | null>(null);
@@ -261,15 +278,15 @@ export function LiveAssistant(props: LiveAssistantProps) {
     [referenceIds, setReferenceIds] = useState<string[]>([]);
   const [resourceQuery, setResourceQuery] = useState(''),
     [resources, setResources] = useState<AssistantCloudResource[]>([]);
-  const [searchStatus, setSearchStatus] = useState('');
+  const [searchStatus, setSearchStatus] = useState<StatusMessage>('');
   const [messages, setMessages] = useState<Message[]>([]),
     [candidates, setCandidates] = useState<AssistantCandidate[]>([]);
   const [historyEpoch, setHistoryEpoch] = useState(0);
-  const [candidateHistoryStatus, setCandidateHistoryStatus] = useState('');
+  const [candidateHistoryStatus, setCandidateHistoryStatus] = useState<StatusMessage>('');
   const [parentTurnId, setParentTurnId] = useState<string | undefined>(),
     [muted, setMuted] = useState(false),
     [elapsed, setElapsed] = useState(0);
-  const [toolStatus, setToolStatus] = useState(''),
+  const [toolStatus, setToolStatus] = useState<StatusMessage>(''),
     [contextStatus, setContextStatus] = useState('未共享画面');
   const voiceEpoch = useRef(0),
     voiceEnding = useRef(false),
@@ -638,7 +655,8 @@ export function LiveAssistant(props: LiveAssistantProps) {
             merged.set(turn.id, {
               id: turn.id,
               role: 'assistant',
-              text: turn.state === 'completed' ? (turn.output?.text ?? '') : turnStatus(turn),
+              text: turn.state === 'completed' ? (turn.output?.text ?? '') : '',
+              appStatus: turn.state === 'completed' ? undefined : turnStatus(turn),
               citations: turn.output?.citations,
               search: turn.output?.search,
             });
@@ -893,7 +911,23 @@ export function LiveAssistant(props: LiveAssistantProps) {
     if (event.type === 'tool')
       setToolStatus(
         event.state === 'running'
-          ? `正在协作：${({ search_resources: '查找素材', describe_editor: '读取编辑参数', propose_edit: '准备参数候选', propose_curve: '准备曲线', draft_generation: '整理生图草案', consult_editor: '分析当前需求' } as Record<string, string>)[event.name] ?? event.name}`
+          ? {
+              message: '正在协作：{tool}',
+              params: {
+                tool:
+                  (
+                    {
+                      search_resources: '查找素材',
+                      describe_editor: '读取编辑参数',
+                      propose_edit: '准备参数候选',
+                      propose_curve: '准备曲线',
+                      draft_generation: '整理生图草案',
+                      consult_editor: '分析当前需求',
+                    } as Record<string, string>
+                  )[event.name] ?? event.name,
+              },
+              labels: ['tool'],
+            }
           : '',
       );
     if (event.type === 'transcript') setVoiceCaptions((old) => appendCaption(old, event));
@@ -1010,7 +1044,11 @@ export function LiveAssistant(props: LiveAssistantProps) {
         }
         if (voiceIsActive()) {
           voiceEnding.current = true;
-          setError(`${message} 原通话标识已保留，核验完成前不能创建新通话。`);
+          setError({
+            message: '{reason} 原通话标识已保留，核验完成前不能创建新通话。',
+            params: { reason: message },
+            labels: ['reason'],
+          });
           setCallState('idle');
         }
         voiceClient.end();
@@ -1219,9 +1257,21 @@ export function LiveAssistant(props: LiveAssistantProps) {
         read_history: '回查原文',
         read_tool_result: '读取工具结果',
       };
-      setToolStatus(
-        `${names[event.payload.name] ?? '处理工具结果'} · ${{ 'tool.running': '进行中', 'tool.completed': '已完成', 'tool.failed': '未通过检查' }[event.type] ?? ''}`,
-      );
+      setToolStatus({
+        message: '{tool} · {state}',
+        params: {
+          tool: names[event.payload.name] ?? '处理工具结果',
+          state:
+            (
+              {
+                'tool.running': '进行中',
+                'tool.completed': '已完成',
+                'tool.failed': '未通过检查',
+              } as Record<string, string>
+            )[event.type] ?? '',
+        },
+        labels: ['tool', 'state'],
+      });
     } else if (event.type === 'context.prepared') setContextManifest(event.payload);
   }
   async function submit() {
@@ -1451,7 +1501,10 @@ export function LiveAssistant(props: LiveAssistantProps) {
                   ? '模型未完成本轮核对，候选保留供查看。'
                   : code === 'AUTOMATIC_UNSAVED_BASE'
                     ? '本轮基于未保存参数，已保留候选，请先预览确认。'
-                    : `自动修改已停止，候选已保留，请检查版本、占用或授权后继续。${code ?? ''}`,
+                    : {
+                        message: '自动修改已停止，候选已保留，请检查版本、占用或授权后继续。{code}',
+                        params: { code: code ?? '' },
+                      },
         );
       }
     } else {
@@ -1511,7 +1564,10 @@ export function LiveAssistant(props: LiveAssistantProps) {
       ).length;
       setCandidateHistoryStatus(
         actionable
-          ? `已读取 ${actionable} 个可继续处理的候选，包含项目内的文字与语音协作。`
+          ? {
+              message: '已读取 {count} 个可继续处理的候选，包含项目内的文字与语音协作。',
+              params: { count: actionable },
+            }
           : '项目最近的有效候选中，暂无需要处理的方案。',
       );
     } catch (err) {
@@ -1717,7 +1773,7 @@ export function LiveAssistant(props: LiveAssistantProps) {
       setResources(result.resources);
       setSearchStatus(
         result.resources.length
-          ? `显示 ${result.resources.length} 张图片`
+          ? { message: '显示 {count} 张图片', params: { count: result.resources.length } }
           : '当前范围内没有匹配图片',
       );
     } catch (err) {
@@ -1778,24 +1834,31 @@ export function LiveAssistant(props: LiveAssistantProps) {
       {!inCall && <ComposerVisual kind="voice" />}
       <div className="assistant-call-status" aria-live="polite">
         {callState === 'active'
-          ? `正在通话 ${Math.floor(elapsed / 60)}:${String(elapsed % 60).padStart(2, '0')}`
+          ? t('正在通话 {v0}:{v1}', {
+              v0: Math.floor(elapsed / 60),
+              v1: String(elapsed % 60).padStart(2, '0'),
+            })
           : callState === 'connecting'
-            ? '正在连接麦克风与语音服务…'
+            ? t('正在连接麦克风与语音服务…')
             : callState === 'closing'
-              ? '正在结束并核对用量…'
-              : '实时语音'}
+              ? t('正在结束并核对用量…')
+              : t('实时语音')}
         <small>
           {inCall
-            ? contextStatus
+            ? t(contextStatus)
             : selectedVoice
-              ? `本次 ${selectedVoice.unitCost} 服务点 · 最长 ${selectedVoice.maxSeconds} 秒 · 最多 ${selectedVoice.maxDelegations} 次后端协作`
-              : '选择可用的语音模型后开始'}
+              ? t('本次 {v0} 服务点 · 最长 {v1} 秒 · 最多 {v2} 次后端协作', {
+                  v0: selectedVoice.unitCost,
+                  v1: selectedVoice.maxSeconds,
+                  v2: selectedVoice.maxDelegations,
+                })
+              : t('选择可用的语音模型后开始')}
         </small>
       </div>
       {!inCall ? (
         <div className="assistant-call-start">
           <ChoiceSelect
-            ariaLabel="语音音色"
+            ariaLabel={t('语音音色')}
             size="compact"
             value={voice}
             disabled={
@@ -1805,7 +1868,7 @@ export function LiveAssistant(props: LiveAssistantProps) {
               !voiceSubmissionReady
             }
             onValueChange={setVoice}
-            placeholder="选择音色"
+            placeholder={t('选择音色')}
             options={voiceOptions.map((option) => ({ value: option, label: option }))}
           />
           <button
@@ -1824,13 +1887,13 @@ export function LiveAssistant(props: LiveAssistantProps) {
             }
           >
             <Microphone size={17} />
-            开始实时通话
+            {t('开始实时通话')}
           </button>
         </div>
       ) : (
         <div className="assistant-call-actions">
           <button
-            aria-label={muted ? '开启麦克风' : '静音麦克风'}
+            aria-label={muted ? t('开启麦克风') : t('静音麦克风')}
             aria-pressed={muted}
             disabled={callState !== 'active'}
             onClick={toggleVoiceMute}
@@ -1838,7 +1901,7 @@ export function LiveAssistant(props: LiveAssistantProps) {
             {muted ? <MicrophoneSlash size={20} /> : <Microphone size={20} />}
           </button>
           <button
-            aria-label="打断播报"
+            aria-label={t('打断播报')}
             disabled={callState !== 'active'}
             onClick={() => client.current?.interrupt()}
           >
@@ -1846,7 +1909,7 @@ export function LiveAssistant(props: LiveAssistantProps) {
           </button>
           <button
             className="end-call"
-            aria-label="结束实时通话"
+            aria-label={t('结束实时通话')}
             disabled={callState === 'closing'}
             onClick={endCurrentVoice}
           >
@@ -1863,7 +1926,7 @@ export function LiveAssistant(props: LiveAssistantProps) {
       )}
       {callState === 'active' && allowWebSearch && selected?.webSearch && (
         <MotionDetails className="assistant-voice-search">
-          <summary>通话中公开搜索</summary>
+          <summary>{t('通话中公开搜索')}</summary>
           <form
             className="assistant-public-query"
             onSubmit={(event) => {
@@ -1872,13 +1935,13 @@ export function LiveAssistant(props: LiveAssistantProps) {
             }}
           >
             <label>
-              可公开的查询词
+              {t('可公开的查询词')}
               <input
-                aria-label="通话公开检索查询词"
+                aria-label={t('通话公开检索查询词')}
                 value={publicQuery}
                 maxLength={240}
                 onChange={(event) => setPublicQuery(event.target.value)}
-                placeholder="例如：静物柔光参考"
+                placeholder={t('例如：静物柔光参考')}
               />
             </label>
             {selected.webImageSearch && (
@@ -1888,16 +1951,16 @@ export function LiveAssistant(props: LiveAssistantProps) {
                   checked={publicImages}
                   onChange={(event) => setPublicImages(event.target.checked)}
                 />
-                查找公开图片
+                {t('查找公开图片')}
               </label>
             )}
-            <small>也可说「公开搜索：关键词」。本通话最多一次公开搜索，只发送查询词。</small>
+            <small>{t('也可说「公开搜索：关键词」。本通话最多一次公开搜索，只发送查询词。')}</small>
             <button
               type="submit"
               className="button button-secondary"
               disabled={!publicQuery.trim() || !!toolStatus || voiceSearchUsed}
             >
-              {voiceSearchUsed ? '本次已发起检索' : '搜索'}
+              {voiceSearchUsed ? t('本次已发起检索') : t('搜索')}
             </button>
           </form>
         </MotionDetails>
@@ -1908,35 +1971,39 @@ export function LiveAssistant(props: LiveAssistantProps) {
     <section
       className="live-assistant live-assistant-v2"
       data-in-call={inCall || undefined}
-      aria-label="实时语音与智能体协作"
+      aria-label={t('实时语音与智能体协作')}
     >
       <header className="ai-workbench-header">
         {props.navigation ?? (
           <strong className="ai-task-title">
             <Sparkle size={18} />
-            AI 助手
+            {t('AI 助手')}
           </strong>
         )}
         <div className="ai-header-actions">
           <IconButton
-            label="新会话"
+            label={t('新会话')}
             disabled={busy || inCall || submissionBlocked}
             onClick={newConversation}
           >
             <Plus size={18} />
           </IconButton>
           <IconButton
-            label="会话记录"
+            label={t('会话记录')}
             disabled={busy || inCall}
             onClick={() => setOverlay('history')}
           >
             <ClockCounterClockwise size={18} />
           </IconButton>
-          <IconButton label="助手设置" onClick={() => setOverlay('settings')}>
+          <IconButton label={t('助手设置')} onClick={() => setOverlay('settings')}>
             <GearSix size={18} />
           </IconButton>
           {props.onClose && (
-            <IconButton className="ai-panel-close" label="收起 AI 面板" onClick={props.onClose}>
+            <IconButton
+              className="ai-panel-close"
+              label={t('收起 AI 面板')}
+              onClick={props.onClose}
+            >
               <X size={18} />
             </IconButton>
           )}
@@ -1946,7 +2013,7 @@ export function LiveAssistant(props: LiveAssistantProps) {
       <div
         ref={conversationBody}
         className="ai-conversation-body"
-        aria-label="助手对话内容"
+        aria-label={t('助手对话内容')}
         onScroll={(event) => {
           const node = event.currentTarget;
           if (props.visible === false || !node.clientHeight) return;
@@ -1958,11 +2025,11 @@ export function LiveAssistant(props: LiveAssistantProps) {
           <div className="ai-conversation-empty ai-login-empty">
             <ComposerVisual kind="assistant" />
             <div>
-              <h3>登录后使用 AI 助手</h3>
-              <p>对话与结果保存到项目。</p>
+              <h3>{t('登录后使用 AI 助手')}</h3>
+              <p>{t('对话与结果保存到项目。')}</p>
             </div>
             <button className="button button-primary" onClick={onAuth}>
-              登录
+              {t('登录')}
             </button>
           </div>
         ) : (
@@ -1970,11 +2037,11 @@ export function LiveAssistant(props: LiveAssistantProps) {
             {(!catalog?.ready || !project) && (
               <div className="ai-availability" role="status">
                 <span>
-                  {!project ? '选择项目后开始对话' : (catalog?.reason ?? '正在读取可用模型…')}
+                  {!project ? t('选择项目后开始对话') : t(catalog?.reason ?? '正在读取可用模型…')}
                 </span>
                 {!project && (
                   <button type="button" onClick={onSave}>
-                    选择项目
+                    {t('选择项目')}
                   </button>
                 )}
               </div>
@@ -1991,19 +2058,20 @@ export function LiveAssistant(props: LiveAssistantProps) {
             {!messages.length && !remainingCandidates.length && mode === 'text' && !busy && (
               <div className="ai-conversation-empty">
                 <ComposerVisual kind="assistant" />
-                <h3>描述需要修改的地方</h3>
+                <h3>{t('描述需要修改的地方')}</h3>
                 <p>
                   {artwork
-                    ? '共享预览后，也可以针对画面提出建议。'
-                    : '可以先讨论想法，也可以切换到生图。'}
+                    ? t('共享预览后，也可以针对画面提出建议。')
+                    : t('可以先讨论想法，也可以切换到生图。')}
                 </p>
               </div>
             )}
-            <div className="assistant-messages" aria-label="协作对话" data-motion="ai-answer">
+            <div className="assistant-messages" aria-label={t('协作对话')} data-motion="ai-answer">
               {messages.map((message) => (
                 <article key={message.id} className={`assistant-message ${message.role}`}>
-                  <small>{message.role === 'user' ? '你' : '创作助手'}</small>
+                  <small>{message.role === 'user' ? t('你') : t('创作助手')}</small>
                   {message.text && <p>{message.text}</p>}
+                  {message.appStatus && <p>{renderStatus(message.appStatus)}</p>}
                   {!!message.search?.length && (
                     <SearchEvidence
                       evidence={message.search}
@@ -2054,18 +2122,21 @@ export function LiveAssistant(props: LiveAssistantProps) {
                   <article key={candidate.id} className="assistant-candidate">
                     <h4>
                       <Sparkle size={15} />
-                      {candidate.kind === 'edit' ? '待确认的编辑' : '生图草案'}
+                      {candidate.kind === 'edit' ? t('待确认的编辑') : t('生图草案')}
                     </h4>
                     <p>{candidate.summary}</p>
                     {!!candidate.changes?.length && (
                       <MotionDetails>
-                        <summary>查看 {candidate.changes.length} 项参数变化</summary>
+                        <summary>
+                          {t('查看')}
+                          {candidate.changes.length} {t('项参数变化')}
+                        </summary>
                         <table>
                           <thead>
                             <tr>
-                              <th>参数</th>
-                              <th>原值</th>
-                              <th>建议</th>
+                              <th>{t('参数')}</th>
+                              <th>{t('原值')}</th>
+                              <th>{t('建议')}</th>
                             </tr>
                           </thead>
                           <tbody>
@@ -2085,7 +2156,7 @@ export function LiveAssistant(props: LiveAssistantProps) {
                         disabled={busy || submissionBlocked}
                         onClick={() => void decide(candidate, 'rejected')}
                       >
-                        退回
+                        {t('退回')}
                       </button>
                       <button
                         className="ai-candidate-primary"
@@ -2093,10 +2164,10 @@ export function LiveAssistant(props: LiveAssistantProps) {
                         onClick={() => void decide(candidate, 'previewed')}
                       >
                         {candidate.kind === 'edit'
-                          ? '在编辑器预览'
+                          ? t('在编辑器预览')
                           : candidate.decision === 'previewed'
-                            ? '重新打开生图草案'
-                            : '选择模型与生成参数'}
+                            ? t('重新打开生图草案')
+                            : t('选择模型与生成参数')}
                       </button>
                     </div>
                   </article>
@@ -2105,7 +2176,7 @@ export function LiveAssistant(props: LiveAssistantProps) {
             )}
             {candidateHistoryStatus && (
               <p className="ai-secondary-copy" role="status">
-                {candidateHistoryStatus}
+                {renderStatus(candidateHistoryStatus)}
               </p>
             )}
           </>
@@ -2114,7 +2185,7 @@ export function LiveAssistant(props: LiveAssistantProps) {
       <footer className="ai-composer-region">
         <div className="ai-execution-status">
           <p className="assistant-tool-status" aria-live="polite">
-            {toolStatus || (busy ? '正在处理…' : '')}
+            {toolStatus ? renderStatus(toolStatus) : busy ? t('正在处理…') : ''}
           </p>
           {activeTurn && (
             <button
@@ -2122,28 +2193,28 @@ export function LiveAssistant(props: LiveAssistantProps) {
               disabled={activeTurn.stopping}
               onClick={() => void stopActiveTurn()}
             >
-              {activeTurn.stopping ? '正在核对停止结果' : '停止本轮执行'}
+              {activeTurn.stopping ? t('正在核对停止结果') : t('停止本轮执行')}
             </button>
           )}
         </div>
         {recoveryLabel && (
           <div className="ai-pending-strip" role="status">
             <WarningCircle size={16} />
-            <span>{recoveryLabel}</span>
+            <span>{t(recoveryLabel)}</span>
             <button type="button" onClick={() => setOverlay('recovery')}>
-              核对请求
+              {t('核对请求')}
             </button>
           </div>
         )}
         {error && (
           <p className="assistant-error" role="alert">
-            {error}
+            {renderStatus(error)}
             <button className="text-button" onClick={refreshHistory}>
-              刷新会话记录
+              {t('刷新会话记录')}
             </button>
             {actorId && !submissionReady && (
               <button className="text-button" onClick={restoreSubmission}>
-                重新读取恢复记录
+                {t('重新读取恢复记录')}
               </button>
             )}
           </p>
@@ -2169,18 +2240,18 @@ export function LiveAssistant(props: LiveAssistantProps) {
               <Eye size={14} />
               <span>
                 {[
-                  shareImage ? '当前预览' : '',
-                  referenceIds.length ? `${referenceIds.length} 张参考` : '',
-                  memory ? '已确认偏好' : '',
+                  shareImage ? t('当前预览') : '',
+                  referenceIds.length ? t('{v0} 张参考', { v0: referenceIds.length }) : '',
+                  memory ? t('已确认偏好') : '',
                   allowWebSearch
                     ? mode === 'text' && secondPublicQuery.trim()
-                      ? '2 项公开检索'
-                      : '公开检索'
+                      ? t('2 项公开检索')
+                      : t('公开检索')
                     : '',
                   mode === 'text' && researchLibrary.trim() && spaceIds.length > 0
-                    ? '素材检索'
+                    ? t('素材检索')
                     : '',
-                  mode === 'text' && researchCanvas && shareImage ? '画面检查' : '',
+                  mode === 'text' && researchCanvas && shareImage ? t('画面检查') : '',
                 ]
                   .filter(Boolean)
                   .join(' · ')}
@@ -2189,8 +2260,8 @@ export function LiveAssistant(props: LiveAssistantProps) {
           )}
           <ComposerInput
             ref={composerInput}
-            label="向智能体描述修改需求"
-            placeholder={inCall ? '补充通话要求…' : '输入调整要求…'}
+            label={t('向智能体描述修改需求')}
+            placeholder={inCall ? t('补充通话要求…') : t('输入调整要求…')}
             value={prompt}
             onChange={setPrompt}
             maxLength={4000}
@@ -2201,18 +2272,18 @@ export function LiveAssistant(props: LiveAssistantProps) {
             <button
               type="button"
               className="ai-model-trigger"
-              aria-label="选择助手模型与执行方式"
+              aria-label={t('选择助手模型与执行方式')}
               onClick={() => setOverlay('settings')}
             >
-              <span>{selected?.label ?? '选择模型'}</span>
+              <span>{selected?.label ?? t('选择模型')}</span>
               <CaretDown size={12} />
             </button>
             <div className="ai-composer-tools">
-              <IconButton label="共享画面与参考素材" onClick={() => setOverlay('settings')}>
+              <IconButton label={t('共享画面与参考素材')} onClick={() => setOverlay('settings')}>
                 <Paperclip size={18} />
               </IconButton>
               <IconButton
-                label={mode === 'voice' ? '返回文字协作' : '打开实时语音'}
+                label={mode === 'voice' ? t('返回文字协作') : t('打开实时语音')}
                 disabled={inCall || busy}
                 onClick={() => setMode((old) => (old === 'voice' ? 'text' : 'voice'))}
               >
@@ -2220,8 +2291,8 @@ export function LiveAssistant(props: LiveAssistantProps) {
               </IconButton>
               <button
                 className="ai-send-button"
-                aria-label="发送协作请求"
-                title="发送（Ctrl / ⌘ Enter）"
+                aria-label={t('发送协作请求')}
+                title={t('发送（Ctrl / ⌘ Enter）')}
                 type="submit"
                 disabled={!canSend}
               >
@@ -2232,22 +2303,26 @@ export function LiveAssistant(props: LiveAssistantProps) {
         </form>
         <div className="ai-composer-meta">
           <span>
-            {executionLabel}
-            {grant && creative.mode === 'auto' ? ` · ${grant.usedUnits}/${grant.unitLimit} 点` : ''}
+            {t(executionLabel)}
+            {grant && creative.mode === 'auto'
+              ? t(' · {v0}/{v1} 点', { v0: grant.usedUnits, v1: grant.unitLimit })
+              : ''}
           </span>
           {grant && creative.mode === 'auto' && (
             <button className="ai-grant-stop" type="button" onClick={() => void revokeGrant()}>
-              停止授权
+              {t('停止授权')}
             </button>
           )}
-          <span>{selected ? `文字 ${selected.unitCost} 点 / 轮` : '点数待确认'}</span>
+          <span>
+            {selected ? t('文字 {v0} 点 / 轮', { v0: selected.unitCost }) : t('点数待确认')}
+          </span>
         </div>
         {inCall && (
-          <p className="ai-input-disclosure">收起后通话继续，可在顶部活动条静音或结束。</p>
+          <p className="ai-input-disclosure">{t('收起后通话继续，可在顶部活动条静音或结束。')}</p>
         )}
       </footer>
       <Modal
-        title="助手设置"
+        title={t('助手设置')}
         open={props.visible !== false && overlay === 'settings'}
         keepMounted
         onClose={() => setOverlay(null)}
@@ -2255,45 +2330,48 @@ export function LiveAssistant(props: LiveAssistantProps) {
       >
         <div className="ai-options-content">
           <PanelSettings onClose={() => setOverlay(null)} />
-          <div className="assistant-mode" role="group" aria-label="交流方式">
+          <div className="assistant-mode" role="group" aria-label={t('交流方式')}>
             <button
               type="button"
               aria-pressed={mode === 'text'}
               disabled={inCall}
               onClick={() => setMode('text')}
             >
-              文字协作
+              {t('文字协作')}
             </button>
             <button type="button" aria-pressed={mode === 'voice'} onClick={() => setMode('voice')}>
-              实时对话
+              {t('实时对话')}
             </button>
           </div>
           <div className="assistant-models">
             <ChoiceSelect
-              label="助手模型"
-              ariaLabel="助手模型"
+              label={t('助手模型')}
+              ariaLabel={t('助手模型')}
               value={modelId}
               onValueChange={setModelId}
               disabled={inCall || busy || submissionBlocked || !!grant}
-              placeholder="暂无可用模型"
+              placeholder={t('暂无可用模型')}
               options={models.map((item) => ({
                 value: item.id,
                 label: item.label,
-                description: `${item.unitCost} 服务点 / 轮`,
+                description: t('{v0} 服务点 / 轮', { v0: item.unitCost }),
               }))}
             />
             {mode === 'voice' && (
               <ChoiceSelect
-                label="语音模型"
-                ariaLabel="语音模型"
+                label={t('语音模型')}
+                ariaLabel={t('语音模型')}
                 value={voiceId}
                 onValueChange={setVoiceId}
                 disabled={inCall || busy || submissionBlocked || !!grant}
-                placeholder="暂无语音模型"
+                placeholder={t('暂无语音模型')}
                 options={voices.map((item) => ({
                   value: item.id,
                   label: item.label,
-                  description: `${item.unitCost} 服务点 · 最长 ${item.maxSeconds} 秒`,
+                  description: t('{v0} 服务点 · 最长 {v1} 秒', {
+                    v0: item.unitCost,
+                    v1: item.maxSeconds,
+                  }),
                 }))}
               />
             )}
@@ -2323,8 +2401,9 @@ export function LiveAssistant(props: LiveAssistantProps) {
           )}
           <MotionDetails className="assistant-context">
             <summary>
-              <Eye size={15} /> 共享范围 · {shareImage ? '画面与参数' : '仅参数'}
-              {allowWebSearch ? ' · 联网' : ''}
+              <Eye size={15} /> {t('共享范围 ·')}
+              {shareImage ? t('画面与参数') : t('仅参数')}
+              {allowWebSearch ? t(' · 联网') : ''}
             </summary>
             <div className="assistant-context-options">
               <label>
@@ -2336,7 +2415,7 @@ export function LiveAssistant(props: LiveAssistantProps) {
                   }
                   onChange={(event) => setShareImage(event.target.checked)}
                 />
-                共享当前预览，通话中编辑后持续更新
+                {t('共享当前预览，通话中编辑后持续更新')}
               </label>
               <label>
                 <input
@@ -2345,23 +2424,23 @@ export function LiveAssistant(props: LiveAssistantProps) {
                   disabled={inCall || busy || submissionBlocked || !selected?.webSearch}
                   onChange={(event) => setAllowWebSearch(event.target.checked)}
                 />
-                允许公开网络检索，保留来源链接
+                {t('允许公开网络检索，保留来源链接')}
               </label>
               {mode === 'text' && allowWebSearch && selected?.webSearch && (
                 <div className="assistant-public-query">
                   <label>
-                    可公开的查询词
+                    {t('可公开的查询词')}
                     <input
-                      aria-label="公开检索查询词"
+                      aria-label={t('公开检索查询词')}
                       value={publicQuery}
                       maxLength={240}
                       disabled={inCall || busy || submissionBlocked}
                       onChange={(event) => setPublicQuery(event.target.value)}
-                      placeholder="例如：复古产品静物布光参考"
+                      placeholder={t('例如：复古产品静物布光参考')}
                     />
                   </label>
                   <label>
-                    第二项公开查询（可选）
+                    {t('第二项公开查询（可选）')}
                     <input
                       value={secondPublicQuery}
                       maxLength={240}
@@ -2377,21 +2456,21 @@ export function LiveAssistant(props: LiveAssistantProps) {
                         disabled={inCall || busy || submissionBlocked}
                         onChange={(event) => setPublicImages(event.target.checked)}
                       />
-                      同时查找公开图片
+                      {t('同时查找公开图片')}
                     </label>
                   )}
                   <small>
-                    公开检索使用这里填写的查询词。共享画面和项目资料在编辑协作步骤中处理。
+                    {t('公开检索使用这里填写的查询词。共享画面和项目资料在编辑协作步骤中处理。')}
                   </small>
                 </div>
               )}
               {mode === 'text' && (spaceIds.length > 0 || (shareImage && selected?.imageInput)) && (
                 <MotionDetails className="assistant-context assistant-research-plan">
-                  <summary>本轮分工</summary>
+                  <summary>{t('本轮分工')}</summary>
                   <div className="assistant-research-options">
                     {spaceIds.length > 0 && (
                       <label>
-                        在已授权空间检索素材
+                        {t('在已授权空间检索素材')}
                         <input
                           value={researchLibrary}
                           maxLength={200}
@@ -2408,7 +2487,7 @@ export function LiveAssistant(props: LiveAssistantProps) {
                           disabled={inCall || busy || submissionBlocked}
                           onChange={(event) => setResearchCanvas(event.target.checked)}
                         />
-                        检查当前共享画面
+                        {t('检查当前共享画面')}
                       </label>
                     )}
                   </div>
@@ -2421,10 +2500,13 @@ export function LiveAssistant(props: LiveAssistantProps) {
                   disabled={inCall || busy || submissionBlocked}
                   onChange={(event) => setMemory(event.target.checked)}
                 />
-                使用已确认的偏好、项目要求与素材标注
+                {t('使用已确认的偏好、项目要求与素材标注')}
               </label>
               <fieldset disabled={inCall || busy || submissionBlocked}>
-                <legend>可搜索的空间 · {spaceIds.length} / 12</legend>
+                <legend>
+                  {t('可搜索的空间 ·')}
+                  {spaceIds.length} / 12
+                </legend>
                 {spaces.map((space) => (
                   <label key={space.id}>
                     <input
@@ -2444,13 +2526,13 @@ export function LiveAssistant(props: LiveAssistantProps) {
                       }}
                     />
                     {space.name}
-                    <small>{space.kind === 'team' ? '团队' : '个人'}</small>
+                    <small>{space.kind === 'team' ? t('团队') : t('个人')}</small>
                   </label>
                 ))}
               </fieldset>
               <div className="assistant-resource-search">
                 <input
-                  aria-label="搜索授权素材"
+                  aria-label={t('搜索授权素材')}
                   value={resourceQuery}
                   maxLength={200}
                   onChange={(event) => {
@@ -2458,17 +2540,17 @@ export function LiveAssistant(props: LiveAssistantProps) {
                     setResourceQuery(event.target.value);
                   }}
                   disabled={inCall}
-                  placeholder="找一张以前用过的图片"
+                  placeholder={t('找一张以前用过的图片')}
                 />
                 <button
-                  aria-label="查找素材"
+                  aria-label={t('查找素材')}
                   onClick={search}
                   disabled={inCall || !spaceIds.length}
                 >
                   <MagnifyingGlass size={17} />
                 </button>
               </div>
-              {searchStatus && <p role="status">{searchStatus}</p>}
+              {searchStatus && <p role="status">{renderStatus(searchStatus)}</p>}
               {!!resources.length && (
                 <CloudImageResults
                   resources={resources}
@@ -2478,15 +2560,15 @@ export function LiveAssistant(props: LiveAssistantProps) {
                 />
               )}
               <p>
-                检索只返回名称与标注；只有选中的 {referenceIds.length}{' '}
-                张参考图和勾选的当前预览会发送给模型。
+                {t('检索只返回名称与标注；只有选中的')}
+                {referenceIds.length} {t('张参考图和勾选的当前预览会发送给模型。')}
               </p>
             </div>
           </MotionDetails>
         </div>
       </Modal>
       <Modal
-        title="会话记录"
+        title={t('会话记录')}
         open={props.visible !== false && overlay === 'history'}
         keepMounted
         onClose={() => setOverlay(null)}
@@ -2500,19 +2582,19 @@ export function LiveAssistant(props: LiveAssistantProps) {
             onClick={newConversation}
           >
             <Plus size={18} />
-            新会话
+            {t('新会话')}
           </button>
           <ChoiceSelect
-            label="会话记录"
-            ariaLabel="会话记录"
+            label={t('会话记录')}
+            ariaLabel={t('会话记录')}
             value={conversationId ?? ''}
             disabled={busy || inCall}
             options={[
-              { value: '', label: '新会话' },
+              { value: '', label: t('新会话') },
               ...conversations.map((item) => ({
                 value: item.id,
                 label: item.title,
-                description: `${item.turnCount} 轮`,
+                description: t('{v0} 轮', { v0: item.turnCount }),
               })),
             ]}
             onValueChange={(value) => {
@@ -2539,12 +2621,12 @@ export function LiveAssistant(props: LiveAssistantProps) {
               setOverlay(null);
             }}
           >
-            查看项目候选（含语音协作）
+            {t('查看项目候选（含语音协作）')}
           </button>
         </div>
       </Modal>
       <Modal
-        title="核对原请求"
+        title={t('核对原请求')}
         open={props.visible !== false && overlay === 'recovery'}
         keepMounted
         onClose={() => setOverlay(null)}
@@ -2552,71 +2634,95 @@ export function LiveAssistant(props: LiveAssistantProps) {
       >
         <div className="ai-options-content">
           {voiceRecoveryError && (
-            <section className="assistant-candidate" aria-label="语音恢复记录读取失败" role="alert">
-              <h4>暂时无法核对上次通话</h4>
-              <p>{voiceRecoveryError}</p>
-              <p>读取成功前暂停新通话。重新读取本机记录不会向模型发送请求。</p>
+            <section
+              className="assistant-candidate"
+              aria-label={t('语音恢复记录读取失败')}
+              role="alert"
+            >
+              <h4>{t('暂时无法核对上次通话')}</h4>
+              <p>{t(voiceRecoveryError)}</p>
+              <p>{t('读取成功前暂停新通话。重新读取本机记录不会向模型发送请求。')}</p>
               <button type="button" disabled={inCall} onClick={restoreVoiceSubmission}>
-                重新读取本机记录
+                {t('重新读取本机记录')}
               </button>
             </section>
           )}
           {pendingTeamVoiceSubmission && (
-            <section className="assistant-candidate" aria-label="团队语音未决邀请" role="status">
-              <h4>原团队 AI 邀请仍待确认</h4>
+            <section
+              className="assistant-candidate"
+              aria-label={t('团队语音未决邀请')}
+              role="status"
+            >
+              <h4>{t('原团队 AI 邀请仍待确认')}</h4>
               <p>
-                请返回作品的团队语音面板查看邀请状态，或在「用量」中核对。核验前暂停新的个人 AI
-                通话。
+                {t(
+                  '请返回作品的团队语音面板查看邀请状态，或在「用量」中核对。核验前暂停新的个人 AI 通话。',
+                )}
               </p>
               <p style={{ overflowWrap: 'anywhere' }}>
-                请求标识：<code>{pendingTeamVoiceSubmission.idempotencyKey}</code>
+                {t('请求标识：')}
+                <code>{pendingTeamVoiceSubmission.idempotencyKey}</code>
               </p>
             </section>
           )}
           {pendingVoiceSubmission && !inCall && (
-            <section className="assistant-candidate" aria-label="语音请求恢复" aria-live="polite">
+            <section
+              className="assistant-candidate"
+              aria-label={t('语音请求恢复')}
+              aria-live="polite"
+            >
               <h4>
                 {pendingVoiceSubmission.sessionId ||
                 pendingVoiceSubmission.state === 'already-prepared'
-                  ? '上次通话待平台核验'
-                  : '上次通话的准备结果待确认'}
+                  ? t('上次通话待平台核验')
+                  : t('上次通话的准备结果待确认')}
               </h4>
               <p>
-                已保留项目「{pendingVoiceSubmission.projectTitle}
-                」的原请求，核验完成前暂停创建新通话。
-                结束通话、断网或等待一段时间，都不能证明预占已结清。
+                {t('已保留项目「')}
+                {pendingVoiceSubmission.projectTitle}
+                {t(
+                  '」的原请求，核验完成前暂停创建新通话。 结束通话、断网或等待一段时间，都不能证明预占已结清。',
+                )}
               </p>
               <p style={{ overflowWrap: 'anywhere' }}>
-                请求标识：<code>{pendingVoiceSubmission.idempotencyKey}</code>
+                {t('请求标识：')}
+                <code>{pendingVoiceSubmission.idempotencyKey}</code>
                 {pendingVoiceSubmission.sessionId && (
                   <>
                     <br />
-                    会话标识：<code>{pendingVoiceSubmission.sessionId}</code>
+                    {t('会话标识：')}
+                    <code>{pendingVoiceSubmission.sessionId}</code>
                   </>
                 )}
               </p>
               <p>
-                可在「用量」查看已知任务的状态与预占，并将以上标识提供给平台运营核验。
-                当前界面不支持自动恢复这次通话，原连接凭证也不能重新发放，仍需平台协助处理。
+                {t(
+                  '可在「用量」查看已知任务的状态与预占，并将以上标识提供给平台运营核验。 当前界面不支持自动恢复这次通话，原连接凭证也不能重新发放，仍需平台协助处理。',
+                )}
               </p>
               {!pendingVoiceSubmission.sessionId &&
                 pendingVoiceSubmission.state !== 'already-prepared' && (
                   <>
                     <p>
-                      沿原请求核对只使用当时的模型、画面、参数和授权。如服务器尚未受理，
-                      将继续原通话并使用原授权额度；已准备过的通话会保持待核验状态。
+                      {t(
+                        '沿原请求核对只使用当时的模型、画面、参数和授权。如服务器尚未受理， 将继续原通话并使用原授权额度；已准备过的通话会保持待核验状态。',
+                      )}
                     </p>
                     {pendingVoiceSubmission.requestBody === null ? (
-                      <p>原始共享画面只保留在页面内存中，当前无法重放，请凭原标识联系平台核验。</p>
+                      <p>
+                        {t(
+                          '原始共享画面只保留在页面内存中，当前无法重放，请凭原标识联系平台核验。',
+                        )}
+                      </p>
                     ) : pendingVoiceSubmission.projectId !== project?.id ? (
-                      <p>请先返回原项目，再沿原请求核对。</p>
+                      <p>{t('请先返回原项目，再沿原请求核对。')}</p>
                     ) : (
                       <button
                         type="button"
                         disabled={busy || submissionBlocked || !voiceSubmissionReady}
                         onClick={() => void startVoice(pendingVoiceSubmission)}
                       >
-                        沿原请求核对 / 继续
+                        {t('沿原请求核对 / 继续')}
                       </button>
                     )}
                   </>
@@ -2624,42 +2730,56 @@ export function LiveAssistant(props: LiveAssistantProps) {
             </section>
           )}
           {pendingSubmission && (
-            <section className="assistant-candidate" aria-label="协作请求恢复" aria-live="polite">
+            <section
+              className="assistant-candidate"
+              aria-label={t('协作请求恢复')}
+              aria-live="polite"
+            >
               <h4>
                 {pendingSubmission.state === 'unknown'
-                  ? '本轮结果待平台核验'
+                  ? t('本轮结果待平台核验')
                   : busy
-                    ? '正在核对本轮协作'
+                    ? t('正在核对本轮协作')
                     : pendingSubmission.turnId
-                      ? '本轮已受理，可恢复查看进度'
-                      : '发送结果待确认，原请求已保留'}
+                      ? t('本轮已受理，可恢复查看进度')
+                      : t('发送结果待确认，原请求已保留')}
               </h4>
               <p>
                 {pendingSubmission.state === 'unknown'
-                  ? '服务方的执行与用量结果尚未确认。核验完成前保留本轮请求，可刷新结果或查看用量记录。'
+                  ? t(
+                      '服务方的执行与用量结果尚未确认。核验完成前保留本轮请求，可刷新结果或查看用量记录。',
+                    )
                   : pendingSubmission.turnId
-                    ? '恢复时只读取这一轮的结果与进度，不再提交新的模型请求。'
-                    : '原文字、画面、模型和授权已冻结。按原请求核对时，已受理的请求会返回原结果；如尚未受理，将继续原请求并使用原授权额度。'}
+                    ? t('恢复时只读取这一轮的结果与进度，不再提交新的模型请求。')
+                    : t(
+                        '原文字、画面、模型和授权已冻结。按原请求核对时，已受理的请求会返回原结果；如尚未受理，将继续原请求并使用原授权额度。',
+                      )}
               </p>
               {pendingSubmission.automatic && !pendingSubmission.turnId && (
-                <p>原请求使用预算内自动执行授权，继续时沿用当时的画面与执行范围。</p>
+                <p>{t('原请求使用预算内自动执行授权，继续时沿用当时的画面与执行范围。')}</p>
               )}
               {!pendingSubmission.turnId &&
                 pendingSubmission.projectId === project?.id &&
                 pendingSubmission.editorKey !== assistantEditorKey(editorState(props)) && (
-                  <p>当前画布已变化。按原请求继续时，仍使用发送前保存的画面与参数。</p>
+                  <p>{t('当前画布已变化。按原请求继续时，仍使用发送前保存的画面与参数。')}</p>
                 )}
               {!pendingSubmission.turnId && pendingSubmission.requestBody === null && (
                 <p>
-                  原始共享画面仅保留在页面内存中，刷新后已不可重放。请先核对会话与用量记录并联系平台处理。
+                  {t(
+                    '原始共享画面仅保留在页面内存中，刷新后已不可重放。请先核对会话与用量记录并联系平台处理。',
+                  )}
                 </p>
               )}
               {pendingSubmission.projectId !== project?.id ? (
-                <p>请返回项目「{pendingSubmission.projectTitle}」恢复本轮，再开始新的付费协作。</p>
+                <p>
+                  {t('请返回项目「')}
+                  {pendingSubmission.projectTitle}
+                  {t('」恢复本轮，再开始新的付费协作。')}
+                </p>
               ) : (
                 <div>
                   <button type="button" disabled={busy || inCall} onClick={refreshHistory}>
-                    刷新会话记录
+                    {t('刷新会话记录')}
                   </button>
                   <button
                     type="button"
@@ -2671,7 +2791,7 @@ export function LiveAssistant(props: LiveAssistantProps) {
                     }
                     onClick={() => void recoverSubmission()}
                   >
-                    {pendingSubmission.turnId ? '读取本轮结果' : '按原请求核对并继续'}
+                    {pendingSubmission.turnId ? t('读取本轮结果') : t('按原请求核对并继续')}
                   </button>
                 </div>
               )}

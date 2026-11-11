@@ -1,3 +1,4 @@
+import { t } from '../i18n';
 import { useEffect, useState } from 'react';
 import { CaretDown, GitMerge, Globe, Images, Scan, TreeStructure } from '@phosphor-icons/react';
 import type { AssistantBranchEvent } from '@ai-xiutu/contracts';
@@ -87,21 +88,23 @@ export function ResearchGraph({
     <MotionDetails key={turnId} className="assistant-research-graph" defaultOpen={running}>
       <summary>
         <TreeStructure size={16} aria-hidden="true" />
-        <span>研究分工</span>
-        <small data-state={root.state}>{status(root)}</small>
+        <span>{t('研究分工')}</span>
+        <small data-state={root.state}>{t(status(root))}</small>
         <CaretDown className="assistant-research-chevron" size={14} aria-hidden="true" />
       </summary>
       <div className="assistant-research-content">
-        <ul aria-label="任务分支">
+        <ul aria-label={t('任务分支')}>
           {children.map((branch) => {
             const Icon = icon[branch.kind];
             return (
               <li key={branch.id}>
                 <Icon size={16} aria-hidden="true" />
-                <span>{name[branch.kind]}</span>
-                <small data-state={branch.state}>{status(branch)}</small>
+                <span>{t(name[branch.kind])}</span>
+                <small data-state={branch.state}>{t(status(branch))}</small>
                 {branch.resultCount !== undefined && (
-                  <span className="assistant-research-count">{branch.resultCount} 项证据</span>
+                  <span className="assistant-research-count">
+                    {branch.resultCount} {t('项证据')}
+                  </span>
                 )}
               </li>
             );
@@ -110,15 +113,17 @@ export function ResearchGraph({
         {merges.map((branch) => (
           <p className="assistant-research-merge" key={branch.id}>
             <GitMerge size={16} aria-hidden="true" />
-            <span>{branch.dependsOn.length} 个分支汇合</span>
-            <small data-state={branch.state}>{status(branch)}</small>
+            <span>
+              {branch.dependsOn.length} {t('个分支汇合')}
+            </span>
+            <small data-state={branch.state}>{t(status(branch))}</small>
           </p>
         ))}
         {failedTurn === turnId && (
           <p className="assistant-research-retry" role="status">
-            <span>进度暂未同步，已保留最近记录。</span>
+            <span>{t('进度暂未同步，已保留最近记录。')}</span>
             <button type="button" onClick={() => setReload((old) => old + 1)}>
-              刷新进度
+              {t('刷新进度')}
             </button>
           </p>
         )}
