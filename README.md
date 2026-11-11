@@ -38,6 +38,8 @@
 | [高级媒体](packages/media/README.md)             | RAW/ICC/HDR/CMYK/PSD实际范围与原件/母版/代理分离      |
 | [V4部署补充](docs/OPERATIONS-V4.md)              | 新能力配置、代理、成本预算与恢复操作                  |
 
+后续需求、PR 和验收统一使用 [功能对照与验收主表](docs/research/PHOTO-EDITING-FEATURE-MATRIX.md) 的编号。
+
 ## 本地运行
 
 需要 Node.js 24（锁定版本见 `.nvmrc`）和 npm。不要把生产数据库用于测试。
