@@ -10,6 +10,7 @@ import { chromium } from 'playwright';
 import { transaction, adjustUnits, reserveUnits, markUnknownHold } from '@ai-xiutu/db';
 import { assistantModelConfigSchema } from '@ai-xiutu/assistant';
 import { migrateRecipeToV4 } from '@ai-xiutu/editor';
+import { runUsagePresentationChecks } from './usage-presentation.browser.mjs';
 
 if (process.env.CI !== 'true' || process.env.NODE_ENV === 'production')
   throw new Error('Run only in isolated non-production CI.');
@@ -1365,6 +1366,7 @@ try {
     await scope.getByLabel('允许公开网络检索，保留来源链接').uncheck();
     await details('共享范围', false);
     const billing = await page.context().newPage();
+    let usagePresentation;
     billing.on('pageerror', (error) => report.pageErrors.push(String(error)));
     try {
       await selectProject(billing);
@@ -1439,6 +1441,7 @@ try {
       ]);
       await stage.getByRole('table', { name: '回执计量项', exact: true }).waitFor();
       await job.screenshot({ path: resolve(artifacts, 'task-model-ledger.png') });
+      usagePresentation = await runUsagePresentationChecks({ page: billing, until, artifacts });
     } finally {
       await billing.close();
     }
@@ -1448,6 +1451,7 @@ try {
       publicSourceLink: true,
       mergedBranches: 2,
       meteredTaskFromLedger: true,
+      usagePresentation,
     };
   });
   await testCase('stop-in-flight-hides-partial-result-and-survives-refresh', async () => {
@@ -1685,6 +1689,10 @@ try {
       if (await notice.count()) await notice.click();
       await closeSettings();
       await page.getByLabel('向智能体描述修改需求').waitFor();
+      const readableReply = page
+        .locator('.live-assistant:not([hidden]) .assistant-message.assistant')
+        .last();
+      await readableReply.scrollIntoViewIfNeeded();
       const geometry = await page.evaluate(() => {
         const box = (selector) => {
           const node = document.querySelector(selector);
@@ -1702,6 +1710,16 @@ try {
               }
             : null;
         };
+        const conversationNode = document.querySelector(
+          '.live-assistant:not([hidden]) > .ai-conversation-body',
+        );
+        const replyNode = [
+          ...document.querySelectorAll(
+            '.live-assistant:not([hidden]) .assistant-message.assistant',
+          ),
+        ].at(-1);
+        const conversationBox = conversationNode?.getBoundingClientRect();
+        const replyBox = replyNode?.getBoundingClientRect();
         return {
           width: innerWidth,
           overflow: document.documentElement.scrollWidth,
@@ -1711,6 +1729,19 @@ try {
           toolbar: box('.assistant-composer .ai-composer-toolbar'),
           close: box('.ai-workbench-header .ai-panel-close'),
           panel: box('.ai-workbench'),
+          conversation: box('.live-assistant:not([hidden]) > .ai-conversation-body'),
+          reply:
+            replyBox && conversationBox
+              ? {
+                  text: replyNode.textContent.trim(),
+                  height: replyBox.height,
+                  visibleHeight: Math.max(
+                    0,
+                    Math.min(replyBox.bottom, conversationBox.bottom) -
+                      Math.max(replyBox.top, conversationBox.top),
+                  ),
+                }
+              : null,
           canvas: box('.canvas-photo-frame'),
           inputFontSize: parseFloat(
             getComputedStyle(document.querySelector('.assistant-composer textarea')).fontSize,
@@ -1720,6 +1751,15 @@ try {
       (report.measurements ??= []).push(geometry);
       console.log(JSON.stringify({ assistantGeometry: geometry }));
       assert.ok(geometry.overflow <= viewport.width + 1, 'no page horizontal overflow');
+      assert.ok(
+        geometry.conversation?.height >= 64 && geometry.conversation.centerExposed,
+        'the conversation keeps at least 64px of exposed reading space',
+      );
+      assert.ok(
+        geometry.reply?.text &&
+          geometry.reply.visibleHeight >= Math.min(64, geometry.reply.height) - 1,
+        'a submitted reply is readable inside that space, including a whole shorter reply',
+      );
       assert.ok(
         geometry.composer &&
           geometry.composer.x >= 0 &&
@@ -1757,6 +1797,71 @@ try {
       await page.screenshot({
         path: resolve(artifacts, `assistant-${viewport.width}x${viewport.height}.png`),
       });
+      if ((viewport.width === 320 && viewport.height === 568) || viewport.width === 844) {
+        const before = { admissions: turnAdmissions, dispatches };
+        const input = page.getByLabel('向智能体描述修改需求');
+        const originalValue = await input.inputValue();
+        const owner = await input.elementHandle();
+        const draft = '展开后保留这条未发送的要求。\n保留当前照片，不要提交。';
+        await input.fill(draft);
+        await page.getByRole('button', { name: '展开编写', exact: true }).click();
+        assert.equal(await input.inputValue(), draft);
+        assert.equal(await input.evaluate((node, original) => node === original, owner), true);
+        const expanded = await input.boundingBox();
+        assert.ok(
+          expanded && expanded.height > geometry.input.height,
+          'expanded writing gives the same input more room',
+        );
+        await page.screenshot({
+          path: resolve(
+            artifacts,
+            `assistant-compose-expanded-${viewport.width}x${viewport.height}.png`,
+          ),
+        });
+        await page.getByRole('button', { name: '返回对话', exact: true }).click();
+        assert.equal(await input.inputValue(), draft);
+        assert.equal(await input.evaluate((node, original) => node === original, owner), true);
+        const conversation = await page
+          .locator('.live-assistant:not([hidden]) > .ai-conversation-body')
+          .boundingBox();
+        assert.ok(
+          conversation && conversation.height >= 64,
+          'returning from writing restores the readable conversation',
+        );
+        assert.equal(turnAdmissions, before.admissions);
+        assert.equal(dispatches, before.dispatches);
+        await input.fill(originalValue);
+        await owner.dispose();
+      }
+      if (viewport.width === 390) {
+        const settings = await openSettings();
+        await settings.getByRole('combobox', { name: '助手模型', exact: true }).click();
+        await page.screenshot({ path: resolve(artifacts, 'assistant-settings-390x844.png') });
+        await page.keyboard.press('Escape');
+        await closeSettings();
+      }
+      if (viewport.width === 320 && viewport.height === 568) {
+        const before = { admissions: turnAdmissions, dispatches };
+        const selectTask = async (name) => {
+          await page
+            .locator('.free-panel[aria-hidden="false"]')
+            .getByRole('button', { name: '切换 AI 任务', exact: true })
+            .click();
+          const picker = page.getByRole('dialog', { name: '选择 AI 任务', exact: true });
+          await picker.getByRole('button', { name: new RegExp('^' + name) }).click();
+          await picker.waitFor({ state: 'hidden' });
+        };
+        await selectTask('生图');
+        await page.getByRole('button', { name: '任务设置', exact: true }).click();
+        const settings = page.getByRole('region', { name: '任务设置', exact: true });
+        await settings.getByRole('combobox', { name: '生图模型', exact: true }).waitFor();
+        await page.screenshot({ path: resolve(artifacts, 'task-settings-320x568.png') });
+        await settings.getByRole('button', { name: '返回对话', exact: true }).click();
+        await settings.waitFor({ state: 'hidden' });
+        await selectTask('AI 助手');
+        assert.equal(turnAdmissions, before.admissions);
+        assert.equal(dispatches, before.dispatches);
+      }
       return geometry;
     });
   }

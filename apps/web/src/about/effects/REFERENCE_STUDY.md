@@ -1,6 +1,6 @@
 # Reference interaction study
 
-This record covers bounded, actual public-browser interaction and authoritative source reads during the current About redesign. It does not claim exhaustive browsing of every page or paid component. No sign-in, purchase or paid template download occurred.
+This record preserves the bounded public-browser interactions and authoritative source reads from the earlier About pass. The current 216-entry research is recorded in [the R3 reference study](../../../../../docs/design/reactbits-r3-20261111.md), and the current composition in [the R3 About implementation record](../../../../../docs/design/about-experience-r3-20261111.md). It does not claim exhaustive browsing of every page or paid component. No sign-in, purchase or paid template download occurred.
 
 ## React Bits
 
@@ -27,9 +27,9 @@ The following is a second, bounded public-browser pass through the four sites re
 
 MiMo was investigated separately by the parent implementation agent; its pointer brush-trail observation is not duplicated here. Proprietary site source, images, videos and marketing copy were not copied into the product. The reusable source adaptation in this directory is the attributed React Bits work described above.
 
-## Reference-to-code map for this revision
+## Reference-to-code map from the earlier revision
 
-The following names refer to the shipped About composition in `../AboutPage.tsx`, not hypothetical components. Source blobs and the exact upstream license are indexed in [README.md](README.md).
+The following map describes the earlier composition, retained to explain the source adaptations. Some component names and placements changed in R3: unique editorial artwork now leads each chapter, actual screenshots expand inline, and creative entries begin with the user's own work. Use the R3 implementation record above for current placements. Source blobs and the exact upstream license remain indexed in [README.md](README.md).
 
 | Reference                                                              | Concrete code and location                                                                              | Interaction retained or adapted                                                                                                                                                                                                                                            |
 | ---------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
@@ -41,4 +41,4 @@ The following names refer to the shipped About composition in `../AboutPage.tsx`
 | DeepSeek and OpenAI                                                    | About hero actions, compact header, `.experience-tour` and device section                               | A clear local-entry route and substantial actual product captures accompany the explanation. Product imagery comes from this application, with three locale-specific versions, not from those sites.                                                                       |
 | Anthropic                                                              | Warm paper/ink tokens in `../about.css`; `AgentDiagram`, collaboration illustration and `ProductImage`  | Diagrammatic content describes the actual workflow; screenshot loading has a reserved aspect ratio, pending state and retry state. Generated sample photography is explicitly labelled separately from interface captures.                                                 |
 
-The browser helper `scripts/qa/about-experience.browser.mjs` checks native scrolling, hover and keyboard switching, image decoding, pointer canvas changes, reduced motion and the three sample-entry routes. Its existence and syntax checks alone do not establish a passing browser run; execution results belong to the relevant app preview or CI record. The reference sessions above are bounded investigations, not a claim that every page of all requested sites or all eleven previously open component libraries was explored.
+The current browser helper `scripts/qa/about-experience.browser.mjs` checks native scrolling, hover and keyboard switching, decoded images, pointer canvas changes, reduced motion, real eight-parameter previews and user-owned work entry. Its existence and syntax checks alone do not establish a passing browser run; execution results belong to the relevant app preview or CI record. The earlier reference sessions above are bounded investigations, not a claim that every page of all requested sites or all eleven previously open component libraries was explored.

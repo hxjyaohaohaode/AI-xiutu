@@ -84,6 +84,7 @@ test('the default AI panel exposes the text composer after its conversation and 
   assert.match(markup, /aria-label="向智能体描述修改需求"/);
   assert.doesNotMatch(markup, />开始实时通话<|assistant-voice-orb|ai-task-tabs/);
   assert.match(markup, /aria-label="发送协作请求"[^>]*disabled=""/);
+  assert.match(markup, /aria-label="展开编写"[^>]*disabled=""/);
   const dialogs = [...markup.matchAll(/<dialog\b[^>]*>/g)].map(([tag]) => tag);
   assert.ok(dialogs.length > 0);
   assert.ok(dialogs.every((tag) => tag.includes('inert=""') && tag.includes('aria-hidden="true"')));

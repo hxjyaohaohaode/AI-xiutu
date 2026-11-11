@@ -146,6 +146,22 @@ async function decodedImage(image, expectedPath, dimensions, until) {
   return state;
 }
 
+async function settleElementMotion(element, until, label) {
+  await until(
+    async () =>
+      element.evaluate((target) =>
+        target
+          .getAnimations({ subtree: true })
+          .every(
+            (animation) =>
+              !Number.isFinite(animation.effect?.getComputedTiming().iterations) ||
+              (!animation.pending && animation.playState !== 'running'),
+          ),
+      ),
+    `${label} finishes its own finite motion`,
+  );
+}
+
 async function selectLocale(page, locale) {
   await page.locator('.about-header .language-select select').selectOption(locale);
   await page.waitForFunction((value) => document.documentElement.lang === value, locale);
@@ -478,7 +494,14 @@ async function noTextClipping(page) {
       if (!rect.width || !rect.height || getComputedStyle(element).visibility === 'hidden')
         continue;
       if (element.scrollWidth > element.clientWidth + 1)
-        result.push({ tag: element.tagName, text: element.textContent?.trim().slice(0, 80) });
+        result.push({
+          tag: element.tagName,
+          className: element.className,
+          text: element.textContent?.trim().slice(0, 80),
+          clientWidth: element.clientWidth,
+          scrollWidth: element.scrollWidth,
+          parent: element.parentElement?.className,
+        });
     }
     return {
       text: result,
@@ -644,12 +667,20 @@ export async function runAboutExperienceChecks({
         await page.locator('.agent-visual').scrollIntoViewIfNeeded();
         const steps = page.locator('.agent-steps button');
         await steps.nth(0).click();
+        await page.mouse.move(10, 10);
+        await settleElementMotion(page.locator('.agent-photo-source'), until, 'the full source');
         const before = await page.locator('.agent-photo-source').boundingBox();
         await steps.nth(1).click();
         await until(
           async () =>
             page.locator('.agent-tools').evaluate((el) => getComputedStyle(el).opacity === '1'),
           'Agent tool stage enters',
+        );
+        await page.mouse.move(10, 10);
+        await settleElementMotion(
+          page.locator('.agent-photo-source'),
+          until,
+          'the tool-stage source',
         );
         const tools = await page.locator('.agent-photo-source').boundingBox();
         assert.ok(
@@ -712,8 +743,25 @@ export async function runAboutExperienceChecks({
             await page.locator('.device-composition').getAttribute('data-device'),
             String(index),
           );
+          await page.mouse.move(10, 10);
+          await settleElementMotion(
+            page.locator('.device-composition'),
+            until,
+            `device mode ${index + 1}`,
+          );
           device.push(await page.locator('.device-phone').boundingBox());
         }
+        assert.ok(device.every((rect) => rect && rect.width > 0));
+        assert.ok(
+          device
+            .slice(1)
+            .every(
+              (rect, index) =>
+                Math.hypot(rect.x - device[index].x, rect.y - device[index].y) > 20 ||
+                Math.abs(rect.width - device[index].width) > 10,
+            ),
+          'Each device mode reaches a visibly different final composition',
+        );
         assert.equal(
           await page.locator('.device-phone figcaption').count(),
           0,
@@ -838,16 +886,50 @@ export async function runAboutExperienceChecks({
             item.viewport.width <= 760 || item.viewport.height <= 800
               ? await assertStaticFeatureExhibition(page, until)
               : null;
+          let agentStages = null;
+          if (staticTour) {
+            agentStages = [];
+            for (let stage = 0; stage < 4; stage++) {
+              await page.locator('.agent-steps button').nth(stage).click();
+              await page.locator('.agent-visual').scrollIntoViewIfNeeded();
+              await settleVisibleAbout(page, until);
+              assert.equal(
+                await page.locator('.agent-visual').getAttribute('data-step'),
+                String(stage),
+                'Every short-screen Agent stage stays selected while its artwork is read',
+              );
+              agentStages.push({
+                stage,
+                source: await page.locator('.agent-photo-source').boundingBox(),
+              });
+            }
+            const decision = await page.locator('.agent-decision').boundingBox();
+            const candidates = await page.locator('.agent-candidate').evaluateAll((cards) =>
+              cards.map((card) => {
+                const rect = card.getBoundingClientRect();
+                const button = card.querySelector('button').getBoundingClientRect();
+                return { bottom: rect.bottom, buttonHeight: button.height };
+              }),
+            );
+            assert.ok(
+              decision && candidates.every((card) => card.bottom + 8 <= decision.y),
+              'The mobile confirmation has its own space below both candidate cards',
+            );
+            assert.ok(candidates.every((card) => card.buttonHeight >= 44));
+            await page.locator('.agent-candidate > button').nth(1).click();
+            assert.equal(
+              await page.locator('.agent-candidate > button').nth(1).getAttribute('aria-pressed'),
+              'true',
+            );
+            await capture(page, `about-r3-${item.locale}-${item.viewport.width}-agent-decision`);
+          }
           await page.locator('.about-faq').scrollIntoViewIfNeeded();
           const geometry = () =>
-            page
-              .locator('.faq-layout')
-              .evaluate((el) => ({
-                width: el.getBoundingClientRect().width,
-                height: el.getBoundingClientRect().height,
-                next:
-                  document.querySelector('.about-closing').getBoundingClientRect().top + scrollY,
-              }));
+            page.locator('.faq-layout').evaluate((el) => ({
+              width: el.getBoundingClientRect().width,
+              height: el.getBoundingClientRect().height,
+              next: document.querySelector('.about-closing').getBoundingClientRect().top + scrollY,
+            }));
           const baseline = await geometry();
           for (let index = 0; index < 5; index++) {
             await page.locator('.about-question button').nth(index).click();
@@ -888,6 +970,7 @@ export async function runAboutExperienceChecks({
             viewport: item.viewport,
             ranges,
             staticTour,
+            agentStages,
           });
         });
       return { faq: evidence.faq, responsive: evidence.responsive, apiMutations: 0 };

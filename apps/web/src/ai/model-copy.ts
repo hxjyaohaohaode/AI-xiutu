@@ -14,6 +14,8 @@ const copy = {
     custom: '自定',
     provider: '供应商',
     modelId: '模型标识',
+    expandComposer: '展开编写',
+    collapseComposer: '返回对话',
   },
   'zh-TW': {
     back: '返回對話',
@@ -28,6 +30,8 @@ const copy = {
     custom: '自訂',
     provider: '供應商',
     modelId: '模型識別碼',
+    expandComposer: '展開編寫',
+    collapseComposer: '返回對話',
   },
   en: {
     back: 'Back to conversation',
@@ -42,6 +46,8 @@ const copy = {
     custom: 'Custom',
     provider: 'Provider',
     modelId: 'Model identifier',
+    expandComposer: 'Expand composer',
+    collapseComposer: 'Back to conversation',
   },
 } as const;
 

@@ -878,6 +878,7 @@
   transform: translateY(35px);
   transition:
     opacity 300ms,
+    bottom 650ms var(--about-ease),
     transform 700ms var(--about-ease),
     visibility 300ms;
 }
@@ -906,6 +907,10 @@
   display: flex;
   align-items: center;
   justify-content: space-between;
+  width: 100%;
+  min-height: 34px;
+  text-align: left;
+  gap: 6px;
   padding: 7px 4px;
   font-size: 9px;
 }
@@ -2090,6 +2095,13 @@
 .about-question svg {
   transition: transform 230ms var(--about-ease);
 }
+.question-icon {
+  display: grid;
+  place-items: center;
+  flex: 0 0 26px;
+  width: 26px;
+  height: 26px;
+}
 .about-question[data-open='true'] button {
   color: var(--about-accent);
 }
@@ -2506,6 +2518,12 @@
   .agent-visual-footer {
     min-height: 62px;
   }
+  .agent-candidate > button {
+    min-height: 44px;
+  }
+  .agent-visual[data-step='3'] .agent-candidates {
+    bottom: calc(8% + 76px);
+  }
   .about-voice {
     grid-template-columns: 1fr;
     gap: 25px;
@@ -2784,6 +2802,7 @@
   }
   .agent-visual-canvas {
     aspect-ratio: 1.16;
+    min-height: clamp(360px, 103vw, 420px);
   }
   .agent-prompt p {
     font-size: 10px;
@@ -2816,7 +2835,7 @@
     font-size: 11px;
   }
   .agent-candidate > button {
-    font-size: 8px;
+    font-size: 10px;
     gap: 3px;
   }
   .agent-visual-footer {
@@ -2978,12 +2997,6 @@
   font-size: 9px;
 }
 
-.agent-candidate > button {
-  width: 100%;
-  min-height: 34px;
-  text-align: left;
-  gap: 6px;
-}
 .agent-candidate > button::before {
   content: '';
   position: absolute;

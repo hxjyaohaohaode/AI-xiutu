@@ -25,6 +25,11 @@
   container-name: ai-conversation;
   container-type: size;
 }
+.ai-workbench-header .ai-compact-action,
+.ai-composer-surface .ai-send-button.ai-compact-stop,
+.ai-compact-status {
+  display: none;
+}
 .ai-workbench-header {
   display: flex;
   flex: 0 0 auto;
@@ -265,6 +270,10 @@
 .ai-composer-input::placeholder {
   color: var(--subtle);
   opacity: 1;
+}
+.ai-composer-surface .ai-composer-input:focus-visible {
+  /* The surrounding composer already carries the keyboard focus ring. */
+  outline: none;
 }
 .ai-composer-input:disabled {
   opacity: 0.7;
@@ -1138,6 +1147,109 @@
     .ai-workbench-v2 .ai-composer-surface {
       padding-block: 0;
     }
+  }
+}
+/* Keep a readable reply above the composer on short panels. Secondary controls
+   share the existing action row; model and reference settings keep the same
+   owner. Expanded writing is an explicit, reversible view of the same draft. */
+@container ai-conversation (max-height: 260px) {
+  .live-assistant-v2:not([data-in-call='true']) .ai-workbench-header {
+    min-height: 38px;
+    padding-block: 0;
+  }
+  .live-assistant-v2:not([data-in-call='true']) .ai-task-trigger {
+    gap: 3px;
+    padding-inline: 4px;
+  }
+  .live-assistant-v2:not([data-in-call='true']) .ai-task-trigger > span {
+    display: none;
+  }
+  .live-assistant-v2:not([data-in-call='true']) .ai-workbench-header .ai-compact-action {
+    display: inline-flex;
+  }
+  .live-assistant-v2:not([data-in-call='true']) > .ai-conversation-body {
+    min-height: 64px;
+    padding-block: 0;
+  }
+  .live-assistant-v2:not([data-in-call='true']) > .ai-composer-region {
+    padding-block: 1px;
+    gap: 1px;
+  }
+  .live-assistant-v2:not([data-in-call='true']) .ai-execution-status {
+    display: none;
+  }
+  .live-assistant-v2:not([data-in-call='true']) .ai-full-execution-label {
+    display: none;
+  }
+  .live-assistant-v2:not([data-in-call='true']) .ai-compact-status {
+    display: inline;
+  }
+  .live-assistant-v2:not([data-in-call='true']) .ai-composer-meta {
+    flex-wrap: nowrap;
+    align-items: center;
+    min-width: 0;
+    gap: 5px;
+  }
+  .live-assistant-v2:not([data-in-call='true']) .ai-execution-summary {
+    min-width: 0;
+    overflow: hidden;
+    white-space: nowrap;
+    text-overflow: ellipsis;
+  }
+  .live-assistant-v2:not([data-in-call='true']) .ai-price-summary {
+    flex: 0 0 auto;
+  }
+  .live-assistant-v2:not([data-in-call='true'])[data-turn-active='true'] .ai-submit-request {
+    display: none;
+  }
+  .live-assistant-v2:not([data-in-call='true']) .ai-compact-stop {
+    display: inline-flex;
+  }
+  .live-assistant-v2:not([data-in-call='true']):not([data-compose-expanded='true'])
+    .ai-composer-surface {
+    flex-direction: row;
+    align-items: center;
+    padding: 0 4px;
+    gap: 4px;
+  }
+  .live-assistant-v2:not([data-in-call='true']):not([data-compose-expanded='true'])
+    .ai-composer-input {
+    flex: 1 1 0;
+    width: 0;
+    min-height: 36px;
+    max-height: 36px;
+  }
+  .live-assistant-v2:not([data-in-call='true']):not([data-compose-expanded='true'])
+    :is(.ai-model-trigger, .ai-selected-context, .ai-composer-tools > .icon-button) {
+    display: none;
+  }
+  .live-assistant-v2:not([data-in-call='true']):not([data-compose-expanded='true'])
+    .ai-composer-toolbar {
+    flex: 0 0 auto;
+  }
+  .live-assistant-v2:not([data-in-call='true'])[data-compose-expanded='true']
+    > .ai-conversation-body {
+    display: none;
+  }
+  .live-assistant-v2:not([data-in-call='true'])[data-compose-expanded='true']
+    .ai-workbench-header
+    .ai-compact-voice {
+    display: none;
+  }
+  .live-assistant-v2:not([data-in-call='true'])[data-compose-expanded='true']
+    > .ai-composer-region {
+    flex: 1 1 0;
+    min-height: 0;
+  }
+  .live-assistant-v2:not([data-in-call='true'])[data-compose-expanded='true'] .ai-composer-surface {
+    flex: 1 1 0;
+    min-height: 0;
+    padding-block: 2px;
+  }
+  .live-assistant-v2:not([data-in-call='true'])[data-compose-expanded='true'] .ai-composer-input {
+    flex: 1 1 0;
+    min-height: 36px;
+    max-height: none;
   }
 }
 /* A keyboard can leave less room than the controls themselves. Keep every

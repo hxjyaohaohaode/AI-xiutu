@@ -274,7 +274,9 @@ export function AboutPage({
                       }}
                     >
                       <span>{title}</span>
-                      <Plus size={18} />
+                      <span className="question-icon" aria-hidden="true">
+                        <Plus size={18} />
+                      </span>
                     </button>
                   </h3>
                 </div>
