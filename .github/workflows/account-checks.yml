@@ -10,7 +10,6 @@ on:
       - 'scripts/web-account-smoke.mjs'
       - 'scripts/qa/site-entry.browser.mjs'
       - 'scripts/qa/about-experience.browser.mjs'
-      - 'scripts/ci/prepare-apt-mirror.py'
       - 'package.json'
       - 'package-lock.json'
       - '.nvmrc'
@@ -24,7 +23,6 @@ on:
       - 'scripts/web-account-smoke.mjs'
       - 'scripts/qa/site-entry.browser.mjs'
       - 'scripts/qa/about-experience.browser.mjs'
-      - 'scripts/ci/prepare-apt-mirror.py'
       - 'package.json'
       - 'package-lock.json'
       - '.nvmrc'
@@ -63,6 +61,7 @@ jobs:
     env:
       CI: 'true'
       NODE_ENV: test
+      BROWSER_CHANNEL: chrome
       TEST_DATABASE_URL: postgresql://xiutu:ci-only-disposable@127.0.0.1:5432/xiutu_account_test
       DB_POOL_MAX: '8'
       ACCOUNT_BROWSER_MOTION: ${{ matrix.motion }}
@@ -73,9 +72,8 @@ jobs:
           node-version-file: .nvmrc
           cache: npm
       - run: npm ci
-      - name: Prepare Ubuntu APT mirror
-        run: sudo --preserve-env=GITHUB_ACTIONS,RUNNER_OS python3 scripts/ci/prepare-apt-mirror.py
-      - run: npx playwright install --with-deps chromium
+      - name: Verify the runner's installed Chrome
+        run: google-chrome --version
       - name: Verify public entry, three languages, real account journeys and recovery
         run: node --import tsx scripts/web-account-smoke.mjs
       - name: Preserve account reports and masked screenshots
