@@ -680,12 +680,12 @@ try {
     const select = history.getByRole('combobox', { name: '会话记录', exact: true });
     const before = dispatches;
     await select.click();
-    const historyOptions = history
-      .getByRole('listbox', { name: '会话记录', exact: true })
-      .getByRole('option');
+    const options = history.getByRole('listbox', { name: '会话记录', exact: true });
+    // Mounting the popover and loading saved conversations are separate async steps.
+    await options.waitFor({ state: 'visible' });
     const { active, other } = await until(
       () =>
-        historyOptions.evaluateAll((nodes) => {
+        options.getByRole('option').evaluateAll((nodes) => {
           // The first option starts a new conversation. Existing records load on opening.
           const saved = nodes.slice(1);
           const label = (node) => node?.querySelector('.choice-option-label')?.textContent?.trim();
