@@ -40,6 +40,8 @@ jobs:
           node-version-file: .nvmrc
           cache: npm
       - run: npm ci
+      - name: Prepare Ubuntu APT mirror
+        run: sudo --preserve-env=GITHUB_ACTIONS,RUNNER_OS python3 scripts/ci/prepare-apt-mirror.py
       - run: npx playwright install --with-deps chromium
       - name: Measure continuous slider, curve and touch paints
         run: node --import tsx scripts/qa/interactive-preview.browser.mjs
@@ -133,6 +135,8 @@ jobs:
           node-version-file: .nvmrc
           cache: npm
       - run: npm ci
+      - name: Prepare Ubuntu APT mirror
+        run: sudo --preserve-env=GITHUB_ACTIONS,RUNNER_OS python3 scripts/ci/prepare-apt-mirror.py
       - name: Install English and simplified Chinese OCR runtimes
         run: |
           sudo apt-get update -qq && sudo apt-get install -y --no-install-recommends tesseract-ocr tesseract-ocr-eng tesseract-ocr-chi-sim fonts-dejavu-core fonts-noto-cjk
