@@ -17,7 +17,12 @@ import {
   type Database,
   type Queryable,
 } from '@ai-xiutu/db';
-import { MAX_CUTOUT_PIXELS, parseEditorRecipe, parseSelectionMaskV3 } from '@ai-xiutu/editor';
+import {
+  MAX_CUTOUT_PIXELS,
+  parseEditorRecipe,
+  parseSelectionMaskV3,
+  restorationCost,
+} from '@ai-xiutu/editor';
 import { syncStorageDirectory } from '@ai-xiutu/storage';
 import {
   assetDto,
@@ -36,6 +41,29 @@ const maxEncoded = 48 * 1024 * 1024;
 const maxGifBytes = 16 * 1024 * 1024;
 const maxCollagePixels = 16_777_216;
 let processing = 0;
+export const assetProcessingCapabilities = () => ({
+  protocolVersion: 1,
+  sourcePixelFormat: 'srgb-rgba8',
+  maxEncodedBytes: maxEncoded,
+  cutout: {
+    algorithms: ['ray-v1', 'guided-v2'],
+    defaultAlgorithm: 'ray-v1',
+    maxPixels: MAX_CUTOUT_PIXELS,
+    maxUncertainPixels: 1_048_576,
+    semanticSelectionRequired: true,
+  },
+  restoration: {
+    algorithm: 'photo-restore-v1',
+    maxPixels: 4_194_304,
+    maxWork: 134_217_728,
+    motionLengthUnit: 'source-pixels',
+    maxMotionLength: 31,
+    maxIterations: 12,
+    unknownKernelEstimation: false,
+  },
+  collage: { maxPixels: maxCollagePixels, maxCells: 12 },
+  persistence: 'immutable-derived-asset',
+});
 
 export type ProcessAsset = {
   id: string;
@@ -278,6 +306,56 @@ export function registerAssetProcessing(
     }
   }
 
+  app.post('/v1/projects/:id/derived-assets/quote', async (req) => {
+    const user = requireUser(req),
+      { id: projectId } = z.object({ id }).parse(req.params);
+    const body = derivedAssetRequest.parse(req.body);
+    await projectAccess(db, projectId, user.id, 'edit');
+    await rateLimit(db, `derive-quote:${user.id}`, 90, 60);
+    if (body.kind === 'cutout') {
+      parseSelectionMaskV3(body.settings.selection);
+      if (body.settings.foreground !== undefined) parseSelectionMaskV3(body.settings.foreground);
+      if (body.settings.background !== undefined) parseSelectionMaskV3(body.settings.background);
+    } else if (body.kind === 'restoration') {
+      if (body.settings.selection !== undefined) parseSelectionMaskV3(body.settings.selection);
+      if (body.settings.protection !== undefined) parseSelectionMaskV3(body.settings.protection);
+    }
+    const ids =
+      body.kind === 'collage'
+        ? [...new Set(body.cells.map((cell) => cell.assetId))]
+        : [body.sourceAssetId];
+    const assets = await sources(projectId, ids),
+      limits: string[] = [];
+    if (assets.some((asset) => asset.width * asset.height > MAX_CUTOUT_PIXELS))
+      limits.push('SOURCE_PIXEL_BUDGET');
+    const encodedBytes = assets.reduce((sum, asset) => sum + Number(asset.bytes), 0);
+    if (encodedBytes > maxEncoded) limits.push('ENCODED_INPUT_BUDGET');
+    const cost =
+      body.kind === 'restoration'
+        ? restorationCost(assets[0]!.width, assets[0]!.height, body.settings)
+        : null;
+    if (cost && !cost.available) limits.push('RESTORATION_WORK_BUDGET');
+    if (
+      body.kind === 'collage' &&
+      (body.width * body.height > maxCollagePixels ||
+        body.cells.reduce((sum, cell) => sum + cell.width * cell.height, 0) > 2 * maxCollagePixels)
+    )
+      limits.push('COLLAGE_OUTPUT_BUDGET');
+    return {
+      available: !limits.length,
+      limits,
+      encodedBytes,
+      cost,
+      sources: assets.map((asset) => ({
+        assetId: asset.id,
+        contentHash: asset.content_hash,
+        width: asset.width,
+        height: asset.height,
+      })),
+      checksDecodedPixels: false,
+      reservesQuota: false,
+    };
+  });
   app.post('/v1/projects/:id/derived-assets', async (req, reply) => {
     const user = requireUser(req);
     const { id: projectId } = z.object({ id }).parse(req.params);
@@ -298,28 +376,49 @@ export function registerAssetProcessing(
                 ? undefined
                 : parseSelectionMaskV3(body.settings.background),
           }
-        : {
-            width: body.width,
-            height: body.height,
-            cells: body.cells,
-            background: body.background,
-          };
+        : body.kind === 'restoration'
+          ? {
+              ...body.settings,
+              selection:
+                body.settings.selection === undefined
+                  ? undefined
+                  : parseSelectionMaskV3(body.settings.selection),
+              protection:
+                body.settings.protection === undefined
+                  ? undefined
+                  : parseSelectionMaskV3(body.settings.protection),
+            }
+          : {
+              width: body.width,
+              height: body.height,
+              cells: body.cells,
+              background: body.background,
+            };
     const digest = hash(
       JSON.stringify([
         projectId,
         body.kind,
         body.name,
-        body.kind === 'cutout' ? body.sourceAssetId : null,
+        body.kind !== 'collage' ? body.sourceAssetId : null,
         settings,
       ]),
     );
     const replay = await previous(db, user.id, body.requestId, projectId, digest);
     if (replay) return replay;
     const ids =
-      body.kind === 'cutout'
+      body.kind !== 'collage'
         ? [body.sourceAssetId]
         : [...new Set(body.cells.map((cell) => cell.assetId))];
     const assets = await sources(projectId, ids);
+    if (
+      body.kind === 'restoration' &&
+      !restorationCost(assets[0]!.width, assets[0]!.height, body.settings).available
+    )
+      throw new HttpError(
+        413,
+        'ASSET_PROCESSING_BUDGET',
+        '修复工作量超过预算，请减少范围、运动长度或迭代次数',
+      );
     if (
       assets.some((asset) => asset.width * asset.height > MAX_CUTOUT_PIXELS) ||
       assets.reduce((sum, asset) => sum + Number(asset.bytes), 0) > maxEncoded ||
@@ -351,7 +450,13 @@ export function registerAssetProcessing(
       body.requestId,
       digest,
       body.name,
-      body.kind === 'cutout' ? 'linear-trimap-v1' : 'collage-v1',
+      body.kind === 'cutout'
+        ? body.settings.algorithm === 'guided-v2'
+          ? 'rgb-guided-trimap-v2'
+          : 'linear-trimap-v1'
+        : body.kind === 'restoration'
+          ? 'photo-restore-v1'
+          : 'collage-v1',
       settings,
       assets,
       output,

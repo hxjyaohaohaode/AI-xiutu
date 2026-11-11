@@ -152,3 +152,15 @@ export {
 export { MAX_V4_RETOUCH_PIXELS } from './v4-spatial.js';
 export { renderRecipeV4, renderRecipeV4Tiled } from './v4-engine.js';
 export { renderCutout, MAX_CUTOUT_PIXELS, type CutoutSettings } from './matte.js';
+export {
+  renderPhotoRestoration,
+  restorationCost,
+  motionKernel,
+  type PhotoRestorationSettings,
+} from './restoration.js';
+export {
+  NEUTRAL_PRECISION_EDIT,
+  parsePrecisionEdit,
+  compilePrecisionEdit,
+  type PrecisionEditV1,
+} from './linear-edit.js';

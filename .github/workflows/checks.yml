@@ -79,6 +79,16 @@ jobs:
         run: |
           npm run vision:prepare
           node --import tsx scripts/qa/spatial-quality.browser.mjs
+      - name: Diverse real-photo beauty, matte and sports restoration observations
+        run: node --import tsx scripts/qa/photo-quality.browser.mjs
+      - name: Preserve diverse-photo references and observations
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: photo-quality-${{ github.sha }}
+          path: artifacts/photo-quality
+          retention-days: 14
+          if-no-files-found: error
       - name: Preserve real-photo pixel measurements and contact sheets
         if: always()
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
@@ -128,6 +138,11 @@ jobs:
           sudo apt-get update -qq && sudo apt-get install -y --no-install-recommends tesseract-ocr tesseract-ocr-eng tesseract-ocr-chi-sim fonts-dejavu-core fonts-noto-cjk
           node --use-env-proxy scripts/prepare-ocr.mjs "$RUNNER_TEMP/ocr-tessdata"
           echo "TESSDATA_PREFIX=$RUNNER_TEMP/ocr-tessdata" >> "$GITHUB_ENV"
+      - name: Install pinned native precision codecs
+        run: |
+          python3 -m venv "$RUNNER_TEMP/xiutu-media"
+          "$RUNNER_TEMP/xiutu-media/bin/pip" --disable-pip-version-check install -r packages/media/native/requirements.txt
+          echo "MEDIA_QA_PYTHON=$RUNNER_TEMP/xiutu-media/bin/python" >> "$GITHUB_ENV"
       - run: npm run vision:prepare
       - run: npm run check
       - run: npm audit --omit=dev --audit-level=high
@@ -181,6 +196,7 @@ jobs:
           docker build --target server-media --tag xiutu-media-ci -f infra/Dockerfile .
           docker run --rm --memory 4g --pids-limit 192 --cap-drop ALL --security-opt no-new-privileges xiutu-media-ci node --import tsx --input-type=module -e 'import {getMediaCapabilities} from "@ai-xiutu/media"; const c=await getMediaCapabilities({pythonExecutable:process.env.MEDIA_PYTHON}); if(!c.available||!c.nativeReady)process.exit(1); console.log(JSON.stringify({isolation:c.isolation,nativeVersions:c.nativeVersions}));'
           docker run --rm --memory 4g --pids-limit 192 --cap-drop ALL --security-opt no-new-privileges xiutu-media-ci node --import tsx --test packages/media/test/media.test.ts
+          docker run --rm --memory 4g --pids-limit 192 --cap-drop ALL --security-opt no-new-privileges --env MEDIA_QA_PYTHON=/opt/media/bin/python xiutu-media-ci node --import tsx --test packages/media/test/precision.test.ts
       - name: Start PostgreSQL, migration, API, worker and web
         run: docker compose up --detach --no-build
       - name: Verify HTTP, health, disabled external services and private network bindings

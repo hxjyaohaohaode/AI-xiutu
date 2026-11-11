@@ -4,6 +4,7 @@ import { constants } from 'node:fs';
 import { dirname, isAbsolute, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { tmpdir } from 'node:os';
+import { parsePrecisionEdit } from '@ai-xiutu/editor';
 import {
   MEDIA_MAX_INPUT_BYTES,
   MEDIA_DEFAULT_MAX_PIXELS,
@@ -317,7 +318,7 @@ export async function processMedia(request: ProcessMediaRequest): Promise<MediaD
   }
 }
 export async function exportMedia(request: ExportMediaRequest): Promise<MediaExportResult> {
-  if (!['png16', 'tiff16', 'jpeg', 'webp'].includes(request.format))
+  if (!['png16', 'tiff16', 'jpeg', 'webp', 'exr32'].includes(request.format))
     throw new MediaProcessingError('Unsupported export format', 'unsupported');
   const options = normalizeMediaOptions({ ...request.options, maxPixels: MEDIA_MAX_PIXELS }),
     outputPath = resolve(request.outputPath),
@@ -327,11 +328,20 @@ export async function exportMedia(request: ExportMediaRequest): Promise<MediaExp
   await absent(`${outputPath}.partial`);
   await absent(`${outputPath}.partial.icc`);
   const quality = integer(request.options?.quality, 90, 1, 100, 'Export quality');
+  const precisionEdit =
+    request.precisionEdit === undefined ? undefined : parsePrecisionEdit(request.precisionEdit);
   const reservation = await open(outputPath, 'wx', 0o600);
   await reservation.close();
   try {
     return await isolated<MediaExportResult>(
-      { kind: 'export', workDir, outputPath, format: request.format, quality },
+      {
+        kind: 'export',
+        workDir,
+        outputPath,
+        format: request.format,
+        quality,
+        ...(precisionEdit ? { precisionEdit } : {}),
+      },
       options,
       request.signal,
     );

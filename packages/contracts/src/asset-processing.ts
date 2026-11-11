@@ -16,6 +16,7 @@ export const cutoutRequest = input
     sourceAssetId: assetId,
     settings: z
       .object({
+        algorithm: z.enum(['ray-v1', 'guided-v2']).optional(),
         selection: z.unknown().refine((value) => value !== undefined),
         foreground: z.unknown().optional(),
         background: z.unknown().optional(),
@@ -59,7 +60,35 @@ export const collageRequest = input
     '拼图单元超出画布',
   );
 
-export const derivedAssetRequest = z.discriminatedUnion('kind', [cutoutRequest, collageRequest]);
+export const restorationSettings = z
+  .object({
+    algorithm: z.literal('photo-restore-v1'),
+    luminanceNoise: z.number().min(0).max(100),
+    chromaNoise: z.number().min(0).max(100),
+    motion: z
+      .object({
+        length: z.number().min(0).max(31),
+        angle: z.number().min(-180).max(180),
+        iterations: z.number().int().min(1).max(12),
+        strength: unit,
+      })
+      .strict(),
+    selection: z.unknown().optional(),
+    protection: z.unknown().optional(),
+  })
+  .strict();
+export const restorationRequest = input
+  .extend({
+    kind: z.literal('restoration'),
+    sourceAssetId: assetId,
+    settings: restorationSettings,
+  })
+  .strict();
+export const derivedAssetRequest = z.discriminatedUnion('kind', [
+  cutoutRequest,
+  collageRequest,
+  restorationRequest,
+]);
 export type DerivedAssetRequest = z.infer<typeof derivedAssetRequest>;
 export type CollageRequest = z.infer<typeof collageRequest>;
 

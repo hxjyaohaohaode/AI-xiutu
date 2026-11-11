@@ -11,8 +11,9 @@ export function boxSum(
   height: number,
   radius: number,
   options: RenderOptions,
+  workspace?: Float64Array,
 ): Float32Array {
-  const scratch = new Float64Array(input.length),
+  const scratch = workspace ?? new Float64Array(input.length),
     result = new Float32Array(input.length);
   for (let y = 0; y < height; y++) {
     if ((y & 31) === 0) checkV3(options);
@@ -24,14 +25,22 @@ export function boxSum(
       if (x + radius + 1 < width) sum += input[y * width + x + radius + 1]!;
     }
   }
-  for (let x = 0; x < width; x++) {
-    if ((x & 31) === 0) checkV3(options);
-    let sum = 0;
-    for (let y = 0; y <= Math.min(radius, height - 1); y++) sum += scratch[y * width + x]!;
-    for (let y = 0; y < height; y++) {
-      result[y * width + x] = sum;
-      if (y - radius >= 0) sum -= scratch[(y - radius) * width + x]!;
-      if (y + radius + 1 < height) sum += scratch[(y + radius + 1) * width + x]!;
+  // Keep each column's arithmetic order identical while walking contiguous rows.
+  // A column-at-a-time traversal thrashes cache on large portrait regions.
+  const sums = new Float64Array(width);
+  for (let y = 0; y <= Math.min(radius, height - 1); y++) {
+    if ((y & 31) === 0) checkV3(options);
+    for (let x = 0; x < width; x++) sums[x]! += scratch[y * width + x]!;
+  }
+  for (let y = 0; y < height; y++) {
+    if ((y & 31) === 0) checkV3(options);
+    const row = y * width,
+      remove = (y - radius) * width,
+      add = (y + radius + 1) * width;
+    for (let x = 0; x < width; x++) {
+      result[row + x] = sums[x]!;
+      if (y - radius >= 0) sums[x]! -= scratch[remove + x]!;
+      if (y + radius + 1 < height) sums[x]! += scratch[add + x]!;
     }
   }
   return result;
@@ -61,6 +70,9 @@ export function guidedRetouch(
   const alpha = new Float32Array(size),
     guide = new Float32Array(size),
     field = new Float32Array(size);
+  const boxWorkspace = new Float64Array(size);
+  const box = (values: Float32Array, r: number) =>
+    boxSum(values, width, height, r, options, boxWorkspace);
   const sourceAt = (at: number) =>
     ((top + Math.floor(at / width)) * image.width + left + (at % width)) * 4;
   for (let at = 0; at < size; at++) {
@@ -75,10 +87,10 @@ export function guidedRetouch(
       : 0;
   }
   function guidance(r: number, epsilon: number) {
-    const norm = boxSum(alpha, width, height, r, options);
+    const norm = box(alpha, r);
     function mean(values: Float32Array) {
       for (let at = 0; at < size; at++) field[at] = values[at]! * alpha[at]!;
-      const result = boxSum(field, width, height, r, options);
+      const result = box(field, r);
       for (let at = 0; at < size; at++) result[at] = result[at]! / Math.max(1e-8, norm[at]!);
       return result;
     }
@@ -91,9 +103,9 @@ export function guidedRetouch(
     const a = new Float32Array(size),
       b = new Float32Array(size);
     function filter(p: Float32Array) {
-      const meanP = mean(p);
-      for (let at = 0; at < size; at++) a[at] = guide[at]! * p[at]!;
-      const corr = mean(a);
+      const meanP = p === guide ? meanGuide : mean(p);
+      if (p !== guide) for (let at = 0; at < size; at++) a[at] = guide[at]! * p[at]!;
+      const corr = p === guide ? corrGuide : mean(a);
       for (let at = 0; at < size; at++) {
         a[at] = (corr[at]! - meanGuide[at]! * meanP[at]!) / (variance[at]! + epsilon);
         b[at] = meanP[at]! - a[at]! * meanGuide[at]!;
@@ -105,9 +117,10 @@ export function guidedRetouch(
     }
     return { meanGuide, mean, filter };
   }
-  const stats = !robust || op.smoothing || op.texture || op.uniformity || op.shine
-    ? guidance(radius, respectMask ? 0.0012 : 0.0025)
-    : null;
+  const stats =
+    !robust || op.smoothing || op.texture || op.uniformity || op.shine
+      ? guidance(radius, respectMask ? 0.0012 : 0.0025)
+      : null;
   const low = !robust || op.smoothing || op.texture ? stats!.filter(guide) : guide,
     delta = new Float32Array(size);
   const fine =
@@ -180,17 +193,35 @@ export function guidedRetouch(
   }
   // A compact impulse disagrees with opposite neighbors on several axes.
   // A straight edge or line has a same-side/tangent pair and is protected.
-  function spotCorrection(values: Float32Array, x: number, y: number, step: number, threshold: number) {
-    const at = y * width + x, value = values[at]!;
-    let sum = 0, consistent = 0, examined = 0;
+  function spotCorrection(
+    values: Float32Array,
+    x: number,
+    y: number,
+    step: number,
+    threshold: number,
+  ) {
+    const at = y * width + x,
+      value = values[at]!;
+    let sum = 0,
+      consistent = 0,
+      examined = 0;
     for (const [dx, dy] of directions) {
-      const xx = x + Math.sign(dx) * step, yy = y + Math.sign(dy) * step;
-      const ox = x - Math.sign(dx) * step, oy = y - Math.sign(dy) * step;
+      const xx = x + Math.sign(dx) * step,
+        yy = y + Math.sign(dy) * step;
+      const ox = x - Math.sign(dx) * step,
+        oy = y - Math.sign(dy) * step;
       if (!validSample(xx, yy) || !validSample(ox, oy)) continue;
       examined++;
-      const a = values[yy * width + xx]! - value, b = values[oy * width + ox]! - value;
-      if (a * b <= 0 || Math.min(Math.abs(a), Math.abs(b)) <= threshold || Math.abs(a - b) > threshold * 2) continue;
-      const n = yy * width + xx, o = oy * width + ox;
+      const a = values[yy * width + xx]! - value,
+        b = values[oy * width + ox]! - value;
+      if (
+        a * b <= 0 ||
+        Math.min(Math.abs(a), Math.abs(b)) <= threshold ||
+        Math.abs(a - b) > threshold * 2
+      )
+        continue;
+      const n = yy * width + xx,
+        o = oy * width + ox;
       if (values !== guide && Math.abs(guide[n]! - guide[o]!) > 0.11) continue;
       consistent++;
       sum += (a + b) / 2;
@@ -205,7 +236,8 @@ export function guidedRetouch(
       if (respectMask && alpha[at] === 0) continue;
       let impulse = 0;
       if (op.speckle && robust) {
-        impulse = spotCorrection(guide, x, y, 1, 0.034) || spotCorrection(guide, x, y, distance, 0.05);
+        impulse =
+          spotCorrection(guide, x, y, 1, 0.034) || spotCorrection(guide, x, y, distance, 0.05);
       } else if (op.speckle) {
         let index = 0;
         for (let dy = -1; dy <= 1; dy++)
@@ -266,7 +298,9 @@ export function guidedRetouch(
         const reflection = localReflection?.[at] ?? 0;
         const channel = image.data[src + c]! / 255;
         const chromaSpot = op.chromaSpots
-          ? spotCorrection(chroma, x + roi.left - left, y + roi.top - top, distance, 0.018) * op.chromaSpots / 100
+          ? (spotCorrection(chroma, x + roi.left - left, y + roi.top - top, distance, 0.018) *
+              op.chromaSpots) /
+            100
           : 0;
         if (chromaSpotDelta) chromaSpotDelta[at]! += lumaWeights[c]! * chromaSpot * amount * 255;
         const specularChange =
@@ -296,7 +330,8 @@ export function guidedRetouch(
         if (change > 0) gain = Math.min(gain, (255 - image.data[src + c]!) / change);
         else if (change < 0) gain = Math.min(gain, image.data[src + c]! / -change);
       }
-      for (let c = 0; c < 3; c++) data[src + c] = image.data[src + c]! + (changes[c]![at]! - lumaCorrection) * gain;
+      for (let c = 0; c < 3; c++)
+        data[src + c] = image.data[src + c]! + (changes[c]![at]! - lumaCorrection) * gain;
     }
   }
   return { width: image.width, height: image.height, data };

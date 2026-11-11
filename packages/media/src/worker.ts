@@ -19,6 +19,8 @@ import { spawn } from 'node:child_process';
 import sharp, { type Metadata } from 'sharp';
 import { readPsd, initializeCanvas, type Layer } from 'ag-psd';
 import { attachPngIcc, attachTiffIcc, srgbProfile } from './icc.js';
+import { editMaster16 } from './precision.js';
+import { parsePrecisionEdit, NEUTRAL_PRECISION_EDIT, type PrecisionEditV1 } from '@ai-xiutu/editor';
 import type { NormalizedMediaOptions } from './process.js';
 import {
   MEDIA_MAX_PIXELS,
@@ -51,6 +53,7 @@ interface Job {
   outputPath?: string;
   format?: MediaExportFormat;
   quality?: number;
+  precisionEdit?: PrecisionEditV1;
 }
 class MediaLimitError extends Error {}
 const digest = async (path: string) => {
@@ -540,6 +543,113 @@ async function importMedia(job: Job): Promise<MediaDescriptorV1> {
   await rm(stage, { recursive: true });
   return descriptor;
 }
+function precisionRecord(
+  job: Job,
+  descriptor: MediaDescriptorV1,
+  input: 'master16' | 'linear-master',
+) {
+  if (!job.precisionEdit) return {};
+  const edit = parsePrecisionEdit(job.precisionEdit);
+  return {
+    precisionEdit: {
+      algorithm: 'scene-linear-v1' as const,
+      input,
+      edit,
+      sha256: sha(Buffer.from(JSON.stringify({ source: descriptor.sourceSha256, input, edit }))),
+    },
+  };
+}
+async function exportLinearMaster(
+  job: Job,
+  descriptor: MediaDescriptorV1,
+): Promise<MediaExportResult> {
+  const source = descriptor.linearMaster;
+  if (
+    !source ||
+    source.relativePath !== 'linear-master.exr' ||
+    source.bitDepth !== 32 ||
+    !/^[a-f0-9]{64}$/.test(source.sha256) ||
+    !Number.isSafeInteger(source.bytes) ||
+    source.bytes < 1 ||
+    !job.options.pythonExecutable
+  )
+    throw new Error('Float export requires a retained linear master and native runtime');
+  boundedDimensions(source.width, source.height, 16_777_216);
+  const inputPath = join(job.workDir, source.relativePath),
+    outputPath = `${job.outputPath!}.partial`;
+  const info = await lstat(inputPath);
+  if (
+    !info.isFile() ||
+    info.isSymbolicLink() ||
+    info.size !== source.bytes ||
+    (await digest(inputPath)) !== source.sha256
+  )
+    throw new Error('Retained float master failed its immutable integrity check');
+  await diskBudget(dirname(outputPath), source.width * source.height * 24 + 8 * 1024 * 1024);
+  // Parent-owned control directory is also removed after a process-group kill.
+  const control = dirname(job.resultPath);
+  const requestPath = join(control, 'linear-request.json'),
+    resultPath = join(control, 'linear-result.json');
+  try {
+    await writeFile(
+      requestPath,
+      JSON.stringify({
+        inputPath,
+        outputPath,
+        resultPath,
+        width: source.width,
+        height: source.height,
+        edit: parsePrecisionEdit(job.precisionEdit ?? NEUTRAL_PRECISION_EDIT),
+      }),
+      { mode: 0o600 },
+    );
+    await new Promise<void>((done, reject) => {
+      const child = spawn(
+        job.options.pythonExecutable!,
+        [fileURLToPath(new URL('../native/linear_export.py', import.meta.url)), requestPath],
+        { stdio: ['ignore', 'ignore', 'pipe'] },
+      );
+      let error = '';
+      child.stderr.on('data', (part: Buffer) => {
+        if (error.length < 2048) error += part.toString('utf8').slice(0, 2048 - error.length);
+      });
+      child.once('error', reject);
+      child.once('close', (code) =>
+        code === 0 ? done() : reject(new Error(`Float export failed: ${error.slice(-1000)}`)),
+      );
+    });
+    const result = JSON.parse(await readFile(resultPath, 'utf8'));
+    if (
+      result.width !== source.width ||
+      result.height !== source.height ||
+      result.bitDepth !== 32 ||
+      ![3, 4].includes(result.channels)
+    )
+      throw new Error('Invalid float export result');
+    const outputStat = await lstat(outputPath);
+    if (!outputStat.isFile() || outputStat.size < 16 || outputStat.size > 2_147_483_648)
+      throw new Error('Invalid float output size');
+    const outputHash = await digest(outputPath);
+    await rename(outputPath, job.outputPath!);
+    return {
+      format: 'exr32',
+      relativePath: basename(job.outputPath!),
+      mime: 'image/x-exr',
+      bytes: outputStat.size,
+      sha256: outputHash,
+      width: source.width,
+      height: source.height,
+      bitDepth: 32,
+      colorSpace: 'linear Rec.709',
+      sourceSha256: descriptor.sourceSha256,
+      includesEditorRecipe: false,
+      ...precisionRecord(job, descriptor, 'linear-master'),
+    };
+  } finally {
+    await rm(requestPath, { force: true });
+    await rm(resultPath, { force: true });
+  }
+}
 async function exportMaster(job: Job): Promise<MediaExportResult> {
   const descriptor = JSON.parse(
     await readFile(join(job.workDir, 'descriptor.json'), 'utf8'),
@@ -556,6 +666,7 @@ async function exportMaster(job: Job): Promise<MediaExportResult> {
     descriptor.master.bytes > 2_147_483_648
   )
     throw new Error('Invalid media descriptor');
+  if (job.format === 'exr32') return exportLinearMaster(job, descriptor);
   const master = join(job.workDir, 'master.tif'),
     output = `${job.outputPath!}.partial`,
     format = job.format!,
@@ -580,7 +691,7 @@ async function exportMaster(job: Job): Promise<MediaExportResult> {
     (await digest(master)) !== descriptor.master.sha256
   )
     throw new Error('Retained master failed its immutable integrity check');
-  const pipeline = sharp(master, {
+  let pipeline = sharp(master, {
     limitInputPixels: pixels,
     failOn: 'warning',
     sequentialRead: true,
@@ -595,6 +706,25 @@ async function exportMaster(job: Job): Promise<MediaExportResult> {
     (actual.pages ?? 1) !== 1
   )
     throw new Error('Retained master metadata does not match the descriptor');
+  if (job.precisionEdit) {
+    if (pixels > 16_777_216)
+      throw new MediaLimitError('Precision master edits exceed the 16MP budget');
+    const edit = parsePrecisionEdit(job.precisionEdit);
+    const raw = await pipeline
+      .toColourspace('rgb16')
+      .ensureAlpha()
+      .raw({ depth: 'ushort' })
+      .toBuffer();
+    if (raw.byteLength !== pixels * 8) throw new Error('Invalid master sample layout');
+    const edited = editMaster16(
+      new Uint16Array(raw.buffer, raw.byteOffset, raw.byteLength / 2),
+      4,
+      edit,
+    );
+    pipeline = sharp(edited, {
+      raw: { width: descriptor.master.width, height: descriptor.master.height, channels: 4 },
+    }).toColourspace('rgb16');
+  }
   if (format === 'png16') {
     await pipeline.toColourspace('rgb16').png().toFile(output);
     await attachPngIcc(output, profile);
@@ -632,7 +762,13 @@ async function exportMaster(job: Job): Promise<MediaExportResult> {
   if ((format === 'png16' || format === 'tiff16') && result.bitDepth !== 16)
     throw new Error('Export bit-depth verification failed');
   await rename(output, job.outputPath!);
-  return { ...result, format, sourceSha256: descriptor.sourceSha256, includesEditorRecipe: false };
+  return {
+    ...result,
+    format,
+    sourceSha256: descriptor.sourceSha256,
+    includesEditorRecipe: false,
+    ...precisionRecord(job, descriptor, 'master16'),
+  };
 }
 
 try {

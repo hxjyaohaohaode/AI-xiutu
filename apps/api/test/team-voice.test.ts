@@ -63,7 +63,7 @@ function tone(sample: number, frames = 1) {
 }
 
 test('room mix preserves solo PCM, adds overlapping speakers and bounds unplayed frames', () => {
-  const mix = new TeamVoiceMixer();
+  const mix = new TeamVoiceMixer(() => 0);
   const allowed = new Set([1, 2]);
   const solo = tone(-17281);
   mix.push(1, solo);
@@ -92,6 +92,27 @@ test('room mix preserves solo PCM, adds overlapping speakers and bounds unplayed
     mix.take(allowed),
     Buffer.concat([tone(700).subarray(0, 96), Buffer.alloc(864)]),
   );
+});
+
+test('team PCM ring expires stale speech after stalls, keeps newly received samples and never retains revoked tracks', () => {
+  let now = 0;
+  const mix = new TeamVoiceMixer(() => now),
+    allowed = new Set([1, 2]);
+  mix.push(1, tone(100, 4));
+  now = 161;
+  assert.equal(mix.take(allowed), undefined);
+  mix.push(1, tone(200, 8));
+  now += 20;
+  mix.push(1, tone(300, 4));
+  for (let i = 0; i < 4; i++) assert.deepEqual(mix.take(allowed), tone(200));
+  now += 145;
+  assert.deepEqual(mix.take(allowed), tone(300));
+  assert.deepEqual(mix.take(allowed), tone(300));
+  mix.push(2, tone(800));
+  assert.deepEqual(mix.take(new Set([1])), tone(300));
+  mix.clear();
+  assert.equal(mix.take(allowed), undefined);
+  assert.throws(() => mix.push(1, Buffer.alloc(3)), /complete samples/);
 });
 
 test(

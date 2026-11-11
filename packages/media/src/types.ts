@@ -98,18 +98,29 @@ export interface ProcessMediaRequest {
   signal?: AbortSignal;
   options?: MediaProcessingOptions;
 }
-export type MediaExportFormat = 'png16' | 'tiff16' | 'jpeg' | 'webp';
+export type MediaExportFormat = 'png16' | 'tiff16' | 'jpeg' | 'webp' | 'exr32';
 export interface ExportMediaRequest {
   workDir: string;
   /** A new API-owned output path. No replacement of existing files. */
   outputPath: string;
   format: MediaExportFormat;
+  /** Explicit global grading of the actual retained master, independently versioned. */
+  precisionEdit?: PrecisionEditV1;
   signal?: AbortSignal;
-  options?: Pick<MediaProcessingOptions, 'timeoutMs' | 'memoryBytes'> & { quality?: number };
+  options?: Pick<MediaProcessingOptions, 'timeoutMs' | 'memoryBytes' | 'pythonExecutable'> & {
+    quality?: number;
+  };
 }
 export interface MediaExportResult extends MediaFileV1 {
   format: MediaExportFormat;
   sourceSha256: string;
   /** This converts the retained master; browser edits are not injected into a high-bit master. */
   includesEditorRecipe: false;
+  precisionEdit?: {
+    algorithm: 'scene-linear-v1';
+    sha256: string;
+    input: 'master16' | 'linear-master';
+    edit: PrecisionEditV1;
+  };
 }
+import type { PrecisionEditV1 } from '@ai-xiutu/editor';

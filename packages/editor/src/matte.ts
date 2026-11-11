@@ -4,6 +4,7 @@ import { parseSelectionMaskV3 } from './v3-recipe.js';
 import { checkV3 } from './v3-pixels.js';
 import type { RGBAImage, RenderOptions } from './types.js';
 import type { SelectionMaskV3 } from './v3-types.js';
+import { refineGuidedMatte } from './guided-matte.js';
 
 export const MAX_CUTOUT_PIXELS = 8_388_608;
 const linear = Float64Array.from({ length: 256 }, (_, value) => srgbToLinear(value / 255));
@@ -20,6 +21,8 @@ const directions = [
 ] as const;
 
 export interface CutoutSettings {
+  /** Missing preserves the published eight-ray solver. */
+  algorithm?: 'ray-v1' | 'guided-v2';
   selection: SelectionMaskV3;
   foreground?: SelectionMaskV3;
   background?: SelectionMaskV3;
@@ -35,6 +38,8 @@ export function renderCutout(
   options: RenderOptions = {},
 ): RGBAImage {
   validateImage(image, { maxPixels: MAX_CUTOUT_PIXELS });
+  if (settings.algorithm !== undefined && !['ray-v1', 'guided-v2'].includes(settings.algorithm))
+    throw new RangeError('Unsupported cutout algorithm');
   if (!(
     settings.radius >= 0 &&
     settings.radius <= 0.05 &&
@@ -50,7 +55,9 @@ export function renderCutout(
   const background =
     settings.background &&
     compileSelectionMaskV3(parseSelectionMaskV3(settings.background), image, image);
-  const matte = new Float32Array(width * height);
+  let matte: Float32Array = new Float32Array(width * height);
+  const guided = settings.algorithm === 'guided-v2';
+  const constraints = guided ? new Uint8Array(width * height) : null;
   const data = image.data.slice();
   let uncertain = 0;
   for (let y = 0; y < height; y++) {
@@ -65,6 +72,8 @@ export function renderCutout(
       // Painted foreground wins only in proportion to its weight. Exact opposing paint is ambiguous.
       if (fg >= 0.999 && bg >= 0.999)
         throw new RangeError('Foreground and background trimap overlap');
+      if (constraints)
+        constraints[i] = fg >= 0.999 ? 2 : bg >= 0.999 || data[i * 4 + 3] === 0 ? 1 : 0;
       const value = data[i * 4 + 3] === 0 ? 0 : clamp(prior + fg * (1 - prior) - bg * prior);
       matte[i] = value <= 0.035 ? 0 : value >= 0.965 ? 1 : value;
       if (matte[i] !== 0 && matte[i] !== 1) uncertain++;
@@ -75,10 +84,38 @@ export function renderCutout(
       'Too many uncertain matte pixels. Refine the foreground and background first.',
     );
   const radius = Math.min(64, Math.round(settings.radius * Math.min(width, height)));
+  const labels = matte;
+  if (guided && radius > 0) {
+    matte = refineGuidedMatte(image, matte, radius * 2, options);
+    uncertain = 0;
+    for (let i = 0; i < matte.length; i++) {
+      if ((i & 16383) === 0) checkV3(options);
+      // The semantic model owns the support. Color guidance must never recruit
+      // confident background texture as new hair or discard a confident limb.
+      const value =
+        constraints![i] === 2
+          ? 1
+          : constraints![i] === 1
+            ? 0
+            : labels[i] === 0 || labels[i] === 1
+              ? labels[i]!
+              : matte[i]!;
+      matte[i] = value <= 0.003 ? 0 : value >= 0.997 ? 1 : value;
+      if (matte[i] !== 0 && matte[i] !== 1) uncertain++;
+    }
+    if (uncertain > 1_048_576)
+      throw new RangeError(
+        'Too many uncertain matte pixels. Refine the foreground and background first.',
+      );
+  }
+  const searchRadius = guided ? radius * 4 : radius;
   const distances = [
-    ...new Set([1, 2, 4, 8, 16, 32, radius].filter((value) => value <= radius)),
+    ...new Set(
+      [1, 2, 4, 8, 16, 32, 64, 128, searchRadius].filter((value) => value <= searchRadius),
+    ),
   ].sort((a, b) => a - b);
   const colors = new Float64Array(8);
+  const candidates = new Int32Array(16);
   for (let y = 0; y < height; y++) {
     if ((y & 15) === 0) checkV3(options);
     for (let x = 0; x < width; x++) {
@@ -87,7 +124,9 @@ export function renderCutout(
       let alpha = matte[i]!;
       if (alpha > 0 && alpha < 1 && radius > 0) {
         colors.fill(0);
-        for (const [dx, dy] of directions) {
+        candidates.fill(-1);
+        for (let d = 0; d < directions.length; d++) {
+          const [dx, dy] = directions[d]!;
           let found = 0;
           for (const distance of distances) {
             const xx = x + dx * distance,
@@ -95,7 +134,7 @@ export function renderCutout(
             if (xx < 0 || xx >= width || yy < 0 || yy >= height) break;
             const n = yy * width + xx,
               sample = n * 4;
-            const label = matte[n];
+            const label = labels[n];
             if (
               (label !== 0 && label !== 1) ||
               image.data[sample + 3]! < 224 ||
@@ -106,11 +145,61 @@ export function renderCutout(
               weight = 1 / Math.sqrt(distance);
             for (let c = 0; c < 3; c++) colors[k + c]! += linear[image.data[sample + c]!]! * weight;
             colors[k + 3]! += weight;
+            candidates[d * 2 + label] = n;
             found |= 1 << label;
             if (found === 3) break;
           }
         }
         if (colors[3]! && colors[7]!) {
+          if (guided) {
+            // Fit actual nearby color pairs instead of averaging across hair,
+            // clothing and an occluder. A mean of unrelated colors is not a
+            // physically valid foreground/background pair.
+            let best = Infinity,
+              bestF = -1,
+              bestB = -1;
+            for (let f = 1; f < candidates.length; f += 2) {
+              const fi = candidates[f]!;
+              if (fi < 0) continue;
+              for (let b = 0; b < candidates.length; b += 2) {
+                const bi = candidates[b]!;
+                if (bi < 0) continue;
+                let dot = 0,
+                  contrast = 0;
+                for (let c = 0; c < 3; c++) {
+                  const bg = linear[image.data[bi * 4 + c]!]!,
+                    span = linear[image.data[fi * 4 + c]!]! - bg;
+                  dot += (linear[image.data[at + c]!]! - bg) * span;
+                  contrast += span * span;
+                }
+                if (contrast < 0.002) continue;
+                const value = clamp(dot / contrast);
+                let error = 0;
+                for (let c = 0; c < 3; c++) {
+                  const bg = linear[image.data[bi * 4 + c]!]!,
+                    fg = linear[image.data[fi * 4 + c]!]!;
+                  error += (linear[image.data[at + c]!]! - bg - value * (fg - bg)) ** 2;
+                }
+                const distance =
+                  (Math.hypot((fi % width) - x, Math.floor(fi / width) - y) +
+                    Math.hypot((bi % width) - x, Math.floor(bi / width) - y)) /
+                  Math.max(1, radius * 2);
+                const score = error / contrast + 0.0002 * (value - alpha) ** 2 + 0.00002 * distance;
+                if (score < best) {
+                  best = score;
+                  bestF = fi;
+                  bestB = bi;
+                }
+              }
+            }
+            if (bestF >= 0) {
+              for (let c = 0; c < 3; c++) {
+                colors[c] = linear[image.data[bestB * 4 + c]!]!;
+                colors[c + 4] = linear[image.data[bestF * 4 + c]!]!;
+              }
+              colors[3] = colors[7] = 1;
+            }
+          }
           let dot = 0,
             contrast = 0;
           for (let c = 0; c < 3; c++) {
@@ -120,7 +209,8 @@ export function renderCutout(
             contrast += (fg - bg) ** 2;
           }
           // Regularization retains the semantic prior where both sides have similar colors.
-          alpha = clamp((dot + 0.015 * alpha) / (contrast + 0.015));
+          const regularizer = guided ? 0.003 : 0.015;
+          alpha = clamp((dot + regularizer * alpha) / (contrast + regularizer));
           if (alpha > 0.04 && alpha < 0.995 && settings.decontaminate > 0 && contrast > 0.015) {
             for (let c = 0; c < 3; c++) {
               const observed = linear[image.data[at + c]!]!,

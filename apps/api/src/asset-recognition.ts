@@ -19,7 +19,11 @@ import {
   rateLimit,
   requireUser,
 } from './core.js';
-import { findProcessAsset, verifiedAssetBytes } from './asset-processing.js';
+import {
+  findProcessAsset,
+  verifiedAssetBytes,
+  assetProcessingCapabilities,
+} from './asset-processing.js';
 import type { LocalPrivateStorage } from './storage.js';
 
 const maxPixels = 8_388_608;
@@ -244,6 +248,7 @@ export function registerAssetRecognition(
   app.get('/v1/asset-processing/capabilities', async () => {
     const ocr = await runtime();
     return {
+      ...assetProcessingCapabilities(),
       recognition: { engine: ocr?.engine ?? null, languages: ocr?.languages ?? [], maxPixels },
       animation: {
         formats: ['gif'],

@@ -202,6 +202,50 @@ test(
           assert.equal(converted.statusCode, 200, converted.body.slice(0, 100));
           assert.equal(converted.headers['x-editor-recipe-included'], 'false');
           assert.equal((await sharp(converted.rawPayload).metadata()).depth, 'ushort');
+          const edit = {
+            algorithm: 'scene-linear-v1',
+            exposure: -0.73,
+            temperature: 0,
+            tint: 0,
+            contrast: 0,
+            saturation: 0,
+            shadows: 0,
+            highlights: 0,
+            toneMap: 'none',
+          };
+          const exportPath = `/v1/assets/${importedAsset}/media/export`;
+          assert.equal(
+            (await f.call('POST', exportPath, { format: 'png16', precisionEdit: edit })).statusCode,
+            409,
+          );
+          assert.equal(
+            (
+              await f.call('POST', exportPath, {
+                format: 'png16',
+                precisionEdit: edit,
+                expectedSourceSha256: 'f'.repeat(64),
+              })
+            ).statusCode,
+            409,
+          );
+          const graded = await f.call('POST', exportPath, {
+            format: 'png16',
+            precisionEdit: edit,
+            expectedSourceSha256: descriptor.sourceSha256,
+          });
+          assert.equal(graded.statusCode, 200, graded.body.slice(0, 100));
+          assert.match(String(graded.headers['x-precision-edit-sha256']), /^[a-f0-9]{64}$/);
+          assert.equal((await sharp(graded.rawPayload).metadata()).depth, 'ushort');
+          assert.notEqual(sha(graded.rawPayload), sha(converted.rawPayload));
+          assert.equal(
+            (
+              await f.call('POST', exportPath, {
+                format: 'exr32',
+                expectedSourceSha256: descriptor.sourceSha256,
+              })
+            ).statusCode,
+            422,
+          );
         },
       );
       await t.test(

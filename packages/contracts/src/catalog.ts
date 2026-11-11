@@ -199,6 +199,25 @@ export function createBuiltinRegistry(): ModuleRegistry {
           ...future,
           limitations: ['需要像素缓冲、色彩管理、预览和导出同时升级'],
         }),
+        cap('editor.precision-grading', '母版线性调色与浮点导出', {
+          ...cloud,
+          inputs: ['asset'],
+          outputs: ['asset'],
+          persistence: 'candidate',
+          permission: 'read',
+          requires: ['media.retained-import'],
+          limitations: [
+            'scene-linear-v1独立全局协议；16MP；16位母版或带原生运行时的float32 EXR；不是整套RGBA8配方重放',
+          ],
+        }),
+        cap('editor.restoration', '图像与体育照片信号修复', {
+          ...cloud,
+          inputs: ['asset', 'mask'],
+          outputs: ['asset'],
+          limitations: [
+            'photo-restore-v1；独立明度/色度降噪与指定PSF的有界运动去模糊；保留来源与保护区；不估计未知PSF或生成缺失文字/脸部细节',
+          ],
+        }),
       ],
     ),
     module(

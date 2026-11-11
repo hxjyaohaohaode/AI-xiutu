@@ -1,0 +1,33 @@
+{
+  "schemaVersion": 1,
+  "inputs": [
+    {
+      "name": "astronaut",
+      "url": "https://raw.githubusercontent.com/scikit-image/scikit-image/v0.19.3/skimage/data/astronaut.png",
+      "sha256": "88431cd9653ccd539741b555fb0a46b61558b301d4110412b5bc28b5e3ea6cb5",
+      "bytes": 791555,
+      "source": "scikit-image official sample, evaluation only; original photo is not redistributed in Git"
+    },
+    {
+      "name": "dlib-group",
+      "url": "https://raw.githubusercontent.com/davisking/dlib/master/examples/faces/2008_001322.jpg",
+      "sha256": "2ea5a60f5347baab8da6eccce43b0320d63da1368d7710fb15cbff8a790bc626",
+      "bytes": 65344,
+      "source": "dlib official group-face sample, evaluation only; original photo is not redistributed in Git"
+    },
+    {
+      "name": "basketball",
+      "url": "https://raw.githubusercontent.com/opencv/opencv/4.x/samples/data/basketball1.png",
+      "sha256": "ba06f6701f7260998b430c39b6557f775497e6ce7b1a74f0b7ea6af371bf54a6",
+      "bytes": 132826,
+      "source": "OpenCV official sports sample, evaluation only; original photo is not redistributed in Git"
+    },
+    {
+      "name": "messi",
+      "url": "https://raw.githubusercontent.com/opencv/opencv/4.x/samples/data/messi5.jpg",
+      "sha256": "1d570e49654e84c7a943918537bd9e5e1ef82920152e147c834006e235be97c9",
+      "bytes": 72937,
+      "source": "OpenCV official sports sample, evaluation only; original photo is not redistributed in Git"
+    }
+  ]
+}

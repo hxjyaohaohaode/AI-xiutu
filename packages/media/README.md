@@ -2,6 +2,16 @@
 
 本包在独立 Linux 子进程中完成真实解码、ICC 转换、16 位母版生成、代理图与 Deep Zoom 瓦片。它与浏览器 RGBA8 编辑器分开：**200MP 导入/查看、16 位母版导出，不等于 200MP 或 16 位浏览器配方编辑**。
 
+新增 `scene-linear-v1` 母版全局调色与 float32 EXR 导出。浏览器整套 V4 配方的高位深往返仍是独立范围。
+
+## 母版线性调色
+
+`exportMedia` 可传 `precisionEdit`，完整字段为 `algorithm:'scene-linear-v1'`、`exposure`（−10…10EV）、`temperature/tint/contrast/saturation/shadows/highlights`（−100…100）和 `toneMap:'none'|'reinhard'`。全零及 none 为中性。温度/色偏沿既有相对 RGB 增益；对比度围绕线性亮度0.18使用指数，饱和度围绕线性亮度，阴影/高光按 `Y/(Y+0.18)` 连续分配正负一档曝光。Reinhard 是显式的亮度色调映射。
+
+PNG/TIFF路径直接读取 uint16，按65536项完整传递函数表解码后计算，最后只量化一次。`format:'exr32'` 从经过摘要复核的 float32 线性母版读取，在原生 OIIO 中按64行分片计算；保留负值、HDR亮度与 associated alpha，不经过SDR代理或16位SDR母版。32位EXR需要配置 `options.pythonExecutable`。此全局协议最多16MP，没有把8位数值扩充成真实HDR。两条路径都保留原件和母版。
+
+返回的 `precisionEdit` 包含实际输入类型、算法、数值和绑定来源的SHA256。`includesEditorRecipe:false` 保持原含义，因为它不重放浏览器的全部蒙版、修复、绘制、图层与几何。HTTP端要求匹配 `expectedSourceSha256`，能力目录在解码前报告精度、格式、像素与原生运行时状态。控制文件由父进程拥有，终止整个进程组后也会清理。
+
 ## 使用与输出身份
 
 公开入口在 `src/index.ts`：
@@ -90,18 +100,18 @@ requirements 固定 rawpy 0.28.0、OpenImageIO 3.2.2.0、numpy 2.4.2。`getMedia
 
 当前 worker 是项目内 TypeScript 固定入口，父进程用 `--import tsx` 启动；部署要保留此包的 `src/worker.ts`、`native/convert.py`、tsx 及本项目目录结构。它不是可随意只复制一个编译后 index.js 的独立二进制包。
 
-| 资源               | 当前值                                                                        |
-| ------------------ | ----------------------------------------------------------------------------- |
+| 资源               | 当前值                                                                                     |
+| ------------------ | ------------------------------------------------------------------------------------------ |
 | 普通 raster 源像素 | 默认 200,000,000，可通过 `MEDIA_RASTER_MAX_PIXELS` 设置至 256,000,000，宽高各不超过 65,535 |
-| 输入文件           | 至多512MiB                                                                    |
-| 代理图             | 至多4,194,304像素                                                             |
-| RAW/HDR            | 至多50MP，原生步骤仍会分配整幅数组                                            |
-| PSD                | 至多16,777,216像素、128MiB编码、256元数据节点、解析器内存预算512MiB           |
-| 并发队列           | 每个API进程1执行、8等待；不是分布式队列                                       |
-| wall timeout       | 默认180s，可配置1～600s                                                       |
-| Linux prlimit      | 默认每进程地址空间4GiB，可配置1～8GiB；单文件2GiB、文件描述符128、CPU时间有界 |
-| Node/decoder       | JS堆512MiB、jitless；sharp1线程、cache32MiB                                   |
-| 瓦片数             | 至多8192                                                                      |
+| 输入文件           | 至多512MiB                                                                                 |
+| 代理图             | 至多4,194,304像素                                                                          |
+| RAW/HDR            | 至多50MP，原生步骤仍会分配整幅数组                                                         |
+| PSD                | 至多16,777,216像素、128MiB编码、256元数据节点、解析器内存预算512MiB                        |
+| 并发队列           | 每个API进程1执行、8等待；不是分布式队列                                                    |
+| wall timeout       | 默认180s，可配置1～600s                                                                    |
+| Linux prlimit      | 默认每进程地址空间4GiB，可配置1～8GiB；单文件2GiB、文件描述符128、CPU时间有界              |
+| Node/decoder       | JS堆512MiB、jitless；sharp1线程、cache32MiB                                                |
+| 瓦片数             | 至多8192                                                                                   |
 
 普通 raster 在像素解码前从文件头核对尺寸、页数、位深和配置。全帧编解码器、
 渐进式输入、需要垂直重排的方向和瓦片层数分别检查内存与临时磁盘。

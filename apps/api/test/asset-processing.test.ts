@@ -29,6 +29,74 @@ async function upload(f: Fixture, path: string, bytes: Buffer, name: string, mim
 }
 
 test(
+  'restoration and guided cutout publish immutable, idempotent sources through the same ACL and lineage transaction',
+  { skip: !databaseUrl },
+  async () => {
+    const f = await collaborationFixture(databaseUrl!);
+    try {
+      const path = `/v1/projects/${f.projectId}/derived-assets`;
+      const body = {
+        kind: 'restoration',
+        sourceAssetId: f.assetId,
+        requestId: randomUUID(),
+        name: 'sports-repair.png',
+        settings: {
+          algorithm: 'photo-restore-v1',
+          luminanceNoise: 35,
+          chromaNoise: 50,
+          motion: { length: 3, angle: 12.5, iterations: 3, strength: 0.65 },
+        },
+      };
+      const quote = await f.call('POST', `${path}/quote`, body);
+      assert.equal(quote.statusCode, 200, quote.body);
+      assert.equal(quote.json().available, true);
+      assert.equal(quote.json().reservesQuota, false);
+      assert.equal(
+        (await f.call('POST', `${path}/quote`, { ...body, sourceAssetId: f.privateAssetId }))
+          .statusCode,
+        404,
+      );
+      assert.equal((await f.call('POST', path, body, 'viewer')).statusCode, 403);
+      assert.equal(
+        (await f.call('POST', path, { ...body, sourceAssetId: f.privateAssetId })).statusCode,
+        404,
+      );
+      const result = await f.call('POST', path, body);
+      assert.equal(result.statusCode, 201, result.body);
+      assert.equal((await f.call('POST', path, body)).json().asset.id, result.json().asset.id);
+      assert.equal(
+        (await f.call('POST', path, { ...body, settings: { ...body.settings, chromaNoise: 51 } }))
+          .statusCode,
+        409,
+      );
+      const lineage = (
+        await f.call('GET', `/v1/assets/${result.json().asset.id}/derivation`)
+      ).json();
+      assert.equal(lineage.algorithm, 'photo-restore-v1');
+      assert.equal(lineage.sources[0].assetId, f.assetId);
+      const guided = await f.call('POST', path, {
+        kind: 'cutout',
+        sourceAssetId: f.assetId,
+        requestId: randomUUID(),
+        name: 'guided.png',
+        settings: {
+          algorithm: 'guided-v2',
+          selection: createRasterMask(2, 1, Uint8Array.of(255, 0)),
+          radius: 0.03,
+        },
+      });
+      assert.equal(guided.statusCode, 201, guided.body);
+      assert.equal(
+        (await f.call('GET', `/v1/assets/${guided.json().asset.id}/derivation`)).json().algorithm,
+        'rgb-guided-trimap-v2',
+      );
+    } finally {
+      await f.close();
+    }
+  },
+);
+
+test(
   'cutout and collage keep exact permissions, lineage, transparent pixels and request receipts',
   { skip: !databaseUrl },
   async () => {
@@ -53,7 +121,10 @@ test(
       const cutout = result.json().asset;
       assert.equal(cutout.source, 'derived');
       const listing = await f.call('GET', `/v1/projects/${f.projectId}/assets?source=derived`);
-      assert.deepEqual(listing.json().assets.map((item: { id: string }) => item.id), [cutout.id]);
+      assert.deepEqual(
+        listing.json().assets.map((item: { id: string }) => item.id),
+        [cutout.id],
+      );
       const found = await f.call('GET', `/v1/resources?projectId=${f.projectId}&source=derived`);
       assert.deepEqual(
         found.json().resources.map((item: { asset: { id: string } }) => item.asset.id),

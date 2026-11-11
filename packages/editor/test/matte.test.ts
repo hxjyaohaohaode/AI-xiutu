@@ -11,14 +11,100 @@ import {
 } from '../src/index.js';
 
 test('wide exposure range agrees with independent linear-light gains at every one-third stop and keeps alpha', () => {
-  const image: RGBAImage = { width: 3, height: 1, data: Uint8ClampedArray.of(14, 48, 95, 255, 129, 205, 250, 164, 0, 100, 255, 255) };
+  const image: RGBAImage = {
+    width: 3,
+    height: 1,
+    data: Uint8ClampedArray.of(14, 48, 95, 255, 129, 205, 250, 164, 0, 100, 255, 255),
+  };
   for (let third = -15; third <= 15; third++) {
     const exposure = third / 3;
-    const expected = image.data.map((value, at) => at % 4 === 3 ? value : 255 * linearToSrgb(Math.min(1, srgbToLinear(value / 255) * 2 ** exposure)));
+    const expected = image.data.map((value, at) =>
+      at % 4 === 3
+        ? value
+        : 255 * linearToSrgb(Math.min(1, srgbToLinear(value / 255) * 2 ** exposure)),
+    );
     const result = renderEditorRecipe(image, createRecipeV4({ adjustments: { exposure } }));
-    for (let at = 0; at < result.data.length; at++) assert.ok(Math.abs(result.data[at]! - expected[at]!) <= 1, `${exposure} EV at channel ${at}`);
+    for (let at = 0; at < result.data.length; at++)
+      assert.ok(Math.abs(result.data[at]! - expected[at]!) <= 1, `${exposure} EV at channel ${at}`);
   }
   assert.throws(() => createRecipeV4({ adjustments: { exposure: 5.001 } }));
+});
+
+test('RGB guided matte refines downsampled fine strands and crossing occlusion with an independent linear composite ground truth', () => {
+  const width = 256,
+    height = 192;
+  const truth = new Uint8Array(width * height),
+    prior = new Uint8Array(width * height);
+  const image: RGBAImage = { width, height, data: new Uint8ClampedArray(width * height * 4) };
+  for (let y = 0; y < height; y++)
+    for (let x = 0; x < width; x++) {
+      // Wispy edge with alternating isolated strands and a diagonal occluder.
+      const edge = 117 + 10 * Math.sin(y / 12);
+      const strand = x > edge && x < edge + 25 && Math.abs(((y + x * 0.13) % 8) - 4) < 0.85;
+      const cover = y > 97 && y < 105 && x > 55;
+      const alpha = cover ? 0 : Math.min(1, Math.max(0, edge - x + 0.5 + (strand ? 25 : 0)));
+      const i = y * width + x;
+      truth[i] = alpha * 255;
+      prior[i] =
+        (cover ? Math.max(0, (Math.abs(y - 101) - 1) / 5) : 1) *
+        Math.min(1, Math.max(0, (edge + 7 - x) / 14)) *
+        255;
+      // Two chromatic colors with close luminance make scalar edge guidance insufficient.
+      const fg = [0.03, 0.17, 0.06],
+        bg = [0.32, 0.09, 0.21];
+      for (let c = 0; c < 3; c++)
+        image.data[i * 4 + c] = 255 * linearToSrgb(fg[c]! * alpha + bg[c]! * (1 - alpha));
+      image.data[i * 4 + 3] = 255;
+    }
+  const selection = createRasterMask(width, height, prior);
+  const settings = { selection, radius: 0.05, decontaminate: 0 };
+  const baseline = renderCutout(image, { ...settings, algorithm: 'ray-v1' });
+  const result = renderCutout(image, { ...settings, algorithm: 'guided-v2' });
+  let before = 0,
+    after = 0;
+  for (let i = 0; i < truth.length; i++) {
+    before += Math.abs(baseline.data[i * 4 + 3]! - truth[i]!);
+    after += Math.abs(result.data[i * 4 + 3]! - truth[i]!);
+    if (result.data[i * 4 + 3])
+      for (let c = 0; c < 3; c++) assert.equal(result.data[i * 4 + c], image.data[i * 4 + c]);
+  }
+  assert.ok(after < before, `alpha SAD ${before} -> ${after}`);
+  for (let i = 0; i < prior.length; i++) {
+    if (prior[i]! <= 8)
+      assert.equal(
+        result.data[i * 4 + 3],
+        0,
+        'confident semantic background cannot become a new hair',
+      );
+    if (prior[i]! >= 247)
+      assert.equal(result.data[i * 4 + 3], 255, 'confident semantic foreground is retained');
+  }
+  assert.deepEqual(renderCutout(image, { ...settings, algorithm: 'guided-v2' }), result);
+});
+
+test('guided matte respects explicit trimap paint, non-opaque sources, empty/full selections and cancellation', () => {
+  const width = 17,
+    height = 9,
+    data = new Uint8ClampedArray(width * height * 4).fill(127);
+  const source: RGBAImage = { width, height, data };
+  const full = createRasterMask(1, 1, Uint8Array.of(255)),
+    empty = createRasterMask(1, 1, Uint8Array.of(0));
+  const settings = {
+    algorithm: 'guided-v2' as const,
+    selection: full,
+    radius: 0.05,
+    decontaminate: 1,
+  };
+  assert.deepEqual(renderCutout(source, settings).data, data);
+  assert.ok(renderCutout(source, { ...settings, selection: empty }).data.every((v) => v === 0));
+  assert.deepEqual(
+    renderCutout(source, { ...settings, selection: empty, foreground: full }).data,
+    data,
+  );
+  assert.ok(renderCutout(source, { ...settings, background: full }).data.every((v) => v === 0));
+  const stop = new AbortController();
+  stop.abort();
+  assert.throws(() => renderCutout(source, settings, { signal: stop.signal }), /abort/i);
 });
 
 test('trimap recovers a known subpixel mixture, preserves hard sides and does not restore transparent alpha', () => {

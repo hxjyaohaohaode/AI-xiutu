@@ -210,6 +210,30 @@
       "evidence": "本地 PostgreSQL 和 Linux 媒体环境可运行；没有生产部署或付费服务器。"
     }
   ],
+  "continuation20261111": {
+    "baseCommit": "746588dc25f03a62831c89173d7ea841ef42f101",
+    "scope": "延续全部原需求，当前主攻共享图像算法、CPU延迟、边缘、体育照片、母版精度及前端契约",
+    "implementedAndLocallyChecked": [
+      "同一浮点舍入下的输入传递查表、精确Float32输出量化与导向滤波内存优化",
+      "显式guided-v2 RGB边缘细化，保持确定背景及前景，不扩入新背景纹理",
+      "photo-restore-v1的独立明度/色度降噪及已知PSF去模糊，复用来源、权限、幂等和额度发布",
+      "scene-linear-v1的真实16位全局母版调色和原生float32 EXR导出，独立来源绑定",
+      "团队PCM环形队列和单调时钟过期，保留同时多说话人与限幅"
+    ],
+    "pending": [
+      "神经发丝、完整三维遮挡及更大规模人像质量评审",
+      "整套V4配方高位深/HDR重放、CMYK印前和可编辑PSD往返",
+      "前端新能力入口、在线支付与自助注销的服务端完整协议",
+      "最终合并源码的整仓和GitHub验收，物理设备、公网多人长通话"
+    ],
+    "evidence": [
+      "artifacts/editor-performance/before/report.json",
+      "artifacts/editor-performance/after/report.json",
+      "artifacts/photo-quality/report.json",
+      "packages/media/test/precision.test.ts",
+      "docs/BACKEND-DEPTH.md"
+    ]
+  },
   "evidence": {
     "localCheck": "artifacts/inspection/final-conversation-native.log",
     "productionBuild": "artifacts/inspection/final-conversation-production.log",

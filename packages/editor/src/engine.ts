@@ -3,6 +3,9 @@ import { getOutputDimensions, pixelCrop, sourcePixel, validateDimensions } from 
 import { radialMaskWeight } from './mask.js';
 import { parseRecipe } from './recipe.js';
 import { ADJUSTMENT_IDS } from './registry.js';
+import { encodeFloat32Byte } from './linear-byte.js';
+import { srgbToLinear, linearToSrgb } from './transfer.js';
+export { srgbToLinear, linearToSrgb } from './transfer.js';
 import type {
   Adjustments,
   CurveChannel,
@@ -14,10 +17,6 @@ import type {
 } from './types.js';
 
 const clamp = (value: number): number => Math.min(1, Math.max(0, value));
-export const srgbToLinear = (value: number): number =>
-  value <= 0.04045 ? value / 12.92 : ((value + 0.055) / 1.055) ** 2.4;
-export const linearToSrgb = (value: number): number =>
-  value <= 0.0031308 ? 12.92 * value : 1.055 * value ** (1 / 2.4) - 0.055;
 const DECODE = Float32Array.from({ length: 256 }, (_, i) => srgbToLinear(i / 255));
 const channels: CurveChannel[] = ['rgb', 'red', 'green', 'blue'];
 type CompiledCurves = Record<CurveChannel, Float32Array | null>;
@@ -116,6 +115,18 @@ export function mapPoint(
   r = clamp(linearToSrgb(clamp(r * t.gains[0])));
   g = clamp(linearToSrgb(clamp(g * t.gains[1])));
   b = clamp(linearToSrgb(clamp(b * t.gains[2])));
+  mapEncodedPoint(r, g, b, t, curves, output, index);
+}
+
+function mapEncodedPoint(
+  r: number,
+  g: number,
+  b: number,
+  t: Tone,
+  curves: CompiledCurves,
+  output: Float32Array,
+  index: number,
+): void {
   if (t.active) {
     const y = 0.2126 * r + 0.7152 * g + 0.0722 * b;
     let changed = t.brightness === 1 ? y : y ** t.brightness;
@@ -233,6 +244,7 @@ export interface ReferenceRenderSession {
   globalTone: Tone;
   localTone: Tone;
   curves: CompiledCurves;
+  encoded: [Float64Array, Float64Array, Float64Array] | null;
 }
 
 export interface ImageCoordinateContext {
@@ -263,15 +275,25 @@ export interface LinearRegionExtension {
 
 export function createRenderSession(inputRecipe: RecipeV1): ReferenceRenderSession {
   const recipe = parseRecipe(inputRecipe);
+  const globalTone = tone(recipe.adjustments);
+  const globalNeutral =
+    neutral(recipe.adjustments) &&
+    channels.every((channel) => isIdentityCurve(recipe.curves[channel]));
+  const mapped =
+    globalTone.active || channels.some((channel) => !isIdentityCurve(recipe.curves[channel]));
+  const encoded = mapped
+    ? (globalTone.gains.map((gain) =>
+        Float64Array.from(DECODE, (v) => clamp(linearToSrgb(clamp(v * gain)))),
+      ) as [Float64Array, Float64Array, Float64Array])
+    : null;
   return {
     recipe,
-    globalNeutral:
-      neutral(recipe.adjustments) &&
-      channels.every((channel) => isIdentityCurve(recipe.curves[channel])),
+    globalNeutral,
     localActive: recipe.local.enabled && !neutral(recipe.local.adjustments),
-    globalTone: tone(recipe.adjustments),
+    globalTone,
     localTone: tone(recipe.local.adjustments),
     curves: compileCurves(recipe.curves),
+    encoded,
   };
 }
 
@@ -319,7 +341,21 @@ export function renderValidatedRegion(
           working[o] = r;
           working[o + 1] = g;
           working[o + 2] = b;
-        } else mapPoint(r, g, b, t, curves, working, o);
+        } else if (session.encoded) {
+          mapEncodedPoint(
+            session.encoded[0][image.data[i]!]!,
+            session.encoded[1][image.data[i + 1]!]!,
+            session.encoded[2][image.data[i + 2]!]!,
+            t,
+            curves,
+            working,
+            o,
+          );
+        } else {
+          working[o] = r;
+          working[o + 1] = g;
+          working[o + 2] = b;
+        }
       }
     }
     const globalDetail = recipe.adjustments.sharpness > 0 || recipe.adjustments.soften > 0;
@@ -413,9 +449,9 @@ export function renderValidatedRegion(
       const i = p * 4;
       const o = (y * dimensions.width + x) * 4;
       if (working && image.data[i + 3] !== 0) {
-        data[o] = Math.round(clamp(linearToSrgb(working[p * 3]!)) * 255);
-        data[o + 1] = Math.round(clamp(linearToSrgb(working[p * 3 + 1]!)) * 255);
-        data[o + 2] = Math.round(clamp(linearToSrgb(working[p * 3 + 2]!)) * 255);
+        data[o] = encodeFloat32Byte(working[p * 3]!);
+        data[o + 1] = encodeFloat32Byte(working[p * 3 + 1]!);
+        data[o + 2] = encodeFloat32Byte(working[p * 3 + 2]!);
       } else {
         data[o] = image.data[i]!;
         data[o + 1] = image.data[i + 1]!;

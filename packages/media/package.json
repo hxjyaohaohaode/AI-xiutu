@@ -10,6 +10,7 @@
     }
   },
   "dependencies": {
+    "@ai-xiutu/editor": "0.1.0",
     "sharp": "0.35.5",
     "ag-psd": "34.1.0"
   },

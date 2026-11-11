@@ -172,7 +172,7 @@ additional media links, with explicit source asset IDs and audited provenance.
 - `POST /v1/media-imports/:id/cancel` -> `{ok:true,cleanupPending:boolean}`; unfinished work only. Ready409 never deletes published originals. When processing may still be owned by another worker, cancellation remains durable but the reservation and work directory stay until that worker stops or stale recovery confirms ownership loss. Repeated cancellation does not extend its lease or free its capacity early.
 - `GET /v1/assets/:id/media` -> `{descriptor,downloads,editor}`; asset ACL is separate from task ownership.
 - `GET /v1/assets/:id/media/original`, `/master`, `/tiles.dzi`, `/tiles_files/:level/:tile`: private original/master/tiles under current asset ACL. DZI uses the actual encoded extension.
-- `POST /v1/assets/:id/media/export` `{format:'png16'|'tiff16'|'jpeg'|'webp',quality?:1..100}` converts the retained master to a private temporary response, with `X-Editor-Recipe-Included:false`.
+- `POST /v1/assets/:id/media/export` `{format:'png16'|'tiff16'|'jpeg'|'webp'|'exr32',quality?:1..100,precisionEdit?,expectedSourceSha256?}` converts the retained master to a private temporary response, with `X-Editor-Recipe-Included:false`. Existing calls retain their behavior. An explicit `precisionEdit` uses `scene-linear-v1` on actual master samples and returns `X-Precision-Edit-SHA256`; it is separate from the browser recipe. Fields are `algorithm:'scene-linear-v1',exposure:-10..10,temperature/tint/contrast/saturation/shadows/highlights:-100..100,toneMap:'none'|'reinhard'`, all required. Edits and float export require the exact descriptor's `expectedSourceSha256`. PNG/TIFF edits retain 16bit quantization; `exr32` requires the retained `linear-master.exr` and installed native runtime, preserves float32 signed/headroom values and associated alpha. Both paths are limited to16MP and preserve immutable originals. Capability/asset metadata reports availability before decoding. Revoked membership, session logout, changed source, cancellation and processing failures stop download. This is global linear grading, not full high-bit/HDR replay of masks, paint, healing or arbitrary browser V4 effects.
 
 Publication atomically replaces the input reservation with actual object/proxy
 bytes. Capacity failure rolls back the asset and links. No prior content is
@@ -344,18 +344,18 @@ connection. At most32 active/upgrading connections are admitted per API instance
 
 The client sends only these application events, not arbitrary provider events:
 
-| Type      | Fields and meaning                                                                                                |
-| --------- | ----------------------------------------------------------------------------------------------------------------- |
-| audio     | `pcm`: canonical base64 PCM16 mono24kHz, maximum9600 decoded bytes per chunk; rate budget144000 bytes per2seconds |
-| text      | `text`:1..4000 characters; reviewed before sending, with control/in-flight-response backpressure                  |
-| search    | `search:{query,kind}` submits an explicit public query during a call. One public lookup per call, with prior web permission and matching model capability. |
-| context   | `context`: a fresh explicit editor snapshot, no more often than once per2.5seconds. Optional `contextTag` is echoed in the acceptance event. |
-| context.invalidate | Invalidate the previous snapshot and advance the context generation. A pending or published old candidate cannot be applied to the changed canvas. |
-| mute      | `muted:boolean`; muted audio is not forwarded                                                                     |
-| interrupt | optional `itemId,playedMs`; only the actual current output item may be truncated, bounded by delivered audio      |
-| playback-cut | `itemId,playedMs` acknowledges the currently interrupted Realtime output item after speech starts. It truncates at the heard position without cancelling a newer response. |
-| end       | explicit end; no automatic redial or retry                                                                        |
-| ping      | renew browser heartbeat; missing heartbeat beyond35seconds closes the session                                     |
+| Type               | Fields and meaning                                                                                                                                                         |
+| ------------------ | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| audio              | `pcm`: canonical base64 PCM16 mono24kHz, maximum9600 decoded bytes per chunk; rate budget144000 bytes per2seconds                                                          |
+| text               | `text`:1..4000 characters; reviewed before sending, with control/in-flight-response backpressure                                                                           |
+| search             | `search:{query,kind}` submits an explicit public query during a call. One public lookup per call, with prior web permission and matching model capability.                 |
+| context            | `context`: a fresh explicit editor snapshot, no more often than once per2.5seconds. Optional `contextTag` is echoed in the acceptance event.                               |
+| context.invalidate | Invalidate the previous snapshot and advance the context generation. A pending or published old candidate cannot be applied to the changed canvas.                         |
+| mute               | `muted:boolean`; muted audio is not forwarded                                                                                                                              |
+| interrupt          | optional `itemId,playedMs`; only the actual current output item may be truncated, bounded by delivered audio                                                               |
+| playback-cut       | `itemId,playedMs` acknowledges the currently interrupted Realtime output item after speech starts. It truncates at the heard position without cancelling a newer response. |
+| end                | explicit end; no automatic redial or retry                                                                                                                                 |
+| ping               | renew browser heartbeat; missing heartbeat beyond35seconds closes the session                                                                                              |
 
 Server events are ready, audio, transcript, interrupted, context, search-started, tool,
 assistant-result, closed, error and pong. Shared discriminated unions are in
@@ -384,13 +384,13 @@ in the editor delegation. Search evidence is returned as source cards.
 
 ### 6.3.1 Team voice on a shared artwork
 
-| Route | Contract |
-| --- | --- |
-| `POST /v1/artworks/:artworkId/team-voice/join` | Active team members get a 30-second single-use ticket bound to the login and artwork. |
-| `GET /v1/artworks/:artworkId/team-voice/stream` (upgrade) | Same-origin WebSocket with cookie and subprotocols `xiutu-team-voice` and the ticket. |
-| `POST /v1/artworks/:artworkId/team-voice/agent` | A connected editor, admin or owner confirms one AI session. Body includes `confirmed:true,idempotencyKey,modelId,backendModelId,voice,context?`. Optional shared preview is moderated and bound to current artwork and version. |
-| `PUT /v1/artworks/:artworkId/team-voice/agent/context` | Host synchronizes the current version. An empty body uses saved parameters. Output and microphone forwarding to the AI pause until the new context is accepted. |
-| `DELETE /v1/artworks/:artworkId/team-voice/agent` | Host, admin or owner can end the AI connection. Human conversation continues. |
+| Route                                                     | Contract                                                                                                                                                                                                                        |
+| --------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `POST /v1/artworks/:artworkId/team-voice/join`            | Active team members get a 30-second single-use ticket bound to the login and artwork.                                                                                                                                           |
+| `GET /v1/artworks/:artworkId/team-voice/stream` (upgrade) | Same-origin WebSocket with cookie and subprotocols `xiutu-team-voice` and the ticket.                                                                                                                                           |
+| `POST /v1/artworks/:artworkId/team-voice/agent`           | A connected editor, admin or owner confirms one AI session. Body includes `confirmed:true,idempotencyKey,modelId,backendModelId,voice,context?`. Optional shared preview is moderated and bound to current artwork and version. |
+| `PUT /v1/artworks/:artworkId/team-voice/agent/context`    | Host synchronizes the current version. An empty body uses saved parameters. Output and microphone forwarding to the AI pause until the new context is accepted.                                                                 |
+| `DELETE /v1/artworks/:artworkId/team-voice/agent`         | Host, admin or owner can end the AI connection. Human conversation continues.                                                                                                                                                   |
 
 Mic input is binary little-endian 24 kHz mono PCM16. Output adds a little-endian
 uint16 speaker slot before the PCM. Slot 0 is AI. The client plays each human
@@ -467,6 +467,7 @@ DB派发标记、独立fsync日志和发送前的第二次权限/状态校验共
 
 Retained media appears as `retained-proxy` at this editor entry point. The high-bit
 master remains accessible through the media export endpoint in section 5.
+
 ## Asset processing and provider usage
 
 ### Asset processing
@@ -475,10 +476,34 @@ master remains accessible through the media export endpoint in section 5.
 GIF processing limits. `POST /v1/projects/:id/derived-assets` accepts the shared
 `derivedAssetRequest` contract. A cutout takes a source-normalized trimap, optional
 foreground/background masks, refinement radius and edge decontamination strength.
+The optional `settings.algorithm` is `ray-v1` (published default) or `guided-v2`.
+The latter estimates RGB affine coefficients on a bounded area image, evaluates
+them against original linear RGB, fits nearby color pairs, and only refines the
+uncertain support. Confident background cannot become new hair. It preserves
+explicit trimap paint; it does not detect new objects or reconstruct absent hair.
 A collage takes ordered pixel rectangles, fit, focal points and RGBA background.
 All sources must belong to the authorized project. The output is a normal PNG asset.
 `GET /v1/assets/:id/derivation` reads the algorithm, source IDs and hashes, and
 settings under the project's read permission. The actor's request ID is idempotent.
+
+The same capability response now includes `cutout`, `restoration`, `collage` and
+source/working limits. `POST /v1/projects/:id/derived-assets/quote` accepts the same
+request shape, checks edit ACL and source metadata, and returns
+`{available,limits,encodedBytes,cost,sources,checksDecodedPixels:false,reservesQuota:false}`.
+This never decodes or reserves quota and is not a promise that a malformed source
+will decode. Execution repeats admission and verifies source bytes.
+
+`kind:'restoration'` uses `sourceAssetId` and settings
+`{algorithm:'photo-restore-v1',luminanceNoise:0..100,chromaNoise:0..100,
+motion:{length:0..31,angle:-180..180,iterations:1..12,strength:0..1},selection?,protection?}`.
+Length is in actual source pixels, angle in degrees; zero strength/length disables
+deconvolution. Zero noise amounts leave those signals unchanged. All-zero settings
+are byte-exact. Optional masks use the shared source-normalized format. Independent
+linear-luminance/chroma denoising and damped Richardson-Lucy use the chosen PSF,
+alpha-weighted neighborhoods and a true adjoint with boundary normalization.
+The 4MP /134,217,728 work budget is checked before source decoding. Output is a new
+immutable PNG with lineage, reusable in versions, collage, search and AI references.
+This does not estimate unknown PSFs or invent missing faces/jersey text.
 
 `POST /v1/projects/:id/animations?requestId=<uuid>` accepts one GIF multipart file.
 `GET /v1/assets/:id/animation` gives the frame dimensions, delay array and loop count.

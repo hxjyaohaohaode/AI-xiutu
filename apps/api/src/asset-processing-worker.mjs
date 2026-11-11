@@ -6,6 +6,7 @@ import {
   renderEditorRecipeTiled,
   renderCutout,
   MAX_CUTOUT_PIXELS,
+  renderPhotoRestoration,
 } from '@ai-xiutu/editor';
 
 sharp.concurrency(1);
@@ -40,6 +41,20 @@ async function cutout(input, settings) {
   );
   return {
     png: await sharp(image.data, { raw: { width, height, channels: 4 } })
+      .png()
+      .toBuffer(),
+  };
+}
+
+async function restoration(input, settings) {
+  const raw = await (await canonical(input)).toColourspace('srgb').ensureAlpha().raw().toBuffer();
+  const { width, height } = input;
+  const result = renderPhotoRestoration(
+    { width, height, data: new Uint8ClampedArray(raw.buffer, raw.byteOffset, raw.length) },
+    settings,
+  );
+  return {
+    png: await sharp(result.data, { raw: { width, height, channels: 4 } })
       .png()
       .toBuffer(),
   };
@@ -193,9 +208,11 @@ try {
   const result =
     kind === 'cutout'
       ? await cutout(inputs[0], settings)
-      : kind === 'collage'
-        ? await collage(inputs, settings)
-        : await animation(inputs[0].bytes, settings);
+      : kind === 'restoration'
+        ? await restoration(inputs[0], settings)
+        : kind === 'collage'
+          ? await collage(inputs, settings)
+          : await animation(inputs[0].bytes, settings);
   parentPort.postMessage(result);
 } catch (error) {
   parentPort.postMessage({ error: error instanceof RangeError ? 'BUDGET' : 'INVALID' });

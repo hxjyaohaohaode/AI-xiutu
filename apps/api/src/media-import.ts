@@ -4,6 +4,7 @@ import { join } from 'node:path';
 import { randomUUID, createHash } from 'node:crypto';
 import type { FastifyInstance } from 'fastify';
 import { z } from 'zod';
+import { parsePrecisionEdit } from '@ai-xiutu/editor';
 import {
   processMedia,
   exportMedia,
@@ -583,7 +584,18 @@ export function registerMediaImport(app: FastifyInstance, db: Database, config: 
           : null,
         tiles: row.descriptor.tiles ? `/v1/assets/${assetId}/media/tiles.dzi` : null,
       },
-      editor: { bitDepth: 8, colorSpace: 'sRGB', proxy: true, masterExportIncludesRecipe: false },
+      editor: {
+        bitDepth: 8,
+        colorSpace: 'sRGB',
+        proxy: true,
+        masterExportIncludesRecipe: false,
+        precisionEditing: {
+          ...(await capabilities).precisionEditing,
+          sourceSha256: row.descriptor.sourceSha256,
+          floatAvailable:
+            !!row.descriptor.linearMaster && (await capabilities).precisionEditing.linearFloat,
+        },
+      },
     };
   });
   app.get('/v1/assets/:id/media/:kind', async (req, reply) => {
@@ -651,12 +663,42 @@ export function registerMediaImport(app: FastifyInstance, db: Database, config: 
     const { id: assetId } = jobParams.parse(req.params);
     const body = z
       .object({
-        format: z.enum(['png16', 'tiff16', 'jpeg', 'webp']),
+        format: z.enum(['png16', 'tiff16', 'jpeg', 'webp', 'exr32']),
         quality: z.number().int().min(1).max(100).default(90),
+        precisionEdit: z.unknown().optional(),
+        expectedSourceSha256: z
+          .string()
+          .regex(/^[a-f0-9]{64}$/)
+          .optional(),
       })
       .strict()
       .parse(req.body);
     const row = await sourceAccess(assetId, actor.id);
+    const precisionEdit =
+      body.precisionEdit === undefined ? undefined : parsePrecisionEdit(body.precisionEdit);
+    if (
+      (precisionEdit || body.format === 'exr32') &&
+      body.expectedSourceSha256 !== row.descriptor.sourceSha256
+    )
+      throw new HttpError(409, 'MEDIA_SOURCE_CHANGED', '请核对母版来源摘要后再执行高精度导出');
+    if (
+      (precisionEdit || body.format === 'exr32') &&
+      row.descriptor.master.width * row.descriptor.master.height > 16_777_216
+    )
+      throw new HttpError(
+        413,
+        'MEDIA_PRECISION_BUDGET',
+        '高精度编辑当前最多支持 16MP，请先查看能力限制',
+      );
+    if (
+      body.format === 'exr32' &&
+      (!row.descriptor.linearMaster || !(await capabilities).nativeReady)
+    )
+      throw new HttpError(
+        422,
+        'MEDIA_FLOAT_UNAVAILABLE',
+        '此素材没有线性 HDR 母版或原生浮点导出尚未就绪',
+      );
     if (exporting.has(actor.id) || exporting.size >= 2)
       throw new HttpError(429, 'MEDIA_EXPORT_BUSY', '已有母版转换正在处理，请等待完成后再试。');
     exporting.add(actor.id);
@@ -664,16 +706,30 @@ export function registerMediaImport(app: FastifyInstance, db: Database, config: 
     // high-bit round trip of the browser recipe. Result is private and temporary.
     const outputPath = join(root, `${randomUUID()}.export`);
     const controller = new AbortController();
-    req.raw.on('aborted', () => controller.abort());
+    const abortExport = () => controller.abort();
+    req.raw.once('aborted', abortExport);
+    req.raw.socket.once('close', abortExport);
+    if (req.raw.aborted) controller.abort();
     try {
       const result = await exportMedia({
         workDir: workDir(row.object_id),
         outputPath,
         format: body.format,
+        ...(precisionEdit ? { precisionEdit } : {}),
         signal: controller.signal,
-        options: { quality: body.quality, timeoutMs: 45000 },
+        options: {
+          quality: body.quality,
+          timeoutMs: 45000,
+          ...(pythonExecutable ? { pythonExecutable } : {}),
+        },
       });
       await sourceAccess(assetId, actor.id);
+      const activeSession = await db.query(
+        "SELECT 1 FROM sessions s JOIN users u ON u.id=s.user_id WHERE s.token_hash=$1 AND s.user_id=$2 AND s.expires_at>clock_timestamp() AND u.status='active'",
+        [hash(req.cookies.xiutu_session ?? ''), actor.id],
+      );
+      if (!activeSession.rowCount)
+        throw new HttpError(401, 'AUTH_REQUIRED', '登录已失效，请重新登录');
       const stream = createReadStream(outputPath);
       const cleanupExport = () => {
         void rm(outputPath, { force: true });
@@ -683,6 +739,7 @@ export function registerMediaImport(app: FastifyInstance, db: Database, config: 
       return reply
         .type(result.mime)
         .header('X-Editor-Recipe-Included', 'false')
+        .header('X-Precision-Edit-SHA256', result.precisionEdit?.sha256 ?? 'none')
         .header('Cache-Control', 'private, no-store')
         .header(
           'Content-Disposition',
@@ -700,6 +757,8 @@ export function registerMediaImport(app: FastifyInstance, db: Database, config: 
         );
       throw error;
     } finally {
+      req.raw.off('aborted', abortExport);
+      req.raw.socket.off('close', abortExport);
       exporting.delete(actor.id);
     }
   });
