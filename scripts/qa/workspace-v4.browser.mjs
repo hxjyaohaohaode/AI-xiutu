@@ -583,7 +583,7 @@ async function cloudRecoveryHeaderEvidence(page, expectedRoute) {
         inner.right <= outer.right + 1 &&
         inner.y >= outer.y - 1 &&
         inner.bottom <= outer.bottom + 1,
-      label,
+      `${label}: ${JSON.stringify({ inner, outer })}`,
     );
   const toolbar = measured.toolbar;
   assert.ok(
