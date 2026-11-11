@@ -71,7 +71,10 @@ jobs:
           node-version-file: .nvmrc
           cache: npm
       - run: npm ci
-      - run: npx playwright install --with-deps chromium
+      - name: Install Chromium and system dependencies
+        run: |
+          bash scripts/qa/use-ubuntu-archive.sh
+          npx playwright install --with-deps chromium
       - name: Verify public entry, three languages, real account journeys and recovery
         run: node --import tsx scripts/web-account-smoke.mjs
       - name: Preserve account reports and masked screenshots

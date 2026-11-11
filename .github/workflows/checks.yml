@@ -40,7 +40,10 @@ jobs:
           node-version-file: .nvmrc
           cache: npm
       - run: npm ci
-      - run: npx playwright install --with-deps chromium
+      - name: Install Chromium and system dependencies
+        run: |
+          bash scripts/qa/use-ubuntu-archive.sh
+          npx playwright install --with-deps chromium
       - name: Measure continuous slider, curve and touch paints
         run: node --import tsx scripts/qa/interactive-preview.browser.mjs
       - name: Preserve preview timing evidence
@@ -135,6 +138,7 @@ jobs:
       - run: npm ci
       - name: Install English and simplified Chinese OCR runtimes
         run: |
+          bash scripts/qa/use-ubuntu-archive.sh
           sudo apt-get update -qq && sudo apt-get install -y --no-install-recommends tesseract-ocr tesseract-ocr-eng tesseract-ocr-chi-sim fonts-dejavu-core fonts-noto-cjk
           node --use-env-proxy scripts/prepare-ocr.mjs "$RUNNER_TEMP/ocr-tessdata"
           echo "TESSDATA_PREFIX=$RUNNER_TEMP/ocr-tessdata" >> "$GITHUB_ENV"

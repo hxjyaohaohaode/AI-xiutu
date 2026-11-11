@@ -56,7 +56,9 @@ jobs:
           cache: npm
       - run: npm ci
       - id: browser-runtime
-        run: npx playwright install --with-deps chromium
+        run: |
+          bash scripts/qa/use-ubuntu-archive.sh
+          npx playwright install --with-deps chromium
       - name: Verify assistant interaction, retained requests and responsive controls
         run: node --import tsx scripts/qa/assistant.browser.mjs
       - name: Preserve actual assistant reports and screenshots
