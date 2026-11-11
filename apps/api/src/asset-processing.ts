@@ -46,7 +46,7 @@ export const assetProcessingCapabilities = () => ({
   sourcePixelFormat: 'srgb-rgba8',
   maxEncodedBytes: maxEncoded,
   cutout: {
-    algorithms: ['ray-v1', 'guided-v2', 'guided-v3'],
+    algorithms: ['ray-v1', 'guided-v2', 'guided-v3', 'guided-v4'],
     defaultAlgorithm: 'ray-v1',
     maxPixels: MAX_CUTOUT_PIXELS,
     maxUncertainPixels: 1_048_576,
@@ -452,6 +452,7 @@ export function registerAssetProcessing(
       body.name,
       body.kind === 'cutout'
         ? {
+            'guided-v4': 'rgb-guided-trimap-v4',
             'guided-v3': 'rgb-guided-trimap-v3',
             'guided-v2': 'rgb-guided-trimap-v2',
             'ray-v1': 'linear-trimap-v1',

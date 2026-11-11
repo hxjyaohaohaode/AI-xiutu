@@ -1,11 +1,12 @@
 """Optional native decoder. Run only inside the parent's isolated media process group.
 
-Camera RAW -> explicit sRGB uint16; EXR/Radiance -> retained float32 EXR plus
+Camera RAW -> linear development and sRGB uint16; EXR/Radiance -> retained float32 EXR plus
 fixed luminance-preserving Reinhard SDR proxy master. Never executes file metadata.
 """
 import json
 import math
 import resource
+import shutil
 import sys
 from pathlib import Path
 
@@ -35,6 +36,15 @@ def write_image(path, pixels, kind, colorspace, unassociated=False, layout=None)
         output.close()
 
 
+def admit_native(width, height, maximum, directory):
+    if min(width, height) < 1 or max(width, height) > 65_535 or width * height > maximum:
+        raise ValueError("Native source exceeds the dimension budget")
+    # Native development can publish both an EXR and a TIFF before the worker
+    # builds the proxy or tiles. Reserve headroom for those intermediates first.
+    if shutil.disk_usage(directory).free < width * height * 26 + 8 * 1024**2:
+        raise ValueError("Insufficient disk capacity for native development")
+
+
 def main():
     request = json.loads(Path(sys.argv[1]).read_text())
     source, destination = request["inputPath"], Path(request["outputPath"])
@@ -46,15 +56,23 @@ def main():
         native["libraw"] = ".".join(map(str, rawpy.libraw_version))
         with rawpy.imread(source) as raw:
             width, height = raw.sizes.raw_width, raw.sizes.raw_height
-            if width < 1 or height < 1 or width * height > max_pixels:
-                raise ValueError("Camera RAW exceeds the 50MP native budget")
+            admit_native(width, height, max_pixels, destination.parent)
             pixels = raw.postprocess(output_bps=16, output_color=rawpy.ColorSpace.sRGB,
-                                     use_camera_wb=True, no_auto_bright=True, gamma=(2.4, 12.92))
+                                     use_camera_wb=True, no_auto_bright=True, gamma=(1, 1))
             source_info = {"width": width, "height": height, "bitDepth": math.ceil(math.log2(int(raw.white_level) + 1)),
                            "colorSpace": "camera-native", "sampleEncoding": "sensor-raw", "decodedBitDepth": 16, "whiteLevel": int(raw.white_level),
                            "blackLevels": list(map(int, raw.black_level_per_channel))}
+        linear = pixels.astype(np.float32)
+        linear /= np.float32(65535)
+        write_image(destination.with_name("linear-master.exr"), linear, oiio.FLOAT, "Linear")
+        del linear
+        ramp = np.arange(65536, dtype=np.float64) / 65535
+        encoded = np.where(ramp <= 0.0031308, 12.92 * ramp, 1.055 * np.power(ramp, 1 / 2.4) - 0.055)
+        lookup = np.rint(encoded * 65535).astype(np.uint16)
+        for row in range(0, pixels.shape[0], 64):
+            pixels[row:row + 64] = lookup[pixels[row:row + 64]]
         write_image(destination, pixels, oiio.UINT16, "sRGB")
-        warnings = ["RAW is demosaiced with LibRaw camera white balance and fixed sRGB gamma; original sensor bytes are retained. Camera-specific color and lens matching are not claimed."]
+        warnings = ["RAW is demosaiced by LibRaw with camera white balance and no automatic brightening. The float master preserves the normalized 16-bit linear development; it cannot restore clipped sensor data. Original sensor bytes are retained."]
     elif request["kind"] == "hdr":
         image = oiio.ImageInput.open(source)
         if image is None:
@@ -62,8 +80,9 @@ def main():
         try:
             spec = image.spec()
             width, height, channels = spec.width, spec.height, spec.nchannels
-            if width < 1 or height < 1 or width * height > max_pixels or channels not in (1, 3, 4) or spec.deep:
+            if channels not in (1, 3, 4) or spec.deep or spec.depth != 1:
                 raise ValueError("HDR exceeds the flat 1/3/4-channel 50MP budget")
+            admit_native(width, height, max_pixels, destination.parent)
             if image.seek_subimage(1, 0):
                 raise ValueError("Multipart or multi-image HDR is not supported")
             image.seek_subimage(0, 0)
@@ -104,20 +123,23 @@ def main():
                 indices.append(names.index("A"))
             pixels = pixels[:, :, indices]
         write_image(destination.with_name("linear-master.exr"), pixels, oiio.FLOAT, "Linear", layout=layout)
-        rgb = np.maximum(pixels[:, :, :3], 0)
-        # OIIO's default input convention is associated alpha. Tone mapping is
-        # nonlinear, so work on straight color, then declare the TIFF unassociated.
-        if pixels.shape[2] == 4:
-            alpha = pixels[:, :, 3:4]
-            if np.any(alpha < 0) or np.any(alpha > 1):
-                raise ValueError("HDR alpha must be finite coverage in [0,1]")
-            rgb = np.divide(rgb, alpha, out=np.zeros_like(rgb), where=alpha > 0)
-        luminance = np.sum(rgb * np.array([0.2126, 0.7152, 0.0722], dtype=np.float32), axis=2, keepdims=True)
-        mapped = rgb / (1 + luminance)
-        encoded = np.where(mapped <= 0.0031308, 12.92 * mapped, 1.055 * np.power(mapped, 1 / 2.4) - 0.055)
-        if pixels.shape[2] == 4:
-            encoded = np.concatenate([encoded, np.clip(pixels[:, :, 3:4], 0, 1)], axis=2)
-        result = np.rint(np.clip(encoded, 0, 1) * 65535).astype(np.uint16)
+        result = np.empty(pixels.shape, dtype=np.uint16)
+        weights = np.array([0.2126, 0.7152, 0.0722], dtype=np.float64)
+        for row in range(0, height, 64):
+            stripe = pixels[row:row + 64]
+            output = result[row:row + 64]
+            rgb = np.maximum(stripe[:, :, :3].astype(np.float64), 0)
+            # Work in straight color before the nonlinear tone map.
+            if stripe.shape[2] == 4:
+                alpha = stripe[:, :, 3:4]
+                if np.any(alpha < 0) or np.any(alpha > 1):
+                    raise ValueError("HDR alpha must be finite coverage in [0,1]")
+                rgb = np.divide(rgb, alpha, out=np.zeros_like(rgb), where=alpha > 0)
+                output[:, :, 3:4] = np.rint(alpha * 65535)
+            luminance = np.sum(rgb * weights, axis=2, keepdims=True)
+            mapped = rgb / (1 + luminance)
+            encoded = np.where(mapped <= 0.0031308, 12.92 * mapped, 1.055 * np.power(mapped, 1 / 2.4) - 0.055)
+            output[:, :, :3] = np.rint(np.clip(encoded, 0, 1) * 65535)
         write_image(destination, result, oiio.UINT16, "sRGB", unassociated=True)
         warnings = ["HDR is interpreted as linear Rec.709/sRGB; explicit unsupported primaries/transfer are rejected. The float32 master retains the source data window, display window and pixel aspect ratio. The SDR proxy uses data-window pixels and fixed luminance Reinhard tone mapping, clipping negative/out-of-gamut SDR values."]
     else:

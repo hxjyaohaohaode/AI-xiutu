@@ -19,6 +19,7 @@ import type {
 const clamp = (value: number): number => Math.min(1, Math.max(0, value));
 const DECODE = Float32Array.from({ length: 256 }, (_, i) => srgbToLinear(i / 255));
 const channels: CurveChannel[] = ['rgb', 'red', 'green', 'blue'];
+const packedRgba = new Uint8Array(Uint32Array.of(1).buffer)[0] === 1;
 type CompiledCurves = Record<CurveChannel, ((value: number) => number) | null>;
 
 export class RenderAbortedError extends Error {
@@ -370,6 +371,20 @@ export function renderValidatedRegion(
   const globalNeutral = session.globalNeutral;
   const localActive = session.localActive;
   const maps = session.pointBytes;
+  const identity =
+    !recipe.geometry.crop &&
+    recipe.geometry.rotation === 0 &&
+    !recipe.geometry.flipX &&
+    !recipe.geometry.flipY;
+  if (identity && globalNeutral && !localActive && !extension?.active) {
+    checkAbort(options);
+    const data = workspace?.output.subarray(0, image.data.length);
+    if (data) {
+      data.set(image.data);
+      return { ...dimensions, data };
+    }
+    return { ...dimensions, data: image.data.slice() };
+  }
   if (
     maps &&
     !localActive &&
@@ -381,11 +396,32 @@ export function renderValidatedRegion(
     const data = workspace?.output.subarray(0, length) ?? new Uint8ClampedArray(length);
     const fallback = new Float32Array(3),
       encoded = session.encoded!;
-    const identity =
-      !recipe.geometry.crop &&
-      recipe.geometry.rotation === 0 &&
-      !recipe.geometry.flipX &&
-      !recipe.geometry.flipY;
+    const [redMap, greenMap, blueMap] = maps;
+    // Stable maps allow one native-width read and write for each RGBA pixel.
+    if (
+      identity &&
+      packedRgba &&
+      image.data.byteOffset % 4 === 0 &&
+      data.byteOffset % 4 === 0 &&
+      maps.every((map) => map.every((value) => value >= 0))
+    ) {
+      const input = new Uint32Array(image.data.buffer, image.data.byteOffset, length / 4);
+      const output = new Uint32Array(data.buffer, data.byteOffset, length / 4);
+      for (let y = 0; y < dimensions.height; y++) {
+        if ((y & 31) === 0) checkAbort(options);
+        const start = y * dimensions.width;
+        const end = start + dimensions.width;
+        for (let at = start; at < end; at++) {
+          const rgba = input[at]!;
+          const alpha = rgba & 0xff000000;
+          output[at] = alpha
+            ? alpha | (blueMap![(rgba >>> 16) & 255]! << 16) | (greenMap![(rgba >>> 8) & 255]! << 8) | redMap![rgba & 255]!
+            : rgba;
+        }
+      }
+      checkAbort(options);
+      return { ...dimensions, data };
+    }
     for (let y = 0; y < dimensions.height; y++) {
       if ((y & 31) === 0) checkAbort(options);
       for (let x = 0; x < dimensions.width; x++) {
@@ -402,9 +438,9 @@ export function renderValidatedRegion(
           data[out + 1] = g;
           data[out + 2] = b;
         } else {
-          const red = maps[0]![r]!,
-            green = maps[1]![g]!,
-            blue = maps[2]![b]!;
+          const red = redMap![r]!,
+            green = greenMap![g]!,
+            blue = blueMap![b]!;
           if (red >= 0 && green >= 0 && blue >= 0) {
             data[out] = red;
             data[out + 1] = green;

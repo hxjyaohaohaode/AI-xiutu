@@ -1429,7 +1429,7 @@ export function App({
     const selection = subject ?? foreground;
     if (!selection) throw new Error(t('请先识别人像或选择前景。'));
     const settings: CutoutSettings = {
-      algorithm: 'guided-v3',
+      algorithm: 'guided-v4',
       selection,
       ...(foreground && subject ? { foreground } : {}),
       ...(background ? { background } : {}),

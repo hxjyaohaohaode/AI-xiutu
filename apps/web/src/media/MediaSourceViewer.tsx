@@ -1,6 +1,6 @@
 import { t } from '../i18n';
 import { useEffect, useRef, useState } from 'react';
-import type { MediaDescriptorV1 } from '@ai-xiutu/media';
+import type { MediaDescriptorV1, MediaGradeRevision, MediaPrecisionInput } from '@ai-xiutu/media';
 import {
   NEUTRAL_PRECISION_EDIT,
   PRECISION_EDIT_CONTROLS,
@@ -11,7 +11,8 @@ import { api, errorMessage, jsonRequest, downloadBlob, ApiError } from '../lib/a
 import { InlineError, IconButton } from '../components/Ui';
 import { PrecisionRange } from '../editor/PrecisionRange';
 import { ChoiceSelect } from '../components/ChoiceSelect';
-import { visibleTiles, zoomAround, type TileView } from './tile-layout';
+import { nativePreviewWindow, visibleTiles, zoomAround, type TileView } from './tile-layout';
+import { useMasterPreview } from './useMasterPreview';
 import './media.css';
 export interface MediaRecord {
   descriptor: MediaDescriptorV1;
@@ -32,6 +33,10 @@ export interface MediaRecord {
       floatAvailable: boolean;
       sourceSha256: string;
       maxPixels: number;
+      maxLinearPixels?: number;
+      previewMaxEdge?: number;
+      canSave?: boolean;
+      currentGrade?: MediaGradeRevision | null;
     };
   };
 }
@@ -43,22 +48,57 @@ export function MediaSourceViewer({ assetId }: { assetId: string }) {
   const [size, setSize] = useState({ width: 400, height: 280 }),
     [view, setView] = useState<TileView>({ x: 0, y: 0, zoom: 1 });
   const [edit, setEdit] = useState<PrecisionEditV1>({ ...NEUTRAL_PRECISION_EDIT });
+  const [precisionInput, setPrecisionInput] = useState<MediaPrecisionInput>('master16');
   const [outputFormat, setOutputFormat] = useState<PrecisionFormat>('png16');
+  const [grading, setGrading] = useState(false);
+  const [saving, setSaving] = useState(false);
+  const [gradeVersion, setGradeVersion] = useState(0);
+  const [grades, setGrades] = useState<MediaGradeRevision[]>([]);
+  const [nextBefore, setNextBefore] = useState<number | null>(null);
+  const [revisionChoice, setRevisionChoice] = useState('');
+  const [loadingGrades, setLoadingGrades] = useState(false);
+  const [conflict, setConflict] = useState(false);
   const exportRequest = useRef<AbortController | null>(null);
+  const assetSession = useRef<AbortController | null>(null);
   const root = useRef<HTMLDivElement>(null),
     drag = useRef<{ x: number; y: number; view: TileView } | null>(null);
   useEffect(() => {
     const controller = new AbortController();
+    assetSession.current = controller;
     setRecord(null);
     setError(null);
     setEdit({ ...NEUTRAL_PRECISION_EDIT });
     setOutputFormat('png16');
+    setPrecisionInput('master16');
     setExporting(false);
+    setGrading(false);
+    setSaving(false);
+    setGradeVersion(0);
+    setGrades([]);
+    setNextBefore(null);
+    setRevisionChoice('');
+    setLoadingGrades(false);
+    setConflict(false);
     api<MediaRecord>(`/assets/${assetId}/media`, { signal: controller.signal })
       .then((record) => {
         if (controller.signal.aborted) return;
         setRecord(record);
-        if (record.editor.precisionEditing?.floatAvailable) setOutputFormat('exr32');
+        const precision = record.editor.precisionEditing;
+        const saved = precision?.currentGrade;
+        const input =
+          saved?.precisionInput ?? (precision?.floatAvailable ? 'linear-master' : 'master16');
+        setPrecisionInput(input);
+        if (input === 'linear-master' && precision?.floatAvailable) setOutputFormat('exr32');
+        if (saved) {
+          setEdit(saved.edit);
+          setGradeVersion(saved.version);
+          setRevisionChoice(String(saved.version));
+          setGrades([saved]);
+        } else if (
+          input === 'linear-master' &&
+          record.descriptor.original.sampleEncoding !== 'sensor-raw'
+        )
+          setEdit({ ...NEUTRAL_PRECISION_EDIT, toneMap: 'reinhard' });
       })
       .catch((e) => {
         if (e.name !== 'AbortError') setError(errorMessage(e));
@@ -91,12 +131,31 @@ export function MediaSourceViewer({ assetId }: { assetId: string }) {
   const descriptor = record?.descriptor,
     tiles = descriptor?.tiles;
   const precision = record?.editor.precisionEditing;
+  const maxGradePixels =
+    precisionInput === 'linear-master' ? precision?.maxLinearPixels : precision?.maxPixels;
   const canEdit = !!(
     precision?.master16 &&
     descriptor &&
     precision.algorithm === NEUTRAL_PRECISION_EDIT.algorithm &&
-    descriptor.master.width * descriptor.master.height <= precision.maxPixels
+    (precisionInput === 'master16' || precision.floatAvailable) &&
+    descriptor.master.width * descriptor.master.height <= (maxGradePixels ?? precision.maxPixels)
   );
+  const maxEdge = precision?.previewMaxEdge;
+  const region =
+    descriptor && maxEdge ? nativePreviewWindow(descriptor.master, view, size, maxEdge) : undefined;
+  const wantsGrade = grading && canEdit;
+  const previewBody =
+    precision?.master16 && maxEdge && (region || wantsGrade)
+      ? JSON.stringify({
+          expectedSourceSha256: precision.sourceSha256,
+          precisionInput: wantsGrade ? precisionInput : 'master16',
+          precisionEdit: wantsGrade ? edit : undefined,
+          maxEdge: region ? maxEdge : Math.min(maxEdge, 1536),
+          region,
+        })
+      : null;
+  const preview = useMasterPreview(assetId, previewBody, !exporting);
+  const previewRegion = preview.frame?.region ?? descriptor?.master;
   const tileList =
     descriptor && tiles ? visibleTiles({ ...descriptor.master, ...tiles }, view, size) : [];
   useEffect(() => {
@@ -130,6 +189,68 @@ export function MediaSourceViewer({ assetId }: { assetId: string }) {
       zoomAround(old, { x: size.width / 2, y: size.height / 2 }, Math.max(min, Math.min(8, zoom))),
     );
   };
+  function loadRevision(revision: MediaGradeRevision) {
+    setRevisionChoice(String(revision.version));
+    setEdit(revision.edit);
+    setPrecisionInput(revision.precisionInput);
+    if (revision.precisionInput === 'master16') setOutputFormat('png16');
+  }
+  async function loadGrades(before?: number, reload = false) {
+    const signal = assetSession.current?.signal;
+    if (!signal || signal.aborted || loadingGrades) return;
+    setLoadingGrades(true);
+    try {
+      const result = await api<{ grades: MediaGradeRevision[]; nextBeforeVersion: number | null }>(
+        `/assets/${assetId}/media/grades${before ? `?beforeVersion=${before}` : ''}`,
+        { signal },
+      );
+      if (signal.aborted) return;
+      setGrades((current) => (before ? [...current, ...result.grades] : result.grades));
+      setNextBefore(result.nextBeforeVersion);
+      if (reload && result.grades[0]) {
+        loadRevision(result.grades[0]);
+        setGradeVersion(result.grades[0].version);
+        setConflict(false);
+        setError(null);
+      }
+    } catch (error) {
+      if (!signal.aborted) setError(errorMessage(error));
+    } finally {
+      if (!signal.aborted) setLoadingGrades(false);
+    }
+  }
+  async function saveGrade() {
+    const signal = assetSession.current?.signal;
+    if (!signal || signal.aborted || saving || !precision?.canSave || !canEdit) return;
+    setSaving(true);
+    setError(null);
+    try {
+      const { grade } = await api<{ grade: MediaGradeRevision }>(
+        `/assets/${assetId}/media/grades`,
+        {
+          ...jsonRequest('POST', {
+            expectedVersion: gradeVersion,
+            expectedSourceSha256: precision.sourceSha256,
+            precisionInput,
+            precisionEdit: edit,
+          }),
+          signal,
+        },
+      );
+      if (signal.aborted) return;
+      setGradeVersion(grade.version);
+      setRevisionChoice(String(grade.version));
+      setGrades((current) => [grade, ...current]);
+      setConflict(false);
+    } catch (error) {
+      if (!signal.aborted) {
+        setConflict(error instanceof ApiError && error.code === 'VERSION_CONFLICT');
+        setError(errorMessage(error));
+      }
+    } finally {
+      if (!signal.aborted) setSaving(false);
+    }
+  }
   async function exportMaster(format: PrecisionFormat, adjustment?: PrecisionEditV1) {
     if (exportRequest.current || (adjustment && (!canEdit || !precision))) return;
     const controller = new AbortController();
@@ -141,7 +262,11 @@ export function MediaSourceViewer({ assetId }: { assetId: string }) {
         ...jsonRequest('POST', {
           format,
           ...(adjustment && precision
-            ? { precisionEdit: adjustment, expectedSourceSha256: precision.sourceSha256 }
+            ? {
+                precisionEdit: adjustment,
+                precisionInput,
+                expectedSourceSha256: precision.sourceSha256,
+              }
             : {}),
         }),
         headers: { 'Content-Type': 'application/json' },
@@ -211,6 +336,15 @@ export function MediaSourceViewer({ assetId }: { assetId: string }) {
       </div>
       <div
         className="media-tile-viewport"
+        data-media-preview={
+          preview.pending
+            ? 'pending'
+            : preview.failed
+              ? 'failed'
+              : preview.frame
+                ? 'ready'
+                : 'source'
+        }
         ref={root}
         tabIndex={0}
         role="img"
@@ -248,35 +382,53 @@ export function MediaSourceViewer({ assetId }: { assetId: string }) {
           drag.current = null;
         }}
       >
-        {tiles ? (
-          tileList.map((tile) => (
-            <div
-              key={tile.key}
-              className="media-tile"
-              style={{ left: tile.left, top: tile.top, width: tile.width, height: tile.height }}
-            >
-              <img
-                draggable={false}
-                alt=""
-                src={`/v1/assets/${assetId}/media/tiles_files/${tile.key}.${tiles.format}`}
-                style={{
-                  left: tile.imageLeft,
-                  top: tile.imageTop,
-                  width: tile.imageWidth,
-                  height: tile.imageHeight,
-                }}
-                onError={() => setError(t('部分图块未能读取，请检查连接或项目权限。'))}
-              />
-            </div>
-          ))
-        ) : (
-          <img
-            className="media-fallback"
-            src={`/v1/assets/${assetId}/file`}
-            alt={t('编辑代理图')}
-          />
+        {(!preview.frame || preview.frame.region) &&
+          (tiles ? (
+            tileList.map((tile) => (
+              <div
+                key={tile.key}
+                className="media-tile"
+                style={{ left: tile.left, top: tile.top, width: tile.width, height: tile.height }}
+              >
+                <img
+                  draggable={false}
+                  alt=""
+                  src={`/v1/assets/${assetId}/media/tiles_files/${tile.key}.${tiles.format}`}
+                  style={{
+                    left: tile.imageLeft,
+                    top: tile.imageTop,
+                    width: tile.imageWidth,
+                    height: tile.imageHeight,
+                  }}
+                  onError={() => setError(t('部分图块未能读取，请检查连接或项目权限。'))}
+                />
+              </div>
+            ))
+          ) : (
+            <img
+              className="media-fallback"
+              src={`/v1/assets/${assetId}/file`}
+              alt={t('编辑代理图')}
+            />
+          ))}
+        {preview.frame && previewRegion && (
+          <div
+            className="media-tile media-precision-frame"
+            data-native-window={preview.frame.region ? 'true' : undefined}
+            style={{
+              left: view.x + ('left' in previewRegion ? previewRegion.left : 0) * view.zoom,
+              top: view.y + ('top' in previewRegion ? previewRegion.top : 0) * view.zoom,
+              width: previewRegion.width * view.zoom,
+              height: previewRegion.height * view.zoom,
+            }}
+          >
+            <img draggable={false} alt="" src={preview.frame.url} />
+          </div>
         )}
       </div>
+      {(preview.pending || preview.failed) && (
+        <small role="status">{t(preview.failed ? '母版预览未能更新' : '正在更新母版预览')}</small>
+      )}
       {descriptor && (
         <>
           <dl className="media-facts">
@@ -344,7 +496,15 @@ export function MediaSourceViewer({ assetId }: { assetId: string }) {
             </button>
           </div>
           {canEdit ? (
-            <details className="editor-section">
+            <details
+              className="editor-section"
+              open={grading}
+              onToggle={(event) => {
+                const open = event.currentTarget.open;
+                setGrading(open);
+                if (open && gradeVersion) void loadGrades();
+              }}
+            >
               <summary>{t('母版高位深调色')}</summary>
               {PRECISION_EDIT_CONTROLS.map(({ key, label, minimum, maximum, step, unit }) => (
                 <PrecisionRange
@@ -355,30 +515,44 @@ export function MediaSourceViewer({ assetId }: { assetId: string }) {
                   step={step}
                   value={edit[key]}
                   unit={unit}
-                  disabled={exporting}
-                  onChange={(value) => setEdit((current) => ({ ...current, [key]: value }))}
+                  disabled={exporting || saving}
+                  onChange={(value) => {
+                    setRevisionChoice('');
+                    setEdit((current) => ({ ...current, [key]: value }));
+                  }}
                 />
               ))}
               <ChoiceSelect
                 ariaLabel={t('高光色调映射')}
                 value={edit.toneMap}
-                disabled={exporting}
+                disabled={exporting || saving}
                 options={[
                   { value: 'none', label: t('保留线性高光') },
                   { value: 'reinhard', label: t('压缩高光 Reinhard') },
                 ]}
-                onValueChange={(value) =>
+                onValueChange={(value) => {
+                  setRevisionChoice('');
                   setEdit((current) => ({
                     ...current,
                     toneMap: value === 'reinhard' ? value : 'none',
-                  }))
-                }
+                  }));
+                }}
               />
               <div className="media-downloads">
                 <button
                   className="text-button"
-                  disabled={exporting}
-                  onClick={() => setEdit({ ...NEUTRAL_PRECISION_EDIT })}
+                  disabled={exporting || saving}
+                  onClick={() => {
+                    setRevisionChoice('');
+                    setEdit({
+                      ...NEUTRAL_PRECISION_EDIT,
+                      toneMap:
+                        precisionInput === 'linear-master' &&
+                        descriptor.original.sampleEncoding !== 'sensor-raw'
+                          ? 'reinhard'
+                          : 'none',
+                    });
+                  }}
                 >
                   {t('重置')}
                 </button>
@@ -389,7 +563,7 @@ export function MediaSourceViewer({ assetId }: { assetId: string }) {
                   options={[
                     { value: 'png16', label: 'PNG 16-bit' },
                     { value: 'tiff16', label: 'TIFF 16-bit' },
-                    ...(precision?.floatAvailable
+                    ...(precisionInput === 'linear-master'
                       ? [{ value: 'exr32', label: 'EXR 32-bit HDR' }]
                       : []),
                   ]}
@@ -403,11 +577,62 @@ export function MediaSourceViewer({ assetId }: { assetId: string }) {
                   {exporting ? t('正在转换') : t('导出调色母版')}
                 </button>
               </div>
+              <div className="media-downloads">
+                {grades.length > 0 && (
+                  <ChoiceSelect
+                    ariaLabel={t('母版调色版本')}
+                    value={revisionChoice}
+                    disabled={saving || exporting || loadingGrades}
+                    options={[
+                      { value: '', label: t('当前调色') },
+                      ...grades.map(({ version }) => ({
+                        value: String(version),
+                        label: t('版本 {v0}', { v0: version }),
+                      })),
+                    ]}
+                    onValueChange={(value) => {
+                      const selected = grades.find((grade) => String(grade.version) === value);
+                      if (selected) loadRevision(selected);
+                    }}
+                  />
+                )}
+                {nextBefore !== null && (
+                  <button
+                    className="text-button"
+                    disabled={loadingGrades || saving}
+                    onClick={() => void loadGrades(nextBefore)}
+                  >
+                    {t('加载较早版本')}
+                  </button>
+                )}
+                {precision?.canSave && (
+                  <button
+                    className="button button-secondary"
+                    disabled={
+                      saving || exporting || conflict || revisionChoice === String(gradeVersion)
+                    }
+                    onClick={() => void saveGrade()}
+                  >
+                    {t(saving ? '正在保存' : '保存母版调色版本')}
+                  </button>
+                )}
+                {conflict && (
+                  <button
+                    className="text-button"
+                    disabled={loadingGrades}
+                    onClick={() => void loadGrades(undefined, true)}
+                  >
+                    {t('载入最新调色版本')}
+                  </button>
+                )}
+              </div>
             </details>
           ) : (
             precision?.master16 && (
               <p className="control-note">
-                {t('母版调色上限 {v0} 百万像素', { v0: (precision.maxPixels / 1e6).toFixed(1) })}
+                {t('母版调色上限 {v0} 百万像素', {
+                  v0: ((maxGradePixels ?? precision.maxPixels) / 1e6).toFixed(1),
+                })}
               </p>
             )
           )}

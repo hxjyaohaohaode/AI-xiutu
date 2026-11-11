@@ -9,6 +9,7 @@ import {
   srgbToLinear,
   type RGBAImage,
 } from '../src/index.js';
+import { findMatteAnchors } from '../src/matte-anchors.js';
 
 test('wide exposure range agrees with independent linear-light gains at every one-third stop and keeps alpha', () => {
   const image: RGBAImage = {
@@ -105,6 +106,34 @@ test('guided matte respects explicit trimap paint, non-opaque sources, empty/ful
   const stop = new AbortController();
   stop.abort();
   assert.throws(() => renderCutout(source, settings, { signal: stop.signal }), /abort/i);
+});
+
+test('matte anchors follow a strand around a corner and stop at confirmed occlusion', () => {
+  const width = 64,
+    height = 48,
+    data = new Uint8ClampedArray(width * height * 4).fill(255),
+    labels = new Float32Array(width * height),
+    at = (x: number, y: number) => y * width + x;
+  const image = { width, height, data };
+  for (let x = 10; x <= 20; x++) labels[at(x, 20)] = 0.5;
+  for (let y = 10; y < 20; y++) labels[at(20, y)] = 0.5;
+  labels[at(20, 10)] = 1;
+  const target = at(10, 20);
+  assert.equal(findMatteAnchors(image, labels, 24, {})[1][target], at(20, 10));
+  labels[at(20, 17)] = 0;
+  assert.equal(findMatteAnchors(image, labels, 24, {})[1][target], -1);
+  const coverage = Uint8Array.from(labels, (label) => Math.round(label * 255));
+  const excluded = new Uint8Array(labels.length);
+  excluded[target] = 255;
+  const output = renderCutout(image, {
+    algorithm: 'guided-v4',
+    selection: createRasterMask(width, height, coverage),
+    background: createRasterMask(width, height, excluded),
+    radius: 0.05,
+    decontaminate: 1,
+  });
+  assert.equal(output.data[target * 4 + 3], 0);
+  assert.equal(output.data[at(20, 10) * 4 + 3], 255);
 });
 
 test('trimap recovers a known subpixel mixture, preserves hard sides and does not restore transparent alpha', () => {

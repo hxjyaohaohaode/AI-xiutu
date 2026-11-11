@@ -320,6 +320,13 @@ export async function processMedia(request: ProcessMediaRequest): Promise<MediaD
 export async function exportMedia(request: ExportMediaRequest): Promise<MediaExportResult> {
   if (!['png16', 'tiff16', 'jpeg', 'webp', 'exr32'].includes(request.format))
     throw new MediaProcessingError('Unsupported export format', 'unsupported');
+  if (
+    (request.precisionInput !== undefined &&
+      (!['master16', 'linear-master'].includes(request.precisionInput) ||
+        (request.format === 'exr32' && request.precisionInput !== 'linear-master'))) ||
+    (request.preview && request.format !== 'png16')
+  )
+    throw new MediaProcessingError('Unsupported precision input or preview format', 'unsupported');
   const options = normalizeMediaOptions({ ...request.options, maxPixels: MEDIA_MAX_PIXELS }),
     outputPath = resolve(request.outputPath),
     workDir = resolve(request.workDir);
@@ -341,6 +348,8 @@ export async function exportMedia(request: ExportMediaRequest): Promise<MediaExp
         format: request.format,
         quality,
         ...(precisionEdit ? { precisionEdit } : {}),
+        ...(request.precisionInput ? { precisionInput: request.precisionInput } : {}),
+        ...(request.preview ? { preview: request.preview } : {}),
       },
       options,
       request.signal,

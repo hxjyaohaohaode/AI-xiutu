@@ -1,7 +1,25 @@
+import type { MediaPrecisionWindow } from '@ai-xiutu/media';
+
 export interface TileView {
   x: number;
   y: number;
   zoom: number;
+}
+export function nativePreviewWindow(
+  source: { width: number; height: number },
+  view: TileView,
+  viewport: { width: number; height: number },
+  maxEdge: number,
+): MediaPrecisionWindow | undefined {
+  if (view.zoom < 0.75) return undefined;
+  const left = Math.max(0, Math.floor(-view.x / view.zoom));
+  const top = Math.max(0, Math.floor(-view.y / view.zoom));
+  const right = Math.min(source.width, Math.ceil((viewport.width - view.x) / view.zoom));
+  const bottom = Math.min(source.height, Math.ceil((viewport.height - view.y) / view.zoom));
+  const width = right - left,
+    height = bottom - top;
+  if (width < 1 || height < 1 || width > maxEdge || height > maxEdge) return undefined;
+  return { left, top, width, height };
 }
 export function visibleTiles(
   source: { width: number; height: number; tileSize: number; levels: number; overlap?: number },

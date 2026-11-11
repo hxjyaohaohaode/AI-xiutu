@@ -19,6 +19,7 @@ import {
   localEditorSourceLimits,
   type EditorRecipe,
   type RGBAImage,
+  type Histogram,
   type CutoutSettings,
 } from '@ai-xiutu/editor';
 import { downloadBlob, filenameBase } from '../lib/api';
@@ -29,6 +30,8 @@ import { usePortraitAnalysis } from './usePortraitAnalysis';
 import { decodeImageSource } from './imageSources';
 import { editorGeometryKey } from './coordinates';
 import { ensureWorker, releaseWorker } from './workerLifecycle';
+import { fitsNativeColorPreview } from './native-preview';
+import { rememberHistogram } from './histogram-cache';
 export { editorGeometryKey } from './coordinates';
 
 const MAX_PREVIEW_PIXELS = 4_194_304;
@@ -123,7 +126,14 @@ type PreviewJob = {
 };
 type PreviewRequest = PreviewJob & { id: number };
 type PreviewLane = { inFlight: PreviewRequest | null; pending: PreviewJob | null };
-type RenderReply = { id: number; type: string; result?: RGBAImage; blob?: Blob; error?: string };
+type RenderReply = {
+  id: number;
+  type: string;
+  result?: RGBAImage;
+  blob?: Blob;
+  error?: string;
+  histogram?: Histogram;
+};
 const SETTLE_DELAY_MS = 140;
 
 export function useEditor() {
@@ -284,7 +294,7 @@ export function useEditor() {
     const main = ensureWorker(
       worker,
       create,
-      ({ id, type, result, blob, error: failure }: RenderReply) => {
+      ({ id, type, result, blob, error: failure, histogram }: RenderReply) => {
         if (type === 'export') {
           const p = pending.current.get(id);
           pending.current.delete(id);
@@ -303,6 +313,7 @@ export function useEditor() {
             setRendering(false);
             if (failure) setError(failure);
             else if (result) {
+              if (histogram) rememberHistogram(result, histogram);
               setRendered(result);
               setRenderedRecipe(completed.recipe);
               setRenderedGeometryKey(editorGeometryKey(completed.recipe));
@@ -625,8 +636,14 @@ export function useEditor() {
         const images = new Map([...resolved].map(([id, item]) => [id, item.preview]));
         // Recreate only for an explicit, fully decoded import. Posting the complete
         // source first preserves FIFO ordering with its first settled preview.
+        let liveNative: RGBAImage | undefined;
         try {
           const main = ensureWorkers();
+          if (
+            liveWorker.current &&
+            (preview.width !== full.width || preview.height !== full.height) &&
+            fitsNativeColorPreview(full.width, full.height)
+          ) liveNative = { ...sourceDimensions, data: full.data.slice() };
           sourceWorker.current = null;
           main.postMessage(
             {
@@ -644,12 +661,16 @@ export function useEditor() {
           throw new Error('本地图像处理器未能接收照片，请重新导入。');
         }
         try {
-          liveWorker.current?.postMessage({
-            type: 'interactive-source',
-            image: preview,
-            sourceDimensions,
-            images,
-          });
+          liveWorker.current?.postMessage(
+            {
+              type: 'interactive-source',
+              image: preview,
+              original: liveNative,
+              sourceDimensions,
+              images,
+            },
+            liveNative ? [liveNative.data.buffer] : [],
+          );
         } catch {
           stopLiveWorker();
         }

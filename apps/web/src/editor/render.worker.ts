@@ -6,6 +6,8 @@ import {
   type CutoutSettings,
   getEditorOutputDimensions,
   localEditorSourceLimits,
+  MAX_EXPLICIT_PIXELS,
+  computeHistogram,
   WarpPreviewCache,
   type Dimensions,
   type RGBAImage,
@@ -23,11 +25,12 @@ import {
   previewFamily,
   type PreviewFamily,
 } from './interactive-preview-policy';
-import { canPreviewNativeColor } from './native-preview';
+import { canPreviewNativeColor, fitsNativeColorPreview } from './native-preview';
 
 let preview: RGBAImage | null = null;
 let detailPreview: RGBAImage | null = null;
 let original: RGBAImage | null = null;
+let liveNativeSource: RGBAImage | null = null;
 let sourceDimensions: Dimensions | null = null;
 const livePolicy = new InteractivePreviewPolicy();
 let previousLiveRecipe: EditorRecipe | null = null;
@@ -71,6 +74,7 @@ self.onmessage = async (event: MessageEvent<Message>) => {
   const message = event.data;
   if (message.type === 'interactive-source') {
     original = null;
+    liveNativeSource = message.original ?? message.image ?? null;
     originalImages.clear();
     previewSources.clear();
     warpPreviewCache.clear();
@@ -96,6 +100,7 @@ self.onmessage = async (event: MessageEvent<Message>) => {
     detailPreview = null;
     detailImages.clear();
     original = message.original ?? null;
+    liveNativeSource = null;
     sourceDimensions = original;
     images = message.images ?? new Map();
     originalImages = message.originalImages ?? new Map();
@@ -147,19 +152,20 @@ self.onmessage = async (event: MessageEvent<Message>) => {
     const interactive = message.type === 'interactive-preview';
     const warpDetail = interactive && message.previewQuality === 'warp';
     const detail = warpDetail || (interactive && message.previewQuality === 'full');
-    const native = !!(
-      interactive &&
+    const fullSource = interactive ? liveNativeSource : original;
+    const native =
+      message.type !== 'export' &&
       !detail &&
       message.recipe &&
-      detailPreview &&
-      sourceDimensions &&
-      detailPreview.width === sourceDimensions.width &&
-      detailPreview.height === sourceDimensions.height &&
-      detailPreview.width * detailPreview.height <= MAX_PREVIEW_PIXELS &&
+      fullSource &&
+      fullSource.width === sourceDimensions?.width &&
+      fullSource.height === sourceDimensions.height &&
+      fitsNativeColorPreview(fullSource.width, fullSource.height) &&
       canPreviewNativeColor(message.recipe)
-    );
+        ? fullSource
+        : null;
     const source =
-      message.type === 'export' ? original : detail || native ? detailPreview : preview;
+      message.type === 'export' ? original : (native ?? (detail ? detailPreview : preview));
     if (!source || !message.recipe) throw new Error('请先导入图片。');
     if (message.type === 'export' && message.cutout) {
       if (message.format !== undefined && message.format !== 'png')
@@ -184,9 +190,7 @@ self.onmessage = async (event: MessageEvent<Message>) => {
         ? previewFamily(previousLiveRecipe, message.recipe, previousLiveFamily)
         : null;
     const frame = family ? livePolicy.begin(family, started) : null;
-    const budget = native
-      ? MAX_PREVIEW_PIXELS
-      : (frame?.pixels ?? message.maxPixels ?? MAX_PREVIEW_PIXELS);
+    const budget = frame?.pixels ?? message.maxPixels ?? MAX_PREVIEW_PIXELS;
     let renderImages = detail ? detailImages : images;
     if (interactive && !detail && 'imageLayers' in message.recipe) {
       renderImages = new Map();
@@ -198,12 +202,14 @@ self.onmessage = async (event: MessageEvent<Message>) => {
     }
     const recipe = message.recipe;
     const renderPreview = () =>
-      renderEditorRecipe(preparedSource(source, recipe, budget), recipe, {
-        // Output is budgeted before rendering; auxiliary previews retain their normalized placement.
-        maxPixels: MAX_PREVIEW_PIXELS,
-        images: renderImages,
-        warpPreviewCache: warpDetail ? warpPreviewCache : undefined,
-      });
+      native
+        ? renderEditorRecipe(native, recipe, { maxPixels: MAX_EXPLICIT_PIXELS })
+        : renderEditorRecipe(preparedSource(source, recipe, budget), recipe, {
+            // Output is budgeted before rendering; auxiliary previews retain their normalized placement.
+            maxPixels: MAX_PREVIEW_PIXELS,
+            images: renderImages,
+            warpPreviewCache: warpDetail ? warpPreviewCache : undefined,
+          });
     if (warpDetail && message.prewarmWarp) {
       warpPreviewCache.prewarm(renderPreview);
       self.postMessage({ id: message.id, type: message.type });
@@ -258,7 +264,16 @@ self.onmessage = async (event: MessageEvent<Message>) => {
           ? { ...result, data: new Uint8ClampedArray(result.data) }
           : result;
       self.postMessage(
-        { id: message.id, type: message.type, result: safeResult, native },
+        {
+          id: message.id,
+          type: message.type,
+          result: safeResult,
+          native: native !== null,
+          histogram:
+            message.type === 'preview' && result.width * result.height > MAX_PREVIEW_PIXELS
+              ? computeHistogram(result, { maxPixels: MAX_EXPLICIT_PIXELS })
+              : undefined,
+        },
         { transfer: [safeResult.data.buffer] },
       );
     }

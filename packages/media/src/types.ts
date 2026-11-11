@@ -7,6 +7,9 @@ export const MEDIA_MAX_SIDE = 65_535;
 export const MEDIA_MAX_TILE_COUNT = 8_192;
 export const MEDIA_MAX_INPUT_BYTES = 536_870_912;
 export const MEDIA_MAX_PROXY_PIXELS = 4_194_304;
+export const MEDIA_MAX_PRECISION_PIXELS = 16_777_216;
+export const MEDIA_MAX_LINEAR_PIXELS = 50_000_000;
+export const MEDIA_MAX_PREVIEW_EDGE = 2048;
 export interface MediaProcessingOptions {
   maxPixels?: number;
   maxInputBytes?: number;
@@ -53,7 +56,7 @@ export interface MediaDescriptorV1 {
   };
   /** sRGB uint16 TIFF working master. HDR source is retained; this master is explicitly SDR. */
   master: MediaFileV1;
-  /** Only for validated EXR/Radiance imports; decoded float32 source before SDR tone mapping. */
+  /** Scene-linear float32 pixels from validated HDR input or a linear RAW development. */
   linearMaster?: MediaFileV1;
   /** Display sRGB RGBA8 PNG, separate from the immutable encoded source/master. */
   proxy: MediaFileV1 & { normalizedDimensions: { width: number; height: number } };
@@ -99,6 +102,25 @@ export interface ProcessMediaRequest {
   options?: MediaProcessingOptions;
 }
 export type MediaExportFormat = 'png16' | 'tiff16' | 'jpeg' | 'webp' | 'exr32';
+export type MediaPrecisionInput = 'master16' | 'linear-master';
+export interface MediaGradeRevision {
+  version: number;
+  sourceSha256: string;
+  precisionInput: MediaPrecisionInput;
+  edit: PrecisionEditV1;
+  createdAt: string;
+}
+export interface MediaPrecisionWindow {
+  left: number;
+  top: number;
+  width: number;
+  height: number;
+}
+export interface MediaPrecisionPreview {
+  maxEdge: number;
+  /** Source data-window coordinates after orientation normalization. */
+  region?: MediaPrecisionWindow;
+}
 export interface ExportMediaRequest {
   workDir: string;
   /** A new API-owned output path. No replacement of existing files. */
@@ -106,6 +128,10 @@ export interface ExportMediaRequest {
   format: MediaExportFormat;
   /** Explicit global grading of the actual retained master, independently versioned. */
   precisionEdit?: PrecisionEditV1;
+  /** Existing SDR exports default to master16. EXR always requires the linear master. */
+  precisionInput?: MediaPrecisionInput;
+  /** Display PNG16, optionally limited to a native-resolution window. */
+  preview?: MediaPrecisionPreview;
   signal?: AbortSignal;
   options?: Pick<MediaProcessingOptions, 'timeoutMs' | 'memoryBytes' | 'pythonExecutable'> & {
     quality?: number;
@@ -119,7 +145,7 @@ export interface MediaExportResult extends MediaFileV1 {
   precisionEdit?: {
     algorithm: 'scene-linear-v1';
     sha256: string;
-    input: 'master16' | 'linear-master';
+    input: MediaPrecisionInput;
     edit: PrecisionEditV1;
   };
 }

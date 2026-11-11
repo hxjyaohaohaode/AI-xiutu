@@ -769,16 +769,27 @@ try {
   const channel = process.env.BROWSER_CHANNEL;
   browser = await chromium.launch({ headless: true, ...(channel ? { channel } : {}) });
   report.browser = browser.version();
-  const width = 2200;
-  const height = 1700;
-  const rgba = Buffer.alloc(width * height * 4);
-  for (let y = 0; y < height; y++) {
-    for (let x = 0; x < width; x++) {
-      const i = (y * width + x) * 4;
-      rgba[i] = 25 + Math.floor((x * 195) / width);
-      rgba[i + 1] = 20 + Math.floor((y * 200) / height);
-      rgba[i + 2] = 100 + (Math.floor(x / 13) % 8) * 12;
-      rgba[i + 3] = 255;
+  const largePhoto = process.env.PREVIEW_LARGE_PHOTO;
+  let width, height, rgba;
+  if (largePhoto) {
+    const photo = await sharp(await readFile(largePhoto))
+      .autoOrient().toColourspace('srgb').removeAlpha().ensureAlpha().raw()
+      .toBuffer({ resolveWithObject: true });
+    ({ width, height } = photo.info);
+    rgba = photo.data;
+    assert.ok(width * height > 4_194_304 && width * height <= 16_777_216);
+  } else {
+    width = 2200;
+    height = 1700;
+    rgba = Buffer.alloc(width * height * 4);
+    for (let y = 0; y < height; y++) {
+      for (let x = 0; x < width; x++) {
+        const i = (y * width + x) * 4;
+        rgba[i] = 25 + Math.floor((x * 195) / width);
+        rgba[i + 1] = 20 + Math.floor((y * 200) / height);
+        rgba[i + 2] = 100 + (Math.floor(x / 13) % 8) * 12;
+        rgba[i + 3] = 255;
+      }
     }
   }
   const buffer = await sharp(rgba, { raw: { width, height, channels: 4 } })
@@ -802,7 +813,8 @@ try {
       ...device,
     });
     // Record actual paints on the visible canvas. No readbacks or serialization in the hot path.
-    await page.addInitScript(() => {
+    await page.addInitScript((large) => {
+      if (large) localStorage.setItem('editor:pixel-budget:v2', '16777216');
       const paint = CanvasRenderingContext2D.prototype.putImageData;
       window.previewTrace = {
         paints: [],
@@ -817,12 +829,18 @@ try {
       CanvasRenderingContext2D.prototype.putImageData = function (image, ...args) {
         paint.call(this, image, ...args);
         if (this.canvas.getAttribute('aria-label') !== '照片编辑预览') return;
-        const at = (Math.floor(image.height / 2) * image.width + Math.floor(image.width / 3)) * 4;
+        const positions = large
+          ? [[0.14, 0.14], [0.38, 0.32], [0.72, 0.25], [0.5, 1 / 3], [0.84, 0.69]]
+          : [[0.5, 1 / 3]];
+        const sample = positions.flatMap(([y, x]) => {
+          const at = (Math.floor(image.height * y) * image.width + Math.floor(image.width * x)) * 4;
+          return Array.from(image.data.subarray(at, at + 4));
+        });
         window.previewTrace.paints.push({
           t: performance.now(),
           width: image.width,
           height: image.height,
-          sample: Array.from(image.data.subarray(at, at + 4)),
+          sample,
         });
       };
       document.addEventListener(
@@ -871,7 +889,7 @@ try {
         },
         true,
       );
-    });
+    }, Boolean(largePhoto));
     // Local editor works without an authenticated API. Keep unrelated config requests deterministic.
     await page.route('**/v1/**', (route) =>
       route.fulfill({ status: 503, json: { message: 'offline' } }),
@@ -887,6 +905,10 @@ try {
     const canvas = page.locator('.image-frame canvas[aria-label="照片编辑预览"]');
     const readCanvas = () => canvas.evaluate((node) => node.toDataURL('image/png').split(',')[1]);
     const original = Buffer.from(await readCanvas(), 'base64');
+    if (largePhoto) {
+      const opened = await sharp(original).metadata();
+      assert.deepEqual([opened.width, opened.height], [width, height]);
+    }
     const tools = page.getByRole('navigation', { name: '编辑工具' });
     const tool = tools.getByRole('button', {
       name: test === '曲线' ? '曲线' : w < 760 ? '调节' : '明暗',
@@ -1099,6 +1121,7 @@ try {
           data: new Uint8ClampedArray(source.data),
         },
         recipe,
+        { maxPixels: source.info.width * source.info.height },
       );
       const actual = await sharp(rendered).ensureAlpha().raw().toBuffer();
       assert.ok(
@@ -1108,6 +1131,8 @@ try {
       caseReport.exactSettledPixels = expected.width * expected.height;
     }
     report.cases.push(caseReport);
+    if (largePhoto)
+      await page.screenshot({ path: resolve(artifacts, `native-${test === '曲线' ? 'curve' : 'exposure'}-${w}.png`) });
     process.stdout.write(JSON.stringify(caseReport) + '\n');
     await page.close();
   }
@@ -1125,7 +1150,7 @@ try {
       assert.ok(test.maxFrameGapMs !== null && test.maxFrameGapMs < 350, JSON.stringify(test));
     }
   }
-  if (process.env.PREVIEW_RECORD_ONLY !== '1' && process.env.PREVIEW_CASE !== 'phone') {
+  if (!largePhoto && process.env.PREVIEW_RECORD_ONLY !== '1' && process.env.PREVIEW_CASE !== 'phone') {
     if (process.env.PREVIEW_CASE !== 'mask')
       await verifyWorkerRecovery({
         png: buffer,
@@ -1135,7 +1160,7 @@ try {
   } else {
     report.workerRecovery = {
       state: 'not-run',
-      reason: 'This selective run requests timing-only recording or the phone gesture only.',
+      reason: 'Run the independent worker recovery case with the default input.',
     };
   }
 } finally {

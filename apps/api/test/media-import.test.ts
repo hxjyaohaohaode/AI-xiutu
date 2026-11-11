@@ -4,7 +4,7 @@ import { randomUUID, createHash } from 'node:crypto';
 import { setTimeout as delay } from 'node:timers/promises';
 import { mkdir, writeFile, readFile, rm } from 'node:fs/promises';
 import { join } from 'node:path';
-import sharp from 'sharp';
+import sharp, { type Sharp } from 'sharp';
 import { collaborationFixture } from './collaboration-fixture.js';
 
 const databaseUrl = process.env.TEST_DATABASE_URL;
@@ -245,6 +245,109 @@ test(
               })
             ).statusCode,
             422,
+          );
+        },
+      );
+      await t.test(
+        'master previews, saved grades and history use the same immutable source and exact samples',
+        async () => {
+          const path = `/v1/assets/${importedAsset}/media`;
+          const recipe = {
+            expectedSourceSha256: descriptor.sourceSha256,
+            precisionInput: 'master16',
+            precisionEdit: {
+              algorithm: 'scene-linear-v1',
+              exposure: -0.47,
+              temperature: 8,
+              tint: -3,
+              contrast: 11,
+              saturation: -4,
+              shadows: 5,
+              highlights: -7,
+              toneMap: 'none',
+            },
+          };
+          assert.equal(
+            (await f.call('GET', path + '/grades', undefined, 'outsider')).statusCode,
+            404,
+          );
+          assert.equal(
+            (await f.call('POST', path + '/grades', { ...recipe, expectedVersion: 0 }, 'viewer'))
+              .statusCode,
+            403,
+          );
+          const race = await Promise.all([
+            f.call('POST', path + '/grades', { ...recipe, expectedVersion: 0 }),
+            f.call('POST', path + '/grades', { ...recipe, expectedVersion: 0 }, 'editor'),
+          ]);
+          assert.deepEqual(race.map((r) => r.statusCode).sort(), [201, 409]);
+          const first = race.find((r) => r.statusCode === 201)!.json().grade;
+          assert.equal(first.version, 1);
+          assert.deepEqual(first.edit, recipe.precisionEdit);
+          await assert.rejects(
+            f.db.query('UPDATE media_grade_revisions SET version=9 WHERE asset_id=$1', [
+              importedAsset,
+            ]),
+            /revisions are immutable/,
+          );
+          const region = { left: 453, top: 227, width: 133, height: 59 };
+          assert.equal(
+            (
+              await f.call('POST', path + '/preview', {
+                ...recipe,
+                maxEdge: 256,
+                region: { ...region, left: 1020 },
+              })
+            ).json().error.code,
+            'MEDIA_PREVIEW_WINDOW',
+          );
+          assert.equal(
+            (
+              await f.call(
+                'POST',
+                path + '/preview',
+                {
+                  ...recipe,
+                  maxEdge: 256,
+                  region,
+                },
+                'outsider',
+              )
+            ).statusCode,
+            404,
+          );
+          const preview = await f.call(
+            'POST',
+            path + '/preview',
+            { ...recipe, maxEdge: 256, region },
+            'viewer',
+          );
+          assert.equal(preview.statusCode, 200, preview.body.slice(0, 160));
+          const save = await f.call('POST', path + '/grades', {
+            ...recipe,
+            expectedVersion: 1,
+            precisionEdit: { ...recipe.precisionEdit, exposure: 0.87 },
+          });
+          assert.equal(save.statusCode, 201);
+          const listed = await f.call('GET', path + '/grades?beforeVersion=2');
+          assert.deepEqual(listed.json().grades, [first]);
+          const current = (await f.call('GET', path)).json().editor.precisionEditing.currentGrade;
+          assert.equal(current.version, 2);
+          const originalGrade = await f.call('POST', path + '/export', {
+            format: 'png16',
+            gradeVersion: 1,
+            expectedSourceSha256: descriptor.sourceSha256,
+          });
+          assert.equal(originalGrade.statusCode, 200);
+          assert.equal(
+            originalGrade.headers['x-precision-edit-sha256'],
+            preview.headers['x-precision-edit-sha256'],
+          );
+          const pixels = (image: Sharp) =>
+            image.toColourspace('rgb16').raw({ depth: 'ushort' }).toBuffer();
+          assert.deepEqual(
+            await pixels(sharp(preview.rawPayload, { ignoreIcc: true })),
+            await pixels(sharp(originalGrade.rawPayload, { ignoreIcc: true }).extract(region)),
           );
         },
       );

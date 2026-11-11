@@ -5,6 +5,7 @@ import { checkV3 } from './v3-pixels.js';
 import type { RGBAImage, RenderOptions } from './types.js';
 import type { SelectionMaskV3 } from './v3-types.js';
 import { refineGuidedMatte } from './guided-matte.js';
+import { findMatteAnchors } from './matte-anchors.js';
 
 export const MAX_CUTOUT_PIXELS = 8_388_608;
 const linear = Float64Array.from({ length: 256 }, (_, value) => srgbToLinear(value / 255));
@@ -22,7 +23,7 @@ const directions = [
 
 export interface CutoutSettings {
   /** Missing preserves the published eight-ray solver. */
-  algorithm?: 'ray-v1' | 'guided-v2' | 'guided-v3';
+  algorithm?: 'ray-v1' | 'guided-v2' | 'guided-v3' | 'guided-v4';
   selection: SelectionMaskV3;
   foreground?: SelectionMaskV3;
   background?: SelectionMaskV3;
@@ -40,7 +41,7 @@ export function renderCutout(
   validateImage(image, { maxPixels: MAX_CUTOUT_PIXELS });
   if (
     settings.algorithm !== undefined &&
-    !['ray-v1', 'guided-v2', 'guided-v3'].includes(settings.algorithm)
+    !['ray-v1', 'guided-v2', 'guided-v3', 'guided-v4'].includes(settings.algorithm)
   )
     throw new RangeError('Unsupported cutout algorithm');
   if (!(
@@ -59,7 +60,8 @@ export function renderCutout(
     settings.background &&
     compileSelectionMaskV3(parseSelectionMaskV3(settings.background), image, image);
   let matte: Float32Array = new Float32Array(width * height);
-  const dense = settings.algorithm === 'guided-v3';
+  const connected = settings.algorithm === 'guided-v4';
+  const dense = connected || settings.algorithm === 'guided-v3';
   const guided = dense || settings.algorithm === 'guided-v2';
   const constraints = guided ? new Uint8Array(width * height) : null;
   const data = image.data.slice();
@@ -113,6 +115,9 @@ export function renderCutout(
       );
   }
   const searchRadius = guided ? radius * 4 : radius;
+  const anchors = connected && radius && uncertain
+    ? findMatteAnchors(image, labels, searchRadius, options)
+    : null;
   const distances = [
     ...new Set(
       (dense
@@ -122,7 +127,7 @@ export function renderCutout(
     ),
   ].sort((a, b) => a - b);
   const colors = new Float64Array(8);
-  const candidates = new Int32Array(16);
+  const candidates = new Int32Array(anchors ? 18 : 16);
   const candidateDistances = new Float64Array(candidates.length);
   const candidateColors = new Float64Array(candidates.length * 3);
   const observed = new Float64Array(3);
@@ -164,6 +169,22 @@ export function renderCutout(
             }
             found |= 1 << label;
             if (found === 3) break;
+          }
+        }
+        if (anchors) {
+          for (const label of [0, 1] as const) {
+            const n = anchors[label][i]!;
+            if (n < 0) continue;
+            const candidate = 16 + label;
+            const color = label * 4;
+            candidates[candidate] = n;
+            candidateDistances[candidate] = Math.hypot(n % width - x, Math.floor(n / width) - y);
+            for (let c = 0; c < 3; c++) {
+              const value = linear[image.data[n * 4 + c]!]!;
+              candidateColors[candidate * 3 + c] = value;
+              if (!colors[color + 3]) colors[color + c] = value;
+            }
+            if (!colors[color + 3]) colors[color + 3] = 1;
           }
         }
         if (colors[3]! && colors[7]!) {

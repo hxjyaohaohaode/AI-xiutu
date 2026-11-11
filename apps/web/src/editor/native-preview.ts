@@ -1,6 +1,8 @@
 import {
   ADJUSTMENT_IDS,
   DEFAULT_RECIPE_V2,
+  MAX_EXPLICIT_PIXELS,
+  MAX_DIMENSION,
   createFineTransformV3,
   createOpticsV3,
   type EditorRecipe,
@@ -9,6 +11,10 @@ import {
 const equal = (a: unknown, b: unknown) => JSON.stringify(a) === JSON.stringify(b);
 const neutralOptics = createOpticsV3();
 const neutralTransform = createFineTransformV3();
+
+export function fitsNativeColorPreview(width: number, height: number): boolean {
+  return width <= MAX_DIMENSION && height <= MAX_DIMENSION && width * height <= MAX_EXPLICIT_PIXELS;
+}
 
 /** Native point color uses the renderer's exact byte maps and a bounded RGBA frame. */
 export function canPreviewNativeColor(recipe: EditorRecipe): boolean {

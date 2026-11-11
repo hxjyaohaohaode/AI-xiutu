@@ -8,7 +8,9 @@
 
 `exportMedia` 可传 `precisionEdit`，完整字段为 `algorithm:'scene-linear-v1'`、`exposure`（−10…10EV）、`temperature/tint/contrast/saturation/shadows/highlights`（−100…100）和 `toneMap:'none'|'reinhard'`。全零及 none 为中性。温度/色偏沿既有相对 RGB 增益；对比度围绕线性亮度0.18使用指数，饱和度围绕线性亮度，阴影/高光按 `Y/(Y+0.18)` 连续分配正负一档曝光。Reinhard 是显式的亮度色调映射。
 
-PNG/TIFF路径直接读取 uint16，按65536项完整传递函数表解码后计算，最后只量化一次。`format:'exr32'` 从经过摘要复核的 float32 线性母版读取，在原生 OIIO 中按64行分片计算；保留负值、HDR亮度与 associated alpha，不经过SDR代理或16位SDR母版。32位EXR需要配置 `options.pythonExecutable`。此全局协议最多16MP，没有把8位数值扩充成真实HDR。两条路径都保留原件和母版。
+选择 `precisionInput:'master16'` 时，按65536项完整传递函数表解码 uint16 样本，调色后量化一次，整图最多16,777,216像素。选择 `'linear-master'` 时，OpenImageIO 从已校验的线性母版逐块读取，最多5000万像素。EXR32 保留有符号浮点亮度、透明度、数据窗口和显示窗口。PNG16/TIFF16 先应用同一线性调色，再作 SDR 编码。线性路径需要配置 `options.pythonExecutable`。
+
+母版预览可提交不超过2048像素的窗口，按源数据窗口坐标提取真实像素。整图预览先调色再缩小。相同输入、调色和源摘要共享同一个 `X-Precision-Edit-SHA256`，包含窗口预览和不同导出格式。API 将用户保存的参数追加为独立版本，支持重新打开、继续调色及指定版本导出。
 
 新导入的 OpenEXR 在线性母版和 EXR 导出中都保留数据窗口、显示窗口和像素宽高比。尺寸与资源预算按实际采样的数据窗口计算，浏览器 SDR 代理仍以该窗口的栅格呈现。此前已生成的母版按其现有 EXR 头导出。要从旧素材重获原始窗口，可重新导入已保留的原件。
 
@@ -50,7 +52,7 @@ const output = await exportMedia({
 | `original.bin`            | 上传的原编码逐字节复制与 SHA-256                           | 原始元数据、RAW 传感器内容和源 ICC 保留在这里        |
 | `master.tif`              | 应用方向与明确色彩转换后的 sRGB、deflate、256px tiled TIFF | uint16 SDR 工作母版；低位深源不会凭空增加真实信息    |
 | `proxy.png`               | 限定像素数的 sRGB RGBA8                                    | 用于浏览器现有编辑器；尺寸与母版分别记录             |
-| `linear-master.exr`       | 仅 HDR 导入：解码后、未色调映射的 float32 线性数据窗口     | 保留线性 RGB(A) 动态范围，和 SDR 母版分开            |
+| `linear-master.exr`       | HDR 的线性浮点样本或新 RAW 导入的线性显影结果              | HDR 保留原动态范围。RAW 从相机白平衡、16 位线性去马赛克结果归一化 |
 | `tiles.dzi / tiles_files` | 整幅母版的 JPEG 金字塔                                     | 用于大图查看；透明区域对白底合成，仅影响这些查看瓦片 |
 
 `proxy.normalizedDimensions` 是方向归一化后的母版尺寸，`proxy.width/height` 才是预览像素尺寸。浏览器配方绑定的是它实际加载的源像素哈希，不能把代理哈希冒充原文件哈希。
@@ -67,7 +69,7 @@ DZI：`tileSize` 为 256/512/1024，`overlap:1`；`levels = ceil(log2(max(width,
 | RGB/灰度 8/16 位                             | uint16 SDR 母版；有 RGB ICC 时转换到 sRGB                      | 无 ICC 的 RGB 明确按 sRGB 解释                                        |
 | CMYK JPEG/TIFF                               | 只接受带 ICC 的 8 位输入，由真实 CMS 转 sRGB                   | 无 ICC 拒绝；高位深 CMYK 拒绝；不是 CMYK 印前编辑/输出                |
 | PSD v1 RGB/灰度 8/16 位                      | ag-psd 读取文件已保存合成图；有界图层名/边界/隐藏状态          | 不重新渲染文字、智能对象、效果；没有可编辑图层往返；PSB/CMYK/32位拒绝 |
-| Camera RAW                                   | 可选 rawpy/LibRaw，16 位 demosaic、相机白平衡、固定 sRGB gamma | 全传感器至多50MP；不是厂商原生色彩/镜头匹配；相机支持取决于 LibRaw    |
+| Camera RAW                                   | 可选 rawpy/LibRaw，16 位线性去马赛克、相机白平衡，同时保留线性母版和 sRGB 母版 | 全传感器至多50MP。线性母版使用显影结果的有效位深，已裁切高光仍受显影边界限制 |
 | EXR/Radiance                                 | 可选 OpenImageIO，flat 1/3/4 通道 float 解码与独立线性母版     | 至多50MP；deep、multipart、未知显式色域/曲线拒绝                      |
 | 浮点 TIFF、SVG/PDF、JXL/JP2、动画/多页、HEIC | 当前没有完整开启的导入工作流                                   | 不能凭扩展名、依赖中的 decoder 名称或文件选择器宣称支持               |
 
