@@ -222,3 +222,15 @@ body[data-site-page='account'] #root {
   height: auto;
   min-height: 100svh;
 }
+.product-brand-mark {
+  display: block;
+  flex: 0 0 auto;
+  width: 31px;
+  height: 31px;
+  object-fit: contain;
+  filter: none;
+}
+.about-brand .product-brand-mark {
+  width: 25px;
+  height: 25px;
+}

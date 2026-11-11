@@ -100,6 +100,46 @@ export function requestImageOptions(
     result.outputCompression = selected.outputCompression;
   return Object.keys(result).length ? result : undefined;
 }
+
+/** Resolve only the declared JPEG/transparency dependency, in one user initiated update. */
+export function changeImageOption(
+  model: AIModel,
+  selected: ImageOptions,
+  field: 'quality' | 'background' | 'outputFormat' | 'complexity',
+  value: string,
+): ImageOptions | null {
+  const capabilities = model.parameterCapabilities;
+  if (!capabilities?.[field].supported || !capabilities[field].values?.includes(value)) return null;
+  const next = { ...selected, [field]: value };
+  if (next.background === 'transparent' && next.outputFormat === 'jpeg') {
+    if (field === 'background') {
+      const format = capabilities.outputFormat.supported
+        ? ['png', 'webp'].find((entry) => capabilities.outputFormat.values?.includes(entry))
+        : undefined;
+      if (!format) return null;
+      next.outputFormat = format;
+    } else if (field === 'outputFormat') {
+      const background = capabilities.background.supported
+        ? ['opaque', 'auto'].find((entry) => capabilities.background.values?.includes(entry))
+        : undefined;
+      if (!background) return null;
+      next.background = background;
+    } else return null;
+  }
+  const compression = capabilities.outputCompression;
+  if (compression.supported && compression.formats?.includes(next.outputFormat ?? 'png')) {
+    if (
+      !Number.isInteger(next.outputCompression) ||
+      next.outputCompression! < (compression.min ?? 0) ||
+      next.outputCompression! > (compression.max ?? 100)
+    )
+      next.outputCompression = Math.max(
+        compression.min ?? 0,
+        Math.min(compression.max ?? 100, Number(compression.default ?? 100)),
+      );
+  }
+  return next;
+}
 export function imageOptionsError(
   model: AIModel | undefined,
   selected: ImageOptions,

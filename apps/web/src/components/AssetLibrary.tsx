@@ -1,5 +1,5 @@
 import { getLocale, t, useLocale } from '../i18n';
-import { useEffect, useMemo, useRef, useState, type FormEvent } from 'react';
+import { useEffect, useId, useMemo, useRef, useState, type FormEvent } from 'react';
 import {
   ArrowRight,
   ArrowClockwise,
@@ -17,6 +17,9 @@ import {
   SquaresFour,
   GridFour,
   Swap,
+  SlidersHorizontal,
+  Info,
+  CaretDown,
 } from '@phosphor-icons/react';
 import { api, ApiError, errorMessage, formatDate, jsonRequest } from '../lib/api';
 import type { Asset, Artwork, Project, Space } from '../lib/types';
@@ -29,6 +32,10 @@ import { useConfirmation } from './ConfirmationDialog';
 import { confirmStableScope } from '../lib/confirmation-scope';
 import { AnimationDialog, AssetRecognitionDialog, ProjectAssetTools } from './AssetTools';
 import { StudioGlyph } from './StudioGlyph';
+import { MotionDetails, MotionDisclosure } from '../motion/Presence';
+import { AssetThumbnail } from '../resources/AssetThumbnail';
+import { resourceExperienceCopy } from '../resources/experience-copy';
+import '../resources/collection-refinement.css';
 
 export const SOURCE_LABELS = {
   upload: '上传照片',
@@ -43,21 +50,7 @@ type GroupBy = 'project' | 'date' | 'source';
 
 function LibraryThumbnail({ asset, title }: { asset: Asset; title: string }) {
   const src = asset.thumbnailUrl ?? '/v1/assets/' + asset.id + '/thumbnail';
-  const [failedSource, setFailedSource] = useState<string | null>(null);
-  return failedSource === src ? (
-    <div className="library-thumbnail-fallback">
-      <Images size={30} />
-      <small>{t('缩略图暂不可用')}</small>
-    </div>
-  ) : (
-    <img
-      src={src}
-      alt={title}
-      loading="lazy"
-      decoding="async"
-      onError={() => setFailedSource(src)}
-    />
-  );
+  return <AssetThumbnail src={src} alt={title} />;
 }
 function localInputDate(value?: string | null) {
   if (!value) return '';
@@ -332,6 +325,9 @@ export function AssetLibrary({
   onShare: () => void;
 }) {
   const locale = useLocale();
+  const c = resourceExperienceCopy(locale);
+  const filterId = useId();
+  const [filtersOpen, setFiltersOpen] = useState(false);
   const [projectFilter, setProjectFilter] = useState(project?.id ?? '');
   const [query, setQuery] = useState(''),
     [debouncedQuery, setDebouncedQuery] = useState('');
@@ -545,7 +541,10 @@ export function AssetLibrary({
         />
       ) : (
         <>
-          <div className="asset-library-filters" data-motion="view-header">
+          <div
+            className="asset-library-filters library-filters-progressive"
+            data-motion="view-header"
+          >
             <label className="library-search">
               <MagnifyingGlass size={18} />
               <input
@@ -581,45 +580,71 @@ export function AssetLibrary({
                 ]}
               />
             </label>
-            <OptionChips
-              label={t('按来源筛选')}
-              value={source}
-              onChange={setSource}
-              options={[
-                { value: 'all', label: t('全部来源') },
-                ...Object.entries(SOURCE_LABELS).map(([value, label]) => ({
-                  value: value as Source,
-                  label: t(label),
-                })),
-              ]}
-            />
-            <div className="library-filter-row">
-              <OptionChips
-                label={t('按入库日期筛选')}
-                value={period}
-                onChange={setPeriod}
-                options={[
-                  { value: 'all', label: t('全部日期') },
-                  { value: 'today', label: t('今天') },
-                  { value: 'week', label: t('近7天') },
-                  { value: 'month', label: t('近30天') },
-                ]}
-              />
-              <label>
-                {t('分组')}
-                <ChoiceSelect
-                  ariaLabel={t('素材分组方式')}
-                  value={groupBy}
-                  size="compact"
-                  onValueChange={setGroupBy}
+            <button
+              type="button"
+              className="library-filter-toggle"
+              aria-expanded={filtersOpen}
+              aria-controls={filterId}
+              onClick={() => setFiltersOpen((value) => !value)}
+            >
+              <SlidersHorizontal size={18} aria-hidden />
+              {c.filters}
+              {(source !== 'all' || period !== 'all') && (
+                <span
+                  aria-label={`${Number(source !== 'all') + Number(period !== 'all')} ${c.filterCount}`}
+                >
+                  {Number(source !== 'all') + Number(period !== 'all')}
+                </span>
+              )}
+              <CaretDown size={13} aria-hidden />
+            </button>
+            <MotionDisclosure
+              id={filterId}
+              open={filtersOpen}
+              className="library-filter-disclosure"
+            >
+              <div className="library-filter-options">
+                <OptionChips
+                  label={t('按来源筛选')}
+                  value={source}
+                  onChange={setSource}
                   options={[
-                    { value: 'date', label: t('入库日期') },
-                    { value: 'project', label: t('所属项目') },
-                    { value: 'source', label: t('素材来源') },
+                    { value: 'all', label: t('全部来源') },
+                    ...Object.entries(SOURCE_LABELS).map(([value, label]) => ({
+                      value: value as Source,
+                      label: t(label),
+                    })),
                   ]}
                 />
-              </label>
-            </div>
+                <div className="library-filter-row">
+                  <OptionChips
+                    label={t('按入库日期筛选')}
+                    value={period}
+                    onChange={setPeriod}
+                    options={[
+                      { value: 'all', label: t('全部日期') },
+                      { value: 'today', label: t('今天') },
+                      { value: 'week', label: t('近7天') },
+                      { value: 'month', label: t('近30天') },
+                    ]}
+                  />
+                  <label>
+                    {t('分组')}
+                    <ChoiceSelect
+                      ariaLabel={t('素材分组方式')}
+                      value={groupBy}
+                      size="compact"
+                      onValueChange={setGroupBy}
+                      options={[
+                        { value: 'date', label: t('入库日期') },
+                        { value: 'project', label: t('所属项目') },
+                        { value: 'source', label: t('素材来源') },
+                      ]}
+                    />
+                  </label>
+                </div>
+              </div>
+            </MotionDisclosure>
           </div>
           <div className="library-status">
             <div className="library-result-count" aria-live="polite">
@@ -734,7 +759,11 @@ export function AssetLibrary({
                         data-motion="artwork-media"
                         data-motion-pixels="true"
                       >
-                        <LibraryThumbnail asset={asset} title={title} />
+                        <LibraryThumbnail
+                          key={`${asset.id}:${refresh}`}
+                          asset={asset}
+                          title={title}
+                        />
                         <span>
                           {sameProject
                             ? asset.provenance?.animation === true
@@ -777,62 +806,72 @@ export function AssetLibrary({
                           {t(SOURCE_LABELS[asset.source ?? 'unknown'])} · {asset.width}×
                           {asset.height}
                         </p>
-                        <small>{parent?.title ?? t('当前授权项目')}</small>
-                        <div className="library-asset-tools">
-                          <button
-                            className="text-button"
-                            onClick={() => setTools({ asset, kind: 'ocr' })}
-                          >
-                            <StudioGlyph name="docs" size={16} />
-                            {t('识别文字与表格')}
-                          </button>
-                          {asset.provenance?.animation === true && (
-                            <button
-                              className="text-button"
-                              onClick={() => setTools({ asset, kind: 'animation' })}
-                            >
-                              <StudioGlyph name="works" size={16} />
-                              {t('GIF 帧编辑')}
-                            </button>
-                          )}
-                        </div>
-                        {asset.provenance?.kind === 'media-import' && (
-                          <button className="text-button" onClick={() => setSourceDetails(asset)}>
-                            {t('查看原件与母版')}
-                          </button>
-                        )}
-                        {!!asset.annotations?.tags.length && (
-                          <div className="library-tags">
-                            {asset.annotations.tags.map((tag) => (
-                              <button key={tag} onClick={() => setQuery(tag)}>
-                                {tag}
-                              </button>
-                            ))}
-                          </div>
-                        )}
-                        {asset.annotations?.capturedAt && (
-                          <small className="library-declared">
-                            <CalendarBlank size={13} />
-                            {formatDate(asset.annotations.capturedAt)} {t('· 声明时间')}
-                          </small>
-                        )}
-                        {asset.annotations?.location && (
-                          <small className="library-declared">
-                            <MapPin size={13} />
-                            {asset.annotations.location.label} {t('· 声明地点')}
-                          </small>
-                        )}
+                        {!sameProject && <small>{parent?.title ?? t('当前授权项目')}</small>}
                         {!!versions.length && (
                           <div className="library-version-links">
+                            <div className="library-version-heading">
+                              <span>{c.savedWorks}</span>
+                              <small>{versions.length}</small>
+                            </div>
                             {versions.map((work) => (
                               <button key={work.id} onClick={() => onOpen(work)}>
                                 <span>{work.title}</span>
                                 <strong>V{work.headVersion}</strong>
-                                <ArrowRight size={14} />
+                                <ArrowRight size={14} aria-hidden />
                               </button>
                             ))}
                           </div>
                         )}
+                        <MotionDetails className="library-asset-details">
+                          <summary>
+                            {c.details}
+                            <CaretDown size={14} aria-hidden />
+                          </summary>
+                          <div className="library-asset-tools">
+                            <button
+                              className="text-button"
+                              onClick={() => setTools({ asset, kind: 'ocr' })}
+                            >
+                              <StudioGlyph name="docs" size={16} />
+                              {t('识别文字与表格')}
+                            </button>
+                            {asset.provenance?.animation === true && (
+                              <button
+                                className="text-button"
+                                onClick={() => setTools({ asset, kind: 'animation' })}
+                              >
+                                <StudioGlyph name="works" size={16} />
+                                {t('GIF 帧编辑')}
+                              </button>
+                            )}
+                          </div>
+                          {asset.provenance?.kind === 'media-import' && (
+                            <button className="text-button" onClick={() => setSourceDetails(asset)}>
+                              {t('查看原件与母版')}
+                            </button>
+                          )}
+                          {!!asset.annotations?.tags.length && (
+                            <div className="library-tags">
+                              {asset.annotations.tags.map((tag) => (
+                                <button key={tag} onClick={() => setQuery(tag)}>
+                                  {tag}
+                                </button>
+                              ))}
+                            </div>
+                          )}
+                          {asset.annotations?.capturedAt && (
+                            <small className="library-declared">
+                              <CalendarBlank size={13} />
+                              {formatDate(asset.annotations.capturedAt)} {t('· 声明时间')}
+                            </small>
+                          )}
+                          {asset.annotations?.location && (
+                            <small className="library-declared">
+                              <MapPin size={13} />
+                              {asset.annotations.location.label} {t('· 声明地点')}
+                            </small>
+                          )}
+                        </MotionDetails>
                       </div>
                     </article>
                   );
@@ -851,11 +890,13 @@ export function AssetLibrary({
               </button>
             </div>
           )}
-          <p className="control-note">
-            {t(
-              '缩略图展示原始素材；作品按钮打开对应编辑版本。分组数量只统计已经载入的结果，不代表空间总量。',
-            )}
-          </p>
+          <MotionDetails className="library-source-help">
+            <summary>
+              <Info size={15} aria-hidden />
+              {c.sourceCovers}
+            </summary>
+            <p>{c.sourceHelp}</p>
+          </MotionDetails>
         </>
       )}
       {projectTools && project && ['owner', 'admin', 'editor'].includes(project.role) && (

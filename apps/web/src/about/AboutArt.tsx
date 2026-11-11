@@ -21,22 +21,26 @@ export function EditorialImage({
 export function ProductImage({
   name = 'workspace',
   mobile = false,
+  tablet = false,
   eager = false,
+  alt,
 }: {
   name?: string;
   mobile?: boolean;
+  tablet?: boolean;
   eager?: boolean;
+  alt?: string;
 }) {
   const locale = useLocale();
   const c = editorialCopy(locale);
   return (
     <ImageFrame
       src={`/about/${name}-${locale}.webp`}
-      alt={c.deviceAlt}
+      alt={alt ?? c.deviceAlt}
       eager={eager}
-      width={mobile ? 390 : 1440}
-      height={mobile ? 844 : 960}
-      className={`experience-product-image${mobile ? ' is-phone' : ''}`}
+      width={mobile ? 390 : tablet ? 1024 : 1440}
+      height={mobile ? 844 : tablet ? 768 : 960}
+      className={`experience-product-image${mobile ? ' is-phone' : tablet ? ' is-tablet' : ''}`}
     />
   );
 }

@@ -444,7 +444,12 @@ export function CompareView({
               {artwork.headVersion} {t('· 恢复会保留已有版本')}
             </span>
           </summary>
-          {loadingRevisions && <Busy label={t('正在读取版本')} />}
+          {loadingRevisions &&
+            (revisions.length ? (
+              <Busy label={t('正在读取版本')} />
+            ) : (
+              <FeatureSkeleton profile="panel" label={t('正在读取版本')} compact />
+            ))}
           {!loadingRevisions && !revisions.length && !historyReadFailed && (
             <p className="control-note">{t('尚未读取到保存版本。')}</p>
           )}

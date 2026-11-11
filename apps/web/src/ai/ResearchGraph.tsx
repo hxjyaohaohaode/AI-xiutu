@@ -1,4 +1,4 @@
-import { t } from '../i18n';
+import { t, useLocale } from '../i18n';
 import { useEffect, useState } from 'react';
 import {
   CaretDown,
@@ -9,25 +9,21 @@ import {
   PencilSimple,
   Scan,
   TreeStructure,
+  WarningCircle,
+  CircleNotch,
+  PauseCircle,
 } from '@phosphor-icons/react';
 import type { AssistantBranchEvent } from '@ai-xiutu/contracts';
 import { api } from '../lib/api';
 import { MotionDetails } from '../motion/Presence';
-
-type Branch = Omit<AssistantBranchEvent, 'state'> & {
-  state: AssistantBranchEvent['state'] | 'interrupted';
-};
-const name = {
-  root: '编辑助手',
-  web: '公开来源',
-  cloud: '授权素材',
-  canvas: '实际画面',
-  merge: '汇合',
-  candidate: '准备编辑候选',
-  'pixel-review': '复核候选像素',
-  nomination: '推荐候选',
-};
-const state = { running: '进行中', completed: '完成', failed: '未完成', interrupted: '已中断' };
+import {
+  branchNames as name,
+  branchStates as state,
+  isResearchBranch as isBranch,
+  mergeResearchBranches,
+  researchDisplayState,
+  type ResearchBranch as Branch,
+} from './research-graph-model';
 const icon = {
   root: TreeStructure,
   web: Globe,
@@ -38,23 +34,6 @@ const icon = {
   'pixel-review': Scan,
   nomination: CheckCircle,
 };
-function isBranch(value: unknown): value is Branch {
-  if (!value || typeof value !== 'object') return false;
-  const branch = value as Branch;
-  return (
-    typeof branch.id === 'string' &&
-    branch.id.length > 0 &&
-    branch.id.length <= 128 &&
-    (branch.parentId === null || typeof branch.parentId === 'string') &&
-    Array.isArray(branch.dependsOn) &&
-    branch.dependsOn.every((id) => typeof id === 'string') &&
-    Object.hasOwn(name, branch.kind) &&
-    Object.hasOwn(state, branch.state) &&
-    ['provider', 'server'].includes(branch.execution) &&
-    (branch.resultCount === undefined ||
-      (Number.isInteger(branch.resultCount) && branch.resultCount >= 0))
-  );
-}
 export function ResearchGraph({
   turnId,
   live,
@@ -64,6 +43,31 @@ export function ResearchGraph({
   live: AssistantBranchEvent[];
   running: boolean;
 }) {
+  const locale = useLocale();
+  const copy =
+    locale === 'en'
+      ? {
+          complete: 'completed',
+          provider: 'Model execution',
+          server: 'Workspace operation',
+          waiting: 'Dependency not yet received',
+          detail: 'Task details',
+        }
+      : locale === 'zh-TW'
+        ? {
+            complete: '項已完成',
+            provider: '模型執行',
+            server: '工作區操作',
+            waiting: '依據尚未同步',
+            detail: '任務詳情',
+          }
+        : {
+            complete: '项已完成',
+            provider: '模型执行',
+            server: '工作区操作',
+            waiting: '依据尚未同步',
+            detail: '任务详情',
+          };
   const [data, setData] = useState<{ turnId: string; running: boolean; branches: Branch[] } | null>(
     null,
   );
@@ -95,10 +99,10 @@ export function ResearchGraph({
       });
     return () => controller.abort();
   }, [turnId, running, reload]);
-  const stored = data && data.turnId === turnId && data.running === running ? data.branches : null;
+  const stored = data && data.turnId === turnId ? data.branches : [];
+  const fresh = !!data && data.turnId === turnId && data.running === running;
   const liveBranches = live.filter(isBranch);
-  const branches: Branch[] =
-    running && liveBranches.length ? liveBranches : (stored ?? liveBranches);
+  const branches = mergeResearchBranches(stored, liveBranches, running || !fresh);
   const root = branches.find((branch) => branch.kind === 'root');
   const children = branches.filter((branch) => branch.kind !== 'root' && branch.kind !== 'merge');
   if (!root || !children.length) return null;
@@ -106,40 +110,85 @@ export function ResearchGraph({
   const isEditing = children.some((branch) =>
     ['candidate', 'pixel-review', 'nomination'].includes(branch.kind),
   );
-  const status = (branch: Branch) =>
-    branch.state === 'running' && !running && !stored ? '待同步' : state[branch.state];
+  const status = (branch: Branch) => state[researchDisplayState(branch, running, fresh)];
+  const completed = children.filter((branch) => branch.state === 'completed').length;
+  const StatusIcon = ({ branch }: { branch: Branch }) => {
+    const displayed = researchDisplayState(branch, running, fresh);
+    const Status =
+      displayed === 'completed'
+        ? CheckCircle
+        : displayed === 'failed'
+          ? WarningCircle
+          : displayed === 'running'
+            ? CircleNotch
+            : PauseCircle;
+    return <Status className="research-status-icon" size={15} data-state={displayed} aria-hidden />;
+  };
   return (
-    <MotionDetails key={turnId} className="assistant-research-graph" defaultOpen={running}>
+    <MotionDetails
+      key={turnId}
+      className="assistant-research-graph research-paths"
+      defaultOpen={running}
+    >
       <summary>
         <TreeStructure size={16} aria-hidden="true" />
         <span>{t(isEditing ? '编辑任务进度' : '研究分工')}</span>
-        <small data-state={root.state}>{t(status(root))}</small>
+        <small data-state={researchDisplayState(root, running, fresh)}>{t(status(root))}</small>
         <CaretDown className="assistant-research-chevron" size={14} aria-hidden="true" />
       </summary>
       <div className="assistant-research-content">
+        <p className="research-completion" aria-live="polite">
+          <strong>
+            {completed}
+            <span> / {children.length}</span>
+          </strong>
+          <span>{copy.complete}</span>
+        </p>
         <ul aria-label={t('任务分支')}>
-          {children.map((branch) => {
+          {children.map((branch, index) => {
             const Icon = icon[branch.kind];
             const dependencies = branch.dependsOn.flatMap((id) => {
               const dependency = branches.find((entry) => entry.id === id);
-              return dependency ? [t(name[dependency.kind])] : [];
+              const position = children.findIndex((entry) => entry.id === id);
+              return dependency
+                ? [`${position >= 0 ? `${position + 1}. ` : ''}${t(name[dependency.kind])}`]
+                : [copy.waiting];
             });
             return (
-              <li key={branch.id}>
-                <Icon size={16} aria-hidden="true" />
-                <span>{t(name[branch.kind])}</span>
-                <small data-state={branch.state}>{t(status(branch))}</small>
-                {branch.resultCount !== undefined &&
-                  ['web', 'cloud', 'canvas'].includes(branch.kind) && (
-                    <span className="assistant-research-count">
-                      {branch.resultCount} {t('项证据')}
+              <li key={branch.id} data-state={researchDisplayState(branch, running, fresh)}>
+                <MotionDetails className="research-task">
+                  <summary
+                    aria-label={`${index + 1}. ${t(name[branch.kind])} · ${t(status(branch))} · ${copy.detail}`}
+                  >
+                    <span className="research-task-icon">
+                      <Icon size={17} aria-hidden />
                     </span>
-                  )}
-                {dependencies.length > 0 && (
-                  <span className="assistant-research-count">
-                    {t('依据 {v0}', { v0: dependencies.join('、') })}
-                  </span>
-                )}
+                    <span className="research-task-heading">
+                      <strong>{t(name[branch.kind])}</strong>
+                      <small>
+                        {branch.resultCount !== undefined &&
+                        ['web', 'cloud', 'canvas'].includes(branch.kind)
+                          ? `${branch.resultCount} ${t('项证据')}`
+                          : branch.execution === 'provider'
+                            ? copy.provider
+                            : copy.server}
+                      </small>
+                    </span>
+                    <span className="research-task-state">
+                      <StatusIcon branch={branch} />
+                      <span>{t(status(branch))}</span>
+                    </span>
+                    <CaretDown className="research-task-chevron" size={12} aria-hidden />
+                  </summary>
+                  <div className="research-task-detail">
+                    <p>{branch.execution === 'provider' ? copy.provider : copy.server}</p>
+                    {dependencies.length > 0 && (
+                      <p>
+                        {t('依据 {v0}', { v0: dependencies.join(locale === 'en' ? ', ' : '、') })}
+                      </p>
+                    )}
+                  </div>
+                </MotionDetails>
               </li>
             );
           })}
@@ -150,7 +199,10 @@ export function ResearchGraph({
             <span>
               {branch.dependsOn.length} {t('个分支汇合')}
             </span>
-            <small data-state={branch.state}>{t(status(branch))}</small>
+            <small data-state={researchDisplayState(branch, running, fresh)}>
+              <StatusIcon branch={branch} />
+              {t(status(branch))}
+            </small>
           </p>
         ))}
         {failedTurn === turnId && (

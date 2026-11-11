@@ -153,7 +153,7 @@ async function tool(page, label) {
 async function precision(page, label, value) {
   const panel = page.locator('.free-panel[aria-hidden="false"]');
   if (!(await panel.getByRole('slider', { name: label, exact: true }).count())) {
-    const compact = panel.locator('.parameter-compact-picker').getByRole('combobox');
+    const compact = panel.locator('.parameter-compact-picker:visible').getByRole('combobox');
     if (await compact.isVisible()) {
       await compact.click();
       await page.getByRole('option', { name: label, exact: true }).click();
@@ -1021,6 +1021,115 @@ try {
         panelContext,
         resized,
         download: { format: metadata.format, width: metadata.width, height: metadata.height },
+      };
+    });
+  }
+  for (const viewport of [
+    { width: 390, height: 844 },
+    { width: 1440, height: 960 },
+  ]) {
+    await caseRun(`tool-context-retention-${viewport.width}x${viewport.height}`, async () => {
+      const context = await browser.newContext({
+        viewport,
+        hasTouch: viewport.width < 760,
+        reducedMotion: 'reduce',
+      });
+      const page = await watchPage(context);
+      await page.goto(`${origin}/#/studio`);
+      await page
+        .getByLabel('选择照片', { exact: true })
+        .setInputFiles({ name: 'retained-tools.png', mimeType: 'image/png', buffer: png });
+      await page.locator('.image-frame canvas').waitFor();
+      const inspector = page.locator('.free-panel[data-panel-id="inspector"][aria-hidden="false"]');
+      await tool(page, '美颜');
+      const portrait = inspector.locator('[data-tool-family="beauty"]');
+      const portraitOwner = await portrait.elementHandle();
+      assert.ok(portraitOwner);
+      await portrait.getByRole('button', { name: '身形', exact: true }).click();
+      const portraitHelp = portrait.locator('summary').filter({ hasText: '人物识别与选区帮助' });
+      await portraitHelp.click();
+      await tool(page, '构图');
+      assert.equal(await portrait.isVisible(), false, 'previous tool has no visible hit targets');
+      await tool(page, '美颜');
+      assert.equal(
+        await portrait
+          .getByRole('button', { name: '身形', exact: true })
+          .getAttribute('aria-pressed'),
+        'true',
+      );
+      assert.equal(await portraitHelp.getAttribute('aria-expanded'), 'true');
+      assert.equal(
+        await portraitOwner.evaluate((element) => element.isConnected),
+        true,
+        'return keeps the same portrait controls owner',
+      );
+      const openColor = async () => {
+        await tool(page, viewport.width < 760 ? '调节' : '色彩');
+        if (viewport.width < 760)
+          await inspector
+            .locator('.context-adjustment-tabs')
+            .getByRole('button', { name: '色彩', exact: true })
+            .click();
+      };
+      await openColor();
+      const color = inspector.locator('[data-tool-family="color"]');
+      const colorOwner = await color.elementHandle();
+      assert.ok(colorOwner);
+      await color.getByRole('button', { name: 'HSL', exact: true }).click();
+      await color.getByRole('button', { name: '蓝色段', exact: true }).click();
+      await tool(page, '构图');
+      assert.equal(await color.isVisible(), false);
+      await openColor();
+      assert.equal(
+        await color.getByRole('button', { name: 'HSL', exact: true }).getAttribute('aria-pressed'),
+        'true',
+      );
+      assert.equal(
+        await color
+          .getByRole('button', { name: '蓝色段', exact: true })
+          .getAttribute('aria-pressed'),
+        'true',
+      );
+      assert.equal(
+        await colorOwner.evaluate((element) => element.isConnected),
+        true,
+        'HSL band and parameter controls survive tool return',
+      );
+      const visibleTools = await inspector.locator('.inspector-tool-content:visible').count();
+      assert.equal(visibleTools, 1, 'one editing tool owns the visible control surface');
+      await page.screenshot({ path: join(artifacts, `retained-tools-${viewport.width}.png`) });
+      await page
+        .getByLabel('选择照片', { exact: true })
+        .setInputFiles({ name: 'new-tool-source.png', mimeType: 'image/png', buffer: png });
+      const replaceSource = page.getByRole('dialog', { name: '确认操作', exact: true });
+      await page.removeLocatorHandler(replaceSource);
+      await replaceSource.getByRole('button', { name: '确认继续', exact: true }).click();
+      await eventually(
+        async () => !(await portraitOwner.evaluate((element) => element.isConnected)),
+        'changing source discards previous tool-local controls',
+      );
+      await tool(page, '美颜');
+      assert.equal(
+        await inspector
+          .getByRole('button', { name: '美肤', exact: true })
+          .getAttribute('aria-pressed'),
+        'true',
+      );
+      assert.equal(
+        await inspector
+          .locator('summary')
+          .filter({ hasText: '人物识别与选区帮助' })
+          .getAttribute('aria-expanded'),
+        'false',
+      );
+      await portraitOwner.dispose();
+      await colorOwner.dispose();
+      await context.close();
+      return {
+        portraitCategoryAndDisclosureRetained: true,
+        hslBandAndOwnerRetained: true,
+        visibleToolOwners: visibleTools,
+        newSourceClearsToolState: true,
       };
     });
   }

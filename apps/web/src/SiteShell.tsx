@@ -21,6 +21,7 @@ import './account/account-page.css';
 import { accountPageCopy } from './account/page-copy';
 import { t, useLocale } from './i18n';
 import { api } from './lib/api';
+import { brandLogoUrl } from './lib/brand';
 import type { PublicConfig } from './lib/types';
 import type { StudioEntry } from './App';
 import type { SampleSettings } from './about/sample';
@@ -57,7 +58,11 @@ function StudioLoading({ route }: { route: SiteRoute }) {
         </div>
       </div>
       <p className="route-loading-label">
-        {route === 'usage' ? t('读取用量账本') : account ? accountPageCopy(locale).loading : c.loadingStudio}
+        {route === 'usage'
+          ? t('读取用量账本')
+          : account
+            ? accountPageCopy(locale).loading
+            : c.loadingStudio}
       </p>
     </div>
   );
@@ -98,6 +103,10 @@ export function SiteShell() {
   const [route, setRoute] = useState<SiteRoute>(() => readSiteRoute(location.hash));
   const [opened, setOpened] = useState(() => route !== 'about');
   const [config, setConfig] = useState<PublicConfig | null>(null);
+  useEffect(() => {
+    const icon = document.querySelector<HTMLLinkElement>('link[rel="icon"]');
+    if (icon) icon.href = brandLogoUrl(config?.brand) || '/favicon.svg';
+  }, [config?.brand.logoUrl, config?.brand.logoAssetId]);
   const [retryKey, setRetryKey] = useState(0);
   const sequence = useRef(0);
   const currentRoute = useRef(route);

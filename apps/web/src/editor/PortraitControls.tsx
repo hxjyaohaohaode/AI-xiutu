@@ -60,9 +60,25 @@ export function PortraitControls({
   const [annotationStatus, setAnnotationStatus] = useState<string | null>(null);
   const [cutting, setCutting] = useState(false);
   const cutoutLocked = useRef(false);
+  const sourceIdentity = editor.getSourceIdentity();
+  const pausedCutoutOutcome = useRef<{
+    sourceIdentity: number;
+    message?: string;
+    error?: string;
+  } | null>(null);
   const mounted = useRef(true);
   useEffect(() => {
     mounted.current = true;
+    // Returning from another tool restores the same owner. A completed cutout
+    // must not leave the retained button busy just because its result arrived
+    // while this tool's effects were paused.
+    setCutting(cutoutLocked.current);
+    const outcome = pausedCutoutOutcome.current;
+    pausedCutoutOutcome.current = null;
+    if (outcome?.sourceIdentity === editor.getSourceIdentity()) {
+      if (outcome.message) setAnnotationStatus(outcome.message);
+      if (outcome.error) report(outcome.error);
+    }
     return () => {
       mounted.current = false;
     };
@@ -72,17 +88,18 @@ export function PortraitControls({
   const target = targets.find((person) => person.id === state.activeTargetId) ?? targets[0];
   const recipe = currentV3(editor);
   const selectionHintId = useId();
-  const sourceIdentity = editor.getSourceIdentity();
   const [guides, setGuides] = useState<CutoutGuides>({
     foregroundId: '',
     backgroundId: '',
     radius: 0.015,
     decontaminate: 0.8,
   });
-  useEffect(
-    () => setGuides({ foregroundId: '', backgroundId: '', radius: 0.015, decontaminate: 0.8 }),
-    [sourceIdentity],
-  );
+  const guideSource = useRef(sourceIdentity);
+  useEffect(() => {
+    if (guideSource.current === sourceIdentity) return;
+    guideSource.current = sourceIdentity;
+    setGuides({ foregroundId: '', backgroundId: '', radius: 0.015, decontaminate: 0.8 });
+  }, [sourceIdentity]);
   const analysisCurrent = portraitSelectionMatchesSource(state.analysis, editor.getSourceFrame());
   const hasSubject = analysisCurrent && !!state.analysis?.segmentation?.subject;
   const guideOptions = [
@@ -130,15 +147,20 @@ export function PortraitControls({
     }
     if (state.progress || !validGuides || (!hasSubject && !guides.foregroundId)) return;
     cutoutLocked.current = true;
+    pausedCutoutOutcome.current = null;
     setCutting(true);
     setAnnotationStatus(null);
     try {
       const message = await onCutout(guides);
-      if (mounted.current && editor.getSourceIdentity() === sourceIdentity)
-        setAnnotationStatus(message);
+      if (editor.getSourceIdentity() === sourceIdentity) {
+        if (mounted.current) setAnnotationStatus(message);
+        else pausedCutoutOutcome.current = { sourceIdentity, message };
+      }
     } catch (failure) {
-      if (mounted.current && editor.getSourceIdentity() === sourceIdentity)
-        report(errorMessage(failure));
+      if (editor.getSourceIdentity() === sourceIdentity) {
+        if (mounted.current) report(errorMessage(failure));
+        else pausedCutoutOutcome.current = { sourceIdentity, error: errorMessage(failure) };
+      }
     } finally {
       cutoutLocked.current = false;
       if (mounted.current) setCutting(false);

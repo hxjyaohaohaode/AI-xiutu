@@ -1,5 +1,6 @@
 import { t } from '../i18n';
 import { studioText } from '../workspace/studio-copy';
+import { editorFlowText } from './flow-copy';
 import { MotionDetails } from '../motion/Presence';
 import { StudioGlyph } from '../components/StudioGlyph';
 import { ChoiceSelect } from '../components/ChoiceSelect';
@@ -522,7 +523,7 @@ function LegacyToolInspector({
                 };
     const next = createAdjustmentRegionV2({
       id: uid(),
-      name: name ?? `${labels[type]} ${v2.regions.length + 1}`,
+      name: name ?? `${t(labels[type])} ${v2.regions.length + 1}`,
       mask,
     });
     editor.commit(
@@ -1073,9 +1074,8 @@ function LegacyToolInspector({
                         </small>
                       </button>
                       <IconButton
-                        label={t('{v0}{v1}', {
-                          v0: item.enabled ? t('隐藏') : t('显示'),
-                          v1: item.name,
+                        label={editorFlowText(item.enabled ? 'hideNamed' : 'showNamed', {
+                          name: item.name,
                         })}
                         onClick={() =>
                           editor.commit(

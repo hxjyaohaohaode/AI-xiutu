@@ -10,6 +10,7 @@ on:
       - 'scripts/web-account-smoke.mjs'
       - 'scripts/qa/site-entry.browser.mjs'
       - 'scripts/qa/about-experience.browser.mjs'
+      - 'scripts/ci/prepare-apt-mirror.py'
       - 'package.json'
       - 'package-lock.json'
       - '.nvmrc'
@@ -23,6 +24,7 @@ on:
       - 'scripts/web-account-smoke.mjs'
       - 'scripts/qa/site-entry.browser.mjs'
       - 'scripts/qa/about-experience.browser.mjs'
+      - 'scripts/ci/prepare-apt-mirror.py'
       - 'package.json'
       - 'package-lock.json'
       - '.nvmrc'
@@ -71,6 +73,8 @@ jobs:
           node-version-file: .nvmrc
           cache: npm
       - run: npm ci
+      - name: Prepare Ubuntu APT mirror
+        run: sudo --preserve-env=GITHUB_ACTIONS,RUNNER_OS python3 scripts/ci/prepare-apt-mirror.py
       - run: npx playwright install --with-deps chromium
       - name: Verify public entry, three languages, real account journeys and recovery
         run: node --import tsx scripts/web-account-smoke.mjs

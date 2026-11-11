@@ -1,0 +1,239 @@
+{
+  "captureDate": "2026-11-11",
+  "method": "Actual running frontend in same-origin iframe viewports through CUA. Only encoding to WebP; no synthetic UI, no edited pixels.",
+  "localOnly": true,
+  "capabilityLimit": "Cloud browser lacks WebGL 2. Portrait capture uses real manual retouch path, not fabricated detection.",
+  "captures": [
+    {
+      "asset": "apps/web/public/about/hero-zh-CN.webp",
+      "locale": "zh-CN",
+      "viewport": [
+        1440,
+        960
+      ],
+      "sourceFormat": "jpeg",
+      "bytes": 168192,
+      "sha256": "e530a132e91690749e19d643c0da7d2d4a87869c2d468b49df7463a38105190e"
+    },
+    {
+      "asset": "apps/web/public/about/hero-zh-TW.webp",
+      "locale": "zh-TW",
+      "viewport": [
+        1440,
+        960
+      ],
+      "sourceFormat": "jpeg",
+      "bytes": 168686,
+      "sha256": "281742bce57e15c1d7619ba3cbac496ec5fd94c92b626d7654d54ad72f5f7511"
+    },
+    {
+      "asset": "apps/web/public/about/hero-en.webp",
+      "locale": "en",
+      "viewport": [
+        1440,
+        960
+      ],
+      "sourceFormat": "jpeg",
+      "bytes": 170024,
+      "sha256": "138b60dc9cc51e2763ff3e23adad135749d9ab6431692005b59ffc84d1073691"
+    },
+    {
+      "asset": "apps/web/public/about/workspace-zh-CN.webp",
+      "locale": "zh-CN",
+      "viewport": [
+        1440,
+        960
+      ],
+      "sourceFormat": "jpeg",
+      "bytes": 164882,
+      "sha256": "15dcf96665bff19e01d4c40d44540df811e2eabf9fff316ff74b4b6c3868d4e9"
+    },
+    {
+      "asset": "apps/web/public/about/workspace-zh-TW.webp",
+      "locale": "zh-TW",
+      "viewport": [
+        1440,
+        960
+      ],
+      "sourceFormat": "jpeg",
+      "bytes": 163218,
+      "sha256": "ca48169e1a71a6821cd5c6690ad6c16ba876b35eae95bcbe125e60559d3c320a"
+    },
+    {
+      "asset": "apps/web/public/about/workspace-en.webp",
+      "locale": "en",
+      "viewport": [
+        1440,
+        960
+      ],
+      "sourceFormat": "jpeg",
+      "bytes": 165334,
+      "sha256": "1a212a0bd1aa1421381976c98d38f316d07bb2daf8dd2646a898eb0a30ae67b1"
+    },
+    {
+      "asset": "apps/web/public/about/local-zh-CN.webp",
+      "locale": "zh-CN",
+      "viewport": [
+        1440,
+        960
+      ],
+      "sourceFormat": "jpeg",
+      "bytes": 106564,
+      "sha256": "d5314750273dec36bcd7cceee11687f8b8d309b3178d81e2ef7178279f245847"
+    },
+    {
+      "asset": "apps/web/public/about/local-zh-TW.webp",
+      "locale": "zh-TW",
+      "viewport": [
+        1440,
+        960
+      ],
+      "sourceFormat": "jpeg",
+      "bytes": 106730,
+      "sha256": "a6ba6d5c728168b1830a8de5816fee2f8de3bf87e3b09aa51e12c132765bf3fd"
+    },
+    {
+      "asset": "apps/web/public/about/local-en.webp",
+      "locale": "en",
+      "viewport": [
+        1440,
+        960
+      ],
+      "sourceFormat": "jpeg",
+      "bytes": 109036,
+      "sha256": "5b96faacb7d406c2b6480522c5f81e84683c53545f4e8ea4e466559f9945f026"
+    },
+    {
+      "asset": "apps/web/public/about/portrait-zh-CN.webp",
+      "locale": "zh-CN",
+      "viewport": [
+        1440,
+        960
+      ],
+      "sourceFormat": "jpeg",
+      "bytes": 72046,
+      "sha256": "851722821b5085ab36661ba83054ccff561e6629b129b531a2a3f2fa1c07f5ca"
+    },
+    {
+      "asset": "apps/web/public/about/portrait-zh-TW.webp",
+      "locale": "zh-TW",
+      "viewport": [
+        1440,
+        960
+      ],
+      "sourceFormat": "jpeg",
+      "bytes": 72392,
+      "sha256": "a598ea8d95e4a23ba134d05824ba9d28602a503c456877cffa66be39bf1d6a06"
+    },
+    {
+      "asset": "apps/web/public/about/portrait-en.webp",
+      "locale": "en",
+      "viewport": [
+        1440,
+        960
+      ],
+      "sourceFormat": "jpeg",
+      "bytes": 71672,
+      "sha256": "1fd1d6cf975ff149530177e5944f1ff83a392a1d62d69b3b89555571699522ab"
+    },
+    {
+      "asset": "apps/web/public/about/layers-zh-CN.webp",
+      "locale": "zh-CN",
+      "viewport": [
+        1440,
+        960
+      ],
+      "sourceFormat": "jpeg",
+      "bytes": 88476,
+      "sha256": "846a33e2d600cbf6439ff3ffe842c5547cf930b7ebdfb0b6af20c767ead5617f"
+    },
+    {
+      "asset": "apps/web/public/about/layers-zh-TW.webp",
+      "locale": "zh-TW",
+      "viewport": [
+        1440,
+        960
+      ],
+      "sourceFormat": "jpeg",
+      "bytes": 88774,
+      "sha256": "b940342cf1eec76f94e042b664de1047aae22b443b3a64dfa3e3e7b560bb0066"
+    },
+    {
+      "asset": "apps/web/public/about/layers-en.webp",
+      "locale": "en",
+      "viewport": [
+        1440,
+        960
+      ],
+      "sourceFormat": "jpeg",
+      "bytes": 91500,
+      "sha256": "d716ca603a39496cbd29ebc44730ea8eb752c51da23c381a9a1d90545668fdee"
+    },
+    {
+      "asset": "apps/web/public/about/tablet-zh-CN.webp",
+      "locale": "zh-CN",
+      "viewport": [
+        1024,
+        768
+      ],
+      "sourceFormat": "jpeg",
+      "bytes": 90394,
+      "sha256": "a000be6702800f0582ec9b5bd31667aa0e12771547fcfc446ead03f5837dd952"
+    },
+    {
+      "asset": "apps/web/public/about/tablet-zh-TW.webp",
+      "locale": "zh-TW",
+      "viewport": [
+        1024,
+        768
+      ],
+      "sourceFormat": "jpeg",
+      "bytes": 90734,
+      "sha256": "c5150ea3a0d1939c0e8e6544e84e4508df19ecae421bff59f3d77065af40329e"
+    },
+    {
+      "asset": "apps/web/public/about/tablet-en.webp",
+      "locale": "en",
+      "viewport": [
+        1024,
+        768
+      ],
+      "sourceFormat": "jpeg",
+      "bytes": 92932,
+      "sha256": "75631b554d15d9daf904dfbb2ae7b114e23950410b2ef686cfdd43643f2ddc0d"
+    },
+    {
+      "asset": "apps/web/public/about/phone-zh-CN.webp",
+      "locale": "zh-CN",
+      "viewport": [
+        390,
+        844
+      ],
+      "sourceFormat": "jpeg",
+      "bytes": 41538,
+      "sha256": "b4b8fb5f15a6d97598864426a70b00d5db1f9cced4cf3aaa3d424f8bb36ddbac"
+    },
+    {
+      "asset": "apps/web/public/about/phone-zh-TW.webp",
+      "locale": "zh-TW",
+      "viewport": [
+        390,
+        844
+      ],
+      "sourceFormat": "jpeg",
+      "bytes": 41716,
+      "sha256": "169a0a7656317290c7d38e38c0cc576f16ac574abc78e436b8d9bb36c19cc57a"
+    },
+    {
+      "asset": "apps/web/public/about/phone-en.webp",
+      "locale": "en",
+      "viewport": [
+        390,
+        844
+      ],
+      "sourceFormat": "jpeg",
+      "bytes": 42598,
+      "sha256": "81508f8eb542150ac7f9be7655b7da64e1b15c7702280a528a0a6a98156a6141"
+    }
+  ]
+}

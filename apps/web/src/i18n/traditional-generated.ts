@@ -1,6 +1,9 @@
 /** Traditional Chinese baseline with reviewed Taiwan interface terminology.
  * Conversion applies only to declared application-copy values, never user content. */
 export const traditionalGenerated: Readonly<Record<string, string>> = {
+  读取模型目录: '讀取模型目錄',
+  读取待核验会话: '讀取待核驗會話',
+  '配置已提交，但无法确认保存后的模型。请重新读取。': '設定已提交，但無法確認儲存後的模型。請重新讀取。',
   版本比较: '版本比較',
   素材库: '素材庫',
   用量账本: '用量帳本',

@@ -33,6 +33,7 @@ import { ParameterShelf, type ShelfControl } from './ParameterShelf';
 import { MaskControls } from './MaskControls';
 import { currentV3, newMask, rgbaHex, hexRgba, type InspectorController } from './advanced-model';
 import { portraitSelectionMatchesSource } from './portrait-selection';
+import { editorFlowText } from './flow-copy';
 
 const blendLabels: Record<BlendModeV3, string> = {
   normal: '正常混合',
@@ -123,7 +124,7 @@ export function PaintControls({
     const latest = currentV3(editor),
       next: PaintLayerV3 = {
         id: secureUuid(),
-        name: '绘制 ' + (latest.paintLayers.length + 1),
+        name: t('绘制 ') + (latest.paintLayers.length + 1),
         enabled: true,
         opacity: 1,
         blendMode: 'normal',
@@ -202,7 +203,7 @@ export function PaintControls({
               </small>
             </button>
             <IconButton
-              label={t('{v0}{v1}', { v0: item.enabled ? t('隐藏') : t('显示'), v1: item.name })}
+              label={editorFlowText(item.enabled ? 'hideNamed' : 'showNamed', { name: item.name })}
               onClick={() =>
                 apply(
                   {
@@ -464,12 +465,24 @@ export function PaintControls({
               {t('名称')}
               <input
                 aria-label={t('绘制图层名称')}
-                key={layer.id}
+                key={layer.id + ':' + layer.name}
                 defaultValue={layer.name}
                 maxLength={120}
                 onBlur={(event) => {
-                  if (event.target.value.trim())
-                    patch({ name: event.target.value.trim() }, t('重命名绘制图层'));
+                  const name = event.currentTarget.value.trim();
+                  if (!name || name === layer.name) {
+                    event.currentTarget.value = layer.name;
+                    return;
+                  }
+                  patch({ name }, t('重命名绘制图层'));
+                }}
+                onKeyDown={(event) => {
+                  if (event.nativeEvent.isComposing) return;
+                  if (event.key === 'Enter') event.currentTarget.blur();
+                  if (event.key === 'Escape') {
+                    event.currentTarget.value = layer.name;
+                    event.currentTarget.blur();
+                  }
                 }}
               />
             </label>
@@ -886,7 +899,7 @@ export function ImageLayerControls({ controller }: { controller: InspectorContro
               <small>{t(blendLabels[item.blendMode])}</small>
             </button>
             <IconButton
-              label={t('{v0}{v1}', { v0: item.enabled ? t('隐藏') : t('显示'), v1: item.name })}
+              label={editorFlowText(item.enabled ? 'hideNamed' : 'showNamed', { name: item.name })}
               onClick={() =>
                 apply(
                   {
@@ -999,12 +1012,24 @@ export function ImageLayerControls({ controller }: { controller: InspectorContro
               {t('名称')}
               <input
                 aria-label={t('合成图层名称')}
-                key={layer.id}
+                key={layer.id + ':' + layer.name}
                 defaultValue={layer.name}
                 maxLength={120}
                 onBlur={(event) => {
-                  if (event.target.value.trim())
-                    patch({ name: event.target.value.trim() }, t('重命名合成图层'));
+                  const name = event.currentTarget.value.trim();
+                  if (!name || name === layer.name) {
+                    event.currentTarget.value = layer.name;
+                    return;
+                  }
+                  patch({ name }, t('重命名合成图层'));
+                }}
+                onKeyDown={(event) => {
+                  if (event.nativeEvent.isComposing) return;
+                  if (event.key === 'Enter') event.currentTarget.blur();
+                  if (event.key === 'Escape') {
+                    event.currentTarget.value = layer.name;
+                    event.currentTarget.blur();
+                  }
                 }}
               />
             </label>

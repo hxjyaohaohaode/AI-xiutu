@@ -7,6 +7,7 @@ on:
       - 'apps/web/**'
       - 'scripts/qa/assistant.browser.mjs'
       - 'scripts/qa/team-voice.browser.mjs'
+      - 'scripts/ci/prepare-apt-mirror.py'
       - 'apps/api/test/collaboration-fixture.ts'
       - '.github/workflows/assistant-checks.yml'
   pull_request:
@@ -15,6 +16,7 @@ on:
       - 'apps/web/**'
       - 'scripts/qa/assistant.browser.mjs'
       - 'scripts/qa/team-voice.browser.mjs'
+      - 'scripts/ci/prepare-apt-mirror.py'
       - 'apps/api/test/collaboration-fixture.ts'
       - '.github/workflows/assistant-checks.yml'
   workflow_dispatch:
@@ -55,6 +57,8 @@ jobs:
           node-version-file: .nvmrc
           cache: npm
       - run: npm ci
+      - name: Prepare Ubuntu APT mirror
+        run: sudo --preserve-env=GITHUB_ACTIONS,RUNNER_OS python3 scripts/ci/prepare-apt-mirror.py
       - id: browser-runtime
         run: npx playwright install --with-deps chromium
       - name: Verify assistant interaction, retained requests and responsive controls
