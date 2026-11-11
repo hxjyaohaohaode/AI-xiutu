@@ -246,7 +246,7 @@ async function checkCloudCutout(sourcePng, settings, browserPixels) {
     const decoded = await sharp(download.rawPayload).ensureAlpha().raw().toBuffer();
     assert.deepEqual(decoded, browserPixels);
     const lineage = (await fixture.call('GET', `/v1/assets/${asset.id}/derivation`)).json();
-    assert.equal(lineage.algorithm, 'rgb-guided-trimap-v2');
+    assert.equal(lineage.algorithm, 'rgb-guided-trimap-v3');
     assert.equal(lineage.sources[0].assetId, request.sourceAssetId);
     assert.equal((await fixture.call('POST', path, request)).json().asset.id, asset.id);
     return {
@@ -371,6 +371,48 @@ try {
       const available = new Map(
         portraitToolAvailability(analysis, target.id, 4).map((t) => [t.id, t]),
       );
+      if (target.featureMasks?.accessories) {
+        const recipe = applyPortraitValues(createRecipeV4(), analysis, target.id, {
+          eyeSize: 90,
+          eyeSpacing: -30,
+        });
+        const protectedImage = renderEditorRecipe(image, recipe);
+        const unguarded = renderEditorRecipe(image, {
+          ...recipe,
+          warp: {
+            ...recipe.warp,
+            guards: [],
+            strokes: recipe.warp.strokes.map(({ guardId, ...stroke }) => stroke),
+          },
+        });
+        const weight = compileSelectionMaskV3(target.featureMasks.accessories, image, image);
+        let locked = 0,
+          otherwiseChanged = 0;
+        for (let y = 0; y < image.height; y++)
+          for (let x = 0; x < image.width; x++) {
+            if (weight((x + 0.5) / image.width, (y + 0.5) / image.height) < 1) continue;
+            const i = (y * image.width + x) * 4;
+            locked++;
+            for (let c = 0; c < 4; c++) assert.equal(protectedImage.data[i + c], image.data[i + c]);
+            if ([0, 1, 2, 3].some((c) => unguarded.data[i + c] !== image.data[i + c]))
+              otherwiseChanged++;
+          }
+        report.cases.push({
+          photo: source.name,
+          tool: 'eye-accessory-protection',
+          locked,
+          otherwiseChanged,
+          state: 'passed',
+        });
+        if (source.name === 'portrait-hopper') {
+          assert.ok(locked > 10 && otherwiseChanged > 10);
+          await sheet('portrait-hopper-eye-frame', [
+            { label: 'Original', image },
+            { label: 'Without guard', image: unguarded },
+            { label: 'With guard', image: protectedImage },
+          ]);
+        }
+      }
       for (const tool of [
         'smooth',
         'texture',

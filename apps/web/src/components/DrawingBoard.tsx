@@ -40,12 +40,16 @@ export function DrawingBoard({
   onReference,
   initialColor = '#34372EFF',
   readCurrentImage,
+  projectImages,
+  readProjectImage,
 }: {
   onClose: () => void;
   onUse: (file: File) => Promise<boolean>;
   onReference: (file: File) => boolean | Promise<boolean>;
   initialColor?: string;
   readCurrentImage?: () => Promise<File>;
+  projectImages?: { id: string; name: string }[];
+  readProjectImage?: (id: string) => Promise<File>;
 }) {
   const canvas = useRef<HTMLCanvasElement>(null);
   const drawingArea = useRef<HTMLDivElement>(null);
@@ -407,6 +411,17 @@ export function DrawingBoard({
               { value: 'icon', label: t('图标') },
             ]}
           />
+          {!!projectImages?.length && readProjectImage && (
+            <ChoiceSelect
+              ariaLabel={t('添加项目图片到草图')}
+              size="compact"
+              value=""
+              disabled={busy}
+              placeholder={t('项目图片')}
+              options={projectImages.map(({ id, name }) => ({ value: id, label: name }))}
+              onValueChange={(id) => void insertImage(() => readProjectImage(id))}
+            />
+          )}
           <div className="drawing-tools">
             <IconButton
               label={t('添加本地图片到草图')}

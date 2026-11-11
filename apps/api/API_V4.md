@@ -44,7 +44,7 @@ Operations:
 
 ```ts
 {type:'set-parameter',path:string,value:number}
-{type:'set-curve',channel:'rgb'|'red'|'green'|'blue',points:[number,number][]}
+{type:'set-curve',channel:'rgb'|'red'|'green'|'blue',points:[number,number][],interpolation?:'linear'|'pchip-v1'}
 {type:'replace-node',collection:'regions'|'regionEdits'|'regionGroups'|'imageLayers'|'paintLayers',id:string,value:object}
 {type:'replace-recipe',recipe:EditorRecipe}
 ```
@@ -476,13 +476,13 @@ master remains accessible through the media export endpoint in section 5.
 GIF processing limits. `POST /v1/projects/:id/derived-assets` accepts the shared
 `derivedAssetRequest` contract. A cutout takes a source-normalized trimap, optional
 foreground/background masks, refinement radius and edge decontamination strength.
-The optional `settings.algorithm` is `ray-v1` (published default) or `guided-v2`.
-The latter estimates RGB affine coefficients on a bounded area image, evaluates
-them against original linear RGB, fits nearby color pairs, and only refines the
-uncertain support. Confident background cannot become new hair. It preserves
-explicit trimap paint; it does not detect new objects or reconstruct absent hair.
-The existing workspace extraction action sends `guided-v2` explicitly for both
-the local Worker and the cloud request. Local PNG export encodes straight RGBA
+The optional `settings.algorithm` is `ray-v1` (published default), `guided-v2` or
+`guided-v3`. The guided paths estimate RGB affine coefficients on a bounded
+area image, evaluate them against original linear RGB and fit nearby color pairs
+inside the uncertain support. V3 samples additional distances between powers of
+two. The workspace binds selected foreground and occluder masks to the current
+source and uses V3 in both the local worker and cloud request. Hard trimap pixels
+retain their weights. Local PNG export encodes straight RGBA
 directly, so partially transparent RGB samples match cloud-derived pixels for
 the same canonical source and settings. Omitted algorithms still resolve to
 `ray-v1` for existing API clients and retries.
@@ -490,6 +490,7 @@ A collage takes ordered pixel rectangles, fit, focal points and RGBA background.
 All sources must belong to the authorized project. The output is a normal PNG asset.
 `GET /v1/assets/:id/derivation` reads the algorithm, source IDs and hashes, and
 settings under the project's read permission. The actor's request ID is idempotent.
+The V3 derivation identifier is `rgb-guided-trimap-v3` and requires schema 19.
 
 The same capability response now includes `cutout`, `restoration`, `collage` and
 source/working limits. `POST /v1/projects/:id/derived-assets/quote` accepts the same

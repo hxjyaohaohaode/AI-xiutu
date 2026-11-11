@@ -201,11 +201,12 @@ export const ASSISTANT_TOOL_NAMES = [
   'propose_healing',
   'draft_generation',
 ] as const;
-export const VOICE_VERIFIED_AT = '2026-11-10';
+export const VOICE_VERIFIED_AT = '2026-11-11';
 export const VOICE_DOCS = [
   'https://developers.openai.com/api/docs/models/gpt-live-1',
   'https://developers.openai.com/api/docs/guides/live-delegation',
   'https://developers.openai.com/api/docs/guides/voice-websockets',
   'https://developers.openai.com/api/docs/guides/realtime-conversations',
   'https://developers.openai.com/api/docs/guides/live-conversations',
+  'https://developers.openai.com/api/reference/resources/realtime/client-events',
 ] as const;

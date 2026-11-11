@@ -5,6 +5,11 @@ import { traditionalGenerated } from './traditional-generated';
 
 /** Traditional Chinese copy; user content is never passed through this catalog. */
 export const traditional: Readonly<Record<string, string>> = {
+  添加项目图片到草图: '將專案圖片加入草圖',
+  项目图片: '專案圖片',
+  '合成素材单文件上限为 64MiB。': '合成素材每個檔案上限為 64 MiB。',
+  返回上一步工具: '返回上一個工具',
+  恢复上一步面板位置: '恢復上一步面板位置',
   '抠图选区已变化，请重新选择。': '去背選區已變更，請重新選擇。',
   '请先识别人像或选择前景。': '請先辨識人像或選擇前景。',
   '图片已切换，请重新添加。': '圖片已切換，請重新加入。',

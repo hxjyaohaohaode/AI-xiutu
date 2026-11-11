@@ -12,6 +12,8 @@ export type WorkspaceLayout = {
   panels: Record<PanelId, PanelGeometry>;
   viewport?: { height: number };
 };
+export type PanelGeometryChange = { record?: boolean; previous?: PanelGeometry };
+type LayoutStep = { id: PanelId; geometry: PanelGeometry };
 export const layoutStorageKey = (view: Viewport) =>
   `image-workspace:v7:${view.bucket}:${view.width > view.height ? 'landscape' : 'portrait'}`;
 
@@ -125,7 +127,7 @@ export function useWorkspaceLayout() {
   const [view, setView] = useState<Viewport>(viewport);
   const [preferences, setPreferences] = useState(() => {
     const v = viewport();
-    return { key: layoutStorageKey(v), value: read(v) };
+    return { key: layoutStorageKey(v), value: read(v), history: [] as LayoutStep[] };
   });
   const [focused, setFocused] = useState(false);
   const viewRef = useRef(view);
@@ -189,7 +191,9 @@ export function useWorkspaceLayout() {
     const currentView = viewRef.current;
     if (layoutStorageKey(currentView) !== currentKey) return;
     setPreferences((previous) =>
-      previous.key === currentKey ? previous : { key: currentKey, value: read(currentView) },
+      previous.key === currentKey
+        ? previous
+        : { key: currentKey, value: read(currentView), history: [] },
     );
   }, [currentKey]);
   useEffect(() => {
@@ -205,16 +209,21 @@ export function useWorkspaceLayout() {
   }, [preferences, currentKey]);
   const panel = (id: PanelId) => boundPanel(layout.panels[id], view, id);
   const updatePanel = useCallback(
-    (id: PanelId, value: PanelGeometry) => {
+    (id: PanelId, value: PanelGeometry, change: PanelGeometryChange = {}) => {
       const v = viewRef.current,
         key = layoutStorageKey(v);
       // Old pointer callbacks cannot save desktop geometry under a new phone key.
       if (key !== currentKey) return;
       setPreferences((previous) => {
         const current = previous.key === key ? adaptWorkspaceLayout(previous.value, v) : read(v);
+        const next = boundPanel(value, v, id);
+        const old = boundPanel(change.previous ?? current.panels[id], v, id);
+        const history = previous.key === key ? previous.history : [];
+        const record = change.record !== false && JSON.stringify(old) !== JSON.stringify(next);
         return {
           key,
-          value: { ...current, panels: { ...current.panels, [id]: boundPanel(value, v, id) } },
+          value: { ...current, panels: { ...current.panels, [id]: next } },
+          history: record ? [...history, { id, geometry: old }].slice(-24) : history,
         };
       });
     },
@@ -225,6 +234,7 @@ export function useWorkspaceLayout() {
       key = layoutStorageKey(v);
     setPreferences((previous) => ({
       key,
+      history: previous.key === key ? previous.history : [],
       value: {
         ...(previous.key === key ? previous.value : read(v)),
         theme,
@@ -233,7 +243,19 @@ export function useWorkspaceLayout() {
   }, []);
   const reset = useCallback(() => {
     const next = viewport();
-    setPreferences({ key: layoutStorageKey(next), value: defaultWorkspaceLayout(next) });
+    setPreferences((previous) => {
+      const key = layoutStorageKey(next),
+        value = defaultWorkspaceLayout(next);
+      const current =
+        previous.key === key ? adaptWorkspaceLayout(previous.value, next) : read(next);
+      const history = previous.key === key ? previous.history : [];
+      const steps = (['inspector', 'ai'] as const).flatMap((id) =>
+        JSON.stringify(current.panels[id]) === JSON.stringify(value.panels[id])
+          ? []
+          : [{ id, geometry: current.panels[id] }],
+      );
+      return { key, value, history: [...history, ...steps].slice(-24) };
+    });
     setFocused(false);
     try {
       localStorage.removeItem(layoutStorageKey(next));
@@ -241,5 +263,39 @@ export function useWorkspaceLayout() {
       /* nonessential store */
     }
   }, []);
-  return { view, layout, panel, updatePanel, setTheme, focused, setFocused, reset };
+  const canUndoPanel = (id: PanelId) =>
+    preferences.key === currentKey && preferences.history.some((step) => step.id === id);
+  const undoPanel = (id: PanelId) => {
+    const view = viewRef.current;
+    setPreferences((previous) => {
+      if (previous.key !== layoutStorageKey(view)) return previous;
+      let index = previous.history.length - 1;
+      while (index >= 0 && previous.history[index]!.id !== id) index--;
+      if (index < 0) return previous;
+      const current = adaptWorkspaceLayout(previous.value, view);
+      return {
+        ...previous,
+        value: {
+          ...current,
+          panels: {
+            ...current.panels,
+            [id]: boundPanel(previous.history[index]!.geometry, view, id),
+          },
+        },
+        history: previous.history.filter((_, i) => i !== index),
+      };
+    });
+  };
+  return {
+    view,
+    layout,
+    panel,
+    updatePanel,
+    canUndoPanel,
+    undoPanel,
+    setTheme,
+    focused,
+    setFocused,
+    reset,
+  };
 }

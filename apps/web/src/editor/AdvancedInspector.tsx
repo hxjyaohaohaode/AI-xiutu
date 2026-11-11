@@ -35,13 +35,13 @@ export function AdvancedInspector({
   onGroupChange,
   onCutout,
 }: ToolInspectorProps) {
-  const [requestedScope, setRequestedScope] = useState<EditScope>({ kind: 'global' });
+  const [scopes, setScopes] = useState<Partial<Record<typeof group, EditScope>>>({});
+  const requestedScope: EditScope = scopes[group] ?? { kind: 'global' };
   const [error, setError] = useState<string | null>(null);
   const scroller = useRef<HTMLDivElement>(null);
+  const scrollOffsets = useRef<Partial<Record<typeof group, number>>>({});
   useLayoutEffect(() => {
-    // Keep the new tool's heading reachable without remounting its controls or
-    // changing the document. An unrelated tool must not inherit this scroll.
-    if (scroller.current) scroller.current.scrollTop = 0;
+    if (scroller.current) scroller.current.scrollTop = scrollOffsets.current[group] ?? 0;
   }, [group]);
   const recipe = currentV3(editor),
     descriptor = toolGroups.find((tool) => tool.id === group)!;
@@ -72,7 +72,7 @@ export function AdvancedInspector({
   };
   function chooseScope(next: EditScope) {
     editor.commitCurrent('完成当前作用范围');
-    setRequestedScope(next);
+    setScopes((current) => ({ ...current, [group]: next }));
     if (next.kind === 'region') {
       editor.setActiveRegionId(next.id);
       editor.setActiveMaskPath([]);
@@ -96,7 +96,13 @@ export function AdvancedInspector({
           <CaretDown size={20} />
         </IconButton>
       </header>
-      <div ref={scroller} className="inspector-scroll advanced-inspector-scroll">
+      <div
+        ref={scroller}
+        className="inspector-scroll advanced-inspector-scroll"
+        onScroll={(event) => {
+          scrollOffsets.current[group] = event.currentTarget.scrollTop;
+        }}
+      >
         {scopedFamily && onGroupChange && (
           <nav
             className="context-adjustment-tabs"

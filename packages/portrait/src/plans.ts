@@ -465,13 +465,12 @@ export function applyPortraitValues<T extends LayeredRecipe>(
   if (target.kind === 'face') {
     const baseMasks =
       recipe.schemaVersion === 4
-        ? facialMasksV4(target, analysis.segmentation?.skin ?? null, dims)
+        ? facialMasksV4(target, analysis.segmentation?.skin ?? null, dims, accessory)
         : facialMasks(target, analysis.segmentation?.skin ?? null);
     const guard = (mask: SelectionMaskV3) =>
       accessory ? combine('subtract', [mask, accessory]) : mask;
     const masks = {
       ...baseMasks,
-      skin: guard(baseMasks.skin),
       eyes: guard(baseMasks.eyes),
       brows: guard(baseMasks.brows),
     };

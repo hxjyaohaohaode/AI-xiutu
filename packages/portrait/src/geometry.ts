@@ -87,12 +87,14 @@ function facialMasksWithFeather(
   target: PortraitTarget,
   skin: SelectionMaskV3 | null,
   feather: number,
+  accessory?: SelectionMaskV3,
 ) {
   const c = target.contours,
     face = polygon(c.oval ?? [], feather);
   const exclusions = ['leftEye', 'rightEye', 'lips', 'leftBrow', 'rightBrow']
     .filter((k) => c[k]?.length)
     .map((k) => polygon(c[k]!, 0.001));
+  if (accessory) exclusions.push(accessory);
   const safe = exclusions.length ? combine('subtract', [face, combine('union', exclusions)]) : face;
   return {
     face,
@@ -125,6 +127,7 @@ export function facialMasksV4(
   target: PortraitTarget,
   skin: SelectionMaskV3 | null,
   dimensions: Dimensions,
+  accessory?: SelectionMaskV3,
 ) {
   const { width, height } = dimensions;
   if (!Number.isSafeInteger(width) || !Number.isSafeInteger(height) || width < 1 || height < 1)
@@ -150,7 +153,7 @@ export function facialMasksV4(
   // A broad smoothstep transition avoids the old image-size-based forehead band.
   // Its normalized short-edge unit also preserves the same falloff in preview/export.
   const feather = Math.min(0.25, Math.max(0.000001, (faceShort * 0.14) / Math.min(width, height)));
-  return facialMasksWithFeather(target, skin, feather);
+  return facialMasksWithFeather(target, skin, feather, accessory);
 }
 
 export { validateTarget } from './validation.js';

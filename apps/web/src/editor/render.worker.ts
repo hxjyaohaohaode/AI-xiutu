@@ -5,9 +5,7 @@ import {
   encodeRgbaPng,
   type CutoutSettings,
   getEditorOutputDimensions,
-  MAX_V3_PIXELS,
-  MAX_V4_PIXELS,
-  MAX_TILED_PIXELS,
+  localEditorSourceLimits,
   WarpPreviewCache,
   type Dimensions,
   type RGBAImage,
@@ -158,8 +156,7 @@ self.onmessage = async (event: MessageEvent<Message>) => {
     }
     if (message.type !== 'export' && sourceDimensions) {
       const version = message.recipe.schemaVersion;
-      const sourceCeiling =
-        version === 4 ? MAX_V4_PIXELS : version === 3 ? MAX_V3_PIXELS : MAX_TILED_PIXELS;
+      const { maxPixels: sourceCeiling } = localEditorSourceLimits(version);
       if (sourceDimensions.width * sourceDimensions.height > sourceCeiling)
         throw new Error(
           `原图超过 V${version} 的 ${(sourceCeiling / 1e6).toFixed(1)}MP 编辑像素上限，请准备较小副本。`,
@@ -201,12 +198,7 @@ self.onmessage = async (event: MessageEvent<Message>) => {
         ? message.originalOnly
           ? source
           : renderEditorRecipeTiled(source, message.recipe, {
-              maxPixels:
-                message.recipe.schemaVersion === 4
-                  ? MAX_V4_PIXELS
-                  : message.recipe.schemaVersion === 3
-                    ? MAX_V3_PIXELS
-                    : MAX_TILED_PIXELS,
+              maxPixels: localEditorSourceLimits(recipe.schemaVersion).maxPixels,
               images: originalImages,
               tileSize: 512,
             })

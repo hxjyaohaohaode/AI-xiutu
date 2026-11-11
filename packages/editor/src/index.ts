@@ -1,4 +1,5 @@
 export type * from './types.js';
+export { localEditorSourceLimits } from './source-limits.js';
 export type * from './v2-types.js';
 export { TOOLS, ADJUSTMENT_IDS, neutralAdjustments } from './registry.js';
 export {

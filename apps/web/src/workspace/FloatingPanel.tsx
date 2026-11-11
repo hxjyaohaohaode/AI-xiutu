@@ -20,6 +20,7 @@ import {
   CaretDown,
   CaretUp,
   ArrowCounterClockwise,
+  ArrowLeft,
 } from '@phosphor-icons/react';
 import { IconButton } from '../components/Ui';
 import {
@@ -55,6 +56,7 @@ type Gesture = {
   startX: number;
   startY: number;
   original: PanelGeometry;
+  latest?: PanelGeometry;
   initial: PanelGeometry;
   target: HTMLElement;
   pointer: number;
@@ -79,6 +81,8 @@ export function FloatingPanel({
   geometry,
   viewport,
   onGeometry,
+  onUndoGeometry,
+  onBack,
   onClose,
   children,
   navigation,
@@ -90,7 +94,12 @@ export function FloatingPanel({
   label: string;
   geometry: PanelGeometry;
   viewport: Viewport;
-  onGeometry: (value: PanelGeometry) => void;
+  onGeometry: (
+    value: PanelGeometry,
+    change?: import('./useWorkspaceLayout').PanelGeometryChange,
+  ) => void;
+  onUndoGeometry?: () => void;
+  onBack?: () => void;
   onClose: () => void;
   children: ReactNode;
   navigation?: ReactNode;
@@ -165,8 +174,9 @@ export function FloatingPanel({
     const owned =
       g.panelKey === currentPanelKey.current &&
       g.viewportKey === panelGestureViewportKey(currentViewport.current);
-    if (!cancel && pending && owned) geometryCallback.current(pending);
-    if (cancel && owned) geometryCallback.current(g.initial);
+    if (!cancel && owned)
+      geometryCallback.current(pending ?? g.latest ?? g.original, { previous: g.initial });
+    if (cancel && owned) geometryCallback.current(g.initial, { record: false });
     try {
       if (g.target.hasPointerCapture(g.pointer)) g.target.releasePointerCapture(g.pointer);
     } catch {
@@ -208,7 +218,7 @@ export function FloatingPanel({
     setAnimatingPresentation(false);
     setDragging(true);
     setMenu(false);
-    onGeometry(original);
+    onGeometry(original, { record: false });
     try {
       event.currentTarget.setPointerCapture(event.pointerId);
     } catch {
@@ -232,6 +242,7 @@ export function FloatingPanel({
       g.kind === 'move'
         ? movePanel(g.original, dx, dy, viewport)
         : resizePanel(g.original, g.edge ?? 'se', dx, dy, viewport, panelKey);
+    g.latest = pendingGeometry.current;
     if (!geometryFrame.current)
       geometryFrame.current = requestAnimationFrame(() => {
         geometryFrame.current = 0;
@@ -242,7 +253,7 @@ export function FloatingPanel({
           gesture.current?.panelKey === currentPanelKey.current &&
           gesture.current.viewportKey === panelGestureViewportKey(currentViewport.current)
         )
-          geometryCallback.current(next);
+          geometryCallback.current(next, { record: false });
       });
   }
   function end(event: PointerEvent<HTMLElement>, cancel = false) {
@@ -447,6 +458,11 @@ export function FloatingPanel({
           <strong>{title}</strong>
         </div>
         <div className="panel-presentation-actions" data-motion="panel-actions">
+          {onBack && (
+            <IconButton label={t('返回上一步工具')} onClick={onBack}>
+              <ArrowLeft size={17} />
+            </IconButton>
+          )}
           {attached && !condensed && (
             <div
               className="panel-mobile-presentations"
@@ -652,6 +668,20 @@ export function FloatingPanel({
             <ArrowCounterClockwise size={15} />
             {t('恢复此面板布局')}
           </button>
+          {onUndoGeometry && (
+            <button
+              className="panel-reset-layout"
+              type="button"
+              onClick={() => {
+                onUndoGeometry();
+                setMenu(false);
+                layoutTrigger.current?.focus({ preventScroll: true });
+              }}
+            >
+              <ArrowCounterClockwise size={15} />
+              {t('恢复上一步面板位置')}
+            </button>
+          )}
         </div>
       )}
       <div

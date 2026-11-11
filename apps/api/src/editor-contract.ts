@@ -1,5 +1,12 @@
 import type { FastifyInstance } from 'fastify';
-import { TOOLS, V2_TOOLS, V3_TOOLS, MAX_V3_PIXELS } from '@ai-xiutu/editor';
+import {
+  TOOLS,
+  V2_TOOLS,
+  V3_TOOLS,
+  MAX_V3_PIXELS,
+  MAX_TILED_DIMENSION,
+  localEditorSourceLimits,
+} from '@ai-xiutu/editor';
 import { numericParameterSchema, type NumericParameterDescriptor } from '@ai-xiutu/contracts';
 
 /** Derived from actual executable registries, never a second editable copy of
@@ -75,7 +82,18 @@ export function registerEditorContract(app: FastifyInstance) {
     coordinates: 'source-normalized',
     colorEncoding: 'rgba8-srgb',
     parameters,
-    limits: { v3MaxPixels: MAX_V3_PIXELS },
+    curves: {
+      interpolation: ['linear', 'pchip-v1'],
+      defaultForSavedRecipes: 'linear',
+      maxControlPoints: 16,
+    },
+    limits: {
+      v3MaxPixels: MAX_V3_PIXELS,
+      localSourceByVersion: Object.fromEntries(
+        ([1, 2, 3, 4] as const).map((version) => [version, localEditorSourceLimits(version)]),
+      ),
+      serverRevisionRaster: { maxPixels: MAX_V3_PIXELS, maxDimension: MAX_TILED_DIMENSION },
+    },
     notes: [
       '区域和分组中的完整色彩参数需要 Recipe v3；v1/v2 局部仅基础13项',
       '当前AI白名单仅全局13+52数值，几何、人物、图层、形变必须人工确认的编辑路径',

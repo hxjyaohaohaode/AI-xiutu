@@ -1,4 +1,9 @@
 export const editorEnglish: Readonly<Record<string, string>> = {
+  添加项目图片到草图: 'Add project image to sketch',
+  项目图片: 'Project images',
+  '合成素材单文件上限为 64MiB。': 'Image assets are limited to 64 MiB per file.',
+  返回上一步工具: 'Back to previous tool',
+  恢复上一步面板位置: 'Restore previous panel position',
   '抠图选区已变化，请重新选择。': 'The cutout selection changed. Select it again.',
   '请先识别人像或选择前景。': 'Detect a person or select the foreground first.',
   '图片已切换，请重新添加。': 'The image changed. Add it again.',

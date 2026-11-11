@@ -13,11 +13,10 @@ import {
   parseEditorRecipe,
   readImageHeader,
   MAX_HEADER_BYTES,
-  MAX_DIMENSION,
   MAX_TILED_DIMENSION,
   MAX_TILED_PIXELS,
-  MAX_V3_PIXELS,
   MAX_V4_PIXELS,
+  localEditorSourceLimits,
   type EditorRecipe,
   type RGBAImage,
   type CutoutSettings,
@@ -50,15 +49,12 @@ export function localImportLimits(
   requested: number,
   mobile = smallDevice(),
 ) {
-  const legacy = version === 1 || version === 2;
-  const ceiling = Math.min(
-    mobile ? MAX_V4_PIXELS : MAX_TILED_PIXELS,
-    version === 4 ? MAX_V4_PIXELS : version === 3 ? MAX_V3_PIXELS : MAX_TILED_PIXELS,
-  );
+  const source = localEditorSourceLimits(version);
+  const ceiling = Math.min(mobile ? MAX_V4_PIXELS : MAX_TILED_PIXELS, source.maxPixels);
   return {
     ceiling,
     maxPixels: Math.min(requested, ceiling),
-    maxDimension: legacy ? MAX_TILED_DIMENSION : MAX_DIMENSION,
+    maxDimension: source.maxDimension,
   };
 }
 export function localPixelBudget() {

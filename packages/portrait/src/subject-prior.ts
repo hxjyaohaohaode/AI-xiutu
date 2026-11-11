@@ -61,10 +61,39 @@ export function anchoredSubjectPrior(
       hair < 3 &&
       (size < Math.min(24, Math.max(4, area * 0.008)) ? human < size * 0.8 : human < size * 0.18),
   );
-  if (!remove.some(Boolean)) return background;
   const result = background.slice();
+  const distance = new Uint16Array(background.length);
+  const reach = Math.max(3, Math.min(12, Math.ceil(Math.min(width, height) * 0.027)));
+  let size = 0;
   for (let i = 0; i < result.length; i++) {
-    if (seen[i] && remove[seen[i]! - 1]) result[i] = 1;
+    if (!seen[i]) continue;
+    if (remove[seen[i]! - 1]) result[i] = 1;
+    else {
+      distance[i] = 1;
+      queue[size++] = i;
+    }
+  }
+  // Weak islands can survive alpha upsampling even when they never form a
+  // confident component. Restrict the ambiguous fringe to a short connected
+  // neighborhood, with extra reach for confirmed hair-class cells.
+  for (let i = 0; i < size; i++) {
+    const at = queue[i]!,
+      x = at % width,
+      y = Math.floor(at / width);
+    const next = distance[at]! + 1;
+    if (next > reach + 4) continue;
+    for (let yy = Math.max(0, y - 1); yy <= Math.min(height - 1, y + 1); yy++) {
+      for (let xx = Math.max(0, x - 1); xx <= Math.min(width - 1, x + 1); xx++) {
+        const n = yy * width + xx,
+          hair = category[n] === 1;
+        if (distance[n] || !(result[n]! < 0.94) || next > reach + (hair ? 4 : 0)) continue;
+        distance[n] = next;
+        queue[size++] = n;
+      }
+    }
+  }
+  for (let i = 0; i < result.length; i++) {
+    if (!distance[i] && result[i]! < 0.94) result[i] = 1;
   }
   return result;
 }

@@ -3085,7 +3085,7 @@ test(
             minutes: 5,
             allowedActions: ['realtime-voice', 'assistant-turn', 'edit'],
             modelIds: ['gpt-live-1', f.modelId],
-          });
+          }, 'editor');
           assert.equal(grant.statusCode, 200, grant.body);
           const prepared = await f.call('POST', `/v1/projects/${f.projectId}/voice-sessions`, {
             idempotencyKey: randomUUID(),
@@ -3094,11 +3094,11 @@ test(
             voice: 'marin',
             context: { ...f.context, expectedVersion: current.head_version, recipe: current.recipe },
             scope: { ...f.scope, executionGrantId: grant.json().grant.id },
-          });
+          }, 'editor');
           assert.equal(prepared.statusCode, 200, prepared.body);
           const data = prepared.json();
           const ws = new WebSocket(`${wsBase}${data.websocketPath}`, ['xiutu-voice', data.ticket], {
-            origin: f.origin, headers: { cookie: f.actors.owner.cookie },
+            origin: f.origin, headers: { cookie: f.actors.editor.cookie },
           });
           const stream = collect(ws);
           try {
@@ -3112,6 +3112,8 @@ test(
             assert.equal(reply.candidates[0].appliedRevisionId, reply.execution.revisionId);
             const after = (await f.db.query('SELECT head_version FROM artworks WHERE id=$1', [f.context.artworkId])).rows[0]!;
             assert.equal(after.head_version, current.head_version + 1);
+            f.context.expectedVersion = after.head_version;
+            f.context.recipe = (await f.db.query('SELECT recipe FROM revisions WHERE id=$1', [reply.execution.revisionId])).rows[0]!.recipe;
           } finally {
             ws.send(JSON.stringify({ type: 'end' }));
             await stream.wait('closed');

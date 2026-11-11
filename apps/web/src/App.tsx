@@ -314,6 +314,9 @@ export function App({
   const [view, setView] = useState<View>('editor');
   const [libraryTab, setLibraryTab] = useState<'project' | 'all' | 'memory'>('project');
   const [group, setGroup] = useState<ToolGroup>('light');
+  const [previousTools, setPreviousTools] = useState<ToolGroup[]>([]);
+  const sourceForTools = rawEditor.getSourceIdentity();
+  useEffect(() => setPreviousTools([]), [sourceForTools]);
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [inspectorOpen, setInspectorOpen] = useState(false);
   const [aiOpen, setAiOpen] = useState(false);
@@ -2025,9 +2028,22 @@ export function App({
     workspaceLayout.view,
     workspaceLayout.focused,
   );
+  const selectInspectorTool = (tool: ToolGroup) => {
+    if (tool === group) return;
+    setPreviousTools((items) => [...items, group].slice(-16));
+    setGroup(tool);
+  };
+  const backToTool = () => {
+    const previous = previousTools.at(-1);
+    if (!previous) return;
+    editor.commitCurrent(t('完成当前调节'));
+    setPreviousTools((items) => items.slice(0, -1));
+    setGroup(previous);
+    setSampling(false);
+  };
   const openInspector = (tool: ToolGroup) => {
     workspaceLayout.setFocused(false);
-    setGroup(tool);
+    selectInspectorTool(tool);
     setInspectorOpen(true);
     setAiOpen(false);
     setSampling(false);
@@ -2516,7 +2532,7 @@ export function App({
                           onSample={(color) => {
                             setPickedColor(color);
                             setSampling(false);
-                            setGroup('color');
+                            selectInspectorTool('color');
                             setInspectorOpen(true);
                             notify(t('已取色 {v0}', { v0: color }));
                           }}
@@ -2739,7 +2755,19 @@ export function App({
                       label={shownPanelId === 'ai' ? t('AI可移动面板') : t('可移动编辑面板')}
                       geometry={workspaceLayout.panel(shownPanelId)}
                       viewport={workspaceLayout.view}
-                      onGeometry={(next) => workspaceLayout.updatePanel(shownPanelId, next)}
+                      onGeometry={(next, change) =>
+                        workspaceLayout.updatePanel(shownPanelId, next, change)
+                      }
+                      onUndoGeometry={
+                        workspaceLayout.canUndoPanel(shownPanelId)
+                          ? () => workspaceLayout.undoPanel(shownPanelId)
+                          : undefined
+                      }
+                      onBack={
+                        shownPanelId === 'inspector' && previousTools.length
+                          ? backToTool
+                          : undefined
+                      }
                       onClose={() => {
                         setInspectorOpen(false);
                         setAiOpen(false);
@@ -2784,7 +2812,7 @@ export function App({
                         <ToolInspector
                           editor={editor}
                           group={group}
-                          onGroupChange={setGroup}
+                          onGroupChange={selectInspectorTool}
                           onCutout={createCutout}
                           mobileOpen
                           onClose={() => setInspectorOpen(false)}
@@ -2974,6 +3002,33 @@ export function App({
           >
             <DrawingBoard
               initialColor={pickedColor}
+              projectImages={project ? assets.filter((item) => item.projectId === project.id) : []}
+              readProjectImage={
+                project
+                  ? async (id) => {
+                      const selected = assets.find(
+                        (item) => item.id === id && item.projectId === project.id,
+                      );
+                      const scope = projectRequest.current;
+                      if (!selected) throw new Error(t('无法打开草图素材'));
+                      const response = await fetch(
+                        `/v1/assets/${encodeURIComponent(selected.id)}/file`,
+                        { credentials: 'include' },
+                      );
+                      if (!response.ok || scope !== projectRequest.current) {
+                        await response.body?.cancel();
+                        throw new Error(t('无法打开草图素材'));
+                      }
+                      if (Number(response.headers.get('content-length')) > 64 * 1024 * 1024) {
+                        await response.body?.cancel();
+                        throw new Error(t('合成素材单文件上限为 64MiB。'));
+                      }
+                      const bytes = await response.blob();
+                      if (scope !== projectRequest.current) throw new Error(t('无法打开草图素材'));
+                      return new File([bytes], selected.name, { type: bytes.type });
+                    }
+                  : undefined
+              }
               readCurrentImage={
                 editor.file
                   ? async () => {
