@@ -94,7 +94,7 @@ try {
       ? route.continue()
       : route.abort();
   });
-  await page.goto('http://127.0.0.1:4184');
+  await page.goto('http://127.0.0.1:4184/#/studio');
   for (const source of sources) {
     const bytes = await readFile(join('artifacts/browser-v4-source-cache', `${source.sha256}.jpg`));
     assert.equal(sha(bytes), source.sha256);
@@ -182,18 +182,44 @@ try {
       warnings: analysis.warnings,
     });
     if (analysis.segmentation.subject) {
-      const matte = renderCutout(image, { selection: analysis.segmentation.subject, radius: 0.015, decontaminate: 0.8 });
-      let transparent = 0, partial = 0, opaque = 0;
+      const matte = renderCutout(image, {
+        selection: analysis.segmentation.subject,
+        radius: 0.015,
+        decontaminate: 0.8,
+      });
+      let transparent = 0,
+        partial = 0,
+        opaque = 0;
       for (let at = 3; at < matte.data.length; at += 4) {
         assert.ok(matte.data[at] <= image.data[at]);
         if (matte.data[at] === 0) transparent++;
         else if (matte.data[at] === 255) opaque++;
         else partial++;
       }
-      assert.ok(transparent && opaque && partial, `${source.name}: matte has foreground, background and soft edges`);
-      report.cases.push({ photo: source.name, tool: 'linear-trimap-v1', state: 'passed', transparent, partial, opaque, hash: sha(matte.data) });
-      await sheet(`${source.name}-matte`, [{ label: 'Original', image }, { label: 'Subject alpha', image: matte }]);
-    } else report.cases.push({ photo: source.name, tool: 'linear-trimap-v1', state: 'unavailable', reason: 'Insufficient foreground/background confidence' });
+      assert.ok(
+        transparent && opaque && partial,
+        `${source.name}: matte has foreground, background and soft edges`,
+      );
+      report.cases.push({
+        photo: source.name,
+        tool: 'linear-trimap-v1',
+        state: 'passed',
+        transparent,
+        partial,
+        opaque,
+        hash: sha(matte.data),
+      });
+      await sheet(`${source.name}-matte`, [
+        { label: 'Original', image },
+        { label: 'Subject alpha', image: matte },
+      ]);
+    } else
+      report.cases.push({
+        photo: source.name,
+        tool: 'linear-trimap-v1',
+        state: 'unavailable',
+        reason: 'Insufficient foreground/background confidence',
+      });
     for (const target of analysis.targets) {
       const available = new Map(
         portraitToolAvailability(analysis, target.id, 4).map((t) => [t.id, t]),

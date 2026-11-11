@@ -14,6 +14,7 @@ import { setTimeout as delay } from 'node:timers/promises';
 import { chromium } from 'playwright';
 import { createDatabase } from '@ai-xiutu/db';
 import { ProviderError } from '@ai-xiutu/providers';
+import { runSiteEntryChecks } from './qa/site-entry.browser.mjs';
 
 if (process.env.CI !== 'true' || process.env.NODE_ENV === 'production')
   throw new Error('Run only in isolated non-production CI.');
@@ -128,7 +129,8 @@ async function check(name, run) {
     throw error;
   }
 }
-async function newContext(viewport = { width: 1440, height: 960 }) {
+async function newContext(viewport = { width: 1440, height: 960 }, entry = 'studio') {
+  assert.ok(entry === 'about' || entry === 'studio', 'Unknown public entry route');
   const context = await browser.newContext({
     viewport,
     reducedMotion: motion,
@@ -154,8 +156,9 @@ async function newContext(viewport = { width: 1440, height: 960 }) {
     }
   });
   currentPage = page;
-  await page.goto(origin);
-  await page.getByRole('button', { name: '打开空间与项目', exact: true }).waitFor();
+  await page.goto(`${origin}/${entry === 'studio' ? '#/studio' : ''}`);
+  if (entry === 'about') await page.locator('.about-page').waitFor();
+  else await page.getByRole('button', { name: '打开空间与项目', exact: true }).waitFor();
   return { context, page };
 }
 async function capture(page, name) {
@@ -491,6 +494,17 @@ try {
     channel: process.env.BROWSER_CHANNEL || undefined,
   });
   report.browser = browser.version();
+  await runSiteEntryChecks({
+    newContext,
+    check,
+    capture,
+    until,
+    closeDialog,
+    authControl,
+    measureReachable,
+    report,
+    phone: primaryPhone,
+  });
   main = await newContext();
   let primaryUserId, originalCookie, peerCookie, documentActor;
 
@@ -1014,6 +1028,8 @@ try {
       assert.equal(rows[0].display_name, primaryName);
       await capture(page, '06-existing-account-registration');
       await closeDialog(page.getByRole('dialog', { name: '注册账号', exact: true }));
+      await peer.context.close();
+      currentPage = main.page;
       return {
         status: 409,
         preservedAccounts: 1,
@@ -1238,6 +1254,8 @@ try {
       await openProjectDocuments();
       await page.locator('.document-row').filter({ hasText: newer.body.document.title }).waitFor();
       assert.equal(await page.getByTestId('document-draft-recovery').count(), 0);
+      await context.close();
+      currentPage = main.page;
       return {
         actualSessionRevocations: 1,
         retainedAfterUnmount: true,
@@ -1408,6 +1426,9 @@ try {
           ]);
           await field('phone').fill(phone);
           await button('已有验证码，继续').click();
+          // Optional invitation codes use progressive disclosure. Exercise the
+          // real expansion before checking this field's visible geometry.
+          if (!(await field('invite-code').isVisible())) await button('有邀请码？').click();
           await record('register-details', '注册账号', [
             ['code', field('code')],
             ['name', field('display-name')],
@@ -1438,6 +1459,8 @@ try {
         postsBefore,
         'Reviewing form steps may not dispatch SMS or create an account',
       );
+      await other.context.close();
+      currentPage = main.page;
       return {
         formLayouts: report.authLayouts.length,
         states: 5,
@@ -1481,6 +1504,8 @@ try {
         true,
       );
       await capture(page, '08-unavailable-sms-password-route');
+      await other.context.close();
+      currentPage = main.page;
       return {
         smsConfigured: false,
         serverStatus: 503,

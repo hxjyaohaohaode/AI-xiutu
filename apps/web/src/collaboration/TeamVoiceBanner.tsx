@@ -1,3 +1,4 @@
+import { t } from '../i18n';
 import { useRef, useState } from 'react';
 import {
   Microphone,
@@ -37,27 +38,27 @@ export function TeamVoiceBanner({ room, onReturn }: { room: RoomControls; onRetu
   return (
     <section
       className="team-voice-banner"
-      aria-label="当前团队通话"
+      aria-label={t('当前团队通话')}
       data-state={room.state}
       data-mic={connected && !room.muted ? 'on' : 'off'}
     >
       <div className="team-voice-banner-status" role="status" aria-atomic="true">
         <UsersThree size={18} aria-hidden />
         <span>
-          <strong>{connected ? '团队通话中' : '正在加入团队语音'}</strong>
+          <strong>{connected ? t('团队通话中') : t('正在加入团队语音')}</strong>
           <small>
             {connected
               ? room.muted
-                ? '仅收听 · 麦克风关闭'
-                : '麦克风已开启'
-              : '连接中 · 麦克风尚未开启'}
+                ? t('仅收听 · 麦克风关闭')
+                : t('麦克风已开启')
+              : t('连接中 · 麦克风尚未开启')}
           </small>
         </span>
       </div>
-      <div className="team-voice-banner-actions" role="group" aria-label="团队语音快捷操作">
+      <div className="team-voice-banner-actions" role="group" aria-label={t('团队语音快捷操作')}>
         <button type="button" onClick={onReturn}>
           <SlidersHorizontal size={16} aria-hidden />
-          <span>返回精修</span>
+          <span>{t('返回精修')}</span>
         </button>
         {connected && (
           <button
@@ -77,17 +78,17 @@ export function TeamVoiceBanner({ room, onReturn }: { room: RoomControls; onRetu
             <span>
               {switchingMic
                 ? room.muted
-                  ? '正在开启…'
-                  : '正在关闭…'
+                  ? t('正在开启…')
+                  : t('正在关闭…')
                 : room.muted
-                  ? '开启麦克风'
-                  : '关闭麦克风'}
+                  ? t('开启麦克风')
+                  : t('关闭麦克风')}
             </span>
           </button>
         )}
         <button type="button" className="team-voice-banner-leave" onClick={room.leave}>
           <PhoneDisconnect size={16} aria-hidden />
-          <span>离开通话</span>
+          <span>{t('离开通话')}</span>
         </button>
       </div>
       {room.message && (

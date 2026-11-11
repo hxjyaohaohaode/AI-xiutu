@@ -1,3 +1,4 @@
+import { t } from '../i18n';
 import { MotionDetails } from '../motion/Presence';
 import { useContext, useEffect, useState } from 'react';
 import {
@@ -38,13 +39,13 @@ export function CloudImageResults({
     `${item.spaceName} · ${item.projectTitle} · ${item.width}×${item.height}`;
   return (
     <>
-      <ul className="assistant-cloud-grid" aria-label="云端图片结果">
+      <ul className="assistant-cloud-grid" aria-label={t('云端图片结果')}>
         {resources.map((item) => (
           <li key={item.id}>
             <button
               type="button"
               className="assistant-cloud-preview"
-              aria-label={`查看 ${label(item)}`}
+              aria-label={t('查看 {v0}', { v0: label(item) })}
               onClick={() => {
                 setUnavailable(false);
                 setPreview(item);
@@ -64,7 +65,7 @@ export function CloudImageResults({
                 disabled={!canSelect(item.id)}
                 onClick={() => onSelect(item.id)}
               >
-                {selected.includes(item.id) ? '移出参考' : '选为参考'}
+                {selected.includes(item.id) ? t('移出参考') : t('选为参考')}
               </button>
             )}
           </li>
@@ -78,7 +79,7 @@ export function CloudImageResults({
         >
           <div className="assistant-cloud-detail">
             {unavailable ? (
-              <p role="alert">图片暂不可查看，请检查素材状态和访问权限。</p>
+              <p role="alert">{t('图片暂不可查看，请检查素材状态和访问权限。')}</p>
             ) : (
               <img
                 src={thumbnail(displayedPreview.id)}
@@ -98,7 +99,7 @@ export function CloudImageResults({
                   setPreview(null);
                 }}
               >
-                {selected.includes(displayedPreview.id) ? '移出参考' : '选为参考'}
+                {selected.includes(displayedPreview.id) ? t('移出参考') : t('选为参考')}
               </button>
             )}
           </div>
@@ -123,38 +124,40 @@ export function SearchEvidence({
       {safe.map((item, index) => (
         <MotionDetails key={`${item.kind}:${item.query}:${index}`} defaultOpen>
           <summary>
-            {item.kind === 'cloud' ? '云端图片' : '公开来源'} · {item.query}
+            {item.kind === 'cloud' ? t('云端图片') : t('公开来源')} · {item.query}
           </summary>
           {item.kind === 'cloud' ? (
             item.resources.length ? (
               <CloudImageResults resources={item.resources} {...controls} />
             ) : (
-              <p>本次范围内没有匹配的图片。</p>
+              <p>{t('本次范围内没有匹配的图片。')}</p>
             )
           ) : (
             <>
               {item.images.map((image) => (
                 <div className="assistant-public-image" key={image.imageUrl}>
-                  <p>{image.caption || '公开图片'}</p>
+                  <p>{image.caption || t('公开图片')}</p>
                   <a href={image.imageUrl} target="_blank" rel="noopener noreferrer">
-                    查看图片
+                    {t('查看图片')}
                   </a>
                   <a href={image.sourceUrl} target="_blank" rel="noopener noreferrer">
-                    来源网页
+                    {t('来源网页')}
                   </a>
                 </div>
               ))}
               <div className="assistant-citations">
                 {item.sources.map((source) => (
                   <a key={source.url} href={source.url} target="_blank" rel="noopener noreferrer">
-                    {source.title || '查看来源'}
+                    {source.title || t('查看来源')}
                   </a>
                 ))}
               </div>
               {item.requested === 'images' && !item.images.length && !!item.sources.length && (
-                <p>本次只返回来源网页。</p>
+                <p>{t('本次只返回来源网页。')}</p>
               )}
-              {!item.images.length && !item.sources.length && <p>本次未取得可引用的公开结果。</p>}
+              {!item.images.length && !item.sources.length && (
+                <p>{t('本次未取得可引用的公开结果。')}</p>
+              )}
             </>
           )}
         </MotionDetails>

@@ -1,3 +1,4 @@
+import { t, formatNumber } from '../i18n';
 export const usageKinds = [
   'issued',
   'held',
@@ -80,10 +81,11 @@ export const usageKindDescriptions: Record<UsageKind, string> = {
   adjusted: '所选期间的额度调整，保留正负方向',
 };
 export const usageOperationName = (operation: string | null | undefined) =>
-  operation ? (usageOperationLabels[operation] ?? operation) : '未记录用途';
+  operation ? t(usageOperationLabels[operation] ?? operation) : t('未记录用途');
 export const knownNumber = (value: unknown): number | null =>
   typeof value === 'number' && Number.isFinite(value) ? value : null;
-export const pointText = (value: unknown) => knownNumber(value)?.toLocaleString('zh-CN') ?? '未知';
+export const pointText = (value: unknown) =>
+  knownNumber(value) === null ? t('未知') : formatNumber(knownNumber(value)!);
 export const entryAmount = (entry: UsageEntry) =>
   entry.amountKnown ? knownNumber(entry.units) : null;
 export const usageUuid = (value: string) =>
@@ -248,12 +250,12 @@ export function storageUsage(storage: StorageAccountSummary) {
   };
 }
 export function byteText(value: number | null) {
-  if (value === null) return '未知';
+  if (value === null) return t('未知');
   if (!value) return '0 B';
   const units = ['B', 'KiB', 'MiB', 'GiB', 'TiB'];
   const power = Math.min(
     units.length - 1,
     Math.max(0, Math.floor(Math.log(value) / Math.log(1024))),
   );
-  return `${new Intl.NumberFormat('zh-CN', { maximumFractionDigits: power ? 1 : 0 }).format(value / 1024 ** power)} ${units[power]}`;
+  return `${formatNumber(value / 1024 ** power, { maximumFractionDigits: power ? 1 : 0 })} ${units[power]}`;
 }

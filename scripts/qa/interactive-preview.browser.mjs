@@ -172,7 +172,7 @@ async function verifyWorkerRecovery({ png, source }) {
       await page.locator('.canvas-stage').waitFor();
       return { bytes, recipe: JSON.parse(bytes.toString('utf8')) };
     };
-    await page.goto(`http://127.0.0.1:${vite.httpServer.address().port}`);
+    await page.goto(`http://127.0.0.1:${vite.httpServer.address().port}/#/studio`);
     await page.getByLabel('选择照片', { exact: true }).setInputFiles(file);
     const original = await waitForSettled(0);
     const canvas = page.locator('.image-frame canvas[aria-label="照片编辑预览"]');
@@ -559,7 +559,7 @@ try {
     await page.route('**/v1/**', (route) =>
       route.fulfill({ status: 503, json: { message: 'offline' } }),
     );
-    await page.goto(`http://127.0.0.1:${vite.httpServer.address().port}`);
+    await page.goto(`http://127.0.0.1:${vite.httpServer.address().port}/#/studio`);
     await page.getByLabel('选择照片', { exact: true }).setInputFiles({
       name: 'interactive-preview.png',
       mimeType: 'image/png',

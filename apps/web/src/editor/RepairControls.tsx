@@ -1,3 +1,4 @@
+import { t } from '../i18n';
 import { MotionDetails } from '../motion/Presence';
 import { ChoiceSelect } from '../components/ChoiceSelect';
 import {
@@ -19,12 +20,12 @@ export function RepairControls({ controller }: { controller: InspectorController
   if (recipe.schemaVersion !== 4)
     return (
       <section className="advanced-tool-family">
-        <p className="control-note">局部纹理修复使用第四代配方，升级保留原有调整语义。</p>
+        <p className="control-note">{t('局部纹理修复使用第四代配方，升级保留原有调整语义。')}</p>
         <button
           className="button button-secondary"
-          onClick={() => apply(migrateRecipeToV4(recipe), '启用局部修复配方', true)}
+          onClick={() => apply(migrateRecipeToV4(recipe), t('启用局部修复配方'), true)}
         >
-          启用局部修复
+          {t('启用局部修复')}
         </button>
       </section>
     );
@@ -83,7 +84,7 @@ export function RepairControls({ controller }: { controller: InspectorController
     ? [
         {
           id: 'opacity',
-          label: '整体强度',
+          label: t('整体强度'),
           value: item.opacity * 100,
           min: 0,
           max: 100,
@@ -98,7 +99,7 @@ export function RepairControls({ controller }: { controller: InspectorController
     controls.push(
       {
         id: 'searchRadius',
-        label: '周边搜索范围',
+        label: t('周边搜索范围'),
         value: heal.searchRadius * short,
         min: Math.max(0.001 * short, 0.1),
         max: short * 2,
@@ -119,7 +120,7 @@ export function RepairControls({ controller }: { controller: InspectorController
       },
       {
         id: 'texture',
-        label: '保留供体纹理',
+        label: t('保留供体纹理'),
         value: heal.texture * 100,
         min: 0,
         max: 100,
@@ -131,7 +132,7 @@ export function RepairControls({ controller }: { controller: InspectorController
     if (heal.method === 'exemplar-v1')
       controls.push({
         id: 'patchRadius',
-        label: '纹理补片半径',
+        label: t('纹理补片半径'),
         value: heal.patchRadius ?? 4,
         min: 1,
         max: 8,
@@ -144,7 +145,7 @@ export function RepairControls({ controller }: { controller: InspectorController
       for (const axis of ['x', 'y'] as const)
         controls.push({
           id: 'donor-' + axis,
-          label: '来源 ' + axis.toUpperCase(),
+          label: t('来源 {axis}', { axis: axis.toUpperCase() }),
           value:
             heal.source[axis] *
             (axis === 'x' ? editor.dimensions!.width : editor.dimensions!.height),
@@ -167,12 +168,12 @@ export function RepairControls({ controller }: { controller: InspectorController
   } else if (item) {
     const retouch = item as RetouchRegionV4;
     for (const [id, label] of [
-      ['smoothing', '保边柔肤'],
-      ['texture', '肌理增减'],
-      ['uniformity', '肤色均匀'],
-      ['shine', '柔化油光'],
-      ['speckle', '细小斑点'],
-      ['fineLines', '浅细纹理'],
+      ['smoothing', t('保边柔肤')],
+      ['texture', t('肌理增减')],
+      ['uniformity', t('肤色均匀')],
+      ['shine', t('柔化油光')],
+      ['speckle', t('细小斑点')],
+      ['fineLines', t('浅细纹理')],
     ] as const)
       controls.push({
         id,
@@ -181,12 +182,12 @@ export function RepairControls({ controller }: { controller: InspectorController
         min: id === 'texture' ? -100 : 0,
         max: 100,
         step: 0.1,
-        onChange: (value) => patch({ [id]: value }, '调整' + label),
+        onChange: (value) => patch({ [id]: value }, t('调整{v0}', { v0: t(label) })),
       });
     if (retouch.algorithm === 'guided-v4')
       controls.push({
         id: 'chromaSpots',
-        label: '局部色斑',
+        label: t('局部色斑'),
         value: retouch.chromaSpots ?? 0,
         min: 0,
         max: 100,
@@ -195,7 +196,7 @@ export function RepairControls({ controller }: { controller: InspectorController
       });
     controls.push({
       id: 'radius',
-      label: '处理半径',
+      label: t('处理半径'),
       value: retouch.radius * short,
       min: 0.000001 * short,
       max: 0.1 * short,
@@ -212,13 +213,13 @@ export function RepairControls({ controller }: { controller: InspectorController
   };
   return (
     <section className="advanced-tool-family" data-motion="repair-controls">
-      <nav className="tonal-tabs" aria-label="修复类别">
+      <nav className="tonal-tabs" aria-label={t('修复类别')}>
         {(['healing', 'retouch'] as const).map((tab) => (
           <button
             key={tab}
             aria-pressed={mode === tab}
             onClick={() => {
-              editor.commitCurrent('完成当前修复');
+              editor.commitCurrent(t('完成当前修复'));
               editor.setRepairMode(tab);
               editor.setActiveRepairId(recipe[tab][0]?.id ?? null);
               editor.setActiveMaskPath([]);
@@ -226,45 +227,47 @@ export function RepairControls({ controller }: { controller: InspectorController
               editor.setRepairChoosingSource(false);
             }}
           >
-            {tab === 'healing' ? '纹理修复' : '局部质感'}
+            {tab === 'healing' ? t('纹理修复') : t('局部质感')}
           </button>
         ))}
       </nav>
       <div className="advanced-row">
         <ChoiceSelect
-          ariaLabel="修复区域"
+          ariaLabel={t('修复区域')}
           size="compact"
           value={item?.id ?? ''}
           onValueChange={(value) => {
-            editor.commitCurrent('完成当前修复');
+            editor.commitCurrent(t('完成当前修复'));
             editor.setActiveRepairId(value);
             editor.setActiveMaskPath([]);
           }}
           options={[
-            ...(!item ? [{ value: '', label: '选择或建立区域' }] : []),
+            ...(!item ? [{ value: '', label: t('选择或建立区域') }] : []),
             ...recipe[mode].map((op) => ({ value: op.id, label: op.name })),
           ]}
         />
         <button className="text-button" onClick={add}>
-          新区域
+          {t('新区域')}
         </button>
       </div>
       {!item && (
         <p className="control-note">
-          新建后在照片上涂出要处理的小区域。修复通过周边纹理与边界融合完成，不会生成没有来源的五官。
+          {t(
+            '新建后在照片上涂出要处理的小区域。修复通过周边纹理与边界融合完成，不会生成没有来源的五官。',
+          )}
         </p>
       )}
       {item && (
         <>
           <ParameterShelf
             controls={controls}
-            label={mode === 'healing' ? '局部修复参数' : '局部质感参数'}
+            label={mode === 'healing' ? t('局部修复参数') : t('局部质感参数')}
             onCommit={(label) => editor.commitCurrent(label)}
             onCancel={editor.cancelPreview}
           />
           {mode === 'healing' && (
             <>
-              <div className="tonal-tabs" aria-label="修复算法">
+              <div className="tonal-tabs" aria-label={t('修复算法')}>
                 {(['exemplar-v1', 'patch-poisson', 'diffusion'] as const).map((method) => (
                   <button
                     key={method}
@@ -284,14 +287,14 @@ export function RepairControls({ controller }: { controller: InspectorController
                             : {}),
                         };
                       });
-                      apply({ ...recipe, healing: next }, '切换修复算法', true);
+                      apply({ ...recipe, healing: next }, t('切换修复算法'), true);
                     }}
                   >
                     {method === 'exemplar-v1'
-                      ? '纹理重建'
+                      ? t('纹理重建')
                       : method === 'patch-poisson'
-                        ? '纹理融合'
-                        : '平滑填补'}
+                        ? t('纹理融合')
+                        : t('平滑填补')}
                   </button>
                 ))}
               </div>
@@ -301,22 +304,22 @@ export function RepairControls({ controller }: { controller: InspectorController
                   aria-pressed={editor.repairChoosingSource}
                   onClick={() => editor.setRepairChoosingSource(!editor.repairChoosingSource)}
                 >
-                  {editor.repairChoosingSource ? '在图上点选来源' : '手动选择来源'}
+                  {editor.repairChoosingSource ? t('在图上点选来源') : t('手动选择来源')}
                 </button>
                 <button
                   className="text-button"
                   onClick={() => {
                     editor.setRepairChoosingSource(false);
-                    patch({ source: null }, '自动寻找周边纹理', true);
+                    patch({ source: null }, t('自动寻找周边纹理'), true);
                   }}
                 >
-                  自动找周边
+                  {t('自动找周边')}
                 </button>
               </div>
             </>
           )}
           {mode === 'retouch' && (
-            <div className="tonal-tabs" aria-label="质感算法">
+            <div className="tonal-tabs" aria-label={t('质感算法')}>
               {(['guided-v4', 'guided-v3', 'guided-v2', 'guided-v1', 'legacy'] as const).map(
                 (algorithm) => (
                   <button
@@ -338,18 +341,18 @@ export function RepairControls({ controller }: { controller: InspectorController
                             };
                           }),
                         },
-                        '切换质感算法',
+                        t('切换质感算法'),
                         true,
                       )
                     }
                   >
                     {
                       {
-                        'guided-v4': '纹理与斑点分离',
-                        'guided-v3': '细纹与反光分离',
-                        'guided-v2': '选区保边与双尺度纹理',
-                        'guided-v1': '保边美肤',
-                        legacy: '原版质感',
+                        'guided-v4': t('纹理与斑点分离'),
+                        'guided-v3': t('细纹与反光分离'),
+                        'guided-v2': t('选区保边与双尺度纹理'),
+                        'guided-v1': t('保边美肤'),
+                        legacy: t('原版质感'),
                       }[algorithm]
                     }
                   </button>
@@ -358,7 +361,7 @@ export function RepairControls({ controller }: { controller: InspectorController
             </div>
           )}
           <MotionDetails>
-            <summary>涂抹范围与保护</summary>
+            <summary>{t('涂抹范围与保护')}</summary>
             <div className="tonal-tabs">
               <button
                 aria-pressed={!editor.repairProtection}
@@ -367,18 +370,18 @@ export function RepairControls({ controller }: { controller: InspectorController
                   editor.setActiveMaskPath([]);
                 }}
               >
-                处理范围
+                {t('处理范围')}
               </button>
               <button
                 aria-pressed={editor.repairProtection}
                 onClick={() => {
                   if (!item.protection)
-                    patch({ protection: newMask('brush') }, '新建保护范围', true);
+                    patch({ protection: newMask('brush') }, t('新建保护范围'), true);
                   editor.setRepairProtection(true);
                   editor.setActiveMaskPath([]);
                 }}
               >
-                保护范围
+                {t('保护范围')}
               </button>
             </div>
             <MaskControls
@@ -389,7 +392,7 @@ export function RepairControls({ controller }: { controller: InspectorController
               onChange={(mask, commit) =>
                 patch(
                   editor.repairProtection ? { protection: mask } : { mask },
-                  '编辑修复范围',
+                  t('编辑修复范围'),
                   commit,
                 )
               }
@@ -399,10 +402,14 @@ export function RepairControls({ controller }: { controller: InspectorController
             <button
               className="text-button"
               onClick={() =>
-                patch({ enabled: !item.enabled }, item.enabled ? '隐藏此修复' : '显示此修复', true)
+                patch(
+                  { enabled: !item.enabled },
+                  item.enabled ? t('隐藏此修复') : t('显示此修复'),
+                  true,
+                )
               }
             >
-              {item.enabled ? '暂时隐藏' : '显示效果'}
+              {item.enabled ? t('暂时隐藏') : t('显示效果')}
             </button>
             <button
               className="text-button"
@@ -412,20 +419,22 @@ export function RepairControls({ controller }: { controller: InspectorController
                   current.schemaVersion === 4 &&
                   apply(
                     { ...current, [mode]: current[mode].filter((op) => op.id !== item.id) },
-                    '删除修复区域',
+                    t('删除修复区域'),
                     true,
                   )
                 )
                   editor.setActiveRepairId(null);
               }}
             >
-              删除此区域
+              {t('删除此区域')}
             </button>
           </div>
           <p className="control-note">
             {mode === 'healing'
-              ? '修复目标及周边需为不透明像素。每个目标最多 262,144 像素，含周边的工作区最多 1,048,576 像素；过大的范围或迭代会明确拒绝。建议分小区域逐笔处理。'
-              : '六项质感控制使用独立的局部算法；不等同于自动识别痘痘、重建发丝或三维遮挡修复。'}
+              ? t(
+                  '修复目标及周边需为不透明像素。每个目标最多 262,144 像素，含周边的工作区最多 1,048,576 像素；过大的范围或迭代会明确拒绝。建议分小区域逐笔处理。',
+                )
+              : t('六项质感控制使用独立的局部算法；不等同于自动识别痘痘、重建发丝或三维遮挡修复。')}
           </p>
         </>
       )}

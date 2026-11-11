@@ -1,7 +1,8 @@
 import { ArrowUpRight, ShieldCheck } from '@phosphor-icons/react';
 import { StudioGlyph } from '../components/StudioGlyph';
+import { t, useI18n } from '../i18n';
 
-/** Empty workspace actions use the same import and AI paths as the editor. */
+/** Every first-use action opens the real editor, drawing board or assistant. */
 export function StudioWelcome({
   onImport,
   onDraw,
@@ -17,50 +18,65 @@ export function StudioWelcome({
   onSignIn?: () => void;
   onRegister?: () => void;
 }) {
+  useI18n();
   return (
     <section
-      className="studio-welcome"
+      className="studio-welcome studio-welcome-editorial"
       aria-labelledby="studio-welcome-title"
       data-account-state={accountState}
     >
-      <div className="welcome-image-symbol" aria-hidden="true">
-        <StudioGlyph name="works" size={28} />
+      <div className="welcome-introduction">
+        <span className="welcome-eyebrow">{t('创作工作台')}</span>
+        <h1 id="studio-welcome-title">{t('编辑图片')}</h1>
+        <p className="welcome-description">{t('从整体色调，到每一处细节。')}</p>
+        <div className="welcome-alternatives">
+          <button type="button" onClick={onDraw}>
+            <StudioGlyph name="paint" size={20} />
+            <span>{t('绘制草图')}</span>
+            <ArrowUpRight size={16} />
+          </button>
+          <button type="button" onClick={onAI}>
+            <StudioGlyph name="ai" size={20} />
+            <span>{t('AI 助手')}</span>
+            <ArrowUpRight size={16} />
+          </button>
+        </div>
       </div>
-      <h1 id="studio-welcome-title">编辑图片</h1>
-      <p className="welcome-description">调色、修饰与图层合成</p>
-      <button type="button" className="button button-primary welcome-import" onClick={onImport}>
-        <StudioGlyph name="import" size={20} /> 打开照片 <ArrowUpRight size={18} />
+      <button
+        type="button"
+        className="welcome-import-plane"
+        aria-label={t('打开照片')}
+        onClick={onImport}
+      >
+        <span className="welcome-photo-frame" aria-hidden="true">
+          <StudioGlyph name="import" size={34} />
+          <span className="welcome-frame-corner corner-tl" />
+          <span className="welcome-frame-corner corner-tr" />
+          <span className="welcome-frame-corner corner-bl" />
+          <span className="welcome-frame-corner corner-br" />
+        </span>
+        <span className="welcome-import-label">
+          <strong>{t('打开照片')}</strong>
+          <ArrowUpRight size={21} />
+        </span>
+        <span className="welcome-drop-hint">{t('也可以把照片拖到这里')}</span>
       </button>
-      <p className="welcome-drop-hint">也可以把照片拖到这里</p>
-      <div className="welcome-alternatives">
-        <button type="button" onClick={onDraw}>
-          <StudioGlyph name="paint" size={19} />
-          <span>绘制草图</span>
-          <ArrowUpRight size={14} />
-        </button>
-        <span aria-hidden="true" />
-        <button type="button" onClick={onAI}>
-          <StudioGlyph name="ai" size={19} />
-          <span>AI 助手</span>
-          <ArrowUpRight size={14} />
-        </button>
-      </div>
       <p className="welcome-privacy">
         <ShieldCheck size={15} />
-        照片先在本地编辑，导入不会自动上传
+        {t('在本地编辑，照片不会自动上传')}
       </p>
       {accountState === 'guest' && onSignIn && onRegister && (
         <div className="welcome-session" data-testid="guest-account-entry">
           <div>
-            <strong>云端工作空间</strong>
-            <span>保存版本与团队协作</span>
+            <strong>{t('云端工作空间')}</strong>
+            <span>{t('保存版本与团队协作')}</span>
           </div>
           <div className="welcome-session-actions">
             <button type="button" onClick={onSignIn}>
-              登录
+              {t('登录')}
             </button>
             <button type="button" onClick={onRegister}>
-              注册账号
+              {t('注册账号')}
               <ArrowUpRight size={14} />
             </button>
           </div>

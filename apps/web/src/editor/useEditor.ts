@@ -1,3 +1,4 @@
+import { t } from '../i18n';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type { SourceFrame } from '@ai-xiutu/contracts';
 import {
@@ -438,7 +439,15 @@ export function useEditor() {
         )
           throw new LocalImportError(
             'LOCAL_SIZE_LIMIT',
-            `原图 ${header.width}×${header.height}，超过当前 ${(maxPixels / 1e6).toFixed(1)} 百万像素 / 单边 ${maxDimension}px 预算。可在导入设置中明确调整设备预算；不会自动缩小原图。`,
+            t(
+              '原图 {width}×{height}，超过当前 {pixels} 百万像素 / 单边 {dimension}px 预算。可在导入设置中明确调整设备预算；不会自动缩小原图。',
+              {
+                width: header.width,
+                height: header.height,
+                pixels: (maxPixels / 1e6).toFixed(1),
+                dimension: maxDimension,
+              },
+            ),
           );
         if (generation !== loadGeneration.current || !isCurrent()) return false;
         const safeRecipe = existingRecipe ? parseEditorRecipe(existingRecipe) : createRecipeV4();
@@ -457,7 +466,9 @@ export function useEditor() {
         } catch {
           throw new LocalImportError(
             'LOCAL_FORMAT_UNSUPPORTED',
-            `当前浏览器无法解码这张 ${header.format.toUpperCase()} 图片。可明确选择上传并规范化为PNG；没有自动上传。`,
+            t('当前浏览器无法解码这张 {format} 图片。可明确选择上传并规范化为PNG；没有自动上传。', {
+              format: header.format.toUpperCase(),
+            }),
           );
         }
         const sameDimensions = bitmap.width === header.width && bitmap.height === header.height;
@@ -615,9 +626,20 @@ export function useEditor() {
   const commit = useCallback(
     (next: EditorRecipe, label = '调整照片') => {
       const safe = parseEditorRecipe(next);
-      replaceRecipe(safe);
-      if (JSON.stringify(historyRef.current[indexRef.current]?.recipe) === JSON.stringify(safe))
+      const serialized = JSON.stringify(safe);
+      const committed = historyRef.current[indexRef.current]?.recipe;
+      const sameAsHistory = JSON.stringify(committed) === serialized;
+      // Parameter navigation must not replace an unchanged recipe identity and
+      // enqueue another fast/settled frame. An interactive preview still needs
+      // immediate settlement, and a different visible draft must still restore.
+      if (
+        sameAsHistory &&
+        !interactiveInput.current &&
+        (recipeRef.current === committed || JSON.stringify(recipeRef.current) === serialized)
+      )
         return;
+      replaceRecipe(safe);
+      if (sameAsHistory) return;
       const items = [
         ...historyRef.current.slice(0, indexRef.current + 1),
         { recipe: safe, label },
@@ -861,7 +883,9 @@ export function useEditor() {
           ),
         );
         if (blob.type !== `image/${format}`)
-          throw new Error(`当前浏览器未提供${format.toUpperCase()}编码，请选择其他格式。`);
+          throw new Error(
+            t('当前浏览器未提供{format}编码，请选择其他格式。', { format: format.toUpperCase() }),
+          );
         return blob;
       } finally {
         canvas.width = 1;

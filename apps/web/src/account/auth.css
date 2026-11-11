@@ -1,8 +1,7 @@
 /* Authentication has its own proportions; it is not a generic settings form. */
 .modal.account-auth:not(.drawing-modal) {
-  --dialog-padding: 28px;
-  width: min(460px, calc(100vw - 32px));
-  max-height: calc(100dvh - 40px);
+  --dialog-width: 480px;
+  --dialog-padding: 32px;
   scroll-padding-block: 86px 24px;
 }
 
@@ -13,7 +12,7 @@
 }
 
 .account-auth .modal-header h2 {
-  font-size: 23px;
+  font-size: 28px;
   letter-spacing: -0.035em;
 }
 
@@ -22,7 +21,8 @@
   flex-wrap: wrap;
   align-items: center;
   gap: 8px 14px;
-  margin-block: 0 24px;
+  justify-content: space-between;
+  margin-block: 0 28px;
   color: var(--muted);
   font-size: 12px;
 }
@@ -45,9 +45,9 @@
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: 6px;
-  margin-bottom: 22px;
-  padding: 4px;
-  border-radius: 12px;
+  margin-bottom: 26px;
+  padding: 3px;
+  border-radius: 10px;
   background: var(--surface-secondary);
 }
 
@@ -73,7 +73,7 @@
 .auth-methods > button[aria-pressed='true'] {
   color: var(--ink);
   background: var(--surface-raised);
-  box-shadow: 0 1px 4px rgb(var(--color-shadow) / 7%);
+  box-shadow: 0 1px 3px rgb(var(--color-shadow) / 5%);
 }
 
 .auth-methods > button:hover:not(:disabled):not([aria-pressed='true']) {
@@ -83,13 +83,16 @@
 
 .auth-steps {
   display: flex;
-  gap: 22px;
-  margin: 0 0 22px;
+  gap: 12px;
+  margin: 0 0 26px;
   padding: 0;
   list-style: none;
 }
 
 .auth-steps li {
+  position: relative;
+  flex: 1 1 0;
+  min-width: 0;
   display: flex;
   align-items: center;
   gap: 7px;
@@ -119,10 +122,34 @@
   color: var(--accent-ink);
 }
 
+.auth-steps li[data-complete] > span {
+  background: var(--ink);
+  color: var(--surface);
+}
+
+.auth-identity .language-select {
+  margin-inline-start: auto;
+}
+
+.auth-invite-section {
+  min-width: 0;
+}
+
+.auth-invite-section .auth-invite-trigger {
+  min-height: 32px;
+  justify-content: flex-start;
+  text-decoration: underline;
+  text-underline-offset: 3px;
+}
+
+.auth-invite-field {
+  padding-top: 7px;
+}
+
 .account-auth .auth-stage {
   --motion-x: 8px;
   --motion-y: 0px;
-  --motion-blur: 1.5px;
+  --motion-blur: 0px;
   min-width: 0;
 }
 
@@ -133,7 +160,7 @@
 .auth-form,
 .auth-fields {
   display: grid;
-  gap: 17px;
+  gap: 20px;
   min-width: 0;
   margin: 0;
   padding: 0;
@@ -165,11 +192,11 @@
 .account-auth .auth-field input {
   width: 100%;
   min-width: 0;
-  min-height: 44px;
-  padding: 10px 12px;
-  border: 1px solid var(--line);
-  border-radius: 10px;
-  background: var(--surface);
+  min-height: 48px;
+  padding: 12px 14px;
+  border: 1px solid transparent;
+  border-radius: 8px;
+  background: var(--surface-secondary);
   color: var(--ink);
   font-family: inherit;
   font-size: 15px;
@@ -212,16 +239,18 @@
 }
 
 .auth-send-code {
-  min-height: 44px;
-  padding: 9px 11px;
-  border: 1px solid var(--line);
-  border-radius: 10px;
+  min-height: 48px;
+  max-width: 150px;
+  padding: 10px 12px;
+  border: 0;
+  border-radius: 8px;
   background: var(--surface-secondary);
   color: var(--ink);
   font-size: 12px;
   line-height: 1.4;
   font-variant-numeric: tabular-nums;
-  white-space: nowrap;
+  white-space: normal;
+  overflow-wrap: anywhere;
 }
 
 .auth-send-code:hover:not(:disabled) {
@@ -239,8 +268,8 @@
 
 .modal.account-auth .auth-password-toggle {
   position: absolute;
-  inset-block-start: 2px;
-  inset-inline-end: 2px;
+  inset-block-start: 4px;
+  inset-inline-end: 4px;
   width: 40px;
   min-width: 40px;
   height: 40px;
@@ -326,11 +355,27 @@
   align-items: center;
   gap: 9px;
   width: 100%;
-  min-height: 44px;
-  margin-top: 3px;
-  padding: 10px 14px;
-  border-radius: 10px;
+  min-height: 48px;
+  margin-top: 5px;
+  padding: 12px 16px;
+  border-radius: 8px;
+  background: var(--ink);
+  color: var(--surface);
+  border-color: transparent;
   font-size: 14px;
+}
+
+.modal.account-auth .auth-primary:hover:not(:disabled) {
+  background: color-mix(in srgb, var(--ink) 86%, var(--surface));
+  color: var(--surface);
+}
+
+.modal.account-auth .auth-primary > svg {
+  transition: transform 180ms cubic-bezier(0.22, 0.72, 0.2, 1);
+}
+
+.modal.account-auth .auth-primary:hover:not(:disabled) > svg {
+  transform: translateX(3px);
 }
 
 .account-auth .auth-text-button {
@@ -338,8 +383,8 @@
   justify-content: center;
   align-items: center;
   gap: 6px;
-  min-height: 36px;
-  padding: 6px 2px;
+  min-height: 40px;
+  padding: 8px 2px;
   border: 0;
   background: transparent;
   color: var(--muted);
@@ -363,13 +408,13 @@
   align-items: center;
   flex-wrap: wrap;
   gap: 3px 16px;
-  margin-top: 12px;
+  margin-top: 16px;
 }
 
 .auth-privacy-note {
   margin: 17px 0 0;
   padding-top: 15px;
-  border-top: 1px solid var(--line);
+  border-top: 0;
   color: var(--muted);
   font-size: 11px;
   line-height: 1.75;
@@ -406,7 +451,7 @@
   gap: 8px;
   min-width: 0;
   padding: 14px;
-  border-radius: 12px;
+  border-radius: 10px;
   background: var(--surface-secondary);
 }
 
@@ -428,12 +473,9 @@
 @media (max-width: 600px) {
   .modal.account-auth:not(.drawing-modal) {
     --dialog-padding: 20px;
-    width: calc(100vw - 20px);
-    max-height: calc(100dvh - 24px - env(safe-area-inset-top) - env(safe-area-inset-bottom));
-    border-radius: 19px;
   }
   .account-auth .modal-header h2 {
-    font-size: 21px;
+    font-size: 24px;
   }
   .auth-identity {
     margin-bottom: 17px;
@@ -475,7 +517,7 @@
   }
   .account-auth .auth-stage {
     --motion-x: 4px;
-    --motion-blur: 0.75px;
+    --motion-blur: 0px;
   }
   .account-auth .auth-stage[data-auth-direction='back'] {
     --motion-x: -4px;

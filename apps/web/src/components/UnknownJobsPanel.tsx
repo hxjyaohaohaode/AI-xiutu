@@ -1,3 +1,4 @@
+import { t } from '../i18n';
 import { ChoiceSelect } from './ChoiceSelect';
 import { useEffect, useRef, useState } from 'react';
 import { api, errorMessage, formatDate, jsonRequest } from '../lib/api';
@@ -107,10 +108,12 @@ export function UnknownJobsPanel() {
     }
   }
   return (
-    <section className="surface ops-section unknown-jobs" aria-label="生成任务核验">
-      <h2>待核验的生成任务</h2>
+    <section className="surface ops-section unknown-jobs" aria-label={t('生成任务核验')}>
+      <h2>{t('待核验的生成任务')}</h2>
       <p className="form-hint">
-        这些请求的供应商结果尚未确认，预占额度保留。先核对供应商回执，再决定结算或释放；核验不会重新调用模型。
+        {t(
+          '这些请求的供应商结果尚未确认，预占额度保留。先核对供应商回执，再决定结算或释放；核验不会重新调用模型。',
+        )}
       </p>
       <form
         className="unknown-job-filters"
@@ -127,35 +130,41 @@ export function UnknownJobsPanel() {
         }}
       >
         <label>
-          任务编号
+          {t('任务编号')}
           <input
             value={jobId}
             onChange={(event) => setJobId(event.target.value)}
-            placeholder="完整任务 UUID"
+            placeholder={t('完整任务 UUID')}
           />
         </label>
         <label>
-          账号编号
+          {t('账号编号')}
           <input
             value={actorId}
             onChange={(event) => setActorId(event.target.value)}
-            placeholder="完整账号 UUID"
+            placeholder={t('完整账号 UUID')}
           />
         </label>
         <label>
-          任务类型
-          <ChoiceSelect ariaLabel="待核验任务类型" value={operation} onValueChange={setOperation}
-            options={[{value:'',label:'全部类型'},...Object.entries(operations).map(([value,label])=>({value,label}))]}
+          {t('任务类型')}
+          <ChoiceSelect
+            ariaLabel={t('待核验任务类型')}
+            value={operation}
+            onValueChange={setOperation}
+            options={[
+              { value: '', label: t('全部类型') },
+              ...Object.entries(operations).map(([value, label]) => ({ value, label: t(label) })),
+            ]}
           />
         </label>
         <button type="submit" disabled={busy || loading}>
-          查询任务
+          {t('查询任务')}
         </button>
       </form>
       {error && <InlineError message={error} />}
-      {success && <p role="status">{success}</p>}
+      {success && <p role="status">{t(success)}</p>}
       {loading ? (
-        <Busy label="读取待核验任务" />
+        <Busy label={t('读取待核验任务')} />
       ) : (
         <>
           {data?.jobs.length ? (
@@ -163,12 +172,12 @@ export function UnknownJobsPanel() {
               <table>
                 <thead>
                   <tr>
-                    <th>任务 / 账号</th>
-                    <th>类型 / 模型</th>
-                    <th>预占点数</th>
-                    <th>供应商回执 / 状态</th>
-                    <th>时间</th>
-                    <th>操作</th>
+                    <th>{t('任务 / 账号')}</th>
+                    <th>{t('类型 / 模型')}</th>
+                    <th>{t('预占点数')}</th>
+                    <th>{t('供应商回执 / 状态')}</th>
+                    <th>{t('时间')}</th>
+                    <th>{t('操作')}</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -179,12 +188,12 @@ export function UnknownJobsPanel() {
                         <small>{job.actorId}</small>
                       </td>
                       <td>
-                        {operations[job.operation] ?? job.operation}
+                        {t(operations[job.operation] ?? job.operation)}
                         <small>{job.modelId}</small>
                       </td>
                       <td>{job.heldUnits}</td>
                       <td>
-                        {job.providerRequestId ?? '尚未取得回执'}
+                        {job.providerRequestId ?? t('尚未取得回执')}
                         <small>{job.errorCode}</small>
                       </td>
                       <td>{formatDate(job.createdAt)}</td>
@@ -199,7 +208,7 @@ export function UnknownJobsPanel() {
                             setSuccess('');
                           }}
                         >
-                          核验此任务
+                          {t('核验此任务')}
                         </button>
                       </td>
                     </tr>
@@ -208,9 +217,9 @@ export function UnknownJobsPanel() {
               </table>
             </div>
           ) : (
-            <p>当前筛选下没有待核验任务。</p>
+            <p>{t('当前筛选下没有待核验任务。')}</p>
           )}
-          <nav aria-label="待核验任务分页">
+          <nav aria-label={t('待核验任务分页')}>
             <button
               disabled={!previous.length || busy}
               onClick={() => {
@@ -218,9 +227,12 @@ export function UnknownJobsPanel() {
                 setPrevious((value) => value.slice(0, -1));
               }}
             >
-              上一页
+              {t('上一页')}
             </button>
-            <span>第 {previous.length + 1} 页</span>
+            <span>
+              {t('第')}
+              {previous.length + 1} {t('页')}
+            </span>
             <button
               disabled={!data?.nextCursor || busy}
               onClick={() => {
@@ -228,11 +240,11 @@ export function UnknownJobsPanel() {
                 setCursor(data!.nextCursor);
               }}
             >
-              下一页
+              {t('下一页')}
             </button>
           </nav>
           {data && !data.resolutionAvailable && (
-            <p className="form-hint">当前服务未配置任务核验执行器，可查看记录。</p>
+            <p className="form-hint">{t('当前服务未配置任务核验执行器，可查看记录。')}</p>
           )}
         </>
       )}
@@ -244,17 +256,29 @@ export function UnknownJobsPanel() {
             void resolve();
           }}
         >
-          <h3>核验任务 {selected.id}</h3>
+          <h3>
+            {t('核验任务')}
+            {selected.id}
+          </h3>
           <fieldset disabled={busy}>
             <label>
-              核验结论
-              <ChoiceSelect ariaLabel="任务核验结论" value={resolution} disabled={busy}
-                onValueChange={(value) => {setResolution(value); setReviewed(false);}}
-                options={[{value:'settle',label:'结算预占额度',description:'供应商已计费'},{value:'release',label:'释放预占额度',description:'证据确认未计费'}]}
+              {t('核验结论')}
+              <ChoiceSelect
+                ariaLabel={t('任务核验结论')}
+                value={resolution}
+                disabled={busy}
+                onValueChange={(value) => {
+                  setResolution(value);
+                  setReviewed(false);
+                }}
+                options={[
+                  { value: 'settle', label: t('结算预占额度'), description: t('供应商已计费') },
+                  { value: 'release', label: t('释放预占额度'), description: t('证据确认未计费') },
+                ]}
               />
             </label>
             <label>
-              证据编号
+              {t('证据编号')}
               <input
                 value={evidence}
                 minLength={3}
@@ -264,11 +288,11 @@ export function UnknownJobsPanel() {
                   setEvidence(event.target.value);
                   setReviewed(false);
                 }}
-                placeholder="供应商工单、账单或请求核验编号"
+                placeholder={t('供应商工单、账单或请求核验编号')}
               />
             </label>
             <label>
-              核验说明
+              {t('核验说明')}
               <textarea
                 value={reason}
                 minLength={10}
@@ -287,16 +311,17 @@ export function UnknownJobsPanel() {
                 checked={reviewed}
                 onChange={(event) => setReviewed(event.target.checked)}
               />
-              已核对该请求与证据，确认处理 {selected.heldUnits} 点预占额度
+              {t('已核对该请求与证据，确认处理')}
+              {selected.heldUnits} {t('点预占额度')}
             </label>
             <button
               type="submit"
               disabled={!reviewed || reason.trim().length < 10 || evidence.trim().length < 3}
             >
-              提交核验结论
+              {t('提交核验结论')}
             </button>
             <button type="button" onClick={() => setSelected(null)}>
-              取消
+              {t('取消')}
             </button>
           </fieldset>
         </form>

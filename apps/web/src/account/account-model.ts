@@ -1,5 +1,6 @@
 import type { Session, Space } from '../lib/types';
 import type { DocumentDraft } from './document-drafts';
+import { formatDateTime, formatNumber, t } from '../i18n';
 
 export type AccountTab = 'overview' | 'security' | 'billing' | 'data';
 
@@ -79,8 +80,7 @@ export function readAccountEntitlements(
   };
 }
 
-const unitsFormatter = new Intl.NumberFormat('zh-CN', { maximumFractionDigits: 0 });
-const periodFormatter = new Intl.DateTimeFormat('zh-CN', {
+const periodOptions: Intl.DateTimeFormatOptions = {
   timeZone: 'Asia/Shanghai',
   year: 'numeric',
   month: 'long',
@@ -88,14 +88,14 @@ const periodFormatter = new Intl.DateTimeFormat('zh-CN', {
   hour: '2-digit',
   minute: '2-digit',
   hourCycle: 'h23',
-});
+};
 
 export function formatAccountUnits(value: number) {
-  return isUnits(value) ? unitsFormatter.format(value) : '—';
+  return isUnits(value) ? formatNumber(value, { maximumFractionDigits: 0 }) : '—';
 }
 
 export function formatAccountPeriod(value: string) {
-  return isAccountTimestamp(value) ? periodFormatter.format(new Date(value)) : '待确认';
+  return isAccountTimestamp(value) ? formatDateTime(value, periodOptions) : t('待确认');
 }
 
 export function accountStatus(status: string) {

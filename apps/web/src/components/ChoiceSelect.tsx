@@ -1,3 +1,4 @@
+import { t } from '../i18n';
 import {
   useEffect,
   useId,
@@ -42,7 +43,7 @@ export function ChoiceSelect<T extends string>({
   id,
   name,
   disabled = false,
-  placeholder = '请选择',
+  placeholder = t('请选择'),
   className = '',
   size = 'regular',
 }: {

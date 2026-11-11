@@ -1,3 +1,4 @@
+import { t, useLocale, formatNumber } from '../i18n';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import {
   ArrowClockwise,
@@ -73,6 +74,7 @@ function UsageWorkspace({
   refreshToken = 0,
   identity,
 }: Props & { identity: string }) {
+  useLocale();
   const [scope, setScope] = useState<'personal' | 'space'>(
     space?.kind === 'team' ? 'space' : 'personal',
   );
@@ -304,25 +306,27 @@ function UsageWorkspace({
   const selectedSpaceName = knownSpaces.find((item) => item.id === selectedSpaceId)?.name;
   const walletName = operator
     ? selectedSpaceId
-      ? selectedSpaceName || '所选空间钱包'
-      : '全部空间钱包'
+      ? selectedSpaceName || t('所选空间钱包')
+      : t('全部空间钱包')
     : scope === 'personal'
-      ? '个人钱包'
-      : `${space?.name ?? '空间'}的钱包`;
+      ? t('个人钱包')
+      : t('{name}的钱包', { name: space?.name ?? t('空间') });
   const filteredMemberName = report?.filterActorId
     ? members.data?.members.find((item) => item.userId === report.filterActorId)?.displayName ||
-      (report.filterActorId === currentUserId ? '我' : `成员 ${report.filterActorId.slice(0, 8)}`)
+      (report.filterActorId === currentUserId
+        ? t('我')
+        : t('成员 {id}', { id: report.filterActorId.slice(0, 8) }))
     : null;
   const memberOptions: ChoiceOption[] = [
-    { value: '', label: '全部成员' },
-    ...(currentUserId ? [{ value: currentUserId, label: '仅我' }] : []),
+    { value: '', label: t('全部成员') },
+    ...(currentUserId ? [{ value: currentUserId, label: t('仅我') }] : []),
     ...(canSelectMember
       ? (members.data?.members ?? [])
           .filter((item) => item.userId !== currentUserId)
           .map((item) => ({
             value: item.userId,
             label: item.displayName,
-            description: `成员 ${item.userId.slice(0, 8)}`,
+            description: t('成员 {id}', { id: item.userId.slice(0, 8) }),
           }))
       : []),
   ];
@@ -334,22 +338,24 @@ function UsageWorkspace({
   )
     memberOptions.push({
       value: member,
-      label: `成员 ${member.slice(0, 8)}`,
-      description: '当前名单中未载入此成员',
+      label: t('成员 {id}', { id: member.slice(0, 8) }),
+      description: t('当前名单中未载入此成员'),
     });
   if (canSelectMember)
     memberOptions.push({
       value: 'custom',
-      label: '按成员 ID…',
-      description: '也可查询已离开成员的历史记录',
+      label: t('按成员 ID…'),
+      description: t('也可查询已离开成员的历史记录'),
     });
   return (
-    <section className="usage-dashboard" aria-label="用量与额度历史">
+    <section className="usage-dashboard" aria-label={t('用量与额度历史')}>
       <header className="view-heading usage-heading" data-motion="usage-heading">
         <div>
-          <span className="usage-eyebrow">使用记录</span>
-          <h1>用量与额度</h1>
-          <p>{operator ? '查看空间与成员的服务点流水。' : '查看服务点、创作消耗与空间容量。'}</p>
+          <span className="usage-eyebrow">{t('使用记录')}</span>
+          <h1>{t('用量与额度')}</h1>
+          <p>
+            {operator ? t('查看空间与成员的服务点流水。') : t('查看服务点、创作消耗与空间容量。')}
+          </p>
         </div>
         <div className="view-actions usage-actions">
           <button
@@ -358,12 +364,12 @@ function UsageWorkspace({
             onClick={() => setRefresh((value) => value + 1)}
             disabled={state.loading}
           >
-            <ArrowClockwise size={17} aria-hidden /> 刷新
+            <ArrowClockwise size={17} aria-hidden /> {t('刷新')}
           </button>
           {exporting ? (
             <button type="button" className="button button-secondary" onClick={cancelExport}>
-              <Busy label="导出中" />
-              <span>取消</span>
+              <Busy label={t('导出中')} />
+              <span>{t('取消')}</span>
             </button>
           ) : (
             <button
@@ -372,7 +378,7 @@ function UsageWorkspace({
               onClick={() => void exportCsv()}
               disabled={!report || !!dateError}
             >
-              <DownloadSimple size={17} aria-hidden /> 导出CSV
+              <DownloadSimple size={17} aria-hidden /> {t('导出CSV')}
             </button>
           )}
         </div>
@@ -382,7 +388,7 @@ function UsageWorkspace({
           {!operator && (
             <ChoiceSelect<'personal' | 'space'>
               className="usage-scope-field"
-              label="范围"
+              label={t('范围')}
               value={scope}
               onValueChange={(value) => {
                 setScope(value);
@@ -390,15 +396,17 @@ function UsageWorkspace({
                 setMemberError(null);
               }}
               options={[
-                { value: 'personal', label: '我的个人用量' },
-                ...(space ? [{ value: 'space' as const, label: `${space.name} · 空间用量` }] : []),
+                { value: 'personal', label: t('我的个人用量') },
+                ...(space
+                  ? [{ value: 'space' as const, label: t('{v0} · 空间用量', { v0: space.name }) }]
+                  : []),
               ]}
             />
           )}
           {memberScope && (
             <ChoiceSelect
               className="usage-member-field"
-              label="成员"
+              label={t('成员')}
               value={member}
               onValueChange={(value) => {
                 setMember(value);
@@ -408,7 +416,7 @@ function UsageWorkspace({
             />
           )}
           <label>
-            开始日期
+            {t('开始日期')}
             <input
               type="date"
               value={from}
@@ -417,7 +425,7 @@ function UsageWorkspace({
             />
           </label>
           <label>
-            结束日期
+            {t('结束日期')}
             <input
               type="date"
               value={to}
@@ -425,12 +433,12 @@ function UsageWorkspace({
               onChange={(event) => setTo(event.target.value)}
             />
           </label>
-          <div className="usage-presets" role="group" aria-label="快捷日期">
+          <div className="usage-presets" role="group" aria-label={t('快捷日期')}>
             <CalendarBlank size={15} aria-hidden />
             {[
-              [7, '7 天'],
-              [30, '30 天'],
-              ['month', '本月'],
+              [7, t('7 天')],
+              [30, t('30 天')],
+              ['month', t('本月')],
             ].map(([value, label]) => (
               <button
                 key={value}
@@ -457,21 +465,21 @@ function UsageWorkspace({
             }}
           >
             <label>
-              成员 ID
+              {t('成员 ID')}
               <input
                 value={memberDraft}
                 maxLength={36}
-                placeholder="包括已离开成员的历史记录"
+                placeholder={t('包括已离开成员的历史记录')}
                 autoComplete="off"
                 spellCheck={false}
                 onChange={(event) => setMemberDraft(event.target.value)}
               />
             </label>
             <button type="submit" className="button button-secondary">
-              应用成员
+              {t('应用成员')}
             </button>
             {awaitingMember && !memberError && (
-              <span className="usage-filter-hint">输入成员 ID 后应用。</span>
+              <span className="usage-filter-hint">{t('输入成员 ID 后应用。')}</span>
             )}
           </form>
         )}
@@ -491,103 +499,110 @@ function UsageWorkspace({
             }}
           >
             <label>
-              空间ID
+              {t('空间ID')}
               <input
                 value={spaceDraft}
                 maxLength={36}
                 onChange={(event) => setSpaceDraft(event.target.value)}
-                placeholder="全部空间"
+                placeholder={t('全部空间')}
                 autoComplete="off"
                 spellCheck={false}
               />
             </label>
             <label>
-              成员ID
+              {t('成员ID')}
               <input
                 value={actorDraft}
                 maxLength={36}
                 onChange={(event) => setActorDraft(event.target.value)}
-                placeholder="全部成员"
+                placeholder={t('全部成员')}
                 autoComplete="off"
                 spellCheck={false}
               />
             </label>
             <button type="submit" className="button button-secondary">
-              筛选
+              {t('筛选')}
             </button>
           </form>
         )}
         {members.error && (
           <p className="usage-filter-hint" role="status">
-            成员名单暂未读取：{members.error} 仍可查看全部或本人记录。
+            {t('成员名单暂未读取：')}
+            {t(members.error)} {t('仍可查看全部或本人记录。')}
           </p>
         )}
-        <InlineError message={memberError || operatorError || dateError} />
-        <p className="usage-filter-timezone">日期按北京时间计算，结束日期包含当天。</p>
+        <InlineError message={t(memberError || operatorError || dateError || '')} />
+        <p className="usage-filter-timezone">{t('日期按北京时间计算，结束日期包含当天。')}</p>
       </div>
-      <InlineError message={state.error || exportError} />
+      <InlineError message={t(state.error || exportError || '')} />
       {state.error && (
         <button
           type="button"
           className="button button-secondary usage-retry"
           onClick={() => setRefresh((value) => value + 1)}
         >
-          重新读取账本
+          {t('重新读取账本')}
         </button>
       )}
       {exportMessage && (
         <p className="usage-status" role="status">
-          {exportMessage}
+          {t(exportMessage)}
         </p>
       )}
       {state.loading && (
         <div className="usage-loading" role="status">
-          <Busy label="读取用量账本" />
+          <Busy label={t('读取用量账本')} />
         </div>
       )}
       {report && (
         <>
           <div className="usage-overview">
-            <section className="usage-card usage-wallet" aria-label="当前钱包">
+            <section className="usage-card usage-wallet" aria-label={t('当前钱包')}>
               <div className="usage-card-heading">
                 <h2>{walletName}</h2>
-                <span className="usage-context-label">当前余额</span>
+                <span className="usage-context-label">{t('当前余额')}</span>
               </div>
               <div className="usage-wallet-values">
                 <div>
                   <span>
-                    <Wallet size={17} aria-hidden /> 当前可用
+                    <Wallet size={17} aria-hidden /> {t('当前可用')}
                   </span>
                   <strong>
                     {pointText(report.balance.available)}
-                    <small> 点</small>
+                    <small> {t('点')}</small>
                   </strong>
                 </div>
                 <div>
                   <span>
-                    <HourglassMedium size={17} aria-hidden /> 当前预占
+                    <HourglassMedium size={17} aria-hidden /> {t('当前预占')}
                   </span>
                   <strong>
                     {pointText(report.balance.held)}
-                    <small> 点</small>
+                    <small> {t('点')}</small>
                   </strong>
                 </div>
               </div>
-              <p className="usage-wallet-note">完整钱包余额，不随日期或成员筛选变化。</p>
+              <p className="usage-wallet-note">{t('完整钱包余额，不随日期或成员筛选变化。')}</p>
               <MotionDetails className="usage-small-details">
-                <summary>其他钱包状态</summary>
+                <summary>{t('其他钱包状态')}</summary>
                 <dl className="usage-wallet-other">
                   <div>
-                    <dt>已结算</dt>
-                    <dd>{pointText(report.balance.consumed)} 点</dd>
+                    <dt>{t('已结算')}</dt>
+                    <dd>
+                      {pointText(report.balance.consumed)} {t('点')}
+                    </dd>
                   </div>
                   <div>
-                    <dt>已到期</dt>
-                    <dd>{pointText(report.balance.expired)} 点</dd>
+                    <dt>{t('已到期')}</dt>
+                    <dd>
+                      {pointText(report.balance.expired)} {t('点')}
+                    </dd>
                   </div>
                   <div>
-                    <dt>已撤回</dt>
-                    <dd>{pointText(report.balance.revoked)} 点</dd>
+                    <dt>{t('已撤回')}</dt>
+                    <dd>
+                      {pointText(report.balance.revoked)} {t('点')}
+                    </dd>
                   </div>
                 </dl>
               </MotionDetails>
@@ -600,9 +615,9 @@ function UsageWorkspace({
               refresh={revision}
             />
           </div>
-          <section className="usage-period" aria-label="所选期间的服务点汇总">
+          <section className="usage-period" aria-label={t('所选期间的服务点汇总')}>
             <div className="usage-section-heading">
-              <h2>期间汇总</h2>
+              <h2>{t('期间汇总')}</h2>
               <span>
                 {filteredMemberName ? `${filteredMemberName} · ` : ''}
                 {from} — {to}
@@ -615,17 +630,19 @@ function UsageWorkspace({
                   key={key}
                   aria-pressed={kind === key}
                   onClick={() => setKind(key)}
-                  title={usageKindDescriptions[key]}
+                  title={t(usageKindDescriptions[key])}
                 >
-                  <span>{key === 'held' ? '累计预占' : usageLabels[key]}</span>
+                  <span>{key === 'held' ? t('累计预占') : t(usageLabels[key])}</span>
                   <strong>{pointText(report.totals[key])}</strong>
-                  <small>{kind === key ? '正在查看趋势' : '服务点'}</small>
+                  <small>{kind === key ? t('正在查看趋势') : t('服务点')}</small>
                 </button>
               ))}
             </div>
             {report.unknownAmountEntries > 0 && (
               <p className="usage-footnote" role="status">
-                本期 {report.unknownAmountEntries} 条记录的金额或分摊不完整，汇总仅包含已确认数值。
+                {t('本期 {count} 条记录的金额或分摊不完整，汇总仅包含已确认数值。', {
+                  count: formatNumber(report.unknownAmountEntries),
+                })}
               </p>
             )}
           </section>
@@ -660,17 +677,17 @@ function UsageWorkspace({
         errors={[legacy.error, assistant.error].filter((value): value is string => !!value)}
         onRefresh={() => setCatalogRefresh((value) => value + 1)}
       />
-      <section className="usage-card usage-provider-entry" aria-label="供应商公开费率">
+      <section className="usage-card usage-provider-entry" aria-label={t('供应商公开费率')}>
         <div>
-          <h2>供应商公开费率</h2>
-          <p>输入、缓存、输出与音频等计量项；历史费用在关联任务中查看。</p>
+          <h2>{t('供应商公开费率')}</h2>
+          <p>{t('输入、缓存、输出与音频等计量项；历史费用在关联任务中查看。')}</p>
         </div>
         <button
           type="button"
           className="button button-secondary"
           onClick={() => setJobDetail({ key: requestKey, target: { kind: 'prices' } })}
         >
-          查看模型公开费率
+          {t('查看模型公开费率')}
         </button>
       </section>
       {jobDetail?.key === requestKey && (

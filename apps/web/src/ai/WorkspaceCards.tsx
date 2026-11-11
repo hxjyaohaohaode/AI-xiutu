@@ -1,3 +1,4 @@
+import { t } from '../i18n';
 import { MotionDetails } from '../motion/Presence';
 import type { AssistantCandidate, AssistantGrant, AssistantWorkspace } from '@ai-xiutu/contracts';
 import { StudioGlyph, type StudioGlyphName } from '../components/StudioGlyph';
@@ -51,8 +52,16 @@ export function WorkspaceCards({
           {section.type === 'budget' && (
             <p>
               {grant
-                ? `已使用 ${grant.usedUnits} / ${grant.unitLimit} 服务点，${grant.usedSteps} / ${grant.stepLimit} 次操作。生图规格的报价在提交前单独显示。`
-                : '尚未建立本次执行授权。实际报价以所选模型与生成规格为准。'}
+                ? t(
+                    '已使用 {v0} / {v1} 服务点，{v2} / {v3} 次操作。生图规格的报价在提交前单独显示。',
+                    {
+                      v0: grant.usedUnits,
+                      v1: grant.unitLimit,
+                      v2: grant.usedSteps,
+                      v3: grant.stepLimit,
+                    },
+                  )
+                : t('尚未建立本次执行授权。实际报价以所选模型与生成规格为准。')}
             </p>
           )}
           {section.type === 'references' && (
@@ -61,7 +70,7 @@ export function WorkspaceCards({
                 <img
                   key={id}
                   src={`/v1/assets/${id}/thumbnail`}
-                  alt="本次明确共享的参考图"
+                  alt={t('本次明确共享的参考图')}
                   loading="lazy"
                 />
               ))}
@@ -71,9 +80,9 @@ export function WorkspaceCards({
             <table>
               <thead>
                 <tr>
-                  <th>参数</th>
-                  <th>原值</th>
-                  <th>建议</th>
+                  <th>{t('参数')}</th>
+                  <th>{t('原值')}</th>
+                  <th>{t('建议')}</th>
                 </tr>
               </thead>
               <tbody>
@@ -90,13 +99,13 @@ export function WorkspaceCards({
           {section.type === 'candidates' &&
             section.candidateIndices.map((i) => {
               const candidate = candidates[i];
-              if (!candidate) return <p key={i}>候选暂不可用，请刷新会话。</p>;
+              if (!candidate) return <p key={i}>{t('候选暂不可用，请刷新会话。')}</p>;
               return (
                 <div key={candidate.id} className="workspace-candidate">
                   <p>{candidate.summary}</p>
                   {candidate.kind === 'generation' && (
                     <MotionDetails>
-                      <summary>生图要求</summary>
+                      <summary>{t('生图要求')}</summary>
                       <p>{candidate.prompt}</p>
                     </MotionDetails>
                   )}
@@ -113,20 +122,20 @@ export function WorkspaceCards({
                       onClick={() => onDecision(candidate, 'previewed')}
                     >
                       {candidate.appliedRevisionId
-                        ? '已保存新版本'
+                        ? t('已保存新版本')
                         : candidate.decision === 'rejected'
-                          ? '已退回'
+                          ? t('已退回')
                           : candidate.kind === 'edit'
                             ? candidate.decision === 'previewed'
-                              ? '已放入画布预览'
-                              : '在画布预览'
-                            : '选择生图模型与规格'}
+                              ? t('已放入画布预览')
+                              : t('在画布预览')
+                            : t('选择生图模型与规格')}
                     </button>
                     <button
                       disabled={disabled || candidate.decision !== 'pending'}
                       onClick={() => onDecision(candidate, 'rejected')}
                     >
-                      退回
+                      {t('退回')}
                     </button>
                   </div>
                 </div>

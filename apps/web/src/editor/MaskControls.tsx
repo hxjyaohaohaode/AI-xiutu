@@ -1,3 +1,4 @@
+import { t } from '../i18n';
 import { MotionDetails } from '../motion/Presence';
 import { ChoiceSelect } from '../components/ChoiceSelect';
 import { useState } from 'react';
@@ -96,8 +97,8 @@ export function MaskControls({
     scalar('feather', '羽化', mask.feather, 0, 1);
   } else if (mask.type === 'linear') {
     for (const [key, label] of [
-      ['start', '起点'],
-      ['end', '终点'],
+      ['start', t('起点')],
+      ['end', t('终点')],
     ] as const)
       for (const axis of ['x', 'y'] as const)
         numeric(
@@ -147,13 +148,13 @@ export function MaskControls({
       {path.length > 0 && (
         <button className="text-button" onClick={() => onPath(path.slice(0, -1))}>
           <ArrowUUpLeft size={15} />
-          上一级范围
+          {t('上一级范围')}
         </button>
       )}
       <div className="advanced-row">
         <strong>
-          {maskLabels[mask.type]}
-          {path.length ? ` · 子区 ${path.map((v) => v + 1).join('.')}` : ''}
+          {t(maskLabels[mask.type])}
+          {path.length ? t(' · 子区 {v0}', { v0: path.map((v) => v + 1).join('.') }) : ''}
         </strong>
         <label className="compact-check">
           <input
@@ -163,7 +164,7 @@ export function MaskControls({
               mutate((latest) => ({ ...latest, invert: event.target.checked }), true)
             }
           />
-          反选
+          {t('反选')}
         </label>
       </div>
       {drawsMask && (
@@ -173,18 +174,18 @@ export function MaskControls({
             checked={editor.maskOverlay}
             onChange={(event) => editor.setMaskOverlay(event.target.checked)}
           />
-          显示范围覆盖
+          {t('显示范围覆盖')}
         </label>
       )}
       {mask.type === 'compound' && (
         <>
-          <div className="tonal-tabs" aria-label="范围运算">
+          <div className="tonal-tabs" aria-label={t('范围运算')}>
             {(
               [
-                ['union', '相加'],
-                ['intersection', '相交'],
-                ['subtract', '相减'],
-                ['xor', '互斥'],
+                ['union', t('相加')],
+                ['intersection', t('相交')],
+                ['subtract', t('相减')],
+                ['xor', t('互斥')],
               ] as const
             ).map(([operation, label]) => (
               <button
@@ -205,10 +206,11 @@ export function MaskControls({
             {mask.masks.map((child, index) => (
               <div className="advanced-row" key={index}>
                 <button className="text-button" onClick={() => onPath([...path, index])}>
-                  范围 {index + 1} · {maskLabels[child.type]}
+                  {t('范围')}
+                  {index + 1} · {t(maskLabels[child.type])}
                 </button>
                 <IconButton
-                  label={'移除范围 ' + (index + 1)}
+                  label={t('移除范围 ') + (index + 1)}
                   onClick={() =>
                     mutate((latest) => {
                       if (latest.type !== 'compound') return latest;
@@ -239,26 +241,26 @@ export function MaskControls({
               )
             }
           />
-          平滑过渡
+          {t('平滑过渡')}
         </label>
       )}
       {mask.type === 'polygon' && (
         <div className="advanced-row">
           <label>
-            顶点
+            {t('顶点')}
             <ChoiceSelect
-              ariaLabel="多边形顶点"
+              ariaLabel={t('多边形顶点')}
               size="compact"
               value={String(Math.min(pointIndex, mask.points.length - 1))}
               onValueChange={(value) => setPointIndex(Number(value))}
               options={mask.points.map((_, index) => ({
                 value: String(index),
-                label: `点 ${index + 1}`,
+                label: t('点 {v0}', { v0: index + 1 }),
               }))}
             />
           </label>
           <IconButton
-            label="增加多边形顶点"
+            label={t('增加多边形顶点')}
             disabled={mask.points.length >= MAX_POLYGON_POINTS}
             onClick={() =>
               mutate((latest) => {
@@ -275,7 +277,7 @@ export function MaskControls({
             <Plus size={15} />
           </IconButton>
           <IconButton
-            label="删除多边形顶点"
+            label={t('删除多边形顶点')}
             disabled={mask.points.length <= 3}
             onClick={() =>
               mutate(
@@ -300,8 +302,8 @@ export function MaskControls({
         <ParameterShelf
           key={mask.type + ':' + path.join('.')}
           controls={controls}
-          label="选区形状"
-          onCommit={(name) => editor.commitCurrent('调整' + name)}
+          label={t('选区形状')}
+          onCommit={(name) => editor.commitCurrent(t('调整{v0}', { v0: t(name) }))}
           onCancel={editor.cancelPreview}
         />
       )}
@@ -314,7 +316,7 @@ export function MaskControls({
                   aria-pressed={editor.brushSettings.mode === 'add'}
                   onClick={() => editor.setBrushSettings({ ...editor.brushSettings, mode: 'add' })}
                 >
-                  涂入范围
+                  {t('涂入范围')}
                 </button>
                 <button
                   aria-pressed={editor.brushSettings.mode === 'subtract'}
@@ -322,15 +324,15 @@ export function MaskControls({
                     editor.setBrushSettings({ ...editor.brushSettings, mode: 'subtract' })
                   }
                 >
-                  擦除范围
+                  {t('擦除范围')}
                 </button>
               </div>
               <ParameterShelf
-                label="选区画笔"
+                label={t('选区画笔')}
                 controls={[
                   {
                     id: 'diameter',
-                    label: '画笔直径',
+                    label: t('画笔直径'),
                     value: editor.brushSettings.radius * short * 2,
                     min: 1,
                     max: short,
@@ -341,7 +343,7 @@ export function MaskControls({
                   },
                   {
                     id: 'feather',
-                    label: '柔边',
+                    label: t('柔边'),
                     value: editor.brushSettings.feather * 100,
                     min: 0,
                     max: 100,
@@ -352,7 +354,7 @@ export function MaskControls({
                   },
                   {
                     id: 'opacity',
-                    label: '流量',
+                    label: t('流量'),
                     value: editor.brushSettings.opacity * 100,
                     min: 0,
                     max: 100,
@@ -365,7 +367,9 @@ export function MaskControls({
               />
             </>
           ) : (
-            <p className="control-note">此工具模式不会绘制范围；可从局部选区复制已画好的蒙版。</p>
+            <p className="control-note">
+              {t('此工具模式不会绘制范围；可从局部选区复制已画好的蒙版。')}
+            </p>
           )}
           <button
             className="text-button"
@@ -380,24 +384,27 @@ export function MaskControls({
               )
             }
           >
-            移除最后一笔范围
+            {t('移除最后一笔范围')}
           </button>
-          <small>{mask.strokes.length} 笔，可继续叠加或擦除</small>
+          <small>
+            {mask.strokes.length} {t('笔，可继续叠加或擦除')}
+          </small>
         </>
       )}
       {mask.type === 'raster' && (
         <p className="control-note">
-          识别蒙版 {mask.width}×{mask.height}
-          。可通过添加手动画笔子区修正边缘，自动识别不等同于逐像素准确。
+          {t('识别蒙版')}
+          {mask.width}×{mask.height}
+          {t('。可通过添加手动画笔子区修正边缘，自动识别不等同于逐像素准确。')}
         </p>
       )}
       {mask.type === 'color-range' && (
-        <div className="continuous-hue-reference" aria-label="完整色相环" />
+        <div className="continuous-hue-reference" aria-label={t('完整色相环')} />
       )}
       <MotionDetails className="advanced-disclosure">
         <summary>
           <Plus size={14} />
-          增加或扣除范围
+          {t('增加或扣除范围')}
         </summary>
         <div className="tonal-tabs">
           {(
@@ -410,12 +417,12 @@ export function MaskControls({
             ] as Parameters<typeof newMask>[0][]
           ).map((type) => (
             <button key={type} onClick={() => append(type)}>
-              {maskLabels[type]}
+              {t(maskLabels[type])}
             </button>
           ))}
         </div>
         <p className="control-note">
-          添加后回到组合范围，可选相加、相交、相减或互斥。每个子区都可独立修改。
+          {t('添加后回到组合范围，可选相加、相交、相减或互斥。每个子区都可独立修改。')}
         </p>
       </MotionDetails>
     </section>

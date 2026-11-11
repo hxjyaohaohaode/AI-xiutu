@@ -1,3 +1,4 @@
+import { getLocale, t, useLocale } from '../i18n';
 import { useEffect, useMemo, useRef, useState, type FormEvent } from 'react';
 import {
   ArrowRight,
@@ -44,7 +45,7 @@ function LibraryThumbnail({ asset, title }: { asset: Asset; title: string }) {
   return failedSource === src ? (
     <div className="library-thumbnail-fallback">
       <Images size={30} />
-      <small>缩略图暂不可用</small>
+      <small>{t('缩略图暂不可用')}</small>
     </div>
   ) : (
     <img
@@ -212,33 +213,33 @@ function MetadataDialog({
   }
   return (
     <>
-      <Modal title="整理素材信息" subtitle={asset.name} onClose={onClose} canClose={canClose}>
+      <Modal title={t('整理素材信息')} subtitle={asset.name} onClose={onClose} canClose={canClose}>
         <form
           className="stack-form asset-metadata-form"
           onSubmit={(event) => void save(event)}
           data-motion="modal-content"
         >
           <label>
-            标题
+            {t('标题')}
             <input
               value={title}
               maxLength={200}
               disabled={busy}
               onChange={(event) => setTitle(event.target.value)}
-              placeholder="给这张素材一个好找的名字"
+              placeholder={t('给这张素材一个好找的名字')}
             />
           </label>
           <label>
-            标签
+            {t('标签')}
             <input
               value={tags}
               disabled={busy}
               onChange={(event) => setTags(event.target.value)}
-              placeholder="用逗号分隔，例如：人像，旅行，待精修"
+              placeholder={t('用逗号分隔，例如：人像，旅行，待精修')}
             />
           </label>
           <label>
-            拍摄时间（自行填写）
+            {t('拍摄时间（自行填写）')}
             <input
               type="datetime-local"
               value={capturedAt}
@@ -246,24 +247,26 @@ function MetadataDialog({
               onChange={(event) => setCapturedAt(event.target.value)}
             />
             <small>
-              按当前设备时区 {Intl.DateTimeFormat().resolvedOptions().timeZone}{' '}
-              解释，保存时包含时区。不从照片推测。
+              {t('按当前设备时区')}
+              {Intl.DateTimeFormat().resolvedOptions().timeZone}{' '}
+              {t('解释，保存时包含时区。不从照片推测。')}
             </small>
           </label>
           <label>
-            地点（自行填写）
+            {t('地点（自行填写）')}
             <input
               value={location}
               maxLength={200}
               disabled={busy}
               onChange={(event) => setLocation(event.target.value)}
-              placeholder="可留空；不会读取设备定位"
+              placeholder={t('可留空；不会读取设备定位')}
             />
           </label>
           <p className="control-note">
-            来源：{SOURCE_LABELS[asset.source ?? 'unknown']} · 入库于{' '}
-            {formatDate(asset.createdAt) || '未记录'}
-            。这些说明随项目权限可见，不会改写原图或自动公开。
+            {t('来源：')}
+            {t(SOURCE_LABELS[asset.source ?? 'unknown'])} {t('· 入库于')}{' '}
+            {formatDate(asset.createdAt) || t('未记录')}
+            {t('。这些说明随项目权限可见，不会改写原图或自动公开。')}
           </p>
           <InlineError message={error} />
           {conflict ? (
@@ -276,11 +279,11 @@ function MetadataDialog({
               }}
             >
               <ArrowClockwise size={16} />
-              读取最新信息
+              {t('读取最新信息')}
             </button>
           ) : (
             <button className="button button-primary" disabled={busy || !dirty}>
-              {busy ? <Busy /> : '保存整理信息'}
+              {busy ? <Busy /> : t('保存整理信息')}
             </button>
           )}
         </form>
@@ -316,6 +319,7 @@ export function AssetLibrary({
   onCopy: () => void;
   onShare: () => void;
 }) {
+  const locale = useLocale();
   const [projectFilter, setProjectFilter] = useState(project?.id ?? '');
   const [query, setQuery] = useState(''),
     [debouncedQuery, setDebouncedQuery] = useState('');
@@ -429,21 +433,21 @@ export function AssetLibrary({
     for (const asset of assets) {
       const name =
         groupBy === 'project'
-          ? (scopedProjects.find((item) => item.id === asset.projectId)?.title ?? '已授权项目')
+          ? (scopedProjects.find((item) => item.id === asset.projectId)?.title ?? t('已授权项目'))
           : groupBy === 'source'
-            ? SOURCE_LABELS[asset.source ?? 'unknown']
+            ? t(SOURCE_LABELS[asset.source ?? 'unknown'])
             : asset.createdAt
-              ? new Date(asset.createdAt).toLocaleDateString('zh-CN', {
+              ? new Date(asset.createdAt).toLocaleDateString(getLocale(), {
                   year: 'numeric',
                   month: 'long',
                   day: 'numeric',
                 })
-              : '入库日期未记录';
+              : t('入库日期未记录');
       const key = groupBy === 'project' ? asset.projectId : name;
       result.set(key, { name, items: [...(result.get(key)?.items ?? []), asset] });
     }
     return Array.from(result);
-  }, [assets, groupBy, projects, space?.id, project?.id]);
+  }, [assets, groupBy, projects, space?.id, project?.id, locale]);
   const filtered =
     !!query.trim() || source !== 'all' || period !== 'all' || projectFilter !== (project?.id ?? '');
   const resetFilters = () => {
@@ -458,11 +462,15 @@ export function AssetLibrary({
       <header className="view-heading" data-motion="view-header">
         <div>
           <span className="eyebrow">
-            {externalProject ? '受邀共享项目' : space?.kind === 'team' ? '团队空间' : '个人空间'}
+            {externalProject
+              ? t('受邀共享项目')
+              : space?.kind === 'team'
+                ? t('团队空间')
+                : t('个人空间')}
             {space && !externalProject ? ' · ' + space.name : ''}
           </span>
-          <h1>{project?.title ?? '作品与素材'}</h1>
-          <p>{project?.description || '管理项目中的作品、照片与草图。'}</p>
+          <h1>{project?.title ?? t('作品与素材')}</h1>
+          <p>{project?.description || t('管理项目中的作品、照片与草图。')}</p>
         </div>
         <div className="view-actions">
           {project && (
@@ -470,17 +478,17 @@ export function AssetLibrary({
               {['owner', 'admin', 'editor'].includes(project.role) && (
                 <button className="text-button" onClick={() => setProjectTools(true)}>
                   <StudioGlyph name="collage" size={18} />
-                  拼图与 GIF
+                  {t('拼图与 GIF')}
                 </button>
               )}
               <button className="text-button" onClick={onCopy}>
                 <Copy size={17} />
-                复制项目
+                {t('复制项目')}
               </button>
               {['owner', 'admin'].includes(project.role) && (
                 <button className="text-button" onClick={onShare}>
                   <ShareNetwork size={17} />
-                  共享
+                  {t('共享')}
                 </button>
               )}
             </>
@@ -488,25 +496,25 @@ export function AssetLibrary({
           <button className="button button-primary" onClick={onImport}>
             <Plus size={18} />
             {project && !['owner', 'admin', 'editor'].includes(project.role)
-              ? '打开本地照片'
-              : '导入照片'}
+              ? t('打开本地照片')
+              : t('导入照片')}
           </button>
         </div>
       </header>
       {project && !['owner', 'admin', 'editor'].includes(project.role) && (
         <p className="studio-access-note">
           <Eye size={16} />
-          当前项目可浏览。你可以打开照片在本地尝试，保存时需要选择可编辑的项目。
+          {t('当前项目可浏览。你可以打开照片在本地尝试，保存时需要选择可编辑的项目。')}
         </p>
       )}
       {!space && !project ? (
         <EmptyState
           icon={<Images size={32} />}
-          title="选择工作空间"
-          description="登录后选择个人或团队空间。照片仍可直接在本机打开编辑。"
+          title={t('选择工作空间')}
+          description={t('登录后选择个人或团队空间。照片仍可直接在本机打开编辑。')}
           action={
             <button className="button button-secondary" onClick={onCreate}>
-              创建项目
+              {t('创建项目')}
               <ArrowRight size={16} />
             </button>
           }
@@ -517,17 +525,17 @@ export function AssetLibrary({
             <label className="library-search">
               <MagnifyingGlass size={18} />
               <input
-                aria-label="搜索当前范围素材"
+                aria-label={t('搜索当前范围素材')}
                 value={query}
                 maxLength={120}
                 onChange={(event) => setQuery(event.target.value)}
-                placeholder="搜索名称、标题、标签…"
+                placeholder={t('搜索名称、标题、标签…')}
               />
               {query && (
                 <button
                   type="button"
                   className="library-clear-search"
-                  aria-label="清除素材搜索"
+                  aria-label={t('清除素材搜索')}
                   onClick={() => {
                     setQuery('');
                     setDebouncedQuery('');
@@ -538,52 +546,52 @@ export function AssetLibrary({
               )}
             </label>
             <label className="library-project-select">
-              <span>项目</span>
+              <span>{t('项目')}</span>
               <ChoiceSelect
-                ariaLabel="素材所属项目"
+                ariaLabel={t('素材所属项目')}
                 value={projectFilter}
                 onValueChange={setProjectFilter}
                 options={[
-                  ...(!externalProject ? [{ value: '', label: '当前空间全部项目' }] : []),
+                  ...(!externalProject ? [{ value: '', label: t('当前空间全部项目') }] : []),
                   ...scopedProjects.map((item) => ({ value: item.id, label: item.title })),
                 ]}
               />
             </label>
             <OptionChips
-              label="按来源筛选"
+              label={t('按来源筛选')}
               value={source}
               onChange={setSource}
               options={[
-                { value: 'all', label: '全部来源' },
+                { value: 'all', label: t('全部来源') },
                 ...Object.entries(SOURCE_LABELS).map(([value, label]) => ({
                   value: value as Source,
-                  label,
+                  label: t(label),
                 })),
               ]}
             />
             <div className="library-filter-row">
               <OptionChips
-                label="按入库日期筛选"
+                label={t('按入库日期筛选')}
                 value={period}
                 onChange={setPeriod}
                 options={[
-                  { value: 'all', label: '全部日期' },
-                  { value: 'today', label: '今天' },
-                  { value: 'week', label: '近7天' },
-                  { value: 'month', label: '近30天' },
+                  { value: 'all', label: t('全部日期') },
+                  { value: 'today', label: t('今天') },
+                  { value: 'week', label: t('近7天') },
+                  { value: 'month', label: t('近30天') },
                 ]}
               />
               <label>
-                分组
+                {t('分组')}
                 <ChoiceSelect
-                  ariaLabel="素材分组方式"
+                  ariaLabel={t('素材分组方式')}
                   value={groupBy}
                   size="compact"
                   onValueChange={setGroupBy}
                   options={[
-                    { value: 'date', label: '入库日期' },
-                    { value: 'project', label: '所属项目' },
-                    { value: 'source', label: '素材来源' },
+                    { value: 'date', label: t('入库日期') },
+                    { value: 'project', label: t('所属项目') },
+                    { value: 'source', label: t('素材来源') },
                   ]}
                 />
               </label>
@@ -592,10 +600,11 @@ export function AssetLibrary({
           <div className="library-status">
             <div className="library-result-count" aria-live="polite">
               {loading ? (
-                <Busy label="读取当前授权范围" />
+                <Busy label={t('读取当前授权范围')} />
               ) : (
                 <span>
-                  <strong>{assets.length}</strong> 张已载入{cursor ? ' · 还有更多' : ''}
+                  <strong>{assets.length}</strong> {t('张已载入')}
+                  {cursor ? t(' · 还有更多') : ''}
                 </span>
               )}
             </div>
@@ -603,21 +612,21 @@ export function AssetLibrary({
               {filtered && (
                 <button className="text-button" onClick={resetFilters}>
                   <X size={15} />
-                  重置筛选
+                  {t('重置筛选')}
                 </button>
               )}
-              <div className="library-density-choice" role="group" aria-label="素材显示密度">
+              <div className="library-density-choice" role="group" aria-label={t('素材显示密度')}>
                 <button
-                  aria-label="大图显示"
-                  title="大图显示"
+                  aria-label={t('大图显示')}
+                  title={t('大图显示')}
                   aria-pressed={density === 'comfortable'}
                   onClick={() => setDensity('comfortable')}
                 >
                   <SquaresFour size={19} />
                 </button>
                 <button
-                  aria-label="紧凑显示"
-                  title="紧凑显示"
+                  aria-label={t('紧凑显示')}
+                  title={t('紧凑显示')}
                   aria-pressed={density === 'compact'}
                   onClick={() => setDensity('compact')}
                 >
@@ -630,7 +639,7 @@ export function AssetLibrary({
                 disabled={loading}
               >
                 <ArrowClockwise size={16} />
-                刷新
+                {t('刷新')}
               </button>
             </div>
           </div>
@@ -640,23 +649,23 @@ export function AssetLibrary({
               icon={<Images size={32} />}
               title={
                 query || source !== 'all' || period !== 'all'
-                  ? '没有符合筛选的素材'
-                  : '这里还没有素材'
+                  ? t('没有符合筛选的素材')
+                  : t('这里还没有素材')
               }
               description={
                 query || source !== 'all' || period !== 'all'
-                  ? '试试其他关键词、来源或日期。'
-                  : '导入照片并保存到项目，或创建一张草图。'
+                  ? t('试试其他关键词、来源或日期。')
+                  : t('导入照片并保存到项目，或创建一张草图。')
               }
               action={
                 filtered ? (
                   <button className="button button-secondary" onClick={resetFilters}>
-                    清除筛选
+                    {t('清除筛选')}
                   </button>
                 ) : (
                   <button className="button button-secondary" onClick={onImport}>
                     <Plus size={17} />
-                    打开一张照片
+                    {t('打开一张照片')}
                   </button>
                 )
               }
@@ -666,7 +675,9 @@ export function AssetLibrary({
             <section className="library-group" key={key}>
               <h2>
                 {name}
-                <span>{items.length} 张已载入</span>
+                <span>
+                  {items.length} {t('张已载入')}
+                </span>
               </h2>
               <div className="library-grid">
                 {items.map((asset) => {
@@ -690,8 +701,8 @@ export function AssetLibrary({
                         disabled={!sameProject && !parent}
                         aria-label={
                           sameProject
-                            ? '打开素材 ' + title
-                            : '进入素材所属项目 ' + (parent?.title ?? '')
+                            ? t('打开素材 ') + title
+                            : t('进入素材所属项目 ') + (parent?.title ?? '')
                         }
                         data-motion="artwork-media"
                         data-motion-pixels="true"
@@ -700,9 +711,9 @@ export function AssetLibrary({
                         <span>
                           {sameProject
                             ? asset.provenance?.animation === true
-                              ? '打开封面'
-                              : '打开原图'
-                            : '进入项目'}
+                              ? t('打开封面')
+                              : t('打开原图')
+                            : t('进入项目')}
                           <ArrowSquareOut size={15} />
                         </span>
                       </button>
@@ -712,7 +723,7 @@ export function AssetLibrary({
                           {editable && (
                             <button
                               className="library-edit-metadata"
-                              aria-label={'整理 ' + title + ' 的信息'}
+                              aria-label={t('整理 ') + title + t(' 的信息')}
                               onClick={() => setEditing(asset)}
                             >
                               <PencilSimple size={16} />
@@ -720,16 +731,17 @@ export function AssetLibrary({
                           )}
                         </div>
                         <p>
-                          {SOURCE_LABELS[asset.source ?? 'unknown']} · {asset.width}×{asset.height}
+                          {t(SOURCE_LABELS[asset.source ?? 'unknown'])} · {asset.width}×
+                          {asset.height}
                         </p>
-                        <small>{parent?.title ?? '当前授权项目'}</small>
+                        <small>{parent?.title ?? t('当前授权项目')}</small>
                         <div className="library-asset-tools">
                           <button
                             className="text-button"
                             onClick={() => setTools({ asset, kind: 'ocr' })}
                           >
                             <StudioGlyph name="docs" size={16} />
-                            识别文字与表格
+                            {t('识别文字与表格')}
                           </button>
                           {asset.provenance?.animation === true && (
                             <button
@@ -737,13 +749,13 @@ export function AssetLibrary({
                               onClick={() => setTools({ asset, kind: 'animation' })}
                             >
                               <StudioGlyph name="works" size={16} />
-                              GIF 帧编辑
+                              {t('GIF 帧编辑')}
                             </button>
                           )}
                         </div>
                         {asset.provenance?.kind === 'media-import' && (
                           <button className="text-button" onClick={() => setSourceDetails(asset)}>
-                            查看原件与母版
+                            {t('查看原件与母版')}
                           </button>
                         )}
                         {!!asset.annotations?.tags.length && (
@@ -758,13 +770,13 @@ export function AssetLibrary({
                         {asset.annotations?.capturedAt && (
                           <small className="library-declared">
                             <CalendarBlank size={13} />
-                            {formatDate(asset.annotations.capturedAt)} · 声明时间
+                            {formatDate(asset.annotations.capturedAt)} {t('· 声明时间')}
                           </small>
                         )}
                         {asset.annotations?.location && (
                           <small className="library-declared">
                             <MapPin size={13} />
-                            {asset.annotations.location.label} · 声明地点
+                            {asset.annotations.location.label} {t('· 声明地点')}
                           </small>
                         )}
                         {!!versions.length && (
@@ -792,12 +804,14 @@ export function AssetLibrary({
                 disabled={loadingMore || loading}
                 onClick={() => void loadMore()}
               >
-                {loadingMore ? <Busy /> : '载入更多素材'}
+                {loadingMore ? <Busy /> : t('载入更多素材')}
               </button>
             </div>
           )}
           <p className="control-note">
-            缩略图展示原始素材；作品按钮打开对应编辑版本。分组数量只统计已经载入的结果，不代表空间总量。
+            {t(
+              '缩略图展示原始素材；作品按钮打开对应编辑版本。分组数量只统计已经载入的结果，不代表空间总量。',
+            )}
           </p>
         </>
       )}
@@ -830,7 +844,7 @@ export function AssetLibrary({
       )}
       {sourceDetails && (
         <Modal
-          title="原件与母版"
+          title={t('原件与母版')}
           subtitle={sourceDetails.name}
           onClose={() => setSourceDetails(null)}
         >

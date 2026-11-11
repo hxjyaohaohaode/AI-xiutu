@@ -1,3 +1,4 @@
+import { t } from '../i18n';
 import { MotionDetails } from '../motion/Presence';
 import { StudioGlyph } from '../components/StudioGlyph';
 import { ChoiceSelect } from '../components/ChoiceSelect';
@@ -194,9 +195,9 @@ export function ToolInspector(props: ToolInspectorProps) {
     return (
       <aside className="inspector refined-inspector">
         <div className="inspector-scroll">
-          <h2>升级到可扩展编辑配方</h2>
+          <h2>{t('升级到可扩展编辑配方')}</h2>
           <p className="control-note">
-            旧版本会保留原有色彩与局部语义。升级后可使用独立绘制、液化、合成与完整局部调色。
+            {t('旧版本会保留原有色彩与局部语义。升级后可使用独立绘制、液化、合成与完整局部调色。')}
           </p>
           <button
             className="button button-secondary"
@@ -208,19 +209,19 @@ export function ToolInspector(props: ToolInspectorProps) {
                     props.editor.dimensions,
                     props.editor.pixelBudget,
                   ),
-                  '升级到第四代编辑配方',
+                  t('升级到第四代编辑配方'),
                 );
                 setUpgradeError(null);
               } catch (error) {
-                setUpgradeError(error instanceof Error ? error.message : '当前图片无法升级。');
+                setUpgradeError(error instanceof Error ? error.message : t('当前图片无法升级。'));
               }
             }}
           >
-            升级当前草稿，可撤销
+            {t('升级当前草稿，可撤销')}
           </button>
           {upgradeError && (
             <p className="parameter-error" role="alert">
-              {upgradeError}
+              {t(upgradeError)}
             </p>
           )}
         </div>
@@ -312,23 +313,23 @@ function LegacyToolInspector({
               },
             };
           else next = { ...recipe, adjustments: { ...recipe.adjustments, [key]: value } };
-          if (commit) editor.commit(next, `调整${tool.label}`);
+          if (commit) editor.commit(next, t('调整{v0}', { v0: t(tool.label) }));
           else editor.preview(next);
         }
         return (
           <PrecisionRange
             key={tool.id}
-            label={tool.label}
+            label={t(tool.label)}
             value={value}
             min={tool.min}
             max={tool.max}
             step={tool.unit === 'EV' ? 0.01 : 0.1}
             neutral={tool.neutral}
             unit={tool.unit === 'EV' ? 'EV' : ''}
-            description={tool.description}
+            description={tool.description ? t(tool.description) : undefined}
             index={index}
             onChange={update}
-            onCommit={() => editor.commitCurrent(`调整${tool.label}`)}
+            onCommit={() => editor.commitCurrent(t('调整{v0}', { v0: t(tool.label) }))}
             onCancel={cancel}
             onReset={() => update(tool.neutral, true)}
             gradient={
@@ -366,14 +367,14 @@ function LegacyToolInspector({
             clamp(number / multiplier, min, max),
             V2_TOOLS,
           );
-          if (commit) editor.commit(next, `调整${tool.label}`);
+          if (commit) editor.commit(next, t('调整{v0}', { v0: t(tool.label) }));
           else editor.preview(next);
         };
         return (
           <PrecisionRange
             key={tool.path}
             integer={tool.unit === 'seed' || tool.path === 'effects.grain.size'}
-            label={tool.label}
+            label={t(tool.label)}
             value={value * multiplier}
             min={min * multiplier}
             max={max * multiplier}
@@ -384,7 +385,7 @@ function LegacyToolInspector({
             unit={
               percentage ? '%' : tool.unit === 'ratio' ? '×' : tool.unit === 'seed' ? '' : tool.unit
             }
-            description={tool.description}
+            description={tool.description ? t(tool.description) : undefined}
             index={index}
             gradient={
               tool.path.startsWith('grading.') && tool.path.endsWith('.hue')
@@ -392,7 +393,7 @@ function LegacyToolInspector({
                 : undefined
             }
             onChange={update}
-            onCommit={() => editor.commitCurrent(`调整${tool.label}`)}
+            onCommit={() => editor.commitCurrent(t('调整{v0}', { v0: t(tool.label) }))}
             onCancel={cancel}
             onReset={() => update(clamp(tool.neutral, min, max) * multiplier, true)}
           />
@@ -415,10 +416,10 @@ function LegacyToolInspector({
   }
   const upgradeCard = !v2 && (
     <div className="recipe-upgrade">
-      <strong>这是一份 v1 配方</strong>
-      <p>已有调整按原算法回放。启用 v2 后可使用色阶、分色、分级与多选区；这一步可以撤销。</p>
+      <strong>{t('这是一份 v1 配方')}</strong>
+      <p>{t('已有调整按原算法回放。启用 v2 后可使用色阶、分色、分级与多选区；这一步可以撤销。')}</p>
       <button className="button button-secondary" onClick={upgrade}>
-        启用扩展控制
+        {t('启用扩展控制')}
       </button>
     </div>
   );
@@ -523,7 +524,10 @@ function LegacyToolInspector({
       name: name ?? `${labels[type]} ${v2.regions.length + 1}`,
       mask,
     });
-    editor.commit({ ...v2, regions: [...v2.regions, next] }, `新建${labels[type]}选区`);
+    editor.commit(
+      { ...v2, regions: [...v2.regions, next] },
+      t('新建{name}选区', { name: t(labels[type]) }),
+    );
     editor.setActiveRegionId(next.id);
   }
   function referenceHue() {
@@ -559,7 +563,7 @@ function LegacyToolInspector({
         step={step}
         unit={unit}
         onChange={(n) => changeMask(update(n))}
-        onCommit={() => editor.commitCurrent(`调整${label}`)}
+        onCommit={() => editor.commitCurrent(t('调整{v0}', { v0: label }))}
         onCancel={cancel}
       />
     );
@@ -568,17 +572,17 @@ function LegacyToolInspector({
   return (
     <aside
       className={`inspector refined-inspector ${mobileOpen ? 'mobile-open' : ''}`}
-      aria-label="编辑参数"
+      aria-label={t('编辑参数')}
     >
       <header className="inspector-heading" data-motion="inspector-header">
         <div>
           <h2>
-            {current.label}
+            {t(current.label)}
             <span className="tiny-dot" />
           </h2>
-          <p>{current.description}</p>
+          <p>{t(current.description)}</p>
         </div>
-        <IconButton label="收起工具面板" className="mobile-only" onClick={onClose}>
+        <IconButton label={t('收起工具面板')} className="mobile-only" onClick={onClose}>
           <CaretDown size={20} />
         </IconButton>
       </header>
@@ -586,8 +590,8 @@ function LegacyToolInspector({
         {!editor.file ? (
           <div className="inspector-empty">
             <span>{current.icon}</span>
-            <h3>先放入一张照片</h3>
-            <p>打开后即可拖动调整。原图始终保留。</p>
+            <h3>{t('先放入一张照片')}</h3>
+            <p>{t('打开后即可拖动调整。原图始终保留。')}</p>
           </div>
         ) : (
           <>
@@ -595,7 +599,7 @@ function LegacyToolInspector({
             {group === 'light' && (
               <>
                 <div className="control-stack">{sliders(groupIds.light)}</div>
-                <Section title="精确色阶" suffix="输入 · 伽马 · 输出">
+                <Section title={t('精确色阶')} suffix={t('输入 · 伽马 · 输出')}>
                   {upgradeCard}
                   {advanced(
                     V2_TOOLS.filter((tool) => tool.group === 'levels').map((tool) => tool.path),
@@ -608,12 +612,12 @@ function LegacyToolInspector({
                           V2_TOOLS.filter((tool) => tool.group === 'levels').map(
                             (tool) => tool.path,
                           ),
-                          '重置色阶',
+                          t('重置色阶'),
                         )
                       }
                     >
                       <ArrowCounterClockwise size={14} />
-                      重置色阶
+                      {t('重置色阶')}
                     </button>
                   )}
                 </Section>
@@ -621,13 +625,13 @@ function LegacyToolInspector({
             )}
             {group === 'color' && (
               <>
-                <div className="editor-subtabs" role="tablist" aria-label="调色方式">
+                <div className="editor-subtabs" role="tablist" aria-label={t('调色方式')}>
                   {(
                     [
-                      ['global', '整体'],
-                      ['hsl', '分色'],
-                      ['grading', '分级'],
-                      ['palette', '色谱'],
+                      ['global', t('整体')],
+                      ['hsl', t('分色')],
+                      ['grading', t('分级')],
+                      ['palette', t('色谱')],
                     ] as const
                   ).map(([id, label]) => (
                     <button
@@ -647,13 +651,13 @@ function LegacyToolInspector({
                       {upgradeCard}
                       {v2 && (
                         <>
-                          <div className="hsl-band-tabs" role="tablist" aria-label="HSL色段">
+                          <div className="hsl-band-tabs" role="tablist" aria-label={t('HSL色段')}>
                             {HSL_BANDS.map((item) => (
                               <button
                                 key={item.id}
                                 role="tab"
                                 aria-selected={band === item.id}
-                                aria-label={`${item.label}色色段`}
+                                aria-label={t('{v0}色色段', { v0: t(item.label) })}
                                 onClick={() => setBand(item.id)}
                                 style={
                                   {
@@ -662,7 +666,7 @@ function LegacyToolInspector({
                                 }
                               >
                                 <i />
-                                <span>{item.label}</span>
+                                <span>{t(item.label)}</span>
                               </button>
                             ))}
                           </div>
@@ -676,15 +680,15 @@ function LegacyToolInspector({
                                 ['hue', 'saturation', 'lightness'].map(
                                   (key) => `hsl.${band}.${key}`,
                                 ),
-                                '重置当前色段',
+                                t('重置当前色段'),
                               )
                             }
                           >
                             <ArrowCounterClockwise size={14} />
-                            重置这个色段
+                            {t('重置这个色段')}
                           </button>
                           <p className="inspector-note">
-                            相邻色段平滑混合；红橙色调整不等于自动识别或保护皮肤。
+                            {t('相邻色段平滑混合；红橙色调整不等于自动识别或保护皮肤。')}
                           </p>
                         </>
                       )}
@@ -695,12 +699,12 @@ function LegacyToolInspector({
                       {upgradeCard}
                       {v2 && (
                         <>
-                          <div className="editor-subtabs" aria-label="色彩分级区域">
+                          <div className="editor-subtabs" aria-label={t('色彩分级区域')}>
                             {(
                               [
-                                ['shadows', '阴影'],
-                                ['midtones', '中间调'],
-                                ['highlights', '高光'],
+                                ['shadows', t('阴影')],
+                                ['midtones', t('中间调')],
+                                ['highlights', t('高光')],
                               ] as const
                             ).map(([id, label]) => (
                               <button
@@ -737,12 +741,12 @@ function LegacyToolInspector({
                                 ['hue', 'saturation', 'luminance'].map(
                                   (key) => `grading.${zone}.${key}`,
                                 ),
-                                '重置分级区域',
+                                t('重置分级区域'),
                               )
                             }
                           >
                             <ArrowCounterClockwise size={14} />
-                            重置这一区域
+                            {t('重置这一区域')}
                           </button>
                         </>
                       )}
@@ -755,12 +759,16 @@ function LegacyToolInspector({
                           className={`button button-secondary full-width ${sampling ? 'active' : ''}`}
                           onClick={onSample}
                         >
-                          {sampling ? '取消画面取色' : '从画面取色'}
+                          {sampling ? t('取消画面取色') : t('从画面取色')}
                         </button>
                       )}
-                      <ColorPicker value={pickedColor} onChange={onColorChange} label="参考颜色" />
+                      <ColorPicker
+                        value={pickedColor}
+                        onChange={onColorChange}
+                        label={t('参考颜色')}
+                      />
                       <p className="inspector-note">
-                        参考色用于草图与创作沟通；照片调色在整体、分色和分级中进行。
+                        {t('参考色用于草图与创作沟通；照片调色在整体、分色和分级中进行。')}
                       </p>
                     </>
                   )}
@@ -776,11 +784,11 @@ function LegacyToolInspector({
                     <span>×</span>
                     {pixelCrop.height}
                   </strong>
-                  <small>原图像素区域 · 方向由下方旋转决定</small>
+                  <small>{t('原图像素区域 · 方向由下方旋转决定')}</small>
                 </div>
-                <div className="aspect-chips" aria-label="画幅比例">
+                <div className="aspect-chips" aria-label={t('画幅比例')}>
                   {[
-                    ['原始', null],
+                    [t('原始'), null],
                     ['1:1', 1],
                     ['4:3', 4 / 3],
                     ['3:4', 3 / 4],
@@ -799,10 +807,10 @@ function LegacyToolInspector({
                 <div className="control-stack">
                   {(
                     [
-                      ['x', '左边界', dims.width - 1],
-                      ['y', '上边界', dims.height - 1],
-                      ['width', '裁切宽度', dims.width - pixelCrop.x],
-                      ['height', '裁切高度', dims.height - pixelCrop.y],
+                      ['x', t('左边界'), dims.width - 1],
+                      ['y', t('上边界'), dims.height - 1],
+                      ['width', t('裁切宽度'), dims.width - pixelCrop.x],
+                      ['height', t('裁切高度'), dims.height - pixelCrop.y],
                     ] as const
                   ).map(([key, label, max]) => (
                     <PrecisionRange
@@ -815,7 +823,7 @@ function LegacyToolInspector({
                       integer
                       unit="px"
                       onChange={(value) => changeCrop(key, value)}
-                      onCommit={() => editor.commitCurrent('精确裁切')}
+                      onCommit={() => editor.commitCurrent(t('精确裁切'))}
                       onCancel={cancel}
                     />
                   ))}
@@ -832,12 +840,12 @@ function LegacyToolInspector({
                               0 | 90 | 180 | 270,
                           },
                         },
-                        '向左旋转',
+                        t('向左旋转'),
                       )
                     }
                   >
                     <ArrowCounterClockwise size={19} />
-                    左转
+                    {t('左转')}
                   </button>
                   <button
                     onClick={() =>
@@ -849,12 +857,12 @@ function LegacyToolInspector({
                             rotation: ((recipe.geometry.rotation + 90) % 360) as 0 | 90 | 180 | 270,
                           },
                         },
-                        '向右旋转',
+                        t('向右旋转'),
                       )
                     }
                   >
                     <ArrowClockwise size={19} />
-                    右转
+                    {t('右转')}
                   </button>
                   <button
                     aria-pressed={recipe.geometry.flipX}
@@ -864,12 +872,12 @@ function LegacyToolInspector({
                           ...recipe,
                           geometry: { ...recipe.geometry, flipX: !recipe.geometry.flipX },
                         },
-                        '水平镜像',
+                        t('水平镜像'),
                       )
                     }
                   >
                     <ArrowsLeftRight size={19} />
-                    镜像
+                    {t('镜像')}
                   </button>
                   <button
                     aria-pressed={recipe.geometry.flipY}
@@ -879,16 +887,16 @@ function LegacyToolInspector({
                           ...recipe,
                           geometry: { ...recipe.geometry, flipY: !recipe.geometry.flipY },
                         },
-                        '垂直翻转',
+                        t('垂直翻转'),
                       )
                     }
                   >
                     <ArrowsDownUp size={19} />
-                    翻转
+                    {t('翻转')}
                   </button>
                 </div>
                 <p className="inspector-note">
-                  拖动滑条即可构图；点数值可精确到 1 像素。裁切可随时恢复。当前旋转{' '}
+                  {t('拖动滑条即可构图；点数值可精确到 1 像素。裁切可随时恢复。当前旋转')}{' '}
                   {recipe.geometry.rotation}°。
                 </p>
               </>
@@ -902,12 +910,12 @@ function LegacyToolInspector({
                 {upgradeCard}
                 {v2 && (
                   <>
-                    <Section title="黑白与褪色">
+                    <Section title={t('黑白与褪色')}>
                       {advanced(['effects.monochrome', 'effects.fade'])}
                     </Section>
-                    <Section title="明暗角" suffix="变暗 / 提亮">
+                    <Section title={t('明暗角')} suffix={t('变暗 / 提亮')}>
                       {advanced(['effects.vignette.amount', 'effects.vignette.feather'])}
-                      <Section title="位置与形状">
+                      <Section title={t('位置与形状')}>
                         {advanced([
                           'effects.vignette.centerX',
                           'effects.vignette.centerY',
@@ -916,10 +924,10 @@ function LegacyToolInspector({
                         ])}
                       </Section>
                     </Section>
-                    <Section title="颗粒" suffix="确定性纹理">
+                    <Section title={t('颗粒')} suffix={t('确定性纹理')}>
                       {advanced(['effects.grain.amount', 'effects.grain.size'])}
                       <label className="switch-row">
-                        <span>彩色颗粒</span>
+                        <span>{t('彩色颗粒')}</span>
                         <input
                           type="checkbox"
                           checked={v2.effects.grain.colored}
@@ -932,7 +940,7 @@ function LegacyToolInspector({
                                   grain: { ...v2.effects.grain, colored: event.target.checked },
                                 },
                               },
-                              '切换颗粒色彩',
+                              t('切换颗粒色彩'),
                             )
                           }
                         />
@@ -951,18 +959,20 @@ function LegacyToolInspector({
                                 },
                               },
                             },
-                            '更换颗粒分布',
+                            t('更换颗粒分布'),
                           )
                         }
                       >
-                        换一种颗粒分布
+                        {t('换一种颗粒分布')}
                       </button>
-                      <Section title="固定种子">{advanced(['effects.grain.seed'])}</Section>
+                      <Section title={t('固定种子')}>{advanced(['effects.grain.seed'])}</Section>
                     </Section>
                   </>
                 )}
                 <p className="inspector-note">
-                  细节与颗粒按输入像素运算，缩小预览仅供参考。全尺寸导出使用原图。柔化不包含自动人脸检测。
+                  {t(
+                    '细节与颗粒按输入像素运算，缩小预览仅供参考。全尺寸导出使用原图。柔化不包含自动人脸检测。',
+                  )}
                 </p>
               </>
             )}
@@ -970,37 +980,42 @@ function LegacyToolInspector({
               <div className="selection-controls" data-motion="selection-controls">
                 {constraintError && (
                   <p role="alert" className="precision-error">
-                    {constraintError}
+                    {t(constraintError)}
                   </p>
                 )}
                 {upgradeCard}
                 {group === 'beauty' && (
                   <div className="portrait-intro">
-                    <strong>每个人，都可以单独调整。</strong>
-                    <p>添加人物精修区，再拖到想调整的位置；也可以用画笔细选皮肤、眼部或衣物。</p>
+                    <strong>{t('每个人，都可以单独调整。')}</strong>
+                    <p>
+                      {t('添加人物精修区，再拖到想调整的位置；也可以用画笔细选皮肤、眼部或衣物。')}
+                    </p>
                     <button
                       className="button button-secondary"
                       disabled={!v2 || v2.regions.length >= MAX_ADJUSTMENT_REGIONS}
                       onClick={() =>
-                        addRegion('radial', `人物精修 ${(v2?.regions.length ?? 0) + 1}`)
+                        addRegion(
+                          'radial',
+                          t('人物精修 {v0}', { v0: (v2?.regions.length ?? 0) + 1 }),
+                        )
                       }
                     >
                       <UserFocus size={17} />
-                      添加人物精修区
+                      {t('添加人物精修区')}
                     </button>
-                    <small>当前为手动选区。自动人脸、肤质识别和五官形变尚未接入。</small>
+                    <small>{t('当前为手动选区。自动人脸、肤质识别和五官形变尚未接入。')}</small>
                   </div>
                 )}
                 {v2 && (
                   <>
-                    <div className="selection-create" aria-label="添加选区">
+                    <div className="selection-create" aria-label={t('添加选区')}>
                       {(
                         [
-                          { id: 'radial', label: '径向', icon: <Circle size={19} /> },
-                          { id: 'linear', label: '渐变', icon: <Gradient size={19} /> },
-                          { id: 'brush', label: '画笔', icon: <PaintBrush size={19} /> },
-                          { id: 'polygon', label: '多边形', icon: <Polygon size={19} /> },
-                          { id: 'color-range', label: '选色', icon: <Eyedropper size={19} /> },
+                          { id: 'radial', label: t('径向'), icon: <Circle size={19} /> },
+                          { id: 'linear', label: t('渐变'), icon: <Gradient size={19} /> },
+                          { id: 'brush', label: t('画笔'), icon: <PaintBrush size={19} /> },
+                          { id: 'polygon', label: t('多边形'), icon: <Polygon size={19} /> },
+                          { id: 'color-range', label: t('选色'), icon: <Eyedropper size={19} /> },
                         ] as const
                       ).map((item) => (
                         <button
@@ -1009,16 +1024,16 @@ function LegacyToolInspector({
                           onClick={() => addRegion(item.id)}
                         >
                           {item.icon}
-                          <span>{item.label}</span>
+                          <span>{t(item.label)}</span>
                         </button>
                       ))}
                     </div>
                     <small className="selection-count">
-                      {v2.regions.length} / {MAX_ADJUSTMENT_REGIONS} 个选区 · 按顺序叠加
+                      {v2.regions.length} / {MAX_ADJUSTMENT_REGIONS} {t('个选区 · 按顺序叠加')}
                     </small>
                   </>
                 )}
-                <div className="region-list" role="list" aria-label="局部选区列表">
+                <div className="region-list" role="list" aria-label={t('局部选区列表')}>
                   {(recipe.local.enabled || !v2) && (
                     <button
                       className={`region-item ${!region ? 'selected' : ''}`}
@@ -1026,7 +1041,7 @@ function LegacyToolInspector({
                       onClick={() => editor.setActiveRegionId(null)}
                     >
                       <Circle size={15} />
-                      <span>原配方径向选区</span>
+                      <span>{t('原配方径向选区')}</span>
                     </button>
                   )}
                   {v2?.regions.map((item, index) => (
@@ -1044,20 +1059,23 @@ function LegacyToolInspector({
                         <span>{item.name}</span>
                         <small>
                           {item.mask.type === 'radial'
-                            ? '径向'
+                            ? t('径向')
                             : item.mask.type === 'linear'
-                              ? '渐变'
+                              ? t('渐变')
                               : item.mask.type === 'brush'
-                                ? '画笔'
+                                ? t('画笔')
                                 : item.mask.type === 'polygon'
-                                  ? '多边形'
+                                  ? t('多边形')
                                   : item.mask.type === 'color-range'
-                                    ? '选色'
-                                    : '栅格'}
+                                    ? t('选色')
+                                    : t('栅格')}
                         </small>
                       </button>
                       <IconButton
-                        label={`${item.enabled ? '隐藏' : '显示'}${item.name}`}
+                        label={t('{v0}{v1}', {
+                          v0: item.enabled ? t('隐藏') : t('显示'),
+                          v1: item.name,
+                        })}
                         onClick={() =>
                           editor.commit(
                             {
@@ -1066,7 +1084,7 @@ function LegacyToolInspector({
                                 r.id === item.id ? { ...r, enabled: !r.enabled } : r,
                               ),
                             },
-                            '切换选区效果',
+                            t('切换选区效果'),
                           )
                         }
                       >
@@ -1077,13 +1095,15 @@ function LegacyToolInspector({
                 </div>
                 {!selectedEnabled && v2 ? (
                   <p className="inspector-note selection-onboarding">
-                    先选择一种选区。径向适合补光，渐变适合天空与地面，画笔适合细部，多边形适合轮廓。添加后在画面直接操作。
+                    {t(
+                      '先选择一种选区。径向适合补光，渐变适合天空与地面，画笔适合细部，多边形适合轮廓。添加后在画面直接操作。',
+                    )}
                   </p>
                 ) : (
                   <>
                     {!region && (
                       <label className="switch-row">
-                        <span>启用原配方径向选区</span>
+                        <span>{t('启用原配方径向选区')}</span>
                         <input
                           type="checkbox"
                           checked={recipe.local.enabled}
@@ -1093,7 +1113,7 @@ function LegacyToolInspector({
                                 ...recipe,
                                 local: { ...recipe.local, enabled: event.target.checked },
                               },
-                              '切换原径向选区',
+                              t('切换原径向选区'),
                             )
                           }
                         />
@@ -1102,18 +1122,20 @@ function LegacyToolInspector({
                     {region && (
                       <div className="region-actions">
                         <IconButton
-                          label="复制当前选区"
+                          label={t('复制当前选区')}
                           disabled={v2!.regions.length >= MAX_ADJUSTMENT_REGIONS}
                           onClick={() => {
                             const id = uid();
                             try {
                               const candidate = duplicateRegionForEditor(v2!, region.id, id);
-                              editor.commit(candidate, '复制选区');
+                              editor.commit(candidate, t('复制选区'));
                               editor.setActiveRegionId(id);
                               setConstraintError(null);
                             } catch {
                               setConstraintError(
-                                '复制将超过选区的总笔触或栅格复杂度预算。现有选区已保留；请先简化不再需要的笔触，或在新的作品版本中继续。',
+                                t(
+                                  '复制将超过选区的总笔触或栅格复杂度预算。现有选区已保留；请先简化不再需要的笔触，或在新的作品版本中继续。',
+                                ),
                               );
                             }
                           }}
@@ -1121,35 +1143,35 @@ function LegacyToolInspector({
                           <Copy size={16} />
                         </IconButton>
                         <IconButton
-                          label="选区向前一层"
+                          label={t('选区向前一层')}
                           disabled={v2!.regions[0]?.id === region.id}
                           onClick={() => {
                             const next = [...v2!.regions];
                             const i = next.findIndex((r) => r.id === region.id);
                             [next[i - 1], next[i]] = [next[i]!, next[i - 1]!];
-                            editor.commit({ ...v2!, regions: next }, '调整选区顺序');
+                            editor.commit({ ...v2!, regions: next }, t('调整选区顺序'));
                           }}
                         >
                           <ArrowUp size={16} />
                         </IconButton>
                         <IconButton
-                          label="选区向后一层"
+                          label={t('选区向后一层')}
                           disabled={v2!.regions.at(-1)?.id === region.id}
                           onClick={() => {
                             const next = [...v2!.regions];
                             const i = next.findIndex((r) => r.id === region.id);
                             [next[i + 1], next[i]] = [next[i]!, next[i + 1]!];
-                            editor.commit({ ...v2!, regions: next }, '调整选区顺序');
+                            editor.commit({ ...v2!, regions: next }, t('调整选区顺序'));
                           }}
                         >
                           <ArrowDown size={16} />
                         </IconButton>
                         <IconButton
-                          label="删除当前选区，可撤销"
+                          label={t('删除当前选区，可撤销')}
                           onClick={() => {
                             editor.commit(
                               { ...v2!, regions: v2!.regions.filter((r) => r.id !== region.id) },
-                              '删除选区',
+                              t('删除选区'),
                             );
                             editor.setActiveRegionId(
                               v2!.regions.find((r) => r.id !== region.id)?.id ?? null,
@@ -1162,16 +1184,16 @@ function LegacyToolInspector({
                     )}
                     {region && (
                       <PrecisionRange
-                        label="选区作用强度"
+                        label={t('选区作用强度')}
                         value={region.opacity * 100}
                         min={0}
                         max={100}
                         step={0.1}
                         unit="%"
                         onChange={(value) =>
-                          patchRegion({ opacity: value / 100 }, '调整选区强度', false)
+                          patchRegion({ opacity: value / 100 }, t('调整选区强度'), false)
                         }
-                        onCommit={() => editor.commitCurrent('调整选区强度')}
+                        onCommit={() => editor.commitCurrent(t('调整选区强度'))}
                         onCancel={cancel}
                       />
                     )}
@@ -1182,7 +1204,7 @@ function LegacyToolInspector({
                           checked={editor.maskOverlay}
                           onChange={(event) => editor.setMaskOverlay(event.target.checked)}
                         />
-                        显示蒙版
+                        {t('显示蒙版')}
                       </label>
                       <label>
                         <input
@@ -1192,25 +1214,25 @@ function LegacyToolInspector({
                             changeMask({ ...mask, invert: event.target.checked }, true)
                           }
                         />
-                        反选
+                        {t('反选')}
                       </label>
                     </div>
                     {mask.type === 'color-range' && (
                       <div className="continuous-selection">
                         <div className="selection-footer">
                           <button className="text-button" onClick={onSample}>
-                            {sampling ? '取消原图取色' : '从原图选色'}
+                            {sampling ? t('取消原图取色') : t('从原图选色')}
                           </button>
                           <button
                             className="text-button"
                             onClick={() => changeMask({ ...mask, hue: referenceHue() }, true)}
                           >
                             <i className="palette-chip" style={{ background: pickedColor }} />
-                            应用所选色相
+                            {t('应用所选色相')}
                           </button>
                         </div>
                         {maskSlider(
-                          '目标色相',
+                          t('目标色相'),
                           mask.hue,
                           0,
                           360,
@@ -1219,7 +1241,7 @@ function LegacyToolInspector({
                           '°',
                         )}
                         {maskSlider(
-                          '色相半宽',
+                          t('色相半宽'),
                           mask.hueWidth,
                           0,
                           180,
@@ -1228,7 +1250,7 @@ function LegacyToolInspector({
                           '°',
                         )}
                         {maskSlider(
-                          '色彩过渡',
+                          t('色彩过渡'),
                           mask.feather * 100,
                           0,
                           100,
@@ -1236,7 +1258,9 @@ function LegacyToolInspector({
                           0.1,
                         )}
                         <p className="inspector-note">
-                          从完整色相环连续选色；使用未调整原图确定范围，不随调色结果漂移。可在精确范围中继续限制饱和与亮度。
+                          {t(
+                            '从完整色相环连续选色；使用未调整原图确定范围，不随调色结果漂移。可在精确范围中继续限制饱和与亮度。',
+                          )}
                         </p>
                       </div>
                     )}
@@ -1249,7 +1273,7 @@ function LegacyToolInspector({
                               editor.setBrushSettings({ ...editor.brushSettings, mode: 'add' })
                             }
                           >
-                            涂抹添加
+                            {t('涂抹添加')}
                           </button>
                           <button
                             aria-pressed={editor.brushSettings.mode === 'subtract'}
@@ -1257,11 +1281,11 @@ function LegacyToolInspector({
                               editor.setBrushSettings({ ...editor.brushSettings, mode: 'subtract' })
                             }
                           >
-                            擦除选区
+                            {t('擦除选区')}
                           </button>
                         </div>
                         <PrecisionRange
-                          label="笔刷半径"
+                          label={t('笔刷半径')}
                           value={editor.brushSettings.radius * Math.min(dims.width, dims.height)}
                           min={0.5}
                           max={0.5 * Math.min(dims.width, dims.height)}
@@ -1275,7 +1299,7 @@ function LegacyToolInspector({
                           }
                         />
                         <PrecisionRange
-                          label="笔刷羽化"
+                          label={t('笔刷羽化')}
                           value={editor.brushSettings.feather * 100}
                           min={0}
                           max={100}
@@ -1286,7 +1310,7 @@ function LegacyToolInspector({
                           }
                         />
                         <PrecisionRange
-                          label="笔刷流量"
+                          label={t('笔刷流量')}
                           value={editor.brushSettings.opacity * 100}
                           min={1}
                           max={100}
@@ -1297,27 +1321,29 @@ function LegacyToolInspector({
                           }
                         />
                         <div className="selection-footer">
-                          <small>{mask.strokes.length} / 16 笔</small>
+                          <small>
+                            {mask.strokes.length} {t('/ 16 笔')}
+                          </small>
                           <button
                             className="text-button"
                             disabled={!mask.strokes.length}
                             onClick={() => changeMask({ ...mask, strokes: [] }, true)}
                           >
-                            清空笔触
+                            {t('清空笔触')}
                           </button>
                         </div>
                       </div>
                     )}
                     <Section
-                      title="精确选区范围"
+                      title={t('精确选区范围')}
                       suffix={
                         mask.type === 'radial'
-                          ? '拖动中心与边缘'
+                          ? t('拖动中心与边缘')
                           : mask.type === 'linear'
-                            ? '拖动渐变端点'
+                            ? t('拖动渐变端点')
                             : mask.type === 'polygon'
-                              ? '拖动轮廓点'
-                              : '源图坐标'
+                              ? t('拖动轮廓点')
+                              : t('源图坐标')
                       }
                     >
                       {mask.type === 'radial' && (
@@ -1325,7 +1351,13 @@ function LegacyToolInspector({
                           {(['centerX', 'centerY', 'radiusX', 'radiusY', 'feather'] as const).map(
                             (key, index) =>
                               maskSlider(
-                                ['中心 X', '中心 Y', '横向半径', '纵向半径', '边缘羽化'][index]!,
+                                [
+                                  t('中心 X'),
+                                  t('中心 Y'),
+                                  t('横向半径'),
+                                  t('纵向半径'),
+                                  t('边缘羽化'),
+                                ][index]!,
                                 mask[key] * 100,
                                 key.startsWith('radius') ? 0.01 : 0,
                                 100,
@@ -1340,7 +1372,10 @@ function LegacyToolInspector({
                           {(['start', 'end'] as const).flatMap((key, index) =>
                             (['x', 'y'] as const).map((axis) =>
                               maskSlider(
-                                `${index ? '终点' : '起点'} ${axis.toUpperCase()}`,
+                                t('{v0} {v1}', {
+                                  v0: index ? t('终点') : t('起点'),
+                                  v1: axis.toUpperCase(),
+                                }),
                                 mask[key][axis] * 100,
                                 0,
                                 100,
@@ -1361,7 +1396,7 @@ function LegacyToolInspector({
                             ),
                           )}
                           <label className="switch-row">
-                            <span>平滑渐变</span>
+                            <span>{t('平滑渐变')}</span>
                             <input
                               type="checkbox"
                               checked={mask.smooth}
@@ -1375,21 +1410,21 @@ function LegacyToolInspector({
                       {mask.type === 'polygon' && (
                         <>
                           <label className="inline-select">
-                            轮廓控制点
+                            {t('轮廓控制点')}
                             <ChoiceSelect
-                              ariaLabel="多边形控制点"
+                              ariaLabel={t('多边形控制点')}
                               size="compact"
                               value={String(Math.min(polygonPoint, mask.points.length - 1))}
                               onValueChange={(value) => setPolygonPoint(Number(value))}
                               options={mask.points.map((_, index) => ({
                                 value: String(index),
-                                label: `点 ${index + 1}`,
+                                label: t('点 {v0}', { v0: index + 1 }),
                               }))}
                             />
                           </label>
                           {(['x', 'y'] as const).map((axis) =>
                             maskSlider(
-                              `控制点 ${axis.toUpperCase()}`,
+                              t('控制点 {v0}', { v0: axis.toUpperCase() }),
                               mask.points[Math.min(polygonPoint, mask.points.length - 1)]![axis] *
                                 100,
                               0,
@@ -1406,7 +1441,7 @@ function LegacyToolInspector({
                             ),
                           )}
                           {maskSlider(
-                            '轮廓羽化',
+                            t('轮廓羽化'),
                             mask.feather * 100,
                             0,
                             50,
@@ -1430,28 +1465,31 @@ function LegacyToolInspector({
                               setPolygonPoint(0);
                             }}
                           >
-                            移除当前控制点
+                            {t('移除当前控制点')}
                           </button>
                           <p className="inspector-note">
-                            拖动轮廓点改变形状；双击画面在最近边上添加点。
+                            {t('拖动轮廓点改变形状；双击画面在最近边上添加点。')}
                           </p>
                         </>
                       )}
                       {mask.type === 'brush' && (
                         <p className="inspector-note">
-                          直接在画面涂抹；一次笔触是一条可撤销操作。按住空格可暂时平移画面。画笔只改变选区，不直接涂写图片。
+                          {t(
+                            '直接在画面涂抹；一次笔触是一条可撤销操作。按住空格可暂时平移画面。画笔只改变选区，不直接涂写图片。',
+                          )}
                         </p>
                       )}
                       {mask.type === 'raster' && (
                         <p className="inspector-note">
-                          已导入 {mask.width}×{mask.height}{' '}
-                          的固定栅格蒙版，可调强度或反选；当前界面不重写栅格数据。
+                          {t('已导入')}
+                          {mask.width}×{mask.height}{' '}
+                          {t('的固定栅格蒙版，可调强度或反选；当前界面不重写栅格数据。')}
                         </p>
                       )}
                       {mask.type === 'color-range' && (
                         <>
                           {maskSlider(
-                            '最低饱和',
+                            t('最低饱和'),
                             mask.saturationMin * 100,
                             0,
                             mask.saturationMax * 100,
@@ -1459,7 +1497,7 @@ function LegacyToolInspector({
                             0.1,
                           )}
                           {maskSlider(
-                            '最高饱和',
+                            t('最高饱和'),
                             mask.saturationMax * 100,
                             mask.saturationMin * 100,
                             100,
@@ -1467,7 +1505,7 @@ function LegacyToolInspector({
                             0.1,
                           )}
                           {maskSlider(
-                            '最低亮度',
+                            t('最低亮度'),
                             mask.luminanceMin * 100,
                             0,
                             mask.luminanceMax * 100,
@@ -1475,7 +1513,7 @@ function LegacyToolInspector({
                             0.1,
                           )}
                           {maskSlider(
-                            '最高亮度',
+                            t('最高亮度'),
                             mask.luminanceMax * 100,
                             mask.luminanceMin * 100,
                             100,
@@ -1487,12 +1525,12 @@ function LegacyToolInspector({
                     </Section>
                     {group === 'beauty' ? (
                       <>
-                        <div className="editor-subtabs" aria-label="人像精修组">
+                        <div className="editor-subtabs" aria-label={t('人像精修组')}>
                           {(
                             [
-                              ['skin', '肤质'],
-                              ['light', '光影'],
-                              ['color', '肤色'],
+                              ['skin', t('肤质')],
+                              ['light', t('光影')],
+                              ['color', t('肤色')],
                             ] as const
                           ).map(([id, label]) => (
                             <button
@@ -1513,17 +1551,19 @@ function LegacyToolInspector({
                           )}
                         </div>
                         <p className="inspector-note">
-                          柔化减弱局部纹理，锐化加强细节；两者独立可逆。肤色工具是选区内的相对色彩调整，不预设一种理想肤色。
+                          {t(
+                            '柔化减弱局部纹理，锐化加强细节；两者独立可逆。肤色工具是选区内的相对色彩调整，不预设一种理想肤色。',
+                          )}
                         </p>
                       </>
                     ) : (
                       <>
-                        <div className="editor-subtabs" aria-label="局部调节组">
+                        <div className="editor-subtabs" aria-label={t('局部调节组')}>
                           {(
                             [
-                              ['light', '明暗'],
-                              ['color', '色彩'],
-                              ['detail', '细节'],
+                              ['light', t('明暗')],
+                              ['color', t('色彩')],
+                              ['detail', t('细节')],
                             ] as const
                           ).map(([id, label]) => (
                             <button
@@ -1540,18 +1580,19 @@ function LegacyToolInspector({
                         </div>
                       </>
                     )}
-                    <Section title="选区名称">
+                    <Section title={t('选区名称')}>
                       {region && (
                         <label className="inline-select">
-                          便于区分人物或部位
+                          {t('便于区分人物或部位')}
                           <input
-                            aria-label="当前选区名称"
+                            aria-label={t('当前选区名称')}
                             defaultValue={region.name}
                             key={region.id + ':name'}
                             maxLength={60}
                             onBlur={(event) => {
                               const name = event.target.value.trim();
-                              if (name && name !== region.name) patchRegion({ name }, '重命名选区');
+                              if (name && name !== region.name)
+                                patchRegion({ name }, t('重命名选区'));
                             }}
                           />
                         </label>
@@ -1561,19 +1602,19 @@ function LegacyToolInspector({
                       className="text-button"
                       onClick={() => {
                         if (region)
-                          patchRegion({ adjustments: neutralAdjustments() }, '重置选区调整');
+                          patchRegion({ adjustments: neutralAdjustments() }, t('重置选区调整'));
                         else
                           editor.commit(
                             {
                               ...recipe,
                               local: { ...recipe.local, adjustments: neutralAdjustments() },
                             },
-                            '重置径向调整',
+                            t('重置径向调整'),
                           );
                       }}
                     >
                       <ArrowCounterClockwise size={14} />
-                      重置当前选区调整
+                      {t('重置当前选区调整')}
                     </button>
                   </>
                 )}
@@ -1582,7 +1623,7 @@ function LegacyToolInspector({
             {group === 'history' && (
               <>
                 <p className="inspector-note">
-                  按步骤回看；恢复历史只影响本地草稿，不删除云端版本。
+                  {t('按步骤回看；恢复历史只影响本地草稿，不删除云端版本。')}
                 </p>
                 <div className="history-actions">
                   <button
@@ -1591,7 +1632,7 @@ function LegacyToolInspector({
                     onClick={editor.undo}
                   >
                     <ArrowCounterClockwise size={16} />
-                    撤销
+                    {t('撤销')}
                   </button>
                   <button
                     className="button button-secondary"
@@ -1599,7 +1640,7 @@ function LegacyToolInspector({
                     onClick={editor.redo}
                   >
                     <ArrowClockwise size={16} />
-                    重做
+                    {t('重做')}
                   </button>
                 </div>
                 <ol className="history-list">
@@ -1616,23 +1657,23 @@ function LegacyToolInspector({
                     >
                       <span>{index === editor.historyIndex ? <Check size={13} /> : index + 1}</span>
                       <div>
-                        {item.label}
+                        {t(item.label)}
                         <small>
                           {index === editor.historyIndex
-                            ? '当前状态'
+                            ? t('当前状态')
                             : index > editor.historyIndex
-                              ? '已撤销'
-                              : '已记录'}
+                              ? t('已撤销')
+                              : t('已记录')}
                         </small>
                       </div>
                     </li>
                   ))}
                 </ol>
                 <button className="text-button" onClick={editor.exportRecipe}>
-                  下载可恢复的编辑配方
+                  {t('下载可恢复的编辑配方')}
                 </button>
                 <button className="text-button" onClick={editor.reset}>
-                  恢复原图 · 可撤销
+                  {t('恢复原图 · 可撤销')}
                 </button>
               </>
             )}
@@ -1643,18 +1684,21 @@ function LegacyToolInspector({
                   const adjustments = { ...recipe.adjustments };
                   for (const key of groupIds[group as 'light' | 'color'])
                     adjustments[key as keyof Adjustments] = 0;
-                  editor.commit({ ...recipe, adjustments }, `重置${current.label}`);
+                  editor.commit(
+                    { ...recipe, adjustments },
+                    t('重置{v0}', { v0: t(current.label) }),
+                  );
                 }}
               >
                 <ArrowCounterClockwise size={14} />
-                重置这组调整
+                {t('重置这组调整')}
               </button>
             )}
             {['light', 'color', 'detail'].includes(group) && (
               <p className="precision-help">
-                拖动调节 · 点数值精确输入 · 双击滑条复位
+                {t('拖动调节 · 点数值精确输入 · 双击滑条复位')}
                 <br />
-                方向键微调，Alt 更细，Shift 加快
+                {t('方向键微调，Alt 更细，Shift 加快')}
               </p>
             )}
           </>

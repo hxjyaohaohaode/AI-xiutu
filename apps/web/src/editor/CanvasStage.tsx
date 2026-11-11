@@ -1,3 +1,4 @@
+import { t } from '../i18n';
 import { useEffect, useMemo, useRef, useState, type DragEvent, type PointerEvent } from 'react';
 import { createPortal } from 'react-dom';
 import {
@@ -98,7 +99,7 @@ export function PixelCanvas({
         0,
       );
   }, [image]);
-  return <canvas ref={ref} className={className} aria-label="照片编辑预览" />;
+  return <canvas ref={ref} className={className} aria-label={t('照片编辑预览')} />;
 }
 function MaskPreview({
   mask,
@@ -470,6 +471,8 @@ export function CanvasStage({
   }, []);
   useEffect(() => {
     const down = (event: KeyboardEvent) => {
+      // A retained editor behind the public introduction must not consume page keys.
+      if (!viewport.current || viewport.current.closest('[hidden], [inert]')) return;
       if (
         event.code === 'Space' &&
         !isTyping(event.target) &&
@@ -1299,19 +1302,19 @@ export function CanvasStage({
             <small>
               {output?.width} × {output?.height}
             </small>
-            {editor.rendering && !liveFrame && <Busy label="更新预览" />}
+            {editor.rendering && !liveFrame && <Busy label={t('更新预览')} />}
           </>
         )}
       </div>
       {previews.remote && (
-        <div className="collaboration-preview-note">队员调整预览 · 尚未保存为版本</div>
+        <div className="collaboration-preview-note">{t('队员调整预览 · 尚未保存为版本')}</div>
       )}
       {statusContainer &&
         createPortal(
           <div className="canvas-error">
             {sourceSelectionFrame && (
               <span className="source-frame-note">
-                正在液化前的源坐标编辑 · 返回其他工具查看最终效果
+                {t('正在液化前的源坐标编辑 · 返回其他工具查看最终效果')}
               </span>
             )}
             <InlineError message={editor.error ?? previews.error ?? notice} />
@@ -1342,7 +1345,9 @@ export function CanvasStage({
             pointerPositions.current.clear();
             panGesture.current = null;
             pinch.current = null;
-            setNotice('检测到第二触点，本笔已取消。松开全部触点后再继续；移动画面可先选择抓手。');
+            setNotice(
+              t('检测到第二触点，本笔已取消。松开全部触点后再继续；移动画面可先选择抓手。'),
+            );
             // Route both releases back to the viewport while keeping the whole
             // gesture suppressed. Neither pointer becomes a navigation gesture.
             if (frame.current?.hasPointerCapture(state.pointer))
@@ -1482,7 +1487,7 @@ export function CanvasStage({
                         item.id === repair.id ? { ...item, source: point } : item,
                       ),
                     },
-                    '选择修复来源',
+                    t('选择修复来源'),
                   );
                   editor.setRepairChoosingSource(false);
                   event.preventDefault();
@@ -1525,7 +1530,7 @@ export function CanvasStage({
                     centerX: clamp(point.x),
                     centerY: clamp(point.y),
                   }),
-                  '定位径向选区',
+                  t('定位径向选区'),
                 );
               }
             }}
@@ -1596,28 +1601,28 @@ export function CanvasStage({
                 </svg>
                 {mask.type === 'radial' && (
                   <>
-                    {handle({ x: mask.centerX, y: mask.centerY }, '拖动选区中心', 'center')}
+                    {handle({ x: mask.centerX, y: mask.centerY }, t('拖动选区中心'), 'center')}
                     {handle(
                       { x: mask.centerX + mask.radiusX, y: mask.centerY },
-                      '拖动横向半径',
+                      t('拖动横向半径'),
                       'radiusX',
                     )}
                     {handle(
                       { x: mask.centerX, y: mask.centerY + mask.radiusY },
-                      '拖动纵向半径',
+                      t('拖动纵向半径'),
                       'radiusY',
                     )}
                   </>
                 )}
                 {mask.type === 'linear' && (
                   <>
-                    {handle(mask.start, '拖动渐变起点', 'linear-start')}
-                    {handle(mask.end, '拖动渐变终点', 'linear-end')}
+                    {handle(mask.start, t('拖动渐变起点'), 'linear-start')}
+                    {handle(mask.end, t('拖动渐变终点'), 'linear-end')}
                   </>
                 )}
                 {mask.type === 'polygon' &&
                   mask.points.map((point, index) =>
-                    handle(point, `拖动多边形点 ${index + 1}`, `polygon-${index}`),
+                    handle(point, t('拖动多边形点 {v0}', { v0: index + 1 }), `polygon-${index}`),
                   )}
               </>
             )}
@@ -1649,12 +1654,12 @@ export function CanvasStage({
                 ).map(([x, y], i) =>
                   handle(
                     layerPoint(x, y),
-                    `缩放合成素材 ${i + 1}（中心固定）`,
+                    t('缩放合成素材 {v0}（中心固定）', { v0: i + 1 }),
                     `image-resize-${i}`,
                   ),
                 )}
-                {handle(layerPoint(0.5, -0.08), '旋转合成素材', 'image-rotate')}
-                {handle(layerPoint(0.5, 0.5), '移动合成素材', 'image-move')}
+                {handle(layerPoint(0.5, -0.08), t('旋转合成素材'), 'image-rotate')}
+                {handle(layerPoint(0.5, 0.5), t('移动合成素材'), 'image-move')}
               </>
             )}
             {projectiveEditing &&
@@ -1690,8 +1695,10 @@ export function CanvasStage({
                       <button
                         key={index}
                         className="image-handle projective-handle"
-                        aria-label={`${CORNER_LABELS[index]}透视控制点`}
-                        title={`${CORNER_LABELS[index]} · 方向键微调，Alt 0.1px，Shift 10px`}
+                        aria-label={t('{v0}透视控制点', { v0: t(CORNER_LABELS[index]) })}
+                        title={t('{v0} · 方向键微调，Alt 0.1px，Shift 10px', {
+                          v0: t(CORNER_LABELS[index]),
+                        })}
                         style={{
                           left: `${point.x * 100}%`,
                           top: `${point.y * 100}%`,
@@ -1725,14 +1732,14 @@ export function CanvasStage({
                                 dimensions,
                                 editor.pixelBudget,
                               ),
-                              `微调${CORNER_LABELS[index]}`,
+                              t('微调{v0}', { v0: t(CORNER_LABELS[index]) }),
                             );
                             setNotice(null);
                           } catch (error) {
                             setNotice(
                               error instanceof Error
                                 ? error.message
-                                : '这会使四角交叉，已保留原形。',
+                                : t('这会使四角交叉，已保留原形。'),
                             );
                           }
                         }}
@@ -1806,7 +1813,7 @@ export function CanvasStage({
                 ).map(([kind, x, y]) =>
                   handle(
                     { x: crop.x + crop.width * x, y: crop.y + crop.height * y },
-                    kind === 'move' ? '拖动裁切区域' : `调整裁切 ${kind}`,
+                    kind === 'move' ? t('拖动裁切区域') : t('调整裁切 {v0}', { v0: kind }),
                     `crop-${kind}`,
                   ),
                 )}
@@ -1817,21 +1824,21 @@ export function CanvasStage({
                 className="original-label"
                 style={{ transform: `scale(${1 / zoom})`, transformOrigin: 'left top' }}
               >
-                原图 · 同一构图
+                {t('原图 · 同一构图')}
               </span>
             )}
           </div>
         ) : (
-          <Busy label={comparing ? '准备同一构图的原图…' : '准备完整构图预览…'} />
+          <Busy label={comparing ? t('准备同一构图的原图…') : t('准备完整构图预览…')} />
         )}
       </div>
       {editor.file && (
         <>
           <div className="canvas-view-controls" data-motion="canvas-toolbar">
-            <IconButton label="撤销本次编辑" disabled={!editor.canUndo} onClick={editor.undo}>
+            <IconButton label={t('撤销本次编辑')} disabled={!editor.canUndo} onClick={editor.undo}>
               <ArrowCounterClockwise size={17} />
             </IconButton>
-            <IconButton label="重做本次编辑" disabled={!editor.canRedo} onClick={editor.redo}>
+            <IconButton label={t('重做本次编辑')} disabled={!editor.canRedo} onClick={editor.redo}>
               <ArrowClockwise size={17} />
             </IconButton>
             <button
@@ -1853,31 +1860,31 @@ export function CanvasStage({
               onBlur={() => setComparing(false)}
             >
               <Eye size={17} />
-              <span>按住对比</span>
+              <span>{t('按住对比')}</span>
             </button>
             <IconButton
-              label="缩小预览"
+              label={t('缩小预览')}
               disabled={zoom <= 0.02}
               onClick={() => setZoom(clamp(zoom / 1.25, 0.02, 128))}
             >
               <MagnifyingGlassMinus size={18} />
             </IconButton>
-            <button className="zoom-fit" onClick={fit} title="点击完整显示图片">
-              {zoom === 1 ? '适应' : `${Math.round(scale * zoom * 100)}%`}
+            <button className="zoom-fit" onClick={fit} title={t('点击完整显示图片')}>
+              {zoom === 1 ? t('适应') : `${Math.round(scale * zoom * 100)}%`}
             </button>
             <IconButton
-              label="放大预览"
+              label={t('放大预览')}
               disabled={zoom >= 128}
               onClick={() => setZoom(clamp(zoom * 1.25, 0.02, 128))}
             >
               <MagnifyingGlassPlus size={18} />
             </IconButton>
-            <IconButton label="完整显示整张图片" onClick={fit}>
+            <IconButton label={t('完整显示整张图片')} onClick={fit}>
               <CornersOut size={18} />
             </IconButton>
             <button
               className="pixel-scale-button"
-              title="一个预览像素对应一个CSS像素，不把缩小预览当原图"
+              title={t('一个预览像素对应一个CSS像素，不把缩小预览当原图')}
               onClick={() => {
                 setZoom(clamp(1 / scale, 0.02, 128));
                 setPan({ x: 0, y: 0 });
@@ -1887,7 +1894,7 @@ export function CanvasStage({
             </button>
             <button
               className={`canvas-hand-mode ${handMode ? 'active' : ''}`}
-              aria-label="拖动画面模式"
+              aria-label={t('拖动画面模式')}
               aria-pressed={handMode}
               onClick={() => setHandMode(!handMode)}
             >
@@ -1897,51 +1904,55 @@ export function CanvasStage({
           {sampling ? (
             <div className="canvas-context-hint" data-motion="sample-hint">
               <Eyedropper size={14} />
-              {samplingSource ? '点击画面，从未调色原图预览选择颜色' : '点击画面，读取当前显示颜色'}
+              {samplingSource
+                ? t('点击画面，从未调色原图预览选择颜色')
+                : t('点击画面，读取当前显示颜色')}
             </div>
           ) : editingSelection ? (
             <div className="canvas-context-hint" data-motion="selection-hint">
               {mask.type === 'brush'
-                ? '直接涂抹选区 · 空格 / 手形工具平移'
+                ? t('直接涂抹选区 · 空格 / 手形工具平移')
                 : mask.type === 'radial'
-                  ? '点选中心 · 拖动白点改变范围'
+                  ? t('点选中心 · 拖动白点改变范围')
                   : mask.type === 'linear'
-                    ? '拖动两端调整渐变方向与范围'
+                    ? t('拖动两端调整渐变方向与范围')
                     : mask.type === 'polygon'
-                      ? '拖动轮廓点 · 双击添加点'
-                      : '连续颜色范围 · 参照未调整原图'}
+                      ? t('拖动轮廓点 · 双击添加点')
+                      : t('连续颜色范围 · 参照未调整原图')}
             </div>
           ) : group === 'crop' ? (
             <div className="canvas-context-hint" data-motion="crop-hint">
-              拖动边缘自由裁切 · 中间白点移动范围
+              {t('拖动边缘自由裁切 · 中间白点移动范围')}
             </div>
           ) : null}
           {inspected && (
             <output className="pixel-readout">
-              {inspected.source ? '原图预览' : '显示预览'} ({inspected.x},{inspected.y}) · RGBA{' '}
-              {inspected.rgba.join(' / ')}
-              <button aria-label="收起像素读数" onClick={() => setInspected(null)}>
+              {inspected.source ? t('原图预览') : t('显示预览')} ({inspected.x},{inspected.y}) ·
+              RGBA {inspected.rgba.join(' / ')}
+              <button aria-label={t('收起像素读数')} onClick={() => setInspected(null)}>
                 ×
               </button>
             </output>
           )}
           {image && zoom !== 1 && (
             <span className="preview-resolution">
-              预览 {image.width}×{image.height} · 导出 {output?.width}×{output?.height}
+              {t('预览')}
+              {image.width}×{image.height} {t('· 导出')}
+              {output?.width}×{output?.height}
             </span>
           )}
         </>
       )}
       {editor.loading && (
         <div className="stage-loading" role="status">
-          <Busy label="正在准备图片…" />
+          <Busy label={t('正在准备图片…')} />
         </div>
       )}
       {dragging && (
         <div className="drop-overlay">
           <UploadSimple size={35} />
-          <strong>松开，打开这张图片</strong>
-          <span>先在本地处理</span>
+          <strong>{t('松开，打开这张图片')}</strong>
+          <span>{t('先在本地处理')}</span>
         </div>
       )}
     </main>

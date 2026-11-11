@@ -1,3 +1,4 @@
+import { getLocale, t } from '../i18n';
 import { ChoiceSelect } from '../components/ChoiceSelect';
 import { useMemo, useState } from 'react';
 import type { RGBAImage } from '@ai-xiutu/editor';
@@ -19,22 +20,22 @@ export function Histogram({ image }: { image: RGBAImage | null }) {
   return (
     <section
       className="histogram refined-histogram"
-      aria-label="当前画面色彩分布"
+      aria-label={t('当前画面色彩分布')}
       data-motion="histogram"
     >
       <div className="histogram-title">
         <label className="histogram-channel">
           <ChoiceSelect
-            ariaLabel="直方图通道"
+            ariaLabel={t('直方图通道')}
             size="compact"
             value={channel}
             onValueChange={(value) => setChannel(value as typeof channel)}
             options={[
-              { value: 'rgb', label: 'RGB 直方图' },
-              { value: 'luminance', label: '亮度分布' },
-              { value: 'red', label: '红色通道' },
-              { value: 'green', label: '绿色通道' },
-              { value: 'blue', label: '蓝色通道' },
+              { value: 'rgb', label: t('RGB 直方图') },
+              { value: 'luminance', label: t('亮度分布') },
+              { value: 'red', label: t('红色通道') },
+              { value: 'green', label: t('绿色通道') },
+              { value: 'blue', label: t('蓝色通道') },
             ]}
           />
         </label>
@@ -44,7 +45,7 @@ export function Histogram({ image }: { image: RGBAImage | null }) {
             checked={logarithmic}
             onChange={(event) => setLogarithmic(event.target.checked)}
           />
-          对数
+          {t('对数')}
         </label>
         <div>
           <i className="histogram-r" />
@@ -55,7 +56,9 @@ export function Histogram({ image }: { image: RGBAImage | null }) {
       <svg
         viewBox="0 0 255 96"
         role="img"
-        aria-label={`当前预览 ${histogram.pixelCount.toLocaleString()} 个像素的红绿蓝亮度分布`}
+        aria-label={t('当前预览 {v0} 个像素的红绿蓝亮度分布', {
+          v0: histogram.pixelCount.toLocaleString(getLocale()),
+        })}
       >
         <path d="M0 23H255M0 46H255M0 69H255" className="histogram-grid" />
         {paths.map((path, index) => (
@@ -67,17 +70,17 @@ export function Histogram({ image }: { image: RGBAImage | null }) {
         ))}
       </svg>
       <div className="histogram-axis">
-        <span>0 · 暗部</span>
-        <span>当前预览</span>
-        <span>亮部 · 255</span>
+        <span>{t('0 · 暗部')}</span>
+        <span>{t('当前预览')}</span>
+        <span>{t('亮部 · 255')}</span>
       </div>
       <div className="histogram-endpoints">
-        <span title="当前预览亮度代理恰好等于0的像素占比，不等于RAW信息丢失判定">
-          暗端{' '}
+        <span title={t('当前预览亮度代理恰好等于0的像素占比，不等于RAW信息丢失判定')}>
+          {t('暗端')}{' '}
           {(((histogram.luminance[0] ?? 0) / Math.max(1, histogram.pixelCount)) * 100).toFixed(2)}%
         </span>
-        <span title="当前预览亮度代理恰好等于255的像素占比">
-          亮端{' '}
+        <span title={t('当前预览亮度代理恰好等于255的像素占比')}>
+          {t('亮端')}{' '}
           {(((histogram.luminance[255] ?? 0) / Math.max(1, histogram.pixelCount)) * 100).toFixed(2)}
           %
         </span>

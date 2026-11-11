@@ -1,3 +1,4 @@
+import { t, formatNumber } from '../i18n';
 import type {
   Meter,
   PricingSnapshot,
@@ -127,22 +128,22 @@ export function nanoAmount(value: unknown): bigint | null {
 /** Keep nano USD exact; neither floating-point rounding nor a missing value becomes $0. */
 export function usdText(value: unknown): string {
   const amount = nanoAmount(value);
-  if (amount === null) return '未知';
+  if (amount === null) return t('未知');
   const decimal = (amount % 1_000_000_000n).toString().padStart(9, '0').replace(/0+$/, '');
   return `$${amount / 1_000_000_000n}${decimal ? `.${decimal}` : ''}`;
 }
 export function meterUnit(meter: Meter): string {
-  return meter === 'voice-seconds' ? '秒' : meter === 'web-search' ? '次' : 'token';
+  return meter === 'voice-seconds' ? t('秒') : meter === 'web-search' ? t('次') : 'token';
 }
 /** Normalize tokens to a million only when that conversion stays exact. */
 export function publishedRateText(rate: PublishedRate | null | undefined): string {
   const amount = nanoAmount(rate?.nanoUsd);
   const quantity = recordedCount(rate?.quantity);
   if (amount === null || !quantity || !rate || !['token', 'call', 'second'].includes(rate.unit))
-    return '费率未提供';
+    return t('费率未提供');
   if (rate.unit === 'token' && (amount * 1_000_000n) % BigInt(quantity) === 0n)
-    return `${usdText(((amount * 1_000_000n) / BigInt(quantity)).toString())} / 百万 token`;
-  return `${usdText(rate.nanoUsd)} / ${quantity.toLocaleString('zh-CN')} ${rate.unit === 'call' ? '次' : rate.unit === 'second' ? '秒' : 'token'}`;
+    return `${usdText(((amount * 1_000_000n) / BigInt(quantity)).toString())} / ${t('百万 token')}`;
+  return `${usdText(rate.nanoUsd)} / ${formatNumber(quantity)} ${rate.unit === 'call' ? t('次') : rate.unit === 'second' ? t('秒') : 'token'}`;
 }
 export function publicPriceSource(source: string): string | undefined {
   try {

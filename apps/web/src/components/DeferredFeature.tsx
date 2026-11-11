@@ -1,3 +1,4 @@
+import { t } from '../i18n';
 import {
   Component,
   Suspense,
@@ -52,14 +53,14 @@ export function DeferredFeatureStatus({ kind, label, retry, onBack }: DeferredFe
     >
       {kind === 'pending' ? (
         <div className="deferred-feature-pending" role="status">
-          <Busy label={`正在打开${label}`} />
+          <Busy label={t('正在打开{v0}', { v0: t(label) })} />
         </div>
       ) : (
         <div className="deferred-feature-error" role="alert">
           <WarningCircle size={23} aria-hidden />
           <div>
-            <h3>{label}暂时无法打开</h3>
-            <p>可以重试打开，或返回工作区继续操作。</p>
+            <h3>{t('{name}暂时无法打开', { name: t(label) })}</h3>
+            <p>{t('可以重试打开，或返回工作区继续操作。')}</p>
           </div>
         </div>
       )}
@@ -73,7 +74,7 @@ export function DeferredFeatureStatus({ kind, label, retry, onBack }: DeferredFe
               onClick={retry}
             >
               <ArrowClockwise size={17} aria-hidden />
-              重试打开
+              {t('重试打开')}
             </button>
           )}
           {onBack && (
@@ -84,7 +85,7 @@ export function DeferredFeatureStatus({ kind, label, retry, onBack }: DeferredFe
               onClick={onBack}
             >
               <ArrowLeft size={17} aria-hidden />
-              返回编辑器
+              {t('返回编辑器')}
             </button>
           )}
         </div>

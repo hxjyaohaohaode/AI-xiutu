@@ -1,3 +1,4 @@
+import { t } from '../i18n';
 import { MotionDetails } from '../motion/Presence';
 import { ChoiceSelect } from '../components/ChoiceSelect';
 import { useEffect, useRef, useState } from 'react';
@@ -57,13 +58,13 @@ export function BlendPicker({
 }) {
   return (
     <label className="advanced-select">
-      混合模式
+      {t('混合模式')}
       <ChoiceSelect
-        ariaLabel="图层混合模式"
+        ariaLabel={t('图层混合模式')}
         size="compact"
         value={value}
         onValueChange={(value) => onChange(value as BlendModeV3)}
-        options={BLEND_MODES_V3.map((mode) => ({ value: mode, label: blendLabels[mode] }))}
+        options={BLEND_MODES_V3.map((mode) => ({ value: mode, label: t(blendLabels[mode]) }))}
       />
     </label>
   );
@@ -166,7 +167,8 @@ export function PaintControls({
     <section className="advanced-tool-family" data-motion="paint-controls">
       <div className="advanced-row">
         <span>
-          绘制图层 {recipe.paintLayers.length} / {MAX_V3_PAINT_LAYERS}
+          {t('绘制图层')}
+          {recipe.paintLayers.length} / {MAX_V3_PAINT_LAYERS}
         </span>
         <button
           className="text-button"
@@ -174,10 +176,10 @@ export function PaintControls({
           onClick={addLayer}
         >
           <Plus size={16} />
-          新建
+          {t('新建')}
         </button>
       </div>
-      <div className="advanced-object-list" aria-label="绘制图层">
+      <div className="advanced-object-list" aria-label={t('绘制图层')}>
         {recipe.paintLayers.map((item, index) => (
           <div key={item.id} className="advanced-row" data-selected={item.id === layer?.id}>
             <button
@@ -190,11 +192,12 @@ export function PaintControls({
             >
               {item.name}
               <small>
-                {item.strokes.length} 笔 · {blendLabels[item.blendMode]}
+                {item.strokes.length} {t('笔 ·')}
+                {t(blendLabels[item.blendMode])}
               </small>
             </button>
             <IconButton
-              label={`${item.enabled ? '隐藏' : '显示'}${item.name}`}
+              label={t('{v0}{v1}', { v0: item.enabled ? t('隐藏') : t('显示'), v1: item.name })}
               onClick={() =>
                 apply(
                   {
@@ -203,7 +206,7 @@ export function PaintControls({
                       p.id === item.id ? { ...p, enabled: !p.enabled } : p,
                     ),
                   },
-                  '切换绘制图层',
+                  t('切换绘制图层'),
                   true,
                 )
               }
@@ -215,16 +218,16 @@ export function PaintControls({
       </div>
       {!layer ? (
         <p className="control-note">
-          新建一个图层后，即可在照片上涂画。颜色、混合、范围和笔画分别保留。
+          {t('新建一个图层后，即可在照片上涂画。颜色、混合、范围和笔画分别保留。')}
         </p>
       ) : (
         <>
-          <div className="tonal-tabs" aria-label="绘制模式">
+          <div className="tonal-tabs" aria-label={t('绘制模式')}>
             {(
               [
-                ['paint', '画笔'],
-                ['erase', '橡皮'],
-                ['clone', '克隆'],
+                ['paint', t('画笔')],
+                ['erase', t('橡皮')],
+                ['clone', t('克隆')],
               ] as const
             ).map(([mode, name]) => (
               <button
@@ -239,22 +242,22 @@ export function PaintControls({
             ))}
           </div>
           <ParameterShelf
-            label="绘制参数"
+            label={t('绘制参数')}
             controls={[
               {
                 id: 'diameter',
-                label: '直径',
+                label: t('直径'),
                 value: settings.radius * short * 2,
                 min: 1,
                 max: short,
                 step: 0.1,
                 unit: 'px',
-                description: '以原图像素为准；1px 使用精确栅格落点。',
+                description: t('以原图像素为准；1px 使用精确栅格落点。'),
                 onChange: (n) => editor.setPaintSettings((s) => ({ ...s, radius: n / short / 2 })),
               },
               {
                 id: 'feather',
-                label: '柔边',
+                label: t('柔边'),
                 value: settings.feather * 100,
                 min: 0,
                 max: 100,
@@ -264,7 +267,7 @@ export function PaintControls({
               },
               {
                 id: 'flow',
-                label: '笔触透明度',
+                label: t('笔触透明度'),
                 value: settings.opacity * 100,
                 min: 0,
                 max: 100,
@@ -274,16 +277,16 @@ export function PaintControls({
               },
               {
                 id: 'layer-opacity',
-                label: '图层透明度',
+                label: t('图层透明度'),
                 value: layer.opacity * 100,
                 min: 0,
                 max: 100,
                 step: 0.1,
                 unit: '%',
-                onChange: (n) => patch({ opacity: n / 100 }, '调整图层透明度', false),
+                onChange: (n) => patch({ opacity: n / 100 }, t('调整图层透明度'), false),
               },
             ]}
-            onCommit={(name) => editor.commitCurrent('调整' + name)}
+            onCommit={(name) => editor.commitCurrent(t('调整{v0}', { v0: t(name) }))}
             onCancel={editor.cancelPreview}
           />
           <label className="check-label">
@@ -297,24 +300,24 @@ export function PaintControls({
                 }))
               }
             />
-            数位笔压感与平滑边缘（大于 1 px 的画笔）
+            {t('数位笔压感与平滑边缘（大于 1 px 的画笔）')}
           </label>
           {settings.mode === 'paint' && (
             <MotionDetails className="advanced-disclosure" defaultOpen>
               <summary>
                 <i className="paint-color-chip" style={{ background: rgbaHex(settings.color) }} />
-                画笔颜色与 Alpha
+                {t('画笔颜色与 Alpha')}
               </summary>
               <ColorPicker
                 value={rgbaHex(settings.color)}
                 onChange={(value) =>
                   editor.setPaintSettings((s) => ({ ...s, color: hexRgba(value) }))
                 }
-                label="画笔颜色"
+                label={t('画笔颜色')}
               />
               <div className="advanced-row">
                 <button className="text-button" onClick={onSample}>
-                  {sampling ? '结束取色' : '从原图取色'}
+                  {sampling ? t('结束取色') : t('从原图取色')}
                 </button>
                 <button
                   className="text-button"
@@ -322,7 +325,7 @@ export function PaintControls({
                     editor.setPaintSettings((s) => ({ ...s, color: hexRgba(pickedColor) }))
                   }
                 >
-                  使用所取颜色
+                  {t('使用所取颜色')}
                 </button>
               </div>
             </MotionDetails>
@@ -336,27 +339,30 @@ export function PaintControls({
                   editor.setPaintSettings((s) => ({ ...s, choosingSource: !s.choosingSource }))
                 }
               >
-                {settings.choosingSource ? '点击照片设定克隆来源' : '在照片选择克隆来源'}
+                {settings.choosingSource ? t('点击照片设定克隆来源') : t('在照片选择克隆来源')}
               </button>
               <p className="control-note">
                 {settings.source
-                  ? `来源约为 (${Math.floor(settings.source.x * width)}, ${Math.floor(settings.source.y * height)})；采样绘制前图像，不累积复制自身。`
-                  : '先选择来源，再绘制；也可以在下面按像素坐标设置来源。'}
+                  ? t('来源约为 ({v0}, {v1})；采样绘制前图像，不累积复制自身。', {
+                      v0: Math.floor(settings.source.x * width),
+                      v1: Math.floor(settings.source.y * height),
+                    })
+                  : t('先选择来源，再绘制；也可以在下面按像素坐标设置来源。')}
               </p>
             </>
           )}
           <BlendPicker
             value={layer.blendMode}
-            onChange={(blendMode) => patch({ blendMode }, '切换绘制混合模式')}
+            onChange={(blendMode) => patch({ blendMode }, t('切换绘制混合模式'))}
           />
           <MotionDetails className="advanced-disclosure">
-            <summary>逐像素落点</summary>
+            <summary>{t('逐像素落点')}</summary>
             <ParameterShelf
-              label="原图像素位置"
+              label={t('原图像素位置')}
               controls={[
                 {
                   id: 'x',
-                  label: '像素 X',
+                  label: t('像素 X'),
                   value: Math.min(width - 1, pixelX),
                   min: 0,
                   max: width - 1,
@@ -367,7 +373,7 @@ export function PaintControls({
                 },
                 {
                   id: 'y',
-                  label: '像素 Y',
+                  label: t('像素 Y'),
                   value: Math.min(height - 1, pixelY),
                   min: 0,
                   max: height - 1,
@@ -384,7 +390,7 @@ export function PaintControls({
                 disabled={settings.mode === 'clone' && !settings.source}
                 onClick={stamp}
               >
-                在这个像素落笔
+                {t('在这个像素落笔')}
               </button>
               {settings.mode === 'clone' && (
                 <button
@@ -400,28 +406,28 @@ export function PaintControls({
                     }))
                   }
                 >
-                  设为克隆来源
+                  {t('设为克隆来源')}
                 </button>
               )}
             </div>
           </MotionDetails>
           <MotionDetails className="advanced-disclosure">
-            <summary>限制绘制范围</summary>
+            <summary>{t('限制绘制范围')}</summary>
             <label className="advanced-select">
-              使用局部选区
+              {t('使用局部选区')}
               <ChoiceSelect
-                ariaLabel="绘制范围来源"
+                ariaLabel={t('绘制范围来源')}
                 size="compact"
                 value=""
                 onValueChange={(value) => {
                   const selected = currentV3(editor).regionEdits.find((r) => r.id === value);
                   if (selected) {
-                    patch({ mask: structuredClone(selected.mask) }, '复制绘制范围');
+                    patch({ mask: structuredClone(selected.mask) }, t('复制绘制范围'));
                     setPath([]);
                   }
                 }}
                 options={[
-                  { value: '', label: '选择一个范围副本' },
+                  { value: '', label: t('选择一个范围副本') },
                   ...recipe.regionEdits.map((r) => ({ value: r.id, label: r.name })),
                 ]}
               />
@@ -436,29 +442,29 @@ export function PaintControls({
                   getMask={() =>
                     currentV3(editor).paintLayers.find((p) => p.id === layer.id)!.mask!
                   }
-                  onChange={(mask, commit) => patch({ mask }, '修改绘制范围', commit)}
+                  onChange={(mask, commit) => patch({ mask }, t('修改绘制范围'), commit)}
                 />
                 <button
                   className="text-button"
-                  onClick={() => patch({ mask: null }, '解除绘制范围')}
+                  onClick={() => patch({ mask: null }, t('解除绘制范围'))}
                 >
-                  解除范围限制
+                  {t('解除范围限制')}
                 </button>
               </>
             )}
           </MotionDetails>
           <MotionDetails className="advanced-disclosure">
-            <summary>图层与笔画管理</summary>
+            <summary>{t('图层与笔画管理')}</summary>
             <label className="advanced-select">
-              名称
+              {t('名称')}
               <input
-                aria-label="绘制图层名称"
+                aria-label={t('绘制图层名称')}
                 key={layer.id}
                 defaultValue={layer.name}
                 maxLength={120}
                 onBlur={(event) => {
                   if (event.target.value.trim())
-                    patch({ name: event.target.value.trim() }, '重命名绘制图层');
+                    patch({ name: event.target.value.trim() }, t('重命名绘制图层'));
                 }}
               />
             </label>
@@ -466,12 +472,12 @@ export function PaintControls({
               <button
                 className="text-button"
                 disabled={!layer.strokes.length}
-                onClick={() => patch({ strokes: layer.strokes.slice(0, -1) }, '移除最后一笔')}
+                onClick={() => patch({ strokes: layer.strokes.slice(0, -1) }, t('移除最后一笔'))}
               >
-                移除最后一笔
+                {t('移除最后一笔')}
               </button>
               <IconButton
-                label="绘制图层前移"
+                label={t('绘制图层前移')}
                 disabled={recipe.paintLayers[0]?.id === layer.id}
                 onClick={() =>
                   apply(
@@ -483,7 +489,7 @@ export function PaintControls({
                         -1,
                       ),
                     },
-                    '调整绘制图层顺序',
+                    t('调整绘制图层顺序'),
                     true,
                   )
                 }
@@ -491,7 +497,7 @@ export function PaintControls({
                 <ArrowUp size={16} />
               </IconButton>
               <IconButton
-                label="绘制图层后移"
+                label={t('绘制图层后移')}
                 disabled={recipe.paintLayers.at(-1)?.id === layer.id}
                 onClick={() =>
                   apply(
@@ -503,7 +509,7 @@ export function PaintControls({
                         1,
                       ),
                     },
-                    '调整绘制图层顺序',
+                    t('调整绘制图层顺序'),
                     true,
                   )
                 }
@@ -511,7 +517,7 @@ export function PaintControls({
                 <ArrowDown size={16} />
               </IconButton>
               <IconButton
-                label="删除绘制图层，可撤销"
+                label={t('删除绘制图层，可撤销')}
                 onClick={() => {
                   if (
                     apply(
@@ -519,7 +525,7 @@ export function PaintControls({
                         ...recipe,
                         paintLayers: recipe.paintLayers.filter((p) => p.id !== layer.id),
                       },
-                      '删除绘制图层',
+                      t('删除绘制图层'),
                       true,
                     )
                   )
@@ -531,8 +537,9 @@ export function PaintControls({
             </div>
           </MotionDetails>
           <small className="control-note">
-            总笔画预算 {recipe.paintLayers.reduce((n, p) => n + p.strokes.length, 0)} /{' '}
-            {MAX_V3_PAINT_STROKES}；重置参数不改已绘制的笔画。
+            {t('总笔画预算')}
+            {recipe.paintLayers.reduce((n, p) => n + p.strokes.length, 0)} / {MAX_V3_PAINT_STROKES}
+            {t('；重置参数不改已绘制的笔画。')}
           </small>
         </>
       )}
@@ -547,13 +554,13 @@ export function LiquifyControls({ controller }: { controller: InspectorControlle
   const short = Math.min(editor.dimensions?.width ?? 1, editor.dimensions?.height ?? 1);
   return (
     <section className="advanced-tool-family" data-motion="warp-controls">
-      <div className="tonal-tabs" aria-label="液化方式">
+      <div className="tonal-tabs" aria-label={t('液化方式')}>
         {(
           [
-            ['push', '推动'],
-            ['pinch', '收缩'],
-            ['bulge', '膨胀'],
-            ['twirl', '旋转'],
+            ['push', t('推动')],
+            ['pinch', t('收缩')],
+            ['bulge', t('膨胀')],
+            ['twirl', t('旋转')],
           ] as const
         ).map(([mode, label]) => (
           <button
@@ -566,11 +573,11 @@ export function LiquifyControls({ controller }: { controller: InspectorControlle
         ))}
       </div>
       <ParameterShelf
-        label="液化画笔"
+        label={t('液化画笔')}
         controls={[
           {
             id: 'radius',
-            label: '作用直径',
+            label: t('作用直径'),
             value: settings.radius * short * 2,
             min: 1,
             max: short * 2,
@@ -580,19 +587,19 @@ export function LiquifyControls({ controller }: { controller: InspectorControlle
           },
           {
             id: 'strength',
-            label: '双向强度',
+            label: t('双向强度'),
             value: settings.strength * 100,
             min: -100,
             max: 100,
             step: 0.1,
             neutral: 0,
             unit: '%',
-            description: '负值反向，零不改变画面；笔画提交后可独立撤销。',
+            description: t('负值反向，零不改变画面；笔画提交后可独立撤销。'),
             onChange: (n) => editor.setWarpSettings((s) => ({ ...s, strength: n / 100 })),
           },
           {
             id: 'feather',
-            label: '边缘过渡',
+            label: t('边缘过渡'),
             value: settings.feather * 100,
             min: 0,
             max: 100,
@@ -609,17 +616,17 @@ export function LiquifyControls({ controller }: { controller: InspectorControlle
           onChange={(event) =>
             apply(
               { ...recipe, warp: { ...recipe.warp, enabled: event.target.checked } },
-              '切换液化效果',
+              t('切换液化效果'),
               true,
             )
           }
         />
-        显示液化效果
+        {t('显示液化效果')}
       </label>
       <MotionDetails className="advanced-disclosure">
-        <summary>背景与局部保护</summary>
+        <summary>{t('背景与局部保护')}</summary>
         <p className="control-note">
-          保护范围保持原来显示像素。可以用画笔涂入，也可以从现有局部复制；边缘羽化决定过渡。
+          {t('保护范围保持原来显示像素。可以用画笔涂入，也可以从现有局部复制；边缘羽化决定过渡。')}
         </p>
         <div className="advanced-row">
           <button
@@ -630,7 +637,7 @@ export function LiquifyControls({ controller }: { controller: InspectorControlle
                 !recipe.warp.protection &&
                 !apply(
                   { ...recipe, warp: { ...recipe.warp, protection: newMask('brush') } },
-                  '建立液化保护范围',
+                  t('建立液化保护范围'),
                   true,
                 )
               )
@@ -639,7 +646,7 @@ export function LiquifyControls({ controller }: { controller: InspectorControlle
               editor.setActiveMaskPath([]);
             }}
           >
-            {settings.protecting ? '结束保护范围编辑' : '涂抹保护范围'}
+            {settings.protecting ? t('结束保护范围编辑') : t('涂抹保护范围')}
           </button>
           {recipe.warp.protection && (
             <button
@@ -647,20 +654,20 @@ export function LiquifyControls({ controller }: { controller: InspectorControlle
               onClick={() => {
                 apply(
                   { ...recipe, warp: { ...recipe.warp, protection: null } },
-                  '解除液化保护',
+                  t('解除液化保护'),
                   true,
                 );
                 editor.setWarpSettings((s) => ({ ...s, protecting: false }));
               }}
             >
-              清除保护，可撤销
+              {t('清除保护，可撤销')}
             </button>
           )}
         </div>
         <label className="advanced-select">
-          从局部复制
+          {t('从局部复制')}
           <ChoiceSelect
-            ariaLabel="液化保护来源"
+            ariaLabel={t('液化保护来源')}
             size="compact"
             value=""
             onValueChange={(value) => {
@@ -668,14 +675,14 @@ export function LiquifyControls({ controller }: { controller: InspectorControlle
               if (r) {
                 apply(
                   { ...recipe, warp: { ...recipe.warp, protection: structuredClone(r.mask) } },
-                  '复制液化保护范围',
+                  t('复制液化保护范围'),
                   true,
                 );
                 editor.setActiveMaskPath([]);
               }
             }}
             options={[
-              { value: '', label: '选择范围' },
+              { value: '', label: t('选择范围') },
               ...recipe.regionEdits.map((r) => ({ value: r.id, label: r.name })),
             ]}
           />
@@ -688,14 +695,18 @@ export function LiquifyControls({ controller }: { controller: InspectorControlle
             getMask={() => currentV3(editor).warp.protection!}
             onChange={(protection, commit) => {
               const r = currentV3(editor);
-              return apply({ ...r, warp: { ...r.warp, protection } }, '调整液化保护范围', commit);
+              return apply(
+                { ...r, warp: { ...r.warp, protection } },
+                t('调整液化保护范围'),
+                commit,
+              );
             }}
           />
         )}
       </MotionDetails>
       <div className="advanced-row">
         <small>
-          {recipe.warp.strokes.length} / {MAX_V3_WARP_STROKES} 次变形
+          {recipe.warp.strokes.length} / {MAX_V3_WARP_STROKES} {t('次变形')}
         </small>
         <button
           className="text-button"
@@ -703,12 +714,12 @@ export function LiquifyControls({ controller }: { controller: InspectorControlle
           onClick={() =>
             apply(
               { ...recipe, warp: { ...recipe.warp, strokes: recipe.warp.strokes.slice(0, -1) } },
-              '移除最后一次变形',
+              t('移除最后一次变形'),
               true,
             )
           }
         >
-          移除最后一次
+          {t('移除最后一次')}
         </button>
       </div>
     </section>
@@ -743,12 +754,12 @@ export function ImageLayerControls({ controller }: { controller: InspectorContro
   const controls: ShelfControl[] = layer
     ? (
         [
-          ['x', '位置 X', -4, 4, 0.0001, ''],
-          ['y', '位置 Y', -4, 4, 0.0001, ''],
-          ['width', '宽度比例', 0.000001, 8, 0.0001, ''],
-          ['height', '高度比例', 0.000001, 8, 0.0001, ''],
-          ['rotationDegrees', '旋转角度', -180, 180, 0.01, '°'],
-          ['opacity', '透明度', 0, 1, 0.001, ''],
+          ['x', t('位置 X'), -4, 4, 0.0001, ''],
+          ['y', t('位置 Y'), -4, 4, 0.0001, ''],
+          ['width', t('宽度比例'), 0.000001, 8, 0.0001, ''],
+          ['height', t('高度比例'), 0.000001, 8, 0.0001, ''],
+          ['rotationDegrees', t('旋转角度'), -180, 180, 0.01, '°'],
+          ['opacity', t('透明度'), 0, 1, 0.001, ''],
         ] as const
       ).map(([key, label, min, max, step, unit]) => ({
         id: key,
@@ -785,7 +796,8 @@ export function ImageLayerControls({ controller }: { controller: InspectorContro
       />
       <div className="advanced-row">
         <span>
-          合成图层 {recipe.imageLayers.length} / {MAX_V3_IMAGE_LAYERS}
+          {t('合成图层')}
+          {recipe.imageLayers.length} / {MAX_V3_IMAGE_LAYERS}
         </span>
         <button
           className="text-button"
@@ -793,13 +805,13 @@ export function ImageLayerControls({ controller }: { controller: InspectorContro
           onClick={() => input.current?.click()}
         >
           <UploadSimple size={16} />
-          {loading ? '导入中' : '添加图片'}
+          {loading ? t('导入中') : t('添加图片')}
         </button>
       </div>
       <p className="control-note">
-        每层保留自己的原图、范围、混合与位置。AI 候选也可在结果区明确选择“作为合成图层”。
+        {t('每层保留自己的原图、范围、混合与位置。AI 候选也可在结果区明确选择“作为合成图层”。')}
       </p>
-      <div className="advanced-object-list" aria-label="合成图层">
+      <div className="advanced-object-list" aria-label={t('合成图层')}>
         {recipe.imageLayers.map((item) => (
           <div className="advanced-row" key={item.id} data-selected={layer?.id === item.id}>
             <button
@@ -811,10 +823,10 @@ export function ImageLayerControls({ controller }: { controller: InspectorContro
               }}
             >
               {item.name}
-              <small>{blendLabels[item.blendMode]}</small>
+              <small>{t(blendLabels[item.blendMode])}</small>
             </button>
             <IconButton
-              label={`${item.enabled ? '隐藏' : '显示'}${item.name}`}
+              label={t('{v0}{v1}', { v0: item.enabled ? t('隐藏') : t('显示'), v1: item.name })}
               onClick={() =>
                 apply(
                   {
@@ -823,7 +835,7 @@ export function ImageLayerControls({ controller }: { controller: InspectorContro
                       p.id === item.id ? { ...p, enabled: !p.enabled } : p,
                     ),
                   },
-                  '切换合成图层',
+                  t('切换合成图层'),
                   true,
                 )
               }
@@ -836,63 +848,66 @@ export function ImageLayerControls({ controller }: { controller: InspectorContro
       {layer && (
         <>
           <ParameterShelf
-            label="合成位置"
+            label={t('合成位置')}
             controls={controls}
-            onCommit={(name) => editor.commitCurrent('调整合成' + name)}
+            onCommit={(name) => editor.commitCurrent(t('调整合成') + name)}
             onCancel={editor.cancelPreview}
           />
           <div className="tonal-tabs">
             <button
               aria-pressed={layer.flipX}
-              onClick={() => patch({ flipX: !layer.flipX }, '水平镜像合成图层')}
+              onClick={() => patch({ flipX: !layer.flipX }, t('水平镜像合成图层'))}
             >
-              水平镜像
+              {t('水平镜像')}
             </button>
             <button
               aria-pressed={layer.flipY}
-              onClick={() => patch({ flipY: !layer.flipY }, '垂直镜像合成图层')}
+              onClick={() => patch({ flipY: !layer.flipY }, t('垂直镜像合成图层'))}
             >
-              垂直镜像
+              {t('垂直镜像')}
             </button>
           </div>
           <BlendPicker
             value={layer.blendMode}
-            onChange={(blendMode) => patch({ blendMode }, '切换合成混合模式')}
+            onChange={(blendMode) => patch({ blendMode }, t('切换合成混合模式'))}
           />
           <MotionDetails className="advanced-disclosure">
-            <summary>合成范围与羽化</summary>
+            <summary>{t('合成范围与羽化')}</summary>
             <div className="tonal-tabs">
               {(['radial', 'linear', 'polygon', 'color-range'] as const).map((type) => (
                 <button
                   key={type}
                   onClick={() => {
-                    patch({ mask: newMask(type) }, '设置合成范围');
+                    patch({ mask: newMask(type) }, t('设置合成范围'));
                     setPath([]);
                   }}
                 >
                   {
-                    { radial: '径向', linear: '渐变', polygon: '多边形', 'color-range': '选色' }[
-                      type
-                    ]
+                    {
+                      radial: t('径向'),
+                      linear: t('渐变'),
+                      polygon: t('多边形'),
+                      'color-range': t('选色'),
+                    }[type]
                   }
                 </button>
               ))}
             </div>
             <label className="advanced-select">
-              复制局部范围
+              {t('复制局部范围')}
               <ChoiceSelect
-                ariaLabel="合成蒙版来源"
+                ariaLabel={t('合成蒙版来源')}
                 size="compact"
                 value=""
                 onValueChange={(value) => {
                   const r = recipe.regionEdits.find((p) => p.id === value);
                   if (r) {
-                    patch({ mask: structuredClone(r.mask) }, '复制合成范围');
+                    patch({ mask: structuredClone(r.mask) }, t('复制合成范围'));
                     setPath([]);
                   }
                 }}
                 options={[
-                  { value: '', label: '选择范围副本' },
+                  { value: '', label: t('选择范围副本') },
                   ...recipe.regionEdits.map((r) => ({ value: r.id, label: r.name })),
                 ]}
               />
@@ -907,35 +922,35 @@ export function ImageLayerControls({ controller }: { controller: InspectorContro
                   getMask={() =>
                     currentV3(editor).imageLayers.find((p) => p.id === layer.id)!.mask!
                   }
-                  onChange={(mask, commit) => patch({ mask }, '调整合成范围', commit)}
+                  onChange={(mask, commit) => patch({ mask }, t('调整合成范围'), commit)}
                 />
                 <button
                   className="text-button"
-                  onClick={() => patch({ mask: null }, '解除合成范围')}
+                  onClick={() => patch({ mask: null }, t('解除合成范围'))}
                 >
-                  解除范围
+                  {t('解除范围')}
                 </button>
               </>
             )}
           </MotionDetails>
           <MotionDetails className="advanced-disclosure">
-            <summary>图层管理</summary>
+            <summary>{t('图层管理')}</summary>
             <label className="advanced-select">
-              名称
+              {t('名称')}
               <input
-                aria-label="合成图层名称"
+                aria-label={t('合成图层名称')}
                 key={layer.id}
                 defaultValue={layer.name}
                 maxLength={120}
                 onBlur={(event) => {
                   if (event.target.value.trim())
-                    patch({ name: event.target.value.trim() }, '重命名合成图层');
+                    patch({ name: event.target.value.trim() }, t('重命名合成图层'));
                 }}
               />
             </label>
             <div className="advanced-row">
               <IconButton
-                label="合成图层前移"
+                label={t('合成图层前移')}
                 disabled={recipe.imageLayers[0]?.id === layer.id}
                 onClick={() =>
                   apply(
@@ -947,7 +962,7 @@ export function ImageLayerControls({ controller }: { controller: InspectorContro
                         -1,
                       ),
                     },
-                    '调整合成顺序',
+                    t('调整合成顺序'),
                     true,
                   )
                 }
@@ -955,7 +970,7 @@ export function ImageLayerControls({ controller }: { controller: InspectorContro
                 <ArrowUp size={16} />
               </IconButton>
               <IconButton
-                label="合成图层后移"
+                label={t('合成图层后移')}
                 disabled={recipe.imageLayers.at(-1)?.id === layer.id}
                 onClick={() =>
                   apply(
@@ -967,7 +982,7 @@ export function ImageLayerControls({ controller }: { controller: InspectorContro
                         1,
                       ),
                     },
-                    '调整合成顺序',
+                    t('调整合成顺序'),
                     true,
                   )
                 }
@@ -975,18 +990,18 @@ export function ImageLayerControls({ controller }: { controller: InspectorContro
                 <ArrowDown size={16} />
               </IconButton>
               <IconButton
-                label="复制合成图层"
+                label={t('复制合成图层')}
                 disabled={recipe.imageLayers.length >= MAX_V3_IMAGE_LAYERS}
                 onClick={() => {
                   const copy = {
                     ...structuredClone(layer),
                     id: secureUuid(),
-                    name: layer.name.slice(0, 112) + ' 副本',
+                    name: layer.name.slice(0, 112) + t(' 副本'),
                   };
                   if (
                     apply(
                       { ...recipe, imageLayers: [...recipe.imageLayers, copy] },
-                      '复制合成图层',
+                      t('复制合成图层'),
                       true,
                     )
                   )
@@ -996,7 +1011,7 @@ export function ImageLayerControls({ controller }: { controller: InspectorContro
                 <Copy size={16} />
               </IconButton>
               <IconButton
-                label="删除合成图层，可撤销"
+                label={t('删除合成图层，可撤销')}
                 onClick={() => {
                   if (
                     apply(
@@ -1004,7 +1019,7 @@ export function ImageLayerControls({ controller }: { controller: InspectorContro
                         ...recipe,
                         imageLayers: recipe.imageLayers.filter((p) => p.id !== layer.id),
                       },
-                      '删除合成图层',
+                      t('删除合成图层'),
                       true,
                     )
                   )

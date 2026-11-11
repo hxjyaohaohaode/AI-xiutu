@@ -272,7 +272,7 @@ try {
           if (Buffer.isBuffer(payload)) frames.push(payload);
         });
     });
-    await page.goto(origin);
+    await page.goto(`${origin}/#/studio`);
     await page.getByRole('button', { name: '打开空间与项目', exact: true }).click();
     await page
       .locator('.sidebar')

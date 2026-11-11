@@ -107,7 +107,31 @@
 }
 .account-ready {
   display: grid;
-  gap: 20px;
+  gap: 24px;
+}
+.modal.account-ready-dialog:not(.drawing-modal) {
+  --dialog-width: 480px;
+  --dialog-padding: 30px;
+}
+.account-ready-dialog .modal-header h2 {
+  font-size: 26px;
+}
+.account-ready-space {
+  display: grid;
+  gap: 6px;
+  min-width: 0;
+  padding-block: 16px;
+  border-block: 1px solid var(--line);
+}
+.account-ready-space > span {
+  color: var(--muted);
+  font-size: 11px;
+}
+.account-ready-space > strong {
+  color: var(--ink);
+  font-size: 15px;
+  font-weight: 500;
+  overflow-wrap: anywhere;
 }
 .account-ready-identity {
   display: flex;
@@ -153,9 +177,17 @@
   gap: 12px;
 }
 .account-ready-actions > .button {
-  min-height: 44px;
+  min-height: 48px;
   justify-content: center;
   gap: 10px;
+  background: var(--ink);
+  color: var(--surface);
+  border-color: transparent;
+  border-radius: 8px;
+}
+.account-ready-actions > .button:hover {
+  background: color-mix(in srgb, var(--ink) 86%, var(--surface));
+  color: var(--surface);
 }
 .account-ready-next {
   display: flex;
@@ -184,6 +216,7 @@
 .account-ready-next strong {
   font-weight: 600;
   font-size: 13px;
+  overflow-wrap: anywhere;
 }
 .account-ready-next small {
   color: var(--muted);
@@ -220,6 +253,9 @@
   }
 }
 @media (max-width: 600px) {
+  .modal.account-ready-dialog:not(.drawing-modal) {
+    --dialog-padding: 21px;
+  }
   .studio-welcome[data-account-state] {
     padding: 16px;
   }

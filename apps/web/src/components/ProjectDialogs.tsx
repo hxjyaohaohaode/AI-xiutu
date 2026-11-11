@@ -1,3 +1,4 @@
+import { t } from '../i18n';
 import { secureUuid } from '../lib/uuid';
 import { useEffect, useRef, useState, type FormEvent } from 'react';
 import {
@@ -59,13 +60,13 @@ export function NameDialog({
   }
   return (
     <Modal
-      title={titles[kind]}
+      title={t(titles[kind])}
       subtitle={
         kind === 'join'
-          ? '填写队友发给你的团队邀请码。'
+          ? t('填写队友发给你的团队邀请码。')
           : kind === 'team'
-            ? '照片、讨论和项目，将在这个空间里共同整理。'
-            : '一个项目，可以保存多张作品和每次编辑的版本。'
+            ? t('照片、讨论和项目，将在这个空间里共同整理。')
+            : t('一个项目，可以保存多张作品和每次编辑的版本。')
       }
       onClose={onClose}
       canClose={() => !locked.current}
@@ -73,17 +74,17 @@ export function NameDialog({
     >
       <form className="stack-form" onSubmit={submit} aria-busy={busy}>
         <label>
-          {kind === 'join' ? '团队邀请码' : kind === 'team' ? '团队名称' : '项目名称'}
+          {kind === 'join' ? t('团队邀请码') : kind === 'team' ? t('团队名称') : t('项目名称')}
           <input
             autoFocus
             value={value}
             onChange={(e) => setValue(e.target.value)}
             placeholder={
               kind === 'join'
-                ? '粘贴邀请码'
+                ? t('粘贴邀请码')
                 : kind === 'team'
-                  ? '例如：周末影像小组'
-                  : '例如：一场春日散步'
+                  ? t('例如：周末影像小组')
+                  : t('例如：一场春日散步')
             }
             minLength={kind === 'join' ? 20 : 1}
             maxLength={kind === 'join' ? 100 : 120}
@@ -102,7 +103,7 @@ export function NameDialog({
             <Busy />
           ) : (
             <>
-              {kind === 'join' ? '加入团队' : '创建'}
+              {kind === 'join' ? t('加入团队') : t('创建')}
               <ArrowRight size={17} />
             </>
           )}
@@ -166,6 +167,7 @@ export function ExportDialog({
   const locked = useRef(false);
   const current = useRef({ editor, sourcePending, format, quality });
   current.current = { editor, sourcePending, format, quality };
+  const exportName = `${filenameBase(editor.file?.name ?? '作品')}-编辑.${format === 'jpeg' ? 'jpg' : format}`;
   function releasePrepared() {
     const previous = preparedRef.current;
     preparedRef.current = null;
@@ -197,7 +199,6 @@ export function ExportDialog({
       sourcePending: current.current.sourcePending || current.current.editor.loading,
     });
     const guard = createSourceLoadGuard(read);
-    const name = `${filenameBase(editor.file.name)}-编辑.${format === 'jpeg' ? 'jpg' : format}`;
     releasePrepared();
     setPrepared(null);
     setBusy(true);
@@ -206,7 +207,7 @@ export function ExportDialog({
       const result = await prepareBoundImageExport(
         read,
         () => editor.exportImage(format, quality),
-        name,
+        exportName,
       );
       if (!live.current || request !== generation.current) {
         if (result) URL.revokeObjectURL(result.url);
@@ -240,13 +241,13 @@ export function ExportDialog({
       : null;
   return (
     <Modal
-      title="导出图片"
-      subtitle="从原始照片重新计算，保留当前的每一项调整。"
+      title={t('导出图片')}
+      subtitle={t('从原始照片重新计算，保留当前的每一项调整。')}
       onClose={onClose}
       canClose={() => !locked.current}
       className="studio-dialog export-dialog"
     >
-      <div className="export-options" role="group" aria-label="导出图片格式">
+      <div className="export-options" role="group" aria-label={t('导出图片格式')}>
         <button
           type="button"
           disabled={busy}
@@ -255,7 +256,7 @@ export function ExportDialog({
           onClick={() => setFormat('png')}
         >
           <strong>PNG</strong>
-          <span>无损图片 · 保留透明</span>
+          <span>{t('无损图片 · 保留透明')}</span>
           {format === 'png' && <Check size={19} />}
         </button>
         <button
@@ -266,7 +267,7 @@ export function ExportDialog({
           onClick={() => setFormat('jpeg')}
         >
           <strong>JPEG</strong>
-          <span>轻巧分享 · 白色底图</span>
+          <span>{t('轻巧分享 · 白色底图')}</span>
           {format === 'jpeg' && <Check size={19} />}
         </button>
         <button
@@ -277,16 +278,17 @@ export function ExportDialog({
           onClick={() => setFormat('webp')}
         >
           <strong>WebP</strong>
-          <span>较小体积 · 浏览器支持时</span>
+          <span>{t('较小体积 · 浏览器支持时')}</span>
           {format === 'webp' && <Check size={19} />}
         </button>
       </div>
       {format !== 'png' && (
         <label className="quality-control">
-          图片质量 <strong>{Math.round(quality * 100)}%</strong>
+          {t('图片质量')}
+          <strong>{Math.round(quality * 100)}%</strong>
           <input
             type="range"
-            aria-label="导出图片质量"
+            aria-label={t('导出图片质量')}
             aria-valuetext={`${Math.round(quality * 100)}%`}
             min="0.5"
             max="1"
@@ -297,25 +299,24 @@ export function ExportDialog({
           />
           <small>
             {format === 'jpeg'
-              ? 'JPEG 有损压缩会改变像素；透明区域填为白色。'
-              : 'WebP 按所选质量编码；只有实际编码MIME一致时才提供下载。'}
+              ? t('JPEG 有损压缩会改变像素；透明区域填为白色。')
+              : t('WebP 按所选质量编码；只有实际编码MIME一致时才提供下载。')}
           </small>
         </label>
       )}
       <div className="export-summary">
-        <span>文件名</span>
-        <strong>
-          {filenameBase(editor.file?.name ?? '作品')}-编辑.{format === 'jpeg' ? 'jpg' : format}
-        </strong>
-        <span>照片处理</span>
-        <strong>当前调色、构图和局部调整</strong>
+        <span>{t('文件名')}</span>
+        <strong>{ready?.name ?? exportName}</strong>
+        <span>{t('照片处理')}</span>
+        <strong>{t('当前调色、构图和局部调整')}</strong>
       </div>
       <InlineError message={error} />
       {ready && (
         <div className="stack-form" role="status">
           <p>
-            文件已生成 · {(ready.bytes / 1024 / 1024).toFixed(2)}{' '}
-            MB。点击下载，未收到文件时可以再次点击，无需重新计算。
+            {t('文件已生成 ·')}
+            {(ready.bytes / 1024 / 1024).toFixed(2)}{' '}
+            {t('MB。点击下载，未收到文件时可以再次点击，无需重新计算。')}
           </p>
           <a
             className="button button-primary button-full"
@@ -330,14 +331,14 @@ export function ExportDialog({
                 event.preventDefault();
                 releasePrepared();
                 setPrepared(null);
-                setError('当前画面已变化，请重新生成导出文件。');
+                setError(t('当前画面已变化，请重新生成导出文件。'));
                 return;
               }
-              onSuccess('下载已发起，可在浏览器下载记录中查看。');
+              onSuccess(t('下载已发起，可在浏览器下载记录中查看。'));
             }}
           >
             <DownloadSimple size={18} />
-            下载图片
+            {t('下载图片')}
           </a>
         </div>
       )}
@@ -347,15 +348,17 @@ export function ExportDialog({
         onClick={save}
       >
         {busy ? (
-          <Busy label="正在计算与导出" />
+          <Busy label={t('正在计算与导出')} />
         ) : (
           <>
             <DownloadSimple size={18} />
-            {ready ? '重新生成文件' : '生成导出文件'}
+            {ready ? t('重新生成文件') : t('生成导出文件')}
           </>
         )}
       </button>
-      <p className="fine-print">照片仍留在你的设备上。浏览器下载完成，不等于已写入系统相册。</p>
+      <p className="fine-print">
+        {t('照片仍留在你的设备上。浏览器下载完成，不等于已写入系统相册。')}
+      </p>
     </Modal>
   );
 }
@@ -508,7 +511,9 @@ export function TeamDialog({
       () => readMember(currentMember.userId),
       () =>
         confirmation.confirm({
-          description: `确定移除 ${currentMember.displayName}？后续将无法访问团队资料。`,
+          description: t('确定移除 {name}？后续将无法访问团队资料。', {
+            name: currentMember.displayName,
+          }),
           confirmLabel: '移除成员',
           tone: 'danger',
         }),
@@ -561,7 +566,9 @@ export function TeamDialog({
       () => readMember(currentMember.userId),
       () =>
         confirmation.confirm({
-          description: `将团队所有权交给 ${currentMember.displayName}？你将变为管理员；团队作品和素材继续保留。`,
+          description: t('将团队所有权交给 {name}？你将变为管理员；团队作品和素材继续保留。', {
+            name: currentMember.displayName,
+          }),
           confirmLabel: '移交所有权',
           tone: 'danger',
         }),
@@ -621,13 +628,13 @@ export function TeamDialog({
     <>
       <Modal
         title={space.name}
-        subtitle="管理成员、角色与邀请。"
+        subtitle={t('管理成员、角色与邀请。')}
         onClose={onClose}
         canClose={() => !locked.current}
         className="studio-dialog team-dialog"
         wide
       >
-        <div className="segmented" role="group" aria-label="团队管理视图">
+        <div className="segmented" role="group" aria-label={t('团队管理视图')}>
           <button
             disabled={busy}
             aria-pressed={tab === 'members'}
@@ -635,7 +642,7 @@ export function TeamDialog({
             onClick={() => setTab('members')}
           >
             <UsersThree size={17} />
-            团队成员
+            {t('团队成员')}
           </button>
           <button
             disabled={busy}
@@ -644,7 +651,7 @@ export function TeamDialog({
             onClick={() => setTab('sharing')}
           >
             <ShieldCheck size={17} />
-            共享规则
+            {t('共享规则')}
           </button>
           <button
             disabled={busy}
@@ -652,21 +659,23 @@ export function TeamDialog({
             className={tab === 'activity' ? 'selected' : ''}
             onClick={() => setTab('activity')}
           >
-            成员动态
+            {t('成员动态')}
           </button>
         </div>
         <InlineError message={error} />
         {message && (
           <p className="success-note" role="status">
-            {message}
+            {t(message)}
           </p>
         )}
         {!canManage && (
-          <p className="form-hint">你可以查看团队信息；成员与共享规则由所有者或管理员管理。</p>
+          <p className="form-hint">
+            {t('你可以查看团队信息；成员与共享规则由所有者或管理员管理。')}
+          </p>
         )}
         {tab === 'members' ? (
           <>
-            {loading && <Busy label="正在读取团队成员" />}
+            {loading && <Busy label={t('正在读取团队成员')} />}
             <div className="member-list" aria-busy={loading}>
               {members.map((member) => (
                 <div className="member-row" key={member.userId}>
@@ -680,16 +689,18 @@ export function TeamDialog({
                   (space.role === 'owner' || member.role !== 'admin') ? (
                     <>
                       <ChoiceSelect
-                        ariaLabel={`${member.displayName} 的角色`}
+                        ariaLabel={t('{v0} 的角色', { v0: member.displayName })}
                         value={member.role}
                         disabled={busy}
                         size="compact"
                         onValueChange={(value) => changeMember(member, value)}
                         options={[
-                          { value: 'editor', label: '编辑成员' },
-                          { value: 'reviewer', label: '审阅者' },
-                          { value: 'viewer', label: '浏览成员' },
-                          ...(space.role === 'owner' ? [{ value: 'admin', label: '管理员' }] : []),
+                          { value: 'editor', label: t('编辑成员') },
+                          { value: 'reviewer', label: t('审阅者') },
+                          { value: 'viewer', label: t('浏览成员') },
+                          ...(space.role === 'owner'
+                            ? [{ value: 'admin', label: t('管理员') }]
+                            : []),
                         ]}
                       />
                       {space.role === 'owner' && (
@@ -698,11 +709,11 @@ export function TeamDialog({
                           disabled={busy}
                           onClick={() => void transfer(member)}
                         >
-                          移交所有权
+                          {t('移交所有权')}
                         </button>
                       )}
                       <IconButton
-                        label={`移除${member.displayName}`}
+                        label={t('移除{v0}', { v0: member.displayName })}
                         disabled={busy}
                         onClick={() => remove(member)}
                       >
@@ -712,14 +723,14 @@ export function TeamDialog({
                   ) : (
                     <span className="soft-tag">
                       {member.role === 'owner'
-                        ? '所有者'
+                        ? t('所有者')
                         : member.role === 'admin'
-                          ? '管理员'
+                          ? t('管理员')
                           : member.role === 'editor'
-                            ? '编辑成员'
+                            ? t('编辑成员')
                             : member.role === 'reviewer'
-                              ? '审阅者'
-                              : '浏览成员'}
+                              ? t('审阅者')
+                              : t('浏览成员')}
                     </span>
                   )}
                 </div>
@@ -727,27 +738,29 @@ export function TeamDialog({
             </div>
             {canManage && space.kind === 'team' && (
               <div className="invite-block">
-                <h3>邀请一位队友</h3>
+                <h3>{t('邀请一位队友')}</h3>
                 <div className="invite-actions">
                   <ChoiceSelect
-                    ariaLabel="被邀请者角色"
+                    ariaLabel={t('被邀请者角色')}
                     value={role}
                     disabled={busy}
                     onValueChange={setRole}
                     options={[
-                      { value: 'editor', label: '可以编辑作品' },
-                      { value: 'reviewer', label: '可以审阅' },
-                      { value: 'viewer', label: '仅浏览' },
-                      ...(space.role === 'owner' ? [{ value: 'admin', label: '团队管理员' }] : []),
+                      { value: 'editor', label: t('可以编辑作品') },
+                      { value: 'reviewer', label: t('可以审阅') },
+                      { value: 'viewer', label: t('仅浏览') },
+                      ...(space.role === 'owner'
+                        ? [{ value: 'admin', label: t('团队管理员') }]
+                        : []),
                     ]}
                   />
                   <button className="button button-secondary" disabled={busy} onClick={invite}>
                     {busy ? (
-                      <Busy label="正在处理" />
+                      <Busy label={t('正在处理')} />
                     ) : (
                       <>
                         <Plus size={16} />
-                        生成邀请码
+                        {t('生成邀请码')}
                       </>
                     )}
                   </button>
@@ -756,13 +769,13 @@ export function TeamDialog({
                   <div className="generated-code">
                     <code>{code}</code>
                     <IconButton
-                      label="复制团队邀请码"
+                      label={t('复制团队邀请码')}
                       onClick={() =>
                         navigator.clipboard
                           ? navigator.clipboard
                               .writeText(code)
-                              .catch(() => setError('无法自动复制，请手动选中邀请码。'))
-                          : setError('当前环境不能自动复制，请手动选择邀请码。')
+                              .catch(() => setError(t('无法自动复制，请手动选中邀请码。')))
+                          : setError(t('当前环境不能自动复制，请手动选择邀请码。'))
                       }
                     >
                       <Copy size={18} />
@@ -770,7 +783,7 @@ export function TeamDialog({
                   </div>
                 )}
                 <p className="fine-print">
-                  邀请码有效 7 天，可使用一次。请只发送给你希望邀请的成员。
+                  {t('邀请码有效 7 天，可使用一次。请只发送给你希望邀请的成员。')}
                 </p>
               </div>
             )}
@@ -780,7 +793,7 @@ export function TeamDialog({
         ) : policy ? (
           <div className="stack-form">
             <label className="switch-row">
-              <span>允许项目参考共享</span>
+              <span>{t('允许项目参考共享')}</span>
               <input
                 type="checkbox"
                 disabled={!canManage || busy}
@@ -789,7 +802,7 @@ export function TeamDialog({
               />
             </label>
             <label className="switch-row">
-              <span>允许接收者复制项目</span>
+              <span>{t('允许接收者复制项目')}</span>
               <input
                 type="checkbox"
                 disabled={!canManage || busy}
@@ -798,11 +811,11 @@ export function TeamDialog({
               />
             </label>
             <p className="form-hint">
-              参考共享可以撤销后续访问。接收者已经明确复制的独立副本，无法远程收回。
+              {t('参考共享可以撤销后续访问。接收者已经明确复制的独立副本，无法远程收回。')}
             </p>
             <div className="field-grid">
               <label>
-                有效授权上限
+                {t('有效授权上限')}
                 <input
                   type="number"
                   min="0"
@@ -816,7 +829,7 @@ export function TeamDialog({
                 />
               </label>
               <label>
-                每次复制素材上限
+                {t('每次复制素材上限')}
                 <input
                   type="number"
                   min="0"
@@ -830,14 +843,14 @@ export function TeamDialog({
             </div>
             {canManage && (
               <button className="button button-primary" disabled={busy} onClick={savePolicy}>
-                {busy ? <Busy /> : '保存共享规则'}
+                {busy ? <Busy /> : t('保存共享规则')}
               </button>
             )}
           </div>
         ) : !error ? (
-          <Busy label="读取共享规则" />
+          <Busy label={t('读取共享规则')} />
         ) : (
-          <p className="form-hint">共享规则读取失败，请关闭后重试。当前规则没有被更改。</p>
+          <p className="form-hint">{t('共享规则读取失败，请关闭后重试。当前规则没有被更改。')}</p>
         )}
       </Modal>
       {confirmation.dialog}
@@ -900,15 +913,15 @@ export function CopyProjectDialog({
   }
   return (
     <Modal
-      title="把项目复制到另一个空间"
-      subtitle="副本包含允许复制的素材和作品版本，与来源项目独立保存。"
+      title={t('把项目复制到另一个空间')}
+      subtitle={t('副本包含允许复制的素材和作品版本，与来源项目独立保存。')}
       onClose={onClose}
       canClose={() => !locked.current}
       className="studio-dialog copy-dialog"
     >
       <form className="stack-form" onSubmit={copy} aria-busy={busy}>
         <label>
-          副本名称
+          {t('副本名称')}
           <input
             value={title}
             maxLength={120}
@@ -921,12 +934,12 @@ export function CopyProjectDialog({
           />
         </label>
         <label>
-          目标空间
+          {t('目标空间')}
           <ChoiceSelect
-            ariaLabel="目标空间"
+            ariaLabel={t('目标空间')}
             value={target}
             disabled={busy || !destinations.length}
-            placeholder="没有可写入的目标空间"
+            placeholder={t('没有可写入的目标空间')}
             onValueChange={(value) => {
               setTarget(value);
               setKey(secureUuid());
@@ -934,26 +947,28 @@ export function CopyProjectDialog({
             options={destinations.map((space) => ({
               value: space.id,
               label: space.name,
-              description: space.kind === 'personal' ? '个人空间' : '团队空间',
+              description: space.kind === 'personal' ? t('个人空间') : t('团队空间'),
             }))}
           />
         </label>
         {!destinations.length && (
           <p className="form-hint" role="status">
-            当前没有可保存副本的空间。请切换到有编辑权限的个人或团队空间。
+            {t('当前没有可保存副本的空间。请切换到有编辑权限的个人或团队空间。')}
           </p>
         )}
         <p className="form-hint">
-          来源空间必须允许复制；外部共享还需要有效的复制授权。完成后撤销来源共享不会删除这个副本。
+          {t(
+            '来源空间必须允许复制；外部共享还需要有效的复制授权。完成后撤销来源共享不会删除这个副本。',
+          )}
         </p>
         <InlineError message={error} />
         <button className="button button-primary" disabled={busy || !target || !title.trim()}>
           {busy ? (
-            <Busy label="正在复制" />
+            <Busy label={t('正在复制')} />
           ) : (
             <>
               <Copy size={18} />
-              确认创建独立副本
+              {t('确认创建独立副本')}
             </>
           )}
         </button>
@@ -1019,18 +1034,18 @@ export function ShareDialog({ project, onClose }: { project: Project; onClose: (
   }
   return (
     <Modal
-      title="共享这个项目"
-      subtitle={`${project.title} · 仅向明确的接收者授权`}
+      title={t('共享这个项目')}
+      subtitle={t('{v0} · 仅向明确的接收者授权', { v0: project.title })}
       onClose={onClose}
       canClose={() => !locked.current}
       className="studio-dialog share-dialog"
     >
       {!canManage && (
-        <p className="form-hint">只有项目所属空间的所有者或管理员可以管理外部授权。</p>
+        <p className="form-hint">{t('只有项目所属空间的所有者或管理员可以管理外部授权。')}</p>
       )}
       <form className="stack-form" onSubmit={share} aria-busy={busy}>
         <label>
-          接收者手机号
+          {t('接收者手机号')}
           <input
             type="tel"
             inputMode="tel"
@@ -1039,26 +1054,26 @@ export function ShareDialog({ project, onClose }: { project: Project; onClose: (
             disabled={busy || !canManage}
             value={phone}
             onChange={(e) => setPhone(e.target.value)}
-            placeholder="对方需要已注册账号"
+            placeholder={t('对方需要已注册账号')}
             required
           />
         </label>
         <div className="field-grid">
           <label>
-            共享方式
+            {t('共享方式')}
             <ChoiceSelect
-              ariaLabel="共享方式"
+              ariaLabel={t('共享方式')}
               disabled={busy || !canManage}
               value={mode}
               onValueChange={setMode}
               options={[
-                { value: 'reference', label: '参考', description: '允许浏览与评论' },
-                { value: 'copy', label: '允许复制', description: '可复制为独立项目' },
+                { value: 'reference', label: t('参考'), description: t('允许浏览与评论') },
+                { value: 'copy', label: t('允许复制'), description: t('可复制为独立项目') },
               ]}
             />
           </label>
           <label>
-            有效天数
+            {t('有效天数')}
             <input
               type="number"
               value={days}
@@ -1073,13 +1088,13 @@ export function ShareDialog({ project, onClose }: { project: Project; onClose: (
         </div>
         <p className="form-hint">
           {mode === 'copy'
-            ? '对方可以明确复制到有编辑权限的空间。已经完成的独立副本不会因撤销共享而消失。'
-            : '撤销授权后，对方将无法继续访问源项目；已经下载的资料无法远程收回。'}
+            ? t('对方可以明确复制到有编辑权限的空间。已经完成的独立副本不会因撤销共享而消失。')
+            : t('撤销授权后，对方将无法继续访问源项目；已经下载的资料无法远程收回。')}
         </p>
         <InlineError message={error} />
         {message && (
           <p className="success-note" role="status">
-            {message}
+            {t(message)}
           </p>
         )}
         <button
@@ -1092,37 +1107,41 @@ export function ShareDialog({ project, onClose }: { project: Project; onClose: (
           ) : (
             <>
               <LinkSimple size={18} />
-              确认共享
+              {t('确认共享')}
             </>
           )}
         </button>
       </form>
       <div className="grants-list">
-        <h3>项目授权</h3>
+        <h3>{t('项目授权')}</h3>
         {grants
           .filter((g) => !g.revokedAt)
           .map((g) => (
             <div className="grant-row" key={g.id}>
               <div>
-                <strong>{g.targetName ?? g.phoneMasked ?? '已授权的接收者'}</strong>
+                <strong>{g.targetName ?? g.phoneMasked ?? t('已授权的接收者')}</strong>
                 <small>
-                  {Date.parse(g.expiresAt) <= Date.now() ? '已过期 · ' : ''}
-                  {g.mode === 'copy' ? '允许复制' : '参考共享'} · 至 {formatDate(g.expiresAt)}
+                  {Date.parse(g.expiresAt) <= Date.now() ? t('已过期 · ') : ''}
+                  {g.mode === 'copy' ? t('允许复制') : t('参考共享')} {t('· 至')}
+                  {formatDate(g.expiresAt)}
                 </small>
               </div>
               <button
                 type="button"
                 className="text-button"
                 disabled={busy || !canManage}
-                aria-label={`撤销对${g.targetName ?? g.phoneMasked ?? '接收者'}的${g.mode === 'copy' ? '复制' : '参考'}授权`}
+                aria-label={t('撤销对{v0}的{v1}授权', {
+                  v0: g.targetName ?? g.phoneMasked ?? t('接收者'),
+                  v1: g.mode === 'copy' ? t('复制') : t('参考'),
+                })}
                 onClick={() => revoke(g)}
               >
-                撤销
+                {t('撤销')}
               </button>
             </div>
           ))}
         {!grants.filter((g) => !g.revokedAt).length && (
-          <p className="quiet-copy">暂时没有未撤销的外部授权。</p>
+          <p className="quiet-copy">{t('暂时没有未撤销的外部授权。')}</p>
         )}
       </div>
     </Modal>

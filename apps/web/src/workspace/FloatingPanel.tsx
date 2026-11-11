@@ -41,6 +41,7 @@ import {
 import { usePresence } from '../motion/usePresence';
 import type { MotionPhase } from '../motion/registry';
 import { PanelChromeContext } from './PanelChromeContext';
+import { t, useI18n } from '../i18n';
 import './panel.css';
 
 type Gesture = {
@@ -91,6 +92,7 @@ export function FloatingPanel({
   open?: boolean;
   motionState?: MotionPhase;
 }) {
+  useI18n();
   const panel = useRef<HTMLElement>(null);
   const dragHandle = useRef<HTMLDivElement>(null);
   const layoutTrigger = useRef<HTMLButtonElement>(null);
@@ -98,6 +100,7 @@ export function FloatingPanel({
   const [dragging, setDragging] = useState(false);
   const [menu, setMenu] = useState(false);
   const [animatingPresentation, setAnimatingPresentation] = useState(false);
+  const [presentationMs, setPresentationMs] = useState(220);
   const menuPresence = usePresence(menu, 'panel-menu');
   const contentId = useId(),
     menuId = useId();
@@ -125,6 +128,10 @@ export function FloatingPanel({
     width: rect.width,
     height: rect.height,
     '--panel-header-height': `${condensed ? 16 : panelHeaderHeight(viewport)}px`,
+    '--panel-layout-duration': `${presentationMs}ms`,
+    '--motion-x': value.dock === 'left' ? '-12px' : value.dock === 'right' ? '12px' : '0px',
+    '--motion-y': value.dock === 'bottom' ? '14px' : value.dock === 'floating' ? '6px' : '0px',
+    '--motion-scale': value.dock === 'floating' ? '0.992' : '1',
   } as CSSProperties;
 
   function finishGesture(cancel: boolean) {
@@ -258,9 +265,9 @@ export function FloatingPanel({
   }, [open]);
   useEffect(() => {
     if (!animatingPresentation) return;
-    const timer = setTimeout(() => setAnimatingPresentation(false), 260);
+    const timer = setTimeout(() => setAnimatingPresentation(false), presentationMs + 30);
     return () => clearTimeout(timer);
-  }, [animatingPresentation, value.presentation]);
+  }, [animatingPresentation, value.presentation, value.dock, presentationMs]);
   useEffect(() => {
     if (!menu) return;
     const outside = (event: globalThis.PointerEvent) => {
@@ -269,18 +276,35 @@ export function FloatingPanel({
     document.addEventListener('pointerdown', outside, true);
     return () => document.removeEventListener('pointerdown', outside, true);
   }, [menu]);
+  function animateGeometry(next: PanelGeometry) {
+    const destination = panelRectangle(boundPanel(next, viewport, panelKey), viewport);
+    const distance = Math.hypot(destination.x - rect.x, destination.y - rect.y);
+    const resize = Math.max(
+      Math.abs(destination.width - rect.width),
+      Math.abs(destination.height - rect.height),
+    );
+    // A nearby collapse settles faster than crossing the entire canvas. Direct
+    // pointer input always bypasses this presentation-only transition.
+    setPresentationMs(
+      Math.round(Math.min(300, Math.max(160, 155 + distance * 0.1 + resize * 0.07))),
+    );
+    setAnimatingPresentation(true);
+    onGeometry(next);
+  }
   function setPresentation(next: 'normal' | 'maximized' | 'collapsed') {
     finishGesture(false);
-    setAnimatingPresentation(true);
     setMenu(false);
-    onGeometry({ ...value, presentation: next });
+    animateGeometry({ ...value, presentation: next });
     // Do not leave keyboard focus inside a collapsed or inert content subtree.
     if (next === 'collapsed') dragHandle.current?.focus();
   }
   function dock(next: Dock) {
     finishGesture(false);
-    onGeometry(boundPanel({ ...value, dock: next, presentation: 'normal' }, viewport, panelKey));
+    animateGeometry(
+      boundPanel({ ...value, dock: next, presentation: 'normal' }, viewport, panelKey),
+    );
     setMenu(false);
+    layoutTrigger.current?.focus({ preventScroll: true });
   }
   function resizeByKeyboard(key: string, shift: boolean, alt: boolean) {
     const delta = alt ? 1 : shift ? 32 : 8;
@@ -326,7 +350,11 @@ export function FloatingPanel({
           className="panel-title-drag"
           role="button"
           tabIndex={0}
-          aria-label={`${title}面板，${attached ? '上下拖动调整高度，方向键调整尺寸' : '拖动和方向键移动'}；Alt加方向键1像素微调，回车${collapsed ? '展开' : '折叠'}`}
+          aria-label={t('{title}面板：{action}。Alt + 方向键微调，回车{state}。', {
+            title,
+            action: t(attached ? '上下拖动调整高度，方向键调整尺寸' : '拖动和方向键移动'),
+            state: t(collapsed ? '展开' : '折叠'),
+          })}
           aria-expanded={!collapsed}
           aria-controls={contentId}
           onPointerDown={(event) => begin(event, attached ? 'resize' : 'move', 'n')}
@@ -368,10 +396,14 @@ export function FloatingPanel({
             className="panel-collapse-action"
             label={
               collapsed
-                ? `继续调节：恢复面板到${Math.round(value.height)}像素，保留当前操作`
+                ? t('继续调节：恢复面板到{height}像素，保留当前操作', {
+                    height: Math.round(value.height),
+                  })
                 : needsPhotoSpace
-                  ? `看全图：临时折叠面板，保留当前操作和${Math.round(value.height)}像素高度`
-                  : '折叠到标题栏，保留当前操作'
+                  ? t('看全图：临时折叠面板，保留当前操作和{height}像素高度', {
+                      height: Math.round(value.height),
+                    })
+                  : t('折叠到标题栏，保留当前操作')
             }
             aria-expanded={!collapsed}
             aria-controls={contentId}
@@ -382,10 +414,10 @@ export function FloatingPanel({
           <IconButton
             label={
               maximized
-                ? '返回常规调节，恢复面板尺寸'
+                ? t('返回常规调节，恢复面板尺寸')
                 : mobile
-                  ? '展开精调，允许遮挡画面'
-                  : '最大化面板'
+                  ? t('展开精调，允许遮挡画面')
+                  : t('最大化面板')
             }
             aria-pressed={maximized}
             onClick={() => setPresentation(maximized ? 'normal' : 'maximized')}
@@ -396,15 +428,15 @@ export function FloatingPanel({
             ref={layoutTrigger}
             type="button"
             className="panel-layout-trigger"
-            title="面板位置与连续尺寸"
-            aria-label="面板位置与连续尺寸"
+            title={t('面板位置与连续尺寸')}
+            aria-label={t('面板位置与连续尺寸')}
             aria-expanded={menu}
             aria-controls={menuId}
             onClick={() => setMenu(!menu)}
           >
             <SlidersHorizontal size={18} />
           </button>
-          <IconButton label={`收起${title}，可从工具栏重新打开`} onClick={onClose}>
+          <IconButton label={t('收起{title}，可从工具栏重新打开', { title })} onClick={onClose}>
             <X size={18} />
           </IconButton>
         </div>
@@ -423,12 +455,12 @@ export function FloatingPanel({
           <div
             className="panel-dock-choices"
             role="group"
-            aria-label="面板停靠位置"
+            aria-label={t('面板停靠位置')}
             data-motion="panel-docking"
           >
             <button type="button" aria-pressed={value.dock === 'left'} onClick={() => dock('left')}>
               <SidebarSimple size={17} />
-              左侧
+              {t('左侧')}
             </button>
             <button
               type="button"
@@ -436,7 +468,7 @@ export function FloatingPanel({
               onClick={() => dock('right')}
             >
               <SidebarSimple size={17} style={{ transform: 'rotate(180deg)' }} />
-              右侧
+              {t('右侧')}
             </button>
             <button
               type="button"
@@ -444,7 +476,7 @@ export function FloatingPanel({
               onClick={() => dock('bottom')}
             >
               <Rectangle size={17} />
-              底部
+              {t('底部')}
             </button>
             <button
               type="button"
@@ -452,20 +484,20 @@ export function FloatingPanel({
               onClick={() => dock('floating')}
             >
               <ArrowsOut size={17} />
-              浮动
+              {t('浮动')}
             </button>
           </div>
           <div className="panel-size-controls" data-motion="panel-sizing">
             {!attached && (
               <label>
-                宽度 <output>{Math.round(value.width)} px</output>
+                {t('宽度')} <output>{Math.round(value.width)} px</output>
                 <input
                   type="range"
                   min={bounds.minWidth}
                   max={bounds.maxWidth}
                   step={1}
                   value={value.width}
-                  aria-label="面板宽度，像素"
+                  aria-label={t('面板宽度，像素')}
                   onChange={(event) =>
                     onGeometry(
                       boundPanel(
@@ -479,14 +511,14 @@ export function FloatingPanel({
               </label>
             )}
             <label>
-              高度 <output>{Math.round(value.height)} px</output>
+              {t('高度')} <output>{Math.round(value.height)} px</output>
               <input
                 type="range"
                 min={bounds.minHeight}
                 max={bounds.maxHeight}
                 step={1}
                 value={value.height}
-                aria-label="面板高度，像素"
+                aria-label={t('面板高度，像素')}
                 onChange={(event) =>
                   onGeometry(
                     boundPanel(
@@ -502,7 +534,7 @@ export function FloatingPanel({
           <div
             className="panel-composition-choices"
             role="group"
-            aria-label="图片与面板的关系"
+            aria-label={t('图片与面板的关系')}
             data-motion="panel-composition"
           >
             <button
@@ -510,31 +542,32 @@ export function FloatingPanel({
               aria-pressed={value.composition !== 'overlay'}
               onClick={() => onGeometry({ ...value, composition: 'reflow' })}
             >
-              画面让位
+              {t('画面让位')}
             </button>
             <button
               type="button"
               aria-pressed={value.composition === 'overlay'}
               onClick={() => onGeometry({ ...value, composition: 'overlay' })}
             >
-              覆盖画面精调
+              {t('覆盖画面精调')}
             </button>
           </div>
-          <p>
-            {needsPhotoSpace
-              ? '画面继续避让面板。点标题栏的“看全图”收起参数；“继续调节”恢复当前尺寸，参数不会丢失。'
-              : '拖动边角连续调节尺寸。方向键调8像素，Alt+方向键调1像素。'}
-          </p>
+          <details className="panel-layout-help">
+            <summary>{t('拖动与键盘操作')}</summary>
+            <p>{t('拖动标题移动，拖动边角缩放。方向键调整 8 像素，Alt + 方向键调整 1 像素。')}</p>
+            {needsPhotoSpace && <p>{t('收起面板可看全图，重新展开会恢复当前尺寸和参数。')}</p>}
+          </details>
           <button
             className="panel-reset-layout"
             type="button"
             onClick={() => {
-              onGeometry(defaultPanel(panelKey, viewport));
+              animateGeometry(defaultPanel(panelKey, viewport));
               setMenu(false);
+              layoutTrigger.current?.focus({ preventScroll: true });
             }}
           >
             <ArrowCounterClockwise size={15} />
-            恢复此面板布局
+            {t('恢复此面板布局')}
           </button>
         </div>
       )}
@@ -569,7 +602,10 @@ export function FloatingPanel({
               key={edge}
               className={`panel-resize-edge resize-${edge}${edge === 'se' ? ' panel-resize-handle' : ''}`}
               role="separator"
-              aria-label={`从${edgeLabels[edge]}调整${title}面板，Alt加方向键可1像素微调`}
+              aria-label={t('从{edge}调整{title}面板，Alt加方向键可1像素微调', {
+                edge: t(edgeLabels[edge]),
+                title,
+              })}
               aria-orientation={edge === 'n' || edge === 's' ? 'horizontal' : 'vertical'}
               aria-valuenow={Math.round(edge === 'n' || edge === 's' ? rect.height : rect.width)}
               aria-valuemin={Math.round(
@@ -578,7 +614,10 @@ export function FloatingPanel({
               aria-valuemax={Math.round(
                 edge === 'n' || edge === 's' ? bounds.maxHeight : bounds.maxWidth,
               )}
-              aria-valuetext={`宽 ${Math.round(rect.width)} 像素，高 ${Math.round(rect.height)} 像素`}
+              aria-valuetext={t('宽 {width} 像素，高 {height} 像素', {
+                width: Math.round(rect.width),
+                height: Math.round(rect.height),
+              })}
               tabIndex={edge === 'se' || (attached && edge === 'n') ? 0 : -1}
               onPointerDown={(event) => begin(event, 'resize', edge)}
               onPointerMove={move}

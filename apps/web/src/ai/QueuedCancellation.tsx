@@ -1,3 +1,4 @@
+import { t } from '../i18n';
 import { useEffect, useRef, useState } from 'react';
 import { XCircle } from '@phosphor-icons/react';
 import { api, ApiError, errorMessage, jsonRequest } from '../lib/api';
@@ -73,11 +74,11 @@ export function QueuedCancellation({ job, onChanged }: { job: AIJob; onChanged: 
         onClick={() => void cancel()}
       >
         {busy ? <Busy label="" /> : <XCircle size={16} />}
-        {busy ? '正在确认排队状态' : '取消排队'}
+        {busy ? t('正在确认排队状态') : t('取消排队')}
       </button>
       {message && (
         <p className="ai-status-copy" role="status">
-          {message}
+          {t(message)}
         </p>
       )}
       <InlineError message={error} />

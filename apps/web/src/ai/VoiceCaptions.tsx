@@ -1,3 +1,4 @@
+import { t } from '../i18n';
 import { useId, useLayoutEffect, useRef, useState } from 'react';
 import type { VoiceServerEvent } from '@ai-xiutu/contracts';
 import './voice-captions.css';
@@ -25,7 +26,7 @@ export function appendCaption(state: CaptionState, fragment: Fragment): CaptionS
 
 export function VoiceCaptions({
   captions,
-  userLabel = '你',
+  userLabel,
   initiallyVisible = true,
   onVisibilityChange,
   status,
@@ -56,12 +57,12 @@ export function VoiceCaptions({
           onVisibilityChange?.(!visible);
         }}
       >
-        {visible ? '隐藏字幕' : '显示字幕'}
+        {visible ? t('隐藏字幕') : t('显示字幕')}
       </button>
-      <div id={id} hidden={!visible} className="voice-captions-lines" aria-label="实时字幕">
+      <div id={id} hidden={!visible} className="voice-captions-lines" aria-label={t('实时字幕')}>
         {captions.user?.text && (
           <p ref={userLine}>
-            <b>{userLabel}</b> {captions.user.text}
+            <b>{userLabel ?? t('你')}</b> {captions.user.text}
           </p>
         )}
         {captions.assistant?.text && (
@@ -69,8 +70,8 @@ export function VoiceCaptions({
             <b>AI</b> {captions.assistant.text}
           </p>
         )}
-        {status && <p role="status">{status}</p>}
-        {!status && !captions.user?.text && !captions.assistant?.text && <p>等待语音字幕</p>}
+        {status && <p role="status">{t(status)}</p>}
+        {!status && !captions.user?.text && !captions.assistant?.text && <p>{t('等待语音字幕')}</p>}
       </div>
     </div>
   );

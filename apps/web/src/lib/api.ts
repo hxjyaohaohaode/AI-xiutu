@@ -1,3 +1,4 @@
+import { formatDateTime } from '../i18n';
 export class ApiError extends Error {
   constructor(
     public code: string,
@@ -64,14 +65,6 @@ export function downloadBlob(blob: Blob, name: string) {
   window.setTimeout(() => URL.revokeObjectURL(url), 30000);
 }
 
-export const formatDate = (value?: string) =>
-  value
-    ? new Intl.DateTimeFormat('zh-CN', {
-        month: 'short',
-        day: 'numeric',
-        hour: '2-digit',
-        minute: '2-digit',
-      }).format(new Date(value))
-    : '';
+export const formatDate = (value?: string) => (value ? formatDateTime(value) : '');
 export const filenameBase = (name: string) =>
   name.replace(/\.[^.]+$/, '').replace(/[\\/:*?"<>|]/g, '_') || '作品';

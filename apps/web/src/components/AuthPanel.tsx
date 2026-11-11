@@ -20,7 +20,9 @@ import { api, errorMessage, jsonRequest } from '../lib/api';
 import type { PublicConfig, Session } from '../lib/types';
 import { Brand, Busy, DialogMotionContext, IconButton, InlineError, Modal } from './Ui';
 import { brandLogoUrl } from '../lib/brand';
-import { MotionSwitch } from '../motion/Presence';
+import { MotionDisclosure, MotionSwitch } from '../motion/Presence';
+import { t, useLocale } from '../i18n';
+import { LanguageSelect } from '../i18n/LanguageSelect';
 import {
   AuthCooldowns,
   AuthOperations,
@@ -29,7 +31,6 @@ import {
   authFailureConsumedCode,
   authPayload,
   authResultUncertain,
-  cooldownLabel,
   emptyAuthFields,
   maskedAuthPhone,
   normalizedAuthPhone,
@@ -80,6 +81,7 @@ export function AuthPanel({
   /** App may retain only deadlines across dialog mounts; credentials stay inside this form. */
   cooldowns?: AuthCooldowns;
 }) {
+  useLocale();
   const [mode, setMode] = useState<AuthMode>(initialMode);
   const [registerStep, setRegisterStep] = useState<'phone' | 'details'>('phone');
   const [fields, setFields] = useState(emptyAuthFields);
@@ -100,6 +102,7 @@ export function AuthPanel({
   const [recoveredSession, setRecoveredSession] = useState<Session | null>(null);
   const [recoveryMessage, setRecoveryMessage] = useState('');
   const [direction, setDirection] = useState<'forward' | 'back'>('forward');
+  const [inviteExpanded, setInviteExpanded] = useState(false);
   const phoneInput = useRef<HTMLInputElement>(null);
   const form = useRef<HTMLFormElement>(null);
   const id = useId();
@@ -382,6 +385,12 @@ export function AuthPanel({
   }
 
   const fieldId = (field: AuthField) => `${id}-${field}`;
+  const cooldownText = (seconds: number) =>
+    seconds < 60
+      ? t('{count} 秒后重试', { count: seconds })
+      : seconds < 3600
+        ? t('{count} 分钟后重试', { count: Math.ceil(seconds / 60) })
+        : t('{count} 小时后重试', { count: Math.ceil(seconds / 3600) });
   const descriptions = (field: AuthField, hint = false) =>
     [hint ? `${fieldId(field)}-hint` : '', errors[field] ? `${fieldId(field)}-error` : '']
       .filter(Boolean)
@@ -389,12 +398,12 @@ export function AuthPanel({
   const fieldError = (field: AuthField) =>
     errors[field] ? (
       <span id={`${fieldId(field)}-error`} className="auth-field-error" role="status">
-        {errors[field]}
+        {t(errors[field]!)}
       </span>
     ) : null;
   const phoneField = (
     <div className="auth-field auth-phone-field">
-      <label htmlFor={fieldId('phone')}>手机号</label>
+      <label htmlFor={fieldId('phone')}>{t('手机号')}</label>
       <input
         ref={phoneInput}
         data-testid="auth-phone"
@@ -406,7 +415,7 @@ export function AuthPanel({
         value={fields.phone}
         onChange={(event) => updateField('phone', event.target.value)}
         onBlur={(event) => blurField('phone', event.relatedTarget)}
-        placeholder="手机号或国际区号 + 号码"
+        placeholder={t('手机号或国际区号 + 号码')}
         minLength={8}
         maxLength={24}
         required
@@ -418,15 +427,15 @@ export function AuthPanel({
     </div>
   );
   const smsLabel = smsUnavailable
-    ? '短信暂不可用'
+    ? t('短信暂不可用')
     : activeKind === 'sms'
-      ? '发送中…'
+      ? t('发送中…')
       : smsCooldown
-        ? cooldownLabel(smsCooldown)
-        : '获取验证码';
+        ? cooldownText(smsCooldown)
+        : t('获取验证码');
   const codeField = (
     <div className="auth-field auth-code-field">
-      <label htmlFor={fieldId('code')}>短信验证码</label>
+      <label htmlFor={fieldId('code')}>{t('短信验证码')}</label>
       <div className="auth-code-row">
         <input
           id={fieldId('code')}
@@ -438,7 +447,7 @@ export function AuthPanel({
           value={fields.code}
           onChange={(event) => updateField('code', event.target.value)}
           onBlur={(event) => blurField('code', event.relatedTarget)}
-          placeholder="6 位验证码"
+          placeholder={t('6 位验证码')}
           minLength={6}
           maxLength={6}
           required
@@ -460,7 +469,7 @@ export function AuthPanel({
   );
   const passwordField = (
     <div className="auth-field auth-password-field">
-      <label htmlFor={fieldId('password')}>{mode === 'reset' ? '新密码' : '密码'}</label>
+      <label htmlFor={fieldId('password')}>{mode === 'reset' ? t('新密码') : t('密码')}</label>
       <div className="auth-password-row">
         <input
           id={fieldId('password')}
@@ -471,7 +480,7 @@ export function AuthPanel({
           value={fields.password}
           onChange={(event) => updateField('password', event.target.value)}
           onBlur={(event) => blurField('password', event.relatedTarget)}
-          placeholder={mode === 'password' ? '请输入密码' : '至少 10 位字符'}
+          placeholder={mode === 'password' ? t('请输入密码') : t('至少 10 位字符')}
           minLength={mode === 'password' ? 1 : 10}
           maxLength={128}
           required
@@ -479,7 +488,7 @@ export function AuthPanel({
           aria-describedby={descriptions('password', mode !== 'password')}
         />
         <IconButton
-          label={visible ? '隐藏密码' : '显示密码'}
+          label={visible ? t('隐藏密码') : t('显示密码')}
           aria-pressed={visible}
           className="auth-password-toggle"
           onClick={() => setVisible((value) => !value)}
@@ -489,19 +498,19 @@ export function AuthPanel({
       </div>
       {mode !== 'password' && (
         <span id={`${fieldId('password')}-hint`} className="auth-field-hint">
-          10–128 位字符，支持粘贴密码。
+          {t('10–128 位字符，支持粘贴密码。')}
         </span>
       )}
       {fieldError('password')}
     </div>
   );
   const title = resetDone
-    ? '密码已更新'
+    ? t('密码已更新')
     : mode === 'register'
-      ? '注册账号'
+      ? t('注册账号')
       : mode === 'reset'
-        ? '重置密码'
-        : '登录工作空间';
+        ? t('重置密码')
+        : t('登录工作空间');
   const screen = resetDone
     ? 'reset-done'
     : uncertain
@@ -516,14 +525,15 @@ export function AuthPanel({
       }}
       canClose={() => !operations.busy}
       initialFocusRef={phoneInput}
-      className="studio-dialog auth-dialog account-auth"
+      profile="auth"
+      className={`studio-dialog auth-dialog account-auth account-auth-${mode}`}
     >
       <div className="auth-identity">
         <Brand name={config?.brand.name} logoUrl={brandLogoUrl(config?.brand)} compact />
-        <span>个人空间与团队协作</span>
+        <LanguageSelect compact />
       </div>
       {!resetDone && !uncertain && (mode === 'password' || mode === 'otp') && (
-        <div className="auth-methods" role="group" aria-label="登录方式">
+        <div className="auth-methods" role="group" aria-label={t('登录方式')}>
           <button
             type="button"
             aria-pressed={mode === 'password'}
@@ -531,7 +541,7 @@ export function AuthPanel({
             disabled={busy}
           >
             <LockKey size={17} aria-hidden />
-            密码登录
+            {t('密码登录')}
           </button>
           <button
             type="button"
@@ -540,17 +550,22 @@ export function AuthPanel({
             disabled={busy}
           >
             <DeviceMobile size={17} aria-hidden />
-            验证码登录
+            {t('验证码登录')}
           </button>
         </div>
       )}
       {!uncertain && mode === 'register' && (
-        <ol className="auth-steps" aria-label="注册进度">
-          <li aria-current={registerStep === 'phone' ? 'step' : undefined}>
-            <span>1</span>手机号
+        <ol className="auth-steps" aria-label={t('注册进度')}>
+          <li
+            aria-current={registerStep === 'phone' ? 'step' : undefined}
+            data-complete={registerStep === 'details' || undefined}
+          >
+            <span>1</span>
+            {t('手机号')}
           </li>
           <li aria-current={registerStep === 'details' ? 'step' : undefined}>
-            <span>2</span>账号设置
+            <span>2</span>
+            {t('账号设置')}
           </li>
         </ol>
       )}
@@ -569,31 +584,30 @@ export function AuthPanel({
               data-testid="auth-reset-success"
             >
               <CheckCircle className="auth-result-icon" size={32} aria-hidden />
-              <h3>请用新密码重新登录</h3>
-              <p>该手机号对应账号的旧登录已失效，作品和项目仍会保留。</p>
+              <h3>{t('请用新密码重新登录')}</h3>
+              <p>{t('该手机号对应账号的旧登录已失效，作品和项目仍会保留。')}</p>
               <button
                 type="button"
                 className="button button-primary auth-primary"
                 data-auth-initial
                 onClick={() => switchMode('password')}
               >
-                返回登录
-                <ArrowRight size={18} aria-hidden />
+                {t('返回登录')} <ArrowRight size={18} aria-hidden />
               </button>
             </div>
           ) : uncertain ? (
             <div className="auth-result auth-recovery-result" data-testid="auth-recovery">
               <h3 tabIndex={-1} data-auth-initial>
-                请求结果尚未确认
+                {t('请求结果尚未确认')}
               </h3>
               <p>
                 {mode === 'reset'
-                  ? '密码可能已更新。请尝试用新密码登录，必要时重新获取验证码。'
-                  : '网络没有返回完整结果。先检查当前会话，避免重复提交。'}
+                  ? t('密码可能已更新。请尝试用新密码登录，必要时重新获取验证码。')
+                  : t('网络没有返回完整结果。先检查当前会话，避免重复提交。')}
               </p>
               {recoveredSession?.user && (
                 <div className="auth-recovered-account" role="status">
-                  <span>检测到已登录账号</span>
+                  <span>{t('检测到已登录账号')}</span>
                   <strong>{recoveredSession.user.displayName}</strong>
                   <small>{recoveredSession.user.phoneMasked}</small>
                   <button
@@ -603,18 +617,17 @@ export function AuthPanel({
                     disabled={busy}
                   >
                     {busy ? (
-                      <Busy label="正在确认" />
+                      <Busy label={t('正在确认')} />
                     ) : (
                       <>
-                        使用这个账号
-                        <ArrowRight size={18} aria-hidden />
+                        {t('使用这个账号')} <ArrowRight size={18} aria-hidden />
                       </>
                     )}
                   </button>
                 </div>
               )}
-              {recoveryMessage && <p role="status">{recoveryMessage}</p>}
-              <InlineError message={error} />
+              {recoveryMessage && <p role="status">{t(recoveryMessage)}</p>}
+              <InlineError message={error ? t(error) : null} />
               {mode !== 'reset' && !recoveredSession?.user && (
                 <button
                   type="button"
@@ -622,7 +635,7 @@ export function AuthPanel({
                   onClick={checkSession}
                   disabled={busy}
                 >
-                  {activeKind === 'session' ? <Busy label="正在检查" /> : '检查登录状态'}
+                  {activeKind === 'session' ? <Busy label={t('正在检查')} /> : t('检查登录状态')}
                 </button>
               )}
               <button
@@ -631,7 +644,7 @@ export function AuthPanel({
                 disabled={busy}
                 onClick={() => switchMode('password')}
               >
-                返回登录
+                {t('返回登录')}
               </button>
             </div>
           ) : (
@@ -649,8 +662,8 @@ export function AuthPanel({
                 ) : (
                   <div className="auth-phone-summary">
                     <span>
-                      <small>手机号</small>
-                      <strong>{maskedAuthPhone(fields.phone)}</strong>
+                      <small>{t('手机号')}</small>
+                      <strong>{t(maskedAuthPhone(fields.phone))}</strong>
                     </span>
                     <button
                       type="button"
@@ -662,18 +675,18 @@ export function AuthPanel({
                         setErrors({});
                       }}
                     >
-                      更改
+                      {t('更改')}
                     </button>
                   </div>
                 )}
                 {isRegisterPhone ? (
-                  <p className="auth-step-note">先获取验证码，再设置账号信息。</p>
+                  <p className="auth-step-note">{t('验证码将发送到这个号码。')}</p>
                 ) : (
                   <>
                     {mode !== 'password' && codeField}
                     {mode === 'register' && (
                       <div className="auth-field auth-name-field">
-                        <label htmlFor={fieldId('displayName')}>怎么称呼你</label>
+                        <label htmlFor={fieldId('displayName')}>{t('怎么称呼你')}</label>
                         <input
                           id={fieldId('displayName')}
                           data-testid="auth-display-name"
@@ -682,7 +695,7 @@ export function AuthPanel({
                           value={fields.displayName}
                           onChange={(event) => updateField('displayName', event.target.value)}
                           onBlur={(event) => blurField('displayName', event.relatedTarget)}
-                          placeholder="你的昵称"
+                          placeholder={t('你的昵称')}
                           maxLength={120}
                           required
                           aria-invalid={!!errors.displayName}
@@ -693,45 +706,73 @@ export function AuthPanel({
                     )}
                     {mode !== 'otp' && passwordField}
                     {mode === 'register' && (
-                      <div className="auth-field auth-invite-field">
-                        <label htmlFor={fieldId('inviteCode')}>
-                          注册邀请码 <small>{inviteRequired ? '必填' : '选填'}</small>
-                        </label>
-                        <input
-                          id={fieldId('inviteCode')}
-                          data-testid="auth-invite-code"
-                          name="inviteCode"
-                          value={fields.inviteCode}
-                          onChange={(event) => updateField('inviteCode', event.target.value)}
-                          onBlur={(event) => blurField('inviteCode', event.relatedTarget)}
-                          placeholder={
-                            inviteRequired ? '填写收到的注册邀请码' : '如果你收到过邀请码'
+                      <div className="auth-invite-section">
+                        {!inviteRequired && (
+                          <button
+                            type="button"
+                            className="auth-text-button auth-invite-trigger"
+                            aria-expanded={
+                              inviteExpanded || !!fields.inviteCode || !!errors.inviteCode
+                            }
+                            aria-controls={`${id}-invitation`}
+                            onClick={() => setInviteExpanded((value) => !value)}
+                          >
+                            {t('有邀请码？')}
+                          </button>
+                        )}
+                        <MotionDisclosure
+                          id={`${id}-invitation`}
+                          open={
+                            inviteRequired ||
+                            inviteExpanded ||
+                            !!fields.inviteCode ||
+                            !!errors.inviteCode
                           }
-                          autoComplete="off"
-                          required={inviteRequired}
-                          minLength={10}
-                          maxLength={100}
-                          aria-invalid={!!errors.inviteCode}
-                          aria-describedby={descriptions('inviteCode')}
-                        />
-                        {fieldError('inviteCode')}
+                        >
+                          <div className="auth-field auth-invite-field">
+                            <label htmlFor={fieldId('inviteCode')}>
+                              {t('注册邀请码')}
+                              <small>{inviteRequired ? t('必填') : t('选填')}</small>
+                            </label>
+                            <input
+                              id={fieldId('inviteCode')}
+                              data-testid="auth-invite-code"
+                              name="inviteCode"
+                              value={fields.inviteCode}
+                              onChange={(event) => updateField('inviteCode', event.target.value)}
+                              onBlur={(event) => blurField('inviteCode', event.relatedTarget)}
+                              placeholder={
+                                inviteRequired ? t('填写收到的注册邀请码') : t('如果你收到过邀请码')
+                              }
+                              autoComplete="off"
+                              required={inviteRequired}
+                              minLength={10}
+                              maxLength={100}
+                              aria-invalid={!!errors.inviteCode}
+                              aria-describedby={descriptions('inviteCode')}
+                            />
+                            {fieldError('inviteCode')}
+                          </div>
+                        </MotionDisclosure>
                       </div>
                     )}
                   </>
                 )}
                 {mode !== 'password' && smsUnavailable && (
                   <p className="auth-service-note" role="status">
-                    短信暂未开通。已有账号可使用密码登录，也可以继续本地编辑。
+                    {t('短信暂未开通。已有账号可使用密码登录，也可以继续本地编辑。')}
                   </p>
                 )}
                 {smsState !== 'idle' && (
                   <p className={`auth-sms-note is-${smsState}`} role="status">
                     {smsState === 'unknown'
-                      ? '发送结果待确认。已收到的验证码仍可使用，请勿连续重发。'
-                      : `验证码已提交发送，${smsExpiresIn % 60 === 0 ? `${smsExpiresIn / 60} 分钟` : `${smsExpiresIn} 秒`}内有效。`}
+                      ? t('发送结果待确认。已收到的验证码仍可使用，请勿连续重发。')
+                      : smsExpiresIn % 60 === 0
+                        ? t('验证码已提交发送，{count} 分钟内有效。', { count: smsExpiresIn / 60 })
+                        : t('验证码已提交发送，{count} 秒内有效。', { count: smsExpiresIn })}
                   </p>
                 )}
-                <InlineError message={error} />
+                <InlineError message={error ? t(error) : null} />
                 <button
                   className="button button-primary auth-primary"
                   type="submit"
@@ -743,12 +784,12 @@ export function AuthPanel({
                     <Busy
                       label={
                         isRegisterPhone
-                          ? '正在发送'
+                          ? t('正在发送')
                           : mode === 'register'
-                            ? '正在创建'
+                            ? t('正在创建')
                             : mode === 'reset'
-                              ? '正在更新'
-                              : '正在登录'
+                              ? t('正在更新')
+                              : t('正在登录')
                       }
                     />
                   ) : (
@@ -756,12 +797,12 @@ export function AuthPanel({
                       {isRegisterPhone
                         ? smsLabel
                         : submitCooldown
-                          ? cooldownLabel(submitCooldown)
+                          ? cooldownText(submitCooldown)
                           : mode === 'register'
-                            ? '创建账号'
+                            ? t('创建账号')
                             : mode === 'reset'
-                              ? '更新密码'
-                              : '登录'}
+                              ? t('更新密码')
+                              : t('登录')}
                       <ArrowRight size={18} aria-hidden />
                     </>
                   )}
@@ -772,7 +813,7 @@ export function AuthPanel({
                     className="auth-text-button auth-existing-code"
                     onClick={continueRegistration}
                   >
-                    已有验证码，继续
+                    {t('已有验证码，继续')}
                   </button>
                 )}
               </fieldset>
@@ -790,7 +831,7 @@ export function AuthPanel({
                 onClick={() => switchMode('reset')}
                 disabled={busy}
               >
-                忘记密码？
+                {t('忘记密码？')}
               </button>
               <button
                 type="button"
@@ -798,8 +839,7 @@ export function AuthPanel({
                 onClick={() => switchMode('register')}
                 disabled={busy}
               >
-                创建新账号
-                <ArrowRight size={15} aria-hidden />
+                {t('创建新账号')} <ArrowRight size={15} aria-hidden />
               </button>
             </>
           ) : (
@@ -810,13 +850,13 @@ export function AuthPanel({
               disabled={busy}
             >
               <ArrowLeft size={15} aria-hidden />
-              返回登录
+              {t('返回登录')}
             </button>
           )}
         </div>
       )}
       <p className="auth-privacy-note">
-        未登录也能本地修图与导出。保存到项目或提交参考图时，照片才会上传。
+        {t('本地编辑无需登录。保存到项目或发送参考图时才会上传照片。')}
       </p>
     </Modal>
   );

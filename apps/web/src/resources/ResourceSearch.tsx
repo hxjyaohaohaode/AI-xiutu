@@ -1,3 +1,4 @@
+import { t } from '../i18n';
 import { useEffect, useMemo, useRef, useState, type FormEvent } from 'react';
 import {
   BookmarkSimple,
@@ -103,7 +104,7 @@ function MemoryEditor({
       return;
     const outcome = await confirmStableScope(readMemory, () =>
       confirmation.confirm({
-        description: '删除这份个人长期标注？原图和团队素材仍然保留。',
+        description: t('删除这份个人长期标注？原图和团队素材仍然保留。'),
         confirmLabel: '删除个人标注',
         tone: 'danger',
       }),
@@ -140,14 +141,14 @@ function MemoryEditor({
   return (
     <>
       <Modal
-        title="长期复用说明"
+        title={t('长期复用说明')}
         subtitle={item.asset.name}
         onClose={onClose}
         canClose={() => !locked.current && !latest.current.busy}
       >
         <form className="stack-form" onSubmit={(e) => void save(e)} data-motion="resource-memory">
           <label className="switch-row">
-            <span>加入我的长期素材</span>
+            <span>{t('加入我的长期素材')}</span>
             <input
               type="checkbox"
               checked={remembered}
@@ -156,7 +157,7 @@ function MemoryEditor({
             />
           </label>
           <label>
-            便于查找的名称
+            {t('便于查找的名称')}
             <input
               value={title}
               maxLength={200}
@@ -165,29 +166,30 @@ function MemoryEditor({
             />
           </label>
           <label>
-            个人标签
+            {t('个人标签')}
             <input
               value={tags}
               maxLength={1230}
               disabled={busy}
               onChange={(e) => setTags(e.target.value)}
-              placeholder="用逗号分隔"
+              placeholder={t('用逗号分隔')}
             />
           </label>
           <label>
-            复用时要记得的说明
+            {t('复用时要记得的说明')}
             <textarea
               value={note}
               maxLength={2000}
               rows={4}
               disabled={busy}
               onChange={(e) => setNote(e.target.value)}
-              placeholder="例如：保留这个配色；适合产品封面。不自动分析身份。"
+              placeholder={t('例如：保留这个配色；适合产品封面。不自动分析身份。')}
             />
           </label>
           <p className="form-hint">
-            这些标注仅属于你的账号，不会修改团队素材信息或自动发给
-            AI；只有你明确选择引用时才带入共创。原项目权限撤销后，长期标注也不会恢复素材访问权。
+            {t(
+              '这些标注仅属于你的账号，不会修改团队素材信息或自动发给 AI；只有你明确选择引用时才带入共创。原项目权限撤销后，长期标注也不会恢复素材访问权。',
+            )}
           </p>
           <InlineError message={error} />
           <div className="dialog-actions">
@@ -199,11 +201,11 @@ function MemoryEditor({
                 onClick={() => void remove()}
               >
                 <Trash size={16} />
-                删除个人标注
+                {t('删除个人标注')}
               </button>
             )}
             <button className="button button-primary" disabled={busy}>
-              {busy ? <Busy label="保存中" /> : '保存个人说明'}
+              {busy ? <Busy label={t('保存中')} /> : t('保存个人说明')}
             </button>
           </div>
         </form>
@@ -311,15 +313,15 @@ export function ResourceSearch({
   return (
     <section
       className="resource-search"
-      aria-label={rememberedOnly ? '我的长期素材' : '搜索所有有权访问的素材'}
+      aria-label={rememberedOnly ? t('我的长期素材') : t('搜索所有有权访问的素材')}
     >
       <header className="view-heading" data-motion="resource-heading">
         <div>
-          <h1>{rememberedOnly ? '长期素材' : '查找素材'}</h1>
+          <h1>{rememberedOnly ? t('长期素材') : t('查找素材')}</h1>
           <p>
             {rememberedOnly
-              ? '只保留你主动加入的素材和个人说明；访问仍遵守来源空间权限。'
-              : '同一个搜索入口，查找有权访问的个人、团队和受邀项目素材。'}
+              ? t('只保留你主动加入的素材和个人说明；访问仍遵守来源空间权限。')
+              : t('同一个搜索入口，查找有权访问的个人、团队和受邀项目素材。')}
           </p>
         </div>
       </header>
@@ -331,57 +333,57 @@ export function ResourceSearch({
             value={query}
             maxLength={120}
             onChange={(e) => setQuery(e.target.value)}
-            placeholder="名称、标签、复用说明"
-            aria-label="搜索资源"
+            placeholder={t('名称、标签、复用说明')}
+            aria-label={t('搜索资源')}
           />
         </label>
         <ChoiceSelect
-          ariaLabel="资源范围"
+          ariaLabel={t('资源范围')}
           value={scope}
           onValueChange={(value) => {
             setScope(value);
             setSpaceId('');
           }}
           options={[
-            { value: 'all', label: '全部可访问' },
-            { value: 'personal', label: '个人空间' },
-            { value: 'team', label: '团队空间' },
+            { value: 'all', label: t('全部可访问') },
+            { value: 'personal', label: t('个人空间') },
+            { value: 'team', label: t('团队空间') },
           ]}
         />
         <ChoiceSelect
-          ariaLabel="指定空间"
+          ariaLabel={t('指定空间')}
           value={spaceId}
           onValueChange={setSpaceId}
           options={[
-            { value: '', label: '不限定空间' },
+            { value: '', label: t('不限定空间') },
             ...spaces
               .filter((s) => scope === 'all' || s.kind === scope)
               .map((s) => ({ value: s.id, label: s.name })),
           ]}
         />
         <ChoiceSelect
-          ariaLabel="素材来源"
+          ariaLabel={t('素材来源')}
           value={source}
           onValueChange={setSource}
           options={[
-            { value: '', label: '所有来源' },
-            { value: 'upload', label: '上传' },
-            { value: 'generated', label: 'AI 生成' },
-            { value: 'sketch', label: '草图' },
-            { value: 'derived', label: '加工素材' },
+            { value: '', label: t('所有来源') },
+            { value: 'upload', label: t('上传') },
+            { value: 'generated', label: t('AI 生成') },
+            { value: 'sketch', label: t('草图') },
+            { value: 'derived', label: t('加工素材') },
           ]}
         />
       </div>
       <InlineError message={error} />
-      {busy && <Busy label="正在检索可访问资源" />}
+      {busy && <Busy label={t('正在检索可访问资源')} />}
       {!busy && !items.length && !error && (
         <EmptyState
           icon={<Images size={30} />}
-          title={rememberedOnly ? '还没有长期素材' : '没有找到符合条件的素材'}
+          title={rememberedOnly ? t('还没有长期素材') : t('没有找到符合条件的素材')}
           description={
             rememberedOnly
-              ? '在素材卡片上选择“长期复用”，添加属于自己的说明。'
-              : '试着缩短搜索词，或放宽空间与来源筛选。'
+              ? t('在素材卡片上选择“长期复用”，添加属于自己的说明。')
+              : t('试着缩短搜索词，或放宽空间与来源筛选。')
           }
         />
       )}
@@ -397,7 +399,9 @@ export function ResourceSearch({
               className="resource-cover"
               disabled={!!opening}
               onClick={() => void open(item)}
-              aria-label={`打开${item.memory?.title ?? item.asset.annotations?.title ?? item.asset.name}`}
+              aria-label={t('打开{v0}', {
+                v0: item.memory?.title ?? item.asset.annotations?.title ?? item.asset.name,
+              })}
             >
               {item.asset.thumbnailUrl ||
               item.asset.width * item.asset.height <= localPixelBudget() ? (
@@ -410,7 +414,7 @@ export function ResourceSearch({
               )}
               {opening === item.asset.id && (
                 <span className="resource-opening">
-                  <Busy label="打开中" />
+                  <Busy label={t('打开中')} />
                 </span>
               )}
             </button>
@@ -434,17 +438,17 @@ export function ResourceSearch({
               <div className="resource-actions">
                 <button className="text-button" onClick={() => setEdit(item)}>
                   <BookmarkSimple weight={item.memory?.remembered ? 'fill' : 'regular'} size={17} />
-                  {item.memory?.remembered ? '复用说明' : '长期复用'}
+                  {item.memory?.remembered ? t('复用说明') : t('长期复用')}
                 </button>
                 {item.asset.provenance?.kind === 'media-import' && (
                   <button className="text-button" onClick={() => setSourceDetails(item.asset)}>
-                    原件与母版
+                    {t('原件与母版')}
                   </button>
                 )}
                 {onReference && (
                   <button className="text-button" onClick={() => onReference(item)}>
                     <PencilSimple size={16} />
-                    作为AI参考
+                    {t('作为AI参考')}
                   </button>
                 )}
               </div>
@@ -454,12 +458,12 @@ export function ResourceSearch({
       </div>
       {cursor && (
         <button className="button button-secondary" disabled={more} onClick={() => void loadMore()}>
-          {more ? <Busy label="读取中" /> : '更多资源'}
+          {more ? <Busy label={t('读取中')} /> : t('更多资源')}
         </button>
       )}
       {sourceDetails && (
         <Modal
-          title="原件与母版"
+          title={t('原件与母版')}
           subtitle={sourceDetails.name}
           onClose={() => setSourceDetails(null)}
         >

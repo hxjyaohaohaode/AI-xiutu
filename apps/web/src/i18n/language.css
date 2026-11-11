@@ -1,0 +1,103 @@
+.language-select {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  position: relative;
+  color: inherit;
+  min-inline-size: 0;
+  flex-shrink: 0;
+}
+.language-select__control {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  min-inline-size: 0;
+}
+.language-select__busy {
+  width: 17px;
+  height: 17px;
+  border: 1.5px solid currentColor;
+  border-right-color: transparent;
+  border-radius: 50%;
+  animation: language-loading 750ms linear infinite;
+}
+.language-select__feedback {
+  position: absolute;
+  z-index: 1400;
+  inset-block-start: calc(100% + 0.5rem);
+  inset-inline-end: 0;
+  width: max-content;
+  max-inline-size: min(17rem, calc(100vw - 2rem));
+  padding: 0.85rem;
+  border: 1px solid var(--border, #8b81745c);
+  border-radius: 0.7rem;
+  color: var(--text, #272a24);
+  background: var(--surface, #faf8f1);
+  box-shadow: 0 8px 24px #0002;
+  text-align: start;
+}
+.language-select__feedback p {
+  margin: 0 0 0.45rem;
+  font-size: 0.8rem;
+  line-height: 1.5;
+}
+.language-select__feedback button {
+  border: 0;
+  background: transparent;
+  color: inherit;
+  padding: 0.35rem 0;
+  font: inherit;
+  font-size: 0.8rem;
+  text-decoration: underline;
+  text-underline-offset: 3px;
+  cursor: pointer;
+}
+@keyframes language-loading {
+  to {
+    transform: rotate(360deg);
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .language-select__busy {
+    animation: none;
+    opacity: 0.65;
+  }
+}
+.language-select select {
+  appearance: auto;
+  font: inherit;
+  font-size: 0.8125rem;
+  color: inherit;
+  background: transparent;
+  border: 0;
+  border-radius: 0.4rem;
+  padding: 0.55rem 0.1rem;
+  max-inline-size: 10rem;
+  min-block-size: 40px;
+  cursor: pointer;
+}
+.language-select select option {
+  color: CanvasText;
+  background: Canvas;
+}
+.language-select select:focus-visible {
+  outline: 2px solid var(--accent, #c66a3c);
+  outline-offset: 3px;
+}
+.language-select--compact {
+  gap: 0.25rem;
+}
+.language-select--compact select {
+  max-inline-size: 5.5rem;
+}
+html[lang='en'] {
+  word-break: normal;
+}
+html[lang='en'] :where(button, label, h1, h2, h3, h4, p, summary) {
+  overflow-wrap: break-word;
+}
+@media (pointer: coarse) {
+  .language-select select {
+    min-block-size: 44px;
+  }
+}

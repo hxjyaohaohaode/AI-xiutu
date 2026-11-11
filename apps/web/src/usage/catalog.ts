@@ -1,3 +1,4 @@
+import { t } from '../i18n';
 import { knownNumber } from './model';
 
 /** Public catalog fields only. Provider invoices and actual token receipts are not exposed here. */
@@ -122,7 +123,7 @@ export function usageModelName(
   modelId: string | null,
   operation?: string | null,
 ) {
-  if (!modelId) return '未记录模型';
+  if (!modelId) return t('未记录模型');
   return (
     quotes.find((quote) => quote.modelId === modelId && quote.operation === operation)?.label ??
     modelId

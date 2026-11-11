@@ -1,22 +1,23 @@
 import { useCallback, useEffect, useId, useRef, useState, useSyncExternalStore } from 'react';
 import { CaretDown, DownloadSimple, FileText, Trash, WarningCircle } from '@phosphor-icons/react';
 import { downloadBlob, errorMessage, filenameBase } from '../lib/api';
+import { t, useLocale, formatDateTime } from '../i18n';
 import { MotionDisclosure } from '../motion/Presence';
 import { accountDraftActionAllowed } from './account-model';
 import { documentDrafts, serializeDocumentDraft, type DocumentDraft } from './document-drafts';
 
 const emptyDrafts: readonly DocumentDraft[] = Object.freeze([]);
 const serverDrafts = () => emptyDrafts;
-const capturedTime = new Intl.DateTimeFormat('zh-CN', {
+const capturedTime: Intl.DateTimeFormatOptions = {
   month: 'numeric',
   day: 'numeric',
   hour: '2-digit',
   minute: '2-digit',
   hourCycle: 'h23',
-});
+};
 const draftTime = (value: number) => {
   const date = new Date(value);
-  return Number.isFinite(date.getTime()) ? capturedTime.format(date) : '时间待确认';
+  return Number.isFinite(date.getTime()) ? formatDateTime(date, capturedTime) : t('时间待确认');
 };
 type Feedback = { actor: string; kind: 'status' | 'alert'; message: string };
 
@@ -30,6 +31,7 @@ export function AccountDocumentDrafts({
   disabled: boolean;
   visible: boolean;
 }) {
+  useLocale();
   const id = useId();
   const read = useCallback(() => documentDrafts.list(actorId), [actorId]);
   const drafts = useSyncExternalStore(documentDrafts.subscribe, read, serverDrafts);
@@ -175,18 +177,24 @@ export function AccountDocumentDrafts({
       <header className="account-drafts-heading">
         <FileText size={19} aria-hidden />
         <h4 id={`${id}-title`} ref={heading} tabIndex={-1}>
-          保留的文档草稿
+          {t('保留的文档草稿')}
         </h4>
-        {drafts.length > 0 && <span className="account-draft-count">{drafts.length} 份</span>}
+        {drafts.length > 0 && (
+          <span className="account-draft-count">
+            {drafts.length} {t('份')}
+          </span>
+        )}
       </header>
       {!actorId ? (
-        <p className="account-drafts-empty">重新登录原账号后，可查看自己的保留草稿。</p>
+        <p className="account-drafts-empty">{t('重新登录原账号后，可查看自己的保留草稿。')}</p>
       ) : drafts.length === 0 ? (
-        <p className="account-drafts-empty">当前账号在本页没有保留的文档草稿。</p>
+        <p className="account-drafts-empty">{t('当前账号在本页没有保留的文档草稿。')}</p>
       ) : (
         <>
           <p className="account-drafts-description">
-            草稿仅保留在本页；刷新、关闭页面或退出登录会清除。项目无法访问时，仍可导出这里的副本。
+            {t(
+              '草稿仅保留在本页；刷新、关闭页面或退出登录会清除。项目无法访问时，仍可导出这里的副本。',
+            )}
           </p>
           <ul className="account-draft-list">
             {shown.map((draft, index) => {
@@ -194,7 +202,7 @@ export function AccountDocumentDrafts({
                 confirmation?.actorId === actorId &&
                 confirmation.projectId === draft.projectId &&
                 accountDraftActionAllowed(actorId, draft, confirmation, 'discard');
-              const title = draft.title.trim() || '未命名文档';
+              const title = draft.title.trim() || t('未命名文档');
               return (
                 <li
                   className="account-draft-row"
@@ -205,16 +213,20 @@ export function AccountDocumentDrafts({
                     <h5>{title}</h5>
                     <span className="account-draft-state" data-save-state={draft.saveState}>
                       {draft.saveState === 'pending'
-                        ? '保存中'
+                        ? t('保存中')
                         : draft.saveState === 'unknown'
-                          ? '保存结果待确认'
-                          : '未保存'}
+                          ? t('保存结果待确认')
+                          : t('未保存')}
                     </span>
                   </div>
-                  <p className="account-draft-project">{draft.projectTitle || '未命名项目'}</p>
+                  <p className="account-draft-project">{draft.projectTitle || t('未命名项目')}</p>
                   <p className="account-draft-meta">
-                    <span>{draft.base ? `基于 V${draft.base.version}` : '新建草稿'}</span>
-                    <span>保留于 {draftTime(draft.capturedAt)}</span>
+                    <span>
+                      {draft.base ? t('基于 V{p0}', { p0: draft.base.version }) : t('新建草稿')}
+                    </span>
+                    <span>
+                      {t('保留于')} {draftTime(draft.capturedAt)}
+                    </span>
                   </p>
                   <div className="account-draft-actions">
                     <button
@@ -224,10 +236,10 @@ export function AccountDocumentDrafts({
                       onClick={() => exportDraft(draft)}
                       data-testid="account-document-draft-export"
                       data-draft-primary
-                      aria-label={`导出文档草稿：${title}`}
+                      aria-label={t('导出文档草稿：{p0}', { p0: title })}
                     >
                       <DownloadSimple size={16} aria-hidden />
-                      导出草稿
+                      {t('导出草稿')}
                     </button>
                     <button
                       type="button"
@@ -235,7 +247,7 @@ export function AccountDocumentDrafts({
                       disabled={disabled || draft.saveState === 'pending'}
                       onClick={() => requestDiscard(draft)}
                       data-testid="account-document-draft-discard"
-                      aria-label={`丢弃文档草稿：${title}`}
+                      aria-label={t('丢弃文档草稿：{p0}', { p0: title })}
                       aria-expanded={confirming}
                       aria-controls={`${id}-discard-${index}`}
                       ref={(button) => {
@@ -244,15 +256,17 @@ export function AccountDocumentDrafts({
                       }}
                     >
                       <Trash size={16} aria-hidden />
-                      丢弃
+                      {t('丢弃')}
                     </button>
                   </div>
                   {draft.saveState === 'pending' && (
-                    <p className="account-draft-state-note">保存进行中，可以导出，暂时不能丢弃。</p>
+                    <p className="account-draft-state-note">
+                      {t('保存进行中，可以导出，暂时不能丢弃。')}
+                    </p>
                   )}
                   {draft.saveState === 'unknown' && (
                     <p className="account-draft-state-note">
-                      上次保存结果尚未确认。丢弃本页草稿不会取消已提交的请求。
+                      {t('上次保存结果尚未确认。丢弃本页草稿不会取消已提交的请求。')}
                     </p>
                   )}
                   <MotionDisclosure
@@ -263,10 +277,12 @@ export function AccountDocumentDrafts({
                     <div
                       className="account-draft-confirmation-body"
                       role="group"
-                      aria-label="确认丢弃文档草稿"
+                      aria-label={t('确认丢弃文档草稿')}
                     >
                       <p>
-                        丢弃后无法从本页恢复。云端文档不会被删除，已提交的保存请求也不会取消。建议先导出。
+                        {t(
+                          '丢弃后无法从本页恢复。云端文档不会被删除，已提交的保存请求也不会取消。建议先导出。',
+                        )}
                       </p>
                       <div className="account-draft-confirmation-actions">
                         <button
@@ -276,7 +292,7 @@ export function AccountDocumentDrafts({
                           disabled={!confirming || disabled}
                           onClick={() => confirmation && discardConfirmed(confirmation)}
                         >
-                          确认丢弃
+                          {t('确认丢弃')}
                         </button>
                         <button
                           type="button"
@@ -284,7 +300,7 @@ export function AccountDocumentDrafts({
                           disabled={disabled}
                           onClick={() => cancelDiscard(draft)}
                         >
-                          保留草稿
+                          {t('保留草稿')}
                         </button>
                       </div>
                     </div>
@@ -304,11 +320,13 @@ export function AccountDocumentDrafts({
                 setConfirmation(null);
               }}
             >
-              {showAll ? '收起列表' : `查看其余 ${drafts.length - 3} 份草稿`}
+              {showAll ? t('收起列表') : t('查看其余 {p0} 份草稿', { p0: drafts.length - 3 })}
               <CaretDown size={15} aria-hidden />
             </button>
           )}
-          <p className="account-drafts-export-note">JSON 文件包含草稿标题、正文与编辑基准版本。</p>
+          <p className="account-drafts-export-note">
+            {t('JSON 文件包含草稿标题、正文与编辑基准版本。')}
+          </p>
         </>
       )}
       {currentFeedback && (
@@ -317,7 +335,7 @@ export function AccountDocumentDrafts({
           role={currentFeedback.kind}
         >
           {currentFeedback.kind === 'alert' && <WarningCircle size={16} aria-hidden />}
-          <p>{currentFeedback.message}</p>
+          <p>{t(currentFeedback.message)}</p>
         </div>
       )}
     </section>

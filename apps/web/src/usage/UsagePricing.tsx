@@ -1,3 +1,4 @@
+import { t, useLocale } from '../i18n';
 import { useMemo, useState } from 'react';
 import { ArrowClockwise, Tag } from '@phosphor-icons/react';
 import { Busy, InlineError } from '../components/Ui';
@@ -25,6 +26,7 @@ export function UsagePricing({
   errors: string[];
   onRefresh: () => void;
 }) {
+  useLocale();
   const [operation, setOperation] = useState('');
   const operations = useMemo(() => [...new Set(quotes.map((quote) => quote.operation))], [quotes]);
   const selected = operations.includes(operation) ? operation : '';
@@ -33,31 +35,31 @@ export function UsagePricing({
     <MotionDetails className="usage-card usage-pricing">
       <summary>
         <span>
-          <Tag size={18} aria-hidden /> 当前服务点报价
+          <Tag size={18} aria-hidden /> {t('当前服务点报价')}
         </span>
         <span className="usage-pricing-summary">
-          {loading ? '读取中' : `${quotes.length} 个用途报价`}
+          {loading ? t('读取中') : t('{v0} 个用途报价', { v0: quotes.length })}
         </span>
       </summary>
       <div className="usage-pricing-body">
         <div className="usage-section-heading">
-          <p>按当前模型配置计点，历史流水以实际结算为准。</p>
+          <p>{t('按当前模型配置计点，历史流水以实际结算为准。')}</p>
           <button type="button" className="text-button" disabled={loading} onClick={onRefresh}>
-            <ArrowClockwise size={15} aria-hidden /> 刷新报价
+            <ArrowClockwise size={15} aria-hidden /> {t('刷新报价')}
           </button>
         </div>
-        {loading && <Busy label="读取模型报价" />}
+        {loading && <Busy label={t('读取模型报价')} />}
         {errors.map((message, index) => (
-          <InlineError key={index} message={message} />
+          <InlineError key={index} message={t(message)} />
         ))}
         {operations.length > 1 && (
           <ChoiceSelect
             className="usage-pricing-filter"
-            label="用途"
+            label={t('用途')}
             value={selected}
             onValueChange={setOperation}
             options={[
-              { value: '', label: '全部用途' },
+              { value: '', label: t('全部用途') },
               ...operations.map((value) => ({ value, label: usageOperationName(value) })),
             ]}
           />
@@ -74,24 +76,31 @@ export function UsagePricing({
                 <strong>{pointText(quote.points)}</strong>
                 <span>
                   {quote.points === null
-                    ? '报价'
-                    : `点 / ${quote.per}${quote.qualities.length ? ' · 基准' : ''}`}
+                    ? t('报价')
+                    : t('点 / {v0}{v1}', {
+                        v0: t(quote.per),
+                        v1: quote.qualities.length ? t(' · 基准') : '',
+                      })}
                 </span>
               </div>
               <div className="usage-price-meta">
                 <span className="usage-availability" data-available={quote.available}>
-                  {quote.available ? '已启用' : '暂不可用'}
+                  {quote.available ? t('已启用') : t('暂不可用')}
                 </span>
-                {!quote.available && quote.reason && <small>{quote.reason}</small>}
+                {!quote.available && quote.reason && <small>{t(quote.reason)}</small>}
                 {quote.maxSeconds !== null && (
-                  <small>每次最长 {pointText(quote.maxSeconds)} 秒</small>
+                  <small>
+                    {t('每次最长 {seconds} 秒', { seconds: pointText(quote.maxSeconds) })}
+                  </small>
                 )}
                 {quote.qualities.length > 0 && (
                   <small className="usage-quality-prices">
                     {quote.qualities
-                      .map(
-                        (quality) =>
-                          `${qualityLabels[quality.name] ?? quality.name} ${pointText(quality.points)} 点/张`,
+                      .map((quality) =>
+                        t('{v0} {v1} 点/张', {
+                          v0: t(qualityLabels[quality.name] ?? quality.name),
+                          v1: pointText(quality.points),
+                        }),
                       )
                       .join(' · ')}
                   </small>
@@ -102,11 +111,11 @@ export function UsagePricing({
         </div>
         {!loading && !quotes.length && (
           <p className="usage-empty-copy">
-            {errors.length ? '报价暂未读到，请稍后重试。' : '当前没有已配置的模型报价。'}
+            {errors.length ? t('报价暂未读到，请稍后重试。') : t('当前没有已配置的模型报价。')}
           </p>
         )}
         <p className="usage-footnote">
-          服务点按平台配置计量；任务的 token 回执与公开费率估算可从用量明细进入查看。
+          {t('服务点按平台配置计量；任务的 token 回执与公开费率估算可从用量明细进入查看。')}
         </p>
       </div>
     </MotionDetails>

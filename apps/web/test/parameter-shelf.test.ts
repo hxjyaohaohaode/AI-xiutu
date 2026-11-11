@@ -182,7 +182,11 @@ test('an unavailable first parameter does not hide the usable control and adjust
     'compact picker and slider use the same first available parameter',
   );
   assert.match(html, /aria-label="曝光，-0.35EV，已调整"/);
-  assert.match(html, /class="precision-scale" aria-hidden="true"/);
+  assert.match(
+    html,
+    /class="precision-scale" aria-hidden="true"><span>-8<\/span><span>8<\/span>/,
+    'decorative visual bounds retain exact signed values while native input bounds remain accessible',
+  );
   assert.match(html, /--range-fill-start:47.8125%/);
   assert.match(html, /--range-fill-end:50%/);
 });

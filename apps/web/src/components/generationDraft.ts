@@ -1,3 +1,4 @@
+import { t } from '../i18n';
 import type { AssetCopyRecord } from '@ai-xiutu/contracts';
 import type { Asset } from '../lib/types';
 
@@ -99,7 +100,15 @@ export async function prepareGenerationDraft(
   } catch (error) {
     const reason = error instanceof Error ? error.message : '请求未完成，请重试。';
     throw new Error(
-      `参考图尚未完整准备，草案没有切换。${completedThisAttempt ? `本次已确认的 ${completedThisAttempt} 张副本保留在目标项目。` : ''}重试会核验并复用已完成的副本，不会丢弃参考图。${reason}`,
+      t(
+        '参考图尚未完整准备，草案没有切换。{copies}重试会核验并复用已完成的副本，不会丢弃参考图。{reason}',
+        {
+          copies: completedThisAttempt
+            ? t('本次已确认的 {count} 张副本保留在目标项目。', { count: completedThisAttempt })
+            : '',
+          reason: t(reason),
+        },
+      ),
       { cause: error },
     );
   }

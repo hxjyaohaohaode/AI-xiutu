@@ -160,7 +160,7 @@ async function checkLocalCutout(browser, origin, image) {
         return route.fulfill({ status: 503, json: { message: 'offline' } });
       return route.continue();
     });
-    await page.goto(origin);
+    await page.goto(`${origin}/#/studio`);
     const sourcePng = await png(image);
     await page.getByLabel('选择照片', { exact: true }).setInputFiles({
       name: 'public-portrait.png',
@@ -279,7 +279,7 @@ try {
       ? route.continue()
       : route.abort();
   });
-  await page.goto('http://127.0.0.1:4186');
+  await page.goto('http://127.0.0.1:4186/#/studio');
   for (const source of sources) {
     const decoded = await sharp(await getBytes(source))
       .autoOrient()

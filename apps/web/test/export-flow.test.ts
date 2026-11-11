@@ -4,10 +4,12 @@ import test from 'node:test';
 import { createElement } from 'react';
 import { renderTestMarkup } from './support/render.ts';
 import {
+  ExportDialog,
   prepareBoundImageExport,
   type ImageExportCheckpoint,
 } from '../src/components/ProjectDialogs.tsx';
 import type { EditorState } from '../src/editor/useEditor.ts';
+import { setLocale } from '../src/i18n/index.ts';
 
 // This SSR check verifies action availability, not CSS layout. Browser QA owns styling.
 const stylesheetLoader = registerHooks({
@@ -208,5 +210,32 @@ test('delivery disables image and recipe actions during decode or pending cloud 
         disabled,
         'all delivery actions share the source gate',
       );
+  }
+});
+
+test('the export summary preserves the actual source filename and download suffix in every language', async () => {
+  const editor = {
+    file: new File(['image'], '保存.png', { type: 'image/png' }),
+    loading: false,
+    recipe: Object.freeze({ exposure: 0.25 }),
+  } as unknown as EditorState;
+  try {
+    for (const locale of ['zh-CN', 'zh-TW', 'en'] as const) {
+      await setLocale(locale);
+      const markup = renderTestMarkup(
+        createElement(ExportDialog, {
+          editor,
+          sourcePending: false,
+          onClose() {},
+          onSuccess() {},
+        }),
+      );
+      const summary = markup.match(/<div class="export-summary">([\s\S]*?)<\/div>/)?.[1];
+      assert.ok(summary);
+      assert.match(summary, /<strong>保存-编辑\.png<\/strong>/);
+      assert.equal(editor.file?.name, '保存.png');
+    }
+  } finally {
+    await setLocale('zh-CN');
   }
 });

@@ -3,6 +3,7 @@ import type { AiResultDecision } from '@ai-xiutu/contracts';
 import { api, ApiError, errorMessage, jsonRequest } from '../lib/api';
 import type { AIJob } from './types';
 import { decisionAttempt, type DecisionDraft, type DecisionResponse } from './decisions';
+import { t } from '../i18n';
 
 export function useResultDecisions(
   job: AIJob,
@@ -152,7 +153,11 @@ export function useResultDecisions(
     decisions,
     busy,
     loading,
-    error,
+    error: error?.startsWith('决定记录读取失败：')
+      ? t('决定记录读取失败：{reason}', { reason: t(error.slice('决定记录读取失败：'.length)) })
+      : error
+        ? t(error)
+        : null,
     uncertain,
     decide,
     reload: () => setRefresh((value) => value + 1),

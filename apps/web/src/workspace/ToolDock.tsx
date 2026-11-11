@@ -1,8 +1,9 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { CaretLeft, CaretRight } from '@phosphor-icons/react';
 import { StudioGlyph } from '../components/StudioGlyph';
 import { useReducedMotion } from '../motion/usePresence';
 import { toolGroups, type ToolGroup } from '../editor/ToolInspector';
+import { t, useI18n } from '../i18n';
 
 export const ADJUSTMENT_GROUPS: ToolGroup[] = ['light', 'color', 'curves', 'detail'];
 export function dockTool(group: ToolGroup, compact: boolean): ToolGroup {
@@ -25,14 +26,19 @@ export function ToolDock({
   onTool: (group: ToolGroup) => void;
   onAI: () => void;
 }) {
+  const { locale } = useI18n();
   const nav = useRef<HTMLDivElement>(null);
   const reducedMotion = useReducedMotion();
   const [overflow, setOverflow] = useState({ left: false, right: false });
   const active = dockTool(group, compact);
+  const [tabStop, setTabStop] = useState<string>(aiOpen ? 'ai' : active);
+  const [selection, setSelection] = useState<{ x: number; width: number; height: number } | null>(
+    null,
+  );
   const choices = toolGroups.filter(
     (tool) => !compact || !['color', 'curves', 'detail'].includes(tool.id),
   );
-  useEffect(() => {
+  useLayoutEffect(() => {
     const rail = nav.current;
     const button = rail?.querySelector<HTMLElement>('[aria-pressed="true"]');
     if (!rail || !button) return;
@@ -40,7 +46,32 @@ export function ToolDock({
     const item = button.getBoundingClientRect();
     if (item.left < viewport.left) rail.scrollLeft += item.left - viewport.left;
     else if (item.right > viewport.right) rail.scrollLeft += item.right - viewport.right;
-  }, [active, inspectorOpen, aiOpen]);
+  }, [active, inspectorOpen, aiOpen, compact, locale]);
+  useEffect(() => setTabStop(aiOpen ? 'ai' : active), [active, aiOpen, compact]);
+  useLayoutEffect(() => {
+    const rail = nav.current;
+    const button = rail?.querySelector<HTMLButtonElement>('[aria-pressed="true"]');
+    if (!rail || !button || !inspectorOpen) {
+      setSelection(null);
+      return;
+    }
+    const measure = () => {
+      const next = { x: button.offsetLeft, width: button.offsetWidth, height: button.offsetHeight };
+      setSelection((previous) =>
+        previous &&
+        previous.x === next.x &&
+        previous.width === next.width &&
+        previous.height === next.height
+          ? previous
+          : next,
+      );
+    };
+    measure();
+    const observer = new ResizeObserver(measure);
+    observer.observe(rail);
+    observer.observe(button);
+    return () => observer.disconnect();
+  }, [active, inspectorOpen, compact, locale]);
   useEffect(() => {
     const rail = nav.current;
     if (!rail) return;
@@ -59,16 +90,19 @@ export function ToolDock({
       observer.disconnect();
       rail.removeEventListener('scroll', measure);
     };
-  }, [compact]);
+  }, [compact, locale]);
   return (
     <nav
       className="floating-tool-dock"
-      aria-label="编辑工具"
+      aria-label={t('编辑工具')}
       data-motion="tool-dock"
+      data-selection-ready={selection ? 'true' : undefined}
       data-context-open={inspectorOpen || aiOpen ? 'true' : undefined}
       onKeyDown={(event) => {
         if (!['ArrowLeft', 'ArrowRight', 'Home', 'End'].includes(event.key)) return;
-        const buttons = [...event.currentTarget.querySelectorAll<HTMLButtonElement>('button')];
+        const buttons = [
+          ...event.currentTarget.querySelectorAll<HTMLButtonElement>('[data-dock-tool]'),
+        ];
         const index = buttons.indexOf(event.target as HTMLButtonElement);
         if (index < 0) return;
         event.preventDefault();
@@ -79,6 +113,7 @@ export function ToolDock({
               ? buttons.length - 1
               : (index + (event.key === 'ArrowLeft' ? -1 : 1) + buttons.length) % buttons.length;
         const target = buttons[next];
+        if (target?.dataset.dockTool) setTabStop(target.dataset.dockTool);
         target?.focus({ preventScroll: true });
         const rail = nav.current;
         if (target && rail?.contains(target)) {
@@ -98,7 +133,8 @@ export function ToolDock({
           <button
             type="button"
             className="dock-scroll dock-scroll-left"
-            aria-label="查看前面的编辑工具"
+            aria-label={t('查看前面的编辑工具')}
+            tabIndex={-1}
             onClick={() =>
               nav.current?.scrollBy({ left: -200, behavior: reducedMotion ? 'auto' : 'smooth' })
             }
@@ -107,14 +143,28 @@ export function ToolDock({
           </button>
         )}
         <div className="dock-tool-scroll" ref={nav}>
+          {selection && (
+            <span
+              className="dock-selection"
+              aria-hidden="true"
+              style={{
+                transform: `translateX(${selection.x}px)`,
+                width: selection.width,
+                height: selection.height,
+              }}
+            />
+          )}
           {choices.map((tool) => (
             <button
               type="button"
               key={tool.id}
+              data-dock-tool={tool.id}
               data-motion="tool-item"
               className={active === tool.id && inspectorOpen ? 'active' : ''}
               aria-pressed={active === tool.id && inspectorOpen}
-              title={tool.description}
+              title={t(tool.description)}
+              tabIndex={tabStop === tool.id ? 0 : -1}
+              onFocus={() => setTabStop(tool.id)}
               onClick={() =>
                 onTool(
                   compact && tool.id === 'light' && ADJUSTMENT_GROUPS.includes(group)
@@ -124,7 +174,7 @@ export function ToolDock({
               }
             >
               <StudioGlyph name={tool.id} size={21} />
-              <span>{compact && tool.id === 'light' ? '调节' : tool.label}</span>
+              <span>{t(compact && tool.id === 'light' ? '调节' : tool.label)}</span>
             </button>
           ))}
         </div>
@@ -132,7 +182,8 @@ export function ToolDock({
           <button
             type="button"
             className="dock-scroll dock-scroll-right"
-            aria-label="查看更多编辑工具"
+            aria-label={t('查看更多编辑工具')}
+            tabIndex={-1}
             onClick={() =>
               nav.current?.scrollBy({ left: 200, behavior: reducedMotion ? 'auto' : 'smooth' })
             }
@@ -145,11 +196,14 @@ export function ToolDock({
       <button
         type="button"
         className={aiOpen ? 'active ai-tool' : 'ai-tool'}
+        data-dock-tool="ai"
         aria-pressed={aiOpen}
+        tabIndex={tabStop === 'ai' ? 0 : -1}
+        onFocus={() => setTabStop('ai')}
         onClick={onAI}
       >
         <StudioGlyph name="ai" size={21} />
-        <span>AI 助手</span>
+        <span>{t('AI 助手')}</span>
       </button>
     </nav>
   );

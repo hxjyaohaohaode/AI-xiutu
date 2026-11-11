@@ -1,3 +1,4 @@
+import { t } from '../i18n';
 import { ChoiceSelect } from '../components/ChoiceSelect';
 import {
   ArrowCounterClockwise,
@@ -47,10 +48,10 @@ export function GeometryControls({ controller }: { controller: InspectorControll
   const rect = pixelRect();
   const cropControls: ShelfControl[] = (
     [
-      ['width', '裁切宽度', 1, dimensions.width - rect.x],
-      ['height', '裁切高度', 1, dimensions.height - rect.y],
-      ['x', '左边界', 0, dimensions.width - 1],
-      ['y', '上边界', 0, dimensions.height - 1],
+      ['width', t('裁切宽度'), 1, dimensions.width - rect.x],
+      ['height', t('裁切高度'), 1, dimensions.height - rect.y],
+      ['x', t('左边界'), 0, dimensions.width - 1],
+      ['y', t('上边界'), 0, dimensions.height - 1],
     ] as const
   ).map(([key, label, min, max]) => ({
     id: key,
@@ -113,20 +114,20 @@ export function GeometryControls({ controller }: { controller: InspectorControll
   }
   return (
     <section className="advanced-tool-family" data-motion="geometry-controls">
-      <div className="tonal-tabs" aria-label="构图类别">
+      <div className="tonal-tabs" aria-label={t('构图类别')}>
         {(
           [
-            ['crop', '自由裁切'],
-            ['transform', '角度与透视'],
-            ['projective', '自由四角'],
-            ['placement', '缩放与位置'],
+            ['crop', t('自由裁切')],
+            ['transform', t('角度与透视')],
+            ['projective', t('自由四角')],
+            ['placement', t('缩放与位置')],
           ] as const
         ).map(([id, label]) => (
           <button
             key={id}
             aria-pressed={tab === id}
             onClick={() => {
-              editor.commitCurrent('完成当前构图');
+              editor.commitCurrent(t('完成当前构图'));
               setTab(id);
             }}
           >
@@ -137,15 +138,15 @@ export function GeometryControls({ controller }: { controller: InspectorControll
       {tab === 'crop' ? (
         <>
           <p className="control-note">
-            直接拖动照片上的边角，或按原图像素调整。比例按钮只提供起点，不锁定后续尺寸。
+            {t('直接拖动照片上的边角，或按原图像素调整。比例按钮只提供起点，不锁定后续尺寸。')}
           </p>
           <ParameterShelf
-            label="任意像素裁切"
+            label={t('任意像素裁切')}
             controls={cropControls}
-            onCommit={(name) => editor.commitCurrent('调整' + name)}
+            onCommit={(name) => editor.commitCurrent(t('调整{v0}', { v0: t(name) }))}
             onCancel={editor.cancelPreview}
           />
-          <div className="tonal-tabs" aria-label="裁切比例起点">
+          <div className="tonal-tabs" aria-label={t('裁切比例起点')}>
             {(
               [
                 ['1:1', 1],
@@ -166,12 +167,12 @@ export function GeometryControls({ controller }: { controller: InspectorControll
             onClick={() =>
               apply(
                 { ...recipe, geometry: { ...recipe.geometry, crop: null } },
-                '恢复完整裁切范围',
+                t('恢复完整裁切范围'),
                 true,
               )
             }
           >
-            恢复完整画幅
+            {t('恢复完整画幅')}
           </button>
         </>
       ) : tab === 'projective' ? (
@@ -179,13 +180,13 @@ export function GeometryControls({ controller }: { controller: InspectorControll
       ) : (
         <ParameterShelf
           key={tab}
-          label="自由构图变换"
+          label={t('自由构图变换')}
           controls={transformControls}
-          onCommit={(name) => editor.commitCurrent('调整' + name)}
+          onCommit={(name) => editor.commitCurrent(t('调整{v0}', { v0: t(name) }))}
           onCancel={editor.cancelPreview}
         />
       )}
-      <div className="tonal-tabs" aria-label="画幅与方向">
+      <div className="tonal-tabs" aria-label={t('画幅与方向')}>
         <button
           onClick={() =>
             apply(
@@ -196,7 +197,7 @@ export function GeometryControls({ controller }: { controller: InspectorControll
                   rotation: ((recipe.geometry.rotation + 270) % 360) as 0 | 90 | 180 | 270,
                 },
               },
-              '向左旋转90度',
+              t('向左旋转90度'),
               true,
             )
           }
@@ -214,7 +215,7 @@ export function GeometryControls({ controller }: { controller: InspectorControll
                   rotation: ((recipe.geometry.rotation + 90) % 360) as 0 | 90 | 180 | 270,
                 },
               },
-              '向右旋转90度',
+              t('向右旋转90度'),
               true,
             )
           }
@@ -227,58 +228,59 @@ export function GeometryControls({ controller }: { controller: InspectorControll
           onClick={() =>
             apply(
               { ...recipe, geometry: { ...recipe.geometry, flipX: !recipe.geometry.flipX } },
-              '水平镜像',
+              t('水平镜像'),
               true,
             )
           }
         >
           <ArrowsLeftRight size={16} />
-          镜像
+          {t('镜像')}
         </button>
         <button
           aria-pressed={recipe.geometry.flipY}
           onClick={() =>
             apply(
               { ...recipe, geometry: { ...recipe.geometry, flipY: !recipe.geometry.flipY } },
-              '垂直镜像',
+              t('垂直镜像'),
               true,
             )
           }
         >
           <ArrowsDownUp size={16} />
-          翻转
+          {t('翻转')}
         </button>
       </div>
       <label className="advanced-select">
-        变换后的画幅
+        {t('变换后的画幅')}
         <ChoiceSelect
-          ariaLabel="变换后的画幅"
+          ariaLabel={t('变换后的画幅')}
           size="compact"
           value={recipe.transform.fit}
           onValueChange={(value) =>
             apply(
               { ...recipe, transform: { ...recipe.transform, fit: value as 'contain' | 'crop' } },
-              '选择变换画幅',
+              t('选择变换画幅'),
               true,
             )
           }
           options={[
-            { value: 'contain', label: '包含完整变换结果' },
-            { value: 'crop', label: '保留原来画幅' },
+            { value: 'contain', label: t('包含完整变换结果') },
+            { value: 'crop', label: t('保留原来画幅') },
           ]}
         />
       </label>
       <p className="control-note">
-        超出原图的部分保持透明；需要真实补画内容时可交给 AI
-        扩图，再明确采用候选。组合变换无效或超过内存预算时保留上一个有效结果。
+        {t(
+          '超出原图的部分保持透明；需要真实补画内容时可交给 AI 扩图，再明确采用候选。组合变换无效或超过内存预算时保留上一个有效结果。',
+        )}
       </p>
       <button
         className="text-button"
         onClick={() =>
-          apply({ ...recipe, transform: createFineTransformV3() }, '重置精细构图变换', true)
+          apply({ ...recipe, transform: createFineTransformV3() }, t('重置精细构图变换'), true)
         }
       >
-        重置角度、透视和位移
+        {t('重置角度、透视和位移')}
       </button>
     </section>
   );

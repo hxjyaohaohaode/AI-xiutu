@@ -2,6 +2,8 @@ import type { View } from '../lib/types';
 import { Modal } from '../components/Ui';
 import { StudioGlyph } from '../components/StudioGlyph';
 import type { ThemePreference } from './useStudioTheme';
+import { t, useI18n, formatNumber } from '../i18n';
+import { LanguageSelect } from '../i18n/LanguageSelect';
 
 export const workspaceViews: { id: View; label: string; description: string }[] = [
   { id: 'editor', label: '精修', description: '调色、修饰与图层' },
@@ -22,9 +24,10 @@ export function WorkspaceNavigation({
   onView: (view: View) => void;
   onClose: () => void;
 }) {
+  useI18n();
   return (
-    <Modal title="工作视图" onClose={onClose} className="workspace-navigation-dialog">
-      <nav className="workspace-destinations" aria-label="切换工作视图">
+    <Modal title={t('工作视图')} onClose={onClose} className="workspace-navigation-dialog">
+      <nav className="workspace-destinations" aria-label={t('切换工作视图')}>
         {workspaceViews.map((item) => (
           <button
             type="button"
@@ -35,8 +38,8 @@ export function WorkspaceNavigation({
           >
             <StudioGlyph name={item.id} size={22} />
             <span>
-              <strong>{item.label}</strong>
-              <small>{item.description}</small>
+              <strong>{t(item.label)}</strong>
+              <small>{t(item.description)}</small>
             </span>
             {view === item.id && <StudioGlyph name="check" size={18} />}
           </button>
@@ -67,11 +70,12 @@ export function WorkspaceSettings({
   available?: number;
   onUsage: () => void;
 }) {
+  useI18n();
   return (
-    <Modal title="工作台设置" onClose={onClose} className="workspace-settings-dialog">
+    <Modal title={t('工作台设置')} onClose={onClose} className="workspace-settings-dialog">
       <section className="settings-theme-section" aria-labelledby="studio-appearance-title">
-        <h3 id="studio-appearance-title">外观</h3>
-        <div className="settings-theme-choices" role="group" aria-label="外观模式">
+        <h3 id="studio-appearance-title">{t('外观')}</h3>
+        <div className="settings-theme-choices" role="group" aria-label={t('外观模式')}>
           {(
             [
               { id: 'light', label: '浅色', icon: 'sun' },
@@ -82,40 +86,45 @@ export function WorkspaceSettings({
             <button
               type="button"
               key={item.id}
+              data-theme-choice={item.id}
               aria-pressed={preference === item.id}
               onClick={() => onPreference(item.id)}
             >
               <StudioGlyph name={item.icon} size={22} />
-              <span>{item.label}</span>
+              <span>{t(item.label)}</span>
             </button>
           ))}
         </div>
       </section>
+      <section className="settings-language-section" aria-labelledby="studio-language-title">
+        <h3 id="studio-language-title">{t('语言')}</h3>
+        <LanguageSelect />
+      </section>
       <div className="workspace-settings-list">
         <button type="button" onClick={onImportSettings}>
           <StudioGlyph name="import" />
-          <span>图片格式与分辨率</span>
+          <span>{t('图片格式与分辨率')}</span>
           <StudioGlyph name="chevron" size={16} />
         </button>
         <button type="button" onClick={onReset}>
           <StudioGlyph name="settings" />
-          <span>重置当前屏幕布局</span>
+          <span>{t('重置当前屏幕布局')}</span>
         </button>
         <button type="button" onClick={onFocus}>
           <StudioGlyph name="select" />
-          <span>专注画面</span>
+          <span>{t('专注画面')}</span>
           <kbd>F</kbd>
         </button>
         <button type="button" onClick={onHelp}>
           <StudioGlyph name="docs" />
-          <span>使用说明</span>
+          <span>{t('使用说明')}</span>
           <StudioGlyph name="chevron" size={16} />
         </button>
         {available !== undefined && (
           <button type="button" onClick={onUsage}>
             <StudioGlyph name="usage" />
-            <span>服务点与明细</span>
-            <strong>{available.toLocaleString()}</strong>
+            <span>{t('服务点与明细')}</span>
+            <strong>{formatNumber(available)}</strong>
           </button>
         )}
       </div>

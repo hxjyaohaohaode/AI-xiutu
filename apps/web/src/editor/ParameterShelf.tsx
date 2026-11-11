@@ -1,3 +1,4 @@
+import { t } from '../i18n';
 import { MotionDetails } from '../motion/Presence';
 import { ChoiceSelect } from '../components/ChoiceSelect';
 import { useLayoutEffect, useRef, useState } from 'react';
@@ -85,7 +86,7 @@ export function ParameterShelf({
   useLayoutEffect(() => {
     if (revealRequested.current) revealCurrent();
   }, [active?.id]);
-  if (!active) return <p className="control-note">当前范围没有可调整的参数。</p>;
+  if (!active) return <p className="control-note">{t('当前范围没有可调整的参数。')}</p>;
   function selectControl(id: string) {
     if (active && active.id !== id) onCommit?.(active.label);
     revealRequested.current = true;
@@ -93,11 +94,11 @@ export function ParameterShelf({
     if (active?.id === id) revealCurrent();
   }
   return (
-    <section ref={shelf} className="parameter-shelf" aria-label={label}>
+    <section ref={shelf} className="parameter-shelf" aria-label={t(label)}>
       <div
         className="parameter-shelf-options"
         role="group"
-        aria-label={label + '选项'}
+        aria-label={t('{name}选项', { name: t(label) })}
         data-motion="parameter-options"
         onKeyDown={(event) => {
           if (!['ArrowLeft', 'ArrowRight', 'Home', 'End'].includes(event.key)) return;
@@ -135,17 +136,22 @@ export function ParameterShelf({
             key={control.id}
             aria-pressed={active.id === control.id}
             disabled={control.disabled}
-            aria-label={`${control.label}，${Number(control.value.toFixed(4))}${control.unit === 'ratio' ? '' : (control.unit ?? '')}${Math.abs(control.value - (control.neutral ?? 0)) > 1e-8 ? '，已调整' : ''}`}
+            aria-label={t('{v0}，{v1}{v2}{v3}', {
+              v0: t(control.label),
+              v1: Number(control.value.toFixed(4)),
+              v2: control.unit === 'ratio' ? '' : t(control.unit ?? ''),
+              v3: Math.abs(control.value - (control.neutral ?? 0)) > 1e-8 ? t('，已调整') : '',
+            })}
             data-adjusted={
               Math.abs(control.value - (control.neutral ?? 0)) > 1e-8 ? 'true' : undefined
             }
-            title={control.disabled ? control.description : undefined}
+            title={control.disabled && control.description ? t(control.description) : undefined}
             onClick={() => selectControl(control.id)}
           >
-            <span>{control.label}</span>
+            <span>{t(control.label)}</span>
             <small>
               {Number(control.value.toFixed(4))}
-              {control.unit === 'ratio' ? '' : control.unit}
+              {control.unit === 'ratio' ? '' : t(control.unit ?? '')}
             </small>
             {Math.abs(control.value - (control.neutral ?? 0)) > 1e-8 && <i aria-hidden="true" />}
           </button>
@@ -154,25 +160,25 @@ export function ParameterShelf({
       <div ref={current} className="parameter-shelf-current" data-motion="parameter-current">
         <ChoiceSelect
           className="parameter-compact-picker"
-          ariaLabel={'选择' + label}
+          ariaLabel={t('选择{name}', { name: t(label) })}
           size="compact"
           value={active.id}
           onValueChange={selectControl}
           options={controls.map((control) => ({
             value: control.id,
-            label: control.label,
+            label: t(control.label),
             disabled: control.disabled,
           }))}
         />
         <PrecisionRange
           key={active.id}
-          label={active.label}
+          label={t(active.label)}
           value={active.value}
           min={active.min}
           max={active.max}
           step={active.step}
           neutral={active.neutral}
-          unit={active.unit === 'ratio' ? '' : active.unit}
+          unit={active.unit === 'ratio' ? '' : t(active.unit ?? '')}
           disabled={active.disabled}
           integer={active.integer}
           onChange={active.onChange}
@@ -183,8 +189,8 @@ export function ParameterShelf({
       </div>
       {active.description && (
         <MotionDetails key={active.id + '-description'} className="parameter-description">
-          <summary>{active.label}说明</summary>
-          <p className="control-note">{active.description}</p>
+          <summary>{t('{name}说明', { name: t(active.label) })}</summary>
+          <p className="control-note">{t(active.description)}</p>
         </MotionDetails>
       )}
     </section>

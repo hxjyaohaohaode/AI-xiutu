@@ -102,7 +102,12 @@ async function testCase(name, run) {
   }
 }
 async function selectProject(target) {
-  await target.goto(origin);
+  const studioUrl = `${origin}/#/studio`;
+  // Reopening the fixture is a document reset. Navigating to the same hash
+  // can retain the current editor, which is not the refresh these cases test.
+  const navigation =
+    target.url() === studioUrl ? await target.reload() : await target.goto(studioUrl);
+  assert.ok(navigation?.ok(), 'Project setup must load a fresh studio document');
   await target.getByRole('button', { name: '打开空间与项目', exact: true }).click();
   await target
     .locator('.sidebar')
@@ -649,6 +654,10 @@ try {
       'visible incremental text',
     );
     await openProject(page, false);
+    const navigationType = await page.evaluate(
+      () => performance.getEntriesByType('navigation')[0]?.type,
+    );
+    assert.equal(navigationType, 'reload', 'Recovery must follow an actual document reload');
     assert.equal(dispatches, before + 2);
     holdCompletion = false;
     await until(
@@ -659,7 +668,7 @@ try {
       'recovered final workspace',
     );
     assert.equal(dispatches, before + 2);
-    return { modelRequests: dispatches - before, browserRefreshAddedRequests: 0 };
+    return { navigationType, modelRequests: dispatches - before, browserRefreshAddedRequests: 0 };
   });
   await testCase('conversation-switch-isolates-history-and-candidates', async () => {
     await closeSettings();
@@ -1567,7 +1576,7 @@ try {
     ]);
     page = await operator.newPage();
     page.on('pageerror', (error) => report.pageErrors.push(String(error)));
-    await page.goto(origin);
+    await page.goto(`${origin}/#/studio`);
     await page.getByRole('button', { name: '打开空间与项目', exact: true }).click();
     await page.getByRole('button', { name: '运营管理', exact: true }).click();
     await page.getByRole('button', { name: '生成任务核验', exact: true }).click();

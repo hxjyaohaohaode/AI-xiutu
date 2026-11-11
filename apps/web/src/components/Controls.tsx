@@ -1,3 +1,4 @@
+import { t } from '../i18n';
 import { useId, useState, type ReactNode } from 'react';
 import { CaretDown, SlidersHorizontal } from '@phosphor-icons/react';
 import { usePresence } from '../motion/usePresence';
@@ -110,7 +111,7 @@ export function ValueSlider({
         <button
           type="button"
           className="precise-value"
-          aria-label={`精确设置${label}`}
+          aria-label={t('精确设置{v0}', { v0: label })}
           aria-expanded={precise}
           onClick={() => setPrecise(!precise)}
           disabled={disabled}
@@ -132,10 +133,10 @@ export function ValueSlider({
       />
       {precise && (
         <label className="precise-field">
-          精确值
+          {t('精确值')}
           <input
             type="number"
-            aria-label={`${label}精确值`}
+            aria-label={t('{v0}精确值', { v0: label })}
             min={min}
             max={max}
             step={step}
@@ -148,7 +149,7 @@ export function ValueSlider({
           />
           <span>{unit}</span>
           <button type="button" onClick={() => setPrecise(false)}>
-            完成
+            {t('完成')}
           </button>
         </label>
       )}

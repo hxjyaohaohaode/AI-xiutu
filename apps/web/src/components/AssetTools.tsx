@@ -1,3 +1,4 @@
+import { getLocale, t } from '../i18n';
 import { useEffect, useRef, useState } from 'react';
 import type {
   AnimationDescriptor,
@@ -146,7 +147,7 @@ export function AssetRecognitionDialog({
       () =>
         confirmation.confirm({
           title: '删除识别结果',
-          description: '删除这份识别结果及对应的搜索索引？原图会保留。',
+          description: t('删除这份识别结果及对应的搜索索引？原图会保留。'),
           confirmLabel: '删除识别结果',
           tone: 'danger',
         }),
@@ -180,7 +181,7 @@ export function AssetRecognitionDialog({
   return (
     <>
       <Modal
-        title="识别文字与表格"
+        title={t('识别文字与表格')}
         subtitle={asset.name}
         className="studio-dialog asset-tools-dialog"
         onClose={onClose}
@@ -192,24 +193,27 @@ export function AssetRecognitionDialog({
             <>
               <div className="asset-tool-fields">
                 <ChoiceSelect
-                  label="识别语言"
-                  ariaLabel="识别语言"
+                  label={t('识别语言')}
+                  ariaLabel={t('识别语言')}
                   value={language}
                   disabled={busy}
                   onValueChange={(value) => setLanguage(value as typeof language)}
                   options={editableLabels.map((value) => ({
                     value,
-                    label: languageLabel[value],
+                    label: t(languageLabel[value]),
                     disabled: value.split('+').some((item) => !supported.includes(item)),
                   }))}
                 />
                 <ChoiceSelect
-                  label="版面"
-                  ariaLabel="识别版面"
+                  label={t('版面')}
+                  ariaLabel={t('识别版面')}
                   value={layout}
                   disabled={busy}
                   onValueChange={(value) => setLayout(value as typeof layout)}
-                  options={Object.entries(layoutLabel).map(([value, label]) => ({ value, label }))}
+                  options={Object.entries(layoutLabel).map(([value, label]) => ({
+                    value,
+                    label: t(label),
+                  }))}
                 />
               </div>
               <button
@@ -218,29 +222,34 @@ export function AssetRecognitionDialog({
                 onClick={() => void recognize()}
               >
                 <StudioGlyph name="docs" />
-                识别并存入素材
+                {t('识别并存入素材')}
               </button>
-              {!busy && !supported.length && <small>当前服务未提供可用的 OCR 语言包。</small>}
+              {!busy && !supported.length && (
+                <small>{t('当前服务未提供可用的 OCR 语言包。')}</small>
+              )}
               {available && (
                 <p className="control-note">
-                  当前文字识别最多支持 {available.recognition.maxPixels.toLocaleString('zh-CN')}{' '}
-                  像素。{!pixelsAvailable && '这份素材超过处理范围，可先导出较小副本后识别。'}
+                  {t('当前文字识别最多支持')}
+                  {available.recognition.maxPixels.toLocaleString(getLocale())} {t('像素。')}
+                  {!pixelsAvailable && t('这份素材超过处理范围，可先导出较小副本后识别。')}
                 </p>
               )}
             </>
           )}
-          {!editable && <p className="control-note">当前项目为只读权限，可查看已有识别记录。</p>}
-          {busy && <Busy label="处理识别结果" />}
+          {!editable && (
+            <p className="control-note">{t('当前项目为只读权限，可查看已有识别记录。')}</p>
+          )}
+          {busy && <Busy label={t('处理识别结果')} />}
           {!!items.length && (
             <ChoiceSelect
-              label="识别记录"
-              ariaLabel="识别记录"
+              label={t('识别记录')}
+              ariaLabel={t('识别记录')}
               value={selected}
               disabled={busy}
               onValueChange={setSelected}
               options={items.map((item) => ({
                 value: item.id,
-                label: `${languageLabel[item.language]} · ${layoutLabel[item.layout]} · ${item.createdAt.slice(0, 10)}`,
+                label: `${t(languageLabel[item.language])} · ${t(layoutLabel[item.layout])} · ${item.createdAt.slice(0, 10)}`,
               }))}
             />
           )}
@@ -253,21 +262,21 @@ export function AssetRecognitionDialog({
               <>
                 <small>
                   {current.engine} · {current.width}×{current.height} · {current.words.length}{' '}
-                  项文字
+                  {t('项文字')}
                 </small>
                 <label>
-                  识别文字
-                  <textarea rows={5} readOnly value={current.text || '未识别到文字'} />
+                  {t('识别文字')}
+                  <textarea rows={5} readOnly value={current.text || t('未识别到文字')} />
                 </label>
                 {current.table ? (
                   <div
                     className="asset-tool-table-scroll"
                     tabIndex={0}
                     role="region"
-                    aria-label="识别出的表格"
+                    aria-label={t('识别出的表格')}
                   >
                     <table className="asset-tool-table">
-                      <caption>按文字坐标推断的表格</caption>
+                      <caption>{t('按文字坐标推断的表格')}</caption>
                       <tbody>
                         {current.table.rows.map((row, index) => (
                           <tr key={index}>
@@ -281,7 +290,7 @@ export function AssetRecognitionDialog({
                   </div>
                 ) : (
                   current.layout === 'table' && (
-                    <small>未找到一致的列结构，已保留识别文字与位置。</small>
+                    <small>{t('未找到一致的列结构，已保留识别文字与位置。')}</small>
                   )
                 )}
                 {editable && (
@@ -290,7 +299,7 @@ export function AssetRecognitionDialog({
                     disabled={busy}
                     onClick={() => void remove()}
                   >
-                    删除这份识别结果
+                    {t('删除这份识别结果')}
                   </button>
                 )}
               </>
@@ -422,7 +431,7 @@ export function AnimationDialog({
   const visible = output?.animation ?? descriptor;
   return (
     <Modal
-      title="GIF 帧编辑"
+      title={t('GIF 帧编辑')}
       subtitle={asset.name}
       className="studio-dialog asset-tools-dialog"
       onClose={onClose}
@@ -430,19 +439,25 @@ export function AnimationDialog({
     >
       <div className="stack-form asset-tool-content">
         <InlineError message={error} />
-        {!descriptor && !error && <Busy label="读取 GIF" />}
+        {!descriptor && !error && <Busy label={t('读取 GIF')} />}
         {descriptor && visible && (
           <>
             <figure className="asset-animation-preview">
               <img
                 src={`/v1/assets/${output?.asset.id ?? asset.id}/animation/file`}
-                alt="GIF 预览"
+                alt={t('GIF 预览')}
               />
               <figcaption>
                 <p className="asset-tool-summary" role={output ? 'status' : undefined}>
-                  {visible.width}×{visible.height} · {visible.frames} 帧 ·{' '}
-                  {(visible.delay.reduce((sum, value) => sum + value, 0) / 1000).toFixed(2)} 秒
-                  {output && <span>已另存为 {output.asset.name}</span>}
+                  {visible.width}×{visible.height} · {visible.frames} {t('帧 ·')}{' '}
+                  {(visible.delay.reduce((sum, value) => sum + value, 0) / 1000).toFixed(2)}{' '}
+                  {t('秒')}
+                  {output && (
+                    <span>
+                      {t('已另存为')}
+                      {output.asset.name}
+                    </span>
+                  )}
                 </p>
                 <a
                   className="text-button"
@@ -450,20 +465,20 @@ export function AnimationDialog({
                   download={output?.asset.name ?? asset.name}
                 >
                   <StudioGlyph name="export" />
-                  下载 GIF
+                  {t('下载 GIF')}
                 </a>
               </figcaption>
             </figure>
             {editable && (
               <>
                 <label>
-                  帧顺序
+                  {t('帧顺序')}
                   <input
                     value={order}
                     maxLength={490}
                     disabled={busy}
                     onChange={(event) => setOrder(event.target.value)}
-                    placeholder="例如 4, 3, 2, 1，留空使用全部原顺序"
+                    placeholder={t('例如 4, 3, 2, 1，留空使用全部原顺序')}
                   />
                 </label>
                 <button
@@ -478,11 +493,11 @@ export function AnimationDialog({
                     )
                   }
                 >
-                  反转帧顺序
+                  {t('反转帧顺序')}
                 </button>
                 <div className="asset-tool-fields">
                   <label>
-                    统一帧时长（毫秒）
+                    {t('统一帧时长（毫秒）')}
                     <input
                       type="number"
                       min={20}
@@ -491,11 +506,11 @@ export function AnimationDialog({
                       value={uniformDelay}
                       disabled={busy}
                       onChange={(event) => setUniformDelay(event.target.value)}
-                      placeholder="留空保留每帧时长"
+                      placeholder={t('留空保留每帧时长')}
                     />
                   </label>
                   <label>
-                    循环次数（0 为持续循环）
+                    {t('循环次数（0 为持续循环）')}
                     <input
                       type="number"
                       min={0}
@@ -507,7 +522,7 @@ export function AnimationDialog({
                   </label>
                 </div>
                 <label>
-                  逐帧应用编辑配方
+                  {t('逐帧应用编辑配方')}
                   <input
                     type="file"
                     accept=".json,application/json"
@@ -520,14 +535,16 @@ export function AnimationDialog({
                   disabled={busy || !Number.isInteger(loop) || loop < 0 || loop > 65535}
                   onClick={() => void save()}
                 >
-                  {busy ? <Busy label="正在编码" /> : '另存为项目动图'}
+                  {busy ? <Busy label={t('正在编码')} /> : t('另存为项目动图')}
                 </button>
               </>
             )}
-            {!editable && <p className="control-note">当前项目为只读权限，可预览和下载动图。</p>}
+            {!editable && (
+              <p className="control-note">{t('当前项目为只读权限，可预览和下载动图。')}</p>
+            )}
             {editable && (
               <p className="control-note">
-                帧编号从 1 开始，可重排或重复选帧。新动图另存到项目，原文件保留。
+                {t('帧编号从 1 开始，可重排或重复选帧。新动图另存到项目，原文件保留。')}
               </p>
             )}
           </>
@@ -604,7 +621,9 @@ export function ProjectAssetTools({
           throw new Error('请先读取当前服务的 GIF 导入能力。');
         if (gif.size > gifLimits.maxBytes)
           throw new Error(
-            `GIF 文件不能超过 ${(gifLimits.maxBytes / 1024 / 1024).toFixed(0)} MiB。`,
+            t('GIF 文件不能超过 {size} MiB。', {
+              size: (gifLimits.maxBytes / 1024 / 1024).toFixed(0),
+            }),
           );
         const form = new FormData();
         form.append('file', gif);
@@ -658,7 +677,7 @@ export function ProjectAssetTools({
       }
       const { asset } = await api<{ asset: Asset }>(path, init);
       if (!isCurrent()) return;
-      setStatus(`${asset.name} 已保存到项目素材。`);
+      setStatus(t('{name} 已保存到项目素材。', { name: asset.name }));
       latest.current.onCreated(asset);
     } catch (failure) {
       if (isCurrent()) setError(errorMessage(failure));
@@ -669,22 +688,22 @@ export function ProjectAssetTools({
   }
   return (
     <Modal
-      title="拼图与 GIF"
-      subtitle="保留原文件，生成独立项目素材"
+      title={t('拼图与 GIF')}
+      subtitle={t('保留原文件，生成独立项目素材')}
       className="studio-dialog asset-tools-dialog"
       onClose={onClose}
       canClose={() => !busy && !locked.current}
     >
       <div className="stack-form asset-tool-content">
         <InlineError message={error} />
-        {status && <p role="status">{status}</p>}
-        <section className="asset-tool-section" aria-label="导入完整动图">
+        {status && <p role="status">{t(status)}</p>}
+        <section className="asset-tool-section" aria-label={t('导入完整动图')}>
           <h3>
             <StudioGlyph name="import" />
-            导入完整动图
+            {t('导入完整动图')}
           </h3>
           <label>
-            导入 GIF
+            {t('导入 GIF')}
             <input
               type="file"
               accept=".gif,image/gif"
@@ -700,16 +719,18 @@ export function ProjectAssetTools({
             disabled={!gif || busy || !gifLimits?.formats.includes('gif')}
             onClick={() => void submit('gif')}
           >
-            保留全部帧并导入
+            {t('保留全部帧并导入')}
           </button>
           {gifLimits && (
             <p className="control-note">
-              当前服务支持 GIF：文件最多 {(gifLimits.maxBytes / 1024 / 1024).toFixed(0)} MiB、
-              {gifLimits.maxFrames} 帧，每帧最多 {gifLimits.maxFramePixels.toLocaleString('zh-CN')}{' '}
-              像素，全部帧合计最多 {gifLimits.maxTotalPixels.toLocaleString('zh-CN')} 像素。
+              {t('当前服务支持 GIF：文件最多')}
+              {(gifLimits.maxBytes / 1024 / 1024).toFixed(0)} MiB、
+              {gifLimits.maxFrames} {t('帧，每帧最多')}
+              {gifLimits.maxFramePixels.toLocaleString(getLocale())} {t('像素，全部帧合计最多')}
+              {gifLimits.maxTotalPixels.toLocaleString(getLocale())} {t('像素。')}
             </p>
           )}
-          {!gifLimits && !capabilityError && <Busy label="读取动图处理能力" />}
+          {!gifLimits && !capabilityError && <Busy label={t('读取动图处理能力')} />}
           {capabilityError && (
             <>
               <InlineError message={capabilityError} />
@@ -718,22 +739,26 @@ export function ProjectAssetTools({
                 type="button"
                 onClick={() => setCapabilityAttempt((value) => value + 1)}
               >
-                重新读取处理能力
+                {t('重新读取处理能力')}
               </button>
             </>
           )}
         </section>
-        <section className="asset-tool-section" aria-label="创建拼图">
+        <section className="asset-tool-section" aria-label={t('创建拼图')}>
           <h3>
             <StudioGlyph name="collage" />
-            创建拼图
+            {t('创建拼图')}
           </h3>
           <p className="control-note">
-            从当前已载入的项目素材中选择 2 到 12 张，按选择顺序排列。画布最多 16,777,216
-            像素，单边最多 8192 像素。
+            {t(
+              '从当前已载入的项目素材中选择 2 到 12 张，按选择顺序排列。画布最多 16,777,216 像素，单边最多 8192 像素。',
+            )}
           </p>
           <MotionDetails className="asset-tool-assets" defaultOpen>
-            <summary>选择拼图素材（已选 {selected.length}）</summary>
+            <summary>
+              {t('选择拼图素材（已选')}
+              {selected.length}）
+            </summary>
             <div className="asset-tool-asset-list asset-source-options">
               {selectable.map((asset) => (
                 <label key={asset.id} className="asset-tool-asset-choice">
@@ -758,7 +783,7 @@ export function ProjectAssetTools({
                   {selected.includes(asset.id) && (
                     <span
                       className="asset-tool-order"
-                      aria-label={`第 ${selected.indexOf(asset.id) + 1} 张`}
+                      aria-label={t('第 {v0} 张', { v0: selected.indexOf(asset.id) + 1 })}
                     >
                       {selected.indexOf(asset.id) + 1}
                     </span>
@@ -767,7 +792,7 @@ export function ProjectAssetTools({
               ))}
               {!selectable.length && (
                 <p className="control-note">
-                  当前列表没有这个项目的素材，请关闭后导入图片或载入更多素材。
+                  {t('当前列表没有这个项目的素材，请关闭后导入图片或载入更多素材。')}
                 </p>
               )}
             </div>
@@ -775,10 +800,10 @@ export function ProjectAssetTools({
           <div className="asset-tool-fields asset-size-fields">
             {(
               [
-                ['width', '画布宽'],
-                ['height', '画布高'],
-                ['columns', '列数'],
-                ['gap', '间距'],
+                ['width', t('画布宽')],
+                ['height', t('画布高')],
+                ['columns', t('列数')],
+                ['gap', t('间距')],
               ] as const
             ).map(([key, label]) => (
               <label key={key}>
@@ -795,14 +820,22 @@ export function ProjectAssetTools({
             ))}
           </div>
           <ChoiceSelect
-            label="适应方式"
-            ariaLabel="拼图适应方式"
+            label={t('适应方式')}
+            ariaLabel={t('拼图适应方式')}
             value={fit}
             disabled={busy}
             onValueChange={(value) => setFit(value === 'contain' ? 'contain' : 'cover')}
             options={[
-              { value: 'cover', label: '填满网格', description: '保持比例，超出网格的部分裁切' },
-              { value: 'contain', label: '完整保留', description: '保持完整构图，网格中允许留白' },
+              {
+                value: 'cover',
+                label: t('填满网格'),
+                description: t('保持比例，超出网格的部分裁切'),
+              },
+              {
+                value: 'contain',
+                label: t('完整保留'),
+                description: t('保持完整构图，网格中允许留白'),
+              },
             ]}
           />
           <label className="asset-tool-checkbox">
@@ -812,14 +845,14 @@ export function ProjectAssetTools({
               checked={transparent}
               onChange={(event) => setTransparent(event.target.checked)}
             />
-            透明间距
+            {t('透明间距')}
           </label>
           <button
             className="button button-primary"
             disabled={selected.length < 2 || busy}
             onClick={() => void submit('collage')}
           >
-            {busy ? '正在处理' : '生成拼图素材'}
+            {busy ? t('正在处理') : t('生成拼图素材')}
           </button>
         </section>
       </div>

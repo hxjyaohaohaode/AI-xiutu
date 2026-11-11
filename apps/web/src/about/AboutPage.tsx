@@ -1,0 +1,666 @@
+import { useEffect, useId, useRef, useState, type CSSProperties } from 'react';
+import {
+  ArrowDown,
+  ArrowRight,
+  ArrowUpRight,
+  Check,
+  CircleHalf,
+  Cursor,
+  Minus,
+  Plus,
+  SlidersHorizontal,
+  Sparkle,
+  UsersThree,
+} from '@phosphor-icons/react';
+import { useLocale } from '../i18n';
+import { LanguageSelect } from '../i18n/LanguageSelect';
+import { DEFAULT_BRAND, brandLogoUrl } from '../lib/brand';
+import type { PublicConfig } from '../lib/types';
+import { aboutCopy } from './copy';
+import type { SampleSettings } from './sample';
+
+export const DEMO_IMAGE = '/about/color-study.webp';
+export type AboutIntent = 'login' | 'register' | 'studio' | 'sample';
+
+function Contours() {
+  return (
+    <svg className="about-contours" viewBox="0 0 620 620" fill="none" aria-hidden="true">
+      {Array.from({ length: 17 }, (_, index) => (
+        <ellipse
+          key={index}
+          cx="310"
+          cy="310"
+          rx={62 + index * 13}
+          ry={34 + index * 15}
+          transform={'rotate(' + (index * 3 - 28) + ' 310 310)'}
+        />
+      ))}
+    </svg>
+  );
+}
+
+function ColorStudy({ onOpen }: { onOpen: (settings: SampleSettings) => void }) {
+  const locale = useLocale();
+  const c = aboutCopy(locale);
+  const [split, setSplit] = useState(42);
+  const [warmth, setWarmth] = useState(18);
+  const [exposure, setExposure] = useState(0.1);
+  const [preset, setPreset] = useState<'natural' | 'vivid' | 'soft'>('natural');
+  const [ready, setReady] = useState(false);
+  const [failed, setFailed] = useState(false);
+  const [renderError, setRenderError] = useState(false);
+  const [attempt, setAttempt] = useState(0);
+  const [rendered, setRendered] = useState(false);
+  const worker = useRef<Worker | null>(null);
+  const canvas = useRef<HTMLCanvasElement>(null);
+  const current = useRef({ warmth, exposure, preset });
+  current.current = { warmth, exposure, preset };
+  const requestId = useRef(0);
+  const pending = useRef(false);
+  const dirty = useRef(false);
+  const labelId = useId();
+  const dispatch = useRef<() => void>(() => {});
+  dispatch.current = () => {
+    if (!worker.current || pending.current) {
+      dirty.current = true;
+      return;
+    }
+    pending.current = true;
+    dirty.current = false;
+    worker.current.postMessage({ id: ++requestId.current, ...current.current });
+  };
+
+  useEffect(() => {
+    let live = true;
+    let instance: Worker | null = null;
+    const image = new Image();
+    image.decoding = 'async';
+    setReady(false);
+    setFailed(false);
+    setRendered(false);
+    setRenderError(false);
+    image.onload = () => {
+      if (!live) return;
+      setReady(true);
+      try {
+        const width = Math.min(720, image.naturalWidth);
+        const height = Math.round((width * image.naturalHeight) / image.naturalWidth);
+        const buffer = document.createElement('canvas');
+        buffer.width = width;
+        buffer.height = height;
+        const context = buffer.getContext('2d', { willReadFrequently: true });
+        if (!context) throw new Error('Canvas unavailable');
+        context.drawImage(image, 0, 0, width, height);
+        const pixels = context.getImageData(0, 0, width, height);
+        instance = new Worker(new URL('./demo.worker.ts', import.meta.url), { type: 'module' });
+        worker.current = instance;
+        instance.onmessage = (
+          event: MessageEvent<{
+            id: number;
+            error?: boolean;
+            image?: { width: number; height: number; data: Uint8ClampedArray };
+          }>,
+        ) => {
+          if (!live || worker.current !== instance) return;
+          pending.current = false;
+          if (event.data.error) setRenderError(true);
+          else if (!dirty.current && event.data.image && canvas.current) {
+            const output = event.data.image;
+            canvas.current.width = output.width;
+            canvas.current.height = output.height;
+            const target = canvas.current.getContext('2d');
+            if (target) {
+              target.putImageData(
+                new ImageData(new Uint8ClampedArray(output.data), output.width, output.height),
+                0,
+                0,
+              );
+              setRendered(true);
+              setRenderError(false);
+            }
+          }
+          if (dirty.current) dispatch.current();
+        };
+        instance.onerror = () => {
+          if (live) {
+            setRenderError(true);
+            pending.current = false;
+            worker.current = null;
+            instance?.terminate();
+          }
+        };
+        pending.current = true;
+        instance.postMessage(
+          {
+            id: ++requestId.current,
+            source: { width, height, data: pixels.data },
+            ...current.current,
+          },
+          [pixels.data.buffer],
+        );
+      } catch {
+        setRenderError(true);
+      }
+    };
+    image.onerror = () => {
+      if (live) setFailed(true);
+    };
+    image.src = DEMO_IMAGE;
+    return () => {
+      live = false;
+      image.onload = null;
+      image.onerror = null;
+      instance?.terminate();
+      if (worker.current === instance) worker.current = null;
+      pending.current = false;
+      dirty.current = false;
+    };
+  }, [attempt]);
+  useEffect(() => {
+    if (ready) dispatch.current();
+  }, [warmth, exposure, preset, ready]);
+  const reset = () => {
+    setWarmth(18);
+    setExposure(0.1);
+    setPreset('natural');
+    setSplit(42);
+  };
+
+  return (
+    <figure className="color-study" aria-labelledby={labelId}>
+      <div className="study-topline">
+        <span>{c.studyIndex}</span>
+        <span id={labelId}>{c.study}</span>
+      </div>
+      <div
+        className="study-picture"
+        style={{ '--split': split + '%' } as CSSProperties}
+        aria-busy={!ready && !failed}
+      >
+        <img src={DEMO_IMAGE} width="1536" height="1024" alt={c.sample} fetchPriority="high" />
+        <canvas
+          ref={canvas}
+          className="study-result"
+          aria-hidden="true"
+          style={{ opacity: rendered ? 1 : 0 }}
+        />
+        {!ready && !failed && (
+          <div className="study-loading" role="status">
+            <span />
+            {c.previewLoading}
+          </div>
+        )}
+        {failed && (
+          <div className="study-loading" role="alert">
+            <span>{c.previewFailed}</span>
+            <button type="button" onClick={() => setAttempt((value) => value + 1)}>
+              {c.retry}
+            </button>
+          </div>
+        )}
+        {rendered && (
+          <>
+            <span
+              className="study-image-label study-original"
+              style={{ opacity: split < 18 ? 0 : 1 }}
+            >
+              {c.original}
+            </span>
+            <span
+              className="study-image-label study-edited"
+              style={{ opacity: split > 82 ? 0 : 1 }}
+            >
+              {c.edited}
+            </span>
+            <span className="study-divider" aria-hidden="true">
+              <span>
+                <Minus size={12} />
+                <CircleHalf size={18} />
+                <Minus size={12} />
+              </span>
+            </span>
+            <input
+              className="study-compare"
+              type="range"
+              min="0"
+              max="100"
+              value={split}
+              aria-label={c.compareLabel}
+              onChange={(event) => setSplit(Number(event.currentTarget.value))}
+            />
+          </>
+        )}
+      </div>
+      <figcaption>
+        <span>
+          <Cursor size={14} />
+          {c.compare}
+        </span>
+        <span>{c.sample}</span>
+      </figcaption>
+      <div className="study-controls">
+        <div className="study-presets" aria-label={c.adjust}>
+          {(['natural', 'vivid', 'soft'] as const).map((value) => (
+            <button
+              key={value}
+              type="button"
+              aria-pressed={preset === value}
+              onClick={() => setPreset(value)}
+            >
+              <span className={'preset-dot preset-' + value} />
+              {value === 'natural' ? c.neutral : value === 'vivid' ? c.vivid : c.soft}
+              {preset === value && <Check size={12} />}
+            </button>
+          ))}
+        </div>
+        <label className="study-range">
+          <span>{c.warmth}</span>
+          <input
+            type="range"
+            min="-60"
+            max="60"
+            step="1"
+            value={warmth}
+            onChange={(event) => setWarmth(Number(event.currentTarget.value))}
+          />
+          <output>
+            {warmth > 0 ? '+' : ''}
+            {warmth}
+          </output>
+        </label>
+        <label className="study-range exposure-range">
+          <span>{c.exposure}</span>
+          <input
+            type="range"
+            min="-1"
+            max="1"
+            step="0.05"
+            value={exposure}
+            onChange={(event) => setExposure(Number(event.currentTarget.value))}
+          />
+          <output>
+            {exposure > 0 ? '+' : ''}
+            {exposure.toFixed(2)}
+          </output>
+        </label>
+        <div className="study-footer">
+          <button type="button" className="study-reset" onClick={reset}>
+            {c.reset}
+          </button>
+          <button type="button" className="study-open" onClick={() => onOpen(current.current)}>
+            {c.openSample}
+            <ArrowUpRight size={15} />
+          </button>
+        </div>
+      </div>
+      {renderError && (
+        <p className="study-error" role="status">
+          {c.renderFailed}
+        </p>
+      )}
+    </figure>
+  );
+}
+
+export function AboutPage({
+  config,
+  onEnter,
+  hasStudio,
+}: {
+  config: PublicConfig | null;
+  onEnter: (intent: AboutIntent, settings?: SampleSettings) => void;
+  hasStudio: boolean;
+}) {
+  const locale = useLocale();
+  const c = aboutCopy(locale);
+  const page = useRef<HTMLDivElement>(null);
+  const hero = useRef<HTMLElement>(null);
+  const [question, setQuestion] = useState<number | null>(null);
+  const [feature, setFeature] = useState(0);
+  const brand = config?.brand.name || DEFAULT_BRAND;
+  const logo = brandLogoUrl(config?.brand);
+  useEffect(() => {
+    const target = hero.current;
+    if (!target) return;
+    const media = matchMedia('(prefers-reduced-motion: reduce), (pointer: coarse)');
+    let frame = 0;
+    let x = 0,
+      y = 0;
+    const reset = () => {
+      target.style.setProperty('--pointer-x', '0');
+      target.style.setProperty('--pointer-y', '0');
+    };
+    const move = (event: PointerEvent) => {
+      if (media.matches) return;
+      const bounds = target.getBoundingClientRect();
+      x = (event.clientX - bounds.left) / Math.max(1, bounds.width) - 0.5;
+      y = (event.clientY - bounds.top) / Math.max(1, bounds.height) - 0.5;
+      if (frame) return;
+      frame = requestAnimationFrame(() => {
+        target.style.setProperty('--pointer-x', String(x));
+        target.style.setProperty('--pointer-y', String(y));
+        frame = 0;
+      });
+    };
+    const leave = () => {
+      cancelAnimationFrame(frame);
+      frame = 0;
+      reset();
+    };
+    target.addEventListener('pointermove', move, { passive: true });
+    target.addEventListener('pointerleave', leave);
+    media.addEventListener('change', leave);
+    return () => {
+      leave();
+      target.removeEventListener('pointermove', move);
+      target.removeEventListener('pointerleave', leave);
+      media.removeEventListener('change', leave);
+    };
+  }, []);
+  useEffect(() => {
+    document.title = brand + ' · ' + c.footer;
+    document.querySelector('meta[name="description"]')?.setAttribute('content', c.intro);
+  }, [brand, c.footer, c.intro]);
+  useEffect(() => {
+    const root = page.current;
+    if (
+      !root ||
+      matchMedia('(prefers-reduced-motion: reduce)').matches ||
+      !('IntersectionObserver' in window)
+    )
+      return;
+    const observer = new IntersectionObserver(
+      (entries) => {
+        for (const entry of entries)
+          if (entry.isIntersecting) {
+            entry.target.setAttribute('data-revealed', 'true');
+            observer.unobserve(entry.target);
+          }
+      },
+      { threshold: 0.08 },
+    );
+    root.querySelectorAll('[data-reveal]').forEach((element) => {
+      element.setAttribute('data-revealed', 'false');
+      observer.observe(element);
+    });
+    return () => observer.disconnect();
+  }, []);
+  const features = [
+    { title: c.precise, body: c.preciseBody, icon: <SlidersHorizontal size={24} /> },
+    { title: c.ai, body: c.aiBody, icon: <Sparkle size={24} /> },
+    { title: c.together, body: c.togetherBody, icon: <UsersThree size={24} /> },
+  ];
+  const questions = [
+    [c.q1, c.a1],
+    [c.q2, c.a2],
+    [c.q3, c.a3],
+    [c.q4, c.a4],
+    [c.q5, c.a5],
+  ];
+  const go = () => onEnter(hasStudio ? 'studio' : 'register');
+  return (
+    <div className="about-page" ref={page} data-locale={locale}>
+      <a className="about-skip" href="#about-main">
+        {locale === 'en' ? 'Skip to content' : locale === 'zh-TW' ? '跳至主要內容' : '跳至主要内容'}
+      </a>
+      <header className="about-header">
+        <a className="about-brand" href="#/" aria-label={brand}>
+          {logo ? (
+            <img src={logo} alt="" />
+          ) : (
+            <span className="about-symbol" aria-hidden="true">
+              <span />
+              <span />
+            </span>
+          )}
+          <span>{brand}</span>
+        </a>
+        <nav aria-label={c.overview}>
+          <a href="#create">{c.tools}</a>
+          <a href="#questions">{c.questions}</a>
+        </nav>
+        <div className="about-header-actions">
+          <LanguageSelect compact />
+          <button type="button" className="about-login" onClick={() => onEnter('login')}>
+            {c.login}
+          </button>
+          <button type="button" className="about-header-start" onClick={go}>
+            {hasStudio ? c.continue : c.start}
+            <ArrowUpRight size={16} />
+          </button>
+        </div>
+      </header>
+      <main id="about-main">
+        <section className="about-hero" ref={hero}>
+          <Contours />
+          <div className="about-hero-copy">
+            <p className="about-eyebrow">
+              <span />
+              {c.eyebrow}
+            </p>
+            <h1>
+              <span>{c.titleOne}</span>
+              <span>{c.titleTwo}</span>
+            </h1>
+            <p className="about-intro">{c.intro}</p>
+            <div className="about-hero-actions">
+              <button type="button" className="about-primary" onClick={go}>
+                {hasStudio ? c.continue : c.start}
+                <ArrowUpRight size={21} />
+              </button>
+              <button type="button" className="about-local" onClick={() => onEnter('studio')}>
+                {c.local}
+                <ArrowRight size={16} />
+              </button>
+            </div>
+            <p className="about-footnote">{c.footnote}</p>
+            <a className="about-scroll" href="#create" aria-label={c.tools}>
+              <ArrowDown size={18} />
+              <span>{c.scrollLabel}</span>
+            </a>
+          </div>
+          <ColorStudy onOpen={(settings) => onEnter('sample', settings)} />
+        </section>
+        <section className="about-create" id="create" data-reveal>
+          <div className="about-section-heading">
+            <span className="about-index">{c.processIndex}</span>
+            <h2>{c.possibilities}</h2>
+            <p>{c.possibilitiesBody}</p>
+          </div>
+          <div className="about-feature-layout">
+            <div
+              className="about-feature-list"
+              role="tablist"
+              aria-label={c.tools}
+              aria-orientation="vertical"
+              onKeyDown={(event) => {
+                if (!['ArrowDown', 'ArrowUp', 'Home', 'End'].includes(event.key)) return;
+                event.preventDefault();
+                const next =
+                  event.key === 'Home'
+                    ? 0
+                    : event.key === 'End'
+                      ? 2
+                      : (feature + (event.key === 'ArrowDown' ? 1 : 2)) % 3;
+                setFeature(next);
+                event.currentTarget
+                  .querySelectorAll<HTMLButtonElement>('[role=tab]')
+                  [next]?.focus();
+              }}
+            >
+              {features.map((item, index) => (
+                <button
+                  type="button"
+                  role="tab"
+                  id={'feature-tab-' + index}
+                  aria-controls={'feature-panel-' + index}
+                  aria-selected={feature === index}
+                  tabIndex={feature === index ? 0 : -1}
+                  key={index}
+                  onClick={() => setFeature(index)}
+                >
+                  <span className="feature-icon">{item.icon}</span>
+                  <span>
+                    <strong>{item.title}</strong>
+                    <span>{item.body}</span>
+                  </span>
+                  <ArrowUpRight size={19} />
+                </button>
+              ))}
+            </div>
+            <div className="about-feature-art">
+              {features.map((item, index) => (
+                <div
+                  className="feature-panel"
+                  role="tabpanel"
+                  id={'feature-panel-' + index}
+                  aria-labelledby={'feature-tab-' + index}
+                  hidden={feature !== index}
+                  key={index}
+                >
+                  {index === 0 ? (
+                    <div className="precision-art" aria-hidden="true">
+                      <div className="precision-cross" />
+                      <svg viewBox="0 0 360 250">
+                        <path
+                          className="curve-grid"
+                          d="M30 20V220H330M30 120H330M130 20V220M230 20V220"
+                        />
+                        <path className="curve-original" d="M30 220L330 20" />
+                        <path className="curve-edit" d="M30 220 C120 220 135 35 330 20" />
+                        <circle cx="165" cy="110" r="5" />
+                      </svg>
+                      <span className="about-precision-scale">0.01° / 100%</span>
+                    </div>
+                  ) : index === 1 ? (
+                    <div className="idea-art" aria-hidden="true">
+                      <span className="idea-orbit" />
+                      <Sparkle size={52} weight="light" />
+                      <span className="idea-wave">
+                        {Array.from({ length: 26 }, (_, i) => (
+                          <i
+                            key={i}
+                            style={{ height: 8 + Math.abs(Math.sin(i * 0.7)) * 28 + 'px' }}
+                          />
+                        ))}
+                      </span>
+                    </div>
+                  ) : (
+                    <div className="collab-art" aria-hidden="true">
+                      <span className="collab-layer one" />
+                      <span className="collab-layer two" />
+                      <span className="collab-layer three" />
+                      <span className="collab-cursor a">
+                        <Cursor size={24} />
+                      </span>
+                      <span className="collab-cursor b">
+                        <Cursor size={24} />
+                      </span>
+                    </div>
+                  )}
+                  <div className="feature-art-caption">
+                    <span>{'0' + (index + 1)}</span>
+                    <p>{index === 0 ? c.precisionCaption : index === 1 ? c.ai : c.together}</p>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+        </section>
+        <section className="about-space" data-reveal>
+          <div>
+            <span className="about-index">{c.spaceIndex}</span>
+            <h2>{c.workspaceTitle}</h2>
+            <p>{c.workspaceBody}</p>
+            <button type="button" className="about-primary" onClick={() => onEnter('studio')}>
+              {c.workspaceOpen}
+              <ArrowUpRight size={20} />
+            </button>
+          </div>
+          <div className="space-composition" aria-hidden="true">
+            <div className="space-paper">
+              <img
+                src={DEMO_IMAGE}
+                width="1536"
+                height="1024"
+                alt=""
+                loading="lazy"
+                decoding="async"
+              />
+            </div>
+            <div className="space-toolbar">
+              <SlidersHorizontal />
+              <CircleHalf />
+              <Sparkle />
+              <UsersThree />
+            </div>
+            <span className="space-axis x" />
+            <span className="space-axis y" />
+            <span className="space-coordinate">x 048 · y 096</span>
+          </div>
+          <p className="about-space-note">{c.workspaceNote}</p>
+        </section>
+        <section className="about-faq" id="questions" data-reveal>
+          <div>
+            <span className="about-index">{c.faqIndex}</span>
+            <h2>{c.detailsTitle}</h2>
+          </div>
+          <div className="about-question-list">
+            {questions.map(([title, body], index) => (
+              <div className="about-question" key={index} data-open={question === index}>
+                <h3>
+                  <button
+                    type="button"
+                    aria-expanded={question === index}
+                    aria-controls={'question-' + index}
+                    onClick={() => setQuestion(question === index ? null : index)}
+                  >
+                    {title}
+                    <Plus size={18} />
+                  </button>
+                </h3>
+                <div
+                  className="question-answer"
+                  id={'question-' + index}
+                  inert={question !== index}
+                  aria-hidden={question !== index}
+                >
+                  <div>
+                    <p>{body}</p>
+                  </div>
+                </div>
+              </div>
+            ))}
+          </div>
+        </section>
+        <section className="about-closing" data-reveal>
+          <span className="about-closing-mark" aria-hidden="true">
+            ↗
+          </span>
+          <h2>{c.final}</h2>
+          <p>{c.finalBody}</p>
+          <button type="button" className="about-primary" onClick={go}>
+            {hasStudio ? c.continue : c.start}
+            <ArrowUpRight size={21} />
+          </button>
+        </section>
+      </main>
+      <footer className="about-footer">
+        <span className="about-footer-brand">
+          {brand}
+          <small>{c.footer}</small>
+        </span>
+        <span>{c.status}</span>
+        <a href="#questions">
+          {c.privacy}
+          <ArrowUpRight size={13} />
+        </a>
+        <a href="#questions">
+          {c.terms}
+          <ArrowUpRight size={13} />
+        </a>
+        <LanguageSelect compact />
+      </footer>
+    </div>
+  );
+}

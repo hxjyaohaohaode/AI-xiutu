@@ -1,3 +1,4 @@
+import { t } from '../i18n';
 import { usePresence } from '../motion/usePresence';
 import {
   ArrowRight,
@@ -65,7 +66,7 @@ export function Sidebar({
     <>
       <button
         className={`sidebar-scrim ${open ? 'open' : ''}`}
-        aria-label="关闭空间导航"
+        aria-label={t('关闭空间导航')}
         aria-hidden={!open}
         inert={!open}
         disabled={!open}
@@ -73,7 +74,7 @@ export function Sidebar({
       />
       <aside
         className={`sidebar ${open ? 'open' : ''}`}
-        aria-label="空间与项目"
+        aria-label={t('空间与项目')}
         data-motion="navigation"
         data-motion-state={presence.phase}
         aria-hidden={!open}
@@ -81,12 +82,12 @@ export function Sidebar({
       >
         <div className="sidebar-brand">
           <Brand name={brand} logoUrl={logoUrl} />
-          <IconButton className="sidebar-close" label="关闭导航" onClick={onClose}>
+          <IconButton className="sidebar-close" label={t('关闭导航')} onClick={onClose}>
             <X size={20} />
           </IconButton>
         </div>
         <div className="sidebar-main">
-          <div className="nav-section-label">我的空间</div>
+          <div className="nav-section-label">{t('我的空间')}</div>
           <button
             data-motion="space-row"
             className={`space-row ${!selectedSpace || selectedSpace.kind === 'personal' ? 'selected' : ''}`}
@@ -99,16 +100,16 @@ export function Sidebar({
               />
             </span>
             <span>
-              {personal?.name ?? '个人创作'}
-              <small>{session.user ? '个人项目与素材' : '本地编辑工作台'}</small>
+              {personal?.name ?? t('个人创作')}
+              <small>{session.user ? t('个人项目与素材') : t('本地编辑工作台')}</small>
             </span>
             {(!selectedSpace || selectedSpace.kind === 'personal') && (
               <i className="selection-dot" />
             )}
           </button>
           <div className="nav-section-label section-spaced">
-            共同创作
-            <IconButton label="创建团队空间" onClick={session.user ? onNewTeam : onAuth}>
+            {t('共同创作')}
+            <IconButton label={t('创建团队空间')} onClick={session.user ? onNewTeam : onAuth}>
               <Plus size={16} />
             </IconButton>
           </div>
@@ -126,14 +127,14 @@ export function Sidebar({
                 {space.name}
                 <small>
                   {space.role === 'owner'
-                    ? '团队所有者'
+                    ? t('团队所有者')
                     : space.role === 'admin'
-                      ? '管理员'
+                      ? t('管理员')
                       : space.role === 'reviewer'
-                        ? '审阅者'
+                        ? t('审阅者')
                         : space.role === 'viewer'
-                          ? '浏览成员'
-                          : '共同创作者'}
+                          ? t('浏览成员')
+                          : t('共同创作者')}
                 </small>
               </span>
               {spaceId === space.id && <i className="selection-dot" />}
@@ -141,26 +142,26 @@ export function Sidebar({
           ))}
           {!teams.length && (
             <div className="team-empty">
-              <span>创建团队，共享项目与素材。</span>
+              <span>{t('创建团队，共享项目与素材。')}</span>
               <button onClick={session.user ? onNewTeam : onAuth}>
-                创建团队
+                {t('创建团队')}
                 <ArrowRight size={13} />
               </button>
             </div>
           )}
           <button className="sidebar-text-action" onClick={session.user ? onJoinTeam : onAuth}>
             <LinkSimple size={16} />
-            使用团队邀请码
+            {t('使用团队邀请码')}
           </button>
           <div className="sidebar-divider" />
           <div className="nav-section-label">
-            当前空间的项目
-            <IconButton label="新建项目" onClick={session.user ? onNewProject : onAuth}>
+            {t('当前空间的项目')}
+            <IconButton label={t('新建项目')} onClick={session.user ? onNewProject : onAuth}>
               <Plus size={16} />
             </IconButton>
           </div>
           {projects.length ? (
-            <nav className="project-list" aria-label="项目">
+            <nav className="project-list" aria-label={t('项目')}>
               {projects.map((project) => (
                 <button
                   data-motion="project-row"
@@ -176,15 +177,15 @@ export function Sidebar({
           ) : (
             <p className="sidebar-empty-copy">
               {session.user
-                ? '尚无项目。创建后可保存作品与版本。'
-                : '登录后，可以保存项目和历史版本。'}
+                ? t('尚无项目。创建后可保存作品与版本。')
+                : t('登录后，可以保存项目和历史版本。')}
             </p>
           )}
           {sharedProjects.length > 0 && (
             <>
               <div className="sidebar-divider" />
-              <div className="nav-section-label">共享给我</div>
-              <nav className="project-list" aria-label="共享给我的项目">
+              <div className="nav-section-label">{t('共享给我')}</div>
+              <nav className="project-list" aria-label={t('共享给我的项目')}>
                 {sharedProjects.map((project) => (
                   <button
                     data-motion="project-row"
@@ -202,7 +203,7 @@ export function Sidebar({
           {selectedSpace && (
             <button className="sidebar-text-action" onClick={onTeamSettings}>
               <GearSix size={16} />
-              {selectedSpace.kind === 'team' ? '团队成员与共享' : '空间共享规则'}
+              {selectedSpace.kind === 'team' ? t('团队成员与共享') : t('空间共享规则')}
             </button>
           )}
         </div>
@@ -210,7 +211,7 @@ export function Sidebar({
           {session.user?.isOperator && (
             <button className="sidebar-text-action" onClick={onOps}>
               <GearSix size={17} />
-              运营管理
+              {t('运营管理')}
             </button>
           )}
           {session.user ? (
@@ -219,7 +220,7 @@ export function Sidebar({
                 type="button"
                 className="sidebar-account-details"
                 onClick={onAccount}
-                aria-label={`账号与使用：${session.user.displayName}`}
+                aria-label={t('账号与使用：{v0}', { v0: session.user.displayName })}
               >
                 <span className="user-avatar" aria-hidden>
                   {session.user.displayName.slice(0, 1)}
@@ -229,7 +230,7 @@ export function Sidebar({
                   <span>{session.user.phoneMasked}</span>
                 </span>
               </button>
-              <IconButton label="退出登录选项" onClick={onLogout}>
+              <IconButton label={t('退出登录选项')} onClick={onLogout}>
                 <SignOut size={18} />
               </IconButton>
             </div>
@@ -237,8 +238,8 @@ export function Sidebar({
             <button className="account-login" onClick={onAuth}>
               <UserCircle size={29} weight="light" />
               <span>
-                <strong>登录工作空间</strong>
-                <small>保存、同步，与团队协作</small>
+                <strong>{t('登录工作空间')}</strong>
+                <small>{t('保存、同步，与团队协作')}</small>
               </span>
               <SignIn size={18} />
             </button>
