@@ -448,12 +448,17 @@ test(
       );
       const search = `/v1/projects/${f.projectId}/assets?query=APRICOT`;
       assert.equal((await f.call('GET', search, undefined, 'viewer')).json().assets[0].id, assetId);
+      const listing = await f.call('GET', path, undefined, 'viewer');
+      assert.equal(listing.statusCode, 200, listing.body);
+      assert.equal(listing.headers['cache-control'], 'private, no-store');
+      assert.deepEqual(listing.json().recognitions, [recognition]);
       assert.equal((await f.call('GET', path, undefined, 'outsider')).statusCode, 404);
       assert.equal(
         (await f.call('DELETE', `${path}/${recognition.id}`, undefined, 'editor')).statusCode,
         200,
       );
       assert.deepEqual((await f.call('GET', search)).json().assets, []);
+      assert.deepEqual((await f.call('GET', path)).json().recognitions, []);
       const chinese = Buffer.from(`<svg xmlns="http://www.w3.org/2000/svg" width="760" height="240">
       <rect width="760" height="240" fill="white"/><text font-family="Noto Sans CJK SC" font-size="70" x="60" y="130">春天花园</text></svg>`);
       const importedChinese = await upload(

@@ -76,6 +76,38 @@ test(
         projects.map(({ id }: { id: string }) => id),
         [f.projectId],
       );
+      const projectEdit = {
+        title: 'Review the graded project',
+        description: 'The source remains immutable.',
+        expectedVersion: projects[0].version,
+      };
+      assert.equal((await f.call('PATCH', project, projectEdit, 'viewer')).statusCode, 403);
+      const updated = await f.call('PATCH', project, projectEdit, 'editor');
+      assert.equal(updated.statusCode, 200, updated.body);
+      assert.equal(updated.json().project.version, projectEdit.expectedVersion + 1);
+      assert.equal(updated.json().project.description, projectEdit.description);
+      assert.equal((await f.call('PATCH', project, projectEdit, 'editor')).statusCode, 409);
+      assert.equal(
+        (await f.call('GET', project, undefined, 'viewer')).json().project.title,
+        projectEdit.title,
+      );
+      const artwork = `/v1/artworks/${f.artwork.artwork.id}`;
+      const before = (await f.call('GET', artwork)).json();
+      const rename = { title: 'Portrait for review', expectedVersion: before.artwork.headVersion };
+      assert.equal((await f.call('PATCH', artwork, rename, 'viewer')).statusCode, 403);
+      const renamed = await f.call('PATCH', artwork, rename, 'editor');
+      assert.equal(renamed.statusCode, 200, renamed.body);
+      assert.equal(renamed.json().artwork.title, rename.title);
+      assert.equal(renamed.json().artwork.headVersion, rename.expectedVersion + 1);
+      assert.deepEqual(renamed.json().revision.recipe, before.revision.recipe);
+      const retry = await f.call('PATCH', artwork, rename, 'editor');
+      assert.equal(retry.statusCode, 200, retry.body);
+      assert.equal(retry.json().replayed, true);
+      assert.equal(retry.json().revision.id, renamed.json().revision.id);
+      assert.equal(
+        (await f.call('PATCH', artwork, { ...rename, title: 'Stale rename' }, 'editor')).statusCode,
+        409,
+      );
       assert.equal((await f.call('GET', `${team}/members`, undefined, 'outsider')).statusCode, 403);
       const members = (await f.call('GET', `${team}/members`, undefined, 'viewer')).json().members;
       assert.equal(members.length, 3);

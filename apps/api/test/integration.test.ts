@@ -549,6 +549,18 @@ test(
             (await call('GET', '/v1/ops/users', undefined, owner.cookie)).statusCode,
             403,
           );
+          const users = await call(
+            'GET',
+            `/v1/ops/users?query=${encodeURIComponent(owner.phone)}`,
+            undefined,
+            operator.cookie,
+          );
+          assert.equal(users.statusCode, 200, users.body);
+          const [listed] = users.json().users;
+          assert.equal(users.json().users.length, 1);
+          assert.equal(listed.id, owner.userId);
+          assert.match(listed.phoneMasked, /••••/);
+          assert.equal('phone' in listed, false);
           assert.equal(
             (await call('GET', '/v1/ops/overview', undefined, operator.cookie)).statusCode,
             200,
@@ -871,12 +883,24 @@ test(
           );
         },
       );
-      await t.test('reset consumes its purpose code and revokes old sessions', async () => {
+      await t.test('login OTP creates one session and password reset revokes it', async () => {
         const key = secretHash(config.sessionSecret, `otp-phone:${owner.phone}`);
-        await db.query(
-          "UPDATE otp_challenges SET created_at=clock_timestamp()-interval '2 minutes' WHERE phone_key=$1",
-          [key],
-        );
+        const ageChallenges = () =>
+          db.query(
+            "UPDATE otp_challenges SET created_at=clock_timestamp()-interval '2 minutes' WHERE phone_key=$1",
+            [key],
+          );
+        await ageChallenges();
+        const login = await call('POST', '/v1/auth/otp', { phone: owner.phone, purpose: 'login' });
+        assert.equal(login.statusCode, 202, login.body);
+        assert.equal('code' in login.json(), false);
+        const credentials = { phone: owner.phone, code: codes.get(`${owner.phone}:login`)! };
+        const loggedIn = await call('POST', '/v1/auth/login-otp', credentials);
+        assert.equal(loggedIn.statusCode, 200, loggedIn.body);
+        const cookie = String(loggedIn.headers['set-cookie']).split(';')[0]!;
+        assert.equal((await call('GET', '/v1/session', undefined, cookie)).json().user.id, owner.userId);
+        assert.equal((await call('POST', '/v1/auth/login-otp', credentials)).statusCode, 400);
+        await ageChallenges();
         const otp = await call('POST', '/v1/auth/otp', { phone: owner.phone, purpose: 'reset' });
         assert.equal(otp.statusCode, 202, otp.body);
         const code = codes.get(`${owner.phone}:reset`)!;
@@ -895,6 +919,7 @@ test(
           200,
         );
         assert.equal((await call('GET', '/v1/session', undefined, owner.cookie)).json().user, null);
+        assert.equal((await call('GET', '/v1/session', undefined, cookie)).json().user, null);
         const old = await call('POST', '/v1/auth/login', {
           phone: owner.phone,
           password: 'A-secure-test-passphrase-2026',
