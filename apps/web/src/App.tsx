@@ -64,6 +64,7 @@ import {
   createRecipeV4,
   parseEditorRecipe,
   MAX_V3_PIXELS,
+  type CutoutSettings,
   type EditorRecipe,
 } from '@ai-xiutu/editor';
 import { DEFAULT_BRAND, brandLogoUrl } from './lib/brand';
@@ -1173,7 +1174,12 @@ export function App() {
       !editor.file
     )
       throw new Error('请先分析当前原图的人物边缘。');
-    const settings = { selection, radius: 0.015, decontaminate: 0.8 };
+    const settings: CutoutSettings = {
+      algorithm: 'guided-v2',
+      selection,
+      radius: 0.015,
+      decontaminate: 0.8,
+    };
     const identity = editor.getSourceIdentity();
     const name = `${filenameBase(editor.file.name).slice(0, 106)}-抠图.png`;
     const sourceAsset = cloudBaseSources.current.get(identity);

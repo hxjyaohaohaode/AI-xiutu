@@ -103,7 +103,7 @@ export function refineGuidedMatte(
     return [cell, other, t] as const;
   };
   const xs = Array.from({ length: image.width }, (_, x) => coordinate(x + 0.5, image.width, width));
-  const result = new Float32Array(prior.length);
+  const result = prior.slice();
   const sample = (
     plane: Float32Array,
     x0: number,
@@ -121,7 +121,8 @@ export function refineGuidedMatte(
     for (let x = 0; x < image.width; x++) {
       const at = y * image.width + x,
         src = at * 4;
-      if (!image.data[src + 3]) continue;
+      // Hard labels are held by the caller and need no full-resolution evaluation.
+      if (!image.data[src + 3] || prior[at] === 0 || prior[at] === 1) continue;
       const [x0, x1, tx] = xs[x]!;
       let q = sample(averaged[3]!, x0, x1, tx, y0, y1, ty);
       for (let c = 0; c < 3; c++)

@@ -32,6 +32,7 @@ export { compileCurveLut, sampleCurveLut, isIdentityCurve } from './curves.js';
 export { radialMaskWeight } from './mask.js';
 export { renderRecipeTiled, validateTiledImage, DEFAULT_TILE_SIZE, TILE_HALO } from './tiled.js';
 export { readImageHeader, MAX_HEADER_BYTES, ImageHeaderError } from './headers.js';
+export { encodeRgbaPng } from './png.js';
 export type { ImageHeader, HeaderLimits } from './headers.js';
 export {
   DEFAULT_RECIPE_V2,

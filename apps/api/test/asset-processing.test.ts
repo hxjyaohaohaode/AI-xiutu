@@ -2,7 +2,12 @@ import assert from 'node:assert/strict';
 import { randomUUID } from 'node:crypto';
 import test from 'node:test';
 import sharp from 'sharp';
-import { createRasterMask, createRecipeV4 } from '@ai-xiutu/editor';
+import {
+  createRasterMask,
+  createRecipeV4,
+  renderCutout,
+  type CutoutSettings,
+} from '@ai-xiutu/editor';
 import { inferOcrTable, readTesseractWords } from '../src/asset-recognition.js';
 import { collaborationFixture } from './collaboration-fixture.js';
 
@@ -74,21 +79,33 @@ test(
       ).json();
       assert.equal(lineage.algorithm, 'photo-restore-v1');
       assert.equal(lineage.sources[0].assetId, f.assetId);
+      const settings: CutoutSettings = {
+        algorithm: 'guided-v2',
+        selection: createRasterMask(3, 1, Uint8Array.of(255, 128, 0)),
+        radius: 0.03,
+        decontaminate: 0.8,
+      };
       const guided = await f.call('POST', path, {
         kind: 'cutout',
         sourceAssetId: f.assetId,
         requestId: randomUUID(),
         name: 'guided.png',
-        settings: {
-          algorithm: 'guided-v2',
-          selection: createRasterMask(2, 1, Uint8Array.of(255, 0)),
-          radius: 0.03,
-        },
+        settings,
       });
       assert.equal(guided.statusCode, 201, guided.body);
       assert.equal(
         (await f.call('GET', `/v1/assets/${guided.json().asset.id}/derivation`)).json().algorithm,
         'rgb-guided-trimap-v2',
+      );
+      const actual = await f.call('GET', guided.json().asset.url);
+      assert.equal(actual.statusCode, 200);
+      const source = new Uint8ClampedArray(64 * 48 * 4);
+      for (let at = 0; at < source.length; at += 4) source.set([85, 153, 136, 255], at);
+      const expected = renderCutout({ width: 64, height: 48, data: source }, settings);
+      assert.ok(expected.data.some((value, at) => at % 4 === 3 && value > 0 && value < 255));
+      assert.deepEqual(
+        await sharp(actual.rawPayload).ensureAlpha().raw().toBuffer(),
+        Buffer.from(expected.data),
       );
     } finally {
       await f.close();

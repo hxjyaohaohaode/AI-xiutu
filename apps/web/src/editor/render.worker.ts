@@ -2,6 +2,7 @@ import {
   renderEditorRecipe,
   renderEditorRecipeTiled,
   renderCutout,
+  encodeRgbaPng,
   type CutoutSettings,
   getEditorOutputDimensions,
   MAX_V3_PIXELS,
@@ -100,6 +101,13 @@ self.onmessage = async (event: MessageEvent<Message>) => {
   try {
     const source = message.type === 'export' ? original : preview;
     if (!source || !message.recipe) throw new Error('请先导入图片。');
+    if (message.type === 'export' && message.cutout) {
+      if (message.format !== undefined && message.format !== 'png')
+        throw new Error('人物素材需要透明 PNG 格式。');
+      const blob = await encodeRgbaPng(renderCutout(source, message.cutout));
+      self.postMessage({ id: message.id, type: message.type, blob });
+      return;
+    }
     if (message.type !== 'export' && sourceDimensions) {
       if (
         (message.recipe.schemaVersion === 3 || message.recipe.schemaVersion === 4) &&
@@ -123,18 +131,16 @@ self.onmessage = async (event: MessageEvent<Message>) => {
     }
     const result =
       message.type === 'export'
-        ? message.cutout
-          ? renderCutout(source, message.cutout)
-          : message.originalOnly
-            ? source
-            : renderEditorRecipeTiled(source, message.recipe, {
-                maxPixels:
-                  message.recipe.schemaVersion === 3 || message.recipe.schemaVersion === 4
-                    ? 16_777_216
-                    : 67_108_864,
-                images: originalImages,
-                tileSize: 512,
-              })
+        ? message.originalOnly
+          ? source
+          : renderEditorRecipeTiled(source, message.recipe, {
+              maxPixels:
+                message.recipe.schemaVersion === 3 || message.recipe.schemaVersion === 4
+                  ? 16_777_216
+                  : 67_108_864,
+              images: originalImages,
+              tileSize: 512,
+            })
         : renderEditorRecipe(preparedSource(source, message.recipe, budget), message.recipe, {
             // Output is budgeted before rendering; validated auxiliary previews
             // keep their own dimensions and normalized placement.

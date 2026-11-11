@@ -86,7 +86,7 @@ export function renderCutout(
   const radius = Math.min(64, Math.round(settings.radius * Math.min(width, height)));
   const labels = matte;
   if (guided && radius > 0) {
-    matte = refineGuidedMatte(image, matte, radius * 2, options);
+    matte = uncertain ? refineGuidedMatte(image, labels, radius * 2, options) : labels.slice();
     uncertain = 0;
     for (let i = 0; i < matte.length; i++) {
       if ((i & 16383) === 0) checkV3(options);
@@ -116,6 +116,7 @@ export function renderCutout(
   ].sort((a, b) => a - b);
   const colors = new Float64Array(8);
   const candidates = new Int32Array(16);
+  const candidateDistances = new Float64Array(candidates.length);
   for (let y = 0; y < height; y++) {
     if ((y & 15) === 0) checkV3(options);
     for (let x = 0; x < width; x++) {
@@ -145,7 +146,9 @@ export function renderCutout(
               weight = 1 / Math.sqrt(distance);
             for (let c = 0; c < 3; c++) colors[k + c]! += linear[image.data[sample + c]!]! * weight;
             colors[k + 3]! += weight;
-            candidates[d * 2 + label] = n;
+            const candidate = d * 2 + label;
+            candidates[candidate] = n;
+            if (guided) candidateDistances[candidate] = Math.hypot(xx - x, yy - y);
             found |= 1 << label;
             if (found === 3) break;
           }
@@ -181,9 +184,7 @@ export function renderCutout(
                   error += (linear[image.data[at + c]!]! - bg - value * (fg - bg)) ** 2;
                 }
                 const distance =
-                  (Math.hypot((fi % width) - x, Math.floor(fi / width) - y) +
-                    Math.hypot((bi % width) - x, Math.floor(bi / width) - y)) /
-                  Math.max(1, radius * 2);
+                  (candidateDistances[f]! + candidateDistances[b]!) / Math.max(1, radius * 2);
                 const score = error / contrast + 0.0002 * (value - alpha) ** 2 + 0.00002 * distance;
                 if (score < best) {
                   best = score;

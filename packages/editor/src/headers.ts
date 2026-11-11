@@ -1,4 +1,5 @@
 import { MAX_EXPLICIT_PIXELS } from './geometry.js';
+import { PNG_SIGNATURE, pngCrc } from './png.js';
 
 export const MAX_HEADER_BYTES = 1_048_576;
 
@@ -70,18 +71,8 @@ function checked(
   return { width, height, format, animated };
 }
 
-const PNG_SIGNATURE = [137, 80, 78, 71, 13, 10, 26, 10];
-const CRC_TABLE = Uint32Array.from({ length: 256 }, (_, index) => {
-  let n = index;
-  for (let bit = 0; bit < 8; bit += 1) n = n & 1 ? 0xedb88320 ^ (n >>> 1) : n >>> 1;
-  return n >>> 0;
-});
-
 function checkPngCrc(bytes: Uint8Array, offset: number, length: number): void {
-  let crc = 0xffffffff;
-  for (let i = offset + 4; i < offset + 8 + length; i += 1)
-    crc = CRC_TABLE[(crc ^ bytes[i]!) & 255]! ^ (crc >>> 8);
-  if ((crc ^ 0xffffffff) >>> 0 !== be32(bytes, offset + 8 + length))
+  if (pngCrc(bytes, offset + 4, offset + 8 + length) !== be32(bytes, offset + 8 + length))
     fail('PNG header chunk has an invalid CRC');
 }
 

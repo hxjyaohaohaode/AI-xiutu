@@ -218,18 +218,22 @@
       "显式guided-v2 RGB边缘细化，保持确定背景及前景，不扩入新背景纹理",
       "photo-restore-v1的独立明度/色度降噪及已知PSF去模糊，复用来源、权限、幂等和额度发布",
       "scene-linear-v1的真实16位全局母版调色和原生float32 EXR导出，独立来源绑定",
-      "团队PCM环形队列和单调时钟过期，保留同时多说话人与限幅"
+      "团队PCM环形队列和单调时钟过期，保留同时多说话人与限幅",
+      "工作台抠图显式使用guided-v2，浏览器直接编码RGBA8 PNG，真实下载与项目派生逐字节相同",
+      "有参考alpha的27个公开缩略样本覆盖两种三分图宽度，人工核查细枝、透明网格和彩绳的残影"
     ],
     "pending": [
       "神经发丝、完整三维遮挡及更大规模人像质量评审",
       "整套V4配方高位深/HDR重放、CMYK印前和可编辑PSD往返",
-      "前端新能力入口、在线支付与自助注销的服务端完整协议",
-      "最终合并源码的整仓和GitHub验收，物理设备、公网多人长通话"
+      "体育修复与母版调色的独立前端入口、在线支付与自助注销的服务端完整协议",
+      "高分辨率带参考透明度的更广数据、真实模型跨风格评估、物理设备和公网多人长通话"
     ],
     "evidence": [
       "artifacts/editor-performance/before/report.json",
       "artifacts/editor-performance/after/report.json",
       "artifacts/photo-quality/report.json",
+      "artifacts/backend-depth-20261111/matte-reference.json",
+      "artifacts/backend-depth-20261111/photo-cutout/report.json",
       "packages/media/test/precision.test.ts",
       "docs/BACKEND-DEPTH.md"
     ]

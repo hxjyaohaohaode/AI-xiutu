@@ -1,6 +1,6 @@
 /** Real public photographs, actual inference and independent known degradations. No paid calls. */
 import { readFile, writeFile, mkdir } from 'node:fs/promises';
-import { createHash } from 'node:crypto';
+import { createHash, randomUUID } from 'node:crypto';
 import { execFileSync } from 'node:child_process';
 import { resolve, join } from 'node:path';
 import assert from 'node:assert/strict';
@@ -132,6 +132,134 @@ async function getBytes(source) {
   assert.equal(sha(bytes), source.sha256);
   return bytes;
 }
+
+async function checkLocalCutout(browser, origin, image) {
+  const page = await browser.newPage({
+    viewport: { width: 1440, height: 960 },
+    reducedMotion: 'reduce',
+    acceptDownloads: true,
+  });
+  const pageErrors = [];
+  page.on('pageerror', (error) => pageErrors.push(error.message));
+  try {
+    await page.addInitScript(() => {
+      const NativeWorker = window.Worker;
+      window.Worker = class extends NativeWorker {
+        postMessage(message, ...args) {
+          if (message.type === 'export' && message.cutout)
+            window.observedCutout = structuredClone(message.cutout);
+          super.postMessage(message, ...args);
+        }
+      };
+    });
+    await page.route('**/*', (route) => {
+      const url = new URL(route.request().url());
+      if (['data:', 'blob:'].includes(url.protocol)) return route.continue();
+      if (url.origin !== origin) return route.abort();
+      if (url.pathname.startsWith('/v1/'))
+        return route.fulfill({ status: 503, json: { message: 'offline' } });
+      return route.continue();
+    });
+    await page.goto(origin);
+    const sourcePng = await png(image);
+    await page.getByLabel('选择照片', { exact: true }).setInputFiles({
+      name: 'public-portrait.png',
+      mimeType: 'image/png',
+      buffer: sourcePng,
+    });
+    const beauty = page
+      .getByRole('navigation', { name: '编辑工具', exact: true })
+      .getByRole('button', { name: '美颜', exact: true });
+    if ((await beauty.getAttribute('aria-pressed')) !== 'true') await beauty.click();
+    await page.getByRole('button', { name: '识别照片中的人物', exact: true }).click();
+    const button = page.getByRole('button', { name: '从原图提取人物素材', exact: true });
+    await button.waitFor({ timeout: 60000 });
+    const downloading = page.waitForEvent('download', { timeout: 30000 });
+    await button.click();
+    const download = await downloading;
+    assert.equal(await download.failure(), null);
+    const bytes = await readFile(await download.path());
+    const settings = await page.evaluate(() => window.observedCutout);
+    assert.equal(settings.algorithm, 'guided-v2');
+    const expected = renderCutout(image, settings);
+    const decoded = await sharp(bytes).ensureAlpha().raw().toBuffer();
+    assert.deepEqual(decoded, Buffer.from(expected.data));
+    const partialAlpha = expected.data.filter(
+      (value, index) => index % 4 === 3 && value > 0 && value < 255,
+    ).length;
+    assert.ok(partialAlpha > 0);
+    assert.deepEqual(pageErrors, []);
+    const cloud = await checkCloudCutout(sourcePng, settings, decoded);
+    await writeFile(join(output, 'workspace-cutout.png'), bytes);
+    return {
+      algorithm: settings.algorithm,
+      exactRgbaBytes: decoded.length,
+      partialAlpha,
+      sha256: sha(bytes),
+      cloud,
+    };
+  } finally {
+    await page.close();
+  }
+}
+
+async function checkCloudCutout(sourcePng, settings, browserPixels) {
+  const database = process.env.TEST_DATABASE_URL;
+  if (!database) return { state: 'not-run', reason: 'No isolated PostgreSQL fixture configured' };
+  if (!decodeURIComponent(new URL(database).pathname).includes('test'))
+    throw new Error('Cutout fixture requires a disposable test database');
+  const { collaborationFixture } = await import('../../apps/api/test/collaboration-fixture.ts');
+  const fixture = await collaborationFixture(database);
+  try {
+    const boundary = randomUUID();
+    const upload = await fixture.app.inject({
+      method: 'POST',
+      url: `/v1/projects/${fixture.projectId}/assets`,
+      headers: {
+        origin: fixture.origin,
+        cookie: fixture.actors.owner.cookie,
+        'content-type': `multipart/form-data; boundary=${boundary}`,
+      },
+      payload: Buffer.concat([
+        Buffer.from(
+          `--${boundary}\r\nContent-Disposition: form-data; name="file"; filename="portrait.png"\r\nContent-Type: image/png\r\n\r\n`,
+        ),
+        sourcePng,
+        Buffer.from(`\r\n--${boundary}--\r\n`),
+      ]),
+    });
+    assert.equal(upload.statusCode, 201, upload.body);
+    const path = `/v1/projects/${fixture.projectId}/derived-assets`;
+    const request = {
+      kind: 'cutout',
+      sourceAssetId: upload.json().asset.id,
+      requestId: randomUUID(),
+      name: 'guided.png',
+      settings,
+    };
+    assert.equal((await fixture.call('POST', path, request, 'viewer')).statusCode, 403);
+    const derived = await fixture.call('POST', path, request);
+    assert.equal(derived.statusCode, 201, derived.body);
+    const asset = derived.json().asset;
+    const download = await fixture.call('GET', asset.url);
+    assert.equal(download.statusCode, 200, download.body);
+    const decoded = await sharp(download.rawPayload).ensureAlpha().raw().toBuffer();
+    assert.deepEqual(decoded, browserPixels);
+    const lineage = (await fixture.call('GET', `/v1/assets/${asset.id}/derivation`)).json();
+    assert.equal(lineage.algorithm, 'rgb-guided-trimap-v2');
+    assert.equal(lineage.sources[0].assetId, request.sourceAssetId);
+    assert.equal((await fixture.call('POST', path, request)).json().asset.id, asset.id);
+    return {
+      state: 'passed',
+      exactRgbaBytes: decoded.length,
+      rgbaSha256: sha(decoded),
+      replayed: true,
+    };
+  } finally {
+    await fixture.close();
+  }
+}
+
 let vite, browser;
 try {
   vite = await createServer({
@@ -165,6 +293,15 @@ try {
       height: decoded.info.height,
       data: new Uint8ClampedArray(decoded.data),
     };
+    if (source.name === 'portrait-hopper') {
+      const receipt = await checkLocalCutout(browser, 'http://127.0.0.1:4186', image);
+      report.cases.push({
+        photo: source.name,
+        tool: 'workspace-cutout',
+        state: 'passed',
+        ...receipt,
+      });
+    }
     const frame = {
       width: image.width,
       height: image.height,

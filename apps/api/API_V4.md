@@ -481,6 +481,11 @@ The latter estimates RGB affine coefficients on a bounded area image, evaluates
 them against original linear RGB, fits nearby color pairs, and only refines the
 uncertain support. Confident background cannot become new hair. It preserves
 explicit trimap paint; it does not detect new objects or reconstruct absent hair.
+The existing workspace extraction action sends `guided-v2` explicitly for both
+the local Worker and the cloud request. Local PNG export encodes straight RGBA
+directly, so partially transparent RGB samples match cloud-derived pixels for
+the same canonical source and settings. Omitted algorithms still resolve to
+`ray-v1` for existing API clients and retries.
 A collage takes ordered pixel rectangles, fit, focal points and RGBA background.
 All sources must belong to the authorized project. The output is a normal PNG asset.
 `GET /v1/assets/:id/derivation` reads the algorithm, source IDs and hashes, and
