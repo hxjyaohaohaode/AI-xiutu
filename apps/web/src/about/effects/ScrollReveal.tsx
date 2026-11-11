@@ -14,18 +14,29 @@ export interface ScrollRevealProps extends HTMLAttributes<HTMLElement> {
   splitWords?: boolean;
 }
 
-export function ScrollReveal({ children, as: Tag = 'div', mode = 'enter', splitWords = false, className = '', ...props }: ScrollRevealProps) {
+export function ScrollReveal({
+  children,
+  as: Tag = 'div',
+  mode = 'enter',
+  splitWords = false,
+  className = '',
+  ...props
+}: ScrollRevealProps) {
   const rootRef = useRef<HTMLElement>(null);
   const text = useMemo(() => {
     const parts = Children.toArray(children);
     return splitWords && parts.every((part) => typeof part === 'string' || typeof part === 'number')
-      ? parts.join('') : null;
+      ? parts.join('')
+      : null;
   }, [children, splitWords]);
   const tokens = useMemo(() => {
     if (text === null) return null;
     // Word segmentation preserves CJK line wrapping, whitespace and punctuation.
     if (typeof Intl.Segmenter !== 'undefined') {
-      return Array.from(new Intl.Segmenter(undefined, { granularity: 'word' }).segment(text), (part) => part.segment);
+      return Array.from(
+        new Intl.Segmenter(undefined, { granularity: 'word' }).segment(text),
+        (part) => part.segment,
+      );
     }
     return text.split(/(\s+)/);
   }, [text]);
@@ -60,8 +71,11 @@ export function ScrollReveal({ children, as: Tag = 'div', mode = 'enter', splitW
         const reveal = 1 - Math.pow(1 - p, 3);
         const lift = (1 - reveal) * 14;
         // A short presentation blur never touches images, controls, precision values or focus.
-        const presentation = !piece.matches('button,input,select,canvas,img,output') && !piece.querySelector('button,input,select,canvas,img,output');
-        piece.style.filter = presentation && p < 1 ? `blur(${((1 - reveal) * 6).toFixed(2)}px)` : '';
+        const presentation =
+          !piece.matches('button,input,select,canvas,img,output') &&
+          !piece.querySelector('button,input,select,canvas,img,output');
+        piece.style.filter =
+          presentation && p < 1 ? `blur(${((1 - reveal) * 6).toFixed(2)}px)` : '';
         piece.style.opacity = p >= 1 ? '' : (0.28 + reveal * 0.72).toFixed(3);
         piece.style.transform = p >= 1 ? '' : `translateY(${lift.toFixed(2)}px)`;
         if (piece === root) rootLift = p >= 1 ? 0 : lift;
@@ -82,33 +96,63 @@ export function ScrollReveal({ children, as: Tag = 'div', mode = 'enter', splitW
     const frame = (now: number) => {
       raf = 0;
       if (!live || document.hidden) return;
-      if (reduced.matches || root.contains(document.activeElement)) { clear(); return; }
-      if (mode === 'scrub') { render(scrollProgress()); return; }
+      if (reduced.matches || root.contains(document.activeElement)) {
+        clear();
+        return;
+      }
+      if (mode === 'scrub') {
+        render(scrollProgress());
+        return;
+      }
       if (!entered || started < 0) return;
       const progress = clamp((now - started) / duration);
       render(progress);
       if (progress < 1) raf = requestAnimationFrame(frame);
     };
     const schedule = () => {
-      if (!raf && live && !document.hidden && (visible || mode === 'enter')) raf = requestAnimationFrame(frame);
+      if (!raf && live && !document.hidden && (visible || mode === 'enter'))
+        raf = requestAnimationFrame(frame);
     };
-    const onScroll = () => { if (mode === 'scrub') schedule(); };
+    const onScroll = () => {
+      if (mode === 'scrub') schedule();
+    };
     const show = () => {
-      if (!entered) { entered = true; started = performance.now(); }
+      if (!entered) {
+        entered = true;
+        started = performance.now();
+      }
       schedule();
     };
     const preference = () => {
       cancelAnimationFrame(raf);
       raf = 0;
-      if (reduced.matches) { clear(); root.dataset.revealed = 'true'; }
-      else schedule();
+      if (reduced.matches) {
+        clear();
+        root.dataset.revealed = 'true';
+      } else schedule();
     };
-    const focus = () => { cancelAnimationFrame(raf); raf = 0; clear(); root.dataset.revealed = 'true'; };
-    const observer = typeof IntersectionObserver === 'undefined' ? null : new IntersectionObserver((entries) => {
-      visible = entries.some((entry) => entry.isIntersecting);
-      if (visible) { if (mode === 'enter') show(); else schedule(); }
-      else if (raf && mode === 'scrub') { cancelAnimationFrame(raf); raf = 0; }
-    }, { rootMargin: '0px 0px -5% 0px', threshold: 0 });
+    const focus = () => {
+      cancelAnimationFrame(raf);
+      raf = 0;
+      clear();
+      root.dataset.revealed = 'true';
+    };
+    const observer =
+      typeof IntersectionObserver === 'undefined'
+        ? null
+        : new IntersectionObserver(
+            (entries) => {
+              visible = entries.some((entry) => entry.isIntersecting);
+              if (visible) {
+                if (mode === 'enter') show();
+                else schedule();
+              } else if (raf && mode === 'scrub') {
+                cancelAnimationFrame(raf);
+                raf = 0;
+              }
+            },
+            { rootMargin: '0px 0px -5% 0px', threshold: 0 },
+          );
     observer?.observe(root);
     if (reduced.matches) clear();
     else if (mode === 'scrub') render(scrollProgress());
@@ -133,11 +177,31 @@ export function ScrollReveal({ children, as: Tag = 'div', mode = 'enter', splitW
   }, [mode, text]);
 
   return (
-    <Tag {...props} ref={(node: HTMLElement | null) => { rootRef.current = node; }} className={`about-scroll-reveal ${className}`}>
-      {tokens ? <>
-        <span className="about-effects-sr-only">{text}</span>
-        <span aria-hidden="true">{tokens.map((part, index) => /^\s+$/.test(part) ? part : <span className="about-scroll-reveal__piece" data-reveal-piece="" key={index}>{part}</span>)}</span>
-      </> : children}
+    <Tag
+      {...props}
+      ref={(node: HTMLElement | null) => {
+        rootRef.current = node;
+      }}
+      className={`about-scroll-reveal ${className}`}
+    >
+      {tokens ? (
+        <>
+          <span className="about-effects-sr-only">{text}</span>
+          <span aria-hidden="true">
+            {tokens.map((part, index) =>
+              /^\s+$/.test(part) ? (
+                part
+              ) : (
+                <span className="about-scroll-reveal__piece" data-reveal-piece="" key={index}>
+                  {part}
+                </span>
+              ),
+            )}
+          </span>
+        </>
+      ) : (
+        children
+      )}
     </Tag>
   );
 }

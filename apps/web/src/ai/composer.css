@@ -19,6 +19,12 @@
 .live-assistant.live-assistant-v2[hidden] {
   display: none;
 }
+.ai-workbench.ai-workbench-v2 {
+  /* The outer workspace container includes its context navigation. Measure
+     the remaining conversation surface before choosing the compact density. */
+  container-name: ai-conversation;
+  container-type: size;
+}
 .ai-workbench-header {
   display: flex;
   flex: 0 0 auto;
@@ -1100,6 +1106,38 @@
   }
   .ai-workbench-v2 .ai-login-empty :is(.composer-visual, p) {
     display: none;
+  }
+}
+/* A short landscape panel can have less than 200px left after its navigation.
+   Preserve the input, action targets, execution status and price; recover space
+   from their surrounding padding instead of letting the footer escape. */
+@container ai-conversation (max-height: 200px) {
+  .ai-workbench-v2 .ai-workbench-header {
+    min-height: 38px;
+    padding-block: 0;
+  }
+  .ai-workbench-v2 .ai-conversation-body {
+    padding-block: 0;
+  }
+  .ai-workbench-v2 .ai-composer-region {
+    padding-block: 2px;
+    gap: 2px;
+  }
+  .ai-workbench-v2 .ai-composer-surface {
+    padding-block: 2px;
+    gap: 2px;
+  }
+  .ai-workbench-v2 .ai-composer-surface .ai-composer-input {
+    min-height: 36px;
+    max-height: 36px;
+  }
+  @media (max-width: 699px), (pointer: coarse) {
+    .ai-workbench-v2 .ai-composer-region {
+      padding-block: 1px;
+    }
+    .ai-workbench-v2 .ai-composer-surface {
+      padding-block: 0;
+    }
   }
 }
 /* A keyboard can leave less room than the controls themselves. Keep every

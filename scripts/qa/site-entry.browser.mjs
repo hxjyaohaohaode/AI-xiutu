@@ -6,6 +6,7 @@ import assert from 'node:assert/strict';
 import { createHash } from 'node:crypto';
 import sharp from 'sharp';
 import { readFile } from 'node:fs/promises';
+import { settleVisibleAbout } from './about-experience.browser.mjs';
 
 const viewports = [
   { width: 1440, height: 960 },
@@ -226,17 +227,28 @@ export async function runSiteEntryChecks({
         await page.locator('.study-open').click();
         await page.waitForURL((url) => url.hash === '#/studio');
         await page.getByLabel('选择照片', { exact: true }).waitFor({ state: 'attached' });
-        assert.equal(await page.locator('canvas[aria-label="照片编辑预览"]').count(), 0,
-          'Start your own work must open an empty studio, never substitute a marketing image');
-        const sampleBytes = await readFile(new URL('../../apps/web/public/about/color-study.webp', import.meta.url));
-        await page.getByLabel('选择照片', { exact: true }).setInputFiles({ name: 'color-study.webp', mimeType: 'image/webp', buffer: sampleBytes });
+        assert.equal(
+          await page.locator('canvas[aria-label="照片编辑预览"]').count(),
+          0,
+          'Start your own work must open an empty studio, never substitute a marketing image',
+        );
+        const sampleBytes = await readFile(
+          new URL('../../apps/web/public/about/color-study.webp', import.meta.url),
+        );
+        await page
+          .getByLabel('选择照片', { exact: true })
+          .setInputFiles({ name: 'color-study.webp', mimeType: 'image/webp', buffer: sampleBytes });
         const canvas = page.locator('canvas[aria-label="照片编辑预览"]');
         await canvas.waitFor();
-        await until(async () => (await canvasFingerprint(canvas))?.opaque > 0,
-          'an explicitly imported local photo renders in the actual editor');
+        await until(
+          async () => (await canvasFingerprint(canvas))?.opaque > 0,
+          'an explicitly imported local photo renders in the actual editor',
+        );
         await page.locator('.canvas-stage[aria-busy="false"]').waitFor();
-        await page.getByRole('navigation', { name: '编辑工具', exact: true })
-          .getByRole('button', { name: '色彩', exact: true }).click();
+        await page
+          .getByRole('navigation', { name: '编辑工具', exact: true })
+          .getByRole('button', { name: '色彩', exact: true })
+          .click();
         const colorPanel = page.locator('.free-panel[aria-hidden="false"]');
         await colorPanel.getByRole('button', { name: /^色温，/ }).click();
         await colorPanel.getByRole('slider', { name: '色温', exact: true }).fill('60');
@@ -371,7 +383,13 @@ export async function runSiteEntryChecks({
             ...viewport,
             controls,
           });
-          await page.locator('.about-header').scrollIntoViewIfNeeded();
+          // A sticky header is already visible even when the document is far
+          // down the page. Return with a real wheel before the hero capture.
+          const scrollPosition = await page.evaluate(() => scrollY);
+          await page.mouse.move(12, Math.min(350, viewport.height - 30));
+          await page.mouse.wheel(0, -scrollPosition - viewport.height);
+          await until(() => page.evaluate(() => scrollY < 2), 'the public page returns to the top');
+          await settleVisibleAbout(page, until);
           await capture(page, `site-about-${locale.value}-${viewport.width}x${viewport.height}`);
         }
       }
