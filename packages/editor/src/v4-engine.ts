@@ -122,7 +122,9 @@ function render(
   };
   let current =
     opts.warpPreviewCache?.beforeWarp(image, recipe, opts, tiled, composeSource) ?? composeSource();
-  current = applyWarpV3(current, recipe.warp, image, opts);
+  current =
+    opts.warpPreviewCache?.warp(current, recipe.warp, image, opts) ??
+    applyWarpV3(current, recipe.warp, image, opts);
   current = legacyGeometry(current, recipe.geometry, opts);
   current = geometryV4(current, recipe, opts);
   checkV3(opts);

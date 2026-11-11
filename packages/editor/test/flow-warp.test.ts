@@ -310,3 +310,64 @@ test('high-detail preview reuses only the immutable pre-warp source and invalida
   );
   assert.equal(builds, 4);
 });
+
+test('updating the latest brush window replays overlapping histories exactly, including inverse and protection edits', () => {
+  const source = {
+    width: 91,
+    height: 69,
+    data: Uint8ClampedArray.from({ length: 91 * 69 * 4 }, (_, i) =>
+      i % 4 === 3 && i % 7 === 0 ? 0 : (i * 43) % 256,
+    ),
+  };
+  const warpPreviewCache = new WarpPreviewCache();
+  const first = {
+    ...stroke('push', 0.91),
+    algorithm: 'flow-v2' as const,
+    resampling: 'bounded-cubic-v1' as const,
+  };
+  const earlier = Array.from({ length: 12 }, (_, i) => ({
+    ...stroke(i % 2 ? 'twirl' : 'pinch', 0.26),
+    id: `earlier-${i}`,
+    from: { x: 0.25 + i * 0.045, y: 0.4 + (i % 3) * 0.06 },
+    radius: 0.23,
+  }));
+  const recipe = createRecipeV4({
+    adjustments: { exposure: 0.3 },
+    warp: {
+      enabled: true,
+      protection: null,
+      strokes: [...earlier, first, { ...first, id: 'last' }],
+    },
+  });
+  const last = recipe.warp.strokes.at(-1)!;
+  const compare = () =>
+    assert.deepEqual(
+      renderEditorRecipe(source, recipe, { warpPreviewCache }),
+      renderEditorRecipe(source, recipe),
+    );
+  for (const strength of [0.84, 0.009, 0, -0.009, -0.91, -1]) {
+    last.strength = strength;
+    compare();
+  }
+  last.from = { x: 0.95, y: 0.04 };
+  last.to = { x: 0.31, y: 0.82 };
+  last.radius = 0.07;
+  compare();
+  recipe.warp.strokes[4]!.strength *= -1;
+  compare();
+  recipe.warp.protection = {
+    type: 'radial',
+    centerX: 0.55,
+    centerY: 0.45,
+    radiusX: 0.23,
+    radiusY: 0.18,
+    feather: 0.6,
+    rotationDegrees: 64,
+    shape: 'diamond',
+    invert: true,
+  };
+  compare();
+  recipe.geometry.crop = { x: 0.05, y: 0.2, width: 0.82, height: 0.67 };
+  recipe.geometry.rotation = 90;
+  compare();
+});

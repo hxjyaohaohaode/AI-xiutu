@@ -161,6 +161,30 @@ async function verifyLocalMaskAndLiquify(input) {
     await selectedPanel.getByRole('spinbutton', { name: '曝光精确数值' }).press('Enter');
     await settled();
     await page.screenshot({ path: resolve(artifacts, 'local-mask-settled.png') });
+    await selectedPanel.getByRole('button', { name: '多边形', exact: true }).click();
+    const firstVertex = await boxCenter(
+      page.getByRole('button', { name: '拖动多边形点 1', exact: true }),
+    );
+    await page.mouse.move(firstVertex.x, firstVertex.y);
+    await page.mouse.down();
+    await page.mouse.move(firstVertex.x + 25, firstVertex.y + 16, { steps: 8 });
+    await page.mouse.up();
+    const polygonCenter = await boxCenter(
+      page.getByRole('button', { name: '拖动选区中心', exact: true }),
+    );
+    const polygonGrip = await boxCenter(
+      page.getByRole('button', { name: '拖动旋转选区', exact: true }),
+    );
+    const heightToGrip = polygonCenter.y - polygonGrip.y;
+    await page.mouse.move(polygonGrip.x, polygonGrip.y);
+    await page.mouse.down();
+    await page.mouse.move(
+      polygonCenter.x + heightToGrip * 0.5,
+      polygonCenter.y - heightToGrip * Math.sqrt(0.75),
+      { steps: 8 },
+    );
+    await page.mouse.up();
+    await settled();
     await tool('液化');
     const before = await png();
     const frame = await canvas.boundingBox();
@@ -220,6 +244,13 @@ async function verifyLocalMaskAndLiquify(input) {
     assert.equal(mask.shape, 'rectangle');
     assert.ok(Math.abs(mask.rotationDegrees - 45) < 2, JSON.stringify(mask));
     assert.equal(recipe.regionEdits[0].color.adjustments.exposure, 0.64);
+    const polygon = recipe.regionEdits[1].mask;
+    assert.equal(polygon.type, 'polygon');
+    assert.equal(polygon.points.length, 4);
+    assert.ok(
+      Math.abs(polygon.points[0].y - polygon.points[1].y) > 0.05,
+      'polygon vertices rotate together',
+    );
     assert.equal(recipe.warp.strokes[0].resampling, 'bounded-cubic-v1');
     assert.equal(recipe.warp.strokes[0].algorithm, 'flow-v2');
     const expected = renderEditorRecipe(source, recipe);
@@ -233,6 +264,7 @@ async function verifyLocalMaskAndLiquify(input) {
     Object.assign(result, {
       state: 'passed',
       mask,
+      polygon,
       firstWarpPaintMs: paints[0].at - started,
       distinctWarpFrames: new Set(paints.map((paint) => paint.signature)).size,
       warpRequests: requests.map(({ id, sent, reply, width, error }) => ({

@@ -1,6 +1,7 @@
-import type { RGBAImage } from './types.js';
-import type { RecipeV3, TiledRenderOptionsV3 } from './v3-types.js';
+import type { RenderOptions, RGBAImage } from './types.js';
+import type { RecipeV3, TiledRenderOptionsV3, WarpV3 } from './v3-types.js';
 import type { RecipeV4 } from './v4-types.js';
+import { applyWarpV3 } from './v3-warp.js';
 
 /** One immutable source-space intermediate, owned by a single preview worker. */
 export class WarpPreviewCache {
@@ -10,13 +11,23 @@ export class WarpPreviewCache {
     auxiliary: Array<RGBAImage | undefined>;
     image: RGBAImage;
   } | null = null;
+  private prefix: {
+    input: RGBAImage;
+    original: RGBAImage;
+    signature: string;
+    pixels: RGBAImage;
+  } | null = null;
 
   clear() {
     this.frame = null;
+    this.prefix = null;
   }
 
   keeps(image: RGBAImage) {
-    return this.frame?.image.data.buffer === image.data.buffer;
+    return (
+      this.frame?.image.data.buffer === image.data.buffer ||
+      this.prefix?.pixels.data.buffer === image.data.buffer
+    );
   }
 
   beforeWarp(
@@ -45,7 +56,39 @@ export class WarpPreviewCache {
     )
       return frame.image;
     const image = render();
+    this.prefix = null;
     this.frame = { source, signature, auxiliary, image };
     return image;
+  }
+
+  warp(image: RGBAImage, recipe: WarpV3, original: RGBAImage, options: RenderOptions): RGBAImage {
+    if (!recipe.enabled || recipe.strokes.length <= 1)
+      return applyWarpV3(image, recipe, original, options);
+    const last = recipe.strokes.at(-1)!;
+    const prior = { ...recipe, strokes: recipe.strokes.slice(0, -1) };
+    const signature = JSON.stringify(prior);
+    let frame = this.prefix;
+    if (
+      !frame ||
+      frame.input !== image ||
+      frame.original !== original ||
+      frame.signature !== signature
+    ) {
+      frame = {
+        input: image,
+        original,
+        signature,
+        pixels: applyWarpV3(image, prior, original, options),
+      };
+      this.prefix = frame;
+    }
+    // Only the last stroke can change its output support. Within that window,
+    // compose every reverse map and sample the pre-warp pixels once.
+    return last.strength === 0
+      ? frame.pixels
+      : applyWarpV3(image, recipe, original, options, {
+          previousPixels: frame.pixels,
+          stroke: last,
+        });
   }
 }

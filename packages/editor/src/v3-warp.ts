@@ -1,6 +1,6 @@
 import { compileSelectionMaskV3 } from './v3-mask.js';
 import { checkV3, sampleBilinearV3, sampleBoundedCubicV3, clamp01 } from './v3-pixels.js';
-import type { WarpV3 } from './v3-types.js';
+import type { WarpStrokeV3, WarpV3 } from './v3-types.js';
 import type { RGBAImage, RenderOptions, Point, Dimensions } from './types.js';
 import { flowWarpPoint, flowWarpPointV2 } from './v3-flow.js';
 
@@ -142,13 +142,14 @@ export function applyWarpV3(
   warp: WarpV3,
   original: RGBAImage,
   options: RenderOptions,
+  suffix?: { previousPixels: RGBAImage; stroke: WarpStrokeV3 },
 ): RGBAImage {
   const active = warp.enabled ? warp.strokes.filter((s) => s.strength !== 0) : [];
   if (!active.length) return image;
   checkV3(options);
   const short = Math.min(image.width, image.height);
   // Outside the union of stroke supports the reverse mapping is identity, even for a composed field.
-  const bounds = active
+  const bounds = (suffix ? [suffix.stroke] : active)
     .map((stroke) => {
       const cx = stroke.from.x * image.width,
         cy = stroke.from.y * image.height,
@@ -164,7 +165,7 @@ export function applyWarpV3(
   const top = Math.min(...bounds.map((box) => box.top));
   const bottom = Math.max(...bounds.map((box) => box.bottom));
   const mapping = compileWarpMapping(warp, image, original),
-    data = image.data.slice(),
+    data = (suffix?.previousPixels ?? image).data.slice(),
     sample = new Float64Array(4),
     weights = new Float64Array(8),
     reconstruction = active.some((s) => s.resampling) ? { detail: false } : undefined;
@@ -179,12 +180,16 @@ export function applyWarpV3(
         p.x = (x + 0.5) / image.width;
         if (reconstruction) reconstruction.detail = false;
         const mapped = mapping(p, reconstruction);
-        if (Math.abs(mapped.x - p.x) < 1e-15 && Math.abs(mapped.y - p.y) < 1e-15) continue;
+        const at = (y * image.width + x) * 4;
+        if (Math.abs(mapped.x - p.x) < 1e-15 && Math.abs(mapped.y - p.y) < 1e-15) {
+          // The new reverse mapping can undo an earlier displacement in this window.
+          if (suffix) for (let c = 0; c < 4; c++) data[at + c] = image.data[at + c]!;
+          continue;
+        }
         const edgeX = mapped.x * image.width,
           edgeY = mapped.y * image.height;
         if (reconstruction?.detail) sampleBoundedCubicV3(image, edgeX, edgeY, sample, weights);
         else sampleBilinearV3(image, edgeX, edgeY, sample, 'clamp');
-        const at = (y * image.width + x) * 4;
         for (let c = 0; c < 4; c++) data[at + c] = sample[c]!;
       }
       coveredUntil = box.right;
