@@ -427,7 +427,10 @@ export async function runAboutExperienceChecks({ newContext, check, capture, unt
           await page
             .locator('.site-studio:not([hidden]) .canvas-stage[aria-busy="false"]')
             .waitFor();
-          assert.equal(await page.locator('.canvas-file-info > span').innerText(), expected);
+          assert.equal(
+            await page.locator('.canvas-file-info > span:not(.busy)').innerText(),
+            expected,
+          );
           assert.equal(await page.locator('.canvas-file-info > small').innerText(), '1536 × 1024');
           const preview = page.locator(
             '.site-studio:not([hidden]) .image-viewport canvas[aria-label]',
