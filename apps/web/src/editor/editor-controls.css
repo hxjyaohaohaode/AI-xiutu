@@ -592,7 +592,7 @@
   background: color-mix(in srgb, var(--ink) 2%, var(--surface));
   overflow: visible;
   width: 100%;
-  max-height: 320px;
+  max-height: min(265px, 31svh);
   touch-action: none;
 }
 .refined-curve .curve-graph [role='button'] {

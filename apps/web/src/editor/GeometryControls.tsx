@@ -17,6 +17,7 @@ import {
   createRecipeV4,
   fitOrientedCrop,
   orientGeometry,
+  orientedCropSpace,
   pixelCrop,
   type OrientationAction,
 } from '@ai-xiutu/editor';
@@ -37,45 +38,49 @@ export function GeometryControls({ controller }: { controller: InspectorControll
   const dimensions = editor.dimensions ?? { width: 1, height: 1 };
   const tab = editor.geometryMode,
     setTab = editor.setGeometryMode;
-  function pixelRect() {
-    const { left: x, top: y, width, height } = pixelCrop(dimensions, currentV3(editor).geometry);
-    return { x, y, width, height };
-  }
+  const cropSpace = orientedCropSpace(dimensions, recipe.geometry);
+  const { left: x, top: y, width, height } = cropSpace.crop;
+  const rect = { x, y, width, height };
   function setPixel(key: 'x' | 'y' | 'width' | 'height', value: number) {
-    const current = currentV3(editor),
-      rect = pixelRect();
-    const locked =
-      editor.cropRatio && current.geometry.rotation % 180 !== 0
-        ? 1 / editor.cropRatio
-        : editor.cropRatio;
-    const crop =
+    const current = currentV3(editor);
+    const space = orientedCropSpace(dimensions, current.geometry);
+    const { left: x, top: y, width, height } = space.crop;
+    const rect = { x, y, width, height };
+    const visibleCrop =
       key === 'x' || key === 'y'
         ? moveCropHandle(
-            dimensions,
+            space.dimensions,
             rect,
             'move',
             { x: key === 'x' ? value - rect.x : 0, y: key === 'y' ? value - rect.y : 0 },
             null,
           )
         : moveCropHandle(
-            dimensions,
+            space.dimensions,
             rect,
             key === 'width' ? 'e' : 's',
             {
               x: key === 'width' ? value - rect.width : 0,
               y: key === 'height' ? value - rect.height : 0,
             },
-            locked,
+            editor.cropRatio,
           );
+    const sourceCrop = space.toSource(
+      pixelCrop(space.dimensions, { ...current.geometry, crop: visibleCrop }),
+    );
+    const crop = cropFromPixels(dimensions, {
+      ...sourceCrop,
+      x: sourceCrop.left,
+      y: sourceCrop.top,
+    });
     apply({ ...current, geometry: { ...current.geometry, crop } }, t('调整裁切'));
   }
-  const rect = pixelRect();
   const cropControls: ShelfControl[] = (
     [
-      ['width', t('裁切宽度'), 1, dimensions.width - rect.x],
-      ['height', t('裁切高度'), 1, dimensions.height - rect.y],
-      ['x', t('左边界'), 0, dimensions.width - rect.width],
-      ['y', t('上边界'), 0, dimensions.height - rect.height],
+      ['width', t('裁切宽度'), 1, cropSpace.dimensions.width - rect.x],
+      ['height', t('裁切高度'), 1, cropSpace.dimensions.height - rect.y],
+      ['x', t('左边界'), 0, cropSpace.dimensions.width - rect.width],
+      ['y', t('上边界'), 0, cropSpace.dimensions.height - rect.height],
     ] as const
   ).map(([key, label, min, max]) => ({
     id: key,

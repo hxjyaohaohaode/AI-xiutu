@@ -19,6 +19,7 @@ export {
   MAX_TILED_PIXELS,
   getOutputDimensions,
   fitOrientedCrop,
+  orientedCropSpace,
   orientGeometry,
   pixelCrop,
   mapSourceToOutput,

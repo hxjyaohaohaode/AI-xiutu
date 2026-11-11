@@ -119,6 +119,40 @@ export function getOutputDimensions(image: Dimensions, geometry: Geometry): Dime
     : { width: crop.width, height: crop.height };
 }
 
+/** Address crop fields in the visible, oriented full frame, using the renderer's pixel permutation. */
+export function orientedCropSpace(image: Dimensions, input: Geometry) {
+  const { geometry, crop } = geometryContext(image, input);
+  const full = { left: 0, top: 0, ...image };
+  const dimensions =
+    geometry.rotation % 180 === 0
+      ? { width: image.width, height: image.height }
+      : { width: image.height, height: image.width };
+  const mapRectangle = (rect: PixelCrop, width: number, at: (x: number, y: number) => number) => {
+    const first = at(rect.left, rect.top);
+    const last = at(rect.left + rect.width - 1, rect.top + rect.height - 1);
+    const x0 = first % width,
+      x1 = last % width;
+    const y0 = Math.floor(first / width),
+      y1 = Math.floor(last / width);
+    return {
+      left: Math.min(x0, x1),
+      top: Math.min(y0, y1),
+      width: Math.abs(x1 - x0) + 1,
+      height: Math.abs(y1 - y0) + 1,
+    };
+  };
+  return {
+    dimensions,
+    crop: mapRectangle(crop, dimensions.width, (x, y) =>
+      outputPixel(x, y, dimensions, full, geometry),
+    ),
+    toSource: (rect: PixelCrop) =>
+      mapRectangle(rect, image.width, (x, y) =>
+        sourcePixel(x, y, dimensions, full, geometry, image.width),
+      ),
+  };
+}
+
 function validatePoint(point: Point): void {
   if (!Number.isFinite(point.x) || !Number.isFinite(point.y))
     throw new RangeError('Point coordinates must be finite');

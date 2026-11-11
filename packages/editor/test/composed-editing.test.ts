@@ -6,6 +6,8 @@ import {
   createRecipeV4,
   fitOrientedCrop,
   orientGeometry,
+  orientedCropSpace,
+  pixelCrop,
   renderEditorRecipe,
   renderEditorRecipeTiled,
   renderRecipe,
@@ -39,6 +41,20 @@ test('cropped rotation and both reflections compose in the displayed orientation
           flipY,
         };
         const first = renderRecipe(raster, createRecipe({ geometry: base }));
+        const visible = orientedCropSpace(raster, base);
+        assert.deepEqual(visible.toSource(visible.crop), pixelCrop(raster, base));
+        assert.deepEqual(
+          { width: visible.crop.width, height: visible.crop.height },
+          { width: first.width, height: first.height },
+        );
+        const full = renderRecipe(raster, createRecipe({ geometry: { ...base, crop: null } }));
+        for (let y = 0; y < first.height; y++) {
+          const row = ((visible.crop.top + y) * full.width + visible.crop.left) * 4;
+          assert.deepEqual(
+            full.data.subarray(row, row + first.width * 4),
+            first.data.subarray(y * first.width * 4, (y + 1) * first.width * 4),
+          );
+        }
         for (const action of cases) {
           const expected = renderRecipe(
             first,
