@@ -8,6 +8,11 @@
   font-size: clamp(24px, 3cqi, 30px);
   font-weight: 560;
 }
+.usage-presets button[aria-pressed='true'] {
+  color: var(--ink);
+  background: var(--surface-secondary);
+  font-weight: 550;
+}
 .usage-dashboard .usage-card {
   border-radius: 14px;
 }
@@ -275,6 +280,87 @@
 }
 .usage-river .usage-footnote {
   max-width: 70ch;
+}
+.usage-river-inspection {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 4px 16px;
+  margin-top: 8px;
+  min-height: 40px;
+  color: var(--muted);
+  font-size: 11px;
+}
+.usage-river-inspection strong {
+  margin-left: 8px;
+  color: var(--ink);
+  font-variant-numeric: tabular-nums;
+  font-weight: 500;
+}
+.usage-river-inspection .text-button {
+  font-size: 11px;
+  min-height: 40px;
+}
+.usage-river-lanes figcaption > small {
+  color: var(--muted);
+  font-size: 10px;
+  min-height: 2.6em;
+  line-height: 1.3;
+}
+.usage-river-plot {
+  min-width: 0;
+  cursor: crosshair;
+  touch-action: pan-y;
+  -webkit-tap-highlight-color: transparent;
+  border-radius: 5px;
+}
+.usage-river-plot:focus-visible {
+  outline: 2px solid var(--focus-ring);
+  outline-offset: 4px;
+}
+.usage-river-plot svg {
+  pointer-events: none;
+}
+.usage-river-selection {
+  fill: currentColor;
+  stroke: var(--surface);
+  stroke-width: 1.5;
+  vector-effect: non-scaling-stroke;
+}
+.usage-river-selection[data-unknown='true'] {
+  fill: var(--surface);
+  stroke: currentColor;
+}
+.usage-river-reading {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: 6px;
+  min-height: 30px;
+  padding-block: 6px;
+  font-size: 10px;
+  color: var(--muted);
+}
+.usage-river-reading strong {
+  color: var(--ink);
+  font-size: 12px;
+  font-weight: 520;
+  font-variant-numeric: tabular-nums;
+  overflow-wrap: anywhere;
+}
+.usage-river-reading small {
+  font-size: 10px;
+  font-weight: 400;
+  color: var(--muted);
+}
+.usage-trend-navigation .usage-trend-latest {
+  display: flex;
+  gap: 0;
+  justify-content: center;
+}
+.usage-trend-latest svg + svg {
+  margin-left: -9px;
 }
 .usage-skeleton {
   min-width: 0;

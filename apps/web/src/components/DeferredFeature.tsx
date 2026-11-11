@@ -21,7 +21,10 @@ export type FeatureSkeletonProfile =
   | 'search'
   | 'media'
   | 'account'
-  | 'assistant';
+  | 'assistant'
+  | 'operations'
+  | 'table'
+  | 'drawing';
 
 export type DeferredFeatureState = {
   kind: 'pending' | 'error';
@@ -131,6 +134,43 @@ export function FeatureSkeleton({
             <div className="feature-skeleton-message" />
             <div className="feature-skeleton-message" />
             <div className="feature-skeleton-composer" />
+          </div>
+        ) : profile === 'operations' ? (
+          <>
+            <div className="feature-skeleton-operations">
+              {Array.from({ length: 6 }, (_, index) => (
+                <div key={index}>
+                  <b />
+                  <i />
+                </div>
+              ))}
+            </div>
+            <div className="feature-skeleton-list">{rows(4, 'capability')}</div>
+          </>
+        ) : profile === 'table' ? (
+          <div className="feature-skeleton-table">
+            {Array.from({ length: 7 }, (_, row) => (
+              <div key={row}>
+                {Array.from({ length: 4 }, (_, column) => (
+                  <b key={column} />
+                ))}
+              </div>
+            ))}
+          </div>
+        ) : profile === 'drawing' ? (
+          <div className="feature-skeleton-drawing">
+            <aside>
+              {Array.from({ length: 6 }, (_, index) => (
+                <i key={index} />
+              ))}
+            </aside>
+            <i className="feature-skeleton-drawing-canvas" />
+            <div>
+              <b />
+              <i />
+              <b />
+              <i />
+            </div>
           </div>
         ) : profile === 'usage' ? (
           <>

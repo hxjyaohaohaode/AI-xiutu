@@ -2,7 +2,8 @@ import { t } from '../i18n';
 import { ChoiceSelect } from './ChoiceSelect';
 import { useEffect, useRef, useState } from 'react';
 import { api, errorMessage, formatDate, jsonRequest } from '../lib/api';
-import { Busy, InlineError } from './Ui';
+import { InlineError } from './Ui';
+import { FeatureSkeleton } from './DeferredFeature';
 import './unknown-jobs.css';
 
 interface Job {
@@ -35,7 +36,7 @@ export function UnknownJobsPanel() {
     [cursor, setCursor] = useState<string | null>(null),
     [previous, setPrevious] = useState<(string | null)[]>([]);
   const [data, setData] = useState<Page | null>(null),
-    [loading, setLoading] = useState(false),
+    [loading, setLoading] = useState(true),
     [epoch, setEpoch] = useState(0);
   const [selected, setSelected] = useState<Job | null>(null),
     [resolution, setResolution] = useState<'settle' | 'release'>('settle');
@@ -56,6 +57,7 @@ export function UnknownJobsPanel() {
   useEffect(() => {
     const controller = new AbortController();
     setLoading(true);
+    setData(null);
     setError(null);
     const query = new URLSearchParams(filter);
     if (cursor) query.set('cursor', cursor);
@@ -162,10 +164,20 @@ export function UnknownJobsPanel() {
         </button>
       </form>
       {error && <InlineError message={error} />}
+      {error && !loading && (
+        <button
+          type="button"
+          className="text-button"
+          disabled={busy}
+          onClick={() => setEpoch((value) => value + 1)}
+        >
+          {t('重新读取')}
+        </button>
+      )}
       {success && <p role="status">{t(success)}</p>}
       {loading ? (
-        <Busy label={t('读取待核验任务')} />
-      ) : (
+        <FeatureSkeleton profile="table" label={t('读取待核验任务')} compact />
+      ) : data ? (
         <>
           {data?.jobs.length ? (
             <div className="table-scroll">
@@ -247,7 +259,7 @@ export function UnknownJobsPanel() {
             <p className="form-hint">{t('当前服务未配置任务核验执行器，可查看记录。')}</p>
           )}
         </>
-      )}
+      ) : null}
       {selected && (
         <form
           className="unknown-job-resolution"

@@ -301,6 +301,13 @@ function UsageWorkspace({
         : shanghaiDate(new Date(Date.now() - (days - 1) * 86_400_000)),
     );
   }
+  const today = shanghaiDate(new Date());
+  const isPeriodSelected = (days: number | 'month') =>
+    to === today &&
+    from ===
+      (days === 'month'
+        ? `${today.slice(0, 7)}-01`
+        : shanghaiDate(new Date(Date.now() - (days - 1) * 86_400_000)));
   const selectedSpaceId = operator
     ? operatorFilter.spaceId || undefined
     : scope === 'space'
@@ -442,6 +449,7 @@ function UsageWorkspace({
               <button
                 key={value}
                 type="button"
+                aria-pressed={isPeriodSelected(value as number | 'month')}
                 onClick={() => selectPeriod(value as number | 'month')}
               >
                 {label}
@@ -650,7 +658,7 @@ function UsageWorkspace({
             bucket={bucket}
             onBucket={setBucket}
           />
-          <UsageRiver series={report.series} />
+          <UsageRiver series={report.series} range={report.range} />
           <UsageLedger
             key={requestKey}
             report={report}

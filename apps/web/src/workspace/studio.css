@@ -526,7 +526,7 @@
   .studio-workspace .advanced-inspector .color-controls-v3 {
     gap: 2px;
   }
-  .studio-workspace .advanced-inspector-scroll:has(> .color-controls-v3) > .scope-selector,
+  .studio-workspace .advanced-inspector-scroll > .scope-selector,
   .studio-workspace .advanced-inspector .color-controls-v3 > .tonal-tabs,
   .studio-workspace .color-controls-v3 .parameter-shelf-current .precision-control {
     padding-block: 0;

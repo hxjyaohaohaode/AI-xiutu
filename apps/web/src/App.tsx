@@ -1,6 +1,5 @@
 import './studio-styles.css';
 import {
-  lazy,
   Suspense,
   useCallback,
   useEffect,
@@ -124,11 +123,25 @@ import {
   TeamDialog,
   CopyProjectDialog,
 } from './components/ProjectDialogs';
-const OpsDashboard = lazy(() =>
-  import('./components/OpsDashboard').then((module) => ({ default: module.OpsDashboard })),
+const OpsDashboard = createDeferredFeature(
+  async () => ({ default: (await import('./components/OpsDashboard')).OpsDashboard }),
+  '运营管理',
+  (state, props) => (
+    <div className="content-view">
+      <DeferredFeatureStatus {...state} profile="operations" onBack={props.onBack} />
+    </div>
+  ),
+  'operations',
 );
-const DrawingBoard = lazy(() =>
-  import('./components/DrawingBoard').then((module) => ({ default: module.DrawingBoard })),
+const DrawingBoard = createDeferredFeature(
+  async () => ({ default: (await import('./components/DrawingBoard')).DrawingBoard }),
+  '草图板',
+  (state, props) => (
+    <Modal title={t('准备草图板')} onClose={props.onClose}>
+      <DeferredFeatureStatus {...state} profile="drawing" onBack={props.onClose} />
+    </Modal>
+  ),
+  'drawing',
 );
 const CompareView = createDeferredFeature(
   async () => ({ default: (await import('./components/WorkspaceViews')).CompareView }),
@@ -2378,7 +2391,10 @@ export function App({
           <Suspense
             fallback={
               <div className="content-view">
-                <Busy label={t('正在打开运营管理')} />
+                <button type="button" className="text-button" onClick={() => setOps(false)}>
+                  {t('返回创作')}
+                </button>
+                <FeatureSkeleton profile="operations" label={t('正在打开运营管理')} />
               </div>
             }
           >
@@ -3272,7 +3288,7 @@ export function App({
           <Suspense
             fallback={
               <Modal title={t('准备草图板')} onClose={closeDialog}>
-                <Busy />
+                <FeatureSkeleton profile="drawing" label={t('准备草图板')} compact />
               </Modal>
             }
           >
@@ -3410,7 +3426,7 @@ export function App({
                 onHome={onAbout}
                 wide
               >
-                <Busy label={t('正在读取账号信息')} />
+                <FeatureSkeleton profile="account" label={t('正在读取账号信息')} compact />
               </AccountPageFrame>
             }
           >

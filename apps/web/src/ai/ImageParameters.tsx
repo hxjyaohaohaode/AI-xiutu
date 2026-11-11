@@ -1,10 +1,12 @@
 import { t, useLocale } from '../i18n';
+import { useState } from 'react';
 import type { AIModel, ImageOptions } from './types';
 import {
   allowedImageSizes,
   imageOptionsError,
   imageSizeError,
   imageBatchError,
+  changeImageOption,
 } from './capabilities';
 import { Disclosure, OptionChips } from '../components/Controls';
 import { modelCopy } from './model-copy';
@@ -48,6 +50,12 @@ export function ImageParameters({
   onOptions: (options: ImageOptions) => void;
 }) {
   const copy = modelCopy(useLocale());
+  const [linkedChange, setLinkedChange] = useState<{
+    modelId: string;
+    background?: string;
+    format?: string;
+    field: 'background' | 'outputFormat';
+  } | null>(null);
   const c = model?.parameterCapabilities;
   const choices = allowedImageSizes(model);
   const sizeError = imageSizeError(model, width, height);
@@ -69,36 +77,51 @@ export function ImageParameters({
       (c.outputCompression.supported &&
         c.outputCompression.formats?.includes(options.outputFormat ?? 'png')));
   if (!model) return <p className="ai-model-empty">{copy.noModel}</p>;
+  const previewWidth = Number.isFinite(width) && width > 0 ? width : 1;
+  const previewHeight = Number.isFinite(height) && height > 0 ? height : 1;
+  const ratio = previewWidth / previewHeight;
   const renderField = (field: (typeof fields)[number][0], label: string) => {
     const capability = c?.[field];
     if (!capability?.supported) return null;
+    const fieldLabel =
+      field === 'complexity'
+        ? copy.complexity
+        : field === 'outputFormat'
+          ? copy.encoding
+          : t(label);
     return (
       <div className="parameter-row" key={field}>
-        <div className="parameter-label">
-          {field === 'complexity'
-            ? copy.complexity
-            : field === 'outputFormat'
-              ? copy.encoding
-              : t(label)}
-        </div>
+        <div className="parameter-label">{fieldLabel}</div>
         <OptionChips
-          label={t(label)}
+          label={fieldLabel}
           value={options[field] ?? ''}
           options={(capability.values ?? []).map((value) => ({
             value,
             label: names[value] ? t(names[value]) : value,
-            disabled:
-              field === 'background' && value === 'transparent' && options.outputFormat === 'jpeg',
-            reason:
-              field === 'background' && value === 'transparent' && options.outputFormat === 'jpeg'
-                ? t('JPEG 不支持透明背景')
-                : undefined,
+            disabled: !changeImageOption(model, options, field, value),
+            reason: !changeImageOption(model, options, field, value) ? copy.invalidPair : undefined,
           }))}
           disabled={disabled}
           onChange={(value) => {
-            const next = { ...options, [field]: value };
-            if (field === 'outputFormat' && value === 'jpeg' && next.background === 'transparent')
-              next.background = 'opaque';
+            const next = changeImageOption(model, options, field, value);
+            if (!next) return;
+            setLinkedChange(
+              next.background !== options.background && field !== 'background'
+                ? {
+                    modelId: model.id,
+                    background: next.background,
+                    format: next.outputFormat,
+                    field: 'background',
+                  }
+                : next.outputFormat !== options.outputFormat && field !== 'outputFormat'
+                  ? {
+                      modelId: model.id,
+                      background: next.background,
+                      format: next.outputFormat,
+                      field: 'outputFormat',
+                    }
+                  : null,
+            );
             onOptions(next);
           }}
         />
@@ -108,6 +131,24 @@ export function ImageParameters({
   };
   return (
     <div className="image-parameters image-parameters-v3">
+      <div className="image-frame-summary" aria-label={copy.outputPreview}>
+        <span className="image-frame-symbol" aria-hidden>
+          <span
+            style={{
+              width: `${Math.min(38, 32 * ratio)}px`,
+              height: `${Math.min(32, 38 / ratio)}px`,
+            }}
+          />
+        </span>
+        <span>
+          <strong>
+            {width || '—'} × {height || '—'}
+          </strong>
+          <small>
+            px · {options.n ?? 1} {t('张')}
+          </small>
+        </span>
+      </div>
       <div className="parameter-label">{t('画幅与尺寸')}</div>
       <OptionChips
         label={t('常用生成尺寸')}
@@ -173,12 +214,10 @@ export function ImageParameters({
             <OptionChips
               label={t('常用生成尺寸')}
               value={width + 'x' + height}
-              options={choices
-                .slice(3)
-                .map((size) => ({
-                  value: size.width + 'x' + size.height,
-                  label: size.width + ' × ' + size.height,
-                }))}
+              options={choices.slice(3).map((size) => ({
+                value: size.width + 'x' + size.height,
+                label: size.width + ' × ' + size.height,
+              }))}
               disabled={disabled}
               onChange={(value) => {
                 const [w, h] = value.split('x').map(Number);
@@ -218,6 +257,13 @@ export function ImageParameters({
           {renderField('background', '背景')}
           {renderField('outputFormat', '供应商编码')}
           {renderField('complexity', '复杂度')}
+          {linkedChange?.modelId === model.id &&
+            linkedChange.background === options.background &&
+            linkedChange.format === options.outputFormat && (
+              <p className="image-linked-setting" role="status">
+                {linkedChange.field === 'background' ? copy.linkedBackground : copy.linkedFormat}
+              </p>
+            )}
           {c?.outputCompression.supported &&
             c.outputCompression.formats?.includes(options.outputFormat ?? 'png') && (
               <div className="parameter-row">

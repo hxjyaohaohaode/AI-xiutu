@@ -18,6 +18,7 @@ import { ParameterShelf } from './ParameterShelf';
 import { ColorControls } from './ColorControls';
 import { MaskControls, maskLabels } from './MaskControls';
 import { currentV3, newMask, type EditScope, type InspectorController } from './advanced-model';
+import { editorFlowText } from './flow-copy';
 
 export function LocalControls({
   controller,
@@ -53,13 +54,13 @@ export function LocalControls({
     const latest = currentV3(editor),
       next = createAdjustmentRegionV3({
         id: secureUuid(),
-        name: maskLabels[type] + ' ' + (latest.regionEdits.length + 1),
+        name: t(maskLabels[type]) + ' ' + (latest.regionEdits.length + 1),
         mask: newMask(type),
       });
     if (
       apply(
         { ...latest, regionEdits: [...latest.regionEdits, next] },
-        '新建' + maskLabels[type] + '范围',
+        t('新建{name}选区', { name: t(maskLabels[type]) }),
         true,
       )
     )
@@ -95,7 +96,7 @@ export function LocalControls({
     if (!selected.length) return;
     const next = {
       id: secureUuid(),
-      name: '范围分组 ' + (latest.regionGroups.length + 1),
+      name: t('范围分组 ') + (latest.regionGroups.length + 1),
       enabled: true,
       opacity: 1,
       color: createColorBlockV3(),
@@ -136,15 +137,19 @@ export function LocalControls({
           </button>
         ))}
       </div>
-      <small className="control-note">
-        {recipe.regionEdits.length} / {MAX_V3_REGION_EDITS} {t('个局部 · 每个局部拥有完整调色参数')}
-      </small>
+      <div className="local-region-summary">
+        <span>{editorFlowText('localCount')}</span>
+        <output aria-label={editorFlowText('localCount')}>
+          {recipe.regionEdits.length}
+          <span> / {MAX_V3_REGION_EDITS}</span>
+        </output>
+      </div>
       <div className="advanced-object-list" aria-label={t('独立局部与编组选择')}>
         {recipe.regionEdits.map((item) => (
           <div className="advanced-row" data-selected={item.id === region?.id} key={item.id}>
             <input
               type="checkbox"
-              aria-label={t('将') + item.name + t('加入编组选择')}
+              aria-label={editorFlowText('addNamedToGroup', { name: item.name })}
               checked={checked.includes(item.id)}
               onChange={(event) =>
                 setChecked((ids) =>
@@ -164,7 +169,7 @@ export function LocalControls({
               </small>
             </button>
             <IconButton
-              label={t('{v0}{v1}', { v0: item.enabled ? t('隐藏') : t('显示'), v1: item.name })}
+              label={editorFlowText(item.enabled ? 'hideNamed' : 'showNamed', { name: item.name })}
               onClick={() => {
                 const latest = currentV3(editor);
                 apply(
@@ -214,11 +219,18 @@ export function LocalControls({
       )}
       {group && (
         <>
-          <p className="control-note">
-            {t(
-              '组参数作用于此组有效范围的并集。单独局部的参数仍会保留，可以返回单个局部继续精修。',
-            )}
-          </p>
+          <div className="local-selection-heading">
+            <span>{editorFlowText('currentGroup')}</span>
+            <strong>{group.name}</strong>
+          </div>
+          <MotionDetails className="advanced-disclosure control-context-help">
+            <summary>{editorFlowText('groupHelp')}</summary>
+            <p className="control-note">
+              {t(
+                '组参数作用于此组有效范围的并集。单独局部的参数仍会保留，可以返回单个局部继续精修。',
+              )}
+            </p>
+          </MotionDetails>
           <ParameterShelf
             label={t('分组强度')}
             controls={[
@@ -275,6 +287,7 @@ export function LocalControls({
                   );
                 }}
                 onKeyDown={(event) => {
+                  if (event.nativeEvent.isComposing) return;
                   if (event.key === 'Enter') event.currentTarget.blur();
                   if (event.key === 'Escape') {
                     event.currentTarget.value = group.name;
@@ -332,6 +345,10 @@ export function LocalControls({
       )}
       {region && !group && (
         <>
+          <div className="local-selection-heading">
+            <span>{editorFlowText('currentRegion')}</span>
+            <strong>{region.name}</strong>
+          </div>
           <div className="advanced-row">
             <IconButton
               label={t('复制当前局部')}
@@ -452,12 +469,24 @@ export function LocalControls({
               {t('局部名称')}
               <input
                 aria-label={t('局部名称')}
-                key={region.id}
+                key={region.id + ':' + region.name}
                 defaultValue={region.name}
                 maxLength={120}
                 onBlur={(event) => {
-                  if (event.target.value.trim())
-                    patch({ name: event.target.value.trim() }, t('重命名局部'));
+                  const name = event.currentTarget.value.trim();
+                  if (!name || name === region.name) {
+                    event.currentTarget.value = region.name;
+                    return;
+                  }
+                  patch({ name }, t('重命名局部'));
+                }}
+                onKeyDown={(event) => {
+                  if (event.nativeEvent.isComposing) return;
+                  if (event.key === 'Enter') event.currentTarget.blur();
+                  if (event.key === 'Escape') {
+                    event.currentTarget.value = region.name;
+                    event.currentTarget.blur();
+                  }
                 }}
               />
             </label>

@@ -8,6 +8,7 @@ import {
   imagePointQuote,
   imageSizeError,
   requestImageOptions,
+  changeImageOption,
 } from '../src/ai/capabilities.ts';
 import type { AIModel, ImageCapabilities } from '../src/ai/types.ts';
 const unsupported = { supported: false, reason: '未开放' };
@@ -147,4 +148,45 @@ test('batch budget includes every selected image and enforces the transaction po
   delete m.batchLimits;
   assert.ok(imageBatchError(m, 1024, 1024, { quality: 'auto', n: 2 }));
   assert.equal(imageBatchError(m, 1024, 1024, { quality: 'auto', n: 1 }), null);
+});
+
+test('format and transparency choices resolve together using only declared model capabilities', () => {
+  const m = model();
+  const selected = { ...defaultImageOptions(m), background: 'transparent' };
+  const jpeg = changeImageOption(m, selected, 'outputFormat', 'jpeg');
+  assert.ok(jpeg);
+  assert.equal(jpeg.background, 'opaque');
+  assert.equal(imageOptionsError(m, jpeg), null);
+  const transparent = changeImageOption(m, jpeg, 'background', 'transparent');
+  assert.ok(transparent);
+  assert.equal(transparent.outputFormat, 'png');
+  assert.equal(imageOptionsError(m, transparent), null);
+  assert.equal(selected.background, 'transparent', 'the prior draft is not mutated');
+  m.parameterCapabilities!.background.values = ['auto', 'transparent'];
+  assert.equal(changeImageOption(m, selected, 'outputFormat', 'jpeg')?.background, 'auto');
+  m.parameterCapabilities!.background.values = ['transparent'];
+  assert.equal(changeImageOption(m, selected, 'outputFormat', 'jpeg'), null);
+  assert.equal(changeImageOption(m, selected, 'complexity', 'high'), null);
+});
+
+test('format changes preserve a valid compression setting and repair only missing bounds', () => {
+  const m = model();
+  const options = defaultImageOptions(m);
+  assert.equal(
+    changeImageOption(m, { ...options, outputCompression: 62 }, 'outputFormat', 'webp')
+      ?.outputCompression,
+    62,
+  );
+  const repaired = changeImageOption(
+    m,
+    { ...options, outputCompression: undefined },
+    'outputFormat',
+    'webp',
+  );
+  assert.equal(repaired?.outputCompression, 100);
+  assert.equal(
+    requestImageOptions(m, changeImageOption(m, repaired!, 'outputFormat', 'png')!)
+      ?.outputCompression,
+    undefined,
+  );
 });

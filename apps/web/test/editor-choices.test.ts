@@ -4,6 +4,7 @@ import { registerHooks } from 'node:module';
 import { Children, createElement, isValidElement, type ReactElement, type ReactNode } from 'react';
 import {
   BLEND_MODES_V3,
+  createAdjustmentRegionV3,
   createRecipeV4,
   createRetouchRegionV4,
   parseRecipeV4,
@@ -26,6 +27,7 @@ const cssHook = registerHooks({
   },
 });
 const { BlendPicker, PaintControls } = await import('../src/editor/LayerControls.tsx');
+const { LocalControls } = await import('../src/editor/LocalControls.tsx');
 cssHook.deregister();
 
 type ChoiceProps = {
@@ -216,4 +218,105 @@ test('changing repair region commits the previous preview before moving the acti
     ['path', []],
   ]);
   assert.deepEqual(recipe, before);
+});
+
+test('new local names use the creation locale while existing names and accessible action spacing stay intact', async () => {
+  const savedName = '径向 / client A {name}';
+  try {
+    for (const locale of ['zh-CN', 'zh-TW', 'en'] as const) {
+      await setLocale(locale);
+      let recipe = createRecipeV4({
+        regionEdits: [createAdjustmentRegionV3({ id: 'saved-region', name: savedName })],
+      });
+      let activeRegionId: string | null = null;
+      const commits: string[] = [];
+      const controller = {
+        editor: {
+          getRecipe: () => recipe,
+          get activeRegionId() {
+            return activeRegionId;
+          },
+          activeMaskPath: [],
+          setActiveRegionId(id: string) {
+            activeRegionId = id;
+          },
+          setActiveMaskPath() {},
+        },
+        apply(next: RecipeV4, label: string, commit?: boolean) {
+          assert.equal(commit, true);
+          recipe = parseRecipeV4(next);
+          commits.push(label);
+          return true;
+        },
+      } as unknown as InspectorController;
+      type ActionProps = ChoiceProps & {
+        onClick?: () => void;
+        className?: string;
+        'aria-label'?: string;
+        label?: string;
+      };
+      let controls: ReactElement<ActionProps>[] = [];
+      function Capture() {
+        const tree = LocalControls({
+          controller,
+          scope: { kind: 'global' },
+          onScope() {},
+          pickedColor: '#34372EFF',
+        });
+        controls = elements(tree) as ReactElement<ActionProps>[];
+        // Capture the real owner handlers without rendering unrelated nested tools.
+        return null;
+      }
+      renderTestMarkup(createElement(Capture));
+      const add = controls.find(
+        (element) =>
+          element.type === 'button' && Children.toArray(element.props.children).includes(t('径向')),
+      );
+      assert.ok(add?.props.onClick);
+      add.props.onClick();
+      const expectedName = `${locale === 'en' ? 'Radial' : locale === 'zh-TW' ? '徑向' : '径向'} 2`;
+      assert.equal(recipe.regionEdits[1]?.name, expectedName);
+      assert.equal(
+        recipe.regionEdits[0]?.name,
+        savedName,
+        'Creating an item never translates a saved name',
+      );
+      assert.equal(activeRegionId, recipe.regionEdits[1]?.id);
+      assert.equal(commits.length, 1);
+      renderTestMarkup(createElement(Capture));
+      const names = controls
+        .filter((element) => element.props.className === 'object-name')
+        .map((element) => Children.toArray(element.props.children)[0]);
+      assert.deepEqual(names, [savedName, expectedName]);
+      const groupLabel =
+        locale === 'en'
+          ? `Add ${savedName} to group selection`
+          : locale === 'zh-TW'
+            ? `將${savedName}加入編組選擇`
+            : `将${savedName}加入编组选择`;
+      assert.ok(
+        controls.some(
+          (element) => element.type === 'input' && element.props['aria-label'] === groupLabel,
+        ),
+      );
+      const hideLabel =
+        locale === 'en'
+          ? `Hide ${expectedName}`
+          : locale === 'zh-TW'
+            ? `隱藏${expectedName}`
+            : `隐藏${expectedName}`;
+      assert.ok(controls.some((element) => element.props.label === hideLabel));
+      if (locale === 'en') {
+        await setLocale('zh-CN');
+        renderTestMarkup(createElement(Capture));
+        assert.equal(
+          recipe.regionEdits[1]?.name,
+          'Radial 2',
+          'A later language switch must not rename an existing region',
+        );
+      }
+    }
+  } finally {
+    await setLocale('zh-CN');
+  }
 });

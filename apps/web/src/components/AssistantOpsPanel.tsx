@@ -4,6 +4,8 @@ import { useEffect, useRef, useState } from 'react';
 import { Plus, ArrowClockwise } from '@phosphor-icons/react';
 import { api, jsonRequest, errorMessage, formatDate } from '../lib/api';
 import { InlineError, Busy } from './Ui';
+import { FeatureSkeleton } from './DeferredFeature';
+import { OpsMutationOwner } from './ops-mutation';
 import '../ai/live-assistant.css';
 type Settings = {
   enabled: boolean;
@@ -66,9 +68,10 @@ export function AssistantOpsPanel() {
     [responsesProfiles, setResponsesProfiles] = useState<ResponseProfile[]>([]),
     [ready, setReady] = useState(false),
     [voiceReady, setVoiceReady] = useState(false),
+    [catalogLoaded, setCatalogLoaded] = useState(false),
     [selected, setSelected] = useState(''),
     [modelId, setModelId] = useState(''),
-    [settings, setSettings] = useState<Settings>(initial),
+    [settings, setSettingsState] = useState<Settings>(initial),
     [hash, setHash] = useState<string | null>(null),
     [error, setError] = useState<string | null>(null),
     [busy, setBusy] = useState(false),
@@ -92,11 +95,39 @@ export function AssistantOpsPanel() {
   const [cursor, setCursor] = useState<string | null>(null),
     [nextCursor, setNextCursor] = useState<string | null>(null),
     [previous, setPrevious] = useState<(string | null)[]>([]);
-  const [recordsLoading, setRecordsLoading] = useState(false);
+  const [recordsLoading, setRecordsLoading] = useState(true),
+    [recordsLoaded, setRecordsLoaded] = useState(false),
+    [readError, setReadError] = useState<string | null>(null);
   const loadId = useRef(0);
+  const loadController = useRef<AbortController | null>(null);
+  const [mutation] = useState(() => new OpsMutationOwner());
+  const currentDraft = useRef({ selected, modelId, settings, hash });
+  currentDraft.current = { selected, modelId, settings, hash };
+  const currentScope = useRef({ recordKind, recordFilter, cursor });
+  currentScope.current = { recordKind, recordFilter, cursor };
+  useEffect(() => {
+    mutation.mount();
+    return () => mutation.unmount();
+  }, [mutation]);
+  function setSettings(next: Settings) {
+    if (!mutation.busy) setSettingsState(next);
+  }
   async function load() {
+    if (!mutation.mounted) return;
     const request = ++loadId.current;
+    loadController.current?.abort();
+    const controller = new AbortController();
+    loadController.current = controller;
+    const isCurrent = () =>
+      mutation.mounted &&
+      request === loadId.current &&
+      !controller.signal.aborted &&
+      currentScope.current.recordKind === recordKind &&
+      currentScope.current.recordFilter === recordFilter &&
+      currentScope.current.cursor === cursor;
     setRecordsLoading(true);
+    setRecordsLoaded(false);
+    setReadError(null);
     setError(null);
     const query = new URLSearchParams({ kind: recordKind });
     if (recordFilter) query.set('recordId', recordFilter);
@@ -109,32 +140,42 @@ export function AssistantOpsPanel() {
           responsesProfiles?: ResponseProfile[];
           ready: boolean;
           voiceReady: boolean;
-        }>('/ops/assistant-models'),
+        }>('/ops/assistant-models', { signal: controller.signal }),
         api<{ turns: Unknown[]; voices: Unknown[]; nextCursor: string | null }>(
           `/ops/assistant-reconciliation?${query}`,
+          { signal: controller.signal },
         ),
       ]);
-      if (request !== loadId.current) return;
+      if (!isCurrent()) return;
       setModels(catalog.models);
       setProfiles(catalog.profiles);
       setResponsesProfiles(catalog.responsesProfiles ?? []);
       setReady(catalog.ready);
       setVoiceReady(catalog.voiceReady);
+      setCatalogLoaded(true);
       setUnknown(records);
       setNextCursor(records.nextCursor);
+      setRecordsLoaded(true);
+      return catalog;
     } catch (err) {
-      if (request === loadId.current) throw err;
+      if (isCurrent()) {
+        setReadError(errorMessage(err));
+        throw err;
+      }
     } finally {
-      if (request === loadId.current) setRecordsLoading(false);
+      if (isCurrent()) setRecordsLoading(false);
+      if (loadController.current === controller) loadController.current = null;
     }
   }
   useEffect(() => {
-    void load().catch((e) => setError(errorMessage(e)));
+    void load().catch(() => {});
     return () => {
       loadId.current++;
+      loadController.current?.abort();
     };
   }, [recordKind, recordFilter, cursor]);
   function select(id: string) {
+    if (mutation.busy) return;
     setSelected(id);
     setSaved(false);
     const item = models.find((m) => m.id === id);
@@ -143,49 +184,84 @@ export function AssistantOpsPanel() {
     setHash(item?.hash ?? null);
   }
   async function save() {
-    if (busy) return;
+    if (mutation.busy) return;
     if (!modelId.trim()) {
       setError('请选择或填写模型 ID。');
       return;
     }
-    setBusy(true);
-    setError(null);
-    setSaved(false);
-    try {
-      await api(
-        `/ops/assistant-models/${encodeURIComponent(modelId)}`,
-        jsonRequest('PUT', { config: settings, expectedHash: hash }),
-      );
-      await load();
-      const reread = await api<{ models: Model[] }>('/ops/assistant-models');
-      const current = reread.models.find((m) => m.id === modelId);
-      setHash(current?.hash ?? null);
-      setSelected(modelId);
-      setSaved(true);
-    } catch (e) {
-      setError(errorMessage(e));
-    } finally {
-      setBusy(false);
-    }
+    const draft = currentDraft.current;
+    await mutation.run(
+      { modelId: draft.modelId, settings: draft.settings, hash: draft.hash },
+      async (snapshot, current) => {
+        await api(
+          `/ops/assistant-models/${encodeURIComponent(snapshot.modelId)}`,
+          jsonRequest('PUT', { config: snapshot.settings, expectedHash: snapshot.hash }),
+        );
+        if (!current()) return;
+        const catalog = await load();
+        if (!current() || !catalog) return;
+        const model = catalog.models.find((item) => item.id === snapshot.modelId);
+        if (!model) throw new Error(t('配置已提交，但无法确认保存后的模型。请重新读取。'));
+        return model;
+      },
+      {
+        current: () => {
+          const value = currentDraft.current;
+          return (
+            value.modelId === draft.modelId &&
+            value.selected === draft.selected &&
+            value.settings === draft.settings &&
+            value.hash === draft.hash
+          );
+        },
+        started() {
+          setBusy(true);
+          setError(null);
+          setSaved(false);
+        },
+        value(model) {
+          setSelected(model.id);
+          setModelId(model.id);
+          setSettingsState(structuredClone(model.config));
+          setHash(model.hash);
+          setSaved(true);
+        },
+        error: (error) => setError(errorMessage(error)),
+        settled: () => setBusy(false),
+      },
+    );
   }
   async function reconcile(choice: 'release' | 'settle') {
-    if (!resolution || busy) return;
-    setBusy(true);
-    setError(null);
-    try {
-      await api(
-        `/ops/assistant-reconciliation/${resolution.kind}/${resolution.record.id}`,
-        jsonRequest('POST', { resolution: choice, reason, evidenceRef: evidence }),
-      );
-      setResolution(null);
-      setReason('');
-      setEvidence('');
-      await load();
-    } catch (e) {
-      setError(errorMessage(e));
-    } finally {
-      setBusy(false);
-    }
+    if (!resolution || mutation.busy) return;
+    await mutation.run(
+      { resolution, choice, reason, evidence },
+      async (snapshot, current) => {
+        await api(
+          `/ops/assistant-reconciliation/${snapshot.resolution.kind}/${snapshot.resolution.record.id}`,
+          jsonRequest('POST', {
+            resolution: snapshot.choice,
+            reason: snapshot.reason,
+            evidenceRef: snapshot.evidence,
+          }),
+        );
+        if (!current()) return;
+        setResolution(null);
+        setReason('');
+        setEvidence('');
+        await load();
+        return true;
+      },
+      {
+        current: () => true,
+        started() {
+          setBusy(true);
+          setError(null);
+        },
+        value() {},
+        error: (error) => setError(errorMessage(error)),
+        settled: () => setBusy(false),
+      },
+    );
   }
   return (
     <section className="assistant-ops" aria-label={t('实时语音与智能体运营配置')}>
@@ -196,288 +272,326 @@ export function AssistantOpsPanel() {
         </div>
         <button
           className="text-button"
-          onClick={() => void load().catch((e) => setError(errorMessage(e)))}
-        >
-          <ArrowClockwise size={17} />
-          {t('刷新')}
-        </button>
-      </header>
-      <p className="control-note">
-        {t('智能体环境：')}
-        {ready ? t('已配置') : t('未就绪')} {t('· 实时语音环境：')}
-        {voiceReady ? t('已配置') : t('未就绪')}
-        {t('。密钥、审核凭证与出口代理只在服务器环境配置。')}
-      </p>
-      <div className="assistant-ops-layout">
-        <div className="assistant-model-list">
-          <button className="text-button" onClick={() => select('')}>
-            <Plus size={16} />
-            {t('配置模型')}
-          </button>
-          {models.map((model) => (
-            <button
-              key={model.id}
-              aria-pressed={selected === model.id}
-              onClick={() => select(model.id)}
-            >
-              <span>
-                {model.config.label || model.id}
-                <small>{model.id}</small>
-              </span>
-              <small>{model.config.enabled ? t('已启用') : t('已停用')}</small>
-            </button>
-          ))}
-        </div>
-        <form
-          className="assistant-model-form"
-          onSubmit={(e) => {
-            e.preventDefault();
-            void save();
+          disabled={busy || recordsLoading}
+          onClick={() => {
+            if (!mutation.busy) void load().catch(() => {});
           }}
         >
-          <label>
-            {t('用途')}
-            <ChoiceSelect
-              ariaLabel={t('模型用途')}
-              disabled={!!selected || busy}
-              value={voice ? 'realtime-voice' : 'assistant-turn'}
-              onValueChange={(value) => {
-                setSettings({ ...initial(), operations: [value] });
-                setModelId('');
-                setHash(null);
-              }}
-              options={[
-                { value: 'assistant-turn', label: t('思考与工具协作'), description: 'Responses' },
-                { value: 'realtime-voice', label: t('实时语音'), description: 'Live / Realtime' },
-              ]}
-            />
-          </label>
-          <label>
-            {t('模型 ID')}
-            {voice ? (
-              <ChoiceSelect
-                ariaLabel={t('实时语音模型协议')}
-                disabled={!!selected || busy}
-                value={modelId}
-                onValueChange={(value) => {
-                  setModelId(value);
-                  const next = { ...settings };
-                  delete next.voiceReasoningEffort;
-                  setSettings(next);
-                }}
-                placeholder={t('选择已适配的协议')}
-                options={[
-                  { value: '', label: t('选择已适配的协议'), disabled: true },
-                  ...profiles.map((profile) => ({
-                    value: profile.id,
-                    label: profile.label,
-                    description: profile.protocol,
-                  })),
-                ]}
-              />
-            ) : (
-              <input
-                required
-                list="assistant-responses-models"
-                value={modelId}
-                disabled={!!selected || busy}
-                pattern="[A-Za-z0-9][A-Za-z0-9._:-]{0,127}"
-                placeholder={t('填入此账号可用的官方模型 ID')}
-                onChange={(e) => setModelId(e.target.value)}
-              />
-            )}
-          </label>
-          {!voice && (
-            <datalist id="assistant-responses-models">
-              {responsesProfiles.map((profile) => (
-                <option key={profile.id} value={profile.id} />
-              ))}
-            </datalist>
-          )}
-          <label>
-            {t('显示名称')}
-            <input
-              value={settings.label ?? ''}
-              maxLength={120}
-              onChange={(e) => setSettings({ ...settings, label: e.target.value })}
-            />
-          </label>
-          <label className="check-label">
-            <input
-              type="checkbox"
-              checked={settings.enabled}
-              onChange={(e) => setSettings({ ...settings, enabled: e.target.checked })}
-            />
-            {t('启用此模型')}
-          </label>
-          <label>
-            {t('每轮服务点')}
-            <input
-              type="number"
-              min={1}
-              max={100000}
-              step={1}
-              value={settings.unitCost}
-              onChange={(e) => setSettings({ ...settings, unitCost: Number(e.target.value) })}
-            />
-          </label>
+          <ArrowClockwise size={17} />
+          {readError ? t('重新读取') : t('刷新')}
+        </button>
+      </header>
+      <InlineError message={error ?? readError} />
+      {catalogLoaded ? (
+        <>
           <p className="control-note">
-            {t(
-              '服务点由你定价。语音按一次有时限会话计点，包含下方范围内的后端协作；供应商的时长与 Token 成本另行核算，1 点不是官方价格。',
-            )}
+            {t('智能体环境：')}
+            {ready ? t('已配置') : t('未就绪')} {t('· 实时语音环境：')}
+            {voiceReady ? t('已配置') : t('未就绪')}
+            {t('。密钥、审核凭证与出口代理只在服务器环境配置。')}
           </p>
-          {voice ? (
-            <>
+          <div className="assistant-ops-layout">
+            <div className="assistant-model-list">
+              <button className="text-button" disabled={busy} onClick={() => select('')}>
+                <Plus size={16} />
+                {t('配置模型')}
+              </button>
+              {models.length === 0 && <p className="control-note">{t('当前没有模型目录项。')}</p>}
+              {models.map((model) => (
+                <button
+                  key={model.id}
+                  disabled={busy}
+                  aria-pressed={selected === model.id}
+                  onClick={() => select(model.id)}
+                >
+                  <span>
+                    {model.config.label || model.id}
+                    <small>{model.id}</small>
+                  </span>
+                  <small>{model.config.enabled ? t('已启用') : t('已停用')}</small>
+                </button>
+              ))}
+            </div>
+            <form
+              className="assistant-model-form"
+              onSubmit={(e) => {
+                e.preventDefault();
+                void save();
+              }}
+            >
               <label>
-                {t('最长通话（秒）')}
-                <input
-                  type="range"
-                  min={30}
-                  max={600}
-                  step={10}
-                  value={settings.maxSeconds}
-                  onChange={(e) => setSettings({ ...settings, maxSeconds: Number(e.target.value) })}
-                />
-                <output>
-                  {settings.maxSeconds} {t('秒')}
-                </output>
-              </label>
-              <label>
-                {t('最多后端协作次数')}
-                <input
-                  type="range"
-                  min={1}
-                  max={20}
-                  step={1}
-                  value={settings.maxDelegations}
-                  onChange={(e) =>
-                    setSettings({ ...settings, maxDelegations: Number(e.target.value) })
-                  }
-                />
-                <output>
-                  {settings.maxDelegations} {t('次')}
-                </output>
-              </label>
-            </>
-          ) : (
-            <>
-              <label className="check-label">
-                <input
-                  type="checkbox"
-                  checked={settings.imageInput}
-                  onChange={(e) => setSettings({ ...settings, imageInput: e.target.checked })}
-                />
-                {t('允许显式共享图像（需模型支持）')}
-              </label>
-              <label className="check-label">
-                <input
-                  type="checkbox"
-                  checked={settings.webSearch}
-                  onChange={(e) => setSettings({ ...settings, webSearch: e.target.checked })}
-                />
-                {t('允许用户选择公开网络检索（需模型支持）')}
-              </label>
-              <label className="check-label">
-                <input
-                  type="checkbox"
-                  checked={settings.webImageSearch === true}
-                  disabled={!settings.webSearch}
-                  onChange={(e) => setSettings({ ...settings, webImageSearch: e.target.checked })}
-                />
-                {t('当前模型支持公开图片检索结果')}
-              </label>
-              <label>
-                {t('推理参数')}
+                {t('用途')}
                 <ChoiceSelect
-                  ariaLabel={t('推理参数')}
-                  value={settings.reasoningEffort ?? ''}
+                  ariaLabel={t('模型用途')}
+                  disabled={!!selected || busy}
+                  value={voice ? 'realtime-voice' : 'assistant-turn'}
                   onValueChange={(value) => {
-                    const next = { ...settings };
-                    if (value) next.reasoningEffort = value as Settings['reasoningEffort'];
-                    else delete next.reasoningEffort;
-                    setSettings(next);
+                    setSettings({ ...initial(), operations: [value] });
+                    setModelId('');
+                    setHash(null);
                   }}
                   options={[
-                    { value: '', label: t('不传此参数') },
-                    ...(profile?.reasoning ?? ['none', 'low', 'medium', 'high']).map((value) => ({
-                      value,
-                      label: value,
-                    })),
+                    {
+                      value: 'assistant-turn',
+                      label: t('思考与工具协作'),
+                      description: 'Responses',
+                    },
+                    {
+                      value: 'realtime-voice',
+                      label: t('实时语音'),
+                      description: 'Live / Realtime',
+                    },
                   ]}
                 />
               </label>
-            </>
-          )}
-          {voice && !!profile?.reasoning?.length && (
-            <label>
-              {t('实时语音推理档位')}
-              <ChoiceSelect
-                ariaLabel={t('实时语音推理档位')}
-                value={settings.voiceReasoningEffort ?? ''}
-                onValueChange={(value) => {
-                  const next = { ...settings };
-                  if (value) next.voiceReasoningEffort = value as Settings['voiceReasoningEffort'];
-                  else delete next.voiceReasoningEffort;
-                  setSettings(next);
-                }}
-                options={[
-                  { value: '', label: t('不传此参数') },
-                  ...profile.reasoning.map((value) => ({ value, label: value })),
-                ]}
-              />
-            </label>
-          )}
-          <label>
-            {t('每次响应的输出预算')}
-            <input
-              type="range"
-              min={256}
-              max={8192}
-              step={256}
-              value={settings.maxOutputTokens}
-              onChange={(e) =>
-                setSettings({ ...settings, maxOutputTokens: Number(e.target.value) })
-              }
-            />
-            <output>
-              {settings.maxOutputTokens} tokens
-              {voice ? t('（Realtime 最多发送 4096；Live 输出不使用此参数）') : ''}
-            </output>
-          </label>
-          <label>
-            {t('应用上下文预算')}
-            <input
-              type="number"
-              min={8192}
-              max={2000000}
-              step={1}
-              value={settings.contextWindowTokens ?? 32768}
-              onChange={(event) =>
-                setSettings({ ...settings, contextWindowTokens: Number(event.target.value) })
-              }
-            />
-            <small>{t('按实际模型能力设置，包含指令、工具、历史、图片预留与输出。')}</small>
-          </label>
-          <label>
-            {t('每张图的输入预留')}
-            <input
-              type="number"
-              min={1024}
-              max={32768}
-              step={1}
-              value={settings.visualTokenReserve ?? 4096}
-              onChange={(event) =>
-                setSettings({ ...settings, visualTokenReserve: Number(event.target.value) })
-              }
-            />
-            <small>{t('用于派发前的保守预算；实际 token 消耗以供应商回执为准。')}</small>
-          </label>
-          <button className="button button-primary" disabled={busy || !modelId}>
-            {busy ? <Busy /> : saved ? t('已保存配置') : t('保存配置')}
-          </button>
-        </form>
-      </div>
-      <InlineError message={error} />
+              <label>
+                {t('模型 ID')}
+                {voice ? (
+                  <ChoiceSelect
+                    ariaLabel={t('实时语音模型协议')}
+                    disabled={!!selected || busy}
+                    value={modelId}
+                    onValueChange={(value) => {
+                      setModelId(value);
+                      const next = { ...settings };
+                      delete next.voiceReasoningEffort;
+                      setSettings(next);
+                    }}
+                    placeholder={t('选择已适配的协议')}
+                    options={[
+                      { value: '', label: t('选择已适配的协议'), disabled: true },
+                      ...profiles.map((profile) => ({
+                        value: profile.id,
+                        label: profile.label,
+                        description: profile.protocol,
+                      })),
+                    ]}
+                  />
+                ) : (
+                  <input
+                    required
+                    list="assistant-responses-models"
+                    value={modelId}
+                    disabled={!!selected || busy}
+                    pattern="[A-Za-z0-9][A-Za-z0-9._:-]{0,127}"
+                    placeholder={t('填入此账号可用的官方模型 ID')}
+                    onChange={(e) => setModelId(e.target.value)}
+                  />
+                )}
+              </label>
+              {!voice && (
+                <datalist id="assistant-responses-models">
+                  {responsesProfiles.map((profile) => (
+                    <option key={profile.id} value={profile.id} />
+                  ))}
+                </datalist>
+              )}
+              <label>
+                {t('显示名称')}
+                <input
+                  disabled={busy}
+                  value={settings.label ?? ''}
+                  maxLength={120}
+                  onChange={(e) => setSettings({ ...settings, label: e.target.value })}
+                />
+              </label>
+              <label className="check-label">
+                <input
+                  disabled={busy}
+                  type="checkbox"
+                  checked={settings.enabled}
+                  onChange={(e) => setSettings({ ...settings, enabled: e.target.checked })}
+                />
+                {t('启用此模型')}
+              </label>
+              <label>
+                {t('每轮服务点')}
+                <input
+                  disabled={busy}
+                  type="number"
+                  min={1}
+                  max={100000}
+                  step={1}
+                  value={settings.unitCost}
+                  onChange={(e) => setSettings({ ...settings, unitCost: Number(e.target.value) })}
+                />
+              </label>
+              <p className="control-note">
+                {t(
+                  '服务点由你定价。语音按一次有时限会话计点，包含下方范围内的后端协作；供应商的时长与 Token 成本另行核算，1 点不是官方价格。',
+                )}
+              </p>
+              {voice ? (
+                <>
+                  <label>
+                    {t('最长通话（秒）')}
+                    <input
+                      disabled={busy}
+                      type="range"
+                      min={30}
+                      max={600}
+                      step={10}
+                      value={settings.maxSeconds}
+                      onChange={(e) =>
+                        setSettings({ ...settings, maxSeconds: Number(e.target.value) })
+                      }
+                    />
+                    <output>
+                      {settings.maxSeconds} {t('秒')}
+                    </output>
+                  </label>
+                  <label>
+                    {t('最多后端协作次数')}
+                    <input
+                      disabled={busy}
+                      type="range"
+                      min={1}
+                      max={20}
+                      step={1}
+                      value={settings.maxDelegations}
+                      onChange={(e) =>
+                        setSettings({ ...settings, maxDelegations: Number(e.target.value) })
+                      }
+                    />
+                    <output>
+                      {settings.maxDelegations} {t('次')}
+                    </output>
+                  </label>
+                </>
+              ) : (
+                <>
+                  <label className="check-label">
+                    <input
+                      disabled={busy}
+                      type="checkbox"
+                      checked={settings.imageInput}
+                      onChange={(e) => setSettings({ ...settings, imageInput: e.target.checked })}
+                    />
+                    {t('允许显式共享图像（需模型支持）')}
+                  </label>
+                  <label className="check-label">
+                    <input
+                      disabled={busy}
+                      type="checkbox"
+                      checked={settings.webSearch}
+                      onChange={(e) => setSettings({ ...settings, webSearch: e.target.checked })}
+                    />
+                    {t('允许用户选择公开网络检索（需模型支持）')}
+                  </label>
+                  <label className="check-label">
+                    <input
+                      type="checkbox"
+                      checked={settings.webImageSearch === true}
+                      disabled={busy || !settings.webSearch}
+                      onChange={(e) =>
+                        setSettings({ ...settings, webImageSearch: e.target.checked })
+                      }
+                    />
+                    {t('当前模型支持公开图片检索结果')}
+                  </label>
+                  <label>
+                    {t('推理参数')}
+                    <ChoiceSelect
+                      ariaLabel={t('推理参数')}
+                      disabled={busy}
+                      value={settings.reasoningEffort ?? ''}
+                      onValueChange={(value) => {
+                        const next = { ...settings };
+                        if (value) next.reasoningEffort = value as Settings['reasoningEffort'];
+                        else delete next.reasoningEffort;
+                        setSettings(next);
+                      }}
+                      options={[
+                        { value: '', label: t('不传此参数') },
+                        ...(profile?.reasoning ?? ['none', 'low', 'medium', 'high']).map(
+                          (value) => ({
+                            value,
+                            label: value,
+                          }),
+                        ),
+                      ]}
+                    />
+                  </label>
+                </>
+              )}
+              {voice && !!profile?.reasoning?.length && (
+                <label>
+                  {t('实时语音推理档位')}
+                  <ChoiceSelect
+                    ariaLabel={t('实时语音推理档位')}
+                    disabled={busy}
+                    value={settings.voiceReasoningEffort ?? ''}
+                    onValueChange={(value) => {
+                      const next = { ...settings };
+                      if (value)
+                        next.voiceReasoningEffort = value as Settings['voiceReasoningEffort'];
+                      else delete next.voiceReasoningEffort;
+                      setSettings(next);
+                    }}
+                    options={[
+                      { value: '', label: t('不传此参数') },
+                      ...profile.reasoning.map((value) => ({ value, label: value })),
+                    ]}
+                  />
+                </label>
+              )}
+              <label>
+                {t('每次响应的输出预算')}
+                <input
+                  disabled={busy}
+                  type="range"
+                  min={256}
+                  max={8192}
+                  step={256}
+                  value={settings.maxOutputTokens}
+                  onChange={(e) =>
+                    setSettings({ ...settings, maxOutputTokens: Number(e.target.value) })
+                  }
+                />
+                <output>
+                  {settings.maxOutputTokens} tokens
+                  {voice ? t('（Realtime 最多发送 4096；Live 输出不使用此参数）') : ''}
+                </output>
+              </label>
+              <label>
+                {t('应用上下文预算')}
+                <input
+                  disabled={busy}
+                  type="number"
+                  min={8192}
+                  max={2000000}
+                  step={1}
+                  value={settings.contextWindowTokens ?? 32768}
+                  onChange={(event) =>
+                    setSettings({ ...settings, contextWindowTokens: Number(event.target.value) })
+                  }
+                />
+                <small>{t('按实际模型能力设置，包含指令、工具、历史、图片预留与输出。')}</small>
+              </label>
+              <label>
+                {t('每张图的输入预留')}
+                <input
+                  disabled={busy}
+                  type="number"
+                  min={1024}
+                  max={32768}
+                  step={1}
+                  value={settings.visualTokenReserve ?? 4096}
+                  onChange={(event) =>
+                    setSettings({ ...settings, visualTokenReserve: Number(event.target.value) })
+                  }
+                />
+                <small>{t('用于派发前的保守预算；实际 token 消耗以供应商回执为准。')}</small>
+              </label>
+              <button className="button button-primary" disabled={busy || !modelId}>
+                {busy ? <Busy /> : saved ? t('已保存配置') : t('保存配置')}
+              </button>
+            </form>
+          </div>
+        </>
+      ) : recordsLoading ? (
+        <FeatureSkeleton profile="panel" label={t('读取模型目录')} compact />
+      ) : null}
       <section className="assistant-reconcile">
         <h3>{t('待核验的会话')}</h3>
         <p className="control-note">
@@ -487,6 +601,7 @@ export function AssistantOpsPanel() {
           className="assistant-record-filters"
           onSubmit={(event) => {
             event.preventDefault();
+            if (mutation.busy) return;
             setCursor(null);
             setPrevious([]);
             setRecordFilter(recordDraft.trim());
@@ -512,6 +627,7 @@ export function AssistantOpsPanel() {
           <label>
             {t('会话编号')}
             <input
+              disabled={busy}
               value={recordDraft}
               onChange={(event) => setRecordDraft(event.target.value)}
               placeholder={t('完整会话 UUID，可留空')}
@@ -519,7 +635,9 @@ export function AssistantOpsPanel() {
           </label>
           <button disabled={busy || recordsLoading}>{t('查询会话')}</button>
         </form>
-        {unknown.turns.length + unknown.voices.length === 0 ? (
+        {recordsLoading ? (
+          <FeatureSkeleton profile="table" label={t('读取待核验会话')} compact />
+        ) : !recordsLoaded ? null : unknown.turns.length + unknown.voices.length === 0 ? (
           <p>{t('当前没有待核验会话。')}</p>
         ) : (
           <div className="ops-table-wrap">
@@ -564,30 +682,32 @@ export function AssistantOpsPanel() {
             </table>
           </div>
         )}
-        <nav aria-label={t('待核验会话分页')}>
-          <button
-            disabled={!previous.length || busy || recordsLoading}
-            onClick={() => {
-              setCursor(previous.at(-1) ?? null);
-              setPrevious((value) => value.slice(0, -1));
-            }}
-          >
-            {t('上一页')}
-          </button>
-          <span>
-            {t('第')}
-            {previous.length + 1} {t('页')}
-          </span>
-          <button
-            disabled={!nextCursor || busy || recordsLoading}
-            onClick={() => {
-              setPrevious((value) => [...value, cursor]);
-              setCursor(nextCursor);
-            }}
-          >
-            {t('下一页')}
-          </button>
-        </nav>
+        {recordsLoaded && !recordsLoading && (
+          <nav aria-label={t('待核验会话分页')}>
+            <button
+              disabled={!previous.length || busy || recordsLoading}
+              onClick={() => {
+                setCursor(previous.at(-1) ?? null);
+                setPrevious((value) => value.slice(0, -1));
+              }}
+            >
+              {t('上一页')}
+            </button>
+            <span>
+              {t('第')}
+              {previous.length + 1} {t('页')}
+            </span>
+            <button
+              disabled={!nextCursor || busy || recordsLoading}
+              onClick={() => {
+                setPrevious((value) => [...value, cursor]);
+                setCursor(nextCursor);
+              }}
+            >
+              {t('下一页')}
+            </button>
+          </nav>
+        )}
         {resolution && (
           <div className="assistant-resolution">
             <p>
@@ -597,6 +717,7 @@ export function AssistantOpsPanel() {
             <label>
               {t('凭证引用')}
               <input
+                disabled={busy}
                 value={evidence}
                 minLength={3}
                 maxLength={200}
@@ -607,6 +728,7 @@ export function AssistantOpsPanel() {
             <label>
               {t('核验依据')}
               <textarea
+                disabled={busy}
                 value={reason}
                 minLength={10}
                 maxLength={1000}
@@ -614,7 +736,7 @@ export function AssistantOpsPanel() {
               />
             </label>
             <div>
-              <button className="text-button" onClick={() => setResolution(null)}>
+              <button className="text-button" disabled={busy} onClick={() => setResolution(null)}>
                 {t('返回')}
               </button>
               <button

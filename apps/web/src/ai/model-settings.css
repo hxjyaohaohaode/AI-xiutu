@@ -151,6 +151,84 @@
   overflow-wrap: anywhere;
   user-select: all;
 }
+.ai-model-identity {
+  min-width: 0;
+}
+.ai-model-identity > summary {
+  width: fit-content;
+  padding-block: 4px;
+  color: var(--muted);
+  font-size: 10px;
+  cursor: pointer;
+  list-style: none;
+}
+.ai-model-identity > summary::-webkit-details-marker {
+  display: none;
+}
+.ai-model-identity > summary:hover {
+  color: var(--ink);
+}
+.ai-model-identity > summary:focus-visible {
+  outline: 2px solid var(--focus-ring);
+  outline-offset: 2px;
+}
+.ai-model-identity > summary::after {
+  content: '+';
+  display: inline-block;
+  width: 12px;
+  margin-inline-start: 4px;
+  text-align: center;
+}
+.ai-model-identity > summary[aria-expanded='true']::after {
+  content: '−';
+}
+.image-frame-summary {
+  display: flex;
+  align-items: center;
+  gap: 11px;
+  min-height: 60px;
+  padding: 9px 12px;
+  background: var(--surface-secondary);
+  border-radius: 10px;
+}
+.image-frame-symbol {
+  display: grid;
+  place-items: center;
+  flex: 0 0 46px;
+  height: 38px;
+}
+.image-frame-symbol > span {
+  min-width: 4px;
+  min-height: 4px;
+  border: 1px solid var(--muted);
+  border-radius: 3px;
+  background: var(--surface);
+  transition:
+    width 180ms ease,
+    height 180ms ease;
+}
+.image-frame-summary > span:last-child {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 5px 9px;
+}
+.image-frame-summary strong {
+  font-size: 13px;
+  font-weight: 550;
+  color: var(--ink);
+  font-variant-numeric: tabular-nums;
+}
+.image-frame-summary small {
+  color: var(--muted);
+  font-size: 11px;
+}
+.image-linked-setting {
+  margin: 0;
+  color: var(--accent-ink);
+  font-size: 11px;
+  line-height: 1.6;
+}
 .ai-selected-model-meta {
   margin: -8px 0 0;
   color: var(--muted);
@@ -305,6 +383,7 @@
     animation: none;
   }
   .ai-model-choice .choice-highlight[data-animate='true'],
+  .image-frame-symbol > span,
   .ai-settings-page-header button svg,
   .image-parameters-v3 .option-chips button {
     transition: none;

@@ -63,6 +63,7 @@ import { CreativeControls, initialCreativeSettings } from './CreativeControls';
 import { observeAssistantTurn, type RunEvent } from './turnStream';
 import { ContextEvidence } from './ContextEvidence';
 import { ResearchGraph } from './ResearchGraph';
+import { AssistantText, CopyMessage } from './AssistantText';
 import { MemoryControls } from './MemoryControls';
 import { WorkspaceCards } from './WorkspaceCards';
 import { CloudImageResults, SearchEvidence } from './SearchEvidence';
@@ -2176,7 +2177,12 @@ export function LiveAssistant(props: LiveAssistantProps) {
               {messages.map((message) => (
                 <article key={message.id} className={`assistant-message ${message.role}`}>
                   <small>{message.role === 'user' ? t('你') : t('创作助手')}</small>
-                  {message.text && <p>{message.text}</p>}
+                  {message.text &&
+                    (message.role === 'assistant' ? (
+                      <AssistantText text={message.text} />
+                    ) : (
+                      <p>{message.text}</p>
+                    ))}
                   {message.appStatus && <p>{renderStatus(message.appStatus)}</p>}
                   {!!message.search?.length && (
                     <SearchEvidence
@@ -2204,6 +2210,9 @@ export function LiveAssistant(props: LiveAssistantProps) {
                         ))}
                       </div>
                     )}
+                  {message.role === 'assistant' && message.text && (
+                    <CopyMessage text={message.text} />
+                  )}
                 </article>
               ))}
             </div>

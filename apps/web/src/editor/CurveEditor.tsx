@@ -219,7 +219,16 @@ export function CurveEditor({ editor, scope }: { editor: EditorState; scope?: Cu
       getCurves: scopeRef.current?.getCurves,
     }));
   const sourceIdentity = editor.getSourceIdentity();
+  const selectionContext = useRef({ sourceIdentity, channel, scopeKey: scope?.key });
   useEffect(() => {
+    const previous = selectionContext.current;
+    if (
+      previous.sourceIdentity === sourceIdentity &&
+      previous.channel === channel &&
+      previous.scopeKey === scope?.key
+    )
+      return;
+    selectionContext.current = { sourceIdentity, channel, scopeKey: scope?.key };
     // Do not restore the preceding source's recipe into a newly loaded image.
     gestures.current?.discard();
     drag.current = null;

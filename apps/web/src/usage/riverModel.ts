@@ -1,10 +1,24 @@
 import type { UsageResponse } from '@ai-xiutu/contracts';
 import { knownNumber } from './model';
+import { usageBucketPosition } from './trend-model';
 
 export const riverKinds = ['held', 'consumed', 'released', 'expired'] as const;
 /** Separate common-scale lanes: these movements overlap and are not a conserved cash flow. */
-export function usageRiverLanes(series: UsageResponse['series']) {
-  const samples = series.map((row) => ({ row, time: Date.parse(row.bucket) }));
+export function usageRiverLanes(series: UsageResponse['series'], range?: UsageResponse['range']) {
+  const samples = series
+    .map((row) => {
+      const time = Date.parse(row.bucket);
+      const monthly = range?.bucket === 'month' || (!range && /^\d{4}-\d{2}$/.test(row.bucket));
+      const ordinal = monthly
+        ? Number(row.bucket.slice(0, 4)) * 12 + Number(row.bucket.slice(5, 7)) - 1
+        : time / 86_400_000;
+      const position = range ? usageBucketPosition(row.bucket, range) : null;
+      return { row, time, ordinal, position };
+    })
+    .filter(
+      ({ position }) => !position || (position.ordinal >= 0 && position.ordinal < position.count),
+    )
+    .sort((a, b) => a.ordinal - b.ordinal);
   const dates = samples.flatMap(({ time }) => (Number.isFinite(time) ? [time] : []));
   const first = Math.min(...dates),
     last = Math.max(...dates);
@@ -21,23 +35,32 @@ export function usageRiverLanes(series: UsageResponse['series']) {
     baseline = negative ? 44 : 82;
   const scale = (negative ? 38 : 76) / peak;
   return riverKinds.map((kind) => {
-    const points = samples.map(({ row, time }) => ({
+    const points = samples.map(({ row, time, ordinal, position }) => ({
       label: row.bucket,
+      ordinal,
       value: knownNumber(row[kind]),
       y: knownNumber(row[kind]) === null ? null : baseline - row[kind] * scale,
       x: Number.isFinite(time)
-        ? first === last
-          ? width / 2
-          : 6 + ((time - first) * (width - 12)) / (last - first)
+        ? position
+          ? position.fraction * width
+          : first === last
+            ? width / 2
+            : 6 + ((time - first) * (width - 12)) / (last - first)
         : null,
     }));
     const segments: { x: number; y: number }[][] = [];
     let segment: { x: number; y: number }[] = [];
+    let previousOrdinal: number | null = null;
     for (const point of points) {
+      if (segment.length && previousOrdinal !== null && point.ordinal !== previousOrdinal + 1) {
+        segments.push(segment);
+        segment = [];
+      }
       if (point.value === null || point.x === null) {
         if (segment.length) segments.push(segment);
         segment = [];
       } else segment.push({ x: point.x, y: point.y! });
+      previousOrdinal = point.ordinal;
     }
     if (segment.length) segments.push(segment);
     const paths = segments.map((segment) => {

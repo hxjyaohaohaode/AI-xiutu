@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState, type CSSProperties } from 'react';
+import { useEffect, useId, useRef, useState, type CSSProperties } from 'react';
 import {
   ArrowLeft,
   ArrowRight,
@@ -9,14 +9,20 @@ import {
   GitBranch,
   SlidersHorizontal,
   Sparkle,
+  CaretDown,
 } from '@phosphor-icons/react';
 import { EditorialImage } from './AboutArt';
 import type { EditorialCopy } from './editorial-copy';
+import { useLocale } from '../i18n';
+import { agentDemoRecipes, agentProductCopy } from './agent-product-copy';
+import './agent-product-story.css';
 
 const stepIcons = [ChatCircleDots, CirclesThreePlus, SlidersHorizontal, GitBranch];
 
 /** Stepper's single controlled stage, with spatial changes large enough to read while scrolling. */
 export function AgentStory({ copy: c, onOpen }: { copy: EditorialCopy; onOpen: () => void }) {
+  const copy = agentProductCopy(useLocale());
+  const actionId = useId();
   const root = useRef<HTMLDivElement>(null);
   const selected = useRef(0);
   const manualSelection = useRef(false);
@@ -25,6 +31,13 @@ export function AgentStory({ copy: c, onOpen }: { copy: EditorialCopy; onOpen: (
   const hover = useRef<ReturnType<typeof setTimeout> | null>(null);
   const [step, setStep] = useState(0);
   const [candidate, setCandidate] = useState(0);
+  const [openAction, setOpenAction] = useState(1);
+  const recipe = agentDemoRecipes[candidate]!;
+  const parameterRows = [
+    { label: copy.exposure, value: recipe.exposure },
+    { label: copy.shadows, value: recipe.shadows },
+    { label: copy.highlights, value: recipe.highlights },
+  ];
   const select = (index: number, manual = true) => {
     if (manual) {
       if (hover.current) clearTimeout(hover.current);
@@ -271,7 +284,7 @@ export function AgentStory({ copy: c, onOpen }: { copy: EditorialCopy; onOpen: (
   }, []);
   const ActiveIcon = stepIcons[step]!;
   return (
-    <div className="agent-story" ref={root} data-step={step}>
+    <div className="agent-story agent-story-product" ref={root} data-step={step}>
       <div className="agent-story-sticky">
         <div className="agent-visual" data-step={step} data-candidate={candidate}>
           <div className="agent-visual-top">
@@ -297,30 +310,79 @@ export function AgentStory({ copy: c, onOpen }: { copy: EditorialCopy; onOpen: (
               <ChatCircleDots size={18} />
               <p>{c.agentSteps[0]!.detail}</p>
             </div>
-            <div className="agent-tools" aria-hidden={step < 1}>
-              {[
-                ['EV', '+0.20', 62],
-                ['SH', '+14', 64],
-                ['HI', '−10', 40],
-              ].map(([key, value, position], index) => (
-                <div
-                  key={key}
-                  style={
-                    {
-                      '--item-index': index,
-                      '--parameter-position': `${position}%`,
-                    } as CSSProperties
-                  }
-                >
-                  <span>{key}</span>
-                  <i />
-                  <output>{value}</output>
-                </div>
-              ))}
+            <div
+              className="agent-tools agent-action-card"
+              aria-hidden={step !== 1}
+              inert={step !== 1}
+            >
+              <header className="agent-action-heading">
+                <strong>{copy.process}</strong>
+                <span>{copy.example}</span>
+              </header>
+              <ol className="agent-actions">
+                {copy.actions.map((label, index) => (
+                  <li
+                    key={label}
+                    data-open={openAction === index}
+                    style={{ '--action-index': index } as CSSProperties}
+                  >
+                    <button
+                      type="button"
+                      aria-expanded={openAction === index}
+                      aria-controls={`${actionId}-${index}`}
+                      onFocus={() => select(1)}
+                      onClick={() => {
+                        select(1);
+                        setOpenAction(openAction === index ? -1 : index);
+                      }}
+                    >
+                      <span className="agent-action-number">0{index + 1}</span>
+                      <span className="agent-action-label">
+                        {label}
+                        <small>{copy.states[index]}</small>
+                      </span>
+                      <CaretDown size={13} aria-hidden />
+                    </button>
+                    <div
+                      className="agent-action-detail"
+                      id={`${actionId}-${index}`}
+                      hidden={openAction !== index}
+                    >
+                      {index === 0 ? (
+                        <p>{copy.input}</p>
+                      ) : index === 1 ? (
+                        <>
+                          <span className="agent-recipe-name">
+                            {candidate === 0 ? 'A' : 'B'} ·{' '}
+                            {candidate === 0 ? c.candidateA : c.candidateB}
+                          </span>
+                          <dl className="agent-recipe-values">
+                            {parameterRows.map((item) => (
+                              <div key={item.label}>
+                                <dt>{item.label}</dt>
+                                <dd>{item.value}</dd>
+                              </div>
+                            ))}
+                          </dl>
+                        </>
+                      ) : (
+                        <p>{index === 2 ? copy.compare : copy.authorize}</p>
+                      )}
+                    </div>
+                  </li>
+                ))}
+              </ol>
             </div>
             <div className="agent-candidates" aria-hidden={step < 2} inert={step < 2}>
+              <header className="agent-candidate-heading">
+                <span>{copy.rendered}</span>
+                <h3>{copy.candidates}</h3>
+              </header>
               {[c.candidateA, c.candidateB].map((name, index) => (
                 <div key={name} className="agent-candidate" data-selected={candidate === index}>
+                  <span className="agent-candidate-letter" aria-hidden>
+                    {index === 0 ? 'A' : 'B'}
+                  </span>
                   <EditorialImage name={`agent-candidate-${index}`} alt={name} />
                   <button
                     type="button"
@@ -331,11 +393,37 @@ export function AgentStory({ copy: c, onOpen }: { copy: EditorialCopy; onOpen: (
                       setCandidate(index);
                     }}
                   >
-                    <span>{name}</span>
-                    {candidate === index && <Check size={14} />}
+                    <span>
+                      <b>{index === 0 ? 'A' : 'B'}</b>
+                      {name}
+                    </span>
+                    <span className="agent-candidate-choice">
+                      {candidate === index ? <Check size={14} /> : null}
+                      <small>{candidate === index ? copy.selected : copy.select}</small>
+                    </span>
                   </button>
+                  <dl className="agent-candidate-values">
+                    {[
+                      [copy.exposure, agentDemoRecipes[index]!.exposure],
+                      [copy.shadows, agentDemoRecipes[index]!.shadows],
+                      [copy.highlights, agentDemoRecipes[index]!.highlights],
+                    ].map(([label, value]) => (
+                      <div key={label}>
+                        <dt>{label}</dt>
+                        <dd>{value}</dd>
+                      </div>
+                    ))}
+                  </dl>
                 </div>
               ))}
+              <p className="agent-selection-feedback" role="status">
+                <Check size={14} aria-hidden />
+                <strong>
+                  {copy.selected} {candidate === 0 ? 'A' : 'B'} ·{' '}
+                  {candidate === 0 ? c.candidateA : c.candidateB}
+                </strong>
+                <span>{copy.selectionOnly}</span>
+              </p>
             </div>
             <div className="agent-decision" aria-hidden={step < 3}>
               <Check size={20} />
@@ -347,7 +435,11 @@ export function AgentStory({ copy: c, onOpen }: { copy: EditorialCopy; onOpen: (
             </div>
           </div>
           <div className="agent-visual-footer">
-            <span>{c.agentSteps[step]!.detail}</span>
+            <span>
+              {step === 1
+                ? parameterRows.map((item) => `${item.label} ${item.value}`).join(' · ')
+                : c.agentSteps[step]!.detail}
+            </span>
             <b>
               0{step + 1}
               <small> / 04</small>

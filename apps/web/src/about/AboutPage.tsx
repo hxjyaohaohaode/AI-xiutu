@@ -11,6 +11,7 @@ import {
 } from '@phosphor-icons/react';
 import { useLocale } from '../i18n';
 import { LanguageSelect } from '../i18n/LanguageSelect';
+import { BrandMark } from '../components/BrandMark';
 import { DEFAULT_BRAND, brandLogoUrl } from '../lib/brand';
 import type { PublicConfig } from '../lib/types';
 import { aboutCopy } from './copy';
@@ -19,7 +20,7 @@ import { ColorStudy } from './ColorStudy';
 import { FeatureTour } from './FeatureTour';
 import { AgentStory } from './AgentStory';
 import { DeviceStory, TeamStory, VoiceStory } from './CreativeStories';
-import { EditorialImage } from './AboutArt';
+import { ProductHero } from './ProductHero';
 import { HoverPreview, PointerRibbons, ScrollReveal } from './effects';
 import { getSampleImage, type SampleSettings } from './sample-settings';
 
@@ -85,14 +86,7 @@ export function AboutPage({
       </a>
       <header className="about-header">
         <a href="#top" className="about-brand" aria-label={`${brand} · ${c.homeLabel}`}>
-          {logo ? (
-            <img src={logo} alt="" width="25" height="25" />
-          ) : (
-            <span className="about-symbol" aria-hidden="true">
-              <span />
-              <span />
-            </span>
-          )}
+          <BrandMark logoUrl={logo} />
           {brand}
         </a>
         <nav aria-label={c.overview}>
@@ -139,25 +133,7 @@ export function AboutPage({
               </div>
             </div>
           </ScrollReveal>
-          <div className="hero-artwork" data-pointer-protect>
-            <EditorialImage name="hero-editorial" alt={e.heroAlt} eager />
-            <svg
-              viewBox="0 0 1200 560"
-              fill="none"
-              aria-hidden="true"
-              className="hero-annotation-lines"
-            >
-              <path d="M120 130H264L390 242" />
-              <path d="M948 101H840L740 236" />
-              <path d="M930 465H800L660 389" />
-            </svg>
-            {e.heroCallouts.map((text, index) => (
-              <span className={`hero-annotation hero-annotation-${index}`} key={text}>
-                <i />
-                {text}
-              </span>
-            ))}
-          </div>
+          <ProductHero />
           <div className="hero-bottom">
             <div>
               {e.heroNotes.map((note) => (
@@ -173,17 +149,25 @@ export function AboutPage({
 
         <section className="about-tools about-section" id="tools" aria-labelledby="tools-title">
           <ScrollReveal className="about-section-heading">
-            <span className="about-eyebrow">01 / {e.nav[0]}</span>
-            <h2 id="tools-title">{e.tourTitle}</h2>
+            <span className="about-eyebrow" data-reveal-piece>
+              01 / {e.nav[0]}
+            </span>
+            <h2 id="tools-title" data-reveal-piece>
+              {e.tourTitle}
+            </h2>
           </ScrollReveal>
           <FeatureTour copy={e} />
         </section>
 
         <section className="about-agent about-section" id="agent" aria-labelledby="agent-title">
           <ScrollReveal className="about-section-heading">
-            <span className="about-eyebrow">02 / {e.agentLabel}</span>
-            <h2 id="agent-title">{e.agentTitle}</h2>
-            <p>{e.agentBody}</p>
+            <span className="about-eyebrow" data-reveal-piece>
+              02 / {e.agentLabel}
+            </span>
+            <h2 id="agent-title" data-reveal-piece>
+              {e.agentTitle}
+            </h2>
+            <p data-reveal-piece>{e.agentBody}</p>
           </ScrollReveal>
           <AgentStory copy={e} onOpen={openStudio} />
           <VoiceStory copy={e} />
@@ -191,9 +175,13 @@ export function AboutPage({
 
         <section className="about-try about-section" id="try" aria-labelledby="try-title">
           <ScrollReveal className="about-section-heading">
-            <span className="about-eyebrow">03 / {c.adjust}</span>
-            <h2 id="try-title">{e.tryTitle}</h2>
-            <p>{e.tryBody}</p>
+            <span className="about-eyebrow" data-reveal-piece>
+              03 / {c.adjust}
+            </span>
+            <h2 id="try-title" data-reveal-piece>
+              {e.tryTitle}
+            </h2>
+            <p data-reveal-piece>{e.tryBody}</p>
           </ScrollReveal>
           <ColorStudy onOpen={openStudio} />
           <p className="about-caption study-engine-note">{e.tryNote}</p>
@@ -256,9 +244,6 @@ export function AboutPage({
                       aria-expanded={question === index}
                       aria-controls={`question-${index}`}
                       onClick={() => setQuestion(index)}
-                      onPointerEnter={(event) => {
-                        if (event.pointerType === 'mouse') setQuestion(index);
-                      }}
                       onKeyDown={(event) => {
                         if (['ArrowDown', 'ArrowUp', 'Home', 'End'].includes(event.key)) {
                           event.preventDefault();

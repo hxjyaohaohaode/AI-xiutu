@@ -21,6 +21,12 @@ const tourImages = [
   '/about/portrait-editorial.webp',
   '/about/layers-editorial.webp',
 ];
+const tourScreenshots = ['workspace', 'local', 'portrait', 'layers'];
+const deviceScreenshots = [
+  { selector: '.device-desktop', name: 'workspace', dimensions: [1440, 960] },
+  { selector: '.device-tablet', name: 'tablet', dimensions: [1024, 768] },
+  { selector: '.device-phone', name: 'phone', dimensions: [390, 844] },
+];
 
 async function assertAgentWithinFrame(page, stage) {
   const geometry = await page.locator('.agent-visual').evaluate((frame, activeStage) => {
@@ -226,6 +232,279 @@ async function assertActiveFeature(page, index, until) {
   );
   assert.equal(await page.locator('.experience-feature[aria-pressed="true"]').count(), 1);
   assert.equal(await page.locator('.experience-tour-image[aria-hidden="false"]').count(), 1);
+  assert.equal(await page.locator('.feature-chapter-navigation b').innerText(), `0${index + 1}`);
+  assert.equal(
+    await page.locator('.feature-chapter-track i[data-active="true"]').count(),
+    index + 1,
+    'The visible image, text and progress share one chapter',
+  );
+  const navigation = page.locator('.feature-chapter-navigation button');
+  assert.equal(await navigation.nth(0).isDisabled(), index === 0);
+  assert.equal(await navigation.nth(1).isDisabled(), index === 3);
+}
+
+async function guideGeometry(guide) {
+  return guide.evaluate((element) => {
+    const bounds = element.getBoundingClientRect();
+    const frame = element.parentElement.getBoundingClientRect();
+    return {
+      x: bounds.left - frame.left,
+      y: bounds.top - frame.top,
+      width: bounds.width,
+      height: bounds.height,
+      frameWidth: frame.width,
+      frameHeight: frame.height,
+    };
+  });
+}
+
+function assertGuideInside(geometry, label) {
+  assert.ok(
+    geometry.width > 0 &&
+      geometry.height > 0 &&
+      geometry.x >= -1 &&
+      geometry.y >= -1 &&
+      geometry.x + geometry.width <= geometry.frameWidth + 1 &&
+      geometry.y + geometry.height <= geometry.frameHeight + 1,
+    `${label} highlights a real area inside its screenshot: ${JSON.stringify(geometry)}`,
+  );
+}
+
+async function assertProductHero(page, locale, until) {
+  const hero = page.locator('.product-hero');
+  const image = await decodedImage(
+    hero.locator('.product-hero-screen img'),
+    `/about/hero-${locale}.webp`,
+    [1440, 960],
+    until,
+  );
+  assert.equal(image.loading, 'eager');
+  const steps = hero.locator('.product-hero-step');
+  assert.equal(await steps.count(), 3, 'The actual studio has three named guide targets');
+  const guide = hero.locator('.product-guide-outline');
+  const positions = [];
+  for (let index = 0; index < 3; index += 1) {
+    await steps.nth(index).click();
+    assert.equal(await hero.getAttribute('data-focus'), String(index));
+    assert.equal(await steps.nth(index).getAttribute('aria-pressed'), 'true');
+    assert.equal(await hero.locator('.product-hero-step[aria-pressed="true"]').count(), 1);
+    await settleElementMotion(hero, until, `hero guide ${index + 1}`);
+    const geometry = await guideGeometry(guide);
+    assertGuideInside(geometry, `Hero guide ${index + 1}`);
+    positions.push(geometry);
+  }
+  assert.equal(
+    new Set(
+      positions.map(({ x, y, width, height }) => [x, y, width, height].map(Math.round).join(':')),
+    ).size,
+    3,
+    'All three guide buttons move the outline to distinct parts of the real interface',
+  );
+  await steps.nth(2).press('ArrowDown');
+  assert.equal(await hero.getAttribute('data-focus'), '0');
+  assert.equal(await steps.nth(0).evaluate((element) => element === document.activeElement), true);
+  await steps.nth(0).press('ArrowLeft');
+  assert.equal(await hero.getAttribute('data-focus'), '2');
+  assert.equal(await steps.nth(2).evaluate((element) => element === document.activeElement), true);
+  await steps.nth(0).click();
+  return { image, positions, keyboardWraps: true };
+}
+
+async function assertFeatureArtwork(figure, index, locale, until, exerciseNotes = false) {
+  const product = await decodedImage(
+    figure.locator('.feature-product-screen img'),
+    `/about/${tourScreenshots[index]}-${locale}.webp`,
+    [1440, 960],
+    until,
+  );
+  const sample = await decodedImage(
+    figure.locator('.feature-source-swatch img'),
+    tourImages[index],
+    [1536, 1024],
+    until,
+  );
+  const notes = figure.locator('button.feature-art-note');
+  assert.equal(
+    await notes.count(),
+    3,
+    'Each real feature screenshot has three actionable annotations',
+  );
+  await until(
+    async () =>
+      notes.evaluateAll((buttons) =>
+        buttons.every((button) => {
+          const style = getComputedStyle(button);
+          return (
+            style.visibility === 'visible' &&
+            Number(style.opacity) >= 0.65 &&
+            !button.disabled &&
+            button.textContent.trim()
+          );
+        }),
+      ),
+    `feature ${index + 1} annotations are visible and readable`,
+  );
+  assert.equal(await figure.locator('.feature-art-note[aria-pressed="true"]').count(), 1);
+  const selected = Number(await figure.getAttribute('data-focus'));
+  assert.equal(await notes.nth(selected).getAttribute('aria-pressed'), 'true');
+  const positions = [];
+  if (exerciseNotes) {
+    for (let note = 0; note < 3; note += 1) {
+      await notes.nth(note).click();
+      assert.equal(await figure.getAttribute('data-focus'), String(note));
+      assert.equal(await notes.nth(note).getAttribute('aria-pressed'), 'true');
+      assert.equal(await figure.locator('.feature-art-note[aria-pressed="true"]').count(), 1);
+      await settleElementMotion(figure, until, `feature ${index + 1} annotation ${note + 1}`);
+      const geometry = await guideGeometry(figure.locator('.product-guide-outline'));
+      assertGuideInside(geometry, `Feature ${index + 1} annotation ${note + 1}`);
+      positions.push(geometry);
+    }
+    assert.equal(
+      new Set(
+        positions.map(({ x, y, width, height }) => [x, y, width, height].map(Math.round).join(':')),
+      ).size,
+      3,
+      'The annotations change the highlighted interface area, not just their button color',
+    );
+  }
+  return { product, sample, selected: Number(await figure.getAttribute('data-focus')), positions };
+}
+
+async function assertDeviceExhibition(page, locale, until) {
+  const stage = page.locator('.device-product-stage');
+  const modes = page.locator('.device-modes button');
+  assert.equal(await modes.count(), 3);
+  const baseline = await stage.boundingBox();
+  assert.ok(baseline && baseline.height > 0);
+  const devices = [];
+  for (const [index, specification] of deviceScreenshots.entries()) {
+    await modes.nth(index).click();
+    assert.equal(await stage.getAttribute('data-device'), String(index));
+    assert.equal(await modes.nth(index).getAttribute('aria-pressed'), 'true');
+    assert.equal(await page.locator('.device-modes button[aria-pressed="true"]').count(), 1);
+    await settleElementMotion(stage, until, `device mode ${index + 1}`);
+    await until(
+      async () =>
+        stage.evaluate((element, selected) => {
+          const devices = [
+            ...element.querySelectorAll(
+              ':scope > .device-desktop, :scope > .device-tablet, :scope > .device-phone',
+            ),
+          ];
+          return (
+            devices.length === 3 &&
+            devices.every((device, at) => {
+              const style = getComputedStyle(device);
+              const active = at === selected;
+              return (
+                device.dataset.active === String(active) &&
+                device.getAttribute('aria-hidden') === String(!active) &&
+                device.inert === !active &&
+                (active
+                  ? style.visibility === 'visible' &&
+                    Number(style.opacity) === 1 &&
+                    style.pointerEvents !== 'none'
+                  : style.visibility === 'hidden' &&
+                    Number(style.opacity) === 0 &&
+                    style.pointerEvents === 'none')
+              );
+            })
+          );
+        }, index),
+      `only device ${index + 1} remains visible and interactive`,
+    );
+    const device = page.locator(specification.selector);
+    const image = await decodedImage(
+      device.locator('img'),
+      `/about/${specification.name}-${locale}.webp`,
+      specification.dimensions,
+      until,
+    );
+    const bounds = await device.boundingBox();
+    const container = await stage.boundingBox();
+    assert.ok(bounds && container && bounds.width > 0 && bounds.height > 0);
+    assert.ok(
+      Math.abs(container.height - baseline.height) <= 1,
+      'Device selection retains the presentation height instead of shifting the following section',
+    );
+    assert.ok(
+      bounds.x >= container.x - 1 &&
+        bounds.y >= container.y - 1 &&
+        bounds.x + bounds.width <= container.x + container.width + 1 &&
+        bounds.y + bounds.height <= container.y + container.height + 1,
+      'The selected device fits its independent presentation area without overlapping another frame',
+    );
+    assert.equal(await page.locator('.device-workflow-panel[aria-hidden="false"]').count(), 1);
+    const workflow = page.locator('.device-workflow-panel').nth(index);
+    assert.equal(await workflow.getAttribute('aria-hidden'), 'false');
+    assert.equal(await workflow.locator('ol > li').count(), 3);
+    devices.push({
+      index,
+      source: image.pathname,
+      dimensions: [image.width, image.height],
+      bounds,
+      container,
+      workflow: await workflow.locator('h3').innerText(),
+    });
+  }
+  assert.equal(
+    new Set(devices.map((device) => device.source)).size,
+    3,
+    'Desktop, tablet and phone use three distinct real captures',
+  );
+  await modes.nth(2).press('ArrowRight');
+  assert.equal(await stage.getAttribute('data-device'), '0');
+  assert.equal(await modes.nth(0).evaluate((element) => element === document.activeElement), true);
+  await modes.nth(2).click();
+  return devices;
+}
+
+async function assertTeamPermissions(page, until) {
+  const roles = [
+    { role: 'viewer', allowed: [false, false, false] },
+    { role: 'reviewer', allowed: [false, true, false] },
+    { role: 'editor', allowed: [true, true, false] },
+    { role: 'admin', allowed: [true, true, true] },
+    { role: 'owner', allowed: [true, true, true] },
+  ];
+  const select = page.locator('.team-role-control select');
+  assert.equal(await select.isEnabled(), true);
+  const results = [];
+  for (const expected of roles) {
+    await select.selectOption(expected.role);
+    await until(
+      async () => (await page.locator('.team-visual').getAttribute('data-role')) === expected.role,
+      `team role ${expected.role} is reflected in the illustration`,
+    );
+    assert.equal(
+      await page.locator('.team-permissions').getAttribute('aria-label'),
+      await select.locator('option:checked').innerText(),
+      'The permission list identifies the currently selected localized role',
+    );
+    const permissions = await page.locator('.team-permissions li').evaluateAll((items) =>
+      items.map((item) => ({
+        allowed: item.dataset.allowed === 'true',
+        label: item.querySelector('span').textContent.trim(),
+        status: item.querySelector('small').textContent.trim(),
+      })),
+    );
+    assert.deepEqual(
+      permissions.map((permission) => permission.allowed),
+      expected.allowed,
+      'Public role explanations must match edit, comment and invitation capabilities',
+    );
+    assert.ok(permissions.every((permission) => permission.label && permission.status));
+    const note = await page.locator('.team-role-note').innerText();
+    assert.ok(note.trim(), 'The role has a real capability explanation');
+    results.push({ role: expected.role, permissions, note });
+  }
+  assert.equal(
+    new Set(results.map((result) => result.note)).size,
+    5,
+    'Each role has its own explanation, including the owner/admin distinction',
+  );
+  await select.selectOption('editor');
+  return results;
 }
 
 async function settledDocumentScroll(page, until, label) {
@@ -282,32 +561,17 @@ async function wheelThroughFeatureChapters(page, until) {
         }),
       `chapter ${index + 1} expands its own explanation`,
     );
-    const image = await decodedImage(
-      page.locator('.experience-tour-image').nth(index).locator('img'),
-      tourImages[index],
-      [1536, 1024],
+    const artwork = await assertFeatureArtwork(
+      page.locator('.experience-tour-image').nth(index).locator('.product-feature-art'),
+      index,
+      'zh-CN',
       until,
-    );
-    await until(
-      async () =>
-        page
-          .locator('.experience-tour-image')
-          .nth(index)
-          .locator('.feature-art-note')
-          .evaluateAll(
-            (notes) =>
-              notes.length === 3 &&
-              notes.every((note) => {
-                const style = getComputedStyle(note);
-                return style.visibility === 'visible' && Number(style.opacity) === 1;
-              }),
-          ),
-      `chapter ${index + 1} shows its own three image annotations`,
     );
     chapters.push({
       index,
       y: await page.evaluate(() => scrollY),
-      image: image.pathname,
+      image: artwork.product.pathname,
+      sample: artwork.sample.pathname,
       title: await item.locator('.experience-feature > span').nth(1).innerText(),
     });
   }
@@ -318,7 +582,7 @@ async function wheelThroughFeatureChapters(page, until) {
   return chapters;
 }
 
-async function assertStaticFeatureExhibition(page, until) {
+async function assertStaticFeatureExhibition(page, locale, until) {
   const pictures = page.locator('.feature-mobile-art');
   assert.equal(await pictures.count(), 4, 'All four chapters need their own static artwork');
   const images = [];
@@ -334,7 +598,15 @@ async function assertStaticFeatureExhibition(page, until) {
       frame?.width > 200 && frame.height > 100,
       'Each narrow-screen artwork occupies real space',
     );
-    images.push(await decodedImage(picture.locator('img'), tourImages[index], [1536, 1024], until));
+    images.push(
+      await assertFeatureArtwork(
+        picture.locator('.product-feature-art'),
+        index,
+        locale,
+        until,
+        index === 0,
+      ),
+    );
   }
   const geometry = await page.locator('.experience-tour').evaluate((root) => {
     const sticky = root.querySelector('.experience-tour-sticky');
@@ -363,7 +635,10 @@ async function assertStaticFeatureExhibition(page, until) {
       }),
     };
   });
-  assert.equal(geometry.position, 'static', 'Narrow or short screens use normal document flow');
+  assert.ok(
+    geometry.position === 'static' || geometry.position === 'relative',
+    'Narrow or short screens use normal document flow without a sticky chapter stack',
+  );
   assert.equal(
     geometry.desktopStageDisplay,
     'none',
@@ -387,8 +662,15 @@ async function assertStaticFeatureExhibition(page, until) {
     ),
     'Every static chapter exposes its title, explanation and artwork without a hidden selector',
   );
-  assert.equal(new Set(images.map((image) => image.pathname)).size, 4);
-  return { geometry, images: images.map((image) => image.pathname), nativeWheel: true };
+  assert.equal(new Set(images.map((image) => image.product.pathname)).size, 4);
+  assert.equal(new Set(images.map((image) => image.sample.pathname)).size, 4);
+  return {
+    geometry,
+    images: images.map((image) => image.product.pathname),
+    samples: images.map((image) => image.sample.pathname),
+    annotationButtons: images[0].positions,
+    nativeWheel: true,
+  };
 }
 
 async function comparisonState(page) {
@@ -526,7 +808,9 @@ async function wheelTo(page, selector, until) {
 async function noTextClipping(page) {
   const overflows = await page.locator('.about-page').evaluate((root) => {
     const result = [];
-    for (const element of root.querySelectorAll('h1,h2,h3,p,.feature-art-note,.study-range')) {
+    for (const element of root.querySelectorAll(
+      'h1,h2,h3,p,.feature-art-note,.study-range,.product-hero-step strong,.product-step-body',
+    )) {
       const rect = element.getBoundingClientRect();
       if (!rect.width || !rect.height || getComputedStyle(element).visibility === 'hidden')
         continue;
@@ -604,16 +888,10 @@ export async function runAboutExperienceChecks({
     }
   };
   await check(
-    'About has unique editorial art and synchronized slow wheel, hover and keyboard chapters',
+    'About has real studio captures, distinct sample art and synchronized slow wheel, hover and keyboard chapters',
     async () =>
       withPublicPage('tour', desktop, async (page) => {
-        const hero = await decodedImage(
-          page.locator('.hero-artwork img'),
-          '/about/hero-editorial.webp',
-          [1536, 1024],
-          until,
-        );
-        assert.equal(hero.loading, 'eager');
+        const hero = await assertProductHero(page, 'zh-CN', until);
         assert.ok(
           (await page.locator('.about-header').boundingBox()).height <= 60,
           'Header should leave room for the work',
@@ -625,11 +903,17 @@ export async function runAboutExperienceChecks({
         const chapters = await wheelThroughFeatureChapters(page, until);
         await features.nth(1).hover();
         await assertActiveFeature(page, 1, until);
-        await decodedImage(
-          page.locator('.experience-tour-image').nth(1).locator('img'),
-          '/about/local-stilllife.webp',
-          [1536, 1024],
+        const annotations = await assertFeatureArtwork(
+          page.locator('.experience-tour-image').nth(1).locator('.product-feature-art'),
+          1,
+          'zh-CN',
           until,
+          true,
+        );
+        assert.equal(
+          await page.locator('.experience-tour').getAttribute('data-active'),
+          '1',
+          'Selecting an annotation does not change its feature chapter',
         );
         await features.nth(1).focus();
         await page.mouse.move(10, 250);
@@ -639,7 +923,25 @@ export async function runAboutExperienceChecks({
         await capture(page, 'about-r3-portrait-annotations');
         await features.nth(3).hover();
         await assertActiveFeature(page, 3, until);
-        await page.locator('.feature-artwork-footer button').click();
+        const detailTrigger = page.locator('.feature-artwork-footer button');
+        const detailClose = page.locator('.feature-interface-close');
+        await detailTrigger.click();
+        assert.equal(
+          await detailClose.evaluate((element) => element === document.activeElement),
+          true,
+          'Opening the detail places keyboard focus on its visible close control',
+        );
+        assert.equal(
+          await page
+            .locator('.experience-tour-image')
+            .evaluateAll((elements) =>
+              elements.every(
+                (element) => element.inert && element.getAttribute('aria-hidden') === 'true',
+              ),
+            ),
+          true,
+          'Every covered annotation leaves both keyboard and accessibility navigation',
+        );
         await decodedImage(
           page.locator('.feature-interface img'),
           '/about/layers-zh-CN.webp',
@@ -647,8 +949,70 @@ export async function runAboutExperienceChecks({
           until,
         );
         await capture(page, 'about-r3-actual-interface-inline');
-        await page.locator('.feature-interface-close').click();
+        await page.keyboard.press('Tab');
+        assert.equal(
+          await detailTrigger.evaluate((element) => element === document.activeElement),
+          true,
+          'The inline detail permits Tab to its visible toggle without entering covered controls',
+        );
+        await page.keyboard.press('Shift+Tab');
+        assert.equal(
+          await detailClose.evaluate((element) => element === document.activeElement),
+          true,
+          'Reverse tab order returns to the visible detail close control',
+        );
+        await detailClose.click();
         assert.equal(await page.locator('.feature-interface').count(), 0);
+        assert.equal(
+          await detailTrigger.evaluate((element) => element === document.activeElement),
+          true,
+          'Closing interface detail restores its initiating control',
+        );
+        await assertActiveFeature(page, 3, until);
+        await detailTrigger.click();
+        await page.keyboard.press('Escape');
+        assert.equal(await page.locator('.feature-interface').count(), 0);
+        assert.equal(await detailTrigger.getAttribute('aria-expanded'), 'false');
+        assert.equal(
+          await detailTrigger.evaluate((element) => element === document.activeElement),
+          true,
+          'Escape works immediately after opening and restores the initiating control',
+        );
+        await detailTrigger.click();
+        await page.keyboard.press('Shift+Tab');
+        assert.equal(
+          await features.nth(3).evaluate((element) => element === document.activeElement),
+          true,
+          'Reverse Tab skips all covered annotations and reaches the visible chapter list',
+        );
+        assert.equal(await page.locator('.feature-interface').count(), 0);
+        await assertActiveFeature(page, 3, until);
+        await detailTrigger.click();
+        await features.nth(1).hover();
+        await assertActiveFeature(page, 1, until);
+        assert.equal(await page.locator('.feature-interface').count(), 0);
+        assert.equal(
+          await detailTrigger.evaluate((element) => element === document.activeElement),
+          true,
+          'A hover chapter change moves focus before removing the focused detail close button',
+        );
+        await detailTrigger.click();
+        const nextChapter = page.locator('.feature-chapter-navigation button').nth(1);
+        await nextChapter.click();
+        await assertActiveFeature(page, 2, until);
+        assert.equal(await page.locator('.feature-interface').count(), 0);
+        assert.equal(
+          await nextChapter.evaluate((element) => element === document.activeElement),
+          true,
+          'An explicit chapter change keeps focus on its still-visible navigation control',
+        );
+        assert.equal(
+          await page.evaluate(
+            () => !!document.activeElement?.closest('[inert], [aria-hidden="true"]'),
+          ),
+          false,
+          'Chapter changes leave no focus inside hidden or inert artwork',
+        );
         const geometry = await page
           .locator('.experience-tour')
           .evaluate((el) => ({ height: el.offsetHeight, viewport: innerHeight }));
@@ -683,18 +1047,19 @@ export async function runAboutExperienceChecks({
         await noTextClipping(page);
         const distinct = await page
           .locator(
-            '.hero-artwork img,.experience-tour-image img,.agent-photo-source img,.team-visual > .about-image img',
+            '.hero-artwork .product-hero-screen img,.experience-tour-image .feature-product-screen img,.experience-tour-image .feature-source-swatch img,.agent-photo-source img',
           )
           .evaluateAll((images) => images.map((img) => new URL(img.src).pathname));
         assert.equal(
           new Set(distinct).size,
           distinct.length,
-          'Different chapters must not recycle the same photograph',
+          'The hero and feature chapters use distinct product captures and sample photographs',
         );
         evidence.tour = {
           hero,
           positions,
           chapters,
+          annotations,
           distinct,
           hover: true,
           keyboard: true,
@@ -784,38 +1149,41 @@ export async function runAboutExperienceChecks({
         await capture(page, 'about-r3-voice-states');
         await page.locator('.team-modes button').nth(0).click();
         assert.equal(await page.locator('.team-visual').getAttribute('data-team'), 'false');
+        assert.equal(
+          await page.locator('.team-role-control select').isDisabled(),
+          true,
+          'Personal mode cannot change team permissions',
+        );
+        assert.equal(await page.locator('.team-permissions').getAttribute('aria-hidden'), 'true');
+        assert.equal(await page.locator('.team-presence button:disabled').count(), 3);
         await page.locator('.team-modes button').nth(1).click();
+        const roles = await assertTeamPermissions(page, until);
+        const initialScene = await page
+          .locator('.team-explanation-state[data-active="true"] h3')
+          .innerText();
         await page.locator('.team-presence button').nth(1).click();
         assert.equal(await page.locator('.team-visual').getAttribute('data-member'), '1');
+        assert.notEqual(
+          await page.locator('.team-explanation-state[data-active="true"] h3').innerText(),
+          initialScene,
+          'Member selection changes the actual collaboration explanation',
+        );
+        assert.equal(await page.locator('.team-region-marker').getAttribute('data-scene'), '1');
         await page.locator('.team-versions button').nth(2).click();
         assert.equal(await page.locator('.team-visual').getAttribute('data-version'), '3');
-        await capture(page, 'about-r3-team-regions');
-        const device = [];
-        for (let index = 0; index < 3; index++) {
-          await page.locator('.device-modes button').nth(index).click();
-          assert.equal(
-            await page.locator('.device-composition').getAttribute('data-device'),
-            String(index),
-          );
-          await page.mouse.move(10, 10);
-          await settleElementMotion(
-            page.locator('.device-composition'),
-            until,
-            `device mode ${index + 1}`,
-          );
-          device.push(await page.locator('.device-phone').boundingBox());
-        }
-        assert.ok(device.every((rect) => rect && rect.width > 0));
-        assert.ok(
-          device
-            .slice(1)
-            .every(
-              (rect, index) =>
-                Math.hypot(rect.x - device[index].x, rect.y - device[index].y) > 20 ||
-                Math.abs(rect.width - device[index].width) > 10,
-            ),
-          'Each device mode reaches a visibly different final composition',
+        assert.match(
+          await page.locator('.team-version-parent').innerText(),
+          /V2\s*→\s*V3/,
+          'The selected version names its real parent relationship in the explanatory diagram',
         );
+        await decodedImage(
+          page.locator('.team-product-canvas img'),
+          '/about/local-zh-CN.webp',
+          [1440, 960],
+          until,
+        );
+        await capture(page, 'about-r3-team-regions');
+        const device = await assertDeviceExhibition(page, 'zh-CN', until);
         assert.equal(
           await page.locator('.device-phone figcaption').count(),
           0,
@@ -828,6 +1196,7 @@ export async function runAboutExperienceChecks({
           candidates: true,
           voiceStates: true,
           teamStates: true,
+          roles,
           device,
           apiMutations: 0,
         };
@@ -1070,16 +1439,11 @@ export async function runAboutExperienceChecks({
       for (const item of localeCases)
         await withPublicPage(`responsive-${item.locale}`, item.viewport, async (page) => {
           await selectLocale(page, item.locale);
-          await decodedImage(
-            page.locator('.hero-artwork img'),
-            '/about/hero-editorial.webp',
-            [1536, 1024],
-            until,
-          );
+          const hero = await assertProductHero(page, item.locale, until);
           await capture(page, `about-r3-${item.locale}-${item.viewport.width}-hero`);
           const staticTour =
             item.viewport.width <= 760 || item.viewport.height <= 800
-              ? await assertStaticFeatureExhibition(page, until)
+              ? await assertStaticFeatureExhibition(page, item.locale, until)
               : null;
           let agentStages = null;
           if (staticTour) {
@@ -1120,6 +1484,7 @@ export async function runAboutExperienceChecks({
             await capture(page, `about-r3-${item.locale}-${item.viewport.width}-agent-decision`);
             await assertAgentWithinFrame(page, 3);
           }
+          const devices = await assertDeviceExhibition(page, item.locale, until);
           await page.locator('.about-faq').scrollIntoViewIfNeeded();
           const geometry = () =>
             page.locator('.faq-layout').evaluate((el) => ({
@@ -1138,7 +1503,52 @@ export async function runAboutExperienceChecks({
               'FAQ changes only its answer, never the next section position',
             );
             assert.equal(await page.locator('.question-answer[aria-hidden="false"]').count(), 1);
+            assert.equal(
+              await page.locator('.question-answer[aria-hidden="false"]').getAttribute('id'),
+              `question-${index}`,
+            );
+            assert.equal(
+              await page.locator('.question-answer[aria-hidden="true"][inert]').count(),
+              4,
+            );
           }
+          const questions = page.locator('.about-question button');
+          await questions.nth(1).click();
+          await questions.nth(4).hover();
+          // Hold beyond a typical hover debounce to catch immediate and delayed changes.
+          await page.waitForTimeout(400);
+          assert.equal(
+            await questions.nth(1).getAttribute('aria-expanded'),
+            'true',
+            'Passing the pointer over another FAQ does not replace the answer being read',
+          );
+          assert.equal(
+            await page.locator('.question-answer[aria-hidden="false"]').getAttribute('id'),
+            'question-1',
+          );
+          await questions.nth(3).focus();
+          assert.equal(
+            await questions.nth(1).getAttribute('aria-expanded'),
+            'true',
+            'Moving focus alone does not silently select a different answer',
+          );
+          await questions.nth(3).press('Enter');
+          assert.equal(await questions.nth(3).getAttribute('aria-expanded'), 'true');
+          await questions.nth(3).press('ArrowDown');
+          assert.equal(await questions.nth(4).getAttribute('aria-expanded'), 'true');
+          assert.equal(
+            await questions.nth(4).evaluate((element) => element === document.activeElement),
+            true,
+          );
+          await questions.nth(4).press('Home');
+          assert.equal(await questions.nth(0).getAttribute('aria-expanded'), 'true');
+          const afterKeyboard = await geometry();
+          assert.ok(
+            Math.abs(afterKeyboard.width - baseline.width) < 1 &&
+              Math.abs(afterKeyboard.height - baseline.height) < 1 &&
+              Math.abs(afterKeyboard.next - baseline.next) < 1,
+            'Hover and keyboard interactions preserve the FAQ and following-section geometry',
+          );
           await noTextClipping(page);
           await capture(page, `about-r3-${item.locale}-${item.viewport.width}-faq`);
           await page.locator('.color-study').scrollIntoViewIfNeeded();
@@ -1161,13 +1571,17 @@ export async function runAboutExperienceChecks({
             viewport: item.viewport,
             geometry: baseline,
             stable: true,
+            hoverKeepsAnswer: true,
+            explicitKeyboardSelection: true,
           });
           evidence.responsive.push({
             locale: item.locale,
             viewport: item.viewport,
             ranges,
+            hero,
             staticTour,
             agentStages,
+            devices,
           });
         });
       return { faq: evidence.faq, responsive: evidence.responsive, apiMutations: 0 };

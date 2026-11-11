@@ -13,6 +13,7 @@ import { secureUuid } from '../lib/uuid';
 import { CurveEditor } from './CurveEditor';
 import { Histogram } from './Histogram';
 import { ParameterShelf } from './ParameterShelf';
+import { editorFlowText } from './flow-copy';
 import {
   NUMERIC_CONTROLS,
   scopeColor,
@@ -125,7 +126,7 @@ export function ColorControls({
       mask = newMask('color-range'),
       region = createAdjustmentRegionV3({
         id: secureUuid(),
-        name: '连续颜色范围 ' + (latest.regionEdits.length + 1),
+        name: t('连续颜色范围 ') + (latest.regionEdits.length + 1),
         mask: mask.type === 'color-range' ? { ...mask, hue: hsv(rgba(pickedColor)).h } : mask,
       });
     if (
@@ -207,11 +208,14 @@ export function ColorControls({
                   </button>
                 ))}
               </div>
-              <p className="control-note">
-                {t(
-                  '这些是重叠混合的色段快捷入口；更细颜色可用连续色相与容差选区，不限于八种颜色。',
-                )}
-              </p>
+              <MotionDetails className="advanced-disclosure control-context-help">
+                <summary>{editorFlowText('colorRangeHelp')}</summary>
+                <p className="control-note">
+                  {t(
+                    '这些是重叠混合的色段快捷入口；更细颜色可用连续色相与容差选区，不限于八种颜色。',
+                  )}
+                </p>
+              </MotionDetails>
             </>
           )}
           {colorTab === 'grading' && (
@@ -253,11 +257,14 @@ export function ColorControls({
               >
                 {t('建立连续颜色范围')}
               </button>
-              <p className="control-note">
-                {t(
-                  '色谱提供 RGBA、HSV、HSL 与透明度；选区使用连续色相、容差、饱和度和明度范围。绘制与美妆可使用任意所选颜色。',
-                )}
-              </p>
+              <MotionDetails className="advanced-disclosure control-context-help">
+                <summary>{editorFlowText('paletteHelp')}</summary>
+                <p className="control-note">
+                  {t(
+                    '色谱提供 RGBA、HSV、HSL 与透明度；选区使用连续色相、容差、饱和度和明度范围。绘制与美妆可使用任意所选颜色。',
+                  )}
+                </p>
+              </MotionDetails>
             </>
           )}
         </>

@@ -21,6 +21,7 @@ import { useResultDecisions, type ResultDecisionController } from './useResultDe
 import { ResultActions } from './ResultActions';
 import { QueuedCancellation } from './QueuedCancellation';
 import { AIVisibilityContext } from './AIVisibility';
+import { AssistantText } from './AssistantText';
 
 export function SpeakButton({ text }: { text: string }) {
   const supported = 'speechSynthesis' in window;
@@ -109,7 +110,7 @@ function TextResult({
       ) : (
         <div className="ai-text-copy">
           <h4>{title}</h4>
-          <p>{body}</p>
+          <AssistantText text={body} />
         </div>
       )}
       <div className="ai-result-actions">

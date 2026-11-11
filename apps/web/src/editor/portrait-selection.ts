@@ -49,7 +49,7 @@ export function preparePortraitSelection(
     throw new Error('这个选区标识已经存在，请重新建立选区。');
   const region = createAdjustmentRegionV3({
     id,
-    name: `${portraitSelectionLabels[kind]} ${recipe.regionEdits.length + 1}`,
+    name: `${t(portraitSelectionLabels[kind])} ${recipe.regionEdits.length + 1}`,
     mask: checked.segmentation[kind],
   });
   return {

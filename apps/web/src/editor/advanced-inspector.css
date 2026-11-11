@@ -35,6 +35,43 @@
 .advanced-inspector-scroll {
   gap: var(--compact-tool-gap, 16px);
 }
+.inspector-tool-content {
+  display: flex;
+  flex-direction: column;
+  gap: var(--compact-tool-gap, 16px);
+  min-width: 0;
+}
+.control-context-help {
+  order: 3;
+}
+.local-region-summary,
+.local-selection-heading {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  min-width: 0;
+  font-size: 11px;
+  line-height: 1.5;
+}
+.local-region-summary > span,
+.local-selection-heading > span {
+  color: var(--muted);
+  flex-shrink: 0;
+}
+.local-region-summary > output {
+  margin-inline-start: auto;
+  color: var(--ink);
+  font-variant-numeric: tabular-nums;
+}
+.local-region-summary > output > span {
+  color: var(--subtle);
+}
+.local-selection-heading > strong {
+  color: var(--ink);
+  font-size: 12px;
+  font-weight: 550;
+  overflow-wrap: anywhere;
+}
 .advanced-inspector .advanced-tool-family,
 .advanced-inspector .color-controls-v3 {
   display: flex;

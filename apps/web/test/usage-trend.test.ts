@@ -9,6 +9,8 @@ import {
 import { UsageTrend } from '../src/usage/UsageTrend.tsx';
 import { UsageSkeleton } from '../src/usage/UsageSkeleton.tsx';
 import { UsageNumber } from '../src/usage/UsageNumber.tsx';
+import { usageRiverLanes } from '../src/usage/riverModel.ts';
+import { UsageRiver } from '../src/usage/UsageRiver.tsx';
 import type { UsageReport } from '../src/usage/model.ts';
 import { renderTestMarkup } from './support/render.ts';
 
@@ -98,6 +100,34 @@ test('zero and negative-only series have finite geometry and retain signed adjus
     );
     assert.ok(Number.isFinite(chart.baseline));
   }
+});
+
+test('movement lanes do not bridge absent dates and keep the full selected calendar range', () => {
+  const input = [row('2026-11-05', 10), row('2026-11-01', -5), row('2026-10-31', 100)];
+  const held = usageRiverLanes(input, range)[0]!;
+  assert.deepEqual(
+    held.points.map((point) => point.label),
+    ['2026-11-01', '2026-11-05'],
+  );
+  assert.equal(held.points[0]!.x, held.width * 0.1);
+  assert.equal(held.points[1]!.x, held.width * 0.9);
+  assert.equal(held.paths.length, 2, 'an unreported date is not an interpolated movement');
+  assert.equal(input[0]!.bucket, '2026-11-05', 'formatting does not reorder the API result');
+  const monthly = usageRiverLanes([row('2026-01', 0), row('2026-02', 0), row('2026-04', 0)])[0]!;
+  assert.equal(monthly.paths.length, 2, 'adjacent months connect despite different day counts');
+});
+
+test('movement lanes expose linked keyboard date inspectors without converting unknown into zero', () => {
+  const input = [
+    { ...row('2026-11-01', 0), held: 25 },
+    { ...row('2026-11-05', 0), held: Number.NaN },
+  ];
+  const html = renderTestMarkup(createElement(UsageRiver, { series: input, range }));
+  assert.equal((html.match(/role="slider"/g) ?? []).length, 4);
+  assert.match(html, /aria-label="预占 · 所选日期"/);
+  assert.match(html, /aria-valuetext="2026-11-05：未知 点"/);
+  assert.match(html, /含待核对数值/);
+  assert.match(html, /2026-11-01/);
 });
 
 test('interactive chart exposes a keyboard date slider and the exact selected signed amount', () => {
