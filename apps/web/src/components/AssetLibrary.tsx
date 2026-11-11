@@ -363,6 +363,7 @@ export function AssetLibrary({
   }
   const [tools, setTools] = useState<{ asset: Asset; kind: 'ocr' | 'animation' } | null>(null);
   const [projectTools, setProjectTools] = useState(false);
+  const [expandedAssetDetails, setExpandedAssetDetails] = useState<Set<string>>(() => new Set());
   const [density, setDensity] = useState<'comfortable' | 'compact'>('comfortable');
   const requestGeneration = useRef(0),
     moreLock = useRef(false);
@@ -379,6 +380,7 @@ export function AssetLibrary({
   useEffect(() => {
     setTools(null);
     setProjectTools(false);
+    setExpandedAssetDetails(new Set());
   }, [space?.id, project?.id]);
   useEffect(() => {
     const timer = setTimeout(() => setDebouncedQuery(query.trim()), 250);
@@ -822,7 +824,18 @@ export function AssetLibrary({
                             ))}
                           </div>
                         )}
-                        <MotionDetails className="library-asset-details">
+                        <MotionDetails
+                          className="library-asset-details"
+                          open={expandedAssetDetails.has(asset.id)}
+                          onOpenChange={(open) =>
+                            setExpandedAssetDetails((previous) => {
+                              const expanded = new Set(previous);
+                              if (open) expanded.add(asset.id);
+                              else expanded.delete(asset.id);
+                              return expanded;
+                            })
+                          }
+                        >
                           <summary>
                             {c.details}
                             <CaretDown size={14} aria-hidden />

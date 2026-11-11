@@ -3157,7 +3157,24 @@ try {
     await dialog.getByRole('status').filter({ hasText: '拼图.png' }).waitFor();
     await dialog.getByRole('button', { name: '关闭窗口', exact: true }).click();
     const animationCard = page.locator('.library-asset').filter({ hasText: 'QA-motion.gif' });
-    await animationCard.locator('.library-asset-details > summary').click();
+    const summary = animationCard.locator('.library-asset-details > summary');
+    await summary.click();
+    assert.equal(await summary.getAttribute('aria-expanded'), 'true');
+    const refresh = page
+      .locator('.library-status-actions')
+      .getByRole('button', { name: '刷新', exact: true });
+    const [refreshed] = await Promise.all([
+      page.waitForResponse(
+        (response) =>
+          response.request().method() === 'GET' &&
+          new URL(response.url()).pathname === `/v1/projects/${projectId}/assets` &&
+          new URL(response.url()).searchParams.get('limit') === '50',
+      ),
+      refresh.click(),
+    ]);
+    assert.equal(refreshed.status(), 200);
+    await eventually(() => refresh.isEnabled(), 'the refreshed asset listing settles');
+    assert.equal(await summary.getAttribute('aria-expanded'), 'true');
     await animationCard.getByRole('button', { name: 'GIF 帧编辑' }).click();
     const editor = page.getByRole('dialog', { name: 'GIF 帧编辑' });
     await editor.getByRole('button', { name: '反转帧顺序' }).click();
@@ -3191,6 +3208,7 @@ try {
       viewportEvidence,
       projectSelectedThroughUi: true,
       sourceReadFromProjectListing: true,
+      disclosureSurvivesRefresh: true,
       navigationAfterSelection: { team: afterTeamSelection, project: afterProjectSelection },
     };
   });
