@@ -1,9 +1,16 @@
 import { t } from '../i18n';
 import { useEffect, useRef, useState } from 'react';
 import type { MediaDescriptorV1 } from '@ai-xiutu/media';
+import {
+  NEUTRAL_PRECISION_EDIT,
+  PRECISION_EDIT_CONTROLS,
+  type PrecisionEditV1,
+} from '@ai-xiutu/editor';
 import { Minus, Plus, ArrowsOutSimple, DownloadSimple } from '@phosphor-icons/react';
 import { api, errorMessage, jsonRequest, downloadBlob, ApiError } from '../lib/api';
 import { InlineError, IconButton } from '../components/Ui';
+import { PrecisionRange } from '../editor/PrecisionRange';
+import { ChoiceSelect } from '../components/ChoiceSelect';
 import { visibleTiles, zoomAround, type TileView } from './tile-layout';
 import './media.css';
 export interface MediaRecord {
@@ -19,26 +26,48 @@ export interface MediaRecord {
     colorSpace: string;
     proxy: boolean;
     masterExportIncludesRecipe: boolean;
+    precisionEditing?: {
+      algorithm: string;
+      master16: boolean;
+      floatAvailable: boolean;
+      sourceSha256: string;
+      maxPixels: number;
+    };
   };
 }
+type PrecisionFormat = 'png16' | 'tiff16' | 'exr32';
 export function MediaSourceViewer({ assetId }: { assetId: string }) {
   const [record, setRecord] = useState<MediaRecord | null>(null),
     [error, setError] = useState<string | null>(null),
     [exporting, setExporting] = useState(false);
   const [size, setSize] = useState({ width: 400, height: 280 }),
     [view, setView] = useState<TileView>({ x: 0, y: 0, zoom: 1 });
+  const [edit, setEdit] = useState<PrecisionEditV1>({ ...NEUTRAL_PRECISION_EDIT });
+  const [outputFormat, setOutputFormat] = useState<PrecisionFormat>('png16');
+  const exportRequest = useRef<AbortController | null>(null);
   const root = useRef<HTMLDivElement>(null),
     drag = useRef<{ x: number; y: number; view: TileView } | null>(null);
   useEffect(() => {
     const controller = new AbortController();
     setRecord(null);
     setError(null);
+    setEdit({ ...NEUTRAL_PRECISION_EDIT });
+    setOutputFormat('png16');
+    setExporting(false);
     api<MediaRecord>(`/assets/${assetId}/media`, { signal: controller.signal })
-      .then(setRecord)
+      .then((record) => {
+        if (controller.signal.aborted) return;
+        setRecord(record);
+        if (record.editor.precisionEditing?.floatAvailable) setOutputFormat('exr32');
+      })
       .catch((e) => {
         if (e.name !== 'AbortError') setError(errorMessage(e));
       });
-    return () => controller.abort();
+    return () => {
+      controller.abort();
+      exportRequest.current?.abort();
+      exportRequest.current = null;
+    };
   }, [assetId]);
   useEffect(() => {
     if (!root.current) return;
@@ -61,6 +90,13 @@ export function MediaSourceViewer({ assetId }: { assetId: string }) {
   useEffect(fit, [record, size]);
   const descriptor = record?.descriptor,
     tiles = descriptor?.tiles;
+  const precision = record?.editor.precisionEditing;
+  const canEdit = !!(
+    precision?.master16 &&
+    descriptor &&
+    precision.algorithm === NEUTRAL_PRECISION_EDIT.algorithm &&
+    descriptor.master.width * descriptor.master.height <= precision.maxPixels
+  );
   const tileList =
     descriptor && tiles ? visibleTiles({ ...descriptor.master, ...tiles }, view, size) : [];
   useEffect(() => {
@@ -94,15 +130,23 @@ export function MediaSourceViewer({ assetId }: { assetId: string }) {
       zoomAround(old, { x: size.width / 2, y: size.height / 2 }, Math.max(min, Math.min(8, zoom))),
     );
   };
-  async function exportMaster(format: 'png16' | 'tiff16' | 'jpeg' | 'webp') {
-    if (exporting) return;
+  async function exportMaster(format: PrecisionFormat, adjustment?: PrecisionEditV1) {
+    if (exportRequest.current || (adjustment && (!canEdit || !precision))) return;
+    const controller = new AbortController();
+    exportRequest.current = controller;
     setExporting(true);
     setError(null);
     try {
       const response = await fetch(`/v1/assets/${assetId}/media/export`, {
-        ...jsonRequest('POST', { format }),
+        ...jsonRequest('POST', {
+          format,
+          ...(adjustment && precision
+            ? { precisionEdit: adjustment, expectedSourceSha256: precision.sourceSha256 }
+            : {}),
+        }),
         headers: { 'Content-Type': 'application/json' },
         credentials: 'include',
+        signal: controller.signal,
       });
       if (!response.ok) {
         const data = await response.json().catch(() => null);
@@ -131,16 +175,20 @@ export function MediaSourceViewer({ assetId }: { assetId: string }) {
         }
         chunks.push(new Uint8Array(chunk.value));
       }
-      downloadBlob(
-        new Blob(chunks, {
-          type: response.headers.get('content-type') ?? 'application/octet-stream',
-        }),
-        `${assetId}-master.${format === 'png16' ? 'png' : format === 'tiff16' ? 'tiff' : format}`,
-      );
+      if (!controller.signal.aborted)
+        downloadBlob(
+          new Blob(chunks, {
+            type: response.headers.get('content-type') ?? 'application/octet-stream',
+          }),
+          `${assetId}-${adjustment ? 'graded' : 'master'}.${{ png16: 'png', tiff16: 'tiff', exr32: 'exr' }[format]}`,
+        );
     } catch (e) {
-      setError(errorMessage(e));
+      if (!controller.signal.aborted) setError(errorMessage(e));
     } finally {
-      setExporting(false);
+      if (exportRequest.current === controller) {
+        exportRequest.current = null;
+        setExporting(false);
+      }
     }
   }
   return (
@@ -295,6 +343,74 @@ export function MediaSourceViewer({ assetId }: { assetId: string }) {
               {exporting ? t('正在转换') : t('母版转 16 位 PNG')}
             </button>
           </div>
+          {canEdit ? (
+            <details className="editor-section">
+              <summary>{t('母版高位深调色')}</summary>
+              {PRECISION_EDIT_CONTROLS.map(({ key, label, minimum, maximum, step, unit }) => (
+                <PrecisionRange
+                  key={key}
+                  label={t(label)}
+                  min={minimum}
+                  max={maximum}
+                  step={step}
+                  value={edit[key]}
+                  unit={unit}
+                  disabled={exporting}
+                  onChange={(value) => setEdit((current) => ({ ...current, [key]: value }))}
+                />
+              ))}
+              <ChoiceSelect
+                ariaLabel={t('高光色调映射')}
+                value={edit.toneMap}
+                disabled={exporting}
+                options={[
+                  { value: 'none', label: t('保留线性高光') },
+                  { value: 'reinhard', label: t('压缩高光 Reinhard') },
+                ]}
+                onValueChange={(value) =>
+                  setEdit((current) => ({
+                    ...current,
+                    toneMap: value === 'reinhard' ? value : 'none',
+                  }))
+                }
+              />
+              <div className="media-downloads">
+                <button
+                  className="text-button"
+                  disabled={exporting}
+                  onClick={() => setEdit({ ...NEUTRAL_PRECISION_EDIT })}
+                >
+                  {t('重置')}
+                </button>
+                <ChoiceSelect
+                  ariaLabel={t('母版输出格式')}
+                  value={outputFormat}
+                  disabled={exporting}
+                  options={[
+                    { value: 'png16', label: 'PNG 16-bit' },
+                    { value: 'tiff16', label: 'TIFF 16-bit' },
+                    ...(precision?.floatAvailable
+                      ? [{ value: 'exr32', label: 'EXR 32-bit HDR' }]
+                      : []),
+                  ]}
+                  onValueChange={(value) => setOutputFormat(value as PrecisionFormat)}
+                />
+                <button
+                  className="button button-secondary"
+                  disabled={exporting}
+                  onClick={() => void exportMaster(outputFormat, edit)}
+                >
+                  {exporting ? t('正在转换') : t('导出调色母版')}
+                </button>
+              </div>
+            </details>
+          ) : (
+            precision?.master16 && (
+              <p className="control-note">
+                {t('母版调色上限 {v0} 百万像素', { v0: (precision.maxPixels / 1e6).toFixed(1) })}
+              </p>
+            )
+          )}
         </>
       )}
       <InlineError message={error} />

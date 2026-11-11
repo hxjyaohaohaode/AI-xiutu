@@ -49,6 +49,13 @@ export const PORTRAIT_TOOLS: readonly PortraitTool[] = Object.freeze([
   make('underEye', '眼下明暗', 'skin', '在眼下小区域双向调整曝光，不假设所有暗部都是黑眼圈。'),
   make('eyeLight', '亮眼', 'skin', '在眼部关键点围合范围调整曝光与细节，保留眼形。'),
   make('browDetail', '眉毛增强', 'skin', '仅眉毛范围内调整对比和细节。'),
+  make('teethTone', '白牙', 'skin', '对可信的露齿像素双向调整明暗与冷暖，保护唇、牙龈和口腔阴影。'),
+  make(
+    'meshLight',
+    '三维面部光影',
+    'skin',
+    '从可见面部网格的深度和法线计算明暗，双向改变光影强度。',
+  ),
   make('sculpt', '鼻梁光影', 'skin', '鼻梁范围的局部加深减淡；不是三维面部重建。'),
   make('faceSlim', '瘦脸 / 宽脸', 'features', '按两侧面部轮廓生成相向或反向局部推移。'),
   make('faceSmall', '小脸 / 大脸', 'features', '对脸部中心做有界收缩 / 膨胀。'),

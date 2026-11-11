@@ -23,6 +23,15 @@ export const NEUTRAL_PRECISION_EDIT: Readonly<PrecisionEditV1> = Object.freeze({
   highlights: 0,
   toneMap: 'none',
 });
+export const PRECISION_EDIT_CONTROLS = [
+  { key: 'exposure', label: '曝光', minimum: -10, maximum: 10, step: 0.01, unit: 'EV' },
+  { key: 'temperature', label: '色温', minimum: -100, maximum: 100, step: 0.1, unit: '%' },
+  { key: 'tint', label: '色调', minimum: -100, maximum: 100, step: 0.1, unit: '%' },
+  { key: 'contrast', label: '对比度', minimum: -100, maximum: 100, step: 0.1, unit: '%' },
+  { key: 'saturation', label: '饱和度', minimum: -100, maximum: 100, step: 0.1, unit: '%' },
+  { key: 'shadows', label: '阴影', minimum: -100, maximum: 100, step: 0.1, unit: '%' },
+  { key: 'highlights', label: '高光', minimum: -100, maximum: 100, step: 0.1, unit: '%' },
+] as const;
 export function parsePrecisionEdit(input: unknown): PrecisionEditV1 {
   const errors: string[] = [];
   const row = record(input, Object.keys(NEUTRAL_PRECISION_EDIT), 'precisionEdit', errors);
@@ -30,16 +39,11 @@ export function parsePrecisionEdit(input: unknown): PrecisionEditV1 {
   if (row.toneMap !== 'none' && row.toneMap !== 'reinhard')
     errors.push('precisionEdit.toneMap: unsupported');
   const result: PrecisionEditV1 = {
-    algorithm: 'scene-linear-v1',
-    exposure: number(row.exposure, -10, 10, 'precisionEdit.exposure', errors),
-    temperature: number(row.temperature, -100, 100, 'precisionEdit.temperature', errors),
-    tint: number(row.tint, -100, 100, 'precisionEdit.tint', errors),
-    contrast: number(row.contrast, -100, 100, 'precisionEdit.contrast', errors),
-    saturation: number(row.saturation, -100, 100, 'precisionEdit.saturation', errors),
-    shadows: number(row.shadows, -100, 100, 'precisionEdit.shadows', errors),
-    highlights: number(row.highlights, -100, 100, 'precisionEdit.highlights', errors),
+    ...NEUTRAL_PRECISION_EDIT,
     toneMap: row.toneMap as PrecisionEditV1['toneMap'],
   };
+  for (const { key, minimum, maximum } of PRECISION_EDIT_CONTROLS)
+    result[key] = number(row[key], minimum, maximum, `precisionEdit.${key}`, errors);
   if (errors.length) throw new RecipeValidationError(errors);
   return result;
 }

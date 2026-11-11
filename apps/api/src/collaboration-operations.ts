@@ -4,6 +4,7 @@ import {
   getSelectionBoundsV3,
   setEditorParameter,
   parseEditorRecipe,
+  withCurve,
   type EditorRecipe,
   type SelectionMaskV3,
 } from '@ai-xiutu/editor';
@@ -135,7 +136,10 @@ export function readTarget(recipe: EditorRecipe, target: CollaborationTarget): u
       return getEditorParameter(recipe, target.id);
     }
     case 'curve':
-      return recipe.curves[target.id];
+      return {
+        points: recipe.curves[target.id],
+        interpolation: recipe.curves.interpolation?.[target.id],
+      };
     case 'region':
       return node(recipe, target.collection, target.id);
     case 'region-group':
@@ -201,7 +205,13 @@ export function applyCollaborationOperation(
   if (operation.type === 'set-parameter')
     return setEditorParameter(current, operation.path, operation.value);
   const next = structuredClone(current);
-  if (operation.type === 'set-curve') next.curves[operation.channel] = operation.points;
+  if (operation.type === 'set-curve')
+    next.curves = withCurve(
+      next.curves,
+      operation.channel,
+      operation.points,
+      operation.interpolation,
+    );
   else {
     if (operation.value.id !== operation.id)
       throw new HttpError(400, 'TARGET_ID_MISMATCH', '不能在局部命令中更换对象标识');

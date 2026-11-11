@@ -2,14 +2,15 @@ import { t } from '../i18n';
 import { ChoiceSelect } from './ChoiceSelect';
 import { useRef, useState } from 'react';
 import { CloudArrowUp, FolderOpen, ImageSquare } from '@phosphor-icons/react';
-import { PIXEL_BUDGETS, MAX_LOCAL_FILE_BYTES } from '../editor/useEditor';
-import { MAX_V3_PIXELS } from '@ai-xiutu/editor';
+import { PIXEL_BUDGETS, MAX_LOCAL_FILE_BYTES, localImportLimits } from '../editor/useEditor';
+import type { EditorRecipe } from '@ai-xiutu/editor';
 import type { Project, PublicConfig } from '../lib/types';
 import { errorMessage } from '../lib/api';
 import { Busy, InlineError, Modal } from './Ui';
 
 export function ImportSettings({
   budget,
+  recipeVersion,
   onBudget,
   file,
   reason,
@@ -24,6 +25,7 @@ export function ImportSettings({
   onClose,
 }: {
   budget: number;
+  recipeVersion: EditorRecipe['schemaVersion'];
   onBudget: (value: number) => void;
   file: File | null;
   reason: string | null;
@@ -43,7 +45,7 @@ export function ImportSettings({
   const canWrite = !!project && ['owner', 'admin', 'editor'].includes(project.role);
   const serverByteLimit = config?.media?.maxUploadBytes ?? config?.limits.maxUploadBytes;
   const exceedsServerLimit = !!file && !!serverByteLimit && file.size > serverByteLimit;
-  const small = window.matchMedia('(pointer: coarse) and (max-width: 959px)').matches;
+  const limits = localImportLimits(file ? 4 : recipeVersion, budget);
   async function serverImport() {
     if (locked.current || !canWrite || exceedsServerLimit) return;
     locked.current = true;
@@ -98,35 +100,32 @@ export function ImportSettings({
           {t('本机处理预算')}
           <ChoiceSelect
             ariaLabel={t('本机图像像素预算')}
-            value={String(budget)}
+            value={String(limits.maxPixels)}
             disabled={busy}
             onValueChange={(value) => onBudget(Number(value))}
-            options={PIXEL_BUDGETS.map((value) => ({
+            options={PIXEL_BUDGETS.filter((value) => value <= limits.ceiling).map((value) => ({
               value: String(value),
-              disabled: (small || !!file) && value > MAX_V3_PIXELS,
               label: t('{v0} 百万像素', { v0: (value / 1e6).toFixed(1) }),
               description:
                 value === 4_194_304
                   ? t('手机建议')
                   : value === 16_777_216
                     ? t('标准桌面')
-                    : t('仅已有 v1/v2 作品'),
+                    : undefined,
             }))}
           />
         </label>
         <p className="resource-budget-note" role="status">
-          {t('新导入与 v3/v4 作品最多')}
-          {(MAX_V3_PIXELS / 1e6).toFixed(1)} {t('百万像素、单边8192px。 当前新导入实际预算为')}
-          {(Math.min(budget, MAX_V3_PIXELS) / 1e6).toFixed(1)}{' '}
-          {t(
-            '百万像素。 40/67百万像素选项仅供已有的 v1/v2 作品，提高设备预算不会提高 v3/v4 引擎上限。',
-          )}
+          {t('当前上限 {v0} 百万像素 · 单边 {v1} px', {
+            v0: (limits.maxPixels / 1e6).toFixed(1),
+            v1: limits.maxDimension,
+          })}
         </p>
         <p className="resource-budget-note">
           {t(
             '选择的上限不是设备性能保证。分块处理减少中间缓冲，但解码、原始像素和导出仍至少可能占用约',
           )}{' '}
-          {Math.ceil((budget * 12) / 1024 / 1024)}{' '}
+          {Math.ceil((limits.maxPixels * 12) / 1024 / 1024)}{' '}
           {t('MiB，另有浏览器与编码器开销。内存不足时请降低预算或使用较小副本。当前本地文件上限')}{' '}
           {Math.round(MAX_LOCAL_FILE_BYTES / 1024 / 1024)} MiB。
         </p>

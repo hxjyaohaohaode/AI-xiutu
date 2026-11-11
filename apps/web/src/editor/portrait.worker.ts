@@ -14,6 +14,10 @@ import {
   boundsOf,
   contourLoops,
   contourHull,
+  visibleTeeth,
+  visibleEyeAccessories,
+  visibleMeshLighting,
+  anchoredSubjectPrior,
   type PortraitAnalysis,
   type PortraitTarget,
 } from '@ai-xiutu/portrait';
@@ -63,10 +67,14 @@ function subjectMatte(background: Float32Array, width: number, height: number) {
     const w = Math.max(1, Math.round(edge * Math.min(1, width / height)));
     const h = Math.max(1, Math.round(edge * Math.min(1, height / width)));
     const pixels = new Uint8Array(w * h);
-    let foreground = false, outside = false;
+    let foreground = false,
+      outside = false;
     for (let y = 0; y < h; y++) {
       for (let x = 0; x < w; x++) {
-        const probability = background[Math.floor((y + 0.5) * height / h) * width + Math.floor((x + 0.5) * width / w)]!;
+        const probability =
+          background[
+            Math.floor(((y + 0.5) * height) / h) * width + Math.floor(((x + 0.5) * width) / w)
+          ]!;
         if (!Number.isFinite(probability)) return undefined;
         const value = Math.min(1, Math.max(0, (0.94 - probability) / 0.88));
         foreground ||= value > 0.96;
@@ -75,8 +83,11 @@ function subjectMatte(background: Float32Array, width: number, height: number) {
       }
     }
     if (!foreground || !outside) return undefined;
-    try { return createRasterMask(w, h, pixels); }
-    catch (error) { if (edge === 40) throw error; }
+    try {
+      return createRasterMask(w, h, pixels);
+    } catch (error) {
+      if (edge === 40) throw error;
+    }
   }
 }
 function contours(points: Point[]) {
@@ -208,6 +219,16 @@ self.onmessage = async (event: MessageEvent<Request>) => {
         kind: 'face',
         label: `人物 ${i + 1}`,
       }));
+      for (const target of result.targets) {
+        const teeth = visibleTeeth(image, target);
+        const relight = visibleMeshLighting(
+          target,
+          image,
+          FaceLandmarker.FACE_LANDMARKS_TESSELATION,
+        );
+        if (teeth || relight)
+          target.featureMasks = { ...(teeth ? { teeth } : {}), ...(relight ? { relight } : {}) };
+      }
     } finally {
       face.close();
     }
@@ -230,7 +251,30 @@ self.onmessage = async (event: MessageEvent<Request>) => {
           if (!mask) throw new Error('没有分割结果');
           const data = mask.getAsUint8Array();
           const confidence = output.confidenceMasks?.[0];
-          const subject = confidence ? subjectMatte(confidence.getAsFloat32Array(), confidence.width, confidence.height) : undefined;
+          const accessory = output.confidenceMasks?.[5];
+          if (accessory) {
+            const probabilities = accessory.getAsFloat32Array();
+            for (const target of result.targets) {
+              const mask = visibleEyeAccessories(probabilities, accessory, target);
+              if (mask) target.featureMasks = { ...target.featureMasks, accessories: mask };
+            }
+          }
+          const subject = confidence
+            ? subjectMatte(
+                anchoredSubjectPrior(
+                  confidence.getAsFloat32Array(),
+                  data,
+                  confidence.width,
+                  confidence.height,
+                  result.targets.map((target) => ({
+                    x: target.bounds.x + target.bounds.width / 2,
+                    y: target.bounds.y + target.bounds.height / 2,
+                  })),
+                ),
+                confidence.width,
+                confidence.height,
+              )
+            : undefined;
           result.segmentation = {
             skin: limitMask(data, mask.width, mask.height, [2, 3]),
             hair: limitMask(data, mask.width, mask.height, [1]),

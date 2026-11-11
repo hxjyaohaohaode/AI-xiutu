@@ -40,6 +40,7 @@ import {
 } from './context.js';
 import type { AssistantService, VoiceRow } from './service.js';
 import { registerTeamVoice } from './team-voice.js';
+import { executeAutomaticCandidate } from './apply.js';
 
 type PublicSearch = Extract<VoiceClientEvent, { type: 'search' }>['search'];
 function spokenPublicSearch(text: string): PublicSearch | undefined {
@@ -437,8 +438,9 @@ export function attachVoiceBridge(
         publicSearchAttempted = true;
         send(client, { type: 'search-started' });
       }
-      const speakResult = (text: string) => {
-        if (!manualSearch || live) sendEvents(voiceResultEvents(row.model_id, callId, text));
+      const speakResult = (text: string, applied = false) => {
+        if (!manualSearch || live)
+          sendEvents(voiceResultEvents(row.model_id, callId, text, applied));
       };
       const frozenContext = context ? structuredClone(context) : undefined;
       const frozenEpoch = contextEpoch;
@@ -496,7 +498,7 @@ export function attachVoiceBridge(
               service.dependencies.fetcher,
             );
             if (ended || closing) return;
-            const candidates = await transaction(db, async (tx) => {
+            const { candidates, execution } = await transaction(db, async (tx) => {
               await lockedAssistantAccess(
                 tx,
                 row.actor_id,
@@ -535,7 +537,18 @@ export function attachVoiceBridge(
               );
               if (ended || closing || frozenEpoch !== contextEpoch)
                 throw new Error('VOICE_CONTEXT_CHANGED');
-              return saved;
+              const execution = await executeAutomaticCandidate(tx, {
+                actorId: row.actor_id,
+                grantId: row.scope.executionGrantId,
+                authHash,
+                candidates: saved,
+                selectedIndex: result.selectedCandidateIndex,
+                completed: result.termination === 'completed',
+                imageShared: !!frozenContext?.imageDataUrl,
+              });
+              if (ended || closing || frozenEpoch !== contextEpoch)
+                throw new Error('VOICE_CONTEXT_CHANGED');
+              return { candidates: saved, execution };
             });
             if (ended || closing || frozenEpoch !== contextEpoch) return;
             send(client, {
@@ -546,8 +559,12 @@ export function attachVoiceBridge(
               citations: result.citations,
               search: result.search,
               candidates,
+              execution,
             });
-            speakResult(result.text);
+            speakResult(
+              execution?.state === 'applied' ? `已保存为新版本。\n${result.text}` : result.text,
+              execution?.state === 'applied',
+            );
             send(client, { type: 'tool', name: 'consult_editor', state: 'completed' });
           } catch {
             send(client, { type: 'tool', name: 'consult_editor', state: 'failed' });
@@ -570,6 +587,7 @@ export function attachVoiceBridge(
               row.config.voice,
               row.config.voiceModel.maxOutputTokens,
               Boolean(row.config.teamArtworkId),
+              row.config.voiceModel.voiceReasoningEffort,
             ),
           );
       } catch {

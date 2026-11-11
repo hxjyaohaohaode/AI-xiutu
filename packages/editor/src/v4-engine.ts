@@ -73,8 +73,8 @@ function render(
     fine = compileFineTransformV3(getOutputDimensions(image, recipe.geometry), recipe.transform),
     projective = compileProjectiveTransformV4(fine.dimensions, recipe.projective);
   validateTiledDimensions(projective.dimensions, budget);
-  const run = (source: RGBAImage, r: RecipeV3) =>
-    tiled ? renderRecipeV3Tiled(source, r, opts) : renderRecipeV3(source, r, opts);
+  const run = (source: RGBAImage, r: RecipeV3, stageOptions = opts) =>
+    tiled ? renderRecipeV3Tiled(source, r, stageOptions) : renderRecipeV3(source, r, stageOptions);
   checkV3(opts);
   const spatial =
     recipe.healing.some((op) => op.enabled && op.opacity > 0) ||
@@ -99,14 +99,18 @@ function render(
     throw new RangeError('Resolved image layers exceed the combined 32MP budget');
   const composeSource = () => {
     const preparedPaint = preparePaintLayersV3(recipe.paintLayers, image, opts);
-    let current = run(image, {
-      ...base,
-      geometry: { crop: null, rotation: 0, flipX: false, flipY: false },
-      transform: createFineTransformV3(),
-      imageLayers: [],
-      paintLayers: [],
-      warp: { ...base.warp, enabled: false },
-    });
+    let current = run(
+      image,
+      {
+        ...base,
+        geometry: { crop: null, rotation: 0, flipX: false, flipY: false },
+        transform: createFineTransformV3(),
+        imageLayers: [],
+        paintLayers: [],
+        warp: { ...base.warp, enabled: false },
+      },
+      { ...opts, warpPreviewCache: undefined },
+    );
     current = applyHealingV4(current, recipe.healing, image, opts);
     current = applyRetouchV4(current, recipe.retouch, image, opts);
     current = applyImageLayersV3(current, recipe.imageLayers, opts.images, image, opts);

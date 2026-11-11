@@ -952,6 +952,11 @@ export function LiveAssistant(props: LiveAssistantProps) {
         ].slice(-40),
       );
       setCandidates((old) => [...event.candidates, ...old].slice(0, 30));
+      if (event.execution?.state === 'applied') {
+        void Promise.resolve(current.current.onApplied(event.execution.artworkId)).catch(
+          (failure) => setError(errorMessage(failure)),
+        );
+      }
     }
   }
   async function startVoice(recovery?: VoiceSubmission) {

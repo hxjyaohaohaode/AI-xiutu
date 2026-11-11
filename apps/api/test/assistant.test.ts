@@ -3071,6 +3071,54 @@ test(
         },
       );
       await t.test(
+        'voice delegation applies once within the server grant without a browser candidate mutation',
+        async () => {
+          autoReady = true;
+          finalUsage = true;
+          const current = (
+            await f.db.query('SELECT a.head_version,r.recipe FROM artworks a JOIN revisions r ON r.id=a.head_revision_id WHERE a.id=$1', [f.context.artworkId])
+          ).rows[0]!;
+          const grant = await f.call('POST', `/v1/projects/${f.projectId}/assistant-grants`, {
+            mode: 'auto',
+            unitLimit: 40,
+            stepLimit: 5,
+            minutes: 5,
+            allowedActions: ['realtime-voice', 'assistant-turn', 'edit'],
+            modelIds: ['gpt-live-1', f.modelId],
+          });
+          assert.equal(grant.statusCode, 200, grant.body);
+          const prepared = await f.call('POST', `/v1/projects/${f.projectId}/voice-sessions`, {
+            idempotencyKey: randomUUID(),
+            modelId: 'gpt-live-1',
+            backendModelId: f.modelId,
+            voice: 'marin',
+            context: { ...f.context, expectedVersion: current.head_version, recipe: current.recipe },
+            scope: { ...f.scope, executionGrantId: grant.json().grant.id },
+          });
+          assert.equal(prepared.statusCode, 200, prepared.body);
+          const data = prepared.json();
+          const ws = new WebSocket(`${wsBase}${data.websocketPath}`, ['xiutu-voice', data.ticket], {
+            origin: f.origin, headers: { cookie: f.actors.owner.cookie },
+          });
+          const stream = collect(ws);
+          try {
+            await stream.wait('ready');
+            const upstream = vendorSockets.at(-1)!;
+            const call = JSON.stringify({ type: 'session.delegation.created', delegation: { id: 'auto-save', target: 'client' } });
+            upstream.send(call);
+            upstream.send(call);
+            const reply = await stream.wait('assistant-result');
+            assert.equal(reply.execution.state, 'applied');
+            assert.equal(reply.candidates[0].appliedRevisionId, reply.execution.revisionId);
+            const after = (await f.db.query('SELECT head_version FROM artworks WHERE id=$1', [f.context.artworkId])).rows[0]!;
+            assert.equal(after.head_version, current.head_version + 1);
+          } finally {
+            ws.send(JSON.stringify({ type: 'end' }));
+            await stream.wait('closed');
+          }
+        },
+      );
+      await t.test(
         'graceful shutdown drains an already dispatched delegation before database settlement',
         async () => {
           let resolveFetch!: (response: Response) => void;

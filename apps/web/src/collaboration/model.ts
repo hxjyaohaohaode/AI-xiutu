@@ -2,6 +2,7 @@ import {
   getEditorParameter,
   parseEditorRecipe,
   setEditorParameter,
+  withCurve,
   type EditorRecipe,
 } from '@ai-xiutu/editor';
 import type { CollaborationOperation, CollaborationTarget } from '@ai-xiutu/contracts';
@@ -83,8 +84,18 @@ export function operationBetween(
     if (same(candidate, next)) return { type: 'replace-node', collection, id: value.id, value };
   }
   for (const channel of ['rgb', 'red', 'green', 'blue'] as const) {
-    if (same({ ...base, curves: { ...base.curves, [channel]: next.curves[channel] } }, next))
-      return { type: 'set-curve', channel, points: next.curves[channel] };
+    const points = next.curves[channel];
+    const previousMode = base.curves.interpolation?.[channel];
+    const nextMode = next.curves.interpolation?.[channel];
+    if (
+      same({ ...base, curves: withCurve(base.curves, channel, points, nextMode ?? 'linear') }, next)
+    )
+      return {
+        type: 'set-curve',
+        channel,
+        points,
+        ...(previousMode !== nextMode ? { interpolation: nextMode ?? 'linear' } : {}),
+      };
   }
   const paths = changedLeaves(base, next);
   if (
@@ -131,7 +142,10 @@ export function targetValue(recipe: EditorRecipe, operation: CollaborationOperat
     case 'set-parameter':
       return getEditorParameter(recipe, operation.path);
     case 'set-curve':
-      return recipe.curves[operation.channel];
+      return {
+        points: recipe.curves[operation.channel],
+        interpolation: recipe.curves.interpolation?.[operation.channel],
+      };
     case 'replace-node':
       return nodes(recipe, operation.collection).find((node) => node.id === operation.id);
   }
@@ -146,7 +160,12 @@ export function applyOperation(
   if (operation.type === 'set-curve')
     return parseEditorRecipe({
       ...recipe,
-      curves: { ...recipe.curves, [operation.channel]: operation.points },
+      curves: withCurve(
+        recipe.curves,
+        operation.channel,
+        operation.points,
+        operation.interpolation,
+      ),
     });
   if (!nodes(recipe, operation.collection).some((node) => node.id === operation.id))
     throw new Error('这个编辑对象已不存在，请重新选择。');

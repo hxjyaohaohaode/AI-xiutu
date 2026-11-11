@@ -573,7 +573,7 @@ test('output moderation covers all text, not just first chunk; revocation stops 
     async () => response([text(long)]),
   );
   assert.ok(seen.some((value) => value.endsWith('末尾审核标记')));
-  let access = 0,
+  let revoked = false,
     calls = 0;
   await assert.rejects(
     runEditorAgent(
@@ -582,11 +582,12 @@ test('output moderation covers all text, not just first chunk; revocation stops 
       settings,
       context({
         assertAccess: async () => {
-          if (++access > 2) throw new Error('REVOKED');
+          if (revoked) throw new Error('REVOKED');
         },
       }),
       async () => {
         calls++;
+        revoked = true;
         return response([tool('describe_editor', {})]);
       },
     ),

@@ -15,9 +15,9 @@ import {
 import {
   applyPortraitValues,
   portraitValues,
+  portraitToolAvailability,
   detachPortraitTarget,
   createPortraitPixelAdapter,
-  PORTRAIT_TOOLS,
   type PortraitPixelDriver,
 } from '../src/index.js';
 import { analysis, faceTarget } from './fixtures.js';
@@ -129,12 +129,16 @@ test('V3 portrait semantics replay unchanged after V4 migration until an explici
 });
 
 test('two full face control vectors remain separate and bounded with dedicated V4 skin operations', () => {
-  const a = analysis([faceTarget(1, 0.27, 0.43, 0.5), faceTarget(2, 0.73, 0.43, 0.5)]),
-    values = Object.fromEntries(
-      PORTRAIT_TOOLS.filter((tool) => tool.target === 'face').map((tool) => [tool.id, 20]),
-    );
+  const a = analysis([faceTarget(1, 0.27, 0.43, 0.5), faceTarget(2, 0.73, 0.43, 0.5)]);
   let recipe = createRecipeV4();
-  for (const face of a.targets) recipe = applyPortraitValues(recipe, a, face.id, values);
+  for (const face of a.targets) {
+    const available = portraitToolAvailability(a, face.id);
+    assert.equal(available.find(({ id }) => id === 'teethTone')?.available, false);
+    const values = Object.fromEntries(
+      available.filter(({ available }) => available).map(({ id }) => [id, 20]),
+    );
+    recipe = applyPortraitValues(recipe, a, face.id, values);
+  }
   assert.equal(recipe.retouch.length, 2);
   assert.ok(recipe.warp.strokes.length > 64, 'both full face controls coexist');
   assert.doesNotThrow(() => parseRecipeV4(recipe));

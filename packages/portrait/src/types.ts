@@ -9,6 +9,11 @@ export interface PortraitTarget {
   landmarks: (Point & { z?: number; visibility?: number })[];
   contours: Record<string, Point[]>;
   bounds: { x: number; y: number; width: number; height: number };
+  featureMasks?: {
+    teeth?: SelectionMaskV3;
+    accessories?: SelectionMaskV3;
+    relight?: { light: SelectionMaskV3; shade: SelectionMaskV3 };
+  };
 }
 export interface PortraitAnalysis {
   schemaVersion: 1;

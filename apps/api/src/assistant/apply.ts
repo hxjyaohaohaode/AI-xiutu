@@ -1,9 +1,69 @@
-import { audit, emit, claimAssistantGrant, type Queryable } from '@ai-xiutu/db';
+import { audit, emit, claimAssistantGrant, QuotaError, type Queryable } from '@ai-xiutu/db';
+import type { AssistantCandidate } from '@ai-xiutu/contracts';
 import { parseEditorRecipe } from '@ai-xiutu/editor';
 import { recipeHash, needsNativeSpatialCheck } from '@ai-xiutu/assistant';
 import { HttpError } from '../core.js';
 import { appendArtworkRevision } from '../revision-commands.js';
 import { lockedAssistantAccess } from './context.js';
+
+export async function executeAutomaticCandidate(
+  tx: Queryable,
+  options: {
+    actorId: string;
+    grantId?: string;
+    authHash?: string;
+    candidates: AssistantCandidate[];
+    selectedIndex?: number;
+    completed: boolean;
+    imageShared: boolean;
+  },
+) {
+  if (!options.grantId) return;
+  const grant = (
+    await tx.query('SELECT mode FROM assistant_grants WHERE id=$1 AND actor_id=$2', [
+      options.grantId,
+      options.actorId,
+    ])
+  ).rows[0];
+  if (grant?.mode !== 'auto') return;
+  const selected =
+    options.selectedIndex === undefined ? undefined : options.candidates[options.selectedIndex];
+  const edits =
+    selected?.kind === 'edit'
+      ? [selected]
+      : options.candidates.filter(({ kind }) => kind === 'edit');
+  if (!edits.length) return;
+  if (!options.completed)
+    return { state: 'review_required' as const, code: 'MODEL_TURN_INCOMPLETE' };
+  if (options.imageShared && !selected)
+    return { state: 'review_required' as const, code: 'CANDIDATE_REVIEW_REQUIRED' };
+  if (edits.length !== 1)
+    return { state: 'review_required' as const, code: 'ALTERNATIVE_CANDIDATES' };
+  const candidate = edits[0]!;
+  await tx.query('SAVEPOINT automatic_edit');
+  try {
+    const saved = await applyAuthorizedCandidate(tx, {
+      candidateId: candidate.id,
+      actorId: options.actorId,
+      authHash: options.authHash,
+      requireSavedBase: true,
+    });
+    await tx.query('RELEASE SAVEPOINT automatic_edit');
+    candidate.decision = 'previewed';
+    candidate.appliedRevisionId = saved.revisionId;
+    return { state: 'applied' as const, candidateId: candidate.id, ...saved };
+  } catch (error) {
+    await tx.query('ROLLBACK TO SAVEPOINT automatic_edit');
+    await tx.query('RELEASE SAVEPOINT automatic_edit');
+    const code =
+      error instanceof HttpError || error instanceof QuotaError
+        ? error.code
+        : error instanceof Error && error.message.includes('COLLABORATION_')
+          ? 'COLLABORATION_LOCKED'
+          : 'AUTOMATIC_EDIT_BLOCKED';
+    return { state: 'blocked' as const, candidateId: candidate.id, code };
+  }
+}
 
 export async function assertVoiceCandidateContext(
   tx: Queryable,

@@ -26,7 +26,10 @@ export interface Adjustments {
 export type AdjustmentId = keyof Adjustments;
 export type CurvePoint = [number, number];
 export type CurveChannel = 'rgb' | 'red' | 'green' | 'blue';
-export type Curves = Record<CurveChannel, CurvePoint[]>;
+export type CurveInterpolation = 'linear' | 'pchip-v1';
+export type Curves = Record<CurveChannel, CurvePoint[]> & {
+  interpolation?: Partial<Record<CurveChannel, 'pchip-v1'>>;
+};
 
 /** Normalized coordinates in the original, oriented input; before crop/rotate/flip. */
 export interface CropRect {

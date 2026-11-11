@@ -291,6 +291,12 @@ export function ColorControls({
           editor={editor}
           scope={{
             key: scopeKey(scope),
+            label:
+              scope.kind === 'global'
+                ? t('全局')
+                : ((scope.kind === 'region' ? recipe.regionEdits : recipe.regionGroups).find(
+                    (entry) => entry.id === scope.id,
+                  )?.name ?? t('局部')),
             getCurves: (current) =>
               current.schemaVersion === 3 || current.schemaVersion === 4
                 ? scopeColor(current, scope).curves

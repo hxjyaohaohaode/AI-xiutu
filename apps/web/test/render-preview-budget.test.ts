@@ -270,7 +270,7 @@ test('actual worker protocol downsizes expanded previews and retains the full tr
           id: 53,
           recipe: createRecipeV4(),
         });
-        assert.match(invalid.error, /16.8MP/);
+        assert.match(invalid.error, /V4.*16\.8MP/);
       },
     );
   } finally {

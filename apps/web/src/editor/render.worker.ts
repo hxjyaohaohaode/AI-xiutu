@@ -6,6 +6,8 @@ import {
   type CutoutSettings,
   getEditorOutputDimensions,
   MAX_V3_PIXELS,
+  MAX_V4_PIXELS,
+  MAX_TILED_PIXELS,
   WarpPreviewCache,
   type Dimensions,
   type RGBAImage,
@@ -55,6 +57,7 @@ type Message = {
   mapping?: Map<string, string>;
   cutout?: CutoutSettings;
   previewQuality?: 'fast' | 'warp';
+  prewarmWarp?: boolean;
 };
 self.onmessage = async (event: MessageEvent<Message>) => {
   const message = event.data;
@@ -125,11 +128,13 @@ self.onmessage = async (event: MessageEvent<Message>) => {
       return;
     }
     if (message.type !== 'export' && sourceDimensions) {
-      if (
-        (message.recipe.schemaVersion === 3 || message.recipe.schemaVersion === 4) &&
-        sourceDimensions.width * sourceDimensions.height > MAX_V3_PIXELS
-      )
-        throw new Error('原图超过 V3 的 16.8MP 编辑上限，请明确准备较小副本。');
+      const version = message.recipe.schemaVersion;
+      const sourceCeiling =
+        version === 4 ? MAX_V4_PIXELS : version === 3 ? MAX_V3_PIXELS : MAX_TILED_PIXELS;
+      if (sourceDimensions.width * sourceDimensions.height > sourceCeiling)
+        throw new Error(
+          `原图超过 V${version} 的 ${(sourceCeiling / 1e6).toFixed(1)}MP 编辑像素上限，请准备较小副本。`,
+        );
       // A smaller preview must not make an unexportable full-resolution transform appear valid.
       getEditorOutputDimensions(sourceDimensions, message.recipe);
     }
@@ -144,25 +149,34 @@ self.onmessage = async (event: MessageEvent<Message>) => {
           renderImages.set(layer.sourceId, prepareInteractiveSource(image, budget));
       }
     }
+    const recipe = message.recipe;
+    const renderPreview = () =>
+      renderEditorRecipe(preparedSource(source, recipe, budget), recipe, {
+        // Output is budgeted before rendering; auxiliary previews retain their normalized placement.
+        maxPixels: MAX_PREVIEW_PIXELS,
+        images: renderImages,
+        warpPreviewCache: detail ? warpPreviewCache : undefined,
+      });
+    if (detail && message.prewarmWarp) {
+      warpPreviewCache.prewarm(renderPreview);
+      self.postMessage({ id: message.id, type: message.type });
+      return;
+    }
     const result =
       message.type === 'export'
         ? message.originalOnly
           ? source
           : renderEditorRecipeTiled(source, message.recipe, {
               maxPixels:
-                message.recipe.schemaVersion === 3 || message.recipe.schemaVersion === 4
-                  ? 16_777_216
-                  : 67_108_864,
+                message.recipe.schemaVersion === 4
+                  ? MAX_V4_PIXELS
+                  : message.recipe.schemaVersion === 3
+                    ? MAX_V3_PIXELS
+                    : MAX_TILED_PIXELS,
               images: originalImages,
               tileSize: 512,
             })
-        : renderEditorRecipe(preparedSource(source, message.recipe, budget), message.recipe, {
-            // Output is budgeted before rendering; validated auxiliary previews
-            // keep their own dimensions and normalized placement.
-            maxPixels: MAX_PREVIEW_PIXELS,
-            images: renderImages,
-            warpPreviewCache: detail ? warpPreviewCache : undefined,
-          });
+        : renderPreview();
     // Lower the raster budget after an expensive frame. All recipe stages are still evaluated.
     if (interactive && !detail && performance.now() - started > 42 && liveBudget > 32_768)
       liveBudget /= 2;

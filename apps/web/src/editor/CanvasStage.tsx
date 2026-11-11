@@ -242,6 +242,10 @@ const isTyping = (target: EventTarget | null) =>
   target instanceof Element &&
   Boolean(target.closest('input,textarea,select,[contenteditable="true"]'));
 
+const MIN_CANVAS_ZOOM = 0.25;
+const MAX_CANVAS_ZOOM = 128;
+const fittedCamera = { zoom: 1, pan: { x: 0, y: 0 } };
+
 export function CanvasStage({
   editor,
   statusContainer,
@@ -274,9 +278,9 @@ export function CanvasStage({
   onSample?: (color: string) => void;
 }) {
   const [dragging, setDragging] = useState(false),
-    [zoom, setZoom] = useState(1),
-    [pan, setPan] = useState({ x: 0, y: 0 }),
+    [camera, setCamera] = useState(fittedCamera),
     [bounds, setBounds] = useState({ width: 1, height: 1 });
+  const { zoom, pan } = camera;
   const [space, setSpace] = useState(false),
     [handMode, setHandMode] = useState(false),
     [notice, setNotice] = useState<string | null>(null);
@@ -300,7 +304,8 @@ export function CanvasStage({
     null,
   );
   const pointerPositions = useRef(new Map<number, Point>());
-  const pinch = useRef<{ distance: number; zoom: number } | null>(null);
+  const pinch = useRef<{ distance: number; camera: typeof camera; center: Point } | null>(null);
+  const wheelAction = useRef<(event: WheelEvent) => void>(() => {});
   const recipe = editor.recipe,
     source = editor.originalPreview,
     dimensions = editor.dimensions;
@@ -502,8 +507,7 @@ export function CanvasStage({
       : { x: 0, y: 0 };
   useEffect(() => {
     setProjectiveFrame(null);
-    setZoom(1);
-    setPan({ x: 0, y: 0 });
+    setCamera(fittedCamera);
     setNotice(null);
     setInspected(null);
     editGesture.current = null;
@@ -520,6 +524,19 @@ export function CanvasStage({
     measure();
     return () => observer.disconnect();
   }, []);
+  useEffect(() => {
+    const element = viewport.current;
+    if (!element) return;
+    const handleWheel = (event: WheelEvent) => wheelAction.current(event);
+    element.addEventListener('wheel', handleWheel, { passive: false });
+    return () => element.removeEventListener('wheel', handleWheel);
+  }, []);
+  useEffect(() => {
+    if (group !== 'liquify' || !editor.renderedRecipe) return;
+    const settled = editor.renderedRecipe;
+    const timer = window.setTimeout(() => editor.prepareWarpPreview(settled), 65);
+    return () => window.clearTimeout(timer);
+  }, [group, editor.renderedRecipe, editor.prepareWarpPreview]);
   useEffect(() => {
     const down = (event: KeyboardEvent) => {
       // A retained editor behind the public introduction must not consume page keys.
@@ -577,9 +594,13 @@ export function CanvasStage({
   }, [editor.preview]);
   useEffect(() => {
     if (projectiveFrame) return;
-    if (zoom === 1) setPan({ x: 0, y: 0 });
-    else setPan((value) => boundedPan(value, zoom));
-  }, [zoom, bounds.width, bounds.height, display.width, display.height, projectiveFrame]);
+    setCamera((current) => {
+      const next = boundedPan(current.pan, current.zoom);
+      return next.x === current.pan.x && next.y === current.pan.y
+        ? current
+        : { ...current, pan: next };
+    });
+  }, [bounds.width, bounds.height, display.width, display.height, projectiveFrame]);
   useEffect(() => {
     if (editGesture.current && ownsEdit(editGesture.current))
       editor.preview(editGesture.current.rollback ?? editGesture.current.base);
@@ -597,14 +618,47 @@ export function CanvasStage({
     protecting,
   ]);
   function fit() {
-    setZoom(1);
-    setPan({ x: 0, y: 0 });
+    setCamera(fittedCamera);
   }
   function boundedPan(value: typeof pan, z = zoom) {
-    const x = Math.max(0, (display.width * z - bounds.width) / 2 + 20),
-      y = Math.max(0, (display.height * z - bounds.height) / 2 + 20);
+    const x = Math.max(0, (display.width * z - bounds.width) / 2),
+      y = Math.max(0, (display.height * z - bounds.height) / 2);
     return { x: clamp(value.x, -x, x), y: clamp(value.y, -y, y) };
   }
+  function viewportPoint(clientX: number, clientY: number): Point {
+    const rect = viewport.current?.getBoundingClientRect();
+    return rect
+      ? { x: clientX - (rect.left + rect.width / 2), y: clientY - (rect.top + rect.height / 2) }
+      : { x: 0, y: 0 };
+  }
+  function zoomedCamera(base: typeof camera, next: number, anchor: Point, destination = anchor) {
+    const zoom = clamp(next, MIN_CANVAS_ZOOM, MAX_CANVAS_ZOOM);
+    const factor = zoom / base.zoom;
+    return {
+      zoom,
+      pan: boundedPan(
+        {
+          x: destination.x - (anchor.x - base.pan.x) * factor,
+          y: destination.y - (anchor.y - base.pan.y) * factor,
+        },
+        zoom,
+      ),
+    };
+  }
+  function zoomBy(factor: number, anchor = { x: 0, y: 0 }) {
+    if (editGesture.current || projectiveFrame) return;
+    setCamera((current) => zoomedCamera(current, current.zoom * factor, anchor));
+  }
+  wheelAction.current = (event) => {
+    if (!image || !event.deltaY || isTyping(event.target)) return;
+    event.preventDefault();
+    const pixels =
+      event.deltaY * (event.deltaMode === 1 ? 16 : event.deltaMode === 2 ? bounds.height : 1);
+    zoomBy(
+      Math.exp(-clamp(pixels, -200, 200) * 0.003),
+      viewportPoint(event.clientX, event.clientY),
+    );
+  };
   function toSource(
     clientX: number,
     clientY: number,
@@ -1431,6 +1485,24 @@ export function CanvasStage({
       <div
         className={`image-viewport ${editingSelection ? 'placement-mode' : ''} ${zoom > 1 || handMode || space ? 'can-pan' : ''} ${sampling ? 'sampling' : ''}`}
         ref={viewport}
+        tabIndex={image ? 0 : undefined}
+        aria-label={image ? t('图像画布') : undefined}
+        onKeyDown={(event) => {
+          if (
+            !image ||
+            event.target !== event.currentTarget ||
+            event.ctrlKey ||
+            event.metaKey ||
+            event.altKey ||
+            editGesture.current
+          )
+            return;
+          if (event.key === '+' || event.key === '=') zoomBy(1.25);
+          else if (event.key === '-' || event.key === '_') zoomBy(0.8);
+          else if (event.key === '0') fit();
+          else return;
+          event.preventDefault();
+        }}
         onPointerDownCapture={(event) => {
           if (event.button !== 0 && event.button !== 1) return;
           const state = editGesture.current;
@@ -1496,55 +1568,64 @@ export function CanvasStage({
           if (event.currentTarget.hasPointerCapture(event.pointerId))
             event.currentTarget.releasePointerCapture(event.pointerId);
         }}
-        onWheel={(event) => {
-          if (!event.ctrlKey && !event.metaKey) return;
-          event.preventDefault();
-          setZoom((value) => clamp(value * Math.exp(-event.deltaY * 0.005), 0.02, 128));
-        }}
         onPointerDown={(event) => {
           if (event.button !== 0 && event.button !== 1) return;
-          if (editingSelection || (group === 'crop' && !space && !handMode)) return;
+          if (
+            !image ||
+            editGesture.current ||
+            (editingSelection && !handMode && !space) ||
+            (group === 'crop' && !space && !handMode)
+          )
+            return;
           pointerPositions.current.set(event.pointerId, { x: event.clientX, y: event.clientY });
           if (pointerPositions.current.size === 2) {
-            const values = [...pointerPositions.current.values()];
+            const [a, b] = [...pointerPositions.current.values()] as [Point, Point];
             pinch.current = {
-              distance: Math.hypot(values[0]!.x - values[1]!.x, values[0]!.y - values[1]!.y),
-              zoom,
+              distance: Math.hypot(a.x - b.x, a.y - b.y),
+              camera,
+              center: viewportPoint((a.x + b.x) / 2, (a.y + b.y) / 2),
             };
             panGesture.current = null;
-          } else if (zoom > 1 || space || handMode)
+          } else if (zoom > 1 || space || handMode || event.button === 1)
             panGesture.current = {
               pointer: event.pointerId,
               x: event.clientX,
               y: event.clientY,
               start: pan,
             };
-          else return;
+          else if (event.pointerType !== 'touch') return;
+          if (event.button === 1) event.preventDefault();
           event.currentTarget.setPointerCapture(event.pointerId);
         }}
         onPointerMove={(event) => {
           if (pointerPositions.current.has(event.pointerId))
             pointerPositions.current.set(event.pointerId, { x: event.clientX, y: event.clientY });
-          if (pinch.current && pointerPositions.current.size === 2) {
-            const points = [...pointerPositions.current.values()];
-            const distance = Math.hypot(points[0]!.x - points[1]!.x, points[0]!.y - points[1]!.y);
-            setZoom(
-              clamp(
-                (pinch.current.zoom * distance) / Math.max(1, pinch.current.distance),
-                0.02,
-                128,
+          const twoFingers = pinch.current;
+          if (twoFingers && pointerPositions.current.size === 2) {
+            const [a, b] = [...pointerPositions.current.values()] as [Point, Point];
+            const distance = Math.hypot(a.x - b.x, a.y - b.y);
+            setCamera(
+              zoomedCamera(
+                twoFingers.camera,
+                (twoFingers.camera.zoom * distance) / Math.max(1, twoFingers.distance),
+                twoFingers.center,
+                viewportPoint((a.x + b.x) / 2, (a.y + b.y) / 2),
               ),
             );
             return;
           }
           const current = panGesture.current;
           if (current?.pointer === event.pointerId)
-            setPan(
-              boundedPan({
-                x: current.start.x + event.clientX - current.x,
-                y: current.start.y + event.clientY - current.y,
-              }),
-            );
+            setCamera((view) => ({
+              ...view,
+              pan: boundedPan(
+                {
+                  x: current.start.x + event.clientX - current.x,
+                  y: current.start.y + event.clientY - current.y,
+                },
+                view.zoom,
+              ),
+            }));
         }}
         onPointerUp={(event) => {
           pointerPositions.current.delete(event.pointerId);
@@ -1971,8 +2052,8 @@ export function CanvasStage({
             </button>
             <IconButton
               label={t('缩小预览')}
-              disabled={zoom <= 0.02}
-              onClick={() => setZoom(clamp(zoom / 1.25, 0.02, 128))}
+              disabled={zoom <= MIN_CANVAS_ZOOM}
+              onClick={() => zoomBy(0.8)}
             >
               <MagnifyingGlassMinus size={18} />
             </IconButton>
@@ -1981,8 +2062,8 @@ export function CanvasStage({
             </button>
             <IconButton
               label={t('放大预览')}
-              disabled={zoom >= 128}
-              onClick={() => setZoom(clamp(zoom * 1.25, 0.02, 128))}
+              disabled={zoom >= MAX_CANVAS_ZOOM}
+              onClick={() => zoomBy(1.25)}
             >
               <MagnifyingGlassPlus size={18} />
             </IconButton>
@@ -1993,8 +2074,7 @@ export function CanvasStage({
               className="pixel-scale-button"
               title={t('一个预览像素对应一个CSS像素，不把缩小预览当原图')}
               onClick={() => {
-                setZoom(clamp(1 / scale, 0.02, 128));
-                setPan({ x: 0, y: 0 });
+                setCamera(zoomedCamera(fittedCamera, 1 / scale, { x: 0, y: 0 }));
               }}
             >
               1:1

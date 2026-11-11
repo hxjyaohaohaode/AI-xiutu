@@ -14,6 +14,7 @@
     "@ai-xiutu/editor": "*",
     "@ai-xiutu/multimodal": "*",
     "@ai-xiutu/providers": "*",
+    "@modelcontextprotocol/sdk": "1.32.2",
     "https-proxy-agent": "9.1.0",
     "js-tiktoken": "1.0.21",
     "ws": "8.22.2"

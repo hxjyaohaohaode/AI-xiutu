@@ -84,6 +84,7 @@ export function record(
   keys: readonly string[],
   path: string,
   errors: string[],
+  optionalKeys: readonly string[] = [],
 ): RecordValue {
   if (value === null || typeof value !== 'object' || Array.isArray(value)) {
     errors.push(`${path}: expected a plain object`);
@@ -94,7 +95,7 @@ export function record(
     errors.push(`${path}: non-plain prototype is not allowed`);
   const result: RecordValue = Object.create(null) as RecordValue;
   for (const key of Reflect.ownKeys(value)) {
-    if (typeof key !== 'string' || !keys.includes(key)) {
+    if (typeof key !== 'string' || (!keys.includes(key) && !optionalKeys.includes(key))) {
       errors.push(`${path}: unknown property ${String(key)}`);
       continue;
     }
@@ -238,13 +239,23 @@ export function validateRecipe(input: unknown): RecipeValidationResult {
       errors.push('recipe.schemaVersion: unsupported version');
     if (v.engineVersion !== ENGINE_VERSION)
       errors.push('recipe.engineVersion: unsupported engine; explicit migration required');
-    const c = record(v.curves, ['rgb', 'red', 'green', 'blue'], 'curves', errors);
+    const channels = ['rgb', 'red', 'green', 'blue'] as const;
+    const c = record(v.curves, channels, 'curves', errors, ['interpolation']);
     const curves: Curves = {
       rgb: curve(c.rgb, 'curves.rgb', errors),
       red: curve(c.red, 'curves.red', errors),
       green: curve(c.green, 'curves.green', errors),
       blue: curve(c.blue, 'curves.blue', errors),
     };
+    if (Object.hasOwn(c, 'interpolation')) {
+      const modes = record(c.interpolation, [], 'curves.interpolation', errors, channels);
+      for (const channel of channels) {
+        if (!Object.hasOwn(modes, channel)) continue;
+        if (modes[channel] !== 'pchip-v1')
+          errors.push(`curves.interpolation.${channel}: unsupported algorithm`);
+        else (curves.interpolation ??= {})[channel] = 'pchip-v1';
+      }
+    }
     const l = record(v.local, ['enabled', 'mask', 'adjustments'], 'local', errors);
     const recipe: RecipeV1 = {
       schemaVersion: SCHEMA_VERSION,

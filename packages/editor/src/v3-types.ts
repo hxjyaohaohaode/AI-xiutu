@@ -144,6 +144,7 @@ export interface WarpStrokeV3 {
   /** Omitted preserves the published displacement field. New flows integrate a smooth velocity. */
   algorithm?: 'flow-v1' | 'flow-v2';
   resampling?: 'bounded-cubic-v1';
+  guardId?: string;
   origin?: OperationOriginV3;
   id: string;
   mode: 'push' | 'pinch' | 'bulge' | 'twirl';
@@ -159,6 +160,8 @@ export interface WarpV3 {
   strokes: WarpStrokeV3[];
   /** Full weight locks original displayed pixels; feathered weights soften the boundary. */
   protection: SelectionMaskV3 | null;
+  /** Source-space hard/feathered protection shared by the strokes that name it. */
+  guards?: { id: string; mask: SelectionMaskV3 }[];
 }
 export interface ImageLayerV3 {
   origin?: OperationOriginV3;

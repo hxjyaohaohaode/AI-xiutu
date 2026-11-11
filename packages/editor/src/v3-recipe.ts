@@ -624,8 +624,18 @@ export function parseRecipeV3(input: unknown): RecipeV3 {
       ...originField(r, p, errors),
     };
   });
-  const w = record(root.warp, ['enabled', 'strokes', 'protection'], 'warp', errors),
+  const w = record(root.warp, ['enabled', 'strokes', 'protection'], 'warp', errors, ['guards']),
     warpIds = new Set<string>();
+  const guardIds = new Set<string>();
+  const guards = !Object.hasOwn(w, 'guards')
+    ? []
+    : arrayData(w.guards, 0, 8, 'warp.guards', errors).map((entry, index) => {
+        const path = `warp.guards[${index}]`;
+        const row = record(entry, ['id', 'mask'], path, errors);
+        const id = identifier(row.id, `${path}.id`, errors);
+        unique(id, guardIds, path);
+        return { id, mask: readMask(row.mask, `${path}.mask`, errors, budget) };
+      });
   const warpStrokes = arrayData(w.strokes, 0, MAX_V3_WARP_STROKES, 'warp.strokes', errors).map(
     (v, i): WarpStrokeV3 => {
       const p = `warp.strokes[${i}]`,
@@ -641,6 +651,7 @@ export function parseRecipeV3(input: unknown): RecipeV3 {
             'strength',
             ...(v && typeof v === 'object' && Object.hasOwn(v, 'algorithm') ? ['algorithm'] : []),
             ...(v && typeof v === 'object' && Object.hasOwn(v, 'resampling') ? ['resampling'] : []),
+            ...(v && typeof v === 'object' && Object.hasOwn(v, 'guardId') ? ['guardId'] : []),
           ],
           p,
           errors,
@@ -653,12 +664,17 @@ export function parseRecipeV3(input: unknown): RecipeV3 {
         errors.push(`${p}.algorithm: unsupported warp algorithm`);
       if (Object.hasOwn(r, 'resampling') && r.resampling !== 'bounded-cubic-v1')
         errors.push(`${p}.resampling: unsupported warp resampling`);
+      const guardId = Object.hasOwn(r, 'guardId')
+        ? identifier(r.guardId, `${p}.guardId`, errors)
+        : undefined;
+      if (guardId && !guardIds.has(guardId)) errors.push(`${p}.guardId: unknown warp guard`);
       return {
         id,
         ...(r.algorithm === 'flow-v1' || r.algorithm === 'flow-v2'
           ? { algorithm: r.algorithm }
           : {}),
         ...(Object.hasOwn(r, 'resampling') ? { resampling: 'bounded-cubic-v1' as const } : {}),
+        ...(guardId ? { guardId } : {}),
         mode: r.mode as 'push',
         from: point(r.from, `${p}.from`, errors),
         to: point(r.to, `${p}.to`, errors),
@@ -690,6 +706,7 @@ export function parseRecipeV3(input: unknown): RecipeV3 {
       strokes: warpStrokes,
       protection:
         w.protection === null ? null : readMask(w.protection, 'warp.protection', errors, budget),
+      ...(guards.length ? { guards } : {}),
     },
   };
   if (errors.length) throw new RecipeValidationError(errors);

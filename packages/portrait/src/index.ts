@@ -27,3 +27,5 @@ export type {
   PortraitPixelInput,
   PortraitPixelOperation,
 } from './retouch-adapter.js';
+export { visibleTeeth, visibleEyeAccessories, visibleMeshLighting } from './visible-features.js';
+export { anchoredSubjectPrior } from './subject-prior.js';

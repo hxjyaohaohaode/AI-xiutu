@@ -19,7 +19,8 @@ type Settings = {
   imageInput: boolean;
   webSearch: boolean;
   webImageSearch?: boolean;
-  reasoningEffort?: 'none' | 'low' | 'medium' | 'high';
+  reasoningEffort?: 'none' | 'minimal' | 'low' | 'medium' | 'high' | 'xhigh' | 'max';
+  voiceReasoningEffort?: 'minimal' | 'low' | 'medium' | 'high' | 'xhigh';
 };
 type Model = { id: string; config: Settings; hash: string };
 type Profile = {
@@ -28,6 +29,13 @@ type Profile = {
   protocol: string;
   imageInput: boolean;
   fullDuplex: boolean;
+  reasoning?: string[];
+};
+type ResponseProfile = {
+  id: string;
+  contextWindowTokens: number;
+  maxOutputTokens: number;
+  reasoning: string[];
 };
 type Unknown = {
   id: string;
@@ -55,6 +63,7 @@ const initial = (): Settings => ({
 export function AssistantOpsPanel() {
   const [models, setModels] = useState<Model[]>([]),
     [profiles, setProfiles] = useState<Profile[]>([]),
+    [responsesProfiles, setResponsesProfiles] = useState<ResponseProfile[]>([]),
     [ready, setReady] = useState(false),
     [voiceReady, setVoiceReady] = useState(false),
     [selected, setSelected] = useState(''),
@@ -74,6 +83,9 @@ export function AssistantOpsPanel() {
     [reason, setReason] = useState(''),
     [evidence, setEvidence] = useState('');
   const voice = settings.operations.includes('realtime-voice');
+  const profile = voice
+    ? profiles.find((entry) => entry.id === modelId)
+    : responsesProfiles.find((entry) => entry.id === modelId);
   const [recordKind, setRecordKind] = useState<'turn' | 'voice'>('turn'),
     [recordFilter, setRecordFilter] = useState(''),
     [recordDraft, setRecordDraft] = useState('');
@@ -91,9 +103,13 @@ export function AssistantOpsPanel() {
     if (cursor) query.set('cursor', cursor);
     try {
       const [catalog, records] = await Promise.all([
-        api<{ models: Model[]; profiles: Profile[]; ready: boolean; voiceReady: boolean }>(
-          '/ops/assistant-models',
-        ),
+        api<{
+          models: Model[];
+          profiles: Profile[];
+          responsesProfiles?: ResponseProfile[];
+          ready: boolean;
+          voiceReady: boolean;
+        }>('/ops/assistant-models'),
         api<{ turns: Unknown[]; voices: Unknown[]; nextCursor: string | null }>(
           `/ops/assistant-reconciliation?${query}`,
         ),
@@ -101,6 +117,7 @@ export function AssistantOpsPanel() {
       if (request !== loadId.current) return;
       setModels(catalog.models);
       setProfiles(catalog.profiles);
+      setResponsesProfiles(catalog.responsesProfiles ?? []);
       setReady(catalog.ready);
       setVoiceReady(catalog.voiceReady);
       setUnknown(records);
@@ -242,7 +259,12 @@ export function AssistantOpsPanel() {
                 ariaLabel={t('实时语音模型协议')}
                 disabled={!!selected || busy}
                 value={modelId}
-                onValueChange={setModelId}
+                onValueChange={(value) => {
+                  setModelId(value);
+                  const next = { ...settings };
+                  delete next.voiceReasoningEffort;
+                  setSettings(next);
+                }}
                 placeholder={t('选择已适配的协议')}
                 options={[
                   { value: '', label: t('选择已适配的协议'), disabled: true },
@@ -256,6 +278,7 @@ export function AssistantOpsPanel() {
             ) : (
               <input
                 required
+                list="assistant-responses-models"
                 value={modelId}
                 disabled={!!selected || busy}
                 pattern="[A-Za-z0-9][A-Za-z0-9._:-]{0,127}"
@@ -264,6 +287,13 @@ export function AssistantOpsPanel() {
               />
             )}
           </label>
+          {!voice && (
+            <datalist id="assistant-responses-models">
+              {responsesProfiles.map((profile) => (
+                <option key={profile.id} value={profile.id} />
+              ))}
+            </datalist>
+          )}
           <label>
             {t('显示名称')}
             <input
@@ -369,11 +399,33 @@ export function AssistantOpsPanel() {
                   }}
                   options={[
                     { value: '', label: t('不传此参数') },
-                    ...['none', 'low', 'medium', 'high'].map((value) => ({ value, label: value })),
+                    ...(profile?.reasoning ?? ['none', 'low', 'medium', 'high']).map((value) => ({
+                      value,
+                      label: value,
+                    })),
                   ]}
                 />
               </label>
             </>
+          )}
+          {voice && !!profile?.reasoning?.length && (
+            <label>
+              {t('实时语音推理档位')}
+              <ChoiceSelect
+                ariaLabel={t('实时语音推理档位')}
+                value={settings.voiceReasoningEffort ?? ''}
+                onValueChange={(value) => {
+                  const next = { ...settings };
+                  if (value) next.voiceReasoningEffort = value as Settings['voiceReasoningEffort'];
+                  else delete next.voiceReasoningEffort;
+                  setSettings(next);
+                }}
+                options={[
+                  { value: '', label: t('不传此参数') },
+                  ...profile.reasoning.map((value) => ({ value, label: value })),
+                ]}
+              />
+            </label>
           )}
           <label>
             {t('每次响应的输出预算')}

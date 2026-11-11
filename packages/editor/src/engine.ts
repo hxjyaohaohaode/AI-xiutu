@@ -1,4 +1,4 @@
-import { buildCurveLut, isIdentityCurve, sampleCurveLut } from './curves.js';
+import { compileCurveFunction, isIdentityCurve } from './curves.js';
 import { getOutputDimensions, pixelCrop, sourcePixel, validateDimensions } from './geometry.js';
 import { radialMaskWeight } from './mask.js';
 import { parseRecipe } from './recipe.js';
@@ -19,7 +19,7 @@ import type {
 const clamp = (value: number): number => Math.min(1, Math.max(0, value));
 const DECODE = Float32Array.from({ length: 256 }, (_, i) => srgbToLinear(i / 255));
 const channels: CurveChannel[] = ['rgb', 'red', 'green', 'blue'];
-type CompiledCurves = Record<CurveChannel, Float32Array | null>;
+type CompiledCurves = Record<CurveChannel, ((value: number) => number) | null>;
 
 export class RenderAbortedError extends Error {
   constructor() {
@@ -49,7 +49,9 @@ function compileCurves(curves: Curves): CompiledCurves {
   return Object.fromEntries(
     channels.map((channel) => [
       channel,
-      isIdentityCurve(curves[channel]) ? null : buildCurveLut(curves[channel]),
+      isIdentityCurve(curves[channel])
+        ? null
+        : compileCurveFunction(curves[channel], curves.interpolation?.[channel] ?? 'linear'),
     ]),
   ) as CompiledCurves;
 }
@@ -152,13 +154,13 @@ function mapEncodedPoint(
     b = clamp(luminance + (b - luminance) * amount);
   }
   if (curves.rgb) {
-    r = sampleCurveLut(curves.rgb, r);
-    g = sampleCurveLut(curves.rgb, g);
-    b = sampleCurveLut(curves.rgb, b);
+    r = curves.rgb(r);
+    g = curves.rgb(g);
+    b = curves.rgb(b);
   }
-  if (curves.red) r = sampleCurveLut(curves.red, r);
-  if (curves.green) g = sampleCurveLut(curves.green, g);
-  if (curves.blue) b = sampleCurveLut(curves.blue, b);
+  if (curves.red) r = curves.red(r);
+  if (curves.green) g = curves.green(g);
+  if (curves.blue) b = curves.blue(b);
   output[index] = srgbToLinear(r);
   output[index + 1] = srgbToLinear(g);
   output[index + 2] = srgbToLinear(b);
@@ -310,9 +312,9 @@ export function createRenderSession(inputRecipe: RecipeV1): ReferenceRenderSessi
               const lower = byte(clamp(sample - 1e-10));
               return lower === byte(clamp(sample + 1e-10)) ? lower : -1;
             }
-            const global = curves.rgb ? sampleCurveLut(curves.rgb, sample) : sample;
+            const global = curves.rgb ? curves.rgb(sample) : sample;
             const channel = curves[channels[index + 1]!]!;
-            return byte(channel ? sampleCurveLut(channel, global) : global);
+            return byte(channel ? channel(global) : global);
           }),
         )
       : null;

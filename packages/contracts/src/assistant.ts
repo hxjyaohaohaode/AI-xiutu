@@ -252,6 +252,9 @@ export type VoiceServerEvent =
       citations: AssistantCitation[];
       search?: AssistantSearchEvidence[];
       candidates: AssistantCandidate[];
+      execution?:
+        | { state: 'applied'; artworkId: string; revisionId: string; candidateId: string }
+        | { state: 'blocked' | 'review_required'; candidateId?: string; code: string };
     }
   | { type: 'closed'; state: 'closed' | 'unknown' | 'failed'; reason: string }
   | { type: 'error'; code: string; message: string }

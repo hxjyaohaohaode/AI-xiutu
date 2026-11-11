@@ -15,6 +15,14 @@ export function compileWarpFieldV3(
 
 function compileWarpMapping(warp: WarpV3, dimensions: Dimensions, original?: RGBAImage) {
   const short = Math.min(dimensions.width, dimensions.height);
+  const referenced = new Set(warp.strokes.map((stroke) => stroke.guardId));
+  const guards = new Map(
+    warp.enabled
+      ? (warp.guards ?? [])
+          .filter(({ id }) => referenced.has(id))
+          .map(({ id, mask }) => [id, compileSelectionMaskV3(mask, dimensions, original)])
+      : [],
+  );
   const strokes = warp.enabled
     ? warp.strokes
         .filter((s) => s.strength !== 0)
@@ -30,6 +38,7 @@ function compileWarpMapping(warp: WarpV3, dimensions: Dimensions, original?: RGB
             dx,
             dy,
             dragLimit: Math.min(1, (r * 0.8) / Math.max(1e-12, Math.hypot(dx, dy))),
+            guard: s.guardId ? guards.get(s.guardId) : undefined,
           };
         })
     : [];
@@ -71,8 +80,8 @@ function compileWarpMapping(warp: WarpV3, dimensions: Dimensions, original?: RGB
     if (!strokes.length) return { x: point.x, y: point.y };
     let x = point.x * dimensions.width,
       y = point.y * dimensions.height;
-    const protection = protectedAt?.(point.x, point.y) ?? 0;
-    if (protection >= 1) return { ...point };
+    const globalProtection = protectedAt?.(point.x, point.y) ?? 0;
+    if (globalProtection >= 1) return { ...point };
     let candidates = candidatesAt(x, y),
       position = candidates.length - 1;
     while (position >= 0) {
@@ -83,6 +92,10 @@ function compileWarpMapping(warp: WarpV3, dimensions: Dimensions, original?: RGB
       if (Math.abs(dx) >= stroke.r || Math.abs(dy) >= stroke.r) continue;
       const d = Math.hypot(dx, dy) / stroke.r;
       if (d >= 1) continue;
+      const protection = stroke.guard
+        ? Math.max(globalProtection, stroke.guard(point.x, point.y))
+        : globalProtection;
+      if (protection >= 1) continue;
       const oldX = x,
         oldY = y;
       if (stroke.algorithm) {

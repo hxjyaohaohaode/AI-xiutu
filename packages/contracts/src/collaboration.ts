@@ -52,6 +52,7 @@ export const collaborationOperationSchema = z.discriminatedUnion('type', [
     .object({
       type: z.literal('set-curve'),
       channel: z.enum(['rgb', 'red', 'green', 'blue']),
+      interpolation: z.enum(['linear', 'pchip-v1']).optional(),
       points: z
         .array(z.tuple([z.number().finite().min(0).max(1), z.number().finite().min(0).max(1)]))
         .min(2)

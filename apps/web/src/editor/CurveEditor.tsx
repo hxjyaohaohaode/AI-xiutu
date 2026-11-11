@@ -2,14 +2,23 @@ import { t } from '../i18n';
 import { MotionDetails } from '../motion/Presence';
 import { ChoiceSelect } from '../components/ChoiceSelect';
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { Plus, Trash, ArrowCounterClockwise } from '@phosphor-icons/react';
-import { type CurvePoint, type Curves, type EditorRecipe, type RecipeV1 } from '@ai-xiutu/editor';
+import { Plus, Trash, ArrowCounterClockwise, BezierCurve } from '@phosphor-icons/react';
+import {
+  compileCurveFunction,
+  smoothCurveSegments,
+  withCurve,
+  type CurvePoint,
+  type Curves,
+  type EditorRecipe,
+  type CurveChannel,
+  type CurveInterpolation,
+} from '@ai-xiutu/editor';
 import type { EditorState } from './useEditor';
 import { IconButton } from '../components/Ui';
 import { PrecisionRange } from './PrecisionRange';
 import { sharedHistogram } from './histogram-cache';
 
-type Channel = keyof RecipeV1['curves'];
+type Channel = CurveChannel;
 type CurveCapture = Pick<
   SVGSVGElement,
   'setPointerCapture' | 'hasPointerCapture' | 'releasePointerCapture'
@@ -35,6 +44,7 @@ type CurveGesture = {
 };
 export type CurveScope = {
   key: string;
+  label: string;
   getCurves: (recipe: EditorRecipe) => Curves;
   replaceCurves: (recipe: EditorRecipe, curves: Curves) => EditorRecipe;
 };
@@ -128,6 +138,33 @@ const channels: { key: Channel; label: string; color: string }[] = [
   { key: 'green', label: '绿', color: '#479878' },
   { key: 'blue', label: '蓝', color: '#518cc9' },
 ];
+
+const identityCurve = (): CurvePoint[] => [
+  [0, 0],
+  [1, 1],
+];
+const coordinate = (value: number) => Number((value * 255).toFixed(2));
+
+function curveHistory(
+  editor: EditorState,
+  scope: CurveScope | undefined,
+  channel: Channel,
+  next: Curves,
+  action?: string,
+) {
+  const previous = editor.history[editor.historyIndex]?.recipe ?? editor.getRecipe();
+  const before = (scope?.getCurves(previous) ?? previous.curves)[channel];
+  const after = next[channel];
+  const target = `${scope?.label ?? t('全局')} · ${t(channels.find((c) => c.key === channel)!.label)}`;
+  if (action) return `${target} · ${action}`;
+  const changed = after.findIndex((p, i) => before[i]?.[0] !== p[0] || before[i]?.[1] !== p[1]);
+  if (after.length === before.length && changed >= 0) {
+    const format = (p: CurvePoint) => `(${coordinate(p[0])}, ${coordinate(p[1])})`;
+    return `${target} · ${t('点 {v0}', { v0: changed + 1 })} ${format(before[changed]!)} → ${format(after[changed]!)}`;
+  }
+  return `${target} · ${t('控制点')} ${before.length} → ${after.length}`;
+}
+
 export function CurveEditor({ editor, scope }: { editor: EditorState; scope?: CurveScope }) {
   const [channel, setChannel] = useState<Channel>('rgb');
   const [selected, setSelected] = useState(1);
@@ -144,7 +181,19 @@ export function CurveEditor({ editor, scope }: { editor: EditorState; scope?: Cu
       channel: channelRef.current,
       recipe: editorRef.current.getRecipe(),
       preview: editorRef.current.preview,
-      commit: () => editorRef.current.commitCurrent('调整曲线'),
+      commit: () => {
+        const current = editorRef.current;
+        const selectedScope = scopeRef.current;
+        const recipe = current.getRecipe();
+        current.commitCurrent(
+          curveHistory(
+            current,
+            selectedScope,
+            channelRef.current,
+            selectedScope?.getCurves(recipe) ?? recipe.curves,
+          ),
+        );
+      },
       scopeKey: scopeRef.current?.key,
       getCurves: scopeRef.current?.getCurves,
     }));
@@ -166,15 +215,46 @@ export function CurveEditor({ editor, scope }: { editor: EditorState; scope?: Cu
       gestures.current?.cancel();
     };
   }, []);
-  const points = (scope?.getCurves(editor.recipe) ?? editor.recipe.curves)[channel];
+  const curves = scope?.getCurves(editor.recipe) ?? editor.recipe.curves;
+  const points = curves[channel];
+  const mode = curves.interpolation?.[channel] ?? 'linear';
   const color = channels.find((c) => c.key === channel)!.color;
-  const update = (next: CurvePoint[], commit = false, pointerId?: number) => {
+  const writeCurves = (next: Curves, commit = false, pointerId?: number, label?: string) => {
     const current = editor.getRecipe();
-    const curves = { ...(scopeRef.current?.getCurves(current) ?? current.curves), [channel]: next };
-    const recipe = scopeRef.current?.replaceCurves(current, curves) ?? { ...current, curves };
+    const currentScope = scopeRef.current;
+    const recipe = currentScope?.replaceCurves(current, next) ?? { ...current, curves: next };
     if (pointerId !== undefined) gestures.current?.preview(pointerId, recipe);
-    else if (commit) editor.commit(recipe, '调整曲线');
+    else if (commit)
+      editor.commit(recipe, label ?? curveHistory(editor, currentScope, channel, next));
     else editor.preview(recipe);
+  };
+  const update = (
+    next: CurvePoint[],
+    commit = false,
+    pointerId?: number,
+    interpolation: CurveInterpolation = 'pchip-v1',
+    action?: string,
+  ) => {
+    const current = editor.getRecipe();
+    const currentScope = scopeRef.current;
+    const updated = withCurve(
+      currentScope?.getCurves(current) ?? current.curves,
+      channel,
+      next,
+      interpolation,
+    );
+    writeCurves(
+      updated,
+      commit,
+      pointerId,
+      action ? curveHistory(editor, currentScope, channel, updated, action) : undefined,
+    );
+  };
+  const commitPoint = () => {
+    const recipe = editor.getRecipe();
+    editor.commitCurrent(
+      curveHistory(editor, scope, channel, scope?.getCurves(recipe) ?? recipe.curves),
+    );
   };
   function changePoint(index: number, x: number, y: number, commit = false, pointerId?: number) {
     const current = editor.getRecipe();
@@ -191,7 +271,9 @@ export function CurveEditor({ editor, scope }: { editor: EditorState; scope?: Cu
       const proposed = Math.max(left + margin, Math.min(right - margin, x));
       if (proposed > left && proposed < right) nextX = proposed;
     }
-    next[index] = [nextX, Math.max(0, Math.min(1, y))];
+    const nextY = Math.max(0, Math.min(1, y));
+    if (nextX === currentPoints[index]![0] && nextY === currentPoints[index]![1]) return;
+    next[index] = [nextX, nextY];
     update(next, commit, pointerId);
   }
   function addPoint(at?: CurvePoint) {
@@ -216,14 +298,43 @@ export function CurveEditor({ editor, scope }: { editor: EditorState; scope?: Cu
     }
     if (gap < 0.025 || points.length >= 16) return;
     const next = points.map((p) => [...p] as CurvePoint);
-    next.splice(index + 1, 0, [
-      (points[index]![0] + points[index + 1]![0]) / 2,
-      (points[index]![1] + points[index + 1]![1]) / 2,
-    ]);
+    const x = (points[index]![0] + points[index + 1]![0]) / 2;
+    next.splice(index + 1, 0, [x, compileCurveFunction(points, mode)(x)]);
     setSelected(index + 1);
     update(next, true);
   }
   const active = points[Math.min(selected, points.length - 1)]!;
+  const activeReset =
+    points.length !== 2 || points[0]![1] !== 0 || points[1]![1] !== 1 || mode !== 'linear';
+  const canReset =
+    activeReset ||
+    channels.some(
+      ({ key }) =>
+        curves[key].length !== 2 ||
+        curves[key][0]![1] !== 0 ||
+        curves[key][1]![1] !== 1 ||
+        curves.interpolation?.[key],
+    );
+  const graph = useMemo(() => {
+    const start = `M0 ${(1 - points[0]![1]) * 256}`;
+    if (mode === 'linear')
+      return (
+        start +
+        points
+          .slice(1)
+          .map(([x, y]) => ` L${x * 256} ${(1 - y) * 256}`)
+          .join('')
+      );
+    return (
+      start +
+      smoothCurveSegments(points)
+        .map(
+          ({ x, width, first, second, to }) =>
+            ` C${(x + width / 3) * 256} ${(1 - first) * 256} ${(x + (width * 2) / 3) * 256} ${(1 - second) * 256} ${(x + width) * 256} ${(1 - to) * 256}`,
+        )
+        .join('')
+    );
+  }, [mode, points]);
   const histogram = useMemo(() => sharedHistogram(editor.rendered), [editor.rendered]);
   const distribution = histogram
     ? channel === 'rgb'
@@ -254,6 +365,45 @@ export function CurveEditor({ editor, scope }: { editor: EditorState; scope?: Cu
             {t(c.label)}
           </button>
         ))}
+      </div>
+      <div className="curve-point-controls">
+        <IconButton
+          label={t('平滑当前通道')}
+          disabled={mode !== 'linear' || points.length < 3}
+          onClick={() => update(points, true, undefined, 'pchip-v1', t('平滑曲线'))}
+        >
+          <BezierCurve size={18} />
+        </IconButton>
+        <IconButton
+          label={t('重置当前通道')}
+          disabled={!activeReset}
+          onClick={() => {
+            setSelected(0);
+            update(identityCurve(), true, undefined, 'linear', t('重置曲线'));
+          }}
+        >
+          <ArrowCounterClockwise size={18} />
+        </IconButton>
+        <button
+          className="text-button"
+          disabled={!canReset}
+          onClick={() => {
+            setSelected(0);
+            writeCurves(
+              {
+                rgb: identityCurve(),
+                red: identityCurve(),
+                green: identityCurve(),
+                blue: identityCurve(),
+              },
+              true,
+              undefined,
+              `${scope?.label ?? t('全局')} · ${t('重置全部曲线')}`,
+            );
+          }}
+        >
+          {t('重置全部曲线')}
+        </button>
       </div>
       <svg
         className="curve-graph"
@@ -301,8 +451,9 @@ export function CurveEditor({ editor, scope }: { editor: EditorState; scope?: Cu
           </g>
         ))}
         <line x1="0" y1="256" x2="256" y2="0" stroke="var(--line-strong)" strokeDasharray="4 5" />
-        <polyline
-          points={points.map((p) => `${p[0] * 256},${(1 - p[1]) * 256}`).join(' ')}
+        <path
+          data-curve-interpolation={mode}
+          d={graph}
           fill="none"
           stroke={color}
           strokeWidth="2.5"
@@ -347,7 +498,7 @@ export function CurveEditor({ editor, scope }: { editor: EditorState; scope?: Cu
             }}
             onKeyUp={(event) => {
               if (['ArrowLeft', 'ArrowRight', 'ArrowUp', 'ArrowDown'].includes(event.key))
-                editor.commitCurrent(t('微调曲线控制点'));
+                commitPoint();
             }}
             onPointerDown={(e) => {
               if (e.button !== 0) return;
@@ -396,7 +547,7 @@ export function CurveEditor({ editor, scope }: { editor: EditorState; scope?: Cu
         onChange={(value) =>
           changePoint(Math.min(selected, points.length - 1), value / 255, active[1])
         }
-        onCommit={() => editor.commitCurrent(t('微调曲线输入'))}
+        onCommit={commitPoint}
         onCancel={editor.cancelPreview}
       />
       <PrecisionRange
@@ -408,7 +559,7 @@ export function CurveEditor({ editor, scope }: { editor: EditorState; scope?: Cu
         onChange={(value) =>
           changePoint(Math.min(selected, points.length - 1), active[0], value / 255)
         }
-        onCommit={() => editor.commitCurrent(t('微调曲线输出'))}
+        onCommit={commitPoint}
         onCancel={editor.cancelPreview}
       />
       <div className="curve-point-controls">
@@ -483,7 +634,7 @@ export function CurveEditor({ editor, scope }: { editor: EditorState; scope?: Cu
               key={name}
               onClick={() => {
                 setSelected(0);
-                update(curve, true);
+                update(curve, true, undefined, 'pchip-v1', name);
               }}
             >
               {name}
@@ -491,27 +642,6 @@ export function CurveEditor({ editor, scope }: { editor: EditorState; scope?: Cu
           ))}
         </div>
       </MotionDetails>
-      <button
-        className="text-button"
-        onClick={() => {
-          setSelected(0);
-          update(
-            [
-              [0, 0],
-              [1, 1],
-            ],
-            true,
-          );
-        }}
-      >
-        <ArrowCounterClockwise size={15} />
-        {t('重置当前通道')}
-      </button>
-      <p className="inspector-note">
-        {t(
-          '拖动控制点，双击空白处添点。选中点后方向键微调；首尾输入边界固定。可直接反相，不限制曲线只增强对比。',
-        )}
-      </p>
     </section>
   );
 }

@@ -26,6 +26,7 @@ import {
 } from '@ai-xiutu/contracts';
 import {
   assistantModelConfigSchema,
+  modelProfileError,
   runEditorAgent,
   recipeHash,
   voiceModel,
@@ -48,7 +49,7 @@ import { AssistantJournal, AssistantJournalError } from './journal.js';
 import { appendRunEvent, publishRunEvent } from './events.js';
 import { assistantMemories } from './memory.js';
 import { rememberedResources, selectAssistantMemories } from './memory-context.js';
-import { applyAuthorizedCandidate } from './apply.js';
+import { executeAutomaticCandidate } from './apply.js';
 import { inspectCandidatePixels } from './preview.js';
 import {
   assistantAccess,
@@ -188,7 +189,12 @@ export function createAssistantService(
       )
     ).rows[0];
     const parsed = assistantModelConfigSchema.safeParse(row?.config);
-    if (!parsed.success || !parsed.data.enabled || !parsed.data.operations.includes(operation))
+    if (
+      !parsed.success ||
+      !parsed.data.enabled ||
+      !parsed.data.operations.includes(operation) ||
+      modelProfileError(modelId, parsed.data)
+    )
       throw new HttpError(503, 'ASSISTANT_MODEL_UNAVAILABLE', '模型尚未配置或已停用');
     return parsed.data;
   }
@@ -428,8 +434,19 @@ export function createAssistantService(
           if (voice) await model(tx, row.model_id, 'realtime-voice');
           await tx.query(
             `INSERT INTO assistant_dispatches(${voice ? 'voice_id' : 'turn_id'},sequence,input_hash,purpose,branch_key,pricing) VALUES($1,$2,$3,$4,$5,$6)`,
-            [row.id, sequenceOffset + index, bodyHash, meta.purpose, meta.branchId,
-              JSON.stringify(publicPricingSnapshot(voice ? String((row as VoiceRow).backend_model_id) : row.model_id, 'openai'))],
+            [
+              row.id,
+              sequenceOffset + index,
+              bodyHash,
+              meta.purpose,
+              meta.branchId,
+              JSON.stringify(
+                publicPricingSnapshot(
+                  voice ? String((row as VoiceRow).backend_model_id) : row.model_id,
+                  'openai',
+                ),
+              ),
+            ],
           );
           await tx.query(
             `UPDATE ${voice ? 'voice_sessions' : 'assistant_turns'} SET updated_at=clock_timestamp() WHERE id=$1`,
@@ -494,7 +511,7 @@ export function createAssistantService(
           result.termination === 'completed' &&
           (result.selectedCandidateIndex === index ||
             (result.selectedCandidateIndex === undefined && !context?.imageDataUrl && singleEdit)),
-        ...(!('backend_model_id' in row) ? { executionManagedBy: 'server' as const } : {}),
+        executionManagedBy: 'server' as const,
         ...(context ? { baseRecipe: context.recipe } : {}),
         ...(row.scope.executionGrantId ? { executionGrantId: row.scope.executionGrantId } : {}),
       };
@@ -776,14 +793,18 @@ export function createAssistantService(
           .slice(0, 8);
         const settings = await model(tx, body.modelId, 'assistant-turn', true);
         const webBranches = (body.research ?? []).filter((branch) => branch.kind === 'web');
-        if (webBranches.length + Number(Boolean(body.scope.publicSearch)) > 2 ||
-            (body.research?.length ?? 0) + Number(Boolean(body.scope.publicSearch)) > 4)
+        if (
+          webBranches.length + Number(Boolean(body.scope.publicSearch)) > 2 ||
+          (body.research?.length ?? 0) + Number(Boolean(body.scope.publicSearch)) > 4
+        )
           throw new HttpError(400, 'RESEARCH_BUDGET', '每轮最多四项研究，其中至多两项公开检索');
         if (
           (body.scope.publicSearch || webBranches.length) &&
           (!body.scope.allowWebSearch ||
             !settings.webSearch ||
-            ((body.scope.publicSearch?.kind === 'images' || webBranches.some((branch) => branch.resultKind === 'images')) && !settings.webImageSearch))
+            ((body.scope.publicSearch?.kind === 'images' ||
+              webBranches.some((branch) => branch.resultKind === 'images')) &&
+              !settings.webImageSearch))
         )
           throw new HttpError(
             400,
@@ -792,8 +813,15 @@ export function createAssistantService(
           );
         if (body.research?.some((branch) => branch.kind === 'cloud') && !body.scope.spaceIds.length)
           throw new HttpError(400, 'CLOUD_SEARCH_UNAVAILABLE', '请先选择要搜索的素材空间');
-        if (body.research?.some((branch) => branch.kind === 'canvas') && (!context?.imageDataUrl || !settings.imageInput))
-          throw new HttpError(400, 'CANVAS_INSPECTION_UNAVAILABLE', '查看画面需要明确共享当前画面，并选择支持看图的模型');
+        if (
+          body.research?.some((branch) => branch.kind === 'canvas') &&
+          (!context?.imageDataUrl || !settings.imageInput)
+        )
+          throw new HttpError(
+            400,
+            'CANVAS_INSPECTION_UNAVAILABLE',
+            '查看画面需要明确共享当前画面，并选择支持看图的模型',
+          );
         if (body.scope.executionGrantId)
           await claimAssistantGrant(tx, {
             grantId: body.scope.executionGrantId,
@@ -826,7 +854,11 @@ export function createAssistantService(
               JSON.stringify(body.scope),
               body.parentTurnId ?? null,
               hold.id,
-              JSON.stringify({ ...settings, historyScope, ...(body.research ? { research: body.research } : {}) }),
+              JSON.stringify({
+                ...settings,
+                historyScope,
+                ...(body.research ? { research: body.research } : {}),
+              }),
             ],
           )
         ).rows[0] as PaidRow;
@@ -1029,64 +1061,21 @@ export function createAssistantService(
             ]);
             await agentContext.checkSnapshot(tx, true);
             const candidates = await saveCandidates(tx, row, result, context);
-            let execution: Record<string, unknown> | undefined;
-            if (row.scope.executionGrantId) {
-              const grant = (
-                await tx.query('SELECT mode FROM assistant_grants WHERE id=$1 AND actor_id=$2', [
-                  row.scope.executionGrantId,
-                  actorId,
-                ])
-              ).rows[0];
-              if (grant?.mode === 'auto') {
-                const selected =
-                  result.selectedCandidateIndex === undefined
-                    ? undefined
-                    : candidates[result.selectedCandidateIndex];
-                const edits =
-                  selected?.kind === 'edit'
-                    ? [selected]
-                    : candidates.filter((item) => item.kind === 'edit');
-                if (edits.length && result.termination !== 'completed') {
-                  execution = { state: 'review_required', code: 'MODEL_TURN_INCOMPLETE' };
-                  await appendRunEvent(tx, row.id, 'action.blocked', execution);
-                } else if (edits.length && context?.imageDataUrl && !selected) {
-                  execution = { state: 'review_required', code: 'CANDIDATE_REVIEW_REQUIRED' };
-                  await appendRunEvent(tx, row.id, 'action.blocked', execution);
-                } else if (edits.length === 1) {
-                  // Candidate publication, revision, step claim and result commit
-                  // together. Closing the browser cannot strand an approved action.
-                  // A conflict rolls back only the local action, not a real paid receipt.
-                  await tx.query('SAVEPOINT automatic_edit');
-                  try {
-                    const saved = await applyAuthorizedCandidate(tx, {
-                      candidateId: edits[0]!.id,
-                      actorId,
-                      requireSavedBase: true,
-                    });
-                    edits[0]!.decision = 'previewed';
-                    edits[0]!.appliedRevisionId = saved.revisionId;
-                    execution = { state: 'applied', candidateId: edits[0]!.id, ...saved };
-                    await tx.query('RELEASE SAVEPOINT automatic_edit');
-                    await appendRunEvent(tx, row.id, 'action.applied', execution);
-                  } catch (error) {
-                    await tx.query('ROLLBACK TO SAVEPOINT automatic_edit');
-                    await tx.query('RELEASE SAVEPOINT automatic_edit');
-                    const message = error instanceof Error ? error.message : '';
-                    const code =
-                      error instanceof HttpError || error instanceof QuotaError
-                        ? error.code
-                        : message.includes('COLLABORATION_')
-                          ? 'COLLABORATION_LOCKED'
-                          : 'AUTOMATIC_EDIT_BLOCKED';
-                    execution = { state: 'blocked', candidateId: edits[0]!.id, code };
-                    await appendRunEvent(tx, row.id, 'action.blocked', execution);
-                  }
-                } else if (edits.length > 1) {
-                  execution = { state: 'review_required', code: 'ALTERNATIVE_CANDIDATES' };
-                  await appendRunEvent(tx, row.id, 'action.blocked', execution);
-                }
-              }
-            }
+            const execution = await executeAutomaticCandidate(tx, {
+              actorId,
+              grantId: row.scope.executionGrantId,
+              candidates,
+              selectedIndex: result.selectedCandidateIndex,
+              completed: result.termination === 'completed',
+              imageShared: !!context?.imageDataUrl,
+            });
+            if (execution)
+              await appendRunEvent(
+                tx,
+                row.id,
+                execution.state === 'applied' ? 'action.applied' : 'action.blocked',
+                execution,
+              );
             await settleHold(tx, row.hold_id);
             await tx.query(
               "UPDATE assistant_turns SET state='completed',output=$2,usage=$3,updated_at=clock_timestamp() WHERE id=$1",

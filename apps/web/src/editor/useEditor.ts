@@ -13,6 +13,11 @@ import {
   parseEditorRecipe,
   readImageHeader,
   MAX_HEADER_BYTES,
+  MAX_DIMENSION,
+  MAX_TILED_DIMENSION,
+  MAX_TILED_PIXELS,
+  MAX_V3_PIXELS,
+  MAX_V4_PIXELS,
   type EditorRecipe,
   type RGBAImage,
   type CutoutSettings,
@@ -38,15 +43,32 @@ function previewEdge() {
   );
 }
 export const MAX_LOCAL_FILE_BYTES = 128 * 1024 * 1024;
-export const PIXEL_BUDGETS = [4_194_304, 16_777_216, 40_000_000, 67_108_864] as const;
+export const PIXEL_BUDGETS = [4_194_304, MAX_V4_PIXELS, 40_000_000, MAX_TILED_PIXELS] as const;
+const smallDevice = () => window.matchMedia('(pointer: coarse) and (max-width: 959px)').matches;
+export function localImportLimits(
+  version: EditorRecipe['schemaVersion'],
+  requested: number,
+  mobile = smallDevice(),
+) {
+  const legacy = version === 1 || version === 2;
+  const ceiling = Math.min(
+    mobile ? MAX_V4_PIXELS : MAX_TILED_PIXELS,
+    version === 4 ? MAX_V4_PIXELS : version === 3 ? MAX_V3_PIXELS : MAX_TILED_PIXELS,
+  );
+  return {
+    ceiling,
+    maxPixels: Math.min(requested, ceiling),
+    maxDimension: legacy ? MAX_TILED_DIMENSION : MAX_DIMENSION,
+  };
+}
 export function localPixelBudget() {
-  const small = window.matchMedia('(pointer: coarse) and (max-width: 959px)').matches;
+  const small = smallDevice();
   try {
     const saved = Number(localStorage.getItem('editor:pixel-budget:v2'));
     if (PIXEL_BUDGETS.includes(saved as (typeof PIXEL_BUDGETS)[number]))
-      return small ? Math.min(saved, 16_777_216) : saved;
+      return small ? Math.min(saved, MAX_V4_PIXELS) : saved;
   } catch {}
-  return small ? 4_194_304 : 16_777_216;
+  return small ? 4_194_304 : MAX_V4_PIXELS;
 }
 export class LocalImportError extends Error {
   constructor(
@@ -98,6 +120,7 @@ type PreviewJob = {
   source: number;
   recipe: EditorRecipe;
   quality: PreviewQuality;
+  prewarmWarp?: boolean;
 };
 type PreviewRequest = PreviewJob & { id: number };
 type PreviewLane = { inFlight: PreviewRequest | null; pending: PreviewJob | null };
@@ -188,6 +211,7 @@ export function useEditor() {
   const previewQuality = useRef<PreviewQuality>('fast');
   const eagerPreview = useRef<PreviewJob | null>(null);
   const settledLane = useRef<PreviewLane>({ inFlight: null, pending: null });
+  const prewarmedWarp = useRef<EditorRecipe | null>(null);
   const liveLane = useRef<PreviewLane>({ inFlight: null, pending: null });
   const loadGeneration = useRef(0);
   const loadBusy = useRef(false);
@@ -243,6 +267,7 @@ export function useEditor() {
           id,
           recipe: next.recipe,
           previewQuality: live ? next.quality : undefined,
+          prewarmWarp: next.prewarmWarp,
         });
       } catch {
         if (live) stopLiveWorker();
@@ -411,6 +436,33 @@ export function useEditor() {
     (next: EditorRecipe, quality: PreviewQuality = 'fast') => replaceRecipe(next, quality),
     [replaceRecipe],
   );
+  const prepareWarpPreview = useCallback(
+    (settled: EditorRecipe) => {
+      const lane = liveLane.current;
+      if (
+        !liveWorker.current ||
+        !sourceWorker.current ||
+        !settledVersion.current ||
+        settled !== recipeRef.current ||
+        interactiveInput.current ||
+        lane.inFlight ||
+        lane.pending ||
+        prewarmedWarp.current === settled ||
+        (settled.schemaVersion !== 3 && settled.schemaVersion !== 4)
+      )
+        return;
+      prewarmedWarp.current = settled;
+      lane.pending = {
+        recipe: settled,
+        source: sourceIdentity.current,
+        version: settledVersion.current,
+        quality: 'warp',
+        prewarmWarp: true,
+      };
+      pumpPreview(true);
+    },
+    [pumpPreview],
+  );
   const resetHistory = useCallback(
     (next: EditorRecipe) => {
       const items = [{ recipe: next, label: '导入时状态' }];
@@ -452,7 +504,10 @@ export function useEditor() {
         const bytes = new Uint8Array(await incoming.slice(0, MAX_HEADER_BYTES).arrayBuffer());
         let header: ReturnType<typeof readImageHeader>;
         try {
-          header = readImageHeader(bytes, { maxPixels: 67_108_864, maxDimension: 16384 });
+          header = readImageHeader(bytes, {
+            maxPixels: MAX_TILED_PIXELS,
+            maxDimension: MAX_TILED_DIMENSION,
+          });
         } catch {
           throw new LocalImportError(
             'LOCAL_FORMAT_UNSUPPORTED',
@@ -464,16 +519,10 @@ export function useEditor() {
             'ANIMATION_UNSUPPORTED',
             '当前仅处理静态图片，不能自动丢弃动画帧。请先明确导出单帧副本。',
           );
-        const maxPixels = Math.min(
+        const { maxPixels, maxDimension } = localImportLimits(
+          existingRecipe?.schemaVersion ?? 4,
           pixelBudget,
-          localPixelBudget(),
-          !existingRecipe ||
-            existingRecipe.schemaVersion === 3 ||
-            existingRecipe.schemaVersion === 4
-            ? 16_777_216
-            : 67_108_864,
         );
-        const maxDimension = maxPixels > 16_777_216 ? 16384 : 8192;
         if (
           header.width * header.height > maxPixels ||
           header.width > maxDimension ||
@@ -622,6 +671,7 @@ export function useEditor() {
         settledLane.current.pending = null;
         liveLane.current.pending = null;
         settledVersion.current = 0;
+        prewarmedWarp.current = null;
         previewVersion.current += 1;
         setFile(typedSource);
         setSourceFormat(header.format);
@@ -1031,6 +1081,7 @@ export function useEditor() {
     maskOverlay,
     setMaskOverlay,
     pixelBudget,
+    prepareWarpPreview,
     setPixelBudget,
     getCloudUploadFile,
     recipe,

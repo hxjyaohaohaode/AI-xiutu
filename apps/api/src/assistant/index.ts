@@ -12,6 +12,8 @@ import { applyAuthorizedCandidate, assertVoiceCandidateContext } from './apply.j
 import {
   assistantModelConfigSchema,
   VOICE_MODELS,
+  RESPONSES_MODELS,
+  modelProfileError,
   VOICE_DOCS,
   VOICE_VERIFIED_AT,
   recipeHash,
@@ -141,7 +143,8 @@ export function registerAssistant(
       reason: service.reason,
       models: rows.flatMap((row) => {
         const parsed = assistantModelConfigSchema.safeParse(row.config);
-        if (!parsed.success || !parsed.data.enabled) return [];
+        if (!parsed.success || !parsed.data.enabled || modelProfileError(row.id, parsed.data))
+          return [];
         const model = parsed.data;
         const operations = model.operations.filter((op) =>
           ['assistant-turn', 'realtime-voice'].includes(op),
@@ -159,10 +162,12 @@ export function registerAssistant(
             webSearch: model.webSearch,
             webImageSearch: model.webSearch && model.webImageSearch === true,
             voice: VOICE_MODELS.find((voice) => voice.id === row.id) ?? null,
+            responses: RESPONSES_MODELS.find((item) => item.id === row.id) ?? null,
           },
         ];
       }),
       voiceProfiles: VOICE_MODELS,
+      responsesProfiles: RESPONSES_MODELS,
       verifiedAt: VOICE_VERIFIED_AT,
       sources: VOICE_DOCS,
     };
@@ -533,6 +538,7 @@ export function registerAssistant(
         )
       ).rows.map((row) => ({ ...row, hash: hash(JSON.stringify(row.config)) })),
       profiles: VOICE_MODELS,
+      responsesProfiles: RESPONSES_MODELS,
       ready: service.ready,
       voiceReady: service.voiceReady,
       sources: VOICE_DOCS,
@@ -567,6 +573,9 @@ export function registerAssistant(
       !VOICE_MODELS.some((voice) => voice.id === modelId)
     )
       throw new HttpError(400, 'VOICE_PROFILE_UNKNOWN', '语音模型尚无经过核验的协议适配器');
+    const incompatible = modelProfileError(modelId, settings);
+    if (incompatible)
+      throw new HttpError(400, incompatible, '模型用途、推理档位或 Token 上限与协议档案不符');
     await transaction(db, async (tx) => {
       await tx.query('SELECT pg_advisory_xact_lock(hashtextextended($1,0))', [
         `assistant-model:${modelId}`,

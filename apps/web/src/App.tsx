@@ -1246,24 +1246,35 @@ export function App({
     }
   }
 
-  async function createCutout() {
+  async function createCutout(guides: import('./editor/PortraitControls').CutoutGuides) {
     const analysis = editor.portrait.analysis;
-    const selection = analysis?.segmentation?.subject;
     const frame = editor.getSourceFrame();
-    if (
-      !selection ||
-      !frame ||
-      analysis.frame.contentHash !== frame.contentHash ||
-      analysis.frame.width !== frame.width ||
-      analysis.frame.height !== frame.height ||
-      !editor.file
-    )
-      throw new Error(t('请先分析当前原图的人物边缘。'));
+    if (!frame || !editor.file) throw new Error(t('请先导入图片。'));
+    const recipe = editor.getRecipe();
+    const regions = recipe.schemaVersion >= 3 && 'regionEdits' in recipe ? recipe.regionEdits : [];
+    const guide = (id: string) => {
+      if (!id) return undefined;
+      const mask = regions.find((region) => region.id === id && region.enabled)?.mask;
+      if (!mask) throw new Error(t('抠图选区已变化，请重新选择。'));
+      return mask;
+    };
+    const foreground = guide(guides.foregroundId),
+      background = guide(guides.backgroundId);
+    const subject =
+      analysis?.frame.contentHash === frame.contentHash &&
+      analysis.frame.width === frame.width &&
+      analysis.frame.height === frame.height
+        ? analysis.segmentation?.subject
+        : undefined;
+    const selection = subject ?? foreground;
+    if (!selection) throw new Error(t('请先识别人像或选择前景。'));
     const settings: CutoutSettings = {
-      algorithm: 'guided-v2',
+      algorithm: 'guided-v3',
       selection,
-      radius: 0.015,
-      decontaminate: 0.8,
+      ...(foreground && subject ? { foreground } : {}),
+      ...(background ? { background } : {}),
+      radius: guides.radius,
+      decontaminate: guides.decontaminate,
     };
     const identity = editor.getSourceIdentity();
     const name = `${filenameBase(editor.file.name).slice(0, 106)}-抠图.png`;
@@ -2796,6 +2807,17 @@ export function App({
           >
             <DrawingBoard
               initialColor={pickedColor}
+              readCurrentImage={
+                editor.file
+                  ? async () => {
+                      const identity = editor.getSourceIdentity();
+                      const blob = await editor.exportImage('png');
+                      if (identity !== editor.getSourceIdentity() || editor.isLoading())
+                        throw new Error(t('图片已切换，请重新添加。'));
+                      return new File([blob], t('当前画布') + '.png', { type: 'image/png' });
+                    }
+                  : undefined
+              }
               onClose={closeDialog}
               onUse={(file) => importFile(file)}
               onReference={async (file) => {
@@ -2813,6 +2835,7 @@ export function App({
         {renderedDialog === 'importSettings' && (
           <ImportSettings
             budget={editor.pixelBudget}
+            recipeVersion={editor.recipe.schemaVersion}
             onBudget={editor.setPixelBudget}
             file={pendingImport}
             reason={importReason}

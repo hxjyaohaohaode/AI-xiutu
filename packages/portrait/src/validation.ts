@@ -97,7 +97,11 @@ function string(input: unknown, max: number): string {
   return input;
 }
 function readTarget(input: unknown): PortraitTarget {
-  const r = object(input, ['id', 'kind', 'label', 'landmarks', 'contours', 'bounds']);
+  const r = object(
+    input,
+    ['id', 'kind', 'label', 'landmarks', 'contours', 'bounds'],
+    ['featureMasks'],
+  );
   if (r.kind !== 'face' && r.kind !== 'body') throw new Error('人像目标类别不支持。');
   const id = string(r.id, 80);
   if (!new RegExp(`^${r.kind}-[a-f0-9]{12}-[1-8]$`).test(id)) throw new Error('人像目标标识无效。');
@@ -124,7 +128,31 @@ function readTarget(input: unknown): PortraitTarget {
     };
   if (bounds.x + bounds.width > 1 + 1e-9 || bounds.y + bounds.height > 1 + 1e-9)
     throw new Error('人像边界超出原图。');
-  return { id, kind: r.kind, label: string(r.label, 120), landmarks, contours, bounds };
+  let featureMasks: PortraitTarget['featureMasks'];
+  if (r.featureMasks !== undefined) {
+    if (r.kind !== 'face') throw new Error('身形目标不能携带面部蒙版。');
+    const raw = object(r.featureMasks, [], ['teeth', 'accessories', 'relight']);
+    featureMasks = {};
+    if (raw.teeth !== undefined) featureMasks.teeth = parseSelectionMaskV3(raw.teeth);
+    if (raw.accessories !== undefined)
+      featureMasks.accessories = parseSelectionMaskV3(raw.accessories);
+    if (raw.relight !== undefined) {
+      const light = object(raw.relight, ['light', 'shade']);
+      featureMasks.relight = {
+        light: parseSelectionMaskV3(light.light),
+        shade: parseSelectionMaskV3(light.shade),
+      };
+    }
+  }
+  return {
+    id,
+    kind: r.kind,
+    label: string(r.label, 120),
+    landmarks,
+    contours,
+    bounds,
+    ...(featureMasks ? { featureMasks } : {}),
+  };
 }
 export function validateTarget(input: PortraitTarget): PortraitTarget {
   return readTarget(copyPortraitData(input));

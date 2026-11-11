@@ -180,7 +180,7 @@ async function checkLocalCutout(browser, origin, image) {
     assert.equal(await download.failure(), null);
     const bytes = await readFile(await download.path());
     const settings = await page.evaluate(() => window.observedCutout);
-    assert.equal(settings.algorithm, 'guided-v2');
+    assert.equal(settings.algorithm, 'guided-v3');
     const expected = renderCutout(image, settings);
     const decoded = await sharp(bytes).ensureAlpha().raw().toBuffer();
     assert.deepEqual(decoded, Buffer.from(expected.data));
@@ -359,7 +359,11 @@ try {
     report.photos.push({
       ...source,
       frame,
-      targets: analysis.targets.map((t) => ({ id: t.id, kind: t.kind })),
+      targets: analysis.targets.map((t) => ({
+        id: t.id,
+        kind: t.kind,
+        features: Object.keys(t.featureMasks ?? {}),
+      })),
       warnings: analysis.warnings,
     });
     const beautyTiles = [{ label: 'Original', image }];
@@ -375,6 +379,8 @@ try {
         'skinShine',
         'skinBlemish',
         'skinColorSpot',
+        'teethTone',
+        'meshLight',
       ]) {
         if (!available.get(tool)?.available) {
           report.cases.push({
@@ -385,7 +391,8 @@ try {
           });
           continue;
         }
-        for (const value of tool === 'texture' ? [-100, -50, 0, 50, 100] : [0, 25, 50, 75, 100]) {
+        const signed = ['texture', 'teethTone', 'meshLight'].includes(tool);
+        for (const value of signed ? [-100, -50, 0, 50, 100] : [0, 25, 50, 75, 100]) {
           const recipe = applyPortraitValues(createRecipeV4(), analysis, target.id, {
               [tool]: value,
             }),
@@ -412,7 +419,7 @@ try {
     await sheet(`${source.name}-beauty`, beautyTiles);
     if (analysis.segmentation?.subject) {
       const tiles = [{ label: 'Original', image }];
-      for (const algorithm of ['ray-v1', 'guided-v2']) {
+      for (const algorithm of ['ray-v1', 'guided-v2', 'guided-v3']) {
         const start = performance.now(),
           cutout = renderCutout(image, {
             algorithm,

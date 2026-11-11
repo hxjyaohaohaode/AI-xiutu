@@ -28,7 +28,14 @@ export {
   srgbToLinear,
   linearToSrgb,
 } from './engine.js';
-export { compileCurveLut, sampleCurveLut, isIdentityCurve } from './curves.js';
+export {
+  compileCurveLut,
+  sampleCurveLut,
+  isIdentityCurve,
+  withCurve,
+  smoothCurveSegments,
+  compileCurveFunction,
+} from './curves.js';
 export { radialMaskWeight } from './mask.js';
 export { renderRecipeTiled, validateTiledImage, DEFAULT_TILE_SIZE, TILE_HALO } from './tiled.js';
 export { readImageHeader, MAX_HEADER_BYTES, ImageHeaderError } from './headers.js';
@@ -164,6 +171,7 @@ export {
 } from './restoration.js';
 export {
   NEUTRAL_PRECISION_EDIT,
+  PRECISION_EDIT_CONTROLS,
   parsePrecisionEdit,
   compilePrecisionEdit,
   type PrecisionEditV1,

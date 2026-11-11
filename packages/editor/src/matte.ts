@@ -22,7 +22,7 @@ const directions = [
 
 export interface CutoutSettings {
   /** Missing preserves the published eight-ray solver. */
-  algorithm?: 'ray-v1' | 'guided-v2';
+  algorithm?: 'ray-v1' | 'guided-v2' | 'guided-v3';
   selection: SelectionMaskV3;
   foreground?: SelectionMaskV3;
   background?: SelectionMaskV3;
@@ -38,7 +38,10 @@ export function renderCutout(
   options: RenderOptions = {},
 ): RGBAImage {
   validateImage(image, { maxPixels: MAX_CUTOUT_PIXELS });
-  if (settings.algorithm !== undefined && !['ray-v1', 'guided-v2'].includes(settings.algorithm))
+  if (
+    settings.algorithm !== undefined &&
+    !['ray-v1', 'guided-v2', 'guided-v3'].includes(settings.algorithm)
+  )
     throw new RangeError('Unsupported cutout algorithm');
   if (!(
     settings.radius >= 0 &&
@@ -56,7 +59,8 @@ export function renderCutout(
     settings.background &&
     compileSelectionMaskV3(parseSelectionMaskV3(settings.background), image, image);
   let matte: Float32Array = new Float32Array(width * height);
-  const guided = settings.algorithm === 'guided-v2';
+  const dense = settings.algorithm === 'guided-v3';
+  const guided = dense || settings.algorithm === 'guided-v2';
   const constraints = guided ? new Uint8Array(width * height) : null;
   const data = image.data.slice();
   let uncertain = 0;
@@ -111,12 +115,17 @@ export function renderCutout(
   const searchRadius = guided ? radius * 4 : radius;
   const distances = [
     ...new Set(
-      [1, 2, 4, 8, 16, 32, 64, 128, searchRadius].filter((value) => value <= searchRadius),
+      (dense
+        ? [1, 2, 3, 4, 6, 8, 12, 16, 24, 32, 48, 64, 96, 128, 192, searchRadius]
+        : [1, 2, 4, 8, 16, 32, 64, 128, searchRadius]
+      ).filter((value) => value <= searchRadius),
     ),
   ].sort((a, b) => a - b);
   const colors = new Float64Array(8);
   const candidates = new Int32Array(16);
   const candidateDistances = new Float64Array(candidates.length);
+  const candidateColors = new Float64Array(candidates.length * 3);
+  const observed = new Float64Array(3);
   for (let y = 0; y < height; y++) {
     if ((y & 15) === 0) checkV3(options);
     for (let x = 0; x < width; x++) {
@@ -148,13 +157,18 @@ export function renderCutout(
             colors[k + 3]! += weight;
             const candidate = d * 2 + label;
             candidates[candidate] = n;
-            if (guided) candidateDistances[candidate] = Math.hypot(xx - x, yy - y);
+            if (guided) {
+              candidateDistances[candidate] = Math.hypot(xx - x, yy - y);
+              for (let c = 0; c < 3; c++)
+                candidateColors[candidate * 3 + c] = linear[image.data[sample + c]!]!;
+            }
             found |= 1 << label;
             if (found === 3) break;
           }
         }
         if (colors[3]! && colors[7]!) {
           if (guided) {
+            for (let c = 0; c < 3; c++) observed[c] = linear[image.data[at + c]!]!;
             // Fit actual nearby color pairs instead of averaging across hair,
             // clothing and an occluder. A mean of unrelated colors is not a
             // physically valid foreground/background pair.
@@ -170,18 +184,18 @@ export function renderCutout(
                 let dot = 0,
                   contrast = 0;
                 for (let c = 0; c < 3; c++) {
-                  const bg = linear[image.data[bi * 4 + c]!]!,
-                    span = linear[image.data[fi * 4 + c]!]! - bg;
-                  dot += (linear[image.data[at + c]!]! - bg) * span;
+                  const bg = candidateColors[b * 3 + c]!,
+                    span = candidateColors[f * 3 + c]! - bg;
+                  dot += (observed[c]! - bg) * span;
                   contrast += span * span;
                 }
                 if (contrast < 0.002) continue;
                 const value = clamp(dot / contrast);
                 let error = 0;
                 for (let c = 0; c < 3; c++) {
-                  const bg = linear[image.data[bi * 4 + c]!]!,
-                    fg = linear[image.data[fi * 4 + c]!]!;
-                  error += (linear[image.data[at + c]!]! - bg - value * (fg - bg)) ** 2;
+                  const bg = candidateColors[b * 3 + c]!,
+                    fg = candidateColors[f * 3 + c]!;
+                  error += (observed[c]! - bg - value * (fg - bg)) ** 2;
                 }
                 const distance =
                   (candidateDistances[f]! + candidateDistances[b]!) / Math.max(1, radius * 2);

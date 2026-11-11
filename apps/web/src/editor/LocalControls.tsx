@@ -512,11 +512,6 @@ export function LocalControls({
           />
         </>
       )}
-      {!region && !group && (
-        <p className="control-note">
-          {t('先添加或选择局部，再在照片上直接编辑范围。多个区域可以分开调，也能勾选后编组。')}
-        </p>
-      )}
     </section>
   );
 }

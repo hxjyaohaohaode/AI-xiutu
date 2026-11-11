@@ -10,6 +10,8 @@ import {
   DownloadSimple,
   Sparkle,
   ImageSquare,
+  Cursor,
+  TextT,
 } from '@phosphor-icons/react';
 import { downloadBlob, errorMessage } from '../lib/api';
 import { Busy, IconButton, InlineError, Modal } from './Ui';
@@ -17,9 +19,19 @@ import { usePresence } from '../motion/usePresence';
 import { ColorPicker } from './ColorPicker';
 import { useConfirmation } from './ConfirmationDialog';
 import { confirmStableScope } from '../lib/confirmation-scope';
+import { decodeImageSource } from '../editor/imageSources';
+import {
+  moveSketchItem,
+  paintSketchItem,
+  sketchBounds,
+  sketchItemAt,
+  type SketchItem,
+  type SketchPoint,
+  type SketchIcon,
+  type SketchShape,
+} from './sketch-document';
 
-type Point = { x: number; y: number };
-type Stroke = { points: Point[]; color: string; width: number; erase: boolean };
+type Tool = 'pencil' | 'erase' | 'select' | 'text' | 'icon' | SketchShape;
 const colors = ['#34372e', '#cd6155', '#d9a52d', '#658764', '#527b9b', '#9474a3'];
 
 export function DrawingBoard({
@@ -27,33 +39,44 @@ export function DrawingBoard({
   onUse,
   onReference,
   initialColor = '#34372EFF',
+  readCurrentImage,
 }: {
   onClose: () => void;
   onUse: (file: File) => Promise<boolean>;
   onReference: (file: File) => boolean | Promise<boolean>;
   initialColor?: string;
+  readCurrentImage?: () => Promise<File>;
 }) {
   const canvas = useRef<HTMLCanvasElement>(null);
   const drawingArea = useRef<HTMLDivElement>(null);
   const strokeBase = useRef<HTMLCanvasElement | null>(null);
+  const imageInput = useRef<HTMLInputElement>(null);
   const [areaSize, setAreaSize] = useState({ width: 600, height: 400 });
-  const active = useRef<Stroke | null>(null);
+  const active = useRef<SketchItem | null>(null);
+  const moving = useRef<{ index: number; start: SketchPoint; item: SketchItem } | null>(null);
   const pointer = useRef<number | null>(null);
-  const [strokes, setStrokes] = useState<Stroke[]>([]);
+  const [history, setHistory] = useState<SketchItem[][]>([[]]);
   const [cursor, setCursor] = useState(0);
+  const items = history[cursor]!;
   const [color, setColor] = useState(initialColor);
   const [showColor, setShowColor] = useState(false);
   const colorPresence = usePresence(showColor, 'color-picker');
   const [width, setWidth] = useState(5);
-  const [erase, setErase] = useState(false);
+  const [tool, setTool] = useState<Tool>('pencil');
+  const [selection, setSelection] = useState<number | null>(null);
+  const [textValue, setTextValue] = useState('');
+  const [symbol, setSymbol] = useState<SketchIcon>('star');
+  const [filled, setFilled] = useState(false);
+  const erase = tool === 'erase';
+  const selected = selection === null ? null : items[selection];
   const [ratio, setRatio] = useState('square');
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const confirmation = useConfirmation();
   const mounted = useRef(false);
   const locked = useRef(false);
-  const latest = useRef({ strokes, cursor, ratio, busy, onClose, onUse, onReference });
-  latest.current = { strokes, cursor, ratio, busy, onClose, onUse, onReference };
+  const latest = useRef({ items, history, cursor, ratio, busy, onClose, onUse, onReference });
+  latest.current = { items, history, cursor, ratio, busy, onClose, onUse, onReference };
   useEffect(() => {
     mounted.current = true;
     return () => {
@@ -62,7 +85,7 @@ export function DrawingBoard({
   }, []);
   const readDrawing = () => ({
     mounted: mounted.current,
-    strokes: latest.current.strokes,
+    items: latest.current.items,
     cursor: latest.current.cursor,
     ratio: latest.current.ratio,
     busy: latest.current.busy,
@@ -87,7 +110,7 @@ export function DrawingBoard({
     if (!mounted.current || locked.current || latest.current.busy || pointer.current !== null)
       return false;
     return (
-      !latest.current.cursor ||
+      !latest.current.items.length ||
       (await confirmDrawing(
         '草图还在当前绘画窗口中。确认已下载或不再需要后，再关闭吗？',
         '关闭草图',
@@ -98,16 +121,16 @@ export function DrawingBoard({
   async function changeRatio(value: string) {
     if (locked.current || latest.current.busy || pointer.current !== null) return;
     if (
-      latest.current.cursor &&
-      !(await confirmDrawing('切换画幅会按比例重新排布已有笔画，继续吗？', '切换画幅'))
+      latest.current.items.length &&
+      !(await confirmDrawing('切换画幅会按比例重新排布已有元素，继续吗？', '切换画幅'))
     )
       return;
     if (mounted.current && !locked.current) setRatio(value);
   }
   async function clearDrawing() {
     if (await confirmDrawing('清空画布？已下载的草图不会改变。', '清空草图', true)) {
-      setStrokes([]);
-      setCursor(0);
+      commitItems([]);
+      setSelection(null);
     }
   }
   const dimensions =
@@ -126,64 +149,112 @@ export function DrawingBoard({
     return () => observer.disconnect();
   }, []);
 
-  function paint(stroke: Stroke, context: CanvasRenderingContext2D) {
-    const first = stroke.points[0];
-    if (!first) return;
-    context.globalCompositeOperation = stroke.erase ? 'destination-out' : 'source-over';
-    context.strokeStyle = stroke.color;
-    context.fillStyle = stroke.color;
-    context.lineWidth = stroke.width;
-    context.lineCap = 'round';
-    context.lineJoin = 'round';
-    context.beginPath();
-    context.moveTo(first.x * context.canvas.width, first.y * context.canvas.height);
-    if (stroke.points.length === 1) {
-      context.arc(
-        first.x * context.canvas.width,
-        first.y * context.canvas.height,
-        stroke.width / 2,
-        0,
-        Math.PI * 2,
-      );
-      context.fill();
-    } else {
-      for (const point of stroke.points.slice(1))
-        context.lineTo(point.x * context.canvas.width, point.y * context.canvas.height);
-      context.stroke();
-    }
-    context.globalCompositeOperation = 'source-over';
+  function commitItems(next: SketchItem[]) {
+    const previous = latest.current;
+    const states = [...previous.history.slice(0, previous.cursor + 1), next].slice(-80);
+    latest.current = { ...previous, items: next, history: states, cursor: states.length - 1 };
+    setHistory(states);
+    setCursor(states.length - 1);
   }
-  function redraw(includeActive = false) {
+  function redraw() {
     const context = canvas.current?.getContext('2d');
     if (!context) return;
     context.clearRect(0, 0, context.canvas.width, context.canvas.height);
-    for (const stroke of strokes.slice(0, cursor)) paint(stroke, context);
-    if (includeActive && active.current) paint(active.current, context);
+    latest.current.items.forEach((item, i) =>
+      paintSketchItem(moving.current?.index === i ? moving.current.item : item, context),
+    );
+    if (active.current && !moving.current) paintSketchItem(active.current, context);
+    const item = moving.current?.item ?? (tool === 'select' ? selected : null);
+    if (!item || active.current) return;
+    const box = sketchBounds(context, item);
+    context.save();
+    context.strokeStyle = '#447bc9';
+    context.lineWidth = 2 / fit;
+    context.setLineDash([5 / fit, 4 / fit]);
+    context.strokeRect(box.x, box.y, box.width, box.height);
+    context.restore();
   }
   useEffect(() => {
     redraw();
-  }, [strokes, cursor, ratio]);
-  function position(event: PointerEvent<HTMLCanvasElement>): Point {
-    const bounds = event.currentTarget.getBoundingClientRect();
+  }, [items, ratio, selection, tool, fit]);
+  function position(
+    event: Pick<PointerEvent, 'clientX' | 'clientY'>,
+    bounds: DOMRect,
+  ): SketchPoint {
     return {
       x: Math.max(0, Math.min(1, (event.clientX - bounds.left) / bounds.width)),
       y: Math.max(0, Math.min(1, (event.clientY - bounds.top) / bounds.height)),
     };
   }
+  function patchSelected(item: SketchItem) {
+    if (selection === null || locked.current || pointer.current !== null) return;
+    commitItems(items.map((existing, i) => (i === selection ? item : existing)));
+  }
+  async function insertImage(read: () => File | Promise<File>) {
+    const previous = latest.current.items;
+    if (locked.current || pointer.current !== null || previous.length >= 300) return;
+    const used = new Set(
+      latest.current.history.flatMap((state) =>
+        state.flatMap((item) => (item.kind === 'image' ? [item.image] : [])),
+      ),
+    );
+    if (used.size >= 12) {
+      setError(t('草图已达到图片预算。'));
+      return;
+    }
+    locked.current = true;
+    setBusy(true);
+    setError(null);
+    try {
+      const { preview, file } = await decodeImageSource(await read());
+      if (!mounted.current || latest.current.items !== previous) return;
+      const image = document.createElement('canvas');
+      image.width = preview.width;
+      image.height = preview.height;
+      const context = image.getContext('2d');
+      if (!context) throw new Error(t('无法打开草图素材'));
+      context.putImageData(
+        new ImageData(new Uint8ClampedArray(preview.data), preview.width, preview.height),
+        0,
+        0,
+      );
+      commitItems([
+        ...previous,
+        { kind: 'image', at: { x: 0.25, y: 0.25 }, image, size: 0.5, name: file.name },
+      ]);
+      setSelection(previous.length);
+      setTool('select');
+    } catch (e) {
+      if (mounted.current) setError(errorMessage(e));
+    } finally {
+      locked.current = false;
+      if (mounted.current) setBusy(false);
+    }
+  }
   function finish(event: PointerEvent<HTMLCanvasElement>, cancel = false) {
-    if (pointer.current !== event.pointerId || !active.current) return;
-    const stroke = active.current;
+    if (pointer.current !== event.pointerId) return;
+    const item = active.current;
+    const move = moving.current;
     active.current = null;
+    moving.current = null;
     pointer.current = null;
     if (event.currentTarget.hasPointerCapture(event.pointerId))
       event.currentTarget.releasePointerCapture(event.pointerId);
-    if (cancel) {
+    if (cancel || (!item && !move)) {
       redraw();
       return;
     }
-    const next = [...strokes.slice(0, cursor), stroke];
-    setStrokes(next);
-    setCursor(next.length);
+    const previous = latest.current.items;
+    if (move) {
+      if (move.item !== previous[move.index])
+        commitItems(previous.map((value, i) => (i === move.index ? move.item : value)));
+    } else if (
+      item &&
+      (item.kind !== 'shape' ||
+        Math.hypot(item.to.x - item.from.x, item.to.y - item.from.y) > 0.002)
+    )
+      commitItems([...previous, item]);
+    redraw();
   }
   async function getFile() {
     if (!canvas.current) throw new Error('草图画布暂不可用。');
@@ -192,9 +263,10 @@ export function DrawingBoard({
     output.height = canvas.current.height;
     const context = output.getContext('2d');
     if (!context) throw new Error('无法导出这张草图。');
+    for (const item of latest.current.items) paintSketchItem(item, context);
+    context.globalCompositeOperation = 'destination-over';
     context.fillStyle = '#fff';
     context.fillRect(0, 0, output.width, output.height);
-    context.drawImage(canvas.current, 0, 0);
     const blob = await new Promise<Blob>((resolve, reject) =>
       output.toBlob(
         (value) => (value ? resolve(value) : reject(new Error('草图导出失败。'))),
@@ -213,7 +285,7 @@ export function DrawingBoard({
     const drawing = latest.current;
     const isCurrent = () =>
       mounted.current &&
-      latest.current.strokes === drawing.strokes &&
+      latest.current.items === drawing.items &&
       latest.current.cursor === drawing.cursor &&
       latest.current.ratio === drawing.ratio;
     setBusy(true);
@@ -238,7 +310,6 @@ export function DrawingBoard({
     <>
       <Modal
         title={t('草图')}
-        subtitle={t('先画构图，确认提交后才上传参考图。')}
         onClose={onClose}
         canClose={canCloseDrawing}
         wide
@@ -248,9 +319,9 @@ export function DrawingBoard({
           <div className="drawing-tools">
             <IconButton
               label={t('铅笔')}
-              aria-pressed={!erase}
-              className={!erase ? 'selected' : ''}
-              onClick={() => setErase(false)}
+              aria-pressed={tool === 'pencil'}
+              className={tool === 'pencil' ? 'selected' : ''}
+              onClick={() => setTool('pencil')}
             >
               <PencilSimple size={21} />
             </IconButton>
@@ -258,22 +329,36 @@ export function DrawingBoard({
               label={t('橡皮擦')}
               aria-pressed={erase}
               className={erase ? 'selected' : ''}
-              onClick={() => setErase(true)}
+              onClick={() => setTool('erase')}
             >
               <Eraser size={21} />
             </IconButton>
+            <IconButton
+              label={t('选择草图元素')}
+              aria-pressed={tool === 'select'}
+              className={tool === 'select' ? 'selected' : ''}
+              onClick={() => setTool('select')}
+            >
+              <Cursor size={20} />
+            </IconButton>
             <span className="toolbar-separator" />
             <IconButton
-              label={t('撤销草图笔画')}
+              label={t('撤销草图操作')}
               disabled={busy || !cursor}
-              onClick={() => setCursor((v) => v - 1)}
+              onClick={() => {
+                setSelection(null);
+                setCursor((v) => Math.max(0, v - 1));
+              }}
             >
               <ArrowCounterClockwise size={20} />
             </IconButton>
             <IconButton
-              label={t('重做草图笔画')}
-              disabled={busy || cursor >= strokes.length}
-              onClick={() => setCursor((v) => v + 1)}
+              label={t('重做草图操作')}
+              disabled={busy || cursor >= history.length - 1}
+              onClick={() => {
+                setSelection(null);
+                setCursor((v) => Math.min(history.length - 1, v + 1));
+              }}
             >
               <ArrowClockwise size={20} />
             </IconButton>
@@ -295,7 +380,7 @@ export function DrawingBoard({
           />
           <IconButton
             label={t('清空草图')}
-            disabled={busy || !cursor}
+            disabled={busy || !items.length}
             onClick={() => {
               void clearDrawing();
             }}
@@ -303,6 +388,113 @@ export function DrawingBoard({
             <Trash size={20} />
           </IconButton>
         </div>
+        <div className="drawing-toolbar">
+          <ChoiceSelect
+            ariaLabel={t('草图添加元素')}
+            size="compact"
+            value={tool}
+            disabled={busy}
+            onValueChange={(value) => setTool(value as Tool)}
+            options={[
+              { value: 'pencil', label: t('铅笔') },
+              { value: 'erase', label: t('橡皮擦') },
+              { value: 'select', label: t('选择草图元素') },
+              { value: 'rectangle', label: t('矩形') },
+              { value: 'ellipse', label: t('椭圆') },
+              { value: 'line', label: t('直线') },
+              { value: 'arrow', label: t('箭头') },
+              { value: 'text', label: t('文字') },
+              { value: 'icon', label: t('图标') },
+            ]}
+          />
+          <div className="drawing-tools">
+            <IconButton
+              label={t('添加本地图片到草图')}
+              disabled={busy}
+              onClick={() => imageInput.current?.click()}
+            >
+              <ImageSquare size={20} />
+            </IconButton>
+            {readCurrentImage && (
+              <button
+                className="text-button"
+                disabled={busy}
+                onClick={() => void insertImage(readCurrentImage)}
+              >
+                {t('添加当前画布')}
+              </button>
+            )}
+            <input
+              ref={imageInput}
+              type="file"
+              accept="image/*"
+              hidden
+              onChange={(event) => {
+                const file = event.currentTarget.files?.[0];
+                event.currentTarget.value = '';
+                if (file) void insertImage(() => file);
+              }}
+            />
+            {tool === 'select' && selected && (
+              <IconButton
+                label={t('删除选中元素')}
+                disabled={busy}
+                onClick={() => {
+                  commitItems(items.filter((_, i) => i !== selection));
+                  setSelection(null);
+                }}
+              >
+                <Trash size={20} />
+              </IconButton>
+            )}
+          </div>
+        </div>
+        {(tool === 'text' || (tool === 'select' && selected?.kind === 'text')) && (
+          <div className="drawing-controls">
+            <TextT size={20} />
+            <textarea
+              aria-label={t('草图文字')}
+              rows={1}
+              maxLength={160}
+              value={textValue}
+              placeholder={t('输入文字')}
+              disabled={busy}
+              onChange={(event) => setTextValue(event.currentTarget.value)}
+            />
+            {tool === 'select' && selected?.kind === 'text' && (
+              <button
+                className="text-button"
+                disabled={busy || !textValue.trim() || textValue.trim() === selected.text}
+                onClick={() => patchSelected({ ...selected, text: textValue.trim() })}
+              >
+                {t('更新文字')}
+              </button>
+            )}
+          </div>
+        )}
+        {tool === 'icon' && (
+          <ChoiceSelect
+            ariaLabel={t('草图图标')}
+            size="compact"
+            value={symbol}
+            onValueChange={(value) => setSymbol(value as SketchIcon)}
+            options={[
+              { value: 'star', label: t('星形') },
+              { value: 'heart', label: t('爱心') },
+              { value: 'check', label: t('对勾') },
+            ]}
+          />
+        )}
+        {(tool === 'rectangle' || tool === 'ellipse') && (
+          <label className="drawing-width">
+            <input
+              type="checkbox"
+              checked={filled}
+              onChange={(event) => setFilled(event.currentTarget.checked)}
+            />
+            {t('填充形状')}
+          </label>
+        )}
         <div className="drawing-controls" data-motion="drawing-colors">
           <div className="drawing-colors" aria-label={t('快捷笔触颜色')}>
             {colors.map((value) => (
@@ -314,7 +506,7 @@ export function DrawingBoard({
                 className={value === color.slice(0, 7) && !erase ? 'selected' : ''}
                 onClick={() => {
                   setColor(value);
-                  setErase(false);
+                  if (erase) setTool('pencil');
                 }}
               />
             ))}
@@ -328,17 +520,36 @@ export function DrawingBoard({
               {t('色谱')}
             </button>
           </div>
-          <label className="drawing-width">
-            {erase ? t('橡皮') : t('笔触')}
-            <input
-              type="range"
-              min="1"
-              max="70"
-              value={width}
-              onChange={(e) => setWidth(Number(e.target.value))}
-            />
-            <span>{width}</span>
-          </label>
+          {tool !== 'select' && (
+            <label className="drawing-width">
+              {tool === 'text' || tool === 'icon' ? t('大小') : erase ? t('橡皮') : t('笔触')}
+              <input
+                type="range"
+                min="1"
+                max="70"
+                value={width}
+                onChange={(e) => setWidth(Number(e.target.value))}
+              />
+              <span>{width}</span>
+            </label>
+          )}
+          {tool === 'select' && selected?.kind === 'image' && (
+            <label className="drawing-width">
+              {t('大小')}
+              <input
+                aria-label={t('图片大小')}
+                type="range"
+                min="0.1"
+                max="1"
+                step="0.01"
+                value={selected.size}
+                disabled={busy}
+                onChange={(event) =>
+                  patchSelected({ ...selected, size: Number(event.currentTarget.value) })
+                }
+              />
+            </label>
+          )}
           {colorPresence.present && (
             <div
               className="drawing-color-popover"
@@ -357,7 +568,7 @@ export function DrawingBoard({
                 value={color}
                 onChange={(value) => {
                   setColor(value);
-                  setErase(false);
+                  if (erase) setTool('pencil');
                 }}
                 label={t('笔触颜色')}
               />
@@ -373,40 +584,97 @@ export function DrawingBoard({
             aria-label={t('草图画布，使用鼠标、手指或触控笔绘画')}
             onPointerDown={(event) => {
               if (busy || locked.current || pointer.current !== null || event.button !== 0) return;
+              const target = event.currentTarget,
+                context = target.getContext('2d');
+              if (!context) return;
+              const at = position(event, target.getBoundingClientRect());
+              if (tool === 'select') {
+                const index = sketchItemAt(context, items, at);
+                const item = items[index];
+                setSelection(item ? index : null);
+                if (!item) return;
+                if (item.kind === 'text') setTextValue(item.text);
+                moving.current = { index, start: at, item };
+                pointer.current = event.pointerId;
+                target.setPointerCapture(event.pointerId);
+                event.preventDefault();
+                return;
+              }
               if (
-                cursor >= 300 ||
-                strokes.slice(0, cursor).reduce((sum, stroke) => sum + stroke.points.length, 0) >=
-                  50000
+                items.length >= 300 ||
+                items.reduce(
+                  (sum, item) => sum + (item.kind === 'stroke' ? item.points.length : 0),
+                  0,
+                ) >= 50000
               ) {
                 setError(t('这张草图已达到本地笔画预算，请先下载或放入编辑器，再开始新草图。'));
                 return;
               }
               event.preventDefault();
+              if (tool === 'text' || tool === 'icon') {
+                const text = textValue.trim();
+                if (tool === 'text' && !text) {
+                  setError(t('请输入草图文字'));
+                  return;
+                }
+                const size = 12 + width * 2;
+                commitItems([
+                  ...items,
+                  tool === 'text'
+                    ? { kind: 'text', at, text, color, size }
+                    : { kind: 'icon', at, icon: symbol, color, size },
+                ]);
+                setError(null);
+                return;
+              }
               const base = strokeBase.current ?? document.createElement('canvas');
-              base.width = event.currentTarget.width;
-              base.height = event.currentTarget.height;
-              base.getContext('2d')?.drawImage(event.currentTarget, 0, 0);
+              base.width = target.width;
+              base.height = target.height;
+              base.getContext('2d')?.drawImage(target, 0, 0);
               strokeBase.current = base;
               pointer.current = event.pointerId;
               event.currentTarget.setPointerCapture(event.pointerId);
-              active.current = { points: [position(event)], color, width, erase };
-              redraw(true);
+              active.current =
+                tool === 'pencil' || tool === 'erase'
+                  ? { kind: 'stroke', points: [at], color, width, erase }
+                  : { kind: 'shape', shape: tool, from: at, to: at, color, width, fill: filled };
+              paintSketchItem(active.current, context);
             }}
             onPointerMove={(event) => {
-              if (pointer.current !== event.pointerId || !active.current) return;
-              if (active.current.points.length >= 4000) {
-                finish(event);
+              if (pointer.current !== event.pointerId) return;
+              const bounds = event.currentTarget.getBoundingClientRect();
+              const move = moving.current,
+                item = active.current;
+              if (move) {
+                const at = position(event, bounds);
+                const offset = { x: at.x - move.start.x, y: at.y - move.start.y };
+                move.item =
+                  Math.hypot(offset.x, offset.y) < 0.0008
+                    ? items[move.index]!
+                    : moveSketchItem(items[move.index]!, offset);
+                redraw();
                 return;
               }
-              const point = position(event);
-              const previous = active.current.points.at(-1)!;
-              if (Math.hypot(point.x - previous.x, point.y - previous.y) < 0.0008) return;
-              active.current.points.push(point);
+              if (!item) return;
+              if (item.kind === 'shape') item.to = position(event, bounds);
+              if (item.kind === 'stroke') {
+                const samples = event.nativeEvent.getCoalescedEvents?.() ?? [];
+                for (const sample of [...samples, event]) {
+                  if (item.points.length >= 4000) {
+                    finish(event);
+                    return;
+                  }
+                  const point = position(sample, bounds),
+                    previous = item.points.at(-1)!;
+                  if (Math.hypot(point.x - previous.x, point.y - previous.y) >= 0.0008)
+                    item.points.push(point);
+                }
+              }
               const context = canvas.current?.getContext('2d');
               if (context && strokeBase.current) {
                 context.clearRect(0, 0, context.canvas.width, context.canvas.height);
                 context.drawImage(strokeBase.current, 0, 0);
-                paint(active.current, context);
+                paintSketchItem(item, context);
               }
             }}
             onPointerUp={(event) => finish(event)}
@@ -418,9 +686,7 @@ export function DrawingBoard({
           <span>
             {dimensions[0]} × {dimensions[1]} {t('· 白底 PNG')}
           </span>
-          <span>
-            {cursor} {t('条笔画 · 支持鼠标与触控')}
-          </span>
+          <span>{t('{v0} 个元素', { v0: items.length })}</span>
         </div>
         <InlineError message={error} />
         <div className="drawing-actions">
@@ -434,7 +700,7 @@ export function DrawingBoard({
           </button>
           <button
             className="button button-secondary"
-            disabled={busy || !cursor}
+            disabled={busy || !items.length}
             onClick={() => void useDrawing('local')}
           >
             <ImageSquare size={17} />
@@ -442,7 +708,7 @@ export function DrawingBoard({
           </button>
           <button
             className="button button-primary"
-            disabled={busy || !cursor}
+            disabled={busy || !items.length}
             onClick={() => void useDrawing('reference')}
           >
             {busy ? (

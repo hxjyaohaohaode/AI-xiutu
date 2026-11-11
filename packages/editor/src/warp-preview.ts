@@ -17,16 +17,29 @@ export class WarpPreviewCache {
     signature: string;
     pixels: RGBAImage;
   } | null = null;
+  private settled: typeof this.prefix = null;
+  private warming = false;
+
+  prewarm(render: () => RGBAImage) {
+    this.warming = true;
+    try {
+      render();
+    } finally {
+      this.warming = false;
+    }
+  }
 
   clear() {
     this.frame = null;
     this.prefix = null;
+    this.settled = null;
   }
 
   keeps(image: RGBAImage) {
     return (
       this.frame?.image.data.buffer === image.data.buffer ||
-      this.prefix?.pixels.data.buffer === image.data.buffer
+      this.prefix?.pixels.data.buffer === image.data.buffer ||
+      this.settled?.pixels.data.buffer === image.data.buffer
     );
   }
 
@@ -57,31 +70,40 @@ export class WarpPreviewCache {
       return frame.image;
     const image = render();
     this.prefix = null;
+    this.settled = null;
     this.frame = { source, signature, auxiliary, image };
     return image;
   }
 
   warp(image: RGBAImage, recipe: WarpV3, original: RGBAImage, options: RenderOptions): RGBAImage {
+    if (this.warming) {
+      const pixels = applyWarpV3(image, recipe, original, options);
+      this.settled = { input: image, original, signature: JSON.stringify(recipe), pixels };
+      this.prefix = null;
+      return pixels;
+    }
     if (!recipe.enabled || recipe.strokes.length <= 1)
       return applyWarpV3(image, recipe, original, options);
     const last = recipe.strokes.at(-1)!;
     const prior = { ...recipe, strokes: recipe.strokes.slice(0, -1) };
     const signature = JSON.stringify(prior);
-    let frame = this.prefix;
-    if (
-      !frame ||
-      frame.input !== image ||
-      frame.original !== original ||
-      frame.signature !== signature
-    ) {
-      frame = {
-        input: image,
-        original,
-        signature,
-        pixels: applyWarpV3(image, prior, original, options),
-      };
-      this.prefix = frame;
-    }
+    const matches = (frame: typeof this.prefix): frame is NonNullable<typeof this.prefix> =>
+      !!frame &&
+      frame.input === image &&
+      frame.original === original &&
+      frame.signature === signature;
+    const frame = matches(this.prefix)
+      ? this.prefix
+      : matches(this.settled)
+        ? this.settled
+        : {
+            input: image,
+            original,
+            signature,
+            pixels: applyWarpV3(image, prior, original, options),
+          };
+    this.prefix = frame;
+    this.settled = null;
     // Only the last stroke can change its output support. Within that window,
     // compose every reverse map and sample the pre-warp pixels once.
     return last.strength === 0

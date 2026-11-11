@@ -126,7 +126,7 @@ function render(
   const run = (source: RGBAImage, r: RecipeV2) =>
     tiled ? renderRecipeV2Tiled(source, r, opts) : renderRecipeV2(source, r, opts);
   // Semantic migration is byte-exact when no new source-space stages are active.
-  if (!sourceEdits) return fineGeometry(run(image, base), recipe, opts);
+  if (!sourceEdits && !opts.warpPreviewCache) return fineGeometry(run(image, base), recipe, opts);
   const composeSource = () => {
     const preparedPaint = preparePaintLayersV3(recipe.paintLayers, image, opts);
     let current = run(image, { ...base, geometry: NEUTRAL_GEOMETRY });

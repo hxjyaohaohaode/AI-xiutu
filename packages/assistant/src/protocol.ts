@@ -1,6 +1,6 @@
 import { randomUUID } from 'node:crypto';
 import type { VoiceServerEvent } from '@ai-xiutu/contracts';
-import { voiceModel } from './models.js';
+import { voiceModel, type AssistantModelConfig } from './models.js';
 
 function boundedLiveText(value: string): string {
   let output = '';
@@ -40,9 +40,12 @@ export function voiceStartEvent(
   voice: string,
   maxOutputTokens: number,
   team = false,
+  effort?: AssistantModelConfig['voiceReasoningEffort'],
 ) {
-  if (!(voiceModel(modelId).voices as readonly string[]).includes(voice))
-    throw new Error('VOICE_NOT_ALLOWED');
+  const profile = voiceModel(modelId);
+  if (!(profile.voices as readonly string[]).includes(voice)) throw new Error('VOICE_NOT_ALLOWED');
+  if (effort && !(profile.reasoning as readonly string[]).includes(effort))
+    throw new Error('VOICE_REASONING_NOT_ALLOWED');
   const instructions = team
     ? voiceInstructions +
       ' 你在多人语音会议中。成员可同时说话，你收到的是已授权的合流音频，不保证识别发言者。成员彼此讨论时以聆听为主。被问到、需要澄清或有已完成的协作结果时简短加入。有人打断时跟随最新需求。'
@@ -66,6 +69,7 @@ export function voiceStartEvent(
       instructions,
       output_modalities: ['audio'],
       max_output_tokens: Math.min(maxOutputTokens, 4096),
+      ...(effort ? { reasoning: { effort } } : {}),
       audio: {
         input: {
           format: { type: 'audio/pcm', rate: 24000 },
@@ -122,7 +126,7 @@ export function voiceTextEvents(modelId: string, text: string) {
     { type: 'response.create' },
   ];
 }
-export function voiceResultEvents(modelId: string, callId: string, text: string) {
+export function voiceResultEvents(modelId: string, callId: string, text: string, applied = false) {
   if (voiceModel(modelId).protocol === 'live')
     return [
       liveContextAppend('commentary', text, callId.startsWith('typed_') ? null : callId || null),
@@ -135,7 +139,7 @@ export function voiceResultEvents(modelId: string, callId: string, text: string)
         call_id: callId,
         output: JSON.stringify({
           summary: text.slice(0, 6000),
-          actionStatus: 'pending_user_confirmation',
+          actionStatus: applied ? 'applied' : 'pending_user_confirmation',
         }),
       },
     },

@@ -275,6 +275,15 @@ export function portraitToolAvailability(
           : detail?.has(tool.id as DetailFeatureId)
             ? null
             : '该部位的可见轮廓不足，无法精确塑形。';
+    } else if (tool.id === 'teethTone' || tool.id === 'meshLight') {
+      reason =
+        schemaVersion === 3
+          ? '该参数需要 V4 人像配方。'
+          : tool.id === 'teethTone' && !target.featureMasks?.teeth
+            ? '没有足够清晰的露齿区域。'
+            : tool.id === 'meshLight' && !target.featureMasks?.relight
+              ? '可见面部网格不足。'
+              : null;
     } else if (schemaVersion === 3 && skinSpotTools.includes(tool.id)) {
       reason = '该参数需要 V4 人像配方。';
     } else if (schemaVersion === 4 && tool.id === 'neckLength') {
@@ -361,12 +370,18 @@ export function applyPortraitValues<T extends LayeredRecipe>(
   const prefix = `p-${target.id}-`,
     owned = (item: { origin?: OperationOriginV3 }) =>
       automatic(item.origin?.moduleId) && item.origin?.instanceId === target.id;
+  const accessory = recipe.schemaVersion === 4 ? target.featureMasks?.accessories : undefined;
+  const guardId = `${prefix}eyewear`;
+  const oldGuards = recipe.warp.guards ?? [];
+  const unusedGuards = (strokes: WarpStrokeV3[]) =>
+    oldGuards.filter(({ id }) => strokes.some((stroke) => stroke.guardId === id));
   if (Object.values(values).every((n) => n === 0)) {
+    const strokes = recipe.warp.strokes.filter((i) => !owned(i));
     return parseLayeredRecipe({
       ...recipe,
       regionEdits: recipe.regionEdits.filter((i) => !owned(i)),
       paintLayers: recipe.paintLayers.filter((i) => !owned(i)),
-      warp: { ...recipe.warp, strokes: recipe.warp.strokes.filter((i) => !owned(i)) },
+      warp: { ...recipe.warp, strokes, guards: unusedGuards(strokes) },
       ...(recipe.schemaVersion === 4
         ? {
             healing: recipe.healing.filter((i) => !owned(i)),
@@ -425,6 +440,7 @@ export function applyPortraitValues<T extends LayeredRecipe>(
     if (Math.abs(strength) < 1e-8) return;
     warps.push({
       id: prefix + id,
+      ...(accessory ? { guardId } : {}),
       ...(detail
         ? { algorithm: 'flow-v2' as const }
         : useFlowWarp
@@ -447,11 +463,19 @@ export function applyPortraitValues<T extends LayeredRecipe>(
     warp(id, 'push', p, add(p, dxPx, dyPx), r, strength);
   }
   if (target.kind === 'face') {
-    const masks =
-        recipe.schemaVersion === 4
-          ? facialMasksV4(target, analysis.segmentation?.skin ?? null, dims)
-          : facialMasks(target, analysis.segmentation?.skin ?? null),
-      skin = createColorBlockV3();
+    const baseMasks =
+      recipe.schemaVersion === 4
+        ? facialMasksV4(target, analysis.segmentation?.skin ?? null, dims)
+        : facialMasks(target, analysis.segmentation?.skin ?? null);
+    const guard = (mask: SelectionMaskV3) =>
+      accessory ? combine('subtract', [mask, accessory]) : mask;
+    const masks = {
+      ...baseMasks,
+      skin: guard(baseMasks.skin),
+      eyes: guard(baseMasks.eyes),
+      brows: guard(baseMasks.brows),
+    };
+    const skin = createColorBlockV3();
     skin.adjustments.soften = value('smooth') * 75;
     skin.adjustments.exposure = value('skinLight') * 0.7;
     skin.adjustments.temperature = value('skinWarmth') * 35;
@@ -460,6 +484,38 @@ export function applyPortraitValues<T extends LayeredRecipe>(
     skin.detail.texture = bounded(value('texture') * 70 - value('wrinkles') * 65, -100, 100);
     skin.detail.clarity = -value('even') * 20;
     skin.optics.denoiseChroma = value('even') * 60;
+    const teeth = target.featureMasks?.teeth,
+      light = target.featureMasks?.relight;
+    if (teeth && value('teethTone'))
+      region(
+        'teethTone',
+        '白牙',
+        teeth,
+        createColorBlockV3({
+          adjustments: {
+            exposure: value('teethTone') * 0.4,
+            temperature: -value('teethTone') * 18,
+            saturation: -value('teethTone') * 46,
+          },
+        }),
+      );
+    if (light && value('meshLight')) {
+      region(
+        'meshLight',
+        '三维光影 · 亮部',
+        combine('intersection', [masks.skin, light.light]),
+        createColorBlockV3({
+          adjustments: { exposure: value('meshLight') * 0.9 },
+        }),
+      );
+      regions.push({
+        ...regions.at(-1)!,
+        id: prefix + 'meshLight-shade',
+        name: `${target.label} · 三维光影 · 阴影`,
+        mask: combine('intersection', [masks.skin, light.shade]),
+        color: createColorBlockV3({ adjustments: { exposure: -value('meshLight') * 0.75 } }),
+      });
+    }
     if (recipe.schemaVersion === 4) {
       // Versioned dedicated signal operators replace the old shared texture/soften approximation.
       skin.adjustments.soften = 0;
@@ -883,6 +939,14 @@ export function applyPortraitValues<T extends LayeredRecipe>(
           value('height'),
         );
   }
+  const nextStrokes = replaceOwned(recipe.warp.strokes, warps, targetId);
+  const guards = unusedGuards(nextStrokes);
+  if (accessory && warps.length) {
+    const index = guards.findIndex(({ id }) => id === guardId);
+    if (index < 0) guards.push({ id: guardId, mask: accessory });
+    else if (!recipe.warp.strokes.some((stroke) => stroke.guardId === guardId && !owned(stroke)))
+      guards[index] = { id: guardId, mask: accessory };
+  }
   return sealAutomaticPrimitives(
     parseLayeredRecipe({
       ...recipe,
@@ -894,7 +958,8 @@ export function applyPortraitValues<T extends LayeredRecipe>(
       warp: {
         ...recipe.warp,
         enabled: recipe.warp.enabled || warps.length > 0,
-        strokes: replaceOwned(recipe.warp.strokes, warps, targetId),
+        strokes: nextStrokes,
+        guards,
       },
     }),
     targetId,

@@ -18,6 +18,7 @@ import { Busy, InlineError } from '../components/Ui';
 import { StudioGlyph } from '../components/StudioGlyph';
 import { ColorPicker } from '../components/ColorPicker';
 import { ParameterShelf } from './ParameterShelf';
+import { PrecisionRange } from './PrecisionRange';
 import { currentV3, rgbaHex, hexRgba, type InspectorController } from './advanced-model';
 import type { ToolGroup } from './ToolInspector';
 import {
@@ -26,6 +27,13 @@ import {
   preparePortraitSelection,
   type PortraitSelectionKind,
 } from './portrait-selection';
+
+export type CutoutGuides = {
+  foregroundId: string;
+  backgroundId: string;
+  radius: number;
+  decontaminate: number;
+};
 
 export function PortraitControls({
   controller,
@@ -36,7 +44,7 @@ export function PortraitControls({
   controller: InspectorController;
   onGroupChange?: (group: ToolGroup) => void;
   onSelectionCreated?: (id: string) => void;
-  onCutout?: () => Promise<string>;
+  onCutout?: (guides: CutoutGuides) => Promise<string>;
 }) {
   const { editor, apply, report } = controller,
     state = editor.portrait;
@@ -63,7 +71,28 @@ export function PortraitControls({
   const recipe = currentV3(editor);
   const selectionHintId = useId();
   const sourceIdentity = editor.getSourceIdentity();
+  const [guides, setGuides] = useState<CutoutGuides>({
+    foregroundId: '',
+    backgroundId: '',
+    radius: 0.015,
+    decontaminate: 0.8,
+  });
+  useEffect(
+    () => setGuides({ foregroundId: '', backgroundId: '', radius: 0.015, decontaminate: 0.8 }),
+    [sourceIdentity],
+  );
   const analysisCurrent = portraitSelectionMatchesSource(state.analysis, editor.getSourceFrame());
+  const hasSubject = analysisCurrent && !!state.analysis?.segmentation?.subject;
+  const guideOptions = [
+    { value: '', label: t('无') },
+    ...recipe.regionEdits
+      .filter((region) => region.enabled)
+      .map((region) => ({ value: region.id, label: region.name })),
+  ];
+  const validGuides =
+    (!guides.foregroundId || guides.foregroundId !== guides.backgroundId) &&
+    guideOptions.some(({ value }) => value === guides.foregroundId) &&
+    guideOptions.some(({ value }) => value === guides.backgroundId);
   const selectionAvailable =
     !!state.analysis?.segmentation &&
     analysisCurrent &&
@@ -93,20 +122,16 @@ export function PortraitControls({
   const color = existingColors[makeupTool] ?? draftColors[colorKey] ?? [178, 66, 86, 255];
   async function createCutout() {
     if (cutoutLocked.current || !mounted.current || !onCutout) return;
-    if (
-      editor.isLoading() ||
-      editor.getSourceIdentity() !== sourceIdentity ||
-      !portraitSelectionMatchesSource(state.analysis, editor.getSourceFrame())
-    ) {
+    if (editor.isLoading() || editor.getSourceIdentity() !== sourceIdentity) {
       report('人物分析与当前原图不一致，请重新识别后提取素材。');
       return;
     }
-    if (state.progress || !state.analysis?.segmentation?.subject) return;
+    if (state.progress || !validGuides || (!hasSubject && !guides.foregroundId)) return;
     cutoutLocked.current = true;
     setCutting(true);
     setAnnotationStatus(null);
     try {
-      const message = await onCutout();
+      const message = await onCutout(guides);
       if (mounted.current && editor.getSourceIdentity() === sourceIdentity)
         setAnnotationStatus(message);
     } catch (failure) {
@@ -290,16 +315,65 @@ export function PortraitControls({
         )}
       </div>
       {state.progress && <Busy label={state.progress} />}
-      {state.analysis?.segmentation?.subject && onCutout && (
-        <button
-          type="button"
-          className="text-button"
-          disabled={cutting || !!state.progress || !analysisCurrent || editor.isLoading()}
-          onClick={createCutout}
-        >
-          <StudioGlyph name="select" size={18} />
-          {cutting ? t('正在精修透明边缘') : t('从原图提取人物素材')}
-        </button>
+      {onCutout && (hasSubject || guideOptions.length > 1) && (
+        <>
+          <MotionDetails className="editor-section">
+            <summary>{t('精准抠图')}</summary>
+            {guideOptions.length > 1 && (
+              <>
+                <ChoiceSelect
+                  ariaLabel={t('保留前景选区')}
+                  value={guides.foregroundId}
+                  disabled={cutting}
+                  options={guideOptions}
+                  onValueChange={(value) => setGuides((prev) => ({ ...prev, foregroundId: value }))}
+                />
+                <ChoiceSelect
+                  ariaLabel={t('排除遮挡选区')}
+                  value={guides.backgroundId}
+                  disabled={cutting}
+                  options={guideOptions}
+                  onValueChange={(value) => setGuides((prev) => ({ ...prev, backgroundId: value }))}
+                />
+              </>
+            )}
+            <PrecisionRange
+              label={t('抠图边缘范围')}
+              min={0}
+              max={5}
+              step={0.1}
+              unit="%"
+              value={guides.radius * 100}
+              disabled={cutting}
+              onChange={(value) => setGuides((prev) => ({ ...prev, radius: value / 100 }))}
+            />
+            <PrecisionRange
+              label={t('消除背景杂色')}
+              min={0}
+              max={100}
+              step={1}
+              unit="%"
+              value={guides.decontaminate * 100}
+              disabled={cutting}
+              onChange={(value) => setGuides((prev) => ({ ...prev, decontaminate: value / 100 }))}
+            />
+          </MotionDetails>
+          <button
+            type="button"
+            className="text-button"
+            disabled={
+              cutting ||
+              !!state.progress ||
+              !validGuides ||
+              (!hasSubject && !guides.foregroundId) ||
+              editor.isLoading()
+            }
+            onClick={createCutout}
+          >
+            <StudioGlyph name="select" size={18} />
+            {cutting ? t('正在精修透明边缘') : t('从原图提取人物素材')}
+          </button>
+        </>
       )}
       <InlineError message={state.error} />
       <div className="portrait-selections">
