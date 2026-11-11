@@ -1,0 +1,256 @@
+/* Touch controls have their own geometry; the image is never blurred by chrome. */
+.panel-mobile-presentations {
+  display: none;
+}
+
+.canvas-stage .canvas-selection-peek {
+  position: absolute;
+  z-index: 6;
+  inset-inline-start: 108px;
+  top: 10px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  min-width: 66px;
+  min-height: 40px;
+  padding: 8px 12px;
+  color: var(--muted);
+  background: var(--surface);
+  border: 0;
+  border-radius: 10px;
+  font-size: 12px;
+  touch-action: none;
+  user-select: none;
+  -webkit-user-select: none;
+  transition:
+    color 120ms,
+    background-color 120ms;
+}
+.canvas-stage .canvas-selection-peek[aria-pressed='true'] {
+  color: var(--accent-ink);
+  background: var(--accent-soft);
+}
+.image-frame .selection-transform-handle {
+  color: var(--surface);
+  cursor: grab;
+}
+.image-frame > .selection-preview[data-preview-mode='locate'] {
+  animation: selection-locate 1000ms ease both;
+}
+@keyframes selection-locate {
+  0% {
+    opacity: 0;
+  }
+  15%,
+  70% {
+    opacity: 1;
+  }
+  100% {
+    opacity: 0;
+  }
+}
+.image-frame .selection-transform-handle > svg {
+  padding: 5px;
+  width: 26px;
+  height: 26px;
+  border-radius: 50%;
+  background: var(--ink);
+  box-shadow:
+    0 0 0 1px rgb(255 255 255 / 85%),
+    0 2px 8px rgb(0 0 0 / 18%);
+}
+.image-frame .selection-transform-handle:focus-visible > svg,
+.image-frame .selection-transform-handle:hover > svg {
+  background: var(--accent);
+  color: var(--accent-ink);
+}
+.selection-rotation-control {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+  padding-block: 6px;
+}
+.selection-rotation-control > label {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex: 1;
+  min-width: 0;
+  gap: 8px;
+  font-size: 12px;
+  color: var(--muted);
+}
+.selection-rotation-value {
+  display: inline-flex;
+  align-items: center;
+  flex: 0 0 84px;
+  gap: 2px;
+}
+.selection-rotation-value input {
+  width: 68px;
+  min-width: 0;
+  min-height: 40px;
+  text-align: end;
+  font-size: 16px;
+  background: var(--surface-secondary);
+  border: 0;
+  border-radius: 8px;
+  padding: 6px;
+}
+.selection-rotation-control .icon-button {
+  width: 40px;
+  height: 40px;
+  min-width: 40px;
+  min-height: 40px;
+}
+
+@media (max-width: 759px) {
+  .studio-workspace
+    .free-panel[data-attached='true']:not([data-condensed-header='true'])
+    .panel-mobile-presentations {
+    display: flex;
+    align-items: center;
+    gap: 1px;
+    padding: 0 2px;
+    border-radius: 8px;
+    background: var(--surface-secondary);
+  }
+  .studio-workspace .free-panel .panel-mobile-presentations > button {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    min-width: 42px;
+    min-height: 40px;
+    padding: 4px;
+    border: 0;
+    border-radius: 6px;
+    background: transparent;
+    color: var(--muted);
+    font-size: 10px;
+    font-weight: 500;
+    white-space: nowrap;
+  }
+  .studio-workspace .free-panel .panel-mobile-presentations > button[aria-pressed='true'] {
+    background: var(--surface);
+    color: var(--ink);
+  }
+  .studio-workspace
+    .free-panel[data-attached='true']:not([data-condensed-header='true'])
+    .panel-presentation-actions
+    > :is(.panel-collapse-action, .panel-maximize-action) {
+    display: none;
+  }
+  .studio-workspace
+    .free-panel[data-attached='true']:not([data-condensed-header='true'])
+    .panel-title-drag::before {
+    width: 13px;
+    flex-basis: 13px;
+    margin-inline: 0 2px;
+  }
+  .studio-workspace
+    .free-panel[data-attached='true']:not([data-condensed-header='true'])
+    .panel-title-drag {
+    min-width: 44px;
+    gap: 2px;
+  }
+  .studio-workspace
+    .free-panel[data-attached='true']:not([data-condensed-header='true'])
+    .panel-title-drag
+    strong {
+    font-size: 11px;
+  }
+  .studio-workspace .free-panel[data-attached='true'] .panel-drag-header {
+    padding-inline: 10px 4px;
+    gap: 4px;
+  }
+  .studio-workspace .free-panel .panel-drag-header :is(.icon-button, .panel-layout-trigger) {
+    min-height: 40px;
+    height: 40px;
+  }
+  .studio-workspace .free-panel .advanced-inspector .scope-selector[data-single-scope='true'] {
+    display: none;
+  }
+
+  /* Parameters remain a native horizontally scrollable rail. A swipe does not
+     select a value; tapping a label selects its one precise control. */
+  .studio-workspace .phone-panel .parameter-shelf .parameter-shelf-options {
+    display: flex;
+    max-height: none;
+    min-height: 44px;
+    overflow-x: auto;
+    overflow-y: hidden;
+    overscroll-behavior-x: contain;
+    scroll-snap-type: x proximity;
+    scrollbar-width: none;
+    gap: 5px;
+    padding: 3px 1px;
+  }
+  .studio-workspace .phone-panel .parameter-shelf .parameter-shelf-options > button {
+    flex: 0 0 auto;
+    min-width: 68px;
+    min-height: 44px;
+    padding: 5px 11px;
+    gap: 3px;
+    white-space: nowrap;
+    scroll-snap-align: center;
+  }
+  .studio-workspace .phone-panel .parameter-shelf .parameter-shelf-options > button > span {
+    font-size: 11px;
+  }
+  .studio-workspace .phone-panel .parameter-shelf .parameter-shelf-options small {
+    font-size: 10px;
+  }
+  .studio-workspace .phone-panel .parameter-shelf-current > .parameter-compact-picker {
+    display: none;
+  }
+  .studio-workspace .phone-panel .parameter-shelf-current .precision-heading > label {
+    visibility: visible;
+    font-size: 12px;
+  }
+  .studio-workspace .phone-panel .precision-control :is(.precision-track, input[type='range']) {
+    min-height: 44px;
+    height: 44px;
+  }
+  .studio-workspace
+    .phone-panel
+    .precision-control
+    .precision-readout
+    :is(.precision-value, .precision-reset) {
+    min-height: 40px;
+  }
+  .studio-workspace .phone-panel .precision-control .precision-neutral {
+    top: 16px;
+  }
+  .studio-workspace .dock-tool-scroll {
+    scroll-snap-type: x proximity;
+    scroll-padding-inline: 8px;
+    overscroll-behavior-x: contain;
+  }
+  .studio-workspace .dock-tool-scroll > button {
+    scroll-snap-align: center;
+  }
+  .canvas-stage .canvas-selection-peek {
+    top: 3px;
+    inset-inline-start: 91px;
+    min-height: 44px;
+    padding-inline: 10px;
+  }
+  .image-frame .image-handle {
+    width: 44px;
+    height: 44px;
+  }
+  .selection-rotation-control > label {
+    flex-wrap: wrap;
+    gap: 3px 6px;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .canvas-stage .canvas-selection-peek {
+    transition: none;
+  }
+  .image-frame > .selection-preview[data-preview-mode='locate'] {
+    animation: none;
+  }
+}

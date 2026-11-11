@@ -406,6 +406,8 @@ export const residualEnglish: Readonly<Record<string, string>> = {
   '这张原图超过 v3 编辑预算，请明确准备较小副本。':
     'This source exceeds the v3 editing budget. Explicitly prepare a smaller copy.',
   正在加载本地分析模型: 'Loading local analysis models',
+  '人物识别超时，已停止。请重试识别，或继续使用手动局部、绘制与液化。':
+    'People detection timed out and stopped. Retry detection, or continue with manual regions, painting, and liquify.',
   '分析超时，已终止。可改用手动局部。':
     'Analysis timed out and stopped. Use manual regions instead.',
   '本地人像模型尚未安装。仍可使用手动局部、绘制与液化。':

@@ -1,3 +1,4 @@
+import './studio-styles.css';
 import {
   lazy,
   Suspense,
@@ -30,8 +31,11 @@ import {
 import { api, ApiError, downloadBlob, errorMessage, filenameBase, jsonRequest } from './lib/api';
 import { secureUuid } from './lib/uuid';
 import { t, useLocale } from './i18n';
-import { createSampleRecipe, type SampleSettings } from './about/sample';
+import { createSampleRecipe, getSampleImage, type SampleSettings } from './about/sample';
 import { aboutCopy } from './about/copy';
+import { isAccountSiteRoute, type SiteRoute } from './about/site-route';
+import { AccountPageFrame } from './account/AccountPageFrame';
+import { accountPageCopy } from './account/page-copy';
 import type {
   Artwork,
   Asset,
@@ -159,14 +163,16 @@ const AccountCenter = createDeferredFeature(
   async () => ({ default: (await import('./account/AccountCenter')).AccountCenter }),
   '账号信息',
   (state, props) => (
-    <Modal
+    <AccountPageFrame
       title={t('账号与使用')}
-      profile="account"
-      onClose={props.onClose}
-      canClose={() => !props.loggingOut}
+      config={props.config}
+      onBack={props.onClose}
+      onHome={props.onHome}
+      busy={props.loggingOut}
+      wide
     >
       <DeferredFeatureStatus {...state} />
-    </Modal>
+    </AccountPageFrame>
   ),
 );
 
@@ -197,35 +203,49 @@ type Dialog =
   | null;
 export type StudioEntry = {
   key: number;
-  mode: 'studio' | 'password' | 'register' | 'reset' | 'sample';
+  mode: 'studio' | 'password' | 'register' | 'reset' | 'account' | 'welcome' | 'usage' | 'sample';
   sample?: SampleSettings;
 };
 type AppProps = {
   active?: boolean;
+  siteRoute?: SiteRoute;
+  accountBackToAbout?: boolean;
   entryRequest?: StudioEntry;
   publicConfig?: PublicConfig | null;
   onAbout?: () => void;
   onEntryCancel?: () => void;
   onEntryComplete?: () => void;
-  onRegisterLeaveGuard?: (guard: (() => boolean) | null) => void;
+  onPageNavigate?: (route: SiteRoute, replace?: boolean) => void;
+  onRegisterLeaveGuard?: (guard: ((next: SiteRoute) => boolean) | null) => void;
 };
 export function App({
   active = true,
+  siteRoute = 'studio',
+  accountBackToAbout = false,
   entryRequest,
   publicConfig,
   onAbout,
   onEntryCancel,
   onEntryComplete,
+  onPageNavigate,
   onRegisterLeaveGuard,
 }: AppProps = {}) {
   const locale = useLocale();
   const introduction = aboutCopy(locale);
+  const accountCopy = accountPageCopy(locale);
   const activeRef = useRef(active);
   activeRef.current = active;
   const entryHandled = useRef<number | null>(null);
   const entryKey = useRef(entryRequest?.key);
   entryKey.current = entryRequest?.key;
   const entryAuth = useRef(false);
+  const authExitGuard = useRef<(() => boolean) | null>(null);
+  const registerAuthExitGuard = useCallback((guard: (() => boolean) | null) => {
+    authExitGuard.current = guard;
+  }, []);
+  const postLoginRoute = useRef<SiteRoute>('studio');
+  const registeredActor = useRef<string | null>(null);
+  const accountReturnFocus = useRef<HTMLElement | null>(null);
   const rawEditor = useEditor();
   const workspaceLayout = useWorkspaceLayout();
   const studioTheme = useStudioTheme(workspaceLayout.layout.theme);
@@ -306,6 +326,13 @@ export function App({
   const [comparing, setComparing] = useState(false);
   const [ops, setOps] = useState(false);
   const [dialog, setDialog] = useState<Dialog>(null);
+  const accountPageOpen = dialog === 'auth' || dialog === 'account' || dialog === 'accountReady';
+  const accountPagePending =
+    isAccountSiteRoute(siteRoute) && (booting || entryHandled.current !== entryRequest?.key);
+  const workspaceVisible = !accountPageOpen && !accountPagePending;
+  activeRef.current = active && workspaceVisible;
+  const accountRouteRef = useRef(false);
+  accountRouteRef.current = isAccountSiteRoute(siteRoute);
   const [saving, setSaving] = useState(false);
   const [opening, setOpening] = useState(false);
   const [notice, setNotice] = useState<Notice | null>(null);
@@ -332,9 +359,17 @@ export function App({
     [],
   );
   const dismissNotice = useCallback(() => setNotice(null), []);
-  const closeDialog = useCallback(() => setDialog(null), []);
+  const closeDialog = useCallback(() => {
+    setDialog(null);
+    if (accountRouteRef.current) {
+      onEntryComplete?.();
+      restoreAccountFocus();
+    }
+  }, [onEntryComplete]);
   useEffect(() => {
     if (active) return;
+    if (dialogRef.current === 'auth' && !authCompleted.current) void reconcileSession();
+    postLoginRoute.current = 'studio';
     setDialog(null);
     setSidebarOpen(false);
     entryAuth.current = false;
@@ -484,6 +519,7 @@ export function App({
 
   function showSession(next: Session, previousActor: string | null) {
     const changed = previousActor !== (next.user?.id ?? null);
+    if (changed) registeredActor.current = null;
     const previousMembership = sessionRef.current.spaces.find(
       (space) => space.id === navigationScope.current.spaceId,
     );
@@ -542,8 +578,21 @@ export function App({
     }
   }
 
-  function openAuth(mode: AuthMode = 'password') {
+  function rememberAccountFocus() {
+    const target = document.activeElement;
+    if (target instanceof HTMLElement && target.closest('.site-workspace-frame'))
+      accountReturnFocus.current = target;
+  }
+  function restoreAccountFocus() {
+    const target = accountReturnFocus.current;
+    requestAnimationFrame(() => {
+      if (target?.isConnected && !target.closest('[hidden], [inert]'))
+        target.focus({ preventScroll: true });
+    });
+  }
+  function openAuth(mode: AuthMode = 'password', fromRoute = false) {
     if (sessionFence.busy) return;
+    rememberAccountFocus();
     sessionFence.invalidateReads();
     authOwner.current = sessionFence.snapshot();
     authCompleted.current = false;
@@ -552,6 +601,10 @@ export function App({
     setSidebarOpen(false);
     setLogoutError(null);
     setDialog('auth');
+    if (!fromRoute) {
+      postLoginRoute.current = 'studio';
+      onPageNavigate?.(mode === 'register' || mode === 'reset' ? mode : 'login');
+    }
   }
 
   function closeAuth(intent: number) {
@@ -559,22 +612,31 @@ export function App({
     const destination = postAuthDialog.current ?? (pendingImport ? 'importSettings' : null);
     postAuthDialog.current = null;
     setDialog(destination);
+    entryAuth.current = false;
     // A reset whose response was lost may already have revoked this session.
     if (!authCompleted.current) {
       void reconcileSession();
-      if (entryAuth.current) {
-        entryAuth.current = false;
-        onEntryCancel?.();
-      }
+      postLoginRoute.current = 'studio';
+      onEntryCancel?.();
+    } else if (destination === 'accountReady') {
+      onPageNavigate?.('welcome', true);
+    } else if (postLoginRoute.current !== 'studio') {
+      onPageNavigate?.(postLoginRoute.current, true);
+      postLoginRoute.current = 'studio';
+    } else {
+      onEntryComplete?.();
     }
+    restoreAccountFocus();
   }
 
-  function openAccount(tab: typeof accountEntry.tab = 'overview') {
+  function openAccount(tab: typeof accountEntry.tab = 'overview', fromRoute = false) {
     if (!sessionRef.current.user) return openAuth();
+    rememberAccountFocus();
     setAccountEntry((entry) => ({ tab, key: entry.key + 1 }));
     setSidebarOpen(false);
     setLogoutError(null);
     setDialog('account');
+    if (!fromRoute) onPageNavigate?.('account');
   }
   async function openPasswordReset() {
     if (saveLock.current || accountActivity.current.ai || accountActivity.current.voice) {
@@ -651,7 +713,7 @@ export function App({
     };
   }, [sessionFence]);
   useEffect(() => {
-    if (!active) return;
+    if (!active || !workspaceVisible) return;
     document.title = brand + ' · ' + (project?.title ?? t('创作工作台'));
     const meta = document.querySelector<HTMLMetaElement>('meta[name=description]');
     if (meta && config?.brand.tagline) meta.content = config.brand.tagline;
@@ -664,6 +726,7 @@ export function App({
     config?.brand.logoAssetId,
     config?.brand.tagline,
     active,
+    workspaceVisible,
     locale,
   ]);
   useEffect(() => {
@@ -804,10 +867,8 @@ export function App({
     replaceSession(next);
     authOwner.current = sessionFence.snapshot();
     authCompleted.current = true;
-    if (entryAuth.current) {
-      entryAuth.current = false;
-      onEntryComplete?.();
-    }
+    entryAuth.current = false;
+    if (meta?.method === 'register') registeredActor.current = next.user?.id ?? null;
     postAuthDialog.current = pendingImport
       ? 'importSettings'
       : meta?.method === 'register'
@@ -915,6 +976,8 @@ export function App({
       setDocumentDirty(false);
       setView('editor');
       setDialog(null);
+      onEntryComplete?.();
+      restoreAccountFocus();
       notify(
         confirmed.user
           ? t('当前登录已在其他窗口改变，已同步账号状态。')
@@ -1707,6 +1770,7 @@ export function App({
     setView(next);
     setInspectorOpen(false);
     setAiOpen(false);
+    if (siteRoute === 'usage' && next !== 'usage') onPageNavigate?.('studio', true);
     return true;
   }
   async function openRevision(next: Pick<Revision, 'id' | 'version'>) {
@@ -1812,13 +1876,14 @@ export function App({
       const capturedRequest = entryRequest.key;
       const isCurrent = () =>
         !controller.signal.aborted && activeRef.current && entryKey.current === capturedRequest;
-      void fetch('/about/color-study.webp', { signal: controller.signal })
+      const sampleImage = getSampleImage(entryRequest.sample);
+      void fetch(sampleImage, { signal: controller.signal })
         .then(async (response) => {
           if (!response.ok) throw new Error(t('示例图片暂时无法加载。'));
           const blob = await response.blob();
           if (!isCurrent()) return;
           const imported = await importFile(
-            new File([blob], 'color-study.webp', { type: 'image/webp' }),
+            new File([blob], sampleImage.split('/').pop() ?? 'sample.webp', { type: 'image/webp' }),
             createSampleRecipe(entryRequest.sample),
             isCurrent,
           );
@@ -1833,23 +1898,76 @@ export function App({
       return () => controller.abort();
     }
     entryHandled.current = entryRequest.key;
-    if (entryRequest.mode === 'studio') return;
+    if (entryRequest.mode === 'studio') {
+      if (dialogRef.current === 'auth' && !authCompleted.current) void reconcileSession();
+      postLoginRoute.current = 'studio';
+      entryAuth.current = false;
+      if (
+        dialogRef.current === 'auth' ||
+        dialogRef.current === 'account' ||
+        dialogRef.current === 'accountReady'
+      ) {
+        setDialog(null);
+        restoreAccountFocus();
+      }
+      return;
+    }
+    if (
+      entryRequest.mode === 'account' ||
+      entryRequest.mode === 'welcome' ||
+      entryRequest.mode === 'usage'
+    ) {
+      if (!sessionRef.current.user) {
+        postLoginRoute.current = entryRequest.mode === 'welcome' ? 'studio' : entryRequest.mode;
+        openAuth('password', true);
+        onPageNavigate?.('login', true);
+      } else if (entryRequest.mode === 'usage') {
+        void changeView('usage').then((changed) => {
+          if (changed) setDialog(null);
+          else onEntryComplete?.();
+        });
+      } else if (entryRequest.mode === 'welcome') {
+        if (registeredActor.current === sessionRef.current.user.id) setDialog('accountReady');
+        else onPageNavigate?.('account', true);
+      } else if (dialogRef.current !== 'account') openAccount('overview', true);
+      return;
+    }
+    if (dialogRef.current === 'auth' && authEntry.mode === entryRequest.mode) return;
     if (sessionRef.current.user && entryRequest.mode !== 'reset') {
       onEntryComplete?.();
       return;
     }
     entryAuth.current = true;
-    openAuth(entryRequest.mode);
+    openAuth(entryRequest.mode, true);
   }, [active, booting, entryRequest?.key]);
   useEffect(() => {
-    onRegisterLeaveGuard?.(() => {
-      if (!accountActivity.current.ai && !accountActivity.current.voice && !saveLock.current)
+    if (!active || booting || session.user || (dialog !== 'account' && dialog !== 'accountReady'))
+      return;
+    // An expired session cannot leave an empty account page behind. Retain the
+    // local editor and send this page through the same real authentication owner.
+    postLoginRoute.current = dialog === 'account' ? 'account' : 'studio';
+    openAuth('password', true);
+    onPageNavigate?.('login', true);
+  }, [active, booting, session.user?.id, dialog]);
+  useEffect(() => {
+    onRegisterLeaveGuard?.((next) => {
+      if (
+        sessionFence.busy ||
+        (dialogRef.current === 'auth' && authExitGuard.current?.() === false)
+      ) {
+        notify(accountPageCopy(locale).waiting);
+        return false;
+      }
+      if (
+        next !== 'about' ||
+        (!accountActivity.current.ai && !accountActivity.current.voice && !saveLock.current)
+      )
         return true;
       notify(t('请先完成保存或结束当前请求，再返回介绍页。'));
       return false;
     });
     return () => onRegisterLeaveGuard?.(null);
-  }, [onRegisterLeaveGuard]);
+  }, [onRegisterLeaveGuard, locale, sessionFence, notify]);
 
   const requireProject = (
     <EmptyState
@@ -1882,12 +2000,15 @@ export function App({
   const aiPresence = usePresence(activePanelId === 'ai', 'panel-frame');
   const keepAIActive = aiActivity.callActive || aiActivity.requestActive;
   const lastDialog = useRef<Dialog>(null);
-  if (dialog) lastDialog.current = dialog;
+  const modalDialog = accountPageOpen ? null : dialog;
+  if (modalDialog) lastDialog.current = modalDialog;
   const dialogPresence = usePresence(
-    !!dialog,
-    modalMotionRoleForDialog(dialog ?? lastDialog.current),
+    !!modalDialog,
+    modalMotionRoleForDialog(modalDialog ?? lastDialog.current),
   );
-  const renderedDialog = dialog ?? (dialogPresence.present ? lastDialog.current : null);
+  const renderedDialog = accountPageOpen
+    ? dialog
+    : (modalDialog ?? (dialogPresence.present ? lastDialog.current : null));
   const canvasInsets = workspaceCanvasInsets(
     activePanel,
     workspaceLayout.view,
@@ -2045,715 +2166,761 @@ export function App({
   ];
   return (
     <>
-      {ops && session.user?.isOperator ? (
-        <Suspense
-          fallback={
-            <div className="content-view">
-              <Busy label={t('正在打开运营管理')} />
-            </div>
-          }
-        >
-          <OpsDashboard
-            key={session.user.id}
-            onBack={() => setOps(false)}
-            onConfigChanged={refreshConfig}
-          />
-        </Suspense>
-      ) : (
-        <div
-          className={`app-shell canvas-workspace studio-workspace view-${view} theme-${studioTheme.theme} ${workspaceLayout.focused ? 'is-focused' : ''}`}
-          data-has-image={!!editor.file}
-        >
-          <Sidebar
-            brand={brand}
-            logoUrl={brandLogoUrl(config?.brand)}
-            session={session}
-            spaceId={spaceId}
-            projects={projects}
-            sharedProjects={sharedProjects}
-            selectedProject={project}
-            open={sidebarOpen}
-            onClose={() => setSidebarOpen(false)}
-            onSpace={selectSpace}
-            onProject={(next) => void loadProject(next)}
-            onNewProject={openCreateProject}
-            onNewTeam={() => setDialog('team')}
-            onJoinTeam={() => setDialog('join')}
-            onTeamSettings={() => setDialog('teamSettings')}
-            onAuth={() => openAuth()}
-            onAccount={() => openAccount()}
-            onLogout={() => openAccount('data')}
-            onOps={async () => {
-              if (aiActivity.callActive || aiActivity.requestActive || teamVoice.state !== 'idle') {
-                notify(t('请先结束当前 AI 请求或语音通话，再打开运营管理。'));
-                return;
-              }
-              if (
-                documentDirty &&
-                !(await confirmNavigation(t('文档还有未保存的修改，确定进入运营管理吗？')))
-              )
-                return;
-              setOps(true);
-            }}
-          />
-          <div className="workspace">
-            <header className="floating-topbar" data-motion="topbar">
-              <div className="workspace-identity">
-                <IconButton label={t('打开空间与项目')} onClick={() => setSidebarOpen(true)}>
-                  <List size={21} />
-                </IconButton>
-                <button
-                  type="button"
-                  className="workspace-home-link"
-                  aria-label={introduction.homeLabel}
-                  onClick={async () => {
-                    if (!onAbout) return;
-                    if (
-                      accountActivity.current.ai ||
-                      accountActivity.current.voice ||
-                      saveLock.current
-                    ) {
-                      notify(t('请先完成保存或结束当前请求，再返回介绍页。'));
-                      return;
-                    }
-                    if (documentDirty) {
-                      if (
-                        !(await confirmNavigation(
-                          t('文档仍在本页保留。返回介绍页后，请勿关闭页面。'),
-                          {
-                            title: t('返回介绍页'),
-                            confirmLabel: t('返回介绍页'),
-                            cancelLabel: t('继续编辑'),
-                          },
-                        ))
-                      )
-                        return;
-                    }
-                    onAbout();
-                  }}
-                >
-                  <Brand name={brand} logoUrl={brandLogoUrl(config?.brand)} compact />
-                </button>
-                <div className="workspace-project-title">
-                  <strong
-                    title={artwork?.title ?? project?.title ?? editor.file?.name ?? t('本地创作')}
-                  >
-                    {artwork?.title ?? project?.title ?? t('本地创作')}
-                  </strong>
-                  <span
-                    className="workspace-save-state"
-                    data-state={
-                      saving
-                        ? 'saving'
-                        : artwork && !dirty
-                          ? 'saved'
-                          : editor.file
-                            ? 'draft'
-                            : 'local'
-                    }
-                    role="status"
-                  >
-                    {saving
-                      ? t('正在保存')
-                      : artwork && !dirty
-                        ? t('版本 {v0} 已保存', { v0: artwork.headVersion })
-                        : editor.file
-                          ? t('本地草稿')
-                          : t('图片不会自动上传')}
-                  </span>
-                </div>
+      <div className="site-workspace-frame" hidden={!workspaceVisible} inert={!workspaceVisible}>
+        {ops && session.user?.isOperator ? (
+          <Suspense
+            fallback={
+              <div className="content-view">
+                <Busy label={t('正在打开运营管理')} />
               </div>
-              <nav className="compact-view-tabs" aria-label={t('工作视图')}>
-                {views.map((item) => (
-                  <button
-                    key={item.id}
-                    className={view === item.id ? 'active' : ''}
-                    onClick={() => changeView(item.id)}
-                    aria-label={t(item.label)}
-                    title={t(item.label)}
-                    aria-current={view === item.id ? 'page' : undefined}
-                  >
-                    {item.icon}
-                    <span>{t(item.label)}</span>
-                  </button>
-                ))}
-              </nav>
-              <button
-                type="button"
-                className="mobile-view-trigger"
-                aria-label={t('切换工作视图')}
-                aria-haspopup="dialog"
-                aria-expanded={dialog === 'navigation'}
-                onClick={() => setDialog('navigation')}
-              >
-                <StudioGlyph name={view} size={19} />
-                <span>{t(views.find((item) => item.id === view)?.label ?? '')}</span>
-                <StudioGlyph name="chevron" size={14} />
-              </button>
-              <div className="workspace-top-actions">
-                <IconButton
-                  label={t('搜索工具与操作（Ctrl / ⌘ K）')}
-                  className="studio-search-trigger"
-                  onClick={() => setDialog('commands')}
-                >
-                  <MagnifyingGlass size={19} />
-                </IconButton>
-                <IconButton
-                  label={studioTheme.theme === 'light' ? t('切换深色模式') : t('切换浅色模式')}
-                  className="theme-toggle"
-                  onClick={studioTheme.toggle}
-                >
-                  <StudioGlyph name={studioTheme.theme === 'light' ? 'moon' : 'sun'} />
-                </IconButton>
-                <IconButton
-                  label={t('专注画面（F）')}
-                  className="focus-toggle"
-                  onClick={() => workspaceLayout.setFocused(true)}
-                >
-                  <CornersOut size={20} />
-                </IconButton>
-                <IconButton
-                  label={t('布局与工作台设置')}
-                  className="workspace-settings-trigger"
-                  aria-haspopup="dialog"
-                  onClick={() => setDialog('settings')}
-                >
-                  <StudioGlyph name="settings" />
-                </IconButton>
-                <button
-                  className="button button-secondary top-save"
-                  aria-label={t('保存')}
-                  disabled={!editor.file || saving || opening || editor.loading}
-                  onClick={save}
-                >
-                  {saving ? <Busy label="" /> : <CloudArrowUp size={20} />}
-                  <span>{t('保存')}</span>
-                </button>
-                <button
-                  className="button button-primary top-export"
-                  aria-label={t('导出')}
-                  disabled={!editor.file || opening || editor.loading}
-                  onClick={() => setDialog('export')}
-                >
-                  <StudioGlyph name="export" size={20} />
-                  <span>{t('导出')}</span>
-                </button>
-                <button
-                  type="button"
-                  className={`studio-account ${session.user ? 'is-signed-in' : ''}`}
-                  aria-label={
-                    session.user
-                      ? t('账户：{v0}', { v0: session.user.displayName })
-                      : t('登录创作空间')
-                  }
-                  onClick={() => openAccount()}
-                >
-                  {session.user ? session.user.displayName.slice(0, 1) : t('登录')}
-                </button>
-              </div>
-            </header>
-            {cloudError && (
-              <div className="cloud-status" role="status">
-                <Info size={16} />
-                <span>{t('云端暂不可用，本地编辑可以继续。')}</span>
-                <button
-                  onClick={() => {
-                    setCloudError(null);
-                    refreshConfig();
-                    if (dialogRef.current !== 'auth') void reconcileSession();
-                    setRefreshToken((value) => value + 1);
-                  }}
-                >
-                  {t('重试')}
-                </button>
-              </div>
-            )}
-            {view !== 'editor' && teamVoice.state !== 'idle' && (
-              <TeamVoiceBanner room={teamVoice} onReturn={() => changeView('editor')} />
-            )}
-            {keepAIActive && activePanelId !== 'ai' && (
-              <div className="ai-activity-banner" role="status">
-                <StudioGlyph name={aiActivity.callActive ? 'voice' : 'ai'} size={18} />
-                <span>
-                  {aiActivity.callState === 'connecting'
-                    ? t('AI 语音正在连接')
-                    : aiActivity.callState === 'closing'
-                      ? t('AI 通话正在结束')
-                      : aiActivity.callState === 'active'
-                        ? aiActivity.muted
-                          ? t('AI 麦克风已静音')
-                          : t('AI 通话进行中')
-                        : t('AI 正在处理请求')}
-                </span>
-                {aiActivity.callActive && (
-                  <div className="ai-activity-controls">
-                    <IconButton
-                      label={aiActivity.muted ? t('开启麦克风') : t('静音麦克风')}
-                      aria-pressed={aiActivity.muted}
-                      disabled={aiActivity.callState !== 'active' || !aiActivity.onMute}
-                      onClick={aiActivity.onMute}
-                    >
-                      {aiActivity.muted ? <MicrophoneSlash size={18} /> : <Microphone size={18} />}
-                    </IconButton>
-                    <IconButton
-                      label={t('结束实时通话')}
-                      className="voice-end"
-                      disabled={aiActivity.callState === 'closing' || !aiActivity.onEnd}
-                      onClick={aiActivity.onEnd}
-                    >
-                      <PhoneDisconnect size={18} />
-                    </IconButton>
-                  </div>
-                )}
-                <button type="button" className="ai-activity-return" onClick={openAI}>
-                  {t('返回 AI 助手')}
-                </button>
-              </div>
-            )}
-            <div
-              className="workspace-canvas-status"
-              ref={setCanvasStatusContainer}
-              hidden={view !== 'editor'}
-              inert={view !== 'editor'}
+            }
+          >
+            <OpsDashboard
+              key={session.user.id}
+              onBack={() => setOps(false)}
+              onConfigChanged={refreshConfig}
             />
-            <div className="workspace-notice-anchor" ref={setNoticeContainer} />
-            <div className="workspace-body">
-              <MotionSwitch
-                switchKey={view}
-                className="workspace-view-transition"
-                data-motion-pixels="true"
-              >
-                {view === 'editor' ? (
-                  <>
-                    <div
-                      className="editor-content"
-                      style={{
-                        left: canvasInsets.left,
-                        right: canvasInsets.right,
-                        bottom: canvasInsets.bottom,
-                      }}
+          </Suspense>
+        ) : (
+          <div
+            className={`app-shell canvas-workspace studio-workspace view-${view} theme-${studioTheme.theme} ${workspaceLayout.focused ? 'is-focused' : ''}`}
+            data-has-image={!!editor.file}
+          >
+            <Sidebar
+              brand={brand}
+              logoUrl={brandLogoUrl(config?.brand)}
+              session={session}
+              spaceId={spaceId}
+              projects={projects}
+              sharedProjects={sharedProjects}
+              selectedProject={project}
+              open={sidebarOpen}
+              onClose={() => setSidebarOpen(false)}
+              onSpace={selectSpace}
+              onProject={(next) => void loadProject(next)}
+              onNewProject={openCreateProject}
+              onNewTeam={() => setDialog('team')}
+              onJoinTeam={() => setDialog('join')}
+              onTeamSettings={() => setDialog('teamSettings')}
+              onAuth={() => openAuth()}
+              onAccount={() => openAccount()}
+              onLogout={() => openAccount('data')}
+              onOps={async () => {
+                if (
+                  aiActivity.callActive ||
+                  aiActivity.requestActive ||
+                  teamVoice.state !== 'idle'
+                ) {
+                  notify(t('请先结束当前 AI 请求或语音通话，再打开运营管理。'));
+                  return;
+                }
+                if (
+                  documentDirty &&
+                  !(await confirmNavigation(t('文档还有未保存的修改，确定进入运营管理吗？')))
+                )
+                  return;
+                setOps(true);
+              }}
+            />
+            <div className="workspace">
+              <header className="floating-topbar" data-motion="topbar">
+                <div className="workspace-identity">
+                  <IconButton label={t('打开空间与项目')} onClick={() => setSidebarOpen(true)}>
+                    <List size={21} />
+                  </IconButton>
+                  <button
+                    type="button"
+                    className="workspace-home-link"
+                    aria-label={introduction.homeLabel}
+                    onClick={async () => {
+                      if (!onAbout) return;
+                      if (
+                        accountActivity.current.ai ||
+                        accountActivity.current.voice ||
+                        saveLock.current
+                      ) {
+                        notify(t('请先完成保存或结束当前请求，再返回介绍页。'));
+                        return;
+                      }
+                      if (documentDirty) {
+                        if (
+                          !(await confirmNavigation(
+                            t('文档仍在本页保留。返回介绍页后，请勿关闭页面。'),
+                            {
+                              title: t('返回介绍页'),
+                              confirmLabel: t('返回介绍页'),
+                              cancelLabel: t('继续编辑'),
+                            },
+                          ))
+                        )
+                          return;
+                      }
+                      onAbout();
+                    }}
+                  >
+                    <Brand name={brand} logoUrl={brandLogoUrl(config?.brand)} compact />
+                  </button>
+                  <div className="workspace-project-title">
+                    <strong
+                      title={artwork?.title ?? project?.title ?? editor.file?.name ?? t('本地创作')}
                     >
-                      {editor.file && !workspaceLayout.focused && (
-                        <div className="image-action-strip" data-motion="canvas-toolbar">
-                          <IconButton label={t('打开另一张图片')} onClick={() => void importFile()}>
-                            <Plus size={20} />
-                          </IconButton>
-                          <IconButton label={t('打开草图板')} onClick={() => setDialog('drawing')}>
-                            <PencilSimple size={19} />
-                          </IconButton>
-                        </div>
-                      )}
-                      {(collaboration.enabled || teamVoiceArtwork) && (
-                        <CollaborationStatus
+                      {artwork?.title ?? project?.title ?? t('本地创作')}
+                    </strong>
+                    <span
+                      className="workspace-save-state"
+                      data-state={
+                        saving
+                          ? 'saving'
+                          : artwork && !dirty
+                            ? 'saved'
+                            : editor.file
+                              ? 'draft'
+                              : 'local'
+                      }
+                      role="status"
+                    >
+                      {saving
+                        ? t('正在保存')
+                        : artwork && !dirty
+                          ? t('版本 {v0} 已保存', { v0: artwork.headVersion })
+                          : editor.file
+                            ? t('本地草稿')
+                            : t('图片不会自动上传')}
+                    </span>
+                  </div>
+                </div>
+                <nav className="compact-view-tabs" aria-label={t('工作视图')}>
+                  {views.map((item) => (
+                    <button
+                      key={item.id}
+                      className={view === item.id ? 'active' : ''}
+                      onClick={() => changeView(item.id)}
+                      aria-label={t(item.label)}
+                      title={t(item.label)}
+                      aria-current={view === item.id ? 'page' : undefined}
+                    >
+                      {item.icon}
+                      <span>{t(item.label)}</span>
+                    </button>
+                  ))}
+                </nav>
+                <button
+                  type="button"
+                  className="mobile-view-trigger"
+                  aria-label={t('切换工作视图')}
+                  aria-haspopup="dialog"
+                  aria-expanded={dialog === 'navigation'}
+                  onClick={() => setDialog('navigation')}
+                >
+                  <StudioGlyph name={view} size={19} />
+                  <span>{t(views.find((item) => item.id === view)?.label ?? '')}</span>
+                  <StudioGlyph name="chevron" size={14} />
+                </button>
+                <div className="workspace-top-actions">
+                  <IconButton
+                    label={t('搜索工具与操作（Ctrl / ⌘ K）')}
+                    className="studio-search-trigger"
+                    onClick={() => setDialog('commands')}
+                  >
+                    <MagnifyingGlass size={19} />
+                  </IconButton>
+                  <IconButton
+                    label={studioTheme.theme === 'light' ? t('切换深色模式') : t('切换浅色模式')}
+                    className="theme-toggle"
+                    onClick={studioTheme.toggle}
+                  >
+                    <StudioGlyph name={studioTheme.theme === 'light' ? 'moon' : 'sun'} />
+                  </IconButton>
+                  <IconButton
+                    label={t('专注画面（F）')}
+                    className="focus-toggle"
+                    onClick={() => workspaceLayout.setFocused(true)}
+                  >
+                    <CornersOut size={20} />
+                  </IconButton>
+                  <IconButton
+                    label={t('布局与工作台设置')}
+                    className="workspace-settings-trigger"
+                    aria-haspopup="dialog"
+                    onClick={() => setDialog('settings')}
+                  >
+                    <StudioGlyph name="settings" />
+                  </IconButton>
+                  <button
+                    className="button button-secondary top-save"
+                    aria-label={t('保存')}
+                    disabled={!editor.file || saving || opening || editor.loading}
+                    onClick={save}
+                  >
+                    {saving ? <Busy label="" /> : <CloudArrowUp size={20} />}
+                    <span>{t('保存')}</span>
+                  </button>
+                  <button
+                    className="button button-primary top-export"
+                    aria-label={t('导出')}
+                    disabled={!editor.file || opening || editor.loading}
+                    onClick={() => setDialog('export')}
+                  >
+                    <StudioGlyph name="export" size={20} />
+                    <span>{t('导出')}</span>
+                  </button>
+                  <button
+                    type="button"
+                    className={`studio-account ${session.user ? 'is-signed-in' : ''}`}
+                    aria-label={
+                      session.user
+                        ? t('账户：{v0}', { v0: session.user.displayName })
+                        : t('登录创作空间')
+                    }
+                    onClick={() => openAccount()}
+                  >
+                    {session.user ? session.user.displayName.slice(0, 1) : t('登录')}
+                  </button>
+                </div>
+              </header>
+              {cloudError && (
+                <div className="cloud-status" role="status">
+                  <Info size={16} />
+                  <span>{t('云端暂不可用，本地编辑可以继续。')}</span>
+                  <button
+                    onClick={() => {
+                      setCloudError(null);
+                      refreshConfig();
+                      if (dialogRef.current !== 'auth') void reconcileSession();
+                      setRefreshToken((value) => value + 1);
+                    }}
+                  >
+                    {t('重试')}
+                  </button>
+                </div>
+              )}
+              {view !== 'editor' && teamVoice.state !== 'idle' && (
+                <TeamVoiceBanner room={teamVoice} onReturn={() => changeView('editor')} />
+              )}
+              {keepAIActive && activePanelId !== 'ai' && (
+                <div className="ai-activity-banner" role="status">
+                  <StudioGlyph name={aiActivity.callActive ? 'voice' : 'ai'} size={18} />
+                  <span>
+                    {aiActivity.callState === 'connecting'
+                      ? t('AI 语音正在连接')
+                      : aiActivity.callState === 'closing'
+                        ? t('AI 通话正在结束')
+                        : aiActivity.callState === 'active'
+                          ? aiActivity.muted
+                            ? t('AI 麦克风已静音')
+                            : t('AI 通话进行中')
+                          : t('AI 正在处理请求')}
+                  </span>
+                  {aiActivity.callActive && (
+                    <div className="ai-activity-controls">
+                      <IconButton
+                        label={aiActivity.muted ? t('开启麦克风') : t('静音麦克风')}
+                        aria-pressed={aiActivity.muted}
+                        disabled={aiActivity.callState !== 'active' || !aiActivity.onMute}
+                        onClick={aiActivity.onMute}
+                      >
+                        {aiActivity.muted ? (
+                          <MicrophoneSlash size={18} />
+                        ) : (
+                          <Microphone size={18} />
+                        )}
+                      </IconButton>
+                      <IconButton
+                        label={t('结束实时通话')}
+                        className="voice-end"
+                        disabled={aiActivity.callState === 'closing' || !aiActivity.onEnd}
+                        onClick={aiActivity.onEnd}
+                      >
+                        <PhoneDisconnect size={18} />
+                      </IconButton>
+                    </div>
+                  )}
+                  <button type="button" className="ai-activity-return" onClick={openAI}>
+                    {t('返回 AI 助手')}
+                  </button>
+                </div>
+              )}
+              <div
+                className="workspace-canvas-status"
+                ref={setCanvasStatusContainer}
+                hidden={view !== 'editor'}
+                inert={view !== 'editor'}
+              />
+              <div className="workspace-notice-anchor" ref={setNoticeContainer} />
+              <div className="workspace-body">
+                <MotionSwitch
+                  switchKey={view}
+                  className="workspace-view-transition"
+                  data-motion-pixels="true"
+                >
+                  {view === 'editor' ? (
+                    <>
+                      <div
+                        className="editor-content"
+                        style={{
+                          left: canvasInsets.left,
+                          right: canvasInsets.right,
+                          bottom: canvasInsets.bottom,
+                        }}
+                      >
+                        {editor.file && !workspaceLayout.focused && (
+                          <div className="image-action-strip" data-motion="canvas-toolbar">
+                            <IconButton
+                              label={t('打开另一张图片')}
+                              onClick={() => void importFile()}
+                            >
+                              <Plus size={20} />
+                            </IconButton>
+                            <IconButton
+                              label={t('打开草图板')}
+                              onClick={() => setDialog('drawing')}
+                            >
+                              <PencilSimple size={19} />
+                            </IconButton>
+                          </div>
+                        )}
+                        {(collaboration.enabled || teamVoiceArtwork) && (
+                          <CollaborationStatus
+                            collaboration={collaboration}
+                            onReload={() => void openArtwork(artwork!.id)}
+                            onFork={() => project && void saveToProject(project, true)}
+                            teamVoice={teamVoiceArtwork ? teamVoice : undefined}
+                            captureVoiceContext={captureCurrentImage}
+                          />
+                        )}
+                        <CanvasStage
+                          editor={editor}
+                          statusContainer={canvasStatusContainer}
                           collaboration={collaboration}
-                          onReload={() => void openArtwork(artwork!.id)}
-                          onFork={() => project && void saveToProject(project, true)}
-                          teamVoice={teamVoiceArtwork ? teamVoice : undefined}
-                          captureVoiceContext={captureCurrentImage}
+                          group={group}
+                          onImport={(file) => void importFile(file)}
+                          onAI={openAI}
+                          onDraw={() => setDialog('drawing')}
+                          accountState={booting ? 'loading' : session.user ? 'signed-in' : 'guest'}
+                          onSignIn={() => openAuth()}
+                          onRegister={() => openAuth('register')}
+                          comparing={comparing}
+                          setComparing={setComparing}
+                          sampling={sampling}
+                          onSample={(color) => {
+                            setPickedColor(color);
+                            setSampling(false);
+                            setGroup('color');
+                            setInspectorOpen(true);
+                            notify(t('已取色 {v0}', { v0: color }));
+                          }}
+                        />
+                      </div>
+                      {!workspaceLayout.focused && (
+                        <ToolDock
+                          group={group}
+                          inspectorOpen={inspectorOpen}
+                          aiOpen={aiOpen}
+                          compact={workspaceLayout.view.bucket === 'phone'}
+                          onTool={chooseTool}
+                          onAI={() => {
+                            if (aiOpen) setAiOpen(false);
+                            else openAI();
+                          }}
                         />
                       )}
-                      <CanvasStage
-                        editor={editor}
-                        statusContainer={canvasStatusContainer}
-                        collaboration={collaboration}
-                        group={group}
-                        onImport={(file) => void importFile(file)}
-                        onAI={openAI}
-                        onDraw={() => setDialog('drawing')}
-                        accountState={booting ? 'loading' : session.user ? 'signed-in' : 'guest'}
-                        onSignIn={() => openAuth()}
-                        onRegister={() => openAuth('register')}
-                        comparing={comparing}
-                        setComparing={setComparing}
-                        sampling={sampling}
-                        onSample={(color) => {
-                          setPickedColor(color);
-                          setSampling(false);
-                          setGroup('color');
-                          setInspectorOpen(true);
-                          notify(t('已取色 {v0}', { v0: color }));
-                        }}
-                      />
-                    </div>
-                    {!workspaceLayout.focused && (
-                      <ToolDock
-                        group={group}
-                        inspectorOpen={inspectorOpen}
-                        aiOpen={aiOpen}
-                        compact={workspaceLayout.view.bucket === 'phone'}
-                        onTool={chooseTool}
-                        onAI={() => {
-                          if (aiOpen) setAiOpen(false);
-                          else openAI();
-                        }}
-                      />
-                    )}
-                  </>
-                ) : (
-                  <div className="view-container">
-                    {view === 'works' && (
-                      <div className="library-hub">
-                        <nav
-                          className="library-context-tabs"
-                          aria-label={t('素材视图')}
-                          data-motion="context-navigation"
-                        >
-                          <button
-                            type="button"
-                            aria-pressed={libraryTab === 'project'}
-                            onClick={() => setLibraryTab('project')}
+                    </>
+                  ) : (
+                    <div className="view-container">
+                      {view === 'works' && (
+                        <div className="library-hub">
+                          <nav
+                            className="library-context-tabs"
+                            aria-label={t('素材视图')}
+                            data-motion="context-navigation"
                           >
-                            {t('项目作品')}
-                          </button>
-                          <button
-                            type="button"
-                            aria-pressed={libraryTab === 'all'}
-                            onClick={() => setLibraryTab('all')}
-                          >
-                            {t('跨空间查找')}
-                          </button>
-                          <button
-                            type="button"
-                            aria-pressed={libraryTab === 'memory'}
-                            onClick={() => setLibraryTab('memory')}
-                          >
-                            {t('长期素材')}
-                          </button>
-                          <button
-                            type="button"
-                            onClick={() => {
-                              if (!session.user) openAuth();
-                              else if (!project) openCreateProject();
-                              else setDialog('mediaImport');
-                            }}
-                          >
-                            {t('原片与专业格式')}
-                          </button>
-                        </nav>
-                        {libraryTab === 'project' ? (
-                          <AssetLibrary
+                            <button
+                              type="button"
+                              aria-pressed={libraryTab === 'project'}
+                              onClick={() => setLibraryTab('project')}
+                            >
+                              {t('项目作品')}
+                            </button>
+                            <button
+                              type="button"
+                              aria-pressed={libraryTab === 'all'}
+                              onClick={() => setLibraryTab('all')}
+                            >
+                              {t('跨空间查找')}
+                            </button>
+                            <button
+                              type="button"
+                              aria-pressed={libraryTab === 'memory'}
+                              onClick={() => setLibraryTab('memory')}
+                            >
+                              {t('长期素材')}
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => {
+                                if (!session.user) openAuth();
+                                else if (!project) openCreateProject();
+                                else setDialog('mediaImport');
+                              }}
+                            >
+                              {t('原片与专业格式')}
+                            </button>
+                          </nav>
+                          {libraryTab === 'project' ? (
+                            <AssetLibrary
+                              onLoadBack={() => {
+                                void changeView('editor');
+                              }}
+                              project={project}
+                              artworks={artworks}
+                              space={currentSpace}
+                              projects={projects}
+                              refreshToken={refreshToken}
+                              onSelectProject={(item) => void loadProject(item)}
+                              onOpenAsset={(item) => void openLibraryAsset(item)}
+                              onOpen={(item) => void openArtwork(item)}
+                              onImport={() => void importFile()}
+                              onCreate={openCreateProject}
+                              onCopy={() => setDialog('copy')}
+                              onShare={() => setDialog('share')}
+                            />
+                          ) : !session.user ? (
+                            <EmptyState
+                              icon={<StudioGlyph name="works" size={30} />}
+                              title={t('登录后查找素材')}
+                              description={t('浏览你有权限访问的项目、图片与长期素材。')}
+                              action={
+                                <button
+                                  className="button button-primary"
+                                  onClick={() => openAuth()}
+                                >
+                                  {t('登录')}
+                                </button>
+                              }
+                            />
+                          ) : (
+                            <ResourceSearch
+                              onLoadBack={() => {
+                                void changeView('editor');
+                              }}
+                              key={`${session.user.id}:${libraryTab}`}
+                              spaces={session.spaces}
+                              rememberedOnly={libraryTab === 'memory'}
+                              onOpen={async (item) => {
+                                await openLibraryAsset(item.asset);
+                              }}
+                            />
+                          )}
+                        </div>
+                      )}{' '}
+                      {view === 'compare' && (
+                        <CompareView
+                          onLoadBack={() => {
+                            void changeView('editor');
+                          }}
+                          editor={editor}
+                          artwork={artwork}
+                          onOpenRevision={openRevision}
+                          isDirty={dirty}
+                          onRestoreRevision={restoreRevision}
+                          currentUserId={session.user?.id}
+                          onForkCreated={async (created) => {
+                            setRefreshToken((value) => value + 1);
+                            return openArtwork(created.artworkId);
+                          }}
+                          canRestore={
+                            !!project && ['owner', 'admin', 'editor'].includes(project.role)
+                          }
+                        />
+                      )}{' '}
+                      {view === 'collaborate' &&
+                        (project ? (
+                          <CollaborateView
                             onLoadBack={() => {
                               void changeView('editor');
                             }}
+                            key={project.id}
+                            currentUserId={session.user?.id}
                             project={project}
-                            artworks={artworks}
-                            space={currentSpace}
-                            projects={projects}
+                            artwork={artwork}
+                            revision={revision}
                             refreshToken={refreshToken}
-                            onSelectProject={(item) => void loadProject(item)}
-                            onOpenAsset={(item) => void openLibraryAsset(item)}
-                            onOpen={(item) => void openArtwork(item)}
-                            onImport={() => void importFile()}
-                            onCreate={openCreateProject}
-                            onCopy={() => setDialog('copy')}
                             onShare={() => setDialog('share')}
                           />
-                        ) : !session.user ? (
-                          <EmptyState
-                            icon={<StudioGlyph name="works" size={30} />}
-                            title={t('登录后查找素材')}
-                            description={t('浏览你有权限访问的项目、图片与长期素材。')}
-                            action={
-                              <button className="button button-primary" onClick={() => openAuth()}>
-                                {t('登录')}
-                              </button>
-                            }
-                          />
                         ) : (
-                          <ResourceSearch
+                          requireProject
+                        ))}{' '}
+                      {view === 'docs' &&
+                        (project ? (
+                          <DocumentsView
                             onLoadBack={() => {
                               void changeView('editor');
                             }}
-                            key={`${session.user.id}:${libraryTab}`}
-                            spaces={session.spaces}
-                            rememberedOnly={libraryTab === 'memory'}
-                            onOpen={async (item) => {
-                              await openLibraryAsset(item.asset);
-                            }}
+                            key={`${session.user?.id ?? 'guest'}:${project.id}`}
+                            actorId={session.user?.id ?? null}
+                            project={project}
+                            refreshToken={refreshToken}
+                            onDirtyChange={setDocumentDirty}
                           />
-                        )}
-                      </div>
-                    )}{' '}
-                    {view === 'compare' && (
-                      <CompareView
-                        onLoadBack={() => {
-                          void changeView('editor');
-                        }}
-                        editor={editor}
-                        artwork={artwork}
-                        onOpenRevision={openRevision}
-                        isDirty={dirty}
-                        onRestoreRevision={restoreRevision}
-                        currentUserId={session.user?.id}
-                        onForkCreated={async (created) => {
-                          setRefreshToken((value) => value + 1);
-                          return openArtwork(created.artworkId);
-                        }}
-                        canRestore={
-                          !!project && ['owner', 'admin', 'editor'].includes(project.role)
-                        }
-                      />
-                    )}{' '}
-                    {view === 'collaborate' &&
-                      (project ? (
-                        <CollaborateView
+                        ) : (
+                          requireProject
+                        ))}{' '}
+                      {view === 'deliver' && (
+                        <DeliveryView
                           onLoadBack={() => {
                             void changeView('editor');
                           }}
-                          key={project.id}
-                          currentUserId={session.user?.id}
+                          editor={editor}
+                          artwork={artwork}
+                          sourcePending={opening || editor.loading}
+                          onExport={() => setDialog('export')}
+                          onRecipeImport={() => recipeInput.current?.click()}
+                        />
+                      )}
+                      {view === 'usage' && (
+                        <div className="content-view">
+                          {session.user ? (
+                            <UsageDashboard
+                              onLoadBack={() => {
+                                void changeView('editor');
+                              }}
+                              key={`${session.user.id}:${currentSpace?.id ?? 'personal'}`}
+                              space={currentSpace}
+                              spaces={session.spaces}
+                              currentUserId={session.user.id}
+                              refreshToken={refreshToken}
+                            />
+                          ) : (
+                            <EmptyState
+                              icon={<StudioGlyph name="usage" size={30} />}
+                              title={t('登录后查看用量')}
+                              description={t('查看服务点余额，以及任务、模型和成员的使用明细。')}
+                              action={
+                                <button
+                                  className="button button-primary"
+                                  onClick={() => openAuth()}
+                                >
+                                  {t('登录')}
+                                </button>
+                              }
+                            />
+                          )}
+                        </div>
+                      )}
+                    </div>
+                  )}
+                </MotionSwitch>
+                {(['inspector', 'ai'] as const)
+                  .filter((id) =>
+                    id === 'ai' ? aiPresence.present || keepAIActive : inspectorPresence.present,
+                  )
+                  .map((shownPanelId) => (
+                    <FloatingPanel
+                      key={shownPanelId}
+                      panelKey={shownPanelId}
+                      open={activePanelId === shownPanelId}
+                      motionState={(shownPanelId === 'ai' ? aiPresence : inspectorPresence).phase}
+                      title={
+                        shownPanelId === 'ai'
+                          ? t('AI 助手')
+                          : t(toolGroups.find((tool) => tool.id === group)?.label ?? '调整')
+                      }
+                      label={shownPanelId === 'ai' ? t('AI可移动面板') : t('可移动编辑面板')}
+                      geometry={workspaceLayout.panel(shownPanelId)}
+                      viewport={workspaceLayout.view}
+                      onGeometry={(next) => workspaceLayout.updatePanel(shownPanelId, next)}
+                      onClose={() => {
+                        setInspectorOpen(false);
+                        setAiOpen(false);
+                        setSampling(false);
+                      }}
+                      navigation={
+                        workspaceLayout.view.bucket !== 'phone' && shownPanelId !== 'ai' ? (
+                          <nav className="studio-context-tabs" aria-label={t('当前作品快捷操作')}>
+                            <button
+                              type="button"
+                              aria-pressed={shownPanelId === 'inspector' && group !== 'history'}
+                              onClick={() => openInspector(group === 'history' ? 'light' : group)}
+                            >
+                              <SlidersHorizontal size={15} />
+                              <span>{t('调整')}</span>
+                            </button>
+                            <button type="button" aria-pressed={false} onClick={openAI}>
+                              <StudioGlyph name="ai" size={17} />
+                              <span>{t('AI 助手')}</span>
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => changeView('collaborate')}
+                              title={t('打开项目讨论与任务')}
+                            >
+                              <UsersThree size={15} />
+                              <span>{t('协作')}</span>
+                            </button>
+                            <button
+                              type="button"
+                              aria-pressed={shownPanelId === 'inspector' && group === 'history'}
+                              onClick={() => openInspector('history')}
+                            >
+                              <ClockCounterClockwise size={15} />
+                              <span>{t('记录')}</span>
+                            </button>
+                          </nav>
+                        ) : undefined
+                      }
+                    >
+                      {shownPanelId === 'inspector' ? (
+                        <ToolInspector
+                          editor={editor}
+                          group={group}
+                          onGroupChange={setGroup}
+                          onCutout={createCutout}
+                          mobileOpen
+                          onClose={() => setInspectorOpen(false)}
+                          pickedColor={pickedColor}
+                          onColorChange={setPickedColor}
+                          sampling={sampling}
+                          onSample={() => {
+                            setSampling(!sampling);
+                            if (workspaceLayout.view.bucket === 'phone') setInspectorOpen(false);
+                          }}
+                        />
+                      ) : (
+                        <AIPanelFeature
+                          key={(session.user?.id ?? 'local') + ':' + (project?.id ?? 'none')}
+                          visible={activePanelId === 'ai'}
+                          onActivityChange={setAiActivity}
+                          userId={session.user?.id ?? null}
+                          projectAssets={assets}
+                          currentAsset={asset}
+                          referenceSource={referenceSource}
+                          onReferenceFile={(file, source) => {
+                            setReferenceFile(file);
+                            setReferenceSource(source);
+                          }}
                           project={project}
                           artwork={artwork}
-                          revision={revision}
-                          refreshToken={refreshToken}
-                          onShare={() => setDialog('share')}
-                        />
-                      ) : (
-                        requireProject
-                      ))}{' '}
-                    {view === 'docs' &&
-                      (project ? (
-                        <DocumentsView
-                          onLoadBack={() => {
-                            void changeView('editor');
-                          }}
-                          key={`${session.user?.id ?? 'guest'}:${project.id}`}
-                          actorId={session.user?.id ?? null}
-                          project={project}
-                          refreshToken={refreshToken}
-                          onDirtyChange={setDocumentDirty}
-                        />
-                      ) : (
-                        requireProject
-                      ))}{' '}
-                    {view === 'deliver' && (
-                      <DeliveryView
-                        onLoadBack={() => {
-                          void changeView('editor');
-                        }}
-                        editor={editor}
-                        artwork={artwork}
-                        sourcePending={opening || editor.loading}
-                        onExport={() => setDialog('export')}
-                        onRecipeImport={() => recipeInput.current?.click()}
-                      />
-                    )}
-                    {view === 'usage' && (
-                      <div className="content-view">
-                        {session.user ? (
-                          <UsageDashboard
-                            onLoadBack={() => {
-                              void changeView('editor');
-                            }}
-                            key={`${session.user.id}:${currentSpace?.id ?? 'personal'}`}
-                            space={currentSpace}
-                            spaces={session.spaces}
-                            currentUserId={session.user.id}
-                            refreshToken={refreshToken}
-                          />
-                        ) : (
-                          <EmptyState
-                            icon={<StudioGlyph name="usage" size={30} />}
-                            title={t('登录后查看用量')}
-                            description={t('查看服务点余额，以及任务、模型和成员的使用明细。')}
-                            action={
-                              <button className="button button-primary" onClick={() => openAuth()}>
-                                {t('登录')}
-                              </button>
+                          recipe={editor.recipe}
+                          captureCurrentImage={captureCurrentImage}
+                          onBeforeArtworkWrite={collaboration.beforeExternalWrite}
+                          onAfterArtworkWrite={collaboration.afterExternalWrite}
+                          isDirty={dirty}
+                          onDecisionApplied={async (id) => {
+                            setRefreshToken((value) => value + 1);
+                            if (
+                              navigationScope.current.view !== 'editor' ||
+                              navigationScope.current.documentDirty ||
+                              isEditorDirty() ||
+                              artworkRef.current?.id !== id
+                            ) {
+                              notify(
+                                t('云端已采用AI结果，当前本地草稿继续保留，可稍后从作品中打开。'),
+                              );
+                              return;
                             }
-                          />
-                        )}
-                      </div>
-                    )}
+                            await openArtwork(id);
+                          }}
+                          config={config}
+                          initialOperation={initialAIOperation}
+                          referenceFile={referenceFile}
+                          onClearReference={() => setReferenceFile(null)}
+                          onDraw={() => setDialog('drawing')}
+                          onCreateProject={openCreateProject}
+                          onOpenArtwork={(id) => {
+                            void openArtwork(id).then((opened) => {
+                              if (opened) setAiOpen(false);
+                            });
+                          }}
+                          onTaskChanged={() => setRefreshToken((value) => value + 1)}
+                          onClose={() => setAiOpen(false)}
+                          onPreview={(next) => {
+                            editor.preview(next);
+                            notify(
+                              navigationScope.current.view === 'editor'
+                                ? t('建议已进入预览，可以继续调整、取消或保存。')
+                                : t('AI 建议已在编辑器中准备好，当前页面和未保存内容已保留。'),
+                            );
+                          }}
+                          onSave={save}
+                          isLoggedIn={!!session.user}
+                          onAuth={() => openAuth()}
+                        />
+                      )}
+                    </FloatingPanel>
+                  ))}
+                {workspaceLayout.focused && (
+                  <div className="focus-exit">
+                    <button onClick={() => workspaceLayout.setFocused(false)}>
+                      <CornersOut size={18} />
+                      {t('退出专注')}
+                      <kbd>F</kbd>
+                    </button>
                   </div>
                 )}
-              </MotionSwitch>
-              {(['inspector', 'ai'] as const)
-                .filter((id) =>
-                  id === 'ai' ? aiPresence.present || keepAIActive : inspectorPresence.present,
-                )
-                .map((shownPanelId) => (
-                  <FloatingPanel
-                    key={shownPanelId}
-                    panelKey={shownPanelId}
-                    open={activePanelId === shownPanelId}
-                    motionState={(shownPanelId === 'ai' ? aiPresence : inspectorPresence).phase}
-                    title={
-                      shownPanelId === 'ai'
-                        ? t('AI 助手')
-                        : t(toolGroups.find((tool) => tool.id === group)?.label ?? '调整')
-                    }
-                    label={shownPanelId === 'ai' ? t('AI可移动面板') : t('可移动编辑面板')}
-                    geometry={workspaceLayout.panel(shownPanelId)}
-                    viewport={workspaceLayout.view}
-                    onGeometry={(next) => workspaceLayout.updatePanel(shownPanelId, next)}
-                    onClose={() => {
-                      setInspectorOpen(false);
-                      setAiOpen(false);
-                      setSampling(false);
-                    }}
-                    navigation={
-                      workspaceLayout.view.bucket !== 'phone' && shownPanelId !== 'ai' ? (
-                        <nav className="studio-context-tabs" aria-label={t('当前作品快捷操作')}>
-                          <button
-                            type="button"
-                            aria-pressed={shownPanelId === 'inspector' && group !== 'history'}
-                            onClick={() => openInspector(group === 'history' ? 'light' : group)}
-                          >
-                            <SlidersHorizontal size={15} />
-                            <span>{t('调整')}</span>
-                          </button>
-                          <button type="button" aria-pressed={false} onClick={openAI}>
-                            <StudioGlyph name="ai" size={17} />
-                            <span>{t('AI 助手')}</span>
-                          </button>
-                          <button
-                            type="button"
-                            onClick={() => changeView('collaborate')}
-                            title={t('打开项目讨论与任务')}
-                          >
-                            <UsersThree size={15} />
-                            <span>{t('协作')}</span>
-                          </button>
-                          <button
-                            type="button"
-                            aria-pressed={shownPanelId === 'inspector' && group === 'history'}
-                            onClick={() => openInspector('history')}
-                          >
-                            <ClockCounterClockwise size={15} />
-                            <span>{t('记录')}</span>
-                          </button>
-                        </nav>
-                      ) : undefined
-                    }
-                  >
-                    {shownPanelId === 'inspector' ? (
-                      <ToolInspector
-                        editor={editor}
-                        group={group}
-                        onGroupChange={setGroup}
-                        onCutout={createCutout}
-                        mobileOpen
-                        onClose={() => setInspectorOpen(false)}
-                        pickedColor={pickedColor}
-                        onColorChange={setPickedColor}
-                        sampling={sampling}
-                        onSample={() => {
-                          setSampling(!sampling);
-                          if (workspaceLayout.view.bucket === 'phone') setInspectorOpen(false);
-                        }}
-                      />
-                    ) : (
-                      <AIPanelFeature
-                        key={(session.user?.id ?? 'local') + ':' + (project?.id ?? 'none')}
-                        visible={activePanelId === 'ai'}
-                        onActivityChange={setAiActivity}
-                        userId={session.user?.id ?? null}
-                        projectAssets={assets}
-                        currentAsset={asset}
-                        referenceSource={referenceSource}
-                        onReferenceFile={(file, source) => {
-                          setReferenceFile(file);
-                          setReferenceSource(source);
-                        }}
-                        project={project}
-                        artwork={artwork}
-                        recipe={editor.recipe}
-                        captureCurrentImage={captureCurrentImage}
-                        onBeforeArtworkWrite={collaboration.beforeExternalWrite}
-                        onAfterArtworkWrite={collaboration.afterExternalWrite}
-                        isDirty={dirty}
-                        onDecisionApplied={async (id) => {
-                          setRefreshToken((value) => value + 1);
-                          if (
-                            navigationScope.current.view !== 'editor' ||
-                            navigationScope.current.documentDirty ||
-                            isEditorDirty() ||
-                            artworkRef.current?.id !== id
-                          ) {
-                            notify(
-                              t('云端已采用AI结果，当前本地草稿继续保留，可稍后从作品中打开。'),
-                            );
-                            return;
-                          }
-                          await openArtwork(id);
-                        }}
-                        config={config}
-                        initialOperation={initialAIOperation}
-                        referenceFile={referenceFile}
-                        onClearReference={() => setReferenceFile(null)}
-                        onDraw={() => setDialog('drawing')}
-                        onCreateProject={openCreateProject}
-                        onOpenArtwork={(id) => {
-                          void openArtwork(id).then((opened) => {
-                            if (opened) setAiOpen(false);
-                          });
-                        }}
-                        onTaskChanged={() => setRefreshToken((value) => value + 1)}
-                        onClose={() => setAiOpen(false)}
-                        onPreview={(next) => {
-                          editor.preview(next);
-                          notify(
-                            navigationScope.current.view === 'editor'
-                              ? t('建议已进入预览，可以继续调整、取消或保存。')
-                              : t('AI 建议已在编辑器中准备好，当前页面和未保存内容已保留。'),
-                          );
-                        }}
-                        onSave={save}
-                        isLoggedIn={!!session.user}
-                        onAuth={() => openAuth()}
-                      />
-                    )}
-                  </FloatingPanel>
-                ))}
-              {workspaceLayout.focused && (
-                <div className="focus-exit">
-                  <button onClick={() => workspaceLayout.setFocused(false)}>
-                    <CornersOut size={18} />
-                    {t('退出专注')}
-                    <kbd>F</kbd>
-                  </button>
-                </div>
-              )}
-              {opening && (
-                <div className="workspace-busy">
-                  <Busy label={t('正在打开项目与作品…')} />
-                </div>
-              )}
+                {opening && (
+                  <div className="workspace-busy">
+                    <Busy label={t('正在打开项目与作品…')} />
+                  </div>
+                )}
+              </div>
             </div>
           </div>
-        </div>
+        )}
+        <input
+          ref={fileInput}
+          type="file"
+          className="sr-only"
+          tabIndex={-1}
+          aria-label={t('选择照片')}
+          accept="image/jpeg,image/png,image/webp,image/bmp,image/gif,image/avif,image/tiff,.bmp,.gif,.avif,.tif,.tiff"
+          onChange={(e) => {
+            const file = e.target.files?.[0];
+            e.target.value = '';
+            if (file) void importFile(file);
+          }}
+        />
+        <input
+          ref={recipeInput}
+          type="file"
+          className="sr-only"
+          tabIndex={-1}
+          aria-label={t('选择配方文件')}
+          accept="application/json,.json"
+          onChange={(e) => {
+            const file = e.target.files?.[0];
+            e.target.value = '';
+            if (file)
+              editor
+                .importRecipe(file)
+                .then(() => notify(t('配方已应用到本地编辑。'), 'success'))
+                .catch((error) => notify(errorMessage(error), 'error'));
+          }}
+        />
+      </div>
+      {accountPagePending && !accountPageOpen && (
+        <AccountPageFrame
+          title={
+            siteRoute === 'register'
+              ? t('注册账号')
+              : siteRoute === 'reset'
+                ? t('重置密码')
+                : siteRoute === 'account'
+                  ? t('账号与使用')
+                  : t('登录工作空间')
+          }
+          config={config}
+          onBack={() => onEntryCancel?.()}
+          onHome={onAbout}
+          wide={siteRoute === 'account'}
+        >
+          <div className="account-page-loading" role="status" aria-live="polite">
+            <i aria-hidden />
+            <i aria-hidden />
+            <i aria-hidden />
+            <p>{accountCopy.loading}</p>
+          </div>
+        </AccountPageFrame>
       )}
-      <input
-        ref={fileInput}
-        type="file"
-        className="sr-only"
-        tabIndex={-1}
-        aria-label={t('选择照片')}
-        accept="image/jpeg,image/png,image/webp,image/bmp,image/gif,image/avif,image/tiff,.bmp,.gif,.avif,.tif,.tiff"
-        onChange={(e) => {
-          const file = e.target.files?.[0];
-          e.target.value = '';
-          if (file) void importFile(file);
-        }}
-      />
-      <input
-        ref={recipeInput}
-        type="file"
-        className="sr-only"
-        tabIndex={-1}
-        aria-label={t('选择配方文件')}
-        accept="application/json,.json"
-        onChange={(e) => {
-          const file = e.target.files?.[0];
-          e.target.value = '';
-          if (file)
-            editor
-              .importRecipe(file)
-              .then(() => notify(t('配方已应用到本地编辑。'), 'success'))
-              .catch((error) => notify(errorMessage(error), 'error'));
-        }}
-      />
       <DialogMotionContext.Provider value={{ open: !!dialog, phase: dialogPresence.phase }}>
         {renderedDialog === 'navigation' && (
           <WorkspaceNavigation
@@ -2844,6 +3011,13 @@ export function App({
             config={config}
             cooldowns={authCooldowns}
             initialMode={authEntry.mode}
+            onHome={onAbout}
+            onRegisterExitGuard={registerAuthExitGuard}
+            backToAbout={accountBackToAbout}
+            onModeChange={(mode) => {
+              setAuthEntry((current) => ({ ...current, mode }));
+              onPageNavigate?.(mode === 'register' || mode === 'reset' ? mode : 'login');
+            }}
             onSession={(next, meta) => receiveSession(next, meta, authEntry.key)}
             onReset={() => {
               void receivePasswordReset(authEntry.key);
@@ -2854,6 +3028,8 @@ export function App({
         {renderedDialog === 'accountReady' && session.user && (
           <AccountReady
             session={session}
+            config={config}
+            onHome={onAbout}
             hasImage={!!editor.file}
             onContinue={() => {
               void changeView('editor').then((changed) => {
@@ -2864,15 +3040,24 @@ export function App({
               closeDialog();
               void importFile();
             }}
-            onProject={() => void openCreateProject()}
+            onProject={() => {
+              onEntryComplete?.();
+              void openCreateProject();
+            }}
           />
         )}
         {renderedDialog === 'account' && session.user && (
           <Suspense
             fallback={
-              <Modal title={t('账号与使用')} profile="account" onClose={closeDialog}>
+              <AccountPageFrame
+                title={t('账号与使用')}
+                config={config}
+                onBack={closeDialog}
+                onHome={onAbout}
+                wide
+              >
                 <Busy label={t('正在读取账号信息')} />
-              </Modal>
+              </AccountPageFrame>
             }
           >
             <AccountCenter
@@ -2889,13 +3074,20 @@ export function App({
               loggingOut={loggingOut}
               logoutError={logoutError}
               onClose={closeDialog}
+              onHome={onAbout}
               onResetPassword={() => void openPasswordReset()}
               onUsage={() => {
                 void changeView('usage').then((changed) => {
-                  if (changed) closeDialog();
+                  if (changed) {
+                    setDialog(null);
+                    onPageNavigate?.('usage');
+                  }
                 });
               }}
-              onExport={() => setDialog('export')}
+              onExport={() => {
+                onEntryComplete?.();
+                setDialog('export');
+              }}
               onLogout={logout}
               onReturnToActivity={() => {
                 void changeView('editor').then((changed) => {
@@ -2904,7 +3096,10 @@ export function App({
                   if (accountActivity.current.ai) showAI();
                 });
               }}
-              onStartProject={() => void openCreateProject()}
+              onStartProject={() => {
+                onEntryComplete?.();
+                void openCreateProject();
+              }}
               onImport={() => {
                 closeDialog();
                 void importFile();
@@ -3093,7 +3288,11 @@ export function App({
         )}
       </DialogMotionContext.Provider>
       {confirmation.dialog}
-      <Toast notice={notice} dismiss={dismissNotice} container={noticeContainer} />
+      <Toast
+        notice={notice}
+        dismiss={dismissNotice}
+        container={workspaceVisible ? noticeContainer : null}
+      />
     </>
   );
 }

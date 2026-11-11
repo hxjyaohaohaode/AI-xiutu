@@ -4,13 +4,15 @@ import { readFileSync, readdirSync } from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import ts from 'typescript';
-import { createElement } from 'react';
-import { TOOLS, V2_TOOLS, V3_TOOLS } from '@ai-xiutu/editor';
+import { Children, createElement, isValidElement } from 'react';
+import { TOOLS, V2_TOOLS, V3_TOOLS, type SelectionMaskV3 } from '@ai-xiutu/editor';
 import { createLocaleStore, type Catalog } from '../src/i18n/store.ts';
 import { setLocale, t } from '../src/i18n/index.ts';
 import { english } from '../src/i18n/messages-en.ts';
 import { traditional } from '../src/i18n/messages-zh-TW.ts';
-import { ParameterShelf } from '../src/editor/ParameterShelf.tsx';
+import { ParameterShelf, type ShelfControl } from '../src/editor/ParameterShelf.tsx';
+import { MaskControls } from '../src/editor/MaskControls.tsx';
+import type { InspectorController } from '../src/editor/advanced-model.ts';
 import { InlineError } from '../src/components/Ui.tsx';
 import { renderTestMarkup } from './support/render.ts';
 
@@ -272,6 +274,67 @@ test('real parameter controls keep range values and handlers across all three la
       assert.deepEqual(source, original);
     }
     assert.equal(mutations, 0);
+  } finally {
+    await setLocale('zh-CN');
+  }
+});
+
+test('polygon coordinates translate as complete labels without changing selection precision', async () => {
+  const mask: SelectionMaskV3 = {
+    type: 'polygon',
+    points: [
+      { x: 0.15, y: 0.2 },
+      { x: 0.8, y: 0.2 },
+      { x: 0.5, y: 0.85 },
+    ],
+    feather: 0.1,
+    invert: false,
+  };
+  const before = structuredClone(mask);
+  const controller = {
+    editor: { dimensions: { width: 1600, height: 1200 }, maskOverlay: false },
+    report(message: string) {
+      assert.fail(message);
+    },
+  } as unknown as InspectorController;
+  let controls: ShelfControl[] = [];
+  function Capture() {
+    const tree = MaskControls({
+      controller,
+      getMask: () => mask,
+      path: [],
+      onPath() {
+        assert.fail('A language presentation must not change the active selection path');
+      },
+      onChange() {
+        assert.fail('A language presentation must not change the saved selection');
+      },
+    });
+    const shelf = Children.toArray(tree.props.children).find(
+      (child) => isValidElement(child) && child.type === ParameterShelf,
+    );
+    assert.ok(isValidElement<{ controls: ShelfControl[] }>(shelf));
+    controls = shelf.props.controls;
+    return tree;
+  }
+  const prefixes = { 'zh-CN': '顶点', 'zh-TW': '頂點', en: 'Vertex' };
+  try {
+    for (const locale of ['zh-CN', 'zh-TW', 'en'] as const) {
+      await setLocale(locale);
+      const html = renderTestMarkup(createElement(Capture));
+      for (const axis of ['x', 'y'] as const) {
+        const expected = `${prefixes[locale]} ${axis.toUpperCase()}`;
+        const control = controls.find((item) => item.id === axis)!;
+        assert.equal(control.label, expected);
+        assert.ok(html.includes(`<span>${expected}</span>`));
+        assert.ok(html.includes(`aria-label="${expected}`));
+        assert.deepEqual(
+          [control.value, control.min, control.max, control.step],
+          [mask.points[0]![axis], 0, 1, 0.0001],
+        );
+      }
+      assert.deepEqual(mask, before);
+    }
   } finally {
     await setLocale('zh-CN');
   }

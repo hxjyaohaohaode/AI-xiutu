@@ -11,7 +11,14 @@ import {
 } from 'react';
 import { AboutPage, type AboutIntent } from './about/AboutPage';
 import { aboutCopy } from './about/copy';
-import { readSiteRoute, siteRouteHash, type SiteRoute } from './about/site-route';
+import {
+  isAccountSiteRoute,
+  readSiteRoute,
+  siteRouteHash,
+  type SiteRoute,
+} from './about/site-route';
+import './account/account-page.css';
+import { accountPageCopy } from './account/page-copy';
 import { useLocale } from './i18n';
 import { api } from './lib/api';
 import type { PublicConfig } from './lib/types';
@@ -20,8 +27,10 @@ import type { SampleSettings } from './about/sample';
 
 const loadStudio = () => import('./App').then((module) => ({ default: module.App }));
 let Studio = lazy(loadStudio);
-function StudioLoading() {
-  const c = aboutCopy(useLocale());
+function StudioLoading({ route }: { route: SiteRoute }) {
+  const locale = useLocale();
+  const c = aboutCopy(locale);
+  const account = isAccountSiteRoute(route);
   return (
     <div className="site-loading" role="status" aria-live="polite">
       <div className="site-loading-content">
@@ -30,8 +39,8 @@ function StudioLoading() {
           <i />
           <i />
         </div>
-        <h1>{c.loadingStudio}</h1>
-        <p>{c.loadingBody}</p>
+        <h1>{account ? accountPageCopy(locale).loading : c.loadingStudio}</h1>
+        {!account && <p>{c.loadingBody}</p>}
       </div>
     </div>
   );
@@ -75,34 +84,31 @@ export function SiteShell() {
   const [retryKey, setRetryKey] = useState(0);
   const sequence = useRef(0);
   const currentRoute = useRef(route);
-  const canLeaveStudio = useRef<(() => boolean) | null>(null);
-  const registerLeaveGuard = useCallback((guard: (() => boolean) | null) => {
+  const accountReturn = useRef<SiteRoute>(route === 'about' ? 'about' : 'studio');
+  const canLeaveStudio = useRef<((next: SiteRoute) => boolean) | null>(null);
+  const registerLeaveGuard = useCallback((guard: ((next: SiteRoute) => boolean) | null) => {
     canLeaveStudio.current = guard;
   }, []);
   const [entry, setEntry] = useState<StudioEntry>(() => ({
     key: 0,
-    mode:
-      route === 'login'
-        ? 'password'
-        : route === 'register' || route === 'reset' || route === 'sample'
-          ? route
-          : 'studio',
+    mode: route === 'login' ? 'password' : route === 'about' ? 'studio' : route,
   }));
   const active = route !== 'about';
   useLayoutEffect(() => {
-    document.body.dataset.sitePage = active ? 'studio' : 'about';
+    document.body.dataset.sitePage = isAccountSiteRoute(route)
+      ? 'account'
+      : active
+        ? 'studio'
+        : 'about';
     return () => {
       delete document.body.dataset.sitePage;
     };
-  }, [active]);
+  }, [active, route]);
   const applyRoute = (next: SiteRoute, sample?: SampleSettings) => {
     if (currentRoute.current === next) return true;
-    if (
-      next === 'about' &&
-      currentRoute.current !== 'about' &&
-      canLeaveStudio.current?.() === false
-    )
-      return false;
+    if (canLeaveStudio.current?.(next) === false) return false;
+    if (isAccountSiteRoute(next) && !isAccountSiteRoute(currentRoute.current))
+      accountReturn.current = currentRoute.current === 'about' ? 'about' : 'studio';
     currentRoute.current = next;
     setRoute(next);
     if (next !== 'about') {
@@ -115,7 +121,8 @@ export function SiteShell() {
     if (!applyRoute(next, sample)) return;
     const hash = siteRouteHash(next);
     if (location.hash !== hash) history[replace ? 'replaceState' : 'pushState'](null, '', hash);
-    if (next === 'about') window.scrollTo({ top: 0, behavior: 'instant' });
+    if (next === 'about' || isAccountSiteRoute(next))
+      window.scrollTo({ top: 0, behavior: 'instant' });
   };
   useEffect(() => {
     const navigateFromHistory = () => {
@@ -152,14 +159,17 @@ export function SiteShell() {
               setRetryKey((value) => value + 1);
             }}
           >
-            <Suspense fallback={<StudioLoading />}>
+            <Suspense fallback={<StudioLoading route={route} />}>
               <Studio
                 active={active}
+                siteRoute={route}
+                accountBackToAbout={accountReturn.current === 'about'}
                 entryRequest={entry}
                 publicConfig={config}
                 onRegisterLeaveGuard={registerLeaveGuard}
                 onAbout={() => navigate('about')}
-                onEntryCancel={() => navigate('about', true)}
+                onPageNavigate={navigate}
+                onEntryCancel={() => navigate(accountReturn.current, true)}
                 onEntryComplete={() => {
                   if (readSiteRoute(location.hash) !== 'studio') navigate('studio', true);
                 }}
@@ -167,11 +177,6 @@ export function SiteShell() {
             </Suspense>
           </StudioBoundary>
         </div>
-      )}
-      {active && (route === 'login' || route === 'register' || route === 'reset') && (
-        <button type="button" className="site-about-back" onClick={() => navigate('about', true)}>
-          {c.authBack}
-        </button>
       )}
     </>
   );

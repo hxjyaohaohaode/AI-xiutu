@@ -20,6 +20,7 @@ import { ColorPicker } from '../components/ColorPicker';
 import { ParameterShelf } from './ParameterShelf';
 import { currentV3, rgbaHex, hexRgba, type InspectorController } from './advanced-model';
 import type { ToolGroup } from './ToolInspector';
+import { portraitTargetDisplayLabel } from './portrait-label';
 import {
   portraitSelectionLabels,
   portraitSelectionMatchesSource,
@@ -276,12 +277,16 @@ export function PortraitControls({
           disabled={!!state.progress || !editor.sourceHash}
           onClick={() => state.analyze(category === 'body')}
         >
-          <Sparkle size={16} />
-          {state.analysis
-            ? t('重新识别人物')
-            : category === 'body'
-              ? t('识别身体位置')
-              : t('识别照片中的人物')}
+          {state.error ? <ArrowsClockwise size={16} /> : <Sparkle size={16} />}
+          {state.error
+            ? category === 'body'
+              ? t('重试身体识别')
+              : t('重试人物识别')
+            : state.analysis
+              ? t('重新识别人物')
+              : category === 'body'
+                ? t('识别身体位置')
+                : t('识别照片中的人物')}
         </button>
         {state.progress && (
           <button className="text-button" onClick={state.cancel}>
@@ -349,7 +354,10 @@ export function PortraitControls({
               editor.commitCurrent(t('完成人物调节'));
               state.setTarget(value);
             }}
-            options={targets.map((item) => ({ value: item.id, label: item.label }))}
+            options={targets.map((item) => ({
+              value: item.id,
+              label: portraitTargetDisplayLabel(item, state.analysis),
+            }))}
           />
         </label>
       )}

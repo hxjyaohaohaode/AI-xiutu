@@ -57,6 +57,7 @@ export function ParameterShelf({
   );
   const shelf = useRef<HTMLElement>(null);
   const current = useRef<HTMLDivElement>(null);
+  const choices = useRef<HTMLDivElement>(null);
   const revealRequested = useRef(false);
   const active =
     controls.find((control) => control.id === selectedId && !control.disabled) ??
@@ -85,6 +86,13 @@ export function ParameterShelf({
   }
   useLayoutEffect(() => {
     if (revealRequested.current) revealCurrent();
+    const rail = choices.current;
+    const selected = rail?.querySelector<HTMLElement>('[aria-pressed="true"]');
+    if (!rail || !selected || rail.scrollWidth <= rail.clientWidth) return;
+    const visible = rail.getBoundingClientRect();
+    const item = selected.getBoundingClientRect();
+    if (item.left < visible.left) rail.scrollLeft += item.left - visible.left - 4;
+    else if (item.right > visible.right) rail.scrollLeft += item.right - visible.right + 4;
   }, [active?.id]);
   if (!active) return <p className="control-note">{t('当前范围没有可调整的参数。')}</p>;
   function selectControl(id: string) {
@@ -96,6 +104,7 @@ export function ParameterShelf({
   return (
     <section ref={shelf} className="parameter-shelf" aria-label={t(label)}>
       <div
+        ref={choices}
         className="parameter-shelf-options"
         role="group"
         aria-label={t('{name}选项', { name: t(label) })}
@@ -136,6 +145,7 @@ export function ParameterShelf({
             key={control.id}
             aria-pressed={active.id === control.id}
             disabled={control.disabled}
+            tabIndex={active.id === control.id ? 0 : -1}
             aria-label={t('{v0}，{v1}{v2}{v3}', {
               v0: t(control.label),
               v1: Number(control.value.toFixed(4)),

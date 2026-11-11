@@ -1,5 +1,5 @@
 import { getLocale, t } from '../i18n';
-import { useEffect, useId, useRef, useState, type CSSProperties } from 'react';
+import { useEffect, useId, useMemo, useRef, useState, type CSSProperties } from 'react';
 import { ArrowCounterClockwise, Check } from '@phosphor-icons/react';
 import {
   RangeGesture,
@@ -59,9 +59,18 @@ export function PrecisionRange({
   const latest = useRef(value);
   latest.current = value;
   const decimals = Math.min(10, Math.max(0, Math.ceil(-Math.log10(step)) + (integer ? 0 : 1)));
-  const readable = Number(value.toFixed(decimals)).toLocaleString(getLocale(), {
-    maximumFractionDigits: decimals,
-  });
+  const locale = getLocale();
+  const numberFormat = useMemo(
+    () => new Intl.NumberFormat(locale, { maximumFractionDigits: decimals }),
+    [locale, decimals],
+  );
+  const formatReadout = (number: number) => {
+    const rounded = Number(number.toFixed(decimals));
+    return numberFormat.format(rounded === 0 ? 0 : rounded);
+  };
+  const readable = formatReadout(value);
+  const minimumLabel = formatReadout(min);
+  const maximumLabel = formatReadout(max);
   useEffect(() => {
     if (editing) {
       input.current?.focus({ preventScroll: true });
@@ -136,8 +145,8 @@ export function PrecisionRange({
     if (result.status === 'invalid') {
       setNumberError(
         t(integer ? '请输入 {min} 至 {max} 的整数。' : '请输入 {min} 至 {max} 的数值。', {
-          min,
-          max,
+          min: minimumLabel,
+          max: maximumLabel,
         }),
       );
       return;
@@ -344,8 +353,15 @@ export function PrecisionRange({
               if (travel <= 0) return;
               const thumb = left + (percentage(latest.current) / 100) * travel;
               const offset = event.clientX - thumb;
-              touchTrack.current = { left, travel, offset: Math.abs(offset) <= inset ? offset : 0 };
-              if (Math.abs(offset) > inset) moveTouch(event.clientX);
+              // A finger rarely lands on the exact center of a small visible
+              // thumb. Keep its grab offset across the 44px touch target.
+              const grabRadius = 22;
+              touchTrack.current = {
+                left,
+                travel,
+                offset: Math.abs(offset) <= grabRadius ? offset : 0,
+              };
+              if (Math.abs(offset) > grabRadius) moveTouch(event.clientX);
             }
           }}
           onPointerMove={(event) => {
@@ -394,8 +410,8 @@ export function PrecisionRange({
         />
       </div>
       <div className="precision-scale" aria-hidden="true">
-        <span>{min}</span>
-        <span>{max}</span>
+        <span>{minimumLabel}</span>
+        <span>{maximumLabel}</span>
       </div>
       {description && (
         <span id={`${id}-description`} className="sr-only">

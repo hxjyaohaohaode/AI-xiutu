@@ -1,6 +1,7 @@
 import {
   useEffect,
   useId,
+  useLayoutEffect,
   useRef,
   useState,
   type CSSProperties,
@@ -28,10 +29,12 @@ import {
   movePanel,
   panelBounds,
   panelBottomOffset,
+  panelGestureViewportKey,
   panelHeaderHeight,
   panelNeedsPhotoSpace,
   panelRectangle,
   resizePanel,
+  restorePanelForEditing,
   type Dock,
   type PanelEdge,
   type PanelGeometry,
@@ -42,7 +45,9 @@ import { usePresence } from '../motion/usePresence';
 import type { MotionPhase } from '../motion/registry';
 import { PanelChromeContext } from './PanelChromeContext';
 import { t, useI18n } from '../i18n';
+import { studioText } from './studio-copy';
 import './panel.css';
+import './touch-studio.css';
 
 type Gesture = {
   kind: 'move' | 'resize';
@@ -54,6 +59,7 @@ type Gesture = {
   target: HTMLElement;
   pointer: number;
   panelKey: PanelId;
+  viewportKey: string;
 };
 const edges: PanelEdge[] = ['n', 's', 'e', 'w', 'ne', 'nw', 'se', 'sw'];
 const edgeLabels: Record<PanelEdge, string> = {
@@ -106,8 +112,21 @@ export function FloatingPanel({
     menuId = useId();
   const geometryCallback = useRef(onGeometry);
   geometryCallback.current = onGeometry;
+  const geometryFrame = useRef(0);
+  const pendingGeometry = useRef<PanelGeometry | null>(null);
   const currentPanelKey = useRef(panelKey);
   currentPanelKey.current = panelKey;
+  const currentViewport = useRef(viewport);
+  currentViewport.current = viewport;
+  const previousBucket = useRef(viewport.bucket);
+  useLayoutEffect(() => {
+    if (previousBucket.current === viewport.bucket) return;
+    previousBucket.current = viewport.bucket;
+    // Desktop and phone arrange the active range in a different order. A
+    // stale desktop offset can clip its label when the sheet becomes compact.
+    const inspector = panel.current?.querySelector<HTMLElement>('.inspector-scroll');
+    if (inspector) inspector.scrollTop = 0;
+  }, [viewport.bucket]);
   const value = boundPanel(geometry, viewport, panelKey);
   const rect = panelRectangle(value, viewport);
   const mobile = viewport.bucket === 'phone';
@@ -139,7 +158,15 @@ export function FloatingPanel({
     if (!g) return;
     gesture.current = null;
     setDragging(false);
-    if (cancel && g.panelKey === currentPanelKey.current) geometryCallback.current(g.initial);
+    cancelAnimationFrame(geometryFrame.current);
+    geometryFrame.current = 0;
+    const pending = pendingGeometry.current;
+    pendingGeometry.current = null;
+    const owned =
+      g.panelKey === currentPanelKey.current &&
+      g.viewportKey === panelGestureViewportKey(currentViewport.current);
+    if (!cancel && pending && owned) geometryCallback.current(pending);
+    if (cancel && owned) geometryCallback.current(g.initial);
     try {
       if (g.target.hasPointerCapture(g.pointer)) g.target.releasePointerCapture(g.pointer);
     } catch {
@@ -176,6 +203,7 @@ export function FloatingPanel({
       target: event.currentTarget,
       pointer: event.pointerId,
       panelKey,
+      viewportKey: panelGestureViewportKey(viewport),
     };
     setAnimatingPresentation(false);
     setDragging(true);
@@ -190,17 +218,32 @@ export function FloatingPanel({
   function move(event: PointerEvent<HTMLElement>) {
     const g = gesture.current;
     if (!g || g.pointer !== event.pointerId) return;
+    if (g.viewportKey !== panelGestureViewportKey(currentViewport.current)) {
+      finishGesture(true);
+      return;
+    }
     if ((event.buttons & 1) === 0) {
       finishGesture(true);
       return;
     }
     const dx = event.clientX - g.startX,
       dy = event.clientY - g.startY;
-    onGeometry(
+    pendingGeometry.current =
       g.kind === 'move'
         ? movePanel(g.original, dx, dy, viewport)
-        : resizePanel(g.original, g.edge ?? 'se', dx, dy, viewport, panelKey),
-    );
+        : resizePanel(g.original, g.edge ?? 'se', dx, dy, viewport, panelKey);
+    if (!geometryFrame.current)
+      geometryFrame.current = requestAnimationFrame(() => {
+        geometryFrame.current = 0;
+        const next = pendingGeometry.current;
+        pendingGeometry.current = null;
+        if (
+          next &&
+          gesture.current?.panelKey === currentPanelKey.current &&
+          gesture.current.viewportKey === panelGestureViewportKey(currentViewport.current)
+        )
+          geometryCallback.current(next);
+      });
   }
   function end(event: PointerEvent<HTMLElement>, cancel = false) {
     if (gesture.current?.pointer === event.pointerId) finishGesture(cancel);
@@ -228,6 +271,8 @@ export function FloatingPanel({
       // Pointer handlers are gone; do not mutate a different panel during unmount.
       const active = gesture.current;
       gesture.current = null;
+      cancelAnimationFrame(geometryFrame.current);
+      pendingGeometry.current = null;
       if (active)
         try {
           active.target.releasePointerCapture(active.pointer);
@@ -246,6 +291,9 @@ export function FloatingPanel({
       // The callback now targets the new panel; never roll the old gesture into it.
       const active = gesture.current;
       gesture.current = null;
+      cancelAnimationFrame(geometryFrame.current);
+      geometryFrame.current = 0;
+      pendingGeometry.current = null;
       if (active)
         try {
           active.target.releasePointerCapture(active.pointer);
@@ -291,10 +339,17 @@ export function FloatingPanel({
     setAnimatingPresentation(true);
     onGeometry(next);
   }
-  function setPresentation(next: 'normal' | 'maximized' | 'collapsed') {
+  function setPresentation(
+    next: 'normal' | 'maximized' | 'collapsed',
+    restoreEditingSpace = false,
+  ) {
     finishGesture(false);
     setMenu(false);
-    animateGeometry({ ...value, presentation: next });
+    animateGeometry(
+      next === 'normal' && restoreEditingSpace
+        ? restorePanelForEditing(value, viewport, panelKey)
+        : { ...value, presentation: next },
+    );
     // Do not leave keyboard focus inside a collapsed or inert content subtree.
     if (next === 'collapsed') dragHandle.current?.focus();
   }
@@ -392,6 +447,33 @@ export function FloatingPanel({
           <strong>{title}</strong>
         </div>
         <div className="panel-presentation-actions" data-motion="panel-actions">
+          {attached && !condensed && (
+            <div
+              className="panel-mobile-presentations"
+              role="group"
+              aria-label={studioText('panelStates')}
+            >
+              {(
+                [
+                  ['collapsed', 'photo', 'photoLabel'],
+                  ['normal', 'edit', 'editLabel'],
+                  ['maximized', 'tools', 'toolsLabel'],
+                ] as const
+              ).map(([state, text, description]) => (
+                <button
+                  type="button"
+                  key={state}
+                  aria-label={studioText(description)}
+                  title={studioText(description)}
+                  aria-pressed={value.presentation === state}
+                  aria-controls={contentId}
+                  onClick={() => setPresentation(state, state === 'normal')}
+                >
+                  {studioText(text)}
+                </button>
+              ))}
+            </div>
+          )}
           <IconButton
             className="panel-collapse-action"
             label={
@@ -412,6 +494,7 @@ export function FloatingPanel({
             {collapsed ? <CaretUp size={17} /> : <CaretDown size={17} />}
           </IconButton>
           <IconButton
+            className="panel-maximize-action"
             label={
               maximized
                 ? t('返回常规调节，恢复面板尺寸')

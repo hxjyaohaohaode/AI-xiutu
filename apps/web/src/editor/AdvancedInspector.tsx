@@ -1,7 +1,7 @@
 import { t } from '../i18n';
 import { MotionDetails } from '../motion/Presence';
 import { ChoiceSelect } from '../components/ChoiceSelect';
-import { useState } from 'react';
+import { useLayoutEffect, useRef, useState } from 'react';
 import { ArrowCounterClockwise, ArrowClockwise, CaretDown } from '@phosphor-icons/react';
 import { createColorBlockV3 } from '@ai-xiutu/editor';
 import { IconButton, InlineError } from '../components/Ui';
@@ -37,6 +37,12 @@ export function AdvancedInspector({
 }: ToolInspectorProps) {
   const [requestedScope, setRequestedScope] = useState<EditScope>({ kind: 'global' });
   const [error, setError] = useState<string | null>(null);
+  const scroller = useRef<HTMLDivElement>(null);
+  useLayoutEffect(() => {
+    // Keep the new tool's heading reachable without remounting its controls or
+    // changing the document. An unrelated tool must not inherit this scroll.
+    if (scroller.current) scroller.current.scrollTop = 0;
+  }, [group]);
   const recipe = currentV3(editor),
     descriptor = toolGroups.find((tool) => tool.id === group)!;
   const scope =
@@ -90,7 +96,7 @@ export function AdvancedInspector({
           <CaretDown size={20} />
         </IconButton>
       </header>
-      <div className="inspector-scroll advanced-inspector-scroll">
+      <div ref={scroller} className="inspector-scroll advanced-inspector-scroll">
         {scopedFamily && onGroupChange && (
           <nav
             className="context-adjustment-tabs"
@@ -121,7 +127,13 @@ export function AdvancedInspector({
         ) : (
           <>
             {scopedFamily && (
-              <div className="scope-selector" data-motion="scope-selector">
+              <div
+                className="scope-selector"
+                data-motion="scope-selector"
+                data-single-scope={
+                  !recipe.regionEdits.length && !recipe.regionGroups.length ? 'true' : undefined
+                }
+              >
                 <label>
                   {t('作用范围')}
                   <ChoiceSelect

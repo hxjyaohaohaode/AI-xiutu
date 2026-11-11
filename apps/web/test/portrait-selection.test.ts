@@ -22,6 +22,10 @@ import {
   preparePortraitSelection,
 } from '../src/editor/portrait-selection.ts';
 import { renderTestMarkup } from './support/render.ts';
+import { setLocale, t } from '../src/i18n';
+import { PORTRAIT_ANALYSIS_TIMEOUT_MESSAGE } from '../src/editor/portrait-analysis-errors.ts';
+import { portraitTargetDisplayLabel } from '../src/editor/portrait-label.ts';
+import { faceTarget, bodyTarget } from '../../../packages/portrait/test/fixtures.ts';
 
 // Exercise the actual handler in Node; CSS is verified separately in the browser.
 const cssHook = registerHooks({
@@ -158,11 +162,13 @@ function controlFixture({
   accepted = true,
   analysis = analysisFixture(),
   progress = null,
+  error = null,
   onCutout,
 }: {
   accepted?: boolean;
   analysis?: PortraitAnalysis | null;
   progress?: string | null;
+  error?: string | null;
   onCutout?: () => Promise<string>;
 } = {}) {
   let recipe: LayeredRecipe = createRecipeV4(),
@@ -177,7 +183,15 @@ function controlFixture({
       getSourceFrame: () => (loading ? null : frame),
       isLoading: () => loading,
       sourceHash: frame.contentHash,
-      portrait: { analysis, activeTargetId: null, progress, error: null },
+      portrait: {
+        analysis,
+        activeTargetId: null,
+        progress,
+        error,
+        analyze(body: boolean) {
+          actions.push(['analyze', body]);
+        },
+      },
       setActiveRegionId(id: string) {
         actions.push(['active', id]);
       },
@@ -228,6 +242,86 @@ function controlFixture({
     },
   };
 }
+
+test('a portrait timeout offers a translated manual retry without starting it during rendering', async () => {
+  try {
+    for (const locale of ['zh-CN', 'zh-TW', 'en'] as const) {
+      await setLocale(locale);
+      const ui = controlFixture({ analysis: null, error: PORTRAIT_ANALYSIS_TIMEOUT_MESSAGE });
+      assert.deepEqual(ui.actions, [], 'rendering a failed state never retries analysis');
+      assert.ok(ui.markup.includes(t(PORTRAIT_ANALYSIS_TIMEOUT_MESSAGE)));
+      assert.doesNotMatch(ui.markup, /signal timed out|TimeoutError/);
+      const retry = ui.button(t('重试人物识别'));
+      assert.equal(retry.disabled, false);
+      retry.onClick!();
+      assert.deepEqual(ui.actions, [['analyze', false]], 'one explicit action starts one analysis');
+      const busy = controlFixture({ analysis: null, progress: '正在加载本地分析模型' });
+      assert.equal(busy.button(t('识别照片中的人物')).disabled, true);
+      assert.deepEqual(busy.actions, []);
+    }
+  } finally {
+    await setLocale('zh-CN');
+  }
+});
+
+test('generated people labels follow locale in the real picker without rewriting analysis or ids', async () => {
+  const analysis = {
+    ...analysisFixture(),
+    provider: 'mediapipe',
+    algorithmVersion: 'mediapipe-v1-selfie256',
+    targets: [faceTarget(), bodyTarget(2)],
+  };
+  const before = JSON.stringify(analysis);
+  try {
+    for (const locale of ['zh-CN', 'en', 'zh-TW', 'en', 'zh-CN'] as const) {
+      await setLocale(locale);
+      const ui = controlFixture({ analysis });
+      const picker = ui.markup.match(/<button\b[^>]*role="combobox"[^>]*>[\s\S]*?<\/button>/)?.[0];
+      assert.ok(picker, 'the real person selector remains available');
+      assert.ok(picker.includes(locale === 'en' ? 'Person 1' : '人物 1'));
+      if (locale === 'en') assert.ok(!picker.includes('人物 1'));
+      assert.equal(
+        portraitTargetDisplayLabel(analysis.targets[1]!, analysis),
+        locale === 'en' ? 'Body 2' : '身形 2',
+      );
+      assert.equal(JSON.stringify(analysis), before, 'presentation never changes export data');
+      assert.deepEqual(ui.actions, [], 'language changes do not trigger analysis or edits');
+    }
+  } finally {
+    await setLocale('zh-CN');
+  }
+});
+
+test('custom or unrecognized portrait labels remain verbatim even if they contain default words', async () => {
+  const analysis = {
+    ...analysisFixture(),
+    provider: 'mediapipe',
+    algorithmVersion: 'mediapipe-v1-selfie256',
+    targets: [faceTarget()],
+  };
+  try {
+    await setLocale('en');
+    for (const label of ['妈妈', '人物 1 · 妈妈', '人物 2', '人物 01', 'Person 1', '{number}']) {
+      const renamed = { ...analysis.targets[0]!, label };
+      assert.equal(portraitTargetDisplayLabel(renamed, analysis), label);
+    }
+    const defaultTarget = analysis.targets[0]!;
+    for (const changed of [
+      null,
+      { ...analysis, provider: 'imported-provider' },
+      { ...analysis, algorithmVersion: 'other-version' },
+      { ...analysis, frame: { ...analysis.frame, contentHash: 'b'.repeat(64) } },
+    ])
+      assert.equal(portraitTargetDisplayLabel(defaultTarget, changed), defaultTarget.label);
+    const renamed = { ...analysis, targets: [{ ...defaultTarget, label: '妈妈' }] };
+    const ui = controlFixture({ analysis: renamed });
+    const picker = ui.markup.match(/<button\b[^>]*role="combobox"[^>]*>[\s\S]*?<\/button>/)?.[0];
+    assert.ok(picker?.includes('妈妈'));
+    assert.ok(!picker.includes('Person 1'));
+  } finally {
+    await setLocale('zh-CN');
+  }
+});
 
 test('the real portrait action commits before changing the active mask and local scope', () => {
   const ui = controlFixture();

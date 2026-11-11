@@ -1,4 +1,5 @@
 import { t } from '../i18n';
+import { studioText } from '../workspace/studio-copy';
 import { MotionDetails } from '../motion/Presence';
 import { StudioGlyph } from '../components/StudioGlyph';
 import { ChoiceSelect } from '../components/ChoiceSelect';
@@ -1204,7 +1205,7 @@ function LegacyToolInspector({
                           checked={editor.maskOverlay}
                           onChange={(event) => editor.setMaskOverlay(event.target.checked)}
                         />
-                        {t('显示蒙版')}
+                        {studioText('pinMask')}
                       </label>
                       <label>
                         <input

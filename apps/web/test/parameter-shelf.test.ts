@@ -3,6 +3,8 @@ import { test } from 'node:test';
 import { createElement } from 'react';
 import { renderTestMarkup } from './support/render.ts';
 import { ParameterShelf, parameterControlScrollTop } from '../src/editor/ParameterShelf.tsx';
+import { PrecisionRange } from '../src/editor/PrecisionRange.tsx';
+import { setLocale } from '../src/i18n';
 
 test('selecting a compact-panel parameter reveals its whole main control with bounded local scrolling', () => {
   const initial = {
@@ -114,7 +116,8 @@ test('the shelf retains named controls, exact signed ranges, selected state and 
   assert.match(slider, /aria-label="曝光"/);
   assert.match(slider, /min="-8"/);
   assert.match(slider, /max="8"/);
-  assert.match(slider, /step="0.01"/);
+  assert.match(slider, /\sstep="any"/);
+  assert.match(slider, /data-step="0.01"/);
   assert.match(slider, /value="-0.35"/);
   assert.match(html, /aria-label="重置曝光"/);
   assert.match(html, /点击精确输入/);
@@ -189,4 +192,40 @@ test('an unavailable first parameter does not hide the usable control and adjust
   );
   assert.match(html, /--range-fill-start:47.8125%/);
   assert.match(html, /--range-fill-end:50%/);
+});
+
+test('rotated selection bounds stay exact in native controls while all locales show bounded precision', async () => {
+  const minimum = 0.28461796408935386;
+  const maximum = 0.7153820359106462;
+  const value = 0.5000000000000001;
+  let mutations = 0;
+  try {
+    for (const locale of ['zh-CN', 'zh-TW', 'en'] as const) {
+      await setLocale(locale);
+      const html = renderTestMarkup(
+        createElement(PrecisionRange, {
+          label: '整体中心 X',
+          min: minimum,
+          max: maximum,
+          value,
+          step: 0.0001,
+          onChange: () => {
+            mutations++;
+          },
+        }),
+      );
+      const slider = html.match(/<input[^>]+type="range"[^>]*>/)?.[0];
+      assert.ok(slider);
+      assert.ok(slider.includes(`min="${minimum}"`));
+      assert.ok(slider.includes(`max="${maximum}"`));
+      assert.ok(slider.includes(`value="${value}"`));
+      assert.match(
+        html,
+        /class="precision-scale" aria-hidden="true"><span>0\.28462<\/span><span>0\.71538<\/span>/,
+      );
+      assert.equal(mutations, 0, 'formatting never rounds the recipe or fires an edit');
+    }
+  } finally {
+    await setLocale('zh-CN');
+  }
 });
