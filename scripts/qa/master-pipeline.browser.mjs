@@ -78,7 +78,13 @@ try {
           exact: true,
         }),
       });
-      const open = () => card.getByRole('button', { name: '查看原件与母版', exact: true }).click();
+      async function open() {
+        await card.waitFor();
+        const action = card.getByRole('button', { name: '查看原件与母版', exact: true });
+        const details = card.locator('.library-asset-details > summary');
+        if (!(await action.isVisible()) && (await details.count())) await details.click();
+        await action.click();
+      }
       await open();
       const media = page.getByRole('region', { name: '原件与母版', exact: true });
       const preview = media.locator('.media-tile-viewport');
