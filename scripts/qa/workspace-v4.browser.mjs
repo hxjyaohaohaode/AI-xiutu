@@ -490,6 +490,56 @@ async function layoutAssertions(page, phone) {
   return measured;
 }
 
+async function assertPaintPanelFocus(page) {
+  const panel = page.locator('.free-panel[aria-hidden="false"]');
+  const field = panel
+    .locator('[data-motion="paint-controls"]')
+    .getByRole('textbox', { name: 'HEX颜色', exact: true });
+  await panel.locator('.panel-context-navigation').waitFor({ state: 'visible' });
+  // Native focus must reveal the low color input through the editor scroller,
+  // without scrolling the shared navigation out of the clipped outer shell.
+  await field.focus();
+  await page.evaluate(
+    () => new Promise((done) => requestAnimationFrame(() => requestAnimationFrame(done))),
+  );
+  const measured = await field.evaluate((input) => {
+    const panel = input.closest('.free-panel');
+    const content = input.closest('.panel-content');
+    const scroller = input.closest('.inspector-scroll');
+    const header = panel?.querySelector('.panel-drag-header');
+    const navigation = panel?.querySelector('.studio-context-tabs');
+    if (!content || !scroller || !header || !navigation)
+      throw new Error('The paint input must be inside the real editor panel');
+    const bounds = (element) => {
+      const { top, bottom } = element.getBoundingClientRect();
+      return { top, bottom };
+    };
+    return {
+      focused: document.activeElement === input,
+      outerScrollTop: content.scrollTop,
+      innerScrollTop: scroller.scrollTop,
+      content: bounds(content),
+      scroller: bounds(scroller),
+      header: bounds(header),
+      navigation: bounds(navigation),
+      input: bounds(input),
+    };
+  });
+  assert.equal(measured.focused, true, 'the low color input receives real native focus');
+  assert.equal(measured.outerScrollTop, 0, 'focus cannot scroll the outer panel shell');
+  assert.ok(
+    measured.navigation.top >= Math.max(measured.header.bottom, measured.content.top) - 1 &&
+      measured.navigation.bottom <= measured.content.bottom + 1,
+    'all context tabs stay below the panel header and inside the visible panel body',
+  );
+  assert.ok(
+    measured.input.top >= measured.scroller.top - 1 &&
+      measured.input.bottom <= measured.scroller.bottom + 1,
+    'the inner editor still scrolls to reveal the focused color input',
+  );
+  return measured;
+}
+
 try {
   app = await buildApp({
     db,
@@ -701,7 +751,7 @@ try {
         await eastHandle.press('Alt+ArrowRight');
         await page.getByRole('button', { name: '面板位置与连续尺寸', exact: true }).click();
         await page.getByRole('button', { name: '底部', exact: true }).click();
-        await grip.press('Enter');
+        await page.getByRole('button', { name: '收起参数，查看完整照片', exact: true }).click();
         await eventually(
           async () =>
             (await page.locator('.free-panel').getAttribute('data-presentation')) === 'collapsed',
@@ -714,12 +764,12 @@ try {
             -0.35,
           'restore retains photo adjustment',
         );
-        await page.getByRole('button', { name: '展开精调，允许遮挡画面' }).click();
+        await page.getByRole('button', { name: '展开参数面板', exact: true }).click();
         assert.equal(
           await page.locator('.free-panel').getAttribute('data-presentation'),
           'maximized',
         );
-        await page.getByRole('button', { name: '返回常规调节，恢复面板尺寸' }).click();
+        await page.getByRole('button', { name: '恢复参数，保留当前调整', exact: true }).click();
       }
       await page.screenshot({ path: join(artifacts, `layout-${size.width}x${size.height}.png`) });
       const exported = await recipeDownload(page);
@@ -960,6 +1010,7 @@ try {
           .locator('[data-motion="paint-controls"]')
           .getByRole('button', { name: '新建', exact: true })
           .click();
+        const paintPanelFocus = viewport.width >= 1024 ? await assertPaintPanelFocus(page) : null;
         await precision(page, '柔边', 0);
         const empty = await recipeDownload(page);
         const curve = [
@@ -1151,6 +1202,7 @@ try {
           penPressureAndGap: true,
           undoVerified: true,
           cancelVerified: true,
+          paintPanelFocus,
         };
       },
     );

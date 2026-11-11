@@ -21,6 +21,7 @@ import {
   type PortraitAnalysis,
   type PortraitTarget,
 } from '@ai-xiutu/portrait';
+import { portraitAnalysisErrorMessage } from './portrait-analysis-errors';
 
 type Request = {
   id: number;
@@ -347,7 +348,7 @@ self.onmessage = async (event: MessageEvent<Request>) => {
     if (import.meta.env.DEV) console.error('Portrait analysis failed', error);
     self.postMessage({
       id,
-      error: error instanceof Error ? error.message : '人像分析失败，请使用手动选区。',
+      error: portraitAnalysisErrorMessage(error),
       diagnostic: import.meta.env.DEV && error instanceof Error ? error.stack : undefined,
     });
   } finally {

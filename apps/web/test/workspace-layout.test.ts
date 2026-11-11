@@ -15,6 +15,7 @@ import {
   panelRectangle,
   parseWorkspaceLayout,
   resizePanel,
+  restorePanelForEditing,
   workspaceCanvasInsets,
   workspaceSize,
   type PanelGeometry,
@@ -193,8 +194,46 @@ test('fresh phone defaults reserve photo pixels without beginning in overlay', (
     284.24,
   );
   assert.equal(defaultPanel('ai', { width: 320, height: 700, bucket: 'phone' }).height, 293);
-  assert.equal(defaultPanel('inspector', phone).height, 300);
+  assert.equal(defaultPanel('inspector', phone).height, 340);
   assert.equal(defaultPanel('ai', phone).height, 390);
+});
+
+test('phone Edit recovers a tiny saved sheet while retaining visible photo space and free manual sizing', () => {
+  for (const view of [
+    { ...phone, workspaceHeight: 759.8542, toolShelfHeight: 64 },
+    { width: 320, height: 700, bucket: 'phone' as const, workspaceHeight: 616 },
+  ]) {
+    const tiny = { ...defaultPanel('inspector', view), height: 112 };
+    for (const presentation of ['normal', 'maximized', 'collapsed'] as const) {
+      const restored = restorePanelForEditing({ ...tiny, presentation }, view, 'inspector');
+      assert.equal(restored.presentation, 'normal');
+      assert.ok(
+        restored.height >= 260,
+        'editing recovers space for the active range and parameter rail',
+      );
+      if (view.width === 390) assert.ok(restored.height >= 330 && restored.height <= 360);
+      assert.ok(canvasImageArea(view, workspaceCanvasInsets(restored, view)).height >= 160);
+      assert.equal(
+        resizePanel(restored, 'n', 0, 10_000, view, 'inspector').height,
+        112,
+        'the explicit Edit recovery is not a hard minimum on manual resizing',
+      );
+    }
+    assert.equal(tiny.height, 112, 'the recovery does not mutate the saved input');
+  }
+  const constrained = { ...phone, workspaceHeight: 250 };
+  const panel = restorePanelForEditing({ ...savedPanel, dock: 'bottom' }, constrained, 'inspector');
+  assert.ok(
+    panelRectangle(panel, constrained).y + panel.height <= 250 - panelBottomOffset(constrained),
+  );
+  const floating = boundPanel(
+    { ...savedPanel, dock: 'floating', x: 125, y: 41, height: 390 },
+    desktop,
+  );
+  assert.deepEqual(
+    restorePanelForEditing({ ...floating, presentation: 'maximized' }, desktop, 'inspector'),
+    floating,
+  );
 });
 
 test('low-room guidance uses actual fit space without changing composition or limiting manual sizes', () => {

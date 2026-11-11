@@ -2,12 +2,20 @@ import { t } from '../i18n';
 import { MotionDetails } from '../motion/Presence';
 import { ChoiceSelect } from '../components/ChoiceSelect';
 import { useState } from 'react';
-import { Plus, Trash, ArrowUUpLeft } from '@phosphor-icons/react';
+import {
+  Plus,
+  Trash,
+  ArrowUUpLeft,
+  ArrowClockwise,
+  ArrowCounterClockwise,
+} from '@phosphor-icons/react';
 import { MAX_POLYGON_POINTS, type SelectionMaskV3 } from '@ai-xiutu/editor';
 import { IconButton } from '../components/Ui';
 import { ParameterShelf, type ShelfControl } from './ParameterShelf';
 import { newMask, type InspectorController } from './advanced-model';
 import { maskAtPath, replaceMaskAtPath } from './precision';
+import { polygonCenter, rotatePolygon, translatePolygon } from './selection-transform';
+import { studioText } from '../workspace/studio-copy';
 
 export const maskLabels: Record<SelectionMaskV3['type'], string> = {
   radial: '径向',
@@ -35,6 +43,7 @@ export function MaskControls({
 }) {
   const { editor } = controller;
   const [pointIndex, setPointIndex] = useState(0);
+  const [rotationStep, setRotationStep] = useState('1');
   const root = getMask(),
     mask = maskAtPath(root, path);
   const short = Math.min(editor.dimensions?.width ?? 1, editor.dimensions?.height ?? 1);
@@ -122,16 +131,51 @@ export function MaskControls({
     scalar('luminanceMax', '最高明度', mask.luminanceMax, mask.luminanceMin, 1);
     scalar('feather', '过渡羽化', mask.feather, 0, 1);
   } else if (mask.type === 'polygon') {
+    const center = polygonCenter(mask.points);
+    numeric(
+      'centerX',
+      studioText('moveX'),
+      center.x,
+      center.x - Math.min(...mask.points.map((point) => point.x)),
+      center.x + 1 - Math.max(...mask.points.map((point) => point.x)),
+      0.0001,
+      '',
+      (latest, n) =>
+        latest.type === 'polygon'
+          ? translatePolygon(latest, n - polygonCenter(latest.points).x, 0)
+          : latest,
+    );
+    numeric(
+      'centerY',
+      studioText('moveY'),
+      center.y,
+      center.y - Math.min(...mask.points.map((point) => point.y)),
+      center.y + 1 - Math.max(...mask.points.map((point) => point.y)),
+      0.0001,
+      '',
+      (latest, n) =>
+        latest.type === 'polygon'
+          ? translatePolygon(latest, 0, n - polygonCenter(latest.points).y)
+          : latest,
+    );
     const index = Math.min(pointIndex, mask.points.length - 1),
       point = mask.points[index]!;
     for (const axis of ['x', 'y'] as const)
-      numeric(axis, '顶点 ' + axis.toUpperCase(), point[axis], 0, 1, 0.0001, '', (latest, n) =>
-        latest.type === 'polygon'
-          ? {
-              ...latest,
-              points: latest.points.map((p, i) => (i === index ? { ...p, [axis]: n } : p)),
-            }
-          : latest,
+      numeric(
+        axis,
+        t('顶点 {axis}', { axis: axis.toUpperCase() }),
+        point[axis],
+        0,
+        1,
+        0.0001,
+        '',
+        (latest, n) =>
+          latest.type === 'polygon'
+            ? {
+                ...latest,
+                points: latest.points.map((p, i) => (i === index ? { ...p, [axis]: n } : p)),
+              }
+            : latest,
       );
     scalar('feather', '边缘羽化', mask.feather, 0, 0.5);
   }
@@ -143,6 +187,21 @@ export function MaskControls({
         ? { ...selected, masks: [...selected.masks, next] }
         : { type: 'compound', operation: 'union', masks: [selected, next], invert: false };
     if (update(combined, true)) onPath([...path, combined.masks.length - 1]);
+  }
+  function rotate(direction: number) {
+    const degrees = Number(rotationStep);
+    if (!rotationStep.trim() || !Number.isFinite(degrees) || degrees < 0.01 || degrees > 180) {
+      controller.report(studioText('rotationInvalid'));
+      return;
+    }
+    const selected = maskAtPath(getMask(), path);
+    if (selected.type !== 'polygon' || !editor.dimensions) return;
+    const next = rotatePolygon(selected, degrees * direction, editor.dimensions);
+    if (!next) {
+      controller.report(studioText('rotateBounds'));
+      return;
+    }
+    update(next, true);
   }
   return (
     <section className="mask-controls-v3" data-motion="mask-editor">
@@ -197,7 +256,7 @@ export function MaskControls({
             checked={editor.maskOverlay}
             onChange={(event) => editor.setMaskOverlay(event.target.checked)}
           />
-          {t('显示范围覆盖')}
+          {studioText('pinMask')}
         </label>
       )}
       {mask.type === 'compound' && (
@@ -329,6 +388,32 @@ export function MaskControls({
           onCommit={(name) => editor.commitCurrent(t('调整{v0}', { v0: t(name) }))}
           onCancel={editor.cancelPreview}
         />
+      )}
+      {mask.type === 'polygon' && (
+        <div className="selection-rotation-control">
+          <label>
+            <span>{studioText('rotationStep')}</span>
+            <span className="selection-rotation-value">
+              <input
+                type="number"
+                inputMode="decimal"
+                aria-label={studioText('rotationStep')}
+                value={rotationStep}
+                min={0.01}
+                max={180}
+                step={0.01}
+                onChange={(event) => setRotationStep(event.target.value)}
+              />
+              <span aria-hidden>°</span>
+            </span>
+          </label>
+          <IconButton label={studioText('rotateLeft')} onClick={() => rotate(-1)}>
+            <ArrowCounterClockwise size={18} />
+          </IconButton>
+          <IconButton label={studioText('rotateRight')} onClick={() => rotate(1)}>
+            <ArrowClockwise size={18} />
+          </IconButton>
+        </div>
       )}
       {mask.type === 'brush' && (
         <>

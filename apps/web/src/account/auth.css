@@ -349,7 +349,7 @@
   color: var(--success);
 }
 
-.modal.account-auth .auth-primary {
+.account-auth .auth-primary {
   display: flex;
   justify-content: center;
   align-items: center;
@@ -365,16 +365,16 @@
   font-size: 14px;
 }
 
-.modal.account-auth .auth-primary:hover:not(:disabled) {
+.account-auth .auth-primary:hover:not(:disabled) {
   background: color-mix(in srgb, var(--ink) 86%, var(--surface));
   color: var(--surface);
 }
 
-.modal.account-auth .auth-primary > svg {
+.account-auth .auth-primary > svg {
   transition: transform 180ms cubic-bezier(0.22, 0.72, 0.2, 1);
 }
 
-.modal.account-auth .auth-primary:hover:not(:disabled) > svg {
+.account-auth .auth-primary:hover:not(:disabled) > svg {
   transform: translateX(3px);
 }
 

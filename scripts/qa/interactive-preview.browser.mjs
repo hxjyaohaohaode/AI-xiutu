@@ -130,7 +130,7 @@ async function verifyLocalMaskAndLiquify(input) {
     await page.locator('.mask-overlay').waitFor({ state: 'visible' });
     assert.equal(await page.locator('.selection-preview').count(), 0);
     await page.locator('.mask-overlay').waitFor({ state: 'hidden' });
-    const overlay = selectedPanel.getByRole('checkbox', { name: '显示范围覆盖', exact: true });
+    const overlay = selectedPanel.getByRole('checkbox', { name: '持续显示选区', exact: true });
     assert.equal(await overlay.isChecked(), false);
     await overlay.check();
     await page.locator('.selection-preview').waitFor();
@@ -170,10 +170,10 @@ async function verifyLocalMaskAndLiquify(input) {
     await page.mouse.move(firstVertex.x + 25, firstVertex.y + 16, { steps: 8 });
     await page.mouse.up();
     const polygonCenter = await boxCenter(
-      page.getByRole('button', { name: '拖动选区中心', exact: true }),
+      page.getByRole('button', { name: '移动整个选区', exact: true }),
     );
     const polygonGrip = await boxCenter(
-      page.getByRole('button', { name: '拖动旋转选区', exact: true }),
+      page.getByRole('button', { name: '旋转选区', exact: true }),
     );
     const heightToGrip = polygonCenter.y - polygonGrip.y;
     await page.mouse.move(polygonGrip.x, polygonGrip.y);
@@ -975,6 +975,13 @@ try {
       firstChangedMs: frames.length ? frames[0].t - inputTime : null,
       firstRangeChangeMs: trace.valueChanges.length ? trace.valueChanges[0] - inputTime : null,
       distinctLiveFrames: distinct,
+      liveRasterPixels: frames.length
+        ? {
+            minimum: Math.min(...frames.map((frame) => frame.width * frame.height)),
+            maximum: Math.max(...frames.map((frame) => frame.width * frame.height)),
+            settled: trace.baseline.width * trace.baseline.height,
+          }
+        : null,
       maxFrameGapMs: frames.length
         ? Math.max(
             ...frames.map((f, i) => f.t - (frames[i - 1]?.t ?? inputTime)),

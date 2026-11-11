@@ -15,6 +15,7 @@ import { chromium } from 'playwright';
 import { createDatabase } from '@ai-xiutu/db';
 import { ProviderError } from '@ai-xiutu/providers';
 import { runSiteEntryChecks } from './qa/site-entry.browser.mjs';
+import { runAboutExperienceChecks } from './qa/about-experience.browser.mjs';
 
 if (process.env.CI !== 'true' || process.env.NODE_ENV === 'production')
   throw new Error('Run only in isolated non-production CI.');
@@ -163,7 +164,7 @@ async function newContext(viewport = { width: 1440, height: 960 }, entry = 'stud
 }
 async function capture(page, name) {
   const file = `${name}.png`;
-  const fields = page.locator('.auth-dialog input');
+  const fields = page.locator('.account-page.account-auth input');
   const masks = [];
   for (let index = 0; index < (await fields.count()); index++) {
     const input = fields.nth(index);
@@ -215,13 +216,13 @@ async function openAuth(page) {
   const topbar = workspaceLogin(page);
   if (await topbar.isVisible()) await topbar.click();
   else await (await openNavigation(page)).locator('button.account-login').click();
-  const dialog = page.getByRole('dialog', { name: '登录工作空间', exact: true });
+  const dialog = page.getByRole('region', { name: '登录工作空间', exact: true });
   await dialog.waitFor();
   await authControl(page, 'phone').waitFor();
   return dialog;
 }
 async function finishWelcome(page, registered) {
-  // The first-use sheet is a genuine product step, not a seeded completion flag.
+  // First use is a genuine standalone page, not a seeded completion flag.
   const onboarding = page.getByTestId('account-onboarding');
   if (registered) {
     await onboarding.waitFor();
@@ -231,16 +232,16 @@ async function finishWelcome(page, registered) {
   }
 }
 async function expectSignedIn(page, name = primaryName, registered = false) {
-  // A first-use modal correctly makes the workspace inert. Complete that step
-  // before requiring the workspace's account action to rejoin the accessibility tree.
+  // The first-use page retains a hidden/inert workspace. Complete that step
+  // before requiring its account action to rejoin the accessibility tree.
   await finishWelcome(page, registered);
   await page.getByRole('button', { name: `账户：${name}`, exact: true }).waitFor();
-  const auth = page.locator('.auth-dialog');
-  await until(async () => !(await auth.isVisible()), 'auth result closes its original dialog');
+  const auth = page.locator('.account-page.account-auth');
+  await until(async () => !(await auth.isVisible()), 'auth result leaves its original page');
 }
 async function openAccount(page, name = primaryName) {
   currentPage = page;
-  const dialog = page.getByRole('dialog', { name: '账号与使用', exact: true });
+  const dialog = page.getByRole('region', { name: '账号与使用', exact: true });
   if (!(await dialog.isVisible())) {
     const topbar = page.getByRole('button', { name: `账户：${name}`, exact: true });
     if (await topbar.isVisible()) await topbar.click();
@@ -255,6 +256,11 @@ async function openAccount(page, name = primaryName) {
   return dialog;
 }
 async function closeDialog(dialog) {
+  if (await dialog.evaluate((element) => element.classList.contains('account-page'))) {
+    await dialog.locator('.account-page-back').click();
+    await dialog.waitFor({ state: 'hidden' });
+    return;
+  }
   const nativeDialog = await dialog.elementHandle();
   assert.ok(nativeDialog, 'The visible modal must own a native dialog');
   try {
@@ -410,6 +416,9 @@ async function measureReachable(page, target, name) {
       viewport: { width: innerWidth, height: innerHeight },
       horizontalOverflow:
         document.documentElement.scrollWidth - document.documentElement.clientWidth,
+      documentPage:
+        !!element.closest('.account-page') && document.body.dataset.sitePage === 'account',
+      documentOverflowY: getComputedStyle(document.body).overflowY,
     };
   });
   assert.ok(geometry.rect.width > 0 && geometry.rect.height > 0, `${name} is not rendered`);
@@ -434,12 +443,22 @@ async function measureReachable(page, target, name) {
         /^(auto|scroll)$/,
         `${name} must not scroll a hidden horizontal ancestor`,
       );
-    if (Math.abs(next.y - previous.y) > 0.5)
-      assert.match(
-        previous.overflowY,
-        /^(auto|scroll)$/,
-        `${name} must not scroll a hidden vertical ancestor`,
-      );
+    if (Math.abs(next.y - previous.y) > 0.5) {
+      // Standalone account pages intentionally scroll the document. The editor
+      // still rejects scrolling hidden ancestors, including its root frame.
+      if (next.tag === 'HTML' && geometry.documentPage)
+        assert.match(
+          geometry.documentOverflowY,
+          /^(auto|scroll)$/,
+          `${name} account page must own real document scrolling`,
+        );
+      else
+        assert.match(
+          previous.overflowY,
+          /^(auto|scroll)$/,
+          `${name} must not scroll a hidden vertical ancestor`,
+        );
+    }
   }
   return { name, ...geometry };
 }
@@ -505,6 +524,7 @@ try {
     report,
     phone: primaryPhone,
   });
+  await runAboutExperienceChecks({ newContext, check, capture, until, report });
   main = await newContext();
   let primaryUserId, originalCookie, peerCookie, documentActor;
 
@@ -520,20 +540,28 @@ try {
             .evaluate((element) => document.activeElement === element),
         'phone field receives focus',
       );
-      const close = dialog.getByRole('button', { name: '关闭窗口', exact: true });
+      const close = dialog.locator('.account-page-back');
       await close.focus();
       await main.page.keyboard.press('Shift+Tab');
       assert.equal(
         await dialog.evaluate((element) => element.contains(document.activeElement)),
         true,
-        'Backward keyboard navigation must remain in the dialog',
+        'Page navigation must retain a visible keyboard destination',
       );
       await main.page.keyboard.press('Tab');
       assert.equal(
         await close.evaluate((element) => document.activeElement === element),
         true,
-        'Forward navigation must wrap to the dialog close button',
+        'Tab from language returns to the page navigation action',
       );
+      assert.equal(new URL(main.page.url()).hash, '#/login');
+      assert.equal(
+        await main.page.locator('dialog[open]').count(),
+        0,
+        'Login must be a page, not a modal',
+      );
+      assert.equal(await main.page.locator('.site-workspace-frame').getAttribute('hidden'), '');
+      assert.equal(await main.page.locator('.site-workspace-frame').getAttribute('inert'), '');
       await dialog.getByRole('button', { name: '登录', exact: true }).click();
       assert.equal(await authControl(main.page, 'phone').getAttribute('aria-invalid'), 'true');
       assert.equal(await authControl(main.page, 'password').getAttribute('aria-invalid'), 'true');
@@ -546,10 +574,35 @@ try {
       assert.equal(await authControl(main.page, 'password').getAttribute('type'), 'password');
       await authControl(main.page, 'password').fill('');
       await capture(main.page, '01-guest-validation');
+      const retainedWorkspace = await main.page.locator('.site-workspace-frame').elementHandle();
+      assert.ok(retainedWorkspace);
+      try {
+        await dialog.getByRole('button', { name: '创建新账号', exact: true }).click();
+        await main.page.getByRole('heading', { name: '注册账号', exact: true }).waitFor();
+        assert.equal(new URL(main.page.url()).hash, '#/register');
+        await main.page.goBack();
+        await main.page.getByRole('heading', { name: '登录工作空间', exact: true }).waitFor();
+        assert.equal(new URL(main.page.url()).hash, '#/login');
+        await main.page.goBack();
+        await workspaceLogin(main.page).waitFor();
+        assert.equal(new URL(main.page.url()).hash, '#/studio');
+        assert.equal(
+          await retainedWorkspace.evaluate(
+            (element) =>
+              element.isConnected && document.querySelector('.site-workspace-frame') === element,
+          ),
+          true,
+        );
+        await openAuth(main.page);
+      } finally {
+        await retainedWorkspace.dispose();
+      }
       return {
         localInvalidSubmissions: 0,
         explicitVisibilityToggle: true,
-        keyboardFocusContained: true,
+        keyboardPageNavigation: true,
+        standaloneRoutes: ['login', 'register'],
+        browserHistoryKeepsWorkspaceOwner: true,
       };
     },
   );
@@ -564,7 +617,7 @@ try {
         (r) => new URL(r.url()).pathname === '/v1/auth/otp' && r.request().method() === 'POST',
       );
       await page
-        .getByRole('dialog', { name: '注册账号', exact: true })
+        .getByRole('region', { name: '注册账号', exact: true })
         .getByRole('button', { name: '获取验证码', exact: true })
         .click();
       const receipt = await sent;
@@ -708,13 +761,13 @@ try {
         { times: 1 },
       );
       await page.getByRole('button', { name: `账户：${primaryName}`, exact: true }).click();
-      const dialog = page.getByRole('dialog', { name: '账号与使用', exact: true });
+      const dialog = page.getByRole('region', { name: '账号与使用', exact: true });
       await dialog.getByTestId('deferred-feature-error').waitFor();
       assert.equal(intercepted, 1);
       await measureReachable(
         page,
-        dialog.getByRole('button', { name: '关闭窗口', exact: true }),
-        'close failed account feature',
+        dialog.locator('.account-page-back'),
+        'return from failed account page',
       );
       assert.equal(
         await canvasOwner.evaluate(
@@ -732,7 +785,7 @@ try {
       );
       await dialog.getByTestId('deferred-feature-retry').click();
       await page.getByTestId('account-center').waitFor();
-      await closeDialog(page.getByRole('dialog', { name: '账号与使用', exact: true }));
+      await closeDialog(page.getByRole('region', { name: '账号与使用', exact: true }));
       assert.equal(
         await canvasOwner.evaluate(
           (element) =>
@@ -844,6 +897,10 @@ try {
       await authControl(page, 'password').fill(password);
       const before = report.requestCounts['POST /v1/auth/login'] ?? 0;
       let actualServerReceiptStatus = 0;
+      let releaseReceipt;
+      const receiptGate = new Promise((resolve) => {
+        releaseReceipt = resolve;
+      });
       await page.route(
         '**/v1/auth/login',
         async (route) => {
@@ -857,6 +914,7 @@ try {
           const headers = { ...response.headers() };
           delete headers['content-length'];
           delete headers['content-encoding'];
+          await receiptGate;
           // Preserve the actual HTTP status and real Set-Cookie; only the body is
           // truncated to reproduce a connection ending after response headers.
           await route.fulfill({ status: response.status(), headers, body: '{' });
@@ -864,6 +922,25 @@ try {
         { times: 1 },
       );
       await dialog.getByRole('button', { name: '登录', exact: true }).click();
+      await until(
+        () => actualServerReceiptStatus === 200,
+        'real login reaches the pending receipt',
+      );
+      const pendingForm = await dialog.elementHandle();
+      assert.ok(pendingForm);
+      try {
+        assert.equal(await dialog.locator('.account-page-back').isDisabled(), true);
+        await page.goBack();
+        await page.waitForURL('**/#/login');
+        assert.equal(
+          await pendingForm.evaluate((element) => element.isConnected),
+          true,
+          'Browser history may not discard an in-flight authentication owner',
+        );
+      } finally {
+        releaseReceipt();
+        await pendingForm.dispose();
+      }
       await authControl(page, 'recovery').waitFor();
       assert.equal(actualServerReceiptStatus, 200);
       assert.equal((report.requestCounts['POST /v1/auth/login'] ?? 0) - before, 1);
@@ -892,6 +969,7 @@ try {
         loginPostsDuringRecovery: 1,
         recoverySessionReads: 2,
         explicitSessionAcceptance: true,
+        pendingHistoryNavigationBlocked: true,
       };
     },
   );
@@ -935,7 +1013,7 @@ try {
       await openAccount(page);
       await page.getByTestId('account-tab-security').click();
       await page.getByTestId('account-reset-password').click();
-      await page.getByRole('dialog', { name: '重置密码', exact: true }).waitFor();
+      await page.getByRole('region', { name: '重置密码', exact: true }).waitFor();
       await waitForOtpCooldown(primaryPhone);
       await authControl(page, 'phone').fill(primaryPhone);
       const sent = page.waitForResponse(
@@ -963,7 +1041,7 @@ try {
       );
       await capture(page, '05-reset-complete');
       await page.getByRole('button', { name: '返回登录', exact: true }).click();
-      const dialog = page.getByRole('dialog', { name: '登录工作空间', exact: true });
+      const dialog = page.getByRole('region', { name: '登录工作空间', exact: true });
       await authControl(page, 'phone').fill(primaryPhone);
       await authControl(page, 'password').fill(password);
       const old = page.waitForResponse(
@@ -1017,7 +1095,7 @@ try {
         'consumed code clears after definitive registration rejection',
       );
       assert.match(
-        await page.getByRole('dialog', { name: '注册账号', exact: true }).innerText(),
+        await page.getByRole('region', { name: '注册账号', exact: true }).innerText(),
         /验证码已使用/,
       );
       const rows = (
@@ -1027,7 +1105,7 @@ try {
       assert.equal(rows[0].id, primaryUserId);
       assert.equal(rows[0].display_name, primaryName);
       await capture(page, '06-existing-account-registration');
-      await closeDialog(page.getByRole('dialog', { name: '注册账号', exact: true }));
+      await closeDialog(page.getByRole('region', { name: '注册账号', exact: true }));
       await peer.context.close();
       currentPage = main.page;
       return {
@@ -1309,8 +1387,8 @@ try {
           controls.push(
             await measureReachable(
               page,
-              account.getByRole('button', { name: '关闭窗口', exact: true }),
-              'close account',
+              account.locator('.account-page-back'),
+              'return from account page',
             ),
           );
           report.layouts.push({ width, height, theme, controls });
@@ -1384,7 +1462,7 @@ try {
           await setTheme(page, theme);
           await openAuth(page);
           async function record(mode, title, controls) {
-            const dialog = page.getByRole('dialog', { name: title, exact: true });
+            const dialog = page.getByRole('region', { name: title, exact: true });
             await dialog.waitFor();
             const measurements = [];
             for (const [name, target] of controls)
@@ -1392,8 +1470,8 @@ try {
             measurements.push(
               await measureReachable(
                 page,
-                dialog.getByRole('button', { name: '关闭窗口', exact: true }),
-                'close form',
+                dialog.locator('.account-page-back'),
+                'return from account page',
               ),
             );
             report.authLayouts.push({ width, height, theme, mode, controls: measurements });
@@ -1401,7 +1479,7 @@ try {
           }
           const field = (name) => authControl(page, name);
           const button = (name) =>
-            page.locator('.auth-dialog').getByRole('button', { name, exact: true });
+            page.locator('.account-page.account-auth').getByRole('button', { name, exact: true });
           await record('password', '登录工作空间', [
             ['phone', field('phone')],
             ['password', field('password')],
@@ -1448,7 +1526,7 @@ try {
             ['reset', button('更新密码')],
             ['back to log in', button('返回登录')],
           ]);
-          await closeDialog(page.getByRole('dialog', { name: '重置密码', exact: true }));
+          await closeDialog(page.getByRole('region', { name: '重置密码', exact: true }));
         }
       }
       const postsAfter = Object.entries(report.requestCounts)

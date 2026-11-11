@@ -18,11 +18,11 @@ import {
 } from '@phosphor-icons/react';
 import { api, errorMessage, jsonRequest } from '../lib/api';
 import type { PublicConfig, Session } from '../lib/types';
-import { Brand, Busy, DialogMotionContext, IconButton, InlineError, Modal } from './Ui';
-import { brandLogoUrl } from '../lib/brand';
+import { Busy, DialogMotionContext, IconButton, InlineError } from './Ui';
+import { AccountPageFrame } from '../account/AccountPageFrame';
+import { accountPageCopy } from '../account/page-copy';
 import { MotionDisclosure, MotionSwitch } from '../motion/Presence';
 import { t, useLocale } from '../i18n';
-import { LanguageSelect } from '../i18n/LanguageSelect';
 import {
   AuthCooldowns,
   AuthOperations,
@@ -72,6 +72,10 @@ export function AuthPanel({
   initialMode = 'password',
   onReset,
   cooldowns: sharedCooldowns,
+  onHome,
+  onModeChange,
+  onRegisterExitGuard,
+  backToAbout = false,
 }: {
   config: PublicConfig | null;
   onSession: (session: Session, meta?: AuthSessionMeta) => void;
@@ -80,8 +84,12 @@ export function AuthPanel({
   onReset?: () => void;
   /** App may retain only deadlines across dialog mounts; credentials stay inside this form. */
   cooldowns?: AuthCooldowns;
+  onHome?: () => void;
+  onModeChange?: (mode: AuthMode) => void;
+  onRegisterExitGuard?: (guard: (() => boolean) | null) => void;
+  backToAbout?: boolean;
 }) {
-  useLocale();
+  const c = accountPageCopy(useLocale());
   const [mode, setMode] = useState<AuthMode>(initialMode);
   const [registerStep, setRegisterStep] = useState<'phone' | 'details'>('phone');
   const [fields, setFields] = useState(emptyAuthFields);
@@ -114,6 +122,11 @@ export function AuthPanel({
   const smsCooldown = cooldowns.remaining(fields.phone, clock);
   const submitCooldown = cooldowns.remaining(fields.phone, clock, 'submit');
   const isRegisterPhone = mode === 'register' && registerStep === 'phone';
+
+  useEffect(() => {
+    onRegisterExitGuard?.(() => accepted.current || !operations.busy);
+    return () => onRegisterExitGuard?.(null);
+  }, [operations, onRegisterExitGuard]);
 
   useEffect(() => {
     if (dialogMotion?.open !== false) operations.mount();
@@ -162,6 +175,7 @@ export function AuthPanel({
     setRecoveredSession(null);
     setRecoveryMessage('');
     setClock(Date.now());
+    onModeChange?.(next);
   }
   function updateField(field: AuthField, value: string) {
     const next = { ...fields, [field]: value };
@@ -518,20 +532,18 @@ export function AuthPanel({
       : `${mode}-${mode === 'register' ? registerStep : 'form'}`;
 
   return (
-    <Modal
+    <AccountPageFrame
       title={title}
-      onClose={() => {
+      description={mode === 'register' ? c.register : mode === 'reset' ? c.reset : c.login}
+      config={config}
+      onBack={() => {
         if (!operations.busy) onClose();
       }}
-      canClose={() => !operations.busy}
-      initialFocusRef={phoneInput}
-      profile="auth"
-      className={`studio-dialog auth-dialog account-auth account-auth-${mode}`}
+      onHome={onHome}
+      backLabel={backToAbout ? c.home : c.back}
+      busy={busy}
+      className={`account-auth account-auth-${mode}`}
     >
-      <div className="auth-identity">
-        <Brand name={config?.brand.name} logoUrl={brandLogoUrl(config?.brand)} compact />
-        <LanguageSelect compact />
-      </div>
       {!resetDone && !uncertain && (mode === 'password' || mode === 'otp') && (
         <div className="auth-methods" role="group" aria-label={t('登录方式')}>
           <button
@@ -858,6 +870,6 @@ export function AuthPanel({
       <p className="auth-privacy-note">
         {t('本地编辑无需登录。保存到项目或发送参考图时才会上传照片。')}
       </p>
-    </Modal>
+    </AccountPageFrame>
   );
 }

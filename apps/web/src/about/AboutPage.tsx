@@ -1,13 +1,17 @@
-import { useEffect, useId, useRef, useState, type CSSProperties } from 'react';
+import { useEffect, useRef, useState, type CSSProperties } from 'react';
 import {
   ArrowDown,
   ArrowRight,
   ArrowUpRight,
   Check,
-  CircleHalf,
+  CirclesThreePlus,
   Cursor,
-  Minus,
+  GitBranch,
+  ImageSquare,
+  Stack,
+  MagicWand,
   Plus,
+  Scan,
   SlidersHorizontal,
   Sparkle,
   UsersThree,
@@ -17,287 +21,126 @@ import { LanguageSelect } from '../i18n/LanguageSelect';
 import { DEFAULT_BRAND, brandLogoUrl } from '../lib/brand';
 import type { PublicConfig } from '../lib/types';
 import { aboutCopy } from './copy';
-import type { SampleSettings } from './sample';
+import { experienceCopy } from './experience-copy';
+import { ColorStudy } from './ColorStudy';
+import { HoverPreview, PointerRibbons, ScrollReveal } from './effects';
+import { getSampleImage, type SampleSettings } from './sample-settings';
 
-export const DEMO_IMAGE = '/about/color-study.webp';
+export const DEMO_IMAGE = getSampleImage();
 export type AboutIntent = 'login' | 'register' | 'studio' | 'sample';
+const samplePresets: SampleSettings[] = [
+  { sampleId: 'coast', warmth: 12, exposure: 0.05, preset: 'natural' },
+  { sampleId: 'portrait', warmth: 4, exposure: 0.15, preset: 'soft' },
+  { sampleId: 'color-study', warmth: 18, exposure: 0.1, preset: 'vivid' },
+];
+const featureIcons = [SlidersHorizontal, Scan, MagicWand, Stack];
+const screenshotNames = ['workspace', 'local', 'portrait', 'layers'];
 
-function Contours() {
+function ProductImage({
+  name = 'workspace',
+  eager = false,
+  mobile = false,
+}: {
+  name?: string;
+  eager?: boolean;
+  mobile?: boolean;
+}) {
+  const locale = useLocale();
+  const e = experienceCopy(locale);
+  const [failed, setFailed] = useState(false);
+  const [loaded, setLoaded] = useState(false);
+  const [attempt, setAttempt] = useState(0);
+  const imageRef = useRef<HTMLImageElement>(null);
+  const src = `/about/${name}-${locale}.webp`;
+  const toolIndex = Math.max(0, screenshotNames.indexOf(name));
+  useEffect(() => {
+    setFailed(false);
+    setLoaded(Boolean(imageRef.current?.complete && imageRef.current?.naturalWidth));
+  }, [src, attempt]);
   return (
-    <svg className="about-contours" viewBox="0 0 620 620" fill="none" aria-hidden="true">
-      {Array.from({ length: 17 }, (_, index) => (
-        <ellipse
-          key={index}
-          cx="310"
-          cy="310"
-          rx={62 + index * 13}
-          ry={34 + index * 15}
-          transform={'rotate(' + (index * 3 - 28) + ' 310 310)'}
-        />
-      ))}
-    </svg>
+    <div
+      className={'experience-product-image' + (mobile ? ' is-phone' : '')}
+      data-pointer-protect
+      aria-busy={!loaded && !failed}
+    >
+      <img
+        key={attempt}
+        ref={imageRef}
+        src={src}
+        width={mobile ? 390 : 1440}
+        height={mobile ? 844 : 960}
+        alt={mobile ? e.phoneAlt : `${e.features[toolIndex]!.title} · ${e.screenshotAlt}`}
+        loading={eager ? 'eager' : 'lazy'}
+        fetchPriority={eager ? 'high' : 'auto'}
+        decoding="async"
+        onLoad={() => setLoaded(true)}
+        onError={() => setFailed(true)}
+      />
+      {!loaded && !failed && <span className="experience-image-pending" aria-hidden="true" />}
+      {failed && (
+        <span className="experience-image-failed" role="status">
+          <ImageSquare size={28} />
+          {e.imageFailed}
+          <button type="button" onClick={() => setAttempt((value) => value + 1)}>
+            {locale === 'en' ? 'Try again' : locale === 'zh-TW' ? '重新載入' : '重新加载'}
+          </button>
+        </span>
+      )}
+    </div>
   );
 }
 
-function ColorStudy({ onOpen }: { onOpen: (settings: SampleSettings) => void }) {
+function AgentDiagram({ step }: { step: number }) {
   const locale = useLocale();
-  const c = aboutCopy(locale);
-  const [split, setSplit] = useState(42);
-  const [warmth, setWarmth] = useState(18);
-  const [exposure, setExposure] = useState(0.1);
-  const [preset, setPreset] = useState<'natural' | 'vivid' | 'soft'>('natural');
-  const [ready, setReady] = useState(false);
-  const [failed, setFailed] = useState(false);
-  const [renderError, setRenderError] = useState(false);
-  const [attempt, setAttempt] = useState(0);
-  const [rendered, setRendered] = useState(false);
-  const worker = useRef<Worker | null>(null);
-  const canvas = useRef<HTMLCanvasElement>(null);
-  const current = useRef({ warmth, exposure, preset });
-  current.current = { warmth, exposure, preset };
-  const requestId = useRef(0);
-  const pending = useRef(false);
-  const dirty = useRef(false);
-  const labelId = useId();
-  const dispatch = useRef<() => void>(() => {});
-  dispatch.current = () => {
-    if (!worker.current || pending.current) {
-      dirty.current = true;
-      return;
-    }
-    pending.current = true;
-    dirty.current = false;
-    worker.current.postMessage({ id: ++requestId.current, ...current.current });
-  };
-
-  useEffect(() => {
-    let live = true;
-    let instance: Worker | null = null;
-    const image = new Image();
-    image.decoding = 'async';
-    setReady(false);
-    setFailed(false);
-    setRendered(false);
-    setRenderError(false);
-    image.onload = () => {
-      if (!live) return;
-      setReady(true);
-      try {
-        const width = Math.min(720, image.naturalWidth);
-        const height = Math.round((width * image.naturalHeight) / image.naturalWidth);
-        const buffer = document.createElement('canvas');
-        buffer.width = width;
-        buffer.height = height;
-        const context = buffer.getContext('2d', { willReadFrequently: true });
-        if (!context) throw new Error('Canvas unavailable');
-        context.drawImage(image, 0, 0, width, height);
-        const pixels = context.getImageData(0, 0, width, height);
-        instance = new Worker(new URL('./demo.worker.ts', import.meta.url), { type: 'module' });
-        worker.current = instance;
-        instance.onmessage = (
-          event: MessageEvent<{
-            id: number;
-            error?: boolean;
-            image?: { width: number; height: number; data: Uint8ClampedArray };
-          }>,
-        ) => {
-          if (!live || worker.current !== instance) return;
-          pending.current = false;
-          if (event.data.error) setRenderError(true);
-          else if (!dirty.current && event.data.image && canvas.current) {
-            const output = event.data.image;
-            canvas.current.width = output.width;
-            canvas.current.height = output.height;
-            const target = canvas.current.getContext('2d');
-            if (target) {
-              target.putImageData(
-                new ImageData(new Uint8ClampedArray(output.data), output.width, output.height),
-                0,
-                0,
-              );
-              setRendered(true);
-              setRenderError(false);
-            }
-          }
-          if (dirty.current) dispatch.current();
-        };
-        instance.onerror = () => {
-          if (live) {
-            setRenderError(true);
-            pending.current = false;
-            worker.current = null;
-            instance?.terminate();
-          }
-        };
-        pending.current = true;
-        instance.postMessage(
-          {
-            id: ++requestId.current,
-            source: { width, height, data: pixels.data },
-            ...current.current,
-          },
-          [pixels.data.buffer],
-        );
-      } catch {
-        setRenderError(true);
-      }
-    };
-    image.onerror = () => {
-      if (live) setFailed(true);
-    };
-    image.src = DEMO_IMAGE;
-    return () => {
-      live = false;
-      image.onload = null;
-      image.onerror = null;
-      instance?.terminate();
-      if (worker.current === instance) worker.current = null;
-      pending.current = false;
-      dirty.current = false;
-    };
-  }, [attempt]);
-  useEffect(() => {
-    if (ready) dispatch.current();
-  }, [warmth, exposure, preset, ready]);
-  const reset = () => {
-    setWarmth(18);
-    setExposure(0.1);
-    setPreset('natural');
-    setSplit(42);
-  };
-
+  const e = experienceCopy(locale);
+  const icons = [ImageSquare, CirclesThreePlus, SlidersHorizontal, GitBranch];
+  const ActiveIcon = icons[step]!;
   return (
-    <figure className="color-study" aria-labelledby={labelId}>
-      <div className="study-topline">
-        <span>{c.studyIndex}</span>
-        <span id={labelId}>{c.study}</span>
+    <figure className="experience-agent-diagram" aria-label={e.diagram} data-step={step}>
+      <div className="agent-diagram-top">
+        <span className="agent-diagram-mark">
+          <Sparkle size={24} weight="light" />
+        </span>
+        <span>{e.diagram}</span>
+        <span className="agent-diagram-count">0{step + 1} / 04</span>
       </div>
-      <div
-        className="study-picture"
-        style={{ '--split': split + '%' } as CSSProperties}
-        aria-busy={!ready && !failed}
-      >
-        <img src={DEMO_IMAGE} width="1536" height="1024" alt={c.sample} fetchPriority="high" />
-        <canvas
-          ref={canvas}
-          className="study-result"
-          aria-hidden="true"
-          style={{ opacity: rendered ? 1 : 0 }}
-        />
-        {!ready && !failed && (
-          <div className="study-loading" role="status">
-            <span />
-            {c.previewLoading}
-          </div>
-        )}
-        {failed && (
-          <div className="study-loading" role="alert">
-            <span>{c.previewFailed}</span>
-            <button type="button" onClick={() => setAttempt((value) => value + 1)}>
-              {c.retry}
-            </button>
-          </div>
-        )}
-        {rendered && (
-          <>
-            <span
-              className="study-image-label study-original"
-              style={{ opacity: split < 18 ? 0 : 1 }}
-            >
-              {c.original}
-            </span>
-            <span
-              className="study-image-label study-edited"
-              style={{ opacity: split > 82 ? 0 : 1 }}
-            >
-              {c.edited}
-            </span>
-            <span className="study-divider" aria-hidden="true">
-              <span>
-                <Minus size={12} />
-                <CircleHalf size={18} />
-                <Minus size={12} />
+      <div className="agent-art-stage">
+        <div className="agent-art-source">
+          <img src="/about/coast.webp" alt="" loading="lazy" width="1536" height="1024" />
+          <span>
+            <ImageSquare size={14} />
+            {e.agentSteps[0]!.items[0]}
+          </span>
+        </div>
+        <svg className="agent-art-connectors" viewBox="0 0 540 360" fill="none" aria-hidden="true">
+          <path d="M110 95C200 95 165 180 270 180S330 265 430 265" />
+          <path
+            className="agent-art-flow"
+            d="M110 95C200 95 165 180 270 180S330 265 430 265"
+            pathLength="1"
+            style={{ strokeDasharray: 1, strokeDashoffset: 1 - (step + 1) / 4 }}
+          />
+        </svg>
+        <div className="agent-art-node" key={step}>
+          <ActiveIcon size={35} weight="light" />
+          <span>{e.agentSteps[step]!.detail}</span>
+        </div>
+        <div className="agent-art-output">
+          <div>
+            {e.agentSteps[step]!.items.map((item, i) => (
+              <span key={item}>
+                <i style={{ '--item-index': i } as CSSProperties} />
+                {item}
               </span>
-            </span>
-            <input
-              className="study-compare"
-              type="range"
-              min="0"
-              max="100"
-              value={split}
-              aria-label={c.compareLabel}
-              onChange={(event) => setSplit(Number(event.currentTarget.value))}
-            />
-          </>
-        )}
+            ))}
+          </div>
+          <Check size={19} />
+        </div>
       </div>
       <figcaption>
-        <span>
-          <Cursor size={14} />
-          {c.compare}
-        </span>
-        <span>{c.sample}</span>
+        {e.agentSteps[step]!.title}
+        <ArrowRight size={18} />
       </figcaption>
-      <div className="study-controls">
-        <div className="study-presets" aria-label={c.adjust}>
-          {(['natural', 'vivid', 'soft'] as const).map((value) => (
-            <button
-              key={value}
-              type="button"
-              aria-pressed={preset === value}
-              onClick={() => setPreset(value)}
-            >
-              <span className={'preset-dot preset-' + value} />
-              {value === 'natural' ? c.neutral : value === 'vivid' ? c.vivid : c.soft}
-              {preset === value && <Check size={12} />}
-            </button>
-          ))}
-        </div>
-        <label className="study-range">
-          <span>{c.warmth}</span>
-          <input
-            type="range"
-            min="-60"
-            max="60"
-            step="1"
-            value={warmth}
-            onChange={(event) => setWarmth(Number(event.currentTarget.value))}
-          />
-          <output>
-            {warmth > 0 ? '+' : ''}
-            {warmth}
-          </output>
-        </label>
-        <label className="study-range exposure-range">
-          <span>{c.exposure}</span>
-          <input
-            type="range"
-            min="-1"
-            max="1"
-            step="0.05"
-            value={exposure}
-            onChange={(event) => setExposure(Number(event.currentTarget.value))}
-          />
-          <output>
-            {exposure > 0 ? '+' : ''}
-            {exposure.toFixed(2)}
-          </output>
-        </label>
-        <div className="study-footer">
-          <button type="button" className="study-reset" onClick={reset}>
-            {c.reset}
-          </button>
-          <button type="button" className="study-open" onClick={() => onOpen(current.current)}>
-            {c.openSample}
-            <ArrowUpRight size={15} />
-          </button>
-        </div>
-      </div>
-      {renderError && (
-        <p className="study-error" role="status">
-          {c.renderFailed}
-        </p>
-      )}
     </figure>
   );
 }
@@ -313,83 +156,58 @@ export function AboutPage({
 }) {
   const locale = useLocale();
   const c = aboutCopy(locale);
-  const page = useRef<HTMLDivElement>(null);
-  const hero = useRef<HTMLElement>(null);
-  const [question, setQuestion] = useState<number | null>(null);
-  const [feature, setFeature] = useState(0);
+  const e = experienceCopy(locale);
   const brand = config?.brand.name || DEFAULT_BRAND;
   const logo = brandLogoUrl(config?.brand);
+  const page = useRef<HTMLDivElement>(null);
+  const progress = useRef<HTMLSpanElement>(null);
+  const tour = useRef<HTMLDivElement>(null);
+  const [feature, setFeature] = useState(0);
+  const [step, setStep] = useState(0);
+  const [question, setQuestion] = useState<number | null>(0);
+  const hoverOpenedQuestion = useRef<number | null>(null);
+  const go = () => onEnter(hasStudio ? 'studio' : 'register');
   useEffect(() => {
-    const target = hero.current;
-    if (!target) return;
-    const media = matchMedia('(prefers-reduced-motion: reduce), (pointer: coarse)');
+    document.title = brand + ' · ' + c.footer;
+    document.querySelector('meta[name="description"]')?.setAttribute('content', e.heroDetail);
+  }, [brand, c.footer, e.heroDetail]);
+  useEffect(() => {
     let frame = 0;
-    let x = 0,
-      y = 0;
-    const reset = () => {
-      target.style.setProperty('--pointer-x', '0');
-      target.style.setProperty('--pointer-y', '0');
-    };
-    const move = (event: PointerEvent) => {
-      if (media.matches) return;
-      const bounds = target.getBoundingClientRect();
-      x = (event.clientX - bounds.left) / Math.max(1, bounds.width) - 0.5;
-      y = (event.clientY - bounds.top) / Math.max(1, bounds.height) - 0.5;
-      if (frame) return;
-      frame = requestAnimationFrame(() => {
-        target.style.setProperty('--pointer-x', String(x));
-        target.style.setProperty('--pointer-y', String(y));
-        frame = 0;
-      });
-    };
-    const leave = () => {
-      cancelAnimationFrame(frame);
+    const update = () => {
       frame = 0;
-      reset();
+      const full = document.documentElement.scrollHeight - innerHeight;
+      progress.current?.style.setProperty(
+        '--reading-progress',
+        String(full > 0 ? Math.min(1, scrollY / full) : 0),
+      );
     };
-    target.addEventListener('pointermove', move, { passive: true });
-    target.addEventListener('pointerleave', leave);
-    media.addEventListener('change', leave);
+    const schedule = () => {
+      if (!frame) frame = requestAnimationFrame(update);
+    };
+    window.addEventListener('scroll', schedule, { passive: true });
+    window.addEventListener('resize', schedule, { passive: true });
+    update();
     return () => {
-      leave();
-      target.removeEventListener('pointermove', move);
-      target.removeEventListener('pointerleave', leave);
-      media.removeEventListener('change', leave);
+      cancelAnimationFrame(frame);
+      window.removeEventListener('scroll', schedule);
+      window.removeEventListener('resize', schedule);
     };
   }, []);
   useEffect(() => {
-    document.title = brand + ' · ' + c.footer;
-    document.querySelector('meta[name="description"]')?.setAttribute('content', c.intro);
-  }, [brand, c.footer, c.intro]);
-  useEffect(() => {
-    const root = page.current;
-    if (
-      !root ||
-      matchMedia('(prefers-reduced-motion: reduce)').matches ||
-      !('IntersectionObserver' in window)
-    )
-      return;
+    if (!tour.current || !('IntersectionObserver' in window)) return;
     const observer = new IntersectionObserver(
       (entries) => {
         for (const entry of entries)
           if (entry.isIntersecting) {
-            entry.target.setAttribute('data-revealed', 'true');
-            observer.unobserve(entry.target);
+            const index = Number((entry.target as HTMLElement).dataset.chapter);
+            if (Number.isFinite(index)) setFeature(index);
           }
       },
-      { threshold: 0.08 },
+      { rootMargin: '-24% 0px -50% 0px', threshold: 0 },
     );
-    root.querySelectorAll('[data-reveal]').forEach((element) => {
-      element.setAttribute('data-revealed', 'false');
-      observer.observe(element);
-    });
+    tour.current.querySelectorAll('[data-chapter]').forEach((element) => observer.observe(element));
     return () => observer.disconnect();
   }, []);
-  const features = [
-    { title: c.precise, body: c.preciseBody, icon: <SlidersHorizontal size={24} /> },
-    { title: c.ai, body: c.aiBody, icon: <Sparkle size={24} /> },
-    { title: c.together, body: c.togetherBody, icon: <UsersThree size={24} /> },
-  ];
   const questions = [
     [c.q1, c.a1],
     [c.q2, c.a2],
@@ -397,9 +215,8 @@ export function AboutPage({
     [c.q4, c.a4],
     [c.q5, c.a5],
   ];
-  const go = () => onEnter(hasStudio ? 'studio' : 'register');
   return (
-    <div className="about-page" ref={page} data-locale={locale}>
+    <div className="about-page experience-page" ref={page} data-locale={locale} id="top">
       <a className="about-skip" href="#about-main">
         {locale === 'en' ? 'Skip to content' : locale === 'zh-TW' ? '跳至主要內容' : '跳至主要内容'}
       </a>
@@ -416,8 +233,31 @@ export function AboutPage({
           <span>{brand}</span>
         </a>
         <nav aria-label={c.overview}>
-          <a href="#create">{c.tools}</a>
-          <a href="#questions">{c.questions}</a>
+          <div className="experience-nav-explore">
+            <a href="#create">
+              {e.navigation}
+              <Plus size={12} />
+            </a>
+            <div className="experience-nav-preview">
+              <img src="/about/coast.webp" alt="" width="1536" height="1024" />
+              <div>
+                <a href="#create">
+                  {c.precise}
+                  <ArrowUpRight size={14} />
+                </a>
+                <a href="#agent">
+                  {e.agent}
+                  <ArrowUpRight size={14} />
+                </a>
+                <a href="#samples">
+                  {e.samples}
+                  <ArrowUpRight size={14} />
+                </a>
+              </div>
+            </div>
+          </div>
+          <a href="#agent">Agent</a>
+          <a href="#samples">{e.samples}</a>
         </nav>
         <div className="about-header-actions">
           <LanguageSelect compact />
@@ -429,20 +269,29 @@ export function AboutPage({
             <ArrowUpRight size={16} />
           </button>
         </div>
+        <span className="experience-reading-track" aria-hidden="true">
+          <span ref={progress} />
+        </span>
       </header>
       <main id="about-main">
-        <section className="about-hero" ref={hero}>
-          <Contours />
+        <section className="about-hero">
+          <PointerRibbons tone="ink" />
           <div className="about-hero-copy">
             <p className="about-eyebrow">
               <span />
-              {c.eyebrow}
+              {e.heroLabel}
             </p>
             <h1>
               <span>{c.titleOne}</span>
-              <span>{c.titleTwo}</span>
+              <span>
+                {locale === 'en'
+                  ? 'entirely yours.'
+                  : locale === 'zh-TW'
+                    ? '自由成像。'
+                    : '自由成像。'}
+              </span>
             </h1>
-            <p className="about-intro">{c.intro}</p>
+            <p className="about-intro">{e.heroDetail}</p>
             <div className="about-hero-actions">
               <button type="button" className="about-primary" onClick={go}>
                 {hasStudio ? c.continue : c.start}
@@ -450,57 +299,138 @@ export function AboutPage({
               </button>
               <button type="button" className="about-local" onClick={() => onEnter('studio')}>
                 {c.local}
-                <ArrowRight size={16} />
+                <ArrowRight size={17} />
               </button>
             </div>
-            <p className="about-footnote">{c.footnote}</p>
-            <a className="about-scroll" href="#create" aria-label={c.tools}>
-              <ArrowDown size={18} />
-              <span>{c.scrollLabel}</span>
-            </a>
+            <span className="experience-hero-note">{e.heroNote}</span>
           </div>
-          <ColorStudy onOpen={(settings) => onEnter('sample', settings)} />
+          <div className="experience-hero-studio" data-pointer-protect>
+            <div className="experience-window-label">
+              <span>
+                <i />
+                <i />
+                <i />
+              </span>
+              <span>{e.heroImage}</span>
+              <span>{e.screenshot}</span>
+            </div>
+            <HoverPreview className="experience-hero-window">
+              <ProductImage eager />
+            </HoverPreview>
+            <div className="experience-hero-caption">
+              <span>
+                <SlidersHorizontal size={16} />
+                {e.features[0]!.caption}
+              </span>
+              <a href="#create">
+                {e.explore}
+                <ArrowDown size={15} />
+              </a>
+            </div>
+          </div>
         </section>
-        <section className="about-create" id="create" data-reveal>
-          <div className="about-section-heading">
-            <span className="about-index">{c.processIndex}</span>
-            <h2>{c.possibilities}</h2>
-            <p>{c.possibilitiesBody}</p>
+
+        <section className="about-create experience-section" id="create">
+          <div className="experience-section-top">
+            <span className="about-index">01 / {e.navigation}</span>
+            <span>{brand}</span>
           </div>
-          <div className="about-feature-layout">
-            <div
-              className="about-feature-list"
-              role="tablist"
-              aria-label={c.tools}
-              aria-orientation="vertical"
-              onKeyDown={(event) => {
-                if (!['ArrowDown', 'ArrowUp', 'Home', 'End'].includes(event.key)) return;
-                event.preventDefault();
-                const next =
-                  event.key === 'Home'
-                    ? 0
-                    : event.key === 'End'
-                      ? 2
-                      : (feature + (event.key === 'ArrowDown' ? 1 : 2)) % 3;
-                setFeature(next);
-                event.currentTarget
-                  .querySelectorAll<HTMLButtonElement>('[role=tab]')
-                  [next]?.focus();
-              }}
-            >
-              {features.map((item, index) => (
+          <ScrollReveal as="h2" mode="scrub" splitWords>
+            {e.tourTitle}
+          </ScrollReveal>
+          <p className="experience-section-intro">{e.tourBody}</p>
+          <div className="experience-tour" ref={tour}>
+            <div className="experience-feature-list">
+              {e.features.map((item, index) => {
+                const Icon = featureIcons[index]!;
+                return (
+                  <article
+                    className="experience-feature"
+                    data-active={feature === index}
+                    data-chapter={index}
+                    key={index}
+                    onPointerEnter={(event) => {
+                      if (event.pointerType === 'mouse') setFeature(index);
+                    }}
+                    onFocus={() => setFeature(index)}
+                  >
+                    <h3>
+                      <button
+                        type="button"
+                        onClick={() => setFeature(index)}
+                        aria-pressed={feature === index}
+                        aria-controls="tour-preview"
+                      >
+                        <span className="experience-feature-number">0{index + 1}</span>
+                        <span>{item.title}</span>
+                        <Icon size={23} weight="light" />
+                      </button>
+                    </h3>
+                    <p>{item.body}</p>
+                    <div className="experience-tags">
+                      {item.tags.map((tag) => (
+                        <span key={tag}>{tag}</span>
+                      ))}
+                    </div>
+                    <div className="experience-feature-mobile">
+                      <ProductImage name={screenshotNames[index]} />
+                    </div>
+                  </article>
+                );
+              })}
+            </div>
+            <div className="experience-tour-visual" id="tour-preview">
+              <HoverPreview>
+                <figure className="experience-tour-frame" data-pointer-protect>
+                  <div className="experience-tour-images">
+                    {screenshotNames.map((name, index) => (
+                      <div
+                        className="experience-tour-image"
+                        key={name}
+                        data-active={feature === index}
+                        aria-hidden={feature !== index}
+                      >
+                        <ProductImage name={name} />
+                      </div>
+                    ))}
+                  </div>
+                  <figcaption>
+                    <span>
+                      0{feature + 1} / {e.screenshot}
+                    </span>
+                    <p>{e.features[feature]!.caption}</p>
+                  </figcaption>
+                </figure>
+              </HoverPreview>
+            </div>
+          </div>
+        </section>
+
+        <section className="experience-agent" id="agent">
+          <div className="experience-agent-heading">
+            <span className="about-index">02 / {e.agentLabel}</span>
+            <ScrollReveal as="h2" mode="scrub" splitWords>
+              {e.agentTitle}
+            </ScrollReveal>
+            <p>{e.agentBody}</p>
+          </div>
+          <div className="experience-agent-layout">
+            <AgentDiagram step={step} />
+            <div className="experience-agent-steps">
+              {e.agentSteps.map((item, index) => (
                 <button
                   type="button"
-                  role="tab"
-                  id={'feature-tab-' + index}
-                  aria-controls={'feature-panel-' + index}
-                  aria-selected={feature === index}
-                  tabIndex={feature === index ? 0 : -1}
                   key={index}
-                  onClick={() => setFeature(index)}
+                  data-active={step === index}
+                  aria-pressed={step === index}
+                  onPointerEnter={(event) => {
+                    if (event.pointerType === 'mouse') setStep(index);
+                  }}
+                  onFocus={() => setStep(index)}
+                  onClick={() => setStep(index)}
                 >
-                  <span className="feature-icon">{item.icon}</span>
-                  <span>
+                  <span>0{index + 1}</span>
+                  <span className="experience-agent-step-copy">
                     <strong>{item.title}</strong>
                     <span>{item.body}</span>
                   </span>
@@ -508,102 +438,149 @@ export function AboutPage({
                 </button>
               ))}
             </div>
-            <div className="about-feature-art">
-              {features.map((item, index) => (
-                <div
-                  className="feature-panel"
-                  role="tabpanel"
-                  id={'feature-panel-' + index}
-                  aria-labelledby={'feature-tab-' + index}
-                  hidden={feature !== index}
-                  key={index}
+          </div>
+          <div className="experience-agent-bottom">
+            <button type="button" className="about-primary" onClick={() => onEnter('studio')}>
+              {e.agentOpen}
+              <ArrowUpRight size={20} />
+            </button>
+            <p>{e.agentAvailability}</p>
+          </div>
+        </section>
+
+        <section className="experience-live experience-section" id="try">
+          <ScrollReveal className="experience-live-copy">
+            <span className="about-index">03 / {e.liveLabel}</span>
+            <h2>{e.liveTitle}</h2>
+            <p>{e.liveBody}</p>
+            <div className="experience-live-signature">
+              <SlidersHorizontal size={27} weight="light" />
+              <span>{e.liveNote}</span>
+            </div>
+          </ScrollReveal>
+          <ColorStudy onOpen={(settings) => onEnter('sample', settings)} />
+        </section>
+
+        <section className="experience-samples experience-section" id="samples">
+          <div className="experience-section-top">
+            <span className="about-index">04 / {e.samples}</span>
+            <span>{e.sampleGenerated}</span>
+          </div>
+          <ScrollReveal as="h2" mode="scrub" splitWords>
+            {e.sampleTitle}
+          </ScrollReveal>
+          <p className="experience-section-intro">{e.sampleBody}</p>
+          <div className="experience-sample-grid">
+            {samplePresets.map((settings, index) => (
+              <HoverPreview className="experience-sample" key={settings.sampleId}>
+                <button
+                  type="button"
+                  onClick={() => onEnter('sample', settings)}
+                  aria-label={`${e.sampleItems[index]!.title} · ${e.sampleOpen}`}
                 >
-                  {index === 0 ? (
-                    <div className="precision-art" aria-hidden="true">
-                      <div className="precision-cross" />
-                      <svg viewBox="0 0 360 250">
-                        <path
-                          className="curve-grid"
-                          d="M30 20V220H330M30 120H330M130 20V220M230 20V220"
-                        />
-                        <path className="curve-original" d="M30 220L330 20" />
-                        <path className="curve-edit" d="M30 220 C120 220 135 35 330 20" />
-                        <circle cx="165" cy="110" r="5" />
-                      </svg>
-                      <span className="about-precision-scale">0.01° / 100%</span>
-                    </div>
-                  ) : index === 1 ? (
-                    <div className="idea-art" aria-hidden="true">
-                      <span className="idea-orbit" />
-                      <Sparkle size={52} weight="light" />
-                      <span className="idea-wave">
-                        {Array.from({ length: 26 }, (_, i) => (
-                          <i
-                            key={i}
-                            style={{ height: 8 + Math.abs(Math.sin(i * 0.7)) * 28 + 'px' }}
-                          />
-                        ))}
-                      </span>
-                    </div>
-                  ) : (
-                    <div className="collab-art" aria-hidden="true">
-                      <span className="collab-layer one" />
-                      <span className="collab-layer two" />
-                      <span className="collab-layer three" />
-                      <span className="collab-cursor a">
-                        <Cursor size={24} />
-                      </span>
-                      <span className="collab-cursor b">
-                        <Cursor size={24} />
-                      </span>
-                    </div>
-                  )}
-                  <div className="feature-art-caption">
-                    <span>{'0' + (index + 1)}</span>
-                    <p>{index === 0 ? c.precisionCaption : index === 1 ? c.ai : c.together}</p>
+                  <div className="experience-sample-image">
+                    <img
+                      src={getSampleImage(settings)}
+                      alt={e.sampleItems[index]!.alt}
+                      loading="lazy"
+                      decoding="async"
+                      width="1536"
+                      height="1024"
+                    />
+                    <span className="experience-sample-open">
+                      {e.sampleOpen}
+                      <ArrowUpRight size={21} />
+                    </span>
                   </div>
-                </div>
+                  <div className="experience-sample-caption">
+                    <div>
+                      <h3>{e.sampleItems[index]!.title}</h3>
+                      <p>{e.sampleItems[index]!.description}</p>
+                    </div>
+                    <ArrowUpRight size={25} weight="light" />
+                  </div>
+                </button>
+              </HoverPreview>
+            ))}
+          </div>
+        </section>
+
+        <section className="experience-team experience-section" id="together">
+          <div className="experience-team-copy">
+            <span className="about-index">05 / {e.teamLabel}</span>
+            <ScrollReveal as="h2" mode="scrub" splitWords>
+              {e.teamTitle}
+            </ScrollReveal>
+            <p>{e.teamBody}</p>
+            <div className="experience-team-links">
+              {e.teamItems.map((item, index) => (
+                <span key={item}>
+                  {index === 0 ? (
+                    <ImageSquare size={19} />
+                  ) : index === 1 ? (
+                    <GitBranch size={19} />
+                  ) : (
+                    <UsersThree size={19} />
+                  )}
+                  {item}
+                </span>
               ))}
             </div>
           </div>
+          <HoverPreview className="experience-team-art">
+            <figure aria-label={e.teamFigure}>
+              <div className="experience-shared-photo">
+                <img src="/about/coast.webp" width="1536" height="1024" alt="" loading="lazy" />
+                <span className="experience-region region-a">
+                  <Cursor size={23} weight="fill" />
+                </span>
+                <span className="experience-region region-b">
+                  <Cursor size={23} weight="fill" />
+                </span>
+              </div>
+              <div className="experience-team-version">
+                <GitBranch size={17} />
+                <span>{e.teamVersion}</span>
+                <span />
+                <span />
+                <span />
+              </div>
+              <figcaption>
+                <span>{e.teamFigure}</span>
+                <span>{e.teamRegion}</span>
+              </figcaption>
+            </figure>
+          </HoverPreview>
         </section>
-        <section className="about-space" data-reveal>
-          <div>
-            <span className="about-index">{c.spaceIndex}</span>
-            <h2>{c.workspaceTitle}</h2>
-            <p>{c.workspaceBody}</p>
-            <button type="button" className="about-primary" onClick={() => onEnter('studio')}>
+
+        <section className="experience-device experience-section">
+          <div className="experience-device-copy">
+            <span className="about-index">06 / {c.workspaceTitle}</span>
+            <ScrollReveal as="h2" mode="scrub" splitWords>
+              {e.phoneTitle}
+            </ScrollReveal>
+            <p>{e.phoneBody}</p>
+            <button type="button" className="about-text-action" onClick={() => onEnter('studio')}>
               {c.workspaceOpen}
               <ArrowUpRight size={20} />
             </button>
           </div>
-          <div className="space-composition" aria-hidden="true">
-            <div className="space-paper">
-              <img
-                src={DEMO_IMAGE}
-                width="1536"
-                height="1024"
-                alt=""
-                loading="lazy"
-                decoding="async"
-              />
+          <div className="experience-device-composition">
+            <div className="experience-device-desktop">
+              <ProductImage />
             </div>
-            <div className="space-toolbar">
-              <SlidersHorizontal />
-              <CircleHalf />
-              <Sparkle />
-              <UsersThree />
-            </div>
-            <span className="space-axis x" />
-            <span className="space-axis y" />
-            <span className="space-coordinate">x 048 · y 096</span>
+            <figure className="experience-device-phone">
+              <ProductImage name="phone" mobile />
+              <figcaption>{e.phoneScreenshot}</figcaption>
+            </figure>
           </div>
-          <p className="about-space-note">{c.workspaceNote}</p>
         </section>
-        <section className="about-faq" id="questions" data-reveal>
+
+        <section className="about-faq experience-section" id="questions">
           <div>
-            <span className="about-index">{c.faqIndex}</span>
+            <span className="about-index">07 / {c.questions}</span>
             <h2>{c.detailsTitle}</h2>
+            <p>{e.faqHint}</p>
           </div>
           <div className="about-question-list">
             {questions.map(([title, body], index) => (
@@ -613,7 +590,25 @@ export function AboutPage({
                     type="button"
                     aria-expanded={question === index}
                     aria-controls={'question-' + index}
-                    onClick={() => setQuestion(question === index ? null : index)}
+                    onPointerEnter={(event) => {
+                      if (event.pointerType === 'mouse' && question !== index) {
+                        hoverOpenedQuestion.current = index;
+                        setQuestion(index);
+                      }
+                    }}
+                    onPointerLeave={() => {
+                      hoverOpenedQuestion.current = null;
+                    }}
+                    onClick={(event) => {
+                      // The click that follows a hover-open keeps the answer visible.
+                      // A second click, keyboard activation or touch can still close it.
+                      if (event.detail > 0 && hoverOpenedQuestion.current === index) {
+                        hoverOpenedQuestion.current = null;
+                        return;
+                      }
+                      hoverOpenedQuestion.current = null;
+                      setQuestion(question === index ? null : index);
+                    }}
                   >
                     {title}
                     <Plus size={18} />
@@ -633,16 +628,19 @@ export function AboutPage({
             ))}
           </div>
         </section>
-        <section className="about-closing" data-reveal>
-          <span className="about-closing-mark" aria-hidden="true">
-            ↗
-          </span>
-          <h2>{c.final}</h2>
-          <p>{c.finalBody}</p>
-          <button type="button" className="about-primary" onClick={go}>
-            {hasStudio ? c.continue : c.start}
-            <ArrowUpRight size={21} />
-          </button>
+
+        <section className="about-closing">
+          <PointerRibbons tone="light" />
+          <div>
+            <p>{c.finalBody}</p>
+            <ScrollReveal as="h2" splitWords>
+              {c.final}
+            </ScrollReveal>
+            <button type="button" className="about-primary" onClick={go}>
+              {hasStudio ? c.continue : c.start}
+              <ArrowUpRight size={22} />
+            </button>
+          </div>
         </section>
       </main>
       <footer className="about-footer">
@@ -650,13 +648,16 @@ export function AboutPage({
           {brand}
           <small>{c.footer}</small>
         </span>
-        <span>{c.status}</span>
         <a href="#questions">
           {c.privacy}
           <ArrowUpRight size={13} />
         </a>
         <a href="#questions">
           {c.terms}
+          <ArrowUpRight size={13} />
+        </a>
+        <a href="#top">
+          {e.backTop}
           <ArrowUpRight size={13} />
         </a>
         <LanguageSelect compact />

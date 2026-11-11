@@ -7,12 +7,14 @@ import {
   createRecipeV4,
   createRetouchRegionV4,
   parseRecipeV4,
+  type PaintStrokeV3,
   type RecipeV4,
 } from '@ai-xiutu/editor';
 import { ChoiceSelect } from '../src/components/ChoiceSelect.tsx';
 import { GeometryControls } from '../src/editor/GeometryControls.tsx';
 import { RepairControls } from '../src/editor/RepairControls.tsx';
 import type { InspectorController } from '../src/editor/advanced-model.ts';
+import { setLocale, t } from '../src/i18n/index.ts';
 import { renderTestMarkup } from './support/render.ts';
 
 // This node test exercises real controls/handlers, not CSS or browser layout.
@@ -23,7 +25,7 @@ const cssHook = registerHooks({
     return nextLoad(url, context);
   },
 });
-const { BlendPicker } = await import('../src/editor/LayerControls.tsx');
+const { BlendPicker, PaintControls } = await import('../src/editor/LayerControls.tsx');
 cssHook.deregister();
 
 type ChoiceProps = {
@@ -102,6 +104,73 @@ test('blend selection preserves every registered blend mode without inventing or
   for (const mode of BLEND_MODES_V3) {
     control.choose(mode);
     assert.equal(selected, mode);
+  }
+});
+
+test('blend labels and stroke counts keep their editing meaning across locales without translating saved layer names', async () => {
+  const stroke: PaintStrokeV3 = {
+    points: [{ x: 0.25, y: 0.5 }],
+    radius: 0.02,
+    feather: 0.5,
+    opacity: 1,
+    mode: 'paint',
+    color: [255, 0, 0, 255],
+    source: null,
+  };
+  try {
+    for (const locale of ['zh-CN', 'zh-TW', 'en'] as const) {
+      await setLocale(locale);
+      const expectedMode = locale === 'en' ? 'Normal' : '正常混合';
+      const picker = readChoice(
+        () => BlendPicker({ value: 'normal', onChange() {} }),
+        t('图层混合模式'),
+      );
+      assert.equal(
+        picker.props.options?.find((option) => option.value === 'normal')?.label,
+        expectedMode,
+      );
+      if (locale === 'en') assert.equal(t('正常'), 'Active', 'account status keeps its own copy');
+      for (const count of [0, 1, 2]) {
+        const recipe = createRecipeV4({
+          paintLayers: [
+            {
+              id: 'paint-layer',
+              name: '正常',
+              enabled: true,
+              opacity: 1,
+              blendMode: 'normal',
+              mask: null,
+              strokes: Array.from({ length: count }, () => structuredClone(stroke)),
+            },
+          ],
+        });
+        const before = structuredClone(recipe);
+        const controller = {
+          editor: {
+            getRecipe: () => recipe,
+            activePaintLayerId: 'paint-layer',
+            dimensions: { width: 640, height: 480 },
+            paintSettings: { ...stroke, pressureSensitive: false, choosingSource: false },
+          },
+          apply() {
+            assert.fail('Rendering translated labels must not rewrite saved layers');
+          },
+          report(message: string) {
+            assert.fail(message);
+          },
+        } as unknown as InspectorController;
+        const html = renderTestMarkup(
+          createElement(PaintControls, { controller, pickedColor: '#FF0000FF' }),
+        );
+        const unit =
+          locale === 'en' ? (count === 1 ? 'stroke' : 'strokes') : locale === 'zh-TW' ? '筆' : '笔';
+        assert.ok(html.includes(`<small>${count} ${unit} · ${expectedMode}</small>`));
+        assert.ok(html.includes('>正常<small>'), 'the saved layer name remains verbatim');
+        assert.deepEqual(recipe, before);
+      }
+    }
+  } finally {
+    await setLocale('zh-CN');
   }
 });
 

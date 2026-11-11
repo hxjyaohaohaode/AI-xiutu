@@ -51,6 +51,19 @@ export function workspaceSize(view: Viewport): { width: number; height: number }
     ),
   };
 }
+
+/** A queued pointer update belongs to the exact workspace where the gesture began. */
+export function panelGestureViewportKey(view: Viewport): string {
+  const body = workspaceSize(view);
+  return [
+    view.bucket,
+    view.width,
+    view.height,
+    body.width,
+    body.height,
+    panelBottomOffset(view),
+  ].join(':');
+}
 export function panelBounds(view: Viewport, dock: Dock = 'floating', id?: PanelId) {
   const body = workspaceSize(view);
   const attached = view.bucket === 'phone' && dock === 'bottom';
@@ -313,7 +326,7 @@ export function defaultPanel(id: PanelId, view: Viewport): PanelGeometry {
     phone = view.bucket === 'phone';
   const width = phone ? body.width : id === 'ai' ? 390 : view.bucket === 'tablet' ? 320 : 344;
   const preferredHeight = phone
-    ? Math.min(id === 'ai' ? 390 : 300, body.height * (id === 'ai' ? 0.57 : 0.44))
+    ? Math.min(id === 'ai' ? 390 : 340, body.height * (id === 'ai' ? 0.57 : 0.44))
     : Math.min(id === 'ai' ? 680 : 600, body.height - panelBottomOffset(view) - 24);
   // Starting sizes leave usable image pixels, including on a 320px phone. This is
   // a default choice only: manual sizes and saved preferences retain their full
@@ -342,6 +355,25 @@ export function defaultPanel(id: PanelId, view: Viewport): PanelGeometry {
       height,
       presentation: 'normal',
       composition: 'reflow',
+    },
+    view,
+    id,
+  );
+}
+
+/** The phone Edit action restores usable controls and photo space after manual resizing. */
+export function restorePanelForEditing(
+  value: PanelGeometry,
+  view: Viewport,
+  id: PanelId,
+): PanelGeometry {
+  return boundPanel(
+    {
+      ...value,
+      ...(view.bucket === 'phone' && value.dock === 'bottom' && id === 'inspector'
+        ? { height: defaultPanel(id, view).height }
+        : {}),
+      presentation: 'normal',
     },
     view,
     id,

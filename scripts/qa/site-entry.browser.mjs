@@ -197,6 +197,7 @@ export async function runSiteEntryChecks({
           'First entry must be the public page',
         );
         await page.locator('.about-hero h1').getByText('让想法，', { exact: true }).waitFor();
+        await page.locator('.color-study').scrollIntoViewIfNeeded();
         await page.locator('.study-compare').waitFor();
         const preview = page.locator('canvas.study-result');
         const original = await canvasFingerprint(preview);
@@ -388,15 +389,20 @@ export async function runSiteEntryChecks({
     await check('Auth language changes preserve typed fields and fit five viewports', async () => {
       await page.setViewportSize(viewports[0]);
       await page.locator('.about-login').click();
-      const dialog = page.locator('.auth-dialog');
+      const dialog = page.locator('.account-page.account-auth');
       await dialog.waitFor();
+      assert.equal(
+        await page.locator('dialog[open]').count(),
+        0,
+        'Authentication must be a document page',
+      );
       const field = authControl(page, 'phone');
       await field.fill(phone);
       const owner = await field.elementHandle();
       assert.ok(owner);
       try {
         for (const locale of locales) {
-          await selectLocale(page, '.auth-identity .language-select select', locale.value);
+          await selectLocale(page, '.account-page-header .language-select select', locale.value);
           await dialog.getByRole('heading', { name: locale.auth, exact: true }).waitFor();
           assert.equal(
             await field.inputValue(),
@@ -415,14 +421,11 @@ export async function runSiteEntryChecks({
             await page.setViewportSize(viewport);
             if (viewport.width < 760) {
               const bounds = await dialog.boundingBox();
-              assert.ok(bounds, 'The mobile authentication sheet must be visible');
-              assert.ok(
-                Math.abs(bounds.x) <= 1,
-                'The authentication sheet must meet the left edge',
-              );
+              assert.ok(bounds, 'The mobile authentication page must be visible');
+              assert.ok(Math.abs(bounds.x) <= 1, 'The authentication page must meet the left edge');
               assert.ok(
                 Math.abs(bounds.x + bounds.width - viewport.width) <= 1,
-                'The authentication sheet must meet the right edge without a one-sided gutter',
+                'The authentication page must meet the right edge without a one-sided gutter',
               );
             }
             const controls = [];
@@ -431,9 +434,31 @@ export async function runSiteEntryChecks({
               ['phone', field],
               ['password', authControl(page, 'password')],
               ['submit', dialog.locator('button[type="submit"]')],
-              ['close', dialog.locator('.modal-header button')],
+              ['close', dialog.locator('.account-page-back')],
             ])
-              controls.push(await measureReachable(page, target, name));
+              controls.push(await measureAboutControl(page, target, name));
+            const passwordGeometry = await dialog.locator('.auth-password-row').evaluate((row) => {
+              const field = row.querySelector('input')?.getBoundingClientRect();
+              const toggle = row.querySelector('button')?.getBoundingClientRect();
+              return field && toggle
+                ? {
+                    inside:
+                      toggle.left >= field.left &&
+                      toggle.right <= field.right + 1 &&
+                      toggle.top >= field.top - 1 &&
+                      toggle.bottom <= field.bottom + 1,
+                    hitSize: Math.min(toggle.width, toggle.height),
+                  }
+                : null;
+            });
+            assert.ok(
+              passwordGeometry?.inside,
+              'Password visibility control stays inside its field',
+            );
+            assert.ok(
+              passwordGeometry.hitSize >= 43,
+              'Password visibility has a touch-sized target',
+            );
             report.siteEntryLayouts.push({
               surface: 'auth',
               locale: locale.value,
@@ -446,7 +471,7 @@ export async function runSiteEntryChecks({
       } finally {
         await owner.dispose();
       }
-      await dialog.locator('.modal-header button').click();
+      await dialog.locator('.account-page-back').click();
       await page.locator('.about-page').waitFor();
       await page.waitForFunction(() => !document.querySelector('dialog[open]'));
       assert.deepEqual(

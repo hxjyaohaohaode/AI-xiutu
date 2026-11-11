@@ -289,9 +289,11 @@ export const editorEnglish: Readonly<Record<string, string>> = {
   当前预览亮度代理恰好等于255的像素占比: 'Share of preview luminance pixels exactly at 255',
   亮端: 'White end',
   混合模式: 'Blend mode',
+  正常混合: 'Normal',
   绘制图层: 'Paint layers',
   新建: 'New',
-  '笔 ·': 'strokes ·',
+  '1 笔 · {mode}': '1 stroke · {mode}',
+  '{count} 笔 · {mode}': '{count} strokes · {mode}',
   '{v0}{v1}': '{v0}{v1}',
   切换绘制图层: 'Switch paint layer',
   '新建一个图层后，即可在照片上涂画。颜色、混合、范围和笔画分别保留。':
@@ -469,6 +471,7 @@ export const editorEnglish: Readonly<Record<string, string>> = {
   '移除范围 ': 'Remove area ',
   平滑过渡: 'Smooth falloff',
   顶点: 'Vertices',
+  '顶点 {axis}': 'Vertex {axis}',
   '点 {v0}': 'Point {v0}',
   增加多边形顶点: 'Add polygon vertex',
   删除多边形顶点: 'Delete polygon vertex',
@@ -508,6 +511,8 @@ export const editorEnglish: Readonly<Record<string, string>> = {
   重新识别人物: 'Detect people again',
   识别身体位置: 'Detect body position',
   识别照片中的人物: 'Detect people in photo',
+  重试人物识别: 'Retry people detection',
+  重试身体识别: 'Retry body detection',
   取消识别: 'Cancel detection',
   正在精修透明边缘: 'Refining transparent edges',
   从原图提取人物素材: 'Extract person from source',
@@ -525,6 +530,8 @@ export const editorEnglish: Readonly<Record<string, string>> = {
   '识别后可建立头发和背景选区。模型不可用时，可到“局部”手动选择。':
     'Detection can create hair and background selections. If the model is unavailable, select manually in Regions.',
   当前人物: 'Current person',
+  '人物 {number}': 'Person {number}',
+  '身形 {number}': 'Body {number}',
   完成人物调节: 'Done with this person',
   '当前作品仍保留旧颈部效果。这个自动工具已暂停新增调整；清除旧效果后可继续调节其他身形参数，其他人物参数与妆容保持，可撤销。':
     'This image retains a legacy neck effect. New automatic neck adjustments are paused. Clear the old effect to adjust other body settings; other portrait settings remain. This can be undone.',
