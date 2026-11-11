@@ -8,6 +8,8 @@ import {
   localEditorSourceLimits,
   MAX_EXPLICIT_PIXELS,
   computeHistogram,
+  pointPreviewMode,
+  preparePointPreview,
   WarpPreviewCache,
   type Dimensions,
   type RGBAImage,
@@ -15,8 +17,7 @@ import {
 } from '@ai-xiutu/editor';
 import { prepareBudgetedPreview, MAX_PREVIEW_PIXELS } from './previewBudget';
 import { editorGeometryKey } from './coordinates';
-import { canPreviewNativeColor, fitsNativePreview } from './native-preview';
-import { preparePointPreview } from './point-preview';
+import { fitsNativePreview } from './native-preview';
 
 let preview: RGBAImage | null = null;
 let original: RGBAImage | null = null;
@@ -25,7 +26,7 @@ let images = new Map<string, RGBAImage>(),
   originalImages = new Map<string, RGBAImage>();
 const previewSources = new Map<string, RGBAImage>();
 const warpPreviewCache = new WarpPreviewCache();
-let pointPreview: ReturnType<typeof preparePointPreview> = null;
+let pointPreview: ReturnType<typeof preparePointPreview> | undefined;
 let recycledBuffer: ArrayBuffer | undefined;
 function preparedSource(source: RGBAImage, recipe: EditorRecipe, maxPixels: number) {
   const key = `${maxPixels}:${editorGeometryKey(recipe, false)}`;
@@ -75,11 +76,15 @@ self.onmessage = async (event: MessageEvent<Message>) => {
       preview.height === sourceDimensions.height &&
       fitsNativePreview(preview.width, preview.height)
         ? preparePointPreview(preview)
-        : null;
+        : undefined;
     return;
   }
   if (message.type === 'recycle-point-preview') {
-    if (pointPreview && message.buffer?.byteLength === preview?.data.byteLength)
+    if (
+      pointPreview &&
+      message.buffer?.byteLength &&
+      message.buffer.byteLength <= (preview?.data.byteLength ?? 0)
+    )
       recycledBuffer = message.buffer;
     return;
   }
@@ -147,14 +152,18 @@ self.onmessage = async (event: MessageEvent<Message>) => {
         images: native && original ? originalImages : images,
         warpPreviewCache: warpDetail ? warpPreviewCache : undefined,
       };
-      if (!canPreviewNativeColor(recipe) || warpDetail)
-        return renderEditorRecipeTiled(input, recipe, { ...options, tileSize: 512 });
-      const mapped = native ? pointPreview?.(recipe, recycledBuffer) : null;
-      if (mapped) {
-        recyclable = true;
-        recycledBuffer = undefined;
-        return mapped;
+      const mode = pointPreviewMode(recipe);
+      if (native && !warpDetail && mode && mode !== 'simple') {
+        if (pointPreview === undefined) pointPreview = preparePointPreview(input);
+        const mapped = pointPreview?.(recipe, recycledBuffer);
+        if (mapped) {
+          recyclable = message.type === 'interactive-preview';
+          recycledBuffer = undefined;
+          return mapped;
+        }
       }
+      if (!mode || warpDetail)
+        return renderEditorRecipeTiled(input, recipe, { ...options, tileSize: 512 });
       return renderEditorRecipe(input, recipe, options);
     };
     if (warpDetail && message.prewarmWarp) {
