@@ -3147,11 +3147,9 @@ try {
     assert.deepEqual([...collagePixels.subarray(gifCell, gifCell + 4)], [221, 21, 19, 255]);
     await dialog.getByRole('status').filter({ hasText: '拼图.png' }).waitFor();
     await dialog.getByRole('button', { name: '关闭窗口', exact: true }).click();
-    await page
-      .locator('.library-asset')
-      .filter({ hasText: 'QA-motion.gif' })
-      .getByRole('button', { name: 'GIF 帧编辑' })
-      .click();
+    const animationCard = page.locator('.library-asset').filter({ hasText: 'QA-motion.gif' });
+    await animationCard.locator('.library-asset-details > summary').click();
+    await animationCard.getByRole('button', { name: 'GIF 帧编辑' }).click();
     const editor = page.getByRole('dialog', { name: 'GIF 帧编辑' });
     await editor.getByRole('button', { name: '反转帧顺序' }).click();
     const pendingEdit = page.waitForResponse((response) =>
