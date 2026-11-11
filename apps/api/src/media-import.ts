@@ -8,6 +8,7 @@ import { NEUTRAL_PRECISION_EDIT, parsePrecisionEdit, type PrecisionEdit } from '
 import {
   processMedia,
   exportMedia,
+  createLinearWindowRuntime,
   getMediaCapabilities,
   MediaProcessingError,
   MEDIA_MAX_INPUT_BYTES,
@@ -129,6 +130,7 @@ export function registerMediaImport(app: FastifyInstance, db: Database, config: 
   const exporting = new Set<string>();
   const enabled = process.env.MEDIA_ADVANCED_ENABLED === 'true';
   const pythonExecutable = process.env.MEDIA_PYTHON;
+  const linearWindows = enabled && pythonExecutable ? createLinearWindowRuntime() : undefined;
   const maxPixels = process.env.MEDIA_RASTER_MAX_PIXELS
     ? z.coerce
         .number()
@@ -346,6 +348,7 @@ export function registerMediaImport(app: FastifyInstance, db: Database, config: 
     closing = true;
     clearInterval(cleanup);
     for (const value of active.values()) value.controller.abort();
+    await linearWindows?.close();
     await Promise.allSettled([...active.values()].map((value) => value.promise));
   });
 
@@ -843,24 +846,30 @@ export function registerMediaImport(app: FastifyInstance, db: Database, config: 
     if (req.raw.aborted) controller.abort();
     let streaming = false;
     try {
-      const result = await exportMedia({
-        workDir: workDir(row.object_id),
-        outputPath,
-        format: options.format,
-        precisionEdit: options.precisionEdit,
-        precisionInput: options.precisionInput,
-        preview: options.preview,
-        signal: controller.signal,
-        options: {
-          quality: options.quality,
-          timeoutMs: 45000,
-          ...(pythonExecutable ? { pythonExecutable } : {}),
+      const result = await exportMedia(
+        {
+          workDir: workDir(row.object_id),
+          outputPath,
+          format: options.format,
+          precisionEdit: options.precisionEdit,
+          precisionInput: options.precisionInput,
+          preview: options.preview,
+          signal: controller.signal,
+          options: {
+            quality: options.quality,
+            timeoutMs: 45000,
+            ...(pythonExecutable ? { pythonExecutable } : {}),
+          },
         },
-      });
+        linearWindows ? { runtime: linearWindows, descriptor: row.descriptor } : undefined,
+      );
       const current = await sourceAccess(assetId, actorId);
       if (
         current.object_id !== row.object_id ||
-        current.descriptor.sourceSha256 !== row.descriptor.sourceSha256
+        current.descriptor.sourceSha256 !== row.descriptor.sourceSha256 ||
+        (options.precisionInput === 'linear-master' &&
+          current.descriptor.linearMaster?.sha256 !== row.descriptor.linearMaster?.sha256) ||
+        result.sourceSha256 !== row.descriptor.sourceSha256
       )
         throw new HttpError(409, 'MEDIA_SOURCE_CHANGED', '母版来源已变化，请重新打开素材。');
       const activeSession = await db.query(

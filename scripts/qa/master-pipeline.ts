@@ -125,11 +125,36 @@ try {
     const preview = await f.call('POST', path + '/preview', { ...grade, maxEdge: 512, region });
     assert.equal(preview.statusCode, 200, preview.body.slice(0, 200));
     const cropped = await raw16(sharp(preview.rawPayload, { ignoreIcc: true }));
+    const previewMs = Math.round(performance.now() - previewStarted);
+    const warmWindowMs: number[] = [];
+    if (process.env.MEDIA_QA_WARM_WINDOWS === '1' && precisionInput === 'linear-master') {
+      const seen = new Set();
+      for (let step = 1; step <= 12; step++) {
+        const startWindow = performance.now();
+        const window = await f.call('POST', path + '/preview', {
+          ...grade,
+          precisionEdit: { ...precisionEdit, exposure: precisionEdit.exposure + step / 20 },
+          maxEdge: 512,
+          region,
+        });
+        warmWindowMs.push(Math.round(performance.now() - startWindow));
+        assert.equal(window.statusCode, 200, window.body.slice(0, 200));
+        const metadata = await sharp(window.rawPayload).metadata();
+        assert.deepEqual(
+          [metadata.width, metadata.height, metadata.depth],
+          [region.width, region.height, 'ushort'],
+        );
+        assert.ok(metadata.icc);
+        seen.add(sha(window.rawPayload));
+      }
+      assert.ok(seen.size >= 10, 'exposure changes the native window samples');
+    }
     const record = {
       ...result,
       algorithm: precisionEdit.algorithm,
+      ...(warmWindowMs.length ? { warmWindowMs } : {}),
       ...(precisionEdit.algorithm === 'scene-linear-v2' ? { curves: precisionEdit.curves } : {}),
-      previewMs: Math.round(performance.now() - previewStarted),
+      previewMs,
       nativeRegion: region,
       previewSha256: sha(cropped),
       files: [] as { format: string; bytes: number; bitDepth: number }[],

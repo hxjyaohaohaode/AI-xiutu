@@ -19,7 +19,7 @@ import { spawn } from 'node:child_process';
 import sharp, { type Metadata, type Sharp } from 'sharp';
 import { readPsd, initializeCanvas, type Layer } from 'ag-psd';
 import { attachPngIcc, attachTiffIcc, srgbProfile } from './icc.js';
-import { editMaster16 } from './precision.js';
+import { editMaster16, precisionRecord, previewWindow } from './precision.js';
 import { parsePrecisionEdit, NEUTRAL_PRECISION_EDIT, type PrecisionEdit } from '@ai-xiutu/editor';
 import type { NormalizedMediaOptions } from './process.js';
 import {
@@ -28,7 +28,7 @@ import {
   MEDIA_MAX_TILE_COUNT,
   MEDIA_MAX_PRECISION_PIXELS,
   MEDIA_MAX_LINEAR_PIXELS,
-  MEDIA_MAX_PREVIEW_EDGE,
+  MediaProcessingError,
   type MediaDescriptorV1,
   type MediaFileV1,
   type MediaExportFormat,
@@ -551,46 +551,6 @@ async function importMedia(job: Job): Promise<MediaDescriptorV1> {
   await rm(stage, { recursive: true });
   return descriptor;
 }
-function precisionRecord(job: Job, descriptor: MediaDescriptorV1, input: MediaPrecisionInput) {
-  if (!job.precisionEdit) return {};
-  const edit = parsePrecisionEdit(job.precisionEdit);
-  return {
-    precisionEdit: {
-      algorithm: edit.algorithm,
-      input,
-      edit,
-      sha256: sha(Buffer.from(JSON.stringify({ source: descriptor.sourceSha256, input, edit }))),
-    },
-  };
-}
-function previewWindow(
-  preview: MediaPrecisionPreview | undefined,
-  source: { width: number; height: number },
-) {
-  if (!preview) return undefined;
-  if (
-    !Number.isInteger(preview.maxEdge) ||
-    preview.maxEdge < 128 ||
-    preview.maxEdge > MEDIA_MAX_PREVIEW_EDGE
-  )
-    throw new MediaLimitError('Preview edge is outside the display budget');
-  const region = preview.region;
-  if (!region) return undefined;
-  if (
-    ![region.left, region.top, region.width, region.height].every(Number.isSafeInteger) ||
-    region.left < 0 ||
-    region.top < 0 ||
-    region.width < 1 ||
-    region.height < 1 ||
-    region.width > preview.maxEdge ||
-    region.height > preview.maxEdge ||
-    region.left + region.width > source.width ||
-    region.top + region.height > source.height
-  )
-    throw new MediaLimitError('Preview region is outside the source or display budget');
-  return region;
-}
-
 async function writeSdrExport(pipeline: Sharp, job: Job, output: string) {
   if (job.preview && !job.preview.region)
     pipeline = pipeline.resize({
@@ -753,7 +713,7 @@ async function exportLinearMaster(
       format: job.format!,
       sourceSha256: descriptor.sourceSha256,
       includesEditorRecipe: false,
-      ...precisionRecord(job, descriptor, 'linear-master'),
+      ...precisionRecord(job.precisionEdit, descriptor.sourceSha256, 'linear-master'),
     };
   } finally {
     await rm(requestPath, { force: true });
@@ -848,7 +808,7 @@ async function exportMaster(job: Job): Promise<MediaExportResult> {
     format,
     sourceSha256: descriptor.sourceSha256,
     includesEditorRecipe: false,
-    ...precisionRecord(job, descriptor, 'master16'),
+    ...precisionRecord(job.precisionEdit, descriptor.sourceSha256, 'master16'),
   };
 }
 
@@ -868,5 +828,9 @@ try {
 } catch (error) {
   // Diagnostic text stays in the parent process boundary. No binary image or credentials are printed.
   process.stderr.write(`${error instanceof Error ? error.message : 'Media processing failed'}\n`);
-  process.exitCode = error instanceof MediaLimitError ? 2 : 1;
+  process.exitCode =
+    error instanceof MediaLimitError ||
+    (error instanceof MediaProcessingError && error.code === 'limit')
+      ? 2
+      : 1;
 }

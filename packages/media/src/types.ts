@@ -10,6 +10,15 @@ export const MEDIA_MAX_PROXY_PIXELS = 4_194_304;
 export const MEDIA_MAX_PRECISION_PIXELS = 16_777_216;
 export const MEDIA_MAX_LINEAR_PIXELS = 50_000_000;
 export const MEDIA_MAX_PREVIEW_EDGE = 2048;
+export class MediaProcessingError extends Error {
+  constructor(
+    message: string,
+    readonly code: 'unsupported' | 'limit' | 'aborted' | 'timeout' | 'processing',
+  ) {
+    super(message);
+    this.name = 'MediaProcessingError';
+  }
+}
 export interface MediaProcessingOptions {
   maxPixels?: number;
   maxInputBytes?: number;

@@ -5,11 +5,13 @@ import { dirname, isAbsolute, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { tmpdir } from 'node:os';
 import { parsePrecisionEdit } from '@ai-xiutu/editor';
+import { exportLinearWindow, type LinearWindowContext } from './linear-window.js';
 import {
   MEDIA_MAX_INPUT_BYTES,
   MEDIA_DEFAULT_MAX_PIXELS,
   MEDIA_MAX_PIXELS,
   MEDIA_MAX_PROXY_PIXELS,
+  MediaProcessingError,
   type ProcessMediaRequest,
   type ExportMediaRequest,
   type MediaDescriptorV1,
@@ -17,15 +19,7 @@ import {
   type MediaProcessingOptions,
 } from './types.js';
 
-export class MediaProcessingError extends Error {
-  constructor(
-    message: string,
-    readonly code: 'unsupported' | 'limit' | 'aborted' | 'timeout' | 'processing',
-  ) {
-    super(message);
-    this.name = 'MediaProcessingError';
-  }
-}
+export { MediaProcessingError } from './types.js';
 export interface NormalizedMediaOptions {
   maxPixels: number;
   maxInputBytes: number;
@@ -155,17 +149,20 @@ async function absent(path: string) {
     'processing',
   );
 }
-async function isolated<T>(
-  job: Record<string, unknown>,
-  options: NormalizedMediaOptions,
-  signal?: AbortSignal,
-): Promise<T> {
+async function assertIsolation() {
   if (process.platform !== 'linux')
     throw new MediaProcessingError(
       'Media processor requires the Linux prlimit isolation runtime',
       'unsupported',
     );
   await access('/usr/bin/prlimit', constants.X_OK);
+}
+async function isolated<T>(
+  job: Record<string, unknown>,
+  options: NormalizedMediaOptions,
+  signal?: AbortSignal,
+): Promise<T> {
+  await assertIsolation();
   const releaseSlot = await slot(signal);
   let control: string | undefined;
   try {
@@ -317,7 +314,10 @@ export async function processMedia(request: ProcessMediaRequest): Promise<MediaD
     throw error;
   }
 }
-export async function exportMedia(request: ExportMediaRequest): Promise<MediaExportResult> {
+export async function exportMedia(
+  request: ExportMediaRequest,
+  window?: LinearWindowContext,
+): Promise<MediaExportResult> {
   if (!['png16', 'tiff16', 'jpeg', 'webp', 'exr32'].includes(request.format))
     throw new MediaProcessingError('Unsupported export format', 'unsupported');
   if (
@@ -349,6 +349,35 @@ export async function exportMedia(request: ExportMediaRequest): Promise<MediaExp
   const reservation = await open(outputPath, 'wx', 0o600);
   await reservation.close();
   try {
+    if (
+      window &&
+      request.preview?.region &&
+      request.precisionInput === 'linear-master' &&
+      process.platform === 'linux' &&
+      (await access('/proc/self/fd', constants.R_OK | constants.X_OK).then(
+        () => true,
+        () => false,
+      ))
+    ) {
+      await assertIsolation();
+      const releaseSlot = await slot(request.signal);
+      try {
+        return await exportLinearWindow(
+          window,
+          workDir,
+          outputPath,
+          request.preview,
+          precisionEdit,
+          options,
+          request.signal,
+        );
+      } catch (error) {
+        if (error instanceof MediaProcessingError) throw error;
+        throw new MediaProcessingError('Isolated native window processing failed', 'processing');
+      } finally {
+        releaseSlot();
+      }
+    }
     return await isolated<MediaExportResult>(
       {
         kind: 'export',

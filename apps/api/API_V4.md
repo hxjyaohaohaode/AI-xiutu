@@ -170,20 +170,26 @@ additional media links, with explicit source asset IDs and audited provenance.
 - `POST /v1/media-imports/:id/complete` ->202 `{job}`. Fully uploaded input required; repeated complete never launches another decoder.
 - `GET /v1/media-imports/:id` -> `{job,asset:null|Asset}`; states uploading|processing|ready|failed|cancelled.
 - `POST /v1/media-imports/:id/cancel` -> `{ok:true,cleanupPending:boolean}`; unfinished work only. Ready409 never deletes published originals. When processing may still be owned by another worker, cancellation remains durable but the reservation and work directory stay until that worker stops or stale recovery confirms ownership loss. Repeated cancellation does not extend its lease or free its capacity early.
-- `GET /v1/assets/:id/media` -> `{descriptor,downloads,editor}`. `editor.precisionEditing` includes `currentGrade`, `canSave`, the installed-runtime flags, the exact source digest and the preview/export budgets.
+- `GET /v1/assets/:id/media` -> `{descriptor,downloads,editor}`. `editor.precisionEditing` includes `currentGrade`, `canSave`, the installed-runtime flags, the exact source digest and the preview/export budgets. `precisionEditing.curves.available` enables the scene-linear curve controls for this asset.
 - `GET /v1/assets/:id/media/original`, `/master`, `/linearMaster`, `/tiles.dzi`, `/tiles_files/:level/:tile` serve immutable originals, masters or tiles under the asset ACL.
 - `POST /v1/assets/:id/media/preview` accepts `{expectedSourceSha256,precisionInput,precisionEdit?,maxEdge,region?}`. The PNG16 response applies the grade before downsampling an overview. An optional `{left,top,width,height}` selects native pixels in the orientation-normalized data window. Each edge must fit `maxEdge` (128–2048); the coordinates must fit the master. A window may be read from a raster above the whole-image grading budget.
 - `GET /v1/assets/:id/media/grades?beforeVersion=N` returns `{grades,nextBeforeVersion}` in descending order, at most 30 per response. `POST .../grades` accepts `{expectedVersion,expectedSourceSha256,precisionInput,precisionEdit}` and returns `201 {grade}`. Version 0 means no prior grade. A stale save returns 409. Each new version is appended under current project edit access.
 - `POST /v1/assets/:id/media/export` accepts `{format,quality?,expectedSourceSha256?,precisionInput?,precisionEdit?,gradeVersion?}`. Select either an inline grade or an immutable saved version. `precisionInput` is `master16` or `linear-master`. Legacy PNG/TIFF/JPEG/WebP requests default to the SDR master; EXR32 uses the linear master. Grades, explicit input selection and EXR require the source digest. The response includes `X-Precision-Input`, `X-Precision-Edit-SHA256` and `X-Editor-Recipe-Included:false`.
 
-A grade requires `algorithm:'scene-linear-v1'`, `exposure:-10..10`,
+A grade includes `exposure:-10..10`,
 `temperature/tint/contrast/saturation/shadows/highlights:-100..100`, and
-`toneMap:'none'|'reinhard'`. Whole-image grading supports up to 16,777,216
+`toneMap:'none'|'reinhard'`. `scene-linear-v1` accepts these controls.
+`scene-linear-v2` requires `precisionInput:'linear-master'` and accepts
+`curves` with optional `luminance`, `red`, `green` and `blue` entries. Each
+entry has 2–16 `[inputEV,outputEV]` points in −16…16 EV relative to 0.18 linear
+grey. Input EV increases strictly. Sending v2 with `master16` returns
+`422 MEDIA_FLOAT_INPUT`. Whole-image grading supports up to 16,777,216
 SDR master pixels or 50,000,000 linear master pixels. PNG/TIFF apply the requested
 grade in the selected input domain and encode sRGB at 16 bits. EXR32 preserves
 signed float values, headroom, associated alpha and the retained EXR windows.
-Preview and export share a renderer and recheck the source, session and ACL before
-returning the result.
+Preview and export share the native development math. The server rechecks the
+source, session and ACL before returning either result. A linear-master window
+can reuse the isolated native process and its verified file identity.
 
 Publication atomically replaces the input reservation with actual object/proxy
 bytes. Capacity failure rolls back the asset and links. No prior content is

@@ -81,65 +81,88 @@ def develop(pixels, edit, gains, sdr, curves):
     return result
 
 
+def render(image, request, window_png=False):
+    spec = image.spec()
+    width, height, channels = spec.width, spec.height, spec.nchannels
+    if (
+        width != request["width"]
+        or height != request["height"]
+        or channels not in (3, 4)
+        or spec.deep
+        or spec.depth != 1
+        or width * height > 50_000_000
+    ):
+        raise ValueError("Retained float master exceeds precision export contract")
+    if image.seek_subimage(1, 0):
+        raise ValueError("Multipart float master is not supported")
+    image.seek_subimage(0, 0)
+    edit = request["edit"]
+    if edit["algorithm"] not in ("scene-linear-v1", "scene-linear-v2"):
+        raise ValueError("Unsupported precision edit")
+    curves = {
+        channel: np.asarray(points, dtype=np.float64)
+        for channel, points in (edit["curves"].items() if edit["algorithm"] == "scene-linear-v2" else ())
+        if any(x != y for x, y in points)
+    }
+    gains = np.exp2([
+        edit["exposure"] + 0.0035 * edit["temperature"] + 0.0012 * edit["tint"],
+        edit["exposure"] - 0.0018 * edit["tint"],
+        edit["exposure"] - 0.0035 * edit["temperature"] + 0.0012 * edit["tint"],
+    ])
+    sdr = request["sdr"]
+    region = request.get("region")
+    left, top = 0, 0
+    if region:
+        left, top, width, height = (region[key] for key in ("left", "top", "width", "height"))
+        if (
+            not sdr
+            or min(left, top) < 0
+            or min(width, height) < 1
+            or left + width > spec.width
+            or top + height > spec.height
+        ):
+            raise ValueError("Invalid native precision window")
+    out_spec = oiio.ImageSpec(width, height, channels, oiio.UINT16 if sdr else oiio.FLOAT)
+    out_spec.attribute("oiio:ColorSpace", "sRGB" if sdr else "Linear")
+    out_spec.attribute("compression", "zip")
+    if sdr and channels == 4:
+        out_spec.attribute("oiio:UnassociatedAlpha", 1)
+    if not sdr:
+        apply_layout(out_spec, capture_layout(spec))
+    target = "preview.png" if window_png else "developed.tif" if sdr else "precision.exr"
+    out = oiio.ImageOutput.create(target)
+    if out is None or not out.open(request["outputPath"], out_spec):
+        raise ValueError("Cannot create precision output")
+    try:
+        end = top + height
+        row = top
+        while row < end:
+            next_row = min(
+                end,
+                (row // spec.tile_height + 1) * spec.tile_height if spec.tile_height else row + 64,
+            )
+            band = read_band(image, spec, left, row, width, next_row - row)
+            for offset in range(0, band.shape[0], 64):
+                stripe = develop(band[offset:offset + 64], edit, gains, sdr, curves)
+                y = out_spec.y + row + offset - top
+                if not out.write_scanlines(y, y + stripe.shape[0], out_spec.z, stripe):
+                    raise ValueError("Cannot write precision samples")
+            row = next_row
+    finally:
+        closed = out.close()
+    if not closed:
+        raise ValueError("Cannot close precision output")
+    return {"width": width, "height": height, "channels": channels, "bitDepth": 16 if sdr else 32}
+
+
 def main():
     request = json.loads(Path(sys.argv[1]).read_text())
     image = oiio.ImageInput.open(request["inputPath"])
     if image is None:
         raise ValueError("Cannot open retained float master")
     try:
-        spec = image.spec()
-        width, height, channels = spec.width, spec.height, spec.nchannels
-        if width != request["width"] or height != request["height"] or channels not in (3, 4) or spec.deep or spec.depth != 1 or width * height > 50_000_000:
-            raise ValueError("Retained float master exceeds precision export contract")
-        if image.seek_subimage(1, 0):
-            raise ValueError("Multipart float master is not supported")
-        image.seek_subimage(0, 0)
-        edit = request["edit"]
-        if edit["algorithm"] not in ("scene-linear-v1", "scene-linear-v2"):
-            raise ValueError("Unsupported precision edit")
-        curves = {
-            channel: np.asarray(points, dtype=np.float64)
-            for channel, points in (edit["curves"].items() if edit["algorithm"] == "scene-linear-v2" else ())
-            if any(x != y for x, y in points)
-        }
-        gains = np.exp2([edit["exposure"] + 0.0035 * edit["temperature"] + 0.0012 * edit["tint"],
-                         edit["exposure"] - 0.0018 * edit["tint"],
-                         edit["exposure"] - 0.0035 * edit["temperature"] + 0.0012 * edit["tint"]])
-        sdr = request["sdr"]
-        region = request.get("region")
-        left, top = 0, 0
-        if region:
-            left, top, width, height = (region[key] for key in ("left", "top", "width", "height"))
-            if not sdr or min(left, top) < 0 or min(width, height) < 1 or left + width > spec.width or top + height > spec.height:
-                raise ValueError("Invalid native precision window")
-        out_spec = oiio.ImageSpec(width, height, channels, oiio.UINT16 if sdr else oiio.FLOAT)
-        out_spec.attribute("oiio:ColorSpace", "sRGB" if sdr else "Linear")
-        out_spec.attribute("compression", "zip")
-        if sdr and channels == 4:
-            out_spec.attribute("oiio:UnassociatedAlpha", 1)
-        if not sdr:
-            apply_layout(out_spec, capture_layout(spec))
-        out = oiio.ImageOutput.create("developed.tif" if sdr else "precision.exr")
-        if out is None or not out.open(request["outputPath"], out_spec):
-            raise ValueError("Cannot create precision output")
-        try:
-            end = top + height
-            row = top
-            while row < end:
-                next_row = min(end, (row // spec.tile_height + 1) * spec.tile_height if spec.tile_height else row + 64)
-                band = read_band(image, spec, left, row, width, next_row - row)
-                for offset in range(0, band.shape[0], 64):
-                    stripe = develop(band[offset:offset + 64], edit, gains, sdr, curves)
-                    y = out_spec.y + row + offset - top
-                    if not out.write_scanlines(y, y + stripe.shape[0], out_spec.z, stripe):
-                        raise ValueError("Cannot write precision samples")
-                row = next_row
-        finally:
-            closed = out.close()
-        if not closed:
-            raise ValueError("Cannot close precision output")
-        Path(request["resultPath"]).write_text(json.dumps({"width": width, "height": height, "channels": channels,
-                                                          "bitDepth": 16 if sdr else 32}))
+        result = render(image, request)
+        Path(request["resultPath"]).write_text(json.dumps(result))
     finally:
         image.close()
 

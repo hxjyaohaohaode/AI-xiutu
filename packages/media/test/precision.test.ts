@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { mkdtemp, rm, readFile, writeFile } from 'node:fs/promises';
+import { mkdtemp, rm, readFile, writeFile, stat, utimes } from 'node:fs/promises';
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
 import { execFile } from 'node:child_process';
@@ -14,7 +14,7 @@ import {
   srgbToLinear,
 } from '@ai-xiutu/editor';
 import { editMaster16 } from '../src/precision.js';
-import { processMedia, exportMedia } from '../src/index.js';
+import { createLinearWindowRuntime, processMedia, exportMedia } from '../src/index.js';
 
 const execute = promisify(execFile);
 test('precision edits preserve all 65536 adjacent code values and use actual linear-light exposure without an 8bit stage', () => {
@@ -238,6 +238,57 @@ print(json.dumps(result))`,
         await raw16(sharp(partCurve, { ignoreIcc: true })),
         await raw16(sharp(fullCurve, { ignoreIcc: true }).extract(region)),
       );
+      const runtime = createLinearWindowRuntime();
+      const context = { runtime, descriptor };
+      const preview = { maxEdge: 128, region };
+      const windowEdit = { ...development, precisionEdit: curves, preview };
+      const nativeMaster = join(workDir, 'linear-master.exr');
+      try {
+        const cancellation = new AbortController();
+        const cancelled = join(dir, 'cancelled-window.png');
+        const pending = exportMedia(
+          { ...windowEdit, outputPath: cancelled, signal: cancellation.signal },
+          context,
+        );
+        const timer = setTimeout(() => cancellation.abort(), 15);
+        try {
+          await assert.rejects(pending, { code: 'aborted' });
+          await assert.rejects(stat(cancelled), { code: 'ENOENT' });
+        } finally {
+          clearTimeout(timer);
+        }
+        const cold = join(dir, 'cold-window.png');
+        const warm = join(dir, 'warm-window.png');
+        const firstWindow = await exportMedia({ ...windowEdit, outputPath: cold }, context);
+        const warmWindow = await exportMedia({ ...windowEdit, outputPath: warm }, context);
+        assert.equal(firstWindow.precisionEdit?.sha256, curveFull.precisionEdit?.sha256);
+        assert.equal(warmWindow.precisionEdit?.sha256, curveFull.precisionEdit?.sha256);
+        assert.deepEqual(
+          await raw16(sharp(warm, { ignoreIcc: true })),
+          await raw16(sharp(partCurve, { ignoreIcc: true })),
+        );
+        assert.deepEqual(
+          (await sharp(warm).metadata()).icc,
+          (await sharp(partCurve).metadata()).icc,
+        );
+        const original = await readFile(nativeMaster);
+        const times = await stat(nativeMaster);
+        const altered = Buffer.from(original);
+        altered[altered.length - 1]! ^= 1;
+        await writeFile(nativeMaster, altered);
+        await utimes(nativeMaster, times.atime, times.mtime);
+        const rejected = join(dir, 'stale-window.png');
+        await assert.rejects(exportMedia({ ...windowEdit, outputPath: rejected }, context), {
+          code: 'processing',
+        });
+        await assert.rejects(stat(rejected), { code: 'ENOENT' });
+        await writeFile(nativeMaster, original);
+        const restored = join(dir, 'restored-window.png');
+        await exportMedia({ ...windowEdit, outputPath: restored }, context);
+        assert.deepEqual(await readFile(restored), await readFile(warm));
+      } finally {
+        await runtime.close();
+      }
       // Corrupting the retained source cannot be hidden behind its old descriptor.
       await writeFile(join(workDir, 'linear-master.exr'), 'changed');
       await assert.rejects(

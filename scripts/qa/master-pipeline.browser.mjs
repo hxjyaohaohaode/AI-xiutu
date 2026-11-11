@@ -113,36 +113,139 @@ try {
           y: box.y + box.height * 0.5,
         };
         const distance = (travel * Math.min(1.25, max - Number(previous))) / (max - min);
+        await slider.evaluate((input) => {
+          const viewport = document.querySelector('.media-tile-viewport');
+          const canvas = document.createElement('canvas');
+          canvas.width = 64;
+          canvas.height = 1;
+          const context = canvas.getContext('2d', { willReadFrequently: true });
+          const sample = (image) => {
+            context.clearRect(0, 0, 64, 1);
+            for (let index = 0; index < 64; index++) {
+              const x = Math.floor((((index % 8) + 0.5) / 8) * image.naturalWidth);
+              const y = Math.floor(((Math.floor(index / 8) + 0.5) / 8) * image.naturalHeight);
+              context.drawImage(image, x, y, 1, 1, index, 0, 1, 1);
+            }
+            return context.getImageData(0, 0, 64, 1).data.join(',');
+          };
+          const trace = {
+            start: null,
+            end: null,
+            pointer: null,
+            inputs: 0,
+            valueChanges: 0,
+            baseline: sample(viewport.querySelector('.media-precision-frame img')),
+            frames: [],
+          };
+          let lastUrl = viewport.querySelector('.media-precision-frame img').src;
+          const record = () =>
+            requestAnimationFrame(() => {
+              const image = viewport.querySelector('.media-precision-frame img');
+              if (!image?.complete || !image.naturalWidth || image.src === lastUrl) return;
+              lastUrl = image.src;
+              trace.frames.push({
+                time: performance.now(),
+                width: image.naturalWidth,
+                height: image.naturalHeight,
+                pixels: sample(image),
+              });
+            });
+          const observer = new MutationObserver(record);
+          observer.observe(viewport, {
+            subtree: true,
+            childList: true,
+            attributes: true,
+            attributeFilter: ['src'],
+          });
+          viewport.addEventListener('load', record, true);
+          const observeValue = new MutationObserver(() => trace.valueChanges++);
+          observeValue.observe(input, { attributes: true, attributeFilter: ['aria-valuetext'] });
+          input.addEventListener(
+            'pointerdown',
+            (event) => {
+              trace.start = event.timeStamp;
+              trace.pointer = event.pointerId;
+            },
+            { once: true, capture: true },
+          );
+          const end = (event) => {
+            if (event.pointerId === trace.pointer && trace.end === null)
+              trace.end = event.timeStamp;
+          };
+          const move = (event) => {
+            if (event.pointerId === trace.pointer && trace.end === null) trace.inputs++;
+          };
+          document.addEventListener('pointerup', end, true);
+          document.addEventListener('pointermove', move, true);
+          window.readNativeWindowTrace = () => {
+            observer.disconnect();
+            observeValue.disconnect();
+            viewport.removeEventListener('load', record, true);
+            document.removeEventListener('pointerup', end, true);
+            document.removeEventListener('pointermove', move, true);
+            return trace;
+          };
+        });
         const cdp = hasTouch ? await context.newCDPSession(page) : null;
         const touch = (type, point) =>
           cdp.send('Input.dispatchTouchEvent', {
             type,
             touchPoints: point ? [{ ...point, id: 1 }] : [],
           });
-        const live = new Set();
         if (cdp) await touch('touchStart', start);
         else {
           await page.mouse.move(start.x, start.y);
           await page.mouse.down();
         }
-        for (let step = 1; step <= 42; step++) {
-          const point = { x: start.x + (step / 42) * distance, y: start.y };
+        for (let step = 1; step <= 48; step++) {
+          const point = { x: start.x + (step / 48) * distance, y: start.y };
           if (cdp) await touch('touchMove', point);
           else await page.mouse.move(point.x, point.y);
-          await page.waitForTimeout(110);
-          const next = await frame.evaluate((img) => ({
-            url: img.getAttribute('src'),
-            size: [img.naturalWidth, img.naturalHeight],
-          }));
-          if (next.url !== before && next.size.every((edge) => edge > 0)) {
-            assert.deepEqual(next.size, nativeSize);
-            live.add(next.url);
-          }
+          await page.waitForTimeout(32);
         }
         if (cdp) await touch('touchEnd');
         else await page.mouse.up();
-        assert.ok(live.size >= 2, 'A held drag displays successive native-size frames');
-        liveNativeFrames = { count: live.size, width: nativeSize[0], height: nativeSize[1] };
+        const trace = await page.evaluate(() => window.readNativeWindowTrace());
+        assert.ok(
+          trace.start > 0 &&
+            trace.end > trace.start &&
+            trace.inputs >= 24 &&
+            trace.valueChanges >= 24,
+          JSON.stringify({
+            start: trace.start,
+            end: trace.end,
+            inputs: trace.inputs,
+            values: trace.valueChanges,
+          }),
+        );
+        const rendered = trace.frames.filter(({ time }) => time >= trace.start && time < trace.end);
+        let previousPixels = trace.baseline;
+        let last = trace.start;
+        const gaps = [];
+        for (const item of rendered) {
+          assert.deepEqual([item.width, item.height], nativeSize);
+          if (item.pixels === previousPixels) continue;
+          gaps.push(item.time - last);
+          previousPixels = item.pixels;
+          last = item.time;
+        }
+        const firstMs = gaps[0];
+        const sorted = [...gaps, trace.end - last].sort((a, b) => a - b);
+        liveNativeFrames = {
+          count: gaps.length,
+          width: nativeSize[0],
+          height: nativeSize[1],
+          inputs: trace.inputs,
+          valueChanges: trace.valueChanges,
+          heldMs: trace.end - trace.start,
+          firstMs,
+          maxGapMs: sorted.at(-1),
+          p95GapMs: sorted[Math.ceil(sorted.length * 0.95) - 1],
+        };
+        assert.ok(
+          gaps.length >= 6 && firstMs < 240 && liveNativeFrames.maxGapMs < 350,
+          JSON.stringify({ asset: asset.name, viewport: size, liveNativeFrames }),
+        );
       } else await slider.press('ArrowRight');
       const after = await slider.inputValue();
       assert.notEqual(previous, after);
