@@ -678,20 +678,23 @@ try {
       .getByRole('button', { name: '会话记录', exact: true })
       .click();
     const select = history.getByRole('combobox', { name: '会话记录', exact: true });
-    const active = (await select.innerText()).trim(),
-      before = dispatches;
+    const before = dispatches;
     await select.click();
-    const other = await history
+    const historyOptions = history
       .getByRole('listbox', { name: '会话记录', exact: true })
-      .getByRole('option')
-      .evaluateAll((nodes) =>
-        nodes
-          .slice(1)
-          .find((node) => node.getAttribute('aria-selected') !== 'true')
-          ?.querySelector('.choice-option-label')
-          ?.textContent?.trim(),
-      );
-    assert.ok(other);
+      .getByRole('option');
+    const { active, other } = await until(
+      () =>
+        historyOptions.evaluateAll((nodes) => {
+          // The first option starts a new conversation. Existing records load on opening.
+          const saved = nodes.slice(1);
+          const label = (node) => node?.querySelector('.choice-option-label')?.textContent?.trim();
+          const active = label(saved.find((node) => node.getAttribute('aria-selected') === 'true'));
+          const other = label(saved.find((node) => node.getAttribute('aria-selected') !== 'true'));
+          return active && other ? { active, other } : null;
+        }),
+      'active and alternate conversations are loaded in history',
+    );
     await choose(history, '会话记录', other);
     await history.waitFor({ state: 'hidden' });
     await until(
