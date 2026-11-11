@@ -201,6 +201,7 @@ jobs:
           import json
           import subprocess
           import time
+          from pathlib import Path
           from urllib.request import urlopen
           from urllib.error import HTTPError, URLError
 
@@ -231,11 +232,22 @@ jobs:
           with urlopen(base + '/vision/manifest.json', timeout=5) as response:
               vision = json.load(response)
               assert vision['schemaVersion'] == 1 and vision['sdkVersion'] == '1.2.2'
-              assert len(vision['assets']) == 3
+          matting = json.loads(Path('third-party/portrait-matting.json').read_text())
+          expected_vision = {
+              'face_landmarker.task', 'pose_landmarker_lite.task',
+              'selfie_multiclass_256x256.tflite', matting['file'],
+          }
+          assert len(vision['assets']) == len(expected_vision)
+          assert {item['file'] for item in vision['assets']} == expected_vision
           import hashlib
           for item in vision['assets']:
               with urlopen(base + '/vision/' + item['file'], timeout=15) as response:
-                  assert hashlib.sha256(response.read()).hexdigest() == item['sha256']
+                  contents = response.read()
+                  assert len(contents) == item['bytes']
+                  assert hashlib.sha256(contents).hexdigest() == item['sha256']
+          with urlopen(base + '/vision/wasm/' + matting['runtimeFile'], timeout=15) as response:
+              assert response.headers.get_content_type() == 'application/wasm'
+              assert response.read(8) == b'\0asm\1\0\0\0'
           try:
               urlopen(base + '/vision/missing-file.task', timeout=5)
           except HTTPError as error:
