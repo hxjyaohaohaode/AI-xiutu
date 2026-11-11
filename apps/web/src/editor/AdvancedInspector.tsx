@@ -208,7 +208,7 @@ export function AdvancedInspector({
                 onGroupChange={onGroupChange}
                 onCutout={onCutout}
                 onSelectionCreated={(id) => {
-                  setRequestedScope({ kind: 'region', id });
+                  setScopes((current) => ({ ...current, local: { kind: 'region', id } }));
                   onGroupChange?.('local');
                 }}
               />
