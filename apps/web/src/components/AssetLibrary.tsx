@@ -21,6 +21,7 @@ import {
 import { api, ApiError, errorMessage, formatDate, jsonRequest } from '../lib/api';
 import type { Asset, Artwork, Project, Space } from '../lib/types';
 import { Busy, EmptyState, InlineError, Modal } from './Ui';
+import { FeatureSkeleton } from './DeferredFeature';
 import { ChoiceSelect } from './ChoiceSelect';
 import { OptionChips } from './Controls';
 import { MediaSourceViewer } from '../media/MediaSourceViewer';
@@ -491,16 +492,9 @@ export function AssetLibrary({
     <div className={`content-view studio-view asset-library library-density-${density}`}>
       <header className="view-heading" data-motion="view-header">
         <div>
-          <span className="eyebrow">
-            {externalProject
-              ? t('受邀共享项目')
-              : space?.kind === 'team'
-                ? t('团队空间')
-                : t('个人空间')}
-            {space && !externalProject ? ' · ' + space.name : ''}
-          </span>
-          <h1>{project?.title ?? t('作品与素材')}</h1>
-          <p>{project?.description || t('管理项目中的作品、照片与草图。')}</p>
+          <h1>{project?.title ?? space?.name ?? t('作品')}</h1>
+          {project?.description && <p>{project.description}</p>}
+          {externalProject && <span className="library-shared-label">{t('受邀共享项目')}</span>}
         </div>
         <div className="view-actions">
           {project && (
@@ -630,7 +624,7 @@ export function AssetLibrary({
           <div className="library-status">
             <div className="library-result-count" aria-live="polite">
               {loading ? (
-                <Busy label={t('读取当前授权范围')} />
+                <span>{t('读取中')}</span>
               ) : (
                 <span>
                   <strong>{assets.length}</strong> {t('张已载入')}
@@ -674,6 +668,9 @@ export function AssetLibrary({
             </div>
           </div>
           <InlineError message={error} />
+          {loading && !assets.length && (
+            <FeatureSkeleton profile="gallery" label={t('读取当前授权范围')} compact />
+          )}
           {!loading && !assets.length && !error && (
             <EmptyState
               icon={<Images size={32} />}

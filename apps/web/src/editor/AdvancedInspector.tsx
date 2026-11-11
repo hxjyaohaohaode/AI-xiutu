@@ -2,7 +2,7 @@ import { t } from '../i18n';
 import { MotionDetails } from '../motion/Presence';
 import { ChoiceSelect } from '../components/ChoiceSelect';
 import { useLayoutEffect, useRef, useState } from 'react';
-import { ArrowCounterClockwise, ArrowClockwise, CaretDown } from '@phosphor-icons/react';
+import { CaretDown } from '@phosphor-icons/react';
 import { createColorBlockV3 } from '@ai-xiutu/editor';
 import { IconButton, InlineError } from '../components/Ui';
 import type { ToolInspectorProps } from './ToolInspector';
@@ -21,6 +21,7 @@ import { LocalControls } from './LocalControls';
 import { PaintControls, LiquifyControls, ImageLayerControls } from './LayerControls';
 import { RepairControls } from './RepairControls';
 import { PortraitControls } from './PortraitControls';
+import { HistoryPanel } from './HistoryPanel';
 import './advanced-inspector.css';
 
 export function AdvancedInspector({
@@ -224,39 +225,7 @@ export function AdvancedInspector({
             )}
             {group === 'liquify' && <LiquifyControls controller={controller} />}
             {group === 'composite' && <ImageLayerControls controller={controller} />}
-            {group === 'history' && (
-              <section className="advanced-tool-family" data-motion="advanced-history">
-                <div className="advanced-row">
-                  <button className="text-button" disabled={!editor.canUndo} onClick={editor.undo}>
-                    <ArrowCounterClockwise size={17} />
-                    {t('撤销')}
-                  </button>
-                  <button className="text-button" disabled={!editor.canRedo} onClick={editor.redo}>
-                    <ArrowClockwise size={17} />
-                    {t('重做')}
-                  </button>
-                </div>
-                <ol className="advanced-history-list">
-                  {editor.history.map((item, index) => (
-                    <li key={index} data-selected={index === editor.historyIndex}>
-                      <button
-                        onClick={() =>
-                          editor.commit(item.recipe, t('从本地记录恢复：') + item.label)
-                        }
-                        disabled={index === editor.historyIndex}
-                      >
-                        <span>{index + 1}</span>
-                        {t(item.label)}
-                        {index === editor.historyIndex && <small>{t('当前')}</small>}
-                      </button>
-                    </li>
-                  ))}
-                </ol>
-                <p className="control-note">
-                  {t('本地记录属于当前原图。云端历史在“对比”中，可打开对应原图或恢复为新版本。')}
-                </p>
-              </section>
-            )}
+            {group === 'history' && <HistoryPanel editor={editor} />}
             {scopedFamily && (
               <MotionDetails className="advanced-disclosure">
                 <summary>{t('恢复当前作用范围')}</summary>

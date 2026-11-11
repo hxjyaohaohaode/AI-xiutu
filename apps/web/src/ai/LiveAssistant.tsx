@@ -1,4 +1,4 @@
-import { t, type MessageParams } from '../i18n';
+import { t, formatNumber, useLocale, type MessageParams } from '../i18n';
 import { MotionDetails } from '../motion/Presence';
 import { useCallback, useEffect, useLayoutEffect, useRef, useState, type ReactNode } from 'react';
 import {
@@ -16,6 +16,9 @@ import {
   ClockCounterClockwise,
   Paperclip,
   WarningCircle,
+  ArrowsOut,
+  ArrowsIn,
+  Stop,
   X,
 } from '@phosphor-icons/react';
 import type {
@@ -53,6 +56,9 @@ import { ComposerInput } from './ComposerInput';
 import { ComposerVisual } from './ComposerVisual';
 import { IDLE_AI_ACTIVITY, type AIActivity } from './AIVisibility';
 import { PanelSettings } from './PanelSettings';
+import { PanelSettingsPage } from './PanelSettingsPage';
+import { ModelChoice } from './ModelChoice';
+import { modelCopy } from './model-copy';
 import { CreativeControls, initialCreativeSettings } from './CreativeControls';
 import { observeAssistantTurn, type RunEvent } from './turnStream';
 import { ContextEvidence } from './ContextEvidence';
@@ -168,6 +174,7 @@ const assistantDrafts = new Map<
 export interface LiveAssistantProps {
   navigation?: ReactNode;
   visible?: boolean;
+  hidden?: boolean;
   onActivityChange?: (activity: AIActivity) => void;
   onClose?: () => void;
   project: Project | null;
@@ -202,6 +209,8 @@ function editorState(value: LiveAssistantProps): AssistantEditorState {
   };
 }
 export function LiveAssistant(props: LiveAssistantProps) {
+  const compactCopy = modelCopy(useLocale());
+  const [composerExpanded, setComposerExpanded] = useState(false);
   const {
     project,
     artwork,
@@ -1324,6 +1333,9 @@ export function LiveAssistant(props: LiveAssistantProps) {
     } else if (event.type === 'context.prepared') setContextManifest(event.payload);
   }
   async function submit() {
+    // Sending returns the same draft to its conversation before local validation
+    // or an asynchronous receipt can place feedback in the reading area.
+    setComposerExpanded(false);
     if (
       requests.current.busy ||
       submission.current ||
@@ -1874,6 +1886,24 @@ export function LiveAssistant(props: LiveAssistantProps) {
       : hasVoiceRecovery
         ? '语音结果待确认，暂停发起新通话'
         : '';
+  const composerExpansionBlocked =
+    busy || !!activeTurn || inCall || submissionBlocked || !!recoveryLabel;
+  useLayoutEffect(() => {
+    // New results and errors must never arrive inside a hidden conversation.
+    // Ordinary, unsent drafting can still be expanded again once it is safe.
+    if (composerExpansionBlocked || error) setComposerExpanded(false);
+  }, [composerExpansionBlocked, activeTurn?.id, error, recoveryLabel]);
+  useLayoutEffect(() => {
+    if (composerExpanded || props.visible === false || (!error && !recoveryLabel)) return;
+    const body = conversationBody.current;
+    const notice = body?.querySelector(
+      error ? ':scope > .assistant-error' : ':scope > .ai-pending-strip',
+    );
+    if (!body?.clientHeight || !notice) return;
+    // Reveal feedback by scrolling only its own conversation, never the panel
+    // or the image workspace behind it.
+    body.scrollTop += notice.getBoundingClientRect().top - body.getBoundingClientRect().top;
+  }, [error, recoveryLabel, composerExpanded, props.visible]);
   const executionLabel = { suggest: '只建议', confirm: '预览确认', auto: '预算内自动执行' }[
     creative.mode
   ];
@@ -2019,7 +2049,12 @@ export function LiveAssistant(props: LiveAssistantProps) {
   return (
     <section
       className="live-assistant live-assistant-v2"
+      hidden={props.hidden}
+      inert={props.hidden}
       data-in-call={inCall || undefined}
+      data-compose-expanded={composerExpanded || undefined}
+      data-turn-active={!!activeTurn || undefined}
+      data-settings-open={overlay === 'settings' || undefined}
       aria-label={t('实时语音与智能体协作')}
     >
       <header className="ai-workbench-header">
@@ -2046,6 +2081,28 @@ export function LiveAssistant(props: LiveAssistantProps) {
           </IconButton>
           <IconButton label={t('助手设置')} onClick={() => setOverlay('settings')}>
             <GearSix size={18} />
+          </IconButton>
+          <IconButton
+            className="ai-compact-action ai-compact-voice"
+            label={mode === 'voice' ? t('返回文字协作') : t('打开实时语音')}
+            disabled={inCall || busy}
+            onClick={() => setMode((old) => (old === 'voice' ? 'text' : 'voice'))}
+          >
+            <Microphone size={18} />
+          </IconButton>
+          <IconButton
+            className="ai-compact-action ai-compose-expand"
+            label={composerExpanded ? compactCopy.collapseComposer : compactCopy.expandComposer}
+            aria-expanded={composerExpanded}
+            disabled={composerExpansionBlocked}
+            onClick={() => {
+              if (composerExpansionBlocked) return;
+              setComposerExpanded((value) => !value);
+              if (!composerExpanded)
+                requestAnimationFrame(() => composerInput.current?.focus({ preventScroll: true }));
+            }}
+          >
+            {composerExpanded ? <ArrowsIn size={18} /> : <ArrowsOut size={18} />}
           </IconButton>
           {props.onClose && (
             <IconButton
@@ -2233,22 +2290,6 @@ export function LiveAssistant(props: LiveAssistantProps) {
             )}
           </>
         )}
-      </div>
-      <footer className="ai-composer-region">
-        <div className="ai-execution-status">
-          <p className="assistant-tool-status" aria-live="polite">
-            {toolStatus ? renderStatus(toolStatus) : busy ? t('正在处理…') : ''}
-          </p>
-          {activeTurn && (
-            <button
-              type="button"
-              disabled={activeTurn.stopping}
-              onClick={() => void stopActiveTurn()}
-            >
-              {activeTurn.stopping ? t('正在核对停止结果') : t('停止本轮执行')}
-            </button>
-          )}
-        </div>
         {recoveryLabel && (
           <div className="ai-pending-strip" role="status">
             <WarningCircle size={16} />
@@ -2271,9 +2312,35 @@ export function LiveAssistant(props: LiveAssistantProps) {
             )}
           </p>
         )}
+      </div>
+      <footer className="ai-composer-region">
+        <div className="ai-execution-status">
+          <p className="assistant-tool-status" aria-live="polite">
+            {toolStatus ? renderStatus(toolStatus) : busy ? t('正在处理…') : ''}
+          </p>
+          {activeTurn && (
+            <button
+              type="button"
+              disabled={activeTurn.stopping}
+              onClick={() => void stopActiveTurn()}
+            >
+              {activeTurn.stopping ? t('正在核对停止结果') : t('停止本轮执行')}
+            </button>
+          )}
+        </div>
         <form
           className="assistant-composer ai-composer-surface"
           data-ai-composer
+          onKeyDown={(event) => {
+            if (event.key === 'Escape' && composerExpanded && !event.nativeEvent.isComposing) {
+              event.preventDefault();
+              setComposerExpanded(false);
+              event.currentTarget
+                .closest('.live-assistant')
+                ?.querySelector<HTMLButtonElement>('.ai-compose-expand')
+                ?.focus({ preventScroll: true });
+            }
+          }}
           onSubmit={(event) => {
             event.preventDefault();
             void submit();
@@ -2342,7 +2409,7 @@ export function LiveAssistant(props: LiveAssistantProps) {
                 <Microphone size={18} />
               </IconButton>
               <button
-                className="ai-send-button"
+                className="ai-send-button ai-submit-request"
                 aria-label={t('发送协作请求')}
                 title={t('发送（Ctrl / ⌘ Enter）')}
                 type="submit"
@@ -2350,12 +2417,33 @@ export function LiveAssistant(props: LiveAssistantProps) {
               >
                 <ArrowUp size={19} />
               </button>
+              {activeTurn && (
+                <button
+                  type="button"
+                  className="ai-send-button ai-compact-stop"
+                  aria-label={activeTurn.stopping ? t('正在核对停止结果') : t('停止本轮执行')}
+                  title={activeTurn.stopping ? t('正在核对停止结果') : t('停止本轮执行')}
+                  disabled={activeTurn.stopping}
+                  onClick={() => void stopActiveTurn()}
+                >
+                  <Stop size={18} />
+                </button>
+              )}
             </div>
           </div>
         </form>
         <div className="ai-composer-meta">
-          <span>
-            {t(executionLabel)}
+          <span className="ai-execution-summary">
+            <span className="ai-full-execution-label">{t(executionLabel)}</span>
+            <span className="ai-compact-status" aria-live="polite">
+              {grant && creative.mode === 'auto'
+                ? t(executionLabel)
+                : toolStatus
+                  ? renderStatus(toolStatus)
+                  : busy
+                    ? t('正在处理…')
+                    : t(executionLabel)}
+            </span>
             {grant && creative.mode === 'auto'
               ? t(' · {v0}/{v1} 点', { v0: grant.usedUnits, v1: grant.unitLimit })
               : ''}
@@ -2365,7 +2453,7 @@ export function LiveAssistant(props: LiveAssistantProps) {
               {t('停止授权')}
             </button>
           )}
-          <span>
+          <span className="ai-price-summary">
             {selected ? t('文字 {v0} 点 / 轮', { v0: selected.unitCost }) : t('点数待确认')}
           </span>
         </div>
@@ -2373,12 +2461,10 @@ export function LiveAssistant(props: LiveAssistantProps) {
           <p className="ai-input-disclosure">{t('收起后通话继续，可在顶部活动条静音或结束。')}</p>
         )}
       </footer>
-      <Modal
+      <PanelSettingsPage
         title={t('助手设置')}
         open={props.visible !== false && overlay === 'settings'}
-        keepMounted
         onClose={() => setOverlay(null)}
-        className="ai-options-dialog"
       >
         <div className="ai-options-content">
           <PanelSettings onClose={() => setOverlay(null)} />
@@ -2396,11 +2482,11 @@ export function LiveAssistant(props: LiveAssistantProps) {
             </button>
           </div>
           <div className="assistant-models">
-            <ChoiceSelect
+            <ModelChoice
               label={t('助手模型')}
               ariaLabel={t('助手模型')}
               value={modelId}
-              onValueChange={setModelId}
+              onChange={setModelId}
               disabled={inCall || busy || submissionBlocked || !!grant}
               placeholder={t('暂无可用模型')}
               options={models.map((item) => ({
@@ -2410,22 +2496,27 @@ export function LiveAssistant(props: LiveAssistantProps) {
               }))}
             />
             {mode === 'voice' && (
-              <ChoiceSelect
+              <ModelChoice
                 label={t('语音模型')}
                 ariaLabel={t('语音模型')}
                 value={voiceId}
-                onValueChange={setVoiceId}
+                onChange={setVoiceId}
                 disabled={inCall || busy || submissionBlocked || !!grant}
                 placeholder={t('暂无语音模型')}
                 options={voices.map((item) => ({
                   value: item.id,
                   label: item.label,
-                  description: t('{v0} 服务点 · 最长 {v1} 秒', {
-                    v0: item.unitCost,
-                    v1: item.maxSeconds,
-                  }),
+                  description: `${formatNumber(item.unitCost)} ${t('点')}`,
                 }))}
               />
+            )}
+            {mode === 'voice' && selectedVoice && (
+              <p className="ai-selected-model-meta">
+                {t('{v0} 服务点 · 最长 {v1} 秒', {
+                  v0: selectedVoice.unitCost,
+                  v1: selectedVoice.maxSeconds,
+                })}
+              </p>
             )}
           </div>
           <CreativeControls
@@ -2626,7 +2717,7 @@ export function LiveAssistant(props: LiveAssistantProps) {
             </div>
           </MotionDetails>
         </div>
-      </Modal>
+      </PanelSettingsPage>
       <Modal
         title={t('会话记录')}
         open={props.visible !== false && overlay === 'history'}

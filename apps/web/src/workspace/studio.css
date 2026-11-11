@@ -637,9 +637,13 @@
   line-height: 1.7;
 }
 
-/* The dock and view switcher keep these destinations reachable on a very short panel. */
+/* Short panels retain the current-image contexts. A single global scope has no
+   alternate target, so reclaim that redundant row before hiding navigation. */
 @container edit-tools (max-height: 270px) {
   .panel-context-navigation {
+    padding: 0 8px 4px;
+  }
+  .studio-workspace .free-panel .advanced-inspector .scope-selector[data-single-scope='true'] {
     display: none;
   }
 }

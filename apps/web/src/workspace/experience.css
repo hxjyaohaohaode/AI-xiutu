@@ -759,3 +759,648 @@
     scale: none;
   }
 }
+
+/* R3: persistent panel contexts, compact chrome and contextual loading. */
+.studio-workspace .floating-topbar {
+  height: 54px;
+  min-height: 54px;
+  padding-inline: clamp(8px, 1.2vw, 18px);
+  gap: clamp(6px, 1vw, 14px);
+}
+.studio-workspace .floating-topbar .button {
+  min-height: 36px;
+  padding: 7px 12px;
+}
+.studio-workspace .floating-topbar .icon-button {
+  min-height: 36px;
+  height: 36px;
+}
+.studio-workspace .cloud-status {
+  min-height: 36px;
+  padding-block: 0;
+  gap: 8px;
+}
+.studio-workspace .cloud-status > span {
+  min-width: 0;
+  flex: 1;
+}
+.studio-workspace .cloud-status > button {
+  flex-shrink: 0;
+}
+.studio-workspace .cloud-status > .cloud-status-dismiss {
+  margin-left: 0;
+  width: 36px;
+  min-width: 36px;
+  min-height: 36px;
+}
+.studio-workspace .cloud-status-trigger {
+  color: var(--accent-ink);
+}
+
+/* All contexts retain their owners. Their hidden content has no tab stops or
+   pointer surface; a presentation change never replaces the editing document. */
+.inspector-retained {
+  display: flex;
+  flex: 1;
+  height: 100%;
+  min-height: 0;
+  min-width: 0;
+}
+.inspector-retained[hidden] {
+  display: none;
+}
+.inspector-retained > .inspector {
+  flex: 1;
+  min-height: 0;
+}
+.studio-workspace .free-panel[data-display-mode='page'] {
+  position: absolute;
+  inset: 0;
+  border: 0;
+  border-radius: 0;
+  box-shadow: none;
+  background: var(--surface);
+  z-index: 2;
+  transform: none;
+}
+.studio-workspace .free-panel[data-display-mode='page'] > .panel-content {
+  border-radius: 0;
+  height: 100%;
+}
+.collaboration-retained {
+  min-height: 0;
+  min-width: 0;
+  height: 100%;
+  overflow: auto;
+  overscroll-behavior: contain;
+}
+.collaboration-retained[data-mode='panel'] {
+  flex: 1;
+}
+.collaboration-retained[data-mode='panel'] .collaboration-panel {
+  padding: 16px 16px 24px;
+}
+.collaboration-panel .view-heading {
+  margin-bottom: 16px;
+  gap: 8px;
+  align-items: center;
+}
+.collaboration-panel .view-heading h1 {
+  font-size: 15px;
+  line-height: 1.4;
+  max-width: 180px;
+  overflow-wrap: anywhere;
+}
+.collaboration-panel .view-heading .view-actions {
+  flex-wrap: nowrap;
+  gap: 4px;
+}
+.collaboration-panel .view-heading .button {
+  min-height: 34px;
+  padding: 6px 8px;
+  font-size: 11px;
+}
+.collaboration-panel .view-heading .button svg {
+  width: 15px;
+}
+.collaboration-panel .collaboration-grid {
+  grid-template-columns: minmax(0, 1fr);
+  gap: 16px;
+}
+.collaboration-panel .collaboration-grid > section {
+  border: 0;
+  box-shadow: none;
+  padding: 0;
+  border-radius: 0;
+}
+.collaboration-panel :is(.collaboration-summary, .discussion, .task-panel)[hidden] {
+  display: none;
+}
+.collaboration-panel .section-heading {
+  display: none;
+}
+.collaboration-panel-tabs {
+  display: flex;
+  gap: 16px;
+  margin-bottom: 18px;
+}
+.collaboration-panel-tabs > button {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 40px;
+  color: var(--muted);
+  background: transparent;
+  border: 0;
+  border-bottom: 2px solid transparent;
+}
+.collaboration-panel-tabs > button[aria-pressed='true'] {
+  color: var(--ink);
+  border-bottom-color: var(--accent);
+}
+.collaboration-panel-tabs > button > span {
+  font-size: 10px;
+  min-width: 18px;
+  text-align: center;
+  border-radius: 10px;
+  background: var(--surface-secondary);
+  padding: 2px 5px;
+}
+.collaboration-panel .comments-list {
+  max-height: none;
+}
+.collaboration-panel .comment {
+  grid-template-columns: 27px minmax(0, 1fr);
+  gap: 9px;
+  padding-block: 15px;
+}
+.collaboration-panel .comment-avatar {
+  width: 27px;
+  height: 27px;
+  font-size: 11px;
+}
+.collaboration-panel .comment-body header {
+  flex-wrap: wrap;
+  gap: 3px 8px;
+}
+.collaboration-panel .comment-body time {
+  font-size: 10px;
+}
+.collaboration-panel .comment-body p {
+  font-size: 12px;
+  line-height: 1.7;
+}
+.collaboration-panel .discussion-composer {
+  margin-top: 18px;
+}
+.collaboration-panel .studio-access-note {
+  margin: 0 0 12px;
+  font-size: 11px;
+}
+.collaboration-panel .quiet-empty {
+  padding: 28px 8px;
+}
+.collaboration-panel .quiet-empty small {
+  font-size: 11px;
+}
+
+/* Bounded row entrance derived from the inspected Animated List. Labels remain
+   stationary during selection; fine numeric controls never use this effect. */
+.tool-overview {
+  min-height: 0;
+  height: 100%;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  padding: 16px;
+}
+.tool-overview-search {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  margin-bottom: 12px;
+  color: var(--muted);
+}
+.tool-overview-search > input {
+  width: 100%;
+  min-width: 0;
+  min-height: 40px;
+  border: 0;
+  background: var(--surface-secondary);
+  border-radius: 9px;
+  padding: 9px 11px;
+  font-size: 13px;
+}
+.tool-overview-list {
+  display: grid;
+  gap: 3px;
+}
+.tool-overview-list > button {
+  display: flex;
+  align-items: center;
+  min-height: 56px;
+  min-width: 0;
+  gap: 12px;
+  border: 0;
+  border-radius: 9px;
+  padding: 10px 9px;
+  background: transparent;
+  text-align: start;
+  color: var(--muted);
+  animation: workspace-tool-enter 260ms cubic-bezier(0.2, 0.8, 0.2, 1) var(--tool-enter-delay) both;
+}
+.tool-overview-list > button > svg:first-child {
+  flex: 0 0 21px;
+}
+.tool-overview-list > button > svg:last-child {
+  margin-left: auto;
+  flex: 0 0 16px;
+  opacity: 0;
+  translate: -3px 3px;
+  transition:
+    opacity 140ms,
+    translate 180ms;
+}
+.tool-overview-list > button > span {
+  min-width: 0;
+  display: grid;
+  gap: 4px;
+}
+.tool-overview-list > button strong {
+  font-size: 13px;
+  color: var(--ink);
+  font-weight: 550;
+}
+.tool-overview-list > button small {
+  font-size: 11px;
+  line-height: 1.5;
+}
+.tool-overview-list > button:is(:hover, :focus-visible, [aria-pressed='true']) {
+  background: var(--surface-secondary);
+  color: var(--ink);
+}
+.tool-overview-list > button:is(:hover, :focus-visible) > svg:last-child {
+  opacity: 1;
+  translate: 0 0;
+}
+.tool-overview-empty {
+  padding: 24px 8px;
+  font-size: 12px;
+  color: var(--muted);
+}
+@keyframes workspace-tool-enter {
+  from {
+    opacity: 0;
+    transform: translateY(8px);
+    filter: blur(2px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+    filter: blur(0);
+  }
+}
+
+.studio-workspace .floating-tool-dock {
+  max-width: min(820px, calc(100% - 32px));
+  padding: 5px;
+  border-radius: 15px;
+}
+.studio-workspace .dock-tool-scroll {
+  padding-inline: 12px;
+  gap: 2px;
+}
+.studio-workspace .dock-tool-scroll > button {
+  min-width: 48px;
+  min-height: 48px;
+  padding: 5px 8px;
+  gap: 4px;
+  font-size: 10px;
+}
+.studio-workspace .floating-tool-dock > .ai-tool {
+  min-width: 61px;
+  min-height: 48px;
+  padding: 5px 9px;
+  font-size: 10px;
+}
+.studio-workspace .dock-tool-scroll > button > svg {
+  transition:
+    transform 210ms cubic-bezier(0.2, 0.8, 0.2, 1),
+    translate 160ms;
+}
+@media (hover: hover) and (pointer: fine) {
+  .studio-workspace .dock-tool-scroll > button:is(:hover, :focus-visible) > svg {
+    transform: scale(1.12);
+    translate: 0 -2px;
+  }
+}
+
+.detailed-history-list {
+  display: grid;
+  gap: 5px;
+}
+.detailed-history-list > li {
+  border: 0;
+  border-radius: 9px;
+  background: transparent;
+}
+.detailed-history-list > li[data-selected='true'] {
+  background: var(--surface-secondary);
+}
+.detailed-history-list.advanced-history-list > li[data-selected='true'] button {
+  background: transparent;
+}
+.detailed-history-list .history-entry-copy small {
+  margin-inline: 0;
+}
+.history-entry-row {
+  display: flex;
+  min-width: 0;
+  align-items: stretch;
+}
+.detailed-history-list .history-restore {
+  display: flex;
+  align-items: start;
+  gap: 9px;
+  min-width: 0;
+  flex: 1;
+  border: 0;
+  text-align: start;
+  background: transparent;
+  min-height: 54px;
+  padding: 11px 7px;
+}
+.detailed-history-list .history-restore:disabled {
+  opacity: 1;
+  color: var(--ink);
+}
+.detailed-history-list .history-index {
+  color: var(--subtle);
+  font-size: 10px;
+  flex: 0 0 20px;
+  padding-top: 2px;
+  font-variant-numeric: tabular-nums;
+}
+.history-entry-copy {
+  display: grid;
+  gap: 5px;
+  min-width: 0;
+}
+.history-entry-copy strong {
+  font-size: 12px;
+  font-weight: 500;
+  overflow-wrap: anywhere;
+}
+.history-entry-copy small {
+  font-size: 10px;
+  line-height: 1.65;
+  color: var(--muted);
+  overflow-wrap: anywhere;
+  font-variant-numeric: tabular-nums;
+}
+.detailed-history-list .history-current {
+  margin-left: auto;
+  font-size: 10px;
+  color: var(--accent-ink);
+  flex-shrink: 0;
+}
+.detailed-history-list .history-expand {
+  width: 32px;
+  min-height: 44px;
+  flex: 0 0 32px;
+  border: 0;
+  background: transparent;
+  color: var(--muted);
+}
+.history-expand > svg {
+  transition: rotate 180ms;
+}
+.history-expand[aria-expanded='true'] > svg {
+  rotate: 180deg;
+}
+.history-change-details {
+  margin: 0;
+  padding: 3px 10px 13px 36px;
+  display: grid;
+  gap: 12px;
+}
+.history-change-details > div {
+  display: grid;
+  gap: 4px;
+  min-width: 0;
+}
+.history-change-details dt {
+  font-size: 11px;
+  color: var(--ink);
+  line-height: 1.6;
+  overflow-wrap: anywhere;
+}
+.history-change-details dt > span {
+  display: block;
+  color: var(--muted);
+  font-size: 9px;
+}
+.history-change-details dd {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 8px;
+  margin: 0;
+  font-size: 10px;
+  line-height: 1.6;
+  font-variant-numeric: tabular-nums;
+  overflow-wrap: anywhere;
+}
+.history-change-details dd > span {
+  color: var(--muted);
+}
+.history-change-details dd > i {
+  color: var(--subtle);
+  font-style: normal;
+}
+.history-change-details dd > strong {
+  font-weight: 500;
+}
+.history-change-details > p {
+  font-size: 11px;
+  color: var(--muted);
+}
+.portrait-selection-state:empty {
+  display: none;
+}
+.portrait-context-help {
+  margin-top: 8px;
+}
+.studio-view .view-heading .view-artwork-title {
+  font-size: clamp(17px, 2vw, 23px);
+  overflow-wrap: anywhere;
+}
+.library-shared-label {
+  display: inline-block;
+  margin-top: 7px;
+  font-size: 11px;
+  color: var(--muted);
+}
+.studio-context-tabs.context-segment {
+  position: relative;
+  isolation: isolate;
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  overflow: visible;
+}
+.context-segment-indicator {
+  position: absolute;
+  z-index: -1;
+  pointer-events: none;
+  inset-block: 3px;
+  left: calc(3px + (100% - 4px) / 4 * var(--context-index));
+  right: calc(3px + (100% - 4px) / 4 * (3 - var(--context-index)));
+  background: var(--surface);
+  border-radius: 6px;
+  box-shadow: 0 1px 4px rgb(var(--color-shadow) / 6%);
+  transition:
+    left 270ms cubic-bezier(0.22, 0.8, 0.2, 1) 35ms,
+    right 180ms cubic-bezier(0.22, 0.8, 0.2, 1);
+}
+.context-segment[data-direction='left'] > .context-segment-indicator {
+  transition:
+    left 180ms cubic-bezier(0.22, 0.8, 0.2, 1),
+    right 270ms cubic-bezier(0.22, 0.8, 0.2, 1) 35ms;
+}
+.studio-context-tabs.context-segment > button {
+  min-width: 0;
+  min-height: 38px;
+  white-space: normal;
+  line-height: 1.25;
+  padding-inline: 4px;
+}
+.studio-context-tabs.context-segment > button[aria-pressed='true'] {
+  background: transparent;
+  box-shadow: none;
+}
+.studio-context-tabs.context-segment > button > svg {
+  flex-shrink: 0;
+}
+.studio-context-tabs.context-segment > button > span {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+.studio-workspace .free-panel .panel-back-action {
+  flex-shrink: 0;
+}
+
+@media (max-width: 759px), (pointer: coarse) {
+  .studio-workspace .floating-topbar {
+    min-height: 50px;
+    height: 50px;
+  }
+  .studio-workspace .floating-topbar .icon-button {
+    min-height: 44px;
+    height: 44px;
+  }
+  .studio-workspace .floating-topbar .button {
+    min-height: 44px;
+  }
+  .studio-workspace .cloud-status > button {
+    min-height: 44px;
+  }
+  .studio-workspace .floating-tool-dock {
+    width: 100%;
+    max-width: none;
+    border-radius: 0;
+    padding: 4px 4px calc(4px + env(safe-area-inset-bottom));
+  }
+  .studio-workspace .dock-tool-scroll > button {
+    min-width: 52px;
+    min-height: 48px;
+    padding-inline: 7px;
+  }
+  .studio-workspace .floating-tool-dock > .ai-tool {
+    min-height: 48px;
+    min-width: 62px;
+  }
+  .studio-workspace .studio-context-tabs > button {
+    min-height: 44px;
+    flex: 1;
+    gap: 5px;
+    padding: 6px 4px;
+    font-size: 11px;
+  }
+  .tool-overview-search > input {
+    min-height: 44px;
+    font-size: 16px;
+  }
+  .detailed-history-list .history-expand {
+    width: 44px;
+    flex-basis: 44px;
+  }
+  .collaboration-panel .view-heading .button {
+    min-height: 44px;
+  }
+  .collaboration-panel-tabs > button {
+    min-height: 44px;
+  }
+}
+@media (max-width: 420px) {
+  .studio-workspace .workspace-top-actions:has(.cloud-status-trigger) .studio-search-trigger {
+    display: none;
+  }
+  .collaboration-panel .view-heading h1 {
+    max-width: 135px;
+  }
+}
+@media (max-width: 359px) {
+  /* Keep CJK labels at their natural width before applying the viewport cap. */
+  .studio-workspace .canvas-view-controls {
+    width: max-content;
+  }
+  .studio-workspace .canvas-view-controls .compare-press {
+    flex: 0 1 auto;
+    min-width: 0;
+    white-space: normal;
+  }
+  .studio-workspace .canvas-view-controls .compare-press > svg {
+    flex-shrink: 0;
+  }
+  .studio-workspace .canvas-view-controls .compare-press > span {
+    min-width: 0;
+    line-height: 1.15;
+  }
+  .studio-workspace .studio-context-tabs.context-segment > button {
+    min-height: 44px;
+    gap: 0;
+  }
+  .studio-workspace .studio-context-tabs.context-segment > button > svg {
+    display: none;
+  }
+  .studio-workspace .studio-context-tabs.context-segment > button > span {
+    white-space: nowrap;
+    overflow-wrap: normal;
+  }
+  /* The restored cloud-status entry needs its own room. Keep the route name
+     intact and let only its duplicate glyph yield to the publishing actions. */
+  .studio-workspace .floating-topbar:has(.cloud-status-trigger) {
+    gap: 4px;
+    padding-inline: 6px;
+  }
+  .studio-workspace .floating-topbar:has(.cloud-status-trigger) .mobile-view-trigger {
+    flex: 0 0 auto;
+    min-width: 44px;
+    min-height: 44px;
+    height: 44px;
+    margin-left: 0;
+    gap: 2px;
+    padding-inline: 4px;
+  }
+  .studio-workspace .floating-topbar:has(.cloud-status-trigger) .mobile-view-trigger > span {
+    flex-shrink: 0;
+    white-space: nowrap;
+  }
+  .studio-workspace
+    .floating-topbar:has(.cloud-status-trigger)
+    .mobile-view-trigger
+    > svg:first-child {
+    display: none;
+  }
+  .studio-workspace
+    .floating-topbar:has(.cloud-status-trigger)
+    .mobile-view-trigger
+    > svg:last-child {
+    flex: 0 0 14px;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .tool-overview-list > button {
+    animation: none;
+  }
+  .tool-overview-list > button > svg:last-child,
+  .history-expand > svg {
+    transition: none;
+  }
+  .studio-workspace .floating-tool-dock .dock-tool-scroll > button > svg {
+    transition: none;
+    transform: none;
+    translate: none;
+  }
+  .studio-workspace .context-segment > .context-segment-indicator {
+    transition: none;
+  }
+}

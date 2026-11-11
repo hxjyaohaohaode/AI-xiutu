@@ -71,7 +71,13 @@ export function AccountPageFrame({
         {!wide && (
           <aside className="account-page-art" aria-hidden="true">
             <div className="account-page-art-image">
-              <img src="/about/color-study.webp" alt="" width="1536" height="1024" />
+              <img
+                src="/about/auth-atelier.webp"
+                alt=""
+                width="1536"
+                height="1024"
+                decoding="async"
+              />
             </div>
             <div className="account-page-art-copy">
               <span>{c.eyebrow}</span>

@@ -42,6 +42,8 @@ import type {
 } from '../lib/types';
 import { Busy, EmptyState, IconButton, InlineError, Modal } from './Ui';
 import { ChoiceSelect } from './ChoiceSelect';
+import { FeatureSkeleton } from './DeferredFeature';
+import { interactionText } from '../workspace/interaction-copy';
 import { RevisionTools, RevisionForkDialog, type CreatedRevisionBranch } from './RevisionTools';
 import { MotionDetails } from '../motion/Presence';
 import { useConfirmation } from './ConfirmationDialog';
@@ -101,9 +103,8 @@ export function WorksView({
     <div className="content-view studio-view works-view">
       <div className="view-heading" data-motion="view-header">
         <div>
-          <span className="eyebrow">{t('作品收藏')}</span>
           <h1>{project?.title ?? t('项目作品')}</h1>
-          <p>{project?.description || t('查看作品、原件与已保存版本。')}</p>
+          {project?.description && <p>{project.description}</p>}
         </div>
         <div className="view-actions">
           {project && (
@@ -385,11 +386,7 @@ export function CompareView({
     <div className="content-view studio-view compare-view">
       <div className="view-heading" data-motion="view-header">
         <div>
-          <span className="eyebrow">{t('版本记录')}</span>
-          <h1>{t('效果对比')}</h1>
-          <p>
-            {artwork?.title ?? editor.file.name} {t('· 原图与当前画面各自完整显示。')}
-          </p>
+          <h1 className="view-artwork-title">{artwork?.title ?? editor.file.name}</h1>
         </div>
         <div className="compare-mode-choice" role="group" aria-label={t('对比显示方式')}>
           <button
@@ -420,7 +417,6 @@ export function CompareView({
           <section>
             <header>
               <span>{t('原始图片')}</span>
-              <small>{t('原图预览 · 完整构图')}</small>
             </header>
             <ComparisonFrame image={editor.originalPreview} />
           </section>
@@ -622,7 +618,13 @@ export function CollaborateView({
   refreshToken,
   onShare,
   currentUserId,
+  embedded = false,
+  onExpand,
+  onReturnToEditor,
 }: {
+  embedded?: boolean;
+  onExpand?: () => void;
+  onReturnToEditor?: () => void;
   project: Project;
   artwork: Artwork | null;
   revision: Revision | null;
@@ -645,6 +647,7 @@ export function CollaborateView({
   const [scope, setScope] = useState<'project' | 'version'>('project');
   const [commentFilter, setCommentFilter] = useState<'all' | 'open' | 'resolved'>('all');
   const [showCompleted, setShowCompleted] = useState(true);
+  const [panelSection, setPanelSection] = useState<'discussion' | 'tasks'>('discussion');
   const requestGeneration = useRef(0);
   const activeProject = useRef<string | null>(project.id);
   activeProject.current = project.id;
@@ -755,16 +758,25 @@ export function CollaborateView({
   );
   const visibleTasks = tasks.filter((task) => showCompleted || task.status !== 'done');
   return (
-    <div className="content-view studio-view collaboration-view">
+    <div
+      className={`content-view studio-view collaboration-view${embedded ? ' collaboration-panel' : ''}`}
+    >
       <div className="view-heading" data-motion="view-header">
         <div>
-          <span className="eyebrow">{t('项目协作')}</span>
-          <h1>{t('项目协作')}</h1>
-          <p>
-            {project.title} {t('· 讨论、任务与成员权限。')}
-          </p>
+          <h1>{project.title}</h1>
         </div>
         <div className="view-actions">
+          {!embedded && onReturnToEditor && (
+            <button type="button" className="button button-quiet" onClick={onReturnToEditor}>
+              <ArrowLeft size={17} />
+              {interactionText('keepEditing')}
+            </button>
+          )}
+          {embedded && onExpand && (
+            <IconButton label={interactionText('expandCollaboration')} onClick={onExpand}>
+              <ArrowSquareOut size={17} />
+            </IconButton>
+          )}
           <button
             className="button button-secondary"
             onClick={() => setReloadToken((value) => value + 1)}
@@ -791,9 +803,7 @@ export function CollaborateView({
       )}
       <InlineError message={error} />
       {loading ? (
-        <div className="studio-loading" role="status">
-          <Busy label={t('正在读取讨论与任务')} />
-        </div>
+        <FeatureSkeleton profile="collaboration" label={t('正在读取讨论与任务')} compact />
       ) : !hasLoaded ? (
         <EmptyState
           icon={<ChatCircleDots size={32} />}
@@ -811,7 +821,27 @@ export function CollaborateView({
         />
       ) : (
         <>
-          <div className="collaboration-summary" aria-label={t('项目协作概览')}>
+          {embedded && (
+            <nav className="collaboration-panel-tabs" aria-label={t('项目协作')}>
+              <button
+                type="button"
+                aria-pressed={panelSection === 'discussion'}
+                onClick={() => setPanelSection('discussion')}
+              >
+                {t('项目讨论')}
+                <span>{openComments}</span>
+              </button>
+              <button
+                type="button"
+                aria-pressed={panelSection === 'tasks'}
+                onClick={() => setPanelSection('tasks')}
+              >
+                {interactionText('tasks')}
+                <span>{tasks.length - completedTasks}</span>
+              </button>
+            </nav>
+          )}
+          <div className="collaboration-summary" aria-label={t('项目协作概览')} hidden={embedded}>
             <div>
               <ChatCircleDots size={19} />
               <strong>{openComments}</strong>
@@ -829,7 +859,12 @@ export function CollaborateView({
             </div>
           </div>
           <div className="collaboration-grid">
-            <section className="surface discussion" data-motion="discussion">
+            <section
+              className="surface discussion"
+              data-motion="discussion"
+              hidden={embedded && panelSection !== 'discussion'}
+              inert={embedded && panelSection !== 'discussion'}
+            >
               <div className="section-heading">
                 <h2>
                   <ChatCircleDots size={20} />
@@ -1002,7 +1037,11 @@ export function CollaborateView({
                 </form>
               )}
             </section>
-            <section className="surface task-panel">
+            <section
+              className="surface task-panel"
+              hidden={embedded && panelSection !== 'tasks'}
+              inert={embedded && panelSection !== 'tasks'}
+            >
               <div className="section-heading">
                 <h2>
                   <CheckCircle size={20} />
@@ -1115,9 +1154,6 @@ export function CollaborateView({
                     {pending === 'task' ? <Busy label="" /> : <Plus size={19} />}
                   </IconButton>
                 </form>
-              )}
-              {permissions.edit && (
-                <p className="fine-print">{t('点击圆形状态，推进任务或重新打开。')}</p>
               )}
             </section>
           </div>
@@ -1535,7 +1571,7 @@ export function DocumentsView({
   if (!actorId || renderedOwner !== ownerKey)
     return (
       <div className="content-view studio-view documents-view">
-        <Busy label={t('正在同步文档账号')} />
+        <FeatureSkeleton profile="documents" label={t('正在同步文档账号')} />
       </div>
     );
   return (
@@ -1543,11 +1579,7 @@ export function DocumentsView({
       {confirmation.dialog}
       <div className="view-heading" data-motion="view-header">
         <div>
-          <span className="eyebrow">{t('项目文档')}</span>
-          <h1>{t('项目文档')}</h1>
-          <p>
-            {project.title} {t('· 编辑项目说明、参考资料与交付文案。')}
-          </p>
+          <h1>{project.title}</h1>
         </div>
         <span className="studio-count">
           <FileText size={17} />
@@ -1679,11 +1711,7 @@ export function DocumentsView({
               />
             </label>
           )}
-          {loading && (
-            <div className="document-loading" role="status">
-              <Busy label={t('正在读取')} />
-            </div>
-          )}
+          {loading && <FeatureSkeleton profile="panel" label={t('正在读取')} compact />}
           <div className="document-rows">
             {visibleDocs.map((doc) => (
               <button
@@ -1871,9 +1899,7 @@ export function DeliveryView({
     <div className="content-view studio-view delivery-view">
       <div className="view-heading" data-motion="view-header">
         <div>
-          <span className="eyebrow">{t('作品交付')}</span>
           <h1>{t('导出与交付')}</h1>
-          <p>{t('导出当前画面，或保留可编辑的调整配方。')}</p>
         </div>
       </div>
       {editor.file ? (

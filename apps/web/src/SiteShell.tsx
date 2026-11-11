@@ -19,11 +19,12 @@ import {
 } from './about/site-route';
 import './account/account-page.css';
 import { accountPageCopy } from './account/page-copy';
-import { useLocale } from './i18n';
+import { t, useLocale } from './i18n';
 import { api } from './lib/api';
 import type { PublicConfig } from './lib/types';
 import type { StudioEntry } from './App';
 import type { SampleSettings } from './about/sample';
+import './site-loading.css';
 
 const loadStudio = () => import('./App').then((module) => ({ default: module.App }));
 let Studio = lazy(loadStudio);
@@ -31,17 +32,33 @@ function StudioLoading({ route }: { route: SiteRoute }) {
   const locale = useLocale();
   const c = aboutCopy(locale);
   const account = isAccountSiteRoute(route);
+  const layout =
+    route === 'usage' ? 'usage' : route === 'account' ? 'account' : account ? 'auth' : 'studio';
   return (
-    <div className="site-loading" role="status" aria-live="polite">
-      <div className="site-loading-content">
-        <div className="studio-loading-geometry" aria-hidden="true">
+    <div className="route-loading" data-layout={layout} role="status" aria-live="polite">
+      <div className="route-loading-shell" aria-hidden="true">
+        <div className="route-loading-header">
           <i />
-          <i />
+          <span />
           <i />
         </div>
-        <h1>{account ? accountPageCopy(locale).loading : c.loadingStudio}</h1>
-        {!account && <p>{c.loadingBody}</p>}
+        <div className="route-loading-body">
+          <div className="route-loading-primary">
+            <i />
+            <i />
+            <i />
+          </div>
+          <div className="route-loading-secondary">
+            <i />
+            <i />
+            <i />
+            <i />
+          </div>
+        </div>
       </div>
+      <p className="route-loading-label">
+        {route === 'usage' ? t('读取用量账本') : account ? accountPageCopy(locale).loading : c.loadingStudio}
+      </p>
     </div>
   );
 }

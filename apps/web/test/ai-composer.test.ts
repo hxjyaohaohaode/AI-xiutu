@@ -84,6 +84,7 @@ test('the default AI panel exposes the text composer after its conversation and 
   assert.match(markup, /aria-label="向智能体描述修改需求"/);
   assert.doesNotMatch(markup, />开始实时通话<|assistant-voice-orb|ai-task-tabs/);
   assert.match(markup, /aria-label="发送协作请求"[^>]*disabled=""/);
+  assert.match(markup, /aria-label="展开编写"[^>]*disabled=""/);
   const dialogs = [...markup.matchAll(/<dialog\b[^>]*>/g)].map(([tag]) => tag);
   assert.ok(dialogs.length > 0);
   assert.ok(dialogs.every((tag) => tag.includes('inert=""') && tag.includes('aria-hidden="true"')));
@@ -142,6 +143,11 @@ test('a recovered unknown job keeps its warning outside closed settings and bloc
     assert.match(visiblePanel, /结果待核验，暂不能提交新任务/);
     assert.match(visiblePanel, />核对请求<\/button>/);
     assert.match(visiblePanel, /aria-label="生成图片"[^>]*disabled=""/);
+    assert.doesNotMatch(
+      markup,
+      /class="live-assistant /,
+      'an unvisited assistant is not mounted while a frozen unknown task owns recovery',
+    );
     assert.equal(entries.size, 1, 'rendering never clears or replaces the original request');
   } finally {
     if (previous) Object.defineProperty(globalThis, 'sessionStorage', previous);

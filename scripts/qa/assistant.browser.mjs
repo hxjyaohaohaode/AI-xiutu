@@ -10,6 +10,7 @@ import { chromium } from 'playwright';
 import { transaction, adjustUnits, reserveUnits, markUnknownHold } from '@ai-xiutu/db';
 import { assistantModelConfigSchema } from '@ai-xiutu/assistant';
 import { migrateRecipeToV4 } from '@ai-xiutu/editor';
+import { runUsagePresentationChecks } from './usage-presentation.browser.mjs';
 
 if (process.env.CI !== 'true' || process.env.NODE_ENV === 'production')
   throw new Error('Run only in isolated non-production CI.');
@@ -138,20 +139,25 @@ async function openProject(target, selectModel = true) {
   }
 }
 async function openSettings(target = page) {
-  const dialog = target.getByRole('dialog', { name: '助手设置', exact: true });
-  if (!(await dialog.isVisible()))
+  const settings = target.getByRole('region', { name: '助手设置', exact: true });
+  if (!(await settings.isVisible()))
     await target
       .locator('.live-assistant')
       .getByRole('button', { name: '助手设置', exact: true })
       .click();
-  await dialog.waitFor();
-  return dialog;
+  await settings.waitFor();
+  assert.equal(
+    await target.getByRole('dialog', { name: '助手设置', exact: true }).count(),
+    0,
+    'model settings stay inside the existing AI panel instead of opening a dialog',
+  );
+  return settings;
 }
 async function closeSettings(target = page) {
-  const dialog = target.getByRole('dialog', { name: '助手设置', exact: true });
-  if (await dialog.isVisible()) {
-    await dialog.getByRole('button', { name: '关闭窗口', exact: true }).click();
-    await dialog.waitFor({ state: 'hidden' });
+  const settings = target.getByRole('region', { name: '助手设置', exact: true });
+  if (await settings.isVisible()) {
+    await settings.getByRole('button', { name: '返回对话', exact: true }).click();
+    await settings.waitFor({ state: 'hidden' });
   }
 }
 async function choose(scope, label, option) {
@@ -500,6 +506,208 @@ try {
     },
   );
 
+  await testCase('same-image-context-tabs-retain-unsent-assistant-and-keyboard-focus', async () => {
+    await closeSettings();
+    const input = page.getByLabel('向智能体描述修改需求');
+    const draft = '切换面板时保留这条未发送要求，不触发生成。';
+    await input.fill(draft);
+    const inputOwner = await input.elementHandle();
+    const canvasOwner = await page.locator('.image-frame canvas').elementHandle();
+    assert.ok(inputOwner && canvasOwner);
+    const before = {
+      admissions: turnAdmissions,
+      dispatches,
+      version: (await head()).artwork.headVersion,
+    };
+    const tabs = () =>
+      page
+        .locator('.free-panel[aria-hidden="false"]')
+        .getByRole('navigation', { name: '当前作品面板', exact: true });
+    const focusedSection = (id, label) =>
+      until(
+        () =>
+          page.evaluate(
+            ({ id, label }) => {
+              const active = document.activeElement;
+              return (
+                active?.getAttribute('aria-pressed') === 'true' &&
+                active.textContent.trim() === label &&
+                active.closest('.free-panel')?.getAttribute('data-panel-id') === id &&
+                !active.closest('[hidden],[inert]')
+              );
+            },
+            { id, label },
+          ),
+        `keyboard focus reaches the visible ${label} context`,
+      );
+    try {
+      // A native model menu may close independently; Escape must not dismiss the
+      // retained settings page as well or erase the current composer draft.
+      const settings = await openSettings();
+      const model = settings.getByRole('combobox', { name: '助手模型', exact: true });
+      await model.click();
+      await settings.getByRole('listbox', { name: '助手模型', exact: true }).waitFor();
+      await model.press('Escape');
+      await settings
+        .getByRole('listbox', { name: '助手模型', exact: true })
+        .waitFor({ state: 'hidden' });
+      assert.equal(await settings.isVisible(), true);
+      await closeSettings();
+      assert.equal(await input.inputValue(), draft);
+
+      const assistantTab = tabs().getByRole('button', { name: 'AI 助手', exact: true });
+      await assistantTab.focus();
+      await assistantTab.press('ArrowRight');
+      await focusedSection('collaboration', '协作');
+      await page
+        .locator('.free-panel[data-panel-id="collaboration"][aria-hidden="false"]')
+        .waitFor();
+      assert.equal(
+        await canvasOwner.evaluate(
+          (node) => node.isConnected && node === document.querySelector('.image-frame canvas'),
+        ),
+        true,
+      );
+      await tabs().getByRole('button', { name: '协作', exact: true }).press('ArrowRight');
+      await focusedSection('inspector', '记录');
+      await page.locator('.detailed-history-list').waitFor();
+      await tabs().getByRole('button', { name: '记录', exact: true }).press('Home');
+      await focusedSection('inspector', '调整');
+      await tabs().getByRole('button', { name: '调整', exact: true }).press('ArrowRight');
+      await focusedSection('ai', 'AI 助手');
+      await input.waitFor();
+      assert.equal(await input.inputValue(), draft);
+      assert.equal(
+        await input.evaluate((node, original) => node === original, inputOwner),
+        true,
+        'the same textarea owns the unsent prompt after every context switch',
+      );
+      assert.equal(await page.locator('.live-assistant').count(), 1);
+      assert.equal(
+        await canvasOwner.evaluate(
+          (node) => node.isConnected && node === document.querySelector('.image-frame canvas'),
+        ),
+        true,
+      );
+      assert.equal(turnAdmissions, before.admissions);
+      assert.equal(dispatches, before.dispatches);
+      assert.equal((await head()).artwork.headVersion, before.version);
+      await page.screenshot({ path: resolve(artifacts, 'same-image-context-navigation.png') });
+      await input.fill('');
+      return {
+        sameCanvas: true,
+        retainedComposerOwner: true,
+        keyboardFocusTransferred: true,
+        settingsRegion: true,
+        modelEscapeContained: true,
+        admissions: 0,
+        dispatches: 0,
+      };
+    } finally {
+      await inputOwner.dispose();
+      await canvasOwner.dispose();
+    }
+  });
+  await testCase('assistant-task-round-trip-preserves-input-and-preference-owners', async () => {
+    const input = page.getByLabel('向智能体描述修改需求');
+    const assistantDraft = '保留助手的未发送要求。';
+    const taskDraft = '保留生图的另一条未发送要求。';
+    await input.fill(assistantDraft);
+    const inputOwner = await input.elementHandle();
+    const memory = await details('偏好与要求');
+    const memoryName = memory.getByLabel('名称', { exact: true });
+    const memoryContent = memory.getByLabel('准确内容');
+    await memoryName.fill('切换任务也保留的偏好草稿');
+    await memoryContent.fill('还没有确认保存，不要自动写入记忆。');
+    const memoryOwner = await memoryName.elementHandle();
+    assert.ok(inputOwner && memoryOwner);
+    await closeSettings();
+    const before = {
+      admissions: turnAdmissions,
+      dispatches,
+      version: (await head()).artwork.headVersion,
+    };
+    const submissions = [];
+    const watchSubmission = (request) => {
+      if (
+        request.method() === 'POST' &&
+        /\/(jobs|assistant-turns|assistant-grants|memories)(?:\/|$)/.test(
+          new URL(request.url()).pathname,
+        )
+      )
+        submissions.push(new URL(request.url()).pathname);
+    };
+    page.on('request', watchSubmission);
+    const selectTask = async (name) => {
+      await page
+        .locator('.free-panel[aria-hidden="false"]')
+        .getByRole('button', { name: '切换 AI 任务', exact: true })
+        .click();
+      const picker = page.getByRole('dialog', { name: '选择 AI 任务', exact: true });
+      await picker.getByRole('button', { name: new RegExp('^' + name) }).click();
+      await picker.waitFor({ state: 'hidden' });
+    };
+    try {
+      await selectTask('生图');
+      const retained = page.locator('.live-assistant');
+      assert.equal(await retained.count(), 1);
+      assert.equal(await retained.getAttribute('hidden'), '');
+      assert.equal(await retained.getAttribute('inert'), '');
+      assert.equal(await inputOwner.evaluate((node) => node.isConnected), true);
+      const taskInput = page.getByLabel('本轮创作要求', { exact: true });
+      await taskInput.fill(taskDraft);
+      await page.getByRole('button', { name: '任务设置', exact: true }).click();
+      const settings = page.getByRole('region', { name: '任务设置', exact: true });
+      await settings.waitFor();
+      await settings.getByRole('combobox', { name: '生图模型', exact: true }).waitFor();
+      assert.equal(await page.getByRole('dialog', { name: '任务设置', exact: true }).count(), 0);
+      await settings.getByRole('button', { name: '返回对话', exact: true }).click();
+      await settings.waitFor({ state: 'hidden' });
+      assert.equal(await taskInput.inputValue(), taskDraft);
+      await selectTask('AI 助手');
+      await input.waitFor();
+      assert.equal(await input.inputValue(), assistantDraft);
+      assert.equal(await input.evaluate((node, original) => node === original, inputOwner), true);
+      await details('偏好与要求');
+      assert.equal(await memoryName.inputValue(), '切换任务也保留的偏好草稿');
+      assert.equal(await memoryContent.inputValue(), '还没有确认保存，不要自动写入记忆。');
+      assert.equal(
+        await memoryName.evaluate((node, original) => node === original, memoryOwner),
+        true,
+        'unconfirmed preference fields keep their original owner, not only the text-draft cache',
+      );
+      await memoryName.fill('');
+      await memoryContent.fill('');
+      await closeSettings();
+      await selectTask('生图');
+      assert.equal(await taskInput.inputValue(), taskDraft);
+      await taskInput.fill('');
+      await selectTask('AI 助手');
+      await input.fill('');
+      assert.equal(turnAdmissions, before.admissions);
+      assert.equal(dispatches, before.dispatches);
+      assert.equal((await head()).artwork.headVersion, before.version);
+      assert.deepEqual(
+        submissions,
+        [],
+        'changing tasks/settings cannot submit work or confirm a memory',
+      );
+      await page.screenshot({ path: resolve(artifacts, 'assistant-task-retained-drafts.png') });
+      return {
+        assistantPrompt: true,
+        generationPrompt: true,
+        sameComposer: true,
+        samePreferenceForm: true,
+        taskSettingsRegion: true,
+        modelLabel: '生图模型',
+        mutationSubmissions: 0,
+      };
+    } finally {
+      page.off('request', watchSubmission);
+      await inputOwner.dispose();
+      await memoryOwner.dispose();
+    }
+  });
   await testCase('memory-confirm-correct-forget-and-source-opt-in', async () => {
     const panel = await details('偏好与要求');
     await panel.getByLabel('名称', { exact: true }).fill('人像保护');
@@ -743,6 +951,14 @@ try {
         const turn = await admission.json();
         assert.equal(typeof turn.id, 'string');
         await until(() => firstDelta, 'keyboard-submitted response in flight');
+        assert.equal(
+          await page
+            .locator('.live-assistant')
+            .getByRole('button', { name: '切换 AI 任务', exact: true })
+            .isDisabled(),
+          true,
+          'retaining an assistant owner does not allow changing tasks during an admitted request',
+        );
         // The provider enqueue precedes durable SSE delivery. Establish content
         // in the actual conversation before testing that hiding retains it.
         const incrementalReply = page
@@ -1150,6 +1366,7 @@ try {
     await scope.getByLabel('允许公开网络检索，保留来源链接').uncheck();
     await details('共享范围', false);
     const billing = await page.context().newPage();
+    let usagePresentation;
     billing.on('pageerror', (error) => report.pageErrors.push(String(error)));
     try {
       await selectProject(billing);
@@ -1224,6 +1441,7 @@ try {
       ]);
       await stage.getByRole('table', { name: '回执计量项', exact: true }).waitFor();
       await job.screenshot({ path: resolve(artifacts, 'task-model-ledger.png') });
+      usagePresentation = await runUsagePresentationChecks({ page: billing, until, artifacts });
     } finally {
       await billing.close();
     }
@@ -1233,6 +1451,7 @@ try {
       publicSourceLink: true,
       mergedBranches: 2,
       meteredTaskFromLedger: true,
+      usagePresentation,
     };
   });
   await testCase('stop-in-flight-hides-partial-result-and-survives-refresh', async () => {
@@ -1470,6 +1689,10 @@ try {
       if (await notice.count()) await notice.click();
       await closeSettings();
       await page.getByLabel('向智能体描述修改需求').waitFor();
+      const readableReply = page
+        .locator('.live-assistant:not([hidden]) .assistant-message.assistant')
+        .last();
+      await readableReply.scrollIntoViewIfNeeded();
       const geometry = await page.evaluate(() => {
         const box = (selector) => {
           const node = document.querySelector(selector);
@@ -1487,6 +1710,16 @@ try {
               }
             : null;
         };
+        const conversationNode = document.querySelector(
+          '.live-assistant:not([hidden]) > .ai-conversation-body',
+        );
+        const replyNode = [
+          ...document.querySelectorAll(
+            '.live-assistant:not([hidden]) .assistant-message.assistant',
+          ),
+        ].at(-1);
+        const conversationBox = conversationNode?.getBoundingClientRect();
+        const replyBox = replyNode?.getBoundingClientRect();
         return {
           width: innerWidth,
           overflow: document.documentElement.scrollWidth,
@@ -1496,6 +1729,19 @@ try {
           toolbar: box('.assistant-composer .ai-composer-toolbar'),
           close: box('.ai-workbench-header .ai-panel-close'),
           panel: box('.ai-workbench'),
+          conversation: box('.live-assistant:not([hidden]) > .ai-conversation-body'),
+          reply:
+            replyBox && conversationBox
+              ? {
+                  text: replyNode.textContent.trim(),
+                  height: replyBox.height,
+                  visibleHeight: Math.max(
+                    0,
+                    Math.min(replyBox.bottom, conversationBox.bottom) -
+                      Math.max(replyBox.top, conversationBox.top),
+                  ),
+                }
+              : null,
           canvas: box('.canvas-photo-frame'),
           inputFontSize: parseFloat(
             getComputedStyle(document.querySelector('.assistant-composer textarea')).fontSize,
@@ -1505,6 +1751,15 @@ try {
       (report.measurements ??= []).push(geometry);
       console.log(JSON.stringify({ assistantGeometry: geometry }));
       assert.ok(geometry.overflow <= viewport.width + 1, 'no page horizontal overflow');
+      assert.ok(
+        geometry.conversation?.height >= 64 && geometry.conversation.centerExposed,
+        'the conversation keeps at least 64px of exposed reading space',
+      );
+      assert.ok(
+        geometry.reply?.text &&
+          geometry.reply.visibleHeight >= Math.min(64, geometry.reply.height) - 1,
+        'a submitted reply is readable inside that space, including a whole shorter reply',
+      );
       assert.ok(
         geometry.composer &&
           geometry.composer.x >= 0 &&
@@ -1542,6 +1797,192 @@ try {
       await page.screenshot({
         path: resolve(artifacts, `assistant-${viewport.width}x${viewport.height}.png`),
       });
+      if ((viewport.width === 320 && viewport.height === 568) || viewport.width === 844) {
+        const before = { admissions: turnAdmissions, dispatches };
+        const input = page.getByLabel('向智能体描述修改需求');
+        const originalValue = await input.inputValue();
+        const owner = await input.elementHandle();
+        const draft = '展开后保留这条未发送的要求。\n保留当前照片，不要提交。';
+        await input.fill(draft);
+        await page.getByRole('button', { name: '展开编写', exact: true }).click();
+        assert.equal(await input.inputValue(), draft);
+        assert.equal(await input.evaluate((node, original) => node === original, owner), true);
+        const expanded = await input.boundingBox();
+        assert.ok(
+          expanded && expanded.height > geometry.input.height,
+          'expanded writing gives the same input more room',
+        );
+        await page.screenshot({
+          path: resolve(
+            artifacts,
+            `assistant-compose-expanded-${viewport.width}x${viewport.height}.png`,
+          ),
+        });
+        await page.getByRole('button', { name: '返回对话', exact: true }).click();
+        assert.equal(await input.inputValue(), draft);
+        assert.equal(await input.evaluate((node, original) => node === original, owner), true);
+        const conversation = await page
+          .locator('.live-assistant:not([hidden]) > .ai-conversation-body')
+          .boundingBox();
+        assert.ok(
+          conversation && conversation.height >= 64,
+          'returning from writing restores the readable conversation',
+        );
+        assert.equal(turnAdmissions, before.admissions);
+        assert.equal(dispatches, before.dispatches);
+        await input.fill(originalValue);
+        await owner.dispose();
+      }
+      if (viewport.width === 390) {
+        const before = { admissions: turnAdmissions, dispatches };
+        const settings = await openSettings();
+        const model = settings.getByRole('combobox', { name: '助手模型', exact: true });
+        assert.equal(
+          await model.isDisabled(),
+          true,
+          'the existing execution authorization keeps its model frozen',
+        );
+        await page.screenshot({
+          path: resolve(artifacts, 'assistant-settings-locked-390x844.png'),
+        });
+        const execution = await details('执行方式');
+        const revoke = execution.getByRole('button', { name: '停止授权', exact: true });
+        await revoke.waitFor();
+        const revoked = page.waitForResponse(
+          (response) =>
+            response.request().method() === 'DELETE' &&
+            /^\/v1\/assistant-grants\/[^/]+$/.test(new URL(response.url()).pathname),
+        );
+        await revoke.click();
+        const revokeResponse = await revoked;
+        assert.equal(revokeResponse.status(), 200);
+        assert.deepEqual(await revokeResponse.json(), { ok: true });
+        await until(() => model.isEnabled(), 'revoking the authorization unlocks its model');
+        await model.click();
+        const models = settings.getByRole('listbox', { name: '助手模型', exact: true });
+        await models.waitFor();
+        await until(
+          async () => (await models.getAttribute('data-motion-state')) === 'idle',
+          'the model menu finishes its actual entry motion',
+        );
+        const menuGeometry = await models.evaluate((menu) => {
+          const selected = menu.querySelector('[role="option"][aria-selected="true"]');
+          const box = menu.getBoundingClientRect();
+          const row = selected?.getBoundingClientRect();
+          const hit =
+            row && document.elementFromPoint(row.x + row.width / 2, row.y + row.height / 2);
+          return {
+            menu: { x: box.x, y: box.y, right: box.right, bottom: box.bottom },
+            selected: row
+              ? {
+                  width: row.width,
+                  height: row.height,
+                  text: selected.textContent.trim(),
+                  centerExposed: !!hit && selected.contains(hit),
+                }
+              : null,
+            popoverOpen: menu.matches(':popover-open'),
+          };
+        });
+        assert.ok(menuGeometry.popoverOpen && menuGeometry.selected?.centerExposed);
+        assert.ok(menuGeometry.selected.height >= 40 && menuGeometry.selected.text);
+        assert.ok(
+          menuGeometry.menu.x >= 0 &&
+            menuGeometry.menu.right <= viewport.width + 1 &&
+            menuGeometry.menu.y >= 0 &&
+            menuGeometry.menu.bottom <= viewport.height + 1,
+          'the settled model menu and selected row are exposed inside the viewport',
+        );
+        await page.screenshot({ path: resolve(artifacts, 'assistant-settings-390x844.png') });
+        await page.keyboard.press('Escape');
+        await closeSettings();
+        assert.equal(turnAdmissions, before.admissions);
+        assert.equal(dispatches, before.dispatches);
+        geometry.modelSettings = {
+          lockedWhileAuthorized: true,
+          unlockedAfterExplicitRevocation: true,
+          expectedRevocations: 1,
+          addedAdmissions: 0,
+          addedDispatches: 0,
+          menuGeometry,
+        };
+      }
+      if (viewport.width === 320 && viewport.height === 568) {
+        const before = { admissions: turnAdmissions, dispatches };
+        const selectTask = async (name) => {
+          await page
+            .locator('.free-panel[aria-hidden="false"]')
+            .getByRole('button', { name: '切换 AI 任务', exact: true })
+            .click();
+          const picker = page.getByRole('dialog', { name: '选择 AI 任务', exact: true });
+          await picker.getByRole('button', { name: new RegExp('^' + name) }).click();
+          await picker.waitFor({ state: 'hidden' });
+        };
+        await selectTask('生图');
+        await page.getByRole('button', { name: '任务设置', exact: true }).click();
+        const settings = page.getByRole('region', { name: '任务设置', exact: true });
+        const model = settings.getByRole('combobox', { name: '生图模型', exact: true });
+        await model.waitFor();
+        assert.equal(
+          await model.isDisabled(),
+          true,
+          'the actual empty model catalog stays disabled',
+        );
+        await settings.getByRole('button', { name: '展开面板', exact: true }).click();
+        await settings.waitFor({ state: 'hidden' });
+        await page.getByRole('button', { name: '任务设置', exact: true }).click();
+        await settings.waitFor();
+        await settings.locator('.ai-model-empty').scrollIntoViewIfNeeded();
+        const taskSettingsGeometry = await settings.evaluate((region) => {
+          const elements = {
+            model: region.querySelector('[role="combobox"]'),
+            empty: region.querySelector('.ai-model-empty'),
+            back: region.querySelector('.ai-settings-page-header button'),
+          };
+          return Object.fromEntries(
+            Object.entries(elements).map(([name, node]) => {
+              const box = node?.getBoundingClientRect();
+              const hit =
+                box && document.elementFromPoint(box.x + box.width / 2, box.y + box.height / 2);
+              return [
+                name,
+                box
+                  ? {
+                      x: box.x,
+                      y: box.y,
+                      right: box.right,
+                      bottom: box.bottom,
+                      text: node.textContent.trim(),
+                      centerExposed: !!hit && node.contains(hit),
+                    }
+                  : null,
+              ];
+            }),
+          );
+        });
+        for (const [name, control] of Object.entries(taskSettingsGeometry)) {
+          assert.ok(
+            control?.centerExposed &&
+              control.text &&
+              control.x >= 0 &&
+              control.right <= viewport.width + 1 &&
+              control.y >= 0 &&
+              control.bottom <= viewport.height + 1,
+            `${name} is readable in the expanded task settings`,
+          );
+        }
+        await page.screenshot({ path: resolve(artifacts, 'task-settings-320x568.png') });
+        await settings.getByRole('button', { name: '恢复面板', exact: true }).click();
+        await settings.waitFor({ state: 'hidden' });
+        await selectTask('AI 助手');
+        assert.equal(turnAdmissions, before.admissions);
+        assert.equal(dispatches, before.dispatches);
+        geometry.taskSettings = {
+          expandedThroughUI: true,
+          emptyCatalog: true,
+          ...taskSettingsGeometry,
+        };
+      }
       return geometry;
     });
   }

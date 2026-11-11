@@ -20,7 +20,11 @@ function descendants(node: ReactNode): ReactElement<Props>[] {
     isValidElement<Props>(child) ? [child, ...descendants(child.props.children)] : [],
   );
 }
-function capturePanel(view: Viewport, geometry: PanelGeometry) {
+function capturePanel(
+  view: Viewport,
+  geometry: PanelGeometry,
+  extra: Partial<Parameters<typeof FloatingPanel>[0]> = {},
+) {
   const writes: PanelGeometry[] = [];
   let nodes: ReactElement<Props>[] = [];
   function Capture() {
@@ -32,6 +36,7 @@ function capturePanel(view: Viewport, geometry: PanelGeometry) {
       onGeometry: (next) => writes.push(next),
       onClose: () => {},
       children: null,
+      ...extra,
     });
     nodes = descendants(tree);
     return tree;
@@ -39,6 +44,7 @@ function capturePanel(view: Viewport, geometry: PanelGeometry) {
   renderTestMarkup(createElement(Capture));
   return {
     writes,
+    nodes,
     control(predicate: (props: Props) => boolean): Props {
       const element = nodes.find((node) => predicate(node.props));
       assert.ok(element);
@@ -46,6 +52,56 @@ function capturePanel(view: Viewport, geometry: PanelGeometry) {
     },
   };
 }
+
+test('the same panel content can become a full collaboration page without inherited collapse or resize controls', () => {
+  const view: Viewport = { width: 1440, height: 960, bucket: 'desktop', workspaceHeight: 866 };
+  const geometry = { ...defaultPanel('inspector', view), presentation: 'collapsed' as const };
+  const ui = capturePanel(view, geometry, {
+    displayMode: 'page',
+    identity: 'collaboration',
+    open: true,
+    children: createElement('textarea', { defaultValue: 'Unsaved discussion draft' }),
+  });
+  const surface = ui.control((props) => props['data-panel-id'] === 'collaboration');
+  assert.equal(surface['aria-hidden'], false);
+  assert.equal(surface['data-presentation'], 'normal');
+  assert.equal(ui.control((props) => props.className === 'panel-content').hidden, false);
+  assert.equal(
+    ui.nodes.some((node) => node.props.className === 'panel-drag-header'),
+    false,
+  );
+  assert.equal(
+    ui.nodes.some((node) => node.props.role === 'separator'),
+    false,
+  );
+  assert.equal(
+    ui.control((props) => props.defaultValue === 'Unsaved discussion draft').defaultValue,
+    'Unsaved discussion draft',
+  );
+  assert.equal(ui.writes.length, 0, 'changing presentation does not rewrite stored panel geometry');
+});
+
+test('closing a visited panel makes its retained draft inert, while Back invokes only its supplied context action', () => {
+  const view: Viewport = { width: 1440, height: 960, bucket: 'desktop', workspaceHeight: 866 };
+  let backs = 0,
+    closes = 0;
+  const hidden = capturePanel(view, defaultPanel('inspector', view), {
+    open: false,
+    onBack: () => backs++,
+    onClose: () => closes++,
+    backLabel: 'Back to all tools',
+    children: createElement('input', { defaultValue: 'Unsent prompt' }),
+  });
+  assert.equal(hidden.control((props) => props['data-panel-id'] === 'inspector').inert, true);
+  assert.equal(
+    hidden.control((props) => props.defaultValue === 'Unsent prompt').defaultValue,
+    'Unsent prompt',
+  );
+  hidden.control((props) => props.label === 'Back to all tools').onClick();
+  assert.equal(backs, 1);
+  assert.equal(closes, 0);
+  assert.equal(hidden.writes.length, 0);
+});
 function withFrames(run: (flush: () => void) => void) {
   const previousRequest = Object.getOwnPropertyDescriptor(globalThis, 'requestAnimationFrame');
   const previousCancel = Object.getOwnPropertyDescriptor(globalThis, 'cancelAnimationFrame');

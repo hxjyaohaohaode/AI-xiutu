@@ -5,6 +5,8 @@
 import assert from 'node:assert/strict';
 import { createHash } from 'node:crypto';
 import sharp from 'sharp';
+import { readFile } from 'node:fs/promises';
+import { settleVisibleAbout } from './about-experience.browser.mjs';
 
 const viewports = [
   { width: 1440, height: 960 },
@@ -14,9 +16,9 @@ const viewports = [
   { width: 844, height: 390 },
 ];
 const locales = [
-  { value: 'zh-CN', headline: '让想法，', login: '登录', auth: '登录工作空间' },
-  { value: 'zh-TW', headline: '讓想法，', login: '登入', auth: '登入工作空間' },
-  { value: 'en', headline: 'Make it', login: 'Log in', auth: 'Sign in to your space' },
+  { value: 'zh-CN', headline: '你的眼光，', login: '登录', auth: '登录工作空间' },
+  { value: 'zh-TW', headline: '你的眼光，', login: '登入', auth: '登入工作空間' },
+  { value: 'en', headline: 'Your eye.', login: 'Log in', auth: 'Sign in to your space' },
 ];
 
 async function canvasFingerprint(canvas) {
@@ -196,14 +198,14 @@ export async function runSiteEntryChecks({
           0,
           'First entry must be the public page',
         );
-        await page.locator('.about-hero h1').getByText('让想法，', { exact: true }).waitFor();
+        await page.locator('.about-hero h1').getByText('你的眼光，', { exact: true }).waitFor();
         await page.locator('.color-study').scrollIntoViewIfNeeded();
         await page.locator('.study-compare').waitFor();
         const preview = page.locator('canvas.study-result');
         const original = await canvasFingerprint(preview);
         assert.ok(original?.opaque > 0, 'The About demonstration must render actual image pixels');
         await page.getByRole('slider', { name: /^色温/ }).press('End');
-        assert.equal(await page.getByRole('slider', { name: /^色温/ }).inputValue(), '60');
+        assert.equal(await page.getByRole('slider', { name: /^色温/ }).inputValue(), '100');
         await page
           .locator('.study-presets')
           .getByRole('button', { name: '鲜明', exact: true })
@@ -224,11 +226,23 @@ export async function runSiteEntryChecks({
         await capture(page, 'site-about-adjusted-desktop');
         await page.locator('.study-open').click();
         await page.waitForURL((url) => url.hash === '#/studio');
+        await page.getByLabel('选择照片', { exact: true }).waitFor({ state: 'attached' });
+        assert.equal(
+          await page.locator('canvas[aria-label="照片编辑预览"]').count(),
+          0,
+          'Start your own work must open an empty studio, never substitute a marketing image',
+        );
+        const sampleBytes = await readFile(
+          new URL('../../apps/web/public/about/color-study.webp', import.meta.url),
+        );
+        await page
+          .getByLabel('选择照片', { exact: true })
+          .setInputFiles({ name: 'color-study.webp', mimeType: 'image/webp', buffer: sampleBytes });
         const canvas = page.locator('canvas[aria-label="照片编辑预览"]');
         await canvas.waitFor();
         await until(
           async () => (await canvasFingerprint(canvas))?.opaque > 0,
-          'the public sample opens in the actual editor',
+          'an explicitly imported local photo renders in the actual editor',
         );
         await page.locator('.canvas-stage[aria-busy="false"]').waitFor();
         await page
@@ -237,15 +251,9 @@ export async function runSiteEntryChecks({
           .click();
         const colorPanel = page.locator('.free-panel[aria-hidden="false"]');
         await colorPanel.getByRole('button', { name: /^色温，/ }).click();
-        assert.equal(
-          await colorPanel.getByRole('slider', { name: '色温', exact: true }).inputValue(),
-          '60',
-        );
+        await colorPanel.getByRole('slider', { name: '色温', exact: true }).fill('60');
         await colorPanel.getByRole('button', { name: /^饱和度，/ }).click();
-        assert.equal(
-          await colorPanel.getByRole('slider', { name: '饱和度', exact: true }).inputValue(),
-          '18',
-        );
+        await colorPanel.getByRole('slider', { name: '饱和度', exact: true }).fill('18');
         const initialPreview = await settledCanvasSnapshot(page, canvas, until);
         await assertSampleSettings(page);
         await capture(page, 'site-studio-retains-sample-adjustments');
@@ -336,7 +344,8 @@ export async function runSiteEntryChecks({
         );
         return {
           actualPreviewPixels: true,
-          localSampleOpened: true,
+          ownWorkEntryEmpty: true,
+          explicitLocalPhotoImported: true,
           retainedCanvas: true,
           historyRoundTrip: true,
           hiddenShortcutsInactive: true,
@@ -365,7 +374,7 @@ export async function runSiteEntryChecks({
             ['language', '.about-header .language-select select'],
             ['login', '.about-login'],
             ['start or resume', '.about-hero-actions .about-primary'],
-            ['open sample', '.study-open'],
+            ['start own work', '.study-open'],
           ])
             controls.push(await measureAboutControl(page, page.locator(selector), name));
           report.siteEntryLayouts.push({
@@ -374,7 +383,13 @@ export async function runSiteEntryChecks({
             ...viewport,
             controls,
           });
-          await page.locator('.about-header').scrollIntoViewIfNeeded();
+          // A sticky header is already visible even when the document is far
+          // down the page. Return with a real wheel before the hero capture.
+          const scrollPosition = await page.evaluate(() => scrollY);
+          await page.mouse.move(12, Math.min(350, viewport.height - 30));
+          await page.mouse.wheel(0, -scrollPosition - viewport.height);
+          await until(() => page.evaluate(() => scrollY < 2), 'the public page returns to the top');
+          await settleVisibleAbout(page, until);
           await capture(page, `site-about-${locale.value}-${viewport.width}x${viewport.height}`);
         }
       }

@@ -173,6 +173,75 @@ async function precision(page, label, value) {
     `${label} displayed value`,
   );
 }
+async function editorReturnAndHistory(page) {
+  const canvas = await page.locator('.image-frame canvas').elementHandle();
+  assert.ok(canvas, 'the live canvas exists before changing panel contexts');
+  try {
+    const inspector = page.locator('.free-panel[data-panel-id="inspector"][aria-hidden="false"]');
+    await inspector.getByRole('button', { name: '返回工具总览', exact: true }).click();
+    const overview = inspector.getByRole('region', { name: '全部工具', exact: true });
+    await overview.waitFor();
+    assert.equal(await inspector.locator('.inspector-retained').getAttribute('inert'), '');
+    const first = overview.locator('.tool-overview-list > button').first();
+    await first.focus();
+    await first.press('End');
+    assert.equal(
+      await overview
+        .locator('.tool-overview-list > button')
+        .last()
+        .evaluate((button) => button === document.activeElement),
+      true,
+      'End focuses and reveals the actual last tool',
+    );
+    await overview.getByRole('searchbox', { name: '查找工具', exact: true }).fill('明暗');
+    assert.equal(await overview.locator('.tool-overview-list > button').count(), 1);
+    await overview.getByRole('button', { name: /^明暗/ }).click();
+    await overview.waitFor({ state: 'hidden' });
+    assert.equal(
+      Number(await inspector.getByRole('slider', { name: '曝光', exact: true }).inputValue()),
+      -0.35,
+      'returning through the tool overview preserves the exact current adjustment',
+    );
+    const tabs = inspector.getByRole('navigation', { name: '当前作品面板', exact: true });
+    await tabs.getByRole('button', { name: '记录', exact: true }).click();
+    await inspector
+      .locator('.detailed-history-list > li[data-selected="true"] .history-expand')
+      .click();
+    const changes = inspector.locator('.history-change-details');
+    await changes.waitFor();
+    const exposure = changes
+      .locator(':scope > div')
+      .filter({ has: page.locator('dt').filter({ hasText: /曝光$/ }) });
+    assert.equal(await exposure.locator('dd > span').innerText(), '0EV');
+    assert.equal(await exposure.locator('dd > strong').innerText(), '-0.35EV');
+    await tabs.getByRole('button', { name: '调整', exact: true }).click();
+    assert.equal(
+      Number(await inspector.getByRole('slider', { name: '曝光', exact: true }).inputValue()),
+      -0.35,
+    );
+    assert.equal(
+      await canvas.evaluate(
+        (node) => node.isConnected && node === document.querySelector('.image-frame canvas'),
+      ),
+      true,
+      'tool overview and local history keep the original canvas owner mounted',
+    );
+    const topbar = await page.locator('.floating-topbar').boundingBox();
+    assert.ok(
+      topbar && topbar.height <= 55,
+      'compact studio chrome leaves room for the photograph',
+    );
+    return {
+      toolOverviewReturn: true,
+      keyboardToolTraversal: true,
+      actualHistoryDelta: [0, -0.35],
+      sameCanvas: true,
+      topbarHeight: topbar.height,
+    };
+  } finally {
+    await canvas.dispose();
+  }
+}
 async function downloadBytes(page, action) {
   const pending = page.waitForEvent('download');
   await action();
@@ -400,6 +469,159 @@ async function readyHandleBox(page, handle) {
   const box = await handle.boundingBox();
   assert.ok(box, 'the transform handle must have an actionable screen position');
   return box;
+}
+async function cloudRecoveryHeaderEvidence(page, expectedRoute) {
+  const header = page.locator('.floating-topbar');
+  await eventually(
+    async () => (await header.locator('.mobile-view-trigger > span').innerText()) === expectedRoute,
+    'the selected language is reflected in the work-view label',
+  );
+  const measured = await header.evaluate((node) => {
+    const rect = (element) => {
+      if (!element) return null;
+      const box = element.getBoundingClientRect();
+      return {
+        x: box.x,
+        y: box.y,
+        width: box.width,
+        height: box.height,
+        right: box.right,
+        bottom: box.bottom,
+        exposed: element.contains(
+          document.elementFromPoint(box.x + box.width / 2, box.y + box.height / 2),
+        ),
+      };
+    };
+    const textLines = (element) => {
+      const range = document.createRange();
+      range.selectNodeContents(element);
+      return Array.from(range.getClientRects())
+        .filter((box) => box.width > 0 && box.height > 0)
+        .map((box) => ({
+          x: box.x,
+          y: box.y,
+          width: box.width,
+          height: box.height,
+          right: box.right,
+          bottom: box.bottom,
+        }));
+    };
+    const label = node.querySelector('.mobile-view-trigger > span');
+    const toolbar = document.querySelector('.canvas-view-controls');
+    const compare = toolbar.querySelector('.compare-press');
+    const compareLabel = compare.querySelector('span');
+    const contexts = document.querySelector(
+      '.free-panel[aria-hidden="false"] .studio-context-tabs',
+    );
+    return {
+      locale: document.documentElement.lang,
+      viewportWidth: innerWidth,
+      viewportHeight: innerHeight,
+      pageOverflow: document.documentElement.scrollWidth - innerWidth,
+      headerOverflow: node.scrollWidth - node.clientWidth,
+      route: rect(node.querySelector('.mobile-view-trigger')),
+      label: label.textContent.trim(),
+      lines: textLines(label),
+      brand: rect(node.querySelector('.workspace-home-link')),
+      controls: [
+        '.workspace-identity > .icon-button',
+        '.workspace-settings-trigger',
+        '.cloud-status-trigger',
+        '.top-save',
+        '.top-export',
+      ].map((selector) => ({ selector, ...rect(node.querySelector(selector)) })),
+      toolbar: {
+        ...rect(toolbar),
+        overflow: toolbar.scrollWidth - toolbar.clientWidth,
+        buttons: Array.from(toolbar.querySelectorAll('button'))
+          .filter((button) => button.getBoundingClientRect().width > 0)
+          .map((button) => ({
+            label: button.getAttribute('aria-label') || button.textContent.trim(),
+            enabled: !button.disabled,
+            ...rect(button),
+          })),
+        compare: {
+          ...rect(compare),
+          text: compareLabel.textContent.trim(),
+          lines: textLines(compareLabel),
+        },
+      },
+      contexts: {
+        ...rect(contexts),
+        buttons: Array.from(contexts.querySelectorAll('button')).map((button) => ({
+          label: button.querySelector('span').textContent.trim(),
+          lines: textLines(button.querySelector('span')),
+          ...rect(button),
+        })),
+      },
+    };
+  });
+  report.layoutMeasurements.push({ case: activeCase, cloudRecoveryHeader: measured });
+  assert.equal(measured.label, expectedRoute);
+  assert.equal(measured.lines.length, 1, 'the current view label must remain on one line');
+  assert.ok(measured.route?.height >= 44, 'the work-view switch retains its 44px touch height');
+  assert.ok(
+    measured.lines[0].x >= measured.route.x - 1 &&
+      measured.lines[0].right <= measured.route.right + 1,
+    'the complete label fits within its own switch without clipping',
+  );
+  assert.ok(measured.pageOverflow <= 1, 'cloud recovery must not cause horizontal page overflow');
+  assert.ok(measured.headerOverflow <= 1, 'the header must fit without hiding overflow');
+  for (const control of [measured.route, measured.brand, ...measured.controls]) {
+    assert.ok(control?.width > 0 && control.height > 0, 'every header action stays visible');
+    assert.ok(
+      control.x >= -1 && control.right <= measured.viewportWidth + 1,
+      'each header action fits inside the viewport',
+    );
+    assert.equal(control.exposed, true, 'header actions must not obscure each other');
+  }
+  for (const control of measured.controls)
+    assert.ok(control.height >= 44, `${control.selector} retains its 44px touch height`);
+  const inside = (inner, outer, label) =>
+    assert.ok(
+      inner.x >= outer.x - 1 &&
+        inner.right <= outer.right + 1 &&
+        inner.y >= outer.y - 1 &&
+        inner.bottom <= outer.bottom + 1,
+      `${label}: ${JSON.stringify({ inner, outer })}`,
+    );
+  const toolbar = measured.toolbar;
+  assert.ok(
+    toolbar.x >= -1 &&
+      toolbar.right <= measured.viewportWidth + 1 &&
+      toolbar.y >= -1 &&
+      toolbar.bottom <= measured.viewportHeight + 1 &&
+      toolbar.overflow <= 1,
+    'the canvas toolbar and its contents must fit the phone width',
+  );
+  assert.equal(toolbar.buttons.length, 8, 'all eight phone canvas actions remain visible');
+  for (const button of toolbar.buttons) {
+    inside(button, toolbar, `${button.label} fits fully within the canvas toolbar`);
+    assert.ok(button.width >= 28 && button.height >= 32, 'canvas actions retain their touch sizes');
+    if (button.enabled)
+      assert.equal(button.exposed, true, `${button.label} receives a pointer at its center`);
+  }
+  assert.equal(
+    toolbar.compare.text,
+    { 'zh-CN': '按住对比', 'zh-TW': '按住對比', en: 'Hold to compare' }[measured.locale],
+    'the compare instruction retains its complete translated text',
+  );
+  assert.ok(toolbar.compare.lines.length >= 1 && toolbar.compare.lines.length <= 2);
+  for (const line of toolbar.compare.lines)
+    inside(line, toolbar.compare, 'each compare instruction line remains inside its button');
+  assert.equal(measured.contexts.buttons.length, 4, 'all four editing contexts remain available');
+  assert.ok(
+    measured.contexts.x >= -1 && measured.contexts.right <= measured.viewportWidth + 1,
+    'the context row fits the phone width',
+  );
+  for (const button of measured.contexts.buttons) {
+    assert.ok(button.height >= 44, 'each context keeps its 44px touch height');
+    assert.equal(button.lines.length, 1, `${button.label} stays on one intact line`);
+    inside(button, measured.contexts, 'the context button fits its navigation row');
+    inside(button.lines[0], button, 'the entire context label fits inside its button');
+    assert.equal(button.exposed, true, `${button.label} receives a pointer at its center`);
+  }
+  return measured;
 }
 async function layoutAssertions(page, phone) {
   await imageReady(page);
@@ -703,6 +925,7 @@ try {
       await tool(page, size.width < 760 ? '调节' : '明暗');
       const initial = await layoutAssertions(page, size.width < 760);
       await precision(page, '曝光', -0.35);
+      const panelContext = await editorReturnAndHistory(page);
       const normal = await layoutAssertions(page, size.width < 760);
       let resized = null;
       if (size.width < 760) {
@@ -754,7 +977,9 @@ try {
         await page.getByRole('button', { name: '收起参数，查看完整照片', exact: true }).click();
         await eventually(
           async () =>
-            (await page.locator('.free-panel').getAttribute('data-presentation')) === 'collapsed',
+            (await page
+              .locator('.free-panel[aria-hidden="false"]')
+              .getAttribute('data-presentation')) === 'collapsed',
           'collapse',
         );
         await grip.press('Enter');
@@ -766,7 +991,7 @@ try {
         );
         await page.getByRole('button', { name: '展开参数面板', exact: true }).click();
         assert.equal(
-          await page.locator('.free-panel').getAttribute('data-presentation'),
+          await page.locator('.free-panel[aria-hidden="false"]').getAttribute('data-presentation'),
           'maximized',
         );
         await page.getByRole('button', { name: '恢复参数，保留当前调整', exact: true }).click();
@@ -793,9 +1018,126 @@ try {
       return {
         initial,
         normal,
+        panelContext,
         resized,
         download: { format: metadata.format, width: metadata.width, height: metadata.height },
       };
+    });
+  }
+  for (const viewport of [
+    { width: 320, height: 700 },
+    { width: 1440, height: 960 },
+  ]) {
+    await caseRun(`dismissible-cloud-status-${viewport.width}x${viewport.height}`, async () => {
+      const context = await browser.newContext({
+        viewport,
+        hasTouch: viewport.width < 760,
+        reducedMotion: 'reduce',
+        acceptDownloads: true,
+      });
+      const page = await watchPage(context);
+      let offline = true,
+        configReads = 0;
+      const writes = [];
+      page.on('request', (request) => {
+        if (
+          new URL(request.url()).pathname.startsWith('/v1/') &&
+          !['GET', 'HEAD', 'OPTIONS'].includes(request.method())
+        )
+          writes.push(request.method());
+      });
+      const unavailable = async (route) => {
+        configReads++;
+        if (offline) await route.abort('internetdisconnected');
+        else await route.continue();
+      };
+      await page.route('**/v1/public-config', unavailable);
+      try {
+        await page.goto(`${origin}/#/studio`);
+        const notice = page.locator('.cloud-status');
+        await notice.waitFor();
+        await page.getByLabel('选择照片', { exact: true }).setInputFiles({
+          name: 'offline-gradient.png',
+          mimeType: 'image/png',
+          buffer: png,
+        });
+        await imageReady(page);
+        await tool(page, viewport.width < 760 ? '调节' : '明暗');
+        await precision(page, '曝光', -0.15);
+        const readsBeforeDismiss = configReads;
+        await notice.getByRole('button', { name: '收起云端状态', exact: true }).click();
+        await notice.waitFor({ state: 'hidden' });
+        const restore = page.getByRole('button', { name: '查看云端连接状态', exact: true });
+        await restore.waitFor();
+        await restore.click({ trial: true });
+        assert.equal(configReads, readsBeforeDismiss, 'dismissing the banner is not a retry');
+        assert.equal(
+          Number(await page.getByRole('slider', { name: '曝光', exact: true }).inputValue()),
+          -0.15,
+        );
+        assert.equal(
+          await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth + 1),
+          true,
+        );
+        const headerLayouts = [];
+        if (viewport.width < 760) {
+          headerLayouts.push(await cloudRecoveryHeaderEvidence(page, '精修'));
+          for (const [locale, label] of [
+            ['zh-TW', '精修'],
+            ['en', 'Edit'],
+            ['zh-CN', '精修'],
+          ]) {
+            await page.locator('.workspace-settings-trigger').click();
+            const settings = page.locator('.workspace-settings-dialog');
+            await settings.waitFor();
+            await settings.locator('.language-select select').selectOption(locale);
+            await page.waitForFunction((value) => document.documentElement.lang === value, locale);
+            await settings.locator('.modal-header > .icon-button').click();
+            await settings.waitFor({ state: 'hidden' });
+            headerLayouts.push(await cloudRecoveryHeaderEvidence(page, label));
+            if (locale !== 'zh-CN')
+              await page.screenshot({
+                path: join(artifacts, `cloud-dismissed-${viewport.width}-${locale}.png`),
+              });
+          }
+        }
+        await page.screenshot({ path: join(artifacts, `cloud-dismissed-${viewport.width}.png`) });
+        await restore.click();
+        await notice.waitFor();
+        assert.equal(configReads, readsBeforeDismiss, 'opening connection details is read-free');
+        offline = false;
+        const recovered = page.waitForResponse(
+          (response) =>
+            new URL(response.url()).pathname === '/v1/public-config' && response.status() === 200,
+        );
+        await notice.getByRole('button', { name: '重试', exact: true }).click();
+        await recovered;
+        await notice.waitFor({ state: 'hidden' });
+        assert.equal(
+          configReads,
+          readsBeforeDismiss + 1,
+          'only explicit Retry refreshes public configuration',
+        );
+        assert.equal(
+          Number(await page.getByRole('slider', { name: '曝光', exact: true }).inputValue()),
+          -0.15,
+        );
+        assert.deepEqual(
+          writes,
+          [],
+          'cloud-status recovery must not submit work, assistant turns or charges',
+        );
+        return {
+          dismissed: true,
+          recoveryEntry: true,
+          explicitReadRetries: 1,
+          mutationRequests: 0,
+          exposure: -0.15,
+          headerLayouts,
+        };
+      } finally {
+        await context.close();
+      }
     });
   }
   for (const source of await photographicSources()) {
@@ -1252,6 +1594,149 @@ try {
     assert.equal(result.status(), 200);
     return result.json();
   };
+  await caseRun(
+    'same-canvas-collaboration-keeps-two-drafts-through-full-page-and-return',
+    async () => {
+      const page = a.page;
+      const initialHead = await readHead();
+      const originalFilename = await page.locator('.canvas-file-info > span').innerText();
+      const canvas = await page.locator('.image-frame canvas').elementHandle();
+      assert.ok(canvas);
+      const draftWrites = [];
+      const trackWrite = (request) => {
+        const path = new URL(request.url()).pathname;
+        if (
+          request.method() !== 'GET' &&
+          (path === `/v1/projects/${projectId}/comments` ||
+            path === `/v1/projects/${projectId}/tasks`)
+        )
+          draftWrites.push({ method: request.method(), path });
+      };
+      page.on('request', trackWrite);
+      let releaseComments;
+      let commentsRequestStarted = false;
+      let commentOwner;
+      const commentsGate = new Promise((resolve) => {
+        releaseComments = resolve;
+      });
+      const commentsPath = `**/v1/projects/${projectId}/comments`;
+      const holdComments = async (route) => {
+        const response = await route.fetch();
+        commentsRequestStarted = true;
+        await commentsGate;
+        await route.fulfill({ response });
+      };
+      await page.route(commentsPath, holdComments);
+      try {
+        await tool(page, '明暗');
+        await page
+          .locator('.free-panel[aria-hidden="false"]')
+          .getByRole('navigation', { name: '当前作品面板', exact: true })
+          .getByRole('button', { name: '协作', exact: true })
+          .click();
+        const collaboration = page.locator('.free-panel[data-panel-id="collaboration"]');
+        await collaboration.waitFor();
+        assert.equal(await collaboration.getAttribute('data-display-mode'), 'panel');
+        const skeleton = collaboration.locator(
+          '.feature-skeleton[data-skeleton-profile="collaboration"]',
+        );
+        await skeleton.waitFor();
+        await eventually(
+          () => commentsRequestStarted,
+          'the real comments response is held for loading-state inspection',
+        );
+        assert.equal(await skeleton.getAttribute('aria-busy'), 'true');
+        assert.equal(
+          await page.locator('.image-frame canvas').isVisible(),
+          true,
+          'actual collaboration loading keeps the photograph visible',
+        );
+        assert.equal(
+          await canvas.evaluate(
+            (node) => node.isConnected && node === document.querySelector('.image-frame canvas'),
+          ),
+          true,
+          'the contextual collaboration tab keeps the exact canvas mounted',
+        );
+        releaseComments();
+        await skeleton.waitFor({ state: 'hidden' });
+        const comment = collaboration.getByRole('textbox', {
+          name: '向项目成员发送意见',
+          exact: true,
+        });
+        await comment.fill('保留这条未发送的协作草稿。');
+        commentOwner = await comment.elementHandle();
+        assert.ok(commentOwner);
+        await collaboration
+          .locator('.collaboration-panel-tabs')
+          .getByRole('button', { name: /^任务/ })
+          .click();
+        const task = collaboration.getByRole('textbox', { name: '新任务标题', exact: true });
+        await task.fill('这条任务先不提交');
+        await collaboration
+          .getByRole('button', { name: '在完整页面查看协作', exact: true })
+          .click();
+        await page
+          .locator('.free-panel[data-panel-id="collaboration"][data-display-mode="page"]')
+          .waitFor();
+        assert.equal(await comment.inputValue(), '保留这条未发送的协作草稿。');
+        assert.equal(await task.inputValue(), '这条任务先不提交');
+        assert.equal(
+          await commentOwner.evaluate(
+            (node) => node.isConnected && node === document.querySelector('#comment-body'),
+          ),
+          true,
+          'expanding uses the same discussion textarea, not a second owner',
+        );
+        await collaboration.getByRole('button', { name: '继续精修', exact: true }).click();
+        await page.locator('.free-panel[data-panel-id="inspector"][aria-hidden="false"]').waitFor();
+        await imageReady(page);
+        assert.equal(
+          await page.locator('.canvas-file-info > span').innerText(),
+          originalFilename,
+          'returning from the explicitly expanded page retains the original image',
+        );
+        await page
+          .locator('.free-panel[aria-hidden="false"]')
+          .getByRole('navigation', { name: '当前作品面板', exact: true })
+          .getByRole('button', { name: '协作', exact: true })
+          .click();
+        await collaboration.waitFor();
+        assert.equal(await task.inputValue(), '这条任务先不提交');
+        await task.fill('');
+        await collaboration
+          .locator('.collaboration-panel-tabs')
+          .getByRole('button', { name: /^项目讨论/ })
+          .click();
+        assert.equal(await comment.inputValue(), '保留这条未发送的协作草稿。');
+        assert.equal(await page.locator('#comment-body').count(), 1);
+        await comment.fill('');
+        await collaboration.getByRole('button', { name: '返回当前调节', exact: true }).click();
+        await collaboration.waitFor({ state: 'hidden' });
+        assert.deepEqual(draftWrites, [], 'typing and navigating cannot submit a comment or task');
+        assert.equal((await readHead()).artwork.headVersion, initialHead.artwork.headVersion);
+        assert.deepEqual(
+          await recipeDownload(page),
+          initialHead.revision.recipe,
+          'the complete recipe survives both the in-canvas tab and explicit full-page round trip',
+        );
+        await page.screenshot({ path: join(artifacts, 'same-canvas-collaboration-return.png') });
+        return {
+          contextualSkeleton: true,
+          sameCanvas: true,
+          retainedCommentOwner: true,
+          unsentCommentAndTask: true,
+          accidentalWrites: 0,
+        };
+      } finally {
+        releaseComments();
+        await page.unroute(commentsPath, holdComments);
+        page.off('request', trackWrite);
+        await commentOwner?.dispose();
+        await canvas.dispose();
+      }
+    },
+  );
   await caseRun('two-accounts-shared-edit-cursor-and-owned-undo', async () => {
     await eventually(
       async () => Number(await a.page.locator('.collaboration-summary small').textContent()) === 2,
@@ -1284,7 +1769,7 @@ try {
         (await a.page.locator('.collaboration-status').getAttribute('data-state')) === 'ready',
       'owner commit completes',
     );
-    await a.page.locator('.panel-title-drag').focus();
+    await a.page.locator('.free-panel[aria-hidden="false"] .panel-title-drag').focus();
     await a.page.keyboard.press('Control+z');
     await eventually(async () => {
       const r = (await readHead()).revision.recipe;

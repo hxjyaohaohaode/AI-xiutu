@@ -1,9 +1,11 @@
-import { t, useLocale, formatNumber } from '../i18n';
+import { t, useLocale } from '../i18n';
 import { useId, useMemo } from 'react';
 import { ChartBar, ArrowsSplit } from '@phosphor-icons/react';
 import { ChoiceSelect } from '../components/ChoiceSelect';
 import { MotionDetails } from '../motion/Presence';
 import { usageModelName, type UsageQuote } from './catalog';
+import { UsageTrend } from './UsageTrend';
+import { UsageNumber } from './UsageNumber';
 import {
   knownNumber,
   pointText,
@@ -16,23 +18,6 @@ import {
   type UsageReport,
 } from './model';
 
-const compact = (value: number) =>
-  formatNumber(value, { notation: 'compact', maximumFractionDigits: 1 });
-function bucketPosition(bucket: string, range: UsageReport['range']) {
-  const first = shanghaiDate(new Date(range.from));
-  const last = shanghaiDate(new Date(Date.parse(range.to) - 1));
-  if (range.bucket === 'month') {
-    const month = (value: string) => Number(value.slice(0, 4)) * 12 + Number(value.slice(5, 7)) - 1;
-    const count = month(last) - month(first) + 1;
-    return { fraction: (month(bucket) - month(first) + 0.5) / count, count };
-  }
-  const start = Date.parse(`${first}T00:00:00Z`);
-  const count = (Date.parse(`${last}T00:00:00Z`) - start) / 86_400_000 + 1;
-  return {
-    fraction: ((Date.parse(`${bucket}T00:00:00Z`) - start) / 86_400_000 + 0.5) / count,
-    count,
-  };
-}
 export function UsageInsights({
   report,
   kind,
@@ -50,10 +35,6 @@ export function UsageInsights({
   const id = useId();
   const chart = useMemo(() => usageChartValues(report, kind), [report, kind]);
   const allocation = useMemo(() => usageAllocations(report), [report]);
-  const highest = Math.max(0, ...chart.map((point) => point.value ?? 0));
-  const lowest = Math.min(0, ...chart.map((point) => point.value ?? 0));
-  const span = highest - lowest || 1;
-  const zero = 18 + (highest > 0 || lowest < 0 ? highest / span : 1) * 142;
   const first = shanghaiDate(new Date(report.range.from));
   const last = shanghaiDate(new Date(Date.parse(report.range.to) - 1));
   return (
@@ -85,78 +66,7 @@ export function UsageInsights({
         </div>
         {chart.length ? (
           <>
-            <svg
-              className="usage-trend-svg"
-              viewBox="0 0 760 196"
-              role="img"
-              aria-labelledby={`${id}-chart-title ${id}-chart-description`}
-            >
-              <title id={`${id}-chart-title`}>
-                {t('{v0}趋势，单位为服务点', { v0: t(usageLabels[kind]) })}
-              </title>
-              <desc id={`${id}-chart-description`}>
-                {bucket === 'day'
-                  ? t('已记录 {count} 个日期。展开下方表格查看数值。正值向上，负值向下。', {
-                      count: chart.length,
-                    })
-                  : t('已记录 {count} 个月份。展开下方表格查看数值。正值向上，负值向下。', {
-                      count: chart.length,
-                    })}
-              </desc>
-              <line x1="48" x2="748" y1="18" y2="18" className="usage-gridline" />
-              <line x1="48" x2="748" y1="89" y2="89" className="usage-gridline" />
-              <line x1="48" x2="748" y1="160" y2="160" className="usage-gridline" />
-              <line x1="48" x2="748" y1={zero} y2={zero} className="usage-zero-line" />
-              <text x="38" y="22" textAnchor="end">
-                {highest ? compact(highest) : '0'}
-              </text>
-              {lowest < 0 && (
-                <text x="38" y="164" textAnchor="end">
-                  {compact(lowest)}
-                </text>
-              )}
-              {highest > 0 && lowest < 0 && (
-                <text x="38" y={zero + 4} textAnchor="end">
-                  0
-                </text>
-              )}
-              {chart.map((point) => {
-                const position = bucketPosition(point.label, report.range);
-                if (!Number.isFinite(position.fraction)) return null;
-                const width = Math.max(0.7, Math.min(28, (700 / position.count) * 0.64));
-                const x = 48 + position.fraction * 700;
-                const height = point.value === null ? 0 : (Math.abs(point.value) / span) * 142;
-                return (
-                  <g key={point.label}>
-                    {point.value !== null ? (
-                      <rect
-                        x={x - width / 2}
-                        y={point.value < 0 ? zero : zero - height}
-                        width={width}
-                        height={height}
-                        rx={Math.min(2, width / 2)}
-                        className="usage-trend-bar"
-                        data-negative={point.value < 0}
-                      >
-                        <title>
-                          {t('{v0}：{v1} 点', { v0: point.label, v1: pointText(point.value) })}
-                        </title>
-                      </rect>
-                    ) : (
-                      <circle cx={x} cy={zero} r="3" className="usage-unknown-dot">
-                        <title>{t('{v0}：未知', { v0: point.label })}</title>
-                      </circle>
-                    )}
-                  </g>
-                );
-              })}
-              <text x="48" y="188">
-                {first.slice(5)}
-              </text>
-              <text x="748" y="188" textAnchor="end">
-                {last.slice(5)}
-              </text>
-            </svg>
+            <UsageTrend report={report} kind={kind} />
             <MotionDetails className="usage-small-details usage-trend-values">
               <summary>{t('查看趋势数值')}</summary>
               <div className="usage-values-scroll">
@@ -203,7 +113,7 @@ export function UsageInsights({
             </p>
           </div>
           <strong className="usage-distribution-total">
-            {pointText(allocation.total)}
+            <UsageNumber value={allocation.total} />
             <small> {t('点')}</small>
           </strong>
         </div>

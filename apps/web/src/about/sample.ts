@@ -1,21 +1,22 @@
 import { createRecipeV4 } from '@ai-xiutu/editor';
-import { DEFAULT_SAMPLE_SETTINGS, type SampleSettings } from './sample-settings';
+import {
+  DEFAULT_SAMPLE_SETTINGS,
+  resolveSampleSettings,
+  type SampleSettings,
+} from './sample-settings';
 export { DEFAULT_SAMPLE_SETTINGS, getSampleImage, type SampleSettings } from './sample-settings';
 
-/** One recipe for both the live introduction and the editable studio source. */
+/** Preview and legacy sample entries use one resolved snapshot. A preset is never a second filter layer. */
 export function createSampleRecipe(settings: SampleSettings = DEFAULT_SAMPLE_SETTINGS) {
   const recipe = createRecipeV4();
-  recipe.adjustments.temperature = Math.max(
-    -60,
-    Math.min(60, Number.isFinite(settings.warmth) ? settings.warmth : 18),
-  );
-  recipe.adjustments.exposure = Math.max(
-    -1,
-    Math.min(1, Number.isFinite(settings.exposure) ? settings.exposure : 0.1),
-  );
-  recipe.adjustments.saturation =
-    settings.preset === 'vivid' ? 18 : settings.preset === 'soft' ? -18 : 0;
-  recipe.adjustments.contrast =
-    settings.preset === 'vivid' ? 10 : settings.preset === 'soft' ? -12 : 0;
+  const values = resolveSampleSettings(settings);
+  recipe.adjustments.temperature = values.warmth;
+  recipe.adjustments.exposure = values.exposure;
+  recipe.adjustments.contrast = values.contrast;
+  recipe.adjustments.saturation = values.saturation;
+  recipe.adjustments.highlights = values.highlights;
+  recipe.adjustments.shadows = values.shadows;
+  recipe.adjustments.vibrance = values.vibrance;
+  recipe.detail.clarity = values.clarity;
   return recipe;
 }

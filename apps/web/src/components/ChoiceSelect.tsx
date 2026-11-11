@@ -269,19 +269,33 @@ export function ChoiceSelect<T extends string>({
 
   useEffect(() => {
     if (!open) return;
-    const owner = trigger.current?.closest('dialog');
+    // Retained panel pages can close without unmounting. Observe every ancestor
+    // so a native top-layer popover cannot outlive a hidden/inert workspace owner.
+    const owners: HTMLElement[] = [];
+    let ancestor = trigger.current?.parentElement;
+    while (ancestor && ancestor !== document.body) {
+      owners.push(ancestor);
+      ancestor = ancestor.parentElement;
+    }
     const closeWithOwner = () => {
-      if (owner?.open && !owner.inert) return;
+      if (
+        !owners.some((owner) => owner.hidden || owner.inert || owner.matches('dialog:not([open])'))
+      )
+        return;
       setOpen(false);
       const element = popup.current;
       if (element && typeof element.hidePopover === 'function' && element.matches(':popover-open'))
         element.hidePopover();
     };
-    const ownerObserver = owner ? new MutationObserver(closeWithOwner) : undefined;
-    if (owner) {
-      ownerObserver?.observe(owner, { attributes: true, attributeFilter: ['open', 'inert'] });
+    const ownerObserver = new MutationObserver(closeWithOwner);
+    for (const owner of owners) {
+      ownerObserver.observe(owner, {
+        attributes: true,
+        attributeFilter: ['open', 'hidden', 'inert'],
+      });
       owner.addEventListener('close', closeWithOwner);
     }
+    closeWithOwner();
     const outside = (event: PointerEvent) => {
       const target = event.target as Node | null;
       if (target && !trigger.current?.contains(target) && !popup.current?.contains(target))
@@ -297,8 +311,8 @@ export function ChoiceSelect<T extends string>({
     return () => {
       document.removeEventListener('pointerdown', outside, true);
       document.removeEventListener('focusin', closeOnFocus);
-      ownerObserver?.disconnect();
-      owner?.removeEventListener('close', closeWithOwner);
+      ownerObserver.disconnect();
+      for (const owner of owners) owner.removeEventListener('close', closeWithOwner);
     };
   }, [open]);
 
