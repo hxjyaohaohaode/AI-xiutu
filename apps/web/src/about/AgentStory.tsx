@@ -21,6 +21,7 @@ export function AgentStory({ copy: c, onOpen }: { copy: EditorialCopy; onOpen: (
   const selected = useRef(0);
   const manualSelection = useRef(false);
   const manualTravel = useRef(0);
+  const clearPanIntent = useRef<(() => void) | null>(null);
   const hover = useRef<ReturnType<typeof setTimeout> | null>(null);
   const [step, setStep] = useState(0);
   const [candidate, setCandidate] = useState(0);
@@ -30,6 +31,7 @@ export function AgentStory({ copy: c, onOpen }: { copy: EditorialCopy; onOpen: (
       hover.current = null;
       manualSelection.current = true;
       manualTravel.current = 0;
+      clearPanIntent.current?.();
     }
     selected.current = index;
     setStep(index);
@@ -39,8 +41,45 @@ export function AgentStory({ copy: c, onOpen }: { copy: EditorialCopy; onOpen: (
     if (!target) return;
     const small = window.matchMedia('(max-width: 760px), (max-height: 800px)');
     let frame = 0;
+    type PanIntent = {
+      kind: 'touch' | 'pen';
+      id: number;
+      x: number;
+      y: number;
+      scrollStart: number;
+      vertical: boolean;
+      ended: boolean;
+    };
+    let pan: PanIntent | null = null;
+    let panIdle = 0;
+    let penContact: number | null = null;
+    const clearPan = () => {
+      pan = null;
+      window.clearTimeout(panIdle);
+      panIdle = 0;
+    };
+    clearPanIntent.current = clearPan;
+    const awaitPanEnd = () => {
+      const current = pan;
+      window.clearTimeout(panIdle);
+      if (current?.ended)
+        panIdle = window.setTimeout(() => {
+          if (pan === current) {
+            consumePanTravel();
+            clearPan();
+            schedule();
+          }
+        }, 200);
+    };
+    const consumePanTravel = () => {
+      if (pan?.vertical && Math.abs(window.scrollY - pan.scrollStart) >= 80) {
+        manualSelection.current = false;
+        clearPan();
+      }
+    };
     const update = () => {
       frame = 0;
+      consumePanTravel();
       if (small.matches) return;
       if (
         target.contains(document.activeElement) &&
@@ -48,7 +87,7 @@ export function AgentStory({ copy: c, onOpen }: { copy: EditorialCopy; onOpen: (
       )
         return;
       // Native focus/scroll anchoring must not discard a candidate selection.
-      // Explicit wheel/page/scrollbar intent hands control back to the story.
+      // Explicit wheel, page or native pan intent hands control back to the story.
       if (manualSelection.current) return;
       const rect = target.getBoundingClientRect();
       const position = Math.max(
@@ -66,15 +105,20 @@ export function AgentStory({ copy: c, onOpen }: { copy: EditorialCopy; onOpen: (
         select(next, false);
     };
     const schedule = () => {
+      if (pan?.ended) awaitPanEnd();
       if (!frame) frame = requestAnimationFrame(update);
     };
     const wheel = (event: WheelEvent) => {
+      clearPan();
+      penContact = null;
       if (!manualSelection.current) return;
       const scale = event.deltaMode === 1 ? 16 : event.deltaMode === 2 ? window.innerHeight : 1;
       manualTravel.current += Math.abs(event.deltaY) * scale;
       if (manualTravel.current >= 80) manualSelection.current = false;
     };
     const pageKey = (event: KeyboardEvent) => {
+      clearPan();
+      penContact = null;
       if (
         event.target instanceof Element &&
         event.target.closest('a,button,input,select,textarea,[contenteditable="true"]')
@@ -84,23 +128,145 @@ export function AgentStory({ copy: c, onOpen }: { copy: EditorialCopy; onOpen: (
         manualSelection.current = false;
     };
     const outsidePointer = (event: PointerEvent) => {
-      if (!(event.target instanceof Node) || !target.contains(event.target))
-        manualSelection.current = false;
+      clearPan();
+      const inside = event.target instanceof Node && target.contains(event.target);
+      penContact = inside && event.pointerType === 'pen' ? event.pointerId : null;
+      if (!inside) manualSelection.current = false;
+      else if (manualSelection.current && event.pointerType === 'pen' && event.isPrimary)
+        pan = {
+          kind: 'pen',
+          id: event.pointerId,
+          x: event.clientX,
+          y: event.clientY,
+          scrollStart: window.scrollY,
+          vertical: false,
+          ended: false,
+        };
+    };
+    const movePan = (x: number, y: number) => {
+      if (!pan) return;
+      const dx = Math.abs(x - pan.x);
+      const dy = Math.abs(y - pan.y);
+      if (dy >= 8 && dy > dx) pan.vertical = true;
+      schedule();
+    };
+    const touchStart = (event: TouchEvent) => {
+      clearPan();
+      if (
+        !manualSelection.current ||
+        event.touches.length !== 1 ||
+        !(event.target instanceof Node) ||
+        !target.contains(event.target)
+      )
+        return;
+      const touch = event.touches[0]!;
+      pan = {
+        kind: 'touch',
+        id: touch.identifier,
+        x: touch.clientX,
+        y: touch.clientY,
+        scrollStart: window.scrollY,
+        vertical: false,
+        ended: false,
+      };
+    };
+    const touchMove = (event: TouchEvent) => {
+      if (event.touches.length !== 1) {
+        clearPan();
+        return;
+      }
+      if (pan?.kind !== 'touch') return;
+      const touch = event.touches[0]!;
+      if (touch.identifier === pan.id) movePan(touch.clientX, touch.clientY);
+    };
+    const endPan = () => {
+      if (!pan?.vertical) {
+        clearPan();
+        return;
+      }
+      pan.ended = true;
+      schedule();
+    };
+    const penMove = (event: PointerEvent) => {
+      if (pan?.kind === 'pen' && pan.id === event.pointerId) movePan(event.clientX, event.clientY);
+    };
+    const penEnd = (event: PointerEvent) => {
+      if (event.pointerType !== 'pen' || penContact !== event.pointerId) return;
+      penContact = null;
+      if (event.type === 'pointercancel' && manualSelection.current) {
+        // The browser may take over a pen pan before delivering its first move.
+        // Only subsequent actual page travel can release the selected stage.
+        clearPan();
+        pan = {
+          kind: 'pen',
+          id: event.pointerId,
+          x: event.clientX,
+          y: event.clientY,
+          scrollStart: window.scrollY,
+          vertical: true,
+          ended: true,
+        };
+        schedule();
+      } else endPan();
+    };
+    const scrollEnd = () => {
+      if (pan?.ended) {
+        consumePanTravel();
+        clearPan();
+        schedule();
+      }
+    };
+    const resize = () => {
+      clearPan();
+      penContact = null;
+      schedule();
+    };
+    const cancelPan = () => {
+      clearPan();
+      penContact = null;
+    };
+    const visibility = () => {
+      if (document.hidden) cancelPan();
+    };
+    const touchEnd = (event: TouchEvent) => {
+      if (event.touches.length === 0 && pan?.kind === 'touch') endPan();
     };
     window.addEventListener('scroll', schedule, { passive: true });
-    window.addEventListener('resize', schedule, { passive: true });
+    window.addEventListener('scrollend', scrollEnd, { passive: true });
+    window.addEventListener('resize', resize, { passive: true });
     window.addEventListener('wheel', wheel, { passive: true });
     window.addEventListener('keydown', pageKey);
     window.addEventListener('pointerdown', outsidePointer, { passive: true });
+    window.addEventListener('pointermove', penMove, { passive: true });
+    window.addEventListener('pointerup', penEnd, { passive: true });
+    window.addEventListener('pointercancel', penEnd, { passive: true });
+    window.addEventListener('touchstart', touchStart, { passive: true });
+    window.addEventListener('touchmove', touchMove, { passive: true });
+    window.addEventListener('touchend', touchEnd, { passive: true });
+    window.addEventListener('touchcancel', cancelPan, { passive: true });
+    window.addEventListener('blur', cancelPan);
+    document.addEventListener('visibilitychange', visibility);
     update();
     return () => {
       cancelAnimationFrame(frame);
+      cancelPan();
+      clearPanIntent.current = null;
       if (hover.current) clearTimeout(hover.current);
       window.removeEventListener('scroll', schedule);
-      window.removeEventListener('resize', schedule);
+      window.removeEventListener('scrollend', scrollEnd);
+      window.removeEventListener('resize', resize);
       window.removeEventListener('wheel', wheel);
       window.removeEventListener('keydown', pageKey);
       window.removeEventListener('pointerdown', outsidePointer);
+      window.removeEventListener('pointermove', penMove);
+      window.removeEventListener('pointerup', penEnd);
+      window.removeEventListener('pointercancel', penEnd);
+      window.removeEventListener('touchstart', touchStart);
+      window.removeEventListener('touchmove', touchMove);
+      window.removeEventListener('touchend', touchEnd);
+      window.removeEventListener('touchcancel', cancelPan);
+      window.removeEventListener('blur', cancelPan);
+      document.removeEventListener('visibilitychange', visibility);
     };
   }, []);
   const ActiveIcon = stepIcons[step]!;

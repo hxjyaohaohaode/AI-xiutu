@@ -568,14 +568,22 @@ export async function runAboutExperienceChecks({
   until,
   report,
 }) {
-  const evidence = { tour: null, motion: null, studies: [], responsive: [], faq: [], agent: null };
+  const evidence = {
+    tour: null,
+    motion: null,
+    studies: [],
+    responsive: [],
+    faq: [],
+    agent: null,
+    agentTouch: null,
+  };
   report.aboutExperience = evidence;
   const capture = async (page, name) => {
     await settleVisibleAbout(page, until);
     await captureRaw(page, name);
   };
-  const withPublicPage = async (name, viewport, run) => {
-    const { context, page } = await newContext(viewport, 'about');
+  const withPublicPage = async (name, viewport, run, options = {}) => {
+    const { context, page } = await newContext(viewport, 'about', options);
     const mutations = [];
     const observe = (request) => {
       const path = new URL(request.url()).pathname;
@@ -825,6 +833,142 @@ export async function runAboutExperienceChecks({
         };
         return evidence.agent;
       }),
+  );
+
+  await check(
+    'A tablet preserves tapped Agent steps and candidates, then resumes chapters after native touch scrolling',
+    async () =>
+      withPublicPage(
+        'agent-touch',
+        { width: 1024, height: 1366 },
+        async (page) => {
+          const visual = page.locator('.agent-visual');
+          const steps = page.locator('.agent-steps button');
+          await visual.scrollIntoViewIfNeeded();
+          await settleVisibleAbout(page, until);
+          const environment = await page.evaluate(() => ({
+            width: innerWidth,
+            height: innerHeight,
+            maxTouchPoints: navigator.maxTouchPoints,
+            scrollChapters: !matchMedia('(max-width: 760px), (max-height: 800px)').matches,
+          }));
+          assert.ok(environment.maxTouchPoints > 0 && environment.scrollChapters);
+          const tapped = [];
+          for (const stage of [1, 2]) {
+            await steps.nth(stage).tap();
+            await settleElementMotion(visual, until, `tapped Agent stage ${stage}`);
+            await settledDocumentScroll(page, until, `focus scrolling after Agent tap ${stage}`);
+            assert.equal(await visual.getAttribute('data-step'), String(stage));
+            assert.equal(await steps.nth(stage).getAttribute('aria-pressed'), 'true');
+            tapped.push(stage);
+          }
+          const candidate = page.locator('.agent-candidate > button').nth(1);
+          await candidate.tap();
+          await settleElementMotion(visual, until, 'the tapped Agent candidate');
+          await settledDocumentScroll(
+            page,
+            until,
+            'candidate tap retains its chapter after focus scrolling',
+          );
+          assert.equal(await candidate.getAttribute('aria-pressed'), 'true');
+          assert.equal(await visual.getAttribute('data-step'), '2');
+          assert.equal(await visual.getAttribute('data-candidate'), '1');
+          await capture(page, 'about-r3-agent-touch-selection');
+          assert.equal(await visual.getAttribute('data-step'), '2');
+
+          const gesture = await visual.evaluate((card) => {
+            const box = card.getBoundingClientRect();
+            // The card's left inset is background, outside candidate controls.
+            const start = {
+              x: box.left + Math.min(16, box.width * 0.04),
+              y: Math.min(innerHeight - 96, box.bottom - 96),
+            };
+            const end = { x: start.x, y: Math.max(96, start.y - 280) };
+            const hit = document.elementFromPoint(start.x, start.y);
+            return {
+              start,
+              end,
+              scrollBefore: scrollY,
+              insideCard: !!hit && card.contains(hit),
+              interactiveTarget: !!hit?.closest(
+                'button,a,input,select,textarea,[contenteditable="true"]',
+              ),
+            };
+          });
+          assert.ok(gesture.insideCard && !gesture.interactiveTarget);
+          assert.ok(gesture.start.y - gesture.end.y >= 160);
+          const cdp = await page.context().newCDPSession(page);
+          const touch = (type, point) =>
+            cdp.send('Input.dispatchTouchEvent', {
+              type,
+              touchPoints: point ? [{ ...point, id: 1 }] : [],
+            });
+          let touchActive = false;
+          try {
+            await touch('touchStart', gesture.start);
+            touchActive = true;
+            for (let index = 1; index <= 48; index += 1) {
+              await touch('touchMove', {
+                x: gesture.start.x,
+                y: gesture.start.y + ((gesture.end.y - gesture.start.y) * index) / 48,
+              });
+              await new Promise((done) => setTimeout(done, 8));
+            }
+            await touch('touchEnd');
+            touchActive = false;
+          } finally {
+            if (touchActive) await touch('touchCancel').catch(() => {});
+            await cdp.detach();
+          }
+          await until(
+            async () => (await page.evaluate(() => scrollY)) - gesture.scrollBefore >= 80,
+            'the native single-finger drag actually scrolls the document at least 80px',
+          );
+          await settledDocumentScroll(page, until, 'the native touch scroll and inertia settle');
+          const scroll = await page.locator('.agent-story').evaluate((story) => {
+            const box = story.getBoundingClientRect();
+            const position = Math.max(
+              0,
+              Math.min(3.999, ((80 - box.top) / Math.max(1, story.offsetHeight - innerHeight)) * 4),
+            );
+            return {
+              y: scrollY,
+              storyTop: box.top,
+              storyHeight: story.offsetHeight,
+              viewportHeight: innerHeight,
+              chapterPosition: position,
+              expectedStage: Math.floor(position),
+            };
+          });
+          assert.notEqual(
+            scroll.expectedStage,
+            2,
+            'the scroll position must differ from the manual chapter',
+          );
+          await until(
+            async () => (await visual.getAttribute('data-step')) === String(scroll.expectedStage),
+            'Agent returns to the chapter at the actual document scroll position',
+          );
+          assert.equal(await steps.nth(scroll.expectedStage).getAttribute('aria-pressed'), 'true');
+          assert.equal(await visual.getAttribute('data-candidate'), '1');
+          await capture(page, 'about-r3-agent-touch-scroll');
+          evidence.agentTouch = {
+            environment,
+            tappedStages: tapped,
+            candidate: 1,
+            manualStageRetained: 2,
+            nativeTouchEvents: 50,
+            gesture,
+            scrollDistance: scroll.y - gesture.scrollBefore,
+            scroll,
+            finalStage: Number(await visual.getAttribute('data-step')),
+            candidatePreservedAfterScroll: true,
+            apiMutations: 0,
+          };
+          return evidence.agentTouch;
+        },
+        { hasTouch: true },
+      ),
   );
 
   await check(

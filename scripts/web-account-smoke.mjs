@@ -130,10 +130,11 @@ async function check(name, run) {
     throw error;
   }
 }
-async function newContext(viewport = { width: 1440, height: 960 }, entry = 'studio') {
+async function newContext(viewport = { width: 1440, height: 960 }, entry = 'studio', options = {}) {
   assert.ok(entry === 'about' || entry === 'studio', 'Unknown public entry route');
   const context = await browser.newContext({
     viewport,
+    hasTouch: options.hasTouch ?? false,
     reducedMotion: motion,
     locale: 'zh-CN',
     serviceWorkers: 'block',
