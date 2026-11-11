@@ -93,7 +93,51 @@ try {
       const previous = await slider.inputValue();
       const frame = preview.locator('.media-precision-frame img');
       const before = await frame.getAttribute('src');
-      await slider.press('ArrowRight');
+      let liveNativeFrames;
+      if (size.width >= 1024) {
+        const nativeSize = await frame.evaluate((img) => [img.naturalWidth, img.naturalHeight]);
+        assert.ok(nativeSize.every((edge) => edge > 0));
+        await slider.scrollIntoViewIfNeeded();
+        const box = await slider.boundingBox();
+        assert.ok(box);
+        const [min, max] = await slider.evaluate((input) => [Number(input.min), Number(input.max)]);
+        const travel = box.width - 13;
+        const start = {
+          x: box.x + 6.5 + (travel * (Number(previous) - min)) / (max - min),
+          y: box.y + box.height * 0.5,
+        };
+        const distance = (travel * Math.min(1.25, max - Number(previous))) / (max - min);
+        const cdp = hasTouch ? await context.newCDPSession(page) : null;
+        const touch = (type, point) =>
+          cdp.send('Input.dispatchTouchEvent', {
+            type,
+            touchPoints: point ? [{ ...point, id: 1 }] : [],
+          });
+        const live = new Set();
+        if (cdp) await touch('touchStart', start);
+        else {
+          await page.mouse.move(start.x, start.y);
+          await page.mouse.down();
+        }
+        for (let step = 1; step <= 42; step++) {
+          const point = { x: start.x + (step / 42) * distance, y: start.y };
+          if (cdp) await touch('touchMove', point);
+          else await page.mouse.move(point.x, point.y);
+          await page.waitForTimeout(110);
+          const next = await frame.evaluate((img) => ({
+            url: img.getAttribute('src'),
+            size: [img.naturalWidth, img.naturalHeight],
+          }));
+          if (next.url !== before && next.size.every((edge) => edge > 0)) {
+            assert.deepEqual(next.size, nativeSize);
+            live.add(next.url);
+          }
+        }
+        if (cdp) await touch('touchEnd');
+        else await page.mouse.up();
+        assert.ok(live.size >= 2, 'A held drag displays successive native-size frames');
+        liveNativeFrames = { count: live.size, width: nativeSize[0], height: nativeSize[1] };
+      } else await slider.press('ArrowRight');
       const after = await slider.inputValue();
       assert.notEqual(previous, after);
       await page.waitForFunction(
@@ -149,6 +193,7 @@ try {
         ...size,
         asset: asset.name,
         nativeWindow: true,
+        liveNativeFrames,
         revision: revision.version,
         persistedExposure: Number(after),
         overflow,
