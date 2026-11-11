@@ -318,6 +318,11 @@ test(
       assert.equal(uploaded.statusCode, 201, uploaded.body);
       const original = uploaded.json().asset;
       const path = `/v1/assets/${original.id}/animation`;
+      const metadata = await f.call('GET', path, undefined, 'viewer');
+      assert.equal(metadata.statusCode, 200, metadata.body);
+      const { animation: retained } = metadata.json();
+      assert.deepEqual([retained.frames, retained.delay, retained.loop], [3, [70, 120, 190], 4]);
+      assert.equal((await f.call('GET', path, undefined, 'outsider')).statusCode, 404);
       assert.deepEqual((await f.call('GET', `${path}/file`)).rawPayload, gif);
       assert.equal((await f.call('GET', `${path}/file`, undefined, 'outsider')).statusCode, 404);
       await f.db.query(
