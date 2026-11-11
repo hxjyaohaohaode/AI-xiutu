@@ -52,7 +52,11 @@ function AuthStage({ children }: { children: ReactNode }) {
   const element = useRef<HTMLDivElement>(null);
   useEffect(() => {
     const frame = requestAnimationFrame(() => {
-      const target = element.current?.querySelector<HTMLElement>('[data-auth-initial]');
+      const stage = element.current;
+      // A user or autofill may already have reached the incoming form before
+      // its scheduled focus. Never move focus out of the field they now own.
+      if (!stage || stage.contains(document.activeElement)) return;
+      const target = stage.querySelector<HTMLElement>('[data-auth-initial]');
       if (target?.isConnected && !target.closest('[inert]')) target.focus({ preventScroll: true });
     });
     return () => cancelAnimationFrame(frame);
@@ -170,7 +174,10 @@ export function AuthPanel({
         [field]: validateAuthField(field, next, mode, inviteRequired),
       }));
   }
-  function blurField(field: AuthField) {
+  function blurField(field: AuthField, nextFocus: EventTarget | null) {
+    // A validation row can move the action between pointer down and click.
+    // Buttons validate the fields they need, and navigation can leave the form directly.
+    if (nextFocus === null || (nextFocus instanceof Element && nextFocus.closest('button'))) return;
     touched.current.add(field);
     setErrors((previous) => ({
       ...previous,
@@ -398,7 +405,7 @@ export function AuthPanel({
         inputMode="tel"
         value={fields.phone}
         onChange={(event) => updateField('phone', event.target.value)}
-        onBlur={() => blurField('phone')}
+        onBlur={(event) => blurField('phone', event.relatedTarget)}
         placeholder="手机号或国际区号 + 号码"
         minLength={8}
         maxLength={24}
@@ -430,7 +437,7 @@ export function AuthPanel({
           pattern="[0-9]{6}"
           value={fields.code}
           onChange={(event) => updateField('code', event.target.value)}
-          onBlur={() => blurField('code')}
+          onBlur={(event) => blurField('code', event.relatedTarget)}
           placeholder="6 位验证码"
           minLength={6}
           maxLength={6}
@@ -463,7 +470,7 @@ export function AuthPanel({
           autoComplete={mode === 'password' ? 'current-password' : 'new-password'}
           value={fields.password}
           onChange={(event) => updateField('password', event.target.value)}
-          onBlur={() => blurField('password')}
+          onBlur={(event) => blurField('password', event.relatedTarget)}
           placeholder={mode === 'password' ? '请输入密码' : '至少 10 位字符'}
           minLength={mode === 'password' ? 1 : 10}
           maxLength={128}
@@ -674,7 +681,7 @@ export function AuthPanel({
                           autoComplete="nickname"
                           value={fields.displayName}
                           onChange={(event) => updateField('displayName', event.target.value)}
-                          onBlur={() => blurField('displayName')}
+                          onBlur={(event) => blurField('displayName', event.relatedTarget)}
                           placeholder="你的昵称"
                           maxLength={120}
                           required
@@ -696,7 +703,7 @@ export function AuthPanel({
                           name="inviteCode"
                           value={fields.inviteCode}
                           onChange={(event) => updateField('inviteCode', event.target.value)}
-                          onBlur={() => blurField('inviteCode')}
+                          onBlur={(event) => blurField('inviteCode', event.relatedTarget)}
                           placeholder={
                             inviteRequired ? '填写收到的注册邀请码' : '如果你收到过邀请码'
                           }

@@ -1,6 +1,7 @@
 /** Real public photographs, actual inference and independent known degradations. No paid calls. */
 import { readFile, writeFile, mkdir } from 'node:fs/promises';
 import { createHash } from 'node:crypto';
+import { execFileSync } from 'node:child_process';
 import { resolve, join } from 'node:path';
 import assert from 'node:assert/strict';
 import sharp from 'sharp';
@@ -11,6 +12,7 @@ import {
   renderEditorRecipe,
   renderEditorRecipeTiled,
   renderCutout,
+  compileSelectionMaskV3,
   renderPhotoRestoration,
   motionKernel,
   srgbToLinear,
@@ -31,7 +33,12 @@ const sources = [
   ...JSON.parse(await readFile('scripts/qa/restoration-inputs.json', 'utf8')).inputs,
 ];
 const sha = (b) => createHash('sha256').update(b).digest('hex');
+const models = JSON.parse(await readFile('apps/web/public/vision/manifest.json', 'utf8'));
+for (const model of models.assets)
+  assert.equal(sha(await readFile(join('apps/web/public/vision', model.file))), model.sha256);
 const report = {
+  commit: execFileSync('git', ['rev-parse', 'HEAD'], { encoding: 'utf8' }).trim(),
+  models,
   source:
     'Pinned public photographs; actual local MediaPipe inference; deterministic degradation ground truth',
   paidCalls: 0,
@@ -81,6 +88,33 @@ const mse = (a, b) => {
   for (let i = 0; i < a.data.length; i++) if (i % 4 !== 3) sum += (a.data[i] - b.data[i]) ** 2;
   return sum / (a.width * a.height * 3);
 };
+function checkPortraitSupport(image, edited, recipe) {
+  const mask = [...recipe.regionEdits, ...recipe.retouch]
+    .filter((op) => op.enabled && op.opacity > 0)
+    .map((op) => ({
+      selected: compileSelectionMaskV3(op.mask, image, image),
+      protect: op.protection ? compileSelectionMaskV3(op.protection, image, image) : null,
+    }));
+  let changed = 0;
+  for (let at = 0; at < image.data.length; at += 4) {
+    assert.equal(edited.data[at + 3], image.data[at + 3], 'portrait alpha');
+    if (
+      edited.data[at] === image.data[at] &&
+      edited.data[at + 1] === image.data[at + 1] &&
+      edited.data[at + 2] === image.data[at + 2]
+    )
+      continue;
+    const pixel = at / 4,
+      x = ((pixel % image.width) + 0.5) / image.width,
+      y = (Math.floor(pixel / image.width) + 0.5) / image.height;
+    assert.ok(
+      mask.some(({ selected, protect }) => selected(x, y) > 0 && (protect?.(x, y) ?? 0) < 1),
+      `changed outside portrait mask: ${pixel}`,
+    );
+    changed++;
+  }
+  return changed;
+}
 async function getBytes(source) {
   const path = join('artifacts/browser-v4-source-cache', `${source.sha256}.jpg`);
   let bytes;
@@ -199,6 +233,7 @@ try {
       for (const tool of [
         'smooth',
         'texture',
+        'wrinkles',
         'even',
         'skinShine',
         'skinBlemish',
@@ -230,6 +265,7 @@ try {
             ms: performance.now() - start,
             hash: sha(edited.data),
             mseChange: mse(image, edited),
+            changedPixels: checkPortraitSupport(image, edited, recipe),
           });
           if (target === analysis.targets.find((t) => t.kind === 'face') && value === 50)
             beautyTiles.push({ label: `${tool} 50`, image: edited });
@@ -324,13 +360,19 @@ try {
       chromaNoise: 0,
       motion: { length: 5, angle: 13, iterations: 6, strength: 0.8 },
     });
+    const beforeMotion = mse(image, blurred),
+      afterMotion = mse(image, deblurred);
+    assert.ok(
+      afterMotion < beforeMotion,
+      `${source.name}: known motion ${beforeMotion} -> ${afterMotion}`,
+    );
     report.cases.push({
       photo: source.name,
       tool: 'photo-restore-v1-motion',
-      state: 'measured',
+      state: 'passed',
       ms: performance.now() - start,
-      beforeMse: mse(image, blurred),
-      afterMse: mse(image, deblurred),
+      beforeMse: beforeMotion,
+      afterMse: afterMotion,
       truth: 'original real photo before known linear-light directional PSF',
     });
     await sheet(`${source.name}-restoration`, [

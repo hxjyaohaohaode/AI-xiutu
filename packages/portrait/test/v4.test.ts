@@ -4,6 +4,7 @@ import { createHash } from 'node:crypto';
 import {
   createRecipeV4,
   createRecipeV3,
+  createAdjustmentRegionV3,
   createHealingOperationV4,
   migrateRecipeToV4,
   renderEditorRecipe,
@@ -26,6 +27,37 @@ const source = (): RGBAImage => ({
   data: Uint8ClampedArray.from({ length: 40 * 50 * 4 }, (_, i) =>
     i % 4 === 3 ? 255 : (i * 11 + 73) % 256,
   ),
+});
+
+test('new V4 skin signal edits omit duplicate neutral color masks and use guided-v4 after color-only edits', () => {
+  const a = analysis(),
+    id = a.targets[0]!.id,
+    pixels = source();
+  const values = { smooth: 50, texture: -15, wrinkles: 25, even: 37 };
+  const edited = applyPortraitValues(createRecipeV4(), a, id, values);
+  assert.equal(edited.regionEdits.length, 0);
+  assert.equal(edited.retouch.length, 1);
+  assert.equal(edited.retouch[0]!.algorithm, 'guided-v4');
+  assert.deepEqual(portraitValues(edited, id), values);
+  const previousShape = createRecipeV4({
+    ...edited,
+    regionEdits: [
+      createAdjustmentRegionV3({ id: 'old-neutral-skin', mask: edited.retouch[0]!.mask }),
+    ],
+  });
+  assert.deepEqual(renderEditorRecipe(pixels, edited), renderEditorRecipe(pixels, previousShape));
+  const color = applyPortraitValues(createRecipeV4(), a, id, { skinLight: 40 });
+  assert.equal(color.regionEdits.length, 1);
+  assert.equal(color.retouch.length, 0);
+  const combined = applyPortraitValues(color, a, id, {
+    ...values,
+    skinLight: 40,
+    skinColorSpot: 65,
+  });
+  assert.equal(combined.regionEdits.length, 1);
+  assert.equal(combined.retouch.length, 1);
+  assert.equal(combined.retouch[0]!.algorithm, 'guided-v4');
+  assert.equal(combined.retouch[0]!.chromaSpots, 65);
 });
 
 test('V4 portrait edits retain homography/healing, use distinct versioned retouch primitives, and detach freezes everything', () => {

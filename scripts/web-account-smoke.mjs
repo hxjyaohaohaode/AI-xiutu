@@ -155,7 +155,7 @@ async function newContext(viewport = { width: 1440, height: 960 }) {
   });
   currentPage = page;
   await page.goto(origin);
-  await page.getByRole('button', { name: '登录创作空间', exact: true }).waitFor();
+  await page.getByRole('button', { name: '打开空间与项目', exact: true }).waitFor();
   return { context, page };
 }
 async function capture(page, name) {
@@ -195,9 +195,23 @@ function authControl(page, name) {
   // active replacement so a fill cannot target the previous screen's fields.
   return page.locator('[data-testid="auth-stage"]:not([inert])').getByTestId(`auth-${name}`);
 }
+function workspaceLogin(page) {
+  return page
+    .locator('button.studio-account')
+    .and(page.getByRole('button', { name: '登录创作空间', exact: true }));
+}
+async function openNavigation(page) {
+  const sidebar = page.getByRole('complementary', { name: '空间与项目', exact: true });
+  if (!(await sidebar.isVisible()))
+    await page.getByRole('button', { name: '打开空间与项目', exact: true }).click();
+  await sidebar.waitFor();
+  return sidebar;
+}
 async function openAuth(page) {
   currentPage = page;
-  await page.getByRole('button', { name: '登录创作空间', exact: true }).click();
+  const topbar = workspaceLogin(page);
+  if (await topbar.isVisible()) await topbar.click();
+  else await (await openNavigation(page)).locator('button.account-login').click();
   const dialog = page.getByRole('dialog', { name: '登录工作空间', exact: true });
   await dialog.waitFor();
   await authControl(page, 'phone').waitFor();
@@ -224,14 +238,31 @@ async function expectSignedIn(page, name = primaryName, registered = false) {
 async function openAccount(page, name = primaryName) {
   currentPage = page;
   const dialog = page.getByRole('dialog', { name: '账号与使用', exact: true });
-  if (!(await dialog.isVisible()))
-    await page.getByRole('button', { name: `账户：${name}`, exact: true }).click();
+  if (!(await dialog.isVisible())) {
+    const topbar = page.getByRole('button', { name: `账户：${name}`, exact: true });
+    if (await topbar.isVisible()) await topbar.click();
+    else
+      await (
+        await openNavigation(page)
+      )
+        .getByRole('button', { name: `账号与使用：${name}`, exact: true })
+        .click();
+  }
   await page.getByTestId('account-center').waitFor();
   return dialog;
 }
 async function closeDialog(dialog) {
-  await dialog.getByRole('button', { name: '关闭窗口', exact: true }).click();
-  await dialog.waitFor({ state: 'hidden' });
+  const nativeDialog = await dialog.elementHandle();
+  assert.ok(nativeDialog, 'The visible modal must own a native dialog');
+  try {
+    await dialog.getByRole('button', { name: '关闭窗口', exact: true }).click();
+    // aria-hidden changes on exit, before the native modal releases the editor.
+    await dialog
+      .page()
+      .waitForFunction((element) => !element.isConnected || !element.open, nativeDialog);
+  } finally {
+    await nativeDialog.dispose();
+  }
 }
 async function logout(page, name = primaryName) {
   const account = await openAccount(page, name);
@@ -244,7 +275,7 @@ async function logout(page, name = primaryName) {
   await confirmation.getByRole('button', { name: '退出登录', exact: true }).click();
   assert.equal((await response).status(), 200);
   await account.waitFor({ state: 'hidden' });
-  await page.getByRole('button', { name: '登录创作空间', exact: true }).waitFor();
+  await workspaceLogin(page).waitFor();
   assert.equal((await session(page.context())).user, null);
 }
 async function codeFor(phone, purpose) {
@@ -455,7 +486,10 @@ try {
     server: { host: '127.0.0.1', port, strictPort: true },
   });
   await vite.listen();
-  browser = await chromium.launch({ headless: true });
+  browser = await chromium.launch({
+    headless: true,
+    channel: process.env.BROWSER_CHANNEL || undefined,
+  });
   report.browser = browser.version();
   main = await newContext();
   let primaryUserId, originalCookie, peerCookie, documentActor;
@@ -932,7 +966,7 @@ try {
       assert.equal((await next).status(), 200);
       await expectSignedIn(page);
       await peer.page.reload();
-      await peer.page.getByRole('button', { name: '登录创作空间', exact: true }).waitFor();
+      await workspaceLogin(peer.page).waitFor();
       return {
         resetStatus: 200,
         revokedSessions: 2,
@@ -1088,7 +1122,7 @@ try {
       // Drive the same focus observer used when a user returns to an expired
       // tab; its GET/session and actor transition remain actual application code.
       await page.evaluate(() => window.dispatchEvent(new Event('focus')));
-      await page.getByRole('button', { name: '登录创作空间', exact: true }).waitFor();
+      await workspaceLogin(page).waitFor();
       await page.locator('.documents-view').waitFor({ state: 'hidden' });
       const hasUnloadProtection = () =>
         page.evaluate(() => {
@@ -1190,6 +1224,10 @@ try {
       // which the subsequent real logout is separately authorized to clear.
       await page.getByRole('textbox', { name: '文档标题', exact: true }).fill(draftTitle);
       await page.getByRole('textbox', { name: '文档内容', exact: true }).fill(draftBody);
+      assert.equal(
+        await page.getByRole('textbox', { name: '文档内容', exact: true }).inputValue(),
+        draftBody,
+      );
       await until(hasUnloadProtection, 'new document edit is independently protected');
       await logout(page, name);
       await until(
@@ -1344,7 +1382,8 @@ try {
             await capture(page, `auth-${mode}-${width}x${height}-${theme}`);
           }
           const field = (name) => authControl(page, name);
-          const button = (name) => page.getByRole('button', { name, exact: true });
+          const button = (name) =>
+            page.locator('.auth-dialog').getByRole('button', { name, exact: true });
           await record('password', '登录工作空间', [
             ['phone', field('phone')],
             ['password', field('password')],
@@ -1377,6 +1416,7 @@ try {
             ['register', button('创建账号')],
             ['back to log in', button('返回登录')],
           ]);
+          await field('code').focus();
           await button('返回登录').click();
           await button('忘记密码？').click();
           await record('reset', '重置密码', [

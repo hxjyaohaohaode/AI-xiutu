@@ -442,14 +442,25 @@ export function applyPortraitValues<T extends LayeredRecipe>(
       skin.detail.texture = 0;
       skin.detail.clarity = 0;
       skin.optics.denoiseChroma = 0;
-      if (['smooth', 'texture', 'wrinkles', 'even', ...skinSpotTools].some((key) => value(key) !== 0)) {
-        const previous = recipe.retouch.find((item) => item.id === prefix + 'skin-retouch' && belongsTo(item, targetId));
+      if (
+        ['smooth', 'texture', 'wrinkles', 'even', ...skinSpotTools].some((key) => value(key) !== 0)
+      ) {
+        const previous = recipe.retouch.find(
+          (item) => item.id === prefix + 'skin-retouch' && belongsTo(item, targetId),
+        );
         const useSpotControls = skinSpotTools.some((key) => value(key) !== 0);
-        const algorithm =
-          previous?.algorithm ??
-          (ownedPrimitives(recipe, targetId).length === 0 ? 'guided-v4' : undefined);
-        const radius = Math.max(0.000001, Math.min(0.1,
-          Math.min(target.bounds.width * dims.width, target.bounds.height * dims.height) * 0.025 / short));
+        // A pre-existing color/shape adjustment does not make a newly created
+        // skin operator legacy. Preserve only an actual saved operator's math.
+        const algorithm = previous ? previous.algorithm : 'guided-v4';
+        const radius = Math.max(
+          0.000001,
+          Math.min(
+            0.1,
+            (Math.min(target.bounds.width * dims.width, target.bounds.height * dims.height) *
+              0.025) /
+              short,
+          ),
+        );
         const spot = {
           shine: values.skinShine ?? 0,
           speckle: values.skinBlemish ?? 0,
@@ -473,17 +484,27 @@ export function applyPortraitValues<T extends LayeredRecipe>(
           }),
         );
         if (algorithm !== 'guided-v4' && useSpotControls) {
-          retouches.push(createRetouchRegionV4({ id: prefix + 'skin-spots', name: `${target.label} · 局部色斑与反光`,
-            origin: provenance('skin-spots', 0), algorithm: 'guided-v4', mask: masks.skin, radius, ...spot }));
+          retouches.push(
+            createRetouchRegionV4({
+              id: prefix + 'skin-spots',
+              name: `${target.label} · 局部色斑与反光`,
+              origin: provenance('skin-spots', 0),
+              algorithm: 'guided-v4',
+              mask: masks.skin,
+              radius,
+              ...spot,
+            }),
+          );
         }
       }
     }
-    if (
-      ['smooth', 'skinLight', 'skinWarmth', 'complexion', 'texture', 'wrinkles', 'even'].some(
-        (k) => value(k) !== 0,
-      )
-    )
-      region('skin', '皮肤', masks.skin, skin);
+    // V4 signal operations already own these selections. Do not also add a
+    // neutral color node with a second copy of the same semantic mask.
+    const skinColorControls =
+      recipe.schemaVersion === 4
+        ? ['skinLight', 'skinWarmth', 'complexion']
+        : ['smooth', 'skinLight', 'skinWarmth', 'complexion', 'texture', 'wrinkles', 'even'];
+    if (skinColorControls.some((k) => value(k) !== 0)) region('skin', '皮肤', masks.skin, skin);
     const le = center(target.contours.leftEye!),
       re = center(target.contours.rightEye!),
       lips = center(target.contours.lips!);
