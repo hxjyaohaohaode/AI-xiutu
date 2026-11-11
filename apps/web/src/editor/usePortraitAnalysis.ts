@@ -146,6 +146,7 @@ export function usePortraitAnalysis(
         setAnalysis(result);
         setTarget(result.targets[0]?.id ?? null);
         if (!result.targets.length) setError('未找到可信的人像目标；可使用手动局部、绘制或液化。');
+        return result;
       } catch (failure) {
         if (request.current === id && sourceRef.current === sourceAtStart)
           setError(portraitAnalysisErrorMessage(failure));

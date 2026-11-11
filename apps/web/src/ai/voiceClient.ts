@@ -1,19 +1,24 @@
 import type { VoiceClientEvent, VoiceServerEvent, AssistantContext } from '@ai-xiutu/contracts';
+import {
+  AI_VOICE_BUFFER_SECONDS,
+  audiblePlayback,
+  voicePlaybackTime,
+  type PlaybackSpan,
+} from './voice-playback';
 
 export class EditorVoiceClient {
   private socket: WebSocket | null = null;
   private audio: AudioContext | null = null;
   private capture: AudioWorkletNode | null = null;
   private stream: MediaStream | null = null;
-  private playback = new Set<AudioBufferSourceNode>();
+  private playback = new Map<AudioBufferSourceNode, PlaybackSpan>();
+  private completed = new Map<string, number>();
   private nextAudioTime = 0;
-  private currentItemId = '';
-  private itemStartTime = 0;
   private heartbeat: ReturnType<typeof setInterval> | undefined;
   private disconnectTimer: ReturnType<typeof setTimeout> | undefined;
   private ready = false;
   private outputPaused = false;
-  private blockedItem = '';
+  private blockedItems = new Set<string>();
   private ending = false;
   private disposed = false;
   constructor(
@@ -73,22 +78,15 @@ export class EditorVoiceClient {
         if (
           event.type === 'audio' &&
           !this.outputPaused &&
-          (!event.itemId || event.itemId !== this.blockedItem)
+          (!event.itemId || !this.blockedItems.has(event.itemId))
         )
           this.enqueueAudio(event.pcm, event.itemId);
         if (event.type === 'interrupted') {
-          if (
-            event.bySpeech &&
+          const heard =
             this.audio &&
-            this.nextAudioTime > this.audio.currentTime &&
-            this.currentItemId
-          )
-            this.send({
-              type: 'playback-cut',
-              itemId: this.currentItemId,
-              playedMs: this.playedMs(),
-            });
-          this.blockedItem = this.currentItemId;
+            audiblePlayback(this.audio.currentTime, this.playback.values(), this.completed);
+          if (event.bySpeech && heard) this.send({ type: 'playback-cut', ...heard });
+          this.blockPendingAudio();
           this.clearPlayback();
         }
         if (event.type === 'closed') {
@@ -118,9 +116,19 @@ export class EditorVoiceClient {
     const binary = atob(base64);
     if (!binary.length || binary.length % 2 || binary.length > 225000)
       throw new Error('Invalid audio');
-    if (this.nextAudioTime - this.audio.currentTime > 3) {
-      this.onFailure('播放队列延迟过大，已停止通话以免继续计费。');
-      this.end();
+    const start = voicePlaybackTime(
+      this.audio.currentTime,
+      this.nextAudioTime,
+      binary.length / 48_000,
+      AI_VOICE_BUFFER_SECONDS,
+    );
+    if (start === null) {
+      this.interrupt();
+      this.onEvent({
+        type: 'error',
+        code: 'VOICE_OUTPUT_BUFFER',
+        message: '这段播报过长，已停止播放。可以继续通话或让助手简短回答。',
+      });
       return;
     }
     const bytes = Uint8Array.from(binary, (character) => character.charCodeAt(0));
@@ -131,18 +139,17 @@ export class EditorVoiceClient {
     const source = this.audio.createBufferSource();
     source.buffer = buffer;
     source.connect(this.audio.destination);
-    const start = Math.max(this.audio.currentTime + 0.025, this.nextAudioTime);
-    if (itemId && itemId !== this.currentItemId) {
-      this.currentItemId = itemId;
-      this.itemStartTime = start;
-    }
     this.nextAudioTime = start + buffer.duration;
-    this.playback.add(source);
-    source.onended = () => this.playback.delete(source);
+    this.playback.set(source, { itemId, start, duration: buffer.duration });
+    source.onended = () => {
+      if (!this.playback.delete(source) || !itemId) return;
+      this.completed.set(itemId, (this.completed.get(itemId) ?? 0) + buffer.duration);
+      if (this.completed.size > 32) this.completed.delete(this.completed.keys().next().value!);
+    };
     source.start(start);
   }
   private clearPlayback() {
-    for (const source of this.playback) {
+    for (const source of this.playback.keys()) {
       try {
         source.stop();
       } catch {
@@ -152,9 +159,17 @@ export class EditorVoiceClient {
     this.playback.clear();
     this.nextAudioTime = 0;
   }
+  private blockPendingAudio() {
+    for (const { itemId } of this.playback.values()) {
+      if (itemId) this.blockedItems.add(itemId);
+    }
+    while (this.blockedItems.size > 32)
+      this.blockedItems.delete(this.blockedItems.values().next().value!);
+  }
   send(event: VoiceClientEvent) {
     if (!this.socket || this.socket.readyState !== WebSocket.OPEN || this.disposed) return;
-    if (this.socket.bufferedAmount > 256_000) {
+    if (event.type === 'audio' && this.socket.bufferedAmount > 160_000) return;
+    if (this.socket.bufferedAmount > 2_000_000) {
       this.onFailure('上行网络拥塞，通话已停止。');
       this.dispose();
       return;
@@ -172,17 +187,14 @@ export class EditorVoiceClient {
     });
     this.send({ type: 'mute', muted });
   }
-  private playedMs() {
-    return this.audio
-      ? Math.max(0, Math.floor((this.audio.currentTime - this.itemStartTime) * 1000))
-      : 0;
-  }
   interrupt() {
     this.outputPaused = true;
-    this.blockedItem = this.currentItemId;
+    this.blockPendingAudio();
+    const heard =
+      this.audio && audiblePlayback(this.audio.currentTime, this.playback.values(), this.completed);
     this.send({
       type: 'interrupt',
-      ...(this.currentItemId ? { itemId: this.currentItemId, playedMs: this.playedMs() } : {}),
+      ...heard,
     });
     this.clearPlayback();
   }

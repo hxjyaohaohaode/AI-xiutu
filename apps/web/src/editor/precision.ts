@@ -59,6 +59,60 @@ export function cropFromPixels(
   return { x: left, y: top, width: right - left, height: bottom - top };
 }
 
+/** Resize against the opposite edge/corner. A locked edge grows around its orthogonal center. */
+export function moveCropHandle(
+  dimensions: Dimensions,
+  rect: { x: number; y: number; width: number; height: number },
+  handle: string,
+  delta: Point,
+  ratio: number | null,
+): CropRect {
+  if (handle === 'move')
+    return cropFromPixels(dimensions, {
+      ...rect,
+      x: clamp(rect.x + delta.x, 0, dimensions.width - rect.width),
+      y: clamp(rect.y + delta.y, 0, dimensions.height - rect.height),
+    });
+  const horizontal = handle.includes('w') ? -1 : handle.includes('e') ? 1 : 0;
+  const vertical = handle.includes('n') ? -1 : handle.includes('s') ? 1 : 0;
+  const ax = rect.x + ((1 - horizontal) / 2) * rect.width;
+  const ay = rect.y + ((1 - vertical) / 2) * rect.height;
+  const width = Math.max(1, rect.width + delta.x * horizontal);
+  const height = Math.max(1, rect.height + delta.y * vertical);
+  const maxWidth =
+    horizontal < 0
+      ? ax
+      : horizontal > 0
+        ? dimensions.width - ax
+        : 2 * Math.min(ax, dimensions.width - ax);
+  const maxHeight =
+    vertical < 0
+      ? ay
+      : vertical > 0
+        ? dimensions.height - ay
+        : 2 * Math.min(ay, dimensions.height - ay);
+  let w = Math.min(maxWidth, width),
+    h = Math.min(maxHeight, height);
+  if (ratio && Number.isFinite(ratio) && ratio > 0) {
+    const projected =
+      horizontal && vertical
+        ? (width + height / ratio) / (1 + 1 / (ratio * ratio))
+        : horizontal
+          ? width
+          : height * ratio;
+    w = Math.min(maxWidth, maxHeight * ratio, Math.max(1, ratio, projected));
+    h = w / ratio;
+  }
+  const roundedWidth = Math.max(1, Math.round(w)),
+    roundedHeight = Math.max(1, Math.round(h));
+  return cropFromPixels(dimensions, {
+    x: ax - ((1 - horizontal) / 2) * roundedWidth,
+    y: ay - ((1 - vertical) / 2) * roundedHeight,
+    width: roundedWidth,
+    height: roundedHeight,
+  });
+}
+
 export function numericRecipeValue(recipe: RecipeV2, tool: V2ToolDefinition): number {
   let current: unknown = recipe;
   for (const part of tool.path.split('.')) current = (current as Record<string, unknown>)[part];

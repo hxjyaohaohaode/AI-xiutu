@@ -18,9 +18,13 @@ export {
   MAX_TILED_DIMENSION,
   MAX_TILED_PIXELS,
   getOutputDimensions,
+  fitOrientedCrop,
+  orientGeometry,
+  pixelCrop,
   mapSourceToOutput,
   mapOutputToSource,
 } from './geometry.js';
+export type { OrientationAction } from './geometry.js';
 export {
   renderRecipe,
   computeHistogram,
@@ -35,6 +39,7 @@ export {
   isIdentityCurve,
   withCurve,
   smoothCurveSegments,
+  translateCurvePoints,
   compileCurveFunction,
 } from './curves.js';
 export { radialMaskWeight } from './mask.js';

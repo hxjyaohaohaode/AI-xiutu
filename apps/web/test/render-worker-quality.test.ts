@@ -66,6 +66,7 @@ test('warp-detail worker preserves its independent raster, cached pixels and aux
       async () => {
         await send({ type: 'interactive-source', image: source, sourceDimensions: source });
         const color = createRecipeV4();
+        color.adjustments.contrast = 15;
         let coarse: any;
         for (let i = 0; i < 3; i++) {
           color.adjustments.exposure = i * 0.1;

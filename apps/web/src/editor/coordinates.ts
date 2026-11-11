@@ -1,17 +1,20 @@
 import { compileEditorCoordinateMap, type EditorRecipe, type Point } from '@ai-xiutu/editor';
 
 /** Off-frame handles are valid; a projective horizon has no finite UI location. */
-export function projectOverlayPoint(point: Point, project: (point: Point) => Point): Point | null {
+export function projectOverlayPoint(
+  point: Point,
+  project: (point: Point) => Point | null,
+): Point | null {
   try {
     const value = project(point);
-    return Number.isFinite(value.x) && Number.isFinite(value.y) ? value : null;
+    return value && Number.isFinite(value.x) && Number.isFinite(value.y) ? value : null;
   } catch {
     return null;
   }
 }
 export function projectOverlayPath(
   points: Point[],
-  project: (point: Point) => Point,
+  project: (point: Point) => Point | null,
 ): Point[] | null {
   const mapped = points.map((point) => projectOverlayPoint(point, project));
   return mapped.every((point): point is Point => point !== null) ? mapped : null;

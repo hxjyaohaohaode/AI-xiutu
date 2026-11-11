@@ -21,6 +21,7 @@ import {
   type RecipeV4,
   compileEditorCoordinateMap,
   parseEditorRecipe,
+  pixelCrop,
   parseSelectionMaskV3,
   radialMaskFrameV3,
   type PaintStrokeV3,
@@ -42,6 +43,7 @@ import {
 import { Busy, IconButton, InlineError } from '../components/Ui';
 import { editorGeometryKey, type EditorState } from './useEditor';
 import { sourcePointer, projectOverlayPoint, projectOverlayPath } from './coordinates';
+import { appendRepairRegion } from './repair-draft';
 import { CanvasPointerOwnership, ownedCanvasRollback } from './canvas-gesture';
 import {
   appendFreehandPoints,
@@ -54,7 +56,7 @@ import type { ToolGroup } from './ToolInspector';
 import {
   brushPointAtSource,
   clamp,
-  cropFromPixels,
+  moveCropHandle,
   replaceSelectionMask,
   replaceMaskAtPath,
   maskAtPath,
@@ -118,6 +120,7 @@ function MaskPreview({
   ratio,
   opacity,
   automatic,
+  contentSpace,
 }: {
   mask: SelectionMaskV3;
   dimensions: Dimensions;
@@ -126,13 +129,14 @@ function MaskPreview({
   ratio: number;
   opacity: number;
   automatic: boolean;
+  contentSpace: boolean;
 }) {
   const ref = useRef<HTMLCanvasElement>(null);
   const worker = useRef<Worker | null>(null),
     sequence = useRef(0),
     busy = useRef(false);
   const pending = useRef<Record<string, unknown> | null>(null);
-  const key = JSON.stringify({ mask, dimensions, recipe, ratio, opacity });
+  const key = JSON.stringify({ mask, dimensions, recipe, ratio, opacity, contentSpace });
   function pump() {
     if (!busy.current && pending.current && worker.current) {
       busy.current = true;
@@ -195,6 +199,7 @@ function MaskPreview({
       recipe,
       ratio,
       opacity,
+      contentSpace,
     };
     pump();
   }, [key, source]);
@@ -208,7 +213,7 @@ function MaskPreview({
   );
 }
 function editPointerBounds(kind: string) {
-  if (kind === 'paint' || kind === 'brush') return 'strict';
+  if (kind === 'paint' || kind === 'brush' || kind === 'warp') return 'strict';
   if (
     kind.startsWith('image-') ||
     kind.endsWith('-rotation') ||
@@ -241,6 +246,7 @@ type EditGesture = {
   paintLayerId?: string;
   warp?: WarpStrokeV3;
   imageLayer?: ImageLayerV3;
+  newRepair?: { mode: 'healing' | 'retouch'; id: string };
   projective?: {
     index: number;
     rect: { left: number; top: number; width: number; height: number };
@@ -323,33 +329,26 @@ export function CanvasStage({
   const pointerPositions = useRef(new Map<number, Point>());
   const pinch = useRef<{ distance: number; camera: typeof camera; center: Point } | null>(null);
   const wheelAction = useRef<(event: WheelEvent) => void>(() => {});
+  const brushFootprint = useRef<SVGPathElement>(null);
   const recipe = editor.recipe,
     source = editor.originalPreview,
     dimensions = editor.dimensions;
   const cropEditing = group === 'crop' && editor.geometryMode === 'crop';
   const projectiveEditing =
     group === 'crop' && editor.geometryMode === 'projective' && recipe.schemaVersion === 4;
-  const sourceSelectionFrame =
-    (recipe.schemaVersion === 3 || recipe.schemaVersion === 4) &&
-    (group === 'local' ||
-      group === 'composite' ||
-      group === 'repair' ||
-      (group === 'liquify' && editor.warpSettings.protecting)) &&
-    recipe.warp.enabled &&
-    recipe.warp.strokes.length > 0;
+  const contentSpace =
+    group === 'repair' || group === 'local' || group === 'composite' || group === 'paint';
   const previews = useStagePreviews(
     source,
     recipe,
     cropEditing,
     editor.layerImages,
-    sourceSelectionFrame,
     collaboration?.remotePreview ?? null,
     editor.liveFrame !== null,
   );
   const liveFrame =
     !comparing &&
     !cropEditing &&
-    !sourceSelectionFrame &&
     !previews.remote &&
     (group !== 'liquify' || editor.liveFrame?.quality === 'warp')
       ? editor.liveFrame
@@ -358,30 +357,16 @@ export function CanvasStage({
     ? previews.compare
     : cropEditing
       ? (previews.crop ?? null)
-      : sourceSelectionFrame
-        ? previews.selection
-        : (previews.remote ?? liveFrame?.image ?? editor.rendered);
+      : (previews.remote ?? liveFrame?.image ?? editor.rendered);
   const viewGeometry: Geometry =
     cropEditing && !comparing ? { ...recipe.geometry, crop: null } : recipe.geometry;
-  const localViewRecipe: EditorRecipe =
-    recipe.schemaVersion === 3 || recipe.schemaVersion === 4
-      ? {
-          ...recipe,
-          geometry: viewGeometry,
-          warp: sourceSelectionFrame ? { ...recipe.warp, enabled: false } : recipe.warp,
-        }
-      : { ...recipe, geometry: viewGeometry };
+  const localViewRecipe: EditorRecipe = { ...recipe, geometry: viewGeometry };
   const viewRecipe =
-    previews.remote &&
-    collaboration?.remotePreview &&
-    !cropEditing &&
-    !comparing &&
-    !sourceSelectionFrame
+    previews.remote && collaboration?.remotePreview && !cropEditing && !comparing
       ? collaboration.remotePreview
       : localViewRecipe;
   const liveGeometry = liveFrame ? editorGeometryKey(liveFrame.recipe) : null;
-  const layoutRecipe =
-    !comparing && (cropEditing || sourceSelectionFrame) ? viewRecipe : liveFrame?.recipe;
+  const layoutRecipe = !comparing && cropEditing ? viewRecipe : liveFrame?.recipe;
   const layoutGeometry = layoutRecipe ? editorGeometryKey(layoutRecipe) : null;
   const referenceSize = useMemo(() => {
     if (!source || !layoutRecipe) return null;
@@ -420,6 +405,12 @@ export function CanvasStage({
     group === 'repair' && recipe.schemaVersion === 4
       ? recipe[editor.repairMode].find((item) => item.id === editor.activeRepairId)
       : null;
+  const startRepair =
+    group === 'repair' &&
+    recipe.schemaVersion === 4 &&
+    !repair &&
+    !editor.repairProtection &&
+    !editor.repairChoosingSource;
   const fullMask = repair
     ? editor.repairProtection
       ? (repair.protection ?? { type: 'brush' as const, strokes: [], invert: false })
@@ -433,10 +424,7 @@ export function CanvasStage({
   const geometryReady =
     Boolean(coordinateMap) &&
     (!previews.remote || editorGeometryKey(viewRecipe) === editorGeometryKey(recipe)) &&
-    (cropEditing ||
-      (sourceSelectionFrame
-        ? !!previews.selection
-        : (liveGeometry ?? editor.renderedGeometryKey) === editorGeometryKey(recipe)));
+    (cropEditing || (liveGeometry ?? editor.renderedGeometryKey) === editorGeometryKey(recipe));
   const editingSelection =
     (group === 'local' ||
       (group === 'repair' && !!repair && !editor.repairChoosingSource) ||
@@ -448,6 +436,19 @@ export function CanvasStage({
     !sampling &&
     !space &&
     !handMode;
+  const defaultRepairBrush = dimensions
+    ? Math.min(0.012, 12 / Math.min(dimensions.width, dimensions.height))
+    : 0;
+  const footprintRadius =
+    group === 'liquify' && !protecting
+      ? editor.warpSettings.radius
+      : group === 'paint'
+        ? editor.paintSettings.radius
+        : startRepair || (editingSelection && mask.type === 'brush')
+          ? startRepair
+            ? defaultRepairBrush
+            : editor.brushSettings.radius
+          : 0;
   const selectionContext = [
     group,
     editor.getSourceIdentity(),
@@ -699,7 +700,7 @@ export function CanvasStage({
   function toSource(
     clientX: number,
     clientY: number,
-    content = false,
+    content = contentSpace,
     bounds: 'strict' | 'clamp' | 'unbounded' = 'clamp',
   ): Point | null {
     if (!frame.current || !coordinateMap) return null;
@@ -711,15 +712,59 @@ export function CanvasStage({
       bounds,
     );
   }
-  function toDisplay(point: Point): Point {
-    return coordinateMap ? coordinateMap.toOutput(point) : point;
+  function toDisplay(point: Point): Point | null {
+    if (!coordinateMap) return point;
+    return contentSpace ? coordinateMap.toContentOutput(point) : coordinateMap.toOutput(point);
+  }
+  function updateBrushFootprint(event: PointerEvent<HTMLDivElement>) {
+    const outline = brushFootprint.current;
+    if (!outline || !dimensions) return;
+    const point =
+      geometryReady &&
+      !space &&
+      !handMode &&
+      !comparing &&
+      !sampling &&
+      (event.pointerType !== 'touch' || (event.buttons & 1) !== 0)
+        ? toSource(event.clientX, event.clientY, contentSpace, 'strict')
+        : null;
+    if (!point) {
+      outline.removeAttribute('d');
+      return;
+    }
+    const center = brushPointAtSource(point, dimensions, footprintRadius);
+    const radius = footprintRadius * Math.min(dimensions.width, dimensions.height);
+    const points = projectOverlayPath(
+      Array.from({ length: 24 }, (_, i) => {
+        const angle = (i / 24) * Math.PI * 2;
+        return {
+          x: center.x + (Math.cos(angle) * radius) / dimensions.width,
+          y: center.y + (Math.sin(angle) * radius) / dimensions.height,
+        };
+      }),
+      toDisplay,
+    );
+    if (points)
+      outline.setAttribute('d', `M${points.map((p) => `${p.x * 100} ${p.y * 100}`).join('L')}Z`);
+    else outline.removeAttribute('d');
   }
   function overlayPolygon(points: Point[]): string | undefined {
     return projectOverlayPath(points, toDisplay)
       ?.map((p) => `${p.x * 100},${p.y * 100}`)
       .join(' ');
   }
-  function replaceMask(value: EditorRecipe, next: SelectionMaskV3) {
+  function replaceMask(
+    value: EditorRecipe,
+    next: SelectionMaskV3,
+    newRepair?: EditGesture['newRepair'],
+  ) {
+    if (newRepair && value.schemaVersion === 4)
+      return {
+        ...value,
+        [newRepair.mode]: value[newRepair.mode].map((item) =>
+          item.id === newRepair.id ? { ...item, mask: next } : item,
+        ),
+      };
     if (group === 'repair' && value.schemaVersion === 4 && repair) {
       const key = editor.repairProtection ? 'protection' : 'mask';
       return {
@@ -744,6 +789,30 @@ export function CanvasStage({
     return (
       state.identity === editor.getSourceIdentity() && state.lastPreview === editor.getRecipe()
     );
+  }
+  function nextCrop(base: EditorRecipe, handle: string, delta: Point, keepRatio: boolean) {
+    const original = pixelCrop(dimensions!, base.geometry);
+    const orientedRatio = editor.cropRatio;
+    const ratio = orientedRatio
+      ? base.geometry.rotation % 180 === 0
+        ? orientedRatio
+        : 1 / orientedRatio
+      : keepRatio
+        ? original.width / original.height
+        : null;
+    return {
+      ...base,
+      geometry: {
+        ...base.geometry,
+        crop: moveCropHandle(
+          dimensions!,
+          { ...original, x: original.left, y: original.top },
+          handle,
+          delta,
+          ratio,
+        ),
+      },
+    };
   }
   function previewEdit(state: EditGesture, next: EditorRecipe) {
     try {
@@ -778,7 +847,7 @@ export function CanvasStage({
           preProjectiveDimensions(dimensions, recipe as RecipeV4),
           recipe as RecipeV4,
         )
-      : toSource(event.clientX, event.clientY, kind === 'paint', editPointerBounds(kind));
+      : toSource(event.clientX, event.clientY, contentSpace, editPointerBounds(kind));
     if (!rawPoint) {
       setNotice('这里没有可编辑的源像素，请在图片内容上落笔。');
       return;
@@ -786,6 +855,7 @@ export function CanvasStage({
     let newId: string | undefined;
     if (
       kind === 'warp' ||
+      (kind === 'brush' && startRepair) ||
       (kind === 'paint' &&
         (recipe.schemaVersion === 3 || recipe.schemaVersion === 4) &&
         !recipe.paintLayers.some((layer) => layer.id === editor.activePaintLayerId))
@@ -801,12 +871,16 @@ export function CanvasStage({
     event.stopPropagation();
     suppressClick.current = true;
     frame.current.setPointerCapture(event.pointerId);
+    const brushSettings =
+      startRepair && kind === 'brush'
+        ? { radius: defaultRepairBrush, feather: 0.25, opacity: 1, mode: 'add' as const }
+        : editor.brushSettings;
     const point =
       kind === 'brush' || kind === 'paint'
         ? brushPointAtSource(
             rawPoint,
             dimensions,
-            kind === 'paint' ? editor.paintSettings.radius : editor.brushSettings.radius,
+            kind === 'paint' ? editor.paintSettings.radius : brushSettings.radius,
           )
         : rawPoint;
     const state: EditGesture = {
@@ -818,6 +892,12 @@ export function CanvasStage({
       start: point,
       identity: editor.getSourceIdentity(),
     };
+    if (kind === 'brush' && startRepair && recipe.schemaVersion === 4) {
+      state.newRepair = { mode: editor.repairMode, id: newId! };
+      state.base = appendRepairRegion(recipe, state.newRepair.mode, state.newRepair.id);
+      state.rollback = recipe;
+      state.mask = { type: 'brush', strokes: [], invert: false };
+    }
     if (isProjective && recipe.schemaVersion === 4) {
       const preDimensions = preProjectiveDimensions(dimensions, recipe);
       const projection = compileProjectiveTransformV4(preDimensions, recipe.projective);
@@ -901,15 +981,20 @@ export function CanvasStage({
     if (kind === 'warp' && (recipe.schemaVersion === 3 || recipe.schemaVersion === 4)) {
       state.warp = {
         id: newId!,
-        ...(recipe.schemaVersion === 4
-          ? { algorithm: 'flow-v2' as const, resampling: 'bounded-cubic-v1' as const }
-          : {}),
+        ...(editor.warpSettings.mode === 'restore'
+          ? { algorithm: 'restore-v1' as const, resampling: 'bounded-cubic-v1' as const }
+          : recipe.schemaVersion === 4
+            ? { algorithm: 'flow-v2' as const, resampling: 'bounded-cubic-v1' as const }
+            : {}),
         mode: editor.warpSettings.mode,
         from: point,
         to: point,
         radius: editor.warpSettings.radius,
         feather: editor.warpSettings.feather,
-        strength: editor.warpSettings.strength,
+        strength:
+          editor.warpSettings.mode === 'restore'
+            ? Math.max(0, editor.warpSettings.strength)
+            : editor.warpSettings.strength,
       };
       if (state.warp.mode !== 'push')
         previewEdit(state, {
@@ -917,8 +1002,9 @@ export function CanvasStage({
           warp: { ...recipe.warp, enabled: true, strokes: [...recipe.warp.strokes, state.warp] },
         });
     }
-    if (kind === 'brush' && mask.type === 'brush') {
-      const localPoints = mask.strokes.reduce((n, stroke) => n + stroke.points.length, 0);
+    const brush = state.mask;
+    if (kind === 'brush' && brush?.type === 'brush') {
+      const localPoints = brush.strokes.reduce((n, stroke) => n + stroke.points.length, 0);
       const allPoints =
         recipe.schemaVersion === 2
           ? recipe.regions.reduce(
@@ -931,7 +1017,7 @@ export function CanvasStage({
             )
           : 0;
       if (
-        mask.strokes.length >= MAX_BRUSH_STROKES ||
+        brush.strokes.length >= MAX_BRUSH_STROKES ||
         localPoints >= MAX_BRUSH_POINTS_PER_MASK ||
         allPoints >= MAX_TOTAL_BRUSH_POINTS
       ) {
@@ -940,13 +1026,17 @@ export function CanvasStage({
       }
       state.points = [point];
       state.path = startFreehandPath(event.nativeEvent, false);
-      state.stroke = { ...editor.brushSettings, points: state.points };
+      state.stroke = { ...brushSettings, points: state.points };
       previewEdit(
         state,
-        replaceMask(recipe, {
-          ...mask,
-          strokes: [...mask.strokes, state.stroke],
-        }),
+        replaceMask(
+          state.base,
+          {
+            ...brush,
+            strokes: [...brush.strokes, state.stroke],
+          },
+          state.newRepair,
+        ),
       );
     }
     editGesture.current = state;
@@ -1010,7 +1100,7 @@ export function CanvasStage({
         state.points,
         pointerPathSamples(event.nativeEvent),
         (sample) => {
-          const point = toSource(sample.clientX, sample.clientY, painting, 'strict');
+          const point = toSource(sample.clientX, sample.clientY, contentSpace, 'strict');
           return point ? brushPointAtSource(point, dimensions, stroke.radius) : null;
         },
         dimensions,
@@ -1069,16 +1159,20 @@ export function CanvasStage({
       } else if (originalMask?.type === 'brush' && state.stroke) {
         previewEdit(
           state,
-          replaceMask(state.base, {
-            ...originalMask,
-            strokes: [
-              ...originalMask.strokes,
-              ...[0, ...(state.path?.breaks ?? [])].map((start, index) => ({
-                ...state.stroke!,
-                points: sampled.points.slice(start, state.path?.breaks[index]),
-              })),
-            ],
-          }),
+          replaceMask(
+            state.base,
+            {
+              ...originalMask,
+              strokes: [
+                ...originalMask.strokes,
+                ...[0, ...(state.path?.breaks ?? [])].map((start, index) => ({
+                  ...state.stroke!,
+                  points: sampled.points.slice(start, state.path?.breaks[index]),
+                })),
+              ],
+            },
+            state.newRepair,
+          ),
         );
       }
       return;
@@ -1112,7 +1206,7 @@ export function CanvasStage({
     const rawPoint = toSource(
       event.clientX,
       event.clientY,
-      state.kind === 'paint',
+      contentSpace,
       editPointerBounds(state.kind),
     );
     if (!rawPoint) return;
@@ -1182,36 +1276,18 @@ export function CanvasStage({
       return;
     }
     if (state.kind.startsWith('crop-')) {
-      const old = state.base.geometry.crop ?? { x: 0, y: 0, width: 1, height: 1 };
-      let x = old.x * dimensions.width,
-        y = old.y * dimensions.height,
-        right = (old.x + old.width) * dimensions.width,
-        bottom = (old.y + old.height) * dimensions.height;
-      const deltaX = (point.x - state.start.x) * dimensions.width,
-        deltaY = (point.y - state.start.y) * dimensions.height;
-      const handle = state.kind.slice(5);
-      if (handle === 'move') {
-        const w = right - x,
-          h = bottom - y;
-        x = clamp(x + deltaX, 0, dimensions.width - w);
-        y = clamp(y + deltaY, 0, dimensions.height - h);
-        right = x + w;
-        bottom = y + h;
-      } else {
-        if (handle.includes('w')) x = clamp(point.x * dimensions.width, 0, right - 1);
-        if (handle.includes('e'))
-          right = clamp(point.x * dimensions.width, x + 1, dimensions.width);
-        if (handle.includes('n')) y = clamp(point.y * dimensions.height, 0, bottom - 1);
-        if (handle.includes('s'))
-          bottom = clamp(point.y * dimensions.height, y + 1, dimensions.height);
-      }
-      previewEdit(state, {
-        ...state.base,
-        geometry: {
-          ...state.base.geometry,
-          crop: cropFromPixels(dimensions, { x, y, width: right - x, height: bottom - y }),
-        },
-      });
+      previewEdit(
+        state,
+        nextCrop(
+          state.base,
+          state.kind.slice(5),
+          {
+            x: (point.x - state.start.x) * dimensions.width,
+            y: (point.y - state.start.y) * dimensions.height,
+          },
+          event.shiftKey,
+        ),
+      );
       return;
     }
     const original = state.mask;
@@ -1291,14 +1367,15 @@ export function CanvasStage({
   function endEdit(event: PointerEvent<HTMLDivElement>, cancel = false) {
     const state = editGesture.current;
     if (!state || state.pointer !== event.pointerId) return;
-    if (!cancel && (state.kind === 'paint' || state.kind === 'brush')) moveEdit(event, true);
+    if (!cancel && (state.kind === 'paint' || state.kind === 'brush' || state.kind === 'warp'))
+      moveEdit(event, true);
     editGesture.current = null;
     setSelectionManipulating(false);
     setProjectiveFrame(null);
     if (ownsEdit(state)) {
       if (cancel)
         editor.preview(state.rollback ?? state.base, state.kind === 'warp' ? 'warp' : 'fast');
-      else
+      else {
         editor.commitCurrent(
           state.kind.startsWith('projective-')
             ? '四角自由变换'
@@ -1309,11 +1386,24 @@ export function CanvasStage({
                 : state.kind === 'paint'
                   ? '手动绘制'
                   : state.kind === 'warp'
-                    ? '手动液化'
+                    ? state.warp?.mode === 'restore'
+                      ? '局部恢复液化'
+                      : '手动液化'
                     : state.kind === 'brush'
                       ? '绘制局部笔触'
                       : '直接调整选区',
         );
+        if (state.newRepair && state.stroke && state.lastPreview !== state.rollback) {
+          editor.setActiveRepairId(state.newRepair.id);
+          editor.setActiveMaskPath([]);
+          editor.setBrushSettings({
+            radius: state.stroke.radius,
+            feather: state.stroke.feather,
+            mode: state.stroke.mode,
+            opacity: state.stroke.opacity,
+          });
+        }
+      }
     }
     if (event.currentTarget.hasPointerCapture(event.pointerId))
       event.currentTarget.releasePointerCapture(event.pointerId);
@@ -1413,13 +1503,46 @@ export function CanvasStage({
         onPointerDown={(event) => beginEdit(event, kind)}
         onKeyDown={(event) => {
           if (
-            !editingSelection ||
+            (!editingSelection && !kind.startsWith('crop-')) ||
             !dimensions ||
             editGesture.current ||
             !['ArrowLeft', 'ArrowRight', 'ArrowUp', 'ArrowDown'].includes(event.key)
           )
             return;
           const amount = event.altKey ? 0.1 : event.shiftKey ? 10 : 1;
+          if (kind.startsWith('crop-') && coordinateMap) {
+            const step = event.shiftKey ? 10 : 1;
+            const target = {
+              x:
+                p.x +
+                (event.key === 'ArrowLeft' ? -step : event.key === 'ArrowRight' ? step : 0) /
+                  coordinateMap.dimensions.width,
+              y:
+                p.y +
+                (event.key === 'ArrowUp' ? -step : event.key === 'ArrowDown' ? step : 0) /
+                  coordinateMap.dimensions.height,
+            };
+            event.preventDefault();
+            event.stopPropagation();
+            try {
+              const targetSource = coordinateMap.toSource(target);
+              editor.commit(
+                nextCrop(
+                  editor.getRecipe(),
+                  kind.slice(5),
+                  {
+                    x: (targetSource.x - point.x) * dimensions.width,
+                    y: (targetSource.y - point.y) * dimensions.height,
+                  },
+                  false,
+                ),
+                t('微调裁切'),
+              );
+            } catch (failure) {
+              setNotice(failure instanceof Error ? failure.message : t('已保留当前裁切'));
+            }
+            return;
+          }
           const dx =
             (event.key === 'ArrowRight' ? amount : event.key === 'ArrowLeft' ? -amount : 0) /
             dimensions.width;
@@ -1502,6 +1625,37 @@ export function CanvasStage({
     event.stopPropagation();
   };
   const crop = recipe.geometry.crop ?? { x: 0, y: 0, width: 1, height: 1 };
+  const guide = editor.cropGuide;
+  const guidePositions =
+    guide === 'thirds'
+      ? [1 / 3, 2 / 3]
+      : guide === 'golden'
+        ? [(3 - Math.sqrt(5)) / 2, (Math.sqrt(5) - 1) / 2]
+        : guide === 'center'
+          ? [0.5]
+          : [];
+  const guides =
+    guide === 'diagonal'
+      ? [
+          [
+            { x: crop.x, y: crop.y },
+            { x: crop.x + crop.width, y: crop.y + crop.height },
+          ],
+          [
+            { x: crop.x + crop.width, y: crop.y },
+            { x: crop.x, y: crop.y + crop.height },
+          ],
+        ]
+      : guidePositions.flatMap((n) => [
+          [
+            { x: crop.x + crop.width * n, y: crop.y },
+            { x: crop.x + crop.width * n, y: crop.y + crop.height },
+          ],
+          [
+            { x: crop.x, y: crop.y + crop.height * n },
+            { x: crop.x + crop.width, y: crop.y + crop.height * n },
+          ],
+        ]);
   const corners = projectOverlayPath(
     [
       { x: crop.x, y: crop.y },
@@ -1620,11 +1774,6 @@ export function CanvasStage({
       {statusContainer &&
         createPortal(
           <div className="canvas-error">
-            {sourceSelectionFrame && (
-              <span className="source-frame-note">
-                {t('正在液化前的源坐标编辑 · 返回其他工具查看最终效果')}
-              </span>
-            )}
             <InlineError message={editor.error ?? previews.error ?? notice} />
           </div>,
           statusContainer,
@@ -1807,6 +1956,7 @@ export function CanvasStage({
               transform: `translate(${pan.x + projectiveOffset.x}px,${pan.y + projectiveOffset.y}px) scale(${zoom})`,
             }}
             onPointerDown={(event) => {
+              updateBrushFootprint(event);
               if (
                 group === 'repair' &&
                 recipe.schemaVersion === 4 &&
@@ -1814,7 +1964,9 @@ export function CanvasStage({
                 editor.repairMode === 'healing' &&
                 repair
               ) {
-                const point = toSource(event.clientX, event.clientY, false, 'strict');
+                const point = geometryReady
+                  ? toSource(event.clientX, event.clientY, true, 'strict')
+                  : null;
                 if (point) {
                   editor.commit(
                     {
@@ -1840,10 +1992,18 @@ export function CanvasStage({
                 (recipe.schemaVersion === 3 || recipe.schemaVersion === 4)
               )
                 beginEdit(event, 'warp');
-              else if (editingSelection && mask.type === 'brush') beginEdit(event, 'brush');
+              else if (startRepair || (editingSelection && mask.type === 'brush'))
+                beginEdit(event, 'brush');
             }}
-            onPointerMove={moveEdit}
-            onPointerUp={(event) => endEdit(event)}
+            onPointerMove={(event) => {
+              updateBrushFootprint(event);
+              moveEdit(event);
+            }}
+            onPointerLeave={() => brushFootprint.current?.removeAttribute('d')}
+            onPointerUp={(event) => {
+              updateBrushFootprint(event);
+              endEdit(event);
+            }}
             onPointerCancel={(event) => endEdit(event, true)}
             onLostPointerCapture={(event) => endEdit(event, true)}
             onDoubleClick={addPolygonPoint}
@@ -1876,11 +2036,22 @@ export function CanvasStage({
               <CollaborationOverlay
                 snapshot={collaboration.snapshot}
                 sessionId={collaboration.session?.id ?? null}
-                toDisplay={toDisplay}
+                toDisplay={(point) => coordinateMap?.toOutput(point) ?? point}
+                toContentDisplay={coordinateMap?.toContentOutput}
                 zoom={zoom}
               />
             )}
 
+            {footprintRadius > 0 && (
+              <svg
+                className="brush-footprint"
+                viewBox="0 0 100 100"
+                preserveAspectRatio="none"
+                aria-hidden="true"
+              >
+                <path ref={brushFootprint} vectorEffect="non-scaling-stroke" />
+              </svg>
+            )}
             {editingSelection &&
               (editor.maskOverlay ||
                 selectionHeld ||
@@ -1895,6 +2066,7 @@ export function CanvasStage({
                   recipe={viewRecipe}
                   ratio={display.width / display.height}
                   opacity={region?.opacity ?? 1}
+                  contentSpace={contentSpace}
                   automatic={!editor.maskOverlay && !selectionHeld && !selectionManipulating}
                 />
               )}
@@ -2114,36 +2286,27 @@ export function CanvasStage({
                     points={corners.map((p) => `${p.x * 100},${p.y * 100}`).join(' ')}
                     fill="none"
                     stroke="white"
-                    strokeWidth={0.25 / zoom}
+                    strokeWidth="1.2"
+                    vectorEffect="non-scaling-stroke"
                   />
-                  {[1, 2]
-                    .flatMap((n) => [
-                      [
-                        { x: crop.x + (crop.width * n) / 3, y: crop.y },
-                        { x: crop.x + (crop.width * n) / 3, y: crop.y + crop.height },
-                      ],
-                      [
-                        { x: crop.x, y: crop.y + (crop.height * n) / 3 },
-                        { x: crop.x + crop.width, y: crop.y + (crop.height * n) / 3 },
-                      ],
-                    ])
-                    .map(([a, b], i) => {
-                      const p = projectOverlayPoint(a!, toDisplay),
-                        q = projectOverlayPoint(b!, toDisplay);
-                      if (!p || !q) return null;
-                      return (
-                        <line
-                          key={i}
-                          x1={p.x * 100}
-                          y1={p.y * 100}
-                          x2={q.x * 100}
-                          y2={q.y * 100}
-                          stroke="white"
-                          opacity=".5"
-                          strokeWidth={0.1 / zoom}
-                        />
-                      );
-                    })}
+                  {guides.map(([a, b], i) => {
+                    const p = projectOverlayPoint(a!, toDisplay),
+                      q = projectOverlayPoint(b!, toDisplay);
+                    if (!p || !q) return null;
+                    return (
+                      <line
+                        key={i}
+                        x1={p.x * 100}
+                        y1={p.y * 100}
+                        x2={q.x * 100}
+                        y2={q.y * 100}
+                        stroke="white"
+                        opacity=".65"
+                        strokeWidth="1"
+                        vectorEffect="non-scaling-stroke"
+                      />
+                    );
+                  })}
                 </svg>
                 {(
                   [

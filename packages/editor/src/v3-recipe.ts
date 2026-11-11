@@ -658,9 +658,14 @@ export function parseRecipeV3(input: unknown): RecipeV3 {
         ),
         id = identifier(r.id, `${p}.id`, errors);
       unique(id, warpIds, p);
-      if (!['push', 'pinch', 'bulge', 'twirl'].includes(String(r.mode)))
+      if (!['push', 'pinch', 'bulge', 'twirl', 'restore'].includes(String(r.mode)))
         errors.push(`${p}.mode: unsupported warp`);
-      if (Object.hasOwn(r, 'algorithm') && r.algorithm !== 'flow-v1' && r.algorithm !== 'flow-v2')
+      const restoring = r.mode === 'restore';
+      if (
+        restoring
+          ? r.algorithm !== 'restore-v1'
+          : Object.hasOwn(r, 'algorithm') && r.algorithm !== 'flow-v1' && r.algorithm !== 'flow-v2'
+      )
         errors.push(`${p}.algorithm: unsupported warp algorithm`);
       if (Object.hasOwn(r, 'resampling') && r.resampling !== 'bounded-cubic-v1')
         errors.push(`${p}.resampling: unsupported warp resampling`);
@@ -670,17 +675,17 @@ export function parseRecipeV3(input: unknown): RecipeV3 {
       if (guardId && !guardIds.has(guardId)) errors.push(`${p}.guardId: unknown warp guard`);
       return {
         id,
-        ...(r.algorithm === 'flow-v1' || r.algorithm === 'flow-v2'
+        ...(r.algorithm === 'flow-v1' || r.algorithm === 'flow-v2' || r.algorithm === 'restore-v1'
           ? { algorithm: r.algorithm }
           : {}),
         ...(Object.hasOwn(r, 'resampling') ? { resampling: 'bounded-cubic-v1' as const } : {}),
         ...(guardId ? { guardId } : {}),
-        mode: r.mode as 'push',
+        mode: r.mode as WarpStrokeV3['mode'],
         from: point(r.from, `${p}.from`, errors),
         to: point(r.to, `${p}.to`, errors),
         radius: number(r.radius, 0.000001, 1, `${p}.radius`, errors),
         feather: number(r.feather, 0, 1, `${p}.feather`, errors),
-        strength: number(r.strength, -1, 1, `${p}.strength`, errors),
+        strength: number(r.strength, restoring ? 0 : -1, 1, `${p}.strength`, errors),
         ...originField(r, p, errors),
       };
     },
@@ -688,7 +693,15 @@ export function parseRecipeV3(input: unknown): RecipeV3 {
   // Extra compact strokes support multiple faces within the old maximum aggregate brush support.
   if (
     warpStrokes.length > 64 &&
-    warpStrokes.reduce((work, stroke) => work + stroke.radius ** 2, 0) > 64
+    warpStrokes.reduce(
+      (work, stroke) =>
+        work +
+        stroke.radius ** 2 +
+        (stroke.mode === 'restore'
+          ? 2 * stroke.radius * Math.hypot(stroke.to.x - stroke.from.x, stroke.to.y - stroke.from.y)
+          : 0),
+      0,
+    ) > 64
   )
     errors.push('warp.strokes: combined brush support exceeds the rendering budget');
   const result: RecipeV3 = {

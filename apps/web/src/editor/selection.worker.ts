@@ -17,6 +17,7 @@ self.onmessage = (
     recipe: EditorRecipe;
     ratio: number;
     opacity: number;
+    contentSpace: boolean;
   }>,
 ) => {
   const message = event.data;
@@ -26,7 +27,7 @@ self.onmessage = (
   }
   try {
     if (!source) throw new Error('Missing source');
-    const { mask, dimensions, recipe, ratio, opacity } = message;
+    const { mask, dimensions, recipe, ratio, opacity, contentSpace } = message;
     if (
       !Number.isFinite(ratio) ||
       ratio <= 0 ||
@@ -42,7 +43,9 @@ self.onmessage = (
     const pixels = new Uint8ClampedArray(width * height * 4);
     for (let y = 0; y < height; y++)
       for (let x = 0; x < width; x++) {
-        const p = coordinateMap.toContent({ x: (x + 0.5) / width, y: (y + 0.5) / height });
+        const output = { x: (x + 0.5) / width, y: (y + 0.5) / height };
+        if (!coordinateMap.containsOutput(output)) continue;
+        const p = contentSpace ? coordinateMap.toContent(output) : coordinateMap.toSource(output);
         const i = (y * width + x) * 4;
         pixels[i] = 89;
         pixels[i + 1] = 174;

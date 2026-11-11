@@ -11,6 +11,8 @@ import {
   Plus,
   Trash,
   UploadSimple,
+  ShieldCheckered,
+  Eraser,
 } from '@phosphor-icons/react';
 import {
   BLEND_MODES_V3,
@@ -30,6 +32,7 @@ import { IconButton } from '../components/Ui';
 import { ParameterShelf, type ShelfControl } from './ParameterShelf';
 import { MaskControls } from './MaskControls';
 import { currentV3, newMask, rgbaHex, hexRgba, type InspectorController } from './advanced-model';
+import { portraitSelectionMatchesSource } from './portrait-selection';
 
 const blendLabels: Record<BlendModeV3, string> = {
   normal: '正常混合',
@@ -550,10 +553,48 @@ export function PaintControls({
 }
 
 export function LiquifyControls({ controller }: { controller: InspectorController }) {
-  const { editor, apply } = controller,
+  const { editor, apply, report } = controller,
     recipe = currentV3(editor),
     settings = editor.warpSettings;
   const short = Math.min(editor.dimensions?.width ?? 1, editor.dimensions?.height ?? 1);
+  async function protectBackground() {
+    const before = editor.getSourceIdentity();
+    const frame = editor.getSourceFrame();
+    let analysis = editor.portrait.analysis;
+    if (!portraitSelectionMatchesSource(analysis, frame) || !analysis?.segmentation?.subject)
+      analysis = (await editor.portrait.analyze()) ?? null;
+    if (before !== editor.getSourceIdentity()) return;
+    const subject = analysis?.segmentation?.subject;
+    if (
+      !portraitSelectionMatchesSource(analysis, editor.getSourceFrame()) ||
+      !subject ||
+      !analysis?.targets.length
+    ) {
+      report(t('没有识别到可信的人像边界。可用画笔标记要保护的位置。'));
+      return;
+    }
+    const current = currentV3(editor);
+    const background = { ...subject, invert: !subject.invert };
+    const previous = current.warp.protection;
+    const key = JSON.stringify(background);
+    if (
+      previous &&
+      (JSON.stringify(previous) === key ||
+        (previous.type === 'compound' &&
+          previous.operation === 'union' &&
+          !previous.invert &&
+          previous.masks.some((item) => JSON.stringify(item) === key)))
+    )
+      return;
+    const protection: SelectionMaskV3 =
+      previous && !(previous.type === 'brush' && !previous.strokes.length && !previous.invert)
+        ? { type: 'compound', operation: 'union', masks: [previous, background], invert: false }
+        : background;
+    if (
+      apply({ ...current, warp: { ...current.warp, protection } }, t('保护识别到的人像背景'), true)
+    )
+      editor.setActiveMaskPath([]);
+  }
   return (
     <section className="advanced-tool-family" data-motion="warp-controls">
       <div className="tonal-tabs" aria-label={t('液化方式')}>
@@ -563,13 +604,22 @@ export function LiquifyControls({ controller }: { controller: InspectorControlle
             ['pinch', t('收缩')],
             ['bulge', t('膨胀')],
             ['twirl', t('旋转')],
+            ['restore', t('局部恢复')],
           ] as const
         ).map(([mode, label]) => (
           <button
             key={mode}
             aria-pressed={settings.mode === mode && !settings.protecting}
-            onClick={() => editor.setWarpSettings((s) => ({ ...s, mode, protecting: false }))}
+            onClick={() =>
+              editor.setWarpSettings((s) => ({
+                ...s,
+                mode,
+                protecting: false,
+                strength: mode === 'restore' && s.mode !== 'restore' ? 1 : s.strength,
+              }))
+            }
           >
+            {mode === 'restore' && <Eraser size={16} />}
             {label}
           </button>
         ))}
@@ -589,14 +639,13 @@ export function LiquifyControls({ controller }: { controller: InspectorControlle
           },
           {
             id: 'strength',
-            label: t('双向强度'),
+            label: settings.mode === 'restore' ? t('恢复强度') : t('双向强度'),
             value: settings.strength * 100,
-            min: -100,
+            min: settings.mode === 'restore' ? 0 : -100,
             max: 100,
             step: 0.1,
             neutral: 0,
             unit: '%',
-            description: t('负值反向，零不改变画面；笔画提交后可独立撤销。'),
             onChange: (n) => editor.setWarpSettings((s) => ({ ...s, strength: n / 100 })),
           },
           {
@@ -627,10 +676,15 @@ export function LiquifyControls({ controller }: { controller: InspectorControlle
       </label>
       <MotionDetails className="advanced-disclosure">
         <summary>{t('背景与局部保护')}</summary>
-        <p className="control-note">
-          {t('保护范围保持原来显示像素。可以用画笔涂入，也可以从现有局部复制；边缘羽化决定过渡。')}
-        </p>
         <div className="advanced-row">
+          <button
+            className="text-button"
+            disabled={!!editor.portrait.progress}
+            onClick={() => void protectBackground()}
+          >
+            <ShieldCheckered size={16} />
+            {editor.portrait.progress ? t('正在识别人像') : t('保护人像背景')}
+          </button>
           <button
             className="text-button"
             aria-pressed={settings.protecting}

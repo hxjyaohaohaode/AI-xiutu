@@ -200,8 +200,10 @@ export function createAssistantService(
   }
   async function currentContext(actorId: string, projectId: string, context?: AssistantContext) {
     const checked = await validateContext(db, actorId, projectId, context);
-    if (checked?.imageDataUrl)
+    if (checked?.imageDataUrl) {
       checked.imageDataUrl = await normalizeSharedImage(checked.imageDataUrl, imageModerator);
+      return validateContext(db, actorId, projectId, checked);
+    }
     return checked;
   }
   async function charge(

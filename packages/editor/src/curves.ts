@@ -18,6 +18,41 @@ export function withCurve(
   };
 }
 
+/** Translate selected knots together. Interior knots keep their order and relative spacing. */
+export function translateCurvePoints(
+  points: CurvePoint[],
+  indices: readonly number[],
+  dx: number,
+  dy: number,
+): CurvePoint[] {
+  if (!Number.isFinite(dx) || !Number.isFinite(dy)) return points;
+  const selected = new Set(
+    indices.filter((i) => Number.isInteger(i) && i >= 0 && i < points.length),
+  );
+  const movable = (i: number) => i > 0 && i < points.length - 1 && selected.has(i);
+  let left = -1,
+    right = 1,
+    bottom = -1,
+    top = 1;
+  for (const i of selected) {
+    const [x, y] = points[i]!;
+    bottom = Math.max(bottom, -y);
+    top = Math.min(top, 1 - y);
+    if (!movable(i)) continue;
+    if (!movable(i - 1)) {
+      const gap = x - points[i - 1]![0];
+      left = Math.max(left, -gap + Math.min(0.004, gap / 4));
+    }
+    if (!movable(i + 1)) {
+      const gap = points[i + 1]![0] - x;
+      right = Math.min(right, gap - Math.min(0.004, gap / 4));
+    }
+  }
+  const x = Math.max(left, Math.min(right, dx)),
+    y = Math.max(bottom, Math.min(top, dy));
+  return points.map((p, i) => (selected.has(i) ? [p[0] + (movable(i) ? x : 0), p[1] + y] : p));
+}
+
 /** Shape-preserving cubic Hermite interpolation with one derivative per knot.
  * Reverse slopes and plateaus have zero tangent. Adjacent knots bound every segment. */
 export function smoothCurveSegments(points: readonly CurvePoint[]) {

@@ -166,6 +166,52 @@ export interface EditorCoordinateMap {
   toSource(point: Point): Point;
   /** Displayed output to original image content, including the inverse displacement field. */
   toContent(point: Point): Point;
+  /** Locate source content after displacement. An unstable or occluded handle has no safe projection. */
+  toContentOutput(point: Point): Point | null;
+}
+
+function locateWarpedContent(
+  target: Point,
+  image: Dimensions,
+  reverse: (point: Point) => Point,
+): Point | null {
+  const dx = 0.25 / image.width,
+    dy = 0.25 / image.height;
+  const error = (mapped: Point) =>
+    Math.hypot((mapped.x - target.x) * image.width, (mapped.y - target.y) * image.height);
+  let point = target,
+    mapped = reverse(point),
+    distance = error(mapped);
+  for (let i = 0; i < 12 && distance > 0.15; i++) {
+    const x = reverse({ x: point.x + dx, y: point.y }),
+      y = reverse({ x: point.x, y: point.y + dy });
+    const a = (x.x - mapped.x) / dx,
+      b = (y.x - mapped.x) / dy,
+      c = (x.y - mapped.y) / dx,
+      d = (y.y - mapped.y) / dy,
+      det = a * d - b * c;
+    const ex = mapped.x - target.x,
+      ey = mapped.y - target.y;
+    const step =
+      Math.abs(det) > 1e-5
+        ? { x: (d * ex - b * ey) / det, y: (a * ey - c * ex) / det }
+        : { x: ex, y: ey };
+    let improved = false;
+    for (const scale of [1, 0.5, 0.25, 0.125]) {
+      const next = { x: point.x - step.x * scale, y: point.y - step.y * scale };
+      if (Math.abs(next.x - target.x) > 1 || Math.abs(next.y - target.y) > 1) continue;
+      const sample = reverse(next),
+        residual = error(sample);
+      if (!(residual < distance)) continue;
+      point = next;
+      mapped = sample;
+      distance = residual;
+      improved = true;
+      break;
+    }
+    if (!improved) break;
+  }
+  return distance <= 0.35 ? point : null;
 }
 
 /** Compile once per recipe/source and reuse during gestures; no JSON parsing in the returned callbacks. */
@@ -240,6 +286,17 @@ export function compileEditorCoordinateMap(
       : { x: point.x * base.width, y: point.y * base.height };
     return baseToSource({ x: p.x / base.width, y: p.y / base.height });
   };
+  const toOutput = (point: Point): Point => {
+    const p = sourceToBase(point);
+    if (!fine) return p;
+    const q = applyMatrixV3(fine.matrix, { x: p.x * base.width, y: p.y * base.height });
+    return { x: q.x / dimensions.width, y: q.y / dimensions.height };
+  };
+  const reverseWarp = (point: Point): Point => {
+    if (!layered) return point;
+    warp ??= compileWarpFieldV3(recipe.warp, image, original);
+    return warp(point);
+  };
   return {
     dimensions,
     containsOutput(point) {
@@ -278,17 +335,17 @@ export function compileEditorCoordinateMap(
       return p.x >= 0 && p.y >= 0 && p.x <= base.width && p.y <= base.height;
     },
     toSource,
-    toOutput(point) {
-      const p = sourceToBase(point);
-      if (!fine) return p;
-      const q = applyMatrixV3(fine.matrix, { x: p.x * base.width, y: p.y * base.height });
-      return { x: q.x / dimensions.width, y: q.y / dimensions.height };
-    },
+    toOutput,
     toContent(point) {
-      const source = toSource(point);
-      if (!layered) return source;
-      warp ??= compileWarpFieldV3(recipe.warp, image, original);
-      return warp(source);
+      return reverseWarp(toSource(point));
+    },
+    toContentOutput(point) {
+      assertPoint(point);
+      const located =
+        layered && recipe.warp.enabled && recipe.warp.strokes.length
+          ? locateWarpedContent(point, image, reverseWarp)
+          : point;
+      return located ? toOutput(located) : null;
     },
   };
 }

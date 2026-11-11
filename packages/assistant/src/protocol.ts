@@ -1,6 +1,7 @@
 import { randomUUID } from 'node:crypto';
 import type { VoiceServerEvent } from '@ai-xiutu/contracts';
 import { voiceModel, type AssistantModelConfig } from './models.js';
+import type { HistoryMessage } from './context-budget.js';
 
 function boundedLiveText(value: string): string {
   let output = '';
@@ -34,7 +35,7 @@ export function voiceEndpoint(modelId: string): string {
     : `wss://api.openai.com/v1/realtime?model=${encodeURIComponent(modelId)}`;
 }
 const voiceInstructions =
-  '你是图片创作助手，简洁自然地用中文交流。涉及图片理解、编辑建议、素材搜索和生成时必须委托后端。你不能直接修改图片，不能声称图片已生成、建议已应用或已保存。当前画面是用户主动共享的快照，未共享时不要说看到了。要求用户在可见候选卡片中确认修改，生图必须保留模型与参数选择。不要推断身份或医疗信息。';
+  '你是图片创作助手，跟随用户的语言，自然地短句交流。只有收到应用结果才能确认任务已保存、已生成或需要确认。画面共享有时效，涉及当前图像时使用最新获准快照。保留用户的模型与参数选择，禁止推断身份或医疗信息。';
 export function voiceStartEvent(
   modelId: string,
   voice: string,
@@ -56,7 +57,7 @@ export function voiceStartEvent(
       session: {
         model: modelId,
         store: false,
-        instructions,
+        instructions: `${instructions}\nBackchannel policy: 适度回应，等用户讲完具体要求。\nInterruption policy: 被打断时停止播报，听取最新纠正。\nDelegation policy:\nBackend tools: 查看授权画面与参数、搜素材、规划修图或生图。\nGenerate <|SpawnThinking|> when: 用户要求看图、搜索、制作、编辑，或纠正正在处理的目标。\nDo not generate <|SpawnThinking|> when: 可直接回答寒暄、闲聊，或需先澄清对象。收到后端结果再说明执行状态。`,
         audio: { format: { type: 'audio/pcm', rate: 24000 }, output: { voice } },
         delegation: { type: 'client' },
       },
@@ -66,7 +67,7 @@ export function voiceStartEvent(
     session: {
       type: 'realtime',
       model: modelId,
-      instructions,
+      instructions: `${instructions} 涉及图片内容、编辑、素材或生成时调用 consult_editor。`,
       output_modalities: ['audio'],
       max_output_tokens: Math.min(maxOutputTokens, 4096),
       ...(effort ? { reasoning: { effort } } : {}),
@@ -177,7 +178,13 @@ export function normalizeVoiceEvent(raw: Record<string, any>): VoiceServerEvent 
       delta: true,
       ...timing,
     };
-  if (raw.type === 'session.input_transcript.delta' && typeof raw.delta === 'string')
+  if (
+    [
+      'session.input_transcript.delta',
+      'conversation.item.input_audio_transcription.delta',
+    ].includes(raw.type) &&
+    typeof raw.delta === 'string'
+  )
     return {
       type: 'transcript',
       role: 'user',
@@ -209,34 +216,83 @@ export function normalizeVoiceEvent(raw: Record<string, any>): VoiceServerEvent 
 export class VoiceTranscriptBuffer {
   private segments: Extract<VoiceServerEvent, { type: 'transcript' }>[] = [];
   push(event: Extract<VoiceServerEvent, { type: 'transcript' }>) {
-    const previous = this.segments.at(-1);
-    const sameItem = !event.itemId || previous?.itemId === event.itemId;
-    const contiguous =
-      event.startMs === undefined ||
-      previous?.endMs === undefined ||
-      event.startMs <= previous.endMs + 1500;
-    if (event.delta && previous?.role === event.role && sameItem && contiguous) {
-      previous.text = (previous.text + event.text).slice(-8000);
-      if (event.endMs !== undefined) previous.endMs = event.endMs;
-    } else if (
-      !event.delta &&
-      event.itemId &&
-      previous?.itemId === event.itemId &&
-      previous.role === event.role
-    ) {
-      this.segments[this.segments.length - 1] = { ...event };
-    } else this.segments.push({ ...event });
+    const index = event.itemId
+      ? this.segments.findLastIndex(
+          (item) => item.role === event.role && item.itemId === event.itemId,
+        )
+      : event.delta
+        ? this.segments.findLastIndex(
+            (item) =>
+              item.role === event.role &&
+              item.delta &&
+              !item.itemId &&
+              (event.startMs === undefined ||
+                item.endMs === undefined ||
+                event.startMs <= item.endMs + 1200) &&
+              (event.endMs === undefined ||
+                item.startMs === undefined ||
+                event.endMs >= item.startMs - 1200),
+          )
+        : -1;
+    const previous = this.segments[index];
+    if (previous && event.delta) {
+      if (!previous.delta) return;
+      const before =
+        event.startMs !== undefined &&
+        previous.startMs !== undefined &&
+        event.startMs < previous.startMs;
+      previous.text = (before ? event.text + previous.text : previous.text + event.text).slice(
+        -8000,
+      );
+      if (event.startMs !== undefined)
+        previous.startMs = Math.min(previous.startMs ?? event.startMs, event.startMs);
+      if (event.endMs !== undefined)
+        previous.endMs = Math.max(previous.endMs ?? event.endMs, event.endMs);
+    } else if (previous) this.segments[index] = { ...previous, ...event };
+    else this.segments.push({ ...event });
     while (
-      this.segments.length > 32 ||
-      this.segments.reduce((total, segment) => total + segment.text.length, 0) > 16000
+      this.segments.length > 48 ||
+      this.segments.reduce((total, segment) => total + segment.text.length, 0) > 24000
     )
       this.segments.shift();
   }
   clear() {
     this.segments = [];
   }
-  latestUser() {
-    return this.segments.findLast((segment) => segment.role === 'user');
+  latestUser(throughMs?: number, itemId?: string) {
+    const recent = this.segments.filter(
+      (segment) =>
+        segment.role === 'user' &&
+        (!itemId || segment.itemId === itemId) &&
+        (throughMs === undefined || segment.startMs === undefined || segment.startMs <= throughMs),
+    );
+    return recent.reduce<(typeof recent)[number] | undefined>(
+      (last, segment) =>
+        last?.endMs !== undefined && segment.endMs !== undefined && segment.endMs < last.endMs
+          ? last
+          : segment,
+      undefined,
+    );
+  }
+  history(throughMs?: number, omitLatestUser = false): HistoryMessage[] {
+    const latest = omitLatestUser ? this.latestUser(throughMs) : undefined;
+    const history: HistoryMessage[] = [];
+    let remaining = 12_000;
+    for (let i = this.segments.length - 1; i >= 0 && remaining > 0; i--) {
+      const segment = this.segments[i]!;
+      if (segment === latest || (throughMs !== undefined && (segment.startMs ?? 0) > throughMs))
+        continue;
+      const content = segment.text.slice(-Math.min(remaining, 2500)).trim();
+      if (!content) continue;
+      history.unshift({ role: segment.role, content });
+      remaining -= content.length;
+    }
+    return history;
+  }
+  discardAssistant(itemId: string) {
+    this.segments = this.segments.filter(
+      (item) => item.role !== 'assistant' || item.itemId !== itemId,
+    );
   }
   toString() {
     return this.segments.map((segment) => `${segment.role}: ${segment.text}`).join('\n');

@@ -7,17 +7,19 @@ export function CollaborationOverlay({
   snapshot,
   sessionId,
   toDisplay,
+  toContentDisplay,
   zoom,
 }: {
   snapshot: CollaborationSnapshot;
   sessionId: string | null;
   toDisplay: (point: Point) => Point;
+  toContentDisplay?: (point: Point) => Point | null;
   zoom: number;
 }) {
-  const project = (point: Point): Point | null => {
+  const project = (point: Point, content = false): Point | null => {
     try {
-      const result = toDisplay(point);
-      return Number.isFinite(result.x) && Number.isFinite(result.y) ? result : null;
+      const result = content && toContentDisplay ? toContentDisplay(point) : toDisplay(point);
+      return result && Number.isFinite(result.x) && Number.isFinite(result.y) ? result : null;
     } catch {
       // A cropped source point can lie past a homography horizon. It has no
       // visible cursor in this viewport and must not crash the shared canvas.
@@ -48,10 +50,13 @@ export function CollaborationOverlay({
             const points = corners.flatMap((a, index) =>
               Array.from({ length: 8 }, (_, step) => {
                 const z = corners[(index + 1) % 4]!;
-                return project({
-                  x: a.x + ((z.x - a.x) * step) / 8,
-                  y: a.y + ((z.y - a.y) * step) / 8,
-                });
+                return project(
+                  {
+                    x: a.x + ((z.x - a.x) * step) / 8,
+                    y: a.y + ((z.y - a.y) * step) / 8,
+                  },
+                  true,
+                );
               }),
             );
             if (points.some((point) => point === null)) return null;

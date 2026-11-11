@@ -90,6 +90,7 @@ export type PaintSettings = Omit<PaintStrokeV3, 'points' | 'sampling'> & {
 export type WarpSettings = Pick<WarpStrokeV3, 'mode' | 'radius' | 'feather' | 'strength'> & {
   protecting: boolean;
 };
+export type CropGuide = 'thirds' | 'golden' | 'center' | 'diagonal' | 'none';
 const INITIAL_PAINT: PaintSettings = {
   mode: 'paint',
   color: [227, 97, 81, 255],
@@ -187,6 +188,8 @@ export function useEditor() {
   const [geometryMode, setGeometryMode] = useState<
     'crop' | 'transform' | 'projective' | 'placement'
   >('crop');
+  const [cropGuide, setCropGuide] = useState<CropGuide>('thirds');
+  const [cropRatio, setCropRatio] = useState<number | null>(null);
   const [renderedGeometryKey, setRenderedGeometryKey] = useState<string | null>(null);
   const [dimensions, setDimensions] = useState<{ width: number; height: number } | null>(null);
   const portrait = usePortraitAnalysis(originalPreview, dimensions, sourceHash);
@@ -578,11 +581,14 @@ export function useEditor() {
         context.drawImage(bitmap, 0, 0);
         const full = context.getImageData(0, 0, fullCanvas.width, fullCanvas.height);
         if (generation !== loadGeneration.current || !isCurrent()) return false;
-        const scale = Math.min(
-          1,
-          previewEdge() / Math.max(bitmap.width, bitmap.height),
-          Math.sqrt(MAX_PREVIEW_PIXELS / (bitmap.width * bitmap.height)),
-        );
+        const scale =
+          bitmap.width * bitmap.height <= MAX_PREVIEW_PIXELS
+            ? 1
+            : Math.min(
+                1,
+                previewEdge() / Math.max(bitmap.width, bitmap.height),
+                Math.sqrt(MAX_PREVIEW_PIXELS / (bitmap.width * bitmap.height)),
+              );
         mini = document.createElement('canvas');
         mini.width = Math.max(1, Math.floor(bitmap.width * scale));
         mini.height = Math.max(1, Math.floor(bitmap.height * scale));
@@ -657,6 +663,7 @@ export function useEditor() {
         );
         setLayerImages(images);
         sourceIdentity.current += 1;
+        setCropRatio(null);
         sourceFrame.current = Object.freeze({
           coordinates: 'source-normalized',
           orientation: 'normalized',
@@ -1088,6 +1095,10 @@ export function useEditor() {
     renderedRecipe,
     liveFrame,
     geometryMode,
+    cropGuide,
+    setCropGuide,
+    cropRatio,
+    setCropRatio,
     setGeometryMode,
     renderedGeometryKey,
     originalPreview,

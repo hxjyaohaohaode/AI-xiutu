@@ -47,6 +47,44 @@ export interface PixelCrop {
   height: number;
 }
 
+export type OrientationAction = 'left' | 'right' | 'half-turn' | 'mirror' | 'flip' | 'reset';
+
+/** Compose a screen-space action after the saved crop, rotation and reflection. */
+export function orientGeometry(geometry: Geometry, action: OrientationAction): Geometry {
+  if (action === 'reset') return { ...geometry, rotation: 0, flipX: false, flipY: false };
+  if (action === 'mirror') return { ...geometry, flipX: !geometry.flipX };
+  if (action === 'flip') return { ...geometry, flipY: !geometry.flipY };
+  const quarter = action !== 'half-turn';
+  const turn = action === 'left' ? 270 : action === 'right' ? 90 : 180;
+  return {
+    ...geometry,
+    rotation: ((geometry.rotation + turn) % 360) as Geometry['rotation'],
+    flipX: quarter ? geometry.flipY : geometry.flipX,
+    flipY: quarter ? geometry.flipX : geometry.flipY,
+  };
+}
+
+/** Pixel rectangle for an aspect ratio measured after the quarter turn. */
+export function fitOrientedCrop(image: Dimensions, geometry: Geometry, ratio: number): PixelCrop {
+  if (!Number.isFinite(ratio) || ratio <= 0) throw new RangeError('Invalid crop aspect ratio');
+  const { crop } = geometryContext(image, geometry);
+  const sourceRatio = geometry.rotation % 180 === 0 ? ratio : 1 / ratio;
+  const width = Math.max(1, Math.round(Math.min(image.width, image.height * sourceRatio)));
+  const height = Math.max(1, Math.round(Math.min(image.height, image.width / sourceRatio)));
+  return {
+    left: Math.max(
+      0,
+      Math.min(image.width - width, crop.left + Math.floor((crop.width - width) / 2)),
+    ),
+    top: Math.max(
+      0,
+      Math.min(image.height - height, crop.top + Math.floor((crop.height - height) / 2)),
+    ),
+    width,
+    height,
+  };
+}
+
 /** Internal, already validated recipe. Include every pixel touched by the normalized crop. */
 export function pixelCrop(image: Dimensions, geometry: Geometry): PixelCrop {
   const c = geometry.crop;

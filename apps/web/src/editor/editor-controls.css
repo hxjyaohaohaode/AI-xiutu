@@ -801,12 +801,21 @@
   margin-top: 9px;
 }
 .image-frame > .selection-preview,
+.image-frame > .brush-footprint,
 .image-frame > .crop-overlay {
   position: absolute;
   inset: 0;
   width: 100%;
   height: 100%;
   pointer-events: none;
+}
+.image-frame > .brush-footprint {
+  z-index: 3;
+  overflow: hidden;
+  fill: none;
+  stroke: #fff;
+  stroke-width: 1.25;
+  filter: drop-shadow(0 0 1px #111);
 }
 .image-frame > .selection-preview {
   image-rendering: auto;

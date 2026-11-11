@@ -29,13 +29,27 @@ export const assistantPublicSearchSchema = z
   .object({ query: z.string().trim().min(1).max(240), kind: z.enum(['text', 'images']) })
   .strict();
 export const assistantResearchBranch = z.discriminatedUnion('kind', [
-  assistantPublicSearchSchema.extend({ kind: z.literal('web'), resultKind: z.enum(['text', 'images']) }).strict(),
-  z.object({ kind: z.literal('cloud'), query: z.string().trim().min(1).max(200), limit: z.number().int().min(1).max(10) }).strict(),
+  assistantPublicSearchSchema
+    .extend({ kind: z.literal('web'), resultKind: z.enum(['text', 'images']) })
+    .strict(),
+  z
+    .object({
+      kind: z.literal('cloud'),
+      query: z.string().trim().min(1).max(200),
+      limit: z.number().int().min(1).max(10),
+    })
+    .strict(),
   z.object({ kind: z.literal('canvas') }).strict(),
 ]);
-export const assistantResearchPlan = z.array(assistantResearchBranch).min(1).max(4).refine((nodes) =>
-  nodes.filter((node) => node.kind === 'web').length <= 2 && nodes.filter((node) => node.kind === 'canvas').length <= 1,
-);
+export const assistantResearchPlan = z
+  .array(assistantResearchBranch)
+  .min(1)
+  .max(4)
+  .refine(
+    (nodes) =>
+      nodes.filter((node) => node.kind === 'web').length <= 2 &&
+      nodes.filter((node) => node.kind === 'canvas').length <= 1,
+  );
 export type AssistantResearchBranch = z.infer<typeof assistantResearchBranch>;
 export type AssistantDispatchPurpose = 'conversation' | 'web-search' | 'research-merge';
 export interface AssistantBranchEvent {
@@ -82,6 +96,8 @@ export const voiceSessionSchema = z
       'gpt-live-1',
       'gpt-realtime-2.1',
       'gpt-realtime-2.1-mini',
+      'gpt-realtime-2',
+      'gpt-realtime-1.5',
       'gpt-realtime',
       'gpt-realtime-mini',
     ]),
@@ -229,7 +245,13 @@ export interface AssistantCandidate {
   decision: 'pending' | 'previewed' | 'rejected';
 }
 export type VoiceServerEvent =
-  | { type: 'ready'; sessionId: string; modelId: string; maxSeconds: number }
+  | {
+      type: 'ready';
+      sessionId: string;
+      modelId: string;
+      maxSeconds: number;
+      maxPublicSearches?: number;
+    }
   | { type: 'audio'; pcm: string; itemId?: string }
   | {
       type: 'transcript';

@@ -23,6 +23,7 @@ import {
   previewFamily,
   type PreviewFamily,
 } from './interactive-preview-policy';
+import { canPreviewNativeColor } from './native-preview';
 
 let preview: RGBAImage | null = null;
 let detailPreview: RGBAImage | null = null;
@@ -145,7 +146,19 @@ self.onmessage = async (event: MessageEvent<Message>) => {
   try {
     const interactive = message.type === 'interactive-preview';
     const detail = interactive && message.previewQuality === 'warp';
-    const source = message.type === 'export' ? original : detail ? detailPreview : preview;
+    const native = !!(
+      interactive &&
+      !detail &&
+      message.recipe &&
+      detailPreview &&
+      sourceDimensions &&
+      detailPreview.width === sourceDimensions.width &&
+      detailPreview.height === sourceDimensions.height &&
+      detailPreview.width * detailPreview.height <= MAX_PREVIEW_PIXELS &&
+      canPreviewNativeColor(message.recipe)
+    );
+    const source =
+      message.type === 'export' ? original : detail || native ? detailPreview : preview;
     if (!source || !message.recipe) throw new Error('请先导入图片。');
     if (message.type === 'export' && message.cutout) {
       if (message.format !== undefined && message.format !== 'png')
@@ -166,11 +179,13 @@ self.onmessage = async (event: MessageEvent<Message>) => {
     }
     const started = performance.now();
     const family =
-      interactive && !detail
+      interactive && !detail && !native
         ? previewFamily(previousLiveRecipe, message.recipe, previousLiveFamily)
         : null;
     const frame = family ? livePolicy.begin(family, started) : null;
-    const budget = frame?.pixels ?? message.maxPixels ?? MAX_PREVIEW_PIXELS;
+    const budget = native
+      ? MAX_PREVIEW_PIXELS
+      : (frame?.pixels ?? message.maxPixels ?? MAX_PREVIEW_PIXELS);
     let renderImages = detail ? detailImages : images;
     if (interactive && !detail && 'imageLayers' in message.recipe) {
       renderImages = new Map();
@@ -242,7 +257,7 @@ self.onmessage = async (event: MessageEvent<Message>) => {
           ? { ...result, data: new Uint8ClampedArray(result.data) }
           : result;
       self.postMessage(
-        { id: message.id, type: message.type, result: safeResult },
+        { id: message.id, type: message.type, result: safeResult, native },
         { transfer: [safeResult.data.buffer] },
       );
     }

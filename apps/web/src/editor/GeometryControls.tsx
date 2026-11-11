@@ -5,9 +5,22 @@ import {
   ArrowClockwise,
   ArrowsLeftRight,
   ArrowsDownUp,
+  Crop,
+  Perspective,
+  FrameCorners,
+  ArrowsOutCardinal,
+  ArrowsClockwise,
+  CompassTool,
 } from '@phosphor-icons/react';
-import { createFineTransformV3 } from '@ai-xiutu/editor';
-import { cropFromPixels } from './precision';
+import {
+  createFineTransformV3,
+  createRecipeV4,
+  fitOrientedCrop,
+  orientGeometry,
+  pixelCrop,
+  type OrientationAction,
+} from '@ai-xiutu/editor';
+import { cropFromPixels, moveCropHandle } from './precision';
 import {
   NUMERIC_CONTROLS,
   currentV3,
@@ -25,33 +38,44 @@ export function GeometryControls({ controller }: { controller: InspectorControll
   const tab = editor.geometryMode,
     setTab = editor.setGeometryMode;
   function pixelRect() {
-    const crop = currentV3(editor).geometry.crop;
-    if (!crop) return { x: 0, y: 0, width: dimensions.width, height: dimensions.height };
-    return {
-      x: Math.floor(crop.x * dimensions.width),
-      y: Math.floor(crop.y * dimensions.height),
-      width:
-        Math.ceil((crop.x + crop.width) * dimensions.width) - Math.floor(crop.x * dimensions.width),
-      height:
-        Math.ceil((crop.y + crop.height) * dimensions.height) -
-        Math.floor(crop.y * dimensions.height),
-    };
+    const { left: x, top: y, width, height } = pixelCrop(dimensions, currentV3(editor).geometry);
+    return { x, y, width, height };
   }
   function setPixel(key: 'x' | 'y' | 'width' | 'height', value: number) {
     const current = currentV3(editor),
-      pixels = { ...pixelRect(), [key]: value };
-    apply(
-      { ...current, geometry: { ...current.geometry, crop: cropFromPixels(dimensions, pixels) } },
-      '调整裁切' + key,
-    );
+      rect = pixelRect();
+    const locked =
+      editor.cropRatio && current.geometry.rotation % 180 !== 0
+        ? 1 / editor.cropRatio
+        : editor.cropRatio;
+    const crop =
+      key === 'x' || key === 'y'
+        ? moveCropHandle(
+            dimensions,
+            rect,
+            'move',
+            { x: key === 'x' ? value - rect.x : 0, y: key === 'y' ? value - rect.y : 0 },
+            null,
+          )
+        : moveCropHandle(
+            dimensions,
+            rect,
+            key === 'width' ? 'e' : 's',
+            {
+              x: key === 'width' ? value - rect.width : 0,
+              y: key === 'height' ? value - rect.height : 0,
+            },
+            locked,
+          );
+    apply({ ...current, geometry: { ...current.geometry, crop } }, t('调整裁切'));
   }
   const rect = pixelRect();
   const cropControls: ShelfControl[] = (
     [
       ['width', t('裁切宽度'), 1, dimensions.width - rect.x],
       ['height', t('裁切高度'), 1, dimensions.height - rect.y],
-      ['x', t('左边界'), 0, dimensions.width - 1],
-      ['y', t('上边界'), 0, dimensions.height - 1],
+      ['x', t('左边界'), 0, dimensions.width - rect.width],
+      ['y', t('上边界'), 0, dimensions.height - rect.height],
     ] as const
   ).map(([key, label, min, max]) => ({
     id: key,
@@ -84,45 +108,50 @@ export function GeometryControls({ controller }: { controller: InspectorControll
     onReset: () =>
       apply(withNumeric(currentV3(editor), tool, tool.neutral), '重置' + tool.label, true),
   }));
-  function ratio(value: number) {
-    const latest = currentV3(editor),
-      rect = pixelRect();
-    let width = rect.width,
-      height = width / value;
-    if (height > rect.height) {
-      height = rect.height;
-      width = height * value;
+  function ratio(value: number | null, label: string) {
+    if (value === null) {
+      editor.setCropRatio(null);
+      return;
     }
-    const x = rect.x + (rect.width - width) / 2,
-      y = rect.y + (rect.height - height) / 2;
-    apply(
-      {
-        ...latest,
-        geometry: {
-          ...latest.geometry,
-          crop: cropFromPixels(dimensions, {
-            x,
-            y,
-            width: Math.max(1, width),
-            height: Math.max(1, height),
-          }),
+    const latest = currentV3(editor);
+    const { left: x, top: y, width, height } = fitOrientedCrop(dimensions, latest.geometry, value);
+    if (
+      apply(
+        {
+          ...latest,
+          geometry: {
+            ...latest.geometry,
+            crop: cropFromPixels(dimensions, { x, y, width, height }),
+          },
         },
-      },
-      '按比例建立裁切起点',
-      true,
-    );
+        t('裁切比例 {v0}', { v0: label }),
+        true,
+      )
+    )
+      editor.setCropRatio(value);
   }
+  function orient(action: OrientationAction, label: string) {
+    const current = currentV3(editor);
+    const geometry = orientGeometry(current.geometry, action);
+    if (!apply({ ...current, geometry }, label, true)) return;
+    if (editor.cropRatio !== null && (current.geometry.rotation - geometry.rotation) % 180 !== 0)
+      editor.setCropRatio(1 / editor.cropRatio);
+  }
+  const originalRatio =
+    recipe.geometry.rotation % 180 === 0
+      ? dimensions.width / dimensions.height
+      : dimensions.height / dimensions.width;
   return (
     <section className="advanced-tool-family" data-motion="geometry-controls">
       <div className="tonal-tabs" aria-label={t('构图类别')}>
         {(
           [
-            ['crop', t('自由裁切')],
-            ['transform', t('角度与透视')],
-            ['projective', t('自由四角')],
-            ['placement', t('缩放与位置')],
+            ['crop', t('裁切'), Crop],
+            ['transform', t('角度与透视'), Perspective],
+            ['projective', t('自由四角'), FrameCorners],
+            ['placement', t('缩放与位置'), ArrowsOutCardinal],
           ] as const
-        ).map(([id, label]) => (
+        ).map(([id, label, Glyph]) => (
           <button
             key={id}
             aria-pressed={tab === id}
@@ -131,46 +160,68 @@ export function GeometryControls({ controller }: { controller: InspectorControll
               setTab(id);
             }}
           >
-            {label}
+            <Glyph size={16} /> {label}
           </button>
         ))}
       </div>
       {tab === 'crop' ? (
         <>
-          <p className="control-note">
-            {t('直接拖动照片上的边角，或按原图像素调整。比例按钮只提供起点，不锁定后续尺寸。')}
-          </p>
           <ParameterShelf
             label={t('任意像素裁切')}
             controls={cropControls}
             onCommit={(name) => editor.commitCurrent(t('调整{v0}', { v0: t(name) }))}
             onCancel={editor.cancelPreview}
           />
-          <div className="tonal-tabs" aria-label={t('裁切比例起点')}>
+          <div className="tonal-tabs" aria-label={t('裁切比例')}>
             {(
               [
+                [t('自由'), null],
+                [t('原图'), originalRatio],
                 ['1:1', 1],
                 ['4:5', 0.8],
+                ['4:3', 4 / 3],
                 ['3:2', 1.5],
+                ['2:3', 2 / 3],
+                ['3:4', 0.75],
                 ['16:9', 16 / 9],
                 ['9:16', 9 / 16],
               ] as const
             ).map(([label, value]) => (
-              <button key={label} onClick={() => ratio(value)}>
+              <button
+                key={label}
+                aria-pressed={editor.cropRatio === value}
+                onClick={() => ratio(value, label)}
+              >
                 {label}
               </button>
             ))}
           </div>
+          <ChoiceSelect
+            ariaLabel={t('构图参考线')}
+            size="compact"
+            value={editor.cropGuide}
+            options={[
+              { value: 'thirds', label: t('三分线') },
+              { value: 'golden', label: t('黄金分割') },
+              { value: 'center', label: t('中心十字') },
+              { value: 'diagonal', label: t('对角线') },
+              { value: 'none', label: t('无参考线') },
+            ]}
+            onValueChange={(value) => editor.setCropGuide(value as typeof editor.cropGuide)}
+          />
           <button
             className="text-button"
             disabled={!recipe.geometry.crop}
-            onClick={() =>
-              apply(
-                { ...recipe, geometry: { ...recipe.geometry, crop: null } },
-                t('恢复完整裁切范围'),
-                true,
+            onClick={() => {
+              if (
+                apply(
+                  { ...recipe, geometry: { ...recipe.geometry, crop: null } },
+                  t('恢复完整裁切范围'),
+                  true,
+                )
               )
-            }
+                editor.setCropRatio(null);
+            }}
           >
             {t('恢复完整画幅')}
           </button>
@@ -187,67 +238,38 @@ export function GeometryControls({ controller }: { controller: InspectorControll
         />
       )}
       <div className="tonal-tabs" aria-label={t('画幅与方向')}>
-        <button
-          onClick={() =>
-            apply(
-              {
-                ...recipe,
-                geometry: {
-                  ...recipe.geometry,
-                  rotation: ((recipe.geometry.rotation + 270) % 360) as 0 | 90 | 180 | 270,
-                },
-              },
-              t('向左旋转90度'),
-              true,
-            )
-          }
-        >
+        <button aria-label={t('向左旋转90度')} onClick={() => orient('left', t('向左旋转90度'))}>
           <ArrowCounterClockwise size={16} />
-          90°
+          {t('左转')}
         </button>
-        <button
-          onClick={() =>
-            apply(
-              {
-                ...recipe,
-                geometry: {
-                  ...recipe.geometry,
-                  rotation: ((recipe.geometry.rotation + 90) % 360) as 0 | 90 | 180 | 270,
-                },
-              },
-              t('向右旋转90度'),
-              true,
-            )
-          }
-        >
+        <button aria-label={t('向右旋转90度')} onClick={() => orient('right', t('向右旋转90度'))}>
           <ArrowClockwise size={16} />
-          90°
+          {t('右转')}
+        </button>
+        <button aria-label={t('旋转180度')} onClick={() => orient('half-turn', t('旋转180度'))}>
+          <ArrowsClockwise size={16} /> 180°
         </button>
         <button
           aria-pressed={recipe.geometry.flipX}
-          onClick={() =>
-            apply(
-              { ...recipe, geometry: { ...recipe.geometry, flipX: !recipe.geometry.flipX } },
-              t('水平镜像'),
-              true,
-            )
-          }
+          aria-label={t('水平镜像')}
+          onClick={() => orient('mirror', t('水平镜像'))}
         >
           <ArrowsLeftRight size={16} />
           {t('镜像')}
         </button>
         <button
           aria-pressed={recipe.geometry.flipY}
-          onClick={() =>
-            apply(
-              { ...recipe, geometry: { ...recipe.geometry, flipY: !recipe.geometry.flipY } },
-              t('垂直镜像'),
-              true,
-            )
-          }
+          aria-label={t('垂直翻转')}
+          onClick={() => orient('flip', t('垂直翻转'))}
         >
           <ArrowsDownUp size={16} />
           {t('翻转')}
+        </button>
+        <button
+          onClick={() => orient('reset', t('恢复原图方向'))}
+          disabled={!recipe.geometry.rotation && !recipe.geometry.flipX && !recipe.geometry.flipY}
+        >
+          <CompassTool size={16} /> {t('原方向')}
         </button>
       </div>
       <label className="advanced-select">
@@ -269,18 +291,20 @@ export function GeometryControls({ controller }: { controller: InspectorControll
           ]}
         />
       </label>
-      <p className="control-note">
-        {t(
-          '超出原图的部分保持透明；需要真实补画内容时可交给 AI 扩图，再明确采用候选。组合变换无效或超过内存预算时保留上一个有效结果。',
-        )}
-      </p>
       <button
         className="text-button"
-        onClick={() =>
-          apply({ ...recipe, transform: createFineTransformV3() }, t('重置精细构图变换'), true)
-        }
+        onClick={() => {
+          const current = currentV3(editor);
+          const next = {
+            ...current,
+            geometry: { crop: null, rotation: 0 as const, flipX: false, flipY: false },
+            transform: createFineTransformV3(),
+            ...(current.schemaVersion === 4 ? { projective: createRecipeV4().projective } : {}),
+          };
+          if (apply(next, t('重置构图'), true)) editor.setCropRatio(null);
+        }}
       >
-        {t('重置角度、透视和位移')}
+        {t('重置构图')}
       </button>
     </section>
   );

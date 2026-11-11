@@ -1,11 +1,18 @@
 import { t } from '../i18n';
 import { MotionDetails } from '../motion/Presence';
 import { ChoiceSelect } from '../components/ChoiceSelect';
-import { useEffect, useMemo, useRef, useState } from 'react';
-import { Plus, Trash, ArrowCounterClockwise, BezierCurve } from '@phosphor-icons/react';
+import { useEffect, useMemo, useRef, useState, type PointerEvent } from 'react';
+import {
+  Plus,
+  Trash,
+  ArrowCounterClockwise,
+  BezierCurve,
+  SelectionPlus,
+} from '@phosphor-icons/react';
 import {
   compileCurveFunction,
   smoothCurveSegments,
+  translateCurvePoints,
   withCurve,
   type CurvePoint,
   type Curves,
@@ -144,6 +151,14 @@ const identityCurve = (): CurvePoint[] => [
   [1, 1],
 ];
 const coordinate = (value: number) => Number((value * 255).toFixed(2));
+function graphPoint(svg: SVGSVGElement, clientX: number, clientY: number): CurvePoint | null {
+  const matrix = svg.getScreenCTM();
+  if (!matrix) return null;
+  const point = new DOMPoint(clientX, clientY).matrixTransform(matrix.inverse());
+  return Number.isFinite(point.x) && Number.isFinite(point.y)
+    ? [point.x / 256, 1 - point.y / 256]
+    : null;
+}
 
 function curveHistory(
   editor: EditorState,
@@ -157,10 +172,14 @@ function curveHistory(
   const after = next[channel];
   const target = `${scope?.label ?? t('全局')} · ${t(channels.find((c) => c.key === channel)!.label)}`;
   if (action) return `${target} · ${action}`;
-  const changed = after.findIndex((p, i) => before[i]?.[0] !== p[0] || before[i]?.[1] !== p[1]);
-  if (after.length === before.length && changed >= 0) {
+  const changed = after.flatMap((p, i) =>
+    before[i]?.[0] !== p[0] || before[i]?.[1] !== p[1] ? [i] : [],
+  );
+  if (after.length === before.length && changed.length) {
     const format = (p: CurvePoint) => `(${coordinate(p[0])}, ${coordinate(p[1])})`;
-    return `${target} · ${t('点 {v0}', { v0: changed + 1 })} ${format(before[changed]!)} → ${format(after[changed]!)}`;
+    const first = changed[0]!;
+    const count = changed.length > 1 ? ` · ${t('{v0} 个点', { v0: changed.length })}` : '';
+    return `${target} · ${t('点 {v0}', { v0: first + 1 })} ${format(before[first]!)} → ${format(after[first]!)}${count}`;
   }
   return `${target} · ${t('控制点')} ${before.length} → ${after.length}`;
 }
@@ -168,6 +187,14 @@ function curveHistory(
 export function CurveEditor({ editor, scope }: { editor: EditorState; scope?: CurveScope }) {
   const [channel, setChannel] = useState<Channel>('rgb');
   const [selected, setSelected] = useState(1);
+  const [multiSelect, setMultiSelect] = useState(false);
+  const [selectedPoints, setSelectedPoints] = useState<number[]>([]);
+  const drag = useRef<{
+    pointerId: number;
+    start: CurvePoint;
+    points: CurvePoint[];
+    indices: number[];
+  } | null>(null);
   const editorRef = useRef(editor);
   editorRef.current = editor;
   const channelRef = useRef(channel);
@@ -201,6 +228,8 @@ export function CurveEditor({ editor, scope }: { editor: EditorState; scope?: Cu
   useEffect(() => {
     // Do not restore the preceding source's recipe into a newly loaded image.
     gestures.current?.discard();
+    drag.current = null;
+    setSelectedPoints([]);
   }, [sourceIdentity, channel, scope?.key]);
   useEffect(() => {
     const blur = () => gestures.current?.cancel();
@@ -250,6 +279,47 @@ export function CurveEditor({ editor, scope }: { editor: EditorState; scope?: Cu
       action ? curveHistory(editor, currentScope, channel, updated, action) : undefined,
     );
   };
+  function togglePoint(index: number) {
+    setSelected(index);
+    setSelectedPoints((current) =>
+      current.includes(index) ? current.filter((value) => value !== index) : [...current, index],
+    );
+  }
+  function startDrag(
+    event: PointerEvent<SVGElement>,
+    svg: SVGSVGElement,
+    index: number,
+    initial = points,
+  ) {
+    const start = graphPoint(svg, event.clientX, event.clientY);
+    if (event.button !== 0 || !start || !gestures.current?.begin(event.pointerId, index, svg))
+      return false;
+    const indices =
+      initial === points && selectedPoints.includes(index)
+        ? selectedPoints.filter((value) => value < points.length)
+        : [index];
+    if (indices.length === 1) setSelectedPoints(indices);
+    drag.current = { pointerId: event.pointerId, start, points: initial, indices };
+    setSelected(index);
+    event.preventDefault();
+    return true;
+  }
+  function moveDrag(event: PointerEvent<SVGSVGElement>) {
+    const state = drag.current;
+    if (state?.pointerId !== event.pointerId || !gestures.current?.current(event.pointerId)) return;
+    const at = graphPoint(event.currentTarget, event.clientX, event.clientY);
+    if (!at) return;
+    const next = translateCurvePoints(
+      state.points,
+      state.indices,
+      at[0] - state.start[0],
+      at[1] - state.start[1],
+    );
+    const current = editor.getRecipe();
+    const present = (scopeRef.current?.getCurves(current) ?? current.curves)[channel];
+    if (next.some((p, index) => p[0] !== present[index]?.[0] || p[1] !== present[index]?.[1]))
+      update(next, false, event.pointerId);
+  }
   const commitPoint = () => {
     const recipe = editor.getRecipe();
     editor.commitCurrent(
@@ -284,6 +354,7 @@ export function CurveEditor({ editor, scope }: { editor: EditorState; scope?: Cu
       const next = points.map((point) => [...point] as CurvePoint);
       next.splice(index, 0, [x, Math.max(0, Math.min(1, at[1]))]);
       setSelected(index);
+      setSelectedPoints([index]);
       update(next, true);
       return;
     }
@@ -301,6 +372,7 @@ export function CurveEditor({ editor, scope }: { editor: EditorState; scope?: Cu
     const x = (points[index]![0] + points[index + 1]![0]) / 2;
     next.splice(index + 1, 0, [x, compileCurveFunction(points, mode)(x)]);
     setSelected(index + 1);
+    setSelectedPoints([index + 1]);
     update(next, true);
   }
   const active = points[Math.min(selected, points.length - 1)]!;
@@ -368,6 +440,17 @@ export function CurveEditor({ editor, scope }: { editor: EditorState; scope?: Cu
       </div>
       <div className="curve-point-controls">
         <IconButton
+          label={t('多选曲线点')}
+          aria-pressed={multiSelect}
+          onClick={() => {
+            gestures.current?.cancel();
+            setMultiSelect(!multiSelect);
+            if (!multiSelect) setSelectedPoints([Math.min(selected, points.length - 1)]);
+          }}
+        >
+          <SelectionPlus size={18} />
+        </IconButton>
+        <IconButton
           label={t('平滑当前通道')}
           disabled={mode !== 'linear' || points.length < 3}
           onClick={() => update(points, true, undefined, 'pchip-v1', t('平滑曲线'))}
@@ -379,6 +462,7 @@ export function CurveEditor({ editor, scope }: { editor: EditorState; scope?: Cu
           disabled={!activeReset}
           onClick={() => {
             setSelected(0);
+            setSelectedPoints([]);
             update(identityCurve(), true, undefined, 'linear', t('重置曲线'));
           }}
         >
@@ -389,6 +473,7 @@ export function CurveEditor({ editor, scope }: { editor: EditorState; scope?: Cu
           disabled={!canReset}
           onClick={() => {
             setSelected(0);
+            setSelectedPoints([]);
             writeCurves(
               {
                 rgb: identityCurve(),
@@ -413,12 +498,9 @@ export function CurveEditor({ editor, scope }: { editor: EditorState; scope?: Cu
           v0: t(channels.find((c) => c.key === channel)?.label ?? ''),
         })}
         onDoubleClick={(event) => {
-          if ((event.target as Element).closest('[data-curve-point]')) return;
-          const bounds = event.currentTarget.getBoundingClientRect();
-          addPoint([
-            (event.clientX - bounds.left) / bounds.width,
-            1 - (event.clientY - bounds.top) / bounds.height,
-          ]);
+          if ((event.target as Element).closest('[data-curve-point], [data-curve-hit]')) return;
+          const point = graphPoint(event.currentTarget, event.clientX, event.clientY);
+          if (point) addPoint(point);
         }}
         onPointerMove={(e) => {
           const gesture = gestures.current?.current(e.pointerId);
@@ -427,18 +509,12 @@ export function CurveEditor({ editor, scope }: { editor: EditorState; scope?: Cu
             gestures.current?.cancel(e.pointerId);
             return;
           }
-          const bounds = e.currentTarget.getBoundingClientRect();
-          if (bounds.width <= 0 || bounds.height <= 0) return;
-          changePoint(
-            gesture.index,
-            (e.clientX - bounds.left) / bounds.width,
-            1 - (e.clientY - bounds.top) / bounds.height,
-            false,
-            e.pointerId,
-          );
+          moveDrag(e);
         }}
         onPointerUp={(e) => {
+          moveDrag(e);
           gestures.current?.commit(e.pointerId);
+          if (drag.current?.pointerId === e.pointerId) drag.current = null;
         }}
         onPointerCancel={(e) => gestures.current?.cancel(e.pointerId)}
         onLostPointerCapture={(e) => gestures.current?.cancel(e.pointerId)}
@@ -457,12 +533,39 @@ export function CurveEditor({ editor, scope }: { editor: EditorState; scope?: Cu
           fill="none"
           stroke={color}
           strokeWidth="2.5"
+          vectorEffect="non-scaling-stroke"
+        />
+        <path
+          data-curve-hit
+          d={graph}
+          fill="none"
+          stroke="transparent"
+          strokeWidth="18"
+          vectorEffect="non-scaling-stroke"
+          onPointerDown={(event) => {
+            if (multiSelect || event.shiftKey || points.length >= 16) return;
+            const svg = event.currentTarget.ownerSVGElement;
+            if (!svg) return;
+            const at = graphPoint(svg, event.clientX, event.clientY);
+            if (
+              !at ||
+              at[0] <= 0 ||
+              at[0] >= 1 ||
+              points.some(([x]) => Math.abs(x - at[0]) < 0.000001)
+            )
+              return;
+            const index = points.findIndex(([x]) => x > at[0]);
+            const next = [...points];
+            next.splice(index, 0, [at[0], compileCurveFunction(points, mode)(at[0])]);
+            if (startDrag(event, svg, index, next)) update(next, false, event.pointerId);
+          }}
         />
         {points.map((p, i) => (
           <g
             key={i}
             data-curve-point={i}
             role="button"
+            aria-pressed={selectedPoints.includes(i)}
             tabIndex={0}
             aria-label={t('曲线控制点 {v0}，输入 {v1}，输出 {v2}', {
               v0: i + 1,
@@ -472,13 +575,19 @@ export function CurveEditor({ editor, scope }: { editor: EditorState; scope?: Cu
             onFocus={() => setSelected(i)}
             onKeyDown={(event) => {
               const step = (event.altKey ? 0.1 : event.shiftKey ? 10 : 1) / 255;
-              if (['ArrowLeft', 'ArrowRight', 'ArrowUp', 'ArrowDown'].includes(event.key)) {
+              if (event.key === 'Enter' && (multiSelect || event.shiftKey)) {
                 event.preventDefault();
-                changePoint(
-                  i,
-                  p[0] +
-                    (event.key === 'ArrowRight' ? step : event.key === 'ArrowLeft' ? -step : 0),
-                  p[1] + (event.key === 'ArrowUp' ? step : event.key === 'ArrowDown' ? -step : 0),
+                togglePoint(i);
+              } else if (['ArrowLeft', 'ArrowRight', 'ArrowUp', 'ArrowDown'].includes(event.key)) {
+                event.preventDefault();
+                const current = editor.getRecipe();
+                update(
+                  translateCurvePoints(
+                    (scopeRef.current?.getCurves(current) ?? current.curves)[channel],
+                    selectedPoints.includes(i) ? selectedPoints : [i],
+                    event.key === 'ArrowRight' ? step : event.key === 'ArrowLeft' ? -step : 0,
+                    event.key === 'ArrowUp' ? step : event.key === 'ArrowDown' ? -step : 0,
+                  ),
                 );
               } else if (
                 (event.key === 'Delete' || event.key === 'Backspace') &&
@@ -491,6 +600,7 @@ export function CurveEditor({ editor, scope }: { editor: EditorState; scope?: Cu
                   true,
                 );
                 setSelected(Math.max(0, i - 1));
+                setSelectedPoints([]);
               } else if (event.key === 'Escape') {
                 event.preventDefault();
                 if (!gestures.current?.cancel()) editor.cancelPreview();
@@ -503,17 +613,23 @@ export function CurveEditor({ editor, scope }: { editor: EditorState; scope?: Cu
             onPointerDown={(e) => {
               if (e.button !== 0) return;
               const svg = e.currentTarget.ownerSVGElement;
-              if (!svg || !gestures.current?.begin(e.pointerId, i, svg)) return;
-              e.preventDefault();
-              setSelected(i);
+              if (!svg) return;
+              if (multiSelect || e.shiftKey) {
+                e.preventDefault();
+                togglePoint(i);
+              } else startDrag(e, svg, i);
             }}
           >
             <circle cx={p[0] * 256} cy={(1 - p[1]) * 256} r="14" fill="transparent" />
             <circle
               cx={p[0] * 256}
               cy={(1 - p[1]) * 256}
-              r={selected === i ? 6 : 4.5}
-              fill={selected === i ? 'var(--accent)' : 'var(--surface-raised)'}
+              r={selected === i || selectedPoints.includes(i) ? 6 : 4.5}
+              fill={
+                selected === i || selectedPoints.includes(i)
+                  ? 'var(--accent)'
+                  : 'var(--surface-raised)'
+              }
               stroke={color}
               strokeWidth="2"
             />

@@ -138,9 +138,9 @@ export function attachVoiceBridge(
     const live = voiceModel(row.model_id).protocol === 'live';
     let context = snapshots.get(row.id)?.context;
     let contextEpoch = row.context_epoch;
-    let publicSearchAttempted = false;
+    const searched = new Set<string>();
     let lastCommittedInput = '';
-    let pendingSpeechCutItem = '';
+    let speechCutUntil = 0;
     let delegationLimitAnnounced = false;
     snapshots.delete(row.id);
     let active = false,
@@ -167,8 +167,7 @@ export function attachVoiceBridge(
       transcript = new VoiceTranscriptBuffer();
     const startedAt = Date.now();
     let endTimer: NodeJS.Timeout | undefined, durationTimer: NodeJS.Timeout | undefined;
-    let currentAssistantItem = '',
-      responsePending = false,
+    let responsePending = false,
       queuedResponse = false,
       unconfirmedAudio = false,
       receiptMissing = false;
@@ -178,9 +177,31 @@ export function attachVoiceBridge(
     const itemAudioMs = new Map<string, number>(),
       responses = new Set<string>();
     const pendingLiveContext = new Set<string>();
+    const waitingLiveCalls = new Map<string, NodeJS.Timeout>();
+    const visualDeletes = new Set<string>();
+    let providerVisualItem: string | null = null;
     let delegationChain = Promise.resolve();
-    function invalidateContext() {
+    const searchLimit = Math.min(
+      3,
+      Math.max(1, Math.floor(row.config.voiceModel.maxDelegations / 2)),
+    );
+    function invalidateContext(notifyProvider = true) {
+      const hadContext = !!context;
       context = undefined;
+      if (providerVisualItem) {
+        const event_id = `evt_${randomUUID()}`;
+        visualDeletes.add(event_id);
+        if (visualDeletes.size > 12) visualDeletes.delete(visualDeletes.values().next().value!);
+        upstreamSend({ type: 'conversation.item.delete', event_id, item_id: providerVisualItem });
+        providerVisualItem = null;
+      } else if (live && hadContext && notifyProvider) {
+        upstreamSend(
+          liveContextAppend(
+            'thinking',
+            '此前共享的画面已失效。涉及当前图片时，等新的共享画面或由后端确认。',
+          ),
+        );
+      }
       const epoch = ++contextEpoch;
       const persisted = db.query(
         "UPDATE voice_sessions SET context_epoch=GREATEST(context_epoch,$2) WHERE id=$1 AND state='active'",
@@ -232,6 +253,35 @@ export function attachVoiceBridge(
       }
       upstream.send(JSON.stringify(event));
     };
+    function publishContext() {
+      if (live) {
+        if (context)
+          upstreamSend(
+            liveContextAppend(
+              'thinking',
+              context.imageDataUrl
+                ? '编辑器已有新的授权画面与配方。涉及图片细节或编辑时，请使用后端当前画面。'
+                : '编辑器共享了当前配方，未共享画面。可以查看参数，不能描述照片细节。',
+            ),
+          );
+        return;
+      }
+      if (!context?.imageDataUrl) return;
+      const id = `item_xiutu_${randomUUID().replaceAll('-', '')}`;
+      upstreamSend({
+        type: 'conversation.item.create',
+        item: {
+          id,
+          type: 'message',
+          role: 'user',
+          content: [
+            { type: 'input_text', text: '这是我共享的最新编辑预览。' },
+            { type: 'input_image', image_url: context.imageDataUrl },
+          ],
+        },
+      });
+      providerVisualItem = id;
+    }
     const assertAccess = async () => {
       const auth = await db.query(
         "SELECT 1 FROM sessions s JOIN users u ON u.id=s.user_id WHERE s.token_hash=$1 AND s.user_id=$2 AND s.expires_at>clock_timestamp() AND u.status='active'",
@@ -256,6 +306,8 @@ export function attachVoiceBridge(
       clearTimeout(startTimer);
       clearTimeout(endTimer);
       clearTimeout(durationTimer);
+      for (const timer of waitingLiveCalls.values()) clearTimeout(timer);
+      waitingLiveCalls.clear();
       upstream.terminate();
       let state = requestedState,
         reason = requestedReason;
@@ -394,7 +446,12 @@ export function attachVoiceBridge(
         else upstreamSend(event);
       }
     };
-    const delegate = (callId: string, request: string, explicitSearch?: PublicSearch) => {
+    const delegate = (
+      callId: string,
+      request: string,
+      explicitSearch?: PublicSearch,
+      throughMs?: number,
+    ) => {
       if (!callId || callId.length > 128 || knownCalls.has(callId) || ended || closing) return;
       const manualSearch = Boolean(explicitSearch);
       const maxDelegations = row.config.voiceModel.maxDelegations;
@@ -411,7 +468,7 @@ export function attachVoiceBridge(
         }
         return;
       }
-      const latestSpeech = transcript.latestUser();
+      const latestSpeech = transcript.latestUser(throughMs, !live ? lastCommittedInput : undefined);
       const search =
         explicitSearch ??
         (!callId.startsWith('typed_') &&
@@ -421,9 +478,13 @@ export function attachVoiceBridge(
           : undefined) ??
         row.scope.publicSearch;
       const canSearch =
-        !publicSearchAttempted &&
+        searched.size < searchLimit &&
         Boolean(row.scope.allowWebSearch && row.config.backendModel.webSearch) &&
-        Boolean(search && (search.kind !== 'images' || row.config.backendModel.webImageSearch));
+        Boolean(
+          search &&
+          !searched.has(`${search.kind}:${search.query.trim().toLowerCase()}`) &&
+          (search.kind !== 'images' || row.config.backendModel.webImageSearch),
+        );
       if (manualSearch && !canSearch) {
         send(client, {
           type: 'error',
@@ -434,8 +495,8 @@ export function attachVoiceBridge(
       }
       knownCalls.add(callId);
       delegationCount++;
-      if (canSearch) {
-        publicSearchAttempted = true;
+      if (canSearch && search) {
+        searched.add(`${search.kind}:${search.query.trim().toLowerCase()}`);
         send(client, { type: 'search-started' });
       }
       const speakResult = (text: string, applied = false) => {
@@ -444,6 +505,7 @@ export function attachVoiceBridge(
       };
       const frozenContext = context ? structuredClone(context) : undefined;
       const frozenEpoch = contextEpoch;
+      const voiceHistory = transcript.history(throughMs, live && !callId.startsWith('typed_'));
       const startSequence = dispatchSequence;
       dispatchSequence += 4;
       delegationChain = delegationChain
@@ -463,6 +525,10 @@ export function attachVoiceBridge(
               authHash,
               row.config.backendModel,
             );
+            if (voiceHistory.length) {
+              await service.moderate(JSON.stringify(voiceHistory));
+              agentContext.history = voiceHistory;
+            }
             agentContext.onSearch = async (evidence) => {
               if (evidence.kind === 'cloud')
                 agentContext.accessScope.referenceAssetIds = [
@@ -625,22 +691,9 @@ export function attachVoiceBridge(
                 sessionId: row.id,
                 modelId: row.model_id,
                 maxSeconds: row.config.voiceModel.maxSeconds,
+                maxPublicSearches: searchLimit,
               });
-              if (!live && context?.imageDataUrl)
-                upstreamSend({
-                  type: 'conversation.item.create',
-                  item: {
-                    type: 'message',
-                    role: 'user',
-                    content: [
-                      {
-                        type: 'input_text',
-                        text: '这是我主动共享的当前编辑预览，所有实际修改仍需后端建议与界面确认。',
-                      },
-                      { type: 'input_image', image_url: context.imageDataUrl },
-                    ],
-                  },
-                });
+              publishContext();
               durationTimer = setTimeout(
                 () => stop('DURATION_BUDGET'),
                 row.config.voiceModel.maxSeconds * 1000,
@@ -650,11 +703,21 @@ export function attachVoiceBridge(
           return;
         }
         if (event.type === 'error' && event.error?.code === 'response_cancel_not_active') return;
+        if (event.type === 'conversation.item.deleted') {
+          if (event.item_id === providerVisualItem) providerVisualItem = null;
+          return;
+        }
         if (live && /^session\.(thinking|commentary|instructions)\.appended$/.test(event.type)) {
           pendingLiveContext.delete(event.client_event_id);
           return;
         }
         if (event.type === 'error') {
+          const deleteId = event.error?.event_id;
+          if (
+            visualDeletes.delete(deleteId) &&
+            ['item_not_found', 'conversation_item_not_found'].includes(event.error?.code)
+          )
+            return;
           if (live && pendingLiveContext.delete(event.error?.client_event_id)) {
             // A missing speech-context acknowledgment has no authority over
             // the application task, playback or the final usage receipt.
@@ -688,12 +751,11 @@ export function attachVoiceBridge(
         const normalized = normalizeVoiceEvent(event);
         if (normalized) {
           if (!live && normalized.type === 'interrupted' && normalized.bySpeech)
-            pendingSpeechCutItem = currentAssistantItem;
+            speechCutUntil = Date.now() + 1800;
           if (normalized.type === 'transcript') transcript.push(normalized);
           if (normalized.type === 'audio') {
             if (!live) unconfirmedAudio = true;
             if (normalized.itemId) {
-              currentAssistantItem = normalized.itemId;
               itemAudioMs.set(
                 normalized.itemId,
                 (itemAudioMs.get(normalized.itemId) ?? 0) +
@@ -748,11 +810,46 @@ export function attachVoiceBridge(
           event.type === 'session.delegation.created' &&
           event.delegation?.target === 'client' &&
           typeof event.delegation.id === 'string'
-        )
-          delegate(
-            event.delegation.id,
-            transcript.toString() || '用户请求协助编辑当前图片，请先询问具体目标。',
-          );
+        ) {
+          const id = event.delegation.id;
+          const throughMs =
+            Number.isFinite(event.offset_ms) && event.offset_ms >= 0
+              ? (event.offset_ms as number)
+              : undefined;
+          const epoch = contextEpoch;
+          if (!id || id.length > 128 || waitingLiveCalls.has(id) || knownCalls.has(id)) return;
+          const begin = () => {
+            waitingLiveCalls.delete(id);
+            if (ended || closing) return;
+            if (epoch !== contextEpoch) {
+              sendEvents(
+                voiceResultEvents(row.model_id, id, '当前画面已变化，请根据新的共享状态继续。'),
+              );
+              return;
+            }
+            const heard = transcript.latestUser(throughMs);
+            const text =
+              throughMs !== undefined &&
+              heard?.endMs !== undefined &&
+              throughMs - heard.endMs > 20_000
+                ? undefined
+                : heard?.text.trim();
+            if (text) delegate(id, text, undefined, throughMs);
+            else if (knownCalls.size < row.config.voiceModel.maxDelegations + 8) {
+              knownCalls.add(id);
+              sendEvents(
+                voiceResultEvents(row.model_id, id, '没听清本次需要做什么，请向用户简短确认。'),
+              );
+            }
+          };
+          if (
+            throughMs !== undefined &&
+            (transcript.latestUser(throughMs)?.endMs ?? -Infinity) < throughMs
+          ) {
+            if (waitingLiveCalls.size < row.config.voiceModel.maxDelegations)
+              waitingLiveCalls.set(id, setTimeout(begin, 170));
+          } else begin();
+        }
         if (
           !live &&
           event.type === 'response.output_item.done' &&
@@ -854,36 +951,35 @@ export function attachVoiceBridge(
           return;
         }
         if (event.type === 'playback-cut') {
-          if (!live && event.itemId && event.itemId === pendingSpeechCutItem) {
-            pendingSpeechCutItem = '';
+          if (!live && event.itemId && Date.now() <= speechCutUntil) {
+            speechCutUntil = 0;
             const duration = itemAudioMs.get(event.itemId);
-            if (duration !== undefined)
+            if (duration !== undefined) {
+              transcript.discardAssistant(event.itemId);
               upstreamSend({
                 type: 'conversation.item.truncate',
                 item_id: event.itemId,
                 content_index: 0,
                 audio_end_ms: Math.min(event.playedMs, Math.floor(duration)),
               });
+            }
           }
           return;
         }
         if (event.type === 'interrupt') {
           queuedResponse = false;
-          pendingSpeechCutItem = '';
+          speechCutUntil = 0;
           if (!live) {
             if (responsePending || responses.size) upstreamSend({ type: 'response.cancel' });
-            if (
-              event.itemId &&
-              event.itemId === currentAssistantItem &&
-              event.playedMs !== undefined &&
-              itemAudioMs.has(event.itemId)
-            )
+            if (event.itemId && event.playedMs !== undefined && itemAudioMs.has(event.itemId)) {
+              transcript.discardAssistant(event.itemId);
               upstreamSend({
                 type: 'conversation.item.truncate',
                 item_id: event.itemId,
                 content_index: 0,
                 audio_end_ms: Math.min(event.playedMs, Math.floor(itemAudioMs.get(event.itemId)!)),
               });
+            }
           } else
             upstreamSend(
               liveContextAppend(
@@ -920,7 +1016,7 @@ export function attachVoiceBridge(
           if (event.type === 'context') {
             if (Date.now() - lastContextAt < 2500) throw new Error('CONTEXT_RATE');
             lastContextAt = Date.now();
-            const { epoch, persisted } = invalidateContext();
+            const { epoch, persisted } = invalidateContext(false);
             const checked = await service.currentContext(
               row.actor_id,
               row.project_id,
@@ -929,18 +1025,7 @@ export function attachVoiceBridge(
             await persisted;
             if (ended || closing || epoch !== contextEpoch) return;
             context = checked;
-            if (!live && context?.imageDataUrl)
-              upstreamSend({
-                type: 'conversation.item.create',
-                item: {
-                  type: 'message',
-                  role: 'user',
-                  content: [
-                    { type: 'input_text', text: '用户主动更新了当前预览，旧建议需要重新检查。' },
-                    { type: 'input_image', image_url: context.imageDataUrl },
-                  ],
-                },
-              });
+            publishContext();
             send(client, {
               type: 'context',
               accepted: true,

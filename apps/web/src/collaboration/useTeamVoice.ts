@@ -6,6 +6,11 @@ import {
 } from '@ai-xiutu/contracts';
 import { api, errorMessage, jsonRequest } from '../lib/api';
 import { appendCaption, type CaptionState } from '../ai/VoiceCaptions';
+import {
+  AI_VOICE_BUFFER_SECONDS,
+  PEER_VOICE_BUFFER_SECONDS,
+  voicePlaybackTime,
+} from '../ai/voice-playback';
 import { PeerCaptions } from './peerCaptions';
 import {
   clearTeamVoiceSubmission,
@@ -147,12 +152,22 @@ class TeamVoiceTransport {
       nodes: new Set<AudioBufferSourceNode>(),
     };
     this.playback.set(speakerId, clock);
-    if (clock.next > audio.currentTime + 0.45) {
+    if (speakerId !== 0 && clock.next > audio.currentTime + PEER_VOICE_BUFFER_SECONDS) {
       for (const node of clock.nodes) node.stop();
       clock.nodes.clear();
       clock.next = 0;
     }
     const sampleCount = (frame.byteLength - 2) / 2;
+    const start =
+      speakerId === 0
+        ? voicePlaybackTime(
+            audio.currentTime,
+            clock.next,
+            sampleCount / 24_000,
+            AI_VOICE_BUFFER_SECONDS,
+          )
+        : Math.max(audio.currentTime + 0.025, clock.next);
+    if (start === null) return;
     const buffer = audio.createBuffer(1, sampleCount, 24000);
     const samples = buffer.getChannelData(0);
     for (let i = 0; i < samples.length; i++) samples[i] = data.getInt16(2 + i * 2, true) / 32768;
@@ -160,7 +175,6 @@ class TeamVoiceTransport {
     node.buffer = buffer;
     node.connect(this.speakerMix ?? audio.destination);
     if (speakerId !== 0 && this.captionBus) node.connect(this.captionBus);
-    const start = Math.max(audio.currentTime + 0.025, clock.next);
     clock.next = start + buffer.duration;
     clock.nodes.add(node);
     node.onended = () => clock.nodes.delete(node);

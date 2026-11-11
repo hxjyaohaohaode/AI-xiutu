@@ -2,8 +2,6 @@ import { t } from '../i18n';
 import { MotionDetails } from '../motion/Presence';
 import { ChoiceSelect } from '../components/ChoiceSelect';
 import {
-  createHealingOperationV4,
-  createRetouchRegionV4,
   migrateRecipeToV4,
   type HealingOperationV4,
   type RetouchRegionV4,
@@ -13,6 +11,7 @@ import { secureUuid } from '../lib/uuid';
 import { ParameterShelf, type ShelfControl } from './ParameterShelf';
 import { MaskControls } from './MaskControls';
 import { currentV3, newMask, type InspectorController } from './advanced-model';
+import { appendRepairRegion } from './repair-draft';
 
 export function RepairControls({ controller }: { controller: InspectorController }) {
   const { editor, apply, report } = controller,
@@ -51,19 +50,10 @@ export function RepairControls({ controller }: { controller: InspectorController
   function add() {
     try {
       const id = secureUuid(),
-        mask = newMask('brush'),
         current = currentV3(editor);
       if (current.schemaVersion !== 4) return;
-      const op =
-        mode === 'healing'
-          ? createHealingOperationV4({ id, name: '纹理修复 ' + (current.healing.length + 1), mask })
-          : createRetouchRegionV4({
-              id,
-              name: '局部质感 ' + (current.retouch.length + 1),
-              mask,
-              algorithm: 'guided-v4',
-            });
-      if (apply({ ...current, [mode]: [...current[mode], op] }, '新建' + op.name, true)) {
+      const next = appendRepairRegion(current, mode, id);
+      if (apply(next, '新建' + next[mode].at(-1)!.name, true)) {
         editor.setActiveRepairId(id);
         editor.setActiveMaskPath([]);
         editor.setRepairProtection(false);
@@ -242,7 +232,7 @@ export function RepairControls({ controller }: { controller: InspectorController
             editor.setActiveMaskPath([]);
           }}
           options={[
-            ...(!item ? [{ value: '', label: t('选择或建立区域') }] : []),
+            ...(!item ? [{ value: '', label: t('在照片上涂抹') }] : []),
             ...recipe[mode].map((op) => ({ value: op.id, label: op.name })),
           ]}
         />
@@ -250,13 +240,6 @@ export function RepairControls({ controller }: { controller: InspectorController
           {t('新区域')}
         </button>
       </div>
-      {!item && (
-        <p className="control-note">
-          {t(
-            '新建后在照片上涂出要处理的小区域。修复通过周边纹理与边界融合完成，不会生成没有来源的五官。',
-          )}
-        </p>
-      )}
       {item && (
         <>
           <ParameterShelf

@@ -4,6 +4,20 @@ import type { WarpStrokeV3, WarpV3 } from './v3-types.js';
 import type { RGBAImage, RenderOptions, Point, Dimensions } from './types.js';
 import { flowWarpPoint, flowWarpPointV2 } from './v3-flow.js';
 
+function support(stroke: WarpStrokeV3, dimensions: Dimensions) {
+  const radius = stroke.radius * Math.min(dimensions.width, dimensions.height),
+    x = stroke.from.x * dimensions.width,
+    y = stroke.from.y * dimensions.height,
+    tx = stroke.mode === 'restore' ? stroke.to.x * dimensions.width : x,
+    ty = stroke.mode === 'restore' ? stroke.to.y * dimensions.height : y;
+  return {
+    left: Math.min(x, tx) - radius,
+    right: Math.max(x, tx) + radius,
+    top: Math.min(y, ty) - radius,
+    bottom: Math.max(y, ty) + radius,
+  };
+}
+
 /** Reverse sampling field. A drag defines a smooth compactly-supported displacement, not scene geometry. */
 export function compileWarpFieldV3(
   warp: WarpV3,
@@ -52,16 +66,9 @@ function compileWarpMapping(warp: WarpV3, dimensions: Dimensions, original?: RGB
   const stride = Math.ceil((dimensions.width + 2 * short) / cell) + 3;
   if (grid) {
     for (const [index, stroke] of strokes.entries()) {
-      for (
-        let y = Math.floor((stroke.cy - stroke.r) / cell);
-        y <= Math.floor((stroke.cy + stroke.r) / cell);
-        y++
-      )
-        for (
-          let x = Math.floor((stroke.cx - stroke.r) / cell);
-          x <= Math.floor((stroke.cx + stroke.r) / cell);
-          x++
-        ) {
+      const bounds = support(stroke, dimensions);
+      for (let y = Math.floor(bounds.top / cell); y <= Math.floor(bounds.bottom / cell); y++)
+        for (let x = Math.floor(bounds.left / cell); x <= Math.floor(bounds.right / cell); x++) {
           const key = y * stride + x;
           const bucket = grid.get(key);
           if (bucket) bucket.push(index);
@@ -84,11 +91,18 @@ function compileWarpMapping(warp: WarpV3, dimensions: Dimensions, original?: RGB
     if (globalProtection >= 1) return { ...point };
     let candidates = candidatesAt(x, y),
       position = candidates.length - 1;
+    let restores: { x: number; y: number; weight: number }[] | undefined;
     while (position >= 0) {
       const i = candidates[position--]!;
-      const stroke = strokes[i]!,
-        dx = x - stroke.cx,
+      const stroke = strokes[i]!;
+      let dx = x - stroke.cx,
         dy = y - stroke.cy;
+      if (stroke.mode === 'restore') {
+        const length = stroke.dx ** 2 + stroke.dy ** 2;
+        const along = length ? clamp01((dx * stroke.dx + dy * stroke.dy) / length) : 0;
+        dx -= along * stroke.dx;
+        dy -= along * stroke.dy;
+      }
       if (Math.abs(dx) >= stroke.r || Math.abs(dy) >= stroke.r) continue;
       const d = Math.hypot(dx, dy) / stroke.r;
       if (d >= 1) continue;
@@ -96,6 +110,16 @@ function compileWarpMapping(warp: WarpV3, dimensions: Dimensions, original?: RGB
         ? Math.max(globalProtection, stroke.guard(point.x, point.y))
         : globalProtection;
       if (protection >= 1) continue;
+      if (stroke.mode === 'restore') {
+        const edge = stroke.feather ? clamp01((1 - d) / stroke.feather) : 1;
+        const weight =
+          (1 - d * d) ** 2 * edge * edge * (3 - 2 * edge) * stroke.strength * (1 - protection);
+        // Restore blends the earlier composed field toward identity at this
+        // stage. Strokes above it have already been evaluated at the output.
+        if (weight >= 1) break;
+        (restores ??= []).push({ x, y, weight });
+        continue;
+      }
       const oldX = x,
         oldY = y;
       if (stroke.algorithm) {
@@ -147,6 +171,11 @@ function compileWarpMapping(warp: WarpV3, dimensions: Dimensions, original?: RGB
         while (position >= 0 && next[position]! >= i) position--;
       }
     }
+    for (let i = (restores?.length ?? 0) - 1; i >= 0; i--) {
+      const restore = restores![i]!;
+      x += (restore.x - x) * restore.weight;
+      y += (restore.y - y) * restore.weight;
+    }
     return { x: x / dimensions.width, y: y / dimensions.height };
   };
 }
@@ -160,18 +189,15 @@ export function applyWarpV3(
   const active = warp.enabled ? warp.strokes.filter((s) => s.strength !== 0) : [];
   if (!active.length) return image;
   checkV3(options);
-  const short = Math.min(image.width, image.height);
   // Outside the union of stroke supports the reverse mapping is identity, even for a composed field.
   const bounds = (suffix ? [suffix.stroke] : active)
     .map((stroke) => {
-      const cx = stroke.from.x * image.width,
-        cy = stroke.from.y * image.height,
-        radius = stroke.radius * short;
+      const box = support(stroke, image);
       return {
-        left: Math.max(0, Math.floor(cx - radius - 0.5)),
-        right: Math.min(image.width, Math.ceil(cx + radius + 0.5)),
-        top: Math.max(0, Math.floor(cy - radius - 0.5)),
-        bottom: Math.min(image.height, Math.ceil(cy + radius + 0.5)),
+        left: Math.max(0, Math.floor(box.left - 0.5)),
+        right: Math.min(image.width, Math.ceil(box.right + 0.5)),
+        top: Math.max(0, Math.floor(box.top - 0.5)),
+        bottom: Math.min(image.height, Math.ceil(box.bottom + 0.5)),
       };
     })
     .sort((a, b) => a.left - b.left);

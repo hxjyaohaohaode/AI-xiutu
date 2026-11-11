@@ -292,7 +292,6 @@ export function createRenderSession(inputRecipe: RecipeV1): ReferenceRenderSessi
   const curves = compileCurves(recipe.curves);
   const gainOnly =
     globalTone.active &&
-    !Object.values(curves).some(Boolean) &&
     globalTone.brightness === 1 &&
     globalTone.contrast === 1 &&
     globalTone.shadowKnot === 0.25 &&
@@ -306,14 +305,30 @@ export function createRenderSession(inputRecipe: RecipeV1): ReferenceRenderSessi
     encoded && (gainOnly || !globalTone.active)
       ? encoded.map((samples, index) =>
           Int16Array.from(samples, (sample) => {
+            const key = channels[index + 1]!;
+            const channel = curves[key];
             if (gainOnly) {
-              // The neutral luma algebra can move the encoded value by floating-point
-              // round-off. Fall back for any input near a reference quantization boundary.
-              const lower = byte(clamp(sample - 1e-10));
-              return lower === byte(clamp(sample + 1e-10)) ? lower : -1;
+              // Bound neutral luma round-off through each monotone curve segment.
+              // Samples near a knot or output byte threshold use the reference evaluation.
+              let lower = clamp(sample - 1e-10),
+                upper = clamp(sample + 1e-10);
+              for (const name of ['rgb', key] as const) {
+                const curve = curves[name];
+                if (!curve) continue;
+                const crossesKnot =
+                  recipe.curves.interpolation?.[name] === 'pchip-v1'
+                    ? recipe.curves[name].some(([x]) => x > lower && x < upper)
+                    : Math.floor(lower * 4095) !== Math.floor(upper * 4095);
+                if (crossesKnot) return -1;
+                const a = curve(lower),
+                  b = curve(upper);
+                lower = Math.min(a, b) - 1e-12;
+                upper = Math.max(a, b) + 1e-12;
+              }
+              const low = byte(clamp(lower));
+              return low === byte(clamp(upper)) ? low : -1;
             }
             const global = curves.rgb ? curves.rgb(sample) : sample;
-            const channel = curves[channels[index + 1]!]!;
             return byte(channel ? channel(global) : global);
           }),
         )

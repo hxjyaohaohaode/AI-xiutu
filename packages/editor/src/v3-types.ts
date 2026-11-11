@@ -142,17 +142,17 @@ export interface PaintLayerV3 {
 }
 export interface WarpStrokeV3 {
   /** Omitted preserves the published displacement field. New flows integrate a smooth velocity. */
-  algorithm?: 'flow-v1' | 'flow-v2';
+  algorithm?: 'flow-v1' | 'flow-v2' | 'restore-v1';
   resampling?: 'bounded-cubic-v1';
   guardId?: string;
   origin?: OperationOriginV3;
   id: string;
-  mode: 'push' | 'pinch' | 'bulge' | 'twirl';
+  mode: 'push' | 'pinch' | 'bulge' | 'twirl' | 'restore';
   from: Point;
   to: Point;
   radius: number;
   feather: number;
-  /** Signed amount, -1…1. Negative reverses direction; zero is identity. */
+  /** Signed amount for deformation. A restore stroke uses 0…1. */
   strength: number;
 }
 export interface WarpV3 {
