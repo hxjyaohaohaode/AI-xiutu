@@ -1230,6 +1230,38 @@ export function DocumentsView({
     [actorId, project.id, ownerKey],
   );
 
+  useEffect(
+    () =>
+      documentDrafts.subscribeDiscards((notice) => {
+        if (
+          activeOwner.current !== ownerKey ||
+          notice.actorId !== actorId ||
+          notice.projectId !== project.id ||
+          notice.lineage !== editingLineage.current
+        )
+          return;
+        // AccountCenter can explicitly discard this editor's draft while its modal
+        // is open. Resolve both copies together, without treating a save as discard.
+        const base = notice.base ? { ...notice.base } : null;
+        activeOperation.current++;
+        requestGeneration.current++;
+        saveLock.current = false;
+        editingLineage.current = null;
+        currentDraft.current = { title: base?.title ?? '', body: base?.body ?? '' };
+        setSelected(base);
+        setTitle(currentDraft.current.title);
+        setBody(currentDraft.current.body);
+        setPending(null);
+        setCreating(false);
+        setDraftInEditor(!!base);
+        setDirty(false);
+        setConflict(false);
+        setError(null);
+        if (!base) setMobileList(true);
+      }),
+    [actorId, project.id, ownerKey],
+  );
+
   function updateDraft(next: { title: string; body: string }) {
     if (!actorId || activeOwner.current !== ownerKey || !canEdit) return;
     const previous = documentDrafts.get(actorId, project.id);
@@ -1306,7 +1338,7 @@ export function DocumentsView({
     )
       return;
     if (activeOwner.current !== ownerKey) return;
-    if (!documentDrafts.remove(actorId, project.id, draft.revision)) {
+    if (!documentDrafts.discard(actorId, project.id, draft.revision)) {
       setError('草稿已经变化，请重新核对后操作。');
       return;
     }

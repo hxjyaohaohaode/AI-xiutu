@@ -92,7 +92,7 @@ const report = {
     'SMS-purpose cases wait for the real server cooldown; neither browser time nor challenge timestamps are changed.',
     'Account deletion and checkout remain explicitly unavailable when the current backend exposes no real contract; no purchase or purge is performed.',
     'Headless Chromium viewport/input checks do not prove physical keyboard, screen reader, mobile OS or paid-provider acceptance.',
-    'Authentication input fields are masked in captured screenshots; no OTP/password/session token is written to artifacts.',
+    'Authentication inputs with nonempty values are masked in screenshots; empty placeholders and borders remain visible. No OTP/password/session token is written to artifacts.',
   ],
 };
 let db, app, vite, browser, directory, main, peer, currentPage, fixtureSecret;
@@ -160,12 +160,22 @@ async function newContext(viewport = { width: 1440, height: 960 }) {
 }
 async function capture(page, name) {
   const file = `${name}.png`;
+  const fields = page.locator('.auth-dialog input');
+  const masks = [];
+  for (let index = 0; index < (await fields.count()); index++) {
+    const input = fields.nth(index);
+    if (await input.evaluate((element) => element.value.length > 0)) masks.push(input);
+  }
   await page.screenshot({
     path: resolve(artifacts, file),
-    mask: [page.locator('.auth-dialog input')],
+    mask: masks,
     maskColor: '#73766c',
   });
-  report.screenshots.push({ file, authenticationInputsMasked: true });
+  report.screenshots.push({
+    file,
+    authenticationValuesMasked: true,
+    maskedInputCount: masks.length,
+  });
 }
 async function request(context, method, path, data) {
   const response = await context.request.fetch(`${origin}${path}`, {
@@ -1155,6 +1165,32 @@ try {
       const latest = cloud.body.documents.find((item) => item.id === document.id);
       assert.equal(latest.version, newer.body.document.version);
       assert.equal(latest.body, newer.body.document.body);
+      const discardAccount = await openAccount(page, name);
+      await page.getByTestId('account-tab-data').click();
+      await page.getByTestId('account-document-draft-discard').click();
+      await page.getByTestId('account-document-draft-confirm').click();
+      await until(
+        async () => (await page.getByTestId('account-document-draft').count()) === 0,
+        'explicit account discard removes its own retained row',
+      );
+      await closeDialog(discardAccount);
+      assert.equal(
+        await page.getByRole('textbox', { name: '文档标题', exact: true }).inputValue(),
+        document.title,
+      );
+      assert.equal(
+        await page.getByRole('textbox', { name: '文档内容', exact: true }).inputValue(),
+        document.body,
+      );
+      await until(
+        async () => !(await hasUnloadProtection()),
+        'account discard releases the matching active editor copy',
+      );
+      // A fresh edit after that explicit discard must establish a new lineage,
+      // which the subsequent real logout is separately authorized to clear.
+      await page.getByRole('textbox', { name: '文档标题', exact: true }).fill(draftTitle);
+      await page.getByRole('textbox', { name: '文档内容', exact: true }).fill(draftBody);
+      await until(hasUnloadProtection, 'new document edit is independently protected');
       await logout(page, name);
       await until(
         async () => !(await hasUnloadProtection()),
@@ -1169,6 +1205,7 @@ try {
         retainedAfterUnmount: true,
         exactExportRoundTrip: true,
         accountExportBeforeProjectReopen: true,
+        accountDiscardSynchronizesActiveEditor: true,
         explicitRecovery: true,
         staleSaveStatus: 409,
         cloudVersionPreserved: true,
@@ -1409,6 +1446,139 @@ try {
         serverStatus: 503,
         smsDispatches: 0,
         passwordRouteAvailable: true,
+      };
+    },
+  );
+
+  await check(
+    'Changing accounts preserves private cloud provenance and a denied copy never falls back to uploading source bytes',
+    async () => {
+      const page = main.page;
+      currentPage = page;
+      await page.setViewportSize({ width: 1440, height: 960 });
+      await page.getByRole('button', { name: `账户：${primaryName}`, exact: true }).waitFor();
+      const canvas = page.locator('canvas[aria-label="照片编辑预览"]');
+      await until(
+        () => canvas.evaluate((element) => element.width === 32 && element.height === 24),
+        'previously imported local fixture remains available',
+      );
+      async function saveThroughNewProject(title) {
+        const creation = page.waitForResponse(
+          (response) =>
+            new URL(response.url()).pathname === '/v1/projects' &&
+            response.request().method() === 'POST',
+        );
+        await page.getByRole('button', { name: '保存', exact: true }).click();
+        const dialog = page.getByRole('dialog', { name: '新建项目', exact: true });
+        await dialog.getByRole('textbox', { name: '项目名称', exact: true }).fill(title);
+        await dialog.getByRole('button', { name: '创建', exact: true }).click();
+        const response = await creation;
+        assert.equal(response.status(), 201);
+        const { project } = await response.json();
+        await dialog.waitFor({ state: 'hidden' });
+        await until(
+          () => page.getByRole('button', { name: '保存', exact: true }).isEnabled(),
+          'save attempt finishes',
+        );
+        return project;
+      }
+      const uploads = [],
+        artworks = [];
+      const watchInitialSave = (response) => {
+        if (response.request().method() !== 'POST') return;
+        const path = new URL(response.url()).pathname;
+        if (/^\/v1\/projects\/[^/]+\/assets$/.test(path)) uploads.push(response);
+        if (/^\/v1\/projects\/[^/]+\/artworks$/.test(path)) artworks.push(response);
+      };
+      page.on('response', watchInitialSave);
+      const sourceProject = await saveThroughNewProject('原账号私有图像');
+      page.off('response', watchInitialSave);
+      assert.equal(uploads.length, 1);
+      assert.equal(artworks.length, 1);
+      assert.equal(uploads[0].status(), 201);
+      assert.equal(artworks[0].status(), 201);
+      const sourceAsset = (await uploads[0].json()).asset;
+      const sourceArtwork = (await artworks[0].json()).artwork;
+      const compact = page.getByRole('button', { name: '切换工作视图', exact: true });
+      if (await compact.isVisible()) {
+        await compact.click();
+        const navigation = page.getByRole('dialog', { name: '工作视图', exact: true });
+        await navigation.locator('button[data-view="works"]').click();
+        await navigation.waitFor({ state: 'hidden' });
+      } else
+        await page
+          .getByRole('navigation', { name: '工作视图', exact: true })
+          .getByRole('button', { name: '作品', exact: true })
+          .click();
+      const cloudOpen = page.waitForResponse(
+        (response) =>
+          new URL(response.url()).pathname === `/v1/artworks/${sourceArtwork.id}` &&
+          response.request().method() === 'GET',
+      );
+      await page
+        .locator('.library-version-links button')
+        .filter({ hasText: sourceArtwork.title })
+        .click();
+      assert.equal((await cloudOpen).status(), 200);
+      await until(
+        () => canvas.evaluate((element) => element.width === 32 && element.height === 24),
+        'private cloud source is actually opened',
+      );
+      await logout(page);
+      await actualLogin(page, documentActor.phone, password, documentActor.name);
+      assert.equal(
+        (await request(main.context, 'GET', `/v1/projects/${sourceProject.id}`)).status,
+        404,
+        'The second actor must have no access to the private source project',
+      );
+      const mutationPaths = [],
+        copies = [];
+      const watchMutation = (request) => {
+        if (request.method() === 'POST') mutationPaths.push(new URL(request.url()).pathname);
+      };
+      const copyPath = `/v1/assets/${sourceAsset.id}/copy`;
+      const watchCopy = (response) => {
+        if (response.request().method() === 'POST' && new URL(response.url()).pathname === copyPath)
+          copies.push(response);
+      };
+      page.on('request', watchMutation);
+      page.on('response', watchCopy);
+      const destination = await saveThroughNewProject('新账号隔离目标');
+      page.off('request', watchMutation);
+      page.off('response', watchCopy);
+      assert.equal(
+        copies.length,
+        1,
+        'Known cloud bytes must attempt authorized copy after an actor switch',
+      );
+      assert.equal(copies[0].status(), 404);
+      assert.equal((await copies[0].json()).error.code, 'PROJECT_NOT_FOUND');
+      assert.equal(
+        mutationPaths.filter((path) => path === `/v1/projects/${destination.id}/assets`).length,
+        0,
+        'Copy rejection must never upload the already-downloaded private file',
+      );
+      assert.equal(
+        mutationPaths.filter((path) => path === `/v1/projects/${destination.id}/artworks`).length,
+        0,
+      );
+      const target = await request(main.context, 'GET', `/v1/projects/${destination.id}`);
+      assert.equal(target.status, 200);
+      assert.equal(target.body.assets.length, 0);
+      assert.equal(target.body.artworks.length, 0);
+      assert.equal(
+        await canvas.evaluate((element) => element.width === 32 && element.height === 24),
+        true,
+      );
+      return {
+        privateSourceReadStatus: 404,
+        authorizedCopyStatus: 404,
+        copyAttempts: 1,
+        fallbackUploadRequests: 0,
+        destinationArtworkRequests: 0,
+        destinationAssets: 0,
+        destinationArtworks: 0,
+        localPreviewRetained: true,
       };
     },
   );

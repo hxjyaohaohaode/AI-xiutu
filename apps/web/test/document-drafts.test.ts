@@ -323,3 +323,54 @@ test('malformed cloud lists are rejected before they can replace text or consume
   assert.equal(store.get('actor-a', 'project-a'), retained);
   assert.deepEqual(projectDocumentsFromResponse({ documents: [base] }), [base]);
 });
+
+test('explicit discard publishes only its matching actor/project/lineage and original base', () => {
+  const store = new DocumentDraftStore();
+  const draft = put(store);
+  const other = put(store, input({ actorId: 'actor-b' }));
+  const notices: Array<{ actorId: string; projectId: string; lineage: number; base: unknown }> = [];
+  const unsubscribe = store.subscribeDiscards((notice) => notices.push(notice));
+  assert.equal(store.discard('actor-a', 'project-a', draft.revision), true);
+  assert.deepEqual(notices, [
+    { actorId: 'actor-a', projectId: 'project-a', lineage: draft.lineage, base },
+  ]);
+  assert.equal(store.get('actor-b', 'project-a'), other);
+  assert.equal(store.discard('actor-a', 'project-a', draft.revision), false);
+  unsubscribe();
+});
+
+test('successful save cleanup never emits the explicit-discard signal', () => {
+  const store = new DocumentDraftStore();
+  let discards = 0;
+  store.subscribeDiscards(() => {
+    discards++;
+  });
+  const draft = put(store);
+  assert.equal(store.beginSave(draft), true);
+  assert.equal(
+    store.acknowledgeSave(draft, {
+      ...base,
+      title: draft.title.trim(),
+      body: draft.body,
+      version: 4,
+    }),
+    'cleared',
+  );
+  const clean = put(store);
+  assert.equal(store.remove(clean.actorId, clean.projectId, clean.revision), true);
+  assert.equal(discards, 0);
+});
+
+test('pending saves and stale confirmations cannot discard current text; unknown results require the current revision', () => {
+  const store = new DocumentDraftStore();
+  const draft = put(store);
+  assert.equal(store.beginSave(draft), true);
+  const pending = store.get('actor-a', 'project-a')!;
+  assert.equal(store.discard('actor-a', 'project-a', pending.revision), false);
+  store.finishUnconfirmedSave(draft, false);
+  const unknown = store.get('actor-a', 'project-a')!;
+  assert.equal(store.discard('actor-a', 'project-a', pending.revision), false);
+  assert.equal(store.get('actor-a', 'project-a'), unknown);
+  assert.equal(store.discard('actor-a', 'project-a', unknown.revision), true);
+  assert.equal(store.count(), 0);
+});

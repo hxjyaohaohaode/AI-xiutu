@@ -308,6 +308,49 @@ export function Modal({
       data-motion-owner
       inert={!open}
       aria-hidden={!open}
+      onKeyDown={(event) => {
+        if (
+          event.key !== 'Tab' ||
+          event.defaultPrevented ||
+          event.altKey ||
+          event.ctrlKey ||
+          event.metaKey ||
+          !open ||
+          (event.target as Element).closest('dialog') !== event.currentTarget
+        )
+          return;
+        const element = event.currentTarget;
+        const stops = Array.from(
+          element.querySelectorAll<HTMLElement>(
+            'button, input, select, textarea, a[href], area[href], summary, iframe, [tabindex], [contenteditable]:not([contenteditable="false"])',
+          ),
+        )
+          .filter(
+            (candidate) =>
+              candidate.tabIndex >= 0 &&
+              !candidate.matches(':disabled') &&
+              !candidate.closest('[inert], [hidden], [aria-hidden="true"]') &&
+              candidate.getClientRects().length > 0 &&
+              getComputedStyle(candidate).visibility !== 'hidden',
+          )
+          .sort((a, b) => (a.tabIndex || Infinity) - (b.tabIndex || Infinity));
+        const first = stops[0];
+        const last = stops.at(-1);
+        const active = document.activeElement;
+        // Native modality makes the background inert, but Chromium can still
+        // move focus into browser chrome at a boundary. Keep this dialog's
+        // keyboard cycle explicit without intercepting ordinary field traversal.
+        if (!first || !last) {
+          event.preventDefault();
+          element.focus({ preventScroll: true });
+        } else if (event.shiftKey && (active === first || active === element)) {
+          event.preventDefault();
+          last.focus({ preventScroll: true });
+        } else if (!event.shiftKey && (active === last || active === element)) {
+          event.preventDefault();
+          first.focus({ preventScroll: true });
+        }
+      }}
       onClick={(e) => {
         if (e.target === e.currentTarget) {
           const r = e.currentTarget.getBoundingClientRect();

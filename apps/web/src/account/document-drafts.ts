@@ -77,6 +77,12 @@ type SaveNotice = Readonly<{
   lineage: number;
   document: Readonly<ProjectDocument>;
 }>;
+type DiscardNotice = Readonly<{
+  actorId: string;
+  projectId: string;
+  lineage: number;
+  base: Readonly<ProjectDocument> | null;
+}>;
 
 /** Page-memory recovery only. Never serializes to browser storage or sends a request.
  * Capacity is a refusal, never an eviction: another project's unsaved work cannot
@@ -86,6 +92,7 @@ export class DocumentDraftStore {
   private entries = new Map<string, DocumentDraft>();
   private listeners = new Set<() => void>();
   private saveListeners = new Set<(notice: SaveNotice) => void>();
+  private discardListeners = new Set<(notice: DiscardNotice) => void>();
   private actorLists = new Map<string, readonly DocumentDraft[]>();
   private nextRevision = 0;
 
@@ -108,6 +115,13 @@ export class DocumentDraftStore {
     this.saveListeners.add(listener);
     return () => {
       this.saveListeners.delete(listener);
+    };
+  };
+
+  subscribeDiscards = (listener: (notice: DiscardNotice) => void) => {
+    this.discardListeners.add(listener);
+    return () => {
+      this.discardListeners.delete(listener);
     };
   };
 
@@ -216,6 +230,26 @@ export class DocumentDraftStore {
     const key = keyFor(actorId, projectId);
     if (this.entries.get(key)?.revision !== revision) return false;
     this.entries.delete(key);
+    this.changed();
+    return true;
+  }
+
+  /** Explicit user discard is distinct from successful-save cleanup. A matching
+   * active editor must release its copy too; a different lineage stays intact.
+   */
+  discard(actorId: string, projectId: string, revision: number): boolean {
+    const key = keyFor(actorId, projectId);
+    const current = this.entries.get(key);
+    if (!current || current.revision !== revision || current.saveState === 'pending') return false;
+    this.entries.delete(key);
+    this.actorLists.clear();
+    const notice: DiscardNotice = Object.freeze({
+      actorId,
+      projectId,
+      lineage: current.lineage,
+      base: current.base,
+    });
+    for (const listener of this.discardListeners) listener(notice);
     this.changed();
     return true;
   }

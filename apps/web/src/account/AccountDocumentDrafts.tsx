@@ -138,7 +138,7 @@ export function AccountDocumentDrafts({
     }
     const position = drafts.findIndex((item) => item.projectId === current.projectId);
     const restoreFocus = !!root.current?.contains(document.activeElement);
-    if (!documentDrafts.remove(actor, current.projectId, current.revision)) {
+    if (!documentDrafts.discard(actor, current.projectId, current.revision)) {
       setConfirmation(null);
       setFeedback({
         actor,
