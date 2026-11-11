@@ -1,5 +1,13 @@
 import { t } from '../i18n';
-import { useEffect, useMemo, useRef, useState, type DragEvent, type PointerEvent } from 'react';
+import {
+  useEffect,
+  useLayoutEffect,
+  useMemo,
+  useRef,
+  useState,
+  type DragEvent,
+  type PointerEvent,
+} from 'react';
 import { createPortal } from 'react-dom';
 import {
   Plus,
@@ -90,7 +98,7 @@ export function PixelCanvas({
   className?: string;
 }) {
   const ref = useRef<HTMLCanvasElement>(null);
-  useEffect(() => {
+  useLayoutEffect(() => {
     if (!image || !ref.current) return;
     if (ref.current.width !== image.width) ref.current.width = image.width;
     if (ref.current.height !== image.height) ref.current.height = image.height;
@@ -1719,7 +1727,11 @@ export function CanvasStage({
   return (
     <main
       className={`canvas-stage content-first ${dragging ? 'is-dragging' : ''} ${editor.file ? 'has-image' : ''}`}
-      aria-busy={editor.loading || editor.rendering}
+      aria-busy={
+        editor.loading ||
+        editor.rendering ||
+        Boolean(editor.file && !editor.error && editor.renderedRecipe !== editor.recipe)
+      }
       onDragOver={(event) => {
         prevent(event);
         setDragging(true);

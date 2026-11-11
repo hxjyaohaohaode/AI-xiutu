@@ -1003,6 +1003,7 @@ try {
         await page.screenshot({ path: resolve(artifacts, 'failure.png') });
         throw error;
       });
+    await page.locator('.canvas-stage[aria-busy="false"]').waitFor();
     const trace = await page.evaluate(() => window.previewTrace);
     const inputTime = trace.start;
     assert.ok(Number.isFinite(inputTime), 'the measured gesture has an actual pointerdown');
@@ -1042,9 +1043,10 @@ try {
             trace.end - frames.at(-1).t,
           )
         : null,
-      settledMs:
+      firstPostReleasePaintMs:
         trace.paints.find((p) => p.t >= trace.end && p.width === trace.baseline.width && changed(p))
           .t - trace.end,
+      settledMs: trace.paints.at(-1).t - trace.end,
       baseline: trace.baseline.sample,
       settled: trace.paints.at(-1).sample,
     };
