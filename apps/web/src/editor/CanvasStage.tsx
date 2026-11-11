@@ -13,6 +13,7 @@ import {
   Eyedropper,
   ArrowCounterClockwise,
   ArrowClockwise,
+  ArrowsOutCardinal,
 } from '@phosphor-icons/react';
 import {
   getEditorOutputDimensions,
@@ -71,6 +72,13 @@ import type { CollaborationState } from '../collaboration/useCollaboration';
 import { CollaborationOverlay } from '../collaboration/CollaborationOverlay';
 import './editor-controls.css';
 import { StudioWelcome } from '../workspace/StudioWelcome';
+import { studioText } from '../workspace/studio-copy';
+import {
+  polygonCenter,
+  polygonRotationDelta,
+  rotatePolygon,
+  translatePolygon,
+} from './selection-transform';
 
 export function PixelCanvas({
   image,
@@ -109,6 +117,7 @@ function MaskPreview({
   recipe,
   ratio,
   opacity,
+  automatic,
 }: {
   mask: SelectionMaskV3;
   dimensions: Dimensions;
@@ -116,6 +125,7 @@ function MaskPreview({
   recipe: EditorRecipe;
   ratio: number;
   opacity: number;
+  automatic: boolean;
 }) {
   const ref = useRef<HTMLCanvasElement>(null);
   const worker = useRef<Worker | null>(null),
@@ -188,11 +198,23 @@ function MaskPreview({
     };
     pump();
   }, [key, source]);
-  return <canvas ref={ref} className="selection-preview" aria-hidden />;
+  return (
+    <canvas
+      ref={ref}
+      className="selection-preview"
+      data-preview-mode={automatic ? 'locate' : 'inspect'}
+      aria-hidden
+    />
+  );
 }
 function editPointerBounds(kind: string) {
   if (kind === 'paint' || kind === 'brush') return 'strict';
-  if (kind.startsWith('image-') || kind.endsWith('-rotation') || kind.startsWith('radius'))
+  if (
+    kind.startsWith('image-') ||
+    kind.endsWith('-rotation') ||
+    kind === 'polygon-rotate' ||
+    kind.startsWith('radius')
+  )
     return 'unbounded';
   return 'clamp';
 }
@@ -206,14 +228,6 @@ function selectionRotation(center: Point, start: Point, end: Point, dimensions: 
     b = vector(end);
   if (Math.hypot(a.x, a.y) < 1 || Math.hypot(b.x, b.y) < 1) return null;
   return Math.atan2(a.x * b.y - a.y * b.x, a.x * b.x + a.y * b.y);
-}
-
-function polygonFrame(points: Point[]) {
-  const left = Math.min(...points.map((point) => point.x)),
-    right = Math.max(...points.map((point) => point.x)),
-    top = Math.min(...points.map((point) => point.y)),
-    bottom = Math.max(...points.map((point) => point.y));
-  return { left, right, top, bottom, center: { x: (left + right) / 2, y: (top + bottom) / 2 } };
 }
 
 type EditGesture = {
@@ -280,6 +294,9 @@ export function CanvasStage({
   const [space, setSpace] = useState(false),
     [handMode, setHandMode] = useState(false),
     [notice, setNotice] = useState<string | null>(null);
+  const [selectionPulse, setSelectionPulse] = useState(false);
+  const [selectionHeld, setSelectionHeld] = useState(false);
+  const [selectionManipulating, setSelectionManipulating] = useState(false);
   const [projectiveFrame, setProjectiveFrame] = useState<{
     scale: number;
     center: Point;
@@ -426,26 +443,32 @@ export function CanvasStage({
     !sampling &&
     !space &&
     !handMode;
-  const [selectionHint, setSelectionHint] = useState(false);
-  const maskPathKey = editor.activeMaskPath.join('.');
-  useEffect(() => {
-    if (!editingSelection) {
-      setSelectionHint(false);
-      return;
-    }
-    setSelectionHint(true);
-    const timeout = window.setTimeout(() => setSelectionHint(false), 1200);
-    return () => window.clearTimeout(timeout);
-  }, [
-    editingSelection,
-    source,
-    region?.id,
-    repair?.id,
-    mask.type,
-    maskPathKey,
-    protecting,
+  const selectionContext = [
+    group,
+    editor.getSourceIdentity(),
+    editor.activeRegionId,
+    editor.activeRepairId,
+    editor.repairMode,
     editor.repairProtection,
-  ]);
+    editor.activeMaskPath.join('.'),
+    mask.type,
+    mask.type === 'radial' ? (mask.shape ?? 'ellipse') : '',
+    protecting,
+    hasSelection,
+  ].join(':');
+  useEffect(() => {
+    setSelectionHeld(false);
+    setSelectionManipulating(false);
+    const available = editingSelection;
+    setSelectionPulse(available);
+    if (!available) return;
+    // Locate a newly selected area once. Color/strength changes do not restart
+    // the tint, so the photograph remains clear while judging the result.
+    const timer = window.setTimeout(() => setSelectionPulse(false), 1000);
+    return () => window.clearTimeout(timer);
+  }, [selectionContext, editingSelection]);
+  const selectionVisible =
+    editor.maskOverlay || selectionPulse || selectionHeld || selectionManipulating;
   const output = useMemo(() => {
     try {
       return dimensions ? getEditorOutputDimensions(dimensions, recipe) : null;
@@ -534,8 +557,13 @@ export function CanvasStage({
       }
       if (event.key === 'Escape' && editGesture.current) {
         if (ownsEdit(editGesture.current))
-          editor.preview(editGesture.current.rollback ?? editGesture.current.base);
+          editor.preview(
+            editGesture.current.rollback ?? editGesture.current.base,
+            editGesture.current.kind === 'warp' ? 'warp' : 'fast',
+          );
         editGesture.current = null;
+        setSelectionManipulating(false);
+        setSelectionHeld(false);
         setProjectiveFrame(null);
         setNotice(null);
       }
@@ -545,13 +573,18 @@ export function CanvasStage({
     };
     const blur = () => {
       setSpace(false);
+      setSelectionHeld(false);
+      setSelectionManipulating(false);
       pointerOwnership.current.reset();
       panGesture.current = null;
       pinch.current = null;
       pointerPositions.current.clear();
       if (editGesture.current) {
         if (ownsEdit(editGesture.current))
-          editor.preview(editGesture.current.rollback ?? editGesture.current.base);
+          editor.preview(
+            editGesture.current.rollback ?? editGesture.current.base,
+            editGesture.current.kind === 'warp' ? 'warp' : 'fast',
+          );
         editGesture.current = null;
         setProjectiveFrame(null);
       }
@@ -582,8 +615,12 @@ export function CanvasStage({
   }, [zoom, bounds.width, bounds.height, display.width, display.height, projectiveFrame]);
   useEffect(() => {
     if (editGesture.current && ownsEdit(editGesture.current))
-      editor.preview(editGesture.current.rollback ?? editGesture.current.base);
+      editor.preview(
+        editGesture.current.rollback ?? editGesture.current.base,
+        editGesture.current.kind === 'warp' ? 'warp' : 'fast',
+      );
     editGesture.current = null;
+    setSelectionManipulating(false);
     setProjectiveFrame(null);
     setNotice(null);
   }, [
@@ -859,6 +896,14 @@ export function CanvasStage({
       );
     }
     editGesture.current = state;
+    setSelectionManipulating(
+      kind === 'brush' ||
+        kind === 'center' ||
+        kind === 'radial-rotation' ||
+        kind.startsWith('radius') ||
+        kind.startsWith('linear-') ||
+        kind.startsWith('polygon-'),
+    );
     setNotice(null);
   }
   function moveEdit(event: PointerEvent<HTMLDivElement>, terminal = false) {
@@ -872,6 +917,7 @@ export function CanvasStage({
       return;
     if (!ownsEdit(state)) {
       editGesture.current = null;
+      setSelectionManipulating(false);
       setProjectiveFrame(null);
       return;
     }
@@ -1153,33 +1199,24 @@ export function CanvasStage({
         Math.hypot(next.end.x - next.start.x, next.end.y - next.start.y) < 0.0001
       )
         return;
-    } else if (original.type === 'polygon') {
-      if (state.kind === 'polygon-center') {
-        const box = polygonFrame(original.points);
-        const x = clamp(point.x - state.start.x, -box.left, 1 - box.right);
-        const y = clamp(point.y - state.start.y, -box.top, 1 - box.bottom);
-        next = { ...original, points: original.points.map((p) => ({ x: p.x + x, y: p.y + y })) };
-      } else if (state.kind === 'polygon-rotation') {
-        const { center } = polygonFrame(original.points);
-        const delta = selectionRotation(center, state.start, point, dimensions);
-        if (delta === null) return;
-        const cos = Math.cos(delta),
-          sin = Math.sin(delta);
-        const points = original.points.map((p) => {
-          const x = (p.x - center.x) * dimensions.width,
-            y = (p.y - center.y) * dimensions.height;
-          return {
-            x: center.x + (x * cos - y * sin) / dimensions.width,
-            y: center.y + (x * sin + y * cos) / dimensions.height,
-          };
-        });
-        if (points.some(({ x, y }) => x < -1e-9 || x > 1 + 1e-9 || y < -1e-9 || y > 1 + 1e-9)) {
-          setNotice(t('选区旋转超出原图范围'));
+    } else if (original.type === 'polygon' && state.kind.startsWith('polygon-')) {
+      if (state.kind === 'polygon-move') {
+        next = translatePolygon(original, point.x - state.start.x, point.y - state.start.y);
+      } else if (state.kind === 'polygon-rotate') {
+        const degrees = polygonRotationDelta(
+          state.start,
+          point,
+          polygonCenter(original.points),
+          dimensions,
+        );
+        const rotated = rotatePolygon(original, degrees, dimensions);
+        if (!rotated) {
+          setNotice(studioText('rotateBounds'));
           return;
         }
-        next = { ...original, points: points.map(({ x, y }) => ({ x: clamp(x), y: clamp(y) })) };
         setNotice(null);
-      } else if (state.kind.startsWith('polygon-')) {
+        next = rotated;
+      } else {
         const index = Number(state.kind.slice(8));
         next = {
           ...original,
@@ -1202,6 +1239,7 @@ export function CanvasStage({
     if (!state || state.pointer !== event.pointerId) return;
     if (!cancel && (state.kind === 'paint' || state.kind === 'brush')) moveEdit(event, true);
     editGesture.current = null;
+    setSelectionManipulating(false);
     setProjectiveFrame(null);
     if (ownsEdit(state)) {
       if (cancel)
@@ -1309,7 +1347,8 @@ export function CanvasStage({
     return (
       <button
         key={kind}
-        className={`image-handle ${kind.startsWith('crop') ? 'crop-handle' : ''}`}
+        className={`image-handle ${kind.startsWith('crop') ? 'crop-handle' : ''} ${kind === 'polygon-rotate' || kind === 'polygon-move' || kind === 'radial-rotation' ? 'selection-transform-handle' : ''}`}
+        data-handle={kind}
         aria-label={label}
         title={label}
         style={{
@@ -1318,8 +1357,89 @@ export function CanvasStage({
           transform: `translate(-50%,-50%) scale(${1 / zoom})`,
         }}
         onPointerDown={(event) => beginEdit(event, kind)}
+        onKeyDown={(event) => {
+          if (
+            !editingSelection ||
+            !dimensions ||
+            editGesture.current ||
+            !['ArrowLeft', 'ArrowRight', 'ArrowUp', 'ArrowDown'].includes(event.key)
+          )
+            return;
+          const amount = event.altKey ? 0.1 : event.shiftKey ? 10 : 1;
+          const dx =
+            (event.key === 'ArrowRight' ? amount : event.key === 'ArrowLeft' ? -amount : 0) /
+            dimensions.width;
+          const dy =
+            (event.key === 'ArrowDown' ? amount : event.key === 'ArrowUp' ? -amount : 0) /
+            dimensions.height;
+          let next = mask;
+          if (mask.type === 'polygon' && kind.startsWith('polygon-')) {
+            if (kind === 'polygon-move') next = translatePolygon(mask, dx, dy);
+            else if (kind === 'polygon-rotate') {
+              const direction = event.key === 'ArrowLeft' || event.key === 'ArrowDown' ? -1 : 1;
+              const rotated = rotatePolygon(
+                mask,
+                direction * (event.altKey ? 0.1 : event.shiftKey ? 15 : 1),
+                dimensions,
+              );
+              if (!rotated) {
+                event.preventDefault();
+                event.stopPropagation();
+                setNotice(studioText('rotateBounds'));
+                return;
+              }
+              next = rotated;
+            } else {
+              const index = Number(kind.slice(8));
+              next = {
+                ...mask,
+                points: mask.points.map((p, i) =>
+                  i === index ? { x: clamp(p.x + dx), y: clamp(p.y + dy) } : p,
+                ),
+              };
+            }
+          } else if (mask.type === 'radial') {
+            if (kind === 'center')
+              next = {
+                ...mask,
+                centerX: clamp(mask.centerX + dx),
+                centerY: clamp(mask.centerY + dy),
+              };
+            else if (kind === 'radiusX' || kind === 'radiusY') {
+              const radial = radialMaskFrameV3(mask, dimensions);
+              const point = radial.point(kind === 'radiusX' ? 1 : 0, kind === 'radiusY' ? 1 : 0);
+              const local = radial.local({ x: point.x + dx, y: point.y + dy });
+              const axis = kind === 'radiusX' ? local.x : local.y;
+              next = { ...mask, [kind]: clamp(Math.abs(axis) * mask[kind], 0.0001, 1) };
+            } else if (kind === 'radial-rotation') {
+              const direction = event.key === 'ArrowLeft' || event.key === 'ArrowDown' ? -1 : 1;
+              const angle =
+                (mask.rotationDegrees ?? 0) +
+                direction * (event.altKey ? 0.1 : event.shiftKey ? 15 : 1);
+              next = { ...mask, rotationDegrees: ((angle + 540) % 360) - 180 };
+            } else return;
+          } else if (mask.type === 'linear' && kind.startsWith('linear-')) {
+            const key = kind === 'linear-start' ? 'start' : 'end';
+            next = { ...mask, [key]: { x: clamp(mask[key].x + dx), y: clamp(mask[key].y + dy) } };
+          } else return;
+          event.preventDefault();
+          event.stopPropagation();
+          try {
+            parseSelectionMaskV3(next);
+            editor.commit(replaceMask(editor.getRecipe(), next), t('直接调整选区'));
+            setNotice(null);
+          } catch {
+            setNotice(t('请保留三个非共线轮廓点；已保留上一个有效形状。'));
+          }
+        }}
       >
-        <i />
+        {kind === 'polygon-rotate' || kind === 'radial-rotation' ? (
+          <ArrowClockwise size={15} />
+        ) : kind === 'polygon-move' ? (
+          <ArrowsOutCardinal size={15} />
+        ) : (
+          <i />
+        )}
       </button>
     );
   }
@@ -1359,9 +1479,8 @@ export function CanvasStage({
               const angle = (i / 64) * Math.PI * 2;
               return [Math.cos(angle), Math.sin(angle)];
             });
-  const polygon = mask.type === 'polygon' ? polygonFrame(mask.points) : null;
   const hasOutline = mask.type === 'radial' || mask.type === 'polygon' || mask.type === 'linear';
-  const showOutline = hasOutline && (selectionHint || editor.maskOverlay || !!editGesture.current);
+  const showOutline = hasOutline && selectionVisible;
   const canRotateRadial =
     (recipe.schemaVersion === 3 || recipe.schemaVersion === 4) &&
     Boolean(region || repair || protecting);
@@ -1416,6 +1535,34 @@ export function CanvasStage({
       {previews.remote && (
         <div className="collaboration-preview-note">{t('队员调整预览 · 尚未保存为版本')}</div>
       )}
+      {editingSelection && (
+        <button
+          type="button"
+          className="canvas-selection-peek"
+          aria-label={studioText('holdMask')}
+          title={studioText('holdMask')}
+          aria-pressed={selectionHeld}
+          onPointerDown={(event) => {
+            if (event.button !== 0 || !event.isPrimary) return;
+            event.preventDefault();
+            event.currentTarget.setPointerCapture(event.pointerId);
+            setSelectionHeld(true);
+          }}
+          onPointerUp={() => setSelectionHeld(false)}
+          onPointerCancel={() => setSelectionHeld(false)}
+          onLostPointerCapture={() => setSelectionHeld(false)}
+          onKeyDown={(event) => {
+            if (event.key !== ' ' && event.key !== 'Enter') return;
+            event.preventDefault();
+            setSelectionHeld(true);
+          }}
+          onKeyUp={() => setSelectionHeld(false)}
+          onBlur={() => setSelectionHeld(false)}
+        >
+          <Eye size={16} />
+          <span>{studioText('mask')}</span>
+        </button>
+      )}
       {statusContainer &&
         createPortal(
           <div className="canvas-error">
@@ -1442,13 +1589,14 @@ export function CanvasStage({
           if (decision === 'cancel-edit' && state) {
             // Invalidate first: releasing capture may synchronously run a lost-capture handler.
             editGesture.current = null;
+            setSelectionManipulating(false);
             setProjectiveFrame(null);
             const rollback = ownedCanvasRollback(
               state,
               editor.getSourceIdentity(),
               editor.getRecipe(),
             );
-            if (rollback) editor.preview(rollback);
+            if (rollback) editor.preview(rollback, state.kind === 'warp' ? 'warp' : 'fast');
             pointerPositions.current.clear();
             panGesture.current = null;
             pinch.current = null;
@@ -1653,7 +1801,10 @@ export function CanvasStage({
             )}
 
             {editingSelection &&
-              (editor.maskOverlay || (selectionHint && !hasOutline)) &&
+              (editor.maskOverlay ||
+                selectionHeld ||
+                selectionManipulating ||
+                (selectionPulse && !hasOutline)) &&
               source &&
               dimensions && (
                 <MaskPreview
@@ -1663,6 +1814,7 @@ export function CanvasStage({
                   recipe={viewRecipe}
                   ratio={display.width / display.height}
                   opacity={region?.opacity ?? 1}
+                  automatic={!editor.maskOverlay && !selectionHeld && !selectionManipulating}
                 />
               )}
             {editingSelection && (
@@ -1718,16 +1870,23 @@ export function CanvasStage({
                     {handle(mask.end, t('拖动渐变终点'), 'linear-end')}
                   </>
                 )}
-                {mask.type === 'polygon' && polygon && (
+                {mask.type === 'polygon' &&
+                  mask.points.map((point, index) =>
+                    handle(point, t('拖动多边形点 {v0}', { v0: index + 1 }), `polygon-${index}`),
+                  )}
+                {mask.type === 'polygon' && (
                   <>
-                    {handle(polygon.center, t('拖动选区中心'), 'polygon-center')}
+                    {handle(polygonCenter(mask.points), studioText('moveMask'), 'polygon-move')}
                     {handle(
-                      { x: polygon.center.x, y: Math.max(0, polygon.top - 0.04) },
-                      t('拖动旋转选区'),
-                      'polygon-rotation',
-                    )}
-                    {mask.points.map((point, index) =>
-                      handle(point, t('拖动多边形点 {v0}', { v0: index + 1 }), `polygon-${index}`),
+                      {
+                        x: polygonCenter(mask.points).x,
+                        y: Math.max(
+                          0.015,
+                          Math.min(...mask.points.map((point) => point.y)) - 0.075,
+                        ),
+                      },
+                      studioText('rotateMask'),
+                      'polygon-rotate',
                     )}
                   </>
                 )}
@@ -2024,7 +2183,7 @@ export function CanvasStage({
                   : mask.type === 'linear'
                     ? t('拖动两端调整渐变方向与范围')
                     : mask.type === 'polygon'
-                      ? t('拖动轮廓点 · 双击添加点')
+                      ? studioText('polygonHint')
                       : t('连续颜色范围 · 参照未调整原图')}
             </div>
           ) : group === 'crop' ? (

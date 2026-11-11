@@ -6,6 +6,10 @@ import {
 } from '@ai-xiutu/portrait';
 import type { RGBAImage } from '@ai-xiutu/editor';
 import { downloadBlob } from '../lib/api';
+import {
+  PORTRAIT_ANALYSIS_TIMEOUT_MESSAGE,
+  portraitAnalysisErrorMessage,
+} from './portrait-analysis-errors';
 
 const ALGORITHM = 'mediapipe-v1-selfie256';
 export function usePortraitAnalysis(
@@ -48,7 +52,7 @@ export function usePortraitAnalysis(
         abort = new AbortController();
       controller.current = abort;
       const timer = setTimeout(
-        () => abort.abort(new Error('分析超时，已终止。可改用手动局部。')),
+        () => abort.abort(new Error(PORTRAIT_ANALYSIS_TIMEOUT_MESSAGE)),
         60000,
       );
       try {
@@ -144,7 +148,7 @@ export function usePortraitAnalysis(
         if (!result.targets.length) setError('未找到可信的人像目标；可使用手动局部、绘制或液化。');
       } catch (failure) {
         if (request.current === id && sourceRef.current === sourceAtStart)
-          setError(failure instanceof Error ? failure.message : '人像分析失败，请使用手动选区。');
+          setError(portraitAnalysisErrorMessage(failure));
       } finally {
         clearTimeout(timer);
         if (request.current === id) {

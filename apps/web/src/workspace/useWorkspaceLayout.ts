@@ -174,6 +174,7 @@ export function useWorkspaceLayout() {
     if (root ?? body) nodes.observe((root ?? body)!, { childList: true, subtree: true });
     window.addEventListener('resize', resize);
     window.visualViewport?.addEventListener('resize', resize);
+    window.visualViewport?.addEventListener('scroll', resize, { passive: true });
     resize();
     return () => {
       cancelAnimationFrame(frame);
@@ -181,11 +182,14 @@ export function useWorkspaceLayout() {
       nodes.disconnect();
       window.removeEventListener('resize', resize);
       window.visualViewport?.removeEventListener('resize', resize);
+      window.visualViewport?.removeEventListener('scroll', resize);
     };
   }, []);
   useEffect(() => {
+    const currentView = viewRef.current;
+    if (layoutStorageKey(currentView) !== currentKey) return;
     setPreferences((previous) =>
-      previous.key === currentKey ? previous : { key: currentKey, value: read(viewRef.current) },
+      previous.key === currentKey ? previous : { key: currentKey, value: read(currentView) },
     );
   }, [currentKey]);
   useEffect(() => {
@@ -200,17 +204,22 @@ export function useWorkspaceLayout() {
     return () => clearTimeout(timer);
   }, [preferences, currentKey]);
   const panel = (id: PanelId) => boundPanel(layout.panels[id], view, id);
-  const updatePanel = useCallback((id: PanelId, value: PanelGeometry) => {
-    const v = viewRef.current,
-      key = layoutStorageKey(v);
-    setPreferences((previous) => {
-      const current = previous.key === key ? adaptWorkspaceLayout(previous.value, v) : read(v);
-      return {
-        key,
-        value: { ...current, panels: { ...current.panels, [id]: boundPanel(value, v, id) } },
-      };
-    });
-  }, []);
+  const updatePanel = useCallback(
+    (id: PanelId, value: PanelGeometry) => {
+      const v = viewRef.current,
+        key = layoutStorageKey(v);
+      // Old pointer callbacks cannot save desktop geometry under a new phone key.
+      if (key !== currentKey) return;
+      setPreferences((previous) => {
+        const current = previous.key === key ? adaptWorkspaceLayout(previous.value, v) : read(v);
+        return {
+          key,
+          value: { ...current, panels: { ...current.panels, [id]: boundPanel(value, v, id) } },
+        };
+      });
+    },
+    [currentKey],
+  );
   const setTheme = useCallback((theme: 'light' | 'dark') => {
     const v = viewRef.current,
       key = layoutStorageKey(v);

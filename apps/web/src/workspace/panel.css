@@ -92,6 +92,8 @@
   min-height: 0;
   min-width: 0;
   overflow: hidden;
+  /* Keep focus scrolling in the inner editor; this shell also holds navigation. */
+  overflow: clip;
 }
 .free-panel .panel-content[hidden] {
   display: none;

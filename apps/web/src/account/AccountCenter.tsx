@@ -32,13 +32,14 @@ import {
   Wallet,
   WarningCircle,
 } from '@phosphor-icons/react';
-import { DialogMotionContext, Modal } from '../components/Ui';
+import { DialogMotionContext } from '../components/Ui';
+import { AccountPageFrame } from './AccountPageFrame';
+import { accountPageCopy } from './page-copy';
 import { api, ApiError, errorMessage } from '../lib/api';
 import type { PublicConfig, Session } from '../lib/types';
 import { MotionDetails, MotionDisclosure } from '../motion/Presence';
 import { AccountDocumentDrafts } from './AccountDocumentDrafts';
 import { t, useLocale } from '../i18n';
-import { LanguageSelect } from '../i18n/LanguageSelect';
 import {
   accountPhone,
   accountRole,
@@ -64,6 +65,7 @@ export type AccountCenterProps = {
   logoutError: string | null;
   initialTab?: AccountTab;
   onClose: () => void;
+  onHome?: () => void;
   onResetPassword: () => void;
   onUsage: () => void;
   onExport: () => void;
@@ -137,6 +139,7 @@ export function AccountCenter({
   logoutError,
   initialTab = 'overview',
   onClose,
+  onHome,
   onResetPassword,
   onUsage,
   onExport,
@@ -147,6 +150,7 @@ export function AccountCenter({
   onSessionExpired,
 }: AccountCenterProps) {
   const locale = useLocale();
+  const c = accountPageCopy(locale);
   const id = useId();
   const user = session.user;
   const space = accountSpace(session, spaceId);
@@ -168,7 +172,6 @@ export function AccountCenter({
   const [indicator, setIndicator] = useState({ x: 0, y: 0, width: 0, height: 0 });
   const tabList = useRef<HTMLDivElement>(null);
   const tabRefs = useRef<Partial<Record<AccountTab, HTMLButtonElement | null>>>({});
-  const initialFocus = useRef<HTMLButtonElement | null>(null);
   const sequence = useRef(0);
   const latestScope = useRef(scope);
   const expiredCallback = useRef(onSessionExpired);
@@ -296,13 +299,15 @@ export function AccountCenter({
   if (!user) return null;
 
   return (
-    <Modal
+    <AccountPageFrame
       title={t('账号与使用')}
-      profile="account"
-      className="studio-dialog account-dialog"
-      onClose={onClose}
-      canClose={() => !loggingOut}
-      initialFocusRef={initialFocus}
+      description={c.account}
+      config={config}
+      onBack={onClose}
+      onHome={onHome}
+      busy={loggingOut}
+      wide
+      className="account-page-center"
     >
       <div
         className="account-center"
@@ -346,7 +351,6 @@ export function AccountCenter({
                     key={item.id}
                     ref={(node) => {
                       tabRefs.current[item.id] = node;
-                      if (item.id === initialTab) initialFocus.current = node;
                     }}
                     type="button"
                     role="tab"
@@ -380,7 +384,6 @@ export function AccountCenter({
                 : t('尚未选择空间')}
             </span>
           </p>
-          <LanguageSelect className="account-language" />
         </aside>
 
         <div
@@ -796,6 +799,6 @@ export function AccountCenter({
           </section>
         </div>
       </div>
-    </Modal>
+    </AccountPageFrame>
   );
 }

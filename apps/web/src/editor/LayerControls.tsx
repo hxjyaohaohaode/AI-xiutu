@@ -32,7 +32,7 @@ import { MaskControls } from './MaskControls';
 import { currentV3, newMask, rgbaHex, hexRgba, type InspectorController } from './advanced-model';
 
 const blendLabels: Record<BlendModeV3, string> = {
-  normal: '正常',
+  normal: '正常混合',
   multiply: '正片叠底',
   screen: '滤色',
   overlay: '叠加',
@@ -192,8 +192,10 @@ export function PaintControls({
             >
               {item.name}
               <small>
-                {item.strokes.length} {t('笔 ·')}
-                {t(blendLabels[item.blendMode])}
+                {t(item.strokes.length === 1 ? '1 笔 · {mode}' : '{count} 笔 · {mode}', {
+                  count: item.strokes.length,
+                  mode: t(blendLabels[item.blendMode]),
+                })}
               </small>
             </button>
             <IconButton

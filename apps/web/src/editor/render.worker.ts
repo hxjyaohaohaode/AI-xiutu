@@ -14,23 +14,32 @@ import {
 import {
   prepareBudgetedPreview,
   prepareInteractiveSource,
-  INTERACTIVE_PREVIEW_PIXELS,
   MAX_PREVIEW_PIXELS,
 } from './previewBudget';
 import { editorGeometryKey } from './coordinates';
+import {
+  InteractivePreviewPolicy,
+  MAX_INTERACTIVE_SOURCE_PIXELS,
+  previewFamily,
+  type PreviewFamily,
+} from './interactive-preview-policy';
 
 let preview: RGBAImage | null = null;
 let detailPreview: RGBAImage | null = null;
 let original: RGBAImage | null = null;
 let sourceDimensions: Dimensions | null = null;
-let liveBudget = INTERACTIVE_PREVIEW_PIXELS;
+const livePolicy = new InteractivePreviewPolicy();
+let previousLiveRecipe: EditorRecipe | null = null;
+let previousLiveFamily: PreviewFamily = 'color';
 let images = new Map<string, RGBAImage>(),
   originalImages = new Map<string, RGBAImage>(),
   detailImages = new Map<string, RGBAImage>();
 const previewSources = new Map<string, RGBAImage>();
 const warpPreviewCache = new WarpPreviewCache();
 function preparedSource(source: RGBAImage, recipe: EditorRecipe, maxPixels: number) {
-  const key = `${maxPixels}:${editorGeometryKey(recipe, false)}`;
+  // Fast and warp-detail previews can request the same budget, but they must
+  // retain independent source rasters. Never upscale a cached fast-lane source.
+  const key = `${source === detailPreview ? 'detail' : 'fast'}:${maxPixels}:${editorGeometryKey(recipe, false)}`;
   const cached = previewSources.get(key);
   if (cached) return cached;
   const image = prepareBudgetedPreview(source, recipe, maxPixels);
@@ -66,11 +75,18 @@ self.onmessage = async (event: MessageEvent<Message>) => {
     sourceDimensions = message.sourceDimensions ?? null;
     detailPreview = message.image ?? null;
     detailImages = message.images ?? new Map();
-    preview = message.image ? prepareInteractiveSource(message.image) : null;
+    preview = message.image
+      ? prepareInteractiveSource(message.image, MAX_INTERACTIVE_SOURCE_PIXELS)
+      : null;
     images = new Map(
-      [...(message.images ?? [])].map(([id, value]) => [id, prepareInteractiveSource(value)]),
+      [...(message.images ?? [])].map(([id, value]) => [
+        id,
+        prepareInteractiveSource(value, MAX_INTERACTIVE_SOURCE_PIXELS),
+      ]),
     );
-    liveBudget = INTERACTIVE_PREVIEW_PIXELS;
+    livePolicy.reset();
+    previousLiveRecipe = null;
+    previousLiveFamily = 'color';
     return;
   }
   if (message.type === 'source') {
@@ -83,14 +99,18 @@ self.onmessage = async (event: MessageEvent<Message>) => {
     originalImages = message.originalImages ?? new Map();
     previewSources.clear();
     warpPreviewCache.clear();
-    liveBudget = INTERACTIVE_PREVIEW_PIXELS;
+    livePolicy.reset();
+    previousLiveRecipe = null;
+    previousLiveFamily = 'color';
     return;
   }
   if (message.type === 'image-source') {
     if (message.sourceId && message.image) {
       images.set(
         message.sourceId,
-        sourceDimensions && !original ? prepareInteractiveSource(message.image) : message.image,
+        sourceDimensions && !original
+          ? prepareInteractiveSource(message.image, MAX_INTERACTIVE_SOURCE_PIXELS)
+          : message.image,
       );
       if (message.original) originalImages.set(message.sourceId, message.original);
       if (detailPreview) detailImages.set(message.sourceId, message.image);
@@ -109,7 +129,16 @@ self.onmessage = async (event: MessageEvent<Message>) => {
     return;
   }
   if (message.type === 'layer-sources') {
-    images = message.images ?? new Map();
+    const next = message.images ?? new Map();
+    if (detailPreview) {
+      detailImages = next;
+      images = new Map(
+        [...next].map(([id, value]) => [
+          id,
+          prepareInteractiveSource(value, MAX_INTERACTIVE_SOURCE_PIXELS),
+        ]),
+      );
+    } else images = next;
     return;
   }
   try {
@@ -133,8 +162,13 @@ self.onmessage = async (event: MessageEvent<Message>) => {
       // A smaller preview must not make an unexportable full-resolution transform appear valid.
       getEditorOutputDimensions(sourceDimensions, message.recipe);
     }
-    const budget = interactive && !detail ? liveBudget : (message.maxPixels ?? MAX_PREVIEW_PIXELS);
     const started = performance.now();
+    const family =
+      interactive && !detail
+        ? previewFamily(previousLiveRecipe, message.recipe, previousLiveFamily)
+        : null;
+    const frame = family ? livePolicy.begin(family, started) : null;
+    const budget = frame?.pixels ?? message.maxPixels ?? MAX_PREVIEW_PIXELS;
     let renderImages = detail ? detailImages : images;
     if (interactive && !detail && 'imageLayers' in message.recipe) {
       renderImages = new Map();
@@ -163,9 +197,12 @@ self.onmessage = async (event: MessageEvent<Message>) => {
             images: renderImages,
             warpPreviewCache: detail ? warpPreviewCache : undefined,
           });
-    // Lower the raster budget after an expensive frame. All recipe stages are still evaluated.
-    if (interactive && !detail && performance.now() - started > 42 && liveBudget > 32_768)
-      liveBudget /= 2;
+    if (frame) {
+      const endedAt = performance.now();
+      livePolicy.complete(frame, endedAt - started, endedAt);
+      previousLiveRecipe = message.recipe;
+      previousLiveFamily = frame.family;
+    }
     if (message.type === 'export' && typeof OffscreenCanvas !== 'undefined') {
       const format = message.format ?? 'png';
       const canvas = new OffscreenCanvas(result.width, result.height);

@@ -1,15 +1,6 @@
 import { createRecipeV4 } from '@ai-xiutu/editor';
-
-export type SampleSettings = {
-  warmth: number;
-  exposure: number;
-  preset: 'natural' | 'vivid' | 'soft';
-};
-export const DEFAULT_SAMPLE_SETTINGS: SampleSettings = {
-  warmth: 18,
-  exposure: 0.1,
-  preset: 'natural',
-};
+import { DEFAULT_SAMPLE_SETTINGS, type SampleSettings } from './sample-settings';
+export { DEFAULT_SAMPLE_SETTINGS, getSampleImage, type SampleSettings } from './sample-settings';
 
 /** One recipe for both the live introduction and the editable studio source. */
 export function createSampleRecipe(settings: SampleSettings = DEFAULT_SAMPLE_SETTINGS) {

@@ -1,6 +1,7 @@
 import { ArrowRight, Check, FolderPlus, Image } from '@phosphor-icons/react';
-import { Modal } from '../components/Ui';
-import type { Session } from '../lib/types';
+import { AccountPageFrame } from './AccountPageFrame';
+import { accountPageCopy } from './page-copy';
+import type { PublicConfig, Session } from '../lib/types';
 import { t, useLocale } from '../i18n';
 import { accountPhone } from './account-model';
 
@@ -11,21 +12,27 @@ export function AccountReady({
   onContinue,
   onImport,
   onProject,
+  config,
+  onHome,
 }: {
   session: Session;
   hasImage: boolean;
   onContinue: () => void;
   onImport: () => void;
   onProject: () => void;
+  config: PublicConfig | null;
+  onHome?: () => void;
 }) {
-  useLocale();
+  const c = accountPageCopy(useLocale());
   const personal = session.spaces.find((space) => space.kind === 'personal');
   return (
-    <Modal
+    <AccountPageFrame
       title={t('账号已创建')}
-      onClose={onContinue}
-      className="account-ready-dialog"
-      profile="form"
+      description={c.ready}
+      config={config}
+      onBack={onContinue}
+      onHome={onHome}
+      className="account-page-ready"
     >
       <div className="account-ready" data-testid="account-onboarding">
         <div className="account-ready-identity">
@@ -69,6 +76,6 @@ export function AccountReady({
           </button>
         </div>
       </div>
-    </Modal>
+    </AccountPageFrame>
   );
 }
