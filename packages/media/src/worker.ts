@@ -182,7 +182,7 @@ async function nativeDecode(job: Job, inputPath: string, stage: string, kind: 'r
   await new Promise<void>((resolveDone, reject) => {
     const child = spawn(
       job.options.pythonExecutable!,
-      [fileURLToPath(new URL('../native/convert.py', import.meta.url)), requestPath],
+      ['-B', fileURLToPath(new URL('../native/convert.py', import.meta.url)), requestPath],
       { stdio: ['ignore', 'ignore', 'pipe'] },
     );
     let error = '';
@@ -606,7 +606,7 @@ async function exportLinearMaster(
     await new Promise<void>((done, reject) => {
       const child = spawn(
         job.options.pythonExecutable!,
-        [fileURLToPath(new URL('../native/linear_export.py', import.meta.url)), requestPath],
+        ['-B', fileURLToPath(new URL('../native/linear_export.py', import.meta.url)), requestPath],
         { stdio: ['ignore', 'ignore', 'pipe'] },
       );
       let error = '';
