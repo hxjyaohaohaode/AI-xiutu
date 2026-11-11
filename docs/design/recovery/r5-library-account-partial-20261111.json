@@ -1,0 +1,300 @@
+{
+  "format": "ai-xiutu-r5-recovery/v1",
+  "owner": "reference_lapa_r5",
+  "createdAt": "2026-11-11",
+  "baseline": "d5ad8db311a424c8e6a90487666f15b2806989f9",
+  "branch": "frontend/experience-r5-20261111",
+  "integration": "Non-integrated recovery artifact only. No tree, commit or ref changes requested.",
+  "sourceRecoveryStatus": "PARTIAL. No complete product source file remains in this compacted context. Long lost files were not reconstructed or guessed.",
+  "files": [
+    {
+      "path": "docs/design/r5-reference-lapa-20261111.md",
+      "content": "# R5 · Lapa 参考机制与实现对应（恢复记录）\n\n日期：2026-11-11。代码基准：main `d5ad8db311a424c8e6a90487666f15b2806989f9`，R5 分支 `frontend/experience-r5-20261111`。\n\n## 证据边界\n\n本报告在执行环境第二次中断后，依据已经进入仓库的 `R5-RESUME-20261111.md`、`reference-study-20261111.md`、`gallery-study-20261111.md` 和当前会话的实际产品操作记录恢复。不是新一轮参考站浏览。\n\nR5 续作检查点记载：Lapa 有 23 个目录视图、35 张截图、12 个原站入口，其中 11 个公共页面可访问、1 个受限。第一次执行环境中断后，原始目录 JSON、具体 12 个原站名单、动作日志和截图未恢复到当前工作区。上述数量仅是检查点保存的历史摘要，不能作为目前可重新核查的逐站完成清单，不能宣称覆盖 Lapa 全站或所有案例。之前上下文中的 532 条目录去重数量缺少当前原始文件，不作为本报告的验收指标。\n\n## 目前能够追溯的来源\n\n| 来源 | 已存记录中的实际观察 | 证据类型与限制 | 本轮处理 |\n|---|---|---|---|\n| [Lapa 首页](https://www.lapa.ninja/) | 首页、Sections / Motion 分类入口；分类长列表通过 View All 收起，标题和分类入口各有层级 | 仓库既有 R4 研究记录；本报告没有重新访问 | 将功能入口分组，避免在编辑工作区引入宣传大标题、广告和无用说明 |\n| [FAQ 分类](https://www.lapa.ninja/elements/faq/) 中 Dessn | 查看 FAQ 大图，区分标题、问题列表、展开符号和正文层级 | 静态案例大图，不是已操作 Dessn 的 accordion；广告遮挡限制了可见区域 | 账号额度说明和注销能力通过按需 disclosure 呈现；主要动作保持在外层 |\n| [Page Transition 分类](https://www.lapa.ninja/elements/page-transition/) | 从 Sections 进入，关闭广告，滚动观察分类轨道与预览 | 部分预览不可播放，不能据此推断或复现具体转场轨迹 | 页面阶段进入使用现有 motion 机制；不复制未经验证的 wheel 接管或转场 |\n| R5 大图 / 留白 / 非对称节奏 | 检查点保留了设计结论 | 具体原站名单及原图未保全；不能把该结论归到未核实品牌 | 作品按真实素材比例排版，交付页扩大当前作品；图像表达真实功能和状态 |\n\n代码 `library-collection.css` 首行曾写“Cosmos/Masonry study”。当前能核查的原始站点记录未包含 Cosmos 逐项证据；该注释不能作为已完成 Cosmos 浏览的证明。后续应改成中性的实际布局说明，React Bits Masonry 的独立证据以根代理参考总表为准。\n\n## 机制、采用位置与明确弃用项\n\n| 机制 | 当前实际实现文件 | 对应行为 | 不采用的部分 |\n|---|---|---|---|\n| 作品作为主要视觉内容 | `apps/web/src/components/AssetLibrary.tsx`、`resources/library-collection.css` | 真实比例大图、自适应列数、大图/紧凑密度、原图与已保存作品分开操作；实际 3 张素材横向完整利用桌面宽度 | 循环复制图片、为填空反复摆同图、默认灰化用户照片、图片自动漂移 |\n| 资源结果一致的视觉和加载结构 | `resources/ResourceSearch.tsx`、`CollectionSkeleton.tsx`、`library-hub.css` | 结构匹配的图片骨架；常驻导航 CSS；照片错误有独立重试 | 用旋转圈代替页面骨架；把读取失败显示成零条；用装饰照片替代失败原片 |\n| 对比围绕真实照片 | `components/WorkspaceViews.tsx` 的 ComparisonFrame / CompareView、`workspace/workspace-library.css` | 实际照片原比例展示，滑动和并排；尺寸不匹配时回退并排；云端版本短标签 | 巨大空白容器、裁剪后强行错位比较、自动修改服务端版本文案 |\n| 交付以作品和操作构成非对称双栏 | 同文件 DeliveryView 与独立 CSS | 大幅当前预览 + 导出格式 + 配方操作；预览尺寸、云端版本明确 | 缩小成 124px 截图；把 JSON 配方称为照片；声称所有 native 编辑链均可无损回放 |\n| 账号按任务逐层展示 | `account/AccountPageFrame.tsx`、`AccountCenter.tsx`、`account-page.css` | 单列登录/注册；概览、安全、额度、数据与退出；说明按需展开 | 重复 About 雪山工作台截图；左半屏宣传模块；重复隐私和上传声明 |\n| 首层保留操作，技术细节展开 | `components/MediaImportDialog.tsx`、`media/media-import-r5.css` | 原件导入与“格式与尺寸”能力 disclosure，依据真实后端 capability | 未配置 RAW / EXR 时宣称可用；PSD 宣称可编辑图层；展示服务器部署操作指南 |\n| 文档以内容与保存状态为中心 | WorkspaceViews 的 DocumentsView 与独立 CSS | 手机目录列布局，返回列表，内容/骨架/空态/错误互斥，真实版本与草稿恢复保留 | 首次读取同时出现“创建第一份”；列表控件挤成单行；用展示用假文档填空 |\n| 用量有一个主要图表 | `usage/UsageDashboard.tsx`、`UsageTrend.tsx`、`usage-dashboard-r5.css` | 主趋势图、紧凑指标、次级预占/结算按需展开 | 伪造非零数据；稀疏数据仍强制四列大图；未知余额从零计数 |\n\n这里是布局机制适配，并未复制 Lapa 收录站的品牌、图片或付费模板源码。具体状态交互来源由 React Bits / Aceternity / Uiverse 独立研究记录说明，不混称“全部来自 Lapa”。\n\n## 当前产品实测与待补\n\n当前恢复后的独立修复复验，已实际看到登录/注册入口、作品三列大图、已保存 V2、滑动和并排对比、文档保存 V1、大图交付、JPEG 真实下载、账号四个分区及键盘右箭头切换。证据当时成功保存在 `/workspace/shared/r5-library-account-after/`。账号注销仅展开了真实“暂不支持自助注销”能力说明，没有执行删除。\n\n执行环境随后再次 unavailable，不能在本报告中声称这些文件已经重新复制进入仓库，也不能声称手机/平板或五轮全站回归通过。完整五轮由根代理统一矩阵记录；这些是修复复验，不是一轮全站检查。\n\n后续需补：确认本轮代码与截图 checkpoint、手机 390/320 及平板 820 的文档目录与作品布局、资源搜索和长期素材、用量的真实数据状态、注册短信与账号退出的合法服务链；恢复参考站原始逐站证据或重新做有界实操后，才能补回具体案例清单。\n",
+      "origin": "new recovery report authored from preserved repository observations; not yet written to filesystem",
+      "status": "complete-new-recovery-document",
+      "lastValidation": "Authored from already read repository research records; no filesystem write or fresh reference browsing."
+    }
+  ],
+  "sourceFragments": [
+    {
+      "path": "apps/web/src/components/AuthPanel.tsx",
+      "lines": "807-814",
+      "content": "                {mode !== 'password' && smsUnavailable && (\n                  <p className=\"auth-service-note\" role=\"status\">\n                    {t('短信暂未开通。已有账号可使用密码登录，也可以继续本地编辑。')}\n                  </p>\n                )}",
+      "caution": "read excerpt only; redundant SMS paragraph still pending removal",
+      "status": "partial-read-excerpt",
+      "lastValidation": "Read from actual worktree after implementation; not a complete patch or file."
+    },
+    {
+      "path": "apps/web/src/components/WorkspaceViews.tsx",
+      "content": "        <MotionDetails className=\"saved-versions\">\n          <summary>\n            {t('云端版本')}\n            {revisions.length > 0 ? t('· 已载入 {v0}', { v0: revisions.length }) : ''}\n            <span>\n              {t('当前 V')}\n              {artwork.headVersion}\n            </span>\n          </summary>",
+      "caution": "read excerpt only; visible caret pending",
+      "status": "partial-read-excerpt",
+      "lastValidation": "Read from actual worktree after implementation; not a complete patch or file."
+    }
+  ],
+  "unrecovered": [
+    {
+      "path": "apps/web/src/account/AccountPageFrame.tsx",
+      "status": "complete-source-not-recovered",
+      "lastValidation": "Previously successfully written to local worktree; full source unavailable after environment loss"
+    },
+    {
+      "path": "apps/web/src/account/AccountCenter.tsx",
+      "status": "complete-source-not-recovered",
+      "lastValidation": "Previously successfully written to local worktree; full source unavailable after environment loss"
+    },
+    {
+      "path": "apps/web/src/account/AccountReady.tsx",
+      "status": "complete-source-not-recovered",
+      "lastValidation": "Previously successfully written to local worktree; full source unavailable after environment loss"
+    },
+    {
+      "path": "apps/web/src/account/AccountDocumentDrafts.tsx",
+      "status": "complete-source-not-recovered",
+      "lastValidation": "Previously successfully written to local worktree; full source unavailable after environment loss"
+    },
+    {
+      "path": "apps/web/src/account/account-page.css",
+      "status": "complete-source-not-recovered",
+      "lastValidation": "Previously successfully written to local worktree; full source unavailable after environment loss"
+    },
+    {
+      "path": "apps/web/src/components/AuthPanel.tsx",
+      "status": "complete-source-not-recovered",
+      "lastValidation": "Previously successfully written to local worktree; full source unavailable after environment loss"
+    },
+    {
+      "path": "apps/web/src/components/AssetLibrary.tsx",
+      "status": "complete-source-not-recovered",
+      "lastValidation": "Previously successfully written to local worktree; full source unavailable after environment loss"
+    },
+    {
+      "path": "apps/web/src/components/MediaImportDialog.tsx",
+      "status": "complete-source-not-recovered",
+      "lastValidation": "Previously successfully written to local worktree; full source unavailable after environment loss"
+    },
+    {
+      "path": "apps/web/src/components/WorkspaceViews.tsx",
+      "status": "complete-source-not-recovered",
+      "lastValidation": "Works desktop/Compare real V2/Documents V1/Delivery JPEG tested. Preserve root CollaborateView section. Final formatter deferred"
+    },
+    {
+      "path": "apps/web/src/resources/library-hub.css",
+      "status": "complete-source-not-recovered",
+      "lastValidation": "Previously successfully written to local worktree; full source unavailable after environment loss"
+    },
+    {
+      "path": "apps/web/src/resources/CollectionSkeleton.tsx",
+      "status": "complete-source-not-recovered",
+      "lastValidation": "Previously successfully written to local worktree; full source unavailable after environment loss"
+    },
+    {
+      "path": "apps/web/src/resources/library-collection.css",
+      "status": "complete-source-not-recovered",
+      "lastValidation": "Previously successfully written to local worktree; full source unavailable after environment loss"
+    },
+    {
+      "path": "apps/web/src/resources/ResourceSearch.tsx",
+      "status": "complete-source-not-recovered",
+      "lastValidation": "Previously successfully written to local worktree; full source unavailable after environment loss"
+    },
+    {
+      "path": "apps/web/src/resources/AssetThumbnail.tsx",
+      "status": "complete-source-not-recovered",
+      "lastValidation": "Previously successfully written to local worktree; full source unavailable after environment loss"
+    },
+    {
+      "path": "apps/web/src/resources/resources.css",
+      "status": "complete-source-not-recovered",
+      "lastValidation": "Previously successfully written to local worktree; full source unavailable after environment loss"
+    },
+    {
+      "path": "apps/web/src/workspace/revision-label.ts",
+      "status": "complete-source-not-recovered",
+      "lastValidation": "Previously successfully written to local worktree; full source unavailable after environment loss"
+    },
+    {
+      "path": "apps/web/src/workspace/workspace-library.css",
+      "status": "complete-source-not-recovered",
+      "lastValidation": "Previously successfully written to local worktree; full source unavailable after environment loss"
+    },
+    {
+      "path": "apps/web/src/usage/UsageDashboard.tsx",
+      "status": "complete-source-not-recovered",
+      "lastValidation": "Previously successfully written to local worktree; full source unavailable after environment loss"
+    },
+    {
+      "path": "apps/web/src/usage/UsageTrend.tsx",
+      "status": "complete-source-not-recovered",
+      "lastValidation": "Previously successfully written to local worktree; full source unavailable after environment loss"
+    },
+    {
+      "path": "apps/web/src/usage/usage-dashboard-r5.css",
+      "status": "complete-source-not-recovered",
+      "lastValidation": "Previously successfully written to local worktree; full source unavailable after environment loss"
+    },
+    {
+      "path": "apps/web/src/media/media-import-r5.css",
+      "status": "complete-source-not-recovered",
+      "lastValidation": "Previously successfully written to local worktree; full source unavailable after environment loss"
+    },
+    {
+      "path": "apps/web/src/i18n/library-r5-messages.ts",
+      "status": "complete-source-not-recovered",
+      "lastValidation": "作品与数据 EN/TW added, root notified; final global i18n suite not rerun"
+    },
+    {
+      "path": "apps/web/test/revision-label.test.ts",
+      "status": "complete-source-not-recovered",
+      "lastValidation": "Previously successfully written to local worktree; full source unavailable after environment loss"
+    }
+  ],
+  "validation": {
+    "targetedUnitTests": {
+      "passed": 89,
+      "failed": 0,
+      "scope": "account-model, auth-model, document-drafts, resource-usage, usage-workspace, usage-trend, revision-history, revision-label, revision-tools"
+    },
+    "webTypecheck": "Passed before final small copy/resource changes; final rerun pending",
+    "fullSiteRounds": 0,
+    "finalBuild": "not performed by this agent",
+    "responsiveRetest": "not yet completed after implementation",
+    "gitPatch": "Could not create /workspace/shared/r5-library-recovery.patch because pwd already failed with No usable execution environment is available."
+  },
+  "browserEvidence": {
+    "sharedDir": "/workspace/shared/r5-library-account-after/",
+    "jpegDownload": "/opt/codex/downloads/18f2b777-9392-41b7-9f4b-06f89ae3c9fe/01eceb77-9e6e-4762-85c6-d2176e556232",
+    "jpegCopied": "/workspace/shared/r5-library-account-after/delivery-v2.jpg",
+    "jpegResult": "real generation 0.57 MB; real download event obtained after reopening V2; earlier HMR sourceWorker guard failure preserved",
+    "docs": "R5 文档布局验收真实保存 V1；body37字符；保存后已保存版本1",
+    "work": "山野与湖泊真实曝光+0.85，协作保存V2；compare wipe keyboard0/100 and pointer50→74",
+    "account": "概览、安全、额度、数据与退出实际到达；Right从概览到安全到额度；真实200余额；注销 disclosure只读显示暂不支持自助注销；未退出共享owner，未操作真实重置密码/注销"
+  },
+  "exactEvidenceArtifacts": [
+    {
+      "path": "/workspace/shared/r5-library-account-after/auth-login-desktop.jpg",
+      "status": "previous write confirmed unless annotated; current read unavailable"
+    },
+    {
+      "path": "/workspace/shared/r5-library-account-after/auth-register-desktop.jpg",
+      "status": "previous write confirmed unless annotated; current read unavailable"
+    },
+    {
+      "path": "/workspace/shared/r5-library-account-after/works-desktop.jpg",
+      "status": "previous write confirmed unless annotated; current read unavailable"
+    },
+    {
+      "path": "/workspace/shared/r5-library-account-after/compare-desktop.jpg",
+      "status": "previous write confirmed unless annotated; current read unavailable"
+    },
+    {
+      "path": "/workspace/shared/r5-library-account-after/compare-side-desktop.jpg",
+      "status": "previous write confirmed unless annotated; current read unavailable"
+    },
+    {
+      "path": "/workspace/shared/r5-library-account-after/compare-actual-exposure.jpg",
+      "status": "previous write confirmed unless annotated; current read unavailable"
+    },
+    {
+      "path": "/workspace/shared/r5-library-account-after/documents-desktop-empty.jpg",
+      "status": "previous write confirmed unless annotated; current read unavailable"
+    },
+    {
+      "path": "/workspace/shared/r5-library-account-after/documents-desktop-saved.jpg (write occurred in truncated call; file presence not subsequently verified)",
+      "status": "previous write confirmed unless annotated; current read unavailable"
+    },
+    {
+      "path": "/workspace/shared/r5-library-account-after/delivery-desktop.jpg",
+      "status": "previous write confirmed unless annotated; current read unavailable"
+    },
+    {
+      "path": "/workspace/shared/r5-library-account-after/delivery-export-source-error.jpg",
+      "status": "previous write confirmed unless annotated; current read unavailable"
+    },
+    {
+      "path": "/workspace/shared/r5-library-account-after/delivery-export-source-error.txt",
+      "status": "previous write confirmed unless annotated; current read unavailable"
+    },
+    {
+      "path": "/workspace/shared/r5-library-account-after/delivery-jpeg-retry.json",
+      "status": "previous write confirmed unless annotated; current read unavailable"
+    },
+    {
+      "path": "/workspace/shared/r5-library-account-after/delivery-jpeg-download.json",
+      "status": "previous write confirmed unless annotated; current read unavailable"
+    },
+    {
+      "path": "/workspace/shared/r5-library-account-after/delivery-jpeg-generated.jpg",
+      "status": "previous write confirmed unless annotated; current read unavailable"
+    },
+    {
+      "path": "/workspace/shared/r5-library-account-after/delivery-v2.jpg",
+      "status": "previous write confirmed unless annotated; current read unavailable"
+    },
+    {
+      "path": "/workspace/shared/r5-library-account-after/account-overview-desktop.jpg",
+      "status": "previous write confirmed unless annotated; current read unavailable"
+    },
+    {
+      "path": "/workspace/shared/r5-library-account-after/account-overview-desktop.txt",
+      "status": "previous write confirmed unless annotated; current read unavailable"
+    },
+    {
+      "path": "/workspace/shared/r5-library-account-after/account-security-desktop.txt",
+      "status": "previous write confirmed unless annotated; current read unavailable"
+    },
+    {
+      "path": "/workspace/shared/r5-library-account-after/account-quota-desktop.jpg",
+      "status": "previous write confirmed unless annotated; current read unavailable"
+    },
+    {
+      "path": "/workspace/shared/r5-library-account-after/account-quota-desktop.txt",
+      "status": "previous write confirmed unless annotated; current read unavailable"
+    },
+    {
+      "path": "/workspace/shared/r5-library-account-after/account-data-desktop.jpg (transition frame)",
+      "status": "previous write confirmed unless annotated; current read unavailable"
+    },
+    {
+      "path": "/workspace/shared/r5-library-account-after/account-data-desktop.txt",
+      "status": "previous write confirmed unless annotated; current read unavailable"
+    },
+    {
+      "path": "/workspace/shared/r5-library-account-after/account-data-expanded-desktop.jpg",
+      "status": "previous write confirmed unless annotated; current read unavailable"
+    },
+    {
+      "path": "/workspace/shared/r5-library-account-after/account-data-expanded-desktop.txt",
+      "status": "previous write confirmed unless annotated; current read unavailable"
+    }
+  ],
+  "knownPendingPolish": [
+    "Remove AuthPanel repeated SMS-unavailable paragraph; disabled button already explains unavailable. Not yet patched.",
+    "Add a visible caret to saved cloud versions summary; current display flex suppresses native marker. Not yet patched.",
+    "Remove unsubstantiated Cosmos wording in library-collection.css comment; current recoverable study lacks exact Cosmos entry.",
+    "Prettier WorkspaceViews while preserving root CollaborateView; final typecheck/i18n/targeted regression.",
+    "Phone/tablet real viewport audit for documents/works/compare/delivery/account/resources/usage.",
+    "Resource search, long-term resources and true usage chart interactions after restored API fixture."
+  ],
+  "accountResult": {
+    "actual": "Account overview, security, quota, data-and-exit all reached through actual UI. ArrowRight changed Overview→Security→Quota and focused selected tabs. Real fixture balance 200 service points, 200 free/gift, 0 purchased, 0 held; period timestamp from API. Data showed current-photo export, no retained drafts, logout control. Expanded account closure disclosure visibly reports self-service closure unavailable.",
+    "notPerformed": "Did not log out shared owner; did not enter/reset password; did not execute account deletion, purchase or subscription. SMS unavailable, so registration/OTP full chain unverified."
+  },
+  "exportResult": {
+    "originalFailure": "Existing transferred worker had been invalidated by development Fast Refresh; export showed Please re-import. Error screenshot preserved.",
+    "stableRetry": "After reopening actual saved V2 from library, JPEG94 generation returned0.57MB. Clicked separate Download image link and received real download event/path. Recipe unchanged in retry.",
+    "originalDownloadPath": "/opt/codex/downloads/18f2b777-9392-41b7-9f4b-06f89ae3c9fe/01eceb77-9e6e-4762-85c6-d2176e556232",
+    "copiedDownloadPath": "/workspace/shared/r5-library-account-after/delivery-v2.jpg"
+  },
+  "lapa": {
+    "status": "未成功写入",
+    "restoredCounts": "R5-RESUME only:35截图23目录12原站入口11可访问1受限; raw evidence lost at prior interruption",
+    "knownExistingUrls": [
+      "https://www.lapa.ninja/",
+      "https://www.lapa.ninja/elements/faq/",
+      "https://www.lapa.ninja/elements/page-transition/"
+    ],
+    "names": "R4 saved table names Dessn FAQ; cannot reconstruct missing12 site names",
+    "noNewVisit": true
+  }
+}
