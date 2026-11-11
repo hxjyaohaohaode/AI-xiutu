@@ -1464,17 +1464,25 @@ export function App({
       analysis.frame.height === frame.height
         ? analysis.segmentation?.subject
         : undefined;
-    const selection = subject ?? foreground;
+    const identity = editor.getSourceIdentity();
+    const context = projectRequest.current;
+    const alphaPrior = subject && (await editor.portrait.prepareCutoutPrior(subject));
+    if (
+      editor.getSourceIdentity() !== identity ||
+      editor.isLoading() ||
+      projectRequest.current !== context
+    )
+      throw new Error(t('图片已切换，请重新运行抠图。'));
+    const selection = alphaPrior ?? subject ?? foreground;
     if (!selection) throw new Error(t('请先识别人像或选择前景。'));
     const settings: CutoutSettings = {
-      algorithm: 'guided-v5',
+      algorithm: alphaPrior ? 'continuous-alpha-v1' : 'guided-v5',
       selection,
       ...(foreground && subject ? { foreground } : {}),
       ...(background ? { background } : {}),
       radius: guides.radius,
       decontaminate: guides.decontaminate,
     };
-    const identity = editor.getSourceIdentity();
     const name = `${filenameBase(editor.file.name).slice(0, 106)}-抠图.png`;
     const sourceAsset = cloudBaseSources.current.get(identity);
     if (

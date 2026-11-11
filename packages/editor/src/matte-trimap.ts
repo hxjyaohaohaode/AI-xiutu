@@ -3,6 +3,12 @@ import { arrayData, record, RecipeValidationError } from './recipe.js';
 import type { Dimensions } from './types.js';
 import { integer, parseSelectionMaskV3 } from './v3-recipe.js';
 import type { SelectionMaskV3 } from './v3-types.js';
+import {
+  encodeCutoutAlpha,
+  MAX_CUTOUT_ALPHA_EDGE,
+  parseCutoutAlphaPrior,
+  type CutoutAlphaPrior,
+} from './matte-alpha-prior.js';
 
 export const MAX_CUTOUT_PIXELS = 8_388_608;
 export const MAX_CUTOUT_TRIMAP_RUNS = 131_072;
@@ -12,6 +18,32 @@ const values: readonly number[] = [0, 128, 255];
 export interface CutoutTrimap extends Dimensions {
   type: 'trimap';
   runs: number[];
+}
+
+export type CutoutSelection = SelectionMaskV3 | CutoutTrimap | CutoutAlphaPrior;
+
+export function createCutoutAlphaPrior(
+  source: Dimensions,
+  grid: Dimensions,
+  alpha: Uint8Array | Uint8ClampedArray,
+): CutoutAlphaPrior {
+  validateDimensions(source, MAX_CUTOUT_PIXELS);
+  validateDimensions(grid, MAX_CUTOUT_ALPHA_EDGE ** 2);
+  if (
+    grid.width > MAX_CUTOUT_ALPHA_EDGE ||
+    grid.height > MAX_CUTOUT_ALPHA_EDGE ||
+    !(alpha instanceof Uint8Array || alpha instanceof Uint8ClampedArray) ||
+    alpha.length !== grid.width * grid.height
+  )
+    throw new RecipeValidationError(['alpha-prior: expected one byte per bounded grid sample']);
+  return {
+    type: 'alpha-prior',
+    width: grid.width,
+    height: grid.height,
+    sourceWidth: source.width,
+    sourceHeight: source.height,
+    alpha: encodeCutoutAlpha(alpha),
+  };
 }
 
 export function createCutoutTrimap(
@@ -44,13 +76,13 @@ export function createCutoutTrimap(
   return { type: 'trimap', width, height, runs };
 }
 
-export function parseCutoutSelection(input: unknown): SelectionMaskV3 | CutoutTrimap {
-  if (
-    !input ||
-    typeof input !== 'object' ||
-    Object.getOwnPropertyDescriptor(input, 'type')?.value !== 'trimap'
-  )
-    return parseSelectionMaskV3(input);
+export function parseCutoutSelection(input: unknown, algorithm?: string): CutoutSelection {
+  const type =
+    input && typeof input === 'object' && Object.getOwnPropertyDescriptor(input, 'type')?.value;
+  if ((type === 'alpha-prior') !== (algorithm === 'continuous-alpha-v1'))
+    throw new RecipeValidationError(['alpha-prior requires continuous-alpha-v1']);
+  if (type === 'alpha-prior') return parseCutoutAlphaPrior(input, MAX_CUTOUT_PIXELS);
+  if (type !== 'trimap') return parseSelectionMaskV3(input);
   const errors: string[] = [];
   const source = record(input, ['type', 'width', 'height', 'runs'], 'trimap', errors);
   const width = integer(source.width, 1, MAX_DIMENSION, 'trimap.width', errors);
@@ -71,6 +103,20 @@ export function parseCutoutSelection(input: unknown): SelectionMaskV3 | CutoutTr
   if (count !== width * height) errors.push('trimap: runs must cover exactly width × height');
   if (errors.length) throw new RecipeValidationError(errors);
   return { type: 'trimap', width, height, runs };
+}
+
+export function cutoutSelectionDimensionError(selection: CutoutSelection, source: Dimensions) {
+  if (
+    selection.type === 'trimap' &&
+    (selection.width !== source.width || selection.height !== source.height)
+  )
+    return 'CUTOUT_TRIMAP_DIMENSIONS';
+  if (
+    selection.type === 'alpha-prior' &&
+    (selection.sourceWidth !== source.width || selection.sourceHeight !== source.height)
+  )
+    return 'CUTOUT_ALPHA_PRIOR_DIMENSIONS';
+  return undefined;
 }
 
 export function expandCutoutTrimap(trimap: CutoutTrimap, image: Dimensions): Uint8Array {

@@ -2,11 +2,13 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 import {
   createRecipeV4,
+  createCutoutAlphaPrior,
   createCutoutTrimap,
   createRasterMask,
   linearToSrgb,
   renderCutout,
   renderEditorRecipe,
+  parseCutoutSelection,
   srgbToLinear,
   type RGBAImage,
 } from '../src/index.js';
@@ -49,6 +51,44 @@ test('native trimaps retain more than 4,096 runs and reject source dimension mis
   assert.throws(
     () => renderCutout(image, { ...settings, selection: { ...selection, runs: [4, 4] } }),
     /adjacent runs must differ/,
+  );
+});
+
+test('continuous alpha keeps the full byte range, original alpha, and explicit occluder paint', () => {
+  const frame = { width: 5, height: 1 };
+  const data = Uint8ClampedArray.from([
+    15, 36, 114, 255, 15, 36, 114, 255, 15, 36, 114, 128, 15, 36, 114, 255, 15, 36, 114, 255,
+  ]);
+  const selection = createCutoutAlphaPrior(frame, frame, Uint8Array.of(0, 1, 128, 254, 255));
+  const settings = {
+    selection,
+    algorithm: 'continuous-alpha-v1',
+    radius: 0,
+    decontaminate: 0.8,
+  } as const;
+  const image = { ...frame, data };
+  const unpainted = renderCutout(image, settings);
+  assert.deepEqual([...unpainted.data.filter((_, at) => at % 4 === 3)], [0, 1, 64, 254, 255]);
+  const painted = renderCutout(image, {
+    ...settings,
+    foreground: createRasterMask(5, 1, Uint8Array.of(255, 0, 0, 0, 0)),
+    background: createRasterMask(5, 1, Uint8Array.of(0, 0, 0, 0, 255)),
+  });
+  assert.deepEqual([...painted.data.subarray(0, 4)], [15, 36, 114, 255]);
+  assert.deepEqual([...painted.data.subarray(16, 20)], [0, 0, 0, 0]);
+  assert.throws(() => parseCutoutSelection(selection, 'guided-v5'), /requires continuous-alpha/);
+  assert.throws(
+    () => renderCutout({ ...image, width: 1, height: 5 }, settings),
+    /dimensions must match/,
+  );
+  const unit = createCutoutAlphaPrior(frame, { width: 1, height: 1 }, Uint8Array.of(0));
+  assert.throws(
+    () => parseCutoutSelection({ ...unit, alpha: 'AB==' }, settings.algorithm),
+    /canonical base64/,
+  );
+  assert.throws(
+    () => parseCutoutSelection({ ...unit, alpha: 'AA=\n' }, settings.algorithm),
+    /canonical base64/,
   );
 });
 

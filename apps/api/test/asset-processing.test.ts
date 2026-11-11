@@ -3,6 +3,7 @@ import { randomUUID } from 'node:crypto';
 import test from 'node:test';
 import sharp from 'sharp';
 import {
+  createCutoutAlphaPrior,
   createCutoutTrimap,
   createRasterMask,
   createRecipeV4,
@@ -145,6 +146,43 @@ test(
       assert.deepEqual(
         await sharp(png.rawPayload).ensureAlpha().raw().toBuffer(),
         Buffer.from(renderCutout({ width: 64, height: 48, data: source }, nativeSettings).data),
+      );
+      const alphaSettings = {
+        ...settings,
+        algorithm: 'continuous-alpha-v1' as const,
+        selection: createCutoutAlphaPrior(
+          { width: 64, height: 48 },
+          { width: 4, height: 1 },
+          Uint8Array.of(255, 195, 17, 0),
+        ),
+      };
+      const alphaRequest = {
+        ...nativeRequest,
+        requestId: randomUUID(),
+        name: 'continuous-alpha.png',
+        settings: alphaSettings,
+      };
+      const wrongAlphaSize = {
+        ...alphaRequest,
+        settings: { ...alphaSettings, selection: { ...alphaSettings.selection, sourceWidth: 63 } },
+      };
+      const alphaQuote = await f.call('POST', `${path}/quote`, wrongAlphaSize);
+      assert.equal(alphaQuote.statusCode, 200);
+      assert.deepEqual(alphaQuote.json().limits, ['CUTOUT_ALPHA_PRIOR_DIMENSIONS']);
+      assert.equal((await f.call('POST', path, wrongAlphaSize)).statusCode, 422);
+      assert.equal((await f.call('POST', path, alphaRequest, 'viewer')).statusCode, 403);
+      const alpha = await f.call('POST', path, alphaRequest);
+      assert.equal(alpha.statusCode, 201, alpha.body);
+      const asset = alpha.json().asset;
+      assert.equal((await f.call('POST', path, alphaRequest)).json().asset.id, asset.id);
+      const alphaLineage = (await f.call('GET', `/v1/assets/${asset.id}/derivation`)).json();
+      assert.equal(alphaLineage.algorithm, 'continuous-alpha-v1');
+      assert.equal(alphaLineage.sources[0].assetId, f.assetId);
+      const alphaPng = await f.call('GET', asset.url);
+      assert.equal(alphaPng.statusCode, 200);
+      assert.deepEqual(
+        await sharp(alphaPng.rawPayload).ensureAlpha().raw().toBuffer(),
+        Buffer.from(renderCutout({ width: 64, height: 48, data: source }, alphaSettings).data),
       );
     } finally {
       await f.close();

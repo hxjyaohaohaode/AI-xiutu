@@ -8,6 +8,8 @@
 
 `createCutoutTrimap(width, height, weights)` 接受和原图尺寸一致的 0/128/255 三分图。序列化结果为 `{type:'trimap',width,height,runs}`，按行打包，每个值等于长度乘 3 加标签 0、1 或 2。最多 131072 段和 8388608 像素。可作为 `CutoutSettings.selection` 提交到项目派生素材及询价接口。尺寸错误在解码前返回 `CUTOUT_TRIMAP_DIMENSIONS`。一般选区仍用 `SelectionMaskV3`。`scripts/qa/matte-reference.mjs` 比较两代抠图的边缘 alpha、SAD 和相邻像素梯度，`MATTE_QA_P3M_DIR` 可指向带 SHA-256 清单的 30 张 P3M-500-P 原尺寸样片。
 
+`continuous-alpha-v1` 接受 `createCutoutAlphaPrior(source, grid, alpha)` 生成的连续 alpha。网格每边最多 1024，原图上限 8,388,608 像素。所有 256 级权重按原图像素中心重建。前景和遮挡画笔保留硬约束，颜色求解只在软边缘小幅细化，并乘以源像素原有透明度。相同源像素和参数在浏览器 Worker 与项目派生使用同一函数。`scripts/qa/matte-automatic.browser.mjs` 用原图真实推理和 alpha 真值比较全图 SAD、固定边缘带误差与相邻像素梯度。
+
 参考引擎的低延迟路径保留旧浮点舍入。256项输入传递表复用原函数的双精度结果；Float32输出先按4096项提示表定位，再按原编码器计算出的每个可表示Float32边界校正，从而保持原8位量化结果。导向滤波按行维护各列的双精度累加器并复用工作内存，自导向时复用已有均值与协方差。输出仍由同一参考引擎生成，不降低导出分辨率。`linear-byte.test.ts` 对照所有量化边界邻居、一百万个Float32样本和原逐像素调色数学；真实照片耗时用 `scripts/qa/editor-performance.mjs` 单独记录。
 
 [V3 算法、扩展与完整契约](V3.md) 仍定义已发布的精细构图、完整局部色彩/曲线、组联动、复合蒙版、绘制/仿制/16种混合、图像图层、手动液化与背景保护。下文 v1/v2 章节也保留原算法定义。

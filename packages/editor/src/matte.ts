@@ -6,11 +6,13 @@ import type { RGBAImage, RenderOptions } from './types.js';
 import type { SelectionMaskV3 } from './v3-types.js';
 import { refineGuidedMatte } from './guided-matte.js';
 import { findMatteAnchors, findVisibleMatteAnchors, MATTE_RAYS } from './matte-anchors.js';
+import { compileCutoutAlphaPrior } from './matte-alpha-prior.js';
 import {
+  cutoutSelectionDimensionError,
   expandCutoutTrimap,
   MAX_CUTOUT_PIXELS,
   parseCutoutSelection,
-  type CutoutTrimap,
+  type CutoutSelection,
 } from './matte-trimap.js';
 
 const linear = Float64Array.from({ length: 256 }, (_, value) => srgbToLinear(value / 255));
@@ -21,12 +23,13 @@ export const CUTOUT_ALGORITHMS = [
   'guided-v3',
   'guided-v4',
   'guided-v5',
+  'continuous-alpha-v1',
 ] as const;
 
 export interface CutoutSettings {
   /** Missing preserves the published eight-ray solver. */
   algorithm?: (typeof CUTOUT_ALGORITHMS)[number];
-  selection: SelectionMaskV3 | CutoutTrimap;
+  selection: CutoutSelection;
   foreground?: SelectionMaskV3;
   background?: SelectionMaskV3;
   /** Search radius as a fraction of the shorter source edge. */
@@ -51,11 +54,16 @@ export function renderCutout(
   ))
     throw new RangeError('Cutout parameters outside the supported range');
   const { width, height } = image;
-  const parsedSelection = parseCutoutSelection(settings.selection);
+  const parsedSelection = parseCutoutSelection(settings.selection, settings.algorithm);
+  if (cutoutSelectionDimensionError(parsedSelection, image))
+    throw new RangeError('Cutout selection dimensions must match the original source');
+  const continuous = parsedSelection.type === 'alpha-prior';
   const trimap =
     parsedSelection.type === 'trimap' ? expandCutoutTrimap(parsedSelection, image) : null;
+  const sampleAlpha =
+    parsedSelection.type === 'alpha-prior' ? compileCutoutAlphaPrior(parsedSelection) : null;
   const selection =
-    parsedSelection.type === 'trimap'
+    parsedSelection.type === 'trimap' || parsedSelection.type === 'alpha-prior'
       ? null
       : compileSelectionMaskV3(parsedSelection, image, image);
   const foreground =
@@ -65,12 +73,13 @@ export function renderCutout(
     settings.background &&
     compileSelectionMaskV3(parseSelectionMaskV3(settings.background), image, image);
   let matte: Float32Array = new Float32Array(width * height);
-  const preserveOccluders = settings.algorithm === 'guided-v5';
+  const preserveOccluders = continuous || settings.algorithm === 'guided-v5';
   const connected = preserveOccluders || settings.algorithm === 'guided-v4';
   const dense = connected || settings.algorithm === 'guided-v3';
   const guided = dense || settings.algorithm === 'guided-v2';
-  const constraints = guided ? new Uint8Array(width * height) : null;
+  const constraints = guided && !continuous ? new Uint8Array(width * height) : null;
   const data = image.data.slice();
+  const labelLimit = continuous ? 0.5 / 255 : 0.035;
   let uncertain = 0;
   for (let y = 0; y < height; y++) {
     if ((y & 31) === 0) checkV3(options);
@@ -80,14 +89,14 @@ export function renderCutout(
         v = (y + 0.5) / height;
       const fg = foreground?.(u, v) ?? 0,
         bg = background?.(u, v) ?? 0;
-      const prior = trimap ? trimap[i]! / 255 : selection!(u, v);
+      const prior = trimap ? trimap[i]! / 255 : sampleAlpha ? sampleAlpha(x, y) : selection!(u, v);
       // Painted foreground wins only in proportion to its weight. Exact opposing paint is ambiguous.
       if (fg >= 0.999 && bg >= 0.999)
         throw new RangeError('Foreground and background trimap overlap');
       if (constraints)
         constraints[i] = fg >= 0.999 ? 2 : bg >= 0.999 || data[i * 4 + 3] === 0 ? 1 : 0;
       const value = data[i * 4 + 3] === 0 ? 0 : clamp(prior + fg * (1 - prior) - bg * prior);
-      matte[i] = value <= 0.035 ? 0 : value >= 0.965 ? 1 : value;
+      matte[i] = value <= labelLimit ? 0 : value >= 1 - labelLimit ? 1 : value;
       if (matte[i] !== 0 && matte[i] !== 1) uncertain++;
     }
   }
@@ -97,7 +106,7 @@ export function renderCutout(
     );
   const radius = Math.min(64, Math.round(settings.radius * Math.min(width, height)));
   const labels = matte;
-  if (guided && radius > 0) {
+  if (guided && !continuous && radius > 0) {
     matte = uncertain ? refineGuidedMatte(image, labels, radius * 2, options) : labels.slice();
     uncertain = 0;
     for (let i = 0; i < matte.length; i++) {
@@ -276,7 +285,12 @@ export function renderCutout(
           }
           // Regularization retains the semantic prior where both sides have similar colors.
           const regularizer = guided ? 0.003 : 0.015;
-          alpha = clamp((dot + regularizer * alpha) / (contrast + regularizer));
+          const fitted = clamp((dot + regularizer * alpha) / (contrast + regularizer));
+          // The continuous matte already models translucent pixels. Color pairs
+          // can sharpen its edge, with limited influence in low-contrast areas.
+          alpha = continuous
+            ? alpha + 0.15 * Math.min(1, contrast / 0.03) * (fitted - alpha)
+            : fitted;
           if (alpha > 0.04 && alpha < 0.995 && settings.decontaminate > 0 && contrast > 0.015) {
             for (let c = 0; c < 3; c++) {
               const observed = linear[image.data[at + c]!]!,

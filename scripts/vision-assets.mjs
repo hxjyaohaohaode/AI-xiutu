@@ -31,6 +31,7 @@ export function verifyVisionAsset(asset, input) {
   if (bytes.length !== asset.bytes) throw new Error(`Model length mismatch: ${asset.file}`);
   if (createHash('sha256').update(bytes).digest('hex') !== asset.sha256)
     throw new Error(`SHA256 mismatch: ${asset.file}`);
+  if (asset.format === 'onnx') return; // Exact graph is pinned and checked by ONNX Runtime at load.
   if (asset.format === 'tflite') {
     if (bytes.length < 8 || bytes.toString('ascii', 4, 8) !== 'TFL3')
       throw new Error(`Invalid TFLite header: ${asset.file}`);

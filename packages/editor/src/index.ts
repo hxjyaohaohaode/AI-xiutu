@@ -171,8 +171,11 @@ export {
 export { MAX_V4_RETOUCH_PIXELS } from './v4-spatial.js';
 export { renderRecipeV4, renderRecipeV4Tiled } from './v4-engine.js';
 export { CUTOUT_ALGORITHMS, renderCutout, type CutoutSettings } from './matte.js';
+export { MAX_CUTOUT_ALPHA_EDGE, type CutoutAlphaPrior } from './matte-alpha-prior.js';
 export {
+  createCutoutAlphaPrior,
   createCutoutTrimap,
+  cutoutSelectionDimensionError,
   parseCutoutSelection,
   MAX_CUTOUT_PIXELS,
   MAX_CUTOUT_TRIMAP_RUNS,

@@ -7,6 +7,7 @@ import assert from 'node:assert/strict';
 import sharp from 'sharp';
 import { chromium } from 'playwright';
 import { createServer } from 'vite';
+import matting from '../../third-party/portrait-matting.json' with { type: 'json' };
 import {
   createRecipeV4,
   renderEditorRecipe,
@@ -133,9 +134,10 @@ async function getBytes(source) {
   return bytes;
 }
 
-async function checkLocalCutout(browser, origin, image) {
+async function checkLocalCutout(browser, origin, image, view) {
   const page = await browser.newPage({
-    viewport: { width: 1440, height: 960 },
+    viewport: { width: view.width, height: view.height },
+    hasTouch: view.touch ?? false,
     reducedMotion: 'reduce',
     acceptDownloads: true,
   });
@@ -156,6 +158,8 @@ async function checkLocalCutout(browser, origin, image) {
       const url = new URL(route.request().url());
       if (['data:', 'blob:'].includes(url.protocol)) return route.continue();
       if (url.origin !== origin) return route.abort();
+      if (view.missingModel && url.pathname === '/vision/' + matting.file)
+        return route.fulfill({ status: 404 });
       if (url.pathname.startsWith('/v1/'))
         return route.fulfill({ status: 503, json: { message: 'offline' } });
       return route.continue();
@@ -174,13 +178,13 @@ async function checkLocalCutout(browser, origin, image) {
     await page.getByRole('button', { name: '识别照片中的人物', exact: true }).click();
     const button = page.getByRole('button', { name: '从原图提取人物素材', exact: true });
     await button.waitFor({ timeout: 60000 });
-    const downloading = page.waitForEvent('download', { timeout: 30000 });
+    const downloading = page.waitForEvent('download', { timeout: 70000 });
     await button.click();
     const download = await downloading;
     assert.equal(await download.failure(), null);
     const bytes = await readFile(await download.path());
     const settings = await page.evaluate(() => window.observedCutout);
-    assert.equal(settings.algorithm, 'guided-v5');
+    assert.equal(settings.algorithm, view.missingModel ? 'guided-v5' : 'continuous-alpha-v1');
     const expected = renderCutout(image, settings);
     const decoded = await sharp(bytes).ensureAlpha().raw().toBuffer();
     assert.deepEqual(decoded, Buffer.from(expected.data));
@@ -189,9 +193,15 @@ async function checkLocalCutout(browser, origin, image) {
     ).length;
     assert.ok(partialAlpha > 0);
     assert.deepEqual(pageErrors, []);
-    const cloud = await checkCloudCutout(sourcePng, settings, decoded);
-    await writeFile(join(output, 'workspace-cutout.png'), bytes);
+    const overflow = await page.evaluate(() => document.documentElement.scrollWidth - innerWidth);
+    assert.ok(overflow <= 1, `Horizontal overflow: ${overflow}px`);
+    const cloud =
+      view.id === 'desktop' ? await checkCloudCutout(sourcePng, settings, decoded) : undefined;
+    await writeFile(join(output, `workspace-cutout-${view.id}.png`), bytes);
+    await page.screenshot({ path: join(output, `workspace-cutout-${view.id}-view.png`) });
     return {
+      view,
+      overflow,
       algorithm: settings.algorithm,
       exactRgbaBytes: decoded.length,
       partialAlpha,
@@ -238,6 +248,9 @@ async function checkCloudCutout(sourcePng, settings, browserPixels) {
       settings,
     };
     assert.equal((await fixture.call('POST', path, request, 'viewer')).statusCode, 403);
+    const quote = await fixture.call('POST', `${path}/quote`, request);
+    assert.equal(quote.statusCode, 200, quote.body);
+    assert.equal(quote.json().available, true);
     const derived = await fixture.call('POST', path, request);
     assert.equal(derived.statusCode, 201, derived.body);
     const asset = derived.json().asset;
@@ -246,7 +259,7 @@ async function checkCloudCutout(sourcePng, settings, browserPixels) {
     const decoded = await sharp(download.rawPayload).ensureAlpha().raw().toBuffer();
     assert.deepEqual(decoded, browserPixels);
     const lineage = (await fixture.call('GET', `/v1/assets/${asset.id}/derivation`)).json();
-    assert.equal(lineage.algorithm, 'rgb-guided-trimap-v5');
+    assert.equal(lineage.algorithm, 'continuous-alpha-v1');
     assert.equal(lineage.sources[0].assetId, request.sourceAssetId);
     assert.equal((await fixture.call('POST', path, request)).json().asset.id, asset.id);
     return {
@@ -294,13 +307,21 @@ try {
       data: new Uint8ClampedArray(decoded.data),
     };
     if (source.name === 'portrait-hopper') {
-      const receipt = await checkLocalCutout(browser, 'http://127.0.0.1:4186', image);
-      report.cases.push({
-        photo: source.name,
-        tool: 'workspace-cutout',
-        state: 'passed',
-        ...receipt,
-      });
+      for (const view of [
+        { id: 'desktop', width: 1440, height: 960 },
+        { id: 'tablet', width: 1024, height: 768, touch: true },
+        { id: 'phone', width: 320, height: 640, touch: true },
+        { id: 'landscape', width: 844, height: 390, touch: true },
+        { id: 'missing-model', width: 960, height: 720, missingModel: true },
+      ]) {
+        const receipt = await checkLocalCutout(browser, 'http://127.0.0.1:4186', image, view);
+        report.cases.push({
+          photo: source.name,
+          tool: 'workspace-cutout',
+          state: 'passed',
+          ...receipt,
+        });
+      }
     }
     const frame = {
       width: image.width,

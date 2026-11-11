@@ -17,7 +17,14 @@ export const cutoutRequest = input
     settings: z
       .object({
         algorithm: z
-          .enum(['ray-v1', 'guided-v2', 'guided-v3', 'guided-v4', 'guided-v5'])
+          .enum([
+            'ray-v1',
+            'guided-v2',
+            'guided-v3',
+            'guided-v4',
+            'guided-v5',
+            'continuous-alpha-v1',
+          ])
           .optional(),
         selection: z.unknown().refine((value) => value !== undefined),
         foreground: z.unknown().optional(),

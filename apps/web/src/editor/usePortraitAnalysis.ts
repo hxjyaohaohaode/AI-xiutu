@@ -4,8 +4,14 @@ import {
   validatePortraitAnalysis,
   type PortraitAnalysis,
 } from '@ai-xiutu/portrait';
-import type { RGBAImage } from '@ai-xiutu/editor';
+import {
+  MAX_CUTOUT_PIXELS,
+  type CutoutAlphaPrior,
+  type RGBAImage,
+  type SelectionMaskV3,
+} from '@ai-xiutu/editor';
 import { downloadBlob } from '../lib/api';
+import type { PortraitMatteReply, PortraitMatteRequest } from './portrait-matte.worker';
 import {
   PORTRAIT_ANALYSIS_TIMEOUT_MESSAGE,
   portraitAnalysisErrorMessage,
@@ -25,6 +31,11 @@ export function usePortraitAnalysis(
     request = useRef(0),
     sourceRef = useRef(source);
   const controller = useRef<AbortController | null>(null);
+  const matte = useRef<{
+    image: RGBAImage;
+    subject: SelectionMaskV3;
+    prior: CutoutAlphaPrior;
+  } | null>(null);
   sourceRef.current = source;
   const stop = useCallback(() => {
     request.current++;
@@ -36,6 +47,7 @@ export function usePortraitAnalysis(
   }, []);
   useEffect(() => {
     stop();
+    matte.current = null;
     setAnalysis(null);
     setTarget(null);
     setError(null);
@@ -162,6 +174,49 @@ export function usePortraitAnalysis(
     },
     [source, dimensions, contentHash, stop],
   );
+  const prepareCutoutPrior = useCallback(
+    async (subject: SelectionMaskV3) => {
+      if (
+        !source ||
+        !dimensions ||
+        subject.type !== 'raster' ||
+        dimensions.width * dimensions.height > MAX_CUTOUT_PIXELS
+      )
+        return undefined;
+      if (matte.current?.image === source && matte.current.subject === subject)
+        return matte.current.prior;
+      stop();
+      const id = request.current;
+      const abort = new AbortController();
+      controller.current = abort;
+      setProgress('正在精修人物边缘');
+      const timer = setTimeout(() => abort.abort(), 60_000);
+      try {
+        const w = new Worker(new URL('./portrait-matte.worker.ts', import.meta.url), {
+          type: 'module',
+        });
+        worker.current = w;
+        const prior = await new Promise<CutoutAlphaPrior | undefined>((resolve, reject) => {
+          abort.signal.addEventListener('abort', () => reject(abort.signal.reason), { once: true });
+          w.onmessage = ({ data }: MessageEvent<PortraitMatteReply>) => resolve(data.prior);
+          w.onerror = () => resolve(undefined);
+          w.postMessage({
+            image: source,
+            source: dimensions,
+            subject,
+          } satisfies PortraitMatteRequest);
+        });
+        if (request.current !== id || sourceRef.current !== source)
+          throw new DOMException('Portrait cutout was cancelled', 'AbortError');
+        if (prior) matte.current = { image: source, subject, prior };
+        return prior;
+      } finally {
+        clearTimeout(timer);
+        if (request.current === id) stop();
+      }
+    },
+    [source, dimensions, stop],
+  );
   const importAnalysis = useCallback(
     async (file: File) => {
       if (!source || !dimensions || !contentHash) throw new Error('请先打开对应的原图。');
@@ -202,6 +257,7 @@ export function usePortraitAnalysis(
     progress,
     error,
     analyze,
+    prepareCutoutPrior,
     cancel: stop,
     importAnalysis,
     exportAnalysis,

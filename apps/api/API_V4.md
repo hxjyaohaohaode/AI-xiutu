@@ -492,24 +492,31 @@ master remains accessible through the media export endpoint in section 5.
 
 `GET /v1/asset-processing/capabilities` reports installed OCR languages and the
 GIF processing limits. `POST /v1/projects/:id/derived-assets` accepts the shared
-`derivedAssetRequest` contract. A cutout takes a source-normalized trimap, optional
-foreground/background masks, refinement radius and edge decontamination strength.
-The optional `settings.algorithm` is `ray-v1` (published default), `guided-v2`,
-`guided-v3` or `guided-v4`. The guided paths estimate RGB affine coefficients on a bounded
-area image, evaluate them against original linear RGB and fit nearby color pairs
-inside the uncertain support. V3 samples additional distances between powers of
-two. V4 adds color-weighted paths from confirmed foreground and background through
-the uncertain band. The workspace binds selected foreground and occluder masks to
-the current source and uses V4 in both the local worker and cloud request. Hard trimap pixels
-retain their weights. Local PNG export encodes straight RGBA
-directly, so partially transparent RGB samples match cloud-derived pixels for
-the same canonical source and settings. Omitted algorithms still resolve to
-`ray-v1` for existing API clients and retries.
+`derivedAssetRequest` contract. Cutout settings include a selection, optional foreground
+and background masks, refinement radius and edge decontamination strength. `ray-v1`
+is the published default. `guided-v2` through `guided-v5` use the same source coordinates.
+V4 follows color-weighted paths through the uncertain region and V5 stops each ray at
+the first confirmed boundary. A native ternary trimap uses source dimensions and up to
+131,072 runs. The API returns `CUTOUT_TRIMAP_DIMENSIONS` on a size mismatch.
+
+`continuous-alpha-v1` takes `settings.selection` with `type: 'alpha-prior'`, grid
+`width` and `height` up to 1024 each, exact `sourceWidth` and `sourceHeight`, and
+`alpha` containing one row-major byte per grid cell in canonical standard base64.
+The capability is advertised in `cutout.alphaPrior`. The quote and mutation check
+source dimensions before decoding the asset and return `CUTOUT_ALPHA_PRIOR_DIMENSIONS`
+for a mismatch. The renderer reconstructs alpha at original pixel centers, applies
+foreground and occluder paint, and uses original linear RGB for bounded edge refinement
+and color decontamination. The browser generates the grid from pinned local models and
+uses the same renderer for local and project PNGs. Derivation stores the input grid and
+algorithm under project read permissions. PNG output uses straight RGBA at the source
+dimensions and multiplies the cutout weight by the original alpha. For identical decoded sources and settings,
+local and project output pixels agree.
 A collage takes ordered pixel rectangles, fit, focal points and RGBA background.
 All sources must belong to the authorized project. The output is a normal PNG asset.
 `GET /v1/assets/:id/derivation` reads the algorithm, source IDs and hashes, and
 settings under the project's read permission. The actor's request ID is idempotent.
-The V4 derivation identifier is `rgb-guided-trimap-v4` and requires schema 20.
+The `rgb-guided-trimap-v5` derivation requires schema 21. `continuous-alpha-v1`
+requires schema 22. The API, renderer and migration ship together.
 
 The same capability response now includes `cutout`, `restoration`, `collage` and
 source/working limits. `POST /v1/projects/:id/derived-assets/quote` accepts the same

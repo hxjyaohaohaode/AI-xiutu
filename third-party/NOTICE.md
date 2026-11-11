@@ -17,3 +17,9 @@ Model cards:
 - https://storage.googleapis.com/mediapipe-assets/Model%20Card%20Multiclass%20Segmentation.pdf
 
 Asset URLs and SHA-256 hashes are maintained in `scripts/vision-assets.mjs`. The installed Tasks Vision SDK version is locked by `package-lock.json`. The preparation script copies the corresponding WebAssembly loader/runtime and these license/notice files to the same-origin static directory. Models and runtime binaries are not committed to Git.
+
+# Portrait matting distribution notice
+
+MODNet by Zhanghan Ke, Jiayu Sun, Kaican Li, Qiong Yan and Rynson W. H. Lau publishes its photographic portrait model under Apache License 2.0. The pinned ONNX copy is distributed by HivisionIDPhotos. `portrait-matting.json` records the exact downloaded bytes and SHA-256. The original model and inference references are available in the [MODNet repository](https://github.com/ZHKKKe/MODNet/tree/44667be551eff6427e774b60e3b251f90b9dac61) and the [HivisionIDPhotos model release](https://github.com/Zeyi-Lin/HivisionIDPhotos/releases/tag/pretrained-model).
+
+ONNX Runtime Web is distributed under the [MIT license](https://github.com/microsoft/onnxruntime/blob/v1.23.2/LICENSE). `ONNX-Runtime-LICENSE.txt` and `ONNX-Runtime-ThirdPartyNotices.txt` accompany the pinned runtime assets. The cutout worker loads these assets from the application origin.
