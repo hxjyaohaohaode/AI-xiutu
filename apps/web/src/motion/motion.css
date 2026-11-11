@@ -1,4 +1,22 @@
 @layer motion {
+  /* Profile dimensions and trajectories come from modal-profiles.ts. */
+  [data-motion='modal-form'],
+  [data-motion='modal-auth'],
+  [data-motion='modal-account'],
+  [data-motion='modal-billing'],
+  [data-motion='modal-danger'],
+  [data-motion='modal-export'],
+  [data-motion='modal-drawing'],
+  [data-motion='modal-command'],
+  [data-motion='modal-detail'],
+  [data-motion='modal-collaboration'],
+  [data-motion='modal-media'],
+  [data-motion='modal-navigation'],
+  [data-motion='modal-settings'],
+  [data-motion='modal-ai'] {
+    animation-name: ui-settle;
+  }
+
   [data-motion='ai-cancellation'] {
     animation-name: ui-reveal;
     --motion-entry: 215ms;

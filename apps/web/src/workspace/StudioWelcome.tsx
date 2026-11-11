@@ -6,15 +6,25 @@ export function StudioWelcome({
   onImport,
   onDraw,
   onAI,
+  accountState = 'guest',
+  onSignIn,
+  onRegister,
 }: {
   onImport: () => void;
   onDraw: () => void;
   onAI: () => void;
+  accountState?: 'loading' | 'guest' | 'signed-in';
+  onSignIn?: () => void;
+  onRegister?: () => void;
 }) {
   return (
-    <section className="studio-welcome" aria-labelledby="studio-welcome-title">
+    <section
+      className="studio-welcome"
+      aria-labelledby="studio-welcome-title"
+      data-account-state={accountState}
+    >
       <div className="welcome-image-symbol" aria-hidden="true">
-        <StudioGlyph name="works" size={34} />
+        <StudioGlyph name="works" size={28} />
       </div>
       <h1 id="studio-welcome-title">编辑图片</h1>
       <p className="welcome-description">调色、修饰与图层合成</p>
@@ -39,6 +49,23 @@ export function StudioWelcome({
         <ShieldCheck size={15} />
         照片先在本地编辑，导入不会自动上传
       </p>
+      {accountState === 'guest' && onSignIn && onRegister && (
+        <div className="welcome-session" data-testid="guest-account-entry">
+          <div>
+            <strong>云端工作空间</strong>
+            <span>保存版本与团队协作</span>
+          </div>
+          <div className="welcome-session-actions">
+            <button type="button" onClick={onSignIn}>
+              登录
+            </button>
+            <button type="button" onClick={onRegister}>
+              注册账号
+              <ArrowUpRight size={14} />
+            </button>
+          </div>
+        </div>
+      )}
     </section>
   );
 }

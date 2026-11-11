@@ -33,6 +33,7 @@ export function Sidebar({
   onJoinTeam,
   onTeamSettings,
   onAuth,
+  onAccount,
   onLogout,
   onOps,
 }: {
@@ -52,6 +53,7 @@ export function Sidebar({
   onJoinTeam: () => void;
   onTeamSettings: () => void;
   onAuth: () => void;
+  onAccount?: () => void;
   onLogout: () => void;
   onOps: () => void;
 }) {
@@ -213,12 +215,21 @@ export function Sidebar({
           )}
           {session.user ? (
             <div className="account-row">
-              <div className="user-avatar">{session.user.displayName.slice(0, 1)}</div>
-              <div>
-                <strong>{session.user.displayName}</strong>
-                <span>{session.user.phoneMasked}</span>
-              </div>
-              <IconButton label="退出登录" onClick={onLogout}>
+              <button
+                type="button"
+                className="sidebar-account-details"
+                onClick={onAccount}
+                aria-label={`账号与使用：${session.user.displayName}`}
+              >
+                <span className="user-avatar" aria-hidden>
+                  {session.user.displayName.slice(0, 1)}
+                </span>
+                <span>
+                  <strong>{session.user.displayName}</strong>
+                  <span>{session.user.phoneMasked}</span>
+                </span>
+              </button>
+              <IconButton label="退出登录选项" onClick={onLogout}>
                 <SignOut size={18} />
               </IconButton>
             </div>

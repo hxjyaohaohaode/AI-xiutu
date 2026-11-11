@@ -6,6 +6,7 @@ import {
   useRef,
   useState,
   type ButtonHTMLAttributes,
+  type CSSProperties,
   type ReactNode,
 } from 'react';
 import { createPortal } from 'react-dom';
@@ -16,6 +17,13 @@ import type { Notice } from '../lib/types';
 import { DEFAULT_BRAND } from '../lib/brand';
 import { StudioGlyph } from './StudioGlyph';
 import { ModalCloseRequests } from './modal-close';
+import {
+  modalMotionRole,
+  modalProfiles,
+  modalProfileStyle,
+  resolveModalProfile,
+  type ModalProfileName,
+} from './modal-profiles';
 
 export const DialogMotionContext = createContext<{ open: boolean; phase: MotionPhase } | null>(
   null,
@@ -137,6 +145,7 @@ export function Modal({
   initialFocusRef,
   open: controlledOpen,
   keepMounted = false,
+  profile: requestedProfile,
 }: {
   title: string;
   subtitle?: string;
@@ -149,12 +158,15 @@ export function Modal({
   /** Controlled visibility can preserve an expensive editor or an unsaved draft. */
   open?: boolean;
   keepMounted?: boolean;
+  /** Distinct geometry and motion; native dialog semantics remain shared. */
+  profile?: ModalProfileName;
 }) {
   const dialog = useRef<HTMLDialogElement>(null);
   const context = useContext(DialogMotionContext);
   const [closing, setClosing] = useState(false);
   const open = controlledOpen ?? context?.open ?? !closing;
-  const motionRole = className.includes('drawing') ? 'drawing-frame' : 'modal-frame';
+  const profile = resolveModalProfile(requestedProfile, className, wide);
+  const motionRole = modalMotionRole(profile);
   const presence = usePresence(open, motionRole);
   // An explicitly controlled child dialog owns its lifecycle, even inside the
   // provider used by a different application dialog.
@@ -285,6 +297,9 @@ export function Modal({
     <dialog
       ref={dialog}
       className={`modal ${wide ? 'modal-wide' : ''} ${className}`}
+      data-dialog-profile={profile}
+      data-dialog-mobile={modalProfiles[profile].mobile}
+      style={modalProfileStyle(profile) as CSSProperties}
       aria-labelledby={titleId}
       aria-describedby={subtitle ? subtitleId : undefined}
       data-motion={motionRole}

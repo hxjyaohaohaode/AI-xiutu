@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState, type FormEvent } from 'react';
+import { useEffect, useRef, useState, useSyncExternalStore, type FormEvent } from 'react';
 import {
   ArrowRight,
   ArrowLeft,
@@ -20,7 +20,15 @@ import {
   Eye,
   MagnifyingGlass,
 } from '@phosphor-icons/react';
-import { api, ApiError, errorMessage, formatDate, jsonRequest } from '../lib/api';
+import {
+  api,
+  ApiError,
+  downloadBlob,
+  errorMessage,
+  filenameBase,
+  formatDate,
+  jsonRequest,
+} from '../lib/api';
 import type {
   Asset,
   Artwork,
@@ -41,6 +49,12 @@ import { PixelCanvas } from '../editor/CanvasStage';
 import { localPixelBudget, type EditorState } from '../editor/useEditor';
 import { appendRevisionHistoryPage, type RevisionHistoryPage } from '../lib/revisionHistory';
 import type { RGBAImage } from '@ai-xiutu/editor';
+import {
+  documentDrafts,
+  isDocumentSaveReceipt,
+  projectDocumentsFromResponse,
+  serializeDocumentDraft,
+} from '../account/document-drafts';
 import '../ai/decisions.css';
 
 // These gates reflect the API's current project role. The API remains authoritative.
@@ -1072,15 +1086,29 @@ export function CollaborateView({
 }
 
 export function DocumentsView({
+  actorId,
   project,
   refreshToken,
   onDirtyChange,
 }: {
+  actorId: string | null;
   project: Project;
   refreshToken: number;
   onDirtyChange: (dirty: boolean) => void;
 }) {
-  const canEdit = workspacePermissions(project.role).edit;
+  const canEdit = !!actorId && workspacePermissions(project.role).edit;
+  const ownerKey = JSON.stringify([actorId, project.id]);
+  const [renderedOwner, setRenderedOwner] = useState(ownerKey);
+  const retainedDraft = useSyncExternalStore(
+    documentDrafts.subscribe,
+    () => documentDrafts.get(actorId, project.id),
+    () => null,
+  );
+  const [draftInEditor, setDraftInEditor] = useState(false);
+  const editingLineage = useRef<number | null>(null);
+  const recoveryDraft = draftInEditor ? null : retainedDraft;
+  const pendingSave = retainedDraft?.saveState === 'pending';
+  const uncertainCreation = !retainedDraft?.base && retainedDraft?.saveState === 'unknown';
   const [docs, setDocs] = useState<ProjectDocument[]>([]);
   const [selected, setSelected] = useState<ProjectDocument | null>(null);
   const [creating, setCreating] = useState(false);
@@ -1096,9 +1124,10 @@ export function DocumentsView({
   const [conflict, setConflict] = useState(false);
   const [reloadToken, setReloadToken] = useState(0);
   const saveLock = useRef(false);
+  const activeOperation = useRef(0);
   const requestGeneration = useRef(0);
-  const activeProject = useRef<string | null>(project.id);
-  activeProject.current = project.id;
+  const activeOwner = useRef<string | null>(ownerKey);
+  activeOwner.current = ownerKey;
   const currentDraft = useRef({ title, body });
   currentDraft.current = { title, body };
   const confirmation = useConfirmation();
@@ -1107,7 +1136,8 @@ export function DocumentsView({
   async function confirmDiscard(description: string) {
     const result = await confirmStableScope(
       () => ({
-        projectId: activeProject.current,
+        owner: activeOwner.current,
+        retainedRevision: documentDrafts.get(actorId, project.id)?.revision,
         ...documentScope.current,
         ...currentDraft.current,
         generation: requestGeneration.current,
@@ -1126,19 +1156,37 @@ export function DocumentsView({
     const controller = new AbortController();
     const generation = ++requestGeneration.current;
     setLoading(true);
-    api<{ documents: ProjectDocument[] }>(`/projects/${project.id}/documents`, {
+    if (!actorId) return () => controller.abort();
+    api<unknown>(`/projects/${project.id}/documents`, {
       signal: controller.signal,
     })
       .then((value) => {
-        if (!controller.signal.aborted && generation === requestGeneration.current)
-          setDocs(value.documents);
+        if (
+          !controller.signal.aborted &&
+          generation === requestGeneration.current &&
+          activeOwner.current === ownerKey
+        )
+          setDocs(projectDocumentsFromResponse(value));
       })
-      .catch((e) => !controller.signal.aborted && setError(errorMessage(e)))
-      .finally(() => !controller.signal.aborted && setLoading(false));
+      .catch(
+        (e) =>
+          !controller.signal.aborted &&
+          activeOwner.current === ownerKey &&
+          setError(errorMessage(e)),
+      )
+      .finally(
+        () => !controller.signal.aborted && activeOwner.current === ownerKey && setLoading(false),
+      );
     return () => controller.abort();
-  }, [project.id, refreshToken, reloadToken]);
+  }, [actorId, project.id, refreshToken, reloadToken]);
   useEffect(() => {
-    activeProject.current = project.id;
+    activeOwner.current = ownerKey;
+    setRenderedOwner(ownerKey);
+    activeOperation.current++;
+    saveLock.current = false;
+    setPending(null);
+    setDraftInEditor(false);
+    editingLineage.current = null;
     setSelected(null);
     setCreating(false);
     setMobileList(true);
@@ -1150,18 +1198,147 @@ export function DocumentsView({
     setConflict(false);
     setError(null);
     return () => {
-      activeProject.current = null;
+      if (activeOwner.current === ownerKey) activeOwner.current = null;
+      activeOperation.current++;
       requestGeneration.current++;
     };
-  }, [project.id]);
+  }, [ownerKey]);
+
+  useEffect(
+    () =>
+      documentDrafts.subscribeSaves((notice) => {
+        if (
+          activeOwner.current !== ownerKey ||
+          notice.actorId !== actorId ||
+          notice.projectId !== project.id
+        )
+          return;
+        requestGeneration.current++;
+        const saved = { ...notice.document };
+        setDocs((previous) => [saved, ...previous.filter((item) => item.id !== saved.id)]);
+        if (editingLineage.current !== notice.lineage) return;
+        // A known receipt can arrive after this editor was remounted. Advance only
+        // its matching lineage's base; never replace text entered after recovery.
+        setSelected(saved);
+        setCreating(false);
+        setConflict(false);
+        setDirty(
+          currentDraft.current.title.trim() !== saved.title ||
+            currentDraft.current.body !== saved.body,
+        );
+      }),
+    [actorId, project.id, ownerKey],
+  );
+
+  function updateDraft(next: { title: string; body: string }) {
+    if (!actorId || activeOwner.current !== ownerKey || !canEdit) return;
+    const previous = documentDrafts.get(actorId, project.id);
+    const base = previous && previous.lineage === editingLineage.current ? previous.base : selected;
+    const changed = next.title !== (base?.title ?? '') || next.body !== (base?.body ?? '');
+    const awaitingResult = !!previous && previous.saveState !== 'idle';
+    const retainReversion = awaitingResult || conflict || !!newerVersion;
+    if (changed || retainReversion) {
+      const captured = documentDrafts.put({
+        actorId,
+        projectId: project.id,
+        projectTitle: project.title,
+        base,
+        ...next,
+      });
+      if (!captured.ok) {
+        setError(
+          captured.reason === 'capacity'
+            ? '本页保留的文档草稿已达上限。请先返回已有草稿的项目保存，或导出并丢弃，再编辑新的文档。'
+            : '文字超过草稿保留范围，本次输入未应用。',
+        );
+        return;
+      }
+      editingLineage.current = captured.draft.lineage;
+    } else {
+      if (previous) documentDrafts.remove(actorId, project.id, previous.revision);
+      editingLineage.current = null;
+    }
+    // Synchronous capture precedes React state: a session update/unmount in the
+    // same turn cannot discard the last typed character.
+    currentDraft.current = next;
+    setTitle(next.title);
+    setBody(next.body);
+    setDirty(changed || retainReversion);
+    setDraftInEditor(true);
+  }
+
+  function recoverDraft() {
+    const draft = documentDrafts.get(actorId, project.id);
+    if (!draft || busy || activeOwner.current !== ownerKey) return;
+    setSelected(draft.base ? { ...draft.base } : null);
+    setCreating(!draft.base);
+    currentDraft.current = { title: draft.title, body: draft.body };
+    setTitle(draft.title);
+    setBody(draft.body);
+    setDirty(true);
+    setDraftInEditor(true);
+    editingLineage.current = draft.lineage;
+    setMobileList(false);
+    setError(null);
+    setConflict(false);
+  }
+
+  function exportDraft() {
+    const draft = documentDrafts.get(actorId, project.id);
+    if (!draft || activeOwner.current !== ownerKey) return;
+    try {
+      downloadBlob(
+        new Blob([serializeDocumentDraft(draft)], { type: 'application/json;charset=utf-8' }),
+        `${filenameBase(draft.title || '未命名文档')}-未保存草稿.json`,
+      );
+    } catch (failure) {
+      setError(errorMessage(failure));
+    }
+  }
+
+  async function discardRecovery() {
+    const draft = documentDrafts.get(actorId, project.id);
+    if (!draft || !actorId || busy || pendingSave) return;
+    if (
+      !(await confirmDiscard(
+        '丢弃这份保留在本页的未保存草稿？此操作不会取消已经提交的保存请求，也不会删除云端文档。',
+      ))
+    )
+      return;
+    if (activeOwner.current !== ownerKey) return;
+    if (!documentDrafts.remove(actorId, project.id, draft.revision)) {
+      setError('草稿已经变化，请重新核对后操作。');
+      return;
+    }
+    setError(null);
+  }
+
   async function choose(doc: ProjectDocument | null) {
-    if (saveLock.current || (!doc && !canEdit)) return;
-    if (dirty && !(await confirmDiscard('这份文档还有未保存的修改。放弃修改并切换吗？'))) return;
+    if (saveLock.current || pendingSave || (!doc && !canEdit)) return;
+    if (recoveryDraft) {
+      setError('请先恢复或丢弃本页保留的草稿，再切换文档；可以先导出一份。');
+      return;
+    }
+    if (
+      dirty &&
+      !(await confirmDiscard(
+        uncertainCreation
+          ? '上次新建结果尚未确认。建议先导出草稿；切换会丢弃本页文字，但不会取消已经提交的保存请求。确定切换吗？'
+          : '这份文档还有未保存的修改。放弃修改并切换吗？',
+      ))
+    )
+      return;
+    if (activeOwner.current !== ownerKey) return;
+    const previous = documentDrafts.get(actorId, project.id);
+    if (previous && actorId) documentDrafts.remove(actorId, project.id, previous.revision);
+    editingLineage.current = null;
     setSelected(doc);
     setCreating(!doc);
     setMobileList(false);
     setTitle(doc?.title ?? '');
     setBody(doc?.body ?? '');
+    currentDraft.current = { title: doc?.title ?? '', body: doc?.body ?? '' };
+    setDraftInEditor(true);
     setDirty(false);
     setError(null);
     setConflict(false);
@@ -1170,74 +1347,108 @@ export function DocumentsView({
     event.preventDefault();
     if (
       saveLock.current ||
+      pendingSave ||
+      uncertainCreation ||
       !canEdit ||
       !title.trim() ||
       title.trim().length > 120 ||
       (!dirty && selected)
     )
       return;
+    const operation = ++activeOperation.current;
+    const capturedDraft = documentDrafts.get(actorId, project.id);
+    if (!capturedDraft || !documentDrafts.beginSave(capturedDraft)) {
+      setError('草稿状态已变化，请先核对当前内容再保存。');
+      return;
+    }
     saveLock.current = true;
     setPending('save');
     setError(null);
-    const snapshot = { title: title.trim(), body };
+    const snapshot = { title: capturedDraft.title.trim(), body: capturedDraft.body };
+    let confirmedReceipt = false;
     try {
-      const result = await api<{ document: ProjectDocument }>(
-        selected ? `/documents/${selected.id}` : `/projects/${project.id}/documents`,
-        jsonRequest(selected ? 'PATCH' : 'POST', {
+      const result = await api<{ document?: unknown }>(
+        capturedDraft.base
+          ? `/documents/${capturedDraft.base.id}`
+          : `/projects/${project.id}/documents`,
+        jsonRequest(capturedDraft.base ? 'PATCH' : 'POST', {
           ...snapshot,
-          ...(selected ? { expectedVersion: selected.version } : {}),
+          ...(capturedDraft.base ? { expectedVersion: capturedDraft.base.version } : {}),
         }),
       );
-      if (activeProject.current !== project.id) return;
-      setSelected(result.document);
-      setCreating(false);
-      setConflict(false);
-      setDirty(
-        currentDraft.current.title.trim() !== snapshot.title ||
-          currentDraft.current.body !== snapshot.body,
-      );
-      setDocs((previous) => [
-        result.document,
-        ...previous.filter((doc) => doc.id !== result.document.id),
-      ]);
+      if (!isDocumentSaveReceipt(capturedDraft, result?.document))
+        throw new Error('保存回执不完整，当前草稿已保留。请核对云端列表，不要重复新建。');
+      confirmedReceipt = true;
+      // Receipt settlement is lineage-scoped and safe after unmount/expiry;
+      // explicit actor cleanup removes that lineage and cannot be resurrected.
+      documentDrafts.acknowledgeSave(capturedDraft, result.document);
+      if (activeOwner.current !== ownerKey || activeOperation.current !== operation) return;
       const generation = ++requestGeneration.current;
-      const list = await api<{ documents: ProjectDocument[] }>(`/projects/${project.id}/documents`);
-      if (activeProject.current === project.id && generation === requestGeneration.current)
-        setDocs(list.documents);
+      const list = projectDocumentsFromResponse(
+        await api<unknown>(`/projects/${project.id}/documents`),
+      );
+      if (activeOwner.current === ownerKey && generation === requestGeneration.current)
+        setDocs(list);
     } catch (e) {
-      if (activeProject.current === project.id) {
-        setError(errorMessage(e));
+      if (!confirmedReceipt)
+        documentDrafts.finishUnconfirmedSave(
+          capturedDraft,
+          e instanceof ApiError && e.status >= 400 && e.status < 500,
+        );
+      if (activeOwner.current === ownerKey && activeOperation.current === operation) {
+        setError(
+          confirmedReceipt ? `文档已保存，但列表暂未刷新。${errorMessage(e)}` : errorMessage(e),
+        );
         if (e instanceof ApiError && e.code === 'VERSION_CONFLICT') setConflict(true);
       }
     } finally {
-      saveLock.current = false;
-      if (activeProject.current === project.id) setPending(null);
+      if (activeOperation.current === operation) {
+        saveLock.current = false;
+        if (activeOwner.current === ownerKey) setPending(null);
+      }
     }
   }
   async function readLatest() {
-    if (!selected || saveLock.current) return;
+    if (!selected || saveLock.current || pendingSave) return;
     if (dirty && !(await confirmDiscard('读取最新版本会替换当前未保存的文字。确定继续吗？')))
       return;
+    if (activeOwner.current !== ownerKey) return;
+    const operation = ++activeOperation.current;
+    const replacedDraft = documentDrafts.get(actorId, project.id);
     saveLock.current = true;
     setPending('read');
     setError(null);
     try {
       const generation = ++requestGeneration.current;
-      const list = await api<{ documents: ProjectDocument[] }>(`/projects/${project.id}/documents`);
-      if (activeProject.current !== project.id || generation !== requestGeneration.current) return;
-      const latest = list.documents.find((doc) => doc.id === selected.id);
+      const list = projectDocumentsFromResponse(
+        await api<unknown>(`/projects/${project.id}/documents`),
+      );
+      if (
+        activeOwner.current !== ownerKey ||
+        generation !== requestGeneration.current ||
+        activeOperation.current !== operation
+      )
+        return;
+      const latest = list.find((doc) => doc.id === selected.id);
       if (!latest) throw new Error('这份文档已不可访问，请重新选择文档。');
-      setDocs(list.documents);
+      setDocs(list);
       setSelected(latest);
       setTitle(latest.title);
       setBody(latest.body);
+      currentDraft.current = { title: latest.title, body: latest.body };
+      if (replacedDraft && actorId)
+        documentDrafts.remove(actorId, project.id, replacedDraft.revision);
+      editingLineage.current = null;
       setDirty(false);
       setConflict(false);
     } catch (e) {
-      if (activeProject.current === project.id) setError(errorMessage(e));
+      if (activeOwner.current === ownerKey && activeOperation.current === operation)
+        setError(errorMessage(e));
     } finally {
-      saveLock.current = false;
-      if (activeProject.current === project.id) setPending(null);
+      if (activeOperation.current === operation) {
+        saveLock.current = false;
+        if (activeOwner.current === ownerKey) setPending(null);
+      }
     }
   }
   const visibleDocs = docs.filter((doc) =>
@@ -1245,6 +1456,12 @@ export function DocumentsView({
   );
   const newerVersion =
     selected && docs.some((doc) => doc.id === selected.id && doc.version > selected.version);
+  if (!actorId || renderedOwner !== ownerKey)
+    return (
+      <div className="content-view studio-view documents-view">
+        <Busy label="正在同步文档账号" />
+      </div>
+    );
   return (
     <div className="content-view studio-view documents-view">
       {confirmation.dialog}
@@ -1259,6 +1476,83 @@ export function DocumentsView({
           {loading ? '读取中' : `${docs.length} 份文档`}
         </span>
       </div>
+      {recoveryDraft && (
+        <section
+          className="document-draft-recovery"
+          aria-label="保留的未保存草稿"
+          data-testid="document-draft-recovery"
+        >
+          <div className="document-draft-copy">
+            <span className="document-draft-kicker">
+              <NotePencil size={16} aria-hidden />
+              本页保留了一份未保存草稿
+            </span>
+            <h2>{recoveryDraft.title || '未命名文档'}</h2>
+            <p>
+              {recoveryDraft.base
+                ? `基于版本 ${recoveryDraft.base.version} · `
+                : '尚未确认云端版本 · '}
+              {recoveryDraft.body.length.toLocaleString()}{' '}
+              字。恢复后需自行保存；刷新或关闭本页会丢失草稿。
+            </p>
+          </div>
+          <div className="document-draft-actions">
+            <button
+              type="button"
+              className="button button-primary"
+              disabled={busy}
+              onClick={recoverDraft}
+              data-testid="document-draft-recover"
+            >
+              <NotePencil size={16} aria-hidden />
+              {canEdit ? '恢复编辑' : '查看草稿'}
+            </button>
+            <button
+              type="button"
+              className="button button-secondary"
+              disabled={busy}
+              onClick={exportDraft}
+              data-testid="document-draft-export"
+            >
+              <DownloadSimple size={16} aria-hidden />
+              导出草稿
+            </button>
+            <button
+              type="button"
+              className="text-button"
+              disabled={busy || pendingSave}
+              onClick={() => void discardRecovery()}
+              data-testid="document-draft-discard"
+            >
+              丢弃草稿
+            </button>
+          </div>
+        </section>
+      )}
+      {retainedDraft && retainedDraft.saveState !== 'idle' && (
+        <div
+          className="document-draft-status"
+          role="status"
+          data-testid="document-draft-save-state"
+        >
+          <p>
+            {pendingSave
+              ? '上次保存请求仍在等待结果。你可以继续整理文字，结果确认前不会再次提交。'
+              : uncertainCreation
+                ? '上次新建结果尚未确认，当前已暂停再次新建。请刷新云端列表核对；先导出草稿，再决定打开已有文档或丢弃本页草稿。'
+                : '上次保存结果尚未确认。文字仍保留在本页，请先核对云端版本。'}
+          </p>
+          <button
+            type="button"
+            className="text-button"
+            disabled={loading || busy}
+            onClick={() => setReloadToken((value) => value + 1)}
+          >
+            <ArrowClockwise size={15} aria-hidden />
+            刷新云端列表
+          </button>
+        </div>
+      )}
       {!canEdit && (
         <p className="studio-access-note">
           <Eye size={16} />
@@ -1286,7 +1580,7 @@ export function DocumentsView({
           {canEdit && (
             <button
               className="button button-secondary button-full"
-              disabled={busy}
+              disabled={busy || pendingSave || !!recoveryDraft}
               onClick={() => choose(null)}
             >
               <Plus size={17} />
@@ -1315,7 +1609,7 @@ export function DocumentsView({
                 key={doc.id}
                 className={`document-row ${selected?.id === doc.id ? 'selected' : ''}`}
                 aria-pressed={selected?.id === doc.id}
-                disabled={busy}
+                disabled={busy || pendingSave || !!recoveryDraft}
                 onClick={() => choose(doc)}
               >
                 <FileText size={18} />
@@ -1372,10 +1666,7 @@ export function DocumentsView({
               value={title}
               readOnly={!canEdit || pending === 'read'}
               onChange={(event) => {
-                setTitle(event.target.value);
-                setDirty(
-                  event.target.value !== (selected?.title ?? '') || body !== (selected?.body ?? ''),
-                );
+                updateDraft({ title: event.target.value, body: currentDraft.current.body });
               }}
               maxLength={120}
               required
@@ -1386,11 +1677,7 @@ export function DocumentsView({
               value={body}
               readOnly={!canEdit || pending === 'read'}
               onChange={(event) => {
-                setBody(event.target.value);
-                setDirty(
-                  event.target.value !== (selected?.body ?? '') ||
-                    title !== (selected?.title ?? ''),
-                );
+                updateDraft({ title: currentDraft.current.title, body: event.target.value });
               }}
               maxLength={100000}
             />
@@ -1400,7 +1687,7 @@ export function DocumentsView({
                 <button
                   type="button"
                   className="text-button"
-                  disabled={busy}
+                  disabled={busy || pendingSave}
                   onClick={() => void readLatest()}
                 >
                   <ArrowClockwise size={15} />
@@ -1424,22 +1711,36 @@ export function DocumentsView({
                         : '新文档'}
                 <small>{body.length.toLocaleString()} 字</small>
               </span>
-              {canEdit && (
-                <button
-                  type="submit"
-                  className="button button-primary"
-                  disabled={busy || !title.trim() || (!dirty && !!selected)}
-                >
-                  {busy ? (
-                    <Busy label={pending === 'read' ? '读取中' : '保存中'} />
-                  ) : (
-                    <>
-                      <Check size={17} />
-                      保存文档
-                    </>
-                  )}
-                </button>
-              )}
+              <div className="document-draft-editor-actions">
+                {dirty && retainedDraft && (
+                  <button type="button" className="button button-secondary" onClick={exportDraft}>
+                    <DownloadSimple size={16} aria-hidden />
+                    导出草稿
+                  </button>
+                )}
+                {canEdit && (
+                  <button
+                    type="submit"
+                    className="button button-primary"
+                    disabled={
+                      busy ||
+                      pendingSave ||
+                      uncertainCreation ||
+                      !title.trim() ||
+                      (!dirty && !!selected)
+                    }
+                  >
+                    {busy ? (
+                      <Busy label={pending === 'read' ? '读取中' : '保存中'} />
+                    ) : (
+                      <>
+                        <Check size={17} />
+                        保存文档
+                      </>
+                    )}
+                  </button>
+                )}
+              </div>
             </footer>
           </form>
         ) : (
@@ -1455,7 +1756,7 @@ export function DocumentsView({
                     : '团队保存文档后，你可以在这里阅读。'
               }
               action={
-                canEdit ? (
+                canEdit && !recoveryDraft ? (
                   <button className="button button-secondary" onClick={() => choose(null)}>
                     <Plus size={17} />
                     新建文档

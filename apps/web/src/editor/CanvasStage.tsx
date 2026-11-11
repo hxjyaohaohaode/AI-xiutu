@@ -222,6 +222,9 @@ export function CanvasStage({
   onImport,
   onAI,
   onDraw,
+  accountState,
+  onSignIn,
+  onRegister,
   comparing,
   setComparing,
   sampling = false,
@@ -234,6 +237,9 @@ export function CanvasStage({
   onImport: (file?: File) => void;
   onAI: () => void;
   onDraw: () => void;
+  accountState?: 'loading' | 'guest' | 'signed-in';
+  onSignIn?: () => void;
+  onRegister?: () => void;
   comparing: boolean;
   setComparing: (value: boolean) => void;
   sampling?: boolean;
@@ -1442,7 +1448,14 @@ export function CanvasStage({
         }}
       >
         {!editor.file ? (
-          <StudioWelcome onImport={() => onImport()} onDraw={onDraw} onAI={onAI} />
+          <StudioWelcome
+            onImport={() => onImport()}
+            onDraw={onDraw}
+            onAI={onAI}
+            accountState={accountState}
+            onSignIn={onSignIn}
+            onRegister={onRegister}
+          />
         ) : image ? (
           <div
             className="image-frame"

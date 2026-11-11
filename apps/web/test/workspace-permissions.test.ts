@@ -120,6 +120,7 @@ test('read-only project documents do not expose new-document or save actions', a
     await t.test(role, () => {
       const markup = renderTestMarkup(
         createElement(DocumentsView, {
+          actorId: 'permission-test-actor',
           project: project(role),
           refreshToken: 0,
           onDirtyChange: () => undefined,

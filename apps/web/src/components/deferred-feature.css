@@ -1,0 +1,100 @@
+/* A local loading/failure surface leaves the editor and long-lived AI owners mounted. */
+.deferred-feature-state {
+  width: min(100%, 480px);
+  margin-inline: auto;
+  padding: clamp(20px, 4vw, 42px) 18px;
+  color: var(--ink);
+  animation: deferred-feature-enter 180ms cubic-bezier(0.22, 0.72, 0.2, 1) both;
+}
+
+.deferred-feature-pending {
+  display: flex;
+  align-items: center;
+  min-height: 48px;
+  color: var(--muted);
+  font-size: 13px;
+  line-height: 1.6;
+}
+
+.deferred-feature-error {
+  display: grid;
+  grid-template-columns: 23px minmax(0, 1fr);
+  align-items: start;
+  gap: 12px;
+}
+
+.deferred-feature-error > svg {
+  margin-top: 2px;
+  color: var(--muted);
+}
+
+.deferred-feature-error h3 {
+  margin: 0;
+  font-size: 16px;
+  font-weight: 600;
+  line-height: 1.5;
+  overflow-wrap: anywhere;
+}
+
+.deferred-feature-error p {
+  margin: 6px 0 0;
+  color: var(--muted);
+  font-size: 12px;
+  line-height: 1.7;
+}
+
+.deferred-feature-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 9px;
+  margin-top: 18px;
+}
+
+.deferred-feature-actions .button {
+  min-height: 40px;
+  padding: 9px 13px;
+  gap: 7px;
+  border-radius: 10px;
+  font-size: 12px;
+  line-height: 1.4;
+}
+
+.deferred-feature-actions .button > svg {
+  flex-shrink: 0;
+}
+
+.modal .deferred-feature-state {
+  padding: 4px 0 8px;
+}
+
+@media (width < 760px), (pointer: coarse) {
+  .deferred-feature-state {
+    padding: 22px 15px;
+  }
+  .deferred-feature-actions .button {
+    min-height: 44px;
+  }
+}
+
+@media (height < 500px) {
+  .deferred-feature-state {
+    padding-block: 14px;
+  }
+}
+
+@keyframes deferred-feature-enter {
+  from {
+    opacity: 0.7;
+    transform: translateY(4px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .deferred-feature-state {
+    animation: none;
+  }
+}

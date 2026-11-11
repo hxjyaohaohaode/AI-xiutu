@@ -1,0 +1,80 @@
+name: Account lifecycle checks
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'apps/web/**'
+      - 'apps/api/src/**'
+      - 'packages/**'
+      - 'scripts/web-account-smoke.mjs'
+      - 'package.json'
+      - 'package-lock.json'
+      - '.nvmrc'
+      - '.github/workflows/account-checks.yml'
+  pull_request:
+    branches: [main]
+    paths:
+      - 'apps/web/**'
+      - 'apps/api/src/**'
+      - 'packages/**'
+      - 'scripts/web-account-smoke.mjs'
+      - 'package.json'
+      - 'package-lock.json'
+      - '.nvmrc'
+      - '.github/workflows/account-checks.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: account-lifecycle-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  account-lifecycle:
+    name: Account lifecycle (${{ matrix.motion }})
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    strategy:
+      fail-fast: false
+      matrix:
+        motion: [no-preference, reduce]
+    services:
+      postgres:
+        image: postgres:18
+        env:
+          POSTGRES_USER: xiutu
+          POSTGRES_PASSWORD: ci-only-disposable
+          POSTGRES_DB: xiutu_account_test
+        ports: ['5432:5432']
+        options: >-
+          --health-cmd "pg_isready -U xiutu -d xiutu_account_test"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+    env:
+      CI: 'true'
+      NODE_ENV: test
+      TEST_DATABASE_URL: postgresql://xiutu:ci-only-disposable@127.0.0.1:5432/xiutu_account_test
+      DB_POOL_MAX: '8'
+      ACCOUNT_BROWSER_MOTION: ${{ matrix.motion }}
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
+        with:
+          node-version-file: .nvmrc
+          cache: npm
+      - run: npm ci
+      - run: npx playwright install --with-deps chromium
+      - name: Verify real account journeys, recovery, keyboard access and responsive forms
+        run: node --import tsx scripts/web-account-smoke.mjs
+      - name: Preserve account reports and masked screenshots
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: account-lifecycle-${{ matrix.motion }}-${{ github.sha }}
+          path: artifacts/browser-account/${{ matrix.motion }}
+          retention-days: 14
+          if-no-files-found: error
