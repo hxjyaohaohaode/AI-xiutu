@@ -189,7 +189,7 @@ export function usePortraitAnalysis(
       const id = request.current;
       const abort = new AbortController();
       controller.current = abort;
-      setProgress('正在精修人物边缘');
+      setProgress('正在精修透明边缘');
       const timer = setTimeout(() => abort.abort(), 60_000);
       try {
         const w = new Worker(new URL('./portrait-matte.worker.ts', import.meta.url), {
