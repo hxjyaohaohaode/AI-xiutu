@@ -73,19 +73,24 @@
 }
 .about-symbol {
   display: flex;
+  justify-content: center;
   align-items: center;
+  gap: 4px;
   width: 31px;
   height: 31px;
-  transform: rotate(-12deg);
+  background: var(--accent);
+  border-radius: 9px;
+  overflow: hidden;
 }
 .about-symbol span {
-  width: 19px;
-  height: 27px;
-  border: 2px solid currentColor;
-  border-radius: 50%;
+  width: 6px;
+  height: 16px;
+  background: var(--on-accent);
+  transform: skewY(-28deg);
 }
 .about-symbol span + span {
-  margin-left: -7px;
+  background: var(--accent-soft);
+  transform: skewY(28deg);
 }
 .about-header nav {
   display: flex;
@@ -1824,10 +1829,6 @@
   .about-symbol {
     width: 27px;
     height: 27px;
-  }
-  .about-symbol span {
-    height: 24px;
-    width: 17px;
   }
   .about-header nav {
     display: none;

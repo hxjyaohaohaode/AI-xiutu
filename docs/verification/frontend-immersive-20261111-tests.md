@@ -1,6 +1,14 @@
 # 前端深度改版：分阶段测试记录
 
-## 结论
+## 已取得的完整验收与收尾范围
+
+PR #6 的功能提交 `794d3fb0b35a66a46bd1d89c741f9a942edadcf5` 已通过原生基线、两种 motion 的 Account、独立 AI、容器和完整综合浏览器工作流。实际 PR 合并检查提交为 `d27b463b93b8824dfe702f2ba1544e887feaf630`，两者 Git tree 均为 `b8a4161298f0e47e99b0984a370f9709c73aeea6`；它也与本地受检 `086fc1d` 的 tree 一致。具体检查、作用域和链接见本文末尾的 GitHub CI 节。
+
+此后收尾仅统一 About 默认品牌标记、补拍英文人像图和更新文档及证据，未再修改 TypeScript/JavaScript、编辑器、接口或算法。品牌修正保持桌面 31 × 31、手机 27 × 27 的外框和自定义 logo 分支，复用工作台已有视觉规则。收尾 Web 构建与格式检查通过；入口 CSS 为 **53.70 kB / gzip 12.33 kB**，延迟编辑器块仍为 **626.85 kB / gzip 185.79 kB**。这项样式修正之后的 CI 结果以 [PR #6 checks](https://github.com/hxjyaohaohaode/AI-xiutu/pull/6/checks) 的对应提交为准，不把 `794d3fb` 的通过冒充为后续提交已经执行。
+
+[实际 About 浏览器截图及来源](evidence/frontend-immersive-20261111/README.md) 保留所对应的受检版本；[前后端能力边界](../design/backend-front-alignment-20261111.md) 与当前主线 `6625ce8` 对齐。
+
+## 早期 lite 快照结论（历史记录）
 
 下方完整 `npm run test:lite` 记录属于 **05:09 开始的旧工作区快照**：Node 测试运行器报告 **951 项：936 通过、13 失败、2 跳过、0 取消**，退出码为 **1**。它早于 `58ce371` 合入主线 `2392944`，也早于随后的人像超时与人物标签修正；不能写成当前源码的完整测试结果或“全部测试通过”。
 
@@ -186,7 +194,7 @@ Node 的 13 个失败记录由 **11 个失败子例和 2 个失败父例**组成
 
 在上述源码修正、`6625ce8` 合并及三语混合模式修复之后，主任务执行 **`npm run build`，退出 0**（工具会话 `11243`，包含 14 个 TypeScript 项目检查）。初始 CSS **53.63 kB / gzip 12.31 kB**，初始 JS **339.02 kB / gzip 106.87 kB**；延迟载入的编辑器块仍为 **626.85 kB**，保留 Vite 的 500 kB 提示，没有提高阈值隐藏它。
 
-产品图位于 `apps/web/public/about`；重复原始 JPEG 保留在被忽略的验收产物内，避免把同一截图的两种编码重复加入仓库。当前英文人像及绘制截图为本轮较早的实拍，尚未反映最后的默认人物标签与 Normal/stroke 文案修正；当前功能代码已经修正，晚一轮截屏受到浏览器连接超时影响。它们不是生成的 UI。
+产品图位于 `apps/web/public/about`；重复原始 JPEG 保留在被忽略的验收产物内，避免把同一截图的两种编码重复加入仓库。英文人像已在最终 HTTPS 预览补拍，实际识别成功并显示 `Person 1`，皮肤纹理仍为 0；截图为 1440 × 960。当前英文绘制图仍为本轮较早的实拍，尚未反映最后的 Normal/stroke 文案修正；当前功能代码已经修正，晚一轮补拍遇到浏览器连接超时，继续访问又被自动审批以未保存草稿可能被替换为由拒绝；没有把该受阻补拍写成完成。它们不是生成的 UI。
 
 此处不宣称当前原生 PostgreSQL CI 或整套浏览器门槛已经通过，发布提交的结果应独立核对。
 
@@ -197,3 +205,48 @@ Node 的 13 个失败记录由 **11 个失败子例和 2 个失败父例**组成
 失败之前，两种 motion 已通过实际调色与编辑器状态保留、三语言五档尺寸、账号语言切换保留输入、About 真实截图与连续 wheel/hover/keyboard 导览，以及指针实际像素/空闲停止/离屏/减少动效检查。该轮仍保留为失败，不用局部门槛覆盖整体结果。
 
 同一提交的 AI interaction checks（run `42971566674`，job `130361010423`）已成功：21 项助手场景与 5 项团队语音场景。最终修正提交仍需对应的新工作流结果。
+
+## GitHub CI：PR #6，head `794d3fb`
+
+本节仅记录 [PR #6](https://github.com/hxjyaohaohaode/AI-xiutu/pull/6) 的 head [`794d3fb0b35a66a46bd1d89c741f9a942edadcf5`](https://github.com/hxjyaohaohaode/AI-xiutu/commit/794d3fb0b35a66a46bd1d89c741f9a942edadcf5) 已取得的 GitHub Actions 结果。原生基线、账户、独立 AI 交互工作流、容器与综合浏览器 job 均已通过；2026-11-11 06:54 UTC 已取得全部终态。
+
+### 已取得终态的检查
+
+| 检查                  | 已验证结果                                                                                                      | 执行范围与证据                                                                                                                                                                                                                                                            |
+| --------------------- | --------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| 原生基线              | **成功；978 tests / 978 pass / 0 fail / 0 skipped**；typecheck、build 成功；生产依赖 audit 为 0 vulnerabilities | 原生 PostgreSQL、英文/简体中文 OCR 和固定版本精密媒体运行时环境中的 `npm run check`、`npm audit --omit=dev --audit-level=high`。[baseline job](https://github.com/hxjyaohaohaode/AI-xiutu/actions/runs/42972099344/job/130362833471)                                      |
+| 账户，`no-preference` | **成功；21 / 21 gates**                                                                                         | 真实 Chromium、HTTP API、隔离 PostgreSQL；包括公开入口、三语言、五种尺寸、账户页面与会话恢复。[Account no-preference job](https://github.com/hxjyaohaohaode/AI-xiutu/actions/runs/42972099377/job/130362702887)                                                           |
+| 账户，`reduce`        | **成功；21 / 21 gates**                                                                                         | 同一组账户检查在减少动态效果偏好下完整执行；这是两种 motion 条件下各 21 项，并非 42 个互不重复的功能。[Account reduce job](https://github.com/hxjyaohaohaode/AI-xiutu/actions/runs/42972099377/job/130362702628)                                                          |
+| 独立 AI 交互工作流    | **成功；助手 21 / 21、团队语音 5 / 5**                                                                          | 验证助手权限、请求保留、流式响应、会话和响应式操作，以及团队语音权限、麦克风控制、保留通话和共享 AI 发言。[AI interaction job](https://github.com/hxjyaohaohaode/AI-xiutu/actions/runs/42972099407/job/130362703621)                                                      |
+| 容器                  | **成功**；媒体测试 **8 / 8**、精度测试 **3 / 3**，均无失败或跳过                                                | 双 Docker target 构建、可选 native media 镜像及真实库验证；实际启动 PostgreSQL、迁移、API、worker、web；HTTP/health、关闭外部执行、私有网络绑定与资源清理检查通过。[containers job](https://github.com/hxjyaohaohaode/AI-xiutu/actions/runs/42972099344/job/130363981160) |
+
+### 账户与 About 已验证的实际范围
+
+两个 Account job 的成功日志均包含以下检查：About 真实调整与返回 Studio 时保留画布；三语言与五种视口下的页面布局；认证切换语言时保留输入字段；真实界面截图的滚轮、悬停和键盘浏览；指针装饰的实际像素变化及 idle/offscreen/reduced-motion 行为；三语言样片打开对应文件、`1536 × 1024` 原图尺寸及非空真实编辑画布。此次文件名定位明确排除 `.busy` 状态节点，文件名、尺寸和画布像素断言保持完整。[About 检查源码](https://github.com/hxjyaohaohaode/AI-xiutu/blob/794d3fb0b35a66a46bd1d89c741f9a942edadcf5/scripts/qa/about-experience.browser.mjs)
+
+账户部分覆盖真实注册、密码/验证码登录、注册后的首次进入、错误与未知结果恢复、退出会话、密码重置及旧凭证撤销、重复注册保护、文档草稿恢复、账户切换后的私有云来源保护，以及各认证步骤在双主题、五种视口下的可达性。[账户检查源码](https://github.com/hxjyaohaohaode/AI-xiutu/blob/794d3fb0b35a66a46bd1d89c741f9a942edadcf5/scripts/web-account-smoke.mjs)
+
+**注销与重复注册的准确解释：**
+
+| 实际执行层                                  | 检查的操作与断言                                                                                                                                   | 可据此得出的结论                                               |
+| ------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------- |
+| 账户页面 UI 与请求记录                      | 点击“注销账号”，显示暂不支持/尚未开放；`accountPurgeRequests = 0`。支付同样显示当前能力未开放，`paymentConfigured = false`、`checkoutRequests = 0` | 已验证未实现能力的明确反馈与请求边界；未执行账户清除或实际支付 |
+| 浏览器 UI、真实退出 API、会话核验           | 取消退出时不发送退出请求；确认退出时调用 `POST /v1/auth/logout`，原会话失效                                                                        | 已验证退出登录及会话撤销；退出登录不等于注销账号               |
+| 浏览器注册 UI、真实注册 API、数据库只读核验 | 对仍然存在的同手机号再次注册，`POST /v1/auth/register` 返回 `409`；原用户 `id`、`display_name` 保持，已使用验证码清空并给出提示                    | 已验证重复注册不能覆盖原身份；没有执行“删除账号后重新注册”     |
+
+这 21 个 gate 没有账户删除后重新注册的步骤，也没有 account purge 调用。测试夹具提供短信投递端口、受控故障和隔离数据；它不构成产品自助注销入口已开放的证据。账户报告明确记录真实短信调用与付费调用均为零。
+
+独立 AI 检查使用注入的本地 Responses SSE 协议夹具；团队语音使用本地 WebSocket 协议夹具、真实 AudioWorklet 与合成麦克风。它们验证实际应用链路、状态和权限行为，不代表付费供应商验收、真实手机麦克风验收或生成图像质量验收。[助手检查源码](https://github.com/hxjyaohaohaode/AI-xiutu/blob/794d3fb0b35a66a46bd1d89c741f9a942edadcf5/scripts/qa/assistant.browser.mjs) · [团队语音检查源码](https://github.com/hxjyaohaohaode/AI-xiutu/blob/794d3fb0b35a66a46bd1d89c741f9a942edadcf5/scripts/qa/team-voice.browser.mjs)
+
+### 综合浏览器终态
+
+[Baseline browser job `130362833446`](https://github.com/hxjyaohaohaode/AI-xiutu/actions/runs/42972099344/job/130362833446) 已完成，结论为 **success**。GitHub 官方 job 元数据中的以下实际测试步骤全部成功：
+
+- 连续滑杆、曲线与触屏预览测量。
+- 同一提交的六轮完整 workspace-v4 浏览器流程，以及下载图像检查和截图保存。
+- 助手权限、记忆、流式响应、会话与生成工作区。
+- 团队语音麦克风、权限和共享 AI 发言。
+- 真实人物推理与完整/分块像素比较。
+- 多类真实照片的美肤、抠图和运动修复观察。
+
+此 job 内的实际人物模型与图像检查独立于助手的协议夹具，不将夹具响应或生成练习照片当作商业美颜质量保证。所有证据上传步骤与清理完成；没有修改既有 35 分钟门槛、减少六轮次数或为通过而重跑。
