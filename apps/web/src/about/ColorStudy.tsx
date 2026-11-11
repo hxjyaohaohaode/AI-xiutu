@@ -37,11 +37,13 @@ export function ColorStudy({ onOpen }: { onOpen: (settings: SampleSettings) => v
   const [attempt, setAttempt] = useState(0);
   const [rendered, setRendered] = useState(false);
   const [updating, setUpdating] = useState(false);
+  const [appliedSettings, setAppliedSettings] = useState<SampleSettings | null>(null);
   const worker = useRef<Worker | null>(null);
   const canvas = useRef<HTMLCanvasElement>(null);
   const current = useRef(settings);
   current.current = settings;
   const requestId = useRef(0);
+  const inFlightSettings = useRef<SampleSettings | null>(null);
   const pending = useRef(false);
   const dirty = useRef(false);
   const labelId = useId();
@@ -53,6 +55,7 @@ export function ColorStudy({ onOpen }: { onOpen: (settings: SampleSettings) => v
     }
     pending.current = true;
     dirty.current = false;
+    inFlightSettings.current = current.current;
     setUpdating(true);
     worker.current.postMessage({ id: ++requestId.current, ...current.current });
   };
@@ -83,6 +86,7 @@ export function ColorStudy({ onOpen }: { onOpen: (settings: SampleSettings) => v
     image.decoding = 'async';
     setFailed(false);
     setRendered(false);
+    setAppliedSettings(null);
     setRenderError(false);
     image.onload = () => {
       if (!live) return;
@@ -130,6 +134,7 @@ export function ColorStudy({ onOpen }: { onOpen: (settings: SampleSettings) => v
                 0,
               );
               setRendered(true);
+              setAppliedSettings(inFlightSettings.current);
               setRenderError(false);
             } else setRenderError(true);
           }
@@ -147,6 +152,7 @@ export function ColorStudy({ onOpen }: { onOpen: (settings: SampleSettings) => v
         };
         pending.current = true;
         dirty.current = false;
+        inFlightSettings.current = current.current;
         setUpdating(true);
         instance.postMessage(
           {
@@ -183,6 +189,11 @@ export function ColorStudy({ onOpen }: { onOpen: (settings: SampleSettings) => v
     setSettings(samplePreset('natural'));
     setSplit(42);
   };
+  // Settings commit before the passive effect dispatches the next Worker job.
+  // Keep the preview busy throughout that gap and until its exact snapshot
+  // has been painted; completed older frames may still show during a drag.
+  const rendering =
+    !failed && !renderError && (!rendered || updating || appliedSettings !== settings);
 
   return (
     <figure className="color-study" aria-labelledby={labelId} ref={figure} data-pointer-protect>
@@ -193,7 +204,7 @@ export function ColorStudy({ onOpen }: { onOpen: (settings: SampleSettings) => v
       <div
         className="study-picture"
         style={{ '--split': split + '%' } as CSSProperties}
-        aria-busy={!failed && !renderError && (!rendered || updating)}
+        aria-busy={rendering}
       >
         <img
           src={DEMO_IMAGE}
@@ -206,6 +217,7 @@ export function ColorStudy({ onOpen }: { onOpen: (settings: SampleSettings) => v
         <canvas
           ref={canvas}
           className="study-result"
+          data-rendered-preset={appliedSettings?.preset}
           aria-hidden="true"
           style={{ opacity: rendered ? 1 : 0 }}
         />
@@ -252,7 +264,7 @@ export function ColorStudy({ onOpen }: { onOpen: (settings: SampleSettings) => v
           {c.compare}
         </span>
         <span aria-live="off">
-          {updating ? study.updating : settings.preset === 'custom' ? study.custom : c.sample}
+          {rendering ? study.updating : settings.preset === 'custom' ? study.custom : c.sample}
         </span>
       </figcaption>
       <div className="study-controls">

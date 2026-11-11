@@ -1834,11 +1834,43 @@ try {
         await owner.dispose();
       }
       if (viewport.width === 390) {
+        const before = { admissions: turnAdmissions, dispatches };
         const settings = await openSettings();
-        await settings.getByRole('combobox', { name: '助手模型', exact: true }).click();
+        const model = settings.getByRole('combobox', { name: '助手模型', exact: true });
+        assert.equal(
+          await model.isDisabled(),
+          true,
+          'the existing execution authorization keeps its model frozen',
+        );
+        await page.screenshot({
+          path: resolve(artifacts, 'assistant-settings-locked-390x844.png'),
+        });
+        const execution = await details('执行方式');
+        const revoke = execution.getByRole('button', { name: '停止授权', exact: true });
+        await revoke.waitFor();
+        const revoked = page.waitForResponse(
+          (response) =>
+            response.request().method() === 'DELETE' &&
+            /^\/v1\/assistant-grants\/[^/]+$/.test(new URL(response.url()).pathname),
+        );
+        await revoke.click();
+        const revokeResponse = await revoked;
+        assert.equal(revokeResponse.status(), 200);
+        assert.deepEqual(await revokeResponse.json(), { ok: true });
+        await until(() => model.isEnabled(), 'revoking the authorization unlocks its model');
+        await model.click();
         await page.screenshot({ path: resolve(artifacts, 'assistant-settings-390x844.png') });
         await page.keyboard.press('Escape');
         await closeSettings();
+        assert.equal(turnAdmissions, before.admissions);
+        assert.equal(dispatches, before.dispatches);
+        geometry.modelSettings = {
+          lockedWhileAuthorized: true,
+          unlockedAfterExplicitRevocation: true,
+          expectedRevocations: 1,
+          addedAdmissions: 0,
+          addedDispatches: 0,
+        };
       }
       if (viewport.width === 320 && viewport.height === 568) {
         const before = { admissions: turnAdmissions, dispatches };

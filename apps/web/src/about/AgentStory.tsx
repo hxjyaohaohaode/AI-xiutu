@@ -19,7 +19,8 @@ const stepIcons = [ChatCircleDots, CirclesThreePlus, SlidersHorizontal, GitBranc
 export function AgentStory({ copy: c, onOpen }: { copy: EditorialCopy; onOpen: () => void }) {
   const root = useRef<HTMLDivElement>(null);
   const selected = useRef(0);
-  const manualAt = useRef<number | null>(null);
+  const manualSelection = useRef(false);
+  const manualTravel = useRef(0);
   const hover = useRef<ReturnType<typeof setTimeout> | null>(null);
   const [step, setStep] = useState(0);
   const [candidate, setCandidate] = useState(0);
@@ -27,7 +28,8 @@ export function AgentStory({ copy: c, onOpen }: { copy: EditorialCopy; onOpen: (
     if (manual) {
       if (hover.current) clearTimeout(hover.current);
       hover.current = null;
-      manualAt.current = window.scrollY;
+      manualSelection.current = true;
+      manualTravel.current = 0;
     }
     selected.current = index;
     setStep(index);
@@ -45,10 +47,9 @@ export function AgentStory({ copy: c, onOpen }: { copy: EditorialCopy; onOpen: (
         document.activeElement?.matches(':focus-visible')
       )
         return;
-      if (manualAt.current !== null) {
-        if (Math.abs(window.scrollY - manualAt.current) < 80) return;
-        manualAt.current = null;
-      }
+      // Native focus/scroll anchoring must not discard a candidate selection.
+      // Explicit wheel/page/scrollbar intent hands control back to the story.
+      if (manualSelection.current) return;
       const rect = target.getBoundingClientRect();
       const position = Math.max(
         0,
@@ -67,14 +68,39 @@ export function AgentStory({ copy: c, onOpen }: { copy: EditorialCopy; onOpen: (
     const schedule = () => {
       if (!frame) frame = requestAnimationFrame(update);
     };
+    const wheel = (event: WheelEvent) => {
+      if (!manualSelection.current) return;
+      const scale = event.deltaMode === 1 ? 16 : event.deltaMode === 2 ? window.innerHeight : 1;
+      manualTravel.current += Math.abs(event.deltaY) * scale;
+      if (manualTravel.current >= 80) manualSelection.current = false;
+    };
+    const pageKey = (event: KeyboardEvent) => {
+      if (
+        event.target instanceof Element &&
+        event.target.closest('a,button,input,select,textarea,[contenteditable="true"]')
+      )
+        return;
+      if (['PageDown', 'PageUp', 'Home', 'End', ' ', 'ArrowDown', 'ArrowUp'].includes(event.key))
+        manualSelection.current = false;
+    };
+    const outsidePointer = (event: PointerEvent) => {
+      if (!(event.target instanceof Node) || !target.contains(event.target))
+        manualSelection.current = false;
+    };
     window.addEventListener('scroll', schedule, { passive: true });
     window.addEventListener('resize', schedule, { passive: true });
+    window.addEventListener('wheel', wheel, { passive: true });
+    window.addEventListener('keydown', pageKey);
+    window.addEventListener('pointerdown', outsidePointer, { passive: true });
     update();
     return () => {
       cancelAnimationFrame(frame);
       if (hover.current) clearTimeout(hover.current);
       window.removeEventListener('scroll', schedule);
       window.removeEventListener('resize', schedule);
+      window.removeEventListener('wheel', wheel);
+      window.removeEventListener('keydown', pageKey);
+      window.removeEventListener('pointerdown', outsidePointer);
     };
   }, []);
   const ActiveIcon = stepIcons[step]!;
@@ -133,7 +159,11 @@ export function AgentStory({ copy: c, onOpen }: { copy: EditorialCopy; onOpen: (
                   <button
                     type="button"
                     aria-pressed={candidate === index}
-                    onClick={() => setCandidate(index)}
+                    onFocus={() => select(Math.max(2, selected.current))}
+                    onClick={() => {
+                      select(Math.max(2, selected.current));
+                      setCandidate(index);
+                    }}
                   >
                     <span>{name}</span>
                     {candidate === index && <Check size={14} />}

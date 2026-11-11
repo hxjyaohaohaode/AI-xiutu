@@ -1327,6 +1327,39 @@
     max-width: 135px;
   }
 }
+@media (max-width: 359px) {
+  /* The restored cloud-status entry needs its own room. Keep the route name
+     intact and let only its duplicate glyph yield to the publishing actions. */
+  .studio-workspace .floating-topbar:has(.cloud-status-trigger) {
+    gap: 4px;
+    padding-inline: 6px;
+  }
+  .studio-workspace .floating-topbar:has(.cloud-status-trigger) .mobile-view-trigger {
+    flex: 0 0 auto;
+    min-width: 44px;
+    min-height: 44px;
+    height: 44px;
+    margin-left: 0;
+    gap: 2px;
+    padding-inline: 4px;
+  }
+  .studio-workspace .floating-topbar:has(.cloud-status-trigger) .mobile-view-trigger > span {
+    flex-shrink: 0;
+    white-space: nowrap;
+  }
+  .studio-workspace
+    .floating-topbar:has(.cloud-status-trigger)
+    .mobile-view-trigger
+    > svg:first-child {
+    display: none;
+  }
+  .studio-workspace
+    .floating-topbar:has(.cloud-status-trigger)
+    .mobile-view-trigger
+    > svg:last-child {
+    flex: 0 0 14px;
+  }
+}
 @media (prefers-reduced-motion: reduce) {
   .tool-overview-list > button {
     animation: none;

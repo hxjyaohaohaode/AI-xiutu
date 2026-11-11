@@ -470,6 +470,75 @@ async function readyHandleBox(page, handle) {
   assert.ok(box, 'the transform handle must have an actionable screen position');
   return box;
 }
+async function cloudRecoveryHeaderEvidence(page, expectedRoute) {
+  const header = page.locator('.floating-topbar');
+  await eventually(
+    async () => (await header.locator('.mobile-view-trigger > span').innerText()) === expectedRoute,
+    'the selected language is reflected in the work-view label',
+  );
+  const measured = await header.evaluate((node) => {
+    const rect = (element) => {
+      if (!element) return null;
+      const box = element.getBoundingClientRect();
+      return {
+        x: box.x,
+        y: box.y,
+        width: box.width,
+        height: box.height,
+        right: box.right,
+        bottom: box.bottom,
+        exposed: element.contains(
+          document.elementFromPoint(box.x + box.width / 2, box.y + box.height / 2),
+        ),
+      };
+    };
+    const label = node.querySelector('.mobile-view-trigger > span');
+    const range = document.createRange();
+    range.selectNodeContents(label);
+    const lines = Array.from(range.getClientRects())
+      .filter((box) => box.width > 0 && box.height > 0)
+      .map((box) => ({ x: box.x, y: box.y, width: box.width, right: box.right }));
+    return {
+      locale: document.documentElement.lang,
+      viewportWidth: innerWidth,
+      pageOverflow: document.documentElement.scrollWidth - innerWidth,
+      headerOverflow: node.scrollWidth - node.clientWidth,
+      route: rect(node.querySelector('.mobile-view-trigger')),
+      label: label.textContent.trim(),
+      lines,
+      brand: rect(node.querySelector('.workspace-home-link')),
+      controls: [
+        '.workspace-identity > .icon-button',
+        '.workspace-settings-trigger',
+        '.cloud-status-trigger',
+        '.top-save',
+        '.top-export',
+      ].map((selector) => ({ selector, ...rect(node.querySelector(selector)) })),
+    };
+  });
+  report.layoutMeasurements.push({ case: activeCase, cloudRecoveryHeader: measured });
+  assert.equal(measured.label, expectedRoute);
+  assert.equal(measured.lines.length, 1, 'the current view label must remain on one line');
+  assert.ok(measured.route?.height >= 44, 'the work-view switch retains its 44px touch height');
+  assert.ok(
+    measured.lines[0].x >= measured.route.x - 1 &&
+      measured.lines[0].right <= measured.route.right + 1,
+    'the complete label fits within its own switch without clipping',
+  );
+  assert.ok(measured.pageOverflow <= 1, 'cloud recovery must not cause horizontal page overflow');
+  assert.ok(measured.headerOverflow <= 1, 'the header must fit without hiding overflow');
+  for (const control of [measured.route, measured.brand, ...measured.controls]) {
+    assert.ok(control?.width > 0 && control.height > 0, 'every header action stays visible');
+    assert.ok(
+      control.x >= -1 && control.right <= measured.viewportWidth + 1,
+      'each header action fits inside the viewport',
+    );
+    assert.equal(control.exposed, true, 'header actions must not obscure each other');
+  }
+  for (const control of measured.controls)
+    assert.ok(control.height >= 44, `${control.selector} retains its 44px touch height`);
+  return measured;
+}
 async function layoutAssertions(page, phone) {
   await imageReady(page);
   await sleep(450); // wait for this component's finite entry trajectory, not network readiness
@@ -926,6 +995,28 @@ try {
           await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth + 1),
           true,
         );
+        const headerLayouts = [];
+        if (viewport.width < 760) {
+          headerLayouts.push(await cloudRecoveryHeaderEvidence(page, '精修'));
+          for (const [locale, label] of [
+            ['zh-TW', '精修'],
+            ['en', 'Edit'],
+            ['zh-CN', '精修'],
+          ]) {
+            await page.locator('.workspace-settings-trigger').click();
+            const settings = page.locator('.workspace-settings-dialog');
+            await settings.waitFor();
+            await settings.locator('.language-select select').selectOption(locale);
+            await page.waitForFunction((value) => document.documentElement.lang === value, locale);
+            await settings.locator('.modal-header > .icon-button').click();
+            await settings.waitFor({ state: 'hidden' });
+            headerLayouts.push(await cloudRecoveryHeaderEvidence(page, label));
+            if (locale !== 'zh-CN')
+              await page.screenshot({
+                path: join(artifacts, `cloud-dismissed-${viewport.width}-${locale}.png`),
+              });
+          }
+        }
         await page.screenshot({ path: join(artifacts, `cloud-dismissed-${viewport.width}.png`) });
         await restore.click();
         await notice.waitFor();
@@ -958,6 +1049,7 @@ try {
           explicitReadRetries: 1,
           mutationRequests: 0,
           exposure: -0.15,
+          headerLayouts,
         };
       } finally {
         await context.close();

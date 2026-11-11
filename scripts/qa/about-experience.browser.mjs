@@ -707,6 +707,15 @@ export async function runAboutExperienceChecks({
           until,
         );
         await capture(page, 'about-r3-agent-candidates');
+        assert.equal(
+          await page.locator('.agent-visual').getAttribute('data-step'),
+          '2',
+          'Reading and selecting a candidate must not reset its story stage',
+        );
+        assert.equal(
+          await page.locator('.agent-candidates').evaluate((el) => getComputedStyle(el).visibility),
+          'visible',
+        );
         await steps.nth(3).click();
         await until(
           async () =>
@@ -803,6 +812,11 @@ export async function runAboutExperienceChecks({
             'The displayed controls are the exact preset recipe',
           );
           await page.locator('.study-picture[aria-busy="false"]').waitFor();
+          assert.equal(
+            await page.locator('canvas.study-result').getAttribute('data-rendered-preset'),
+            ['natural', 'vivid', 'soft'][preset.index],
+            'The completed pixels belong to the selected preset, not the preceding frame',
+          );
           evidence.studies.push({
             index: preset.index,
             values,
