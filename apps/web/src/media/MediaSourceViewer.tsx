@@ -31,6 +31,7 @@ export interface MediaRecord {
       algorithm: string;
       master16: boolean;
       floatAvailable: boolean;
+      ultraHdrJpeg?: boolean;
       sourceSha256: string;
       maxPixels: number;
       maxLinearPixels?: number;
@@ -40,7 +41,7 @@ export interface MediaRecord {
     };
   };
 }
-type PrecisionFormat = 'png16' | 'tiff16' | 'exr32';
+type PrecisionFormat = 'png16' | 'tiff16' | 'exr32' | 'ultrahdr';
 export function MediaSourceViewer({ assetId }: { assetId: string }) {
   const [record, setRecord] = useState<MediaRecord | null>(null),
     [error, setError] = useState<string | null>(null),
@@ -88,7 +89,8 @@ export function MediaSourceViewer({ assetId }: { assetId: string }) {
         const input =
           saved?.precisionInput ?? (precision?.floatAvailable ? 'linear-master' : 'master16');
         setPrecisionInput(input);
-        if (input === 'linear-master' && precision?.floatAvailable) setOutputFormat('exr32');
+        if (input === 'linear-master' && precision?.floatAvailable)
+          setOutputFormat(precision.ultraHdrJpeg ? 'ultrahdr' : 'exr32');
         if (saved) {
           setEdit(saved.edit);
           setGradeVersion(saved.version);
@@ -96,7 +98,8 @@ export function MediaSourceViewer({ assetId }: { assetId: string }) {
           setGrades([saved]);
         } else if (
           input === 'linear-master' &&
-          record.descriptor.original.sampleEncoding !== 'sensor-raw'
+          record.descriptor.original.sampleEncoding !== 'sensor-raw' &&
+          record.descriptor.original.sampleEncoding !== 'gain-map'
         )
           setEdit({ ...NEUTRAL_PRECISION_EDIT, toneMap: 'reinhard' });
       })
@@ -471,7 +474,8 @@ export function MediaSourceViewer({ assetId }: { assetId: string }) {
                       ...NEUTRAL_PRECISION_EDIT,
                       toneMap:
                         precisionInput === 'linear-master' &&
-                        descriptor.original.sampleEncoding !== 'sensor-raw'
+                        descriptor.original.sampleEncoding !== 'sensor-raw' &&
+                        descriptor.original.sampleEncoding !== 'gain-map'
                           ? 'reinhard'
                           : 'none',
                     });
@@ -488,6 +492,9 @@ export function MediaSourceViewer({ assetId }: { assetId: string }) {
                     { value: 'tiff16', label: 'TIFF 16-bit' },
                     ...(precisionInput === 'linear-master'
                       ? [{ value: 'exr32', label: 'EXR 32-bit HDR' }]
+                      : []),
+                    ...(precisionInput === 'linear-master' && precision?.ultraHdrJpeg
+                      ? [{ value: 'ultrahdr', label: 'Ultra HDR JPEG' }]
                       : []),
                   ]}
                   onValueChange={(value) => setOutputFormat(value as PrecisionFormat)}

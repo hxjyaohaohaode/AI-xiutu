@@ -29,6 +29,7 @@ export interface NormalizedMediaOptions {
   timeoutMs: number;
   memoryBytes: number;
   pythonExecutable?: string;
+  ultraHdrLibrary?: string;
 }
 function integer(
   value: number | undefined,
@@ -55,6 +56,11 @@ export function normalizeMediaOptions(
       'Native interpreter must be a trusted absolute deployment path',
       'unsupported',
     );
+  if (
+    options.ultraHdrLibrary !== undefined &&
+    (!isAbsolute(options.ultraHdrLibrary) || options.ultraHdrLibrary.includes('\0'))
+  )
+    throw new MediaProcessingError('Ultra HDR codec must be a trusted absolute path', 'unsupported');
   const tileSize = options.tileSize ?? 512;
   if (![256, 512, 1024].includes(tileSize))
     throw new MediaProcessingError('Unsupported tile size', 'limit');
@@ -91,6 +97,7 @@ export function normalizeMediaOptions(
       'Job address space',
     ),
     ...(options.pythonExecutable ? { pythonExecutable: options.pythonExecutable } : {}),
+    ...(options.ultraHdrLibrary ? { ultraHdrLibrary: options.ultraHdrLibrary } : {}),
   };
 }
 type Waiter = {
@@ -324,13 +331,15 @@ export async function exportMedia(
   request: ExportMediaRequest,
   window?: LinearWindowContext,
 ): Promise<MediaExportResult> {
-  if (!['png16', 'tiff16', 'jpeg', 'webp', 'exr32'].includes(request.format))
+  if (!['png16', 'tiff16', 'jpeg', 'webp', 'exr32', 'ultrahdr'].includes(request.format))
     throw new MediaProcessingError('Unsupported export format', 'unsupported');
   if (
     (request.precisionInput !== undefined &&
-      (!['master16', 'linear-master'].includes(request.precisionInput) ||
-        (request.format === 'exr32' && request.precisionInput !== 'linear-master'))) ||
-    (request.preview && request.format !== 'png16')
+      !['master16', 'linear-master'].includes(request.precisionInput)) ||
+    (request.format === 'exr32' && request.precisionInput === 'master16') ||
+    (request.format === 'ultrahdr' && request.precisionInput !== 'linear-master') ||
+    (request.preview && request.format !== 'png16') ||
+    (request.crop && request.format !== 'ultrahdr')
   )
     throw new MediaProcessingError('Unsupported precision input or preview format', 'unsupported');
   const options = normalizeMediaOptions({ ...request.options, maxPixels: MEDIA_MAX_PIXELS }),
@@ -401,6 +410,7 @@ export async function exportMedia(
         ...(precisionEdit ? { precisionEdit } : {}),
         ...(request.precisionInput ? { precisionInput: request.precisionInput } : {}),
         ...(request.preview ? { preview: request.preview } : {}),
+        ...(request.crop ? { crop: request.crop } : {}),
       },
       options,
       request.signal,

@@ -10,6 +10,10 @@ export const MEDIA_MAX_PROXY_PIXELS = 4_194_304;
 export const MEDIA_MAX_PRECISION_PIXELS = 16_777_216;
 export const MEDIA_MAX_LINEAR_PIXELS = 64_000_000;
 export const MEDIA_MAX_HDR_IMPORT_PIXELS = 50_000_000;
+export const MEDIA_MAX_GAIN_MAP_PIXELS = 24_000_000;
+export const MEDIA_MAX_GAIN_MAP_BYTES = 128 * 1024 ** 2;
+export const MEDIA_MIN_GAIN_MAP_SIDE = 8;
+export const MEDIA_MAX_GAIN_MAP_SIDE = 8192;
 export const MEDIA_MAX_PREVIEW_EDGE = 2048;
 export class MediaProcessingError extends Error {
   constructor(
@@ -32,6 +36,8 @@ export interface MediaProcessingOptions {
   memoryBytes?: number;
   /** Optional trusted interpreter with the pinned native requirements installed. */
   pythonExecutable?: string;
+  /** Optional trusted reference Ultra HDR codec library. */
+  ultraHdrLibrary?: string;
 }
 export interface MediaFileV1 {
   relativePath: string;
@@ -51,8 +57,9 @@ export interface MediaDescriptorV1 {
   original: MediaFileV1 & {
     format: string;
     /** Native formats disambiguate half/float/RGBE or sensor samples from decoded precision. */
-    sampleEncoding?: 'uint' | 'half-float' | 'float' | 'rgbe' | 'sensor-raw';
+    sampleEncoding?: 'uint' | 'half-float' | 'float' | 'rgbe' | 'sensor-raw' | 'gain-map';
     decodedBitDepth?: number;
+    gainMap?: { width: number; height: number; hdrGamut: 'Rec.709' | 'Display P3' | 'Rec.2020' };
     /** null means that this decoder did not inspect an embedded ICC resource. */
     hasIcc: boolean | null;
     metadataSummary: {
@@ -111,7 +118,7 @@ export interface ProcessMediaRequest {
   signal?: AbortSignal;
   options?: MediaProcessingOptions;
 }
-export type MediaExportFormat = 'png16' | 'tiff16' | 'jpeg' | 'webp' | 'exr32';
+export type MediaExportFormat = 'png16' | 'tiff16' | 'jpeg' | 'webp' | 'exr32' | 'ultrahdr';
 export type MediaPrecisionInput = 'master16' | 'linear-master';
 export interface MediaGradeRevision {
   version: number;
@@ -142,6 +149,8 @@ export interface ExportMediaRequest {
   precisionInput?: MediaPrecisionInput;
   /** Display PNG16, optionally limited to a native-resolution window. */
   preview?: MediaPrecisionPreview;
+  /** Ultra HDR JPEG output crop in orientation-normalized source pixels. */
+  crop?: MediaPrecisionWindow;
   signal?: AbortSignal;
   options?: Pick<MediaProcessingOptions, 'timeoutMs' | 'memoryBytes' | 'pythonExecutable'> & {
     quality?: number;

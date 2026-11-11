@@ -29,6 +29,10 @@ import {
   MEDIA_MAX_PRECISION_PIXELS,
   MEDIA_MAX_LINEAR_PIXELS,
   MEDIA_MAX_HDR_IMPORT_PIXELS,
+  MEDIA_MAX_GAIN_MAP_PIXELS,
+  MEDIA_MAX_GAIN_MAP_BYTES,
+  MEDIA_MIN_GAIN_MAP_SIDE,
+  MEDIA_MAX_GAIN_MAP_SIDE,
   MediaProcessingError,
   type MediaDescriptorV1,
   type MediaFileV1,
@@ -63,6 +67,7 @@ interface Job {
   precisionEdit?: PrecisionEdit;
   precisionInput?: MediaPrecisionInput;
   preview?: MediaPrecisionPreview;
+  crop?: MediaPrecisionWindow;
 }
 class MediaLimitError extends Error {}
 const digest = async (path: string) => {
@@ -171,7 +176,9 @@ async function fileInfo(
     colorSpace: colorSpace ?? m.space,
   };
 }
-async function nativeDecode(job: Job, inputPath: string, stage: string, kind: 'raw' | 'hdr') {
+async function nativeDecode(
+  job: Job, inputPath: string, stage: string, kind: 'raw' | 'hdr' | 'gain-map', orientation = 1,
+) {
   if (!job.options.pythonExecutable)
     throw new Error(`${kind.toUpperCase()} requires the separately installed native decoder`);
   const outputPath = join(stage, 'native.tif'),
@@ -183,10 +190,12 @@ async function nativeDecode(job: Job, inputPath: string, stage: string, kind: 'r
       inputPath,
       outputPath,
       kind,
-      maxPixels: Math.min(
-        job.options.maxPixels,
-        kind === 'raw' ? MEDIA_MAX_LINEAR_PIXELS : MEDIA_MAX_HDR_IMPORT_PIXELS,
-      ),
+      maxPixels: Math.min(job.options.maxPixels, {
+        raw: MEDIA_MAX_LINEAR_PIXELS,
+        hdr: MEDIA_MAX_HDR_IMPORT_PIXELS,
+        'gain-map': MEDIA_MAX_GAIN_MAP_PIXELS,
+      }[kind]),
+      ...(kind === 'gain-map' ? { ultraHdrLibrary: job.options.ultraHdrLibrary, orientation } : {}),
       resultPath,
     }),
     { mode: 0o600 },
@@ -209,7 +218,13 @@ async function nativeDecode(job: Job, inputPath: string, stage: string, kind: 'r
     );
   });
   const result = JSON.parse(await readFile(resultPath, 'utf8')) as {
-    source: { width: number; height: number; bitDepth: number; colorSpace: string };
+    source: {
+      width: number;
+      height: number;
+      bitDepth: number;
+      colorSpace: string;
+      gainMap?: MediaDescriptorV1['original']['gainMap'];
+    };
     native: Record<string, string>;
     warnings: string[];
     peakRssBytes: number;
@@ -389,6 +404,28 @@ async function importMedia(job: Job): Promise<MediaDescriptorV1> {
     throw new Error('The embedded ICC color model is not supported by this RGB/CMYK pipeline');
   await preflightRaster(metadata, options, stage);
   if (!sourceOverride) sourceIcc = metadata.icc ?? null;
+  const hasGainMap = metadata.format === 'jpeg' && !!metadata.gainMap;
+  let gainMapSource: Awaited<ReturnType<typeof nativeDecode>>['result']['source'] | undefined;
+  if (hasGainMap) {
+    if (!options.pythonExecutable || !options.ultraHdrLibrary) {
+      warnings.push('Ultra HDR gain map retained in the original. HDR development requires the reference decoder.');
+    } else if (
+      metadata.width * metadata.height > MEDIA_MAX_GAIN_MAP_PIXELS ||
+      Math.max(metadata.width, metadata.height) > MEDIA_MAX_GAIN_MAP_SIDE ||
+      Math.min(metadata.width, metadata.height) < MEDIA_MIN_GAIN_MAP_SIDE ||
+      sourceStat.size > MEDIA_MAX_GAIN_MAP_BYTES
+    ) {
+      warnings.push('Ultra HDR gain map retained in the original. This image exceeds the HDR development budget.');
+    } else {
+      const decoded = await nativeDecode(job, originalPath, stage, 'gain-map', metadata.orientation ?? 1);
+      gainMapSource = decoded.result.source;
+      if (!gainMapSource.gainMap) throw new Error('Ultra HDR decoder returned no gain map metadata');
+      native = JSON.stringify(decoded.result.native);
+      nativePeakRssBytes = decoded.result.peakRssBytes;
+      warnings.push(...decoded.result.warnings);
+      await preflightRaster(metadata, options, stage);
+    }
+  }
   const profile = await srgbProfile(),
     masterPath = join(stage, 'master.tif');
   // sharp 0.35 uses P3 as its implicit RGB16 processing profile. For RGB, skip that
@@ -417,6 +454,8 @@ async function importMedia(job: Job): Promise<MediaDescriptorV1> {
   await attachTiffIcc(masterPath, profile);
   const master = await fileInfo(masterPath, 'master.tif', 'image/tiff', 'sRGB');
   if (master.bitDepth !== 16) throw new Error('Master encoding failed the uint16 verification');
+  if (gainMapSource && (gainMapSource.width !== master.width || gainMapSource.height !== master.height))
+    throw new Error('Ultra HDR and SDR orientation disagree');
   boundedDimensions(master.width, master.height, options.maxPixels);
   const proxySize = fitProxy(master.width, master.height, options.maxProxyPixels);
   const proxyPath = join(stage, 'proxy.png');
@@ -472,7 +511,7 @@ async function importMedia(job: Job): Promise<MediaDescriptorV1> {
     bitDepth: depth(metadata),
     colorSpace: metadata.space,
   };
-  if (source.bitDepth < 16 && !hdr)
+  if (source.bitDepth < 16 && !hdr && !hasGainMap)
     warnings.push(
       `The 16-bit working container does not add captured precision beyond the source's ${source.bitDepth}-bit samples.`,
     );
@@ -498,10 +537,12 @@ async function importMedia(job: Job): Promise<MediaDescriptorV1> {
             ? 'application/octet-stream'
             : (metadata.mediaType ?? 'application/octet-stream'),
       ...source,
+      ...(hasGainMap ? { sampleEncoding: 'gain-map' as const } : {}),
+      ...(gainMapSource ? { decodedBitDepth: 16, gainMap: gainMapSource.gainMap } : {}),
       format: originalFormat,
-      hasIcc: native ? null : sourceIcc !== null,
+      hasIcc: native && !hasGainMap ? null : sourceIcc !== null,
       metadataSummary: {
-        inspection: native ? 'not-inspected' : sourceOverride ? 'icc-only' : 'full',
+        inspection: native && !hasGainMap ? 'not-inspected' : sourceOverride ? 'icc-only' : 'full',
         orientation: sourceOverride ? null : (metadata.orientation ?? null),
         hasExif: sourceOverride ? null : !!metadata.exif,
         hasXmp: sourceOverride ? null : !!metadata.xmp,
@@ -532,7 +573,7 @@ async function importMedia(job: Job): Promise<MediaDescriptorV1> {
       ...(nativePeakRssBytes ? { nativePeakRssBytes } : {}),
     },
   };
-  if (hdr || rawExtension) {
+  if (hdr || rawExtension || gainMapSource) {
     const linearPath = join(stage, 'linear-master.exr');
     descriptor.linearMaster = {
       relativePath: 'linear-master.exr',
@@ -542,7 +583,7 @@ async function importMedia(job: Job): Promise<MediaDescriptorV1> {
       width: master.width,
       height: master.height,
       bitDepth: 32,
-      colorSpace: hdr ? 'linear-sRGB/Rec709-assumed' : 'linear-sRGB/Rec709-developed',
+      colorSpace: gainMapSource?.colorSpace ?? (hdr ? 'linear-sRGB/Rec709-assumed' : 'linear-sRGB/Rec709-developed'),
     };
   }
   if (inputPath !== originalPath) await rm(inputPath, { force: true });
@@ -636,6 +677,12 @@ async function exportLinearMaster(
     throw new Error('Retained float master failed its immutable integrity check');
   const dimensions = region ?? source;
   const count = dimensions.width * dimensions.height;
+  const ultraHdr = job.format === 'ultrahdr';
+  if (ultraHdr && (
+    !descriptor.original.gainMap || count > MEDIA_MAX_GAIN_MAP_PIXELS ||
+    Math.max(dimensions.width, dimensions.height) > MEDIA_MAX_GAIN_MAP_SIDE ||
+    Math.min(dimensions.width, dimensions.height) < MEDIA_MIN_GAIN_MAP_SIDE
+  )) throw new MediaLimitError('Ultra HDR JPEG requires a supported gain map source and output dimensions');
   if (
     job.format === 'webp' &&
     (Math.max(dimensions.width, dimensions.height) > 16383 ||
@@ -647,20 +694,23 @@ async function exportLinearMaster(
   const control = dirname(job.resultPath);
   const requestPath = join(control, 'linear-request.json'),
     resultPath = join(control, 'linear-result.json'),
-    sdrPath = job.format === 'exr32' ? undefined : join(control, 'developed.tif');
-  if (sdrPath) await diskBudget(control, count * 8.125 + 8 * 1024 * 1024);
+    intermediate = job.format === 'exr32' ? undefined : join(control, 'developed.tif');
+  const sdr = intermediate !== undefined && !ultraHdr;
+  if (intermediate) await diskBudget(control, count * (ultraHdr ? 13 : 8.125) + 8 * 1024 * 1024);
   try {
     await writeFile(
       requestPath,
       JSON.stringify({
         inputPath,
-        outputPath: sdrPath ?? outputPath,
+        outputPath: intermediate ?? outputPath,
         resultPath,
         width: source.width,
         height: source.height,
         maxPixels: MEDIA_MAX_LINEAR_PIXELS,
         edit: parsePrecisionEdit(job.precisionEdit ?? NEUTRAL_PRECISION_EDIT),
-        sdr: sdrPath !== undefined,
+        sdr,
+        sdrToneMap: sdr && !!descriptor.original.gainMap,
+        ...(ultraHdr ? { linearTiff: true } : {}),
         region,
       }),
       { mode: 0o600 },
@@ -684,19 +734,30 @@ async function exportLinearMaster(
     if (
       result.width !== dimensions.width ||
       result.height !== dimensions.height ||
-      result.bitDepth !== (sdrPath ? 16 : 32) ||
+      result.bitDepth !== (sdr ? 16 : 32) ||
       ![3, 4].includes(result.channels)
     )
       throw new Error('Invalid float export result');
     let info: MediaFileV1;
-    if (sdrPath) {
-      const pipeline = sharp(sdrPath, {
+    if (intermediate) {
+      const pipeline = sharp(intermediate, {
         limitInputPixels: count,
         failOn: 'warning',
         sequentialRead: true,
         ignoreIcc: true,
       });
-      info = await writeSdrExport(pipeline, job, outputPath);
+      if (ultraHdr) {
+        const linear = await pipeline.metadata();
+        if (linear.space !== 'scrgb' || linear.depth !== 'float' || linear.channels !== 3)
+          throw new Error('Ultra HDR encoder requires linear float RGB');
+        await pipeline.toColourspace('scrgb').jpeg({ quality: job.quality! }).toFile(outputPath);
+        const generated = await sharp(outputPath, { limitInputPixels: count }).metadata();
+        if (!generated.gainMap || generated.width !== dimensions.width || generated.height !== dimensions.height)
+          throw new Error('Ultra HDR encoding did not publish the expected gain map and dimensions');
+        info = await fileInfo(outputPath, basename(job.outputPath!), 'image/jpeg', 'Ultra HDR JPEG');
+      } else {
+        info = await writeSdrExport(pipeline, job, outputPath);
+      }
     } else {
       const outputStat = await lstat(outputPath);
       if (!outputStat.isFile() || outputStat.size < 16 || outputStat.size > 2_147_483_648)
@@ -723,7 +784,7 @@ async function exportLinearMaster(
   } finally {
     await rm(requestPath, { force: true });
     await rm(resultPath, { force: true });
-    if (sdrPath) await rm(sdrPath, { force: true });
+    if (intermediate) await rm(intermediate, { force: true });
   }
 }
 async function exportMaster(job: Job): Promise<MediaExportResult> {
@@ -742,7 +803,13 @@ async function exportMaster(job: Job): Promise<MediaExportResult> {
     descriptor.master.bytes > 2_147_483_648
   )
     throw new Error('Invalid media descriptor');
-  const region = previewWindow(job.preview, descriptor.master);
+  const crop = job.crop;
+  if (crop && (
+    ![crop.left, crop.top, crop.width, crop.height].every(Number.isSafeInteger) ||
+    crop.left < 0 || crop.top < 0 || crop.width < 1 || crop.height < 1 ||
+    crop.left + crop.width > descriptor.master.width || crop.top + crop.height > descriptor.master.height
+  )) throw new MediaLimitError('Ultra HDR crop is outside the orientation-normalized source');
+  const region = crop ?? previewWindow(job.preview, descriptor.master);
   if (job.format === 'exr32' || job.precisionInput === 'linear-master')
     return exportLinearMaster(job, descriptor, region);
   const edit = job.precisionEdit === undefined ? undefined : parsePrecisionEdit(job.precisionEdit);

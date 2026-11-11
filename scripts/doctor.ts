@@ -156,11 +156,15 @@ try {
   });
   const media = await getMediaCapabilities({
     pythonExecutable: process.env.MEDIA_PYTHON || undefined,
+    ultraHdrLibrary: process.env.MEDIA_UHDR_LIBRARY || undefined,
   });
   const mediaEnabled = process.env.MEDIA_ADVANCED_ENABLED === 'true';
   results.push({
     check: 'advanced-media',
-    ok: !mediaEnabled || (media.available && (!process.env.MEDIA_PYTHON || media.nativeReady)),
+    ok: !mediaEnabled || (
+      media.available && (!process.env.MEDIA_PYTHON || media.nativeReady) &&
+      (!process.env.MEDIA_UHDR_LIBRARY || media.ultraHdrJpeg.available)
+    ),
     detail: JSON.stringify({ enabled: mediaEnabled, ...media }),
   });
   const proxy = process.env.ASSISTANT_EGRESS_PROXY;

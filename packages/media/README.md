@@ -79,6 +79,7 @@ DZI：`tileSize` 为 256/512/1024，`overlap:1`；`levels = ceil(log2(max(width,
 | PSD v1 RGB/灰度 8/16 位                      | ag-psd 读取文件已保存合成图；有界图层名/边界/隐藏状态          | 不重新渲染文字、智能对象、效果；没有可编辑图层往返；PSB/CMYK/32位拒绝 |
 | Camera RAW                                   | 可选 rawpy/LibRaw，16 位线性去马赛克、相机白平衡，同时保留线性母版和 sRGB 母版 | 全传感器至多64MP。按瓦片行写入线性母版，已裁切高光仍受显影边界限制 |
 | EXR/Radiance                                 | 可选 OpenImageIO，flat 1/3/4 通道 float 解码与独立线性母版     | 至多50MP；deep、multipart、未知显式色域/曲线拒绝                      |
+| JPEG Ultra HDR                               | 可选 libultrahdr 重建高光并转换到线性 Rec.709，独立保存原件、SDR 基图和 EXR32 母版 | 至多 24MP、128MiB、每边 8–8192 像素。原件和 SDR 开发在增益图解码器未启用时仍可用 |
 | 浮点 TIFF、SVG/PDF、JXL/JP2、动画/多页、HEIC | 当前没有完整开启的导入工作流                                   | 不能凭扩展名、依赖中的 decoder 名称或文件选择器宣称支持               |
 
 本机验证过 JPEG、PNG、WebP、AVIF、GIF、16 位 TIFF/PNG、RGB8/RGB16 PSD、P3 ICC、CMYK JPEG/TIFF、实际 Nikon NEF、float EXR 与 Radiance。原件、母版原像素窗口、调色历史、PNG16/TIFF16/EXR32 的实拍验证另覆盖 Nikon NEF、Canon CR2、Sony A7 III ARW、富士 X-T4 RAF、宾得 K-1 DNG 和 Pixel 6 Pro DNG。Sony、富士、宾得和 Pixel 样本来自 raw.pixls.us 的 CC0 条目 2414、3914、2470 和 5961。另用条目 2790 的 Nikon Z7 NEF（45.75MP）和 3480 的 Sony A7R IV ARW（61.01MP）验证跨瓦片原像素窗口及三种格式的整图下载。具体证据见 `test/media.test.ts`、`scripts/qa/media-verify.ts` 和[验收主表](../../docs/research/PHOTO-EDITING-FEATURE-MATRIX.md#r02-和-f04-真实大幅相机-raw)。
@@ -95,9 +96,11 @@ RAW `bitDepth` 来自 LibRaw 白电平可表达位数，`sampleEncoding:'sensor-
 
 ### HDR 的明确解释
 
-仅接受明确/默认线性 Rec.709/sRGB 的输入；显式 ACEScg、非 Rec.709 chromaticities、未认可的 transfer/primaries 拒绝，要求先用可信色彩配置转换。没有色域标签的 HDR 会标示假设，不能推断其物理准确性。
+EXR/Radiance 接受明确或默认线性 Rec.709/sRGB 的输入。显式 ACEScg、其他 chromaticities、未认可的 transfer/primaries 需先用可信色彩配置转换。没有色域标签的输入会标示假设。
 
 SDR 母版采用固定亮度 Reinhard：非负线性 RGB 除以 `1+Y`，再 sRGB 编码并裁切 SDR 范围。RGBA 按 OIIO 默认 associated alpha 读取，做非线性色调映射前解除预乘，并将 TIFF 声明为 straight alpha。负值/超出 SDR 色域的值只在 SDR 结果裁切，float 母版与原件分别保留。此模块没有浏览器 HDR 显示、PQ/HLG 编辑、全套 OCIO 配置和 HDR 配方往返。
+
+Ultra HDR JPEG 保留原 JPEG 的 SDR 基图与色彩解释。参考解码器以线性半浮点重建增益图的最高 HDR 意图，再逐条带把解码器报告的 Rec.709、Display P3 或 Rec.2020 转成 Rec.709。浮点母版保留负通道及大于 1 的值，并按 EXIF 方向写入。选择 `format:'ultrahdr'` 时，同一母版调色结果经编码生成新的 SDR 基图和增益图，支持原尺寸及原图坐标内裁切。精确浮点交付使用 EXR32。由增益图母版生成的浏览器窗口和 SDR 导出在量化到 sRGB 前统一应用 Reinhard 映射，保留 SDR 上的亮部层次。`toneMap:'none'` 保留 HDR 输出的线性高光。[Android Ultra HDR 规范](https://developer.android.com/media/platform/hdr-image-format)
 
 ## 部署与资源治理
 
@@ -109,6 +112,8 @@ python3 -m venv /opt/media-venv
 ```
 
 requirements 固定 rawpy 0.28.0、OpenImageIO 3.2.2.0、numpy 2.4.2。`getMediaCapabilities({pythonExecutable})` 同时返回 `nativeConfigured`（可信路径可执行）和 `nativeReady/nativeVersions`（实际 import 探测结果）。路径存在不等于依赖能导入，依赖能导入也不等于任意文件能解码。
+
+`server-media` 镜像固定构建 [libultrahdr 参考解码器](https://github.com/google/libultrahdr/blob/5f117294cb701170b9198ed8eae16270aa84896c/ultrahdr_api.h)，并配置 `MEDIA_UHDR_LIBRARY`。独立部署可用 `options.ultraHdrLibrary` 指向受信的库文件绝对路径，由 `getMediaCapabilities` 探测。JPEG 编码由镜像内 Sharp/libvips 实现，发布前验证输出带增益图且尺寸符合请求。
 
 当前 worker 是项目内 TypeScript 固定入口，父进程用 `--import tsx` 启动；部署要保留此包的 `src/worker.ts`、`native/convert.py`、tsx 及本项目目录结构。它不是可随意只复制一个编译后 index.js 的独立二进制包。
 

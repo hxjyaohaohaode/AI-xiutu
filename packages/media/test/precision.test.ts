@@ -21,6 +21,124 @@ import { createLinearWindowRuntime, processMedia, exportMedia } from '../src/ind
 
 const execute = promisify(execFile);
 test(
+  'JPEG gain maps retain the original and develop a graded HDR crop without EXIF',
+  { skip: !process.env.MEDIA_QA_PYTHON || !process.env.MEDIA_UHDR_LIBRARY },
+  async () => {
+    const pythonExecutable = process.env.MEDIA_QA_PYTHON!;
+    const ultraHdrLibrary = process.env.MEDIA_UHDR_LIBRARY!;
+    const dir = await mkdtemp(join(tmpdir(), 'xiutu-gain-map-test-'));
+    const runtime = createLinearWindowRuntime();
+    const width = 72;
+    const height = 54;
+    try {
+      const floatTiff = join(dir, 'linear.tif');
+      const inputPath = join(dir, 'gain-map.jpg');
+      await execute(pythonExecutable, [
+        '-c',
+        `import numpy as n, OpenImageIO as o, sys
+w,h=map(int,sys.argv[2:]); y,x=n.mgrid[0:h,0:w]
+p=n.stack((0.2+x/25,0.3+y/20,0.2+(x+y)/66),axis=-1).astype(n.float32)
+s=o.ImageSpec(w,h,3,o.FLOAT); s.attribute("oiio:ColorSpace","Linear")
+out=o.ImageOutput.create(sys.argv[1]); assert out.open(sys.argv[1],s)
+assert out.write_image(p); assert out.close()`,
+        floatTiff,
+        String(width),
+        String(height),
+      ]);
+      const encoded = await sharp(floatTiff).toColourspace('scrgb').jpeg({ quality: 95 }).toBuffer();
+      // Hide the generated EXIF segment without shifting the MPF gain-map offsets.
+      const exifStart = encoded.indexOf(Buffer.from('Exif\0\0', 'ascii'));
+      if (exifStart >= 4) {
+        assert.equal(encoded.readUInt16BE(exifStart - 4), 0xffe1);
+        encoded[exifStart - 3] = 0xef;
+      }
+      await writeFile(inputPath, encoded);
+      const jpeg = await sharp(inputPath).metadata();
+      assert.ok(jpeg.gainMap);
+      assert.equal(jpeg.exif, undefined);
+      const workDir = join(dir, 'media');
+      const options = { pythonExecutable, ultraHdrLibrary };
+      const descriptor = await processMedia({ inputPath, workDir, options });
+      assert.equal(descriptor.original.sampleEncoding, 'gain-map');
+      assert.deepEqual(descriptor.original.gainMap, { width: 36, height: 27, hdrGamut: 'Rec.709' });
+      assert.equal(descriptor.linearMaster?.bitDepth, 32);
+      assert.deepEqual(
+        await readFile(join(workDir, descriptor.original.relativePath)),
+        await readFile(inputPath),
+      );
+      const fallbackDir = join(dir, 'sdr-only');
+      const fallback = await processMedia({
+        inputPath,
+        workDir: fallbackDir,
+        options: { pythonExecutable },
+      });
+      assert.equal(fallback.linearMaster, undefined);
+      assert.ok(fallback.warnings.some((message) => message.includes('gain map retained')));
+      assert.equal(fallback.original.sha256, descriptor.original.sha256);
+      const request = {
+        workDir,
+        precisionInput: 'linear-master' as const,
+        precisionEdit: { ...NEUTRAL_PRECISION_EDIT, exposure: -0.2 },
+        expectedSourceSha256: descriptor.sourceSha256,
+        options: { ...options, quality: 96 },
+      };
+      const crop = { left: 22, top: 15, width: 37, height: 29 };
+      const exr = join(dir, 'graded.exr');
+      const outputPath = join(dir, 'graded.jpg');
+      const reference = await exportMedia({ ...request, format: 'exr32', outputPath: exr });
+      const exported = await exportMedia({ ...request, format: 'ultrahdr', crop, outputPath });
+      assert.equal(exported.precisionEdit?.sha256, reference.precisionEdit?.sha256);
+      assert.deepEqual([exported.width, exported.height], [crop.width, crop.height]);
+      assert.ok((await sharp(outputPath).metadata()).gainMap);
+      const sdrPath = join(dir, 'graded.png');
+      const windowPath = join(dir, 'window.png');
+      const sdr = await exportMedia({ ...request, format: 'png16', outputPath: sdrPath });
+      const window = await exportMedia(
+        {
+          ...request,
+          format: 'png16',
+          outputPath: windowPath,
+          preview: { maxEdge: 128, region: crop },
+        },
+        { descriptor, runtime },
+      );
+      assert.equal(sdr.precisionEdit?.sha256, reference.precisionEdit?.sha256);
+      assert.equal(window.precisionEdit?.sha256, sdr.precisionEdit?.sha256);
+      const raw16 = (pipeline: ReturnType<typeof sharp>) =>
+        pipeline.toColourspace('rgb16').raw({ depth: 'ushort' }).toBuffer();
+      const displayPixels = await raw16(sharp(windowPath, { ignoreIcc: true }));
+      assert.deepEqual(
+        displayPixels,
+        await raw16(sharp(sdrPath, { ignoreIcc: true }).extract(crop)),
+      );
+      const displayLevels = new Set<number>();
+      for (let offset = 2; offset < displayPixels.length; offset += 6)
+        displayLevels.add(displayPixels.readUInt16LE(offset));
+      assert.ok(displayLevels.size > 100, 'The SDR window must retain highlight detail');
+      await execute(pythonExecutable, [
+        '-B',
+        '-c',
+        `import numpy as n, OpenImageIO as o, sys
+sys.path.insert(0,sys.argv[1]); from ultrahdr import decode_gain_map,linear_rec709
+img=o.ImageInput.open(sys.argv[2]); reference=img.read_image(format=o.FLOAT); img.close()
+x,y,w,h=map(int,sys.argv[5:]); reference=reference[y:y+h,x:x+w]
+p,gamut,_=decode_gain_map(sys.argv[3],sys.argv[4],lambda *_:None)
+decoded=linear_rec709(p,gamut); assert decoded.shape==reference.shape
+assert n.count_nonzero(decoded>1)>w*h; assert n.mean(n.abs(decoded-reference))<0.12`,
+        fileURLToPath(new URL('../native', import.meta.url)),
+        exr,
+        outputPath,
+        ultraHdrLibrary,
+        ...[crop.left, crop.top, crop.width, crop.height].map(String),
+      ]);
+    } finally {
+      await runtime.close();
+      await rm(dir, { recursive: true, force: true });
+    }
+  },
+);
+
+test(
   'RAW float master tile-row normalization retains every source code value through partial tiles',
   { skip: !process.env.MEDIA_QA_PYTHON },
   async () => {

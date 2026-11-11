@@ -163,7 +163,7 @@ try {
       const frame = preview.locator('.media-precision-frame img');
       const before = await frame.getAttribute('src');
       const downloadFormat = size.width === 1440
-        ? 'PNG 16-bit'
+        ? asset.gainMap ? 'Ultra HDR JPEG' : 'PNG 16-bit'
         : asset.tileComparison && size.width === 1024
           ? 'EXR 32-bit HDR'
           : asset.tileComparison && size.width === 320
@@ -197,11 +197,15 @@ try {
           }
         } else {
           const info = await sharp(path).metadata();
-          assert.deepEqual([info.width, info.height, info.depth], [asset.width, asset.height, 'ushort']);
+          assert.deepEqual(
+            [info.width, info.height, info.depth],
+            [asset.width, asset.height, format === 'Ultra HDR JPEG' ? 'uchar' : 'ushort'],
+          );
+          if (format === 'Ultra HDR JPEG') assert.ok(info.gainMap);
         }
         return { downloadBytes, downloadMs };
       }
-      const overlapExport = asset.tileComparison && size.width === 1440 && process.env.MEDIA_QA_OVERLAP_BROWSER === '1';
+      const overlapExport = asset.tileComparison && downloadFormat === 'PNG 16-bit' && process.env.MEDIA_QA_OVERLAP_BROWSER === '1';
       const converting = media.locator('details.editor-section').getByRole('button', {
         name: '正在转换', exact: true,
       });
@@ -253,7 +257,7 @@ try {
             start: null,
             end: null,
             pointer: null,
-            inputs: 0,
+            inputs: [],
             valueChanges: 0,
             baseline: sample(viewport.querySelector('.media-precision-frame img')),
             frames: [],
@@ -294,7 +298,8 @@ try {
               trace.end = event.timeStamp;
           };
           const move = (event) => {
-            if (event.pointerId === trace.pointer && trace.end === null) trace.inputs++;
+            if (event.pointerId === trace.pointer && trace.end === null)
+              trace.inputs.push(event.timeStamp);
           };
           document.addEventListener('pointerup', end, true);
           document.addEventListener('pointermove', move, true);
@@ -330,12 +335,12 @@ try {
         assert.ok(
           trace.start > 0 &&
             trace.end > trace.start &&
-            trace.inputs >= 24 &&
+            trace.inputs.length >= 24 &&
             trace.valueChanges >= 24,
           JSON.stringify({
             start: trace.start,
             end: trace.end,
-            inputs: trace.inputs,
+            inputs: trace.inputs.length,
             values: trace.valueChanges,
           }),
         );
@@ -351,17 +356,22 @@ try {
           last = item.time;
         }
         const firstMs = gaps[0];
-        const sorted = [...gaps, trace.end - last].sort((a, b) => a - b);
+        const tailMs = trace.end - last;
+        const sorted = [...gaps, tailMs].sort((a, b) => a - b);
+        const inputTimes = [trace.start, ...trace.inputs, trace.end];
         liveNativeFrames = {
           count: gaps.length,
+          loadedFrames: rendered.length,
           width: nativeSize[0],
           height: nativeSize[1],
-          inputs: trace.inputs,
+          inputs: trace.inputs.length,
           valueChanges: trace.valueChanges,
           heldMs: trace.end - trace.start,
           firstMs,
           maxGapMs: sorted.at(-1),
           p95GapMs: sorted[Math.ceil(sorted.length * 0.95) - 1],
+          tailMs,
+          maxInputGapMs: Math.max(...inputTimes.slice(1).map((time, index) => time - inputTimes[index])),
           duringExport: !!overlapExport,
         };
         assert.ok(

@@ -90,6 +90,26 @@ def main():
             pixels[row:row + 64] = lookup[pixels[row:row + 64]]
         write_image(destination, pixels, oiio.UINT16, "sRGB")
         warnings = ["RAW is demosaiced by LibRaw with camera white balance and no automatic brightening. The float master preserves the normalized 16-bit linear development; it cannot restore clipped sensor data. Original sensor bytes are retained."]
+    elif request["kind"] == "gain-map":
+        from ultrahdr import GAMUT_NAMES, decode_gain_map, linear_rec709, orient
+
+        pixels, gamut, gain_size = decode_gain_map(
+            source, request["ultraHdrLibrary"],
+            lambda width, height: admit_native(width, height, max_pixels, destination.parent),
+        )
+        pixels = orient(pixels, request["orientation"])
+        height, width, _ = pixels.shape
+        write_image(
+            destination.with_name("linear-master.exr"), pixels, oiio.FLOAT, "Linear",
+            tile_transform=lambda band: linear_rec709(band, gamut),
+        )
+        source_info = {
+            "width": width, "height": height, "bitDepth": 8, "decodedBitDepth": 16,
+            "colorSpace": "linear-sRGB/Rec709-display-referred",
+            "gainMap": {"width": gain_size[0], "height": gain_size[1], "hdrGamut": GAMUT_NAMES[gamut]},
+        }
+        native["ultrahdr"] = "reference decoder"
+        warnings = ["The JPEG gain map was decoded at full HDR intent. The float master uses linear Rec.709 and retains out-of-gamut values. The SDR working master uses the original SDR rendition and its ICC profile."]
     elif request["kind"] == "hdr":
         image = oiio.ImageInput.open(source)
         if image is None:

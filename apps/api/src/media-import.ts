@@ -19,6 +19,8 @@ import {
   MEDIA_MAX_PRECISION_PIXELS,
   MEDIA_MAX_LINEAR_PIXELS,
   MEDIA_MAX_PREVIEW_EDGE,
+  MEDIA_MIN_GAIN_MAP_SIDE,
+  MEDIA_MAX_GAIN_MAP_SIDE,
   type MediaDescriptorV1,
   type MediaExportFormat,
   type MediaExportResult,
@@ -49,7 +51,14 @@ import {
 
 const CHUNK_BYTES = 4 * 1024 * 1024;
 const DOWNLOAD_TTL_MS = 60_000;
-const exportExtension = { png16: 'png', tiff16: 'tiff', exr32: 'exr', jpeg: 'jpeg', webp: 'webp' };
+const exportExtension = {
+  png16: 'png',
+  tiff16: 'tiff',
+  exr32: 'exr',
+  jpeg: 'jpeg',
+  webp: 'webp',
+  ultrahdr: 'jpg',
+};
 const safeName = z
   .string()
   .trim()
@@ -68,6 +77,10 @@ const windowSchema = z
     height: z.number().int().min(1).max(MEDIA_MAX_PREVIEW_EDGE),
   })
   .strict();
+const ultraHdrCropSchema = windowSchema.extend({
+  width: z.number().int().min(MEDIA_MIN_GAIN_MAP_SIDE).max(MEDIA_MAX_GAIN_MAP_SIDE),
+  height: z.number().int().min(MEDIA_MIN_GAIN_MAP_SIDE).max(MEDIA_MAX_GAIN_MAP_SIDE),
+});
 interface MediaAccess {
   project_id: string;
   object_id: string;
@@ -150,6 +163,7 @@ export function registerMediaImport(app: FastifyInstance, db: Database, config: 
   const downloads = new Map<string, MasterDownload>();
   const enabled = process.env.MEDIA_ADVANCED_ENABLED === 'true';
   const pythonExecutable = process.env.MEDIA_PYTHON;
+  const ultraHdrLibrary = process.env.MEDIA_UHDR_LIBRARY;
   const linearWindows = enabled && pythonExecutable ? createLinearWindowRuntime() : undefined;
   const maxPixels = process.env.MEDIA_RASTER_MAX_PIXELS
     ? z.coerce
@@ -159,7 +173,7 @@ export function registerMediaImport(app: FastifyInstance, db: Database, config: 
         .max(MEDIA_MAX_PIXELS)
         .parse(process.env.MEDIA_RASTER_MAX_PIXELS)
     : undefined;
-  const capabilities = getMediaCapabilities({ pythonExecutable, maxPixels });
+  const capabilities = getMediaCapabilities({ pythonExecutable, ultraHdrLibrary, maxPixels });
   let closing = false;
   function takeDownload(downloadId: string, download: MasterDownload) {
     if (downloads.get(downloadId) !== download) return false;
@@ -251,12 +265,20 @@ export function registerMediaImport(app: FastifyInstance, db: Database, config: 
     }, 10000);
     heartbeat.unref();
     try {
+      const gainMapLibrary = (await capabilities).ultraHdrJpeg.available
+        ? ultraHdrLibrary
+        : undefined;
       const descriptor = await processMedia({
         inputPath: inputPath(row.id),
         workDir: workDir(row.id),
         originalName: row.name,
         signal,
-        options: { pythonExecutable, maxPixels, generateTiles: row.generate_tiles },
+        options: {
+          pythonExecutable,
+          ultraHdrLibrary: gainMapLibrary,
+          maxPixels,
+          generateTiles: row.generate_tiles,
+        },
       });
       const retainedBytes = await directoryBytes(workDir(row.id));
       const proxy = await readFile(join(workDir(row.id), descriptor.proxy.relativePath));
@@ -708,7 +730,8 @@ export function registerMediaImport(app: FastifyInstance, db: Database, config: 
     const actor = requireUser(req);
     const { id: assetId } = jobParams.parse(req.params);
     const row = await sourceAccess(assetId, actor.id);
-    const precision = (await capabilities).precisionEditing;
+    const runtime = await capabilities;
+    const precision = runtime.precisionEditing;
     const currentGrade = await grade(assetId, undefined);
     return {
       descriptor: row.descriptor,
@@ -730,6 +753,7 @@ export function registerMediaImport(app: FastifyInstance, db: Database, config: 
           master16: enabled && precision.master16,
           sourceSha256: row.descriptor.sourceSha256,
           floatAvailable: enabled && !!row.descriptor.linearMaster && precision.linearFloat,
+          ultraHdrJpeg: enabled && !!row.descriptor.original.gainMap && runtime.ultraHdrJpeg.available,
           curves: {
             ...precision.curves,
             available: enabled && !!row.descriptor.linearMaster && precision.curves.available,
@@ -923,6 +947,7 @@ export function registerMediaImport(app: FastifyInstance, db: Database, config: 
       precisionEdit?: PrecisionEdit;
       precisionInput?: MediaPrecisionInput;
       preview?: MediaPrecisionPreview;
+      crop?: MediaPrecisionPreview['region'];
       delivery?: 'attachment';
     },
   ) {
@@ -955,6 +980,7 @@ export function registerMediaImport(app: FastifyInstance, db: Database, config: 
           precisionEdit: options.precisionEdit,
           precisionInput: options.precisionInput,
           preview: options.preview,
+          crop: options.crop,
           signal: controller.signal,
           options: {
             quality: options.quality,
@@ -1072,21 +1098,23 @@ export function registerMediaImport(app: FastifyInstance, db: Database, config: 
     const { id: assetId } = jobParams.parse(req.params);
     const body = z
       .object({
-        format: z.enum(['png16', 'tiff16', 'jpeg', 'webp', 'exr32']),
+        format: z.enum(['png16', 'tiff16', 'jpeg', 'webp', 'exr32', 'ultrahdr']),
         quality: z.number().int().min(1).max(100).default(90),
         precisionEdit: z.unknown().optional(),
         precisionInput: precisionInputSchema.optional(),
         gradeVersion: gradeVersionSchema.optional(),
         expectedSourceSha256: sourceDigest.optional(),
         delivery: z.literal('attachment').optional(),
+        crop: ultraHdrCropSchema.optional(),
       })
       .strict()
       .parse(req.body);
     const row = await sourceAccess(assetId, actor.id);
+    const ultraHdr = body.format === 'ultrahdr';
+    const floatFormat = ultraHdr || body.format === 'exr32';
     let precisionEdit =
       body.precisionEdit === undefined ? undefined : parsePrecisionEdit(body.precisionEdit);
-    let precisionInput =
-      body.precisionInput ?? (body.format === 'exr32' ? 'linear-master' : 'master16');
+    let precisionInput = body.precisionInput ?? (floatFormat ? 'linear-master' : 'master16');
     if (body.gradeVersion !== undefined) {
       if (precisionEdit || body.precisionInput)
         throw new HttpError(422, 'MEDIA_GRADE_INPUT', '请选择历史版本或当前调色参数。');
@@ -1097,9 +1125,23 @@ export function registerMediaImport(app: FastifyInstance, db: Database, config: 
       precisionEdit = saved.edit;
       precisionInput = saved.precisionInput;
     }
-    if (body.format === 'exr32' && precisionInput !== 'linear-master')
-      throw new HttpError(422, 'MEDIA_FLOAT_INPUT', 'EXR 需要线性母版作为调色输入。');
-    if (precisionEdit || body.precisionInput || body.format === 'exr32')
+    if (floatFormat && precisionInput !== 'linear-master')
+      throw new HttpError(
+        422,
+        'MEDIA_FLOAT_INPUT',
+        'EXR 或 Ultra HDR JPEG 需要线性母版作为调色输入。',
+      );
+    if (ultraHdr && (!row.descriptor.original.gainMap || !(await capabilities).ultraHdrJpeg.available))
+      throw new HttpError(422, 'MEDIA_GAIN_MAP_UNAVAILABLE', '此素材没有可供导出的 HDR 增益图母版。');
+    const crop = body.crop;
+    if (
+      crop &&
+      (!ultraHdr ||
+        crop.left + crop.width > row.descriptor.master.width ||
+        crop.top + crop.height > row.descriptor.master.height)
+    )
+      throw new HttpError(422, 'MEDIA_EXPORT_CROP', '导出裁切超出素材尺寸或所选格式范围。');
+    if (precisionEdit || body.precisionInput || floatFormat)
       await assertPrecision(row, body.expectedSourceSha256, precisionInput, precisionEdit);
     return sendMaster(req, reply, assetId, actor.id, row, {
       format: body.format,
@@ -1107,6 +1149,7 @@ export function registerMediaImport(app: FastifyInstance, db: Database, config: 
       precisionEdit,
       precisionInput,
       delivery: body.delivery,
+      crop,
     });
   });
   app.get(

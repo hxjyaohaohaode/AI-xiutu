@@ -140,7 +140,7 @@ def pixel_centers(start, count, extent):
     return (np.arange(start, start + count, dtype=np.float64) + 0.5) / extent
 
 
-def develop(pixels, edit, gains, sdr, curves, regions=(), x=None, y=None):
+def develop(pixels, edit, gains, sdr, curves, regions=(), x=None, y=None, sdr_tone_map=False):
     if not np.all(np.isfinite(pixels)):
         raise ValueError("Non-finite retained float samples")
     alpha = pixels[:, :, 3:4].astype(np.float64) if pixels.shape[2] == 4 else None
@@ -155,7 +155,7 @@ def develop(pixels, edit, gains, sdr, curves, regions=(), x=None, y=None):
     for channel, name in enumerate(("red", "green", "blue")):
         if name in curves:
             rgb[:, :, channel] *= curve_gain(rgb[:, :, channel], curves[name])
-    tone_map = edit["toneMap"] == "reinhard"
+    tone_map = edit["toneMap"] == "reinhard" or sdr_tone_map
     if tone_map:
         mapped_y = np.maximum(0, luminance(rgb)) if curves else base_y * gain
     if regions:
@@ -213,12 +213,16 @@ def render(image, request, window_png=False, read_source_band=read_band):
         if region["enabled"] and region["opacity"] and any(region["adjustments"].values())
     ]
     sdr = request["sdr"]
+    sdr_tone_map = sdr and request.get("sdrToneMap", False)
+    linear_tiff = request.get("linearTiff", False)
+    if linear_tiff and (sdr or channels != 3):
+        raise ValueError("Ultra HDR JPEG development requires opaque RGB samples")
     region = request.get("region")
     left, top = 0, 0
     if region:
         left, top, width, height = (region[key] for key in ("left", "top", "width", "height"))
         if (
-            not sdr
+            not (sdr or linear_tiff)
             or min(left, top) < 0
             or min(width, height) < 1
             or left + width > spec.width
@@ -233,9 +237,9 @@ def render(image, request, window_png=False, read_source_band=read_band):
         out_spec.attribute("png:compressionLevel", 1)
     if sdr and channels == 4:
         out_spec.attribute("oiio:UnassociatedAlpha", 1)
-    if not sdr:
+    if not sdr and not linear_tiff:
         apply_layout(out_spec, capture_layout(spec))
-    target = "preview.png" if window_png else "developed.tif" if sdr else "precision.exr"
+    target = "preview.png" if window_png else "developed.tif" if sdr or linear_tiff else "precision.exr"
     out = oiio.ImageOutput.create(target)
     if out is None or not out.open(request["outputPath"], out_spec):
         raise ValueError("Cannot create precision output")
@@ -254,7 +258,9 @@ def render(image, request, window_png=False, read_source_band=read_band):
                     pixel_centers(row + offset, source.shape[0], spec.height)[:, None]
                     if regions else None
                 )
-                stripe = develop(source, edit, gains, sdr, curves, regions, columns, rows)
+                stripe = develop(
+                    source, edit, gains, sdr, curves, regions, columns, rows, sdr_tone_map,
+                )
                 y = out_spec.y + row + offset - top
                 if not out.write_scanlines(y, y + stripe.shape[0], out_spec.z, stripe):
                     raise ValueError("Cannot write precision samples")

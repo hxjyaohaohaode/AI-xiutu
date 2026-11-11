@@ -20,11 +20,19 @@ import {
   MEDIA_MAX_PRECISION_PIXELS,
   MEDIA_MAX_LINEAR_PIXELS,
   MEDIA_MAX_HDR_IMPORT_PIXELS,
+  MEDIA_MAX_GAIN_MAP_PIXELS,
+  MEDIA_MAX_GAIN_MAP_BYTES,
+  MEDIA_MIN_GAIN_MAP_SIDE,
+  MEDIA_MAX_GAIN_MAP_SIDE,
   MEDIA_MAX_PREVIEW_EDGE,
 } from './types.js';
 const probes = new Map<string, { at: number; versions: Record<string, string> | null }>();
-async function probeNative(path: string): Promise<Record<string, string> | null> {
-  const cached = probes.get(path);
+async function probeNative(
+  path: string,
+  gainMapLibrary: string,
+): Promise<Record<string, string> | null> {
+  const key = JSON.stringify([path, gainMapLibrary]);
+  const cached = probes.get(key);
   if (cached && Date.now() - cached.at < 60_000) return cached.versions;
   const versions = await new Promise<Record<string, string> | null>((resolve) => {
     execFile(
@@ -32,7 +40,16 @@ async function probeNative(path: string): Promise<Record<string, string> | null>
       [
         '-I',
         '-c',
-        'import json,rawpy,OpenImageIO as o,numpy; print(json.dumps({"rawpy":rawpy.__version__,"openimageio":o.VERSION_STRING,"numpy":numpy.__version__,"libraw":".".join(map(str,rawpy.libraw_version))}))',
+        [
+          'import ctypes,json,sys,rawpy,OpenImageIO as o,numpy',
+          'v={"rawpy":rawpy.__version__,"openimageio":o.VERSION_STRING,"numpy":numpy.__version__,"libraw":".".join(map(str,rawpy.libraw_version))}',
+          'if sys.argv[1]:',
+          ' try:',
+          '  codec=ctypes.CDLL(sys.argv[1]); codec.uhdr_get_decoded_image; v["ultrahdr"]="reference decoder"',
+          ' except (OSError, AttributeError): pass',
+          'print(json.dumps(v))',
+        ].join('\n'),
+        gainMapLibrary,
       ],
       {
         timeout: 5000,
@@ -66,13 +83,13 @@ async function probeNative(path: string): Promise<Record<string, string> | null>
     );
   });
   if (probes.size >= 8) probes.clear();
-  probes.set(path, { at: Date.now(), versions });
+  probes.set(key, { at: Date.now(), versions });
   return versions;
 }
 
 /** Deployment availability, distinct from an image's successful decode or an editor's precision. */
 export async function getMediaCapabilities(
-  options: { pythonExecutable?: string; maxPixels?: number } = {},
+  options: { pythonExecutable?: string; maxPixels?: number; ultraHdrLibrary?: string } = {},
 ) {
   let isolated = false,
     nativeConfigured = false;
@@ -90,7 +107,11 @@ export async function getMediaCapabilities(
     } catch {
       /* unavailable */
     }
-  const nativeVersions = nativeConfigured ? await probeNative(options.pythonExecutable!) : null;
+  const gainMapLibrary =
+    options.ultraHdrLibrary && isAbsolute(options.ultraHdrLibrary) ? options.ultraHdrLibrary : '';
+  const nativeVersions = nativeConfigured
+    ? await probeNative(options.pythonExecutable!, gainMapLibrary)
+    : null;
   return {
     protocol: 'media-v1' as const,
     available: isolated,
@@ -108,6 +129,13 @@ export async function getMediaCapabilities(
       options.maxPixels ?? MEDIA_DEFAULT_MAX_PIXELS,
       MEDIA_MAX_HDR_IMPORT_PIXELS,
     ),
+    ultraHdrJpeg: {
+      available: isolated && !!nativeVersions?.ultrahdr,
+      maxPixels: Math.min(options.maxPixels ?? MEDIA_DEFAULT_MAX_PIXELS, MEDIA_MAX_GAIN_MAP_PIXELS),
+      maxBytes: MEDIA_MAX_GAIN_MAP_BYTES,
+      minSide: MEDIA_MIN_GAIN_MAP_SIDE,
+      maxSide: MEDIA_MAX_GAIN_MAP_SIDE,
+    },
     maxConcurrent: 1,
     maxQueued: 8,
     nativeConfigured,

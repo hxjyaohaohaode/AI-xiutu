@@ -38,6 +38,7 @@ interface NativeWindow {
   region: MediaPrecisionWindow;
   edit: PrecisionEdit;
   sdr: true;
+  sdrToneMap: boolean;
 }
 interface WindowResult {
   width: number;
@@ -263,6 +264,7 @@ export async function exportLinearWindow(
       region,
       edit: edit ?? NEUTRAL_PRECISION_EDIT,
       sdr: true,
+      sdrToneMap: !!descriptor.original.gainMap,
     },
     options,
     signal,

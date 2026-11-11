@@ -114,6 +114,7 @@ try {
       importMs: Math.round(performance.now() - start),
       assetId: state.asset.id,
       sourceEncoding: descriptor.original.sampleEncoding,
+      gainMap: descriptor.original.gainMap,
       linear: !!descriptor.linearMaster,
       peakRssBytes: descriptor.processor.peakRssBytes,
       nativePeakRssBytes: descriptor.processor.nativePeakRssBytes,
@@ -341,6 +342,7 @@ try {
       verifiedSamples: 0,
       linearReadback: null as unknown,
       windowStress: undefined as unknown,
+      gainMapRoundTrip: undefined as unknown,
     };
     const precision = metadata.editor.precisionEditing;
     if (
@@ -387,12 +389,14 @@ try {
         assert.deepEqual(reopened.edit, precisionEdit);
         assert.equal(history[1].edit.algorithm, 'scene-linear-v1');
       }
-      for (const format of ['png16', 'tiff16', ...(descriptor.linearMaster ? ['exr32'] : [])]) {
+      const formats = ['png16', 'tiff16', ...(descriptor.linearMaster ? ['exr32'] : [])];
+      if (precision.ultraHdrJpeg) formats.push('ultrahdr');
+      for (const format of formats) {
         const target = join(
           output,
           String(index) +
             '-developed.' +
-            (format === 'tiff16' ? 'tif' : format === 'exr32' ? 'exr' : 'png'),
+            (format === 'tiff16' ? 'tif' : format === 'exr32' ? 'exr' : format === 'ultrahdr' ? 'jpg' : 'png'),
         );
         let converting = true;
         const transfer = async () => {
@@ -491,6 +495,51 @@ try {
           assert.deepEqual(linear.size, [width, height]);
           assert.equal(linear.type, 'float');
           record.linearReadback = linear;
+        } else if (format === 'ultrahdr') {
+          assert.ok(descriptor.original.gainMap);
+          assert.ok(process.env.MEDIA_UHDR_LIBRARY);
+          const sourceExr = join(output, `${index}-developed.exr`);
+          const crop = {
+            left: region.left, top: region.top,
+            width: Math.min(513, width - region.left), height: Math.min(389, height - region.top),
+          };
+          const croppedFile = join(output, `${index}-cropped-ultrahdr.jpg`);
+          const spec = { format, quality: 90, gradeVersion: withCurves ? 2 : 1, expectedSourceSha256: descriptor.sourceSha256 };
+          const invalid = await post(path + '/export', { ...spec, crop: { ...crop, left: width } });
+          assert.equal(invalid.status, 422);
+          const cropped = await post(path + '/export', { ...spec, crop });
+          assert.equal(cropped.status, 200, cropped.ok ? undefined : await cropped.text());
+          assert.equal(cropped.headers.get('content-type'), 'image/jpeg');
+          assert.equal(cropped.headers.get('x-precision-edit-sha256'), preview.headers['x-precision-edit-sha256']);
+          assert.ok(cropped.body);
+          await pipeline(Readable.fromWeb(cropped.body), createWriteStream(croppedFile));
+          const verify = async (jpeg: string, expected: { left: number; top: number; width: number; height: number }) => {
+            const meta = await sharp(jpeg).metadata();
+            assert.deepEqual([meta.width, meta.height, meta.depth], [expected.width, expected.height, 'uchar']);
+            assert.ok(meta.gainMap);
+            const native = await execute(python, ['-c', [
+              'import json,sys,numpy as n,OpenImageIO as o',
+              'sys.path.insert(0,sys.argv[1]); import ultrahdr as u',
+              'pixels,gamut,gain=u.decode_gain_map(sys.argv[2],sys.argv[4],lambda w,h: None)',
+              'left,top,width,height=(int(v) for v in sys.argv[5:9])',
+              'assert pixels.shape==(height,width,3)',
+              'i=o.ImageInput.open(sys.argv[3]); s=i.spec(); maximum=-float("inf"); error=0; high=0; source_high=0',
+              'for row in range(0,height,64):',
+              ' count=min(height-row,64)',
+              ' ref=i.read_scanlines(s.y+top+row,s.y+top+row+count,s.z,0,3,o.FLOAT)[:,left:left+width]',
+              ' out=u.linear_rec709(pixels[row:row+count],gamut)',
+              ' maximum=max(maximum,float(out.max())); error+=float(n.sum(n.abs(ref-out),dtype=n.float64))',
+              ' high+=int(n.count_nonzero(out>1)); source_high+=int(n.count_nonzero(ref>1))',
+              'i.close()',
+              'print(json.dumps({"width":width,"height":height,"gainSize":gain,"gamut":u.GAMUT_NAMES[gamut],"max":maximum,"aboveWhite":high,"referenceAboveWhite":source_high,"mae":error/(width*height*3)}))',
+            ].join('\n'), resolve('packages/media/native'), jpeg, sourceExr, process.env.MEDIA_UHDR_LIBRARY!,
+              String(expected.left), String(expected.top), String(expected.width), String(expected.height),
+            ]);
+            return JSON.parse(native.stdout);
+          };
+          const whole = await verify(target, { left: 0, top: 0, width, height });
+          assert.ok(whole.aboveWhite > 0 && whole.referenceAboveWhite > 0);
+          record.gainMapRoundTrip = { whole, crop: await verify(croppedFile, crop) };
         } else {
           const image = sharp(target, { ignoreIcc: true });
           const meta = await image.metadata();
@@ -518,7 +567,7 @@ try {
           format,
           bytes: exportBytes,
           ms: exportMs,
-          bitDepth: format === 'exr32' ? 32 : 16,
+          bitDepth: format === 'exr32' ? 32 : format === 'ultrahdr' ? 8 : 16,
         });
       }
       const overview = await f.call('POST', path + '/preview', { ...grade, maxEdge: 768 });
