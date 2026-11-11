@@ -743,7 +743,7 @@ export function registerMediaImport(app: FastifyInstance, db: Database, config: 
         .header('Cache-Control', 'private, no-store')
         .header(
           'Content-Disposition',
-          `attachment; filename="${assetId}-master.${body.format === 'png16' ? 'png' : body.format === 'tiff16' ? 'tiff' : body.format}"`,
+          `attachment; filename="${assetId}-master.${{ png16: 'png', tiff16: 'tiff', exr32: 'exr', jpeg: 'jpeg', webp: 'webp' }[body.format]}"`,
         )
         .header('Content-Length', String(result.bytes))
         .send(stream);
