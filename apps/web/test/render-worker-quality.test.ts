@@ -38,7 +38,7 @@ test('all live tools preserve the original raster, cached pixels and auxiliary s
           width: 2304,
           height: 1856,
           data: Uint8ClampedArray.from({ length: 2304 * 1856 * 4 }, (_, i) =>
-            i % 4 === 3 ? 255 : ((i * 37) ^ (i >> 12)) & 255,
+            i % 4 === 3 ? ((i >>> 2) % 31 ? 255 : 0) : ((i * 37) ^ (i >> 12)) & 255,
           ),
         };
         await send({ type: 'interactive-source', image: large, sourceDimensions: large });
@@ -56,6 +56,21 @@ test('all live tools preserve the original raster, cached pixels and auxiliary s
         assert.deepEqual(
           preview.result,
           renderEditorRecipe(large, recipe, { maxPixels: 16_777_216 }),
+        );
+        assert.equal(preview.recyclable, true);
+        const buffer = preview.result.data.buffer;
+        await send({ type: 'recycle-point-preview', buffer });
+        const changed = structuredClone(recipe);
+        changed.adjustments.saturation = -47;
+        const reused = await send({
+          type: 'interactive-preview',
+          id: ++id,
+          recipe: changed,
+        });
+        assert.equal(buffer.byteLength, 0);
+        assert.deepEqual(
+          reused.result,
+          renderEditorRecipe(large, changed, { maxPixels: 16_777_216 }),
         );
       },
     );

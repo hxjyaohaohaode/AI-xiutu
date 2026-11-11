@@ -16,6 +16,7 @@ import {
 import { prepareBudgetedPreview, MAX_PREVIEW_PIXELS } from './previewBudget';
 import { editorGeometryKey } from './coordinates';
 import { canPreviewNativeColor, fitsNativePreview } from './native-preview';
+import { preparePointPreview } from './point-preview';
 
 let preview: RGBAImage | null = null;
 let original: RGBAImage | null = null;
@@ -24,6 +25,8 @@ let images = new Map<string, RGBAImage>(),
   originalImages = new Map<string, RGBAImage>();
 const previewSources = new Map<string, RGBAImage>();
 const warpPreviewCache = new WarpPreviewCache();
+let pointPreview: ReturnType<typeof preparePointPreview> = null;
+let recycledBuffer: ArrayBuffer | undefined;
 function preparedSource(source: RGBAImage, recipe: EditorRecipe, maxPixels: number) {
   const key = `${maxPixels}:${editorGeometryKey(recipe, false)}`;
   const cached = previewSources.get(key);
@@ -38,6 +41,7 @@ type Message = {
   id: number;
   image?: RGBAImage;
   original?: RGBAImage;
+  buffer?: ArrayBuffer;
   sourceDimensions?: Dimensions;
   recipe?: EditorRecipe;
   originalOnly?: boolean;
@@ -62,6 +66,21 @@ self.onmessage = async (event: MessageEvent<Message>) => {
     originalImages = message.originalImages ?? new Map();
     previewSources.clear();
     warpPreviewCache.clear();
+    recycledBuffer = undefined;
+    pointPreview =
+      message.type === 'interactive-source' &&
+      preview &&
+      sourceDimensions &&
+      preview.width === sourceDimensions.width &&
+      preview.height === sourceDimensions.height &&
+      fitsNativePreview(preview.width, preview.height)
+        ? preparePointPreview(preview)
+        : null;
+    return;
+  }
+  if (message.type === 'recycle-point-preview') {
+    if (pointPreview && message.buffer?.byteLength === preview?.data.byteLength)
+      recycledBuffer = message.buffer;
     return;
   }
   if (message.type === 'image-source') {
@@ -118,6 +137,7 @@ self.onmessage = async (event: MessageEvent<Message>) => {
       getEditorOutputDimensions(sourceDimensions, message.recipe);
     }
     const recipe = message.recipe;
+    let recyclable = false;
     const renderPreview = () => {
       const input = native
         ? source
@@ -127,9 +147,15 @@ self.onmessage = async (event: MessageEvent<Message>) => {
         images: native && original ? originalImages : images,
         warpPreviewCache: warpDetail ? warpPreviewCache : undefined,
       };
-      return canPreviewNativeColor(recipe) && !warpDetail
-        ? renderEditorRecipe(input, recipe, options)
-        : renderEditorRecipeTiled(input, recipe, { ...options, tileSize: 512 });
+      if (!canPreviewNativeColor(recipe) || warpDetail)
+        return renderEditorRecipeTiled(input, recipe, { ...options, tileSize: 512 });
+      const mapped = native ? pointPreview?.(recipe, recycledBuffer) : null;
+      if (mapped) {
+        recyclable = true;
+        recycledBuffer = undefined;
+        return mapped;
+      }
+      return renderEditorRecipe(input, recipe, options);
     };
     if (warpDetail && message.prewarmWarp) {
       warpPreviewCache.prewarm(renderPreview);
@@ -183,6 +209,7 @@ self.onmessage = async (event: MessageEvent<Message>) => {
           type: message.type,
           result: safeResult,
           native,
+          recyclable,
           histogram:
             message.type === 'preview' && result.width * result.height > MAX_PREVIEW_PIXELS
               ? computeHistogram(result, { maxPixels: MAX_EXPLICIT_PIXELS })

@@ -137,6 +137,7 @@ type RenderReply = {
   blob?: Blob;
   error?: string;
   histogram?: Histogram;
+  recyclable?: boolean;
 };
 
 export function useEditor() {
@@ -200,6 +201,7 @@ export function useEditor() {
     image: RGBAImage;
     recipe: EditorRecipe;
     quality: PreviewQuality;
+    owner: Worker | null;
   } | null>(null);
   const [geometryMode, setGeometryMode] = useState<
     'crop' | 'transform' | 'projective' | 'placement'
@@ -215,6 +217,7 @@ export function useEditor() {
   const sourceRef = useRef<{ width: number; height: number } | null>(null);
   const worker = useRef<Worker | null>(null);
   const liveWorker = useRef<Worker | null>(null);
+  const paintedLiveFrame = useRef<typeof liveFrame>(null);
   // A newly created worker cannot render/export the source retained in React state.
   // It becomes ready only after its complete source message has been queued.
   const sourceWorker = useRef<Worker | null>(null);
@@ -333,7 +336,7 @@ export function useEditor() {
       ensureWorker(
         liveWorker,
         create,
-        ({ id, result }: RenderReply) => {
+        ({ id, result, recyclable }: RenderReply) => {
           const lane = liveLane.current;
           const completed = lane.inFlight;
           if (!completed || completed.id !== id) return;
@@ -344,7 +347,12 @@ export function useEditor() {
             completed.source === sourceIdentity.current &&
             completed.version > settledVersion.current
           )
-            setLiveFrame({ image: result, recipe: completed.recipe, quality: completed.quality });
+            setLiveFrame({
+              image: result,
+              recipe: completed.recipe,
+              quality: completed.quality,
+              owner: recyclable ? liveWorker.current : null,
+            });
           pumpPreview(true);
         },
         stopLiveWorker,
@@ -355,6 +363,28 @@ export function useEditor() {
     }
     return main;
   }, [failWorker, pumpPreview, stopLiveWorker]);
+
+  useEffect(() => {
+    const previous = paintedLiveFrame.current;
+    paintedLiveFrame.current = liveFrame;
+    // The canvas has copied the new frame in its layout effect. Reclaim the
+    // replaced pixels without detaching a frame retained by a hidden view.
+    const owner = previous?.owner;
+    const buffer = previous?.image.data.buffer;
+    if (
+      previous !== liveFrame &&
+      owner &&
+      owner === liveWorker.current &&
+      buffer instanceof ArrayBuffer &&
+      buffer.byteLength
+    ) {
+      try {
+        owner.postMessage({ type: 'recycle-point-preview', buffer }, [buffer]);
+      } catch {
+        /* A worker closing during the handoff can discard this buffer. */
+      }
+    }
+  }, [liveFrame]);
 
   useEffect(() => {
     mounted.current = true;
