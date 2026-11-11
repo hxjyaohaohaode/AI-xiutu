@@ -145,6 +145,7 @@ export function registerMediaImport(app: FastifyInstance, db: Database, config: 
   const workDir = (jobId: string) => join(root, id.parse(jobId));
   const active = new Map<string, { controller: AbortController; promise: Promise<void> }>();
   const exporting = new Set<string>();
+  const windowing = new Set<string>();
   const attachmentHolders = new Set<string>();
   const downloads = new Map<string, MasterDownload>();
   const enabled = process.env.MEDIA_ADVANCED_ENABLED === 'true';
@@ -926,12 +927,15 @@ export function registerMediaImport(app: FastifyInstance, db: Database, config: 
     },
   ) {
     const attachment = options.delivery === 'attachment';
+    const nativeWindow =
+      !!linearWindows && !!options.preview?.region && options.precisionInput === 'linear-master';
+    const lane = nativeWindow ? windowing : exporting;
     if (
-      exporting.has(actorId) || exporting.size >= 2 ||
+      lane.has(actorId) || lane.size >= 2 ||
       (attachment && (attachmentHolders.has(actorId) || attachmentHolders.size >= 2))
     )
       throw new HttpError(429, 'MEDIA_EXPORT_BUSY', '已有母版转换正在处理，请等待完成后再试。');
-    exporting.add(actorId);
+    lane.add(actorId);
     if (attachment) attachmentHolders.add(actorId);
     // Master conversion remains separate from the RGBA8 editor; never imply a
     // high-bit round trip of the browser recipe. Result is private and temporary.
@@ -1000,7 +1004,7 @@ export function registerMediaImport(app: FastifyInstance, db: Database, config: 
       }
       const stream = createReadStream(outputPath);
       const release = () => {
-        if (handedOff) exporting.delete(actorId);
+        if (handedOff) lane.delete(actorId);
         handedOff = false;
       };
       stream.once('end', release);
@@ -1030,7 +1034,7 @@ export function registerMediaImport(app: FastifyInstance, db: Database, config: 
     } finally {
       req.raw.off('aborted', abortExport);
       req.raw.socket.off('close', abortExport);
-      if (attachment || !handedOff) exporting.delete(actorId);
+      if (attachment || !handedOff) lane.delete(actorId);
       if (attachment && !handedOff) attachmentHolders.delete(actorId);
     }
   }

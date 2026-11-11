@@ -22,7 +22,7 @@ import {
 
 const MAX_WINDOW_FILE_BYTES = 40 * 1024 * 1024;
 const WINDOW_IDLE_MS = 20_000;
-const WINDOW_JOB_LIMIT = 256;
+const WINDOW_JOB_LIMIT = 1024;
 const aborted = () => new MediaProcessingError('Media operation cancelled', 'aborted');
 const failed = () =>
   new MediaProcessingError('Isolated native window processing failed', 'processing');
@@ -184,7 +184,7 @@ function startWindowProcess(python: string, memoryBytes: number) {
   };
 }
 
-/** One worker per API instance. The shared media queue admits one request at a time. */
+/** One reusable worker per API instance with separate bounded window admission. */
 export function createLinearWindowRuntime() {
   let current: ReturnType<typeof startWindowProcess> | undefined;
   let closed = false;

@@ -113,6 +113,8 @@ export async function buildApp(options: BuildOptions = {}): Promise<FastifyInsta
   });
   app.decorateRequest('currentUser', null);
   app.addHook('onRequest', async (req, reply) => {
+    const mediaPreview =
+      req.method === 'POST' && /^\/v1\/assets\/[a-f0-9-]+\/media\/preview(?:\?|$)/i.test(req.url);
     reply
       .header('X-Content-Type-Options', 'nosniff')
       .header('Cache-Control', 'no-store')
@@ -127,8 +129,8 @@ export async function buildApp(options: BuildOptions = {}): Promise<FastifyInsta
         );
       await rateLimit(
         db,
-        `${transient ? 'collaboration-ip' : 'write-ip'}:${hash(req.ip)}`,
-        transient ? 3600 : 180,
+        `${mediaPreview ? 'media-preview-ip' : transient ? 'collaboration-ip' : 'write-ip'}:${hash(req.ip)}`,
+        mediaPreview || transient ? 3600 : 180,
         60,
       );
     }
@@ -140,6 +142,8 @@ export async function buildApp(options: BuildOptions = {}): Promise<FastifyInsta
         [hash(token)],
       );
       req.currentUser = (rows[0] as User | undefined) ?? null;
+      if (req.currentUser && mediaPreview)
+        await rateLimit(db, `media-preview-user:${req.currentUser.id}`, 900, 60);
       if (
         req.currentUser &&
         !['GET', 'HEAD', 'OPTIONS'].includes(req.method) &&

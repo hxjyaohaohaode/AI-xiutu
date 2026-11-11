@@ -178,7 +178,7 @@ def develop(pixels, edit, gains, sdr, curves, regions=(), x=None, y=None):
     return result
 
 
-def render(image, request, window_png=False):
+def render(image, request, window_png=False, read_source_band=read_band):
     spec = image.spec()
     width, height, channels = spec.width, spec.height, spec.nchannels
     if (
@@ -229,6 +229,8 @@ def render(image, request, window_png=False):
     out_spec = oiio.ImageSpec(width, height, channels, oiio.UINT16 if sdr else oiio.FLOAT)
     out_spec.attribute("oiio:ColorSpace", "sRGB" if sdr else "Linear")
     out_spec.attribute("compression", "zip")
+    if window_png:
+        out_spec.attribute("png:compressionLevel", 1)
     if sdr and channels == 4:
         out_spec.attribute("oiio:UnassociatedAlpha", 1)
     if not sdr:
@@ -245,7 +247,7 @@ def render(image, request, window_png=False):
                 end,
                 (row // spec.tile_height + 1) * spec.tile_height if spec.tile_height else row + 64,
             )
-            band = read_band(image, spec, left, row, width, next_row - row)
+            band = read_source_band(image, spec, left, row, width, next_row - row)
             for offset in range(0, band.shape[0], 64):
                 source = band[offset:offset + 64]
                 rows = (

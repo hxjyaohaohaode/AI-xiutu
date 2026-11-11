@@ -2,13 +2,18 @@ import { useEffect, useRef, useState } from 'react';
 import type { MediaPrecisionWindow } from '@ai-xiutu/media';
 
 type Frame = { assetId: string; url: string; key: string; region?: MediaPrecisionWindow };
-type PreviewRequest = { key: string; attempt: 0 | 1 };
+type PreviewRequest = { key: string; attempt: 0 | 1; nativeWindow: boolean };
 
-export function useMasterPreview(assetId: string, body: string | null, enabled: boolean) {
+export function useMasterPreview(
+  assetId: string,
+  body: string | null,
+  enabled: boolean,
+  nativeWindow: boolean,
+) {
   const [frame, setFrame] = useState<Frame | null>(null);
   const [failed, setFailed] = useState<string | null>(null);
   const current = useRef<Frame | null>(null);
-  const offer = useRef<(body: string | null) => void>(() => {});
+  const offer = useRef<(body: string | null, nativeWindow: boolean) => void>(() => {});
   useEffect(
     () => () => {
       if (current.current) URL.revokeObjectURL(current.current.url);
@@ -38,11 +43,11 @@ export function useMasterPreview(assetId: string, body: string | null, enabled: 
       const request = pending;
       pending = null;
       running = request.key;
-      nextStart = performance.now() + 160;
+      nextStart = performance.now() + (request.nativeWindow ? 80 : 160);
       setFailed(null);
       void render(request);
     }
-    async function render({ key, attempt }: PreviewRequest) {
+    async function render({ key, attempt, nativeWindow }: PreviewRequest) {
       try {
         const region: MediaPrecisionWindow | undefined = JSON.parse(key).region;
         const response = await fetch(`/v1/assets/${assetId}/media/preview`, {
@@ -56,7 +61,7 @@ export function useMasterPreview(assetId: string, body: string | null, enabled: 
           await response.body?.cancel();
           if (!signal.aborted && desired !== null) {
             nextStart = performance.now() + 350;
-            if (desired === key) pending = { key, attempt: 1 };
+            if (desired === key) pending = { key, attempt: 1, nativeWindow };
           }
           return;
         }
@@ -91,11 +96,13 @@ export function useMasterPreview(assetId: string, body: string | null, enabled: 
         pump();
       }
     }
-    offer.current = (key) => {
+    offer.current = (key, nativeWindow) => {
       desired = key;
       const visible = current.current?.assetId === assetId && current.current.key === key;
       pending =
-        key && key !== running && (!visible || running !== null) ? { key, attempt: 0 } : null;
+        key && key !== running && (!visible || running !== null)
+          ? { key, attempt: 0, nativeWindow }
+          : null;
       pump();
     };
     return () => {
@@ -105,8 +112,8 @@ export function useMasterPreview(assetId: string, body: string | null, enabled: 
     };
   }, [assetId, enabled]);
   useEffect(() => {
-    offer.current(body);
-  }, [assetId, body, enabled]);
+    offer.current(body, nativeWindow);
+  }, [assetId, body, enabled, nativeWindow]);
   return {
     frame: body && frame?.assetId === assetId ? frame : null,
     pending:

@@ -99,44 +99,50 @@ type Waiter = {
   reject: (reason: Error) => void;
   abort: () => void;
 };
-let active = false;
-const waiters: Waiter[] = [];
-function release() {
-  const next = waiters.shift();
-  if (!next) {
-    active = false;
-    return;
+function mediaSlot(maxQueued: number) {
+  let active = false;
+  const waiters: Waiter[] = [];
+  function release() {
+    const next = waiters.shift();
+    if (!next) {
+      active = false;
+      return;
+    }
+    next.signal?.removeEventListener('abort', next.abort);
+    next.resolve(release);
   }
-  next.signal?.removeEventListener('abort', next.abort);
-  next.resolve(release);
+  return (signal?: AbortSignal): Promise<() => void> => {
+    if (signal?.aborted)
+      return Promise.reject(new MediaProcessingError('Media operation cancelled', 'aborted'));
+    if (!active) {
+      active = true;
+      return Promise.resolve(release);
+    }
+    if (waiters.length >= maxQueued)
+      return Promise.reject(
+        new MediaProcessingError('Media queue is full; try after the active task finishes', 'limit'),
+      );
+    return new Promise((resolve, reject) => {
+      const item: Waiter = {
+        signal,
+        resolve,
+        reject,
+        abort: () => {
+          const index = waiters.indexOf(item);
+          if (index >= 0) waiters.splice(index, 1);
+          reject(new MediaProcessingError('Queued media operation cancelled', 'aborted'));
+        },
+      };
+      waiters.push(item);
+      signal?.addEventListener('abort', item.abort, { once: true });
+      if (signal?.aborted) item.abort();
+    });
+  };
 }
-function slot(signal?: AbortSignal): Promise<() => void> {
-  if (signal?.aborted)
-    return Promise.reject(new MediaProcessingError('Media operation cancelled', 'aborted'));
-  if (!active) {
-    active = true;
-    return Promise.resolve(release);
-  }
-  if (waiters.length >= 8)
-    return Promise.reject(
-      new MediaProcessingError('Media queue is full; try after the active task finishes', 'limit'),
-    );
-  return new Promise((resolve, reject) => {
-    const item: Waiter = {
-      signal,
-      resolve,
-      reject,
-      abort: () => {
-        const index = waiters.indexOf(item);
-        if (index >= 0) waiters.splice(index, 1);
-        reject(new MediaProcessingError('Queued media operation cancelled', 'aborted'));
-      },
-    };
-    waiters.push(item);
-    signal?.addEventListener('abort', item.abort, { once: true });
-    if (signal?.aborted) item.abort();
-  });
-}
+const slot = mediaSlot(8);
+const windowSlot = mediaSlot(1);
+const NATIVE_WINDOW_ADDRESS_BYTES = 1024 ** 3;
+const NATIVE_WINDOW_TIMEOUT_MS = 10_000;
 async function absent(path: string) {
   try {
     await lstat(path);
@@ -363,7 +369,7 @@ export async function exportMedia(
       ))
     ) {
       await assertIsolation();
-      const releaseSlot = await slot(request.signal);
+      const releaseSlot = await windowSlot(request.signal);
       try {
         return await exportLinearWindow(
           window,
@@ -371,7 +377,11 @@ export async function exportMedia(
           outputPath,
           request.preview,
           precisionEdit,
-          options,
+          {
+            ...options,
+            memoryBytes: Math.min(options.memoryBytes, NATIVE_WINDOW_ADDRESS_BYTES),
+            timeoutMs: Math.min(options.timeoutMs, NATIVE_WINDOW_TIMEOUT_MS),
+          },
           request.signal,
         );
       } catch (error) {

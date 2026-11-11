@@ -6,14 +6,17 @@ import stat
 import sys
 
 import OpenImageIO as oiio
-from linear_export import render
+from linear_export import read_band, render
+
+
+MAX_CACHED_PIXELS = 1_048_576  # 16 MiB for float32 RGBA
 
 
 def identity(info):
     return (info.st_dev, info.st_ino, info.st_size, info.st_mode, info.st_ctime_ns, info.st_mtime_ns)
 
 
-def render_window(request, verified):
+def render_window(request, verified, window_cache):
     region = request["region"]
     if any(type(region[key]) is not int for key in ("left", "top", "width", "height")):
         raise ValueError("Invalid window coordinates")
@@ -40,7 +43,22 @@ def render_window(request, verified):
         try:
             if image.format_name() != "openexr":
                 raise ValueError("Invalid retained master format")
-            result = render(image, request, window_png=True)
+            cache_key = (candidate, region["left"], region["top"], region["width"], region["height"])
+            cached_bands = window_cache[1] if window_cache and window_cache[0] == cache_key else {}
+
+            def read_window_band(source, spec, left, top, width, height):
+                key = (top, height)
+                if key not in cached_bands:
+                    band = read_band(source, spec, left, top, width, height).copy()
+                    band.setflags(write=False)
+                    cached_bands[key] = band
+                return cached_bands[key]
+
+            cacheable = region["width"] * region["height"] <= MAX_CACHED_PIXELS
+            result = render(
+                image, request, window_png=True,
+                read_source_band=read_window_band if cacheable else read_band,
+            )
         finally:
             image.close()
         if (
@@ -48,7 +66,7 @@ def render_window(request, verified):
             or identity(os.stat(path, follow_symlinks=False)) != stamp
         ):
             raise ValueError("Retained master changed during preview")
-        return result, candidate
+        return result, candidate, (cache_key, cached_bands) if cacheable else None
 
 
 def main():
@@ -56,14 +74,16 @@ def main():
     oiio.attribute("threads", 2)
     oiio.attribute("exr_threads", 2)
     verified = None
+    window_cache = None
     while line := sys.stdin.buffer.readline(16385):
         if len(line) > 16384 or not line.endswith(b"\n"):
             raise ValueError("Oversized native preview request")
         try:
             request = json.loads(line)
-            result, verified = render_window(request, verified)
+            result, verified, window_cache = render_window(request, verified, window_cache)
         except (OSError, ValueError, RuntimeError):
             verified = None
+            window_cache = None
             result = {"error": "processing"}
         print(json.dumps(result, separators=(",", ":")), flush=True)
 

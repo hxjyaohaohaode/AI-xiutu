@@ -47,6 +47,17 @@ try {
   const address = f.app.server.address();
   assert.ok(address && typeof address === 'object');
   const httpOrigin = `http://127.0.0.1:${address.port}`;
+  const post = (path: string, payload: unknown) =>
+    fetch(httpOrigin + path, {
+      method: 'POST',
+      headers: {
+        origin: f.origin,
+        cookie: f.actors.owner.cookie,
+        'content-type': 'application/json',
+      },
+      signal: AbortSignal.timeout(180_000),
+      body: JSON.stringify(payload),
+    });
   if (process.env.MEDIA_QA_STORAGE_BYTES) {
     const maxBytes = Number(process.env.MEDIA_QA_STORAGE_BYTES);
     assert.ok(Number.isSafeInteger(maxBytes) && maxBytes > 0);
@@ -329,6 +340,7 @@ try {
       files: [] as { format: string; bytes: number; bitDepth: number; ms: number }[],
       verifiedSamples: 0,
       linearReadback: null as unknown,
+      windowStress: undefined as unknown,
     };
     const precision = metadata.editor.precisionEditing;
     if (
@@ -376,41 +388,91 @@ try {
         assert.equal(history[1].edit.algorithm, 'scene-linear-v1');
       }
       for (const format of ['png16', 'tiff16', ...(descriptor.linearMaster ? ['exr32'] : [])]) {
-        const startedExport = performance.now();
-        const response = await fetch(httpOrigin + path + '/export', {
-          method: 'POST',
-          headers: {
-            origin: f.origin,
-            cookie: f.actors.owner.cookie,
-            'content-type': 'application/json',
-          },
-          signal: AbortSignal.timeout(180_000),
-          body: JSON.stringify({
-            format,
-            gradeVersion: withCurves ? 2 : 1,
-            expectedSourceSha256: descriptor.sourceSha256,
-          }),
-        });
-        assert.equal(
-          response.status,
-          200,
-          response.ok ? undefined : `${format}: ${(await response.text()).slice(0, 250)}`,
-        );
-        assert.equal(
-          response.headers.get('x-precision-edit-sha256'),
-          preview.headers['x-precision-edit-sha256'],
-        );
         const target = join(
           output,
           String(index) +
             '-developed.' +
             (format === 'tiff16' ? 'tif' : format === 'exr32' ? 'exr' : 'png'),
         );
-        assert.ok(response.body);
-        await pipeline(Readable.fromWeb(response.body), createWriteStream(target));
-        const { size: exportBytes } = await stat(target);
-        assert.equal(exportBytes, Number(response.headers.get('content-length')));
-        const exportMs = Math.round(performance.now() - startedExport);
+        let converting = true;
+        const transfer = async () => {
+          const started = performance.now();
+          const response = await post(path + '/export', {
+            format,
+            gradeVersion: withCurves ? 2 : 1,
+            expectedSourceSha256: descriptor.sourceSha256,
+          });
+          converting = false;
+          assert.equal(
+            response.status,
+            200,
+            response.ok ? undefined : `${format}: ${(await response.text()).slice(0, 250)}`,
+          );
+          assert.equal(
+            response.headers.get('x-precision-edit-sha256'),
+            preview.headers['x-precision-edit-sha256'],
+          );
+          assert.ok(response.body);
+          await pipeline(Readable.fromWeb(response.body), createWriteStream(target));
+          const { size } = await stat(target);
+          assert.equal(size, Number(response.headers.get('content-length')));
+          return { size, ms: Math.round(performance.now() - started) };
+        };
+        const stress =
+          process.env.MEDIA_QA_WINDOW_STRESS === '1' &&
+          index === files.length - 1 &&
+          format === 'png16' &&
+          precisionInput === 'linear-master' &&
+          withCurves;
+        const exerciseWindow = async () => {
+          if (!stress) return undefined;
+          const started = performance.now();
+          const samples = new Set<string>();
+          const times = [];
+          let whileConverting = 0;
+          await delay(200);
+          for (let step = 0; step < 240; step++) {
+            const start = performance.now();
+            const result = await post(path + '/preview', {
+              ...grade,
+              precisionEdit: { ...precisionEdit, exposure: precisionEdit.exposure + step / 100 },
+              maxEdge: 512,
+              region,
+            });
+            assert.equal(result.status, 200, result.ok ? undefined : await result.text());
+            const bytes = Buffer.from(await result.arrayBuffer());
+            if (converting) whileConverting++;
+            const elapsed = performance.now() - start;
+            times.push(elapsed);
+            samples.add(sha(bytes));
+            if (step % 30 === 0) {
+              const info = await sharp(bytes).metadata();
+              assert.deepEqual(
+                [info.width, info.height, info.depth], [region.width, region.height, 'ushort'],
+              );
+            }
+            if (elapsed < 80) await delay(80 - elapsed);
+          }
+          assert.ok(samples.size >= 200 && whileConverting >= 20);
+          const stale = await post(path + '/grades', { ...grade, expectedVersion: 0 });
+          assert.equal(stale.status, 409);
+          const rejected = (await stale.json()) as { error: { code: string } };
+          assert.equal(rejected.error.code, 'VERSION_CONFLICT');
+          times.sort((a, b) => a - b);
+          return {
+            windows: times.length,
+            distinct: samples.size,
+            whileConverting,
+            elapsedMs: Math.round(performance.now() - started),
+            p50Ms: Math.round(times[Math.ceil(times.length * 0.5) - 1]!),
+            p95Ms: Math.round(times[Math.ceil(times.length * 0.95) - 1]!),
+            maxMs: Math.round(times.at(-1)!),
+          };
+        };
+        const [{ size: exportBytes, ms: exportMs }, windowStress] = await Promise.all([
+          transfer(),
+          exerciseWindow(),
+        ]);
         if (format === 'exr32') {
           const native = await execute(python, [
             '-c',
@@ -436,6 +498,21 @@ try {
           assert.deepEqual([meta.width, meta.height], [width, height]);
           assert.deepEqual(await raw16(image.extract(region)), cropped);
           record.verifiedSamples += cropped.length / 2;
+        }
+        if (windowStress) {
+          const wide = {
+            left: region.left,
+            top: region.top,
+            width: Math.min(1536, width - region.left),
+            height: Math.min(900, height - region.top),
+          };
+          const wideWindow = await post(path + '/preview', { ...grade, maxEdge: 2048, region: wide });
+          assert.equal(wideWindow.status, 200, wideWindow.ok ? undefined : await wideWindow.text());
+          const pixels = await raw16(
+            sharp(Buffer.from(await wideWindow.arrayBuffer()), { ignoreIcc: true }),
+          );
+          assert.deepEqual(pixels, await raw16(sharp(target, { ignoreIcc: true }).extract(wide)));
+          record.windowStress = { ...windowStress, wide, wideSamples: pixels.length / 2 };
         }
         record.files.push({
           format,

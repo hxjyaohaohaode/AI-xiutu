@@ -14,7 +14,7 @@ concurrency:
 jobs:
   browser:
     runs-on: ubuntu-latest
-    timeout-minutes: 35
+    timeout-minutes: 50
     services:
       postgres:
         image: postgres:18
@@ -45,6 +45,22 @@ jobs:
         run: google-chrome --version
       - name: Measure continuous slider, curve and touch paints
         run: node --import tsx scripts/qa/interactive-preview.browser.mjs
+      - name: Six complete browser flows on this commit
+        run: |
+          for round in 1 2 3 4 5 6; do
+            BROWSER_ARTIFACT_DIR="artifacts/browser-v4/round-${round}" node --import tsx scripts/qa/workspace-v4.browser.mjs
+          done
+      - name: Assistant permissions, memory, streaming, conversations and generated workspace
+        run: node --import tsx scripts/qa/assistant.browser.mjs
+      - name: Team voice microphones, permissions and shared AI speaker
+        run: node --import tsx scripts/qa/team-voice.browser.mjs
+      - name: Real portrait inference and full/tiled pixel comparison
+        run: |
+          npm run vision:prepare
+          node --import tsx scripts/qa/spatial-quality.browser.mjs
+      - name: Diverse real-photo beauty, matte and sports restoration observations
+        run: node --import tsx scripts/qa/photo-quality.browser.mjs
+      # Keep the product checks independent of transient artifact service errors.
       - name: Preserve preview timing evidence
         if: always()
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
@@ -52,11 +68,6 @@ jobs:
           name: interactive-preview-${{ github.sha }}
           path: artifacts/interactive-preview
           retention-days: 14
-      - name: Six complete browser flows on this commit
-        run: |
-          for round in 1 2 3 4 5 6; do
-            BROWSER_ARTIFACT_DIR="artifacts/browser-v4/round-${round}" node --import tsx scripts/qa/workspace-v4.browser.mjs
-          done
       - name: Preserve measurements, downloaded-image checks and screenshots
         if: always()
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
@@ -65,10 +76,6 @@ jobs:
           path: artifacts/browser-v4
           retention-days: 14
           if-no-files-found: error
-      - name: Assistant permissions, memory, streaming, conversations and generated workspace
-        run: node --import tsx scripts/qa/assistant.browser.mjs
-      - name: Team voice microphones, permissions and shared AI speaker
-        run: node --import tsx scripts/qa/team-voice.browser.mjs
       - name: Preserve team voice evidence
         if: always()
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
@@ -77,12 +84,6 @@ jobs:
           path: artifacts/browser-team-voice
           retention-days: 14
           if-no-files-found: error
-      - name: Real portrait inference and full/tiled pixel comparison
-        run: |
-          npm run vision:prepare
-          node --import tsx scripts/qa/spatial-quality.browser.mjs
-      - name: Diverse real-photo beauty, matte and sports restoration observations
-        run: node --import tsx scripts/qa/photo-quality.browser.mjs
       - name: Preserve diverse-photo references and observations
         if: always()
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02

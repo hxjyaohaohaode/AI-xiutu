@@ -162,11 +162,66 @@ try {
       const previous = await slider.inputValue();
       const frame = preview.locator('.media-precision-frame img');
       const before = await frame.getAttribute('src');
+      const downloadFormat = size.width === 1440
+        ? 'PNG 16-bit'
+        : asset.tileComparison && size.width === 1024
+          ? 'EXR 32-bit HDR'
+          : asset.tileComparison && size.width === 320
+            ? 'TIFF 16-bit'
+            : undefined;
+      async function downloadMaster(format) {
+        await media.getByRole('combobox', { name: '母版输出格式', exact: true }).click();
+        await media.getByRole('option', { name: format, exact: true }).click();
+        const started = performance.now();
+        const [download, prepared] = await Promise.all([
+          page.waitForEvent('download', { timeout: 75_000 }),
+          page.waitForResponse((response) => response.url().endsWith(`/assets/${asset.assetId}/media/export`), { timeout: 65_000 }).then(async (response) => {
+            assert.equal(response.status(), 201, await response.text());
+            return response.json();
+          }),
+          media.getByRole('button', { name: '导出调色母版', exact: true }).click(),
+        ]);
+        assert.equal(download.url(), `${origin}/v1/assets/${asset.assetId}/media/exports/${prepared.downloadId}`);
+        assert.equal(await download.failure(), null);
+        const path = await download.path();
+        const downloadBytes = (await stat(path)).size;
+        const downloadMs = Math.round(performance.now() - started);
+        if (format === 'EXR 32-bit HDR') {
+          const file = await openFile(path, 'r');
+          try {
+            const { buffer, bytesRead } = await file.read(Buffer.alloc(4), 0, 4, 0);
+            assert.equal(bytesRead, 4);
+            assert.equal(buffer.readUInt32LE(), 20_000_630);
+          } finally {
+            await file.close();
+          }
+        } else {
+          const info = await sharp(path).metadata();
+          assert.deepEqual([info.width, info.height, info.depth], [asset.width, asset.height, 'ushort']);
+        }
+        return { downloadBytes, downloadMs };
+      }
+      const overlapExport = asset.tileComparison && size.width === 1440 && process.env.MEDIA_QA_OVERLAP_BROWSER === '1';
+      const converting = media.locator('details.editor-section').getByRole('button', {
+        name: '正在转换', exact: true,
+      });
+      let concurrentDownload;
+      if (overlapExport) {
+        const request = page.waitForRequest((request) =>
+          request.method() === 'POST' && request.url().endsWith(`/assets/${asset.assetId}/media/export`),
+        );
+        concurrentDownload = downloadMaster(downloadFormat).then((value) => ({ value }), (error) => ({ error }));
+        const body = (await request).postDataJSON();
+        assert.equal(body.precisionEdit.exposure, Number(previous));
+        await converting.waitFor();
+      }
       let liveNativeFrames;
       if (size.width >= 1024) {
         const nativeSize = await frame.evaluate((img) => [img.naturalWidth, img.naturalHeight]);
         assert.ok(nativeSize.every((edge) => edge > 0));
-        await slider.scrollIntoViewIfNeeded();
+        await slider.evaluate((input) => input.scrollIntoView({ block: 'center', inline: 'nearest' }));
+        await slider.waitFor();
+        assert.ok(await slider.isEnabled());
         const box = await slider.boundingBox();
         assert.ok(box);
         const [min, max] = await slider.evaluate((input) => [Number(input.min), Number(input.max)]);
@@ -175,6 +230,9 @@ try {
           x: box.x + 6.5 + (travel * (Number(previous) - min)) / (max - min),
           y: box.y + box.height * 0.5,
         };
+        assert.ok(await slider.evaluate((input, point) =>
+          document.elementFromPoint(point.x, point.y) === input, start),
+        'The exposure slider must receive the pointer at the starting position');
         const distance = (travel * Math.min(1.25, max - Number(previous))) / (max - min);
         await slider.evaluate((input) => {
           const viewport = document.querySelector('.media-tile-viewport');
@@ -304,6 +362,7 @@ try {
           firstMs,
           maxGapMs: sorted.at(-1),
           p95GapMs: sorted[Math.ceil(sorted.length * 0.95) - 1],
+          duringExport: !!overlapExport,
         };
         assert.ok(
           gaps.length >= 6 && firstMs < 240 && liveNativeFrames.maxGapMs < 350,
@@ -318,6 +377,14 @@ try {
           document.querySelector('.media-precision-frame img')?.getAttribute('src') !== url,
         before,
       );
+      let downloaded;
+      if (concurrentDownload) {
+        assert.ok(await converting.isVisible(), 'The native gesture finished while the master was still converting');
+        const outcome = await concurrentDownload;
+        if (outcome.error) throw outcome.error;
+        downloaded = outcome.value;
+        assert.equal(downloaded.downloadBytes, asset.files.find(({ format }) => format === 'png16').bytes);
+      }
       const saved = page.waitForResponse(
         (response) =>
           response.request().method() === 'POST' &&
@@ -358,45 +425,7 @@ try {
       await page.screenshot({ path: resolve(output, size.width + '-native.png') });
       await grade.scrollIntoViewIfNeeded();
       await page.screenshot({ path: resolve(output, size.width + '-controls.png') });
-      let downloadBytes, downloadMs;
-      const downloadFormat = size.width === 1440
-        ? 'PNG 16-bit'
-        : asset.tileComparison && size.width === 1024
-          ? 'EXR 32-bit HDR'
-          : asset.tileComparison && size.width === 320
-            ? 'TIFF 16-bit'
-            : undefined;
-      if (downloadFormat) {
-        await media.getByRole('combobox', { name: '母版输出格式', exact: true }).click();
-        await media.getByRole('option', { name: downloadFormat, exact: true }).click();
-        const started = performance.now();
-        const [download, prepared] = await Promise.all([
-          page.waitForEvent('download', { timeout: 75_000 }),
-          page.waitForResponse((response) => response.url().endsWith(`/assets/${asset.assetId}/media/export`), { timeout: 65_000 }).then(async (response) => {
-            assert.equal(response.status(), 201, await response.text());
-            return response.json();
-          }),
-          media.getByRole('button', { name: '导出调色母版', exact: true }).click(),
-        ]);
-        assert.equal(download.url(), `${origin}/v1/assets/${asset.assetId}/media/exports/${prepared.downloadId}`);
-        assert.equal(await download.failure(), null);
-        const path = await download.path();
-        downloadBytes = (await stat(path)).size;
-        downloadMs = Math.round(performance.now() - started);
-        if (downloadFormat === 'EXR 32-bit HDR') {
-          const file = await openFile(path, 'r');
-          try {
-            const { buffer, bytesRead } = await file.read(Buffer.alloc(4), 0, 4, 0);
-            assert.equal(bytesRead, 4);
-            assert.equal(buffer.readUInt32LE(), 20_000_630);
-          } finally {
-            await file.close();
-          }
-        } else {
-          const info = await sharp(path).metadata();
-          assert.deepEqual([info.width, info.height, info.depth], [asset.width, asset.height, 'ushort']);
-        }
-      }
+      if (downloadFormat && !downloaded) downloaded = await downloadMaster(downloadFormat);
       await page
         .getByRole('dialog')
         .filter({ has: media })
@@ -417,8 +446,7 @@ try {
         persistedExposure: Number(after),
         overflow,
         downloadFormat,
-        downloadBytes,
-        downloadMs,
+        ...downloaded,
       });
       console.log(JSON.stringify(cases.at(-1)));
     } catch (error) {

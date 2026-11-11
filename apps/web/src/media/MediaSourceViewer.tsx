@@ -154,7 +154,14 @@ export function MediaSourceViewer({ assetId }: { assetId: string }) {
           region,
         })
       : null;
-  const preview = useMasterPreview(assetId, previewBody, !exporting);
+  const nativeLinearWindow = !!region && wantsGrade && precisionInput === 'linear-master';
+  const preview = useMasterPreview(
+    assetId,
+    previewBody,
+    !exporting || nativeLinearWindow,
+    nativeLinearWindow,
+  );
+  const adjustmentsDisabled = saving || (exporting && !nativeLinearWindow);
   const previewRegion = preview.frame?.region ?? descriptor?.master;
   const tileList =
     descriptor && tiles ? visibleTiles({ ...descriptor.master, ...tiles }, view, size) : [];
@@ -431,7 +438,7 @@ export function MediaSourceViewer({ assetId }: { assetId: string }) {
                   step={step}
                   value={edit[key]}
                   unit={unit}
-                  disabled={exporting || saving}
+                  disabled={adjustmentsDisabled}
                   onChange={(value) => {
                     setRevisionChoice('');
                     setEdit((current) => ({ ...current, [key]: value }));
@@ -441,7 +448,7 @@ export function MediaSourceViewer({ assetId }: { assetId: string }) {
               <ChoiceSelect
                 ariaLabel={t('高光色调映射')}
                 value={edit.toneMap}
-                disabled={exporting || saving}
+                disabled={adjustmentsDisabled}
                 options={[
                   { value: 'none', label: t('保留线性高光') },
                   { value: 'reinhard', label: t('压缩高光 Reinhard') },
@@ -457,7 +464,7 @@ export function MediaSourceViewer({ assetId }: { assetId: string }) {
               <div className="media-downloads">
                 <button
                   className="text-button"
-                  disabled={exporting || saving}
+                  disabled={adjustmentsDisabled}
                   onClick={() => {
                     setRevisionChoice('');
                     setEdit({
