@@ -237,3 +237,7 @@ node --import tsx --test apps/web/test/ops-mutation.test.ts apps/web/test/ops-re
 | 产品契约缺口与后端对接 | 第 5 节、[前端接口对齐](./frontend-api-alignment-r4-20261111.md)、[账号契约](./account-contract-20261110.md) | 与已有实现的待验收项分开，后端联合确认另记 |
 
 账号、资源与用量的具体改动另见 [account-resource-r4-20261111.md](./account-resource-r4-20261111.md)。本清单以本轮已取得的证据为界，不把隔离测试、公开演示或产品截图写成生产服务的验收证明。
+
+### 收尾文案复核
+
+实际英文 Records 面板发现撤销按钮误用了权限上下文的 `Revoke`。仅将 `HistoryPanel` 两处按钮改用已有 `撤销本次编辑` / `重做本次编辑` 译文（`Undo this edit` / `Redo this edit`），权限页与全局词库保持原义。该修正后的 web typecheck 与 diff 检查通过；完整 472 项 web 测试执行于这一处文案修正之前，最新提交的 CI 结果在 PR 中记录。

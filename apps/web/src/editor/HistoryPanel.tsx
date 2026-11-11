@@ -43,11 +43,11 @@ export function HistoryPanel({ editor }: { editor: EditorState }) {
       <div className="advanced-row history-actions">
         <button className="text-button" disabled={!editor.canUndo} onClick={editor.undo}>
           <ArrowCounterClockwise size={17} />
-          {t('撤销')}
+          {t('撤销本次编辑')}
         </button>
         <button className="text-button" disabled={!editor.canRedo} onClick={editor.redo}>
           <ArrowClockwise size={17} />
-          {t('重做')}
+          {t('重做本次编辑')}
         </button>
       </div>
       <ol className="advanced-history-list detailed-history-list">
