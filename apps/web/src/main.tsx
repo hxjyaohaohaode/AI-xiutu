@@ -14,6 +14,14 @@ import './components/foundation.css';
 import './workspace/adaptive.css';
 import './ai/composer.css';
 import './theme.css';
+import './components/modal-profiles.css';
+import './workspace/command-menu.css';
+import './components/choice-motion.css';
+import './account/auth.css';
+import './account/account-center.css';
+import './account/account-entry.css';
+import './account/document-drafts.css';
+import './components/deferred-feature.css';
 
 ReactDOM.createRoot(document.getElementById('root')!).render(
   <React.StrictMode>

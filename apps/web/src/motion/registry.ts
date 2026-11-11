@@ -1,7 +1,9 @@
 import { workspaceMotionV4 } from './workspaceV4';
+import { modalMotionRegistry } from '../components/modal-profiles';
 /** Explicit desktop, tablet and phone trajectories; no blur on image-bearing surfaces. */
 export const motionRegistry = {
   ...workspaceMotionV4,
+  ...modalMotionRegistry,
   topbar: {
     family: 'settle',
     entryMs: 280,

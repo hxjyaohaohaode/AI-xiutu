@@ -1,0 +1,306 @@
+/* First use and account completion have separate density and motion from the editor. */
+.studio-welcome[data-account-state] {
+  width: min(464px, 100%);
+  padding: clamp(14px, 3vh, 30px) clamp(16px, 3vw, 28px);
+}
+.studio-welcome[data-account-state] .welcome-image-symbol {
+  width: 54px;
+  height: 54px;
+  margin-bottom: 16px;
+  border-radius: 15px;
+}
+.studio-welcome[data-account-state] .welcome-import {
+  min-width: 208px;
+  margin-top: 20px;
+}
+.studio-welcome[data-account-state] .welcome-privacy {
+  margin-top: 18px;
+}
+.welcome-session {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-top: 24px;
+  padding-top: 18px;
+  border-top: 1px solid var(--line-strong);
+  text-align: left;
+  animation: welcome-session-enter 210ms cubic-bezier(0.2, 0.8, 0.2, 1) both;
+}
+.welcome-session > div:first-child {
+  display: grid;
+  min-width: 0;
+  gap: 5px;
+}
+.welcome-session strong {
+  color: var(--ink);
+  font-size: 12px;
+  font-weight: 600;
+}
+.welcome-session > div:first-child > span {
+  color: var(--muted);
+  font-size: 11px;
+}
+.welcome-session-actions {
+  display: flex;
+  flex: 0 0 auto;
+  align-items: center;
+  gap: 5px;
+}
+.welcome-session-actions > button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 5px;
+  min-height: 38px;
+  padding: 8px 10px;
+  border-radius: 9px;
+  color: var(--ink);
+  font-size: 12px;
+  transition:
+    background-color 120ms,
+    color 120ms;
+}
+.welcome-session-actions > button:last-child {
+  border: 1px solid var(--line-strong);
+  background: var(--surface);
+}
+.welcome-session-actions > button:hover {
+  background: var(--surface-hover);
+}
+.studio-workspace .sidebar-account-details {
+  display: flex;
+  flex: 1;
+  min-width: 0;
+  min-height: 44px;
+  gap: 10px;
+  align-items: center;
+  text-align: left;
+  padding: 4px;
+  border-radius: 10px;
+  color: var(--ink);
+  transition: background-color 140ms;
+}
+.studio-workspace .sidebar-account-details:hover {
+  background: var(--surface-hover);
+}
+.sidebar-account-details > .user-avatar {
+  flex: 0 0 32px;
+  display: grid;
+  place-items: center;
+}
+.sidebar-account-details > span:last-child {
+  display: grid;
+  min-width: 0;
+  gap: 4px;
+}
+.sidebar-account-details strong {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 13px;
+  font-weight: 600;
+}
+.sidebar-account-details > span:last-child > span {
+  color: var(--muted);
+  font-size: 11px;
+}
+.account-ready {
+  display: grid;
+  gap: 20px;
+}
+.account-ready-identity {
+  display: flex;
+  align-items: center;
+  gap: 13px;
+  min-width: 0;
+  animation: account-ready-settle 230ms cubic-bezier(0.2, 0.8, 0.2, 1) both;
+}
+.account-ready-check {
+  display: grid;
+  place-items: center;
+  flex: 0 0 44px;
+  width: 44px;
+  height: 44px;
+  border-radius: 50%;
+  color: var(--success);
+  background: var(--success-soft);
+}
+.account-ready-identity > div {
+  display: grid;
+  min-width: 0;
+  gap: 5px;
+}
+.account-ready-identity strong {
+  font-size: 16px;
+  font-weight: 600;
+  overflow-wrap: anywhere;
+}
+.account-ready-identity > div > span {
+  color: var(--muted);
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
+}
+.account-ready > p {
+  margin: 0;
+  color: var(--muted);
+  font-size: 13px;
+  line-height: 1.85;
+  animation: account-ready-copy 190ms cubic-bezier(0.2, 0.8, 0.2, 1) both;
+}
+.account-ready-actions {
+  display: grid;
+  gap: 12px;
+}
+.account-ready-actions > .button {
+  min-height: 44px;
+  justify-content: center;
+  gap: 10px;
+}
+.account-ready-next {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  min-width: 0;
+  min-height: 60px;
+  padding: 12px 2px;
+  border-top: 1px solid var(--line);
+  text-align: left;
+  color: var(--ink);
+  transition: color 120ms;
+}
+.account-ready-next:hover {
+  color: var(--accent-ink);
+}
+.account-ready-next > svg {
+  flex-shrink: 0;
+}
+.account-ready-next > span {
+  display: grid;
+  flex: 1;
+  gap: 5px;
+  min-width: 0;
+}
+.account-ready-next strong {
+  font-weight: 600;
+  font-size: 13px;
+}
+.account-ready-next small {
+  color: var(--muted);
+  font-size: 12px;
+}
+@keyframes welcome-session-enter {
+  from {
+    opacity: 0;
+    transform: translateY(5px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+@keyframes account-ready-settle {
+  from {
+    opacity: 0;
+    transform: translateY(7px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+@keyframes account-ready-copy {
+  from {
+    opacity: 0;
+    transform: translateY(3px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+@media (max-width: 600px) {
+  .studio-welcome[data-account-state] {
+    padding: 16px;
+  }
+  .studio-welcome[data-account-state] .welcome-image-symbol {
+    width: 46px;
+    height: 46px;
+    border-radius: 13px;
+    margin-bottom: 14px;
+  }
+  .studio-welcome[data-account-state] .welcome-import {
+    margin-top: 17px;
+  }
+  .welcome-session {
+    gap: 7px;
+    margin-top: 18px;
+    padding-top: 13px;
+  }
+  .welcome-session-actions {
+    gap: 1px;
+  }
+  .welcome-session-actions > button {
+    min-height: 44px;
+    padding-inline: 8px;
+  }
+  .welcome-session-actions > button:last-child > svg {
+    display: none;
+  }
+  .account-ready {
+    gap: 17px;
+  }
+  .account-ready-identity {
+    animation-duration: 195ms;
+  }
+  .account-ready-actions > .button {
+    min-height: 46px;
+  }
+}
+@media (max-height: 520px) {
+  .studio-welcome[data-account-state] {
+    padding: 7px 16px;
+    width: min(480px, 100%);
+  }
+  .studio-welcome[data-account-state] .welcome-image-symbol {
+    display: none;
+  }
+  .studio-welcome[data-account-state] .welcome-import {
+    margin-top: 9px;
+    min-height: 40px;
+  }
+  .studio-welcome[data-account-state] .welcome-privacy {
+    display: none;
+  }
+  .welcome-session {
+    margin-top: 7px;
+    padding-top: 6px;
+  }
+  .welcome-session-actions > button {
+    min-height: 40px;
+  }
+  .account-ready {
+    gap: 12px;
+  }
+  .account-ready-check {
+    width: 36px;
+    height: 36px;
+    flex-basis: 36px;
+  }
+  .account-ready-next {
+    min-height: 52px;
+    padding-block: 9px;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .welcome-session,
+  .account-ready-identity,
+  .account-ready > p {
+    animation: none;
+  }
+  .welcome-session-actions > button,
+  .sidebar-account-details,
+  .account-ready-next {
+    transition: none;
+  }
+}

@@ -1,4 +1,12 @@
-import { lazy, Suspense, useCallback, useEffect, useRef, useState } from 'react';
+import {
+  lazy,
+  Suspense,
+  useCallback,
+  useEffect,
+  useRef,
+  useState,
+  useSyncExternalStore,
+} from 'react';
 import {
   CloudArrowUp,
   DownloadSimple,
@@ -51,7 +59,7 @@ import { workspaceCanvasInsets, useWorkspaceLayout } from './workspace/useWorksp
 import { usePresence } from './motion/usePresence';
 import { MotionSwitch } from './motion/Presence';
 import { ImportSettings } from './components/ImportSettings';
-import { MediaImportDialog } from './components/MediaImportDialog';
+import { createDeferredFeature, DeferredFeatureStatus } from './components/DeferredFeature';
 import {
   createRecipeV4,
   parseEditorRecipe,
@@ -62,7 +70,17 @@ import { DEFAULT_BRAND, brandLogoUrl } from './lib/brand';
 
 import { CanvasStage } from './editor/CanvasStage';
 import { ToolInspector, toolGroups, type ToolGroup } from './editor/ToolInspector';
-import { AuthPanel } from './components/AuthPanel';
+import { AuthPanel, type AuthMode, type AuthSessionMeta } from './components/AuthPanel';
+import { AuthCooldowns, isAuthSession } from './account/auth-model';
+import { SessionFence, type SessionSnapshot } from './account/session-lifecycle';
+import { AccountReady } from './account/AccountReady';
+import {
+  clearDocumentDraftsForActor,
+  documentDrafts,
+  getDocumentDraftCount,
+  subscribeDocumentDrafts,
+} from './account/document-drafts';
+import { modalMotionRoleForDialog } from './components/modal-profiles';
 import type { AIOperation } from './components/AIPanel';
 import { AIPanelFeature } from './components/AIPanelFeature';
 import { IDLE_AI_ACTIVITY, type AIActivity } from './ai/AIVisibility';
@@ -78,15 +96,6 @@ import {
   Modal,
   Toast,
 } from './components/Ui';
-import {
-  CollaborateView,
-  CompareView,
-  DeliveryView,
-  DocumentsView,
-} from './components/WorkspaceViews';
-import { AssetLibrary } from './components/AssetLibrary';
-import { UsageDashboard } from './usage/UsageDashboard';
-import { ResourceSearch } from './resources/ResourceSearch';
 import { useCollaboration } from './collaboration/useCollaboration';
 import { CollaborationStatus } from './collaboration/CollaborationStatus';
 import { TeamVoiceBanner } from './collaboration/TeamVoiceBanner';
@@ -105,6 +114,57 @@ const OpsDashboard = lazy(() =>
 const DrawingBoard = lazy(() =>
   import('./components/DrawingBoard').then((module) => ({ default: module.DrawingBoard })),
 );
+const CompareView = createDeferredFeature(
+  async () => ({ default: (await import('./components/WorkspaceViews')).CompareView }),
+  '版本比较',
+);
+const CollaborateView = createDeferredFeature(
+  async () => ({ default: (await import('./components/WorkspaceViews')).CollaborateView }),
+  '项目协作',
+);
+const DocumentsView = createDeferredFeature(
+  async () => ({ default: (await import('./components/WorkspaceViews')).DocumentsView }),
+  '项目文档',
+);
+const DeliveryView = createDeferredFeature(
+  async () => ({ default: (await import('./components/WorkspaceViews')).DeliveryView }),
+  '作品交付',
+);
+const AssetLibrary = createDeferredFeature(
+  async () => ({ default: (await import('./components/AssetLibrary')).AssetLibrary }),
+  '素材库',
+);
+const UsageDashboard = createDeferredFeature(
+  async () => ({ default: (await import('./usage/UsageDashboard')).UsageDashboard }),
+  '用量账本',
+);
+const ResourceSearch = createDeferredFeature(
+  async () => ({ default: (await import('./resources/ResourceSearch')).ResourceSearch }),
+  '资源搜索',
+);
+const MediaImportDialog = createDeferredFeature(
+  async () => ({ default: (await import('./components/MediaImportDialog')).MediaImportDialog }),
+  '母版导入',
+  (state, props) => (
+    <Modal title="导入母版" profile="media" onClose={props.onClose}>
+      <DeferredFeatureStatus {...state} />
+    </Modal>
+  ),
+);
+const AccountCenter = createDeferredFeature(
+  async () => ({ default: (await import('./account/AccountCenter')).AccountCenter }),
+  '账号信息',
+  (state, props) => (
+    <Modal
+      title="账号与使用"
+      profile="account"
+      onClose={props.onClose}
+      canClose={() => !props.loggingOut}
+    >
+      <DeferredFeatureStatus {...state} />
+    </Modal>
+  ),
+);
 
 const views = workspaceViews.map((item) => ({
   ...item,
@@ -112,6 +172,8 @@ const views = workspaceViews.map((item) => ({
 }));
 type Dialog =
   | 'auth'
+  | 'account'
+  | 'accountReady'
   | 'project'
   | 'team'
   | 'join'
@@ -142,6 +204,24 @@ export function App() {
   const [initialAIOperation, setInitialAIOperation] = useState<AIOperation>('edit-plan');
   const [config, setConfig] = useState<PublicConfig | null>(null);
   const [session, setSession] = useState<Session>({ user: null, spaces: [] });
+  const sessionRef = useRef(session);
+  sessionRef.current = session;
+  const [sessionFence] = useState(() => new SessionFence());
+  const [authCooldowns] = useState(() => new AuthCooldowns());
+  const authIntent = useRef(0);
+  const [authEntry, setAuthEntry] = useState<{ mode: AuthMode; key: number }>({
+    mode: 'password',
+    key: 0,
+  });
+  const authOwner = useRef<SessionSnapshot>(sessionFence.snapshot());
+  const authCompleted = useRef(false);
+  const postAuthDialog = useRef<Dialog>(null);
+  const [accountEntry, setAccountEntry] = useState<{
+    tab: 'overview' | 'security' | 'billing' | 'data';
+    key: number;
+  }>({ tab: 'overview', key: 0 });
+  const [loggingOut, setLoggingOut] = useState(false);
+  const [logoutError, setLogoutError] = useState<string | null>(null);
   const [booting, setBooting] = useState(true);
   const [cloudError, setCloudError] = useState<string | null>(null);
   const [spaceId, setSpaceId] = useState<string | null>(null);
@@ -172,6 +252,11 @@ export function App() {
   const uploadedBaseAssets = useRef(new Map<string, Asset>());
   const cloudBaseSources = useRef(new Map<number, Asset>());
   const [documentDirty, setDocumentDirty] = useState(false);
+  const retainedDocumentCount = useSyncExternalStore(
+    subscribeDocumentDrafts,
+    getDocumentDraftCount,
+    () => 0,
+  );
   const [view, setView] = useState<View>('editor');
   const [libraryTab, setLibraryTab] = useState<'project' | 'all' | 'memory'>('project');
   const [group, setGroup] = useState<ToolGroup>('light');
@@ -179,6 +264,11 @@ export function App() {
   const [inspectorOpen, setInspectorOpen] = useState(false);
   const [aiOpen, setAiOpen] = useState(false);
   const [aiActivity, setAiActivity] = useState<AIActivity>(IDLE_AI_ACTIVITY);
+  const accountActivity = useRef({ ai: false, voice: false });
+  accountActivity.current = {
+    ai: aiActivity.callActive || aiActivity.requestActive,
+    voice: teamVoice.state !== 'idle',
+  };
   const [comparing, setComparing] = useState(false);
   const [ops, setOps] = useState(false);
   const [dialog, setDialog] = useState<Dialog>(null);
@@ -198,6 +288,7 @@ export function App() {
   const fileInput = useRef<HTMLInputElement>(null);
   const recipeInput = useRef<HTMLInputElement>(null);
   const projectRequest = useRef(0);
+  const projectRefresh = useRef(0);
   const saveAfterProject = useRef(false);
   const saveLock = useRef(false);
   const projectIdRef = useRef<string | null>(null);
@@ -259,16 +350,25 @@ export function App() {
     view,
     documentDirty,
   };
-  async function confirmNavigation(description: string) {
+  async function confirmNavigation(
+    description: string,
+    labels?: { title: string; confirmLabel: string; cancelLabel?: string },
+  ) {
     const result = await confirmStableScope(
       () => ({
         ...navigationScope.current,
+        sessionEpoch: sessionFence.snapshot().epoch,
+        documentDraft: documentDrafts.get(
+          sessionFence.snapshot().actor,
+          navigationScope.current.projectId ?? '',
+        )?.revision,
+        retainedDocuments: getDocumentDraftCount(sessionFence.snapshot().actor),
         source: editor.getSourceIdentity(),
         recipe: editor.getRecipe(),
         request: projectRequest.current,
         saving: saveLock.current,
       }),
-      () => confirmation.confirm({ description }),
+      () => confirmation.confirm({ ...labels, description }),
     );
     if (result === 'changed') notify('工作区已更新，请核对当前内容后重新操作。');
     return result === 'confirmed';
@@ -318,8 +418,136 @@ export function App() {
       .catch((e) => setCloudError(errorMessage(e)));
   }, []);
 
+  function clearCloudWorkspace() {
+    ++projectRequest.current;
+    editor.cancelPendingLoad();
+    setOpening(false);
+    setProjects([]);
+    setSharedProjects([]);
+    setEntitlements(null);
+    setProject(null);
+    setAssets([]);
+    setArtworks([]);
+    setArtwork(null);
+    setAsset(null);
+    setRevision(null);
+    setSavedRecipe(null);
+    uploadedLayerAliases.current.clear();
+    uploadedBaseAssets.current.clear();
+    // The local photo remains visible. Keep its cloud provenance so a later
+    // account/project save must still use the server-authorized copy path.
+    saveAfterProject.current = false;
+    setOps(false);
+    setAiOpen(false);
+    setSidebarOpen(false);
+  }
+
+  function showSession(next: Session, previousActor: string | null) {
+    const changed = previousActor !== (next.user?.id ?? null);
+    const previousMembership = sessionRef.current.spaces.find(
+      (space) => space.id === navigationScope.current.spaceId,
+    );
+    const nextMembership = next.spaces.find((space) => space.id === previousMembership?.id);
+    const lostMembership = !changed && !!previousMembership && !nextMembership;
+    if (changed || lostMembership) clearCloudWorkspace();
+    if (lostMembership) notify('当前空间的访问权限已变化。照片仍在本机，请选择可访问的空间。');
+    else if (
+      previousMembership &&
+      nextMembership &&
+      previousMembership.role !== nextMembership.role
+    ) {
+      ++projectRequest.current;
+      ++projectRefresh.current;
+      editor.cancelPendingLoad();
+      setOpening(false);
+      setRefreshToken((value) => value + 1);
+    }
+    sessionRef.current = next;
+    setSession(next);
+    setSpaceId((current) =>
+      !changed && next.spaces.some((space) => space.id === current)
+        ? current
+        : (next.spaces.find((space) => space.kind === 'personal')?.id ?? null),
+    );
+    setLoggingOut(false);
+  }
+
+  function replaceSession(next: Session) {
+    const previousActor = sessionFence.snapshot().actor;
+    sessionFence.replace(next.user?.id ?? null);
+    showSession(next, previousActor);
+  }
+
+  async function reconcileSession() {
+    const owner = sessionFence.read();
+    if (!owner) return null;
+    try {
+      const next = await api<unknown>('/session');
+      if (!isAuthSession(next)) throw new Error('账号状态暂时无法确认，请稍后重试。');
+      if (!sessionFence.acceptRead(owner, next.user?.id ?? null)) return null;
+      showSession(next, owner.actor);
+      if (owner.actor && !next.user) {
+        notify(
+          getDocumentDraftCount(owner.actor) > 0
+            ? '登录已失效。未保存文档已在本页临时保留，重新登录原账号并打开项目即可恢复；请勿关闭页面。'
+            : '登录已失效。当前照片仍在本机，可以导出或重新登录。',
+        );
+      }
+      return next;
+    } catch (error) {
+      if (sessionFence.ownsRead(owner)) setCloudError(errorMessage(error));
+      return null;
+    }
+  }
+
+  function openAuth(mode: AuthMode = 'password') {
+    if (sessionFence.busy) return;
+    sessionFence.invalidateReads();
+    authOwner.current = sessionFence.snapshot();
+    authCompleted.current = false;
+    postAuthDialog.current = null;
+    setAuthEntry({ mode, key: ++authIntent.current });
+    setSidebarOpen(false);
+    setLogoutError(null);
+    setDialog('auth');
+  }
+
+  function closeAuth(intent: number) {
+    if (intent !== authIntent.current || dialogRef.current !== 'auth') return;
+    const destination = postAuthDialog.current ?? (pendingImport ? 'importSettings' : null);
+    postAuthDialog.current = null;
+    setDialog(destination);
+    // A reset whose response was lost may already have revoked this session.
+    if (!authCompleted.current) void reconcileSession();
+  }
+
+  function openAccount(tab: typeof accountEntry.tab = 'overview') {
+    if (!sessionRef.current.user) return openAuth();
+    setAccountEntry((entry) => ({ tab, key: entry.key + 1 }));
+    setSidebarOpen(false);
+    setLogoutError(null);
+    setDialog('account');
+  }
+  async function openPasswordReset() {
+    if (saveLock.current || accountActivity.current.ai || accountActivity.current.voice) {
+      setLogoutError('请先完成保存或结束当前请求，再重置密码。');
+      return;
+    }
+    if (
+      (documentDirty || getDocumentDraftCount(sessionFence.snapshot().actor) > 0) &&
+      !(await confirmNavigation(
+        '重置密码会使该手机号对应账号的旧登录失效。未保存文档仅临时保留在本页；请先保存或导出，或在重置后重新登录原账号恢复。关闭页面会丢失未导出的草稿。',
+        { title: '重置密码前保留草稿', confirmLabel: '继续重置', cancelLabel: '返回工作区' },
+      ))
+    )
+      return;
+    if (saveLock.current || accountActivity.current.ai || accountActivity.current.voice) return;
+    openAuth('reset');
+  }
+
   useEffect(() => {
     let live = true;
+    const owner = sessionFence.read();
     Promise.allSettled([api<PublicConfig>('/public-config'), api<Session>('/session')]).then(
       (results) => {
         if (!live) return;
@@ -328,9 +556,15 @@ export function App() {
         if (c.status === 'fulfilled') setConfig(c.value);
         else setCloudError(errorMessage(c.reason));
         if (s.status === 'fulfilled') {
-          setSession(s.value);
-          setSpaceId(s.value.spaces.find((v) => v.kind === 'personal')?.id ?? null);
-        } else setCloudError(errorMessage(s.reason));
+          if (
+            owner &&
+            isAuthSession(s.value) &&
+            sessionFence.acceptRead(owner, s.value.user?.id ?? null)
+          )
+            showSession(s.value, owner.actor);
+          else if (owner && sessionFence.ownsRead(owner))
+            setCloudError('账号状态暂时无法确认，请重试登录。');
+        } else if (owner && sessionFence.ownsRead(owner)) setCloudError(errorMessage(s.reason));
         setBooting(false);
       },
     );
@@ -338,6 +572,30 @@ export function App() {
       live = false;
     };
   }, []);
+  const reconcileSessionRef = useRef(reconcileSession);
+  reconcileSessionRef.current = reconcileSession;
+  const dialogRef = useRef(dialog);
+  dialogRef.current = dialog;
+  useEffect(() => {
+    let lastCheck = 0;
+    const check = () => {
+      if (
+        document.visibilityState !== 'visible' ||
+        dialogRef.current === 'auth' ||
+        sessionFence.busy
+      )
+        return;
+      if (Date.now() - lastCheck < 10_000) return;
+      lastCheck = Date.now();
+      void reconcileSessionRef.current();
+    };
+    window.addEventListener('focus', check);
+    document.addEventListener('visibilitychange', check);
+    return () => {
+      window.removeEventListener('focus', check);
+      document.removeEventListener('visibilitychange', check);
+    };
+  }, [sessionFence]);
   useEffect(() => {
     document.title = `${brand} · ${project?.title ?? '创作工作台'}`;
     const meta = document.querySelector<HTMLMetaElement>('meta[name=description]');
@@ -359,6 +617,8 @@ export function App() {
     }
     let live = true;
     setCloudError(null);
+    setProjects([]);
+    setEntitlements(null);
     Promise.allSettled([
       api<{ projects: Project[] }>(`/projects?spaceId=${encodeURIComponent(spaceId)}`),
       api<NonNullable<typeof entitlements>>(
@@ -456,51 +716,143 @@ export function App() {
     return () => window.removeEventListener('keydown', handle);
   }, [editor.undo, editor.redo]);
   useEffect(() => {
-    if (!dirty && !documentDirty) return;
+    if (!dirty && !documentDirty && retainedDocumentCount === 0) return;
     const prevent = (e: BeforeUnloadEvent) => {
       e.preventDefault();
     };
     window.addEventListener('beforeunload', prevent);
     return () => window.removeEventListener('beforeunload', prevent);
-  }, [dirty, documentDirty]);
+  }, [dirty, documentDirty, retainedDocumentCount]);
 
   useEffect(() => {
     if (!project?.id || !refreshToken) return;
     void refreshProject(project.id).catch((e) => setCloudError(errorMessage(e)));
   }, [refreshToken, project?.id]);
 
-  function receiveSession(next: Session) {
-    setSession(next);
-    setSpaceId(next.spaces.find((s) => s.kind === 'personal')?.id ?? null);
+  function receiveSession(next: Session, meta: AuthSessionMeta | undefined, intent: number) {
+    if (
+      intent !== authIntent.current ||
+      !sessionFence.isCurrent(authOwner.current) ||
+      sessionFence.busy
+    ) {
+      notify('账号状态已变化，请重新核对当前登录。');
+      return;
+    }
+    replaceSession(next);
+    authOwner.current = sessionFence.snapshot();
+    authCompleted.current = true;
+    postAuthDialog.current = pendingImport
+      ? 'importSettings'
+      : meta?.method === 'register'
+        ? 'accountReady'
+        : null;
     setCloudError(null);
-    notify('已登录，可以把作品保存到云端。', 'success');
+    setLogoutError(null);
+    if (meta?.method !== 'register') notify('已登录，可以把作品保存到云端。', 'success');
+  }
+  async function receivePasswordReset(intent: number) {
+    if (intent !== authIntent.current || !sessionFence.isCurrent(authOwner.current)) return;
+    // Reset targets the submitted phone, which need not own this browser session.
+    // Keep all drafts, observe the cookie once, and never infer a logout from {ok:true}.
+    authCompleted.current = false;
+    postAuthDialog.current = null;
+    sessionFence.invalidateReads();
+    const owner = sessionFence.read();
+    if (!owner) return;
+    try {
+      const observed = await api<unknown>('/session');
+      if (intent !== authIntent.current || !sessionFence.ownsRead(owner)) return;
+      if (!isAuthSession(observed)) throw new Error('密码已重置，当前登录状态暂时无法确认。');
+      if (!sessionFence.acceptRead(owner, observed.user?.id ?? null)) return;
+      // Update the active form owner in the same turn as the accepted session.
+      // Switching from the reset result to login must not inherit an obsolete epoch.
+      authOwner.current = sessionFence.snapshot();
+      authCompleted.current = true;
+      showSession(observed, owner.actor);
+      setCloudError(null);
+      if (owner.actor !== (observed.user?.id ?? null)) setView('editor');
+    } catch {
+      if (intent !== authIntent.current || !sessionFence.ownsRead(owner)) return;
+      setCloudError('密码已重置，当前登录状态尚未确认。草稿保留在本页，关闭此窗口后会再次核对。');
+    }
   }
   async function logout() {
+    if (sessionFence.busy || !sessionRef.current.user) return;
     if (saveLock.current) {
       notify('作品正在保存，请稍等片刻。');
       return;
     }
-    if (documentDirty && !(await confirmNavigation('文档还有未保存的修改，确定退出账号吗？')))
+    if (accountActivity.current.ai || accountActivity.current.voice) {
+      setLogoutError('请先返回并结束当前 AI 请求或语音通话，再退出登录。退出不会代替任务取消。');
       return;
-    ++projectRequest.current;
-    editor.cancelPendingLoad();
+    }
+    const owner = sessionFence.beginLogout();
+    if (!owner) return;
+    setLoggingOut(true);
+    setLogoutError(null);
     try {
-      await api('/auth/logout', jsonRequest('POST'));
-      setSession({ user: null, spaces: [] });
-      setOpening(false);
-      setSpaceId(null);
-      setProject(null);
-      setAssets([]);
-      setArtworks([]);
-      setArtwork(null);
-      setAsset(null);
-      setRevision(null);
-      setSavedRecipe(null);
-      setOps(false);
-      setAiOpen(false);
-      notify('已退出账号。当前照片仍在本机，请及时导出。');
-    } catch (e) {
-      notify(errorMessage(e), 'error');
+      const detail = [
+        '账号、云端作品和服务点会保留。再次使用时，直接登录即可。',
+        ...(getDocumentDraftCount(owner.actor) > 0
+          ? [
+              `本页面保留了 ${getDocumentDraftCount(owner.actor)} 份未保存文档草稿，退出后将清除。请先保存或导出。`,
+            ]
+          : documentDirty
+            ? ['文档仍有未保存的修改；退出后这些修改会丢失。']
+            : []),
+        ...(editor.file ? ['当前照片和本地编辑会留在此页面，关闭页面前请导出。'] : []),
+        '已经提交到云端的任务不会因退出而自动取消。',
+      ].join('\n\n');
+      if (
+        !(await confirmNavigation(detail, {
+          title: '退出当前账号？',
+          confirmLabel: '退出登录',
+          cancelLabel: '继续使用',
+        }))
+      )
+        return;
+      if (!sessionFence.ownsLogout(owner)) return;
+      if (saveLock.current || accountActivity.current.ai || accountActivity.current.voice) {
+        setLogoutError('工作区状态已变化，请先完成保存或结束正在进行的请求。');
+        return;
+      }
+      let confirmed: Session = { user: null, spaces: [] };
+      try {
+        const receipt = await api<{ ok?: unknown }>('/auth/logout', jsonRequest('POST'));
+        if (receipt?.ok !== true) throw new SyntaxError('退出结果暂时无法确认。');
+      } catch (failure) {
+        if (!sessionFence.ownsLogout(owner)) return;
+        // The cookie may already have been cleared: observe once, never repeat the mutation.
+        try {
+          const observed = await api<unknown>('/session');
+          if (!sessionFence.ownsLogout(owner)) return;
+          if (!isAuthSession(observed)) throw new Error('账号状态响应不完整。');
+          if (observed.user?.id === owner.actor) {
+            setLogoutError(`尚未退出登录。${errorMessage(failure)} 可以稍后重试。`);
+            return;
+          }
+          confirmed = observed;
+        } catch {
+          if (!sessionFence.ownsLogout(owner)) return;
+          setLogoutError('暂时无法确认是否已退出。当前页面保留原状态，请恢复连接后重试。');
+          return;
+        }
+      }
+      if (!sessionFence.finishLogout(owner, confirmed.user?.id ?? null)) return;
+      if (owner.actor) clearDocumentDraftsForActor(owner.actor);
+      showSession(confirmed, owner.actor);
+      setDocumentDirty(false);
+      setView('editor');
+      setDialog(null);
+      notify(
+        confirmed.user
+          ? '当前登录已在其他窗口改变，已同步账号状态。'
+          : editor.file
+            ? '已退出登录。照片与编辑仍在本机，关闭页面前请导出。'
+            : '已退出登录。账号与云端作品已保留。',
+      );
+    } finally {
+      if (sessionFence.releaseLogout(owner)) setLoggingOut(false);
     }
   }
   async function selectSpace(space: Space | null) {
@@ -558,13 +910,25 @@ export function App() {
     }
   }
   async function refreshProject(id: string) {
-    const result = await api<{ project: Project; assets: Asset[]; artworks: Artwork[] }>(
-      `/projects/${id}`,
-    );
-    if (projectIdRef.current !== id) return;
-    setProject(result.project);
-    setAssets(result.assets);
-    setArtworks(result.artworks);
+    const owner = sessionFence.snapshot();
+    const context = projectRequest.current;
+    const sequence = ++projectRefresh.current;
+    const current = () =>
+      sessionFence.isCurrent(owner) &&
+      context === projectRequest.current &&
+      sequence === projectRefresh.current &&
+      projectIdRef.current === id;
+    try {
+      const result = await api<{ project: Project; assets: Asset[]; artworks: Artwork[] }>(
+        `/projects/${id}`,
+      );
+      if (!current()) return;
+      setProject(result.project);
+      setAssets(result.assets);
+      setArtworks(result.artworks);
+    } catch (error) {
+      if (current()) throw error;
+    }
   }
   function beginSourceLoad() {
     const request = ++projectRequest.current;
@@ -872,6 +1236,11 @@ export function App() {
     savedSource: number,
     savedContext: number,
   ): Promise<EditorRecipe> {
+    const assertCurrent = () => {
+      if (savedSource !== rawEditor.getSourceIdentity() || savedContext !== projectRequest.current)
+        throw new Error('图片或账号范围已变化，未继续上传图层。');
+    };
+    assertCurrent();
     if (
       (snapshot.schemaVersion === 3 || snapshot.schemaVersion === 4) &&
       snapshot.imageLayers.length
@@ -879,6 +1248,7 @@ export function App() {
       const mapping = new Map<string, string>(),
         files = rawEditor.getLayerFiles();
       for (const sourceId of new Set(snapshot.imageLayers.map((layer) => layer.sourceId))) {
+        assertCurrent();
         const route = sourcePersistenceRoute(
           sourceId,
           layerOwners.current.get(sourceId),
@@ -901,6 +1271,7 @@ export function App() {
             (config?.media && !config.media.serverImport.includes(layerFormat ?? ''))
           )
             layerFile = await normalizeImageSourceFile(layerFile);
+          assertCurrent();
           if (layerFile.size > (config?.limits.maxUploadBytes ?? 20 * 1024 * 1024))
             throw new Error('合成素材超出服务器上传预算。');
           const form = new FormData();
@@ -957,6 +1328,13 @@ export function App() {
     const savedFile = editor.file;
     const savedSource = editor.getSourceIdentity();
     const savedContext = projectRequest.current;
+    const savedOwner = sessionFence.snapshot();
+    const savedIntent = authIntent.current;
+    const savedDialog = dialogRef.current;
+    const stillCurrent = () =>
+      sessionFence.isCurrent(savedOwner) &&
+      savedSource === editor.getSourceIdentity() &&
+      savedContext === projectRequest.current;
     saveLock.current = true;
     setSaving(true);
     try {
@@ -982,6 +1360,7 @@ export function App() {
           const uploadFile = await editor.getCloudUploadFile(
             !!config?.media && !config.media.serverImport.includes(editor.sourceFormat),
           );
+          if (!stillCurrent()) return;
           if (uploadFile.size > (config?.limits.maxUploadBytes ?? 20 * 1024 * 1024))
             throw new Error(
               `上传文件超过当前云端 ${Math.floor((config?.limits.maxUploadBytes ?? 20 * 1024 * 1024) / 1024 / 1024)} MiB 上限，本地作品仍然保留。`,
@@ -995,11 +1374,12 @@ export function App() {
             })
           ).asset;
         }
-        if (savedSource !== editor.getSourceIdentity() || savedContext !== projectRequest.current)
+        if (!stillCurrent())
           throw new Error('源图片或项目已切换，本次素材保留在原项目，未绑定到当前画面。');
         uploadedBaseAssets.current.set(`${target.id}:${savedSource}`, currentAsset);
       }
       snapshot = await persistRecipeLayers(snapshot, target, savedSource, savedContext);
+      if (!stillCurrent()) return;
       const result =
         artwork && !asNew && artwork.projectId === target.id
           ? await api<{ artwork: Artwork; revision: Revision }>(
@@ -1018,22 +1398,25 @@ export function App() {
                 recipe: snapshot,
               }),
             );
-      if (savedSource !== editor.getSourceIdentity() || savedContext !== projectRequest.current) {
-        notify('原作品版本已保存，但当前画面已切换，因此未替换当前编辑绑定。');
-        setRefreshToken((value) => value + 1);
-        return;
-      }
+      if (!stillCurrent()) return;
       setAsset(currentAsset);
       cloudBaseSources.current.set(savedSource, currentAsset);
       setArtwork(result.artwork);
       setRevision(result.revision);
       setSavedRecipe(JSON.stringify(snapshot));
       await refreshProject(target.id);
+      if (!stillCurrent()) return;
       setRefreshToken((v) => v + 1);
-      setDialog(null);
+      if (savedIntent === authIntent.current && savedDialog === dialogRef.current) setDialog(null);
       notify(`版本 ${result.artwork.headVersion} 已保存到「${target.title}」。`, 'success');
     } catch (e) {
-      if (e instanceof ApiError && e.code === 'VERSION_CONFLICT') setDialog('conflict');
+      if (!stillCurrent() || savedIntent !== authIntent.current) return;
+      if (
+        e instanceof ApiError &&
+        e.code === 'VERSION_CONFLICT' &&
+        savedDialog === dialogRef.current
+      )
+        setDialog('conflict');
       else notify(errorMessage(e), 'error');
     } finally {
       saveLock.current = false;
@@ -1114,7 +1497,7 @@ export function App() {
       return;
     }
     if (!session.user) {
-      setDialog('auth');
+      openAuth();
       return;
     }
     if (!project) {
@@ -1130,7 +1513,7 @@ export function App() {
       return;
     }
     if (!session.user) {
-      setDialog('auth');
+      openAuth();
       return;
     }
     if (
@@ -1171,21 +1554,39 @@ export function App() {
     } else notify('项目已创建，打开照片开始创作。', 'success');
   }
   async function createTeam(name: string) {
+    const owner = sessionFence.snapshot();
+    if (!owner.actor || sessionFence.busy) throw new Error('请先完成当前账号操作。');
     const result = await api<{ space: Space }>('/spaces', jsonRequest('POST', { name }));
-    const next = await api<Session>('/session');
-    setSession(next);
+    if (!sessionFence.isCurrent(owner) || sessionFence.busy)
+      throw new Error('账号已改变，团队结果可在原账号中查看。');
+    const next = await reconcileSession();
+    if (
+      !next ||
+      !sessionFence.isCurrent(owner) ||
+      !next.spaces.some((space) => space.id === result.space.id)
+    )
+      throw new Error('团队已创建，暂时无法确认当前空间。请刷新账号状态后查看。');
     await selectSpace(result.space);
-    notify('团队空间已创建。可以邀请队友加入。', 'success');
+    if (sessionFence.isCurrent(owner)) notify('团队空间已创建。可以邀请队友加入。', 'success');
   }
   async function joinTeam(code: string) {
+    const owner = sessionFence.snapshot();
+    if (!owner.actor || sessionFence.busy) throw new Error('请先完成当前账号操作。');
     const result = await api<{ space: Space }>(
       '/invitations/accept',
       jsonRequest('POST', { code }),
     );
-    const next = await api<Session>('/session');
-    setSession(next);
+    if (!sessionFence.isCurrent(owner) || sessionFence.busy)
+      throw new Error('账号已改变，请在原账号中核对加入结果。');
+    const next = await reconcileSession();
+    if (
+      !next ||
+      !sessionFence.isCurrent(owner) ||
+      !next.spaces.some((space) => space.id === result.space.id)
+    )
+      throw new Error('已提交加入团队，请刷新账号状态后核对结果。');
     await selectSpace(result.space);
-    notify('已加入团队空间。', 'success');
+    if (sessionFence.isCurrent(owner)) notify('已加入团队空间。', 'success');
   }
   async function changeView(next: View) {
     if (
@@ -1324,9 +1725,12 @@ export function App() {
   const inspectorPresence = usePresence(activePanelId === 'inspector', 'panel-frame');
   const aiPresence = usePresence(activePanelId === 'ai', 'panel-frame');
   const keepAIActive = aiActivity.callActive || aiActivity.requestActive;
-  const dialogPresence = usePresence(!!dialog, 'modal-frame');
   const lastDialog = useRef<Dialog>(null);
   if (dialog) lastDialog.current = dialog;
+  const dialogPresence = usePresence(
+    !!dialog,
+    modalMotionRoleForDialog(dialog ?? lastDialog.current),
+  );
   const renderedDialog = dialog ?? (dialogPresence.present ? lastDialog.current : null);
   const canvasInsets = workspaceCanvasInsets(
     activePanel,
@@ -1435,6 +1839,7 @@ export function App() {
       section: '常用操作',
       icon: <DownloadSimple size={20} />,
       disabled: !editor.file || opening || editor.loading,
+      disabledReason: !editor.file ? '请先打开照片' : '照片仍在载入，请稍候',
       run: () => setDialog('export'),
     },
     {
@@ -1445,6 +1850,11 @@ export function App() {
       section: '常用操作',
       icon: <CloudArrowUp size={20} />,
       disabled: !editor.file || saving || opening || editor.loading,
+      disabledReason: !editor.file
+        ? '请先打开照片'
+        : saving
+          ? '当前版本正在保存'
+          : '照片仍在载入，请稍候',
       run: () => {
         void save();
       },
@@ -1457,6 +1867,15 @@ export function App() {
       section: '常用操作',
       icon: <CornersOut size={20} />,
       run: () => workspaceLayout.setFocused(true),
+    },
+    {
+      id: 'account',
+      label: session.user ? '账号与使用' : '登录或注册',
+      description: session.user ? '账号安全、服务点与退出' : '保存项目、同步作品与团队协作',
+      keywords: 'account login register billing credits logout 付费 注销 退出',
+      section: '常用操作',
+      icon: <ShieldCheck size={20} />,
+      run: () => openAccount(),
     },
     {
       id: 'help',
@@ -1505,8 +1924,9 @@ export function App() {
             onNewTeam={() => setDialog('team')}
             onJoinTeam={() => setDialog('join')}
             onTeamSettings={() => setDialog('teamSettings')}
-            onAuth={() => setDialog('auth')}
-            onLogout={() => void logout()}
+            onAuth={() => openAuth()}
+            onAccount={() => openAccount()}
+            onLogout={() => openAccount('data')}
             onOps={async () => {
               if (aiActivity.callActive || aiActivity.requestActive || teamVoice.state !== 'idle') {
                 notify('请先结束当前 AI 请求或语音通话，再打开运营管理。');
@@ -1635,7 +2055,7 @@ export function App() {
                   type="button"
                   className={`studio-account ${session.user ? 'is-signed-in' : ''}`}
                   aria-label={session.user ? `账户：${session.user.displayName}` : '登录创作空间'}
-                  onClick={() => (session.user ? setSidebarOpen(true) : setDialog('auth'))}
+                  onClick={() => openAccount()}
                 >
                   {session.user ? session.user.displayName.slice(0, 1) : '登录'}
                 </button>
@@ -1649,6 +2069,7 @@ export function App() {
                   onClick={() => {
                     setCloudError(null);
                     refreshConfig();
+                    if (dialogRef.current !== 'auth') void reconcileSession();
                     setRefreshToken((value) => value + 1);
                   }}
                 >
@@ -1748,6 +2169,9 @@ export function App() {
                         onImport={(file) => void importFile(file)}
                         onAI={openAI}
                         onDraw={() => setDialog('drawing')}
+                        accountState={booting ? 'loading' : session.user ? 'signed-in' : 'guest'}
+                        onSignIn={() => openAuth()}
+                        onRegister={() => openAuth('register')}
                         comparing={comparing}
                         setComparing={setComparing}
                         sampling={sampling}
@@ -1807,7 +2231,7 @@ export function App() {
                           <button
                             type="button"
                             onClick={() => {
-                              if (!session.user) setDialog('auth');
+                              if (!session.user) openAuth();
                               else if (!project) openCreateProject();
                               else setDialog('mediaImport');
                             }}
@@ -1817,6 +2241,9 @@ export function App() {
                         </nav>
                         {libraryTab === 'project' ? (
                           <AssetLibrary
+                            onLoadBack={() => {
+                              void changeView('editor');
+                            }}
                             project={project}
                             artworks={artworks}
                             space={currentSpace}
@@ -1836,16 +2263,16 @@ export function App() {
                             title="登录后查找素材"
                             description="浏览你有权限访问的项目、图片与长期素材。"
                             action={
-                              <button
-                                className="button button-primary"
-                                onClick={() => setDialog('auth')}
-                              >
+                              <button className="button button-primary" onClick={() => openAuth()}>
                                 登录
                               </button>
                             }
                           />
                         ) : (
                           <ResourceSearch
+                            onLoadBack={() => {
+                              void changeView('editor');
+                            }}
                             key={`${session.user.id}:${libraryTab}`}
                             spaces={session.spaces}
                             rememberedOnly={libraryTab === 'memory'}
@@ -1858,6 +2285,9 @@ export function App() {
                     )}{' '}
                     {view === 'compare' && (
                       <CompareView
+                        onLoadBack={() => {
+                          void changeView('editor');
+                        }}
                         editor={editor}
                         artwork={artwork}
                         onOpenRevision={openRevision}
@@ -1876,6 +2306,9 @@ export function App() {
                     {view === 'collaborate' &&
                       (project ? (
                         <CollaborateView
+                          onLoadBack={() => {
+                            void changeView('editor');
+                          }}
                           key={project.id}
                           currentUserId={session.user?.id}
                           project={project}
@@ -1890,7 +2323,11 @@ export function App() {
                     {view === 'docs' &&
                       (project ? (
                         <DocumentsView
-                          key={project.id}
+                          onLoadBack={() => {
+                            void changeView('editor');
+                          }}
+                          key={`${session.user?.id ?? 'guest'}:${project.id}`}
+                          actorId={session.user?.id ?? null}
                           project={project}
                           refreshToken={refreshToken}
                           onDirtyChange={setDocumentDirty}
@@ -1900,6 +2337,9 @@ export function App() {
                       ))}{' '}
                     {view === 'deliver' && (
                       <DeliveryView
+                        onLoadBack={() => {
+                          void changeView('editor');
+                        }}
                         editor={editor}
                         artwork={artwork}
                         sourcePending={opening || editor.loading}
@@ -1911,6 +2351,9 @@ export function App() {
                       <div className="content-view">
                         {session.user ? (
                           <UsageDashboard
+                            onLoadBack={() => {
+                              void changeView('editor');
+                            }}
                             key={`${session.user.id}:${currentSpace?.id ?? 'personal'}`}
                             space={currentSpace}
                             spaces={session.spaces}
@@ -1923,10 +2366,7 @@ export function App() {
                             title="登录后查看用量"
                             description="查看服务点余额，以及任务、模型和成员的使用明细。"
                             action={
-                              <button
-                                className="button button-primary"
-                                onClick={() => setDialog('auth')}
-                              >
+                              <button className="button button-primary" onClick={() => openAuth()}>
                                 登录
                               </button>
                             }
@@ -2068,7 +2508,7 @@ export function App() {
                         }}
                         onSave={save}
                         isLoggedIn={!!session.user}
-                        onAuth={() => setDialog('auth')}
+                        onAuth={() => openAuth()}
                       />
                     )}
                   </FloatingPanel>
@@ -2185,7 +2625,7 @@ export function App() {
             config={config}
             project={project}
             loggedIn={!!session.user}
-            onAuth={() => setDialog('auth')}
+            onAuth={() => openAuth()}
             onCreateProject={openCreateProject}
             onRetry={() => importFile(pendingImport ?? undefined)}
             onServerImport={serverImport}
@@ -2206,10 +2646,80 @@ export function App() {
         )}
         {renderedDialog === 'auth' && (
           <AuthPanel
+            key={authEntry.key}
             config={config}
-            onSession={receiveSession}
-            onClose={() => setDialog(pendingImport ? 'importSettings' : null)}
+            cooldowns={authCooldowns}
+            initialMode={authEntry.mode}
+            onSession={(next, meta) => receiveSession(next, meta, authEntry.key)}
+            onReset={() => {
+              void receivePasswordReset(authEntry.key);
+            }}
+            onClose={() => closeAuth(authEntry.key)}
           />
+        )}
+        {renderedDialog === 'accountReady' && session.user && (
+          <AccountReady
+            session={session}
+            hasImage={!!editor.file}
+            onContinue={() => {
+              void changeView('editor').then((changed) => {
+                if (changed) closeDialog();
+              });
+            }}
+            onImport={() => {
+              closeDialog();
+              void importFile();
+            }}
+            onProject={() => void openCreateProject()}
+          />
+        )}
+        {renderedDialog === 'account' && session.user && (
+          <Suspense
+            fallback={
+              <Modal title="账号与使用" profile="account" onClose={closeDialog}>
+                <Busy label="正在读取账号信息" />
+              </Modal>
+            }
+          >
+            <AccountCenter
+              key={`${session.user.id}:${accountEntry.key}`}
+              session={session}
+              config={config}
+              spaceId={spaceId}
+              initialTab={accountEntry.tab}
+              hasImage={!!editor.file}
+              hasUnsavedChanges={
+                dirty || documentDirty || getDocumentDraftCount(session.user.id) > 0
+              }
+              activity={accountActivity.current}
+              loggingOut={loggingOut}
+              logoutError={logoutError}
+              onClose={closeDialog}
+              onResetPassword={() => void openPasswordReset()}
+              onUsage={() => {
+                void changeView('usage').then((changed) => {
+                  if (changed) closeDialog();
+                });
+              }}
+              onExport={() => setDialog('export')}
+              onLogout={logout}
+              onReturnToActivity={() => {
+                void changeView('editor').then((changed) => {
+                  if (!changed) return;
+                  closeDialog();
+                  if (accountActivity.current.ai) showAI();
+                });
+              }}
+              onStartProject={() => void openCreateProject()}
+              onImport={() => {
+                closeDialog();
+                void importFile();
+              }}
+              onSessionExpired={() => {
+                void reconcileSession();
+              }}
+            />
+          </Suspense>
         )}
         {renderedDialog === 'project' && (
           <NameDialog
@@ -2230,10 +2740,9 @@ export function App() {
             space={currentSpace}
             onClose={closeDialog}
             onMembershipChanged={() => {
-              void api<Session>('/session')
-                .then(setSession)
-                .catch((error) => notify(errorMessage(error), 'error'));
-              setRefreshToken((n) => n + 1);
+              void reconcileSession().then((current) => {
+                if (current?.user) setRefreshToken((n) => n + 1);
+              });
             }}
           />
         )}
@@ -2264,6 +2773,7 @@ export function App() {
         {renderedDialog === 'conflict' && (
           <Modal
             title="云端已经有了更新"
+            profile="danger"
             subtitle="你的本地编辑仍然保留，没有覆盖队友的新版本。"
             onClose={closeDialog}
           >
@@ -2289,6 +2799,7 @@ export function App() {
         {renderedDialog === 'quota' && entitlements && (
           <Modal
             title="你的服务点"
+            profile="billing"
             subtitle={currentSpace?.name ?? '当前空间'}
             onClose={closeDialog}
           >
@@ -2326,7 +2837,7 @@ export function App() {
           </Modal>
         )}
         {renderedDialog === 'help' && (
-          <Modal title="工作台帮助" onClose={closeDialog}>
+          <Modal title="工作台帮助" profile="detail" onClose={closeDialog}>
             <div className="help-list">
               <section>
                 <SlidersHorizontal size={24} />

@@ -1,0 +1,132 @@
+.documents-view .document-draft-recovery {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 14px 22px;
+  margin: 0 0 22px;
+  padding: 18px 20px;
+  border: 1px solid var(--view-line);
+  border-left: 3px solid var(--view-accent-ink);
+  border-radius: 12px;
+  background: var(--view-soft);
+  color: var(--view-ink);
+  animation: document-draft-arrive 190ms cubic-bezier(0.22, 0.72, 0.2, 1) both;
+}
+
+.document-draft-copy {
+  min-width: 0;
+}
+
+.document-draft-kicker {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  font-size: 12px;
+  color: var(--view-accent-ink);
+}
+
+.document-draft-copy h2 {
+  margin: 7px 0 4px;
+  font-size: 15px;
+  font-weight: 600;
+  line-height: 1.5;
+  overflow-wrap: anywhere;
+}
+
+.document-draft-copy p {
+  margin: 0;
+  font-size: 12px;
+  line-height: 1.7;
+  color: var(--view-muted);
+}
+
+.document-draft-actions,
+.document-draft-editor-actions {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.document-draft-status {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px 14px;
+  margin: 0 0 16px;
+  padding: 12px 14px;
+  border-radius: 10px;
+  background: var(--view-soft);
+  color: var(--view-muted);
+  font-size: 12px;
+  line-height: 1.7;
+}
+
+.document-draft-status p {
+  flex: 1 1 240px;
+  margin: 0;
+}
+
+.document-draft-status .text-button {
+  min-height: 36px;
+}
+
+.document-draft-actions :is(.button, .text-button) {
+  min-height: 38px;
+  font-size: 12px;
+  white-space: nowrap;
+}
+
+.document-draft-actions svg,
+.document-draft-kicker svg {
+  flex: none;
+}
+
+.document-draft-actions :is(.button, .text-button):focus-visible {
+  outline: 2px solid var(--focus-ring);
+  outline-offset: 3px;
+}
+
+@keyframes document-draft-arrive {
+  from {
+    opacity: 0;
+    transform: translateY(4px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@media (max-width: 1040px) {
+  .documents-view .document-draft-recovery {
+    grid-template-columns: minmax(0, 1fr);
+    gap: 12px;
+  }
+}
+
+@media (max-width: 640px) {
+  .documents-view .document-draft-recovery {
+    margin-bottom: 16px;
+    padding: 13px 14px;
+    border-radius: 10px;
+  }
+  .document-draft-actions :is(.button, .text-button),
+  .document-draft-status .text-button,
+  .document-draft-editor-actions .button {
+    min-height: 44px;
+    touch-action: manipulation;
+  }
+  .document-draft-editor-actions {
+    width: 100%;
+  }
+  .document-draft-editor-actions .button {
+    flex: 1 1 auto;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .documents-view .document-draft-recovery {
+    animation: none;
+  }
+}

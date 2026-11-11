@@ -1,0 +1,176 @@
+/* Semantic dialog profiles. Load after legacy studio rules; do not style every
+   form or button here. Actual contents keep their own layout and state rules. */
+.modal[data-dialog-profile] {
+  --dialog-padding: var(--profile-padding);
+  --dialog-width: var(--profile-width);
+  --motion-entry: var(--profile-desktop-entry);
+  --motion-exit: var(--profile-desktop-exit);
+  --motion-delay: 0ms;
+  --motion-blur: 0px;
+  --motion-x: var(--profile-desktop-x);
+  --motion-y: var(--profile-desktop-y);
+  --motion-scale: var(--profile-desktop-scale);
+  --motion-interact: var(--profile-desktop-interact);
+  --dialog-edge: 24px;
+}
+
+.modal[data-dialog-profile]:not(.drawing-modal) {
+  width: min(var(--dialog-width), calc(100vw - 2 * var(--dialog-edge)));
+  max-width: calc(100vw - 2 * var(--dialog-edge));
+  max-height: calc(100dvh - 2 * var(--dialog-edge));
+  padding: var(--dialog-padding);
+  overflow-x: hidden;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  scroll-padding-block: 88px 24px;
+}
+
+.modal[data-dialog-profile]::backdrop {
+  backdrop-filter: blur(var(--profile-backdrop-blur));
+  animation-duration: var(--motion-entry);
+}
+
+.modal[data-dialog-profile][data-motion-state='exit']::backdrop {
+  animation-duration: var(--motion-exit);
+}
+
+.modal[data-dialog-profile]:where(:not(.drawing-modal)) > .modal-header {
+  padding-block: calc(var(--dialog-padding) - 2px) 16px;
+  margin-bottom: 20px;
+}
+
+.modal[data-dialog-profile='auth'] > .modal-header {
+  border-bottom: 0;
+  margin-bottom: 8px;
+  padding-bottom: 8px;
+}
+
+.modal[data-dialog-profile='danger'] > .modal-header {
+  align-items: flex-start;
+  border-bottom: 0;
+  margin-bottom: 4px;
+}
+
+.modal[data-dialog-profile='danger'] .modal-header h2 {
+  padding-block: 6px;
+  font-size: 19px;
+  letter-spacing: -0.025em;
+}
+
+.modal[data-dialog-profile='danger'] .confirmation-description {
+  line-height: 1.7;
+  overflow-wrap: anywhere;
+}
+
+.modal[data-dialog-profile='danger'] .dialog-actions {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+  margin-top: 22px;
+}
+
+.modal[data-dialog-profile='danger'] .dialog-actions > .button {
+  min-width: 0;
+  min-height: 42px;
+  margin: 0;
+}
+
+.modal[data-dialog-profile='navigation'] > .modal-header,
+.modal[data-dialog-profile='settings'] > .modal-header {
+  margin-bottom: 16px;
+}
+
+.modal[data-dialog-profile='account'] .modal-header h2,
+.modal[data-dialog-profile='billing'] .modal-header h2 {
+  font-size: 23px;
+}
+
+.modal[data-dialog-profile='media'] > .modal-header {
+  margin-bottom: 16px;
+}
+
+@media (760px <= width < 1120px) {
+  .modal[data-dialog-profile] {
+    --dialog-padding: var(--profile-tablet-padding);
+    --dialog-width: var(--profile-tablet-width);
+    --motion-entry: var(--profile-tablet-entry);
+    --motion-exit: var(--profile-tablet-exit);
+    --motion-x: var(--profile-tablet-x);
+    --motion-y: var(--profile-tablet-y);
+    --motion-scale: var(--profile-tablet-scale);
+    --motion-interact: var(--profile-tablet-interact);
+    --dialog-edge: 20px;
+  }
+}
+
+@media (width < 760px) {
+  .modal[data-dialog-profile] {
+    --dialog-padding: var(--profile-phone-padding);
+    --motion-entry: var(--profile-phone-entry);
+    --motion-exit: var(--profile-phone-exit);
+    --motion-x: var(--profile-phone-x);
+    --motion-y: var(--profile-phone-y);
+    --motion-scale: var(--profile-phone-scale);
+    --motion-interact: var(--profile-phone-interact);
+    --dialog-edge: 12px;
+  }
+
+  .modal[data-dialog-profile][data-dialog-mobile='sheet'] {
+    inset: auto 0 0;
+    margin: auto 0 0;
+    width: 100%;
+    max-width: 100%;
+    max-height: calc(100dvh - max(12px, env(safe-area-inset-top)));
+    border-radius: 20px 20px 0 0;
+    padding-bottom: calc(var(--dialog-padding) + env(safe-area-inset-bottom));
+    scroll-padding-block: 80px 24px;
+  }
+
+  .modal[data-dialog-profile][data-dialog-mobile='center'] {
+    inset: 0;
+    margin: auto;
+    width: min(var(--profile-width), calc(100vw - 24px));
+    max-width: calc(100vw - 24px);
+    max-height: calc(100dvh - 32px - env(safe-area-inset-top) - env(safe-area-inset-bottom));
+    border: 1px solid var(--line);
+    border-radius: 18px;
+    padding-bottom: var(--dialog-padding);
+  }
+
+  .modal[data-dialog-profile='account'] .modal-header h2,
+  .modal[data-dialog-profile='billing'] .modal-header h2 {
+    font-size: 21px;
+  }
+
+  .modal[data-dialog-profile='danger'] .modal-header h2 {
+    font-size: 18px;
+  }
+}
+
+@media (height < 500px) {
+  .modal[data-dialog-profile]:not(.drawing-modal) {
+    --dialog-edge: 6px;
+    --dialog-padding: 14px;
+    max-height: calc(100dvh - 12px);
+    scroll-padding-block: 66px 16px;
+  }
+
+  .modal[data-dialog-profile]:where(:not(.drawing-modal)) > .modal-header {
+    padding-block: 10px 12px;
+    margin-bottom: 12px;
+  }
+
+  .modal[data-dialog-profile='danger'][data-dialog-mobile='center'] {
+    max-height: calc(100dvh - 12px);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .modal[data-dialog-profile],
+  .modal[data-dialog-profile]::backdrop {
+    animation: none;
+    backdrop-filter: none;
+    translate: none;
+    scale: none;
+  }
+}
