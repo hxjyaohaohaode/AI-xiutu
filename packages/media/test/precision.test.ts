@@ -31,6 +31,125 @@ const execute = (file: string, args: string[]) =>
     },
   });
 test(
+  'HEIC PQ preserves 10- and 12-bit code values through signed float development',
+  { skip: !process.env.MEDIA_QA_PYTHON || !process.env.MEDIA_HEIC_DECODER },
+  async () => {
+    const pythonExecutable = process.env.MEDIA_QA_PYTHON!;
+    const options = { pythonExecutable, heicDecoder: process.env.MEDIA_HEIC_DECODER! };
+    const dir = await mkdtemp(join(tmpdir(), 'xiutu-heic-pq-'));
+    const runtime = createLinearWindowRuntime();
+    const width = 32;
+    const height = 24;
+    const luminance = (code: number, bits: number) => {
+      const signal = (code / ((1 << bits) - 1)) ** (1 / 78.84375);
+      return (
+        10000 *
+        (Math.max(signal - 0.8359375, 0) / (18.8515625 - 18.6875 * signal)) **
+          (1 / 0.1593017578125)
+      );
+    };
+    try {
+      // These fixtures are lossless synthetic Rec.2020 ramps. The 12-bit
+      // fixture declares nominal diffuse white at 180 cd/m².
+      for (const [filename, bits, white] of [
+        ['pq10.heic', 10, 203],
+        ['pq12-white180.heic', 12, 180],
+      ] as const) {
+        const inputPath = fileURLToPath(new URL(`./fixtures/${filename}`, import.meta.url));
+        const workDir = join(dir, `media-${bits}`);
+        const descriptor = await processMedia({
+          inputPath,
+          workDir,
+          originalName: filename,
+          options,
+        });
+        assert.equal(descriptor.original.mime, 'image/heic');
+        assert.equal(descriptor.original.sampleEncoding, 'pq');
+        assert.equal(descriptor.original.bitDepth, bits);
+        assert.equal(descriptor.original.decodedBitDepth, bits);
+        assert.deepEqual(descriptor.original.pq, { primaries: 'Rec.2020', referenceWhiteNits: white });
+        assert.deepEqual(
+          await readFile(join(workDir, descriptor.original.relativePath)),
+          await readFile(inputPath),
+        );
+        assert.equal(descriptor.linearMaster?.bitDepth, 32);
+        assert.deepEqual([descriptor.master.width, descriptor.master.height], [width, height]);
+        const raw = join(dir, `linear-${bits}.raw`);
+        await execute(pythonExecutable, [
+          '-c',
+          'import OpenImageIO as o,numpy as n,sys; i=o.ImageInput.open(sys.argv[1]); assert i; n.asarray(i.read_image(format=o.FLOAT),dtype="<f4").tofile(sys.argv[2]); assert i.close()',
+          join(workDir, 'linear-master.exr'),
+          raw,
+        ]);
+        const samples = await readFile(raw);
+        assert.equal(samples.length, width * height * 3 * 4);
+        const matrix = [
+          [1.660491, -0.587641, -0.072850],
+          [-0.124550, 1.132900, -0.008349],
+          [-0.018151, -0.100579, 1.118730],
+        ];
+        let hasHeadroom = false;
+        let hasNegative = false;
+        for (let y = 0; y < height; y++) {
+          for (let x = 0; x < width; x++) {
+            const rgb = [x * 10 + y + 500, x * 3 + y + 110, x * 5 + y + 480].map(
+              (code) => luminance(code * (1 << (bits - 10)), bits) / white,
+            );
+            for (const [channel, weights] of matrix.entries()) {
+              const expected = weights.reduce((sum, weight, at) => sum + weight * rgb[at]!, 0);
+              const actual = samples.readFloatLE(((y * width + x) * 3 + channel) * 4);
+              assert.ok(Math.abs(actual - expected) < 0.000015);
+              hasHeadroom ||= actual > 1;
+              hasNegative ||= actual < 0;
+            }
+          }
+        }
+        assert.ok(hasHeadroom && hasNegative);
+        const sdr = join(dir, `sdr-${bits}.png`);
+        const window = join(dir, `window-${bits}.png`);
+        const request = { workDir, format: 'png16' as const, options };
+        await exportMedia({ ...request, outputPath: sdr });
+        await exportMedia(
+          {
+            ...request,
+            precisionInput: 'linear-master',
+            outputPath: window,
+            preview: { maxEdge: 128, region: { left: 0, top: 0, width, height } },
+          },
+          { descriptor, runtime },
+        );
+        const pixels = (path: string) =>
+          sharp(path, { ignoreIcc: true }).toColourspace('rgb16').raw({ depth: 'ushort' }).toBuffer();
+        assert.deepEqual(await pixels(window), await pixels(sdr));
+      }
+      const inputPath = fileURLToPath(new URL('./fixtures/pq10.heic', import.meta.url));
+      const hlg = await readFile(inputPath);
+      const profile = hlg.indexOf(Buffer.from('nclx'));
+      assert.ok(profile > 0);
+      assert.equal(hlg.readUInt16BE(profile + 6), 16);
+      hlg.writeUInt16BE(18, profile + 6);
+      const hlgPath = join(dir, 'hlg.heic');
+      await writeFile(hlgPath, hlg);
+      await assert.rejects(
+        processMedia({ inputPath: hlgPath, workDir: join(dir, 'hlg'), options }),
+        /explicit supported NCLX PQ colour profile/,
+      );
+      await assert.rejects(
+        processMedia({
+          inputPath,
+          workDir: join(dir, 'no-decoder'),
+          options: { pythonExecutable },
+        }),
+        /HEIC PQ requires the configured native decoder/,
+      );
+    } finally {
+      await runtime.close();
+      await rm(dir, { recursive: true, force: true });
+    }
+  },
+);
+
+test(
   'JPEG gain maps retain the original and develop a graded HDR crop without EXIF',
   { skip: !process.env.MEDIA_QA_PYTHON || !process.env.MEDIA_UHDR_LIBRARY },
   async () => {

@@ -13,6 +13,7 @@ import {
   exportMedia,
   createLinearWindowRuntime,
   getMediaCapabilities,
+  hasDisplayHdr,
   MediaProcessingError,
   MEDIA_MAX_INPUT_BYTES,
   MEDIA_MAX_PIXELS,
@@ -164,6 +165,7 @@ export function registerMediaImport(app: FastifyInstance, db: Database, config: 
   const enabled = process.env.MEDIA_ADVANCED_ENABLED === 'true';
   const pythonExecutable = process.env.MEDIA_PYTHON;
   const ultraHdrLibrary = process.env.MEDIA_UHDR_LIBRARY;
+  const heicDecoder = process.env.MEDIA_HEIC_DECODER;
   const linearWindows = enabled && pythonExecutable ? createLinearWindowRuntime() : undefined;
   const maxPixels = process.env.MEDIA_RASTER_MAX_PIXELS
     ? z.coerce
@@ -173,7 +175,12 @@ export function registerMediaImport(app: FastifyInstance, db: Database, config: 
         .max(MEDIA_MAX_PIXELS)
         .parse(process.env.MEDIA_RASTER_MAX_PIXELS)
     : undefined;
-  const capabilities = getMediaCapabilities({ pythonExecutable, ultraHdrLibrary, maxPixels });
+  const capabilities = getMediaCapabilities({
+    pythonExecutable,
+    ultraHdrLibrary,
+    heicDecoder,
+    maxPixels,
+  });
   let closing = false;
   function takeDownload(downloadId: string, download: MasterDownload) {
     if (downloads.get(downloadId) !== download) return false;
@@ -265,9 +272,7 @@ export function registerMediaImport(app: FastifyInstance, db: Database, config: 
     }, 10000);
     heartbeat.unref();
     try {
-      const gainMapLibrary = (await capabilities).ultraHdrJpeg.available
-        ? ultraHdrLibrary
-        : undefined;
+      const runtime = await capabilities;
       const descriptor = await processMedia({
         inputPath: inputPath(row.id),
         workDir: workDir(row.id),
@@ -275,7 +280,8 @@ export function registerMediaImport(app: FastifyInstance, db: Database, config: 
         signal,
         options: {
           pythonExecutable,
-          ultraHdrLibrary: gainMapLibrary,
+          ultraHdrLibrary: runtime.ultraHdrJpeg.available ? ultraHdrLibrary : undefined,
+          heicDecoder: runtime.heicPq.available ? heicDecoder : undefined,
           maxPixels,
           generateTiles: row.generate_tiles,
         },
@@ -753,7 +759,8 @@ export function registerMediaImport(app: FastifyInstance, db: Database, config: 
           master16: enabled && precision.master16,
           sourceSha256: row.descriptor.sourceSha256,
           floatAvailable: enabled && !!row.descriptor.linearMaster && precision.linearFloat,
-          ultraHdrJpeg: enabled && !!row.descriptor.original.gainMap && runtime.ultraHdrJpeg.available,
+          ultraHdrJpeg:
+            enabled && hasDisplayHdr(row.descriptor.original) && runtime.ultraHdrJpeg.available,
           curves: {
             ...precision.curves,
             available: enabled && !!row.descriptor.linearMaster && precision.curves.available,
@@ -1131,8 +1138,15 @@ export function registerMediaImport(app: FastifyInstance, db: Database, config: 
         'MEDIA_FLOAT_INPUT',
         'EXR 或 Ultra HDR JPEG 需要线性母版作为调色输入。',
       );
-    if (ultraHdr && (!row.descriptor.original.gainMap || !(await capabilities).ultraHdrJpeg.available))
-      throw new HttpError(422, 'MEDIA_GAIN_MAP_UNAVAILABLE', '此素材没有可供导出的 HDR 增益图母版。');
+    if (
+      ultraHdr &&
+      (!hasDisplayHdr(row.descriptor.original) || !(await capabilities).ultraHdrJpeg.available)
+    )
+      throw new HttpError(
+        422,
+        'MEDIA_GAIN_MAP_UNAVAILABLE',
+        '此素材没有可生成 HDR 增益图的线性母版。',
+      );
     const crop = body.crop;
     if (
       crop &&

@@ -110,6 +110,31 @@ def main():
         }
         native["ultrahdr"] = "reference decoder"
         warnings = ["The JPEG gain map was decoded at full HDR intent. The float master uses linear Rec.709 and retains out-of-gamut values. The SDR working master uses the original SDR rendition and its ICC profile."]
+    elif request["kind"] == "heic-pq":
+        from heic_pq import decode_heic_pq
+        from linear_export import develop, grade_gains
+
+        raw = destination.with_name("heic-rgb16.bin")
+        try:
+            pixels, linearize, source_info, native["libheif"] = decode_heic_pq(
+                source, raw, request["heicDecoder"],
+                lambda width, height: admit_native(width, height, max_pixels, destination.parent),
+            )
+            write_image(
+                destination.with_name("linear-master.exr"), pixels, oiio.FLOAT, "Linear",
+                tile_transform=linearize,
+            )
+            neutral = {"toneMap": "none"}
+            gains = grade_gains(neutral)
+            write_image(
+                destination, pixels, oiio.UINT16, "sRGB",
+                tile_transform=lambda band: develop(
+                    linearize(band), neutral, gains, True, {}, sdr_tone_map=True,
+                ),
+            )
+        finally:
+            raw.unlink(missing_ok=True)
+        warnings = ["ST 2084 samples are decoded using the source NCLX primaries and nominal diffuse white, defaulting to 203 cd/m² when unspecified. The Rec.709 float master retains signed RGB and HDR headroom. SDR uses the same display tone map as linear-master previews."]
     elif request["kind"] == "hdr":
         image = oiio.ImageInput.open(source)
         if image is None:
@@ -181,8 +206,12 @@ def main():
         warnings = ["HDR is interpreted as linear Rec.709/sRGB; explicit unsupported primaries/transfer are rejected. The float32 master retains the source data window, display window and pixel aspect ratio. The SDR proxy uses data-window pixels and fixed luminance Reinhard tone mapping, clipping negative/out-of-gamut SDR values."]
     else:
         raise ValueError("Unknown native decoder kind")
+    peak_rss = max(
+        resource.getrusage(resource.RUSAGE_SELF).ru_maxrss,
+        resource.getrusage(resource.RUSAGE_CHILDREN).ru_maxrss,
+    )
     Path(request["resultPath"]).write_text(json.dumps({"source": source_info, "native": native, "warnings": warnings,
-                                                     "peakRssBytes": resource.getrusage(resource.RUSAGE_SELF).ru_maxrss * 1024}))
+                                                     "peakRssBytes": peak_rss * 1024}))
 
 
 if __name__ == "__main__":

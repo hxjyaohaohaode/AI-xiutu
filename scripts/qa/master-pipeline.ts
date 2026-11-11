@@ -105,7 +105,18 @@ try {
     assert.equal(descriptor.master.bitDepth, 16);
     if (descriptor.linearMaster) assert.equal(descriptor.linearMaster.bitDepth, 32);
     assert.equal(descriptor.sourceSha256, sha(bytes));
-    assert.equal(sha((await f.call('GET', metadata.downloads.original)).rawPayload), sha(bytes));
+    const original = await f.call('GET', metadata.downloads.original);
+    assert.equal(sha(original.rawPayload), sha(bytes));
+    if (descriptor.original.pq) {
+      const capabilities = (await f.call('GET', '/v1/media-capabilities')).json();
+      assert.equal(capabilities.heicPq.available, true);
+      assert.ok(capabilities.heicPq.bitDepths.includes(descriptor.original.bitDepth));
+      assert.equal(descriptor.original.sampleEncoding, 'pq');
+      assert.equal(descriptor.original.mime, 'image/heic');
+      assert.equal(original.headers['content-type'], 'application/octet-stream');
+      assert.match(original.headers['content-disposition'] as string, /^attachment;/);
+      assert.ok(descriptor.linearMaster);
+    }
     const result = {
       name: basename(file),
       sourceSha256: sha(bytes),
@@ -115,6 +126,7 @@ try {
       assetId: state.asset.id,
       sourceEncoding: descriptor.original.sampleEncoding,
       gainMap: descriptor.original.gainMap,
+      pq: descriptor.original.pq,
       linear: !!descriptor.linearMaster,
       peakRssBytes: descriptor.processor.peakRssBytes,
       nativePeakRssBytes: descriptor.processor.nativePeakRssBytes,
@@ -496,7 +508,7 @@ try {
           assert.equal(linear.type, 'float');
           record.linearReadback = linear;
         } else if (format === 'ultrahdr') {
-          assert.ok(descriptor.original.gainMap);
+          assert.ok(descriptor.original.gainMap || descriptor.original.pq);
           assert.ok(process.env.MEDIA_UHDR_LIBRARY);
           const sourceExr = join(output, `${index}-developed.exr`);
           const crop = {

@@ -157,13 +157,15 @@ try {
   const media = await getMediaCapabilities({
     pythonExecutable: process.env.MEDIA_PYTHON || undefined,
     ultraHdrLibrary: process.env.MEDIA_UHDR_LIBRARY || undefined,
+    heicDecoder: process.env.MEDIA_HEIC_DECODER || undefined,
   });
   const mediaEnabled = process.env.MEDIA_ADVANCED_ENABLED === 'true';
   results.push({
     check: 'advanced-media',
     ok: !mediaEnabled || (
       media.available && (!process.env.MEDIA_PYTHON || media.nativeReady) &&
-      (!process.env.MEDIA_UHDR_LIBRARY || media.ultraHdrJpeg.available)
+      (!process.env.MEDIA_UHDR_LIBRARY || media.ultraHdrJpeg.available) &&
+      (!process.env.MEDIA_HEIC_DECODER || media.heicPq.available)
     ),
     detail: JSON.stringify({ enabled: mediaEnabled, ...media }),
   });

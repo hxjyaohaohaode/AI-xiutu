@@ -14,6 +14,10 @@ export const MEDIA_MAX_GAIN_MAP_PIXELS = 24_000_000;
 export const MEDIA_MAX_GAIN_MAP_BYTES = 128 * 1024 ** 2;
 export const MEDIA_MIN_GAIN_MAP_SIDE = 8;
 export const MEDIA_MAX_GAIN_MAP_SIDE = 8192;
+export const MEDIA_MAX_HEIC_PQ_PIXELS = 24_000_000;
+export const MEDIA_MAX_HEIC_PQ_BYTES = 128 * 1024 ** 2;
+export const MEDIA_MIN_HEIC_PQ_SIDE = 8;
+export const MEDIA_MAX_HEIC_PQ_SIDE = 8192;
 export const MEDIA_MAX_PREVIEW_EDGE = 2048;
 export class MediaProcessingError extends Error {
   constructor(
@@ -38,6 +42,8 @@ export interface MediaProcessingOptions {
   pythonExecutable?: string;
   /** Optional trusted reference Ultra HDR codec library. */
   ultraHdrLibrary?: string;
+  /** Optional trusted HEIC PQ decoder executable. */
+  heicDecoder?: string;
 }
 export interface MediaFileV1 {
   relativePath: string;
@@ -57,9 +63,10 @@ export interface MediaDescriptorV1 {
   original: MediaFileV1 & {
     format: string;
     /** Native formats disambiguate half/float/RGBE or sensor samples from decoded precision. */
-    sampleEncoding?: 'uint' | 'half-float' | 'float' | 'rgbe' | 'sensor-raw' | 'gain-map';
+    sampleEncoding?: 'uint' | 'half-float' | 'float' | 'rgbe' | 'sensor-raw' | 'gain-map' | 'pq';
     decodedBitDepth?: number;
     gainMap?: { width: number; height: number; hdrGamut: 'Rec.709' | 'Display P3' | 'Rec.2020' };
+    pq?: { primaries: 'Rec.709' | 'Display P3' | 'Rec.2020'; referenceWhiteNits: number };
     /** null means that this decoder did not inspect an embedded ICC resource. */
     hasIcc: boolean | null;
     metadataSummary: {
@@ -108,6 +115,9 @@ export interface MediaDescriptorV1 {
     peakRssBytes?: number;
     nativePeakRssBytes?: number;
   };
+}
+export function hasDisplayHdr(original: MediaDescriptorV1['original']) {
+  return !!(original.gainMap || original.pq);
 }
 export interface ProcessMediaRequest {
   /** An API-owned regular file, never an arbitrary client path or URL. */

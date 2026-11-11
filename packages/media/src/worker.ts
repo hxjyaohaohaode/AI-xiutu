@@ -33,6 +33,9 @@ import {
   MEDIA_MAX_GAIN_MAP_BYTES,
   MEDIA_MIN_GAIN_MAP_SIDE,
   MEDIA_MAX_GAIN_MAP_SIDE,
+  MEDIA_MAX_HEIC_PQ_PIXELS,
+  MEDIA_MAX_HEIC_PQ_BYTES,
+  hasDisplayHdr,
   MediaProcessingError,
   type MediaDescriptorV1,
   type MediaFileV1,
@@ -176,8 +179,16 @@ async function fileInfo(
     colorSpace: colorSpace ?? m.space,
   };
 }
+type NativeSourceInfo = Pick<
+  MediaDescriptorV1['original'],
+  'width' | 'height' | 'bitDepth' | 'colorSpace' | 'sampleEncoding' | 'decodedBitDepth' | 'gainMap' | 'pq'
+>;
 async function nativeDecode(
-  job: Job, inputPath: string, stage: string, kind: 'raw' | 'hdr' | 'gain-map', orientation = 1,
+  job: Job,
+  inputPath: string,
+  stage: string,
+  kind: 'raw' | 'hdr' | 'gain-map' | 'heic-pq',
+  orientation = 1,
 ) {
   if (!job.options.pythonExecutable)
     throw new Error(`${kind.toUpperCase()} requires the separately installed native decoder`);
@@ -194,8 +205,10 @@ async function nativeDecode(
         raw: MEDIA_MAX_LINEAR_PIXELS,
         hdr: MEDIA_MAX_HDR_IMPORT_PIXELS,
         'gain-map': MEDIA_MAX_GAIN_MAP_PIXELS,
+        'heic-pq': MEDIA_MAX_HEIC_PQ_PIXELS,
       }[kind]),
       ...(kind === 'gain-map' ? { ultraHdrLibrary: job.options.ultraHdrLibrary, orientation } : {}),
+      ...(kind === 'heic-pq' ? { heicDecoder: job.options.heicDecoder } : {}),
       resultPath,
     }),
     { mode: 0o600 },
@@ -218,13 +231,7 @@ async function nativeDecode(
     );
   });
   const result = JSON.parse(await readFile(resultPath, 'utf8')) as {
-    source: {
-      width: number;
-      height: number;
-      bitDepth: number;
-      colorSpace: string;
-      gainMap?: MediaDescriptorV1['original']['gainMap'];
-    };
+    source: NativeSourceInfo;
     native: Record<string, string>;
     warnings: string[];
     peakRssBytes: number;
@@ -343,21 +350,38 @@ async function importMedia(job: Job): Promise<MediaDescriptorV1> {
       h.readUInt32LE(0) === 20000630 ||
       h.toString('ascii', 0, 10).startsWith('#?RADIANCE') ||
       h.toString('ascii', 0, 6) === '#?RGBE';
+  const heic =
+    h.toString('ascii', 4, 8) === 'ftyp' &&
+    h.readUInt32BE(0) >= 16 &&
+    [8, 16, 20, 24, 28].some(
+      (offset) =>
+        offset + 4 <= h.readUInt32BE(0) &&
+        ['heic', 'heix', 'hevc', 'hevx'].includes(h.toString('ascii', offset, offset + 4)),
+    );
   let inputPath = originalPath,
     native: string | null = null,
-    sourceOverride: { width: number; height: number; bitDepth: number; colorSpace: string } | null =
-      null,
+    sourceOverride: NativeSourceInfo | null = null,
     layers: MediaDescriptorV1['layers'] = [],
     sourceFormat = '',
     sourceIcc: Buffer | null = null;
   const warnings: string[] = [];
   let nativePeakRssBytes: number | undefined;
-  if (rawExtension || hdr) {
-    const result = await nativeDecode(job, originalPath, stage, hdr ? 'hdr' : 'raw');
+  if (heic) {
+    if (!options.heicDecoder)
+      throw new MediaProcessingError('HEIC PQ requires the configured native decoder', 'unsupported');
+    if (sourceStat.size > MEDIA_MAX_HEIC_PQ_BYTES)
+      throw new MediaLimitError('HEIC PQ exceeds the 128 MiB compressed budget');
+  }
+  if (rawExtension || hdr || heic) {
+    const result = await nativeDecode(job, originalPath, stage, heic ? 'heic-pq' : hdr ? 'hdr' : 'raw');
     inputPath = result.path;
     native = JSON.stringify(result.result.native);
     sourceOverride = result.result.source;
-    sourceFormat = hdr ? (h.readUInt32LE(0) === 20000630 ? 'exr' : 'radiance') : extension.slice(1);
+    sourceFormat = heic
+      ? 'heic'
+      : hdr
+        ? (h.readUInt32LE(0) === 20000630 ? 'exr' : 'radiance')
+        : extension.slice(1);
     warnings.push(...result.result.warnings);
     nativePeakRssBytes = result.result.peakRssBytes;
   } else if (h.toString('ascii', 0, 4) === '8BPS') {
@@ -511,7 +535,7 @@ async function importMedia(job: Job): Promise<MediaDescriptorV1> {
     bitDepth: depth(metadata),
     colorSpace: metadata.space,
   };
-  if (source.bitDepth < 16 && !hdr && !hasGainMap)
+  if (source.bitDepth < 16 && !hdr && !hasGainMap && !heic)
     warnings.push(
       `The 16-bit working container does not add captured precision beyond the source's ${source.bitDepth}-bit samples.`,
     );
@@ -533,9 +557,11 @@ async function importMedia(job: Job): Promise<MediaDescriptorV1> {
       mime:
         sourceFormat === 'psd'
           ? 'image/vnd.adobe.photoshop'
-          : sourceFormat
-            ? 'application/octet-stream'
-            : (metadata.mediaType ?? 'application/octet-stream'),
+          : sourceFormat === 'heic'
+            ? 'image/heic'
+            : sourceFormat
+              ? 'application/octet-stream'
+              : (metadata.mediaType ?? 'application/octet-stream'),
       ...source,
       ...(hasGainMap ? { sampleEncoding: 'gain-map' as const } : {}),
       ...(gainMapSource ? { decodedBitDepth: 16, gainMap: gainMapSource.gainMap } : {}),
@@ -573,7 +599,7 @@ async function importMedia(job: Job): Promise<MediaDescriptorV1> {
       ...(nativePeakRssBytes ? { nativePeakRssBytes } : {}),
     },
   };
-  if (hdr || rawExtension || gainMapSource) {
+  if (hdr || rawExtension || gainMapSource || sourceOverride?.pq) {
     const linearPath = join(stage, 'linear-master.exr');
     descriptor.linearMaster = {
       relativePath: 'linear-master.exr',
@@ -583,7 +609,13 @@ async function importMedia(job: Job): Promise<MediaDescriptorV1> {
       width: master.width,
       height: master.height,
       bitDepth: 32,
-      colorSpace: gainMapSource?.colorSpace ?? (hdr ? 'linear-sRGB/Rec709-assumed' : 'linear-sRGB/Rec709-developed'),
+      colorSpace:
+        gainMapSource?.colorSpace ??
+        (sourceOverride?.pq
+          ? 'linear-sRGB/Rec709-display-referred'
+          : hdr
+            ? 'linear-sRGB/Rec709-assumed'
+            : 'linear-sRGB/Rec709-developed'),
     };
   }
   if (inputPath !== originalPath) await rm(inputPath, { force: true });
@@ -678,11 +710,16 @@ async function exportLinearMaster(
   const dimensions = region ?? source;
   const count = dimensions.width * dimensions.height;
   const ultraHdr = job.format === 'ultrahdr';
-  if (ultraHdr && (
-    !descriptor.original.gainMap || count > MEDIA_MAX_GAIN_MAP_PIXELS ||
-    Math.max(dimensions.width, dimensions.height) > MEDIA_MAX_GAIN_MAP_SIDE ||
-    Math.min(dimensions.width, dimensions.height) < MEDIA_MIN_GAIN_MAP_SIDE
-  )) throw new MediaLimitError('Ultra HDR JPEG requires a supported gain map source and output dimensions');
+  if (
+    ultraHdr &&
+    (!hasDisplayHdr(descriptor.original) ||
+      count > MEDIA_MAX_GAIN_MAP_PIXELS ||
+      Math.max(dimensions.width, dimensions.height) > MEDIA_MAX_GAIN_MAP_SIDE ||
+      Math.min(dimensions.width, dimensions.height) < MEDIA_MIN_GAIN_MAP_SIDE)
+  )
+    throw new MediaLimitError(
+      'Ultra HDR JPEG requires a supported display HDR source and output dimensions',
+    );
   if (
     job.format === 'webp' &&
     (Math.max(dimensions.width, dimensions.height) > 16383 ||
@@ -709,7 +746,7 @@ async function exportLinearMaster(
         maxPixels: MEDIA_MAX_LINEAR_PIXELS,
         edit: parsePrecisionEdit(job.precisionEdit ?? NEUTRAL_PRECISION_EDIT),
         sdr,
-        sdrToneMap: sdr && !!descriptor.original.gainMap,
+        sdrToneMap: sdr && hasDisplayHdr(descriptor.original),
         ...(ultraHdr ? { linearTiff: true } : {}),
         region,
       }),

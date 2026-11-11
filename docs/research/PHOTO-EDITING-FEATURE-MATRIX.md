@@ -106,7 +106,7 @@
 | F06 16 位母版与线性 32 位可重编导出              | —                                                      | 公开支持打开 RAW/PSD，精确输出链路未确认。[PC][mt-pc]                                  | RawTherapee、Krita、OpenImageIO 和 LittleCMS。                                                                     | **部分**。独立 16 位 PNG/TIFF 与线性 EXR 导出，版本化母版全局调色及原图窗口。Nikon/Canon/EXR 实测窗与导出共核 3,024,000 个 uint16 样本。已发表的常规 V4 配方仍为 RGBA8。[媒体][ours-media] · [母版验收脚本][ours-master-qa] | **P0**。源→调整→保存→回退→导出→第三方重开，数值逐通道验证。SDR 映射要可选且保持 alpha。EXR 证实亮部余量。                               |
 | F07 RAW/HDR 全配方、图层和实时母版窗口           | —                                                      | —                                                                                      | GEGL 高精度瓦片、Krita HDR 合成、OpenColorIO。                                                                     | **部分**。七项全局参数之外，场景线性亮度与 RGB 曲线已贯通实际 Sony ARW、CandleGlass EXR 的原像素窗口、版本重开和三种母版导出。SDR 两格式各验同一窗口样本。EXR 保留负值及 413.25 高光。隔离进程复用后，CandleGlass EXR、Pixel 6 Pro DNG、Sony A7 III 24.24MP ARW、Pentax K-1 36.38MP DNG 的 420×300 原像素窗口接口冷路径 155–388ms、热路径 72–110ms，四张各有 1,008,000 个 SDR 通道样本与全图导出一致。Windows Edge 桌面与平板触控模拟持按约 2.5 秒各显示 15 个变化帧，首帧 109/132ms，最长间隔 188/179ms，窗口保持 431×300/434×300。四种视口重开保存通过。scene-linear-v3 增加有序径向旋转选区与渐变局部调色。上述四张各验 43,194 个选区外像素完全不变、1,008,000 个 SDR 通道样本与全图导出一致，12 次局部参数更新热请求 80–152ms。保留局部配方时，桌面/平板模拟触控的曝光持按各 15 帧，首帧 128/149ms。新增 1536×900 原像素窗口逐值验收和导出期间连续调色。移动真机、适屏预览、曲线和局部控件、高位深笔刷绘制、图层、修复与液化待验。 [并行实测](#r01-和-f07-导出期间持续原像素调色)[母版查看器][ours-viewer] · [媒体][ours-media] · [母版实测][ours-master-qa]                          | **P0**。把同一精度配方跨窗口、局部、图层、修复和导出重放，蒙版外与未编辑通道精确相等。验收 1:1 帧连续和原像素，不可用时给明确能力提示。 |
 | F08 Display-P3、ICC、场景工作空间及显示          | —                                                      | —                                                                                      | LittleCMS、babl、OpenColorIO 和 CanvasKit 的 ICC/空间/显示分工。                                                   | **部分**。嵌入 RGB ICC 可显式转 sRGB，P3 输入做过 CMS 参考比对。广色域编辑/输出、可选 primaries、HDR 显示器实测和软打样未完整。[媒体][ours-media]                                                                           | **P0**。sRGB/P3/场景线性色卡，在两台相应显示设备和编码文件上对照。记录设备模式、转换 intent、白点和误差。                               |
-| F09 手机 Ultra HDR / 增益图与 HEIC HDR | — | — | libultrahdr 参考解码、Sharp/libvips 增益图编码与 Krita HDR 显示。ColorOS 17 声明部分 AI 编辑可保留 ProXDR，未公开交换格式。[Android 规范][ultrahdr-spec] · [ColorOS 17][op-17] | **部分**。四张 Pixel 6 Pro Display P3 Ultra HDR JPEG 已验原件、线性母版、全局及局部配方、原像素窗口、PNG16/TIFF16/EXR32、原尺寸与奇数尺寸的 Ultra HDR JPEG 导出。SDR 共用高光映射。实拍误差和浏览器证据见 [手机 HDR 往返](#f09-手机-ultra-hdr-jpeg-往返)。[媒体][ours-media] | **P0**。继续核对 iPhone HEIC/ISO 增益图、手机 HDR/SDR 屏和系统相册。裁切与曝光后核对基图、增益图方向和几何、色阶、元数据与相册重开。 |
+| F09 手机 Ultra HDR / 增益图与 HEIC HDR | — | — | libultrahdr 参考解码、Sharp/libvips 增益图编码、libheif NCLX 与 HEVC 解码。ColorOS 17 声明部分 AI 编辑可保留 ProXDR，未公开交换格式。[Android 规范][ultrahdr-spec] · [Apple HDR][apple-hdr-samples] · [ColorOS 17][op-17] | **部分**。四张 Pixel 6 Pro Display P3 增益图原片、五张 Apple Rec.2020 HEIC PQ 样片已验原件保留。两组各四张完整核对原像素调色、PNG16/TIFF16/EXR32 和带增益图的 HDR JPEG。10/12 位 PQ 通过数值测试。[JPEG 往返](#f09-手机-ultra-hdr-jpeg-往返) · [HEIC PQ 往返](#f09-apple-heic-pq-往返) | **P0**。继续核对 Apple 旧辅助增益图、ISO 增益图、HEIC 同容器导出、手机 HDR/SDR 屏和系统相册。裁切与曝光后核对基图、增益图方向和几何、色阶、元数据与相册重开。 |
 | F10 CMYK 输入、编辑、软打样和印前输出            | —                                                      | —                                                                                      | LittleCMS ICC、Krita CMYK、ImageMagick profile 与目标纸张 ICC。                                                    | **部分**。接受有 ICC 的 8 位 CMYK JPEG/TIFF 并转 sRGB。缺 16 位 CMYK、目标纸张软打样、印刷意图/墨量、CMYK 输出。[媒体][ours-media]                                                                                          | **P1**。以两种目标纸张 ICC、灰平衡及黑版样张比较 RGB→CMYK→预览，输出 ICC/位深和第三方重开一致。                                         |
 | F11 PSD/PSB 可编辑往返                           | —                                                      | PC 宣称支持打开 PSD，未公开文本/智能对象/高位深双向兼容。[PC][mt-pc]                   | ag-psd writer 位深矩阵、psd-tools 低层结构、GIMP/Photopea 行为对照。[Photopea 文档][photopea-doc]                  | **部分**。PSD v1 RGB/灰度 8/16 位有界合成图、图层元数据与原件。没有可编辑 PSD 回写，PSB/CMYK/32 位入口受限。[媒体][ours-media]                                                                                              | **P1**。固定版本样本含组、alpha、调整层、文字、智能对象、ICC 与 8/16/32 位。第三方打开逐层比较，逐项说明完整、可保留或只读。            |
 | F12 元数据、保密交付和水印策略                   | —                                                      | PC 可批量加水印，移动有标记/马赛克。[批处理][mt-batch] · [iOS][mt-ios]                 | 小米相册保护水印、隐私分享。[小米相册][mi-gallery]                                                                 | **部分**。媒体和配方记录来源、方向、色彩、哈希。可画遮罩，专用 EXIF/GPS/嵌入预览隐私导出与批量水印未完整。[媒体][ours-media]                                                                                                | **P0**。显式选择保留色彩并去隐私元数据。完全遮盖导出核对像素、EXIF、缩略图、隐藏层和原图引用，回读时无残留。                            |
@@ -198,7 +198,22 @@ Edge 桌面在 Nikon 45.75MP 的整图转换期间持按曝光约 2.57 秒，48 
 | 06 | 5.61719 | 0.02409 | 0.00905 |
 | 08 | 4.43750 | 0.02053 | 0.02070 |
 
-首次复测发现 SDR 窗口在曝光上调后亮部裁成白色，最长 526ms 没有可辨变化。共用 SDR 高光映射后，Edge 桌面 430×300 和模拟平板 435×300 窗口分别显示 26 和 23 个原像素变化帧，首变化约 114/136ms，最长间隔约 114/136ms。桌面实际下载 Ultra HDR JPEG，模拟平板下载 EXR32，320 像素模拟手机下载 TIFF16。含 844×390 横屏的四种视口均保存、重开，横向溢出为零。EXR32 与 Ultra HDR JPEG 继续保留高光，浏览器窗口的显示映射与 SDR 交付一致。真机 HDR 显示、系统相册重开及 HEIC 继续验收。[API 契约][ours-api] · [浏览器脚本][ours-master-qa]
+首次复测发现 SDR 窗口在曝光上调后亮部裁成白色，最长 526ms 没有可辨变化。共用 SDR 高光映射后，Edge 桌面 430×300 和模拟平板 435×300 窗口分别显示 26 和 23 个原像素变化帧，首变化约 114/136ms，最长间隔约 114/136ms。桌面实际下载 Ultra HDR JPEG，模拟平板下载 EXR32，320 像素模拟手机下载 TIFF16。含 844×390 横屏的四种视口均保存、重开，横向溢出为零。EXR32 与 Ultra HDR JPEG 继续保留高光，浏览器窗口的显示映射与 SDR 交付一致。真机 HDR 显示和系统相册重开继续验收。[API 契约][ours-api] · [浏览器脚本][ours-master-qa]
+
+### F09 Apple HEIC PQ 往返
+
+Apple HDR 示例包的 01、02、03、07 均为 10 位 Rec.2020 ST 2084 实拍。实际尺寸分别为 2960×3948、3024×4032、2600×3468 和 4032×3024。Linux API 在 2 CPU、4 GiB 容器中验证原文件 SHA-256、参考白 203 cd/m²、带高光的有符号 EXR32、局部及全局配方保存和版本冲突。导入含 DZI 图块耗时 6.63–10.13 秒，原生解码峰值 RSS 230–308MiB。每张测 12 个 420×300 热窗口，范围 78–146ms。每张共 1,008,000 个窗口与全图 PNG16/TIFF16 通道样本逐值一致，43,194 个选区外像素未受局部调色影响。合成 10/12 位回归分别对照 2,304 个通道值，12 位样本核实声明的 180 cd/m² 参考白。[Apple 样片来源][apple-hdr-samples] · [API 复现脚本](../../scripts/qa/master-pipeline.ts) · [数值回归](../../packages/media/test/precision.test.ts)
+
+同一版本的 EXR32 与全图或 513×389 裁切 Ultra HDR JPEG 经独立解码对照。下表以线性参考白 1.0 为尺度。
+
+| Apple 样片 | 全图重建最大值 | 全图 RGB MAE | 裁切 RGB MAE |
+| --- | --- | --- | --- |
+| 01 | 5.03516 | 0.00514 | 0.01253 |
+| 02 | 2.29492 | 0.00541 | 0.01225 |
+| 03 | 4.82813 | 0.00310 | 0.01980 |
+| 07 | 2.96680 | 0.00434 | 0.00247 |
+
+Edge 桌面另通过正常界面导入样片 08，下载比对 748,227 个原件字节。桌面 430×300 与模拟平板 435×300 原像素窗口在持按曝光期间分别显示 23、26 个更新帧，首变化 139/110ms，最长间隔 202/120ms。桌面、模拟平板和 320 像素窄屏实际下载 Ultra HDR JPEG、EXR32、TIFF16。含 844×390 横屏的四种视口均核对导入预算、调色保存和重开，横向溢出为零。该路径覆盖单幅不透明 PQ，编辑交付格式为 EXR32 或带增益图的 JPEG。HEIC 同容器输出、辅助或 ISO 增益图、HLG 及真机显示继续验收。此代码在生产媒体镜像及真实 PostgreSQL 下通过 1,045 项测试，零失败和跳过。[浏览器复现脚本][ours-master-qa] · [媒体契约][ours-media]
 
 ### H17 自动抠图实拍复测
 
@@ -446,4 +461,5 @@ Edge 桌面在 Nikon 45.75MP 的整图转换期间持按曝光约 2.57 秒，48 
 [pixel-ultrahdr]: https://github.com/MishaalRahmanGH/Ultra_HDR_Samples/tree/de109721ca479b2b0f31cc709e70b614531b413f
 [ultrahdr-spec]: https://developer.android.com/media/platform/hdr-image-format
 [ultrahdr-reference]: https://github.com/google/libultrahdr/blob/5f117294cb701170b9198ed8eae16270aa84896c/ultrahdr_api.h
+[apple-hdr-samples]: https://developer.apple.com/documentation/uikit/supporting-hdr-images-in-your-app
 [p3m-dataset]: https://github.com/JizhiziLi/P3M

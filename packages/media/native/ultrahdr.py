@@ -4,17 +4,11 @@ import ctypes as c
 from pathlib import Path
 
 import numpy as np
+from color_space import GAMUT_NAMES, linear_rec709
 
 
 RGBA_HALF_FLOAT = 4
 LINEAR_TRANSFER = 0
-GAMUT_NAMES = {0: "Rec.709", 1: "Display P3", 2: "Rec.2020"}
-TO_REC709 = {
-    1: np.array([[1.22494018, -0.22494018, 0], [-0.04205695, 1.04205695, 0],
-                 [-0.01963755, -0.07863605, 1.09827360]], dtype=np.float32),
-    2: np.array([[1.66049100, -0.58764114, -0.07284986], [-0.12455047, 1.13289990, -0.00834942],
-                 [-0.01815076, -0.10057890, 1.11872966]], dtype=np.float32),
-}
 
 
 class DecodeStatus(c.Structure):
@@ -106,11 +100,3 @@ def orient(pixels, orientation):
         return pixels.swapaxes(0, 1)[:: -1 if orientation in (7, 8) else 1,
                                      :: -1 if orientation in (6, 7) else 1]
     return pixels
-
-
-def linear_rec709(band, gamut):
-    linear = band.astype(np.float32)
-    if not np.all(np.isfinite(linear)):
-        raise ValueError("Ultra HDR gain map produced non-finite samples")
-    matrix = TO_REC709.get(gamut)
-    return linear if matrix is None else linear @ matrix.T

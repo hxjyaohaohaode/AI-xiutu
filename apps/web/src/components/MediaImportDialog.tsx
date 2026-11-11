@@ -16,6 +16,7 @@ interface Capabilities {
   maxRawPixels: number;
   maxHdrPixels: number;
   maxPsdPixels: number;
+  heicPq?: { available: boolean; maxPixels: number; maxBytes: number };
   maxInputBytes: number;
   rasterFormats: string[];
   maxChunkBytes: number;
@@ -305,6 +306,12 @@ export function MediaImportDialog({
               <span>
                 {Math.floor(caps.maxChunkBytes / 1024 ** 2)} {t('MiB 分片续传')}
               </span>
+              {caps.available && caps.heicPq?.available && (
+                <span>
+                  HEIC PQ · {(caps.heicPq.maxPixels / 1e6).toLocaleString(getLocale())}{' '}
+                  {t('百万像素')} · {Math.floor(caps.heicPq.maxBytes / 1024 ** 2)} MiB
+                </span>
+              )}
             </div>
             <p className="control-note">
               {t('RAW / HDR 上限分别为')}

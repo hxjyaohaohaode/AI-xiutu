@@ -30,6 +30,7 @@ export interface NormalizedMediaOptions {
   memoryBytes: number;
   pythonExecutable?: string;
   ultraHdrLibrary?: string;
+  heicDecoder?: string;
 }
 function integer(
   value: number | undefined,
@@ -61,6 +62,11 @@ export function normalizeMediaOptions(
     (!isAbsolute(options.ultraHdrLibrary) || options.ultraHdrLibrary.includes('\0'))
   )
     throw new MediaProcessingError('Ultra HDR codec must be a trusted absolute path', 'unsupported');
+  if (
+    options.heicDecoder !== undefined &&
+    (!isAbsolute(options.heicDecoder) || options.heicDecoder.includes('\0'))
+  )
+    throw new MediaProcessingError('HEIC decoder must be a trusted absolute path', 'unsupported');
   const tileSize = options.tileSize ?? 512;
   if (![256, 512, 1024].includes(tileSize))
     throw new MediaProcessingError('Unsupported tile size', 'limit');
@@ -98,6 +104,7 @@ export function normalizeMediaOptions(
     ),
     ...(options.pythonExecutable ? { pythonExecutable: options.pythonExecutable } : {}),
     ...(options.ultraHdrLibrary ? { ultraHdrLibrary: options.ultraHdrLibrary } : {}),
+    ...(options.heicDecoder ? { heicDecoder: options.heicDecoder } : {}),
   };
 }
 type Waiter = {

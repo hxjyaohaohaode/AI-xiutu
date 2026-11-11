@@ -72,6 +72,41 @@ try {
           .getByRole('button', { name: '作品', exact: true })
           .click();
       }
+      let heicImport;
+      if (asset.pq) {
+        await page.getByRole('button', { name: '原片与专业格式', exact: true }).click();
+        const importer = page.getByRole('dialog', { name: '保留原件，轻量编辑', exact: true });
+        const chip = importer.locator('.media-import-limits').getByText(/^HEIC PQ/);
+        await chip.waitFor();
+        const limit = await chip.innerText();
+        const importOverflow = await importer.evaluate((node) => node.scrollWidth - node.clientWidth);
+        assert.ok(importOverflow <= 1);
+        await page.screenshot({ path: resolve(output, size.width + '-heic-import.png') });
+        heicImport = { limit, overflow: importOverflow };
+        const file = process.env.MEDIA_QA_BROWSER_PQ_FILE;
+        if (file && size.width === 1440) {
+          await importer.getByLabel('选择高精度原件', { exact: true }).setInputFiles(file);
+          const descriptor = page.waitForResponse(
+            (response) =>
+              response.request().method() === 'GET' &&
+              /\/v1\/assets\/[^/]+\/media$/.test(new URL(response.url()).pathname) &&
+              response.status() === 200,
+            { timeout: 90_000 },
+          );
+          await importer.getByRole('button', { name: '导入原件', exact: true }).click();
+          await importer.getByText('原件与母版已保存', { exact: true }).waitFor({ timeout: 90_000 });
+          const record = await (await descriptor).json();
+          assert.equal(record.descriptor.original.sampleEncoding, 'pq');
+          assert.equal(record.descriptor.linearMaster.bitDepth, 32);
+          const source = await context.request.get(new URL(record.downloads.original, origin).href);
+          assert.equal(source.status(), 200);
+          assert.deepEqual(await source.body(), await readFile(file));
+          heicImport.bytes = (await stat(file)).size;
+          heicImport.sourcePreserved = true;
+        }
+        await importer.getByRole('button', { name: '关闭窗口', exact: true }).click();
+        await importer.waitFor({ state: 'hidden' });
+      }
       const card = page.locator('.library-asset').filter({
         has: page.getByRole('button', {
           name: '打开素材 ' + asset.name,
@@ -163,7 +198,7 @@ try {
       const frame = preview.locator('.media-precision-frame img');
       const before = await frame.getAttribute('src');
       const downloadFormat = size.width === 1440
-        ? asset.gainMap ? 'Ultra HDR JPEG' : 'PNG 16-bit'
+        ? asset.gainMap || asset.pq ? 'Ultra HDR JPEG' : 'PNG 16-bit'
         : asset.tileComparison && size.width === 1024
           ? 'EXR 32-bit HDR'
           : asset.tileComparison && size.width === 320
@@ -450,6 +485,7 @@ try {
         ...size,
         asset: asset.name,
         nativeWindow: true,
+        heicImport,
         panAndZoom,
         liveNativeFrames,
         revision: revision.version,

@@ -24,14 +24,19 @@ import {
   MEDIA_MAX_GAIN_MAP_BYTES,
   MEDIA_MIN_GAIN_MAP_SIDE,
   MEDIA_MAX_GAIN_MAP_SIDE,
+  MEDIA_MAX_HEIC_PQ_PIXELS,
+  MEDIA_MAX_HEIC_PQ_BYTES,
+  MEDIA_MIN_HEIC_PQ_SIDE,
+  MEDIA_MAX_HEIC_PQ_SIDE,
   MEDIA_MAX_PREVIEW_EDGE,
 } from './types.js';
 const probes = new Map<string, { at: number; versions: Record<string, string> | null }>();
 async function probeNative(
   path: string,
   gainMapLibrary: string,
+  heicDecoder: string,
 ): Promise<Record<string, string> | null> {
-  const key = JSON.stringify([path, gainMapLibrary]);
+  const key = JSON.stringify([path, gainMapLibrary, heicDecoder]);
   const cached = probes.get(key);
   if (cached && Date.now() - cached.at < 60_000) return cached.versions;
   const versions = await new Promise<Record<string, string> | null>((resolve) => {
@@ -41,15 +46,21 @@ async function probeNative(
         '-I',
         '-c',
         [
-          'import ctypes,json,sys,rawpy,OpenImageIO as o,numpy',
+          'import ctypes,json,subprocess,sys,rawpy,OpenImageIO as o,numpy',
           'v={"rawpy":rawpy.__version__,"openimageio":o.VERSION_STRING,"numpy":numpy.__version__,"libraw":".".join(map(str,rawpy.libraw_version))}',
           'if sys.argv[1]:',
           ' try:',
           '  codec=ctypes.CDLL(sys.argv[1]); codec.uhdr_get_decoded_image; v["ultrahdr"]="reference decoder"',
           ' except (OSError, AttributeError): pass',
+          'if sys.argv[2]:',
+          ' try:',
+          '  result=subprocess.run([sys.argv[2],"--probe"],capture_output=True,text=True,timeout=2,check=True)',
+          '  v["heic"]=result.stdout.strip()',
+          ' except (OSError, ValueError, subprocess.SubprocessError): pass',
           'print(json.dumps(v))',
         ].join('\n'),
         gainMapLibrary,
+        heicDecoder,
       ],
       {
         timeout: 5000,
@@ -90,7 +101,12 @@ async function probeNative(
 
 /** Deployment availability, distinct from an image's successful decode or an editor's precision. */
 export async function getMediaCapabilities(
-  options: { pythonExecutable?: string; maxPixels?: number; ultraHdrLibrary?: string } = {},
+  options: {
+    pythonExecutable?: string;
+    maxPixels?: number;
+    ultraHdrLibrary?: string;
+    heicDecoder?: string;
+  } = {},
 ) {
   let isolated = false,
     nativeConfigured = false;
@@ -110,8 +126,9 @@ export async function getMediaCapabilities(
     }
   const gainMapLibrary =
     options.ultraHdrLibrary && isAbsolute(options.ultraHdrLibrary) ? options.ultraHdrLibrary : '';
+  const heicDecoder = options.heicDecoder && isAbsolute(options.heicDecoder) ? options.heicDecoder : '';
   const nativeVersions = nativeConfigured
-    ? await probeNative(options.pythonExecutable!, gainMapLibrary)
+    ? await probeNative(options.pythonExecutable!, gainMapLibrary, heicDecoder)
     : null;
   return {
     protocol: 'media-v1' as const,
@@ -136,6 +153,14 @@ export async function getMediaCapabilities(
       maxBytes: MEDIA_MAX_GAIN_MAP_BYTES,
       minSide: MEDIA_MIN_GAIN_MAP_SIDE,
       maxSide: MEDIA_MAX_GAIN_MAP_SIDE,
+    },
+    heicPq: {
+      available: isolated && !!nativeVersions?.heic,
+      maxPixels: Math.min(options.maxPixels ?? MEDIA_DEFAULT_MAX_PIXELS, MEDIA_MAX_HEIC_PQ_PIXELS),
+      maxBytes: MEDIA_MAX_HEIC_PQ_BYTES,
+      minSide: MEDIA_MIN_HEIC_PQ_SIDE,
+      maxSide: MEDIA_MAX_HEIC_PQ_SIDE,
+      bitDepths: [10, 12],
     },
     maxConcurrent: 1,
     maxQueued: 8,

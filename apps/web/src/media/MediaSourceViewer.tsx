@@ -99,7 +99,8 @@ export function MediaSourceViewer({ assetId }: { assetId: string }) {
         } else if (
           input === 'linear-master' &&
           record.descriptor.original.sampleEncoding !== 'sensor-raw' &&
-          record.descriptor.original.sampleEncoding !== 'gain-map'
+          record.descriptor.original.sampleEncoding !== 'gain-map' &&
+          record.descriptor.original.sampleEncoding !== 'pq'
         )
           setEdit({ ...NEUTRAL_PRECISION_EDIT, toneMap: 'reinhard' });
       })
@@ -475,7 +476,8 @@ export function MediaSourceViewer({ assetId }: { assetId: string }) {
                       toneMap:
                         precisionInput === 'linear-master' &&
                         descriptor.original.sampleEncoding !== 'sensor-raw' &&
-                        descriptor.original.sampleEncoding !== 'gain-map'
+                        descriptor.original.sampleEncoding !== 'gain-map' &&
+                        descriptor.original.sampleEncoding !== 'pq'
                           ? 'reinhard'
                           : 'none',
                     });
