@@ -499,6 +499,7 @@ try {
     check,
     capture,
     until,
+    closeDialog,
     authControl,
     measureReachable,
     report,

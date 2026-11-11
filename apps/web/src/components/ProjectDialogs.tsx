@@ -167,6 +167,7 @@ export function ExportDialog({
   const locked = useRef(false);
   const current = useRef({ editor, sourcePending, format, quality });
   current.current = { editor, sourcePending, format, quality };
+  const exportName = `${filenameBase(editor.file?.name ?? '作品')}-编辑.${format === 'jpeg' ? 'jpg' : format}`;
   function releasePrepared() {
     const previous = preparedRef.current;
     preparedRef.current = null;
@@ -198,7 +199,6 @@ export function ExportDialog({
       sourcePending: current.current.sourcePending || current.current.editor.loading,
     });
     const guard = createSourceLoadGuard(read);
-    const name = `${filenameBase(editor.file.name)}-编辑.${format === 'jpeg' ? 'jpg' : format}`;
     releasePrepared();
     setPrepared(null);
     setBusy(true);
@@ -207,7 +207,7 @@ export function ExportDialog({
       const result = await prepareBoundImageExport(
         read,
         () => editor.exportImage(format, quality),
-        name,
+        exportName,
       );
       if (!live.current || request !== generation.current) {
         if (result) URL.revokeObjectURL(result.url);
@@ -306,11 +306,7 @@ export function ExportDialog({
       )}
       <div className="export-summary">
         <span>{t('文件名')}</span>
-        <strong>
-          {filenameBase(editor.file?.name ?? t('作品'))}
-          {t('-编辑.')}
-          {format === 'jpeg' ? 'jpg' : format}
-        </strong>
+        <strong>{ready?.name ?? exportName}</strong>
         <span>{t('照片处理')}</span>
         <strong>{t('当前调色、构图和局部调整')}</strong>
       </div>

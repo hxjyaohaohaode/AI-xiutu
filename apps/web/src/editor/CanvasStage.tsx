@@ -471,6 +471,8 @@ export function CanvasStage({
   }, []);
   useEffect(() => {
     const down = (event: KeyboardEvent) => {
+      // A retained editor behind the public introduction must not consume page keys.
+      if (!viewport.current || viewport.current.closest('[hidden], [inert]')) return;
       if (
         event.code === 'Space' &&
         !isTyping(event.target) &&

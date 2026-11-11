@@ -51,7 +51,7 @@ const messages: Record<string, readonly [string, string]> = {
   使用说明: ['Help and shortcuts', '使用說明'],
   服务点与明细: ['Credits and activity', '服務點與明細'],
   搜索工具与操作: ['Search tools and actions', '搜尋工具與操作'],
-  '搜索曲线、局部、导出…': ['Search curves, masks, export…', '搜尋曲線、區域性、匯出…'],
+  '搜索曲线、局部、导出…': ['Search curves, masks, export…', '搜尋曲線、局部、匯出…'],
   清空搜索: ['Clear search', '清空搜尋'],
   工具与操作: ['Tools and actions', '工具與操作'],
   当前不可用: ['Currently unavailable', '目前無法使用'],
@@ -127,7 +127,7 @@ const messages: Record<string, readonly [string, string]> = {
   ],
   '收起面板可看全图，重新展开会恢复当前尺寸和参数。': [
     'Collapse to see the full photo. Reopening restores the current size and settings.',
-    '收起面板可看全圖，重新展開會還原目前尺寸與引數。',
+    '收起面板可看全圖，重新展開會還原目前尺寸與參數。',
   ],
   恢复此面板布局: ['Reset this panel', '還原此面板版面'],
   '从{edge}调整{title}面板，Alt加方向键可1像素微调': [

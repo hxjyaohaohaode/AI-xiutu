@@ -661,7 +661,7 @@ export const usageTraditional: Readonly<Record<string, string>> = {
   已消耗: '已消耗',
   已释放: '已釋放',
   运营调整: '運營調整',
-  参数建议: '引數建議',
+  参数建议: '參數建議',
   文字创作: '文字創作',
   语音转文字: '語音轉文字',
   智能体对话: '智慧體對話',

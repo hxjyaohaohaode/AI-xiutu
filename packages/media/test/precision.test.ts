@@ -78,7 +78,7 @@ test('native master grading exports true 16bit edited samples, retains immutable
 });
 
 test(
-  'native float editing preserves negative channels, HDR headroom and associated alpha through an actual EXR round trip',
+  'native float editing keeps EXR windows, pixel aspect, negative channels, headroom and associated alpha',
   { skip: !process.env.MEDIA_QA_PYTHON },
   async () => {
     const python = process.env.MEDIA_QA_PYTHON!,
@@ -88,7 +88,13 @@ test(
         workDir = join(dir, 'media');
       await execute(python, [
         '-c',
-        'import OpenImageIO as o,numpy as n,sys; s=o.ImageSpec(3,2,4,o.FLOAT); s.attribute("oiio:ColorSpace","linear Rec.709"); p=n.array([[[-0.125,2,8,1],[0.5,1,2,0.5],[0,0,0,0]],[[0.18,0.25,0.37,1],[4,8,16,1],[0.00001,0.00002,0.00003,1]]],dtype=n.float32); out=o.ImageOutput.create(sys.argv[1]); out.open(sys.argv[1],s); out.write_image(p); out.close()',
+        `import OpenImageIO as o,numpy as n,sys
+s=o.ImageSpec(3,2,4,o.FLOAT)
+s.x,s.y,s.full_x,s.full_y,s.full_width,s.full_height=-7,13,-31,9,49,19
+s.attribute("PixelAspectRatio",1.5)
+s.attribute("oiio:ColorSpace","Linear")
+p=n.array([[[-0.125,2,8,1],[0.5,1,2,0.5],[0.0625,0.125,1,0]],[[0.18,0.25,0.37,1],[4,8,16,1],[0.00001,0.00002,0.00003,1]]],dtype=n.float32)
+out=o.ImageOutput.create(sys.argv[1]); assert out.open(sys.argv[1],s); assert out.write_image(p); out.close()`,
         inputPath,
       ]);
       const descriptor = await processMedia({
@@ -110,11 +116,23 @@ test(
       assert.equal(result.precisionEdit?.input, 'linear-master');
       const read = await execute(python, [
         '-c',
-        'import OpenImageIO as o,json,sys; i=o.ImageInput.open(sys.argv[1]); s=i.spec(); p=i.read_image(format=o.FLOAT); i.close(); print(json.dumps({"format":str(s.format),"data":p.tolist()}))',
+        `import OpenImageIO as o,json,sys
+result=[]
+for path in sys.argv[1:]:
+    i=o.ImageInput.open(path); s=i.spec(); p=i.read_image(format=o.FLOAT); i.close()
+    result.append({"format":str(s.format),"data":p.tolist(),"window":[s.x,s.y,s.width,s.height,s.full_x,s.full_y,s.full_width,s.full_height],"aspect":s.getattribute("PixelAspectRatio"),"color":s.getattribute("oiio:ColorSpace")})
+print(json.dumps(result))`,
+        join(workDir, 'linear-master.exr'),
         outputPath,
       ]);
-      const decoded = JSON.parse(read.stdout);
-      assert.equal(decoded.format, 'float');
+      const [master, decoded] = JSON.parse(read.stdout);
+      for (const image of [master, decoded]) {
+        assert.equal(image.format, 'float');
+        assert.deepEqual(image.window, [-7, 13, 3, 2, -31, 9, 49, 19]);
+        assert.equal(image.aspect, 1.5);
+        assert.equal(image.color, 'lin_rec709_scene');
+        assert.deepEqual(image.data[0][2], [0.0625, 0.125, 1, 0]);
+      }
       assert.deepEqual(decoded.data[0][0], [-0.25, 4, 16, 1]);
       assert.deepEqual(decoded.data[0][1], [1, 2, 4, 0.5]);
       assert.deepEqual(decoded.data[1][1], [8, 16, 32, 1]);

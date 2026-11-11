@@ -11,6 +11,7 @@ import { setLocale, t } from '../src/i18n/index.ts';
 import { english } from '../src/i18n/messages-en.ts';
 import { traditional } from '../src/i18n/messages-zh-TW.ts';
 import { ParameterShelf } from '../src/editor/ParameterShelf.tsx';
+import { InlineError } from '../src/components/Ui.tsx';
 import { renderTestMarkup } from './support/render.ts';
 
 function deferred<T>() {
@@ -150,6 +151,46 @@ test('Traditional interface actions use the same Taiwan terminology as the intro
   assert.equal(traditional['用户'], '使用者');
   assert.equal(traditional['画笔'], '筆刷');
   assert.equal(traditional['保存版本'], '儲存版本');
+});
+
+test('photo editing terminology keeps parameters and local adjustments distinct from function arguments and locality', () => {
+  assert.equal(traditional['局部'], '局部');
+  assert.equal(traditional['编辑参数'], '編輯參數');
+  assert.equal(traditional['图像参数'], '圖像參數');
+  assert.equal(traditional['参数作用范围'], '參數作用範圍');
+  for (const [source, message] of Object.entries(traditional)) {
+    if (source.includes('参数'))
+      assert.ok(!message.includes('引數'), `Image/model setting must use 參數: ${source}`);
+    if (source.includes('局部'))
+      assert.ok(!message.includes('區域性'), `Local image editing must use 局部: ${source}`);
+  }
+});
+
+test('the error display translates the known portrait PNG diagnostic and leaves unknown diagnostics intact', async () => {
+  const expected = {
+    'zh-CN': '人物素材需要透明 PNG 格式。',
+    'zh-TW': '人物素材需要透明 PNG 格式。',
+    en: 'Portrait cutouts require a transparent PNG.',
+  };
+  try {
+    for (const locale of ['zh-CN', 'zh-TW', 'en'] as const) {
+      await setLocale(locale);
+      const known = renderTestMarkup(
+        createElement(InlineError, {
+          message: '人物素材需要透明 PNG 格式。',
+        }),
+      );
+      assert.ok(known.includes(expected[locale]));
+      const unknown = renderTestMarkup(
+        createElement(InlineError, {
+          message: 'Unrecognized provider diagnostic request-7',
+        }),
+      );
+      assert.ok(unknown.includes('Unrecognized provider diagnostic request-7'));
+    }
+  } finally {
+    await setLocale('zh-CN');
+  }
 });
 
 test('declared application-copy literals have both English and Traditional Chinese translations', () => {

@@ -11,13 +11,16 @@ from pathlib import Path
 
 import numpy as np
 import OpenImageIO as oiio
+from exr_layout import apply_layout, capture_layout
 
 
-def write_image(path, pixels, kind, colorspace, unassociated=False):
+def write_image(path, pixels, kind, colorspace, unassociated=False, layout=None):
     height, width, channels = pixels.shape
     spec = oiio.ImageSpec(width, height, channels, kind)
     spec.attribute("oiio:ColorSpace", colorspace)
     spec.attribute("compression", "zip")
+    if layout is not None:
+        apply_layout(spec, layout)
     if unassociated and channels == 4:
         spec.attribute("oiio:UnassociatedAlpha", 1)
     spec.tile_width = 256
@@ -82,6 +85,7 @@ def main():
             names = list(spec.channelnames)
             if channels == 4 and "A" not in names:
                 raise ValueError("Four-channel HDR requires an explicit alpha channel")
+            layout = capture_layout(spec)
             pixels = image.read_image(format=oiio.FLOAT)
             if pixels is None:
                 raise ValueError("HDR decode failed")
@@ -99,7 +103,7 @@ def main():
             if "A" in names:
                 indices.append(names.index("A"))
             pixels = pixels[:, :, indices]
-        write_image(destination.with_name("linear-master.exr"), pixels, oiio.FLOAT, "Linear")
+        write_image(destination.with_name("linear-master.exr"), pixels, oiio.FLOAT, "Linear", layout=layout)
         rgb = np.maximum(pixels[:, :, :3], 0)
         # OIIO's default input convention is associated alpha. Tone mapping is
         # nonlinear, so work on straight color, then declare the TIFF unassociated.
@@ -115,7 +119,7 @@ def main():
             encoded = np.concatenate([encoded, np.clip(pixels[:, :, 3:4], 0, 1)], axis=2)
         result = np.rint(np.clip(encoded, 0, 1) * 65535).astype(np.uint16)
         write_image(destination, result, oiio.UINT16, "sRGB", unassociated=True)
-        warnings = ["HDR is interpreted as linear Rec.709/sRGB; explicit unsupported primaries/transfer are rejected. The decoded float32 EXR data window and original are retained; the editor proxy uses fixed luminance Reinhard SDR tone mapping, clipping negative/out-of-gamut SDR values. This is not an HDR monitor/edit pipeline."]
+        warnings = ["HDR is interpreted as linear Rec.709/sRGB; explicit unsupported primaries/transfer are rejected. The float32 master retains the source data window, display window and pixel aspect ratio. The SDR proxy uses data-window pixels and fixed luminance Reinhard tone mapping, clipping negative/out-of-gamut SDR values."]
     else:
         raise ValueError("Unknown native decoder kind")
     Path(request["resultPath"]).write_text(json.dumps({"source": source_info, "native": native, "warnings": warnings,

@@ -43,4 +43,5 @@ export const finalEnglish: Readonly<Record<string, string>> = {
     'This browser does not provide JPEG encoding. Choose PNG or another supported format.',
   '这个浏览器未提供 WEBP 编码，请选择 PNG 或其他可用格式。':
     'This browser does not provide WEBP encoding. Choose PNG or another supported format.',
+  '人物素材需要透明 PNG 格式。': 'Portrait cutouts require a transparent PNG.',
 };

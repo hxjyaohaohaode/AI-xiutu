@@ -25,4 +25,15 @@ Parameters are inserted once and never translated recursively. Unknown messages 
 
 The English catalog is split by feature. `traditional-generated.ts` contains the Traditional Chinese baseline with reviewed Taiwan terminology; account, workspace, and usage catalogs supply feature-specific phrasing. Core vocabulary is consistent with the introduction: 儲存, 匯出, 匯入, 專案, 本機, 帳號, 使用者, 檔案, 載入, 預設, 滑鼠, 螢幕, 筆刷, and 遮罩. These are precompiled dictionary values, never replacements applied to user text. Add exact messages to both languages whenever adding application copy. Do not use a DOM text replacement pass or a runtime script converter on arbitrary page content.
 
+### Reviewing a regenerated Traditional baseline
+
+Script conversion supplies a draft, not domain terminology. Before writing a regenerated baseline or a feature override, apply the following source-aware vocabulary rules to application-copy **values** only:
+
+| Source context                                                      | Required Traditional term | Avoid                     |
+| ------------------------------------------------------------------- | ------------------------- | ------------------------- |
+| 参数 — editing controls, image/model settings, and their validation | 參數                      | 引數 (function arguments) |
+| 局部 — local selections, masks, and image adjustments               | 局部                      | 區域性 (locality)         |
+
+Preserve source keys and interpolation placeholders exactly. Do not run these rules on request payloads, API fields, editor data, filenames, or user/model text. The glossary assertions in `test/i18n.test.ts` check the merged baseline and feature overrides, including the actual toolbar and panel headings, so regenerating a catalog cannot silently restore these conversion errors.
+
 `test/i18n.test.ts` checks lazy-loading transactions, stale requests, load failure and retry, parameter preservation, catalog interpolation slots, declared source-copy coverage, numeric-tool metadata, and actual parameter control rendering in all three languages. Those checks do not replace browser layout review, user-content checks, or the backend contract tests.

@@ -3,16 +3,72 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
-    <meta name="theme-color" content="#f6f5f1" />
+    <meta name="theme-color" content="#f5f3ee" />
     <meta
       name="description"
       content="一起把画面变成心里的样子。自在修图、保存版本，与团队共同创作。"
     />
     <title>创作工作台</title>
     <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
+    <style>
+      .entry-loading {
+        position: fixed;
+        inset: 0;
+        min-height: 100svh;
+        display: grid;
+        place-content: center;
+        gap: 24px;
+        justify-items: center;
+        background: #f5f3ee;
+        color: #65675e;
+        font:
+          13px/1.6 system-ui,
+          sans-serif;
+      }
+      .entry-loading > span {
+        width: 64px;
+        height: 2px;
+        background: #a24c2e;
+        transform-origin: left;
+        animation: entry-loading 1.2s ease-in-out infinite alternate;
+      }
+      .entry-loading p {
+        margin: 0;
+      }
+      .entry-loading noscript {
+        padding: 0 24px;
+        max-width: 360px;
+        text-align: center;
+      }
+      @keyframes entry-loading {
+        from {
+          transform: scaleX(0.3);
+          opacity: 0.35;
+        }
+        to {
+          transform: scaleX(1);
+          opacity: 1;
+        }
+      }
+      @media (prefers-reduced-motion: reduce) {
+        .entry-loading > span {
+          animation: none;
+        }
+      }
+    </style>
   </head>
   <body>
-    <div id="root"></div>
+    <div id="root">
+      <div class="entry-loading" role="status" aria-label="正在加载 · 正在載入 · Loading">
+        <span aria-hidden="true"></span>
+        <p aria-hidden="true">映间</p>
+        <noscript
+          >请开启 JavaScript 后使用工作台。<br /><span lang="en"
+            >Enable JavaScript to open the studio.</span
+          ></noscript
+        >
+      </div>
+    </div>
     <script type="module" src="/src/main.tsx"></script>
   </body>
 </html>

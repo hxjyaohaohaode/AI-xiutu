@@ -4,6 +4,7 @@ import sys
 from pathlib import Path
 import numpy as np
 import OpenImageIO as oiio
+from exr_layout import apply_layout, capture_layout
 
 
 def main():
@@ -19,6 +20,7 @@ def main():
         if image.seek_subimage(1, 0):
             raise ValueError("Multipart float master is not supported")
         image.seek_subimage(0, 0)
+        layout = capture_layout(spec)
         pixels = image.read_image(format=oiio.FLOAT)
     finally:
         image.close()
@@ -54,7 +56,8 @@ def main():
             raise ValueError("Precision edit overflow")
         stripe[:, :, :3] = np.where(alpha > 0, result, stripe[:, :, :3])
     out_spec = oiio.ImageSpec(width, height, channels, oiio.FLOAT)
-    out_spec.attribute("oiio:ColorSpace", "linear Rec.709")
+    apply_layout(out_spec, layout)
+    out_spec.attribute("oiio:ColorSpace", "Linear")
     out_spec.attribute("compression", "zip")
     out = oiio.ImageOutput.create("precision.exr")
     if out is None or not out.open(request["outputPath"], out_spec):

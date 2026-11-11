@@ -220,7 +220,8 @@
       "scene-linear-v1的真实16位全局母版调色和原生float32 EXR导出，独立来源绑定",
       "团队PCM环形队列和单调时钟过期，保留同时多说话人与限幅",
       "工作台抠图显式使用guided-v2，浏览器直接编码RGBA8 PNG，真实下载与项目派生逐字节相同",
-      "有参考alpha的27个公开缩略样本覆盖两种三分图宽度，人工核查细枝、透明网格和彩绳的残影"
+      "有参考alpha的27个公开缩略样本覆盖两种三分图宽度，人工核查细枝、透明网格和彩绳的残影",
+      "保留HDR EXR的实际数据窗口、显示窗口、像素宽高比和线性Rec.709标记，八份官方样本逐样本复核"
     ],
     "pending": [
       "神经发丝、完整三维遮挡及更大规模人像质量评审",
@@ -234,6 +235,7 @@
       "artifacts/photo-quality/report.json",
       "artifacts/backend-depth-20261111/matte-reference.json",
       "artifacts/backend-depth-20261111/photo-cutout/report.json",
+      "artifacts/backend-depth-20261111/hdr-reference.json",
       "packages/media/test/precision.test.ts",
       "docs/BACKEND-DEPTH.md"
     ]

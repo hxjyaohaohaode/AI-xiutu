@@ -3,6 +3,8 @@
  * that harness. It creates no account, sends no SMS and starts no paid task.
  */
 import assert from 'node:assert/strict';
+import { createHash } from 'node:crypto';
+import sharp from 'sharp';
 
 const viewports = [
   { width: 1440, height: 960 },
@@ -30,6 +32,88 @@ async function canvasFingerprint(canvas) {
     }
     return { width: element.width, height: element.height, checksum, opaque };
   });
+}
+
+async function settledCanvasSnapshot(page, canvas, until) {
+  await page.locator('.site-studio').evaluate(async (element) => {
+    const finite = element
+      .getAnimations({ subtree: true })
+      .filter(
+        (animation) =>
+          animation.playState !== 'paused' &&
+          Number.isFinite(animation.effect?.getComputedTiming().iterations),
+      );
+    await Promise.allSettled(finite.map((animation) => animation.finished));
+    await new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve)));
+  });
+  let previous = '';
+  let unchanged = 0;
+  return until(async () => {
+    if ((await page.locator('.canvas-stage').getAttribute('aria-busy')) !== 'false') {
+      previous = '';
+      unchanged = 0;
+      return null;
+    }
+    const frame = await canvasFingerprint(canvas);
+    if (!frame?.opaque) return null;
+    const signature = `${frame.width}:${frame.height}:${frame.checksum}`;
+    unchanged = signature === previous ? unchanged + 1 : 0;
+    previous = signature;
+    return unchanged >= 2 ? frame : null;
+  }, 'the renderer and finite layout animations settle');
+}
+
+async function exportedImageSnapshot(page, closeDialog) {
+  await page.getByRole('button', { name: '导出', exact: true }).click();
+  const dialog = page.getByRole('dialog', { name: '导出图片', exact: true });
+  await dialog.waitFor();
+  await dialog.getByRole('button', { name: /^PNG/ }).click();
+  await dialog.getByRole('button', { name: '生成导出文件', exact: true }).click();
+  const link = dialog.getByRole('link', { name: '下载图片', exact: true });
+  await link.waitFor({ timeout: 60000 });
+  const pending = page.waitForEvent('download');
+  await link.click();
+  const download = await pending;
+  const stream = await download.createReadStream();
+  assert.ok(stream, 'The actual export action must provide a readable download');
+  const chunks = [];
+  for await (const chunk of stream) chunks.push(chunk);
+  assert.equal(await download.failure(), null);
+  const bytes = Buffer.concat(chunks);
+  const metadata = await sharp(bytes).metadata();
+  assert.equal(metadata.format, 'png');
+  const { data, info } = await sharp(bytes)
+    .ensureAlpha()
+    .raw()
+    .toBuffer({ resolveWithObject: true });
+  assert.deepEqual([info.width, info.height, info.channels], [1536, 1024, 4]);
+  await closeDialog(dialog);
+  return {
+    format: metadata.format,
+    width: info.width,
+    height: info.height,
+    pixelSha256: createHash('sha256').update(data).digest('hex'),
+  };
+}
+
+async function assertSampleSettings(page) {
+  assert.equal(await page.locator('.canvas-file-info > span').innerText(), 'color-study.webp');
+  assert.equal(await page.locator('.canvas-file-info > small').innerText(), '1536 × 1024');
+  const panel = page.locator('.free-panel[aria-hidden="false"]');
+  assert.equal(
+    await panel
+      .getByRole('button', { name: /^色温，/ })
+      .locator('small')
+      .innerText(),
+    '60%',
+  );
+  assert.equal(
+    await panel
+      .getByRole('button', { name: /^饱和度，/ })
+      .locator('small')
+      .innerText(),
+    '18%',
+  );
 }
 
 // About intentionally scrolls the document. Studio's existing measurement
@@ -89,6 +173,7 @@ export async function runSiteEntryChecks({
   check,
   capture,
   until,
+  closeDialog,
   authControl,
   measureReachable,
   report,
@@ -160,11 +245,14 @@ export async function runSiteEntryChecks({
           await colorPanel.getByRole('slider', { name: '饱和度', exact: true }).inputValue(),
           '18',
         );
+        const initialPreview = await settledCanvasSnapshot(page, canvas, until);
+        await assertSampleSettings(page);
         await capture(page, 'site-studio-retains-sample-adjustments');
+        const initialExport = await exportedImageSnapshot(page, closeDialog);
         const owner = await canvas.elementHandle();
         assert.ok(owner);
+        const previewRasters = { initial: initialPreview };
         try {
-          const editorPixels = await canvasFingerprint(canvas);
           await page.locator('.workspace-home-link').click();
           await page.locator('.about-page').waitFor();
           assert.equal(await page.locator('.site-studio').getAttribute('hidden'), '');
@@ -176,6 +264,35 @@ export async function runSiteEntryChecks({
             0,
             'Studio shortcuts must not open a hidden dialog over About',
           );
+          // A normal content click releases the old toolbar's focus without
+          // adding tabindex or test hooks to the public page.
+          await page.locator('.about-hero h1').click();
+          assert.equal(
+            await page.evaluate(() => {
+              const active = document.activeElement;
+              const heading = document.querySelector('.about-hero h1');
+              return active === document.body || active === heading || heading?.contains(active);
+            }),
+            true,
+            'Native page keys must target document content, not a button or input',
+          );
+          await page.keyboard.press('Control+Home');
+          await page.waitForFunction(() => scrollY === 0);
+          await page.keyboard.down('Space');
+          try {
+            await page.waitForFunction(() => scrollY > 20);
+            assert.equal(
+              await page
+                .locator('.site-studio .image-viewport')
+                .evaluate((element) => element.classList.contains('can-pan')),
+              false,
+              'The hidden editor must not enter Space-to-pan while About scrolls',
+            );
+          } finally {
+            await page.keyboard.up('Space');
+          }
+          await page.keyboard.press('Control+Home');
+          await page.waitForFunction(() => scrollY === 0);
           await page.locator('.about-hero-actions .about-primary').click();
           await page.locator('.site-studio:not([hidden])').waitFor();
           assert.equal(
@@ -186,10 +303,12 @@ export async function runSiteEntryChecks({
             ),
             true,
           );
+          previewRasters.returned = await settledCanvasSnapshot(page, canvas, until);
+          await assertSampleSettings(page);
           assert.deepEqual(
-            await canvasFingerprint(canvas),
-            editorPixels,
-            'Returning to Studio must retain the displayed edit',
+            await exportedImageSnapshot(page, closeDialog),
+            initialExport,
+            'Returning to Studio must retain the exact full-resolution edited pixels',
           );
           await capture(page, 'site-studio-retained-after-about');
           await page.goBack();
@@ -197,10 +316,12 @@ export async function runSiteEntryChecks({
           await page.goForward();
           await page.locator('.site-studio:not([hidden])').waitFor();
           assert.equal(await owner.evaluate((element) => element.isConnected), true);
+          previewRasters.historyReturn = await settledCanvasSnapshot(page, canvas, until);
+          await assertSampleSettings(page);
           assert.deepEqual(
-            await canvasFingerprint(canvas),
-            editorPixels,
-            'History navigation must not replace the source or remount the editor',
+            await exportedImageSnapshot(page, closeDialog),
+            initialExport,
+            'History navigation must retain the exact full-resolution edited pixels',
           );
           await page.locator('.workspace-home-link').click();
           await page.locator('.about-page').waitFor();
@@ -218,6 +339,10 @@ export async function runSiteEntryChecks({
           retainedCanvas: true,
           historyRoundTrip: true,
           hiddenShortcutsInactive: true,
+          nativeSpaceScroll: true,
+          hiddenEditorPanInactive: true,
+          previewRasters,
+          exportedImage: initialExport,
           apiMutations: 0,
         };
       },

@@ -359,6 +359,9 @@ export function AboutPage({
   }, []);
   useEffect(() => {
     document.title = brand + ' · ' + c.footer;
+    document.querySelector('meta[name="description"]')?.setAttribute('content', c.intro);
+  }, [brand, c.footer, c.intro]);
+  useEffect(() => {
     const root = page.current;
     if (
       !root ||
@@ -381,7 +384,7 @@ export function AboutPage({
       observer.observe(element);
     });
     return () => observer.disconnect();
-  }, [brand, c.footer]);
+  }, []);
   const features = [
     { title: c.precise, body: c.preciseBody, icon: <SlidersHorizontal size={24} /> },
     { title: c.ai, body: c.aiBody, icon: <Sparkle size={24} /> },

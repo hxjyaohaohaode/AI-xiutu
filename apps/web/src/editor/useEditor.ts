@@ -626,9 +626,20 @@ export function useEditor() {
   const commit = useCallback(
     (next: EditorRecipe, label = '调整照片') => {
       const safe = parseEditorRecipe(next);
-      replaceRecipe(safe);
-      if (JSON.stringify(historyRef.current[indexRef.current]?.recipe) === JSON.stringify(safe))
+      const serialized = JSON.stringify(safe);
+      const committed = historyRef.current[indexRef.current]?.recipe;
+      const sameAsHistory = JSON.stringify(committed) === serialized;
+      // Parameter navigation must not replace an unchanged recipe identity and
+      // enqueue another fast/settled frame. An interactive preview still needs
+      // immediate settlement, and a different visible draft must still restore.
+      if (
+        sameAsHistory &&
+        !interactiveInput.current &&
+        (recipeRef.current === committed || JSON.stringify(recipeRef.current) === serialized)
+      )
         return;
+      replaceRecipe(safe);
+      if (sameAsHistory) return;
       const items = [
         ...historyRef.current.slice(0, indexRef.current + 1),
         { recipe: safe, label },
