@@ -10,6 +10,9 @@ import {
   MEDIA_MAX_PROXY_PIXELS,
   MEDIA_MAX_SIDE,
   MEDIA_MAX_TILE_COUNT,
+  MEDIA_MAX_PRECISION_PIXELS,
+  MEDIA_MAX_LINEAR_PIXELS,
+  MEDIA_MAX_PREVIEW_EDGE,
 } from './types.js';
 const probes = new Map<string, { at: number; versions: Record<string, string> | null }>();
 async function probeNative(path: string): Promise<Record<string, string> | null> {
@@ -123,7 +126,9 @@ export async function getMediaCapabilities(
       master16: isolated,
       linearFloat: isolated && nativeVersions !== null,
       floatFormat: 'exr32',
-      maxPixels: 16_777_216,
+      maxPixels: MEDIA_MAX_PRECISION_PIXELS,
+      maxLinearPixels: MEDIA_MAX_LINEAR_PIXELS,
+      previewMaxEdge: MEDIA_MAX_PREVIEW_EDGE,
       controls: [
         'exposure',
         'temperature',

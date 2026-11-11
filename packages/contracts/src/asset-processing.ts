@@ -16,7 +16,7 @@ export const cutoutRequest = input
     sourceAssetId: assetId,
     settings: z
       .object({
-        algorithm: z.enum(['ray-v1', 'guided-v2', 'guided-v3']).optional(),
+        algorithm: z.enum(['ray-v1', 'guided-v2', 'guided-v3', 'guided-v4']).optional(),
         selection: z.unknown().refine((value) => value !== undefined),
         foreground: z.unknown().optional(),
         background: z.unknown().optional(),

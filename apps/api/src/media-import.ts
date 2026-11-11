@@ -2,9 +2,9 @@ import { constants, createReadStream } from 'node:fs';
 import { mkdir, open, readFile, rm, lstat, readdir, statfs } from 'node:fs/promises';
 import { join } from 'node:path';
 import { randomUUID, createHash } from 'node:crypto';
-import type { FastifyInstance } from 'fastify';
+import type { FastifyInstance, FastifyReply, FastifyRequest } from 'fastify';
 import { z } from 'zod';
-import { parsePrecisionEdit } from '@ai-xiutu/editor';
+import { NEUTRAL_PRECISION_EDIT, parsePrecisionEdit, type PrecisionEditV1 } from '@ai-xiutu/editor';
 import {
   processMedia,
   exportMedia,
@@ -12,7 +12,14 @@ import {
   MediaProcessingError,
   MEDIA_MAX_INPUT_BYTES,
   MEDIA_MAX_PIXELS,
+  MEDIA_MAX_PRECISION_PIXELS,
+  MEDIA_MAX_LINEAR_PIXELS,
+  MEDIA_MAX_PREVIEW_EDGE,
   type MediaDescriptorV1,
+  type MediaExportFormat,
+  type MediaGradeRevision,
+  type MediaPrecisionInput,
+  type MediaPrecisionPreview,
 } from '@ai-xiutu/media';
 import {
   transaction,
@@ -43,6 +50,39 @@ const safeName = z
   .max(200)
   .refine((value) => !/[\x00-\x1f\x7f/\\]/.test(value));
 const jobParams = z.object({ id });
+const sourceDigest = z.string().regex(/^[a-f0-9]{64}$/);
+const precisionInputSchema = z.enum(['master16', 'linear-master']);
+const gradeVersionSchema = z.number().int().min(1).max(2_147_483_647);
+const windowSchema = z
+  .object({
+    left: z.number().int().min(0).max(65_535),
+    top: z.number().int().min(0).max(65_535),
+    width: z.number().int().min(1).max(MEDIA_MAX_PREVIEW_EDGE),
+    height: z.number().int().min(1).max(MEDIA_MAX_PREVIEW_EDGE),
+  })
+  .strict();
+interface MediaAccess {
+  project_id: string;
+  object_id: string;
+  descriptor: MediaDescriptorV1;
+  canEdit: boolean;
+}
+interface GradeRow {
+  version: number;
+  source_sha256: string;
+  precision_input: MediaPrecisionInput;
+  edit: unknown;
+  created_at: Date;
+}
+function gradeDto(row: GradeRow): MediaGradeRevision {
+  return {
+    version: row.version,
+    sourceSha256: row.source_sha256,
+    precisionInput: row.precision_input,
+    edit: parsePrecisionEdit(row.edit),
+    createdAt: row.created_at.toISOString(),
+  };
+}
 const checksum = (bytes: Buffer) => createHash('sha256').update(bytes).digest('hex');
 const jobDto = (row: Record<string, any>) => ({
   id: row.id,
@@ -559,21 +599,68 @@ export function registerMediaImport(app: FastifyInstance, db: Database, config: 
     ).rows[0];
     return { ok: true, cleanupPending: Number(current?.reservation_bytes ?? 0) > 0 };
   });
-  async function sourceAccess(assetId: string, actor: string) {
+  async function sourceAccess(
+    assetId: string,
+    actor: string,
+    tx: Queryable = db,
+  ): Promise<MediaAccess> {
     const row = (
-      await db.query(
+      await tx.query<{
+        project_id: string;
+        object_id: string;
+        descriptor: MediaDescriptorV1;
+      }>(
         'SELECT a.project_id,m.object_id,o.descriptor FROM media_sources m JOIN assets a ON a.id=m.asset_id JOIN media_objects o ON o.id=m.object_id WHERE m.asset_id=$1 AND a.deleted_at IS NULL AND m.released_at IS NULL AND o.purged_at IS NULL',
         [assetId],
       )
     ).rows[0];
     if (!row) throw new HttpError(404, 'MEDIA_NOT_FOUND', '此素材没有可用的原件保留记录');
-    await projectAccess(db, row.project_id, actor);
-    return { ...row, descriptor: row.descriptor as MediaDescriptorV1 };
+    const access = await projectAccess(tx, row.project_id, actor);
+    return { ...row, canEdit: ['owner', 'admin', 'editor'].includes(access.role) };
+  }
+  async function grade(assetId: string, version: number | undefined, tx: Queryable = db) {
+    const row = (
+      await tx.query<GradeRow>(
+        `SELECT version,source_sha256,precision_input,edit,created_at FROM media_grade_revisions
+         WHERE asset_id=$1 AND ($2::integer IS NULL OR version=$2) ORDER BY version DESC LIMIT 1`,
+        [assetId, version ?? null],
+      )
+    ).rows[0];
+    return row ? gradeDto(row) : null;
+  }
+  async function assertPrecision(
+    row: MediaAccess,
+    expectedDigest: string | undefined,
+    input: MediaPrecisionInput,
+    preview?: MediaPrecisionPreview,
+  ) {
+    if (expectedDigest !== row.descriptor.sourceSha256)
+      throw new HttpError(409, 'MEDIA_SOURCE_CHANGED', '母版来源已变化，请重新打开素材。');
+    const master = input === 'linear-master' ? row.descriptor.linearMaster : row.descriptor.master;
+    if (!master || (input === 'linear-master' && !(await capabilities).nativeReady))
+      throw new HttpError(422, 'MEDIA_FLOAT_UNAVAILABLE', '线性母版或浮点运行环境不可用。');
+    const region = preview?.region;
+    if (region) {
+      if (
+        region.left + region.width > master.width ||
+        region.top + region.height > master.height ||
+        region.width > preview.maxEdge ||
+        region.height > preview.maxEdge
+      )
+        throw new HttpError(422, 'MEDIA_PREVIEW_WINDOW', '预览区域超出母版或预览尺寸。');
+    } else if (
+      master.width * master.height >
+      (input === 'linear-master' ? MEDIA_MAX_LINEAR_PIXELS : MEDIA_MAX_PRECISION_PIXELS)
+    ) {
+      throw new HttpError(413, 'MEDIA_PRECISION_BUDGET', '母版超过当前整图调色预算。');
+    }
   }
   app.get('/v1/assets/:id/media', async (req) => {
     const actor = requireUser(req);
     const { id: assetId } = jobParams.parse(req.params);
     const row = await sourceAccess(assetId, actor.id);
+    const precision = (await capabilities).precisionEditing;
+    const currentGrade = await grade(assetId, undefined);
     return {
       descriptor: row.descriptor,
       downloads: {
@@ -590,13 +677,78 @@ export function registerMediaImport(app: FastifyInstance, db: Database, config: 
         proxy: true,
         masterExportIncludesRecipe: false,
         precisionEditing: {
-          ...(await capabilities).precisionEditing,
+          ...precision,
+          master16: enabled && precision.master16,
           sourceSha256: row.descriptor.sourceSha256,
-          floatAvailable:
-            !!row.descriptor.linearMaster && (await capabilities).precisionEditing.linearFloat,
+          floatAvailable: enabled && !!row.descriptor.linearMaster && precision.linearFloat,
+          canSave: enabled && precision.master16 && row.canEdit,
+          currentGrade,
         },
       },
     };
+  });
+  app.get('/v1/assets/:id/media/grades', async (req) => {
+    const actor = requireUser(req);
+    const { id: assetId } = jobParams.parse(req.params);
+    const { beforeVersion } = z
+      .object({
+        beforeVersion: z.coerce.number().int().min(1).max(2_147_483_647).optional(),
+      })
+      .strict()
+      .parse(req.query);
+    await sourceAccess(assetId, actor.id);
+    const { rows } = await db.query<GradeRow>(
+      `SELECT version,source_sha256,precision_input,edit,created_at FROM media_grade_revisions
+       WHERE asset_id=$1 AND ($2::integer IS NULL OR version<$2) ORDER BY version DESC LIMIT 31`,
+      [assetId, beforeVersion ?? null],
+    );
+    const grades = rows.slice(0, 30).map(gradeDto);
+    return { grades, nextBeforeVersion: rows.length > 30 ? grades.at(-1)!.version : null };
+  });
+  app.post('/v1/assets/:id/media/grades', async (req, reply) => {
+    await assertAvailable();
+    const actor = requireUser(req);
+    const { id: assetId } = jobParams.parse(req.params);
+    const body = z
+      .object({
+        expectedVersion: z.number().int().min(0).max(2_147_483_646),
+        expectedSourceSha256: sourceDigest,
+        precisionInput: precisionInputSchema,
+        precisionEdit: z.unknown(),
+      })
+      .strict()
+      .parse(req.body);
+    const edit = parsePrecisionEdit(body.precisionEdit);
+    const row = await sourceAccess(assetId, actor.id);
+    if (!row.canEdit) throw new HttpError(403, 'PROJECT_FORBIDDEN', '没有此项目的操作权限');
+    await assertPrecision(row, body.expectedSourceSha256, body.precisionInput);
+    const result = await transaction(db, async (tx) => {
+      await lockProjectMutation(
+        tx,
+        row.project_id,
+        actor.id,
+        hash(req.cookies.xiutu_session ?? ''),
+      );
+      await tx.query('SELECT id FROM assets WHERE id=$1 AND project_id=$2 FOR UPDATE', [
+        assetId,
+        row.project_id,
+      ]);
+      const current = await sourceAccess(assetId, actor.id, tx);
+      if (
+        current.object_id !== row.object_id ||
+        current.descriptor.sourceSha256 !== body.expectedSourceSha256
+      )
+        throw new HttpError(409, 'MEDIA_SOURCE_CHANGED', '母版来源已变化，请重新打开素材。');
+      if (((await grade(assetId, undefined, tx))?.version ?? 0) !== body.expectedVersion)
+        throw new HttpError(409, 'VERSION_CONFLICT', '母版调色版本已有更新，请重新加载版本。');
+      const { rows } = await tx.query<GradeRow>(
+        `INSERT INTO media_grade_revisions(asset_id,version,source_sha256,precision_input,edit)
+         VALUES ($1,$2,$3,$4,$5) RETURNING version,source_sha256,precision_input,edit,created_at`,
+        [assetId, body.expectedVersion + 1, body.expectedSourceSha256, body.precisionInput, edit],
+      );
+      return gradeDto(rows[0]!);
+    });
+    return reply.code(201).send({ grade: result });
   });
   app.get('/v1/assets/:id/media/:kind', async (req, reply) => {
     const actor = requireUser(req);
@@ -657,6 +809,129 @@ export function registerMediaImport(app: FastifyInstance, db: Database, config: 
       .header('Content-Length', String(stat.size))
       .send(createReadStream(path));
   });
+  async function sendMaster(
+    req: FastifyRequest,
+    reply: FastifyReply,
+    assetId: string,
+    actorId: string,
+    row: MediaAccess,
+    options: {
+      format: MediaExportFormat;
+      quality: number;
+      precisionEdit?: PrecisionEditV1;
+      precisionInput?: MediaPrecisionInput;
+      preview?: MediaPrecisionPreview;
+    },
+  ) {
+    if (exporting.has(actorId) || exporting.size >= 2)
+      throw new HttpError(429, 'MEDIA_EXPORT_BUSY', '已有母版转换正在处理，请等待完成后再试。');
+    exporting.add(actorId);
+    // Master conversion remains separate from the RGBA8 editor; never imply a
+    // high-bit round trip of the browser recipe. Result is private and temporary.
+    const outputPath = join(root, `${randomUUID()}.export`);
+    const controller = new AbortController();
+    const abortExport = () => controller.abort();
+    req.raw.once('aborted', abortExport);
+    req.raw.socket.once('close', abortExport);
+    if (req.raw.aborted) controller.abort();
+    let streaming = false;
+    try {
+      const result = await exportMedia({
+        workDir: workDir(row.object_id),
+        outputPath,
+        format: options.format,
+        precisionEdit: options.precisionEdit,
+        precisionInput: options.precisionInput,
+        preview: options.preview,
+        signal: controller.signal,
+        options: {
+          quality: options.quality,
+          timeoutMs: 45000,
+          ...(pythonExecutable ? { pythonExecutable } : {}),
+        },
+      });
+      const current = await sourceAccess(assetId, actorId);
+      if (
+        current.object_id !== row.object_id ||
+        current.descriptor.sourceSha256 !== row.descriptor.sourceSha256
+      )
+        throw new HttpError(409, 'MEDIA_SOURCE_CHANGED', '母版来源已变化，请重新打开素材。');
+      const activeSession = await db.query(
+        "SELECT 1 FROM sessions s JOIN users u ON u.id=s.user_id WHERE s.token_hash=$1 AND s.user_id=$2 AND s.expires_at>clock_timestamp() AND u.status='active'",
+        [hash(req.cookies.xiutu_session ?? ''), actorId],
+      );
+      if (!activeSession.rowCount)
+        throw new HttpError(401, 'AUTH_REQUIRED', '登录已失效，请重新登录');
+      if (controller.signal.aborted)
+        throw new HttpError(409, 'MEDIA_EXPORT_CANCELLED', '母版请求已取消。');
+      const stream = createReadStream(outputPath);
+      const release = () => {
+        if (streaming) exporting.delete(actorId);
+        streaming = false;
+      };
+      stream.once('end', release);
+      stream.once('close', () => {
+        release();
+        void rm(outputPath, { force: true }).catch(() => {});
+      });
+      streaming = true;
+      return reply
+        .type(result.mime)
+        .header('X-Editor-Recipe-Included', 'false')
+        .header('X-Precision-Input', options.precisionInput ?? 'master16')
+        .header('X-Precision-Edit-SHA256', result.precisionEdit?.sha256 ?? 'none')
+        .header('Cache-Control', 'private, no-store')
+        .header('X-Content-Type-Options', 'nosniff')
+        .header(
+          'Content-Disposition',
+          options.preview
+            ? 'inline'
+            : `attachment; filename="${assetId}-master.${{ png16: 'png', tiff16: 'tiff', exr32: 'exr', jpeg: 'jpeg', webp: 'webp' }[options.format]}"`,
+        )
+        .header('Content-Length', String(result.bytes))
+        .send(stream);
+    } catch (error) {
+      await rm(outputPath, { force: true });
+      if (error instanceof MediaProcessingError)
+        throw new HttpError(
+          error.code === 'limit' ? 413 : 422,
+          'MASTER_EXPORT_FAILED',
+          '母版转换未完成，此格式或资源预算不适用。',
+        );
+      throw error;
+    } finally {
+      req.raw.off('aborted', abortExport);
+      req.raw.socket.off('close', abortExport);
+      if (!streaming) exporting.delete(actorId);
+    }
+  }
+  app.post('/v1/assets/:id/media/preview', async (req, reply) => {
+    await assertAvailable();
+    const actor = requireUser(req);
+    const { id: assetId } = jobParams.parse(req.params);
+    const body = z
+      .object({
+        precisionInput: precisionInputSchema,
+        precisionEdit: z.unknown().optional(),
+        expectedSourceSha256: sourceDigest,
+        maxEdge: z.number().int().min(128).max(MEDIA_MAX_PREVIEW_EDGE),
+        region: windowSchema.optional(),
+      })
+      .strict()
+      .parse(req.body);
+    const row = await sourceAccess(assetId, actor.id);
+    const preview = { maxEdge: body.maxEdge, region: body.region };
+    await assertPrecision(row, body.expectedSourceSha256, body.precisionInput, preview);
+    return sendMaster(req, reply, assetId, actor.id, row, {
+      format: 'png16',
+      quality: 90,
+      precisionInput: body.precisionInput,
+      precisionEdit: parsePrecisionEdit(
+        body.precisionEdit === undefined ? NEUTRAL_PRECISION_EDIT : body.precisionEdit,
+      ),
+      preview,
+    });
+  });
   app.post('/v1/assets/:id/media/export', async (req, reply) => {
     await assertAvailable();
     const actor = requireUser(req);
@@ -666,101 +941,37 @@ export function registerMediaImport(app: FastifyInstance, db: Database, config: 
         format: z.enum(['png16', 'tiff16', 'jpeg', 'webp', 'exr32']),
         quality: z.number().int().min(1).max(100).default(90),
         precisionEdit: z.unknown().optional(),
-        expectedSourceSha256: z
-          .string()
-          .regex(/^[a-f0-9]{64}$/)
-          .optional(),
+        precisionInput: precisionInputSchema.optional(),
+        gradeVersion: gradeVersionSchema.optional(),
+        expectedSourceSha256: sourceDigest.optional(),
       })
       .strict()
       .parse(req.body);
     const row = await sourceAccess(assetId, actor.id);
-    const precisionEdit =
+    let precisionEdit =
       body.precisionEdit === undefined ? undefined : parsePrecisionEdit(body.precisionEdit);
-    if (
-      (precisionEdit || body.format === 'exr32') &&
-      body.expectedSourceSha256 !== row.descriptor.sourceSha256
-    )
-      throw new HttpError(409, 'MEDIA_SOURCE_CHANGED', '请核对母版来源摘要后再执行高精度导出');
-    if (
-      (precisionEdit || body.format === 'exr32') &&
-      row.descriptor.master.width * row.descriptor.master.height > 16_777_216
-    )
-      throw new HttpError(
-        413,
-        'MEDIA_PRECISION_BUDGET',
-        '高精度编辑当前最多支持 16MP，请先查看能力限制',
-      );
-    if (
-      body.format === 'exr32' &&
-      (!row.descriptor.linearMaster || !(await capabilities).nativeReady)
-    )
-      throw new HttpError(
-        422,
-        'MEDIA_FLOAT_UNAVAILABLE',
-        '此素材没有线性 HDR 母版或原生浮点导出尚未就绪',
-      );
-    if (exporting.has(actor.id) || exporting.size >= 2)
-      throw new HttpError(429, 'MEDIA_EXPORT_BUSY', '已有母版转换正在处理，请等待完成后再试。');
-    exporting.add(actor.id);
-    // Master conversion remains separate from the RGBA8 editor; never imply a
-    // high-bit round trip of the browser recipe. Result is private and temporary.
-    const outputPath = join(root, `${randomUUID()}.export`);
-    const controller = new AbortController();
-    const abortExport = () => controller.abort();
-    req.raw.once('aborted', abortExport);
-    req.raw.socket.once('close', abortExport);
-    if (req.raw.aborted) controller.abort();
-    try {
-      const result = await exportMedia({
-        workDir: workDir(row.object_id),
-        outputPath,
-        format: body.format,
-        ...(precisionEdit ? { precisionEdit } : {}),
-        signal: controller.signal,
-        options: {
-          quality: body.quality,
-          timeoutMs: 45000,
-          ...(pythonExecutable ? { pythonExecutable } : {}),
-        },
-      });
-      await sourceAccess(assetId, actor.id);
-      const activeSession = await db.query(
-        "SELECT 1 FROM sessions s JOIN users u ON u.id=s.user_id WHERE s.token_hash=$1 AND s.user_id=$2 AND s.expires_at>clock_timestamp() AND u.status='active'",
-        [hash(req.cookies.xiutu_session ?? ''), actor.id],
-      );
-      if (!activeSession.rowCount)
-        throw new HttpError(401, 'AUTH_REQUIRED', '登录已失效，请重新登录');
-      const stream = createReadStream(outputPath);
-      const cleanupExport = () => {
-        void rm(outputPath, { force: true });
-      };
-      stream.once('close', cleanupExport);
-      stream.once('error', cleanupExport);
-      return reply
-        .type(result.mime)
-        .header('X-Editor-Recipe-Included', 'false')
-        .header('X-Precision-Edit-SHA256', result.precisionEdit?.sha256 ?? 'none')
-        .header('Cache-Control', 'private, no-store')
-        .header(
-          'Content-Disposition',
-          `attachment; filename="${assetId}-master.${{ png16: 'png', tiff16: 'tiff', exr32: 'exr', jpeg: 'jpeg', webp: 'webp' }[body.format]}"`,
-        )
-        .header('Content-Length', String(result.bytes))
-        .send(stream);
-    } catch (error) {
-      await rm(outputPath, { force: true });
-      if (error instanceof MediaProcessingError)
-        throw new HttpError(
-          422,
-          'MASTER_EXPORT_FAILED',
-          '母版转换未完成，此格式或资源预算不适用。',
-        );
-      throw error;
-    } finally {
-      req.raw.off('aborted', abortExport);
-      req.raw.socket.off('close', abortExport);
-      exporting.delete(actor.id);
+    let precisionInput =
+      body.precisionInput ?? (body.format === 'exr32' ? 'linear-master' : 'master16');
+    if (body.gradeVersion !== undefined) {
+      if (precisionEdit || body.precisionInput)
+        throw new HttpError(422, 'MEDIA_GRADE_INPUT', '请选择历史版本或当前调色参数。');
+      const saved = await grade(assetId, body.gradeVersion);
+      if (!saved) throw new HttpError(404, 'MEDIA_GRADE_NOT_FOUND', '母版调色版本不存在。');
+      if (saved.sourceSha256 !== row.descriptor.sourceSha256)
+        throw new HttpError(409, 'MEDIA_SOURCE_CHANGED', '母版来源已变化，请重新打开素材。');
+      precisionEdit = saved.edit;
+      precisionInput = saved.precisionInput;
     }
+    if (body.format === 'exr32' && precisionInput !== 'linear-master')
+      throw new HttpError(422, 'MEDIA_FLOAT_INPUT', 'EXR 需要线性母版作为调色输入。');
+    if (precisionEdit || body.precisionInput || body.format === 'exr32')
+      await assertPrecision(row, body.expectedSourceSha256, precisionInput);
+    return sendMaster(req, reply, assetId, actor.id, row, {
+      format: body.format,
+      quality: body.quality,
+      precisionEdit,
+      precisionInput,
+    });
   });
   return { capabilities, enabled };
 }

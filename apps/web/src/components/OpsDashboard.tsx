@@ -1,7 +1,7 @@
 import { getLocale, t } from '../i18n';
 import { ChoiceSelect } from './ChoiceSelect';
 import { secureUuid } from '../lib/uuid';
-import { useCallback, useEffect, useState, type FormEvent } from 'react';
+import { useCallback, useEffect, useRef, useState, type FormEvent } from 'react';
 import {
   ArrowLeft,
   ChartBar,
@@ -19,6 +19,8 @@ import {
 } from '@phosphor-icons/react';
 import { api, errorMessage, formatDate, jsonRequest } from '../lib/api';
 import { Busy, IconButton, InlineError } from './Ui';
+import { FeatureSkeleton } from './DeferredFeature';
+import { OpsReadCoordinator } from './ops-read';
 import type { Asset, Project, PublicConfig, User } from '../lib/types';
 import { Disclosure, OptionChips, ValueSlider } from './Controls';
 import type { ImageCapabilities } from '../ai/types';
@@ -92,6 +94,19 @@ type Audit = {
   entityId?: string;
   details?: Record<string, unknown>;
 };
+type Overview = {
+  counts: Record<string, number>;
+  pointTotals: Record<string, number>;
+  capabilities: Record<string, unknown>;
+};
+type OpsReadResult =
+  | { tab: 'overview'; overview: Overview }
+  | { tab: 'users'; users: User[] }
+  | { tab: 'config'; config: Config; projects: Project[] }
+  | { tab: 'plans'; plans: Plan[] }
+  | { tab: 'models'; models: ModelConfig[]; catalog: ProviderCatalogItem[] }
+  | { tab: 'audit'; entries: Audit[] }
+  | { tab: 'independent' };
 const tabs: { id: OpsTab; label: string; icon: React.ReactNode }[] = [
   { id: 'overview', label: '运行概览', icon: <ChartBar size={19} /> },
   { id: 'users', label: '用户管理', icon: <UsersThree size={19} /> },
@@ -114,13 +129,10 @@ export function OpsDashboard({
   const [tab, setTab] = useState<OpsTab>('overview');
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState('');
-  const [loading, setLoading] = useState(false);
+  const [loading, setLoading] = useState(true);
+  const [readReady, setReadReady] = useState(false);
   const [busy, setBusy] = useState(false);
-  const [overview, setOverview] = useState<{
-    counts: Record<string, number>;
-    pointTotals: Record<string, number>;
-    capabilities: Record<string, unknown>;
-  } | null>(null);
+  const [overview, setOverview] = useState<Overview | null>(null);
   const [users, setUsers] = useState<User[]>([]);
   const [query, setQuery] = useState('');
   const [config, setConfig] = useState<Config | null>(null);
@@ -145,56 +157,122 @@ export function OpsDashboard({
   const [modelEdit, setModelEdit] = useState<ModelConfig | null>(null);
   const [managedProjects, setManagedProjects] = useState<Project[]>([]);
   const [logoProject, setLogoProject] = useState('');
-  const load = useCallback(async () => {
-    setLoading(true);
-    setError(null);
-    try {
-      if (tab === 'overview') setOverview(await api('/ops/overview'));
-      else if (tab === 'users')
-        setUsers(
-          (await api<{ users: User[] }>(`/ops/users?query=${encodeURIComponent(query)}`)).users,
-        );
-      else if (tab === 'config') {
-        setConfig(await api('/ops/config'));
-        const list = await api<{ projects: Project[] }>('/projects');
-        const managed = list.projects.filter((project) =>
-          ['owner', 'admin'].includes(project.role),
-        );
-        setManagedProjects(managed);
-        if (!logoProject) setLogoProject(managed[0]?.id ?? '');
-      } else if (tab === 'plans') setPlans((await api<{ plans: Plan[] }>('/ops/plans')).plans);
-      else if (tab === 'models') {
-        const result = await api<{
-          models: ModelConfig[];
-          providerModelCatalog?: ProviderCatalogItem[];
-        }>('/ops/models');
-        setModels(result.models);
-        setProviderCatalog(result.providerModelCatalog ?? []);
-      } else if (tab === 'audit')
-        setEntries((await api<{ entries: Audit[] }>('/ops/audit')).entries);
-    } catch (e) {
-      setError(errorMessage(e));
-    } finally {
-      setLoading(false);
-    }
-  }, [tab]);
+  const [reader] = useState(() => new OpsReadCoordinator());
+  const mounted = useRef(false);
+  const currentTab = useRef(tab);
+  const currentQuery = useRef(query);
+  currentTab.current = tab;
+  currentQuery.current = query;
+  useEffect(() => {
+    mounted.current = true;
+    return () => {
+      mounted.current = false;
+      reader.cancel();
+    };
+  }, [reader]);
+  const load = useCallback(
+    async (search = currentQuery.current, successMessage?: string) => {
+      if (!mounted.current || currentTab.current !== tab) return;
+      setLoading(true);
+      setReadReady(false);
+      setError(null);
+      await reader.run(
+        { tab, query: search },
+        async (scope, signal): Promise<OpsReadResult> => {
+          if (scope.tab === 'overview')
+            return { tab: 'overview', overview: await api<Overview>('/ops/overview', { signal }) };
+          if (scope.tab === 'users')
+            return {
+              tab: 'users',
+              users: (
+                await api<{ users: User[] }>(
+                  `/ops/users?query=${encodeURIComponent(scope.query)}`,
+                  { signal },
+                )
+              ).users,
+            };
+          if (scope.tab === 'config') {
+            const [nextConfig, projects] = await Promise.all([
+              api<Config>('/ops/config', { signal }),
+              api<{ projects: Project[] }>('/projects', { signal }),
+            ]);
+            return { tab: 'config', config: nextConfig, projects: projects.projects };
+          }
+          if (scope.tab === 'plans')
+            return {
+              tab: 'plans',
+              plans: (await api<{ plans: Plan[] }>('/ops/plans', { signal })).plans,
+            };
+          if (scope.tab === 'models') {
+            const result = await api<{
+              models: ModelConfig[];
+              providerModelCatalog?: ProviderCatalogItem[];
+            }>('/ops/models', { signal });
+            return {
+              tab: 'models',
+              models: result.models,
+              catalog: result.providerModelCatalog ?? [],
+            };
+          }
+          if (scope.tab === 'audit')
+            return {
+              tab: 'audit',
+              entries: (await api<{ entries: Audit[] }>('/ops/audit', { signal })).entries,
+            };
+          return { tab: 'independent' };
+        },
+        {
+          current: (scope) => mounted.current && currentTab.current === scope.tab,
+          value(result) {
+            setReadReady(true);
+            if (result.tab === 'overview') setOverview(result.overview);
+            else if (result.tab === 'users') setUsers(result.users);
+            else if (result.tab === 'plans') setPlans(result.plans);
+            else if (result.tab === 'audit') setEntries(result.entries);
+            else if (result.tab === 'models') {
+              setModels(result.models);
+              setProviderCatalog(result.catalog);
+            } else if (result.tab === 'config') {
+              const managed = result.projects.filter((project) =>
+                ['owner', 'admin'].includes(project.role),
+              );
+              setConfig(result.config);
+              setManagedProjects(managed);
+              setLogoProject((current) =>
+                managed.some((project) => project.id === current)
+                  ? current
+                  : (managed[0]?.id ?? ''),
+              );
+            }
+            if (successMessage) setSuccess(successMessage);
+          },
+          error: (failure) => setError(errorMessage(failure)),
+          settled: () => setLoading(false),
+        },
+      );
+    },
+    [tab, reader],
+  );
   useEffect(() => {
     void load();
     setReason('');
     setSuccess('');
-  }, [load]);
+    return () => reader.cancel();
+  }, [load, reader]);
   async function action(work: () => Promise<unknown>, message: string, reload = true) {
     setBusy(true);
     setError(null);
     setSuccess('');
     try {
       await work();
-      setSuccess(message);
-      if (reload) await load();
+      if (mounted.current && currentTab.current === tab) {
+        setSuccess(message);
+        if (reload) await load();
+      }
     } catch (e) {
-      setError(errorMessage(e));
+      if (mounted.current && currentTab.current === tab) setError(errorMessage(e));
     } finally {
-      setBusy(false);
+      if (mounted.current) setBusy(false);
     }
   }
   const reasonField = (
@@ -235,7 +313,12 @@ export function OpsDashboard({
             <button
               key={item.id}
               className={tab === item.id ? 'selected' : ''}
-              onClick={() => setTab(item.id)}
+              onClick={() => {
+                if (item.id === tab) return;
+                reader.cancel();
+                setLoading(true);
+                setTab(item.id);
+              }}
             >
               {item.icon}
               {t(item.label)}
@@ -261,9 +344,42 @@ export function OpsDashboard({
             {t(success)}
           </div>
         )}
+        {tab === 'users' && (
+          <form
+            className="search-form"
+            onSubmit={(event) => {
+              event.preventDefault();
+              setSuccess('');
+              void load(query, '已更新搜索结果');
+            }}
+          >
+            <MagnifyingGlass size={19} />
+            <input
+              aria-label={t('查找用户')}
+              value={query}
+              onChange={(event) => setQuery(event.target.value)}
+              placeholder={t('搜索手机号或昵称')}
+            />
+            <button className="button button-secondary" disabled={busy}>
+              {t('查询')}
+            </button>
+          </form>
+        )}
         {loading ? (
-          <Busy label={t('读取真实数据')} />
-        ) : (
+          <FeatureSkeleton
+            profile={
+              tab === 'overview'
+                ? 'operations'
+                : tab === 'config'
+                  ? 'panel'
+                  : tab === 'usage'
+                    ? 'usage'
+                    : 'table'
+            }
+            label={t('读取真实数据')}
+            compact
+          />
+        ) : readReady ? (
           <>
             {tab === 'overview' && overview && (
               <>
@@ -306,33 +422,6 @@ export function OpsDashboard({
             )}
             {tab === 'users' && (
               <>
-                <form
-                  className="search-form"
-                  onSubmit={(e) => {
-                    e.preventDefault();
-                    void action(
-                      async () =>
-                        setUsers(
-                          (
-                            await api<{ users: User[] }>(
-                              `/ops/users?query=${encodeURIComponent(query)}`,
-                            )
-                          ).users,
-                        ),
-                      t('已更新搜索结果'),
-                      false,
-                    );
-                  }}
-                >
-                  <MagnifyingGlass size={19} />
-                  <input
-                    aria-label={t('查找用户')}
-                    value={query}
-                    onChange={(e) => setQuery(e.target.value)}
-                    placeholder={t('搜索手机号或昵称')}
-                  />
-                  <button className="button button-secondary">{t('查询')}</button>
-                </form>
                 <div className="surface ops-section">
                   <h2>{t('用户列表')}</h2>
                   <div className="ops-user-list">
@@ -1155,7 +1244,7 @@ export function OpsDashboard({
               </div>
             )}
           </>
-        )}
+        ) : null}
       </main>
     </div>
   );

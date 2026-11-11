@@ -1261,7 +1261,8 @@
 }
 .studio-context-tabs.context-segment > button > span {
   min-width: 0;
-  overflow-wrap: anywhere;
+  overflow-wrap: normal;
+  word-break: normal;
 }
 .studio-workspace .free-panel .panel-back-action {
   flex-shrink: 0;

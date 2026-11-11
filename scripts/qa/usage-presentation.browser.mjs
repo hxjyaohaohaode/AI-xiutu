@@ -124,10 +124,18 @@ async function inspectKeyboard(page, chart, series, locale, until) {
     assert.equal(actual.nextDisabled, index === last);
     samples.push({ key, ...actual });
   }
+  const latest = chart.locator('.usage-trend-latest');
   if (series.length > 1) {
     assert.notEqual(samples[0].date, samples[3].date, 'Home and End select different real dates');
     assert.notEqual(samples[0].index, samples[1].index, 'ArrowRight advances a real bucket');
+    await slider.press('Home');
+    await latest.click();
+    await until(
+      async () => (await selectedPoint(chart)).date === series[last].bucket,
+      'Return to the latest API bucket',
+    );
   }
+  assert.equal(await latest.isDisabled(), true);
   return { samples, crossBucketChangeObserved: series.length > 1 };
 }
 
@@ -182,7 +190,7 @@ async function chartLayout(chart) {
     result.plot.width >= 120 && result.plot.height >= 150,
     'The narrow chart retains a useful interactive plot area',
   );
-  assert.equal(result.navigation.length, 2);
+  assert.equal(result.navigation.length, 3);
   assert.ok(
     result.navigation.every(
       (button) =>
@@ -191,7 +199,7 @@ async function chartLayout(chart) {
         button.left >= result.card.left - 1 &&
         button.right <= result.card.right + 1,
     ),
-    'Both previous/next buttons retain 44px targets inside the chart',
+    'Previous, next and latest buttons retain 44px targets inside the chart',
   );
   return result;
 }

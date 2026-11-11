@@ -84,13 +84,16 @@ export function PanelNavigation({
           type="button"
           key={item.id}
           aria-pressed={item.id === selected}
+          aria-label={item.label}
           onClick={(event) => {
             if (focusRequest && event.detail === 0) focusRequest.current = item.id;
             item.onSelect();
           }}
         >
           {item.icon}
-          <span>{item.label}</span>
+          <span>
+            {item.id === 'collaboration' ? interactionText('collaborationTabShort') : item.label}
+          </span>
         </button>
       ))}
     </nav>

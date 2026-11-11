@@ -136,6 +136,33 @@ print(json.dumps(result))`,
       assert.deepEqual(decoded.data[0][0], [-0.25, 4, 16, 1]);
       assert.deepEqual(decoded.data[0][1], [1, 2, 4, 0.5]);
       assert.deepEqual(decoded.data[1][1], [8, 16, 32, 1]);
+      const development = {
+        workDir,
+        format: 'png16' as const,
+        precisionInput: 'linear-master' as const,
+        precisionEdit: { ...NEUTRAL_PRECISION_EDIT, exposure: -3 },
+        options: { pythonExecutable: python },
+      };
+      const png = join(dir, 'developed.png'),
+        window = join(dir, 'window.png'),
+        region = { left: 1, top: 0, width: 1, height: 2 };
+      const full = await exportMedia({ ...development, outputPath: png });
+      const part = await exportMedia({
+        ...development,
+        outputPath: window,
+        preview: { maxEdge: 128, region },
+      });
+      assert.deepEqual([part.width, part.height, part.bitDepth], [1, 2, 16]);
+      assert.equal(part.precisionEdit?.sha256, full.precisionEdit?.sha256);
+      const raw16 = (pipeline: ReturnType<typeof sharp>) =>
+        pipeline.toColourspace('rgb16').raw({ depth: 'ushort' }).toBuffer();
+      const actual = await raw16(sharp(window, { ignoreIcc: true }));
+      assert.deepEqual(actual, await raw16(sharp(png, { ignoreIcc: true }).extract(region)));
+      const first = new Uint16Array(actual.buffer, actual.byteOffset, 4);
+      assert.deepEqual(
+        [...first],
+        [0.125, 0.25, 0.5].map((v) => Math.round(linearToSrgb(v) * 65535)).concat(32768),
+      );
       // Corrupting the retained source cannot be hidden behind its old descriptor.
       await writeFile(join(workDir, 'linear-master.exr'), 'changed');
       await assert.rejects(

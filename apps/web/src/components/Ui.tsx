@@ -16,6 +16,7 @@ import type { MotionPhase } from '../motion/registry';
 import { X, WarningCircle, CheckCircle, Info, SpinnerGap } from '@phosphor-icons/react';
 import type { Notice } from '../lib/types';
 import { DEFAULT_BRAND } from '../lib/brand';
+import { BrandMark } from './BrandMark';
 import { StudioGlyph } from './StudioGlyph';
 import { ModalCloseRequests } from './modal-close';
 import {
@@ -389,14 +390,7 @@ export function Brand({
 }) {
   return (
     <div className={`brand ${compact ? 'brand-compact' : ''}`} data-motion="brand">
-      {logoUrl ? (
-        <img className="brand-logo" src={logoUrl} alt="" />
-      ) : (
-        <span className="brand-symbol" aria-hidden>
-          <i />
-          <i />
-        </span>
-      )}
+      <BrandMark logoUrl={logoUrl} className="brand-logo" />
       <span>{name}</span>
       {!compact && <small>{t('创作空间')}</small>}
     </div>

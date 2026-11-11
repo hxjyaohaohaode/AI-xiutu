@@ -349,6 +349,7 @@ export function CanvasStage({
     group === 'repair' || group === 'local' || group === 'composite' || group === 'paint';
   const previews = useStagePreviews(
     source,
+    dimensions,
     recipe,
     cropEditing,
     editor.layerImages,

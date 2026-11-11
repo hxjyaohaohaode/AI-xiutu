@@ -6,41 +6,29 @@ import {
   type CutoutSettings,
   getEditorOutputDimensions,
   localEditorSourceLimits,
+  MAX_EXPLICIT_PIXELS,
+  computeHistogram,
   WarpPreviewCache,
   type Dimensions,
   type RGBAImage,
   type EditorRecipe,
 } from '@ai-xiutu/editor';
-import {
-  prepareBudgetedPreview,
-  prepareInteractiveSource,
-  MAX_PREVIEW_PIXELS,
-} from './previewBudget';
+import { prepareBudgetedPreview, MAX_PREVIEW_PIXELS } from './previewBudget';
 import { editorGeometryKey } from './coordinates';
-import {
-  InteractivePreviewPolicy,
-  MAX_INTERACTIVE_SOURCE_PIXELS,
-  previewFamily,
-  type PreviewFamily,
-} from './interactive-preview-policy';
-import { canPreviewNativeColor } from './native-preview';
+import { canPreviewNativeColor, fitsNativePreview } from './native-preview';
+import { preparePointPreview } from './point-preview';
 
 let preview: RGBAImage | null = null;
-let detailPreview: RGBAImage | null = null;
 let original: RGBAImage | null = null;
 let sourceDimensions: Dimensions | null = null;
-const livePolicy = new InteractivePreviewPolicy();
-let previousLiveRecipe: EditorRecipe | null = null;
-let previousLiveFamily: PreviewFamily = 'color';
 let images = new Map<string, RGBAImage>(),
-  originalImages = new Map<string, RGBAImage>(),
-  detailImages = new Map<string, RGBAImage>();
+  originalImages = new Map<string, RGBAImage>();
 const previewSources = new Map<string, RGBAImage>();
 const warpPreviewCache = new WarpPreviewCache();
+let pointPreview: ReturnType<typeof preparePointPreview> = null;
+let recycledBuffer: ArrayBuffer | undefined;
 function preparedSource(source: RGBAImage, recipe: EditorRecipe, maxPixels: number) {
-  // Fast and warp-detail previews can request the same budget, but they must
-  // retain independent source rasters. Never upscale a cached fast-lane source.
-  const key = `${source === detailPreview ? 'detail' : 'fast'}:${maxPixels}:${editorGeometryKey(recipe, false)}`;
+  const key = `${maxPixels}:${editorGeometryKey(recipe, false)}`;
   const cached = previewSources.get(key);
   if (cached) return cached;
   const image = prepareBudgetedPreview(source, recipe, maxPixels);
@@ -53,6 +41,7 @@ type Message = {
   id: number;
   image?: RGBAImage;
   original?: RGBAImage;
+  buffer?: ArrayBuffer;
   sourceDimensions?: Dimensions;
   recipe?: EditorRecipe;
   originalOnly?: boolean;
@@ -69,106 +58,75 @@ type Message = {
 };
 self.onmessage = async (event: MessageEvent<Message>) => {
   const message = event.data;
-  if (message.type === 'interactive-source') {
-    original = null;
-    originalImages.clear();
-    previewSources.clear();
-    warpPreviewCache.clear();
-    sourceDimensions = message.sourceDimensions ?? null;
-    detailPreview = message.image ?? null;
-    detailImages = message.images ?? new Map();
-    preview = message.image
-      ? prepareInteractiveSource(message.image, MAX_INTERACTIVE_SOURCE_PIXELS)
-      : null;
-    images = new Map(
-      [...(message.images ?? [])].map(([id, value]) => [
-        id,
-        prepareInteractiveSource(value, MAX_INTERACTIVE_SOURCE_PIXELS),
-      ]),
-    );
-    livePolicy.reset();
-    previousLiveRecipe = null;
-    previousLiveFamily = 'color';
-    return;
-  }
-  if (message.type === 'source') {
+  if (message.type === 'source' || message.type === 'interactive-source') {
     preview = message.image ?? null;
-    detailPreview = null;
-    detailImages.clear();
-    original = message.original ?? null;
-    sourceDimensions = original;
+    original = message.type === 'source' ? (message.original ?? null) : null;
+    sourceDimensions = message.sourceDimensions ?? original ?? preview;
     images = message.images ?? new Map();
     originalImages = message.originalImages ?? new Map();
     previewSources.clear();
     warpPreviewCache.clear();
-    livePolicy.reset();
-    previousLiveRecipe = null;
-    previousLiveFamily = 'color';
+    recycledBuffer = undefined;
+    pointPreview =
+      message.type === 'interactive-source' &&
+      preview &&
+      sourceDimensions &&
+      preview.width === sourceDimensions.width &&
+      preview.height === sourceDimensions.height &&
+      fitsNativePreview(preview.width, preview.height)
+        ? preparePointPreview(preview)
+        : null;
+    return;
+  }
+  if (message.type === 'recycle-point-preview') {
+    if (pointPreview && message.buffer?.byteLength === preview?.data.byteLength)
+      recycledBuffer = message.buffer;
     return;
   }
   if (message.type === 'image-source') {
     if (message.sourceId && message.image) {
-      images.set(
-        message.sourceId,
-        sourceDimensions && !original
-          ? prepareInteractiveSource(message.image, MAX_INTERACTIVE_SOURCE_PIXELS)
-          : message.image,
-      );
+      images.set(message.sourceId, message.image);
       if (message.original) originalImages.set(message.sourceId, message.original);
-      if (detailPreview) detailImages.set(message.sourceId, message.image);
     }
     return;
   }
   if (message.type === 'rekey-sources') {
     for (const [from, to] of message.mapping ?? []) {
       const p = images.get(from),
-        o = originalImages.get(from),
-        detail = detailImages.get(from);
+        o = originalImages.get(from);
       if (p) images.set(to, p);
       if (o) originalImages.set(to, o);
-      if (detail) detailImages.set(to, detail);
     }
     return;
   }
   if (message.type === 'layer-sources') {
-    const next = message.images ?? new Map();
-    if (detailPreview) {
-      detailImages = next;
-      images = new Map(
-        [...next].map(([id, value]) => [
-          id,
-          prepareInteractiveSource(value, MAX_INTERACTIVE_SOURCE_PIXELS),
-        ]),
-      );
-    } else images = next;
+    images = message.images ?? new Map();
     return;
   }
   try {
-    const interactive = message.type === 'interactive-preview';
-    const warpDetail = interactive && message.previewQuality === 'warp';
-    const detail = warpDetail || (interactive && message.previewQuality === 'full');
-    const native = !!(
-      interactive &&
-      !detail &&
-      message.recipe &&
-      detailPreview &&
-      sourceDimensions &&
-      detailPreview.width === sourceDimensions.width &&
-      detailPreview.height === sourceDimensions.height &&
-      detailPreview.width * detailPreview.height <= MAX_PREVIEW_PIXELS &&
-      canPreviewNativeColor(message.recipe)
-    );
-    const source =
-      message.type === 'export' ? original : detail || native ? detailPreview : preview;
+    const exporting = message.type === 'export';
+    const warpDetail = message.type === 'interactive-preview' && message.previewQuality === 'warp';
+    const fullSource = original ?? preview;
+    // A gesture never changes the selected source. The only lower-resolution
+    // input is the fixed proxy for imports outside the native editor budget.
+    const native =
+      !exporting &&
+      message.maxPixels === undefined &&
+      fullSource !== null &&
+      sourceDimensions !== null &&
+      fullSource.width === sourceDimensions.width &&
+      fullSource.height === sourceDimensions.height &&
+      fitsNativePreview(fullSource.width, fullSource.height);
+    const source = exporting ? original : native ? fullSource : preview;
     if (!source || !message.recipe) throw new Error('请先导入图片。');
-    if (message.type === 'export' && message.cutout) {
+    if (exporting && message.cutout) {
       if (message.format !== undefined && message.format !== 'png')
         throw new Error('人物素材需要透明 PNG 格式。');
       const blob = await encodeRgbaPng(renderCutout(source, message.cutout));
       self.postMessage({ id: message.id, type: message.type, blob });
       return;
     }
-    if (message.type !== 'export' && sourceDimensions) {
+    if (!exporting && sourceDimensions) {
       const version = message.recipe.schemaVersion;
       const { maxPixels: sourceCeiling } = localEditorSourceLimits(version);
       if (sourceDimensions.width * sourceDimensions.height > sourceCeiling)
@@ -178,54 +136,42 @@ self.onmessage = async (event: MessageEvent<Message>) => {
       // A smaller preview must not make an unexportable full-resolution transform appear valid.
       getEditorOutputDimensions(sourceDimensions, message.recipe);
     }
-    const started = performance.now();
-    const family =
-      interactive && !detail && !native
-        ? previewFamily(previousLiveRecipe, message.recipe, previousLiveFamily)
-        : null;
-    const frame = family ? livePolicy.begin(family, started) : null;
-    const budget = native
-      ? MAX_PREVIEW_PIXELS
-      : (frame?.pixels ?? message.maxPixels ?? MAX_PREVIEW_PIXELS);
-    let renderImages = detail ? detailImages : images;
-    if (interactive && !detail && 'imageLayers' in message.recipe) {
-      renderImages = new Map();
-      for (const layer of message.recipe.imageLayers) {
-        const image = images.get(layer.sourceId);
-        if (image && !renderImages.has(layer.sourceId))
-          renderImages.set(layer.sourceId, prepareInteractiveSource(image, budget));
-      }
-    }
     const recipe = message.recipe;
-    const renderPreview = () =>
-      renderEditorRecipe(preparedSource(source, recipe, budget), recipe, {
-        // Output is budgeted before rendering; auxiliary previews retain their normalized placement.
-        maxPixels: MAX_PREVIEW_PIXELS,
-        images: renderImages,
+    let recyclable = false;
+    const renderPreview = () => {
+      const input = native
+        ? source
+        : preparedSource(source, recipe, message.maxPixels ?? MAX_PREVIEW_PIXELS);
+      const options = {
+        maxPixels: native ? MAX_EXPLICIT_PIXELS : MAX_PREVIEW_PIXELS,
+        images: native && original ? originalImages : images,
         warpPreviewCache: warpDetail ? warpPreviewCache : undefined,
-      });
+      };
+      if (!canPreviewNativeColor(recipe) || warpDetail)
+        return renderEditorRecipeTiled(input, recipe, { ...options, tileSize: 512 });
+      const mapped = native ? pointPreview?.(recipe, recycledBuffer) : null;
+      if (mapped) {
+        recyclable = true;
+        recycledBuffer = undefined;
+        return mapped;
+      }
+      return renderEditorRecipe(input, recipe, options);
+    };
     if (warpDetail && message.prewarmWarp) {
       warpPreviewCache.prewarm(renderPreview);
       self.postMessage({ id: message.id, type: message.type });
       return;
     }
-    const result =
-      message.type === 'export'
-        ? message.originalOnly
-          ? source
-          : renderEditorRecipeTiled(source, message.recipe, {
-              maxPixels: localEditorSourceLimits(recipe.schemaVersion).maxPixels,
-              images: originalImages,
-              tileSize: 512,
-            })
-        : renderPreview();
-    if (frame) {
-      const endedAt = performance.now();
-      livePolicy.complete(frame, endedAt - started, endedAt);
-      previousLiveRecipe = message.recipe;
-      previousLiveFamily = frame.family;
-    }
-    if (message.type === 'export' && typeof OffscreenCanvas !== 'undefined') {
+    const result = exporting
+      ? message.originalOnly
+        ? source
+        : renderEditorRecipeTiled(source, message.recipe, {
+            maxPixels: localEditorSourceLimits(recipe.schemaVersion).maxPixels,
+            images: originalImages,
+            tileSize: 512,
+          })
+      : renderPreview();
+    if (exporting && typeof OffscreenCanvas !== 'undefined') {
       const format = message.format ?? 'png';
       const canvas = new OffscreenCanvas(result.width, result.height);
       const context = canvas.getContext('2d');
@@ -258,7 +204,17 @@ self.onmessage = async (event: MessageEvent<Message>) => {
           ? { ...result, data: new Uint8ClampedArray(result.data) }
           : result;
       self.postMessage(
-        { id: message.id, type: message.type, result: safeResult, native },
+        {
+          id: message.id,
+          type: message.type,
+          result: safeResult,
+          native,
+          recyclable,
+          histogram:
+            message.type === 'preview' && result.width * result.height > MAX_PREVIEW_PIXELS
+              ? computeHistogram(result, { maxPixels: MAX_EXPLICIT_PIXELS })
+              : undefined,
+        },
         { transfer: [safeResult.data.buffer] },
       );
     }

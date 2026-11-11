@@ -1,0 +1,230 @@
+/** Native PostgreSQL and Linux media worker. Inputs are supplied explicitly. */
+import assert from 'node:assert/strict';
+import { createHash } from 'node:crypto';
+import { mkdir, readFile, writeFile } from 'node:fs/promises';
+import { basename, join, resolve } from 'node:path';
+import { execFile } from 'node:child_process';
+import { promisify } from 'node:util';
+import { setTimeout as delay } from 'node:timers/promises';
+import sharp, { type Sharp } from 'sharp';
+import { NEUTRAL_PRECISION_EDIT } from '@ai-xiutu/editor';
+import { editMaster16 } from '../../packages/media/src/precision.js';
+import { collaborationFixture } from '../../apps/api/test/collaboration-fixture.js';
+
+const database = process.env.TEST_DATABASE_URL;
+const python = process.env.MEDIA_QA_PYTHON;
+const files = process.argv.slice(2);
+if (!database || !new URL(database).pathname.includes('test') || !python || !files.length)
+  throw new Error(
+    'Supply a disposable TEST_DATABASE_URL, MEDIA_QA_PYTHON and real source file paths',
+  );
+process.env.NODE_ENV = 'test';
+process.env.MEDIA_ADVANCED_ENABLED = 'true';
+process.env.MEDIA_PYTHON = python;
+const output = resolve(process.env.MEDIA_QA_OUTPUT ?? 'artifacts/master-pipeline');
+await mkdir(output, { recursive: true });
+const browserOrigin = process.env.MEDIA_QA_BROWSER_ORIGIN;
+const f = await collaborationFixture(database, { origin: browserOrigin });
+const execute = promisify(execFile);
+const sha = (data: Buffer) => createHash('sha256').update(data).digest('hex');
+const raw16 = (pipeline: Sharp) =>
+  pipeline.toColourspace('rgb16').ensureAlpha().raw({ depth: 'ushort' }).toBuffer();
+const report = [];
+
+try {
+  for (const [index, file] of files.entries()) {
+    const bytes = await readFile(file);
+    const created = await f.call('POST', '/v1/projects/' + f.projectId + '/media-imports', {
+      name: basename(file),
+      size: bytes.length,
+      idempotencyKey: crypto.randomUUID(),
+      generateTiles: false,
+    });
+    assert.equal(created.statusCode, 201, created.body);
+    const task = '/v1/media-imports/' + created.json().job.id;
+    for (let offset = 0; offset < bytes.length; offset += 4 * 1024 * 1024) {
+      const response = await f.app.inject({
+        method: 'PUT',
+        url: task + '/chunk?offset=' + offset,
+        payload: bytes.subarray(offset, offset + 4 * 1024 * 1024),
+        headers: {
+          origin: f.origin,
+          cookie: f.actors.owner.cookie,
+          'content-type': 'application/octet-stream',
+        },
+      });
+      assert.equal(response.statusCode, 200, response.body);
+    }
+    const start = performance.now();
+    assert.equal((await f.call('POST', task + '/complete')).statusCode, 202);
+    let state;
+    do {
+      await delay(100);
+      state = (await f.call('GET', task)).json();
+    } while (state.job.state === 'processing' && performance.now() - start < 180_000);
+    assert.equal(state.job.state, 'ready', JSON.stringify(state.job));
+    const path = '/v1/assets/' + state.asset.id + '/media';
+    const metadata = (await f.call('GET', path)).json();
+    const descriptor = metadata.descriptor;
+    const { width, height } = descriptor.master;
+    assert.equal(descriptor.sourceSha256, sha(bytes));
+    assert.equal(sha((await f.call('GET', metadata.downloads.original)).rawPayload), sha(bytes));
+    const result = {
+      name: basename(file),
+      sourceSha256: sha(bytes),
+      width,
+      height,
+      importMs: Math.round(performance.now() - start),
+      assetId: state.asset.id,
+      sourceEncoding: descriptor.original.sampleEncoding,
+      linear: !!descriptor.linearMaster,
+    };
+    const precisionInput = descriptor.linearMaster ? 'linear-master' : 'master16';
+    const grade = {
+      expectedSourceSha256: descriptor.sourceSha256,
+      precisionInput,
+      precisionEdit: {
+        ...NEUTRAL_PRECISION_EDIT,
+        exposure: -0.65,
+        temperature: 8,
+        shadows: 12,
+        highlights: -18,
+      },
+    };
+    const region = {
+      left: Math.floor(width * 0.31),
+      top: Math.floor(height * 0.43),
+      width: Math.min(420, Math.floor(width * 0.55)),
+      height: Math.min(300, Math.floor(height * 0.4)),
+    };
+    const previewStarted = performance.now();
+    const preview = await f.call('POST', path + '/preview', { ...grade, maxEdge: 512, region });
+    assert.equal(preview.statusCode, 200, preview.body.slice(0, 200));
+    const cropped = await raw16(sharp(preview.rawPayload, { ignoreIcc: true }));
+    const record = {
+      ...result,
+      previewMs: Math.round(performance.now() - previewStarted),
+      nativeRegion: region,
+      previewSha256: sha(cropped),
+      files: [] as { format: string; bytes: number; bitDepth: number }[],
+      verifiedSamples: 0,
+      linearReadback: null as unknown,
+    };
+    if (width * height <= (precisionInput === 'linear-master' ? 50_000_000 : 16_777_216)) {
+      assert.equal(
+        (await f.call('POST', path + '/grades', { ...grade, expectedVersion: 0 })).statusCode,
+        201,
+      );
+      const changed = await f.call('POST', path + '/grades', {
+        ...grade,
+        expectedVersion: 1,
+        precisionEdit: { ...grade.precisionEdit, exposure: 0.2 },
+      });
+      assert.equal(changed.statusCode, 201);
+      const history = (await f.call('GET', path + '/grades')).json().grades;
+      assert.deepEqual(
+        history.map(({ version }: { version: number }) => version),
+        [2, 1],
+      );
+      for (const format of ['png16', 'tiff16', ...(descriptor.linearMaster ? ['exr32'] : [])]) {
+        const response = await f.call('POST', path + '/export', {
+          format,
+          gradeVersion: 1,
+          expectedSourceSha256: descriptor.sourceSha256,
+        });
+        assert.equal(response.statusCode, 200, response.body.slice(0, 250));
+        assert.equal(
+          response.headers['x-precision-edit-sha256'],
+          preview.headers['x-precision-edit-sha256'],
+        );
+        const target = join(
+          output,
+          String(index) +
+            '-developed.' +
+            (format === 'tiff16' ? 'tif' : format === 'exr32' ? 'exr' : 'png'),
+        );
+        await writeFile(target, response.rawPayload);
+        if (format === 'exr32') {
+          const native = await execute(python, [
+            '-c',
+            [
+              'import json,sys,OpenImageIO as o,numpy as n',
+              'i=o.ImageInput.open(sys.argv[1]); s=i.spec(); p=i.read_image(format=o.FLOAT); i.close()',
+              'print(json.dumps({"size":[s.width,s.height],"type":str(s.format),"range":[float(p[:,:,:3].min()),float(p[:,:,:3].max())],"channels":list(s.channelnames),"window":[s.x,s.y,s.full_x,s.full_y,s.full_width,s.full_height]}))',
+            ].join('\n'),
+            target,
+          ]);
+          const linear = JSON.parse(native.stdout);
+          assert.deepEqual(linear.size, [width, height]);
+          assert.equal(linear.type, 'float');
+          record.linearReadback = linear;
+        } else {
+          const image = sharp(response.rawPayload, { ignoreIcc: true });
+          const meta = await image.metadata();
+          assert.equal(meta.depth, 'ushort');
+          assert.deepEqual([meta.width, meta.height], [width, height]);
+          assert.deepEqual(await raw16(image.extract(region)), cropped);
+          record.verifiedSamples += cropped.length / 2;
+        }
+        record.files.push({
+          format,
+          bytes: response.rawPayload.length,
+          bitDepth: format === 'exr32' ? 32 : 16,
+        });
+      }
+      const overview = await f.call('POST', path + '/preview', { ...grade, maxEdge: 768 });
+      assert.equal(overview.statusCode, 200, overview.body.slice(0, 200));
+      await writeFile(join(output, String(index) + '-overview.png'), overview.rawPayload);
+    } else {
+      assert.equal(
+        (
+          await f.call('POST', path + '/export', {
+            format: 'png16',
+            ...grade,
+          })
+        ).statusCode,
+        413,
+      );
+      const master = await f.call('GET', metadata.downloads.master);
+      assert.equal(master.statusCode, 200);
+      const raw = await raw16(sharp(master.rawPayload, { ignoreIcc: true }).extract(region));
+      const samples = new Uint16Array(raw.buffer, raw.byteOffset, raw.length / 2);
+      const reference = editMaster16(samples, 4, grade.precisionEdit);
+      assert.deepEqual(
+        cropped,
+        Buffer.from(reference.buffer, reference.byteOffset, reference.byteLength),
+      );
+      record.verifiedSamples = samples.length;
+    }
+    await writeFile(join(output, String(index) + '-native-window.png'), preview.rawPayload);
+    report.push(record);
+    console.log(JSON.stringify(record));
+  }
+  await writeFile(
+    join(output, 'report.json'),
+    JSON.stringify({ projectId: f.projectId, teamId: f.teamId, sources: report }, null, 2),
+  );
+  if (browserOrigin) {
+    const tokenHash = process.env.MEDIA_QA_BROWSER_TOKEN_HASH;
+    const port = Number(process.env.MEDIA_QA_PORT);
+    assert.match(tokenHash ?? '', /^[a-f0-9]{64}$/);
+    assert.ok(Number.isInteger(port) && port >= 1024 && port <= 65535);
+    await f.db.query('UPDATE sessions SET token_hash=$1 WHERE token_hash=$2', [
+      tokenHash,
+      f.actors.owner.tokenHash,
+    ]);
+    await f.app.listen({ host: '0.0.0.0', port });
+    console.log('Test media API is listening');
+    await new Promise<void>((resolve) => {
+      const stop = () => {
+        clearTimeout(timeout);
+        resolve();
+      };
+      const timeout = setTimeout(stop, 300_000);
+      process.once('SIGINT', stop);
+      process.once('SIGTERM', stop);
+    });
+  }
+} finally {
+  await f.close();
+}

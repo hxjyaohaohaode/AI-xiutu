@@ -9,6 +9,10 @@ const copy = {
     recorded: '已记录',
     latest: '最近记录',
     noValue: '金额待核对',
+    selectedDate: '所选日期',
+    returnLatest: '回到最近记录',
+    knownTotal: '已记录合计',
+    incomplete: '含待核对数值',
   },
   'zh-TW': {
     inspect: '查看趨勢日期',
@@ -18,6 +22,10 @@ const copy = {
     recorded: '已記錄',
     latest: '最近紀錄',
     noValue: '金額待核對',
+    selectedDate: '所選日期',
+    returnLatest: '回到最近紀錄',
+    knownTotal: '已記錄合計',
+    incomplete: '含待核對數值',
   },
   en: {
     inspect: 'Inspect trend dates',
@@ -27,6 +35,10 @@ const copy = {
     recorded: 'Recorded',
     latest: 'Latest record',
     noValue: 'Amount to be confirmed',
+    selectedDate: 'Selected date',
+    returnLatest: 'Back to latest record',
+    knownTotal: 'Recorded total',
+    incomplete: 'Includes unconfirmed values',
   },
 } as const;
 

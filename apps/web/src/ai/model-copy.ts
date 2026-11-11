@@ -16,6 +16,10 @@ const copy = {
     modelId: '模型标识',
     expandComposer: '展开编写',
     collapseComposer: '返回对话',
+    linkedBackground: 'JPEG 使用不透明背景。',
+    linkedFormat: '透明背景已联动为支持透明度的格式。',
+    invalidPair: '当前模型没有兼容的背景与格式组合。',
+    outputPreview: '输出画幅',
   },
   'zh-TW': {
     back: '返回對話',
@@ -32,6 +36,10 @@ const copy = {
     modelId: '模型識別碼',
     expandComposer: '展開編寫',
     collapseComposer: '返回對話',
+    linkedBackground: 'JPEG 使用不透明背景。',
+    linkedFormat: '透明背景已連動為支援透明度的格式。',
+    invalidPair: '目前模型沒有相容的背景與格式組合。',
+    outputPreview: '輸出畫幅',
   },
   en: {
     back: 'Back to conversation',
@@ -48,6 +56,10 @@ const copy = {
     modelId: 'Model identifier',
     expandComposer: 'Expand composer',
     collapseComposer: 'Back to conversation',
+    linkedBackground: 'JPEG uses an opaque background.',
+    linkedFormat: 'The format now supports your transparent background.',
+    invalidPair: 'This model has no compatible background and format pair.',
+    outputPreview: 'Output frame',
   },
 } as const;
 

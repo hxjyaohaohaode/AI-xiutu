@@ -170,6 +170,7 @@
   font-size: 12px;
   font-weight: 500;
   line-height: 1.35;
+  text-wrap: balance;
 }
 
 .parameter-shelf .parameter-shelf-options small {
@@ -300,6 +301,12 @@
 
   .parameter-shelf .parameter-shelf-current {
     padding-block: 0 5px;
+  }
+}
+
+@container edit-tools (max-width: 360px) {
+  .parameter-shelf .parameter-shelf-options button > span {
+    font-size: 11px;
   }
 }
 

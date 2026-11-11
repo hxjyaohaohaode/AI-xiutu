@@ -156,6 +156,30 @@ async function verifyLocalMaskAndLiquify(input) {
     assert.equal(Number(await exposure.inputValue()), -0.01);
     await exposure.press('Alt+ArrowRight');
     assert.equal(Number(await exposure.inputValue()), -0.009);
+    await settled();
+    await exposure.scrollIntoViewIfNeeded();
+    const localTrack = await exposure.boundingBox();
+    assert.ok(localTrack);
+    const localBefore = await png();
+    await page.evaluate(() => {
+      window.warpPaints = [];
+    });
+    const localX = localTrack.x + localTrack.width * 0.5;
+    const localY = localTrack.y + localTrack.height * 0.5;
+    await page.mouse.move(localX, localY);
+    await page.mouse.down();
+    await page.mouse.move(localTrack.x + localTrack.width * 0.75, localY, { steps: 16 });
+    await page.waitForFunction((before) => {
+      const canvas = document.querySelector('.image-frame canvas[aria-label="照片编辑预览"]');
+      return canvas?.toDataURL().split(',')[1] !== before;
+    }, localBefore.toString('base64'));
+    const localFrames = await page.evaluate(() => window.warpPaints);
+    assert.ok(localFrames.length > 0);
+    assert.ok(
+      localFrames.every(({ width, height }) => width === source.width && height === source.height),
+    );
+    await page.mouse.up();
+    await settled();
     await selectedPanel.getByRole('button', { name: /^曝光数值/ }).click();
     await selectedPanel.getByRole('spinbutton', { name: '曝光精确数值' }).fill('0.64');
     await selectedPanel.getByRole('spinbutton', { name: '曝光精确数值' }).press('Enter');
@@ -317,6 +341,7 @@ async function verifyLocalMaskAndLiquify(input) {
       width: source.width,
       height: source.height,
       exactSettledPixels: source.width * source.height,
+      localDragFramesAtNativeSize: localFrames.length,
       repairAfterWarp: {
         keptWarpWhenSwitching: true,
         directBrush: true,
@@ -769,16 +794,31 @@ try {
   const channel = process.env.BROWSER_CHANNEL;
   browser = await chromium.launch({ headless: true, ...(channel ? { channel } : {}) });
   report.browser = browser.version();
-  const width = 2200;
-  const height = 1700;
-  const rgba = Buffer.alloc(width * height * 4);
-  for (let y = 0; y < height; y++) {
-    for (let x = 0; x < width; x++) {
-      const i = (y * width + x) * 4;
-      rgba[i] = 25 + Math.floor((x * 195) / width);
-      rgba[i + 1] = 20 + Math.floor((y * 200) / height);
-      rgba[i + 2] = 100 + (Math.floor(x / 13) % 8) * 12;
-      rgba[i + 3] = 255;
+  const largePhoto = process.env.PREVIEW_LARGE_PHOTO;
+  let width, height, rgba;
+  if (largePhoto) {
+    const photo = await sharp(await readFile(largePhoto))
+      .autoOrient()
+      .toColourspace('srgb')
+      .removeAlpha()
+      .ensureAlpha()
+      .raw()
+      .toBuffer({ resolveWithObject: true });
+    ({ width, height } = photo.info);
+    rgba = photo.data;
+    assert.ok(width * height > 4_194_304 && width * height <= 16_777_216);
+  } else {
+    width = 2200;
+    height = 1700;
+    rgba = Buffer.alloc(width * height * 4);
+    for (let y = 0; y < height; y++) {
+      for (let x = 0; x < width; x++) {
+        const i = (y * width + x) * 4;
+        rgba[i] = 25 + Math.floor((x * 195) / width);
+        rgba[i + 1] = 20 + Math.floor((y * 200) / height);
+        rgba[i + 2] = 100 + (Math.floor(x / 13) % 8) * 12;
+        rgba[i + 3] = 255;
+      }
     }
   }
   const buffer = await sharp(rgba, { raw: { width, height, channels: 4 } })
@@ -787,11 +827,13 @@ try {
   for (const [size, test] of [
     [{ width: 1440, height: 900, deviceScaleFactor: 2 }, '曝光'],
     [{ width: 1440, height: 900, deviceScaleFactor: 2 }, '曲线'],
+    [{ width: 1440, height: 900, deviceScaleFactor: 2 }, '饱和度'],
     [{ width: 390, height: 844, deviceScaleFactor: 2, hasTouch: true }, '曝光'],
   ]) {
     const { width: w, height: h, ...device } = size;
     if (
       process.env.PREVIEW_CASE === 'mask' ||
+      (process.env.PREVIEW_CASE === 'saturation' && test !== '饱和度') ||
       (process.env.PREVIEW_CASE === 'phone' && !device.hasTouch)
     )
       continue;
@@ -802,10 +844,14 @@ try {
       ...device,
     });
     // Record actual paints on the visible canvas. No readbacks or serialization in the hot path.
-    await page.addInitScript(() => {
+    await page.addInitScript((large) => {
+      if (large) localStorage.setItem('editor:pixel-budget:v2', '16777216');
       const paint = CanvasRenderingContext2D.prototype.putImageData;
+      const observed = new WeakSet();
+      const post = Worker.prototype.postMessage;
       window.previewTrace = {
         paints: [],
+        worker: [],
         inputs: [],
         valueChanges: [],
         armed: false,
@@ -814,15 +860,40 @@ try {
         start: null,
         end: null,
       };
+      Worker.prototype.postMessage = function (message, ...args) {
+        if (message?.type === 'interactive-preview') {
+          const trace = window.previewTrace;
+          trace.worker.push({
+            id: message.id,
+            sent: performance.now(),
+            saturation: message.recipe?.adjustments?.saturation,
+          });
+          if (!observed.has(this)) {
+            observed.add(this);
+            this.addEventListener('message', ({ data }) => {
+              const job = trace.worker.find(({ id }) => id === data?.id);
+              if (job) job.received = performance.now();
+            });
+          }
+        }
+        return post.call(this, message, ...args);
+      };
       CanvasRenderingContext2D.prototype.putImageData = function (image, ...args) {
         paint.call(this, image, ...args);
         if (this.canvas.getAttribute('aria-label') !== '照片编辑预览') return;
-        const at = (Math.floor(image.height / 2) * image.width + Math.floor(image.width / 3)) * 4;
+        const positions = Array.from({ length: 25 }, (_, i) => [
+          (Math.floor(i / 5) + 0.5) / 5,
+          ((i % 5) + 0.5) / 5,
+        ]);
+        const sample = positions.flatMap(([y, x]) => {
+          const at = (Math.floor(image.height * y) * image.width + Math.floor(image.width * x)) * 4;
+          return Array.from(image.data.subarray(at, at + 4));
+        });
         window.previewTrace.paints.push({
           t: performance.now(),
           width: image.width,
           height: image.height,
-          sample: Array.from(image.data.subarray(at, at + 4)),
+          sample,
         });
       };
       document.addEventListener(
@@ -871,7 +942,7 @@ try {
         },
         true,
       );
-    });
+    }, Boolean(largePhoto));
     // Local editor works without an authenticated API. Keep unrelated config requests deterministic.
     await page.route('**/v1/**', (route) =>
       route.fulfill({ status: 503, json: { message: 'offline' } }),
@@ -887,9 +958,13 @@ try {
     const canvas = page.locator('.image-frame canvas[aria-label="照片编辑预览"]');
     const readCanvas = () => canvas.evaluate((node) => node.toDataURL('image/png').split(',')[1]);
     const original = Buffer.from(await readCanvas(), 'base64');
+    if (largePhoto) {
+      const opened = await sharp(original).metadata();
+      assert.deepEqual([opened.width, opened.height], [width, height]);
+    }
     const tools = page.getByRole('navigation', { name: '编辑工具' });
     const tool = tools.getByRole('button', {
-      name: test === '曲线' ? '曲线' : w < 760 ? '调节' : '明暗',
+      name: test === '曲线' ? '曲线' : test === '饱和度' ? '色彩' : w < 760 ? '调节' : '明暗',
       exact: true,
     });
     if ((await tool.getAttribute('aria-pressed')) !== 'true') await tool.click();
@@ -950,6 +1025,7 @@ try {
         frame.width >= full.width ? frame : full,
       );
       trace.paints = [];
+      trace.worker = [];
       trace.inputs = [];
       trace.valueChanges = [];
       trace.pointerId = null;
@@ -1029,6 +1105,11 @@ try {
       gestureMs: trace.end - inputTime,
       firstChangedMs: frames.length ? frames[0].t - inputTime : null,
       firstRangeChangeMs: trace.valueChanges.length ? trace.valueChanges[0] - inputTime : null,
+      firstWorkerDispatchMs: trace.worker[0] ? trace.worker[0].sent - inputTime : null,
+      firstWorkerRoundTripMs: trace.worker[0]?.received
+        ? trace.worker[0].received - trace.worker[0].sent
+        : null,
+      firstWorkerSaturation: trace.worker[0]?.saturation ?? null,
       distinctLiveFrames: distinct,
       liveRasterPixels: frames.length
         ? {
@@ -1099,6 +1180,7 @@ try {
           data: new Uint8ClampedArray(source.data),
         },
         recipe,
+        { maxPixels: source.info.width * source.info.height },
       );
       const actual = await sharp(rendered).ensureAlpha().raw().toBuffer();
       assert.ok(
@@ -1108,6 +1190,13 @@ try {
       caseReport.exactSettledPixels = expected.width * expected.height;
     }
     report.cases.push(caseReport);
+    if (largePhoto)
+      await page.screenshot({
+        path: resolve(
+          artifacts,
+          `native-${test === '曲线' ? 'curve' : test === '饱和度' ? 'saturation' : 'exposure'}-${w}.png`,
+        ),
+      });
     process.stdout.write(JSON.stringify(caseReport) + '\n');
     await page.close();
   }
@@ -1125,7 +1214,11 @@ try {
       assert.ok(test.maxFrameGapMs !== null && test.maxFrameGapMs < 350, JSON.stringify(test));
     }
   }
-  if (process.env.PREVIEW_RECORD_ONLY !== '1' && process.env.PREVIEW_CASE !== 'phone') {
+  if (
+    !largePhoto &&
+    process.env.PREVIEW_RECORD_ONLY !== '1' &&
+    process.env.PREVIEW_CASE !== 'phone'
+  ) {
     if (process.env.PREVIEW_CASE !== 'mask')
       await verifyWorkerRecovery({
         png: buffer,
@@ -1135,7 +1228,7 @@ try {
   } else {
     report.workerRecovery = {
       state: 'not-run',
-      reason: 'This selective run requests timing-only recording or the phone gesture only.',
+      reason: 'Run the independent worker recovery case with the default input.',
     };
   }
 } finally {

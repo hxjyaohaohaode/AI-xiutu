@@ -21,7 +21,10 @@ export type FeatureSkeletonProfile =
   | 'search'
   | 'media'
   | 'account'
-  | 'assistant';
+  | 'assistant'
+  | 'operations'
+  | 'table'
+  | 'drawing';
 
 export type DeferredFeatureState = {
   kind: 'pending' | 'error';
@@ -34,7 +37,7 @@ export type DeferredFeatureState = {
 /** Reserved wrapper prop; it is never forwarded to the loaded feature. */
 export type DeferredFeatureNavigation = { onLoadBack?: () => void };
 
-type FeatureLoader<P extends object> = () => Promise<{ default: ComponentType<P> }>;
+type FeatureLoader<P extends object> = (retry: boolean) => Promise<{ default: ComponentType<P> }>;
 type FeatureStateRenderer<P extends object> = (
   state: DeferredFeatureState,
   props: Readonly<P>,
@@ -131,6 +134,43 @@ export function FeatureSkeleton({
             <div className="feature-skeleton-message" />
             <div className="feature-skeleton-message" />
             <div className="feature-skeleton-composer" />
+          </div>
+        ) : profile === 'operations' ? (
+          <>
+            <div className="feature-skeleton-operations">
+              {Array.from({ length: 6 }, (_, index) => (
+                <div key={index}>
+                  <b />
+                  <i />
+                </div>
+              ))}
+            </div>
+            <div className="feature-skeleton-list">{rows(4, 'capability')}</div>
+          </>
+        ) : profile === 'table' ? (
+          <div className="feature-skeleton-table">
+            {Array.from({ length: 7 }, (_, row) => (
+              <div key={row}>
+                {Array.from({ length: 4 }, (_, column) => (
+                  <b key={column} />
+                ))}
+              </div>
+            ))}
+          </div>
+        ) : profile === 'drawing' ? (
+          <div className="feature-skeleton-drawing">
+            <aside>
+              {Array.from({ length: 6 }, (_, index) => (
+                <i key={index} />
+              ))}
+            </aside>
+            <i className="feature-skeleton-drawing-canvas" />
+            <div>
+              <b />
+              <i />
+              <b />
+              <i />
+            </div>
           </div>
         ) : profile === 'usage' ? (
           <>
@@ -238,12 +278,15 @@ export function createDeferredFeature<P extends object>(
     const { onLoadBack, ...rest } = props;
     const featureProps = rest as P;
     const [attempt, setAttempt] = useState(() => ({
-      Feature: lazy(loader),
+      Feature: lazy(() => loader(false)),
       generation: 0,
     }));
     const retry = useCallback(() => {
       // React.lazy caches rejected promises. Resetting only the boundary is insufficient.
-      setAttempt((previous) => ({ Feature: lazy(loader), generation: previous.generation + 1 }));
+      setAttempt((previous) => ({
+        Feature: lazy(() => loader(true)),
+        generation: previous.generation + 1,
+      }));
     }, []);
     const { Feature } = attempt;
     const state = (kind: DeferredFeatureState['kind']): DeferredFeatureState => ({

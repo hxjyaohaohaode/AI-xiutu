@@ -31,6 +31,7 @@ jobs:
     env:
       CI: 'true'
       NODE_ENV: test
+      BROWSER_CHANNEL: chrome
       TEST_DATABASE_URL: postgresql://xiutu:ci-only-disposable@127.0.0.1:5432/xiutu_browser_test
       DB_POOL_MAX: '8'
     steps:
@@ -40,7 +41,8 @@ jobs:
           node-version-file: .nvmrc
           cache: npm
       - run: npm ci
-      - run: npx playwright install --with-deps chromium
+      - name: Verify the runner's installed Chrome
+        run: google-chrome --version
       - name: Measure continuous slider, curve and touch paints
         run: node --import tsx scripts/qa/interactive-preview.browser.mjs
       - name: Preserve preview timing evidence
@@ -107,7 +109,7 @@ jobs:
           if-no-files-found: error
   baseline:
     runs-on: ubuntu-latest
-    timeout-minutes: 15
+    timeout-minutes: 25
     services:
       postgres:
         image: postgres:18
@@ -128,24 +130,18 @@ jobs:
       DB_POOL_MAX: '10'
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
-      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
-        with:
-          node-version-file: .nvmrc
-          cache: npm
-      - run: npm ci
-      - name: Install English and simplified Chinese OCR runtimes
+      - name: Build and check with the application native runtime
         run: |
-          sudo apt-get update -qq && sudo apt-get install -y --no-install-recommends tesseract-ocr tesseract-ocr-eng tesseract-ocr-chi-sim fonts-dejavu-core fonts-noto-cjk
-          node --use-env-proxy scripts/prepare-ocr.mjs "$RUNNER_TEMP/ocr-tessdata"
-          echo "TESSDATA_PREFIX=$RUNNER_TEMP/ocr-tessdata" >> "$GITHUB_ENV"
-      - name: Install pinned native precision codecs
-        run: |
-          python3 -m venv "$RUNNER_TEMP/xiutu-media"
-          "$RUNNER_TEMP/xiutu-media/bin/pip" --disable-pip-version-check install -r packages/media/native/requirements.txt
-          echo "MEDIA_QA_PYTHON=$RUNNER_TEMP/xiutu-media/bin/python" >> "$GITHUB_ENV"
-      - run: npm run vision:prepare
-      - run: npm run check
-      - run: npm audit --omit=dev --audit-level=high
+          docker build --target server-media --tag xiutu-native-check -f infra/Dockerfile .
+          docker run --rm --network host --user root \
+            --env TEST_DATABASE_URL --env REQUIRE_DB_TESTS --env REQUIRE_NATIVE_OCR \
+            --env DB_POOL_MAX --env NODE_ENV=test xiutu-native-check bash -euc '
+              apt-get update -qq
+              apt-get install -y --no-install-recommends fonts-dejavu-core fonts-noto-cjk
+              export MEDIA_QA_PYTHON="$MEDIA_PYTHON"
+              runuser -u node -- npm test
+              runuser -u node -- npm audit --omit=dev --audit-level=high
+            '
   containers:
     needs: baseline
     runs-on: ubuntu-latest

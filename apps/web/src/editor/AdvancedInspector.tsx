@@ -1,11 +1,11 @@
 import { t } from '../i18n';
 import { MotionDetails } from '../motion/Presence';
 import { ChoiceSelect } from '../components/ChoiceSelect';
-import { useLayoutEffect, useRef, useState } from 'react';
+import { Activity, useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { CaretDown } from '@phosphor-icons/react';
 import { createColorBlockV3 } from '@ai-xiutu/editor';
 import { IconButton, InlineError } from '../components/Ui';
-import type { ToolInspectorProps } from './ToolInspector';
+import type { ToolGroup, ToolInspectorProps } from './ToolInspector';
 import { toolGroups } from './ToolInspector';
 import {
   checkedRecipe,
@@ -37,7 +37,10 @@ export function AdvancedInspector({
   onCutout,
 }: ToolInspectorProps) {
   const [scopes, setScopes] = useState<Partial<Record<typeof group, EditScope>>>({});
-  const requestedScope: EditScope = scopes[group] ?? { kind: 'global' };
+  const [visited, setVisited] = useState<ToolGroup[]>([group]);
+  useEffect(() => {
+    setVisited((previous) => (previous.includes(group) ? previous : [...previous, group]));
+  }, [group]);
   const [error, setError] = useState<string | null>(null);
   const scroller = useRef<HTMLDivElement>(null);
   const scrollOffsets = useRef<Partial<Record<typeof group, number>>>({});
@@ -46,13 +49,15 @@ export function AdvancedInspector({
   }, [group]);
   const recipe = currentV3(editor),
     descriptor = toolGroups.find((tool) => tool.id === group)!;
-  const scope =
-    requestedScope.kind === 'global' ||
-    (requestedScope.kind === 'region' &&
-      recipe.regionEdits.some((r) => r.id === requestedScope.id)) ||
-    (requestedScope.kind === 'group' && recipe.regionGroups.some((r) => r.id === requestedScope.id))
-      ? requestedScope
-      : { kind: 'global' as const };
+  const scopeFor = (owner: ToolGroup): EditScope => {
+    const requested = scopes[owner] ?? { kind: 'global' };
+    return requested.kind === 'global' ||
+      (requested.kind === 'region' && recipe.regionEdits.some((r) => r.id === requested.id)) ||
+      (requested.kind === 'group' && recipe.regionGroups.some((r) => r.id === requested.id))
+      ? requested
+      : { kind: 'global' };
+  };
+  const scope = scopeFor(group);
   const controller: InspectorController = {
     editor,
     report: setError,
@@ -71,9 +76,9 @@ export function AdvancedInspector({
       }
     },
   };
-  function chooseScope(next: EditScope) {
+  function chooseScope(next: EditScope, owner = group) {
     editor.commitCurrent('完成当前作用范围');
-    setScopes((current) => ({ ...current, [group]: next }));
+    setScopes((current) => ({ ...current, [owner]: next }));
     if (next.kind === 'region') {
       editor.setActiveRegionId(next.id);
       editor.setActiveMaskPath([]);
@@ -170,82 +175,102 @@ export function AdvancedInspector({
                     ]}
                   />
                 </label>
-                {scope.kind !== 'global' && (
-                  <small>{t('仅改变所选范围的完整参数，其他局部保持独立。')}</small>
-                )}
               </div>
             )}
             <InlineError message={error} />
-            {scopedFamily && (
-              <ColorControls
-                controller={controller}
-                scope={scope}
-                family={group as 'light' | 'color' | 'curves' | 'detail'}
-                pickedColor={pickedColor}
-                onColorChange={onColorChange}
-                onSample={onSample}
-                sampling={sampling}
-                onScope={(next) => {
-                  chooseScope(next);
-                  onGroupChange?.('local');
-                }}
-              />
-            )}
-            {group === 'crop' && <GeometryControls controller={controller} />}
-            {group === 'local' && (
-              <LocalControls
-                controller={controller}
-                scope={scope}
-                onScope={chooseScope}
-                pickedColor={pickedColor}
-                onColorChange={onColorChange}
-                onSample={onSample}
-                sampling={sampling}
-              />
-            )}
-            {group === 'beauty' && (
-              <PortraitControls
-                controller={controller}
-                onGroupChange={onGroupChange}
-                onCutout={onCutout}
-                onSelectionCreated={(id) => {
-                  setScopes((current) => ({ ...current, local: { kind: 'region', id } }));
-                  onGroupChange?.('local');
-                }}
-              />
-            )}
-            {group === 'repair' && <RepairControls controller={controller} />}
-            {group === 'paint' && (
-              <PaintControls
-                controller={controller}
-                pickedColor={pickedColor}
-                onSample={onSample}
-                sampling={sampling}
-              />
-            )}
-            {group === 'liquify' && <LiquifyControls controller={controller} />}
-            {group === 'composite' && <ImageLayerControls controller={controller} />}
-            {group === 'history' && <HistoryPanel editor={editor} />}
-            {scopedFamily && (
-              <MotionDetails className="advanced-disclosure">
-                <summary>{t('恢复当前作用范围')}</summary>
-                <button
-                  className="text-button"
-                  onClick={() =>
-                    controller.apply(
-                      withScopeColor(currentV3(editor), scope, createColorBlockV3()),
-                      t('恢复当前范围的中性色彩'),
-                      true,
-                    )
-                  }
-                >
-                  {t('恢复当前范围全部明暗、色彩和细节')}
-                </button>
-                <p className="control-note">
-                  {t('保留选区形状、其他人物、构图和合成图层；该操作可以撤销。')}
-                </p>
-              </MotionDetails>
-            )}
+            {toolGroups
+              .filter(({ id }) => id === group || visited.includes(id))
+              .map(({ id }) => {
+                const retainedScope = scopeFor(id);
+                const colorFamily = ['light', 'color', 'curves', 'detail'].includes(id);
+                return (
+                  <Activity key={id} mode={group === id ? 'visible' : 'hidden'}>
+                    {/* Only visited tools are retained, inside this source-keyed inspector.
+                        Activity pauses hidden effects and focus targets while preserving
+                        subcategories, selected controls, disclosures and unfinished inputs. */}
+                    <div className="inspector-tool-content" data-tool-family={id}>
+                      {colorFamily && (
+                        <ColorControls
+                          controller={controller}
+                          scope={retainedScope}
+                          family={id as 'light' | 'color' | 'curves' | 'detail'}
+                          pickedColor={pickedColor}
+                          onColorChange={onColorChange}
+                          onSample={onSample}
+                          sampling={sampling}
+                          onScope={(next) => {
+                            chooseScope(next, id);
+                            setScopes((current) => ({ ...current, local: next }));
+                            onGroupChange?.('local');
+                          }}
+                        />
+                      )}
+                      {id === 'crop' && <GeometryControls controller={controller} />}
+                      {id === 'local' && (
+                        <LocalControls
+                          controller={controller}
+                          scope={retainedScope}
+                          onScope={(next) => chooseScope(next, id)}
+                          pickedColor={pickedColor}
+                          onColorChange={onColorChange}
+                          onSample={onSample}
+                          sampling={sampling}
+                        />
+                      )}
+                      {id === 'beauty' && (
+                        <PortraitControls
+                          controller={controller}
+                          onGroupChange={onGroupChange}
+                          onCutout={onCutout}
+                          onSelectionCreated={(regionId) => {
+                            setScopes((current) => ({
+                              ...current,
+                              local: { kind: 'region', id: regionId },
+                            }));
+                            onGroupChange?.('local');
+                          }}
+                        />
+                      )}
+                      {id === 'repair' && <RepairControls controller={controller} />}
+                      {id === 'paint' && (
+                        <PaintControls
+                          controller={controller}
+                          pickedColor={pickedColor}
+                          onSample={onSample}
+                          sampling={sampling}
+                        />
+                      )}
+                      {id === 'liquify' && <LiquifyControls controller={controller} />}
+                      {id === 'composite' && <ImageLayerControls controller={controller} />}
+                      {id === 'history' && <HistoryPanel editor={editor} />}
+                      {colorFamily && (
+                        <MotionDetails className="advanced-disclosure">
+                          <summary>{t('恢复当前作用范围')}</summary>
+                          <button
+                            className="text-button"
+                            onClick={() =>
+                              controller.apply(
+                                withScopeColor(
+                                  currentV3(editor),
+                                  retainedScope,
+                                  createColorBlockV3(),
+                                ),
+                                t('恢复当前范围的中性色彩'),
+                                true,
+                              )
+                            }
+                          >
+                            {t('恢复当前范围全部明暗、色彩和细节')}
+                          </button>
+                          <p className="control-note">
+                            {t('保留选区形状、其他人物、构图和合成图层；该操作可以撤销。')}
+                          </p>
+                        </MotionDetails>
+                      )}
+                    </div>
+                  </Activity>
+                );
+              })}
           </>
         )}
       </div>

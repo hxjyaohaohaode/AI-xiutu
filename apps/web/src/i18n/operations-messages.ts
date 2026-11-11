@@ -1,6 +1,10 @@
 export const operationsEnglish: Readonly<Record<string, string>> = {
   实时语音与智能体运营配置: 'Live voice & assistant configuration',
   语音与协作模型: 'Voice & collaboration models',
+  读取模型目录: 'Loading model catalog',
+  读取待核验会话: 'Loading sessions awaiting reconciliation',
+  '配置已提交，但无法确认保存后的模型。请重新读取。':
+    'The configuration was submitted, but the saved model could not be confirmed. Reload the catalog.',
   '生成图片仍使用原有模型目录；这里配置实时交流、看图建议和资源检索。':
     'Image generation uses the existing model catalog. Configure live conversation, image suggestions, and resource search here.',
   '智能体环境：': 'Assistant environment:',

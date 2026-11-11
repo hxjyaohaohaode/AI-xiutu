@@ -77,6 +77,17 @@ export function UsageTrend({ report, kind }: { report: UsageReport; kind: UsageK
           >
             <CaretRight size={16} aria-hidden />
           </button>
+          <button
+            type="button"
+            className="usage-trend-latest"
+            aria-label={c.returnLatest}
+            title={c.returnLatest}
+            disabled={index === geometry.points.length - 1}
+            onClick={() => setSelectedBucket(null)}
+          >
+            <CaretRight size={14} aria-hidden />
+            <CaretRight size={14} aria-hidden />
+          </button>
         </div>
       </div>
       <div className="usage-trend-canvas">

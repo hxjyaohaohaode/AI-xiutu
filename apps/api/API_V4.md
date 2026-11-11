@@ -170,9 +170,20 @@ additional media links, with explicit source asset IDs and audited provenance.
 - `POST /v1/media-imports/:id/complete` ->202 `{job}`. Fully uploaded input required; repeated complete never launches another decoder.
 - `GET /v1/media-imports/:id` -> `{job,asset:null|Asset}`; states uploading|processing|ready|failed|cancelled.
 - `POST /v1/media-imports/:id/cancel` -> `{ok:true,cleanupPending:boolean}`; unfinished work only. Ready409 never deletes published originals. When processing may still be owned by another worker, cancellation remains durable but the reservation and work directory stay until that worker stops or stale recovery confirms ownership loss. Repeated cancellation does not extend its lease or free its capacity early.
-- `GET /v1/assets/:id/media` -> `{descriptor,downloads,editor}`; asset ACL is separate from task ownership.
-- `GET /v1/assets/:id/media/original`, `/master`, `/tiles.dzi`, `/tiles_files/:level/:tile`: private original/master/tiles under current asset ACL. DZI uses the actual encoded extension.
-- `POST /v1/assets/:id/media/export` `{format:'png16'|'tiff16'|'jpeg'|'webp'|'exr32',quality?:1..100,precisionEdit?,expectedSourceSha256?}` converts the retained master to a private temporary response, with `X-Editor-Recipe-Included:false`. Existing calls retain their behavior. An explicit `precisionEdit` uses `scene-linear-v1` on actual master samples and returns `X-Precision-Edit-SHA256`; it is separate from the browser recipe. Fields are `algorithm:'scene-linear-v1',exposure:-10..10,temperature/tint/contrast/saturation/shadows/highlights:-100..100,toneMap:'none'|'reinhard'`, all required. Edits and float export require the exact descriptor's `expectedSourceSha256`. PNG/TIFF edits retain 16bit quantization; `exr32` requires the retained `linear-master.exr` and installed native runtime, preserves float32 signed/headroom values and associated alpha. Both paths are limited to16MP and preserve immutable originals. Capability/asset metadata reports availability before decoding. Revoked membership, session logout, changed source, cancellation and processing failures stop download. This is global linear grading, not full high-bit/HDR replay of masks, paint, healing or arbitrary browser V4 effects.
+- `GET /v1/assets/:id/media` -> `{descriptor,downloads,editor}`. `editor.precisionEditing` includes `currentGrade`, `canSave`, the installed-runtime flags, the exact source digest and the preview/export budgets.
+- `GET /v1/assets/:id/media/original`, `/master`, `/linearMaster`, `/tiles.dzi`, `/tiles_files/:level/:tile` serve immutable originals, masters or tiles under the asset ACL.
+- `POST /v1/assets/:id/media/preview` accepts `{expectedSourceSha256,precisionInput,precisionEdit?,maxEdge,region?}`. The PNG16 response applies the grade before downsampling an overview. An optional `{left,top,width,height}` selects native pixels in the orientation-normalized data window. Each edge must fit `maxEdge` (128–2048); the coordinates must fit the master. A window may be read from a raster above the whole-image grading budget.
+- `GET /v1/assets/:id/media/grades?beforeVersion=N` returns `{grades,nextBeforeVersion}` in descending order, at most 30 per response. `POST .../grades` accepts `{expectedVersion,expectedSourceSha256,precisionInput,precisionEdit}` and returns `201 {grade}`. Version 0 means no prior grade. A stale save returns 409. Each new version is appended under current project edit access.
+- `POST /v1/assets/:id/media/export` accepts `{format,quality?,expectedSourceSha256?,precisionInput?,precisionEdit?,gradeVersion?}`. Select either an inline grade or an immutable saved version. `precisionInput` is `master16` or `linear-master`. Legacy PNG/TIFF/JPEG/WebP requests default to the SDR master; EXR32 uses the linear master. Grades, explicit input selection and EXR require the source digest. The response includes `X-Precision-Input`, `X-Precision-Edit-SHA256` and `X-Editor-Recipe-Included:false`.
+
+A grade requires `algorithm:'scene-linear-v1'`, `exposure:-10..10`,
+`temperature/tint/contrast/saturation/shadows/highlights:-100..100`, and
+`toneMap:'none'|'reinhard'`. Whole-image grading supports up to 16,777,216
+SDR master pixels or 50,000,000 linear master pixels. PNG/TIFF apply the requested
+grade in the selected input domain and encode sRGB at 16 bits. EXR32 preserves
+signed float values, headroom, associated alpha and the retained EXR windows.
+Preview and export share a renderer and recheck the source, session and ACL before
+returning the result.
 
 Publication atomically replaces the input reservation with actual object/proxy
 bytes. Capacity failure rolls back the asset and links. No prior content is
@@ -477,12 +488,13 @@ master remains accessible through the media export endpoint in section 5.
 GIF processing limits. `POST /v1/projects/:id/derived-assets` accepts the shared
 `derivedAssetRequest` contract. A cutout takes a source-normalized trimap, optional
 foreground/background masks, refinement radius and edge decontamination strength.
-The optional `settings.algorithm` is `ray-v1` (published default), `guided-v2` or
-`guided-v3`. The guided paths estimate RGB affine coefficients on a bounded
+The optional `settings.algorithm` is `ray-v1` (published default), `guided-v2`,
+`guided-v3` or `guided-v4`. The guided paths estimate RGB affine coefficients on a bounded
 area image, evaluate them against original linear RGB and fit nearby color pairs
 inside the uncertain support. V3 samples additional distances between powers of
-two. The workspace binds selected foreground and occluder masks to the current
-source and uses V3 in both the local worker and cloud request. Hard trimap pixels
+two. V4 adds color-weighted paths from confirmed foreground and background through
+the uncertain band. The workspace binds selected foreground and occluder masks to
+the current source and uses V4 in both the local worker and cloud request. Hard trimap pixels
 retain their weights. Local PNG export encodes straight RGBA
 directly, so partially transparent RGB samples match cloud-derived pixels for
 the same canonical source and settings. Omitted algorithms still resolve to
@@ -491,7 +503,7 @@ A collage takes ordered pixel rectangles, fit, focal points and RGBA background.
 All sources must belong to the authorized project. The output is a normal PNG asset.
 `GET /v1/assets/:id/derivation` reads the algorithm, source IDs and hashes, and
 settings under the project's read permission. The actor's request ID is idempotent.
-The V3 derivation identifier is `rgb-guided-trimap-v3` and requires schema 19.
+The V4 derivation identifier is `rgb-guided-trimap-v4` and requires schema 20.
 
 The same capability response now includes `cutout`, `restoration`, `collage` and
 source/working limits. `POST /v1/projects/:id/derived-assets/quote` accepts the same

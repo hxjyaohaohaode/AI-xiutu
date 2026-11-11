@@ -1,4 +1,4 @@
-import { t } from '../i18n';
+import { t, useLocale } from '../i18n';
 import { useEffect, useMemo, useRef, useState, type FormEvent } from 'react';
 import {
   BookmarkSimple,
@@ -6,16 +6,23 @@ import {
   PencilSimple,
   Images,
   Trash,
+  ArrowClockwise,
+  X,
+  LockKey,
 } from '@phosphor-icons/react';
 import { api, errorMessage, formatDate, jsonRequest } from '../lib/api';
 import type { Asset, Space } from '../lib/types';
 import { Busy, EmptyState, InlineError, Modal } from '../components/Ui';
 import { ChoiceSelect } from '../components/ChoiceSelect';
-import { localPixelBudget } from '../editor/useEditor';
+import { FeatureSkeleton } from '../components/DeferredFeature';
+import { MotionDetails } from '../motion/Presence';
 import { MediaSourceViewer } from '../media/MediaSourceViewer';
 import { useConfirmation } from '../components/ConfirmationDialog';
 import { confirmStableScope } from '../lib/confirmation-scope';
 import './resources.css';
+import './collection-refinement.css';
+import { AssetThumbnail } from './AssetThumbnail';
+import { resourceExperienceCopy } from './experience-copy';
 
 import { resourceQuery, type ResourceItem, type ResourcePage as Page } from './model';
 export type { ResourceItem, ResourceMemory } from './model';
@@ -29,6 +36,7 @@ function MemoryEditor({
   onClose: () => void;
   onSaved: () => void;
 }) {
+  const c = resourceExperienceCopy(useLocale());
   const [title, setTitle] = useState(item.memory?.title ?? ''),
     [tags, setTags] = useState(item.memory?.tags.join('，') ?? ''),
     [note, setNote] = useState(item.memory?.note ?? '');
@@ -59,6 +67,25 @@ function MemoryEditor({
     busy: latest.current.busy,
     locked: locked.current,
   });
+  async function canClose() {
+    const current = latest.current;
+    if (locked.current || current.busy) return false;
+    const dirty =
+      current.title !== (current.item.memory?.title ?? '') ||
+      current.tags !== (current.item.memory?.tags.join('，') ?? '') ||
+      current.note !== (current.item.memory?.note ?? '') ||
+      current.remembered !== (current.item.memory?.remembered ?? true);
+    if (!dirty) return true;
+    const outcome = await confirmStableScope(readMemory, () =>
+      confirmation.confirm({
+        description: c.unsavedMemory,
+        confirmLabel: c.discardMemory,
+        tone: 'danger',
+      }),
+    );
+    if (outcome === 'changed' && mounted.current) setError('素材或个人标注已经变化，请重新核对。');
+    return outcome === 'confirmed';
+  }
   async function save(event: FormEvent) {
     event.preventDefault();
     if (!mounted.current || locked.current || busy) return;
@@ -144,7 +171,7 @@ function MemoryEditor({
         title={t('长期复用说明')}
         subtitle={item.asset.name}
         onClose={onClose}
-        canClose={() => !locked.current && !latest.current.busy}
+        canClose={canClose}
       >
         <form className="stack-form" onSubmit={(e) => void save(e)} data-motion="resource-memory">
           <label className="switch-row">
@@ -183,14 +210,21 @@ function MemoryEditor({
               rows={4}
               disabled={busy}
               onChange={(e) => setNote(e.target.value)}
-              placeholder={t('例如：保留这个配色；适合产品封面。不自动分析身份。')}
+              placeholder={c.memoryPlaceholder}
             />
           </label>
-          <p className="form-hint">
-            {t(
-              '这些标注仅属于你的账号，不会修改团队素材信息或自动发给 AI；只有你明确选择引用时才带入共创。原项目权限撤销后，长期标注也不会恢复素材访问权。',
-            )}
+          <p className="resource-private-note">
+            <LockKey size={15} aria-hidden />
+            {c.privateNote}
           </p>
+          <MotionDetails className="resource-privacy-details">
+            <summary>{c.privacy}</summary>
+            <p className="form-hint">
+              {t(
+                '这些标注仅属于你的账号，不会修改团队素材信息或自动发给 AI；只有你明确选择引用时才带入共创。原项目权限撤销后，长期标注也不会恢复素材访问权。',
+              )}
+            </p>
+          </MotionDetails>
           <InlineError message={error} />
           <div className="dialog-actions">
             {item.memory && (
@@ -226,6 +260,7 @@ export function ResourceSearch({
   onOpen: (item: ResourceItem) => Promise<void> | void;
   onReference?: (item: ResourceItem) => void;
 }) {
+  const c = resourceExperienceCopy(useLocale());
   const [scope, setScope] = useState<'all' | 'personal' | 'team'>('all'),
     [spaceId, setSpaceId] = useState(''),
     [query, setQuery] = useState(''),
@@ -233,7 +268,7 @@ export function ResourceSearch({
     [source, setSource] = useState('');
   const [items, setItems] = useState<ResourceItem[]>([]),
     [cursor, setCursor] = useState<string | null>(null),
-    [busy, setBusy] = useState(false),
+    [busy, setBusy] = useState(true),
     [more, setMore] = useState(false),
     [opening, setOpening] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null),
@@ -242,6 +277,14 @@ export function ResourceSearch({
   const [sourceDetails, setSourceDetails] = useState<Asset | null>(null);
   const generation = useRef(0),
     moreLock = useRef(false);
+  const accessKey = spaces
+    .map((space) => `${space.id}:${space.kind}:${space.role}`)
+    .sort()
+    .join('|');
+  useEffect(() => {
+    setEdit(null);
+    setSourceDetails(null);
+  }, [accessKey]);
   useEffect(() => {
     const timer = setTimeout(() => setSearch(query), 250);
     return () => clearTimeout(timer);
@@ -274,12 +317,13 @@ export function ResourceSearch({
         if (id === generation.current) setBusy(false);
       });
     return () => controller.abort();
-  }, [endpoint, refresh]);
+  }, [endpoint, refresh, accessKey]);
   async function loadMore() {
     if (!cursor || moreLock.current) return;
     const id = generation.current;
     setMore(true);
     moreLock.current = true;
+    setError(null);
     try {
       const result = await api<Page>(resourceQuery({ ...filters, cursor }));
       if (id === generation.current) {
@@ -300,16 +344,25 @@ export function ResourceSearch({
   }
   async function open(item: ResourceItem) {
     if (opening) return;
+    const id = generation.current;
     setOpening(item.asset.id);
     setError(null);
     try {
       await onOpen(item);
     } catch (e) {
-      setError(errorMessage(e));
+      if (id === generation.current) setError(errorMessage(e));
     } finally {
       setOpening(null);
     }
   }
+  const filtered = !!query.trim() || scope !== 'all' || !!spaceId || !!source;
+  const reset = () => {
+    setQuery('');
+    setSearch('');
+    setScope('all');
+    setSpaceId('');
+    setSource('');
+  };
   return (
     <section
       className="resource-search"
@@ -318,12 +371,16 @@ export function ResourceSearch({
       <header className="view-heading" data-motion="resource-heading">
         <div>
           <h1>{rememberedOnly ? t('长期素材') : t('查找素材')}</h1>
-          <p>
-            {rememberedOnly
-              ? t('只保留你主动加入的素材和个人说明；访问仍遵守来源空间权限。')
-              : t('同一个搜索入口，查找有权访问的个人、团队和受邀项目素材。')}
-          </p>
         </div>
+        <button
+          type="button"
+          className="text-button"
+          disabled={busy || more}
+          onClick={() => setRefresh((value) => value + 1)}
+        >
+          <ArrowClockwise size={17} aria-hidden />
+          {t('刷新')}
+        </button>
       </header>
       <div className="resource-filters" data-motion="resource-search">
         <label className="resource-search-input">
@@ -336,6 +393,18 @@ export function ResourceSearch({
             placeholder={t('名称、标签、复用说明')}
             aria-label={t('搜索资源')}
           />
+          {query && (
+            <button
+              type="button"
+              aria-label={c.clearSearch}
+              onClick={() => {
+                setQuery('');
+                setSearch('');
+              }}
+            >
+              <X size={16} aria-hidden />
+            </button>
+          )}
         </label>
         <ChoiceSelect
           ariaLabel={t('资源范围')}
@@ -374,16 +443,57 @@ export function ResourceSearch({
           ]}
         />
       </div>
+      <div className="resource-result-status">
+        <span role="status">
+          {busy ? (
+            t('读取中')
+          ) : (
+            <>
+              <strong>{items.length}</strong> {c.results}
+              {cursor ? ` · ${c.more}` : ''}
+            </>
+          )}
+        </span>
+        {filtered && (
+          <button type="button" className="text-button" onClick={reset}>
+            <X size={14} aria-hidden />
+            {c.reset}
+          </button>
+        )}
+      </div>
       <InlineError message={error} />
-      {busy && <Busy label={t('正在检索可访问资源')} />}
+      {error && !busy && !items.length && (
+        <button
+          type="button"
+          className="button button-secondary resource-retry"
+          onClick={() => setRefresh((value) => value + 1)}
+        >
+          <ArrowClockwise size={17} aria-hidden />
+          {c.reload}
+        </button>
+      )}
+      {busy && <FeatureSkeleton profile="gallery" label={t('正在检索可访问资源')} compact />}
       {!busy && !items.length && !error && (
         <EmptyState
           icon={<Images size={30} />}
-          title={rememberedOnly ? t('还没有长期素材') : t('没有找到符合条件的素材')}
-          description={
+          title={
             rememberedOnly
+              ? filtered
+                ? c.emptyMemoryFiltered
+                : t('还没有长期素材')
+              : t('没有找到符合条件的素材')
+          }
+          description={
+            rememberedOnly && !filtered
               ? t('在素材卡片上选择“长期复用”，添加属于自己的说明。')
               : t('试着缩短搜索词，或放宽空间与来源筛选。')
+          }
+          action={
+            filtered ? (
+              <button type="button" className="button button-secondary" onClick={reset}>
+                {c.reset}
+              </button>
+            ) : undefined
           }
         />
       )}
@@ -403,15 +513,10 @@ export function ResourceSearch({
                 v0: item.memory?.title ?? item.asset.annotations?.title ?? item.asset.name,
               })}
             >
-              {item.asset.thumbnailUrl ||
-              item.asset.width * item.asset.height <= localPixelBudget() ? (
-                <img src={item.asset.thumbnailUrl ?? item.asset.url} alt="" loading="lazy" />
-              ) : (
-                <span>
-                  <Images size={32} />
-                  {item.asset.width} × {item.asset.height}
-                </span>
-              )}
+              <AssetThumbnail
+                key={`${item.asset.id}:${refresh}`}
+                src={item.asset.thumbnailUrl ?? `/v1/assets/${item.asset.id}/thumbnail`}
+              />
               {opening === item.asset.id && (
                 <span className="resource-opening">
                   <Busy label={t('打开中')} />
@@ -458,7 +563,7 @@ export function ResourceSearch({
       </div>
       {cursor && (
         <button className="button button-secondary" disabled={more} onClick={() => void loadMore()}>
-          {more ? <Busy label={t('读取中')} /> : t('更多资源')}
+          {more ? <Busy label={t('读取中')} /> : error ? c.retryMore : t('更多资源')}
         </button>
       )}
       {sourceDetails && (

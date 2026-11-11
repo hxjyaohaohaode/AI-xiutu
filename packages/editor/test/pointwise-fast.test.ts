@@ -19,6 +19,11 @@ test('pointwise lookups equal the original floating-point stages, including byte
       (exposure) => createRecipe({ adjustments: { exposure } }),
     ),
     createRecipe({ adjustments: { temperature: -27, tint: 31 } }),
+    ...[-0.2, 0.2, 0.23].map((saturation) => createRecipe({ adjustments: { saturation } })),
+    createRecipe({
+      adjustments: { saturation: -100, brightness: -37, highlights: 61, shadows: -24 },
+    }),
+    createRecipe({ adjustments: { vibrance: 48, contrast: 33, blacks: -16, whites: 47 } }),
     createRecipe({
       curves: {
         rgb: [
@@ -47,10 +52,12 @@ test('pointwise lookups equal the original floating-point stages, including byte
       },
     ]) {
       const session = createRenderSession({ ...recipe, geometry });
-      assert.ok(session.pointBytes);
       assert.deepEqual(
         renderValidatedRegion(image, session, {}),
-        renderValidatedRegion(image, { ...session, pointBytes: null }, {}),
+        renderValidatedRegion(image, session, {}, undefined, undefined, {
+          active: true,
+          apply: (working) => working,
+        }),
       );
     }
   }

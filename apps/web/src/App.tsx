@@ -1,6 +1,5 @@
 import './studio-styles.css';
 import {
-  lazy,
   Suspense,
   useCallback,
   useEffect,
@@ -124,11 +123,25 @@ import {
   TeamDialog,
   CopyProjectDialog,
 } from './components/ProjectDialogs';
-const OpsDashboard = lazy(() =>
-  import('./components/OpsDashboard').then((module) => ({ default: module.OpsDashboard })),
+const OpsDashboard = createDeferredFeature(
+  async () => ({ default: (await import('./components/OpsDashboard')).OpsDashboard }),
+  '运营管理',
+  (state, props) => (
+    <div className="content-view">
+      <DeferredFeatureStatus {...state} profile="operations" onBack={props.onBack} />
+    </div>
+  ),
+  'operations',
 );
-const DrawingBoard = lazy(() =>
-  import('./components/DrawingBoard').then((module) => ({ default: module.DrawingBoard })),
+const DrawingBoard = createDeferredFeature(
+  async () => ({ default: (await import('./components/DrawingBoard')).DrawingBoard }),
+  '草图板',
+  (state, props) => (
+    <Modal title={t('准备草图板')} onClose={props.onClose}>
+      <DeferredFeatureStatus {...state} profile="drawing" onBack={props.onClose} />
+    </Modal>
+  ),
+  'drawing',
 );
 const CompareView = createDeferredFeature(
   async () => ({ default: (await import('./components/WorkspaceViews')).CompareView }),
@@ -181,8 +194,33 @@ const MediaImportDialog = createDeferredFeature(
     </Modal>
   ),
 );
+let accountModuleRetry = 0;
+let recoveredAccountCenter: typeof import('./account/AccountCenter').AccountCenter | undefined;
 const AccountCenter = createDeferredFeature(
-  async () => ({ default: (await import('./account/AccountCenter')).AccountCenter }),
+  async (retry) => {
+    if (recoveredAccountCenter) return { default: recoveredAccountCenter };
+    try {
+      return { default: (await import('./account/AccountCenter')).AccountCenter };
+    } catch (error) {
+      if (!retry || !(error instanceof TypeError)) throw error;
+      // Chromium remembers a failed module URL for this document. A manual
+      // retry gets a fresh URL for the same account chunk without a page reload.
+      const failedUrl = error.message.match(/https?:\/\/\S+$/)?.[0];
+      if (!failedUrl) throw error;
+      const url = new URL(failedUrl);
+      if (
+        url.origin !== window.location.origin ||
+        !/^\/(?:src\/account\/AccountCenter\.tsx|assets\/AccountCenter-[\w-]+\.js)$/.test(url.pathname)
+      )
+        throw error;
+      url.searchParams.set('retry', String(++accountModuleRetry));
+      const module: typeof import('./account/AccountCenter') = await import(
+        /* @vite-ignore */ url.href
+      );
+      recoveredAccountCenter = module.AccountCenter;
+      return { default: recoveredAccountCenter };
+    }
+  },
   '账号信息',
   (state, props) => (
     <AccountPageFrame
@@ -1429,7 +1467,7 @@ export function App({
     const selection = subject ?? foreground;
     if (!selection) throw new Error(t('请先识别人像或选择前景。'));
     const settings: CutoutSettings = {
-      algorithm: 'guided-v3',
+      algorithm: 'guided-v4',
       selection,
       ...(foreground && subject ? { foreground } : {}),
       ...(background ? { background } : {}),
@@ -2378,7 +2416,10 @@ export function App({
           <Suspense
             fallback={
               <div className="content-view">
-                <Busy label={t('正在打开运营管理')} />
+                <button type="button" className="text-button" onClick={() => setOps(false)}>
+                  {t('返回创作')}
+                </button>
+                <FeatureSkeleton profile="operations" label={t('正在打开运营管理')} />
               </div>
             }
           >
@@ -3272,7 +3313,7 @@ export function App({
           <Suspense
             fallback={
               <Modal title={t('准备草图板')} onClose={closeDialog}>
-                <Busy />
+                <FeatureSkeleton profile="drawing" label={t('准备草图板')} compact />
               </Modal>
             }
           >
@@ -3410,7 +3451,7 @@ export function App({
                 onHome={onAbout}
                 wide
               >
-                <Busy label={t('正在读取账号信息')} />
+                <FeatureSkeleton profile="account" label={t('正在读取账号信息')} compact />
               </AccountPageFrame>
             }
           >

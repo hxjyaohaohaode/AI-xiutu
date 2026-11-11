@@ -28,6 +28,34 @@
       "sha256": "1d570e49654e84c7a943918537bd9e5e1ef82920152e147c834006e235be97c9",
       "bytes": 72937,
       "source": "OpenCV official sports sample, evaluation only; original photo is not redistributed in Git"
+    },
+    {
+      "name": "dlib-group-002506",
+      "url": "https://raw.githubusercontent.com/davisking/dlib/master/examples/faces/2008_002506.jpg",
+      "sha256": "ede6804edf0ec005144ffe7f0f2b56bd2aa1d21beee79d29f72cb16ead19a447",
+      "bytes": 79316,
+      "source": "dlib's PASCAL VOC face-landmark sample; evaluation only"
+    },
+    {
+      "name": "dlib-group-002470",
+      "url": "https://raw.githubusercontent.com/davisking/dlib/master/examples/faces/2008_002470.jpg",
+      "sha256": "14b543e3ac55b497aaaba9dc03a39be04c8ae670851b3f78f9f5adb08295d780",
+      "bytes": 91349,
+      "source": "dlib's PASCAL VOC face-landmark sample; evaluation only"
+    },
+    {
+      "name": "dlib-group-004176",
+      "url": "https://raw.githubusercontent.com/davisking/dlib/master/examples/faces/2008_004176.jpg",
+      "sha256": "92a075f5e1d279f009ab4809592aaf0109e429adf3266e5aa8ce2755730b41c2",
+      "bytes": 93821,
+      "source": "dlib's PASCAL VOC face-landmark sample; evaluation only"
+    },
+    {
+      "name": "dlib-group-004587",
+      "url": "https://raw.githubusercontent.com/davisking/dlib/master/examples/faces/2009_004587.jpg",
+      "sha256": "2dc5d52a5388499cf912d7d99dc9d05e4bec7651153331f40e81ae4813bb317c",
+      "bytes": 79462,
+      "source": "dlib's PASCAL VOC face-landmark sample; evaluation only"
     }
   ]
 }

@@ -7,11 +7,7 @@ import {
   getEditorOutputDimensions,
   type RGBAImage,
 } from '@ai-xiutu/editor';
-import {
-  prepareBudgetedPreview,
-  MAX_PREVIEW_PIXELS,
-  INTERACTIVE_PREVIEW_PIXELS,
-} from '../src/editor/previewBudget.js';
+import { prepareBudgetedPreview, MAX_PREVIEW_PIXELS } from '../src/editor/previewBudget.js';
 
 const fixture = (width: number, height: number): RGBAImage => ({
   width,
@@ -62,7 +58,7 @@ test('output-aware planning handles rotation, projective crop and scale without 
   assert.throws(() => prepareBudgetedPreview(image, singular, 1024), /singular/);
 });
 
-test('actual worker protocol downsizes expanded previews and retains the full transformed export and layer coordinates', async (t) => {
+test('actual worker protocol keeps native transformed previews and supports explicit proxy budgets', async (t) => {
   // Test the real worker dispatcher with transferable replies. Node has no browser PNG encoder.
   const replies: any[] = [];
   const scope = {
@@ -89,13 +85,17 @@ test('actual worker protocol downsizes expanded previews and retains the full tr
     await send({ type: 'source', image: source, original: source });
     const preview = await send({ type: 'preview', id: 1, recipe });
     assert.equal(preview.error, undefined);
-    assert(preview.result.width * preview.result.height <= MAX_PREVIEW_PIXELS);
+    assert.deepEqual(
+      [preview.result.width, preview.result.height],
+      [expected.width, expected.height],
+    );
     const exported = await send({ type: 'export', id: 2, recipe });
     assert.equal(exported.error, undefined);
     assert.deepEqual(
       [exported.result.width, exported.result.height],
       [expected.width, expected.height],
     );
+    assert.deepEqual(preview.result, exported.result);
     assert.deepEqual(source.data, untouched);
     replies.length = 0;
 
@@ -246,7 +246,7 @@ test('actual worker protocol downsizes expanded previews and retains the full tr
             recipe: createRecipeV4(),
           });
           assert.equal(reply.error, undefined);
-          assert.ok(reply.result.width * reply.result.height <= INTERACTIVE_PREVIEW_PIXELS);
+          assert.deepEqual([reply.result.width, reply.result.height], [640, 480]);
           assert.deepEqual(
             [...reply.result.data.subarray(0, 4)],
             color,
