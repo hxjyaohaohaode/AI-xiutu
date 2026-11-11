@@ -1703,9 +1703,14 @@
       grid-column: 1;
       grid-row: 2 / span 2;
       min-width: 0;
-      overflow: auto;
+      overflow-y: auto;
+      overflow-x: hidden;
       overscroll-behavior: contain;
       padding-inline-end: 5px;
+    }
+    .drawing-modal .drawing-tool-area :is(.drawing-toolbar, .drawing-controls, .drawing-colors) {
+      flex-wrap: wrap;
+      min-width: 0;
     }
     .drawing-modal .drawing-surface {
       grid-column: 2;
