@@ -1859,6 +1859,40 @@ try {
         assert.deepEqual(await revokeResponse.json(), { ok: true });
         await until(() => model.isEnabled(), 'revoking the authorization unlocks its model');
         await model.click();
+        const models = settings.getByRole('listbox', { name: '助手模型', exact: true });
+        await models.waitFor();
+        await until(
+          async () => (await models.getAttribute('data-motion-state')) === 'idle',
+          'the model menu finishes its actual entry motion',
+        );
+        const menuGeometry = await models.evaluate((menu) => {
+          const selected = menu.querySelector('[role="option"][aria-selected="true"]');
+          const box = menu.getBoundingClientRect();
+          const row = selected?.getBoundingClientRect();
+          const hit =
+            row && document.elementFromPoint(row.x + row.width / 2, row.y + row.height / 2);
+          return {
+            menu: { x: box.x, y: box.y, right: box.right, bottom: box.bottom },
+            selected: row
+              ? {
+                  width: row.width,
+                  height: row.height,
+                  text: selected.textContent.trim(),
+                  centerExposed: !!hit && selected.contains(hit),
+                }
+              : null,
+            popoverOpen: menu.matches(':popover-open'),
+          };
+        });
+        assert.ok(menuGeometry.popoverOpen && menuGeometry.selected?.centerExposed);
+        assert.ok(menuGeometry.selected.height >= 40 && menuGeometry.selected.text);
+        assert.ok(
+          menuGeometry.menu.x >= 0 &&
+            menuGeometry.menu.right <= viewport.width + 1 &&
+            menuGeometry.menu.y >= 0 &&
+            menuGeometry.menu.bottom <= viewport.height + 1,
+          'the settled model menu and selected row are exposed inside the viewport',
+        );
         await page.screenshot({ path: resolve(artifacts, 'assistant-settings-390x844.png') });
         await page.keyboard.press('Escape');
         await closeSettings();
@@ -1870,6 +1904,7 @@ try {
           expectedRevocations: 1,
           addedAdmissions: 0,
           addedDispatches: 0,
+          menuGeometry,
         };
       }
       if (viewport.width === 320 && viewport.height === 568) {
@@ -1886,13 +1921,67 @@ try {
         await selectTask('生图');
         await page.getByRole('button', { name: '任务设置', exact: true }).click();
         const settings = page.getByRole('region', { name: '任务设置', exact: true });
-        await settings.getByRole('combobox', { name: '生图模型', exact: true }).waitFor();
+        const model = settings.getByRole('combobox', { name: '生图模型', exact: true });
+        await model.waitFor();
+        assert.equal(
+          await model.isDisabled(),
+          true,
+          'the actual empty model catalog stays disabled',
+        );
+        await settings.getByRole('button', { name: '展开面板', exact: true }).click();
+        await settings.waitFor({ state: 'hidden' });
+        await page.getByRole('button', { name: '任务设置', exact: true }).click();
+        await settings.waitFor();
+        await settings.locator('.ai-model-empty').scrollIntoViewIfNeeded();
+        const taskSettingsGeometry = await settings.evaluate((region) => {
+          const elements = {
+            model: region.querySelector('[role="combobox"]'),
+            empty: region.querySelector('.ai-model-empty'),
+            back: region.querySelector('.ai-settings-page-header button'),
+          };
+          return Object.fromEntries(
+            Object.entries(elements).map(([name, node]) => {
+              const box = node?.getBoundingClientRect();
+              const hit =
+                box && document.elementFromPoint(box.x + box.width / 2, box.y + box.height / 2);
+              return [
+                name,
+                box
+                  ? {
+                      x: box.x,
+                      y: box.y,
+                      right: box.right,
+                      bottom: box.bottom,
+                      text: node.textContent.trim(),
+                      centerExposed: !!hit && node.contains(hit),
+                    }
+                  : null,
+              ];
+            }),
+          );
+        });
+        for (const [name, control] of Object.entries(taskSettingsGeometry)) {
+          assert.ok(
+            control?.centerExposed &&
+              control.text &&
+              control.x >= 0 &&
+              control.right <= viewport.width + 1 &&
+              control.y >= 0 &&
+              control.bottom <= viewport.height + 1,
+            `${name} is readable in the expanded task settings`,
+          );
+        }
         await page.screenshot({ path: resolve(artifacts, 'task-settings-320x568.png') });
-        await settings.getByRole('button', { name: '返回对话', exact: true }).click();
+        await settings.getByRole('button', { name: '恢复面板', exact: true }).click();
         await settings.waitFor({ state: 'hidden' });
         await selectTask('AI 助手');
         assert.equal(turnAdmissions, before.admissions);
         assert.equal(dispatches, before.dispatches);
+        geometry.taskSettings = {
+          expandedThroughUI: true,
+          emptyCatalog: true,
+          ...taskSettingsGeometry,
+        };
       }
       return geometry;
     });

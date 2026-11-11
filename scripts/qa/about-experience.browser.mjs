@@ -22,6 +22,43 @@ const tourImages = [
   '/about/layers-editorial.webp',
 ];
 
+async function assertAgentWithinFrame(page, stage) {
+  const geometry = await page.locator('.agent-visual').evaluate((frame, activeStage) => {
+    const bounds = frame.getBoundingClientRect();
+    const selectors = [
+      '.agent-visual-canvas',
+      '.agent-visual-top',
+      '.agent-visual-footer',
+      '.agent-photo-source',
+      '.agent-prompt',
+      ...(activeStage === 1 ? ['.agent-tools'] : []),
+      ...(activeStage >= 2 ? ['.agent-candidate'] : []),
+      ...(activeStage === 3 ? ['.agent-decision'] : []),
+    ];
+    return {
+      frame: { left: bounds.left, right: bounds.right, width: bounds.width },
+      scrollLeft: frame.scrollLeft,
+      scrollWidth: frame.scrollWidth,
+      clientWidth: frame.clientWidth,
+      items: selectors.flatMap((selector) =>
+        [...frame.querySelectorAll(selector)].map((element) => {
+          const rect = element.getBoundingClientRect();
+          return { selector, left: rect.left, right: rect.right, width: rect.width };
+        }),
+      ),
+    };
+  }, stage);
+  assert.ok(
+    Math.abs(geometry.scrollLeft) <= 1 &&
+      geometry.scrollWidth <= geometry.clientWidth + 1 &&
+      geometry.items.every(
+        (item) => item.left >= geometry.frame.left - 1 && item.right <= geometry.frame.right + 1,
+      ),
+    `Agent stage ${stage} must fit its card without focus-induced horizontal scrolling: ${JSON.stringify(geometry)}`,
+  );
+  return geometry;
+}
+
 async function canvasPixels(canvas) {
   return canvas.evaluate((element) => {
     const context = element.getContext('2d');
@@ -915,6 +952,7 @@ export async function runAboutExperienceChecks({
               agentStages.push({
                 stage,
                 source: await page.locator('.agent-photo-source').boundingBox(),
+                geometry: await assertAgentWithinFrame(page, stage),
               });
             }
             const decision = await page.locator('.agent-decision').boundingBox();
@@ -936,6 +974,7 @@ export async function runAboutExperienceChecks({
               'true',
             );
             await capture(page, `about-r3-${item.locale}-${item.viewport.width}-agent-decision`);
+            await assertAgentWithinFrame(page, 3);
           }
           await page.locator('.about-faq').scrollIntoViewIfNeeded();
           const geometry = () =>

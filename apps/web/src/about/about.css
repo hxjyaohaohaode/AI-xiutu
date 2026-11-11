@@ -752,6 +752,8 @@
 }
 .agent-visual-canvas {
   position: relative;
+  width: 100%;
+  min-width: 0;
   aspect-ratio: 1.24;
 }
 .agent-photo-source {
@@ -2801,8 +2803,8 @@
     padding: 13px 15px;
   }
   .agent-visual-canvas {
-    aspect-ratio: 1.16;
-    min-height: clamp(360px, 103vw, 420px);
+    aspect-ratio: auto;
+    height: clamp(360px, 103vw, 420px);
   }
   .agent-prompt p {
     font-size: 10px;

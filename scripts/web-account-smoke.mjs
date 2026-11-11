@@ -257,6 +257,27 @@ async function openAccount(page, name = primaryName) {
 }
 async function closeDialog(dialog) {
   if (await dialog.evaluate((element) => element.classList.contains('account-page'))) {
+    if (await dialog.evaluate((element) => element.classList.contains('account-auth'))) {
+      // Auth is a document journey: details -> phone -> login -> workspace.
+      // Its header now returns one level instead of dismissing every screen.
+      const authPage = dialog.page().locator('.account-page.account-auth');
+      const stage = () =>
+        authPage.evaluate((element) => ({
+          title: element.querySelector('.account-page-heading h1')?.textContent,
+          back: element.querySelector('.account-page-header .account-page-back')?.textContent,
+        }));
+      for (let depth = 0; depth < 3 && (await authPage.isVisible()); depth += 1) {
+        const before = await stage();
+        await authPage.locator('.account-page-header .account-page-back').click();
+        await until(async () => {
+          if (!(await authPage.isVisible())) return true;
+          const after = await stage();
+          return after.title !== before.title || after.back !== before.back;
+        }, 'the account header returns to the preceding real screen');
+      }
+      await authPage.waitFor({ state: 'hidden' });
+      return;
+    }
     await dialog.locator('.account-page-back').click();
     await dialog.waitFor({ state: 'hidden' });
     return;
@@ -1040,7 +1061,9 @@ try {
         0,
       );
       await capture(page, '05-reset-complete');
-      await page.getByRole('button', { name: '返回登录', exact: true }).click();
+      await authControl(page, 'reset-success')
+        .getByRole('button', { name: '返回登录', exact: true })
+        .click();
       const dialog = page.getByRole('region', { name: '登录工作空间', exact: true });
       await authControl(page, 'phone').fill(primaryPhone);
       await authControl(page, 'password').fill(password);
@@ -1480,6 +1503,12 @@ try {
           const field = (name) => authControl(page, name);
           const button = (name) =>
             page.locator('.account-page.account-auth').getByRole('button', { name, exact: true });
+          const headerLoginReturn = page
+            .locator('.account-page.account-auth .account-page-header')
+            .getByRole('button', { name: '返回登录', exact: true });
+          const existingAccount = page
+            .locator('.account-page.account-auth .auth-entry-links')
+            .getByRole('button', { name: '登录已有账号', exact: true });
           await record('password', '登录工作空间', [
             ['phone', field('phone')],
             ['password', field('password')],
@@ -1500,7 +1529,7 @@ try {
             ['phone', field('phone')],
             ['send code', button('获取验证码')],
             ['existing code', button('已有验证码，继续')],
-            ['back to log in', button('返回登录')],
+            ['back to log in', headerLoginReturn],
           ]);
           await field('phone').fill(phone);
           await button('已有验证码，继续').click();
@@ -1513,10 +1542,11 @@ try {
             ['password', field('password')],
             ['invite', field('invite-code')],
             ['register', button('创建账号')],
-            ['back to log in', button('返回登录')],
+            ['sign in to an existing account', existingAccount],
           ]);
           await field('code').focus();
-          await button('返回登录').click();
+          await existingAccount.click();
+          await page.getByRole('region', { name: '登录工作空间', exact: true }).waitFor();
           await button('忘记密码？').click();
           await record('reset', '重置密码', [
             ['phone', field('phone')],
@@ -1524,7 +1554,7 @@ try {
             ['send code', button('获取验证码')],
             ['new password', field('password')],
             ['reset', button('更新密码')],
-            ['back to log in', button('返回登录')],
+            ['back to log in', headerLoginReturn],
           ]);
           await closeDialog(page.getByRole('region', { name: '重置密码', exact: true }));
         }
