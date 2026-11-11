@@ -2,6 +2,7 @@ import { access } from 'node:fs/promises';
 import { constants } from 'node:fs';
 import { execFile } from 'node:child_process';
 import { isAbsolute } from 'node:path';
+import { PRECISION_CURVE_CHANNELS, PRECISION_CURVE_LIMITS } from '@ai-xiutu/editor';
 import sharp from 'sharp';
 import {
   MEDIA_DEFAULT_MAX_PIXELS,
@@ -129,6 +130,14 @@ export async function getMediaCapabilities(
       maxPixels: MEDIA_MAX_PRECISION_PIXELS,
       maxLinearPixels: MEDIA_MAX_LINEAR_PIXELS,
       previewMaxEdge: MEDIA_MAX_PREVIEW_EDGE,
+      curves: {
+        algorithm: 'scene-linear-v2',
+        input: 'linear-master',
+        available: isolated && nativeVersions !== null,
+        channels: PRECISION_CURVE_CHANNELS,
+        referenceGrey: 0.18,
+        ...PRECISION_CURVE_LIMITS,
+      },
       controls: [
         'exposure',
         'temperature',

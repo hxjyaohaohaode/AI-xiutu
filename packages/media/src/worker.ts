@@ -20,7 +20,7 @@ import sharp, { type Metadata, type Sharp } from 'sharp';
 import { readPsd, initializeCanvas, type Layer } from 'ag-psd';
 import { attachPngIcc, attachTiffIcc, srgbProfile } from './icc.js';
 import { editMaster16 } from './precision.js';
-import { parsePrecisionEdit, NEUTRAL_PRECISION_EDIT, type PrecisionEditV1 } from '@ai-xiutu/editor';
+import { parsePrecisionEdit, NEUTRAL_PRECISION_EDIT, type PrecisionEdit } from '@ai-xiutu/editor';
 import type { NormalizedMediaOptions } from './process.js';
 import {
   MEDIA_MAX_PIXELS,
@@ -59,7 +59,7 @@ interface Job {
   outputPath?: string;
   format?: MediaExportFormat;
   quality?: number;
-  precisionEdit?: PrecisionEditV1;
+  precisionEdit?: PrecisionEdit;
   precisionInput?: MediaPrecisionInput;
   preview?: MediaPrecisionPreview;
 }
@@ -556,7 +556,7 @@ function precisionRecord(job: Job, descriptor: MediaDescriptorV1, input: MediaPr
   const edit = parsePrecisionEdit(job.precisionEdit);
   return {
     precisionEdit: {
-      algorithm: 'scene-linear-v1' as const,
+      algorithm: edit.algorithm,
       input,
       edit,
       sha256: sha(Buffer.from(JSON.stringify({ source: descriptor.sourceSha256, input, edit }))),
@@ -780,6 +780,9 @@ async function exportMaster(job: Job): Promise<MediaExportResult> {
   const region = previewWindow(job.preview, descriptor.master);
   if (job.format === 'exr32' || job.precisionInput === 'linear-master')
     return exportLinearMaster(job, descriptor, region);
+  const edit = job.precisionEdit === undefined ? undefined : parsePrecisionEdit(job.precisionEdit);
+  if (edit?.algorithm === 'scene-linear-v2')
+    throw new Error('Scene-linear curves require the retained float master');
   const master = join(job.workDir, 'master.tif'),
     output = `${job.outputPath!}.partial`,
     format = job.format!;
@@ -820,10 +823,9 @@ async function exportMaster(job: Job): Promise<MediaExportResult> {
   )
     throw new Error('Retained master metadata does not match the descriptor');
   if (region) pipeline = pipeline.extract(region);
-  if (job.precisionEdit) {
+  if (edit) {
     if (pixels > MEDIA_MAX_PRECISION_PIXELS)
       throw new MediaLimitError('Precision master edits exceed the 16MP budget');
-    const edit = parsePrecisionEdit(job.precisionEdit);
     const raw = await pipeline
       .toColourspace('rgb16')
       .ensureAlpha()

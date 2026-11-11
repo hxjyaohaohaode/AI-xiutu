@@ -10,6 +10,10 @@
 
 选择 `precisionInput:'master16'` 时，按65536项完整传递函数表解码 uint16 样本，调色后量化一次，整图最多16,777,216像素。选择 `'linear-master'` 时，OpenImageIO 从已校验的线性母版逐块读取，最多5000万像素。EXR32 保留有符号浮点亮度、透明度、数据窗口和显示窗口。PNG16/TIFF16 先应用同一线性调色，再作 SDR 编码。线性路径需要配置 `options.pythonExecutable`。
 
+`scene-linear-v2` 在全局调色后加入可选的 `curves.luminance/red/green/blue`。每条曲线包含 2–16 个 `[输入EV, 输出EV]` 点，横纵坐标为相对线性灰 0.18 的 −16…16EV，输入严格递增。相邻点按 EV 线性插值，两端延用端点的曝光偏移。先按亮度曲线等比缩放 RGB，再执行各正值通道的独立曲线，最后按需要做 Reinhard 映射。Alpha 和全透明像素的隐藏颜色保留在线性 EXR 中，浮点结果允许大于 1 的高光。EV 调节位置参考场景线性曝光分区，曲线插值和端点延拓按上面的协议执行。 [darktable Tone Equalizer](https://github.com/darktable-org/darktable/blob/1c96821ea863fca682d458f5b91f8a50f248959d/src/iop/toneequal.c)
+
+能力目录和素材媒体记录的 `precisionEditing.curves` 给出算法、输入、通道和点位预算。使用 v2 时选择 `precisionInput:'linear-master'`，既可用同一参数请求原像素窗口，也可追加带 `expectedVersion` 的调色版本，再用 `gradeVersion` 输出。窗口、PNG16、TIFF16 和 EXR32 通过同一线性母版渲染，记录相同的来源和配方摘要。
+
 母版预览可提交不超过2048像素的窗口，按源数据窗口坐标提取真实像素。整图预览先调色再缩小。相同输入、调色和源摘要共享同一个 `X-Precision-Edit-SHA256`，包含窗口预览和不同导出格式。API 将用户保存的参数追加为独立版本，支持重新打开、继续调色及指定版本导出。
 
 新导入的 OpenEXR 在线性母版和 EXR 导出中都保留数据窗口、显示窗口和像素宽高比。尺寸与资源预算按实际采样的数据窗口计算，浏览器 SDR 代理仍以该窗口的栅格呈现。此前已生成的母版按其现有 EXR 头导出。要从旧素材重获原始窗口，可重新导入已保留的原件。

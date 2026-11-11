@@ -1,4 +1,5 @@
-import { record, number, RecipeValidationError } from './recipe.js';
+import { arrayData, record, number, RecipeValidationError } from './recipe.js';
+import type { CurvePoint } from './types.js';
 
 /** Separate, explicit scene-linear protocol. Never reinterpret an RGBA8 V4 recipe. */
 export interface PrecisionEditV1 {
@@ -12,6 +13,15 @@ export interface PrecisionEditV1 {
   highlights: number;
   toneMap: 'none' | 'reinhard';
 }
+export const PRECISION_CURVE_CHANNELS = ['luminance', 'red', 'green', 'blue'] as const;
+export type PrecisionCurveChannel = (typeof PRECISION_CURVE_CHANNELS)[number];
+export const PRECISION_CURVE_LIMITS = { minEv: -16, maxEv: 16, maxPoints: 16 } as const;
+export interface PrecisionEditV2 extends Omit<PrecisionEditV1, 'algorithm'> {
+  algorithm: 'scene-linear-v2';
+  /** Input and output stops measured relative to 0.18 scene-linear grey. */
+  curves: Partial<Record<PrecisionCurveChannel, CurvePoint[]>>;
+}
+export type PrecisionEdit = PrecisionEditV1 | PrecisionEditV2;
 export const NEUTRAL_PRECISION_EDIT: Readonly<PrecisionEditV1> = Object.freeze({
   algorithm: 'scene-linear-v1',
   exposure: 0,
@@ -32,10 +42,13 @@ export const PRECISION_EDIT_CONTROLS = [
   { key: 'shadows', label: '阴影', minimum: -100, maximum: 100, step: 0.1, unit: '%' },
   { key: 'highlights', label: '高光', minimum: -100, maximum: 100, step: 0.1, unit: '%' },
 ] as const;
-export function parsePrecisionEdit(input: unknown): PrecisionEditV1 {
+export function parsePrecisionEdit(input: unknown): PrecisionEdit {
   const errors: string[] = [];
-  const row = record(input, Object.keys(NEUTRAL_PRECISION_EDIT), 'precisionEdit', errors);
-  if (row.algorithm !== 'scene-linear-v1') errors.push('precisionEdit.algorithm: unsupported');
+  const row = record(input, Object.keys(NEUTRAL_PRECISION_EDIT), 'precisionEdit', errors, [
+    'curves',
+  ]);
+  if (row.algorithm !== 'scene-linear-v1' && row.algorithm !== 'scene-linear-v2')
+    errors.push('precisionEdit.algorithm: unsupported');
   if (row.toneMap !== 'none' && row.toneMap !== 'reinhard')
     errors.push('precisionEdit.toneMap: unsupported');
   const result: PrecisionEditV1 = {
@@ -44,11 +57,43 @@ export function parsePrecisionEdit(input: unknown): PrecisionEditV1 {
   };
   for (const { key, minimum, maximum } of PRECISION_EDIT_CONTROLS)
     result[key] = number(row[key], minimum, maximum, `precisionEdit.${key}`, errors);
+  if (row.algorithm === 'scene-linear-v2') {
+    const curveInput = record(
+      row.curves,
+      [],
+      'precisionEdit.curves',
+      errors,
+      PRECISION_CURVE_CHANNELS,
+    );
+    const curves: PrecisionEditV2['curves'] = {};
+    const { minEv, maxEv, maxPoints } = PRECISION_CURVE_LIMITS;
+    for (const channel of PRECISION_CURVE_CHANNELS) {
+      if (!Object.hasOwn(curveInput, channel)) continue;
+      const path = `precisionEdit.curves.${channel}`;
+      const points = arrayData(curveInput[channel], 2, maxPoints, path, errors).map(
+        (point, index): CurvePoint => {
+          const entry = arrayData(point, 2, 2, `${path}[${index}]`, errors);
+          return [
+            number(entry[0], minEv, maxEv, `${path}[${index}].x`, errors),
+            number(entry[1], minEv, maxEv, `${path}[${index}].y`, errors),
+          ];
+        },
+      );
+      if (points.some(([x], index) => index > 0 && x <= points[index - 1]![0]))
+        errors.push(`${path}: input stops must strictly increase`);
+      curves[channel] = points;
+    }
+    if (errors.length) throw new RecipeValidationError(errors);
+    return { ...result, algorithm: 'scene-linear-v2', curves };
+  }
+  if (Object.hasOwn(row, 'curves')) errors.push('precisionEdit.curves: requires scene-linear-v2');
   if (errors.length) throw new RecipeValidationError(errors);
   return result;
 }
 export function compilePrecisionEdit(input: PrecisionEditV1) {
   const edit = parsePrecisionEdit(input);
+  if (edit.algorithm !== 'scene-linear-v1')
+    throw new RecipeValidationError(['precisionEdit: curves require the retained float master']);
   const gains = [
     2 ** (edit.exposure + 0.0035 * edit.temperature + 0.0012 * edit.tint),
     2 ** (edit.exposure - 0.0018 * edit.tint),

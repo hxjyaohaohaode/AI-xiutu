@@ -4,7 +4,7 @@ import { join } from 'node:path';
 import { randomUUID, createHash } from 'node:crypto';
 import type { FastifyInstance, FastifyReply, FastifyRequest } from 'fastify';
 import { z } from 'zod';
-import { NEUTRAL_PRECISION_EDIT, parsePrecisionEdit, type PrecisionEditV1 } from '@ai-xiutu/editor';
+import { NEUTRAL_PRECISION_EDIT, parsePrecisionEdit, type PrecisionEdit } from '@ai-xiutu/editor';
 import {
   processMedia,
   exportMedia,
@@ -632,10 +632,13 @@ export function registerMediaImport(app: FastifyInstance, db: Database, config: 
     row: MediaAccess,
     expectedDigest: string | undefined,
     input: MediaPrecisionInput,
+    edit?: PrecisionEdit,
     preview?: MediaPrecisionPreview,
   ) {
     if (expectedDigest !== row.descriptor.sourceSha256)
       throw new HttpError(409, 'MEDIA_SOURCE_CHANGED', '母版来源已变化，请重新打开素材。');
+    if (edit?.algorithm === 'scene-linear-v2' && input !== 'linear-master')
+      throw new HttpError(422, 'MEDIA_FLOAT_INPUT', '场景线性曲线需要线性母版作为调色输入。');
     const master = input === 'linear-master' ? row.descriptor.linearMaster : row.descriptor.master;
     if (!master || (input === 'linear-master' && !(await capabilities).nativeReady))
       throw new HttpError(422, 'MEDIA_FLOAT_UNAVAILABLE', '线性母版或浮点运行环境不可用。');
@@ -681,6 +684,10 @@ export function registerMediaImport(app: FastifyInstance, db: Database, config: 
           master16: enabled && precision.master16,
           sourceSha256: row.descriptor.sourceSha256,
           floatAvailable: enabled && !!row.descriptor.linearMaster && precision.linearFloat,
+          curves: {
+            ...precision.curves,
+            available: enabled && !!row.descriptor.linearMaster && precision.curves.available,
+          },
           canSave: enabled && precision.master16 && row.canEdit,
           currentGrade,
         },
@@ -721,7 +728,7 @@ export function registerMediaImport(app: FastifyInstance, db: Database, config: 
     const edit = parsePrecisionEdit(body.precisionEdit);
     const row = await sourceAccess(assetId, actor.id);
     if (!row.canEdit) throw new HttpError(403, 'PROJECT_FORBIDDEN', '没有此项目的操作权限');
-    await assertPrecision(row, body.expectedSourceSha256, body.precisionInput);
+    await assertPrecision(row, body.expectedSourceSha256, body.precisionInput, edit);
     const result = await transaction(db, async (tx) => {
       await lockProjectMutation(
         tx,
@@ -818,7 +825,7 @@ export function registerMediaImport(app: FastifyInstance, db: Database, config: 
     options: {
       format: MediaExportFormat;
       quality: number;
-      precisionEdit?: PrecisionEditV1;
+      precisionEdit?: PrecisionEdit;
       precisionInput?: MediaPrecisionInput;
       preview?: MediaPrecisionPreview;
     },
@@ -921,14 +928,15 @@ export function registerMediaImport(app: FastifyInstance, db: Database, config: 
       .parse(req.body);
     const row = await sourceAccess(assetId, actor.id);
     const preview = { maxEdge: body.maxEdge, region: body.region };
-    await assertPrecision(row, body.expectedSourceSha256, body.precisionInput, preview);
+    const edit = parsePrecisionEdit(
+      body.precisionEdit === undefined ? NEUTRAL_PRECISION_EDIT : body.precisionEdit,
+    );
+    await assertPrecision(row, body.expectedSourceSha256, body.precisionInput, edit, preview);
     return sendMaster(req, reply, assetId, actor.id, row, {
       format: 'png16',
       quality: 90,
       precisionInput: body.precisionInput,
-      precisionEdit: parsePrecisionEdit(
-        body.precisionEdit === undefined ? NEUTRAL_PRECISION_EDIT : body.precisionEdit,
-      ),
+      precisionEdit: edit,
       preview,
     });
   });
@@ -965,7 +973,7 @@ export function registerMediaImport(app: FastifyInstance, db: Database, config: 
     if (body.format === 'exr32' && precisionInput !== 'linear-master')
       throw new HttpError(422, 'MEDIA_FLOAT_INPUT', 'EXR 需要线性母版作为调色输入。');
     if (precisionEdit || body.precisionInput || body.format === 'exr32')
-      await assertPrecision(row, body.expectedSourceSha256, precisionInput);
+      await assertPrecision(row, body.expectedSourceSha256, precisionInput, precisionEdit);
     return sendMaster(req, reply, assetId, actor.id, row, {
       format: body.format,
       quality: body.quality,

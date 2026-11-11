@@ -107,7 +107,7 @@ export interface MediaGradeRevision {
   version: number;
   sourceSha256: string;
   precisionInput: MediaPrecisionInput;
-  edit: PrecisionEditV1;
+  edit: PrecisionEdit;
   createdAt: string;
 }
 export interface MediaPrecisionWindow {
@@ -127,7 +127,7 @@ export interface ExportMediaRequest {
   outputPath: string;
   format: MediaExportFormat;
   /** Explicit global grading of the actual retained master, independently versioned. */
-  precisionEdit?: PrecisionEditV1;
+  precisionEdit?: PrecisionEdit;
   /** Existing SDR exports default to master16. EXR always requires the linear master. */
   precisionInput?: MediaPrecisionInput;
   /** Display PNG16, optionally limited to a native-resolution window. */
@@ -143,10 +143,10 @@ export interface MediaExportResult extends MediaFileV1 {
   /** This converts the retained master; browser edits are not injected into a high-bit master. */
   includesEditorRecipe: false;
   precisionEdit?: {
-    algorithm: 'scene-linear-v1';
+    algorithm: PrecisionEdit['algorithm'];
     sha256: string;
     input: MediaPrecisionInput;
-    edit: PrecisionEditV1;
+    edit: PrecisionEdit;
   };
 }
-import type { PrecisionEditV1 } from '@ai-xiutu/editor';
+import type { PrecisionEdit } from '@ai-xiutu/editor';

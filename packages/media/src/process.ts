@@ -337,6 +337,15 @@ export async function exportMedia(request: ExportMediaRequest): Promise<MediaExp
   const quality = integer(request.options?.quality, 90, 1, 100, 'Export quality');
   const precisionEdit =
     request.precisionEdit === undefined ? undefined : parsePrecisionEdit(request.precisionEdit);
+  if (
+    precisionEdit?.algorithm === 'scene-linear-v2' &&
+    request.precisionInput !== 'linear-master' &&
+    request.format !== 'exr32'
+  )
+    throw new MediaProcessingError(
+      'Scene-linear curves require the retained float master',
+      'unsupported',
+    );
   const reservation = await open(outputPath, 'wx', 0o600);
   await reservation.close();
   try {

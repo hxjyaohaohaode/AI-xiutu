@@ -4,7 +4,7 @@ import type { MediaDescriptorV1, MediaGradeRevision, MediaPrecisionInput } from 
 import {
   NEUTRAL_PRECISION_EDIT,
   PRECISION_EDIT_CONTROLS,
-  type PrecisionEditV1,
+  type PrecisionEdit,
 } from '@ai-xiutu/editor';
 import { Minus, Plus, ArrowsOutSimple, DownloadSimple } from '@phosphor-icons/react';
 import { api, errorMessage, jsonRequest, downloadBlob, ApiError } from '../lib/api';
@@ -47,7 +47,7 @@ export function MediaSourceViewer({ assetId }: { assetId: string }) {
     [exporting, setExporting] = useState(false);
   const [size, setSize] = useState({ width: 400, height: 280 }),
     [view, setView] = useState<TileView>({ x: 0, y: 0, zoom: 1 });
-  const [edit, setEdit] = useState<PrecisionEditV1>({ ...NEUTRAL_PRECISION_EDIT });
+  const [edit, setEdit] = useState<PrecisionEdit>({ ...NEUTRAL_PRECISION_EDIT });
   const [precisionInput, setPrecisionInput] = useState<MediaPrecisionInput>('master16');
   const [outputFormat, setOutputFormat] = useState<PrecisionFormat>('png16');
   const [grading, setGrading] = useState(false);
@@ -251,7 +251,7 @@ export function MediaSourceViewer({ assetId }: { assetId: string }) {
       if (!signal.aborted) setSaving(false);
     }
   }
-  async function exportMaster(format: PrecisionFormat, adjustment?: PrecisionEditV1) {
+  async function exportMaster(format: PrecisionFormat, adjustment?: PrecisionEdit) {
     if (exportRequest.current || (adjustment && (!canEdit || !precision))) return;
     const controller = new AbortController();
     exportRequest.current = controller;

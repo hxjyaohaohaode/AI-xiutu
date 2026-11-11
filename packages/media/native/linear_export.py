@@ -30,7 +30,16 @@ def read_band(image, spec, left, top, width, height):
     return np.asarray(pixels).reshape(height, spec.width, spec.nchannels)[:, left:left + width]
 
 
-def develop(pixels, edit, gains, sdr):
+def curve_gain(value, points):
+    positive = value > 0
+    stops = np.log2(np.where(positive, value, 0.18) / 0.18)
+    # Outside the knots the last exposure offset continues, keeping the
+    # original highlight headroom and leaving zero/negative samples intact.
+    offsets = np.interp(stops, points[:, 0], points[:, 1] - points[:, 0])
+    return np.where(positive, np.exp2(offsets), 1)
+
+
+def develop(pixels, edit, gains, sdr, curves):
     if not np.all(np.isfinite(pixels)):
         raise ValueError("Non-finite retained float samples")
     alpha = pixels[:, :, 3:4].astype(np.float64) if pixels.shape[2] == 4 else None
@@ -49,8 +58,15 @@ def develop(pixels, edit, gains, sdr):
     if edit["saturation"]:
         rgb = signed_y + (rgb - signed_y) * (1 + edit["saturation"] / 100)
     rgb *= gain
+    if "luminance" in curves:
+        luminance = np.sum(rgb * [0.2126, 0.7152, 0.0722], axis=2, keepdims=True)
+        rgb *= curve_gain(luminance, curves["luminance"])
+    for channel, name in enumerate(("red", "green", "blue")):
+        if name in curves:
+            rgb[:, :, channel] *= curve_gain(rgb[:, :, channel], curves[name])
     if edit["toneMap"] == "reinhard":
-        rgb /= 1 + y * gain
+        mapped_y = np.maximum(0, np.sum(rgb * [0.2126, 0.7152, 0.0722], axis=2, keepdims=True)) if curves else y * gain
+        rgb /= 1 + mapped_y
     if sdr:
         rgb = np.clip(rgb, 0, 1)
         encoded = np.where(rgb <= 0.0031308, 12.92 * rgb, 1.055 * np.power(rgb, 1 / 2.4) - 0.055)
@@ -79,8 +95,13 @@ def main():
             raise ValueError("Multipart float master is not supported")
         image.seek_subimage(0, 0)
         edit = request["edit"]
-        if edit["algorithm"] != "scene-linear-v1":
+        if edit["algorithm"] not in ("scene-linear-v1", "scene-linear-v2"):
             raise ValueError("Unsupported precision edit")
+        curves = {
+            channel: np.asarray(points, dtype=np.float64)
+            for channel, points in (edit["curves"].items() if edit["algorithm"] == "scene-linear-v2" else ())
+            if any(x != y for x, y in points)
+        }
         gains = np.exp2([edit["exposure"] + 0.0035 * edit["temperature"] + 0.0012 * edit["tint"],
                          edit["exposure"] - 0.0018 * edit["tint"],
                          edit["exposure"] - 0.0035 * edit["temperature"] + 0.0012 * edit["tint"]])
@@ -108,7 +129,7 @@ def main():
                 next_row = min(end, (row // spec.tile_height + 1) * spec.tile_height if spec.tile_height else row + 64)
                 band = read_band(image, spec, left, row, width, next_row - row)
                 for offset in range(0, band.shape[0], 64):
-                    stripe = develop(band[offset:offset + 64], edit, gains, sdr)
+                    stripe = develop(band[offset:offset + 64], edit, gains, sdr, curves)
                     y = out_spec.y + row + offset - top
                     if not out.write_scanlines(y, y + stripe.shape[0], out_spec.z, stripe):
                         raise ValueError("Cannot write precision samples")

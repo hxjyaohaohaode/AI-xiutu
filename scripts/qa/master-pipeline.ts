@@ -7,7 +7,7 @@ import { execFile } from 'node:child_process';
 import { promisify } from 'node:util';
 import { setTimeout as delay } from 'node:timers/promises';
 import sharp, { type Sharp } from 'sharp';
-import { NEUTRAL_PRECISION_EDIT } from '@ai-xiutu/editor';
+import { NEUTRAL_PRECISION_EDIT, type PrecisionEdit } from '@ai-xiutu/editor';
 import { editMaster16 } from '../../packages/media/src/precision.js';
 import { collaborationFixture } from '../../apps/api/test/collaboration-fixture.js';
 
@@ -67,6 +67,8 @@ try {
     const metadata = (await f.call('GET', path)).json();
     const descriptor = metadata.descriptor;
     const { width, height } = descriptor.master;
+    assert.equal(descriptor.master.bitDepth, 16);
+    if (descriptor.linearMaster) assert.equal(descriptor.linearMaster.bitDepth, 32);
     assert.equal(descriptor.sourceSha256, sha(bytes));
     assert.equal(sha((await f.call('GET', metadata.downloads.original)).rawPayload), sha(bytes));
     const result = {
@@ -80,16 +82,38 @@ try {
       linear: !!descriptor.linearMaster,
     };
     const precisionInput = descriptor.linearMaster ? 'linear-master' : 'master16';
+    const baseEdit = {
+      ...NEUTRAL_PRECISION_EDIT,
+      exposure: -0.65,
+      temperature: 8,
+      shadows: 12,
+      highlights: -18,
+    };
+    const withCurves = process.env.MEDIA_QA_CURVES === '1';
+    if (withCurves) assert.equal(metadata.editor.precisionEditing.curves.available, true);
+    const precisionEdit: PrecisionEdit = withCurves
+      ? {
+          ...baseEdit,
+          algorithm: 'scene-linear-v2',
+          curves: {
+            luminance: [
+              [-16, -16],
+              [-2, -1.7],
+              [2, 1.8],
+              [16, 16],
+            ],
+            red: [
+              [-16, -16],
+              [0, 0.3],
+              [16, 16],
+            ],
+          },
+        }
+      : baseEdit;
     const grade = {
       expectedSourceSha256: descriptor.sourceSha256,
       precisionInput,
-      precisionEdit: {
-        ...NEUTRAL_PRECISION_EDIT,
-        exposure: -0.65,
-        temperature: 8,
-        shadows: 12,
-        highlights: -18,
-      },
+      precisionEdit,
     };
     const region = {
       left: Math.floor(width * 0.31),
@@ -103,6 +127,8 @@ try {
     const cropped = await raw16(sharp(preview.rawPayload, { ignoreIcc: true }));
     const record = {
       ...result,
+      algorithm: precisionEdit.algorithm,
+      ...(precisionEdit.algorithm === 'scene-linear-v2' ? { curves: precisionEdit.curves } : {}),
       previewMs: Math.round(performance.now() - previewStarted),
       nativeRegion: region,
       previewSha256: sha(cropped),
@@ -111,14 +137,32 @@ try {
       linearReadback: null as unknown,
     };
     if (width * height <= (precisionInput === 'linear-master' ? 50_000_000 : 16_777_216)) {
+      if (withCurves) {
+        const invalid = { ...grade, precisionInput: 'master16' };
+        assert.equal(
+          (await f.call('POST', path + '/preview', { ...invalid, maxEdge: 512, region }))
+            .statusCode,
+          422,
+        );
+        assert.equal(
+          (await f.call('POST', path + '/grades', { ...invalid, expectedVersion: 0 })).statusCode,
+          422,
+        );
+      }
       assert.equal(
-        (await f.call('POST', path + '/grades', { ...grade, expectedVersion: 0 })).statusCode,
+        (
+          await f.call('POST', path + '/grades', {
+            ...grade,
+            precisionEdit: baseEdit,
+            expectedVersion: 0,
+          })
+        ).statusCode,
         201,
       );
       const changed = await f.call('POST', path + '/grades', {
         ...grade,
         expectedVersion: 1,
-        precisionEdit: { ...grade.precisionEdit, exposure: 0.2 },
+        precisionEdit: withCurves ? precisionEdit : { ...baseEdit, exposure: 0.2 },
       });
       assert.equal(changed.statusCode, 201);
       const history = (await f.call('GET', path + '/grades')).json().grades;
@@ -126,10 +170,17 @@ try {
         history.map(({ version }: { version: number }) => version),
         [2, 1],
       );
+      const reopened = (await f.call('GET', path)).json().editor.precisionEditing.currentGrade;
+      assert.equal(reopened.version, 2);
+      assert.equal(reopened.sourceSha256, descriptor.sourceSha256);
+      if (withCurves) {
+        assert.deepEqual(reopened.edit, precisionEdit);
+        assert.equal(history[1].edit.algorithm, 'scene-linear-v1');
+      }
       for (const format of ['png16', 'tiff16', ...(descriptor.linearMaster ? ['exr32'] : [])]) {
         const response = await f.call('POST', path + '/export', {
           format,
-          gradeVersion: 1,
+          gradeVersion: withCurves ? 2 : 1,
           expectedSourceSha256: descriptor.sourceSha256,
         });
         assert.equal(response.statusCode, 200, response.body.slice(0, 250));
@@ -189,7 +240,7 @@ try {
       assert.equal(master.statusCode, 200);
       const raw = await raw16(sharp(master.rawPayload, { ignoreIcc: true }).extract(region));
       const samples = new Uint16Array(raw.buffer, raw.byteOffset, raw.length / 2);
-      const reference = editMaster16(samples, 4, grade.precisionEdit);
+      const reference = editMaster16(samples, 4, baseEdit);
       assert.deepEqual(
         cropped,
         Buffer.from(reference.buffer, reference.byteOffset, reference.byteLength),

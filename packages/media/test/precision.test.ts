@@ -35,6 +35,19 @@ test('precision edits preserve all 65536 adjacent code values and use actual lin
   assert.deepEqual([...sample], [-0.5, 8, 512]);
   assert.throws(() => parsePrecisionEdit({ ...NEUTRAL_PRECISION_EDIT, exposure: Infinity }));
   assert.throws(() => parsePrecisionEdit({ ...NEUTRAL_PRECISION_EDIT, unknown: 1 }));
+  assert.throws(() => parsePrecisionEdit({ ...NEUTRAL_PRECISION_EDIT, curves: {} }));
+  assert.throws(() =>
+    parsePrecisionEdit({
+      ...NEUTRAL_PRECISION_EDIT,
+      algorithm: 'scene-linear-v2',
+      curves: {
+        red: [
+          [0, 0],
+          [0, 1],
+        ],
+      },
+    }),
+  );
 });
 
 test('native master grading exports true 16bit edited samples, retains immutable original and binds the edit to its source', async () => {
@@ -162,6 +175,68 @@ print(json.dumps(result))`,
       assert.deepEqual(
         [...first],
         [0.125, 0.25, 0.5].map((v) => Math.round(linearToSrgb(v) * 65535)).concat(32768),
+      );
+      const curves = {
+        ...NEUTRAL_PRECISION_EDIT,
+        algorithm: 'scene-linear-v2' as const,
+        curves: {
+          luminance: [
+            [-15, -16],
+            [16, 15],
+          ] as [number, number][],
+          red: [
+            [-15, -14],
+            [15, 16],
+          ] as [number, number][],
+        },
+      };
+      const curved = join(dir, 'curved.exr');
+      const curveResult = await exportMedia({
+        ...development,
+        outputPath: curved,
+        format: 'exr32',
+        precisionEdit: curves,
+      });
+      assert.equal(curveResult.precisionEdit?.algorithm, 'scene-linear-v2');
+      const curvedRead = await execute(python, [
+        '-c',
+        'import OpenImageIO as o,json,sys; i=o.ImageInput.open(sys.argv[1]); print(json.dumps(i.read_image(format=o.FLOAT).tolist())); i.close()',
+        curved,
+      ]);
+      const curvedSamples = JSON.parse(curvedRead.stdout);
+      assert.deepEqual(curvedSamples[0], [
+        [-0.0625, 1, 4, 1],
+        [0.5, 0.5, 1, 0.5],
+        [0.0625, 0.125, 1, 0],
+      ]);
+      assert.deepEqual(curvedSamples[1][1], [4, 4, 8, 1]);
+      await assert.rejects(
+        exportMedia({
+          ...development,
+          outputPath: join(dir, 'wrong-input.png'),
+          precisionInput: 'master16',
+          precisionEdit: curves,
+        }),
+        /retained float master/,
+      );
+      const fullCurve = join(dir, 'full-curve.png'),
+        partCurve = join(dir, 'curve-window.png');
+      const curveFull = await exportMedia({
+        ...development,
+        outputPath: fullCurve,
+        precisionEdit: curves,
+      });
+      const curvePart = await exportMedia({
+        ...development,
+        outputPath: partCurve,
+        precisionEdit: curves,
+        preview: { maxEdge: 128, region },
+      });
+      assert.equal(curvePart.precisionEdit?.sha256, curveFull.precisionEdit?.sha256);
+      assert.equal(curvePart.precisionEdit?.sha256, curveResult.precisionEdit?.sha256);
+      assert.deepEqual(
+        await raw16(sharp(partCurve, { ignoreIcc: true })),
+        await raw16(sharp(fullCurve, { ignoreIcc: true }).extract(region)),
       );
       // Corrupting the retained source cannot be hidden behind its old descriptor.
       await writeFile(join(workDir, 'linear-master.exr'), 'changed');

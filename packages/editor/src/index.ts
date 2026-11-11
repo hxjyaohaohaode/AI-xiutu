@@ -187,7 +187,12 @@ export {
 export {
   NEUTRAL_PRECISION_EDIT,
   PRECISION_EDIT_CONTROLS,
+  PRECISION_CURVE_CHANNELS,
+  PRECISION_CURVE_LIMITS,
   parsePrecisionEdit,
   compilePrecisionEdit,
   type PrecisionEditV1,
+  type PrecisionEditV2,
+  type PrecisionEdit,
+  type PrecisionCurveChannel,
 } from './linear-edit.js';

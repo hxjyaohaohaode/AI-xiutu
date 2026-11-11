@@ -162,6 +162,10 @@ try {
       assert.equal(response.status(), 201);
       const revision = (await response.json()).grade;
       assert.equal(revision.edit.exposure, Number(after));
+      if (asset.algorithm === 'scene-linear-v2') {
+        assert.equal(revision.edit.algorithm, asset.algorithm);
+        assert.deepEqual(revision.edit.curves, asset.curves);
+      }
       const overflow = await page.evaluate(() => document.documentElement.scrollWidth - innerWidth);
       assert.ok(overflow <= 1, 'Page overflow: ' + overflow);
       await preview.scrollIntoViewIfNeeded();
