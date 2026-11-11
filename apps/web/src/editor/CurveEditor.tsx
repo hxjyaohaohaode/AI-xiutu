@@ -2,13 +2,7 @@ import { t } from '../i18n';
 import { MotionDetails } from '../motion/Presence';
 import { ChoiceSelect } from '../components/ChoiceSelect';
 import { useEffect, useMemo, useRef, useState, type PointerEvent } from 'react';
-import {
-  Plus,
-  Trash,
-  ArrowCounterClockwise,
-  BezierCurve,
-  SelectionPlus,
-} from '@phosphor-icons/react';
+import { Plus, Trash, ArrowBendUpLeft, BezierCurve, SelectionPlus } from '@phosphor-icons/react';
 import {
   compileCurveFunction,
   smoothCurveSegments,
@@ -466,7 +460,7 @@ export function CurveEditor({ editor, scope }: { editor: EditorState; scope?: Cu
             update(identityCurve(), true, undefined, 'linear', t('重置曲线'));
           }}
         >
-          <ArrowCounterClockwise size={18} />
+          <ArrowBendUpLeft size={18} />
         </IconButton>
         <button
           className="text-button"

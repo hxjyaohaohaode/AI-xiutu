@@ -1,8 +1,8 @@
 import { t } from '../i18n';
 import { ChoiceSelect } from '../components/ChoiceSelect';
 import {
-  ArrowCounterClockwise,
-  ArrowClockwise,
+  ArrowArcLeft,
+  ArrowArcRight,
   ArrowsLeftRight,
   ArrowsDownUp,
   Crop,
@@ -244,11 +244,11 @@ export function GeometryControls({ controller }: { controller: InspectorControll
       )}
       <div className="tonal-tabs" aria-label={t('画幅与方向')}>
         <button aria-label={t('向左旋转90度')} onClick={() => orient('left', t('向左旋转90度'))}>
-          <ArrowCounterClockwise size={16} />
+          <ArrowArcLeft size={16} />
           {t('左转')}
         </button>
         <button aria-label={t('向右旋转90度')} onClick={() => orient('right', t('向右旋转90度'))}>
-          <ArrowClockwise size={16} />
+          <ArrowArcRight size={16} />
           {t('右转')}
         </button>
         <button aria-label={t('旋转180度')} onClick={() => orient('half-turn', t('旋转180度'))}>

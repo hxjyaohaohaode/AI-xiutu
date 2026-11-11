@@ -89,6 +89,7 @@ export type PaintSettings = Omit<PaintStrokeV3, 'points' | 'sampling'> & {
 };
 export type WarpSettings = Pick<WarpStrokeV3, 'mode' | 'radius' | 'feather' | 'strength'> & {
   protecting: boolean;
+  restoreStrength: number;
 };
 export type CropGuide = 'thirds' | 'golden' | 'center' | 'diagonal' | 'none';
 const INITIAL_PAINT: PaintSettings = {
@@ -106,6 +107,7 @@ const INITIAL_WARP: WarpSettings = {
   radius: 0.12,
   feather: 0.7,
   strength: 0.5,
+  restoreStrength: 1,
   protecting: false,
 };
 type HistoryItem = { recipe: EditorRecipe; label: string };

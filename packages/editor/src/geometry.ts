@@ -122,7 +122,7 @@ export function getOutputDimensions(image: Dimensions, geometry: Geometry): Dime
 /** Address crop fields in the visible, oriented full frame, using the renderer's pixel permutation. */
 export function orientedCropSpace(image: Dimensions, input: Geometry) {
   const { geometry, crop } = geometryContext(image, input);
-  const full = { left: 0, top: 0, ...image };
+  const full = { left: 0, top: 0, width: image.width, height: image.height };
   const dimensions =
     geometry.rotation % 180 === 0
       ? { width: image.width, height: image.height }

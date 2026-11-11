@@ -1000,7 +1000,7 @@ export function CanvasStage({
         feather: editor.warpSettings.feather,
         strength:
           editor.warpSettings.mode === 'restore'
-            ? Math.max(0, editor.warpSettings.strength)
+            ? editor.warpSettings.restoreStrength
             : editor.warpSettings.strength,
       };
       if (state.warp.mode !== 'push')

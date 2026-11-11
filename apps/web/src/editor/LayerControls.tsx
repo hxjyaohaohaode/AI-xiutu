@@ -615,7 +615,6 @@ export function LiquifyControls({ controller }: { controller: InspectorControlle
                 ...s,
                 mode,
                 protecting: false,
-                strength: mode === 'restore' && s.mode !== 'restore' ? 1 : s.strength,
               }))
             }
           >
@@ -640,13 +639,18 @@ export function LiquifyControls({ controller }: { controller: InspectorControlle
           {
             id: 'strength',
             label: settings.mode === 'restore' ? t('恢复强度') : t('双向强度'),
-            value: settings.strength * 100,
+            value:
+              (settings.mode === 'restore' ? settings.restoreStrength : settings.strength) * 100,
             min: settings.mode === 'restore' ? 0 : -100,
             max: 100,
             step: 0.1,
             neutral: 0,
             unit: '%',
-            onChange: (n) => editor.setWarpSettings((s) => ({ ...s, strength: n / 100 })),
+            onChange: (n) =>
+              editor.setWarpSettings((s) => ({
+                ...s,
+                [settings.mode === 'restore' ? 'restoreStrength' : 'strength']: n / 100,
+              })),
           },
           {
             id: 'feather',
