@@ -417,9 +417,15 @@ export function useEditor() {
       settledLane.current.pending = job;
       pumpPreview(false);
     }
-    // During a gesture the live worker already renders at the working
-    // resolution. A second full render would compete with its next frame.
-    if (!interactiveInput.current || !liveWorker.current) settle();
+    if (!interactiveInput.current || !liveWorker.current) {
+      settle();
+      return;
+    }
+    // Repeated pointer input is already handled by the native live worker.
+    // A draft or rollback can go quiet without a commit. Settle that recipe
+    // after the input stops so its histogram and ready state become current.
+    const idle = window.setTimeout(settle, 250);
+    return () => window.clearTimeout(idle);
   }, [recipe, originalPreview, layerImages, pumpPreview]);
 
   const replaceRecipe = useCallback(
