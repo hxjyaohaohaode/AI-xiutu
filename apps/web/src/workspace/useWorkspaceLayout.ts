@@ -2,6 +2,7 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import {
   boundPanel,
   defaultPanel,
+  panelBounds,
   type PanelGeometry,
   type PanelId,
   type Viewport,
@@ -85,12 +86,16 @@ export function parseWorkspaceLayout(raw: string | null, view: Viewport): Worksp
       )
         return fallback;
     }
+    const inspectorMinimum = panelBounds(view, parsed.panels.inspector.dock, 'inspector').minHeight;
+    const inspector = parsed.panels.inspector.height < inspectorMinimum
+      ? { ...parsed.panels.inspector, height: defaultPanel('inspector', view).height }
+      : parsed.panels.inspector;
     return adaptWorkspaceLayout(
       {
         theme: parsed.theme,
         viewport: parsed.viewport,
         panels: {
-          inspector: parsed.panels.inspector,
+          inspector,
           ai: parsed.panels.ai,
         },
       },

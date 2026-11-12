@@ -96,7 +96,6 @@ export function AdvancedInspector({
             {t(descriptor.label)}
             <span className="tiny-dot" />
           </h2>
-          <p>{t(descriptor.description)}</p>
         </div>
         <IconButton label={t('收起工具面板')} className="mobile-only" onClick={onClose}>
           <CaretDown size={20} />
@@ -134,7 +133,6 @@ export function AdvancedInspector({
           <div className="inspector-empty">
             <span>{descriptor.icon}</span>
             <h3>{t('先放入一张照片')}</h3>
-            <p>{t('打开后即可调节。图像、工具范围与记录分别保留。')}</p>
           </div>
         ) : (
           <>

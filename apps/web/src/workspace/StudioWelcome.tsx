@@ -1,4 +1,4 @@
-import { ArrowUpRight, ShieldCheck } from '@phosphor-icons/react';
+import { ArrowUpRight } from '@phosphor-icons/react';
 import { StudioGlyph } from '../components/StudioGlyph';
 import { t, useI18n } from '../i18n';
 
@@ -26,9 +26,7 @@ export function StudioWelcome({
       data-account-state={accountState}
     >
       <div className="welcome-introduction">
-        <span className="welcome-eyebrow">{t('创作工作台')}</span>
         <h1 id="studio-welcome-title">{t('编辑图片')}</h1>
-        <p className="welcome-description">{t('从整体色调，到每一处细节。')}</p>
         <div className="welcome-alternatives">
           <button type="button" onClick={onDraw}>
             <StudioGlyph name="paint" size={20} />
@@ -61,15 +59,10 @@ export function StudioWelcome({
         </span>
         <span className="welcome-drop-hint">{t('也可以把照片拖到这里')}</span>
       </button>
-      <p className="welcome-privacy">
-        <ShieldCheck size={15} />
-        {t('在本地编辑，照片不会自动上传')}
-      </p>
       {accountState === 'guest' && onSignIn && onRegister && (
         <div className="welcome-session" data-testid="guest-account-entry">
           <div>
             <strong>{t('云端工作空间')}</strong>
-            <span>{t('保存版本与团队协作')}</span>
           </div>
           <div className="welcome-session-actions">
             <button type="button" onClick={onSignIn}>

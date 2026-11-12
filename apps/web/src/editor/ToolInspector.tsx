@@ -46,6 +46,7 @@ import type { EditorState } from './useEditor';
 import { Histogram } from './Histogram';
 import { ColorPicker } from '../components/ColorPicker';
 import { PrecisionRange } from './PrecisionRange';
+import { ParameterShelf } from './ParameterShelf';
 import {
   clamp,
   cropFromPixels,
@@ -290,117 +291,60 @@ function LegacyToolInspector({
     }
   }
   function sliders(ids: string[], local = false) {
-    return ids
-      .map((id) => TOOLS.find((tool) => tool.id === id)!)
-      .map((tool, index) => {
-        const key = tool.id as keyof Adjustments;
-        const value = (local ? selected.adjustments : recipe.adjustments)[key];
-        function update(value: number, commit = false) {
-          let next = recipe;
-          if (local && region && v2)
-            next = {
-              ...v2,
-              regions: v2.regions.map((item) =>
-                item.id === region.id
-                  ? { ...item, adjustments: { ...item.adjustments, [key]: value } }
-                  : item,
-              ),
-            };
-          else if (local)
-            next = {
-              ...recipe,
-              local: {
-                ...recipe.local,
-                adjustments: { ...recipe.local.adjustments, [key]: value },
-              },
-            };
-          else next = { ...recipe, adjustments: { ...recipe.adjustments, [key]: value } };
-          if (commit) editor.commit(next, t('调整{v0}', { v0: t(tool.label) }));
-          else editor.preview(next);
-        }
-        return (
-          <PrecisionRange
-            key={tool.id}
-            label={t(tool.label)}
-            value={value}
-            min={tool.min}
-            max={tool.max}
-            step={tool.unit === 'EV' ? 0.01 : 0.1}
-            neutral={tool.neutral}
-            unit={tool.unit === 'EV' ? 'EV' : ''}
-            description={tool.description ? t(tool.description) : undefined}
-            index={index}
-            onChange={update}
-            onCommit={() => editor.commitCurrent(t('调整{v0}', { v0: t(tool.label) }))}
-            onCancel={cancel}
-            onReset={() => update(tool.neutral, true)}
-            gradient={
-              tool.id === 'temperature'
-                ? 'linear-gradient(90deg,#85b8f4,#e3e3db,#f0be67)'
-                : tool.id === 'tint'
-                  ? 'linear-gradient(90deg,#6ccb9a,#e3e3db,#d995d2)'
-                  : undefined
-            }
-          />
-        );
-      });
+    const controls = ids.map((id) => TOOLS.find((tool) => tool.id === id)!).map((tool) => {
+      const key = tool.id as keyof Adjustments;
+      const value = (local ? selected.adjustments : recipe.adjustments)[key];
+      function update(value: number, commit = false) {
+        let next = recipe;
+        if (local && region && v2)
+          next = { ...v2, regions: v2.regions.map((item) => item.id === region.id ? { ...item, adjustments: { ...item.adjustments, [key]: value } } : item) };
+        else if (local)
+          next = { ...recipe, local: { ...recipe.local, adjustments: { ...recipe.local.adjustments, [key]: value } } };
+        else next = { ...recipe, adjustments: { ...recipe.adjustments, [key]: value } };
+        if (commit) editor.commit(next, t('调整{v0}', { v0: t(tool.label) }));
+        else editor.preview(next);
+      }
+      return {
+        id: tool.id, label: tool.label, value, min: tool.min, max: tool.max,
+        step: tool.unit === 'EV' ? 0.01 : 0.1, neutral: tool.neutral,
+        unit: tool.unit === 'EV' ? 'EV' : '', description: tool.description,
+        onChange: update,
+        onReset: () => update(tool.neutral, true),
+        gradient: tool.id === 'temperature' ? 'linear-gradient(90deg,#85b8f4,#e3e3db,#f0be67)' : tool.id === 'tint' ? 'linear-gradient(90deg,#6ccb9a,#e3e3db,#d995d2)' : undefined,
+      };
+    });
+    return <ParameterShelf label={t('编辑参数')} controls={controls} onCommit={(label) => editor.commitCurrent(t('调整{v0}', { v0: t(label) }))} onCancel={cancel} />;
   }
   function advanced(paths: string[]) {
     if (!v2) return null;
-    return paths
-      .map((path) => V2_TOOLS.find((tool) => tool.path === path)!)
-      .filter(Boolean)
-      .map((tool, index) => {
-        let min = tool.min,
-          max = tool.max;
-        if (tool.path === 'levels.inputBlack')
-          max = Math.min(max, v2.levels.inputWhite - 0.000100001);
-        if (tool.path === 'levels.inputWhite')
-          min = Math.max(min, v2.levels.inputBlack + 0.000100001);
-        if (tool.path === 'levels.outputBlack') max = v2.levels.outputWhite;
-        if (tool.path === 'levels.outputWhite') min = v2.levels.outputBlack;
-        const percentage = tool.unit === 'ratio' && tool.path !== 'levels.gamma';
-        const multiplier = percentage ? 100 : 1;
-        const value = numericRecipeValue(v2, tool);
-        const update = (number: number, commit = false) => {
-          const next = setNumericRecipeValue(
-            v2,
-            tool,
-            clamp(number / multiplier, min, max),
-            V2_TOOLS,
-          );
-          if (commit) editor.commit(next, t('调整{v0}', { v0: t(tool.label) }));
-          else editor.preview(next);
-        };
-        return (
-          <PrecisionRange
-            key={tool.path}
-            integer={tool.unit === 'seed' || tool.path === 'effects.grain.size'}
-            label={t(tool.label)}
-            value={value * multiplier}
-            min={min * multiplier}
-            max={max * multiplier}
-            step={
-              tool.unit === 'seed' || tool.unit === 'px' ? 1 : Math.min(tool.step, 0.1) * multiplier
-            }
-            neutral={tool.neutral * multiplier}
-            unit={
-              percentage ? '%' : tool.unit === 'ratio' ? '×' : tool.unit === 'seed' ? '' : tool.unit
-            }
-            description={tool.description ? t(tool.description) : undefined}
-            index={index}
-            gradient={
-              tool.path.startsWith('grading.') && tool.path.endsWith('.hue')
-                ? hueGradient
-                : undefined
-            }
-            onChange={update}
-            onCommit={() => editor.commitCurrent(t('调整{v0}', { v0: t(tool.label) }))}
-            onCancel={cancel}
-            onReset={() => update(clamp(tool.neutral, min, max) * multiplier, true)}
-          />
-        );
-      });
+    const controls = paths.map((path) => V2_TOOLS.find((tool) => tool.path === path)!).filter(Boolean).map((tool) => {
+      let min = tool.min, max = tool.max;
+      if (tool.path === 'levels.inputBlack') max = Math.min(max, v2.levels.inputWhite - 0.000100001);
+      if (tool.path === 'levels.inputWhite') min = Math.max(min, v2.levels.inputBlack + 0.000100001);
+      if (tool.path === 'levels.outputBlack') max = v2.levels.outputWhite;
+      if (tool.path === 'levels.outputWhite') min = v2.levels.outputBlack;
+      const percentage = tool.unit === 'ratio' && tool.path !== 'levels.gamma';
+      const multiplier = percentage ? 100 : 1;
+      const value = numericRecipeValue(v2, tool);
+      const update = (number: number, commit = false) => {
+        const next = setNumericRecipeValue(v2, tool, clamp(number / multiplier, min, max), V2_TOOLS);
+        if (commit) editor.commit(next, t('调整{v0}', { v0: t(tool.label) }));
+        else editor.preview(next);
+      };
+      return {
+        id: tool.path, label: tool.label,
+        integer: tool.unit === 'seed' || tool.path === 'effects.grain.size',
+        value: value * multiplier, min: min * multiplier, max: max * multiplier,
+        step: tool.unit === 'seed' || tool.unit === 'px' ? 1 : Math.min(tool.step, 0.1) * multiplier,
+        neutral: tool.neutral * multiplier,
+        unit: percentage ? '%' : tool.unit === 'ratio' ? '×' : tool.unit === 'seed' ? '' : tool.unit,
+        description: tool.description,
+        gradient: tool.path.startsWith('grading.') && tool.path.endsWith('.hue') ? hueGradient : undefined,
+        onChange: update,
+        onReset: () => update(clamp(tool.neutral, min, max) * multiplier, true),
+      };
+    });
+    return <ParameterShelf label={t('编辑参数')} controls={controls} onCommit={(label) => editor.commitCurrent(t('调整{v0}', { v0: t(label) }))} onCancel={cancel} />;
   }
   function resetFields(paths: string[], label: string) {
     if (!v2) return;
@@ -582,7 +526,6 @@ function LegacyToolInspector({
             {t(current.label)}
             <span className="tiny-dot" />
           </h2>
-          <p>{t(current.description)}</p>
         </div>
         <IconButton label={t('收起工具面板')} className="mobile-only" onClick={onClose}>
           <CaretDown size={20} />
@@ -593,7 +536,6 @@ function LegacyToolInspector({
           <div className="inspector-empty">
             <span>{current.icon}</span>
             <h3>{t('先放入一张照片')}</h3>
-            <p>{t('打开后即可拖动调整。原图始终保留。')}</p>
           </div>
         ) : (
           <>
@@ -1648,13 +1590,6 @@ function LegacyToolInspector({
                 <ArrowCounterClockwise size={14} />
                 {t('重置这组调整')}
               </button>
-            )}
-            {['light', 'color', 'detail'].includes(group) && (
-              <p className="precision-help">
-                {t('拖动调节 · 点数值精确输入 · 双击滑条复位')}
-                <br />
-                {t('方向键微调，Alt 更细，Shift 加快')}
-              </p>
             )}
           </>
         )}

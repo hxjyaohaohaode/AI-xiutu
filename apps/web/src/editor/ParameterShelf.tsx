@@ -1,8 +1,7 @@
 import { t } from '../i18n';
-import { MotionDetails } from '../motion/Presence';
-import { ChoiceSelect } from '../components/ChoiceSelect';
 import { useLayoutEffect, useRef, useState } from 'react';
 import { PrecisionRange } from './PrecisionRange';
+import { ParameterGlyph } from './ParameterGlyph';
 
 /** Reveal only the active control inside its existing scroll surface, never the page. */
 export function parameterControlScrollTop({
@@ -35,11 +34,17 @@ export type ShelfControl = {
   neutral?: number;
   unit?: string;
   description?: string;
+  /** Optional semantic domain, e.g. portrait:eyeWidth. Never selected from translated text. */
+  glyph?: string;
   disabled?: boolean;
   onChange: (value: number) => void;
   onReset?: () => void;
   integer?: boolean;
+  gradient?: string;
 };
+export function shelfControlAdjusted(control: Pick<ShelfControl, 'value' | 'neutral'>): boolean {
+  return control.neutral !== undefined && Math.abs(control.value - control.neutral) > 1e-8;
+}
 /** One precise active control; adjacent tools stay discoverable without a wall of sliders. */
 export function ParameterShelf({
   controls,
@@ -58,6 +63,7 @@ export function ParameterShelf({
   const shelf = useRef<HTMLElement>(null);
   const current = useRef<HTMLDivElement>(null);
   const choices = useRef<HTMLDivElement>(null);
+  const selection = useRef<HTMLSpanElement>(null);
   const revealRequested = useRef(false);
   const active =
     controls.find((control) => control.id === selectedId && !control.disabled) ??
@@ -94,6 +100,26 @@ export function ParameterShelf({
     if (item.left < visible.left) rail.scrollLeft += item.left - visible.left - 4;
     else if (item.right > visible.right) rail.scrollLeft += item.right - visible.right + 4;
   }, [active?.id]);
+  // Measured selection slots adapt React Bits RubberSegment. See REFERENCE-SOURCES.md.
+  useLayoutEffect(() => {
+    const rail = choices.current;
+    const marker = selection.current;
+    if (!rail || !marker) return;
+    const measure = () => {
+      const disc = rail.querySelector<HTMLElement>('[aria-pressed="true"] .parameter-glyph-disc');
+      if (!disc) return;
+      const base = rail.getBoundingClientRect();
+      const bounds = disc.getBoundingClientRect();
+      marker.style.width = `${bounds.width}px`;
+      marker.style.height = `${bounds.height}px`;
+      marker.style.transform = `translate(${bounds.left - base.left + rail.scrollLeft}px, ${bounds.top - base.top + rail.scrollTop}px)`;
+      marker.dataset.ready = 'true';
+    };
+    measure();
+    const observer = new ResizeObserver(measure);
+    observer.observe(rail);
+    return () => observer.disconnect();
+  }, [active?.id, controls.length]);
   if (!active) return <p className="control-note">{t('当前范围没有可调整的参数。')}</p>;
   function selectControl(id: string) {
     if (active && active.id !== id) onCommit?.(active.label);
@@ -103,7 +129,29 @@ export function ParameterShelf({
   }
   return (
     <section ref={shelf} className="parameter-shelf" aria-label={t(label)}>
-      <div
+      <div ref={current} className="parameter-shelf-current" data-motion="parameter-current">
+        <PrecisionRange
+          key={active.id}
+          label={t(active.label)}
+          value={active.value}
+          min={active.min}
+          max={active.max}
+          step={active.step}
+          neutral={active.neutral}
+          unit={active.unit === 'ratio' ? '' : t(active.unit ?? '')}
+          disabled={active.disabled}
+          integer={active.integer}
+          description={active.description ? t(active.description) : undefined}
+          glyph={<ParameterGlyph id={active.glyph ?? active.id} />}
+          primary
+          gradient={active.gradient}
+          onChange={active.onChange}
+          onCommit={() => onCommit?.(active.label)}
+          onCancel={onCancel}
+          onReset={active.onReset}
+        />
+      </div>
+      {controls.length > 1 && <div
         ref={choices}
         className="parameter-shelf-options"
         role="group"
@@ -126,6 +174,8 @@ export function ParameterShelf({
           const target = buttons[next];
           if (!target) return;
           target.focus({ preventScroll: true });
+          const id = target.dataset.controlId;
+          if (id) selectControl(id);
           const rail = event.currentTarget;
           const viewport = rail.getBoundingClientRect();
           const item = target.getBoundingClientRect();
@@ -139,10 +189,12 @@ export function ParameterShelf({
             rail.scrollTop += item.bottom - top - rail.clientHeight;
         }}
       >
+        <span ref={selection} className="parameter-active-disc" aria-hidden="true" />
         {controls.map((control) => (
           <button
             type="button"
             key={control.id}
+            data-control-id={control.id}
             aria-pressed={active.id === control.id}
             disabled={control.disabled}
             tabIndex={active.id === control.id ? 0 : -1}
@@ -150,59 +202,18 @@ export function ParameterShelf({
               v0: t(control.label),
               v1: Number(control.value.toFixed(4)),
               v2: control.unit === 'ratio' ? '' : t(control.unit ?? ''),
-              v3: Math.abs(control.value - (control.neutral ?? 0)) > 1e-8 ? t('，已调整') : '',
+              v3: shelfControlAdjusted(control) ? t('，已调整') : '',
             })}
-            data-adjusted={
-              Math.abs(control.value - (control.neutral ?? 0)) > 1e-8 ? 'true' : undefined
-            }
+            data-adjusted={shelfControlAdjusted(control) ? 'true' : undefined}
             title={control.disabled && control.description ? t(control.description) : undefined}
             onClick={() => selectControl(control.id)}
           >
-            <span>{t(control.label)}</span>
-            <small>
-              {Number(control.value.toFixed(4))}
-              {control.unit === 'ratio' ? '' : t(control.unit ?? '')}
-            </small>
-            {Math.abs(control.value - (control.neutral ?? 0)) > 1e-8 && <i aria-hidden="true" />}
+            <span className="parameter-glyph-disc"><ParameterGlyph id={control.glyph ?? control.id} /></span>
+            <span className="parameter-short-label">{t(control.label)}</span>
+            {shelfControlAdjusted(control) && <i aria-hidden="true" />}
           </button>
         ))}
-      </div>
-      <div ref={current} className="parameter-shelf-current" data-motion="parameter-current">
-        <ChoiceSelect
-          className="parameter-compact-picker"
-          ariaLabel={t('选择{name}', { name: t(label) })}
-          size="compact"
-          value={active.id}
-          onValueChange={selectControl}
-          options={controls.map((control) => ({
-            value: control.id,
-            label: t(control.label),
-            disabled: control.disabled,
-          }))}
-        />
-        <PrecisionRange
-          key={active.id}
-          label={t(active.label)}
-          value={active.value}
-          min={active.min}
-          max={active.max}
-          step={active.step}
-          neutral={active.neutral}
-          unit={active.unit === 'ratio' ? '' : t(active.unit ?? '')}
-          disabled={active.disabled}
-          integer={active.integer}
-          onChange={active.onChange}
-          onCommit={() => onCommit?.(active.label)}
-          onCancel={onCancel}
-          onReset={active.onReset}
-        />
-      </div>
-      {active.description && (
-        <MotionDetails key={active.id + '-description'} className="parameter-description">
-          <summary>{t('{name}说明', { name: t(active.label) })}</summary>
-          <p className="control-note">{t(active.description)}</p>
-        </MotionDetails>
-      )}
+      </div>}
     </section>
   );
 }

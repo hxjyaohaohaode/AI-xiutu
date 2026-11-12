@@ -326,7 +326,7 @@ test('polygon coordinates translate as complete labels without changing selectio
         const expected = `${prefixes[locale]} ${axis.toUpperCase()}`;
         const control = controls.find((item) => item.id === axis)!;
         assert.equal(control.label, expected);
-        assert.ok(html.includes(`<span>${expected}</span>`));
+        assert.ok(html.includes(`>${expected}</span>`));
         assert.ok(html.includes(`aria-label="${expected}`));
         assert.deepEqual(
           [control.value, control.min, control.max, control.step],

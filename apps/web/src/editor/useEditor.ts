@@ -32,6 +32,7 @@ import { editorGeometryKey } from './coordinates';
 import { ensureWorker, releaseWorker } from './workerLifecycle';
 import { fitsNativePreview } from './native-preview';
 import { rememberHistogram } from './histogram-cache';
+import { cropRatioForGeometry } from './precision';
 export { editorGeometryKey } from './coordinates';
 
 const MAX_PREVIEW_PIXELS = 4_194_304;
@@ -210,6 +211,9 @@ export function useEditor() {
   const [cropRatio, setCropRatio] = useState<number | null>(null);
   const [renderedGeometryKey, setRenderedGeometryKey] = useState<string | null>(null);
   const [dimensions, setDimensions] = useState<{ width: number; height: number } | null>(null);
+  useEffect(() => {
+    setCropRatio((ratio) => cropRatioForGeometry(ratio, dimensions, recipe.geometry));
+  }, [dimensions, recipe.geometry]);
   const portrait = usePortraitAnalysis(analysisPreview, dimensions, sourceHash);
   const [rendering, setRendering] = useState(false);
   const [loading, setLoading] = useState(false);
@@ -1124,6 +1128,7 @@ export function useEditor() {
     [recipe, history, historyIndex],
   );
   return {
+    hasUncommittedPreview,
     file,
     dimensions,
     sourceHash,

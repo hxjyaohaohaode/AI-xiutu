@@ -78,7 +78,13 @@ export function panelBounds(view: Viewport, dock: Dock = 'floating', id?: PanelI
     minWidth: attached ? maxWidth : Math.min(view.bucket === 'phone' ? 224 : 240, maxWidth),
     maxWidth,
     minHeight: Math.min(
-      id === 'ai' ? (view.bucket === 'phone' ? 224 : 260) : view.height <= 520 ? 96 : 112,
+      id === 'ai'
+        ? (view.bucket === 'phone' ? 224 : 260)
+        : view.height <= 520
+          ? 176
+          : view.bucket === 'phone'
+            ? Math.min(248, Math.max(196, body.height * .4))
+            : 264,
       maxHeight,
     ),
     maxHeight,

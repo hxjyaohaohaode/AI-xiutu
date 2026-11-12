@@ -89,6 +89,11 @@ export function AssistantOpsPanel() {
   const profile = voice
     ? profiles.find((entry) => entry.id === modelId)
     : responsesProfiles.find((entry) => entry.id === modelId);
+  const voiceProfile = profiles.find((entry) => entry.id === modelId);
+  const responseProfile = responsesProfiles.find((entry) => entry.id === modelId);
+  const outputBudgetVisible = !voice || !!voiceProfile?.protocol.toLowerCase().includes('realtime');
+  const outputBudgetMax = voice ? 4096 : Math.min(8192, responseProfile?.maxOutputTokens ?? 8192);
+  const imageBudgetVisible = !voice && settings.imageInput;
   const [recordKind, setRecordKind] = useState<'turn' | 'voice'>('turn'),
     [recordFilter, setRecordFilter] = useState(''),
     [recordDraft, setRecordDraft] = useState('');
@@ -268,7 +273,6 @@ export function AssistantOpsPanel() {
       <header className="section-heading">
         <div>
           <h2>{t('语音与协作模型')}</h2>
-          <p>{t('生成图片仍使用原有模型目录；这里配置实时交流、看图建议和资源检索。')}</p>
         </div>
         <button
           className="text-button"
@@ -284,12 +288,10 @@ export function AssistantOpsPanel() {
       <InlineError message={error ?? readError} />
       {catalogLoaded ? (
         <>
-          <p className="control-note">
-            {t('智能体环境：')}
-            {ready ? t('已配置') : t('未就绪')} {t('· 实时语音环境：')}
-            {voiceReady ? t('已配置') : t('未就绪')}
-            {t('。密钥、审核凭证与出口代理只在服务器环境配置。')}
-          </p>
+          <div className="ops-readiness" role="status">
+            <span data-ready={ready}>{t('文字协作')} · {ready ? t('已配置') : t('未就绪')}</span>
+            <span data-ready={voiceReady}>{t('实时语音')} · {voiceReady ? t('已配置') : t('未就绪')}</span>
+          </div>
           <div className="assistant-ops-layout">
             <div className="assistant-model-list">
               <button className="text-button" disabled={busy} onClick={() => select('')}>
@@ -334,12 +336,10 @@ export function AssistantOpsPanel() {
                     {
                       value: 'assistant-turn',
                       label: t('思考与工具协作'),
-                      description: 'Responses',
                     },
                     {
                       value: 'realtime-voice',
                       label: t('实时语音'),
-                      description: 'Live / Realtime',
                     },
                   ]}
                 />
@@ -416,18 +416,13 @@ export function AssistantOpsPanel() {
                   onChange={(e) => setSettings({ ...settings, unitCost: Number(e.target.value) })}
                 />
               </label>
-              <p className="control-note">
-                {t(
-                  '服务点由你定价。语音按一次有时限会话计点，包含下方范围内的后端协作；供应商的时长与 Token 成本另行核算，1 点不是官方价格。',
-                )}
-              </p>
               {voice ? (
                 <>
                   <label>
                     {t('最长通话（秒）')}
                     <input
                       disabled={busy}
-                      type="range"
+                      type="number"
                       min={30}
                       max={600}
                       step={10}
@@ -436,15 +431,12 @@ export function AssistantOpsPanel() {
                         setSettings({ ...settings, maxSeconds: Number(e.target.value) })
                       }
                     />
-                    <output>
-                      {settings.maxSeconds} {t('秒')}
-                    </output>
                   </label>
                   <label>
                     {t('最多后端协作次数')}
                     <input
                       disabled={busy}
-                      type="range"
+                      type="number"
                       min={1}
                       max={20}
                       step={1}
@@ -453,9 +445,6 @@ export function AssistantOpsPanel() {
                         setSettings({ ...settings, maxDelegations: Number(e.target.value) })
                       }
                     />
-                    <output>
-                      {settings.maxDelegations} {t('次')}
-                    </output>
                   </label>
                 </>
               ) : (
@@ -467,7 +456,7 @@ export function AssistantOpsPanel() {
                       checked={settings.imageInput}
                       onChange={(e) => setSettings({ ...settings, imageInput: e.target.checked })}
                     />
-                    {t('允许显式共享图像（需模型支持）')}
+                    {t('图像输入')}
                   </label>
                   <label className="check-label">
                     <input
@@ -476,7 +465,7 @@ export function AssistantOpsPanel() {
                       checked={settings.webSearch}
                       onChange={(e) => setSettings({ ...settings, webSearch: e.target.checked })}
                     />
-                    {t('允许用户选择公开网络检索（需模型支持）')}
+                    {t('公开网络检索')}
                   </label>
                   <label className="check-label">
                     <input
@@ -487,7 +476,7 @@ export function AssistantOpsPanel() {
                         setSettings({ ...settings, webImageSearch: e.target.checked })
                       }
                     />
-                    {t('当前模型支持公开图片检索结果')}
+                    {t('公开图片检索')}
                   </label>
                   <label>
                     {t('推理参数')}
@@ -535,54 +524,48 @@ export function AssistantOpsPanel() {
                   />
                 </label>
               )}
-              <label>
-                {t('每次响应的输出预算')}
-                <input
-                  disabled={busy}
-                  type="range"
-                  min={256}
-                  max={8192}
-                  step={256}
-                  value={settings.maxOutputTokens}
-                  onChange={(e) =>
-                    setSettings({ ...settings, maxOutputTokens: Number(e.target.value) })
-                  }
-                />
-                <output>
-                  {settings.maxOutputTokens} tokens
-                  {voice ? t('（Realtime 最多发送 4096；Live 输出不使用此参数）') : ''}
-                </output>
-              </label>
-              <label>
-                {t('应用上下文预算')}
-                <input
-                  disabled={busy}
-                  type="number"
-                  min={8192}
-                  max={2000000}
-                  step={1}
-                  value={settings.contextWindowTokens ?? 32768}
-                  onChange={(event) =>
-                    setSettings({ ...settings, contextWindowTokens: Number(event.target.value) })
-                  }
-                />
-                <small>{t('按实际模型能力设置，包含指令、工具、历史、图片预留与输出。')}</small>
-              </label>
-              <label>
-                {t('每张图的输入预留')}
-                <input
-                  disabled={busy}
-                  type="number"
-                  min={1024}
-                  max={32768}
-                  step={1}
-                  value={settings.visualTokenReserve ?? 4096}
-                  onChange={(event) =>
-                    setSettings({ ...settings, visualTokenReserve: Number(event.target.value) })
-                  }
-                />
-                <small>{t('用于派发前的保守预算；实际 token 消耗以供应商回执为准。')}</small>
-              </label>
+              {outputBudgetVisible && (
+                <label>
+                  {t('每次响应的输出预算')}
+                  <input
+                    disabled={busy}
+                    type="number"
+                    min={256}
+                    max={outputBudgetMax}
+                    step={256}
+                    value={settings.maxOutputTokens}
+                    onChange={(event) => setSettings({ ...settings, maxOutputTokens: Number(event.target.value) })}
+                  />
+                </label>
+              )}
+              {!voice && (
+                <label>
+                  {t('应用上下文预算')}
+                  <input
+                    disabled={busy}
+                    type="number"
+                    min={8192}
+                    max={responseProfile?.contextWindowTokens ?? 2000000}
+                    step={1}
+                    value={settings.contextWindowTokens ?? 32768}
+                    onChange={(event) => setSettings({ ...settings, contextWindowTokens: Number(event.target.value) })}
+                  />
+                </label>
+              )}
+              {imageBudgetVisible && (
+                <label>
+                  {t('每张图的输入预留')}
+                  <input
+                    disabled={busy}
+                    type="number"
+                    min={1024}
+                    max={32768}
+                    step={1}
+                    value={settings.visualTokenReserve ?? 4096}
+                    onChange={(event) => setSettings({ ...settings, visualTokenReserve: Number(event.target.value) })}
+                  />
+                </label>
+              )}
               <button className="button button-primary" disabled={busy || !modelId}>
                 {busy ? <Busy /> : saved ? t('已保存配置') : t('保存配置')}
               </button>

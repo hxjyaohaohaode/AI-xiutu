@@ -412,13 +412,6 @@ export function RepairControls({ controller }: { controller: InspectorController
               {t('删除此区域')}
             </button>
           </div>
-          <p className="control-note">
-            {mode === 'healing'
-              ? t(
-                  '修复目标及周边需为不透明像素。每个目标最多 262,144 像素，含周边的工作区最多 1,048,576 像素；过大的范围或迭代会明确拒绝。建议分小区域逐笔处理。',
-                )
-              : t('六项质感控制使用独立的局部算法；不等同于自动识别痘痘、重建发丝或三维遮挡修复。')}
-          </p>
         </>
       )}
     </section>

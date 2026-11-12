@@ -20,6 +20,7 @@ import {
   ArrowClockwise,
   Eye,
   MagnifyingGlass,
+  ArrowsHorizontal,
 } from '@phosphor-icons/react';
 import {
   api,
@@ -42,6 +43,7 @@ import type {
 } from '../lib/types';
 import { Busy, EmptyState, IconButton, InlineError, Modal } from './Ui';
 import { ChoiceSelect } from './ChoiceSelect';
+import { ImagePreview } from './ImagePreview';
 import { FeatureSkeleton } from './DeferredFeature';
 import { interactionText } from '../workspace/interaction-copy';
 import { RevisionTools, RevisionForkDialog, type CreatedRevisionBranch } from './RevisionTools';
@@ -270,9 +272,12 @@ export function CompareView({
   } | null>(null);
   const scope = useRef(historyScope.current);
   scope.current = historyScope.current;
-  const [mode, setMode] = useState<'side' | 'original' | 'edited'>(() =>
-    typeof window !== 'undefined' && window.innerWidth < 760 ? 'edited' : 'side',
-  );
+  const [mode, setMode] = useState<'slide' | 'side' | 'original' | 'edited'>('slide');
+  const [split, setSplit] = useState(50);
+  const slideAvailable = !!editor.originalPreview && !!editor.rendered &&
+    editor.originalPreview.width === editor.rendered.width &&
+    editor.originalPreview.height === editor.rendered.height;
+  const visibleMode = mode === 'slide' && !slideAvailable ? 'side' : mode;
   const historyChanged =
     !!artwork && historyHeadVersion !== null && historyHeadVersion > artwork.headVersion;
   async function loadHistory(beforeVersion?: number) {
@@ -388,50 +393,43 @@ export function CompareView({
           <h1 className="view-artwork-title">{artwork?.title ?? editor.file.name}</h1>
         </div>
         <div className="compare-mode-choice" role="group" aria-label={t('对比显示方式')}>
-          <button
-            aria-pressed={mode === 'side'}
-            className={mode === 'side' ? 'selected' : ''}
-            onClick={() => setMode('side')}
-          >
-            {t('并排')}
-          </button>
-          <button
-            className={mode === 'original' ? 'selected' : ''}
-            aria-pressed={mode === 'original'}
-            onClick={() => setMode('original')}
-          >
-            {t('原图')}
-          </button>
-          <button
-            aria-pressed={mode === 'edited'}
-            className={mode === 'edited' ? 'selected' : ''}
-            onClick={() => setMode('edited')}
-          >
-            {t('当前')}
-          </button>
+          {(['slide', 'side', 'original', 'edited'] as const).map((item) => (
+            <button key={item} type="button" aria-pressed={visibleMode === item}
+              className={visibleMode === item ? 'selected' : ''}
+              disabled={item === 'slide' && !slideAvailable}
+              title={item === 'slide' && !slideAvailable ? t('不同画幅请使用并排对比') : undefined}
+              onClick={() => setMode(item)}>
+              {t(({ slide: '滑动对比', side: '并排', original: '原图', edited: '当前' })[item])}
+            </button>
+          ))}
         </div>
       </div>
-      <div className={`compare-pair ${mode !== 'side' ? 'single' : ''}`}>
-        {mode !== 'edited' && (
-          <section>
-            <header>
-              <span>{t('原始图片')}</span>
-            </header>
-            <ComparisonFrame image={editor.originalPreview} />
-          </section>
-        )}
-        {mode !== 'original' && (
-          <section>
-            <header>
-              <span>{t('当前编辑')}</span>
-              <small aria-live="polite">
-                {editor.rendering ? t('正在更新') : isDirty ? t('本地草稿') : t('当前预览')}
-              </small>
-            </header>
-            <ComparisonFrame image={editor.rendered} />
-          </section>
-        )}
-      </div>
+      {visibleMode === 'slide' ? (
+        <div className="compare-reveal" data-testid="compare-reveal">
+          <div className="compare-reveal-layer"><ImagePreview image={editor.rendered} label={t('当前编辑')} /></div>
+          <div className="compare-reveal-layer" style={{ clipPath: `inset(0 ${100 - split}% 0 0)` }}>
+            <ImagePreview image={editor.originalPreview} label={t('原始图片')} />
+          </div>
+          <span className="compare-reveal-label compare-reveal-before">{t('原图')}</span>
+          <span className="compare-reveal-label compare-reveal-after">{t('当前')}</span>
+          <span className="compare-reveal-boundary" style={{ left: `${split}%` }} aria-hidden="true"><ArrowsHorizontal size={20} /></span>
+          <input className="compare-reveal-input" type="range" min="0" max="100" step="1" value={split}
+            aria-label={t('原图与当前图的分界')} aria-valuetext={t('原图 {percent}%', { percent: split })}
+            onChange={(event) => setSplit(Number(event.target.value))} />
+        </div>
+      ) : (
+        <div className={`compare-pair ${visibleMode !== 'side' ? 'single' : ''}`}>
+          {visibleMode !== 'edited' && (
+            <section><header><span>{t('原始图片')}</span></header><ComparisonFrame image={editor.originalPreview} /></section>
+          )}
+          {visibleMode !== 'original' && (
+            <section>
+              <header><span>{t('当前编辑')}</span><small aria-live="polite">{editor.rendering ? t('正在更新') : isDirty ? t('本地草稿') : t('当前预览')}</small></header>
+              <ComparisonFrame image={editor.rendered} />
+            </section>
+          )}
+        </div>
+      )}
       <InlineError message={error} />
       {artwork && (
         <MotionDetails className="saved-versions">

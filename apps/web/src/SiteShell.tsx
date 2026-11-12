@@ -9,6 +9,7 @@ import {
   useState,
   type ReactNode,
 } from 'react';
+import { BrandMark } from './components/BrandMark';
 import { AboutPage, type AboutIntent } from './about/AboutPage';
 import { aboutCopy } from './about/copy';
 import {
@@ -29,7 +30,7 @@ import './site-loading.css';
 
 const loadStudio = () => import('./App').then((module) => ({ default: module.App }));
 let Studio = lazy(loadStudio);
-function StudioLoading({ route }: { route: SiteRoute }) {
+function StudioLoading({ route, logoUrl }: { route: SiteRoute; logoUrl: string | null }) {
   const locale = useLocale();
   const c = aboutCopy(locale);
   const account = isAccountSiteRoute(route);
@@ -39,7 +40,7 @@ function StudioLoading({ route }: { route: SiteRoute }) {
     <div className="route-loading" data-layout={layout} role="status" aria-live="polite">
       <div className="route-loading-shell" aria-hidden="true">
         <div className="route-loading-header">
-          <i />
+          <BrandMark logoUrl={logoUrl} />
           <span />
           <i />
         </div>
@@ -185,7 +186,7 @@ export function SiteShell() {
               setRetryKey((value) => value + 1);
             }}
           >
-            <Suspense fallback={<StudioLoading route={route} />}>
+            <Suspense fallback={<StudioLoading route={route} logoUrl={brandLogoUrl(config?.brand)} />}>
               <Studio
                 active={active}
                 siteRoute={route}

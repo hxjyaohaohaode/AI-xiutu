@@ -1,4 +1,5 @@
 import { t } from '../i18n';
+import '../ai/interaction-surfaces.css';
 import { useCallback, useEffect, useLayoutEffect, useRef, useState, type FormEvent } from 'react';
 import {
   ArrowUp,
@@ -70,6 +71,7 @@ import {
   imagePointQuote,
   imageSizeError,
   requestImageOptions,
+  reconcileImageOptions,
 } from '../ai/capabilities';
 import type {
   AIOperation,
@@ -162,6 +164,9 @@ export function AIPanel({
   visible = true,
   onActivityChange,
   onPreview,
+  previewActive,
+  onConfirmPreview,
+  onCancelPreview,
   onSave,
   onCreateProject,
   onOpenArtwork,
@@ -193,6 +198,9 @@ export function AIPanel({
   visible?: boolean;
   onActivityChange?: (activity: AIActivity) => void;
   onPreview: (recipe: EditorRecipe) => void;
+  previewActive?: boolean;
+  onConfirmPreview?: () => void;
+  onCancelPreview?: () => void;
   onSave: () => void;
   onCreateProject: () => void;
   onOpenArtwork: (id: string) => void;
@@ -269,6 +277,7 @@ export function AIPanel({
     [height, setHeight] = useState(cached?.height ?? 2048);
   const [imageOptions, setImageOptions] = useState<ImageOptions>(cached?.imageOptions ?? {});
   const previousModel = useRef(cached?.modelId ?? '');
+  const appliedCapabilityKey = useRef('');
   const [audioBase64, setAudioBase64] = useState<string | null>(null);
   const [voiceEpoch, setVoiceEpoch] = useState(0);
   const [referenceIds, setReferenceIds] = useState<string[]>(cached?.referenceIds ?? []);
@@ -493,36 +502,81 @@ export function AIPanel({
     };
   }, [scope]);
   useEffect(() => {
-    let live = true;
-    setLoading(true);
-    api<ModelResponse>('/models')
-      .then((result) => {
-        if (live) setModelResponse(result);
-      })
-      .catch((error) => live && setError(errorMessage(error)))
-      .finally(() => live && setLoading(false));
+    if (!isLoggedIn || !visible) return;
+    const controller = new AbortController();
+    let refreshing = false;
+    let lastRead = -Infinity;
+    async function refreshModels() {
+      if (refreshing || controller.signal.aborted || document.visibilityState === 'hidden') return;
+      if (Date.now() - lastRead < 15_000) return;
+      refreshing = true;
+      lastRead = Date.now();
+      try {
+        const result = await api<ModelResponse>('/models', { signal: controller.signal });
+        if (!controller.signal.aborted) setModelResponse(result);
+      } catch (failure) {
+        if (!controller.signal.aborted) setError(errorMessage(failure));
+      } finally {
+        refreshing = false;
+        if (!controller.signal.aborted) setLoading(false);
+      }
+    }
+    void refreshModels();
+    const refreshModelsOnFocus = () => void refreshModels();
+    const interval = window.setInterval(refreshModelsOnFocus, 60_000);
+    window.addEventListener('focus', refreshModelsOnFocus);
+    document.addEventListener('visibilitychange', refreshModelsOnFocus);
     return () => {
-      live = false;
+      controller.abort();
+      window.clearInterval(interval);
+      window.removeEventListener('focus', refreshModelsOnFocus);
+      document.removeEventListener('visibilitychange', refreshModelsOnFocus);
     };
-  }, []);
+  }, [isLoggedIn, visible]);
   useEffect(() => {
-    if (!modelResponse || pending.current) return;
+    if (!modelResponse || pending.current || busy || preparingDraft) return;
     if (!eligible.some((model) => model.id === modelId))
       setModelId(eligible.find(modelReady)?.id ?? eligible[0]?.id ?? '');
-  }, [operation, modelResponse, modelId, pendingSubmission]);
+  }, [operation, modelResponse, modelId, pendingSubmission, busy, preparingDraft]);
+  const selectedCapabilityKey = JSON.stringify([
+    modelId,
+    selected?.parameterCapabilities,
+    selected?.minWidth,
+    selected?.maxWidth,
+    selected?.minHeight,
+    selected?.maxHeight,
+    selected?.minPixels,
+    selected?.maxPixels,
+    selected?.maxDimension,
+    selected?.minAspectRatio,
+    selected?.maxAspectRatio,
+  ]);
   useEffect(() => {
-    if (modelId === previousModel.current) return;
+    if (
+      !selected || pending.current || busy || preparingDraft ||
+      appliedCapabilityKey.current === selectedCapabilityKey
+    ) return;
+    appliedCapabilityKey.current = selectedCapabilityKey;
+    const changedModel = modelId !== previousModel.current;
     previousModel.current = modelId;
-    if (pending.current) return;
-    setImageOptions(defaultImageOptions(selected));
+    setImageOptions((current) => {
+      const next = changedModel ? defaultImageOptions(selected) : reconcileImageOptions(selected, current);
+      return JSON.stringify(next) === JSON.stringify(current) ? current : next;
+    });
     const allowed = allowedImageSizes(selected);
     if (imageSizeError(selected, width, height) && allowed[0]) {
       setWidth(allowed[0].width);
       setHeight(allowed[0].height);
     }
-    setAuxiliary(null);
+    setAuxiliary((current) => {
+      if (!current) return current;
+      const references = selected.parameterCapabilities?.references;
+      const supported = references?.supported &&
+        (current.kind === 'mask' ? references.allowMask : references.allowMarkup);
+      return changedModel || !supported ? null : current;
+    });
     changed();
-  }, [modelId]);
+  }, [selectedCapabilityKey, pendingSubmission, busy, preparingDraft]);
   useEffect(() => {
     setUploadedReference(null);
     if (referenceFile && !pending.current) {
@@ -1015,6 +1069,9 @@ export function AIPanel({
             onAuth={onAuth}
             onSave={onSave}
             onPreview={onPreview}
+            previewActive={previewActive}
+            onConfirmPreview={onConfirmPreview}
+            onCancelPreview={onCancelPreview}
             imageModelIds={(modelResponse?.models ?? [])
               .filter(
                 (model) => model.enabled !== false && model.operations?.includes('generate-image'),

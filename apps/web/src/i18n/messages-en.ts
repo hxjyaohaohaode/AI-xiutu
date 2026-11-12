@@ -1,3 +1,4 @@
+import { aiRedesignEnglish } from './ai-redesign-messages';
 import { finalEnglish } from './final-messages';
 import { appEnglish } from './app-messages';
 import { residualEnglish } from './residual-messages';
@@ -27,6 +28,8 @@ export const english: Readonly<Record<string, string>> = {
   ...libraryEnglish,
   ...editorEnglish,
   ...finalEnglish,
+  ...aiRedesignEnglish,
+  '确认 AI 调整': 'Apply AI adjustments',
   语言: 'Language',
   简体中文: 'Simplified Chinese',
   繁體中文: 'Traditional Chinese',

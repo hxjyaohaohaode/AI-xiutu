@@ -1,5 +1,5 @@
 import { getLocale, t } from '../i18n';
-import { useEffect, useId, useMemo, useRef, useState, type CSSProperties } from 'react';
+import { useEffect, useId, useMemo, useRef, useState, type CSSProperties, type ReactNode } from 'react';
 import { ArrowCounterClockwise, Check } from '@phosphor-icons/react';
 import {
   RangeGesture,
@@ -28,6 +28,8 @@ export function PrecisionRange({
   integer = false,
   gradient,
   index = 0,
+  glyph,
+  primary = false,
 }: {
   label: string;
   value: number;
@@ -45,6 +47,8 @@ export function PrecisionRange({
   integer?: boolean;
   gradient?: string;
   index?: number;
+  glyph?: ReactNode;
+  primary?: boolean;
 }) {
   const id = useId();
   const [editing, setEditing] = useState(false);
@@ -207,9 +211,9 @@ export function PrecisionRange({
     undefined;
   return (
     <div
-      className="precision-control"
+      className={`precision-control${primary ? ' precision-primary' : ''}`}
       data-motion="slider-row"
-      data-adjusted={Math.abs(value - neutral) > 1e-10 ? 'true' : undefined}
+      data-adjusted={onReset && Math.abs(value - neutral) > 1e-10 ? 'true' : undefined}
       data-disabled={disabled || max <= min ? 'true' : undefined}
       style={
         {
@@ -223,8 +227,9 @@ export function PrecisionRange({
       }
     >
       <div className="precision-heading">
-        <label htmlFor={id} title={description}>
-          {label}
+        <label htmlFor={id}>
+          {glyph && <span className="precision-label-glyph">{glyph}</span>}
+          <span>{label}</span>
         </label>
         <div className="precision-readout">
           {editing ? (
@@ -309,6 +314,17 @@ export function PrecisionRange({
         </div>
       </div>
       <div className={`precision-track ${gradient ? 'with-gradient' : ''}`}>
+        {primary && (
+          <div className="precision-ticks" aria-hidden="true">
+            {Array.from({ length: 37 }, (_, tick) => {
+              const distance = Math.abs(tick / 36 - position / 100);
+              // Bell-shaped neighbourhood adapted from React Bits WakeSlider;
+              // only the visual ticks move, never the authoritative value.
+              const lift = distance < .14 ? Math.cos(Math.PI * distance / (.14 * 2)) ** 2 : 0;
+              return <i key={tick} data-major={tick % 6 === 0 || undefined} style={{ '--tick-lift': 1 + lift * .65 } as CSSProperties} />;
+            })}
+          </div>
+        )}
         {neutral > min && neutral < max && <i className="precision-neutral" aria-hidden />}
         <input
           id={id}
@@ -347,7 +363,8 @@ export function PrecisionRange({
               event.preventDefault();
               control.focus({ preventScroll: true });
               const bounds = control.getBoundingClientRect();
-              const inset = Math.min(6.5, bounds.width / 4);
+              const thumbWidth = Number.parseFloat(getComputedStyle(control).getPropertyValue('--range-thumb-size')) || 20;
+              const inset = Math.min(thumbWidth / 2, bounds.width / 4);
               const left = bounds.left + inset;
               const travel = bounds.width - 2 * inset;
               if (travel <= 0) return;

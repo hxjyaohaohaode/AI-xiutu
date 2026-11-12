@@ -66,6 +66,8 @@ import { ResearchGraph } from './ResearchGraph';
 import { AssistantText, CopyMessage } from './AssistantText';
 import { MemoryControls } from './MemoryControls';
 import { WorkspaceCards } from './WorkspaceCards';
+import { CandidateActions } from './CandidateActions';
+import { voiceErrorMessage } from './voice-error';
 import { CloudImageResults, SearchEvidence } from './SearchEvidence';
 import {
   acceptAssistantSubmission,
@@ -185,6 +187,9 @@ export interface LiveAssistantProps {
   onAuth: () => void;
   onSave: () => void;
   onPreview: (recipe: EditorRecipe) => void;
+  previewActive?: boolean;
+  onConfirmPreview?: () => void;
+  onCancelPreview?: () => void;
   imageModelIds: string[];
   onBeforeArtworkWrite?: () => void | Promise<void>;
   onAfterArtworkWrite?: () => void | Promise<void>;
@@ -292,6 +297,25 @@ export function LiveAssistant(props: LiveAssistantProps) {
   const [searchStatus, setSearchStatus] = useState<StatusMessage>('');
   const [messages, setMessages] = useState<Message[]>([]),
     [candidates, setCandidates] = useState<AssistantCandidate[]>([]);
+  const [previewCandidateId, setPreviewCandidateId] = useState<string | null>(null);
+  const [confirmedCandidateIds, setConfirmedCandidateIds] = useState<ReadonlySet<string>>(new Set());
+  useEffect(() => {
+    if (props.previewActive === false) setPreviewCandidateId(null);
+  }, [props.previewActive]);
+  useEffect(() => {
+    setPreviewCandidateId(null);
+    setConfirmedCandidateIds(new Set());
+  }, [project?.id, artwork?.id]);
+  function cancelCandidatePreview() {
+    props.onCancelPreview?.();
+    setPreviewCandidateId(null);
+  }
+  function confirmCandidatePreview() {
+    if (!previewCandidateId || !props.onConfirmPreview) return;
+    props.onConfirmPreview();
+    setConfirmedCandidateIds((old) => new Set([...old, previewCandidateId]));
+    setPreviewCandidateId(null);
+  }
   const [historyEpoch, setHistoryEpoch] = useState(0);
   const [candidateHistoryStatus, setCandidateHistoryStatus] = useState<StatusMessage>('');
   const [parentTurnId, setParentTurnId] = useState<string | undefined>(),
@@ -421,6 +445,23 @@ export function LiveAssistant(props: LiveAssistantProps) {
     if (voiceOptions.length && !voiceOptions.includes(voice)) setVoice(voiceOptions[0]!);
   }, [voiceId, voiceOptions.join(','), voice]);
   const inCall = callState !== 'idle';
+  const catalogSelectionLocked =
+    busy || inCall || !!pendingSubmission || !!pendingVoiceSubmission || !!activeTurn;
+  useEffect(() => {
+    if (!catalog || catalogSelectionLocked) return;
+    // Admission readiness depends on the actor loaded with the catalog. It must
+    // never lock the initial default selection while that first read is pending.
+    setModelId((old) =>
+      catalog.models.some((item) => item.id === old && item.operations.includes('assistant-turn'))
+        ? old
+        : (catalog.models.find((item) => item.operations.includes('assistant-turn'))?.id ?? ''),
+    );
+    setVoiceId((old) =>
+      catalog.models.some((item) => item.id === old && item.operations.includes('realtime-voice'))
+        ? old
+        : (catalog.models.find((item) => item.operations.includes('realtime-voice'))?.id ?? ''),
+    );
+  }, [catalog, catalogSelectionLocked]);
   const currentVoiceControls = useRef({ callState, muted, end: endVoice });
   currentVoiceControls.current = { callState, muted, end: endVoice };
   const toggleVoiceMute = useCallback(() => {
@@ -470,35 +511,42 @@ export function LiveAssistant(props: LiveAssistantProps) {
   }, [messages, candidates, workspace, props.visible]);
   useEffect(() => {
     alive.current = true;
-    if (!isLoggedIn) return;
+    if (!isLoggedIn || props.visible === false) return;
     const controller = new AbortController();
-    void Promise.all([
-      api<Catalog>('/assistant/models', { signal: controller.signal }),
-      api<Session>('/session', { signal: controller.signal }),
-    ])
-      .then(([value, session]) => {
+    let refreshing = false;
+    let lastRead = -Infinity;
+    async function refreshCatalog() {
+      if (refreshing || controller.signal.aborted || document.visibilityState === 'hidden') return;
+      if (Date.now() - lastRead < 15_000) return;
+      refreshing = true;
+      lastRead = Date.now();
+      try {
+        const [value, session] = await Promise.all([
+          api<Catalog>('/assistant/models', { signal: controller.signal }),
+          api<Session>('/session', { signal: controller.signal }),
+        ]);
         if (controller.signal.aborted) return;
         setCatalog(value);
         setSpaces(session.spaces);
         setActorId(session.user?.id ?? null);
-        setModelId((old) =>
-          value.models.some((item) => item.id === old && item.operations.includes('assistant-turn'))
-            ? old
-            : (value.models.find((item) => item.operations.includes('assistant-turn'))?.id ?? ''),
-        );
-        setVoiceId((old) =>
-          value.models.some((item) => item.id === old && item.operations.includes('realtime-voice'))
-            ? old
-            : (value.models.find((item) => item.operations.includes('realtime-voice'))?.id ?? ''),
-        );
-      })
-      .catch((err) => {
+      } catch (err) {
         if (!controller.signal.aborted) setError(errorMessage(err));
-      });
+      } finally {
+        refreshing = false;
+      }
+    }
+    void refreshCatalog();
+    const refresh = () => void refreshCatalog();
+    const interval = window.setInterval(refresh, 60_000);
+    window.addEventListener('focus', refresh);
+    document.addEventListener('visibilitychange', refresh);
     return () => {
       controller.abort();
+      window.clearInterval(interval);
+      window.removeEventListener('focus', refresh);
+      document.removeEventListener('visibilitychange', refresh);
     };
-  }, [isLoggedIn]);
+  }, [isLoggedIn, props.visible]);
   useEffect(() => {
     restoreSubmission();
   }, [actorId, isLoggedIn]);
@@ -1188,7 +1236,7 @@ export function LiveAssistant(props: LiveAssistantProps) {
       }
       if (requestIsActive(token) && epoch === voiceEpoch.current) {
         setCallState('idle');
-        setError(errorMessage(err));
+        setError(voiceErrorMessage(err));
       }
     } finally {
       requests.current.finish(token);
@@ -1622,7 +1670,7 @@ export function LiveAssistant(props: LiveAssistantProps) {
       const actionable = result.candidates.filter(
         (item) =>
           item.decision === 'pending' ||
-          (item.kind === 'generation' && item.decision === 'previewed'),
+          (item.decision === 'previewed' && !item.appliedRevisionId),
       ).length;
       setCandidateHistoryStatus(
         actionable
@@ -1671,7 +1719,10 @@ export function LiveAssistant(props: LiveAssistantProps) {
             return result;
           },
           apply: (next) => {
-            if (!automatic) current.current.onPreview(next);
+            if (!automatic) {
+              current.current.onPreview(next);
+              setPreviewCandidateId(candidate.id);
+            }
           },
         });
         if (!applied) return;
@@ -1742,8 +1793,9 @@ export function LiveAssistant(props: LiveAssistantProps) {
   const remainingCandidates = candidates.filter(
     (item) =>
       !workspaceCandidateIds.has(item.id) &&
+      !confirmedCandidateIds.has(item.id) &&
       (item.decision === 'pending' ||
-        (item.kind === 'generation' && item.decision === 'previewed')),
+        (item.decision === 'previewed' && !item.appliedRevisionId)),
   );
   useEffect(() => {
     if (
@@ -2133,7 +2185,6 @@ export function LiveAssistant(props: LiveAssistantProps) {
             <ComposerVisual kind="assistant" />
             <div>
               <h3>{t('登录后使用 AI 助手')}</h3>
-              <p>{t('对话与结果保存到项目。')}</p>
             </div>
             <button className="button button-primary" onClick={onAuth}>
               {t('登录')}
@@ -2225,6 +2276,10 @@ export function LiveAssistant(props: LiveAssistantProps) {
                 grant={grant}
                 disabled={busy || submissionBlocked}
                 canExecute={creative.mode !== 'suggest'}
+                previewCandidateId={previewCandidateId}
+                confirmedCandidateIds={confirmedCandidateIds}
+                onConfirmPreview={props.onConfirmPreview ? confirmCandidatePreview : undefined}
+                onCancelPreview={props.onCancelPreview ? cancelCandidatePreview : undefined}
                 onDecision={(candidate, decision) => {
                   void decide(candidate, decision);
                 }}
@@ -2269,25 +2324,16 @@ export function LiveAssistant(props: LiveAssistantProps) {
                         </table>
                       </MotionDetails>
                     )}
-                    <div>
-                      <button
-                        disabled={busy || submissionBlocked}
-                        onClick={() => void decide(candidate, 'rejected')}
-                      >
-                        {t('退回')}
-                      </button>
-                      <button
-                        className="ai-candidate-primary"
-                        disabled={creative.mode === 'suggest' || busy || submissionBlocked}
-                        onClick={() => void decide(candidate, 'previewed')}
-                      >
-                        {candidate.kind === 'edit'
-                          ? t('在编辑器预览')
-                          : candidate.decision === 'previewed'
-                            ? t('重新打开生图草案')
-                            : t('选择模型与生成参数')}
-                      </button>
-                    </div>
+                    <CandidateActions
+                      candidate={candidate}
+                      disabled={busy || submissionBlocked}
+                      canExecute={creative.mode !== 'suggest'}
+                      previewing={previewCandidateId === candidate.id}
+                      confirmed={confirmedCandidateIds.has(candidate.id)}
+                      onDecision={(item, decision) => void decide(item, decision)}
+                      onConfirm={props.onConfirmPreview ? confirmCandidatePreview : undefined}
+                      onCancel={props.onCancelPreview ? cancelCandidatePreview : undefined}
+                    />
                   </article>
                 ))}
               </div>

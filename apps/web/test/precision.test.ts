@@ -12,6 +12,7 @@ import {
 } from '@ai-xiutu/editor';
 import {
   cropFromPixels,
+  cropRatioForGeometry,
   brushPointAtSource,
   duplicateRegionForEditor,
   sampleSourcePreview,
@@ -152,4 +153,19 @@ test('duplicate validates global brush complexity and preserves original when bu
   assert.equal(one.regions.length, 1);
   assert.equal(two.regions.length, 2);
   assert.throws(() => duplicateRegionForEditor(two, 'missing', 'region-3'));
+});
+
+test('undoing a crop releases its stale preset while pixel rounding and orientation remain valid', () => {
+  const dimensions = { width: 1536, height: 1024 };
+  const original = createRecipeV2();
+  const square = createRecipeV2({ geometry: { crop: cropFromPixels(dimensions, { x: 256, y: 0, width: 1024, height: 1024 }) } });
+  assert.equal(cropRatioForGeometry(1, dimensions, square.geometry), 1);
+  assert.equal(cropRatioForGeometry(1, dimensions, original.geometry), null);
+  assert.equal(cropRatioForGeometry(null, dimensions, square.geometry), null, 'free cropping stays free even at a familiar ratio');
+  const portrait = { ...original.geometry, rotation: 90 as const };
+  assert.equal(cropRatioForGeometry(2 / 3, dimensions, portrait), 2 / 3);
+  assert.equal(cropRatioForGeometry(3 / 2, dimensions, portrait), null);
+  const odd = { width: 4033, height: 3023 };
+  const rounded = createRecipeV2({ geometry: { crop: cropFromPixels(odd, { x: 0, y: 0, width: 4031, height: 3023 }) } });
+  assert.equal(cropRatioForGeometry(4 / 3, odd, rounded.geometry), 4 / 3);
 });

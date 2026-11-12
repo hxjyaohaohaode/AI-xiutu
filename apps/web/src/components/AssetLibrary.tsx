@@ -243,7 +243,6 @@ function MetadataDialog({
             <small>
               {t('按当前设备时区')}
               {Intl.DateTimeFormat().resolvedOptions().timeZone}{' '}
-              {t('解释，保存时包含时区。不从照片推测。')}
             </small>
           </label>
           <label>
@@ -260,7 +259,6 @@ function MetadataDialog({
             {t('来源：')}
             {t(SOURCE_LABELS[asset.source ?? 'unknown'])} {t('· 入库于')}{' '}
             {formatDate(asset.createdAt) || t('未记录')}
-            {t('。这些说明随项目权限可见，不会改写原图或自动公开。')}
           </p>
           <InlineError message={error} />
           {conflict ? (

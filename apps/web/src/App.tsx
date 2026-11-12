@@ -2541,7 +2541,7 @@ export function App({
                           ? t('版本 {v0} 已保存', { v0: artwork.headVersion })
                           : editor.file
                             ? t('本地草稿')
-                            : t('图片不会自动上传')}
+                            : t('本地编辑')}
                     </span>
                   </div>
                 </div>
@@ -3070,6 +3070,9 @@ export function App({
                           project={project}
                           artwork={artwork}
                           recipe={editor.recipe}
+                          previewActive={editor.hasUncommittedPreview}
+                          onConfirmPreview={() => editor.commitCurrent(t('确认 AI 调整'))}
+                          onCancelPreview={editor.cancelPreview}
                           captureCurrentImage={captureCurrentImage}
                           onUseCanvasSource={
                             project && ['owner', 'admin', 'editor'].includes(project.role)

@@ -1,83 +1,156 @@
-/* Shared precision controls keep native range behavior and honest parameter bounds. */
+/* Precision controls — one active adjustment, a semantic navigation rail.
+ * The moving selection follows measured slots (React Bits RubberSegment);
+ * the tick neighbourhood follows WakeSlider. Numeric values remain native. */
+
 .precision-control {
-  --precision-track: color-mix(in srgb, var(--ink) 9%, var(--surface));
-  --precision-fill: color-mix(in srgb, var(--ink) 66%, var(--surface));
-  padding: 7px 0 4px;
+  --range-thumb-size: 20px;
+  --precision-track: color-mix(in srgb, var(--ink) 12%, var(--surface));
+  --precision-fill: color-mix(in srgb, var(--ink) 76%, var(--surface));
+  min-width: 0;
+  padding: 5px 0;
 }
 
 .precision-control .precision-heading {
-  min-height: 34px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
   gap: 8px;
+  min-height: 38px;
 }
 
 .precision-control .precision-heading > label {
+  display: inline-flex;
+  align-items: center;
+  gap: 9px;
+  min-width: 0;
+  color: var(--ink);
   font-size: 13px;
-  font-weight: 550;
-  letter-spacing: 0.01em;
+  font-weight: 500;
+  line-height: 1.4;
 }
 
-.precision-control .precision-readout {
-  gap: 4px;
-  flex-shrink: 0;
+.precision-control .precision-heading > label > span:last-child {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.precision-label-glyph {
+  display: grid;
+  place-items: center;
+  width: 30px;
+  height: 30px;
+  flex: 0 0 30px;
+  color: var(--ink);
+}
+
+.parameter-glyph {
+  display: block;
+  width: 24px;
+  height: 24px;
+  flex: 0 0 auto;
+  overflow: visible;
+}
+
+.precision-readout {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  flex: 0 0 auto;
+  min-width: 0;
 }
 
 .precision-control .precision-readout .precision-value {
-  min-height: 34px;
-  min-width: 54px;
-  padding-inline: 9px;
-  border-radius: 8px;
-  background: color-mix(in srgb, var(--ink) 4%, var(--surface));
-  font-size: 13px;
-  font-weight: 550;
-  letter-spacing: -0.02em;
+  min-width: 52px;
+  min-height: 36px;
+  padding: 3px 7px;
+  border: 0;
+  border-radius: 7px;
+  color: var(--ink);
+  background: transparent;
+  font-size: 16px;
+  font-weight: 500;
+  letter-spacing: -.035em;
+  font-variant-numeric: tabular-nums;
 }
 
-.precision-control[data-adjusted='true'] .precision-value {
-  background: color-mix(in srgb, var(--accent) 16%, var(--surface));
+.precision-control .precision-readout .precision-value:hover {
+  background: color-mix(in srgb, var(--ink) 5%, var(--surface));
+}
+
+.precision-control .precision-readout .precision-value small {
+  color: var(--muted);
+  font-size: 10px;
+  font-weight: 450;
+  letter-spacing: 0;
 }
 
 .precision-control .precision-readout .precision-reset {
+  display: grid;
+  place-items: center;
+  width: 32px;
   min-width: 32px;
-  min-height: 34px;
-  border-radius: 8px;
-  opacity: 0.72;
+  min-height: 36px;
+  padding: 0;
+  border: 0;
+  border-radius: 50%;
+  color: var(--ink);
+  background: transparent;
+  opacity: .65;
 }
 
 .precision-control .precision-readout .precision-reset:disabled {
-  opacity: 0.2;
+  opacity: .16;
 }
 
 .precision-control .precision-readout input {
-  width: 88px;
-  min-height: 34px;
-  padding: 5px 7px;
+  width: 86px;
+  min-width: 0;
+  min-height: 36px;
+  padding: 5px 8px;
+  border: 0;
   border-radius: 6px;
-  box-shadow: 0 0 0 1px color-mix(in srgb, var(--ink) 24%, var(--surface));
-  font-size: 13px;
+  color: var(--ink);
+  background: var(--surface-secondary);
+  box-shadow: inset 0 -1px 0 var(--ink);
+  font-size: 16px;
+  font-variant-numeric: tabular-nums;
 }
 
 .precision-control .precision-readout input[aria-invalid='true'] {
-  box-shadow: 0 0 0 1px var(--danger);
+  box-shadow: inset 0 -1px 0 var(--danger);
 }
 
 .precision-control .precision-track,
 .precision-control .precision-track input[type='range'] {
-  height: 38px;
-  min-height: 38px;
+  min-height: 44px;
+  height: 44px;
+}
+
+.precision-control .precision-track {
+  position: relative;
 }
 
 .precision-control .precision-track input[type='range'] {
   position: relative;
   z-index: 1;
+  display: block;
+  width: 100%;
+  margin: 0;
+  padding: 0;
+  appearance: none;
+  -webkit-appearance: none;
+  background: transparent;
+  cursor: ew-resize;
+  touch-action: none;
 }
 
 .precision-control .precision-track input[type='range']::-webkit-slider-runnable-track {
-  height: 5px;
-  border-radius: 8px;
+  height: 3px;
+  border-radius: 2px;
   background: var(
     --range-gradient,
     linear-gradient(
-      90deg,
+      to right,
       var(--precision-track) 0 var(--range-fill-start),
       var(--precision-fill) var(--range-fill-start) var(--range-fill-end),
       var(--precision-track) var(--range-fill-end) 100%
@@ -86,12 +159,13 @@
 }
 
 .precision-control .precision-track input[type='range']::-moz-range-track {
-  height: 5px;
-  border-radius: 8px;
+  height: 3px;
+  border: 0;
+  border-radius: 2px;
   background: var(
     --range-gradient,
     linear-gradient(
-      90deg,
+      to right,
       var(--precision-track) 0 var(--range-fill-start),
       var(--precision-fill) var(--range-fill-start) var(--range-fill-end),
       var(--precision-track) var(--range-fill-end) 100%
@@ -100,241 +174,455 @@
 }
 
 .precision-control .precision-track input[type='range']::-webkit-slider-thumb {
-  width: 20px;
-  height: 20px;
-  margin-top: -7.5px;
-  border: 2px solid var(--surface);
+  width: var(--range-thumb-size);
+  height: var(--range-thumb-size);
+  margin-top: -8.5px;
+  appearance: none;
+  -webkit-appearance: none;
+  border: 3px solid var(--surface);
+  border-radius: 50%;
   background: var(--ink);
-  box-shadow:
-    0 1px 4px rgb(var(--color-shadow) / 13%),
-    0 0 0 1px color-mix(in srgb, var(--ink) 16%, var(--surface));
+  box-shadow: 0 1px 4px #00000026;
+  transition: box-shadow 150ms ease;
 }
 
 .precision-control .precision-track input[type='range']::-moz-range-thumb {
-  width: 16px;
-  height: 16px;
-  border: 2px solid var(--surface);
+  box-sizing: border-box;
+  width: var(--range-thumb-size);
+  height: var(--range-thumb-size);
+  border: 3px solid var(--surface);
+  border-radius: 50%;
   background: var(--ink);
-  box-shadow:
-    0 1px 4px rgb(var(--color-shadow) / 13%),
-    0 0 0 1px color-mix(in srgb, var(--ink) 16%, var(--surface));
+  box-shadow: 0 1px 4px #00000026;
+  transition: box-shadow 150ms ease;
 }
 
 .precision-control .precision-track input[type='range']:active::-webkit-slider-thumb {
-  box-shadow: 0 0 0 5px color-mix(in srgb, var(--accent) 24%, transparent);
+  box-shadow: 0 0 0 5px color-mix(in srgb, var(--ink) 8%, transparent);
 }
 
 .precision-control .precision-track input[type='range']:active::-moz-range-thumb {
-  box-shadow: 0 0 0 5px color-mix(in srgb, var(--accent) 24%, transparent);
+  box-shadow: 0 0 0 5px color-mix(in srgb, var(--ink) 8%, transparent);
+}
+
+.precision-control .precision-track input[type='range']:focus-visible {
+  outline: 2px solid color-mix(in srgb, var(--ink) 60%, transparent);
+  outline-offset: 2px;
+  border-radius: 5px;
 }
 
 .precision-control .precision-neutral {
-  top: 13px;
-  height: 12px;
+  position: absolute;
+  top: 16px;
+  left: var(--range-neutral);
   z-index: 0;
-  background: color-mix(in srgb, var(--ink) 30%, var(--surface));
-  transform: translateX(-0.5px);
+  width: 1px;
+  height: 12px;
+  background: color-mix(in srgb, var(--ink) 35%, transparent);
+  transform: translateX(-.5px);
+  pointer-events: none;
 }
 
 .precision-scale {
   display: flex;
   justify-content: space-between;
-  margin-top: -5px;
-  color: color-mix(in srgb, var(--ink) 55%, var(--surface));
+  margin-top: -4px;
+  color: var(--muted);
   font-size: 10px;
   line-height: 1.35;
   font-variant-numeric: tabular-nums;
   user-select: none;
 }
 
-.precision-control[data-disabled='true'] .precision-scale {
-  opacity: 0.45;
+.precision-control[data-disabled='true'] {
+  opacity: .45;
 }
 
-.parameter-shelf .parameter-shelf-options {
-  gap: 5px;
-  padding: 3px;
-  scroll-padding-inline: 3px;
+.precision-control.precision-primary {
+  padding: 0;
 }
 
-.parameter-shelf .parameter-shelf-options button {
-  min-height: 58px;
-  padding: 9px 6px;
-  gap: 5px;
-  border-radius: 11px;
-  color: color-mix(in srgb, var(--ink) 73%, var(--surface));
-  background: color-mix(in srgb, var(--ink) 3%, var(--surface));
+.precision-control.precision-primary .precision-heading {
+  min-height: 42px;
 }
 
-.parameter-shelf .parameter-shelf-options button > span {
-  font-size: 12px;
-  font-weight: 500;
-  line-height: 1.35;
-  text-wrap: balance;
+.precision-control.precision-primary .precision-value {
+  font-size: 22px;
+  font-weight: 450;
 }
 
-.parameter-shelf .parameter-shelf-options small {
-  color: inherit;
-  font-size: 11px;
-  line-height: 1.2;
-  opacity: 0.75;
+.precision-control.precision-primary .precision-track {
+  margin-inline: 2px;
 }
 
-.parameter-shelf .parameter-shelf-options button:hover:not(:disabled) {
-  color: var(--ink);
-  background: color-mix(in srgb, var(--ink) 7%, var(--surface));
+.precision-ticks {
+  position: absolute;
+  inset: 0 10px;
+  z-index: 0;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  opacity: .55;
+  pointer-events: none;
 }
 
-.parameter-shelf .parameter-shelf-options button[aria-pressed='true'] {
-  color: var(--surface);
-  background: var(--ink);
+.precision-ticks > i {
+  width: 1px;
+  height: 8px;
+  border-radius: 1px;
+  background: color-mix(in srgb, var(--ink) 28%, transparent);
+  transform: scaleY(1);
+  transform-origin: center;
+  transition: transform 160ms cubic-bezier(.2, .7, .2, 1);
 }
 
-.parameter-shelf .parameter-shelf-options button[aria-pressed='true']:hover {
-  color: var(--surface);
-  background: color-mix(in srgb, var(--ink) 89%, var(--surface));
+.precision-ticks > i[data-major='true'] {
+  height: 15px;
 }
 
-.parameter-shelf .parameter-shelf-options button > i {
-  width: 4px;
-  height: 4px;
-  right: 7px;
-  top: 7px;
-  opacity: 1;
-  background: var(--warning);
+.precision-control .precision-track:has(input:active) .precision-ticks > i,
+.precision-control .precision-track:has(input:focus-visible) .precision-ticks > i {
+  transform: scaleY(var(--tick-lift, 1));
 }
 
-.parameter-shelf .parameter-shelf-options button[aria-pressed='true'] > i {
-  background: var(--accent);
+.refined-inspector .parameter-shelf {
+  --parameter-shelf-compact: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  min-width: 0;
 }
 
 .parameter-shelf .parameter-shelf-current {
-  padding: 4px 1px 8px;
+  position: relative;
+  z-index: 1;
+  order: 0;
+  min-width: 0;
+  padding: 2px 0 3px;
+  background: transparent;
 }
 
-.parameter-shelf .parameter-shelf-current .control-note {
-  color: color-mix(in srgb, var(--ink) 62%, var(--surface));
-  font-size: 12px;
-  line-height: 1.6;
+.parameter-shelf .parameter-shelf-options {
+  position: relative;
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  align-items: start;
+  gap: 9px 4px;
+  max-height: 245px;
+  padding: 3px 1px 6px;
+  overflow-x: hidden;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  scrollbar-width: thin;
 }
 
-.parameter-description {
-  color: color-mix(in srgb, var(--ink) 62%, var(--surface));
-  font-size: 11px;
-}
-
-.parameter-description > summary {
-  width: fit-content;
-  min-height: 30px;
-  display: list-item;
-  align-content: center;
-  cursor: pointer;
-}
-
-.parameter-description[open] > summary {
-  color: var(--ink);
-}
-
-.parameter-description .motion-disclosure-content > p {
-  padding: 4px 0 7px;
-}
-
-.parameter-shelf-current > .parameter-compact-picker {
-  display: var(--shelf-picker-display, none);
+.parameter-active-disc {
   position: absolute;
-  z-index: 2;
   top: 0;
   left: 0;
-  width: 148px;
-  max-width: calc(100% - 120px);
-  min-height: 38px;
-  padding: 0;
-  border: 0;
-  border-radius: 7px;
-  background: transparent;
-  color: var(--ink);
+  z-index: 0;
+  border-radius: 50%;
+  background: var(--ink);
+  opacity: 0;
+  pointer-events: none;
 }
 
-.parameter-shelf-current > .parameter-compact-picker.choice-select .choice-trigger {
-  min-height: 38px;
-  padding: 6px 7px;
+.parameter-active-disc[data-ready='true'] {
+  opacity: 1;
+  transition:
+    transform 280ms cubic-bezier(.23, 1, .32, 1),
+    width 200ms ease,
+    height 200ms ease;
+}
+
+.parameter-shelf .parameter-shelf-options > button {
+  position: relative;
+  z-index: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: flex-start;
+  gap: 5px;
+  min-width: 0;
+  min-height: 68px;
+  height: auto;
+  padding: 1px 2px 3px;
   border: 0;
-  border-radius: 7px;
-  background: var(--surface-secondary);
-  font-size: 12px;
+  border-radius: 9px;
+  color: var(--muted);
+  background: transparent;
+  white-space: normal;
+  transition: color 150ms ease;
+}
+
+.parameter-shelf .parameter-shelf-options > button:hover,
+.parameter-shelf .parameter-shelf-options > button[aria-pressed='true'] {
+  color: var(--ink);
+  background: transparent;
+}
+
+.parameter-glyph-disc {
+  display: grid;
+  place-items: center;
+  width: 43px;
+  height: 43px;
+  min-height: 43px;
+  flex: 0 0 43px;
+  border-radius: 50%;
+  color: color-mix(in srgb, var(--ink) 77%, transparent);
+  background: color-mix(in srgb, var(--ink) 4%, transparent);
+  transition:
+    background 160ms ease,
+    color 160ms ease,
+    transform 180ms cubic-bezier(.2, .7, .2, 1);
+}
+
+.parameter-shelf .parameter-shelf-options > button:not([aria-pressed='true']):hover .parameter-glyph-disc {
+  background: color-mix(in srgb, var(--ink) 8%, transparent);
+  transform: translateY(-2px);
+}
+
+.parameter-shelf .parameter-shelf-options > button[aria-pressed='true'] .parameter-glyph-disc {
+  color: var(--surface);
+  background: transparent;
+  transform: none;
+}
+
+.parameter-shelf .parameter-shelf-options:has(.parameter-active-disc:not([data-ready='true']))
+  > button[aria-pressed='true'] .parameter-glyph-disc {
+  background: var(--ink);
+}
+
+.parameter-short-label {
+  display: block;
+  max-width: 100%;
+  font-size: 11px;
+  font-weight: 450;
+  line-height: 1.35;
+  text-align: center;
+  text-wrap: balance;
+  overflow-wrap: anywhere;
+}
+
+.parameter-shelf .parameter-shelf-options > button[aria-pressed='true'] .parameter-short-label {
   font-weight: 600;
 }
-.parameter-shelf-current .precision-heading > label {
-  visibility: var(--shelf-label-visibility, visible);
+
+.parameter-shelf .parameter-shelf-options > button > i {
+  position: absolute;
+  top: 0;
+  right: calc(50% - 22px);
+  width: 5px;
+  height: 5px;
+  border-radius: 50%;
+  outline: 2px solid var(--surface);
+  background: var(--accent-ink, var(--ink));
+  opacity: 1;
+}
+
+.parameter-shelf .parameter-shelf-options > button:disabled {
+  opacity: .35;
+}
+
+.parameter-shelf .parameter-shelf-options > button:focus-visible {
+  outline: 2px solid color-mix(in srgb, var(--ink) 65%, transparent);
+  outline-offset: 1px;
+}
+
+.studio-workspace .refined-inspector .inspector-scroll {
+  padding: 8px 18px 20px;
+}
+
+.studio-workspace .advanced-inspector .scope-selector {
+  margin: 0;
+  padding: 0 0 5px;
+  border: 0;
+}
+
+.studio-workspace .advanced-inspector .scope-selector[data-single-scope='true'] {
+  display: none;
+}
+
+.studio-workspace .advanced-inspector .color-controls-v3,
+.studio-workspace .advanced-inspector .advanced-tool-family {
+  gap: 12px;
+}
+
+.studio-workspace .advanced-inspector .tonal-tabs {
+  flex-wrap: nowrap;
+  gap: 4px;
+  padding: 0;
+  overflow-x: auto;
+  scrollbar-width: none;
+}
+
+.studio-workspace .advanced-inspector .tonal-tabs > button {
+  flex: 0 0 auto;
+  min-height: 36px;
+  padding: 6px 10px;
+  border: 0;
+  border-radius: 8px;
+  background: transparent;
+  font-size: 11px;
+  white-space: nowrap;
+}
+
+.studio-workspace .advanced-inspector .tonal-tabs > button[aria-pressed='true'] {
+  color: var(--ink);
+  background: var(--surface-secondary);
+}
+
+.studio-workspace .advanced-inspector .color-controls-v3 > .histogram-disclosure {
+  order: 3;
+  margin-top: 2px;
+}
+
+.studio-workspace .advanced-inspector .color-controls-v3 > .histogram-disclosure > summary {
+  min-height: 34px;
+}
+
+.studio-workspace .advanced-inspector .advanced-object-list {
+  border: 0;
+  background: transparent;
+}
+
+.studio-workspace .advanced-inspector .advanced-object-list .advanced-row {
+  border-radius: 9px;
+}
+
+.studio-workspace .advanced-inspector .portrait-makeup-tabs {
+  gap: 7px;
+  padding-block: 3px;
+}
+
+.studio-workspace .advanced-inspector .portrait-makeup-tabs > button {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 5px;
+  min-width: 50px;
+  padding: 7px 6px;
+  border-radius: 11px;
+}
+
+.studio-workspace .advanced-inspector .portrait-makeup-tabs .parameter-glyph {
+  width: 23px;
+  height: 23px;
+}
+
+@container edit-tools (max-height: 440px) {
+  .refined-inspector .parameter-shelf {
+    --parameter-shelf-compact: 1;
+    gap: 6px;
+  }
+
+  .parameter-shelf .parameter-shelf-options {
+    display: flex;
+    gap: 6px;
+    max-height: none;
+    overflow-x: auto;
+    overflow-y: hidden;
+    scrollbar-width: none;
+  }
+
+  .parameter-shelf .parameter-shelf-options > button {
+    flex: 0 0 62px;
+    min-width: 62px;
+  }
+
+  .studio-workspace .advanced-inspector .color-controls-v3,
+  .studio-workspace .advanced-inspector .advanced-tool-family {
+    gap: 7px;
+  }
 }
 
 @media (max-width: 759px) {
-  .parameter-shelf-current {
-    --shelf-picker-display: block;
-    --shelf-label-visibility: hidden;
+  .studio-workspace .refined-inspector .inspector-scroll {
+    padding: 5px 14px 15px;
   }
-  .precision-control .precision-readout .precision-value,
-  .precision-control .precision-readout .precision-reset {
+
+  .refined-inspector .parameter-shelf {
+    --parameter-shelf-compact: 1;
+    gap: 5px;
+  }
+
+  .parameter-shelf .parameter-shelf-options {
+    display: flex;
+    flex-wrap: nowrap;
+    gap: 5px;
+    max-height: none;
+    overflow-x: auto;
+    overflow-y: hidden;
+    scrollbar-width: none;
+    scroll-snap-type: x proximity;
+  }
+
+  .parameter-shelf .parameter-shelf-options > button {
+    flex: 0 0 60px;
+    min-width: 60px;
+    min-height: 64px;
+    padding: 1px 2px 3px;
+    scroll-snap-align: center;
+  }
+
+  .parameter-glyph-disc {
+    width: 39px;
+    height: 39px;
+    min-height: 39px;
+    flex-basis: 39px;
+  }
+
+  .precision-control.precision-primary .precision-heading {
     min-height: 38px;
   }
 
-  .precision-control .precision-readout .precision-reset {
-    min-width: 36px;
+  .precision-control.precision-primary .precision-value {
+    font-size: 21px;
   }
 
-  .precision-control .precision-track,
-  .precision-control .precision-track input[type='range'] {
-    height: 40px;
-    min-height: 40px;
-  }
-
-  .precision-control .precision-neutral {
-    top: 14px;
-  }
-
-  .parameter-shelf .parameter-shelf-options button {
-    min-height: 52px;
-    min-width: 66px;
-    padding: 7px 6px;
-    border-radius: 9px;
-  }
-
-  .parameter-shelf .parameter-shelf-current {
-    padding-block: 0 5px;
-  }
-}
-
-@container edit-tools (max-width: 360px) {
-  .parameter-shelf .parameter-shelf-options button > span {
-    font-size: 11px;
-  }
-}
-
-@container edit-tools (max-height: 420px) {
-  .parameter-shelf-current {
-    --shelf-picker-display: block;
-    --shelf-label-visibility: hidden;
+  .studio-workspace .advanced-inspector .color-controls-v3,
+  .studio-workspace .advanced-inspector .advanced-tool-family {
+    gap: 7px;
   }
 }
 
 @media (max-height: 520px) and (orientation: landscape) {
+  .refined-inspector .parameter-shelf {
+    gap: 4px;
+  }
+
   .precision-control .precision-heading,
-  .precision-control .precision-readout .precision-value,
-  .precision-control .precision-readout .precision-reset {
-    min-height: 30px;
+  .precision-control.precision-primary .precision-heading {
+    min-height: 32px;
   }
 
-  .precision-control .precision-track,
-  .precision-control .precision-track input[type='range'] {
-    height: 40px;
-    min-height: 40px;
+  .precision-readout .precision-value,
+  .precision-readout .precision-reset {
+    min-height: 32px;
   }
 
-  .precision-control .precision-neutral {
-    top: 14px;
+  .parameter-shelf .parameter-shelf-options > button {
+    min-height: 58px;
   }
 
-  .parameter-shelf .parameter-shelf-options button {
-    min-height: 48px;
+  .parameter-glyph-disc {
+    width: 34px;
+    height: 34px;
+    min-height: 34px;
+    flex-basis: 34px;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .parameter-active-disc[data-ready='true'],
+  .precision-ticks > i,
+  .parameter-shelf .parameter-shelf-options > button,
+  .parameter-glyph-disc {
+    transition: none;
+  }
+
+  .parameter-glyph-disc,
+  .precision-ticks > i {
+    transform: none !important;
   }
 }

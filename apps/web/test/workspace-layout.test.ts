@@ -198,7 +198,7 @@ test('fresh phone defaults reserve photo pixels without beginning in overlay', (
   assert.equal(defaultPanel('ai', phone).height, 390);
 });
 
-test('phone Edit recovers a tiny saved sheet while retaining visible photo space and free manual sizing', () => {
+test('phone Edit and manual resize retain enough panel height for a visible active control', () => {
   for (const view of [
     { ...phone, workspaceHeight: 759.8542, toolShelfHeight: 64 },
     { width: 320, height: 700, bucket: 'phone' as const, workspaceHeight: 616 },
@@ -215,8 +215,8 @@ test('phone Edit recovers a tiny saved sheet while retaining visible photo space
       assert.ok(canvasImageArea(view, workspaceCanvasInsets(restored, view)).height >= 160);
       assert.equal(
         resizePanel(restored, 'n', 0, 10_000, view, 'inspector').height,
-        112,
-        'the explicit Edit recovery is not a hard minimum on manual resizing',
+        panelBounds(view, 'bottom', 'inspector').minHeight,
+        'manual sizing cannot hide every control behind the panel header',
       );
     }
     assert.equal(tiny.height, 112, 'the recovery does not mutate the saved input');
@@ -441,4 +441,14 @@ test('layout parsing repairs unavailable display modes and rejects corrupt old p
     layoutStorageKey({ width: 1024, height: 768, bucket: 'tablet' }),
     layoutStorageKey({ width: 768, height: 1024, bucket: 'tablet' }),
   );
+});
+
+test('restoring old 112px inspector preferences restores an editable panel without changing the saved input', () => {
+  for (const view of [phone, desktop]) {
+    const input = { theme: 'light', panels: { inspector: { ...defaultPanel('inspector', view), height: 112 }, ai: defaultPanel('ai', view) } };
+    const restored = parseWorkspaceLayout(JSON.stringify(input), view);
+    assert.equal(restored.panels.inspector.height, defaultPanel('inspector', view).height);
+    assert.ok(restored.panels.inspector.height >= panelBounds(view, restored.panels.inspector.dock, 'inspector').minHeight);
+    assert.equal(input.panels.inspector.height, 112);
+  }
 });

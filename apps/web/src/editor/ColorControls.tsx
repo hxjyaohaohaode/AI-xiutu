@@ -97,6 +97,13 @@ export function ColorControls({
     ...definition,
     value: numericAt(color, definition.path),
     integer: definition.unit === 'seed',
+    gradient: definition.path === 'adjustments.temperature'
+      ? 'linear-gradient(90deg,#85b8f4,#e3e3db,#f0be67)'
+      : definition.path === 'adjustments.tint'
+        ? 'linear-gradient(90deg,#6ccb9a,#e3e3db,#d995d2)'
+        : definition.path.endsWith('.hue')
+          ? 'linear-gradient(90deg,#e35c5c,#e0bd61,#78b87d,#66bac4,#8594d1,#c680b9,#e35c5c)'
+          : undefined,
     onChange: (value: number) => {
       try {
         const latest = currentV3(editor);

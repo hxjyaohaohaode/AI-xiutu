@@ -189,11 +189,12 @@
   }
   .studio-workspace .phone-panel .parameter-shelf .parameter-shelf-options > button {
     flex: 0 0 auto;
-    min-width: 68px;
-    min-height: 44px;
-    padding: 5px 11px;
-    gap: 3px;
-    white-space: nowrap;
+    width: 60px;
+    min-width: 60px;
+    min-height: 64px;
+    padding: 1px 2px 3px;
+    gap: 5px;
+    white-space: normal;
     scroll-snap-align: center;
   }
   .studio-workspace .phone-panel .parameter-shelf .parameter-shelf-options > button > span {

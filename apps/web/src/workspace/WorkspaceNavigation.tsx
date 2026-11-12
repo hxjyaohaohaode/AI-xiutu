@@ -39,7 +39,6 @@ export function WorkspaceNavigation({
             <StudioGlyph name={item.id} size={22} />
             <span>
               <strong>{t(item.label)}</strong>
-              <small>{t(item.description)}</small>
             </span>
             {view === item.id && <StudioGlyph name="check" size={18} />}
           </button>

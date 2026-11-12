@@ -2,6 +2,8 @@ import { getLocale, t } from '../i18n';
 import { useContext, useEffect, useState } from 'react';
 import {
   ArrowBendDownRight,
+  ArrowClockwise,
+  ImageSquare,
   ArrowSquareOut,
   CheckCircle,
   Clock,
@@ -147,13 +149,6 @@ function TextResult({
           {saved ? t('已存为文档') : t('存为文档')}
         </button>
       </div>
-      {(title !== output.title || body !== output.body) && (
-        <p className="control-note">
-          {t(
-            '手动修改后保存的文档会保留本次 AI 来源。“基于生成稿继续润色”使用原始模型结果；继续编辑后的稿件可在输入区选择该项目文档作为上下文。',
-          )}
-        </p>
-      )}
       <InlineError message={error} />
       {controller.uncertain?.action === 'save-text' && (
         <button
@@ -173,7 +168,6 @@ function TextResult({
       <Modal
         title={t('保存 AI 文案')}
         open={visible && confirming}
-        subtitle={t('保留生成来源与本次手动修改标记。')}
         canClose={() => !busy}
         onClose={() => setConfirming(false)}
       >
@@ -296,7 +290,6 @@ function TranscriptResult({
           {t('用于文案')}
         </button>
       </div>
-      <p className="control-note">{t('先填入输入框；确认发送后才执行下一次任务。')}</p>
     </div>
   );
 }
@@ -311,6 +304,82 @@ export const jobStateLabel = (state: AIJob['state']) =>
       cancelled: '已取消',
     }[state],
   );
+function GeneratedImagePreview({
+  image,
+  index,
+  onOpen,
+}: {
+  image: GeneratedImage;
+  index: number;
+  onOpen: (id: string) => void;
+}) {
+  const [failed, setFailed] = useState(false);
+  const [attempt, setAttempt] = useState(0);
+  const source = image.thumbnailUrl ?? '/v1/assets/' + image.assetId + '/thumbnail';
+  const localSource = source.startsWith('/v1/assets/');
+  const src = attempt && localSource
+    ? source + (source.includes('?') ? '&' : '?') + 'previewReload=' + attempt
+    : source;
+  return (
+    <div
+      className="ai-result-frame"
+      style={{ aspectRatio: Math.max(1, image.width) + ' / ' + Math.max(1, image.height) }}
+      data-state={failed ? 'unavailable' : 'completed'}
+    >
+      {failed ? (
+        <div className="ai-result-placeholder">
+          <ImageSquare size={26} weight="light" />
+          <span>{t('预览暂不可用')}</span>
+          <button
+            type="button"
+            className="ai-image-retry"
+            onClick={() => {
+              setAttempt((value) => value + 1);
+              setFailed(false);
+            }}
+          >
+            <ArrowClockwise size={16} />{t('重新载入预览')}
+          </button>
+        </div>
+      ) : (
+        <button
+          type="button"
+          className="ai-image-open"
+          onClick={() => onOpen(image.artworkId)}
+          aria-label={t('打开生成候选 ') + (index + 1)}
+        >
+          <img
+            key={attempt}
+            src={src}
+            alt={t('AI 生成候选 ') + (index + 1)}
+            width={image.width}
+            height={image.height}
+            loading="lazy"
+            onError={() => setFailed(true)}
+          />
+        </button>
+      )}
+    </div>
+  );
+}
+function PendingImagePreview({ job }: { job: AIJob }) {
+  const width = Math.max(1, job.request?.width ?? 1);
+  const height = Math.max(1, job.request?.height ?? 1);
+  const pending = job.state === 'queued' || job.state === 'running';
+  return (
+    <div
+      className="ai-result-frame"
+      style={{ aspectRatio: width + ' / ' + height }}
+      data-state={job.state}
+      aria-busy={pending}
+    >
+      <div className="ai-result-placeholder" role="status">
+        {pending ? <Clock size={26} weight="light" /> : <ImageSquare size={26} weight="light" />}
+        <span>{jobStateLabel(job.state)}</span>
+      </div>
+    </div>
+  );
+}
 type ThreadResultProps = {
   job: AIJob;
   project: Project;
@@ -377,17 +446,7 @@ function CompletedResult({
         <div className="ai-image-gallery" data-motion="ai-result-media" data-motion-pixels="true">
           {images.map((image, index) => (
             <div key={image.assetId} className="ai-generated-image">
-              <button
-                className="ai-image-open"
-                onClick={() => onOpen(image.artworkId)}
-                aria-label={t('打开生成候选 ') + (index + 1)}
-              >
-                <img
-                  src={image.thumbnailUrl ?? '/v1/assets/' + image.assetId + '/thumbnail'}
-                  alt={t('AI 生成候选 ') + (index + 1)}
-                  loading="lazy"
-                />
-              </button>
+              <GeneratedImagePreview image={image} index={index} onOpen={onOpen} />
               <div className="ai-image-meta">
                 <span>
                   {image.width}×{image.height}
@@ -546,6 +605,8 @@ export function AIThread({
                   {job.reservedUnits} {t('点')}
                 </span>
               </header>
+              {(job.operation ?? job.request?.operation) === 'generate-image' &&
+                job.state !== 'completed' && <PendingImagePreview job={job} />}
               {job.state === 'unknown' && (
                 <p className="ai-status-copy">
                   {t('外部结果尚不明确，预占保持等待核验。此任务不会自动重发。')}
@@ -554,11 +615,6 @@ export function AIThread({
               {job.state === 'failed' && (
                 <p className="ai-status-copy">
                   {t('本次未完成，已有作品没有改变。点数以任务最终账务状态为准。')}
-                </p>
-              )}
-              {(job.state === 'queued' || job.state === 'running') && (
-                <p className="ai-status-copy">
-                  {t('可以继续本地编辑。只有通过审核的最终结果才会出现在这里。')}
                 </p>
               )}
               <QueuedCancellation

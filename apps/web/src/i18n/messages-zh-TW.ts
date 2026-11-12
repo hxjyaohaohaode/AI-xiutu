@@ -1,3 +1,5 @@
+import { aiRedesignTraditionalChinese } from './ai-redesign-messages';
+import { libraryTraditional } from './library-messages';
 import { usageTraditional } from './usage-messages';
 import { workspaceTraditional } from './workspace-messages';
 import { accountTraditional } from './account-messages';
@@ -139,6 +141,9 @@ export const traditional: Readonly<Record<string, string>> = {
   ...usageTraditional,
   ...accountTraditional,
   ...workspaceTraditional,
+  ...libraryTraditional,
+  ...aiRedesignTraditionalChinese,
+  '确认 AI 调整': '套用 AI 調整',
   语言: '語言',
   简体中文: '簡體中文',
   繁體中文: '繁體中文',

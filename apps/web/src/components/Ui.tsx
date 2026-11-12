@@ -392,7 +392,6 @@ export function Brand({
     <div className={`brand ${compact ? 'brand-compact' : ''}`} data-motion="brand">
       <BrandMark logoUrl={logoUrl} className="brand-logo" />
       <span>{name}</span>
-      {!compact && <small>{t('创作空间')}</small>}
     </div>
   );
 }

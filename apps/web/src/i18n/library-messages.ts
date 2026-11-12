@@ -1,4 +1,8 @@
 export const libraryEnglish: Readonly<Record<string, string>> = {
+  '滑动对比': 'Slide',
+  '不同画幅请使用并排对比': 'Use side by side for different image sizes',
+  '原图与当前图的分界': 'Boundary between original and edited image',
+  '原图 {percent}%': 'Original {percent}%',
   '配方不含原图': 'Recipes do not include the original image',
   '还没有打开照片': 'No photo open',
   '打开照片后即可导出。': 'Open a photo to export it.',
@@ -657,6 +661,10 @@ export const libraryEnglish: Readonly<Record<string, string>> = {
 };
 
 export const libraryTraditional: Readonly<Record<string, string>> = {
+  '滑动对比': '滑動對比',
+  '不同画幅请使用并排对比': '不同畫幅請使用並排對比',
+  '原图与当前图的分界': '原圖與目前影像的分界',
+  '原图 {percent}%': '原圖 {percent}%',
   '配方不含原图': '配方不含原圖',
   '还没有打开照片': '尚未開啟照片',
   '打开照片后即可导出。': '開啟照片後即可匯出。',

@@ -18,6 +18,7 @@ import { Busy, InlineError } from '../components/Ui';
 import { StudioGlyph } from '../components/StudioGlyph';
 import { ColorPicker } from '../components/ColorPicker';
 import { ParameterShelf } from './ParameterShelf';
+import { ParameterGlyph } from './ParameterGlyph';
 import { PrecisionRange } from './PrecisionRange';
 import { currentV3, rgbaHex, hexRgba, type InspectorController } from './advanced-model';
 import type { ToolGroup } from './ToolInspector';
@@ -476,7 +477,7 @@ export function PortraitControls({
             </div>
           )}
           {category === 'makeup' && (
-            <div className="tonal-tabs" aria-label={t('妆容区域')}>
+            <div className="tonal-tabs portrait-makeup-tabs" aria-label={t('妆容区域')}>
               {PORTRAIT_TOOLS.filter((tool) => tool.group === 'makeup').map((tool) => (
                 <button
                   key={tool.id}
@@ -486,6 +487,7 @@ export function PortraitControls({
                     setMakeupTool(tool.id);
                   }}
                 >
+                  <ParameterGlyph id={'portrait:' + tool.id} />
                   {t(tool.label)}
                 </button>
               ))}
@@ -501,6 +503,7 @@ export function PortraitControls({
               const condition = availability.find((item) => item.id === tool.id);
               return {
                 id: tool.id,
+                glyph: 'portrait:' + tool.id,
                 label: tool.label,
                 value: values[tool.id] ?? 0,
                 min: tool.min,
@@ -524,22 +527,10 @@ export function PortraitControls({
             <div className="portrait-ownership-note">
               {hasAutomatic && (
                 <>
-                  <p className="control-note">
-                    {t(
-                      '当前自动参数会重建这个人物的自动局部与妆容。手改范围、笔画或形状前，可将整个人物转为独立精修；外观保持不变，可撤销。',
-                    )}
-                  </p>
-                  <button className="text-button" onClick={detach}>
+                  <button className="text-button" onClick={detach} title={t('当前自动参数会重建这个人物的自动局部与妆容。手改范围、笔画或形状前，可将整个人物转为独立精修；外观保持不变，可撤销。')}>
                     {t('当前人物转为独立精修')}
                   </button>
                 </>
-              )}
-              {hasManual && (
-                <p className="control-note">
-                  {t(
-                    '这个人物已有独立精修结果，以下自动参数会在固定结果之上新增一轮效果，不会替换独立精修层。',
-                  )}
-                </p>
               )}
             </div>
           )}
@@ -566,9 +557,6 @@ export function PortraitControls({
               >
                 {t('确认这个妆容颜色')}
               </button>
-              <p className="control-note">
-                {t('只改变当前妆容。其他人物、口红、眉妆与高光等各自保留颜色。')}
-              </p>
             </MotionDetails>
           )}
           <MotionDetails className="advanced-disclosure">

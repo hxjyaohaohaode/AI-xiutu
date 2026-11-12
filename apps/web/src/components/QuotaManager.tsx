@@ -2,7 +2,7 @@ import { t } from '../i18n';
 import { MotionDetails } from '../motion/Presence';
 import { ChoiceSelect } from './ChoiceSelect';
 import { secureUuid } from '../lib/uuid';
-import { useState, type FormEvent } from 'react';
+import { useEffect, useRef, useState, type FormEvent } from 'react';
 import { MagnifyingGlass, UserCircle, CheckCircle } from '@phosphor-icons/react';
 import { api, errorMessage, jsonRequest } from '../lib/api';
 import type { User } from '../lib/types';
@@ -20,6 +20,12 @@ type AccountSpaces = {
   spaces: { id: string; kind: string; name?: string; role: string; entitlements: Entitlements }[];
 };
 export function QuotaManager() {
+  const alive = useRef(true);
+  const writing = useRef(false);
+  useEffect(() => {
+    alive.current = true;
+    return () => { alive.current = false; };
+  }, []);
   const [query, setQuery] = useState('');
   const [users, setUsers] = useState<User[]>([]);
   const [account, setAccount] = useState<AccountSpaces | null>(null);
@@ -66,33 +72,54 @@ export function QuotaManager() {
   }
   async function adjust(event: FormEvent) {
     event.preventDefault();
+    if (writing.current || busy || !spaceId || !Number.isSafeInteger(units) || !units || reason.trim().length < 3) return;
+    writing.current = true;
+    const snapshot = { spaceId, units, reason: reason.trim(), key, actorId: account?.user.id };
     setBusy(true);
     setError(null);
     setSuccess('');
     try {
-      await api(
+      const receipt = await api<{ entitlements: Entitlements }>(
         '/ops/adjustments',
-        jsonRequest('POST', { spaceId, units, reason: reason.trim(), idempotencyKey: key }),
+        jsonRequest('POST', {
+          spaceId: snapshot.spaceId,
+          units: snapshot.units,
+          reason: snapshot.reason,
+          idempotencyKey: snapshot.key,
+        }),
       );
-      if (account)
-        setAccount(await api<AccountSpaces>(`/ops/users/${account.user.id}/entitlements`));
+      if (!alive.current) return;
+      // The mutation receipt is authoritative. A later read failure must never
+      // turn a committed adjustment into a retryable failed write.
+      setAccount((current) =>
+        current?.user.id === snapshot.actorId
+          ? {
+              ...current,
+              spaces: current.spaces.map((item) =>
+                item.id === snapshot.spaceId ? { ...item, entitlements: receipt.entitlements } : item,
+              ),
+            }
+          : current,
+      );
       setKey(secureUuid());
+      setReason('');
       setSuccess(
         t('{action} {units} 服务点，已写入权益账本。', {
-          action: t(units > 0 ? '增加' : '更正减少'),
-          units: Math.abs(units),
+          action: t(snapshot.units > 0 ? '增加' : '更正减少'),
+          units: Math.abs(snapshot.units),
         }),
       );
     } catch (e) {
-      setError(errorMessage(e));
+      if (alive.current) setError(errorMessage(e));
     } finally {
-      setBusy(false);
+      writing.current = false;
+      if (alive.current) setBusy(false);
     }
   }
   return (
     <div className="quota-manager" data-motion="quota">
       <section className="surface ops-section">
-        <h2>{t('先找到需要调整的用户')}</h2>
+        <h2>{t('用户')}</h2>
         <form className="search-form" onSubmit={search}>
           <MagnifyingGlass size={19} />
           <input
@@ -131,9 +158,6 @@ export function QuotaManager() {
             </button>
           ))}
         </div>
-        <p className="fine-print">
-          {t('只读取账号及其个人空间、拥有的团队的权益，不读取私人作品内容。')}
-        </p>
       </section>
       {account && (
         <section className="surface ops-section">
@@ -192,10 +216,7 @@ export function QuotaManager() {
         </section>
       )}
       <form className="surface ops-section stack-form" onSubmit={adjust}>
-        <h2>{t('有依据地调整服务点')}</h2>
-        <p className="form-hint">
-          {t('正数增加赠额，负数只更正仍可用的额度。不改写已消费或占用的点数，也不表示现金收款。')}
-        </p>
+        <h2>{t('额度调整')}</h2>
         <label>
           {t('调整数量（正数增加，负数减少）')}
           <input

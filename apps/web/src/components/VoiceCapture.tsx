@@ -2,7 +2,7 @@ import { t } from '../i18n';
 import { useEffect, useRef, useState } from 'react';
 import { Microphone, Stop, Trash, Waveform } from '@phosphor-icons/react';
 import { recordingToWav } from '../lib/audio';
-import { errorMessage } from '../lib/api';
+import { voiceErrorMessage } from '../ai/voice-error';
 import { Busy, IconButton, InlineError } from './Ui';
 
 export function VoiceCapture({ onReady }: { onReady: (base64: string | null) => void }) {
@@ -108,7 +108,7 @@ export function VoiceCapture({ onReady }: { onReady: (base64: string | null) => 
           setState('ready');
         } catch (e) {
           if (live.current) {
-            setError(errorMessage(e));
+            setError(voiceErrorMessage(e));
             setState('idle');
           }
         }
@@ -126,11 +126,7 @@ export function VoiceCapture({ onReady }: { onReady: (base64: string | null) => 
       stream.current?.getTracks().forEach((track) => track.stop());
       if (live.current) {
         setState('idle');
-        setError(
-          (e as Error).name === 'NotAllowedError'
-            ? '麦克风权限未获允许。可以在浏览器设置中允许，或直接输入文字。'
-            : errorMessage(e),
-        );
+        setError(voiceErrorMessage(e));
       }
     }
   }

@@ -904,7 +904,7 @@ export function CopyProjectDialog({
   return (
     <Modal
       title={t('把项目复制到另一个空间')}
-      subtitle={t('副本包含允许复制的素材和作品版本，与来源项目独立保存。')}
+      subtitle={project.title}
       onClose={onClose}
       canClose={() => !locked.current}
       className="studio-dialog copy-dialog"
@@ -1025,7 +1025,7 @@ export function ShareDialog({ project, onClose }: { project: Project; onClose: (
   return (
     <Modal
       title={t('共享这个项目')}
-      subtitle={t('{v0} · 仅向明确的接收者授权', { v0: project.title })}
+      subtitle={project.title}
       onClose={onClose}
       canClose={() => !locked.current}
       className="studio-dialog share-dialog"
