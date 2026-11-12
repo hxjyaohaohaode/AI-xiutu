@@ -20,7 +20,6 @@ import {
   ArrowClockwise,
   Eye,
   MagnifyingGlass,
-  ArrowsHorizontal,
 } from '@phosphor-icons/react';
 import {
   api,
@@ -44,6 +43,7 @@ import type {
 import { Busy, EmptyState, IconButton, InlineError, Modal } from './Ui';
 import { ChoiceSelect } from './ChoiceSelect';
 import { ImagePreview } from './ImagePreview';
+import { CompareReveal } from './CompareReveal';
 import { FeatureSkeleton } from './DeferredFeature';
 import { interactionText } from '../workspace/interaction-copy';
 import { RevisionTools, RevisionForkDialog, type CreatedRevisionBranch } from './RevisionTools';
@@ -382,7 +382,6 @@ export function CompareView({
         <EmptyState
           icon={<Images size={34} />}
           title={t('先打开一张图片')}
-          description={t('原件与当前编辑会在这里完整显示，不需要滚动查看整张画面。')}
         />
       </div>
     );
@@ -405,18 +404,7 @@ export function CompareView({
         </div>
       </div>
       {visibleMode === 'slide' ? (
-        <div className="compare-reveal" data-testid="compare-reveal">
-          <div className="compare-reveal-layer"><ImagePreview image={editor.rendered} label={t('当前编辑')} /></div>
-          <div className="compare-reveal-layer" style={{ clipPath: `inset(0 ${100 - split}% 0 0)` }}>
-            <ImagePreview image={editor.originalPreview} label={t('原始图片')} />
-          </div>
-          <span className="compare-reveal-label compare-reveal-before">{t('原图')}</span>
-          <span className="compare-reveal-label compare-reveal-after">{t('当前')}</span>
-          <span className="compare-reveal-boundary" style={{ left: `${split}%` }} aria-hidden="true"><ArrowsHorizontal size={20} /></span>
-          <input className="compare-reveal-input" type="range" min="0" max="100" step="1" value={split}
-            aria-label={t('原图与当前图的分界')} aria-valuetext={t('原图 {percent}%', { percent: split })}
-            onChange={(event) => setSplit(Number(event.target.value))} />
-        </div>
+        <CompareReveal before={editor.originalPreview} after={editor.rendered} value={split} onChange={setSplit} />
       ) : (
         <div className={`compare-pair ${visibleMode !== 'side' ? 'single' : ''}`}>
           {visibleMode !== 'edited' && (

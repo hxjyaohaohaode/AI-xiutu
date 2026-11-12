@@ -1,0 +1,126 @@
+name: Frontend system redesign review
+
+# Review each prepared source head. Intermediate checkpoints use [skip ci].
+# The capture-only commit uses GITHUB_TOKEN and [skip ci], so it does not loop.
+on:
+  pull_request:
+    branches: [new/native-color-feedback]
+    types: [opened, reopened, synchronize]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: frontend-redesign-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  verify:
+    if: >-
+      github.repository == 'hxjyaohaohaode/AI-xiutu' &&
+      ((github.event_name == 'pull_request' &&
+        github.event.pull_request.head.repo.full_name == github.repository &&
+        github.head_ref == 'frontend/system-redesign-20261111') ||
+       (github.event_name == 'workflow_dispatch' &&
+        github.ref == 'refs/heads/frontend/system-redesign-20261111'))
+    name: Frontend types, tests, build and five browser scenarios
+    runs-on: ubuntu-latest
+    timeout-minutes: 22
+    outputs:
+      tested-head: ${{ steps.commit.outputs.sha }}
+    env:
+      CI: 'true'
+      NODE_ENV: test
+      BROWSER_CHANNEL: chrome
+      REVIEW_HEAD: ${{ github.event.pull_request.head.sha || github.sha }}
+      AI_PLAN_ENABLED: 'false'
+      AI_TEXT_ENABLED: 'false'
+      AI_IMAGE_ENABLED: 'false'
+      AI_SPEECH_ENABLED: 'false'
+      AI_ASSISTANT_ENABLED: 'false'
+      AI_VOICE_ENABLED: 'false'
+      MEDIA_ADVANCED_ENABLED: 'false'
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+          persist-credentials: false
+      - name: Record the exact source head
+        id: commit
+        run: |
+          node --input-type=module -e "import{execFileSync}from'node:child_process';import{appendFileSync}from'node:fs';const sha=execFileSync('git',['rev-parse','HEAD'],{encoding:'utf8'}).trim();if(sha!==process.env.REVIEW_HEAD)throw Error('Checkout head mismatch');appendFileSync(process.env.GITHUB_OUTPUT,'sha='+sha+'\n');"
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
+        with:
+          node-version-file: .nvmrc
+          cache: npm
+      - name: Install the committed dependency graph
+        id: install
+        run: npm ci
+      - name: Check all TypeScript projects
+        if: always() && steps.install.outcome == 'success'
+        run: npm run typecheck
+      - name: Run all frontend unit and contract tests
+        if: always() && steps.install.outcome == 'success'
+        run: npm run test -w @ai-xiutu/web
+      - name: Check review script syntax
+        if: always() && steps.install.outcome == 'success'
+        run: |
+          node --check scripts/qa/system-redesign-policy.mjs
+          node --check scripts/qa/system-redesign.browser.mjs
+          node --check scripts/qa/publish-system-redesign-captures.mjs
+      - name: Prepare verified free models for actual local portrait capture
+        id: vision
+        if: always() && steps.install.outcome == 'success'
+        run: npm run vision:prepare
+      - name: Build the actual web application once
+        id: build
+        if: always() && steps.install.outcome == 'success'
+        run: npm run build -w @ai-xiutu/web
+      - name: Check the installed real browser
+        if: always() && steps.install.outcome == 'success'
+        run: google-chrome --version
+      - name: Five UI risk scenarios, natural About scrolling and current screenshots
+        if: always() && steps.build.outcome == 'success'
+        run: node --import tsx scripts/qa/system-redesign.browser.mjs
+      - name: Preserve reports, failure screenshots and exact image publication payload
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: frontend-redesign-${{ steps.commit.outputs.sha }}
+          path: artifacts/frontend-review
+          retention-days: 14
+          if-no-files-found: warn
+          compression-level: 0
+
+  publish-captures:
+    name: Publish only the successful exact-head screenshot allowlist
+    needs: verify
+    if: needs.verify.result == 'success'
+    runs-on: ubuntu-latest
+    timeout-minutes: 4
+    # Only this post-verification job receives write access. No secrets, deploy
+    # targets, PR merge permissions, paid providers or production configuration.
+    permissions:
+      contents: write
+      actions: read
+    env:
+      CI: 'true'
+      REVIEW_HEAD: ${{ needs.verify.outputs.tested-head }}
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          ref: ${{ needs.verify.outputs.tested-head }}
+          persist-credentials: false
+          fetch-depth: 2
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
+        with:
+          node-version-file: .nvmrc
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
+        with:
+          name: frontend-redesign-${{ needs.verify.outputs.tested-head }}
+          path: artifacts/frontend-review
+      - name: Verify hashes and unchanged branch head, then publish only the approved images
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+        run: node scripts/qa/publish-system-redesign-captures.mjs artifacts/frontend-review
