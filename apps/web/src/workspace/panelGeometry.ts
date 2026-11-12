@@ -34,7 +34,7 @@ export const PANEL_MARGIN = 8;
 /** Leaves the always-reachable tool shelf clear, even while a panel fills the work area. */
 export function panelBottomOffset(view: Viewport): number {
   return view.bucket === 'phone'
-    ? Math.max(48, finite(view.toolShelfHeight ?? 62, 62))
+    ? Math.max(48, finite(view.toolShelfHeight ?? 48, 48))
     : view.height <= 520
       ? 64
       : 84;
@@ -47,7 +47,7 @@ export function workspaceSize(view: Viewport): { width: number; height: number }
     width: Math.max(0, finite(view.workspaceWidth ?? view.width, 0)),
     height: Math.max(
       0,
-      finite(view.workspaceHeight ?? view.height - (view.bucket === 'phone' ? 54 : 60), 0),
+      finite(view.workspaceHeight ?? view.height - (view.bucket === 'phone' ? 44 : 60), 0),
     ),
   };
 }
@@ -185,7 +185,7 @@ export function canvasImageArea(view: Viewport, insets: CanvasInsets) {
   const body = workspaceSize(view);
   const short = view.height <= 520;
   const horizontalChrome = view.bucket === 'phone' ? 0 : short ? 12 : 16;
-  const verticalChrome = view.bucket === 'phone' ? 60 : short ? 54 : 108;
+  const verticalChrome = view.bucket === 'phone' ? 46 : short ? 54 : 108;
   const fitPadding = 24;
   return {
     width: Math.max(0, body.width - insets.left - insets.right - horizontalChrome - fitPadding),
@@ -351,8 +351,8 @@ export function defaultPanel(id: PanelId, view: Viewport): PanelGeometry {
       : shortLandscape
         ? body.height - panelBottomOffset(view) - 24
         : view.height <= 620
-          ? 184
-          : 208
+          ? 176
+          : 184
     : Math.min(id === 'ai' ? 680 : 600, body.height - panelBottomOffset(view) - 24);
   // Starting sizes leave usable image pixels, including on a 320px phone. This is
   // a default choice only: manual sizes and saved preferences retain their full
@@ -369,8 +369,7 @@ export function defaultPanel(id: PanelId, view: Viewport): PanelGeometry {
           id === 'ai' ? Math.min(224, panelBounds(view, 'bottom').maxHeight) : 0,
           Math.min(
             preferredHeight,
-            // Keep the assistant's established default while the editor gives the
-            // reclaimed canvas chrome to the photograph instead of a taller sheet.
+            // Leave additional photo space while the assistant composer is open.
             Math.max(
               0,
               Math.floor(

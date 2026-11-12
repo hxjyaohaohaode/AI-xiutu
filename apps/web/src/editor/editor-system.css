@@ -486,7 +486,7 @@
     display: none;
   }
   .studio-workspace .canvas-stage.content-first.has-image .image-viewport {
-    inset: 6px 0 54px;
+    inset: 2px 0 44px;
   }
   .studio-workspace .canvas-stage .canvas-file-info {
     top: 8px;
@@ -527,8 +527,8 @@
   }
   .studio-workspace .canvas-stage .canvas-view-controls .compare-press {
     min-height: 44px;
-    min-width: 78px;
-    padding: 8px 10px;
+    min-width: 44px;
+    padding: 0;
     font-size: 11px;
   }
   .studio-workspace .canvas-stage .canvas-view-controls .compare-press > svg {
@@ -536,9 +536,9 @@
     height: 16px;
   }
   .studio-workspace .canvas-stage .canvas-view-controls .zoom-fit {
-    width: auto;
-    min-width: 48px;
-    padding-inline: 5px;
+    width: 44px;
+    min-width: 44px;
+    padding-inline: 0;
     font-size: 12px;
   }
   .studio-workspace .canvas-stage .canvas-tools-trigger {

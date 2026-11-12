@@ -325,7 +325,7 @@ async function verifyLocalMaskAndLiquify(input) {
     await page.screenshot({ path: resolve(artifacts, 'liquify-then-repair.png') });
     await page.getByRole('button', { name: '交付', exact: true }).click();
     const pending = page.waitForEvent('download');
-    await page.getByRole('button', { name: '下载配方 JSON' }).click();
+    await page.getByRole('button', { name: '保存编辑配方' }).click();
     const download = await pending;
     const recipe = JSON.parse(await readFile(await download.path(), 'utf8'));
     const mask = recipe.regionEdits[0].mask;
@@ -534,7 +534,7 @@ async function verifyWorkerRecovery({ png, source }) {
       const views = page.getByRole('navigation', { name: '工作视图', exact: true });
       await views.getByRole('button', { name: '交付', exact: true }).click();
       const pending = page.waitForEvent('download');
-      await page.getByRole('button', { name: '下载配方 JSON', exact: true }).click();
+      await page.getByRole('button', { name: '保存编辑配方', exact: true }).click();
       const download = await pending;
       const stream = await download.createReadStream();
       assert.ok(stream, 'the draft is downloaded through the real product action');
@@ -1233,9 +1233,11 @@ try {
           .getByRole('navigation', { name: '工作视图', exact: true })
           .getByRole('button', { name: '交付', exact: true })
           .click();
-      const pending = page.waitForEvent('download');
-      await page.getByRole('button', { name: '下载配方 JSON' }).click();
-      const stream = await (await pending).createReadStream();
+      const [download] = await Promise.all([
+        page.waitForEvent('download'),
+        page.getByRole('button', { name: '保存编辑配方', exact: true }).click(),
+      ]);
+      const stream = await download.createReadStream();
       const chunks = [];
       for await (const chunk of stream) chunks.push(chunk);
       const recipe = JSON.parse(Buffer.concat(chunks).toString('utf8'));

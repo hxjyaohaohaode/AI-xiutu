@@ -90,6 +90,7 @@ export function FloatingPanel({
   panelKey = 'inspector',
   open = true,
   motionState = 'enter',
+  compactAdjustment = false,
   displayMode = 'panel',
   identity,
 }: {
@@ -110,6 +111,7 @@ export function FloatingPanel({
   panelKey?: PanelId;
   open?: boolean;
   motionState?: MotionPhase;
+  compactAdjustment?: boolean;
   displayMode?: 'panel' | 'page';
   identity?: string;
 }) {
@@ -150,6 +152,7 @@ export function FloatingPanel({
     collapsed = value.presentation === 'collapsed';
   const attached = mobile && value.dock === 'bottom';
   const page = displayMode === 'page';
+  const inlineAdjustment = !page && attached && compactAdjustment && !collapsed;
   const condensed = mobile && panelKey === 'ai' && !collapsed && !page;
   const bounds = panelBounds(viewport, value.dock, panelKey);
   const repairPhoneHeight =
@@ -396,7 +399,9 @@ export function FloatingPanel({
     if (next === 'collapsed') {
       // The phone title is replaced by the active categories. Keep focus on a
       // control that stays visible through both sheet presentations.
-      if (attached && panelKey === 'inspector')
+      if (inlineAdjustment)
+        requestAnimationFrame(() => layoutTrigger.current?.focus({ preventScroll: true }));
+      else if (attached && panelKey === 'inspector')
         layoutTrigger.current?.focus({ preventScroll: true });
       else dragHandle.current?.focus({ preventScroll: true });
     }
@@ -418,6 +423,20 @@ export function FloatingPanel({
     if (key === 'ArrowDown') next.height -= delta;
     onGeometry(boundPanel(next, viewport, panelKey));
   }
+  const layoutControl = (
+    <button
+      ref={layoutTrigger}
+      type="button"
+      className="panel-layout-trigger"
+      title={t('面板位置与连续尺寸')}
+      aria-label={t('面板位置与连续尺寸')}
+      aria-expanded={menu}
+      aria-controls={menuId}
+      onClick={() => setMenu(!menu)}
+    >
+      <SlidersHorizontal size={18} />
+    </button>
+  );
   return (
     <section
       ref={panel}
@@ -434,6 +453,7 @@ export function FloatingPanel({
       data-size-motion={animatingPresentation ? 'active' : undefined}
       data-panel-width={rect.width < 300 ? 'narrow' : rect.width >= 640 ? 'wide' : 'regular'}
       data-attached={attached && !page ? 'true' : undefined}
+      data-inline-adjustment={inlineAdjustment || undefined}
       data-composition={value.composition}
       data-device={viewport.bucket}
       data-panel-id={identity ?? panelKey}
@@ -448,9 +468,9 @@ export function FloatingPanel({
         }
       }}
     >
-      {!page && (
+      {!page && !inlineAdjustment && (
         <div className="panel-drag-header" data-motion="panel-header">
-          {onBack && !condensed && (
+          {onBack && !condensed && !(attached && compactAdjustment) && (
             <IconButton
               className="panel-back-action"
               label={backLabel ?? t('返回上一步工具')}
@@ -569,18 +589,7 @@ export function FloatingPanel({
             >
               {maximized ? <CornersIn size={17} /> : <CornersOut size={17} />}
             </IconButton>
-            <button
-              ref={layoutTrigger}
-              type="button"
-              className="panel-layout-trigger"
-              title={t('面板位置与连续尺寸')}
-              aria-label={t('面板位置与连续尺寸')}
-              aria-expanded={menu}
-              aria-controls={menuId}
-              onClick={() => setMenu(!menu)}
-            >
-              <SlidersHorizontal size={18} />
-            </button>
+            {layoutControl}
             <IconButton label={t('收起{title}，可从工具栏重新打开', { title })} onClick={onClose}>
               <X size={18} />
             </IconButton>
@@ -600,6 +609,28 @@ export function FloatingPanel({
         >
           {mobile && panelKey === 'inspector' && (
             <div className="panel-menu-presentation">
+              {inlineAdjustment && (
+                <button
+                  type="button"
+                  className="panel-collapse-action"
+                  onClick={() => setPresentation('collapsed')}
+                >
+                  <CaretDown size={18} />
+                  {t('折叠到标题栏，保留当前操作')}
+                </button>
+              )}
+              {inlineAdjustment && onBack && (
+                <button
+                  type="button"
+                  onClick={() => {
+                    setMenu(false);
+                    onBack();
+                  }}
+                >
+                  <ArrowLeft size={18} />
+                  {backLabel ?? t('返回上一步工具')}
+                </button>
+              )}
               <button
                 type="button"
                 onClick={() => {
@@ -774,6 +805,7 @@ export function FloatingPanel({
             toggleMaximized: () => setPresentation(maximized ? 'normal' : 'maximized'),
             headerTarget:
               attached && panelKey === 'inspector' && !collapsed && open ? headerTarget : null,
+            adjustmentLayoutControl: inlineAdjustment ? layoutControl : undefined,
           }}
         >
           {children}

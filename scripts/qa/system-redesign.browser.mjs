@@ -698,9 +698,12 @@ async function referenceControlReview() {
       await panel.locator('.panel-layout-trigger').click();
       await settle(page);
       const before=await panel.boundingBox();
-      await panel.locator('.panel-collapse-action').click();await settle(page);
+      await panel.locator('.panel-layout-trigger').click();
+      await panel.locator('.panel-layout-menu .panel-collapse-action').click();
+      await settle(page);
       assert.ok((await panel.boundingBox()).height<before.height-60,'The panel really collapses');
-      await panel.locator('.panel-collapse-action').click();await settle(page);
+      await panel.locator('.panel-drag-header .panel-collapse-action').click();
+      await settle(page);
       const after=await panel.boundingBox();
       assert.ok(Math.abs(after.height-before.height)<1.5,'A manually sized panel restores its actual height');
       await panel.locator('.panel-layout-trigger').click();

@@ -16,6 +16,7 @@ import {
   MagnifyingGlassPlus,
   MagnifyingGlassMinus,
   CornersOut,
+  CornersIn,
   Eye,
   PencilSimple,
   Hand,
@@ -51,6 +52,7 @@ import {
   type BrushStrokeV2,
 } from '@ai-xiutu/editor';
 import { Busy, IconButton, InlineError } from '../components/Ui';
+import { StudioGlyph } from '../components/StudioGlyph';
 import { editorGeometryKey, type EditorState, type PreviewQuality } from './useEditor';
 import { sourcePointer, projectOverlayPoint, projectOverlayPath } from './coordinates';
 import { appendRepairRegion } from './repair-draft';
@@ -2405,6 +2407,8 @@ export function CanvasStage({
             </IconButton>
             <button
               className={`compare-press ${comparing ? 'active' : ''}`}
+              aria-label={t('按住对比')}
+              aria-pressed={comparing}
               onPointerDown={(event) => {
                 event.currentTarget.setPointerCapture(event.pointerId);
                 setComparing(true);
@@ -2421,11 +2425,19 @@ export function CanvasStage({
               onKeyUp={() => setComparing(false)}
               onBlur={() => setComparing(false)}
             >
-              <Eye size={17} />
+              <StudioGlyph name="compare" size={17} />
               <span>{t('按住对比')}</span>
             </button>
-            <button className="zoom-fit" onClick={fit} title={t('点击完整显示图片')}>
-              {zoom === 1 ? t('适应') : `${Math.round(scale * zoom * 100)}%`}
+            <button
+              type="button"
+              className="zoom-fit"
+              data-fitted={zoom === 1 || undefined}
+              aria-label={zoom === 1 ? t('适应') : t('点击完整显示图片')}
+              title={t('点击完整显示图片')}
+              onClick={fit}
+            >
+              <CornersIn className="zoom-fit-glyph" size={17} />
+              <span>{zoom === 1 ? t('适应') : `${Math.round(scale * zoom * 100)}%`}</span>
             </button>
             <button
               ref={viewToolsButton}

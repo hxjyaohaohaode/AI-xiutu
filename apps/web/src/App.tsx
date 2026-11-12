@@ -45,7 +45,7 @@ import { normalizeImageSourceFile } from './editor/imageSources';
 import { createSourceLoadGuard, assertRevisionSourceBinding } from './editor/source-flow';
 import { assetCopyAttempt, sourcePersistenceRoute } from './lib/asset-copy';
 import { FloatingPanel } from './workspace/FloatingPanel';
-import { ToolDock } from './workspace/ToolDock';
+import { ADJUSTMENT_GROUPS, ToolDock } from './workspace/ToolDock';
 import { ToolOverview } from './workspace/ToolOverview';
 import { PanelNavigation, type PanelSection } from './workspace/PanelNavigation';
 import { interactionText } from './workspace/interaction-copy';
@@ -2989,6 +2989,12 @@ export function App({
                         setSampling(false);
                       }}
                       navigation={panelNavigation}
+                      compactAdjustment={
+                        shownPanelId === 'inspector' &&
+                        !!editor.file &&
+                        !toolOverview &&
+                        ADJUSTMENT_GROUPS.includes(group)
+                      }
                     >
                       {shownPanelId === 'inspector' ? (
                         <>

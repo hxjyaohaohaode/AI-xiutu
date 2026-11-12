@@ -1,5 +1,5 @@
 import { t } from '../i18n';
-import { useState, type CSSProperties } from 'react';
+import { useState, type CSSProperties, type ReactNode } from 'react';
 import { MotionDetails } from '../motion/Presence';
 import {
   HSL_BANDS,
@@ -8,7 +8,7 @@ import {
   type EditorRecipe,
 } from '@ai-xiutu/editor';
 import { ColorPicker } from '../components/ColorPicker';
-import { ChoiceSelect } from '../components/ChoiceSelect';
+import { ChoiceSelect, type ChoiceOption } from '../components/ChoiceSelect';
 import { rgba, hsv } from '../components/color-model';
 import { secureUuid } from '../lib/uuid';
 import { CurveEditor } from './CurveEditor';
@@ -28,6 +28,8 @@ import {
   type InspectorController,
 } from './advanced-model';
 
+export type AdjustmentFamily = 'light' | 'color' | 'curves' | 'detail';
+
 export function ColorControls({
   controller,
   scope,
@@ -37,10 +39,16 @@ export function ColorControls({
   onSample,
   sampling,
   onScope,
+  compactTools,
 }: {
   controller: InspectorController;
   scope: EditScope;
-  family: 'light' | 'color' | 'curves' | 'detail';
+  family: AdjustmentFamily;
+  compactTools?: {
+    layout: ReactNode;
+    options: readonly ChoiceOption<AdjustmentFamily>[];
+    onFamilyChange: (family: AdjustmentFamily) => void;
+  };
   pickedColor: string;
   onColorChange?: (value: string) => void;
   onSample?: () => void;
@@ -67,25 +75,29 @@ export function ColorControls({
     'blacks',
   ];
   const colorIds = ['temperature', 'tint', 'saturation', 'vibrance'];
+  const quickDetailPaths = [
+    'adjustments.sharpness',
+    'adjustments.soften',
+    'detail.texture',
+    'detail.clarity',
+  ];
+  const tonePaths = lightIds.map((id) => 'adjustments.' + id);
+  const colorPaths = colorIds.map((id) => 'adjustments.' + id);
   const definitions = NUMERIC_CONTROLS.filter((tool) => {
     if (family === 'light')
       return lightTab === 'levels'
         ? tool.path.startsWith('levels.')
-        : lightIds.some((id) => tool.path === 'adjustments.' + id);
+        : tonePaths.includes(tool.path) ||
+            (!!compactTools &&
+              (colorPaths.includes(tool.path) || quickDetailPaths.includes(tool.path)));
     if (family === 'color') {
       if (colorTab === 'hsl') return tool.path.startsWith('hsl.' + band + '.');
       if (colorTab === 'grading')
         return tool.path.startsWith('grading.' + zone + '.') || tool.path === 'grading.balance';
-      return colorIds.some((id) => tool.path === 'adjustments.' + id);
+      return colorPaths.includes(tool.path);
     }
     if (family === 'detail') {
-      if (detailTab === 'detail')
-        return [
-          'adjustments.sharpness',
-          'adjustments.soften',
-          'detail.texture',
-          'detail.clarity',
-        ].includes(tool.path);
+      if (detailTab === 'detail') return quickDetailPaths.includes(tool.path);
       if (detailTab === 'optics') return tool.path.startsWith('optics.');
       if (detailTab === 'vignette') return tool.path.startsWith('effects.vignette.');
       if (detailTab === 'grain') return tool.path.startsWith('effects.grain.');
@@ -146,64 +158,104 @@ export function ColorControls({
       onScope?.({ kind: 'region', id: region.id });
     }
   }
+  function categoryPicker<T extends string>(
+    label: string,
+    selected: T,
+    options: readonly ChoiceOption<T>[],
+    select?: (value: T) => void,
+  ) {
+    if (!compactTools)
+      return select ? (
+        <ChoiceSelect
+          size="compact"
+          ariaLabel={t(label)}
+          value={selected}
+          options={options}
+          onValueChange={select}
+        />
+      ) : null;
+    const families = compactTools.options.filter((option) => option.value !== family);
+    return (
+      <>
+        <ChoiceSelect<T | AdjustmentFamily>
+          size="compact"
+          className="mobile-adjustment-choice"
+          ariaLabel={t('调节类别')}
+          displayLabel={t('更多参数')}
+          value={selected}
+          options={[...options, ...families]}
+          onValueChange={(value) => {
+            const category = options.find((option) => option.value === value);
+            if (category) select?.(category.value);
+            else {
+              const destination = families.find((option) => option.value === value);
+              if (!destination) return;
+              editor.commitCurrent(t('完成当前调节'));
+              compactTools.onFamilyChange(destination.value);
+            }
+          }}
+        />
+        {compactTools.layout}
+      </>
+    );
+  }
   const compactCategory =
-    family === 'light' ? (
-      <ChoiceSelect
-        size="compact"
-        ariaLabel={t('明暗类别')}
-        value={lightTab}
-        options={[
-          { value: 'light', label: t('影调') },
-          { value: 'levels', label: t('精确色阶') },
-        ]}
-        onValueChange={(value) => {
-          editor.commitCurrent(t('完成当前调整'));
-          setLightTab(value);
-        }}
-      />
-    ) : family === 'color' ? (
-      <ChoiceSelect
-        size="compact"
-        ariaLabel={t('色彩类别')}
-        value={colorTab}
-        options={[
-          { value: 'global', label: t('整体') },
-          { value: 'hsl', label: 'HSL' },
-          { value: 'grading', label: t('分级') },
-          { value: 'palette', label: t('完整色谱') },
-        ]}
-        onValueChange={(value) => {
-          editor.commitCurrent(t('完成当前色彩'));
-          setColorTab(value);
-        }}
-      />
-    ) : family === 'detail' ? (
-      <ChoiceSelect
-        size="compact"
-        ariaLabel={t('细节类别')}
-        value={detailTab}
-        options={[
-          { value: 'detail', label: t('质感') },
-          { value: 'optics', label: t('光学') },
-          { value: 'vignette', label: t('暗角') },
-          { value: 'grain', label: t('颗粒') },
-          { value: 'effects', label: t('风格') },
-        ]}
-        onValueChange={(value) => {
-          editor.commitCurrent(t('完成当前细节'));
-          setDetailTab(value);
-        }}
-      />
-    ) : null;
+    family === 'light'
+      ? categoryPicker(
+          '明暗类别',
+          lightTab,
+          [
+            { value: 'light', label: t('影调') },
+            { value: 'levels', label: t('精确色阶') },
+          ],
+          (value) => {
+            editor.commitCurrent(t('完成当前调整'));
+            setLightTab(value);
+          },
+        )
+      : family === 'color'
+        ? categoryPicker(
+            '色彩类别',
+            colorTab,
+            [
+              { value: 'global', label: t('整体') },
+              { value: 'hsl', label: 'HSL' },
+              { value: 'grading', label: t('分级') },
+              { value: 'palette', label: t('完整色谱') },
+            ],
+            (value) => {
+              editor.commitCurrent(t('完成当前色彩'));
+              setColorTab(value);
+            },
+          )
+        : family === 'detail'
+          ? categoryPicker(
+              '细节类别',
+              detailTab,
+              [
+                { value: 'detail', label: t('质感') },
+                { value: 'optics', label: t('光学') },
+                { value: 'vignette', label: t('暗角') },
+                { value: 'grain', label: t('颗粒') },
+                { value: 'effects', label: t('风格') },
+              ],
+              (value) => {
+                editor.commitCurrent(t('完成当前细节'));
+                setDetailTab(value);
+              },
+            )
+          : categoryPicker('调节类别', 'curves', [{ value: 'curves', label: t('曲线') }]);
+  const hasShelf = family !== 'curves' && !(family === 'color' && colorTab === 'palette');
   return (
     <section
       className="color-controls-v3"
       data-motion="color-family"
-      data-primary-controls={
-        (family !== 'curves' && !(family === 'color' && colorTab === 'palette')) || undefined
-      }
+      data-primary-controls={hasShelf || undefined}
     >
-      {family !== 'detail' && (
+      {compactTools && !hasShelf && (
+        <div className="mobile-adjustment-tools">{compactCategory}</div>
+      )}
+      {family !== 'detail' && (!compactTools || family === 'curves' || lightTab === 'levels') && (
         <MotionDetails className="advanced-disclosure histogram-disclosure">
           <summary aria-label={t('查看明度与 RGB 分布')}>{t('直方图')}</summary>
           <Histogram image={editor.rendered} />

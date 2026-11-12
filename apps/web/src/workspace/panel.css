@@ -213,8 +213,9 @@
 }
 /* The lower resize target lives outside the clipped editor viewport, so a
    partly scrolled parameter can never start a panel resize instead of editing. */
-.free-panel .resize-s {
-  bottom: -12px;
+.studio-workspace .free-panel > .panel-resize-edge.resize-s {
+  bottom: 0;
+  transform: translateY(calc(100% + 1px));
 }
 .free-panel .resize-e,
 .free-panel .resize-w {

@@ -46,6 +46,7 @@ export function ChoiceSelect<T extends string>({
   disabled = false,
   placeholder = t('请选择'),
   className = '',
+  displayLabel,
   size = 'regular',
 }: {
   value: T;
@@ -59,6 +60,7 @@ export function ChoiceSelect<T extends string>({
   disabled?: boolean;
   placeholder?: string;
   className?: string;
+  displayLabel?: string;
   size?: 'compact' | 'regular';
 }) {
   const generatedId = useId();
@@ -471,7 +473,16 @@ export function ChoiceSelect<T extends string>({
         onClick={() => (open ? setOpen(false) : show())}
         onKeyDown={onKeyDown}
       >
-        <span id={`${controlId}-value`} className="choice-value" data-placeholder={!selected}>
+        {displayLabel && (
+          <span className="choice-value" aria-hidden="true">
+            {displayLabel}
+          </span>
+        )}
+        <span
+          id={`${controlId}-value`}
+          className={displayLabel ? 'sr-only' : 'choice-value'}
+          data-placeholder={!selected}
+        >
           {selected?.label ?? placeholder}
         </span>
         <StudioGlyph name="chevron" size={18} />

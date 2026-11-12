@@ -111,7 +111,7 @@ async function selectProject(target) {
   assert.ok(navigation?.ok(), 'Project setup must load a fresh studio document');
   await target.getByRole('button', { name: '打开空间与项目', exact: true }).click();
   await target
-    .locator('.sidebar')
+    .locator('dialog.sidebar-navigation-modal')
     .getByRole('button', { name: /^V4 team/ })
     .click();
   await target.getByRole('button', { name: '打开空间与项目', exact: true }).click();

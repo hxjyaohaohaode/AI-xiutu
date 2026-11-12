@@ -153,7 +153,7 @@ test('the actual phone collapse and resume controls recover a usable compact she
     }
     assert.equal(restored.writes.length, 1);
     assert.equal(restored.writes[0]!.presentation, 'normal');
-    assert.ok(restored.writes[0]!.height >= 200 && restored.writes[0]!.height <= 216);
+    assert.equal(restored.writes[0]!.height, defaultPanel('inspector', view).height);
     assert.equal(geometry.height, 112);
   }
 });

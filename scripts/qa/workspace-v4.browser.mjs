@@ -123,23 +123,18 @@ async function changeView(page, id, label) {
       .click();
 }
 async function navigationClosed(page) {
-  const sidebar = page.locator('.sidebar');
+  const sidebar = page.locator('dialog.sidebar-navigation-modal');
   await sidebar.waitFor({ state: 'hidden' });
   const state = await sidebar.evaluate((node) => ({
     ariaHidden: node.getAttribute('aria-hidden'),
     inert: node.inert,
-    open: node.classList.contains('open'),
-    motionPhase: node.dataset.motionState,
+    open: node.open,
   }));
   assert.deepEqual(state, {
     ariaHidden: 'true',
     inert: true,
     open: false,
-    motionPhase: 'hidden',
   });
-  const scrim = page.locator('.sidebar-scrim');
-  assert.equal(await scrim.getAttribute('aria-hidden'), 'true');
-  assert.equal(await scrim.isDisabled(), true);
   await page.getByRole('button', { name: '打开空间与项目', exact: true }).click({ trial: true });
   return state;
 }
@@ -178,6 +173,8 @@ async function editorReturnAndHistory(page) {
   assert.ok(canvas, 'the live canvas exists before changing panel contexts');
   try {
     const inspector = page.locator('.free-panel[data-panel-id="inspector"][aria-hidden="false"]');
+    if (await inspector.getAttribute('data-inline-adjustment') === 'true')
+      await inspector.locator('.panel-layout-trigger').click();
     await inspector.getByRole('button', { name: '返回工具总览', exact: true }).click();
     const overview = inspector.getByRole('region', { name: '全部工具', exact: true });
     await overview.waitFor();
@@ -203,7 +200,9 @@ async function editorReturnAndHistory(page) {
       'returning through the tool overview preserves the exact current adjustment',
     );
     const tabs = inspector.getByRole('navigation', { name: '当前作品面板', exact: true });
-    await tabs.getByRole('button', { name: '记录', exact: true }).click();
+    const visibleTabs = await tabs.isVisible();
+    if (visibleTabs) await tabs.getByRole('button', { name: '记录', exact: true }).click();
+    else await tool(page, '记录');
     await inspector
       .locator('.detailed-history-list > li[data-selected="true"] .history-expand')
       .click();
@@ -214,7 +213,8 @@ async function editorReturnAndHistory(page) {
       .filter({ has: page.locator('dt').filter({ hasText: /曝光$/ }) });
     assert.equal(await exposure.locator('dd > span').innerText(), '0EV');
     assert.equal(await exposure.locator('dd > strong').innerText(), '-0.35EV');
-    await tabs.getByRole('button', { name: '调整', exact: true }).click();
+    if (visibleTabs) await tabs.getByRole('button', { name: '调整', exact: true }).click();
+    else await tool(page, page.viewportSize().width < 760 ? '调节' : '明暗');
     assert.equal(
       Number(await inspector.getByRole('slider', { name: '曝光', exact: true }).inputValue()),
       -0.35,
@@ -243,9 +243,7 @@ async function editorReturnAndHistory(page) {
   }
 }
 async function downloadBytes(page, action) {
-  const pending = page.waitForEvent('download');
-  await action();
-  const download = await pending;
+  const [download] = await Promise.all([page.waitForEvent('download'), action()]);
   const stream = await download.createReadStream();
   assert.ok(stream, 'a browser download stream must exist');
   const chunks = [];
@@ -256,7 +254,7 @@ async function downloadBytes(page, action) {
 async function recipeDownload(page) {
   await changeView(page, 'deliver', '交付');
   const bytes = await downloadBytes(page, () =>
-    page.getByRole('button', { name: '下载配方 JSON' }).click(),
+    page.getByRole('button', { name: '保存编辑配方' }).click(),
   );
   const value = JSON.parse(bytes.toString('utf8'));
   await changeView(page, 'editor', '精修');
@@ -386,7 +384,7 @@ async function pixelEvidence(bytes) {
 }
 async function canvasEvidence(page) {
   await imageReady(page);
-  await page.locator('.free-panel[aria-hidden="false"] .panel-title-drag').click({ trial: true });
+  await page.locator('.free-panel[aria-hidden="false"] .panel-layout-trigger').click({ trial: true });
   // PixelCanvas paints in an effect; give committed state and its paint two
   // actual animation frames rather than reading React internals.
   await page.evaluate(
@@ -634,7 +632,9 @@ async function layoutAssertions(page, phone) {
     const photo = document.querySelector('.image-frame canvas');
     const scroller = document.querySelector('.inspector-scroll');
     const workspace = document.querySelector('.workspace-body');
+    const slider = document.querySelector('.free-panel[aria-hidden="false"] .parameter-shelf-current input[type="range"]');
     return {
+      rangeBounds: slider ? { min: Number(slider.min), max: Number(slider.max) } : null,
       width: innerWidth,
       height: innerHeight,
       scrollWidth: document.documentElement.scrollWidth,
@@ -686,19 +686,27 @@ async function layoutAssertions(page, phone) {
     'the active slider is inside its own visible scroller',
   );
   assert.ok(
-    measured.heading && measured.scale && measured.scaleStart && measured.scaleEnd,
-    'parameter bounds are rendered with the active control',
+    measured.rangeBounds?.min < 0 && measured.rangeBounds?.max > 0,
+    'the active exposure slider retains its signed range at every size',
   );
-  assert.ok(
-    measured.scale.y >= measured.heading.bottom && measured.scale.y >= measured.slider.bottom - 5.5,
-    'min/max labels stay below the value and reset row, even with About CSS loaded',
-  );
-  assert.ok(
-    measured.scaleStart.x + measured.scaleStart.width < measured.scaleEnd.x &&
-      measured.scaleStart.x >= measured.scale.x - 1 &&
-      measured.scaleEnd.x + measured.scaleEnd.width <= measured.scale.x + measured.scale.width + 1,
-    'signed min/max labels occupy distinct ends of their own full-width row',
-  );
+  if (phone) {
+    assert.equal(measured.scale?.height, 0, 'phone controls omit the decorative scale row');
+  } else {
+    assert.ok(
+      measured.heading && measured.scale && measured.scaleStart && measured.scaleEnd,
+      'parameter bounds are rendered with the active control',
+    );
+    assert.ok(
+      measured.scale.y >= measured.heading.bottom && measured.scale.y >= measured.slider.bottom - 5.5,
+      'min/max labels stay below the value and reset row, even with About CSS loaded',
+    );
+    assert.ok(
+      measured.scaleStart.x + measured.scaleStart.width < measured.scaleEnd.x &&
+        measured.scaleStart.x >= measured.scale.x - 1 &&
+        measured.scaleEnd.x + measured.scaleEnd.width <= measured.scale.x + measured.scale.width + 1,
+      'signed min/max labels occupy distinct ends of their own full-width row',
+    );
+  }
   if (phone) {
     assert.ok(
       Math.abs(measured.panel.bottom - measured.dock.y) <= 1.5,
@@ -929,8 +937,10 @@ try {
       const normal = await layoutAssertions(page, size.width < 760);
       let resized = null;
       if (size.width < 760) {
-        const grip = page.locator('.free-panel[aria-hidden="false"] .panel-title-drag');
-        const box = await grip.boundingBox();
+        const panel = page.locator('.free-panel[aria-hidden="false"]');
+        const grip = panel.locator('.panel-title-drag');
+        const edge = panel.locator('.panel-resize-edge.resize-n');
+        const box = await edge.boundingBox();
         assert.ok(box);
         await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2);
         await page.mouse.down();
@@ -950,13 +960,13 @@ try {
           size.width,
           'an attached phone sheet uses the complete viewport width',
         );
-        await grip.press('Alt+ArrowUp');
+        await edge.press('Alt+ArrowUp');
         const taller = await page.locator('.free-panel[aria-hidden="false"]').boundingBox();
         assert.ok(
           Math.abs(taller.height - (resized.panel.height + 1)) < 0.1,
           'keyboard height has a true 1px step',
         );
-        await grip.press('Alt+ArrowDown');
+        await edge.press('Alt+ArrowDown');
         await page.getByRole('button', { name: '面板位置与连续尺寸', exact: true }).click();
         await page.getByRole('button', { name: '浮动', exact: true }).click();
         const beforeFloatingResize = await page
@@ -974,7 +984,8 @@ try {
         await eastHandle.press('Alt+ArrowRight');
         await page.getByRole('button', { name: '面板位置与连续尺寸', exact: true }).click();
         await page.getByRole('button', { name: '底部', exact: true }).click();
-        await page.getByRole('button', { name: '收起参数，查看完整照片', exact: true }).click();
+        await panel.locator('.panel-layout-trigger').click();
+        await panel.locator('.panel-layout-menu .panel-collapse-action').click();
         await eventually(
           async () =>
             (await page
@@ -989,12 +1000,14 @@ try {
             -0.35,
           'restore retains photo adjustment',
         );
-        await page.getByRole('button', { name: '展开参数面板', exact: true }).click();
+        await panel.locator('.panel-layout-trigger').click();
+        await panel.getByRole('button', { name: '展开精调，允许遮挡画面', exact: true }).click();
         assert.equal(
           await page.locator('.free-panel[aria-hidden="false"]').getAttribute('data-presentation'),
           'maximized',
         );
-        await page.getByRole('button', { name: '恢复参数，保留当前调整', exact: true }).click();
+        await panel.locator('.panel-layout-trigger').click();
+        await panel.getByRole('button', { name: '返回常规调节，恢复面板尺寸', exact: true }).click();
       }
       await page.screenshot({ path: join(artifacts, `layout-${size.width}x${size.height}.png`) });
       const exported = await recipeDownload(page);
@@ -1676,7 +1689,7 @@ try {
     await page.goto(`${origin}/#/studio`);
     await page.getByRole('button', { name: '打开空间与项目', exact: true }).click();
     await page
-      .locator('.sidebar')
+      .locator('dialog.sidebar-navigation-modal')
       .getByRole('button', { name: new RegExp(`^${teamName}`) })
       .click();
     await page.getByRole('button', { name: '打开空间与项目', exact: true }).click();
@@ -2039,7 +2052,7 @@ try {
     await a.page.reload();
     await a.page.getByRole('button', { name: '打开空间与项目', exact: true }).click();
     await a.page
-      .locator('.sidebar')
+      .locator('dialog.sidebar-navigation-modal')
       .getByRole('button', { name: new RegExp(`^${teamName}`) })
       .click();
     await a.page.getByRole('button', { name: '打开空间与项目', exact: true }).click();
@@ -2237,7 +2250,7 @@ try {
     await a.page.reload();
     await a.page.getByRole('button', { name: '打开空间与项目', exact: true }).click();
     await a.page
-      .locator('.sidebar')
+      .locator('dialog.sidebar-navigation-modal')
       .getByRole('button', { name: new RegExp(`^${teamName}`) })
       .click();
     await a.page.getByRole('button', { name: '打开空间与项目', exact: true }).click();
@@ -2571,7 +2584,7 @@ try {
       assert.equal(await a.page.getByLabel('文档标题', { exact: true }).inputValue(), title);
       assert.equal(await a.page.getByLabel('文档内容', { exact: true }).inputValue(), editedBody);
       await a.page.getByRole('button', { name: '打开空间与项目', exact: true }).click();
-      const sidebar = a.page.locator('.sidebar');
+      const sidebar = a.page.locator('dialog.sidebar-navigation-modal');
       // This existing owner fixture is also an actual operator. Both entries
       // must ask before unmounting the dirty document, and cancellation must
       // preserve it without opening a new-project form or the operator page.
@@ -3052,7 +3065,7 @@ try {
     // fixture through the real navigation instead of inheriting a prior view.
     await page.getByRole('button', { name: '打开空间与项目', exact: true }).click();
     await page
-      .locator('.sidebar')
+      .locator('dialog.sidebar-navigation-modal')
       .getByRole('button', { name: new RegExp(`^${teamName}`) })
       .click();
     const afterTeamSelection = await navigationClosed(page);

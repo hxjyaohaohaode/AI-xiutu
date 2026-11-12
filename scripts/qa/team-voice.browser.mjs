@@ -299,7 +299,7 @@ try {
     );
     await page.getByRole('button', { name: '打开空间与项目', exact: true }).click();
     await page
-      .locator('.sidebar')
+      .locator('dialog.sidebar-navigation-modal')
       .getByRole('button', { name: /^V4 team/ })
       .click();
     await page.getByRole('button', { name: '打开空间与项目', exact: true }).click();

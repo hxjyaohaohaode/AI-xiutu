@@ -1,4 +1,4 @@
-import { createContext, useContext } from 'react';
+import { createContext, useContext, type ReactNode } from 'react';
 
 export const PanelChromeContext = createContext<{
   mobile: boolean;
@@ -7,6 +7,8 @@ export const PanelChromeContext = createContext<{
   toggleMaximized: () => void;
   /** A phone tool can share the chrome row instead of adding another navigation row. */
   headerTarget?: HTMLElement | null;
+  /** The phone adjustment shelf hosts this real layout trigger beside the current value. */
+  adjustmentLayoutControl?: ReactNode;
 } | null>(null);
 
 export const usePanelChrome = () => useContext(PanelChromeContext);

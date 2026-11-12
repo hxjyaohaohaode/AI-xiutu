@@ -18,7 +18,7 @@ import {
   type EditScope,
   type InspectorController,
 } from './advanced-model';
-import { ColorControls } from './ColorControls';
+import { ColorControls, type AdjustmentFamily } from './ColorControls';
 import { GeometryControls } from './GeometryControls';
 import { LocalControls } from './LocalControls';
 import { PaintControls, LiquifyControls, ImageLayerControls } from './LayerControls';
@@ -88,18 +88,28 @@ export function AdvancedInspector({
       editor.setActiveMaskPath([]);
     }
   }
-  const scopedFamily = ['light', 'color', 'curves', 'detail'].includes(group);
+  const familyIds: readonly AdjustmentFamily[] = ['light', 'color', 'curves', 'detail'];
+  const scopedFamily = familyIds.includes(group as AdjustmentFamily);
+  const familyOptions = familyIds.map((id) => ({
+    value: id,
+    label: t(toolGroups.find((tool) => tool.id === id)?.label ?? ''),
+  }));
+  const compactTools =
+    chrome?.adjustmentLayoutControl && onGroupChange
+      ? {
+          layout: chrome.adjustmentLayoutControl,
+          options: familyOptions,
+          onFamilyChange: onGroupChange,
+        }
+      : undefined;
   const familyNavigation =
-    scopedFamily && onGroupChange ? (
+    scopedFamily && onGroupChange && !compactTools ? (
       <RubberSegment
         className="context-adjustment-tabs"
         motionId="context-navigation"
         label={t('调节类别')}
         value={group}
-        options={(['light', 'color', 'curves', 'detail'] as const).map((id) => ({
-          value: id,
-          label: t(toolGroups.find((tool) => tool.id === id)?.label ?? ''),
-        }))}
+        options={familyOptions}
         onChange={(id) => {
           editor.commitCurrent(t('完成当前调节'));
           onGroupChange(id);
@@ -194,7 +204,8 @@ export function AdvancedInspector({
                         <ColorControls
                           controller={controller}
                           scope={retainedScope}
-                          family={id as 'light' | 'color' | 'curves' | 'detail'}
+                          family={id as AdjustmentFamily}
+                          compactTools={group === id ? compactTools : undefined}
                           pickedColor={pickedColor}
                           onColorChange={onColorChange}
                           onSample={onSample}
