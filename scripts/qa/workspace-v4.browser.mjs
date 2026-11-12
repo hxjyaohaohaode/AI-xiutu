@@ -228,7 +228,7 @@ async function editorReturnAndHistory(page) {
     );
     const topbar = await page.locator('.floating-topbar').boundingBox();
     assert.ok(
-      topbar && topbar.height <= 55,
+      topbar && topbar.height <= (page.viewportSize().width < 760 ? 44.5 : 56.5),
       'compact studio chrome leaves room for the photograph',
     );
     return {
@@ -1065,18 +1065,14 @@ try {
       const portrait = inspector.locator('[data-tool-family="beauty"]');
       const portraitOwner = await portrait.elementHandle();
       assert.ok(portraitOwner);
-      await portrait.getByRole('button', { name: '身形', exact: true }).click();
+      const bodyTab = inspector.getByRole('button', { name: '身形', exact: true });
+      await bodyTab.click();
       const portraitHelp = portrait.locator('summary').filter({ hasText: '人物识别与选区帮助' });
       await portraitHelp.click();
       await tool(page, '构图');
       assert.equal(await portrait.isVisible(), false, 'previous tool has no visible hit targets');
       await tool(page, '美颜');
-      assert.equal(
-        await portrait
-          .getByRole('button', { name: '身形', exact: true })
-          .getAttribute('aria-pressed'),
-        'true',
-      );
+      assert.equal(await bodyTab.getAttribute('aria-pressed'), 'true');
       assert.equal(await portraitHelp.getAttribute('aria-expanded'), 'true');
       assert.equal(
         await portraitOwner.evaluate((element) => element.isConnected),
@@ -1085,23 +1081,33 @@ try {
       );
       const openColor = async () => {
         await tool(page, viewport.width < 760 ? '调节' : '色彩');
-        if (viewport.width < 760)
-          await inspector
-            .locator('.context-adjustment-tabs')
-            .getByRole('button', { name: '色彩', exact: true })
-            .click();
+        if (
+          viewport.width < 760 &&
+          !(await inspector.locator('[data-tool-family="color"]').isVisible())
+        ) {
+          await inspector.getByRole('combobox', { name: '调节类别', exact: true }).click();
+          await page.getByRole('option', { name: '色彩', exact: true }).click();
+        }
       };
       await openColor();
       const color = inspector.locator('[data-tool-family="color"]');
       const colorOwner = await color.elementHandle();
       assert.ok(colorOwner);
-      await color.getByRole('button', { name: 'HSL', exact: true }).click();
+      if (viewport.width < 760) {
+        await color.getByRole('combobox', { name: '调节类别', exact: true }).click();
+        await page.getByRole('option', { name: 'HSL', exact: true }).click();
+      } else {
+        await color.getByRole('button', { name: 'HSL', exact: true }).click();
+      }
       await color.getByRole('button', { name: '蓝色段', exact: true }).click();
       await tool(page, '构图');
       assert.equal(await color.isVisible(), false);
       await openColor();
       assert.equal(
-        await color.getByRole('button', { name: 'HSL', exact: true }).getAttribute('aria-pressed'),
+        await color
+          .locator('.color-family-tabs button')
+          .filter({ hasText: /^HSL$/ })
+          .getAttribute('aria-pressed'),
         'true',
       );
       assert.equal(

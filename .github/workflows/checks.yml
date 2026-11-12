@@ -15,6 +15,10 @@ jobs:
   browser:
     runs-on: ubuntu-latest
     timeout-minutes: 50
+    strategy:
+      fail-fast: false
+      matrix:
+        round: [1, 2, 3, 4, 5, 6]
     services:
       postgres:
         image: postgres:18
@@ -44,25 +48,29 @@ jobs:
       - name: Verify the runner's installed Chrome
         run: google-chrome --version
       - name: Measure continuous slider, curve and touch paints
+        if: matrix.round == 1
         run: node --import tsx scripts/qa/interactive-preview.browser.mjs
-      - name: Six complete browser flows on this commit
-        run: |
-          for round in 1 2 3 4 5 6; do
-            BROWSER_ARTIFACT_DIR="artifacts/browser-v4/round-${round}" node --import tsx scripts/qa/workspace-v4.browser.mjs
-          done
+      - name: Complete workbench regression on this commit
+        env:
+          BROWSER_ARTIFACT_DIR: artifacts/browser-v4/round-${{ matrix.round }}
+        run: node --import tsx scripts/qa/workspace-v4.browser.mjs
       - name: Assistant permissions, memory, streaming, conversations and generated workspace
+        if: matrix.round == 1
         run: node --import tsx scripts/qa/assistant.browser.mjs
       - name: Team voice microphones, permissions and shared AI speaker
+        if: matrix.round == 1
         run: node --import tsx scripts/qa/team-voice.browser.mjs
       - name: Real portrait inference and full/tiled pixel comparison
+        if: matrix.round == 1
         run: |
           npm run vision:prepare
           node --import tsx scripts/qa/spatial-quality.browser.mjs
       - name: Diverse real-photo beauty, matte and sports restoration observations
+        if: matrix.round == 1
         run: node --import tsx scripts/qa/photo-quality.browser.mjs
       # Keep the product checks independent of transient artifact service errors.
       - name: Preserve preview timing evidence
-        if: always()
+        if: always() && matrix.round == 1
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
         with:
           name: interactive-preview-${{ github.sha }}
@@ -72,12 +80,12 @@ jobs:
         if: always()
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
         with:
-          name: browser-v4-${{ github.sha }}
+          name: browser-v4-${{ github.sha }}-round-${{ matrix.round }}
           path: artifacts/browser-v4
           retention-days: 14
           if-no-files-found: error
       - name: Preserve team voice evidence
-        if: always()
+        if: always() && matrix.round == 1
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
         with:
           name: browser-team-voice-${{ github.sha }}
@@ -85,7 +93,7 @@ jobs:
           retention-days: 14
           if-no-files-found: error
       - name: Preserve diverse-photo references and observations
-        if: always()
+        if: always() && matrix.round == 1
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
         with:
           name: photo-quality-${{ github.sha }}
@@ -93,7 +101,7 @@ jobs:
           retention-days: 14
           if-no-files-found: error
       - name: Preserve real-photo pixel measurements and contact sheets
-        if: always()
+        if: always() && matrix.round == 1
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
         with:
           name: spatial-quality-${{ github.sha }}
@@ -101,7 +109,7 @@ jobs:
           retention-days: 14
           if-no-files-found: error
       - name: Preserve assistant browser evidence
-        if: always()
+        if: always() && matrix.round == 1
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
         with:
           name: browser-assistant-${{ github.sha }}

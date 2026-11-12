@@ -187,11 +187,18 @@ export function ParameterShelf({
       marker.dataset.ready = 'true';
     };
     measure();
-    const observer = new ResizeObserver(measure);
+    let frame = 0;
+    const observer = new ResizeObserver(() => {
+      cancelAnimationFrame(frame);
+      frame = requestAnimationFrame(measure);
+    });
     observer.observe(rail);
     for (const button of rail.querySelectorAll<HTMLButtonElement>('button'))
       observer.observe(button);
-    return () => observer.disconnect();
+    return () => {
+      cancelAnimationFrame(frame);
+      observer.disconnect();
+    };
   }, [active?.id, controls.length]);
   if (!active) return <p className="control-note">{t('当前范围没有可调整的参数。')}</p>;
   function selectControl(id: string) {

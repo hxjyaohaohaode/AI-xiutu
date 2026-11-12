@@ -15,7 +15,6 @@ import { chromium } from 'playwright';
 import { createDatabase } from '@ai-xiutu/db';
 import { ProviderError } from '@ai-xiutu/providers';
 import { runSiteEntryChecks } from './qa/site-entry.browser.mjs';
-import { runAboutExperienceChecks } from './qa/about-experience.browser.mjs';
 
 if (process.env.CI !== 'true' || process.env.NODE_ENV === 'production')
   throw new Error('Run only in isolated non-production CI.');
@@ -546,7 +545,7 @@ try {
     report,
     phone: primaryPhone,
   });
-  await runAboutExperienceChecks({ newContext, check, capture, until, report });
+  // The continuous public overview and responsive screenshots run in system-redesign.browser.mjs.
   main = await newContext();
   let primaryUserId, originalCookie, peerCookie, documentActor;
 

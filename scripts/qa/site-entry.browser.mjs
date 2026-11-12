@@ -6,7 +6,6 @@ import assert from 'node:assert/strict';
 import { createHash } from 'node:crypto';
 import sharp from 'sharp';
 import { readFile } from 'node:fs/promises';
-import { settleVisibleAbout } from './about-experience.browser.mjs';
 
 const viewports = [
   { width: 1440, height: 960 },
@@ -16,9 +15,14 @@ const viewports = [
   { width: 844, height: 390 },
 ];
 const locales = [
-  { value: 'zh-CN', headline: '你的眼光，', login: '登录', auth: '登录工作空间' },
-  { value: 'zh-TW', headline: '你的眼光，', login: '登入', auth: '登入工作空間' },
-  { value: 'en', headline: 'Your eye.', login: 'Log in', auth: 'Sign in to your space' },
+  { value: 'zh-CN', headline: '从第一张照片，', login: '登录', auth: '登录工作空间' },
+  { value: 'zh-TW', headline: '從第一張照片，', login: '登入', auth: '登入工作空間' },
+  {
+    value: 'en',
+    headline: 'From the first photo.',
+    login: 'Sign in',
+    auth: 'Sign in to your space',
+  },
 ];
 
 async function canvasFingerprint(canvas) {
@@ -65,17 +69,16 @@ async function settledCanvasSnapshot(page, canvas, until) {
   }, 'the renderer and finite layout animations settle');
 }
 
-async function exportedImageSnapshot(page, closeDialog) {
+async function exportedImageSnapshot(page, closeDialog, dimensions) {
   await page.getByRole('button', { name: '导出', exact: true }).click();
   const dialog = page.getByRole('dialog', { name: '导出图片', exact: true });
   await dialog.waitFor();
   await dialog.getByRole('button', { name: /^PNG/ }).click();
-  await dialog.getByRole('button', { name: '生成导出文件', exact: true }).click();
-  const link = dialog.getByRole('link', { name: '下载图片', exact: true });
-  await link.waitFor({ timeout: 60000 });
-  const pending = page.waitForEvent('download');
-  await link.click();
-  const download = await pending;
+  const [download] = await Promise.all([
+    page.waitForEvent('download'),
+    dialog.locator('button.button-full').click(),
+  ]);
+  await dialog.locator('a[download]').waitFor({ timeout: 60000 });
   const stream = await download.createReadStream();
   assert.ok(stream, 'The actual export action must provide a readable download');
   const chunks = [];
@@ -88,7 +91,10 @@ async function exportedImageSnapshot(page, closeDialog) {
     .ensureAlpha()
     .raw()
     .toBuffer({ resolveWithObject: true });
-  assert.deepEqual([info.width, info.height, info.channels], [1536, 1024, 4]);
+  assert.deepEqual(
+    [info.width, info.height, info.channels],
+    [dimensions.width, dimensions.height, 4],
+  );
   await closeDialog(dialog);
   return {
     format: metadata.format,
@@ -98,24 +104,21 @@ async function exportedImageSnapshot(page, closeDialog) {
   };
 }
 
-async function assertSampleSettings(page) {
+async function assertSampleSettings(page, dimensions) {
   assert.equal(await page.locator('.canvas-file-info > span').innerText(), 'color-study.webp');
-  assert.equal(await page.locator('.canvas-file-info > small').innerText(), '1536 × 1024');
+  assert.equal(
+    await page.locator('.canvas-file-info > small').innerText(),
+    `${dimensions.width} × ${dimensions.height}`,
+  );
   const panel = page.locator('.free-panel[aria-hidden="false"]');
-  assert.equal(
-    await panel
-      .getByRole('button', { name: /^色温，/ })
-      .locator('small')
-      .innerText(),
-    '60%',
-  );
-  assert.equal(
-    await panel
-      .getByRole('button', { name: /^饱和度，/ })
-      .locator('small')
-      .innerText(),
-    '18%',
-  );
+  for (const [name, expected] of [
+    ['色温', 60],
+    ['饱和度', 18],
+  ]) {
+    await panel.getByRole('button', { name: new RegExp('^' + name + '，') }).click();
+    const range = panel.getByRole('slider', { name, exact: true });
+    assert.equal(Number(await range.inputValue()), expected);
+  }
 }
 
 // About intentionally scrolls the document. Studio's existing measurement
@@ -133,7 +136,9 @@ async function measureAboutControl(page, target, name) {
   const geometry = await target.evaluate((element) => {
     const rect = element.getBoundingClientRect();
     const hit = document.elementFromPoint(rect.x + rect.width / 2, rect.y + rect.height / 2);
-    const textOverflows = [...document.querySelectorAll('.about-hero h1, .about-intro')]
+    const textOverflows = [
+      ...document.querySelectorAll('.overview-hero h1, .overview-hero-intro p'),
+    ]
       .filter((node) => node.scrollWidth > node.clientWidth + 1)
       .map((node) => node.className || node.tagName);
     return {
@@ -191,40 +196,24 @@ export async function runSiteEntryChecks({
   report.siteEntryLayouts = [];
   try {
     await check(
-      'About first entry renders real adjustments and preserves Studio on return',
+      'Public entry opens the editor and preserves its real adjustments on return',
       async () => {
         assert.equal(
           await page.locator('.site-studio').count(),
           0,
           'First entry must be the public page',
         );
-        await page.locator('.about-hero h1').getByText('你的眼光，', { exact: true }).waitFor();
-        await page.locator('.color-study').scrollIntoViewIfNeeded();
-        await page.locator('.study-compare').waitFor();
-        const preview = page.locator('canvas.study-result');
-        const original = await canvasFingerprint(preview);
-        assert.ok(original?.opaque > 0, 'The About demonstration must render actual image pixels');
-        await page.getByRole('slider', { name: /^色温/ }).press('End');
-        assert.equal(await page.getByRole('slider', { name: /^色温/ }).inputValue(), '100');
         await page
-          .locator('.study-presets')
-          .getByRole('button', { name: '鲜明', exact: true })
-          .click();
-        assert.equal(
-          await page
-            .locator('.study-presets')
-            .getByRole('button', { name: '鲜明', exact: true })
-            .getAttribute('aria-pressed'),
-          'true',
-        );
+          .locator('.overview-hero h1')
+          .getByText(locales[0].headline, { exact: true })
+          .waitFor();
+        const hero = page.locator('.overview-hero-media img');
         await until(
-          async () => (await canvasFingerprint(preview))?.checksum !== original.checksum,
-          'the real About renderer responds to an adjustment',
+          () => hero.evaluate((image) => image.complete && image.naturalWidth > 0),
+          'the public preview shows a decoded current-product image',
         );
-        await page.locator('.study-compare').press('Home');
-        assert.equal(await page.locator('.study-compare').inputValue(), '0');
-        await capture(page, 'site-about-adjusted-desktop');
-        await page.locator('.study-open').click();
+        await capture(page, 'site-about-entry-desktop');
+        await page.locator('.overview-hero .overview-primary').click();
         await page.waitForURL((url) => url.hash === '#/studio');
         await page.getByLabel('选择照片', { exact: true }).waitFor({ state: 'attached' });
         assert.equal(
@@ -235,6 +224,7 @@ export async function runSiteEntryChecks({
         const sampleBytes = await readFile(
           new URL('../../apps/web/public/about/color-study.webp', import.meta.url),
         );
+        const dimensions = await sharp(sampleBytes).metadata();
         await page
           .getByLabel('选择照片', { exact: true })
           .setInputFiles({ name: 'color-study.webp', mimeType: 'image/webp', buffer: sampleBytes });
@@ -255,9 +245,9 @@ export async function runSiteEntryChecks({
         await colorPanel.getByRole('button', { name: /^饱和度，/ }).click();
         await colorPanel.getByRole('slider', { name: '饱和度', exact: true }).fill('18');
         const initialPreview = await settledCanvasSnapshot(page, canvas, until);
-        await assertSampleSettings(page);
+        await assertSampleSettings(page, dimensions);
         await capture(page, 'site-studio-retains-sample-adjustments');
-        const initialExport = await exportedImageSnapshot(page, closeDialog);
+        const initialExport = await exportedImageSnapshot(page, closeDialog, dimensions);
         const owner = await canvas.elementHandle();
         assert.ok(owner);
         const previewRasters = { initial: initialPreview };
@@ -275,11 +265,11 @@ export async function runSiteEntryChecks({
           );
           // A normal content click releases the old toolbar's focus without
           // adding tabindex or test hooks to the public page.
-          await page.locator('.about-hero h1').click();
+          await page.locator('.overview-hero h1').click();
           assert.equal(
             await page.evaluate(() => {
               const active = document.activeElement;
-              const heading = document.querySelector('.about-hero h1');
+              const heading = document.querySelector('.overview-hero h1');
               return active === document.body || active === heading || heading?.contains(active);
             }),
             true,
@@ -302,7 +292,7 @@ export async function runSiteEntryChecks({
           }
           await page.keyboard.press('Control+Home');
           await page.waitForFunction(() => scrollY === 0);
-          await page.locator('.about-hero-actions .about-primary').click();
+          await page.locator('.overview-hero .overview-primary').click();
           await page.locator('.site-studio:not([hidden])').waitFor();
           assert.equal(
             await owner.evaluate(
@@ -313,9 +303,9 @@ export async function runSiteEntryChecks({
             true,
           );
           previewRasters.returned = await settledCanvasSnapshot(page, canvas, until);
-          await assertSampleSettings(page);
+          await assertSampleSettings(page, dimensions);
           assert.deepEqual(
-            await exportedImageSnapshot(page, closeDialog),
+            await exportedImageSnapshot(page, closeDialog, dimensions),
             initialExport,
             'Returning to Studio must retain the exact full-resolution edited pixels',
           );
@@ -326,9 +316,9 @@ export async function runSiteEntryChecks({
           await page.locator('.site-studio:not([hidden])').waitFor();
           assert.equal(await owner.evaluate((element) => element.isConnected), true);
           previewRasters.historyReturn = await settledCanvasSnapshot(page, canvas, until);
-          await assertSampleSettings(page);
+          await assertSampleSettings(page, dimensions);
           assert.deepEqual(
-            await exportedImageSnapshot(page, closeDialog),
+            await exportedImageSnapshot(page, closeDialog, dimensions),
             initialExport,
             'History navigation must retain the exact full-resolution edited pixels',
           );
@@ -340,7 +330,7 @@ export async function runSiteEntryChecks({
         assert.deepEqual(
           apiMutations,
           [],
-          'About, local demo and return must not upload or mutate an account',
+          'About, local editing and return must not upload or mutate an account',
         );
         return {
           actualPreviewPixels: true,
@@ -360,9 +350,12 @@ export async function runSiteEntryChecks({
 
     await check('About is scrollable and fits five viewports in all three languages', async () => {
       for (const locale of locales) {
-        await selectLocale(page, '.about-header .language-select select', locale.value);
-        await page.locator('.about-hero h1').getByText(locale.headline, { exact: true }).waitFor();
-        assert.equal(await page.locator('.about-login').innerText(), locale.login);
+        await selectLocale(page, '.overview-header .language-select select', locale.value);
+        await page
+          .locator('.overview-hero h1')
+          .getByText(locale.headline, { exact: true })
+          .waitFor();
+        assert.equal(await page.locator('.overview-sign-in').innerText(), locale.login);
         for (const viewport of viewports) {
           await page.setViewportSize(viewport);
           await page.evaluate(() => scrollTo(0, 0));
@@ -371,10 +364,10 @@ export async function runSiteEntryChecks({
           await page.waitForFunction(() => scrollY > 20);
           const controls = [];
           for (const [name, selector] of [
-            ['language', '.about-header .language-select select'],
-            ['login', '.about-login'],
-            ['start or resume', '.about-hero-actions .about-primary'],
-            ['start own work', '.study-open'],
+            ['language', '.overview-header .language-select select'],
+            ['login', '.overview-sign-in'],
+            ['start or resume', '.overview-hero .overview-primary'],
+            ['end of overview entry', '.overview-end .overview-primary'],
           ])
             controls.push(await measureAboutControl(page, page.locator(selector), name));
           report.siteEntryLayouts.push({
@@ -389,7 +382,6 @@ export async function runSiteEntryChecks({
           await page.mouse.move(12, Math.min(350, viewport.height - 30));
           await page.mouse.wheel(0, -scrollPosition - viewport.height);
           await until(() => page.evaluate(() => scrollY < 2), 'the public page returns to the top');
-          await settleVisibleAbout(page, until);
           await capture(page, `site-about-${locale.value}-${viewport.width}x${viewport.height}`);
         }
       }
@@ -403,7 +395,7 @@ export async function runSiteEntryChecks({
 
     await check('Auth language changes preserve typed fields and fit five viewports', async () => {
       await page.setViewportSize(viewports[0]);
-      await page.locator('.about-login').click();
+      await page.locator('.overview-sign-in').click();
       const dialog = page.locator('.account-page.account-auth');
       await dialog.waitFor();
       assert.equal(

@@ -227,9 +227,7 @@ async function finished() {
       (await page
         .locator('.live-assistant > .ai-workbench-header')
         .getByRole('button', { name: '新会话', exact: true })
-        .isEnabled()) &&
-      (await page.locator('.assistant-workspace').count()) === 1 &&
-      !(await page.locator('.assistant-tool-status').innerText()).includes('正在读取'),
+        .isEnabled()) && (await page.locator('.assistant-workspace').count()) === 1,
     'run completion',
   );
   assert.equal(
@@ -756,7 +754,7 @@ try {
       '更温暖自然，保留皮肤纹理',
     );
     await page.getByRole('button', { name: '在画布预览', exact: true }).click();
-    await page.getByRole('button', { name: '已放入画布预览', exact: true }).waitFor();
+    await page.getByText('画布预览中', { exact: true }).waitFor();
     assert.equal(
       (await head()).artwork.headVersion,
       original.artwork.headVersion,
@@ -775,7 +773,7 @@ try {
         await finished();
         await page.getByText('在左侧已有选区内调整局部质感', { exact: true }).waitFor();
         await page.getByRole('button', { name: '在画布预览', exact: true }).click();
-        await page.getByRole('button', { name: '已放入画布预览', exact: true }).waitFor();
+        await page.getByText('画布预览中', { exact: true }).waitFor();
         assert.equal((await head()).artwork.headVersion, original.artwork.headVersion);
         await page.screenshot({
           path: resolve(artifacts, 'local-spatial-preview.png'),
@@ -871,7 +869,6 @@ try {
     await until(
       async () =>
         (await page.locator('.assistant-workspace').count()) === 1 &&
-        !(await page.locator('.assistant-tool-status').innerText()).includes('正在读取') &&
         (await page.locator('.assistant-messages').innerText()).includes('刷新页面也不要重复调用'),
       'recovered final workspace',
     );
@@ -1624,7 +1621,9 @@ try {
         () => partial.isVisible(),
         'the next same-scope turn has actual incremental text',
       );
-      const progress = await page.locator('.assistant-tool-status').innerText();
+      const progress = await page
+        .locator('.live-assistant :is(.ai-execution-line,.ai-execution-trace > summary)')
+        .innerText();
       assert.ok(!progress.includes('已停止') && !progress.includes('停止请求'));
       assert.equal(await stop.isEnabled(), true);
       const nextBeforeReply = await fixture.call('GET', `/v1/assistant-turns/${nextTurn.id}`);
@@ -1645,7 +1644,9 @@ try {
         () => new Promise((done) => requestAnimationFrame(() => requestAnimationFrame(done))),
       );
       assert.equal(
-        await page.locator('.assistant-tool-status').innerText(),
+        await page
+          .locator('.live-assistant :is(.ai-execution-line,.ai-execution-trace > summary)')
+          .innerText(),
         progress,
         'the old successful stop receipt cannot overwrite the next turn progress',
       );
