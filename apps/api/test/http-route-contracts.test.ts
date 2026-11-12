@@ -252,6 +252,7 @@ test(
       );
 
       const payload = {
+        expectedVersion: 0,
         label: 'Disabled fixture model',
         provider: 'qwen',
         operations: ['edit-plan'],
@@ -267,6 +268,13 @@ test(
       };
       const endpoint = `/v1/ops/models/${modelId}`;
       assert.equal((await f.call('PUT', endpoint, payload, 'owner')).statusCode, 403);
+      const withoutVersion = await f.call(
+        'PUT',
+        endpoint,
+        { ...payload, expectedVersion: undefined },
+        'operator',
+      );
+      assert.equal(withoutVersion.statusCode, 400);
       const invalid = await f.call(
         'PUT',
         endpoint,
@@ -277,9 +285,25 @@ test(
       const model = await f.call('PUT', endpoint, payload, 'operator');
       assert.equal(model.statusCode, 200, model.body);
       assert.equal(model.json().model.version, 1);
-      const changed = await f.call('PUT', endpoint, { ...payload, unitCost: 2 }, 'operator');
+      assert.equal((await f.call('PUT', endpoint, payload, 'operator')).statusCode, 409);
+      const updates = await Promise.all(
+        [2, 3].map((unitCost) =>
+          f.call('PUT', endpoint, { ...payload, expectedVersion: 1, unitCost }, 'operator'),
+        ),
+      );
+      assert.deepEqual(updates.map((reply) => reply.statusCode).sort(), [200, 409]);
+      const changed = updates.find((reply) => reply.statusCode === 200)!;
       assert.equal(changed.statusCode, 200, changed.body);
       assert.equal(changed.json().model.version, 2);
+      assert.equal(
+        updates.find((reply) => reply.statusCode === 409)!.json().error.code,
+        'MODEL_CONFIG_CHANGED',
+      );
+      const current = (await f.call('GET', '/v1/ops/models', undefined, 'operator'))
+        .json()
+        .models.find(({ id }: { id: string }) => id === modelId);
+      assert.equal(current.version, 2);
+      assert.equal(current.unitCost, changed.json().model.unitCost);
       const publicModels = (await f.app.inject('/v1/models')).json().models;
       assert.ok(!publicModels.some(({ id }: { id: string }) => id === modelId));
       assert.equal(
@@ -290,11 +314,13 @@ test(
       assert.equal(invited.statusCode, 201, invited.body);
       inviteId = invited.json().invitation.id;
       const log = (await f.call('GET', '/v1/ops/audit', undefined, 'operator')).json().entries;
-      assert.ok(
-        log.some(
-          ({ action, targetId }: { action: string; targetId: string }) =>
+      assert.deepEqual(
+        log
+          .filter(({ action, targetId }: { action: string; targetId: string }) =>
             action === 'operator.model_config' && targetId === modelId,
-        ),
+          )
+          .map(({ detail }: { detail: { version: number } }) => detail.version),
+        [2, 1],
       );
       const resolve = `/v1/ops/ai-jobs/${randomUUID()}/resolve`;
       assert.equal((await f.call('POST', resolve, {}, 'owner')).statusCode, 403);
