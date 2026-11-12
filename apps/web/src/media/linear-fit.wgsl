@@ -2,6 +2,7 @@ struct Geometry {
   // Original width/height and display width/height.
   size: vec4<u32>,
   // Integer average factor, reduced axis length, Lanczos coefficient count.
+  // The last y lane indicates signed float32 source samples.
   y: vec4<u32>,
   x: vec4<u32>,
 }
@@ -17,7 +18,7 @@ struct Geometry {
 @group(0) @binding(8) var<storage, read_write> output: array<vec2<u32>>;
 @group(0) @binding(9) var<storage, read> display: array<vec2<u32>>;
 
-// The versioned recipe is compiled by raw-fit-parameters.ts. Keep the region
+// The versioned recipe is compiled by linear-fit-parameters.ts. Keep the region
 // and curve order of the scene-linear reference engine.
 const curveOffset = 16u;
 const curveStride = 32u;
@@ -25,6 +26,9 @@ const regionOffset = 144u;
 const regionStride = 20u;
 
 fn sample(index: u32) -> f32 {
+  if (geo.y.w != 0u) {
+    return bitcast<f32>(sourceCodes[index]);
+  }
   let word = sourceCodes[index / 2u];
   let code = (word >> ((index % 2u) * 16u)) & 65535u;
   return normalized[code];

@@ -1,7 +1,9 @@
 import { sha256 } from '@noble/hashes/sha2.js';
 import { bytesToHex } from '@noble/hashes/utils.js';
 
-export interface RawMaster {
+export type FitMasterEncoding = 'camera-raw' | 'display-hdr';
+
+export interface LinearMaster {
   width: number;
   height: number;
   bytes: number;
@@ -79,11 +81,11 @@ class MasterStream {
   }
 }
 
-async function readRawHeader(input: MasterStream, source: RawMaster) {
+async function readMasterHeader(input: MasterStream, source: LinearMaster) {
   const signature = view(await input.take(8));
   // The server writes one level of single-part, 256px tiled float RGB EXR.
   if (signature.getUint32(0, true) !== 20_000_630 || (signature.getUint32(4, true) & ~1024) !== 514)
-    throw new Error('Unsupported retained RAW master container');
+    throw new Error('Unsupported retained linear master container');
   const attributes = new Map<string, { type: string; data: Uint8Array }>();
   for (;;) {
     const name = await input.fieldName();
@@ -127,7 +129,7 @@ async function readRawHeader(input: MasterStream, source: RawMaster) {
       format.getInt32(8, true) !== 1 ||
       format.getInt32(12, true) !== 1
     )
-      throw new Error('Unsupported retained RAW master channels');
+      throw new Error('Unsupported retained linear master channels');
     indexes.push(index);
   }
   if (channels[54] !== 0) throw new Error('Invalid retained EXR channel list');
@@ -162,12 +164,13 @@ export function normalizedRawCodes() {
   return Float32Array.from({ length: 65_536 }, (_, code) => code / 65_535);
 }
 
-/** Verify the immutable EXR and pack each original pixel without rounding away
- * float precision. The server RAW master stores exactly normalized uint16. */
-export async function streamRawMaster(
+/** Verify the immutable EXR. Camera RAW uses reversible uint16 packing.
+ * Display HDR uploads every signed float32 channel as its original bits. */
+export async function streamLinearMaster(
   response: Response,
-  source: RawMaster,
-  onRows: (top: number, data: Uint16Array<ArrayBuffer>) => Promise<void>,
+  source: LinearMaster,
+  encoding: FitMasterEncoding,
+  onRows: (top: number, data: Uint16Array<ArrayBuffer> | Uint32Array<ArrayBuffer>) => Promise<void>,
 ) {
   if (
     !response.ok ||
@@ -181,7 +184,7 @@ export async function streamRawMaster(
     source.width * source.height > 64_000_000 ||
     source.bytes > source.width * source.height * 12 + HEADER_LIMIT
   )
-    throw new Error('Invalid retained RAW master response');
+    throw new Error('Invalid retained linear master response');
   const input = new MasterStream(response.body, source.bytes);
   const codeBits = new Uint32Array(normalizedRawCodes().buffer);
   const sampleBits = new Uint32Array(1);
@@ -190,13 +193,16 @@ export async function streamRawMaster(
   const tileRows = Math.ceil(height / TILE_EDGE);
   const tileColumns = Math.ceil(width / TILE_EDGE);
   try {
-    const channels = await readRawHeader(input, source);
+    const channels = await readMasterHeader(input, source);
     const offsets = view(await input.take(tileRows * tileColumns * 8));
     for (let row = 0; row < tileRows; row++) {
       const top = row * TILE_EDGE;
       const bandHeight = Math.min(TILE_EDGE, height - top);
       const count = width * bandHeight * 3;
-      const band = new Uint16Array(count + (count % 2)); // GPU writes are 4-byte aligned.
+      const band =
+        encoding === 'camera-raw'
+          ? new Uint16Array(count + (count % 2)) // GPU writes are 4-byte aligned.
+          : new Uint32Array(count);
       for (let col = 0; col < tileColumns; col++) {
         const left = col * TILE_EDGE;
         const tileWidth = Math.min(TILE_EDGE, width - left);
@@ -231,10 +237,16 @@ export async function streamRawMaster(
                   (decoded[i + half]! << 8) |
                   (decoded[i + 1]! << 16) |
                   (decoded[i + half + 1]! << 24);
-              const code = Math.round(sampleFloat[0]! * 65_535);
-              if (codeBits[code] !== sampleBits[0])
-                throw new Error('Retained RAW sample cannot be packed without loss');
-              band[target] = code;
+              if (band instanceof Uint16Array) {
+                const code = Math.round(sampleFloat[0]! * 65_535);
+                if (codeBits[code] !== sampleBits[0])
+                  throw new Error('Retained RAW sample cannot be packed without loss');
+                band[target] = code;
+              } else {
+                if (!Number.isFinite(sampleFloat[0]))
+                  throw new Error('Retained HDR sample is non-finite');
+                band[target] = sampleBits[0]!;
+              }
             }
           }
         }

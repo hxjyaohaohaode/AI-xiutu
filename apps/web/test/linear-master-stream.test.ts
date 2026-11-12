@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import { createHash } from 'node:crypto';
 import test from 'node:test';
 import { deflateSync } from 'node:zlib';
-import { streamRawMaster } from '../src/media/raw-master-stream';
+import { streamLinearMaster } from '../src/media/linear-master-stream';
 
 const integers = (...values: number[]) => {
   const data = Buffer.alloc(values.length * 4);
@@ -83,7 +83,7 @@ test('RAW master streaming reconstructs plain and ZIP tiles at exact uint16 prec
     const pixels = Float32Array.from(codes, (code) => code / 65535);
     const { source, response } = retainedTile(width, height, pixels, zip);
     let calls = 0;
-    await streamRawMaster(response(), source, async (row, band) => {
+    await streamLinearMaster(response(), source, 'camera-raw', async (row, band) => {
       assert.equal(row, 0);
       assert.deepEqual(band.subarray(0, codes.length), codes);
       assert.equal(band.byteLength % 4, 0);
@@ -91,7 +91,12 @@ test('RAW master streaming reconstructs plain and ZIP tiles at exact uint16 prec
     });
     assert.equal(calls, 1);
     await assert.rejects(
-      streamRawMaster(response(), { ...source, sha256: '0'.repeat(64) }, async () => {}),
+      streamLinearMaster(
+        response(),
+        { ...source, sha256: '0'.repeat(64) },
+        'camera-raw',
+        async () => {},
+      ),
       /checksum mismatch/,
     );
   }
@@ -100,9 +105,29 @@ test('RAW master streaming reconstructs plain and ZIP tiles at exact uint16 prec
 test('RAW master streaming refuses float samples outside the reversible RAW encoding', async () => {
   const { source, response } = retainedTile(1, 1, Float32Array.of(0.125, 0, 1), false);
   await assert.rejects(
-    streamRawMaster(response(), source, async () =>
+    streamLinearMaster(response(), source, 'camera-raw', async () =>
       assert.fail('Invalid tile must never be uploaded'),
     ),
     /cannot be packed without loss/,
+  );
+});
+
+test('display HDR master streaming retains signed float bits and highlight headroom', async () => {
+  const pixels = Float32Array.of(-0.125, 4, 18.75, 0.234, 1, 0);
+  const { source, response } = retainedTile(2, 1, pixels, false);
+  let calls = 0;
+  await streamLinearMaster(response(), source, 'display-hdr', async (row, band) => {
+    assert.equal(row, 0);
+    assert.deepEqual(band, new Uint32Array(pixels.buffer));
+    calls++;
+  });
+  assert.equal(calls, 1);
+
+  const invalid = retainedTile(1, 1, Float32Array.of(Infinity, 0, 0), false);
+  await assert.rejects(
+    streamLinearMaster(invalid.response(), invalid.source, 'display-hdr', async () =>
+      assert.fail('Invalid tile must never be uploaded'),
+    ),
+    /sample is non-finite/,
   );
 });
