@@ -192,7 +192,8 @@ try {
             operations: [operation],
             label: operation === 'assistant-turn' ? '本地团队思考模型' : '本地 Live 协议',
             unitCost: 5,
-            maxSeconds: 30,
+            // Responsive checks and screenshots run while the disposable call is active.
+            maxSeconds: 180,
             imageInput: true,
             webSearch: operation === 'assistant-turn',
           }),

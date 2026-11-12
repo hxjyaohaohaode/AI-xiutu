@@ -33,11 +33,18 @@
   }
   .studio-workspace .floating-topbar .mobile-view-trigger {
     min-width: 44px;
+    max-width: 100%;
     margin-inline-start: 0;
     padding-inline: 5px;
     gap: 3px;
     font-size: 11px;
     background: transparent;
+  }
+  .studio-workspace .floating-topbar .mobile-view-trigger > span {
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
   }
   .studio-workspace .floating-topbar :is(.icon-button, .workspace-top-actions > .button) > svg {
     width: 18px;
@@ -246,14 +253,5 @@
     display: flex;
     align-items: center;
     justify-content: flex-end;
-  }
-}
-
-@media (max-width: 359px) {
-  .studio-workspace .floating-topbar .mobile-view-trigger > span {
-    max-width: 50px;
-    overflow: hidden;
-    text-overflow: ellipsis;
-    white-space: nowrap;
   }
 }

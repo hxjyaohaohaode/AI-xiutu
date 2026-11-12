@@ -104,11 +104,17 @@ async function testCase(name, run) {
 }
 async function selectProject(target) {
   const studioUrl = `${origin}/#/studio`;
+  const sessionResponse = target.waitForResponse(
+    (response) =>
+      new URL(response.url()).pathname === '/v1/session' && response.request().method() === 'GET',
+  );
   // Reopening the fixture is a document reset. Navigating to the same hash
   // can retain the current editor, which is not the refresh these cases test.
   const navigation =
     target.url() === studioUrl ? await target.reload() : await target.goto(studioUrl);
   assert.ok(navigation?.ok(), 'Project setup must load a fresh studio document');
+  const session = await sessionResponse;
+  assert.ok(session.ok() && (await session.json()).user, 'The browser fixture is signed in');
   await target.getByRole('button', { name: '打开空间与项目', exact: true }).click();
   await target
     .locator('dialog.sidebar-navigation-modal')
@@ -820,7 +826,7 @@ try {
       async () => (await head()).artwork.headVersion === original.artwork.headVersion + 1,
       'automatic immutable revision',
     );
-    await page.getByRole('button', { name: '已保存新版本', exact: true }).waitFor();
+    await page.getByRole('status').filter({ hasText: /^已保存新版本$/ }).waitFor();
     const grant = (
       await fixture.db.query(
         'SELECT * FROM assistant_grants WHERE actor_id=$1 AND mode=$2 ORDER BY created_at DESC LIMIT 1',
@@ -976,8 +982,9 @@ try {
         assert.equal(await page.locator('.live-assistant .ai-pending-strip').count(), 0);
         assert.equal(await input.isEditable(), false, 'the original request still locks sending');
         assert.equal(
-          await page.getByRole('button', { name: '发送协作请求', exact: true }).isEnabled(),
-          false,
+          await page.getByRole('button', { name: '发送协作请求', exact: true }).count(),
+          0,
+          'the send control is replaced by the stop action during the same request',
         );
         const retainedOwner = await page.locator('.live-assistant').elementHandle();
         assert.ok(retainedOwner);

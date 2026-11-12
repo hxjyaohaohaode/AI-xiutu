@@ -419,6 +419,10 @@
   }
 }
 @media (max-width: 759px) {
+  /* The phone always uses the route menu, so it needs no offscreen tab measurement. */
+  .studio-workspace .workspace-view-navigation .compact-view-tabs {
+    display: none;
+  }
   .studio-workspace .floating-topbar {
     height: 48px;
     min-height: 48px;
@@ -548,7 +552,7 @@
     padding-inline: 3px;
     gap: 2px;
   }
-  .studio-workspace .workspace-view-navigation .mobile-view-trigger > span {
+  .studio-workspace .workspace-view-navigation .mobile-view-trigger > :is(span, svg:last-child) {
     display: none;
   }
 }

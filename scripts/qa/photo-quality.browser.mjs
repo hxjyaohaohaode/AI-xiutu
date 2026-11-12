@@ -180,6 +180,7 @@ async function checkLocalCutout(browser, origin, image, view) {
       .getByRole('button', { name: '美颜', exact: true });
     if ((await beauty.getAttribute('aria-pressed')) !== 'true') await beauty.click();
     await page.getByRole('button', { name: '识别照片中的人物', exact: true }).click();
+    await page.locator('summary').filter({ hasText: /^选区与抠图$/ }).click();
     const button = page.getByRole('button', { name: '从原图提取人物素材', exact: true });
     await button.waitFor({ timeout: 60000 });
     if (view.fine) {

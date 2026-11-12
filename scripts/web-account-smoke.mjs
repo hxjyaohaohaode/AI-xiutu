@@ -205,7 +205,7 @@ function workspaceLogin(page) {
     .and(page.getByRole('button', { name: '登录创作空间', exact: true }));
 }
 async function openNavigation(page) {
-  const sidebar = page.getByRole('complementary', { name: '空间与项目', exact: true });
+  const sidebar = page.locator('dialog.sidebar-navigation-modal');
   if (!(await sidebar.isVisible()))
     await page.getByRole('button', { name: '打开空间与项目', exact: true }).click();
   await sidebar.waitFor();
@@ -857,8 +857,10 @@ try {
           'true',
         );
       }
-      await page.getByRole('button', { name: '注销账号', exact: true }).click();
-      await page.getByTestId('account-deletion-status').waitFor();
+      await page
+        .getByTestId('account-deletion-status')
+        .getByRole('heading', { name: '注销账号', exact: true })
+        .waitFor();
       assert.match(
         await page.getByTestId('account-deletion-status').innerText(),
         /暂不支持|尚未|未开放/,

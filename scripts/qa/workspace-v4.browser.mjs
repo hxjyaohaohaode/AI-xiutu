@@ -111,16 +111,16 @@ async function caseRun(name, run) {
 }
 async function changeView(page, id, label) {
   const compact = page.getByRole('button', { name: '切换工作视图', exact: true });
+  const tab = page
+    .getByRole('navigation', { name: '工作视图', exact: true })
+    .getByRole('button', { name: label, exact: true });
+  await compact.or(tab).first().waitFor();
   if (await compact.isVisible()) {
     await compact.click();
     const dialog = page.getByRole('dialog', { name: '工作视图', exact: true });
     await dialog.locator(`button[data-view="${id}"]`).click();
     await dialog.waitFor({ state: 'hidden' });
-  } else
-    await page
-      .getByRole('navigation', { name: '工作视图', exact: true })
-      .getByRole('button', { name: label, exact: true })
-      .click();
+  } else await tab.click();
 }
 async function navigationClosed(page) {
   const sidebar = page.locator('dialog.sidebar-navigation-modal');
@@ -1358,8 +1358,7 @@ try {
         );
         // Focus outside number/text fields so Ctrl+Z exercises product history
         // rather than the browser's input undo behavior.
-        const grip = page.locator('.free-panel[aria-hidden="false"] .panel-title-drag');
-        await grip.focus();
+        await page.getByRole('button', { name: '撤销本次编辑', exact: true }).focus();
         await page.keyboard.press('Control+z');
         await eventually(
           async () =>
@@ -1498,10 +1497,13 @@ try {
         const endpoint = { x: 0.25 + 0.5 / width, y: 0.65 };
         const closeTools = async () => {
           await tool(page, '绘制');
-          await page
-            .locator('.free-panel[aria-hidden="false"]')
-            .getByRole('button', { name: /^收起.*可从工具栏重新打开$/ })
-            .click();
+          const panel = page.locator('.free-panel[aria-hidden="false"]');
+          if (viewport.width < 760) {
+            await panel.getByRole('button', { name: '面板位置与连续尺寸', exact: true }).click();
+            await panel.getByRole('button', { name: '收起工具面板', exact: true }).click();
+          } else {
+            await panel.getByRole('button', { name: /^收起.*可从工具栏重新打开$/ }).click();
+          }
           await imageReady(page);
           await page.evaluate(
             () => new Promise((done) => requestAnimationFrame(() => requestAnimationFrame(done))),
@@ -1595,8 +1597,7 @@ try {
         );
         assert.notEqual(exported.evidence.rgbaSha256, sha256(pixels));
         await tool(page, '绘制');
-        const grip = page.locator('.free-panel[aria-hidden="false"] .panel-title-drag');
-        await grip.focus();
+        await page.getByRole('button', { name: '撤销本次编辑', exact: true }).focus();
         await page.keyboard.press('Control+z');
         assert.deepEqual(
           await recipeDownload(page),
@@ -2615,7 +2616,7 @@ try {
         );
       }
       await a.page.screenshot({ path: join(artifacts, 'sidebar-close-phone.png'), fullPage: true });
-      await sidebar.getByRole('button', { name: '关闭导航', exact: true }).click();
+      await sidebar.getByRole('button', { name: '关闭窗口', exact: true }).click();
       const closedNavigation = await navigationClosed(a.page);
       await a.page.getByLabel('文档内容', { exact: true }).click({ trial: true });
       assert.equal(await a.page.getByLabel('文档内容', { exact: true }).inputValue(), editedBody);

@@ -1120,6 +1120,9 @@
    Preserve the input, action targets, execution status and price; recover space
    from their surrounding padding instead of letting the footer escape. */
 @container ai-conversation (max-height: 200px) {
+  .ai-workbench-v2 > .live-assistant[data-in-call='true'] > .assistant-call {
+    padding-block: 5px;
+  }
   .ai-workbench-v2 .ai-workbench-header {
     min-height: 38px;
     padding-block: 0;

@@ -561,6 +561,10 @@
   .studio-workspace .canvas-stage .canvas-secondary-controls[data-open='true'] {
     display: grid;
   }
+  .studio-workspace .canvas-stage .canvas-secondary-controls .pixel-scale-button {
+    display: grid;
+    place-items: center;
+  }
   .studio-workspace .canvas-stage .canvas-secondary-controls .canvas-touch-action {
     display: flex;
     grid-column: span 2;
