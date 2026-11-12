@@ -1115,13 +1115,16 @@ async function mobileEditingFlow() {
     await sourceTrigger.press('ArrowDown');
     const sources = chat.locator('.ai-prompt-source-menu:popover-open');
     await sources.waitFor();
-    assert.equal(await sourceTrigger.getAttribute('aria-expanded'), 'true');
+    await until(async () => (await sourceTrigger.getAttribute('aria-expanded')) === 'true',
+      'the sources trigger reflects the native popover open state');
     const sourceMenu = await sources.boundingBox();
     const promptSurface = await chat.locator('.ai-composer-surface:visible').boundingBox();
     assert.ok(sourceMenu.y + sourceMenu.height < promptSurface.y, 'the sources menu opens above the prompt bar');
     await capture(page, 'interactions/mobile-ai-sources.png');
     await page.keyboard.press('Escape');
     await sources.waitFor({ state: 'hidden' });
+    await until(async () => (await sourceTrigger.getAttribute('aria-expanded')) === 'false',
+      'the sources trigger reflects the native popover closed state');
     await screenshot.waitFor();
     const back = chat.getByRole('button', { name: '返回编辑器', exact: true });
     await back.click();
