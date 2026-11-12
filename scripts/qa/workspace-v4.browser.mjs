@@ -2529,6 +2529,11 @@ try {
     await a.page.setViewportSize({ width: 390, height: 844 });
     await changeView(a.page, 'docs', '文档');
     const list = a.page.getByRole('complementary', { name: '项目文档列表', exact: true });
+    const receipt = a.page.locator('.document-editor-label');
+    const waitForSavedVersion = async (version) => {
+      await receipt.getByText(`版本 ${version}`, { exact: true }).waitFor();
+      await receipt.getByText('已保存', { exact: true }).waitFor();
+    };
     await list.getByRole('button', { name: '新建文档', exact: true }).click();
     const title = `CI phone document ${randomUUID().slice(0, 8)}`;
     const initialBody = '真实手机文档初稿。';
@@ -2551,13 +2556,7 @@ try {
       a.page.getByRole('button', { name: '保存文档', exact: true }).click(),
     ]);
     assert.equal(createdResponse.status(), 201);
-    await eventually(
-      async () =>
-        (await a.page.locator('.document-editor footer > span').innerText()).includes(
-          '已保存 · 版本 1',
-        ),
-      'first document acknowledgement settles',
-    );
+    await waitForSavedVersion(1);
     const document = await readDocument((item) => item.title === title);
     assert.equal(document.version, 1);
     assert.equal(document.body, initialBody);
@@ -2635,13 +2634,7 @@ try {
         body: editedBody,
         expectedVersion: 1,
       });
-      await eventually(
-        async () =>
-          (await a.page.locator('.document-editor footer > span').innerText()).includes(
-            '已保存 · 版本 2',
-          ),
-        'CAS save acknowledgement settles',
-      );
+      await waitForSavedVersion(2);
       const saved = await readDocument((item) => item.id === document.id);
       assert.equal(saved.version, 2);
       assert.equal(saved.body, editedBody);
@@ -2680,11 +2673,11 @@ try {
         theme: document.documentElement.dataset.theme,
         preference: localStorage.getItem('image-workspace:theme'),
       }));
-    const surfaceEvidence = async (locator, token) =>
+    const surfaceEvidence = async (locator, background) =>
       eventually(async () => {
-        const value = await locator.evaluate((element, token) => {
+        const value = await locator.evaluate((element, background) => {
           const probe = document.createElement('span');
-          probe.style.backgroundColor = `var(${token})`;
+          probe.style.backgroundColor = background;
           probe.style.color = 'var(--ink)';
           document.body.append(probe);
           const expected = getComputedStyle(probe);
@@ -2697,12 +2690,12 @@ try {
           };
           probe.remove();
           return result;
-        }, token);
+        }, background);
         return value.background === value.expectedBackground &&
           value.foreground === value.expectedForeground
           ? value
           : false;
-      }, `the ${token} surface finishes its theme transition`);
+      }, `the ${background} surface finishes its theme transition`);
     const assertSurface = (value, label) => {
       assert.equal(
         value.background,
@@ -2730,24 +2723,24 @@ try {
       const value = await readTheme();
       return value.theme === 'dark' && value.preference === 'dark';
     }, 'dark preference is stored at document scope');
-    const darkDialog = await surfaceEvidence(settings, '--surface-raised');
+    const darkDialog = await surfaceEvidence(settings, 'var(--surface-raised)');
     assertSurface(darkDialog, 'settings dialog');
     await page.screenshot({ path: join(artifacts, 'theme-dark-settings-phone.png') });
     await settings.getByRole('button', { name: '关闭窗口', exact: true }).click();
     await settings.waitFor({ state: 'hidden' });
     await page.getByRole('button', { name: '切换工作视图', exact: true }).click();
     const navigation = page.getByRole('dialog', { name: '工作视图', exact: true });
-    const darkNavigation = await surfaceEvidence(navigation, '--surface-raised');
+    const darkNavigation = await surfaceEvidence(navigation, 'var(--surface-raised)');
     assertSurface(darkNavigation, 'navigation dialog');
     await navigation.locator('button[data-view="usage"]').click();
     await navigation.waitFor({ state: 'hidden' });
     const usage = page.getByRole('region', { name: '用量与额度历史', exact: true });
-    const usageFilter = usage.locator('.usage-filter-card');
+    const usageFilter = usage.getByLabel('开始日期', { exact: true });
     const usageCapacity = usage.locator('.usage-capacity');
     await usageCapacity.waitFor();
-    const darkUsageFilter = await surfaceEvidence(usageFilter, '--surface-secondary');
-    assertSurface(darkUsageFilter, 'usage filter card');
-    const darkUsage = await surfaceEvidence(usageCapacity, '--surface');
+    const darkUsageFilter = await surfaceEvidence(usageFilter, 'var(--surface-secondary)');
+    assertSurface(darkUsageFilter, 'usage date filter');
+    const darkUsage = await surfaceEvidence(usageCapacity, 'transparent');
     assertSurface(darkUsage, 'usage capacity card');
     assert.deepEqual(await readTheme(), { theme: 'dark', preference: 'dark' });
     await page.screenshot({ path: join(artifacts, 'theme-dark-usage-phone.png') });
@@ -2771,7 +2764,7 @@ try {
       async () => (await readTheme()).theme === 'light',
       'light preference applies to the open dialog',
     );
-    const lightDialog = await surfaceEvidence(settings, '--surface-raised');
+    const lightDialog = await surfaceEvidence(settings, 'var(--surface-raised)');
     assertSurface(lightDialog, 'light settings dialog');
     assert.notEqual(lightDialog.background, darkDialog.background);
     await settings.getByRole('button', { name: '跟随系统', exact: true }).click();
@@ -2789,10 +2782,12 @@ try {
     await settings.waitFor({ state: 'hidden' });
     await changeView(page, 'usage', '用量');
     await usageCapacity.waitFor();
-    const lightUsageFilter = await surfaceEvidence(usageFilter, '--surface-secondary');
-    assertSurface(lightUsageFilter, 'light usage filter card');
-    const lightUsage = await surfaceEvidence(usageCapacity, '--surface');
+    const lightUsageFilter = await surfaceEvidence(usageFilter, 'var(--surface-secondary)');
+    assertSurface(lightUsageFilter, 'light usage date filter');
+    const lightUsage = await surfaceEvidence(usageCapacity, 'transparent');
     assertSurface(lightUsage, 'light usage capacity card');
+    assert.notEqual(darkUsageFilter.background, lightUsageFilter.background);
+    assert.notEqual(darkUsage.foreground, lightUsage.foreground);
     await page.screenshot({ path: join(artifacts, 'theme-light-usage-desktop.png') });
     return {
       darkDialog,

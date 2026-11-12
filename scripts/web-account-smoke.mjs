@@ -215,7 +215,11 @@ async function openAuth(page) {
   currentPage = page;
   const topbar = workspaceLogin(page);
   if (await topbar.isVisible()) await topbar.click();
-  else await (await openNavigation(page)).locator('button.account-login').click();
+  else {
+    const sidebar = await openNavigation(page);
+    await sidebar.locator('button.account-login').click();
+    await sidebar.and(page.locator('dialog[open]')).waitFor({ state: 'detached' });
+  }
   const dialog = page.getByRole('region', { name: '登录工作空间', exact: true });
   await dialog.waitFor();
   await authControl(page, 'phone').waitFor();
@@ -245,12 +249,11 @@ async function openAccount(page, name = primaryName) {
   if (!(await dialog.isVisible())) {
     const topbar = page.getByRole('button', { name: `账户：${name}`, exact: true });
     if (await topbar.isVisible()) await topbar.click();
-    else
-      await (
-        await openNavigation(page)
-      )
-        .getByRole('button', { name: `账号与使用：${name}`, exact: true })
-        .click();
+    else {
+      const sidebar = await openNavigation(page);
+      await sidebar.getByRole('button', { name: `账号与使用：${name}`, exact: true }).click();
+      await sidebar.and(page.locator('dialog[open]')).waitFor({ state: 'detached' });
+    }
   }
   await page.getByTestId('account-center').waitFor();
   return dialog;
@@ -434,6 +437,7 @@ async function measureReachable(page, target, name) {
       clip,
       ancestors,
       hit: !!top && (top === element || element.contains(top)),
+      hitTarget: top?.closest('dialog')?.className ?? top?.tagName ?? null,
       viewport: { width: innerWidth, height: innerHeight },
       horizontalOverflow:
         document.documentElement.scrollWidth - document.documentElement.clientWidth,
@@ -452,7 +456,10 @@ async function measureReachable(page, target, name) {
       r.bottom <= c.bottom + 0.5,
     `${name} must lie inside all actual clipping ancestors`,
   );
-  assert.equal(geometry.hit, true, `${name} must be hit at its visible center`);
+  assert.ok(
+    geometry.hit,
+    `${name} must be hit at its visible center at ${geometry.viewport.width}×${geometry.viewport.height}; hit ${geometry.hitTarget}`,
+  );
   assert.ok(geometry.horizontalOverflow <= 0.5, `${name} page must not overflow horizontally`);
   for (let i = 0; i < before.length; i++) {
     const next = geometry.ancestors[i],
