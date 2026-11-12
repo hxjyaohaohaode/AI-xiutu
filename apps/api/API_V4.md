@@ -197,8 +197,12 @@ source-normalized `radial` (including rotated ellipse, rectangle and diamond)
 or `linear` selection shape. Regions blend adjusted RGB in linear light after
 global curves and before optional tone mapping, using full source pixel centers
 for previews and exports. Both versions return `422 MEDIA_FLOAT_INPUT` with `master16`.
-Whole-image grading supports up to 16,777,216
-SDR master pixels or 64,000,000 linear master pixels. PNG/TIFF apply the requested
+Whole-image `master16` grading supports up to 16,777,216 pixels by default.
+For a retained SDR JPEG with the native runtime, `master16` supports up to
+64,000,000 pixels with `scene-linear-v1`. `editor.precisionEditing.maxPixels`
+returns the limit for the individual asset. The capability catalog publishes
+the optional higher JPEG limit in `precisionEditing.maxSdrJpegPixels`.
+`linear-master` supports up to 64,000,000 pixels. PNG/TIFF apply the requested
 grade in the selected input domain and encode sRGB at 16 bits. EXR32 preserves
 signed float values, headroom, associated alpha and the retained EXR windows.
 Preview and export share the native development math. The server rechecks the

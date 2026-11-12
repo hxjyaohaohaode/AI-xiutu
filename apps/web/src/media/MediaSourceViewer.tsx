@@ -2,6 +2,7 @@ import { t } from '../i18n';
 import { useEffect, useRef, useState } from 'react';
 import {
   hasDisplayHdr,
+  isSdrJpegSource,
   type MediaDescriptorV1,
   type MediaGradeRevision,
   type MediaPrecisionInput,
@@ -191,16 +192,25 @@ export function MediaSourceViewer({ assetId }: { assetId: string }) {
   const fittedEdge = sourceWindow
     ? Math.min(maxEdge ?? 2048, Math.max(128, Math.ceil(windowEdge * sourceToDisplay)))
     : overviewEdge;
-  const fitEncoding =
+  const sdrMaster =
+    wantsGrade &&
+    precisionInput === 'master16' &&
+    descriptor &&
+    isSdrJpegSource(descriptor.original)
+      ? descriptor.master
+      : undefined;
+  const floatEncoding =
     descriptor?.original.sampleEncoding === 'sensor-raw'
       ? 'camera-raw'
       : descriptor && hasDisplayHdr(descriptor.original)
         ? 'display-hdr'
         : undefined;
   const fitMaster =
-    wantsGrade && precisionInput === 'linear-master' && fitEncoding
+    sdrMaster ??
+    (wantsGrade && precisionInput === 'linear-master' && floatEncoding
       ? descriptor?.linearMaster
-      : undefined;
+      : undefined);
+  const fitEncoding = sdrMaster ? 'srgb-master' : floatEncoding;
   const gpu = useLinearFitPreview(
     assetId,
     fitMaster,
@@ -237,7 +247,8 @@ export function MediaSourceViewer({ assetId }: { assetId: string }) {
           fitRegion,
         })
       : null;
-  const nativeLinearWindow = !!(region || fitRegion) && wantsGrade && precisionInput === 'linear-master';
+  const nativeLinearWindow =
+    !!(region || fitRegion) && wantsGrade && precisionInput === 'linear-master';
   const preview = useMasterPreview(
     assetId,
     previewBody,
@@ -255,7 +266,9 @@ export function MediaSourceViewer({ assetId }: { assetId: string }) {
   const previewRegion = frame?.region ?? descriptor?.master;
   const gpuBounds = sourceWindow ?? fitMaster;
   const tileList =
-    descriptor && tiles ? visibleTiles({ ...descriptor.master, ...tiles }, view, size, pixelRatio) : [];
+    descriptor && tiles
+      ? visibleTiles({ ...descriptor.master, ...tiles }, view, size, pixelRatio)
+      : [];
   useEffect(() => {
     const element = root.current;
     if (!element || !descriptor) return;

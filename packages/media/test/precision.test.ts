@@ -6,7 +6,7 @@ import { tmpdir } from 'node:os';
 import { execFile } from 'node:child_process';
 import { promisify } from 'node:util';
 import { fileURLToPath } from 'node:url';
-import sharp from 'sharp';
+import sharp, { type Sharp } from 'sharp';
 import {
   NEUTRAL_PRECISION_EDIT,
   compilePrecisionEdit,
@@ -35,6 +35,7 @@ const execute = (file: string, args: string[]) =>
       OPENIMAGEIO_OPTIONS: 'exr_threads=2',
     },
   });
+
 test(
   'HEIC PQ and HLG preserve 10- and 12-bit code values through signed float development',
   { skip: !process.env.MEDIA_QA_PYTHON || !process.env.MEDIA_HEIC_DECODER },
@@ -405,6 +406,69 @@ test('native master grading exports true 16bit edited samples, retains immutable
     await rm(dir, { recursive: true, force: true });
   }
 });
+
+test(
+  'large SDR JPEG master grading preserves the native window samples in the full 16-bit export',
+  { skip: !process.env.MEDIA_QA_PYTHON },
+  async () => {
+    const dir = await mkdtemp(join(tmpdir(), 'xiutu-large-sdr-'));
+    const width = 4097,
+      height = 4097;
+    try {
+      const inputPath = join(dir, 'input.jpg'),
+        workDir = join(dir, 'media');
+      const pixels = Buffer.alloc(width * height * 3);
+      for (let y = 0, offset = 0; y < height; y++) {
+        for (let x = 0; x < width; x++) {
+          pixels[offset++] = (x * 5 + y * 11) % 256;
+          pixels[offset++] = (x * 9 + y * 3) % 256;
+          pixels[offset++] = (x * 7 + y * 13) % 256;
+        }
+      }
+      await sharp(pixels, { raw: { width, height, channels: 3 } }).jpeg().toFile(inputPath);
+      const descriptor = await processMedia({ inputPath, workDir, options: { generateTiles: false } });
+      const precisionEdit = {
+        ...NEUTRAL_PRECISION_EDIT,
+        exposure: 0.7,
+        temperature: 17,
+        tint: -9,
+        contrast: 22,
+        saturation: 19,
+        shadows: 9,
+        highlights: -27,
+        toneMap: 'reinhard',
+      } as const;
+      const request = { workDir, format: 'png16', precisionInput: 'master16', precisionEdit } as const;
+      const outputPath = join(dir, 'full.png');
+      await assert.rejects(exportMedia({ ...request, outputPath }), { code: 'limit' });
+      const full = await exportMedia({
+        ...request,
+        outputPath,
+        options: { pythonExecutable: process.env.MEDIA_QA_PYTHON },
+      });
+      assert.deepEqual([full.width, full.height, full.bitDepth], [width, height, 16]);
+      assert.equal(full.sourceSha256, descriptor.sourceSha256);
+      assert.ok((await sharp(outputPath).metadata()).icc);
+      const region = { left: 3710, top: 3678, width: 387, height: 419 };
+      const windowPath = join(dir, 'window.png');
+      const window = await exportMedia({
+        ...request,
+        outputPath: windowPath,
+        preview: { maxEdge: 512, region },
+      });
+      assert.equal(full.precisionEdit?.sha256, window.precisionEdit?.sha256);
+      const raw = (source: Sharp) =>
+        source.removeAlpha().toColourspace('rgb16').raw({ depth: 'ushort' }).toBuffer();
+      assert.deepEqual(
+        await raw(sharp(outputPath, { ignoreIcc: true }).extract(region)),
+        await raw(sharp(windowPath, { ignoreIcc: true })),
+      );
+      assert.deepEqual(await readFile(join(workDir, 'original.bin')), await readFile(inputPath));
+    } finally {
+      await rm(dir, { recursive: true, force: true });
+    }
+  },
+);
 
 test(
   'native float editing keeps EXR windows, pixel aspect, negative channels, headroom and associated alpha',

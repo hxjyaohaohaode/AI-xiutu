@@ -1,4 +1,4 @@
-"""Develop retained scene-linear samples into float EXR or display-referred uint16 TIFF."""
+"""Develop retained scene-linear or sRGB samples without an 8-bit intermediate."""
 import json
 import sys
 from pathlib import Path
@@ -8,7 +8,7 @@ import OpenImageIO as oiio
 from exr_layout import apply_layout, capture_layout
 
 
-def read_band(image, spec, left, top, width, height):
+def read_band(image, spec, left, top, width, height, sample_type=oiio.FLOAT):
     if spec.tile_width:
         x0 = left // spec.tile_width * spec.tile_width
         y0 = top // spec.tile_height * spec.tile_height
@@ -16,17 +16,17 @@ def read_band(image, spec, left, top, width, height):
         y1 = min(spec.height, (top + height + spec.tile_height - 1) // spec.tile_height * spec.tile_height)
         pixels = image.read_tiles(
             spec.x + x0, spec.x + x1, spec.y + y0, spec.y + y1,
-            spec.z, spec.z + 1, 0, spec.nchannels, oiio.FLOAT,
+            spec.z, spec.z + 1, 0, spec.nchannels, sample_type,
         )
         if pixels is None:
-            raise ValueError("Cannot read retained EXR tiles")
+            raise ValueError("Cannot read retained master tiles")
         pixels = np.asarray(pixels).reshape(y1 - y0, x1 - x0, spec.nchannels)
         return pixels[top - y0:top - y0 + height, left - x0:left - x0 + width]
     pixels = image.read_scanlines(
-        spec.y + top, spec.y + top + height, spec.z, 0, spec.nchannels, oiio.FLOAT,
+        spec.y + top, spec.y + top + height, spec.z, 0, spec.nchannels, sample_type,
     )
     if pixels is None:
-        raise ValueError("Cannot read retained EXR scanlines")
+        raise ValueError("Cannot read retained master scanlines")
     return np.asarray(pixels).reshape(height, spec.width, spec.nchannels)[:, left:left + width]
 
 
@@ -147,11 +147,11 @@ def pixel_centers(start, count, extent):
     return (np.arange(start, start + count, dtype=np.float64) + 0.5) / extent
 
 
-def develop(pixels, edit, gains, sdr, curves, regions=(), x=None, y=None, sdr_tone_map=False):
+def develop(pixels, edit, gains, sdr, curves, regions=(), x=None, y=None, sdr_tone_map=False, srgb_decode=None):
     if not np.all(np.isfinite(pixels)):
         raise ValueError("Non-finite retained float samples")
     alpha = pixels[:, :, 3:4].astype(np.float64) if pixels.shape[2] == 4 else None
-    rgb = pixels[:, :, :3].astype(np.float64)
+    rgb = (pixels[:, :, :3].astype(np.float64) if srgb_decode is None else srgb_decode[pixels])
     if alpha is not None:
         if np.any(alpha < 0) or np.any(alpha > 1):
             raise ValueError("Invalid retained alpha")
@@ -176,7 +176,8 @@ def develop(pixels, edit, gains, sdr, curves, regions=(), x=None, y=None, sdr_to
         encoded = np.where(rgb <= 0.0031308, 12.92 * rgb, 1.055 * np.power(rgb, 1 / 2.4) - 0.055)
         if alpha is not None:
             encoded = np.concatenate((encoded, alpha), axis=2)
-        return np.rint(encoded * 65535).astype(np.uint16)
+        codes = encoded * 65535
+        return (np.rint(codes) if srgb_decode is None else np.floor(codes + 0.5)).astype(np.uint16)
     rgb = (rgb if alpha is None else rgb * alpha).astype(np.float32)
     if not np.all(np.isfinite(rgb)):
         raise ValueError("Precision edit overflow")
@@ -196,9 +197,9 @@ def render(image, request, window_png=False, read_source_band=read_band, window_
         or spec.depth != 1
         or width * height > request["maxPixels"]
     ):
-        raise ValueError("Retained float master exceeds precision export contract")
+        raise ValueError("Retained master exceeds precision export contract")
     if image.seek_subimage(1, 0):
-        raise ValueError("Multipart float master is not supported")
+        raise ValueError("Multipart master is not supported")
     image.seek_subimage(0, 0)
     edit = request["edit"]
     if edit["algorithm"] not in ("scene-linear-v1", "scene-linear-v2", "scene-linear-v3"):
@@ -225,6 +226,15 @@ def render(image, request, window_png=False, read_source_band=read_band, window_
     if linear_tiff and (sdr or channels != 3):
         raise ValueError("Ultra HDR JPEG development requires opaque RGB samples")
     region = request.get("region")
+    srgb_decode = None
+    if request.get("inputSrgb", False):
+        if (
+            not sdr or sdr_tone_map or region or channels != 3 or spec.format != oiio.UINT16
+            or image.format_name() != "tiff" or edit["algorithm"] != "scene-linear-v1"
+        ):
+            raise ValueError("SDR development requires the opaque RGB16 TIFF master and v1 grade")
+        codes = np.arange(65536, dtype=np.float64) / 65535
+        srgb_decode = np.where(codes <= 0.04045, codes / 12.92, np.power((codes + 0.055) / 1.055, 2.4))
     left, top = 0, 0
     if region:
         left, top, width, height = (region[key] for key in ("left", "top", "width", "height"))
@@ -246,7 +256,11 @@ def render(image, request, window_png=False, read_source_band=read_band, window_
                 end,
                 (row // spec.tile_height + 1) * spec.tile_height if spec.tile_height else row + 64,
             )
-            band = read_source_band(image, spec, left, row, width, next_row - row)
+            band = (
+                read_source_band(image, spec, left, row, width, next_row - row)
+                if srgb_decode is None
+                else read_band(image, spec, left, row, width, next_row - row, oiio.UINT16)
+            )
             for offset in range(0, band.shape[0], 64):
                 source = band[offset:offset + 64]
                 rows = (
@@ -254,7 +268,7 @@ def render(image, request, window_png=False, read_source_band=read_band, window_
                     if regions else None
                 )
                 yield row + offset - top, develop(
-                    source, edit, gains, sdr, curves, regions, columns, rows, sdr_tone_map,
+                    source, edit, gains, sdr, curves, regions, columns, rows, sdr_tone_map, srgb_decode,
                 )
             row = next_row
 
@@ -299,7 +313,7 @@ def main():
     request = json.loads(Path(sys.argv[1]).read_text())
     image = oiio.ImageInput.open(request["inputPath"])
     if image is None:
-        raise ValueError("Cannot open retained float master")
+        raise ValueError("Cannot open retained master")
     try:
         result = render(image, request)
         Path(request["resultPath"]).write_text(json.dumps(result))
