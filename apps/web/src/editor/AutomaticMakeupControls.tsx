@@ -8,18 +8,18 @@ import {
 import type { BlendModeV3, PaintMaterialV3 } from '@ai-xiutu/editor';
 import { ChoiceSelect } from '../components/ChoiceSelect';
 import { ColorPicker } from '../components/ColorPicker';
-import { RubberSegment } from '../components/control-motion';
 import { Busy, InlineError } from '../components/Ui';
-import { MotionDetails } from '../motion/Presence';
 import { t } from '../i18n';
 import { currentV3, hexRgba, rgbaHex, type InspectorController } from './advanced-model';
 import {
   MakeupBrushRail,
+  MakeupParameterRail,
   MakeupSwatches,
   makeupBrushes,
   makeupFinishLabels,
   type MakeupBrushId,
 } from './MakeupBrushRail';
+import { makeupPalettes } from './makeup-palettes';
 import { portraitTargetDisplayLabel } from './portrait-label';
 import { portraitSelectionMatchesSource } from './portrait-selection';
 import { PrecisionRange } from './PrecisionRange';
@@ -81,7 +81,7 @@ export function AutomaticMakeupControls({ controller }: { controller: InspectorC
   const preset = makeupBrushes[brush];
   const defaults: MakeupValues = {
     strength: 0,
-    color: hexRgba(preset.colors[0]!),
+    color: hexRgba(makeupPalettes[brush][0]!.shades[0]!),
     material: preset.material,
   };
   function readValues(latest: typeof recipe): MakeupValues {
@@ -194,21 +194,6 @@ export function AutomaticMakeupControls({ controller }: { controller: InspectorC
         </>
       ) : (
         <>
-          {faces.length > 1 && (
-            <ChoiceSelect
-              size="compact"
-              ariaLabel={t('选择独立调整的人物')}
-              value={target.id}
-              onValueChange={(id) => {
-                editor.commitCurrent(commitLabel());
-                state.setTarget(id);
-              }}
-              options={faces.map((face) => ({
-                value: face.id,
-                label: portraitTargetDisplayLabel(face, analysis),
-              }))}
-            />
-          )}
           <MakeupBrushRail
             automatic
             value={brush}
@@ -219,49 +204,58 @@ export function AutomaticMakeupControls({ controller }: { controller: InspectorC
               }
             }}
           />
-          <RubberSegment<Parameter>
-            className="makeup-parameter-tabs"
-            label={t('自动妆容参数')}
-            value={parameter}
-            onChange={(value) => {
-              editor.commitCurrent(commitLabel());
-              setParameter(value);
-            }}
-            options={(Object.entries(parameterLabels) as [Parameter, string][]).map(
-              ([value, label]) => ({ value, label: t(label) }),
+          <div className="makeup-parameter-row">
+            <MakeupParameterRail<Parameter>
+              label={t('自动妆容参数')}
+              labels={parameterLabels}
+              value={parameter}
+              onChange={(value) => {
+                editor.commitCurrent(commitLabel());
+                setParameter(value);
+              }}
+            />
+            {faces.length > 1 && (
+              <ChoiceSelect
+                className="makeup-person-select"
+                size="compact"
+                ariaLabel={t('选择独立调整的人物')}
+                value={target.id}
+                onValueChange={(id) => {
+                  editor.commitCurrent(commitLabel());
+                  state.setTarget(id);
+                }}
+                options={faces.map((face) => ({
+                  value: face.id,
+                  label: portraitTargetDisplayLabel(face, analysis),
+                }))}
+              />
             )}
-          />
+          </div>
           {!condition?.available ? (
             <InlineError message={t(condition?.reason ?? '当前人物条件不足。')} />
           ) : parameter === 'color' ? (
-            <>
-              <MakeupSwatches
-                brush={brush}
-                color={rgbaHex(current.color)}
-                onColor={(color) => setShade(color, true)}
+            <MakeupSwatches
+              key={key}
+              brush={brush}
+              color={rgbaHex(current.color)}
+              onColor={(color) => setShade(color, true)}
+            >
+              <ColorPicker
+                value={rgbaHex(current.color)}
+                label={t('当前妆容颜色')}
+                onChange={(color) => setShade(color, false)}
               />
-              <MotionDetails className="advanced-disclosure">
-                <summary>
-                  <i className="paint-color-chip" style={{ background: rgbaHex(current.color) }} />
-                  {t('自定义颜色')}
-                </summary>
-                <ColorPicker
-                  value={rgbaHex(current.color)}
-                  label={t('当前妆容颜色')}
-                  onChange={(color) => setShade(color, false)}
-                />
-                <button
-                  type="button"
-                  className="text-button"
-                  onClick={() => {
-                    if (current.strength) editor.commitCurrent(commitLabel());
-                    else change({ strength: 45 }, true);
-                  }}
-                >
-                  {t('确认这个妆容颜色')}
-                </button>
-              </MotionDetails>
-            </>
+              <button
+                type="button"
+                className="text-button"
+                onClick={() => {
+                  if (current.strength) editor.commitCurrent(commitLabel());
+                  else change({ strength: 45 }, true);
+                }}
+              >
+                {t('确认这个妆容颜色')}
+              </button>
+            </MakeupSwatches>
           ) : parameter === 'finish' ? (
             <ChoiceSelect
               size="compact"

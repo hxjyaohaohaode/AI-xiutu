@@ -1,4 +1,5 @@
 import { secureUuid } from '../lib/uuid';
+import type { Asset } from '../lib/types';
 import type { CollageRect } from './collage-layout';
 
 export const COLLAGE_MAX_ITEMS = 12;
@@ -10,6 +11,7 @@ const MAX_ANIMATION_FRAMES = 240;
 const CAMERA = 'http://ns.google.com/photos/1.0/camera/';
 const ITEM = 'http://ns.google.com/photos/1.0/container/item/';
 const XMP_HEADER = 'http://ns.adobe.com/xap/1.0/\0';
+const XMP_SCAN_BYTES = 2 * 1024 * 1024;
 
 type AnimationTrack = { animated: boolean; frameCount: number };
 type BrowserImageDecoder = {
@@ -36,22 +38,44 @@ export type CollageMedia = {
   bytes: number;
   kind: 'photo' | 'video' | 'live' | 'animation';
   cover?: ImageBitmap;
+  usingVideoCover?: boolean;
   video?: HTMLVideoElement;
   animation?: Animation;
   dispose(): void;
 };
 
 export const collageAccept =
-  'image/jpeg,image/png,image/webp,image/avif,image/heic,image/heif,image/gif,video/mp4,video/webm,video/quicktime,.jpg,.jpeg,.png,.webp,.avif,.heic,.heif,.gif,.mp4,.webm,.mov';
+  'image/jpeg,image/png,image/apng,image/webp,image/avif,image/heic,image/heif,image/gif,video/mp4,video/webm,video/quicktime,.jpg,.jpeg,.png,.apng,.webp,.avif,.heic,.heif,.gif,.mp4,.webm,.mov';
 const videoName = /\.(mp4|mov|webm)$/i;
-const imageName = /\.(jpe?g|png|webp|avif|heic|heif|gif)$/i;
+const imageName = /\.(jpe?g|a?png|webp|avif|heic|heif|gif)$/i;
 const isVideo = (file: File) =>
   videoName.test(file.name) || /^video\/(mp4|quicktime|webm)$/.test(file.type);
 const isImage = (file: File) =>
-  imageName.test(file.name) || /^image\/(jpeg|png|webp|avif|heic|heif|gif)$/.test(file.type);
+  imageName.test(file.name) || /^image\/(jpeg|a?png|webp|avif|heic|heif|gif)$/.test(file.type);
 const stem = (file: File) => file.name.replace(/\.[^.]+$/, '').toLocaleLowerCase();
+const isHeic = (file: File) => /^image\/hei[cf]$/.test(file.type) || /\.hei[cf]$/i.test(file.name);
 
 export type MediaInput = { photo?: File; video?: File };
+type CollageAsset = Pick<Asset, 'id' | 'name' | 'mime' | 'bytes' | 'provenance'>;
+export type CollageImport = { scope: string } & (
+  { files: File[] } | { asset: CollageAsset; replaceId?: string }
+);
+
+export async function readCollageAsset(asset: CollageAsset, signal: AbortSignal) {
+  const animation = asset.provenance?.animation === true;
+  if (!animation && asset.bytes > COLLAGE_MAX_FILE_BYTES) throw new Error('COLLAGE_FILE_LIMIT');
+  const url =
+    '/v1/assets/' + encodeURIComponent(asset.id) + (animation ? '/animation/file' : '/file');
+  const response = await fetch(url, { credentials: 'same-origin', signal });
+  if (!response.ok) throw new Error('COLLAGE_FETCH');
+  if (Number(response.headers.get('content-length')) > COLLAGE_MAX_FILE_BYTES) {
+    await response.body?.cancel();
+    throw new Error('COLLAGE_FILE_LIMIT');
+  }
+  const data = await response.blob();
+  return new File([data], asset.name, { type: data.type || asset.mime });
+}
+
 export function groupCollageFiles(files: File[], explicitPair: boolean): MediaInput[] {
   if (!files.length || files.some((file) => !isVideo(file) && !isImage(file)))
     throw new Error('COLLAGE_FORMAT');
@@ -83,35 +107,106 @@ async function isMp4(file: Blob) {
   return bytes.length >= 12 && String.fromCharCode(...bytes.slice(4, 8)) === 'ftyp';
 }
 
-/** Android Motion Photo 1.0 JPEG and the older Google MicroVideo XMP offset. */
-export async function embeddedMotionPhoto(file: File) {
-  const bytes = new Uint8Array(await file.slice(0, 2 * 1024 * 1024).arrayBuffer());
-  if (bytes[0] !== 255 || bytes[1] !== 216) return null;
-  const header = new TextDecoder().decode(bytes);
-  const packets = header.match(/<(?:[\w.-]+:)?xmpmeta\b[\s\S]*?<\/(?:[\w.-]+:)?xmpmeta>/gi) ?? [];
+function motionDirectory(xml: string, legacyAllowed: boolean) {
+  const packets =
+    xml.match(/<(?:[\w.-]+:)?xmpmeta\b[\s\S]*?<\/(?:[\w.-]+:)?xmpmeta>/gi) ??
+    xml.match(/<rdf:RDF\b[\s\S]*?<\/rdf:RDF>/g) ??
+    [];
+  const property = (node: Element, namespace: string, name: string) =>
+    node.getAttributeNS(namespace, name) ??
+    Array.from(node.children)
+      .find((child) => child.namespaceURI === namespace && child.localName === name)
+      ?.textContent?.trim();
   for (const packet of packets) {
     const doc = new DOMParser().parseFromString(packet, 'application/xml');
     if (doc.querySelector('parsererror')) continue;
     const nodes = [...doc.getElementsByTagName('*')];
-    const enabled = nodes.some((node) => node.getAttributeNS(CAMERA, 'MotionPhoto') === '1');
+    const motion = nodes
+      .map((node) => property(node, CAMERA, 'MotionPhoto'))
+      .find((value) => value != null);
+    if (motion != null && motion !== '1') continue;
+    const enabled = motion === '1';
     const item = enabled
       ? nodes.find(
           (node) =>
-            node.getAttributeNS(ITEM, 'Semantic') === 'MotionPhoto' &&
-            node.getAttributeNS(ITEM, 'Mime') === 'video/mp4',
+            property(node, ITEM, 'Semantic') === 'MotionPhoto' &&
+            ['video/mp4', 'video/quicktime'].includes(property(node, ITEM, 'Mime') ?? ''),
         )
       : undefined;
-    const legacy = nodes.find((node) => node.getAttributeNS(CAMERA, 'MicroVideo') === '1');
-    const count =
-      item?.getAttributeNS(ITEM, 'Length') ?? legacy?.getAttributeNS(CAMERA, 'MicroVideoOffset');
+    const legacy =
+      legacyAllowed && motion == null
+        ? nodes.find((node) => property(node, CAMERA, 'MicroVideo') === '1')
+        : undefined;
+    const count = item
+      ? property(item, ITEM, 'Length')
+      : legacy && property(legacy, CAMERA, 'MicroVideoOffset');
     if (!count || !/^\d{1,9}$/.test(count)) continue;
-    const length = Number(count);
-    const start = file.size - length;
-    if (length < 16 || length > COLLAGE_MAX_FILE_BYTES || start < 4) continue;
-    const motion = file.slice(start, file.size, 'video/mp4');
-    if (await isMp4(motion)) return { cover: file.slice(0, start, 'image/jpeg'), motion };
+    const primary = nodes.find((node) => property(node, ITEM, 'Semantic') === 'Primary');
+    return {
+      length: Number(count),
+      type: (item && property(item, ITEM, 'Mime')) || 'video/mp4',
+      padding: primary ? Number(property(primary, ITEM, 'Padding') ?? 0) : 0,
+    };
   }
   return null;
+}
+
+async function motionVideoBox(file: File) {
+  for (let offset = 0, index = 0; offset + 8 <= file.size && index < 256; index++) {
+    const data = new DataView(await file.slice(offset, offset + 16).arrayBuffer());
+    const name = String.fromCharCode(
+      data.getUint8(4),
+      data.getUint8(5),
+      data.getUint8(6),
+      data.getUint8(7),
+    );
+    const shortSize = data.getUint32(0);
+    if (shortSize === 1 && data.byteLength < 16) return null;
+    const header = shortSize === 1 ? 16 : 8;
+    const size = shortSize === 1 ? Number(data.getBigUint64(8)) : shortSize;
+    if (size < header || size > file.size - offset) return null;
+    if (name === 'mpvd') {
+      if (offset + size !== file.size || header !== 8) return null;
+      return { offset, header, length: size - header };
+    }
+    offset += size;
+  }
+  return null;
+}
+
+/** Android Motion Photo 1.0 JPEG/HEIC/AVIF and older JPEG MicroVideo XMP. */
+export async function embeddedMotionPhoto(file: File) {
+  if (file.size < 16 || file.size > COLLAGE_MAX_FILE_BYTES) return null;
+  const bytes = new Uint8Array(await file.slice(0, 64).arrayBuffer());
+  const jpeg = bytes[0] === 255 && bytes[1] === 216;
+  const signature = new TextDecoder().decode(bytes);
+  if (!jpeg && signature.slice(4, 8) !== 'ftyp') return null;
+  const mime = jpeg
+    ? 'image/jpeg'
+    : /avi[fs]/.test(signature.slice(8))
+      ? 'image/avif'
+      : isHeic(file) || /hei[cmvx]|mif1/.test(signature.slice(8))
+        ? 'image/heic'
+        : null;
+  if (!mime) return null;
+  const box = jpeg ? null : await motionVideoBox(file);
+  if (!jpeg && !box) return null;
+  const limit = box?.offset ?? file.size;
+  const decode = async (start: number, end: number) =>
+    new TextDecoder().decode(await file.slice(start, end).arrayBuffer());
+  const prefix = await decode(0, Math.min(limit, XMP_SCAN_BYTES));
+  const info =
+    motionDirectory(prefix, jpeg) ??
+    (box && limit > XMP_SCAN_BYTES
+      ? motionDirectory(await decode(Math.max(0, limit - XMP_SCAN_BYTES), limit), false)
+      : null);
+  if (!info || info.length < 16) return null;
+  const start = file.size - info.length;
+  if (start < 4 || (box && (box.length !== info.length || box.header !== info.padding)))
+    return null;
+  const motion = file.slice(start, file.size, info.type);
+  if (!(await isMp4(motion))) return null;
+  return { cover: file.slice(0, box?.offset ?? start, mime), motion };
 }
 
 export async function encodeMotionPhoto(cover: Blob, motion: Blob): Promise<Blob> {
@@ -198,9 +293,7 @@ async function animationMime(file: File) {
 export async function needsMotionWorkspace(file: File) {
   if (isVideo(file)) return true;
   if (!isImage(file)) return false;
-  const isJpeg = file.type === 'image/jpeg' || /\.jpe?g$/i.test(file.name);
-  if (isJpeg) return !!(await embeddedMotionPhoto(file));
-  return !!(await animationMime(file));
+  return !!(await embeddedMotionPhoto(file)) || !!(await animationMime(file));
 }
 
 async function loadAnimation(file: File, signal: AbortSignal): Promise<Animation | null> {
@@ -284,6 +377,7 @@ export async function decodeCollageMedia(
   let cover: ImageBitmap | undefined;
   let moving: Awaited<ReturnType<typeof loadVideo>> | undefined;
   let animation: Animation | null = null;
+  let usingVideoCover = false;
   const dispose = () => {
     cover?.close();
     moving?.dispose();
@@ -294,8 +388,14 @@ export async function decodeCollageMedia(
     const video = input.video ?? embedded?.motion;
     if (input.photo && !video) animation = await loadAnimation(input.photo, signal);
     if (input.photo && !animation) {
-      cover = await createImageBitmap(embedded?.cover ?? input.photo);
-      checkFrame(cover.width, cover.height);
+      try {
+        cover = await createImageBitmap(embedded?.cover ?? input.photo);
+      } catch (error) {
+        // The clip can still be usable where the still codec is unavailable.
+        if (!video || !isHeic(input.photo)) throw error;
+        usingVideoCover = true;
+      }
+      if (cover) checkFrame(cover.width, cover.height);
     }
     if (video) moving = await loadVideo(video, signal);
     signal.throwIfAborted();
@@ -305,10 +405,11 @@ export async function decodeCollageMedia(
       id: secureUuid(),
       name: (input.photo ?? input.video)!.name,
       bytes: (input.photo?.size ?? 0) + (input.video?.size ?? 0),
-      kind: moving ? (cover ? 'live' : 'video') : animation ? 'animation' : 'photo',
+      kind: moving ? (input.photo ? 'live' : 'video') : animation ? 'animation' : 'photo',
       width,
       height,
       cover,
+      usingVideoCover,
       video: moving?.video,
       animation: animation ?? undefined,
       dispose,

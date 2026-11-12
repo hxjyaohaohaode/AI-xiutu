@@ -2105,8 +2105,49 @@ try {
     assert.equal(restored.artwork.headVersion, baseline.artwork.headVersion + 2);
     assert.deepEqual(restored.revision.recipe, baseline.revision.recipe);
     await page.locator('.image-frame canvas[aria-label]:visible').waitFor();
+    await changeView('editor', '精修');
+    await page.locator('[data-dock-tool="collage"]').click();
+    const collage = page.locator('.collage-studio:visible');
+    const collageCanvas = collage.getByRole('img', { name: '拼图预览' });
+    await collage.getByTestId('collage-files').setInputFiles({
+      name: 'Local tile.png',
+      mimeType: 'image/png',
+      buffer: await sharp({
+        create: { width: 96, height: 96, channels: 3, background: '#e44e58' },
+      }).png().toBuffer(),
+    });
+    await collageCanvas.waitFor();
+    const generationCounts = { turnAdmissions, dispatches };
+    const tilePixel = (x) => collageCanvas.evaluate((node, x) =>
+      Array.from(node.getContext('2d').getImageData(
+        Math.floor(node.width * x), Math.floor(node.height / 2), 1, 1,
+      ).data), x);
+    const insertCandidate = async (action) => {
+      await collage.getByRole('button', { name: 'AI 生成素材', exact: true }).click();
+      await chat.getByRole('button', { name: '返回拼图', exact: true }).waitFor();
+      const candidate = chat.locator('.ai-turn').filter({ hasText: '独立图像候选验收' });
+      await choose(candidate, '将候选用于拼图', action);
+      await collageCanvas.waitFor();
+    };
+    await insertCandidate('添加到拼图');
+    await until(async () => (await tilePixel(0.75))[1] === 112, 'authorized candidate becomes a collage tile');
+    const tileSettings = collage.locator('.collage-tile-settings > summary');
+    await tileSettings.click();
+    await collage.getByRole('button', { name: '1 Local tile.png', exact: true }).click();
+    await tileSettings.click();
+    await insertCandidate('替换当前格');
+    await until(async () => (await tilePixel(0.25))[1] === 112, 'candidate replaces the selected tile');
+    await collage.getByRole('button', { name: '撤销', exact: true }).click();
+    await until(async () => (await tilePixel(0.25))[0] === 228, 'collage undo restores the local tile');
+    assert.equal((await tilePixel(0.75))[1], 112, 'undo preserves the appended candidate');
+    await collage.getByRole('button', { name: 'AI 生成素材', exact: true }).click();
+    await chat.getByRole('button', { name: '返回拼图', exact: true }).click();
+    assert.equal((await tilePixel(0.25))[0], 228, 'back to collage preserves composition and history');
+    assert.deepEqual({ turnAdmissions, dispatches }, generationCounts);
+    assert.equal((await head()).artwork.headVersion, restored.artwork.headVersion);
+    await page.screenshot({ path: resolve(artifacts, 'phone-collage-ai-return.png') });
     return { screenshotSent: true, replacedVersion: replaced.artwork.headVersion,
-      restoredVersion: restored.artwork.headVersion, privateFixture: true };
+      restoredVersion: restored.artwork.headVersion, privateFixture: true, collageCandidateRoundTrip: true };
   });
   await testCase('operator-paginates-all-unknown-jobs-without-private-content', async () => {
     await transaction(fixture.db, async (tx) => {

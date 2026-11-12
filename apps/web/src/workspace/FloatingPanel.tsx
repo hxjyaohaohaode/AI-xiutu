@@ -91,6 +91,7 @@ export function FloatingPanel({
   open = true,
   motionState = 'enter',
   compactAdjustment = false,
+  showBackInHeader = true,
   displayMode = 'panel',
   identity,
 }: {
@@ -112,6 +113,7 @@ export function FloatingPanel({
   open?: boolean;
   motionState?: MotionPhase;
   compactAdjustment?: boolean;
+  showBackInHeader?: boolean;
   displayMode?: 'panel' | 'page';
   identity?: string;
 }) {
@@ -471,7 +473,7 @@ export function FloatingPanel({
     >
       {!page && !inlineAdjustment && (
         <div className="panel-drag-header" data-motion="panel-header">
-          {onBack && !condensed && !(attached && compactAdjustment) && (
+          {onBack && showBackInHeader && !condensed && !(attached && compactAdjustment) && (
             <IconButton
               className="panel-back-action"
               label={backLabel ?? t('返回上一步工具')}

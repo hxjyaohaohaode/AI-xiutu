@@ -4,6 +4,7 @@ import { ChoiceSelect } from '../components/ChoiceSelect';
 import { useEffect, useId, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { RubberSegment } from '../components/control-motion';
+import { PortraitModeSwitch } from './MakeupBrushRail';
 import { Sparkle, PaintBrush, HandPointing, ArrowsClockwise } from '../components/ControlGlyph';
 import {
   PORTRAIT_TOOLS,
@@ -487,22 +488,23 @@ export function PortraitControls({
       </div>
     </>
   );
-  return (
-    <section className="advanced-tool-family portrait-controls-v3" data-motion="portrait-controls">
-      {headerTarget ? createPortal(categories, headerTarget) : categories}
-      <RubberSegment<'auto' | 'manual'>
-        label={t('人像调节方式')}
-        className="makeup-mode"
-        value={mode}
-        options={[
-          { value: 'auto', label: t('自动') },
-          { value: 'manual', label: t('手动') },
-        ]}
-        onChange={(value) => {
+  const portraitToolbar = (
+    <div className="makeup-toolbar portrait-toolbar">
+      {categories}
+      <PortraitModeSwitch
+        label={t('自动人像调节')}
+        automatic={mode === 'auto'}
+        compact={!!headerTarget}
+        onChange={(automatic) => {
           editor.commitCurrent(t('完成人像调节'));
-          setMode(value);
+          setMode(automatic ? 'auto' : 'manual');
         }}
       />
+    </div>
+  );
+  return (
+    <section className="advanced-tool-family portrait-controls-v3" data-motion="portrait-controls">
+      {headerTarget ? createPortal(portraitToolbar, headerTarget) : portraitToolbar}
       {mode === 'manual' ? (
         <div className="makeup-parameter-tabs portrait-manual-rail">
           {category === 'skin' ? (

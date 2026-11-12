@@ -4,12 +4,12 @@ import { drawCollageSource } from './collage-media';
 import type { CollagePoint } from './collage-layout';
 
 export function traceCollageMatte(width: number, height: number, points: CollagePoint[]) {
-  const scale = Math.min(1, 1280 / Math.max(width, height));
+  const scale = Math.min(1, 2048 / Math.max(width, height));
   const matte = document.createElement('canvas');
   matte.width = Math.max(1, Math.round(width * scale));
   matte.height = Math.max(1, Math.round(height * scale));
   const context = collageContext(matte);
-  context.filter = 'blur(0.75px)';
+  context.filter = 'blur(0.55px)';
   context.beginPath();
   points.forEach(({ x, y }, index) => {
     const pixelX = x * matte.width,

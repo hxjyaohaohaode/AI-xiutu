@@ -103,6 +103,8 @@ import { modalMotionRoleForDialog } from './components/modal-profiles';
 import type { AIOperation } from './components/AIPanel';
 import { AIPanelFeature } from './components/AIPanelFeature';
 import { IDLE_AI_ACTIVITY, type AIActivity } from './ai/AIVisibility';
+import type { CollageResultActions } from './ai/AIThread';
+import type { CollageImport } from './media/collage-media';
 import { useConfirmation } from './components/ConfirmationDialog';
 import { confirmStableScope } from './lib/confirmation-scope';
 import { Sidebar } from './components/Sidebar';
@@ -439,7 +441,20 @@ export function App({
   const [ops, setOps] = useState(false);
   const [dialog, setDialog] = useState<Dialog>(null);
   const [collageMode, setCollageMode] = useState<'open' | 'hidden' | null>(null);
-  const [collageFiles, setCollageFiles] = useState<File[] | null>(null);
+  const [collageImport, setCollageImport] = useState<CollageImport | null>(null);
+  const [collageHandoff, setCollageHandoff] = useState<{
+    scope: string;
+    request?: string;
+    selectedId?: string;
+    canAppend: boolean;
+    capture?: () => Promise<File>;
+  } | null>(null);
+  const collageScope = JSON.stringify([session.user?.id, project?.id]);
+  const collageReturn = collageHandoff?.scope === collageScope ? collageHandoff : null;
+  useEffect(() => {
+    setCollageImport((entry) => entry?.scope === collageScope ? entry : null);
+    setCollageHandoff((entry) => entry?.scope === collageScope ? entry : null);
+  }, [collageScope]);
   const [collageExportHost, setCollageExportHost] = useState<HTMLDivElement | null>(null);
   const collageOpen = view === 'editor' && collageMode === 'open';
   const closeCollage = useCallback(() => setCollageMode((mode) => mode && 'hidden'), []);
@@ -574,12 +589,15 @@ export function App({
     if (result === 'changed') notify(t('工作区已更新，请核对当前内容后重新操作。'));
     return result === 'confirmed';
   }
-  const readCurrentCanvas = async () => {
+  const readCurrentCanvas = async (name = t('当前画布') + '.png') => {
     const identity = editor.getSourceIdentity();
+    const recipe = editor.getRecipe();
     const blob = await editor.exportImage('png');
     if (identity !== editor.getSourceIdentity() || editor.isLoading())
       throw new Error(t('图片已切换，请重新添加。'));
-    return new File([blob], t('当前画布') + '.png', { type: 'image/png' });
+    if (recipe !== editor.getRecipe())
+      throw new Error(t('参考图生成期间画面已变化，请重新选择。'));
+    return new File([blob], name, { type: 'image/png' });
   };
   const captureCurrentImage = async () => {
     const current = artworkRef.current;
@@ -2288,9 +2306,10 @@ export function App({
     setCollaborationOpen(false);
     setInspectorOpen(false);
     setAiOpen(false);
+    setCollageHandoff(null);
     setSampling(false);
     setComparing(false);
-    if (files?.length) setCollageFiles(files);
+    if (files?.length) setCollageImport({ scope: collageScope, files });
     setCollageMode('open');
   }
   async function importSelectedFiles(files: File[]) {
@@ -2317,6 +2336,7 @@ export function App({
   };
   const showAI = () => {
     closeCollage();
+    if (!aiOpen) setCollageHandoff(collageOpen ? { scope: collageScope, canAppend: true } : null);
     if (!aiOpen) restoreInspectorAfterAI.current = inspectorOpen;
     editor.commitCurrent(t('完成当前调节'));
     workspaceLayout.setFocused(false);
@@ -2333,6 +2353,16 @@ export function App({
   };
   const closeAI = () => {
     setAiOpen(false);
+    setCollageHandoff(null);
+    if (collageReturn && navigationScope.current.view === 'editor') {
+      setCollageMode('open');
+      requestAnimationFrame(() =>
+        workspaceSurface.current
+          ?.querySelector<HTMLButtonElement>('.collage-source-tools button:not([disabled])')
+          ?.focus({ preventScroll: true }),
+      );
+      return;
+    }
     if (!mobileAssistantPage) return;
     if (restoreInspectorAfterAI.current) setInspectorOpen(true);
     requestAnimationFrame(() =>
@@ -2341,8 +2371,39 @@ export function App({
         ?.focus({ preventScroll: true }),
     );
   };
+  const closeAIToEditor = () => {
+    if (collageReturn) {
+      setCollageHandoff(null);
+      setAiOpen(false);
+    } else closeAI();
+  };
+  const useCollageCandidate: CollageResultActions['onUse'] = (image, action) => {
+    if (
+      !project ||
+      !activeRef.current ||
+      !aiOpenRef.current ||
+      navigationScope.current.view !== 'editor' ||
+      navigationScope.current.actor !== session.user?.id ||
+      navigationScope.current.projectId !== project.id
+    )
+      return;
+    const replaceId = action === 'replace' ? collageReturn?.selectedId : undefined;
+    if (action === 'replace' && !replaceId) return;
+    setCollageImport({
+      scope: collageScope,
+      asset: { id: image.assetId, name: t('AI 候选') + '.png', mime: 'image/png', bytes: 0 },
+      replaceId,
+    });
+    setAiOpen(false);
+    setCollageHandoff(null);
+    setCollageMode('open');
+  };
   const openAIFromEditor = async () => {
     if (capturingWorkspace.current) return;
+    if (collageOpen) {
+      showAI();
+      return;
+    }
     const workspace = workspaceSurface.current;
     const recipe = editor.getRecipe();
     if (
@@ -3137,13 +3198,19 @@ export function App({
                       fallback={<FeatureSkeleton profile="media" label={t('拼图')} compact />}
                     >
                       <CollageStudio
-                        key={JSON.stringify([session.user?.id, project?.id])}
+                        key={collageScope}
                         active={collageOpen}
                         onClose={closeCollage}
                         onUse={(file, signal) => importFile(file, undefined, () => !signal.aborted)}
                         insertLimits={localImportLimits(4, editor.pixelBudget)}
-                        importRequest={collageFiles}
-                        onImportConsumed={() => setCollageFiles(null)}
+                        importRequest={collageImport?.scope === collageScope ? collageImport : null}
+                        onImportConsumed={(request) =>
+                          setCollageImport((current) => (current === request ? null : current))
+                        }
+                        onGenerate={(draft) => {
+                          showAI();
+                          setCollageHandoff({ ...draft, scope: collageScope, request: secureUuid() });
+                        }}
                         exportHost={collageExportHost}
                         assets={
                           project ? assets.filter((item) => item.projectId === project.id) : []
@@ -3186,19 +3253,28 @@ export function App({
                       }
                       onBack={
                         shownPanelId === 'ai'
-                          ? returnToAdjustments
+                          ? (collageReturn ? closeAI : returnToAdjustments)
                           : toolOverview
                             ? undefined
                             : backToTool
                       }
                       backLabel={
                         shownPanelId === 'ai'
-                          ? interactionText('backToEditing')
+                          ? (collageReturn ? t('返回拼图') : interactionText('backToEditing'))
                           : previousTools.length
                             ? t('返回上一步工具')
                             : interactionText('backToTools')
                       }
+                      showBackInHeader={
+                        shownPanelId !== 'inspector' ||
+                        workspaceLayout.view.bucket !== 'phone' ||
+                        (group !== 'paint' && group !== 'beauty')
+                      }
                       onClose={() => {
+                        if (shownPanelId === 'ai' && collageReturn) {
+                          closeAI();
+                          return;
+                        }
                         setInspectorOpen(false);
                         setAiOpen(false);
                         setSampling(false);
@@ -3252,6 +3328,17 @@ export function App({
                           key={(session.user?.id ?? 'local') + ':' + (project?.id ?? 'none')}
                           visible={activePanelId === 'ai'}
                           mobilePage={mobileAssistantPage}
+                          generationRequest={collageReturn?.request}
+                          returnLabel={collageReturn ? t('返回拼图') : undefined}
+                          collageActions={
+                            project && ['owner', 'admin', 'editor'].includes(project.role)
+                              ? {
+                                  canAppend: collageReturn?.canAppend ?? true,
+                                  canReplace: !!collageReturn?.selectedId,
+                                  onUse: useCollageCandidate,
+                                }
+                              : undefined
+                          }
                           visualAttachment={visualAttachment}
                           onClearVisualAttachment={(attachment) =>
                             setVisualDraft((draft) =>
@@ -3310,22 +3397,10 @@ export function App({
                               : undefined
                           }
                           captureReferenceCanvas={
-                            editor.file
-                              ? async () => {
-                                  const identity = editor.getSourceIdentity(),
-                                    recipe = editor.getRecipe();
-                                  const blob = await editor.exportImage('png');
-                                  if (
-                                    identity !== editor.getSourceIdentity() ||
-                                    recipe !== editor.getRecipe()
-                                  )
-                                    throw new Error(t('参考图生成期间画面已变化，请重新选择。'));
-                                  return new File([blob], 'canvas-reference.png', {
-                                    type: 'image/png',
-                                  });
-                                }
-                              : undefined
+                            collageReturn?.capture ??
+                            (editor.file ? () => readCurrentCanvas('canvas-reference.png') : undefined)
                           }
+                          referenceCanvasLabel={collageReturn?.capture ? '用当前拼图' : undefined}
                           onBeforeArtworkWrite={collaboration.beforeExternalWrite}
                           onAfterArtworkWrite={collaboration.afterExternalWrite}
                           isDirty={dirty}
@@ -3348,7 +3423,7 @@ export function App({
                                 aiOpenRef.current &&
                                 (action === 'replace' || action === 'layer')
                               )
-                                closeAI();
+                                closeAIToEditor();
                               if (action === 'replace')
                                 notify(t('已替换底图，可在「对比」中恢复上一版本。'));
                             }
@@ -3361,14 +3436,14 @@ export function App({
                           onCreateProject={openCreateProject}
                           onOpenArtwork={(id) => {
                             void openArtwork(id).then((opened) => {
-                              if (opened) closeAI();
+                              if (opened) closeAIToEditor();
                             });
                           }}
                           onTaskChanged={() => setRefreshToken((value) => value + 1)}
                           onClose={closeAI}
                           onPreview={(next) => {
                             editor.preview(next);
-                            if (mobileAssistantPage && aiOpenRef.current) closeAI();
+                            if (mobileAssistantPage && aiOpenRef.current) closeAIToEditor();
                             notify(
                               navigationScope.current.view === 'editor'
                                 ? t('建议已进入预览，可以继续调整、取消或保存。')
@@ -3449,7 +3524,7 @@ export function App({
           className="sr-only"
           tabIndex={-1}
           aria-label={t('选择照片')}
-          accept="image/jpeg,image/png,image/webp,image/bmp,image/gif,image/avif,image/tiff,image/heic,image/heif,video/mp4,video/webm,video/quicktime,.bmp,.gif,.avif,.tif,.tiff,.heic,.heif,.mov,.mp4,.webm"
+          accept="image/jpeg,image/png,image/apng,image/webp,image/bmp,image/gif,image/avif,image/tiff,image/heic,image/heif,video/mp4,video/webm,video/quicktime,.apng,.bmp,.gif,.avif,.tif,.tiff,.heic,.heif,.mov,.mp4,.webm"
           multiple
           onChange={(e) => {
             const files = [...(e.target.files ?? [])];

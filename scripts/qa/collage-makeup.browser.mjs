@@ -8,6 +8,26 @@ const square = (background, format = 'png') =>
     .toFormat(format)
     .toBuffer();
 
+async function avifMotionPhoto(video) {
+  const xmp =
+    '<x:xmpmeta xmlns:x="adobe:ns:meta/"><rdf:RDF xmlns:rdf="http://www.w3.org/1999/02/22-rdf-syntax-ns#">' +
+    '<rdf:Description xmlns:Camera="http://ns.google.com/photos/1.0/camera/" xmlns:Container="http://ns.google.com/photos/1.0/container/" xmlns:Item="http://ns.google.com/photos/1.0/container/item/" Camera:MotionPhoto="1" Camera:MotionPhotoVersion="1">' +
+    '<Container:Directory><rdf:Seq><rdf:li rdf:parseType="Resource"><Container:Item Item:Mime="image/avif" Item:Semantic="Primary" Item:Padding="8"/></rdf:li>' +
+    '<rdf:li rdf:parseType="Resource"><Container:Item Item:Mime="video/mp4" Item:Semantic="MotionPhoto" Item:Length="' +
+    video.length +
+    '"/></rdf:li></rdf:Seq></Container:Directory></rdf:Description></rdf:RDF></x:xmpmeta>';
+  const cover = await sharp({
+    create: { width: 96, height: 96, channels: 3, background: '#24a675' },
+  })
+    .avif()
+    .withXmp(xmp)
+    .toBuffer();
+  const box = Buffer.alloc(8);
+  box.writeUInt32BE(video.length + 8);
+  box.write('mpvd', 4);
+  return Buffer.concat([cover, box, video]);
+}
+
 async function colorCycle() {
   const rows = 48;
   const frame = (color) =>
@@ -74,6 +94,18 @@ async function downloadCollage(page, label) {
   return { name: download.suggestedFilename(), bytes: await readFile(await download.path()) };
 }
 
+async function checkControlBounds(controls) {
+  const overflow = await controls.evaluateAll((items) =>
+    items
+      .filter(
+        (item) =>
+          item.scrollWidth > item.clientWidth + 2 || item.scrollHeight > item.clientHeight + 2,
+      )
+      .map((item) => item.textContent || item.getAttribute('aria-label')),
+  );
+  assert.deepEqual(overflow, [], 'labels must fit within their own controls');
+}
+
 export async function reviewCollage({ page, until, capture, portrait, coast }) {
   const green = [28, 171, 117, 255];
   const red = [216, 53, 83, 255];
@@ -91,6 +123,38 @@ export async function reviewCollage({ page, until, capture, portrait, coast }) {
   await dialog.getByRole('button', { name: '横拼图', exact: true }).click();
   assert.ok(await canvas.evaluate((node) => node.width > node.height * 1.9));
   await dialog.getByRole('button', { name: '模板', exact: true }).click();
+  const ratios = dialog.getByRole('group', { name: '画幅比例' });
+  assert.equal(await ratios.getByRole('button').count(), 16);
+  for (const [label, aspect] of [
+    ['9:16', 9 / 16],
+    ['2.39:1', 2.39],
+  ]) {
+    const choice = ratios.getByRole('button', { name: label, exact: true });
+    await choice.click();
+    const dimensions = await choice.locator('rect').evaluate((rect) => ({
+      width: rect.width.baseVal.value,
+      height: rect.height.baseVal.value,
+    }));
+    assert.ok(Math.abs(dimensions.width / dimensions.height - aspect) < 0.0001);
+    await until(
+      async () =>
+        canvas.evaluate(
+          (node, ratio) => Math.abs(node.width / node.height - ratio) < 0.004,
+          aspect,
+        ),
+      'actual collage uses ' + label,
+    );
+  }
+  await ratios.getByRole('button', { name: '自定比例', exact: true }).click();
+  const custom = page.getByRole('dialog', { name: '自定比例', exact: true });
+  await custom.getByRole('spinbutton', { name: '宽度' }).fill('7');
+  await custom.getByRole('spinbutton', { name: '高度' }).fill('10');
+  await custom.getByRole('button', { name: '应用', exact: true }).click();
+  await until(
+    async () => canvas.evaluate((node) => Math.abs(node.width / node.height - 0.7) < 0.002),
+    'custom 7:10 ratio',
+  );
+  await checkControlBounds(ratios.getByRole('button'));
   await dialog.getByRole('button', { name: '1:1', exact: true }).click();
   assert.equal(await canvas.evaluate((node) => node.width - node.height), 0);
   const settings = dialog.locator('summary').filter({ hasText: '拼图素材' });
@@ -131,6 +195,29 @@ export async function reviewCollage({ page, until, capture, portrait, coast }) {
   assert.deepEqual(await canvasPixel(canvas, 0.75, 0.5), red);
   await dialog.getByRole('button', { name: '重做', exact: true }).click();
   assert.deepEqual(await canvasPixel(canvas, 0.75, 0.5), green);
+  const positionOption = dialog.locator('[data-control-id="collage-position-x"]');
+  if (!(await positionOption.isVisible())) await settings.click();
+  const position = dialog.locator('.parameter-shelf');
+  await positionOption.click();
+  const beforePosition = await position.locator('.precision-value').innerText();
+  await position.locator('.precision-value').click();
+  await position.getByRole('spinbutton').fill('2047.5');
+  await position.getByRole('spinbutton').press('Enter');
+  assert.match(await position.locator('.precision-value').innerText(), /2,047\.5/);
+  await dialog.getByRole('button', { name: '撤销', exact: true }).click();
+  assert.equal(await position.locator('.precision-value').innerText(), beforePosition);
+  await dialog.getByRole('button', { name: '2 Rose square.png', exact: true }).click();
+  const replacementPicker = page.waitForEvent('filechooser');
+  await dialog.getByRole('button', { name: '替换素材', exact: true }).click();
+  await (
+    await replacementPicker
+  ).setFiles([file('Blue square.png', 'image/png', await square('#164f91'))]);
+  await until(
+    async () => (await canvasPixel(canvas, 0.9, 0.1))[2] === 145,
+    'local replacement preserves the selected cell',
+  );
+  await dialog.getByRole('button', { name: '撤销', exact: true }).click();
+  assert.deepEqual(await canvasPixel(canvas, 0.9, 0.1), red);
   await selectSave(page, '放进编辑器');
   await dialog.waitFor({ state: 'hidden' });
   await page.locator('.image-frame canvas[aria-label]:visible').waitFor();
@@ -206,6 +293,23 @@ export async function reviewCollage({ page, until, capture, portrait, coast }) {
   await moving.waitFor({ state: 'hidden' });
 
   await page.reload();
+  const avif = await avifMotionPhoto(video.bytes);
+  assert.equal(avif.subarray(8, 12).toString(), 'avif');
+  await page
+    .getByLabel('选择照片', { exact: true })
+    .setInputFiles([file('Color cycleMP.avif', 'image/avif', avif)]);
+  const avifStudio = page.locator('.collage-studio:visible');
+  const avifCanvas = avifStudio.getByRole('img', { name: '拼图预览' });
+  await avifCanvas.waitFor();
+  assert.ok((await canvasPixel(avifCanvas, 0.5, 0.5))[1] > 150, 'AVIF still is the poster');
+  await avifStudio.getByRole('button', { name: '播放实况', exact: true }).click();
+  await until(
+    async () => (await canvasPixel(avifCanvas, 0.5, 0.5))[2] > 170,
+    'real motion frames decode from the AVIF mpvd box',
+  );
+  await avifStudio.getByRole('button', { name: '暂停实况', exact: true }).click();
+
+  await page.reload();
   const tracked = await openCollage(page);
   const trackedCanvas = tracked.getByRole('img', { name: '拼图预览' });
   await tracked
@@ -269,7 +373,7 @@ export async function reviewCollage({ page, until, capture, portrait, coast }) {
   await review.getByRole('button', { name: '左侧主图', exact: true }).click();
   assert.equal(
     await review.getByRole('group', { name: '拼图模板' }).getByRole('button').count(),
-    12,
+    18,
   );
   await review.locator('summary').filter({ hasText: '拼图素材' }).click();
   await review.getByRole('button', { name: '2 Public portrait.jpg' }).click();
@@ -288,6 +392,11 @@ export async function reviewCollage({ page, until, capture, portrait, coast }) {
     const rail = await page.locator('.floating-tool-dock:visible').boundingBox();
     assert.ok(canvas.width > 30 && canvas.height > 30 && rail.y + rail.height <= height + 1, label);
     assert.ok(canvas.x >= 0 && canvas.x + canvas.width <= width + 1, label);
+    await checkControlBounds(review.locator('.collage-ratio-rail > button'));
+    assert.ok(
+      await page.evaluate(() => document.documentElement.scrollWidth - innerWidth <= 1),
+      label,
+    );
     await capture(page, 'interactions/collage-' + label + '.png');
   }
   return {
@@ -295,6 +404,7 @@ export async function reviewCollage({ page, until, capture, portrait, coast }) {
     png: [pngInfo.width, pngInfo.height],
     jpegBytes: motion.bytes.length,
     mp4Bytes: video.bytes.length,
+    avifMotionBytes: avif.length,
   };
 }
 
@@ -306,9 +416,7 @@ export async function reviewMakeup({ page, canvasPixels, tool, parameter, until,
   await parameter(page, 'makeup-saturation', 155);
   await parameter(page, 'makeup-diameter', 17.5);
   await page.getByRole('button', { name: '颜色', exact: true }).click();
-  const disclosure = page
-    .locator('.advanced-tool-family summary')
-    .filter({ hasText: '画笔颜色与 Alpha' });
+  const disclosure = page.getByRole('button', { name: '自定义颜色', exact: true });
   await disclosure.click();
   const custom = page.getByRole('textbox', { name: 'HEX颜色', exact: true }).last();
   await custom.fill('#ac4569');
@@ -351,14 +459,27 @@ export async function reviewMakeup({ page, canvasPixels, tool, parameter, until,
     async () => (await canvasPixels(page)).pixelSha256 === painted.pixelSha256,
     'undo restores the edited makeup stroke',
   );
-  await page.getByRole('button', { name: '自动', exact: true }).click();
+  const mode = page.getByRole('switch', { name: '自动妆容', exact: true });
+  await mode.click();
+  assert.equal(await mode.getAttribute('aria-checked'), 'true');
   const automatic = page.locator('.automatic-makeup:visible');
   const areas = automatic.getByRole('group', { name: '妆容区域' });
   await areas.waitFor({ timeout: 50_000 });
   assert.equal(await areas.getByRole('button').count(), 9);
   await areas.getByRole('button', { name: '唇妆', exact: true }).click();
   const shades = automatic.getByRole('group', { name: '画笔颜色' });
-  assert.equal(await shades.getByRole('button').count(), 18);
+  const families = automatic.getByRole('combobox', { name: '色系', exact: true });
+  const allShades = new Set();
+  for (const name of ['裸色', '红棕', '经典红', '莓果色', '珊瑚色', '玫瑰色']) {
+    await families.click();
+    await page.getByRole('option', { name, exact: true }).click();
+    assert.equal(await shades.getByRole('button').count(), 8);
+    for (const color of await shades
+      .getByRole('button')
+      .evaluateAll((buttons) => buttons.map((button) => button.getAttribute('aria-label'))))
+      allShades.add(color);
+  }
+  assert.equal(allShades.size, 48);
   assert.ok(await shades.evaluate((node) => node.scrollWidth > node.clientWidth));
   await shades.getByRole('button', { name: '#C55C6A', exact: true }).click();
   await until(
@@ -402,14 +523,30 @@ export async function reviewMakeup({ page, canvasPixels, tool, parameter, until,
     'automatic opacity is undoable',
   );
   await automatic.getByRole('button', { name: '颜色', exact: true }).click();
+  await checkControlBounds(automatic.locator('.makeup-icon-rail > button'));
   await page.locator('.free-panel[aria-hidden="false"] .inspector-scroll').evaluate((node) => {
     node.scrollTop = 0;
   });
   await capture(page, 'interactions/mobile-automatic-makeup.png');
+  await page.setViewportSize({ width: 320, height: 568 });
+  const palette = automatic.locator('.makeup-palette');
+  await until(async () => {
+    const color = await palette.boundingBox();
+    const dock = await page.locator('.floating-tool-dock:visible').boundingBox();
+    return (
+      color &&
+      dock &&
+      color.y + color.height <= dock.y + 1 &&
+      color.x >= 0 &&
+      color.x + color.width <= 320
+    );
+  }, 'narrow phone keeps the whole palette above the tool dock');
+  await capture(page, 'interactions/mobile-automatic-makeup-narrow.png');
+  await page.setViewportSize({ width: 390, height: 844 });
 
   await tool(page, 'beauty');
   await page.getByRole('button', { name: '身形', exact: true }).click();
-  await page.getByRole('button', { name: '手动', exact: true }).click();
+  await page.getByRole('switch', { name: '自动人像调节', exact: true }).click();
   await page.getByRole('button', { name: '横向拉伸', exact: true }).click();
   const warp = page.locator('[data-motion="warp-controls"]:visible');
   await warp.getByRole('button', { name: '横向', exact: true }).waitFor();

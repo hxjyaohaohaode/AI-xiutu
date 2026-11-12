@@ -75,8 +75,8 @@
 }
 .collage-playback {
   position: absolute;
-  right: 5px;
-  bottom: 5px;
+  right: calc((100% - min(100cqw, 100cqh * var(--collage-aspect))) / 2 + 5px);
+  bottom: calc((100% - min(100cqh, 100cqw / var(--collage-aspect))) / 2 + 5px);
   display: flex;
   align-items: center;
   border-radius: 999px;
@@ -91,6 +91,8 @@
 }
 .collage-controls {
   display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  grid-auto-rows: max-content;
   gap: 0;
   align-content: start;
   background: var(--surface);
@@ -165,27 +167,83 @@
   font-size: 11px;
   white-space: nowrap;
 }
-.collage-ratio-rail button > span {
-  display: grid;
-  place-items: center;
-  border: 1px solid var(--line-strong);
-  border-radius: 5px;
+.collage-ratio-rail button {
+  flex-direction: column;
+  gap: 0;
+  padding: 2px 5px;
+  font-size: 10px;
+  line-height: 1.35;
+  font-variant-numeric: tabular-nums;
+}
+.collage-ratio-rail button svg {
+  flex: 0 0 auto;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.35;
 }
 .collage-template-rail button {
-  padding: 4px 8px;
+  min-width: 50px;
+  padding: 3px 6px;
   background: var(--surface-secondary);
+  border: 1px solid transparent;
 }
 .collage-template-rail svg {
-  width: 38px;
-  height: 32px;
+  width: 35px;
+  height: 34px;
   fill: currentColor;
+}
+.collage-template-frame {
+  fill: currentColor;
+  fill-opacity: 0.16;
 }
 .collage-template-rail button[aria-pressed='true'],
 .collage-item-rail button[aria-pressed='true'],
-.collage-ratio-rail button[aria-pressed='true'] > span {
+.collage-ratio-rail button[aria-pressed='true'] {
   background: var(--accent-soft);
   color: var(--accent-ink);
   border-color: var(--accent-ink);
+}
+.collage-custom-ratio {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  align-items: end;
+  gap: 10px;
+}
+.collage-custom-ratio label {
+  display: grid;
+  min-width: 0;
+  gap: 4px;
+}
+.collage-custom-ratio input {
+  width: 100%;
+  min-width: 0;
+}
+.collage-custom-ratio button {
+  grid-column: 1 / -1;
+  justify-self: end;
+}
+.collage-format-note {
+  min-width: 0;
+  margin: 2px 0;
+  padding-inline: 6px;
+  color: var(--muted);
+  font-size: 11px;
+  overflow-wrap: anywhere;
+}
+.collage-tile-settings .parameter-shelf-options {
+  display: flex;
+  flex-wrap: nowrap;
+  overflow-x: auto;
+  min-width: 0;
+}
+.collage-tile-settings .parameter-shelf-options > button {
+  flex: 0 0 auto;
+  min-width: 55px;
+  max-width: 90px;
+}
+.collage-tile-settings .parameter-shelf-options small {
+  white-space: normal;
+  overflow-wrap: anywhere;
 }
 .collage-item-rail button > span {
   max-width: 110px;
@@ -201,6 +259,10 @@
   cursor: pointer;
   font-size: 12px;
   color: var(--muted);
+}
+.collage-controls:has(> .collage-tile-settings[open])
+  > :is(.rubber-segment, .collage-ratio-rail, .collage-template-rail) {
+  display: none;
 }
 .collage-tile-settings input[type='color'] {
   width: 32px;
@@ -222,13 +284,20 @@
     gap: 0 4px;
   }
   .collage-export-host .collage-save {
-    width: 56px;
+    width: auto;
+    min-width: 58px;
   }
   .studio-workspace .collage-save[data-size] > .choice-trigger {
     padding-inline: 4px;
   }
   .collage-save .choice-trigger > svg {
     width: 12px;
+  }
+}
+@media (width < 760px) and (orientation: portrait) {
+  .collage-source-tools {
+    flex-wrap: nowrap;
+    gap: 2px;
   }
 }
 @media (width >= 940px), (orientation: landscape) and (max-height: 480px) {
@@ -241,9 +310,11 @@
   }
   .collage-controls {
     align-content: start;
+    align-self: start;
     max-height: 100%;
   }
   .collage-status,
+  .collage-format-note,
   .collage-studio > .inline-error {
     grid-column: 2;
   }

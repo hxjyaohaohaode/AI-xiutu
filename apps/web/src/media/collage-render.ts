@@ -35,7 +35,9 @@ function drawForeground(
   );
   context.scale(subject.scale, subject.scale);
   context.translate(-x, -y);
-  const scale = Math.min(1, 1536 / Math.max(item.width, item.height));
+  const needed = Math.max(image.width, image.height) * subject.scale;
+  const scratchEdge = Math.min(4096, Math.max(512, Math.ceil(needed)));
+  const scale = Math.min(1, scratchEdge / Math.max(item.width, item.height));
   const width = Math.max(1, Math.round(item.width * scale));
   const height = Math.max(1, Math.round(item.height * scale));
   if (scratch.width !== width || scratch.height !== height) {

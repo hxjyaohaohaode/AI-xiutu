@@ -5,6 +5,7 @@ import {
   ArrowRight,
   ArrowUUpLeft,
   ArrowUUpRight,
+  ArrowsClockwise,
   CaretDown,
   Check,
   ImageSquare,
@@ -15,17 +16,19 @@ import {
   SlidersHorizontal,
   SpeakerHigh,
   SpeakerSlash,
+  Sparkle,
   Trash,
   X,
 } from '@phosphor-icons/react';
 import { ChoiceSelect } from '../components/ChoiceSelect';
-import { Busy, IconButton, InlineError } from '../components/Ui';
+import { Busy, IconButton, InlineError, Modal } from '../components/Ui';
 import { StudioGlyph } from '../components/StudioGlyph';
 import { downloadBlob } from '../lib/api';
 import type { Asset } from '../lib/types';
 import { t } from '../i18n';
 import { MotionDetails } from '../motion/Presence';
 import { RubberSegment } from '../components/control-motion';
+import { ParameterShelf } from '../editor/ParameterShelf';
 import {
   collageFrame,
   collageAccept,
@@ -36,12 +39,15 @@ import {
   decodeCollageMedia,
   encodeMotionPhoto,
   groupCollageFiles,
+  readCollageAsset,
+  type CollageImport,
   type CollageMedia,
 } from './collage-media';
 import {
   collageGeometry,
+  collageExportEdge,
   pointInCollageRect,
-  templateCells,
+  tileImageRect,
   type CollageItem,
   type CollageMode,
   type CollagePoint,
@@ -61,14 +67,24 @@ const initialScene: CollageScene = {
   gap: 0.006,
   background: '#ffffff',
 };
+const PNG_MAX_PIXELS = 16_777_216;
+const pngEdgeLimit = (scene: CollageScene) => (scene.mode === 'layout' ? 4096 : 8192);
 const ratioChoices = [
   ['3:4', 3 / 4],
   ['1:1', 1],
   ['4:3', 4 / 3],
+  ['4:5', 4 / 5],
+  ['5:4', 5 / 4],
   ['2:3', 2 / 3],
   ['3:2', 3 / 2],
-  ['16:9', 16 / 9],
   ['9:16', 9 / 16],
+  ['16:9', 16 / 9],
+  ['5:7', 5 / 7],
+  ['7:5', 7 / 5],
+  ['1.91:1', 1.91],
+  ['2.39:1', 2.39],
+  ['A4', 210 / 297],
+  ['A4 ↔', 297 / 210],
 ] as const;
 const templates: { id: CollageTemplate; label: string; min?: number }[] = [
   { id: 'grid', label: '均匀网格' },
@@ -79,10 +95,16 @@ const templates: { id: CollageTemplate; label: string; min?: number }[] = [
   { id: 'rows', label: '等分横幅' },
   { id: 'poster', label: '海报留白' },
   { id: 'journal', label: '杂志跨页' },
+  { id: 'instant', label: '拍立得边框' },
+  { id: 'film', label: '胶片条带' },
   { id: 'contact', label: '留边网格' },
+  { id: 'diptych', label: '留白对页' },
   { id: 'columns', label: '竖幅并排', min: 3 },
   { id: 'triptych', label: '居中主图', min: 3 },
+  { id: 'wide-lead', label: '横幅与双栏', min: 3 },
   { id: 'mosaic', label: '错落拼贴', min: 4 },
+  { id: 'three-plus-one', label: '三格与横幅', min: 4 },
+  { id: 'two-up', label: '双主图', min: 4 },
 ];
 const errors: Record<string, string> = {
   COLLAGE_FORMAT: '请选择支持的照片、GIF 或视频文件。',
@@ -98,6 +120,7 @@ const errors: Record<string, string> = {
   COLLAGE_PIXEL_BUDGET: '当前拼图和撤销历史中的素材合计超过 9600 万像素。',
   COLLAGE_FETCH: '无法读取这份项目素材。',
   COLLAGE_PLAY: '无法播放这份动态素材。',
+  COLLAGE_REPLACE: '要替换的素材已变化，请重新选择。',
 };
 const clamp = (value: number, min: number, max: number) => Math.min(max, Math.max(min, value));
 type SceneHistory = { past: CollageScene[]; present: CollageScene; future: CollageScene[] };
@@ -110,6 +133,7 @@ type Drag = {
   item: CollageItem;
   base: CollageScene;
   subject: boolean;
+  panSpan: CollagePoint;
 };
 
 function patchItem(
@@ -128,6 +152,7 @@ export function CollageStudio({
   onCurrent,
   importRequest,
   onImportConsumed,
+  onGenerate,
   exportHost,
   assets = [],
 }: {
@@ -136,8 +161,13 @@ export function CollageStudio({
   onUse: (file: File, signal: AbortSignal) => Promise<boolean>;
   insertLimits: { maxPixels: number; maxDimension: number };
   onCurrent?: () => Promise<File>;
-  importRequest: File[] | null;
-  onImportConsumed: () => void;
+  importRequest: CollageImport | null;
+  onImportConsumed: (request: CollageImport) => void;
+  onGenerate: (draft: {
+    selectedId?: string;
+    canAppend: boolean;
+    capture?: () => Promise<File>;
+  }) => void;
   exportHost: HTMLElement | null;
   assets?: readonly Asset[];
 }) {
@@ -153,6 +183,7 @@ export function CollageStudio({
   const [playing, setPlaying] = useState(false);
   const [sound, setSound] = useState(false);
   const [seconds, setSeconds] = useState('3');
+  const [customRatio, setCustomRatio] = useState<{ width: string; height: string } | null>(null);
   const [progress, setProgress] = useState(0);
   const [busy, setBusy] = useState<BusyKind | null>(null);
   const [error, setError] = useState('');
@@ -163,9 +194,12 @@ export function CollageStudio({
   const scratch = useRef<HTMLCanvasElement>(null);
   const input = useRef<HTMLInputElement>(null);
   const pairInput = useRef<HTMLInputElement>(null);
+  const replacementInput = useRef<HTMLInputElement>(null);
+  const replacementTarget = useRef<string | null>(null);
   const drag = useRef<Drag | null>(null);
   const maskPointer = useRef<number | null>(null);
   const dragDraft = useRef<CollageScene | null>(null);
+  const precisionDraft = useRef<CollageScene | null>(null);
   const scene = draft ?? history.present;
   const selected = scene.items.find((item) => item.id === selectedId) ?? scene.items[0];
   const currentMedia = selected ? resources.current.get(selected.id) : undefined;
@@ -203,9 +237,15 @@ export function CollageStudio({
       stopPlayback();
       return;
     }
-    if (!busy && importRequest?.length && !operation.current) {
-      onImportConsumed();
-      void importFiles(async () => importRequest);
+    if (!busy && importRequest && !operation.current) {
+      const onSettled = () => onImportConsumed(importRequest);
+      if ('files' in importRequest)
+        void importFiles(async () => importRequest.files, { onSettled });
+      else
+        void importFiles(async (signal) => [await readCollageAsset(importRequest.asset, signal)], {
+          replaceId: importRequest.replaceId,
+          onSettled,
+        });
     }
   }, [active, busy, importRequest]);
   useEffect(() => {
@@ -246,6 +286,7 @@ export function CollageStudio({
   }, [active, scene, playing, mask]);
 
   function commit(next: CollageScene) {
+    precisionDraft.current = null;
     setDraft(null);
     setHistory((previous) =>
       next === previous.present
@@ -259,6 +300,7 @@ export function CollageStudio({
   }
   function undo(redo = false) {
     stopPlayback();
+    precisionDraft.current = null;
     setDraft(null);
     setHistory((previous) => {
       if (redo && previous.future.length)
@@ -320,7 +362,11 @@ export function CollageStudio({
   }
   async function importFiles(
     getFiles: (signal: AbortSignal) => Promise<File[]>,
-    explicitPair = false,
+    {
+      explicitPair = false,
+      replaceId,
+      onSettled,
+    }: { explicitPair?: boolean; replaceId?: string; onSettled?: () => void } = {},
   ) {
     const task = start('import');
     if (!task) return;
@@ -329,10 +375,13 @@ export function CollageStudio({
       const files = await getFiles(task.signal);
       if (!files.length) return;
       const inputs = groupCollageFiles(files, explicitPair);
+      const base = history.present;
+      const replacement = replaceId ? base.items.find(({ id }) => id === replaceId) : undefined;
+      if (replaceId && (!replacement || inputs.length !== 1)) throw new Error('COLLAGE_REPLACE');
       const retained = [...resources.current.values()];
       const retainedBytes = retained.reduce((sum, item) => sum + item.bytes, 0);
       if (
-        history.present.items.length + inputs.length > COLLAGE_MAX_ITEMS ||
+        base.items.length + inputs.length - Number(!!replacement) > COLLAGE_MAX_ITEMS ||
         retainedBytes + files.reduce((sum, file) => sum + file.size, 0) > COLLAGE_MAX_TOTAL_BYTES
       )
         throw new Error('COLLAGE_LIMIT');
@@ -353,16 +402,25 @@ export function CollageStudio({
         panX: 0,
         panY: 0,
       }));
-      const wasEmpty = history.present.items.length === 0;
+      const wasEmpty = base.items.length === 0;
+      // The replacement owns its pixels. Subject mattes and motion tracking
+      // refer to the old source, so only the tile framing can be carried over.
+      const nextItems = replacement
+        ? base.items.map((item) =>
+            item.id === replacement.id
+              ? { ...items[0]!, panX: item.panX, panY: item.panY, zoom: item.zoom }
+              : item,
+          )
+        : [...base.items, ...items];
       commit({
-        ...history.present,
+        ...base,
         ratio:
           wasEmpty && items.length === 1
             ? items[0]!.width / items[0]!.height
             : wasEmpty
               ? initialScene.ratio
-              : history.present.ratio,
-        items: [...history.present.items, ...items],
+              : base.ratio,
+        items: nextItems,
       });
       setSelectedId(items.at(-1)!.id);
       setMask(null);
@@ -371,29 +429,41 @@ export function CollageStudio({
       staged.forEach((item) => item.dispose());
       if (!task.signal.aborted) message(reason);
     } finally {
+      if (!task.signal.aborted) onSettled?.();
       finish(task);
     }
   }
   function addProjectAsset(assetId: string) {
     const asset = assets.find((item) => item.id === assetId);
     if (!asset) return;
-    void importFiles(async (signal) => {
-      const animation = asset.provenance?.animation === true;
-      if (!animation && asset.bytes > COLLAGE_MAX_FILE_BYTES) throw new Error('COLLAGE_FILE_LIMIT');
-      const url =
-        '/v1/assets/' + encodeURIComponent(asset.id) + (animation ? '/animation/file' : '/file');
-      const response = await fetch(url, { credentials: 'same-origin', signal });
-      if (!response.ok) throw new Error('COLLAGE_FETCH');
-      if (Number(response.headers.get('content-length')) > COLLAGE_MAX_FILE_BYTES) {
-        await response.body?.cancel();
-        throw new Error('COLLAGE_FILE_LIMIT');
-      }
-      const data = await response.blob();
-      return [new File([data], asset.name, { type: data.type || asset.mime })];
+    void importFiles(async (signal) => [await readCollageAsset(asset, signal)]);
+  }
+  function generateMaterial() {
+    const frozen = history.present;
+    const media = new Map(frozen.items.map(({ id }) => [id, resources.current.get(id)!]));
+    onGenerate({
+      selectedId: selected?.id,
+      canAppend: frozen.items.length < COLLAGE_MAX_ITEMS,
+      capture: frozen.items.length
+        ? async () => {
+            lifetime.current?.signal.throwIfAborted();
+            const output = document.createElement('canvas');
+            paintCollage(output, document.createElement('canvas'), frozen, media, 1536);
+            const png = await collageBlob(output, 'image/png');
+            lifetime.current?.signal.throwIfAborted();
+            return new File([png], 'collage-reference.png', { type: 'image/png' });
+          }
+        : undefined,
     });
   }
   function updateSelected(transform: (item: CollageItem) => CollageItem) {
     if (selected) commit(patchItem(history.present, selected.id, transform));
+  }
+  function adjustTile(transform: (item: CollageItem) => CollageItem) {
+    if (!selected) return;
+    const next = patchItem(precisionDraft.current ?? history.present, selected.id, transform);
+    precisionDraft.current = next;
+    setDraft(next);
   }
   function reorder(direction: number) {
     const items = [...history.present.items];
@@ -472,9 +542,9 @@ export function CollageStudio({
   }
   function addMaskPoint(point: CollagePoint) {
     setMask((current) => {
-      if (!current || current.points.length >= 160) return current;
+      if (!current || current.points.length >= 720) return current;
       const last = current.points.at(-1);
-      if (last && Math.hypot(last.x - point.x, last.y - point.y) < 0.009) return current;
+      if (last && Math.hypot(last.x - point.x, last.y - point.y) < 0.0015) return current;
       return { ...current, points: [...current.points, point] };
     });
   }
@@ -501,7 +571,23 @@ export function CollageStudio({
     if (!item) return;
     event.currentTarget.setPointerCapture(event.pointerId);
     setSelectedId(item.id);
-    drag.current = { pointer: event.pointerId, start: point, item, base: history.present, subject };
+    const target = geometry.cells[index];
+    const image = target && tileImageRect(item, target, scene.mode !== 'layout');
+    const panSpan =
+      target && image
+        ? {
+            x: (image.width - target.width) / (2 * geometry.width),
+            y: (image.height - target.height) / (2 * geometry.height),
+          }
+        : { x: 0, y: 0 };
+    drag.current = {
+      pointer: event.pointerId,
+      start: point,
+      item,
+      base: history.present,
+      subject,
+      panSpan,
+    };
   }
   function movePointer(event: PointerEvent<HTMLCanvasElement>) {
     const point = canvasPoint(event);
@@ -510,7 +596,7 @@ export function CollageStudio({
     if (!current || current.pointer !== event.pointerId) return;
     const dx = point.x - current.start.x,
       dy = point.y - current.start.y;
-    if (Math.abs(dx) + Math.abs(dy) < 0.004 && !dragDraft.current) return;
+    if (!dx && !dy && !dragDraft.current) return;
     const next = patchItem(current.base, current.item.id, (item) =>
       current.subject && item.subject
         ? {
@@ -523,8 +609,14 @@ export function CollageStudio({
           }
         : {
             ...item,
-            panX: clamp(item.panX + dx * 5, -1, 1),
-            panY: clamp(item.panY + dy * 5, -1, 1),
+            panX:
+              Math.abs(current.panSpan.x) > 1e-9
+                ? clamp(item.panX + dx / current.panSpan.x, -1, 1)
+                : item.panX,
+            panY:
+              Math.abs(current.panSpan.y) > 1e-9
+                ? clamp(item.panY + dy / current.panSpan.y, -1, 1)
+                : item.panY,
           },
     );
     dragDraft.current = next;
@@ -549,16 +641,9 @@ export function CollageStudio({
         const output = document.createElement('canvas'),
           buffer = document.createElement('canvas');
         const inserting = kind === 'insert';
-        const limit = inserting
-          ? Math.min(insertLimits.maxDimension, 4096)
-          : scene.mode === 'layout'
-            ? 4096
-            : 8192;
-        const pixels = inserting ? insertLimits.maxPixels : 16_777_216;
-        const size = collageGeometry(scene, limit);
-        let edge = Math.floor(limit * Math.min(1, Math.sqrt(pixels / (size.width * size.height))));
-        const scaled = collageGeometry(scene, edge);
-        if (scaled.width * scaled.height > pixels) edge--;
+        const limit = inserting ? Math.min(insertLimits.maxDimension, 4096) : pngEdgeLimit(scene);
+        const pixels = inserting ? insertLimits.maxPixels : PNG_MAX_PIXELS;
+        const edge = collageExportEdge(scene, limit, pixels);
         paintCollage(output, buffer, scene, resources.current, edge);
         const png = await collageBlob(output, 'image/png');
         task.signal.throwIfAborted();
@@ -592,6 +677,49 @@ export function CollageStudio({
   }
 
   const aspect = geometry.width / geometry.height;
+  const outputFrame = collageGeometry(
+    scene,
+    collageExportEdge(scene, pngEdgeLimit(scene), PNG_MAX_PIXELS),
+  );
+  const outputCell = outputFrame.cells[selectedIndex];
+  const outputImage =
+    selected && outputCell && tileImageRect(selected, outputCell, scene.mode !== 'layout');
+  const editingSubject = moveSubject ? selected?.subject : undefined;
+  const positionControls =
+    selected && outputCell && outputImage
+      ? (['x', 'y'] as const).map((axis) => {
+          const horizontal = axis === 'x';
+          const dimension = horizontal ? 'width' : 'height';
+          const pan = horizontal ? 'panX' : 'panY';
+          const offset = horizontal ? 'offsetX' : 'offsetY';
+          const extent = editingSubject
+            ? outputFrame[dimension]
+            : (outputImage[dimension] - outputCell[dimension]) / 2;
+          return {
+            id: 'collage-position-' + axis,
+            glyph: horizontal ? 'positionX' : 'positionY',
+            label: t(horizontal ? '水平位置' : '垂直位置'),
+            value: (editingSubject?.[offset] ?? selected[pan]) * extent,
+            min: -Math.abs(extent),
+            max: Math.abs(extent),
+            step: 0.1,
+            neutral: 0,
+            unit: 'px',
+            disabled: Math.abs(extent) < 0.05,
+            onChange: (value: number) =>
+              adjustTile((item) =>
+                editingSubject && item.subject
+                  ? {
+                      ...item,
+                      subject: { ...item.subject, [offset]: clamp(value / extent, -1, 1) },
+                    }
+                  : { ...item, [pan]: clamp(value / extent, -1, 1) },
+              ),
+          };
+        })
+      : [];
+  const customAspect = customRatio ? Number(customRatio.width) / Number(customRatio.height) : 0;
+  const customAspectValid = customAspect >= 1 / 20 && customAspect <= 20;
   const sourceOptions = [
     { value: 'pair', label: t('配对实况') },
     ...(onCurrent ? [{ value: 'canvas', label: t('当前画布') }] : []),
@@ -663,12 +791,28 @@ export function CollageStudio({
         onChange={(event) => {
           const files = [...(event.currentTarget.files ?? [])];
           event.currentTarget.value = '';
-          void importFiles(async () => files, true);
+          void importFiles(async () => files, { explicitPair: true });
+        }}
+      />
+      <input
+        ref={replacementInput}
+        type="file"
+        multiple
+        accept={collageAccept}
+        hidden
+        data-testid="collage-replace-file"
+        onChange={(event) => {
+          const files = [...(event.currentTarget.files ?? [])];
+          const replaceId = replacementTarget.current;
+          event.currentTarget.value = '';
+          replacementTarget.current = null;
+          if (replaceId) void importFiles(async () => files, { replaceId });
         }}
       />
       <div
         className="collage-stage"
         data-mask={!!mask}
+        style={{ '--collage-aspect': aspect } as CSSProperties}
         onDragOver={(event) => {
           if (event.dataTransfer.types.includes('Files')) event.preventDefault();
         }}
@@ -679,11 +823,7 @@ export function CollageStudio({
           void importFiles(async () => files);
         }}
       >
-        <div
-          className="collage-picture"
-          hidden={!scene.items.length}
-          style={{ '--collage-aspect': aspect } as CSSProperties}
-        >
+        <div className="collage-picture" hidden={!scene.items.length}>
           <canvas
             ref={canvas}
             aria-label={t('拼图预览')}
@@ -750,11 +890,23 @@ export function CollageStudio({
         )}
       </div>
       <InlineError message={error} />
+      {currentMedia?.usingVideoCover && (
+        <p className="collage-format-note" role="status">
+          {t('封面无法解码，已显示实况视频帧。')}
+        </p>
+      )}
       {busy && (
         <div className="collage-status" role="status">
           <Busy label={t(busy === 'export' ? '正在导出' : '正在读取图片')} />
           {busy === 'export' && <progress value={progress} max={100} aria-label={t('导出进度')} />}
-          <button type="button" className="text-button" onClick={() => operation.current?.abort()}>
+          <button
+            type="button"
+            className="text-button"
+            onClick={() => {
+              if (busy === 'import' && importRequest) onImportConsumed(importRequest);
+              operation.current?.abort();
+            }}
+          >
             {t('取消')}
           </button>
         </div>
@@ -800,6 +952,9 @@ export function CollageStudio({
                 else if (value.startsWith('asset:')) addProjectAsset(value.slice(6));
               }}
             />
+            <IconButton label={t('AI 生成素材')} onClick={generateMaterial}>
+              <Sparkle size={17} />
+            </IconButton>
             {selected && (
               <IconButton label={t('编辑抠图轮廓')} onClick={beginMask}>
                 <Scissors size={17} />
@@ -843,45 +998,62 @@ export function CollageStudio({
                         aria-pressed={scene.ratio === ratio}
                         onClick={() => commit({ ...scene, ratio })}
                       >
-                        <span
-                          style={{
-                            width: 34 * Math.min(1, ratio),
-                            height: 34 * Math.min(1, 1 / ratio),
-                          }}
-                        >
-                          {label}
-                        </span>
+                        <CollageRatioGlyph ratio={ratio} />
+                        <span>{label}</span>
                       </button>
                     ))}
+                    <button
+                      type="button"
+                      aria-label={t('自定比例')}
+                      title={t('自定比例')}
+                      onClick={() =>
+                        setCustomRatio({
+                          width: String(geometry.width),
+                          height: String(geometry.height),
+                        })
+                      }
+                    >
+                      <SlidersHorizontal size={19} />
+                      <span>{t('自定')}</span>
+                    </button>
                   </div>
                   <div className="collage-template-rail" role="group" aria-label={t('拼图模板')}>
                     {templates
                       .filter(({ min = 2 }) => scene.items.length >= min)
-                      .map(({ id, label }) => (
-                        <button
-                          type="button"
-                          key={id}
-                          aria-label={t(label)}
-                          title={t(label)}
-                          aria-pressed={scene.template === id}
-                          onClick={() => commit({ ...scene, template: id })}
-                        >
-                          <svg viewBox="0 0 40 34" aria-hidden="true">
-                            {templateCells(Math.max(2, scene.items.length), id).map(
-                              ({ x, y, width, height }, i) => (
+                      .map(({ id, label }) => {
+                        const frame = collageGeometry({ ...scene, template: id }, 42);
+                        return (
+                          <button
+                            type="button"
+                            key={id}
+                            aria-label={t(label)}
+                            title={t(label)}
+                            aria-pressed={scene.template === id}
+                            onClick={() => commit({ ...scene, template: id })}
+                          >
+                            <svg viewBox={`0 0 ${frame.width} ${frame.height}`} aria-hidden="true">
+                              <rect
+                                className="collage-template-frame"
+                                x={0}
+                                y={0}
+                                width={frame.width}
+                                height={frame.height}
+                                rx={1.5}
+                              />
+                              {frame.cells.map(({ x, y, width, height }, i) => (
                                 <rect
                                   key={i}
-                                  x={2 + x * 36}
-                                  y={2 + y * 30}
-                                  width={width * 36 - 1.4}
-                                  height={height * 30 - 1.4}
-                                  rx={1.2}
+                                  x={x + 0.5}
+                                  y={y + 0.5}
+                                  width={Math.max(0, width - 1)}
+                                  height={Math.max(0, height - 1)}
+                                  rx={0.65}
                                 />
-                              ),
-                            )}
-                          </svg>
-                        </button>
-                      ))}
+                              ))}
+                            </svg>
+                          </button>
+                        );
+                      })}
                   </div>
                 </>
               )}
@@ -911,6 +1083,15 @@ export function CollageStudio({
                   })}
                 </div>
                 <div className="collage-actions">
+                  <IconButton
+                    label={t('替换素材')}
+                    onClick={() => {
+                      replacementTarget.current = selected.id;
+                      replacementInput.current?.click();
+                    }}
+                  >
+                    <ArrowsClockwise size={17} />
+                  </IconButton>
                   <IconButton
                     label={t('向前移动素材')}
                     disabled={selectedIndex <= 0}
@@ -1011,24 +1192,6 @@ export function CollageStudio({
                     ]}
                     onValueChange={(gap) => commit({ ...history.present, gap: Number(gap) })}
                   />
-                  <ChoiceSelect
-                    size="compact"
-                    ariaLabel={t(moveSubject ? '主体大小' : '素材缩放')}
-                    value={String(
-                      moveSubject && selected.subject ? selected.subject.scale : selected.zoom,
-                    )}
-                    options={[1, 1.25, 1.5, 2, 2.5, 3].map((value) => ({
-                      value: String(value),
-                      label: value + '×',
-                    }))}
-                    onValueChange={(zoom) =>
-                      updateSelected((item) =>
-                        moveSubject && item.subject
-                          ? { ...item, subject: { ...item.subject, scale: Number(zoom) } }
-                          : { ...item, zoom: Number(zoom) },
-                      )
-                    }
-                  />
                   {moving && (
                     <ChoiceSelect
                       size="compact"
@@ -1039,11 +1202,101 @@ export function CollageStudio({
                     />
                   )}
                 </div>
+                <ParameterShelf
+                  key={selected.id + (editingSubject ? ':subject' : ':tile')}
+                  label={t(editingSubject ? '主体' : '素材')}
+                  onCommit={() => {
+                    if (precisionDraft.current) commit(precisionDraft.current);
+                  }}
+                  onCancel={() => {
+                    precisionDraft.current = null;
+                    setDraft(null);
+                  }}
+                  controls={[
+                    {
+                      id: 'collage-scale',
+                      glyph: 'diameter',
+                      label: t(editingSubject ? '主体大小' : '素材缩放'),
+                      value: (editingSubject?.scale ?? selected.zoom) * 100,
+                      min: 25,
+                      max: 400,
+                      step: 0.1,
+                      neutral: 100,
+                      unit: '%',
+                      onChange: (value) =>
+                        adjustTile((item) =>
+                          editingSubject && item.subject
+                            ? { ...item, subject: { ...item.subject, scale: value / 100 } }
+                            : { ...item, zoom: value / 100 },
+                        ),
+                    },
+                    ...positionControls,
+                  ]}
+                />
               </MotionDetails>
             </>
           )}
         </div>
       )}
+      {active && customRatio && (
+        <Modal title={t('自定比例')} onClose={() => setCustomRatio(null)}>
+          <form
+            className="collage-custom-ratio"
+            onSubmit={(event) => {
+              event.preventDefault();
+              if (!customAspectValid) return;
+              commit({ ...history.present, ratio: customAspect });
+              setCustomRatio(null);
+            }}
+          >
+            <label>
+              {t('宽度')}
+              <input
+                required
+                type="number"
+                min="1"
+                max="20000"
+                value={customRatio.width}
+                onChange={(event) =>
+                  setCustomRatio({ ...customRatio, width: event.currentTarget.value })
+                }
+              />
+            </label>
+            <label>
+              {t('高度')}
+              <input
+                required
+                type="number"
+                min="1"
+                max="20000"
+                value={customRatio.height}
+                onChange={(event) =>
+                  setCustomRatio({ ...customRatio, height: event.currentTarget.value })
+                }
+              />
+            </label>
+            <button className="button button-primary" disabled={!customAspectValid}>
+              {t('应用')}
+            </button>
+          </form>
+        </Modal>
+      )}
     </section>
+  );
+}
+
+function CollageRatioGlyph({ ratio }: { ratio: number }) {
+  const outlineWidth = Math.min(26, 20 * ratio);
+  const outlineHeight = outlineWidth / ratio;
+  return (
+    <svg width="29" height="23" viewBox="0 0 29 23" aria-hidden="true">
+      <rect
+        x={(29 - outlineWidth) / 2}
+        y={(23 - outlineHeight) / 2}
+        width={outlineWidth}
+        height={outlineHeight}
+        rx="2.5"
+      />
+    </svg>
   );
 }

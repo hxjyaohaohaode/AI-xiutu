@@ -40,11 +40,14 @@ import { portraitSelectionMatchesSource } from './portrait-selection';
 import { editorFlowText } from './flow-copy';
 import {
   MakeupBrushRail,
+  MakeupParameterRail,
   MakeupSwatches,
+  PortraitModeSwitch,
   makeupBrushes,
   makeupFinishLabels,
   type MakeupBrushId,
 } from './MakeupBrushRail';
+import { makeupPalettes } from './makeup-palettes';
 import { AutomaticMakeupControls } from './AutomaticMakeupControls';
 
 const blendLabels: Record<BlendModeV3, string> = {
@@ -196,9 +199,9 @@ export function PaintControls({
       choosingSource: false,
       makeupTip: tip ?? undefined,
       material: preset?.material,
-      ...(preset
+      ...(tip && preset
         ? {
-            color: hexRgba(preset.colors[0]!),
+            color: hexRgba(makeupPalettes[tip][0]!.shades[0]!),
             radius: preset.radius,
             feather: preset.feather,
             opacity: preset.opacity,
@@ -283,23 +286,31 @@ export function PaintControls({
     );
   }
   const modeSwitch = (
-    <RubberSegment<'manual' | 'auto'>
-      label={t('妆容方式')}
-      className="makeup-mode"
-      value={settings.automaticMakeup ? 'auto' : 'manual'}
-      onChange={(value) => {
+    <PortraitModeSwitch
+      label={t('自动妆容')}
+      automatic={!!settings.automaticMakeup}
+      onChange={(automaticMakeup) => {
         editor.commitCurrent(t('完成妆容调节'));
-        editor.setPaintSettings((previous) => ({ ...previous, automaticMakeup: value === 'auto' }));
+        editor.setPaintSettings((previous) => ({ ...previous, automaticMakeup }));
       }}
-      options={[
-        { value: 'manual', label: t('手动') },
-        { value: 'auto', label: t('自动') },
-      ]}
     />
+  );
+  const makeupToolbar = (
+    <div className="makeup-toolbar">
+      {modeSwitch}
+      {!settings.automaticMakeup && material && (
+        <MakeupParameterRail<'brush' | 'color' | 'layers'>
+          label={t('手动妆容参数')}
+          value={makeupView}
+          onChange={setMakeupView}
+          labels={{ brush: '笔触', color: '颜色', layers: '图层' }}
+        />
+      )}
+    </div>
   );
   return (
     <section className="advanced-tool-family" data-motion="paint-controls">
-      {headerTarget ? createPortal(modeSwitch, headerTarget) : modeSwitch}
+      {headerTarget ? createPortal(makeupToolbar, headerTarget) : makeupToolbar}
       {settings.automaticMakeup ? (
         <AutomaticMakeupControls controller={controller} />
       ) : (
@@ -309,115 +320,95 @@ export function PaintControls({
             onChange={selectMakeup}
           />
           {material && (
-            <RubberSegment<'brush' | 'color' | 'layers'>
-              label={t('手动妆容参数')}
-              className="makeup-parameter-tabs"
-              value={makeupView}
-              onChange={setMakeupView}
-              options={[
-                { value: 'brush', label: t('笔触') },
-                { value: 'color', label: t('颜色') },
-                { value: 'layers', label: t('图层') },
-              ]}
-            />
-          )}
-          {material && (
             <>
               {makeupView === 'brush' && (
-                <ParameterShelf
-                  label={t('妆容笔')}
-                  controls={[
-                    {
-                      id: 'makeup-diameter',
-                      glyph: 'diameter',
-                      label: t('直径'),
-                      value: settings.radius * short * 2,
-                      min: 0.5,
-                      max: short,
-                      step: 0.1,
-                      unit: 'px',
-                      onChange: (n) =>
-                        editor.setPaintSettings((s) => ({ ...s, radius: n / short / 2 })),
-                    },
-                    {
-                      id: 'makeup-opacity',
-                      glyph: 'opacity',
-                      label: t('笔触透明度'),
-                      value: settings.opacity * 100,
-                      min: 0,
-                      max: 100,
-                      step: 0.1,
-                      unit: '%',
-                      onChange: (n) => editor.setPaintSettings((s) => ({ ...s, opacity: n / 100 })),
-                    },
-                    {
-                      id: 'makeup-saturation',
-                      glyph: 'saturation',
-                      label: t('饱和度'),
-                      value: material.saturation * 100,
-                      min: 0,
-                      max: 200,
-                      step: 0.1,
-                      unit: '%',
-                      onChange: (n) =>
-                        editor.setPaintSettings((s) =>
-                          s.material
-                            ? { ...s, material: { ...s.material, saturation: n / 100 } }
-                            : s,
-                        ),
-                    },
-                    {
-                      id: 'makeup-feather',
-                      glyph: 'feather',
-                      label: t('柔边'),
-                      value: settings.feather * 100,
-                      min: 0,
-                      max: 100,
-                      step: 0.1,
-                      unit: '%',
-                      onChange: (n) => editor.setPaintSettings((s) => ({ ...s, feather: n / 100 })),
-                    },
-                  ]}
-                />
+                <div className="makeup-brush-settings">
+                  <ParameterShelf
+                    label={t('妆容笔')}
+                    controls={[
+                      {
+                        id: 'makeup-diameter',
+                        glyph: 'diameter',
+                        label: t('直径'),
+                        value: settings.radius * short * 2,
+                        min: 0.5,
+                        max: short,
+                        step: 0.1,
+                        unit: 'px',
+                        onChange: (n) =>
+                          editor.setPaintSettings((s) => ({ ...s, radius: n / short / 2 })),
+                      },
+                      {
+                        id: 'makeup-opacity',
+                        glyph: 'opacity',
+                        label: t('笔触透明度'),
+                        value: settings.opacity * 100,
+                        min: 0,
+                        max: 100,
+                        step: 0.1,
+                        unit: '%',
+                        onChange: (n) =>
+                          editor.setPaintSettings((s) => ({ ...s, opacity: n / 100 })),
+                      },
+                      {
+                        id: 'makeup-saturation',
+                        glyph: 'saturation',
+                        label: t('饱和度'),
+                        value: material.saturation * 100,
+                        min: 0,
+                        max: 200,
+                        step: 0.1,
+                        unit: '%',
+                        onChange: (n) =>
+                          editor.setPaintSettings((s) =>
+                            s.material
+                              ? { ...s, material: { ...s.material, saturation: n / 100 } }
+                              : s,
+                          ),
+                      },
+                      {
+                        id: 'makeup-feather',
+                        glyph: 'feather',
+                        label: t('柔边'),
+                        value: settings.feather * 100,
+                        min: 0,
+                        max: 100,
+                        step: 0.1,
+                        unit: '%',
+                        onChange: (n) =>
+                          editor.setPaintSettings((s) => ({ ...s, feather: n / 100 })),
+                      },
+                    ]}
+                  />
+                </div>
               )}
               {makeupView === 'color' && (
-                <>
-                  {settings.makeupTip && (
-                    <MakeupSwatches
-                      brush={settings.makeupTip}
-                      color={rgbaHex(settings.color)}
-                      onColor={(color) =>
-                        editor.setPaintSettings((previous) => {
-                          const next = hexRgba(color);
-                          next[3] = previous.color[3];
-                          return { ...previous, color: next };
-                        })
-                      }
-                    />
-                  )}
-                  <MotionDetails className="advanced-disclosure">
-                    <summary>
-                      <i
-                        className="paint-color-chip"
-                        style={{ background: rgbaHex(settings.color) }}
-                      />
-                      {t('画笔颜色与 Alpha')}
-                    </summary>
-                    <ColorPicker
-                      value={rgbaHex(settings.color)}
-                      label={t('画笔颜色')}
-                      onChange={(color) =>
-                        editor.setPaintSettings((s) => ({ ...s, color: hexRgba(color) }))
-                      }
-                    />
-                    <MaterialChoices
-                      value={material}
-                      onChange={(value) =>
-                        editor.setPaintSettings((s) => ({ ...s, material: value }))
-                      }
-                    />
-                  </MotionDetails>
-                </>
+                <MakeupSwatches
+                  key={settings.makeupTip}
+                  brush={settings.makeupTip ?? 'base'}
+                  color={rgbaHex(settings.color)}
+                  onColor={(color) =>
+                    editor.setPaintSettings((previous) => {
+                      const next = hexRgba(color);
+                      next[3] = previous.color[3];
+                      return { ...previous, color: next };
+                    })
+                  }
+                >
+                  <ColorPicker
+                    value={rgbaHex(settings.color)}
+                    label={t('画笔颜色')}
+                    onChange={(color) =>
+                      editor.setPaintSettings((s) => ({ ...s, color: hexRgba(color) }))
+                    }
+                  />
+                  <MaterialChoices
+                    value={material}
+                    onChange={(value) =>
+                      editor.setPaintSettings((s) => ({ ...s, material: value }))
+                    }
+                  />
+                </MakeupSwatches>
               )}
             </>
           )}

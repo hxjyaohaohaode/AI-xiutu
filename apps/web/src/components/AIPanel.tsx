@@ -55,7 +55,7 @@ import {
   type GenerationDraftInput,
   type ReferenceCopyJournal,
 } from './generationDraft';
-import { AIThread } from '../ai/AIThread';
+import { AIThread, type CollageResultActions } from '../ai/AIThread';
 import type { OnResultApplied } from '../ai/ResultActions';
 import { recipeDifferences, additionalRecipeChanges } from '../ai/recipeDiff';
 import { ImageParameters } from '../ai/ImageParameters';
@@ -188,7 +188,11 @@ export function AIPanel({
   onAuth,
   captureCurrentImage,
   captureReferenceCanvas,
+  referenceCanvasLabel = '用当前编辑图',
   onUseCanvasSource,
+  collageActions,
+  generationRequest,
+  returnLabel,
   onBeforeArtworkWrite,
   onAfterArtworkWrite,
 }: {
@@ -225,7 +229,11 @@ export function AIPanel({
   onAuth: () => void;
   captureCurrentImage?: CaptureCurrentImage;
   captureReferenceCanvas?: () => Promise<File>;
+  referenceCanvasLabel?: string;
   onUseCanvasSource?: (item: AssistantCloudResource) => void;
+  collageActions?: CollageResultActions;
+  generationRequest?: string;
+  returnLabel?: string;
   onBeforeArtworkWrite?: () => void | Promise<void>;
   onAfterArtworkWrite?: () => void | Promise<void>;
 }) {
@@ -327,6 +335,7 @@ export function AIPanel({
   const submitLock = useRef(false);
   const generation = useRef(0);
   const generationDraftEpoch = useRef(0);
+  const handledGenerationRequest = useRef<string | undefined>(undefined);
   const referenceCopies = useRef<ReferenceCopyJournal>(new Map());
   const panelContext = useRef({ scope, assistantOpen });
   panelContext.current = { scope, assistantOpen };
@@ -619,6 +628,21 @@ export function AIPanel({
       setAssistantOpen(true);
     }
   }, [visualAttachment]);
+  useEffect(() => {
+    if (
+      !visible ||
+      !generationRequest ||
+      handledGenerationRequest.current === generationRequest ||
+      inputLocked ||
+      assistantLocked ||
+      preparingDraft
+    )
+      return;
+    handledGenerationRequest.current = generationRequest;
+    setOverlay(null);
+    if (operation !== 'generate-image') changeOperation('generate-image');
+    setAssistantOpen(false);
+  }, [visible, generationRequest, inputLocked, assistantLocked, preparingDraft, operation]);
   useEffect(() => {
     if (!project) {
       setJobs([]);
@@ -1066,7 +1090,7 @@ export function AIPanel({
   );
   const taskNavigation = mobilePage ? (
     <div className="ai-page-navigation">
-      <IconButton label={t('返回编辑器')} data-ai-return onClick={onClose}>
+      <IconButton label={returnLabel ?? t('返回编辑器')} data-ai-return onClick={onClose}>
         <ArrowLeft size={20} />
       </IconButton>
       {taskPicker}
@@ -1190,6 +1214,7 @@ export function AIPanel({
                   isDirty={isDirty}
                   documents={documents}
                   onDecisionApplied={onDecisionApplied}
+                  collageActions={collageActions}
                   onBeforeArtworkWrite={onBeforeArtworkWrite}
                   onAfterArtworkWrite={onAfterArtworkWrite}
                   onOpen={onOpenArtwork}
@@ -1355,7 +1380,7 @@ export function AIPanel({
                               run: onDraw,
                             },
                             ...(captureReferenceCanvas ? [{
-                              label: t('用当前编辑图'),
+                              label: t(referenceCanvasLabel),
                               icon: <Scan size={17} />,
                               disabled: inputLocked || capturingReference ||
                                 !caps?.references.supported || referencedCount >= referenceLimit,
@@ -1649,7 +1674,7 @@ export function AIPanel({
                   }
                   onClick={() => void useEditedFrame()}
                 >
-                  <Scan size={16} /> {t(capturingReference ? '正在读取画布' : '用当前编辑图')}
+                  <Scan size={16} /> {t(capturingReference ? '正在读取画布' : referenceCanvasLabel)}
                 </button>
               )}
             </div>

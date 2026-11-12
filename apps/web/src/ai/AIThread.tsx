@@ -415,8 +415,14 @@ type ThreadResultProps = {
   onTranscript: (operation: AIOperation, text: string) => void;
   onChanged: () => void;
   onDecisionApplied?: OnResultApplied;
+  collageActions?: CollageResultActions;
   onBeforeArtworkWrite?: () => void | Promise<void>;
   onAfterArtworkWrite?: () => void | Promise<void>;
+};
+export type CollageResultActions = {
+  canAppend: boolean;
+  canReplace: boolean;
+  onUse: (image: GeneratedImage, action: 'append' | 'replace') => void;
 };
 function CompletedResult({
   job,
@@ -431,6 +437,7 @@ function CompletedResult({
   onTranscript,
   onChanged,
   onDecisionApplied,
+  collageActions,
   onBeforeArtworkWrite,
   onAfterArtworkWrite,
 }: ThreadResultProps) {
@@ -441,6 +448,10 @@ function CompletedResult({
   const canEdit = ['owner', 'admin', 'editor'].includes(project.role);
   const images = job.output?.kind === 'image' ? (job.output.images ?? [job.output]) : [];
   const actionProps = { job, controller, artwork, isDirty, canEdit, onOpen, onDecisionApplied };
+  const collageOptions = [
+    { value: 'append', label: t('添加到拼图'), disabled: !collageActions?.canAppend },
+    { value: 'replace', label: t('替换当前格'), disabled: !collageActions?.canReplace },
+  ] as const;
   return (
     <>
       {job.output?.kind === 'edit-plan' && (
@@ -481,6 +492,20 @@ function CompletedResult({
                   <ArrowBendDownRight size={16} />
                   {t('继续改这张')}
                 </button>
+                {collageActions && canEdit && (
+                  <ChoiceSelect<'' | 'append' | 'replace'>
+                    className="ai-collage-result"
+                    size="compact"
+                    ariaLabel={t('将候选用于拼图')}
+                    placeholder={t('用于拼图')}
+                    value=""
+                    options={collageOptions}
+                    disabled={!collageActions.canAppend && !collageActions.canReplace}
+                    onValueChange={(action) => {
+                      if (action) collageActions.onUse(image, action);
+                    }}
+                  />
+                )}
               </div>
               <ResultActions {...actionProps} outputIndex={image.index ?? index} />
             </div>
@@ -525,6 +550,7 @@ export function AIThread({
   onTranscript,
   onChanged,
   onDecisionApplied,
+  collageActions,
   onBeforeArtworkWrite,
   onAfterArtworkWrite,
 }: {
@@ -535,6 +561,7 @@ export function AIThread({
   isDirty?: boolean;
   documents?: { id: string; title: string; version: number }[];
   onDecisionApplied?: OnResultApplied;
+  collageActions?: CollageResultActions;
   onBeforeArtworkWrite?: () => void | Promise<void>;
   onAfterArtworkWrite?: () => void | Promise<void>;
   onOpen: (id: string) => void;
@@ -648,6 +675,7 @@ export function AIThread({
                     onTranscript,
                     onChanged,
                     onDecisionApplied,
+                    collageActions,
                     onBeforeArtworkWrite,
                     onAfterArtworkWrite,
                   }}

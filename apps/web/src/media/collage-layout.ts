@@ -14,7 +14,13 @@ export type CollageTemplate =
   | 'mosaic'
   | 'journal'
   | 'poster'
-  | 'contact';
+  | 'contact'
+  | 'wide-lead'
+  | 'three-plus-one'
+  | 'film'
+  | 'instant'
+  | 'diptych'
+  | 'two-up';
 export type CollageItem = {
   id: string;
   width: number;
@@ -116,6 +122,40 @@ export function templateCells(count: number, template: CollageTemplate): Collage
       ];
     case 'contact':
       return grid(count, { x: 0.055, y: 0.06, width: 0.89, height: 0.88 });
+    case 'wide-lead':
+      return [
+        { ...full, height: 0.34 },
+        { x: 0, y: 0.34, width: 0.62, height: 0.66 },
+        ...strip(count - 2, { x: 0.62, y: 0.34, width: 0.38, height: 0.66 }, 'y'),
+      ];
+    case 'three-plus-one':
+      return [
+        ...(count <= 5
+          ? strip(count - 1, { ...full, height: 0.48 }, 'x')
+          : grid(count - 1, { ...full, height: 0.48 })),
+        { ...full, y: 0.48, height: 0.52 },
+      ];
+    case 'film':
+      return strip(count, { x: 0.11, y: 0.04, width: 0.78, height: 0.92 }, 'y');
+    case 'instant':
+      return grid(count, { x: 0.035, y: 0.025, width: 0.93, height: 0.95 }).map((cell) => ({
+        x: cell.x + cell.width * 0.045,
+        y: cell.y + cell.height * 0.045,
+        width: cell.width * 0.91,
+        height: cell.height * 0.81,
+      }));
+    case 'diptych': {
+      const left = Math.ceil(count / 2);
+      return [
+        ...strip(left, { x: 0.055, y: 0.1, width: 0.425, height: 0.8 }, 'y'),
+        ...strip(count - left, { x: 0.52, y: 0.1, width: 0.425, height: 0.8 }, 'y'),
+      ];
+    }
+    case 'two-up':
+      return [
+        ...strip(2, { ...full, height: 0.68 }, 'x'),
+        ...grid(count - 2, { ...full, y: 0.68, height: 0.32 }),
+      ];
     default:
       return grid(count, full);
   }
@@ -159,6 +199,13 @@ export function collageGeometry(scene: CollageScene, maxEdge: number, even = fal
     };
   });
   return { width, height, cells };
+}
+
+export function collageExportEdge(scene: CollageScene, limit: number, pixels: number) {
+  const size = collageGeometry(scene, limit);
+  const edge = Math.floor(limit * Math.min(1, Math.sqrt(pixels / (size.width * size.height))));
+  const scaled = collageGeometry(scene, edge);
+  return scaled.width * scaled.height > pixels ? edge - 1 : edge;
 }
 
 export function tileImageRect(item: CollageItem, cell: CollageRect, contain = false): CollageRect {

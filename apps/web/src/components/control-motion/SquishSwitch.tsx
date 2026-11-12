@@ -1,4 +1,4 @@
-import { useEffect, useLayoutEffect, useRef } from 'react';
+import { useEffect, useLayoutEffect, useRef, type ReactNode } from 'react';
 import { useKinetic } from '../../motion/useKinetic';
 
 /** A controlled boolean. Dragging previews a choice; only release/click writes it. */
@@ -10,6 +10,8 @@ export function SquishSwitch({
   id,
   className = '',
   showLabel = true,
+  displayLabel = label,
+  thumbIcon,
 }: {
   checked: boolean;
   onCheckedChange: (checked: boolean) => void;
@@ -18,6 +20,8 @@ export function SquishSwitch({
   id?: string;
   className?: string;
   showLabel?: boolean;
+  displayLabel?: string;
+  thumbIcon?: ReactNode;
 }) {
   const track = useRef<HTMLSpanElement>(null);
   const button = useRef<HTMLButtonElement>(null);
@@ -149,9 +153,11 @@ export function SquishSwitch({
       }}
     >
       <span ref={track} className="squish-switch-track" aria-hidden="true">
-        <span ref={thumb} className="squish-switch-thumb" />
+        <span ref={thumb} className="squish-switch-thumb">
+          {thumbIcon}
+        </span>
       </span>
-      {showLabel && <span className="squish-switch-label">{label}</span>}
+      {showLabel && <span className="squish-switch-label">{displayLabel}</span>}
     </button>
   );
 }

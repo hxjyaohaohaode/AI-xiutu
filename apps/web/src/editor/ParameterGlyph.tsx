@@ -523,6 +523,19 @@ const marks: Record<string, ReactNode> = {
       <path d="M2 4v6m20 4v6" />
     </>
   ),
+  paintColor: (
+    <path d="M12 3c-2 4-7 7.6-7 12a7 7 0 0 0 14 0c0-4.4-5-8-7-12Zm-4 12a4 4 0 0 0 4 4" />
+  ),
+  blend: (
+    <>
+      <circle cx="9" cy="12" r="6" />
+      <circle cx="15" cy="12" r="6" />
+      <path d="M12 7a6 6 0 0 1 0 10 6 6 0 0 1 0-10Z" fill="currentColor" fillOpacity=".2" />
+    </>
+  ),
+  layers: <path d="m12 3 9 5-9 5-9-5 9-5Zm-9 9 9 5 9-5M3 16l9 5 9-5" />,
+  positionX: <path d="M3 12h18M7 8l-4 4 4 4m10-8 4 4-4 4M12 6v2m0 8v2" />,
+  positionY: <path d="M12 3v18M8 7l4-4 4 4m-8 10 4 4 4-4M6 12h2m8 0h2" />,
   opacity: (
     <>
       <rect x="3" y="3" width="13" height="13" rx="2" />

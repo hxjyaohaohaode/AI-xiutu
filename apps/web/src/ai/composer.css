@@ -1170,6 +1170,10 @@
 .ai-workbench-v2 .ai-answer-state strong {
   font-weight: 550;
 }
+.ai-workbench-v2 .ai-collage-result {
+  min-inline-size: 0;
+  max-inline-size: 100%;
+}
 .ai-workbench-v2 .ai-result-actions {
   flex-wrap: wrap;
 }
