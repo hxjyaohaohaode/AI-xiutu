@@ -9,6 +9,7 @@ import {
   type KeyboardEvent,
 } from 'react';
 import { usePresence } from '../motion/usePresence';
+import { useKinetic } from '../motion/useKinetic';
 import { StudioGlyph } from './StudioGlyph';
 import {
   advanceChoiceSearch,
@@ -66,6 +67,47 @@ export function ChoiceSelect<T extends string>({
   const trigger = useRef<HTMLButtonElement>(null);
   const popup = useRef<HTMLDivElement>(null);
   const track = useRef<HTMLDivElement>(null);
+  const cursor = useRef<HTMLSpanElement>(null);
+  const cursorBox = useRef({ left: 0, right: 0, top: 0, bottom: 0 });
+  const paintCursor = () => {
+    if (!cursor.current) return;
+    const box = cursorBox.current;
+    cursor.current.style.transform = `translate3d(${box.left}px, ${box.top}px, 0)`;
+    cursor.current.style.width = `${Math.max(0, box.right - box.left)}px`;
+    cursor.current.style.height = `${Math.max(0, box.bottom - box.top)}px`;
+  };
+  const cursorLeft = useKinetic(
+    0,
+    (position) => {
+      cursorBox.current.left = position;
+      paintCursor();
+    },
+    { stiffness: 390, damping: 34 },
+  );
+  const cursorRight = useKinetic(
+    0,
+    (position) => {
+      cursorBox.current.right = position;
+      paintCursor();
+    },
+    { stiffness: 390, damping: 34 },
+  );
+  const cursorTop = useKinetic(
+    0,
+    (position) => {
+      cursorBox.current.top = position;
+      paintCursor();
+    },
+    { stiffness: 360, damping: 32 },
+  );
+  const cursorBottom = useKinetic(
+    0,
+    (position) => {
+      cursorBox.current.bottom = position;
+      paintCursor();
+    },
+    { stiffness: 420, damping: 35 },
+  );
   const [open, setOpen] = useState(false);
   const [cursorValue, setCursorValue] = useState<T | null>(null);
   const [inputMode, setInputMode] = useState<'pointer' | 'keyboard'>('pointer');
@@ -385,6 +427,26 @@ export function ChoiceSelect<T extends string>({
     };
   }, [open, disabled, active, options, presence.present, placement.width]);
 
+  useLayoutEffect(() => {
+    const springs = [cursorLeft, cursorRight, cursorTop, cursorBottom];
+    if (!open || disabled || !highlight) {
+      for (const spring of springs) spring.stop();
+      return;
+    }
+    const values = [
+      highlight.left,
+      highlight.left + highlight.width,
+      highlight.top,
+      highlight.top + highlight.height,
+    ];
+    springs.forEach((spring, index) =>
+      highlight.animate ? spring.setTarget(values[index]!) : spring.jump(values[index]!),
+    );
+    paintCursor();
+    // Only the selection backdrop moves. Native option text, focus and pointer
+    // hit regions remain stationary, including when reduced motion changes.
+  }, [highlight, open, disabled, cursorLeft, cursorRight, cursorTop, cursorBottom]);
+
   return (
     <div className={`choice-select ${className}`} data-size={size}>
       {label && (
@@ -434,15 +496,12 @@ export function ChoiceSelect<T extends string>({
           <div className="choice-options" ref={track}>
             {highlight && (
               <span
+                ref={cursor}
                 className="choice-highlight"
                 aria-hidden="true"
                 data-animate={highlight.animate}
+                data-kinetic="true"
                 data-selected={options[active]?.value === value}
-                style={{
-                  width: highlight.width,
-                  height: highlight.height,
-                  transform: `translate(${highlight.left}px, ${highlight.top}px)`,
-                }}
               />
             )}
             {options.map((option, index) => (

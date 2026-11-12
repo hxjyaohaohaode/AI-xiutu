@@ -2,7 +2,6 @@ import { t } from '../i18n';
 import '../ai/interaction-surfaces.css';
 import { useCallback, useEffect, useLayoutEffect, useRef, useState, type FormEvent } from 'react';
 import {
-  ArrowUp,
   Sparkle,
   X,
   SlidersHorizontal,
@@ -36,6 +35,7 @@ import { Busy, IconButton, InlineError, Modal } from './Ui';
 import { ChoiceSelect } from './ChoiceSelect';
 import { useConfirmation } from './ConfirmationDialog';
 import { ComposerInput } from '../ai/ComposerInput';
+import { ComposerAction } from '../ai/ComposerAction';
 import { ComposerVisual } from '../ai/ComposerVisual';
 import { AIVisibilityContext, IDLE_AI_ACTIVITY, type AIActivity } from '../ai/AIVisibility';
 import { useRetainedDialogValue } from '../ai/useRetainedDialogValue';
@@ -553,14 +553,20 @@ export function AIPanel({
   ]);
   useEffect(() => {
     if (
-      !selected || pending.current || busy || preparingDraft ||
+      !selected ||
+      pending.current ||
+      busy ||
+      preparingDraft ||
       appliedCapabilityKey.current === selectedCapabilityKey
-    ) return;
+    )
+      return;
     appliedCapabilityKey.current = selectedCapabilityKey;
     const changedModel = modelId !== previousModel.current;
     previousModel.current = modelId;
     setImageOptions((current) => {
-      const next = changedModel ? defaultImageOptions(selected) : reconcileImageOptions(selected, current);
+      const next = changedModel
+        ? defaultImageOptions(selected)
+        : reconcileImageOptions(selected, current);
       return JSON.stringify(next) === JSON.stringify(current) ? current : next;
     });
     const allowed = allowedImageSizes(selected);
@@ -571,7 +577,8 @@ export function AIPanel({
     setAuxiliary((current) => {
       if (!current) return current;
       const references = selected.parameterCapabilities?.references;
-      const supported = references?.supported &&
+      const supported =
+        references?.supported &&
         (current.kind === 'mask' ? references.allowMask : references.allowMarkup);
       return changedModel || !supported ? null : current;
     });
@@ -1166,13 +1173,6 @@ export function AIPanel({
                           : 'adjust'
                     }
                   />
-                  <h3>
-                    {operation === 'generate-image'
-                      ? t('描述要生成的画面')
-                      : operation === 'generate-text'
-                        ? t('描述文案内容与用途')
-                        : t('描述需要调整的地方')}
-                  </h3>
                   <div className="ai-prompt-suggestions" aria-label={t('填写示例要求')}>
                     {task.chips.slice(0, 2).map((text) => (
                       <button
@@ -1192,7 +1192,7 @@ export function AIPanel({
                 </div>
               )}
               {operation === 'transcribe' && !pendingSubmission && (
-                <VoiceCapture key={voiceEpoch} onReady={audioReady} />
+                <VoiceCapture key={voiceEpoch} active={visible} onReady={audioReady} />
               )}
             </div>
             <footer className="ai-composer-region">
@@ -1307,21 +1307,17 @@ export function AIPanel({
                         <Microphone size={18} />
                       </IconButton>
                     )}
-                    <button
-                      type="submit"
-                      className="ai-send-button"
-                      title={task.button}
-                      aria-label={task.button}
+                    <ComposerAction
+                      state={busy ? 'waiting' : 'send'}
+                      label={task.button}
                       disabled={!canSubmit}
-                    >
-                      {busy ? <Busy label="" /> : <ArrowUp size={19} />}
-                    </button>
+                    />
                   </div>
                 </div>
               </form>
               <div className="ai-composer-meta">
                 <span>
-                  {quote === null ? t('点数待确认') : t('{v0} 点 / 次', { v0: quote })}
+                  {quote !== null && t('{v0} 点 / 次', { v0: quote })}
                   {operation === 'generate-image'
                     ? t(' · {v0}×{v1} · {v2} 张', {
                         v0: width,
@@ -1550,6 +1546,7 @@ export function AIPanel({
                 disabled={
                   inputLocked || !caps?.references.supported || referencedCount >= referenceLimit
                 }
+                data-action="open-sketch"
                 onClick={onDraw}
               >
                 <PencilSimple size={16} />
@@ -1649,9 +1646,7 @@ export function AIPanel({
               ))}
             </div>
             {(!caps?.references.supported || !referenceLimit) && (
-              <p className="control-note">
-                {t('当前模型不支持参考图')}
-              </p>
+              <p className="control-note">{t('当前模型不支持参考图')}</p>
             )}
             {(caps?.references.allowMask || caps?.references.allowMarkup) && (
               <div className="auxiliary-picker">
@@ -1687,9 +1682,7 @@ export function AIPanel({
                 )}
               </div>
             )}
-            <p className="control-note">
-              {t('原图未包含本地调整。')}
-            </p>
+            <p className="control-note">{t('原图未包含本地调整。')}</p>
           </div>
         </Modal>
         <Modal

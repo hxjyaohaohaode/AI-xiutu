@@ -1,152 +1,118 @@
 import { t } from '../i18n';
 import { useEffect, useRef, useState } from 'react';
-import { Microphone, Stop, Trash, Waveform } from '@phosphor-icons/react';
-import { recordingToWav } from '../lib/audio';
+import { Microphone, Stop, Trash, X } from '@phosphor-icons/react';
 import { voiceErrorMessage } from '../ai/voice-error';
-import { Busy, IconButton, InlineError } from './Ui';
+import { LocalRecording, type LocalRecordingPhase } from '../ai/local-recording';
+import { RecordingMeter } from '../ai/RecordingMeter';
+import { StatusMark } from './StatusMark';
+import { IconButton, InlineError } from './Ui';
+import '../ai/interaction-v2.css';
 
-export function VoiceCapture({ onReady }: { onReady: (base64: string | null) => void }) {
-  const [state, setState] = useState<'idle' | 'recording' | 'preparing' | 'ready'>('idle');
+export function VoiceCapture({
+  onReady,
+  active = true,
+}: {
+  onReady: (base64: string | null) => void;
+  active?: boolean;
+}) {
+  const [state, setState] = useState<LocalRecordingPhase>('idle');
   const [seconds, setSeconds] = useState(0);
   const [url, setUrl] = useState<string | null>(null);
+  const [stream, setStream] = useState<MediaStream | null>(null);
   const [error, setError] = useState<string | null>(null);
-  const recorder = useRef<MediaRecorder | null>(null);
-  const stream = useRef<MediaStream | null>(null);
-  const chunks = useRef<Blob[]>([]);
-  const timeout = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const interval = useRef<ReturnType<typeof setInterval> | null>(null);
+  const current = useRef<LocalRecording | null>(null);
   const live = useRef(true);
   const ready = useRef(onReady);
   ready.current = onReady;
   const supported =
+    typeof navigator !== 'undefined' &&
     !!navigator.mediaDevices?.getUserMedia &&
     typeof MediaRecorder !== 'undefined' &&
     typeof AudioContext !== 'undefined' &&
     typeof OfflineAudioContext !== 'undefined';
-  function clearTimers() {
-    if (timeout.current) clearTimeout(timeout.current);
-    if (interval.current) clearInterval(interval.current);
-    timeout.current = null;
-    interval.current = null;
-  }
-  function stop() {
-    clearTimers();
-    if (recorder.current?.state === 'recording') recorder.current.stop();
-    stream.current?.getTracks().forEach((track) => track.stop());
-  }
   useEffect(() => {
     live.current = true;
+    const hide = () => {
+      if (document.visibilityState === 'hidden') current.current?.finish();
+    };
+    document.addEventListener('visibilitychange', hide);
     return () => {
       live.current = false;
-      clearTimers();
-      if (recorder.current) {
-        recorder.current.onstop = null;
-        if (recorder.current.state === 'recording') recorder.current.stop();
-      }
-      stream.current?.getTracks().forEach((track) => track.stop());
+      current.current?.cancel();
+      current.current = null;
+      document.removeEventListener('visibilitychange', hide);
       ready.current(null);
     };
   }, []);
+  useEffect(() => {
+    if (!active) current.current?.finish();
+  }, [active]);
   useEffect(
     () => () => {
       if (url) URL.revokeObjectURL(url);
     },
     [url],
   );
-  async function start() {
-    setError(null);
-    setState('preparing');
+  function discard() {
+    current.current?.cancel();
+    current.current = null;
     ready.current(null);
+    setState('idle');
     setUrl(null);
-    chunks.current = [];
-    try {
-      const media = await navigator.mediaDevices.getUserMedia({
-        audio: { echoCancellation: true, noiseSuppression: true, channelCount: 1 },
-        video: false,
-      });
-      if (!live.current) {
-        media.getTracks().forEach((track) => track.stop());
-        return;
-      }
-      stream.current = media;
-      const mimeType = ['audio/webm;codecs=opus', 'audio/mp4', 'audio/webm'].find((type) =>
-        MediaRecorder.isTypeSupported(type),
-      );
-      const instance = new MediaRecorder(media, mimeType ? { mimeType } : undefined);
-      recorder.current = instance;
-      let totalBytes = 0;
-      instance.ondataavailable = (event) => {
-        totalBytes += event.data.size;
-        if (totalBytes > 6 * 1024 * 1024) {
-          setError('录音过大，已停止。请重新录制较短的内容。');
-          stop();
-          return;
-        }
-        if (event.data.size) chunks.current.push(event.data);
-      };
-      instance.onerror = () => {
-        stop();
-        if (live.current) {
-          setError('麦克风录制中断，请重新录制。');
-          setState('idle');
-        }
-      };
-      instance.onstop = async () => {
-        clearTimers();
-        media.getTracks().forEach((track) => track.stop());
-        if (!live.current) return;
-        setState('preparing');
-        try {
-          if (totalBytes > 6 * 1024 * 1024) throw new Error('录音过大，请重新录制。');
-          const result = await recordingToWav(
-            new Blob(chunks.current, { type: instance.mimeType }),
-          );
-          if (!live.current) return;
-          setSeconds(result.seconds);
-          setUrl(URL.createObjectURL(result.wav));
-          ready.current(result.base64);
-          setState('ready');
-        } catch (e) {
-          if (live.current) {
-            setError(voiceErrorMessage(e));
-            setState('idle');
-          }
-        }
-      };
-      instance.start(500);
-      setSeconds(0);
-      setState('recording');
-      const started = Date.now();
-      interval.current = setInterval(
-        () => setSeconds(Math.min(30, (Date.now() - started) / 1000)),
-        200,
-      );
-      timeout.current = setTimeout(stop, 30_000);
-    } catch (e) {
-      stream.current?.getTracks().forEach((track) => track.stop());
-      if (live.current) {
-        setState('idle');
-        setError(voiceErrorMessage(e));
-      }
-    }
+    setSeconds(0);
+    setStream(null);
   }
+  function start() {
+    if (!active || !supported) return;
+    current.current?.cancel();
+    setError(null);
+    setUrl(null);
+    setSeconds(0);
+    const owner = new LocalRecording({
+      phase: (phase) => {
+        if (live.current && current.current === owner) setState(phase);
+      },
+      elapsed: (elapsed) => {
+        if (live.current && current.current === owner) setSeconds(elapsed);
+      },
+      stream: (media) => {
+        if (live.current && current.current === owner) setStream(media);
+      },
+      ready: (clip) => {
+        if (!live.current || current.current !== owner) return;
+        ready.current(clip?.base64 ?? null);
+        if (clip) setUrl(URL.createObjectURL(clip.wav));
+      },
+      error: (failure) => {
+        if (live.current && current.current === owner) setError(voiceErrorMessage(failure));
+      },
+    });
+    current.current = owner;
+    void owner.start();
+  }
+  const recording = state === 'recording';
+  const preparing = state === 'preparing';
   return (
     <div
-      className="voice-capture"
+      className="voice-capture voice-capture-v2"
       data-motion="voice-controls"
-      data-recording={state === 'recording'}
+      data-recording={recording}
+      data-state={state}
+      onKeyDown={(event) => {
+        if (event.key === 'Escape' && (recording || preparing) && !event.nativeEvent.isComposing) {
+          event.preventDefault();
+          event.stopPropagation();
+          discard();
+        }
+      }}
     >
-      <div className={`voice-orb ${state}`}>
-        <Waveform size={32} weight="light" />
+      <div className="voice-capture-heading">
+        <Microphone size={20} aria-hidden="true" />
+        <strong>
+          {recording ? t('正在录音') : state === 'ready' ? t('录音已就绪') : t('录制语音')}
+        </strong>
       </div>
-      <strong>
-        {state === 'recording'
-          ? t('正在录音')
-          : state === 'ready'
-            ? t('录音已就绪')
-            : t('录制语音')}
-      </strong>
-      <p>{t('最多 30 秒。录音先保留在本机，点击下方发送后才进行语音识别。')}</p>
+      <p className="voice-capture-consent">{t('本机录音，确认发送后识别。最多 30 秒。')}</p>
       {!supported ? (
         <p className="form-hint">
           {t(
@@ -155,35 +121,45 @@ export function VoiceCapture({ onReady }: { onReady: (base64: string | null) => 
         </p>
       ) : (
         <>
-          <span className="recording-time">
-            {Math.floor(seconds).toString().padStart(2, '0')} {t('/ 30 秒')}
-          </span>
-          {state === 'preparing' ? (
-            <Busy label={t('正在准备录音')} />
-          ) : state === 'recording' ? (
-            <button className="button button-recording" onClick={stop}>
-              <Stop size={18} weight="fill" />
-              {t('停止录音')}
-            </button>
-          ) : (
-            <button className="button button-secondary" onClick={() => void start()}>
-              <Microphone size={18} />
-              {state === 'ready' ? t('重新录制') : t('开始录音')}
-            </button>
-          )}
+          <div className="recording-capsule" data-active={recording || preparing}>
+            {(recording || preparing) && (
+              <IconButton label={t('取消这次录音')} onClick={discard}>
+                <X size={17} />
+              </IconButton>
+            )}
+            {recording && <RecordingMeter stream={stream} />}
+            {(recording || preparing || state === 'ready') && (
+              <span
+                className="recording-time"
+                role="timer"
+                aria-label={t('录音时长')}
+              >{`0:${String(Math.floor(seconds)).padStart(2, '0')}`}</span>
+            )}
+            {preparing ? (
+              <span className="recording-preparing" role="status">
+                <StatusMark state="pending" size="small" />
+                <span>{t('正在准备录音')}</span>
+              </span>
+            ) : (
+              <button
+                type="button"
+                className="recording-toggle"
+                aria-label={
+                  recording ? t('停止录音') : state === 'ready' ? t('重新录制') : t('开始录音')
+                }
+                aria-pressed={recording}
+                onClick={recording ? () => current.current?.finish() : start}
+              >
+                {recording ? <Stop size={17} weight="fill" /> : <Microphone size={18} />}
+                {!recording && <span>{state === 'ready' ? t('重新录制') : t('开始录音')}</span>}
+              </button>
+            )}
+          </div>
           {url && (
             <div className="voice-playback">
               <audio controls src={url} preload="metadata" />
-              <IconButton
-                label={t('删除这段本地录音')}
-                onClick={() => {
-                  setUrl(null);
-                  ready.current(null);
-                  setState('idle');
-                  setSeconds(0);
-                }}
-              >
-                <Trash size={18} />
+              <IconButton label={t('删除这段本地录音')} onClick={discard}>
+                <Trash size={17} />
               </IconButton>
             </div>
           )}

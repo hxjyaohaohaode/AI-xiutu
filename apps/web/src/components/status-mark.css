@@ -1,0 +1,129 @@
+.status-mark {
+  --status-size: var(--ui-icon-size, 20px);
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  min-width: 0;
+  color: inherit;
+  vertical-align: middle;
+}
+.status-mark[data-size='small'] {
+  --status-size: var(--ui-icon-small, 18px);
+}
+.status-mark > svg {
+  display: block;
+  flex: 0 0 var(--status-size);
+  width: var(--status-size);
+  height: var(--status-size);
+  stroke: currentColor;
+  stroke-width: 1.7;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  overflow: visible;
+}
+.status-mark-label {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+.toast > .status-mark {
+  flex: 0 0 auto;
+  align-self: center;
+}
+.toast > .toast-message {
+  flex: 1;
+  min-width: 0;
+}
+.toast[data-motion='notice'] {
+  pointer-events: auto;
+  gap: 8px;
+  font-size: var(--ui-text-size, 13px);
+  line-height: 1.5;
+}
+.toast[data-motion='notice'] > .icon-button {
+  flex: 0 0 var(--ui-hit, 40px);
+  width: var(--ui-hit, 40px);
+  height: var(--ui-hit, 40px);
+  min-width: var(--ui-hit, 40px);
+  min-height: var(--ui-hit, 40px);
+  padding: 0;
+}
+.toast[data-motion='notice'] > .icon-button > svg {
+  width: var(--ui-icon-small, 18px);
+  height: var(--ui-icon-small, 18px);
+}
+.inline-error > .status-mark {
+  flex: 0 0 auto;
+  align-self: start;
+  margin-block-start: 1px;
+}
+.status-mark-track {
+  opacity: 0.25;
+  transition: opacity 180ms ease;
+}
+.status-mark[data-state='done'] .status-mark-track,
+.status-mark[data-state='failed'] .status-mark-track,
+.status-mark[data-state='cancelled'] .status-mark-track,
+.status-mark[data-state='unknown'] .status-mark-track {
+  opacity: 0.75;
+}
+.status-mark-orbit {
+  transform-origin: 12px 12px;
+  animation: status-orbit 1.1s linear infinite;
+}
+.status-mark-progress {
+  stroke-dasharray: 0.68 1;
+  transform-origin: 12px 12px;
+  transform: rotate(-90deg);
+}
+.status-mark[data-state='pending'] .status-mark-progress {
+  stroke-dasharray: 0.045 0.08;
+  opacity: 0.85;
+}
+.status-mark[data-state='pending'] .status-mark-orbit {
+  animation: none;
+}
+.status-mark[data-measured='true'] .status-mark-orbit {
+  animation: none;
+}
+.status-mark[data-measured='true'] .status-mark-progress {
+  stroke-dasharray: 1;
+  stroke-dashoffset: calc(1 - var(--status-progress));
+  transition: stroke-dashoffset 180ms ease;
+}
+.status-mark-stroke {
+  animation: status-draw 200ms ease-out both;
+  stroke-dasharray: 1;
+}
+g.status-mark-stroke {
+  stroke-dasharray: none;
+  animation: none;
+}
+g.status-mark-stroke > path {
+  stroke-dasharray: 1;
+  animation: status-draw 180ms ease-out both;
+}
+@keyframes status-orbit {
+  to {
+    transform: rotate(360deg);
+  }
+}
+@keyframes status-draw {
+  from {
+    stroke-dashoffset: 1;
+  }
+  to {
+    stroke-dashoffset: 0;
+  }
+}
+.status-mark[data-reduced='true'] *,
+.status-mark[data-reduced='true'] {
+  animation: none !important;
+  transition: none !important;
+}
+@media (prefers-reduced-motion: reduce) {
+  .status-mark,
+  .status-mark * {
+    animation: none !important;
+    transition: none !important;
+  }
+}

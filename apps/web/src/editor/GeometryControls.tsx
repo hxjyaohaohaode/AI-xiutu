@@ -11,7 +11,7 @@ import {
   ArrowsOutCardinal,
   ArrowsClockwise,
   CompassTool,
-} from '@phosphor-icons/react';
+} from '../components/ControlGlyph';
 import {
   createFineTransformV3,
   createRecipeV4,

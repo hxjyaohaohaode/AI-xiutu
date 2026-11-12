@@ -359,7 +359,10 @@ export function AssetLibrary({
       setReplacementBusy(false);
     }
   }
-  const [tools, setTools] = useState<{ asset: Asset; kind: 'ocr' | 'animation' | 'restoration' } | null>(null);
+  const [tools, setTools] = useState<{
+    asset: Asset;
+    kind: 'ocr' | 'animation' | 'restoration';
+  } | null>(null);
   const [projectTools, setProjectTools] = useState(false);
   const [expandedAssetDetails, setExpandedAssetDetails] = useState<Set<string>>(() => new Set());
   const [density, setDensity] = useState<'comfortable' | 'compact'>('comfortable');
@@ -988,6 +991,8 @@ export function AssetLibrary({
           title={t('原件与母版')}
           subtitle={sourceDetails.name}
           onClose={() => setSourceDetails(null)}
+          className="media-source-dialog"
+          profile="media"
         >
           <MediaSourceViewer assetId={sourceDetails.id} />
         </Modal>

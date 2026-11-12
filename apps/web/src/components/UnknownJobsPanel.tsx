@@ -3,6 +3,8 @@ import { ChoiceSelect } from './ChoiceSelect';
 import { useEffect, useRef, useState } from 'react';
 import { api, errorMessage, formatDate, jsonRequest } from '../lib/api';
 import { InlineError } from './Ui';
+import { CheckControl } from './CheckControl';
+import { StatusMark } from './StatusMark';
 import { FeatureSkeleton } from './DeferredFeature';
 import './unknown-jobs.css';
 
@@ -110,7 +112,11 @@ export function UnknownJobsPanel() {
     }
   }
   return (
-    <section className="surface ops-section unknown-jobs" aria-label={t('生成任务核验')}>
+    <section
+      className="surface ops-section unknown-jobs"
+      aria-label={t('生成任务核验')}
+      data-read-state={loading ? 'loading' : data ? 'ready' : 'error'}
+    >
       <h2>{t('待核验的生成任务')}</h2>
       <p className="form-hint">
         {t(
@@ -174,7 +180,11 @@ export function UnknownJobsPanel() {
           {t('重新读取')}
         </button>
       )}
-      {success && <p role="status">{t(success)}</p>}
+      {success && (
+        <p role="status">
+          <StatusMark state="done" size="small" label={t(success)} />
+        </p>
+      )}
       {loading ? (
         <FeatureSkeleton profile="table" label={t('读取待核验任务')} compact />
       ) : data ? (
@@ -195,21 +205,21 @@ export function UnknownJobsPanel() {
                 <tbody>
                   {data.jobs.map((job) => (
                     <tr key={job.id}>
-                      <td>
+                      <td data-label={t('任务 / 账号')}>
                         <code>{job.id}</code>
                         <small>{job.actorId}</small>
                       </td>
-                      <td>
+                      <td data-label={t('类型 / 模型')}>
                         {t(operations[job.operation] ?? job.operation)}
                         <small>{job.modelId}</small>
                       </td>
-                      <td>{job.heldUnits}</td>
-                      <td>
+                      <td data-label={t('预占点数')}>{job.heldUnits}</td>
+                      <td data-label={t('供应商回执 / 状态')}>
                         {job.providerRequestId ?? t('尚未取得回执')}
                         <small>{job.errorCode}</small>
                       </td>
-                      <td>{formatDate(job.createdAt)}</td>
-                      <td>
+                      <td data-label={t('时间')}>{formatDate(job.createdAt)}</td>
+                      <td data-label={t('操作')}>
                         <button
                           disabled={busy || !data.resolutionAvailable}
                           onClick={() => {
@@ -317,15 +327,17 @@ export function UnknownJobsPanel() {
                 }}
               />
             </label>
-            <label className="check-row">
-              <input
-                type="checkbox"
-                checked={reviewed}
-                onChange={(event) => setReviewed(event.target.checked)}
-              />
-              {t('已核对该请求与证据，确认处理')}
-              {selected.heldUnits} {t('点预占额度')}
-            </label>
+            <CheckControl
+              className="check-row"
+              checked={reviewed}
+              onChange={(event) => setReviewed(event.target.checked)}
+              label={
+                <>
+                  {t('已核对该请求与证据，确认处理')}
+                  {selected.heldUnits} {t('点预占额度')}
+                </>
+              }
+            />
             <button
               type="submit"
               disabled={!reviewed || reason.trim().length < 10 || evidence.trim().length < 3}

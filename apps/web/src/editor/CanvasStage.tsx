@@ -1,6 +1,7 @@
 import { t } from '../i18n';
 import {
   useEffect,
+  useId,
   useLayoutEffect,
   useMemo,
   useRef,
@@ -22,7 +23,8 @@ import {
   ArrowCounterClockwise,
   ArrowClockwise,
   ArrowsOutCardinal,
-} from '@phosphor-icons/react';
+  DotsThree,
+} from '../components/ControlGlyph';
 import {
   getEditorOutputDimensions,
   compileProjectiveTransformV4,
@@ -313,6 +315,18 @@ export function CanvasStage({
   const [space, setSpace] = useState(false),
     [handMode, setHandMode] = useState(false),
     [notice, setNotice] = useState<string | null>(null);
+  const [viewToolsOpen, setViewToolsOpen] = useState(false);
+  const viewToolsId = useId();
+  const viewToolbar = useRef<HTMLDivElement>(null);
+  const viewToolsButton = useRef<HTMLButtonElement>(null);
+  useEffect(() => {
+    if (!viewToolsOpen) return;
+    const outside = (event: globalThis.PointerEvent) => {
+      if (!viewToolbar.current?.contains(event.target as Node)) setViewToolsOpen(false);
+    };
+    document.addEventListener('pointerdown', outside, true);
+    return () => document.removeEventListener('pointerdown', outside, true);
+  }, [viewToolsOpen]);
   const [selectionPulse, setSelectionPulse] = useState(false);
   const [selectionHeld, setSelectionHeld] = useState(false);
   const [selectionManipulating, setSelectionManipulating] = useState(false);
@@ -2363,7 +2377,26 @@ export function CanvasStage({
       </div>
       {editor.file && (
         <>
-          <div className="canvas-view-controls" data-motion="canvas-toolbar">
+          <div
+            ref={viewToolbar}
+            className="canvas-view-controls"
+            data-motion="canvas-toolbar"
+            onKeyDown={(event) => {
+              if (event.key === 'Escape' && viewToolsOpen) {
+                event.preventDefault();
+                event.stopPropagation();
+                setViewToolsOpen(false);
+                viewToolsButton.current?.focus({ preventScroll: true });
+              }
+            }}
+            onBlurCapture={(event) => {
+              if (
+                event.relatedTarget instanceof Node &&
+                !event.currentTarget.contains(event.relatedTarget)
+              )
+                setViewToolsOpen(false);
+            }}
+          >
             <IconButton label={t('撤销本次编辑')} disabled={!editor.canUndo} onClick={editor.undo}>
               <ArrowCounterClockwise size={17} />
             </IconButton>
@@ -2391,43 +2424,88 @@ export function CanvasStage({
               <Eye size={17} />
               <span>{t('按住对比')}</span>
             </button>
-            <IconButton
-              label={t('缩小预览')}
-              disabled={zoom <= MIN_CANVAS_ZOOM}
-              onClick={() => zoomBy(0.8)}
-            >
-              <MagnifyingGlassMinus size={18} />
-            </IconButton>
             <button className="zoom-fit" onClick={fit} title={t('点击完整显示图片')}>
               {zoom === 1 ? t('适应') : `${Math.round(scale * zoom * 100)}%`}
             </button>
-            <IconButton
-              label={t('放大预览')}
-              disabled={zoom >= MAX_CANVAS_ZOOM}
-              onClick={() => zoomBy(1.25)}
-            >
-              <MagnifyingGlassPlus size={18} />
-            </IconButton>
-            <IconButton label={t('完整显示整张图片')} onClick={fit}>
-              <CornersOut size={18} />
-            </IconButton>
             <button
-              className="pixel-scale-button"
-              title={t('一个预览像素对应一个CSS像素，不把缩小预览当原图')}
-              onClick={() => {
-                setCamera(zoomedCamera(fittedCamera, 1 / scale, { x: 0, y: 0 }));
-              }}
+              ref={viewToolsButton}
+              type="button"
+              className="canvas-tools-trigger"
+              aria-label={t('画布工具')}
+              aria-expanded={viewToolsOpen}
+              aria-controls={viewToolsId}
+              onClick={() => setViewToolsOpen(!viewToolsOpen)}
             >
-              1:1
+              <DotsThree size={20} />
             </button>
-            <button
-              className={`canvas-hand-mode ${handMode ? 'active' : ''}`}
-              aria-label={t('拖动画面模式')}
-              aria-pressed={handMode}
-              onClick={() => setHandMode(!handMode)}
+            <div
+              id={viewToolsId}
+              className="canvas-secondary-controls"
+              data-open={viewToolsOpen || undefined}
+              role="group"
+              aria-label={t('画布工具')}
             >
-              <Hand size={17} />
-            </button>
+              <IconButton
+                label={t('缩小预览')}
+                disabled={zoom <= MIN_CANVAS_ZOOM}
+                onClick={() => zoomBy(0.8)}
+              >
+                <MagnifyingGlassMinus size={18} />
+              </IconButton>
+              <IconButton
+                label={t('放大预览')}
+                disabled={zoom >= MAX_CANVAS_ZOOM}
+                onClick={() => zoomBy(1.25)}
+              >
+                <MagnifyingGlassPlus size={18} />
+              </IconButton>
+              <button
+                className="pixel-scale-button"
+                title={t('一个预览像素对应一个CSS像素，不把缩小预览当原图')}
+                onClick={() => setCamera(zoomedCamera(fittedCamera, 1 / scale, { x: 0, y: 0 }))}
+              >
+                1:1
+              </button>
+              <button
+                className={`canvas-hand-mode ${handMode ? 'active' : ''}`}
+                aria-label={t('拖动画面模式')}
+                aria-pressed={handMode}
+                onClick={() => {
+                  setHandMode(!handMode);
+                  setViewToolsOpen(false);
+                }}
+              >
+                <Hand size={18} />
+              </button>
+              <button
+                type="button"
+                className="canvas-touch-action"
+                aria-label={t('打开另一张图片')}
+                onClick={() => {
+                  setViewToolsOpen(false);
+                  onImport();
+                }}
+              >
+                <Plus size={18} />
+                <span>{t('打开图片')}</span>
+              </button>
+              <button
+                type="button"
+                className="canvas-touch-action"
+                data-action="open-sketch"
+                aria-label={t('打开草图板')}
+                onClick={() => {
+                  setViewToolsOpen(false);
+                  onDraw();
+                }}
+              >
+                <PencilSimple size={18} />
+                <span>{t('草图')}</span>
+              </button>
+              <small className="canvas-touch-caption">
+                {output?.width} × {output?.height}
+              </small>
+            </div>
           </div>
           {sampling ? (
             <div className="canvas-context-hint" data-motion="sample-hint">

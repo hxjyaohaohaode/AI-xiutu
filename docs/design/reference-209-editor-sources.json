@@ -1,0 +1,240 @@
+{
+  "productSnapshot": "bb9e126cd668eb87d53548fbcdef773982f284a4",
+  "referenceSnapshot": "9d9c687dc4f55b23539aa5417b703078047efa74",
+  "catalog": "catalog-209.json; all 209 entries and document instructions read before product changes",
+  "entries": [
+    {
+      "id": 88,
+      "name": "Dock",
+      "url": "https://github.com/DavidHDev/react-bits/blob/9d9c687dc4f55b23539aa5417b703078047efa74/src/ts-tailwind/Components/Dock/Dock.tsx",
+      "repository": "https://github.com/DavidHDev/react-bits",
+      "commit": "9d9c687dc4f55b23539aa5417b703078047efa74",
+      "path": "src/ts-tailwind/Components/Dock/Dock.tsx",
+      "blobSha": "0b9df424945b45f9077203df29327cf693c9a14d",
+      "sourceRead": "complete TSX; source mechanisms reviewed separately from demo",
+      "runtimeDependencies": "React + react-dom",
+      "license": "MIT + Commons Clause; LICENSE.md 4069ce9d0ef1a712c93d6ce48ade5d5667e0f5ee",
+      "mechanism": "Cosine-squared proximity field changes neighboring items; bounded spring integration sleeps at rest; focus follows the same field; click bounce returns to rest.",
+      "adoption": "Keep proximity/focus response and bounded click bounce in stable, separate hit boxes; phone uses whole fixed-width slots and no hover prerequisite.",
+      "limits": "Do not copy scale-to-fit below usable targets, delayed action dispatch, auto-hide menus or mount-only reduced preference.",
+      "demo": {
+        "owner": "/root, real Edge",
+        "state": "parent-reported-observed",
+        "byThisAgent": false
+      }
+    },
+    {
+      "id": 99,
+      "name": "ElasticSlider",
+      "url": "https://github.com/DavidHDev/react-bits/blob/9d9c687dc4f55b23539aa5417b703078047efa74/src/ts-tailwind/Components/ElasticSlider/ElasticSlider.tsx",
+      "repository": "https://github.com/DavidHDev/react-bits",
+      "commit": "9d9c687dc4f55b23539aa5417b703078047efa74",
+      "path": "src/ts-tailwind/Components/ElasticSlider/ElasticSlider.tsx",
+      "blobSha": "683ca3732544e42c06f26ec62e75b65b55ba2045",
+      "sourceRead": "complete TSX; source mechanisms reviewed separately from demo",
+      "runtimeDependencies": "React; @hugeicons/react + @hugeicons/core-free-icons for defaults",
+      "license": "MIT + Commons Clause; LICENSE.md 4069ce9d0ef1a712c93d6ce48ade5d5667e0f5ee",
+      "mechanism": "Bounded authoritative value; duration/damping springs for activation/fill/stretch; sigmoid overpull, cross-axis compression, release recovery.",
+      "adoption": "Source study only this round; combine only after an actual demo is reviewed.",
+      "limits": "Pointer cancel currently commits, 34px hit area, internal state and wheel capture unsuitable without adaptation.",
+      "demo": {
+        "owner": "/root, real Edge",
+        "state": "not-observed-this-round",
+        "byThisAgent": false
+      }
+    },
+    {
+      "id": 123,
+      "name": "CometDial",
+      "url": "https://github.com/DavidHDev/react-bits/blob/9d9c687dc4f55b23539aa5417b703078047efa74/src/ts-tailwind/Micro/CometDial/CometDial.tsx",
+      "repository": "https://github.com/DavidHDev/react-bits",
+      "commit": "9d9c687dc4f55b23539aa5417b703078047efa74",
+      "path": "src/ts-tailwind/Micro/CometDial/CometDial.tsx",
+      "blobSha": "9c526a15a436a09f6106d628676a781180995aa7",
+      "sourceRead": "complete TSX; source mechanisms reviewed separately from demo",
+      "runtimeDependencies": "React + motion/react",
+      "license": "MIT + Commons Clause; LICENSE.md 4069ce9d0ef1a712c93d6ce48ade5d5667e0f5ee",
+      "mechanism": "Angular position with direction/velocity comet tail; dead center; tap spring and projected flick settling; keyboard updates.",
+      "adoption": "Source study only this round; could serve rotation/hue, never replace unrelated exposure controls.",
+      "limits": "No Escape/window-blur/lost-capture rollback; cancellation can commit; animated aria reading and no precise input; size cost.",
+      "demo": {
+        "owner": "/root, real Edge",
+        "state": "not-observed-this-round",
+        "byThisAgent": false
+      }
+    },
+    {
+      "id": 124,
+      "name": "WakeSlider",
+      "url": "https://github.com/DavidHDev/react-bits/blob/9d9c687dc4f55b23539aa5417b703078047efa74/src/ts-tailwind/Micro/WakeSlider/WakeSlider.tsx",
+      "repository": "https://github.com/DavidHDev/react-bits",
+      "commit": "9d9c687dc4f55b23539aa5417b703078047efa74",
+      "path": "src/ts-tailwind/Micro/WakeSlider/WakeSlider.tsx",
+      "blobSha": "5205a6be52d705b56ca3a72fc9137fd819fdeed0",
+      "sourceRead": "complete TSX; source mechanisms reviewed separately from demo",
+      "runtimeDependencies": "React + motion/react",
+      "license": "MIT + Commons Clause; LICENSE.md 4069ce9d0ef1a712c93d6ce48ade5d5667e0f5ee",
+      "mechanism": "Head critically follows pointer; velocity is separately smoothed; velocity sets amplitude/reach; direction skews forward/trailing wake; bars settle flat after motion stops.",
+      "adoption": "Use actual velocity/direction/decay on existing PrecisionRange; keep bounded exact value and current one-transaction/cancel ownership.",
+      "limits": "Do not carry over missing cancellation rollback or couple engine value to visual spring; reduced mode stays flat.",
+      "demo": {
+        "owner": "/root, real Edge",
+        "state": "parent-reported-observed",
+        "byThisAgent": false
+      }
+    },
+    {
+      "id": 127,
+      "name": "ScrubField",
+      "url": "https://github.com/DavidHDev/react-bits/blob/9d9c687dc4f55b23539aa5417b703078047efa74/src/ts-tailwind/Micro/ScrubField/ScrubField.tsx",
+      "repository": "https://github.com/DavidHDev/react-bits",
+      "commit": "9d9c687dc4f55b23539aa5417b703078047efa74",
+      "path": "src/ts-tailwind/Micro/ScrubField/ScrubField.tsx",
+      "blobSha": "4fb88e53a274da8edcae7cb09d4e52e4019a4274",
+      "sourceRead": "complete TSX; source mechanisms reviewed separately from demo",
+      "runtimeDependencies": "React + motion/react",
+      "license": "MIT + Commons Clause; LICENSE.md 4069ce9d0ef1a712c93d6ce48ade5d5667e0f5ee",
+      "mechanism": "Drag threshold distinguishes edit from scrub; Shift/Alt speed; bound feedback; press selects exact numeric input; Escape cancels.",
+      "adoption": "Use click-vs-drag numeric field plus fine/coarse modifier, with strict project numeric parser, IME, stale-draft checks and one commit.",
+      "limits": "No fake out-of-range number; do not copy permissive parseFloat, lost-capture commit or missing blur lifecycle.",
+      "demo": {
+        "owner": "/root, real Edge",
+        "state": "parent-reported-observed",
+        "byThisAgent": false
+      }
+    },
+    {
+      "id": 129,
+      "name": "WarmTooltip",
+      "url": "https://github.com/DavidHDev/react-bits/blob/9d9c687dc4f55b23539aa5417b703078047efa74/src/ts-tailwind/Micro/WarmTooltip/WarmTooltip.tsx",
+      "repository": "https://github.com/DavidHDev/react-bits",
+      "commit": "9d9c687dc4f55b23539aa5417b703078047efa74",
+      "path": "src/ts-tailwind/Micro/WarmTooltip/WarmTooltip.tsx",
+      "blobSha": "e1c36b73b55ee220c073ee0329edaa2ad83d8f63",
+      "sourceRead": "complete TSX; source mechanisms reviewed separately from demo",
+      "runtimeDependencies": "React + react-dom + motion/react",
+      "license": "MIT + Commons Clause; LICENSE.md 4069ce9d0ef1a712c93d6ce48ade5d5667e0f5ee",
+      "mechanism": "Cold 400ms / warm 300ms group memory; shared portal travels between measured anchors; grace exit, keyboard focus, Escape and optional touch long press.",
+      "adoption": "Short optional shortcut/meaning; preserve existing aria-describedby; flip and clamp to viewport; Escape clears visible tooltip synchronously.",
+      "limits": "No required permission/error/status only in tooltip; do not steal long press on sliders/canvas. Parent demo Escape still showed immediate bubble: adaptation must fix and verify.",
+      "demo": {
+        "owner": "/root, real Edge",
+        "state": "parent-reported-observed",
+        "byThisAgent": false
+      }
+    },
+    {
+      "id": 131,
+      "name": "RubberSegment",
+      "url": "https://github.com/DavidHDev/react-bits/blob/9d9c687dc4f55b23539aa5417b703078047efa74/src/ts-tailwind/Micro/RubberSegment/RubberSegment.tsx",
+      "repository": "https://github.com/DavidHDev/react-bits",
+      "commit": "9d9c687dc4f55b23539aa5417b703078047efa74",
+      "path": "src/ts-tailwind/Micro/RubberSegment/RubberSegment.tsx",
+      "blobSha": "f7bb4da03c175a39d617433cc39b4dd8968f353f",
+      "sourceRead": "complete TSX; source mechanisms reviewed separately from demo",
+      "runtimeDependencies": "React + motion/react",
+      "license": "MIT + Commons Clause; LICENSE.md 4069ce9d0ef1a712c93d6ce48ade5d5667e0f5ee",
+      "mechanism": "Measured leading/trailing edges stretch in sequence then settle; drag dead zone, edge rubber, velocity-based flick; keyboard immediate selection.",
+      "adoption": "Controlled native-button segmented choices with edge spring behind fixed text; retain Enter/Space and disabled semantics; no drag capture on scrollable rails.",
+      "limits": "Original lacks native onClick handling, so do not copy pointer-only commit; no fixed widths or motion of text.",
+      "demo": {
+        "owner": "/root, real Edge",
+        "state": "parent-reported-observed",
+        "byThisAgent": false
+      }
+    },
+    {
+      "id": 136,
+      "name": "SquishSwitch",
+      "url": "https://github.com/DavidHDev/react-bits/blob/9d9c687dc4f55b23539aa5417b703078047efa74/src/ts-tailwind/Micro/SquishSwitch/SquishSwitch.tsx",
+      "repository": "https://github.com/DavidHDev/react-bits",
+      "commit": "9d9c687dc4f55b23539aa5417b703078047efa74",
+      "path": "src/ts-tailwind/Micro/SquishSwitch/SquishSwitch.tsx",
+      "blobSha": "c87f879681fde954fa035545dba1b84e09b56473",
+      "sourceRead": "complete TSX; source mechanisms reviewed separately from demo",
+      "runtimeDependencies": "React + motion/react",
+      "license": "MIT + Commons Clause; LICENSE.md 4069ce9d0ef1a712c93d6ce48ade5d5667e0f5ee",
+      "mechanism": "Thumb position spring and velocity-driven stretch/squash; pointer threshold, hover response and cancellation restoring prior state.",
+      "adoption": "New controlled boolean switch with stable 44px target; visual drag preview, single final callback; native click/keyboard preserved.",
+      "limits": "Do not copy repeated server/undo writes while crossing midpoint, aria-disabled-only or missing lost-capture/blur cleanup.",
+      "demo": {
+        "owner": "/root, real Edge",
+        "state": "parent-reported-observed",
+        "byThisAgent": false
+      }
+    },
+    {
+      "id": 65,
+      "name": "SpecularButton",
+      "url": "https://github.com/DavidHDev/react-bits/blob/9d9c687dc4f55b23539aa5417b703078047efa74/src/ts-tailwind/Components/SpecularButton/SpecularButton.tsx",
+      "repository": "https://github.com/DavidHDev/react-bits",
+      "commit": "9d9c687dc4f55b23539aa5417b703078047efa74",
+      "path": "src/ts-tailwind/Components/SpecularButton/SpecularButton.tsx",
+      "blobSha": "e9439a73739697f48e729a83cee3e7166c884150",
+      "sourceRead": "complete TSX; source mechanisms reviewed separately from demo",
+      "runtimeDependencies": "React + per-button WebGL2",
+      "license": "MIT + Commons Clause; LICENSE.md 4069ce9d0ef1a712c93d6ce48ade5d5667e0f5ee",
+      "mechanism": "Actual fragment shader uses pointer-lit rim and opposite glint; offscreen pauses; optional translucent body.",
+      "adoption": "Reject for editor this round.",
+      "limits": "GPU context per button competes with photo rendering; luminance/glow distracts from color judgments; mounted reduced snapshot still reacts to pointer.",
+      "demo": {
+        "owner": "/root, real Edge",
+        "state": "not-observed-this-round",
+        "byThisAgent": false
+      }
+    },
+    {
+      "id": 66,
+      "name": "OptionWheel",
+      "url": "https://github.com/DavidHDev/react-bits/blob/9d9c687dc4f55b23539aa5417b703078047efa74/src/ts-tailwind/Components/OptionWheel/OptionWheel.tsx",
+      "repository": "https://github.com/DavidHDev/react-bits",
+      "commit": "9d9c687dc4f55b23539aa5417b703078047efa74",
+      "path": "src/ts-tailwind/Components/OptionWheel/OptionWheel.tsx",
+      "blobSha": "cfcd3b2de25c4d7d684f86d26d348e2b9112ebd4",
+      "sourceRead": "complete TSX; source mechanisms reviewed separately from demo",
+      "runtimeDependencies": "React",
+      "license": "MIT + Commons Clause; LICENSE.md 4069ce9d0ef1a712c93d6ce48ade5d5667e0f5ee",
+      "mechanism": "Curved vertical scrolling options with easing, wheel capture, snap, optional audio ticks and step-dependent opacity/blur.",
+      "adoption": "Reject for tool/ratio choice: current direct options take fewer actions and keep choices visible.",
+      "limits": "Uncontrolled selection, no reduced preference, no Home/End or active descendant, pointer-cancel commits; captures panel scrolling.",
+      "demo": {
+        "owner": "/root, real Edge",
+        "state": "not-observed-this-round",
+        "byThisAgent": false
+      }
+    },
+    {
+      "id": 204,
+      "name": "Cobp color palette",
+      "url": "https://uiverse.io/Cobp/horrible-quail-18",
+      "sourceRead": "Complete HTML/CSS and displayed license, captured by root official Edge",
+      "files": {
+        "uiverse-204.html": {
+          "path": "/workspace/scratch/a16fa6d0bc34/v2-reference-study/uiverse-204.html",
+          "sha256": "5a393f97a1604ba5980cb95de163ebb529d6ec59502ba4afc0dfd84262d96088",
+          "bytes": 1038
+        },
+        "uiverse-204.css": {
+          "path": "/workspace/scratch/a16fa6d0bc34/v2-reference-study/uiverse-204.css",
+          "sha256": "ece48849ac2cc049709b05e04c242beca91321c90a80a4c85deddd9f7c05bcc4",
+          "bytes": 1504
+        },
+        "uiverse-204-LICENSE.txt": {
+          "path": "/workspace/scratch/a16fa6d0bc34/v2-reference-study/uiverse-204-LICENSE.txt",
+          "sha256": "139460527926e2184cdd65dbf7ee57ac7dc47ed1daa364d77989062c4eb75dbe",
+          "bytes": 1062
+        }
+      },
+      "runtimeDependencies": "No JS; CSS sibling selectors and :has",
+      "license": "MIT, copyright 2026 Cobp (Fabio Cobb)",
+      "mechanism": "32x40 button; 40x40 color face; central hover 1.5, next neighbors 1.3 and 1.15; 500ms cubic-bezier(.175,.885,.32,1.1); hex label appears",
+      "adoption": "Reuse real current color values and selected state; keyboard focus triggers neighbor response; separate small visual face from 44px phone hit target. Existing clipboard helper alone may produce copied receipt.",
+      "limits": "No clipboard JavaScript exists. Focus pseudo-label only says Copy; aria-color is not an accessible name. Do not claim source implements copying.",
+      "demo": {
+        "owner": "/root, real Edge",
+        "state": "parent-reported-observed",
+        "byThisAgent": false
+      }
+    }
+  ]
+}

@@ -5,6 +5,8 @@ import { secureUuid } from '../lib/uuid';
 import type { Asset, Session } from '../lib/types';
 import { Busy, InlineError, Modal } from '../components/Ui';
 import { StudioGlyph } from '../components/StudioGlyph';
+import { CheckControl } from '../components/CheckControl';
+import { StatusMark } from '../components/StatusMark';
 import {
   buildRestorationRequest,
   executeRestoration,
@@ -29,17 +31,27 @@ const ledger = new RestorationLedger(() => window.sessionStorage);
 function failureMessage(error: unknown) {
   if (!(error instanceof RestorationError)) return errorMessage(error);
   switch (error.code) {
-    case 'CAPABILITY_UNAVAILABLE': return t('当前服务未开放照片修复。');
-    case 'INVALID_SETTINGS': return t('请检查修复参数，并至少启用一项调整。');
+    case 'CAPABILITY_UNAVAILABLE':
+      return t('当前服务未开放照片修复。');
+    case 'INVALID_SETTINGS':
+      return t('请检查修复参数，并至少启用一项调整。');
     case 'SOURCE_CHANGED':
-    case 'INVALID_SOURCE': return t('原图或来源摘要已变化，请重新打开素材。');
-    case 'SCOPE_CHANGED': return t('账号、素材或编辑权限已变化，请重新打开素材。');
-    case 'QUOTE_UNAVAILABLE': return t('当前参数超出处理预算，请减少运动长度或迭代次数。');
-    case 'JOURNAL_UNAVAILABLE': return t('无法保留操作凭证，请允许浏览器会话存储后重试。');
-    case 'JOURNAL_INVALID': return t('上次操作凭证无法读取，请保留当前页面并联系管理员。');
-    case 'REQUEST_BUSY': return t('这张原图已有待确认的修复操作。');
-    case 'INVALID_RECEIPT': return t('处理回执尚未确认，请恢复同一操作。');
-    default: return t('修复未完成，请稍后重试。');
+    case 'INVALID_SOURCE':
+      return t('原图或来源摘要已变化，请重新打开素材。');
+    case 'SCOPE_CHANGED':
+      return t('账号、素材或编辑权限已变化，请重新打开素材。');
+    case 'QUOTE_UNAVAILABLE':
+      return t('当前参数超出处理预算，请减少运动长度或迭代次数。');
+    case 'JOURNAL_UNAVAILABLE':
+      return t('无法保留操作凭证，请允许浏览器会话存储后重试。');
+    case 'JOURNAL_INVALID':
+      return t('上次操作凭证无法读取，请保留当前页面并联系管理员。');
+    case 'REQUEST_BUSY':
+      return t('这张原图已有待确认的修复操作。');
+    case 'INVALID_RECEIPT':
+      return t('处理回执尚未确认，请恢复同一操作。');
+    default:
+      return t('修复未完成，请稍后重试。');
   }
 }
 function budgetMessage(quote: RestorationQuote) {
@@ -64,14 +76,20 @@ function RestorationImage({ asset, label }: { asset: Asset; label: string }) {
           <button
             className="text-button"
             type="button"
-            onClick={() => { setFailed(false); setAttempt((value) => value + 1); }}
+            onClick={() => {
+              setFailed(false);
+              setAttempt((value) => value + 1);
+            }}
           >
             {t('重载预览')}
           </button>
         ) : (
           <img
             key={attempt}
-            src={asset.url + (attempt ? (asset.url.includes('?') ? '&' : '?') + 'preview=' + attempt : '')}
+            src={
+              asset.url +
+              (attempt ? (asset.url.includes('?') ? '&' : '?') + 'preview=' + attempt : '')
+            }
             alt={asset.name}
             decoding="async"
             onError={() => setFailed(true)}
@@ -83,7 +101,14 @@ function RestorationImage({ asset, label }: { asset: Asset; label: string }) {
   );
 }
 function Amount({
-  label, value, min = 0, max, step = 1, suffix, disabled, onChange,
+  label,
+  value,
+  min = 0,
+  max,
+  step = 1,
+  suffix,
+  disabled,
+  onChange,
 }: {
   label: string;
   value: number;
@@ -106,7 +131,9 @@ function Amount({
           step={step}
           disabled={disabled}
           aria-label={label}
-          onChange={(event) => onChange(event.target.value === '' ? Number.NaN : Number(event.target.value))}
+          onChange={(event) =>
+            onChange(event.target.value === '' ? Number.NaN : Number(event.target.value))
+          }
         />
         {suffix && <small>{suffix}</small>}
       </span>
@@ -125,7 +152,11 @@ function Amount({
 }
 
 export function RestorationDialog({
-  asset, editable, onClose, onCreated, onOpen,
+  asset,
+  editable,
+  onClose,
+  onCreated,
+  onOpen,
 }: {
   asset: Asset;
   editable: boolean;
@@ -145,20 +176,41 @@ export function RestorationDialog({
   const [attempt, setAttempt] = useState(0);
   const [error, setError] = useState('');
   const [quoted, setQuoted] = useState<{
-    key: string; snapshot: RestorationSnapshot; quote: RestorationQuote;
+    key: string;
+    snapshot: RestorationSnapshot;
+    quote: RestorationQuote;
   } | null>(null);
   const quoteRef = useRef(quoted);
-  const mounted = useRef(false), locked = useRef(false);
+  const mounted = useRef(false),
+    locked = useRef(false);
   const notified = useRef('');
-  const identity = [asset.projectId, asset.id, asset.width, asset.height, asset.bytes, asset.mime].join(':');
+  const identity = [
+    asset.projectId,
+    asset.id,
+    asset.width,
+    asset.height,
+    asset.bytes,
+    asset.mime,
+  ].join(':');
   const suffix = t('修复');
   const outputName = filenameBase(asset.name).slice(0, 115 - suffix.length) + '-' + suffix + '.png';
   const draftKey = JSON.stringify({ identity, actorId, draft, outputName, capability });
-  const latest = useRef({ asset, editable, actorId, identity, draftKey, onCreated, onOpen, onClose });
+  const latest = useRef({
+    asset,
+    editable,
+    actorId,
+    identity,
+    draftKey,
+    onCreated,
+    onOpen,
+    onClose,
+  });
   latest.current = { asset, editable, actorId, identity, draftKey, onCreated, onOpen, onClose };
   useEffect(() => {
     mounted.current = true;
-    return () => { mounted.current = false; };
+    return () => {
+      mounted.current = false;
+    };
   }, []);
 
   useEffect(() => {
@@ -170,18 +222,21 @@ export function RestorationDialog({
     void Promise.all([
       api<unknown>('/asset-processing/capabilities', { signal: controller.signal }),
       api<Session>('/session', { signal: controller.signal }),
-    ]).then(([caps, session]) => {
-      if (controller.signal.aborted) return;
-      const current = readRestorationCapability(caps);
-      setCapability(current);
-      setActorId(session.user?.id ?? null);
-      if (!session.user) setError(t('请先登录后修复素材。'));
-      else if (!current) setError(t('当前服务未开放照片修复。'));
-    }).catch((failure) => {
-      if (!controller.signal.aborted) setError(failureMessage(failure));
-    }).finally(() => {
-      if (!controller.signal.aborted) setInitializing(false);
-    });
+    ])
+      .then(([caps, session]) => {
+        if (controller.signal.aborted) return;
+        const current = readRestorationCapability(caps);
+        setCapability(current);
+        setActorId(session.user?.id ?? null);
+        if (!session.user) setError(t('请先登录后修复素材。'));
+        else if (!current) setError(t('当前服务未开放照片修复。'));
+      })
+      .catch((failure) => {
+        if (!controller.signal.aborted) setError(failureMessage(failure));
+      })
+      .finally(() => {
+        if (!controller.signal.aborted) setInitializing(false);
+      });
     return () => controller.abort();
   }, [identity, attempt]);
 
@@ -190,7 +245,8 @@ export function RestorationDialog({
     setJournalReady(false);
     if (!actorId) return;
     const scope: RestorationScope = { actorId, projectId: asset.projectId, assetId: asset.id };
-    let current = true, restored = '';
+    let current = true,
+      restored = '';
     const update = () => {
       if (!current) return;
       try {
@@ -201,11 +257,17 @@ export function RestorationDialog({
           restored = entry.snapshot.request.requestId;
           setDraft(restorationDraftFromRequest(entry.snapshot.request));
         }
-      } catch (failure) { setJournalReady(false); setError(failureMessage(failure)); }
+      } catch (failure) {
+        setJournalReady(false);
+        setError(failureMessage(failure));
+      }
     };
     update();
     const unsubscribe = ledger.subscribe(update);
-    return () => { current = false; unsubscribe(); };
+    return () => {
+      current = false;
+      unsubscribe();
+    };
   }, [actorId, identity]);
 
   useEffect(() => {
@@ -226,42 +288,51 @@ export function RestorationDialog({
         return;
       }
       const capturedKey = draftKey;
-      void api<unknown>(
-        '/projects/' + asset.projectId + '/derived-assets/quote',
-        { ...jsonRequest('POST', request), signal: controller.signal },
-      ).then((value) => {
-        if (controller.signal.aborted || latest.current.draftKey !== capturedKey) return;
-        const quote = readRestorationQuote(value, asset);
-        const result = {
-          key: capturedKey,
-          quote,
-          snapshot: {
-            scope: { actorId, projectId: asset.projectId, assetId: asset.id },
-            source: quote.sources[0]!,
-            request,
-          },
-        };
-        quoteRef.current = result;
-        setQuoted(result);
-      }).catch((failure) => {
-        if (!controller.signal.aborted && latest.current.draftKey === capturedKey)
-          setError(failureMessage(failure));
-      }).finally(() => {
-        if (!controller.signal.aborted && latest.current.draftKey === capturedKey)
-          setEstimating(false);
-      });
+      void api<unknown>('/projects/' + asset.projectId + '/derived-assets/quote', {
+        ...jsonRequest('POST', request),
+        signal: controller.signal,
+      })
+        .then((value) => {
+          if (controller.signal.aborted || latest.current.draftKey !== capturedKey) return;
+          const quote = readRestorationQuote(value, asset);
+          const result = {
+            key: capturedKey,
+            quote,
+            snapshot: {
+              scope: { actorId, projectId: asset.projectId, assetId: asset.id },
+              source: quote.sources[0]!,
+              request,
+            },
+          };
+          quoteRef.current = result;
+          setQuoted(result);
+        })
+        .catch((failure) => {
+          if (!controller.signal.aborted && latest.current.draftKey === capturedKey)
+            setError(failureMessage(failure));
+        })
+        .finally(() => {
+          if (!controller.signal.aborted && latest.current.draftKey === capturedKey)
+            setEstimating(false);
+        });
     }, 900);
-    return () => { window.clearTimeout(timer); controller.abort(); };
+    return () => {
+      window.clearTimeout(timer);
+      controller.abort();
+    };
   }, [draftKey, operation, editable, journalReady, initializing, attempt]);
 
   useEffect(() => {
     if (
-      operation?.state !== 'done' || !operation.asset || !editable ||
+      operation?.state !== 'done' ||
+      !operation.asset ||
+      !editable ||
       operation.snapshot.scope.actorId !== actorId ||
       operation.snapshot.scope.projectId !== asset.projectId ||
       operation.snapshot.scope.assetId !== asset.id ||
       notified.current === operation.snapshot.request.requestId
-    ) return;
+    )
+      return;
     notified.current = operation.snapshot.request.requestId;
     // Keep a successful mutation separate from list refresh / navigation callbacks.
     latest.current.onCreated(operation.asset);
@@ -279,15 +350,27 @@ export function RestorationDialog({
     setDraft((old) => ({ ...old, [key]: value }));
   };
   async function submit() {
-    if (!mounted.current || locked.current || !editable || !actorId || !journalReady || busy || completed) return;
+    if (
+      !mounted.current ||
+      locked.current ||
+      !editable ||
+      !actorId ||
+      !journalReady ||
+      busy ||
+      completed
+    )
+      return;
     const recovery = operation?.state === 'unknown';
     const quote = quoteRef.current;
     if (!recovery && (!quote || quote.key !== latest.current.draftKey || !quote.quote.available))
       return;
     const snapshot = recovery ? operation!.snapshot : quote!.snapshot;
     const owner = latest.current.identity;
-    const isCurrent = () => mounted.current && latest.current.identity === owner &&
-      latest.current.actorId === snapshot.scope.actorId && latest.current.editable;
+    const isCurrent = () =>
+      mounted.current &&
+      latest.current.identity === owner &&
+      latest.current.actorId === snapshot.scope.actorId &&
+      latest.current.editable;
     locked.current = true;
     setExecuting(true);
     setError('');
@@ -304,14 +387,16 @@ export function RestorationDialog({
           ]);
           return { actorId: session.user?.id ?? null, capability: readRestorationCapability(caps) };
         },
-        quote: (request) => api<unknown>(
-          '/projects/' + snapshot.scope.projectId + '/derived-assets/quote',
-          jsonRequest('POST', request),
-        ),
-        publish: (request) => api<unknown>(
-          '/projects/' + snapshot.scope.projectId + '/derived-assets',
-          jsonRequest('POST', request),
-        ),
+        quote: (request) =>
+          api<unknown>(
+            '/projects/' + snapshot.scope.projectId + '/derived-assets/quote',
+            jsonRequest('POST', request),
+          ),
+        publish: (request) =>
+          api<unknown>(
+            '/projects/' + snapshot.scope.projectId + '/derived-assets',
+            jsonRequest('POST', request),
+          ),
       });
     } catch (failure) {
       if (isCurrent()) setError(failureMessage(failure));
@@ -323,7 +408,9 @@ export function RestorationDialog({
   function close() {
     if (locked.current || operation?.state === 'pending') return;
     if (actorId) {
-      try { ledger.forgetCompleted({ actorId, projectId: asset.projectId, assetId: asset.id }); } catch {}
+      try {
+        ledger.forgetCompleted({ actorId, projectId: asset.projectId, assetId: asset.id });
+      } catch {}
     }
     latest.current.onClose();
   }
@@ -339,7 +426,9 @@ export function RestorationDialog({
       <div className="restoration-layout">
         <div className={'restoration-images' + (completed ? ' is-complete' : '')}>
           <RestorationImage key={asset.id} asset={asset} label={t('原图 · 整图')} />
-          {completed && <RestorationImage key={completed.id} asset={completed} label={t('修复副本')} />}
+          {completed && (
+            <RestorationImage key={completed.id} asset={completed} label={t('修复副本')} />
+          )}
         </div>
         <div className="restoration-controls">
           <div className="restoration-modes" role="group" aria-label={t('修复模式')}>
@@ -357,13 +446,33 @@ export function RestorationDialog({
           </div>
           {draft.mode === 'motion' && (
             <>
-              <Amount label={t('运动长度')} value={draft.length} min={0} max={capability?.maxMotionLength ?? 31}
-                step={0.5} suffix={t('源像素')} disabled={frozen || !editable}
-                onChange={(value) => change('length', value)} />
-              <Amount label={t('运动角度')} value={draft.angle} min={-180} max={180}
-                suffix="°" disabled={frozen || !editable} onChange={(value) => change('angle', value)} />
-              <Amount label={t('修复强度')} value={draft.strength} max={100}
-                suffix="%" disabled={frozen || !editable} onChange={(value) => change('strength', value)} />
+              <Amount
+                label={t('运动长度')}
+                value={draft.length}
+                min={0}
+                max={capability?.maxMotionLength ?? 31}
+                step={0.5}
+                suffix={t('源像素')}
+                disabled={frozen || !editable}
+                onChange={(value) => change('length', value)}
+              />
+              <Amount
+                label={t('运动角度')}
+                value={draft.angle}
+                min={-180}
+                max={180}
+                suffix="°"
+                disabled={frozen || !editable}
+                onChange={(value) => change('angle', value)}
+              />
+              <Amount
+                label={t('修复强度')}
+                value={draft.strength}
+                max={100}
+                suffix="%"
+                disabled={frozen || !editable}
+                onChange={(value) => change('strength', value)}
+              />
               <p className="restoration-hint">{t('按已知运动方向调整，不自动推测模糊方向。')}</p>
               <details className="restoration-extra">
                 <summary>{t('更多参数')}</summary>
@@ -376,38 +485,70 @@ export function RestorationDialog({
                     max={capability?.maxIterations ?? 12}
                     step={1}
                     disabled={frozen || !editable}
-                    onChange={(event) => change('iterations', event.target.value === '' ? Number.NaN : Number(event.target.value))}
+                    onChange={(event) =>
+                      change(
+                        'iterations',
+                        event.target.value === '' ? Number.NaN : Number(event.target.value),
+                      )
+                    }
                   />
                 </label>
-                <label className="restoration-check">
-                  <input type="checkbox" checked={draft.denoiseWithMotion}
-                    disabled={frozen || !editable}
-                    onChange={(event) => change('denoiseWithMotion', event.target.checked)} />
-                  {t('同时降噪')}
-                </label>
+                <CheckControl
+                  className="restoration-check"
+                  checked={draft.denoiseWithMotion}
+                  disabled={frozen || !editable}
+                  label={t('同时降噪')}
+                  onChange={(event) => change('denoiseWithMotion', event.target.checked)}
+                />
               </details>
             </>
           )}
           {(draft.mode === 'denoise' || draft.denoiseWithMotion) && (
             <>
-              <Amount label={t('亮度降噪')} value={draft.luminance} max={100}
-                suffix="%" disabled={frozen || !editable} onChange={(value) => change('luminance', value)} />
-              <Amount label={t('色彩降噪')} value={draft.chroma} max={100}
-                suffix="%" disabled={frozen || !editable} onChange={(value) => change('chroma', value)} />
+              <Amount
+                label={t('亮度降噪')}
+                value={draft.luminance}
+                max={100}
+                suffix="%"
+                disabled={frozen || !editable}
+                onChange={(value) => change('luminance', value)}
+              />
+              <Amount
+                label={t('色彩降噪')}
+                value={draft.chroma}
+                max={100}
+                suffix="%"
+                disabled={frozen || !editable}
+                onChange={(value) => change('chroma', value)}
+              />
             </>
           )}
         </div>
       </div>
       <footer className="restoration-footer">
         <div className="restoration-status" aria-live="polite">
-          {!editable ? <InlineError message={t('需要项目编辑权限才能修复素材。')} /> : (
+          {!editable ? (
+            <InlineError message={t('需要项目编辑权限才能修复素材。')} />
+          ) : (
             <>
               {initializing && <Busy label={t('读取处理能力')} />}
               {!initializing && estimating && !operation && <Busy label={t('检查处理预算')} />}
-              {quoted && !operation && <p className={quoted.quote.available ? '' : 'restoration-limit'}>{budgetMessage(quoted.quote)}</p>}
+              {quoted && !operation && (
+                <p className={quoted.quote.available ? '' : 'restoration-limit'}>
+                  {budgetMessage(quoted.quote)}
+                </p>
+              )}
               {busy && <Busy label={t('正在处理原图')} />}
-              {operation?.state === 'unknown' && <p>{t('结果待确认。恢复会沿用同一操作凭证。')}</p>}
-              {completed && <p>{t('修复副本已保存到项目素材。')}</p>}
+              {operation?.state === 'unknown' && (
+                <StatusMark
+                  state="unknown"
+                  size="small"
+                  label={t('结果待确认。恢复会沿用同一操作凭证。')}
+                />
+              )}
+              {completed && (
+                <StatusMark state="done" size="small" label={t('修复副本已保存到项目素材。')} />
+              )}
               <InlineError message={error} />
             </>
           )}
@@ -415,25 +556,44 @@ export function RestorationDialog({
         </div>
         <div className="restoration-actions">
           {completed ? (
-            <button className="button button-primary" type="button" onClick={() => {
-              if (latest.current.onOpen) latest.current.onOpen(completed);
-              close();
-            }}>
+            <button
+              className="button button-primary"
+              type="button"
+              onClick={() => {
+                if (latest.current.onOpen) latest.current.onOpen(completed);
+                close();
+              }}
+            >
               {onOpen ? t('打开修复副本') : t('完成')}
             </button>
           ) : (
             <button
               className="button button-primary"
               type="button"
-              disabled={!editable || !journalReady || busy || initializing || !actorId || (!ready && operation?.state !== 'unknown')}
+              disabled={
+                !editable ||
+                !journalReady ||
+                busy ||
+                initializing ||
+                !actorId ||
+                (!ready && operation?.state !== 'unknown')
+              }
               onClick={() => void submit()}
             >
               <StudioGlyph name="repair" size={18} />
-              {busy ? t('正在处理') : operation?.state === 'unknown' ? t('恢复上次处理') : t('创建修复副本')}
+              {busy
+                ? t('正在处理')
+                : operation?.state === 'unknown'
+                  ? t('恢复上次处理')
+                  : t('创建修复副本')}
             </button>
           )}
           {!busy && !initializing && error && !operation && (
-            <button className="text-button" type="button" onClick={() => setAttempt((value) => value + 1)}>
+            <button
+              className="text-button"
+              type="button"
+              onClick={() => setAttempt((value) => value + 1)}
+            >
               {t('重新检查')}
             </button>
           )}

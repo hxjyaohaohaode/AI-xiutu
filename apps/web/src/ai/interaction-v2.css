@@ -1,0 +1,694 @@
+/* Source-backed input/voice/status composition. Presentation never invents a
+   request state, clears a draft, or advances a percentage. */
+.ai-workbench-v2 .ai-workbench-header {
+  min-height: 42px;
+  padding: 1px 8px;
+  border-bottom: 0;
+}
+.ai-workbench-v2 .ai-task-trigger,
+.ai-workbench-v2 .ai-task-title {
+  font-size: 12px;
+  gap: 6px;
+}
+.ai-workbench-v2 .ai-header-actions {
+  gap: 0;
+}
+.ai-workbench-v2 .ai-header-actions > .icon-button {
+  width: 36px;
+  min-width: 36px;
+  height: 36px;
+  min-height: 36px;
+  padding: 9px;
+}
+.ai-workbench-v2 .ai-header-actions > .icon-button > svg {
+  width: 17px;
+  height: 17px;
+}
+.ai-workbench-v2 .ai-conversation-body {
+  gap: 12px;
+  padding: 12px 14px;
+}
+.ai-workbench-v2 .ai-conversation-empty {
+  gap: 12px;
+  min-height: 90px;
+}
+.ai-workbench-v2 .ai-conversation-empty > .composer-visual {
+  width: 46px;
+  height: 35px;
+  margin: 0;
+}
+.ai-workbench-v2 .ai-empty-availability {
+  display: grid;
+  gap: 4px;
+  max-width: 100%;
+  text-align: left;
+}
+.ai-workbench-v2 .ai-empty-availability > p {
+  margin: 0;
+  font-size: 14px;
+  color: var(--ink);
+}
+.ai-workbench-v2 .ai-availability {
+  flex-wrap: wrap;
+  border: 0;
+  border-radius: 0;
+  padding: 6px 0;
+}
+.ai-workbench-v2 .ai-availability-details {
+  min-width: 0;
+  width: 100%;
+}
+.ai-workbench-v2 .ai-availability-details > summary {
+  width: fit-content;
+  min-height: 28px;
+  padding-block: 5px;
+  font-size: 11px;
+  color: var(--muted);
+  cursor: pointer;
+}
+.ai-workbench-v2 .ai-availability-details p {
+  margin: 4px 0;
+  font-size: 12px;
+  line-height: 1.6;
+  color: var(--muted);
+  overflow-wrap: anywhere;
+}
+.ai-workbench-v2 .ai-prompt-suggestions {
+  gap: 4px;
+}
+.ai-workbench-v2 .ai-prompt-suggestions > button {
+  border: 0;
+  background: transparent;
+  font-size: 12px;
+}
+.ai-workbench-v2 .ai-composer-region {
+  padding: 6px 10px 9px;
+  gap: 4px;
+  border-top: 0;
+}
+.ai-workbench-v2 .ai-composer-surface {
+  padding: 9px 8px 6px;
+  gap: 6px;
+  border: 1px solid transparent;
+  border-radius: 14px;
+  background: var(--surface-secondary);
+  box-shadow: none;
+}
+.ai-workbench-v2 .ai-composer-surface:focus-within {
+  border-color: var(--line-strong);
+  box-shadow: none;
+}
+.ai-workbench-v2 .ai-composer-input {
+  min-height: 38px;
+  max-height: 132px;
+  padding: 2px 4px;
+  font-size: 14px;
+}
+.ai-workbench-v2 .ai-composer-toolbar {
+  gap: 4px;
+}
+.ai-workbench-v2 .ai-composer-tools {
+  gap: 0;
+}
+.ai-workbench-v2 .ai-composer-surface .ai-model-trigger {
+  min-height: 38px;
+  padding: 5px 4px;
+  font-size: 11px;
+}
+.ai-workbench-v2 .ai-composer-tools > .icon-button,
+.ai-workbench-v2 .ai-composer-action {
+  position: relative;
+  isolation: isolate;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 40px;
+  height: 40px;
+  min-width: 40px;
+  min-height: 40px;
+  flex: 0 0 40px;
+  padding: 0;
+  border: 0;
+  border-radius: 11px;
+  background: transparent;
+}
+.ai-workbench-v2 .ai-composer-tools > .icon-button > svg {
+  width: 18px;
+  height: 18px;
+}
+.ai-workbench-v2 .ai-composer-action::before,
+.ai-workbench-v2 .ai-composer-tools > .icon-button::before {
+  content: '';
+  position: absolute;
+  z-index: -1;
+  inset: 3px;
+  border-radius: 9px;
+  background: transparent;
+  transition:
+    background-color 150ms ease,
+    scale 120ms ease;
+}
+.ai-workbench-v2 .ai-composer-tools > .icon-button:hover {
+  background: transparent;
+}
+.ai-workbench-v2 .ai-composer-tools > .icon-button:hover::before {
+  background: var(--surface-hover);
+}
+.ai-workbench-v2 .ai-composer-action {
+  color: var(--on-accent);
+}
+.ai-workbench-v2 .ai-composer-action::before {
+  background: var(--accent);
+}
+.ai-workbench-v2 .ai-composer-action:hover:not(:disabled) {
+  background: transparent;
+}
+.ai-workbench-v2 .ai-composer-action:hover:not(:disabled)::before {
+  background: var(--accent-hover);
+}
+.ai-workbench-v2 .ai-composer-action:active:not(:disabled)::before {
+  scale: 0.96;
+}
+.ai-workbench-v2 .ai-composer-action:disabled {
+  color: var(--subtle);
+  background: transparent;
+  opacity: 1;
+}
+.ai-workbench-v2 .ai-composer-action:disabled::before {
+  background: var(--surface-hover);
+}
+.ai-workbench-v2 .ai-composer-action[data-action='stop'] {
+  color: var(--surface);
+}
+.ai-workbench-v2 .ai-composer-action[data-action='stop']::before {
+  background: var(--ink);
+}
+.ai-workbench-v2 .ai-composer-action[data-action='waiting'] {
+  color: var(--muted);
+}
+.ai-send-glyph {
+  width: 20px;
+  height: 20px;
+  overflow: visible;
+}
+.ai-send-glyph > path {
+  transition: d 240ms cubic-bezier(0.77, 0, 0.175, 1);
+}
+.ai-workbench-v2 .ai-selected-context {
+  min-height: 28px;
+  padding: 4px 7px;
+  margin: 0;
+  border: 0;
+  border-radius: 7px;
+  font-size: 11px;
+  background: var(--surface);
+}
+.ai-workbench-v2 .ai-composer-meta {
+  padding-inline: 2px;
+  min-height: 18px;
+  font-size: 11px;
+  line-height: 1.4;
+}
+.ai-workbench-v2 .ai-input-disclosure {
+  font-size: 11px;
+  margin: 1px 2px 0;
+}
+.ai-workbench-v2 .assistant-message {
+  padding-block: 9px;
+}
+.ai-workbench-v2 .assistant-message > small {
+  font-size: 11px;
+}
+.ai-workbench-v2 .assistant-message > p {
+  font-size: 13px;
+  line-height: 1.65;
+}
+.ai-workbench-v2 .assistant-candidate {
+  padding: 12px 0;
+  border: 0;
+  border-bottom: 1px solid var(--line);
+  background: transparent;
+  border-radius: 0;
+}
+.ai-workbench-v2 .assistant-candidate > h4 {
+  font-size: 13px;
+}
+.ai-workbench-v2 .ai-answer-state > .status-mark {
+  flex: 1;
+  min-width: 0;
+}
+.ai-workbench-v2 .ai-answer-state > .status-mark .status-mark-label {
+  font-size: 12px;
+}
+.ai-workbench-v2 .ai-answer-state > span:last-child:not(.status-mark) {
+  font-size: 11px;
+}
+.ai-execution-line,
+.ai-execution-trace > summary {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  min-height: 28px;
+  padding: 4px 0;
+  color: var(--muted);
+  font-size: 12px;
+  line-height: 1.5;
+}
+.ai-execution-line > span:not(.status-mark),
+.ai-execution-trace > summary > span:not(.status-mark) {
+  flex: 1;
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+.ai-execution-trace {
+  margin: 0;
+  border: 0;
+  padding: 0;
+}
+.ai-execution-trace > summary {
+  cursor: pointer;
+  list-style: none;
+}
+.ai-execution-trace > summary::-webkit-details-marker {
+  display: none;
+}
+.ai-execution-trace > summary > svg {
+  flex: 0 0 13px;
+  transition: rotate 160ms ease;
+}
+.ai-execution-trace > summary[aria-expanded='true'] > svg {
+  rotate: 180deg;
+}
+.ai-execution-trace ol {
+  display: grid;
+  gap: 3px;
+  margin: 5px 0 6px 8px;
+  padding: 0 0 0 13px;
+  border-left: 1px solid var(--line);
+  list-style: none;
+}
+.ai-execution-trace li {
+  display: flex;
+  align-items: flex-start;
+  gap: 6px;
+  min-width: 0;
+  padding: 4px 0;
+  font-size: 11px;
+  line-height: 1.5;
+}
+.ai-execution-trace li > span:not(.status-mark) {
+  flex: 1;
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+.ai-execution-trace li small {
+  margin-left: auto;
+  font-size: 10px;
+  color: var(--muted);
+  white-space: nowrap;
+}
+.ai-workbench-v2 .assistant-mode.rubber-segment {
+  width: 100%;
+}
+.ai-workbench-v2 .assistant-mode.rubber-segment button {
+  flex: 1;
+}
+
+.voice-capture.voice-capture-v2 {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 12px;
+  padding: 12px 0;
+  width: 100%;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  text-align: left;
+}
+.voice-capture-heading {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  color: var(--ink);
+}
+.voice-capture-heading strong {
+  font-size: 14px;
+  font-weight: 550;
+}
+.voice-capture.voice-capture-v2 > .voice-capture-consent {
+  margin: -4px 0 0;
+  max-width: 100%;
+  font-size: 12px;
+  line-height: 1.6;
+  text-align: left;
+}
+.recording-capsule {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 3px;
+  width: fit-content;
+  max-width: 100%;
+  min-height: 46px;
+  padding: 3px 5px;
+  border-radius: 28px;
+  background: var(--surface-secondary);
+  transition:
+    border-radius 180ms ease,
+    background-color 180ms ease;
+}
+.recording-capsule[data-active='true'] {
+  background: var(--ink);
+  color: var(--surface);
+}
+.recording-capsule .icon-button,
+.recording-toggle {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 7px;
+  flex: 0 0 auto;
+  min-width: 40px;
+  min-height: 40px;
+  padding: 8px 12px;
+  border: 0;
+  border-radius: 22px;
+  background: transparent;
+  color: inherit;
+  font-size: 12px;
+}
+.recording-capsule .icon-button {
+  width: 40px;
+  height: 40px;
+  padding: 11px;
+}
+.recording-capsule[data-active='true'] .icon-button,
+.recording-capsule[data-active='true'] .recording-toggle {
+  color: inherit;
+}
+.recording-capsule[data-active='true'] :is(.icon-button, .recording-toggle):hover {
+  color: inherit;
+  background: color-mix(in srgb, currentColor 12%, transparent);
+}
+.recording-meter {
+  width: 96px;
+  height: 24px;
+  max-width: 28vw;
+  flex: 0 1 96px;
+  fill: currentColor;
+}
+.voice-capture-v2 .recording-time {
+  width: 42px;
+  flex: 0 0 42px;
+  margin: 0;
+  font-size: 12px;
+  font-weight: 550;
+  line-height: 1;
+  letter-spacing: 0;
+  text-align: center;
+  color: inherit;
+  font-variant-numeric: tabular-nums;
+}
+.recording-preparing {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 8px 10px 8px 0;
+  font-size: 11px;
+}
+.recording-capsule .status-mark {
+  color: inherit;
+}
+.voice-capture-v2 .voice-playback {
+  display: flex;
+  align-items: center;
+  width: 100%;
+  gap: 4px;
+  padding: 0;
+  margin: 0;
+  border: 0;
+  background: transparent;
+}
+.voice-capture-v2 .voice-playback audio {
+  flex: 1 1 0;
+  min-width: 0;
+  width: 0;
+  height: 36px;
+}
+.voice-capture-v2 .voice-playback > .icon-button {
+  flex: 0 0 40px;
+  width: 40px;
+  height: 40px;
+  min-height: 40px;
+}
+.live-assistant-v2 .assistant-call {
+  padding: 10px 2px;
+  gap: 10px;
+  border: 0;
+  background: transparent;
+}
+.live-assistant-v2 .assistant-call:not(.idle) {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  padding: 8px 10px;
+  border-radius: 0;
+  background: var(--surface-secondary);
+}
+.live-assistant-v2 .assistant-call-status {
+  font-size: 14px;
+  font-weight: 550;
+  line-height: 1.45;
+}
+.live-assistant-v2 .assistant-call-status small {
+  margin-top: 4px;
+  font-size: 11px;
+  font-weight: 400;
+  line-height: 1.5;
+  overflow-wrap: anywhere;
+}
+.live-assistant-v2 .assistant-call-actions {
+  display: flex;
+  gap: 0;
+}
+.live-assistant-v2 .assistant-call-actions > button {
+  width: 40px;
+  height: 40px;
+  min-width: 40px;
+  min-height: 40px;
+  border: 4px solid transparent;
+  padding: 6px;
+  background-clip: padding-box;
+}
+.live-assistant-v2 .assistant-call-start {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 8px;
+  width: 100%;
+}
+.live-assistant-v2 .assistant-call-start > .choice-select {
+  flex: 1 1 110px;
+}
+.live-assistant-v2 .assistant-call-start > .button {
+  flex: 1 1 140px;
+  min-height: 40px;
+  font-size: 12px;
+}
+
+@media (max-width: 759px), (pointer: coarse) {
+  .ai-workbench-v2 .ai-workbench-header {
+    min-height: 44px;
+    padding: 0 5px;
+  }
+  .ai-workbench-v2 .ai-header-actions > .icon-button {
+    width: 44px;
+    min-width: 44px;
+    height: 44px;
+    min-height: 44px;
+    padding: 14px;
+  }
+  .ai-workbench-v2 .ai-header-actions > .icon-button > svg {
+    width: 16px;
+    height: 16px;
+  }
+  .ai-workbench-v2 .ai-task-trigger {
+    min-height: 44px;
+    font-size: 12px;
+  }
+  .ai-workbench-v2 .ai-conversation-body {
+    padding: 9px 10px;
+    gap: 10px;
+    font-size: 12px;
+  }
+  .ai-workbench-v2 .ai-conversation-empty > .composer-visual {
+    width: 40px;
+    height: 30px;
+  }
+  .ai-workbench-v2 .ai-empty-availability > p {
+    font-size: 13px;
+  }
+  .ai-workbench-v2 .ai-availability-details > summary {
+    min-height: 44px;
+    display: flex;
+    align-items: center;
+    padding: 0;
+  }
+  .ai-workbench-v2 .ai-composer-region {
+    padding: 4px 7px 6px;
+    gap: 2px;
+  }
+  .ai-workbench-v2 .ai-composer-surface {
+    padding: 6px 5px 2px;
+    gap: 2px;
+    border-radius: 12px;
+  }
+  .ai-workbench-v2 .ai-composer-input {
+    min-height: 36px;
+    max-height: 112px;
+    font-size: 16px;
+    line-height: 1.4;
+  }
+  .ai-workbench-v2 .ai-composer-surface .ai-model-trigger {
+    min-height: 44px;
+    font-size: 11px;
+  }
+  .ai-workbench-v2 .ai-composer-tools > .icon-button,
+  .ai-workbench-v2 .ai-composer-action {
+    width: 44px;
+    height: 44px;
+    min-width: 44px;
+    min-height: 44px;
+    flex-basis: 44px;
+  }
+  .ai-workbench-v2 .ai-composer-tools > .icon-button::before,
+  .ai-workbench-v2 .ai-composer-action::before {
+    inset: 6px;
+    border-radius: 8px;
+  }
+  .ai-workbench-v2 .ai-composer-tools > .icon-button > svg,
+  .ai-workbench-v2 .ai-send-glyph {
+    width: 18px;
+    height: 18px;
+  }
+  .ai-workbench-v2 .ai-selected-context {
+    min-height: 44px;
+    padding-block: 6px;
+    font-size: 11px;
+  }
+  .ai-workbench-v2 .assistant-message > p {
+    font-size: 12px;
+  }
+  .ai-execution-trace > summary {
+    min-height: 44px;
+    font-size: 11px;
+  }
+  .ai-execution-trace li small {
+    font-size: 11px;
+  }
+  .voice-capture.voice-capture-v2 {
+    gap: 9px;
+    padding-block: 8px;
+  }
+  .voice-capture-heading strong {
+    font-size: 13px;
+  }
+  .voice-capture-heading > svg {
+    width: 18px;
+    height: 18px;
+  }
+  .voice-capture.voice-capture-v2 > .voice-capture-consent {
+    font-size: 11px;
+  }
+  .recording-capsule {
+    min-height: 44px;
+    padding: 0 3px;
+  }
+  .recording-capsule .icon-button,
+  .recording-toggle {
+    min-width: 44px;
+    min-height: 44px;
+    height: 44px;
+    font-size: 11px;
+  }
+  .recording-capsule .icon-button {
+    width: 44px;
+    padding: 13px;
+  }
+  .recording-meter {
+    width: 80px;
+    flex-basis: 80px;
+    height: 22px;
+  }
+  .voice-capture-v2 .recording-time {
+    font-size: 11px;
+    flex-basis: 38px;
+    width: 38px;
+  }
+  .voice-capture-v2 .voice-playback > .icon-button {
+    flex-basis: 44px;
+    width: 44px;
+    height: 44px;
+    min-height: 44px;
+  }
+  .live-assistant-v2 .assistant-call-status {
+    font-size: 12px;
+  }
+  .live-assistant-v2 .assistant-call-actions > button {
+    width: 44px;
+    height: 44px;
+    min-width: 44px;
+    min-height: 44px;
+    border-width: 6px;
+    padding: 7px;
+  }
+  .live-assistant-v2 .assistant-call-actions > button > svg {
+    width: 18px;
+    height: 18px;
+  }
+}
+@container ai-conversation (max-height: 260px) {
+  .ai-workbench-v2 .live-assistant-v2:not([data-in-call='true']) .ai-composer-action {
+    display: inline-flex;
+  }
+  .ai-workbench-v2 .live-assistant-v2:not([data-in-call='true']) .ai-header-actions > .icon-button {
+    min-width: 44px;
+    width: 44px;
+    padding: 13px;
+  }
+  .ai-workbench-v2
+    .live-assistant-v2:not([data-in-call='true'])
+    .ai-header-actions
+    > .ai-new-conversation {
+    display: none;
+  }
+  .ai-workbench-v2 .live-assistant-v2:not([data-in-call='true']) .ai-conversation-body {
+    padding-block: 0;
+  }
+  .ai-workbench-v2
+    .live-assistant-v2:not([data-in-call='true']):not([data-compose-expanded='true'])
+    .ai-composer-surface {
+    padding: 0 3px;
+  }
+  .ai-workbench-v2
+    .live-assistant-v2:not([data-in-call='true']):not([data-compose-expanded='true'])
+    .ai-composer-input {
+    min-height: 36px;
+    max-height: 36px;
+  }
+  .ai-workbench-v2 .ai-composer-region {
+    padding-block: 1px;
+  }
+  .ai-workbench-v2 .ai-availability-details > summary {
+    min-height: 32px;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .ai-send-glyph > path,
+  .ai-workbench-v2 .ai-composer-action::before,
+  .ai-workbench-v2 .ai-composer-tools > .icon-button::before,
+  .ai-execution-trace > summary > svg,
+  .recording-capsule {
+    transition: none;
+  }
+}

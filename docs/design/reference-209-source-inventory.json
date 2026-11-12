@@ -1,0 +1,4884 @@
+{
+  "frontend_sha": "bb9e126cd668eb87d53548fbcdef773982f284a4",
+  "total_files": 322,
+  "tsx_files": 114,
+  "css_files": 55,
+  "reachable_files": 291,
+  "reachability_note": "Static relative import/new URL traversal; computed imports can be missed. Unreached is a lead, not proof of dead code.",
+  "tsx_without_static_route": [
+    "apps/web/src/about/AboutArt.tsx",
+    "apps/web/src/about/AgentStory.tsx",
+    "apps/web/src/about/ColorStudy.tsx",
+    "apps/web/src/about/CreativeStories.tsx",
+    "apps/web/src/about/ElasticCompare.tsx",
+    "apps/web/src/about/FeatureTour.tsx",
+    "apps/web/src/about/ProductHero.tsx",
+    "apps/web/src/about/effects/HoverPreview.tsx",
+    "apps/web/src/about/effects/PointerRibbons.tsx",
+    "apps/web/src/about/effects/ScrollReveal.tsx"
+  ],
+  "counts_by_module": {
+    "(root)": 10,
+    "about": 34,
+    "account": 14,
+    "ai": 48,
+    "collaboration": 10,
+    "components": 45,
+    "editor": 52,
+    "i18n": 24,
+    "lib": 9,
+    "media": 15,
+    "motion": 6,
+    "resources": 8,
+    "restoration": 3,
+    "usage": 20,
+    "workspace": 24
+  },
+  "files": [
+    {
+      "path": "apps/web/src/App.tsx",
+      "sha256": "44471b2cec7f06173ec41d402f9d253f697c13d647cff8b7259a740bb084a2b1",
+      "line_count": 3706,
+      "extension": ".tsx",
+      "imports_in_web": [
+        "apps/web/src/about/copy.ts",
+        "apps/web/src/about/sample.ts",
+        "apps/web/src/about/site-route.ts",
+        "apps/web/src/account/AccountCenter.tsx",
+        "apps/web/src/account/AccountPageFrame.tsx",
+        "apps/web/src/account/AccountReady.tsx",
+        "apps/web/src/account/auth-model.ts",
+        "apps/web/src/account/document-drafts.ts",
+        "apps/web/src/account/page-copy.ts",
+        "apps/web/src/account/session-lifecycle.ts",
+        "apps/web/src/ai/AIVisibility.tsx",
+        "apps/web/src/collaboration/CollaborationStatus.tsx",
+        "apps/web/src/collaboration/TeamVoiceBanner.tsx",
+        "apps/web/src/collaboration/useCollaboration.ts",
+        "apps/web/src/collaboration/useTeamVoice.ts",
+        "apps/web/src/components/AIPanel.tsx",
+        "apps/web/src/components/AIPanelFeature.tsx",
+        "apps/web/src/components/AssetLibrary.tsx",
+        "apps/web/src/components/AuthPanel.tsx",
+        "apps/web/src/components/ConfirmationDialog.tsx",
+        "apps/web/src/components/DeferredFeature.tsx",
+        "apps/web/src/components/DrawingBoard.tsx",
+        "apps/web/src/components/ImportSettings.tsx",
+        "apps/web/src/components/MediaImportDialog.tsx",
+        "apps/web/src/components/OpsDashboard.tsx",
+        "apps/web/src/components/ProjectDialogs.tsx",
+        "apps/web/src/components/Sidebar.tsx",
+        "apps/web/src/components/StudioGlyph.tsx",
+        "apps/web/src/components/Ui.tsx",
+        "apps/web/src/components/WorkspaceViews.tsx",
+        "apps/web/src/components/modal-profiles.ts",
+        "apps/web/src/editor/CanvasStage.tsx",
+        "apps/web/src/editor/PortraitControls.tsx",
+        "apps/web/src/editor/ToolInspector.tsx",
+        "apps/web/src/editor/capture.ts",
+        "apps/web/src/editor/imageSources.ts",
+        "apps/web/src/editor/source-flow.ts",
+        "apps/web/src/editor/useEditor.ts",
+        "apps/web/src/i18n/index.ts",
+        "apps/web/src/lib/api.ts",
+        "apps/web/src/lib/asset-copy.ts",
+        "apps/web/src/lib/brand.ts",
+        "apps/web/src/lib/confirmation-scope.ts",
+        "apps/web/src/lib/titles.ts",
+        "apps/web/src/lib/types.ts",
+        "apps/web/src/lib/uuid.ts",
+        "apps/web/src/motion/Presence.tsx",
+        "apps/web/src/motion/usePresence.ts",
+        "apps/web/src/resources/ResourceSearch.tsx",
+        "apps/web/src/studio-styles.css",
+        "apps/web/src/usage/UsageDashboard.tsx",
+        "apps/web/src/workspace/CommandMenu.tsx",
+        "apps/web/src/workspace/FloatingPanel.tsx",
+        "apps/web/src/workspace/PanelNavigation.tsx",
+        "apps/web/src/workspace/ToolDock.tsx",
+        "apps/web/src/workspace/ToolOverview.tsx",
+        "apps/web/src/workspace/WorkspaceNavigation.tsx",
+        "apps/web/src/workspace/interaction-copy.ts",
+        "apps/web/src/workspace/useStudioTheme.ts",
+        "apps/web/src/workspace/useWorkspaceLayout.ts"
+      ],
+      "exported_components": [
+        "App"
+      ],
+      "literal_api_fragments": [
+        "/artworks/${artwork.id}/revisions",
+        "/artworks/${current.id}/restore",
+        "/artworks/${current.id}/revisions/${next.id}",
+        "/artworks/${expected.id}/source",
+        "/artworks/${id}",
+        "/assets/${sourceAssetId}/copy",
+        "/auth/logout",
+        "/projects",
+        "/projects/${destination.id}/artworks",
+        "/projects/${destination.id}/assets",
+        "/projects/${id}",
+        "/projects/${next.id}",
+        "/projects/${next.projectId}",
+        "/projects/${project.id}/derived-assets",
+        "/projects/${target.id}/artworks",
+        "/projects/${target.id}/assets",
+        "/projects?spaceId=${encodeURIComponent(spaceId)}",
+        "/session",
+        "/spaces",
+        "/v1/assets/${encodeURIComponent(selected.id)}/file",
+        "/v1/assets/${id}/file"
+      ],
+      "evidence": "static_all_file_inventory_and_import_scan; not full behavioral review"
+    },
+    {
+      "path": "apps/web/src/SiteShell.tsx",
+      "sha256": "c1a88cb81b3642b8eae5aa79a1212b130aa8afa8646e126cb94c4389c9e46fb6",
+      "line_count": 210,
+      "extension": ".tsx",
+      "imports_in_web": [
+        "apps/web/src/App.tsx",
+        "apps/web/src/about/AboutPage.tsx",
+        "apps/web/src/about/copy.ts",
+        "apps/web/src/about/sample.ts",
+        "apps/web/src/about/site-route.ts",
+        "apps/web/src/account/account-page.css",
+        "apps/web/src/account/page-copy.ts",
+        "apps/web/src/components/BrandMark.tsx",
+        "apps/web/src/i18n/index.ts",
+        "apps/web/src/lib/api.ts",
+        "apps/web/src/lib/brand.ts",
+        "apps/web/src/lib/types.ts",
+        "apps/web/src/site-loading.css"
+      ],
+      "exported_components": [
+        "SiteShell"
+      ],
+      "literal_api_fragments": [],
+      "evidence": "static_all_file_inventory_and_import_scan; not full behavioral review"
+    },
+    {
+      "path": "apps/web/src/about/AboutArt.tsx",
+      "sha256": "cf7c2c6d58c16e3f55bfe92e87fc3d5d06f2abe1d021b1aab057eca415987c37",
+      "line_count": 103,
+      "extension": ".tsx",
+      "imports_in_web": [
+        "apps/web/src/about/editorial-copy.ts",
+        "apps/web/src/i18n/index.ts"
+      ],
+      "exported_components": [
+        "EditorialImage",
+        "ProductImage"
+      ],
+      "literal_api_fragments": [],
+      "evidence": "static_all_file_inventory_and_import_scan; not full behavioral review"
+    },
+    {
+      "path": "apps/web/src/about/AboutPage.tsx",
+      "sha256": "5889730aa7d8a93e2653e6010ec6f8c4de85d5ce58c4c2319063d8dfe40107e6",
+      "line_count": 273,
+      "extension": ".tsx",
+      "imports_in_web": [
+        "apps/web/src/about/overview-copy.ts",
+        "apps/web/src/about/sample-settings.ts",
+        "apps/web/src/about/useOverviewMotion.ts",
+        "apps/web/src/components/BrandMark.tsx",
+        "apps/web/src/i18n/LanguageSelect.tsx",
+        "apps/web/src/i18n/index.ts",
+        "apps/web/src/lib/brand.ts",
+        "apps/web/src/lib/types.ts"
+      ],
+      "exported_components": [
+        "DEMO_IMAGE",
+        "AboutPage"
+      ],
+      "literal_api_fragments": [],
+      "evidence": "static_all_file_inventory_and_import_scan; not full behavioral review"
+    },
+    {
+      "path": "apps/web/src/about/AgentStory.tsx",
+      "sha256": "6c850fb6e9479293cb36c331da465d31f32b04c9b4a21b29e79e28f6e4734e4b",
+      "line_count": 510,
+      "extension": ".tsx",
+      "imports_in_web": [
+        "apps/web/src/about/AboutArt.tsx",
+        "apps/web/src/about/agent-product-copy.ts",
+        "apps/web/src/about/agent-product-story.css",
+        "apps/web/src/about/editorial-copy.ts",
+        "apps/web/src/i18n/index.ts"
+      ],
+      "exported_components": [
+        "AgentStory"
+      ],
+      "literal_api_fragments": [],
+      "evidence": "static_all_file_inventory_and_import_scan; not full behavioral review"
+    },
+    {
+      "path": "apps/web/src/about/ColorStudy.tsx",
+      "sha256": "ff94353bdeeb417b60367e4902289c1bb009f5f24d5f9150fdf7b468bc0aac9b",
+      "line_count": 338,
+      "extension": ".tsx",
+      "imports_in_web": [
+        "apps/web/src/about/ElasticCompare.tsx",
+        "apps/web/src/about/copy.ts",
+        "apps/web/src/about/demo.worker.ts",
+        "apps/web/src/about/sample-settings.ts",
+        "apps/web/src/about/study-copy.ts",
+        "apps/web/src/i18n/index.ts"
+      ],
+      "exported_components": [
+        "ColorStudy"
+      ],
+      "literal_api_fragments": [],
+      "evidence": "static_all_file_inventory_and_import_scan; not full behavioral review"
+    },
+    {
+      "path": "apps/web/src/about/CreativeStories.tsx",
+      "sha256": "174f1acf2cc59caa635b5f1971dc88fbee14e3765383ac68e3745bd25df72001",
+      "line_count": 440,
+      "extension": ".tsx",
+      "imports_in_web": [
+        "apps/web/src/about/AboutArt.tsx",
+        "apps/web/src/about/editorial-copy.ts",
+        "apps/web/src/about/effects/index.ts",
+        "apps/web/src/about/team-device-copy.ts",
+        "apps/web/src/about/team-device-product.css",
+        "apps/web/src/i18n/index.ts"
+      ],
+      "exported_components": [
+        "VoiceStory",
+        "TeamStory",
+        "DeviceStory"
+      ],
+      "literal_api_fragments": [],
+      "evidence": "static_all_file_inventory_and_import_scan; not full behavioral review"
+    },
+    {
+      "path": "apps/web/src/about/ElasticCompare.tsx",
+      "sha256": "f1ce151a6e68ebf20ac323f1f40581259b6b57bdea384b03ed86448f2916890a",
+      "line_count": 185,
+      "extension": ".tsx",
+      "imports_in_web": [],
+      "exported_components": [
+        "ElasticCompare"
+      ],
+      "literal_api_fragments": [],
+      "evidence": "static_all_file_inventory_and_import_scan; not full behavioral review"
+    },
+    {
+      "path": "apps/web/src/about/FeatureTour.tsx",
+      "sha256": "bb55f0cc05153294c38f820dbd6af0a99ef2f6cc835373f329f45ade40e4e96b",
+      "line_count": 301,
+      "extension": ".tsx",
+      "imports_in_web": [
+        "apps/web/src/about/AboutArt.tsx",
+        "apps/web/src/about/editorial-copy.ts",
+        "apps/web/src/about/product-copy.ts",
+        "apps/web/src/i18n/index.ts"
+      ],
+      "exported_components": [
+        "FeatureTour"
+      ],
+      "literal_api_fragments": [],
+      "evidence": "static_all_file_inventory_and_import_scan; not full behavioral review"
+    },
+    {
+      "path": "apps/web/src/about/ProductHero.tsx",
+      "sha256": "3e533b3e3c50afabbed4de45d631362695492a387207e938cbbfa3bd47d8f266",
+      "line_count": 104,
+      "extension": ".tsx",
+      "imports_in_web": [
+        "apps/web/src/about/AboutArt.tsx",
+        "apps/web/src/about/product-copy.ts",
+        "apps/web/src/i18n/index.ts"
+      ],
+      "exported_components": [
+        "ProductHero"
+      ],
+      "literal_api_fragments": [],
+      "evidence": "static_all_file_inventory_and_import_scan; not full behavioral review"
+    },
+    {
+      "path": "apps/web/src/about/about.css",
+      "sha256": "a3becc2035a4107cd5fcc88a6cf69c007585f15991cf09d42e34e11e571f47f8",
+      "line_count": 289,
+      "extension": ".css",
+      "imports_in_web": [],
+      "exported_components": [],
+      "literal_api_fragments": [],
+      "evidence": "static_all_file_inventory_and_import_scan; not full behavioral review"
+    },
+    {
+      "path": "apps/web/src/about/agent-product-copy.ts",
+      "sha256": "0e08d973792355f5b0e8cf6c4f913cfc224d28d46f7544a3093a7de08ee441be",
+      "line_count": 72,
+      "extension": ".ts",
+      "imports_in_web": [
+        "apps/web/src/i18n/index.ts"
+      ],
+      "exported_components": [],
+      "literal_api_fragments": [],
+      "evidence": "static_all_file_inventory_and_import_scan; not full behavioral review"
+    },
+    {
+      "path": "apps/web/src/about/agent-product-story.css",
+      "sha256": "00ef0162ab50f0eb72d376bad8a1986e93b1837fc042035ec3f4e4563fbd9106",
+      "line_count": 382,
+      "extension": ".css",
+      "imports_in_web": [],
+      "exported_components": [],
+      "literal_api_fragments": [],
+      "evidence": "static_all_file_inventory_and_import_scan; not full behavioral review"
+    },
+    {
+      "path": "apps/web/src/about/copy.ts",
+      "sha256": "82b32c0c59c0be0b2e948761dbdfc79a17252efb781b6b1e1a50ee214b366517",
+      "line_count": 237,
+      "extension": ".ts",
+      "imports_in_web": [
+        "apps/web/src/i18n/index.ts"
+      ],
+      "exported_components": [],
+      "literal_api_fragments": [],
+      "evidence": "static_all_file_inventory_and_import_scan; not full behavioral review"
+    },
+    {
+      "path": "apps/web/src/about/demo.worker.ts",
+      "sha256": "b92910d5360e319bd78b304ee1949d0779bedac5aa11f9524aa45082fd3e7ff9",
+      "line_count": 29,
+      "extension": ".ts",
+      "imports_in_web": [
+        "apps/web/src/about/sample-settings.ts",
+        "apps/web/src/about/sample.ts"
+      ],
+      "exported_components": [],
+      "literal_api_fragments": [],
+      "evidence": "static_all_file_inventory_and_import_scan; not full behavioral review"
+    },
+    {
+      "path": "apps/web/src/about/editorial-copy.ts",
+      "sha256": "5c1a4fe07b8dda21b9720ce3891de02e13b59c1a28f97ac3f1c1c9686c4b080f",
+      "line_count": 459,
+      "extension": ".ts",
+      "imports_in_web": [
+        "apps/web/src/i18n/index.ts"
+      ],
+      "exported_components": [],
+      "literal_api_fragments": [],
+      "evidence": "static_all_file_inventory_and_import_scan; not full behavioral review"
+    },
+    {
+      "path": "apps/web/src/about/effects/HoverPreview.tsx",
+      "sha256": "d6e7de57af24927b62e0add867d0c65914f5e8064d4bff822c73a859dc2fdb36",
+      "line_count": 130,
+      "extension": ".tsx",
+      "imports_in_web": [
+        "apps/web/src/about/effects/effects.css"
+      ],
+      "exported_components": [
+        "HoverPreview"
+      ],
+      "literal_api_fragments": [],
+      "evidence": "static_all_file_inventory_and_import_scan; not full behavioral review"
+    },
+    {
+      "path": "apps/web/src/about/effects/LICENSE.react-bits.md",
+      "sha256": "4bdd1fa59a6b7d5954bc3b213dbc34e455c635a94bbcecf9293553797d0fad02",
+      "line_count": 29,
+      "extension": ".md",
+      "imports_in_web": [],
+      "exported_components": [],
+      "literal_api_fragments": [],
+      "evidence": "static_all_file_inventory_and_import_scan; not full behavioral review"
+    },
+    {
+      "path": "apps/web/src/about/effects/PointerRibbons.tsx",
+      "sha256": "c3d42dd36290f201d28248b07150c403aaad298568eb866ac2f75a9e8441753e",
+      "line_count": 244,
+      "extension": ".tsx",
+      "imports_in_web": [
+        "apps/web/src/about/effects/effects.css"
+      ],
+      "exported_components": [
+        "PointerRibbons"
+      ],
+      "literal_api_fragments": [],
+      "evidence": "static_all_file_inventory_and_import_scan; not full behavioral review"
+    },
+    {
+      "path": "apps/web/src/about/effects/README.md",
+      "sha256": "ddbc9f9d51b37888384c0541742b0d8a404318f48159911d8be6bc159a9492a4",
+      "line_count": 47,
+      "extension": ".md",
+      "imports_in_web": [
+        "apps/web/src/about/effects/effects.css"
+      ],
+      "exported_components": [],
+      "literal_api_fragments": [],
+      "evidence": "static_all_file_inventory_and_import_scan; not full behavioral review"
+    },
+    {
+      "path": "apps/web/src/about/effects/REFERENCE_STUDY.md",
+      "sha256": "4eab73f40f5a3f633d592bf2d17d95a3a66dfca2bc3544b67f199d42c81045fa",
+      "line_count": 44,
+      "extension": ".md",
+      "imports_in_web": [],
+      "exported_components": [],
+      "literal_api_fragments": [],
+      "evidence": "static_all_file_inventory_and_import_scan; not full behavioral review"
+    },
+    {
+      "path": "apps/web/src/about/effects/ScrollReveal.tsx",
+      "sha256": "0404145ce17f6ed555e20a198abc7352ef6b90effb0175a9994428e5b6ae6f3b",
+      "line_count": 207,
+      "extension": ".tsx",
+      "imports_in_web": [
+        "apps/web/src/about/effects/effects.css"
+      ],
+      "exported_components": [
+        "ScrollReveal"
+      ],
+      "literal_api_fragments": [],
+      "evidence": "static_all_file_inventory_and_import_scan; not full behavioral review"
+    },
+    {
+      "path": "apps/web/src/about/effects/effects.css",
+      "sha256": "0f643cb5ec5efaa3d35004d1dac7df553f73f943709191df254cd3476e69f2da",
+      "line_count": 88,
+      "extension": ".css",
+      "imports_in_web": [],
+      "exported_components": [],
+      "literal_api_fragments": [],
+      "evidence": "static_all_file_inventory_and_import_scan; not full behavioral review"
+    },
+    {
+      "path": "apps/web/src/about/effects/index.ts",
+      "sha256": "d621a4c8b16ba44fa8cef9c2c91a14872f85af69589d6e4d490442ad0d0f4274",
+      "line_count": 3,
+      "extension": ".ts",
+      "imports_in_web": [
+        "apps/web/src/about/effects/HoverPreview.tsx",
+        "apps/web/src/about/effects/PointerRibbons.tsx",
+        "apps/web/src/about/effects/ScrollReveal.tsx"
+      ],
+      "exported_components": [],
+      "literal_api_fragments": [],
+      "evidence": "static_all_file_inventory_and_import_scan; not full behavioral review"
+    },
+    {
+      "path": "apps/web/src/about/experience-copy.ts",
+      "sha256": "8450bcf69e124ff07169f4836521baf0d50578d5c26576dc2157721d4c9487a5",
+      "line_count": 332,
+      "extension": ".ts",
+      "imports_in_web": [
+        "apps/web/src/i18n/index.ts"
+      ],
+      "exported_components": [],
+      "literal_api_fragments": [],
+      "evidence": "static_all_file_inventory_and_import_scan; not full behavioral review"
+    },
+    {
+      "path": "apps/web/src/about/overview-copy.ts",
+      "sha256": "0159e5bd814cbb7f32547d8959b9bea8e9ad55e69302262bdf81ab0e2a565ba9",
+      "line_count": 486,
+      "extension": ".ts",
+      "imports_in_web": [
+        "apps/web/src/i18n/index.ts"
+      ],
+      "exported_components": [],
+      "literal_api_fragments": [],
+      "evidence": "static_all_file_inventory_and_import_scan; not full behavioral review"
+    },
+    {
+      "path": "apps/web/src/about/product-copy.ts",
+      "sha256": "baa5fe16f2400c589a78af098389c9a01eddca8eb68074019b1e1951cdae1867",
+      "line_count": 82,
+      "extension": ".ts",
+      "imports_in_web": [
+        "apps/web/src/i18n/index.ts"
+      ],
+      "exported_components": [],
+      "literal_api_fragments": [],
+      "evidence": "static_all_file_inventory_and_import_scan; not full behavioral review"
+    },
+    {
+      "path": "apps/web/src/about/product-reference-notes.md",
+      "sha256": "e5b8c7e1b51ff64ece36a7d45a1dcb836d9d511328104d563214e45afa534346",
+      "line_count": 23,
+      "extension": ".md",
+      "imports_in_web": [],
+      "exported_components": [],
+      "literal_api_fragments": [],
+      "evidence": "static_all_file_inventory_and_import_scan; not full behavioral review"
+    },
+    {
+      "path": "apps/web/src/about/product-story.css",
+      "sha256": "cfc78044cf17481fbc50fee967cd9e9a2d4caf5a0ddda5de323b08f54f4ccd5a",
+      "line_count": 421,
+      "extension": ".css",
+      "imports_in_web": [],
+      "exported_components": [],
+      "literal_api_fragments": [],
+      "evidence": "static_all_file_inventory_and_import_scan; not full behavioral review"
+    },
+    {
+      "path": "apps/web/src/about/sample-settings.ts",
+      "sha256": "75b998a835f4212aa2c3039d9f8f786661bf05610874fe4448b3d6e9d347bdf6",
+      "line_count": 125,
+      "extension": ".ts",
+      "imports_in_web": [],
+      "exported_components": [
+        "SAMPLE_PARAMETER_LIMITS",
+        "DEFAULT_SAMPLE_SETTINGS"
+      ],
+      "literal_api_fragments": [],
+      "evidence": "static_all_file_inventory_and_import_scan; not full behavioral review"
+    },
+    {
+      "path": "apps/web/src/about/sample.ts",
+      "sha256": "edddccf89ffd3c71bfee3a0f5530c5e655d9657aae84775863e3ece81a5264d4",
+      "line_count": 22,
+      "extension": ".ts",
+      "imports_in_web": [
+        "apps/web/src/about/sample-settings.ts"
+      ],
+      "exported_components": [],
+      "literal_api_fragments": [],
+      "evidence": "static_all_file_inventory_and_import_scan; not full behavioral review"
+    },
+    {
+      "path": "apps/web/src/about/site-route.ts",
+      "sha256": "56a0b3cfe781bdd10b4d7591ee9454e4704b3ad12e06aa196f8b9fda1cf7aae0",
+      "line_count": 23,
+      "extension": ".ts",
+      "imports_in_web": [],
+      "exported_components": [],
+      "literal_api_fragments": [],
+      "evidence": "static_all_file_inventory_and_import_scan; not full behavioral review"
+    },
+    {
+      "path": "apps/web/src/about/study-copy.ts",
+      "sha256": "534546355c517c4eb69bb556195a5e7e69c36a4c6cbc63f587c7f405d34e3073",
+      "line_count": 53,
+      "extension": ".ts",
+      "imports_in_web": [
+        "apps/web/src/i18n/index.ts"
+      ],
+      "exported_components": [],
+      "literal_api_fragments": [],
+      "evidence": "static_all_file_inventory_and_import_scan; not full behavioral review"
+    },
+    {
+      "path": "apps/web/src/about/team-device-copy.ts",
+      "sha256": "d7a4aac2c3c8d864c97b3de656055e103563e865b165e1dbe295b2e09dd94794",
+      "line_count": 276,
+      "extension": ".ts",
+      "imports_in_web": [
+        "apps/web/src/i18n/index.ts"
+      ],
+      "exported_components": [],
+      "literal_api_fragments": [],
+      "evidence": "static_all_file_inventory_and_import_scan; not full behavioral review"
+    },
+    {
+      "path": "apps/web/src/about/team-device-product.css",
+      "sha256": "45b122df1a1f01122f568dca76300cba7a6de0c726c582f8bf5fa36d87c0a1e2",
+      "line_count": 651,
+      "extension": ".css",
+      "imports_in_web": [],
+      "exported_components": [],
+      "literal_api_fragments": [],
+      "evidence": "static_all_file_inventory_and_import_scan; not full behavioral review"
+    },
+    {
+      "path": "apps/web/src/about/useOverviewMotion.ts",
+      "sha256": "81e99c98e95402beac9f0ab79ebf09073ffd9000d24dd7f66416c9c28cf8c231",
+      "line_count": 59,
+      "extension": ".ts",
+      "imports_in_web": [],
+      "exported_components": [],
+      "literal_api_fragments": [],
+      "evidence": "static_all_file_inventory_and_import_scan; not full behavioral review"
+    },
+    {
+      "path": "apps/web/src/account/AccountCenter.tsx",
+      "sha256": "ef12edfbf7cc451681266f930c35718a93e3a811bd33beb19721eb83b7777005",
+      "line_count": 738,
+      "extension": ".tsx",
+      "imports_in_web": [
+        "apps/web/src/account/AccountDocumentDrafts.tsx",
+        "apps/web/src/account/AccountPageFrame.tsx",
+        "apps/web/src/account/account-model.ts",
+        "apps/web/src/components/Ui.tsx",
+        "apps/web/src/i18n/index.ts",
+        "apps/web/src/lib/api.ts",
+        "apps/web/src/lib/types.ts"
+      ],
+      "exported_components": [
+        "AccountCenter"
+      ],
+      "literal_api_fragments": [],
+      "evidence": "static_all_file_inventory_and_import_scan; not full behavioral review"
+    },
+    {
+      "path": "apps/web/src/account/AccountDocumentDrafts.tsx",
+      "sha256": "a7fdcb9837d38386bc9526b551eee52f0bb61d4eeb79fb761c1c758d75069f1e",
+      "line_count": 343,
+      "extension": ".tsx",
+      "imports_in_web": [
+        "apps/web/src/account/account-model.ts",
+        "apps/web/src/account/document-drafts.ts",
+        "apps/web/src/i18n/index.ts",
+        "apps/web/src/lib/api.ts",
+        "apps/web/src/motion/Presence.tsx"
+      ],
+      "exported_components": [
+        "AccountDocumentDrafts"
+      ],
+      "literal_api_fragments": [],
+      "evidence": "static_all_file_inventory_and_import_scan; not full behavioral review"
+    },
+    {
+      "path": "apps/web/src/account/AccountPageFrame.tsx",
+      "sha256": "d4059fd32e06afad8ecdf6d69a389056a856fc7eaa6598125384e408217f4169",
+      "line_count": 81,
+      "extension": ".tsx",
+      "imports_in_web": [
+        "apps/web/src/account/account-page.css",
+        "apps/web/src/account/page-copy.ts",
+        "apps/web/src/components/Ui.tsx",
+        "apps/web/src/i18n/LanguageSelect.tsx",
+        "apps/web/src/i18n/index.ts",
+        "apps/web/src/lib/brand.ts",
+        "apps/web/src/lib/types.ts"
+      ],
+      "exported_components": [
+        "AccountPageFrame"
+      ],
+      "literal_api_fragments": [],
+      "evidence": "static_all_file_inventory_and_import_scan; not full behavioral review"
+    },
+    {
+      "path": "apps/web/src/account/AccountReady.tsx",
+      "sha256": "9e80f0e4d29c4399a86215e32a3f36caab2ddfe949b03db3c5fe686eaadd0788",
+      "line_count": 71,
+      "extension": ".tsx",
+      "imports_in_web": [
+        "apps/web/src/account/AccountPageFrame.tsx",
+        "apps/web/src/account/account-model.ts",
+        "apps/web/src/i18n/index.ts",
+        "apps/web/src/lib/types.ts"
+      ],
+      "exported_components": [
+        "AccountReady"
+      ],
+      "literal_api_fragments": [],
+      "evidence": "static_all_file_inventory_and_import_scan; not full behavioral review"
+    },
+    {
+      "path": "apps/web/src/account/account-center.css",
+      "sha256": "6f8a0f515f16e10a8c22bc9dae896646620de1ccbfb1ab85c2a8395c1b73c139",
+      "line_count": 1339,
+      "extension": ".css",
+      "imports_in_web": [],
+      "exported_components": [],
+      "literal_api_fragments": [],
+      "evidence": "static_all_file_inventory_and_import_scan; not full behavioral review"
+    },
+    {
+      "path": "apps/web/src/account/account-entry.css",
+      "sha256": "0f8e57e9a1b0cac97d74283c3ab2eac73641b3d7bf5f89d3140ca21a22afccf6",
+      "line_count": 342,
+      "extension": ".css",
+      "imports_in_web": [],
+      "exported_components": [],
+      "literal_api_fragments": [],
+      "evidence": "static_all_file_inventory_and_import_scan; not full behavioral review"
+    },
+    {
+      "path": "apps/web/src/account/account-model.ts",
+      "sha256": "1c1e0295b07d2298a0ab89a3524bba579fa665612fd9782063e75aeea70e7c95",
+      "line_count": 159,
+      "extension": ".ts",
+      "imports_in_web": [
+        "apps/web/src/account/document-drafts.ts",
+        "apps/web/src/i18n/index.ts",
+        "apps/web/src/lib/types.ts"
+      ],
+      "exported_components": [],
+      "literal_api_fragments": [],
+      "evidence": "static_all_file_inventory_and_import_scan; not full behavioral review"
+    },
+    {
+      "path": "apps/web/src/account/account-page.css",
+      "sha256": "8a08df905c9f8de73f53c570acc710be0ba173f34cb4b1b3c2d7355efcba2746",
+      "line_count": 71,
+      "extension": ".css",
+      "imports_in_web": [],
+      "exported_components": [],
+      "literal_api_fragments": [],
+      "evidence": "static_all_file_inventory_and_import_scan; not full behavioral review"
+    },
+    {
+      "path": "apps/web/src/account/auth-model.ts",
+      "sha256": "1ad46f6813916ec161cb14dcabd5637607f22e44252b69410e06b63c1cdea0b8",
+      "line_count": 327,
+      "extension": ".ts",
+      "imports_in_web": [
+        "apps/web/src/lib/types.ts"
+      ],
+      "exported_components": [
+        "AUTH_REQUEST_TIMEOUT_MS"
+      ],
+      "literal_api_fragments": [],
+      "evidence": "static_all_file_inventory_and_import_scan; not full behavioral review"
+    },
+    {
+      "path": "apps/web/src/account/auth.css",
+      "sha256": "b2ac45a52c11f26033ea251af72e7f2bfa0f0e77477915e4775db9f27647ba2b",
+      "line_count": 570,
+      "extension": ".css",
+      "imports_in_web": [],
+      "exported_components": [],
+      "literal_api_fragments": [],
+      "evidence": "static_all_file_inventory_and_import_scan; not full behavioral review"
+    },
+    {
+      "path": "apps/web/src/account/document-drafts.css",
+      "sha256": "ab6ce8fc8253e2250386c6abb9bf38c7c417162159d4f5ba3aa6c179d7e1bbcb",
+      "line_count": 132,
+      "extension": ".css",
+      "imports_in_web": [],
+      "exported_components": [],
+      "literal_api_fragments": [],
+      "evidence": "static_all_file_inventory_and_import_scan; not full behavioral review"
+    },
+    {
+      "path": "apps/web/src/account/document-drafts.ts",
+      "sha256": "b6d72b12dc37052981f4883f06ed1464e1f3bc7709740b675dd1056b3a4cf59f",
+      "line_count": 332,
+      "extension": ".ts",
+      "imports_in_web": [
+        "apps/web/src/lib/types.ts"
+      ],
+      "exported_components": [],
+      "literal_api_fragments": [],
+      "evidence": "static_all_file_inventory_and_import_scan; not full behavioral review"
+    },
+    {
+      "path": "apps/web/src/account/page-copy.ts",
+      "sha256": "af618190bc60894adef3fb90466ae60e319cf5e4c8df7c1cc3144f065d987d9d",
+      "line_count": 89,
+      "extension": ".ts",
+      "imports_in_web": [
+        "apps/web/src/i18n/index.ts"
+      ],
+      "exported_components": [],
+      "literal_api_fragments": [],
+      "evidence": "static_all_file_inventory_and_import_scan; not full behavioral review"
+    },
+    {
+      "path": "apps/web/src/account/session-lifecycle.ts",
+      "sha256": "2d100dec3f6a62c59a7a61d6e9bfe1bb75bc40765cff9386434280bfb4bbb349",
+      "line_count": 78,
+      "extension": ".ts",
+      "imports_in_web": [],
+      "exported_components": [],
+      "literal_api_fragments": [],
+      "evidence": "static_all_file_inventory_and_import_scan; not full behavioral review"
+    },
+    {
+      "path": "apps/web/src/ai/AIThread.tsx",
+      "sha256": "28cc6cbf49a2aa1acb9fd21ceaf964a93b05c4ab6692e720607a9a5ff9cf1170",
+      "line_count": 658,
+      "extension": ".tsx",
+      "imports_in_web": [
+        "apps/web/src/ai/AIVisibility.tsx",
+        "apps/web/src/ai/AssistantText.tsx",
+        "apps/web/src/ai/QueuedCancellation.tsx",
+        "apps/web/src/ai/ResultActions.tsx",
+        "apps/web/src/ai/types.ts",
+        "apps/web/src/ai/useResultDecisions.ts",
+        "apps/web/src/components/ChoiceSelect.tsx",
+        "apps/web/src/components/Controls.tsx",
+        "apps/web/src/components/Ui.tsx",
+        "apps/web/src/i18n/index.ts",
+        "apps/web/src/lib/api.ts",
+        "apps/web/src/lib/types.ts"
+      ],
+      "exported_components": [
+        "SpeakButton",
+        "AIThread"
+      ],
+      "literal_api_fragments": [
+        "/v1/assets/"
+      ],
+      "evidence": "static_all_file_inventory_and_import_scan; not full behavioral review"
+    },
+    {
+      "path": "apps/web/src/ai/AIVisibility.tsx",
+      "sha256": "bd573ff1a79de3afa6463f01ebf5451f7b05142df642c694736c82ecbe007ea2",
+      "line_count": 22,
+      "extension": ".tsx",
+      "imports_in_web": [],
+      "exported_components": [
+        "AIVisibilityContext",
+        "IDLE_AI_ACTIVITY"
+      ],
+      "literal_api_fragments": [],
+      "evidence": "static_all_file_inventory_and_import_scan; not full behavioral review"
+    },
+    {
+      "path": "apps/web/src/ai/AssistantText.tsx",
+      "sha256": "e8c00d6570affe71d40d3f9a5eb2fa8e757412014207abfc3e3a7a164145cd7a",
+      "line_count": 128,
+      "extension": ".tsx",
+      "imports_in_web": [
+        "apps/web/src/ai/assistant-reading.css",
+        "apps/web/src/ai/message-format.ts",
+        "apps/web/src/i18n/index.ts"
+      ],
+      "exported_components": [
+        "AssistantText",
+        "CopyMessage"
+      ],
+      "literal_api_fragments": [],
+      "evidence": "static_all_file_inventory_and_import_scan; not full behavioral review"
+    },
+    {
+      "path": "apps/web/src/ai/CandidateActions.tsx",
+      "sha256": "d9b1d9fb3b66f0cca8e1b34d4bfc32dc7a0622626bef6f9440b858f0fcc88bef",
+      "line_count": 69,
+      "extension": ".tsx",
+      "imports_in_web": [
+        "apps/web/src/i18n/index.ts"
+      ],
+      "exported_components": [
+        "CandidateActions"
+      ],
+      "literal_api_fragments": [],
+      "evidence": "static_all_file_inventory_and_import_scan; not full behavioral review"
+    },
+    {
+      "path": "apps/web/src/ai/ComposerInput.tsx",
+      "sha256": "2146c265966d9475dda1af8d1ae042bda7f648db923e24d681b4d887273a20e9",
+      "line_count": 108,
+      "extension": ".tsx",
+      "imports_in_web": [],
+      "exported_components": [
+        "ComposerInput"
+      ],
+      "literal_api_fragments": [],
+      "evidence": "static_all_file_inventory_and_import_scan; not full behavioral review"
+    },
+    {
+      "path": "apps/web/src/ai/ComposerVisual.tsx",
+      "sha256": "933469dc9b7f064ccebf25a7ec7738d37bd6494002240078598d8a9fa06cb1a1",
+      "line_count": 96,
+      "extension": ".tsx",
+      "imports_in_web": [],
+      "exported_components": [
+        "ComposerVisual"
+      ],
+      "literal_api_fragments": [],
+      "evidence": "static_all_file_inventory_and_import_scan; not full behavioral review"
+    },
+    {
+      "path": "apps/web/src/ai/ContextEvidence.tsx",
+      "sha256": "e8c07e481e173dcaaa264531443c2b1e25174d71ccddb2887f0fc61973cc91c2",
+      "line_count": 112,
+      "extension": ".tsx",
+      "imports_in_web": [
+        "apps/web/src/i18n/index.ts",
+        "apps/web/src/lib/api.ts",
+        "apps/web/src/motion/Presence.tsx"
+      ],
+      "exported_components": [
+        "ContextEvidence"
+      ],
+      "literal_api_fragments": [
+        "/assistant-turns/${id}",
+        "/assistant-turns/${turnId}/context"
+      ],
+      "evidence": "static_all_file_inventory_and_import_scan; not full behavioral review"
+    },
+    {
+      "path": "apps/web/src/ai/CreativeControls.tsx",
+      "sha256": "cbe63441c16529d40f3cbb9ed60a7aa1093ae0e8fff8928f59251aa8d190f399",
+      "line_count": 195,
+      "extension": ".tsx",
+      "imports_in_web": [
+        "apps/web/src/components/ChoiceSelect.tsx",
+        "apps/web/src/i18n/index.ts",
+        "apps/web/src/motion/Presence.tsx"
+      ],
+      "exported_components": [
+        "CreativeControls"
+      ],
+      "literal_api_fragments": [],
+      "evidence": "static_all_file_inventory_and_import_scan; not full behavioral review"
+    },
+    {
+      "path": "apps/web/src/ai/ImageParameters.tsx",
+      "sha256": "baf010eb9c1f92a3dac18519755c7c82cb039b444f033e7226d12bf998962327",
+      "line_count": 371,
+      "extension": ".tsx",
+      "imports_in_web": [
+        "apps/web/src/ai/capabilities.ts",
+        "apps/web/src/ai/model-copy.ts",
+        "apps/web/src/ai/model-settings.css",
+        "apps/web/src/ai/types.ts",
+        "apps/web/src/components/Controls.tsx",
+        "apps/web/src/i18n/index.ts"
+      ],
+      "exported_components": [
+        "ImageParameters"
+      ],
+      "literal_api_fragments": [],
+      "evidence": "static_all_file_inventory_and_import_scan; not full behavioral review"
+    },
+    {
+      "path": "apps/web/src/ai/LiveAssistant.tsx",
+      "sha256": "9e2439d0f481fae86e167bea5d484a90baf4c7c1a1904d97fc0e40289f16ee68",
+      "line_count": 3029,
+      "extension": ".tsx",
+      "imports_in_web": [
+        "apps/web/src/ai/AIVisibility.tsx",
+        "apps/web/src/ai/AssistantText.tsx",
+        "apps/web/src/ai/CandidateActions.tsx",
+        "apps/web/src/ai/ComposerInput.tsx",
+        "apps/web/src/ai/ComposerVisual.tsx",
+        "apps/web/src/ai/ContextEvidence.tsx",
+        "apps/web/src/ai/CreativeControls.tsx",
+        "apps/web/src/ai/MemoryControls.tsx",
+        "apps/web/src/ai/ModelChoice.tsx",
+        "apps/web/src/ai/PanelSettings.tsx",
+        "apps/web/src/ai/PanelSettingsPage.tsx",
+        "apps/web/src/ai/ResearchGraph.tsx",
+        "apps/web/src/ai/SearchEvidence.tsx",
+        "apps/web/src/ai/VoiceCaptions.tsx",
+        "apps/web/src/ai/WorkspaceCards.tsx",
+        "apps/web/src/ai/assistantGuards.ts",
+        "apps/web/src/ai/assistantSubmission.ts",
+        "apps/web/src/ai/live-assistant.css",
+        "apps/web/src/ai/model-copy.ts",
+        "apps/web/src/ai/teamVoiceSubmission.ts",
+        "apps/web/src/ai/turnStream.ts",
+        "apps/web/src/ai/voice-error.ts",
+        "apps/web/src/ai/voiceClient.ts",
+        "apps/web/src/ai/voiceSubmission.ts",
+        "apps/web/src/ai/voiceSubmissionStorage.ts",
+        "apps/web/src/components/ChoiceSelect.tsx",
+        "apps/web/src/components/Ui.tsx",
+        "apps/web/src/i18n/index.ts",
+        "apps/web/src/lib/api.ts",
+        "apps/web/src/lib/types.ts",
+        "apps/web/src/lib/uuid.ts",
+        "apps/web/src/motion/Presence.tsx"
+      ],
+      "exported_components": [
+        "LiveAssistant"
+      ],
+      "literal_api_fragments": [
+        "/assistant-candidates/${candidate.id}/apply",
+        "/assistant-candidates/${candidate.id}/decision",
+        "/assistant-grants/${id}",
+        "/assistant-turns/${id}/stop",
+        "/assistant/models",
+        "/projects/${project.id}/assistant-candidates",
+        "/projects/${project.id}/assistant-candidates?conversationId=${conversationId}",
+        "/projects/${project.id}/assistant-conversations",
+        "/projects/${project.id}/assistant-grants",
+        "/projects/${project.id}/assistant-resources/search",
+        "/projects/${project.id}/assistant-turns?conversationId=${conversationId}",
+        "/session"
+      ],
+      "evidence": "static_all_file_inventory_and_import_scan; not full behavioral review"
+    },
+    {
+      "path": "apps/web/src/ai/MemoryControls.tsx",
+      "sha256": "76e33d4efad4d6750ecf19efd7f286bb6d8fd617f7708e8d222a6ec20f02b6ef",
+      "line_count": 413,
+      "extension": ".tsx",
+      "imports_in_web": [
+        "apps/web/src/components/ChoiceSelect.tsx",
+        "apps/web/src/i18n/index.ts",
+        "apps/web/src/lib/api.ts",
+        "apps/web/src/motion/Presence.tsx"
+      ],
+      "exported_components": [
+        "MemoryControls"
+      ],
+      "literal_api_fragments": [
+        "/projects/${projectId}/assistant-memory",
+        "/projects/${projectId}/assistant-memory/${item.id}",
+        "/projects/${projectId}/assistant-memory/${item.id}/history${beforeVersion ? ",
+        "/projects/${projectId}/assistant-memory?${query}"
+      ],
+      "evidence": "static_all_file_inventory_and_import_scan; not full behavioral review"
+    },
+    {
+      "path": "apps/web/src/ai/ModelChoice.tsx",
+      "sha256": "367010f03d80cd71d24d7a915add4990ea82fb0f7915df99516e4ce5c6510a2c",
+      "line_count": 48,
+      "extension": ".tsx",
+      "imports_in_web": [
+        "apps/web/src/ai/model-copy.ts",
+        "apps/web/src/ai/model-settings.css",
+        "apps/web/src/components/ChoiceSelect.tsx",
+        "apps/web/src/i18n/index.ts",
+        "apps/web/src/motion/Presence.tsx"
+      ],
+      "exported_components": [
+        "ModelChoice"
+      ],
+      "literal_api_fragments": [],
+      "evidence": "static_all_file_inventory_and_import_scan; not full behavioral review"
+    },
+    {
+      "path": "apps/web/src/ai/PanelSettings.tsx",
+      "sha256": "b358cccb58b20ad89f06588ec667d8636de6032b19f69b0cfea18c02ed482c39",
+      "line_count": 32,
+      "extension": ".tsx",
+      "imports_in_web": [
+        "apps/web/src/i18n/index.ts",
+        "apps/web/src/workspace/PanelChromeContext.tsx"
+      ],
+      "exported_components": [
+        "PanelSettings"
+      ],
+      "literal_api_fragments": [],
+      "evidence": "static_all_file_inventory_and_import_scan; not full behavioral review"
+    },
+    {
+      "path": "apps/web/src/ai/PanelSettingsPage.tsx",
+      "sha256": "01f8879998ec69e956fe9f5e1de79605f6287c89c662f4286496591522d10432",
+      "line_count": 59,
+      "extension": ".tsx",
+      "imports_in_web": [
+        "apps/web/src/ai/model-copy.ts",
+        "apps/web/src/ai/model-settings.css",
+        "apps/web/src/i18n/index.ts"
+      ],
+      "exported_components": [
+        "PanelSettingsPage"
+      ],
+      "literal_api_fragments": [],
+      "evidence": "static_all_file_inventory_and_import_scan; not full behavioral review"
+    },
+    {
+      "path": "apps/web/src/ai/QueuedCancellation.tsx",
+      "sha256": "2f35db84828fe2938ba49e4de6612274006e79cad700aaa170b2b404862b9ec0",
+      "line_count": 87,
+      "extension": ".tsx",
+      "imports_in_web": [
+        "apps/web/src/ai/types.ts",
+        "apps/web/src/components/Ui.tsx",
+        "apps/web/src/i18n/index.ts",
+        "apps/web/src/lib/api.ts",
+        "apps/web/src/motion/usePresence.ts"
+      ],
+      "exported_components": [
+        "QueuedCancellation"
+      ],
+      "literal_api_fragments": [],
+      "evidence": "static_all_file_inventory_and_import_scan; not full behavioral review"
+    },
+    {
+      "path": "apps/web/src/ai/ResearchGraph.tsx",
+      "sha256": "30d97913e8f27e9dff53a42c0d8c302fb1e31d0226eebac55842b94615b549d6",
+      "line_count": 219,
+      "extension": ".tsx",
+      "imports_in_web": [
+        "apps/web/src/ai/research-graph-model.ts",
+        "apps/web/src/i18n/index.ts",
+        "apps/web/src/lib/api.ts",
+        "apps/web/src/motion/Presence.tsx"
+      ],
+      "exported_components": [
+        "ResearchGraph"
+      ],
+      "literal_api_fragments": [
+        "/assistant-turns/${encodeURIComponent(turnId)}/branches"
+      ],
+      "evidence": "static_all_file_inventory_and_import_scan; not full behavioral review"
+    },
+    {
+      "path": "apps/web/src/ai/ResultActions.tsx",
+      "sha256": "2c5635454123b644a26f1c42bfd82eecda3a6eb3556fb131840b13b659448a53",
+      "line_count": 421,
+      "extension": ".tsx",
+      "imports_in_web": [
+        "apps/web/src/ai/AIVisibility.tsx",
+        "apps/web/src/ai/decisions.css",
+        "apps/web/src/ai/decisions.ts",
+        "apps/web/src/ai/types.ts",
+        "apps/web/src/ai/useResultDecisions.ts",
+        "apps/web/src/ai/useRetainedDialogValue.ts",
+        "apps/web/src/components/Ui.tsx",
+        "apps/web/src/i18n/index.ts",
+        "apps/web/src/lib/api.ts",
+        "apps/web/src/lib/types.ts",
+        "apps/web/src/motion/Presence.tsx"
+      ],
+      "exported_components": [
+        "DecisionHistory",
+        "ResultActions"
+      ],
+      "literal_api_fragments": [],
+      "evidence": "static_all_file_inventory_and_import_scan; not full behavioral review"
+    },
+    {
+      "path": "apps/web/src/ai/SearchEvidence.tsx",
+      "sha256": "4f65585687816bc608a2b44d2ee54c39e41f8ac16bf9ec410fb2613cc9936584",
+      "line_count": 190,
+      "extension": ".tsx",
+      "imports_in_web": [
+        "apps/web/src/ai/AIVisibility.tsx",
+        "apps/web/src/ai/live-assistant.css",
+        "apps/web/src/ai/useRetainedDialogValue.ts",
+        "apps/web/src/components/Ui.tsx",
+        "apps/web/src/i18n/index.ts",
+        "apps/web/src/motion/Presence.tsx"
+      ],
+      "exported_components": [
+        "CloudImageResults",
+        "SearchEvidence"
+      ],
+      "literal_api_fragments": [
+        "/v1/assets/${encodeURIComponent(id)}/thumbnail"
+      ],
+      "evidence": "static_all_file_inventory_and_import_scan; not full behavioral review"
+    },
+    {
+      "path": "apps/web/src/ai/VoiceCaptions.tsx",
+      "sha256": "fefea58e0d01edc855330373c9ca3cb60d292d1b7008a34e8f56acdd2947b0c5",
+      "line_count": 78,
+      "extension": ".tsx",
+      "imports_in_web": [
+        "apps/web/src/ai/voice-captions.css",
+        "apps/web/src/i18n/index.ts"
+      ],
+      "exported_components": [
+        "VoiceCaptions"
+      ],
+      "literal_api_fragments": [],
+      "evidence": "static_all_file_inventory_and_import_scan; not full behavioral review"
+    },
+    {
+      "path": "apps/web/src/ai/WorkspaceCards.tsx",
+      "sha256": "d3dc3b5cb5fcd2e9c3764cd61a337ace0bece9a71e155c5ad05f2e5ba5823919",
+      "line_count": 184,
+      "extension": ".tsx",
+      "imports_in_web": [
+        "apps/web/src/ai/CandidateActions.tsx",
+        "apps/web/src/components/StudioGlyph.tsx",
+        "apps/web/src/i18n/index.ts",
+        "apps/web/src/motion/Presence.tsx"
+      ],
+      "exported_components": [
+        "WorkspaceCards"
+      ],
+      "literal_api_fragments": [
+        "/v1/assets/${encodeURIComponent(id)}/thumbnail"
+      ],
+      "evidence": "static_all_file_inventory_and_import_scan; not full behavioral review"
+    },
+    {
+      "path": "apps/web/src/ai/assistant-reading.css",
+      "sha256": "1546673bf40d8d6df5aa5e4f79dd7f4145e58788d459799c113b91061d41a092",
+      "line_count": 175,
+      "extension": ".css",
+      "imports_in_web": [],
+      "exported_components": [],
+      "literal_api_fragments": [],
+      "evidence": "static_all_file_inventory_and_import_scan; not full behavioral review"
+    },
+    {
+      "path": "apps/web/src/ai/assistantGuards.ts",
+      "sha256": "7b697099a2122fce108f7b3053a7e7e3b20517fca0ed63d28283147c812a9b97",
+      "line_count": 156,
+      "extension": ".ts",
+      "imports_in_web": [],
+      "exported_components": [],
+      "literal_api_fragments": [],
+      "evidence": "static_all_file_inventory_and_import_scan; not full behavioral review"
+    },
+    {
+      "path": "apps/web/src/ai/assistantSubmission.ts",
+      "sha256": "a14d925f03e2c2269244802605b4314e7250b2bfcfa8a23820a8d0702b761822",
+      "line_count": 221,
+      "extension": ".ts",
+      "imports_in_web": [
+        "apps/web/src/ai/requestPayload.ts",
+        "apps/web/src/lib/api.ts"
+      ],
+      "exported_components": [],
+      "literal_api_fragments": [
+        "/assistant-turns/${encodeURIComponent(value.turnId)}",
+        "/projects/${encodeURIComponent(value.projectId)}/assistant-turns"
+      ],
+      "evidence": "static_all_file_inventory_and_import_scan; not full behavioral review"
+    },
+    {
+      "path": "apps/web/src/ai/capabilities.ts",
+      "sha256": "4a50c954813dea6b08dbd32aa2e8d11cb1de80f4609a488670066fef64f3eca9",
+      "line_count": 227,
+      "extension": ".ts",
+      "imports_in_web": [
+        "apps/web/src/ai/types.ts",
+        "apps/web/src/i18n/index.ts"
+      ],
+      "exported_components": [
+        "COMMON_SIZES"
+      ],
+      "literal_api_fragments": [],
+      "evidence": "static_all_file_inventory_and_import_scan; not full behavioral review"
+    },
+    {
+      "path": "apps/web/src/ai/capture-worklet.js",
+      "sha256": "deb138a4b01363ee2709e9d80aa02e05b672c40dab0e6cf0d39b6e0fcd9ff8bd",
+      "line_count": 46,
+      "extension": ".js",
+      "imports_in_web": [],
+      "exported_components": [],
+      "literal_api_fragments": [],
+      "evidence": "static_all_file_inventory_and_import_scan; not full behavioral review"
+    },
+    {
+      "path": "apps/web/src/ai/composer.css",
+      "sha256": "d17071da1b5842569a50dff17466afbdc5a600b06a099a6572b823b0a783761e",
+      "line_count": 1308,
+      "extension": ".css",
+      "imports_in_web": [],
+      "exported_components": [],
+      "literal_api_fragments": [],
+      "evidence": "static_all_file_inventory_and_import_scan; not full behavioral review"
+    },
+    {
+      "path": "apps/web/src/ai/decisions.css",
+      "sha256": "63487642d2a15b4434a81f7b71bffca5617ddac3859d75813ed85490c6b81348",
+      "line_count": 158,
+      "extension": ".css",
+      "imports_in_web": [],
+      "exported_components": [],
+      "literal_api_fragments": [],
+      "evidence": "static_all_file_inventory_and_import_scan; not full behavioral review"
+    },
+    {
+      "path": "apps/web/src/ai/decisions.ts",
+      "sha256": "b05015b65be2514fbfa3c4b6a84be775aa74bdcd1812ce10880204bef8361933",
+      "line_count": 95,
+      "extension": ".ts",
+      "imports_in_web": [
+        "apps/web/src/ai/types.ts",
+        "apps/web/src/lib/types.ts",
+        "apps/web/src/lib/uuid.ts"
+      ],
+      "exported_components": [],
+      "literal_api_fragments": [],
+      "evidence": "static_all_file_inventory_and_import_scan; not full behavioral review"
+    },
+    {
+      "path": "apps/web/src/ai/interaction-surfaces.css",
+      "sha256": "9432e2651135843b75faecf9f319e619408d3f8b75996ed3b22122c5bf185c3a",
+      "line_count": 313,
+      "extension": ".css",
+      "imports_in_web": [],
+      "exported_components": [],
+      "literal_api_fragments": [],
+      "evidence": "static_all_file_inventory_and_import_scan; not full behavioral review"
+    },
+    {
+      "path": "apps/web/src/ai/jobSubmission.ts",
+      "sha256": "ee10110732072fdd2d655c5ffa4ed820a98886ee7177b291780ac7e88eae6d0c",
+      "line_count": 265,
+      "extension": ".ts",
+      "imports_in_web": [
+        "apps/web/src/ai/requestPayload.ts",
+        "apps/web/src/ai/types.ts",
+        "apps/web/src/lib/api.ts"
+      ],
+      "exported_components": [],
+      "literal_api_fragments": [
+        "/projects/${encodeURIComponent(value.projectId)}/ai-jobs"
+      ],
+      "evidence": "static_all_file_inventory_and_import_scan; not full behavioral review"
+    },
+    {
+      "path": "apps/web/src/ai/live-assistant.css",
+      "sha256": "31c70bba9b1f5fdcebec6b3316fba14847c3889b0ebc5244ebda2d76dd9982e7",
+      "line_count": 1157,
+      "extension": ".css",
+      "imports_in_web": [],
+      "exported_components": [],
+      "literal_api_fragments": [],
+      "evidence": "static_all_file_inventory_and_import_scan; not full behavioral review"
+    },
+    {
+      "path": "apps/web/src/ai/message-format.ts",
+      "sha256": "5573dfde5237f582eec795caffee58d1c688c036798997608522cdf7fb375f48",
+      "line_count": 122,
+      "extension": ".ts",
+      "imports_in_web": [],
+      "exported_components": [],
+      "literal_api_fragments": [],
+      "evidence": "static_all_file_inventory_and_import_scan; not full behavioral review"
+    },
+    {
+      "path": "apps/web/src/ai/model-copy.ts",
+      "sha256": "4b7058c4a0ab0d06d1080d254c1fec4fcac0a9b769f4cd3c7bde322e6dedc1a0",
+      "line_count": 68,
+      "extension": ".ts",
+      "imports_in_web": [
+        "apps/web/src/i18n/index.ts"
+      ],
+      "exported_components": [],
+      "literal_api_fragments": [],
+      "evidence": "static_all_file_inventory_and_import_scan; not full behavioral review"
+    },
+    {
+      "path": "apps/web/src/ai/model-settings.css",
+      "sha256": "e14dab7c3e462e2c0f0373254490d5b8d6b6e8e38f960f4597dc667e52deea66",
+      "line_count": 392,
+      "extension": ".css",
+      "imports_in_web": [],
+      "exported_components": [],
+      "literal_api_fragments": [],
+      "evidence": "static_all_file_inventory_and_import_scan; not full behavioral review"
+    },
+    {
+      "path": "apps/web/src/ai/recipeDiff.ts",
+      "sha256": "d38c9ed97ab4c5ec9ed98b1f9339c6562df982335f35dc1168d0fe842d6b59b6",
+      "line_count": 101,
+      "extension": ".ts",
+      "imports_in_web": [],
+      "exported_components": [],
+      "literal_api_fragments": [],
+      "evidence": "static_all_file_inventory_and_import_scan; not full behavioral review"
+    },
+    {
+      "path": "apps/web/src/ai/requestPayload.ts",
+      "sha256": "e233f4d212e32e296c0beffe4d0c07566c2998b229f0df24d52a1763e370ed17",
+      "line_count": 44,
+      "extension": ".ts",
+      "imports_in_web": [],
+      "exported_components": [],
+      "literal_api_fragments": [],
+      "evidence": "static_all_file_inventory_and_import_scan; not full behavioral review"
+    },
+    {
+      "path": "apps/web/src/ai/research-graph-model.ts",
+      "sha256": "969f4ffa5cb47a4363e0e4b799f760b898dde7147598ab2758116be97b7506e9",
+      "line_count": 57,
+      "extension": ".ts",
+      "imports_in_web": [],
+      "exported_components": [],
+      "literal_api_fragments": [],
+      "evidence": "static_all_file_inventory_and_import_scan; not full behavioral review"
+    },
+    {
+      "path": "apps/web/src/ai/teamVoiceSubmission.ts",
+      "sha256": "7206a2cc32829941082b6a2d85fe20d6a328ac31cf9f877b4e7f7b2b8f3c8712",
+      "line_count": 212,
+      "extension": ".ts",
+      "imports_in_web": [
+        "apps/web/src/ai/requestPayload.ts",
+        "apps/web/src/ai/voiceSubmissionStorage.ts",
+        "apps/web/src/lib/api.ts"
+      ],
+      "exported_components": [],
+      "literal_api_fragments": [],
+      "evidence": "static_all_file_inventory_and_import_scan; not full behavioral review"
+    },
+    {
+      "path": "apps/web/src/ai/turnStream.ts",
+      "sha256": "df3c816060685ebf56c11220a4e8fdaa5dfcc4626a848c034497c88ce6d2ebb6",
+      "line_count": 79,
+      "extension": ".ts",
+      "imports_in_web": [
+        "apps/web/src/lib/api.ts"
+      ],
+      "exported_components": [],
+      "literal_api_fragments": [
+        "/assistant-turns/${encodeURIComponent(id)}",
+        "/v1/assistant-turns/${encodeURIComponent(id)}/events"
+      ],
+      "evidence": "static_all_file_inventory_and_import_scan; not full behavioral review"
+    },
+    {
+      "path": "apps/web/src/ai/types.ts",
+      "sha256": "94a4d66fce082676cf8ebb90b810d40c72a2a4e61b0328d556a9d122593f6ee0",
+      "line_count": 165,
+      "extension": ".ts",
+      "imports_in_web": [],
+      "exported_components": [],
+      "literal_api_fragments": [],
+      "evidence": "static_all_file_inventory_and_import_scan; not full behavioral review"
+    },
+    {
+      "path": "apps/web/src/ai/useResultDecisions.ts",
+      "sha256": "75673224bed68b734c81b4302cca823328a68d2ce45ac59d9edadab18b642c8f",
+      "line_count": 167,
+      "extension": ".ts",
+      "imports_in_web": [
+        "apps/web/src/ai/decisions.ts",
+        "apps/web/src/ai/types.ts",
+        "apps/web/src/i18n/index.ts",
+        "apps/web/src/lib/api.ts"
+      ],
+      "exported_components": [],
+      "literal_api_fragments": [],
+      "evidence": "static_all_file_inventory_and_import_scan; not full behavioral review"
+    },
+    {
+      "path": "apps/web/src/ai/useRetainedDialogValue.ts",
+      "sha256": "4baf2eb5c791fe7585dd08d94bfd2fc693968017377dddacb4d260e5654c93a9",
+      "line_count": 8,
+      "extension": ".ts",
+      "imports_in_web": [],
+      "exported_components": [],
+      "literal_api_fragments": [],
+      "evidence": "static_all_file_inventory_and_import_scan; not full behavioral review"
+    },
+    {
+      "path": "apps/web/src/ai/voice-captions.css",
+      "sha256": "9fbfaef05e150411643f287ad08fa1a55fc2f247313194b2bfbfa412bc908865",
+      "line_count": 29,
+      "extension": ".css",
+      "imports_in_web": [],
+      "exported_components": [],
+      "literal_api_fragments": [],
+      "evidence": "static_all_file_inventory_and_import_scan; not full behavioral review"
+    },
+    {
+      "path": "apps/web/src/ai/voice-error.ts",
+      "sha256": "d65635cebb3a49496c7f55b6a8d839dc2d487ceeba94684d6c149f831f1cff1c",
+      "line_count": 23,
+      "extension": ".ts",
+      "imports_in_web": [
+        "apps/web/src/i18n/index.ts",
+        "apps/web/src/lib/api.ts"
+      ],
+      "exported_components": [],
+      "literal_api_fragments": [],
+      "evidence": "static_all_file_inventory_and_import_scan; not full behavioral review"
+    },
+    {
+      "path": "apps/web/src/ai/voice-playback.ts",
+      "sha256": "2ef7db014584af6cacaa83aad825dc9cd38bed9518e1b8ee3365dfb4844bb5be",
+      "line_count": 35,
+      "extension": ".ts",
+      "imports_in_web": [],
+      "exported_components": [
+        "AI_VOICE_BUFFER_SECONDS",
+        "PEER_VOICE_BUFFER_SECONDS"
+      ],
+      "literal_api_fragments": [],
+      "evidence": "static_all_file_inventory_and_import_scan; not full behavioral review"
+    },
+    {
+      "path": "apps/web/src/ai/voiceClient.ts",
+      "sha256": "adda1728230c08cc7925483bfd6884c568bc26c446f4f7f197cb90359dc74fbd",
+      "line_count": 233,
+      "extension": ".ts",
+      "imports_in_web": [
+        "apps/web/src/ai/capture-worklet.js",
+        "apps/web/src/ai/voice-playback.ts"
+      ],
+      "exported_components": [],
+      "literal_api_fragments": [],
+      "evidence": "static_all_file_inventory_and_import_scan; not full behavioral review"
+    },
+    {
+      "path": "apps/web/src/ai/voiceSubmission.ts",
+      "sha256": "1190e4024474bceeb65b58b9b9ee0b3305baeb1386239aabba0bcd9b2bf770ba",
+      "line_count": 207,
+      "extension": ".ts",
+      "imports_in_web": [
+        "apps/web/src/ai/requestPayload.ts",
+        "apps/web/src/ai/voiceSubmissionStorage.ts",
+        "apps/web/src/lib/api.ts"
+      ],
+      "exported_components": [],
+      "literal_api_fragments": [
+        "/projects/${encodeURIComponent(value.projectId)}/voice-sessions",
+        "/v1/voice-sessions/${receipt.id}/stream"
+      ],
+      "evidence": "static_all_file_inventory_and_import_scan; not full behavioral review"
+    },
+    {
+      "path": "apps/web/src/ai/voiceSubmissionStorage.ts",
+      "sha256": "631195c20feb28c057c027b4da07e44c851a532293934da57c935d7de3910a32",
+      "line_count": 24,
+      "extension": ".ts",
+      "imports_in_web": [],
+      "exported_components": [
+        "VOICE_SUBMISSION_CHANGED"
+      ],
+      "literal_api_fragments": [],
+      "evidence": "static_all_file_inventory_and_import_scan; not full behavioral review"
+    },
+    {
+      "path": "apps/web/src/collaboration/CollaborationOverlay.tsx",
+      "sha256": "6ddd4e73163ea9c867f20be97d66f95f13f0b0e1c151420bcb797ff1e4e4277b",
+      "line_count": 105,
+      "extension": ".tsx",
+      "imports_in_web": [],
+      "exported_components": [
+        "CollaborationOverlay"
+      ],
+      "literal_api_fragments": [],
+      "evidence": "static_all_file_inventory_and_import_scan; not full behavioral review"
+    },
+    {
+      "path": "apps/web/src/collaboration/CollaborationStatus.tsx",
+      "sha256": "597c24b062d4b1477e92351b1529b13449e0f6a13ca006da014abfe9591a4b7e",
+      "line_count": 147,
+      "extension": ".tsx",
+      "imports_in_web": [
+        "apps/web/src/collaboration/TeamVoiceControls.tsx",
+        "apps/web/src/collaboration/collaboration.css",
+        "apps/web/src/collaboration/model.ts",
+        "apps/web/src/collaboration/useCollaboration.ts",
+        "apps/web/src/collaboration/useTeamVoice.ts",
+        "apps/web/src/i18n/index.ts",
+        "apps/web/src/motion/usePresence.ts"
+      ],
+      "exported_components": [
+        "CollaborationStatus"
+      ],
+      "literal_api_fragments": [],
+      "evidence": "static_all_file_inventory_and_import_scan; not full behavioral review"
+    },
+    {
+      "path": "apps/web/src/collaboration/TeamVoiceBanner.tsx",
+      "sha256": "8e8c629778ebfe8c9b4c72816c05b2966b3b7e272a3d1604742c031c2f508b03",
+      "line_count": 101,
+      "extension": ".tsx",
+      "imports_in_web": [
+        "apps/web/src/ai/voice-error.ts",
+        "apps/web/src/collaboration/useTeamVoice.ts",
+        "apps/web/src/i18n/index.ts"
+      ],
+      "exported_components": [
+        "TeamVoiceBanner"
+      ],
+      "literal_api_fragments": [],
+      "evidence": "static_all_file_inventory_and_import_scan; not full behavioral review"
+    },
+    {
+      "path": "apps/web/src/collaboration/TeamVoiceControls.tsx",
+      "sha256": "5c3841c1b1d4343a00c85fc1b0c0f9d55a35c63b05ce38f866ba185a62e21793",
+      "line_count": 338,
+      "extension": ".tsx",
+      "imports_in_web": [
+        "apps/web/src/ai/SearchEvidence.tsx",
+        "apps/web/src/ai/VoiceCaptions.tsx",
+        "apps/web/src/ai/interaction-surfaces.css",
+        "apps/web/src/collaboration/useTeamVoice.ts",
+        "apps/web/src/components/ChoiceSelect.tsx",
+        "apps/web/src/i18n/index.ts",
+        "apps/web/src/lib/api.ts",
+        "apps/web/src/lib/uuid.ts",
+        "apps/web/src/motion/Presence.tsx"
+      ],
+      "exported_components": [
+        "TeamVoiceControls"
+      ],
+      "literal_api_fragments": [
+        "/artworks/",
+        "/assistant/models"
+      ],
+      "evidence": "static_all_file_inventory_and_import_scan; not full behavioral review"
+    },
+    {
+      "path": "apps/web/src/collaboration/collaboration.css",
+      "sha256": "51f84d81863805e29ec84a3088c3f48e2e65e1bc90cbb3f67fc303edad6518af",
+      "line_count": 261,
+      "extension": ".css",
+      "imports_in_web": [],
+      "exported_components": [],
+      "literal_api_fragments": [],
+      "evidence": "static_all_file_inventory_and_import_scan; not full behavioral review"
+    },
+    {
+      "path": "apps/web/src/collaboration/connection-state.ts",
+      "sha256": "70c9153c07e41b993c6adb8565d17639cf5a4219dd6a8d542fcd6b6961502680",
+      "line_count": 52,
+      "extension": ".ts",
+      "imports_in_web": [
+        "apps/web/src/lib/api.ts"
+      ],
+      "exported_components": [],
+      "literal_api_fragments": [],
+      "evidence": "static_all_file_inventory_and_import_scan; not full behavioral review"
+    },
+    {
+      "path": "apps/web/src/collaboration/model.ts",
+      "sha256": "b6c842306dec52955230b82d4a6751351a5946780c66494b5d4f0d7a57b2f074",
+      "line_count": 224,
+      "extension": ".ts",
+      "imports_in_web": [
+        "apps/web/src/i18n/index.ts"
+      ],
+      "exported_components": [],
+      "literal_api_fragments": [],
+      "evidence": "static_all_file_inventory_and_import_scan; not full behavioral review"
+    },
+    {
+      "path": "apps/web/src/collaboration/peerCaptions.ts",
+      "sha256": "86252833d2b6ccc326f3e6bf2b8dbf7b65bacc892d153f4d480ef9c525083239",
+      "line_count": 99,
+      "extension": ".ts",
+      "imports_in_web": [],
+      "exported_components": [],
+      "literal_api_fragments": [],
+      "evidence": "static_all_file_inventory_and_import_scan; not full behavioral review"
+    },
+    {
+      "path": "apps/web/src/collaboration/useCollaboration.ts",
+      "sha256": "c2658826431fbbf3ac5202456c281114e54abbea538d0bb83ed6ebba094bf3bf",
+      "line_count": 843,
+      "extension": ".ts",
+      "imports_in_web": [
+        "apps/web/src/collaboration/connection-state.ts",
+        "apps/web/src/collaboration/model.ts",
+        "apps/web/src/editor/useEditor.ts",
+        "apps/web/src/lib/api.ts",
+        "apps/web/src/lib/types.ts",
+        "apps/web/src/lib/uuid.ts"
+      ],
+      "exported_components": [],
+      "literal_api_fragments": [
+        "/artworks/${r.id}",
+        "/artworks/${r.id}/collaboration${suffix}",
+        "/sessions",
+        "/sessions/${r.session.id}",
+        "/sessions/${sessionId}"
+      ],
+      "evidence": "static_all_file_inventory_and_import_scan; not full behavioral review"
+    },
+    {
+      "path": "apps/web/src/collaboration/useTeamVoice.ts",
+      "sha256": "20fce053cf2f21db921809256525eb2a50d731e9209b60cfb53868df8c6c27b5",
+      "line_count": 622,
+      "extension": ".ts",
+      "imports_in_web": [
+        "apps/web/src/ai/VoiceCaptions.tsx",
+        "apps/web/src/ai/capture-worklet.js",
+        "apps/web/src/ai/teamVoiceSubmission.ts",
+        "apps/web/src/ai/voice-error.ts",
+        "apps/web/src/ai/voice-playback.ts",
+        "apps/web/src/ai/voiceSubmission.ts",
+        "apps/web/src/ai/voiceSubmissionStorage.ts",
+        "apps/web/src/collaboration/peerCaptions.ts",
+        "apps/web/src/lib/api.ts"
+      ],
+      "exported_components": [],
+      "literal_api_fragments": [
+        "/artworks/"
+      ],
+      "evidence": "static_all_file_inventory_and_import_scan; not full behavioral review"
+    },
+    {
+      "path": "apps/web/src/components/AIPanel.tsx",
+      "sha256": "5d6e31f9618f22199b28d3efbcf19468241fffe3900ae8c61e283ecb697b6a58",
+      "line_count": 1831,
+      "extension": ".tsx",
+      "imports_in_web": [
+        "apps/web/src/ai/AIThread.tsx",
+        "apps/web/src/ai/AIVisibility.tsx",
+        "apps/web/src/ai/ComposerInput.tsx",
+        "apps/web/src/ai/ComposerVisual.tsx",
+        "apps/web/src/ai/ImageParameters.tsx",
+        "apps/web/src/ai/LiveAssistant.tsx",
+        "apps/web/src/ai/ModelChoice.tsx",
+        "apps/web/src/ai/PanelSettings.tsx",
+        "apps/web/src/ai/PanelSettingsPage.tsx",
+        "apps/web/src/ai/capabilities.ts",
+        "apps/web/src/ai/interaction-surfaces.css",
+        "apps/web/src/ai/jobSubmission.ts",
+        "apps/web/src/ai/recipeDiff.ts",
+        "apps/web/src/ai/types.ts",
+        "apps/web/src/ai/useRetainedDialogValue.ts",
+        "apps/web/src/components/ChoiceSelect.tsx",
+        "apps/web/src/components/ConfirmationDialog.tsx",
+        "apps/web/src/components/Ui.tsx",
+        "apps/web/src/components/VoiceCapture.tsx",
+        "apps/web/src/components/generationDraft.ts",
+        "apps/web/src/i18n/index.ts",
+        "apps/web/src/lib/api.ts",
+        "apps/web/src/lib/asset-copy.ts",
+        "apps/web/src/lib/types.ts",
+        "apps/web/src/lib/uuid.ts"
+      ],
+      "exported_components": [
+        "AIPanel"
+      ],
+      "literal_api_fragments": [
+        "/assets/",
+        "/assets?source=",
+        "/models",
+        "/projects/",
+        "/v1/assets/"
+      ],
+      "evidence": "static_all_file_inventory_and_import_scan; not full behavioral review"
+    },
+    {
+      "path": "apps/web/src/components/AIPanelFeature.tsx",
+      "sha256": "4a86a2d224e7ab5021dde5829fc19e64b0e5e1ad5c8fc1a373c5995f0694ec64",
+      "line_count": 65,
+      "extension": ".tsx",
+      "imports_in_web": [
+        "apps/web/src/components/AIPanel.tsx",
+        "apps/web/src/components/DeferredFeature.tsx",
+        "apps/web/src/i18n/index.ts",
+        "apps/web/src/lib/uuid.ts"
+      ],
+      "exported_components": [
+        "AIPanelFeature"
+      ],
+      "literal_api_fragments": [],
+      "evidence": "static_all_file_inventory_and_import_scan; not full behavioral review"
+    },
+    {
+      "path": "apps/web/src/components/AssetLibrary.tsx",
+      "sha256": "698d14700616533102201cdb227bd580d976e852b769355cce62f35f5eb8d15a",
+      "line_count": 1008,
+      "extension": ".tsx",
+      "imports_in_web": [
+        "apps/web/src/components/AssetTools.tsx",
+        "apps/web/src/components/ChoiceSelect.tsx",
+        "apps/web/src/components/ConfirmationDialog.tsx",
+        "apps/web/src/components/Controls.tsx",
+        "apps/web/src/components/DeferredFeature.tsx",
+        "apps/web/src/components/StudioGlyph.tsx",
+        "apps/web/src/components/Ui.tsx",
+        "apps/web/src/i18n/index.ts",
+        "apps/web/src/lib/api.ts",
+        "apps/web/src/lib/confirmation-scope.ts",
+        "apps/web/src/lib/types.ts",
+        "apps/web/src/media/MediaSourceViewer.tsx",
+        "apps/web/src/motion/Presence.tsx",
+        "apps/web/src/resources/AssetThumbnail.tsx",
+        "apps/web/src/resources/collection-refinement.css",
+        "apps/web/src/resources/experience-copy.ts",
+        "apps/web/src/restoration/RestorationDialog.tsx"
+      ],
+      "exported_components": [
+        "SOURCE_LABELS",
+        "AssetLibrary"
+      ],
+      "literal_api_fragments": [
+        "/assets",
+        "/assets/",
+        "/projects/",
+        "/v1/assets/"
+      ],
+      "evidence": "static_all_file_inventory_and_import_scan; not full behavioral review"
+    },
+    {
+      "path": "apps/web/src/components/AssetTools.tsx",
+      "sha256": "542aa1e8bb719cb73b13b81045f6f0dba011f0e33922d7283e0625f792d881f4",
+      "line_count": 861,
+      "extension": ".tsx",
+      "imports_in_web": [
+        "apps/web/src/components/ChoiceSelect.tsx",
+        "apps/web/src/components/ConfirmationDialog.tsx",
+        "apps/web/src/components/StudioGlyph.tsx",
+        "apps/web/src/components/Ui.tsx",
+        "apps/web/src/i18n/index.ts",
+        "apps/web/src/lib/api.ts",
+        "apps/web/src/lib/confirmation-scope.ts",
+        "apps/web/src/lib/types.ts",
+        "apps/web/src/lib/uuid.ts",
+        "apps/web/src/motion/Presence.tsx"
+      ],
+      "exported_components": [
+        "AssetRecognitionDialog",
+        "AnimationDialog",
+        "ProjectAssetTools"
+      ],
+      "literal_api_fragments": [
+        "/assets/${asset.id}/animation",
+        "/assets/${asset.id}/recognitions",
+        "/assets/${source.id}/recognitions/${record.id}",
+        "/projects/${sourceProject}/animations?requestId=${requestId(",
+        "/projects/${sourceProject}/derived-assets",
+        "/v1/assets/${output?.asset.id ?? asset.id}/animation/file"
+      ],
+      "evidence": "static_all_file_inventory_and_import_scan; not full behavioral review"
+    },
+    {
+      "path": "apps/web/src/components/AssistantOpsPanel.tsx",
+      "sha256": "84d8e4cb19280859bb788d8a296f1dfa357f6b67411db091cd117c29cd6d789b",
+      "line_count": 745,
+      "extension": ".tsx",
+      "imports_in_web": [
+        "apps/web/src/ai/live-assistant.css",
+        "apps/web/src/components/ChoiceSelect.tsx",
+        "apps/web/src/components/DeferredFeature.tsx",
+        "apps/web/src/components/Ui.tsx",
+        "apps/web/src/components/ops-mutation.ts",
+        "apps/web/src/i18n/index.ts",
+        "apps/web/src/lib/api.ts"
+      ],
+      "exported_components": [
+        "AssistantOpsPanel"
+      ],
+      "literal_api_fragments": [
+        "/ops/assistant-models",
+        "/ops/assistant-models/${encodeURIComponent(snapshot.modelId)}",
+        "/ops/assistant-reconciliation/${snapshot.resolution.kind}/${snapshot.resolution.record.id}",
+        "/ops/assistant-reconciliation?${query}"
+      ],
+      "evidence": "static_all_file_inventory_and_import_scan; not full behavioral review"
+    },
+    {
+      "path": "apps/web/src/components/AuthPanel.tsx",
+      "sha256": "92189f9f4fb5938eef6c9ffac3f5b8c2dc33fea9c4e71dcbab78174f2263daf9",
+      "line_count": 892,
+      "extension": ".tsx",
+      "imports_in_web": [
+        "apps/web/src/account/AccountPageFrame.tsx",
+        "apps/web/src/account/auth-model.ts",
+        "apps/web/src/account/page-copy.ts",
+        "apps/web/src/components/Ui.tsx",
+        "apps/web/src/i18n/index.ts",
+        "apps/web/src/lib/api.ts",
+        "apps/web/src/lib/types.ts",
+        "apps/web/src/motion/Presence.tsx"
+      ],
+      "exported_components": [
+        "AuthPanel"
+      ],
+      "literal_api_fragments": [
+        "/auth/${endpoint}",
+        "/auth/otp",
+        "/session"
+      ],
+      "evidence": "static_all_file_inventory_and_import_scan; not full behavioral review"
+    },
+    {
+      "path": "apps/web/src/components/BrandMark.tsx",
+      "sha256": "04fa0f76654538260734ebeca9ce9969696aed953f71bee6ad348f7a3520ea14",
+      "line_count": 4,
+      "extension": ".tsx",
+      "imports_in_web": [],
+      "exported_components": [
+        "BrandMark"
+      ],
+      "literal_api_fragments": [],
+      "evidence": "static_all_file_inventory_and_import_scan; not full behavioral review"
+    },
+    {
+      "path": "apps/web/src/components/ChoiceSelect.tsx",
+      "sha256": "21d3b413814e16d6dd52bdb4d608619f598099f6268f656025ec72dbb7d780d8",
+      "line_count": 487,
+      "extension": ".tsx",
+      "imports_in_web": [
+        "apps/web/src/components/StudioGlyph.tsx",
+        "apps/web/src/components/choice-model.ts",
+        "apps/web/src/i18n/index.ts",
+        "apps/web/src/motion/usePresence.ts"
+      ],
+      "exported_components": [
+        "ChoiceSelect"
+      ],
+      "literal_api_fragments": [],
+      "evidence": "static_all_file_inventory_and_import_scan; not full behavioral review"
+    },
+    {
+      "path": "apps/web/src/components/ColorPicker.tsx",
+      "sha256": "13fd8000ffa25583e10632ab3c1667058c84238e9da34682a86bd7a3ddd274a4",
+      "line_count": 455,
+      "extension": ".tsx",
+      "imports_in_web": [
+        "apps/web/src/components/Ui.tsx",
+        "apps/web/src/components/color-model.ts",
+        "apps/web/src/editor/editor-controls.css",
+        "apps/web/src/i18n/index.ts",
+        "apps/web/src/motion/Presence.tsx"
+      ],
+      "exported_components": [
+        "ColorPicker"
+      ],
+      "literal_api_fragments": [],
+      "evidence": "static_all_file_inventory_and_import_scan; not full behavioral review"
+    },
+    {
+      "path": "apps/web/src/components/CompareReveal.tsx",
+      "sha256": "0e627512c168a8cd06a388e791b371ccdfd1fecbb061005d6adf403d35021bf5",
+      "line_count": 135,
+      "extension": ".tsx",
+      "imports_in_web": [
+        "apps/web/src/components/ImagePreview.tsx",
+        "apps/web/src/i18n/index.ts"
+      ],
+      "exported_components": [
+        "CompareReveal"
+      ],
+      "literal_api_fragments": [],
+      "evidence": "static_all_file_inventory_and_import_scan; not full behavioral review"
+    },
+    {
+      "path": "apps/web/src/components/ConfirmationDialog.tsx",
+      "sha256": "31d4b74db9b89efe6005010f180d1060fbc07166a7d992b17792ac48518f3ad6",
+      "line_count": 148,
+      "extension": ".tsx",
+      "imports_in_web": [
+        "apps/web/src/components/Ui.tsx",
+        "apps/web/src/i18n/index.ts"
+      ],
+      "exported_components": [],
+      "literal_api_fragments": [],
+      "evidence": "static_all_file_inventory_and_import_scan; not full behavioral review"
+    },
+    {
+      "path": "apps/web/src/components/Controls.tsx",
+      "sha256": "ba70d90782809a4e7369f7eedc2123721532964bc288def89fd6ca5cc46db3ea",
+      "line_count": 158,
+      "extension": ".tsx",
+      "imports_in_web": [
+        "apps/web/src/i18n/index.ts",
+        "apps/web/src/motion/registry.ts",
+        "apps/web/src/motion/usePresence.ts"
+      ],
+      "exported_components": [
+        "Disclosure",
+        "OptionChips",
+        "ValueSlider"
+      ],
+      "literal_api_fragments": [],
+      "evidence": "static_all_file_inventory_and_import_scan; not full behavioral review"
+    },
+    {
+      "path": "apps/web/src/components/DeferredFeature.tsx",
+      "sha256": "9f958b7debcd2ea7da8569f17eae06b13e179334e98fb7b55f0364d354f678ca",
+      "line_count": 312,
+      "extension": ".tsx",
+      "imports_in_web": [
+        "apps/web/src/i18n/index.ts"
+      ],
+      "exported_components": [
+        "FeatureSkeleton",
+        "DeferredFeatureStatus"
+      ],
+      "literal_api_fragments": [],
+      "evidence": "static_all_file_inventory_and_import_scan; not full behavioral review"
+    },
+    {
+      "path": "apps/web/src/components/DrawingBoard.tsx",
+      "sha256": "6edceb83d43ef5ef1853f9ecb371b017084cfad90e4b029ef88c93af97f90867",
+      "line_count": 879,
+      "extension": ".tsx",
+      "imports_in_web": [
+        "apps/web/src/components/ChoiceSelect.tsx",
+        "apps/web/src/components/ColorPicker.tsx",
+        "apps/web/src/components/ConfirmationDialog.tsx",
+        "apps/web/src/components/Ui.tsx",
+        "apps/web/src/components/sketch-document.ts",
+        "apps/web/src/components/sketch-images.ts",
+        "apps/web/src/i18n/index.ts",
+        "apps/web/src/lib/api.ts",
+        "apps/web/src/lib/confirmation-scope.ts",
+        "apps/web/src/motion/usePresence.ts"
+      ],
+      "exported_components": [
+        "DrawingBoard"
+      ],
+      "literal_api_fragments": [],
+      "evidence": "static_all_file_inventory_and_import_scan; not full behavioral review"
+    },
+    {
+      "path": "apps/web/src/components/ImagePreview.tsx",
+      "sha256": "dc8da354fb46f9ed800a5404b5f92e17dccd628d31a0c393913317620f3bde34",
+      "line_count": 34,
+      "extension": ".tsx",
+      "imports_in_web": [],
+      "exported_components": [
+        "ImagePreview"
+      ],
+      "literal_api_fragments": [],
+      "evidence": "static_all_file_inventory_and_import_scan; not full behavioral review"
+    },
+    {
+      "path": "apps/web/src/components/ImportSettings.tsx",
+      "sha256": "98eeda9e0ab877286e8efe67ce2bbf40961a623098c55acdbbedf5079fd79e20",
+      "line_count": 231,
+      "extension": ".tsx",
+      "imports_in_web": [
+        "apps/web/src/components/ChoiceSelect.tsx",
+        "apps/web/src/components/Ui.tsx",
+        "apps/web/src/editor/useEditor.ts",
+        "apps/web/src/i18n/index.ts",
+        "apps/web/src/lib/api.ts",
+        "apps/web/src/lib/types.ts"
+      ],
+      "exported_components": [
+        "ImportSettings"
+      ],
+      "literal_api_fragments": [],
+      "evidence": "static_all_file_inventory_and_import_scan; not full behavioral review"
+    },
+    {
+      "path": "apps/web/src/components/MediaImportDialog.tsx",
+      "sha256": "f77f335e05e4a57782539e822301ae2dee6fc9474295a9bfb456992b42e89cf1",
+      "line_count": 522,
+      "extension": ".tsx",
+      "imports_in_web": [
+        "apps/web/src/components/Ui.tsx",
+        "apps/web/src/i18n/index.ts",
+        "apps/web/src/lib/api.ts",
+        "apps/web/src/lib/types.ts",
+        "apps/web/src/lib/uuid.ts",
+        "apps/web/src/media/MediaSourceViewer.tsx",
+        "apps/web/src/media/media.css"
+      ],
+      "exported_components": [
+        "MediaImportDialog"
+      ],
+      "literal_api_fragments": [
+        "/media-imports/${current.id}",
+        "/media-imports/${current.id}/chunk?offset=${offset}",
+        "/media-imports/${current.id}/chunk?offset=${verified}",
+        "/media-imports/${current.id}/complete",
+        "/media-imports/${job.id}",
+        "/media-imports/${job.id}/cancel",
+        "/media-imports/${saved}",
+        "/projects/${project.id}/media-imports"
+      ],
+      "evidence": "static_all_file_inventory_and_import_scan; not full behavioral review"
+    },
+    {
+      "path": "apps/web/src/components/OpsDashboard.tsx",
+      "sha256": "12a21537bdd702e71bec156e69e4ce81f29ea9703dcdca753ced9f78d540532c",
+      "line_count": 1262,
+      "extension": ".tsx",
+      "imports_in_web": [
+        "apps/web/src/ai/types.ts",
+        "apps/web/src/components/AssistantOpsPanel.tsx",
+        "apps/web/src/components/ChoiceSelect.tsx",
+        "apps/web/src/components/Controls.tsx",
+        "apps/web/src/components/DeferredFeature.tsx",
+        "apps/web/src/components/QuotaManager.tsx",
+        "apps/web/src/components/Ui.tsx",
+        "apps/web/src/components/UnknownJobsPanel.tsx",
+        "apps/web/src/components/ops-model-fields.ts",
+        "apps/web/src/components/ops-read.ts",
+        "apps/web/src/components/ops-surface.css",
+        "apps/web/src/i18n/index.ts",
+        "apps/web/src/lib/api.ts",
+        "apps/web/src/lib/types.ts",
+        "apps/web/src/lib/uuid.ts",
+        "apps/web/src/usage/UsageDashboard.tsx"
+      ],
+      "exported_components": [
+        "OpsDashboard"
+      ],
+      "literal_api_fragments": [
+        "/ops/audit",
+        "/ops/config",
+        "/ops/models",
+        "/ops/models/${encodeURIComponent(id)}",
+        "/ops/overview",
+        "/ops/plans",
+        "/ops/plans/${plan.id}",
+        "/ops/registration-invites",
+        "/ops/users",
+        "/ops/users/${user.id}",
+        "/ops/users?query=${encodeURIComponent(scope.query)}",
+        "/projects",
+        "/projects/${projectId}/assets"
+      ],
+      "evidence": "static_all_file_inventory_and_import_scan; not full behavioral review"
+    },
+    {
+      "path": "apps/web/src/components/ProjectDialogs.tsx",
+      "sha256": "afa6c42263c7ffc9c4c8372c1e9fca36af538f304db24d32a4ae2d9146a69b7d",
+      "line_count": 1139,
+      "extension": ".tsx",
+      "imports_in_web": [
+        "apps/web/src/components/ChoiceSelect.tsx",
+        "apps/web/src/components/ConfirmationDialog.tsx",
+        "apps/web/src/components/ImagePreview.tsx",
+        "apps/web/src/components/Ui.tsx",
+        "apps/web/src/editor/source-flow.ts",
+        "apps/web/src/editor/useEditor.ts",
+        "apps/web/src/i18n/index.ts",
+        "apps/web/src/lib/api.ts",
+        "apps/web/src/lib/confirmation-scope.ts",
+        "apps/web/src/lib/types.ts",
+        "apps/web/src/lib/uuid.ts",
+        "apps/web/src/resources/TeamActivity.tsx"
+      ],
+      "exported_components": [
+        "NameDialog",
+        "ExportDialog",
+        "TeamDialog",
+        "CopyProjectDialog",
+        "ShareDialog"
+      ],
+      "literal_api_fragments": [
+        "/projects/${project.id}/copy",
+        "/projects/${project.id}/grants",
+        "/projects/${project.id}/grants/${grant.id}",
+        "/spaces/${currentSpace.id}/members/${currentMember.userId}",
+        "/spaces/${currentSpace.id}/transfer-owner",
+        "/spaces/${space.id}/invitations",
+        "/spaces/${space.id}/members",
+        "/spaces/${space.id}/members/${member.userId}",
+        "/spaces/${space.id}/sharing-policy"
+      ],
+      "evidence": "static_all_file_inventory_and_import_scan; not full behavioral review"
+    },
+    {
+      "path": "apps/web/src/components/QuotaManager.tsx",
+      "sha256": "79536237268281eaa45a43010f3770538f9d243883f1a27078e35b5207f991d5",
+      "line_count": 286,
+      "extension": ".tsx",
+      "imports_in_web": [
+        "apps/web/src/components/ChoiceSelect.tsx",
+        "apps/web/src/components/Ui.tsx",
+        "apps/web/src/i18n/index.ts",
+        "apps/web/src/lib/api.ts",
+        "apps/web/src/lib/types.ts",
+        "apps/web/src/lib/uuid.ts",
+        "apps/web/src/motion/Presence.tsx"
+      ],
+      "exported_components": [
+        "QuotaManager"
+      ],
+      "literal_api_fragments": [
+        "/ops/adjustments",
+        "/ops/users/${user.id}/entitlements",
+        "/ops/users?query=${encodeURIComponent(query.trim())}"
+      ],
+      "evidence": "static_all_file_inventory_and_import_scan; not full behavioral review"
+    },
+    {
+      "path": "apps/web/src/components/RevisionTools.tsx",
+      "sha256": "55dea3e8578caf2628166aa87660e349d23e994bd731d2d68b8426f1f018d9f0",
+      "line_count": 639,
+      "extension": ".tsx",
+      "imports_in_web": [
+        "apps/web/src/components/Ui.tsx",
+        "apps/web/src/components/revision-tools-model.ts",
+        "apps/web/src/components/revision-tools.css",
+        "apps/web/src/i18n/index.ts",
+        "apps/web/src/lib/api.ts",
+        "apps/web/src/lib/types.ts",
+        "apps/web/src/motion/Presence.tsx"
+      ],
+      "exported_components": [
+        "RevisionTools",
+        "RevisionRenderTools",
+        "RevisionForkDialog"
+      ],
+      "literal_api_fragments": [
+        "/artworks/${encodeURIComponent(artworkId)}/revisions/${encodeURIComponent(revision.id)}/render-info",
+        "/artworks/${encodeURIComponent(frozen.artworkId)}/fork-revision"
+      ],
+      "evidence": "static_all_file_inventory_and_import_scan; not full behavioral review"
+    },
+    {
+      "path": "apps/web/src/components/Sidebar.tsx",
+      "sha256": "3bdb415412b06bccd826589f58eb5405c2886f8cd2d31b2af2e97dfc8aaffb4c",
+      "line_count": 251,
+      "extension": ".tsx",
+      "imports_in_web": [
+        "apps/web/src/components/Ui.tsx",
+        "apps/web/src/i18n/index.ts",
+        "apps/web/src/lib/types.ts",
+        "apps/web/src/motion/usePresence.ts"
+      ],
+      "exported_components": [
+        "Sidebar"
+      ],
+      "literal_api_fragments": [],
+      "evidence": "static_all_file_inventory_and_import_scan; not full behavioral review"
+    },
+    {
+      "path": "apps/web/src/components/StudioGlyph.tsx",
+      "sha256": "b0a3d3b1992bf715cbf78a39d4761ac7b544e696867f3e4abba244e801d069b8",
+      "line_count": 234,
+      "extension": ".tsx",
+      "imports_in_web": [],
+      "exported_components": [
+        "StudioGlyph"
+      ],
+      "literal_api_fragments": [],
+      "evidence": "static_all_file_inventory_and_import_scan; not full behavioral review"
+    },
+    {
+      "path": "apps/web/src/components/Ui.tsx",
+      "sha256": "5229ea723038774013ef009f689680a41da29066440ddd602620ba535f37d046",
+      "line_count": 416,
+      "extension": ".tsx",
+      "imports_in_web": [
+        "apps/web/src/components/BrandMark.tsx",
+        "apps/web/src/components/StudioGlyph.tsx",
+        "apps/web/src/components/modal-close.ts",
+        "apps/web/src/components/modal-profiles.ts",
+        "apps/web/src/i18n/index.ts",
+        "apps/web/src/lib/brand.ts",
+        "apps/web/src/lib/types.ts",
+        "apps/web/src/motion/registry.ts",
+        "apps/web/src/motion/usePresence.ts"
+      ],
+      "exported_components": [
+        "DialogMotionContext",
+        "IconButton",
+        "Busy",
+        "EmptyState",
+        "InlineError",
+        "Toast",
+        "Modal",
+        "Brand"
+      ],
+      "literal_api_fragments": [],
+      "evidence": "static_all_file_inventory_and_import_scan; not full behavioral review"
+    },
+    {
+      "path": "apps/web/src/components/UnknownJobsPanel.tsx",
+      "sha256": "990906e9817035a2efd31cf52535581d43c16c8eccb6d92b90396ddcdd7548f3",
+      "line_count": 343,
+      "extension": ".tsx",
+      "imports_in_web": [
+        "apps/web/src/components/ChoiceSelect.tsx",
+        "apps/web/src/components/DeferredFeature.tsx",
+        "apps/web/src/components/Ui.tsx",
+        "apps/web/src/components/unknown-jobs.css",
+        "apps/web/src/i18n/index.ts",
+        "apps/web/src/lib/api.ts"
+      ],
+      "exported_components": [
+        "UnknownJobsPanel"
+      ],
+      "literal_api_fragments": [
+        "/ops/ai-jobs/${selected.id}/resolve",
+        "/ops/ai-jobs/unknown?${query}"
+      ],
+      "evidence": "static_all_file_inventory_and_import_scan; not full behavioral review"
+    },
+    {
+      "path": "apps/web/src/components/VoiceCapture.tsx",
+      "sha256": "9e9ab5a2e9543ad53e55239cd314728d9cc065ce4d777c374ba4d40b05987d1c",
+      "line_count": 195,
+      "extension": ".tsx",
+      "imports_in_web": [
+        "apps/web/src/ai/voice-error.ts",
+        "apps/web/src/components/Ui.tsx",
+        "apps/web/src/i18n/index.ts",
+        "apps/web/src/lib/audio.ts"
+      ],
+      "exported_components": [
+        "VoiceCapture"
+      ],
+      "literal_api_fragments": [],
+      "evidence": "static_all_file_inventory_and_import_scan; not full behavioral review"
+    },
+    {
+      "path": "apps/web/src/components/WorkspaceViews.tsx",
+      "sha256": "b6079359f9694dc8fd2cd25c888b6cb13357fe2cfe64adc9cacff96c2520e1ee",
+      "line_count": 1913,
+      "extension": ".tsx",
+      "imports_in_web": [
+        "apps/web/src/account/document-drafts.ts",
+        "apps/web/src/ai/decisions.css",
+        "apps/web/src/components/ChoiceSelect.tsx",
+        "apps/web/src/components/CompareReveal.tsx",
+        "apps/web/src/components/ConfirmationDialog.tsx",
+        "apps/web/src/components/DeferredFeature.tsx",
+        "apps/web/src/components/ImagePreview.tsx",
+        "apps/web/src/components/RevisionTools.tsx",
+        "apps/web/src/components/Ui.tsx",
+        "apps/web/src/editor/CanvasStage.tsx",
+        "apps/web/src/editor/useEditor.ts",
+        "apps/web/src/i18n/index.ts",
+        "apps/web/src/lib/api.ts",
+        "apps/web/src/lib/confirmation-scope.ts",
+        "apps/web/src/lib/revisionHistory.ts",
+        "apps/web/src/lib/types.ts",
+        "apps/web/src/motion/Presence.tsx",
+        "apps/web/src/workspace/interaction-copy.ts"
+      ],
+      "exported_components": [
+        "WorksView",
+        "CompareView",
+        "CollaborateView",
+        "DocumentsView",
+        "DeliveryView"
+      ],
+      "literal_api_fragments": [
+        "/artworks/${artwork.id}/revisions${query}",
+        "/projects/${project.id}/comments",
+        "/projects/${project.id}/documents",
+        "/projects/${project.id}/tasks"
+      ],
+      "evidence": "static_all_file_inventory_and_import_scan; not full behavioral review"
+    },
+    {
+      "path": "apps/web/src/components/choice-model.ts",
+      "sha256": "df8eeca90f1eeda78458ee5aaea3321567f483d4a0d637b82ac077f89984d7c3",
+      "line_count": 136,
+      "extension": ".ts",
+      "imports_in_web": [],
+      "exported_components": [],
+      "literal_api_fragments": [],
+      "evidence": "static_all_file_inventory_and_import_scan; not full behavioral review"
+    },
+    {
+      "path": "apps/web/src/components/choice-motion.css",
+      "sha256": "6088cab71b193091c9143f733e5f99ac770ce3a28c3243e58fa9c13cbb81b1e1",
+      "line_count": 101,
+      "extension": ".css",
+      "imports_in_web": [],
+      "exported_components": [],
+      "literal_api_fragments": [],
+      "evidence": "static_all_file_inventory_and_import_scan; not full behavioral review"
+    },
+    {
+      "path": "apps/web/src/components/color-model.ts",
+      "sha256": "b095ef9b00065a22e91f0df9eb9367824e4ba90cf1811ffe76d4ec5abd913a0e",
+      "line_count": 76,
+      "extension": ".ts",
+      "imports_in_web": [],
+      "exported_components": [],
+      "literal_api_fragments": [],
+      "evidence": "static_all_file_inventory_and_import_scan; not full behavioral review"
+    },
+    {
+      "path": "apps/web/src/components/deferred-feature.css",
+      "sha256": "2db91e653ccc8ab7fe3844ab69ea1a36c37b9412859bf90ba14898b50626d6b5",
+      "line_count": 443,
+      "extension": ".css",
+      "imports_in_web": [],
+      "exported_components": [],
+      "literal_api_fragments": [],
+      "evidence": "static_all_file_inventory_and_import_scan; not full behavioral review"
+    },
+    {
+      "path": "apps/web/src/components/foundation.css",
+      "sha256": "137656431ac58e0dce6841f763faea2a88ce913cde8ab1a8a9954a3cd147106b",
+      "line_count": 212,
+      "extension": ".css",
+      "imports_in_web": [],
+      "exported_components": [],
+      "literal_api_fragments": [],
+      "evidence": "static_all_file_inventory_and_import_scan; not full behavioral review"
+    },
+    {
+      "path": "apps/web/src/components/generationDraft.ts",
+      "sha256": "0cfc59ed395fc3349f1cecad494ec0197e9715b6a138de84e2e10ac1c2ecb892",
+      "line_count": 133,
+      "extension": ".ts",
+      "imports_in_web": [
+        "apps/web/src/i18n/index.ts",
+        "apps/web/src/lib/types.ts"
+      ],
+      "exported_components": [],
+      "literal_api_fragments": [],
+      "evidence": "static_all_file_inventory_and_import_scan; not full behavioral review"
+    },
+    {
+      "path": "apps/web/src/components/modal-close.ts",
+      "sha256": "3e9805a28e80a6d74e74f41ad186eb522f998e8cfcbe5235e1372bdaba3e14b5",
+      "line_count": 31,
+      "extension": ".ts",
+      "imports_in_web": [],
+      "exported_components": [],
+      "literal_api_fragments": [],
+      "evidence": "static_all_file_inventory_and_import_scan; not full behavioral review"
+    },
+    {
+      "path": "apps/web/src/components/modal-profiles.css",
+      "sha256": "6d71357c9cc67d4c83c990c26621a3b788d9d3f263b98c0b8b57e9161f0e4814",
+      "line_count": 178,
+      "extension": ".css",
+      "imports_in_web": [],
+      "exported_components": [],
+      "literal_api_fragments": [],
+      "evidence": "static_all_file_inventory_and_import_scan; not full behavioral review"
+    },
+    {
+      "path": "apps/web/src/components/modal-profiles.ts",
+      "sha256": "9bc08fa941a764d7c5d64343f14f063a350d6e4fade1b2d18e2442b19231aff3",
+      "line_count": 339,
+      "extension": ".ts",
+      "imports_in_web": [],
+      "exported_components": [],
+      "literal_api_fragments": [],
+      "evidence": "static_all_file_inventory_and_import_scan; not full behavioral review"
+    },
+    {
+      "path": "apps/web/src/components/ops-model-fields.ts",
+      "sha256": "711c3227d20fa657be7bc32405e69fda7d10172e63623ec4ede043c103193a15",
+      "line_count": 40,
+      "extension": ".ts",
+      "imports_in_web": [
+        "apps/web/src/ai/types.ts"
+      ],
+      "exported_components": [],
+      "literal_api_fragments": [],
+      "evidence": "static_all_file_inventory_and_import_scan; not full behavioral review"
+    },
+    {
+      "path": "apps/web/src/components/ops-mutation.ts",
+      "sha256": "cea3b12baa0fb4a5574657378937ad8363c149953ae695ec6b63d3a41da133b4",
+      "line_count": 55,
+      "extension": ".ts",
+      "imports_in_web": [],
+      "exported_components": [],
+      "literal_api_fragments": [],
+      "evidence": "static_all_file_inventory_and_import_scan; not full behavioral review"
+    },
+    {
+      "path": "apps/web/src/components/ops-read.ts",
+      "sha256": "e0590304dfb094d142b0c38511d4bbbee074b94bf2e4c0277ccb52c92d3798e9",
+      "line_count": 38,
+      "extension": ".ts",
+      "imports_in_web": [],
+      "exported_components": [],
+      "literal_api_fragments": [],
+      "evidence": "static_all_file_inventory_and_import_scan; not full behavioral review"
+    },
+    {
+      "path": "apps/web/src/components/ops-surface.css",
+      "sha256": "5f90ed25fed537fc9521b17e852c4679ac1dbe7f9d69b0dbf40c5f4fe37eadfa",
+      "line_count": 263,
+      "extension": ".css",
+      "imports_in_web": [],
+      "exported_components": [],
+      "literal_api_fragments": [],
+      "evidence": "static_all_file_inventory_and_import_scan; not full behavioral review"
+    },
+    {
+      "path": "apps/web/src/components/revision-tools-model.ts",
+      "sha256": "e979e8c25cdb831de455a41b92f00c057245c6f635c96633784f04c2d29842a9",
+      "line_count": 437,
+      "extension": ".ts",
+      "imports_in_web": [
+        "apps/web/src/lib/api.ts",
+        "apps/web/src/lib/types.ts",
+        "apps/web/src/lib/uuid.ts"
+      ],
+      "exported_components": [],
+      "literal_api_fragments": [
+        "/v1/artworks/${encodeURIComponent(info.artworkId)}/revisions/${encodeURIComponent(info.revisionId)}/render"
+      ],
+      "evidence": "static_all_file_inventory_and_import_scan; not full behavioral review"
+    },
+    {
+      "path": "apps/web/src/components/revision-tools.css",
+      "sha256": "a064392f4509f53c8dd3df42684c2ae7828fc7df88d3751078c0a6d72ab01326",
+      "line_count": 263,
+      "extension": ".css",
+      "imports_in_web": [],
+      "exported_components": [],
+      "literal_api_fragments": [],
+      "evidence": "static_all_file_inventory_and_import_scan; not full behavioral review"
+    },
+    {
+      "path": "apps/web/src/components/sketch-document.ts",
+      "sha256": "c957742ba5c9da57a809884ca511ed074305df62e4bb74cd83cc2b7c075e3c05",
+      "line_count": 234,
+      "extension": ".ts",
+      "imports_in_web": [],
+      "exported_components": [],
+      "literal_api_fragments": [],
+      "evidence": "static_all_file_inventory_and_import_scan; not full behavioral review"
+    },
+    {
+      "path": "apps/web/src/components/sketch-images.ts",
+      "sha256": "f7eb2154f5fa8d4af8e96ef3157cb07bf98f1515891942d2882740addffcdbb9",
+      "line_count": 159,
+      "extension": ".ts",
+      "imports_in_web": [
+        "apps/web/src/editor/imageSources.ts"
+      ],
+      "exported_components": [
+        "SKETCH_IMAGE_INPUT"
+      ],
+      "literal_api_fragments": [],
+      "evidence": "static_all_file_inventory_and_import_scan; not full behavioral review"
+    },
+    {
+      "path": "apps/web/src/components/unknown-jobs.css",
+      "sha256": "1bb81c28782feb1f8815b5c604375b0d43dbd3b8a79ecdb7e462d50b91addc8d",
+      "line_count": 93,
+      "extension": ".css",
+      "imports_in_web": [],
+      "exported_components": [],
+      "literal_api_fragments": [],
+      "evidence": "static_all_file_inventory_and_import_scan; not full behavioral review"
+    },
+    {
+      "path": "apps/web/src/editor/AdvancedInspector.tsx",
+      "sha256": "681acced1aa391d16eb389edb6b503b8000baf1bf69437ae65d07ef613e96d49",
+      "line_count": 277,
+      "extension": ".tsx",
+      "imports_in_web": [
+        "apps/web/src/components/ChoiceSelect.tsx",
+        "apps/web/src/components/Ui.tsx",
+        "apps/web/src/editor/ColorControls.tsx",
+        "apps/web/src/editor/GeometryControls.tsx",
+        "apps/web/src/editor/HistoryPanel.tsx",
+        "apps/web/src/editor/LayerControls.tsx",
+        "apps/web/src/editor/LocalControls.tsx",
+        "apps/web/src/editor/PortraitControls.tsx",
+        "apps/web/src/editor/RepairControls.tsx",
+        "apps/web/src/editor/ToolInspector.tsx",
+        "apps/web/src/editor/advanced-inspector.css",
+        "apps/web/src/editor/advanced-model.ts",
+        "apps/web/src/i18n/index.ts",
+        "apps/web/src/motion/Presence.tsx"
+      ],
+      "exported_components": [
+        "AdvancedInspector"
+      ],
+      "literal_api_fragments": [],
+      "evidence": "static_all_file_inventory_and_import_scan; not full behavioral review"
+    },
+    {
+      "path": "apps/web/src/editor/CanvasStage.tsx",
+      "sha256": "c5270543b2589cd5b2512ac4d17174c1fa2e845e2cd40a952274d0fd7321e4a5",
+      "line_count": 2488,
+      "extension": ".tsx",
+      "imports_in_web": [
+        "apps/web/src/collaboration/CollaborationOverlay.tsx",
+        "apps/web/src/collaboration/useCollaboration.ts",
+        "apps/web/src/components/Ui.tsx",
+        "apps/web/src/editor/ToolInspector.tsx",
+        "apps/web/src/editor/canvas-gesture.ts",
+        "apps/web/src/editor/coordinates.ts",
+        "apps/web/src/editor/editor-controls.css",
+        "apps/web/src/editor/freehand.ts",
+        "apps/web/src/editor/precision.ts",
+        "apps/web/src/editor/projective-model.ts",
+        "apps/web/src/editor/repair-draft.ts",
+        "apps/web/src/editor/selection-transform.ts",
+        "apps/web/src/editor/selection.worker.ts",
+        "apps/web/src/editor/useEditor.ts",
+        "apps/web/src/editor/useStagePreviews.ts",
+        "apps/web/src/i18n/index.ts",
+        "apps/web/src/lib/uuid.ts",
+        "apps/web/src/workspace/StudioWelcome.tsx",
+        "apps/web/src/workspace/studio-copy.ts"
+      ],
+      "exported_components": [
+        "PixelCanvas",
+        "CanvasStage"
+      ],
+      "literal_api_fragments": [],
+      "evidence": "static_all_file_inventory_and_import_scan; not full behavioral review"
+    },
+    {
+      "path": "apps/web/src/editor/ColorControls.tsx",
+      "sha256": "0fe031e0bcc3c8a60e044d46a808caa8c7817af5caaa75ffb00eedc422e09ccc",
+      "line_count": 400,
+      "extension": ".tsx",
+      "imports_in_web": [
+        "apps/web/src/components/ColorPicker.tsx",
+        "apps/web/src/components/color-model.ts",
+        "apps/web/src/editor/CurveEditor.tsx",
+        "apps/web/src/editor/Histogram.tsx",
+        "apps/web/src/editor/ParameterShelf.tsx",
+        "apps/web/src/editor/advanced-model.ts",
+        "apps/web/src/editor/flow-copy.ts",
+        "apps/web/src/i18n/index.ts",
+        "apps/web/src/lib/uuid.ts",
+        "apps/web/src/motion/Presence.tsx"
+      ],
+      "exported_components": [
+        "ColorControls"
+      ],
+      "literal_api_fragments": [],
+      "evidence": "static_all_file_inventory_and_import_scan; not full behavioral review"
+    },
+    {
+      "path": "apps/web/src/editor/CurveEditor.tsx",
+      "sha256": "c4a0a4f2e83335886d4f9561ff6339557263e7e5b507cd7668c13ad4e4321b6d",
+      "line_count": 766,
+      "extension": ".tsx",
+      "imports_in_web": [
+        "apps/web/src/components/ChoiceSelect.tsx",
+        "apps/web/src/components/Ui.tsx",
+        "apps/web/src/editor/PrecisionRange.tsx",
+        "apps/web/src/editor/histogram-cache.ts",
+        "apps/web/src/editor/useEditor.ts",
+        "apps/web/src/i18n/index.ts",
+        "apps/web/src/motion/Presence.tsx"
+      ],
+      "exported_components": [
+        "CurveEditor"
+      ],
+      "literal_api_fragments": [],
+      "evidence": "static_all_file_inventory_and_import_scan; not full behavioral review"
+    },
+    {
+      "path": "apps/web/src/editor/GeometryControls.tsx",
+      "sha256": "4d39bed950fe661ca7be5d9cdbf6ee2f817b0c9799a6574055abceca933922dc",
+      "line_count": 316,
+      "extension": ".tsx",
+      "imports_in_web": [
+        "apps/web/src/components/ChoiceSelect.tsx",
+        "apps/web/src/editor/ParameterShelf.tsx",
+        "apps/web/src/editor/ProjectiveControls.tsx",
+        "apps/web/src/editor/advanced-model.ts",
+        "apps/web/src/editor/precision.ts",
+        "apps/web/src/i18n/index.ts"
+      ],
+      "exported_components": [
+        "GeometryControls"
+      ],
+      "literal_api_fragments": [],
+      "evidence": "static_all_file_inventory_and_import_scan; not full behavioral review"
+    },
+    {
+      "path": "apps/web/src/editor/Histogram.tsx",
+      "sha256": "89e6040be67bbc35177bf0b7250b0bf4b600ea3b20669070a1da4d4ad3079ed3",
+      "line_count": 90,
+      "extension": ".tsx",
+      "imports_in_web": [
+        "apps/web/src/components/ChoiceSelect.tsx",
+        "apps/web/src/editor/histogram-cache.ts",
+        "apps/web/src/i18n/index.ts"
+      ],
+      "exported_components": [
+        "Histogram"
+      ],
+      "literal_api_fragments": [],
+      "evidence": "static_all_file_inventory_and_import_scan; not full behavioral review"
+    },
+    {
+      "path": "apps/web/src/editor/HistoryPanel.tsx",
+      "sha256": "ff7f1c8737ce2dfbfb539a5e353f55cd1d8e75ee37ee6d9404b719402a3b0d0c",
+      "line_count": 142,
+      "extension": ".tsx",
+      "imports_in_web": [
+        "apps/web/src/ai/recipeDiff.ts",
+        "apps/web/src/editor/history-copy.ts",
+        "apps/web/src/editor/history-details.ts",
+        "apps/web/src/editor/useEditor.ts",
+        "apps/web/src/i18n/index.ts",
+        "apps/web/src/workspace/interaction-copy.ts"
+      ],
+      "exported_components": [
+        "HistoryPanel"
+      ],
+      "literal_api_fragments": [],
+      "evidence": "static_all_file_inventory_and_import_scan; not full behavioral review"
+    },
+    {
+      "path": "apps/web/src/editor/LayerControls.tsx",
+      "sha256": "2c85a2ae26cd4e6c84e7821b7fb7027f9ed7531258b27d04c99736c0595b2411",
+      "line_count": 1122,
+      "extension": ".tsx",
+      "imports_in_web": [
+        "apps/web/src/components/ChoiceSelect.tsx",
+        "apps/web/src/components/ColorPicker.tsx",
+        "apps/web/src/components/Ui.tsx",
+        "apps/web/src/editor/MaskControls.tsx",
+        "apps/web/src/editor/ParameterShelf.tsx",
+        "apps/web/src/editor/advanced-model.ts",
+        "apps/web/src/editor/flow-copy.ts",
+        "apps/web/src/editor/portrait-selection.ts",
+        "apps/web/src/i18n/index.ts",
+        "apps/web/src/lib/api.ts",
+        "apps/web/src/lib/uuid.ts",
+        "apps/web/src/motion/Presence.tsx"
+      ],
+      "exported_components": [
+        "BlendPicker",
+        "PaintControls",
+        "LiquifyControls",
+        "ImageLayerControls"
+      ],
+      "literal_api_fragments": [],
+      "evidence": "static_all_file_inventory_and_import_scan; not full behavioral review"
+    },
+    {
+      "path": "apps/web/src/editor/LocalControls.tsx",
+      "sha256": "7890c7ec5c285731a63300fd5e1f7e168818a904d5d4d0a1fe4b31e0288535eb",
+      "line_count": 546,
+      "extension": ".tsx",
+      "imports_in_web": [
+        "apps/web/src/components/ChoiceSelect.tsx",
+        "apps/web/src/components/ColorPicker.tsx",
+        "apps/web/src/components/Ui.tsx",
+        "apps/web/src/components/color-model.ts",
+        "apps/web/src/editor/ColorControls.tsx",
+        "apps/web/src/editor/MaskControls.tsx",
+        "apps/web/src/editor/ParameterShelf.tsx",
+        "apps/web/src/editor/advanced-model.ts",
+        "apps/web/src/editor/flow-copy.ts",
+        "apps/web/src/i18n/index.ts",
+        "apps/web/src/lib/uuid.ts",
+        "apps/web/src/motion/Presence.tsx"
+      ],
+      "exported_components": [
+        "LocalControls"
+      ],
+      "literal_api_fragments": [],
+      "evidence": "static_all_file_inventory_and_import_scan; not full behavioral review"
+    },
+    {
+      "path": "apps/web/src/editor/MaskControls.tsx",
+      "sha256": "7231e5c97eec7dfdafb55dc43fcfedd3e141005ca5e713e3b171f39a6dc3683e",
+      "line_count": 538,
+      "extension": ".tsx",
+      "imports_in_web": [
+        "apps/web/src/components/ChoiceSelect.tsx",
+        "apps/web/src/components/Ui.tsx",
+        "apps/web/src/editor/ParameterShelf.tsx",
+        "apps/web/src/editor/advanced-model.ts",
+        "apps/web/src/editor/precision.ts",
+        "apps/web/src/editor/selection-transform.ts",
+        "apps/web/src/i18n/index.ts",
+        "apps/web/src/motion/Presence.tsx",
+        "apps/web/src/workspace/studio-copy.ts"
+      ],
+      "exported_components": [
+        "MaskControls"
+      ],
+      "literal_api_fragments": [],
+      "evidence": "static_all_file_inventory_and_import_scan; not full behavioral review"
+    },
+    {
+      "path": "apps/web/src/editor/ParameterGlyph.tsx",
+      "sha256": "2968f65ac95eddb19973891b109890d4bc0cdc43f81cdcc8041e69829c6411b8",
+      "line_count": 128,
+      "extension": ".tsx",
+      "imports_in_web": [],
+      "exported_components": [
+        "ParameterGlyph"
+      ],
+      "literal_api_fragments": [],
+      "evidence": "static_all_file_inventory_and_import_scan; not full behavioral review"
+    },
+    {
+      "path": "apps/web/src/editor/ParameterShelf.tsx",
+      "sha256": "249091c465288d705777778c80d8f9356970036232fd444cebd10642b6ae7572",
+      "line_count": 237,
+      "extension": ".tsx",
+      "imports_in_web": [
+        "apps/web/src/editor/ParameterGlyph.tsx",
+        "apps/web/src/editor/PrecisionRange.tsx",
+        "apps/web/src/i18n/index.ts"
+      ],
+      "exported_components": [
+        "ParameterShelf"
+      ],
+      "literal_api_fragments": [],
+      "evidence": "static_all_file_inventory_and_import_scan; not full behavioral review"
+    },
+    {
+      "path": "apps/web/src/editor/PortraitControls.tsx",
+      "sha256": "2766679377280c864b4da6b0958a7ff944fcdc6534289cfe0e7ddfac740ea13c",
+      "line_count": 718,
+      "extension": ".tsx",
+      "imports_in_web": [
+        "apps/web/src/components/ChoiceSelect.tsx",
+        "apps/web/src/components/ColorPicker.tsx",
+        "apps/web/src/components/StudioGlyph.tsx",
+        "apps/web/src/components/Ui.tsx",
+        "apps/web/src/editor/ParameterGlyph.tsx",
+        "apps/web/src/editor/ParameterShelf.tsx",
+        "apps/web/src/editor/PrecisionRange.tsx",
+        "apps/web/src/editor/ToolInspector.tsx",
+        "apps/web/src/editor/advanced-model.ts",
+        "apps/web/src/editor/portrait-label.ts",
+        "apps/web/src/editor/portrait-selection.ts",
+        "apps/web/src/i18n/index.ts",
+        "apps/web/src/lib/api.ts",
+        "apps/web/src/lib/uuid.ts",
+        "apps/web/src/motion/Presence.tsx",
+        "apps/web/src/workspace/interaction-copy.ts"
+      ],
+      "exported_components": [
+        "PortraitControls"
+      ],
+      "literal_api_fragments": [],
+      "evidence": "static_all_file_inventory_and_import_scan; not full behavioral review"
+    },
+    {
+      "path": "apps/web/src/editor/PrecisionRange.tsx",
+      "sha256": "c189823859aac5498ee3649cdec47d09b9a2f7fa19cd456c521d843da12b21c5",
+      "line_count": 445,
+      "extension": ".tsx",
+      "imports_in_web": [
+        "apps/web/src/editor/range-gesture.ts",
+        "apps/web/src/i18n/index.ts"
+      ],
+      "exported_components": [
+        "PrecisionRange"
+      ],
+      "literal_api_fragments": [],
+      "evidence": "static_all_file_inventory_and_import_scan; not full behavioral review"
+    },
+    {
+      "path": "apps/web/src/editor/ProjectiveControls.tsx",
+      "sha256": "efd38b71ba23466ecaa7c33e3e4d8b3ab338b8c88f20145c2060ff1eb9029c02",
+      "line_count": 131,
+      "extension": ".tsx",
+      "imports_in_web": [
+        "apps/web/src/editor/ParameterShelf.tsx",
+        "apps/web/src/editor/advanced-model.ts",
+        "apps/web/src/editor/projective-model.ts",
+        "apps/web/src/i18n/index.ts"
+      ],
+      "exported_components": [
+        "ProjectiveControls"
+      ],
+      "literal_api_fragments": [],
+      "evidence": "static_all_file_inventory_and_import_scan; not full behavioral review"
+    },
+    {
+      "path": "apps/web/src/editor/REFERENCE-SOURCES.md",
+      "sha256": "4ca14474d2a291f81cda6b783716d7e4f1eec021e45906240af57125c9db07d3",
+      "line_count": 22,
+      "extension": ".md",
+      "imports_in_web": [],
+      "exported_components": [],
+      "literal_api_fragments": [],
+      "evidence": "static_all_file_inventory_and_import_scan; not full behavioral review"
+    },
+    {
+      "path": "apps/web/src/editor/RepairControls.tsx",
+      "sha256": "c72f5d90bc46843d0557400ab5e0123bbf122488dd52ac0b2195717914b299c3",
+      "line_count": 419,
+      "extension": ".tsx",
+      "imports_in_web": [
+        "apps/web/src/components/ChoiceSelect.tsx",
+        "apps/web/src/editor/MaskControls.tsx",
+        "apps/web/src/editor/ParameterShelf.tsx",
+        "apps/web/src/editor/advanced-model.ts",
+        "apps/web/src/editor/repair-draft.ts",
+        "apps/web/src/i18n/index.ts",
+        "apps/web/src/lib/uuid.ts",
+        "apps/web/src/motion/Presence.tsx"
+      ],
+      "exported_components": [
+        "RepairControls"
+      ],
+      "literal_api_fragments": [],
+      "evidence": "static_all_file_inventory_and_import_scan; not full behavioral review"
+    },
+    {
+      "path": "apps/web/src/editor/ToolInspector.tsx",
+      "sha256": "be2d3d1207d8d3db1ec01eb0f02cc4da98dd199a236673f3026b087d41c9d3b2",
+      "line_count": 1599,
+      "extension": ".tsx",
+      "imports_in_web": [
+        "apps/web/src/components/ChoiceSelect.tsx",
+        "apps/web/src/components/ColorPicker.tsx",
+        "apps/web/src/components/StudioGlyph.tsx",
+        "apps/web/src/components/Ui.tsx",
+        "apps/web/src/editor/AdvancedInspector.tsx",
+        "apps/web/src/editor/CurveEditor.tsx",
+        "apps/web/src/editor/Histogram.tsx",
+        "apps/web/src/editor/HistoryPanel.tsx",
+        "apps/web/src/editor/ParameterShelf.tsx",
+        "apps/web/src/editor/PortraitControls.tsx",
+        "apps/web/src/editor/PrecisionRange.tsx",
+        "apps/web/src/editor/advanced-model.ts",
+        "apps/web/src/editor/editor-controls.css",
+        "apps/web/src/editor/flow-copy.ts",
+        "apps/web/src/editor/precision.ts",
+        "apps/web/src/editor/useEditor.ts",
+        "apps/web/src/i18n/index.ts",
+        "apps/web/src/motion/Presence.tsx",
+        "apps/web/src/workspace/studio-copy.ts"
+      ],
+      "exported_components": [
+        "ToolInspector"
+      ],
+      "literal_api_fragments": [],
+      "evidence": "static_all_file_inventory_and_import_scan; not full behavioral review"
+    },
+    {
+      "path": "apps/web/src/editor/advanced-inspector.css",
+      "sha256": "f806fa4236817c59c6f2e5b2dce2ee8e930952d0baf0022e01c36fb80d42ac11",
+      "line_count": 580,
+      "extension": ".css",
+      "imports_in_web": [],
+      "exported_components": [],
+      "literal_api_fragments": [],
+      "evidence": "static_all_file_inventory_and_import_scan; not full behavioral review"
+    },
+    {
+      "path": "apps/web/src/editor/advanced-model.ts",
+      "sha256": "bde5464e711ba03e63c9a8ce60181929b7055a0dbe785e9143b353103cf5fea1",
+      "line_count": 187,
+      "extension": ".ts",
+      "imports_in_web": [
+        "apps/web/src/editor/useEditor.ts"
+      ],
+      "exported_components": [
+        "NUMERIC_CONTROLS"
+      ],
+      "literal_api_fragments": [],
+      "evidence": "static_all_file_inventory_and_import_scan; not full behavioral review"
+    },
+    {
+      "path": "apps/web/src/editor/canvas-gesture.ts",
+      "sha256": "f6787997c4983be5b91fe600d6da97d37f6b1de7bd6c6844425a4b9cef508b6a",
+      "line_count": 57,
+      "extension": ".ts",
+      "imports_in_web": [],
+      "exported_components": [],
+      "literal_api_fragments": [],
+      "evidence": "static_all_file_inventory_and_import_scan; not full behavioral review"
+    },
+    {
+      "path": "apps/web/src/editor/capture.ts",
+      "sha256": "a02db1b8b983b507163212e225a4e7c0185d1aea837c0427468597a404cbd2b4",
+      "line_count": 28,
+      "extension": ".ts",
+      "imports_in_web": [],
+      "exported_components": [],
+      "literal_api_fragments": [],
+      "evidence": "static_all_file_inventory_and_import_scan; not full behavioral review"
+    },
+    {
+      "path": "apps/web/src/editor/coordinates.ts",
+      "sha256": "c43769b2acc08c7bcb07a6fa4f6e1493c209a4645ede0912d73377068b668d2c",
+      "line_count": 71,
+      "extension": ".ts",
+      "imports_in_web": [],
+      "exported_components": [],
+      "literal_api_fragments": [],
+      "evidence": "static_all_file_inventory_and_import_scan; not full behavioral review"
+    },
+    {
+      "path": "apps/web/src/editor/editor-controls.css",
+      "sha256": "f2c1e420abfdac78f3ca34003c5c87b33033aeb72121496e64f080d4357a681d",
+      "line_count": 1486,
+      "extension": ".css",
+      "imports_in_web": [],
+      "exported_components": [],
+      "literal_api_fragments": [],
+      "evidence": "static_all_file_inventory_and_import_scan; not full behavioral review"
+    },
+    {
+      "path": "apps/web/src/editor/flow-copy.ts",
+      "sha256": "97189b0c6c96b6c7337ce3fdb4f483f710acd6276451d4656fd73ca7114ec441",
+      "line_count": 51,
+      "extension": ".ts",
+      "imports_in_web": [
+        "apps/web/src/i18n/index.ts"
+      ],
+      "exported_components": [],
+      "literal_api_fragments": [],
+      "evidence": "static_all_file_inventory_and_import_scan; not full behavioral review"
+    },
+    {
+      "path": "apps/web/src/editor/freehand.ts",
+      "sha256": "952a97cac088b6f1ec4e1cd92213347fefc6251c48e93dad1d03b9a8b95d5a6e",
+      "line_count": 121,
+      "extension": ".ts",
+      "imports_in_web": [],
+      "exported_components": [],
+      "literal_api_fragments": [],
+      "evidence": "static_all_file_inventory_and_import_scan; not full behavioral review"
+    },
+    {
+      "path": "apps/web/src/editor/histogram-cache.ts",
+      "sha256": "cdb82b1da7d67919e01f9afcfe41d60609adddc2a36c9fb9e73d1a0969d17a1f",
+      "line_count": 25,
+      "extension": ".ts",
+      "imports_in_web": [],
+      "exported_components": [],
+      "literal_api_fragments": [],
+      "evidence": "static_all_file_inventory_and_import_scan; not full behavioral review"
+    },
+    {
+      "path": "apps/web/src/editor/history-copy.ts",
+      "sha256": "68a2a1977c2ca9d51bce13b12236a60552ba9d314f24c790ff5d0a014050e5fb",
+      "line_count": 159,
+      "extension": ".ts",
+      "imports_in_web": [
+        "apps/web/src/i18n/index.ts"
+      ],
+      "exported_components": [],
+      "literal_api_fragments": [],
+      "evidence": "static_all_file_inventory_and_import_scan; not full behavioral review"
+    },
+    {
+      "path": "apps/web/src/editor/history-details.ts",
+      "sha256": "b22d8b09e38952d7934b0685e47ebbd1278bd160ec3037ffd8f4b7e3d49548d1",
+      "line_count": 448,
+      "extension": ".ts",
+      "imports_in_web": [
+        "apps/web/src/ai/recipeDiff.ts"
+      ],
+      "exported_components": [],
+      "literal_api_fragments": [],
+      "evidence": "static_all_file_inventory_and_import_scan; not full behavioral review"
+    },
+    {
+      "path": "apps/web/src/editor/imageSources.ts",
+      "sha256": "fa2cade90df4b6af714537b2461c669146fd382fd74913285fabb6db97ddff2a",
+      "line_count": 90,
+      "extension": ".ts",
+      "imports_in_web": [],
+      "exported_components": [],
+      "literal_api_fragments": [],
+      "evidence": "static_all_file_inventory_and_import_scan; not full behavioral review"
+    },
+    {
+      "path": "apps/web/src/editor/native-preview.ts",
+      "sha256": "252be61d2022b3710474304732ad896a71c0d7eece6ceff62d2a41caf93ef57e",
+      "line_count": 5,
+      "extension": ".ts",
+      "imports_in_web": [],
+      "exported_components": [],
+      "literal_api_fragments": [],
+      "evidence": "static_all_file_inventory_and_import_scan; not full behavioral review"
+    },
+    {
+      "path": "apps/web/src/editor/portrait-analysis-errors.ts",
+      "sha256": "c55833d61b2c9981ef9f6b2075fc7f065896b6d3f0d012f96c21b84d6cf207e6",
+      "line_count": 24,
+      "extension": ".ts",
+      "imports_in_web": [],
+      "exported_components": [
+        "PORTRAIT_ANALYSIS_TIMEOUT_MESSAGE"
+      ],
+      "literal_api_fragments": [],
+      "evidence": "static_all_file_inventory_and_import_scan; not full behavioral review"
+    },
+    {
+      "path": "apps/web/src/editor/portrait-fine-matte.worker.ts",
+      "sha256": "39f62bbfc9f411c0c91eaed17f965840f5b8c31ddd9121f9bab2cbb04d17c708",
+      "line_count": 93,
+      "extension": ".ts",
+      "imports_in_web": [
+        "apps/web/src/editor/portrait-matte-input.ts"
+      ],
+      "exported_components": [],
+      "literal_api_fragments": [],
+      "evidence": "static_all_file_inventory_and_import_scan; not full behavioral review"
+    },
+    {
+      "path": "apps/web/src/editor/portrait-label.ts",
+      "sha256": "185fd675949ee4ef3ba51b079fefa3d8e24311e8c03640b90b451f80e560f080",
+      "line_count": 22,
+      "extension": ".ts",
+      "imports_in_web": [
+        "apps/web/src/i18n/index.ts"
+      ],
+      "exported_components": [],
+      "literal_api_fragments": [],
+      "evidence": "static_all_file_inventory_and_import_scan; not full behavioral review"
+    },
+    {
+      "path": "apps/web/src/editor/portrait-matte-input.ts",
+      "sha256": "b94d1152130af53d0bdfca6e83f5ecffaf32a8e7f1c50e3151c0525f09cd0a04",
+      "line_count": 22,
+      "extension": ".ts",
+      "imports_in_web": [],
+      "exported_components": [],
+      "literal_api_fragments": [],
+      "evidence": "static_all_file_inventory_and_import_scan; not full behavioral review"
+    },
+    {
+      "path": "apps/web/src/editor/portrait-matte.worker.ts",
+      "sha256": "41a348d3e3031d9effb30e7ef62accc4f6245e8dfeff12aa2c25db7fb5c69d9b",
+      "line_count": 105,
+      "extension": ".ts",
+      "imports_in_web": [
+        "apps/web/src/editor/portrait-matte-input.ts"
+      ],
+      "exported_components": [],
+      "literal_api_fragments": [],
+      "evidence": "static_all_file_inventory_and_import_scan; not full behavioral review"
+    },
+    {
+      "path": "apps/web/src/editor/portrait-selection.ts",
+      "sha256": "7e13ae1b674d4df54f7ab8ebbef45817422df0f59205d1a5ad027a380de423cf",
+      "line_count": 59,
+      "extension": ".ts",
+      "imports_in_web": [
+        "apps/web/src/i18n/index.ts"
+      ],
+      "exported_components": [],
+      "literal_api_fragments": [],
+      "evidence": "static_all_file_inventory_and_import_scan; not full behavioral review"
+    },
+    {
+      "path": "apps/web/src/editor/portrait.worker.ts",
+      "sha256": "b69a714d2027bf3a1d8f8bbe1339aab638b4be4538ae5c8a56839e2773e43f61",
+      "line_count": 357,
+      "extension": ".ts",
+      "imports_in_web": [
+        "apps/web/src/editor/portrait-analysis-errors.ts"
+      ],
+      "exported_components": [],
+      "literal_api_fragments": [],
+      "evidence": "static_all_file_inventory_and_import_scan; not full behavioral review"
+    },
+    {
+      "path": "apps/web/src/editor/precision-studio.css",
+      "sha256": "5e0dad0c410e29f0fb7a4029580b81980a14a702bda86ffe7df4021152c5b184",
+      "line_count": 628,
+      "extension": ".css",
+      "imports_in_web": [],
+      "exported_components": [],
+      "literal_api_fragments": [],
+      "evidence": "static_all_file_inventory_and_import_scan; not full behavioral review"
+    },
+    {
+      "path": "apps/web/src/editor/precision.ts",
+      "sha256": "d1b8aeab595dcd3dacc5be99ef6e5f7f4dd868ad8836d2131faeebd0b3efa126",
+      "line_count": 215,
+      "extension": ".ts",
+      "imports_in_web": [],
+      "exported_components": [],
+      "literal_api_fragments": [],
+      "evidence": "static_all_file_inventory_and_import_scan; not full behavioral review"
+    },
+    {
+      "path": "apps/web/src/editor/previewBudget.ts",
+      "sha256": "4a0bd6eb20676c86d363e86588ecd7cade70a31d79b3cfe554590790649eafa0",
+      "line_count": 108,
+      "extension": ".ts",
+      "imports_in_web": [],
+      "exported_components": [
+        "MAX_PREVIEW_PIXELS"
+      ],
+      "literal_api_fragments": [],
+      "evidence": "static_all_file_inventory_and_import_scan; not full behavioral review"
+    },
+    {
+      "path": "apps/web/src/editor/projective-model.ts",
+      "sha256": "7bc094b0329482c8fe3d0d4d789152457419b2627e5b48dcb8993735c9d3a7c6",
+      "line_count": 65,
+      "extension": ".ts",
+      "imports_in_web": [],
+      "exported_components": [
+        "CORNER_LABELS"
+      ],
+      "literal_api_fragments": [],
+      "evidence": "static_all_file_inventory_and_import_scan; not full behavioral review"
+    },
+    {
+      "path": "apps/web/src/editor/range-gesture.ts",
+      "sha256": "dbf345ba47f0aa81f07ec84bdf628a861cf1e6c2b446437f53303d1b41b02a87",
+      "line_count": 122,
+      "extension": ".ts",
+      "imports_in_web": [],
+      "exported_components": [
+        "RANGE_KEYS"
+      ],
+      "literal_api_fragments": [],
+      "evidence": "static_all_file_inventory_and_import_scan; not full behavioral review"
+    },
+    {
+      "path": "apps/web/src/editor/render.worker.ts",
+      "sha256": "37bf94439c95007f6c1f00f20b51647321d74194c7f14a47758919067e81b7ae",
+      "line_count": 238,
+      "extension": ".ts",
+      "imports_in_web": [
+        "apps/web/src/editor/coordinates.ts",
+        "apps/web/src/editor/native-preview.ts",
+        "apps/web/src/editor/previewBudget.ts"
+      ],
+      "exported_components": [],
+      "literal_api_fragments": [],
+      "evidence": "static_all_file_inventory_and_import_scan; not full behavioral review"
+    },
+    {
+      "path": "apps/web/src/editor/repair-draft.ts",
+      "sha256": "47b724df3d38da3f79d81d211c31ac1b61ce5722035397516077b753d9524cbd",
+      "line_count": 25,
+      "extension": ".ts",
+      "imports_in_web": [
+        "apps/web/src/i18n/index.ts"
+      ],
+      "exported_components": [],
+      "literal_api_fragments": [],
+      "evidence": "static_all_file_inventory_and_import_scan; not full behavioral review"
+    },
+    {
+      "path": "apps/web/src/editor/selection-transform.ts",
+      "sha256": "5e151f6ffac7944c6555ef8125cbfaf70ef1c8f47dcf7dc584456bc35fbfc4bb",
+      "line_count": 82,
+      "extension": ".ts",
+      "imports_in_web": [],
+      "exported_components": [],
+      "literal_api_fragments": [],
+      "evidence": "static_all_file_inventory_and_import_scan; not full behavioral review"
+    },
+    {
+      "path": "apps/web/src/editor/selection.worker.ts",
+      "sha256": "15f0e8922f3a9b8b2a4d6d615f526387cb0ebe7fae1c03a52226068e3a9f0e0e",
+      "line_count": 62,
+      "extension": ".ts",
+      "imports_in_web": [],
+      "exported_components": [],
+      "literal_api_fragments": [],
+      "evidence": "static_all_file_inventory_and_import_scan; not full behavioral review"
+    },
+    {
+      "path": "apps/web/src/editor/source-flow.ts",
+      "sha256": "f1663c12dd0601d7539aff470c61d5319cf688925538afa17eeaa0fb89fc12c1",
+      "line_count": 36,
+      "extension": ".ts",
+      "imports_in_web": [],
+      "exported_components": [],
+      "literal_api_fragments": [],
+      "evidence": "static_all_file_inventory_and_import_scan; not full behavioral review"
+    },
+    {
+      "path": "apps/web/src/editor/useEditor.ts",
+      "sha256": "d4fc1c0cbbef094a597dc2a262d43c8e83f7d4bec2e9675908a666fb697d52bb",
+      "line_count": 1218,
+      "extension": ".ts",
+      "imports_in_web": [
+        "apps/web/src/editor/coordinates.ts",
+        "apps/web/src/editor/histogram-cache.ts",
+        "apps/web/src/editor/imageSources.ts",
+        "apps/web/src/editor/native-preview.ts",
+        "apps/web/src/editor/precision.ts",
+        "apps/web/src/editor/render.worker.ts",
+        "apps/web/src/editor/usePortraitAnalysis.ts",
+        "apps/web/src/editor/workerLifecycle.ts",
+        "apps/web/src/i18n/index.ts",
+        "apps/web/src/lib/api.ts",
+        "apps/web/src/lib/uuid.ts"
+      ],
+      "exported_components": [
+        "MAX_LOCAL_FILE_BYTES",
+        "PIXEL_BUDGETS"
+      ],
+      "literal_api_fragments": [],
+      "evidence": "static_all_file_inventory_and_import_scan; not full behavioral review"
+    },
+    {
+      "path": "apps/web/src/editor/usePortraitAnalysis.ts",
+      "sha256": "67c28a4e1b3865eaea07548fe85c1ae83b1afc187e13b6655253ac9de1b46e49",
+      "line_count": 283,
+      "extension": ".ts",
+      "imports_in_web": [
+        "apps/web/src/editor/portrait-analysis-errors.ts",
+        "apps/web/src/editor/portrait-fine-matte.worker.ts",
+        "apps/web/src/editor/portrait-matte.worker.ts",
+        "apps/web/src/editor/portrait.worker.ts",
+        "apps/web/src/lib/api.ts"
+      ],
+      "exported_components": [],
+      "literal_api_fragments": [],
+      "evidence": "static_all_file_inventory_and_import_scan; not full behavioral review"
+    },
+    {
+      "path": "apps/web/src/editor/useStagePreviews.ts",
+      "sha256": "2224afeb806141c92dfbaba4f7beeb2afbfa4656107a79a42c7f2b3e1c8109b7",
+      "line_count": 180,
+      "extension": ".ts",
+      "imports_in_web": [
+        "apps/web/src/editor/render.worker.ts",
+        "apps/web/src/editor/useEditor.ts",
+        "apps/web/src/editor/workerLifecycle.ts"
+      ],
+      "exported_components": [],
+      "literal_api_fragments": [],
+      "evidence": "static_all_file_inventory_and_import_scan; not full behavioral review"
+    },
+    {
+      "path": "apps/web/src/editor/workerLifecycle.ts",
+      "sha256": "d0e0fb0784e97173fa285df6c1b2071acd6a9b1859ca85a90723dd96177e0536",
+      "line_count": 36,
+      "extension": ".ts",
+      "imports_in_web": [],
+      "exported_components": [],
+      "literal_api_fragments": [],
+      "evidence": "static_all_file_inventory_and_import_scan; not full behavioral review"
+    },
+    {
+      "path": "apps/web/src/features.css",
+      "sha256": "56b272432c04387bc6910793004850f8c47c11ad9fd05154eb14ae95b56cc480",
+      "line_count": 796,
+      "extension": ".css",
+      "imports_in_web": [],
+      "exported_components": [],
+      "literal_api_fragments": [],
+      "evidence": "static_all_file_inventory_and_import_scan; not full behavioral review"
+    },
+    {
+      "path": "apps/web/src/i18n/LanguageSelect.tsx",
+      "sha256": "49b8eeafb721268199fbc71adf9cdb1027d7036cc3c42f2f9038964fa5ca9d46",
+      "line_count": 71,
+      "extension": ".tsx",
+      "imports_in_web": [
+        "apps/web/src/i18n/index.ts",
+        "apps/web/src/i18n/language.css"
+      ],
+      "exported_components": [
+        "LanguageSelect"
+      ],
+      "literal_api_fragments": [],
+      "evidence": "static_all_file_inventory_and_import_scan; not full behavioral review"
+    },
+    {
+      "path": "apps/web/src/i18n/README.md",
+      "sha256": "1a43b373fdc00e9be8c1518e9e9115d26c7a29468b5d5044241c2f9ee21ff5e4",
+      "line_count": 39,
+      "extension": ".md",
+      "imports_in_web": [],
+      "exported_components": [],
+      "literal_api_fragments": [],
+      "evidence": "static_all_file_inventory_and_import_scan; not full behavioral review"
+    },
+    {
+      "path": "apps/web/src/i18n/account-messages.ts",
+      "sha256": "dcfe4e3bfa330e75ae7b89bce5914370bb3deeb4bbb377d58d10136bc2d93b0b",
+      "line_count": 516,
+      "extension": ".ts",
+      "imports_in_web": [],
+      "exported_components": [],
+      "literal_api_fragments": [],
+      "evidence": "static_all_file_inventory_and_import_scan; not full behavioral review"
+    },
+    {
+      "path": "apps/web/src/i18n/additional-messages.ts",
+      "sha256": "1dbc1cc00668ff7ece09b29f12b1a9cb00daf76775ec95cf79fc824f112ca0ad",
+      "line_count": 70,
+      "extension": ".ts",
+      "imports_in_web": [],
+      "exported_components": [],
+      "literal_api_fragments": [],
+      "evidence": "static_all_file_inventory_and_import_scan; not full behavioral review"
+    },
+    {
+      "path": "apps/web/src/i18n/ai-messages.ts",
+      "sha256": "a6552d9dd5bdb42705245c891089094e89a86b152bb8b476e21452f2d01ea74c",
+      "line_count": 1102,
+      "extension": ".ts",
+      "imports_in_web": [],
+      "exported_components": [],
+      "literal_api_fragments": [],
+      "evidence": "static_all_file_inventory_and_import_scan; not full behavioral review"
+    },
+    {
+      "path": "apps/web/src/i18n/ai-redesign-messages.ts",
+      "sha256": "fe2f09ac34a0dbabbdfa6d98d35e42b5dd8265c612ebab1f74981af5bd2c8454",
+      "line_count": 97,
+      "extension": ".ts",
+      "imports_in_web": [],
+      "exported_components": [],
+      "literal_api_fragments": [],
+      "evidence": "static_all_file_inventory_and_import_scan; not full behavioral review"
+    },
+    {
+      "path": "apps/web/src/i18n/app-messages.ts",
+      "sha256": "c417d67dd64843f68cd9a3a18c1993b207243dad18bcdeff18cf8949d8474a04",
+      "line_count": 273,
+      "extension": ".ts",
+      "imports_in_web": [],
+      "exported_components": [],
+      "literal_api_fragments": [],
+      "evidence": "static_all_file_inventory_and_import_scan; not full behavioral review"
+    },
+    {
+      "path": "apps/web/src/i18n/core-messages.ts",
+      "sha256": "489f1254a467af582dc803c688dee34d8ffc648237fba56753aca5a4bd7f1d05",
+      "line_count": 87,
+      "extension": ".ts",
+      "imports_in_web": [],
+      "exported_components": [],
+      "literal_api_fragments": [],
+      "evidence": "static_all_file_inventory_and_import_scan; not full behavioral review"
+    },
+    {
+      "path": "apps/web/src/i18n/editor-messages.ts",
+      "sha256": "c24c87f369ed75ca4fdcaddd5512eb03b3a3ada093af3dea76a614ddf56d10a6",
+      "line_count": 873,
+      "extension": ".ts",
+      "imports_in_web": [],
+      "exported_components": [],
+      "literal_api_fragments": [],
+      "evidence": "static_all_file_inventory_and_import_scan; not full behavioral review"
+    },
+    {
+      "path": "apps/web/src/i18n/final-messages.ts",
+      "sha256": "fb142349a6703d8bf653a6cdaf7523b4421099ba104d474a7ff74fd03825c4f6",
+      "line_count": 47,
+      "extension": ".ts",
+      "imports_in_web": [],
+      "exported_components": [],
+      "literal_api_fragments": [],
+      "evidence": "static_all_file_inventory_and_import_scan; not full behavioral review"
+    },
+    {
+      "path": "apps/web/src/i18n/index.ts",
+      "sha256": "90b7ef4514fa723e131c7f31574e8d13bd38e478933d00e92ae93bfb49d57876",
+      "line_count": 87,
+      "extension": ".ts",
+      "imports_in_web": [
+        "apps/web/src/i18n/messages-en.ts",
+        "apps/web/src/i18n/messages-zh-TW.ts",
+        "apps/web/src/i18n/store.ts"
+      ],
+      "exported_components": [],
+      "literal_api_fragments": [],
+      "evidence": "static_all_file_inventory_and_import_scan; not full behavioral review"
+    },
+    {
+      "path": "apps/web/src/i18n/language.css",
+      "sha256": "8e360d20803640fd4ceed1b869ff0f79b22f03b256a7df836e306c0551a31f11",
+      "line_count": 103,
+      "extension": ".css",
+      "imports_in_web": [],
+      "exported_components": [],
+      "literal_api_fragments": [],
+      "evidence": "static_all_file_inventory_and_import_scan; not full behavioral review"
+    },
+    {
+      "path": "apps/web/src/i18n/library-messages.ts",
+      "sha256": "c5c71191f45aa80dbcf64db28043f0c11ad30e45a2f8f4174529656c5781440b",
+      "line_count": 676,
+      "extension": ".ts",
+      "imports_in_web": [],
+      "exported_components": [],
+      "literal_api_fragments": [],
+      "evidence": "static_all_file_inventory_and_import_scan; not full behavioral review"
+    },
+    {
+      "path": "apps/web/src/i18n/messages-en.ts",
+      "sha256": "99301cc2deb088c2929910f36aa1d7ffd84fb6a534918858966eb94d69494fd0",
+      "line_count": 45,
+      "extension": ".ts",
+      "imports_in_web": [
+        "apps/web/src/i18n/account-messages.ts",
+        "apps/web/src/i18n/additional-messages.ts",
+        "apps/web/src/i18n/ai-messages.ts",
+        "apps/web/src/i18n/ai-redesign-messages.ts",
+        "apps/web/src/i18n/app-messages.ts",
+        "apps/web/src/i18n/core-messages.ts",
+        "apps/web/src/i18n/editor-messages.ts",
+        "apps/web/src/i18n/final-messages.ts",
+        "apps/web/src/i18n/library-messages.ts",
+        "apps/web/src/i18n/native-grade-messages.ts",
+        "apps/web/src/i18n/operations-messages.ts",
+        "apps/web/src/i18n/registry-messages.ts",
+        "apps/web/src/i18n/residual-messages.ts",
+        "apps/web/src/i18n/restoration-messages.ts",
+        "apps/web/src/i18n/usage-messages.ts",
+        "apps/web/src/i18n/workspace-messages.ts"
+      ],
+      "exported_components": [],
+      "literal_api_fragments": [],
+      "evidence": "static_all_file_inventory_and_import_scan; not full behavioral review"
+    },
+    {
+      "path": "apps/web/src/i18n/messages-zh-TW.ts",
+      "sha256": "bf0700ebb513435c73875d80a7f765ba40ca3902811c116783bc4adddfb529d9",
+      "line_count": 165,
+      "extension": ".ts",
+      "imports_in_web": [
+        "apps/web/src/i18n/account-messages.ts",
+        "apps/web/src/i18n/ai-redesign-messages.ts",
+        "apps/web/src/i18n/library-messages.ts",
+        "apps/web/src/i18n/native-grade-messages.ts",
+        "apps/web/src/i18n/restoration-messages.ts",
+        "apps/web/src/i18n/traditional-generated.ts",
+        "apps/web/src/i18n/usage-messages.ts",
+        "apps/web/src/i18n/workspace-messages.ts"
+      ],
+      "exported_components": [],
+      "literal_api_fragments": [],
+      "evidence": "static_all_file_inventory_and_import_scan; not full behavioral review"
+    },
+    {
+      "path": "apps/web/src/i18n/native-grade-messages.ts",
+      "sha256": "7446fdf0e8294c1a1ebc00c978779c2a75944b34c4f5214246f602085682fda1",
+      "line_count": 139,
+      "extension": ".ts",
+      "imports_in_web": [],
+      "exported_components": [],
+      "literal_api_fragments": [],
+      "evidence": "static_all_file_inventory_and_import_scan; not full behavioral review"
+    },
+    {
+      "path": "apps/web/src/i18n/operations-messages.ts",
+      "sha256": "0c6a43fd6ced94165b16142dea2f841822cb791b76a11526024a55c12b30bfa6",
+      "line_count": 277,
+      "extension": ".ts",
+      "imports_in_web": [],
+      "exported_components": [],
+      "literal_api_fragments": [],
+      "evidence": "static_all_file_inventory_and_import_scan; not full behavioral review"
+    },
+    {
+      "path": "apps/web/src/i18n/registry-messages.ts",
+      "sha256": "67ffed34b36becc974ad1f0fec6ee10e6f64140428c3b75606eea7721ec5ffb7",
+      "line_count": 341,
+      "extension": ".ts",
+      "imports_in_web": [],
+      "exported_components": [],
+      "literal_api_fragments": [],
+      "evidence": "static_all_file_inventory_and_import_scan; not full behavioral review"
+    },
+    {
+      "path": "apps/web/src/i18n/residual-messages.ts",
+      "sha256": "10811c9ddc9fcf71cef0ee68ff8035e89acfd690f4b4727b9e35c3931c28f195",
+      "line_count": 453,
+      "extension": ".ts",
+      "imports_in_web": [],
+      "exported_components": [],
+      "literal_api_fragments": [],
+      "evidence": "static_all_file_inventory_and_import_scan; not full behavioral review"
+    },
+    {
+      "path": "apps/web/src/i18n/restoration-messages.ts",
+      "sha256": "b6eeef4ea9a04fc5115c80b861a6b41315f993b4a9ddf3edb7556e197cdd7253",
+      "line_count": 99,
+      "extension": ".ts",
+      "imports_in_web": [],
+      "exported_components": [],
+      "literal_api_fragments": [],
+      "evidence": "static_all_file_inventory_and_import_scan; not full behavioral review"
+    },
+    {
+      "path": "apps/web/src/i18n/store.ts",
+      "sha256": "7391edef7c65e7e96d40b6dad923b418d2cc1de6c2bd8e0f32781b3c4df4d193",
+      "line_count": 119,
+      "extension": ".ts",
+      "imports_in_web": [],
+      "exported_components": [],
+      "literal_api_fragments": [],
+      "evidence": "static_all_file_inventory_and_import_scan; not full behavioral review"
+    },
+    {
+      "path": "apps/web/src/i18n/traditional-generated.ts",
+      "sha256": "6390f621514268be69bce97caa57e4868eed15f9212dff823613eceeeacff070",
+      "line_count": 4406,
+      "extension": ".ts",
+      "imports_in_web": [],
+      "exported_components": [],
+      "literal_api_fragments": [],
+      "evidence": "static_all_file_inventory_and_import_scan; not full behavioral review"
+    },
+    {
+      "path": "apps/web/src/i18n/usage-messages.ts",
+      "sha256": "194aabc1492e4ec36435182c23565c43b5afaf21e255f88b3c78d19f36bf00ab",
+      "line_count": 727,
+      "extension": ".ts",
+      "imports_in_web": [],
+      "exported_components": [],
+      "literal_api_fragments": [],
+      "evidence": "static_all_file_inventory_and_import_scan; not full behavioral review"
+    },
+    {
+      "path": "apps/web/src/i18n/workspace-messages.ts",
+      "sha256": "47f62f36d13bc2c29351aa961039b01b454d7c4cd1a23e1a43449c6a8fe02650",
+      "line_count": 148,
+      "extension": ".ts",
+      "imports_in_web": [],
+      "exported_components": [],
+      "literal_api_fragments": [],
+      "evidence": "static_all_file_inventory_and_import_scan; not full behavioral review"
+    },
+    {
+      "path": "apps/web/src/lib/api.ts",
+      "sha256": "458590ab09802b446b7c36f17c0a0658e48e4fbe247e2d99a3f40d0a6c8af50f",
+      "line_count": 70,
+      "extension": ".ts",
+      "imports_in_web": [
+        "apps/web/src/i18n/index.ts"
+      ],
+      "exported_components": [],
+      "literal_api_fragments": [],
+      "evidence": "static_all_file_inventory_and_import_scan; not full behavioral review"
+    },
+    {
+      "path": "apps/web/src/lib/asset-copy.ts",
+      "sha256": "079c1fd5c1886071ddab7320c1a9a94975dbb21ace58b0d1a7ec8a204cbcc75b",
+      "line_count": 45,
+      "extension": ".ts",
+      "imports_in_web": [
+        "apps/web/src/lib/uuid.ts"
+      ],
+      "exported_components": [],
+      "literal_api_fragments": [],
+      "evidence": "static_all_file_inventory_and_import_scan; not full behavioral review"
+    },
+    {
+      "path": "apps/web/src/lib/audio.ts",
+      "sha256": "bf7f363715e5559741cececfb8e13bac05b274a83f79a0d182838ed77ad95754",
+      "line_count": 51,
+      "extension": ".ts",
+      "imports_in_web": [],
+      "exported_components": [],
+      "literal_api_fragments": [],
+      "evidence": "static_all_file_inventory_and_import_scan; not full behavioral review"
+    },
+    {
+      "path": "apps/web/src/lib/brand.ts",
+      "sha256": "6d55c788bcd80d4ccdd0ff74cda46e4201d32ded05b4474a47437744b6494b8e",
+      "line_count": 9,
+      "extension": ".ts",
+      "imports_in_web": [],
+      "exported_components": [
+        "DEFAULT_BRAND"
+      ],
+      "literal_api_fragments": [],
+      "evidence": "static_all_file_inventory_and_import_scan; not full behavioral review"
+    },
+    {
+      "path": "apps/web/src/lib/confirmation-scope.ts",
+      "sha256": "15e40bd6adbc34c20124868fa836df3d9c21942d874abe85bed6e14b6ccff748",
+      "line_count": 14,
+      "extension": ".ts",
+      "imports_in_web": [],
+      "exported_components": [],
+      "literal_api_fragments": [],
+      "evidence": "static_all_file_inventory_and_import_scan; not full behavioral review"
+    },
+    {
+      "path": "apps/web/src/lib/revisionHistory.ts",
+      "sha256": "7ef34689c3eb405df64bd0db91522273abdee6cae03b1e31445788f4552038f7",
+      "line_count": 57,
+      "extension": ".ts",
+      "imports_in_web": [
+        "apps/web/src/lib/types.ts"
+      ],
+      "exported_components": [],
+      "literal_api_fragments": [],
+      "evidence": "static_all_file_inventory_and_import_scan; not full behavioral review"
+    },
+    {
+      "path": "apps/web/src/lib/titles.ts",
+      "sha256": "1786bc72748db9d8e4d37a94075d29df1928a7705d5277d3f8ca0e4362ecc4bf",
+      "line_count": 10,
+      "extension": ".ts",
+      "imports_in_web": [],
+      "exported_components": [],
+      "literal_api_fragments": [],
+      "evidence": "static_all_file_inventory_and_import_scan; not full behavioral review"
+    },
+    {
+      "path": "apps/web/src/lib/types.ts",
+      "sha256": "74121c4e34fd10050df6ac1fa976ad8e6480c47386778e76df6638ff54b06fb6",
+      "line_count": 119,
+      "extension": ".ts",
+      "imports_in_web": [],
+      "exported_components": [],
+      "literal_api_fragments": [],
+      "evidence": "static_all_file_inventory_and_import_scan; not full behavioral review"
+    },
+    {
+      "path": "apps/web/src/lib/uuid.ts",
+      "sha256": "3470cf3ffeb7e811d65e3c587fb04bef034228edd2e925d6f875228afaf5546c",
+      "line_count": 41,
+      "extension": ".ts",
+      "imports_in_web": [],
+      "exported_components": [],
+      "literal_api_fragments": [],
+      "evidence": "static_all_file_inventory_and_import_scan; not full behavioral review"
+    },
+    {
+      "path": "apps/web/src/main.tsx",
+      "sha256": "5010aa6b3df0fecf6258f1141b0a8bc09bfe0293ebb5be8ca815c418a42cdb50",
+      "line_count": 15,
+      "extension": ".tsx",
+      "imports_in_web": [
+        "apps/web/src/SiteShell.tsx",
+        "apps/web/src/about/about.css",
+        "apps/web/src/i18n/index.ts",
+        "apps/web/src/public-shell.css",
+        "apps/web/src/theme.css"
+      ],
+      "exported_components": [],
+      "literal_api_fragments": [],
+      "evidence": "static_all_file_inventory_and_import_scan; not full behavioral review"
+    },
+    {
+      "path": "apps/web/src/media/MediaSourceViewer.tsx",
+      "sha256": "c5227796e6a44a2a1bfe0d5b91bff32e072aa4e12a1667b92aa3dcd3a21224d5",
+      "line_count": 785,
+      "extension": ".tsx",
+      "imports_in_web": [
+        "apps/web/src/components/ChoiceSelect.tsx",
+        "apps/web/src/components/Ui.tsx",
+        "apps/web/src/i18n/index.ts",
+        "apps/web/src/lib/api.ts",
+        "apps/web/src/media/NativeGradeControls.tsx",
+        "apps/web/src/media/NativeRegionOverlay.tsx",
+        "apps/web/src/media/media.css",
+        "apps/web/src/media/native-grade-model.ts",
+        "apps/web/src/media/tile-layout.ts",
+        "apps/web/src/media/useLinearFitPreview.ts",
+        "apps/web/src/media/useMasterPreview.ts"
+      ],
+      "exported_components": [
+        "MediaSourceViewer"
+      ],
+      "literal_api_fragments": [
+        "/assets/${assetId}/media",
+        "/assets/${assetId}/media/export",
+        "/assets/${assetId}/media/grades",
+        "/assets/${assetId}/media/grades${before ? ",
+        "/v1/assets/${assetId}/file",
+        "/v1/assets/${assetId}/media/exports/${encodeURIComponent(downloadId)}",
+        "/v1/assets/${assetId}/media/tiles_files/${tile.key}.${tiles.format}"
+      ],
+      "evidence": "static_all_file_inventory_and_import_scan; not full behavioral review"
+    },
+    {
+      "path": "apps/web/src/media/NativeCurveEditor.tsx",
+      "sha256": "b082ac94a89fdf0ee7d232635be867c58fe03d522c445f9ee20ca222f21ff5ed",
+      "line_count": 203,
+      "extension": ".tsx",
+      "imports_in_web": [
+        "apps/web/src/components/ChoiceSelect.tsx",
+        "apps/web/src/components/Ui.tsx",
+        "apps/web/src/editor/PrecisionRange.tsx",
+        "apps/web/src/i18n/index.ts",
+        "apps/web/src/media/native-grade-model.ts"
+      ],
+      "exported_components": [
+        "NativeCurveEditor"
+      ],
+      "literal_api_fragments": [],
+      "evidence": "static_all_file_inventory_and_import_scan; not full behavioral review"
+    },
+    {
+      "path": "apps/web/src/media/NativeGradeControls.tsx",
+      "sha256": "d0067973045d41d0e751026e03a0562ec6023bcccdf33279bad6b3bd79e64ff5",
+      "line_count": 193,
+      "extension": ".tsx",
+      "imports_in_web": [
+        "apps/web/src/components/ChoiceSelect.tsx",
+        "apps/web/src/components/Ui.tsx",
+        "apps/web/src/editor/ParameterShelf.tsx",
+        "apps/web/src/editor/precision-studio.css",
+        "apps/web/src/i18n/index.ts",
+        "apps/web/src/lib/uuid.ts",
+        "apps/web/src/media/NativeCurveEditor.tsx",
+        "apps/web/src/media/native-grade-model.ts",
+        "apps/web/src/media/native-grade.css"
+      ],
+      "exported_components": [
+        "NativeGradeControls"
+      ],
+      "literal_api_fragments": [],
+      "evidence": "static_all_file_inventory_and_import_scan; not full behavioral review"
+    },
+    {
+      "path": "apps/web/src/media/NativeRegionOverlay.tsx",
+      "sha256": "892be2bc90134c45ea14b3431abbb2c4d0d8a3ac2d7d72b918dabce19691196b",
+      "line_count": 174,
+      "extension": ".tsx",
+      "imports_in_web": [
+        "apps/web/src/i18n/index.ts",
+        "apps/web/src/media/native-grade-model.ts",
+        "apps/web/src/media/tile-layout.ts"
+      ],
+      "exported_components": [
+        "NativeRegionOverlay"
+      ],
+      "literal_api_fragments": [],
+      "evidence": "static_all_file_inventory_and_import_scan; not full behavioral review"
+    },
+    {
+      "path": "apps/web/src/media/linear-fit-gpu.ts",
+      "sha256": "66d5114a3d43e2e6f42de0a96fbc464d9c963c393653f7f96511c0df2babf385",
+      "line_count": 265,
+      "extension": ".ts",
+      "imports_in_web": [
+        "apps/web/src/media/linear-fit-parameters.ts",
+        "apps/web/src/media/linear-master-stream.ts"
+      ],
+      "exported_components": [],
+      "literal_api_fragments": [
+        "/v1/assets/"
+      ],
+      "evidence": "static_all_file_inventory_and_import_scan; not full behavioral review"
+    },
+    {
+      "path": "apps/web/src/media/linear-fit-parameters.ts",
+      "sha256": "3d19fd4672f2e2789e1183cc6704f3bb08e4ed22c4061da30545fe1009af3b3b",
+      "line_count": 156,
+      "extension": ".ts",
+      "imports_in_web": [],
+      "exported_components": [
+        "CURVE_OFFSET",
+        "CURVE_STRIDE",
+        "REGION_OFFSET",
+        "REGION_STRIDE",
+        "FIT_GRADE_WORDS"
+      ],
+      "literal_api_fragments": [],
+      "evidence": "static_all_file_inventory_and_import_scan; not full behavioral review"
+    },
+    {
+      "path": "apps/web/src/media/linear-fit.wgsl",
+      "sha256": "a328a971169ec630eb538c1a1a1239e78cd979486e929a48785fc7e00d52536e",
+      "line_count": 211,
+      "extension": ".wgsl",
+      "imports_in_web": [],
+      "exported_components": [],
+      "literal_api_fragments": [],
+      "evidence": "static_all_file_inventory_and_import_scan; not full behavioral review"
+    },
+    {
+      "path": "apps/web/src/media/linear-fit.worker.ts",
+      "sha256": "3ef352ff9808bb263ecedbe33ea1e0192bf1285c11106c3ff13480a5a4e2d657",
+      "line_count": 42,
+      "extension": ".ts",
+      "imports_in_web": [
+        "apps/web/src/media/linear-fit-gpu.ts",
+        "apps/web/src/media/linear-fit-parameters.ts",
+        "apps/web/src/media/linear-master-stream.ts"
+      ],
+      "exported_components": [],
+      "literal_api_fragments": [],
+      "evidence": "static_all_file_inventory_and_import_scan; not full behavioral review"
+    },
+    {
+      "path": "apps/web/src/media/linear-master-stream.ts",
+      "sha256": "8778d742af78fa468e6fd540703d00a8a41c6d67b5eb9c56d7399ca9065f6135",
+      "line_count": 260,
+      "extension": ".ts",
+      "imports_in_web": [],
+      "exported_components": [],
+      "literal_api_fragments": [],
+      "evidence": "static_all_file_inventory_and_import_scan; not full behavioral review"
+    },
+    {
+      "path": "apps/web/src/media/media.css",
+      "sha256": "aa0833ef5b5d606a9c9eef2f330f282e2c53f5aae98991ba91cb6140a5f8a144",
+      "line_count": 325,
+      "extension": ".css",
+      "imports_in_web": [],
+      "exported_components": [],
+      "literal_api_fragments": [],
+      "evidence": "static_all_file_inventory_and_import_scan; not full behavioral review"
+    },
+    {
+      "path": "apps/web/src/media/native-grade-model.ts",
+      "sha256": "dfb6319bd50fe61bf9634121a8a7eecf7457b4cb193a64d1e88668faf7fb50cf",
+      "line_count": 260,
+      "extension": ".ts",
+      "imports_in_web": [
+        "apps/web/src/media/tile-layout.ts"
+      ],
+      "exported_components": [],
+      "literal_api_fragments": [],
+      "evidence": "static_all_file_inventory_and_import_scan; not full behavioral review"
+    },
+    {
+      "path": "apps/web/src/media/native-grade.css",
+      "sha256": "04812f13a00a407cc04c3156cc269dc7237060da8cd0c2340161ee435d774cbf",
+      "line_count": 253,
+      "extension": ".css",
+      "imports_in_web": [],
+      "exported_components": [],
+      "literal_api_fragments": [],
+      "evidence": "static_all_file_inventory_and_import_scan; not full behavioral review"
+    },
+    {
+      "path": "apps/web/src/media/tile-layout.ts",
+      "sha256": "4d3e02aab39ce6f21c1a131f9b0359d215b7db3c6e2bc32ecca56bb78d51db64",
+      "line_count": 112,
+      "extension": ".ts",
+      "imports_in_web": [],
+      "exported_components": [],
+      "literal_api_fragments": [],
+      "evidence": "static_all_file_inventory_and_import_scan; not full behavioral review"
+    },
+    {
+      "path": "apps/web/src/media/useLinearFitPreview.ts",
+      "sha256": "c056493daca423a1df179e2c0f6081e59a70826b988fae80a7fd338451acc5fc",
+      "line_count": 125,
+      "extension": ".ts",
+      "imports_in_web": [
+        "apps/web/src/media/linear-fit-parameters.ts",
+        "apps/web/src/media/linear-master-stream.ts"
+      ],
+      "exported_components": [],
+      "literal_api_fragments": [],
+      "evidence": "static_all_file_inventory_and_import_scan; not full behavioral review"
+    },
+    {
+      "path": "apps/web/src/media/useMasterPreview.ts",
+      "sha256": "4781aae945795934ebb9ba9c0347a357969a0466b122e64123e6eeba8133bf15",
+      "line_count": 142,
+      "extension": ".ts",
+      "imports_in_web": [],
+      "exported_components": [],
+      "literal_api_fragments": [
+        "/v1/assets/${assetId}/media/preview"
+      ],
+      "evidence": "static_all_file_inventory_and_import_scan; not full behavioral review"
+    },
+    {
+      "path": "apps/web/src/motion/Presence.tsx",
+      "sha256": "4150e32744870c2dc18087e86f40660bbdb6e93b7e73e01c29ae8884f52ce9ab",
+      "line_count": 172,
+      "extension": ".tsx",
+      "imports_in_web": [
+        "apps/web/src/i18n/index.ts",
+        "apps/web/src/motion/registry.ts",
+        "apps/web/src/motion/switch-model.ts",
+        "apps/web/src/motion/usePresence.ts"
+      ],
+      "exported_components": [
+        "MotionSurface",
+        "MotionSwitch",
+        "MotionDisclosure",
+        "MotionDetails"
+      ],
+      "literal_api_fragments": [],
+      "evidence": "static_all_file_inventory_and_import_scan; not full behavioral review"
+    },
+    {
+      "path": "apps/web/src/motion/motion.css",
+      "sha256": "2cec88175ec463a45eb7e488204bf5ed1f52b6d80a6cf80f3e326779cf3a8225",
+      "line_count": 3502,
+      "extension": ".css",
+      "imports_in_web": [],
+      "exported_components": [],
+      "literal_api_fragments": [],
+      "evidence": "static_all_file_inventory_and_import_scan; not full behavioral review"
+    },
+    {
+      "path": "apps/web/src/motion/registry.ts",
+      "sha256": "115b025de9a38e4267845aaa856ee770a28742afd3c4eecdeb544f902cfa29b3",
+      "line_count": 2901,
+      "extension": ".ts",
+      "imports_in_web": [
+        "apps/web/src/components/modal-profiles.ts",
+        "apps/web/src/motion/workspaceV4.ts"
+      ],
+      "exported_components": [],
+      "literal_api_fragments": [],
+      "evidence": "static_all_file_inventory_and_import_scan; not full behavioral review"
+    },
+    {
+      "path": "apps/web/src/motion/switch-model.ts",
+      "sha256": "b6c8496717e746ee9e0e4278c57db907fc81f0d530d8b466c1fc39996235de99",
+      "line_count": 37,
+      "extension": ".ts",
+      "imports_in_web": [
+        "apps/web/src/motion/registry.ts"
+      ],
+      "exported_components": [],
+      "literal_api_fragments": [],
+      "evidence": "static_all_file_inventory_and_import_scan; not full behavioral review"
+    },
+    {
+      "path": "apps/web/src/motion/usePresence.ts",
+      "sha256": "19f5ae8424d0ca9e06f75bc16522b814fb7df7970f3355837c953dd8d43710e8",
+      "line_count": 68,
+      "extension": ".ts",
+      "imports_in_web": [
+        "apps/web/src/motion/registry.ts"
+      ],
+      "exported_components": [],
+      "literal_api_fragments": [],
+      "evidence": "static_all_file_inventory_and_import_scan; not full behavioral review"
+    },
+    {
+      "path": "apps/web/src/motion/workspaceV4.ts",
+      "sha256": "17008dfe0a323ed1a021dc9a0cf72b3febc39a36be9908e39b19ecccba5a7ecf",
+      "line_count": 687,
+      "extension": ".ts",
+      "imports_in_web": [],
+      "exported_components": [],
+      "literal_api_fragments": [],
+      "evidence": "static_all_file_inventory_and_import_scan; not full behavioral review"
+    },
+    {
+      "path": "apps/web/src/public-shell.css",
+      "sha256": "81ae346c964f8c46f5893a987cf5eb683835e3fef0f480c92edf7361ce57ff45",
+      "line_count": 236,
+      "extension": ".css",
+      "imports_in_web": [],
+      "exported_components": [],
+      "literal_api_fragments": [],
+      "evidence": "static_all_file_inventory_and_import_scan; not full behavioral review"
+    },
+    {
+      "path": "apps/web/src/refinement.css",
+      "sha256": "4f4077ba28a74807aadbd5690b110518b6e493ffebd728482fe4268e831dbf63",
+      "line_count": 2146,
+      "extension": ".css",
+      "imports_in_web": [],
+      "exported_components": [],
+      "literal_api_fragments": [],
+      "evidence": "static_all_file_inventory_and_import_scan; not full behavioral review"
+    },
+    {
+      "path": "apps/web/src/resources/AssetThumbnail.tsx",
+      "sha256": "02e81b32facf207e9d5d6faf1eae25f0f32619ec06132750e069bde2b20e48c2",
+      "line_count": 33,
+      "extension": ".tsx",
+      "imports_in_web": [
+        "apps/web/src/i18n/index.ts",
+        "apps/web/src/resources/asset-thumbnail.css",
+        "apps/web/src/resources/experience-copy.ts"
+      ],
+      "exported_components": [
+        "AssetThumbnail"
+      ],
+      "literal_api_fragments": [],
+      "evidence": "static_all_file_inventory_and_import_scan; not full behavioral review"
+    },
+    {
+      "path": "apps/web/src/resources/ResourceSearch.tsx",
+      "sha256": "027004b4ad9fb6c81d7b705b415c8ce4c9512f69c70b3a222a29c2eedd73b742",
+      "line_count": 589,
+      "extension": ".tsx",
+      "imports_in_web": [
+        "apps/web/src/components/ChoiceSelect.tsx",
+        "apps/web/src/components/ConfirmationDialog.tsx",
+        "apps/web/src/components/DeferredFeature.tsx",
+        "apps/web/src/components/Ui.tsx",
+        "apps/web/src/i18n/index.ts",
+        "apps/web/src/lib/api.ts",
+        "apps/web/src/lib/confirmation-scope.ts",
+        "apps/web/src/lib/types.ts",
+        "apps/web/src/media/MediaSourceViewer.tsx",
+        "apps/web/src/motion/Presence.tsx",
+        "apps/web/src/resources/AssetThumbnail.tsx",
+        "apps/web/src/resources/collection-refinement.css",
+        "apps/web/src/resources/experience-copy.ts",
+        "apps/web/src/resources/model.ts",
+        "apps/web/src/resources/resources.css"
+      ],
+      "exported_components": [
+        "ResourceSearch"
+      ],
+      "literal_api_fragments": [
+        "/assets/${deletedItem.asset.id}/memory",
+        "/assets/${item.asset.id}/memory",
+        "/v1/assets/${item.asset.id}/thumbnail"
+      ],
+      "evidence": "static_all_file_inventory_and_import_scan; not full behavioral review"
+    },
+    {
+      "path": "apps/web/src/resources/TeamActivity.tsx",
+      "sha256": "1e3ed1983ece7aef368473ed71cfa30d9213ebea08a91589e90946136dff347f",
+      "line_count": 116,
+      "extension": ".tsx",
+      "imports_in_web": [
+        "apps/web/src/components/Ui.tsx",
+        "apps/web/src/i18n/index.ts",
+        "apps/web/src/lib/api.ts"
+      ],
+      "exported_components": [
+        "TeamActivity"
+      ],
+      "literal_api_fragments": [
+        "/spaces/${spaceId}/activity?limit=30",
+        "/spaces/${spaceId}/activity?limit=30&cursor=${encodeURIComponent(cursor)}"
+      ],
+      "evidence": "static_all_file_inventory_and_import_scan; not full behavioral review"
+    },
+    {
+      "path": "apps/web/src/resources/asset-thumbnail.css",
+      "sha256": "4652e645462a120560752c3bfd5c452430c882867ddaa5255e220ca874c6da01",
+      "line_count": 59,
+      "extension": ".css",
+      "imports_in_web": [],
+      "exported_components": [],
+      "literal_api_fragments": [],
+      "evidence": "static_all_file_inventory_and_import_scan; not full behavioral review"
+    },
+    {
+      "path": "apps/web/src/resources/collection-refinement.css",
+      "sha256": "9ca47a78400a92037e9e076b4848d462382d4b8d18905b679e59a159a606293b",
+      "line_count": 299,
+      "extension": ".css",
+      "imports_in_web": [],
+      "exported_components": [],
+      "literal_api_fragments": [],
+      "evidence": "static_all_file_inventory_and_import_scan; not full behavioral review"
+    },
+    {
+      "path": "apps/web/src/resources/experience-copy.ts",
+      "sha256": "f090eb189a426fc32c9ae84c7650921482416b2f0041c5b1fbec8a6f6806b525",
+      "line_count": 75,
+      "extension": ".ts",
+      "imports_in_web": [
+        "apps/web/src/i18n/index.ts"
+      ],
+      "exported_components": [],
+      "literal_api_fragments": [],
+      "evidence": "static_all_file_inventory_and_import_scan; not full behavioral review"
+    },
+    {
+      "path": "apps/web/src/resources/model.ts",
+      "sha256": "155bd8d5fa1b8ac6c985e7471f5baebc6f57d4eb3510d0e66801f274f57d17a0",
+      "line_count": 25,
+      "extension": ".ts",
+      "imports_in_web": [
+        "apps/web/src/lib/types.ts"
+      ],
+      "exported_components": [],
+      "literal_api_fragments": [
+        "/resources?"
+      ],
+      "evidence": "static_all_file_inventory_and_import_scan; not full behavioral review"
+    },
+    {
+      "path": "apps/web/src/resources/resources.css",
+      "sha256": "9b304716f1ff4a3c53140f8d7b0ba0cef3cf41c635c9c7f0dcce0b22aee32470",
+      "line_count": 229,
+      "extension": ".css",
+      "imports_in_web": [],
+      "exported_components": [],
+      "literal_api_fragments": [],
+      "evidence": "static_all_file_inventory_and_import_scan; not full behavioral review"
+    },
+    {
+      "path": "apps/web/src/restoration/RestorationDialog.tsx",
+      "sha256": "51a8f881b363eb2efee6e1efc7e21d7f2fc12acc3da0f3bf478fab9686116c71",
+      "line_count": 444,
+      "extension": ".tsx",
+      "imports_in_web": [
+        "apps/web/src/components/StudioGlyph.tsx",
+        "apps/web/src/components/Ui.tsx",
+        "apps/web/src/i18n/index.ts",
+        "apps/web/src/lib/api.ts",
+        "apps/web/src/lib/types.ts",
+        "apps/web/src/lib/uuid.ts",
+        "apps/web/src/restoration/restoration-model.ts",
+        "apps/web/src/restoration/restoration.css"
+      ],
+      "exported_components": [
+        "RestorationDialog"
+      ],
+      "literal_api_fragments": [
+        "/projects/",
+        "/session"
+      ],
+      "evidence": "static_all_file_inventory_and_import_scan; not full behavioral review"
+    },
+    {
+      "path": "apps/web/src/restoration/restoration-model.ts",
+      "sha256": "4775103c0ca767061810d4347527883e3520f002361ab6904839f7d7e0858ad8",
+      "line_count": 355,
+      "extension": ".ts",
+      "imports_in_web": [
+        "apps/web/src/lib/types.ts"
+      ],
+      "exported_components": [],
+      "literal_api_fragments": [],
+      "evidence": "static_all_file_inventory_and_import_scan; not full behavioral review"
+    },
+    {
+      "path": "apps/web/src/restoration/restoration.css",
+      "sha256": "faf5896c36204ef65d103be2d57785b71a0065cde03512d8a83ea930ecd08cb4",
+      "line_count": 135,
+      "extension": ".css",
+      "imports_in_web": [],
+      "exported_components": [],
+      "literal_api_fragments": [],
+      "evidence": "static_all_file_inventory_and_import_scan; not full behavioral review"
+    },
+    {
+      "path": "apps/web/src/site-loading.css",
+      "sha256": "df11db2e08cf2473f161e31611fcc8530b865f6e8200a3c62e3b3eedda22c4c9",
+      "line_count": 189,
+      "extension": ".css",
+      "imports_in_web": [],
+      "exported_components": [],
+      "literal_api_fragments": [],
+      "evidence": "static_all_file_inventory_and_import_scan; not full behavioral review"
+    },
+    {
+      "path": "apps/web/src/studio-styles.css",
+      "sha256": "802a3544e9ebff2eae2a5830d2a648d4a526744fe7a39655ab3b48a35da524ef",
+      "line_count": 25,
+      "extension": ".css",
+      "imports_in_web": [
+        "apps/web/src/account/account-center.css",
+        "apps/web/src/account/account-entry.css",
+        "apps/web/src/account/auth.css",
+        "apps/web/src/account/document-drafts.css",
+        "apps/web/src/ai/composer.css",
+        "apps/web/src/components/choice-motion.css",
+        "apps/web/src/components/deferred-feature.css",
+        "apps/web/src/components/foundation.css",
+        "apps/web/src/components/modal-profiles.css",
+        "apps/web/src/editor/precision-studio.css",
+        "apps/web/src/features.css",
+        "apps/web/src/motion/motion.css",
+        "apps/web/src/refinement.css",
+        "apps/web/src/styles.css",
+        "apps/web/src/theme.css",
+        "apps/web/src/workspace/adaptive.css",
+        "apps/web/src/workspace/command-menu.css",
+        "apps/web/src/workspace/content-redesign.css",
+        "apps/web/src/workspace/dialogs-studio.css",
+        "apps/web/src/workspace/experience.css",
+        "apps/web/src/workspace/studio.css",
+        "apps/web/src/workspace/workspace-views-studio.css",
+        "apps/web/src/workspace/workspace.css"
+      ],
+      "exported_components": [],
+      "literal_api_fragments": [],
+      "evidence": "static_all_file_inventory_and_import_scan; not full behavioral review"
+    },
+    {
+      "path": "apps/web/src/styles.css",
+      "sha256": "09bb6fee5344180d4c528eff41d2a1a8ea118ef48796be2d64608a475d3b05cf",
+      "line_count": 4705,
+      "extension": ".css",
+      "imports_in_web": [],
+      "exported_components": [],
+      "literal_api_fragments": [],
+      "evidence": "static_all_file_inventory_and_import_scan; not full behavioral review"
+    },
+    {
+      "path": "apps/web/src/theme.css",
+      "sha256": "8ea1cf96ebec6275c8365e865f5481f291709590de7abb2c70f2bb4a10a8169b",
+      "line_count": 222,
+      "extension": ".css",
+      "imports_in_web": [],
+      "exported_components": [],
+      "literal_api_fragments": [],
+      "evidence": "static_all_file_inventory_and_import_scan; not full behavioral review"
+    },
+    {
+      "path": "apps/web/src/usage/UsageCapacity.tsx",
+      "sha256": "9ed587a98f116181cf613317d90046d03b2739c1afdb3499d85b04e8d7a5f4d6",
+      "line_count": 106,
+      "extension": ".tsx",
+      "imports_in_web": [
+        "apps/web/src/components/Ui.tsx",
+        "apps/web/src/i18n/index.ts",
+        "apps/web/src/motion/Presence.tsx",
+        "apps/web/src/usage/UsageSkeleton.tsx",
+        "apps/web/src/usage/model.ts",
+        "apps/web/src/usage/useUsageResource.ts"
+      ],
+      "exported_components": [
+        "UsageCapacity"
+      ],
+      "literal_api_fragments": [
+        "/ops"
+      ],
+      "evidence": "static_all_file_inventory_and_import_scan; not full behavioral review"
+    },
+    {
+      "path": "apps/web/src/usage/UsageDashboard.tsx",
+      "sha256": "a65534a290e418840b691c05ecfffe55f666790bbe0ad1ec00c3268053a91cfb",
+      "line_count": 705,
+      "extension": ".tsx",
+      "imports_in_web": [
+        "apps/web/src/components/ChoiceSelect.tsx",
+        "apps/web/src/components/Ui.tsx",
+        "apps/web/src/i18n/index.ts",
+        "apps/web/src/lib/api.ts",
+        "apps/web/src/lib/types.ts",
+        "apps/web/src/motion/Presence.tsx",
+        "apps/web/src/usage/UsageCapacity.tsx",
+        "apps/web/src/usage/UsageInsights.tsx",
+        "apps/web/src/usage/UsageJob.tsx",
+        "apps/web/src/usage/UsageLedger.tsx",
+        "apps/web/src/usage/UsageNumber.tsx",
+        "apps/web/src/usage/UsagePricing.tsx",
+        "apps/web/src/usage/UsageRiver.tsx",
+        "apps/web/src/usage/UsageSkeleton.tsx",
+        "apps/web/src/usage/catalog.ts",
+        "apps/web/src/usage/export.ts",
+        "apps/web/src/usage/model.ts",
+        "apps/web/src/usage/providerBilling.ts",
+        "apps/web/src/usage/usage-refinement.css",
+        "apps/web/src/usage/usage.css",
+        "apps/web/src/usage/useUsageResource.ts"
+      ],
+      "exported_components": [
+        "UsageDashboard"
+      ],
+      "literal_api_fragments": [
+        "/assistant/models",
+        "/models",
+        "/spaces/${encodeURIComponent(space!.id)}/members"
+      ],
+      "evidence": "static_all_file_inventory_and_import_scan; not full behavioral review"
+    },
+    {
+      "path": "apps/web/src/usage/UsageInsights.tsx",
+      "sha256": "cecd415b7ff84b62e90c48ebaa3b395d03d73197bbda8ee5ae656206667b968f",
+      "line_count": 199,
+      "extension": ".tsx",
+      "imports_in_web": [
+        "apps/web/src/components/ChoiceSelect.tsx",
+        "apps/web/src/i18n/index.ts",
+        "apps/web/src/motion/Presence.tsx",
+        "apps/web/src/usage/UsageNumber.tsx",
+        "apps/web/src/usage/UsageTrend.tsx",
+        "apps/web/src/usage/catalog.ts",
+        "apps/web/src/usage/model.ts"
+      ],
+      "exported_components": [
+        "UsageInsights"
+      ],
+      "literal_api_fragments": [],
+      "evidence": "static_all_file_inventory_and_import_scan; not full behavioral review"
+    },
+    {
+      "path": "apps/web/src/usage/UsageJob.tsx",
+      "sha256": "197b36a83e58b0674976f6e93e67ed2cc7e0f1592fd5d80776de3408f97f7f96",
+      "line_count": 541,
+      "extension": ".tsx",
+      "imports_in_web": [
+        "apps/web/src/components/ChoiceSelect.tsx",
+        "apps/web/src/components/Ui.tsx",
+        "apps/web/src/i18n/index.ts",
+        "apps/web/src/lib/api.ts",
+        "apps/web/src/motion/Presence.tsx",
+        "apps/web/src/usage/model.ts",
+        "apps/web/src/usage/providerBilling.ts",
+        "apps/web/src/usage/useUsageResource.ts"
+      ],
+      "exported_components": [
+        "UsageJobContent",
+        "UsagePublicPrices",
+        "UsageJob"
+      ],
+      "literal_api_fragments": [],
+      "evidence": "static_all_file_inventory_and_import_scan; not full behavioral review"
+    },
+    {
+      "path": "apps/web/src/usage/UsageLedger.tsx",
+      "sha256": "1f08d35f16c6b25d8ab9bbf7c80cb6bf9816603a99e7f4cd860a123cb8b78977",
+      "line_count": 363,
+      "extension": ".tsx",
+      "imports_in_web": [
+        "apps/web/src/components/Ui.tsx",
+        "apps/web/src/i18n/index.ts",
+        "apps/web/src/lib/types.ts",
+        "apps/web/src/motion/Presence.tsx",
+        "apps/web/src/motion/usePresence.ts",
+        "apps/web/src/usage/catalog.ts",
+        "apps/web/src/usage/model.ts"
+      ],
+      "exported_components": [
+        "UsageLedger"
+      ],
+      "literal_api_fragments": [],
+      "evidence": "static_all_file_inventory_and_import_scan; not full behavioral review"
+    },
+    {
+      "path": "apps/web/src/usage/UsageNumber.tsx",
+      "sha256": "0cd59d5601090e9b86735c389a41cc6387a983f065dfa7d153519ab43d76a597",
+      "line_count": 23,
+      "extension": ".tsx",
+      "imports_in_web": [
+        "apps/web/src/usage/model.ts"
+      ],
+      "exported_components": [
+        "UsageNumber"
+      ],
+      "literal_api_fragments": [],
+      "evidence": "static_all_file_inventory_and_import_scan; not full behavioral review"
+    },
+    {
+      "path": "apps/web/src/usage/UsagePricing.tsx",
+      "sha256": "60fa96ee9bbbcafff2278f2dbe64b6c53a2c55bd89214eaf20bbdba618bc7552",
+      "line_count": 124,
+      "extension": ".tsx",
+      "imports_in_web": [
+        "apps/web/src/components/ChoiceSelect.tsx",
+        "apps/web/src/components/Ui.tsx",
+        "apps/web/src/i18n/index.ts",
+        "apps/web/src/motion/Presence.tsx",
+        "apps/web/src/usage/UsageSkeleton.tsx",
+        "apps/web/src/usage/catalog.ts",
+        "apps/web/src/usage/model.ts"
+      ],
+      "exported_components": [
+        "UsagePricing"
+      ],
+      "literal_api_fragments": [],
+      "evidence": "static_all_file_inventory_and_import_scan; not full behavioral review"
+    },
+    {
+      "path": "apps/web/src/usage/UsageRiver.tsx",
+      "sha256": "4c9d81fef983c4362a0b49d02580690a7102aba4f96576f4df9a4e826d1f0624",
+      "line_count": 227,
+      "extension": ".tsx",
+      "imports_in_web": [
+        "apps/web/src/i18n/index.ts",
+        "apps/web/src/motion/Presence.tsx",
+        "apps/web/src/usage/UsageNumber.tsx",
+        "apps/web/src/usage/experience-copy.ts",
+        "apps/web/src/usage/model.ts",
+        "apps/web/src/usage/riverModel.ts",
+        "apps/web/src/usage/trend-model.ts"
+      ],
+      "exported_components": [
+        "UsageRiver"
+      ],
+      "literal_api_fragments": [],
+      "evidence": "static_all_file_inventory_and_import_scan; not full behavioral review"
+    },
+    {
+      "path": "apps/web/src/usage/UsageSkeleton.tsx",
+      "sha256": "7c67024cad1b0f5fe3d58df5b5708f8d8751c3e7dadb358a45f8a7728373c7a4",
+      "line_count": 90,
+      "extension": ".tsx",
+      "imports_in_web": [
+        "apps/web/src/i18n/index.ts"
+      ],
+      "exported_components": [
+        "UsageSkeleton"
+      ],
+      "literal_api_fragments": [],
+      "evidence": "static_all_file_inventory_and_import_scan; not full behavioral review"
+    },
+    {
+      "path": "apps/web/src/usage/UsageTrend.tsx",
+      "sha256": "1a27fb557ab5316932f8d4c11794ae0b2687028c81f01bbb442807453cdf3f83",
+      "line_count": 188,
+      "extension": ".tsx",
+      "imports_in_web": [
+        "apps/web/src/i18n/index.ts",
+        "apps/web/src/usage/experience-copy.ts",
+        "apps/web/src/usage/model.ts",
+        "apps/web/src/usage/trend-model.ts"
+      ],
+      "exported_components": [
+        "UsageTrend"
+      ],
+      "literal_api_fragments": [],
+      "evidence": "static_all_file_inventory_and_import_scan; not full behavioral review"
+    },
+    {
+      "path": "apps/web/src/usage/catalog.ts",
+      "sha256": "0040793af909c11522df1012c61e1c75626a8459ad0c2bd95b8756497beca813",
+      "line_count": 131,
+      "extension": ".ts",
+      "imports_in_web": [
+        "apps/web/src/i18n/index.ts",
+        "apps/web/src/usage/model.ts"
+      ],
+      "exported_components": [],
+      "literal_api_fragments": [],
+      "evidence": "static_all_file_inventory_and_import_scan; not full behavioral review"
+    },
+    {
+      "path": "apps/web/src/usage/experience-copy.ts",
+      "sha256": "7c82154125859842ea0c1f0b024b03d3bfa883ae07a889687af086fda91a3aa7",
+      "line_count": 47,
+      "extension": ".ts",
+      "imports_in_web": [
+        "apps/web/src/i18n/index.ts"
+      ],
+      "exported_components": [],
+      "literal_api_fragments": [],
+      "evidence": "static_all_file_inventory_and_import_scan; not full behavioral review"
+    },
+    {
+      "path": "apps/web/src/usage/export.ts",
+      "sha256": "198f00b8ef3ff4319227b54e9f5b9840efca4b4a92c74fb8f8518ea2947fd173",
+      "line_count": 53,
+      "extension": ".ts",
+      "imports_in_web": [
+        "apps/web/src/usage/model.ts"
+      ],
+      "exported_components": [],
+      "literal_api_fragments": [],
+      "evidence": "static_all_file_inventory_and_import_scan; not full behavioral review"
+    },
+    {
+      "path": "apps/web/src/usage/model.ts",
+      "sha256": "4ed79ac324d94641c797d01caad36724ffe98065740136528a2cfd3771209b45",
+      "line_count": 261,
+      "extension": ".ts",
+      "imports_in_web": [
+        "apps/web/src/i18n/index.ts"
+      ],
+      "exported_components": [],
+      "literal_api_fragments": [
+        "/ops/usage",
+        "/usage"
+      ],
+      "evidence": "static_all_file_inventory_and_import_scan; not full behavioral review"
+    },
+    {
+      "path": "apps/web/src/usage/providerBilling.ts",
+      "sha256": "0b4cd2091d16071c4b09ae0761a08ab8dda74d18a819b63a74a709ad8b8e32f5",
+      "line_count": 208,
+      "extension": ".ts",
+      "imports_in_web": [
+        "apps/web/src/i18n/index.ts",
+        "apps/web/src/usage/model.ts"
+      ],
+      "exported_components": [],
+      "literal_api_fragments": [
+        "/ops",
+        "/usage/model-prices"
+      ],
+      "evidence": "static_all_file_inventory_and_import_scan; not full behavioral review"
+    },
+    {
+      "path": "apps/web/src/usage/riverModel.ts",
+      "sha256": "826f6343bae4fa1ac44a0474431c85758e9c9333b3eb7b802c01b52d73aeb6d8",
+      "line_count": 85,
+      "extension": ".ts",
+      "imports_in_web": [
+        "apps/web/src/usage/model.ts",
+        "apps/web/src/usage/trend-model.ts"
+      ],
+      "exported_components": [],
+      "literal_api_fragments": [],
+      "evidence": "static_all_file_inventory_and_import_scan; not full behavioral review"
+    },
+    {
+      "path": "apps/web/src/usage/trend-model.ts",
+      "sha256": "f8da6bcc4e1cfa3af1c8d23972cf76c761d22ecd38fca55fd5b8dccf032bc0f5",
+      "line_count": 71,
+      "extension": ".ts",
+      "imports_in_web": [
+        "apps/web/src/usage/model.ts"
+      ],
+      "exported_components": [],
+      "literal_api_fragments": [],
+      "evidence": "static_all_file_inventory_and_import_scan; not full behavioral review"
+    },
+    {
+      "path": "apps/web/src/usage/usage-refinement.css",
+      "sha256": "cdd7859f5b514e8fa132122fa498e074f363af6fb96b9931ae04eb1e6aaaf2e1",
+      "line_count": 603,
+      "extension": ".css",
+      "imports_in_web": [],
+      "exported_components": [],
+      "literal_api_fragments": [],
+      "evidence": "static_all_file_inventory_and_import_scan; not full behavioral review"
+    },
+    {
+      "path": "apps/web/src/usage/usage.css",
+      "sha256": "cf3521ddf56792e0ad14cd693f8468d2b769ba5422fd11f8606d7b9859ae1506",
+      "line_count": 1993,
+      "extension": ".css",
+      "imports_in_web": [],
+      "exported_components": [],
+      "literal_api_fragments": [],
+      "evidence": "static_all_file_inventory_and_import_scan; not full behavioral review"
+    },
+    {
+      "path": "apps/web/src/usage/useUsageResource.ts",
+      "sha256": "2df43c5494c4dc778ea3a9c1bb1ac339d5294ffbc22996e46a90daa5bb9f3042",
+      "line_count": 32,
+      "extension": ".ts",
+      "imports_in_web": [
+        "apps/web/src/lib/api.ts"
+      ],
+      "exported_components": [],
+      "literal_api_fragments": [],
+      "evidence": "static_all_file_inventory_and_import_scan; not full behavioral review"
+    },
+    {
+      "path": "apps/web/src/workspace/CommandMenu.tsx",
+      "sha256": "a315254feb0571d783b7294106168830e0a577e74d0a191e14fbe709792e6764",
+      "line_count": 254,
+      "extension": ".tsx",
+      "imports_in_web": [
+        "apps/web/src/components/StudioGlyph.tsx",
+        "apps/web/src/components/Ui.tsx",
+        "apps/web/src/components/choice-model.ts",
+        "apps/web/src/i18n/index.ts",
+        "apps/web/src/workspace/command-model.ts"
+      ],
+      "exported_components": [
+        "CommandMenu"
+      ],
+      "literal_api_fragments": [],
+      "evidence": "static_all_file_inventory_and_import_scan; not full behavioral review"
+    },
+    {
+      "path": "apps/web/src/workspace/FloatingPanel.tsx",
+      "sha256": "2c952e3742c399025f9850de537795fd4c9821e98f940fdb4882916727db278d",
+      "line_count": 785,
+      "extension": ".tsx",
+      "imports_in_web": [
+        "apps/web/src/components/Ui.tsx",
+        "apps/web/src/i18n/index.ts",
+        "apps/web/src/motion/registry.ts",
+        "apps/web/src/motion/usePresence.ts",
+        "apps/web/src/workspace/PanelChromeContext.tsx",
+        "apps/web/src/workspace/panel.css",
+        "apps/web/src/workspace/studio-copy.ts",
+        "apps/web/src/workspace/touch-studio.css",
+        "apps/web/src/workspace/useWorkspaceLayout.ts"
+      ],
+      "exported_components": [
+        "FloatingPanel"
+      ],
+      "literal_api_fragments": [],
+      "evidence": "static_all_file_inventory_and_import_scan; not full behavioral review"
+    },
+    {
+      "path": "apps/web/src/workspace/PanelChromeContext.tsx",
+      "sha256": "e232bf3cda33749bcf4805d1c55a0c3f89dd37a5691a4ab8354d7280f781cb7b",
+      "line_count": 10,
+      "extension": ".tsx",
+      "imports_in_web": [],
+      "exported_components": [
+        "PanelChromeContext"
+      ],
+      "literal_api_fragments": [],
+      "evidence": "static_all_file_inventory_and_import_scan; not full behavioral review"
+    },
+    {
+      "path": "apps/web/src/workspace/PanelNavigation.tsx",
+      "sha256": "b88c070f155c4270244fbe1b362f11d167dd649a9547ead89f8e174d48001692",
+      "line_count": 108,
+      "extension": ".tsx",
+      "imports_in_web": [
+        "apps/web/src/workspace/interaction-copy.ts"
+      ],
+      "exported_components": [
+        "PanelNavigation"
+      ],
+      "literal_api_fragments": [],
+      "evidence": "static_all_file_inventory_and_import_scan; not full behavioral review"
+    },
+    {
+      "path": "apps/web/src/workspace/StudioWelcome.tsx",
+      "sha256": "56a1117bcbdbd9c0f810cbf6f49901621fd71099b9a732a22b0518c64ae042d3",
+      "line_count": 80,
+      "extension": ".tsx",
+      "imports_in_web": [
+        "apps/web/src/components/StudioGlyph.tsx",
+        "apps/web/src/i18n/index.ts"
+      ],
+      "exported_components": [
+        "StudioWelcome"
+      ],
+      "literal_api_fragments": [],
+      "evidence": "static_all_file_inventory_and_import_scan; not full behavioral review"
+    },
+    {
+      "path": "apps/web/src/workspace/ToolDock.tsx",
+      "sha256": "690ca30877801dee2e37805b2266a66d479ad9c7ea1baabaf19fbf56b63b31f7",
+      "line_count": 232,
+      "extension": ".tsx",
+      "imports_in_web": [
+        "apps/web/src/components/StudioGlyph.tsx",
+        "apps/web/src/editor/ToolInspector.tsx",
+        "apps/web/src/i18n/index.ts",
+        "apps/web/src/motion/usePresence.ts"
+      ],
+      "exported_components": [
+        "ADJUSTMENT_GROUPS",
+        "ToolDock"
+      ],
+      "literal_api_fragments": [],
+      "evidence": "static_all_file_inventory_and_import_scan; not full behavioral review"
+    },
+    {
+      "path": "apps/web/src/workspace/ToolOverview.tsx",
+      "sha256": "31b833aa9000b196fff0fdb79d454aacbd95b25ae0ae9ef2888d751a1feecc74",
+      "line_count": 76,
+      "extension": ".tsx",
+      "imports_in_web": [
+        "apps/web/src/editor/ToolInspector.tsx",
+        "apps/web/src/i18n/index.ts",
+        "apps/web/src/workspace/interaction-copy.ts"
+      ],
+      "exported_components": [
+        "ToolOverview"
+      ],
+      "literal_api_fragments": [],
+      "evidence": "static_all_file_inventory_and_import_scan; not full behavioral review"
+    },
+    {
+      "path": "apps/web/src/workspace/WorkspaceNavigation.tsx",
+      "sha256": "bd38c9dd11400b4cd93dcaeebce84f88ee75e1d4b353e1268b085379a498def0",
+      "line_count": 132,
+      "extension": ".tsx",
+      "imports_in_web": [
+        "apps/web/src/components/StudioGlyph.tsx",
+        "apps/web/src/components/Ui.tsx",
+        "apps/web/src/i18n/LanguageSelect.tsx",
+        "apps/web/src/i18n/index.ts",
+        "apps/web/src/lib/types.ts",
+        "apps/web/src/workspace/useStudioTheme.ts"
+      ],
+      "exported_components": [
+        "WorkspaceNavigation",
+        "WorkspaceSettings"
+      ],
+      "literal_api_fragments": [],
+      "evidence": "static_all_file_inventory_and_import_scan; not full behavioral review"
+    },
+    {
+      "path": "apps/web/src/workspace/adaptive.css",
+      "sha256": "cd3508216d7cff199795b8a0fca343a0fcc512fd772a979d3b983de435941ebb",
+      "line_count": 644,
+      "extension": ".css",
+      "imports_in_web": [],
+      "exported_components": [],
+      "literal_api_fragments": [],
+      "evidence": "static_all_file_inventory_and_import_scan; not full behavioral review"
+    },
+    {
+      "path": "apps/web/src/workspace/command-menu.css",
+      "sha256": "a915a48044e664853d0d0d61c770240895dda090c572e66b4158cd4138ddc44f",
+      "line_count": 302,
+      "extension": ".css",
+      "imports_in_web": [],
+      "exported_components": [],
+      "literal_api_fragments": [],
+      "evidence": "static_all_file_inventory_and_import_scan; not full behavioral review"
+    },
+    {
+      "path": "apps/web/src/workspace/command-model.ts",
+      "sha256": "5bcee361319969b19ecebe1edf65896611120b73007c97e7c960cd59c95c70dc",
+      "line_count": 39,
+      "extension": ".ts",
+      "imports_in_web": [],
+      "exported_components": [],
+      "literal_api_fragments": [],
+      "evidence": "static_all_file_inventory_and_import_scan; not full behavioral review"
+    },
+    {
+      "path": "apps/web/src/workspace/content-redesign.css",
+      "sha256": "209da182083bf352a51bbe8f32405082fcc0d1239bb855dc5b0bff7bb7f329d3",
+      "line_count": 436,
+      "extension": ".css",
+      "imports_in_web": [],
+      "exported_components": [],
+      "literal_api_fragments": [],
+      "evidence": "static_all_file_inventory_and_import_scan; not full behavioral review"
+    },
+    {
+      "path": "apps/web/src/workspace/dialogs-studio.css",
+      "sha256": "9c83dc78a4d62b0bcc9cb9bc33cf9084a1cb25195813a97b44c91a99942e31f1",
+      "line_count": 387,
+      "extension": ".css",
+      "imports_in_web": [],
+      "exported_components": [],
+      "literal_api_fragments": [],
+      "evidence": "static_all_file_inventory_and_import_scan; not full behavioral review"
+    },
+    {
+      "path": "apps/web/src/workspace/experience.css",
+      "sha256": "8406db55b8794d5bd99cf3de7e545d155b9d7f48a49ec32c18287e3da7604d1b",
+      "line_count": 1444,
+      "extension": ".css",
+      "imports_in_web": [],
+      "exported_components": [],
+      "literal_api_fragments": [],
+      "evidence": "static_all_file_inventory_and_import_scan; not full behavioral review"
+    },
+    {
+      "path": "apps/web/src/workspace/interaction-copy.ts",
+      "sha256": "c7446ed5431850b744c24fa7424f01b1f053d2c635e57caebdc72206ab1cd9fa",
+      "line_count": 138,
+      "extension": ".ts",
+      "imports_in_web": [
+        "apps/web/src/i18n/index.ts"
+      ],
+      "exported_components": [],
+      "literal_api_fragments": [],
+      "evidence": "static_all_file_inventory_and_import_scan; not full behavioral review"
+    },
+    {
+      "path": "apps/web/src/workspace/panel.css",
+      "sha256": "f02f41862a3d2311e1f2bf8ee16d5053ed2f5f5cd178b1c73b7a4465857ab531",
+      "line_count": 374,
+      "extension": ".css",
+      "imports_in_web": [],
+      "exported_components": [],
+      "literal_api_fragments": [],
+      "evidence": "static_all_file_inventory_and_import_scan; not full behavioral review"
+    },
+    {
+      "path": "apps/web/src/workspace/panelGeometry.ts",
+      "sha256": "aec9ec1df6d0959220b26763b4c0da28bc2efb2e2f97ebcd7b85415e93632ab4",
+      "line_count": 387,
+      "extension": ".ts",
+      "imports_in_web": [],
+      "exported_components": [
+        "PANEL_MARGIN"
+      ],
+      "literal_api_fragments": [],
+      "evidence": "static_all_file_inventory_and_import_scan; not full behavioral review"
+    },
+    {
+      "path": "apps/web/src/workspace/studio-copy.ts",
+      "sha256": "242a8aad96cde8d4ed8b0fc3d63983955296a36a9844990695c636d8d54a810d",
+      "line_count": 76,
+      "extension": ".ts",
+      "imports_in_web": [
+        "apps/web/src/i18n/index.ts"
+      ],
+      "exported_components": [],
+      "literal_api_fragments": [],
+      "evidence": "static_all_file_inventory_and_import_scan; not full behavioral review"
+    },
+    {
+      "path": "apps/web/src/workspace/studio.css",
+      "sha256": "fd4859d6a884a5d5236900152cbe9902677512d19366554435a84b7a0fa7ab0e",
+      "line_count": 1664,
+      "extension": ".css",
+      "imports_in_web": [],
+      "exported_components": [],
+      "literal_api_fragments": [],
+      "evidence": "static_all_file_inventory_and_import_scan; not full behavioral review"
+    },
+    {
+      "path": "apps/web/src/workspace/touch-studio.css",
+      "sha256": "38146d5d76b5e167effc2783ff0e3d601ff332e16a516842357df09d03da56d3",
+      "line_count": 266,
+      "extension": ".css",
+      "imports_in_web": [],
+      "exported_components": [],
+      "literal_api_fragments": [],
+      "evidence": "static_all_file_inventory_and_import_scan; not full behavioral review"
+    },
+    {
+      "path": "apps/web/src/workspace/useStudioTheme.ts",
+      "sha256": "aae8e5357a1f9254f89328043d076bc35a0d09f7340a7a943ca94ca3e9938ef0",
+      "line_count": 63,
+      "extension": ".ts",
+      "imports_in_web": [],
+      "exported_components": [],
+      "literal_api_fragments": [],
+      "evidence": "static_all_file_inventory_and_import_scan; not full behavioral review"
+    },
+    {
+      "path": "apps/web/src/workspace/useWorkspaceLayout.ts",
+      "sha256": "43b8186bfdce3b7dbe3904fb51ef43b1ecb223a04527bbd4d44a5663581c3fb6",
+      "line_count": 306,
+      "extension": ".ts",
+      "imports_in_web": [
+        "apps/web/src/workspace/panelGeometry.ts"
+      ],
+      "exported_components": [],
+      "literal_api_fragments": [],
+      "evidence": "static_all_file_inventory_and_import_scan; not full behavioral review"
+    },
+    {
+      "path": "apps/web/src/workspace/workspace-views-studio.css",
+      "sha256": "924c7730d5014c963f7cf2cd8cb5af0f023d8383d4c05ce2c04da6ddf709b7f3",
+      "line_count": 1442,
+      "extension": ".css",
+      "imports_in_web": [],
+      "exported_components": [],
+      "literal_api_fragments": [],
+      "evidence": "static_all_file_inventory_and_import_scan; not full behavioral review"
+    },
+    {
+      "path": "apps/web/src/workspace/workspace.css",
+      "sha256": "5643b7fc2c0290138b8d1a8fe238204046a6d289ad7154ecfde8c55519acdd50",
+      "line_count": 2343,
+      "extension": ".css",
+      "imports_in_web": [],
+      "exported_components": [],
+      "literal_api_fragments": [],
+      "evidence": "static_all_file_inventory_and_import_scan; not full behavioral review"
+    }
+  ]
+}

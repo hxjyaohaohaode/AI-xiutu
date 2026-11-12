@@ -1,4 +1,6 @@
+import { navigationAiV2English } from './navigation-ai-v2-messages';
 import { nativeGradeEnglish } from './native-grade-messages';
+import { viewsRedesignEnglish } from './views-redesign-messages';
 import { restorationEnglish } from './restoration-messages';
 import { aiRedesignEnglish } from './ai-redesign-messages';
 import { finalEnglish } from './final-messages';
@@ -17,6 +19,7 @@ import { editorEnglish } from './editor-messages';
 
 /** Application-authored copy only. Source keys keep migration reviewable. */
 export const english: Readonly<Record<string, string>> = {
+  ...navigationAiV2English,
   ...appEnglish,
   ...residualEnglish,
   ...additionalEnglish,
@@ -33,12 +36,16 @@ export const english: Readonly<Record<string, string>> = {
   ...aiRedesignEnglish,
   ...nativeGradeEnglish,
   ...restorationEnglish,
+  ...viewsRedesignEnglish,
   '确认 AI 调整': 'Apply AI adjustments',
-  '本地编辑': 'Local editing',
-  "格式像素上限": "Pixel limits by format",
-  "高精度导入暂不可用，普通图片仍可在本地编辑。": "High-precision import is unavailable. Standard images can still be edited locally.",
-  "与 PSD 合成图；RAW / EXR / Radiance 暂不可用。": "and PSD composites; RAW, EXR and Radiance are currently unavailable.",
-  "原件和派生图计入空间存储。关闭后暂停上传，已开始的处理会继续。": "Originals and derived images use workspace storage. Closing pauses uploads; processing already started continues.",
+  本地编辑: 'Local editing',
+  格式像素上限: 'Pixel limits by format',
+  '高精度导入暂不可用，普通图片仍可在本地编辑。':
+    'High-precision import is unavailable. Standard images can still be edited locally.',
+  '与 PSD 合成图；RAW / EXR / Radiance 暂不可用。':
+    'and PSD composites; RAW, EXR and Radiance are currently unavailable.',
+  '原件和派生图计入空间存储。关闭后暂停上传，已开始的处理会继续。':
+    'Originals and derived images use workspace storage. Closing pauses uploads; processing already started continues.',
   语言: 'Language',
   简体中文: 'Simplified Chinese',
   繁體中文: 'Traditional Chinese',

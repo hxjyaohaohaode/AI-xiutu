@@ -1,5 +1,6 @@
 import { t } from '../i18n';
 import { ChoiceSelect } from './ChoiceSelect';
+import { SquishSwitch } from './control-motion';
 import { useEffect, useRef, useState } from 'react';
 import { Plus, ArrowClockwise } from '@phosphor-icons/react';
 import { api, jsonRequest, errorMessage, formatDate } from '../lib/api';
@@ -269,7 +270,12 @@ export function AssistantOpsPanel() {
     );
   }
   return (
-    <section className="assistant-ops" aria-label={t('实时语音与智能体运营配置')}>
+    <section
+      className="assistant-ops"
+      aria-label={t('实时语音与智能体运营配置')}
+      data-catalog-state={catalogLoaded ? 'ready' : recordsLoading ? 'loading' : 'error'}
+      data-record-state={recordsLoading ? 'loading' : recordsLoaded ? 'ready' : 'error'}
+    >
       <header className="section-heading">
         <div>
           <h2>{t('语音与协作模型')}</h2>
@@ -289,8 +295,12 @@ export function AssistantOpsPanel() {
       {catalogLoaded ? (
         <>
           <div className="ops-readiness" role="status">
-            <span data-ready={ready}>{t('文字协作')} · {ready ? t('已配置') : t('未就绪')}</span>
-            <span data-ready={voiceReady}>{t('实时语音')} · {voiceReady ? t('已配置') : t('未就绪')}</span>
+            <span data-ready={ready}>
+              {t('文字协作')} · {ready ? t('已配置') : t('未就绪')}
+            </span>
+            <span data-ready={voiceReady}>
+              {t('实时语音')} · {voiceReady ? t('已配置') : t('未就绪')}
+            </span>
           </div>
           <div className="assistant-ops-layout">
             <div className="assistant-model-list">
@@ -395,15 +405,13 @@ export function AssistantOpsPanel() {
                   onChange={(e) => setSettings({ ...settings, label: e.target.value })}
                 />
               </label>
-              <label className="check-label">
-                <input
-                  disabled={busy}
-                  type="checkbox"
-                  checked={settings.enabled}
-                  onChange={(e) => setSettings({ ...settings, enabled: e.target.checked })}
-                />
-                {t('启用此模型')}
-              </label>
+              <SquishSwitch
+                className="ops-switch"
+                label={t('启用此模型')}
+                disabled={busy}
+                checked={settings.enabled}
+                onCheckedChange={(enabled) => setSettings({ ...settings, enabled })}
+              />
               <label>
                 {t('每轮服务点')}
                 <input
@@ -449,35 +457,29 @@ export function AssistantOpsPanel() {
                 </>
               ) : (
                 <>
-                  <label className="check-label">
-                    <input
-                      disabled={busy}
-                      type="checkbox"
-                      checked={settings.imageInput}
-                      onChange={(e) => setSettings({ ...settings, imageInput: e.target.checked })}
-                    />
-                    {t('图像输入')}
-                  </label>
-                  <label className="check-label">
-                    <input
-                      disabled={busy}
-                      type="checkbox"
-                      checked={settings.webSearch}
-                      onChange={(e) => setSettings({ ...settings, webSearch: e.target.checked })}
-                    />
-                    {t('公开网络检索')}
-                  </label>
-                  <label className="check-label">
-                    <input
-                      type="checkbox"
-                      checked={settings.webImageSearch === true}
-                      disabled={busy || !settings.webSearch}
-                      onChange={(e) =>
-                        setSettings({ ...settings, webImageSearch: e.target.checked })
-                      }
-                    />
-                    {t('公开图片检索')}
-                  </label>
+                  <SquishSwitch
+                    className="ops-switch"
+                    label={t('图像输入')}
+                    disabled={busy}
+                    checked={settings.imageInput}
+                    onCheckedChange={(imageInput) => setSettings({ ...settings, imageInput })}
+                  />
+                  <SquishSwitch
+                    className="ops-switch"
+                    label={t('公开网络检索')}
+                    disabled={busy}
+                    checked={settings.webSearch}
+                    onCheckedChange={(webSearch) => setSettings({ ...settings, webSearch })}
+                  />
+                  <SquishSwitch
+                    className="ops-switch"
+                    label={t('公开图片检索')}
+                    checked={settings.webImageSearch === true}
+                    disabled={busy || !settings.webSearch}
+                    onCheckedChange={(webImageSearch) =>
+                      setSettings({ ...settings, webImageSearch })
+                    }
+                  />
                   <label>
                     {t('推理参数')}
                     <ChoiceSelect
@@ -534,7 +536,9 @@ export function AssistantOpsPanel() {
                     max={outputBudgetMax}
                     step={256}
                     value={settings.maxOutputTokens}
-                    onChange={(event) => setSettings({ ...settings, maxOutputTokens: Number(event.target.value) })}
+                    onChange={(event) =>
+                      setSettings({ ...settings, maxOutputTokens: Number(event.target.value) })
+                    }
                   />
                 </label>
               )}
@@ -548,7 +552,9 @@ export function AssistantOpsPanel() {
                     max={responseProfile?.contextWindowTokens ?? 2000000}
                     step={1}
                     value={settings.contextWindowTokens ?? 32768}
-                    onChange={(event) => setSettings({ ...settings, contextWindowTokens: Number(event.target.value) })}
+                    onChange={(event) =>
+                      setSettings({ ...settings, contextWindowTokens: Number(event.target.value) })
+                    }
                   />
                 </label>
               )}
@@ -562,7 +568,9 @@ export function AssistantOpsPanel() {
                     max={32768}
                     step={1}
                     value={settings.visualTokenReserve ?? 4096}
-                    onChange={(event) => setSettings({ ...settings, visualTokenReserve: Number(event.target.value) })}
+                    onChange={(event) =>
+                      setSettings({ ...settings, visualTokenReserve: Number(event.target.value) })
+                    }
                   />
                 </label>
               )}
@@ -638,14 +646,14 @@ export function AssistantOpsPanel() {
                 {(['turn', 'voice'] as const).flatMap((kind) =>
                   (kind === 'turn' ? unknown.turns : unknown.voices).map((record) => (
                     <tr key={record.id}>
-                      <td>
+                      <td data-label={t('类型 / 标识')}>
                         {kind === 'turn' ? t('文字协作') : t('实时语音')}
                         <small>{record.id}</small>
                       </td>
-                      <td>{record.model_id}</td>
-                      <td>{record.error_code}</td>
-                      <td>{formatDate(record.created_at)}</td>
-                      <td>
+                      <td data-label={t('模型')}>{record.model_id}</td>
+                      <td data-label={t('状态原因')}>{record.error_code}</td>
+                      <td data-label={t('发生时间')}>{formatDate(record.created_at)}</td>
+                      <td data-label={t('处理')}>
                         <button
                           className="text-button"
                           disabled={busy || recordsLoading}

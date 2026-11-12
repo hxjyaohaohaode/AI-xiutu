@@ -1,0 +1,2675 @@
+{
+  "schema_version": 2,
+  "canonical_path": "docs/research/PHOTO-EDITING-FEATURE-MATRIX.md",
+  "canonical_blob": "d54aa0082947f9c0055671267b39cd679db7d94c",
+  "native_sha": "9df0e9c06787bce270f4fa03502d81ed3097d872",
+  "integration_parent_sha": "80f3968dc5678f2f43c4f8353665564fd371a69d",
+  "source_scan_sha": "bb9e126cd668eb87d53548fbcdef773982f284a4",
+  "counts": {
+    "部分": 85,
+    "已验": 15,
+    "缺口": 11
+  },
+  "identity_name_and_full_state_changes_from_6c": [],
+  "evidence_row_changes_from_6c": [
+    "R01"
+  ],
+  "acceptance_changes_from_6c": [],
+  "current_redesign_browser_acceptance": "pending",
+  "rows": [
+    {
+      "id": "R01",
+      "name": "拖动时原尺寸清晰",
+      "original_state": "部分",
+      "original_evidence": "**部分**。预算内拖动保持原尺寸。Windows Edge 实测 Canon 16.5MP 原像素裁片，曝光、曲线、饱和度、HSL 和窄屏触控曝光首帧 96–205ms、17–28 帧、p95 帧间隔 103–198ms。Nikon 12.18MP 实拍绿色 HSL 首帧 139ms、34 帧。以上停下后逐像素等于参考。默认预算 4.19MP，V4 上限 16.78MP、边长 8192。专业母版已在 45.75MP 实拍边导出边持按曝光。普通 SDR JPEG 的 45.44/60.22MP 实拍在四视口放大持按各有 48 帧，首变化 18.2–31.2ms，桌面可同时下载全尺寸 PNG16。[JPEG 实测](#r01-普通大图-jpeg-母版调色)。在支持 WebGPU 的实测电脑上，生产构建对 45.75/61.01MP RAW 适屏持按显示 45–47 个固定尺寸变化帧，首变化 94–127ms，最长间隔 104–141ms。同两张 RAW 在中间缩放级别维持显示所需密度，四视口持按均有 48 帧，首变化 18.5–37.8ms。切到已加载的 1:1 需 36–64ms。紧凑布局在窄屏和横屏持按时保持完整预览。[放大实测](#r01-和-f07-放大预览与原像素窗口)。CPU 适屏路径曝光约 7 秒。HEIC PQ、Ultra HDR JPEG 和 Nikon HLG 的同源适屏持续调色也已实测。[1:1 实测](#r01-和-f07-导出期间持续原像素调色) · [适屏实测](#r01-和-f07-原尺寸开发后的适屏性能) · [内核][ours-edit]",
+      "original_acceptance": "**P0**。在 1:1 用斜边、细字和实拍录制 2.5 秒手势，清晰度下降、切代理、抬手才变化均失败。已有脚本门槛为首变化 <240ms、最长间隔 <350ms、持按至少 6 帧。继续覆盖修复、液化、局部、组合与高熵大图。记录峰值内存、1:1 细节和移动真机上限。[手势脚本][ours-preview-qa]",
+      "original_row": "| R01 拖动时原尺寸清晰                | PC 宣称无损处理，未公开手势期间栅格或帧时。[官网][xt-pc] | PC 宣称可打开 10 亿像素级图片，未公开实时运算分辨率。[PC][mt-pc]                                                        | GEGL 的 ROI、瓦片缓存及 darktable pixelpipe。见 [参考实现索引](#参考实现索引)。                                                | **部分**。预算内拖动保持原尺寸。Windows Edge 实测 Canon 16.5MP 原像素裁片，曝光、曲线、饱和度、HSL 和窄屏触控曝光首帧 96–205ms、17–28 帧、p95 帧间隔 103–198ms。Nikon 12.18MP 实拍绿色 HSL 首帧 139ms、34 帧。以上停下后逐像素等于参考。默认预算 4.19MP，V4 上限 16.78MP、边长 8192。专业母版已在 45.75MP 实拍边导出边持按曝光。普通 SDR JPEG 的 45.44/60.22MP 实拍在四视口放大持按各有 48 帧，首变化 18.2–31.2ms，桌面可同时下载全尺寸 PNG16。[JPEG 实测](#r01-普通大图-jpeg-母版调色)。在支持 WebGPU 的实测电脑上，生产构建对 45.75/61.01MP RAW 适屏持按显示 45–47 个固定尺寸变化帧，首变化 94–127ms，最长间隔 104–141ms。同两张 RAW 在中间缩放级别维持显示所需密度，四视口持按均有 48 帧，首变化 18.5–37.8ms。切到已加载的 1:1 需 36–64ms。紧凑布局在窄屏和横屏持按时保持完整预览。[放大实测](#r01-和-f07-放大预览与原像素窗口)。CPU 适屏路径曝光约 7 秒。HEIC PQ、Ultra HDR JPEG 和 Nikon HLG 的同源适屏持续调色也已实测。[1:1 实测](#r01-和-f07-导出期间持续原像素调色) · [适屏实测](#r01-和-f07-原尺寸开发后的适屏性能) · [内核][ours-edit] | **P0**。在 1:1 用斜边、细字和实拍录制 2.5 秒手势，清晰度下降、切代理、抬手才变化均失败。已有脚本门槛为首变化 <240ms、最长间隔 <350ms、持按至少 6 帧。继续覆盖修复、液化、局部、组合与高熵大图。记录峰值内存、1:1 细节和移动真机上限。[手势脚本][ours-preview-qa] |",
+      "flow_ids": [
+        "FLOW-08",
+        "FLOW-23"
+      ],
+      "source_paths": [
+        "apps/web/src/editor/CanvasStage.tsx",
+        "apps/web/src/editor/canvas-gesture.ts",
+        "apps/web/src/components/ImagePreview.tsx",
+        "apps/web/src/editor/useStagePreviews.ts",
+        "apps/web/src/media/MediaSourceViewer.tsx",
+        "apps/web/src/media/NativeGradeControls.tsx",
+        "apps/web/src/media/native-grade-model.ts",
+        "apps/web/src/media/useLinearFitPreview.ts",
+        "apps/web/src/media/useMasterPreview.ts"
+      ],
+      "this_round_treatment": [
+        "FLOW-08：画布 chrome 减量、工具与精细 SVG 对齐；原始坐标、取色、比较和像素引擎不改。",
+        "FLOW-23：继承 9df 的物理 DPR 1:1 与 496bed2 SDR JPEG 母版；source SHA/expectedVersion、curves/regions 能力和原坐标仍权威。"
+      ],
+      "capability_and_acceptance_boundary": "原件/母版由真实能力门禁、源 hash 和版本约束；上游硬件/像素实测属于原有证据，本轮布局与截图不能自动算通过。"
+    },
+    {
+      "id": "R02",
+      "name": "超预算大图与 1:1 瓦片",
+      "original_state": "部分",
+      "original_evidence": "**部分**。200MP 级静态原件保留及合成样本局部已验。实测 24.24/45.75/61.01MP 相机 RAW，后两张各验证 84,000 个跨瓦片窗口重叠像素一致，并完成全尺寸母版下载。桌面鼠标和模拟平板触控完成 1:1 移动、放大及调色。一般 V4 编辑预算单独生效。[实拍复测](#r02-和-f04-真实大幅相机-raw) · [媒体][ours-media]",
+      "original_acceptance": "**P0**。在实拍 24/45/61MP 或合法公开拼接原图上，1:1 移动、缩放、跨瓦片局部处理，核对像素接缝与分配峰值。继续验宽窗、长手势、弱网和移动真机。",
+      "original_row": "| R02 超预算大图与 1:1 瓦片 | PC 无损处理宣传，无像素预算细节。[官网][xt-pc] | PC 打开大图宣传无编辑或峰值内存保证。[PC][mt-pc] | GEGL、libvips 的按需区域与瓦片失效。 | **部分**。200MP 级静态原件保留及合成样本局部已验。实测 24.24/45.75/61.01MP 相机 RAW，后两张各验证 84,000 个跨瓦片窗口重叠像素一致，并完成全尺寸母版下载。桌面鼠标和模拟平板触控完成 1:1 移动、放大及调色。一般 V4 编辑预算单独生效。[实拍复测](#r02-和-f04-真实大幅相机-raw) · [媒体][ours-media] | **P0**。在实拍 24/45/61MP 或合法公开拼接原图上，1:1 移动、缩放、跨瓦片局部处理，核对像素接缝与分配峰值。继续验宽窗、长手势、弱网和移动真机。 |",
+      "flow_ids": [
+        "FLOW-08",
+        "FLOW-22",
+        "FLOW-23"
+      ],
+      "source_paths": [
+        "apps/web/src/editor/CanvasStage.tsx",
+        "apps/web/src/editor/canvas-gesture.ts",
+        "apps/web/src/components/ImagePreview.tsx",
+        "apps/web/src/editor/useStagePreviews.ts",
+        "apps/web/src/components/MediaImportDialog.tsx",
+        "apps/web/src/components/ImportSettings.tsx",
+        "apps/web/src/media/MediaSourceViewer.tsx",
+        "apps/web/src/media/NativeGradeControls.tsx",
+        "apps/web/src/media/native-grade-model.ts",
+        "apps/web/src/media/useLinearFitPreview.ts",
+        "apps/web/src/media/useMasterPreview.ts"
+      ],
+      "this_round_treatment": [
+        "FLOW-08：画布 chrome 减量、工具与精细 SVG 对齐；原始坐标、取色、比较和像素引擎不改。",
+        "FLOW-22：专业导入保留源能力/预算提前提示；导入弹层独立尺寸，未复写新上游能力。",
+        "FLOW-23：继承 9df 的物理 DPR 1:1 与 496bed2 SDR JPEG 母版；source SHA/expectedVersion、curves/regions 能力和原坐标仍权威。"
+      ],
+      "capability_and_acceptance_boundary": "原件/母版由真实能力门禁、源 hash 和版本约束；上游硬件/像素实测属于原有证据，本轮布局与截图不能自动算通过。"
+    },
+    {
+      "id": "R03",
+      "name": "即时取消、撤销与重做",
+      "original_state": "已验（浏览器基础路径）",
+      "original_evidence": "**已验（浏览器基础路径）**。编辑草稿、确认、取消、Undo、Redo 和版本恢复可用。重型连续命令与崩溃恢复需要组合回归。[验收][ours-qa]",
+      "original_acceptance": "**P0**。每种拖拽工具分别在指针取消、失焦、Esc、切工具与重开时校验快照。一次手势落一条记录，取消与撤销像素一致。",
+      "original_row": "| R03 即时取消、撤销与重做            | —                                                        | 官方编辑教程有确认和保存，持按取消语义未说明。[调色][mt-color]                                                          | Snapseed Stacks 可回看和重调工具，PhotoDemon 独立撤销机制。[操作栈][sn-stack]                                                  | **已验（浏览器基础路径）**。编辑草稿、确认、取消、Undo、Redo 和版本恢复可用。重型连续命令与崩溃恢复需要组合回归。[验收][ours-qa]                                                                                                                                                        | **P0**。每种拖拽工具分别在指针取消、失焦、Esc、切工具与重开时校验快照。一次手势落一条记录，取消与撤销像素一致。                                                                                                                                  |",
+      "flow_ids": [
+        "FLOW-14"
+      ],
+      "source_paths": [
+        "apps/web/src/editor/HistoryPanel.tsx",
+        "apps/web/src/components/RevisionTools.tsx",
+        "apps/web/src/components/WorkspaceViews.tsx"
+      ],
+      "this_round_treatment": [
+        "FLOW-14：紧凑历史入口与细化动作 SVG；恢复/分支仍绑定真实版本，新增动效不制造保存。"
+      ],
+      "capability_and_acceptance_boundary": "只核对可定位的前端入口和本轮共用呈现；原表证据范围和未验条件保留，不因 UI 改造升级状态。"
+    },
+    {
+      "id": "R04",
+      "name": "局部回退与重编辑栈",
+      "original_state": "部分",
+      "original_evidence": "**部分**。配方和历史版本可重开，图层可排序，调色→修复→质感→图层→液化→构图采用固定次序。任意效果节点开关、重排和保存后局部退回未贯通。[配方][ours-edit]",
+      "original_acceptance": "**P1**。为调色、局部、修复建立可启停节点。交换两个允许换序的效果后结果和撤销均可复现。旧版本自动回归。",
+      "original_row": "| R04 局部回退与重编辑栈              | —                                                        | 调色和 AI 扩图各自有确认流程与结果回看。[调色][mt-color] · [扩图][mt-expand]                                            | Snapseed 可调已应用步骤及蒙版。GIMP 3 保留滤镜参数、开关和可重编辑效果。[操作栈][sn-stack] · [GIMP 3][gimp-doc]                | **部分**。配方和历史版本可重开，图层可排序，调色→修复→质感→图层→液化→构图采用固定次序。任意效果节点开关、重排和保存后局部退回未贯通。[配方][ours-edit]                                                                                                                                  | **P1**。为调色、局部、修复建立可启停节点。交换两个允许换序的效果后结果和撤销均可复现。旧版本自动回归。                                                                                                                                           |",
+      "flow_ids": [
+        "FLOW-14",
+        "FLOW-27"
+      ],
+      "source_paths": [
+        "apps/web/src/editor/HistoryPanel.tsx",
+        "apps/web/src/components/RevisionTools.tsx",
+        "apps/web/src/components/WorkspaceViews.tsx",
+        "apps/web/src/collaboration/useCollaboration.ts",
+        "apps/web/src/collaboration/CollaborationStatus.tsx",
+        "apps/web/src/collaboration/CollaborationOverlay.tsx"
+      ],
+      "this_round_treatment": [
+        "FLOW-14：紧凑历史入口与细化动作 SVG；恢复/分支仍绑定真实版本，新增动效不制造保存。",
+        "FLOW-27：实时协作和租约未改为展示动效状态；本轮单账号 fixture 不证明多人实时一致性。"
+      ],
+      "capability_and_acceptance_boundary": "只核对可定位的前端入口和本轮共用呈现；原表证据范围和未验条件保留，不因 UI 改造升级状态。"
+    },
+    {
+      "id": "R05",
+      "name": "原图、当前、版本与局部对比",
+      "original_state": "已验（常规浏览器路径）",
+      "original_evidence": "**已验（常规浏览器路径）**。原图/结果和版本对比入口已连通。专业母版与多版本一致缩放缺联合验收。[工作台验收][ours-qa]",
+      "original_acceptance": "**P1**。同一参考点锁定两版本，裁切、旋转、缩放后支持恢复原视口。用相同色域和同尺寸检查对比分割线两侧。",
+      "original_row": "| R05 原图、当前、版本与局部对比      | —                                                        | 画质修复有前后对比路径。[修复][mt-repair]                                                                               | Snapseed 工具内按住看原图，可缩放平移。[工具交互][sn-tools]                                                                    | **已验（常规浏览器路径）**。原图/结果和版本对比入口已连通。专业母版与多版本一致缩放缺联合验收。[工作台验收][ours-qa]                                                                                                                                                                    | **P1**。同一参考点锁定两版本，裁切、旋转、缩放后支持恢复原视口。用相同色域和同尺寸检查对比分割线两侧。                                                                                                                                           |",
+      "flow_ids": [
+        "FLOW-08",
+        "FLOW-14",
+        "FLOW-24"
+      ],
+      "source_paths": [
+        "apps/web/src/editor/CanvasStage.tsx",
+        "apps/web/src/editor/canvas-gesture.ts",
+        "apps/web/src/components/ImagePreview.tsx",
+        "apps/web/src/editor/useStagePreviews.ts",
+        "apps/web/src/editor/HistoryPanel.tsx",
+        "apps/web/src/components/RevisionTools.tsx",
+        "apps/web/src/components/WorkspaceViews.tsx",
+        "apps/web/src/components/CompareReveal.tsx"
+      ],
+      "this_round_treatment": [
+        "FLOW-08：画布 chrome 减量、工具与精细 SVG 对齐；原始坐标、取色、比较和像素引擎不改。",
+        "FLOW-14：紧凑历史入口与细化动作 SVG；恢复/分支仍绑定真实版本，新增动效不制造保存。",
+        "FLOW-24：原图/当前与历史对比保持真实版本；共享小控件/空态更新，未加入假前后美化图。"
+      ],
+      "capability_and_acceptance_boundary": "只核对可定位的前端入口和本轮共用呈现；原表证据范围和未验条件保留，不因 UI 改造升级状态。"
+    },
+    {
+      "id": "R06",
+      "name": "工具返回、键鼠和窄屏触控",
+      "original_state": "部分",
+      "original_evidence": "**部分**。编辑面板可停靠、浮动、保留状态。已覆盖桌面、平板、320px 和横屏部分浏览器路径。真机键盘、返回层级、云不可用提示及连续操作仍要逐屏复核。[前端 R4][ours-front]",
+      "original_acceptance": "**P0**。系统返回键、编辑层返回、面板关闭各有明确作用。连续进入调节、AI、协作再返回，草稿、滚动、缩放均保留。物理触屏与屏幕阅读器复查。",
+      "original_row": "| R06 工具返回、键鼠和窄屏触控        | —                                                        | 官方教程多为底部选工具、确认、保存。网页工作台实际存在二级裁切尺寸、取消和应用。[调色][mt-color] · [设计室网页][mt-web] | Snapseed 先选参数再手势修改，支持双指定位。React Bits 可参考过渡及 reduced motion。[交互][sn-tools] · [React Bits][react-bits] | **部分**。编辑面板可停靠、浮动、保留状态。已覆盖桌面、平板、320px 和横屏部分浏览器路径。真机键盘、返回层级、云不可用提示及连续操作仍要逐屏复核。[前端 R4][ours-front]                                                                                                                   | **P0**。系统返回键、编辑层返回、面板关闭各有明确作用。连续进入调节、AI、协作再返回，草稿、滚动、缩放均保留。物理触屏与屏幕阅读器复查。                                                                                                           |",
+      "flow_ids": [
+        "FLOW-07",
+        "FLOW-08",
+        "FLOW-40"
+      ],
+      "source_paths": [
+        "apps/web/src/workspace/ToolDock.tsx",
+        "apps/web/src/workspace/ToolOverview.tsx",
+        "apps/web/src/workspace/CommandMenu.tsx",
+        "apps/web/src/workspace/FloatingPanel.tsx",
+        "apps/web/src/editor/CanvasStage.tsx",
+        "apps/web/src/editor/canvas-gesture.ts",
+        "apps/web/src/components/ImagePreview.tsx",
+        "apps/web/src/editor/useStagePreviews.ts",
+        "apps/web/src/components/Ui.tsx",
+        "apps/web/src/components/ChoiceSelect.tsx",
+        "apps/web/src/components/ConfirmationDialog.tsx",
+        "apps/web/src/motion/Presence.tsx",
+        "apps/web/src/components/modal-profiles.ts"
+      ],
+      "this_round_treatment": [
+        "FLOW-07：88 邻近图标、131 受控指示；手机面板尺寸独立，主分类移入面板头，命令/草图入口保留。",
+        "FLOW-08：画布 chrome 减量、工具与精细 SVG 对齐；原始坐标、取色、比较和像素引擎不改。",
+        "FLOW-40：native Modal profiles、120 选择底板、119 真状态、115 可关闭/暂停反馈；关键错误不随计时消失。"
+      ],
+      "capability_and_acceptance_boundary": "只核对可定位的前端入口和本轮共用呈现；原表证据范围和未验条件保留，不因 UI 改造升级状态。"
+    },
+    {
+      "id": "R07",
+      "name": "导入失败、离线草稿、Worker 恢复",
+      "original_state": "部分",
+      "original_evidence": "**部分**。本地编辑、源图更换保护、Worker 重建与云连接提示有入口。浏览器中断实测覆盖有限。[工作台验收][ours-qa]",
+      "original_acceptance": "**P0**。在无网络、进程重启、Worker 崩溃、图像解码失败和保存响应丢失五类场景里保住最后确认稿，允许关闭提示和按需重试。",
+      "original_row": "| R07 导入失败、离线草稿、Worker 恢复 | —                                                        | PC 帮助有内存与 OpenGL 启动排障。[帮助][mt-help]                                                                        | GEGL/PhotoDemon 参考计算路径资源释放和撤销记录。                                                                               | **部分**。本地编辑、源图更换保护、Worker 重建与云连接提示有入口。浏览器中断实测覆盖有限。[工作台验收][ours-qa]                                                                                                                                                                          | **P0**。在无网络、进程重启、Worker 崩溃、图像解码失败和保存响应丢失五类场景里保住最后确认稿，允许关闭提示和按需重试。                                                                                                                            |",
+      "flow_ids": [
+        "FLOW-02",
+        "FLOW-05",
+        "FLOW-15",
+        "FLOW-42"
+      ],
+      "source_paths": [
+        "apps/web/src/SiteShell.tsx",
+        "apps/web/src/about/site-route.ts",
+        "apps/web/src/components/DeferredFeature.tsx",
+        "apps/web/src/workspace/StudioWelcome.tsx",
+        "apps/web/src/App.tsx",
+        "apps/web/src/components/ImportSettings.tsx",
+        "apps/web/src/editor/source-flow.ts",
+        "apps/web/src/lib/asset-copy.ts",
+        "apps/web/src/lib/revisionHistory.ts",
+        "apps/web/src/lib/api.ts",
+        "apps/web/src/account/session-lifecycle.ts"
+      ],
+      "this_round_treatment": [
+        "FLOW-02：保留公开路由/懒加载与工作台生命周期；About 主动作进入真实空工作台，未增加演示照片自动注入。",
+        "FLOW-05：删除无项目时冗余“本地创作”标题；仅显示真实项目/作品/文件名与真实保存状态，保留本地导入流程。",
+        "FLOW-15：保存、失权、冲突保持原显式事务；真实版本与 local draft 状态可见，未知回执不自动重放。",
+        "FLOW-42：既有错误/失权/冻结请求恢复不变；公共状态与空态精简，跨视图实例和隐藏输入保持原生命周期。"
+      ],
+      "capability_and_acceptance_boundary": "只核对可定位的前端入口和本轮共用呈现；原表证据范围和未验条件保留，不因 UI 改造升级状态。"
+    },
+    {
+      "id": "R08",
+      "name": "批量套参数、批量渲染和部分失败",
+      "original_state": "部分",
+      "original_evidence": "**部分**。配方可保存和复用，有单项派生与导出。缺多图统一队列、逐项进度、命名规则、失败后继续与账单预算。[资产接口][ours-api]",
+      "original_acceptance": "**P1**。50 张混合方向和尺寸，支持选择目标格式、逐项预览、取消、仅重跑失败项，成功结果可追到每张输入。",
+      "original_row": "| R08 批量套参数、批量渲染和部分失败  | PC 支持预设、批量编辑。[官网][xt-pc]                     | PC 支持裁切、尺寸、压缩、格式、滤镜、人像、消除、抠图换底和增强。可选原尺寸与人像/商品/文字档。[批处理][mt-batch]       | Snapseed iOS 批量应用 Looks。PhotoDemon 有批量流程和宏。Image Toolbox 有格式工具。[Snapseed iOS][sn-ios]                       | **部分**。配方可保存和复用，有单项派生与导出。缺多图统一队列、逐项进度、命名规则、失败后继续与账单预算。[资产接口][ours-api]                                                                                                                                                            | **P1**。50 张混合方向和尺寸，支持选择目标格式、逐项预览、取消、仅重跑失败项，成功结果可追到每张输入。                                                                                                                                            |",
+      "flow_ids": [],
+      "source_paths": [],
+      "this_round_treatment": [],
+      "capability_and_acceptance_boundary": "只有单项派生/导出/配方复用，没有多图统一队列、失败继续和总预算；列表动效不能补称批量闭环。"
+    },
+    {
+      "id": "R09",
+      "name": "首次进入、懒加载与设备预算",
+      "original_state": "部分",
+      "original_evidence": "**部分**。模型与编辑器部分按需加载，分包和页面骨架存在。截图提出的 >500KB 构建警告需要与实际关键路径分开度量。[前端 R4][ours-front]",
+      "original_acceptance": "**P1**。发布可比的首屏 gzip/JS 下载、首次打开图像和首个参数出帧指标。测试 4GB 手机、中端桌面、冷缓存和断网，非必需解码器与模型延迟加载。",
+      "original_row": "| R09 首次进入、懒加载与设备预算      | —                                                        | PC 和移动端分别提供入口和要求。[PC][mt-pc] · [移动官网][mt-site]                                                        | PixiJS/CanvasKit 评估运行体积和设备分层。ONNX Runtime Web 按后端能力加载。                                                     | **部分**。模型与编辑器部分按需加载，分包和页面骨架存在。截图提出的 >500KB 构建警告需要与实际关键路径分开度量。[前端 R4][ours-front]                                                                                                                                                     | **P1**。发布可比的首屏 gzip/JS 下载、首次打开图像和首个参数出帧指标。测试 4GB 手机、中端桌面、冷缓存和断网，非必需解码器与模型延迟加载。                                                                                                         |",
+      "flow_ids": [
+        "FLOW-02",
+        "FLOW-05",
+        "FLOW-42"
+      ],
+      "source_paths": [
+        "apps/web/src/SiteShell.tsx",
+        "apps/web/src/about/site-route.ts",
+        "apps/web/src/components/DeferredFeature.tsx",
+        "apps/web/src/workspace/StudioWelcome.tsx",
+        "apps/web/src/App.tsx",
+        "apps/web/src/components/ImportSettings.tsx",
+        "apps/web/src/editor/source-flow.ts",
+        "apps/web/src/lib/api.ts",
+        "apps/web/src/account/session-lifecycle.ts"
+      ],
+      "this_round_treatment": [
+        "FLOW-02：保留公开路由/懒加载与工作台生命周期；About 主动作进入真实空工作台，未增加演示照片自动注入。",
+        "FLOW-05：删除无项目时冗余“本地创作”标题；仅显示真实项目/作品/文件名与真实保存状态，保留本地导入流程。",
+        "FLOW-42：既有错误/失权/冻结请求恢复不变；公共状态与空态精简，跨视图实例和隐藏输入保持原生命周期。"
+      ],
+      "capability_and_acceptance_boundary": "只核对可定位的前端入口和本轮共用呈现；原表证据范围和未验条件保留，不因 UI 改造升级状态。"
+    },
+    {
+      "id": "T01",
+      "name": "曝光、亮度、光感、对比、白黑、高光阴影",
+      "original_state": "已验（SDR 曝光）",
+      "original_evidence": "**已验（SDR 曝光）**。全局与部分局部使用统一参数语义。RAW/HDR 另外有母版全局档，范围见 F07。[编辑器][ours-edit]",
+      "original_acceptance": "**P0**。阶梯灰、逆光、肤色与透明边缘分别测试负/零/正。零强度逐字节一致。移动持按性能纳入 R01。",
+      "original_row": "| T01 曝光、亮度、光感、对比、白黑、高光阴影 | PC 智能调色含亮度、对比。[官网][xt-pc]                                                                    | 移动调色可分别拖动光感、曝光、亮度、对比、高光、暗部及氛围。[调色][mt-color]               | Snapseed Adjust/Tonality。darktable exposure、filmic 和 RawTherapee 曲线管线。[Snapseed iOS][sn-ios]           | **已验（SDR 曝光）**。全局与部分局部使用统一参数语义。RAW/HDR 另外有母版全局档，范围见 F07。[编辑器][ours-edit]                         | **P0**。阶梯灰、逆光、肤色与透明边缘分别测试负/零/正。零强度逐字节一致。移动持按性能纳入 R01。                |",
+      "flow_ids": [
+        "FLOW-09"
+      ],
+      "source_paths": [
+        "apps/web/src/editor/ParameterShelf.tsx",
+        "apps/web/src/editor/PrecisionRange.tsx",
+        "apps/web/src/editor/ColorControls.tsx",
+        "apps/web/src/editor/CurveEditor.tsx",
+        "apps/web/src/components/ColorPicker.tsx"
+      ],
+      "this_round_treatment": [
+        "FLOW-09：124 速度刻度 + 127 数字拖调/输入 + 129 提示；原生 range 和一次手势提交仍是数值权威。"
+      ],
+      "capability_and_acceptance_boundary": "只核对可定位的前端入口和本轮共用呈现；原表证据范围和未验条件保留，不因 UI 改造升级状态。"
+    },
+    {
+      "id": "T02",
+      "name": "白平衡与色偏校正",
+      "original_state": "部分",
+      "original_evidence": "**部分**。有手动色温、色调及取色类操作。未确认 RAW 灰点取样、多光源或 JPEG 自动色偏专门方案。[编辑器][ours-edit] · [媒体][ours-media]",
+      "original_acceptance": "**P1**。带灰卡与混光实拍对照，检查灰轴、肤色和暗部噪声。自动修正可调强度、还原并保留手动值。",
+      "original_row": "| T02 白平衡与色偏校正                       | PC 一键色偏矫正，未披露取样逻辑。[官网][xt-pc]                                                            | 调色温度/色调、光线校正与 AI 校色。[调色][mt-color]                                        | Snapseed 白平衡。RawTherapee 相机与自定义白平衡。[Snapseed iOS][sn-ios]                                        | **部分**。有手动色温、色调及取色类操作。未确认 RAW 灰点取样、多光源或 JPEG 自动色偏专门方案。[编辑器][ours-edit] · [媒体][ours-media]   | **P1**。带灰卡与混光实拍对照，检查灰轴、肤色和暗部噪声。自动修正可调强度、还原并保留手动值。                  |",
+      "flow_ids": [
+        "FLOW-09"
+      ],
+      "source_paths": [
+        "apps/web/src/editor/ParameterShelf.tsx",
+        "apps/web/src/editor/PrecisionRange.tsx",
+        "apps/web/src/editor/ColorControls.tsx",
+        "apps/web/src/editor/CurveEditor.tsx",
+        "apps/web/src/components/ColorPicker.tsx"
+      ],
+      "this_round_treatment": [
+        "FLOW-09：124 速度刻度 + 127 数字拖调/输入 + 129 提示；原生 range 和一次手势提交仍是数值权威。"
+      ],
+      "capability_and_acceptance_boundary": "只核对可定位的前端入口和本轮共用呈现；原表证据范围和未验条件保留，不因 UI 改造升级状态。"
+    },
+    {
+      "id": "T03",
+      "name": "主曲线、RGB 通道、单通道重置",
+      "original_state": "已验（SDR 持按）",
+      "original_evidence": "**已验（SDR 持按）**。RGB/通道节点、平滑插值、共享渲染与部分局部曲线。需查节点重置、键盘无障碍与连续重开。[曲线控件][ours-curves]",
+      "original_acceptance": "**P0**。逐通道拖 3 个节点，切通道再返回，重置只影响选定范围。检查端点、重合处理、历史回放和预览/导出输出。",
+      "original_row": "| T03 主曲线、RGB 通道、单通道重置           | 当前核查版本公开页未确认节点和通道。                                                                      | 内置风格曲线及自定义节点。[调色][mt-color]                                                 | Snapseed Curves。darktable `rgbcurve`，RawTherapee 色调曲线。[Snapseed iOS][sn-ios]                            | **已验（SDR 持按）**。RGB/通道节点、平滑插值、共享渲染与部分局部曲线。需查节点重置、键盘无障碍与连续重开。[曲线控件][ours-curves]       | **P0**。逐通道拖 3 个节点，切通道再返回，重置只影响选定范围。检查端点、重合处理、历史回放和预览/导出输出。    |",
+      "flow_ids": [
+        "FLOW-09",
+        "FLOW-23"
+      ],
+      "source_paths": [
+        "apps/web/src/editor/ParameterShelf.tsx",
+        "apps/web/src/editor/PrecisionRange.tsx",
+        "apps/web/src/editor/ColorControls.tsx",
+        "apps/web/src/editor/CurveEditor.tsx",
+        "apps/web/src/components/ColorPicker.tsx",
+        "apps/web/src/media/MediaSourceViewer.tsx",
+        "apps/web/src/media/NativeGradeControls.tsx",
+        "apps/web/src/media/native-grade-model.ts",
+        "apps/web/src/media/useLinearFitPreview.ts",
+        "apps/web/src/media/useMasterPreview.ts"
+      ],
+      "this_round_treatment": [
+        "FLOW-09：124 速度刻度 + 127 数字拖调/输入 + 129 提示；原生 range 和一次手势提交仍是数值权威。",
+        "FLOW-23：继承 9df 的物理 DPR 1:1 与 496bed2 SDR JPEG 母版；source SHA/expectedVersion、curves/regions 能力和原坐标仍权威。"
+      ],
+      "capability_and_acceptance_boundary": "只核对可定位的前端入口和本轮共用呈现；原表证据范围和未验条件保留，不因 UI 改造升级状态。"
+    },
+    {
+      "id": "T04",
+      "name": "HSL、选色与多色区",
+      "original_state": "部分",
+      "original_evidence": "**部分**。全局 HSL 按源色精确查表，色阶、分级、淡化、裁切与整数旋转的组合和参考逐字节一致。Canon 红色和 Nikon 绿色持按通过 R01 门槛。其余色段、局部 HSL、肤色边界与高熵图继续验。[编辑器][ours-edit]",
+      "original_acceptance": "**P0**。多色环和实拍人像逐色检查，重复取样稳定，相邻区无硬阶，保护区像素精确。",
+      "original_row": "| T04 HSL、选色与多色区                      | —                                                                                                         | 每种颜色独立控制色相、饱和度、明度，另有肤色冷暖。[调色][mt-color]                         | Snapseed Color HSL。darktable 色彩均衡及可组合色度蒙版。[Snapseed iOS][sn-ios]                                 | **部分**。全局 HSL 按源色精确查表，色阶、分级、淡化、裁切与整数旋转的组合和参考逐字节一致。Canon 红色和 Nikon 绿色持按通过 R01 门槛。其余色段、局部 HSL、肤色边界与高熵图继续验。[编辑器][ours-edit]                   | **P0**。多色环和实拍人像逐色检查，重复取样稳定，相邻区无硬阶，保护区像素精确。                                |",
+      "flow_ids": [
+        "FLOW-09"
+      ],
+      "source_paths": [
+        "apps/web/src/editor/ParameterShelf.tsx",
+        "apps/web/src/editor/PrecisionRange.tsx",
+        "apps/web/src/editor/ColorControls.tsx",
+        "apps/web/src/editor/CurveEditor.tsx",
+        "apps/web/src/components/ColorPicker.tsx"
+      ],
+      "this_round_treatment": [
+        "FLOW-09：124 速度刻度 + 127 数字拖调/输入 + 129 提示；原生 range 和一次手势提交仍是数值权威。"
+      ],
+      "capability_and_acceptance_boundary": "只核对可定位的前端入口和本轮共用呈现；原表证据范围和未验条件保留，不因 UI 改造升级状态。"
+    },
+    {
+      "id": "T05",
+      "name": "饱和度、自然饱和、黑白与色调分离",
+      "original_state": "部分",
+      "original_evidence": "**部分**。饱和度持按实测。已有自然饱和及分区色彩分级控件，通道黑白混合与肤色保护联动需核对/补齐。[色彩控件][ours-color]",
+      "original_acceptance": "**P1**。高饱和服装、自然肤色和灰阶一起核对。分级独立调区，调零及重开可复现。",
+      "original_row": "| T05 饱和度、自然饱和、黑白与色调分离       | 有风格滤镜及收藏。[iOS][xt-ios]                                                                           | 饱和、褪色、阴影和高光分离。[调色][mt-color]                                               | Snapseed Black & White、Tonality。darktable colorbalancergb。                                                  | **部分**。饱和度持按实测。已有自然饱和及分区色彩分级控件，通道黑白混合与肤色保护联动需核对/补齐。[色彩控件][ours-color]                 | **P1**。高饱和服装、自然肤色和灰阶一起核对。分级独立调区，调零及重开可复现。                                  |",
+      "flow_ids": [
+        "FLOW-09"
+      ],
+      "source_paths": [
+        "apps/web/src/editor/ParameterShelf.tsx",
+        "apps/web/src/editor/PrecisionRange.tsx",
+        "apps/web/src/editor/ColorControls.tsx",
+        "apps/web/src/editor/CurveEditor.tsx",
+        "apps/web/src/components/ColorPicker.tsx"
+      ],
+      "this_round_treatment": [
+        "FLOW-09：124 速度刻度 + 127 数字拖调/输入 + 129 提示；原生 range 和一次手势提交仍是数值权威。"
+      ],
+      "capability_and_acceptance_boundary": "只核对可定位的前端入口和本轮共用呈现；原表证据范围和未验条件保留，不因 UI 改造升级状态。"
+    },
+    {
+      "id": "T06",
+      "name": "细节、锐化、清晰度、纹理、去灰",
+      "original_state": "部分",
+      "original_evidence": "**部分**。常规细节和局部 V4 质感已接通。自动去雾和超分需各自验收。[编辑器][ours-edit]",
+      "original_acceptance": "**P1**。成对雾景、纺织纹理、发丝和文字检查平滑区域的噪声、边缘光晕与颜色偏移。可局部减弱。",
+      "original_row": "| T06 细节、锐化、清晰度、纹理、去灰         | 强调质感与光影。[iOS][xt-ios]                                                                             | 锐化、清晰度、颗粒、色散、暗角、去灰，另有 AI 修复/降噪。[调色][mt-color]                  | Snapseed Details、Dehaze、Tonality。RawTherapee 细节滤镜。                                                     | **部分**。常规细节和局部 V4 质感已接通。自动去雾和超分需各自验收。[编辑器][ours-edit]                                                   | **P1**。成对雾景、纺织纹理、发丝和文字检查平滑区域的噪声、边缘光晕与颜色偏移。可局部减弱。                    |",
+      "flow_ids": [
+        "FLOW-09"
+      ],
+      "source_paths": [
+        "apps/web/src/editor/ParameterShelf.tsx",
+        "apps/web/src/editor/PrecisionRange.tsx",
+        "apps/web/src/editor/ColorControls.tsx",
+        "apps/web/src/editor/CurveEditor.tsx",
+        "apps/web/src/components/ColorPicker.tsx"
+      ],
+      "this_round_treatment": [
+        "FLOW-09：124 速度刻度 + 127 数字拖调/输入 + 129 提示；原生 range 和一次手势提交仍是数值权威。"
+      ],
+      "capability_and_acceptance_boundary": "只核对可定位的前端入口和本轮共用呈现；原表证据范围和未验条件保留，不因 UI 改造升级状态。"
+    },
+    {
+      "id": "T07",
+      "name": "滤镜、配方、收藏及胶片效果",
+      "original_state": "部分",
+      "original_evidence": "**部分**。有基础预设、配方保存与滤镜入口。缺用户 LUT 导入、按空间色域解释、胶片高光晕及稳定滤镜收藏/批用的完整验收。[编辑器][ours-edit]",
+      "original_acceptance": "**P1**。同一预设可连续调强度、收藏、重开、跨图复用。明确 LUT 版本和工作空间，胶片颗粒随缩放和导出确定。",
+      "original_row": "| T07 滤镜、配方、收藏及胶片效果             | 可收藏滤镜，PC 预设与批量。[iOS][xt-ios] · [官网][xt-pc]                                                  | 滤镜及配方模板，可用于图片和视频。[官网][mt-site]                                          | Snapseed Film、Halation、Bloom、Grain、Looks。SVDLUT/SA-LUT 可研究局部风格。[Snapseed iOS][sn-ios]             | **部分**。有基础预设、配方保存与滤镜入口。缺用户 LUT 导入、按空间色域解释、胶片高光晕及稳定滤镜收藏/批用的完整验收。[编辑器][ours-edit] | **P1**。同一预设可连续调强度、收藏、重开、跨图复用。明确 LUT 版本和工作空间，胶片颗粒随缩放和导出确定。       |",
+      "flow_ids": [
+        "FLOW-09"
+      ],
+      "source_paths": [
+        "apps/web/src/editor/ParameterShelf.tsx",
+        "apps/web/src/editor/PrecisionRange.tsx",
+        "apps/web/src/editor/ColorControls.tsx",
+        "apps/web/src/editor/CurveEditor.tsx",
+        "apps/web/src/components/ColorPicker.tsx"
+      ],
+      "this_round_treatment": [
+        "FLOW-09：124 速度刻度 + 127 数字拖调/输入 + 129 提示；原生 range 和一次手势提交仍是数值权威。"
+      ],
+      "capability_and_acceptance_boundary": "只核对可定位的前端入口和本轮共用呈现；原表证据范围和未验条件保留，不因 UI 改造升级状态。"
+    },
+    {
+      "id": "T08",
+      "name": "一键出片、风格迁移和个人偏好",
+      "original_state": "部分",
+      "original_evidence": "**部分**。Agent 可测量亮度与余量并生成参数候选。缺同一任务下多个模型/风格的保内容盲评、可复用风格学习。[Agent][ours-api]",
+      "original_acceptance": "**P1**。同一原片跑 3 路可追溯调色，记录外区变化、饱和裁切、延迟和偏好，选中结果保留参数与来源。",
+      "original_row": "| T08 一键出片、风格迁移和个人偏好           | PC 自动颜色/亮度/对比，移动智能精修含构图、皮肤、头发、风格。macOS 有参考图追色。[官网][xt-pc] · [Android 16.0.0][xt-android] · [Mac][xt-mac] | AI 曝光/光线校正及配方，也可按创意生成。[调色][mt-color] · [AI 改图][mt-ai]                | ColorOS 17 Style Match 从参考图匹配色彩、影调与氛围。SVDLUT、InstantRetouch、VeraRetouch、RefRetouch 对照。[ColorOS 17][op-17]          | **部分**。Agent 可测量亮度与余量并生成参数候选。缺同一任务下多个模型/风格的保内容盲评、可复用风格学习。[Agent][ours-api]                | **P1**。同一原片跑 3 路可追溯调色，记录外区变化、饱和裁切、延迟和偏好，选中结果保留参数与来源。               |",
+      "flow_ids": [
+        "FLOW-09"
+      ],
+      "source_paths": [
+        "apps/web/src/editor/ParameterShelf.tsx",
+        "apps/web/src/editor/PrecisionRange.tsx",
+        "apps/web/src/editor/ColorControls.tsx",
+        "apps/web/src/editor/CurveEditor.tsx",
+        "apps/web/src/components/ColorPicker.tsx"
+      ],
+      "this_round_treatment": [
+        "FLOW-09：124 速度刻度 + 127 数字拖调/输入 + 129 提示；原生 range 和一次手势提交仍是数值权威。"
+      ],
+      "capability_and_acceptance_boundary": "只核对可定位的前端入口和本轮共用呈现；原表证据范围和未验条件保留，不因 UI 改造升级状态。"
+    },
+    {
+      "id": "T09",
+      "name": "多个局部独立调、命名、分组和复用",
+      "original_state": "部分",
+      "original_evidence": "**部分**。可创建多个蒙版/区域，独立参数、区域组、可旋转选区。超预算、复用和选择历史尚需真实组合案例。[编辑器][ours-edit]",
+      "original_acceptance": "**P0**。同图 5 个局部与 2 个组，重叠可预测。编辑一处时其他区域不漂移，调整羽化、复制/重开和保存并发都可追踪。",
+      "original_row": "| T09 多个局部独立调、命名、分组和复用       | —                                                                                                         | 调色点有亮度、对比、饱和、清晰度、高光、暗部、色温、色调及大小/羽化/擦除。[调色][mt-color] | Snapseed Selective 支持复制、删除、重置点。darktable 绘制/参数蒙版、多实例、组合及复用。[Selective][sn-select] | **部分**。可创建多个蒙版/区域，独立参数、区域组、可旋转选区。超预算、复用和选择历史尚需真实组合案例。[编辑器][ours-edit]                | **P0**。同图 5 个局部与 2 个组，重叠可预测。编辑一处时其他区域不漂移，调整羽化、复制/重开和保存并发都可追踪。 |",
+      "flow_ids": [
+        "FLOW-11",
+        "FLOW-23"
+      ],
+      "source_paths": [
+        "apps/web/src/editor/LocalControls.tsx",
+        "apps/web/src/editor/MaskControls.tsx",
+        "apps/web/src/editor/selection-transform.ts",
+        "apps/web/src/media/MediaSourceViewer.tsx",
+        "apps/web/src/media/NativeGradeControls.tsx",
+        "apps/web/src/media/native-grade-model.ts",
+        "apps/web/src/media/useLinearFitPreview.ts",
+        "apps/web/src/media/useMasterPreview.ts"
+      ],
+      "this_round_treatment": [
+        "FLOW-11：局部/蒙版控件复用分段、开关和细化 glyph；蒙版坐标与组选区合成顺序不改。",
+        "FLOW-23：继承 9df 的物理 DPR 1:1 与 496bed2 SDR JPEG 母版；source SHA/expectedVersion、curves/regions 能力和原坐标仍权威。"
+      ],
+      "capability_and_acceptance_boundary": "只核对可定位的前端入口和本轮共用呈现；原表证据范围和未验条件保留，不因 UI 改造升级状态。"
+    },
+    {
+      "id": "T10",
+      "name": "手绘、线性/径向、范围及布尔蒙版",
+      "original_state": "部分",
+      "original_evidence": "**部分**。多形态几何/笔刷/颜色范围，含交并差与保护。自动任意物体蒙版见 S01。[编辑器][ours-edit]",
+      "original_acceptance": "**P1**。跨裁切、透视及液化后统一源坐标。用透明和彩色底重放交并差，手工修正不被自动结果覆盖。",
+      "original_row": "| T10 手绘、线性/径向、范围及布尔蒙版        | —                                                                                                         | 调色支持自定义、人体和背景智能选区、羽化及擦除。[调色][mt-color]                           | darktable path/brush/ellipse/gradient/group。Snapseed Brush 与 Object Brush。[Snapseed iOS][sn-ios]            | **部分**。多形态几何/笔刷/颜色范围，含交并差与保护。自动任意物体蒙版见 S01。[编辑器][ours-edit]                                         | **P1**。跨裁切、透视及液化后统一源坐标。用透明和彩色底重放交并差，手工修正不被自动结果覆盖。                  |",
+      "flow_ids": [
+        "FLOW-11"
+      ],
+      "source_paths": [
+        "apps/web/src/editor/LocalControls.tsx",
+        "apps/web/src/editor/MaskControls.tsx",
+        "apps/web/src/editor/selection-transform.ts"
+      ],
+      "this_round_treatment": [
+        "FLOW-11：局部/蒙版控件复用分段、开关和细化 glyph；蒙版坐标与组选区合成顺序不改。"
+      ],
+      "capability_and_acceptance_boundary": "只核对可定位的前端入口和本轮共用呈现；原表证据范围和未验条件保留，不因 UI 改造升级状态。"
+    },
+    {
+      "id": "T11",
+      "name": "直方图、裁切报警、数值输入与重置",
+      "original_state": "部分",
+      "original_evidence": "**部分**。直方图、精调滑条、预设重置有入口。场景线性波形、通道裁切及软打样警告尚缺。[直方图][ours-hist]",
+      "original_acceptance": "**P1**。SDR/HDR 分别展示适用统计，键盘和触控数值互相同步，重置对单项、模块和全配方有明确边界。",
+      "original_row": "| T11 直方图、裁切报警、数值输入与重置       | —                                                                                                         | 调色和网页尺寸有滑杆及部分数值控制。[调色][mt-color] · [设计室网页][mt-web]                | darktable 直方图与高光警告，Krita 管理显示色域。                                                               | **部分**。直方图、精调滑条、预设重置有入口。场景线性波形、通道裁切及软打样警告尚缺。[直方图][ours-hist]                                 | **P1**。SDR/HDR 分别展示适用统计，键盘和触控数值互相同步，重置对单项、模块和全配方有明确边界。                |",
+      "flow_ids": [
+        "FLOW-08",
+        "FLOW-09"
+      ],
+      "source_paths": [
+        "apps/web/src/editor/CanvasStage.tsx",
+        "apps/web/src/editor/canvas-gesture.ts",
+        "apps/web/src/components/ImagePreview.tsx",
+        "apps/web/src/editor/useStagePreviews.ts",
+        "apps/web/src/editor/ParameterShelf.tsx",
+        "apps/web/src/editor/PrecisionRange.tsx",
+        "apps/web/src/editor/ColorControls.tsx",
+        "apps/web/src/editor/CurveEditor.tsx",
+        "apps/web/src/components/ColorPicker.tsx"
+      ],
+      "this_round_treatment": [
+        "FLOW-08：画布 chrome 减量、工具与精细 SVG 对齐；原始坐标、取色、比较和像素引擎不改。",
+        "FLOW-09：124 速度刻度 + 127 数字拖调/输入 + 129 提示；原生 range 和一次手势提交仍是数值权威。"
+      ],
+      "capability_and_acceptance_boundary": "只核对可定位的前端入口和本轮共用呈现；原表证据范围和未验条件保留，不因 UI 改造升级状态。"
+    },
+    {
+      "id": "G01",
+      "name": "自由裁切、比例、旋转和翻转",
+      "original_state": "已验（常规几何）",
+      "original_evidence": "**已验（常规几何）**。自由框、旋转、翻转和源坐标映射。自定义像素/实体单位及批量路径未覆盖。[编辑器][ours-edit]",
+      "original_acceptance": "**P1**。8 种 EXIF 方向、透明图和超窄图，重开与导出尺寸一致。可先选择比例后复位，取消保持原结果。",
+      "original_row": "| G01 自由裁切、比例、旋转和翻转     | PC 标注调色构图，具体参数未列。[官网][xt-pc]                              | PC 批量裁切、旋转、改尺寸。其网页入口实测 900×383 画布选 500×500 后宽高都更新，提供自由裁切、比例和形状蒙版。[批处理][mt-batch] · [设计室网页][mt-web] | Snapseed Crop/Rotate/Straighten。Image Toolbox 移动交互。[Snapseed iOS][sn-ios]                                           | **已验（常规几何）**。自由框、旋转、翻转和源坐标映射。自定义像素/实体单位及批量路径未覆盖。[编辑器][ours-edit]                                  | **P1**。8 种 EXIF 方向、透明图和超窄图，重开与导出尺寸一致。可先选择比例后复位，取消保持原结果。           |",
+      "flow_ids": [
+        "FLOW-10"
+      ],
+      "source_paths": [
+        "apps/web/src/editor/GeometryControls.tsx",
+        "apps/web/src/editor/ProjectiveControls.tsx",
+        "apps/web/src/editor/projective-model.ts"
+      ],
+      "this_round_treatment": [
+        "FLOW-10：更新细分标签/SVG/选择结构；四角、透视与旋转 payload 沿用现有模型，未宣称补自动几何识别。"
+      ],
+      "capability_and_acceptance_boundary": "只核对可定位的前端入口和本轮共用呈现；原表证据范围和未验条件保留，不因 UI 改造升级状态。"
+    },
+    {
+      "id": "G02",
+      "name": "四角投影、建筑/文档校正",
+      "original_state": "已验（四角手势）",
+      "original_evidence": "**已验（四角手势）**。完整单应、固定手势参照、输出包围盒、交叉/退化拒绝及透明边。缺自动找建筑/文档边缘。[编辑器][ours-edit]",
+      "original_acceptance": "**P0**。用 10 张立面和倾斜文档，鼠标、键盘、触控驱动同一坐标，透明角、逆变换、保存与导出可比。",
+      "original_row": "| G02 四角投影、建筑/文档校正        | —                                                                         | 电脑端网页入口有图片校正。PC 宣称旋转时智能扩图。[设计室网页][mt-web] · [PC][mt-pc]                                                                    | Snapseed Perspective 可控制边缘填补。OpenCV `imgwarp`。[透视][sn-perspective]                                             | **已验（四角手势）**。完整单应、固定手势参照、输出包围盒、交叉/退化拒绝及透明边。缺自动找建筑/文档边缘。[编辑器][ours-edit]                     | **P0**。用 10 张立面和倾斜文档，鼠标、键盘、触控驱动同一坐标，透明角、逆变换、保存与导出可比。             |",
+      "flow_ids": [
+        "FLOW-10"
+      ],
+      "source_paths": [
+        "apps/web/src/editor/GeometryControls.tsx",
+        "apps/web/src/editor/ProjectiveControls.tsx",
+        "apps/web/src/editor/projective-model.ts"
+      ],
+      "this_round_treatment": [
+        "FLOW-10：更新细分标签/SVG/选择结构；四角、透视与旋转 payload 沿用现有模型，未宣称补自动几何识别。"
+      ],
+      "capability_and_acceptance_boundary": "只核对可定位的前端入口和本轮共用呈现；原表证据范围和未验条件保留，不因 UI 改造升级状态。"
+    },
+    {
+      "id": "G03",
+      "name": "画布扩展、边缘填充与旋转补边",
+      "original_state": "部分",
+      "original_evidence": "**部分**。投影/变换可产生透明边，通用生成有候选，缺带明确保留区的专用扩图闭环。[编辑器][ours-edit] · [Agent][ours-api]",
+      "original_acceptance": "**P1**。建筑、人物、室内各做四向及旋转补边。原矩形像素受保护，边缘连续，尺寸、候选和费用可审查。",
+      "original_row": "| G03 画布扩展、边缘填充与旋转补边   | —                                                                         | AI 扩图有比例、自由扩展、重新生成及历史。[扩图][mt-expand]                                                                                             | Snapseed Expand。小米相册 AI 扩图。LaMa/IOPaint、Qwen 和 FLUX 的补洞候选。[Snapseed iOS][sn-ios] · [小米相册][mi-gallery] | **部分**。投影/变换可产生透明边，通用生成有候选，缺带明确保留区的专用扩图闭环。[编辑器][ours-edit] · [Agent][ours-api]                          | **P1**。建筑、人物、室内各做四向及旋转补边。原矩形像素受保护，边缘连续，尺寸、候选和费用可审查。           |",
+      "flow_ids": [
+        "FLOW-10"
+      ],
+      "source_paths": [
+        "apps/web/src/editor/GeometryControls.tsx",
+        "apps/web/src/editor/ProjectiveControls.tsx",
+        "apps/web/src/editor/projective-model.ts"
+      ],
+      "this_round_treatment": [
+        "FLOW-10：更新细分标签/SVG/选择结构；四角、透视与旋转 payload 沿用现有模型，未宣称补自动几何识别。"
+      ],
+      "capability_and_acceptance_boundary": "只核对可定位的前端入口和本轮共用呈现；原表证据范围和未验条件保留，不因 UI 改造升级状态。"
+    },
+    {
+      "id": "G04",
+      "name": "位移笔、变形保护和修复相容",
+      "original_state": "部分",
+      "original_evidence": "**部分**。`flow-v2` 双向有界场、固定质量采样、保护和历史缓存。单张真实人像持按有 17 个变化帧。大图多笔和栅格直线保护需扩验。[编辑器][ours-edit]",
+      "original_acceptance": "**P0**。全高清与 12MP、跨三个区域、三笔叠加、旋转后液化。检查保护线、取消像素、蒙版命中和首笔/热缓存时延。",
+      "original_row": "| G04 位移笔、变形保护和修复相容     | 精准美型与体态管理，笔刷算法不公开。[iOS][xt-ios] · [Android][xt-android] | 有手动推拉，笔刷大小、背景保护、手动保护选区。[人像][mt-portrait] · [iOS][mt-ios]                                                                      | PhotoDemon 液化、MLS 论文、FlowBasedBodyReshaping。                                                                       | **部分**。`flow-v2` 双向有界场、固定质量采样、保护和历史缓存。单张真实人像持按有 17 个变化帧。大图多笔和栅格直线保护需扩验。[编辑器][ours-edit] | **P0**。全高清与 12MP、跨三个区域、三笔叠加、旋转后液化。检查保护线、取消像素、蒙版命中和首笔/热缓存时延。 |",
+      "flow_ids": [
+        "FLOW-12"
+      ],
+      "source_paths": [
+        "apps/web/src/editor/LayerControls.tsx",
+        "apps/web/src/editor/RepairControls.tsx",
+        "apps/web/src/editor/AdvancedInspector.tsx",
+        "apps/web/src/editor/advanced-model.ts"
+      ],
+      "this_round_treatment": [
+        "FLOW-12：图层/修复/液化与草图相关控件统一细粒度呈现；图像算法及固定执行顺序不变，不能算完成任意重排编辑栈。"
+      ],
+      "capability_and_acceptance_boundary": "只核对可定位的前端入口和本轮共用呈现；原表证据范围和未验条件保留，不因 UI 改造升级状态。"
+    },
+    {
+      "id": "G05",
+      "name": "镜头配置、畸变、暗角与色差校正",
+      "original_state": "部分",
+      "original_evidence": "**部分**。构图及暗角等一般编辑可用。缺按镜头和焦段的 profile、光学色差检测和元数据联动。[媒体][ours-media]",
+      "original_acceptance": "**P2**。三组可识别镜头与一组无匹配，测网格直线、边缘暗角和彩边，允许关掉自动 profile。",
+      "original_row": "| G05 镜头配置、畸变、暗角与色差校正 | —                                                                         | 调色有色散与暗角效果，镜头资料未确认。[调色][mt-color]                                                                                                 | Lensfun 用相机镜头数据库修正几何、暗角和色差，RawTherapee 有镜头处理。                                                    | **部分**。构图及暗角等一般编辑可用。缺按镜头和焦段的 profile、光学色差检测和元数据联动。[媒体][ours-media]                                      | **P2**。三组可识别镜头与一组无匹配，测网格直线、边缘暗角和彩边，允许关掉自动 profile。                     |",
+      "flow_ids": [
+        "FLOW-10"
+      ],
+      "source_paths": [
+        "apps/web/src/editor/GeometryControls.tsx",
+        "apps/web/src/editor/ProjectiveControls.tsx",
+        "apps/web/src/editor/projective-model.ts"
+      ],
+      "this_round_treatment": [
+        "FLOW-10：更新细分标签/SVG/选择结构；四角、透视与旋转 payload 沿用现有模型，未宣称补自动几何识别。"
+      ],
+      "capability_and_acceptance_boundary": "只核对可定位的前端入口和本轮共用呈现；原表证据范围和未验条件保留，不因 UI 改造升级状态。"
+    },
+    {
+      "id": "G06",
+      "name": "裁切建议、黄金比例、主体安全区",
+      "original_state": "部分",
+      "original_evidence": "**部分**。手工构图可用。缺按脸、物体和文字安全区推荐、批量构图模板。[编辑器][ours-edit]",
+      "original_acceptance": "**P1**。横竖原图上切三种目标比例，保护多个被选人脸与文字，允许用户拒绝、重调并保存。",
+      "original_row": "| G06 裁切建议、黄金比例、主体安全区 | Android 智能精修覆盖构图。[Android][xt-android]                           | 网页可选社交与证件尺寸，PC 有九宫格切图。[设计室网页][mt-web] · [PC][mt-pc]                                                                            | 小米扩图、OPPO AI 完美构图。Image Toolbox/PhotoDemon 作模板交互参考。[OPPO 影像][op-16]                                   | **部分**。手工构图可用。缺按脸、物体和文字安全区推荐、批量构图模板。[编辑器][ours-edit]                                                         | **P1**。横竖原图上切三种目标比例，保护多个被选人脸与文字，允许用户拒绝、重调并保存。                       |",
+      "flow_ids": [
+        "FLOW-10"
+      ],
+      "source_paths": [
+        "apps/web/src/editor/GeometryControls.tsx",
+        "apps/web/src/editor/ProjectiveControls.tsx",
+        "apps/web/src/editor/projective-model.ts"
+      ],
+      "this_round_treatment": [
+        "FLOW-10：更新细分标签/SVG/选择结构；四角、透视与旋转 payload 沿用现有模型，未宣称补自动几何识别。"
+      ],
+      "capability_and_acceptance_boundary": "只核对可定位的前端入口和本轮共用呈现；原表证据范围和未验条件保留，不因 UI 改造升级状态。"
+    },
+    {
+      "id": "H01",
+      "name": "多人检测、独立目标、可见性和手工修正",
+      "original_state": "部分",
+      "original_evidence": "**部分**。MediaPipe 真推理，最多 8 脸/8 身体，逐人强度和来源独立。遮挡下可见性限制，不支持任意关键点逐点校正或稳定跨帧身份。[人像][ours-portrait]",
+      "original_acceptance": "**P0**。40 张含 2–8 人、大小脸、侧脸和遮挡照片，验证不串脸、低置信度可手动纠正并拒绝误用旧源分析。",
+      "original_row": "| H01 多人检测、独立目标、可见性和手工修正 | 公布五官细调，多选和目标上限未确认。[iOS][xt-ios]                                  | 可多选人脸做面部重塑，皮肤可按人精修、复用肤色。[iOS][mt-ios]                                                                    | MediaPipe Face/Pose，SPIGA 侧脸对照，facexlib 对齐与回贴。                                            | **部分**。MediaPipe 真推理，最多 8 脸/8 身体，逐人强度和来源独立。遮挡下可见性限制，不支持任意关键点逐点校正或稳定跨帧身份。[人像][ours-portrait]                            | **P0**。40 张含 2–8 人、大小脸、侧脸和遮挡照片，验证不串脸、低置信度可手动纠正并拒绝误用旧源分析。                                                                      |",
+      "flow_ids": [
+        "FLOW-13"
+      ],
+      "source_paths": [
+        "apps/web/src/editor/PortraitControls.tsx",
+        "apps/web/src/editor/usePortraitAnalysis.ts",
+        "apps/web/src/editor/portrait-fine-matte.worker.ts",
+        "apps/web/src/editor/ParameterGlyph.tsx"
+      ],
+      "this_round_treatment": [
+        "FLOW-13：按实际 59 项注册表分类与独立图形；高置信 alpha/发丝能力继续由设备与后端门禁决定。"
+      ],
+      "capability_and_acceptance_boundary": "只核对可定位的前端入口和本轮共用呈现；原表证据范围和未验条件保留，不因 UI 改造升级状态。"
+    },
+    {
+      "id": "H02",
+      "name": "磨皮、肤质纹理、毛孔与保痣",
+      "original_state": "部分",
+      "original_evidence": "**部分**。`guided-v4` 独立纹理控制，保留高频路径和保护区。未完成专门皮肤材质检测、痣/眉睫的自动保护与盲评。[人像][ours-portrait]",
+      "original_acceptance": "**P0**。30 张不同肤色/年龄/光线，1:1 对照毛孔、痣、眉毛、睫毛、高光。保护区像素、纹理频谱和盲评一起判定。",
+      "original_row": "| H02 磨皮、肤质纹理、毛孔与保痣           | 一键质感肤质，焕肤并强调保留纹理。[iOS][xt-ios]                                    | 面部/身体精修、肤质和磨皮，Live 也有磨皮。[官网][mt-site] · [Live][mt-live]                                                      | GPUPixel 双边/局部美肤思路。ModelScope、RapidRetouch、BeautyGRPO 与 ICCV 频域论文。                   | **部分**。`guided-v4` 独立纹理控制，保留高频路径和保护区。未完成专门皮肤材质检测、痣/眉睫的自动保护与盲评。[人像][ours-portrait]                                             | **P0**。30 张不同肤色/年龄/光线，1:1 对照毛孔、痣、眉毛、睫毛、高光。保护区像素、纹理频谱和盲评一起判定。                                                               |",
+      "flow_ids": [
+        "FLOW-13"
+      ],
+      "source_paths": [
+        "apps/web/src/editor/PortraitControls.tsx",
+        "apps/web/src/editor/usePortraitAnalysis.ts",
+        "apps/web/src/editor/portrait-fine-matte.worker.ts",
+        "apps/web/src/editor/ParameterGlyph.tsx"
+      ],
+      "this_round_treatment": [
+        "FLOW-13：按实际 59 项注册表分类与独立图形；高置信 alpha/发丝能力继续由设备与后端门禁决定。"
+      ],
+      "capability_and_acceptance_boundary": "只核对可定位的前端入口和本轮共用呈现；原表证据范围和未验条件保留，不因 UI 改造升级状态。"
+    },
+    {
+      "id": "H03",
+      "name": "美白、去暗沉、均匀肤色、面身匹配",
+      "original_state": "部分",
+      "original_evidence": "**部分**。局部肤色、明亮、均匀及连续色输入，皮肤与面部轮廓交集。身体肤色和复杂遮挡过渡待验。[人像][ours-portrait]",
+      "original_acceptance": "**P1**。手臂、脸、颈、背景同色物同图，保留原肤色层次，白平衡与美白各自可调，多人独立。",
+      "original_row": "| H03 美白、去暗沉、均匀肤色、面身匹配     | 自然肤色与一键焕肤，具体参数未公布。[iOS][xt-ios]                                  | 自定义取色、清透肤色、统一全身、分人复用历史肤色。[iOS][mt-ios]                                                                  | face-parsing.PyTorch 提供区域，GPUPixel 可对照肤色处理。                                              | **部分**。局部肤色、明亮、均匀及连续色输入，皮肤与面部轮廓交集。身体肤色和复杂遮挡过渡待验。[人像][ours-portrait]                                                            | **P1**。手臂、脸、颈、背景同色物同图，保留原肤色层次，白平衡与美白各自可调，多人独立。                                                                                  |",
+      "flow_ids": [
+        "FLOW-13"
+      ],
+      "source_paths": [
+        "apps/web/src/editor/PortraitControls.tsx",
+        "apps/web/src/editor/usePortraitAnalysis.ts",
+        "apps/web/src/editor/portrait-fine-matte.worker.ts",
+        "apps/web/src/editor/ParameterGlyph.tsx"
+      ],
+      "this_round_treatment": [
+        "FLOW-13：按实际 59 项注册表分类与独立图形；高置信 alpha/发丝能力继续由设备与后端门禁决定。"
+      ],
+      "capability_and_acceptance_boundary": "只核对可定位的前端入口和本轮共用呈现；原表证据范围和未验条件保留，不因 UI 改造升级状态。"
+    },
+    {
+      "id": "H04",
+      "name": "祛斑、祛痘、遮瑕和纹理回贴",
+      "original_state": "部分",
+      "original_evidence": "**部分**。`guided-v4` 有点状和色斑信号，手工修复可选供体。缺专用自动瑕疵定位，尚无法区分痘、痣、雀斑和纹身。[人像][ours-portrait] · [编辑器][ours-edit]",
+      "original_acceptance": "**P0**。逐点标注 30 张人像的应修/应保部位。点状误改、纹理涂抹和选区外修改分别统计，提供保痣与人工取舍。",
+      "original_row": "| H04 祛斑、祛痘、遮瑕和纹理回贴           | 焕肤与独立祛斑祛痘升级。[iOS][xt-ios]                                              | 祛斑祛痘、妆容修复、遮瑕笔及 Live 版本。[iOS][mt-ios]                                                                            | RetouchFormer、RetouchGPT、ModelScope，美肤评价看 BeautyGRPO。                                        | **部分**。`guided-v4` 有点状和色斑信号，手工修复可选供体。缺专用自动瑕疵定位，尚无法区分痘、痣、雀斑和纹身。[人像][ours-portrait] · [编辑器][ours-edit]                      | **P0**。逐点标注 30 张人像的应修/应保部位。点状误改、纹理涂抹和选区外修改分别统计，提供保痣与人工取舍。                                                                 |",
+      "flow_ids": [
+        "FLOW-12"
+      ],
+      "source_paths": [
+        "apps/web/src/editor/LayerControls.tsx",
+        "apps/web/src/editor/RepairControls.tsx",
+        "apps/web/src/editor/AdvancedInspector.tsx",
+        "apps/web/src/editor/advanced-model.ts"
+      ],
+      "this_round_treatment": [
+        "FLOW-12：图层/修复/液化与草图相关控件统一细粒度呈现；图像算法及固定执行顺序不变，不能算完成任意重排编辑栈。"
+      ],
+      "capability_and_acceptance_boundary": "只核对可定位的前端入口和本轮共用呈现；原表证据范围和未验条件保留，不因 UI 改造升级状态。"
+    },
+    {
+      "id": "H05",
+      "name": "眼袋、泪沟、法令纹、眼纹和油光",
+      "original_state": "部分",
+      "original_evidence": "**部分**。眼下明暗、油光、局部色斑和人工质感已做。缺皱纹/泪沟专门语义识别与多肤质控制。[人像][ours-portrait]",
+      "original_acceptance": "**P1**。保留正常眼睑、真实皱褶和边界，检查法令纹/眼袋强度为零与正负极端的效果及颜色。",
+      "original_row": "| H05 眼袋、泪沟、法令纹、眼纹和油光       | 一键肤质与五官立体，专项参数未公开。[iOS][xt-ios]                                  | 去泪沟、法令纹/眼纹、祛眼袋和亮泽增强，Live 也有分项。[iOS][mt-ios] · [Live][mt-live]                                            | face parsing + 局部信号分离，RetouchFormer 瑕疵定位。                                                 | **部分**。眼下明暗、油光、局部色斑和人工质感已做。缺皱纹/泪沟专门语义识别与多肤质控制。[人像][ours-portrait]                                                                 | **P1**。保留正常眼睑、真实皱褶和边界，检查法令纹/眼袋强度为零与正负极端的效果及颜色。                                                                                   |",
+      "flow_ids": [
+        "FLOW-13"
+      ],
+      "source_paths": [
+        "apps/web/src/editor/PortraitControls.tsx",
+        "apps/web/src/editor/usePortraitAnalysis.ts",
+        "apps/web/src/editor/portrait-fine-matte.worker.ts",
+        "apps/web/src/editor/ParameterGlyph.tsx"
+      ],
+      "this_round_treatment": [
+        "FLOW-13：按实际 59 项注册表分类与独立图形；高置信 alpha/发丝能力继续由设备与后端门禁决定。"
+      ],
+      "capability_and_acceptance_boundary": "只核对可定位的前端入口和本轮共用呈现；原表证据范围和未验条件保留，不因 UI 改造升级状态。"
+    },
+    {
+      "id": "H06",
+      "name": "脸型、头脸比例、下颌与双下巴",
+      "original_state": "部分",
+      "original_evidence": "**部分**。小脸/宽窄、颧骨、下颌、太阳穴、下巴、额头等二维受约束控制。中庭/人中、双下巴分割、背景与领口保护深度不足。[人像][ours-portrait]",
+      "original_acceptance": "**P1**。正侧脸及高低头照片按部位量测，邻近耳、嘴、衣领、背景直线保持，调整后可按人保存和复用。",
+      "original_row": "| H06 脸型、头脸比例、下颌与双下巴         | 个性化脸型、五官精细微调。[iOS][xt-ios]                                            | 小头、颅顶、额头、中庭、人中、下庭、短脸，另有面部流畅、颧骨、下颌线和去双下巴 Pro。[面部重塑][mt-face] · [iOS][mt-ios]          | GPUPixel FaceReshape、MediaPipe 几何、FaceStudio 分片形变。                                           | **部分**。小脸/宽窄、颧骨、下颌、太阳穴、下巴、额头等二维受约束控制。中庭/人中、双下巴分割、背景与领口保护深度不足。[人像][ours-portrait]                                    | **P1**。正侧脸及高低头照片按部位量测，邻近耳、嘴、衣领、背景直线保持，调整后可按人保存和复用。                                                                          |",
+      "flow_ids": [
+        "FLOW-13"
+      ],
+      "source_paths": [
+        "apps/web/src/editor/PortraitControls.tsx",
+        "apps/web/src/editor/usePortraitAnalysis.ts",
+        "apps/web/src/editor/portrait-fine-matte.worker.ts",
+        "apps/web/src/editor/ParameterGlyph.tsx"
+      ],
+      "this_round_treatment": [
+        "FLOW-13：按实际 59 项注册表分类与独立图形；高置信 alpha/发丝能力继续由设备与后端门禁决定。"
+      ],
+      "capability_and_acceptance_boundary": "只核对可定位的前端入口和本轮共用呈现；原表证据范围和未验条件保留，不因 UI 改造升级状态。"
+    },
+    {
+      "id": "H07",
+      "name": "眼形、眼宽高、眼睑、虹膜和眼神",
+      "original_state": "部分",
+      "original_evidence": "**部分**。眼大小、眼距、眼宽/高、旋转、下睑、可见虹膜可调。真实照片已有轮廓不足触发不可用，暂无眼神矫正专项。[人像][ours-portrait]",
+      "original_acceptance": "**P0**。半闭眼、侧脸、眼镜、高光和不同虹膜样本，分别验眼睑边缘和左右眼独立性。无可靠轮廓时明确可用程度。",
+      "original_row": "| H07 眼形、眼宽高、眼睑、虹膜和眼神       | 五官微调，未查到全部眼部项。[iOS][xt-ios]                                          | 眼大小、长度、眼高、眼瞳、去脂、提肌、眼神矫正。[面部重塑][mt-face]                                                              | MediaPipe 面部网格与虹膜点，GPUPixel 大眼，SPIGA 关键点对照。                                         | **部分**。眼大小、眼距、眼宽/高、旋转、下睑、可见虹膜可调。真实照片已有轮廓不足触发不可用，暂无眼神矫正专项。[人像][ours-portrait]                                           | **P0**。半闭眼、侧脸、眼镜、高光和不同虹膜样本，分别验眼睑边缘和左右眼独立性。无可靠轮廓时明确可用程度。                                                                |",
+      "flow_ids": [
+        "FLOW-13"
+      ],
+      "source_paths": [
+        "apps/web/src/editor/PortraitControls.tsx",
+        "apps/web/src/editor/usePortraitAnalysis.ts",
+        "apps/web/src/editor/portrait-fine-matte.worker.ts",
+        "apps/web/src/editor/ParameterGlyph.tsx"
+      ],
+      "this_round_treatment": [
+        "FLOW-13：按实际 59 项注册表分类与独立图形；高置信 alpha/发丝能力继续由设备与后端门禁决定。"
+      ],
+      "capability_and_acceptance_boundary": "只核对可定位的前端入口和本轮共用呈现；原表证据范围和未验条件保留，不因 UI 改造升级状态。"
+    },
+    {
+      "id": "H08",
+      "name": "鼻型、唇形、嘴角、眉位与眉形",
+      "original_state": "部分",
+      "original_evidence": "**部分**。鼻翼/鼻长/鼻尖，唇宽、上下唇、嘴角、眉粗和眉位已有锚点。遮挡与左右独立编辑未全面验收。[人像][ours-portrait]",
+      "original_acceptance": "**P1**。眼眉唇多参数独立变化，张嘴、偏头及侧脸下口腔和牙齿区域受保护，零值无改变。",
+      "original_row": "| H08 鼻型、唇形、嘴角、眉位与眉形         | 五官比例微调。[iOS][xt-ios]                                                        | 鼻、眉、唇形微调，可丰唇、调微笑和眉形。[面部重塑][mt-face] · [iOS][mt-ios]                                                      | GPUPixel/MediaPipe。FaceStudio 和 Face Parsing 作独立部位基线。                                       | **部分**。鼻翼/鼻长/鼻尖，唇宽、上下唇、嘴角、眉粗和眉位已有锚点。遮挡与左右独立编辑未全面验收。[人像][ours-portrait]                                                        | **P1**。眼眉唇多参数独立变化，张嘴、偏头及侧脸下口腔和牙齿区域受保护，零值无改变。                                                                                      |",
+      "flow_ids": [
+        "FLOW-13"
+      ],
+      "source_paths": [
+        "apps/web/src/editor/PortraitControls.tsx",
+        "apps/web/src/editor/usePortraitAnalysis.ts",
+        "apps/web/src/editor/portrait-fine-matte.worker.ts",
+        "apps/web/src/editor/ParameterGlyph.tsx"
+      ],
+      "this_round_treatment": [
+        "FLOW-13：按实际 59 项注册表分类与独立图形；高置信 alpha/发丝能力继续由设备与后端门禁决定。"
+      ],
+      "capability_and_acceptance_boundary": "只核对可定位的前端入口和本轮共用呈现；原表证据范围和未验条件保留，不因 UI 改造升级状态。"
+    },
+    {
+      "id": "H09",
+      "name": "牙齿美白、整牙、眼白提亮",
+      "original_state": "缺口（自动牙齿/眼白专用）",
+      "original_evidence": "**缺口（自动牙齿/眼白专用）**。亮眼/眼下提亮及手工局部可用，自动牙齿分区、美白、整牙和可见眼白独立路径缺失。[人像][ours-portrait]",
+      "original_acceptance": "**P0**。闭嘴、张嘴、牙套、遮挡和侧脸样本，唇/牙龈/虹膜保持，输出可调、可撤、目标区域可修正。整牙与美白各验。",
+      "original_row": "| H09 牙齿美白、整牙、眼白提亮             | —                                                                                  | 白牙、整牙和强度控制，有独立官方操作说明。[面部重塑][mt-face] · [牙齿][mt-teeth]                                                 | FaceStudio 有牙齿美白实现参考。关键点轮廓需配可见牙齿/眼白分割。                                      | **缺口（自动牙齿/眼白专用）**。亮眼/眼下提亮及手工局部可用，自动牙齿分区、美白、整牙和可见眼白独立路径缺失。[人像][ours-portrait]                                            | **P0**。闭嘴、张嘴、牙套、遮挡和侧脸样本，唇/牙龈/虹膜保持，输出可调、可撤、目标区域可修正。整牙与美白各验。                                                            |",
+      "flow_ids": [],
+      "source_paths": [],
+      "this_round_treatment": [],
+      "capability_and_acceptance_boundary": "原表底层缺口保持；相关通用工具或 AI 候选不等于该专用能力，本轮不新建假可用入口。"
+    },
+    {
+      "id": "H10",
+      "name": "眼镜镜框、帽沿、手挡脸及五官保护",
+      "original_state": "部分",
+      "original_evidence": "**部分**。保护蒙版可手画，部分轮廓有可见性约束。缺镜框、镜腿、镜片和手/头发遮挡的自动分层/保形。[人像][ours-portrait]",
+      "original_acceptance": "**P0**。同一戴镜照片分别调大眼、瘦脸和补光，检查镜框直线、镜腿、反光与半透明边界。外部遮挡可修改且保护区逐像素相同。",
+      "original_row": "| H10 眼镜镜框、帽沿、手挡脸及五官保护     | —                                                                                  | 面部形变有背景保护，未确认镜框/遮挡物独立保护。[面部重塑][mt-face]                                                               | face-parsing 有眼镜语义标签。SAM/Matting 选区和 HRN 可见区供方法参考。                                | **部分**。保护蒙版可手画，部分轮廓有可见性约束。缺镜框、镜腿、镜片和手/头发遮挡的自动分层/保形。[人像][ours-portrait]                                                        | **P0**。同一戴镜照片分别调大眼、瘦脸和补光，检查镜框直线、镜腿、反光与半透明边界。外部遮挡可修改且保护区逐像素相同。                                                    |",
+      "flow_ids": [
+        "FLOW-13"
+      ],
+      "source_paths": [
+        "apps/web/src/editor/PortraitControls.tsx",
+        "apps/web/src/editor/usePortraitAnalysis.ts",
+        "apps/web/src/editor/portrait-fine-matte.worker.ts",
+        "apps/web/src/editor/ParameterGlyph.tsx"
+      ],
+      "this_round_treatment": [
+        "FLOW-13：按实际 59 项注册表分类与独立图形；高置信 alpha/发丝能力继续由设备与后端门禁决定。"
+      ],
+      "capability_and_acceptance_boundary": "只核对可定位的前端入口和本轮共用呈现；原表证据范围和未验条件保留，不因 UI 改造升级状态。"
+    },
+    {
+      "id": "H11",
+      "name": "表情替换、闭眼和胡须",
+      "original_state": "缺口（表情合成）",
+      "original_evidence": "**缺口（表情合成）**。有嘴角二维推移和通用 AI 候选，无可验证的同人参考配准、睁眼或胡须替换。[人像][ours-portrait]",
+      "original_acceptance": "**P2**。同人参考与错误目标对照，口腔/牙齿/眼睑轮廓正确，无参考或重遮挡时可拒绝，保留原图。",
+      "original_row": "| H11 表情替换、闭眼和胡须                 | —                                                                                  | 可改笑容、睁眼并重塑胡须。[面部重塑][mt-face]                                                                                    | OPPO 从相册匹配表情，小米有 AI 表情。SAM 3D Body/DECA 供几何参考。[OPPO AI][op-ai] · [小米 AI][mi-ai] | **缺口（表情合成）**。有嘴角二维推移和通用 AI 候选，无可验证的同人参考配准、睁眼或胡须替换。[人像][ours-portrait]                                                            | **P2**。同人参考与错误目标对照，口腔/牙齿/眼睑轮廓正确，无参考或重遮挡时可拒绝，保留原图。                                                                              |",
+      "flow_ids": [],
+      "source_paths": [],
+      "this_round_treatment": [],
+      "capability_and_acceptance_boundary": "原表底层缺口保持；相关通用工具或 AI 候选不等于该专用能力，本轮不新建假可用入口。"
+    },
+    {
+      "id": "H12",
+      "name": "3D 塑颜、头部朝向、左右对称",
+      "original_state": "缺口（3D 执行）",
+      "original_evidence": "**缺口（3D 执行）**。现有是二维轮廓与位移，光影提亮有局部工具。[人像][ours-portrait]",
+      "original_acceptance": "**P1**。固定身份、表情和光照对照，独立改变朝向/角度，验证可见区和遮挡轮廓。无可见信息的生成内容独立回退。",
+      "original_row": "| H12 3D 塑颜、头部朝向、左右对称          | 立体五官以光影描述，几何实现未公开。[iOS][xt-ios]                                  | 3D 塑颜有对称、上下、左右、倾斜角度滑条。内部三维表达未公开。[面部重塑][mt-face]                                                 | HRN/DECA 面部几何。SAM 3D Body 身体网格。                                                             | **缺口（3D 执行）**。现有是二维轮廓与位移，光影提亮有局部工具。[人像][ours-portrait]                                                                                         | **P1**。固定身份、表情和光照对照，独立改变朝向/角度，验证可见区和遮挡轮廓。无可见信息的生成内容独立回退。                                                               |",
+      "flow_ids": [],
+      "source_paths": [],
+      "this_round_treatment": [],
+      "capability_and_acceptance_boundary": "原表底层缺口保持；相关通用工具或 AI 候选不等于该专用能力，本轮不新建假可用入口。"
+    },
+    {
+      "id": "H13",
+      "name": "美体、肩颈、腰胯、手臂、腿与体态",
+      "original_state": "部分",
+      "original_evidence": "**部分**。有头宽、肩宽、颈宽、手臂、腰胯、腿比例等二维控制。V4 自动颈长明确不可用。多人遮挡、衣服接缝及弯曲姿势待验。[人像][ours-portrait]",
+      "original_acceptance": "**P0**。30 张身体实拍含交叉四肢/椅子/条纹墙。记录每个关节可见性、保护线弯折、人物尺度差及方向正确性。",
+      "original_row": "| H13 美体、肩颈、腰胯、手臂、腿与体态     | Android 16.0.0 上线一键体态管理。[Android][xt-android]                             | 天鹅颈、直角肩、增高、头肩比、手动瘦身、分区保护、Live 动态塑形。[官网][mt-site] · [Live][mt-live] · [iOS][mt-ios]               | MediaPipe Pose、FlowBasedBodyReshaping、AAGN/AGGN、SAM 3D Body。                                      | **部分**。有头宽、肩宽、颈宽、手臂、腰胯、腿比例等二维控制。V4 自动颈长明确不可用。多人遮挡、衣服接缝及弯曲姿势待验。[人像][ours-portrait]                                   | **P0**。30 张身体实拍含交叉四肢/椅子/条纹墙。记录每个关节可见性、保护线弯折、人物尺度差及方向正确性。                                                                   |",
+      "flow_ids": [
+        "FLOW-13"
+      ],
+      "source_paths": [
+        "apps/web/src/editor/PortraitControls.tsx",
+        "apps/web/src/editor/usePortraitAnalysis.ts",
+        "apps/web/src/editor/portrait-fine-matte.worker.ts",
+        "apps/web/src/editor/ParameterGlyph.tsx"
+      ],
+      "this_round_treatment": [
+        "FLOW-13：按实际 59 项注册表分类与独立图形；高置信 alpha/发丝能力继续由设备与后端门禁决定。"
+      ],
+      "capability_and_acceptance_boundary": "只核对可定位的前端入口和本轮共用呈现；原表证据范围和未验条件保留，不因 UI 改造升级状态。"
+    },
+    {
+      "id": "H14",
+      "name": "局部口红、腮红、眼影、眉妆与修容",
+      "original_state": "部分",
+      "original_evidence": "**部分**。7 类部位妆，连续 RGBA、独立强度和混合。口腔排除与多层配方有基础，质地与不同妆式及遮挡溢色未达专项验收。[人像][ours-portrait]",
+      "original_acceptance": "**P1**。同一脸测淡浓、左右、遮挡及多肤色。口腔、发丝、眼镜不被误上色，妆色/质地/强度相互独立。",
+      "original_row": "| H14 局部口红、腮红、眼影、眉妆与修容     | 有专属人像妆容和五官光影。[iOS][xt-ios]                                            | 分部位美妆，腮红款式颜色可独立，口红支持颜色/质地/晕染，另有修容笔。[人像教程][mt-portrait] · [iOS][mt-ios] · [修容笔][mt-brush] | GPUPixel Lipstick/Blusher、face parsing、Magic-Makeup 防溢色评价。                                    | **部分**。7 类部位妆，连续 RGBA、独立强度和混合。口腔排除与多层配方有基础，质地与不同妆式及遮挡溢色未达专项验收。[人像][ours-portrait]                                       | **P1**。同一脸测淡浓、左右、遮挡及多肤色。口腔、发丝、眼镜不被误上色，妆色/质地/强度相互独立。                                                                          |",
+      "flow_ids": [
+        "FLOW-13"
+      ],
+      "source_paths": [
+        "apps/web/src/editor/PortraitControls.tsx",
+        "apps/web/src/editor/usePortraitAnalysis.ts",
+        "apps/web/src/editor/portrait-fine-matte.worker.ts",
+        "apps/web/src/editor/ParameterGlyph.tsx"
+      ],
+      "this_round_treatment": [
+        "FLOW-13：按实际 59 项注册表分类与独立图形；高置信 alpha/发丝能力继续由设备与后端门禁决定。"
+      ],
+      "capability_and_acceptance_boundary": "只核对可定位的前端入口和本轮共用呈现；原表证据范围和未验条件保留，不因 UI 改造升级状态。"
+    },
+    {
+      "id": "H15",
+      "name": "手工修容笔、取色、擦除与亮片",
+      "original_state": "部分",
+      "original_evidence": "**部分**。可在图层涂抹、橡皮、连续取色与保护。区域锁定后独立调色和材质亮片缺端到端闭环。[编辑器][ours-edit]",
+      "original_acceptance": "**P1**。同一已画区域反复换色、透明度与笔刷材质，原始笔迹及擦除不丢，切换工具后可继续。",
+      "original_row": "| H15 手工修容笔、取色、擦除与亮片         | 活动有联名涂鸦笔。其他能力未细列。[iOS][xt-ios]                                    | 5 类笔，取色、自定义色、宽度、擦除和区域锁定后整体换色/透明度。[修容笔][mt-brush]                                                | Krita 笔刷与蒙版，Image Toolbox 移动笔工具。                                                          | **部分**。可在图层涂抹、橡皮、连续取色与保护。区域锁定后独立调色和材质亮片缺端到端闭环。[编辑器][ours-edit]                                                                  | **P1**。同一已画区域反复换色、透明度与笔刷材质，原始笔迹及擦除不丢，切换工具后可继续。                                                                                  |",
+      "flow_ids": [
+        "FLOW-12"
+      ],
+      "source_paths": [
+        "apps/web/src/editor/LayerControls.tsx",
+        "apps/web/src/editor/RepairControls.tsx",
+        "apps/web/src/editor/AdvancedInspector.tsx",
+        "apps/web/src/editor/advanced-model.ts"
+      ],
+      "this_round_treatment": [
+        "FLOW-12：图层/修复/液化与草图相关控件统一细粒度呈现；图像算法及固定执行顺序不变，不能算完成任意重排编辑栈。"
+      ],
+      "capability_and_acceptance_boundary": "只核对可定位的前端入口和本轮共用呈现；原表证据范围和未验条件保留，不因 UI 改造升级状态。"
+    },
+    {
+      "id": "H16",
+      "name": "参考照迁妆和区域妆容控制",
+      "original_state": "缺口",
+      "original_evidence": "**缺口**。通用模型可接参考图，独立区域的妆容迁移未落地。[Agent][ours-api]",
+      "original_acceptance": "**P2**。30 组源/参考，分别仅迁唇、眼、脸，双人盲评身份和妆效，外区像素检查，返回可独立调的妆层。",
+      "original_row": "| H16 参考照迁妆和区域妆容控制             | —                                                                                  | 有妆容模板及细调，任意参考照多区域迁移未确认。[人像教程][mt-portrait]                                                            | Stable-Makeup、Magic-Makeup、FLUX-Makeup、EvoMakeup。                                                 | **缺口**。通用模型可接参考图，独立区域的妆容迁移未落地。[Agent][ours-api]                                                                                                    | **P2**。30 组源/参考，分别仅迁唇、眼、脸，双人盲评身份和妆效，外区像素检查，返回可独立调的妆层。                                                                        |",
+      "flow_ids": [],
+      "source_paths": [],
+      "this_round_treatment": [],
+      "capability_and_acceptance_boundary": "原表底层缺口保持；相关通用工具或 AI 候选不等于该专用能力，本轮不新建假可用入口。"
+    },
+    {
+      "id": "H17",
+      "name": "发丝精抠、透明度与复杂遮挡",
+      "original_state": "部分",
+      "original_evidence": "**部分**。原像素三分图突破旧 4096 段上限。27 张公开 alpha 样片及 30 张 P3M 原尺寸样片保持硬标签。MODNet 连续 alpha、MediaPipe 人像区域和同色背景连通修正复用原像素边缘求解。90 张实拍全图 MAE 0.01398→0.00802→0.00759。最新一轮较上一版 83 张改善、7 张退步。四种 Edge 视口下载一致，另四张项目派生与本地逐像素一致。可选 BiRefNet 发丝与边缘档，在 30 张留出实拍上改善 20 张，另四种视口用不同原片验证产品与项目重放。高置信度内区修正用 60 张实拍复核，黑色发饰一张改善，其余 59 张一致。复杂发饰、透明织物及实例分离仍有误差。[实拍复测](#h17-自动抠图实拍复测) · [抠图 API][ours-api]",
+      "original_acceptance": "**P0**。用 27 张有真值的 alpha 集与另外 30 张授权实拍，逐类检查黑/白/彩底、眼镜、纱、手/帽遮挡，报告 SAD/梯度/边缘 MAE 和最差样本。稳定保锚点，云与本地同源逐像素相等。",
+      "original_row": "| H17 发丝精抠、透明度与复杂遮挡           | 祛碎发属头发整理。公开说明未给 alpha 精修能力。[Android][xt-android]               | PC 声称细致到发丝，移动精准抠图模式和透明背景，教程给自动/手工轮廓。[PC][mt-pc] · [iOS][mt-ios] · [换背景][mt-cut]               | MODNet、BiRefNet HR、ViTMatte、FBA、Matting Anything、SAM2Matting 与 MatAnyone2。                             | **部分**。原像素三分图突破旧 4096 段上限。27 张公开 alpha 样片及 30 张 P3M 原尺寸样片保持硬标签。MODNet 连续 alpha、MediaPipe 人像区域和同色背景连通修正复用原像素边缘求解。90 张实拍全图 MAE 0.01398→0.00802→0.00759。最新一轮较上一版 83 张改善、7 张退步。四种 Edge 视口下载一致，另四张项目派生与本地逐像素一致。可选 BiRefNet 发丝与边缘档，在 30 张留出实拍上改善 20 张，另四种视口用不同原片验证产品与项目重放。高置信度内区修正用 60 张实拍复核，黑色发饰一张改善，其余 59 张一致。复杂发饰、透明织物及实例分离仍有误差。[实拍复测](#h17-自动抠图实拍复测) · [抠图 API][ours-api] | **P0**。用 27 张有真值的 alpha 集与另外 30 张授权实拍，逐类检查黑/白/彩底、眼镜、纱、手/帽遮挡，报告 SAD/梯度/边缘 MAE 和最差样本。稳定保锚点，云与本地同源逐像素相等。 |",
+      "flow_ids": [
+        "FLOW-13"
+      ],
+      "source_paths": [
+        "apps/web/src/editor/PortraitControls.tsx",
+        "apps/web/src/editor/usePortraitAnalysis.ts",
+        "apps/web/src/editor/portrait-fine-matte.worker.ts",
+        "apps/web/src/editor/ParameterGlyph.tsx"
+      ],
+      "this_round_treatment": [
+        "FLOW-13：按实际 59 项注册表分类与独立图形；高置信 alpha/发丝能力继续由设备与后端门禁决定。"
+      ],
+      "capability_and_acceptance_boundary": "真实人物/精细 alpha/可选发丝依赖模型与 GPU 能力；既有 Windows 实测不等于本轮 Chrome/SwiftShader 或实体手机推理质量验收。"
+    },
+    {
+      "id": "H18",
+      "name": "发色、局部挑染、发根与发质",
+      "original_state": "部分",
+      "original_evidence": "**部分**。有头发分割及手工上色组件，缺专用保高光/阴影的染色、染根和多种发质方案。[人像][ours-portrait]",
+      "original_acceptance": "**P1**。深浅发色、白发和贴肤边界，选择染根/挑染，强度可调，皮肤和背景保护像素精确。",
+      "original_row": "| H18 发色、局部挑染、发根与发质           | 版本有发型爆改和祛碎发，颜色/强度细项未确认。[iOS][xt-ios] · [Android][xt-android] | 可整头、挑染、自定义绘制、染根、柔顺/光泽及擦除。强度可调。[美发][mt-hair] · [iOS][mt-ios]                                       | face-parsing、HairFastGAN、FaceStudio，借语义区和原明暗。                                             | **部分**。有头发分割及手工上色组件，缺专用保高光/阴影的染色、染根和多种发质方案。[人像][ours-portrait]                                                                       | **P1**。深浅发色、白发和贴肤边界，选择染根/挑染，强度可调，皮肤和背景保护像素精确。                                                                                     |",
+      "flow_ids": [
+        "FLOW-13"
+      ],
+      "source_paths": [
+        "apps/web/src/editor/PortraitControls.tsx",
+        "apps/web/src/editor/usePortraitAnalysis.ts",
+        "apps/web/src/editor/portrait-fine-matte.worker.ts",
+        "apps/web/src/editor/ParameterGlyph.tsx"
+      ],
+      "this_round_treatment": [
+        "FLOW-13：按实际 59 项注册表分类与独立图形；高置信 alpha/发丝能力继续由设备与后端门禁决定。"
+      ],
+      "capability_and_acceptance_boundary": "只核对可定位的前端入口和本轮共用呈现；原表证据范围和未验条件保留，不因 UI 改造升级状态。"
+    },
+    {
+      "id": "H19",
+      "name": "祛碎发、补发量、发际线与换发型",
+      "original_state": "缺口（专用算法）",
+      "original_evidence": "**缺口（专用算法）**。可手修、用通用 AI 生成候选，尚无可控发量/生成发丝/去碎发专用执行。[人像][ours-portrait]",
+      "original_acceptance": "**P1**。去碎发、局部补发及整发型分别跑，检查发向、发缝、脸、耳、镜框和衣物。保留可撤回新图层，标明模型估计区域。",
+      "original_row": "| H19 祛碎发、补发量、发际线与换发型       | 移动端有祛碎发、飘逸发与换发型。Mac 专业版有颅顶增发。[Android][xt-android] · [iOS][xt-ios] · [Mac][xt-mac]                    | 补发、发缝/发际线、发根蓬松、分区碎发、直/卷/短发和刘海，含 AI 涂抹生发及擦除。[美发][mt-hair] · [iOS][mt-ios]                   | HairFastGAN 发型/发色分离，StableHairV2 多视角，RetouchGPT 局部处理思路。                             | **缺口（专用算法）**。可手修、用通用 AI 生成候选，尚无可控发量/生成发丝/去碎发专用执行。[人像][ours-portrait]                                                                | **P1**。去碎发、局部补发及整发型分别跑，检查发向、发缝、脸、耳、镜框和衣物。保留可撤回新图层，标明模型估计区域。                                                        |",
+      "flow_ids": [],
+      "source_paths": [],
+      "this_round_treatment": [],
+      "capability_and_acceptance_boundary": "原表底层缺口保持；相关通用工具或 AI 候选不等于该专用能力，本轮不新建假可用入口。"
+    },
+    {
+      "id": "H20",
+      "name": "真三维发丝几何",
+      "original_state": "缺口",
+      "original_evidence": "**缺口**。现有二维 alpha 和保护区。",
+      "original_acceptance": "**P3**。若采用该能力，验收多视角一致、真实发丝资产可导出并能独立渲染，单图不可见区记录为推断。",
+      "original_row": "| H20 真三维发丝几何                       | —                                                                                  | 发丝飞扬/补发可确认，三维发丝资产未确认。[美发][mt-hair]                                                                         | DiffLocks 单图重建三维发丝与 Alembic 导出，研究许可。                                                 | **缺口**。现有二维 alpha 和保护区。                                                                                                                                          | **P3**。若采用该能力，验收多视角一致、真实发丝资产可导出并能独立渲染，单图不可见区记录为推断。                                                                          |",
+      "flow_ids": [],
+      "source_paths": [],
+      "this_round_treatment": [],
+      "capability_and_acceptance_boundary": "原表底层缺口保持；相关通用工具或 AI 候选不等于该专用能力，本轮不新建假可用入口。"
+    },
+    {
+      "id": "S01",
+      "name": "任意物体点选、框选、文字选和多实例",
+      "original_state": "部分",
+      "original_evidence": "**部分**。有 MediaPipe 人物/头发/背景、手工形状与颜色范围。任意对象的多实例提示分割和逐对象增减尚缺。[人像][ours-portrait] · [抠图 API][ours-api]",
+      "original_acceptance": "**P0**。在同色多物体、遮挡、透明、倒影和非人商品中各选 3 个目标，正/负点击能纠错且区域相互独立。保留坐标、分割模型版本和下一次微调。",
+      "original_row": "| S01 任意物体点选、框选、文字选和多实例   | —                                                                                  | PC 智能选区可选区域重绘、复制、移动和缩放。移动调色有智能选区。[PC][mt-pc] · [调色][mt-color]       | Snapseed iOS 一键主体/背景。SAM 2.1 点/框与 SAM 3.1 概念选取。Grounding DINO 文字转框。[Snapseed iOS][sn-ios]                             | **部分**。有 MediaPipe 人物/头发/背景、手工形状与颜色范围。任意对象的多实例提示分割和逐对象增减尚缺。[人像][ours-portrait] · [抠图 API][ours-api]    | **P0**。在同色多物体、遮挡、透明、倒影和非人商品中各选 3 个目标，正/负点击能纠错且区域相互独立。保留坐标、分割模型版本和下一次微调。 |",
+      "flow_ids": [
+        "FLOW-11"
+      ],
+      "source_paths": [
+        "apps/web/src/editor/LocalControls.tsx",
+        "apps/web/src/editor/MaskControls.tsx",
+        "apps/web/src/editor/selection-transform.ts"
+      ],
+      "this_round_treatment": [
+        "FLOW-11：局部/蒙版控件复用分段、开关和细化 glyph；蒙版坐标与组选区合成顺序不改。"
+      ],
+      "capability_and_acceptance_boundary": "只核对可定位的前端入口和本轮共用呈现；原表证据范围和未验条件保留，不因 UI 改造升级状态。"
+    },
+    {
+      "id": "S02",
+      "name": "透明底、换背景、局部擦除与消色边",
+      "original_state": "部分",
+      "original_evidence": "**部分**。导出透明 PNG、手工 trimap 和去边色，图层可做背景。缺模板/素材背景一步切换及跨背景自然融合验收。[抠图 API][ours-api]",
+      "original_acceptance": "**P0**。同一前景放白黑及互补色背景，检查毛边、溢色、透明织物和原图透明 RGB。换背景不改变原主体母版。",
+      "original_row": "| S02 透明底、换背景、局部擦除与消色边     | —                                                                                  | 自动/手动抠图、边缘修正、预设或自带背景、阴影/光效。[换背景][mt-cut]                                | 小米相册抠图与虚化，BiRefNet HR、ViTMatte。[小米 AI][mi-ai]                                                                               | **部分**。导出透明 PNG、手工 trimap 和去边色，图层可做背景。缺模板/素材背景一步切换及跨背景自然融合验收。[抠图 API][ours-api]                        | **P0**。同一前景放白黑及互补色背景，检查毛边、溢色、透明织物和原图透明 RGB。换背景不改变原主体母版。                                 |",
+      "flow_ids": [
+        "FLOW-13"
+      ],
+      "source_paths": [
+        "apps/web/src/editor/PortraitControls.tsx",
+        "apps/web/src/editor/usePortraitAnalysis.ts",
+        "apps/web/src/editor/portrait-fine-matte.worker.ts",
+        "apps/web/src/editor/ParameterGlyph.tsx"
+      ],
+      "this_round_treatment": [
+        "FLOW-13：按实际 59 项注册表分类与独立图形；高置信 alpha/发丝能力继续由设备与后端门禁决定。"
+      ],
+      "capability_and_acceptance_boundary": "只核对可定位的前端入口和本轮共用呈现；原表证据范围和未验条件保留，不因 UI 改造升级状态。"
+    },
+    {
+      "id": "S03",
+      "name": "背景虚化、景深与前后遮挡",
+      "original_state": "部分",
+      "original_evidence": "**部分**。局部区域可做模糊、遮罩和底图合成。缺焦点深度、遮挡边界和多层散景的完整工具。",
+      "original_acceptance": "**P1**。测试远近两个主体、头发、格栅和透光物，焦平面可选，主体边缘无背景渗入，保留原图与可逆强度。",
+      "original_row": "| S03 背景虚化、景深与前后遮挡             | —                                                                                  | 公开换背景和光影，深度参数未确认。[换背景][mt-cut]                                                  | 小米 AI 虚化、Snapseed Lens Blur 和新 iOS 深度功能按其版本记录。[小米 AI][mi-ai] · [Snapseed iOS][sn-ios]                                 | **部分**。局部区域可做模糊、遮罩和底图合成。缺焦点深度、遮挡边界和多层散景的完整工具。                                                               | **P1**。测试远近两个主体、头发、格栅和透光物，焦平面可选，主体边缘无背景渗入，保留原图与可逆强度。                                   |",
+      "flow_ids": [
+        "FLOW-11"
+      ],
+      "source_paths": [
+        "apps/web/src/editor/LocalControls.tsx",
+        "apps/web/src/editor/MaskControls.tsx",
+        "apps/web/src/editor/selection-transform.ts"
+      ],
+      "this_round_treatment": [
+        "FLOW-11：局部/蒙版控件复用分段、开关和细化 glyph；蒙版坐标与组选区合成顺序不改。"
+      ],
+      "capability_and_acceptance_boundary": "只核对可定位的前端入口和本轮共用呈现；原表证据范围和未验条件保留，不因 UI 改造升级状态。"
+    },
+    {
+      "id": "S04",
+      "name": "复制、图层、混合、透明度与蒙版",
+      "original_state": "部分",
+      "original_evidence": "**部分**。图像及绘制层有透明度、混合、位置、裁切和保护。图像层最多 8，绘制层最多 24，阶段固定。缺组、嵌套、剪贴蒙版和完整调整层。[编辑器][ours-edit]",
+      "original_acceptance": "**P1**。至少 8 图像层及多绘制层混合重开，增删组和组内顺序可逆。源图保持不变，导出 alpha 和混合参考一致。",
+      "original_row": "| S04 复制、图层、混合、透明度与蒙版       | —                                                                                  | PC 智能选区支持分层后移动、缩放及复制。[PC][mt-pc]                                                  | GIMP/Krita 图层栈，miniPaint 浏览器文档，Photopea 层级和混合。[Photopea 文档][photopea-doc]                                               | **部分**。图像及绘制层有透明度、混合、位置、裁切和保护。图像层最多 8，绘制层最多 24，阶段固定。缺组、嵌套、剪贴蒙版和完整调整层。[编辑器][ours-edit] | **P1**。至少 8 图像层及多绘制层混合重开，增删组和组内顺序可逆。源图保持不变，导出 alpha 和混合参考一致。                             |",
+      "flow_ids": [
+        "FLOW-12"
+      ],
+      "source_paths": [
+        "apps/web/src/editor/LayerControls.tsx",
+        "apps/web/src/editor/RepairControls.tsx",
+        "apps/web/src/editor/AdvancedInspector.tsx",
+        "apps/web/src/editor/advanced-model.ts"
+      ],
+      "this_round_treatment": [
+        "FLOW-12：图层/修复/液化与草图相关控件统一细粒度呈现；图像算法及固定执行顺序不变，不能算完成任意重排编辑栈。"
+      ],
+      "capability_and_acceptance_boundary": "只核对可定位的前端入口和本轮共用呈现；原表证据范围和未验条件保留，不因 UI 改造升级状态。"
+    },
+    {
+      "id": "S05",
+      "name": "一图拆成可单独编辑的 RGBA 层",
+      "original_state": "缺口（自动拆层）",
+      "original_evidence": "**缺口（自动拆层）**。有把独立 AI 结果放进图层的路径。还不能从一张照片自动拆出多个对象层并编辑遮挡背面。[扩展契约][ours-ext]",
+      "original_acceptance": "**P1**。按人物、物品、前后景验证层独立移位、缩放、换色，重新合成边缘一致，推断的遮挡区可明确查看和回退。",
+      "original_row": "| S05 一图拆成可单独编辑的 RGBA 层         | —                                                                                  | PC 局部改图支持选区分层，整图自动分解及遮挡恢复未确认。[PC][mt-pc]                                  | Qwen-Image-Layered、Qwen-Image-2.1 RGBA。GIMP/Photopea 的层级可做交付参照。[Layered 模型卡][layered-card] · [Photopea 文档][photopea-doc] | **缺口（自动拆层）**。有把独立 AI 结果放进图层的路径。还不能从一张照片自动拆出多个对象层并编辑遮挡背面。[扩展契约][ours-ext]                         | **P1**。按人物、物品、前后景验证层独立移位、缩放、换色，重新合成边缘一致，推断的遮挡区可明确查看和回退。                             |",
+      "flow_ids": [],
+      "source_paths": [],
+      "this_round_treatment": [],
+      "capability_and_acceptance_boundary": "原表底层缺口保持；相关通用工具或 AI 候选不等于该专用能力，本轮不新建假可用入口。"
+    },
+    {
+      "id": "S06",
+      "name": "克隆图章、点瑕疵修复、梯度域补片",
+      "original_state": "已验（基础）",
+      "original_evidence": "**已验（基础）**。克隆、扩散、Poisson、exemplar 可选，供体坐标及保护明确。自然照片上 exemplar 并未普遍优于扩散。[编辑器][ours-edit]",
+      "original_acceptance": "**P0**。平滑、皮肤、重复纹理各 10 例，按目标报告方法选择与接缝。供体/保护可重调，选区外不变。",
+      "original_row": "| S06 克隆图章、点瑕疵修复、梯度域补片     | PC 一键消除路人，未确认供体图章。[官网][xt-pc]                                     | 有消除笔、瑕疵消除和遮瑕笔，PC 有重绘。[PC][mt-pc] · [iOS][mt-ios]                                  | Snapseed Healing，PhotoDemon 与 miniPaint 图章，OpenCV `seamlessClone`。                                                                  | **已验（基础）**。克隆、扩散、Poisson、exemplar 可选，供体坐标及保护明确。自然照片上 exemplar 并未普遍优于扩散。[编辑器][ours-edit]                  | **P0**。平滑、皮肤、重复纹理各 10 例，按目标报告方法选择与接缝。供体/保护可重调，选区外不变。                                        |",
+      "flow_ids": [
+        "FLOW-12"
+      ],
+      "source_paths": [
+        "apps/web/src/editor/LayerControls.tsx",
+        "apps/web/src/editor/RepairControls.tsx",
+        "apps/web/src/editor/AdvancedInspector.tsx",
+        "apps/web/src/editor/advanced-model.ts"
+      ],
+      "this_round_treatment": [
+        "FLOW-12：图层/修复/液化与草图相关控件统一细粒度呈现；图像算法及固定执行顺序不变，不能算完成任意重排编辑栈。"
+      ],
+      "capability_and_acceptance_boundary": "只核对可定位的前端入口和本轮共用呈现；原表证据范围和未验条件保留，不因 UI 改造升级状态。"
+    },
+    {
+      "id": "S07",
+      "name": "语义消除路人、物件、电线及其影子",
+      "original_state": "部分",
+      "original_evidence": "**部分**。手工小缺损修复和通用 AI 有。缺语义目标/影子、多候选融合及蒙版外回用原图的专用闭环。[编辑器][ours-edit] · [Agent][ours-api]",
+      "original_acceptance": "**P1**。30 张授权实拍含电线/长影/重复结构，比较传统与神经基线，保持未选区字节，提供候选、原图、失败和预算。",
+      "original_row": "| S07 语义消除路人、物件、电线及其影子     | PC 有自动去路人和智能补背景。[官网][xt-pc]                                         | PC 对象/文字/瑕疵删除、移动一句话消除及镜面污渍等专项。[PC][mt-pc] · [iOS][mt-ios]                  | 小米 14T 有手工/物体/线条/人物模式。OPPO 圈选与自动路人。LaMa、IOPaint 和通用编辑模型。[小米操作说明][mi-erase] · [OPPO AI][op-ai]        | **部分**。手工小缺损修复和通用 AI 有。缺语义目标/影子、多候选融合及蒙版外回用原图的专用闭环。[编辑器][ours-edit] · [Agent][ours-api]                 | **P1**。30 张授权实拍含电线/长影/重复结构，比较传统与神经基线，保持未选区字节，提供候选、原图、失败和预算。                          |",
+      "flow_ids": [
+        "FLOW-12"
+      ],
+      "source_paths": [
+        "apps/web/src/editor/LayerControls.tsx",
+        "apps/web/src/editor/RepairControls.tsx",
+        "apps/web/src/editor/AdvancedInspector.tsx",
+        "apps/web/src/editor/advanced-model.ts"
+      ],
+      "this_round_treatment": [
+        "FLOW-12：图层/修复/液化与草图相关控件统一细粒度呈现；图像算法及固定执行顺序不变，不能算完成任意重排编辑栈。"
+      ],
+      "capability_and_acceptance_boundary": "只核对可定位的前端入口和本轮共用呈现；原表证据范围和未验条件保留，不因 UI 改造升级状态。"
+    },
+    {
+      "id": "S08",
+      "name": "AI 超分、旧照片修复与人脸保真",
+      "original_state": "部分",
+      "original_evidence": "**部分**。有锐化/局部质感、像素级派生与普通导出。缺已部署并通过人脸/文字保真的专用超分和旧图修复。[派生 API][ours-api]",
+      "original_acceptance": "**P1**。同源多级退化有真值集，加 20 张真实低质图，记录细节还原、假纹理、身份与 OCR 误差，允许低强度和撤回。",
+      "original_row": "| S08 AI 超分、旧照片修复与人脸保真        | —                                                                                  | 高清/超清，人像/商品/文字图表分档、可锁原尺寸。移动画质修复。[批处理][mt-batch] · [修复][mt-repair] | OPPO AI Clarity Enhancer，小米 AI 超清。Real-ESRGAN、GFPGAN、CodeFormer、SUPIR。[OPPO 影像][op-16] · [小米 AI][mi-ai]                     | **部分**。有锐化/局部质感、像素级派生与普通导出。缺已部署并通过人脸/文字保真的专用超分和旧图修复。[派生 API][ours-api]                               | **P1**。同源多级退化有真值集，加 20 张真实低质图，记录细节还原、假纹理、身份与 OCR 误差，允许低强度和撤回。                          |",
+      "flow_ids": [
+        "FLOW-12"
+      ],
+      "source_paths": [
+        "apps/web/src/editor/LayerControls.tsx",
+        "apps/web/src/editor/RepairControls.tsx",
+        "apps/web/src/editor/AdvancedInspector.tsx",
+        "apps/web/src/editor/advanced-model.ts"
+      ],
+      "this_round_treatment": [
+        "FLOW-12：图层/修复/液化与草图相关控件统一细粒度呈现；图像算法及固定执行顺序不变，不能算完成任意重排编辑栈。"
+      ],
+      "capability_and_acceptance_boundary": "只核对可定位的前端入口和本轮共用呈现；原表证据范围和未验条件保留，不因 UI 改造升级状态。"
+    },
+    {
+      "id": "S09",
+      "name": "亮度与色度降噪、保边与纹理",
+      "original_state": "部分",
+      "original_evidence": "**部分**。有亮度/色度分离的确定性降噪和工作预算，缺 RAW 噪声模型及真机高 ISO 批量对照。[派生 API][ours-api]",
+      "original_acceptance": "**P1**。长短曝光或不同 ISO 成对样本，阴影噪声、彩斑、纹理、高光边缘分别报告，停用值逐字节一致。",
+      "original_row": "| S09 亮度与色度降噪、保边与纹理           | —                                                                                  | AI 降噪与不同场景画质修复。[调色][mt-color] · [批处理][mt-batch]                                    | NAFNet、Restormer，RawTherapee 的亮度/色度和 RAW 降噪。                                                                                   | **部分**。有亮度/色度分离的确定性降噪和工作预算，缺 RAW 噪声模型及真机高 ISO 批量对照。[派生 API][ours-api]                                          | **P1**。长短曝光或不同 ISO 成对样本，阴影噪声、彩斑、纹理、高光边缘分别报告，停用值逐字节一致。                                      |",
+      "flow_ids": [
+        "FLOW-12",
+        "FLOW-21"
+      ],
+      "source_paths": [
+        "apps/web/src/editor/LayerControls.tsx",
+        "apps/web/src/editor/RepairControls.tsx",
+        "apps/web/src/editor/AdvancedInspector.tsx",
+        "apps/web/src/editor/advanced-model.ts",
+        "apps/web/src/restoration/RestorationDialog.tsx",
+        "apps/web/src/restoration/restoration-model.ts"
+      ],
+      "this_round_treatment": [
+        "FLOW-12：图层/修复/液化与草图相关控件统一细粒度呈现；图像算法及固定执行顺序不变，不能算完成任意重排编辑栈。",
+        "FLOW-21：降噪/运动修复沿 quote→显式创建→新素材链路；手机、closed/open details、unknown 锁保持。"
+      ],
+      "capability_and_acceptance_boundary": "只核对可定位的前端入口和本轮共用呈现；原表证据范围和未验条件保留，不因 UI 改造升级状态。"
+    },
+    {
+      "id": "S10",
+      "name": "去运动拖影与散焦",
+      "original_state": "部分",
+      "original_evidence": "**部分**。有用户给角度和长度的阻尼反卷积，受 4MP 预算约束。缺盲估运动核/分区和真实动态物体基准。[派生 API][ours-api]",
+      "original_acceptance": "**P1**。真实追拍、人脸、文字、局部运动各做反卷积与专用模型对照，检查振铃、结构和身份，不强行应用失败样本。",
+      "original_row": "| S10 去运动拖影与散焦                     | —                                                                                  | 有清晰度增强，专门盲去运动模糊未在所用教程核到。[修复][mt-repair]                                   | OPPO AI 去拖影。NAFNet、Restormer 的独立运动和散焦权重。[OPPO AI][op-ai]                                                                  | **部分**。有用户给角度和长度的阻尼反卷积，受 4MP 预算约束。缺盲估运动核/分区和真实动态物体基准。[派生 API][ours-api]                                 | **P1**。真实追拍、人脸、文字、局部运动各做反卷积与专用模型对照，检查振铃、结构和身份，不强行应用失败样本。                           |",
+      "flow_ids": [
+        "FLOW-12",
+        "FLOW-21"
+      ],
+      "source_paths": [
+        "apps/web/src/editor/LayerControls.tsx",
+        "apps/web/src/editor/RepairControls.tsx",
+        "apps/web/src/editor/AdvancedInspector.tsx",
+        "apps/web/src/editor/advanced-model.ts",
+        "apps/web/src/restoration/RestorationDialog.tsx",
+        "apps/web/src/restoration/restoration-model.ts"
+      ],
+      "this_round_treatment": [
+        "FLOW-12：图层/修复/液化与草图相关控件统一细粒度呈现；图像算法及固定执行顺序不变，不能算完成任意重排编辑栈。",
+        "FLOW-21：降噪/运动修复沿 quote→显式创建→新素材链路；手机、closed/open details、unknown 锁保持。"
+      ],
+      "capability_and_acceptance_boundary": "只核对可定位的前端入口和本轮共用呈现；原表证据范围和未验条件保留，不因 UI 改造升级状态。"
+    },
+    {
+      "id": "S11",
+      "name": "玻璃去反光、眩光、镜面污渍与摩尔纹",
+      "original_state": "部分",
+      "original_evidence": "**部分**。局部有确定性反光抑制算子，有已知线性参考样本。没有实拍玻璃的反射/透射分离闭环。[编辑器][ours-edit]",
+      "original_acceptance": "**P1**。在夜窗、展柜、叠影和玻璃反拍各组做输入、真值或两曝光对照，记录错误文字/纹理、局部强度及保护。",
+      "original_row": "| S11 玻璃去反光、眩光、镜面污渍与摩尔纹   | —                                                                                  | 版本有镜面污渍、炫光和摩尔纹消除，未确认玻璃反射层分离。[iOS][mt-ios]                               | OPPO 玻璃去反光，小米 HyperAI 同类。WindowSeat、DSRNet、DExNet、GenSIRR、PRISM-SIRR。[OPPO AI][op-ai] · [小米 HyperAI][mi-hyper]          | **部分**。局部有确定性反光抑制算子，有已知线性参考样本。没有实拍玻璃的反射/透射分离闭环。[编辑器][ours-edit]                                         | **P1**。在夜窗、展柜、叠影和玻璃反拍各组做输入、真值或两曝光对照，记录错误文字/纹理、局部强度及保护。                                |",
+      "flow_ids": [
+        "FLOW-12"
+      ],
+      "source_paths": [
+        "apps/web/src/editor/LayerControls.tsx",
+        "apps/web/src/editor/RepairControls.tsx",
+        "apps/web/src/editor/AdvancedInspector.tsx",
+        "apps/web/src/editor/advanced-model.ts"
+      ],
+      "this_round_treatment": [
+        "FLOW-12：图层/修复/液化与草图相关控件统一细粒度呈现；图像算法及固定执行顺序不变，不能算完成任意重排编辑栈。"
+      ],
+      "capability_and_acceptance_boundary": "只核对可定位的前端入口和本轮共用呈现；原表证据范围和未验条件保留，不因 UI 改造升级状态。"
+    },
+    {
+      "id": "S12",
+      "name": "弱光、补光、闪光灯、发丝光和环境统一",
+      "original_state": "部分",
+      "original_evidence": "**部分**。全局/区域亮度、光影和场景平衡候选可用。缺光照方向、皮肤材质/高光保护及换背景后一致打光。[人像][ours-portrait] · [Agent][ours-api]",
+      "original_acceptance": "**P1**。同场景正逆光配对，比较眼睛、发丝、肤色和衣物阴影。支持光向、强度与背景分层，可撤回。",
+      "original_row": "| S12 弱光、补光、闪光灯、发丝光和环境统一 | AI 光影、相机直闪、自然光效、清透/夕阳/柔光。[iOS][xt-ios] · [Android][xt-android] | 调色含弱光、逆光、补光、闪光、增强闪光、轮廓发丝光。[调色][mt-color]                                | OPPO 人像补光和 AI Portrait Glow。HVI-CIDNet、Retinexformer、IC-Light。[OPPO AI][op-ai] · [OPPO 影像][op-16]                              | **部分**。全局/区域亮度、光影和场景平衡候选可用。缺光照方向、皮肤材质/高光保护及换背景后一致打光。[人像][ours-portrait] · [Agent][ours-api]          | **P1**。同场景正逆光配对，比较眼睛、发丝、肤色和衣物阴影。支持光向、强度与背景分层，可撤回。                                         |",
+      "flow_ids": [
+        "FLOW-12"
+      ],
+      "source_paths": [
+        "apps/web/src/editor/LayerControls.tsx",
+        "apps/web/src/editor/RepairControls.tsx",
+        "apps/web/src/editor/AdvancedInspector.tsx",
+        "apps/web/src/editor/advanced-model.ts"
+      ],
+      "this_round_treatment": [
+        "FLOW-12：图层/修复/液化与草图相关控件统一细粒度呈现；图像算法及固定执行顺序不变，不能算完成任意重排编辑栈。"
+      ],
+      "capability_and_acceptance_boundary": "只核对可定位的前端入口和本轮共用呈现；原表证据范围和未验条件保留，不因 UI 改造升级状态。"
+    },
+    {
+      "id": "S13",
+      "name": "换天、天气、穿搭与参考换背景",
+      "original_state": "部分",
+      "original_evidence": "**部分**。可显式传图片到通用模型，合成可采纳。专用天空遮罩、地景反光/光色保持、穿搭与身体分区质量缺证据。[Agent][ours-api]",
+      "original_acceptance": "**P2**。检测地平线、半透明树枝/玻璃和倒影，保护主体。区分通用候选、专用任务及可编辑结果，记录错误/拒绝。",
+      "original_row": "| S13 换天、天气、穿搭与参考换背景         | —                                                                                  | AI 改图可处理穿搭、背景、天气。版本提供部分换天滤镜。[AI 改图][mt-ai] · [iOS][mt-ios]               | 小米相册换天及 HyperOS 4 指向照片编辑。OPPO AI 修图师。[小米 AI][mi-ai] · [澎湃 OS][mi-os] · [OPPO AI][op-ai]                             | **部分**。可显式传图片到通用模型，合成可采纳。专用天空遮罩、地景反光/光色保持、穿搭与身体分区质量缺证据。[Agent][ours-api]                           | **P2**。检测地平线、半透明树枝/玻璃和倒影，保护主体。区分通用候选、专用任务及可编辑结果，记录错误/拒绝。                             |",
+      "flow_ids": [
+        "FLOW-12"
+      ],
+      "source_paths": [
+        "apps/web/src/editor/LayerControls.tsx",
+        "apps/web/src/editor/RepairControls.tsx",
+        "apps/web/src/editor/AdvancedInspector.tsx",
+        "apps/web/src/editor/advanced-model.ts"
+      ],
+      "this_round_treatment": [
+        "FLOW-12：图层/修复/液化与草图相关控件统一细粒度呈现；图像算法及固定执行顺序不变，不能算完成任意重排编辑栈。"
+      ],
+      "capability_and_acceptance_boundary": "只核对可定位的前端入口和本轮共用呈现；原表证据范围和未验条件保留，不因 UI 改造升级状态。"
+    },
+    {
+      "id": "F01",
+      "name": "静态图片解码、EXIF 方向、透明与原件",
+      "original_state": "已验（常见静态）",
+      "original_evidence": "**已验（常见静态）**。JPEG/PNG/WebP/AVIF/静态 TIFF 及 GIF 首帧路径按入口区分，保存不可变原件与规范化结果。[媒体][ours-media]",
+      "original_acceptance": "**P0**。每种格式附合法/损坏/截断样本，8 方向、alpha 和 ICC 测开、存、重开。解码前显示像素/字节/格式约束，失败留原稿。",
+      "original_row": "| F01 静态图片解码、EXIF 方向、透明与原件          | PC 无损处理宣传，公开页未列完整输入矩阵。[官网][xt-pc] | PC 宣称支持数十格式。[PC][mt-pc]                                                       | Image Toolbox、libvips/Sharp、ImageMagick，以实际构建核对解码格式。                                                | **已验（常见静态）**。JPEG/PNG/WebP/AVIF/静态 TIFF 及 GIF 首帧路径按入口区分，保存不可变原件与规范化结果。[媒体][ours-media]                                                                                                | **P0**。每种格式附合法/损坏/截断样本，8 方向、alpha 和 ICC 测开、存、重开。解码前显示像素/字节/格式约束，失败留原稿。                   |",
+      "flow_ids": [
+        "FLOW-05"
+      ],
+      "source_paths": [
+        "apps/web/src/workspace/StudioWelcome.tsx",
+        "apps/web/src/App.tsx",
+        "apps/web/src/components/ImportSettings.tsx",
+        "apps/web/src/editor/source-flow.ts"
+      ],
+      "this_round_treatment": [
+        "FLOW-05：删除无项目时冗余“本地创作”标题；仅显示真实项目/作品/文件名与真实保存状态，保留本地导入流程。"
+      ],
+      "capability_and_acceptance_boundary": "只核对可定位的前端入口和本轮共用呈现；原表证据范围和未验条件保留，不因 UI 改造升级状态。"
+    },
+    {
+      "id": "F02",
+      "name": "导出尺寸、质量、透明与色彩一致",
+      "original_state": "部分",
+      "original_evidence": "**部分**。浏览器常规导出和服务器精度导出均存在。不同版本/格式、透明、质量档和元数据选项需统一验收。[编辑器][ours-edit] · [媒体][ours-media]",
+      "original_acceptance": "**P0**。同源六种编辑组合跨 3 个版本导出，逐张核尺寸、alpha、ICC 和质量档。无损格式重开与参考一致，损耗格式按指标比较。",
+      "original_row": "| F02 导出尺寸、质量、透明与色彩一致               | —                                                      | 网页有自定义尺寸和下载入口，PC 有批量转格式。[设计室网页][mt-web] · [批处理][mt-batch] | Snapseed 区分可重编保存及导出。Image Toolbox 转格式及尺寸。[工具交互][sn-tools]                                    | **部分**。浏览器常规导出和服务器精度导出均存在。不同版本/格式、透明、质量档和元数据选项需统一验收。[编辑器][ours-edit] · [媒体][ours-media]                                                                                 | **P0**。同源六种编辑组合跨 3 个版本导出，逐张核尺寸、alpha、ICC 和质量档。无损格式重开与参考一致，损耗格式按指标比较。                  |",
+      "flow_ids": [
+        "FLOW-25"
+      ],
+      "source_paths": [
+        "apps/web/src/components/ProjectDialogs.tsx",
+        "apps/web/src/components/WorkspaceViews.tsx",
+        "apps/web/src/components/revision-tools-model.ts"
+      ],
+      "this_round_treatment": [
+        "FLOW-25：交付信息与导出弹层精简布局、真实尺寸/格式保留；下载解码仍由七核心场景校验。"
+      ],
+      "capability_and_acceptance_boundary": "只核对可定位的前端入口和本轮共用呈现；原表证据范围和未验条件保留，不因 UI 改造升级状态。"
+    },
+    {
+      "id": "F03",
+      "name": "大图保留、分块上传和服务端导出",
+      "original_state": "部分",
+      "original_evidence": "**部分**。普通母版上限默认 200MP，可配置到 256MP，输入 512MiB。存在有界导入、分块和瓦片，已测 200MP 级合成样本局部。高负载设备与自然超大图尚缺证明。[媒体][ours-media]",
+      "original_acceptance": "**P0**。200MP 正/反例同时测试上传续传、配额、只读/导出、阻断越权与失败清理。报告峰值内存、瓦片坐标及像素精度。",
+      "original_row": "| F03 大图保留、分块上传和服务端导出               | —                                                      | PC 宣称可打开 10 亿像素，未公开导出等同能力。[PC][mt-pc]                               | libvips 区域流式，GEGL 瓦片，OpenImageIO cache。                                                                   | **部分**。普通母版上限默认 200MP，可配置到 256MP，输入 512MiB。存在有界导入、分块和瓦片，已测 200MP 级合成样本局部。高负载设备与自然超大图尚缺证明。[媒体][ours-media]                                                      | **P0**。200MP 正/反例同时测试上传续传、配额、只读/导出、阻断越权与失败清理。报告峰值内存、瓦片坐标及像素精度。                          |",
+      "flow_ids": [
+        "FLOW-22"
+      ],
+      "source_paths": [
+        "apps/web/src/components/MediaImportDialog.tsx",
+        "apps/web/src/components/ImportSettings.tsx"
+      ],
+      "this_round_treatment": [
+        "FLOW-22：专业导入保留源能力/预算提前提示；导入弹层独立尺寸，未复写新上游能力。"
+      ],
+      "capability_and_acceptance_boundary": "只核对可定位的前端入口和本轮共用呈现；原表证据范围和未验条件保留，不因 UI 改造升级状态。"
+    },
+    {
+      "id": "F04",
+      "name": "相机 RAW 显影、曝光余量与相机资料",
+      "original_state": "部分",
+      "original_evidence": "**部分**。Nikon NEF、Canon CR2、Sony A7 III ARW、富士 X-T4 RAF、宾得 K-1 DNG、Pixel 6 Pro DNG 已通过原件哈希、母版窗口、版本和三种母版格式验证。相机全传感器上限 64MP。新增 Nikon Z7 45.75MP 和 Sony A7R IV 61.01MP，全尺寸浮点母版按瓦片行生成，原件 SHA 与三种格式复验通过。灰点、坏点、完整 EXIF 与高光重建待验。[实拍复测](#r02-和-f04-真实大幅相机-raw) · [媒体][ours-media]",
+      "original_acceptance": "**P0**。相机矩阵至少 Nikon/Canon/Sony/Fuji/DNG，曝光包围与色卡可对照。核有效位深、EXIF 和原件 hash。不支持情形提前提示。",
+      "original_row": "| F04 相机 RAW 显影、曝光余量与相机资料 | Mac 专业版可处理 RAW，版本记录列出饱和度与鲜明度调节。机型和导出位深待核。[Mac][xt-mac] | PC 支持打开 RAW，未说明显影顺序/位深。[PC][mt-pc] | Snapseed RAW Develop。RawTherapee、LibRaw 的解包、去马赛克和色彩步骤。[RAW Develop][sn-raw] | **部分**。Nikon NEF、Canon CR2、Sony A7 III ARW、富士 X-T4 RAF、宾得 K-1 DNG、Pixel 6 Pro DNG 已通过原件哈希、母版窗口、版本和三种母版格式验证。相机全传感器上限 64MP。新增 Nikon Z7 45.75MP 和 Sony A7R IV 61.01MP，全尺寸浮点母版按瓦片行生成，原件 SHA 与三种格式复验通过。灰点、坏点、完整 EXIF 与高光重建待验。[实拍复测](#r02-和-f04-真实大幅相机-raw) · [媒体][ours-media] | **P0**。相机矩阵至少 Nikon/Canon/Sony/Fuji/DNG，曝光包围与色卡可对照。核有效位深、EXIF 和原件 hash。不支持情形提前提示。 |",
+      "flow_ids": [
+        "FLOW-22",
+        "FLOW-23"
+      ],
+      "source_paths": [
+        "apps/web/src/components/MediaImportDialog.tsx",
+        "apps/web/src/components/ImportSettings.tsx",
+        "apps/web/src/media/MediaSourceViewer.tsx",
+        "apps/web/src/media/NativeGradeControls.tsx",
+        "apps/web/src/media/native-grade-model.ts",
+        "apps/web/src/media/useLinearFitPreview.ts",
+        "apps/web/src/media/useMasterPreview.ts"
+      ],
+      "this_round_treatment": [
+        "FLOW-22：专业导入保留源能力/预算提前提示；导入弹层独立尺寸，未复写新上游能力。",
+        "FLOW-23：继承 9df 的物理 DPR 1:1 与 496bed2 SDR JPEG 母版；source SHA/expectedVersion、curves/regions 能力和原坐标仍权威。"
+      ],
+      "capability_and_acceptance_boundary": "原件/母版由真实能力门禁、源 hash 和版本约束；上游硬件/像素实测属于原有证据，本轮布局与截图不能自动算通过。"
+    },
+    {
+      "id": "F05",
+      "name": "真 HDR 原件、浮点、非零 data window 与 alpha",
+      "original_state": "部分",
+      "original_evidence": "**部分**。EXR/Radiance 线性源，实际 CandleGlass 等验证。保留 >1、负值、窗口、比例及关联 alpha 等已支持语义。未知显式色域、deep/multipart 受限。[媒体][ours-media] · [EXR 处理][ours-native]",
+      "original_acceptance": "**P0**。真实 EXR 与合成边界组合，重开比窗口、alpha、负值和 >1。对不同输入 primaries、未知配置、非有限值明确拒绝或记录转换。",
+      "original_row": "| F05 真 HDR 原件、浮点、非零 data window 与 alpha | —                                                      | —                                                                                      | OpenImageIO EXR 插件、Krita HDR 画布、OCIO 显示变换。[Krita HDR][krita-hdr]                                        | **部分**。EXR/Radiance 线性源，实际 CandleGlass 等验证。保留 >1、负值、窗口、比例及关联 alpha 等已支持语义。未知显式色域、deep/multipart 受限。[媒体][ours-media] · [EXR 处理][ours-native]                                 | **P0**。真实 EXR 与合成边界组合，重开比窗口、alpha、负值和 >1。对不同输入 primaries、未知配置、非有限值明确拒绝或记录转换。             |",
+      "flow_ids": [
+        "FLOW-22",
+        "FLOW-23"
+      ],
+      "source_paths": [
+        "apps/web/src/components/MediaImportDialog.tsx",
+        "apps/web/src/components/ImportSettings.tsx",
+        "apps/web/src/media/MediaSourceViewer.tsx",
+        "apps/web/src/media/NativeGradeControls.tsx",
+        "apps/web/src/media/native-grade-model.ts",
+        "apps/web/src/media/useLinearFitPreview.ts",
+        "apps/web/src/media/useMasterPreview.ts"
+      ],
+      "this_round_treatment": [
+        "FLOW-22：专业导入保留源能力/预算提前提示；导入弹层独立尺寸，未复写新上游能力。",
+        "FLOW-23：继承 9df 的物理 DPR 1:1 与 496bed2 SDR JPEG 母版；source SHA/expectedVersion、curves/regions 能力和原坐标仍权威。"
+      ],
+      "capability_and_acceptance_boundary": "只核对可定位的前端入口和本轮共用呈现；原表证据范围和未验条件保留，不因 UI 改造升级状态。"
+    },
+    {
+      "id": "F06",
+      "name": "16 位母版与线性 32 位可重编导出",
+      "original_state": "部分",
+      "original_evidence": "**部分**。独立 16 位 PNG/TIFF 与线性 EXR 导出，版本化母版全局调色及原图窗口。Nikon/Canon/EXR 实测窗与导出共核 3,024,000 个 uint16 样本。已发表的常规 V4 配方仍为 RGBA8。[媒体][ours-media] · [母版验收脚本][ours-master-qa]",
+      "original_acceptance": "**P0**。源→调整→保存→回退→导出→第三方重开，数值逐通道验证。SDR 映射要可选且保持 alpha。EXR 证实亮部余量。",
+      "original_row": "| F06 16 位母版与线性 32 位可重编导出              | —                                                      | 公开支持打开 RAW/PSD，精确输出链路未确认。[PC][mt-pc]                                  | RawTherapee、Krita、OpenImageIO 和 LittleCMS。                                                                     | **部分**。独立 16 位 PNG/TIFF 与线性 EXR 导出，版本化母版全局调色及原图窗口。Nikon/Canon/EXR 实测窗与导出共核 3,024,000 个 uint16 样本。已发表的常规 V4 配方仍为 RGBA8。[媒体][ours-media] · [母版验收脚本][ours-master-qa] | **P0**。源→调整→保存→回退→导出→第三方重开，数值逐通道验证。SDR 映射要可选且保持 alpha。EXR 证实亮部余量。                               |",
+      "flow_ids": [
+        "FLOW-23"
+      ],
+      "source_paths": [
+        "apps/web/src/media/MediaSourceViewer.tsx",
+        "apps/web/src/media/NativeGradeControls.tsx",
+        "apps/web/src/media/native-grade-model.ts",
+        "apps/web/src/media/useLinearFitPreview.ts",
+        "apps/web/src/media/useMasterPreview.ts"
+      ],
+      "this_round_treatment": [
+        "FLOW-23：继承 9df 的物理 DPR 1:1 与 496bed2 SDR JPEG 母版；source SHA/expectedVersion、curves/regions 能力和原坐标仍权威。"
+      ],
+      "capability_and_acceptance_boundary": "只核对可定位的前端入口和本轮共用呈现；原表证据范围和未验条件保留，不因 UI 改造升级状态。"
+    },
+    {
+      "id": "F07",
+      "name": "RAW/HDR 全配方、图层和实时母版窗口",
+      "original_state": "部分",
+      "original_evidence": "**部分**。七项全局参数之外，场景线性亮度与 RGB 曲线已贯通实际 Sony ARW、CandleGlass EXR 的原像素窗口、版本重开和三种母版导出。SDR 两格式各验同一窗口样本。EXR 保留负值及 413.25 高光。隔离进程复用后，CandleGlass EXR、Pixel 6 Pro DNG、Sony A7 III 24.24MP ARW、Pentax K-1 36.38MP DNG 的 420×300 原像素窗口接口冷路径 155–388ms、热路径 72–110ms，四张各有 1,008,000 个 SDR 通道样本与全图导出一致。Windows Edge 桌面与平板触控模拟持按约 2.5 秒各显示 15 个变化帧，首帧 109/132ms，最长间隔 188/179ms，窗口保持 431×300/434×300。四种视口重开保存通过。scene-linear-v3 增加有序径向旋转选区与渐变局部调色。上述四张各验 43,194 个选区外像素完全不变、1,008,000 个 SDR 通道样本与全图导出一致，12 次局部参数更新热请求 80–152ms。保留局部配方时，桌面/平板模拟触控的曝光持按各 15 帧，首帧 128/149ms。新增 1536×900 原像素窗口逐值验收和导出期间连续调色。相机 RAW、HEIC PQ/HLG 和 Ultra HDR JPEG 的 GPU 适屏复现同一全局、曲线与局部配方。两张相机 RAW 放大和 1:1 平移与 API 参考最大相差 1 个 8 位码值。[放大实测](#r01-和-f07-放大预览与原像素窗口)。前端 PR #12 集成版已用真实 Sony RAW 验收桌面新增曲线点、移动径向区及保存重开。其他 HDR 输入、实体移动设备、触控局部、高位深笔刷绘制、图层、修复与液化继续验收。 [并行实测](#r01-和-f07-导出期间持续原像素调色)[母版查看器][ours-viewer] · [媒体][ours-media] · [母版实测][ours-master-qa]",
+      "original_acceptance": "**P0**。把同一精度配方跨窗口、局部、图层、修复和导出重放，蒙版外与未编辑通道精确相等。验收 1:1 帧连续和原像素，不可用时给明确能力提示。",
+      "original_row": "| F07 RAW/HDR 全配方、图层和实时母版窗口           | —                                                      | —                                                                                      | GEGL 高精度瓦片、Krita HDR 合成、OpenColorIO。                                                                     | **部分**。七项全局参数之外，场景线性亮度与 RGB 曲线已贯通实际 Sony ARW、CandleGlass EXR 的原像素窗口、版本重开和三种母版导出。SDR 两格式各验同一窗口样本。EXR 保留负值及 413.25 高光。隔离进程复用后，CandleGlass EXR、Pixel 6 Pro DNG、Sony A7 III 24.24MP ARW、Pentax K-1 36.38MP DNG 的 420×300 原像素窗口接口冷路径 155–388ms、热路径 72–110ms，四张各有 1,008,000 个 SDR 通道样本与全图导出一致。Windows Edge 桌面与平板触控模拟持按约 2.5 秒各显示 15 个变化帧，首帧 109/132ms，最长间隔 188/179ms，窗口保持 431×300/434×300。四种视口重开保存通过。scene-linear-v3 增加有序径向旋转选区与渐变局部调色。上述四张各验 43,194 个选区外像素完全不变、1,008,000 个 SDR 通道样本与全图导出一致，12 次局部参数更新热请求 80–152ms。保留局部配方时，桌面/平板模拟触控的曝光持按各 15 帧，首帧 128/149ms。新增 1536×900 原像素窗口逐值验收和导出期间连续调色。相机 RAW、HEIC PQ/HLG 和 Ultra HDR JPEG 的 GPU 适屏复现同一全局、曲线与局部配方。两张相机 RAW 放大和 1:1 平移与 API 参考最大相差 1 个 8 位码值。[放大实测](#r01-和-f07-放大预览与原像素窗口)。前端 PR #12 集成版已用真实 Sony RAW 验收桌面新增曲线点、移动径向区及保存重开。其他 HDR 输入、实体移动设备、触控局部、高位深笔刷绘制、图层、修复与液化继续验收。 [并行实测](#r01-和-f07-导出期间持续原像素调色)[母版查看器][ours-viewer] · [媒体][ours-media] · [母版实测][ours-master-qa]                          | **P0**。把同一精度配方跨窗口、局部、图层、修复和导出重放，蒙版外与未编辑通道精确相等。验收 1:1 帧连续和原像素，不可用时给明确能力提示。 |",
+      "flow_ids": [
+        "FLOW-23"
+      ],
+      "source_paths": [
+        "apps/web/src/media/MediaSourceViewer.tsx",
+        "apps/web/src/media/NativeGradeControls.tsx",
+        "apps/web/src/media/native-grade-model.ts",
+        "apps/web/src/media/useLinearFitPreview.ts",
+        "apps/web/src/media/useMasterPreview.ts"
+      ],
+      "this_round_treatment": [
+        "FLOW-23：继承 9df 的物理 DPR 1:1 与 496bed2 SDR JPEG 母版；source SHA/expectedVersion、curves/regions 能力和原坐标仍权威。"
+      ],
+      "capability_and_acceptance_boundary": "原件/母版由真实能力门禁、源 hash 和版本约束；上游硬件/像素实测属于原有证据，本轮布局与截图不能自动算通过。"
+    },
+    {
+      "id": "F08",
+      "name": "Display-P3、ICC、场景工作空间及显示",
+      "original_state": "部分",
+      "original_evidence": "**部分**。嵌入 RGB ICC 可显式转 sRGB，P3 输入做过 CMS 参考比对。广色域编辑/输出、可选 primaries、HDR 显示器实测和软打样未完整。[媒体][ours-media]",
+      "original_acceptance": "**P0**。sRGB/P3/场景线性色卡，在两台相应显示设备和编码文件上对照。记录设备模式、转换 intent、白点和误差。",
+      "original_row": "| F08 Display-P3、ICC、场景工作空间及显示          | —                                                      | —                                                                                      | LittleCMS、babl、OpenColorIO 和 CanvasKit 的 ICC/空间/显示分工。                                                   | **部分**。嵌入 RGB ICC 可显式转 sRGB，P3 输入做过 CMS 参考比对。广色域编辑/输出、可选 primaries、HDR 显示器实测和软打样未完整。[媒体][ours-media]                                                                           | **P0**。sRGB/P3/场景线性色卡，在两台相应显示设备和编码文件上对照。记录设备模式、转换 intent、白点和误差。                               |",
+      "flow_ids": [
+        "FLOW-23"
+      ],
+      "source_paths": [
+        "apps/web/src/media/MediaSourceViewer.tsx",
+        "apps/web/src/media/NativeGradeControls.tsx",
+        "apps/web/src/media/native-grade-model.ts",
+        "apps/web/src/media/useLinearFitPreview.ts",
+        "apps/web/src/media/useMasterPreview.ts"
+      ],
+      "this_round_treatment": [
+        "FLOW-23：继承 9df 的物理 DPR 1:1 与 496bed2 SDR JPEG 母版；source SHA/expectedVersion、curves/regions 能力和原坐标仍权威。"
+      ],
+      "capability_and_acceptance_boundary": "只核对可定位的前端入口和本轮共用呈现；原表证据范围和未验条件保留，不因 UI 改造升级状态。"
+    },
+    {
+      "id": "F09",
+      "name": "手机 Ultra HDR / 增益图与 HEIC HDR",
+      "original_state": "部分",
+      "original_evidence": "**部分**。四张 Pixel 6 Pro Display P3 增益图原片、五张 Apple Rec.2020 HEIC PQ 样片已验原件保留。两组各四张完整核对原像素调色、PNG16/TIFF16/EXR32 和带增益图的 HDR JPEG。10/12 位 PQ 通过数值测试。Apple、Pixel 与两张 Nikon HLG 原片已验适屏持按、保存重开及与 CPU 显示像素对照。另四张 45.44MP Nikon HLG 通过 EXR32、SDR16 及裁切 HDR JPEG 往返。[HLG 往返](#f09-nikon-z-8-hlg-往返) · [适屏实测](#r01-和-f07-原尺寸开发后的适屏性能) · [JPEG 往返](#f09-手机-ultra-hdr-jpeg-往返) · [HEIC PQ 往返](#f09-apple-heic-pq-往返)",
+      "original_acceptance": "**P0**。继续核对 Apple 旧辅助增益图、ISO 增益图、HEIC 同容器导出、手机 HDR/SDR 屏和系统相册。裁切与曝光后核对基图、增益图方向和几何、色阶、元数据与相册重开。",
+      "original_row": "| F09 手机 Ultra HDR / 增益图与 HEIC HDR | — | — | libultrahdr 参考解码、Sharp/libvips 增益图编码、libheif NCLX 与 HEVC 解码。ColorOS 17 声明部分 AI 编辑可保留 ProXDR，未公开交换格式。[Android 规范][ultrahdr-spec] · [Apple HDR][apple-hdr-samples] · [ColorOS 17][op-17] | **部分**。四张 Pixel 6 Pro Display P3 增益图原片、五张 Apple Rec.2020 HEIC PQ 样片已验原件保留。两组各四张完整核对原像素调色、PNG16/TIFF16/EXR32 和带增益图的 HDR JPEG。10/12 位 PQ 通过数值测试。Apple、Pixel 与两张 Nikon HLG 原片已验适屏持按、保存重开及与 CPU 显示像素对照。另四张 45.44MP Nikon HLG 通过 EXR32、SDR16 及裁切 HDR JPEG 往返。[HLG 往返](#f09-nikon-z-8-hlg-往返) · [适屏实测](#r01-和-f07-原尺寸开发后的适屏性能) · [JPEG 往返](#f09-手机-ultra-hdr-jpeg-往返) · [HEIC PQ 往返](#f09-apple-heic-pq-往返) | **P0**。继续核对 Apple 旧辅助增益图、ISO 增益图、HEIC 同容器导出、手机 HDR/SDR 屏和系统相册。裁切与曝光后核对基图、增益图方向和几何、色阶、元数据与相册重开。 |",
+      "flow_ids": [
+        "FLOW-22",
+        "FLOW-23"
+      ],
+      "source_paths": [
+        "apps/web/src/components/MediaImportDialog.tsx",
+        "apps/web/src/components/ImportSettings.tsx",
+        "apps/web/src/media/MediaSourceViewer.tsx",
+        "apps/web/src/media/NativeGradeControls.tsx",
+        "apps/web/src/media/native-grade-model.ts",
+        "apps/web/src/media/useLinearFitPreview.ts",
+        "apps/web/src/media/useMasterPreview.ts"
+      ],
+      "this_round_treatment": [
+        "FLOW-22：专业导入保留源能力/预算提前提示；导入弹层独立尺寸，未复写新上游能力。",
+        "FLOW-23：继承 9df 的物理 DPR 1:1 与 496bed2 SDR JPEG 母版；source SHA/expectedVersion、curves/regions 能力和原坐标仍权威。"
+      ],
+      "capability_and_acceptance_boundary": "原件/母版由真实能力门禁、源 hash 和版本约束；上游硬件/像素实测属于原有证据，本轮布局与截图不能自动算通过。"
+    },
+    {
+      "id": "F10",
+      "name": "CMYK 输入、编辑、软打样和印前输出",
+      "original_state": "部分",
+      "original_evidence": "**部分**。接受有 ICC 的 8 位 CMYK JPEG/TIFF 并转 sRGB。缺 16 位 CMYK、目标纸张软打样、印刷意图/墨量、CMYK 输出。[媒体][ours-media]",
+      "original_acceptance": "**P1**。以两种目标纸张 ICC、灰平衡及黑版样张比较 RGB→CMYK→预览，输出 ICC/位深和第三方重开一致。",
+      "original_row": "| F10 CMYK 输入、编辑、软打样和印前输出            | —                                                      | —                                                                                      | LittleCMS ICC、Krita CMYK、ImageMagick profile 与目标纸张 ICC。                                                    | **部分**。接受有 ICC 的 8 位 CMYK JPEG/TIFF 并转 sRGB。缺 16 位 CMYK、目标纸张软打样、印刷意图/墨量、CMYK 输出。[媒体][ours-media]                                                                                          | **P1**。以两种目标纸张 ICC、灰平衡及黑版样张比较 RGB→CMYK→预览，输出 ICC/位深和第三方重开一致。                                         |",
+      "flow_ids": [
+        "FLOW-22"
+      ],
+      "source_paths": [
+        "apps/web/src/components/MediaImportDialog.tsx",
+        "apps/web/src/components/ImportSettings.tsx"
+      ],
+      "this_round_treatment": [
+        "FLOW-22：专业导入保留源能力/预算提前提示；导入弹层独立尺寸，未复写新上游能力。"
+      ],
+      "capability_and_acceptance_boundary": "只核对可定位的前端入口和本轮共用呈现；原表证据范围和未验条件保留，不因 UI 改造升级状态。"
+    },
+    {
+      "id": "F11",
+      "name": "PSD/PSB 可编辑往返",
+      "original_state": "部分",
+      "original_evidence": "**部分**。PSD v1 RGB/灰度 8/16 位有界合成图、图层元数据与原件。没有可编辑 PSD 回写，PSB/CMYK/32 位入口受限。[媒体][ours-media]",
+      "original_acceptance": "**P1**。固定版本样本含组、alpha、调整层、文字、智能对象、ICC 与 8/16/32 位。第三方打开逐层比较，逐项说明完整、可保留或只读。",
+      "original_row": "| F11 PSD/PSB 可编辑往返                           | —                                                      | PC 宣称支持打开 PSD，未公开文本/智能对象/高位深双向兼容。[PC][mt-pc]                   | ag-psd writer 位深矩阵、psd-tools 低层结构、GIMP/Photopea 行为对照。[Photopea 文档][photopea-doc]                  | **部分**。PSD v1 RGB/灰度 8/16 位有界合成图、图层元数据与原件。没有可编辑 PSD 回写，PSB/CMYK/32 位入口受限。[媒体][ours-media]                                                                                              | **P1**。固定版本样本含组、alpha、调整层、文字、智能对象、ICC 与 8/16/32 位。第三方打开逐层比较，逐项说明完整、可保留或只读。            |",
+      "flow_ids": [
+        "FLOW-22"
+      ],
+      "source_paths": [
+        "apps/web/src/components/MediaImportDialog.tsx",
+        "apps/web/src/components/ImportSettings.tsx"
+      ],
+      "this_round_treatment": [
+        "FLOW-22：专业导入保留源能力/预算提前提示；导入弹层独立尺寸，未复写新上游能力。"
+      ],
+      "capability_and_acceptance_boundary": "只核对可定位的前端入口和本轮共用呈现；原表证据范围和未验条件保留，不因 UI 改造升级状态。"
+    },
+    {
+      "id": "F12",
+      "name": "元数据、保密交付和水印策略",
+      "original_state": "部分",
+      "original_evidence": "**部分**。媒体和配方记录来源、方向、色彩、哈希。可画遮罩，专用 EXIF/GPS/嵌入预览隐私导出与批量水印未完整。[媒体][ours-media]",
+      "original_acceptance": "**P0**。显式选择保留色彩并去隐私元数据。完全遮盖导出核对像素、EXIF、缩略图、隐藏层和原图引用，回读时无残留。",
+      "original_row": "| F12 元数据、保密交付和水印策略                   | —                                                      | PC 可批量加水印，移动有标记/马赛克。[批处理][mt-batch] · [iOS][mt-ios]                 | 小米相册保护水印、隐私分享。[小米相册][mi-gallery]                                                                 | **部分**。媒体和配方记录来源、方向、色彩、哈希。可画遮罩，专用 EXIF/GPS/嵌入预览隐私导出与批量水印未完整。[媒体][ours-media]                                                                                                | **P0**。显式选择保留色彩并去隐私元数据。完全遮盖导出核对像素、EXIF、缩略图、隐藏层和原图引用，回读时无残留。                            |",
+      "flow_ids": [
+        "FLOW-18",
+        "FLOW-25"
+      ],
+      "source_paths": [
+        "apps/web/src/components/AssetLibrary.tsx",
+        "apps/web/src/resources/ResourceSearch.tsx",
+        "apps/web/src/ai/MemoryControls.tsx",
+        "apps/web/src/components/ProjectDialogs.tsx",
+        "apps/web/src/components/WorkspaceViews.tsx",
+        "apps/web/src/components/revision-tools-model.ts"
+      ],
+      "this_round_treatment": [
+        "FLOW-18：元数据与来源/私有标注沿真实权限读取；放入合适弹层宽度，未新增或伪装语义搜索能力。",
+        "FLOW-25：交付信息与导出弹层精简布局、真实尺寸/格式保留；下载解码仍由七核心场景校验。"
+      ],
+      "capability_and_acceptance_boundary": "只核对可定位的前端入口和本轮共用呈现；原表证据范围和未验条件保留，不因 UI 改造升级状态。"
+    },
+    {
+      "id": "F13",
+      "name": "导出/导入任务取消、并发、原件和配额",
+      "original_state": "部分",
+      "original_evidence": "**部分**。导入能力预告、队列、CAS 配方和逻辑容量。单进程原生队列与超大图资源隔离、跨部署恢复仍要验证。[媒体][ours-media] · [API][ours-api]",
+      "original_acceptance": "**P0**。多用户大图同时取消/续传/重试，已落库原件和版本可读，容量不重复收取，后台临时资产可回收，响应无串数据。",
+      "original_row": "| F13 导出/导入任务取消、并发、原件和配额          | —                                                      | PC 帮助提示内存不足和 OpenGL 限制。[帮助][mt-help]                                     | libvips 流式 IO、GEGL 缓存、FFmpeg/codec 资源限额。                                                                | **部分**。导入能力预告、队列、CAS 配方和逻辑容量。单进程原生队列与超大图资源隔离、跨部署恢复仍要验证。[媒体][ours-media] · [API][ours-api]                                                                                  | **P0**。多用户大图同时取消/续传/重试，已落库原件和版本可读，容量不重复收取，后台临时资产可回收，响应无串数据。                          |",
+      "flow_ids": [
+        "FLOW-20",
+        "FLOW-22",
+        "FLOW-23",
+        "FLOW-25"
+      ],
+      "source_paths": [
+        "apps/web/src/components/AssetTools.tsx",
+        "apps/web/src/components/MediaImportDialog.tsx",
+        "apps/web/src/components/ImportSettings.tsx",
+        "apps/web/src/media/MediaSourceViewer.tsx",
+        "apps/web/src/media/NativeGradeControls.tsx",
+        "apps/web/src/media/native-grade-model.ts",
+        "apps/web/src/media/useLinearFitPreview.ts",
+        "apps/web/src/media/useMasterPreview.ts",
+        "apps/web/src/components/ProjectDialogs.tsx",
+        "apps/web/src/components/WorkspaceViews.tsx",
+        "apps/web/src/components/revision-tools-model.ts"
+      ],
+      "this_round_treatment": [
+        "FLOW-20：拼图/GIF 工具密度与输入反馈统一；单项派生不能冒称 R08 多图队列/预算。",
+        "FLOW-22：专业导入保留源能力/预算提前提示；导入弹层独立尺寸，未复写新上游能力。",
+        "FLOW-23：继承 9df 的物理 DPR 1:1 与 496bed2 SDR JPEG 母版；source SHA/expectedVersion、curves/regions 能力和原坐标仍权威。",
+        "FLOW-25：交付信息与导出弹层精简布局、真实尺寸/格式保留；下载解码仍由七核心场景校验。"
+      ],
+      "capability_and_acceptance_boundary": "只核对可定位的前端入口和本轮共用呈现；原表证据范围和未验条件保留，不因 UI 改造升级状态。"
+    },
+    {
+      "id": "D01",
+      "name": "文字、贴纸、边框与水印对象",
+      "original_state": "部分",
+      "original_evidence": "**部分**。绘制与栅格图层、草图形状和标记有入口。正式照片中的文字排版、贴纸对象、字体复现及边框预设需完整化。[工作台验收][ours-qa]",
+      "original_acceptance": "**P2**。中文/英文多行，文字和贴纸各自缩放、旋转、排序、重开保持编辑，导出与所见一致。",
+      "original_row": "| D01 文字、贴纸、边框与水印对象         | 有贴纸、模板和联名涂鸦笔。[iOS][xt-ios]                                        | 拖拽、缩放、旋转贴纸，文字、边框、涂鸦与批量加素材。[官网][mt-site] · [批处理][mt-batch]                     | Fabric.js/Konva、miniPaint、Krita。                                                                                          | **部分**。绘制与栅格图层、草图形状和标记有入口。正式照片中的文字排版、贴纸对象、字体复现及边框预设需完整化。[工作台验收][ours-qa]              | **P2**。中文/英文多行，文字和贴纸各自缩放、旋转、排序、重开保持编辑，导出与所见一致。                             |",
+      "flow_ids": [
+        "FLOW-12"
+      ],
+      "source_paths": [
+        "apps/web/src/editor/LayerControls.tsx",
+        "apps/web/src/editor/RepairControls.tsx",
+        "apps/web/src/editor/AdvancedInspector.tsx",
+        "apps/web/src/editor/advanced-model.ts"
+      ],
+      "this_round_treatment": [
+        "FLOW-12：图层/修复/液化与草图相关控件统一细粒度呈现；图像算法及固定执行顺序不变，不能算完成任意重排编辑栈。"
+      ],
+      "capability_and_acceptance_boundary": "只核对可定位的前端入口和本轮共用呈现；原表证据范围和未验条件保留，不因 UI 改造升级状态。"
+    },
+    {
+      "id": "D02",
+      "name": "拼图、模板布局与批量切图",
+      "original_state": "部分",
+      "original_evidence": "**部分**。有带矩形、fit、焦点和透明背景的真拼图派生。模板间距、锁焦点、切图和二次编辑深度仍缺。[资产接口][ours-api]",
+      "original_acceptance": "**P2**。5 图混合横竖且有透明，调间距、布局、焦点与尺寸后保留可重编配方，切图能够精确拼回。",
+      "original_row": "| D02 拼图、模板布局与批量切图           | 有滤镜/模板活动，公开页未细列拼图参数。[iOS][xt-ios]                           | 有缝/无缝/自由拼图、分屏拼图和长图/九宫格切图。[PC][mt-pc] · [iOS][mt-ios]                                   | 小米 15 相册 Collage，Image Toolbox 拼图。[小米相册][mi-gallery]                                                             | **部分**。有带矩形、fit、焦点和透明背景的真拼图派生。模板间距、锁焦点、切图和二次编辑深度仍缺。[资产接口][ours-api]                            | **P2**。5 图混合横竖且有透明，调间距、布局、焦点与尺寸后保留可重编配方，切图能够精确拼回。                        |",
+      "flow_ids": [
+        "FLOW-20"
+      ],
+      "source_paths": [
+        "apps/web/src/components/AssetTools.tsx"
+      ],
+      "this_round_treatment": [
+        "FLOW-20：拼图/GIF 工具密度与输入反馈统一；单项派生不能冒称 R08 多图队列/预算。"
+      ],
+      "capability_and_acceptance_boundary": "只核对可定位的前端入口和本轮共用呈现；原表证据范围和未验条件保留，不因 UI 改造升级状态。"
+    },
+    {
+      "id": "D03",
+      "name": "涂鸦、克隆、标记、马赛克与真正遮盖",
+      "original_state": "部分",
+      "original_evidence": "**部分**。涂画、橡皮、克隆和草图标记可用。自动人脸打码和带导出隐私校验的模式缺失。[编辑器][ours-edit]",
+      "original_acceptance": "**P1**。笔压力/触控、撤销和取色可重放，测试多脸以及倒影小脸。需保密时按 F12 验收。",
+      "original_row": "| D03 涂鸦、克隆、标记、马赛克与真正遮盖 | 有涂鸦笔活动。[iOS][xt-ios]                                                    | 涂鸦、标记、马赛克，版本有框选自动给人脸打码。[iOS][mt-ios]                                                  | Krita/PhotoDemon 笔工具。小米相册保护水印与隐私分享。                                                                        | **部分**。涂画、橡皮、克隆和草图标记可用。自动人脸打码和带导出隐私校验的模式缺失。[编辑器][ours-edit]                                          | **P1**。笔压力/触控、撤销和取色可重放，测试多脸以及倒影小脸。需保密时按 F12 验收。                                |",
+      "flow_ids": [
+        "FLOW-12",
+        "FLOW-16"
+      ],
+      "source_paths": [
+        "apps/web/src/editor/LayerControls.tsx",
+        "apps/web/src/editor/RepairControls.tsx",
+        "apps/web/src/editor/AdvancedInspector.tsx",
+        "apps/web/src/editor/advanced-model.ts",
+        "apps/web/src/components/DrawingBoard.tsx",
+        "apps/web/src/components/ColorPicker.tsx",
+        "apps/web/src/components/sketch-document.ts"
+      ],
+      "this_round_treatment": [
+        "FLOW-12：图层/修复/液化与草图相关控件统一细粒度呈现；图像算法及固定执行顺序不变，不能算完成任意重排编辑栈。",
+        "FLOW-16：草图入口 data-action 固定；颜色/精确字段共享机制，QA 用真实添加当前照片与文字生成画面。"
+      ],
+      "capability_and_acceptance_boundary": "只核对可定位的前端入口和本轮共用呈现；原表证据范围和未验条件保留，不因 UI 改造升级状态。"
+    },
+    {
+      "id": "D04",
+      "name": "草图、形状与作为 AI 参考",
+      "original_state": "已验（基本入口）",
+      "original_evidence": "**已验（基本入口）**。画布形状、导入和透明 PNG 导出，显式作为参考图。复杂文字对象、压力轨迹与模板持久化仍待验。[工作台验收][ours-qa]",
+      "original_acceptance": "**P1**。画形状、擦除、旋转、保存、重开、作为明确已选参考传给模型。失败回到草图原稿，关联已生成素材。",
+      "original_row": "| D04 草图、形状与作为 AI 参考           | —                                                                              | AI 绘画与涂鸦入口。草图是否能作为独立模型参考未确认。[官方教程][mt-academy]                                  | 小米 HyperAI 草图生成。Fabric.js/Konva 对象模型和 CanvasKit 绘制。[小米 HyperAI][mi-hyper]                                   | **已验（基本入口）**。画布形状、导入和透明 PNG 导出，显式作为参考图。复杂文字对象、压力轨迹与模板持久化仍待验。[工作台验收][ours-qa]           | **P1**。画形状、擦除、旋转、保存、重开、作为明确已选参考传给模型。失败回到草图原稿，关联已生成素材。              |",
+      "flow_ids": [
+        "FLOW-16",
+        "FLOW-33"
+      ],
+      "source_paths": [
+        "apps/web/src/components/DrawingBoard.tsx",
+        "apps/web/src/components/ColorPicker.tsx",
+        "apps/web/src/components/sketch-document.ts",
+        "apps/web/src/components/AIPanel.tsx",
+        "apps/web/src/components/VoiceCapture.tsx",
+        "apps/web/src/ai/AIThread.tsx",
+        "apps/web/src/ai/useResultDecisions.ts",
+        "apps/web/src/ai/local-recording.ts",
+        "apps/web/src/ai/RecordingMeter.tsx"
+      ],
+      "this_round_treatment": [
+        "FLOW-16：草图入口 data-action 固定；颜色/精确字段共享机制，QA 用真实添加当前照片与文字生成画面。",
+        "FLOW-33：112 真实本地录音胶囊及单流波形；新增权限迟到、转换迟到、一次录制和大小限制行为测试；未做物理麦克风验收。"
+      ],
+      "capability_and_acceptance_boundary": "只核对可定位的前端入口和本轮共用呈现；原表证据范围和未验条件保留，不因 UI 改造升级状态。"
+    },
+    {
+      "id": "D05",
+      "name": "GIF 拆帧、重排、帧时长、循环和导出",
+      "original_state": "已验（有界 GIF）",
+      "original_evidence": "**已验（有界 GIF）**。GIF 首帧、帧序、逐帧 delay、循环、共享配方与新派生。素材刷新后保留该卡片的工具展开状态。Edge 32 个工作区用例通过。实际反转并下载两帧，读回时长 120/70ms 并核对帧像素。5 种视口检查对话框无横向溢出。逐帧不同遮罩与完整时间轴仍缺。[资产接口][ours-api]",
+      "original_acceptance": "**P1**。透明、非均匀帧时长、不同 disposal 的 5 组动图重开，帧序、时长、循环及可见像素相符。",
+      "original_row": "| D05 GIF 拆帧、重排、帧时长、循环和导出 | —                                                                              | PC 多图制作 GIF，逐帧参数未公开。[PC][mt-pc]                                                                 | Image Toolbox，libwebp/FFmpeg 提供底层帧/时间戳参考。                                                                        | **已验（有界 GIF）**。GIF 首帧、帧序、逐帧 delay、循环、共享配方与新派生。素材刷新后保留该卡片的工具展开状态。Edge 32 个工作区用例通过。实际反转并下载两帧，读回时长 120/70ms 并核对帧像素。5 种视口检查对话框无横向溢出。逐帧不同遮罩与完整时间轴仍缺。[资产接口][ours-api]                   | **P1**。透明、非均匀帧时长、不同 disposal 的 5 组动图重开，帧序、时长、循环及可见像素相符。                       |",
+      "flow_ids": [
+        "FLOW-20"
+      ],
+      "source_paths": [
+        "apps/web/src/components/AssetTools.tsx"
+      ],
+      "this_round_treatment": [
+        "FLOW-20：拼图/GIF 工具密度与输入反馈统一；单项派生不能冒称 R08 多图队列/预算。"
+      ],
+      "capability_and_acceptance_boundary": "只核对可定位的前端入口和本轮共用呈现；原表证据范围和未验条件保留，不因 UI 改造升级状态。"
+    },
+    {
+      "id": "D06",
+      "name": "APNG、动画 WebP、跨格式时序",
+      "original_state": "缺口（完整动画）",
+      "original_evidence": "**缺口（完整动画）**。当前有静态 WebP/PNG 与专门 GIF 编辑，APNG/动画 WebP 逐帧工程缺失。[媒体][ours-media] · [资产接口][ours-api]",
+      "original_acceptance": "**P1**。统一记录帧时间戳、尺寸、alpha、blend/disposal、循环。GIF↔APNG↔WebP 分别回读并比较合成帧，保留编辑时间轴。",
+      "original_row": "| D06 APNG、动画 WebP、跨格式时序        | —                                                                              | —                                                                                                            | Image Toolbox 动画模块、UPNG.js、libwebp AnimEncoder/Decoder、FFmpeg。                                                       | **缺口（完整动画）**。当前有静态 WebP/PNG 与专门 GIF 编辑，APNG/动画 WebP 逐帧工程缺失。[媒体][ours-media] · [资产接口][ours-api]              | **P1**。统一记录帧时间戳、尺寸、alpha、blend/disposal、循环。GIF↔APNG↔WebP 分别回读并比较合成帧，保留编辑时间轴。 |",
+      "flow_ids": [],
+      "source_paths": [],
+      "this_round_treatment": [],
+      "capability_and_acceptance_boundary": "原表底层缺口保持；相关通用工具或 AI 候选不等于该专用能力，本轮不新建假可用入口。"
+    },
+    {
+      "id": "D07",
+      "name": "Live Photo、动态美容与跨帧跟踪",
+      "original_state": "缺口",
+      "original_evidence": "**缺口**。GIF 参数共享，未实现 Live 配对读写、跨帧人员 ID、动作遮挡或保音频。[资产接口][ours-api]",
+      "original_acceptance": "**P2**。iOS Live 与一台支持小米动态照片的机型导入、编辑和重开，保封面/方向/帧时序/音频，检查人像边缘闪烁。",
+      "original_row": "| D07 Live Photo、动态美容与跨帧跟踪     | iOS 版本有实况人像与飘逸发，具体时序未公开。[iOS][xt-ios]                      | 修 Live 涵盖五官、整牙、妆发、身体、补光、配方、批量/分段及背景保护。[Live][mt-live] · [iOS][mt-ios]         | 小米动态照片是封装图+2/3 秒视频。SAM2/MatAnyone2 跨帧 mask，SeedVR2 时序恢复。[小米动态照片][mi-motion]                      | **缺口**。GIF 参数共享，未实现 Live 配对读写、跨帧人员 ID、动作遮挡或保音频。[资产接口][ours-api]                                              | **P2**。iOS Live 与一台支持小米动态照片的机型导入、编辑和重开，保封面/方向/帧时序/音频，检查人像边缘闪烁。        |",
+      "flow_ids": [],
+      "source_paths": [],
+      "this_round_treatment": [],
+      "capability_and_acceptance_boundary": "原表底层缺口保持；相关通用工具或 AI 候选不等于该专用能力，本轮不新建假可用入口。"
+    },
+    {
+      "id": "D08",
+      "name": "文档校正、图片文字、OCR 搜索",
+      "original_state": "部分",
+      "original_evidence": "**部分**。本地 Tesseract 真实文字、框、置信度与授权搜索。已有手工四角透视，缺可靠文档自动边界、去摩尔纹和 OCR 纠错工作流。[OCR 接口][ours-api]",
+      "original_acceptance": "**P1**。正斜拍、中英混合、低光与反光，标注 CER、框位误差、可搜索和删除。泄漏检查按项目权限。",
+      "original_row": "| D08 文档校正、图片文字、OCR 搜索       | —                                                                              | PC 有扫描件校正、去屏幕纹/阴影及改字。改字与 OCR 识别能力按入口区分。[PC][mt-pc]                             | 小米 15 识别文本。PaddleOCR 和 OpenCV 文档预处理。[小米相册][mi-gallery]                                                     | **部分**。本地 Tesseract 真实文字、框、置信度与授权搜索。已有手工四角透视，缺可靠文档自动边界、去摩尔纹和 OCR 纠错工作流。[OCR 接口][ours-api] | **P1**。正斜拍、中英混合、低光与反光，标注 CER、框位误差、可搜索和删除。泄漏检查按项目权限。                      |",
+      "flow_ids": [
+        "FLOW-19"
+      ],
+      "source_paths": [
+        "apps/web/src/components/AssetTools.tsx"
+      ],
+      "this_round_treatment": [
+        "FLOW-19：素材工具用短入口和公共 media profile；OCR/表格真实输出与权限/失败边界保留。"
+      ],
+      "capability_and_acceptance_boundary": "只核对可定位的前端入口和本轮共用呈现；原表证据范围和未验条件保留，不因 UI 改造升级状态。"
+    },
+    {
+      "id": "D09",
+      "name": "图片表格识别、合并行列与结构化导出",
+      "original_state": "部分",
+      "original_evidence": "**部分**。已有对齐词框推断的简单表格，可为空。缺合并单元格、跨行列、表格校正/导出、复杂表格评测。[OCR 接口][ours-api]",
+      "original_acceptance": "**P1**。含无线框、跨行列、表头合并的 30 张图。验证 row/col span、边框和原坐标，允许编辑和导出结构。",
+      "original_row": "| D09 图片表格识别、合并行列与结构化导出 | —                                                                              | PC 有文字图表增强及无痕改字，未确认表格结构重建。[PC][mt-pc]                                                 | PaddleOCR PP-StructureV3 检测表格与单元格，输出结构化结果。                                                                  | **部分**。已有对齐词框推断的简单表格，可为空。缺合并单元格、跨行列、表格校正/导出、复杂表格评测。[OCR 接口][ours-api]                          | **P1**。含无线框、跨行列、表头合并的 30 张图。验证 row/col span、边框和原坐标，允许编辑和导出结构。               |",
+      "flow_ids": [
+        "FLOW-19"
+      ],
+      "source_paths": [
+        "apps/web/src/components/AssetTools.tsx"
+      ],
+      "this_round_treatment": [
+        "FLOW-19：素材工具用短入口和公共 media profile；OCR/表格真实输出与权限/失败边界保留。"
+      ],
+      "capability_and_acceptance_boundary": "只核对可定位的前端入口和本轮共用呈现；原表证据范围和未验条件保留，不因 UI 改造升级状态。"
+    },
+    {
+      "id": "D10",
+      "name": "画布中的可编辑表格",
+      "original_state": "缺口",
+      "original_evidence": "**缺口**。OCR 表格与可编辑排版表格是两个操作，当前无后者。",
+      "original_acceptance": "**P3**。若产品需要版式表格，按独立文档对象验收插行列、合并/拆分、重新排版与重开。",
+      "original_row": "| D10 画布中的可编辑表格                 | —                                                                              | —                                                                                                            | Fabric.js/Konva 对象交互可做基底，需要单元格布局。                                                                           | **缺口**。OCR 表格与可编辑排版表格是两个操作，当前无后者。                                                                                     | **P3**。若产品需要版式表格，按独立文档对象验收插行列、合并/拆分、重新排版与重开。                                 |",
+      "flow_ids": [],
+      "source_paths": [],
+      "this_round_treatment": [],
+      "capability_and_acceptance_boundary": "原表底层缺口保持；相关通用工具或 AI 候选不等于该专用能力，本轮不新建假可用入口。"
+    },
+    {
+      "id": "D11",
+      "name": "证件照、打印和人像比例",
+      "original_state": "部分",
+      "original_evidence": "**部分**。手工裁切、透明抠图和拼图可组合，缺尺寸模板、主体占比检查和实体打印输出。[编辑器][ours-edit] · [资产接口][ours-api]",
+      "original_acceptance": "**P2**。用授权测试照验证裁切、毫米尺寸、DPI、背景及多张排版，重开文件测实际像素和色彩。",
+      "original_row": "| D11 证件照、打印和人像比例             | —                                                                              | PC 有多规格、底色、自动排版打印和换装。[PC][mt-pc]                                                           | Image Toolbox 裁切/输出和移动布局参考。                                                                                      | **部分**。手工裁切、透明抠图和拼图可组合，缺尺寸模板、主体占比检查和实体打印输出。[编辑器][ours-edit] · [资产接口][ours-api]                   | **P2**。用授权测试照验证裁切、毫米尺寸、DPI、背景及多张排版，重开文件测实际像素和色彩。                           |",
+      "flow_ids": [
+        "FLOW-25"
+      ],
+      "source_paths": [
+        "apps/web/src/components/ProjectDialogs.tsx",
+        "apps/web/src/components/WorkspaceViews.tsx",
+        "apps/web/src/components/revision-tools-model.ts"
+      ],
+      "this_round_treatment": [
+        "FLOW-25：交付信息与导出弹层精简布局、真实尺寸/格式保留；下载解码仍由七核心场景校验。"
+      ],
+      "capability_and_acceptance_boundary": "只核对可定位的前端入口和本轮共用呈现；原表证据范围和未验条件保留，不因 UI 改造升级状态。"
+    },
+    {
+      "id": "D12",
+      "name": "拍摄直出、基础视频编辑、时序美容",
+      "original_state": "缺口（拍摄和通用视频）",
+      "original_evidence": "**缺口（拍摄和通用视频）**。工作台主链路为静态图片和有界 GIF。",
+      "original_acceptance": "**P3**。若进入范围，分别验相机权限、前后置、退后台、编码时序、音频、真机温度和人像跟踪。",
+      "original_row": "| D12 拍摄直出、基础视频编辑、时序美容   | 相机有滤镜/补光色卡，实况美容有版本记录。[iOS][xt-ios] · [Android][xt-android] | 相机模式支持照片/视频/Live、实时美颜和滤镜。另有视频剪辑与美容。[相机][mt-camera] · [官网][mt-site]          | Snapseed Camera 电影效果实时预览，OPPO Master Cut。GPUImage3、SeedVR2 和 FFmpeg。[Snapseed iOS][sn-ios] · [OPPO 影像][op-16] | **缺口（拍摄和通用视频）**。工作台主链路为静态图片和有界 GIF。                                                                                 | **P3**。若进入范围，分别验相机权限、前后置、退后台、编码时序、音频、真机温度和人像跟踪。                          |",
+      "flow_ids": [],
+      "source_paths": [],
+      "this_round_treatment": [],
+      "capability_and_acceptance_boundary": "原表底层缺口保持；相关通用工具或 AI 候选不等于该专用能力，本轮不新建假可用入口。"
+    },
+    {
+      "id": "D13",
+      "name": "素材库、配方模板、收藏与做同款",
+      "original_state": "部分",
+      "original_evidence": "**部分**。有工作台配方、资产和 About 示例。缺带对象素材、使用权限、按版本发布和预览的可重编模板库。",
+      "original_acceptance": "**P2**。选择一个模板并替换图、字和配色，保存为个人配方，能跨图重用。模板来源和用户资产引用各自校验。",
+      "original_row": "| D13 素材库、配方模板、收藏与做同款     | 联名贴纸、模板、滤镜收藏，PC 有独家预设。[iOS][xt-ios] · [官网][xt-pc]         | 配方、贴纸、滤镜、海报及从示例做同款，移动服务与其他端能力以各端说明为准。[官网][mt-site] · [AI 改图][mt-ai] | Snapseed Looks 可应用到一批。Image Toolbox 的模板与参数复用可参考。[Snapseed iOS][sn-ios]                                    | **部分**。有工作台配方、资产和 About 示例。缺带对象素材、使用权限、按版本发布和预览的可重编模板库。                                            | **P2**。选择一个模板并替换图、字和配色，保存为个人配方，能跨图重用。模板来源和用户资产引用各自校验。              |",
+      "flow_ids": [
+        "FLOW-17"
+      ],
+      "source_paths": [
+        "apps/web/src/components/AssetLibrary.tsx",
+        "apps/web/src/components/WorkspaceViews.tsx",
+        "apps/web/src/resources/ResourceSearch.tsx",
+        "apps/web/src/resources/model.ts"
+      ],
+      "this_round_treatment": [
+        "FLOW-17：图库/检索保留真实图像比例与稳定 DOM；公共选择状态与弹层密度更新；不引入未经本轮实操的 69/80。"
+      ],
+      "capability_and_acceptance_boundary": "只核对可定位的前端入口和本轮共用呈现；原表证据范围和未验条件保留，不因 UI 改造升级状态。"
+    },
+    {
+      "id": "A01",
+      "name": "文字修图、实际参数建议、预览和确认",
+      "original_state": "部分",
+      "original_evidence": "**部分**。可显式共享画布，按参数提议/渲染候选，场景平衡测量像素。三种模式各有服务器约束。多类指令的保真效果和生产许可仍需各自核查。[Agent API][ours-api]",
+      "original_acceptance": "**P0**。同一指令同时测正确源/过期源、当前租约/失效租约。给出可解释参数和可撤销候选，确认才更新作品，回放像素相同。",
+      "original_row": "| A01 文字修图、实际参数建议、预览和确认 | 有美学助理和场景智能精修，公开说明未给当前画布参数结构。[iOS][xt-ios] · [Android][xt-android] | AI 改图可自由输入、多轮调整和回看生成结果。[AI 改图][mt-ai] · [iOS][mt-ios]                  | ColorOS 17 AI Photo Agent 提供场景建议、文字执行和参考图匹配，官方范围为静态照片，按地区推送并设月额度。RetouchGPT 与 VeraRetouch 可参考规划与执行。[ColorOS 17][op-17] · [推送范围][op-17-launch] · [澎湃 OS][mi-os] | **部分**。可显式共享画布，按参数提议/渲染候选，场景平衡测量像素。三种模式各有服务器约束。多类指令的保真效果和生产许可仍需各自核查。[Agent API][ours-api]                                                                           | **P0**。同一指令同时测正确源/过期源、当前租约/失效租约。给出可解释参数和可撤销候选，确认才更新作品，回放像素相同。                                 |",
+      "flow_ids": [
+        "FLOW-32"
+      ],
+      "source_paths": [
+        "apps/web/src/ai/CandidateActions.tsx",
+        "apps/web/src/ai/ResultActions.tsx",
+        "apps/web/src/ai/assistantGuards.ts",
+        "apps/web/src/ai/recipeDiff.ts"
+      ],
+      "this_round_treatment": [
+        "FLOW-32：候选确认/取消/重预览与独立新素材逻辑不改；现有防旧候选与确认测试纳入 62 项针对回归。"
+      ],
+      "capability_and_acceptance_boundary": "保留服务能力、冻结输入、candidate hash、租约、费用与未知恢复；未配置供应商的本轮 UI 截图不能代替真实模型/语音验收。"
+    },
+    {
+      "id": "A02",
+      "name": "文生图、模型参数和采纳到独立图层",
+      "original_state": "已验（一个真实模型低成本路径）",
+      "original_evidence": "**已验（一个真实模型低成本路径）**。OpenAI Flare 一张 1024×1024 低档 PNG，由本应用接收、入库并采纳为新图层。模型管理和质量矩阵仍有独立行。[模型][oa-image] · [采纳契约][ours-ext]",
+      "original_acceptance": "**P0**。走当前界面与真实 worker，逐项核模型、输入/输出 token、文件哈希、采纳版本和账本。覆盖明确拒绝、取消、重复和账单未知状态。",
+      "original_row": "| A02 文生图、模型参数和采纳到独立图层   | 有 AI 写真和 AI 造型室。[iOS][xt-ios]                                                         | AI 绘画、AI 形象照及模板/自由提示。[官方教程][mt-academy]                                    | Qwen-Image、FLUX.2 klein、LongCat-Image。模型间参数和配额差异以各自接口为准。                                                  | **已验（一个真实模型低成本路径）**。OpenAI Flare 一张 1024×1024 低档 PNG，由本应用接收、入库并采纳为新图层。模型管理和质量矩阵仍有独立行。[模型][oa-image] · [采纳契约][ours-ext]                                                  | **P0**。走当前界面与真实 worker，逐项核模型、输入/输出 token、文件哈希、采纳版本和账本。覆盖明确拒绝、取消、重复和账单未知状态。                   |",
+      "flow_ids": [
+        "FLOW-31"
+      ],
+      "source_paths": [
+        "apps/web/src/components/AIPanel.tsx",
+        "apps/web/src/ai/ImageParameters.tsx",
+        "apps/web/src/ai/ModelChoice.tsx",
+        "apps/web/src/ai/requestPayload.ts"
+      ],
+      "this_round_treatment": [
+        "FLOW-31：114 输入表面和真实任务等待；模型能力过滤、quote、冻结来源与请求 hash 保留。"
+      ],
+      "capability_and_acceptance_boundary": "保留服务能力、冻结输入、candidate hash、租约、费用与未知恢复；未配置供应商的本轮 UI 截图不能代替真实模型/语音验收。"
+    },
+    {
+      "id": "A03",
+      "name": "图生图、中文指令、多参考、局部遮罩",
+      "original_state": "部分",
+      "original_evidence": "**部分**。能力表可约束参考输入，支持独立结果和版本采纳。真实生图不覆盖同图、多参考和局部外区保留的质量。[Agent API][ours-api]",
+      "original_acceptance": "**P0**。完成真实单参考、多参考和局部任务各一组，比较中文指令、未改区和身份。按模型能力限制 UI，记录费用及失败样本。",
+      "original_row": "| A03 图生图、中文指令、多参考、局部遮罩 | 有换发型、AI 写真等产品入口，多参考参数未公开。[iOS][xt-ios]                                  | 可参考模板/照片与自由指令，PC 局部选哪改哪。最大参考数未确认。[AI 改图][mt-ai] · [PC][mt-pc] | Qwen-Image-Edit-2511、Qwen-Image-2.1、FLUX.2 klein 4B、OmniGen2、Step1X-Edit 和 LongCat-Image。                                | **部分**。能力表可约束参考输入，支持独立结果和版本采纳。真实生图不覆盖同图、多参考和局部外区保留的质量。[Agent API][ours-api]                                                                                                      | **P0**。完成真实单参考、多参考和局部任务各一组，比较中文指令、未改区和身份。按模型能力限制 UI，记录费用及失败样本。                                |",
+      "flow_ids": [
+        "FLOW-16",
+        "FLOW-31"
+      ],
+      "source_paths": [
+        "apps/web/src/components/DrawingBoard.tsx",
+        "apps/web/src/components/ColorPicker.tsx",
+        "apps/web/src/components/sketch-document.ts",
+        "apps/web/src/components/AIPanel.tsx",
+        "apps/web/src/ai/ImageParameters.tsx",
+        "apps/web/src/ai/ModelChoice.tsx",
+        "apps/web/src/ai/requestPayload.ts"
+      ],
+      "this_round_treatment": [
+        "FLOW-16：草图入口 data-action 固定；颜色/精确字段共享机制，QA 用真实添加当前照片与文字生成画面。",
+        "FLOW-31：114 输入表面和真实任务等待；模型能力过滤、quote、冻结来源与请求 hash 保留。"
+      ],
+      "capability_and_acceptance_boundary": "保留服务能力、冻结输入、candidate hash、租约、费用与未知恢复；未配置供应商的本轮 UI 截图不能代替真实模型/语音验收。"
+    },
+    {
+      "id": "A04",
+      "name": "场景分析、测量像素、候选评分和证据",
+      "original_state": "部分",
+      "original_evidence": "**部分**。场景平衡按亮度和通道余量生成参数，Agent 可评审候选。预览采样和小样不证明高分辨率及多场景质量。[Agent API][ours-api]",
+      "original_acceptance": "**P1**。对同图多个候选保存分数、缺陷、实际参数和预览。用原像素验证外区和高光，盲评与模型结论分开记录。",
+      "original_row": "| A04 场景分析、测量像素、候选评分和证据 | 场景智能精修、构图/皮肤/发质，内部评分未公开。[Android][xt-android]                           | AI 校色、曝光修复、暗光、修图配方。[调色][mt-color]                                          | OPPO 按场景、主体及整体氛围推荐方向。SVDLUT/InstantRetouch 可比较内容保留，GenEditEvalKit/EditScore 用于质量评测。[ColorOS 17][op-17]                                                      | **部分**。场景平衡按亮度和通道余量生成参数，Agent 可评审候选。预览采样和小样不证明高分辨率及多场景质量。[Agent API][ours-api]                                                                                                      | **P1**。对同图多个候选保存分数、缺陷、实际参数和预览。用原像素验证外区和高光，盲评与模型结论分开记录。                                             |",
+      "flow_ids": [
+        "FLOW-30",
+        "FLOW-32"
+      ],
+      "source_paths": [
+        "apps/web/src/ai/LiveAssistant.tsx",
+        "apps/web/src/ai/turnStream.ts",
+        "apps/web/src/ai/ResearchGraph.tsx",
+        "apps/web/src/ai/WorkspaceCards.tsx",
+        "apps/web/src/ai/ExecutionStatus.tsx",
+        "apps/web/src/ai/execution-events.ts",
+        "apps/web/src/ai/ComposerAction.tsx",
+        "apps/web/src/ai/CandidateActions.tsx",
+        "apps/web/src/ai/ResultActions.tsx",
+        "apps/web/src/ai/assistantGuards.ts",
+        "apps/web/src/ai/recipeDiff.ts"
+      ],
+      "this_round_treatment": [
+        "FLOW-30：111/119 真实公开 SSE 执行线，114 单动作提交/停止；没有计时假完成或隐藏思维输出。",
+        "FLOW-32：候选确认/取消/重预览与独立新素材逻辑不改；现有防旧候选与确认测试纳入 62 项针对回归。"
+      ],
+      "capability_and_acceptance_boundary": "保留服务能力、冻结输入、candidate hash、租约、费用与未知恢复；未配置供应商的本轮 UI 截图不能代替真实模型/语音验收。"
+    },
+    {
+      "id": "A05",
+      "name": "模型目录、能力参数、定价与错误回显",
+      "original_state": "部分",
+      "original_evidence": "**部分**。能力驱动的模型选择/参数、连接管理、定价及配额有执行路径。需和云端 AI 前端继续对齐实时语音、工具和创作表单。[API][ours-api] · [前端 PR][pr9]",
+      "original_acceptance": "**P0**。逐模型用官方 schema 比对参数的显示、默认、非法值拒绝、切换清理、报价与报错。新旧客户端请求同一验证，密钥留后端。",
+      "original_row": "| A05 模型目录、能力参数、定价与错误回显 | 会员功能与工具入口，未公开模型目录。[iOS][xt-ios]                                             | 公开自研 AI、部分付费功能及产品入口，未公开多模型参数目录。[PC][mt-pc] · [iOS][mt-ios]       | OpenAI 官方模型能力，参照 Diffusers 不同管线签名。[生图模型][oa-image] · [语音模型][oa-live]                                   | **部分**。能力驱动的模型选择/参数、连接管理、定价及配额有执行路径。需和云端 AI 前端继续对齐实时语音、工具和创作表单。[API][ours-api] · [前端 PR][pr9]                                                                              | **P0**。逐模型用官方 schema 比对参数的显示、默认、非法值拒绝、切换清理、报价与报错。新旧客户端请求同一验证，密钥留后端。                           |",
+      "flow_ids": [
+        "FLOW-31",
+        "FLOW-35",
+        "FLOW-36",
+        "FLOW-38"
+      ],
+      "source_paths": [
+        "apps/web/src/components/AIPanel.tsx",
+        "apps/web/src/ai/ImageParameters.tsx",
+        "apps/web/src/ai/ModelChoice.tsx",
+        "apps/web/src/ai/requestPayload.ts",
+        "apps/web/src/ai/PanelSettingsPage.tsx",
+        "apps/web/src/ai/CreativeControls.tsx",
+        "apps/web/src/ai/MemoryControls.tsx",
+        "apps/web/src/ai/assistantSubmission.ts",
+        "apps/web/src/usage/UsageDashboard.tsx",
+        "apps/web/src/usage/UsageLedger.tsx",
+        "apps/web/src/usage/UsageJob.tsx",
+        "apps/web/src/usage/useUsageResource.ts",
+        "apps/web/src/components/OpsDashboard.tsx",
+        "apps/web/src/components/AssistantOpsPanel.tsx",
+        "apps/web/src/components/ops-model-fields.ts"
+      ],
+      "this_round_treatment": [
+        "FLOW-31：114 输入表面和真实任务等待；模型能力过滤、quote、冻结来源与请求 hash 保留。",
+        "FLOW-35：附件直达共享范围；受控交流模式；历史/unknown 与费用恢复入口仍可达且不自动新建收费请求。",
+        "FLOW-36：用量和账单密度及真实读取状态；unknown 不补零、预占和结算不混算。",
+        "FLOW-38：模型/助手配置继承真实字段与 CAS，136 仅本地受控草稿；保存仍是明确 action。"
+      ],
+      "capability_and_acceptance_boundary": "保留服务能力、冻结输入、candidate hash、租约、费用与未知恢复；未配置供应商的本轮 UI 截图不能代替真实模型/语音验收。"
+    },
+    {
+      "id": "A06",
+      "name": "画布内助手、上下文冻结与工作台切换",
+      "original_state": "部分",
+      "original_evidence": "**部分**。当前画布可以冻结并授权共享，候选带 hash 和版本，已有侧栏和独立页面。PR #9 后续 AI 交互由前端任务持续处理。[Agent API][ours-api] · [前端 PR][pr9]",
+      "original_acceptance": "**P0**。编辑中打开 Agent、写作及精度面板并返回，工具/草稿/缩放保留。画布变化后过期候选不可提交，可明确同步新快照。",
+      "original_row": "| A06 画布内助手、上下文冻结与工作台切换 | —                                                                                             | AI 改图有独立工作流，画布上下文绑定未公开。[AI 改图][mt-ai]                                  | OPPO 同张照片修图、VeraRetouch 参数规划。                                                                                      | **部分**。当前画布可以冻结并授权共享，候选带 hash 和版本，已有侧栏和独立页面。PR #9 后续 AI 交互由前端任务持续处理。[Agent API][ours-api] · [前端 PR][pr9]                                                                         | **P0**。编辑中打开 Agent、写作及精度面板并返回，工具/草稿/缩放保留。画布变化后过期候选不可提交，可明确同步新快照。                                 |",
+      "flow_ids": [
+        "FLOW-30"
+      ],
+      "source_paths": [
+        "apps/web/src/ai/LiveAssistant.tsx",
+        "apps/web/src/ai/turnStream.ts",
+        "apps/web/src/ai/ResearchGraph.tsx",
+        "apps/web/src/ai/WorkspaceCards.tsx",
+        "apps/web/src/ai/ExecutionStatus.tsx",
+        "apps/web/src/ai/execution-events.ts",
+        "apps/web/src/ai/ComposerAction.tsx"
+      ],
+      "this_round_treatment": [
+        "FLOW-30：111/119 真实公开 SSE 执行线，114 单动作提交/停止；没有计时假完成或隐藏思维输出。"
+      ],
+      "capability_and_acceptance_boundary": "保留服务能力、冻结输入、candidate hash、租约、费用与未知恢复；未配置供应商的本轮 UI 截图不能代替真实模型/语音验收。"
+    },
+    {
+      "id": "A07",
+      "name": "写作、字幕、搜索与结构化工作区",
+      "original_state": "部分",
+      "original_evidence": "**部分**。文字、可流式事件、引用卡与受控搜索有接线。真实供应商多任务、中断及浏览器正文可读性还要验。[Agent API][ours-api]",
+      "original_acceptance": "**P1**。跑中英文字、回放断流、来源核验和移动阅读。未经授权的私有图/图层不进入公开查询。",
+      "original_row": "| A07 写作、字幕、搜索与结构化工作区     | —                                                                                             | AI 创意有文字入口，写作/字幕/智能工作区同一链路未确认。[官方教程][mt-academy]                | 小米 HyperAI 写作/转录与 OPPO 系统 AI Writer。各为系统功能。[小米 HyperAI][mi-hyper] · [OPPO 影像][op-16]                      | **部分**。文字、可流式事件、引用卡与受控搜索有接线。真实供应商多任务、中断及浏览器正文可读性还要验。[Agent API][ours-api]                                                                                                          | **P1**。跑中英文字、回放断流、来源核验和移动阅读。未经授权的私有图/图层不进入公开查询。                                                            |",
+      "flow_ids": [
+        "FLOW-29",
+        "FLOW-30",
+        "FLOW-33"
+      ],
+      "source_paths": [
+        "apps/web/src/components/WorkspaceViews.tsx",
+        "apps/web/src/account/document-drafts.ts",
+        "apps/web/src/account/AccountDocumentDrafts.tsx",
+        "apps/web/src/ai/LiveAssistant.tsx",
+        "apps/web/src/ai/turnStream.ts",
+        "apps/web/src/ai/ResearchGraph.tsx",
+        "apps/web/src/ai/WorkspaceCards.tsx",
+        "apps/web/src/ai/ExecutionStatus.tsx",
+        "apps/web/src/ai/execution-events.ts",
+        "apps/web/src/ai/ComposerAction.tsx",
+        "apps/web/src/components/AIPanel.tsx",
+        "apps/web/src/components/VoiceCapture.tsx",
+        "apps/web/src/ai/AIThread.tsx",
+        "apps/web/src/ai/useResultDecisions.ts",
+        "apps/web/src/ai/local-recording.ts",
+        "apps/web/src/ai/RecordingMeter.tsx"
+      ],
+      "this_round_treatment": [
+        "FLOW-29：文档列表/编辑页与公共保存反馈减量；草稿、未知创建、CAS、离开确认仍保留。",
+        "FLOW-30：111/119 真实公开 SSE 执行线，114 单动作提交/停止；没有计时假完成或隐藏思维输出。",
+        "FLOW-33：112 真实本地录音胶囊及单流波形；新增权限迟到、转换迟到、一次录制和大小限制行为测试；未做物理麦克风验收。"
+      ],
+      "capability_and_acceptance_boundary": "保留服务能力、冻结输入、candidate hash、租约、费用与未知恢复；未配置供应商的本轮 UI 截图不能代替真实模型/语音验收。"
+    },
+    {
+      "id": "A08",
+      "name": "工具调用、MCP 与外部连接",
+      "original_state": "部分",
+      "original_evidence": "**部分**。有受控工具、检索分支、项目域鉴权及模型外部连接相关配置。通用用户 MCP 增删、授权撤销、工具能力兼容和真实端到端未有覆盖证据。[Agent API][ours-api] · [扩展契约][ours-ext]",
+      "original_acceptance": "**P1**。最小只读工具实测发现、调用、取消、超时与撤权，工具输出不能改写用户授权，参数和数据边界有日志证据。",
+      "original_row": "| A08 工具调用、MCP 与外部连接           | —                                                                                             | —                                                                                            | Yjs/Awareness 用于内部同步。外部 MCP 另按官方协议与模型工具能力核验。                                                          | **部分**。有受控工具、检索分支、项目域鉴权及模型外部连接相关配置。通用用户 MCP 增删、授权撤销、工具能力兼容和真实端到端未有覆盖证据。[Agent API][ours-api] · [扩展契约][ours-ext]                                                  | **P1**。最小只读工具实测发现、调用、取消、超时与撤权，工具输出不能改写用户授权，参数和数据边界有日志证据。                                         |",
+      "flow_ids": [
+        "FLOW-30",
+        "FLOW-35"
+      ],
+      "source_paths": [
+        "apps/web/src/ai/LiveAssistant.tsx",
+        "apps/web/src/ai/turnStream.ts",
+        "apps/web/src/ai/ResearchGraph.tsx",
+        "apps/web/src/ai/WorkspaceCards.tsx",
+        "apps/web/src/ai/ExecutionStatus.tsx",
+        "apps/web/src/ai/execution-events.ts",
+        "apps/web/src/ai/ComposerAction.tsx",
+        "apps/web/src/components/AIPanel.tsx",
+        "apps/web/src/ai/PanelSettingsPage.tsx",
+        "apps/web/src/ai/CreativeControls.tsx",
+        "apps/web/src/ai/MemoryControls.tsx",
+        "apps/web/src/ai/assistantSubmission.ts"
+      ],
+      "this_round_treatment": [
+        "FLOW-30：111/119 真实公开 SSE 执行线，114 单动作提交/停止；没有计时假完成或隐藏思维输出。",
+        "FLOW-35：附件直达共享范围；受控交流模式；历史/unknown 与费用恢复入口仍可达且不自动新建收费请求。"
+      ],
+      "capability_and_acceptance_boundary": "保留服务能力、冻结输入、candidate hash、租约、费用与未知恢复；未配置供应商的本轮 UI 截图不能代替真实模型/语音验收。"
+    },
+    {
+      "id": "A09",
+      "name": "记忆、会话、长上下文和断流续接",
+      "original_state": "部分",
+      "original_evidence": "**部分**。已实现范围化记忆、CAS、来源/过期、用户确认及事件回读。真实长任务的错误召回、删除与可解释来源仍需测。[Agent API][ours-api]",
+      "original_acceptance": "**P1**。三会话跨编辑任务切换并测试长期偏好、临时指令及被删除记忆。越界资源不得复现，断流后无重复候选。",
+      "original_row": "| A09 记忆、会话、长上下文和断流续接     | —                                                                                             | 有生成历史，私有修图偏好记忆未公开。[AI 改图][mt-ai]                                         | RefRetouch 从参考对学习偏好，VeraRetouch 可解释参数规划。                                                                      | **部分**。已实现范围化记忆、CAS、来源/过期、用户确认及事件回读。真实长任务的错误召回、删除与可解释来源仍需测。[Agent API][ours-api]                                                                                                | **P1**。三会话跨编辑任务切换并测试长期偏好、临时指令及被删除记忆。越界资源不得复现，断流后无重复候选。                                             |",
+      "flow_ids": [
+        "FLOW-18",
+        "FLOW-30",
+        "FLOW-33",
+        "FLOW-35"
+      ],
+      "source_paths": [
+        "apps/web/src/components/AssetLibrary.tsx",
+        "apps/web/src/resources/ResourceSearch.tsx",
+        "apps/web/src/ai/MemoryControls.tsx",
+        "apps/web/src/ai/LiveAssistant.tsx",
+        "apps/web/src/ai/turnStream.ts",
+        "apps/web/src/ai/ResearchGraph.tsx",
+        "apps/web/src/ai/WorkspaceCards.tsx",
+        "apps/web/src/ai/ExecutionStatus.tsx",
+        "apps/web/src/ai/execution-events.ts",
+        "apps/web/src/ai/ComposerAction.tsx",
+        "apps/web/src/components/AIPanel.tsx",
+        "apps/web/src/components/VoiceCapture.tsx",
+        "apps/web/src/ai/AIThread.tsx",
+        "apps/web/src/ai/useResultDecisions.ts",
+        "apps/web/src/ai/local-recording.ts",
+        "apps/web/src/ai/RecordingMeter.tsx",
+        "apps/web/src/ai/PanelSettingsPage.tsx",
+        "apps/web/src/ai/CreativeControls.tsx",
+        "apps/web/src/ai/assistantSubmission.ts"
+      ],
+      "this_round_treatment": [
+        "FLOW-18：元数据与来源/私有标注沿真实权限读取；放入合适弹层宽度，未新增或伪装语义搜索能力。",
+        "FLOW-30：111/119 真实公开 SSE 执行线，114 单动作提交/停止；没有计时假完成或隐藏思维输出。",
+        "FLOW-33：112 真实本地录音胶囊及单流波形；新增权限迟到、转换迟到、一次录制和大小限制行为测试；未做物理麦克风验收。",
+        "FLOW-35：附件直达共享范围；受控交流模式；历史/unknown 与费用恢复入口仍可达且不自动新建收费请求。"
+      ],
+      "capability_and_acceptance_boundary": "保留服务能力、冻结输入、candidate hash、租约、费用与未知恢复；未配置供应商的本轮 UI 截图不能代替真实模型/语音验收。"
+    },
+    {
+      "id": "A10",
+      "name": "AI 双向长通话、字幕、打断与账单",
+      "original_state": "部分",
+      "original_evidence": "**部分**。应用 WebSocket 经真实 GPT-Live-1 达 347 计费秒，两个本机协议客户端收到音频与字幕，验证打断和供应商结算字段。物理麦克风、跨公网、弱网待验。[语音 API][ours-api]",
+      "original_acceptance": "**P0**。两个真机跨网络 10 分钟，双向收音、字幕、插话、静音、掉线与结束结算，分别核时长、费用、音频缺口和重复派发。",
+      "original_row": "| A10 AI 双向长通话、字幕、打断与账单    | —                                                                                             | 修合照有真人语音。AI 实时模型通话未在该教程确认。[修合照][mt-group]                          | OpenAI GPT-Live-1。LiveKit 用于音频传输对照。[语音模型][oa-live]                                                               | **部分**。应用 WebSocket 经真实 GPT-Live-1 达 347 计费秒，两个本机协议客户端收到音频与字幕，验证打断和供应商结算字段。物理麦克风、跨公网、弱网待验。[语音 API][ours-api]                                                           | **P0**。两个真机跨网络 10 分钟，双向收音、字幕、插话、静音、掉线与结束结算，分别核时长、费用、音频缺口和重复派发。                                 |",
+      "flow_ids": [
+        "FLOW-33",
+        "FLOW-34"
+      ],
+      "source_paths": [
+        "apps/web/src/components/AIPanel.tsx",
+        "apps/web/src/components/VoiceCapture.tsx",
+        "apps/web/src/ai/AIThread.tsx",
+        "apps/web/src/ai/useResultDecisions.ts",
+        "apps/web/src/ai/local-recording.ts",
+        "apps/web/src/ai/RecordingMeter.tsx",
+        "apps/web/src/ai/LiveAssistant.tsx",
+        "apps/web/src/ai/voiceClient.ts",
+        "apps/web/src/ai/VoiceCaptions.tsx",
+        "apps/web/src/ai/voiceSubmission.ts"
+      ],
+      "this_round_treatment": [
+        "FLOW-33：112 真实本地录音胶囊及单流波形；新增权限迟到、转换迟到、一次录制和大小限制行为测试；未做物理麦克风验收。",
+        "FLOW-34：实时语音仅改紧凑真实状态展示；保留 voiceClient、恢复 schema、字幕和实际结束 handler，不模拟音量。"
+      ],
+      "capability_and_acceptance_boundary": "保留服务能力、冻结输入、candidate hash、租约、费用与未知恢复；未配置供应商的本轮 UI 截图不能代替真实模型/语音验收。"
+    },
+    {
+      "id": "A11",
+      "name": "团队多人语音、共享 AI 与网络退化",
+      "original_state": "部分",
+      "original_evidence": "**部分**。同作品团队 WebSocket、成员票据、真人音频与可加入 AI，浏览器两客户端通过基础路径。长通话跨公网与 3+ 物理客户端待验。[团队语音 API][ours-api]",
+      "original_acceptance": "**P0**。3 台设备、Wi-Fi/蜂窝混合，含权限撤销、后台恢复、重连和拥塞。核各音轨不串线、用户与 AI 分开结算。",
+      "original_row": "| A11 团队多人语音、共享 AI 与网络退化   | —                                                                                             | 修合照支持邀请、实时编辑与真人语音。[修合照][mt-group]                                       | LiveKit 房间/SFU/TURN，跨网络应测试独立设备和音频路径。                                                                        | **部分**。同作品团队 WebSocket、成员票据、真人音频与可加入 AI，浏览器两客户端通过基础路径。长通话跨公网与 3+ 物理客户端待验。[团队语音 API][ours-api]                                                                              | **P0**。3 台设备、Wi-Fi/蜂窝混合，含权限撤销、后台恢复、重连和拥塞。核各音轨不串线、用户与 AI 分开结算。                                           |",
+      "flow_ids": [
+        "FLOW-28"
+      ],
+      "source_paths": [
+        "apps/web/src/collaboration/TeamVoiceControls.tsx",
+        "apps/web/src/collaboration/TeamVoiceBanner.tsx",
+        "apps/web/src/collaboration/useTeamVoice.ts"
+      ],
+      "this_round_treatment": [
+        "FLOW-28：成员语音授权/票据/断线逻辑保留，公共反馈统一；没有新增假声波或宣称物理多人通话已验。"
+      ],
+      "capability_and_acceptance_boundary": "保留服务能力、冻结输入、candidate hash、租约、费用与未知恢复；未配置供应商的本轮 UI 截图不能代替真实模型/语音验收。"
+    },
+    {
+      "id": "A12",
+      "name": "权限三模式、撤销授权和自动执行预算",
+      "original_state": "已验（后端契约）",
+      "original_evidence": "**已验（后端契约）**。建议、预览确认、预算自动有不同执行入口。grant、CAS、租约、版本、撤销与费用检查服务端处理。外部模型输出按候选处理。[Agent API][ours-api]",
+      "original_acceptance": "**P0**。并发撤权与结果落库同时发生、超预算、换底图、旧候选及重复回执都拒绝错误提交，展示用户可恢复的状态。",
+      "original_row": "| A12 权限三模式、撤销授权和自动执行预算 | —                                                                                             | AI 改图支持用户选择结果。自动执行预算未公开。[AI 改图][mt-ai]                                | 将生成候选、质量评价与版本保存分开，参考 EditScore 的候选评价。                                                                | **已验（后端契约）**。建议、预览确认、预算自动有不同执行入口。grant、CAS、租约、版本、撤销与费用检查服务端处理。外部模型输出按候选处理。[Agent API][ours-api]                                                                      | **P0**。并发撤权与结果落库同时发生、超预算、换底图、旧候选及重复回执都拒绝错误提交，展示用户可恢复的状态。                                         |",
+      "flow_ids": [
+        "FLOW-32",
+        "FLOW-35",
+        "FLOW-38"
+      ],
+      "source_paths": [
+        "apps/web/src/ai/CandidateActions.tsx",
+        "apps/web/src/ai/ResultActions.tsx",
+        "apps/web/src/ai/assistantGuards.ts",
+        "apps/web/src/ai/recipeDiff.ts",
+        "apps/web/src/components/AIPanel.tsx",
+        "apps/web/src/ai/PanelSettingsPage.tsx",
+        "apps/web/src/ai/CreativeControls.tsx",
+        "apps/web/src/ai/MemoryControls.tsx",
+        "apps/web/src/ai/assistantSubmission.ts",
+        "apps/web/src/components/OpsDashboard.tsx",
+        "apps/web/src/components/AssistantOpsPanel.tsx",
+        "apps/web/src/components/ops-model-fields.ts"
+      ],
+      "this_round_treatment": [
+        "FLOW-32：候选确认/取消/重预览与独立新素材逻辑不改；现有防旧候选与确认测试纳入 62 项针对回归。",
+        "FLOW-35：附件直达共享范围；受控交流模式；历史/unknown 与费用恢复入口仍可达且不自动新建收费请求。",
+        "FLOW-38：模型/助手配置继承真实字段与 CAS，136 仅本地受控草稿；保存仍是明确 action。"
+      ],
+      "capability_and_acceptance_boundary": "保留服务能力、冻结输入、candidate hash、租约、费用与未知恢复；未配置供应商的本轮 UI 截图不能代替真实模型/语音验收。"
+    },
+    {
+      "id": "A13",
+      "name": "真实照片、多模型多风格、质量与成本",
+      "original_state": "部分",
+      "original_evidence": "**部分**。11 张公开实拍的 534 项比较有 531 通过、3 不可用。另有 27 张 alpha 基准和 90 张原尺寸实拍抠图复测。真模型生图和通话小样估算合计 0.322 美元。缺统一同片竞品、多个模型、审美盲评和按类失败率。[实拍脚本][ours-photo-qa] · [抠图复测](#h17-自动抠图实拍复测)",
+      "original_acceptance": "**P0**。冻结可用授权、原图 hash 和条件。样本覆盖侧脸、不同肤色、遮挡、逆光、运动、玻璃、文字及相机。按操作报告最差样本、原图保护、成本和失败原因。",
+      "original_row": "| A13 真实照片、多模型多风格、质量与成本 | 有公开展示，缺同图统一可复现指标。[官网][xt-pc] | 有案例，缺同图统一可复现指标。[官网][mt-site] | GenEditEvalKit、EditScore、GEdit-Bench、ImgEdit、PIQ、IQA-PyTorch。 | **部分**。11 张公开实拍的 534 项比较有 531 通过、3 不可用。另有 27 张 alpha 基准和 90 张原尺寸实拍抠图复测。真模型生图和通话小样估算合计 0.322 美元。缺统一同片竞品、多个模型、审美盲评和按类失败率。[实拍脚本][ours-photo-qa] · [抠图复测](#h17-自动抠图实拍复测) | **P0**。冻结可用授权、原图 hash 和条件。样本覆盖侧脸、不同肤色、遮挡、逆光、运动、玻璃、文字及相机。按操作报告最差样本、原图保护、成本和失败原因。 |",
+      "flow_ids": [
+        "FLOW-31"
+      ],
+      "source_paths": [
+        "apps/web/src/components/AIPanel.tsx",
+        "apps/web/src/ai/ImageParameters.tsx",
+        "apps/web/src/ai/ModelChoice.tsx",
+        "apps/web/src/ai/requestPayload.ts"
+      ],
+      "this_round_treatment": [
+        "FLOW-31：114 输入表面和真实任务等待；模型能力过滤、quote、冻结来源与请求 hash 保留。"
+      ],
+      "capability_and_acceptance_boundary": "保留服务能力、冻结输入、candidate hash、租约、费用与未知恢复；未配置供应商的本轮 UI 截图不能代替真实模型/语音验收。"
+    },
+    {
+      "id": "C01",
+      "name": "同图实时光标、区域、预览和并发提交",
+      "original_state": "已验（本地真实 SQL 与浏览器）",
+      "original_evidence": "**已验（本地真实 SQL 与浏览器）**。临时游标、区域占用、协作预览和持久命令，重连及冲突回放已有验证。公网 P95 和团队规模待验。[协作 API][ours-api]",
+      "original_acceptance": "**P0**。两人不同区域可提交，同一范围拒绝覆盖，掉线/过期租约可重获。冲突保留草稿，版本恢复正确，按局域/跨公网分别报告时延。",
+      "original_row": "| C01 同图实时光标、区域、预览和并发提交      | —                                               | 可邀请他人实时修合照、看彼此操作并同步保存。[修合照][mt-group]                    | Yjs Awareness 的临时在线状态、Yjs transaction。像素冲突另走租约和 CAS。                                       | **已验（本地真实 SQL 与浏览器）**。临时游标、区域占用、协作预览和持久命令，重连及冲突回放已有验证。公网 P95 和团队规模待验。[协作 API][ours-api]                                   | **P0**。两人不同区域可提交，同一范围拒绝覆盖，掉线/过期租约可重获。冲突保留草稿，版本恢复正确，按局域/跨公网分别报告时延。                                    |",
+      "flow_ids": [
+        "FLOW-27"
+      ],
+      "source_paths": [
+        "apps/web/src/collaboration/useCollaboration.ts",
+        "apps/web/src/collaboration/CollaborationStatus.tsx",
+        "apps/web/src/collaboration/CollaborationOverlay.tsx"
+      ],
+      "this_round_treatment": [
+        "FLOW-27：实时协作和租约未改为展示动效状态；本轮单账号 fixture 不证明多人实时一致性。"
+      ],
+      "capability_and_acceptance_boundary": "只核对可定位的前端入口和本轮共用呈现；原表证据范围和未验条件保留，不因 UI 改造升级状态。"
+    },
+    {
+      "id": "C02",
+      "name": "作品、素材、个人/团队空间及节点",
+      "original_state": "部分",
+      "original_evidence": "**部分**。素材、作品版本、跨空间显式复制、节点/来源、个人标注和团队动态有 API，部分 R4 页面做了真实浏览器联通。需继续走团队混合角色的路径。[API][ours-api] · [前端 R4][ours-front]",
+      "original_acceptance": "**P0**。两账号三角色在个人/团队来回切换，复制普通、透明和动画素材，验证只授权引用、空间容量和历史来源正确。",
+      "original_row": "| C02 作品、素材、个人/团队空间及节点         | —                                               | 可分享和多人修合照，素材权限关系未公开。[修合照][mt-group]                        | 小米云相册以相册为单位邀请、浏览及添加。[小米云相册][mi-cloud]                                                | **部分**。素材、作品版本、跨空间显式复制、节点/来源、个人标注和团队动态有 API，部分 R4 页面做了真实浏览器联通。需继续走团队混合角色的路径。[API][ours-api] · [前端 R4][ours-front] | **P0**。两账号三角色在个人/团队来回切换，复制普通、透明和动画素材，验证只授权引用、空间容量和历史来源正确。                                                   |",
+      "flow_ids": [
+        "FLOW-06",
+        "FLOW-15",
+        "FLOW-17",
+        "FLOW-29"
+      ],
+      "source_paths": [
+        "apps/web/src/components/Sidebar.tsx",
+        "apps/web/src/workspace/WorkspaceNavigation.tsx",
+        "apps/web/src/App.tsx",
+        "apps/web/src/workspace/WorkspaceViewTabs.tsx",
+        "apps/web/src/workspace/useNavigationProximity.ts",
+        "apps/web/src/editor/source-flow.ts",
+        "apps/web/src/lib/asset-copy.ts",
+        "apps/web/src/lib/revisionHistory.ts",
+        "apps/web/src/components/AssetLibrary.tsx",
+        "apps/web/src/components/WorkspaceViews.tsx",
+        "apps/web/src/resources/ResourceSearch.tsx",
+        "apps/web/src/resources/model.ts",
+        "apps/web/src/account/document-drafts.ts",
+        "apps/web/src/account/AccountDocumentDrafts.tsx"
+      ],
+      "this_round_treatment": [
+        "FLOW-06：Sidebar 迁入受控 native Modal；78 视图底板、68 行标记、85 有限入场。窄屏当前视图触发器和焦点恢复待实际回归。",
+        "FLOW-15：保存、失权、冲突保持原显式事务；真实版本与 local draft 状态可见，未知回执不自动重放。",
+        "FLOW-17：图库/检索保留真实图像比例与稳定 DOM；公共选择状态与弹层密度更新；不引入未经本轮实操的 69/80。",
+        "FLOW-29：文档列表/编辑页与公共保存反馈减量；草稿、未知创建、CAS、离开确认仍保留。"
+      ],
+      "capability_and_acceptance_boundary": "只核对可定位的前端入口和本轮共用呈现；原表证据范围和未验条件保留，不因 UI 改造升级状态。"
+    },
+    {
+      "id": "C03",
+      "name": "身份验证、注册登录、恢复与账号数据",
+      "original_state": "部分",
+      "original_evidence": "**部分**。登录、注册、账号流程与权限有两动效模式的浏览器验收。实际生产短信到达及跨设备/会话生命周期覆盖需要单列。[API][ours-api-base] · [前端 R4][ours-front]",
+      "original_acceptance": "**P0**。真实授权账户跑登录和返回、过期、退出、恢复、删除，验证对象 ACL、浏览器 Cookie、验证码与并发会话，费用/速率由服务端执行。",
+      "original_row": "| C03 身份验证、注册登录、恢复与账号数据      | 使用各端账户及会员。[iOS][xt-ios]               | 移动/PC 登录与帮助入口。[官网][mt-site] · [帮助][mt-help]                         | 保持应用前后端身份、验证码与会话契约。                                                                        | **部分**。登录、注册、账号流程与权限有两动效模式的浏览器验收。实际生产短信到达及跨设备/会话生命周期覆盖需要单列。[API][ours-api-base] · [前端 R4][ours-front]                      | **P0**。真实授权账户跑登录和返回、过期、退出、恢复、删除，验证对象 ACL、浏览器 Cookie、验证码与并发会话，费用/速率由服务端执行。                              |",
+      "flow_ids": [
+        "FLOW-02",
+        "FLOW-03",
+        "FLOW-04",
+        "FLOW-29",
+        "FLOW-37",
+        "FLOW-42"
+      ],
+      "source_paths": [
+        "apps/web/src/SiteShell.tsx",
+        "apps/web/src/about/site-route.ts",
+        "apps/web/src/components/DeferredFeature.tsx",
+        "apps/web/src/components/AuthPanel.tsx",
+        "apps/web/src/account/AccountReady.tsx",
+        "apps/web/src/account/auth-model.ts",
+        "apps/web/src/account/AccountCenter.tsx",
+        "apps/web/src/account/account-model.ts",
+        "apps/web/src/account/AccountDocumentDrafts.tsx",
+        "apps/web/src/components/WorkspaceViews.tsx",
+        "apps/web/src/account/document-drafts.ts",
+        "apps/web/src/components/OpsDashboard.tsx",
+        "apps/web/src/components/ops-read.ts",
+        "apps/web/src/components/ops-mutation.ts",
+        "apps/web/src/App.tsx",
+        "apps/web/src/lib/api.ts",
+        "apps/web/src/account/session-lifecycle.ts"
+      ],
+      "this_round_treatment": [
+        "FLOW-02：保留公开路由/懒加载与工作台生命周期；About 主动作进入真实空工作台，未增加演示照片自动注入。",
+        "FLOW-03：身份流程不改；公共字号/Modal/输入反馈更新。短信未配置只能显示真实不可用，不将 fixture 密码登录当短信注册验收。",
+        "FLOW-04：账号四页签响应式密度、焦点方向、状态与共享样式；四页签桌面/手机由本轮实际 QA 读取。",
+        "FLOW-29：文档列表/编辑页与公共保存反馈减量；草稿、未知创建、CAS、离开确认仍保留。",
+        "FLOW-37：运营 10 页签窄屏卡片/字段语义；状态和读门禁保留，QA 临时库 operator 只读不代表生产授权。",
+        "FLOW-42：既有错误/失权/冻结请求恢复不变；公共状态与空态精简，跨视图实例和隐藏输入保持原生命周期。"
+      ],
+      "capability_and_acceptance_boundary": "只核对可定位的前端入口和本轮共用呈现；原表证据范围和未验条件保留，不因 UI 改造升级状态。"
+    },
+    {
+      "id": "C04",
+      "name": "审批、评论、公开/私密分享和版本分支",
+      "original_state": "部分",
+      "original_evidence": "**部分**。讨论、授权分享、版本恢复/分支与 CAS 已实现。原件、链接权限和成员变化全组合需持续验收。[API][ours-api-base]",
+      "original_acceptance": "**P0**。协作者查看/评论/编辑三角色，公开链接过期、撤回、成员移除后重放，旧文件与缩略图访问随权限变化。",
+      "original_row": "| C04 审批、评论、公开/私密分享和版本分支     | —                                               | 修合照邀请与同步保存。细粒度审阅及历史权限未公开。[修合照][mt-group]              | Snapseed 私人可重编步骤。Photopea/GIMP 的文档层仅为版本行为参照。                                             | **部分**。讨论、授权分享、版本恢复/分支与 CAS 已实现。原件、链接权限和成员变化全组合需持续验收。[API][ours-api-base]                                                               | **P0**。协作者查看/评论/编辑三角色，公开链接过期、撤回、成员移除后重放，旧文件与缩略图访问随权限变化。                                                        |",
+      "flow_ids": [
+        "FLOW-06",
+        "FLOW-14",
+        "FLOW-15",
+        "FLOW-24",
+        "FLOW-26",
+        "FLOW-29"
+      ],
+      "source_paths": [
+        "apps/web/src/components/Sidebar.tsx",
+        "apps/web/src/workspace/WorkspaceNavigation.tsx",
+        "apps/web/src/App.tsx",
+        "apps/web/src/workspace/WorkspaceViewTabs.tsx",
+        "apps/web/src/workspace/useNavigationProximity.ts",
+        "apps/web/src/editor/HistoryPanel.tsx",
+        "apps/web/src/components/RevisionTools.tsx",
+        "apps/web/src/components/WorkspaceViews.tsx",
+        "apps/web/src/editor/source-flow.ts",
+        "apps/web/src/lib/asset-copy.ts",
+        "apps/web/src/lib/revisionHistory.ts",
+        "apps/web/src/components/CompareReveal.tsx",
+        "apps/web/src/resources/TeamActivity.tsx",
+        "apps/web/src/account/document-drafts.ts",
+        "apps/web/src/account/AccountDocumentDrafts.tsx"
+      ],
+      "this_round_treatment": [
+        "FLOW-06：Sidebar 迁入受控 native Modal；78 视图底板、68 行标记、85 有限入场。窄屏当前视图触发器和焦点恢复待实际回归。",
+        "FLOW-14：紧凑历史入口与细化动作 SVG；恢复/分支仍绑定真实版本，新增动效不制造保存。",
+        "FLOW-15：保存、失权、冲突保持原显式事务；真实版本与 local draft 状态可见，未知回执不自动重放。",
+        "FLOW-24：原图/当前与历史对比保持真实版本；共享小控件/空态更新，未加入假前后美化图。",
+        "FLOW-26：133/119 精细三态任务，仍等真实 CAS 回执；实际 QA 从 todo→doing→done 保存而非 mock。",
+        "FLOW-29：文档列表/编辑页与公共保存反馈减量；草稿、未知创建、CAS、离开确认仍保留。"
+      ],
+      "capability_and_acceptance_boundary": "只核对可定位的前端入口和本轮共用呈现；原表证据范围和未验条件保留，不因 UI 改造升级状态。"
+    },
+    {
+      "id": "C05",
+      "name": "角色、租约、成员撤权与运维隔离",
+      "original_state": "已验（SQL 回归）",
+      "original_evidence": "**已验（SQL 回归）**。项目/资源/团队角色，运维权限独立。原件、派生/图片版本及协作会话有对象级校验。生产部署配置和跨对象回归仍需按版本复查。[API][ours-api]",
+      "original_acceptance": "**P0**。对象级读取/写入/复制/预览/下载/邀请全列入表驱动测试，运维身份单独验证，访问拒绝与应有操作同时覆盖。",
+      "original_row": "| C05 角色、租约、成员撤权与运维隔离          | —                                               | —                                                                                 | 按 AI-xiutu 的项目与运维边界验收。                                                                            | **已验（SQL 回归）**。项目/资源/团队角色，运维权限独立。原件、派生/图片版本及协作会话有对象级校验。生产部署配置和跨对象回归仍需按版本复查。[API][ours-api]                         | **P0**。对象级读取/写入/复制/预览/下载/邀请全列入表驱动测试，运维身份单独验证，访问拒绝与应有操作同时覆盖。                                                   |",
+      "flow_ids": [
+        "FLOW-06",
+        "FLOW-15",
+        "FLOW-26",
+        "FLOW-27",
+        "FLOW-28",
+        "FLOW-42"
+      ],
+      "source_paths": [
+        "apps/web/src/components/Sidebar.tsx",
+        "apps/web/src/workspace/WorkspaceNavigation.tsx",
+        "apps/web/src/App.tsx",
+        "apps/web/src/workspace/WorkspaceViewTabs.tsx",
+        "apps/web/src/workspace/useNavigationProximity.ts",
+        "apps/web/src/editor/source-flow.ts",
+        "apps/web/src/lib/asset-copy.ts",
+        "apps/web/src/lib/revisionHistory.ts",
+        "apps/web/src/components/WorkspaceViews.tsx",
+        "apps/web/src/resources/TeamActivity.tsx",
+        "apps/web/src/collaboration/useCollaboration.ts",
+        "apps/web/src/collaboration/CollaborationStatus.tsx",
+        "apps/web/src/collaboration/CollaborationOverlay.tsx",
+        "apps/web/src/collaboration/TeamVoiceControls.tsx",
+        "apps/web/src/collaboration/TeamVoiceBanner.tsx",
+        "apps/web/src/collaboration/useTeamVoice.ts",
+        "apps/web/src/lib/api.ts",
+        "apps/web/src/account/session-lifecycle.ts",
+        "apps/web/src/components/DeferredFeature.tsx"
+      ],
+      "this_round_treatment": [
+        "FLOW-06：Sidebar 迁入受控 native Modal；78 视图底板、68 行标记、85 有限入场。窄屏当前视图触发器和焦点恢复待实际回归。",
+        "FLOW-15：保存、失权、冲突保持原显式事务；真实版本与 local draft 状态可见，未知回执不自动重放。",
+        "FLOW-26：133/119 精细三态任务，仍等真实 CAS 回执；实际 QA 从 todo→doing→done 保存而非 mock。",
+        "FLOW-27：实时协作和租约未改为展示动效状态；本轮单账号 fixture 不证明多人实时一致性。",
+        "FLOW-28：成员语音授权/票据/断线逻辑保留，公共反馈统一；没有新增假声波或宣称物理多人通话已验。",
+        "FLOW-42：既有错误/失权/冻结请求恢复不变；公共状态与空态精简，跨视图实例和隐藏输入保持原生命周期。"
+      ],
+      "capability_and_acceptance_boundary": "只核对可定位的前端入口和本轮共用呈现；原表证据范围和未验条件保留，不因 UI 改造升级状态。"
+    },
+    {
+      "id": "C06",
+      "name": "用量、钱包、分页、CSV 和账目对账",
+      "original_state": "部分",
+      "original_evidence": "**部分**。账本、额度、时间聚合、分页和 CSV 已接通。R4 图表有四类时间序列与导航。真实收费、未知派发结算及不同时区综合需覆盖。[用量 API][ours-api] · [前端 R4][ours-front]",
+      "original_acceptance": "**P0**。同一笔低成本模型费用、退款/撤销、未决和聚合图逐项对账。50+ 页按稳定游标导出，无重复、遗漏或时区错日。",
+      "original_row": "| C06 用量、钱包、分页、CSV 和账目对账        | App 内会员订阅，公开说明续费周期。[iOS][xt-ios] | App 内购买及部分付费权益。[iOS][mt-ios]                                           | 供应商用量、估算和实际结算按各自证据。                                                                        | **部分**。账本、额度、时间聚合、分页和 CSV 已接通。R4 图表有四类时间序列与导航。真实收费、未知派发结算及不同时区综合需覆盖。[用量 API][ours-api] · [前端 R4][ours-front]           | **P0**。同一笔低成本模型费用、退款/撤销、未决和聚合图逐项对账。50+ 页按稳定游标导出，无重复、遗漏或时区错日。                                                 |",
+      "flow_ids": [
+        "FLOW-04",
+        "FLOW-36",
+        "FLOW-39"
+      ],
+      "source_paths": [
+        "apps/web/src/account/AccountCenter.tsx",
+        "apps/web/src/account/account-model.ts",
+        "apps/web/src/account/AccountDocumentDrafts.tsx",
+        "apps/web/src/usage/UsageDashboard.tsx",
+        "apps/web/src/usage/UsageLedger.tsx",
+        "apps/web/src/usage/UsageJob.tsx",
+        "apps/web/src/usage/useUsageResource.ts",
+        "apps/web/src/components/QuotaManager.tsx",
+        "apps/web/src/components/UnknownJobsPanel.tsx",
+        "apps/web/src/components/AssistantOpsPanel.tsx",
+        "apps/web/src/components/OpsDashboard.tsx"
+      ],
+      "this_round_treatment": [
+        "FLOW-04：账号四页签响应式密度、焦点方向、状态与共享样式；四页签桌面/手机由本轮实际 QA 读取。",
+        "FLOW-36：用量和账单密度及真实读取状态；unknown 不补零、预占和结算不混算。",
+        "FLOW-39：quota 回执与刷新分开、unknown 人工核验不改；状态 SVG 不把未核对转为已完成。"
+      ],
+      "capability_and_acceptance_boundary": "只核对可定位的前端入口和本轮共用呈现；原表证据范围和未验条件保留，不因 UI 改造升级状态。"
+    },
+    {
+      "id": "C07",
+      "name": "运行队列、模型失败、重试和幂等",
+      "original_state": "已验（受控回归及小样）",
+      "original_evidence": "**已验（受控回归及小样）**。派发证据、供应商 ID、hold、取消、未知结果待对账及幂等键有实际链路，生产故障恢复尚需验证。[后端深度验收][ours-backend]",
+      "original_acceptance": "**P0**。分别模拟确定未发、已发无回执、收到回执后落库故障，确认仅安全情形可重试、预算释放正确、未知结果不二次计费。",
+      "original_row": "| C07 运行队列、模型失败、重试和幂等          | —                                               | AI 改图公开生成等待和结果历史。[AI 改图][mt-ai]                                   | 参考服务端 worker 与生成 pipeline 的任务边界。                                                                | **已验（受控回归及小样）**。派发证据、供应商 ID、hold、取消、未知结果待对账及幂等键有实际链路，生产故障恢复尚需验证。[后端深度验收][ours-backend]                                  | **P0**。分别模拟确定未发、已发无回执、收到回执后落库故障，确认仅安全情形可重试、预算释放正确、未知结果不二次计费。                                            |",
+      "flow_ids": [
+        "FLOW-14",
+        "FLOW-15",
+        "FLOW-28",
+        "FLOW-32",
+        "FLOW-34",
+        "FLOW-35",
+        "FLOW-39",
+        "FLOW-40",
+        "FLOW-42"
+      ],
+      "source_paths": [
+        "apps/web/src/editor/HistoryPanel.tsx",
+        "apps/web/src/components/RevisionTools.tsx",
+        "apps/web/src/components/WorkspaceViews.tsx",
+        "apps/web/src/App.tsx",
+        "apps/web/src/editor/source-flow.ts",
+        "apps/web/src/lib/asset-copy.ts",
+        "apps/web/src/lib/revisionHistory.ts",
+        "apps/web/src/collaboration/TeamVoiceControls.tsx",
+        "apps/web/src/collaboration/TeamVoiceBanner.tsx",
+        "apps/web/src/collaboration/useTeamVoice.ts",
+        "apps/web/src/ai/CandidateActions.tsx",
+        "apps/web/src/ai/ResultActions.tsx",
+        "apps/web/src/ai/assistantGuards.ts",
+        "apps/web/src/ai/recipeDiff.ts",
+        "apps/web/src/ai/LiveAssistant.tsx",
+        "apps/web/src/ai/voiceClient.ts",
+        "apps/web/src/ai/VoiceCaptions.tsx",
+        "apps/web/src/ai/voiceSubmission.ts",
+        "apps/web/src/components/AIPanel.tsx",
+        "apps/web/src/ai/PanelSettingsPage.tsx",
+        "apps/web/src/ai/CreativeControls.tsx",
+        "apps/web/src/ai/MemoryControls.tsx",
+        "apps/web/src/ai/assistantSubmission.ts",
+        "apps/web/src/components/QuotaManager.tsx",
+        "apps/web/src/components/UnknownJobsPanel.tsx",
+        "apps/web/src/components/AssistantOpsPanel.tsx",
+        "apps/web/src/components/OpsDashboard.tsx",
+        "apps/web/src/components/Ui.tsx",
+        "apps/web/src/components/ChoiceSelect.tsx",
+        "apps/web/src/components/ConfirmationDialog.tsx",
+        "apps/web/src/motion/Presence.tsx",
+        "apps/web/src/components/modal-profiles.ts",
+        "apps/web/src/lib/api.ts",
+        "apps/web/src/account/session-lifecycle.ts",
+        "apps/web/src/components/DeferredFeature.tsx"
+      ],
+      "this_round_treatment": [
+        "FLOW-14：紧凑历史入口与细化动作 SVG；恢复/分支仍绑定真实版本，新增动效不制造保存。",
+        "FLOW-15：保存、失权、冲突保持原显式事务；真实版本与 local draft 状态可见，未知回执不自动重放。",
+        "FLOW-28：成员语音授权/票据/断线逻辑保留，公共反馈统一；没有新增假声波或宣称物理多人通话已验。",
+        "FLOW-32：候选确认/取消/重预览与独立新素材逻辑不改；现有防旧候选与确认测试纳入 62 项针对回归。",
+        "FLOW-34：实时语音仅改紧凑真实状态展示；保留 voiceClient、恢复 schema、字幕和实际结束 handler，不模拟音量。",
+        "FLOW-35：附件直达共享范围；受控交流模式；历史/unknown 与费用恢复入口仍可达且不自动新建收费请求。",
+        "FLOW-39：quota 回执与刷新分开、unknown 人工核验不改；状态 SVG 不把未核对转为已完成。",
+        "FLOW-40：native Modal profiles、120 选择底板、119 真状态、115 可关闭/暂停反馈；关键错误不随计时消失。",
+        "FLOW-42：既有错误/失权/冻结请求恢复不变；公共状态与空态精简，跨视图实例和隐藏输入保持原生命周期。"
+      ],
+      "capability_and_acceptance_boundary": "只核对可定位的前端入口和本轮共用呈现；原表证据范围和未验条件保留，不因 UI 改造升级状态。"
+    },
+    {
+      "id": "C08",
+      "name": "移动端、平板、横屏和小程序能力",
+      "original_state": "部分",
+      "original_evidence": "**部分**。真实 Chromium 多尺寸覆盖，仍缺 iOS Safari、Android WebView、小程序与长时间真机手势验证。[前端 R4][ours-front]",
+      "original_acceptance": "**P0**。320/390、平板、横屏、软键盘、触控笔与手指，逐项测试导入、调节、保存、导出、历史、语音和离线，记录设备及峰值内存。",
+      "original_row": "| C08 移动端、平板、横屏和小程序能力          | 原生手机与电脑版有独立入口。[官网][xt-pc]       | iPhone/iPad 等平台版本，另有电脑版和设计室浏览器入口。[iOS][mt-ios] · [PC][mt-pc] | Image Toolbox 的 Compose 设备交互，React Bits 动效配合 reduced motion。                                       | **部分**。真实 Chromium 多尺寸覆盖，仍缺 iOS Safari、Android WebView、小程序与长时间真机手势验证。[前端 R4][ours-front]                                                            | **P0**。320/390、平板、横屏、软键盘、触控笔与手指，逐项测试导入、调节、保存、导出、历史、语音和离线，记录设备及峰值内存。                                     |",
+      "flow_ids": [
+        "FLOW-06",
+        "FLOW-07",
+        "FLOW-40",
+        "FLOW-41"
+      ],
+      "source_paths": [
+        "apps/web/src/components/Sidebar.tsx",
+        "apps/web/src/workspace/WorkspaceNavigation.tsx",
+        "apps/web/src/App.tsx",
+        "apps/web/src/workspace/WorkspaceViewTabs.tsx",
+        "apps/web/src/workspace/useNavigationProximity.ts",
+        "apps/web/src/workspace/ToolDock.tsx",
+        "apps/web/src/workspace/ToolOverview.tsx",
+        "apps/web/src/workspace/CommandMenu.tsx",
+        "apps/web/src/workspace/FloatingPanel.tsx",
+        "apps/web/src/components/Ui.tsx",
+        "apps/web/src/components/ChoiceSelect.tsx",
+        "apps/web/src/components/ConfirmationDialog.tsx",
+        "apps/web/src/motion/Presence.tsx",
+        "apps/web/src/components/modal-profiles.ts",
+        "apps/web/src/components/BrandMark.tsx",
+        "apps/web/src/components/StudioGlyph.tsx",
+        "apps/web/src/editor/ParameterGlyph.tsx",
+        "apps/web/src/lib/brand.ts",
+        "apps/web/src/workspace/useStudioTheme.ts",
+        "apps/web/src/i18n/LanguageSelect.tsx"
+      ],
+      "this_round_treatment": [
+        "FLOW-06：Sidebar 迁入受控 native Modal；78 视图底板、68 行标记、85 有限入场。窄屏当前视图触发器和焦点恢复待实际回归。",
+        "FLOW-07：88 邻近图标、131 受控指示；手机面板尺寸独立，主分类移入面板头，命令/草图入口保留。",
+        "FLOW-40：native Modal profiles、120 选择底板、119 真状态、115 可关闭/暂停反馈；关键错误不随计时消失。",
+        "FLOW-41：原 Logo 资产统一；Studio/Parameter/Control SVG 按语义细化，三语/主题/字体门槛保持。"
+      ],
+      "capability_and_acceptance_boundary": "只核对可定位的前端入口和本轮共用呈现；原表证据范围和未验条件保留，不因 UI 改造升级状态。"
+    },
+    {
+      "id": "C09",
+      "name": "About、样例、功能导览和无障碍动效",
+      "original_state": "部分",
+      "original_evidence": "**部分**。R4 实拍系统画面和独立动效，已做移动/低动效基本验收。仍需随 AI 页面更新真实图例、可点击目标和减弱动效。",
+      "original_acceptance": "**P1**。每个场景展示真实系统功能与匹配界面，逐一检查标注、键盘、减弱动效、FAQ 等宽和手机/平板切换，案例文件具可用权限。",
+      "original_row": "| C09 About、样例、功能导览和无障碍动效       | 官网按编辑、批处理和画质展示。[官网][xt-pc]     | 官网按人像、编辑、AI 与视频分类，电脑端功能另列。[官网][mt-site] · [PC][mt-pc]    | React Bits 的组件行为与项目 [R4 源码审查][ours-react]。                                                       | **部分**。R4 实拍系统画面和独立动效，已做移动/低动效基本验收。仍需随 AI 页面更新真实图例、可点击目标和减弱动效。                                                                   | **P1**。每个场景展示真实系统功能与匹配界面，逐一检查标注、键盘、减弱动效、FAQ 等宽和手机/平板切换，案例文件具可用权限。                                       |",
+      "flow_ids": [
+        "FLOW-01",
+        "FLOW-02",
+        "FLOW-40",
+        "FLOW-41"
+      ],
+      "source_paths": [
+        "apps/web/src/about/AboutPage.tsx",
+        "apps/web/src/about/overview-copy.ts",
+        "apps/web/src/about/useOverviewMotion.ts",
+        "apps/web/src/SiteShell.tsx",
+        "apps/web/src/about/site-route.ts",
+        "apps/web/src/components/DeferredFeature.tsx",
+        "apps/web/src/components/Ui.tsx",
+        "apps/web/src/components/ChoiceSelect.tsx",
+        "apps/web/src/components/ConfirmationDialog.tsx",
+        "apps/web/src/motion/Presence.tsx",
+        "apps/web/src/components/modal-profiles.ts",
+        "apps/web/src/components/BrandMark.tsx",
+        "apps/web/src/components/StudioGlyph.tsx",
+        "apps/web/src/editor/ParameterGlyph.tsx",
+        "apps/web/src/lib/brand.ts",
+        "apps/web/src/workspace/useStudioTheme.ts",
+        "apps/web/src/i18n/LanguageSelect.tsx"
+      ],
+      "this_round_treatment": [
+        "FLOW-01：已重新搭建正常滚动的系统介绍，31/35、17 种真实屏幕名与独立手机图；新截图发布和逐段视觉待本轮 CI。",
+        "FLOW-02：保留公开路由/懒加载与工作台生命周期；About 主动作进入真实空工作台，未增加演示照片自动注入。",
+        "FLOW-40：native Modal profiles、120 选择底板、119 真状态、115 可关闭/暂停反馈；关键错误不随计时消失。",
+        "FLOW-41：原 Logo 资产统一；Studio/Parameter/Control SVG 按语义细化，三语/主题/字体门槛保持。"
+      ],
+      "capability_and_acceptance_boundary": "只核对可定位的前端入口和本轮共用呈现；原表证据范围和未验条件保留，不因 UI 改造升级状态。"
+    },
+    {
+      "id": "C10",
+      "name": "生产部署、迁移、运行依赖与 API 全量回归",
+      "original_state": "部分",
+      "original_evidence": "**部分**。`4a43e60` 在 Linux/真实 PostgreSQL 通过 1,038 项，零失败与跳过。Node 运行覆盖加载 43/45 个 API 源文件，加载文件的行覆盖 91.28%，分支覆盖 79.28%。另以独立容器走通显式运维初始化、API 生产入口、登录和会话撤销。`c098afd` 的真实 PostgreSQL 回归通过 1,042 项，零失败与跳过。164/164 个 `/v1` HTTP 方法与路径收到响应，157 个有成功，122 个有拒绝，115 个两者都有。其余 7 个仅覆盖拒绝，见 [接口回归](#c10-http-接口回归)。`690dd60` 在 2 CPU、4 GiB、192 PID 的原生容器通过 1,044 项。164/164 个路由有成功样例，122 个同时有拒绝样例。`afed095` 的 Edge 工作区回归通过 32 项，覆盖窄屏文档实际保存和版本 1→2 的 CAS。[后端深度验收][ours-backend] · [覆盖率入口][ours-coverage]",
+      "original_acceptance": "**P0**。锁定提交，同时跑原生 PostgreSQL、typecheck/build、容器和浏览器、真实模型小样。逐路由覆盖匿名/跨项目/正常/限额/取消/并发，核最终主分支及实际部署版本。",
+      "original_row": "| C10 生产部署、迁移、运行依赖与 API 全量回归 | — | PC 可查询安装、内存和驱动帮助。[帮助][mt-help] | 依应用自身 API/schema/worker 的兼容契约。 | **部分**。`4a43e60` 在 Linux/真实 PostgreSQL 通过 1,038 项，零失败与跳过。Node 运行覆盖加载 43/45 个 API 源文件，加载文件的行覆盖 91.28%，分支覆盖 79.28%。另以独立容器走通显式运维初始化、API 生产入口、登录和会话撤销。`c098afd` 的真实 PostgreSQL 回归通过 1,042 项，零失败与跳过。164/164 个 `/v1` HTTP 方法与路径收到响应，157 个有成功，122 个有拒绝，115 个两者都有。其余 7 个仅覆盖拒绝，见 [接口回归](#c10-http-接口回归)。`690dd60` 在 2 CPU、4 GiB、192 PID 的原生容器通过 1,044 项。164/164 个路由有成功样例，122 个同时有拒绝样例。`afed095` 的 Edge 工作区回归通过 32 项，覆盖窄屏文档实际保存和版本 1→2 的 CAS。[后端深度验收][ours-backend] · [覆盖率入口][ours-coverage] | **P0**。锁定提交，同时跑原生 PostgreSQL、typecheck/build、容器和浏览器、真实模型小样。逐路由覆盖匿名/跨项目/正常/限额/取消/并发，核最终主分支及实际部署版本。 |",
+      "flow_ids": [
+        "FLOW-42"
+      ],
+      "source_paths": [
+        "apps/web/src/App.tsx",
+        "apps/web/src/lib/api.ts",
+        "apps/web/src/account/session-lifecycle.ts",
+        "apps/web/src/components/DeferredFeature.tsx"
+      ],
+      "this_round_treatment": [
+        "FLOW-42：既有错误/失权/冻结请求恢复不变；公共状态与空态精简，跨视图实例和隐藏输入保持原生命周期。"
+      ],
+      "capability_and_acceptance_boundary": "只核对可定位的前端入口和本轮共用呈现；原表证据范围和未验条件保留，不因 UI 改造升级状态。"
+    },
+    {
+      "id": "C11",
+      "name": "账单与作品联动的人工处置",
+      "original_state": "部分",
+      "original_evidence": "**部分**。运维可处理对账，普通用户看到作品与用量。批量与长通话多项费用关联、失败定位及导出深度待验。[用量 API][ours-api]",
+      "original_acceptance": "**P1**。从账单点到授权的模型任务、图片候选、采纳版本及会话，失败和未知可追。无作品权限时仅展示所需账单摘要。",
+      "original_row": "| C11 账单与作品联动的人工处置                | —                                               | —                                                                                 | 独立的对象权限和用量证据。                                                                                    | **部分**。运维可处理对账，普通用户看到作品与用量。批量与长通话多项费用关联、失败定位及导出深度待验。[用量 API][ours-api]                                                           | **P1**。从账单点到授权的模型任务、图片候选、采纳版本及会话，失败和未知可追。无作品权限时仅展示所需账单摘要。                                                  |",
+      "flow_ids": [
+        "FLOW-36",
+        "FLOW-39"
+      ],
+      "source_paths": [
+        "apps/web/src/usage/UsageDashboard.tsx",
+        "apps/web/src/usage/UsageLedger.tsx",
+        "apps/web/src/usage/UsageJob.tsx",
+        "apps/web/src/usage/useUsageResource.ts",
+        "apps/web/src/components/QuotaManager.tsx",
+        "apps/web/src/components/UnknownJobsPanel.tsx",
+        "apps/web/src/components/AssistantOpsPanel.tsx",
+        "apps/web/src/components/OpsDashboard.tsx"
+      ],
+      "this_round_treatment": [
+        "FLOW-36：用量和账单密度及真实读取状态；unknown 不补零、预占和结算不混算。",
+        "FLOW-39：quota 回执与刷新分开、unknown 人工核验不改；状态 SVG 不把未核对转为已完成。"
+      ],
+      "capability_and_acceptance_boundary": "只核对可定位的前端入口和本轮共用呈现；原表证据范围和未验条件保留，不因 UI 改造升级状态。"
+    },
+    {
+      "id": "C12",
+      "name": "素材检索、去重、来源追溯和个人标注",
+      "original_state": "部分",
+      "original_evidence": "**部分**。资源有权限范围、来源、日期、私有标注和 OCR 搜索。视觉语义检索、人物归类和重复相片整理尚需独立产品决策与实测。[资源 API][ours-api]",
+      "original_acceptance": "**P1**。通过标题、OCR 和来源在多空间检索，删除原素材或 OCR 后结果同步更新。翻页、复用与缓存均验证对象权限。",
+      "original_row": "| C12 素材检索、去重、来源追溯和个人标注      | —                                               | 素材模板可查找，个人照片内容搜索未确认。[官网][mt-site]                           | 小米云相册可按人物、地点和事物整理，小米 15 支持相册文本识别。[小米云相册][mi-cloud] · [小米相册][mi-gallery] | **部分**。资源有权限范围、来源、日期、私有标注和 OCR 搜索。视觉语义检索、人物归类和重复相片整理尚需独立产品决策与实测。[资源 API][ours-api]                                        | **P1**。通过标题、OCR 和来源在多空间检索，删除原素材或 OCR 后结果同步更新。翻页、复用与缓存均验证对象权限。                                                   |",
+      "flow_ids": [
+        "FLOW-17",
+        "FLOW-18"
+      ],
+      "source_paths": [
+        "apps/web/src/components/AssetLibrary.tsx",
+        "apps/web/src/components/WorkspaceViews.tsx",
+        "apps/web/src/resources/ResourceSearch.tsx",
+        "apps/web/src/resources/model.ts",
+        "apps/web/src/ai/MemoryControls.tsx"
+      ],
+      "this_round_treatment": [
+        "FLOW-17：图库/检索保留真实图像比例与稳定 DOM；公共选择状态与弹层密度更新；不引入未经本轮实操的 69/80。",
+        "FLOW-18：元数据与来源/私有标注沿真实权限读取；放入合适弹层宽度，未新增或伪装语义搜索能力。"
+      ],
+      "capability_and_acceptance_boundary": "只核对可定位的前端入口和本轮共用呈现；原表证据范围和未验条件保留，不因 UI 改造升级状态。"
+    },
+    {
+      "id": "C13",
+      "name": "运营配置、模型停启、配额与实际支付边界",
+      "original_state": "部分",
+      "original_evidence": "**部分**。运营侧可管理模型能力、品牌、额度及计划。常规模型目录保存校验 `expectedVersion`，真实 PostgreSQL 验证同版本并发只有一次保存和审计。四种 Edge 视口验冲突后保留草稿、刷新目录、重新打开和连续保存。真实支付及生产运营仍需验收。[配置冲突实测](#c13-运营模型配置版本) · [API][ours-api-base]",
+      "original_acceptance": "**P0**。测试跨角色变更、被停用模型排队/执行时状态、额度不足和审计。上线任何收费入口前通过真实订单、回调幂等和账目核对。",
+      "original_row": "| C13 运营配置、模型停启、配额与实际支付边界  | 商店会员管理路径可查。[iOS][xt-ios]             | 应用内购买与 PC 帮助。[iOS][mt-ios] · [帮助][mt-help]                             | 定价、预算、权限和公开目录使用服务器配置。                                                                    | **部分**。运营侧可管理模型能力、品牌、额度及计划。常规模型目录保存校验 `expectedVersion`，真实 PostgreSQL 验证同版本并发只有一次保存和审计。四种 Edge 视口验冲突后保留草稿、刷新目录、重新打开和连续保存。真实支付及生产运营仍需验收。[配置冲突实测](#c13-运营模型配置版本) · [API][ours-api-base] | **P0**。测试跨角色变更、被停用模型排队/执行时状态、额度不足和审计。上线任何收费入口前通过真实订单、回调幂等和账目核对。                                       |",
+      "flow_ids": [
+        "FLOW-04",
+        "FLOW-37",
+        "FLOW-38",
+        "FLOW-39",
+        "FLOW-41"
+      ],
+      "source_paths": [
+        "apps/web/src/account/AccountCenter.tsx",
+        "apps/web/src/account/account-model.ts",
+        "apps/web/src/account/AccountDocumentDrafts.tsx",
+        "apps/web/src/components/OpsDashboard.tsx",
+        "apps/web/src/components/ops-read.ts",
+        "apps/web/src/components/ops-mutation.ts",
+        "apps/web/src/components/AssistantOpsPanel.tsx",
+        "apps/web/src/components/ops-model-fields.ts",
+        "apps/web/src/components/QuotaManager.tsx",
+        "apps/web/src/components/UnknownJobsPanel.tsx",
+        "apps/web/src/components/BrandMark.tsx",
+        "apps/web/src/components/StudioGlyph.tsx",
+        "apps/web/src/editor/ParameterGlyph.tsx",
+        "apps/web/src/lib/brand.ts",
+        "apps/web/src/workspace/useStudioTheme.ts",
+        "apps/web/src/i18n/LanguageSelect.tsx"
+      ],
+      "this_round_treatment": [
+        "FLOW-04：账号四页签响应式密度、焦点方向、状态与共享样式；四页签桌面/手机由本轮实际 QA 读取。",
+        "FLOW-37：运营 10 页签窄屏卡片/字段语义；状态和读门禁保留，QA 临时库 operator 只读不代表生产授权。",
+        "FLOW-38：模型/助手配置继承真实字段与 CAS，136 仅本地受控草稿；保存仍是明确 action。",
+        "FLOW-39：quota 回执与刷新分开、unknown 人工核验不改；状态 SVG 不把未核对转为已完成。",
+        "FLOW-41：原 Logo 资产统一；Studio/Parameter/Control SVG 按语义细化，三语/主题/字体门槛保持。"
+      ],
+      "capability_and_acceptance_boundary": "只核对可定位的前端入口和本轮共用呈现；原表证据范围和未验条件保留，不因 UI 改造升级状态。"
+    }
+  ]
+}

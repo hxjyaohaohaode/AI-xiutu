@@ -16,6 +16,60 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+  contracts:
+    if: >-
+      github.repository == 'hxjyaohaohaode/AI-xiutu' &&
+      ((github.event_name == 'pull_request' &&
+        github.event.pull_request.head.repo.full_name == github.repository &&
+        github.head_ref == 'frontend/system-redesign-20261111') ||
+       (github.event_name == 'workflow_dispatch' &&
+        github.ref == 'refs/heads/frontend/system-redesign-20261111'))
+    name: Complete regression with disposable native PostgreSQL
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    services:
+      postgres:
+        image: postgres:18
+        env:
+          POSTGRES_USER: xiutu
+          POSTGRES_PASSWORD: ci-only-disposable
+          POSTGRES_DB: xiutu_redesign_test
+        ports: ['5432:5432']
+        options: >-
+          --health-cmd "pg_isready -U xiutu -d xiutu_redesign_test"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+    env:
+      CI: 'true'
+      NODE_ENV: test
+      TEST_DATABASE_URL: postgresql://xiutu:ci-only-disposable@127.0.0.1:5432/xiutu_redesign_test
+      REQUIRE_DB_TESTS: '1'
+      AI_LITE_ACTIVE: 'false'
+      DB_POOL_MAX: '8'
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+          persist-credentials: false
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
+        with:
+          node-version-file: .nvmrc
+          cache: npm
+      - run: npm ci
+      - name: Run all discovered tests against the isolated native database
+        run: |
+          mkdir -p artifacts/frontend-contracts
+          npm test 2>&1 | tee artifacts/frontend-contracts/all-tests.log
+      - name: Preserve complete regression output, including failures and skips
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: frontend-contracts-${{ github.event.pull_request.head.sha || github.sha }}
+          path: artifacts/frontend-contracts
+          retention-days: 14
+          if-no-files-found: warn
+
   verify:
     if: >-
       github.repository == 'hxjyaohaohaode/AI-xiutu' &&
@@ -24,7 +78,7 @@ jobs:
         github.head_ref == 'frontend/system-redesign-20261111') ||
        (github.event_name == 'workflow_dispatch' &&
         github.ref == 'refs/heads/frontend/system-redesign-20261111'))
-    name: Frontend types, tests, build and five browser scenarios
+    name: Frontend types, tests, build and seven responsive scenarios
     runs-on: ubuntu-latest
     timeout-minutes: 22
     outputs:
@@ -100,7 +154,7 @@ jobs:
       - name: Check the installed real browser
         if: always() && steps.install.outcome == 'success'
         run: google-chrome --version
-      - name: Five UI risk scenarios, natural About scrolling and current screenshots
+      - name: Seven responsive scenarios, real workflow checks and current screenshots
         if: always() && steps.build.outcome == 'success' && steps.cjk.outcome == 'success'
         run: node --import tsx scripts/qa/system-redesign.browser.mjs
       - name: Preserve reports, failure screenshots and exact image publication payload
@@ -115,8 +169,8 @@ jobs:
 
   publish-captures:
     name: Publish only the successful exact-head screenshot allowlist
-    needs: verify
-    if: needs.verify.result == 'success'
+    needs: [verify, contracts]
+    if: needs.verify.result == 'success' && needs.contracts.result == 'success'
     runs-on: ubuntu-latest
     timeout-minutes: 4
     # Only this post-verification job receives write access. No secrets, deploy

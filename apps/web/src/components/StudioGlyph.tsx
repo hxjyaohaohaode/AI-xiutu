@@ -4,13 +4,13 @@ import { useId, type SVGProps } from 'react';
 const glyphs = {
   hair: (
     <>
-      <path d="M5 19V10a7 7 0 0 1 14 0v9M5 14c3-1 5-4 6-8 1 4 4 6 8 6M8 14v3a4 4 0 0 0 8 0v-3" />
+      <path d="M4 21V10a8 8 0 0 1 16 0v11M4 13c4-1 6-5 7-9 1 5 5 8 9 9M8 13v4a4 4 0 0 0 8 0v-4M7 17v4m10-4v4" />
     </>
   ),
   beauty: (
     <>
-      <path d="M8 4.5c1.1-1 2.4-1.5 4-1.5s2.9.5 4 1.5M7 7c0 6 1.6 10 5 12 3.4-2 5-6 5-12M9 10h.01M15 10h.01M10 14.5c1.3.8 2.7.8 4 0" />
-      <path d="M4 8v4M2 10h4M19 16v4M17 18h4" />
+      <path d="M6 7a6 6 0 0 1 12 0v4c0 5-3 9-6 11-3-2-6-6-6-11ZM9 11h1m4 0h1m-5 5q2 1 4 0" />
+      <path d="m20 2 1 3 2 1-2 1-1 3-1-3-2-1 2-1Z" />
     </>
   ),
   light: (
@@ -22,10 +22,12 @@ const glyphs = {
   color: (
     <>
       <path d="M12 3a9 9 0 1 0 0 18h1.2a2 2 0 0 0 1.5-3.3l-.6-.7a1.6 1.6 0 0 1 1.2-2.7H18a3 3 0 0 0 3-3A8.8 8.8 0 0 0 12 3Z" />
-      <circle cx="7.5" cy="10" r=".8" />
-      <circle cx="11" cy="6.8" r=".8" />
-      <circle cx="15.7" cy="8.4" r=".8" />
-      <circle cx="7.5" cy="15" r=".8" />
+      <g fill="currentColor" stroke="none">
+        <circle cx="7.5" cy="10" r="1.1" />
+        <circle cx="11" cy="6.8" r="1.1" />
+        <circle cx="15.7" cy="8.4" r="1.1" />
+        <circle cx="7.5" cy="15" r="1.1" />
+      </g>
     </>
   ),
   curves: (
@@ -49,14 +51,20 @@ const glyphs = {
   ),
   detail: (
     <>
-      <path d="m12 3 8.5 5v8L12 21l-8.5-5V8L12 3Z" />
-      <path d="m3.5 8 8.5 5 8.5-5M12 13v8M8 5.4l8.5 5" />
+      <circle cx="10" cy="10" r="7" />
+      <path d="m15 15 6 6M5 12l3-5 3 6 3-4" />
     </>
   ),
   repair: (
     <>
       <path d="m8.5 4.5-4 4a4 4 0 0 0 0 5.7l5.3 5.3a4 4 0 0 0 5.7 0l4-4a4 4 0 0 0 0-5.7l-5.3-5.3a4 4 0 0 0-5.7 0Z" />
-      <path d="m8 8 8 8m-7-5h.01M12 8h.01M12 16h.01M15 13h.01" />
+      <path d="m8 8 8 8" />
+      <g fill="currentColor" stroke="none">
+        <circle cx="9" cy="12" r=".9" />
+        <circle cx="12" cy="9" r=".9" />
+        <circle cx="12" cy="15" r=".9" />
+        <circle cx="15" cy="12" r=".9" />
+      </g>
     </>
   ),
   paint: (
@@ -66,7 +74,7 @@ const glyphs = {
   ),
   liquify: (
     <>
-      <path d="M3 6c3-5 5 5 9 0s6 3 9 0M3 12c3-5 5 5 9 0s6 3 9 0M3 18c3-5 5 5 9 0s6 3 9 0" />
+      <path d="M3 4h18M3 12c5-4 8 4 18 0M3 20h18M5 3c-3 8 4 10 0 18M12 3c-5 8 5 10 0 18M19 3c-2 8 3 10 0 18" />
     </>
   ),
   composite: (
@@ -164,6 +172,22 @@ const glyphs = {
       <path d="m4 3 15 9-7 2-3 7L4 3ZM12 14l5 6" />
     </>
   ),
+  cutout: (
+    <>
+      <path
+        d="M7 3H3v4m14-4h4v4M3 17v4h4m14-4v4h-4M6 20v-3a6 6 0 0 1 12 0v3"
+        strokeDasharray="3 3"
+      />
+      <circle cx="12" cy="8" r="3" />
+      <path d="M8 17q4-3 8 0" />
+    </>
+  ),
+  focus: (
+    <>
+      <path d="M8 3H3v5m13-5h5v5M3 16v5h5m13-5v5h-5" />
+      <rect x="7" y="7" width="10" height="10" rx="1" />
+    </>
+  ),
   background: (
     <>
       <rect x="3" y="3" width="18" height="18" rx="2" />
@@ -217,7 +241,7 @@ export function StudioGlyph({
       height={size}
       fill="none"
       stroke="currentColor"
-      strokeWidth={1.7}
+      strokeWidth={1.65}
       strokeLinecap="round"
       strokeLinejoin="round"
       className={`studio-glyph ${className}`}

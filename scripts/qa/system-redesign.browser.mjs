@@ -1,5 +1,5 @@
 /**
- * Five distinct frontend risk scenarios, then current-UI product captures.
+ * Seven distinct frontend risk scenarios, then current-UI product captures.
  * Real built application + real HTTP API + disposable PostgreSQL WASM.
  * Public, attributed photos only. No mocked API, SMS, AI supplier or payments.
  * This is not the native/HDR, all-feature, performance or paid-service gate.
@@ -58,7 +58,7 @@ const report = {
   cases: [], layouts: [], logos: [], scrolls: [], screenshots: [], inputs: [], cjkFontEvidence: [],
   pageErrors: [], routingErrors: [], unexpectedOrigins: [], blockedSdkTelemetryAttempts: [], requests: {}, manualVisualReview: false,
   limits: [
-    'Five different locale/viewport/motion scenarios exercise import, numeric editing, undo, redo, original comparison and a decoded download.',
+    'Seven locale/viewport/motion scenarios exercise import, numeric editing, undo, redo, original comparison and a decoded download; including 320x568 and 768x1024.',
     'This does not certify all 111 matrix items, native HDR precision, a physical device, a live AI provider or a real multiplayer session.',
     'Account/project images, if present, use explicit disposable CI fixtures and actual local API permissions.',
     'Photo capture is a browser screenshot followed only by WebP encoding. No generated interface or retouched screenshot is used.',
@@ -76,6 +76,7 @@ const failures = new Map();
 let memoryDb, socket, db, app, preview, browser, activePage;
 let activeCase = 'bootstrap';
 let canonicalLogo;
+let reviewFixture;
 async function until(read, label, timeout = 25000) {
   const deadline = Date.now() + timeout;
   do {
@@ -214,6 +215,24 @@ async function settle(page) {
       animation.playState === 'running');
     await Promise.allSettled(finite.map((animation) => animation.finished));
     await new Promise((done) => requestAnimationFrame(() => requestAnimationFrame(done)));
+    // Resting JS springs are not Web Animations. Observe their painted geometry
+    // without disabling motion or reading private application state.
+    const springs=[...document.querySelectorAll('.overview-expanding-frame,[data-scroll-reveal],.rubber-segment-indicator,.choice-highlight,.squish-switch-thumb,.workspace-view-indicator,.warm-tooltip')].filter(visible);
+    if (springs.length) {
+      const signature=()=>springs.map(node=>{
+        const box=node.getBoundingClientRect();
+        return [box.x,box.y,box.width,box.height].map(value=>Math.round(value*10)).join(',');
+      }).join(';');
+      let previous=signature(), stable=0;
+      const deadline=performance.now()+2200;
+      while (stable<4 && performance.now()<deadline) {
+        await new Promise(done=>requestAnimationFrame(done));
+        const current=signature();
+        stable=current===previous?stable+1:0;
+        previous=current;
+      }
+      if (stable<4) throw new Error('Visible reference springs did not settle within the capture bound.');
+    }
   });
 }
 async function newPage(specification, route = '/#/studio', signedIn = false) {
@@ -422,7 +441,9 @@ async function layout(page, label, selector = null) {
           !parent.querySelector(':scope > summary')?.contains(node)) return false;
       }
       const style = getComputedStyle(node), rect = node.getBoundingClientRect();
-      return rect.width > 1 && rect.height > 1 && style.visibility !== 'hidden' && Number(style.opacity) > 0.01;
+      const nativeCheck = node.matches('.check-control-target > input[type="checkbox"]') &&
+        node.parentElement.checkVisibility({checkOpacity:true,checkVisibilityCSS:true});
+      return rect.width > 1 && rect.height > 1 && style.visibility !== 'hidden' && (Number(style.opacity) > 0.01 || nativeCheck);
     };
     const obscured = [];
     let sampledControls = 0;
@@ -542,8 +563,44 @@ async function changeView(page, id) {
     const dialog = page.locator('dialog.workspace-navigation-dialog');
     await dialog.locator('[data-view="' + id + '"]').click();
     await dialog.waitFor({ state: 'hidden' });
-  } else await page.locator('.compact-view-tabs > button').nth(viewIds.indexOf(id)).click();
+  } else await page.locator('.compact-view-tabs > button[data-view="' + id + '"]').click();
   await settle(page);
+}
+
+async function navigationFocus(page, label) {
+  const opener = page.locator('.workspace-identity button').first();
+  await opener.click();
+  const dialog = page.locator('dialog.sidebar-navigation-modal[open]');
+  await dialog.waitFor();
+  await until(() => dialog.evaluate(node => node.contains(document.activeElement)), 'navigation receives focus');
+  await layout(page, label + ': native project navigation');
+  await dialog.locator('button:visible:enabled').last().focus();
+  await page.keyboard.press('Tab');
+  assert.equal(await dialog.evaluate(node => node.contains(document.activeElement)), true, 'Navigation Tab must stay in the actual modal');
+  await page.keyboard.press('Shift+Tab');
+  assert.equal(await dialog.evaluate(node => node.contains(document.activeElement)), true, 'Navigation reverse Tab must stay in the actual modal');
+  await page.keyboard.press('Escape');
+  await dialog.waitFor({ state: 'hidden' });
+  assert.equal(await opener.evaluate(node => node === document.activeElement), true, 'Navigation returns focus to its opener');
+}
+
+async function editorGeometry(page, specification) {
+  const photo = await page.locator('.image-frame').boundingBox();
+  assert.ok(photo && photo.width > 0 && photo.height > 0, 'The real photograph must retain a visible editing area');
+  const evidence = { scenario: specification.id, photo, controls: [] };
+  if (specification.id === 'small-phone-zh-CN')
+    assert.ok(photo.height >= 180, '320x568 default editing must leave at least180px of photograph height; got' + photo.height);
+  if (specification.viewport.width < 760) {
+    evidence.controls = await page.locator('[data-control-id]:visible').evaluateAll(nodes => nodes.map(node => {
+      const r=node.getBoundingClientRect();
+      return { id:node.dataset.controlId, width:r.width, height:r.height, x:r.x,y:r.y };
+    }).filter(r => r.x+r.width/2>0 && r.x+r.width/2<innerWidth && r.y+r.height/2>0 && r.y+r.height/2<innerHeight));
+    for (const control of evidence.controls) {
+      assert.ok(control.width >=43.5 && control.height >=43.5,
+        'Phone parameter buttons retain individual44px hit boxes:' + JSON.stringify(control));
+    }
+  }
+  (report.editorGeometry ??= []).push(evidence);
 }
 
 async function actualDownload(page, expectedSource, label) {
@@ -594,6 +651,7 @@ async function coreFlow(specification) {
   const { context, page } = await newPage(specification);
   try {
     await logo(page, specification.id + ': studio');
+    await navigationFocus(page, specification.id);
     await importPhoto(page, 'coast');
     await tool(page, 'light');
     const original = await canvasPixels(page);
@@ -603,6 +661,7 @@ async function coreFlow(specification) {
       return frame.pixelSha256 !== original.pixelSha256 ? frame : null;
     }, 'exposure changes actual displayed pixels');
     await layout(page, specification.id + ': parameters');
+    await editorGeometry(page, specification);
     await capture(page, 'flows/' + specification.id + '-edited.png');
     const history = page.locator('.canvas-view-controls > button');
     await history.nth(0).click();
@@ -759,6 +818,43 @@ async function downloadPhotos() {
       });
   }
 }
+async function selectChoiceIndex(owner, index) {
+  const trigger = owner.getByRole('combobox');
+  await trigger.click();
+  await owner.locator('[role="option"][data-choice-index="' + index + '"]').click();
+  await until(async () => (await trigger.getAttribute('aria-expanded')) === 'false', 'choice closes after an actual selection');
+}
+async function sketchScreens(page, locale) {
+  await page.locator('[data-action="open-sketch"]:visible').first().click();
+  const drawing = page.locator('dialog.drawing-modal[open]');
+  await drawing.waitFor();
+  await selectChoiceIndex(drawing.locator('[data-qa="sketch-ratio"]'), 1);
+  await drawing.locator('input[type="file"]').setInputFiles({
+    name: 'coast-pexels-17344850.jpg', mimeType: 'image/jpeg', buffer: photos.get('coast').bytes,
+  });
+  await until(async () => (await drawing.locator('.drawing-surface canvas').evaluate(canvas => {
+    const data = canvas.getContext('2d').getImageData(0,0,canvas.width,canvas.height).data;
+    for (let index=3; index<data.length; index+=4) if (data[index]) return true;
+    return false;
+  })), 'drawing contains the actually imported photograph');
+  await selectChoiceIndex(drawing.locator('[data-qa="sketch-tool"]'), 10);
+  await drawing.locator('textarea').fill('QUIET\nCOAST');
+  await drawing.locator('.drawing-colors > button').first().click();
+  const size = drawing.locator('.drawing-width input[type="range"]');
+  await size.press('End');
+  const canvas = drawing.locator('.drawing-surface canvas');
+  const box = await canvas.boundingBox();
+  assert.ok(box?.width > 100 && box.height > 100);
+  await canvas.click({ position: { x: box.width * .58, y: box.height * .32 } });
+  await selectChoiceIndex(drawing.locator('[data-qa="sketch-tool"]'), 2);
+  await layout(page, locale + ': actual photograph and editable text in drawing board');
+  await productCapture(page, 'layers', locale, 'coast', 'Real drawing board: photograph imported, text entered and placed with pointer; no generated interface');
+  await page.setViewportSize({ width: 390, height: 844 });
+  await settle(page);
+  await layout(page, locale + ': phone drawing board');
+  await productCapture(page, 'layers-phone', locale, 'coast', 'Same real drawing document rendered in the independent phone layout');
+}
+
 async function productScreens(locale) {
   const specification = { locale, viewport: { width: 1440, height: 960 }, motion: 'no-preference' };
   const { context, page } = await newPage(specification);
@@ -774,21 +870,13 @@ async function productScreens(locale) {
     await parameter(page, 'exposure', 0.25, '[data-motion="region-controls"]:visible');
     await layout(page, locale + ': local capture');
     await productCapture(page, 'local', locale, 'coast', 'Actual radial region created and adjusted through UI');
-    await tool(page, 'composite');
-    await page.locator('[data-motion="composite-controls"]:visible input[type="file"]').setInputFiles({
-      name: 'portrait-pexels-3791554.jpg', mimeType: 'image/jpeg', buffer: photos.get('portrait').bytes,
-    });
-    await page.locator('[data-motion="composite-controls"]:visible .object-name').waitFor();
-    const coast = photos.get('coast'), portrait = photos.get('portrait');
-    const ratio = (coast.width / coast.height) * (portrait.height / portrait.width);
-    const layerWidth = Math.round(Math.min(0.28, 0.6 / ratio) * 10000) / 10000;
-    const layerHeight = Math.round(layerWidth * ratio * 10000) / 10000;
-    await parameter(page, 'width', layerWidth, '[data-motion="composite-controls"]:visible');
-    await parameter(page, 'height', layerHeight, '[data-motion="composite-controls"]:visible');
-    await parameter(page, 'x', 0.61, '[data-motion="composite-controls"]:visible');
-    await parameter(page, 'y', 0.2, '[data-motion="composite-controls"]:visible');
-    await layout(page, locale + ': layers capture');
-    await productCapture(page, 'layers', locale, ['coast', 'portrait'], 'Actual imported image layer with UI position and scale controls');
+    await page.setViewportSize({ width: 390, height: 844 });
+    await settle(page);
+    await layout(page, locale + ': phone local capture');
+    await productCapture(page, 'local-phone', locale, 'coast', 'Real radial selection and controls in independent phone layout');
+    await page.setViewportSize(specification.viewport);
+    await settle(page);
+    await sketchScreens(page, locale);
   } catch (error) {
     await failureEvidence(page);
     throw error;
@@ -808,11 +896,15 @@ async function productScreens(locale) {
     assert.ok(controlId);
     await available.click();
     const range = portrait.page.locator('.portrait-controls-v3 .parameter-shelf-current input[type="range"]');
-    const limits = await range.evaluate((node) => ({ min: Number(node.min), max: Number(node.max) }));
+    const limits = await range.evaluate(node => ({ min: Number(node.min), max: Number(node.max) }));
     const value = Math.max(limits.min, Math.min(limits.max, 12));
     await parameter(portrait.page, controlId, value, '.portrait-controls-v3');
     await layout(portrait.page, locale + ': portrait capture');
     await productCapture(portrait.page, 'portrait', locale, 'portrait', 'Actual local model inference and person-specific adjustment; no supplier call');
+    await portrait.page.setViewportSize({ width: 390, height: 844 });
+    await settle(portrait.page);
+    await layout(portrait.page, locale + ': phone portrait capture');
+    await productCapture(portrait.page, 'portrait-phone', locale, 'portrait', 'Same real locally detected person and controls in phone layout');
   } catch (error) {
     await failureEvidence(portrait.page);
     throw error;
@@ -830,7 +922,7 @@ async function productScreens(locale) {
       throw error;
     } finally { await closeCaseContext(device.context); }
   }
-  return { locale, screens: SCREEN_NAMES };
+  return { locale, screens: ['workspace','local','local-phone','layers','layers-phone','portrait','portrait-phone','tablet','phone'] };
 }
 
 async function supplementalViews(config) {
@@ -875,18 +967,23 @@ async function supplementalViews(config) {
       });
     }
   });
+  let documentSeeded = false;
   const signedIn = async (context) => {
     const response = await context.request.post(origin + '/v1/auth/login', {
       headers: { origin }, data: { phone: actor.phone, password: actor.password },
     });
     assert.equal(response.status(), 200, 'Disposable account must pass actual password verification.');
     assert.equal((await response.json()).user.id, actor.id);
-    const document = await context.request.post(origin + '/v1/projects/' + projectId + '/documents', {
-      headers: { origin },
-      data: { title: 'Retouch notes', body: 'Public photo interface review. Preserve natural texture, then export the current edit.' },
-    });
-    assert.equal(document.status(), 201, 'Fixture document must be accepted by the actual route.');
+    if (!documentSeeded) {
+      const document = await context.request.post(origin + '/v1/projects/' + projectId + '/documents', {
+        headers: { origin },
+        data: { title: 'Retouch notes', body: '保留海岸的自然层次。先调光影，再检查局部与导出。\n\nPreserve natural texture and colour. Review the edit before delivery.' },
+      });
+      assert.equal(document.status(), 201, 'Fixture document must be accepted by the actual route.');
+      documentSeeded = true;
+    }
   };
+  reviewFixture = { actorId: actor.id, projectId, projectName, signedIn };
   const { context, page } = await newPage({
     locale: 'zh-CN', viewport: { width: 1440, height: 960 }, motion: 'no-preference',
   }, '/#/studio', signedIn);
@@ -1023,9 +1120,38 @@ async function supplementalViews(config) {
     await layout(page, 'isolated project document');
     await verificationCapture(page, 'views/documents.png', 'documents', 'Actual isolated project document created through the HTTP API');
     await changeView(page, 'collaborate');
-    await settle(page);
-    await layout(page, 'isolated project collaboration empty state');
-    await verificationCapture(page, 'views/collaborate.png', 'collaborate', 'Actual empty collaboration view; no live multi-person session acceptance claim');
+    const collaboration = page.locator('.collaboration-view:not(.collaboration-panel):visible');
+    await collaboration.locator('.comment-composer textarea').fill('保留海岸与天空的自然层次。局部调整后，再核对导出效果。');
+    const [commentReceipt] = await Promise.all([
+      page.waitForResponse(response => new URL(response.url()).pathname === '/v1/projects/' + projectId + '/comments' && response.request().method() === 'POST'),
+      collaboration.locator('.comment-composer button[type="submit"]').click(),
+    ]);
+    assert.equal(commentReceipt.status(), 201);
+    await collaboration.locator('.comment').waitFor();
+    const taskEvidence = [];
+    for (const [title, steps] of [['检查光影与色彩',2], ['核对局部选区',1], ['导出完成的作品',0]]) {
+      await collaboration.locator('.task-add input').fill(title);
+      const [created] = await Promise.all([
+        page.waitForResponse(response => new URL(response.url()).pathname === '/v1/projects/' + projectId + '/tasks' && response.request().method() === 'POST'),
+        collaboration.locator('.task-add button').click(),
+      ]);
+      assert.equal(created.status(), 201);
+      const row = collaboration.locator('.task-item').filter({ hasText: title });
+      await row.waitFor();
+      for (let step=0; step<steps; step++) {
+        const [saved] = await Promise.all([
+          page.waitForResponse(response => /^\/v1\/tasks\/[^/]+$/.test(new URL(response.url()).pathname) && response.request().method() === 'PATCH'),
+          row.locator('button').click(),
+        ]);
+        assert.equal(saved.status(), 200);
+        assert.equal(saved.request().postDataJSON().expectedVersion, step+1, 'Task transitions submit the real prior version');
+        await until(() => row.evaluate((node,state)=>node.classList.contains(state), step===0?'doing':'done'), 'Task state follows the actual accepted CAS update');
+      }
+      taskEvidence.push({ title, state:['todo','doing','done'][steps], actualAcceptedTransitions:steps });
+    }
+    await collaboration.locator('.view-heading').scrollIntoViewIfNeeded();
+    await layout(page, 'isolated project collaboration after actual writes');
+    await verificationCapture(page, 'views/collaborate.png', 'collaborate', 'Actual isolated comment and three tasks created through UI; todo/doing/done follow accepted API versioned transitions');
     await changeView(page, 'usage');
     await settle(page);
     await layout(page, 'isolated account usage');
@@ -1054,12 +1180,146 @@ async function supplementalViews(config) {
       views: ['works', 'restoration-read-only', 'documents', 'collaborate', 'usage', 'assistant-unavailable', 'account'],
       restoration,
       assistant: { state: 'unavailable', statusCount: 1, submitDisabled: true },
+      taskEvidence,
       liveCloudServiceAcceptance: false, multiPersonSessionAcceptance: false,
     };
   } catch (error) {
     await failureEvidence(page);
     throw error;
   } finally { await closeCaseContext(context); }
+}
+async function openFixtureProject(page) {
+  assert.ok(reviewFixture, 'Disposable project setup must precede product account captures');
+  await page.locator('.workspace-identity button').first().click();
+  const sidebar = page.locator('dialog.sidebar-navigation-modal[open]');
+  await sidebar.waitFor();
+  const [response] = await Promise.all([
+    page.waitForResponse(response => new URL(response.url()).pathname === '/v1/projects/' + reviewFixture.projectId && response.request().method() === 'GET'),
+    sidebar.locator('.project-list').getByRole('button', { name: reviewFixture.projectName, exact: true }).click(),
+  ]);
+  assert.equal(response.status(), 200);
+  await sidebar.waitFor({ state: 'hidden' });
+}
+async function businessScreens(locale) {
+  assert.ok(reviewFixture);
+  for (const phone of [false, true]) {
+    const { context, page } = await newPage({
+      locale, viewport: phone ? { width:390,height:844 } : { width:1440,height:960 }, touch:phone,
+    }, '/#/studio', reviewFixture.signedIn);
+    const suffix = phone ? '-phone' : '';
+    try {
+      await openFixtureProject(page);
+      await changeView(page, 'works');
+      await page.locator('.asset-library:visible .library-asset').first().waitFor();
+      await page.locator('.asset-library:visible img').evaluateAll(async nodes => { await Promise.all(nodes.map(node => node.decode())); });
+      await layout(page, locale + suffix + ': real project library');
+      await productCapture(page,'library'+suffix,locale,['coast','portrait'],'Actual private project assets and saved versions from disposable API-backed fixture');
+      await changeView(page,'collaborate');
+      const collaboration=page.locator('.collaboration-view:not(.collaboration-panel):visible');
+      await collaboration.locator('.task-item').first().waitFor();
+      assert.equal(await collaboration.locator('.task-item').count(),3);
+      assert.equal(await collaboration.locator('.task-item.done').count(),1);
+      assert.equal(await collaboration.locator('.task-item.doing').count(),1);
+      await collaboration.locator('.view-heading').scrollIntoViewIfNeeded();
+      await layout(page,locale+suffix+': real project discussion and three task states');
+      await productCapture(page,'collaboration'+suffix,locale,null,'Actual local API discussion and tasks; no claim of a live multiplayer session');
+      await changeView(page,'editor');
+      await importPhoto(page,'coast');
+      await tool(page,'ai');
+      const assistant=page.locator('.free-panel[data-panel-id="ai"][aria-hidden="false"] .live-assistant:visible');
+      await until(async()=>await assistant.getAttribute('data-availability')==='unavailable','honest AI service availability');
+      const input=assistant.locator('.ai-composer-input');
+      const draftEditable=await input.isEditable();
+      if (draftEditable) await input.fill(locale==='en'
+        ? 'Keep the coast natural. Lift the shadows slightly and preserve the sky.'
+        : locale==='zh-TW'?'保留海岸的自然層次，稍微提亮暗部，天空保持不變。':'保留海岸的自然层次，稍微提亮暗部，天空保持不变。');
+      assert.equal(await assistant.locator('.ai-submit-request').isDisabled(),true);
+      await layout(page,locale+suffix+': actual assistant composer and unconfigured service state');
+      await productCapture(page,'assistant'+suffix,locale,'coast',
+        'Actual assistant input'+(draftEditable?' with an unsent draft':'')+'; service unavailable and submit disabled; no fabricated AI result');
+      await changeView(page,'deliver');
+      await page.locator('.delivery-primary-action > button').click();
+      const dialog=page.locator('dialog.export-dialog[open]');
+      await dialog.waitFor();
+      await layout(page,locale+suffix+': actual export dialog');
+      await productCapture(page,'delivery'+suffix,locale,'coast','Actual export settings before download; independent full-size PNG downloads are verified in the seven core flows');
+      await page.keyboard.press('Escape');
+      await dialog.waitFor({state:'hidden'});
+    } catch(error) {
+      await failureEvidence(page);
+      throw error;
+    } finally { await closeCaseContext(context); }
+  }
+  return { locale, screens:['library','collaboration','assistant','delivery'], independentPhoneCaptures:true };
+}
+
+async function accountAndOperationsReview() {
+  assert.ok(reviewFixture);
+  const accountEvidence=[];
+  for (const phone of [false,true]) {
+    const {context,page}=await newPage({
+      locale:'zh-CN',viewport:phone?{width:390,height:844}:{width:1440,height:960},touch:phone,
+    },'/#/studio',reviewFixture.signedIn);
+    try {
+      await page.locator('.studio-account').click();
+      const account=page.locator('[data-testid="account-center"]');
+      await account.waitFor();
+      for (const id of ['overview','security','billing','data']) {
+        const tab=account.locator('[data-testid="account-tab-'+id+'"]');
+        await tab.click();
+        await until(async()=>await tab.getAttribute('aria-selected')==='true','account section selected');
+        if (id==='billing') {
+          const entitlements=account.locator('.account-entitlements');
+          await until(async()=>await entitlements.getAttribute('aria-busy')==='false','account entitlement read settles');
+          await account.locator('[data-testid="account-available-units"]').waitFor();
+        }
+        await layout(page,(phone?'phone':'desktop')+': account '+id);
+        await capture(page,'account/'+(phone?'phone':'desktop')+'-'+id+'.png');
+        accountEvidence.push({phone,section:id});
+      }
+      const tabs=account.getByRole('tablist');
+      await tabs.getByRole('tab').first().focus();
+      await page.keyboard.press(phone?'ArrowRight':'ArrowDown');
+      assert.equal(await tabs.getByRole('tab').nth(1).evaluate(node=>node===document.activeElement),true,'Account roving focus follows its actual orientation');
+    } catch(error) {await failureEvidence(page);throw error;}
+    finally {await closeCaseContext(context);}
+  }
+  // Explicit fixture setup in the disposable in-memory database, never a production grant.
+  await db.query('INSERT INTO operator_users(user_id) VALUES($1)',[reviewFixture.actorId]);
+  const operationsEvidence=[];
+  const tabs=['overview','users','config','plans','models','assistant','quota','usage','reconciliation','audit'];
+  for (const phone of [false,true]) {
+    const {context,page}=await newPage({
+      locale:'zh-CN',viewport:phone?{width:390,height:844}:{width:1440,height:960},touch:phone,
+    },'/#/studio',reviewFixture.signedIn);
+    try {
+      await page.locator('.workspace-identity button').first().click();
+      await page.locator('dialog.sidebar-navigation-modal[open]').getByRole('button',{name:'运营管理',exact:true}).click();
+      await page.locator('[data-ops-tab]').waitFor();
+      for (const id of tabs) {
+        await page.locator('[data-ops-nav="'+id+'"]').click();
+        const main=page.locator('[data-ops-tab="'+id+'"]');
+        await until(async()=>await main.getAttribute('data-read-state')==='ready','operations '+id+' actual initial read');
+        await until(async()=>await main.locator('.feature-skeleton:visible').count()===0,'operations '+id+' visible read placeholders settle');
+        for (const attribute of ['data-read-state','data-catalog-state','data-record-state']) {
+          const states=main.locator('['+attribute+']');
+          for (const state of await states.all())
+            await until(async()=>await state.getAttribute(attribute)==='ready','operations '+id+' independent '+attribute+' real read');
+        }
+        if (id==='usage') {
+          await main.locator('.usage-skeleton-dashboard').waitFor({state:'hidden'});
+          await main.locator('.usage-overview').waitFor();
+        }
+        assert.equal(await main.locator('[role="alert"]:visible').count(),0,'operations '+id+' has no unresolved read error');
+        await layout(page,(phone?'phone':'desktop')+': operations '+id);
+        await capture(page,'operations/'+(phone?'phone':'desktop')+'-'+id+'.png');
+        assert.equal(await page.locator('[data-ops-nav][aria-current="page"]').count(),1);
+        operationsEvidence.push({phone,tab:id,readsOnly:true});
+      }
+    } catch(error) {await failureEvidence(page);throw error;}
+    finally {await closeCaseContext(context);}
+  }
+  return {accountEvidence,operationsEvidence,productionAccount:false,billingMutations:false};
 }
 try {
   await downloadPhotos();
@@ -1105,9 +1365,12 @@ try {
     await check('flow:' + scenario.id, () => coreFlow(scenario));
   for (const locale of LOCALES)
     await check('captures:' + locale, () => productScreens(locale));
+  await check('supplemental:isolated-account-and-views', () => supplementalViews(config));
+  for (const locale of LOCALES)
+    await check('business-captures:' + locale, () => businessScreens(locale));
   for (const scenario of SCENARIOS)
     await check('about:' + scenario.id, () => inspectAbout(scenario));
-  await check('supplemental:isolated-account-and-views', () => supplementalViews(config));
+  await check('account-and-operations:read-only-surfaces', accountAndOperationsReview);
   await check('brand:dark-studio-and-favicon', async () => {
     const { context, page } = await newPage({
       locale: 'en', viewport: { width: 1440, height: 960 }, theme: 'dark', motion: 'reduce',

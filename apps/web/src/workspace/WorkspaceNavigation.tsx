@@ -110,7 +110,7 @@ export function WorkspaceSettings({
           <span>{t('重置当前屏幕布局')}</span>
         </button>
         <button type="button" onClick={onFocus}>
-          <StudioGlyph name="select" />
+          <StudioGlyph name="focus" />
           <span>{t('专注画面')}</span>
           <kbd>F</kbd>
         </button>

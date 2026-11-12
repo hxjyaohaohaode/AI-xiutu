@@ -16,7 +16,7 @@ export type WorkspaceLayout = {
 export type PanelGeometryChange = { record?: boolean; previous?: PanelGeometry };
 type LayoutStep = { id: PanelId; geometry: PanelGeometry };
 export const layoutStorageKey = (view: Viewport) =>
-  `image-workspace:v7:${view.bucket}:${view.width > view.height ? 'landscape' : 'portrait'}`;
+  `image-workspace:v8:${view.bucket}:${view.width > view.height ? 'landscape' : 'portrait'}`;
 
 function viewport(): Viewport {
   const width = window.innerWidth;
@@ -87,9 +87,10 @@ export function parseWorkspaceLayout(raw: string | null, view: Viewport): Worksp
         return fallback;
     }
     const inspectorMinimum = panelBounds(view, parsed.panels.inspector.dock, 'inspector').minHeight;
-    const inspector = parsed.panels.inspector.height < inspectorMinimum
-      ? { ...parsed.panels.inspector, height: defaultPanel('inspector', view).height }
-      : parsed.panels.inspector;
+    const inspector =
+      parsed.panels.inspector.height < inspectorMinimum
+        ? { ...parsed.panels.inspector, height: defaultPanel('inspector', view).height }
+        : parsed.panels.inspector;
     return adaptWorkspaceLayout(
       {
         theme: parsed.theme,
@@ -112,6 +113,9 @@ function read(view: Viewport): WorkspaceLayout {
       localStorage.getItem(layoutStorageKey(view)) ??
         (view.bucket !== 'phone'
           ? (localStorage.getItem(
+              `image-workspace:v7:${view.bucket}:${view.width > view.height ? 'landscape' : 'portrait'}`,
+            ) ??
+            localStorage.getItem(
               `image-workspace:v6:${view.bucket}:${view.width > view.height ? 'landscape' : 'portrait'}`,
             ) ??
             localStorage.getItem(

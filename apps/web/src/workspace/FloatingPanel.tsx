@@ -21,7 +21,7 @@ import {
   CaretUp,
   ArrowCounterClockwise,
   ArrowLeft,
-} from '@phosphor-icons/react';
+} from '../components/ControlGlyph';
 import { IconButton } from '../components/Ui';
 import {
   boundPanel,
@@ -120,6 +120,7 @@ export function FloatingPanel({
   const gesture = useRef<Gesture | null>(null);
   const [dragging, setDragging] = useState(false);
   const [menu, setMenu] = useState(false);
+  const [headerTarget, setHeaderTarget] = useState<HTMLDivElement | null>(null);
   const [animatingPresentation, setAnimatingPresentation] = useState(false);
   const [presentationMs, setPresentationMs] = useState(220);
   const menuPresence = usePresence(menu, 'panel-menu');
@@ -387,7 +388,13 @@ export function FloatingPanel({
         : { ...value, presentation: next },
     );
     // Do not leave keyboard focus inside a collapsed or inert content subtree.
-    if (next === 'collapsed') dragHandle.current?.focus();
+    if (next === 'collapsed') {
+      // The phone title is replaced by the active categories. Keep focus on a
+      // control that stays visible through both sheet presentations.
+      if (attached && panelKey === 'inspector')
+        layoutTrigger.current?.focus({ preventScroll: true });
+      else dragHandle.current?.focus({ preventScroll: true });
+    }
   }
   function dock(next: Dock) {
     finishGesture(false);
@@ -447,6 +454,9 @@ export function FloatingPanel({
               <ArrowLeft size={17} />
             </IconButton>
           )}
+          {mobile && panelKey === 'inspector' && !collapsed && (
+            <div ref={setHeaderTarget} className="panel-inline-context" />
+          )}
           <div
             ref={dragHandle}
             className="panel-title-drag"
@@ -494,7 +504,7 @@ export function FloatingPanel({
             <strong>{title}</strong>
           </div>
           <div className="panel-presentation-actions" data-motion="panel-actions">
-            {attached && !condensed && (
+            {attached && !condensed && panelKey !== 'inspector' && (
               <div
                 className="panel-mobile-presentations"
                 role="group"
@@ -536,7 +546,7 @@ export function FloatingPanel({
               }
               aria-expanded={!collapsed}
               aria-controls={contentId}
-              onClick={() => setPresentation(collapsed ? 'normal' : 'collapsed')}
+              onClick={() => setPresentation(collapsed ? 'normal' : 'collapsed', collapsed)}
             >
               {collapsed ? <CaretUp size={17} /> : <CaretDown size={17} />}
             </IconButton>
@@ -583,6 +593,30 @@ export function FloatingPanel({
           data-direction={menuDirection}
           style={{ maxHeight: Math.max(44, menuDirection === 'up' ? menuAbove : menuBelow) }}
         >
+          {mobile && panelKey === 'inspector' && (
+            <div className="panel-menu-presentation">
+              <button
+                type="button"
+                onClick={() => {
+                  setMenu(false);
+                  setPresentation(maximized ? 'normal' : 'maximized');
+                }}
+              >
+                {maximized ? <CornersIn size={18} /> : <CornersOut size={18} />}
+                {maximized ? t('返回常规调节，恢复面板尺寸') : t('展开精调，允许遮挡画面')}
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  setMenu(false);
+                  onClose();
+                }}
+              >
+                <X size={18} />
+                {t('收起工具面板')}
+              </button>
+            </div>
+          )}
           <div
             className="panel-dock-choices"
             role="group"
@@ -733,6 +767,8 @@ export function FloatingPanel({
             maximized,
             openLayout: () => setMenu(true),
             toggleMaximized: () => setPresentation(maximized ? 'normal' : 'maximized'),
+            headerTarget:
+              attached && panelKey === 'inspector' && !collapsed && open ? headerTarget : null,
           }}
         >
           {children}

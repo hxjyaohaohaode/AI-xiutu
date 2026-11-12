@@ -26,7 +26,6 @@
   container-type: size;
 }
 .ai-workbench-header .ai-compact-action,
-.ai-composer-surface .ai-send-button.ai-compact-stop,
 .ai-compact-status {
   display: none;
 }
@@ -1199,12 +1198,6 @@
   }
   .live-assistant-v2:not([data-in-call='true']) .ai-price-summary {
     flex: 0 0 auto;
-  }
-  .live-assistant-v2:not([data-in-call='true'])[data-turn-active='true'] .ai-submit-request {
-    display: none;
-  }
-  .live-assistant-v2:not([data-in-call='true']) .ai-compact-stop {
-    display: inline-flex;
   }
   .live-assistant-v2:not([data-in-call='true']):not([data-compose-expanded='true'])
     .ai-composer-surface {

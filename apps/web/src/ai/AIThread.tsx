@@ -6,12 +6,10 @@ import {
   ImageSquare,
   ArrowSquareOut,
   CheckCircle,
-  Clock,
   Copy,
   FloppyDisk,
   PencilSimple,
   SpeakerHigh,
-  WarningCircle,
 } from '@phosphor-icons/react';
 import { formatDate } from '../lib/api';
 import type { Artwork, Project } from '../lib/types';
@@ -24,6 +22,7 @@ import { ResultActions } from './ResultActions';
 import { QueuedCancellation } from './QueuedCancellation';
 import { AIVisibilityContext } from './AIVisibility';
 import { AssistantText } from './AssistantText';
+import { StatusMark } from '../components/StatusMark';
 
 export function SpeakButton({ text }: { text: string }) {
   const supported = 'speechSynthesis' in window;
@@ -78,7 +77,9 @@ function TextResult({
       action: 'save-text',
       title: title.trim() || t('AI 创作文案'),
       body,
-      ...(destination ? { targetDocumentId: destination.id, expectedDocumentVersion: destination.version } : {}),
+      ...(destination
+        ? { targetDocumentId: destination.id, expectedDocumentVersion: destination.version }
+        : {}),
     });
     if (response) {
       setSaved(true);
@@ -204,12 +205,15 @@ function TextResult({
             ]}
           />
           {target && (
-            <p>{t('保存至「{title}」的新版本，基于 V{version}。', { title: target.title, version: target.version })}</p>
+            <p>
+              {t('保存至「{title}」的新版本，基于 V{version}。', {
+                title: target.title,
+                version: target.version,
+              })}
+            </p>
           )}
           {(title !== output.title || body !== output.body) && (
-            <p className="control-note">
-              {t('经手动编辑')}
-            </p>
+            <p className="control-note">{t('经手动编辑')}</p>
           )}
           {body === '' && (
             <p className="control-note">
@@ -302,6 +306,14 @@ function TranscriptResult({
     </div>
   );
 }
+const jobStateMark = {
+  queued: 'pending',
+  running: 'running',
+  unknown: 'unknown',
+  completed: 'done',
+  failed: 'failed',
+  cancelled: 'cancelled',
+} as const;
 export const jobStateLabel = (state: AIJob['state']) =>
   t(
     {
@@ -326,9 +338,10 @@ function GeneratedImagePreview({
   const [attempt, setAttempt] = useState(0);
   const source = image.thumbnailUrl ?? '/v1/assets/' + image.assetId + '/thumbnail';
   const localSource = source.startsWith('/v1/assets/');
-  const src = attempt && localSource
-    ? source + (source.includes('?') ? '&' : '?') + 'previewReload=' + attempt
-    : source;
+  const src =
+    attempt && localSource
+      ? source + (source.includes('?') ? '&' : '?') + 'previewReload=' + attempt
+      : source;
   return (
     <div
       className="ai-result-frame"
@@ -347,7 +360,8 @@ function GeneratedImagePreview({
               setFailed(false);
             }}
           >
-            <ArrowClockwise size={16} />{t('重新载入预览')}
+            <ArrowClockwise size={16} />
+            {t('重新载入预览')}
           </button>
         </div>
       ) : (
@@ -383,8 +397,7 @@ function PendingImagePreview({ job }: { job: AIJob }) {
       aria-busy={pending}
     >
       <div className="ai-result-placeholder" role="status">
-        {pending ? <Clock size={26} weight="light" /> : <ImageSquare size={26} weight="light" />}
-        <span>{jobStateLabel(job.state)}</span>
+        <StatusMark state={jobStateMark[job.state]} label={jobStateLabel(job.state)} />
       </div>
     </div>
   );
@@ -490,9 +503,7 @@ function CompletedResult({
         </div>
       )}
       {job.output?.kind === 'transcript' && (job.output.noSpeech || !job.output.text.trim()) && (
-        <p className="ai-status-copy">
-          {t('本次已结算，未识别到清晰语音。')}
-        </p>
+        <p className="ai-status-copy">{t('本次已结算，未识别到清晰语音。')}</p>
       )}
       {job.output?.kind === 'transcript' && !!job.output.text.trim() && (
         <TranscriptResult text={job.output.text} onUse={onTranscript} />
@@ -596,14 +607,11 @@ export function AIThread({
             </div>
             <article className={'ai-answer state-' + job.state}>
               <header className="ai-answer-state" data-motion="ai-status">
-                {job.state === 'completed' ? (
-                  <CheckCircle size={17} />
-                ) : job.state === 'unknown' || job.state === 'failed' ? (
-                  <WarningCircle size={17} />
-                ) : (
-                  <Clock size={17} />
-                )}
-                <strong>{jobStateLabel(job.state)}</strong>
+                <StatusMark
+                  state={jobStateMark[job.state]}
+                  label={jobStateLabel(job.state)}
+                  size="small"
+                />
                 <span>
                   {job.reservedUnits} {t('点')}
                 </span>
@@ -611,14 +619,10 @@ export function AIThread({
               {(job.operation ?? job.request?.operation) === 'generate-image' &&
                 job.state !== 'completed' && <PendingImagePreview job={job} />}
               {job.state === 'unknown' && (
-                <p className="ai-status-copy">
-                  {t('结果待核验，预占保留。')}
-                </p>
+                <p className="ai-status-copy">{t('结果待核验，预占保留。')}</p>
               )}
               {job.state === 'failed' && (
-                <p className="ai-status-copy">
-                  {t('任务未完成，点数以用量记录为准。')}
-                </p>
+                <p className="ai-status-copy">{t('任务未完成，点数以用量记录为准。')}</p>
               )}
               <QueuedCancellation
                 key={(userId ?? 'session') + ':' + project.id + ':' + job.id}

@@ -1,12 +1,5 @@
 import './studio-styles.css';
-import {
-  Suspense,
-  useCallback,
-  useEffect,
-  useRef,
-  useState,
-  useSyncExternalStore,
-} from 'react';
+import { Suspense, useCallback, useEffect, useRef, useState, useSyncExternalStore } from 'react';
 import {
   CloudArrowUp,
   DownloadSimple,
@@ -56,6 +49,7 @@ import { ToolDock } from './workspace/ToolDock';
 import { ToolOverview } from './workspace/ToolOverview';
 import { PanelNavigation, type PanelSection } from './workspace/PanelNavigation';
 import { interactionText } from './workspace/interaction-copy';
+import { WorkspaceViewTabs } from './workspace/WorkspaceViewTabs';
 import { CommandMenu, type StudioCommand } from './workspace/CommandMenu';
 import {
   WorkspaceNavigation,
@@ -210,7 +204,9 @@ const AccountCenter = createDeferredFeature(
       const url = new URL(failedUrl);
       if (
         url.origin !== window.location.origin ||
-        !/^\/(?:src\/account\/AccountCenter\.tsx|assets\/AccountCenter-[\w-]+\.js)$/.test(url.pathname)
+        !/^\/(?:src\/account\/AccountCenter\.tsx|assets\/AccountCenter-[\w-]+\.js)$/.test(
+          url.pathname,
+        )
       )
         throw error;
       url.searchParams.set('retry', String(++accountModuleRetry));
@@ -1465,7 +1461,8 @@ export function App({
         : undefined;
     const identity = editor.getSourceIdentity();
     const context = projectRequest.current;
-    const alphaPrior = subject && (await editor.portrait.prepareCutoutPrior(subject, guides.method));
+    const alphaPrior =
+      subject && (await editor.portrait.prepareCutoutPrior(subject, guides.method));
     if (
       editor.getSourceIdentity() !== identity ||
       editor.isLoading() ||
@@ -2517,62 +2514,33 @@ export function App({
                   >
                     <Brand name={brand} logoUrl={brandLogoUrl(config?.brand)} compact />
                   </button>
-                  <div className="workspace-project-title">
-                    <strong
-                      title={artwork?.title ?? project?.title ?? editor.file?.name ?? t('本地创作')}
-                    >
-                      {artwork?.title ?? project?.title ?? t('本地创作')}
-                    </strong>
-                    <span
-                      className="workspace-save-state"
-                      data-state={
-                        saving
-                          ? 'saving'
-                          : artwork && !dirty
-                            ? 'saved'
-                            : editor.file
-                              ? 'draft'
-                              : 'local'
-                      }
-                      role="status"
-                    >
-                      {saving
-                        ? t('正在保存')
-                        : artwork && !dirty
-                          ? t('版本 {v0} 已保存', { v0: artwork.headVersion })
-                          : editor.file
-                            ? t('本地草稿')
-                            : t('本地编辑')}
-                    </span>
-                  </div>
+                  {(artwork || project || editor.file) && (
+                    <div className="workspace-project-title">
+                      <strong title={artwork?.title ?? project?.title ?? editor.file?.name}>
+                        {artwork?.title ?? project?.title ?? editor.file?.name}
+                      </strong>
+                      {view === 'editor' && editor.file && (
+                        <span
+                          className="workspace-save-state"
+                          data-state={saving ? 'saving' : artwork && !dirty ? 'saved' : 'draft'}
+                          role="status"
+                        >
+                          {saving
+                            ? t('正在保存')
+                            : artwork && !dirty
+                              ? t('版本 {v0} 已保存', { v0: artwork.headVersion })
+                              : t('本地草稿')}
+                        </span>
+                      )}
+                    </div>
+                  )}
                 </div>
-                <nav className="compact-view-tabs" aria-label={t('工作视图')}>
-                  {views.map((item) => (
-                    <button
-                      key={item.id}
-                      className={view === item.id ? 'active' : ''}
-                      onClick={() => changeView(item.id)}
-                      aria-label={t(item.label)}
-                      title={t(item.label)}
-                      aria-current={view === item.id ? 'page' : undefined}
-                    >
-                      {item.icon}
-                      <span>{t(item.label)}</span>
-                    </button>
-                  ))}
-                </nav>
-                <button
-                  type="button"
-                  className="mobile-view-trigger"
-                  aria-label={t('切换工作视图')}
-                  aria-haspopup="dialog"
-                  aria-expanded={dialog === 'navigation'}
-                  onClick={() => setDialog('navigation')}
-                >
-                  <StudioGlyph name={view} size={19} />
-                  <span>{t(views.find((item) => item.id === view)?.label ?? '')}</span>
-                  <StudioGlyph name="chevron" size={14} />
-                </button>
+                <WorkspaceViewTabs
+                  value={view}
+                  onChange={changeView}
+                  menuOpen={dialog === 'navigation'}
+                  onOpenMenu={() => setDialog('navigation')}
+                />
                 <div className="workspace-top-actions">
                   {cloudError && cloudNoticeDismissed && (
                     <IconButton
@@ -2739,6 +2707,7 @@ export function App({
                             </IconButton>
                             <IconButton
                               label={t('打开草图板')}
+                              data-action="open-sketch"
                               onClick={() => setDialog('drawing')}
                             >
                               <PencilSimple size={19} />
@@ -3703,4 +3672,3 @@ export function App({
     </>
   );
 }
-

@@ -14,6 +14,8 @@ import { ChoiceSelect } from './ChoiceSelect';
 import { useConfirmation } from './ConfirmationDialog';
 import { StudioGlyph } from './StudioGlyph';
 import { Busy, InlineError, Modal } from './Ui';
+import { CheckControl } from './CheckControl';
+import { StatusMark } from './StatusMark';
 
 type Capability = {
   recognition: { engine: string | null; languages: string[]; maxPixels: number };
@@ -696,7 +698,11 @@ export function ProjectAssetTools({
     >
       <div className="stack-form asset-tool-content">
         <InlineError message={error} />
-        {status && <p role="status">{t(status)}</p>}
+        {status && (
+          <p role="status">
+            <StatusMark state="done" size="small" label={t(status)} />
+          </p>
+        )}
         <section className="asset-tool-section" aria-label={t('导入完整动图')}>
           <h3>
             <StudioGlyph name="import" />
@@ -761,34 +767,49 @@ export function ProjectAssetTools({
             </summary>
             <div className="asset-tool-asset-list asset-source-options">
               {selectable.map((asset) => (
-                <label key={asset.id} className="asset-tool-asset-choice">
-                  <input
-                    type="checkbox"
-                    checked={selected.includes(asset.id)}
-                    disabled={busy || (!selected.includes(asset.id) && selected.length >= 12)}
-                    onChange={(event) =>
-                      setSelected((old) =>
-                        event.target.checked
-                          ? [...old, asset.id]
-                          : old.filter((id) => id !== asset.id),
-                      )
-                    }
-                  />
-                  <span>
-                    {asset.annotations?.title ?? asset.name}
-                    <small>
-                      {asset.width}×{asset.height}
-                    </small>
-                  </span>
-                  {selected.includes(asset.id) && (
-                    <span
-                      className="asset-tool-order"
-                      aria-label={t('第 {v0} 张', { v0: selected.indexOf(asset.id) + 1 })}
-                    >
-                      {selected.indexOf(asset.id) + 1}
+                <CheckControl
+                  key={asset.id}
+                  className="asset-tool-asset-choice"
+                  checked={selected.includes(asset.id)}
+                  disabled={busy || (!selected.includes(asset.id) && selected.length >= 12)}
+                  onChange={(event) =>
+                    setSelected((old) =>
+                      event.target.checked
+                        ? [...old, asset.id]
+                        : old.filter((id) => id !== asset.id),
+                    )
+                  }
+                  label={
+                    <span className="asset-choice-content">
+                      <span className="asset-choice-preview" aria-hidden="true">
+                        <StudioGlyph name="works" />
+                        <img
+                          src={asset.thumbnailUrl ?? `/v1/assets/${asset.id}/thumbnail`}
+                          alt=""
+                          loading="lazy"
+                          decoding="async"
+                          onError={(event) => {
+                            event.currentTarget.hidden = true;
+                          }}
+                        />
+                      </span>
+                      <span className="asset-choice-name">
+                        {asset.annotations?.title ?? asset.name}
+                        <small>
+                          {asset.width}×{asset.height}
+                        </small>
+                      </span>
+                      {selected.includes(asset.id) && (
+                        <span
+                          className="asset-tool-order"
+                          aria-label={t('第 {v0} 张', { v0: selected.indexOf(asset.id) + 1 })}
+                        >
+                          {selected.indexOf(asset.id) + 1}
+                        </span>
+                      )}
                     </span>
-                  )}
-                </label>
+                  }
+                />
               ))}
               {!selectable.length && (
                 <p className="control-note">
@@ -838,15 +859,13 @@ export function ProjectAssetTools({
               },
             ]}
           />
-          <label className="asset-tool-checkbox">
-            <input
-              type="checkbox"
-              disabled={busy}
-              checked={transparent}
-              onChange={(event) => setTransparent(event.target.checked)}
-            />
-            {t('透明间距')}
-          </label>
+          <CheckControl
+            className="asset-tool-checkbox"
+            disabled={busy}
+            checked={transparent}
+            onChange={(event) => setTransparent(event.target.checked)}
+            label={t('透明间距')}
+          />
           <button
             className="button button-primary"
             disabled={selected.length < 2 || busy}

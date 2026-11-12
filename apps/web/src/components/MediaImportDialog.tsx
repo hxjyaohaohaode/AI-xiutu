@@ -5,6 +5,8 @@ import type { Asset, Project } from '../lib/types';
 import { api, ApiError, jsonRequest, errorMessage } from '../lib/api';
 import { secureUuid } from '../lib/uuid';
 import { Modal, InlineError, Busy } from './Ui';
+import { CheckControl } from './CheckControl';
+import { StatusMark } from './StatusMark';
 import { MediaSourceViewer } from '../media/MediaSourceViewer';
 import '../media/media.css';
 interface Capabilities {
@@ -315,7 +317,13 @@ export function MediaImportDialog({
             <div className="media-import-limits" aria-label={t('格式像素上限')}>
               <span>RAW · {(caps.maxRawPixels / 1e6).toLocaleString(getLocale())} MP</span>
               <span>HDR · {(caps.maxHdrPixels / 1e6).toLocaleString(getLocale())} MP</span>
-              <span>PSD · {(caps.maxPsdPixels / 1e6).toLocaleString(getLocale(), { maximumFractionDigits: 1 })} MP</span>
+              <span>
+                PSD ·{' '}
+                {(caps.maxPsdPixels / 1e6).toLocaleString(getLocale(), {
+                  maximumFractionDigits: 1,
+                })}{' '}
+                MP
+              </span>
             </div>
           </>
         ) : (
@@ -328,16 +336,13 @@ export function MediaImportDialog({
         )}
         {caps && !caps.available && (
           <p role="status" className="control-note">
-            {t(
-              '高精度导入暂不可用，普通图片仍可在本地编辑。',
-            )}
+            {t('高精度导入暂不可用，普通图片仍可在本地编辑。')}
           </p>
         )}
         {caps?.available && !caps.nativeReady && (
           <p className="control-note">
             {t('当前可处理')}
-            {caps.rasterFormats.join('、')}{' '}
-            {t('与 PSD 合成图；RAW / EXR / Radiance 暂不可用。')}
+            {caps.rasterFormats.join('、')} {t('与 PSD 合成图；RAW / EXR / Radiance 暂不可用。')}
           </p>
         )}
         {!asset && (
@@ -400,35 +405,48 @@ export function MediaImportDialog({
                 </small>
               </span>
             </button>
-            <label className="media-check">
-              <input
-                type="checkbox"
-                checked={tiles}
-                disabled={
-                  !canWrite || !!job || uploading || cancelling || restorePending || restoreBlocked
-                }
-                onChange={(event) => setTiles(event.target.checked)}
-              />
-              {t('建立分级图块，便于按原尺寸查看细节')}
-            </label>
+            <CheckControl
+              className="media-check"
+              checked={tiles}
+              disabled={
+                !canWrite || !!job || uploading || cancelling || restorePending || restoreBlocked
+              }
+              onChange={(event) => setTiles(event.target.checked)}
+              label={t('建立分级图块，便于按原尺寸查看细节')}
+            />
           </>
         )}
         {job && (
           <div className="media-upload-progress" role="status">
             <div>
-              <span>
-                {job.state === 'processing'
-                  ? t('已上传，正在隔离处理')
-                  : job.state === 'ready'
-                    ? t('原件与母版已保存')
-                    : job.state === 'failed'
-                      ? t('处理未完成')
-                      : job.state === 'cancelled'
-                        ? t('已取消')
-                        : uploading
-                          ? t('正在上传')
-                          : t('上传已暂停，可选择同一文件继续')}
-              </span>
+              <StatusMark
+                state={
+                  job.state === 'processing' || uploading
+                    ? 'running'
+                    : job.state === 'ready'
+                      ? 'done'
+                      : job.state === 'failed'
+                        ? 'failed'
+                        : job.state === 'cancelled'
+                          ? 'cancelled'
+                          : 'pending'
+                }
+                size="small"
+                progress={uploading ? progress / 100 : undefined}
+                label={
+                  job.state === 'processing'
+                    ? t('已上传，正在隔离处理')
+                    : job.state === 'ready'
+                      ? t('原件与母版已保存')
+                      : job.state === 'failed'
+                        ? t('处理未完成')
+                        : job.state === 'cancelled'
+                          ? t('已取消')
+                          : uploading
+                            ? t('正在上传')
+                            : t('上传已暂停，可选择同一文件继续')
+                }
+              />
               <span>{progress}%</span>
             </div>
             <progress max={100} value={progress} aria-label={t('原件上传进度')} />
@@ -512,9 +530,7 @@ export function MediaImportDialog({
           </div>
         )}
         <p className="control-note">
-          {t(
-            '原件和派生图计入空间存储。关闭后暂停上传，已开始的处理会继续。',
-          )}
+          {t('原件和派生图计入空间存储。关闭后暂停上传，已开始的处理会继续。')}
         </p>
       </div>
     </Modal>

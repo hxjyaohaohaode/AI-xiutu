@@ -1,0 +1,2136 @@
+{
+  "schema_version": 2,
+  "source_inventory": "reference-209-source-inventory.json",
+  "public_routes": [
+    "about",
+    "studio",
+    "login",
+    "register",
+    "reset",
+    "account",
+    "welcome",
+    "usage",
+    "sample"
+  ],
+  "workspace_views": [
+    "editor",
+    "works",
+    "compare",
+    "collaborate",
+    "docs",
+    "deliver",
+    "usage"
+  ],
+  "app_dialogs": [
+    "auth",
+    "account",
+    "accountReady",
+    "project",
+    "team",
+    "join",
+    "teamSettings",
+    "share",
+    "export",
+    "conflict",
+    "help",
+    "quota",
+    "drawing",
+    "copy",
+    "importSettings",
+    "mediaImport",
+    "commands",
+    "navigation",
+    "settings"
+  ],
+  "ai_overlays": [
+    "tasks",
+    "settings",
+    "references",
+    "history",
+    "recovery"
+  ],
+  "ops_tabs": [
+    "overview",
+    "users",
+    "config",
+    "plans",
+    "models",
+    "assistant",
+    "quota",
+    "audit",
+    "usage",
+    "reconciliation"
+  ],
+  "account_tabs": [
+    "overview",
+    "security",
+    "billing",
+    "data"
+  ],
+  "flows": [
+    {
+      "id": "FLOW-01",
+      "pages": [
+        "about"
+      ],
+      "title": "平台介绍自然滚动",
+      "entry": "#/；章节锚点",
+      "source_paths": [
+        "apps/web/src/about/AboutPage.tsx",
+        "apps/web/src/about/overview-copy.ts",
+        "apps/web/src/about/useOverviewMotion.ts"
+      ],
+      "feature_ids": [
+        "C09"
+      ],
+      "required_states": [
+        "初始首屏",
+        "顺向/反向滚动",
+        "章节进入退出",
+        "手机/横屏",
+        "减少动态",
+        "加载图片失败"
+      ],
+      "business_invariants": "系统细节直接随页面流可见；截图必须来自实际产品；Logo 不随状态改变；不靠悬停或点击解锁正文",
+      "reference_ids": [
+        11,
+        21,
+        31,
+        35,
+        64,
+        70,
+        72,
+        79,
+        103,
+        187
+      ],
+      "evidence_status": "App entry/state source scan at bb9; fresh browser baseline is a separate run, not a full-flow certification.",
+      "this_round_treatment": "已重新搭建正常滚动的系统介绍，31/35、17 种真实屏幕名与独立手机图；新截图发布和逐段视觉待本轮 CI。",
+      "current_product_acceptance": "pending exact-head integration CI and visual review; baseline is separate",
+      "implemented_reference_ids": [
+        31,
+        35
+      ]
+    },
+    {
+      "id": "FLOW-02",
+      "pages": [
+        "navigation",
+        "shared"
+      ],
+      "title": "公开路由与懒加载",
+      "entry": "about/studio/login/register/reset/account/welcome/usage/sample",
+      "source_paths": [
+        "apps/web/src/SiteShell.tsx",
+        "apps/web/src/about/site-route.ts",
+        "apps/web/src/components/DeferredFeature.tsx"
+      ],
+      "feature_ids": [
+        "R07",
+        "R09",
+        "C03",
+        "C09"
+      ],
+      "required_states": [
+        "首次加载",
+        "加载失败重试",
+        "前进后退",
+        "已有编辑返回 About",
+        "活跃 AI/保存/语音保护"
+      ],
+      "business_invariants": "保持当前工作台挂载和草稿；未知 hash 当前回 About；不能将未有的 404 路由作为完成",
+      "reference_ids": [
+        35,
+        119,
+        179,
+        209
+      ],
+      "evidence_status": "App entry/state source scan at bb9; fresh browser baseline is a separate run, not a full-flow certification.",
+      "this_round_treatment": "保留公开路由/懒加载与工作台生命周期；About 主动作进入真实空工作台，未增加演示照片自动注入。",
+      "current_product_acceptance": "pending exact-head integration CI and visual review; baseline is separate",
+      "implemented_reference_ids": [
+        35,
+        119
+      ]
+    },
+    {
+      "id": "FLOW-03",
+      "pages": [
+        "auth"
+      ],
+      "title": "登录注册重置与验证码",
+      "entry": "#/login,#/register,#/reset,#/welcome；App auth/accountReady",
+      "source_paths": [
+        "apps/web/src/components/AuthPanel.tsx",
+        "apps/web/src/account/AccountReady.tsx",
+        "apps/web/src/account/auth-model.ts"
+      ],
+      "feature_ids": [
+        "C03"
+      ],
+      "required_states": [
+        "密码/SMS",
+        "注册两步",
+        "验证码粘贴/退格",
+        "冷却",
+        "错误",
+        "未知回执",
+        "禁用",
+        "退出返回"
+      ],
+      "business_invariants": "不模拟短信；同手机号共享冷却；输入法不误提交；未知结果先核对；原生逻辑输入值保留",
+      "reference_ids": [
+        102,
+        120,
+        125,
+        133,
+        173,
+        179
+      ],
+      "evidence_status": "App entry/state source scan at bb9; fresh browser baseline is a separate run, not a full-flow certification.",
+      "this_round_treatment": "身份流程不改；公共字号/Modal/输入反馈更新。短信未配置只能显示真实不可用，不将 fixture 密码登录当短信注册验收。",
+      "current_product_acceptance": "pending exact-head integration CI and visual review; baseline is separate",
+      "implemented_reference_ids": [
+        120,
+        133
+      ]
+    },
+    {
+      "id": "FLOW-04",
+      "pages": [
+        "account"
+      ],
+      "title": "账号中心与退出",
+      "entry": "#/account；overview/security/billing/data",
+      "source_paths": [
+        "apps/web/src/account/AccountCenter.tsx",
+        "apps/web/src/account/account-model.ts",
+        "apps/web/src/account/AccountDocumentDrafts.tsx"
+      ],
+      "feature_ids": [
+        "C03",
+        "C06",
+        "C13"
+      ],
+      "required_states": [
+        "加载",
+        "失权",
+        "手机横向 tabs",
+        "改密码",
+        "服务点范围",
+        "草稿导出",
+        "退出未知"
+      ],
+      "business_invariants": "不把退出当注销；没有订单/订阅支付则不可伪造；账户身份切换不覆盖原草稿",
+      "reference_ids": [
+        68,
+        78,
+        120,
+        131,
+        173,
+        192,
+        200,
+        206
+      ],
+      "evidence_status": "App entry/state source scan at bb9; fresh browser baseline is a separate run, not a full-flow certification.",
+      "this_round_treatment": "账号四页签响应式密度、焦点方向、状态与共享样式；四页签桌面/手机由本轮实际 QA 读取。",
+      "current_product_acceptance": "pending exact-head integration CI and visual review; baseline is separate",
+      "implemented_reference_ids": [
+        68,
+        78,
+        120,
+        131
+      ]
+    },
+    {
+      "id": "FLOW-05",
+      "pages": [
+        "studio",
+        "import"
+      ],
+      "title": "空工作台与本地导入",
+      "entry": "#/studio 空态；导入；App importSettings",
+      "source_paths": [
+        "apps/web/src/workspace/StudioWelcome.tsx",
+        "apps/web/src/App.tsx",
+        "apps/web/src/components/ImportSettings.tsx",
+        "apps/web/src/editor/source-flow.ts"
+      ],
+      "feature_ids": [
+        "F01",
+        "R07",
+        "R09"
+      ],
+      "required_states": [
+        "空态",
+        "文件预检",
+        "格式/尺寸拒绝",
+        "解码",
+        "取消",
+        "导入替换确认",
+        "失败后保留照片"
+      ],
+      "business_invariants": "不悄悄缩小原件或绕过预算；未登录可本地编辑；源身份冻结和已有草稿确认",
+      "reference_ids": [
+        65,
+        102,
+        110,
+        119,
+        173,
+        179
+      ],
+      "evidence_status": "App entry/state source scan at bb9; fresh browser baseline is a separate run, not a full-flow certification.",
+      "this_round_treatment": "删除无项目时冗余“本地创作”标题；仅显示真实项目/作品/文件名与真实保存状态，保留本地导入流程。",
+      "current_product_acceptance": "pending exact-head integration CI and visual review; baseline is separate",
+      "implemented_reference_ids": [
+        119
+      ]
+    },
+    {
+      "id": "FLOW-06",
+      "pages": [
+        "navigation"
+      ],
+      "title": "空间项目和工作视图",
+      "entry": "Sidebar；editor/works/compare/collaborate/docs/deliver/usage",
+      "source_paths": [
+        "apps/web/src/components/Sidebar.tsx",
+        "apps/web/src/workspace/WorkspaceNavigation.tsx",
+        "apps/web/src/App.tsx",
+        "apps/web/src/workspace/WorkspaceViewTabs.tsx",
+        "apps/web/src/workspace/useNavigationProximity.ts"
+      ],
+      "feature_ids": [
+        "C02",
+        "C04",
+        "C05",
+        "C08"
+      ],
+      "required_states": [
+        "个人/团队/共享",
+        "无项目",
+        "新建/加入/复制",
+        "窄屏菜单",
+        "焦点归还",
+        "权限变化"
+      ],
+      "business_invariants": "导航切换经过保存/未保存文档守卫；项目所有权不由客户端决定；无同名伪路由",
+      "reference_ids": [
+        68,
+        78,
+        84,
+        85,
+        131,
+        196,
+        197
+      ],
+      "evidence_status": "App entry/state source scan at bb9; fresh browser baseline is a separate run, not a full-flow certification.",
+      "this_round_treatment": "Sidebar 迁入受控 native Modal；78 视图底板、68 行标记、85 有限入场。窄屏当前视图触发器和焦点恢复待实际回归。",
+      "current_product_acceptance": "pending exact-head integration CI and visual review; baseline is separate",
+      "implemented_reference_ids": [
+        68,
+        78,
+        85,
+        131
+      ]
+    },
+    {
+      "id": "FLOW-07",
+      "pages": [
+        "navigation",
+        "editor"
+      ],
+      "title": "工具选择、命令菜单与浮动面板",
+      "entry": "ToolDock；ToolOverview；Ctrl/Cmd K；PanelNavigation",
+      "source_paths": [
+        "apps/web/src/workspace/ToolDock.tsx",
+        "apps/web/src/workspace/ToolOverview.tsx",
+        "apps/web/src/workspace/CommandMenu.tsx",
+        "apps/web/src/workspace/FloatingPanel.tsx"
+      ],
+      "feature_ids": [
+        "R06",
+        "C08"
+      ],
+      "required_states": [
+        "hover/focus/press",
+        "禁用",
+        "键盘筛选与 IME",
+        "手势取消",
+        "停靠/拖缩",
+        "手机整数可见项",
+        "短横屏"
+      ],
+      "business_invariants": "参数与照片不能互遮关键操作；手机视觉尺寸独立；保留可达触控区；面板关闭内容不再命中",
+      "reference_ids": [
+        65,
+        78,
+        88,
+        120,
+        129,
+        131,
+        169
+      ],
+      "evidence_status": "App entry/state source scan at bb9; fresh browser baseline is a separate run, not a full-flow certification.",
+      "this_round_treatment": "88 邻近图标、131 受控指示；手机面板尺寸独立，主分类移入面板头，命令/草图入口保留。",
+      "current_product_acceptance": "pending exact-head integration CI and visual review; baseline is separate",
+      "implemented_reference_ids": [
+        78,
+        88,
+        120,
+        129,
+        131
+      ]
+    },
+    {
+      "id": "FLOW-08",
+      "pages": [
+        "editor"
+      ],
+      "title": "画布查看、取色与比较",
+      "entry": "CanvasStage；fit/zoom/pan/focus/original",
+      "source_paths": [
+        "apps/web/src/editor/CanvasStage.tsx",
+        "apps/web/src/editor/canvas-gesture.ts",
+        "apps/web/src/components/ImagePreview.tsx",
+        "apps/web/src/editor/useStagePreviews.ts"
+      ],
+      "feature_ids": [
+        "R01",
+        "R02",
+        "R05",
+        "R06",
+        "T11"
+      ],
+      "required_states": [
+        "fit",
+        "放大平移",
+        "按住原图",
+        "切换工具",
+        "触控",
+        "失焦/多指取消",
+        "等待新帧"
+      ],
+      "business_invariants": "不模糊照片或改变显示颜色；坐标矩阵与渲染帧身份一致；原生指针不被装饰光标替换",
+      "reference_ids": [
+        50,
+        65,
+        129,
+        169
+      ],
+      "evidence_status": "App entry/state source scan at bb9; fresh browser baseline is a separate run, not a full-flow certification.",
+      "this_round_treatment": "画布 chrome 减量、工具与精细 SVG 对齐；原始坐标、取色、比较和像素引擎不改。",
+      "current_product_acceptance": "pending exact-head integration CI and visual review; baseline is separate",
+      "implemented_reference_ids": [
+        129
+      ]
+    },
+    {
+      "id": "FLOW-09",
+      "pages": [
+        "editor"
+      ],
+      "title": "基础调色、曲线和精确数值",
+      "entry": "light/color/curves/detail 工具组",
+      "source_paths": [
+        "apps/web/src/editor/ParameterShelf.tsx",
+        "apps/web/src/editor/PrecisionRange.tsx",
+        "apps/web/src/editor/ColorControls.tsx",
+        "apps/web/src/editor/CurveEditor.tsx",
+        "apps/web/src/components/ColorPicker.tsx"
+      ],
+      "feature_ids": [
+        "T01",
+        "T02",
+        "T03",
+        "T04",
+        "T05",
+        "T06",
+        "T07",
+        "T08",
+        "T11"
+      ],
+      "required_states": [
+        "拖动预览",
+        "松手提交",
+        "Esc/失焦取消",
+        "直接输入",
+        "键盘步进",
+        "默认/负/正值",
+        "重置",
+        "三语换行"
+      ],
+      "business_invariants": "真实 range/step/neutral 来自注册表；动画过冲不写入配方；一整次手势只生成正确历史；手机小尺寸不遮数值",
+      "reference_ids": [
+        99,
+        120,
+        123,
+        124,
+        127,
+        129,
+        131,
+        136,
+        202,
+        204
+      ],
+      "evidence_status": "App entry/state source scan at bb9; fresh browser baseline is a separate run, not a full-flow certification.",
+      "this_round_treatment": "124 速度刻度 + 127 数字拖调/输入 + 129 提示；原生 range 和一次手势提交仍是数值权威。",
+      "current_product_acceptance": "pending exact-head integration CI and visual review; baseline is separate",
+      "implemented_reference_ids": [
+        120,
+        124,
+        127,
+        129,
+        131,
+        136,
+        204
+      ]
+    },
+    {
+      "id": "FLOW-10",
+      "pages": [
+        "editor"
+      ],
+      "title": "裁切旋转、投影与镜头修正",
+      "entry": "geometry/projective 工具组",
+      "source_paths": [
+        "apps/web/src/editor/GeometryControls.tsx",
+        "apps/web/src/editor/ProjectiveControls.tsx",
+        "apps/web/src/editor/projective-model.ts"
+      ],
+      "feature_ids": [
+        "G01",
+        "G02",
+        "G03",
+        "G05",
+        "G06"
+      ],
+      "required_states": [
+        "比例/自由裁切",
+        "8 柄",
+        "四角投影",
+        "精确角度",
+        "非法四边形",
+        "预算拒绝",
+        "手势中止"
+      ],
+      "business_invariants": "冻结坐标参考；不可用补边/镜头能力不造入口成功态；输出预算先验",
+      "reference_ids": [
+        66,
+        99,
+        123,
+        127,
+        129,
+        131
+      ],
+      "evidence_status": "App entry/state source scan at bb9; fresh browser baseline is a separate run, not a full-flow certification.",
+      "this_round_treatment": "更新细分标签/SVG/选择结构；四角、透视与旋转 payload 沿用现有模型，未宣称补自动几何识别。",
+      "current_product_acceptance": "pending exact-head integration CI and visual review; baseline is separate",
+      "implemented_reference_ids": [
+        127,
+        129,
+        131
+      ]
+    },
+    {
+      "id": "FLOW-11",
+      "pages": [
+        "editor"
+      ],
+      "title": "多局部、组和复合蒙版",
+      "entry": "local/mask 工具组",
+      "source_paths": [
+        "apps/web/src/editor/LocalControls.tsx",
+        "apps/web/src/editor/MaskControls.tsx",
+        "apps/web/src/editor/selection-transform.ts"
+      ],
+      "feature_ids": [
+        "T09",
+        "T10",
+        "S01",
+        "S03"
+      ],
+      "required_states": [
+        "新增命名",
+        "选中",
+        "排序/分组",
+        "显示蒙版",
+        "形状/布尔组合",
+        "反相",
+        "删除",
+        "源坐标拖动"
+      ],
+      "business_invariants": "12 区/6 组及蒙版预算不因 UI 改动漂移；已有算法与范围保留；关闭/切工具不丢当前编辑",
+      "reference_ids": [
+        69,
+        99,
+        120,
+        121,
+        127,
+        129,
+        131,
+        133
+      ],
+      "evidence_status": "App entry/state source scan at bb9; fresh browser baseline is a separate run, not a full-flow certification.",
+      "this_round_treatment": "局部/蒙版控件复用分段、开关和细化 glyph；蒙版坐标与组选区合成顺序不改。",
+      "current_product_acceptance": "pending exact-head integration CI and visual review; baseline is separate",
+      "implemented_reference_ids": [
+        120,
+        127,
+        129,
+        131,
+        133
+      ]
+    },
+    {
+      "id": "FLOW-12",
+      "pages": [
+        "editor"
+      ],
+      "title": "绘制图层、克隆、液化与局部修复",
+      "entry": "paint/layers/warp/heal/retouch 工具组",
+      "source_paths": [
+        "apps/web/src/editor/LayerControls.tsx",
+        "apps/web/src/editor/RepairControls.tsx",
+        "apps/web/src/editor/AdvancedInspector.tsx",
+        "apps/web/src/editor/advanced-model.ts"
+      ],
+      "feature_ids": [
+        "G04",
+        "S04",
+        "S06",
+        "S07",
+        "S08",
+        "S09",
+        "S10",
+        "S11",
+        "S12",
+        "S13",
+        "D01",
+        "D03",
+        "H04",
+        "H15"
+      ],
+      "required_states": [
+        "新层",
+        "选中/排序/禁用",
+        "笔压",
+        "保护区",
+        "供体",
+        "取消笔画",
+        "透明边界",
+        "预算拒绝"
+      ],
+      "business_invariants": "不把有界修补冒充语义去物；原图/图层不可变；撤销整笔；不得隐藏已有算法选择或范围语义",
+      "reference_ids": [
+        69,
+        99,
+        120,
+        121,
+        127,
+        129,
+        133,
+        136,
+        172,
+        202
+      ],
+      "evidence_status": "App entry/state source scan at bb9; fresh browser baseline is a separate run, not a full-flow certification.",
+      "this_round_treatment": "图层/修复/液化与草图相关控件统一细粒度呈现；图像算法及固定执行顺序不变，不能算完成任意重排编辑栈。",
+      "current_product_acceptance": "pending exact-head integration CI and visual review; baseline is separate",
+      "implemented_reference_ids": [
+        120,
+        127,
+        129,
+        133,
+        136
+      ]
+    },
+    {
+      "id": "FLOW-13",
+      "pages": [
+        "editor"
+      ],
+      "title": "真实人物分析、目标和透明抠图",
+      "entry": "portrait 工具；标准/发丝与边缘；提取人物",
+      "source_paths": [
+        "apps/web/src/editor/PortraitControls.tsx",
+        "apps/web/src/editor/usePortraitAnalysis.ts",
+        "apps/web/src/editor/portrait-fine-matte.worker.ts",
+        "apps/web/src/editor/ParameterGlyph.tsx"
+      ],
+      "feature_ids": [
+        "H01",
+        "H02",
+        "H03",
+        "H05",
+        "H06",
+        "H07",
+        "H08",
+        "H10",
+        "H13",
+        "H14",
+        "H17",
+        "H18",
+        "S02"
+      ],
+      "required_states": [
+        "模型未装/设备不可用",
+        "分析中",
+        "多目标",
+        "目标缺失",
+        "参数组",
+        "精细抠图能力",
+        "下载/派生回执"
+      ],
+      "business_invariants": "来源 SHA/方向/尺寸绑定；真实非 fallback WebGPU+shader-f16 门禁；11 底层缺口不由 UI 补造；不把推理失败作成功占位",
+      "reference_ids": [
+        69,
+        99,
+        110,
+        119,
+        120,
+        127,
+        129,
+        131,
+        133,
+        202
+      ],
+      "evidence_status": "App entry/state source scan at bb9; fresh browser baseline is a separate run, not a full-flow certification.",
+      "this_round_treatment": "按实际 59 项注册表分类与独立图形；高置信 alpha/发丝能力继续由设备与后端门禁决定。",
+      "current_product_acceptance": "pending exact-head integration CI and visual review; baseline is separate",
+      "implemented_reference_ids": [
+        119,
+        120,
+        127,
+        129,
+        131,
+        133
+      ]
+    },
+    {
+      "id": "FLOW-14",
+      "pages": [
+        "compare",
+        "editor"
+      ],
+      "title": "撤销重做、历史恢复与版本分支",
+      "entry": "HistoryPanel；RevisionTools；CompareView",
+      "source_paths": [
+        "apps/web/src/editor/HistoryPanel.tsx",
+        "apps/web/src/components/RevisionTools.tsx",
+        "apps/web/src/components/WorkspaceViews.tsx"
+      ],
+      "feature_ids": [
+        "R03",
+        "R04",
+        "R05",
+        "C04",
+        "C07"
+      ],
+      "required_states": [
+        "当前/历史",
+        "分页",
+        "失效游标",
+        "读失败沿原游标重试",
+        "恢复冲突",
+        "分支未知",
+        "render 准备/下载"
+      ],
+      "business_invariants": "CAS 不覆盖新 head；保留原 revision/request key；已保存候选 applied 不重复本地预览",
+      "reference_ids": [
+        69,
+        91,
+        119,
+        120,
+        127,
+        129
+      ],
+      "evidence_status": "App entry/state source scan at bb9; fresh browser baseline is a separate run, not a full-flow certification.",
+      "this_round_treatment": "紧凑历史入口与细化动作 SVG；恢复/分支仍绑定真实版本，新增动效不制造保存。",
+      "current_product_acceptance": "pending exact-head integration CI and visual review; baseline is separate",
+      "implemented_reference_ids": [
+        119,
+        120,
+        127,
+        129
+      ]
+    },
+    {
+      "id": "FLOW-15",
+      "pages": [
+        "studio",
+        "shared"
+      ],
+      "title": "云端保存与冲突",
+      "entry": "App save；project/conflict/copy",
+      "source_paths": [
+        "apps/web/src/App.tsx",
+        "apps/web/src/editor/source-flow.ts",
+        "apps/web/src/lib/asset-copy.ts",
+        "apps/web/src/lib/revisionHistory.ts"
+      ],
+      "feature_ids": [
+        "R07",
+        "C02",
+        "C04",
+        "C05",
+        "C07"
+      ],
+      "required_states": [
+        "未登录",
+        "选项目",
+        "本地源上传",
+        "跨项目复制授权",
+        "保存中",
+        "409 冲突",
+        "迟到回执",
+        "另存"
+      ],
+      "business_invariants": "expectedVersion 与源快照冻结；不可绕过复制政策重上传；保存成功与刷新失败分开",
+      "reference_ids": [
+        110,
+        115,
+        119,
+        120,
+        173
+      ],
+      "evidence_status": "App entry/state source scan at bb9; fresh browser baseline is a separate run, not a full-flow certification.",
+      "this_round_treatment": "保存、失权、冲突保持原显式事务；真实版本与 local draft 状态可见，未知回执不自动重放。",
+      "current_product_acceptance": "pending exact-head integration CI and visual review; baseline is separate",
+      "implemented_reference_ids": [
+        115,
+        119,
+        120
+      ]
+    },
+    {
+      "id": "FLOW-16",
+      "pages": [
+        "sketch"
+      ],
+      "title": "草图与显式 AI 参考",
+      "entry": "App drawing；AI 参考图入口",
+      "source_paths": [
+        "apps/web/src/components/DrawingBoard.tsx",
+        "apps/web/src/components/ColorPicker.tsx",
+        "apps/web/src/components/sketch-document.ts"
+      ],
+      "feature_ids": [
+        "D03",
+        "D04",
+        "A03"
+      ],
+      "required_states": [
+        "触控/鼠标画笔",
+        "取色",
+        "擦除",
+        "撤销",
+        "PNG 下载",
+        "关闭保留确认",
+        "作为参考"
+      ],
+      "business_invariants": "不因打开草图自动上传；拒绝替换不丢草图；真实坐标和点数预算保留",
+      "reference_ids": [
+        65,
+        99,
+        127,
+        129,
+        172,
+        204
+      ],
+      "evidence_status": "App entry/state source scan at bb9; fresh browser baseline is a separate run, not a full-flow certification.",
+      "this_round_treatment": "草图入口 data-action 固定；颜色/精确字段共享机制，QA 用真实添加当前照片与文字生成画面。",
+      "current_product_acceptance": "pending exact-head integration CI and visual review; baseline is separate",
+      "implemented_reference_ids": [
+        127,
+        129,
+        204
+      ]
+    },
+    {
+      "id": "FLOW-17",
+      "pages": [
+        "assets"
+      ],
+      "title": "作品图库与跨空间检索",
+      "entry": "works；project/all/memory",
+      "source_paths": [
+        "apps/web/src/components/AssetLibrary.tsx",
+        "apps/web/src/components/WorkspaceViews.tsx",
+        "apps/web/src/resources/ResourceSearch.tsx",
+        "apps/web/src/resources/model.ts"
+      ],
+      "feature_ids": [
+        "C02",
+        "C12",
+        "D13"
+      ],
+      "required_states": [
+        "空态",
+        "加载",
+        "错误",
+        "无结果",
+        "分页",
+        "筛选清除",
+        "密度",
+        "选图",
+        "跨权限来源"
+      ],
+      "business_invariants": "完整缩略图不裁关键构图；计数仅已载入；当前结果身份绑定筛选；图片不能因 hover 被改色",
+      "reference_ids": [
+        69,
+        80,
+        84,
+        120,
+        121,
+        129,
+        131,
+        133,
+        197
+      ],
+      "evidence_status": "App entry/state source scan at bb9; fresh browser baseline is a separate run, not a full-flow certification.",
+      "this_round_treatment": "图库/检索保留真实图像比例与稳定 DOM；公共选择状态与弹层密度更新；不引入未经本轮实操的 69/80。",
+      "current_product_acceptance": "pending exact-head integration CI and visual review; baseline is separate",
+      "implemented_reference_ids": [
+        120,
+        129,
+        131,
+        133
+      ]
+    },
+    {
+      "id": "FLOW-18",
+      "pages": [
+        "assets"
+      ],
+      "title": "元数据、来源与私有长期标注",
+      "entry": "素材详情/编辑注释/长期素材",
+      "source_paths": [
+        "apps/web/src/components/AssetLibrary.tsx",
+        "apps/web/src/resources/ResourceSearch.tsx",
+        "apps/web/src/ai/MemoryControls.tsx"
+      ],
+      "feature_ids": [
+        "C12",
+        "F12",
+        "A09"
+      ],
+      "required_states": [
+        "标题/标签/日期/地点",
+        "CAS 冲突",
+        "失权",
+        "标注启闭",
+        "删除个人标注",
+        "来源追溯"
+      ],
+      "business_invariants": "用户声明不冒充 EXIF/GPS；私有标注不自动发给 AI；删除标注不删除源图",
+      "reference_ids": [
+        69,
+        119,
+        120,
+        121,
+        133,
+        173,
+        191
+      ],
+      "evidence_status": "App entry/state source scan at bb9; fresh browser baseline is a separate run, not a full-flow certification.",
+      "this_round_treatment": "元数据与来源/私有标注沿真实权限读取；放入合适弹层宽度，未新增或伪装语义搜索能力。",
+      "current_product_acceptance": "pending exact-head integration CI and visual review; baseline is separate",
+      "implemented_reference_ids": [
+        119,
+        120,
+        133
+      ]
+    },
+    {
+      "id": "FLOW-19",
+      "pages": [
+        "assets"
+      ],
+      "title": "OCR、图片表格与识别结果",
+      "entry": "AssetRecognitionDialog",
+      "source_paths": [
+        "apps/web/src/components/AssetTools.tsx"
+      ],
+      "feature_ids": [
+        "D08",
+        "D09"
+      ],
+      "required_states": [
+        "能力/语言包加载",
+        "语言/布局选择",
+        "识别中",
+        "文字结果",
+        "空表格",
+        "复制/结构导出",
+        "删除"
+      ],
+      "business_invariants": "真实 Tesseract/服务端结果；不存在合并单元格能力不伪造；源资产与当前权限复核",
+      "reference_ids": [
+        102,
+        110,
+        119,
+        120,
+        133,
+        173
+      ],
+      "evidence_status": "App entry/state source scan at bb9; fresh browser baseline is a separate run, not a full-flow certification.",
+      "this_round_treatment": "素材工具用短入口和公共 media profile；OCR/表格真实输出与权限/失败边界保留。",
+      "current_product_acceptance": "pending exact-head integration CI and visual review; baseline is separate",
+      "implemented_reference_ids": [
+        119,
+        120,
+        133
+      ]
+    },
+    {
+      "id": "FLOW-20",
+      "pages": [
+        "assets"
+      ],
+      "title": "拼图与 GIF 上传/帧编辑",
+      "entry": "ProjectAssetTools；AnimationDialog",
+      "source_paths": [
+        "apps/web/src/components/AssetTools.tsx"
+      ],
+      "feature_ids": [
+        "D02",
+        "D05",
+        "F13"
+      ],
+      "required_states": [
+        "2–12 图选择",
+        "尺寸/列数/间距/适应",
+        "GIF 上传",
+        "帧重排",
+        "延时/循环",
+        "生成/下载失败"
+      ],
+      "business_invariants": "服务端能力和像素预算；1 基帧 UI→0 基 API；新派生资源而非覆盖原件；不虚构通用视频/动画",
+      "reference_ids": [
+        69,
+        99,
+        102,
+        110,
+        119,
+        120,
+        127,
+        133
+      ],
+      "evidence_status": "App entry/state source scan at bb9; fresh browser baseline is a separate run, not a full-flow certification.",
+      "this_round_treatment": "拼图/GIF 工具密度与输入反馈统一；单项派生不能冒称 R08 多图队列/预算。",
+      "current_product_acceptance": "pending exact-head integration CI and visual review; baseline is separate",
+      "implemented_reference_ids": [
+        119,
+        120,
+        127,
+        133
+      ]
+    },
+    {
+      "id": "FLOW-21",
+      "pages": [
+        "restoration"
+      ],
+      "title": "照片降噪与运动恢复",
+      "entry": "素材卡 修复照片 → RestorationDialog",
+      "source_paths": [
+        "apps/web/src/restoration/RestorationDialog.tsx",
+        "apps/web/src/restoration/restoration-model.ts"
+      ],
+      "feature_ids": [
+        "S09",
+        "S10"
+      ],
+      "required_states": [
+        "denoise/motion",
+        "更多设置关闭/展开",
+        "自动 quote",
+        "明确执行",
+        "busy",
+        "unknown 原请求恢复",
+        "迟到回执"
+      ],
+      "business_invariants": "quote 不扣减但服务端权威；新派生图不冒充可撤销 recipe；同 actor/project/source/requestId；未知不新事务重试",
+      "reference_ids": [
+        99,
+        110,
+        119,
+        120,
+        127,
+        131,
+        133,
+        202
+      ],
+      "evidence_status": "App entry/state source scan at bb9; fresh browser baseline is a separate run, not a full-flow certification.",
+      "this_round_treatment": "降噪/运动修复沿 quote→显式创建→新素材链路；手机、closed/open details、unknown 锁保持。",
+      "current_product_acceptance": "pending exact-head integration CI and visual review; baseline is separate",
+      "implemented_reference_ids": [
+        119,
+        120,
+        127,
+        131,
+        133
+      ]
+    },
+    {
+      "id": "FLOW-22",
+      "pages": [
+        "import",
+        "native"
+      ],
+      "title": "保留原片专业导入",
+      "entry": "App mediaImport；项目素材原片入口",
+      "source_paths": [
+        "apps/web/src/components/MediaImportDialog.tsx",
+        "apps/web/src/components/ImportSettings.tsx"
+      ],
+      "feature_ids": [
+        "R02",
+        "F03",
+        "F04",
+        "F05",
+        "F09",
+        "F10",
+        "F11",
+        "F13"
+      ],
+      "required_states": [
+        "能力读取",
+        "源格式/大小",
+        "分块上传",
+        "处理中",
+        "取消/cleanupPending",
+        "失败",
+        "就绪来源"
+      ],
+      "business_invariants": "运行环境而非文件后缀决定能力；取消未停止不能提前释放容量；原件/母版/代理分开",
+      "reference_ids": [
+        102,
+        110,
+        119,
+        120,
+        133,
+        173
+      ],
+      "evidence_status": "App entry/state source scan at bb9; fresh browser baseline is a separate run, not a full-flow certification.",
+      "this_round_treatment": "专业导入保留源能力/预算提前提示；导入弹层独立尺寸，未复写新上游能力。",
+      "current_product_acceptance": "pending exact-head integration CI and visual review; baseline is separate",
+      "implemented_reference_ids": [
+        119,
+        120,
+        133
+      ]
+    },
+    {
+      "id": "FLOW-23",
+      "pages": [
+        "native"
+      ],
+      "title": "原片查看、真实母版视口与高精度调色",
+      "entry": "AssetLibrary 原片 → MediaSourceViewer",
+      "source_paths": [
+        "apps/web/src/media/MediaSourceViewer.tsx",
+        "apps/web/src/media/NativeGradeControls.tsx",
+        "apps/web/src/media/native-grade-model.ts",
+        "apps/web/src/media/useLinearFitPreview.ts",
+        "apps/web/src/media/useMasterPreview.ts"
+      ],
+      "feature_ids": [
+        "R01",
+        "R02",
+        "T03",
+        "T09",
+        "F04",
+        "F05",
+        "F06",
+        "F07",
+        "F08",
+        "F09",
+        "F13"
+      ],
+      "required_states": [
+        "适屏/1:1/放大平移",
+        "GPU/CPU 反馈",
+        "EV 曲线",
+        "ordered regions",
+        "保存 CAS",
+        "附件下载",
+        "短弹窗视口"
+      ],
+      "business_invariants": "region/fitRegion 互斥；cap maxFitRegionPixels；源 SHA；expectedVersion；线性母版和 SDR 代理分开；Ultra HDR crop 后端能力不等于已有裁切 UI",
+      "reference_ids": [
+        99,
+        110,
+        119,
+        120,
+        123,
+        127,
+        129,
+        131,
+        133,
+        202
+      ],
+      "evidence_status": "App entry/state source scan at bb9; fresh browser baseline is a separate run, not a full-flow certification.",
+      "this_round_treatment": "继承 9df 的物理 DPR 1:1 与 496bed2 SDR JPEG 母版；source SHA/expectedVersion、curves/regions 能力和原坐标仍权威。",
+      "current_product_acceptance": "pending exact-head integration CI and visual review; baseline is separate",
+      "implemented_reference_ids": [
+        119,
+        120,
+        127,
+        129,
+        131,
+        133
+      ]
+    },
+    {
+      "id": "FLOW-24",
+      "pages": [
+        "compare"
+      ],
+      "title": "当前照片与历史版本对比",
+      "entry": "compare 工作视图",
+      "source_paths": [
+        "apps/web/src/components/WorkspaceViews.tsx",
+        "apps/web/src/components/CompareReveal.tsx"
+      ],
+      "feature_ids": [
+        "R05",
+        "C04"
+      ],
+      "required_states": [
+        "slide/side/original/edited",
+        "触屏滑柄",
+        "键盘",
+        "无当前图",
+        "无历史",
+        "版本恢复提示"
+      ],
+      "business_invariants": "对比图像不形变/虚化；缩放和来源一致；不得自动滚动切换导致误判断",
+      "reference_ids": [
+        65,
+        91,
+        120,
+        129,
+        131
+      ],
+      "evidence_status": "App entry/state source scan at bb9; fresh browser baseline is a separate run, not a full-flow certification.",
+      "this_round_treatment": "原图/当前与历史对比保持真实版本；共享小控件/空态更新，未加入假前后美化图。",
+      "current_product_acceptance": "pending exact-head integration CI and visual review; baseline is separate",
+      "implemented_reference_ids": [
+        120,
+        129,
+        131
+      ]
+    },
+    {
+      "id": "FLOW-25",
+      "pages": [
+        "export"
+      ],
+      "title": "交付与图片/配方下载",
+      "entry": "deliver；App export",
+      "source_paths": [
+        "apps/web/src/components/ProjectDialogs.tsx",
+        "apps/web/src/components/WorkspaceViews.tsx",
+        "apps/web/src/components/revision-tools-model.ts"
+      ],
+      "feature_ids": [
+        "F02",
+        "F12",
+        "F13",
+        "D11"
+      ],
+      "required_states": [
+        "PNG/JPEG/WebP",
+        "质量/透明",
+        "准备",
+        "源变更取消",
+        "可下载",
+        "失败",
+        "配方导入"
+      ],
+      "business_invariants": "准备完成与实际下载分开；预览/导出同参考引擎；未知前置不得显示已交付；不虚构印前能力",
+      "reference_ids": [
+        65,
+        110,
+        119,
+        120,
+        127,
+        131,
+        133,
+        173
+      ],
+      "evidence_status": "App entry/state source scan at bb9; fresh browser baseline is a separate run, not a full-flow certification.",
+      "this_round_treatment": "交付信息与导出弹层精简布局、真实尺寸/格式保留；下载解码仍由七核心场景校验。",
+      "current_product_acceptance": "pending exact-head integration CI and visual review; baseline is separate",
+      "implemented_reference_ids": [
+        119,
+        120,
+        127,
+        131,
+        133
+      ]
+    },
+    {
+      "id": "FLOW-26",
+      "pages": [
+        "collaboration"
+      ],
+      "title": "讨论、任务与状态",
+      "entry": "collaborate 工作视图/浮层",
+      "source_paths": [
+        "apps/web/src/components/WorkspaceViews.tsx",
+        "apps/web/src/resources/TeamActivity.tsx"
+      ],
+      "feature_ids": [
+        "C04",
+        "C05"
+      ],
+      "required_states": [
+        "project/version 讨论",
+        "open/resolved",
+        "任务负责人/状态",
+        "只读",
+        "新建失败",
+        "成员动态"
+      ],
+      "business_invariants": "操作按真实角色；乐观状态回执失败可恢复；没有反应 API 不加假点赞；空态不堆三张零统计卡",
+      "reference_ids": [
+        69,
+        111,
+        118,
+        119,
+        120,
+        121,
+        131,
+        133,
+        173,
+        207
+      ],
+      "evidence_status": "App entry/state source scan at bb9; fresh browser baseline is a separate run, not a full-flow certification.",
+      "this_round_treatment": "133/119 精细三态任务，仍等真实 CAS 回执；实际 QA 从 todo→doing→done 保存而非 mock。",
+      "current_product_acceptance": "pending exact-head integration CI and visual review; baseline is separate",
+      "implemented_reference_ids": [
+        111,
+        119,
+        120,
+        131,
+        133
+      ]
+    },
+    {
+      "id": "FLOW-27",
+      "pages": [
+        "collaboration"
+      ],
+      "title": "同作品实时协作和租约",
+      "entry": "CollaborationStatus/Overlay；当前保存作品",
+      "source_paths": [
+        "apps/web/src/collaboration/useCollaboration.ts",
+        "apps/web/src/collaboration/CollaborationStatus.tsx",
+        "apps/web/src/collaboration/CollaborationOverlay.tsx"
+      ],
+      "feature_ids": [
+        "C01",
+        "C05",
+        "R04"
+      ],
+      "required_states": [
+        "连接/断开/恢复",
+        "游标",
+        "目标租约冲突",
+        "临时预览",
+        "提交未知",
+        "bfcache 恢复"
+      ],
+      "business_invariants": "源坐标和版本/栅栏字符串；同一请求恢复；不丢他人无关修改；预览不冒充已保存版本",
+      "reference_ids": [
+        111,
+        118,
+        119,
+        129
+      ],
+      "evidence_status": "App entry/state source scan at bb9; fresh browser baseline is a separate run, not a full-flow certification.",
+      "this_round_treatment": "实时协作和租约未改为展示动效状态；本轮单账号 fixture 不证明多人实时一致性。",
+      "current_product_acceptance": "pending exact-head integration CI and visual review; baseline is separate",
+      "implemented_reference_ids": [
+        111,
+        119,
+        129
+      ]
+    },
+    {
+      "id": "FLOW-28",
+      "pages": [
+        "collaboration",
+        "ai"
+      ],
+      "title": "成员语音与团队 AI 邀请",
+      "entry": "TeamVoiceControls/Banner；collaboration panel",
+      "source_paths": [
+        "apps/web/src/collaboration/TeamVoiceControls.tsx",
+        "apps/web/src/collaboration/TeamVoiceBanner.tsx",
+        "apps/web/src/collaboration/useTeamVoice.ts"
+      ],
+      "feature_ids": [
+        "A11",
+        "C05",
+        "C07"
+      ],
+      "required_states": [
+        "加入/离开",
+        "麦克风",
+        "邀请",
+        "逐轮收听同意",
+        "断网",
+        "邀请 unknown",
+        "跨视图条"
+      ],
+      "business_invariants": "成员通话与付费邀请分开；未知不重新付费；收起面板不丢观察；无 terminal 证据不释放恢复锁",
+      "reference_ids": [
+        112,
+        118,
+        119,
+        120,
+        129,
+        133
+      ],
+      "evidence_status": "App entry/state source scan at bb9; fresh browser baseline is a separate run, not a full-flow certification.",
+      "this_round_treatment": "成员语音授权/票据/断线逻辑保留，公共反馈统一；没有新增假声波或宣称物理多人通话已验。",
+      "current_product_acceptance": "pending exact-head integration CI and visual review; baseline is separate",
+      "implemented_reference_ids": [
+        112,
+        119,
+        120,
+        129,
+        133
+      ]
+    },
+    {
+      "id": "FLOW-29",
+      "pages": [
+        "documents"
+      ],
+      "title": "文档编辑、恢复与导出",
+      "entry": " docs 工作视图；账号保留草稿",
+      "source_paths": [
+        "apps/web/src/components/WorkspaceViews.tsx",
+        "apps/web/src/account/document-drafts.ts",
+        "apps/web/src/account/AccountDocumentDrafts.tsx"
+      ],
+      "feature_ids": [
+        "A07",
+        "C02",
+        "C04",
+        "C03"
+      ],
+      "required_states": [
+        "新建",
+        "选中",
+        "未保存",
+        "切项目确认",
+        "保存中继续输入",
+        "迟到回执",
+        "409",
+        "创建 unknown",
+        "导出"
+      ],
+      "business_invariants": "草稿按账号/项目；最多 24 内存份额；未知不能重复创建；真实下一版本回执精确匹配才结算",
+      "reference_ids": [
+        68,
+        69,
+        119,
+        120,
+        121,
+        173,
+        197
+      ],
+      "evidence_status": "App entry/state source scan at bb9; fresh browser baseline is a separate run, not a full-flow certification.",
+      "this_round_treatment": "文档列表/编辑页与公共保存反馈减量；草稿、未知创建、CAS、离开确认仍保留。",
+      "current_product_acceptance": "pending exact-head integration CI and visual review; baseline is separate",
+      "implemented_reference_ids": [
+        68,
+        119,
+        120
+      ]
+    },
+    {
+      "id": "FLOW-30",
+      "pages": [
+        "ai"
+      ],
+      "title": "文字助手与真实流式状态",
+      "entry": "AIPanel 对话 → LiveAssistant",
+      "source_paths": [
+        "apps/web/src/ai/LiveAssistant.tsx",
+        "apps/web/src/ai/turnStream.ts",
+        "apps/web/src/ai/ResearchGraph.tsx",
+        "apps/web/src/ai/WorkspaceCards.tsx",
+        "apps/web/src/ai/ExecutionStatus.tsx",
+        "apps/web/src/ai/execution-events.ts",
+        "apps/web/src/ai/ComposerAction.tsx"
+      ],
+      "feature_ids": [
+        "A04",
+        "A06",
+        "A07",
+        "A08",
+        "A09"
+      ],
+      "required_states": [
+        "login/project/loading/ready/unavailable",
+        "请求",
+        "流式",
+        "工具分支",
+        "停止",
+        "断流读回",
+        "收起返回"
+      ],
+      "business_invariants": "可见一个实际可用性原因；共享上下文显式冻结；不伪造模型、任务图或思考；同实例活跃请求保持",
+      "reference_ids": [
+        69,
+        111,
+        114,
+        118,
+        119,
+        120,
+        129,
+        207
+      ],
+      "evidence_status": "App entry/state source scan at bb9; fresh browser baseline is a separate run, not a full-flow certification.",
+      "this_round_treatment": "111/119 真实公开 SSE 执行线，114 单动作提交/停止；没有计时假完成或隐藏思维输出。",
+      "current_product_acceptance": "pending exact-head integration CI and visual review; baseline is separate",
+      "implemented_reference_ids": [
+        111,
+        114,
+        119,
+        120,
+        129
+      ]
+    },
+    {
+      "id": "FLOW-31",
+      "pages": [
+        "ai"
+      ],
+      "title": "图片生成、参数与参考",
+      "entry": "AIPanel generate-image；references/settings",
+      "source_paths": [
+        "apps/web/src/components/AIPanel.tsx",
+        "apps/web/src/ai/ImageParameters.tsx",
+        "apps/web/src/ai/ModelChoice.tsx",
+        "apps/web/src/ai/requestPayload.ts"
+      ],
+      "feature_ids": [
+        "A02",
+        "A03",
+        "A05",
+        "A13"
+      ],
+      "required_states": [
+        "无模型/未开放",
+        "尺寸",
+        "能力参数",
+        "参考上传",
+        "互斥 mask/markup",
+        "quote",
+        "发送",
+        "queued cancel",
+        "批次结果"
+      ],
+      "business_invariants": "runtimeAvailable/operations/parameterCapabilities/batchLimits 联合门禁；收费请求冻结；未知不自动重发；来源授权保持",
+      "reference_ids": [
+        110,
+        114,
+        119,
+        120,
+        127,
+        131,
+        133,
+        207
+      ],
+      "evidence_status": "App entry/state source scan at bb9; fresh browser baseline is a separate run, not a full-flow certification.",
+      "this_round_treatment": "114 输入表面和真实任务等待；模型能力过滤、quote、冻结来源与请求 hash 保留。",
+      "current_product_acceptance": "pending exact-head integration CI and visual review; baseline is separate",
+      "implemented_reference_ids": [
+        114,
+        119,
+        120,
+        127,
+        131,
+        133
+      ]
+    },
+    {
+      "id": "FLOW-32",
+      "pages": [
+        "ai",
+        "editor"
+      ],
+      "title": "候选预览、确认、拒绝和另存",
+      "entry": "CandidateActions/ResultActions；编辑预览",
+      "source_paths": [
+        "apps/web/src/ai/CandidateActions.tsx",
+        "apps/web/src/ai/ResultActions.tsx",
+        "apps/web/src/ai/assistantGuards.ts",
+        "apps/web/src/ai/recipeDiff.ts"
+      ],
+      "feature_ids": [
+        "A01",
+        "A04",
+        "A12",
+        "C07"
+      ],
+      "required_states": [
+        "候选",
+        "基准过期",
+        "本地预览",
+        "取消→重新预览",
+        "确认",
+        "已应用回执",
+        "另存/替换/加层/拒绝"
+      ],
+      "business_invariants": "完整 recipe 与源身份一致；候选不是保存；版本/租约/配额仍服务端权威；拒绝不伪造退款",
+      "reference_ids": [
+        65,
+        110,
+        119,
+        120,
+        129,
+        131
+      ],
+      "evidence_status": "App entry/state source scan at bb9; fresh browser baseline is a separate run, not a full-flow certification.",
+      "this_round_treatment": "候选确认/取消/重预览与独立新素材逻辑不改；现有防旧候选与确认测试纳入 62 项针对回归。",
+      "current_product_acceptance": "pending exact-head integration CI and visual review; baseline is separate",
+      "implemented_reference_ids": [
+        119,
+        120,
+        129,
+        131
+      ]
+    },
+    {
+      "id": "FLOW-33",
+      "pages": [
+        "ai"
+      ],
+      "title": "文案、短录音识别与内容采纳",
+      "entry": "generate-text/transcribe；VoiceCapture",
+      "source_paths": [
+        "apps/web/src/components/AIPanel.tsx",
+        "apps/web/src/components/VoiceCapture.tsx",
+        "apps/web/src/ai/AIThread.tsx",
+        "apps/web/src/ai/useResultDecisions.ts",
+        "apps/web/src/ai/local-recording.ts",
+        "apps/web/src/ai/RecordingMeter.tsx"
+      ],
+      "feature_ids": [
+        "A07",
+        "A09",
+        "A10",
+        "D04"
+      ],
+      "required_states": [
+        "录音/停止/试听",
+        "权限拒绝",
+        "无语音",
+        "识别",
+        "编辑转录",
+        "文案标题正文",
+        "另存/更新冲突"
+      ],
+      "business_invariants": "录音不自动发送；填入下一任务不自动收费执行；文案保存需要实际目标和版本；不冒充双向通话",
+      "reference_ids": [
+        112,
+        114,
+        119,
+        120,
+        129,
+        173,
+        207
+      ],
+      "evidence_status": "App entry/state source scan at bb9; fresh browser baseline is a separate run, not a full-flow certification.",
+      "this_round_treatment": "112 真实本地录音胶囊及单流波形；新增权限迟到、转换迟到、一次录制和大小限制行为测试；未做物理麦克风验收。",
+      "current_product_acceptance": "pending exact-head integration CI and visual review; baseline is separate",
+      "implemented_reference_ids": [
+        112,
+        114,
+        119,
+        120,
+        129
+      ]
+    },
+    {
+      "id": "FLOW-34",
+      "pages": [
+        "ai"
+      ],
+      "title": "个人实时语音与字幕",
+      "entry": "LiveAssistant 语音；VoiceCaptions",
+      "source_paths": [
+        "apps/web/src/ai/LiveAssistant.tsx",
+        "apps/web/src/ai/voiceClient.ts",
+        "apps/web/src/ai/VoiceCaptions.tsx",
+        "apps/web/src/ai/voiceSubmission.ts"
+      ],
+      "feature_ids": [
+        "A10",
+        "C07"
+      ],
+      "required_states": [
+        "prepare/connect/active/closed/failed/unknown",
+        "静音",
+        "打断",
+        "结束",
+        "字幕",
+        "麦克风/设备错误"
+      ],
+      "business_invariants": "真实 PCM 链路；票据和显式画面共享；未知无自动重拨；物理设备/付费供应商未因 UI 验收成立",
+      "reference_ids": [
+        112,
+        118,
+        119,
+        120,
+        129
+      ],
+      "evidence_status": "App entry/state source scan at bb9; fresh browser baseline is a separate run, not a full-flow certification.",
+      "this_round_treatment": "实时语音仅改紧凑真实状态展示；保留 voiceClient、恢复 schema、字幕和实际结束 handler，不模拟音量。",
+      "current_product_acceptance": "pending exact-head integration CI and visual review; baseline is separate",
+      "implemented_reference_ids": [
+        112,
+        119,
+        120,
+        129
+      ]
+    },
+    {
+      "id": "FLOW-35",
+      "pages": [
+        "ai"
+      ],
+      "title": "助手设置、授权、历史与恢复",
+      "entry": "任务/settings/references/history/recovery；scope/execution/memory",
+      "source_paths": [
+        "apps/web/src/components/AIPanel.tsx",
+        "apps/web/src/ai/PanelSettingsPage.tsx",
+        "apps/web/src/ai/CreativeControls.tsx",
+        "apps/web/src/ai/MemoryControls.tsx",
+        "apps/web/src/ai/assistantSubmission.ts"
+      ],
+      "feature_ids": [
+        "A05",
+        "A08",
+        "A09",
+        "A12",
+        "C07"
+      ],
+      "required_states": [
+        "共享范围",
+        "授权三模式",
+        "预算/撤销",
+        "记忆审阅",
+        "历史选择",
+        "恢复原请求",
+        "变更账号/项目"
+      ],
+      "business_invariants": "私有记忆不默认共享；自动模式需要服务端有效授权；原 idempotency key/请求体不能改写；不增加不存在 MCP 安装入口",
+      "reference_ids": [
+        68,
+        69,
+        119,
+        120,
+        127,
+        129,
+        131,
+        133,
+        173
+      ],
+      "evidence_status": "App entry/state source scan at bb9; fresh browser baseline is a separate run, not a full-flow certification.",
+      "this_round_treatment": "附件直达共享范围；受控交流模式；历史/unknown 与费用恢复入口仍可达且不自动新建收费请求。",
+      "current_product_acceptance": "pending exact-head integration CI and visual review; baseline is separate",
+      "implemented_reference_ids": [
+        68,
+        119,
+        120,
+        127,
+        129,
+        131,
+        133
+      ]
+    },
+    {
+      "id": "FLOW-36",
+      "pages": [
+        "usage"
+      ],
+      "title": "服务点、趋势、账本与任务费用",
+      "entry": "usage 工作视图/#/usage；账户服务点",
+      "source_paths": [
+        "apps/web/src/usage/UsageDashboard.tsx",
+        "apps/web/src/usage/UsageLedger.tsx",
+        "apps/web/src/usage/UsageJob.tsx",
+        "apps/web/src/usage/useUsageResource.ts"
+      ],
+      "feature_ids": [
+        "C06",
+        "C11",
+        "A05"
+      ],
+      "required_states": [
+        "日期/范围",
+        "加载/空/失败",
+        "分页",
+        "冻结快照 CSV",
+        "任务详情",
+        "未知金额",
+        "钱包刷新"
+      ],
+      "business_invariants": "预占/消费/释放不重复；服务点/公开美元估算/真实账单分开；范围变化撤下旧详情；CSV 不生成残缺文件",
+      "reference_ids": [
+        27,
+        69,
+        100,
+        119,
+        120,
+        127,
+        131,
+        173,
+        203
+      ],
+      "evidence_status": "App entry/state source scan at bb9; fresh browser baseline is a separate run, not a full-flow certification.",
+      "this_round_treatment": "用量和账单密度及真实读取状态；unknown 不补零、预占和结算不混算。",
+      "current_product_acceptance": "pending exact-head integration CI and visual review; baseline is separate",
+      "implemented_reference_ids": [
+        119,
+        120,
+        127,
+        131
+      ]
+    },
+    {
+      "id": "FLOW-37",
+      "pages": [
+        "ops"
+      ],
+      "title": "运营总览、用户、品牌、注册与套餐",
+      "entry": "OpsDashboard overview/users/config/plans",
+      "source_paths": [
+        "apps/web/src/components/OpsDashboard.tsx",
+        "apps/web/src/components/ops-read.ts",
+        "apps/web/src/components/ops-mutation.ts"
+      ],
+      "feature_ids": [
+        "C03",
+        "C13"
+      ],
+      "required_states": [
+        "权限进入",
+        "搜索用户",
+        "待验证/封禁",
+        "品牌上传+保存",
+        "政策",
+        "套餐增删",
+        "busy/unknown"
+      ],
+      "business_invariants": "ops 不授予私人项目读权；品牌公开配置权威；无支付契约不造购买成功；保存不回传只读字段",
+      "reference_ids": [
+        27,
+        68,
+        69,
+        119,
+        120,
+        127,
+        131,
+        133,
+        173
+      ],
+      "evidence_status": "App entry/state source scan at bb9; fresh browser baseline is a separate run, not a full-flow certification.",
+      "this_round_treatment": "运营 10 页签窄屏卡片/字段语义；状态和读门禁保留，QA 临时库 operator 只读不代表生产授权。",
+      "current_product_acceptance": "pending exact-head integration CI and visual review; baseline is separate",
+      "implemented_reference_ids": [
+        68,
+        119,
+        120,
+        127,
+        131,
+        133
+      ]
+    },
+    {
+      "id": "FLOW-38",
+      "pages": [
+        "ops"
+      ],
+      "title": "运营模型与 Assistant 配置",
+      "entry": "OpsDashboard models/assistant",
+      "source_paths": [
+        "apps/web/src/components/OpsDashboard.tsx",
+        "apps/web/src/components/AssistantOpsPanel.tsx",
+        "apps/web/src/components/ops-model-fields.ts"
+      ],
+      "feature_ids": [
+        "A05",
+        "A12",
+        "C13"
+      ],
+      "required_states": [
+        "供应商档案",
+        "任务过滤",
+        "运行时不可用",
+        "参数限制",
+        "停启",
+        "新模型默认停用",
+        "CAS 冲突"
+      ],
+      "business_invariants": "图像目录与 assistant 独立；expectedVersion/内容 hash；目录 enabled 不等于供应商可调用；短标签不可隐藏关键限额",
+      "reference_ids": [
+        68,
+        69,
+        119,
+        120,
+        127,
+        131,
+        133,
+        173
+      ],
+      "evidence_status": "App entry/state source scan at bb9; fresh browser baseline is a separate run, not a full-flow certification.",
+      "this_round_treatment": "模型/助手配置继承真实字段与 CAS，136 仅本地受控草稿；保存仍是明确 action。",
+      "current_product_acceptance": "pending exact-head integration CI and visual review; baseline is separate",
+      "implemented_reference_ids": [
+        68,
+        119,
+        120,
+        127,
+        131,
+        133
+      ]
+    },
+    {
+      "id": "FLOW-39",
+      "pages": [
+        "ops"
+      ],
+      "title": "调额、审计与 unknown 人工核验",
+      "entry": "OpsDashboard quota/audit/usage/reconciliation",
+      "source_paths": [
+        "apps/web/src/components/QuotaManager.tsx",
+        "apps/web/src/components/UnknownJobsPanel.tsx",
+        "apps/web/src/components/AssistantOpsPanel.tsx",
+        "apps/web/src/components/OpsDashboard.tsx"
+      ],
+      "feature_ids": [
+        "C06",
+        "C07",
+        "C11",
+        "C13"
+      ],
+      "required_states": [
+        "搜用户/选空间",
+        "余额读取",
+        "正负调额+原因",
+        "回执",
+        "刷新失败",
+        "unknown settle/release+证据",
+        "审计详情"
+      ],
+      "business_invariants": "一次提交与服务回执锁；未知不能重复调额；理由/凭证必须保留；刷新失败不抹去已成功结果；不得曝光私人提示/照片",
+      "reference_ids": [
+        69,
+        111,
+        119,
+        120,
+        127,
+        129,
+        131,
+        133,
+        173
+      ],
+      "evidence_status": "App entry/state source scan at bb9; fresh browser baseline is a separate run, not a full-flow certification.",
+      "this_round_treatment": "quota 回执与刷新分开、unknown 人工核验不改；状态 SVG 不把未核对转为已完成。",
+      "current_product_acceptance": "pending exact-head integration CI and visual review; baseline is separate",
+      "implemented_reference_ids": [
+        111,
+        119,
+        120,
+        127,
+        129,
+        131,
+        133
+      ]
+    },
+    {
+      "id": "FLOW-40",
+      "pages": [
+        "shared"
+      ],
+      "title": "通用弹层、选择、确认与反馈",
+      "entry": "19 App dialog + 嵌套功能 dialog + ConfirmationDialog",
+      "source_paths": [
+        "apps/web/src/components/Ui.tsx",
+        "apps/web/src/components/ChoiceSelect.tsx",
+        "apps/web/src/components/ConfirmationDialog.tsx",
+        "apps/web/src/motion/Presence.tsx",
+        "apps/web/src/components/modal-profiles.ts"
+      ],
+      "feature_ids": [
+        "R06",
+        "C08",
+        "C09",
+        "C07"
+      ],
+      "required_states": [
+        "进入/退出",
+        "焦点 trap/归还",
+        "Esc/外点",
+        "忙态禁关",
+        "重复点击",
+        "退出立即 inert",
+        "嵌套层",
+        "手机键盘"
+      ],
+      "business_invariants": "视觉密度不改变事务；大照片不与表单同尺寸模板；危险/未知错误不自动消失；减少动态保持逻辑时序",
+      "reference_ids": [
+        35,
+        65,
+        115,
+        119,
+        120,
+        122,
+        129,
+        131,
+        133,
+        136,
+        172,
+        173,
+        179,
+        192,
+        209
+      ],
+      "evidence_status": "App entry/state source scan at bb9; fresh browser baseline is a separate run, not a full-flow certification.",
+      "this_round_treatment": "native Modal profiles、120 选择底板、119 真状态、115 可关闭/暂停反馈；关键错误不随计时消失。",
+      "current_product_acceptance": "pending exact-head integration CI and visual review; baseline is separate",
+      "implemented_reference_ids": [
+        35,
+        115,
+        119,
+        120,
+        129,
+        131,
+        133,
+        136
+      ]
+    },
+    {
+      "id": "FLOW-41",
+      "pages": [
+        "brand",
+        "navigation"
+      ],
+      "title": "全局品牌、主题、语言与 SVG",
+      "entry": "About/账号/工作台/运营/加载态",
+      "source_paths": [
+        "apps/web/src/components/BrandMark.tsx",
+        "apps/web/src/components/StudioGlyph.tsx",
+        "apps/web/src/editor/ParameterGlyph.tsx",
+        "apps/web/src/lib/brand.ts",
+        "apps/web/src/workspace/useStudioTheme.ts",
+        "apps/web/src/i18n/LanguageSelect.tsx"
+      ],
+      "feature_ids": [
+        "C08",
+        "C09",
+        "C13"
+      ],
+      "required_states": [
+        "服务器 Logo/默认 Logo",
+        "浅深/跟随系统",
+        "简繁英",
+        "长标签",
+        "字体失败",
+        "菜单图标/开闭态"
+      ],
+      "business_invariants": "同一 Logo 本体；SVG 统一 viewBox/笔画/光学对齐但按功能保留区别；手机独立视觉尺寸；三态主题不丢 system",
+      "reference_ids": [
+        65,
+        68,
+        78,
+        96,
+        129,
+        169,
+        192,
+        196,
+        200
+      ],
+      "evidence_status": "App entry/state source scan at bb9; fresh browser baseline is a separate run, not a full-flow certification.",
+      "this_round_treatment": "原 Logo 资产统一；Studio/Parameter/Control SVG 按语义细化，三语/主题/字体门槛保持。",
+      "current_product_acceptance": "pending exact-head integration CI and visual review; baseline is separate",
+      "implemented_reference_ids": [
+        68,
+        78,
+        129
+      ]
+    },
+    {
+      "id": "FLOW-42",
+      "pages": [
+        "shared",
+        "studio"
+      ],
+      "title": "跨流程错误、失权与恢复",
+      "entry": "cloud notice；ApiError；deferred error；expired session",
+      "source_paths": [
+        "apps/web/src/App.tsx",
+        "apps/web/src/lib/api.ts",
+        "apps/web/src/account/session-lifecycle.ts",
+        "apps/web/src/components/DeferredFeature.tsx"
+      ],
+      "feature_ids": [
+        "R07",
+        "R09",
+        "C03",
+        "C05",
+        "C07",
+        "C10"
+      ],
+      "required_states": [
+        "离线",
+        "403/401",
+        "未配置",
+        "超预算",
+        "Worker 失败",
+        "未知结果",
+        "安全重试",
+        "草稿导出"
+      ],
+      "business_invariants": "分类真实错误；不能把任何失败都映射为可重试；供应商未知不自动重发；用户可保留自己的本地内容",
+      "reference_ids": [
+        115,
+        119,
+        173,
+        179,
+        209
+      ],
+      "evidence_status": "App entry/state source scan at bb9; fresh browser baseline is a separate run, not a full-flow certification.",
+      "this_round_treatment": "既有错误/失权/冻结请求恢复不变；公共状态与空态精简，跨视图实例和隐藏输入保持原生命周期。",
+      "current_product_acceptance": "pending exact-head integration CI and visual review; baseline is separate",
+      "implemented_reference_ids": [
+        115,
+        119
+      ]
+    }
+  ],
+  "study_baseline": {
+    "frontend_source_sha": "bb9e126cd668eb87d53548fbcdef773982f284a4",
+    "native_source_sha": "6c3f53f4a5dd4a024f0d8db7444ae6bf300ed006",
+    "fresh_review_sha": "7a7c86247b0809aba2c8a57b3f35d47c0010f276",
+    "fresh_review_run": 43156744177,
+    "fresh_review_status": "passed: all-repository typecheck, 499 frontend tests, production build and 16 browser cases; visual review remains separate",
+    "local_browser": "Blocked at ordinary Chromium launch: socket() Operation not permitted; zero screenshots.",
+    "product_changes": false,
+    "dependency_changes": false,
+    "ref_changes_by_this_reviewer": false
+  },
+  "integration_parent_sha": "80f3968dc5678f2f43c4f8353665564fd371a69d",
+  "native_contract_sha": "9df0e9c06787bce270f4fa03502d81ed3097d872"
+}

@@ -7,6 +7,7 @@ import { MagnifyingGlass, UserCircle, CheckCircle } from '@phosphor-icons/react'
 import { api, errorMessage, jsonRequest } from '../lib/api';
 import type { User } from '../lib/types';
 import { Busy, InlineError } from './Ui';
+import { StatusMark } from './StatusMark';
 
 type Entitlements = {
   available: number;
@@ -22,9 +23,17 @@ type AccountSpaces = {
 export function QuotaManager() {
   const alive = useRef(true);
   const writing = useRef(false);
+  const read = useRef<{ id: number; controller: AbortController | null }>({
+    id: 0,
+    controller: null,
+  });
   useEffect(() => {
     alive.current = true;
-    return () => { alive.current = false; };
+    return () => {
+      alive.current = false;
+      read.current.id++;
+      read.current.controller?.abort();
+    };
   }, []);
   const [query, setQuery] = useState('');
   const [users, setUsers] = useState<User[]>([]);
@@ -36,43 +45,85 @@ export function QuotaManager() {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState('');
+  const [searchState, setSearchState] = useState<'idle' | 'loading' | 'ready' | 'error'>('idle');
+  const [accountState, setAccountState] = useState<'idle' | 'loading' | 'ready' | 'error'>('idle');
+  const [readError, setReadError] = useState<string | null>(null);
   const space = account?.spaces.find((item) => item.id === spaceId);
   const entitlements = space?.entitlements;
   async function search(event: FormEvent) {
     event.preventDefault();
+    if (busy || writing.current || !query.trim()) return;
+    const requestId = ++read.current.id;
+    read.current.controller?.abort();
+    const controller = new AbortController();
+    read.current.controller = controller;
+    const current = () =>
+      alive.current && read.current.id === requestId && !controller.signal.aborted;
     setBusy(true);
-    setError(null);
+    setReadError(null);
+    setSearchState('loading');
     try {
-      setUsers(
-        (await api<{ users: User[] }>(`/ops/users?query=${encodeURIComponent(query.trim())}`))
-          .users,
+      const result = await api<{ users: User[] }>(
+        `/ops/users?query=${encodeURIComponent(query.trim())}`,
+        { signal: controller.signal },
       );
+      if (!current()) return;
+      setUsers(result.users);
+      setSearchState('ready');
     } catch (e) {
-      setError(errorMessage(e));
+      if (current()) {
+        setReadError(errorMessage(e));
+        setSearchState('error');
+      }
     } finally {
-      setBusy(false);
+      if (current()) setBusy(false);
+      if (read.current.controller === controller) read.current.controller = null;
     }
   }
   async function select(user: User) {
+    if (busy || writing.current) return;
+    const requestId = ++read.current.id;
+    read.current.controller?.abort();
+    const controller = new AbortController();
+    read.current.controller = controller;
+    const current = () =>
+      alive.current && read.current.id === requestId && !controller.signal.aborted;
     setBusy(true);
-    setError(null);
+    setReadError(null);
+    setAccountState('loading');
     setSuccess('');
     try {
-      const result = await api<AccountSpaces>(`/ops/users/${user.id}/entitlements`);
+      const result = await api<AccountSpaces>(`/ops/users/${user.id}/entitlements`, {
+        signal: controller.signal,
+      });
+      if (!current()) return;
       setAccount(result);
+      setAccountState('ready');
       setSpaceId(
         result.spaces.find((item) => item.kind === 'personal')?.id ?? result.spaces[0]?.id ?? '',
       );
       setKey(secureUuid());
     } catch (e) {
-      setError(errorMessage(e));
+      if (current()) {
+        setReadError(errorMessage(e));
+        setAccountState('error');
+      }
     } finally {
-      setBusy(false);
+      if (current()) setBusy(false);
+      if (read.current.controller === controller) read.current.controller = null;
     }
   }
   async function adjust(event: FormEvent) {
     event.preventDefault();
-    if (writing.current || busy || !spaceId || !Number.isSafeInteger(units) || !units || reason.trim().length < 3) return;
+    if (
+      writing.current ||
+      busy ||
+      !spaceId ||
+      !Number.isSafeInteger(units) ||
+      !units ||
+      reason.trim().length < 3
+    )
+      return;
     writing.current = true;
     const snapshot = { spaceId, units, reason: reason.trim(), key, actorId: account?.user.id };
     setBusy(true);
@@ -116,7 +167,12 @@ export function QuotaManager() {
     }
   }
   return (
-    <div className="quota-manager" data-motion="quota">
+    <div
+      className="quota-manager"
+      data-motion="quota"
+      data-search-state={searchState}
+      data-account-state={accountState}
+    >
       <section className="surface ops-section">
         <h2>{t('用户')}</h2>
         <form className="search-form" onSubmit={search}>
@@ -133,6 +189,12 @@ export function QuotaManager() {
             {busy ? <Busy label="" /> : t('查找')}
           </button>
         </form>
+        <InlineError message={readError} />
+        {searchState === 'ready' && !users.length && (
+          <p className="quiet-copy" role="status">
+            {t('没有符合条件的用户。')}
+          </p>
+        )}
         <div className="quota-user-results">
           {users.map((user) => (
             <button
@@ -266,8 +328,7 @@ export function QuotaManager() {
         <InlineError message={error} />
         {success && (
           <p className="success-note" role="status">
-            <CheckCircle size={18} />
-            {t(success)}
+            <StatusMark state="done" size="small" label={t(success)} />
           </p>
         )}
         <button

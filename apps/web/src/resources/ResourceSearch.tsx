@@ -572,6 +572,8 @@ export function ResourceSearch({
           title={t('原件与母版')}
           subtitle={sourceDetails.name}
           onClose={() => setSourceDetails(null)}
+          className="media-source-dialog"
+          profile="media"
         >
           <MediaSourceViewer assetId={sourceDetails.id} />
         </Modal>

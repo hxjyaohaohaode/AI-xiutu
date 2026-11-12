@@ -11,7 +11,10 @@
   --motion-y: var(--profile-desktop-y);
   --motion-scale: var(--profile-desktop-scale);
   --motion-interact: var(--profile-desktop-interact);
-  --dialog-edge: 24px;
+  --dialog-edge: 20px;
+  --dialog-title-size: 20px;
+  border: 1px solid color-mix(in srgb, var(--ink) 9%, transparent);
+  box-shadow: 0 24px 80px -30px #0000005c;
 }
 
 .modal[data-dialog-profile]:not(.drawing-modal) {
@@ -22,7 +25,8 @@
   overflow-x: hidden;
   overflow-y: auto;
   overscroll-behavior: contain;
-  scroll-padding-block: 88px 24px;
+  border-radius: 16px;
+  scroll-padding-block: 68px 20px;
 }
 
 .modal[data-dialog-profile]::backdrop {
@@ -35,8 +39,191 @@
 }
 
 .modal[data-dialog-profile]:where(:not(.drawing-modal)) > .modal-header {
-  padding-block: calc(var(--dialog-padding) - 2px) 16px;
-  margin-bottom: 20px;
+  display: flex;
+  align-items: center;
+  gap: var(--ui-gap, 12px);
+  padding-block: 10px 8px;
+  margin-bottom: 14px;
+  border-bottom: 0;
+}
+
+.modal[data-dialog-profile]:not(.drawing-modal) .modal-header h2 {
+  margin: 0;
+  font-size: var(--dialog-title-size);
+  line-height: 1.3;
+  font-weight: 560;
+  letter-spacing: -0.025em;
+}
+
+.modal[data-dialog-profile]:not(.drawing-modal) .modal-header p {
+  margin: 5px 0 0;
+  font-size: 12px;
+  line-height: 1.5;
+}
+
+.modal[data-dialog-profile]:not(.drawing-modal) .modal-header > .icon-button {
+  position: relative;
+  isolation: isolate;
+  display: grid;
+  place-items: center;
+  flex: 0 0 var(--ui-hit, 40px);
+  width: var(--ui-hit, 40px);
+  height: var(--ui-hit, 40px);
+  min-height: var(--ui-hit, 40px);
+  padding: 0;
+  margin: 0;
+  border: 0;
+  border-radius: 10px;
+  color: var(--muted);
+  background: transparent;
+}
+.modal[data-dialog-profile]:not(.drawing-modal) .modal-header > .icon-button::before {
+  content: '';
+  position: absolute;
+  z-index: -1;
+  inset: calc((var(--ui-hit, 40px) - var(--ui-control-h, 36px)) / 2);
+  border-radius: 9px;
+  background: var(--surface-secondary);
+  transition: background-color 140ms ease;
+}
+.modal[data-dialog-profile]:not(.drawing-modal) .modal-header > .icon-button:hover::before {
+  background: var(--surface-hover);
+}
+.modal[data-dialog-profile]:not(.drawing-modal) .modal-header > .icon-button svg {
+  width: var(--ui-icon-small, 18px);
+  height: var(--ui-icon-small, 18px);
+}
+
+.modal[data-dialog-profile]:not(.drawing-modal) .stack-form {
+  gap: 14px;
+}
+.modal[data-dialog-profile]:not(.drawing-modal) .stack-form label {
+  min-width: 0;
+  gap: 6px;
+  font-size: var(--ui-label-size, 12px);
+}
+.modal[data-dialog-profile]:not(.drawing-modal)
+  .stack-form
+  :is(input:not([type='checkbox']):not([type='range']):not([type='file']), select, textarea) {
+  width: 100%;
+  min-width: 0;
+  min-height: var(--ui-field-h, 38px);
+  padding: 8px 10px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--surface-secondary);
+  font-size: var(--ui-text-size, 13px);
+  line-height: 1.35;
+}
+.modal[data-dialog-profile]:not(.drawing-modal) .field-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+}
+.modal[data-dialog-profile]:not(.drawing-modal) .button {
+  min-height: var(--ui-hit, 40px);
+  padding: max(0px, calc((var(--ui-control-h, 36px) - 1.4em) / 2)) 12px;
+  border-block: calc((var(--ui-hit, 40px) - var(--ui-control-h, 36px)) / 2) solid transparent;
+  background-clip: padding-box;
+  border-radius: 10px;
+  font-size: var(--ui-text-size, 13px);
+  line-height: 1.4;
+}
+.modal[data-dialog-profile]:not(.drawing-modal) .text-button {
+  min-height: var(--ui-hit, 40px);
+  font-size: 12px;
+}
+.modal[data-dialog-profile]:not(.drawing-modal) .dialog-actions {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 8px;
+}
+.modal[data-dialog-profile]:not(.drawing-modal) :is(.form-hint, .fine-print, .control-note) {
+  font-size: 12px;
+  line-height: 1.6;
+}
+.modal[data-dialog-profile]:not(.drawing-modal) :is(.member-row, .grant-row) {
+  min-width: 0;
+  padding: 10px 0;
+  gap: 10px;
+  border: 0;
+}
+.modal[data-dialog-profile]:not(.drawing-modal) .member-row > div:nth-child(2) {
+  flex: 1;
+  min-width: 0;
+}
+.modal[data-dialog-profile]:not(.drawing-modal) .member-row strong {
+  display: block;
+  overflow-wrap: anywhere;
+}
+.modal[data-dialog-profile]:not(.drawing-modal) .member-row .choice-select {
+  flex: 0 1 132px;
+  min-width: 105px;
+}
+.modal[data-dialog-profile]:not(.drawing-modal) .invite-block {
+  margin-top: 18px;
+  padding-top: 14px;
+  border-top: 1px solid var(--line);
+}
+.modal[data-dialog-profile]:not(.drawing-modal) .invite-actions {
+  gap: 8px;
+}
+.modal[data-dialog-profile]:not(.drawing-modal) .invite-actions > .choice-select {
+  flex: 1;
+  min-width: 0;
+}
+.modal[data-dialog-profile]:not(.drawing-modal) .grants-list {
+  margin-top: 20px;
+}
+.modal[data-dialog-profile]:not(.drawing-modal) .grants-list h3 {
+  font-size: 13px;
+  font-weight: 600;
+  margin-block: 0 10px;
+}
+.modal[data-dialog-profile]:not(.drawing-modal) .grant-row > div {
+  min-width: 0;
+  flex: 1;
+}
+.modal[data-dialog-profile]:not(.drawing-modal) .grant-row strong {
+  overflow-wrap: anywhere;
+}
+.modal[data-dialog-profile]:not(.drawing-modal) .grant-row small {
+  font-size: 11px;
+  line-height: 1.5;
+}
+.modal[data-dialog-profile='media'] {
+  --dialog-title-size: 19px;
+}
+.modal[data-dialog-profile='command'] {
+  --dialog-title-size: 18px;
+}
+.modal[data-dialog-profile='form'],
+.modal[data-dialog-profile='danger'] {
+  --dialog-title-size: 18px;
+}
+.modal[data-dialog-profile='danger'] .confirmation-description {
+  font-size: 13px;
+}
+.modal[data-dialog-profile]:not(.drawing-modal) .confirmation-description {
+  margin-block: 0 18px;
+}
+.modal[data-dialog-profile]:not(.drawing-modal) .segmented {
+  margin-bottom: 16px;
+}
+.modal[data-dialog-profile]:not(.drawing-modal) .team-activity ol {
+  padding: 0;
+}
+.modal[data-dialog-profile]:not(.drawing-modal) .team-activity li {
+  padding-block: 12px;
+}
+.modal[data-dialog-profile]:not(.drawing-modal) .team-activity time {
+  font-size: 11px;
+}
+
+/* The viewport constrains the shell; content owns its own scroll regions. */
+.modal[data-dialog-profile='media'].media-source-dialog {
+  --dialog-width: min(1120px, calc(100vw - 2 * var(--dialog-edge)));
 }
 
 .modal[data-dialog-profile='auth'] > .modal-header {
@@ -52,8 +239,7 @@
 }
 
 .modal[data-dialog-profile='danger'] .modal-header h2 {
-  padding-block: 6px;
-  font-size: 19px;
+  padding-block: 0;
   letter-spacing: -0.025em;
 }
 
@@ -66,12 +252,12 @@
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: 10px;
-  margin-top: 22px;
+  margin-top: 16px;
 }
 
 .modal[data-dialog-profile='danger'] .dialog-actions > .button {
   min-width: 0;
-  min-height: 42px;
+  min-height: var(--ui-hit, 40px);
   margin: 0;
 }
 
@@ -82,14 +268,14 @@
 
 .modal[data-dialog-profile='account'] .modal-header h2,
 .modal[data-dialog-profile='billing'] .modal-header h2 {
-  font-size: 23px;
+  font-size: 20px;
 }
 
 .modal[data-dialog-profile='media'] > .modal-header {
   margin-bottom: 16px;
 }
 
-@media (760px <= width < 1120px) {
+@media (760px <= width <= 1100px) {
   .modal[data-dialog-profile] {
     --dialog-padding: var(--profile-tablet-padding);
     --dialog-width: var(--profile-tablet-width);
@@ -99,7 +285,8 @@
     --motion-y: var(--profile-tablet-y);
     --motion-scale: var(--profile-tablet-scale);
     --motion-interact: var(--profile-tablet-interact);
-    --dialog-edge: 20px;
+    --dialog-edge: 16px;
+    --dialog-title-size: 19px;
   }
 }
 
@@ -113,6 +300,7 @@
     --motion-scale: var(--profile-phone-scale);
     --motion-interact: var(--profile-phone-interact);
     --dialog-edge: 12px;
+    --dialog-title-size: 18px;
   }
 
   .modal[data-dialog-profile][data-dialog-mobile='sheet'] {
@@ -121,49 +309,97 @@
     width: 100%;
     max-width: 100%;
     max-height: calc(100dvh - max(12px, env(safe-area-inset-top)));
-    border-radius: 20px 20px 0 0;
+    border-radius: 16px 16px 0 0;
     padding-inline: max(var(--dialog-padding), env(safe-area-inset-left))
       max(var(--dialog-padding), env(safe-area-inset-right));
     padding-bottom: calc(var(--dialog-padding) + env(safe-area-inset-bottom));
-    scroll-padding-block: 80px 24px;
+    scroll-padding-block: 62px 20px;
   }
 
   .modal[data-dialog-profile][data-dialog-mobile='center'] {
     inset: 0;
     margin: auto;
-    width: min(var(--profile-width), calc(100vw - 24px));
-    max-width: calc(100vw - 24px);
+    width: min(var(--profile-width), calc(100vw - 32px));
+    max-width: calc(100vw - 32px);
     max-height: calc(100dvh - 32px - env(safe-area-inset-top) - env(safe-area-inset-bottom));
     border: 1px solid var(--line);
-    border-radius: 18px;
+    border-radius: 14px;
     padding-bottom: var(--dialog-padding);
   }
 
   .modal[data-dialog-profile='account'] .modal-header h2,
   .modal[data-dialog-profile='billing'] .modal-header h2 {
-    font-size: 21px;
+    font-size: 18px;
   }
 
   .modal[data-dialog-profile='danger'] .modal-header h2 {
     font-size: 18px;
+  }
+  .modal[data-dialog-profile]:not(.drawing-modal) > .modal-header {
+    padding-block: 8px 4px;
+    margin-bottom: 10px;
+  }
+  .modal[data-dialog-profile]:not(.drawing-modal) .stack-form {
+    gap: 12px;
+  }
+  .modal[data-dialog-profile]:not(.drawing-modal)
+    .stack-form
+    :is(input:not([type='checkbox']):not([type='range']):not([type='file']), select, textarea) {
+    font-size: 16px;
+    padding: 6px 9px;
+  }
+  .modal[data-dialog-profile]:not(.drawing-modal) .field-grid {
+    gap: 10px;
+  }
+  .modal[data-dialog-profile]:not(.drawing-modal) .member-row {
+    flex-wrap: wrap;
+    gap: 4px 8px;
+  }
+  .modal[data-dialog-profile]:not(.drawing-modal) .member-row > div:nth-child(2) {
+    min-width: calc(100% - 48px);
+  }
+  .modal[data-dialog-profile]:not(.drawing-modal) .member-row > .choice-select {
+    margin-inline-start: 40px;
+    flex: 1 1 120px;
+  }
+  .modal[data-dialog-profile]:not(.drawing-modal) .invite-actions {
+    flex-wrap: wrap;
+  }
+  .modal[data-dialog-profile]:not(.drawing-modal) .invite-actions > .choice-select {
+    flex-basis: 150px;
+  }
+  .modal[data-dialog-profile]:not(.drawing-modal) .grants-list {
+    margin-top: 16px;
+  }
+  .modal[data-dialog-profile='media'].media-source-dialog {
+    --dialog-width: var(--profile-phone-width, 100%);
+  }
+}
+
+@media (width < 380px) {
+  .modal[data-dialog-profile]:not(.drawing-modal) .field-grid {
+    grid-template-columns: minmax(0, 1fr);
   }
 }
 
 @media (height < 500px) {
   .modal[data-dialog-profile]:not(.drawing-modal) {
     --dialog-edge: 6px;
-    --dialog-padding: 14px;
+    --dialog-padding: 10px;
     max-height: calc(100dvh - 12px);
-    scroll-padding-block: 66px 16px;
+    scroll-padding-block: 58px 16px;
   }
 
   .modal[data-dialog-profile]:where(:not(.drawing-modal)) > .modal-header {
-    padding-block: 10px 12px;
-    margin-bottom: 12px;
+    padding-block: 4px;
+    margin-bottom: 8px;
   }
 
   .modal[data-dialog-profile='danger'][data-dialog-mobile='center'] {
     max-height: calc(100dvh - 12px);
+  }
+  .modal[data-dialog-profile]:not(.drawing-modal) .stack-form {
+    gap: 10px;
   }
 }
 
@@ -174,5 +410,150 @@
     backdrop-filter: none;
     translate: none;
     scale: none;
+  }
+  .modal[data-dialog-profile] .modal-header > .icon-button::before {
+    transition: none;
+  }
+}
+
+/* Original-image windows have space for the actual pixels, never altered coordinates. */
+.media-source-dialog .media-source {
+  --media-preview-height: clamp(280px, 48dvh, 560px);
+}
+.modal[data-dialog-profile='media'] .media-zoom-tools {
+  gap: 6px;
+  flex-wrap: wrap;
+}
+.modal[data-dialog-profile='media'] .media-zoom-tools .icon-button {
+  width: var(--ui-hit, 40px);
+  height: var(--ui-hit, 40px);
+  min-height: var(--ui-hit, 40px);
+}
+.modal[data-dialog-profile='media'] .media-zoom-tools .icon-button svg {
+  width: var(--ui-icon-small, 18px);
+  height: var(--ui-icon-small, 18px);
+}
+.modal[data-dialog-profile='media'] .media-import {
+  gap: 12px;
+}
+.modal[data-dialog-profile='media'] .media-file-picker {
+  gap: 10px;
+  min-height: 64px;
+  padding: 12px;
+  border-radius: 10px;
+  animation: none;
+}
+.modal[data-dialog-profile='media'] .media-file-picker > svg {
+  flex: 0 0 auto;
+  width: var(--ui-icon-size, 20px);
+  height: var(--ui-icon-size, 20px);
+}
+.modal[data-dialog-profile='media'] .media-import-limits {
+  gap: 6px 16px;
+  font-size: 11px;
+}
+.modal[data-dialog-profile='media'] .media-upload-progress {
+  animation: none;
+}
+.modal[data-dialog-profile='media'] .media-upload-progress > div {
+  align-items: start;
+}
+.modal[data-dialog-profile='settings'].import-dialog .import-file-summary {
+  padding: 10px 0;
+  margin-bottom: 14px;
+  gap: 10px;
+  background: transparent;
+  border: 0;
+}
+.modal[data-dialog-profile='settings'].import-dialog .import-file-summary strong {
+  font-size: 13px;
+  overflow-wrap: anywhere;
+}
+.modal[data-dialog-profile='settings'].import-dialog .import-file-summary span {
+  font-size: 11px;
+}
+.modal[data-dialog-profile='settings'].import-dialog .server-import-section {
+  margin-top: 18px;
+  padding-top: 14px;
+}
+.modal[data-dialog-profile='settings'].import-dialog .server-import-section > h3 {
+  margin: 0 0 8px;
+  font-size: 14px;
+}
+.modal[data-dialog-profile='settings'].import-dialog .server-import-section p {
+  font-size: 12px;
+  line-height: 1.6;
+  margin-block: 8px;
+}
+.import-constraints > summary {
+  display: flex;
+  align-items: center;
+  min-height: var(--ui-hit, 40px);
+  color: var(--muted);
+  font-size: 12px;
+  cursor: pointer;
+}
+.import-constraints[open] > summary {
+  color: var(--ink);
+}
+.import-constraints :is(p, .resource-budget-note) {
+  font-size: 12px;
+  line-height: 1.6;
+}
+@media (min-width: 1000px) and (min-height: 551px) {
+  .media-source-dialog > .media-source[data-grading='true'] {
+    grid-template-columns: minmax(0, 1.4fr) minmax(280px, 1fr);
+    align-items: start;
+    column-gap: 20px;
+  }
+  .media-source-dialog > .media-source[data-grading='true'] > .media-zoom-tools {
+    grid-column: 1;
+    grid-row: 1;
+  }
+  .media-source-dialog > .media-source[data-grading='true'] > .media-tile-viewport {
+    grid-column: 1;
+    grid-row: 2;
+  }
+  .media-source-dialog > .media-source[data-grading='true'] > small[role='status'] {
+    grid-column: 1;
+    grid-row: 3;
+  }
+  .media-source-dialog
+    > .media-source[data-grading='true']
+    > .editor-section:not(.media-information) {
+    grid-column: 2;
+    grid-row: 1 / span 3;
+    max-block-size: max(250px, calc(100dvh - 170px));
+    overflow-y: auto;
+    overscroll-behavior: contain;
+  }
+  .media-source-dialog
+    > .media-source[data-grading='true']
+    > :is(.media-downloads, .media-information, .inline-error) {
+    grid-column: 1 / -1;
+  }
+}
+@media (width < 760px) {
+  .media-source-dialog .media-source {
+    --media-preview-height: min(38dvh, 280px);
+  }
+  .modal[data-dialog-profile='media'] .media-file-picker {
+    min-height: 56px;
+    padding: 10px;
+  }
+  .modal[data-dialog-profile='media']
+    .media-import
+    :is(input[type='number'], input[type='text'], textarea) {
+    font-size: 16px;
+  }
+}
+@media (orientation: landscape) and (max-height: 550px) {
+  .media-source-dialog .media-source {
+    --media-preview-height: min(48dvh, 280px);
+  }
+}
+@media (pointer: coarse) {
+  .modal[data-dialog-profile]:not(.drawing-modal) .text-button {
+    min-height: 44px;
   }
 }

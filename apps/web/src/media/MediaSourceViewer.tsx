@@ -7,17 +7,17 @@ import {
   type MediaGradeRevision,
   type MediaPrecisionInput,
 } from '@ai-xiutu/media/types';
-import {
-  NEUTRAL_PRECISION_EDIT,
-  type PrecisionEdit,
-} from '@ai-xiutu/editor';
+import { NEUTRAL_PRECISION_EDIT, type PrecisionEdit } from '@ai-xiutu/editor';
 import { Minus, Plus, ArrowsOutSimple, DownloadSimple } from '@phosphor-icons/react';
 import { api, errorMessage, jsonRequest, ApiError } from '../lib/api';
 import { InlineError, IconButton } from '../components/Ui';
 import { NativeGradeControls } from './NativeGradeControls';
 import { NativeRegionOverlay } from './NativeRegionOverlay';
 import {
-  nativeGradePayload, nativeGradeSupported, nativeRegions, updateNativeRegion,
+  nativeGradePayload,
+  nativeGradeSupported,
+  nativeRegions,
+  updateNativeRegion,
   type NativeGradeCapabilities,
 } from './native-grade-model';
 import { ChoiceSelect } from '../components/ChoiceSelect';
@@ -173,14 +173,26 @@ export function MediaSourceViewer({ assetId }: { assetId: string }) {
   const wantsGrade = grading && canEdit && supportedGrade;
   const overviewEdge = Math.min(maxEdge ?? 1536, 1536);
   const pixelRatio = globalThis.devicePixelRatio || 1;
-  const sourceToDisplay = Math.min(1, view.zoom * pixelRatio);
+  const physicalZoom = view.zoom * pixelRatio;
+  const sourceToDisplay = Math.min(1, physicalZoom);
+  // At 1:1, place the original raster on the device grid, including on HiDPI screens.
+  const previewView =
+    Math.abs(physicalZoom - 1) <= Number.EPSILON
+      ? {
+          ...view,
+          x: Math.round(view.x * pixelRatio) / pixelRatio,
+          y: Math.round(view.y * pixelRatio) / pixelRatio,
+        }
+      : view;
   const needsWindow =
     descriptor &&
-    (view.zoom >= 0.75 ||
+    (physicalZoom >= 0.75 ||
       (wantsGrade &&
         Math.max(descriptor.master.width, descriptor.master.height) * sourceToDisplay >
           overviewEdge));
-  const sourceWindow = needsWindow ? visibleSourceWindow(descriptor.master, view, size) : undefined;
+  const sourceWindow = needsWindow
+    ? visibleSourceWindow(descriptor.master, previewView, size)
+    : undefined;
   const windowEdge = sourceWindow ? Math.max(sourceWindow.width, sourceWindow.height) : 0;
   const region = sourceWindow && maxEdge && windowEdge <= maxEdge ? sourceWindow : undefined;
   const fitRegion =
@@ -240,7 +252,11 @@ export function MediaSourceViewer({ assetId }: { assetId: string }) {
     precision?.master16 && maxEdge && (region || fitRegion || (wantsGrade && !needsWindow))
       ? JSON.stringify({
           ...(wantsGrade
-            ? nativeGradePayload({ edit, input: precisionInput, sourceSha256: precision.sourceSha256 })
+            ? nativeGradePayload({
+                edit,
+                input: precisionInput,
+                sourceSha256: precision.sourceSha256,
+              })
             : { expectedSourceSha256: precision.sourceSha256, precisionInput: 'master16' }),
           maxEdge: region ? maxEdge : fittedEdge,
           region,
@@ -255,7 +271,8 @@ export function MediaSourceViewer({ assetId }: { assetId: string }) {
     !gpu.warm && (!exporting || nativeLinearWindow),
     nativeLinearWindow,
   );
-  const adjustmentsDisabled = saving || !supportedGrade || (exporting && !nativeLinearWindow && !gpu.warm);
+  const adjustmentsDisabled =
+    saving || !supportedGrade || (exporting && !nativeLinearWindow && !gpu.warm);
   const previousFrame = preview.frame;
   const regionHasDetail =
     previousFrame?.region &&
@@ -267,7 +284,7 @@ export function MediaSourceViewer({ assetId }: { assetId: string }) {
   const gpuBounds = sourceWindow ?? fitMaster;
   const tileList =
     descriptor && tiles
-      ? visibleTiles({ ...descriptor.master, ...tiles }, view, size, pixelRatio)
+      ? visibleTiles({ ...descriptor.master, ...tiles }, previewView, size, pixelRatio)
       : [];
   useEffect(() => {
     const element = root.current;
@@ -335,8 +352,15 @@ export function MediaSourceViewer({ assetId }: { assetId: string }) {
   async function saveGrade() {
     const signal = assetSession.current?.signal;
     const snapshot = editRef.current;
-    if (!signal || signal.aborted || saveRequest.current === signal || !precision?.canSave ||
-      !canEdit || !nativeGradeSupported(snapshot, precisionInput, precision)) return;
+    if (
+      !signal ||
+      signal.aborted ||
+      saveRequest.current === signal ||
+      !precision?.canSave ||
+      !canEdit ||
+      !nativeGradeSupported(snapshot, precisionInput, precision)
+    )
+      return;
     saveRequest.current = signal;
     setSaving(true);
     setError(null);
@@ -344,9 +368,15 @@ export function MediaSourceViewer({ assetId }: { assetId: string }) {
       const { grade } = await api<{ grade: MediaGradeRevision }>(
         `/assets/${assetId}/media/grades`,
         {
-          ...jsonRequest('POST', nativeGradePayload({
-            edit: snapshot, input: precisionInput, sourceSha256: precision.sourceSha256, expectedVersion: gradeVersion,
-          })),
+          ...jsonRequest(
+            'POST',
+            nativeGradePayload({
+              edit: snapshot,
+              input: precisionInput,
+              sourceSha256: precision.sourceSha256,
+              expectedVersion: gradeVersion,
+            }),
+          ),
           signal,
         },
       );
@@ -369,7 +399,8 @@ export function MediaSourceViewer({ assetId }: { assetId: string }) {
     }
   }
   async function exportMaster(format: PrecisionFormat, adjustment?: PrecisionEdit) {
-    if (exportRequest.current || (adjustment && (!canEdit || !precision || !supportedGrade))) return;
+    if (exportRequest.current || (adjustment && (!canEdit || !precision || !supportedGrade)))
+      return;
     const controller = new AbortController();
     exportRequest.current = controller;
     setExporting(true);
@@ -380,7 +411,11 @@ export function MediaSourceViewer({ assetId }: { assetId: string }) {
           format,
           delivery: 'attachment',
           ...(adjustment && precision
-            ? nativeGradePayload({ edit: adjustment, input: precisionInput, sourceSha256: precision.sourceSha256 })
+            ? nativeGradePayload({
+                edit: adjustment,
+                input: precisionInput,
+                sourceSha256: precision.sourceSha256,
+              })
             : {}),
         }),
         signal: controller.signal,
@@ -413,14 +448,14 @@ export function MediaSourceViewer({ assetId }: { assetId: string }) {
     >
       <div className="media-zoom-tools">
         <strong>{t('原件细节')}</strong>
-        <span>{(view.zoom * 100).toFixed(view.zoom < 0.1 ? 1 : 0)}%</span>
+        <span>{(physicalZoom * 100).toFixed(physicalZoom < 0.1 ? 1 : 0)}%</span>
         <IconButton label={t('缩小源图')} onClick={() => zoomTo(view.zoom / 1.5)}>
           <Minus size={16} />
         </IconButton>
         <IconButton label={t('放大源图')} onClick={() => zoomTo(view.zoom * 1.5)}>
           <Plus size={16} />
         </IconButton>
-        <button className="text-button" onClick={() => zoomTo(1)}>
+        <button className="text-button" onClick={() => zoomTo(1 / pixelRatio)}>
           1:1
         </button>
         <IconButton label={t('源图适合窗口')} onClick={fit}>
@@ -507,10 +542,18 @@ export function MediaSourceViewer({ assetId }: { assetId: string }) {
           ) : (
             <img
               className="media-fallback"
-              style={descriptor ? {
-                position: 'absolute', maxWidth: 'none', left: view.x, top: view.y,
-                width: descriptor.master.width * view.zoom, height: descriptor.master.height * view.zoom,
-              } : undefined}
+              style={
+                descriptor
+                  ? {
+                      position: 'absolute',
+                      maxWidth: 'none',
+                      left: view.x,
+                      top: view.y,
+                      width: descriptor.master.width * view.zoom,
+                      height: descriptor.master.height * view.zoom,
+                    }
+                  : undefined
+              }
               src={`/v1/assets/${assetId}/file`}
               alt={t('编辑代理图')}
             />
@@ -520,8 +563,8 @@ export function MediaSourceViewer({ assetId }: { assetId: string }) {
             className="media-tile media-precision-frame"
             data-native-window={frame.exactWindow ? 'true' : undefined}
             style={{
-              left: view.x + ('left' in previewRegion ? previewRegion.left : 0) * view.zoom,
-              top: view.y + ('top' in previewRegion ? previewRegion.top : 0) * view.zoom,
+              left: previewView.x + ('left' in previewRegion ? previewRegion.left : 0) * view.zoom,
+              top: previewView.y + ('top' in previewRegion ? previewRegion.top : 0) * view.zoom,
               width: previewRegion.width * view.zoom,
               height: previewRegion.height * view.zoom,
             }}
@@ -548,8 +591,8 @@ export function MediaSourceViewer({ assetId }: { assetId: string }) {
             }
             hidden={!gpu.painted}
             style={{
-              left: view.x + (sourceWindow?.left ?? 0) * view.zoom,
-              top: view.y + (sourceWindow?.top ?? 0) * view.zoom,
+              left: previewView.x + (sourceWindow?.left ?? 0) * view.zoom,
+              top: previewView.y + (sourceWindow?.top ?? 0) * view.zoom,
               width: gpuBounds.width * view.zoom,
               height: gpuBounds.height * view.zoom,
             }}
@@ -561,11 +604,19 @@ export function MediaSourceViewer({ assetId }: { assetId: string }) {
           <NativeRegionOverlay
             key={assetId + ':' + controlsEpoch + ':' + activeNativeRegion.id}
             region={activeNativeRegion}
-            source={precisionInput === 'linear-master' ? descriptor.linearMaster ?? descriptor.master : descriptor.master}
+            source={
+              precisionInput === 'linear-master'
+                ? (descriptor.linearMaster ?? descriptor.master)
+                : descriptor.master
+            }
             viewport={size}
             view={view}
             disabled={adjustmentsDisabled}
-            onChange={(mask) => changeGrade((current) => updateNativeRegion(current, activeNativeRegion.id, (item) => ({ ...item, mask })))}
+            onChange={(mask) =>
+              changeGrade((current) =>
+                updateNativeRegion(current, activeNativeRegion.id, (item) => ({ ...item, mask })),
+              )
+            }
           />
         )}
       </div>
@@ -606,7 +657,11 @@ export function MediaSourceViewer({ assetId }: { assetId: string }) {
                   />
                 ) : null}
               </div>
-              {!supportedGrade && <p className="control-note" role="status">{t('此母版调色版本所需的处理能力暂不可用。')}</p>}
+              {!supportedGrade && (
+                <p className="control-note" role="status">
+                  {t('此母版调色版本所需的处理能力暂不可用。')}
+                </p>
+              )}
               <NativeGradeControls
                 key={assetId + ':' + controlsEpoch}
                 edit={edit}
@@ -694,7 +749,11 @@ export function MediaSourceViewer({ assetId }: { assetId: string }) {
                   <button
                     className="button button-secondary"
                     disabled={
-                      saving || exporting || conflict || !supportedGrade || revisionChoice === String(gradeVersion)
+                      saving ||
+                      exporting ||
+                      conflict ||
+                      !supportedGrade ||
+                      revisionChoice === String(gradeVersion)
                     }
                     onClick={() => void saveGrade()}
                   >
@@ -715,7 +774,8 @@ export function MediaSourceViewer({ assetId }: { assetId: string }) {
           ) : (
             precision?.master16 && (
               <p className="control-note">
-                {!supportedGrade || (precisionInput === 'linear-master' && !precision.floatAvailable)
+                {!supportedGrade ||
+                (precisionInput === 'linear-master' && !precision.floatAvailable)
                   ? t('此母版调色版本所需的处理能力暂不可用。')
                   : t('母版调色上限 {v0} 百万像素', {
                       v0: ((maxGradePixels ?? precision.maxPixels) / 1e6).toFixed(1),
@@ -780,9 +840,7 @@ export function MediaSourceViewer({ assetId }: { assetId: string }) {
               </div>
             </dl>
             <p className="control-note">
-              {t(
-                '这里导出原件或母版；工作台中的图片修改需从工作台导出。',
-              )}
+              {t('这里导出原件或母版；工作台中的图片修改需从工作台导出。')}
             </p>
             {descriptor.warnings.map((warning, i) => (
               <p className="control-note" key={i}>

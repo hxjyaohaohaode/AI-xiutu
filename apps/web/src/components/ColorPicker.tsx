@@ -1,8 +1,9 @@
 import { t } from '../i18n';
 import { useEffect, useId, useRef, useState, type PointerEvent } from 'react';
 import { MotionDetails } from '../motion/Presence';
-import { Copy, Plus, Check } from '@phosphor-icons/react';
+import { Copy, Plus, Check } from './ControlGlyph';
 import { IconButton, InlineError } from './Ui';
+import { WarmTooltip } from './control-motion';
 import '../editor/editor-controls.css';
 
 import {
@@ -47,6 +48,111 @@ function readSwatches(): string[] {
   } catch {
     return [];
   }
+}
+
+/** Uiverse 204 neighbours decorate real colour-selection buttons; they never fake a copy result. */
+function ColorSwatches({
+  colors,
+  value,
+  onChoose,
+  label,
+  onSave,
+}: {
+  colors: string[];
+  value: string;
+  onChoose: (value: string) => void;
+  label: string;
+  onSave?: () => void;
+}) {
+  const rail = useRef<HTMLDivElement>(null);
+  const proximity = (active: HTMLButtonElement | null) => {
+    const buttons = [...(rail.current?.querySelectorAll<HTMLButtonElement>('[data-color]') ?? [])];
+    for (const button of buttons) {
+      const steps =
+        active && button.offsetTop === active.offsetTop
+          ? Math.abs(button.offsetLeft - active.offsetLeft) / Math.max(1, active.offsetWidth + 2)
+          : Infinity;
+      const scale = steps < 0.1 ? 1.5 : steps < 1.2 ? 1.3 : steps < 2.2 ? 1.15 : 1;
+      button.style.setProperty('--swatch-scale', String(scale));
+    }
+  };
+  return (
+    <div
+      ref={rail}
+      className="quick-colors color-swatch-rail"
+      role="group"
+      aria-label={label}
+      onPointerOver={(event) => {
+        if (event.pointerType !== 'touch' && event.target instanceof Element)
+          proximity(event.target.closest<HTMLButtonElement>('[data-color]'));
+      }}
+      onPointerLeave={() =>
+        proximity(
+          rail.current?.querySelector<HTMLButtonElement>('[data-color]:focus-visible') ?? null,
+        )
+      }
+      onFocus={(event) => proximity(event.target.closest<HTMLButtonElement>('[data-color]'))}
+      onBlur={() => proximity(null)}
+      onKeyDown={(event) => {
+        if (!['ArrowLeft', 'ArrowRight', 'ArrowUp', 'ArrowDown', 'Home', 'End'].includes(event.key))
+          return;
+        const buttons = [...event.currentTarget.querySelectorAll<HTMLButtonElement>('button')];
+        const index = buttons.indexOf(event.target as HTMLButtonElement);
+        if (index < 0) return;
+        const columns =
+          getComputedStyle(event.currentTarget).display === 'grid'
+            ? buttons.filter((button) => button.offsetTop === buttons[0]?.offsetTop).length
+            : 1;
+        const delta =
+          event.key === 'ArrowUp'
+            ? -columns
+            : event.key === 'ArrowDown'
+              ? columns
+              : event.key === 'ArrowLeft'
+                ? -1
+                : 1;
+        const next =
+          event.key === 'Home'
+            ? 0
+            : event.key === 'End'
+              ? buttons.length - 1
+              : Math.max(0, Math.min(buttons.length - 1, index + delta));
+        event.preventDefault();
+        const target = buttons[next];
+        target?.focus({ preventScroll: true });
+        if (target) {
+          const left = target.offsetLeft,
+            right = left + target.offsetWidth,
+            node = event.currentTarget;
+          if (left < node.scrollLeft) node.scrollLeft = left;
+          else if (right > node.scrollLeft + node.clientWidth)
+            node.scrollLeft = right - node.clientWidth;
+        }
+      }}
+    >
+      {colors.map((item) => (
+        <WarmTooltip key={item} content={item}>
+          <button
+            type="button"
+            data-color={item}
+            style={{ '--swatch-color': item } as React.CSSProperties}
+            aria-label={t('选取 {v0}', { v0: item })}
+            aria-pressed={value === item}
+            onClick={() => onChoose(item)}
+          >
+            <i />
+          </button>
+        </WarmTooltip>
+      ))}
+      {onSave && (
+        <WarmTooltip content={t('保存当前颜色到色板')}>
+          <button type="button" aria-label={t('保存当前颜色到色板')} onClick={onSave}>
+            <Plus size={18} />
+          </button>
+        </WarmTooltip>
+      )}
+    </div>
+  );
 }
 
 export function ColorPicker({
@@ -406,46 +512,27 @@ export function ColorPicker({
             </label>
           ))}
       </div>
-      <div className="quick-colors" aria-label={t('快速色板')}>
-        {quickColors.map((item) => (
-          <button
-            key={item}
-            style={{ '--swatch-color': item } as React.CSSProperties}
-            aria-label={t('选取 {v0}', { v0: item })}
-            aria-pressed={hex(color) === item}
-            onClick={() => emit(rgba(item))}
-          >
-            <i />
-          </button>
-        ))}
-      </div>
+      <ColorSwatches
+        colors={quickColors}
+        value={hex(color)}
+        onChoose={(item) => emit(rgba(item))}
+        label={t('快速色板')}
+      />
       <MotionDetails className="editor-section color-saved">
         <summary>
           <span>{t('我的色板')}</span>
           <small>{swatches.length}/16</small>
         </summary>
         <div className="editor-section-body">
-          <div className="quick-colors">
-            {swatches.map((item) => (
-              <button
-                key={item}
-                aria-label={t('使用保存的颜色 {v0}', { v0: item })}
-                style={{ '--swatch-color': item } as React.CSSProperties}
-                onClick={() => emit(rgba(item))}
-              >
-                <i />
-              </button>
-            ))}
-            <button aria-label={t('保存当前颜色到色板')} onClick={saveColor}>
-              <Plus size={16} />
-            </button>
-          </div>
-          <small>{t('保存在当前浏览器；不会自动修改照片。')}</small>
+          <ColorSwatches
+            colors={swatches}
+            value={hex(color)}
+            onChoose={(item) => emit(rgba(item))}
+            label={t('我的色板')}
+            onSave={saveColor}
+          />
         </div>
       </MotionDetails>
-      <small className="palette-precision-note">
-        {t('连续色谱 · sRGB / RGBA8 · 色值与透明度可精调')}
-      </small>
       <span className="sr-only" role="status">
         {copied ? t('颜色已复制') : ''}
       </span>

@@ -18,6 +18,7 @@ import type { EditorState } from '../editor/useEditor';
 import { createSourceLoadGuard, type SourceLoadCheckpoint } from '../editor/source-flow';
 import { Busy, IconButton, InlineError, Modal } from './Ui';
 import { ChoiceSelect } from './ChoiceSelect';
+import { StatusMark } from './StatusMark';
 import { ImagePreview } from './ImagePreview';
 import { TeamActivity } from '../resources/TeamActivity';
 import { useConfirmation } from './ConfirmationDialog';
@@ -247,7 +248,9 @@ export function ExportDialog({
       canClose={() => !locked.current}
       className="studio-dialog export-dialog"
     >
-      <div className="export-preview"><ImagePreview image={editor.rendered} label={t('当前编辑的预览图')} /></div>
+      <div className="export-preview">
+        <ImagePreview image={editor.rendered} label={t('当前编辑的预览图')} />
+      </div>
       <div className="export-options" role="group" aria-label={t('导出图片格式')}>
         <button
           type="button"
@@ -307,11 +310,14 @@ export function ExportDialog({
       <InlineError message={error} />
       {ready && (
         <div className="stack-form" role="status">
-          <p>
-            {t('文件已生成 ·')}
-            {(ready.bytes / 1024 / 1024).toFixed(2)}{' '}
-            MB
-          </p>
+          <StatusMark
+            state="done"
+            label={
+              <>
+                {t('文件已生成 ·')} {(ready.bytes / 1024 / 1024).toFixed(2)} MB
+              </>
+            }
+          />
           <a
             className="button button-primary button-full"
             href={ready.url}
@@ -376,6 +382,9 @@ export function TeamDialog({
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [policy, setPolicy] = useState<SharingPolicy | null>(null);
+  const [policyLoading, setPolicyLoading] = useState(true);
+  const [policyError, setPolicyError] = useState<string | null>(null);
+  const policyRequest = useRef(0);
   const [loading, setLoading] = useState(true);
   const [message, setMessage] = useState('');
   const locked = useRef(false);
@@ -416,6 +425,24 @@ export function TeamDialog({
     const result = await api<{ members: Member[] }>(`/spaces/${space.id}/members`);
     if (mounted.current && generation === scope.current.generation) setMembers(result.members);
   };
+  const loadPolicy = async () => {
+    const generation = scope.current.generation;
+    const request = ++policyRequest.current;
+    const isCurrent = () =>
+      mounted.current &&
+      generation === scope.current.generation &&
+      request === policyRequest.current;
+    setPolicyLoading(true);
+    setPolicyError(null);
+    try {
+      const result = await api<{ policy: SharingPolicy }>(`/spaces/${space.id}/sharing-policy`);
+      if (isCurrent()) setPolicy(result.policy);
+    } catch (failure) {
+      if (isCurrent()) setPolicyError(errorMessage(failure));
+    } finally {
+      if (isCurrent()) setPolicyLoading(false);
+    }
+  };
   useEffect(() => {
     const generation = scope.current.generation;
     let active = true;
@@ -433,13 +460,7 @@ export function TeamDialog({
       .finally(() => {
         if (isCurrent()) setLoading(false);
       });
-    api<{ policy: SharingPolicy }>(`/spaces/${space.id}/sharing-policy`)
-      .then((v) => {
-        if (isCurrent()) setPolicy(v.policy);
-      })
-      .catch((e) => {
-        if (isCurrent()) setError(errorMessage(e));
-      });
+    void loadPolicy();
     return () => {
       active = false;
     };
@@ -837,10 +858,20 @@ export function TeamDialog({
               </button>
             )}
           </div>
-        ) : !error ? (
+        ) : policyLoading ? (
           <Busy label={t('读取共享规则')} />
         ) : (
-          <p className="form-hint">{t('共享规则读取失败，请关闭后重试。当前规则没有被更改。')}</p>
+          <div className="stack-form">
+            <InlineError message={policyError} />
+            <button
+              type="button"
+              className="button button-secondary"
+              disabled={busy}
+              onClick={() => void loadPolicy()}
+            >
+              {t('重新读取')}
+            </button>
+          </div>
         )}
       </Modal>
       {confirmation.dialog}
@@ -968,6 +999,9 @@ export function CopyProjectDialog({
 }
 export function ShareDialog({ project, onClose }: { project: Project; onClose: () => void }) {
   const [grants, setGrants] = useState<Grant[]>([]);
+  const [grantsLoading, setGrantsLoading] = useState(true);
+  const [grantsReady, setGrantsReady] = useState(false);
+  const [readError, setReadError] = useState<string | null>(null);
   const [phone, setPhone] = useState('');
   const [mode, setMode] = useState<'reference' | 'copy'>('reference');
   const [days, setDays] = useState(7);
@@ -975,13 +1009,52 @@ export function ShareDialog({ project, onClose }: { project: Project; onClose: (
   const [error, setError] = useState<string | null>(null);
   const [message, setMessage] = useState('');
   const locked = useRef(false);
+  const mounted = useRef(true);
+  const readRequest = useRef(0);
+  const readController = useRef<AbortController | null>(null);
+  const currentProject = useRef(project.id);
+  currentProject.current = project.id;
   const canManage = project.role === 'owner' || project.role === 'admin';
   const load = async () => {
-    const result = await api<{ grants: Grant[] }>(`/projects/${project.id}/grants`);
-    setGrants(result.grants);
+    if (!mounted.current || currentProject.current !== project.id) return;
+    const request = ++readRequest.current;
+    readController.current?.abort();
+    const controller = new AbortController();
+    readController.current = controller;
+    const isCurrent = () =>
+      mounted.current &&
+      currentProject.current === project.id &&
+      request === readRequest.current &&
+      !controller.signal.aborted;
+    setGrantsLoading(true);
+    setReadError(null);
+    try {
+      const result = await api<{ grants: Grant[] }>(`/projects/${project.id}/grants`, {
+        signal: controller.signal,
+      });
+      if (isCurrent()) {
+        setGrants(result.grants);
+        setGrantsReady(true);
+      }
+    } catch (failure) {
+      if (isCurrent()) setReadError(errorMessage(failure));
+    } finally {
+      if (isCurrent()) setGrantsLoading(false);
+      if (readController.current === controller) readController.current = null;
+    }
   };
   useEffect(() => {
-    load().catch((e) => setError(errorMessage(e)));
+    mounted.current = true;
+    setGrants([]);
+    setGrantsReady(false);
+    setMessage('');
+    setError(null);
+    void load();
+    return () => {
+      mounted.current = false;
+      readRequest.current++;
+      readController.current?.abort();
+    };
   }, [project.id]);
   async function share(event: FormEvent) {
     event.preventDefault();
@@ -995,14 +1068,15 @@ export function ShareDialog({ project, onClose }: { project: Project; onClose: (
         `/projects/${project.id}/grants`,
         jsonRequest('POST', { targetPhone: phone.trim(), mode, expiresInDays: days }),
       );
+      if (!mounted.current || currentProject.current !== project.id) return;
       setPhone('');
       setMessage('项目已授权给接收者。请提醒对方在自己的账号中查看。');
       await load();
     } catch (e) {
-      setError(errorMessage(e));
+      if (mounted.current && currentProject.current === project.id) setError(errorMessage(e));
     } finally {
       locked.current = false;
-      setBusy(false);
+      if (mounted.current) setBusy(false);
     }
   }
   async function revoke(grant: Grant) {
@@ -1013,13 +1087,14 @@ export function ShareDialog({ project, onClose }: { project: Project; onClose: (
     setMessage('');
     try {
       await api(`/projects/${project.id}/grants/${grant.id}`, jsonRequest('DELETE'));
-      await load();
+      if (!mounted.current || currentProject.current !== project.id) return;
       setMessage('已撤销该授权，后续访问将重新检查权限。');
+      await load();
     } catch (e) {
-      setError(errorMessage(e));
+      if (mounted.current && currentProject.current === project.id) setError(errorMessage(e));
     } finally {
       locked.current = false;
-      setBusy(false);
+      if (mounted.current) setBusy(false);
     }
   }
   return (
@@ -1102,8 +1177,20 @@ export function ShareDialog({ project, onClose }: { project: Project; onClose: (
           )}
         </button>
       </form>
-      <div className="grants-list">
+      <div className="grants-list" aria-busy={grantsLoading}>
         <h3>{t('项目授权')}</h3>
+        {grantsLoading && <Busy label={t('正在读取')} />}
+        <InlineError message={readError} />
+        {readError && (
+          <button
+            type="button"
+            className="text-button"
+            disabled={busy || grantsLoading}
+            onClick={() => void load()}
+          >
+            {t('重新读取')}
+          </button>
+        )}
         {grants
           .filter((g) => !g.revokedAt)
           .map((g) => (
@@ -1130,9 +1217,12 @@ export function ShareDialog({ project, onClose }: { project: Project; onClose: (
               </button>
             </div>
           ))}
-        {!grants.filter((g) => !g.revokedAt).length && (
-          <p className="quiet-copy">{t('暂时没有未撤销的外部授权。')}</p>
-        )}
+        {grantsReady &&
+          !grantsLoading &&
+          !readError &&
+          !grants.filter((g) => !g.revokedAt).length && (
+            <p className="quiet-copy">{t('暂时没有未撤销的外部授权。')}</p>
+          )}
       </div>
     </Modal>
   );

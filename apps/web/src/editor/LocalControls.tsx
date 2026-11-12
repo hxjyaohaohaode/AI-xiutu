@@ -2,7 +2,7 @@ import { t } from '../i18n';
 import { MotionDetails } from '../motion/Presence';
 import { ChoiceSelect } from '../components/ChoiceSelect';
 import { useState } from 'react';
-import { ArrowUp, ArrowDown, Copy, Eye, EyeSlash, Plus, Trash } from '@phosphor-icons/react';
+import { ArrowUp, ArrowDown, Copy, Eye, EyeSlash, Plus, Trash } from '../components/ControlGlyph';
 import {
   createAdjustmentRegionV3,
   createColorBlockV3,

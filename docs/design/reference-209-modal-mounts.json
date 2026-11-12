@@ -1,0 +1,168 @@
+{
+  "frontend_baseline": "bb9e126cd668eb87d53548fbcdef773982f284a4",
+  "checkout_head": "7a7c86247b0809aba2c8a57b3f35d47c0010f276",
+  "note": "Mount sites, not distinct business cases; current product source unchanged by audit-doc commit. DrawingBoard owned by editor audit. Native dialog primitive in Ui.tsx counted separately.",
+  "modal_mount_count": 40,
+  "mounts": [
+    {
+      "path": "apps/web/src/App.tsx",
+      "line": 140
+    },
+    {
+      "path": "apps/web/src/App.tsx",
+      "line": 192
+    },
+    {
+      "path": "apps/web/src/App.tsx",
+      "line": 3327
+    },
+    {
+      "path": "apps/web/src/App.tsx",
+      "line": 3570
+    },
+    {
+      "path": "apps/web/src/App.tsx",
+      "line": 3596
+    },
+    {
+      "path": "apps/web/src/App.tsx",
+      "line": 3638
+    },
+    {
+      "path": "apps/web/src/ai/AIThread.tsx",
+      "line": 185
+    },
+    {
+      "path": "apps/web/src/ai/LiveAssistant.tsx",
+      "line": 2795
+    },
+    {
+      "path": "apps/web/src/ai/LiveAssistant.tsx",
+      "line": 2853
+    },
+    {
+      "path": "apps/web/src/ai/ResultActions.tsx",
+      "line": 263
+    },
+    {
+      "path": "apps/web/src/ai/SearchEvidence.tsx",
+      "line": 81
+    },
+    {
+      "path": "apps/web/src/components/AIPanel.tsx",
+      "line": 1344
+    },
+    {
+      "path": "apps/web/src/components/AIPanel.tsx",
+      "line": 1413
+    },
+    {
+      "path": "apps/web/src/components/AIPanel.tsx",
+      "line": 1527
+    },
+    {
+      "path": "apps/web/src/components/AIPanel.tsx",
+      "line": 1695
+    },
+    {
+      "path": "apps/web/src/components/AIPanel.tsx",
+      "line": 1754
+    },
+    {
+      "path": "apps/web/src/components/AssetLibrary.tsx",
+      "line": 211
+    },
+    {
+      "path": "apps/web/src/components/AssetLibrary.tsx",
+      "line": 955
+    },
+    {
+      "path": "apps/web/src/components/AssetLibrary.tsx",
+      "line": 987
+    },
+    {
+      "path": "apps/web/src/components/AssetTools.tsx",
+      "line": 183
+    },
+    {
+      "path": "apps/web/src/components/AssetTools.tsx",
+      "line": 433
+    },
+    {
+      "path": "apps/web/src/components/AssetTools.tsx",
+      "line": 690
+    },
+    {
+      "path": "apps/web/src/components/ConfirmationDialog.tsx",
+      "line": 108
+    },
+    {
+      "path": "apps/web/src/components/DrawingBoard.tsx",
+      "line": 341
+    },
+    {
+      "path": "apps/web/src/components/ImportSettings.tsx",
+      "line": 79
+    },
+    {
+      "path": "apps/web/src/components/MediaImportDialog.tsx",
+      "line": 283
+    },
+    {
+      "path": "apps/web/src/components/ProjectDialogs.tsx",
+      "line": 63
+    },
+    {
+      "path": "apps/web/src/components/ProjectDialogs.tsx",
+      "line": 244
+    },
+    {
+      "path": "apps/web/src/components/ProjectDialogs.tsx",
+      "line": 620
+    },
+    {
+      "path": "apps/web/src/components/ProjectDialogs.tsx",
+      "line": 905
+    },
+    {
+      "path": "apps/web/src/components/ProjectDialogs.tsx",
+      "line": 1026
+    },
+    {
+      "path": "apps/web/src/components/RevisionTools.tsx",
+      "line": 502
+    },
+    {
+      "path": "apps/web/src/components/WorkspaceViews.tsx",
+      "line": 550
+    },
+    {
+      "path": "apps/web/src/resources/ResourceSearch.tsx",
+      "line": 170
+    },
+    {
+      "path": "apps/web/src/resources/ResourceSearch.tsx",
+      "line": 571
+    },
+    {
+      "path": "apps/web/src/restoration/RestorationDialog.tsx",
+      "line": 331
+    },
+    {
+      "path": "apps/web/src/usage/UsageJob.tsx",
+      "line": 512
+    },
+    {
+      "path": "apps/web/src/workspace/CommandMenu.tsx",
+      "line": 88
+    },
+    {
+      "path": "apps/web/src/workspace/WorkspaceNavigation.tsx",
+      "line": 29
+    },
+    {
+      "path": "apps/web/src/workspace/WorkspaceNavigation.tsx",
+      "line": 74
+    }
+  ]
+}

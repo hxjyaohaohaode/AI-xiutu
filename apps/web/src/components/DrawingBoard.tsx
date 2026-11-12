@@ -16,7 +16,7 @@ import {
   CopySimple,
   CaretUp,
   CaretDown,
-} from '@phosphor-icons/react';
+} from './ControlGlyph';
 import { downloadBlob, errorMessage } from '../lib/api';
 import { Busy, IconButton, InlineError, Modal } from './Ui';
 import { usePresence } from '../motion/usePresence';
@@ -394,21 +394,23 @@ export function DrawingBoard({
                 <ArrowClockwise size={20} />
               </IconButton>
             </div>
-            <ChoiceSelect
-              ariaLabel={t('草图画幅')}
-              className="drawing-ratio"
-              size="compact"
-              value={ratio}
-              disabled={busy}
-              onValueChange={(value) => {
-                void changeRatio(value);
-              }}
-              options={[
-                { value: 'square', label: t('1:1 方形') },
-                { value: 'landscape', label: t('3:2 横向') },
-                { value: 'portrait', label: t('2:3 竖向') },
-              ]}
-            />
+            <div data-qa="sketch-ratio">
+              <ChoiceSelect
+                ariaLabel={t('草图画幅')}
+                className="drawing-ratio"
+                size="compact"
+                value={ratio}
+                disabled={busy}
+                onValueChange={(value) => {
+                  void changeRatio(value);
+                }}
+                options={[
+                  { value: 'square', label: t('1:1 方形') },
+                  { value: 'landscape', label: t('3:2 横向') },
+                  { value: 'portrait', label: t('2:3 竖向') },
+                ]}
+              />
+            </div>
             <IconButton
               label={t('清空草图')}
               disabled={busy || !items.length}
@@ -420,27 +422,29 @@ export function DrawingBoard({
             </IconButton>
           </div>
           <div className="drawing-toolbar">
-            <ChoiceSelect
-              ariaLabel={t('草图添加元素')}
-              size="compact"
-              value={tool}
-              disabled={busy}
-              onValueChange={(value) => setTool(value as Tool)}
-              options={[
-                { value: 'pencil', label: t('铅笔') },
-                { value: 'erase', label: t('橡皮擦') },
-                { value: 'select', label: t('选择草图元素') },
-                { value: 'rectangle', label: t('矩形') },
-                { value: 'rounded', label: t('圆角矩形') },
-                { value: 'ellipse', label: t('椭圆') },
-                { value: 'triangle', label: t('三角形') },
-                { value: 'diamond', label: t('菱形') },
-                { value: 'line', label: t('直线') },
-                { value: 'arrow', label: t('箭头') },
-                { value: 'text', label: t('文字') },
-                { value: 'icon', label: t('图标') },
-              ]}
-            />
+            <div data-qa="sketch-tool">
+              <ChoiceSelect
+                ariaLabel={t('草图添加元素')}
+                size="compact"
+                value={tool}
+                disabled={busy}
+                onValueChange={(value) => setTool(value as Tool)}
+                options={[
+                  { value: 'pencil', label: t('铅笔') },
+                  { value: 'erase', label: t('橡皮擦') },
+                  { value: 'select', label: t('选择草图元素') },
+                  { value: 'rectangle', label: t('矩形') },
+                  { value: 'rounded', label: t('圆角矩形') },
+                  { value: 'ellipse', label: t('椭圆') },
+                  { value: 'triangle', label: t('三角形') },
+                  { value: 'diamond', label: t('菱形') },
+                  { value: 'line', label: t('直线') },
+                  { value: 'arrow', label: t('箭头') },
+                  { value: 'text', label: t('文字') },
+                  { value: 'icon', label: t('图标') },
+                ]}
+              />
+            </div>
             {!!projectImages?.length && readProjectImage && (
               <ChoiceSelect
                 ariaLabel={t('添加项目图片到草图')}

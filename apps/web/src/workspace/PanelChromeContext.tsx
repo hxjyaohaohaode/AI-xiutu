@@ -5,6 +5,8 @@ export const PanelChromeContext = createContext<{
   maximized: boolean;
   openLayout: () => void;
   toggleMaximized: () => void;
+  /** A phone tool can share the chrome row instead of adding another navigation row. */
+  headerTarget?: HTMLElement | null;
 } | null>(null);
 
 export const usePanelChrome = () => useContext(PanelChromeContext);

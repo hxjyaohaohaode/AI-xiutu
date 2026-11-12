@@ -8,6 +8,7 @@ import {
   type EditorRecipe,
 } from '@ai-xiutu/editor';
 import { ColorPicker } from '../components/ColorPicker';
+import { ChoiceSelect } from '../components/ChoiceSelect';
 import { rgba, hsv } from '../components/color-model';
 import { secureUuid } from '../lib/uuid';
 import { CurveEditor } from './CurveEditor';
@@ -97,13 +98,14 @@ export function ColorControls({
     ...definition,
     value: numericAt(color, definition.path),
     integer: definition.unit === 'seed',
-    gradient: definition.path === 'adjustments.temperature'
-      ? 'linear-gradient(90deg,#85b8f4,#e3e3db,#f0be67)'
-      : definition.path === 'adjustments.tint'
-        ? 'linear-gradient(90deg,#6ccb9a,#e3e3db,#d995d2)'
-        : definition.path.endsWith('.hue')
-          ? 'linear-gradient(90deg,#e35c5c,#e0bd61,#78b87d,#66bac4,#8594d1,#c680b9,#e35c5c)'
-          : undefined,
+    gradient:
+      definition.path === 'adjustments.temperature'
+        ? 'linear-gradient(90deg,#85b8f4,#e3e3db,#f0be67)'
+        : definition.path === 'adjustments.tint'
+          ? 'linear-gradient(90deg,#6ccb9a,#e3e3db,#d995d2)'
+          : definition.path.endsWith('.hue')
+            ? 'linear-gradient(90deg,#e35c5c,#e0bd61,#78b87d,#66bac4,#8594d1,#c680b9,#e35c5c)'
+            : undefined,
     onChange: (value: number) => {
       try {
         const latest = currentV3(editor);
@@ -144,8 +146,63 @@ export function ColorControls({
       onScope?.({ kind: 'region', id: region.id });
     }
   }
+  const compactCategory =
+    family === 'light' ? (
+      <ChoiceSelect
+        size="compact"
+        ariaLabel={t('明暗类别')}
+        value={lightTab}
+        options={[
+          { value: 'light', label: t('影调') },
+          { value: 'levels', label: t('精确色阶') },
+        ]}
+        onValueChange={(value) => {
+          editor.commitCurrent(t('完成当前调整'));
+          setLightTab(value);
+        }}
+      />
+    ) : family === 'color' ? (
+      <ChoiceSelect
+        size="compact"
+        ariaLabel={t('色彩类别')}
+        value={colorTab}
+        options={[
+          { value: 'global', label: t('整体') },
+          { value: 'hsl', label: 'HSL' },
+          { value: 'grading', label: t('分级') },
+          { value: 'palette', label: t('完整色谱') },
+        ]}
+        onValueChange={(value) => {
+          editor.commitCurrent(t('完成当前色彩'));
+          setColorTab(value);
+        }}
+      />
+    ) : family === 'detail' ? (
+      <ChoiceSelect
+        size="compact"
+        ariaLabel={t('细节类别')}
+        value={detailTab}
+        options={[
+          { value: 'detail', label: t('质感') },
+          { value: 'optics', label: t('光学') },
+          { value: 'vignette', label: t('暗角') },
+          { value: 'grain', label: t('颗粒') },
+          { value: 'effects', label: t('风格') },
+        ]}
+        onValueChange={(value) => {
+          editor.commitCurrent(t('完成当前细节'));
+          setDetailTab(value);
+        }}
+      />
+    ) : null;
   return (
-    <section className="color-controls-v3" data-motion="color-family">
+    <section
+      className="color-controls-v3"
+      data-motion="color-family"
+      data-primary-controls={
+        (family !== 'curves' && !(family === 'color' && colorTab === 'palette')) || undefined
+      }
+    >
       {family !== 'detail' && (
         <MotionDetails className="advanced-disclosure histogram-disclosure">
           <summary aria-label={t('查看明度与 RGB 分布')}>{t('直方图')}</summary>
@@ -153,7 +210,7 @@ export function ColorControls({
         </MotionDetails>
       )}
       {family === 'light' && (
-        <div className="tonal-tabs" aria-label={t('明暗类别')}>
+        <div className="tonal-tabs color-family-tabs" aria-label={t('明暗类别')}>
           {(
             [
               ['light', t('影调')],
@@ -175,7 +232,7 @@ export function ColorControls({
       )}
       {family === 'color' && (
         <>
-          <div className="tonal-tabs" aria-label={t('色彩类别')}>
+          <div className="tonal-tabs color-family-tabs" aria-label={t('色彩类别')}>
             {(
               [
                 ['global', t('整体')],
@@ -277,7 +334,7 @@ export function ColorControls({
         </>
       )}
       {family === 'detail' && (
-        <div className="tonal-tabs" aria-label={t('细节类别')}>
+        <div className="tonal-tabs color-family-tabs" aria-label={t('细节类别')}>
           {(
             [
               ['detail', t('清晰与肌理')],
@@ -341,6 +398,7 @@ export function ColorControls({
             }
             label={t('图像参数')}
             controls={controls}
+            headingAccessory={compactCategory}
             onCommit={(label) => editor.commitCurrent(t('调整{v0}', { v0: t(label) }))}
             onCancel={editor.cancelPreview}
           />

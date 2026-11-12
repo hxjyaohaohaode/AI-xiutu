@@ -11,7 +11,6 @@ import {
   SlidersHorizontal,
   Receipt,
   Plus,
-  Check,
   Copy,
   MagnifyingGlass,
   ArrowClockwise,
@@ -19,6 +18,9 @@ import {
 } from '@phosphor-icons/react';
 import { api, ApiError, errorMessage, formatDate, jsonRequest } from '../lib/api';
 import { Busy, IconButton, InlineError } from './Ui';
+import { StatusMark } from './StatusMark';
+import { CheckControl } from './CheckControl';
+import { SquishSwitch } from './control-motion';
 import { FeatureSkeleton } from './DeferredFeature';
 import { OpsReadCoordinator } from './ops-read';
 import type { Asset, Project, PublicConfig, User } from '../lib/types';
@@ -161,7 +163,10 @@ export function OpsDashboard({
   });
   const [modelEdit, setModelEdit] = useState<(ModelConfig & { baseId?: string }) | null>(null);
   const modelFields = modelEdit
-    ? opsModelFields(modelEdit, providerCatalog.find((model) => model.id === modelEdit.id)?.parameterCapabilities)
+    ? opsModelFields(
+        modelEdit,
+        providerCatalog.find((model) => model.id === modelEdit.id)?.parameterCapabilities,
+      )
     : null;
   const [managedProjects, setManagedProjects] = useState<Project[]>([]);
   const [logoProject, setLogoProject] = useState('');
@@ -324,6 +329,8 @@ export function OpsDashboard({
           {tabs.map((item) => (
             <button
               key={item.id}
+              data-ops-nav={item.id}
+              aria-current={tab === item.id ? 'page' : undefined}
               className={tab === item.id ? 'selected' : ''}
               onClick={() => {
                 if (item.id === tab) return;
@@ -339,7 +346,12 @@ export function OpsDashboard({
           ))}
         </nav>
       </aside>
-      <main className="ops-content">
+      <main
+        className="ops-content"
+        data-ops-tab={tab}
+        data-read-state={loading ? 'loading' : readReady ? 'ready' : 'error'}
+        aria-busy={loading}
+      >
         <div className="view-heading">
           <div>
             <h1>{t(tabs.find((item) => item.id === tab)?.label ?? '')}</h1>
@@ -351,8 +363,7 @@ export function OpsDashboard({
         <InlineError message={error} />
         {success && (
           <div className="success-note" role="status">
-            <Check size={17} />
-            {t(success)}
+            <StatusMark state="done" size="small" label={t(success)} />
           </div>
         )}
         {tab === 'users' && (
@@ -425,7 +436,6 @@ export function OpsDashboard({
                         </div>
                       ))}
                   </div>
-                  
                 </section>
               </>
             )}
@@ -513,7 +523,7 @@ export function OpsDashboard({
                       />
                     </label>
                   </div>
-                  
+
                   <button
                     className="button button-secondary"
                     disabled={busy || reason.trim().length < 3}
@@ -624,15 +634,24 @@ export function OpsDashboard({
                               `/projects/${projectId}/assets`,
                               { method: 'POST', body: form },
                             );
-                            if (!mounted.current || currentTab.current !== 'config' || owner !== logoUploadOwner.current) return;
-                            setConfig((current) => current ? {
-                              ...current,
-                              brand: {
-                                ...current.brand,
-                                logoAssetId: result.asset.id,
-                                logoUrl: result.asset.url,
-                              },
-                            } : current);
+                            if (
+                              !mounted.current ||
+                              currentTab.current !== 'config' ||
+                              owner !== logoUploadOwner.current
+                            )
+                              return;
+                            setConfig((current) =>
+                              current
+                                ? {
+                                    ...current,
+                                    brand: {
+                                      ...current.brand,
+                                      logoAssetId: result.asset.id,
+                                      logoUrl: result.asset.url,
+                                    },
+                                  }
+                                : current,
+                            );
                           },
                           t('图标已上传；点击保存配置后才公开显示。'),
                           false,
@@ -672,7 +691,7 @@ export function OpsDashboard({
                     required
                   />
                 </label>
-                
+
                 {reasonField}
                 <button
                   className="button button-primary"
@@ -725,7 +744,7 @@ export function OpsDashboard({
               <>
                 <section className="surface ops-section">
                   <h2>{t('套餐目录')}</h2>
-                  
+
                   {plans.map((plan) => (
                     <div className="plan-row" key={plan.id}>
                       <div>
@@ -874,7 +893,7 @@ export function OpsDashboard({
                       {t('添加模型')}
                     </button>
                   </div>
-                  
+
                   {!!providerCatalog.length && (
                     <Disclosure
                       title={t('从已核验的模型档案添加')}
@@ -925,7 +944,6 @@ export function OpsDashboard({
                           ]}
                         />
                       </label>
-                      
                     </Disclosure>
                   )}
                   {models.map((model) => (
@@ -973,40 +991,37 @@ export function OpsDashboard({
                         allowedQualities,
                         imageUnitCosts,
                       } = modelEdit;
-                      void action(
-                        async () => {
-                          try {
-                            const { model } = await api<{ model: ModelConfig }>(
-                              `/ops/models/${encodeURIComponent(id)}`,
-                              jsonRequest('PUT', {
-                                expectedVersion: modelEdit.baseId === id ? modelEdit.version : 0,
-                                label,
-                                provider,
-                                operations,
-                                enabled,
-                                minWidth,
-                                maxWidth,
-                                minHeight,
-                                maxHeight,
-                                maxOutputs,
-                                unitCost,
-                                allowedQualities,
-                                ...(imageUnitCosts ? { imageUnitCosts } : {}),
-                                reason,
-                              }),
+                      void action(async () => {
+                        try {
+                          const { model } = await api<{ model: ModelConfig }>(
+                            `/ops/models/${encodeURIComponent(id)}`,
+                            jsonRequest('PUT', {
+                              expectedVersion: modelEdit.baseId === id ? modelEdit.version : 0,
+                              label,
+                              provider,
+                              operations,
+                              enabled,
+                              minWidth,
+                              maxWidth,
+                              minHeight,
+                              maxHeight,
+                              maxOutputs,
+                              unitCost,
+                              allowedQualities,
+                              ...(imageUnitCosts ? { imageUnitCosts } : {}),
+                              reason,
+                            }),
+                          );
+                          if (mounted.current && currentTab.current === tab)
+                            setModelEdit((current) =>
+                              current === modelEdit ? { ...model, baseId: model.id } : current,
                             );
-                            if (mounted.current && currentTab.current === tab)
-                              setModelEdit((current) =>
-                                current === modelEdit ? { ...model, baseId: model.id } : current,
-                              );
-                          } catch (error) {
-                            if (error instanceof ApiError && error.code === 'MODEL_CONFIG_CHANGED')
-                              await load();
-                            throw error;
-                          }
-                        },
-                        t('模型目录配置已更新'),
-                      );
+                        } catch (error) {
+                          if (error instanceof ApiError && error.code === 'MODEL_CONFIG_CHANGED')
+                            await load();
+                          throw error;
+                        }
+                      }, t('模型目录配置已更新'));
                     }}
                   >
                     <h2>{modelEdit.label || t('新模型目录项')}</h2>
@@ -1050,26 +1065,25 @@ export function OpsDashboard({
                             ['transcribe', t('语音识别')],
                           ]
                       ).map(([operation, label]) => (
-                        <label key={operation}>
-                          <input
-                            type="checkbox"
-                            checked={(modelEdit.operations ?? ['edit-plan']).includes(
-                              operation as ModelConfig['operations'][number],
-                            )}
-                            onChange={(e) => {
-                              const nextOperation = operation as ModelConfig['operations'][number];
-                              setModelEdit({
-                                ...modelEdit,
-                                operations: e.target.checked
-                                  ? [...(modelEdit.operations ?? []), nextOperation]
-                                  : (modelEdit.operations ?? []).filter(
-                                      (value) => value !== nextOperation,
-                                    ),
-                              });
-                            }}
-                          />
-                          {label}
-                        </label>
+                        <CheckControl
+                          key={operation}
+                          label={label}
+                          disabled={busy}
+                          checked={(modelEdit.operations ?? ['edit-plan']).includes(
+                            operation as ModelConfig['operations'][number],
+                          )}
+                          onChange={(e) => {
+                            const nextOperation = operation as ModelConfig['operations'][number];
+                            setModelEdit({
+                              ...modelEdit,
+                              operations: e.target.checked
+                                ? [...(modelEdit.operations ?? []), nextOperation]
+                                : (modelEdit.operations ?? []).filter(
+                                    (value) => value !== nextOperation,
+                                  ),
+                            });
+                          }}
+                        />
                       ))}
                     </fieldset>
                     <label>
@@ -1088,10 +1102,17 @@ export function OpsDashboard({
                           ['minHeight', t('最小高度')],
                           ['maxHeight', t('最大高度')],
                           ['maxOutputs', t('最大输出数')],
-                          ['unitCost', modelFields?.image ? t('默认每张服务点') : t('每次任务服务点')],
+                          [
+                            'unitCost',
+                            modelFields?.image ? t('默认每张服务点') : t('每次任务服务点'),
+                          ],
                         ] as const
                       )
-                        .filter(([key]) => key === 'unitCost' || (key === 'maxOutputs' ? modelFields?.outputs : modelFields?.sizes))
+                        .filter(
+                          ([key]) =>
+                            key === 'unitCost' ||
+                            (key === 'maxOutputs' ? modelFields?.outputs : modelFields?.sizes),
+                        )
                         .map(([key, label]) => (
                           <label key={key}>
                             <span>{label}</span>
@@ -1099,50 +1120,61 @@ export function OpsDashboard({
                               type="number"
                               value={modelEdit[key]}
                               min={key === 'unitCost' || key === 'maxOutputs' ? 1 : 64}
-                              max={key === 'unitCost' ? 100000 : key === 'maxOutputs' ? modelFields?.maxOutputs : modelFields?.maxDimension}
+                              max={
+                                key === 'unitCost'
+                                  ? 100000
+                                  : key === 'maxOutputs'
+                                    ? modelFields?.maxOutputs
+                                    : modelFields?.maxDimension
+                              }
                               step={1}
                               disabled={busy}
                               required
-                              onChange={(event) => setModelEdit({ ...modelEdit, [key]: Number(event.target.value) })}
+                              onChange={(event) =>
+                                setModelEdit({ ...modelEdit, [key]: Number(event.target.value) })
+                              }
                             />
                           </label>
                         ))}
                     </div>
-                    {!!modelFields?.qualities.length && <div className="parameter-row">
-                      <div className="parameter-label">{t('允许的质量选项')}</div>
-                      <div className="option-chips" role="group" aria-label={t('模型允许质量')}>
-                        {modelFields.qualities.map((quality) => (
-                          <button
-                            type="button"
-                            key={quality}
-                            aria-pressed={modelEdit.allowedQualities.includes(quality)}
-                            disabled={busy}
-                            onClick={() =>
-                              setModelEdit({
-                                ...modelEdit,
-                                allowedQualities: modelEdit.allowedQualities.includes(quality)
-                                  ? modelEdit.allowedQualities.filter((value) => value !== quality)
-                                  : [...modelEdit.allowedQualities, quality],
-                              })
-                            }
-                          >
-                            {
-                              (
-                                {
-                                  auto: t('自动'),
-                                  low: t('低'),
-                                  medium: t('中'),
-                                  high: t('高'),
-                                  xhigh: t('超高'),
-                                  max: t('最高'),
-                                } as Record<string, string>
-                              )[quality]
-                            }
-                          </button>
-                        ))}
+                    {!!modelFields?.qualities.length && (
+                      <div className="parameter-row">
+                        <div className="parameter-label">{t('允许的质量选项')}</div>
+                        <div className="option-chips" role="group" aria-label={t('模型允许质量')}>
+                          {modelFields.qualities.map((quality) => (
+                            <button
+                              type="button"
+                              key={quality}
+                              aria-pressed={modelEdit.allowedQualities.includes(quality)}
+                              disabled={busy}
+                              onClick={() =>
+                                setModelEdit({
+                                  ...modelEdit,
+                                  allowedQualities: modelEdit.allowedQualities.includes(quality)
+                                    ? modelEdit.allowedQualities.filter(
+                                        (value) => value !== quality,
+                                      )
+                                    : [...modelEdit.allowedQualities, quality],
+                                })
+                              }
+                            >
+                              {
+                                (
+                                  {
+                                    auto: t('自动'),
+                                    low: t('低'),
+                                    medium: t('中'),
+                                    high: t('高'),
+                                    xhigh: t('超高'),
+                                    max: t('最高'),
+                                  } as Record<string, string>
+                                )[quality]
+                              }
+                            </button>
+                          ))}
+                        </div>
                       </div>
-                      
-                    </div>}
+                    )}
                     {modelFields?.image && (
                       <Disclosure
                         title={t('按质量设置每张服务点')}
@@ -1151,22 +1183,18 @@ export function OpsDashboard({
                       >
                         {modelEdit.allowedQualities.map((quality) => (
                           <div className="quality-cost-row" key={quality}>
-                            <label className="switch-row">
-                              <span>
-                                {quality} {t('独立价格')}
-                              </span>
-                              <input
-                                type="checkbox"
-                                checked={modelEdit.imageUnitCosts?.[quality] !== undefined}
-                                disabled={busy}
-                                onChange={(event) => {
-                                  const next = { ...modelEdit.imageUnitCosts };
-                                  if (event.target.checked) next[quality] = modelEdit.unitCost;
-                                  else delete next[quality];
-                                  setModelEdit({ ...modelEdit, imageUnitCosts: next });
-                                }}
-                              />
-                            </label>
+                            <SquishSwitch
+                              className="ops-switch"
+                              label={`${quality} ${t('独立价格')}`}
+                              checked={modelEdit.imageUnitCosts?.[quality] !== undefined}
+                              disabled={busy}
+                              onCheckedChange={(checked) => {
+                                const next = { ...modelEdit.imageUnitCosts };
+                                if (checked) next[quality] = modelEdit.unitCost;
+                                else delete next[quality];
+                                setModelEdit({ ...modelEdit, imageUnitCosts: next });
+                              }}
+                            />
                             {modelEdit.imageUnitCosts?.[quality] !== undefined && (
                               <ValueSlider
                                 label={quality + t(' 每张服务点')}
@@ -1187,17 +1215,15 @@ export function OpsDashboard({
                             )}
                           </div>
                         ))}
-                        
                       </Disclosure>
                     )}
-                    <label className="switch-row">
-                      <span>{t('启用目录项')}</span>
-                      <input
-                        type="checkbox"
-                        checked={modelEdit.enabled}
-                        onChange={(e) => setModelEdit({ ...modelEdit, enabled: e.target.checked })}
-                      />
-                    </label>
+                    <SquishSwitch
+                      className="ops-switch"
+                      label={t('启用目录项')}
+                      checked={modelEdit.enabled}
+                      disabled={busy}
+                      onCheckedChange={(enabled) => setModelEdit({ ...modelEdit, enabled })}
+                    />
                     {reasonField}
                     <button
                       className="button button-primary"
@@ -1222,13 +1248,15 @@ export function OpsDashboard({
             {tab === 'audit' && (
               <div className="surface ops-section">
                 <h2>{t('最新操作记录')}</h2>
-                
+
                 {entries.length ? (
                   <div className="audit-list">
                     {entries.map((entry) => (
                       <article key={entry.id}>
                         <div>
-                          <strong>{t(auditLabels[entry.action ?? entry.type ?? ''] ?? '管理操作')}</strong>
+                          <strong>
+                            {t(auditLabels[entry.action ?? entry.type ?? ''] ?? '管理操作')}
+                          </strong>
                           <time>{formatDate(entry.createdAt)}</time>
                         </div>
                         <p>
@@ -1239,10 +1267,21 @@ export function OpsDashboard({
                         <details className="ops-audit-detail">
                           <summary>{t('记录')}</summary>
                           <dl>
-                            <div><dt>ID</dt><dd>{entry.id}</dd></div>
-                            <div><dt>{t('操作')}</dt><dd>{entry.action ?? entry.type ?? '—'}</dd></div>
+                            <div>
+                              <dt>ID</dt>
+                              <dd>{entry.id}</dd>
+                            </div>
+                            <div>
+                              <dt>{t('操作')}</dt>
+                              <dd>{entry.action ?? entry.type ?? '—'}</dd>
+                            </div>
                             {(entry.targetId || entry.entityId) && (
-                              <div><dt>{t('目标')}</dt><dd>{entry.targetType} {entry.targetId ?? entry.entityId}</dd></div>
+                              <div>
+                                <dt>{t('目标')}</dt>
+                                <dd>
+                                  {entry.targetType} {entry.targetId ?? entry.entityId}
+                                </dd>
+                              </div>
                             )}
                           </dl>
                         </details>

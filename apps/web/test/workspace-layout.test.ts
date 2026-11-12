@@ -151,13 +151,13 @@ test('a 339px saved phone sheet preserves the complete exclusion area at both 32
   // still count against actual photo pixels; resizing never silently overlays.
   assert.deepEqual(canvasImageArea(smaller, { left: 0, right: 0, bottom: 409 }), {
     width: 296,
-    height: 114,
+    height: 153,
   });
   assert.equal(panelOverlayReason(narrowed, smaller), null);
   assert.equal(panelNeedsPhotoSpace(narrowed, smaller), true);
   const safeInsets = workspaceCanvasInsets(narrowed, smaller);
   assert.deepEqual(safeInsets, { left: 0, right: 0, bottom: 409 });
-  assert.deepEqual(canvasImageArea(smaller, safeInsets), { width: 296, height: 114 });
+  assert.deepEqual(canvasImageArea(smaller, safeInsets), { width: 296, height: 153 });
   assert.ok(
     workspaceSize(smaller).height - safeInsets.bottom < panelRectangle(narrowed, smaller).y,
   );
@@ -168,7 +168,7 @@ test('a 339px saved phone sheet preserves the complete exclusion area at both 32
   assert.deepEqual(workspaceCanvasInsets(larger, phone), { left: 0, right: 0, bottom: 409 });
   assert.deepEqual(canvasImageArea(phone, workspaceCanvasInsets(larger, phone)), {
     width: 366,
-    height: 258,
+    height: 297,
   });
   assert.equal(requested.width, 368);
   assert.equal(requested.height, 339);
@@ -189,13 +189,24 @@ test('fresh phone defaults reserve photo pixels without beginning in overlay', (
       assert.ok(photo.width >= 296);
     }
   }
-  assert.equal(
-    defaultPanel('inspector', { width: 320, height: 700, bucket: 'phone' }).height,
-    284.24,
-  );
+  assert.equal(defaultPanel('inspector', { width: 320, height: 700, bucket: 'phone' }).height, 208);
   assert.equal(defaultPanel('ai', { width: 320, height: 700, bucket: 'phone' }).height, 293);
-  assert.equal(defaultPanel('inspector', phone).height, 288);
+  assert.equal(defaultPanel('inspector', phone).height, 208);
   assert.equal(defaultPanel('ai', phone).height, 390);
+  const shortPhone: Viewport = {
+    width: 320,
+    height: 568,
+    bucket: 'phone',
+    workspaceHeight: 518,
+    toolShelfHeight: 58,
+  };
+  const compact = defaultPanel('inspector', shortPhone);
+  assert.ok(compact.height >= 176, 'four independent 44px targets fit the compact editor');
+  assert.ok(
+    canvasImageArea(shortPhone, workspaceCanvasInsets(compact, shortPhone)).height >= 180,
+    'the short-phone default reserves at least 180px of fit area for the photograph',
+  );
+  assert.equal(panelOverlayReason(compact, shortPhone), null);
 });
 
 test('phone Edit and manual resize retain enough panel height for a visible active control', () => {
@@ -208,10 +219,10 @@ test('phone Edit and manual resize retain enough panel height for a visible acti
       const restored = restorePanelForEditing({ ...tiny, presentation }, view, 'inspector');
       assert.equal(restored.presentation, 'normal');
       assert.ok(
-        restored.height >= 260,
+        restored.height >= 176,
         'editing recovers space for the active range and parameter rail',
       );
-      if (view.width === 390) assert.ok(restored.height >= 280 && restored.height <= 300);
+      if (view.width === 390) assert.ok(restored.height >= 200 && restored.height <= 216);
       assert.ok(canvasImageArea(view, workspaceCanvasInsets(restored, view)).height >= 160);
       assert.equal(
         resizePanel(restored, 'n', 0, 10_000, view, 'inspector').height,
@@ -239,11 +250,11 @@ test('phone Edit and manual resize retain enough panel height for a visible acti
 test('low-room guidance uses actual fit space without changing composition or limiting manual sizes', () => {
   const view: Viewport = { width: 320, height: 700, bucket: 'phone' };
   const panel = defaultPanel('inspector', view);
-  assert.equal(panelNeedsPhotoSpace({ ...panel, height: 293 }, view), false);
-  assert.equal(panelNeedsPhotoSpace({ ...panel, height: 294 }, view), true);
-  assert.equal(panelOverlayReason({ ...panel, height: 294 }, view), null);
-  const enlarged = resizePanel({ ...panel, height: 293 }, 'n', 0, -46, view);
-  assert.equal(enlarged.height, 339);
+  assert.equal(panelNeedsPhotoSpace({ ...panel, height: 332 }, view), false);
+  assert.equal(panelNeedsPhotoSpace({ ...panel, height: 333 }, view), true);
+  assert.equal(panelOverlayReason({ ...panel, height: 333 }, view), null);
+  const enlarged = resizePanel({ ...panel, height: 332 }, 'n', 0, -46, view);
+  assert.equal(enlarged.height, 378);
   assert.equal(panelNeedsPhotoSpace(enlarged, view), true);
   assert.equal(panelOverlayReason(enlarged, view), null);
   assert.equal(
@@ -283,24 +294,24 @@ test('320px quick photo view preserves the requested 339px panel and keeps fitte
   assert.deepEqual(workspaceCanvasInsets(collapsed, view), { left: 0, right: 0, bottom: 114 });
   assert.deepEqual(canvasImageArea(view, workspaceCanvasInsets(collapsed, view)), {
     width: 296,
-    height: 409,
+    height: 448,
   });
   assert.deepEqual(panelRectangle(restored, view), panelRectangle(normal, view));
   assert.deepEqual(normal, before);
 
-  // Match the real phone viewport's 51px top / 48px bottom chrome and centered
+  // Match the compact phone viewport's 6px top / 54px bottom chrome and centered
   // contain fit. A larger fit box is useful only if the actual photo does not
   // intersect the visible panel. This catches the previous automatic-overlay bug.
   for (const panel of [defaultPanel('inspector', view), normal, collapsed, restored]) {
     const inset = workspaceCanvasInsets(panel, view);
     const area = canvasImageArea(view, inset);
-    const viewportHeight = workspaceSize(view).height - inset.bottom - 51 - 48;
+    const viewportHeight = workspaceSize(view).height - inset.bottom - 6 - 54;
     const panelTop = panelRectangle(panel, view).y;
     assert.ok(area.height > 0);
     for (const aspect of [3 / 2, 2 / 3, 1, 16 / 9]) {
       const photoHeight = Math.min(area.height, area.width / aspect);
-      const photoTop = 51 + (viewportHeight - photoHeight) / 2;
-      assert.ok(photoTop >= 51);
+      const photoTop = 6 + (viewportHeight - photoHeight) / 2;
+      assert.ok(photoTop >= 6);
       assert.ok(
         photoTop + photoHeight < panelTop,
         `${panel.presentation}/${aspect} intersects panel`,
@@ -445,10 +456,19 @@ test('layout parsing repairs unavailable display modes and rejects corrupt old p
 
 test('restoring old 112px inspector preferences restores an editable panel without changing the saved input', () => {
   for (const view of [phone, desktop]) {
-    const input = { theme: 'light', panels: { inspector: { ...defaultPanel('inspector', view), height: 112 }, ai: defaultPanel('ai', view) } };
+    const input = {
+      theme: 'light',
+      panels: {
+        inspector: { ...defaultPanel('inspector', view), height: 112 },
+        ai: defaultPanel('ai', view),
+      },
+    };
     const restored = parseWorkspaceLayout(JSON.stringify(input), view);
     assert.equal(restored.panels.inspector.height, defaultPanel('inspector', view).height);
-    assert.ok(restored.panels.inspector.height >= panelBounds(view, restored.panels.inspector.dock, 'inspector').minHeight);
+    assert.ok(
+      restored.panels.inspector.height >=
+        panelBounds(view, restored.panels.inspector.dock, 'inspector').minHeight,
+    );
     assert.equal(input.panels.inspector.height, 112);
   }
 });

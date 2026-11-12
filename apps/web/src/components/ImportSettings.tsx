@@ -78,7 +78,6 @@ export function ImportSettings({
   return (
     <Modal
       title={t('图片导入与分辨率')}
-      subtitle={t('原图保留。更高的资源预算需要你明确选择。')}
       onClose={onClose}
       canClose={() => !locked.current}
       className="studio-dialog import-dialog"
@@ -121,21 +120,8 @@ export function ImportSettings({
             v1: limits.maxDimension,
           })}
         </p>
-        <p className="resource-budget-note">
-          {t(
-            '选择的上限不是设备性能保证。分块处理减少中间缓冲，但解码、原始像素和导出仍至少可能占用约',
-          )}{' '}
-          {Math.ceil((limits.maxPixels * 12) / 1024 / 1024)}{' '}
-          {t('MiB，另有浏览器与编码器开销。内存不足时请降低预算或使用较小副本。当前本地文件上限')}{' '}
-          {Math.round(MAX_LOCAL_FILE_BYTES / 1024 / 1024)} MiB。
-        </p>
-        <p className="fine-print">
-          {t(
-            '本地按文件内容识别 JPEG / PNG / WebP / 静态 GIF / BMP / AVIF，仍受浏览器解码支持及头部检查限制。TIFF、特殊AVIF或无法本地验证的格式，可以明确选择服务端规范化。',
-          )}
-        </p>
         {file && (
-          <button className="button button-secondary" disabled={busy} onClick={() => void retry()}>
+          <button className="button button-primary" disabled={busy} onClick={() => void retry()}>
             {busy ? (
               <Busy />
             ) : (
@@ -146,14 +132,26 @@ export function ImportSettings({
             )}
           </button>
         )}
+        <details className="import-constraints">
+          <summary>{t('格式与资源限制')}</summary>
+          <p className="resource-budget-note">
+            {t(
+              '选择的上限不是设备性能保证。分块处理减少中间缓冲，但解码、原始像素和导出仍至少可能占用约',
+            )}{' '}
+            {Math.ceil((limits.maxPixels * 12) / 1024 / 1024)}{' '}
+            {t('MiB，另有浏览器与编码器开销。内存不足时请降低预算或使用较小副本。当前本地文件上限')}{' '}
+            {Math.round(MAX_LOCAL_FILE_BYTES / 1024 / 1024)} MiB。
+          </p>
+          <p className="fine-print">
+            {t(
+              '本地按文件内容识别 JPEG / PNG / WebP / 静态 GIF / BMP / AVIF，仍受浏览器解码支持及头部检查限制。TIFF、特殊AVIF或无法本地验证的格式，可以明确选择服务端规范化。',
+            )}
+          </p>
+        </details>
       </div>
       <section className="server-import-section">
         <h3>{t('原片与专业格式')}</h3>
-        <p>
-          {t(
-            '需要保留高像素原件、色彩档案或专业格式时，使用独立原片导入；编辑器载入工作预览，原件和母版另行保存。',
-          )}
-        </p>
+        <p>{t('原件上传到项目；工作预览用于编辑，原件与母版分别保留。')}</p>
         <button
           className="button button-secondary"
           disabled={busy || (!!project && !canWrite)}
@@ -176,9 +174,7 @@ export function ImportSettings({
         <section className="server-import-section">
           <h3>{t('需要服务端规范化？')}</h3>
           <p>
-            {t(
-              '确认后会把文件上传到当前项目，检查并转为单帧 PNG，保存为一份新作品。不是原文件备份：不保留原编码、EXIF、动画或多页结构；动画及多页文件会拒绝。',
-            )}
+            {t('上传到当前项目并转换为单帧 PNG，不保留原编码或 EXIF。动画和多页文件不支持此方式。')}
           </p>
           <p className="fine-print">
             {t('当前服务端格式：')}

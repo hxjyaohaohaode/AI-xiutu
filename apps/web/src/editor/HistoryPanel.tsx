@@ -1,5 +1,5 @@
 import { useMemo, useState } from 'react';
-import { ArrowClockwise, ArrowCounterClockwise, CaretDown } from '@phosphor-icons/react';
+import { ArrowClockwise, ArrowCounterClockwise, CaretDown } from '../components/ControlGlyph';
 import { formatNumber, t } from '../i18n';
 import { recipeDifferences } from '../ai/recipeDiff';
 import { interactionText } from '../workspace/interaction-copy';

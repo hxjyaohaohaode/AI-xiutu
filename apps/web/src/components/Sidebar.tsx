@@ -1,8 +1,6 @@
+import { useRef } from 'react';
 import { t } from '../i18n';
-import { usePresence } from '../motion/usePresence';
 import {
-  ArrowRight,
-  CaretDown,
   FolderOpen,
   GearSix,
   House,
@@ -10,12 +8,14 @@ import {
   SignIn,
   SignOut,
   UsersThree,
-  X,
   UserCircle,
   LinkSimple,
 } from '@phosphor-icons/react';
 import type { Project, Session, Space } from '../lib/types';
-import { Brand, IconButton } from './Ui';
+import { BrandMark } from './BrandMark';
+import { IconButton, Modal } from './Ui';
+import { useNavigationProximity } from '../workspace/useNavigationProximity';
+import '../workspace/navigation.css';
 
 export function Sidebar({
   brand,
@@ -58,72 +58,69 @@ export function Sidebar({
   onLogout: () => void;
   onOps: () => void;
 }) {
-  const presence = usePresence(open, 'navigation');
-  const personal = session.spaces.find((s) => s.kind === 'personal');
-  const teams = session.spaces.filter((s) => s.kind === 'team');
-  const selectedSpace = session.spaces.find((s) => s.id === spaceId);
+  const main = useRef<HTMLDivElement>(null);
+  const initialFocus = useRef<HTMLButtonElement>(null);
+  const personal = session.spaces.find((space) => space.kind === 'personal');
+  const teams = session.spaces.filter((space) => space.kind === 'team');
+  const selectedSpace = session.spaces.find((space) => space.id === spaceId);
+  const personalSelected = !selectedSpace || selectedSpace.kind === 'personal';
+  const rowsKey = [...session.spaces, ...projects, ...sharedProjects]
+    .map((item) => item.id)
+    .join(':');
+  useNavigationProximity(main, open, rowsKey);
+
   return (
-    <>
-      <button
-        className={`sidebar-scrim ${open ? 'open' : ''}`}
-        aria-label={t('关闭空间导航')}
-        aria-hidden={!open}
-        inert={!open}
-        disabled={!open}
-        onClick={onClose}
-      />
-      <aside
-        className={`sidebar ${open ? 'open' : ''}`}
-        aria-label={t('空间与项目')}
-        data-motion="navigation"
-        data-motion-state={presence.phase}
-        aria-hidden={!open}
-        inert={!open}
-      >
-        <div className="sidebar-brand">
-          <Brand name={brand} logoUrl={logoUrl} />
-          <IconButton className="sidebar-close" label={t('关闭导航')} onClick={onClose}>
-            <X size={20} />
-          </IconButton>
-        </div>
-        <div className="sidebar-main">
-          <div className="nav-section-label">{t('我的空间')}</div>
+    <Modal
+      title={
+        <span className="sidebar-brand-title">
+          <BrandMark logoUrl={logoUrl} />
+          <span>{brand}</span>
+        </span>
+      }
+      className="sidebar-navigation-modal"
+      profile="navigation"
+      open={open}
+      keepMounted
+      initialFocusRef={initialFocus}
+      onClose={onClose}
+    >
+      <div ref={main} className="sidebar-main" aria-label={t('空间与项目')}>
+        <section className="sidebar-section">
+          <h3 className="nav-section-label">{t('我的空间')}</h3>
           <button
-            data-motion="space-row"
-            className={`space-row ${!selectedSpace || selectedSpace.kind === 'personal' ? 'selected' : ''}`}
+            ref={!selectedProject ? initialFocus : undefined}
+            type="button"
+            data-nav-row
+            className={`space-row ${personalSelected ? 'selected' : ''}`}
+            aria-current={personalSelected ? 'true' : undefined}
             onClick={() => onSpace(personal ?? null)}
           >
-            <span className="space-avatar personal">
-              <House
-                size={19}
-                weight={!selectedSpace || selectedSpace.kind === 'personal' ? 'fill' : 'regular'}
-              />
-            </span>
-            <span>
-              {personal?.name ?? t('个人创作')}
-              <small>{session.user ? t('个人项目与素材') : t('本地编辑工作台')}</small>
-            </span>
-            {(!selectedSpace || selectedSpace.kind === 'personal') && (
-              <i className="selection-dot" />
-            )}
+            <span className="sidebar-row-marker" aria-hidden="true" />
+            <House size={19} />
+            <span className="sidebar-row-name">{personal?.name ?? t('个人创作')}</span>
           </button>
-          <div className="nav-section-label section-spaced">
-            {t('共同创作')}
-            <IconButton label={t('创建团队空间')} onClick={session.user ? onNewTeam : onAuth}>
-              <Plus size={16} />
-            </IconButton>
+        </section>
+        <section className="sidebar-section">
+          <div className="nav-section-heading">
+            <h3 className="nav-section-label">{t('共同创作')}</h3>
+            {!!teams.length && (
+              <IconButton label={t('创建团队空间')} onClick={session.user ? onNewTeam : onAuth}>
+                <Plus size={17} />
+              </IconButton>
+            )}
           </div>
           {teams.map((space) => (
             <button
+              type="button"
               key={space.id}
-              data-motion="space-row"
+              data-nav-row
               className={`space-row ${spaceId === space.id ? 'selected' : ''}`}
+              aria-current={spaceId === space.id ? 'true' : undefined}
               onClick={() => onSpace(space)}
             >
-              <span className="space-avatar team">
-                <UsersThree size={20} />
-              </span>
-              <span>
+              <span className="sidebar-row-marker" aria-hidden="true" />
+              <UsersThree size={19} />
+              <span className="sidebar-row-name">
                 {space.name}
                 <small>
                   {space.role === 'owner'
@@ -137,115 +134,133 @@ export function Sidebar({
                           : t('共同创作者')}
                 </small>
               </span>
-              {spaceId === space.id && <i className="selection-dot" />}
             </button>
           ))}
           {!teams.length && (
-            <div className="team-empty">
-              <span>{t('创建团队，共享项目与素材。')}</span>
-              <button onClick={session.user ? onNewTeam : onAuth}>
-                {t('创建团队')}
-                <ArrowRight size={13} />
-              </button>
-            </div>
+            <button
+              className="sidebar-text-action"
+              type="button"
+              onClick={session.user ? onNewTeam : onAuth}
+            >
+              <Plus size={17} />
+              {t('创建团队')}
+            </button>
           )}
-          <button className="sidebar-text-action" onClick={session.user ? onJoinTeam : onAuth}>
-            <LinkSimple size={16} />
+          <button
+            className="sidebar-text-action"
+            type="button"
+            onClick={session.user ? onJoinTeam : onAuth}
+          >
+            <LinkSimple size={17} />
             {t('使用团队邀请码')}
           </button>
-          <div className="sidebar-divider" />
-          <div className="nav-section-label">
-            {t('当前空间的项目')}
-            <IconButton label={t('新建项目')} onClick={session.user ? onNewProject : onAuth}>
-              <Plus size={16} />
-            </IconButton>
+        </section>
+        <section className="sidebar-section">
+          <div className="nav-section-heading">
+            <h3 className="nav-section-label">{t('项目')}</h3>
+            {!!projects.length && (
+              <IconButton label={t('新建项目')} onClick={session.user ? onNewProject : onAuth}>
+                <Plus size={17} />
+              </IconButton>
+            )}
           </div>
           {projects.length ? (
             <nav className="project-list" aria-label={t('项目')}>
               {projects.map((project) => (
                 <button
-                  data-motion="project-row"
+                  ref={selectedProject?.id === project.id ? initialFocus : undefined}
+                  type="button"
+                  data-nav-row
                   className={selectedProject?.id === project.id ? 'selected' : ''}
+                  aria-current={selectedProject?.id === project.id ? 'page' : undefined}
                   key={project.id}
                   onClick={() => onProject(project)}
                 >
-                  <FolderOpen size={17} />
-                  <span>{project.title}</span>
+                  <span className="sidebar-row-marker" aria-hidden="true" />
+                  <FolderOpen size={19} />
+                  <span className="sidebar-row-name">{project.title}</span>
                 </button>
               ))}
             </nav>
           ) : (
-            <p className="sidebar-empty-copy">
-              {session.user
-                ? t('尚无项目。创建后可保存作品与版本。')
-                : t('登录后，可以保存项目和历史版本。')}
-            </p>
-          )}
-          {sharedProjects.length > 0 && (
-            <>
-              <div className="sidebar-divider" />
-              <div className="nav-section-label">{t('共享给我')}</div>
-              <nav className="project-list" aria-label={t('共享给我的项目')}>
-                {sharedProjects.map((project) => (
-                  <button
-                    data-motion="project-row"
-                    className={selectedProject?.id === project.id ? 'selected' : ''}
-                    key={project.id}
-                    onClick={() => onProject(project)}
-                  >
-                    <LinkSimple size={17} />
-                    <span>{project.title}</span>
-                  </button>
-                ))}
-              </nav>
-            </>
-          )}
-          {selectedSpace && (
-            <button className="sidebar-text-action" onClick={onTeamSettings}>
-              <GearSix size={16} />
-              {selectedSpace.kind === 'team' ? t('团队成员与共享') : t('空间共享规则')}
+            <button
+              className="sidebar-text-action"
+              type="button"
+              onClick={session.user ? onNewProject : onAuth}
+            >
+              <Plus size={17} />
+              {t('新建项目')}
             </button>
           )}
-        </div>
-        <div className="sidebar-bottom">
-          {session.user?.isOperator && (
-            <button className="sidebar-text-action" onClick={onOps}>
-              <GearSix size={17} />
-              {t('运营管理')}
-            </button>
-          )}
-          {session.user ? (
-            <div className="account-row">
-              <button
-                type="button"
-                className="sidebar-account-details"
-                onClick={onAccount}
-                aria-label={t('账号与使用：{v0}', { v0: session.user.displayName })}
-              >
-                <span className="user-avatar" aria-hidden>
-                  {session.user.displayName.slice(0, 1)}
-                </span>
-                <span>
-                  <strong>{session.user.displayName}</strong>
-                  <span>{session.user.phoneMasked}</span>
-                </span>
-              </button>
-              <IconButton label={t('退出登录选项')} onClick={onLogout}>
-                <SignOut size={18} />
-              </IconButton>
-            </div>
-          ) : (
-            <button className="account-login" onClick={onAuth}>
-              <UserCircle size={29} weight="light" />
-              <span>
-                <strong>{t('登录工作空间')}</strong>
-                <small>{t('保存、同步，与团队协作')}</small>
+        </section>
+        {sharedProjects.length > 0 && (
+          <section className="sidebar-section">
+            <h3 className="nav-section-label">{t('共享给我')}</h3>
+            <nav className="project-list" aria-label={t('共享给我的项目')}>
+              {sharedProjects.map((project) => (
+                <button
+                  ref={selectedProject?.id === project.id ? initialFocus : undefined}
+                  type="button"
+                  data-nav-row
+                  className={selectedProject?.id === project.id ? 'selected' : ''}
+                  aria-current={selectedProject?.id === project.id ? 'page' : undefined}
+                  key={project.id}
+                  onClick={() => onProject(project)}
+                >
+                  <span className="sidebar-row-marker" aria-hidden="true" />
+                  <LinkSimple size={19} />
+                  <span className="sidebar-row-name">{project.title}</span>
+                </button>
+              ))}
+            </nav>
+          </section>
+        )}
+        {selectedSpace && (
+          <button
+            className="sidebar-text-action sidebar-rules"
+            type="button"
+            onClick={onTeamSettings}
+          >
+            <GearSix size={18} />
+            {selectedSpace.kind === 'team' ? t('团队成员与共享') : t('空间共享规则')}
+          </button>
+        )}
+      </div>
+      <div className="sidebar-bottom">
+        {session.user?.isOperator && (
+          <button className="sidebar-text-action" type="button" onClick={onOps}>
+            <GearSix size={18} />
+            {t('运营管理')}
+          </button>
+        )}
+        {session.user ? (
+          <div className="account-row">
+            <button
+              type="button"
+              className="sidebar-account-details"
+              onClick={onAccount}
+              aria-label={t('账号与使用：{v0}', { v0: session.user.displayName })}
+            >
+              <span className="user-avatar" aria-hidden="true">
+                {session.user.displayName.slice(0, 1)}
               </span>
-              <SignIn size={18} />
+              <span>
+                <strong>{session.user.displayName}</strong>
+                <span>{session.user.phoneMasked}</span>
+              </span>
             </button>
-          )}
-        </div>
-      </aside>
-    </>
+            <IconButton label={t('退出登录选项')} onClick={onLogout}>
+              <SignOut size={18} />
+            </IconButton>
+          </div>
+        ) : (
+          <button className="account-login" type="button" onClick={onAuth}>
+            <UserCircle size={23} />
+            <strong>{t('登录工作空间')}</strong>
+            <SignIn size={18} />
+          </button>
+        )}
+      </div>
+    </Modal>
   );
 }

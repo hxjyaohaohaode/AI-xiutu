@@ -79,11 +79,13 @@ export function panelBounds(view: Viewport, dock: Dock = 'floating', id?: PanelI
     maxWidth,
     minHeight: Math.min(
       id === 'ai'
-        ? (view.bucket === 'phone' ? 224 : 260)
+        ? view.bucket === 'phone'
+          ? 224
+          : 260
         : view.height <= 520
           ? 176
           : view.bucket === 'phone'
-            ? Math.min(248, Math.max(196, body.height * .4))
+            ? 176
             : 264,
       maxHeight,
     ),
@@ -182,8 +184,8 @@ function dockedCanvasInsets(rect: PanelRectangle, dock: Dock, view: Viewport): C
 export function canvasImageArea(view: Viewport, insets: CanvasInsets) {
   const body = workspaceSize(view);
   const short = view.height <= 520;
-  const horizontalChrome = short ? 12 : view.bucket === 'phone' ? 0 : 16;
-  const verticalChrome = short ? 54 : view.bucket === 'phone' ? 99 : 108;
+  const horizontalChrome = view.bucket === 'phone' ? 0 : short ? 12 : 16;
+  const verticalChrome = view.bucket === 'phone' ? 60 : short ? 54 : 108;
   const fitPadding = 24;
   return {
     width: Math.max(0, body.width - insets.left - insets.right - horizontalChrome - fitPadding),
@@ -330,9 +332,27 @@ export function movePanel(
 export function defaultPanel(id: PanelId, view: Viewport): PanelGeometry {
   const body = workspaceSize(view),
     phone = view.bucket === 'phone';
-  const width = phone ? body.width : id === 'ai' ? 390 : view.bucket === 'tablet' ? 320 : 344;
+  const shortLandscape = id === 'inspector' && view.width > view.height && view.height <= 520;
+  const width =
+    phone && !shortLandscape
+      ? body.width
+      : id === 'ai'
+        ? 390
+        : shortLandscape
+          ? Math.min(300, body.width * 0.48)
+          : view.bucket === 'tablet'
+            ? view.width < 900 && view.width < view.height
+              ? 280
+              : 304
+            : 344;
   const preferredHeight = phone
-    ? Math.min(id === 'ai' ? 390 : 288, body.height * (id === 'ai' ? 0.57 : 0.44))
+    ? id === 'ai'
+      ? Math.min(390, body.height * 0.57)
+      : shortLandscape
+        ? body.height - panelBottomOffset(view) - 24
+        : view.height <= 620
+          ? 184
+          : 208
     : Math.min(id === 'ai' ? 680 : 600, body.height - panelBottomOffset(view) - 24);
   // Starting sizes leave usable image pixels, including on a 320px phone. This is
   // a default choice only: manual sizes and saved preferences retain their full
@@ -343,18 +363,28 @@ export function defaultPanel(id: PanelId, view: Viewport): PanelGeometry {
     right: 0,
     bottom: panelBottomOffset(view) + PANEL_MARGIN,
   }).height;
-  const height = phone
-    ? Math.max(
-        id === 'ai' ? Math.min(224, panelBounds(view, 'bottom').maxHeight) : 0,
-        Math.min(
-          preferredHeight,
-          Math.max(0, Math.floor(phonePhotoBudget - minimumImageArea(view).height)),
-        ),
-      )
-    : preferredHeight;
+  const height =
+    phone && !shortLandscape
+      ? Math.max(
+          id === 'ai' ? Math.min(224, panelBounds(view, 'bottom').maxHeight) : 0,
+          Math.min(
+            preferredHeight,
+            // Keep the assistant's established default while the editor gives the
+            // reclaimed canvas chrome to the photograph instead of a taller sheet.
+            Math.max(
+              0,
+              Math.floor(
+                phonePhotoBudget -
+                  minimumImageArea(view).height -
+                  (id === 'ai' && view.height > 520 ? 39 : 0),
+              ),
+            ),
+          ),
+        )
+      : preferredHeight;
   return boundPanel(
     {
-      dock: phone ? 'bottom' : 'right',
+      dock: phone && !shortLandscape ? 'bottom' : 'right',
       x: Math.max(PANEL_MARGIN, body.width - width - 16),
       y: PANEL_MARGIN,
       width,

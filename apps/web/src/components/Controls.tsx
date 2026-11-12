@@ -1,6 +1,6 @@
 import { t } from '../i18n';
 import { useId, useState, type ReactNode } from 'react';
-import { CaretDown, SlidersHorizontal } from '@phosphor-icons/react';
+import { CaretDown, SlidersHorizontal } from './ControlGlyph';
 import { usePresence } from '../motion/usePresence';
 import type { MotionRole } from '../motion/registry';
 

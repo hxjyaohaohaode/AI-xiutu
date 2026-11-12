@@ -6,7 +6,6 @@ import {
   ArrowSquareOut,
   Check,
   ChatCircleDots,
-  Circle,
   Clock,
   FileText,
   Images,
@@ -42,6 +41,8 @@ import type {
 } from '../lib/types';
 import { Busy, EmptyState, IconButton, InlineError, Modal } from './Ui';
 import { ChoiceSelect } from './ChoiceSelect';
+import { StatusMark } from './StatusMark';
+import { TaskStateMark } from './TaskStateMark';
 import { ImagePreview } from './ImagePreview';
 import { CompareReveal } from './CompareReveal';
 import { FeatureSkeleton } from './DeferredFeature';
@@ -274,7 +275,9 @@ export function CompareView({
   scope.current = historyScope.current;
   const [mode, setMode] = useState<'slide' | 'side' | 'original' | 'edited'>('slide');
   const [split, setSplit] = useState(50);
-  const slideAvailable = !!editor.originalPreview && !!editor.rendered &&
+  const slideAvailable =
+    !!editor.originalPreview &&
+    !!editor.rendered &&
     editor.originalPreview.width === editor.rendered.width &&
     editor.originalPreview.height === editor.rendered.height;
   const visibleMode = mode === 'slide' && !slideAvailable ? 'side' : mode;
@@ -379,10 +382,7 @@ export function CompareView({
   if (!editor.file)
     return (
       <div className="content-view studio-view">
-        <EmptyState
-          icon={<Images size={34} />}
-          title={t('先打开一张图片')}
-        />
+        <EmptyState icon={<Images size={34} />} title={t('先打开一张图片')} />
       </div>
     );
   return (
@@ -393,26 +393,45 @@ export function CompareView({
         </div>
         <div className="compare-mode-choice" role="group" aria-label={t('对比显示方式')}>
           {(['slide', 'side', 'original', 'edited'] as const).map((item) => (
-            <button key={item} type="button" aria-pressed={visibleMode === item}
+            <button
+              key={item}
+              type="button"
+              aria-pressed={visibleMode === item}
               className={visibleMode === item ? 'selected' : ''}
               disabled={item === 'slide' && !slideAvailable}
               title={item === 'slide' && !slideAvailable ? t('不同画幅请使用并排对比') : undefined}
-              onClick={() => setMode(item)}>
-              {t(({ slide: '滑动对比', side: '并排', original: '原图', edited: '当前' })[item])}
+              onClick={() => setMode(item)}
+            >
+              {t({ slide: '滑动对比', side: '并排', original: '原图', edited: '当前' }[item])}
             </button>
           ))}
         </div>
       </div>
       {visibleMode === 'slide' ? (
-        <CompareReveal before={editor.originalPreview} after={editor.rendered} value={split} onChange={setSplit} />
+        <CompareReveal
+          before={editor.originalPreview}
+          after={editor.rendered}
+          value={split}
+          onChange={setSplit}
+        />
       ) : (
         <div className={`compare-pair ${visibleMode !== 'side' ? 'single' : ''}`}>
           {visibleMode !== 'edited' && (
-            <section><header><span>{t('原始图片')}</span></header><ComparisonFrame image={editor.originalPreview} /></section>
+            <section>
+              <header>
+                <span>{t('原始图片')}</span>
+              </header>
+              <ComparisonFrame image={editor.originalPreview} />
+            </section>
           )}
           {visibleMode !== 'original' && (
             <section>
-              <header><span>{t('当前编辑')}</span><small aria-live="polite">{editor.rendering ? t('正在更新') : isDirty ? t('本地草稿') : t('当前预览')}</small></header>
+              <header>
+                <span>{t('当前编辑')}</span>
+                <small aria-live="polite">
+                  {editor.rendering ? t('正在更新') : isDirty ? t('本地草稿') : t('当前预览')}
+                </small>
+              </header>
               <ComparisonFrame image={editor.rendered} />
             </section>
           )}
@@ -1062,6 +1081,7 @@ export function CollaborateView({
                     {permissions.edit ? (
                       <button
                         disabled={busy}
+                        aria-busy={pending === `task:${task.id}`}
                         aria-label={t('{v0}：{v1}', {
                           v0: task.title,
                           v1:
@@ -1073,25 +1093,14 @@ export function CollaborateView({
                         })}
                         onClick={() => void changeTask(task)}
                       >
-                        {pending === `task:${task.id}` ? (
-                          <Busy label="" />
-                        ) : task.status === 'done' ? (
-                          <CheckCircle size={23} weight="fill" />
-                        ) : task.status === 'doing' ? (
-                          <Clock size={23} />
-                        ) : (
-                          <Circle size={23} />
-                        )}
+                        <TaskStateMark
+                          state={task.status}
+                          pending={pending === `task:${task.id}`}
+                        />
                       </button>
                     ) : (
                       <span className="task-status-icon" aria-hidden="true">
-                        {task.status === 'done' ? (
-                          <CheckCircle size={23} weight="fill" />
-                        ) : task.status === 'doing' ? (
-                          <Clock size={23} />
-                        ) : (
-                          <Circle size={23} />
-                        )}
+                        <TaskStateMark state={task.status} />
                       </span>
                     )}
                     <div>
@@ -1109,9 +1118,7 @@ export function CollaborateView({
                 ))}
                 {!visibleTasks.length && (tasks.length > 0 || !permissions.edit) && (
                   <p className="quiet-copy">
-                    {tasks.length
-                      ? t('当前任务都已完成。')
-                      : t('团队添加的任务会出现在这里。')}
+                    {tasks.length ? t('当前任务都已完成。') : t('团队添加的任务会出现在这里。')}
                   </p>
                 )}
               </div>
@@ -1744,8 +1751,27 @@ export function DocumentsView({
               </button>
               <FileText size={16} />
               <span>{selected ? t('版本 {v0}', { v0: selected.version }) : t('新建文档')}</span>
-              <span className={dirty ? 'document-save-state is-dirty' : 'document-save-state'}>
-                {dirty ? t('有未保存修改') : selected ? t('已保存') : t('尚未保存')}
+              <span
+                className={dirty ? 'document-save-state is-dirty' : 'document-save-state'}
+                aria-live="polite"
+              >
+                {busy || pendingSave ? (
+                  <StatusMark
+                    state="running"
+                    size="small"
+                    label={pending === 'read' ? t('读取中') : t('保存中')}
+                  />
+                ) : retainedDraft?.saveState === 'unknown' ? (
+                  <StatusMark state="unknown" size="small" label={t('保存结果待确认')} />
+                ) : !canEdit ? (
+                  t('只读文档')
+                ) : dirty ? (
+                  t('有未保存修改')
+                ) : selected ? (
+                  <StatusMark state="done" size="small" label={t('已保存')} />
+                ) : (
+                  t('尚未保存')
+                )}
               </span>
             </div>
             <input
@@ -1786,21 +1812,8 @@ export function DocumentsView({
             )}
             <InlineError message={error} />
             <footer>
-              <span aria-live="polite">
-                {busy
-                  ? pending === 'read'
-                    ? t('正在读取最新版本…')
-                    : t('正在保存…')
-                  : !canEdit
-                    ? t('只读文档')
-                    : dirty
-                      ? t('有未保存的修改')
-                      : selected
-                        ? t('已保存 · 版本 {v0}', { v0: selected.version })
-                        : t('新文档')}
-                <small>
-                  {body.length.toLocaleString(getLocale())} {t('字')}
-                </small>
+              <span className="document-word-count">
+                {body.length.toLocaleString(getLocale())} {t('字')}
               </span>
               <div className="document-draft-editor-actions">
                 {dirty && retainedDraft && (
@@ -1862,7 +1875,13 @@ export function DocumentsView({
   );
 }
 
-export function DeliveryView({ editor, artwork, sourcePending, onExport, onRecipeImport }: {
+export function DeliveryView({
+  editor,
+  artwork,
+  sourcePending,
+  onExport,
+  onRecipeImport,
+}: {
   editor: EditorState;
   artwork: Artwork | null;
   sourcePending: boolean;
@@ -1873,7 +1892,9 @@ export function DeliveryView({ editor, artwork, sourcePending, onExport, onRecip
   const dimensions = editor.rendered ?? editor.dimensions;
   return (
     <div className="content-view studio-view delivery-view">
-      <div className="view-heading" data-motion="view-header"><h1>{t('导出与交付')}</h1></div>
+      <div className="view-heading" data-motion="view-header">
+        <h1>{t('导出与交付')}</h1>
+      </div>
       {editor.file ? (
         <section className="delivery-composition" aria-label={t('当前交付作品')}>
           <div className="delivery-current-preview" role="img" aria-label={t('当前编辑的预览图')}>
@@ -1882,31 +1903,51 @@ export function DeliveryView({ editor, artwork, sourcePending, onExport, onRecip
           <div className="delivery-action-rail">
             <h2>{artwork?.title ?? editor.file.name}</h2>
             <div className="delivery-facts">
-              {dimensions && <span>{dimensions.width} × {dimensions.height}</span>}
+              {dimensions && (
+                <span>
+                  {dimensions.width} × {dimensions.height}
+                </span>
+              )}
               {artwork && <span>V{artwork.headVersion}</span>}
             </div>
             <span className="studio-status" aria-live="polite">
-              {busy ? <Busy label={t('正在读取图片')} /> : editor.rendering ? <Busy label={t('正在更新预览')} /> : <><CheckCircle size={16} />{t('可导出当前编辑')}</>}
+              {busy ? (
+                <Busy label={t('正在读取图片')} />
+              ) : editor.rendering ? (
+                <Busy label={t('正在更新预览')} />
+              ) : (
+                <>
+                  <CheckCircle size={16} />
+                  {t('可导出当前编辑')}
+                </>
+              )}
             </span>
             <div className="delivery-primary-action">
               <button className="button button-primary" onClick={onExport} disabled={busy}>
-                <DownloadSimple size={18} />{t('导出图片')}
+                <DownloadSimple size={18} />
+                {t('导出图片')}
               </button>
               <span>PNG · JPEG · WebP</span>
             </div>
             <div className="delivery-recipe-actions">
               <button className="text-button" disabled={busy} onClick={editor.exportRecipe}>
-                <NotePencil size={18} />{t('保存编辑配方')}
+                <NotePencil size={18} />
+                {t('保存编辑配方')}
               </button>
               <button className="text-button" disabled={busy} onClick={onRecipeImport}>
-                <UploadSimple size={18} />{t('导入已有配方')}
+                <UploadSimple size={18} />
+                {t('导入已有配方')}
               </button>
             </div>
             <small className="delivery-recipe-note">{t('配方不含原图')}</small>
           </div>
         </section>
       ) : (
-        <EmptyState icon={<Images size={34} />} title={t('还没有打开照片')} description={t('打开照片后即可导出。')} />
+        <EmptyState
+          icon={<Images size={34} />}
+          title={t('还没有打开照片')}
+          description={t('打开照片后即可导出。')}
+        />
       )}
     </div>
   );

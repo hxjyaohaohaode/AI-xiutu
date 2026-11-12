@@ -1,4 +1,6 @@
+import { navigationAiV2Traditional } from './navigation-ai-v2-messages';
 import { nativeGradeTraditionalChinese } from './native-grade-messages';
+import { viewsRedesignTraditional } from './views-redesign-messages';
 import { restorationTraditionalChinese } from './restoration-messages';
 import { aiRedesignTraditionalChinese } from './ai-redesign-messages';
 import { libraryTraditional } from './library-messages';
@@ -9,6 +11,7 @@ import { traditionalGenerated } from './traditional-generated';
 
 /** Traditional Chinese copy; user content is never passed through this catalog. */
 export const traditional: Readonly<Record<string, string>> = {
+  ...navigationAiV2Traditional,
   直方图: '直方圖',
   重置: '重置',
   圆角矩形: '圓角矩形',
@@ -153,12 +156,15 @@ export const traditional: Readonly<Record<string, string>> = {
   ...aiRedesignTraditionalChinese,
   ...nativeGradeTraditionalChinese,
   ...restorationTraditionalChinese,
+  ...viewsRedesignTraditional,
   '确认 AI 调整': '套用 AI 調整',
-  '本地编辑': '本機編輯',
-  "格式像素上限": "格式像素上限",
-  "高精度导入暂不可用，普通图片仍可在本地编辑。": "高精度匯入暫不可用，一般圖片仍可在本地編輯。",
-  "与 PSD 合成图；RAW / EXR / Radiance 暂不可用。": "與 PSD 合成圖；RAW / EXR / Radiance 暫不可用。",
-  "原件和派生图计入空间存储。关闭后暂停上传，已开始的处理会继续。": "原件和衍生圖計入空間儲存。關閉後暫停上傳，已開始的處理會繼續。",
+  本地编辑: '本機編輯',
+  格式像素上限: '格式像素上限',
+  '高精度导入暂不可用，普通图片仍可在本地编辑。': '高精度匯入暫不可用，一般圖片仍可在本地編輯。',
+  '与 PSD 合成图；RAW / EXR / Radiance 暂不可用。':
+    '與 PSD 合成圖；RAW / EXR / Radiance 暫不可用。',
+  '原件和派生图计入空间存储。关闭后暂停上传，已开始的处理会继续。':
+    '原件和衍生圖計入空間儲存。關閉後暫停上傳，已開始的處理會繼續。',
   语言: '語言',
   简体中文: '簡體中文',
   繁體中文: '繁體中文',
