@@ -62,6 +62,7 @@
   .crop-geometry-controls .crop-preset-rail,
   .crop-geometry-controls .crop-orientation-actions {
     gap: 4px;
+    padding-block: 2px;
     scrollbar-width: none;
   }
   .studio-workspace .free-panel[data-panel-id='inspector'] .crop-geometry-controls {
@@ -69,7 +70,7 @@
   }
   .crop-preset-rail > button {
     min-width: 54px;
-    min-height: 52px;
+    min-height: 48px;
   }
   .crop-orientation-actions > button {
     min-width: 44px;

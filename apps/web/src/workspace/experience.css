@@ -1427,14 +1427,16 @@
 
 /* The compact dock measures complete label slots. Its arrows keep their own
    hit area; snapping settles a swipe on whole tools rather than half a label. */
-.studio-workspace .floating-tool-dock[data-compact='true'] .dock-tool-scroll {
-  scroll-snap-type: x mandatory;
-  scroll-padding-inline: 2px;
-}
-.studio-workspace .floating-tool-dock[data-compact='true'] .dock-tool-scroll > button {
-  flex: 0 0 var(--dock-item-width, 64px);
-  width: var(--dock-item-width, 64px);
-  min-width: 0;
-  padding-inline: 3px;
-  scroll-snap-align: start;
+@media (max-width: 759px) {
+  .studio-workspace .floating-tool-dock[data-compact='true'] .dock-tool-scroll {
+    scroll-snap-type: x mandatory;
+    scroll-padding-inline: 2px;
+  }
+  .studio-workspace .floating-tool-dock[data-compact='true'] .dock-tool-scroll > button {
+    flex: 0 0 var(--dock-item-width, 64px);
+    width: var(--dock-item-width, 64px);
+    min-width: 0;
+    padding-inline: 3px;
+    scroll-snap-align: start;
+  }
 }

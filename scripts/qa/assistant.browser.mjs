@@ -1693,6 +1693,12 @@ try {
       lateReplyIsolation,
     };
   });
+  await page.evaluate(() => {
+    addEventListener('error', ({ message }) => {
+      if (message.startsWith('ResizeObserver loop'))
+        document.documentElement.dataset.resizeObserverLoop = message;
+    });
+  });
   for (const viewport of [
     { width: 1440, height: 960 },
     { width: 1024, height: 768 },
@@ -1706,6 +1712,11 @@ try {
       await page.setViewportSize(viewport);
       await page.evaluate(
         () => new Promise((done) => requestAnimationFrame(() => requestAnimationFrame(done))),
+      );
+      assert.equal(
+        await page.locator('html').getAttribute('data-resize-observer-loop'),
+        null,
+        'switching layouts does not feed measurements back into the same resize notification',
       );
       const notice = page.getByRole('button', { name: '关闭提示', exact: true });
       if (await notice.count()) await notice.click();

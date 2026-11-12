@@ -1059,6 +1059,10 @@ async function mobileEditingFlow() {
     }
     const [width, height] = await aspect();
     await layout(page, 'phone fixed crop and orientation');
+    const cropReadout = await dimensions.boundingBox();
+    const dock = await page.locator('.floating-tool-dock').boundingBox();
+    assert.ok(cropReadout && dock && cropReadout.y + cropReadout.height <= dock.y + 1,
+      'the crop size readout is fully visible above the phone tool dock');
     await capture(page, 'interactions/mobile-crop-390.png');
     await presets.getByRole('button', { name: '自由', exact: true }).click();
     assert.deepEqual(await aspect(), [width, height], 'free crop unlocks the same framing');

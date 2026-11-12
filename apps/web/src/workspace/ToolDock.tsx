@@ -119,7 +119,7 @@ export function ToolDock({
     const rail = nav.current;
     if (!rail) return;
     const measure = () => {
-      if (compact) {
+      if (compact && window.innerWidth < 760) {
         const style = getComputedStyle(rail);
         const gap = parseFloat(style.columnGap || '0') || 0;
         const available =
@@ -153,17 +153,26 @@ export function ToolDock({
         previous.left === left && previous.right === right ? previous : { left, right },
       );
     };
-    const observer = new ResizeObserver(measure);
+    let frame = 0;
+    const schedule = () => {
+      if (frame) return;
+      frame = requestAnimationFrame(() => {
+        frame = 0;
+        measure();
+      });
+    };
+    const observer = new ResizeObserver(schedule);
     observer.observe(rail);
     if (compact) {
       for (const label of rail.querySelectorAll<HTMLElement>('.dock-label'))
         observer.observe(label);
     }
-    rail.addEventListener('scroll', measure, { passive: true });
+    rail.addEventListener('scroll', schedule, { passive: true });
     measure();
     return () => {
+      cancelAnimationFrame(frame);
       observer.disconnect();
-      rail.removeEventListener('scroll', measure);
+      rail.removeEventListener('scroll', schedule);
     };
   }, [compact, locale]);
   return (
