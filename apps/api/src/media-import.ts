@@ -971,7 +971,9 @@ export function registerMediaImport(app: FastifyInstance, db: Database, config: 
   ) {
     const attachment = options.delivery === 'attachment';
     const nativeWindow =
-      !!linearWindows && !!options.preview?.region && options.precisionInput === 'linear-master';
+      !!linearWindows &&
+      !!(options.preview?.region || options.preview?.fitRegion) &&
+      options.precisionInput === 'linear-master';
     const lane = nativeWindow ? windowing : exporting;
     if (
       lane.has(actorId) || lane.size >= 2 ||

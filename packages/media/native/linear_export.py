@@ -185,7 +185,7 @@ def develop(pixels, edit, gains, sdr, curves, regions=(), x=None, y=None, sdr_to
     return result
 
 
-def render(image, request, window_png=False, read_source_band=read_band):
+def render(image, request, window_png=False, read_source_band=read_band, window_raw=False):
     spec = image.spec()
     width, height, channels = spec.width, spec.height, spec.nchannels
     if (
@@ -237,23 +237,8 @@ def render(image, request, window_png=False, read_source_band=read_band):
         ):
             raise ValueError("Invalid native precision window")
     columns = pixel_centers(left, width, spec.width) if regions else None
-    out_spec = oiio.ImageSpec(width, height, channels, oiio.UINT16 if sdr else oiio.FLOAT)
-    out_spec.attribute("oiio:ColorSpace", "sRGB" if sdr else "Linear")
-    # Whole-image previews immediately consume the private TIFF for resizing.
-    # Its samples can be stored losslessly without a deflate/inflate round trip.
-    uncompressed = sdr and not region and not window_png and request.get("uncompressedSdr", False)
-    out_spec.attribute("compression", "none" if uncompressed else "zip")
-    if window_png:
-        out_spec.attribute("png:compressionLevel", 1)
-    if sdr and channels == 4:
-        out_spec.attribute("oiio:UnassociatedAlpha", 1)
-    if not sdr and not linear_tiff:
-        apply_layout(out_spec, capture_layout(spec))
-    target = "preview.png" if window_png else "developed.tif" if sdr or linear_tiff else "precision.exr"
-    out = oiio.ImageOutput.create(target)
-    if out is None or not out.open(request["outputPath"], out_spec):
-        raise ValueError("Cannot create precision output")
-    try:
+
+    def developed_stripes():
         end = top + height
         row = top
         while row < end:
@@ -268,18 +253,46 @@ def render(image, request, window_png=False, read_source_band=read_band):
                     pixel_centers(row + offset, source.shape[0], spec.height)[:, None]
                     if regions else None
                 )
-                stripe = develop(
+                yield row + offset - top, develop(
                     source, edit, gains, sdr, curves, regions, columns, rows, sdr_tone_map,
                 )
-                y = out_spec.y + row + offset - top
-                if not out.write_scanlines(y, y + stripe.shape[0], out_spec.z, stripe):
-                    raise ValueError("Cannot write precision samples")
             row = next_row
+
+    result = {"width": width, "height": height, "channels": channels, "bitDepth": 16 if sdr else 32}
+    if window_raw:
+        if not (sdr and region) or window_png:
+            raise ValueError("A raw preview requires an SDR window")
+        with open(request["outputPath"], "xb") as output:
+            for _, stripe in developed_stripes():
+                output.write(memoryview(np.ascontiguousarray(stripe)).cast("B"))
+        return result
+
+    out_spec = oiio.ImageSpec(width, height, channels, oiio.UINT16 if sdr else oiio.FLOAT)
+    out_spec.attribute("oiio:ColorSpace", "sRGB" if sdr else "Linear")
+    # Fitted previews immediately consume the private TIFF for resizing.
+    # Its samples can be stored losslessly without a deflate/inflate round trip.
+    uncompressed = sdr and not window_png and request.get("uncompressedSdr", False)
+    out_spec.attribute("compression", "none" if uncompressed else "zip")
+    if window_png:
+        out_spec.attribute("png:compressionLevel", 1)
+    if sdr and channels == 4:
+        out_spec.attribute("oiio:UnassociatedAlpha", 1)
+    if not sdr and not linear_tiff:
+        apply_layout(out_spec, capture_layout(spec))
+    target = "preview.png" if window_png else "developed.tif" if sdr or linear_tiff else "precision.exr"
+    out = oiio.ImageOutput.create(target)
+    if out is None or not out.open(request["outputPath"], out_spec):
+        raise ValueError("Cannot create precision output")
+    try:
+        for row, stripe in developed_stripes():
+            y = out_spec.y + row
+            if not out.write_scanlines(y, y + stripe.shape[0], out_spec.z, stripe):
+                raise ValueError("Cannot write precision samples")
     finally:
         closed = out.close()
     if not closed:
         raise ValueError("Cannot close precision output")
-    return {"width": width, "height": height, "channels": channels, "bitDepth": 16 if sdr else 32}
+    return result
 
 
 def main():

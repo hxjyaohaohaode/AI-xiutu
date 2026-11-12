@@ -1,4 +1,5 @@
 import { createHash } from 'node:crypto';
+import type { Sharp } from 'sharp';
 import {
   compilePrecisionEdit,
   linearToSrgb,
@@ -64,6 +65,15 @@ export function previewWindow(
       'limit',
     );
   return region;
+}
+
+export function fitPrecisionPreview(pipeline: Sharp, maxEdge: number) {
+  return pipeline.resize({
+    width: maxEdge,
+    height: maxEdge,
+    fit: 'inside',
+    withoutEnlargement: true,
+  });
 }
 
 const decode = Float64Array.from({ length: 65536 }, (_, i) => srgbToLinear(i / 65535));

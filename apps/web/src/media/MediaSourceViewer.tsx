@@ -205,7 +205,7 @@ export function MediaSourceViewer({ assetId }: { assetId: string }) {
           fitRegion,
         })
       : null;
-  const nativeLinearWindow = !!region && wantsGrade && precisionInput === 'linear-master';
+  const nativeLinearWindow = !!(region || fitRegion) && wantsGrade && precisionInput === 'linear-master';
   const preview = useMasterPreview(
     assetId,
     previewBody,

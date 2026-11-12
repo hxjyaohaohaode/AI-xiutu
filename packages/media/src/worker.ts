@@ -19,7 +19,7 @@ import { spawn } from 'node:child_process';
 import sharp, { type Metadata, type Sharp } from 'sharp';
 import { readPsd, initializeCanvas, type Layer } from 'ag-psd';
 import { attachPngIcc, attachTiffIcc, srgbProfile } from './icc.js';
-import { editMaster16, precisionRecord, previewWindow } from './precision.js';
+import { editMaster16, fitPrecisionPreview, precisionRecord, previewWindow } from './precision.js';
 import { parsePrecisionEdit, NEUTRAL_PRECISION_EDIT, type PrecisionEdit } from '@ai-xiutu/editor';
 import type { NormalizedMediaOptions } from './process.js';
 import {
@@ -626,12 +626,7 @@ async function importMedia(job: Job): Promise<MediaDescriptorV1> {
 }
 async function writeSdrExport(pipeline: Sharp, job: Job, output: string) {
   if (job.preview && !job.preview.region)
-    pipeline = pipeline.resize({
-      width: job.preview.maxEdge,
-      height: job.preview.maxEdge,
-      fit: 'inside',
-      withoutEnlargement: true,
-    });
+    pipeline = fitPrecisionPreview(pipeline, job.preview.maxEdge);
   const format = job.format!;
   if (format === 'png16') {
     await pipeline.toColourspace('rgb16').png().toFile(output);

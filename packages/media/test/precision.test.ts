@@ -821,11 +821,12 @@ out=o.ImageOutput.create(sys.argv[1]); assert out.open(sys.argv[1],s); assert ou
       assert.equal(overview.precisionEdit?.sha256, full.precisionEdit?.sha256);
       const fittedPath = join(dir, 'fitted-window.png');
       const fitRegion = { left: 3, top: 8, width: 132, height: 87 };
-      const fitted = await exportMedia({
+      const fittedRequest = {
         ...pngRequest,
         outputPath: fittedPath,
         preview: { maxEdge: 128, fitRegion },
-      });
+      };
+      const fitted = await exportMedia(fittedRequest);
       const expectedFit = await sharp(png, { ignoreIcc: true })
         .extract(fitRegion)
         .resize({ width: 128, height: 128, fit: 'inside', withoutEnlargement: true })
@@ -838,6 +839,13 @@ out=o.ImageOutput.create(sys.argv[1]); assert out.open(sys.argv[1],s); assert ou
         [expectedFit.info.width, expectedFit.info.height, 16],
       );
       assert.equal(fitted.precisionEdit?.sha256, full.precisionEdit?.sha256);
+      const cachedFitPath = join(dir, 'cached-fitted-window.png');
+      const cachedFit = await exportMedia(
+        { ...fittedRequest, outputPath: cachedFitPath },
+        { runtime, descriptor },
+      );
+      assert.deepEqual(await raw16(cachedFitPath), expectedFit.data);
+      assert.equal(cachedFit.sha256, fitted.sha256);
       assert.deepEqual(await readFile(join(workDir, 'original.bin')), await readFile(inputPath));
     } finally {
       await runtime.close();
