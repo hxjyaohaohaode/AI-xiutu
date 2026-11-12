@@ -47,6 +47,16 @@
 .makeup-color-family {
   min-inline-size: 0;
 }
+.studio-workspace .makeup-color-family[data-size] > .choice-trigger {
+  gap: 4px;
+  padding-inline: 6px;
+  font-size: 11px;
+}
+.studio-workspace .makeup-color-family[data-size] > .choice-trigger > svg {
+  width: 12px;
+  height: 12px;
+  flex-basis: 12px;
+}
 .makeup-swatches button,
 .makeup-custom-color {
   position: relative;
@@ -225,9 +235,6 @@
   .makeup-swatches > button,
   .makeup-custom-color {
     min-height: 44px;
-  }
-  .makeup-color-family[data-size] > .choice-trigger {
-    padding-inline: 5px;
   }
   .studio-workspace
     .free-panel[data-panel-id='inspector']

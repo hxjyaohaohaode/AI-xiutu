@@ -542,6 +542,42 @@ export async function reviewMakeup({ page, canvasPixels, tool, parameter, until,
     );
   }, 'narrow phone keeps the whole palette above the tool dock');
   await capture(page, 'interactions/mobile-automatic-makeup-narrow.png');
+  const setLanguage = async (locale) => {
+    await page.evaluate((locale) => {
+      window.dispatchEvent(
+        new StorageEvent('storage', {
+          key: 'yingjian.locale.v1',
+          newValue: locale,
+        }),
+      );
+    }, locale);
+    await until(
+      () =>
+        page
+          .locator('html')
+          .getAttribute('lang')
+          .then((lang) => lang === locale),
+      'render ' + locale,
+    );
+  };
+  await areas.getByRole('button', { name: '高光', exact: true }).click();
+  for (const [locale, expected] of [
+    ['en', 'Champagne'],
+    ['zh-TW', '香檳色'],
+  ]) {
+    await setLanguage(locale);
+    const family = palette.locator('.choice-value');
+    await until(
+      async () => (await family.innerText()) === expected,
+      'render the translated family label',
+    );
+    assert.ok(
+      await family.evaluate((node) => node.scrollWidth <= node.clientWidth + 1),
+      expected + ' must display in full',
+    );
+    await capture(page, 'interactions/mobile-makeup-320-' + locale + '.png');
+  }
+  await setLanguage('zh-CN');
   await page.setViewportSize({ width: 390, height: 844 });
 
   await tool(page, 'beauty');
