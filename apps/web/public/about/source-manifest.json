@@ -1,0 +1,2316 @@
+{
+  "schemaVersion": 1,
+  "state": "passed",
+  "testedCommit": "f578c96f9dc73eb4d134e5f4420081bd8918749f",
+  "repository": "hxjyaohaohaode/AI-xiutu",
+  "capturedAt": "2026-11-12T02:43:39.405Z",
+  "browser": {
+    "name": "Chromium",
+    "version": "156.0.8078.79",
+    "channel": "chrome"
+  },
+  "manualVisualReview": false,
+  "inputs": [
+    {
+      "id": "coast",
+      "pexelsId": 17344850,
+      "author": "Peter Steiner1973",
+      "page": "https://www.pexels.com/photo/17344850/",
+      "url": "https://images.pexels.com/photos/17344850/pexels-photo-17344850.jpeg?auto=compress&cs=tinysrgb&w=1536",
+      "license": "https://www.pexels.com/license/",
+      "downloadedAt": "2026-11-12T02:40:56.089Z",
+      "bytes": 635102,
+      "sha256": "061133ba4fbba6b872ac3261efadbfeb4c508f1064285d65abf3323750d5f600",
+      "width": 1536,
+      "height": 2304
+    },
+    {
+      "id": "portrait",
+      "pexelsId": 3791554,
+      "author": "Andrea Piacquadio",
+      "page": "https://www.pexels.com/photo/3791554/",
+      "url": "https://images.pexels.com/photos/3791554/pexels-photo-3791554.jpeg?auto=compress&cs=tinysrgb&w=1536",
+      "license": "https://www.pexels.com/license/",
+      "downloadedAt": "2026-11-12T02:40:56.702Z",
+      "bytes": 64836,
+      "sha256": "82fd2b8cf037c98acc8d79d31026b63fb3fd10995843d14b5a7bbad95030de25",
+      "width": 1536,
+      "height": 1024
+    }
+  ],
+  "scenarios": [
+    {
+      "id": "desktop-zh-CN",
+      "locale": "zh-CN",
+      "viewport": {
+        "width": 1440,
+        "height": 960
+      },
+      "motion": "no-preference",
+      "touch": false,
+      "state": "passed"
+    },
+    {
+      "id": "phone-zh-CN",
+      "locale": "zh-CN",
+      "viewport": {
+        "width": 390,
+        "height": 844
+      },
+      "motion": "no-preference",
+      "touch": true,
+      "state": "passed"
+    },
+    {
+      "id": "landscape-en",
+      "locale": "en",
+      "viewport": {
+        "width": 844,
+        "height": 390
+      },
+      "motion": "no-preference",
+      "touch": true,
+      "state": "passed"
+    },
+    {
+      "id": "tablet-zh-TW",
+      "locale": "zh-TW",
+      "viewport": {
+        "width": 1024,
+        "height": 768
+      },
+      "motion": "no-preference",
+      "touch": true,
+      "state": "passed"
+    },
+    {
+      "id": "reduced-desktop-en",
+      "locale": "en",
+      "viewport": {
+        "width": 1440,
+        "height": 960
+      },
+      "motion": "reduce",
+      "touch": false,
+      "state": "passed"
+    }
+  ],
+  "files": [
+    {
+      "path": "apps/web/public/about/coast.webp",
+      "bytes": 800274,
+      "sha256": "769ba180e3cd7abf2c1865f692869da6af58d10c736739a851b967d0a8515d35",
+      "width": 1536,
+      "height": 2304,
+      "kind": "public-source-photo",
+      "source": "coast",
+      "conversion": "EXIF orientation, sRGB and WebP only; no crop"
+    },
+    {
+      "path": "apps/web/public/about/color-study.webp",
+      "bytes": 800274,
+      "sha256": "769ba180e3cd7abf2c1865f692869da6af58d10c736739a851b967d0a8515d35",
+      "width": 1536,
+      "height": 2304,
+      "kind": "public-source-photo",
+      "source": "coast",
+      "conversion": "same real coast photograph; no generated sample"
+    },
+    {
+      "path": "apps/web/public/about/portrait.webp",
+      "bytes": 55130,
+      "sha256": "ff7d834468caa79fd91f8f65200cc73f1140aa3b25784ef3e80f27d0c7466082",
+      "width": 1536,
+      "height": 1024,
+      "kind": "public-source-photo",
+      "source": "portrait",
+      "conversion": "EXIF orientation, sRGB and WebP only; no crop"
+    },
+    {
+      "path": "docs/design/verification/system-redesign/export-desktop.png",
+      "bytes": 305672,
+      "sha256": "8cedae231cfb4ae9b03fc6b78219d9dbc36cef91116102bc03d2b812e5879eb9",
+      "width": 1440,
+      "height": 960,
+      "kind": "current-ui-screenshot",
+      "screen": "export-desktop",
+      "state": "Actual export dialog before the same verified full-size PNG download; no generated interface",
+      "locale": "zh-CN",
+      "viewport": {
+        "width": 1440,
+        "height": 960
+      },
+      "isolatedFixture": true
+    },
+    {
+      "path": "docs/design/verification/system-redesign/export-phone.png",
+      "bytes": 160047,
+      "sha256": "b6ac66e912151cdd6353e2837ae6d848b1d8cfb34d539ff8aaa80e08cbbe9c43",
+      "width": 390,
+      "height": 844,
+      "kind": "current-ui-screenshot",
+      "screen": "export-phone",
+      "state": "Actual export dialog before the same verified full-size PNG download; no generated interface",
+      "locale": "zh-CN",
+      "viewport": {
+        "width": 390,
+        "height": 844
+      },
+      "isolatedFixture": true
+    },
+    {
+      "path": "apps/web/public/about/workspace-zh-CN.webp",
+      "bytes": 150366,
+      "sha256": "b6242265e0de54aba996315ebd5f553c26656d8c0e75d3e0a0a649d96362428e",
+      "width": 1440,
+      "height": 960,
+      "kind": "current-ui-screenshot",
+      "locale": "zh-CN",
+      "screen": "workspace",
+      "photo": "coast",
+      "state": "Actual local exposure adjustment",
+      "viewport": {
+        "width": 1440,
+        "height": 960
+      }
+    },
+    {
+      "path": "apps/web/public/about/local-zh-CN.webp",
+      "bytes": 153278,
+      "sha256": "5d739369eeed31ccd2681b2026a98d3a2f848a236fae2c8524cdc8d2ecc99560",
+      "width": 1440,
+      "height": 960,
+      "kind": "current-ui-screenshot",
+      "locale": "zh-CN",
+      "screen": "local",
+      "photo": "coast",
+      "state": "Actual radial region created and adjusted through UI",
+      "viewport": {
+        "width": 1440,
+        "height": 960
+      }
+    },
+    {
+      "path": "apps/web/public/about/layers-zh-CN.webp",
+      "bytes": 146288,
+      "sha256": "ec275034f08131795ed3d57980170cdaf3af67acd5a02f6ef2e201a9e7e9dc3b",
+      "width": 1440,
+      "height": 960,
+      "kind": "current-ui-screenshot",
+      "locale": "zh-CN",
+      "screen": "layers",
+      "photo": [
+        "coast",
+        "portrait"
+      ],
+      "state": "Actual imported image layer with UI position and scale controls",
+      "viewport": {
+        "width": 1440,
+        "height": 960
+      }
+    },
+    {
+      "path": "apps/web/public/about/portrait-zh-CN.webp",
+      "bytes": 62692,
+      "sha256": "5b7b923c68abd3c118df5fd3a28bd7c2bbc77fc99c89b3a5e843900b3ec958de",
+      "width": 1440,
+      "height": 960,
+      "kind": "current-ui-screenshot",
+      "locale": "zh-CN",
+      "screen": "portrait",
+      "photo": "portrait",
+      "state": "Actual local model inference and person-specific adjustment; no supplier call",
+      "viewport": {
+        "width": 1440,
+        "height": 960
+      }
+    },
+    {
+      "path": "apps/web/public/about/tablet-zh-CN.webp",
+      "bytes": 99434,
+      "sha256": "1ff753aa617e57a9ced93089f41c01bec4ad9bf4faba2e062450157d91be6e15",
+      "width": 1024,
+      "height": 768,
+      "kind": "current-ui-screenshot",
+      "locale": "zh-CN",
+      "screen": "tablet",
+      "photo": "coast",
+      "state": "Actual responsive editor; viewport emulation, not a physical device claim",
+      "viewport": {
+        "width": 1024,
+        "height": 768
+      }
+    },
+    {
+      "path": "apps/web/public/about/phone-zh-CN.webp",
+      "bytes": 48320,
+      "sha256": "6bdbf28ffcf4b2e7357af9031a545b8a7d90937f5a486e412f2d5a73235b1f95",
+      "width": 390,
+      "height": 844,
+      "kind": "current-ui-screenshot",
+      "locale": "zh-CN",
+      "screen": "phone",
+      "photo": "coast",
+      "state": "Actual responsive editor; viewport emulation, not a physical device claim",
+      "viewport": {
+        "width": 390,
+        "height": 844
+      }
+    },
+    {
+      "path": "apps/web/public/about/workspace-zh-TW.webp",
+      "bytes": 148366,
+      "sha256": "d807f5650646345d6f5a8172041f064660efc4e70e78551781352d6f815a373c",
+      "width": 1440,
+      "height": 960,
+      "kind": "current-ui-screenshot",
+      "locale": "zh-TW",
+      "screen": "workspace",
+      "photo": "coast",
+      "state": "Actual local exposure adjustment",
+      "viewport": {
+        "width": 1440,
+        "height": 960
+      }
+    },
+    {
+      "path": "apps/web/public/about/local-zh-TW.webp",
+      "bytes": 153476,
+      "sha256": "6889f1777468729190f8184ff8b594201e89213c3eb8b171e97379ffbe361bb2",
+      "width": 1440,
+      "height": 960,
+      "kind": "current-ui-screenshot",
+      "locale": "zh-TW",
+      "screen": "local",
+      "photo": "coast",
+      "state": "Actual radial region created and adjusted through UI",
+      "viewport": {
+        "width": 1440,
+        "height": 960
+      }
+    },
+    {
+      "path": "apps/web/public/about/layers-zh-TW.webp",
+      "bytes": 146542,
+      "sha256": "db95197b52c07c2b00ec75789ce3bde0c9ca0c0ccbb59b9b479e23565ee3acb3",
+      "width": 1440,
+      "height": 960,
+      "kind": "current-ui-screenshot",
+      "locale": "zh-TW",
+      "screen": "layers",
+      "photo": [
+        "coast",
+        "portrait"
+      ],
+      "state": "Actual imported image layer with UI position and scale controls",
+      "viewport": {
+        "width": 1440,
+        "height": 960
+      }
+    },
+    {
+      "path": "apps/web/public/about/portrait-zh-TW.webp",
+      "bytes": 61598,
+      "sha256": "4747fb3cb778200e6edacb9d56c347cb9e7bb1ef837c5ab6ccf0c5d7cced8e9b",
+      "width": 1440,
+      "height": 960,
+      "kind": "current-ui-screenshot",
+      "locale": "zh-TW",
+      "screen": "portrait",
+      "photo": "portrait",
+      "state": "Actual local model inference and person-specific adjustment; no supplier call",
+      "viewport": {
+        "width": 1440,
+        "height": 960
+      }
+    },
+    {
+      "path": "apps/web/public/about/tablet-zh-TW.webp",
+      "bytes": 99554,
+      "sha256": "781e7302e1b3307f3235c4841451f10498f07d5f2250d6c4d004e4afd46a2c13",
+      "width": 1024,
+      "height": 768,
+      "kind": "current-ui-screenshot",
+      "locale": "zh-TW",
+      "screen": "tablet",
+      "photo": "coast",
+      "state": "Actual responsive editor; viewport emulation, not a physical device claim",
+      "viewport": {
+        "width": 1024,
+        "height": 768
+      }
+    },
+    {
+      "path": "apps/web/public/about/phone-zh-TW.webp",
+      "bytes": 48314,
+      "sha256": "4048e82bcb64f1ca00f55beafb504618d4171826a52ac9da7d9a66508e83621f",
+      "width": 390,
+      "height": 844,
+      "kind": "current-ui-screenshot",
+      "locale": "zh-TW",
+      "screen": "phone",
+      "photo": "coast",
+      "state": "Actual responsive editor; viewport emulation, not a physical device claim",
+      "viewport": {
+        "width": 390,
+        "height": 844
+      }
+    },
+    {
+      "path": "apps/web/public/about/workspace-en.webp",
+      "bytes": 152518,
+      "sha256": "4de7c9038181431ab585c3ea372267dc81fa299ec8010da7b2ed27975298008e",
+      "width": 1440,
+      "height": 960,
+      "kind": "current-ui-screenshot",
+      "locale": "en",
+      "screen": "workspace",
+      "photo": "coast",
+      "state": "Actual local exposure adjustment",
+      "viewport": {
+        "width": 1440,
+        "height": 960
+      }
+    },
+    {
+      "path": "apps/web/public/about/local-en.webp",
+      "bytes": 155636,
+      "sha256": "8ddf748adff98bdddc29b99b785ec48defb91ac9b11365833ce4a9a9eca38911",
+      "width": 1440,
+      "height": 960,
+      "kind": "current-ui-screenshot",
+      "locale": "en",
+      "screen": "local",
+      "photo": "coast",
+      "state": "Actual radial region created and adjusted through UI",
+      "viewport": {
+        "width": 1440,
+        "height": 960
+      }
+    },
+    {
+      "path": "apps/web/public/about/layers-en.webp",
+      "bytes": 151166,
+      "sha256": "e09c06fc561a69d12d7cfa924875bda4fa97d79ada7e5a6d97784f3915ecc4d7",
+      "width": 1440,
+      "height": 960,
+      "kind": "current-ui-screenshot",
+      "locale": "en",
+      "screen": "layers",
+      "photo": [
+        "coast",
+        "portrait"
+      ],
+      "state": "Actual imported image layer with UI position and scale controls",
+      "viewport": {
+        "width": 1440,
+        "height": 960
+      }
+    },
+    {
+      "path": "apps/web/public/about/portrait-en.webp",
+      "bytes": 64208,
+      "sha256": "a4f23f6b2f43031f5a3b5d23c9cd63aa97eb7dbb08fe8c5ee148227a7567c173",
+      "width": 1440,
+      "height": 960,
+      "kind": "current-ui-screenshot",
+      "locale": "en",
+      "screen": "portrait",
+      "photo": "portrait",
+      "state": "Actual local model inference and person-specific adjustment; no supplier call",
+      "viewport": {
+        "width": 1440,
+        "height": 960
+      }
+    },
+    {
+      "path": "apps/web/public/about/tablet-en.webp",
+      "bytes": 102570,
+      "sha256": "6f58ce909c9d69f4e4ccf133c59f0cc7162257a89cfc7758a13fe5d9e47aa2de",
+      "width": 1024,
+      "height": 768,
+      "kind": "current-ui-screenshot",
+      "locale": "en",
+      "screen": "tablet",
+      "photo": "coast",
+      "state": "Actual responsive editor; viewport emulation, not a physical device claim",
+      "viewport": {
+        "width": 1024,
+        "height": 768
+      }
+    },
+    {
+      "path": "apps/web/public/about/phone-en.webp",
+      "bytes": 50126,
+      "sha256": "33e088100f9cbfa3ede392ad998b8f08157cb343ee8966cdbad7d3db507338b8",
+      "width": 390,
+      "height": 844,
+      "kind": "current-ui-screenshot",
+      "locale": "en",
+      "screen": "phone",
+      "photo": "coast",
+      "state": "Actual responsive editor; viewport emulation, not a physical device claim",
+      "viewport": {
+        "width": 390,
+        "height": 844
+      }
+    },
+    {
+      "path": "docs/design/verification/system-redesign/about-desktop.png",
+      "bytes": 2285907,
+      "sha256": "a1da2f00bfa50de8d0ed40735ba52f85c33990ceb2c026f94be6901fb72d814e",
+      "width": 1440,
+      "height": 7717,
+      "kind": "current-about-page",
+      "locale": "zh-CN",
+      "viewport": {
+        "width": 1440,
+        "height": 960
+      }
+    },
+    {
+      "path": "docs/design/verification/system-redesign/about-phone.png",
+      "bytes": 612109,
+      "sha256": "08ae02f5d382f6d2c4533f14f0289692902732ebbc1fe5f417b047db051b8a77",
+      "width": 390,
+      "height": 6136,
+      "kind": "current-about-page",
+      "locale": "zh-CN",
+      "viewport": {
+        "width": 390,
+        "height": 844
+      }
+    },
+    {
+      "path": "docs/design/verification/system-redesign/works.png",
+      "bytes": 864205,
+      "sha256": "ca7108deb3d864b837e6d614b029f048caff3b6ba747510d4515e4ef4494d782",
+      "width": 1440,
+      "height": 960,
+      "kind": "current-ui-screenshot",
+      "screen": "works",
+      "state": "Actual isolated project library with two real public photographs and their saved versions",
+      "locale": "zh-CN",
+      "viewport": {
+        "width": 1440,
+        "height": 960
+      },
+      "isolatedFixture": true
+    },
+    {
+      "path": "docs/design/verification/system-redesign/restoration-denoise.png",
+      "bytes": 552593,
+      "sha256": "4658b7072c1025a506585a73c631e48fd71b4f54b0d9a281d6fb08c2086f06be",
+      "width": 1440,
+      "height": 960,
+      "kind": "current-ui-screenshot",
+      "screen": "restoration-denoise",
+      "state": "read-only-quote-confirmed: actual denoise controls; no derived asset created",
+      "locale": "zh-CN",
+      "viewport": {
+        "width": 1440,
+        "height": 960
+      },
+      "isolatedFixture": true
+    },
+    {
+      "path": "docs/design/verification/system-redesign/restoration-motion.png",
+      "bytes": 564588,
+      "sha256": "df9c919405d6152f155bf73a1961cd9678533d830a5739cccea96a0653d9d4ee",
+      "width": 1440,
+      "height": 960,
+      "kind": "current-ui-screenshot",
+      "screen": "restoration-motion",
+      "state": "read-only-quote-confirmed: actual motion controls with advanced disclosure closed; no derived asset created",
+      "locale": "zh-CN",
+      "viewport": {
+        "width": 1440,
+        "height": 960
+      },
+      "isolatedFixture": true
+    },
+    {
+      "path": "docs/design/verification/system-redesign/restoration-motion-advanced.png",
+      "bytes": 545663,
+      "sha256": "8471c711efd25f753d51bc589c3f712e1941bb0f295cc2ef21fa329762995cd9",
+      "width": 1440,
+      "height": 960,
+      "kind": "current-ui-screenshot",
+      "screen": "restoration-motion-advanced",
+      "state": "read-only-quote-confirmed: actual expanded iteration and denoise controls verified by hit testing; no derived asset created",
+      "locale": "zh-CN",
+      "viewport": {
+        "width": 1440,
+        "height": 960
+      },
+      "isolatedFixture": true
+    },
+    {
+      "path": "docs/design/verification/system-redesign/documents.png",
+      "bytes": 53199,
+      "sha256": "2d6a702baf3f1157677ad4e0128b3977d23583fd2103048835c3eb480dac66ea",
+      "width": 1440,
+      "height": 960,
+      "kind": "current-ui-screenshot",
+      "screen": "documents",
+      "state": "Actual isolated project document created through the HTTP API",
+      "locale": "zh-CN",
+      "viewport": {
+        "width": 1440,
+        "height": 960
+      },
+      "isolatedFixture": true
+    },
+    {
+      "path": "docs/design/verification/system-redesign/collaborate.png",
+      "bytes": 56212,
+      "sha256": "3e49b08eef60ed47f6f198077a2a5d58b72ba30299dc9a1a9afd43e925908c02",
+      "width": 1440,
+      "height": 960,
+      "kind": "current-ui-screenshot",
+      "screen": "collaborate",
+      "state": "Actual empty collaboration view; no live multi-person session acceptance claim",
+      "locale": "zh-CN",
+      "viewport": {
+        "width": 1440,
+        "height": 960
+      },
+      "isolatedFixture": true
+    },
+    {
+      "path": "docs/design/verification/system-redesign/usage.png",
+      "bytes": 85590,
+      "sha256": "bf83ab85448e0b1c358bf2c9fddc05fa78584b1eb87f807172d76bb720e071df",
+      "width": 1440,
+      "height": 960,
+      "kind": "current-ui-screenshot",
+      "screen": "usage",
+      "state": "Actual isolated account usage; no paid supplier activity",
+      "locale": "zh-CN",
+      "viewport": {
+        "width": 1440,
+        "height": 960
+      },
+      "isolatedFixture": true
+    },
+    {
+      "path": "docs/design/verification/system-redesign/assistant-unavailable.png",
+      "bytes": 769724,
+      "sha256": "7c124681769cf32d18c10fe7022dbe6b5cac7ae14dea647523bfdcd8b3161474",
+      "width": 1440,
+      "height": 960,
+      "kind": "current-ui-screenshot",
+      "screen": "assistant-unavailable",
+      "state": "Actual assistant unavailable state; no external AI request",
+      "locale": "zh-CN",
+      "viewport": {
+        "width": 1440,
+        "height": 960
+      },
+      "isolatedFixture": true
+    },
+    {
+      "path": "docs/design/verification/system-redesign/account.png",
+      "bytes": 53614,
+      "sha256": "b2c44772c97ed7e876a6b09241275979f68eb048dbe5e28d151536d8a0978298",
+      "width": 1440,
+      "height": 960,
+      "kind": "current-ui-screenshot",
+      "screen": "account",
+      "state": "Actual disposable account center; no production account data",
+      "locale": "zh-CN",
+      "viewport": {
+        "width": 1440,
+        "height": 960
+      },
+      "isolatedFixture": true
+    }
+  ],
+  "limits": [
+    "Five different locale/viewport/motion scenarios exercise import, numeric editing, undo, redo, original comparison and a decoded download.",
+    "This does not certify all 111 matrix items, native HDR precision, a physical device, a live AI provider or a real multiplayer session.",
+    "Account/project images, if present, use explicit disposable CI fixtures and actual local API permissions.",
+    "Photo capture is a browser screenshot followed only by WebP encoding. No generated interface or retouched screenshot is used.",
+    "Every Simplified/Traditional Chinese capture requires CDP evidence of visible Han glyphs rendered with the matching Noto CJK family. This sampled font gate does not replace visual review.",
+    "Publication is a separate exact-head, explicit-path job and cannot occur after any required verification step fails.",
+    "Only exact POST attempts to the pinned MediaPipe SDK telemetry endpoint may be classified separately after route.abort succeeds; all remain blocked. Unknown external attempts fail the review.",
+    "Telemetry counts apply only to this isolated Vite browser run. The repository Caddy configuration declares connect-src self, but deployed response headers and production telemetry were not verified."
+  ],
+  "cjkFontEvidence": [
+    {
+      "case": "flow:desktop-zh-CN",
+      "capture": "flows/desktop-zh-CN-edited.png",
+      "locale": "zh-CN",
+      "method": "CDP.CSS.getPlatformFontsForNode",
+      "samples": [
+        {
+          "selector": "html > body:nth-child(2) > div:nth-child(1) > div:nth-child(1) > div:nth-child(1) > div:nth-child(1) > div:nth-child(3) > header:nth-child(1) > div:nth-child(1) > button:nth-child(2) > div:nth-child(1) > span:nth-child(2)",
+          "text": "映间",
+          "hanCount": 2,
+          "fonts": [
+            {
+              "familyName": "Noto Sans CJK SC",
+              "postScriptName": "NotoSansCJKsc-Bold",
+              "isCustomFont": false,
+              "glyphCount": 2
+            }
+          ]
+        },
+        {
+          "selector": "html > body:nth-child(2) > div:nth-child(1) > div:nth-child(1) > div:nth-child(1) > div:nth-child(1) > div:nth-child(3) > header:nth-child(1) > div:nth-child(1) > div:nth-child(3) > strong:nth-child(1)",
+          "text": "本地创作",
+          "hanCount": 4,
+          "fonts": [
+            {
+              "familyName": "Noto Sans CJK SC",
+              "postScriptName": "NotoSansCJKsc-Bold",
+              "isCustomFont": false,
+              "glyphCount": 4
+            }
+          ]
+        },
+        {
+          "selector": "html > body:nth-child(2) > div:nth-child(1) > div:nth-child(1) > div:nth-child(1) > div:nth-child(1) > div:nth-child(3) > header:nth-child(1) > div:nth-child(1) > div:nth-child(3) > span:nth-child(2)",
+          "text": "本地草稿",
+          "hanCount": 4,
+          "fonts": [
+            {
+              "familyName": "Noto Sans CJK SC",
+              "postScriptName": "NotoSansCJKsc-Regular",
+              "isCustomFont": false,
+              "glyphCount": 4
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "case": "flow:desktop-zh-CN",
+      "capture": "flows/desktop-zh-CN-export-dialog.png",
+      "locale": "zh-CN",
+      "method": "CDP.CSS.getPlatformFontsForNode",
+      "samples": [
+        {
+          "selector": "html > body:nth-child(2) > div:nth-child(1) > div:nth-child(1) > dialog:nth-child(2) > header:nth-child(1) > div:nth-child(1) > h2:nth-child(1)",
+          "text": "导出图片",
+          "hanCount": 4,
+          "fonts": [
+            {
+              "familyName": "Noto Sans CJK SC",
+              "postScriptName": "NotoSansCJKsc-Regular",
+              "isCustomFont": false,
+              "glyphCount": 4
+            }
+          ]
+        },
+        {
+          "selector": "html > body:nth-child(2) > div:nth-child(1) > div:nth-child(1) > dialog:nth-child(2) > div:nth-child(4) > span:nth-child(1)",
+          "text": "文件名",
+          "hanCount": 3,
+          "fonts": [
+            {
+              "familyName": "Noto Sans CJK SC",
+              "postScriptName": "NotoSansCJKsc-Regular",
+              "isCustomFont": false,
+              "glyphCount": 3
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "case": "flow:desktop-zh-CN",
+      "capture": "flows/desktop-zh-CN-delivery.png",
+      "locale": "zh-CN",
+      "method": "CDP.CSS.getPlatformFontsForNode",
+      "samples": [
+        {
+          "selector": "html > body:nth-child(2) > div:nth-child(1) > div:nth-child(1) > div:nth-child(1) > div:nth-child(1) > div:nth-child(3) > header:nth-child(1) > div:nth-child(1) > button:nth-child(2) > div:nth-child(1) > span:nth-child(2)",
+          "text": "映间",
+          "hanCount": 2,
+          "fonts": [
+            {
+              "familyName": "Noto Sans CJK SC",
+              "postScriptName": "NotoSansCJKsc-Bold",
+              "isCustomFont": false,
+              "glyphCount": 2
+            }
+          ]
+        },
+        {
+          "selector": "html > body:nth-child(2) > div:nth-child(1) > div:nth-child(1) > div:nth-child(1) > div:nth-child(1) > div:nth-child(3) > header:nth-child(1) > div:nth-child(1) > div:nth-child(3) > strong:nth-child(1)",
+          "text": "本地创作",
+          "hanCount": 4,
+          "fonts": [
+            {
+              "familyName": "Noto Sans CJK SC",
+              "postScriptName": "NotoSansCJKsc-Bold",
+              "isCustomFont": false,
+              "glyphCount": 4
+            }
+          ]
+        },
+        {
+          "selector": "html > body:nth-child(2) > div:nth-child(1) > div:nth-child(1) > div:nth-child(1) > div:nth-child(1) > div:nth-child(3) > header:nth-child(1) > div:nth-child(1) > div:nth-child(3) > span:nth-child(2)",
+          "text": "本地草稿",
+          "hanCount": 4,
+          "fonts": [
+            {
+              "familyName": "Noto Sans CJK SC",
+              "postScriptName": "NotoSansCJKsc-Regular",
+              "isCustomFont": false,
+              "glyphCount": 4
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "case": "flow:phone-zh-CN",
+      "capture": "flows/phone-zh-CN-edited.png",
+      "locale": "zh-CN",
+      "method": "CDP.CSS.getPlatformFontsForNode",
+      "samples": [
+        {
+          "selector": "html > body:nth-child(2) > div:nth-child(1) > div:nth-child(1) > div:nth-child(1) > div:nth-child(1) > div:nth-child(3) > header:nth-child(1) > button:nth-child(3) > span:nth-child(2)",
+          "text": "精修",
+          "hanCount": 2,
+          "fonts": [
+            {
+              "familyName": "Noto Sans CJK SC",
+              "postScriptName": "NotoSansCJKsc-Regular",
+              "isCustomFont": false,
+              "glyphCount": 2
+            }
+          ]
+        },
+        {
+          "selector": "html > body:nth-child(2) > div:nth-child(1) > div:nth-child(1) > div:nth-child(1) > div:nth-child(1) > div:nth-child(3) > div:nth-child(4) > div:nth-child(1) > div:nth-child(1) > div:nth-child(1) > main:nth-child(2) > div:nth-child(3) > button:nth-child(3) > span:nth-child(2)",
+          "text": "按住对比",
+          "hanCount": 4,
+          "fonts": [
+            {
+              "familyName": "Noto Sans CJK SC",
+              "postScriptName": "NotoSansCJKsc-Regular",
+              "isCustomFont": false,
+              "glyphCount": 4
+            }
+          ]
+        },
+        {
+          "selector": "html > body:nth-child(2) > div:nth-child(1) > div:nth-child(1) > div:nth-child(1) > div:nth-child(1) > div:nth-child(3) > div:nth-child(4) > div:nth-child(1) > div:nth-child(1) > div:nth-child(1) > main:nth-child(2) > div:nth-child(3) > button:nth-child(5)",
+          "text": "适应",
+          "hanCount": 2,
+          "fonts": [
+            {
+              "familyName": "Noto Sans CJK SC",
+              "postScriptName": "NotoSansCJKsc-Regular",
+              "isCustomFont": false,
+              "glyphCount": 2
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "case": "flow:phone-zh-CN",
+      "capture": "flows/phone-zh-CN-export-dialog.png",
+      "locale": "zh-CN",
+      "method": "CDP.CSS.getPlatformFontsForNode",
+      "samples": [
+        {
+          "selector": "html > body:nth-child(2) > div:nth-child(1) > div:nth-child(1) > dialog:nth-child(2) > header:nth-child(1) > div:nth-child(1) > h2:nth-child(1)",
+          "text": "导出图片",
+          "hanCount": 4,
+          "fonts": [
+            {
+              "familyName": "Noto Sans CJK SC",
+              "postScriptName": "NotoSansCJKsc-Regular",
+              "isCustomFont": false,
+              "glyphCount": 4
+            }
+          ]
+        },
+        {
+          "selector": "html > body:nth-child(2) > div:nth-child(1) > div:nth-child(1) > dialog:nth-child(2) > div:nth-child(4) > span:nth-child(1)",
+          "text": "文件名",
+          "hanCount": 3,
+          "fonts": [
+            {
+              "familyName": "Noto Sans CJK SC",
+              "postScriptName": "NotoSansCJKsc-Regular",
+              "isCustomFont": false,
+              "glyphCount": 3
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "case": "flow:phone-zh-CN",
+      "capture": "flows/phone-zh-CN-delivery.png",
+      "locale": "zh-CN",
+      "method": "CDP.CSS.getPlatformFontsForNode",
+      "samples": [
+        {
+          "selector": "html > body:nth-child(2) > div:nth-child(1) > div:nth-child(1) > div:nth-child(1) > div:nth-child(1) > div:nth-child(3) > header:nth-child(1) > button:nth-child(3) > span:nth-child(2)",
+          "text": "交付",
+          "hanCount": 2,
+          "fonts": [
+            {
+              "familyName": "Noto Sans CJK SC",
+              "postScriptName": "NotoSansCJKsc-Regular",
+              "isCustomFont": false,
+              "glyphCount": 2
+            }
+          ]
+        },
+        {
+          "selector": "html > body:nth-child(2) > div:nth-child(1) > div:nth-child(1) > div:nth-child(1) > div:nth-child(1) > div:nth-child(3) > div:nth-child(4) > div:nth-child(1) > div:nth-child(1) > div:nth-child(1) > div:nth-child(1) > div:nth-child(1) > h1:nth-child(1)",
+          "text": "导出与交付",
+          "hanCount": 5,
+          "fonts": [
+            {
+              "familyName": "Noto Sans CJK SC",
+              "postScriptName": "NotoSansCJKsc-Regular",
+              "isCustomFont": false,
+              "glyphCount": 5
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "case": "flow:tablet-zh-TW",
+      "capture": "flows/tablet-zh-TW-edited.png",
+      "locale": "zh-TW",
+      "method": "CDP.CSS.getPlatformFontsForNode",
+      "samples": [
+        {
+          "selector": "html > body:nth-child(2) > div:nth-child(1) > div:nth-child(1) > div:nth-child(1) > div:nth-child(1) > div:nth-child(3) > header:nth-child(1) > div:nth-child(1) > button:nth-child(2) > div:nth-child(1) > span:nth-child(2)",
+          "text": "映间",
+          "hanCount": 2,
+          "fonts": [
+            {
+              "familyName": "Noto Sans CJK TC",
+              "postScriptName": "NotoSansCJKtc-Bold",
+              "isCustomFont": false,
+              "glyphCount": 2
+            }
+          ]
+        },
+        {
+          "selector": "html > body:nth-child(2) > div:nth-child(1) > div:nth-child(1) > div:nth-child(1) > div:nth-child(1) > div:nth-child(3) > header:nth-child(1) > nav:nth-child(2) > button:nth-child(1) > span:nth-child(2)",
+          "text": "精修",
+          "hanCount": 2,
+          "fonts": [
+            {
+              "familyName": "Noto Sans CJK TC",
+              "postScriptName": "NotoSansCJKtc-Bold",
+              "isCustomFont": false,
+              "glyphCount": 2
+            }
+          ]
+        },
+        {
+          "selector": "html > body:nth-child(2) > div:nth-child(1) > div:nth-child(1) > div:nth-child(1) > div:nth-child(1) > div:nth-child(3) > header:nth-child(1) > nav:nth-child(2) > button:nth-child(2) > span:nth-child(2)",
+          "text": "作品",
+          "hanCount": 2,
+          "fonts": [
+            {
+              "familyName": "Noto Sans CJK TC",
+              "postScriptName": "NotoSansCJKtc-Regular",
+              "isCustomFont": false,
+              "glyphCount": 2
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "case": "flow:tablet-zh-TW",
+      "capture": "flows/tablet-zh-TW-export-dialog.png",
+      "locale": "zh-TW",
+      "method": "CDP.CSS.getPlatformFontsForNode",
+      "samples": [
+        {
+          "selector": "html > body:nth-child(2) > div:nth-child(1) > div:nth-child(1) > dialog:nth-child(2) > header:nth-child(1) > div:nth-child(1) > h2:nth-child(1)",
+          "text": "匯出圖片",
+          "hanCount": 4,
+          "fonts": [
+            {
+              "familyName": "Noto Sans CJK TC",
+              "postScriptName": "NotoSansCJKtc-Regular",
+              "isCustomFont": false,
+              "glyphCount": 4
+            }
+          ]
+        },
+        {
+          "selector": "html > body:nth-child(2) > div:nth-child(1) > div:nth-child(1) > dialog:nth-child(2) > div:nth-child(4) > span:nth-child(1)",
+          "text": "檔名",
+          "hanCount": 2,
+          "fonts": [
+            {
+              "familyName": "Noto Sans CJK TC",
+              "postScriptName": "NotoSansCJKtc-Regular",
+              "isCustomFont": false,
+              "glyphCount": 2
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "case": "flow:tablet-zh-TW",
+      "capture": "flows/tablet-zh-TW-delivery.png",
+      "locale": "zh-TW",
+      "method": "CDP.CSS.getPlatformFontsForNode",
+      "samples": [
+        {
+          "selector": "html > body:nth-child(2) > div:nth-child(1) > div:nth-child(1) > div:nth-child(1) > div:nth-child(1) > div:nth-child(3) > header:nth-child(1) > div:nth-child(1) > button:nth-child(2) > div:nth-child(1) > span:nth-child(2)",
+          "text": "映间",
+          "hanCount": 2,
+          "fonts": [
+            {
+              "familyName": "Noto Sans CJK TC",
+              "postScriptName": "NotoSansCJKtc-Bold",
+              "isCustomFont": false,
+              "glyphCount": 2
+            }
+          ]
+        },
+        {
+          "selector": "html > body:nth-child(2) > div:nth-child(1) > div:nth-child(1) > div:nth-child(1) > div:nth-child(1) > div:nth-child(3) > header:nth-child(1) > nav:nth-child(2) > button:nth-child(1) > span:nth-child(2)",
+          "text": "精修",
+          "hanCount": 2,
+          "fonts": [
+            {
+              "familyName": "Noto Sans CJK TC",
+              "postScriptName": "NotoSansCJKtc-Regular",
+              "isCustomFont": false,
+              "glyphCount": 2
+            }
+          ]
+        },
+        {
+          "selector": "html > body:nth-child(2) > div:nth-child(1) > div:nth-child(1) > div:nth-child(1) > div:nth-child(1) > div:nth-child(3) > header:nth-child(1) > nav:nth-child(2) > button:nth-child(2) > span:nth-child(2)",
+          "text": "作品",
+          "hanCount": 2,
+          "fonts": [
+            {
+              "familyName": "Noto Sans CJK TC",
+              "postScriptName": "NotoSansCJKtc-Regular",
+              "isCustomFont": false,
+              "glyphCount": 2
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "case": "captures:zh-CN",
+      "capture": "screens/workspace-zh-CN.png",
+      "locale": "zh-CN",
+      "method": "CDP.CSS.getPlatformFontsForNode",
+      "samples": [
+        {
+          "selector": "html > body:nth-child(2) > div:nth-child(1) > div:nth-child(1) > div:nth-child(1) > div:nth-child(1) > div:nth-child(3) > header:nth-child(1) > div:nth-child(1) > button:nth-child(2) > div:nth-child(1) > span:nth-child(2)",
+          "text": "映间",
+          "hanCount": 2,
+          "fonts": [
+            {
+              "familyName": "Noto Sans CJK SC",
+              "postScriptName": "NotoSansCJKsc-Bold",
+              "isCustomFont": false,
+              "glyphCount": 2
+            }
+          ]
+        },
+        {
+          "selector": "html > body:nth-child(2) > div:nth-child(1) > div:nth-child(1) > div:nth-child(1) > div:nth-child(1) > div:nth-child(3) > header:nth-child(1) > div:nth-child(1) > div:nth-child(3) > strong:nth-child(1)",
+          "text": "本地创作",
+          "hanCount": 4,
+          "fonts": [
+            {
+              "familyName": "Noto Sans CJK SC",
+              "postScriptName": "NotoSansCJKsc-Bold",
+              "isCustomFont": false,
+              "glyphCount": 4
+            }
+          ]
+        },
+        {
+          "selector": "html > body:nth-child(2) > div:nth-child(1) > div:nth-child(1) > div:nth-child(1) > div:nth-child(1) > div:nth-child(3) > header:nth-child(1) > div:nth-child(1) > div:nth-child(3) > span:nth-child(2)",
+          "text": "本地草稿",
+          "hanCount": 4,
+          "fonts": [
+            {
+              "familyName": "Noto Sans CJK SC",
+              "postScriptName": "NotoSansCJKsc-Regular",
+              "isCustomFont": false,
+              "glyphCount": 4
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "case": "captures:zh-CN",
+      "capture": "screens/local-zh-CN.png",
+      "locale": "zh-CN",
+      "method": "CDP.CSS.getPlatformFontsForNode",
+      "samples": [
+        {
+          "selector": "html > body:nth-child(2) > div:nth-child(1) > div:nth-child(1) > div:nth-child(1) > div:nth-child(1) > div:nth-child(3) > header:nth-child(1) > div:nth-child(1) > button:nth-child(2) > div:nth-child(1) > span:nth-child(2)",
+          "text": "映间",
+          "hanCount": 2,
+          "fonts": [
+            {
+              "familyName": "Noto Sans CJK SC",
+              "postScriptName": "NotoSansCJKsc-Bold",
+              "isCustomFont": false,
+              "glyphCount": 2
+            }
+          ]
+        },
+        {
+          "selector": "html > body:nth-child(2) > div:nth-child(1) > div:nth-child(1) > div:nth-child(1) > div:nth-child(1) > div:nth-child(3) > header:nth-child(1) > div:nth-child(1) > div:nth-child(3) > strong:nth-child(1)",
+          "text": "本地创作",
+          "hanCount": 4,
+          "fonts": [
+            {
+              "familyName": "Noto Sans CJK SC",
+              "postScriptName": "NotoSansCJKsc-Bold",
+              "isCustomFont": false,
+              "glyphCount": 4
+            }
+          ]
+        },
+        {
+          "selector": "html > body:nth-child(2) > div:nth-child(1) > div:nth-child(1) > div:nth-child(1) > div:nth-child(1) > div:nth-child(3) > header:nth-child(1) > div:nth-child(1) > div:nth-child(3) > span:nth-child(2)",
+          "text": "本地草稿",
+          "hanCount": 4,
+          "fonts": [
+            {
+              "familyName": "Noto Sans CJK SC",
+              "postScriptName": "NotoSansCJKsc-Regular",
+              "isCustomFont": false,
+              "glyphCount": 4
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "case": "captures:zh-CN",
+      "capture": "screens/layers-zh-CN.png",
+      "locale": "zh-CN",
+      "method": "CDP.CSS.getPlatformFontsForNode",
+      "samples": [
+        {
+          "selector": "html > body:nth-child(2) > div:nth-child(1) > div:nth-child(1) > div:nth-child(1) > div:nth-child(1) > div:nth-child(3) > header:nth-child(1) > div:nth-child(1) > button:nth-child(2) > div:nth-child(1) > span:nth-child(2)",
+          "text": "映间",
+          "hanCount": 2,
+          "fonts": [
+            {
+              "familyName": "Noto Sans CJK SC",
+              "postScriptName": "NotoSansCJKsc-Bold",
+              "isCustomFont": false,
+              "glyphCount": 2
+            }
+          ]
+        },
+        {
+          "selector": "html > body:nth-child(2) > div:nth-child(1) > div:nth-child(1) > div:nth-child(1) > div:nth-child(1) > div:nth-child(3) > header:nth-child(1) > div:nth-child(1) > div:nth-child(3) > strong:nth-child(1)",
+          "text": "本地创作",
+          "hanCount": 4,
+          "fonts": [
+            {
+              "familyName": "Noto Sans CJK SC",
+              "postScriptName": "NotoSansCJKsc-Bold",
+              "isCustomFont": false,
+              "glyphCount": 4
+            }
+          ]
+        },
+        {
+          "selector": "html > body:nth-child(2) > div:nth-child(1) > div:nth-child(1) > div:nth-child(1) > div:nth-child(1) > div:nth-child(3) > header:nth-child(1) > div:nth-child(1) > div:nth-child(3) > span:nth-child(2)",
+          "text": "本地草稿",
+          "hanCount": 4,
+          "fonts": [
+            {
+              "familyName": "Noto Sans CJK SC",
+              "postScriptName": "NotoSansCJKsc-Regular",
+              "isCustomFont": false,
+              "glyphCount": 4
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "case": "captures:zh-CN",
+      "capture": "screens/portrait-zh-CN.png",
+      "locale": "zh-CN",
+      "method": "CDP.CSS.getPlatformFontsForNode",
+      "samples": [
+        {
+          "selector": "html > body:nth-child(2) > div:nth-child(1) > div:nth-child(1) > div:nth-child(1) > div:nth-child(1) > div:nth-child(3) > header:nth-child(1) > div:nth-child(1) > button:nth-child(2) > div:nth-child(1) > span:nth-child(2)",
+          "text": "映间",
+          "hanCount": 2,
+          "fonts": [
+            {
+              "familyName": "Noto Sans CJK SC",
+              "postScriptName": "NotoSansCJKsc-Bold",
+              "isCustomFont": false,
+              "glyphCount": 2
+            }
+          ]
+        },
+        {
+          "selector": "html > body:nth-child(2) > div:nth-child(1) > div:nth-child(1) > div:nth-child(1) > div:nth-child(1) > div:nth-child(3) > header:nth-child(1) > div:nth-child(1) > div:nth-child(3) > strong:nth-child(1)",
+          "text": "本地创作",
+          "hanCount": 4,
+          "fonts": [
+            {
+              "familyName": "Noto Sans CJK SC",
+              "postScriptName": "NotoSansCJKsc-Bold",
+              "isCustomFont": false,
+              "glyphCount": 4
+            }
+          ]
+        },
+        {
+          "selector": "html > body:nth-child(2) > div:nth-child(1) > div:nth-child(1) > div:nth-child(1) > div:nth-child(1) > div:nth-child(3) > header:nth-child(1) > div:nth-child(1) > div:nth-child(3) > span:nth-child(2)",
+          "text": "本地草稿",
+          "hanCount": 4,
+          "fonts": [
+            {
+              "familyName": "Noto Sans CJK SC",
+              "postScriptName": "NotoSansCJKsc-Regular",
+              "isCustomFont": false,
+              "glyphCount": 4
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "case": "captures:zh-CN",
+      "capture": "screens/tablet-zh-CN.png",
+      "locale": "zh-CN",
+      "method": "CDP.CSS.getPlatformFontsForNode",
+      "samples": [
+        {
+          "selector": "html > body:nth-child(2) > div:nth-child(1) > div:nth-child(1) > div:nth-child(1) > div:nth-child(1) > div:nth-child(3) > header:nth-child(1) > div:nth-child(1) > button:nth-child(2) > div:nth-child(1) > span:nth-child(2)",
+          "text": "映间",
+          "hanCount": 2,
+          "fonts": [
+            {
+              "familyName": "Noto Sans CJK SC",
+              "postScriptName": "NotoSansCJKsc-Bold",
+              "isCustomFont": false,
+              "glyphCount": 2
+            }
+          ]
+        },
+        {
+          "selector": "html > body:nth-child(2) > div:nth-child(1) > div:nth-child(1) > div:nth-child(1) > div:nth-child(1) > div:nth-child(3) > header:nth-child(1) > nav:nth-child(2) > button:nth-child(1) > span:nth-child(2)",
+          "text": "精修",
+          "hanCount": 2,
+          "fonts": [
+            {
+              "familyName": "Noto Sans CJK SC",
+              "postScriptName": "NotoSansCJKsc-Bold",
+              "isCustomFont": false,
+              "glyphCount": 2
+            }
+          ]
+        },
+        {
+          "selector": "html > body:nth-child(2) > div:nth-child(1) > div:nth-child(1) > div:nth-child(1) > div:nth-child(1) > div:nth-child(3) > header:nth-child(1) > nav:nth-child(2) > button:nth-child(2) > span:nth-child(2)",
+          "text": "作品",
+          "hanCount": 2,
+          "fonts": [
+            {
+              "familyName": "Noto Sans CJK SC",
+              "postScriptName": "NotoSansCJKsc-Regular",
+              "isCustomFont": false,
+              "glyphCount": 2
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "case": "captures:zh-CN",
+      "capture": "screens/phone-zh-CN.png",
+      "locale": "zh-CN",
+      "method": "CDP.CSS.getPlatformFontsForNode",
+      "samples": [
+        {
+          "selector": "html > body:nth-child(2) > div:nth-child(1) > div:nth-child(1) > div:nth-child(1) > div:nth-child(1) > div:nth-child(3) > header:nth-child(1) > button:nth-child(3) > span:nth-child(2)",
+          "text": "精修",
+          "hanCount": 2,
+          "fonts": [
+            {
+              "familyName": "Noto Sans CJK SC",
+              "postScriptName": "NotoSansCJKsc-Regular",
+              "isCustomFont": false,
+              "glyphCount": 2
+            }
+          ]
+        },
+        {
+          "selector": "html > body:nth-child(2) > div:nth-child(1) > div:nth-child(1) > div:nth-child(1) > div:nth-child(1) > div:nth-child(3) > div:nth-child(4) > div:nth-child(1) > div:nth-child(1) > div:nth-child(1) > main:nth-child(2) > div:nth-child(3) > button:nth-child(3) > span:nth-child(2)",
+          "text": "按住对比",
+          "hanCount": 4,
+          "fonts": [
+            {
+              "familyName": "Noto Sans CJK SC",
+              "postScriptName": "NotoSansCJKsc-Regular",
+              "isCustomFont": false,
+              "glyphCount": 4
+            }
+          ]
+        },
+        {
+          "selector": "html > body:nth-child(2) > div:nth-child(1) > div:nth-child(1) > div:nth-child(1) > div:nth-child(1) > div:nth-child(3) > div:nth-child(4) > div:nth-child(1) > div:nth-child(1) > div:nth-child(1) > main:nth-child(2) > div:nth-child(3) > button:nth-child(5)",
+          "text": "适应",
+          "hanCount": 2,
+          "fonts": [
+            {
+              "familyName": "Noto Sans CJK SC",
+              "postScriptName": "NotoSansCJKsc-Regular",
+              "isCustomFont": false,
+              "glyphCount": 2
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "case": "captures:zh-TW",
+      "capture": "screens/workspace-zh-TW.png",
+      "locale": "zh-TW",
+      "method": "CDP.CSS.getPlatformFontsForNode",
+      "samples": [
+        {
+          "selector": "html > body:nth-child(2) > div:nth-child(1) > div:nth-child(1) > div:nth-child(1) > div:nth-child(1) > div:nth-child(3) > header:nth-child(1) > div:nth-child(1) > button:nth-child(2) > div:nth-child(1) > span:nth-child(2)",
+          "text": "映间",
+          "hanCount": 2,
+          "fonts": [
+            {
+              "familyName": "Noto Sans CJK TC",
+              "postScriptName": "NotoSansCJKtc-Bold",
+              "isCustomFont": false,
+              "glyphCount": 2
+            }
+          ]
+        },
+        {
+          "selector": "html > body:nth-child(2) > div:nth-child(1) > div:nth-child(1) > div:nth-child(1) > div:nth-child(1) > div:nth-child(3) > header:nth-child(1) > div:nth-child(1) > div:nth-child(3) > strong:nth-child(1)",
+          "text": "本機創作",
+          "hanCount": 4,
+          "fonts": [
+            {
+              "familyName": "Noto Sans CJK TC",
+              "postScriptName": "NotoSansCJKtc-Bold",
+              "isCustomFont": false,
+              "glyphCount": 4
+            }
+          ]
+        },
+        {
+          "selector": "html > body:nth-child(2) > div:nth-child(1) > div:nth-child(1) > div:nth-child(1) > div:nth-child(1) > div:nth-child(3) > header:nth-child(1) > div:nth-child(1) > div:nth-child(3) > span:nth-child(2)",
+          "text": "本機草稿",
+          "hanCount": 4,
+          "fonts": [
+            {
+              "familyName": "Noto Sans CJK TC",
+              "postScriptName": "NotoSansCJKtc-Regular",
+              "isCustomFont": false,
+              "glyphCount": 4
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "case": "captures:zh-TW",
+      "capture": "screens/local-zh-TW.png",
+      "locale": "zh-TW",
+      "method": "CDP.CSS.getPlatformFontsForNode",
+      "samples": [
+        {
+          "selector": "html > body:nth-child(2) > div:nth-child(1) > div:nth-child(1) > div:nth-child(1) > div:nth-child(1) > div:nth-child(3) > header:nth-child(1) > div:nth-child(1) > button:nth-child(2) > div:nth-child(1) > span:nth-child(2)",
+          "text": "映间",
+          "hanCount": 2,
+          "fonts": [
+            {
+              "familyName": "Noto Sans CJK TC",
+              "postScriptName": "NotoSansCJKtc-Bold",
+              "isCustomFont": false,
+              "glyphCount": 2
+            }
+          ]
+        },
+        {
+          "selector": "html > body:nth-child(2) > div:nth-child(1) > div:nth-child(1) > div:nth-child(1) > div:nth-child(1) > div:nth-child(3) > header:nth-child(1) > div:nth-child(1) > div:nth-child(3) > strong:nth-child(1)",
+          "text": "本機創作",
+          "hanCount": 4,
+          "fonts": [
+            {
+              "familyName": "Noto Sans CJK TC",
+              "postScriptName": "NotoSansCJKtc-Bold",
+              "isCustomFont": false,
+              "glyphCount": 4
+            }
+          ]
+        },
+        {
+          "selector": "html > body:nth-child(2) > div:nth-child(1) > div:nth-child(1) > div:nth-child(1) > div:nth-child(1) > div:nth-child(3) > header:nth-child(1) > div:nth-child(1) > div:nth-child(3) > span:nth-child(2)",
+          "text": "本機草稿",
+          "hanCount": 4,
+          "fonts": [
+            {
+              "familyName": "Noto Sans CJK TC",
+              "postScriptName": "NotoSansCJKtc-Regular",
+              "isCustomFont": false,
+              "glyphCount": 4
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "case": "captures:zh-TW",
+      "capture": "screens/layers-zh-TW.png",
+      "locale": "zh-TW",
+      "method": "CDP.CSS.getPlatformFontsForNode",
+      "samples": [
+        {
+          "selector": "html > body:nth-child(2) > div:nth-child(1) > div:nth-child(1) > div:nth-child(1) > div:nth-child(1) > div:nth-child(3) > header:nth-child(1) > div:nth-child(1) > button:nth-child(2) > div:nth-child(1) > span:nth-child(2)",
+          "text": "映间",
+          "hanCount": 2,
+          "fonts": [
+            {
+              "familyName": "Noto Sans CJK TC",
+              "postScriptName": "NotoSansCJKtc-Bold",
+              "isCustomFont": false,
+              "glyphCount": 2
+            }
+          ]
+        },
+        {
+          "selector": "html > body:nth-child(2) > div:nth-child(1) > div:nth-child(1) > div:nth-child(1) > div:nth-child(1) > div:nth-child(3) > header:nth-child(1) > div:nth-child(1) > div:nth-child(3) > strong:nth-child(1)",
+          "text": "本機創作",
+          "hanCount": 4,
+          "fonts": [
+            {
+              "familyName": "Noto Sans CJK TC",
+              "postScriptName": "NotoSansCJKtc-Bold",
+              "isCustomFont": false,
+              "glyphCount": 4
+            }
+          ]
+        },
+        {
+          "selector": "html > body:nth-child(2) > div:nth-child(1) > div:nth-child(1) > div:nth-child(1) > div:nth-child(1) > div:nth-child(3) > header:nth-child(1) > div:nth-child(1) > div:nth-child(3) > span:nth-child(2)",
+          "text": "本機草稿",
+          "hanCount": 4,
+          "fonts": [
+            {
+              "familyName": "Noto Sans CJK TC",
+              "postScriptName": "NotoSansCJKtc-Regular",
+              "isCustomFont": false,
+              "glyphCount": 4
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "case": "captures:zh-TW",
+      "capture": "screens/portrait-zh-TW.png",
+      "locale": "zh-TW",
+      "method": "CDP.CSS.getPlatformFontsForNode",
+      "samples": [
+        {
+          "selector": "html > body:nth-child(2) > div:nth-child(1) > div:nth-child(1) > div:nth-child(1) > div:nth-child(1) > div:nth-child(3) > header:nth-child(1) > div:nth-child(1) > button:nth-child(2) > div:nth-child(1) > span:nth-child(2)",
+          "text": "映间",
+          "hanCount": 2,
+          "fonts": [
+            {
+              "familyName": "Noto Sans CJK TC",
+              "postScriptName": "NotoSansCJKtc-Bold",
+              "isCustomFont": false,
+              "glyphCount": 2
+            }
+          ]
+        },
+        {
+          "selector": "html > body:nth-child(2) > div:nth-child(1) > div:nth-child(1) > div:nth-child(1) > div:nth-child(1) > div:nth-child(3) > header:nth-child(1) > div:nth-child(1) > div:nth-child(3) > strong:nth-child(1)",
+          "text": "本機創作",
+          "hanCount": 4,
+          "fonts": [
+            {
+              "familyName": "Noto Sans CJK TC",
+              "postScriptName": "NotoSansCJKtc-Bold",
+              "isCustomFont": false,
+              "glyphCount": 4
+            }
+          ]
+        },
+        {
+          "selector": "html > body:nth-child(2) > div:nth-child(1) > div:nth-child(1) > div:nth-child(1) > div:nth-child(1) > div:nth-child(3) > header:nth-child(1) > div:nth-child(1) > div:nth-child(3) > span:nth-child(2)",
+          "text": "本機草稿",
+          "hanCount": 4,
+          "fonts": [
+            {
+              "familyName": "Noto Sans CJK TC",
+              "postScriptName": "NotoSansCJKtc-Regular",
+              "isCustomFont": false,
+              "glyphCount": 4
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "case": "captures:zh-TW",
+      "capture": "screens/tablet-zh-TW.png",
+      "locale": "zh-TW",
+      "method": "CDP.CSS.getPlatformFontsForNode",
+      "samples": [
+        {
+          "selector": "html > body:nth-child(2) > div:nth-child(1) > div:nth-child(1) > div:nth-child(1) > div:nth-child(1) > div:nth-child(3) > header:nth-child(1) > div:nth-child(1) > button:nth-child(2) > div:nth-child(1) > span:nth-child(2)",
+          "text": "映间",
+          "hanCount": 2,
+          "fonts": [
+            {
+              "familyName": "Noto Sans CJK TC",
+              "postScriptName": "NotoSansCJKtc-Bold",
+              "isCustomFont": false,
+              "glyphCount": 2
+            }
+          ]
+        },
+        {
+          "selector": "html > body:nth-child(2) > div:nth-child(1) > div:nth-child(1) > div:nth-child(1) > div:nth-child(1) > div:nth-child(3) > header:nth-child(1) > nav:nth-child(2) > button:nth-child(1) > span:nth-child(2)",
+          "text": "精修",
+          "hanCount": 2,
+          "fonts": [
+            {
+              "familyName": "Noto Sans CJK TC",
+              "postScriptName": "NotoSansCJKtc-Bold",
+              "isCustomFont": false,
+              "glyphCount": 2
+            }
+          ]
+        },
+        {
+          "selector": "html > body:nth-child(2) > div:nth-child(1) > div:nth-child(1) > div:nth-child(1) > div:nth-child(1) > div:nth-child(3) > header:nth-child(1) > nav:nth-child(2) > button:nth-child(2) > span:nth-child(2)",
+          "text": "作品",
+          "hanCount": 2,
+          "fonts": [
+            {
+              "familyName": "Noto Sans CJK TC",
+              "postScriptName": "NotoSansCJKtc-Regular",
+              "isCustomFont": false,
+              "glyphCount": 2
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "case": "captures:zh-TW",
+      "capture": "screens/phone-zh-TW.png",
+      "locale": "zh-TW",
+      "method": "CDP.CSS.getPlatformFontsForNode",
+      "samples": [
+        {
+          "selector": "html > body:nth-child(2) > div:nth-child(1) > div:nth-child(1) > div:nth-child(1) > div:nth-child(1) > div:nth-child(3) > header:nth-child(1) > button:nth-child(3) > span:nth-child(2)",
+          "text": "精修",
+          "hanCount": 2,
+          "fonts": [
+            {
+              "familyName": "Noto Sans CJK TC",
+              "postScriptName": "NotoSansCJKtc-Regular",
+              "isCustomFont": false,
+              "glyphCount": 2
+            }
+          ]
+        },
+        {
+          "selector": "html > body:nth-child(2) > div:nth-child(1) > div:nth-child(1) > div:nth-child(1) > div:nth-child(1) > div:nth-child(3) > div:nth-child(4) > div:nth-child(1) > div:nth-child(1) > div:nth-child(1) > main:nth-child(2) > div:nth-child(3) > button:nth-child(3) > span:nth-child(2)",
+          "text": "按住對比",
+          "hanCount": 4,
+          "fonts": [
+            {
+              "familyName": "Noto Sans CJK TC",
+              "postScriptName": "NotoSansCJKtc-Regular",
+              "isCustomFont": false,
+              "glyphCount": 4
+            }
+          ]
+        },
+        {
+          "selector": "html > body:nth-child(2) > div:nth-child(1) > div:nth-child(1) > div:nth-child(1) > div:nth-child(1) > div:nth-child(3) > div:nth-child(4) > div:nth-child(1) > div:nth-child(1) > div:nth-child(1) > main:nth-child(2) > div:nth-child(3) > button:nth-child(5)",
+          "text": "適應",
+          "hanCount": 2,
+          "fonts": [
+            {
+              "familyName": "Noto Sans CJK TC",
+              "postScriptName": "NotoSansCJKtc-Regular",
+              "isCustomFont": false,
+              "glyphCount": 2
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "case": "about:desktop-zh-CN",
+      "capture": "about/desktop-zh-CN.png",
+      "locale": "zh-CN",
+      "method": "CDP.CSS.getPlatformFontsForNode",
+      "samples": [
+        {
+          "selector": "html > body:nth-child(2) > div:nth-child(1) > div:nth-child(1) > header:nth-child(2) > a:nth-child(1) > span:nth-child(2)",
+          "text": "映间",
+          "hanCount": 2,
+          "fonts": [
+            {
+              "familyName": "Noto Sans CJK SC",
+              "postScriptName": "NotoSansCJKsc-Bold",
+              "isCustomFont": false,
+              "glyphCount": 2
+            }
+          ]
+        },
+        {
+          "selector": "html > body:nth-child(2) > div:nth-child(1) > div:nth-child(1) > header:nth-child(2) > nav:nth-child(2) > a:nth-child(1)",
+          "text": "精修",
+          "hanCount": 2,
+          "fonts": [
+            {
+              "familyName": "Noto Sans CJK SC",
+              "postScriptName": "NotoSansCJKsc-Regular",
+              "isCustomFont": false,
+              "glyphCount": 2
+            }
+          ]
+        },
+        {
+          "selector": "html > body:nth-child(2) > div:nth-child(1) > div:nth-child(1) > header:nth-child(2) > nav:nth-child(2) > a:nth-child(3)",
+          "text": "协作与交付",
+          "hanCount": 5,
+          "fonts": [
+            {
+              "familyName": "Noto Sans CJK SC",
+              "postScriptName": "NotoSansCJKsc-Regular",
+              "isCustomFont": false,
+              "glyphCount": 5
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "case": "about:desktop-zh-CN",
+      "capture": "account/desktop-zh-CN-login.png",
+      "locale": "zh-CN",
+      "method": "CDP.CSS.getPlatformFontsForNode",
+      "samples": [
+        {
+          "selector": "html > body:nth-child(2) > div:nth-child(1) > div:nth-child(1) > section:nth-child(2) > header:nth-child(1) > button:nth-child(1) > div:nth-child(1) > span:nth-child(2)",
+          "text": "映间",
+          "hanCount": 2,
+          "fonts": [
+            {
+              "familyName": "Noto Sans CJK SC",
+              "postScriptName": "NotoSansCJKsc-Bold",
+              "isCustomFont": false,
+              "glyphCount": 2
+            }
+          ]
+        },
+        {
+          "selector": "html > body:nth-child(2) > div:nth-child(1) > div:nth-child(1) > section:nth-child(2) > header:nth-child(1) > div:nth-child(2) > button:nth-child(2) > span:nth-child(2)",
+          "text": "返回首页",
+          "hanCount": 4,
+          "fonts": [
+            {
+              "familyName": "Noto Sans CJK SC",
+              "postScriptName": "NotoSansCJKsc-Regular",
+              "isCustomFont": false,
+              "glyphCount": 4
+            }
+          ]
+        },
+        {
+          "selector": "html > body:nth-child(2) > div:nth-child(1) > div:nth-child(1) > section:nth-child(2) > main:nth-child(2) > div:nth-child(1) > header:nth-child(1) > h1:nth-child(1)",
+          "text": "登录工作空间",
+          "hanCount": 6,
+          "fonts": [
+            {
+              "familyName": "Noto Sans CJK SC",
+              "postScriptName": "NotoSansCJKsc-Bold",
+              "isCustomFont": false,
+              "glyphCount": 6
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "case": "about:phone-zh-CN",
+      "capture": "about/phone-zh-CN.png",
+      "locale": "zh-CN",
+      "method": "CDP.CSS.getPlatformFontsForNode",
+      "samples": [
+        {
+          "selector": "html > body:nth-child(2) > div:nth-child(1) > div:nth-child(1) > header:nth-child(2) > a:nth-child(1) > span:nth-child(2)",
+          "text": "映间",
+          "hanCount": 2,
+          "fonts": [
+            {
+              "familyName": "Noto Sans CJK SC",
+              "postScriptName": "NotoSansCJKsc-Bold",
+              "isCustomFont": false,
+              "glyphCount": 2
+            }
+          ]
+        },
+        {
+          "selector": "html > body:nth-child(2) > div:nth-child(1) > div:nth-child(1) > header:nth-child(2) > div:nth-child(3) > button:nth-child(2)",
+          "text": "登录",
+          "hanCount": 2,
+          "fonts": [
+            {
+              "familyName": "Noto Sans CJK SC",
+              "postScriptName": "NotoSansCJKsc-Regular",
+              "isCustomFont": false,
+              "glyphCount": 2
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "case": "about:phone-zh-CN",
+      "capture": "account/phone-zh-CN-login.png",
+      "locale": "zh-CN",
+      "method": "CDP.CSS.getPlatformFontsForNode",
+      "samples": [
+        {
+          "selector": "html > body:nth-child(2) > div:nth-child(1) > div:nth-child(1) > section:nth-child(2) > header:nth-child(1) > button:nth-child(1) > div:nth-child(1) > span:nth-child(2)",
+          "text": "映间",
+          "hanCount": 2,
+          "fonts": [
+            {
+              "familyName": "Noto Sans CJK SC",
+              "postScriptName": "NotoSansCJKsc-Bold",
+              "isCustomFont": false,
+              "glyphCount": 2
+            }
+          ]
+        },
+        {
+          "selector": "html > body:nth-child(2) > div:nth-child(1) > div:nth-child(1) > section:nth-child(2) > header:nth-child(1) > div:nth-child(2) > button:nth-child(2) > span:nth-child(2)",
+          "text": "返回首页",
+          "hanCount": 4,
+          "fonts": [
+            {
+              "familyName": "Noto Sans CJK SC",
+              "postScriptName": "NotoSansCJKsc-Regular",
+              "isCustomFont": false,
+              "glyphCount": 4
+            }
+          ]
+        },
+        {
+          "selector": "html > body:nth-child(2) > div:nth-child(1) > div:nth-child(1) > section:nth-child(2) > main:nth-child(2) > div:nth-child(1) > header:nth-child(1) > h1:nth-child(1)",
+          "text": "登录工作空间",
+          "hanCount": 6,
+          "fonts": [
+            {
+              "familyName": "Noto Sans CJK SC",
+              "postScriptName": "NotoSansCJKsc-Bold",
+              "isCustomFont": false,
+              "glyphCount": 6
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "case": "about:tablet-zh-TW",
+      "capture": "about/tablet-zh-TW.png",
+      "locale": "zh-TW",
+      "method": "CDP.CSS.getPlatformFontsForNode",
+      "samples": [
+        {
+          "selector": "html > body:nth-child(2) > div:nth-child(1) > div:nth-child(1) > header:nth-child(2) > a:nth-child(1) > span:nth-child(2)",
+          "text": "映间",
+          "hanCount": 2,
+          "fonts": [
+            {
+              "familyName": "Noto Sans CJK TC",
+              "postScriptName": "NotoSansCJKtc-Bold",
+              "isCustomFont": false,
+              "glyphCount": 2
+            }
+          ]
+        },
+        {
+          "selector": "html > body:nth-child(2) > div:nth-child(1) > div:nth-child(1) > header:nth-child(2) > nav:nth-child(2) > a:nth-child(1)",
+          "text": "精修",
+          "hanCount": 2,
+          "fonts": [
+            {
+              "familyName": "Noto Sans CJK TC",
+              "postScriptName": "NotoSansCJKtc-Regular",
+              "isCustomFont": false,
+              "glyphCount": 2
+            }
+          ]
+        },
+        {
+          "selector": "html > body:nth-child(2) > div:nth-child(1) > div:nth-child(1) > header:nth-child(2) > nav:nth-child(2) > a:nth-child(3)",
+          "text": "協作與交付",
+          "hanCount": 5,
+          "fonts": [
+            {
+              "familyName": "Noto Sans CJK TC",
+              "postScriptName": "NotoSansCJKtc-Regular",
+              "isCustomFont": false,
+              "glyphCount": 5
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "case": "about:tablet-zh-TW",
+      "capture": "account/tablet-zh-TW-login.png",
+      "locale": "zh-TW",
+      "method": "CDP.CSS.getPlatformFontsForNode",
+      "samples": [
+        {
+          "selector": "html > body:nth-child(2) > div:nth-child(1) > div:nth-child(1) > section:nth-child(2) > header:nth-child(1) > button:nth-child(1) > div:nth-child(1) > span:nth-child(2)",
+          "text": "映间",
+          "hanCount": 2,
+          "fonts": [
+            {
+              "familyName": "Noto Sans CJK TC",
+              "postScriptName": "NotoSansCJKtc-Bold",
+              "isCustomFont": false,
+              "glyphCount": 2
+            }
+          ]
+        },
+        {
+          "selector": "html > body:nth-child(2) > div:nth-child(1) > div:nth-child(1) > section:nth-child(2) > header:nth-child(1) > div:nth-child(2) > button:nth-child(2) > span:nth-child(2)",
+          "text": "返回首頁",
+          "hanCount": 4,
+          "fonts": [
+            {
+              "familyName": "Noto Sans CJK TC",
+              "postScriptName": "NotoSansCJKtc-Regular",
+              "isCustomFont": false,
+              "glyphCount": 4
+            }
+          ]
+        },
+        {
+          "selector": "html > body:nth-child(2) > div:nth-child(1) > div:nth-child(1) > section:nth-child(2) > main:nth-child(2) > div:nth-child(1) > header:nth-child(1) > h1:nth-child(1)",
+          "text": "登入工作空間",
+          "hanCount": 6,
+          "fonts": [
+            {
+              "familyName": "Noto Sans CJK TC",
+              "postScriptName": "NotoSansCJKtc-Bold",
+              "isCustomFont": false,
+              "glyphCount": 6
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "case": "supplemental:isolated-account-and-views",
+      "capture": "views/works.png",
+      "locale": "zh-CN",
+      "method": "CDP.CSS.getPlatformFontsForNode",
+      "samples": [
+        {
+          "selector": "html > body:nth-child(2) > div:nth-child(1) > div:nth-child(1) > div:nth-child(1) > div:nth-child(1) > div:nth-child(3) > header:nth-child(1) > div:nth-child(1) > button:nth-child(2) > div:nth-child(1) > span:nth-child(2)",
+          "text": "映间",
+          "hanCount": 2,
+          "fonts": [
+            {
+              "familyName": "Noto Sans CJK SC",
+              "postScriptName": "NotoSansCJKsc-Bold",
+              "isCustomFont": false,
+              "glyphCount": 2
+            }
+          ]
+        },
+        {
+          "selector": "html > body:nth-child(2) > div:nth-child(1) > div:nth-child(1) > div:nth-child(1) > div:nth-child(1) > div:nth-child(3) > header:nth-child(1) > div:nth-child(1) > div:nth-child(3) > span:nth-child(2)",
+          "text": "本地编辑",
+          "hanCount": 4,
+          "fonts": [
+            {
+              "familyName": "Noto Sans CJK SC",
+              "postScriptName": "NotoSansCJKsc-Regular",
+              "isCustomFont": false,
+              "glyphCount": 4
+            }
+          ]
+        },
+        {
+          "selector": "html > body:nth-child(2) > div:nth-child(1) > div:nth-child(1) > div:nth-child(1) > div:nth-child(1) > div:nth-child(3) > header:nth-child(1) > nav:nth-child(2) > button:nth-child(1) > span:nth-child(2)",
+          "text": "精修",
+          "hanCount": 2,
+          "fonts": [
+            {
+              "familyName": "Noto Sans CJK SC",
+              "postScriptName": "NotoSansCJKsc-Regular",
+              "isCustomFont": false,
+              "glyphCount": 2
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "case": "supplemental:isolated-account-and-views",
+      "capture": "views/restoration-denoise.png",
+      "locale": "zh-CN",
+      "method": "CDP.CSS.getPlatformFontsForNode",
+      "samples": [
+        {
+          "selector": "html > body:nth-child(2) > div:nth-child(1) > div:nth-child(1) > div:nth-child(1) > div:nth-child(1) > div:nth-child(3) > div:nth-child(4) > div:nth-child(1) > div:nth-child(1) > div:nth-child(1) > div:nth-child(1) > div:nth-child(2) > dialog:nth-child(4) > header:nth-child(1) > div:nth-child(1) > h2:nth-child(1)",
+          "text": "照片修复",
+          "hanCount": 4,
+          "fonts": [
+            {
+              "familyName": "Noto Sans CJK SC",
+              "postScriptName": "NotoSansCJKsc-Regular",
+              "isCustomFont": false,
+              "glyphCount": 4
+            }
+          ]
+        },
+        {
+          "selector": "html > body:nth-child(2) > div:nth-child(1) > div:nth-child(1) > div:nth-child(1) > div:nth-child(1) > div:nth-child(3) > div:nth-child(4) > div:nth-child(1) > div:nth-child(1) > div:nth-child(1) > div:nth-child(1) > div:nth-child(2) > dialog:nth-child(4) > div:nth-child(2) > div:nth-child(2) > div:nth-child(1) > button:nth-child(1)",
+          "text": "降噪",
+          "hanCount": 2,
+          "fonts": [
+            {
+              "familyName": "Noto Sans CJK SC",
+              "postScriptName": "NotoSansCJKsc-Bold",
+              "isCustomFont": false,
+              "glyphCount": 2
+            }
+          ]
+        },
+        {
+          "selector": "html > body:nth-child(2) > div:nth-child(1) > div:nth-child(1) > div:nth-child(1) > div:nth-child(1) > div:nth-child(3) > div:nth-child(4) > div:nth-child(1) > div:nth-child(1) > div:nth-child(1) > div:nth-child(1) > div:nth-child(2) > dialog:nth-child(4) > div:nth-child(2) > div:nth-child(2) > div:nth-child(1) > button:nth-child(2)",
+          "text": "运动模糊",
+          "hanCount": 4,
+          "fonts": [
+            {
+              "familyName": "Noto Sans CJK SC",
+              "postScriptName": "NotoSansCJKsc-Bold",
+              "isCustomFont": false,
+              "glyphCount": 4
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "case": "supplemental:isolated-account-and-views",
+      "capture": "views/restoration-motion.png",
+      "locale": "zh-CN",
+      "method": "CDP.CSS.getPlatformFontsForNode",
+      "samples": [
+        {
+          "selector": "html > body:nth-child(2) > div:nth-child(1) > div:nth-child(1) > div:nth-child(1) > div:nth-child(1) > div:nth-child(3) > div:nth-child(4) > div:nth-child(1) > div:nth-child(1) > div:nth-child(1) > div:nth-child(1) > div:nth-child(2) > dialog:nth-child(4) > header:nth-child(1) > div:nth-child(1) > h2:nth-child(1)",
+          "text": "照片修复",
+          "hanCount": 4,
+          "fonts": [
+            {
+              "familyName": "Noto Sans CJK SC",
+              "postScriptName": "NotoSansCJKsc-Regular",
+              "isCustomFont": false,
+              "glyphCount": 4
+            }
+          ]
+        },
+        {
+          "selector": "html > body:nth-child(2) > div:nth-child(1) > div:nth-child(1) > div:nth-child(1) > div:nth-child(1) > div:nth-child(3) > div:nth-child(4) > div:nth-child(1) > div:nth-child(1) > div:nth-child(1) > div:nth-child(1) > div:nth-child(2) > dialog:nth-child(4) > div:nth-child(2) > div:nth-child(2) > div:nth-child(1) > button:nth-child(1)",
+          "text": "降噪",
+          "hanCount": 2,
+          "fonts": [
+            {
+              "familyName": "Noto Sans CJK SC",
+              "postScriptName": "NotoSansCJKsc-Bold",
+              "isCustomFont": false,
+              "glyphCount": 2
+            }
+          ]
+        },
+        {
+          "selector": "html > body:nth-child(2) > div:nth-child(1) > div:nth-child(1) > div:nth-child(1) > div:nth-child(1) > div:nth-child(3) > div:nth-child(4) > div:nth-child(1) > div:nth-child(1) > div:nth-child(1) > div:nth-child(1) > div:nth-child(2) > dialog:nth-child(4) > div:nth-child(2) > div:nth-child(2) > div:nth-child(1) > button:nth-child(2)",
+          "text": "运动模糊",
+          "hanCount": 4,
+          "fonts": [
+            {
+              "familyName": "Noto Sans CJK SC",
+              "postScriptName": "NotoSansCJKsc-Bold",
+              "isCustomFont": false,
+              "glyphCount": 4
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "case": "supplemental:isolated-account-and-views",
+      "capture": "views/restoration-motion-advanced.png",
+      "locale": "zh-CN",
+      "method": "CDP.CSS.getPlatformFontsForNode",
+      "samples": [
+        {
+          "selector": "html > body:nth-child(2) > div:nth-child(1) > div:nth-child(1) > div:nth-child(1) > div:nth-child(1) > div:nth-child(3) > div:nth-child(4) > div:nth-child(1) > div:nth-child(1) > div:nth-child(1) > div:nth-child(1) > div:nth-child(2) > dialog:nth-child(4) > header:nth-child(1) > div:nth-child(1) > h2:nth-child(1)",
+          "text": "照片修复",
+          "hanCount": 4,
+          "fonts": [
+            {
+              "familyName": "Noto Sans CJK SC",
+              "postScriptName": "NotoSansCJKsc-Regular",
+              "isCustomFont": false,
+              "glyphCount": 4
+            }
+          ]
+        },
+        {
+          "selector": "html > body:nth-child(2) > div:nth-child(1) > div:nth-child(1) > div:nth-child(1) > div:nth-child(1) > div:nth-child(3) > div:nth-child(4) > div:nth-child(1) > div:nth-child(1) > div:nth-child(1) > div:nth-child(1) > div:nth-child(2) > dialog:nth-child(4) > div:nth-child(2) > div:nth-child(2) > div:nth-child(1) > button:nth-child(1)",
+          "text": "降噪",
+          "hanCount": 2,
+          "fonts": [
+            {
+              "familyName": "Noto Sans CJK SC",
+              "postScriptName": "NotoSansCJKsc-Bold",
+              "isCustomFont": false,
+              "glyphCount": 2
+            }
+          ]
+        },
+        {
+          "selector": "html > body:nth-child(2) > div:nth-child(1) > div:nth-child(1) > div:nth-child(1) > div:nth-child(1) > div:nth-child(3) > div:nth-child(4) > div:nth-child(1) > div:nth-child(1) > div:nth-child(1) > div:nth-child(1) > div:nth-child(2) > dialog:nth-child(4) > div:nth-child(2) > div:nth-child(2) > div:nth-child(1) > button:nth-child(2)",
+          "text": "运动模糊",
+          "hanCount": 4,
+          "fonts": [
+            {
+              "familyName": "Noto Sans CJK SC",
+              "postScriptName": "NotoSansCJKsc-Bold",
+              "isCustomFont": false,
+              "glyphCount": 4
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "case": "supplemental:isolated-account-and-views",
+      "capture": "views/documents.png",
+      "locale": "zh-CN",
+      "method": "CDP.CSS.getPlatformFontsForNode",
+      "samples": [
+        {
+          "selector": "html > body:nth-child(2) > div:nth-child(1) > div:nth-child(1) > div:nth-child(1) > div:nth-child(1) > div:nth-child(3) > header:nth-child(1) > div:nth-child(1) > button:nth-child(2) > div:nth-child(1) > span:nth-child(2)",
+          "text": "映间",
+          "hanCount": 2,
+          "fonts": [
+            {
+              "familyName": "Noto Sans CJK SC",
+              "postScriptName": "NotoSansCJKsc-Bold",
+              "isCustomFont": false,
+              "glyphCount": 2
+            }
+          ]
+        },
+        {
+          "selector": "html > body:nth-child(2) > div:nth-child(1) > div:nth-child(1) > div:nth-child(1) > div:nth-child(1) > div:nth-child(3) > header:nth-child(1) > div:nth-child(1) > div:nth-child(3) > span:nth-child(2)",
+          "text": "本地编辑",
+          "hanCount": 4,
+          "fonts": [
+            {
+              "familyName": "Noto Sans CJK SC",
+              "postScriptName": "NotoSansCJKsc-Regular",
+              "isCustomFont": false,
+              "glyphCount": 4
+            }
+          ]
+        },
+        {
+          "selector": "html > body:nth-child(2) > div:nth-child(1) > div:nth-child(1) > div:nth-child(1) > div:nth-child(1) > div:nth-child(3) > header:nth-child(1) > nav:nth-child(2) > button:nth-child(1) > span:nth-child(2)",
+          "text": "精修",
+          "hanCount": 2,
+          "fonts": [
+            {
+              "familyName": "Noto Sans CJK SC",
+              "postScriptName": "NotoSansCJKsc-Regular",
+              "isCustomFont": false,
+              "glyphCount": 2
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "case": "supplemental:isolated-account-and-views",
+      "capture": "views/collaborate.png",
+      "locale": "zh-CN",
+      "method": "CDP.CSS.getPlatformFontsForNode",
+      "samples": [
+        {
+          "selector": "html > body:nth-child(2) > div:nth-child(1) > div:nth-child(1) > div:nth-child(1) > div:nth-child(1) > div:nth-child(3) > header:nth-child(1) > div:nth-child(1) > button:nth-child(2) > div:nth-child(1) > span:nth-child(2)",
+          "text": "映间",
+          "hanCount": 2,
+          "fonts": [
+            {
+              "familyName": "Noto Sans CJK SC",
+              "postScriptName": "NotoSansCJKsc-Bold",
+              "isCustomFont": false,
+              "glyphCount": 2
+            }
+          ]
+        },
+        {
+          "selector": "html > body:nth-child(2) > div:nth-child(1) > div:nth-child(1) > div:nth-child(1) > div:nth-child(1) > div:nth-child(3) > header:nth-child(1) > div:nth-child(1) > div:nth-child(3) > span:nth-child(2)",
+          "text": "本地编辑",
+          "hanCount": 4,
+          "fonts": [
+            {
+              "familyName": "Noto Sans CJK SC",
+              "postScriptName": "NotoSansCJKsc-Regular",
+              "isCustomFont": false,
+              "glyphCount": 4
+            }
+          ]
+        },
+        {
+          "selector": "html > body:nth-child(2) > div:nth-child(1) > div:nth-child(1) > div:nth-child(1) > div:nth-child(1) > div:nth-child(3) > header:nth-child(1) > nav:nth-child(2) > button:nth-child(1) > span:nth-child(2)",
+          "text": "精修",
+          "hanCount": 2,
+          "fonts": [
+            {
+              "familyName": "Noto Sans CJK SC",
+              "postScriptName": "NotoSansCJKsc-Regular",
+              "isCustomFont": false,
+              "glyphCount": 2
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "case": "supplemental:isolated-account-and-views",
+      "capture": "views/usage.png",
+      "locale": "zh-CN",
+      "method": "CDP.CSS.getPlatformFontsForNode",
+      "samples": [
+        {
+          "selector": "html > body:nth-child(2) > div:nth-child(1) > div:nth-child(1) > div:nth-child(1) > div:nth-child(1) > div:nth-child(3) > header:nth-child(1) > div:nth-child(1) > button:nth-child(2) > div:nth-child(1) > span:nth-child(2)",
+          "text": "映间",
+          "hanCount": 2,
+          "fonts": [
+            {
+              "familyName": "Noto Sans CJK SC",
+              "postScriptName": "NotoSansCJKsc-Bold",
+              "isCustomFont": false,
+              "glyphCount": 2
+            }
+          ]
+        },
+        {
+          "selector": "html > body:nth-child(2) > div:nth-child(1) > div:nth-child(1) > div:nth-child(1) > div:nth-child(1) > div:nth-child(3) > header:nth-child(1) > div:nth-child(1) > div:nth-child(3) > span:nth-child(2)",
+          "text": "本地编辑",
+          "hanCount": 4,
+          "fonts": [
+            {
+              "familyName": "Noto Sans CJK SC",
+              "postScriptName": "NotoSansCJKsc-Regular",
+              "isCustomFont": false,
+              "glyphCount": 4
+            }
+          ]
+        },
+        {
+          "selector": "html > body:nth-child(2) > div:nth-child(1) > div:nth-child(1) > div:nth-child(1) > div:nth-child(1) > div:nth-child(3) > header:nth-child(1) > nav:nth-child(2) > button:nth-child(1) > span:nth-child(2)",
+          "text": "精修",
+          "hanCount": 2,
+          "fonts": [
+            {
+              "familyName": "Noto Sans CJK SC",
+              "postScriptName": "NotoSansCJKsc-Regular",
+              "isCustomFont": false,
+              "glyphCount": 2
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "case": "supplemental:isolated-account-and-views",
+      "capture": "views/assistant-disabled.png",
+      "locale": "zh-CN",
+      "method": "CDP.CSS.getPlatformFontsForNode",
+      "samples": [
+        {
+          "selector": "html > body:nth-child(2) > div:nth-child(1) > div:nth-child(1) > div:nth-child(1) > div:nth-child(1) > div:nth-child(3) > header:nth-child(1) > div:nth-child(1) > button:nth-child(2) > div:nth-child(1) > span:nth-child(2)",
+          "text": "映间",
+          "hanCount": 2,
+          "fonts": [
+            {
+              "familyName": "Noto Sans CJK SC",
+              "postScriptName": "NotoSansCJKsc-Bold",
+              "isCustomFont": false,
+              "glyphCount": 2
+            }
+          ]
+        },
+        {
+          "selector": "html > body:nth-child(2) > div:nth-child(1) > div:nth-child(1) > div:nth-child(1) > div:nth-child(1) > div:nth-child(3) > header:nth-child(1) > div:nth-child(1) > div:nth-child(3) > span:nth-child(2)",
+          "text": "本地草稿",
+          "hanCount": 4,
+          "fonts": [
+            {
+              "familyName": "Noto Sans CJK SC",
+              "postScriptName": "NotoSansCJKsc-Regular",
+              "isCustomFont": false,
+              "glyphCount": 4
+            }
+          ]
+        },
+        {
+          "selector": "html > body:nth-child(2) > div:nth-child(1) > div:nth-child(1) > div:nth-child(1) > div:nth-child(1) > div:nth-child(3) > header:nth-child(1) > nav:nth-child(2) > button:nth-child(1) > span:nth-child(2)",
+          "text": "精修",
+          "hanCount": 2,
+          "fonts": [
+            {
+              "familyName": "Noto Sans CJK SC",
+              "postScriptName": "NotoSansCJKsc-Bold",
+              "isCustomFont": false,
+              "glyphCount": 2
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "case": "supplemental:isolated-account-and-views",
+      "capture": "account/center.png",
+      "locale": "zh-CN",
+      "method": "CDP.CSS.getPlatformFontsForNode",
+      "samples": [
+        {
+          "selector": "html > body:nth-child(2) > div:nth-child(1) > div:nth-child(1) > section:nth-child(2) > header:nth-child(1) > button:nth-child(1) > div:nth-child(1) > span:nth-child(2)",
+          "text": "映间",
+          "hanCount": 2,
+          "fonts": [
+            {
+              "familyName": "Noto Sans CJK SC",
+              "postScriptName": "NotoSansCJKsc-Bold",
+              "isCustomFont": false,
+              "glyphCount": 2
+            }
+          ]
+        },
+        {
+          "selector": "html > body:nth-child(2) > div:nth-child(1) > div:nth-child(1) > section:nth-child(2) > header:nth-child(1) > div:nth-child(2) > button:nth-child(2) > span:nth-child(2)",
+          "text": "返回创作",
+          "hanCount": 4,
+          "fonts": [
+            {
+              "familyName": "Noto Sans CJK SC",
+              "postScriptName": "NotoSansCJKsc-Regular",
+              "isCustomFont": false,
+              "glyphCount": 4
+            }
+          ]
+        },
+        {
+          "selector": "html > body:nth-child(2) > div:nth-child(1) > div:nth-child(1) > section:nth-child(2) > main:nth-child(2) > div:nth-child(1) > header:nth-child(1) > h1:nth-child(1)",
+          "text": "账号与使用",
+          "hanCount": 5,
+          "fonts": [
+            {
+              "familyName": "Noto Sans CJK SC",
+              "postScriptName": "NotoSansCJKsc-Bold",
+              "isCustomFont": false,
+              "glyphCount": 5
+            }
+          ]
+        }
+      ]
+    }
+  ],
+  "blockedSdkTelemetryAttempts": [
+    {
+      "case": "captures:zh-CN",
+      "endpoint": "https://odml.pa.googleapis.com/v1/log",
+      "method": "POST",
+      "blocked": true
+    },
+    {
+      "case": "captures:zh-CN",
+      "endpoint": "https://odml.pa.googleapis.com/v1/log",
+      "method": "POST",
+      "blocked": true
+    },
+    {
+      "case": "captures:zh-TW",
+      "endpoint": "https://odml.pa.googleapis.com/v1/log",
+      "method": "POST",
+      "blocked": true
+    },
+    {
+      "case": "captures:zh-TW",
+      "endpoint": "https://odml.pa.googleapis.com/v1/log",
+      "method": "POST",
+      "blocked": true
+    },
+    {
+      "case": "captures:en",
+      "endpoint": "https://odml.pa.googleapis.com/v1/log",
+      "method": "POST",
+      "blocked": true
+    },
+    {
+      "case": "captures:en",
+      "endpoint": "https://odml.pa.googleapis.com/v1/log",
+      "method": "POST",
+      "blocked": true
+    }
+  ],
+  "sdkTelemetrySummary": {
+    "sdk": "@mediapipe/tasks-vision",
+    "sdkVersion": "1.2.2",
+    "endpoint": "https://odml.pa.googleapis.com/v1/log",
+    "method": "POST",
+    "blocked": true,
+    "count": 6,
+    "enforcement": "isolated-vite-context-route-abort",
+    "productionHeadersVerified": false
+  }
+}
