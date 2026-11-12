@@ -12,7 +12,7 @@ React Bits copyright and MIT + Commons Clause terms are retained in effects/LICE
 
 ## Product imagery
 
-Only captures of the actual application belong in ProductScreen. No generated promotional art is imported. The six named captures each have a matching language variant. Current screenshot provenance and capture revision must be recorded alongside public/about assets. Until the new capture task has completed, those files retain their earlier real-application capture revision; their existence is not evidence of this redesign passing browser review.
+Only captures of the actual application belong in ProductScreen. No generated promotional art is imported. The six named captures each have Simplified Chinese, Traditional Chinese and English variants. The exact tested commit, source photographs, viewport, locale and SHA-256 of each published image are recorded in public/about/source-manifest.json. The browser workflow publishes this allowlisted payload only after its full verification job succeeds and the source branch still matches the tested commit. Manual visual review and the distinction between automated checks, reviewed screenshots and upstream evidence are recorded in docs/design/verification/system-redesign/README.md and the 111-item feature review.
 
 ## Scope and verification
 

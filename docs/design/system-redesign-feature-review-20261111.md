@@ -2,27 +2,67 @@
 
 核对日期：2026-11-12（UTC）。文件名沿用本轮 `20261111` 重设计批次。
 
+## 最终结果与证据
+
+**同一源码 `f578c96f9dc73eb4d134e5f4420081bd8918749f` 已通过第六轮完整前端自动验收；截图已发布，限定范围人工复核未发现阻塞问题。** 本轮完成的是界面重设计、已有能力接线与相应前端验收。canonical的111项原状态仍为15项已验、85项部分、11项缺口，不把本次界面结果写成全部底层算法已完成。
+
+| 项目 | 最终事实 |
+| --- | --- |
+| 需求基线 | `new/native-color-feedback@b83874c80e1f6c25dbb59d5fe2108b4336719d94`；canonical blob `c6a47ab6a5ffee82ffad78866d5780b2c3d087e0`。 |
+| 受测源码 | [f578c96](https://github.com/hxjyaohaohaode/AI-xiutu/commit/f578c96f9dc73eb4d134e5f4420081bd8918749f)。相对第五轮936仅把面板恢复高度测试区间330–360改为280–300，产品代码完全相同，真实事件/单次写入/normal状态/原geometry不变断言保留。 |
+| 同轮自动验收 | [Actions run 43142870241](https://github.com/hxjyaohaohaode/AI-xiutu/actions/runs/43142870241)：verify job130933764951成功。整仓typecheck、498 tests/pass498/fail0/cancelled0/skipped0/todo0、production build及浏览器16/16全部通过。原始单测日志时间02:40:39Z。 |
+| 浏览器范围 | Chromium156.0.8078.79，2026-11-12 02:40:55–02:43:39 UTC；五核心flow、三语capture、五About、隔离账号/页面补充、品牌和最终门禁共16个case。 |
+| CJK字体实际渲染 | 36张中文截图、103个可见节点样本、314个取样汉字对应314个正确字体字形。简体25图/71样本/221字形用Noto Sans CJK SC；繁体11图/32样本/93字形用Noto Sans CJK TC。report/manifest逐项相同，逐截图绑定及case归属核对通过。 |
+| 浏览器错误与请求边界 | pageErrors、routingErrors、unexpectedOrigins、cleanupErrors均0。实际记录MediaPipe1.2.2固定endpoint精确POST六次，三语capture各两次，均abort成功；没有外连放通或伪造模型响应。productionHeadersVerified仍为false。 |
+| 图片完整性与发布 | 34张图片逐个字节数/SHA-256正确；publisher job130935496763成功，在02:44:01Z发布[2897cb7](https://github.com/hxjyaohaohaode/AI-xiutu/commit/2897cb787dc3a165dd535b97e7ae119d66e9e240)。该提交父节点精确为f578，仅34图片及manifest共35个白名单文件；没有产品代码修改。 |
+| 发布tree | `a33b39135c8fc21e1ea970d2d10d5e10ee054bcd`；全部35个Git blob与第六轮本地产物字节核对一致。 |
+| 自动报告与人工结论 | 原始report/manifest为passed，manifest的manualVisualReview仍保持false。人工审阅单独记录在下文，不改写自动产物字段冒充自动证明。 |
+
+原始[第六轮artifact](https://github.com/hxjyaohaohaode/AI-xiutu/actions/runs/43142870241/artifacts/13910122925) ZIP为78,125,053字节，SHA-256为 `fad143dcc699cab89ba425b93243d21859a86fc47d0b18db821f6b5801734acd`。report SHA-256为 `af5e8b451b186f3974edf5800e1667228f98316c5008204dadc70a8aa75540e5`；[已发布manifest](https://github.com/hxjyaohaohaode/AI-xiutu/blob/2897cb787dc3a165dd535b97e7ae119d66e9e240/apps/web/public/about/source-manifest.json) SHA-256为 `edc58b8fdabfc6950e9692b9cca51107dad16f252e98d59eaac83f183db5b44f`。图片清单为3张来源照片、29张UI截图、2张About页面，不包含生成或重绘的系统界面图。
+
+### 人工复核的实际范围
+
+先逐张查看第五轮20张工作台/参数图和15张页面/弹窗图，总审看完About桌面长页六段及手机五段；第六轮没有无条件沿用这些结论，而是对实际产物逐项比较并重新打开差异图。
+
+第六轮编辑器20图中15张PNG摘要与RGBA字节均相同；local-CN、tablet-CN、phone-CN分别有1、16、32像素微小变化，已重开确认无可见几何变化。local-EN和portrait-CN较大差异来自右侧inspector的截图滚动位置，重开确认画布、品牌、dock相同，可见控件没有重叠。中文portrait-CN第三排已实际入镜，“眼下明暗”和“亮眼”名称完整，总审另行实看workspace-CN及portrait-CN确认正常。**英文portrait与第五轮字节相同，仍只直接拍到首排；英文Under-eye light / Eye brightness第三排未直接截图，不能声称该行逐项可见已验。**
+
+页面/弹窗15图中10张RGBA完全相同，About桌面/手机、documents、assistant-unavailable、account五张最终差异图均重新打开，动态账号/时间、图标及文件信息差异已定位，没有新增视觉阻断。发布白名单34图中9张字节不同，上述复核覆盖其差异；静态照片或截图字节一致不被用来代替未知交互的验收。
+
+### 本次通过不扩大的边界
+
+修复照片实际浏览器检查仍是quote与控件/键盘行为，createdDerivedAssets=0；真正执行修复、输出画质和未知结果恢复没有在本轮供应商/生产环境执行。助手验收为真实unavailable状态、唯一原因及禁用提交，没有调用外部AI。H17的WebGPU FP16可选模型、native RAW/HDR精度与性能、物理设备、真实多人、全部SQL/API及生产部署仍保持各自证据范围。上游Windows硬件实测保留来源，Chrome/SwiftShader截图不冒称新硬件GPU验收。本次发布和最终PR是代码、文档与图片更新，不是生产部署。
+
 ## 快照、范围与读法
 
-需求来源固定为 [new/native-color-feedback@52b6dcf](https://github.com/hxjyaohaohaode/AI-xiutu/commit/52b6dcf9ebf0bb92d369b822328f4a1e92de9f1a) 的 [AI修图功能对照与验收主表](https://github.com/hxjyaohaohaode/AI-xiutu/blob/52b6dcf9ebf0bb92d369b822328f4a1e92de9f1a/docs/research/PHOTO-EDITING-FEATURE-MATRIX.md)，文件blob为 `6393f69c9ff26bebc544ef18dab5225cca0c4be9`。本文件没有修改canonical表。该基线在b28a相机RAW WebGPU适屏基础上，新增HEIC PQ/Ultra HDR JPEG的有符号float母版适屏；111个ID、功能名称和证据状态均未变，本次更新R01/F07及关联F09的既有证据与源码引用。
+需求来源固定为 [new/native-color-feedback@b83874c](https://github.com/hxjyaohaohaode/AI-xiutu/commit/b83874c80e1f6c25dbb59d5fe2108b4336719d94) 的 [AI修图功能对照与验收主表](https://github.com/hxjyaohaohaode/AI-xiutu/blob/b83874c80e1f6c25dbb59d5fe2108b4336719d94/docs/research/PHOTO-EDITING-FEATURE-MATRIX.md)，文件blob为 `c6a47ab6a5ffee82ffad78866d5780b2c3d087e0`。本文件没有修改canonical表。该基线继承RAW、HEIC PQ/HLG和Ultra HDR JPEG线性母版链路，并新增H17可选BiRefNet发丝与边缘入口；111个ID、名称和原证据状态逐项未变，最新提交仅更新H17证据文字。上游Windows硬件实验与本轮重设计UI验证分开记录。
 
-前端核对以 `8811b4f769088f6e3729b4f26bc3677c68a57297` 为初始重设计检查点，包含随后AI结果/文案/弹窗样式补丁、`383d067` 的常规模型CAS，以及 `5ba7b6bd47e5f34cdf6b62399fd7e39f8943ff0a` 已整合的F07母版曲线/区域、S09/S10独立修复派生、翻译和逐项核对表。当前整合源码为 `39b277bc650951ba17e1d459457837d5dbc82c69`，已继承52b6dcf及7个linear-*路径重命名，并保留重设计后的native曲线/局部控件。该head已通过整仓TypeScript检查、全部498项前端单元/契约测试和production build；浏览器阶段为7/16通过，整体验收未完成。具体未通过项见下方阶段记录，不能用原基线实测替代。
+本轮最终受测源码为 `f578c96f9dc73eb4d134e5f4420081bd8918749f`，在同一head通过整仓typecheck、全部498项前端单元/契约测试、production build和全部16个浏览器case；随后仅图片与manifest的提交 `2897cb787dc3a165dd535b97e7ae119d66e9e240` 已发布35个允许文件。前端整合了AI/弹窗、常规模型CAS、native曲线/局部区域、修复派生及最新原片/抠图入口；本轮各阶段失败与修复过程保留在后文历史记录中，不拼接不同head的成绩。当前结果、人工审阅范围及未验边界见开头。
 
 本轮范围是前端信息结构、交互、组件大小、状态、真实图像展示及已有后端能力的接线。没有承诺在前端任务中填满缺失的算法。主表原证据状态逐行原样保留，包括括号内的限定范围：**15项已验、85项部分、11项缺口**。这里的“已验”是canonical既有证据，绝不代表本轮UI、当前设备或新提交已重新通过。
 
 本表的111个ID与名称来自canonical逐行读取；旧R5的44项只可写为 `FE-R5-<旧编号>`，不能用旧R5的R/A/C编号替代当前同名ID。用户现在要求About自然滚动读取全部内容，覆盖旧FE-R5中需要多次点击才能看到完整介绍的交互要求。
 
-“本轮处理”说明实际源码变动或保留的范围；“门禁与待验”列出具体约束与尚无本轮证据的交互。**第二轮run 43132840910已完成：39b277整仓typecheck、498项前端测试和production build通过；浏览器7/16通过，验证job整体失败，尚未完成全量浏览器验收。** 旧浏览器/性能/SQL结果不会因换UI自动升级。
+“本轮处理”说明实际源码变动或保留的范围；“门禁与待验”列出具体约束与尚无本轮证据的交互。**第六轮run 43142870241在同一f578c96源码上通过完整前端自动验收，35个截图/manifest文件已发布，限定范围人工复核无阻塞问题。** 此结论不把111项原始证据状态升级，不代替GPU/native/HDR、供应商、真实多人、物理设备或生产部署验收。
 
-## 52b6dcf基线更新与继承范围
+## b83874c基线更新与既有证据范围
 
-此前 `fc2827c…b28a181` 增加相机RAW适屏WebGPU链路；本次 `b28a181…52b6dcf` 在同一链路支持不透明HEIC PQ和Ultra HDR JPEG的有符号float32母版。原有7个raw-*实现/测试路径已重命名为linear-*，对应 [useLinearFitPreview.ts](../../apps/web/src/media/useLinearFitPreview.ts)、[linear-master-stream.ts](../../apps/web/src/media/linear-master-stream.ts)、[linear-fit-gpu.ts](../../apps/web/src/media/linear-fit-gpu.ts)、[linear-fit-parameters.ts](../../apps/web/src/media/linear-fit-parameters.ts)、[linear-fit.worker.ts](../../apps/web/src/media/linear-fit.worker.ts)、[linear-fit.wgsl](../../apps/web/src/media/linear-fit.wgsl) 和 [linear-master-stream.test.ts](../../apps/web/test/linear-master-stream.test.ts)。`@webgpu/types@0.1.74`、lock与tsconfig继续保留；新基线不改变修复派生接口。
+此前 `fc2827c…b28a181` 增加相机RAW适屏WebGPU链路；其后 `b28a181…52b6dcf` 在同一链路支持不透明HEIC PQ和Ultra HDR JPEG的有符号float32母版。原有7个raw-*实现/测试路径已重命名为linear-*，对应 [useLinearFitPreview.ts](../../apps/web/src/media/useLinearFitPreview.ts)、[linear-master-stream.ts](../../apps/web/src/media/linear-master-stream.ts)、[linear-fit-gpu.ts](../../apps/web/src/media/linear-fit-gpu.ts)、[linear-fit-parameters.ts](../../apps/web/src/media/linear-fit-parameters.ts)、[linear-fit.worker.ts](../../apps/web/src/media/linear-fit.worker.ts)、[linear-fit.wgsl](../../apps/web/src/media/linear-fit.wgsl) 和 [linear-master-stream.test.ts](../../apps/web/test/linear-master-stream.test.ts)。`@webgpu/types@0.1.74`、lock与tsconfig继续保留；这些路径和修复派生契约继续保留。
 
-[MediaSourceViewer.tsx](../../apps/web/src/media/MediaSourceViewer.tsx)同时保留配方能力门禁、GPU已绘制帧与CPU调度协调、导出期间可用GPU适屏继续调参，以及1:1等待native窗口时保留原像素瓦片的行为。GPU来源从仅相机RAW扩展到本次支持的线性母版，不能继续把 `sensor-raw` 写成唯一适屏入口；HEIC PQ/Ultra HDR JPEG在显示前使用同源SDR Reinhard映射，不等于已验证HDR面板显示。新的native曲线、局部覆盖层、区域源坐标与保存版本约束继续保留。
+此前 `52b6dcf…9fd3ab8` 为一个HLG提交，修改18个文件；前端涉及 [MediaImportDialog.tsx](../../apps/web/src/components/MediaImportDialog.tsx) 和 [MediaSourceViewer.tsx](../../apps/web/src/media/MediaSourceViewer.tsx)。媒体能力/编码类型、Worker、原生开发与API随上游一起继承，原生源文件由HEIC PQ专用名改为 [heic-hdr.c](../../packages/media/native/heic-hdr.c) 和 [heic_hdr.py](../../packages/media/native/heic_hdr.py)。[capabilities.ts](../../packages/media/src/capabilities.ts)、[types.ts](../../packages/media/src/types.ts)、[convert.py](../../packages/media/native/convert.py) 与 [precision.test.ts](../../packages/media/test/precision.test.ts) 是HLG能力及10/12位数值回归的对应源码；本轮前端只同步真实入口和能力提示，不重写这些算法。
 
-[R01/F07的canonical适屏实测](https://github.com/hxjyaohaohaode/AI-xiutu/blob/52b6dcf9ebf0bb92d369b822328f4a1e92de9f1a/docs/research/PHOTO-EDITING-FEATURE-MATRIX.md#r01-和-f07-原尺寸开发后的适屏性能)保留此前b28a的Sony 61.01MP / Nikon 45.75MP记录：47–48个变化帧、首变化80–144ms、最长间隔90–149ms、冷加载12.49–16.74秒。新基线另补Caddy生产构建复测：同一对RAW在四视口各45–47帧、首变化94–127ms、最长间隔104–141ms、冷加载13.55–16.51秒。两组是不同构建的既有实验记录，不能混为本轮UI结果。
+[MediaSourceViewer.tsx](../../apps/web/src/media/MediaSourceViewer.tsx)同时保留配方能力门禁、GPU已绘制帧与CPU调度协调、导出期间可用GPU适屏继续调参，以及1:1等待native窗口时保留原像素瓦片的行为。GPU来源从仅相机RAW扩展到本次支持的线性母版，不能继续把 `sensor-raw` 写成唯一适屏入口；RAW、HEIC PQ/HLG与Ultra HDR JPEG的已支持线性输入继续依能力门禁处理；显示前使用同源SDR Reinhard映射，不等于已验证HDR面板显示或通用透明EXR适屏。新的native曲线、局部覆盖层、区域源坐标与保存版本约束继续保留。
+
+[R01/F07的canonical适屏实测](https://github.com/hxjyaohaohaode/AI-xiutu/blob/9fd3ab8273f04b7f4105855db2762d1e8c6007f6/docs/research/PHOTO-EDITING-FEATURE-MATRIX.md#r01-和-f07-原尺寸开发后的适屏性能)保留此前b28a的Sony 61.01MP / Nikon 45.75MP记录：47–48个变化帧、首变化80–144ms、最长间隔90–149ms、冷加载12.49–16.74秒。新基线另补Caddy生产构建复测：同一对RAW在四视口各45–47帧、首变化94–127ms、最长间隔104–141ms、冷加载13.55–16.51秒。两组是不同构建的既有实验记录，不能混为本轮UI结果。
 
 新基线还记录Apple HEIC PQ `image_07.heic`和Pixel Ultra HDR JPEG `Ultra_HDR_Samples_Originals_03.jpg`各在两种Edge视口的生产构建实测：固定1536×1152 / 1536×1157画布，持按48帧、首变化51–79ms、最长间隔100–118ms、冷加载3.76–5.33秒；与CPU显示样本最大误差1码值，四组保存重开与切换1:1通过。这些仍是canonical已有证据，尚未在本轮重设计UI重跑。旧CPU适屏7.00–17.36秒和既有原像素窗口证据继续保留；弱网、通用EXR透明适屏、HDR面板显示与移动真机仍待验证。
+
+[9fd3ab8的HLG既有记录](https://github.com/hxjyaohaohaode/AI-xiutu/blob/9fd3ab8273f04b7f4105855db2762d1e8c6007f6/docs/research/PHOTO-EDITING-FEATURE-MATRIX.md#f09-nikon-z-8-hlg-往返)使用四张8256×5504、10位Rec.2020 NCLX HLG的Nikon原件；按BT.2100参考显示变换保留有符号Rec.709 EXR32，默认参考白203 cd/m²。10/12位PQ/HLG均有合成数值回归，不能将这些合成用例写成12位实拍已验。每张实拍的1,008,000个窗口/整图SDR通道样本逐值一致；EXR32、PNG16/TIFF16及513×389增益图JPEG有往返记录。整张45.44MP的Ultra HDR JPEG超出24MP输出预算仍返回413，不能表述为全尺寸HDR JPEG已支持。API分别返回整图 `ultraHdrJpeg` 与裁切 `ultraHdrJpegCrop`；当前Viewer只按前者提供整图选项，超预算HLG默认EXR32，没有裁切导出UI，513×389记录属于后端裁切能力。
+
+同一上游记录中，Nikon 9810/1534在Caddy生产构建、Windows Edge四视口适屏持按46–47帧、首变化121–131ms、最长间隔121–189ms，画布固定1536×1024，CPU显示样本最大误差1码值，首次冷加载17.05–20.25秒。四张连续SDR导出曾有422，修复中间TIFF后连续通过，这一过程和旧CPU性能证据保留。上述是上游HLG链路已有实验，**不属于4bd4a508这轮前端CI或本轮native浏览器验收**；移动HDR真机、HEIC同容器输出及辅助增益图仍待验。
+
+最新 `9fd3ab8…b83874c` 为一个抠图提交，修改16个文件。工作台精准抠图保留默认“标准抠图”，新增可选“发丝与边缘”；[PortraitControls.tsx](../../apps/web/src/editor/PortraitControls.tsx)、[usePortraitAnalysis.ts](../../apps/web/src/editor/usePortraitAnalysis.ts)、[portrait-fine-matte.worker.ts](../../apps/web/src/editor/portrait-fine-matte.worker.ts) 和 [portrait-matte-input.ts](../../apps/web/src/editor/portrait-matte-input.ts) 同步该入口、Worker与输入处理。入口和Worker均要求实际WebGPU适配器、排除 `isFallbackAdapter` 并要求 `shader-f16`；模型文件固定摘要校验，无法使用时显示可恢复状态并可回到标准模式。本轮没有改写原像素精修算法。
+
+[b83874c的H17既有实验](https://github.com/hxjyaohaohaode/AI-xiutu/blob/b83874c80e1f6c25dbb59d5fe2108b4336719d94/docs/research/PHOTO-EDITING-FEATURE-MATRIX.md#h17-自动抠图实拍复测) 使用Windows Edge / Intel Arc，在30张留出实拍的53,087,400个原尺寸像素上比较固定768×768 FP16 ONNX：BiRefNet+原像素精修相对已有路径改善20/30，整图alpha MAE为0.00544，5px边缘MAE为0.06135。它并非对每张照片都更好，复杂黑色发饰005的误差上升；默认仍为标准模式。后续Caddy生产构建用288/055/005/488四张不同原片覆盖桌面、模拟平板、窄屏和横屏，透明PNG触发到下载11.39–14.00秒，7,336,440像素与同配方本地渲染及真实PostgreSQL派生重放逐值一致。上述是上游独立硬件证据，不能把本轮Chrome/SwiftShader截图或界面显示成功记成新的WebGPU推理、画质、性能或真实项目派生验收。
 
 ## 本轮查出的两类接线问题
 
@@ -35,7 +75,7 @@
 
 | ID | 功能（原名） | 原证据状态 | 当前前端入口与源码 | 本轮处理 / 明确未补项 | 能力门禁与具体待验 |
 | --- | --- | --- | --- | --- | --- |
-| R01 | 拖动时原尺寸清晰 | 部分 | 常规编辑→明暗/色彩；[ToolInspector.tsx](../../apps/web/src/editor/ToolInspector.tsx)、[PrecisionRange.tsx](../../apps/web/src/editor/PrecisionRange.tsx)；线性母版适屏：[MediaSourceViewer.tsx](../../apps/web/src/media/MediaSourceViewer.tsx)、[useLinearFitPreview.ts](../../apps/web/src/media/useLinearFitPreview.ts)、[linear-master-stream.ts](../../apps/web/src/media/linear-master-stream.ts) | 重做参数位置并继承52b6dcf线性样本流、GPU逐像素调色及固定RGB16 Lanczos3适屏采样。canonical生产构建已有45.75/61.01MP RAW持按45–47帧、首变化94–127ms、最长间隔104–141ms；HEIC PQ/Ultra HDR JPEG各两视口48帧。旧CPU和b28a记录保留。 | 按线性母版输入及实际WebGPU/OffscreenCanvas能力启用，失败回退CPU；1:1等待native窗口时保留原像素瓦片。既有硬件记录不等于新UI通过；本轮整合的类型/498测试/构建已过；持按/1:1/导出并行/失败回退仍须专项验证，弱网、透明EXR适屏、HDR面板和移动真机仍待验。 |
+| R01 | 拖动时原尺寸清晰 | 部分 | 常规编辑→明暗/色彩；[ToolInspector.tsx](../../apps/web/src/editor/ToolInspector.tsx)、[PrecisionRange.tsx](../../apps/web/src/editor/PrecisionRange.tsx)；线性母版适屏：[MediaSourceViewer.tsx](../../apps/web/src/media/MediaSourceViewer.tsx)、[useLinearFitPreview.ts](../../apps/web/src/media/useLinearFitPreview.ts)、[linear-master-stream.ts](../../apps/web/src/media/linear-master-stream.ts) | 重做参数位置并继承已有线性样本流、GPU逐像素调色及固定RGB16 Lanczos3适屏采样。canonical生产构建已有45.75/61.01MP RAW持按45–47帧、首变化94–127ms、最长间隔104–141ms；HEIC PQ/Ultra HDR JPEG各两视口48帧；9fd3ab8另记录Nikon HLG四视口46–47帧、首变化121–131ms、最长间隔121–189ms。旧CPU和b28a记录保留。 | 按线性母版输入及实际WebGPU/OffscreenCanvas能力启用，失败回退CPU；1:1等待native窗口时保留原像素瓦片。既有硬件记录不等于新UI通过；4fd248df合并HLG后的类型/498测试/构建已过，但未重跑native输入专项；持按/1:1/导出并行/失败回退仍须专项验证，弱网、透明EXR适屏、HDR面板和移动真机仍待验。 |
 | R02 | 超预算大图与 1:1 瓦片 | 部分 | 原件与母版→1:1；[MediaSourceViewer.tsx](../../apps/web/src/media/MediaSourceViewer.tsx)、[tile-layout.ts](../../apps/web/src/media/tile-layout.ts) | 保留平移、缩放、瓦片及原件入口；本轮未新增超预算渲染算法。 | 由媒体descriptor/tiles及maxPixels决定；重测跨瓦片接缝、宽窗、弱网与移动真机内存。 |
 | R03 | 即时取消、撤销与重做 | 已验（浏览器基础路径） | 编辑确认/取消/历史；[useEditor.ts](../../apps/web/src/editor/useEditor.ts)、[HistoryPanel.tsx](../../apps/web/src/editor/HistoryPanel.tsx)、[CandidateActions.tsx](../../apps/web/src/ai/CandidateActions.tsx) | 暴露hasUncommittedPreview；AI候选旁新增确认/取消，并允许取消后再次预览。裁切撤销同步释放失效比例。 | 沿用协作editor封装与候选基线校验；待逐工具Esc、失焦、pointercancel、一次手势一条历史回归。 |
 | R04 | 局部回退与重编辑栈 | 部分 | 历史/图层；[HistoryPanel.tsx](../../apps/web/src/editor/HistoryPanel.tsx)、[LayerControls.tsx](../../apps/web/src/editor/LayerControls.tsx) | 保留配方版本重开及现有图层排序；没有新增任意效果节点重排。 | 现有处理阶段保持固定顺序；局部退回、可启停节点及换序一致性仍是原主表差距。 |
@@ -89,7 +129,7 @@
 | H14 | 局部口红、腮红、眼影、眉妆与修容 | 部分 | 美颜→妆容；[PortraitControls.tsx](../../apps/web/src/editor/PortraitControls.tsx)、[ColorPicker.tsx](../../apps/web/src/components/ColorPicker.tsx) | 保留七类部位妆、连续RGBA和独立强度，重排选择/颜色/强度。 | 口腔排除、遮挡溢色和多层混合仍按原实现；专门质地与妆式质量未新增证据。 |
 | H15 | 手工修容笔、取色、擦除与亮片 | 部分 | 编辑→绘制/取色；[LayerControls.tsx](../../apps/web/src/editor/LayerControls.tsx)、[ColorPicker.tsx](../../apps/web/src/components/ColorPicker.tsx) | 画笔/橡皮/取色使用一致尺寸和动作反馈，减少重复文字。 | 区域锁定独立调色与亮片材质闭环未补；保护区和导出效果待验。 |
 | H16 | 参考照迁妆和区域妆容控制 | 缺口 | 近似入口：显式参考图；[AIPanel.tsx](../../apps/web/src/components/AIPanel.tsx) | 原缺口保留；未把多参考输入标为区域迁妆功能。 | 迁妆区域、身份与遮挡保持无专用执行证据。 |
-| H17 | 发丝精抠、透明度与复杂遮挡 | 部分 | 美颜→主体提取；[PortraitControls.tsx](../../apps/web/src/editor/PortraitControls.tsx)、[portrait-matte.worker.ts](../../apps/web/src/editor/portrait-matte.worker.ts)、[portrait-selection.ts](../../apps/web/src/editor/portrait-selection.ts) | 重排抠图参数和动作；保持MODNet连续alpha、原像素求解及来源匹配。 | alphaPrior/source尺寸、原图身份与预算继续校验；复杂发丝/遮挡误差不能因换UI算消失。 |
+| H17 | 发丝精抠、透明度与复杂遮挡 | 部分 | 美颜→精准抠图；[PortraitControls.tsx](../../apps/web/src/editor/PortraitControls.tsx)、[usePortraitAnalysis.ts](../../apps/web/src/editor/usePortraitAnalysis.ts)、[portrait-fine-matte.worker.ts](../../apps/web/src/editor/portrait-fine-matte.worker.ts)、[portrait-matte-input.ts](../../apps/web/src/editor/portrait-matte-input.ts) | 重排抠图参数和动作，保留默认标准抠图；合入b83874c可选BiRefNet“发丝与边缘”、固定模型摘要校验与原像素精修。上游30张留出实拍改善20张，并有四个Windows Edge视口及项目重放记录。 | 真实WebGPU、非fallback适配器和shader-f16双层门禁；alphaPrior/source尺寸、原图身份与预算保持。Chrome/SwiftShader界面截图不算该可选模型推理验收；复杂发饰/透明织物/实例分离仍有误差，不能因换UI升级为已验。 |
 | H18 | 发色、局部挑染、发根与发质 | 部分 | 头发选区/手工上色；[PortraitControls.tsx](../../apps/web/src/editor/PortraitControls.tsx)、[LayerControls.tsx](../../apps/web/src/editor/LayerControls.tsx) | 保留头发分割与手工颜色操作。 | 专用保高光染发、染根、多发质方案仍未新增。 |
 | H19 | 祛碎发、补发量、发际线与换发型 | 缺口（专用算法） | 近似入口：手修/通用AI；[RepairControls.tsx](../../apps/web/src/editor/RepairControls.tsx)、[AIPanel.tsx](../../apps/web/src/components/AIPanel.tsx) | 原缺口保留；没有专用祛碎发/补发量/发际线生成。 | 不以通用候选冒充可控发丝算法，需单独身份/背景保持证据。 |
 | H20 | 真三维发丝几何 | 缺口 | 近似入口：二维抠图；[PortraitControls.tsx](../../apps/web/src/editor/PortraitControls.tsx) | 原缺口保留；没有三维发丝对象、几何或编辑入口。 | 二维alpha和保护区不等于真三维发丝。 |
@@ -120,9 +160,9 @@
 | F04 | 相机 RAW 显影、曝光余量与相机资料 | 部分 | 素材→原件与母版；[MediaSourceViewer.tsx](../../apps/web/src/media/MediaSourceViewer.tsx) | 保留RAW原件、源窗口、母版版本和三种精度导出。 | 相机配置/64MP等边界以服务descriptor为准；灰点、坏点、EXIF完整性及高光重建仍待验。 |
 | F05 | 真 HDR 原件、浮点、非零 data window 与 alpha | 部分 | 原件与母版→线性输入；[MediaSourceViewer.tsx](../../apps/web/src/media/MediaSourceViewer.tsx) | 保持真HDR/EXR线性入口，未用普通RGBA8预览替代母版保存。 | floatAvailable、源色域/window/alpha语义有效；deep/multipart等受限能力不显示为已支持。 |
 | F06 | 16 位母版与线性 32 位可重编导出 | 部分 | 母版→PNG16/TIFF16/EXR32；[MediaSourceViewer.tsx](../../apps/web/src/media/MediaSourceViewer.tsx) | 保留独立精度导出、源SHA与版本；普通导出新UI不改变高位深链路。 | RGBA8配方与场景线性母版不能混写；需要重开/窗口/导出同值验证。 |
-| F07 | RAW/HDR 全配方、图层和实时母版窗口 | 部分 | 母版编辑；[MediaSourceViewer.tsx](../../apps/web/src/media/MediaSourceViewer.tsx)、[NativeGradeControls.tsx](../../apps/web/src/media/NativeGradeControls.tsx)、[NativeRegionOverlay.tsx](../../apps/web/src/media/NativeRegionOverlay.tsx)、[native-grade-model.ts](../../apps/web/src/media/native-grade-model.ts)；线性母版适屏：[useLinearFitPreview.ts](../../apps/web/src/media/useLinearFitPreview.ts)、[linear-fit.wgsl](../../apps/web/src/media/linear-fit.wgsl) | 新增native EV曲线和有序局部区域，保留七项全局参数；preview/save/export共享native payload，已有V3不降级。继承52b6dcf以同一全局/曲线/局部配方处理相机RAW、HEIC PQ及Ultra HDR JPEG原像素再适屏显示的GPU路径；后两种保留有符号float32，显示前才做SDR Reinhard映射。 | 曲线/区域仅linear-master及各自available启用；最多8个源归一坐标区域、radial/linear及7调整项。save保留expectedVersion/sourceSha，attachment导出与窗口/GPU预览并行。canonical窗口与GPU记录是既有证据；本轮类型/单元测试/构建已过，控件交互和实机专项仍待验；其他HDR输入/透明EXR适屏、HDR面板及高位深笔刷/图层/修复/液化未据此通过。 |
+| F07 | RAW/HDR 全配方、图层和实时母版窗口 | 部分 | 母版编辑；[MediaSourceViewer.tsx](../../apps/web/src/media/MediaSourceViewer.tsx)、[NativeGradeControls.tsx](../../apps/web/src/media/NativeGradeControls.tsx)、[NativeRegionOverlay.tsx](../../apps/web/src/media/NativeRegionOverlay.tsx)、[native-grade-model.ts](../../apps/web/src/media/native-grade-model.ts)；线性母版适屏：[useLinearFitPreview.ts](../../apps/web/src/media/useLinearFitPreview.ts)、[linear-fit.wgsl](../../apps/web/src/media/linear-fit.wgsl) | 新增native EV曲线和有序局部区域，保留七项全局参数；preview/save/export共享native payload，已有V3不降级。本轮合并范围继续保留同一全局/曲线/局部配方的线性适屏路径，并接入9fd3ab8的HEIC HLG输入；RAW、HEIC PQ/HLG与Ultra HDR JPEG按实际能力处理原像素，显示前才映射到SDR。 | 曲线/区域仅linear-master及各自available启用；最多8个源归一坐标区域、radial/linear及7调整项。save保留expectedVersion/sourceSha，attachment导出与窗口/GPU预览并行。canonical窗口与GPU记录是既有证据；4fd248df合并HLG后的类型/单元测试/构建已过；native控件交互和实机专项仍待验；其他HDR输入/透明EXR适屏、HDR面板及高位深笔刷/图层/修复/液化未据此通过。 |
 | F08 | Display-P3、ICC、场景工作空间及显示 | 部分 | 媒体色彩信息/预览；[MediaSourceViewer.tsx](../../apps/web/src/media/MediaSourceViewer.tsx)、[MediaImportDialog.tsx](../../apps/web/src/components/MediaImportDialog.tsx) | 保持现有ICC输入与sRGB显示路径；未新增广色域工作空间选择器。 | P3输入转色证据不等于广色域编辑/输出；HDR显示器、软打样仍待专项。 |
-| F09 | 手机 Ultra HDR / 增益图与 HEIC HDR | 部分 | 母版→Ultra HDR；[MediaSourceViewer.tsx](../../apps/web/src/media/MediaSourceViewer.tsx) |保留真实增益图/HEIC HDR原件与HDR JPEG导出选项。 同步52b6dcf既有证据：Apple/Pixel各一张原片已做GPU适屏持按、保存重开及CPU显示像素对照；本轮UI未重验。 | 只有ultraHdrJpeg能力允许才显示/执行；线性输入、源SHA与attachment下载票据必须保持，手机HDR显示待验。 |
+| F09 | 手机 Ultra HDR / 增益图与 HEIC HDR | 部分 | 母版→HDR输入/导出；[MediaImportDialog.tsx](../../apps/web/src/components/MediaImportDialog.tsx)、[MediaSourceViewer.tsx](../../apps/web/src/media/MediaSourceViewer.tsx)；HLG原生开发：[heic_hdr.py](../../packages/media/native/heic_hdr.py) | 保留真实增益图/HEIC HDR原件与HDR JPEG导出选项，接入9fd3ab8的HEIC HLG能力提示。canonical已有Apple/Pixel及Nikon HLG适屏、保存重开与CPU对照；四张10位Nikon HLG另有EXR32、SDR16、裁切增益图JPEG往返。10/12位数值用例与实拍范围分开。 | 整图选项仅由真实ultraHdrJpeg能力开启（24MP及8–8192像素边界内）；ultraHdrJpegCrop只表示裁切输出API能力。当前Viewer没有裁切导出入口，大幅HLG默认EXR32，不能把裁切后端往返记录记为前端完成。线性输入、sourceSHA、attachment与像素预算保留。最新HLG实测是上游证据，未在本轮重设计UI重跑；手机HDR显示、HEIC同容器及辅助增益图仍待验。 |
 | F10 | CMYK 输入、编辑、软打样和印前输出 | 部分 | 媒体导入→带ICC的CMYK；[MediaImportDialog.tsx](../../apps/web/src/components/MediaImportDialog.tsx) | 保留受支持的CMYK输入转sRGB；未添加印前输出UI。 | 16位CMYK、目标纸张/墨量/意图与CMYK导出仍缺。 |
 | F11 | PSD/PSB 可编辑往返 | 部分 | PSD导入/原件信息；[MediaImportDialog.tsx](../../apps/web/src/components/MediaImportDialog.tsx)、[MediaSourceViewer.tsx](../../apps/web/src/media/MediaSourceViewer.tsx) | 保留合成图、图层元数据和原件；不在About声称可编辑PSD往返。 | PSD v1有界范围照旧；PSB、CMYK、32位限制与无PSD回写须保留。 |
 | F12 | 元数据、保密交付和水印策略 | 部分 | 导出/来源记录；[ProjectDialogs.tsx](../../apps/web/src/components/ProjectDialogs.tsx)、[ResourceSearch.tsx](../../apps/web/src/resources/ResourceSearch.tsx) | 精简导出和来源显示，保留可查元数据。 | 未补专用EXIF/GPS/嵌入预览清除和批量水印；涂画遮挡不自动构成隐私导出证明。 |
@@ -172,9 +212,9 @@
 | C05 | 角色、租约、成员撤权与运维隔离 | 已验（SQL 回归） | 角色和访问提示；[WorkspaceViews.tsx](../../apps/web/src/components/WorkspaceViews.tsx)、[useCollaboration.ts](../../apps/web/src/collaboration/useCollaboration.ts)、[OpsDashboard.tsx](../../apps/web/src/components/OpsDashboard.tsx) | 保留权限驱动动作与运营隔离，不将隐藏按钮视为鉴权。 | 服务端对象校验是权限来源；原SQL回归范围保持，成员撤权和跨对象访问待版本回归。 |
 | C06 | 用量、钱包、分页、CSV 和账目对账 | 部分 | 用量/钱包/账本；[UsageDashboard.tsx](../../apps/web/src/usage/UsageDashboard.tsx)、[UsageLedger.tsx](../../apps/web/src/usage/UsageLedger.tsx)、[QuotaManager.tsx](../../apps/web/src/components/QuotaManager.tsx) | 区分当前余额、期间汇总与趋势；运营调整直接使用成功事务回执更新权益，避免后续GET失败误报写入失败。 | 保留幂等键、未知值、分页与CSV保护；真实收费、时区、未知派发结算仍待验证。 |
 | C07 | 运行队列、模型失败、重试和幂等 | 已验（受控回归及小样） | AI任务与恢复；[jobSubmission.ts](../../apps/web/src/ai/jobSubmission.ts)、[QueuedCancellation.tsx](../../apps/web/src/ai/QueuedCancellation.tsx)、[AIThread.tsx](../../apps/web/src/ai/AIThread.tsx) | 保留冻结原请求与未知状态，缩略图重读与模型再提交明确分离。 | 只能按canCancel及原幂等请求处理；没有自动重发收费任务，生产故障恢复仍待验。 |
-| C08 | 移动端、平板、横屏和小程序能力 | 部分 | 工作台/账号/对话框响应式；[panelGeometry.ts](../../apps/web/src/workspace/panelGeometry.ts)、[useWorkspaceLayout.ts](../../apps/web/src/workspace/useWorkspaceLayout.ts)、[Ui.tsx](../../apps/web/src/components/Ui.tsx) | 提高小面板下限、统一按钮触达和弹窗宽度；对比、作品和账号提供窄屏布局。 | 新布局须实测320/390/平板/横屏、三语言/浅深色/键盘；iOS/WebView/小程序不因Chromium成绩算支持。 |
-| C09 | About、样例、功能导览和无障碍动效 | 部分 | About与品牌；[AboutPage.tsx](../../apps/web/src/about/AboutPage.tsx)、[useOverviewMotion.ts](../../apps/web/src/about/useOverviewMotion.ts)、[BrandMark.tsx](../../apps/web/src/components/BrandMark.tsx)、[SiteShell.tsx](../../apps/web/src/SiteShell.tsx) | About改成连续纵向展示与滚动变化，使用系统截图，去掉点击解锁内容和生成图堆砌；统一原始Logo。 | 新的布局需补真实屏幕截图及每段滚动验证；reduced-motion下仍完整可读，功能文案不得超出111表证据。 |
-| C10 | 生产部署、迁移、运行依赖与 API 全量回归 | 部分 | 构建/CI与部署；[App.tsx](../../apps/web/src/App.tsx)、[DeferredFeature.tsx](../../apps/web/src/components/DeferredFeature.tsx) | 本轮是前端重做及最新后端契约同步；源码经不可变Git检查点保存。 | 旧1038/1042/1044项与164路由证据只属于原提交；39b277本轮类型、498前端测试及production build已过，浏览器7/16通过。未重跑全部真实SQL/API/部署验收，不能扩大为生产全量通过。 |
+| C08 | 移动端、平板、横屏和小程序能力 | 部分 | 工作台/账号/对话框响应式；[panelGeometry.ts](../../apps/web/src/workspace/panelGeometry.ts)、[useWorkspaceLayout.ts](../../apps/web/src/workspace/useWorkspaceLayout.ts)、[Ui.tsx](../../apps/web/src/components/Ui.tsx) | 提高小面板下限、统一按钮触达和弹窗宽度；对比、作品和账号提供窄屏布局，工具栏整项排布，参数按真实行高显示。 | f578五核心flows、补充页面、SC/TC实际字形及全部498前端测试通过；人工检查已覆盖本轮指定画面。中文人像第三排眼下明暗/亮眼已实看，英文对应第三排未直接截图。320px额外组合、iOS/WebView/小程序和实体设备不由现有Chromium模拟成绩代替。 |
+| C09 | About、样例、功能导览和无障碍动效 | 部分 | About与品牌；[AboutPage.tsx](../../apps/web/src/about/AboutPage.tsx)、[useOverviewMotion.ts](../../apps/web/src/about/useOverviewMotion.ts)、[BrandMark.tsx](../../apps/web/src/components/BrandMark.tsx)、[SiteShell.tsx](../../apps/web/src/SiteShell.tsx) | About改为连续纵向展示与滚动变化，使用真实系统截图，去掉点击解锁与生成图堆砌；统一原始Logo，并展示原片保留、精度曲线与局部色彩。 | f578三语capture、五About、品牌和CJK实际字形门槛通过，34图片/manifest已于2897cb7发布；人工审完桌面长页六段及手机五段，并复核第六轮差异图，无阻断。英文人像第三排未直接截图，native/HDR截图与实机不据此冒称已验。 |
+| C10 | 生产部署、迁移、运行依赖与 API 全量回归 | 部分 | 构建/CI与部署；[App.tsx](../../apps/web/src/App.tsx)、[DeferredFeature.tsx](../../apps/web/src/components/DeferredFeature.tsx) | 本轮是前端重做及最新后端契约同步；源码经不可变Git检查点保存，QA/发布按精确head及35文件白名单限制。 | f578整仓typecheck、全部498前端测试、build和浏览器16/16同轮通过，截图发布成功。旧1038/1042/1044项与164路由证据只属于原提交；没有重跑全部真实SQL/API/部署验收，本次提交文档与图片，不是生产部署。 |
 | C11 | 账单与作品联动的人工处置 | 部分 | 用量详情/人工核验/审计；[UsageJob.tsx](../../apps/web/src/usage/UsageJob.tsx)、[UnknownJobsPanel.tsx](../../apps/web/src/components/UnknownJobsPanel.tsx)、[AssistantOpsPanel.tsx](../../apps/web/src/components/AssistantOpsPanel.tsx)、[OpsDashboard.tsx](../../apps/web/src/components/OpsDashboard.tsx) | 审计主行改成人可读动作，原ID/类型/目标保留可展开；额度成功依据真实回执。 | 人工结算/释放仍需原因与证据；批量、长通话多笔关联和故障定位未宣称完备。 |
 | C12 | 素材检索、去重、来源追溯和个人标注 | 部分 | 资源搜索/个人标注/OCR；[ResourceSearch.tsx](../../apps/web/src/resources/ResourceSearch.tsx)、[AssetLibrary.tsx](../../apps/web/src/components/AssetLibrary.tsx) | 真实素材比例与精简文字，保留来源、日期、私有标注和授权搜索。 | 未增加视觉语义检索、人脸归类或自动去重；各类授权查询和空结果待实测。 |
 | C13 | 运营配置、模型停启、配额与实际支付边界 | 部分 | 运营→模型/品牌/配额；[OpsDashboard.tsx](../../apps/web/src/components/OpsDashboard.tsx)、[ops-model-fields.ts](../../apps/web/src/components/ops-model-fields.ts)、[AssistantOpsPanel.tsx](../../apps/web/src/components/AssistantOpsPanel.tsx)、[QuotaManager.tsx](../../apps/web/src/components/QuotaManager.tsx) | 按任务能力筛参数；保留配置草稿；合入最新version/baseId/expectedVersion及冲突读取，配额依据事务回执，Logo上传检查异步归属。 | CAS必须与fc2827后端成对；新建0、更新当前版本、409保留草稿/重开后再存均待本轮回归；真实支付仍未启用则不生成虚构订单。 |
@@ -200,11 +240,11 @@
 - **预览与写入**：AI“在画布预览→取消→重新预览→确认”必须在同一候选旁完成；画布本地确认和服务器保存新版本分开。改图/换项目/版本变化后，旧候选仍由基线与权限拒绝。
 - **减少操作**：AI文案默认一键新建文档；写入已有文档保留明确目标与版本确认。普通导出一键编码并下载；缩略图“重新载入预览”只重读图像，不创建模型请求。没有自动付费生成或自动重拨通话。
 - **真实状态**：记录缺麦克风/拒绝/占用/格式错误、任务排队/未知/取消/完成、无权限、能力不可用、保存冲突与迟到结果；不得用假计时、模拟波形、假结果图或固定进度掩盖状态。
-- **布局与无障碍**：320px、390px、平板、桌面、短横屏；浅色/深色；简中/繁中/英文；键盘、焦点、Esc和reduced-motion。检查弹窗、活动参数、区域/图层列表及模型表单均无遮挡和横向溢出。
-- **About与Logo**：所有介绍段落直接存在于连续文档流；滚动变化是视觉增强。复用仓库真实系统截图并在新UI稳定后补拍当前屏幕；不以AI绘制界面替代截图。导航、登录、加载和About走同一BrandMark/原始默认标志。
+- **布局与无障碍**：本轮自动检查实际覆盖390×844、844×390、1024×768、1440×960五组语言/动作场景，以及深色品牌检查、Tab/Esc和reduced-motion。320px、其他浅深色/键盘/弹窗/模型表单组合仍需要对应专项，不把已抽检画面扩成全部状态组合无重叠。
+- **About与Logo**：所有介绍段落直接存在于连续文档流，滚动变化是视觉增强。本轮已从f578实际界面重新截图并发布，保留来源、语言、视口和字节摘要，不以AI绘制界面替代截图。导航、登录、加载和About走同一BrandMark/原始默认标志。
 - **财务和异步归属**：额度调整以事务返回的entitlements为成功依据；读取失败不变成“可以再次调额”。冻结请求、idempotencyKey、未知状态、scope/source身份、expectedVersion/expectedHash继续有效。
 
-## 第二轮验证阶段记录：39b277
+## 第二轮历史阶段记录：39b277
 
 来源：[GitHub Actions run 43132840910](https://github.com/hxjyaohaohaode/AI-xiutu/actions/runs/43132840910)，测试源码为 `39b277bc650951ba17e1d459457837d5dbc82c69`。这是阶段结果，未将任何canonical状态升级。
 
@@ -218,7 +258,70 @@
 | Restoration更多参数 | 待确认 | 关闭的原生details内部控件可能仍返回布局矩形，但不实际显示；需排除关闭内容并显式展开后验证iteration/checkbox可见和可操作。当前不能认定已通过，也不凭该矩形认定真实CSS遮挡。 |
 | 验证job与截图发布 | 验证job失败，发布job跳过 | 浏览器失败使整体门禁未通过；本轮没有成功完成最终截图发布。 |
 
-后续布局修复和QA可见性判定修正须在新的精确head复跑。最终结果将另记commit、运行链接及完整浏览器结论；本节保留39b277的真实阶段状态。
+本节保留39b277当时的真实失败与待验状态。其后布局修复和QA可见性判定已在4bd4a508复跑；当前进展见下一节，不倒改本轮历史结果。
+
+## 第三轮验证阶段记录：4bd4a508
+
+来源：[GitHub Actions run 43135796969](https://github.com/hxjyaohaohaode/AI-xiutu/actions/runs/43135796969)，测试源码为 `4bd4a5086a6bfa0107ebaee1343f09b6e999d777`，基线仍为52b6dcf。本轮结果不覆盖随后9fd3ab8的HLG合并及新增About文案。
+
+| 检查 | 本轮结果 | 范围与剩余问题 |
+| --- | --- | --- |
+| 整仓typecheck / 全部前端测试 / production build | 全部通过，前端测试498项 | 当前受测head通过；后续合并仍须重新运行。 |
+| 五个核心flows | 全部通过 | desktop、tablet、phone、landscape和reduced-motion核心路径通过；第二轮phone/landscape遮挡问题在这些流程中已修复。 |
+| 三语captures | 全部通过 | 简中、繁中、英文截图采集通过；第二轮因手机截图失败导致的About缺图级联已消除。 |
+| 五个About场景 | 全部通过 | 本轮对应自然滚动、视口与降动效检查通过；后续新增craftItems文案仍需随新head再测。 |
+| 补充流程 | 中断，未得完整结论 | 前述五核心、三语截图、五About完成后，QA遇到 `route.continue: Route is already handled!` 崩溃；不是补充交互通过，也不能据此认定产品交互失败。 |
+| 品牌一致性 / 最终完整性 | 未执行 | 脚本已中断；须修复QA并重跑，不得将这些检查补写为通过。 |
+| 验证job与截图发布 | 验证job失败，发布job跳过 | 先行场景的通过证据保留，但本轮未完成全套验收与最终发布。 |
+
+本轮只能逐项陈述已经完成的检查，不能以“13/16”替代被中断后的完整结果。下一轮需修复QA路由归属、完成品牌/完整性门禁，并对新合并head重新记录测试和截图结果。
+
+
+## 第四轮验证与人工视觉记录：4fd248df
+
+来源：[GitHub Actions run 43137632951](https://github.com/hxjyaohaohaode/AI-xiutu/actions/runs/43137632951)，测试源码 `4fd248dfaa78971fd008807b6b4a9609dc3a1403`，基线9fd3ab8。原始report和source-manifest均为 `state:failed`、`manualVisualReview:false`；浏览器为Chromium156.0.8078.79，实际运行时间2026-11-12 01:55:53–01:58:58 UTC。
+
+| 检查 | 实际结果 | 证据与边界 |
+| --- | --- | --- |
+| 整仓typecheck / 前端单元契约测试 / production build | 通过 | job130916673999的原始日志在01:55:41Z明确tests498、pass498、fail0、cancelled0、skipped0、todo0。 |
+| 核心流程 | 五个均通过 | desktop-zh-CN、phone-zh-CN、landscape-en、tablet-zh-TW、reduced-desktop-en；真实导入、数值修改、像素变化、撤销/重做、原图/键盘分屏比较及全尺寸PNG解码。 |
+| 三语截图 | 三组采集检查通过 | zh-CN/zh-TW/en各六类当前界面；不代表字体和美观人工验收。 |
+| About | 五个均通过 | 原生滚轮抵达9个section，无点击解锁，HTTP截图字节核对，真实主入口。 |
+| 补充页面 | 通过，限隔离场景 | 一次性账号、两张公共照片和本地真实API。修复仅quote，createdDerivedAssets=0；等待时键盘循环及展开的迭代/降噪两项已检查，未执行修复或验收结果画质。文档/协作空态/用量/助手不可用态/账户不代表云服务和真实多人成功。 |
+| 品牌 | 通过 | 深色工作台、登录与favicon沿用相同原始标记。 |
+| 最终完整性/运行错误门禁 | 失败 | 16个case中前15个passed；最后外连断言失败，pageErrors/routingErrors均0。 |
+| 发布 | 跳过 | job130918526869没有发布这批图片。 |
+| 人工视觉 | 不通过 | 打开真实截图发现简繁汉字为方框，素材页桌面单列空白、AI头部/状态重复；这类问题没有被hittest检查覆盖。 |
+
+六个外部尝试都为 `https://odml.pa.googleapis.com/v1/log`，分属三语captures各两次。4fd代码先记录case/origin/path，再await abort('blockedbyclient')；未记录method、body或headers，不回填为POST，也不称载荷已审。第五轮分类只对该轮实际精确匹配且成功abort的SDK遥测尝试单列记录，未知外连仍失败，不放通请求或伪造推理响应。
+
+该轮59条布局记录无横向溢出、控件遮挡或标题溢出；manifest34张图片的字节数和SHA-256已逐个核对一致（3个来源照片、29张UI截图、2张About页面），但文件完整不等于视觉合格。已通过的15个自动场景不能替代整体失败状态，也不能使111项原证据状态升级。
+
+## 第五轮实测记录：936c54a（浏览器通过，整体CI失败）
+
+源码为 `936c54a44ee204bbf7e11dc4453538f22d500a80`，父提交4fd248df与b83874c，tree `0f38a98f9f58af16bdeab871da0b3e8966b32438`。[GitHub Actions run 43141628952](https://github.com/hxjyaohaohaode/AI-xiutu/actions/runs/43141628952) 已结束。原始浏览器report和manifest都为passed、manualVisualReview仍为false；这只表示浏览器脚本通过，不能改变验证job因单测失败而失败的事实。
+
+| 检查 | 实际结果 | 可据此说明的范围 |
+| --- | --- | --- |
+| 整仓typecheck / production build | 通过 | 936当前源码可类型检查与构建。 |
+| 全部前端单元/契约测试 | 498项，497通过、1失败 | job130929732235日志02:29:57Z：fail1、cancelled0、skipped0、todo0。唯一失败为floating-panel-gesture.test.ts旧330–360高度断言，与当前默认288不同；该区间已在第六轮修正并完整重跑，本节保留第五轮失败。 |
+| 安装/匹配CJK字体 | 通过 | 实际fc-match分别返回Noto Sans CJK SC与TC，并有字体文件。 |
+| 核心、三语、About、补充、品牌及最终门禁 | 全部16/16通过 | 五核心、三captures、五About、补充页面、品牌和最终完整性/运行错误检查均passed；时间2026-11-12 02:30:15–02:33:03 UTC。 |
+| 实际字形证据 | 36张中文截图，103个真实节点样本通过 | CDP结果、截图绑定和report/manifest内容逐项一致；不只检查font-family声明。见下表。 |
+| 图片清单完整性 | 34张逐个字节数/SHA-256一致 | 3张来源照片、29张UI、2张About；不代表已发布。 |
+| 发布 | 跳过 | job130931583032因验证job失败未运行。 |
+| 人工视觉 | 已完成限定范围复核，无阻塞问题 | 编辑器侧打开20张工作台/参数图，页面侧打开15张页面/弹窗图，总审完成About桌面六段及手机五段。第六轮差异已重新复核，见开头；英文人像第三排未直接截图。 |
+
+| 语言 | 有证据的截图 | 节点样本 | 取样汉字计数 | 实际对应字体字形计数 | 实际字体 |
+| --- | ---: | ---: | ---: | ---: | --- |
+| zh-CN | 25 | 71 | 221 | 221 | Noto Sans CJK SC |
+| zh-TW | 11 | 32 | 93 | 93 | Noto Sans CJK TC |
+
+证据覆盖三个中文核心flow、两组中文capture、三个中文About场景及补充页面，全部关联到passed case；每个节点的正确区域字体glyphCount都覆盖其汉字数量，没有零字形或其他字体混入。两份记录内容及逐截图绑定完全一致。原始report SHA-256为 `b4c068e1f0ca779c0aaff9d2e2431342b465d0f72f98183ddd603122ffe4e8f2`；manifest SHA-256为 `5b5a4276b4a8a9f769c621ac2e23ded65e4242c9669d8d85062f2b66d3131384`。
+
+本轮实际记录6次精确POST到MediaPipe固定日志endpoint的尝试，三语capture各2次；每条均在abort成功后记为blocked，report/manifest条目和汇总一致。unknown origins、pageErrors、routingErrors、cleanupErrors均0。只说明隔离Vite浏览器实际阻止情况，productionHeadersVerified仍为false，不宣称线上没有遥测。
+
+补充流程仍仅验真实修复quote（createdDerivedAssets=0）、等待时键盘循环、运动模式与两项展开控件；助手仅验unavailable、唯一状态及提交禁用，没有供应商请求。H17可选WebGPU模型、native HDR精度、修复执行画质、真实多人和物理设备仍不据此验收。最小测试区间修复没有改变第五轮的失败历史；独立第六轮结果见开头。
 
 ## 已建立的验证入口及当前证据
 
@@ -226,16 +329,31 @@
 - AI交互：`apps/web/test/ai-interaction-redesign.test.ts`，覆盖候选再次预览、相邻确认/取消、未接回调不假确认、真实设备错误、任务能力字段过滤。
 - 模型能力：`apps/web/test/ai-capabilities.test.ts`，新增同模型能力刷新保留有效值、缩减批量、透明JPEG依赖与移除不支持项。
 - 国际化：`apps/web/test/i18n.test.ts` 必须包括本轮独立AI词典；恢复/错误/操作状态也须覆盖，不能只翻译页面标题。
-- 当前整合head `39b277bc650951ba17e1d459457837d5dbc82c69` 已通过整仓typecheck、全部498项前端单元/契约测试和production build，覆盖当前版本的内容/导出/账号等测试文件。该结果不扩展为真实API、真实SQL、设备性能或浏览器全部通过；环境中断前的检查仍只属于当时源码。
+- 最终受测head `f578c96f9dc73eb4d134e5f4420081bd8918749f` 的typecheck、498项前端测试、build、浏览器16/16和SC/TC实际字形检查在同一轮通过；35个图片/manifest文件于2897cb7发布，实际差异图人工复核无阻断。第五轮497/498的失败历史保留，不能用前后两轮拼接伪造结果；本次结论不扩展为全部真实SQL/API、GPU/native/HDR、物理设备或生产验收。
 - 在执行环境不可用期间，已对实际capabilities helper移除TypeScript注解后运行4个行为用例，结果通过。该检查不等于TypeScript编译、React测试、浏览器交互或真实API验收。
 
 本轮CI、真实浏览器以及F07/修复派生整合后的验收结果应附精确commit、设备/viewport、输入、动作、输出和证据链接。不得复用canonical旧数字来填本轮测试结果。
 
 ## 新增接线的可检查契约
 
-- **照片修复入口**：[AssetLibrary.tsx](../../apps/web/src/components/AssetLibrary.tsx) 的素材卡直接显示“修复照片”，按项目owner/admin/editor权限提供入口，GIF不冒充静态整图修复。独立组件和样式位于 `apps/web/src/restoration/`；[restoration.test.ts](../../apps/web/test/restoration.test.ts) 包含12项行为测试，已纳入39b277通过的全部498项前端测试；实际派生、画质与更多参数展开后的浏览器操作不据此算通过。
+- **照片修复入口**：[AssetLibrary.tsx](../../apps/web/src/components/AssetLibrary.tsx) 的素材卡直接显示“修复照片”，按项目owner/admin/editor权限提供入口，GIF不冒充静态整图修复。独立组件和样式位于 `apps/web/src/restoration/`；[restoration.test.ts](../../apps/web/test/restoration.test.ts) 包含12项行为测试，已纳入f578c96通过的全部498项前端测试；最终浏览器已检查真实quote、等待键盘循环和展开参数，实际派生、重试未知结果及画质未据此通过。
 - **预算估算**：参数稳定900ms后调用 `POST /v1/projects/:id/derived-assets/quote`；quote `reservesQuota=false`、`checksDecodedPixels=false`，不渲染、不提交派生。来源只能有当前一张原图，校验assetId、尺寸、contentHash；估算成功不是处理成功。
 - **明确执行**：用户点击“创建修复副本”后再次读取当前session和服务能力，并复核quote与edit ACL。请求严格为 `kind:'restoration'` + `sourceAssetId` + `name` + `requestId` + `settings.algorithm:'photo-restore-v1'`；UI默认整图，不携带画布坐标的selection/protection。服务端最终校验仍是权威。
 - **未知结果**：在写请求前将actor/project/source和精确payload存入会话凭证；同步锁阻止双击。网络或不明确的服务端结果保持unknown，关闭/换项目/重载后只能使用同一requestId和参数恢复，不能静默另开事务。成功回执直接给出新的派生Asset，后续预览图/列表刷新失败不把成功改成失败。
-- **母版精度**：[native-grade.test.ts](../../apps/web/test/native-grade.test.ts) 对输入能力、EV节点排序、8区域次序、旋转区域源坐标、CAS保存与attachment导出写有专项测试。源码审查确认 `expectedSourceSha256`、`expectedVersion` 和 `precisionInput:'linear-master'` 契约；39b277类型、前端测试和production build已过，真实EXR/RAW/HDR拖动、控件布局及导出样本仍待专项验证。
-- **39b277当前源码记录**：以下6个blob均已从 `39b277bc650951ba17e1d459457837d5dbc82c69` 逐文件读取核对。restoration helper `872c06e26de04e1e88762c4b6b637c7229c47241`；Dialog `ec75cc436e469d85c949d73d42b554807430afb3`；测试 `72b56f130970171ec343ac6ed2c6fbaef70c7024`。F07 helper `1dd8f54ed5420379b08ad1bf8c87515bad1e85d7`、Viewer `ffe15def1aa492dbbe001d2047037422fff28614`、测试 `59c43da766ec5e0fb0fec827a12fa19938fe0b0f`。这些blob用于定位当前受测源码，验收结论仍以上方第二轮阶段记录为准，不能单独替代CI或浏览器结果。
+- **母版精度**：[native-grade.test.ts](../../apps/web/test/native-grade.test.ts) 对输入能力、EV节点排序、8区域次序、旋转区域源坐标、CAS保存与attachment导出写有专项测试。源码审查确认 `expectedSourceSha256`、`expectedVersion` 和 `precisionInput:'linear-master'` 契约；f578c96类型、前端测试和production build已过，真实EXR/RAW/HDR拖动、控件布局及导出样本仍待专项验证。
+- **4bd4a508第三轮受测源码记录**：以下6个blob均已从 `4bd4a5086a6bfa0107ebaee1343f09b6e999d777` 逐文件读取核对，不能当作后续HLG合并head的源码标识。restoration helper `872c06e26de04e1e88762c4b6b637c7229c47241`；Dialog `ec75cc436e469d85c949d73d42b554807430afb3`；测试 `72b56f130970171ec343ac6ed2c6fbaef70c7024`。F07 helper `1dd8f54ed5420379b08ad1bf8c87515bad1e85d7`、Viewer `ffe15def1aa492dbbe001d2047037422fff28614`、测试 `59c43da766ec5e0fb0fec827a12fa19938fe0b0f`。验收结论以上方各轮精确head的阶段记录为准，不能用源码blob代替浏览器结果。
+
+- **4fd248df前端语义合并源码（第四轮已运行）**：导入器 `MediaImportDialog.tsx` blob `cd16b726ee0f6813bc58b8e5aee9c3faec8a71aa`，母版查看器 `MediaSourceViewer.tsx` blob `5c5870fe5847a144e59ea207baf5a50ad7ea3f88`。合并保留native曲线、区域、版本保存与并行预览；使用 `hasDisplayHdr` 统一HLG/PQ/增益图的初始及重置toneMap和GPU `display-hdr` 路由，并按整图/裁切能力区分导出。About三语系统重点文案 `overview-copy.ts` blob `d0e58abb3d65a954cf5c27a8db9b3cc435d68af2` 展示原片保留与高精度曲线/局部色彩，沿用真实系统截图；未制造原生母版截图或新增浏览器通过结论。这些源码已随 `4fd248dfaa78971fd008807b6b4a9609dc3a1403` 整合，与上方4bd4a508已受测记录分开；该段保留第四轮源码记录；第四轮未通过且未发布。第五轮失败和第六轮同head全通过结果分别保留，最终源码记录见下表。
+
+### f578c96最终受测源码记录
+
+以下6个文件均从最终源提交逐文件读取核对；应使用这一组定位当前实现，不把前文历史Viewer blob当作最终版本。
+
+| 文件 | 最终Git blob |
+| --- | --- |
+| [restoration-model.ts](../../apps/web/src/restoration/restoration-model.ts) | `872c06e26de04e1e88762c4b6b637c7229c47241` |
+| [RestorationDialog.tsx](../../apps/web/src/restoration/RestorationDialog.tsx) | `ec75cc436e469d85c949d73d42b554807430afb3` |
+| [restoration.test.ts](../../apps/web/test/restoration.test.ts) | `72b56f130970171ec343ac6ed2c6fbaef70c7024` |
+| [native-grade-model.ts](../../apps/web/src/media/native-grade-model.ts) | `1dd8f54ed5420379b08ad1bf8c87515bad1e85d7` |
+| [MediaSourceViewer.tsx](../../apps/web/src/media/MediaSourceViewer.tsx) | `5c5870fe5847a144e59ea207baf5a50ad7ea3f88` |
+| [native-grade.test.ts](../../apps/web/test/native-grade.test.ts) | `59c43da766ec5e0fb0fec827a12fa19938fe0b0f` |
