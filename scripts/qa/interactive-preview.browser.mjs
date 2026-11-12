@@ -163,9 +163,9 @@ async function verifyLocalMaskAndLiquify(input) {
     await settled();
     await tool('局部');
     await selectedPanel.getByRole('button', { name: '径向', exact: true }).click();
-    await page.locator('.mask-overlay').waitFor({ state: 'visible' });
+    const outline = page.locator('.mask-overlay');
+    await outline.waitFor({ state: 'visible' });
     assert.equal(await page.locator('.selection-preview').count(), 0);
-    await page.locator('.mask-overlay').waitFor({ state: 'hidden' });
     const overlay = selectedPanel.getByRole('checkbox', { name: '持续显示选区', exact: true });
     assert.equal(await overlay.isChecked(), false);
     await overlay.check();
@@ -205,6 +205,7 @@ async function verifyLocalMaskAndLiquify(input) {
     await page.mouse.move(localX, localY);
     await page.mouse.down();
     await page.mouse.move(localTrack.x + localTrack.width * 0.75, localY, { steps: 16 });
+    await outline.waitFor({ state: 'hidden' });
     await page.waitForFunction((before) => {
       const canvas = document.querySelector('.image-frame canvas[aria-label="照片编辑预览"]');
       return canvas?.toDataURL().split(',')[1] !== before;
@@ -216,6 +217,7 @@ async function verifyLocalMaskAndLiquify(input) {
     );
     await page.mouse.up();
     await settled();
+    await outline.waitFor({ state: 'visible' });
     await selectedPanel.getByRole('button', { name: /^曝光数值/ }).click();
     await selectedPanel.getByRole('spinbutton', { name: '曝光精确数值' }).fill('0.64');
     await selectedPanel.getByRole('spinbutton', { name: '曝光精确数值' }).press('Enter');
@@ -306,7 +308,8 @@ async function verifyLocalMaskAndLiquify(input) {
       y: repairFrame.y + repairFrame.height * repairPoint.y,
     };
     await page.mouse.move(repairStart.x, repairStart.y);
-    assert.ok(await page.locator('.brush-footprint path').getAttribute('d'));
+    const footprint = page.locator('.brush-footprint > path:not(.canvas-gesture-trail)');
+    assert.ok(await footprint.getAttribute('d'));
     await page.mouse.down();
     await page.mouse.move(repairStart.x + 17, repairStart.y + 9, { steps: 6 });
     await page.mouse.up();
