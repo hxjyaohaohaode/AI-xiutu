@@ -1,11 +1,12 @@
 import { env, InferenceSession, Tensor } from 'onnxruntime-web/webgpu';
 import { bytesToHex } from '@noble/hashes/utils.js';
 import { createCutoutAlphaPrior, MAX_CUTOUT_PIXELS } from '@ai-xiutu/editor';
+import { restoreOpaqueCutoutCore } from '@ai-xiutu/portrait';
 import model from '../../../../third-party/portrait-fine-matting.json';
 import { resizeMatteInput } from './portrait-matte-input';
 import type { PortraitMatteReply, PortraitMatteRequest } from './portrait-matte.worker';
 
-async function predict({ image, source }: PortraitMatteRequest) {
+async function predict({ image, source, subject }: PortraitMatteRequest) {
   if (
     source.width * source.height > MAX_CUTOUT_PIXELS ||
     Math.abs(image.width * source.height - image.height * source.width) >
@@ -62,7 +63,14 @@ async function predict({ image, source }: PortraitMatteRequest) {
           foreground ||= coverage >= 128;
           alpha[index] = coverage;
         }
-        if (foreground) return createCutoutAlphaPrior(source, { width: edge, height: edge }, alpha);
+        if (foreground) {
+          const grid = { width: edge, height: edge };
+          return createCutoutAlphaPrior(
+            source,
+            grid,
+            restoreOpaqueCutoutCore(alpha, grid, subject),
+          );
+        }
       } finally {
         output?.dispose();
       }

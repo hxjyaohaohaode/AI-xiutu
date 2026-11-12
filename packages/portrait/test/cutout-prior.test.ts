@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import { createRasterMask, renderCutout } from '@ai-xiutu/editor';
-import { fusePortraitCutoutPrior } from '../src/index.js';
+import { fusePortraitCutoutPrior, restoreOpaqueCutoutCore } from '../src/index.js';
 
 test('matte fusion preserves supported soft edges, fills opaque holes and suppresses distant false foreground', () => {
   const frame = { width: 64, height: 48 };
@@ -68,4 +68,31 @@ test('matte fusion clears connected background through a narrow gap and preserve
   assert.ok(alphaAt(25, 10) < 13);
   assert.equal(alphaAt(16, 22), 102);
   assert.equal(alphaAt(29, 10), 255);
+});
+
+test('fine matting restores broad opaque loss and preserves the clear gap and soft fringe', () => {
+  const grid = { width: 64, height: 48 };
+  const { width, height } = grid;
+  const subject = new Uint8Array(width * height);
+  const fine = new Uint8Array(subject.length);
+  for (let y = 8; y < 40; y++) {
+    subject.fill(255, y * width + 16, y * width + 48);
+    fine.fill(255, y * width + 16, y * width + 48);
+  }
+  const gap = 20 * width + 24;
+  const fringe = 20 * width + 15;
+  const first = 12 * width + 22;
+  fine[gap] = 0;
+  fine[fringe] = 102;
+  fine[first] = 90;
+  const mask = createRasterMask(width, height, subject);
+  assert.equal(restoreOpaqueCutoutCore(fine, grid, mask), fine);
+
+  for (let y = 12; y < 19; y++) fine.fill(90, y * width + 22, y * width + 32);
+  const corrected = restoreOpaqueCutoutCore(fine, grid, mask);
+  assert.equal(corrected[first], 255);
+  assert.equal(fine[first], 90);
+  assert.equal(corrected[gap], 0);
+  assert.equal(corrected[fringe], 102);
+  assert.equal(corrected[0], 0);
 });

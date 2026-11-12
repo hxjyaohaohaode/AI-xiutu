@@ -15,6 +15,13 @@ if (!files.length) throw new Error('No tests were discovered.');
 const result = spawnSync(
   process.execPath,
   ['--import', 'tsx', '--test', '--test-concurrency=1', ...files],
-  { stdio: 'inherit', env: process.env },
+  {
+    stdio: 'inherit',
+    // The root test entry also imports web components through the web JSX transform.
+    env: {
+      ...process.env,
+      TSX_TSCONFIG_PATH: process.env.TSX_TSCONFIG_PATH ?? 'apps/web/tsconfig.json',
+    },
+  },
 );
 process.exit(result.status ?? 1);
