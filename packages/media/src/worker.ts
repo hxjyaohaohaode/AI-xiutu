@@ -27,6 +27,7 @@ import {
   MEDIA_MAX_SIDE,
   MEDIA_MAX_TILE_COUNT,
   MEDIA_MAX_PRECISION_PIXELS,
+  MEDIA_MAX_SDR_MASTER_PIXELS,
   MEDIA_MAX_LINEAR_PIXELS,
   MEDIA_MAX_HDR_IMPORT_PIXELS,
   MEDIA_MAX_GAIN_MAP_PIXELS,
@@ -35,6 +36,7 @@ import {
   MEDIA_MAX_HEIC_HDR_BYTES,
   fitsGainMapRaster,
   hasDisplayHdr,
+  isSdrJpegSource,
   MediaProcessingError,
   type MediaDescriptorV1,
   type MediaFileV1,
@@ -671,23 +673,26 @@ async function writeSdrExport(pipeline: Sharp, job: Job, output: string) {
   return info;
 }
 
-async function exportLinearMaster(
+async function exportNativeMaster(
   job: Job,
   descriptor: MediaDescriptorV1,
   region: MediaPrecisionWindow | undefined,
+  input: MediaPrecisionInput,
 ): Promise<MediaExportResult> {
-  const source = descriptor.linearMaster;
+  const inputSrgb = input === 'master16';
+  const source = inputSrgb ? descriptor.master : descriptor.linearMaster;
+  const maxPixels = inputSrgb ? MEDIA_MAX_SDR_MASTER_PIXELS : MEDIA_MAX_LINEAR_PIXELS;
   if (
     !source ||
-    source.relativePath !== 'linear-master.exr' ||
-    source.bitDepth !== 32 ||
+    source.relativePath !== (inputSrgb ? 'master.tif' : 'linear-master.exr') ||
+    source.bitDepth !== (inputSrgb ? 16 : 32) ||
     !/^[a-f0-9]{64}$/.test(source.sha256) ||
     !Number.isSafeInteger(source.bytes) ||
     source.bytes < 1 ||
     !job.options.pythonExecutable
   )
-    throw new Error('Float export requires a retained linear master and native runtime');
-  boundedDimensions(source.width, source.height, MEDIA_MAX_LINEAR_PIXELS);
+    throw new Error('Native export requires the retained master and native runtime');
+  boundedDimensions(source.width, source.height, maxPixels);
   const inputPath = join(job.workDir, source.relativePath),
     outputPath = `${job.outputPath!}.partial`;
   const info = await lstat(inputPath);
@@ -697,7 +702,7 @@ async function exportLinearMaster(
     info.size !== source.bytes ||
     (await digest(inputPath)) !== source.sha256
   )
-    throw new Error('Retained float master failed its immutable integrity check');
+    throw new Error('Retained master failed its immutable integrity check');
   const dimensions = region ?? source;
   const count = dimensions.width * dimensions.height;
   const ultraHdr = job.format === 'ultrahdr';
@@ -731,10 +736,11 @@ async function exportLinearMaster(
         resultPath,
         width: source.width,
         height: source.height,
-        maxPixels: MEDIA_MAX_LINEAR_PIXELS,
+        maxPixels,
         edit: parsePrecisionEdit(job.precisionEdit ?? NEUTRAL_PRECISION_EDIT),
         sdr,
-        sdrToneMap: sdr && hasDisplayHdr(descriptor.original),
+        sdrToneMap: sdr && !inputSrgb && hasDisplayHdr(descriptor.original),
+        ...(inputSrgb ? { inputSrgb: true } : {}),
         // The bounded private TIFF is immediately read by the final encoder.
         // Compress only the deliverable to avoid two lossless encodes.
         uncompressedSdr: sdr && !job.preview?.region,
@@ -755,7 +761,7 @@ async function exportLinearMaster(
       });
       child.once('error', reject);
       child.once('close', (code) =>
-        code === 0 ? done() : reject(new Error(`Float export failed: ${error.slice(-1000)}`)),
+        code === 0 ? done() : reject(new Error(`Native export failed: ${error.slice(-1000)}`)),
       );
     });
     const result = JSON.parse(await readFile(resultPath, 'utf8'));
@@ -765,7 +771,7 @@ async function exportLinearMaster(
       result.bitDepth !== (sdr ? 16 : 32) ||
       ![3, 4].includes(result.channels)
     )
-      throw new Error('Invalid float export result');
+      throw new Error('Invalid native export result');
     let info: MediaFileV1;
     if (intermediate) {
       const pipeline = sharp(intermediate, {
@@ -807,7 +813,7 @@ async function exportLinearMaster(
       format: job.format!,
       sourceSha256: descriptor.sourceSha256,
       includesEditorRecipe: false,
-      ...precisionRecord(job.precisionEdit, descriptor.sourceSha256, 'linear-master'),
+      ...precisionRecord(job.precisionEdit, descriptor.sourceSha256, input),
     };
   } finally {
     await rm(requestPath, { force: true });
@@ -839,7 +845,7 @@ async function exportMaster(job: Job): Promise<MediaExportResult> {
   )) throw new MediaLimitError('Ultra HDR crop is outside the orientation-normalized source');
   const region = crop ?? previewWindow(job.preview, descriptor.master);
   if (job.format === 'exr32' || job.precisionInput === 'linear-master')
-    return exportLinearMaster(job, descriptor, region);
+    return exportNativeMaster(job, descriptor, region, 'linear-master');
   const edit = job.precisionEdit === undefined ? undefined : parsePrecisionEdit(job.precisionEdit);
   if (edit && edit.algorithm !== 'scene-linear-v1')
     throw new Error('Scene-linear curves and regions require the retained float master');
@@ -849,6 +855,15 @@ async function exportMaster(job: Job): Promise<MediaExportResult> {
   boundedDimensions(descriptor.master.width, descriptor.master.height, job.options.maxPixels);
   const dimensions = region ?? descriptor.master;
   const pixels = dimensions.width * dimensions.height;
+  if (edit && pixels > MEDIA_MAX_PRECISION_PIXELS) {
+    if (
+      !job.options.pythonExecutable ||
+      !isSdrJpegSource(descriptor.original) ||
+      pixels > MEDIA_MAX_SDR_MASTER_PIXELS
+    )
+      throw new MediaLimitError('Precision edits exceed the SDR master pixel budget');
+    return exportNativeMaster(job, descriptor, region, 'master16');
+  }
   if (
     format === 'webp' &&
     (Math.max(descriptor.master.width, descriptor.master.height) > 16383 ||
@@ -884,8 +899,6 @@ async function exportMaster(job: Job): Promise<MediaExportResult> {
     throw new Error('Retained master metadata does not match the descriptor');
   if (region) pipeline = pipeline.extract(region);
   if (edit) {
-    if (pixels > MEDIA_MAX_PRECISION_PIXELS)
-      throw new MediaLimitError('Precision master edits exceed the 16MP budget');
     const raw = await pipeline
       .toColourspace('rgb16')
       .ensureAlpha()

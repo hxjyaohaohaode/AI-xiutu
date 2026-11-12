@@ -1,4 +1,4 @@
-import type { PrecisionEdit } from '@ai-xiutu/editor';
+import { srgbToLinear, type PrecisionEdit } from '@ai-xiutu/editor';
 import {
   linearFitGeometry,
   fitGradeParameters,
@@ -11,6 +11,7 @@ import {
   type FitMasterEncoding,
   type LinearMaster,
 } from './linear-master-stream';
+import { streamTiffMaster } from './tiff-master-stream';
 import shader from './linear-fit.wgsl?raw';
 
 const MAX_GPU_BYTES = 768 * 1024 ** 2;
@@ -62,7 +63,13 @@ export async function openLinearFitGpu(
       return buffer;
     };
     const original = device.createBuffer({ size: sourceBytes, usage: writableStorage });
-    const lookup = upload(displayHdr ? new Float32Array(1) : normalizedRawCodes());
+    const lookup = upload(
+      displayHdr
+        ? new Float32Array(1)
+        : encoding === 'srgb-master'
+          ? Float32Array.from({ length: 65_536 }, (_, code) => srgbToLinear(code / 65_535))
+          : normalizedRawCodes(),
+    );
     const geometry = device.createBuffer({
       size: 64,
       usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST,
@@ -96,17 +103,25 @@ export async function openLinearFitGpu(
     if (invalid || allocation) throw new Error('Linear preview GPU initialization failed');
 
     const response = await fetch(
-      '/v1/assets/' + encodeURIComponent(assetId) + '/media/linearMaster',
+      '/v1/assets/' +
+        encodeURIComponent(assetId) +
+        '/media/' +
+        (encoding === 'srgb-master' ? 'master' : 'linearMaster'),
       {
         credentials: 'same-origin',
         cache: 'no-store',
         signal: AbortSignal.timeout(180_000),
       },
     );
-    await streamLinearMaster(response, master, encoding, async (top, band) => {
+    const uploadBand = async (
+      top: number,
+      band: Uint16Array<ArrayBuffer> | Uint32Array<ArrayBuffer>,
+    ) => {
       device.queue.writeBuffer(original, top * width * 3 * band.BYTES_PER_ELEMENT, band);
       await device.queue.onSubmittedWorkDone();
-    });
+    };
+    if (encoding === 'srgb-master') await streamTiffMaster(response, master, uploadBand);
+    else await streamLinearMaster(response, master, encoding, uploadBand);
 
     function makePlan(inputWidth: number, inputHeight: number, maxEdge: number) {
       const shape = linearFitGeometry(inputWidth, inputHeight, maxEdge);

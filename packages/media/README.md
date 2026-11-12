@@ -8,7 +8,7 @@
 
 `exportMedia` 可传 `precisionEdit`，完整字段为 `algorithm:'scene-linear-v1'`、`exposure`（−10…10EV）、`temperature/tint/contrast/saturation/shadows/highlights`（−100…100）和 `toneMap:'none'|'reinhard'`。全零及 none 为中性。温度/色偏沿既有相对 RGB 增益；对比度围绕线性亮度0.18使用指数，饱和度围绕线性亮度，阴影/高光按 `Y/(Y+0.18)` 连续分配正负一档曝光。Reinhard 是显式的亮度色调映射。
 
-选择 `precisionInput:'master16'` 时，按65536项完整传递函数表解码 uint16 样本，调色后量化一次，整图最多16,777,216像素。选择 `'linear-master'` 时，OpenImageIO 从已校验的线性母版逐块读取，最多6400万像素。EXR32 保留有符号浮点亮度、透明度、数据窗口和显示窗口。PNG16/TIFF16 先应用同一线性调色，再作 SDR 编码。线性路径需要配置 `options.pythonExecutable`。
+选择 `precisionInput:'master16'` 时，按 65,536 项完整传递函数表解码 uint16 样本，调色后量化一次。整图默认最多 16,777,216 像素。配置原生运行时后，普通 SDR JPEG 的 RGB16 TIFF 母版可通过 OpenImageIO 逐带处理最多 64,000,000 像素，使用同一 v1 配方、原图坐标和 sRGB 量化。素材媒体记录中的 `precisionEditing.maxPixels` 给出实际预算。选择 `'linear-master'` 时，OpenImageIO 从已校验的线性母版逐块读取，最多 64,000,000 像素。EXR32 保留有符号浮点亮度、透明度、数据窗口和显示窗口。PNG16/TIFF16 先应用同一线性调色，再作 SDR 编码。OpenImageIO 路径需要配置 `options.pythonExecutable`。
 
 `scene-linear-v2` 在全局调色后加入可选的 `curves.luminance/red/green/blue`。每条曲线包含 2–16 个 `[输入EV, 输出EV]` 点，横纵坐标为相对线性灰 0.18 的 −16…16EV，输入严格递增。相邻点按 EV 线性插值，两端延用端点的曝光偏移。先按亮度曲线等比缩放 RGB，再执行各正值通道的独立曲线，最后按需要做 Reinhard 映射。Alpha 和全透明像素的隐藏颜色保留在线性 EXR 中，浮点结果允许大于 1 的高光。EV 调节位置参考场景线性曝光分区，曲线插值和端点延拓按上面的协议执行。 [darktable Tone Equalizer](https://github.com/darktable-org/darktable/blob/1c96821ea863fca682d458f5b91f8a50f248959d/src/iop/toneequal.c)
 
@@ -18,7 +18,7 @@
 
 母版预览的 `region` 在每边 2048 像素内直接输出原像素。`fitRegion` 允许选择最多 16,777,216 个原像素，按同一原图坐标调色，再将选区缩至 `maxEdge`。两种矩形均按母版数据窗口计数，一次请求选择一种。整图预览也先调色再缩小。相同输入、调色和源摘要共享同一个 `X-Precision-Edit-SHA256`，包含窗口预览和不同导出格式。API 将用户保存的参数追加为独立版本，支持重新打开、继续调色及指定版本导出。
 
-原件与母版查看器对可用 WebGPU 的相机 RAW、Ultra HDR JPEG 和 HEIC PQ/HLG 支持适屏连续调色。Worker 从受授权的母版接口读取 ZIP EXR 并校验 SHA-256。相机 RAW 开发的 uint16 归一化样本可逆地打包，HDR 直接传递有符号 float32。GPU 每帧对全图或可见区域的原像素计算场景线性配方，显示 HDR 时应用同一 SDR 色调映射，再按相同的 Lanczos3 几何采样。放大时根据设备像素密度计算可见区域，复用已加载的原图，1:1 输出该区域的原像素栅格。直接打开 1:1 或浏览器显存和计算能力不足时，由媒体 API 提供同源预览。文件导出由媒体 API 执行。[相机和手机实拍验收](../../docs/research/PHOTO-EDITING-FEATURE-MATRIX.md#r01-和-f07-原尺寸开发后的适屏性能)
+原件与母版查看器对可用 WebGPU 的 SDR JPEG、相机 RAW、Ultra HDR JPEG 和 HEIC PQ/HLG 支持连续调色。Worker 从受授权的母版接口读取带水平预测的 Deflate RGB16 TIFF 或 ZIP EXR，校验 SHA-256 后渲染。SDR JPEG 逐值还原 TIFF 原像素，GPU 通过相同 sRGB 传递函数解码。相机 RAW 开发的 uint16 归一化样本可逆地打包，HDR 直接传递有符号 float32。GPU 每帧对全图或可见区域的原像素计算场景线性配方，显示 HDR 时应用同一 SDR 色调映射，再按相同的 Lanczos3 几何采样。放大时根据设备像素密度计算可见区域，复用已加载的原图，1:1 输出该区域的原像素栅格。直接打开 1:1 或浏览器显存和计算能力不足时，由媒体 API 提供同源预览。文件导出由媒体 API 执行。[RAW 与 HDR 实拍](../../docs/research/PHOTO-EDITING-FEATURE-MATRIX.md#r01-和-f07-原尺寸开发后的适屏性能) · [SDR JPEG 实拍](../../docs/research/PHOTO-EDITING-FEATURE-MATRIX.md#r01-普通大图-jpeg-母版调色)
 
 线性母版窗口在独立 Python 进程中复用解码环境，使用与导出相同的条带调色及 sRGB 量化。每次按当前素材授权打开母版，核对实际文件的设备、inode、尺寸和纳秒时间戳。首次或身份变化时重新核对完整 SHA-256。解码使用已核对的文件描述符，返回前再核对文件和路径。对同一文件身份和坐标复用最多一个窗口的原始 float32 条带，缓存最多 128MiB。原像素窗口直接编码 PNG16。`fitRegion` 使用进程输出的连续 uint16 RGB/RGBA，经同一 Lanczos3 缩放后编码。两种响应均写入标准 sRGB ICC。每个 API 实例最多一个窗口执行槽和一个等待槽，可与整图转换并行。窗口进程地址空间 1GiB，调色期限 10 秒，空闲 20 秒或处理 1,024 次后回收。取消和超时终止进程组。
 

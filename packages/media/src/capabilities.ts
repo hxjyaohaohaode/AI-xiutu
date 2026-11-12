@@ -18,6 +18,7 @@ import {
   MEDIA_MAX_SIDE,
   MEDIA_MAX_TILE_COUNT,
   MEDIA_MAX_PRECISION_PIXELS,
+  MEDIA_MAX_SDR_MASTER_PIXELS,
   MEDIA_MAX_LINEAR_PIXELS,
   MEDIA_MAX_HDR_IMPORT_PIXELS,
   MEDIA_MAX_GAIN_MAP_PIXELS,
@@ -208,6 +209,10 @@ export async function getMediaCapabilities(
       linearFloat: isolated && nativeVersions !== null,
       floatFormat: 'exr32',
       maxPixels: MEDIA_MAX_PRECISION_PIXELS,
+      maxSdrJpegPixels:
+        isolated && nativeVersions !== null
+          ? MEDIA_MAX_SDR_MASTER_PIXELS
+          : MEDIA_MAX_PRECISION_PIXELS,
       maxLinearPixels: MEDIA_MAX_LINEAR_PIXELS,
       previewMaxEdge: MEDIA_MAX_PREVIEW_EDGE,
       maxFitRegionPixels: MEDIA_MAX_PRECISION_PIXELS,

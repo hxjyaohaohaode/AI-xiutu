@@ -1,7 +1,8 @@
 import { sha256 } from '@noble/hashes/sha2.js';
 import { bytesToHex } from '@noble/hashes/utils.js';
+import { inflateMasterBlock } from './master-inflate';
 
-export type FitMasterEncoding = 'camera-raw' | 'display-hdr';
+export type FitMasterEncoding = 'camera-raw' | 'display-hdr' | 'srgb-master';
 
 export interface LinearMaster {
   width: number;
@@ -137,24 +138,7 @@ async function readMasterHeader(input: MasterStream, source: LinearMaster) {
 }
 
 async function inflateZip(bytes: Uint8Array, size: number) {
-  const stream = new Blob([new Uint8Array(bytes)])
-    .stream()
-    .pipeThrough(new DecompressionStream('deflate'));
-  const reader = stream.getReader();
-  const decoded = new Uint8Array(size);
-  let offset = 0;
-  try {
-    for (;;) {
-      const { done, value } = await reader.read();
-      if (done) break;
-      if (offset + value.byteLength > size) throw new Error('Retained EXR tile exceeds its bounds');
-      decoded.set(value, offset);
-      offset += value.byteLength;
-    }
-    if (offset !== size) throw new Error('Retained EXR tile ended early');
-  } finally {
-    await reader.cancel().catch(() => {});
-  }
+  const decoded = await inflateMasterBlock(bytes, size);
   for (let index = 1; index < size; index++)
     decoded[index] = (decoded[index - 1]! + decoded[index]! - 128) & 255;
   return decoded;
@@ -169,7 +153,7 @@ export function normalizedRawCodes() {
 export async function streamLinearMaster(
   response: Response,
   source: LinearMaster,
-  encoding: FitMasterEncoding,
+  encoding: Exclude<FitMasterEncoding, 'srgb-master'>,
   onRows: (top: number, data: Uint16Array<ArrayBuffer> | Uint32Array<ArrayBuffer>) => Promise<void>,
 ) {
   if (

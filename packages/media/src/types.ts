@@ -8,6 +8,7 @@ export const MEDIA_MAX_TILE_COUNT = 8_192;
 export const MEDIA_MAX_INPUT_BYTES = 536_870_912;
 export const MEDIA_MAX_PROXY_PIXELS = 4_194_304;
 export const MEDIA_MAX_PRECISION_PIXELS = 16_777_216;
+export const MEDIA_MAX_SDR_MASTER_PIXELS = 64_000_000;
 export const MEDIA_MAX_LINEAR_PIXELS = 64_000_000;
 export const MEDIA_MAX_HDR_IMPORT_PIXELS = 50_000_000;
 export const MEDIA_MAX_GAIN_MAP_PIXELS = 24_000_000;
@@ -122,6 +123,9 @@ export interface MediaDescriptorV1 {
 }
 export function hasDisplayHdr(original: MediaDescriptorV1['original']) {
   return !!(original.gainMap || original.pq || original.hlg);
+}
+export function isSdrJpegSource(original: MediaDescriptorV1['original']) {
+  return original.format === 'jpeg' && !hasDisplayHdr(original);
 }
 export function fitsGainMapRaster({ width, height }: { width: number; height: number }) {
   return (

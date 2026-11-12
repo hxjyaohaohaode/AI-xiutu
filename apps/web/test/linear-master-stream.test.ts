@@ -2,7 +2,9 @@ import assert from 'node:assert/strict';
 import { createHash } from 'node:crypto';
 import test from 'node:test';
 import { deflateSync } from 'node:zlib';
+import sharp from 'sharp';
 import { streamLinearMaster } from '../src/media/linear-master-stream';
+import { streamTiffMaster } from '../src/media/tiff-master-stream';
 
 const integers = (...values: number[]) => {
   const data = Buffer.alloc(values.length * 4);
@@ -12,6 +14,45 @@ const integers = (...values: number[]) => {
 
 const attribute = (name: string, type: string, data: Buffer) =>
   Buffer.concat([Buffer.from(`${name}\0${type}\0`), integers(data.length), data]);
+
+test('an opaque retained TIFF preserves all 16-bit samples across tile and partial-row boundaries', async () => {
+  const width = 257;
+  const height = 259;
+  const original = Uint16Array.from({ length: width * height * 3 }, (_, at) => (at * 17) % 65_536);
+  const encoded = await sharp(original, { raw: { width, height, channels: 3 } })
+    .toColourspace('rgb16')
+    .tiff({
+      compression: 'deflate',
+      predictor: 'horizontal',
+      tile: true,
+      tileWidth: 256,
+      tileHeight: 256,
+    })
+    .toBuffer();
+  const file = {
+    width,
+    height,
+    bytes: encoded.length,
+    sha256: createHash('sha256').update(encoded).digest('hex'),
+  };
+  const request = () =>
+    new Response(new Uint8Array(encoded), { headers: { 'Content-Length': String(file.bytes) } });
+  const rows: number[] = [];
+  await streamTiffMaster(request(), file, async (top, band) => {
+    rows.push(top);
+    const end = Math.min(top + 256, height) * width * 3;
+    const start = top * width * 3;
+    assert.deepEqual(band.subarray(0, end - start), original.subarray(start, end));
+    assert.equal(band.length % 2, 0);
+  });
+  assert.deepEqual(rows, [0, 256]);
+  await assert.rejects(
+    streamTiffMaster(request(), { ...file, sha256: '0'.repeat(64) }, async () => {
+      throw new Error('unverified samples reached the renderer');
+    }),
+    /integrity check/,
+  );
+});
 
 function retainedTile(width: number, height: number, values: Float32Array, zip: boolean) {
   const channels = Buffer.concat([

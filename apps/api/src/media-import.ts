@@ -14,6 +14,7 @@ import {
   createLinearWindowRuntime,
   getMediaCapabilities,
   hasDisplayHdr,
+  isSdrJpegSource,
   fitsGainMapRaster,
   MediaProcessingError,
   MEDIA_MAX_INPUT_BYTES,
@@ -702,6 +703,14 @@ export function registerMediaImport(app: FastifyInstance, db: Database, config: 
     ).rows[0];
     return row ? gradeDto(row) : null;
   }
+  function master16GradeLimit(
+    row: MediaAccess,
+    precision: Awaited<typeof capabilities>['precisionEditing'],
+  ) {
+    return isSdrJpegSource(row.descriptor.original)
+      ? precision.maxSdrJpegPixels
+      : precision.maxPixels;
+  }
   async function assertPrecision(
     row: MediaAccess,
     expectedDigest: string | undefined,
@@ -719,8 +728,9 @@ export function registerMediaImport(app: FastifyInstance, db: Database, config: 
           ? '场景线性曲线需要线性母版作为调色输入。'
           : '场景线性局部调色需要线性母版作为输入。',
       );
+    const runtime = await capabilities;
     const master = input === 'linear-master' ? row.descriptor.linearMaster : row.descriptor.master;
-    if (!master || (input === 'linear-master' && !(await capabilities).nativeReady))
+    if (!master || (input === 'linear-master' && !runtime.nativeReady))
       throw new HttpError(422, 'MEDIA_FLOAT_UNAVAILABLE', '线性母版或浮点运行环境不可用。');
     if (preview?.region && preview.fitRegion)
       throw new HttpError(422, 'MEDIA_PREVIEW_WINDOW', '请选择一种预览区域模式。');
@@ -736,7 +746,9 @@ export function registerMediaImport(app: FastifyInstance, db: Database, config: 
         throw new HttpError(413, 'MEDIA_PRECISION_BUDGET', '适屏区域超过当前调色预算。');
     } else if (
       master.width * master.height >
-      (input === 'linear-master' ? MEDIA_MAX_LINEAR_PIXELS : MEDIA_MAX_PRECISION_PIXELS)
+      (input === 'linear-master'
+        ? MEDIA_MAX_LINEAR_PIXELS
+        : master16GradeLimit(row, runtime.precisionEditing))
     ) {
       throw new HttpError(413, 'MEDIA_PRECISION_BUDGET', '母版超过当前整图调色预算。');
     }
@@ -768,6 +780,7 @@ export function registerMediaImport(app: FastifyInstance, db: Database, config: 
         precisionEditing: {
           ...precision,
           master16: enabled && precision.master16,
+          maxPixels: master16GradeLimit(row, precision),
           sourceSha256: row.descriptor.sourceSha256,
           floatAvailable: enabled && !!row.descriptor.linearMaster && precision.linearFloat,
           ultraHdrJpeg: ultraHdrSource && fitsGainMapRaster(row.descriptor.master),
