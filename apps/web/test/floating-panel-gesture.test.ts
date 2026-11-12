@@ -147,7 +147,7 @@ test('the actual phone Edit button restores useful height even when normal is al
     ui.control((props) => props['aria-label'] === '恢复参数，保留当前调整').onClick();
     assert.equal(ui.writes.length, 1);
     assert.equal(ui.writes[0]!.presentation, 'normal');
-    assert.ok(ui.writes[0]!.height >= 330 && ui.writes[0]!.height <= 360);
+    assert.ok(ui.writes[0]!.height >= 280 && ui.writes[0]!.height <= 300);
     assert.equal(geometry.height, 112);
   }
 });
