@@ -575,6 +575,24 @@ export async function reviewMakeup({ page, canvasPixels, tool, parameter, until,
       await family.evaluate((node) => node.scrollWidth <= node.clientWidth + 1),
       expected + ' must display in full',
     );
+    await until(
+      () =>
+        page.evaluate(() =>
+          [
+            [
+              '.makeup-brush-rail',
+              '.automatic-makeup .makeup-brush-rail > button[aria-pressed="true"]',
+            ],
+            ['.dock-tool-scroll', '.dock-tool-scroll > button[data-dock-tool="paint"]'],
+          ].every(([owner, selector]) => {
+            const item = document.querySelector(selector);
+            const clip = item?.closest(owner)?.getBoundingClientRect();
+            const rect = item?.getBoundingClientRect();
+            return clip && rect && rect.left >= clip.left - 1 && rect.right <= clip.right + 1;
+          }),
+        ),
+      'selected brush and editing tool fit in the translated rails',
+    );
     await capture(page, 'interactions/mobile-makeup-320-' + locale + '.png');
   }
   await setLanguage('zh-CN');

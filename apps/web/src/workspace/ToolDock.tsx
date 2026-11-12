@@ -13,6 +13,15 @@ export function dockTool(group: ToolGroup, compact: boolean): ToolGroup {
   return compact && ADJUSTMENT_GROUPS.includes(group) ? 'light' : group;
 }
 
+function revealPressedTool(rail: HTMLElement) {
+  const button = rail.querySelector<HTMLElement>('[aria-pressed="true"]');
+  if (!button || !rail.clientWidth) return;
+  const viewport = rail.getBoundingClientRect();
+  const item = button.getBoundingClientRect();
+  if (item.left < viewport.left) rail.scrollLeft += item.left - viewport.left;
+  else if (item.right > viewport.right) rail.scrollLeft += item.right - viewport.right;
+}
+
 /** A connected phone category rail; the selected context opens directly above it. */
 export function ToolDock({
   group,
@@ -100,12 +109,7 @@ export function ToolDock({
   }, [selection, selectionX, selectionWidth]);
   useLayoutEffect(() => {
     const rail = nav.current;
-    const button = rail?.querySelector<HTMLElement>('[aria-pressed="true"]');
-    if (!rail || !button) return;
-    const viewport = rail.getBoundingClientRect();
-    const item = button.getBoundingClientRect();
-    if (item.left < viewport.left) rail.scrollLeft += item.left - viewport.left;
-    else if (item.right > viewport.right) rail.scrollLeft += item.right - viewport.right;
+    if (rail) revealPressedTool(rail);
   }, [active, contextOpen, aiOpen, compact, locale]);
   useEffect(() => setTabStop(aiOpen ? 'ai' : active), [active, aiOpen, compact]);
   useLayoutEffect(() => {
@@ -160,8 +164,10 @@ export function ToolDock({
           const peek = 12;
           const slots = Math.max(1, Math.floor((available - peek + gap) / (minimum + gap)));
           const width = `${Math.max(minimum, (available - peek - gap * (slots - 1)) / slots)}px`;
-          if (rail.style.getPropertyValue('--dock-item-width') !== width)
+          if (rail.style.getPropertyValue('--dock-item-width') !== width) {
             rail.style.setProperty('--dock-item-width', width);
+            revealPressedTool(rail);
+          }
         }
       }
       const left = rail.scrollLeft > 2;

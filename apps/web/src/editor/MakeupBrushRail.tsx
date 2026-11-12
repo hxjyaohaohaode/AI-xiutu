@@ -1,6 +1,6 @@
-import { useId, useState, type ReactNode } from 'react';
+import { useId, useLayoutEffect, useRef, useState, type ReactNode } from 'react';
 import type { PaintMaterialV3 } from '@ai-xiutu/editor';
-import { t } from '../i18n';
+import { t, useLocale } from '../i18n';
 import { ChoiceSelect } from '../components/ChoiceSelect';
 import { ControlGlyph } from '../components/ControlGlyph';
 import { RubberSegment, SquishSwitch, WarmTooltip } from '../components/control-motion';
@@ -119,8 +119,28 @@ export function MakeupBrushRail({
   onChange: (value: MakeupBrushId | null) => void;
   automatic?: boolean;
 }) {
+  const locale = useLocale();
+  const root = useRef<HTMLDivElement>(null);
+  useLayoutEffect(() => {
+    const rail = root.current;
+    const button = rail?.querySelector<HTMLButtonElement>('[aria-pressed="true"]');
+    if (!rail || !button) return;
+    const reveal = () => {
+      if (!rail.clientWidth) return;
+      const viewport = rail.getBoundingClientRect();
+      const item = button.getBoundingClientRect();
+      if (item.left < viewport.left) rail.scrollLeft += item.left - viewport.left;
+      else if (item.right > viewport.right) rail.scrollLeft += item.right - viewport.right;
+    };
+    reveal();
+    const observer = new ResizeObserver(reveal);
+    observer.observe(rail);
+    observer.observe(button);
+    return () => observer.disconnect();
+  }, [automatic, locale, value]);
   return (
     <div
+      ref={root}
       className="makeup-brush-rail"
       role="group"
       aria-label={t(automatic ? '妆容区域' : '妆容笔')}
