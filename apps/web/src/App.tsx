@@ -40,6 +40,7 @@ import type {
   Space,
   View,
 } from './lib/types';
+import type { AssistantVisualAttachment } from '@ai-xiutu/contracts';
 import { useEditor, localPixelBudget, LocalImportError } from './editor/useEditor';
 import { normalizeImageSourceFile } from './editor/imageSources';
 import { createSourceLoadGuard, assertRevisionSourceBinding } from './editor/source-flow';
@@ -109,7 +110,7 @@ import { useCollaboration } from './collaboration/useCollaboration';
 import { CollaborationStatus } from './collaboration/CollaborationStatus';
 import { TeamVoiceBanner } from './collaboration/TeamVoiceBanner';
 import { useTeamVoice } from './collaboration/useTeamVoice';
-import { captureRenderedImage } from './editor/capture';
+import { captureRenderedImage, captureSketchVisual, captureWorkspaceVisual } from './editor/capture';
 import {
   ExportDialog,
   NameDialog,
@@ -306,6 +307,14 @@ export function App({
   const accountReturnFocus = useRef<HTMLElement | null>(null);
   const rawEditor = useEditor();
   const workspaceLayout = useWorkspaceLayout();
+  const workspaceSurface = useRef<HTMLDivElement>(null);
+  const capturingWorkspace = useRef(false);
+  const restoreInspectorAfterAI = useRef(false);
+  const [visualDraft, setVisualDraft] = useState<{
+    scope: string;
+    recipe: EditorRecipe;
+    attachment: AssistantVisualAttachment;
+  } | null>(null);
   const [pickedColor, setPickedColor] = useState('#34372EFF');
   const [sampling, setSampling] = useState(false);
   const [pendingImport, setPendingImport] = useState<File | null>(null);
@@ -385,6 +394,8 @@ export function App({
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [inspectorOpen, setInspectorOpen] = useState(false);
   const [aiOpen, setAiOpen] = useState(false);
+  const aiOpenRef = useRef(aiOpen);
+  aiOpenRef.current = aiOpen;
   const [inspectorVisited, setInspectorVisited] = useState(false);
   const [aiVisited, setAiVisited] = useState(false);
   const [collaborationOpen, setCollaborationOpen] = useState(false);
@@ -488,6 +499,14 @@ export function App({
     resolveReferences: resolveLayerReferences,
   });
   const editor = collaboration.editor;
+  const sourceIdentity = editor.getSourceIdentity();
+  const visualScope = JSON.stringify([session.user?.id, project?.id, artwork?.id, sourceIdentity]);
+  const visualScopeRef = useRef(visualScope);
+  visualScopeRef.current = visualScope;
+  const visualAttachment = visualDraft?.scope === visualScope ? visualDraft.attachment : null;
+  useEffect(() => {
+    setVisualDraft((draft) => (draft?.scope === visualScope ? draft : null));
+  }, [visualScope]);
   const confirmation = useConfirmation();
   const navigationScope = useRef({
     actor: session.user?.id,
@@ -2154,6 +2173,12 @@ export function App({
   const activePanel = activePanelId
     ? workspaceLayout.panel(activePanelId === 'collaboration' ? 'inspector' : activePanelId)
     : null;
+  const mobileAssistantPage =
+    workspaceLayout.view.bucket === 'phone' ||
+    (workspaceLayout.view.width < 1000 &&
+      workspaceLayout.view.height <= 500 &&
+      navigator.maxTouchPoints > 0);
+  const mobileAssistantOpen = mobileAssistantPage && activePanelId === 'ai';
   const inspectorPresence = usePresence(activePanelId === 'inspector', 'panel-frame');
   const aiPresence = usePresence(activePanelId === 'ai', 'panel-frame');
   const collaborationPresence = usePresence(
@@ -2172,7 +2197,7 @@ export function App({
     ? dialog
     : (modalDialog ?? (dialogPresence.present ? lastDialog.current : null));
   const canvasInsets = workspaceCanvasInsets(
-    activePanel,
+    mobileAssistantOpen ? null : activePanel,
     workspaceLayout.view,
     workspaceLayout.focused,
   );
@@ -2219,6 +2244,7 @@ export function App({
     notify(t('已恢复当前屏幕的默认布局。'));
   };
   const showAI = () => {
+    if (!aiOpen) restoreInspectorAfterAI.current = inspectorOpen;
     editor.commitCurrent(t('完成当前调节'));
     workspaceLayout.setFocused(false);
     setCollaborationOpen(false);
@@ -2231,6 +2257,64 @@ export function App({
   const openAI = async () => {
     if (view !== 'editor' && !(await changeView('editor'))) return;
     showAI();
+  };
+  const closeAI = () => {
+    setAiOpen(false);
+    if (!mobileAssistantPage) return;
+    if (restoreInspectorAfterAI.current) setInspectorOpen(true);
+    requestAnimationFrame(() =>
+      workspaceSurface.current
+        ?.querySelector<HTMLButtonElement>('[data-dock-tool=ai]')
+        ?.focus({ preventScroll: true }),
+    );
+  };
+  const openAIFromEditor = async () => {
+    if (capturingWorkspace.current) return;
+    const workspace = workspaceSurface.current;
+    const recipe = editor.getRecipe();
+    if (
+      !mobileAssistantPage ||
+      !workspace ||
+      !editor.file ||
+      referenceFile ||
+      keepAIActive ||
+      visualAttachment?.kind === 'sketch' ||
+      (visualAttachment && visualDraft?.recipe === recipe)
+    ) {
+      showAI();
+      return;
+    }
+    if (
+      !editor.rendered ||
+      editor.isLoading() ||
+      editor.rendering ||
+      JSON.stringify(recipe) !== JSON.stringify(editor.renderedRecipe)
+    ) {
+      notify(t('最新编辑还没有完成渲染，请稍后再共享。'));
+      return;
+    }
+    capturingWorkspace.current = true;
+    try {
+      const attachment = await captureWorkspaceVisual(workspace, editor.rendered);
+      if (
+        !workspace.isConnected ||
+        !activeRef.current ||
+        navigationScope.current.view !== 'editor' ||
+        visualScopeRef.current !== visualScope ||
+        editor.getSourceIdentity() !== sourceIdentity
+      )
+        return;
+      if (editor.getRecipe() !== recipe) {
+        notify(t('共享期间画面已变化，请重新获取上下文。'));
+        return;
+      }
+      setVisualDraft({ scope: visualScope, recipe, attachment });
+      showAI();
+    } catch (error) {
+      notify(errorMessage(error), 'error');
+    } finally {
+      capturingWorkspace.current = false;
+    }
   };
   const openCollaborationPanel = () => {
     editor.commitCurrent(t('完成当前调节'));
@@ -2440,6 +2524,7 @@ export function App({
           <div
             className={`app-shell canvas-workspace studio-workspace view-${view} theme-${studioTheme.theme} ${workspaceLayout.focused ? 'is-focused' : ''}`}
             data-has-image={!!editor.file}
+            data-mobile-ai-page={mobileAssistantOpen || undefined}
           >
             <Sidebar
               brand={brand}
@@ -2477,7 +2562,7 @@ export function App({
                 setOps(true);
               }}
             />
-            <div className="workspace">
+            <div className="workspace" ref={workspaceSurface}>
               <header className="floating-topbar" data-motion="topbar">
                 <div className="workspace-identity">
                   <IconButton label={t('打开空间与项目')} onClick={() => setSidebarOpen(true)}>
@@ -2678,8 +2763,8 @@ export function App({
               <div
                 className="workspace-canvas-status"
                 ref={setCanvasStatusContainer}
-                hidden={view !== 'editor'}
-                inert={view !== 'editor'}
+                hidden={view !== 'editor' || mobileAssistantOpen}
+                inert={view !== 'editor' || mobileAssistantOpen}
               />
               <div className="workspace-notice-anchor" ref={setNoticeContainer} />
               <div className="workspace-body">
@@ -2687,6 +2772,7 @@ export function App({
                   switchKey={view}
                   className="workspace-view-transition"
                   data-motion-pixels="true"
+                  inert={mobileAssistantOpen}
                 >
                   {view === 'editor' ? (
                     <>
@@ -2755,8 +2841,8 @@ export function App({
                           compact={workspaceLayout.view.bucket === 'phone'}
                           onTool={chooseTool}
                           onAI={() => {
-                            if (aiOpen) setAiOpen(false);
-                            else openAI();
+                            if (aiOpen) closeAI();
+                            else void openAIFromEditor();
                           }}
                         />
                       )}
@@ -2949,6 +3035,7 @@ export function App({
                     <FloatingPanel
                       key={shownPanelId}
                       panelKey={shownPanelId}
+                      displayMode={shownPanelId === 'ai' && mobileAssistantPage ? 'page' : 'panel'}
                       open={activePanelId === shownPanelId}
                       motionState={(shownPanelId === 'ai' ? aiPresence : inspectorPresence).phase}
                       title={
@@ -2993,7 +3080,8 @@ export function App({
                         shownPanelId === 'inspector' &&
                         !!editor.file &&
                         !toolOverview &&
-                        ADJUSTMENT_GROUPS.includes(group)
+                        (ADJUSTMENT_GROUPS.includes(group) ||
+                          (group === 'crop' && editor.recipe.schemaVersion >= 3))
                       }
                     >
                       {shownPanelId === 'inspector' ? (
@@ -3035,6 +3123,11 @@ export function App({
                         <AIPanelFeature
                           key={(session.user?.id ?? 'local') + ':' + (project?.id ?? 'none')}
                           visible={activePanelId === 'ai'}
+                          mobilePage={mobileAssistantPage}
+                          visualAttachment={visualAttachment}
+                          onClearVisualAttachment={(attachment) =>
+                            setVisualDraft((draft) => (draft?.attachment === attachment ? null : draft))
+                          }
                           onActivityChange={setAiActivity}
                           userId={session.user?.id ?? null}
                           projectAssets={assets}
@@ -3106,7 +3199,7 @@ export function App({
                           onBeforeArtworkWrite={collaboration.beforeExternalWrite}
                           onAfterArtworkWrite={collaboration.afterExternalWrite}
                           isDirty={dirty}
-                          onDecisionApplied={async (id) => {
+                          onDecisionApplied={async (id, action) => {
                             setRefreshToken((value) => value + 1);
                             if (
                               navigationScope.current.view !== 'editor' ||
@@ -3119,7 +3212,16 @@ export function App({
                               );
                               return;
                             }
-                            await openArtwork(id);
+                            if (await openArtwork(id)) {
+                              if (
+                                mobileAssistantPage &&
+                                aiOpenRef.current &&
+                                (action === 'replace' || action === 'layer')
+                              )
+                                closeAI();
+                              if (action === 'replace')
+                                notify(t('已替换底图，可在「对比」中恢复上一版本。'));
+                            }
                           }}
                           config={config}
                           initialOperation={initialAIOperation}
@@ -3129,13 +3231,14 @@ export function App({
                           onCreateProject={openCreateProject}
                           onOpenArtwork={(id) => {
                             void openArtwork(id).then((opened) => {
-                              if (opened) setAiOpen(false);
+                              if (opened) closeAI();
                             });
                           }}
                           onTaskChanged={() => setRefreshToken((value) => value + 1)}
-                          onClose={() => setAiOpen(false)}
+                          onClose={closeAI}
                           onPreview={(next) => {
                             editor.preview(next);
+                            if (mobileAssistantPage && aiOpenRef.current) closeAI();
                             notify(
                               navigationScope.current.view === 'editor'
                                 ? t('建议已进入预览，可以继续调整、取消或保存。')
@@ -3349,9 +3452,18 @@ export function App({
               onUse={(file) => importFile(file)}
               onReference={async (file) => {
                 if (!(await changeView('editor'))) return false;
+                if (mobileAssistantPage && !aiOpen && !keepAIActive) {
+                  const attachment = await captureSketchVisual(file);
+                  if (visualScopeRef.current !== visualScope) return false;
+                  setReferenceFile(null);
+                  setVisualDraft({ scope: visualScope, recipe: editor.getRecipe(), attachment });
+                  showAI();
+                  return true;
+                }
                 setReferenceFile(file);
                 setReferenceSource('sketch');
                 setInitialAIOperation('generate-image');
+                setVisualDraft(null);
                 showAI();
                 notify(t('草图已作为本地参考。确认提交生图时才会上传。'));
                 return true;

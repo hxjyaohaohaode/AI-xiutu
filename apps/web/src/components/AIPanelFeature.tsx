@@ -57,7 +57,18 @@ export function AIPanelFeature(props: ComponentProps<typeof AIPanel>) {
   const [Panel, setPanel] = useState(createPanel);
   return (
     <AIPanelErrorBoundary onClose={props.onClose} onRetry={() => setPanel(() => createPanel())}>
-      <Suspense fallback={<FeatureSkeleton profile="assistant" label={t('正在打开创作助手')} />}>
+      <Suspense
+        fallback={
+          <>
+            {props.mobilePage && (
+              <button className="text-button ai-page-loading-back" onClick={props.onClose}>
+                {t('返回编辑器')}
+              </button>
+            )}
+            <FeatureSkeleton profile="assistant" label={t('正在打开创作助手')} />
+          </>
+        }
+      >
         <Panel {...props} />
       </Suspense>
     </AIPanelErrorBoundary>

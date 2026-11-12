@@ -827,6 +827,22 @@
   border-radius: 0;
   height: 100%;
 }
+.studio-workspace[data-mobile-ai-page='true'] .workspace-view-transition {
+  visibility: hidden;
+}
+.studio-workspace[data-mobile-ai-page='true'] .free-panel[data-panel-id='ai'] {
+  z-index: 18;
+  padding: env(safe-area-inset-top) env(safe-area-inset-right) env(safe-area-inset-bottom)
+    env(safe-area-inset-left);
+}
+.studio-workspace[data-mobile-ai-page='true'] .floating-topbar {
+  display: none;
+}
+.ai-page-loading-back {
+  align-self: flex-start;
+  min-height: 44px;
+  margin-inline: 8px;
+}
 .collaboration-retained {
   min-height: 0;
   min-width: 0;

@@ -31,6 +31,7 @@ import type {
   MemorySuggestion,
   AssistantBranchEvent,
   AssistantResearchBranch,
+  AssistantVisualAttachment,
 } from '@ai-xiutu/contracts';
 import { assistantSearchEvidenceSchema } from '@ai-xiutu/contracts';
 import { parseEditorRecipe, type EditorRecipe } from '@ai-xiutu/editor';
@@ -51,6 +52,7 @@ import './live-assistant.css';
 import { IconButton, Modal } from '../components/Ui';
 import { ChoiceSelect } from '../components/ChoiceSelect';
 import { ComposerInput } from './ComposerInput';
+import { DraftAttachmentCard, visualAttachmentLabel } from './DraftAttachmentCard';
 import { ComposerAction } from './ComposerAction';
 import { ExecutionStatus } from './ExecutionStatus';
 import {
@@ -171,6 +173,7 @@ interface Message {
   appStatus?: StatusMessage;
   citations?: AssistantCitation[];
   search?: AssistantSearchEvidence[];
+  attachmentKind?: AssistantVisualAttachment['kind'];
 }
 const assistantDrafts = new Map<
   string,
@@ -207,6 +210,8 @@ export interface LiveAssistantProps {
     referenceAssetIds: string[];
   }) => Promise<(() => void) | null>;
   captureCurrentImage?: CaptureCurrentImage;
+  visualAttachment?: AssistantVisualAttachment | null;
+  onClearVisualAttachment?: (attachment: AssistantVisualAttachment) => void;
   onUseCanvasSource?: (item: AssistantCloudResource) => void;
 }
 function editorState(value: LiveAssistantProps): AssistantEditorState {
@@ -280,6 +285,9 @@ export function LiveAssistant(props: LiveAssistantProps) {
   const voiceSubmission = useRef<VoiceSubmission | null>(null);
   actor.current = actorId;
   const textDraft = useRef({ prompt, mode, conversationId });
+  const submittedVisual = useRef<{ key: string; attachment: AssistantVisualAttachment } | null>(
+    null,
+  );
   textDraft.current = { prompt, mode, conversationId };
   const [shareImage, setShareImage] = useState(false),
     [allowWebSearch, setAllowWebSearch] = useState(false),
@@ -384,6 +392,7 @@ export function LiveAssistant(props: LiveAssistantProps) {
   }
   function resolveSubmission(value: AssistantSubmission) {
     clearAssistantSubmission(sessionStorage, value);
+    if (submittedVisual.current?.key === value.idempotencyKey) submittedVisual.current = null;
     if (alive.current && submission.current?.idempotencyKey === value.idempotencyKey) {
       submission.current = null;
       setPendingSubmission(null);
@@ -455,6 +464,9 @@ export function LiveAssistant(props: LiveAssistantProps) {
     if (voiceOptions.length && !voiceOptions.includes(voice)) setVoice(voiceOptions[0]!);
   }, [voiceId, voiceOptions.join(','), voice]);
   const inCall = callState !== 'idle';
+  useEffect(() => {
+    if (props.visualAttachment && callState === 'idle') setMode('text');
+  }, [props.visualAttachment, callState]);
   const catalogSelectionLocked =
     busy || inCall || !!pendingSubmission || !!pendingVoiceSubmission || !!activeTurn;
   useEffect(() => {
@@ -640,7 +652,7 @@ export function LiveAssistant(props: LiveAssistantProps) {
       saved?.projectId === project.id ? (saved.turnId ? '' : saved.prompt) : (cached?.prompt ?? ''),
     );
     if (cached) {
-      setMode(cached.mode);
+      setMode(props.visualAttachment ? 'text' : cached.mode);
       setConversationId(cached.conversationId);
       freshConversation.current = cached.conversationId === '';
     }
@@ -1393,6 +1405,11 @@ export function LiveAssistant(props: LiveAssistantProps) {
       !modelId
     )
       return;
+    const attachment = mode === 'text' ? props.visualAttachment : null;
+    if (attachment && !selected?.imageInput) {
+      setError(t('请选择支持图片的模型，或移除附件。'));
+      return;
+    }
     if (
       mode === 'text' &&
       allowWebSearch &&
@@ -1459,6 +1476,7 @@ export function LiveAssistant(props: LiveAssistantProps) {
           modelId,
           prompt: text,
           context,
+          ...(attachment ? { visualAttachment: attachment } : {}),
           scope: authorizedScope,
           parentTurnId,
           ...(research.length ? { research } : {}),
@@ -1467,6 +1485,7 @@ export function LiveAssistant(props: LiveAssistantProps) {
       // A storage failure stops before dispatch, so closing/reopening this panel cannot
       // discard an uncertain paid request and accidentally create a different key.
       rememberSubmission(frozen);
+      if (attachment) submittedVisual.current = { key: frozen.idempotencyKey, attachment };
       await runSubmission(frozen, token, controller, true);
     } catch (err) {
       if (!controller.signal.aborted && requestIsActive(token)) setError(errorMessage(err));
@@ -1535,6 +1554,13 @@ export function LiveAssistant(props: LiveAssistantProps) {
     }
     let accepted = acceptAssistantSubmission(saved, result);
     rememberSubmission(accepted);
+    const attachment = submittedVisual.current?.key === saved.idempotencyKey
+      ? submittedVisual.current.attachment
+      : undefined;
+    if (attachment) {
+      submittedVisual.current = null;
+      current.current.onClearVisualAttachment?.(attachment);
+    }
     const draftKey = `${saved.actorId}:${saved.projectId}`;
     const cached = assistantDrafts.get(draftKey);
     if (cached?.prompt.trim() === saved.prompt)
@@ -1548,7 +1574,10 @@ export function LiveAssistant(props: LiveAssistantProps) {
       const remaining = old.filter(
         (message) => message.id !== `pending-${saved.idempotencyKey}` && message.id !== id,
       );
-      return [...remaining, { id, role: 'user' as const, text: saved.prompt }].slice(-60);
+      return [
+        ...remaining,
+        { id, role: 'user' as const, text: saved.prompt, attachmentKind: attachment?.kind },
+      ].slice(-60);
     });
     if (result.state === 'running') {
       setActiveTurn({ id: result.id, stopping: result.stopRequested === true });
@@ -1914,6 +1943,7 @@ export function LiveAssistant(props: LiveAssistantProps) {
     !!project &&
     !!catalog?.ready &&
     !!selected &&
+    (mode !== 'text' || !props.visualAttachment || selected.imageInput) &&
     (!inCall || callState === 'active');
   const hasVoiceRecovery =
     !inCall && (!!pendingVoiceSubmission || !!pendingTeamVoiceSubmission || !!voiceRecoveryError);
@@ -2264,6 +2294,11 @@ export function LiveAssistant(props: LiveAssistantProps) {
               {messages.map((message) => (
                 <article key={message.id} className={`assistant-message ${message.role}`}>
                   <small>{message.role === 'user' ? t('你') : t('创作助手')}</small>
+                  {message.attachmentKind && (
+                    <span className="ai-sent-attachment">
+                      <Paperclip size={13} /> {visualAttachmentLabel(message.attachmentKind)}
+                    </span>
+                  )}
                   {message.text &&
                     (message.role === 'assistant' ? (
                       <AssistantText text={message.text} />
@@ -2438,6 +2473,17 @@ export function LiveAssistant(props: LiveAssistantProps) {
             void submit();
           }}
         >
+          {mode === 'text' && props.visualAttachment && (
+            <DraftAttachmentCard
+              source={props.visualAttachment.imageDataUrl}
+              label={visualAttachmentLabel(props.visualAttachment.kind)}
+              disabled={busy || !!pendingSubmission}
+              onRemove={() => {
+                if (props.visualAttachment)
+                  props.onClearVisualAttachment?.(props.visualAttachment);
+              }}
+            />
+          )}
           {(shareImage ||
             referenceIds.length > 0 ||
             memory ||
@@ -2482,6 +2528,11 @@ export function LiveAssistant(props: LiveAssistantProps) {
             canSubmit={canSend}
             readOnly={!!pendingSubmission || !submissionReady}
           />
+          {mode === 'text' && props.visualAttachment && selected && !selected.imageInput && (
+            <small className="ai-attachment-status" role="status">
+              {t('请选择支持图片的模型，或移除附件。')}
+            </small>
+          )}
           <div className="ai-composer-toolbar">
             <button
               type="button"

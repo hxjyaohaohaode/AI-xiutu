@@ -16,6 +16,10 @@ import {
   migrateRecipeToV4,
   neutralAdjustments,
   parseSelectionMask,
+  fitOrientedCrop,
+  orientedCropSpace,
+  orientGeometry,
+  type OrientationAction,
   type Adjustments,
   type HslBandId,
   type SelectionMaskV2,
@@ -23,9 +27,6 @@ import {
 } from '@ai-xiutu/editor';
 import {
   ArrowCounterClockwise,
-  ArrowClockwise,
-  ArrowsLeftRight,
-  ArrowsDownUp,
   CaretDown,
   Trash,
   Eye,
@@ -47,7 +48,9 @@ import { Histogram } from './Histogram';
 import { ColorPicker } from '../components/ColorPicker';
 import { PrecisionRange } from './PrecisionRange';
 import { ParameterShelf } from './ParameterShelf';
+import { CropOrientationControls, CropPresetRail } from './CropPresetRail';
 import {
+  changeOrientedCropPixel,
   clamp,
   cropFromPixels,
   duplicateRegionForEditor,
@@ -434,46 +437,31 @@ function LegacyToolInspector({
       </button>
     </div>
   );
-  const crop = recipe.geometry.crop ?? { x: 0, y: 0, width: 1, height: 1 };
   const dims = editor.dimensions ?? { width: 1, height: 1 };
+  const cropSpace = orientedCropSpace(dims, recipe.geometry);
   const pixelCrop = {
-    x: Math.floor(crop.x * dims.width),
-    y: Math.floor(crop.y * dims.height),
-    width: Math.ceil((crop.x + crop.width) * dims.width) - Math.floor(crop.x * dims.width),
-    height: Math.ceil((crop.y + crop.height) * dims.height) - Math.floor(crop.y * dims.height),
+    x: cropSpace.crop.left,
+    y: cropSpace.crop.top,
+    width: cropSpace.crop.width,
+    height: cropSpace.crop.height,
   };
-  function changeCrop(key: keyof typeof pixelCrop, value: number, commit = false) {
-    const next = {
-      ...recipe,
-      geometry: { ...recipe.geometry, crop: cropFromPixels(dims, { ...pixelCrop, [key]: value }) },
-    };
-    if (commit) editor.commit(next, '精确裁切');
-    else editor.preview(next);
+  function changeCrop(key: keyof typeof pixelCrop, value: number) {
+    const crop = changeOrientedCropPixel(dims, recipe.geometry, key, value, editor.cropRatio);
+    editor.preview({ ...recipe, geometry: { ...recipe.geometry, crop } });
   }
-  function cropRatio(ratio: number | null) {
-    if (!ratio) {
-      editor.commit({ ...recipe, geometry: { ...recipe.geometry, crop: null } }, '恢复完整画幅');
-      return;
+  function cropRatio(ratio: number | null, label: string) {
+    if (ratio !== null) {
+      const { left: x, top: y, width, height } = fitOrientedCrop(dims, recipe.geometry, ratio);
+      const crop = cropFromPixels(dims, { x, y, width, height });
+      editor.commit({ ...recipe, geometry: { ...recipe.geometry, crop } }, t('裁切比例 {v0}', { v0: label }));
     }
-    const rotated = recipe.geometry.rotation === 90 || recipe.geometry.rotation === 270;
-    const target = rotated ? 1 / ratio : ratio;
-    const width = Math.max(1, Math.min(dims.width, Math.round(dims.height * target)));
-    const height = Math.max(1, Math.min(dims.height, Math.round(dims.width / target)));
-    editor.commit(
-      {
-        ...recipe,
-        geometry: {
-          ...recipe.geometry,
-          crop: cropFromPixels(dims, {
-            x: (dims.width - width) / 2,
-            y: (dims.height - height) / 2,
-            width,
-            height,
-          }),
-        },
-      },
-      '切换画幅比例',
-    );
+    editor.setCropRatio(ratio);
+  }
+  function changeOrientation(action: OrientationAction, label: string) {
+    const geometry = orientGeometry(recipe.geometry, action);
+    editor.commit({ ...recipe, geometry }, label);
+    if (editor.cropRatio !== null && (recipe.geometry.rotation - geometry.rotation) % 180 !== 0)
+      editor.setCropRatio(1 / editor.cropRatio);
   }
   function addRegion(
     type: 'radial' | 'linear' | 'brush' | 'polygon' | 'color-range',
@@ -787,39 +775,23 @@ function LegacyToolInspector({
             {group === 'curves' && <CurveEditor editor={editor} />}
             {group === 'crop' && (
               <>
-                <div className="crop-output-readout">
-                  <strong>
-                    {pixelCrop.width}
-                    <span>×</span>
-                    {pixelCrop.height}
-                  </strong>
-                  <small>{t('原图像素区域 · 方向由下方旋转决定')}</small>
+                <CropPresetRail
+                  originalRatio={cropSpace.dimensions.width / cropSpace.dimensions.height}
+                  value={editor.cropRatio}
+                  onChange={cropRatio}
+                />
+                <div className="crop-live-readout">
+                  <output aria-label={t('裁切像素')}>{pixelCrop.width} × {pixelCrop.height} px</output>
+                  <output aria-label={t('旋转角度')}>{recipe.geometry.rotation}°</output>
                 </div>
-                <div className="aspect-chips" aria-label={t('画幅比例')}>
-                  {[
-                    [t('原始'), null],
-                    ['1:1', 1],
-                    ['4:3', 4 / 3],
-                    ['3:4', 3 / 4],
-                    ['3:2', 1.5],
-                    ['2:3', 2 / 3],
-                    ['16:9', 16 / 9],
-                    ['9:16', 9 / 16],
-                    ['21:9', 21 / 9],
-                    ['5:4', 1.25],
-                  ].map(([label, ratio]) => (
-                    <button key={String(label)} onClick={() => cropRatio(ratio as number | null)}>
-                      {label}
-                    </button>
-                  ))}
-                </div>
+                <CropOrientationControls geometry={recipe.geometry} onChange={changeOrientation} />
                 <div className="control-stack">
                   {(
                     [
-                      ['x', t('左边界'), dims.width - 1],
-                      ['y', t('上边界'), dims.height - 1],
-                      ['width', t('裁切宽度'), dims.width - pixelCrop.x],
-                      ['height', t('裁切高度'), dims.height - pixelCrop.y],
+                      ['x', t('左边界'), cropSpace.dimensions.width - pixelCrop.width],
+                      ['y', t('上边界'), cropSpace.dimensions.height - pixelCrop.height],
+                      ['width', t('裁切宽度'), cropSpace.dimensions.width - pixelCrop.x],
+                      ['height', t('裁切高度'), cropSpace.dimensions.height - pixelCrop.y],
                     ] as const
                   ).map(([key, label, max]) => (
                     <PrecisionRange
@@ -837,77 +809,19 @@ function LegacyToolInspector({
                     />
                   ))}
                 </div>
-                <div className="transform-controls" data-motion="crop-transforms">
-                  <button
-                    onClick={() =>
-                      editor.commit(
-                        {
-                          ...recipe,
-                          geometry: {
-                            ...recipe.geometry,
-                            rotation: ((recipe.geometry.rotation + 270) % 360) as
-                              0 | 90 | 180 | 270,
-                          },
-                        },
-                        t('向左旋转'),
-                      )
-                    }
-                  >
-                    <ArrowCounterClockwise size={19} />
-                    {t('左转')}
-                  </button>
-                  <button
-                    onClick={() =>
-                      editor.commit(
-                        {
-                          ...recipe,
-                          geometry: {
-                            ...recipe.geometry,
-                            rotation: ((recipe.geometry.rotation + 90) % 360) as 0 | 90 | 180 | 270,
-                          },
-                        },
-                        t('向右旋转'),
-                      )
-                    }
-                  >
-                    <ArrowClockwise size={19} />
-                    {t('右转')}
-                  </button>
-                  <button
-                    aria-pressed={recipe.geometry.flipX}
-                    onClick={() =>
-                      editor.commit(
-                        {
-                          ...recipe,
-                          geometry: { ...recipe.geometry, flipX: !recipe.geometry.flipX },
-                        },
-                        t('水平镜像'),
-                      )
-                    }
-                  >
-                    <ArrowsLeftRight size={19} />
-                    {t('镜像')}
-                  </button>
-                  <button
-                    aria-pressed={recipe.geometry.flipY}
-                    onClick={() =>
-                      editor.commit(
-                        {
-                          ...recipe,
-                          geometry: { ...recipe.geometry, flipY: !recipe.geometry.flipY },
-                        },
-                        t('垂直翻转'),
-                      )
-                    }
-                  >
-                    <ArrowsDownUp size={19} />
-                    {t('翻转')}
-                  </button>
-                </div>
-                <p className="inspector-note">
-                  {t('拖动滑条即可构图；点数值可精确到 1 像素。裁切可随时恢复。当前旋转')}{' '}
-                  {recipe.geometry.rotation}°。
-                </p>
+                <button
+                  className="text-button"
+                  disabled={!recipe.geometry.crop}
+                  onClick={() => {
+                    editor.commit(
+                      { ...recipe, geometry: { ...recipe.geometry, crop: null } },
+                      t('恢复完整裁切范围'),
+                    );
+                    editor.setCropRatio(null);
+                  }}
+                >
+                  {t('恢复完整画幅')}
+                </button>
               </>
             )}
             {group === 'detail' && (

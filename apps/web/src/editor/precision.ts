@@ -1,4 +1,4 @@
-import { parseRecipeV2, orientedCropSpace, type SelectionMaskV3, type Point, type RGBAImage } from '@ai-xiutu/editor';
+import { parseRecipeV2, orientedCropSpace, pixelCrop, type SelectionMaskV3, type Point, type RGBAImage } from '@ai-xiutu/editor';
 import type {
   CropRect,
   Dimensions,
@@ -70,6 +70,29 @@ export function cropFromPixels(
   const right = x + w === dimensions.width ? 1 : (x + w - 1e-7) / dimensions.width;
   const bottom = y + h === dimensions.height ? 1 : (y + h - 1e-7) / dimensions.height;
   return { x: left, y: top, width: right - left, height: bottom - top };
+}
+
+export function changeOrientedCropPixel(
+  dimensions: Dimensions,
+  geometry: EditorRecipe['geometry'],
+  field: 'x' | 'y' | 'width' | 'height',
+  value: number,
+  ratio: number | null,
+): CropRect {
+  const space = orientedCropSpace(dimensions, geometry);
+  const { left: x, top: y, width, height } = space.crop;
+  const rect = { x, y, width, height };
+  const delta = value - rect[field];
+  const moving = field === 'x' || field === 'y';
+  const crop = moveCropHandle(
+    space.dimensions,
+    rect,
+    moving ? 'move' : field === 'width' ? 'e' : 's',
+    { x: field === 'x' || field === 'width' ? delta : 0, y: field === 'y' || field === 'height' ? delta : 0 },
+    moving ? null : ratio,
+  );
+  const source = space.toSource(pixelCrop(space.dimensions, { ...geometry, crop }));
+  return cropFromPixels(dimensions, { ...source, x: source.left, y: source.top });
 }
 
 /** Resize against the opposite edge/corner. A locked edge grows around its orthogonal center. */

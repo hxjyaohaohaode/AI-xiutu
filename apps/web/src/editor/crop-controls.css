@@ -1,0 +1,81 @@
+.crop-mode-tabs {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  min-width: 0;
+}
+.crop-mode-tabs .tonal-tabs {
+  flex: 1;
+  min-width: 0;
+}
+.crop-mode-tabs > .panel-layout-trigger {
+  flex: 0 0 44px;
+}
+.crop-preset-rail,
+.crop-orientation-actions {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+  overflow-x: auto;
+  overscroll-behavior-inline: contain;
+  padding: 3px;
+}
+.crop-preset-rail > button,
+.crop-orientation-actions > button {
+  display: grid;
+  flex: 0 0 auto;
+  place-items: center;
+  align-content: center;
+  gap: 3px;
+  min-width: 48px;
+  min-height: 44px;
+  padding: 3px 7px;
+  border: 1px solid transparent;
+  border-radius: 9px;
+  background: var(--surface-secondary);
+  color: var(--ink);
+  font: inherit;
+  font-size: 11px;
+  white-space: nowrap;
+}
+.crop-preset-rail > button[aria-pressed='true'],
+.crop-orientation-actions > button[aria-pressed='true'] {
+  border-color: var(--accent);
+  color: var(--accent-ink);
+}
+.crop-preset-rail > button:focus-visible,
+.crop-orientation-actions > button:focus-visible {
+  outline: 2px solid var(--focus-ring);
+  outline-offset: -2px;
+}
+.crop-live-readout {
+  display: flex;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 0 4px;
+  color: var(--muted);
+  font-size: 11px;
+  font-variant-numeric: tabular-nums;
+}
+@media (max-width: 759px) {
+  .crop-geometry-controls .crop-preset-rail,
+  .crop-geometry-controls .crop-orientation-actions {
+    gap: 4px;
+    scrollbar-width: none;
+  }
+  .studio-workspace .free-panel[data-panel-id='inspector'] .crop-geometry-controls {
+    gap: 4px;
+  }
+  .crop-preset-rail > button {
+    min-width: 54px;
+    min-height: 52px;
+  }
+  .crop-orientation-actions > button {
+    min-width: 44px;
+  }
+  .crop-orientation-actions > button > svg {
+    width: 18px;
+    height: 18px;
+  }
+}

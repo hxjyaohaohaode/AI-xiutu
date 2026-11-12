@@ -94,7 +94,7 @@ async function choose(scope, label, option) {
 async function closeAIPanel(page) {
   const mobile = page
     .locator('.live-assistant')
-    .getByRole('button', { name: '收起 AI 面板', exact: true });
+    .getByRole('button', { name: '返回编辑器', exact: true });
   if (await mobile.isVisible()) await mobile.click();
   else
     await page

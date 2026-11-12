@@ -1,7 +1,6 @@
 import { t } from '../i18n';
 import { ChoiceSelect } from './ChoiceSelect';
-import { SquishSwitch } from './control-motion';
-import { useEffect, useRef, useState, type PointerEvent } from 'react';
+import { useEffect, useLayoutEffect, useRef, useState, type PointerEvent } from 'react';
 import {
   ArrowCounterClockwise,
   ArrowClockwise,
@@ -25,11 +24,16 @@ import { ColorPicker } from './ColorPicker';
 import { useConfirmation } from './ConfirmationDialog';
 import { confirmStableScope } from '../lib/confirmation-scope';
 import { loadSketchImage, SKETCH_IMAGE_INPUT } from './sketch-images';
+import { SketchGlyph } from './SketchGlyph';
 import {
   moveSketchItem,
   paintSketchItem,
+  resizeSketchItem,
   sketchBounds,
+  sketchCorners,
   sketchItemAt,
+  sketchResizeCorner,
+  type SketchCorner,
   type SketchItem,
   type SketchPoint,
   type SketchIcon,
@@ -39,6 +43,31 @@ import {
 type Tool = 'pencil' | 'erase' | 'select' | 'text' | 'icon' | SketchShape;
 const colors = ['#34372e', '#cd6155', '#d9a52d', '#658764', '#527b9b', '#9474a3'];
 const filledShapes = new Set<Tool>(['rectangle', 'rounded', 'ellipse', 'triangle', 'diamond']);
+const shapeTools = [
+  ['rectangle', '矩形'],
+  ['rounded', '圆角矩形'],
+  ['ellipse', '椭圆'],
+  ['triangle', '三角形'],
+  ['diamond', '菱形'],
+  ['line', '直线'],
+  ['arrow', '箭头'],
+] as const;
+const symbolTools = [
+  ['star', '星形'],
+  ['heart', '爱心'],
+  ['check', '对勾'],
+  ['pin', '位置标记'],
+  ['bolt', '闪电'],
+  ['speech', '对话气泡'],
+] as const;
+
+function defaultShape(item: Extract<SketchItem, { kind: 'shape' }>, canvas: HTMLCanvasElement) {
+  const width = Math.min(0.46, 96 / canvas.width);
+  const height = Math.min(0.46, 76 / canvas.height);
+  const x = Math.min(1 - width, Math.max(0, item.from.x - width / 2));
+  const y = Math.min(1 - height, Math.max(0, item.from.y - height / 2));
+  return { ...item, from: { x, y }, to: { x: x + width, y: y + height } };
+}
 
 export function DrawingBoard({
   onClose,
@@ -61,9 +90,15 @@ export function DrawingBoard({
   const drawingArea = useRef<HTMLDivElement>(null);
   const strokeBase = useRef<HTMLCanvasElement | null>(null);
   const imageInput = useRef<HTMLInputElement>(null);
-  const [areaSize, setAreaSize] = useState({ width: 600, height: 400 });
+  const [areaSize, setAreaSize] = useState({ width: 1, height: 1 });
   const active = useRef<SketchItem | null>(null);
-  const moving = useRef<{ index: number; start: SketchPoint; item: SketchItem } | null>(null);
+  const moving = useRef<{
+    index: number;
+    start: SketchPoint;
+    original: SketchItem;
+    item: SketchItem;
+    corner?: SketchCorner;
+  } | null>(null);
   const pointer = useRef<number | null>(null);
   const [history, setHistory] = useState<SketchItem[][]>([[]]);
   const [cursor, setCursor] = useState(0);
@@ -80,7 +115,6 @@ export function DrawingBoard({
   const [transparent, setTransparent] = useState(false);
   const erase = tool === 'erase';
   const selected = selection === null ? null : items[selection];
-  const [ratio, setRatio] = useState('square');
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const confirmation = useConfirmation();
@@ -90,7 +124,6 @@ export function DrawingBoard({
     items,
     history,
     cursor,
-    ratio,
     transparent,
     busy,
     onClose,
@@ -101,7 +134,6 @@ export function DrawingBoard({
     items,
     history,
     cursor,
-    ratio,
     transparent,
     busy,
     onClose,
@@ -118,7 +150,6 @@ export function DrawingBoard({
     mounted: mounted.current,
     items: latest.current.items,
     cursor: latest.current.cursor,
-    ratio: latest.current.ratio,
     transparent: latest.current.transparent,
     busy: latest.current.busy,
     locked: locked.current,
@@ -150,38 +181,38 @@ export function DrawingBoard({
       ))
     );
   }
-  async function changeRatio(value: string) {
-    if (locked.current || latest.current.busy || pointer.current !== null) return;
-    if (
-      latest.current.items.length &&
-      !(await confirmDrawing('切换画幅会按比例重新排布已有元素，继续吗？', '切换画幅'))
-    )
-      return;
-    if (mounted.current && !locked.current) setRatio(value);
-  }
   async function clearDrawing() {
     if (await confirmDrawing('清空画布？已下载的草图不会改变。', '清空草图', true)) {
       commitItems([]);
       setSelection(null);
     }
   }
-  const dimensions =
-    ratio === 'landscape' ? [1536, 1024] : ratio === 'portrait' ? [1024, 1536] : [1024, 1024];
-  const fit = Math.max(
-    0.01,
-    Math.min((areaSize.width - 24) / dimensions[0]!, (areaSize.height - 24) / dimensions[1]!),
-  );
-  useEffect(() => {
+  useLayoutEffect(() => {
     const area = drawingArea.current;
     if (!area) return;
-    const update = () => setAreaSize({ width: area.clientWidth, height: area.clientHeight });
-    const observer = new ResizeObserver(update);
+    let frame = 0;
+    const update = () => {
+      const width = area.clientWidth;
+      const height = area.clientHeight;
+      if (!width || !height) return;
+      setAreaSize((previous) =>
+        previous.width === width && previous.height === height ? previous : { width, height },
+      );
+    };
+    const observer = new ResizeObserver(() => {
+      cancelAnimationFrame(frame);
+      frame = requestAnimationFrame(update);
+    });
     observer.observe(area);
     update();
-    return () => observer.disconnect();
+    return () => {
+      cancelAnimationFrame(frame);
+      observer.disconnect();
+    };
   }, []);
 
   function commitItems(next: SketchItem[]) {
+    if (pointer.current !== null) return;
     const previous = latest.current;
     const states = [...previous.history.slice(0, previous.cursor + 1), next].slice(-80);
     latest.current = { ...previous, items: next, history: states, cursor: states.length - 1 };
@@ -201,14 +232,22 @@ export function DrawingBoard({
     const box = sketchBounds(context, item);
     context.save();
     context.strokeStyle = '#447bc9';
-    context.lineWidth = 2 / fit;
-    context.setLineDash([5 / fit, 4 / fit]);
+    context.lineWidth = 1.5;
+    context.setLineDash([5, 4]);
     context.strokeRect(box.x, box.y, box.width, box.height);
+    context.setLineDash([]);
+    context.fillStyle = '#fff';
+    for (const corner of sketchCorners) {
+      const x = box.x + corner.x * box.width - 4;
+      const y = box.y + corner.y * box.height - 4;
+      context.fillRect(x, y, 8, 8);
+      context.strokeRect(x, y, 8, 8);
+    }
     context.restore();
   }
-  useEffect(() => {
+  useLayoutEffect(() => {
     redraw();
-  }, [items, ratio, selection, tool, fit]);
+  }, [items, areaSize, selection, tool]);
   function position(
     event: Pick<PointerEvent, 'clientX' | 'clientY'>,
     bounds: DOMRect,
@@ -221,6 +260,22 @@ export function DrawingBoard({
   function patchSelected(item: SketchItem) {
     if (selection === null || locked.current || pointer.current !== null) return;
     commitItems(items.map((existing, i) => (i === selection ? item : existing)));
+  }
+  function selectItem(index: number, item: SketchItem) {
+    setSelection(index);
+    if (item.kind === 'text') setTextValue(item.text);
+    if ('color' in item) setColor(item.color);
+    setTool('select');
+  }
+  function stepHistory(offset: -1 | 1) {
+    if (locked.current || pointer.current !== null) return;
+    setSelection(null);
+    setCursor((value) => Math.min(history.length - 1, Math.max(0, value + offset)));
+  }
+  function deleteSelection() {
+    if (selection === null || locked.current || pointer.current !== null) return;
+    commitItems(items.filter((_, i) => i !== selection));
+    setSelection(null);
   }
   async function insertImage(read: () => File | Promise<File>, at = { x: 0.25, y: 0.25 }) {
     const previous = latest.current.items;
@@ -277,12 +332,17 @@ export function DrawingBoard({
     if (move) {
       if (move.item !== previous[move.index])
         commitItems(previous.map((value, i) => (i === move.index ? move.item : value)));
-    } else if (
-      item &&
-      (item.kind !== 'shape' ||
-        Math.hypot(item.to.x - item.from.x, item.to.y - item.from.y) > 0.002)
-    )
-      commitItems([...previous, item]);
+    } else if (item?.kind === 'shape') {
+      const target = event.currentTarget;
+      item.to = position(event, target.getBoundingClientRect());
+      const distance = Math.hypot(
+        (item.to.x - item.from.x) * target.width,
+        (item.to.y - item.from.y) * target.height,
+      );
+      const shape = distance < 4 ? defaultShape(item, target) : item;
+      commitItems([...previous, shape]);
+      selectItem(previous.length, shape);
+    } else if (item) commitItems([...previous, item]);
     redraw();
   }
   async function getFile() {
@@ -318,7 +378,7 @@ export function DrawingBoard({
       mounted.current &&
       latest.current.items === drawing.items &&
       latest.current.cursor === drawing.cursor &&
-      latest.current.ratio === drawing.ratio;
+      latest.current.transparent === drawing.transparent;
     setBusy(true);
     setError(null);
     try {
@@ -377,40 +437,17 @@ export function DrawingBoard({
               <IconButton
                 label={t('撤销草图操作')}
                 disabled={busy || !cursor}
-                onClick={() => {
-                  setSelection(null);
-                  setCursor((v) => Math.max(0, v - 1));
-                }}
+                onClick={() => stepHistory(-1)}
               >
                 <ArrowCounterClockwise size={20} />
               </IconButton>
               <IconButton
                 label={t('重做草图操作')}
                 disabled={busy || cursor >= history.length - 1}
-                onClick={() => {
-                  setSelection(null);
-                  setCursor((v) => Math.min(history.length - 1, v + 1));
-                }}
+                onClick={() => stepHistory(1)}
               >
                 <ArrowClockwise size={20} />
               </IconButton>
-            </div>
-            <div className="drawing-ratio-field" data-qa="sketch-ratio">
-              <ChoiceSelect
-                ariaLabel={t('草图画幅')}
-                className="drawing-ratio"
-                size="compact"
-                value={ratio}
-                disabled={busy}
-                onValueChange={(value) => {
-                  void changeRatio(value);
-                }}
-                options={[
-                  { value: 'square', label: t('1:1 方形') },
-                  { value: 'landscape', label: t('3:2 横向') },
-                  { value: 'portrait', label: t('2:3 竖向') },
-                ]}
-              />
             </div>
             <IconButton
               className="drawing-clear"
@@ -424,28 +461,34 @@ export function DrawingBoard({
             </IconButton>
           </div>
           <div className="drawing-toolbar drawing-element-toolbar">
-            <div className="drawing-element-field" data-qa="sketch-tool">
-              <ChoiceSelect
-                ariaLabel={t('草图添加元素')}
-                size="compact"
-                value={tool}
+            <div className="drawing-shape-rail" role="group" aria-label={t('草图添加元素')}>
+              {shapeTools.map(([shape, label]) => (
+                <IconButton
+                  key={shape}
+                  label={t(label)}
+                  disabled={busy}
+                  aria-pressed={tool === shape}
+                  onClick={() => setTool(shape)}
+                >
+                  <SketchGlyph name={shape} />
+                </IconButton>
+              ))}
+              <IconButton
+                label={t('文字')}
+                aria-pressed={tool === 'text'}
                 disabled={busy}
-                onValueChange={(value) => setTool(value as Tool)}
-                options={[
-                  { value: 'pencil', label: t('铅笔') },
-                  { value: 'erase', label: t('橡皮擦') },
-                  { value: 'select', label: t('选择草图元素') },
-                  { value: 'rectangle', label: t('矩形') },
-                  { value: 'rounded', label: t('圆角矩形') },
-                  { value: 'ellipse', label: t('椭圆') },
-                  { value: 'triangle', label: t('三角形') },
-                  { value: 'diamond', label: t('菱形') },
-                  { value: 'line', label: t('直线') },
-                  { value: 'arrow', label: t('箭头') },
-                  { value: 'text', label: t('文字') },
-                  { value: 'icon', label: t('图标') },
-                ]}
-              />
+                onClick={() => setTool('text')}
+              >
+                <TextT size={21} />
+              </IconButton>
+              <IconButton
+                label={t('图标')}
+                aria-pressed={tool === 'icon'}
+                disabled={busy}
+                onClick={() => setTool('icon')}
+              >
+                <SketchGlyph name="star" />
+              </IconButton>
             </div>
             {!!projectImages?.length && readProjectImage && (
               <ChoiceSelect
@@ -515,14 +558,7 @@ export function DrawingBoard({
                   >
                     <CaretDown size={18} />
                   </IconButton>
-                  <IconButton
-                    label={t('删除选中元素')}
-                    disabled={busy}
-                    onClick={() => {
-                      commitItems(items.filter((_, i) => i !== selection));
-                      setSelection(null);
-                    }}
-                  >
+                  <IconButton label={t('删除选中元素')} disabled={busy} onClick={deleteSelection}>
                     <Trash size={20} />
                   </IconButton>
                 </>
@@ -553,39 +589,62 @@ export function DrawingBoard({
             </div>
           )}
           {tool === 'icon' && (
-            <ChoiceSelect
-              ariaLabel={t('草图图标')}
-              size="compact"
-              value={symbol}
-              onValueChange={(value) => setSymbol(value as SketchIcon)}
-              options={[
-                { value: 'star', label: t('星形') },
-                { value: 'heart', label: t('爱心') },
-                { value: 'check', label: t('对勾') },
-                { value: 'pin', label: t('位置标记') },
-                { value: 'bolt', label: t('闪电') },
-                { value: 'speech', label: t('对话气泡') },
-              ]}
-            />
+            <div className="drawing-shape-rail" role="group" aria-label={t('草图图标')}>
+              {symbolTools.map(([icon, label]) => (
+                <IconButton
+                  key={icon}
+                  label={t(label)}
+                  aria-pressed={symbol === icon}
+                  disabled={busy}
+                  onClick={() => setSymbol(icon)}
+                >
+                  <SketchGlyph name={icon} />
+                </IconButton>
+              ))}
+            </div>
           )}
           <div
             className="drawing-controls drawing-appearance-controls"
             data-motion="drawing-colors"
           >
             <div className="drawing-switches">
-              <SquishSwitch
+              <IconButton
                 label={t('透明背景')}
-                checked={transparent}
+                aria-pressed={transparent}
                 disabled={busy}
-                onCheckedChange={setTransparent}
-              />
-              {filledShapes.has(tool) && (
-                <SquishSwitch
+                onClick={() => setTransparent(!transparent)}
+              >
+                <svg
+                  viewBox="0 0 24 24"
+                  width="20"
+                  height="20"
+                  fill="none"
+                  stroke="currentColor"
+                  strokeWidth="1.6"
+                  aria-hidden="true"
+                >
+                  <rect x="3.5" y="3.5" width="17" height="17" rx="2" />
+                  <path d="M4 4h8v8H4zm8 8h8v8h-8z" fill="currentColor" stroke="none" />
+                </svg>
+              </IconButton>
+              {(filledShapes.has(tool) ||
+                (tool === 'select' &&
+                  selected?.kind === 'shape' &&
+                  filledShapes.has(selected.shape))) && (
+                <IconButton
                   label={t('填充形状')}
-                  checked={filled}
+                  aria-pressed={
+                    tool === 'select' && selected?.kind === 'shape' ? selected.fill : filled
+                  }
                   disabled={busy}
-                  onCheckedChange={setFilled}
-                />
+                  onClick={() => {
+                    if (tool === 'select' && selected?.kind === 'shape')
+                      patchSelected({ ...selected, fill: !selected.fill });
+                    else setFilled(!filled);
+                  }}
+                >
+                  <SketchGlyph name="fill" />
+                </IconButton>
               )}
             </div>
             <div className="drawing-colors" aria-label={t('快捷笔触颜色')}>
@@ -620,9 +679,11 @@ export function DrawingBoard({
                 {tool === 'text' || tool === 'icon' ? t('大小') : erase ? t('橡皮') : t('笔触')}
                 <input
                   type="range"
+                  aria-label={t(tool === 'text' || tool === 'icon' ? '大小' : '笔触粗细')}
                   min="1"
                   max="70"
                   value={width}
+                  disabled={busy}
                   onChange={(e) => setWidth(Number(e.target.value))}
                 />
                 <span>{width}</span>
@@ -714,15 +775,43 @@ export function DrawingBoard({
         </div>
         <div
           ref={drawingArea}
-          className={`drawing-surface ${ratio}${transparent ? ' transparent-sketch' : ''}`}
+          className={`drawing-surface${transparent ? ' transparent-sketch' : ''}`}
         >
           <canvas
             ref={canvas}
-            width={dimensions[0]}
-            height={dimensions[1]}
-            style={{ width: dimensions[0]! * fit, height: dimensions[1]! * fit }}
+            width={areaSize.width}
+            height={areaSize.height}
+            data-tool={tool}
             aria-label={t('草图画布，使用鼠标、手指或触控笔绘画')}
             tabIndex={0}
+            onKeyDown={(event) => {
+              if (busy || pointer.current !== null) return;
+              const key = event.key.toLowerCase();
+              if ((event.ctrlKey || event.metaKey) && ['z', 'y'].includes(key)) {
+                event.preventDefault();
+                event.stopPropagation();
+                stepHistory(key === 'y' || event.shiftKey ? 1 : -1);
+              } else if (selected && (event.key === 'Delete' || event.key === 'Backspace')) {
+                event.preventDefault();
+                deleteSelection();
+              } else if (selected && tool === 'select') {
+                const direction = {
+                  ArrowLeft: [-1, 0],
+                  ArrowRight: [1, 0],
+                  ArrowUp: [0, -1],
+                  ArrowDown: [0, 1],
+                }[event.key as 'ArrowLeft' | 'ArrowRight' | 'ArrowUp' | 'ArrowDown'];
+                if (!direction) return;
+                event.preventDefault();
+                const step = event.shiftKey ? 10 : 1;
+                patchSelected(
+                  moveSketchItem(selected, {
+                    x: (direction[0]! * step) / areaSize.width,
+                    y: (direction[1]! * step) / areaSize.height,
+                  }),
+                );
+              }
+            }}
             onPaste={(event) => {
               const file = Array.from(event.clipboardData.files).find((item) =>
                 item.type.startsWith('image/'),
@@ -749,14 +838,26 @@ export function DrawingBoard({
               const target = event.currentTarget,
                 context = target.getContext('2d');
               if (!context) return;
+              target.focus({ preventScroll: true });
               const at = position(event, target.getBoundingClientRect());
               if (tool === 'select') {
-                const index = sketchItemAt(context, items, at);
+                const corner = selected
+                  ? sketchResizeCorner(
+                      context,
+                      selected,
+                      at,
+                      event.pointerType === 'touch' ? 18 : 11,
+                    )
+                  : undefined;
+                const index =
+                  corner && selection !== null ? selection : sketchItemAt(context, items, at);
                 const item = items[index];
-                setSelection(item ? index : null);
-                if (!item) return;
-                if (item.kind === 'text') setTextValue(item.text);
-                moving.current = { index, start: at, item };
+                if (!item) {
+                  setSelection(null);
+                  return;
+                }
+                selectItem(index, item);
+                moving.current = { index, start: at, original: item, item, corner };
                 pointer.current = event.pointerId;
                 target.setPointerCapture(event.pointerId);
                 event.preventDefault();
@@ -780,12 +881,12 @@ export function DrawingBoard({
                   return;
                 }
                 const size = 12 + width * 2;
-                commitItems([
-                  ...items,
+                const item: SketchItem =
                   tool === 'text'
                     ? { kind: 'text', at, text, color, size }
-                    : { kind: 'icon', at, icon: symbol, color, size },
-                ]);
+                    : { kind: 'icon', at, icon: symbol, color, size };
+                commitItems([...items, item]);
+                selectItem(items.length, item);
                 setError(null);
                 return;
               }
@@ -810,10 +911,13 @@ export function DrawingBoard({
               if (move) {
                 const at = position(event, bounds);
                 const offset = { x: at.x - move.start.x, y: at.y - move.start.y };
+                const context = event.currentTarget.getContext('2d');
                 move.item =
                   Math.hypot(offset.x, offset.y) < 0.0008
-                    ? items[move.index]!
-                    : moveSketchItem(items[move.index]!, offset);
+                    ? move.original
+                    : move.corner && context
+                      ? resizeSketchItem(context, move.original, move.corner, offset)
+                      : moveSketchItem(move.original, offset);
                 redraw();
                 return;
               }
@@ -844,12 +948,6 @@ export function DrawingBoard({
             onLostPointerCapture={(event) => finish(event, true)}
           />
         </div>
-        <div className="drawing-meta">
-          <span>
-            {dimensions[0]} × {dimensions[1]} {t(transparent ? '· 透明 PNG' : '· 白底 PNG')}
-          </span>
-          <span>{t('{v0} 个元素', { v0: items.length })}</span>
-        </div>
         <div className="drawing-actions">
           <button
             className="button button-secondary"
@@ -857,7 +955,7 @@ export function DrawingBoard({
             onClick={() => void useDrawing('download')}
           >
             <DownloadSimple size={17} />
-            {t('下载草图')}
+            <span>{t('下载')}</span>
           </button>
           <button
             className="button button-secondary"
@@ -877,7 +975,7 @@ export function DrawingBoard({
             ) : (
               <>
                 <Sparkle size={17} />
-                {t('作为生图参考')}
+                {t('发给 AI')}
               </>
             )}
           </button>

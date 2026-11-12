@@ -214,7 +214,9 @@ export function sketchItemAt(
 ) {
   const p = pixel(context, point);
   for (let i = items.length - 1; i >= 0; i--) {
-    const box = sketchBounds(context, items[i]!);
+    const item = items[i]!;
+    if (item.kind === 'stroke' && item.erase) continue;
+    const box = sketchBounds(context, item);
     if (
       p.x >= box.x - 5 &&
       p.y >= box.y - 5 &&
@@ -224,6 +226,74 @@ export function sketchItemAt(
       return i;
   }
   return -1;
+}
+
+export type SketchCorner = { x: 0 | 1; y: 0 | 1 };
+
+export const sketchCorners: readonly SketchCorner[] = [
+  { x: 0, y: 0 },
+  { x: 1, y: 0 },
+  { x: 1, y: 1 },
+  { x: 0, y: 1 },
+];
+
+export function sketchResizeCorner(
+  context: CanvasRenderingContext2D,
+  item: SketchItem,
+  point: SketchPoint,
+  hitRadius: number,
+) {
+  const box = sketchBounds(context, item);
+  const position = pixel(context, point);
+  let nearest: SketchCorner | undefined;
+  let distance = hitRadius;
+  for (const corner of sketchCorners) {
+    const next = Math.hypot(
+      box.x + box.width * corner.x - position.x,
+      box.y + box.height * corner.y - position.y,
+    );
+    if (next <= distance) {
+      nearest = corner;
+      distance = next;
+    }
+  }
+  return nearest;
+}
+
+/** Scale around the opposite visible corner while preserving the item's angle. */
+export function resizeSketchItem(
+  context: CanvasRenderingContext2D,
+  item: SketchItem,
+  corner: SketchCorner,
+  offset: SketchPoint,
+): SketchItem {
+  const box = sketchBounds(context, item);
+  const x = box.width * (2 * corner.x - 1);
+  const y = box.height * (2 * corner.y - 1);
+  const movement = pixel(context, offset);
+  const scale = Math.max(
+    0.12,
+    Math.min(8, 1 + (movement.x * x + movement.y * y) / Math.max(1, x * x + y * y)),
+  );
+  if (Math.abs(1 - scale) < 0.001) return item;
+  const anchor = {
+    x: (box.x + box.width * (1 - corner.x)) / context.canvas.width,
+    y: (box.y + box.height * (1 - corner.y)) / context.canvas.height,
+  };
+  const stretch = (point: SketchPoint) => ({
+    x: anchor.x + (point.x - anchor.x) * scale,
+    y: anchor.y + (point.y - anchor.y) * scale,
+  });
+  if (item.kind === 'stroke')
+    return { ...item, points: item.points.map(stretch), width: Math.max(1, item.width * scale) };
+  if (item.kind === 'shape')
+    return {
+      ...item,
+      from: stretch(item.from),
+      to: stretch(item.to),
+      width: Math.max(1, item.width * scale),
+    };
+  return { ...item, at: stretch(item.at), size: item.size * scale };
 }
 
 export function moveSketchItem(item: SketchItem, offset: SketchPoint): SketchItem {

@@ -239,7 +239,12 @@ export function AdvancedInspector({
                           }}
                         />
                       )}
-                      {id === 'crop' && <GeometryControls controller={controller} />}
+                      {id === 'crop' && (
+                        <GeometryControls
+                          controller={controller}
+                          layoutControl={group === id ? chrome?.adjustmentLayoutControl : undefined}
+                        />
+                      )}
                       {id === 'local' && (
                         <LocalControls
                           headerTarget={group === id ? chrome?.headerTarget : null}

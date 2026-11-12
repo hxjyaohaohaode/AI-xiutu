@@ -272,6 +272,70 @@ async function fixture(extra: Partial<AssistantDependencies> = {}) {
   return { ...f, modelId, settings, context, scope, turn, prepare, readTurn };
 }
 
+test('an explicit visual attachment is moderated, frozen and delivered without storing its pixels', {
+  skip: !databaseUrl,
+}, async () => {
+  const moderated: string[] = [];
+  const sent: string[] = [];
+  const f = await fixture({
+    imageModerator: {
+      configured: true,
+      async check(bytes) {
+        moderated.push(sha(bytes));
+        return { decision: 'passed', inputHash: sha(bytes), requestId: 'attachment-review' };
+      },
+    },
+    fetcher: async (_url, options) => {
+      const input = JSON.parse(String(options?.body)).input;
+      for (const item of input)
+        for (const part of item.content ?? [])
+          if (part.type === 'input_image') sent.push(part.image_url);
+      return response([outputText('已查看附件。')]);
+    },
+  });
+  try {
+    const png = await sharp({
+      create: { width: 120, height: 180, channels: 3, background: '#79944c' },
+    }).png().toBuffer();
+    const body = {
+      ...f.turn('查看编辑界面截图'),
+      visualAttachment: { kind: 'editor', imageDataUrl: `data:image/png;base64,${png.toString('base64')}` },
+    };
+    const path = `/v1/projects/${f.projectId}/assistant-turns`;
+    const denied = await f.call('POST', path, body, 'operator');
+    assert.equal(denied.statusCode, 404);
+    assert.deepEqual(moderated, []);
+    const textOnly = `fixture-text-${randomUUID()}`;
+    await f.db.query('INSERT INTO assistant_model_configs(id,config) VALUES($1,$2)', [
+      textOnly, JSON.stringify({ ...f.settings, imageInput: false }),
+    ]);
+    const unsupported = await f.call('POST', path, { ...body, modelId: textOnly });
+    assert.equal(unsupported.statusCode, 400);
+    assert.deepEqual(moderated, []);
+
+    const started = await f.call('POST', path, body);
+    assert.equal(started.statusCode, 202, started.body);
+    const id = started.json().id;
+    const result = await until(() => f.readTurn(id), (value) => value.state !== 'running');
+    assert.equal(result.state, 'completed', JSON.stringify(result));
+    assert.equal(sent.length, 1);
+    assert.deepEqual(moderated, [sha(Buffer.from(sent[0]!.split(',')[1]!, 'base64'))]);
+    const evidence = await f.db.query('SELECT manifest FROM assistant_context_snapshots WHERE turn_id=$1', [id]);
+    assert.deepEqual(evidence.rows[0]?.manifest.visualAttachment, {
+      kind: 'editor', sharedDataUrlSha256: sha(sent[0]!),
+    });
+    const stored = await f.db.query('SELECT to_jsonb(assistant_turns) AS row FROM assistant_turns WHERE id=$1', [id]);
+    assert.doesNotMatch(JSON.stringify([stored.rows, evidence.rows]), /data:image/);
+    assert.equal((await f.call('POST', path, body)).json().id, id);
+    const changed = await f.call('POST', path, { ...body, visualAttachment: { ...body.visualAttachment, kind: 'sketch' } });
+    assert.equal(changed.statusCode, 409);
+    assert.equal(sent.length, 1);
+    assert.equal(moderated.length, 1);
+  } finally {
+    await f.close();
+  }
+});
+
 test(
   'explicit candidate commit binds unsaved edits, preview, budget, lease and original retry',
   { skip: !databaseUrl },

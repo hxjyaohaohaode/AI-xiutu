@@ -91,6 +91,98 @@
 .free-panel[data-condensed-header='true'] .ai-workbench-header .ai-panel-close {
   display: inline-flex;
 }
+.ai-page-navigation {
+  display: flex;
+  align-items: center;
+  min-width: 0;
+}
+.ai-workbench-header .ai-page-navigation [data-ai-return] {
+  width: 44px;
+  min-width: 44px;
+  min-height: 44px;
+  flex: 0 0 auto;
+  color: var(--ink);
+}
+.ai-draft-attachment {
+  position: relative;
+  display: grid;
+  grid-template-rows: minmax(0, 1fr) auto;
+  align-self: flex-start;
+  width: min(132px, 54%);
+  height: clamp(62px, 12dvh, 108px);
+  min-width: 0;
+  margin: 2px 0 0;
+  padding: 4px;
+  overflow: hidden;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  background: var(--surface-muted, var(--surface));
+}
+.ai-attachment-thumbnail {
+  display: block;
+  min-height: 0;
+  padding: 0;
+  overflow: hidden;
+  border: 0;
+  border-radius: 8px;
+  background: transparent;
+}
+.ai-attachment-thumbnail > img {
+  display: block;
+  width: 100%;
+  height: 100%;
+  min-height: 0;
+  object-fit: contain;
+  border-radius: 8px;
+}
+.ai-attachment-preview-image {
+  display: block;
+  width: 100%;
+  max-height: 72dvh;
+  object-fit: contain;
+}
+.ai-draft-attachment > figcaption {
+  overflow: hidden;
+  padding: 2px 2px 0;
+  color: var(--muted);
+  font-size: 11px;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+.ai-draft-attachment > .icon-button {
+  position: absolute;
+  inset: 0 0 auto auto;
+  width: 44px;
+  height: 44px;
+  padding: 0;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+}
+.ai-draft-attachment > .icon-button > svg {
+  position: absolute;
+  top: 5px;
+  right: 5px;
+  box-sizing: content-box;
+  padding: 4px;
+  border-radius: 50%;
+  background: var(--surface);
+  box-shadow: 0 0 0 1px var(--line);
+}
+.ai-sent-attachment {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 11px;
+}
+.ai-attachment-status {
+  color: var(--muted);
+}
+@container ai-conversation (max-height: 300px) {
+  .ai-draft-attachment {
+    height: 51px;
+  }
+}
 .ai-conversation-body {
   display: flex;
   flex: 1 1 0;
@@ -1246,6 +1338,22 @@
   .live-assistant-v2:not([data-in-call='true'])[data-compose-expanded='true'] .ai-composer-input {
     flex: 1 1 0;
     min-height: 36px;
+    max-height: none;
+  }
+}
+@media (max-width: 359px), (max-width: 999px) and (max-height: 500px) {
+  .ai-workbench-header .ai-compose-expand {
+    display: inline-flex;
+  }
+  .live-assistant[data-compose-expanded='true'] > .ai-conversation-body {
+    display: none;
+  }
+  .live-assistant[data-compose-expanded='true'] > .ai-composer-region {
+    flex: 1;
+    min-height: 0;
+  }
+  .live-assistant[data-compose-expanded='true'] :is(.ai-composer-surface, .ai-composer-input) {
+    flex: 1;
     max-height: none;
   }
 }

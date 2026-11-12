@@ -511,6 +511,7 @@ export interface AgentContext {
   recipe?: EditorRecipe;
   canvasState?: { width: number; height: number; version: number; hasUnsavedEdits: boolean };
   imageDataUrl?: string;
+  visualAttachment?: import('@ai-xiutu/contracts').AssistantVisualAttachment;
   selectedImages?: { id: string; dataUrl: string }[];
   selectedReferenceIds?: string[];
   priorResourceCards?: { assetId: string; name: string; sourceTurnId: string }[];
@@ -639,6 +640,19 @@ async function runEditorAgentWithTools(
   content.push({ type: 'input_text', text: editorData });
   if (model.imageInput && context.imageDataUrl)
     content.push({ type: 'input_image', image_url: context.imageDataUrl, detail: 'high' });
+  if (model.imageInput && context.visualAttachment)
+    content.push(
+      {
+        type: 'input_text',
+        text:
+          context.visualAttachment.kind === 'sketch'
+            ? 'The user attached this sketch as a reference.'
+            : context.visualAttachment.kind === 'editor'
+              ? 'The user attached this view of the editor as a reference.'
+              : 'The user attached this preview of the photo as a reference.',
+      },
+      { type: 'input_image', image_url: context.visualAttachment.imageDataUrl, detail: 'high' },
+    );
   if (model.imageInput)
     for (const image of context.selectedImages ?? [])
       content.push(
@@ -688,7 +702,9 @@ Inspect only a real candidate returned by a proposal tool. When the current prev
 Use returned source cards to ground search replies. Refer to specific findings and distinguish cloud images, public images and source pages. Search does not authorize importing, sending or republishing a found image. Do not invent sources or say that a URL was fetched by this application.
 ${creativeDirection}`;
   let images = model.imageInput
-    ? Number(!!context.imageDataUrl) + (context.selectedImages?.length ?? 0)
+    ? Number(!!context.imageDataUrl) +
+      Number(!!context.visualAttachment) +
+      (context.selectedImages?.length ?? 0)
     : 0;
   const planned = planHistory(
     context.history ?? [],

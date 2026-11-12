@@ -4,6 +4,7 @@ import { useCallback, useEffect, useLayoutEffect, useRef, useState, type FormEve
 import {
   Sparkle,
   X,
+  ArrowLeft,
   SlidersHorizontal,
   ImageSquare,
   FileText,
@@ -26,7 +27,11 @@ import {
   readImageHeader,
   type EditorRecipe,
 } from '@ai-xiutu/editor';
-import type { AssetCopyRecord, AssistantCloudResource } from '@ai-xiutu/contracts';
+import type {
+  AssetCopyRecord,
+  AssistantCloudResource,
+  AssistantVisualAttachment,
+} from '@ai-xiutu/contracts';
 import { secureUuid } from '../lib/uuid';
 import { api, errorMessage, jsonRequest } from '../lib/api';
 import { assetCopyAttempt } from '../lib/asset-copy';
@@ -37,6 +42,7 @@ import { useConfirmation } from './ConfirmationDialog';
 import { ComposerInput } from '../ai/ComposerInput';
 import { ComposerAction } from '../ai/ComposerAction';
 import { ComposerVisual } from '../ai/ComposerVisual';
+import { DraftAttachmentCard } from '../ai/DraftAttachmentCard';
 import { AIVisibilityContext, IDLE_AI_ACTIVITY, type AIActivity } from '../ai/AIVisibility';
 import { useRetainedDialogValue } from '../ai/useRetainedDialogValue';
 import { PanelSettings } from '../ai/PanelSettings';
@@ -49,6 +55,7 @@ import {
   type ReferenceCopyJournal,
 } from './generationDraft';
 import { AIThread } from '../ai/AIThread';
+import type { OnResultApplied } from '../ai/ResultActions';
 import { recipeDifferences, additionalRecipeChanges } from '../ai/recipeDiff';
 import { ImageParameters } from '../ai/ImageParameters';
 import { LiveAssistant, type CaptureCurrentImage } from '../ai/LiveAssistant';
@@ -162,6 +169,9 @@ export function AIPanel({
   onDraw,
   onClose,
   visible = true,
+  mobilePage = false,
+  visualAttachment,
+  onClearVisualAttachment,
   onActivityChange,
   onPreview,
   previewActive,
@@ -196,6 +206,9 @@ export function AIPanel({
   onDraw: () => void;
   onClose: () => void;
   visible?: boolean;
+  mobilePage?: boolean;
+  visualAttachment?: AssistantVisualAttachment | null;
+  onClearVisualAttachment?: (attachment: AssistantVisualAttachment) => void;
   onActivityChange?: (activity: AIActivity) => void;
   onPreview: (recipe: EditorRecipe) => void;
   previewActive?: boolean;
@@ -205,7 +218,7 @@ export function AIPanel({
   onCreateProject: () => void;
   onOpenArtwork: (id: string) => void;
   onTaskChanged: () => void;
-  onDecisionApplied?: (id: string) => void | Promise<void>;
+  onDecisionApplied?: OnResultApplied;
   isDirty?: boolean;
   isLoggedIn: boolean;
   onAuth: () => void;
@@ -225,9 +238,16 @@ export function AIPanel({
   const [assistantOpen, setAssistantOpen] = useState(
     !pendingSubmission &&
       !referenceFile &&
-      (cached?.assistantOpen ?? initialOperation === 'edit-plan'),
+      (Boolean(visualAttachment) || (cached?.assistantOpen ?? initialOperation === 'edit-plan')),
   );
   const [assistantVisited, setAssistantVisited] = useState(assistantOpen);
+  const panel = useRef<HTMLElement>(null);
+  useLayoutEffect(() => {
+    if (!mobilePage || !visible) return;
+    panel.current
+      ?.querySelector<HTMLButtonElement>('[data-ai-return]:not([inert] *)')
+      ?.focus({ preventScroll: true });
+  }, [mobilePage, visible]);
   useEffect(() => {
     if (assistantOpen) setAssistantVisited(true);
   }, [assistantOpen]);
@@ -592,6 +612,12 @@ export function AIPanel({
       changed();
     }
   }, [referenceFile]);
+  useEffect(() => {
+    if (visualAttachment && !pending.current) {
+      setOverlay(null);
+      setAssistantOpen(true);
+    }
+  }, [visualAttachment]);
   useEffect(() => {
     if (!project) {
       setJobs([]);
@@ -1037,6 +1063,21 @@ export function AIPanel({
       <CaretDown size={13} />
     </button>
   );
+  const taskNavigation = mobilePage ? (
+    <div className="ai-page-navigation">
+      <IconButton label={t('返回编辑器')} data-ai-return onClick={onClose}>
+        <ArrowLeft size={20} />
+      </IconButton>
+      {taskPicker}
+    </div>
+  ) : (
+    taskPicker
+  );
+  const removeLocalReference = () => {
+    onClearReference();
+    setUploadedReference(null);
+    changed();
+  };
   const modelOptions = [
     ...(pendingSubmission && modelId && !eligible.some((model) => model.id === modelId)
       ? [{ value: modelId, label: t('{model} · 原请求模型', { model: modelId }) }]
@@ -1058,16 +1099,17 @@ export function AIPanel({
   return (
     <AIVisibilityContext.Provider value={visible}>
       <aside
+        ref={panel}
         className="ai-panel ai-workbench ai-workbench-v2"
         data-settings-open={overlay === 'settings' || undefined}
         aria-label={t('AI创作助手')}
       >
         {(assistantOpen || assistantVisited) && (
           <LiveAssistant
-            navigation={taskPicker}
+            navigation={taskNavigation}
             visible={visible && assistantOpen}
             hidden={!assistantOpen}
-            onClose={onClose}
+            onClose={mobilePage ? undefined : onClose}
             onActivityChange={setAssistantActivity}
             project={project}
             artwork={artwork}
@@ -1088,6 +1130,8 @@ export function AIPanel({
             onAfterArtworkWrite={onAfterArtworkWrite}
             onApplied={onDecisionApplied ?? onOpenArtwork}
             captureCurrentImage={captureCurrentImage}
+            visualAttachment={visualAttachment}
+            onClearVisualAttachment={onClearVisualAttachment}
             onUseCanvasSource={onUseCanvasSource}
             onPrepareGenerationDraft={prepareAssistantGenerationDraft}
           />
@@ -1095,7 +1139,7 @@ export function AIPanel({
         {!assistantOpen && (
           <>
             <header className="ai-workbench-header">
-              {taskPicker}
+              {taskNavigation}
               <div className="ai-header-actions">
                 <IconButton label={t('创作记录')} onClick={() => setOverlay('history')}>
                   <ClockCounterClockwise size={18} />
@@ -1103,9 +1147,11 @@ export function AIPanel({
                 <IconButton label={t('任务设置')} onClick={() => setOverlay('settings')}>
                   <GearSix size={18} />
                 </IconButton>
-                <IconButton className="ai-panel-close" label={t('收起 AI 面板')} onClick={onClose}>
-                  <X size={18} />
-                </IconButton>
+                {!mobilePage && (
+                  <IconButton className="ai-panel-close" label={t('收起 AI 面板')} onClick={onClose}>
+                    <X size={18} />
+                  </IconButton>
+                )}
               </div>
             </header>
             <div className="ai-conversation-body" aria-label={t('创作内容')}>
@@ -1253,15 +1299,22 @@ export function AIPanel({
                     </IconButton>
                   </div>
                 )}
-                {operation === 'generate-image' && referencedCount > 0 && (
+                {operation === 'generate-image' && referenceFile && (
+                  <DraftAttachmentCard
+                    source={referenceFile}
+                    label={referenceSource === 'sketch' ? t('草图') : t('参考图')}
+                    disabled={inputLocked}
+                    onRemove={removeLocalReference}
+                  />
+                )}
+                {operation === 'generate-image' && referenceIds.length > 0 && (
                   <button
                     type="button"
                     className="ai-selected-context"
                     onClick={() => setOverlay('references')}
                   >
                     <Paperclip size={14} />
-                    {referencedCount} {t('张参考')}
-                    {referenceFile ? t(' · 发送后上传') : ''}
+                    {referenceIds.length} {t('张参考')}
                   </button>
                 )}
                 {operation !== 'transcribe' && (
@@ -1606,11 +1659,7 @@ export function AIPanel({
                 <IconButton
                   label={t('移除本地参考')}
                   disabled={inputLocked}
-                  onClick={() => {
-                    onClearReference();
-                    setUploadedReference(null);
-                    changed();
-                  }}
+                  onClick={removeLocalReference}
                 >
                   <X size={16} />
                 </IconButton>

@@ -690,9 +690,17 @@ export function createAssistantService(
           throw new HttpError(409, 'IDEMPOTENCY_CONFLICT', '此请求标识已用于其他内容');
         return this.getTurn(actorId, replay.id);
       }
-      const context = await currentContext(actorId, projectId, body.context);
       await validateScope(db, actorId, body.scope);
-      await model(db, body.modelId, 'assistant-turn');
+      const requestedModel = await model(db, body.modelId, 'assistant-turn');
+      if (body.visualAttachment && !requestedModel.imageInput)
+        throw new HttpError(400, 'ASSISTANT_IMAGE_UNAVAILABLE', '当前助手模型不支持图片输入');
+      const context = await currentContext(actorId, projectId, body.context);
+      const visualAttachment = body.visualAttachment
+        ? {
+            kind: body.visualAttachment.kind,
+            imageDataUrl: await normalizeSharedImage(body.visualAttachment.imageDataUrl, imageModerator),
+          }
+        : undefined;
       const admission = await transaction(db, async (tx) => {
         await tx.query('SELECT pg_advisory_xact_lock(hashtext($1))', [`assistant:${actorId}`]);
         const prior = (
@@ -813,6 +821,8 @@ export function createAssistantService(
           .filter((item) => cardScope.has(item.assetId))
           .slice(0, 8);
         const settings = await model(tx, body.modelId, 'assistant-turn', true);
+        if (visualAttachment && !settings.imageInput)
+          throw new HttpError(400, 'ASSISTANT_IMAGE_UNAVAILABLE', '当前助手模型不支持图片输入');
         const webBranches = (body.research ?? []).filter((branch) => branch.kind === 'web');
         if (
           webBranches.length + Number(Boolean(body.scope.publicSearch)) > 2 ||
@@ -902,6 +912,7 @@ export function createAssistantService(
           );
           agentContext.history = admission.history;
           agentContext.research = body.research;
+          agentContext.visualAttachment = visualAttachment;
           agentContext.priorResourceCards = admission.priorResourceCards;
           agentContext.onTool = (name, state) =>
             publishRunEvent(db, row.id, `tool.${state}`, { name });
@@ -986,6 +997,14 @@ export function createAssistantService(
                   assetId: item.id,
                   sharedDataUrlSha256: hash(item.dataUrl),
                 })),
+                ...(visualAttachment
+                  ? {
+                      visualAttachment: {
+                        kind: visualAttachment.kind,
+                        sharedDataUrlSha256: hash(visualAttachment.imageDataUrl),
+                      },
+                    }
+                  : {}),
                 priorResourceCards: admission.priorResourceCards.map(
                   ({ assetId, sourceTurnId }) => ({ assetId, sourceTurnId }),
                 ),

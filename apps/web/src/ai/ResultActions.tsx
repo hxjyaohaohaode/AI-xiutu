@@ -23,6 +23,11 @@ import './decisions.css';
 import { AIVisibilityContext } from './AIVisibility';
 import { useRetainedDialogValue } from './useRetainedDialogValue';
 
+export type OnResultApplied = (
+  artworkId: string,
+  action?: 'replace' | 'layer' | 'apply-plan',
+) => void | Promise<void>;
+
 export function DecisionHistory({
   controller,
   outputIndex,
@@ -88,7 +93,7 @@ export function ResultActions({
   canEdit: boolean;
   outputIndex?: number;
   onOpen: (id: string) => void;
-  onDecisionApplied?: (id: string) => void | Promise<void>;
+  onDecisionApplied?: OnResultApplied;
 }) {
   const visible = useContext(AIVisibilityContext);
   const [draft, setDraft] = useState<DecisionDraft | null>(null);
@@ -144,7 +149,7 @@ export function ResultActions({
       current.current.artwork?.id === request.targetArtworkId
     ) {
       try {
-        await onDecisionApplied?.(response.artwork.id);
+        await onDecisionApplied?.(response.artwork.id, request.action);
       } catch {
         setLocalError(
           '结果已保存到云端，但当前图片尚未重新打开。可点击“打开已保存结果”，无需再次采用。',

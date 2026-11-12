@@ -7,6 +7,7 @@ import { resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { setTimeout as delay } from 'node:timers/promises';
 import { chromium } from 'playwright';
+import sharp from 'sharp';
 import { transaction, adjustUnits, reserveUnits, markUnknownHold } from '@ai-xiutu/db';
 import { assistantModelConfigSchema } from '@ai-xiutu/assistant';
 import { migrateRecipeToV4 } from '@ai-xiutu/editor';
@@ -184,7 +185,7 @@ async function closeAIPanel(target = page) {
   await closeSettings(target);
   const mobile = target
     .locator('.live-assistant')
-    .getByRole('button', { name: '收起 AI 面板', exact: true });
+    .getByRole('button', { name: '返回编辑器', exact: true });
   if (await mobile.isVisible()) await mobile.click();
   else
     await target
@@ -245,6 +246,7 @@ async function finished() {
 try {
   fixture = await collaborationFixture(databaseUrl, {
     origin,
+    aiJobHistory: true,
     assistant: {
       env: {
         AI_ASSISTANT_ENABLED: 'true',
@@ -1747,7 +1749,7 @@ try {
           input: box('.assistant-composer textarea'),
           send: box('.assistant-composer .ai-send-button'),
           toolbar: box('.assistant-composer .ai-composer-toolbar'),
-          close: box('.ai-workbench-header .ai-panel-close'),
+          close: box('.ai-workbench-header [data-ai-return]'),
           panel: box('.ai-workbench'),
           conversation: box('.live-assistant:not([hidden]) > .ai-conversation-body'),
           reply:
@@ -1810,8 +1812,8 @@ try {
       if (viewport.width < 760) {
         assert.ok(geometry.inputFontSize >= 16, 'phone input avoids focus zoom');
         assert.ok(
-          geometry.close?.centerExposed && geometry.close.height >= 32,
-          'the condensed phone header retains its visible close action',
+          geometry.close?.centerExposed && geometry.close.height >= 44,
+          'the phone assistant page retains its visible return action',
         );
       }
       await page.screenshot({
@@ -2006,6 +2008,95 @@ try {
       return geometry;
     });
   }
+  await testCase('phone-sends-frozen-editor-attachment-and-replaces-and-restores-a-source', async () => {
+    const baseline = await head();
+    const generatedId = randomUUID();
+    const jobId = randomUUID();
+    const inputHash = sha('isolated generated image fixture');
+    const generated = await fixture.storage.storeGenerated(await sharp({
+      create: { width: 76, height: 108, channels: 3, background: '#5a7046' },
+    }).png().toBuffer());
+    await transaction(fixture.db, async (tx) => {
+      await tx.query(
+        `INSERT INTO assets(id,project_id,name,storage_key,mime,width,height,bytes,content_hash,provenance,created_by)
+         VALUES($1,$2,'assistant-image.png',$3,$4,$5,$6,$7,$8,$9::jsonb,$10)`,
+        [generatedId, fixture.projectId, generated.key, generated.mime, generated.width,
+          generated.height, generated.bytes, generated.hash,
+          JSON.stringify({ kind: 'ai-generated', jobId, inputHash }), fixture.actors.owner.id],
+      );
+      await tx.query(
+        `INSERT INTO ai_jobs(id,project_id,actor_id,model_id,input_hash,state,operation,input,output,idempotency_key)
+         VALUES($1,$2,$3,$4,$5,'completed','generate-image',$6,$7,$8)`,
+        [jobId, fixture.projectId, fixture.actors.owner.id, modelId, inputHash,
+          JSON.stringify({ prompt: '独立图像候选验收' }),
+          JSON.stringify({ kind: 'image', assetId: generatedId,
+            images: [{ index: 0, assetId: generatedId, width: generated.width, height: generated.height }] }),
+          randomUUID()],
+      );
+    });
+
+    await page.setViewportSize({ width: 390, height: 844 });
+    const before = turnAdmissions;
+    await openProject(page);
+    const chat = page.locator('[data-panel-id="ai"][data-display-mode="page"][aria-hidden="false"]');
+    const image = chat.getByRole('img', { name: '编辑界面截图', exact: true });
+    await image.waitFor();
+    const frozenImage = await image.getAttribute('src');
+    assert.ok(frozenImage?.startsWith('data:image/jpeg;base64,'));
+    const prompt = '请根据截图给出一条构图建议。';
+    const input = chat.getByLabel('向智能体描述修改需求');
+    await input.fill(prompt);
+    await chat.getByRole('button', { name: '返回编辑器', exact: true }).click();
+    await page.locator('[data-dock-tool="ai"]').click();
+    assert.equal(await input.inputValue(), prompt);
+    assert.equal(await image.getAttribute('src'), frozenImage);
+    assert.equal(turnAdmissions, before);
+    await page.screenshot({ path: resolve(artifacts, 'phone-editor-attachment.png') });
+    const receipt = page.waitForResponse((response) =>
+      response.request().method() === 'POST' &&
+      new URL(response.url()).pathname === '/v1/projects/' + fixture.projectId + '/assistant-turns',
+    );
+    await submit(prompt);
+    const accepted = await receipt;
+    assert.equal(accepted.status(), 202);
+    const visualAttachment = accepted.request().postDataJSON().visualAttachment;
+    assert.equal(visualAttachment.kind, 'editor');
+    assert.equal(sha(visualAttachment.imageDataUrl), sha(frozenImage));
+    await finished();
+    await image.waitFor({ state: 'hidden' });
+    assert.equal(turnAdmissions, before + 1);
+    assert.equal((await head()).artwork.headVersion, baseline.artwork.headVersion);
+
+    await chat.getByRole('button', { name: '切换 AI 任务', exact: true }).click();
+    const tasks = page.getByRole('dialog', { name: '选择 AI 任务', exact: true });
+    await tasks.getByRole('button', { name: /^生图/ }).click();
+    await tasks.waitFor({ state: 'hidden' });
+    await chat.getByRole('button', { name: '替换当前作品', exact: true }).first().click();
+    const replace = page.getByRole('dialog', { name: '替换当前作品的图片来源', exact: true });
+    await replace.getByRole('button', { name: '确认', exact: true }).click();
+    await chat.waitFor({ state: 'hidden' });
+    const replaced = await head();
+    assert.equal(replaced.artwork.assetId, generatedId);
+    assert.equal(replaced.artwork.headVersion, baseline.artwork.headVersion + 1);
+    await page.locator('.image-frame canvas[aria-label]:visible').waitFor();
+    await page.screenshot({ path: resolve(artifacts, 'phone-generated-source.png') });
+
+    await changeView('compare', '对比');
+    await page.locator('.saved-versions > summary').click();
+    const previous = page.locator('.revision-entry').filter({
+      has: page.locator('.revision-open > span').getByText('V' + baseline.artwork.headVersion, { exact: true }),
+    });
+    await previous.locator('.revision-more > summary').click();
+    await previous.getByRole('button', { name: '恢复为新版本', exact: true }).click();
+    await page.getByRole('button', { name: '确认恢复为新版本', exact: true }).click();
+    await until(async () => (await head()).artwork.assetId === baseline.artwork.assetId, 'previous source restored');
+    const restored = await head();
+    assert.equal(restored.artwork.headVersion, baseline.artwork.headVersion + 2);
+    assert.deepEqual(restored.revision.recipe, baseline.revision.recipe);
+    await page.locator('.image-frame canvas[aria-label]:visible').waitFor();
+    return { screenshotSent: true, replacedVersion: replaced.artwork.headVersion,
+      restoredVersion: restored.artwork.headVersion, privateFixture: true };
+  });
   await testCase('operator-paginates-all-unknown-jobs-without-private-content', async () => {
     await transaction(fixture.db, async (tx) => {
       for (let index = 0; index < 60; index++) {

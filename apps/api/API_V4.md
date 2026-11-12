@@ -228,7 +228,7 @@ that an external account or network route has passed a live paid test.
 ### 6.1 Scope, context and ordinary turns
 
 - `GET /v1/assistant/models` requires login and returns `{ready,voiceReady,reason,models,voiceProfiles,verifiedAt,sources}`. Public entries contain model labels, allowed operations, service-unit cost and application budgets, never credentials. Voice profiles describe the protocol adapter; use the model-specific voice list supported by the request validator.
-- `POST /v1/projects/:projectId/assistant-turns` accepts `{idempotencyKey:UUID,modelId,prompt,context?,scope?,parentTurnId?}`. Prompt is 1..4000 characters. Returns202 while running, otherwise200, with `{id,state,modelId,output,errorCode,createdAt}`. A current verified owner/admin/editor is required; reference-only grants and platform-operator status do not grant assistant execution rights.
+- `POST /v1/projects/:projectId/assistant-turns` accepts `{idempotencyKey:UUID,modelId,prompt,context?,visualAttachment?,scope?,parentTurnId?}`. Prompt is 1..4000 characters. Returns202 while running, otherwise200, with `{id,state,modelId,output,errorCode,createdAt}`. A current verified owner/admin/editor is required. Reference-only grants and platform-operator status do not grant assistant execution rights.
 - `GET /v1/assistant-turns/:turnId` returns that DTO while the actor retains project edit and referenced resource access. It includes `stopRequested`. Turn states are running, completed, failed, unknown and stopped.
 - `POST /v1/assistant-turns/:turnId/stop` accepts an empty object and idempotently records the owner's stop. It returns `{id,state,stopRequested}`. An in-flight dispatch stays running while the server reads the receipt. Verified receipts settle, an unsent hold releases, and ambiguous outcomes remain unknown. The stop blocks new tool actions and candidate publication.
 - `GET /v1/projects/:projectId/assistant-turns?conversationId=UUID` returns `{turns}`: the actor's most recent30 turns within that stable root, including prompt/output and current candidate decisions. Without a conversation filter it returns recent project history. This is a bounded view, not a fully paginated archive.
@@ -243,6 +243,12 @@ JPEG/PNG/WebP snapshot, bounded to1.5million base64 characters,1.1MB decoded and
 4,194,304 input pixels; it is normalized to a≤1024px JPEG and reviewed before
 sharing. The server retains the recipe and image hash, not that base64 snapshot.
 This is user-triggered snapshot sharing, not continuous screen capture.
+
+`visualAttachment={kind:"editor"|"photo"|"sketch",imageDataUrl}` is a single
+optional, explicitly submitted composer attachment. It requires a model with
+image input, uses the same decoding and moderation limits, and is bound to the
+turn's idempotency hash. The context manifest keeps its kind and normalized
+image hash. The turn stores the attachment bytes only in memory for dispatch.
 
 `scope={spaceIds:UUID[],referenceAssetIds:UUID[],allowWebSearch,publicSearch?,usePersonalMemory,creativeBrief?,executionGrantId?}`
 defaults to empty resource lists and false flags. There are at most12 spaces and8

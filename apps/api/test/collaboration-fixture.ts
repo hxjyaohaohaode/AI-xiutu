@@ -4,6 +4,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import sharp from 'sharp';
 import { createDatabase, transaction } from '@ai-xiutu/db';
+import { createAiService } from '@ai-xiutu/ai';
 import { createRecipeV3, createAdjustmentRegionV3 } from '@ai-xiutu/editor';
 import type { AssistantDependencies } from '../src/assistant/index.js';
 import { buildApp } from '../src/app.js';
@@ -14,7 +15,7 @@ import { hash } from '../src/core.js';
 
 export async function collaborationFixture(
   databaseUrl: string,
-  options: { assistant?: AssistantDependencies; origin?: string } = {},
+  options: { assistant?: AssistantDependencies; origin?: string; aiJobHistory?: boolean } = {},
 ) {
   const db = createDatabase(databaseUrl),
     directory = await mkdtemp(join(tmpdir(), 'xiutu-v4-sql-'));
@@ -30,6 +31,7 @@ export async function collaborationFixture(
     db,
     config,
     assistant: options.assistant,
+    aiService: options.aiJobHistory ? createAiService(db, {}) : undefined,
     sms: {
       configured: false,
       async send() {

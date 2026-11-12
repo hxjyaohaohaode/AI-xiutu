@@ -18,7 +18,7 @@ import { ChoiceSelect } from '../components/ChoiceSelect';
 import { Disclosure } from '../components/Controls';
 import type { AIOperation, AIJob, GeneratedImage, JobOutput } from './types';
 import { useResultDecisions, type ResultDecisionController } from './useResultDecisions';
-import { ResultActions } from './ResultActions';
+import { ResultActions, type OnResultApplied } from './ResultActions';
 import { QueuedCancellation } from './QueuedCancellation';
 import { AIVisibilityContext } from './AIVisibility';
 import { AssistantText } from './AssistantText';
@@ -414,7 +414,7 @@ type ThreadResultProps = {
   onContinue: (job: AIJob, image?: GeneratedImage) => void;
   onTranscript: (operation: AIOperation, text: string) => void;
   onChanged: () => void;
-  onDecisionApplied?: (id: string) => void | Promise<void>;
+  onDecisionApplied?: OnResultApplied;
   onBeforeArtworkWrite?: () => void | Promise<void>;
   onAfterArtworkWrite?: () => void | Promise<void>;
 };
@@ -534,7 +534,7 @@ export function AIThread({
   userId?: string | null;
   isDirty?: boolean;
   documents?: { id: string; title: string; version: number }[];
-  onDecisionApplied?: (id: string) => void | Promise<void>;
+  onDecisionApplied?: OnResultApplied;
   onBeforeArtworkWrite?: () => void | Promise<void>;
   onAfterArtworkWrite?: () => void | Promise<void>;
   onOpen: (id: string) => void;
@@ -625,7 +625,7 @@ export function AIThread({
                 <p className="ai-status-copy">{t('任务未完成，点数以用量记录为准。')}</p>
               )}
               <QueuedCancellation
-                key={(userId ?? 'session') + ':' + project.id + ':' + job.id}
+                key={'cancel:' + (userId ?? 'session') + ':' + project.id + ':' + job.id}
                 job={job}
                 onChanged={onChanged}
               />
@@ -634,7 +634,7 @@ export function AIThread({
               )}
               {job.state === 'completed' && (
                 <CompletedResult
-                  key={(userId ?? 'session') + ':' + project.id + ':' + job.id}
+                  key={'result:' + (userId ?? 'session') + ':' + project.id + ':' + job.id}
                   {...{
                     job,
                     project,

@@ -3,6 +3,11 @@ import { creativeBriefSchema } from './creative.js';
 import type { AssistantWorkspace } from './assistant-ui.js';
 import type { MemorySuggestion } from './memory.js';
 
+const assistantImageDataUrl = z
+  .string()
+  .max(1_500_000)
+  .regex(/^data:image\/(jpeg|png|webp);base64,[A-Za-z0-9+/]+={0,2}$/);
+
 /** Browser → application protocol, deliberately not an arbitrary vendor-event tunnel. */
 export const assistantContextSchema = z
   .object({
@@ -10,14 +15,17 @@ export const assistantContextSchema = z
     assetId: z.uuid(),
     expectedVersion: z.number().int().positive(),
     recipe: z.unknown(),
-    imageDataUrl: z
-      .string()
-      .max(1_500_000)
-      .regex(/^data:image\/(jpeg|png|webp);base64,[A-Za-z0-9+/]+={0,2}$/)
-      .optional(),
+    imageDataUrl: assistantImageDataUrl.optional(),
   })
   .strict();
 export type AssistantContext = z.infer<typeof assistantContextSchema>;
+export const assistantVisualAttachmentSchema = z
+  .object({
+    kind: z.enum(['editor', 'photo', 'sketch']),
+    imageDataUrl: assistantImageDataUrl,
+  })
+  .strict();
+export type AssistantVisualAttachment = z.infer<typeof assistantVisualAttachmentSchema>;
 export const assistantCandidateCommitSchema = z
   .object({
     expectedVersion: z.number().int().positive(),
@@ -79,6 +87,7 @@ export const assistantTurnSchema = z
     modelId: z.string().min(1).max(128),
     prompt: z.string().trim().min(1).max(4000),
     context: assistantContextSchema.optional(),
+    visualAttachment: assistantVisualAttachmentSchema.optional(),
     scope: assistantScopeSchema.default({
       spaceIds: [],
       referenceAssetIds: [],

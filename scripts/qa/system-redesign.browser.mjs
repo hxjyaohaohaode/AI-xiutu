@@ -992,7 +992,9 @@ async function sketchScreens(page, locale) {
   await page.locator('[data-action="open-sketch"]:visible').first().click();
   const drawing = page.locator('dialog.drawing-modal[open]');
   await drawing.waitFor();
-  await selectChoiceIndex(drawing.locator('[data-qa="sketch-ratio"]'), 1);
+  const shapes = drawing.getByRole('group', {
+    name: locale === 'en' ? 'Add sketch elements' : locale === 'zh-TW' ? '草圖新增元素' : '草图添加元素',
+  });
   await drawing.locator('input[type="file"]').setInputFiles({
     name: 'Lake study.jpg', mimeType: 'image/jpeg', buffer: photos.get('coast').bytes,
   });
@@ -1001,7 +1003,7 @@ async function sketchScreens(page, locale) {
     for (let index=3; index<data.length; index+=4) if (data[index]) return true;
     return false;
   })), 'drawing contains the actually imported photograph');
-  await selectChoiceIndex(drawing.locator('[data-qa="sketch-tool"]'), 10);
+  await shapes.getByRole('button', { name: locale === 'en' ? 'Text' : '文字', exact: true }).click();
   await drawing.locator('textarea').fill('STILL\nWATER');
   await drawing.locator('.drawing-colors > button').first().click();
   const size = drawing.locator('.drawing-width input[type="range"]');
@@ -1010,7 +1012,7 @@ async function sketchScreens(page, locale) {
   const box = await canvas.boundingBox();
   assert.ok(box?.width > 100 && box.height > 100);
   await canvas.click({ position: { x: box.width * .58, y: box.height * .32 } });
-  await selectChoiceIndex(drawing.locator('[data-qa="sketch-tool"]'), 2);
+  await drawing.locator('.drawing-mode-tools > button').first().click();
   if(locale==='zh-CN') (report.modalTooltips??=[]).push({phone:false,...await checkModalTooltip(page,drawing)});
   await layout(page, locale + ': actual photograph and editable text in drawing board');
   await productCapture(page, 'layers', locale, 'coast', 'Real drawing board: photograph imported, text entered and placed with pointer; no generated interface');
@@ -1029,6 +1031,167 @@ async function sketchScreens(page, locale) {
       assert.ok(rect.width>=100 && rect.height>=100,'Drawing retains usable canvas space at '+name);
       await capture(page,'interactions/drawing-'+name+'.png');
     }
+  }
+}
+
+async function mobileEditingFlow() {
+  const { context, page } = await newPage({
+    locale: 'zh-CN', viewport: { width: 390, height: 844 }, touch: true, motion: 'reduce',
+  });
+  try {
+    const source = await importPhoto(page, 'coast');
+    await tool(page, 'crop');
+    const presets = page.getByRole('group', { name: '裁切比例', exact: true });
+    const dimensions = page.locator('.crop-live-readout output').first();
+    const aspect = async () => (await dimensions.innerText()).match(/\d+/g).map(Number);
+    for (const [name, ratio] of [['1:1',1],['4:3',4/3],['3:4',3/4],['16:9',16/9],
+      ['3:2',3/2],['2:3',2/3],['电影 1.85:1',1.85],['电影 2.39:1',2.39],['9:16',9/16]]) {
+      const chip = presets.getByRole('button', { name, exact: true });
+      await chip.click();
+      assert.equal(await chip.getAttribute('aria-pressed'), 'true');
+      const [width, height] = await aspect();
+      assert.ok(Math.abs(width - height * ratio) <= (1 + ratio) / 2, name);
+    }
+    const [width, height] = await aspect();
+    await layout(page, 'phone fixed crop and orientation');
+    await capture(page, 'interactions/mobile-crop-390.png');
+    await presets.getByRole('button', { name: '自由', exact: true }).click();
+    assert.deepEqual(await aspect(), [width, height], 'free crop unlocks the same framing');
+    const first = await actualDownload(page, { width, height }, 'mobile-crop-9x16');
+    await changeView(page, 'editor');
+    await tool(page, 'crop');
+    const actions = page.getByRole('group', { name: '画幅与方向', exact: true });
+    await actions.getByRole('button', { name: '水平镜像', exact: true }).click();
+    await actions.getByRole('button', { name: '向右旋转90度', exact: true }).click();
+    assert.deepEqual(await aspect(), [height, width]);
+    assert.equal(await actions.getByRole('button', { name: '垂直镜像', exact: true }).getAttribute('aria-pressed'), 'true');
+    const turned = await actualDownload(page, { width: height, height: width }, 'mobile-crop-rotated');
+    const rotatedExpected = await sharp(resolve(artifacts, 'downloads/mobile-crop-9x16.png'))
+      .flop().rotate(90).ensureAlpha().raw().toBuffer();
+    assert.equal(turned.pixelSha256, sha256(rotatedExpected));
+    assert.notEqual(turned.pixelSha256, first.pixelSha256);
+    await changeView(page, 'editor');
+    await tool(page, 'crop');
+
+    const dismiss = page.getByRole('button', { name: '关闭提示', exact: true });
+    if (await dismiss.isVisible()) await dismiss.click();
+    let turnWrites = 0;
+    page.on('request', (request) => {
+      if (request.method() === 'POST' && new URL(request.url()).pathname.endsWith('/assistant-turns'))
+        turnWrites++;
+    });
+    const viewport = await page.locator('.workspace').boundingBox();
+    const ai = page.locator('[data-dock-tool="ai"]');
+    await ai.click();
+    const chat = page.locator('[data-panel-id="ai"][data-display-mode="page"][aria-hidden="false"]');
+    const screenshot = chat.getByRole('img', { name: '编辑界面截图', exact: true });
+    await screenshot.waitFor();
+    const captured = await screenshot.evaluate(async (image) => {
+      await image.decode();
+      return { width: image.naturalWidth, height: image.naturalHeight };
+    });
+    assert.ok(Math.abs(captured.width / captured.height - viewport.width / viewport.height) < 0.005);
+    const snapshot = Buffer.from((await screenshot.getAttribute('src')).split(',')[1], 'base64');
+    const photoRegion = await sharp(snapshot).extract({
+      left: Math.round(captured.width * .25), top: Math.round(captured.height * .22),
+      width: Math.round(captured.width * .5), height: Math.round(captured.height * .25),
+    }).toBuffer();
+    assert.ok((await sharp(photoRegion).stats()).channels[0].stdev > 12,
+      'the attached editor screenshot shows the actual public photograph');
+    await writeFile(resolve(artifacts, 'interactions/mobile-editor-attachment.jpg'), snapshot);
+    assert.equal(await page.locator('.workspace-view-transition').getAttribute('inert'), '');
+    await layout(page, 'full-screen phone assistant with a real editor screenshot');
+    await capture(page, 'interactions/mobile-ai-390.png');
+    const back = chat.getByRole('button', { name: '返回编辑器', exact: true });
+    await back.click();
+    await actions.waitFor();
+    assert.deepEqual(await aspect(), [height, width]);
+    await ai.click();
+    await screenshot.waitFor();
+    await chat.getByRole('button', { name: '移除附件', exact: true }).click();
+    await screenshot.waitFor({ state: 'hidden' });
+    await back.click();
+    assert.equal(turnWrites, 0, 'switching views and previewing attachments do not submit requests');
+
+    const canvasTools = page.getByRole('button', { name: '画布工具', exact: true });
+    if (await canvasTools.isVisible()) await canvasTools.click();
+    await page.locator('[data-action="open-sketch"]:visible').first().click();
+    const drawing = page.locator('dialog.drawing-modal[open]');
+    const canvas = drawing.locator('.drawing-surface canvas');
+    const triangle = drawing.getByRole('button', { name: '三角形', exact: true });
+    await triangle.locator('svg').waitFor();
+    await triangle.click();
+    await drawing.locator('.drawing-colors > button').nth(1).click();
+    const drag = async (from, to) => {
+      const box = await canvas.boundingBox();
+      await page.mouse.move(box.x + box.width * from.x, box.y + box.height * from.y);
+      await page.mouse.down();
+      await page.mouse.move(box.x + box.width * to.x, box.y + box.height * to.y, { steps: 6 });
+      await page.mouse.up();
+    };
+    const ink = () => canvas.evaluate((surface) => {
+      const { width, height } = surface;
+      const pixels = surface.getContext('2d').getImageData(0,0,width,height).data;
+      let left = width, top = height, right = 0, bottom = 0;
+      for (let i = 0; i < width * height; i++) {
+        const index = i * 4;
+        if (pixels[index + 3] < 230 || pixels[index] < 150 || pixels[index] < pixels[index + 1] + 55) continue;
+        const x = i % width, y = Math.floor(i / width);
+        left = Math.min(left, x); top = Math.min(top, y);
+        right = Math.max(right, x); bottom = Math.max(bottom, y);
+      }
+      return { x: left/width, y: top/height, right: right/width, bottom: bottom/height };
+    });
+    await drag({ x: .25, y: .27 }, { x: .48, y: .52 });
+    assert.equal(await canvas.getAttribute('data-tool'), 'select');
+    const initial = await ink();
+    assert.ok(initial.right - initial.x > .18);
+    await drag({ x: .36, y: .43 }, { x: .48, y: .51 });
+    const moved = await ink();
+    assert.ok(moved.x > initial.x + .09 && moved.y > initial.y + .05);
+    await drag(
+      { x: moved.right + .008, y: moved.bottom + .005 },
+      { x: moved.right + .15, y: moved.bottom + .15 },
+    );
+    const resized = await ink();
+    assert.ok(resized.right - resized.x > moved.right - moved.x + .08);
+    await drawing.getByRole('button', { name: '撤销草图操作', exact: true }).click();
+    assert.ok(Math.abs((await ink()).right - moved.right) < .02);
+    await drawing.getByRole('button', { name: '重做草图操作', exact: true }).click();
+    assert.ok(Math.abs((await ink()).right - resized.right) < .02);
+    await drawing.getByRole('button', { name: '铅笔', exact: true }).click();
+    await drawing.getByRole('slider', { name: '笔触粗细', exact: true }).press('End');
+    assert.equal(await drawing.getByRole('slider', { name: '笔触粗细', exact: true }).inputValue(), '70');
+    await layout(page, 'phone sketch with a moved and resized SVG-tool triangle');
+    await capture(page, 'interactions/mobile-sketch-390.png');
+    const sketchDimensions = await canvas.evaluate((node) => [node.width, node.height]);
+    await drawing.getByRole('button', { name: '发给 AI', exact: true }).click();
+    const sketch = chat.getByRole('img', { name: '草图', exact: true });
+    await sketch.waitFor();
+    assert.deepEqual(await sketch.evaluate(async (image) => {
+      await image.decode();
+      return [image.naturalWidth, image.naturalHeight];
+    }), sketchDimensions, 'the draft image contains the whole drawing surface');
+    assert.equal(turnWrites, 0);
+    await capture(page, 'interactions/mobile-sketch-attachment.png');
+    for (const viewport of [{ width: 320, height: 568 }, { width: 844, height: 390 }]) {
+      await page.setViewportSize(viewport);
+      await sketch.waitFor();
+      await layout(page, 'full-screen assistant ' + viewport.width + 'x' + viewport.height);
+      const panel = await chat.boundingBox();
+      const composer = await chat.locator('.ai-composer-surface:visible').boundingBox();
+      assert.ok(panel.height >= viewport.height - 2 && composer.y + composer.height <= viewport.height);
+      await capture(page, 'interactions/mobile-ai-' + viewport.width + '.png');
+    }
+    await page.setViewportSize({ width: 768, height: 1024 });
+    await page.locator('[data-panel-id="ai"][data-display-mode="panel"][aria-hidden="false"]').waitFor();
+    await layout(page, 'tablet assistant in the existing editor panel');
+    return { source, presets: 9, first, turned, captured, sketchDimensions, explicitSubmissions: turnWrites };
+  } catch (error) {
+    await failureEvidence(page);
+    throw error;
+  } finally {
+    await closeCaseContext(context);
   }
 }
 
@@ -1630,6 +1793,7 @@ try {
   for (const scenario of SCENARIOS)
     await check('flow:' + scenario.id, () => coreFlow(scenario));
   await check('reference-controls:actual-scrub-and-panel-restore', referenceControlReview);
+  await check('mobile:crop-sketch-and-assistant-attachment', mobileEditingFlow);
   for (const locale of LOCALES)
     await check('captures:' + locale, () => productScreens(locale));
   await check('supplemental:isolated-account-and-views', () => supplementalViews(config));

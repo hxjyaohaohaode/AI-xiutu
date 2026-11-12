@@ -53,6 +53,7 @@ export function MotionSwitch({
   role = 'view-transition',
   children,
   className = '',
+  inert = false,
   ...props
 }: SurfaceProps & { switchKey: string }) {
   const reduced = useReducedMotion();
@@ -80,8 +81,8 @@ export function MotionSwitch({
       data-motion={role}
       data-motion-state={state.phase}
       data-motion-owner
-      inert={exiting}
-      aria-hidden={exiting}
+      inert={inert || exiting}
+      aria-hidden={inert || exiting}
     >
       <div key={state.key} className="motion-switch-content">
         {state.key === switchKey ? children : previous.current}
