@@ -107,11 +107,13 @@ try {
     assert.equal(descriptor.sourceSha256, sha(bytes));
     const original = await f.call('GET', metadata.downloads.original);
     assert.equal(sha(original.rawPayload), sha(bytes));
-    if (descriptor.original.pq) {
+    if (descriptor.original.pq || descriptor.original.hlg) {
       const capabilities = (await f.call('GET', '/v1/media-capabilities')).json();
-      assert.equal(capabilities.heicPq.available, true);
-      assert.ok(capabilities.heicPq.bitDepths.includes(descriptor.original.bitDepth));
-      assert.equal(descriptor.original.sampleEncoding, 'pq');
+      const capability = descriptor.original.hlg ? capabilities.heicHlg : capabilities.heicPq;
+      assert.equal(capability.available, true);
+      assert.ok(capability.bitDepths.includes(descriptor.original.bitDepth));
+      assert.equal(descriptor.original.sampleEncoding, descriptor.original.hlg ? 'hlg' : 'pq');
+      if (descriptor.original.hlg) assert.equal(descriptor.original.hlg.referencePeakNits, 1000);
       assert.equal(descriptor.original.mime, 'image/heic');
       assert.equal(original.headers['content-type'], 'application/octet-stream');
       assert.match(original.headers['content-disposition'] as string, /^attachment;/);
@@ -127,6 +129,7 @@ try {
       sourceEncoding: descriptor.original.sampleEncoding,
       gainMap: descriptor.original.gainMap,
       pq: descriptor.original.pq,
+      hlg: descriptor.original.hlg,
       linear: !!descriptor.linearMaster,
       peakRssBytes: descriptor.processor.peakRssBytes,
       nativePeakRssBytes: descriptor.processor.nativePeakRssBytes,
@@ -402,22 +405,33 @@ try {
         assert.equal(history[1].edit.algorithm, 'scene-linear-v1');
       }
       const formats = ['png16', 'tiff16', ...(descriptor.linearMaster ? ['exr32'] : [])];
-      if (precision.ultraHdrJpeg) formats.push('ultrahdr');
+      if (precision.ultraHdrJpeg || precision.ultraHdrJpegCrop) formats.push('ultrahdr');
       for (const format of formats) {
+        const cropOnly = format === 'ultrahdr' && !precision.ultraHdrJpeg;
+        const crop = {
+          left: region.left, top: region.top,
+          width: Math.min(513, width - region.left), height: Math.min(389, height - region.top),
+        };
         const target = join(
           output,
           String(index) +
-            '-developed.' +
+            (cropOnly ? '-cropped.' : '-developed.') +
             (format === 'tiff16' ? 'tif' : format === 'exr32' ? 'exr' : format === 'ultrahdr' ? 'jpg' : 'png'),
         );
         let converting = true;
         const transfer = async () => {
-          const started = performance.now();
-          const response = await post(path + '/export', {
+          const spec = {
             format,
             gradeVersion: withCurves ? 2 : 1,
             expectedSourceSha256: descriptor.sourceSha256,
-          });
+          };
+          if (cropOnly) {
+            const rejected = await post(path + '/export', spec);
+            assert.equal(rejected.status, 413);
+            assert.equal((await rejected.json() as { error: { code: string } }).error.code, 'MEDIA_GAIN_MAP_DIMENSIONS');
+          }
+          const started = performance.now();
+          const response = await post(path + '/export', cropOnly ? { ...spec, crop } : spec);
           converting = false;
           assert.equal(
             response.status,
@@ -508,23 +522,12 @@ try {
           assert.equal(linear.type, 'float');
           record.linearReadback = linear;
         } else if (format === 'ultrahdr') {
-          assert.ok(descriptor.original.gainMap || descriptor.original.pq);
+          assert.ok(descriptor.original.gainMap || descriptor.original.pq || descriptor.original.hlg);
           assert.ok(process.env.MEDIA_UHDR_LIBRARY);
           const sourceExr = join(output, `${index}-developed.exr`);
-          const crop = {
-            left: region.left, top: region.top,
-            width: Math.min(513, width - region.left), height: Math.min(389, height - region.top),
-          };
-          const croppedFile = join(output, `${index}-cropped-ultrahdr.jpg`);
           const spec = { format, quality: 90, gradeVersion: withCurves ? 2 : 1, expectedSourceSha256: descriptor.sourceSha256 };
           const invalid = await post(path + '/export', { ...spec, crop: { ...crop, left: width } });
           assert.equal(invalid.status, 422);
-          const cropped = await post(path + '/export', { ...spec, crop });
-          assert.equal(cropped.status, 200, cropped.ok ? undefined : await cropped.text());
-          assert.equal(cropped.headers.get('content-type'), 'image/jpeg');
-          assert.equal(cropped.headers.get('x-precision-edit-sha256'), preview.headers['x-precision-edit-sha256']);
-          assert.ok(cropped.body);
-          await pipeline(Readable.fromWeb(cropped.body), createWriteStream(croppedFile));
           const verify = async (jpeg: string, expected: { left: number; top: number; width: number; height: number }) => {
             const meta = await sharp(jpeg).metadata();
             assert.deepEqual([meta.width, meta.height, meta.depth], [expected.width, expected.height, 'uchar']);
@@ -549,9 +552,20 @@ try {
             ]);
             return JSON.parse(native.stdout);
           };
-          const whole = await verify(target, { left: 0, top: 0, width, height });
-          assert.ok(whole.aboveWhite > 0 && whole.referenceAboveWhite > 0);
-          record.gainMapRoundTrip = { whole, crop: await verify(croppedFile, crop) };
+          if (cropOnly) {
+            record.gainMapRoundTrip = { crop: await verify(target, crop), fullStatus: 413 };
+          } else {
+            const cropped = await post(path + '/export', { ...spec, crop });
+            assert.equal(cropped.status, 200, cropped.ok ? undefined : await cropped.text());
+            assert.equal(cropped.headers.get('content-type'), 'image/jpeg');
+            assert.equal(cropped.headers.get('x-precision-edit-sha256'), preview.headers['x-precision-edit-sha256']);
+            assert.ok(cropped.body);
+            const croppedFile = join(output, `${index}-cropped-ultrahdr.jpg`);
+            await pipeline(Readable.fromWeb(cropped.body), createWriteStream(croppedFile));
+            const whole = await verify(target, { left: 0, top: 0, width, height });
+            assert.ok(whole.aboveWhite > 0 && whole.referenceAboveWhite > 0);
+            record.gainMapRoundTrip = { whole, crop: await verify(croppedFile, crop) };
+          }
         } else {
           const image = sharp(target, { ignoreIcc: true });
           const meta = await image.metadata();
@@ -576,7 +590,7 @@ try {
           record.windowStress = { ...windowStress, wide, wideSamples: pixels.length / 2 };
         }
         record.files.push({
-          format,
+          format: cropOnly ? 'ultrahdr-crop' : format,
           bytes: exportBytes,
           ms: exportMs,
           bitDepth: format === 'exr32' ? 32 : format === 'ultrahdr' ? 8 : 16,

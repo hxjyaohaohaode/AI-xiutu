@@ -17,7 +17,12 @@ import {
   type PrecisionEditV3,
 } from '@ai-xiutu/editor';
 import { editMaster16 } from '../src/precision.js';
-import { createLinearWindowRuntime, processMedia, exportMedia } from '../src/index.js';
+import {
+  createLinearWindowRuntime,
+  processMedia,
+  exportMedia,
+  getMediaCapabilities,
+} from '../src/index.js';
 
 const executeFile = promisify(execFile);
 const execute = (file: string, args: string[]) =>
@@ -31,12 +36,12 @@ const execute = (file: string, args: string[]) =>
     },
   });
 test(
-  'HEIC PQ preserves 10- and 12-bit code values through signed float development',
+  'HEIC PQ and HLG preserve 10- and 12-bit code values through signed float development',
   { skip: !process.env.MEDIA_QA_PYTHON || !process.env.MEDIA_HEIC_DECODER },
   async () => {
     const pythonExecutable = process.env.MEDIA_QA_PYTHON!;
     const options = { pythonExecutable, heicDecoder: process.env.MEDIA_HEIC_DECODER! };
-    const dir = await mkdtemp(join(tmpdir(), 'xiutu-heic-pq-'));
+    const dir = await mkdtemp(join(tmpdir(), 'xiutu-heic-hdr-'));
     const runtime = createLinearWindowRuntime();
     const width = 32;
     const height = 24;
@@ -44,19 +49,45 @@ test(
       const signal = (code / ((1 << bits) - 1)) ** (1 / 78.84375);
       return (
         10000 *
-        (Math.max(signal - 0.8359375, 0) / (18.8515625 - 18.6875 * signal)) **
-          (1 / 0.1593017578125)
+        (Math.max(signal - 0.8359375, 0) / (18.8515625 - 18.6875 * signal)) ** (1 / 0.1593017578125)
       );
     };
+    const sceneHlg = (code: number, bits: number) => {
+      const signal = code / ((1 << bits) - 1);
+      return signal <= 0.5
+        ? (signal * signal) / 3
+        : (Math.exp((signal - 0.55991073) / 0.17883277) + 0.28466892) / 12;
+    };
+    async function retagFixture(path: string, transfer: number) {
+      const bytes = await readFile(path);
+      const profile = bytes.indexOf(Buffer.from('nclx'));
+      assert.ok(profile > 0);
+      assert.equal(bytes.readUInt16BE(profile + 6), 16);
+      bytes.writeUInt16BE(transfer, profile + 6);
+      return bytes;
+    }
     try {
-      // These fixtures are lossless synthetic Rec.2020 ramps. The 12-bit
-      // fixture declares nominal diffuse white at 180 cd/m².
-      for (const [filename, bits, white] of [
-        ['pq10.heic', 10, 203],
-        ['pq12-white180.heic', 12, 180],
+      const caps = await getMediaCapabilities(options);
+      assert.equal(caps.heicPq.available, true);
+      assert.equal(caps.heicHlg.available, true);
+      assert.equal(caps.heicHlg.maxPixels, 50_000_000);
+      // Lossless Rec.2020 ramps with the NCLX transfer varied while the
+      // compressed channel codes remain identical.
+      for (const [fixture, bits, white, encoding] of [
+        ['pq10.heic', 10, 203, 'pq'],
+        ['pq12-white180.heic', 12, 180, 'pq'],
+        ['pq10.heic', 10, 203, 'hlg'],
+        ['pq12-white180.heic', 12, 180, 'hlg'],
       ] as const) {
-        const inputPath = fileURLToPath(new URL(`./fixtures/${filename}`, import.meta.url));
-        const workDir = join(dir, `media-${bits}`);
+        const hlg = encoding === 'hlg';
+        const filename = `${encoding}-${bits}.heic`;
+        const inputPath = join(dir, filename);
+        const reference = fileURLToPath(new URL(`./fixtures/${fixture}`, import.meta.url));
+        await writeFile(
+          inputPath,
+          hlg ? await retagFixture(reference, 18) : await readFile(reference),
+        );
+        const workDir = join(dir, `media-${encoding}-${bits}`);
         const descriptor = await processMedia({
           inputPath,
           workDir,
@@ -64,17 +95,21 @@ test(
           options,
         });
         assert.equal(descriptor.original.mime, 'image/heic');
-        assert.equal(descriptor.original.sampleEncoding, 'pq');
+        assert.equal(descriptor.original.sampleEncoding, encoding);
         assert.equal(descriptor.original.bitDepth, bits);
         assert.equal(descriptor.original.decodedBitDepth, bits);
-        assert.deepEqual(descriptor.original.pq, { primaries: 'Rec.2020', referenceWhiteNits: white });
+        assert.deepEqual(descriptor.original[encoding], {
+          primaries: 'Rec.2020',
+          referenceWhiteNits: white,
+          ...(hlg ? { referencePeakNits: 1000 } : {}),
+        });
         assert.deepEqual(
           await readFile(join(workDir, descriptor.original.relativePath)),
           await readFile(inputPath),
         );
         assert.equal(descriptor.linearMaster?.bitDepth, 32);
         assert.deepEqual([descriptor.master.width, descriptor.master.height], [width, height]);
-        const raw = join(dir, `linear-${bits}.raw`);
+        const raw = join(dir, `linear-${encoding}-${bits}.raw`);
         await execute(pythonExecutable, [
           '-c',
           'import OpenImageIO as o,numpy as n,sys; i=o.ImageInput.open(sys.argv[1]); assert i; n.asarray(i.read_image(format=o.FLOAT),dtype="<f4").tofile(sys.argv[2]); assert i.close()',
@@ -84,19 +119,24 @@ test(
         const samples = await readFile(raw);
         assert.equal(samples.length, width * height * 3 * 4);
         const matrix = [
-          [1.660491, -0.587641, -0.072850],
-          [-0.124550, 1.132900, -0.008349],
-          [-0.018151, -0.100579, 1.118730],
+          [1.660491, -0.587641, -0.07285],
+          [-0.12455, 1.1329, -0.008349],
+          [-0.018151, -0.100579, 1.11873],
         ];
         let hasHeadroom = false;
         let hasNegative = false;
         for (let y = 0; y < height; y++) {
           for (let x = 0; x < width; x++) {
-            const rgb = [x * 10 + y + 500, x * 3 + y + 110, x * 5 + y + 480].map(
-              (code) => luminance(code * (1 << (bits - 10)), bits) / white,
-            );
+            const rgb = [x * 10 + y + 500, x * 3 + y + 110, x * 5 + y + 480].map((code) => {
+              const value = code * (1 << (bits - 10));
+              return hlg ? sceneHlg(value, bits) : luminance(value, bits) / white;
+            });
+            const gain = hlg
+              ? ((0.2627 * rgb[0]! + 0.678 * rgb[1]! + 0.0593 * rgb[2]!) ** 0.2 * 1000) / white
+              : 1;
             for (const [channel, weights] of matrix.entries()) {
-              const expected = weights.reduce((sum, weight, at) => sum + weight * rgb[at]!, 0);
+              const expected =
+                gain * weights.reduce((sum, weight, at) => sum + weight * rgb[at]!, 0);
               const actual = samples.readFloatLE(((y * width + x) * 3 + channel) * 4);
               assert.ok(Math.abs(actual - expected) < 0.000015);
               hasHeadroom ||= actual > 1;
@@ -105,8 +145,8 @@ test(
           }
         }
         assert.ok(hasHeadroom && hasNegative);
-        const sdr = join(dir, `sdr-${bits}.png`);
-        const window = join(dir, `window-${bits}.png`);
+        const sdr = join(dir, `sdr-${encoding}-${bits}.png`);
+        const window = join(dir, `window-${encoding}-${bits}.png`);
         const request = { workDir, format: 'png16' as const, options };
         await exportMedia({ ...request, outputPath: sdr });
         await exportMedia(
@@ -119,20 +159,18 @@ test(
           { descriptor, runtime },
         );
         const pixels = (path: string) =>
-          sharp(path, { ignoreIcc: true }).toColourspace('rgb16').raw({ depth: 'ushort' }).toBuffer();
+          sharp(path, { ignoreIcc: true })
+            .toColourspace('rgb16')
+            .raw({ depth: 'ushort' })
+            .toBuffer();
         assert.deepEqual(await pixels(window), await pixels(sdr));
       }
       const inputPath = fileURLToPath(new URL('./fixtures/pq10.heic', import.meta.url));
-      const hlg = await readFile(inputPath);
-      const profile = hlg.indexOf(Buffer.from('nclx'));
-      assert.ok(profile > 0);
-      assert.equal(hlg.readUInt16BE(profile + 6), 16);
-      hlg.writeUInt16BE(18, profile + 6);
-      const hlgPath = join(dir, 'hlg.heic');
-      await writeFile(hlgPath, hlg);
+      const sdrPath = join(dir, 'sdr.heic');
+      await writeFile(sdrPath, await retagFixture(inputPath, 1));
       await assert.rejects(
-        processMedia({ inputPath: hlgPath, workDir: join(dir, 'hlg'), options }),
-        /explicit supported NCLX PQ colour profile/,
+        processMedia({ inputPath: sdrPath, workDir: join(dir, 'sdr'), options }),
+        /supported NCLX HDR colour profile/,
       );
       await assert.rejects(
         processMedia({
@@ -140,7 +178,7 @@ test(
           workDir: join(dir, 'no-decoder'),
           options: { pythonExecutable },
         }),
-        /HEIC PQ requires the configured native decoder/,
+        /HEIC HDR requires the configured native decoder/,
       );
     } finally {
       await runtime.close();
@@ -174,7 +212,10 @@ assert out.write_image(p); assert out.close()`,
         String(width),
         String(height),
       ]);
-      const encoded = await sharp(floatTiff).toColourspace('scrgb').jpeg({ quality: 95 }).toBuffer();
+      const encoded = await sharp(floatTiff)
+        .toColourspace('scrgb')
+        .jpeg({ quality: 95 })
+        .toBuffer();
       // Hide the generated EXIF segment without shifting the MPF gain-map offsets.
       const exifStart = encoded.indexOf(Buffer.from('Exif\0\0', 'ascii'));
       if (exifStart >= 4) {

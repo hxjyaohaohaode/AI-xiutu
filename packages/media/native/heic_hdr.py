@@ -1,4 +1,4 @@
-"""Decode bounded ST 2084 HEIC into reference-white relative linear RGB."""
+"""Decode bounded PQ/HLG HEIC into reference-white relative linear RGB."""
 
 import json
 import subprocess
@@ -10,6 +10,7 @@ from color_space import GAMUT_NAMES, linear_rec709
 
 NCLX_GAMUTS = {1: 0, 12: 1, 9: 2}
 DEFAULT_REFERENCE_WHITE_NITS = 203.0
+HLG_REFERENCE_PEAK_NITS = 1000.0
 
 
 def run_decoder(path, *arguments):
@@ -30,28 +31,50 @@ def pq_lookup(bits, reference_white_nits):
     return (luminance * (10000 / reference_white_nits)).astype(np.float32)
 
 
-def decode_heic_pq(source, destination, decoder, admit):
+def hlg_lookup(bits):
+    # BT.2100 Table 5, inverse HLG OETF for the reference display.
+    codes = np.arange(1 << bits, dtype=np.float64) / ((1 << bits) - 1)
+    a = 0.17883277
+    b = 1 - 4 * a
+    c = 0.5 - a * np.log(4 * a)
+    return np.where(codes <= 0.5, codes * codes / 3, (np.exp((codes - c) / a) + b) / 12).astype(np.float32)
+
+
+def decode_heic_hdr(source, destination, decoder, admit):
     info = run_decoder(decoder, "--inspect", source)
     width, height, bits = (info[field] for field in ("width", "height", "bitDepth"))
     admit(width, height)
     gamut = NCLX_GAMUTS.get(info["primaries"])
     white = info["diffuseWhite"] / 10_000 or DEFAULT_REFERENCE_WHITE_NITS
-    if gamut is None or bits not in (10, 12) or not 0 < white <= 10000:
-        raise ValueError("Unsupported HEIC PQ color metadata")
+    # Installed PQ-only decoders from the previous interface omit transfer.
+    transfer = info.get("transfer", 16)
+    hlg = transfer == 18
+    if (gamut is None or bits not in (10, 12) or transfer not in (16, 18)
+            or (hlg and gamut != 2) or not 0 < white <= (HLG_REFERENCE_PEAK_NITS if hlg else 10000)):
+        raise ValueError("Unsupported HEIC HDR color metadata")
     decoded = run_decoder(decoder, "--decode", source, str(destination))
     if decoded != info or Path(destination).stat().st_size != width * height * 6:
         raise ValueError("HEIC decode did not match the inspected raster")
     pixels = np.memmap(destination, dtype="<u2", mode="r", shape=(height, width, 3))
-    lookup = pq_lookup(bits, white)
+    lookup = hlg_lookup(bits) if hlg else pq_lookup(bits, white)
+    reference = {"primaries": GAMUT_NAMES[gamut], "referenceWhiteNits": white}
 
     def linearize(band):
         if np.any(band >= lookup.size):
             raise ValueError("HEIC decoded code values exceed their declared precision")
-        return linear_rec709(lookup[band], gamut)
+        linear = lookup[band]
+        if hlg:
+            # Apply the reference display OOTF to Rec.2020 luminance before the
+            # conversion to Rec.709. A per-channel power changes saturated hues.
+            luminance = linear[..., 0] * 0.2627 + linear[..., 1] * 0.6780 + linear[..., 2] * 0.0593
+            gain = np.power(luminance, np.float32(0.2)) * np.float32(HLG_REFERENCE_PEAK_NITS / white)
+            linear *= gain[..., None]
+        return linear_rec709(linear, gamut)
 
+    encoding = "hlg" if hlg else "pq"
     return pixels, linearize, {
         "width": width, "height": height, "bitDepth": bits, "decodedBitDepth": bits,
-        "colorSpace": f"{GAMUT_NAMES[gamut]} / ST 2084",
-        "sampleEncoding": "pq",
-        "pq": {"primaries": GAMUT_NAMES[gamut], "referenceWhiteNits": white},
+        "colorSpace": f"{GAMUT_NAMES[gamut]} / {'BT.2100 HLG' if hlg else 'ST 2084'}",
+        "sampleEncoding": encoding,
+        encoding: {**reference, "referencePeakNits": HLG_REFERENCE_PEAK_NITS} if hlg else reference,
     }, info["codec"]

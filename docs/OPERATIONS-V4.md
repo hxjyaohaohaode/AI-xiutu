@@ -244,6 +244,7 @@ GPT-Live 的终态核验检查最终 `session.closed` 使用量；Realtime 使�
 | EXR / Radiance                | 数据窗口最多 50MP                                | OpenImageIO，色域、通道及资源限制分别生效                           |
 | Ultra HDR JPEG                | 至多 24MP、128MiB、每边 8–8192 像素               | `server-media` 配置 `MEDIA_UHDR_LIBRARY`。全图与裁切导出重新编码增益图 |
 | HEIC PQ                       | 10/12 位，至多 24MP、128MiB、每边 8–8192 像素    | `server-media` 配置 `MEDIA_HEIC_DECODER`，只解码符合 NCLX PQ 的单幅不透明原片 |
+| HEIC / HIF HLG                | 10/12 位，至多 50MP、128MiB、每边 8–10000 像素   | 同一解码器须通过 `--probe-hlg`，接受显式 Rec.2020 NCLX HLG 的单幅不透明原片 |
 | PSD                           | 最多 16,777,216 像素、128MiB、256 元数据节点     | 读取已存合成图及有界层摘要，不是可编辑 PSD 图层往返                 |
 | 生产导入代理图                | 最多 4,194,304 像素                              | 与原件/母版尺寸分开                                                 |
 | 生产导入隔离执行 wall timeout | 180 秒                                           | 当前 API 未暴露环境变量放宽该值；不等于上传/排队/发布全过程截止     |

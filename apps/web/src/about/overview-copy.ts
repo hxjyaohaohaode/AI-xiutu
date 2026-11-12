@@ -47,6 +47,10 @@ const copy: Record<Locale, OverviewCopy> = {
         "曝光、白平衡、曲线与 HSL。"
       ],
       [
+        "RAW · HDR 原件",
+        "保留原件，高精度调整曲线与局部色彩。"
+      ],
+      [
         "局部调整",
         "画出选区，只改变需要改变的地方。"
       ],
@@ -198,6 +202,10 @@ const copy: Record<Locale, OverviewCopy> = {
         "曝光、白平衡、曲線與 HSL。"
       ],
       [
+        "RAW · HDR 原件",
+        "保留原件，以高精度調整曲線與局部色彩。"
+      ],
+      [
         "局部調整",
         "畫出選區，只改變需要改變的地方。"
       ],
@@ -347,6 +355,10 @@ const copy: Record<Locale, OverviewCopy> = {
       [
         "Light and colour",
         "Exposure, white balance, curves and HSL."
+      ],
+      [
+        "RAW and HDR originals",
+        "Keep the source file and grade curves and local color in a high-precision master."
       ],
       [
         "Local adjustments",

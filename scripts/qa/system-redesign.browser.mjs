@@ -49,7 +49,7 @@ const report = {
   startedAt: new Date().toISOString(), state: 'running',
   runtime: 'built Vite app; actual API; isolated in-memory PostgreSQL WASM',
   cases: [], layouts: [], logos: [], scrolls: [], screenshots: [], inputs: [],
-  pageErrors: [], unexpectedOrigins: [], requests: {}, manualVisualReview: false,
+  pageErrors: [], routingErrors: [], unexpectedOrigins: [], requests: {}, manualVisualReview: false,
   limits: [
     'Five different locale/viewport/motion scenarios exercise import, numeric editing, undo, redo, original comparison and a decoded download.',
     'This does not certify all 111 matrix items, native HDR precision, a physical device, a live AI provider or a real multiplayer session.',
@@ -61,6 +61,7 @@ const report = {
 const published = [];
 const photos = new Map();
 const caseContexts = new Set();
+const quoteTransportGates = new WeakMap();
 const failures = new Map();
 let memoryDb, socket, db, app, preview, browser, activePage;
 let activeCase = 'bootstrap';
@@ -163,6 +164,7 @@ async function check(name, run) {
   const started = Date.now();
   try {
     const details = await run();
+    assert.deepEqual(report.routingErrors.filter((failure) => failure.case === name), [], name + ' must not have request routing errors.');
     report.cases.push({ name, state: 'passed', durationMs: Date.now() - started, ...details });
     console.log('PASS ' + name);
     return details;
@@ -217,12 +219,40 @@ async function newPage(specification, route = '/#/studio', signedIn = false) {
     localStorage.setItem('yingjian.locale.v1', locale);
     localStorage.setItem('image-workspace:theme', theme);
   }, { locale: specification.locale, theme: specification.theme ?? 'light' });
+  const ownerCase = activeCase;
   await context.route('**/*', async (route) => {
-    const url = new URL(route.request().url());
-    if (url.origin !== origin && !['data:', 'blob:'].includes(url.protocol)) {
-      report.unexpectedOrigins.push({ case: activeCase, origin: url.origin, path: url.pathname });
-      await route.abort('blockedbyclient');
-    } else await route.continue();
+    const request = route.request();
+    const url = new URL(request.url());
+    try {
+      if (url.origin !== origin && !['data:', 'blob:'].includes(url.protocol)) {
+        report.unexpectedOrigins.push({ case: ownerCase, origin: url.origin, path: url.pathname });
+        await route.abort('blockedbyclient');
+      } else {
+        const gate = quoteTransportGates.get(context);
+        if (gate && !gate.held && request.method() === 'POST' && request.url() === gate.url) {
+          gate.held = true;
+          // The existing origin guard owns the only handler and continuation.
+          // Only this exact, once-only local quote waits; no response is replaced.
+          await gate.wait;
+        }
+        await route.continue();
+      }
+    } catch (error) {
+      const failure = {
+        case: ownerCase, method: request.method(),
+        path: url.pathname.replace(/[a-f0-9]{8}-[a-f0-9-]{27}/g, ':id').slice(0, 200),
+        message: String(error?.message ?? error).split('\n')[0].slice(0, 600),
+      };
+      if (report.routingErrors.length < 40) {
+        report.routingErrors.push(failure);
+        console.error('ROUTE FAILURE ' + JSON.stringify(failure));
+      }
+      const finishedCase = report.cases.find((entry) => entry.name === ownerCase);
+      if (finishedCase?.state === 'passed') {
+        finishedCase.state = 'failed';
+        finishedCase.message = 'Request routing failed: ' + failure.message;
+      }
+    }
   });
   if (signedIn) await signedIn(context);
   const page = await context.newPage();
@@ -831,23 +861,19 @@ async function supplementalViews(config) {
       await verificationCapture(page, 'views/restoration-denoise.png', 'restoration-denoise', restoration.state + ': actual denoise controls; no derived asset created');
       const advanced = repair.locator('details.restoration-extra');
       const quoteUrl = origin + derivePath + '/quote';
-      let releaseQuote, quoteHeld = false;
-      const quoteGate = new Promise((resolveGate) => { releaseQuote = resolveGate; });
-      const holdMotionQuote = async (route) => {
-        if (route.request().method() !== 'POST' || quoteHeld) return route.fallback();
-        quoteHeld = true;
-        // Delay transport only. The exact request still passes through the origin
-        // guard and real backend after the keyboard boundary has been checked.
-        await quoteGate;
-        await route.fallback();
+      let releaseQuote;
+      const quoteGate = {
+        url: quoteUrl, held: false,
+        wait: new Promise((resolveGate) => { releaseQuote = resolveGate; }),
       };
+      assert.equal(quoteTransportGates.has(context), false, 'A browser context can hold only this one quote gate.');
       quoteResponse = undefined;
-      await page.route(quoteUrl, holdMotionQuote);
+      quoteTransportGates.set(context, quoteGate);
       try {
         await repair.getByRole('button', { name: '运动模糊', exact: true }).click();
         await repair.locator('input[type="number"][aria-label="运动长度"]').waitFor();
         if (restoration.quoteVerified) {
-          await until(() => quoteHeld, 'the next real motion quote waits at the transport gate');
+          await until(() => quoteGate.held, 'the next real motion quote waits at the transport gate');
           assert.equal(await repair.locator('.restoration-actions > button.button-primary').isDisabled(), true,
             'Creating a copy stays disabled while its actual quote is pending.');
           assert.equal(await advanced.evaluate((node) => node.open), false, 'Optional restoration parameters start collapsed.');
@@ -866,7 +892,7 @@ async function supplementalViews(config) {
         }
       } finally {
         releaseQuote();
-        await page.unroute(quoteUrl, holdMotionQuote);
+        if (quoteTransportGates.get(context) === quoteGate) quoteTransportGates.delete(context);
       }
       if (restoration.quoteVerified) {
         await until(() => quoteResponse, 'the released motion quote reaches the real backend');
@@ -1008,10 +1034,11 @@ try {
   await check('capture-completeness-and-runtime-errors', async () => {
     assert.deepEqual([...published.map((file) => file.path)].sort(), [...PUBLISH_IMAGE_PATHS].sort());
     assert.deepEqual(report.pageErrors, [], 'No unhandled browser runtime errors.');
+    assert.deepEqual(report.routingErrors, [], 'No browser request routing errors.');
     assert.deepEqual(report.unexpectedOrigins, [], 'The browser must not contact any external service.');
     return { publishedImageCount: published.length };
   });
-  report.state = report.cases.some((entry) => entry.state !== 'passed') || report.cleanupErrors?.length ? 'failed' : 'passed';
+  report.state = report.cases.some((entry) => entry.state !== 'passed') || report.routingErrors.length || report.cleanupErrors?.length ? 'failed' : 'passed';
 } catch (error) {
   report.state = 'failed';
   report.failure = { case: activeCase, message: String(error?.stack ?? error).slice(0, 6000) };
@@ -1030,6 +1057,7 @@ try {
       (report.cleanupErrors ??= []).push({ resource: name, message: String(error.message).slice(0, 500) });
     }
   }
+  if (report.routingErrors.length) report.state = 'failed';
   report.finishedAt = new Date().toISOString();
   const manifest = {
     schemaVersion: 1, state: report.state, testedCommit, repository: REPOSITORY,

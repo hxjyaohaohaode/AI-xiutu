@@ -18,7 +18,7 @@
 
 母版预览可提交不超过2048像素的窗口，按源数据窗口坐标提取真实像素。整图预览先调色再缩小。相同输入、调色和源摘要共享同一个 `X-Precision-Edit-SHA256`，包含窗口预览和不同导出格式。API 将用户保存的参数追加为独立版本，支持重新打开、继续调色及指定版本导出。
 
-原件与母版查看器对可用 WebGPU 的相机 RAW、Ultra HDR JPEG 和 HEIC PQ 支持适屏连续调色。Worker 从现有受授权的母版接口读取 ZIP EXR 并校验 SHA-256。相机 RAW 开发的 uint16 归一化样本可逆地打包，HDR 直接传递有符号 float32。GPU 每帧对所有原像素计算场景线性配方，显示 HDR 时应用同一 SDR 色调映射，再按相同的 Lanczos3 几何采样。原像素窗口和文件导出由媒体 API 交付。浏览器显存和计算设备能力不足时使用同源 CPU 预览。[相机和手机实拍验收](../../docs/research/PHOTO-EDITING-FEATURE-MATRIX.md#r01-和-f07-原尺寸开发后的适屏性能)
+原件与母版查看器对可用 WebGPU 的相机 RAW、Ultra HDR JPEG 和 HEIC PQ/HLG 支持适屏连续调色。Worker 从现有受授权的母版接口读取 ZIP EXR 并校验 SHA-256。相机 RAW 开发的 uint16 归一化样本可逆地打包，HDR 直接传递有符号 float32。GPU 每帧对所有原像素计算场景线性配方，显示 HDR 时应用同一 SDR 色调映射，再按相同的 Lanczos3 几何采样。原像素窗口和文件导出由媒体 API 交付。浏览器显存和计算设备能力不足时使用同源 CPU 预览。[相机和手机实拍验收](../../docs/research/PHOTO-EDITING-FEATURE-MATRIX.md#r01-和-f07-原尺寸开发后的适屏性能)
 
 线性母版窗口在独立 Python 进程中复用解码环境，使用与导出相同的条带调色及 sRGB 量化。每次按当前素材授权打开母版，核对实际文件的设备、inode、尺寸和纳秒时间戳。首次或身份变化时重新核对完整 SHA-256。解码使用已核对的文件描述符，返回前再核对文件和路径。对同一文件身份和坐标复用最多一个窗口的原始 float32 条带，缓存最多 16MiB。窗口 PNG16 使用低压缩级别的无损编码，API 写入标准 sRGB ICC 后返回。每个 API 实例最多一个原像素窗口执行槽和一个等待槽，可与整图转换并行。窗口地址空间 1GiB，执行期限 10 秒，空闲 20 秒或处理 1,024 次后回收。取消和超时终止进程组。
 
@@ -83,7 +83,8 @@ DZI：`tileSize` 为 256/512/1024，`overlap:1`；`levels = ceil(log2(max(width,
 | EXR/Radiance                                 | 可选 OpenImageIO，flat 1/3/4 通道 float 解码与独立线性母版     | 至多50MP；deep、multipart、未知显式色域/曲线拒绝                      |
 | JPEG Ultra HDR                               | 可选 libultrahdr 重建高光并转换到线性 Rec.709，独立保存原件、SDR 基图和 EXR32 母版 | 至多 24MP、128MiB、每边 8–8192 像素。原件和 SDR 开发在增益图解码器未启用时仍可用 |
 | HEIC PQ                                     | libheif/libde265 解出 10/12 位样本，显式解释 NCLX 色域和参考白，保存原件、线性 Rec.709 EXR32 和 SDR16 母版 | 至多 24MP、128MiB、每边 8–8192 像素。单幅、不透明、无辅助图、无 ICC |
-| 浮点 TIFF、SVG/PDF、JXL/JP2、动画/多页、其他 HEIC | 当前没有完整开启的导入工作流                                | HEIC 的 HLG、增益图、SDR 和 HEIC 同容器编辑导出仍待支持               |
+| HEIC / HIF HLG                              | 10/12 位 NCLX Rec.2020，使用 BT.2100 参考显示变换生成 EXR32 和 SDR16 母版 | 至多 50MP、128MiB、每边 8–10000 像素。单幅、不透明、无辅助图、无 ICC |
+| 浮点 TIFF、SVG/PDF、JXL/JP2、动画/多页、其他 HEIC | 当前没有完整开启的导入工作流                                | HEIC 的增益图、SDR 和 HEIC 同容器编辑导出仍待支持               |
 
 本机验证过 JPEG、PNG、WebP、AVIF、GIF、16 位 TIFF/PNG、RGB8/RGB16 PSD、P3 ICC、CMYK JPEG/TIFF、实际 Nikon NEF、float EXR 与 Radiance。原件、母版原像素窗口、调色历史、PNG16/TIFF16/EXR32 的实拍验证另覆盖 Nikon NEF、Canon CR2、Sony A7 III ARW、富士 X-T4 RAF、宾得 K-1 DNG 和 Pixel 6 Pro DNG。Sony、富士、宾得和 Pixel 样本来自 raw.pixls.us 的 CC0 条目 2414、3914、2470 和 5961。另用条目 2790 的 Nikon Z7 NEF（45.75MP）和 3480 的 Sony A7R IV ARW（61.01MP）验证跨瓦片原像素窗口及三种格式的整图下载。具体证据见 `test/media.test.ts`、`scripts/qa/media-verify.ts` 和[验收主表](../../docs/research/PHOTO-EDITING-FEATURE-MATRIX.md#r02-和-f04-真实大幅相机-raw)。
 
@@ -106,6 +107,8 @@ SDR 母版采用固定亮度 Reinhard：非负线性 RGB 除以 `1+Y`，再 sRGB
 Ultra HDR JPEG 保留原 JPEG 的 SDR 基图与色彩解释。参考解码器以线性半浮点重建增益图的最高 HDR 意图，再逐条带把解码器报告的 Rec.709、Display P3 或 Rec.2020 转成 Rec.709。浮点母版保留负通道及大于 1 的值，并按 EXIF 方向写入。选择 `format:'ultrahdr'` 时，同一母版调色结果经编码生成新的 SDR 基图和增益图，支持原尺寸及原图坐标内裁切。精确浮点交付使用 EXR32。由增益图母版生成的浏览器窗口和 SDR 导出在量化到 sRGB 前统一应用 Reinhard 映射，保留 SDR 上的亮部层次。`toneMap:'none'` 保留 HDR 输出的线性高光。[Android Ultra HDR 规范](https://developer.android.com/media/platform/hdr-image-format)
 
 HEIC PQ 按 ST 2084 把原始编码值转换为绝对亮度。用文件声明的 `ndwt` 漫射参考白归一化，缺省用 203 cd/m²。Rec.709、Display P3 或 Rec.2020 转成有符号线性 Rec.709。参考白和源色域写入 `original.pq`。调色保存、原像素窗口、PNG16、TIFF16、EXR32 和 Ultra HDR JPEG 复用同一母版。原件下载保留 HEIC 字节，调色后的 HDR 下载提供 EXR32 或带增益图的 JPEG。[Apple HDR 样例](https://developer.apple.com/documentation/uikit/supporting-hdr-images-in-your-app) · [ITU-R BT.2408](https://www.itu.int/pub/R-REP-BT.2408)
+
+HEIC / HIF HLG 先应用 BT.2100 逆 OETF，再以 Rec.2020 亮度计算参考显示 OOTF，峰值 1000 cd/m²、系统 gamma 1.2。转换到线性 Rec.709 后，保留负通道及高于漫射白的值，描述符写入 `original.hlg`。超过增益图 JPEG 的 24MP 或 8192 像素边长预算时，整图可导出 EXR32，API 也可输出满足预算的 Ultra HDR JPEG 裁切。[ITU-R BT.2100-3 表 5](https://www.itu.int/rec/R-REC-BT.2100-3-202502-I/en)
 
 ## 部署与资源治理
 
