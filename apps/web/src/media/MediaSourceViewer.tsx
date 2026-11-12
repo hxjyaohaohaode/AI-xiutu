@@ -155,14 +155,26 @@ export function MediaSourceViewer({ assetId }: { assetId: string }) {
   const wantsGrade = grading && canEdit;
   const overviewEdge = Math.min(maxEdge ?? 1536, 1536);
   const pixelRatio = globalThis.devicePixelRatio || 1;
-  const sourceToDisplay = Math.min(1, view.zoom * pixelRatio);
+  const physicalZoom = view.zoom * pixelRatio;
+  const sourceToDisplay = Math.min(1, physicalZoom);
+  // At 1:1, place the original raster on the device grid, including on HiDPI screens.
+  const previewView =
+    Math.abs(physicalZoom - 1) <= Number.EPSILON
+      ? {
+          ...view,
+          x: Math.round(view.x * pixelRatio) / pixelRatio,
+          y: Math.round(view.y * pixelRatio) / pixelRatio,
+        }
+      : view;
   const needsWindow =
     descriptor &&
-    (view.zoom >= 0.75 ||
+    (physicalZoom >= 0.75 ||
       (wantsGrade &&
         Math.max(descriptor.master.width, descriptor.master.height) * sourceToDisplay >
           overviewEdge));
-  const sourceWindow = needsWindow ? visibleSourceWindow(descriptor.master, view, size) : undefined;
+  const sourceWindow = needsWindow
+    ? visibleSourceWindow(descriptor.master, previewView, size)
+    : undefined;
   const windowEdge = sourceWindow ? Math.max(sourceWindow.width, sourceWindow.height) : 0;
   const region = sourceWindow && maxEdge && windowEdge <= maxEdge ? sourceWindow : undefined;
   const fitRegion =
@@ -235,7 +247,7 @@ export function MediaSourceViewer({ assetId }: { assetId: string }) {
   const gpuBounds = sourceWindow ?? fitMaster;
   const tileList =
     descriptor && tiles
-      ? visibleTiles({ ...descriptor.master, ...tiles }, view, size, pixelRatio)
+      ? visibleTiles({ ...descriptor.master, ...tiles }, previewView, size, pixelRatio)
       : [];
   useEffect(() => {
     const element = root.current;
@@ -379,14 +391,14 @@ export function MediaSourceViewer({ assetId }: { assetId: string }) {
     >
       <div className="media-zoom-tools">
         <strong>{t('原件细节')}</strong>
-        <span>{(view.zoom * 100).toFixed(view.zoom < 0.1 ? 1 : 0)}%</span>
+        <span>{(physicalZoom * 100).toFixed(physicalZoom < 0.1 ? 1 : 0)}%</span>
         <IconButton label={t('缩小源图')} onClick={() => zoomTo(view.zoom / 1.5)}>
           <Minus size={16} />
         </IconButton>
         <IconButton label={t('放大源图')} onClick={() => zoomTo(view.zoom * 1.5)}>
           <Plus size={16} />
         </IconButton>
-        <button className="text-button" onClick={() => zoomTo(1)}>
+        <button className="text-button" onClick={() => zoomTo(1 / pixelRatio)}>
           1:1
         </button>
         <IconButton label={t('源图适合窗口')} onClick={fit}>
@@ -476,8 +488,8 @@ export function MediaSourceViewer({ assetId }: { assetId: string }) {
             className="media-tile media-precision-frame"
             data-native-window={frame.exactWindow ? 'true' : undefined}
             style={{
-              left: view.x + ('left' in previewRegion ? previewRegion.left : 0) * view.zoom,
-              top: view.y + ('top' in previewRegion ? previewRegion.top : 0) * view.zoom,
+              left: previewView.x + ('left' in previewRegion ? previewRegion.left : 0) * view.zoom,
+              top: previewView.y + ('top' in previewRegion ? previewRegion.top : 0) * view.zoom,
               width: previewRegion.width * view.zoom,
               height: previewRegion.height * view.zoom,
             }}
@@ -504,8 +516,8 @@ export function MediaSourceViewer({ assetId }: { assetId: string }) {
             }
             hidden={!gpu.painted}
             style={{
-              left: view.x + (sourceWindow?.left ?? 0) * view.zoom,
-              top: view.y + (sourceWindow?.top ?? 0) * view.zoom,
+              left: previewView.x + (sourceWindow?.left ?? 0) * view.zoom,
+              top: previewView.y + (sourceWindow?.top ?? 0) * view.zoom,
               width: gpuBounds.width * view.zoom,
               height: gpuBounds.height * view.zoom,
             }}
