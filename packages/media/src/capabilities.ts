@@ -210,6 +210,7 @@ export async function getMediaCapabilities(
       maxPixels: MEDIA_MAX_PRECISION_PIXELS,
       maxLinearPixels: MEDIA_MAX_LINEAR_PIXELS,
       previewMaxEdge: MEDIA_MAX_PREVIEW_EDGE,
+      maxFitRegionPixels: MEDIA_MAX_PRECISION_PIXELS,
       curves: {
         algorithm: 'scene-linear-v2',
         input: 'linear-master',

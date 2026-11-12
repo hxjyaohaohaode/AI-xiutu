@@ -191,7 +191,7 @@ jobs:
       - name: Build optional native media runtime and verify its actual libraries
         run: |
           docker build --target server-media --tag xiutu-media-ci -f infra/Dockerfile .
-          docker run --rm --memory 4g --pids-limit 192 --cap-drop ALL --security-opt no-new-privileges xiutu-media-ci node --import tsx --input-type=module -e 'import {getMediaCapabilities} from "@ai-xiutu/media"; const c=await getMediaCapabilities({pythonExecutable:process.env.MEDIA_PYTHON,ultraHdrLibrary:process.env.MEDIA_UHDR_LIBRARY,heicDecoder:process.env.MEDIA_HEIC_DECODER}); if(!c.available||!c.nativeReady||!c.ultraHdrJpeg.available||!c.heicPq.available)process.exit(1); console.log(JSON.stringify({isolation:c.isolation,nativeVersions:c.nativeVersions}));'
+          docker run --rm --memory 4g --pids-limit 192 --cap-drop ALL --security-opt no-new-privileges xiutu-media-ci node --import tsx --input-type=module -e 'import {getMediaCapabilities} from "@ai-xiutu/media"; const c=await getMediaCapabilities({pythonExecutable:process.env.MEDIA_PYTHON,ultraHdrLibrary:process.env.MEDIA_UHDR_LIBRARY,heicDecoder:process.env.MEDIA_HEIC_DECODER}); if(!c.available||!c.nativeReady||!c.ultraHdrJpeg.available||!c.heicPq.available||!c.heicHlg.available)process.exit(1); console.log(JSON.stringify({isolation:c.isolation,nativeVersions:c.nativeVersions}));'
           docker run --rm --memory 4g --pids-limit 192 --cap-drop ALL --security-opt no-new-privileges xiutu-media-ci node --import tsx --test packages/media/test/media.test.ts
           docker run --rm --memory 4g --pids-limit 192 --cap-drop ALL --security-opt no-new-privileges --env MEDIA_QA_PYTHON=/opt/media/bin/python xiutu-media-ci node --import tsx --test packages/media/test/precision.test.ts
       - name: Start PostgreSQL, migration, API, worker and web
@@ -234,21 +234,26 @@ jobs:
               vision = json.load(response)
               assert vision['schemaVersion'] == 1 and vision['sdkVersion'] == '1.2.2'
           matting = json.loads(Path('third-party/portrait-matting.json').read_text())
+          fine_matting = json.loads(Path('third-party/portrait-fine-matting.json').read_text())
           expected_vision = {
               'face_landmarker.task', 'pose_landmarker_lite.task',
-              'selfie_multiclass_256x256.tflite', matting['file'],
+              'selfie_multiclass_256x256.tflite', matting['file'], fine_matting['file'],
           }
           assert len(vision['assets']) == len(expected_vision)
-          assert {item['file'] for item in vision['assets']} == expected_vision
+          published_vision = {item['file']: item for item in vision['assets']}
+          assert published_vision.keys() == expected_vision
+          for model in (matting, fine_matting):
+              assert published_vision[model['file']] == {key: model[key] for key in ('file', 'bytes', 'sha256')}
           import hashlib
           for item in vision['assets']:
               with urlopen(base + '/vision/' + item['file'], timeout=15) as response:
                   contents = response.read()
                   assert len(contents) == item['bytes']
                   assert hashlib.sha256(contents).hexdigest() == item['sha256']
-          with urlopen(base + '/vision/wasm/' + matting['runtimeFile'], timeout=15) as response:
-              assert response.headers.get_content_type() == 'application/wasm'
-              assert response.read(8) == b'\0asm\1\0\0\0'
+          for runtime in (matting['runtimeFile'], 'ort-wasm-simd-threaded.jsep.wasm', 'ort-wasm-simd-threaded.asyncify.wasm'):
+              with urlopen(base + '/vision/wasm/' + runtime, timeout=15) as response:
+                  assert response.headers.get_content_type() == 'application/wasm'
+                  assert response.read(8) == b'\0asm\1\0\0\0'
           try:
               urlopen(base + '/vision/missing-file.task', timeout=5)
           except HTTPError as error:

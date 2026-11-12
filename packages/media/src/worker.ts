@@ -742,7 +742,7 @@ async function exportLinearMaster(
         sdrToneMap: sdr && hasDisplayHdr(descriptor.original),
         // The bounded private TIFF is immediately read by the final encoder.
         // Compress only the deliverable to avoid two lossless encodes.
-        uncompressedSdr: sdr && !region,
+        uncompressedSdr: sdr && !job.preview?.region,
         ...(ultraHdr ? { linearTiff: true } : {}),
         region,
       }),

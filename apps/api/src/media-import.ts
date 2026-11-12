@@ -21,6 +21,7 @@ import {
   MEDIA_MAX_PRECISION_PIXELS,
   MEDIA_MAX_LINEAR_PIXELS,
   MEDIA_MAX_PREVIEW_EDGE,
+  MEDIA_MAX_SIDE,
   MEDIA_MIN_GAIN_MAP_SIDE,
   MEDIA_MAX_GAIN_MAP_SIDE,
   type MediaDescriptorV1,
@@ -82,6 +83,10 @@ const windowSchema = z
 const ultraHdrCropSchema = windowSchema.extend({
   width: z.number().int().min(MEDIA_MIN_GAIN_MAP_SIDE).max(MEDIA_MAX_GAIN_MAP_SIDE),
   height: z.number().int().min(MEDIA_MIN_GAIN_MAP_SIDE).max(MEDIA_MAX_GAIN_MAP_SIDE),
+});
+const fittedWindowSchema = windowSchema.extend({
+  width: z.number().int().min(1).max(MEDIA_MAX_SIDE),
+  height: z.number().int().min(1).max(MEDIA_MAX_SIDE),
 });
 interface MediaAccess {
   project_id: string;
@@ -717,15 +722,18 @@ export function registerMediaImport(app: FastifyInstance, db: Database, config: 
     const master = input === 'linear-master' ? row.descriptor.linearMaster : row.descriptor.master;
     if (!master || (input === 'linear-master' && !(await capabilities).nativeReady))
       throw new HttpError(422, 'MEDIA_FLOAT_UNAVAILABLE', '线性母版或浮点运行环境不可用。');
-    const region = preview?.region;
+    if (preview?.region && preview.fitRegion)
+      throw new HttpError(422, 'MEDIA_PREVIEW_WINDOW', '请选择一种预览区域模式。');
+    const region = preview?.region ?? preview?.fitRegion;
     if (region) {
       if (
         region.left + region.width > master.width ||
         region.top + region.height > master.height ||
-        region.width > preview.maxEdge ||
-        region.height > preview.maxEdge
+        (preview?.region && (region.width > preview.maxEdge || region.height > preview.maxEdge))
       )
         throw new HttpError(422, 'MEDIA_PREVIEW_WINDOW', '预览区域超出母版或预览尺寸。');
+      if (preview?.fitRegion && region.width * region.height > MEDIA_MAX_PRECISION_PIXELS)
+        throw new HttpError(413, 'MEDIA_PRECISION_BUDGET', '适屏区域超过当前调色预算。');
     } else if (
       master.width * master.height >
       (input === 'linear-master' ? MEDIA_MAX_LINEAR_PIXELS : MEDIA_MAX_PRECISION_PIXELS)
@@ -1085,11 +1093,12 @@ export function registerMediaImport(app: FastifyInstance, db: Database, config: 
         expectedSourceSha256: sourceDigest,
         maxEdge: z.number().int().min(128).max(MEDIA_MAX_PREVIEW_EDGE),
         region: windowSchema.optional(),
+        fitRegion: fittedWindowSchema.optional(),
       })
       .strict()
       .parse(req.body);
     const row = await sourceAccess(assetId, actor.id);
-    const preview = { maxEdge: body.maxEdge, region: body.region };
+    const preview = { maxEdge: body.maxEdge, region: body.region, fitRegion: body.fitRegion };
     const edit = parsePrecisionEdit(
       body.precisionEdit === undefined ? NEUTRAL_PRECISION_EDIT : body.precisionEdit,
     );

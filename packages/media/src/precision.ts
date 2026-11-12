@@ -9,6 +9,7 @@ import {
 } from '@ai-xiutu/editor';
 import {
   MEDIA_MAX_PREVIEW_EDGE,
+  MEDIA_MAX_PRECISION_PIXELS,
   MediaProcessingError,
   type MediaPrecisionInput,
   type MediaPrecisionPreview,
@@ -42,7 +43,9 @@ export function previewWindow(
     preview.maxEdge > MEDIA_MAX_PREVIEW_EDGE
   )
     throw new MediaProcessingError('Preview edge is outside the display budget', 'limit');
-  const region = preview.region;
+  if (preview.region && preview.fitRegion)
+    throw new MediaProcessingError('Select one preview window mode', 'unsupported');
+  const region = preview.region ?? preview.fitRegion;
   if (!region) return undefined;
   if (
     ![region.left, region.top, region.width, region.height].every(Number.isSafeInteger) ||
@@ -50,8 +53,9 @@ export function previewWindow(
     region.top < 0 ||
     region.width < 1 ||
     region.height < 1 ||
-    region.width > preview.maxEdge ||
-    region.height > preview.maxEdge ||
+    (preview.region
+      ? region.width > preview.maxEdge || region.height > preview.maxEdge
+      : region.width * region.height > MEDIA_MAX_PRECISION_PIXELS) ||
     region.left + region.width > source.width ||
     region.top + region.height > source.height
   )

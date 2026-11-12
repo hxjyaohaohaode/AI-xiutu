@@ -16,7 +16,7 @@ import { api, errorMessage, jsonRequest, ApiError } from '../lib/api';
 import { InlineError, IconButton } from '../components/Ui';
 import { PrecisionRange } from '../editor/PrecisionRange';
 import { ChoiceSelect } from '../components/ChoiceSelect';
-import { nativePreviewWindow, visibleTiles, zoomAround, type TileView } from './tile-layout';
+import { visibleSourceWindow, visibleTiles, zoomAround, type TileView } from './tile-layout';
 import { useMasterPreview } from './useMasterPreview';
 import { useLinearFitPreview } from './useLinearFitPreview';
 import './media.css';
@@ -42,6 +42,7 @@ export interface MediaRecord {
       maxPixels: number;
       maxLinearPixels?: number;
       previewMaxEdge?: number;
+      maxFitRegionPixels?: number;
       canSave?: boolean;
       currentGrade?: MediaGradeRevision | null;
     };
@@ -150,10 +151,28 @@ export function MediaSourceViewer({ assetId }: { assetId: string }) {
     descriptor.master.width * descriptor.master.height <= (maxGradePixels ?? precision.maxPixels)
   );
   const maxEdge = precision?.previewMaxEdge;
-  const region =
-    descriptor && maxEdge ? nativePreviewWindow(descriptor.master, view, size, maxEdge) : undefined;
   const wantsGrade = grading && canEdit;
   const overviewEdge = Math.min(maxEdge ?? 1536, 1536);
+  const pixelRatio = globalThis.devicePixelRatio || 1;
+  const sourceToDisplay = Math.min(1, view.zoom * pixelRatio);
+  const needsWindow =
+    descriptor &&
+    (view.zoom >= 0.75 ||
+      (wantsGrade &&
+        Math.max(descriptor.master.width, descriptor.master.height) * sourceToDisplay >
+          overviewEdge));
+  const sourceWindow = needsWindow ? visibleSourceWindow(descriptor.master, view, size) : undefined;
+  const windowEdge = sourceWindow ? Math.max(sourceWindow.width, sourceWindow.height) : 0;
+  const region = sourceWindow && maxEdge && windowEdge <= maxEdge ? sourceWindow : undefined;
+  const fitRegion =
+    !region &&
+    sourceWindow &&
+    sourceWindow.width * sourceWindow.height <= (precision?.maxFitRegionPixels ?? 0)
+      ? sourceWindow
+      : undefined;
+  const fittedEdge = sourceWindow
+    ? Math.min(maxEdge ?? 2048, Math.max(128, Math.ceil(windowEdge * sourceToDisplay)))
+    : overviewEdge;
   const fitEncoding =
     descriptor?.original.sampleEncoding === 'sensor-raw'
       ? 'camera-raw'
@@ -168,33 +187,43 @@ export function MediaSourceViewer({ assetId }: { assetId: string }) {
     assetId,
     fitMaster,
     fitEncoding,
-    overviewEdge,
-    wantsGrade && !region ? edit : null,
+    {
+      region: sourceWindow,
+      maxEdge: fittedEdge,
+    },
+    wantsGrade ? edit : null,
+    !region,
   );
   const previewBody =
-    precision?.master16 && maxEdge && (region || wantsGrade)
+    precision?.master16 && maxEdge && (region || fitRegion || (wantsGrade && !needsWindow))
       ? JSON.stringify({
           expectedSourceSha256: precision.sourceSha256,
           precisionInput: wantsGrade ? precisionInput : 'master16',
           precisionEdit: wantsGrade ? edit : undefined,
-          maxEdge: region ? maxEdge : overviewEdge,
+          maxEdge: region ? maxEdge : fittedEdge,
           region,
+          fitRegion,
         })
       : null;
   const nativeLinearWindow = !!region && wantsGrade && precisionInput === 'linear-master';
   const preview = useMasterPreview(
     assetId,
     previewBody,
-    !gpu.painted && (!exporting || nativeLinearWindow),
+    !gpu.warm && (!exporting || nativeLinearWindow),
     nativeLinearWindow,
   );
-  const adjustmentsDisabled = saving || (exporting && !nativeLinearWindow && !gpu.painted);
-  // A fitted raster becomes soft when enlarged to 1:1. Keep the source tiles
-  // visible until a native window for that view has finished decoding.
-  const frame = region && !preview.frame?.region ? null : preview.frame;
+  const adjustmentsDisabled = saving || (exporting && !nativeLinearWindow && !gpu.warm);
+  const previousFrame = preview.frame;
+  const regionHasDetail =
+    previousFrame?.region &&
+    (previousFrame.exactWindow ||
+      (previousFrame.region.width * sourceToDisplay <= previousFrame.width + 1 &&
+        previousFrame.region.height * sourceToDisplay <= previousFrame.height + 1));
+  const frame = needsWindow && !regionHasDetail ? null : previousFrame;
   const previewRegion = frame?.region ?? descriptor?.master;
+  const gpuBounds = sourceWindow ?? fitMaster;
   const tileList =
-    descriptor && tiles ? visibleTiles({ ...descriptor.master, ...tiles }, view, size) : [];
+    descriptor && tiles ? visibleTiles({ ...descriptor.master, ...tiles }, view, size, pixelRatio) : [];
   useEffect(() => {
     const element = root.current;
     if (!element || !descriptor) return;
@@ -399,7 +428,7 @@ export function MediaSourceViewer({ assetId }: { assetId: string }) {
           drag.current = null;
         }}
       >
-        {!gpu.painted &&
+        {(!gpu.painted || sourceWindow) &&
           (!frame || frame.region) &&
           (tiles ? (
             tileList.map((tile) => (
@@ -432,7 +461,7 @@ export function MediaSourceViewer({ assetId }: { assetId: string }) {
         {!gpu.painted && frame && previewRegion && (
           <div
             className="media-tile media-precision-frame"
-            data-native-window={frame.region ? 'true' : undefined}
+            data-native-window={frame.exactWindow ? 'true' : undefined}
             style={{
               left: view.x + ('left' in previewRegion ? previewRegion.left : 0) * view.zoom,
               top: view.y + ('top' in previewRegion ? previewRegion.top : 0) * view.zoom,
@@ -443,16 +472,29 @@ export function MediaSourceViewer({ assetId }: { assetId: string }) {
             <img draggable={false} alt="" src={frame.url} />
           </div>
         )}
-        {fitMaster && (
+        {fitMaster && gpuBounds && (
           <div
             className="media-tile media-precision-frame"
             data-linear-fit={gpu.painted ? 'ready' : gpu.loading ? 'loading' : undefined}
+            data-linear-region={
+              sourceWindow
+                ? [
+                    sourceWindow.left,
+                    sourceWindow.top,
+                    sourceWindow.width,
+                    sourceWindow.height,
+                  ].join(',')
+                : undefined
+            }
+            data-native-window={
+              gpu.painted && sourceWindow && sourceToDisplay === 1 ? 'true' : undefined
+            }
             hidden={!gpu.painted}
             style={{
-              left: view.x,
-              top: view.y,
-              width: fitMaster.width * view.zoom,
-              height: fitMaster.height * view.zoom,
+              left: view.x + (sourceWindow?.left ?? 0) * view.zoom,
+              top: view.y + (sourceWindow?.top ?? 0) * view.zoom,
+              width: gpuBounds.width * view.zoom,
+              height: gpuBounds.height * view.zoom,
             }}
           >
             <canvas ref={gpu.canvas} aria-hidden="true" />

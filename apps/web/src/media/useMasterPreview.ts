@@ -1,7 +1,15 @@
 import { useEffect, useRef, useState } from 'react';
 import type { MediaPrecisionWindow } from '@ai-xiutu/media';
 
-type Frame = { assetId: string; url: string; key: string; region?: MediaPrecisionWindow };
+type Frame = {
+  assetId: string;
+  url: string;
+  key: string;
+  width: number;
+  height: number;
+  region?: MediaPrecisionWindow;
+  exactWindow: boolean;
+};
 type PreviewRequest = { key: string; attempt: 0 | 1; nativeWindow: boolean };
 
 export function useMasterPreview(
@@ -49,7 +57,10 @@ export function useMasterPreview(
     }
     async function render({ key, attempt, nativeWindow }: PreviewRequest) {
       try {
-        const region: MediaPrecisionWindow | undefined = JSON.parse(key).region;
+        const preview = JSON.parse(key) as {
+          region?: MediaPrecisionWindow;
+          fitRegion?: MediaPrecisionWindow;
+        };
         const response = await fetch(`/v1/assets/${assetId}/media/preview`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
@@ -85,7 +96,15 @@ export function useMasterPreview(
           return;
         }
         if (current.current) URL.revokeObjectURL(current.current.url);
-        current.current = { assetId, url, key, region };
+        current.current = {
+          assetId,
+          url,
+          key,
+          width: image.naturalWidth,
+          height: image.naturalHeight,
+          region: preview.region ?? preview.fitRegion,
+          exactWindow: !!preview.region,
+        };
         setFrame(current.current);
       } catch {
         if (!signal.aborted) setFailed(key);

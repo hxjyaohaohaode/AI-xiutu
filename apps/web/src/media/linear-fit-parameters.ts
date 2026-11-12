@@ -1,4 +1,10 @@
 import type { PrecisionEdit } from '@ai-xiutu/editor';
+import type { MediaPrecisionWindow } from '@ai-xiutu/media';
+
+export interface LinearFitArea {
+  region?: MediaPrecisionWindow;
+  maxEdge: number;
+}
 
 export const CURVE_OFFSET = 16;
 export const CURVE_STRIDE = 32;

@@ -1,5 +1,7 @@
 struct Geometry {
-  // Original width/height and display width/height.
+  // Original width/height and preview origin in original pixels.
+  source: vec4<u32>,
+  // Preview input width/height and output width/height.
   size: vec4<u32>,
   // Integer average factor, reduced axis length, Lanczos coefficient count.
   // The last y lane indicates signed float32 source samples.
@@ -152,12 +154,13 @@ fn roundedQ12(sum: vec3<i32>) -> vec3<i32> {
 fn developRows(@builtin(global_invocation_id) pos: vec3<u32>) {
   if (pos.x >= geo.size.x || pos.y >= geo.y.y) { return; }
   let count = geo.y.x;
+  let sourceX = geo.source.z + pos.x;
   var sum = vec3<u32>(0u);
   for (var dy = 0u; dy < count; dy++) {
-    let y = min(pos.y * count + dy, geo.size.y - 1u);
-    let index = (y * geo.size.x + pos.x) * 3u;
+    let sourceY = geo.source.w + min(pos.y * count + dy, geo.size.y - 1u);
+    let index = (sourceY * geo.source.x + sourceX) * 3u;
     let original = vec3(sample(index), sample(index + 1u), sample(index + 2u));
-    let point = (vec2<f32>(vec2(pos.x, y)) + 0.5) / vec2<f32>(geo.size.xy);
+    let point = (vec2<f32>(vec2(sourceX, sourceY)) + 0.5) / vec2<f32>(geo.source.xy);
     sum += develop(original, point);
   }
   vertical[pos.y * geo.size.x + pos.x] = pack((sum + vec3(count / 2u)) / count);
