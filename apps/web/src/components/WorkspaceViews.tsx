@@ -133,7 +133,6 @@ export function WorksView({
             <Images size={16} />
             {artworks.length} {t('件作品')}
           </span>
-          <span>{t('原件与编辑版本分别保存')}</span>
         </div>
       )}
       {!project ? (
@@ -168,6 +167,7 @@ export function WorksView({
               <button key={work.id} className="artwork-card" onClick={() => onOpen(work)}>
                 <div
                   className="artwork-cover"
+                  style={{ aspectRatio: asset ? `${asset.width} / ${asset.height}` : '4 / 3' }}
                   data-motion="artwork-media"
                   data-motion-pixels="true"
                 >
@@ -196,7 +196,6 @@ export function WorksView({
                     {work.headVersion}
                     <i /> {formatDate(work.updatedAt)}
                   </span>
-                  <small>{t('封面显示原始素材')}</small>
                 </div>
               </button>
             );
@@ -1887,127 +1886,52 @@ export function DocumentsView({
   );
 }
 
-export function DeliveryView({
-  editor,
-  artwork,
-  sourcePending,
-  onExport,
-  onRecipeImport,
-}: {
+export function DeliveryView({ editor, artwork, sourcePending, onExport, onRecipeImport }: {
   editor: EditorState;
   artwork: Artwork | null;
   sourcePending: boolean;
   onExport: () => void;
   onRecipeImport: () => void;
 }) {
+  const busy = sourcePending || editor.loading;
+  const dimensions = editor.rendered ?? editor.dimensions;
   return (
     <div className="content-view studio-view delivery-view">
-      <div className="view-heading" data-motion="view-header">
-        <div>
-          <h1>{t('导出与交付')}</h1>
-        </div>
-      </div>
+      <div className="view-heading" data-motion="view-header"><h1>{t('导出与交付')}</h1></div>
       {editor.file ? (
-        <section className="delivery-current" aria-label={t('当前交付作品')}>
+        <section className="delivery-composition" aria-label={t('当前交付作品')}>
           <div className="delivery-current-preview" role="img" aria-label={t('当前编辑的预览图')}>
             <ComparisonFrame image={editor.rendered} />
           </div>
-          <div>
-            <span className="small-label">{t('本次交付')}</span>
+          <div className="delivery-action-rail">
             <h2>{artwork?.title ?? editor.file.name}</h2>
-            <p>
-              {editor.dimensions
-                ? t('{v0} × {v1} · 原始尺寸', {
-                    v0: editor.dimensions.width,
-                    v1: editor.dimensions.height,
-                  })
-                : t('本地图片')}
-            </p>
+            <div className="delivery-facts">
+              {dimensions && <span>{dimensions.width} × {dimensions.height}</span>}
+              {artwork && <span>V{artwork.headVersion}</span>}
+            </div>
             <span className="studio-status" aria-live="polite">
-              {sourcePending || editor.loading ? (
-                <Busy label={t('正在读取图片')} />
-              ) : editor.rendering ? (
-                <Busy label={t('正在更新预览')} />
-              ) : (
-                <>
-                  <CheckCircle size={16} />
-                  {t('可导出当前编辑')}
-                </>
-              )}
+              {busy ? <Busy label={t('正在读取图片')} /> : editor.rendering ? <Busy label={t('正在更新预览')} /> : <><CheckCircle size={16} />{t('可导出当前编辑')}</>}
             </span>
+            <div className="delivery-primary-action">
+              <button className="button button-primary" onClick={onExport} disabled={busy}>
+                <DownloadSimple size={18} />{t('导出图片')}
+              </button>
+              <span>PNG · JPEG · WebP</span>
+            </div>
+            <div className="delivery-recipe-actions">
+              <button className="text-button" disabled={busy} onClick={editor.exportRecipe}>
+                <NotePencil size={18} />{t('保存编辑配方')}
+              </button>
+              <button className="text-button" disabled={busy} onClick={onRecipeImport}>
+                <UploadSimple size={18} />{t('导入已有配方')}
+              </button>
+            </div>
+            <small className="delivery-recipe-note">{t('配方不含原图')}</small>
           </div>
         </section>
       ) : (
-        <p className="studio-access-note">
-          <Images size={18} />
-          {t('先在精修中打开一张照片，再选择交付方式。')}
-        </p>
+        <EmptyState icon={<Images size={34} />} title={t('还没有打开照片')} description={t('打开照片后即可导出。')} />
       )}
-      <div className="delivery-grid">
-        <section className="surface delivery-card" data-motion="delivery">
-          <div className="delivery-icon">
-            <Images size={30} />
-          </div>
-          <span className="small-label">{t('完成后的画面')}</span>
-          <h2>{t('导出图片')}</h2>
-          <p>{t('以完整编辑尺寸重新计算当前调整，选择适合分享或继续创作的格式。')}</p>
-          <div className="delivery-formats" aria-label={t('可选图片格式')}>
-            <span>
-              PNG <small>{t('保留透明')}</small>
-            </span>
-            <span>
-              JPEG <small>{t('轻巧分享')}</small>
-            </span>
-            <span>
-              WebP <small>{t('按浏览器支持')}</small>
-            </span>
-          </div>
-          <button
-            className="button button-primary"
-            onClick={onExport}
-            disabled={!editor.file || editor.loading || sourcePending}
-          >
-            <DownloadSimple size={18} />
-            {t('选择导出格式')}
-          </button>
-        </section>
-        <section className="surface delivery-card" data-motion="delivery">
-          <div className="delivery-icon recipe">
-            <NotePencil size={30} />
-          </div>
-          <span className="small-label">{t('下一次继续创作')}</span>
-          <h2>{t('保存编辑配方')}</h2>
-          <p>{t('保存调色、曲线、构图和局部参数。配方不包含照片，请一并保留原件。')}</p>
-          <button
-            className="button button-secondary"
-            disabled={!editor.file || editor.loading || sourcePending}
-            onClick={editor.exportRecipe}
-          >
-            <DownloadSimple size={18} />
-            {t('下载配方 JSON')}
-          </button>
-          <button
-            className="text-button"
-            disabled={!editor.file || editor.loading || sourcePending}
-            onClick={onRecipeImport}
-          >
-            <UploadSimple size={16} />
-            {t('导入已有配方')}
-          </button>
-        </section>
-      </div>
-      <div className="delivery-note">
-        <CheckCircle size={19} />
-        <p>
-          {artwork
-            ? t('当前云端作品版本为 V{v0}。本地修改需保存后才进入项目历史。', {
-                v0: artwork.headVersion,
-              })
-            : t('本地导出无需登录。登录并保存到项目后，可以从其他设备继续编辑。')}
-          <br />
-          {t('原图和配方可能包含个人内容，分享前请确认接收范围。')}
-        </p>
-      </div>
     </div>
   );
 }

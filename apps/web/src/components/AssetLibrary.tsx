@@ -18,7 +18,6 @@ import {
   GridFour,
   Swap,
   SlidersHorizontal,
-  Info,
   CaretDown,
 } from '@phosphor-icons/react';
 import { api, ApiError, errorMessage, formatDate, jsonRequest } from '../lib/api';
@@ -751,6 +750,7 @@ export function AssetLibrary({
                     <article className="library-asset" key={asset.id}>
                       <button
                         className="library-cover"
+                        style={{ aspectRatio: `${asset.width} / ${asset.height}` }}
                         onClick={open}
                         disabled={!sameProject && !parent}
                         aria-label={
@@ -903,13 +903,6 @@ export function AssetLibrary({
               </button>
             </div>
           )}
-          <MotionDetails className="library-source-help">
-            <summary>
-              <Info size={15} aria-hidden />
-              {c.sourceCovers}
-            </summary>
-            <p>{c.sourceHelp}</p>
-          </MotionDetails>
         </>
       )}
       {projectTools && project && ['owner', 'admin', 'editor'].includes(project.role) && (

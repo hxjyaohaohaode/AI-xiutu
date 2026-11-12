@@ -539,7 +539,7 @@ function UsageWorkspace({
           </p>
         )}
         <InlineError message={t(memberError || operatorError || dateError || '')} />
-        <p className="usage-filter-timezone">{t('日期按北京时间计算，结束日期包含当天。')}</p>
+        <p className="usage-filter-timezone" title={t('日期按北京时间计算，结束日期包含当天。')}>{t('北京时间')}</p>
       </div>
       <InlineError message={t(state.error || exportError || '')} />
       {state.error && (
@@ -560,7 +560,7 @@ function UsageWorkspace({
       {report && (
         <>
           <div className="usage-overview">
-            <section className="usage-card usage-wallet" aria-label={t('当前钱包')}>
+            <section className="usage-card usage-wallet" aria-label={t('当前钱包')} title={t('完整钱包余额，不随日期或成员筛选变化。')}>
               <div className="usage-card-heading">
                 <h2>{walletName}</h2>
                 <span className="usage-context-label">{t('当前余额')}</span>
@@ -585,7 +585,6 @@ function UsageWorkspace({
                   </strong>
                 </div>
               </div>
-              <p className="usage-wallet-note">{t('完整钱包余额，不随日期或成员筛选变化。')}</p>
               <MotionDetails className="usage-small-details">
                 <summary>{t('其他钱包状态')}</summary>
                 <dl className="usage-wallet-other">
@@ -639,7 +638,6 @@ function UsageWorkspace({
                   <strong>
                     <UsageNumber value={report.totals[key]} />
                   </strong>
-                  <small>{kind === key ? t('正在查看趋势') : t('服务点')}</small>
                 </button>
               ))}
             </div>
@@ -685,7 +683,6 @@ function UsageWorkspace({
       <section className="usage-card usage-provider-entry" aria-label={t('供应商公开费率')}>
         <div>
           <h2>{t('供应商公开费率')}</h2>
-          <p>{t('输入、缓存、输出与音频等计量项；历史费用在关联任务中查看。')}</p>
         </div>
         <button
           type="button"

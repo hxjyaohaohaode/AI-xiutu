@@ -536,7 +536,6 @@ export function AuthPanel({
   return (
     <AccountPageFrame
       title={title}
-      description={mode === 'register' ? c.register : mode === 'reset' ? c.reset : c.login}
       config={config}
       onBack={() => {
         if (operations.busy) return;
@@ -731,11 +730,7 @@ export function AuthPanel({
                     </button>
                   </div>
                 )}
-                {isRegisterPhone ? (
-                  !resumeRegistration && (
-                    <p className="auth-step-note">{t('验证码将发送到这个号码。')}</p>
-                  )
-                ) : (
+                {!isRegisterPhone && (
                   <>
                     {mode !== 'password' && codeField}
                     {mode === 'register' && (
@@ -892,9 +887,6 @@ export function AuthPanel({
           </button>
         </div>
       )}
-      <p className="auth-privacy-note">
-        {t('本地编辑无需登录。保存到项目或发送参考图时才会上传照片。')}
-      </p>
     </AccountPageFrame>
   );
 }

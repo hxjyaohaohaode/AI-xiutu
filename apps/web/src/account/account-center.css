@@ -1316,3 +1316,24 @@
     scroll-behavior: auto;
   }
 }
+
+/* R6: settings read as rows and values instead of stacked explanation cards. */
+.account-page-center .account-identity { gap: 14px; margin-bottom: 28px; }
+.account-page-center .account-avatar { width: 52px; height: 52px; flex-basis: 52px; font-size: 24px; }
+.account-page-center .account-panel-heading h3 { font-size: 24px; font-weight: 550; }
+.account-page-center .account-facts { display: grid; grid-template-columns: repeat(2,minmax(0,1fr)); gap: 24px 32px; padding-bottom: 28px; }
+.account-page-center .account-fact { display: flex; flex-direction: column; gap: 7px; padding: 0; }
+.account-page-center .account-fact dd { font-size: 15px; }
+.account-page-center .account-services { margin-top: 0; padding: 24px 0; border: 0; background: transparent; }
+.account-page-center .account-service-list { display: flex; flex-wrap: wrap; gap: 24px 36px; }
+.account-page-center .account-service-list > div { display: flex; align-items: center; gap: 12px; }
+.account-page-center .account-overview-actions { margin-top: 20px; }
+.account-page-center .account-security-row,.account-page-center .account-export-row,.account-page-center .account-signout-row,.account-page-center .account-payment { padding: 22px 0; border: 0; border-radius: 0; background: transparent; }
+.account-page-center .account-balance { padding: 0 0 24px; }
+.account-page-center .account-balance > strong { font-size: clamp(48px,6vw,76px); line-height: 1.1; letter-spacing: -.065em; }
+.account-page-center .account-entitlements { padding: 20px 0; background: transparent; border: 0; }
+.account-page-center .account-quota-breakdown { gap: 16px; }
+.account-page-center .account-usage-link { margin-top: 12px; }
+.account-page-center .account-deletion { display: flex; align-items: center; gap: 10px; padding: 24px 0 0; border: 0; background: transparent; }
+.account-page-center .account-deletion > span { margin-inline-start: auto; color: var(--muted); font-size: 11px; }
+@media (width < 480px) { .account-page-center .account-facts { gap: 20px 18px; } .account-page-center .account-fact dd { font-size: 13px; } }

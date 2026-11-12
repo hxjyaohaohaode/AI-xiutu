@@ -507,6 +507,7 @@ export function ResourceSearch({
           >
             <button
               className="resource-cover"
+              style={{ aspectRatio: `${item.asset.width} / ${item.asset.height}` }}
               disabled={!!opening}
               onClick={() => void open(item)}
               aria-label={t('打开{v0}', {
