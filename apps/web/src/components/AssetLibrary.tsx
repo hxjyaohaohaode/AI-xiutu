@@ -30,6 +30,7 @@ import { MediaSourceViewer } from '../media/MediaSourceViewer';
 import { useConfirmation } from './ConfirmationDialog';
 import { confirmStableScope } from '../lib/confirmation-scope';
 import { AnimationDialog, AssetRecognitionDialog, ProjectAssetTools } from './AssetTools';
+import { RestorationDialog } from '../restoration/RestorationDialog';
 import { StudioGlyph } from './StudioGlyph';
 import { MotionDetails, MotionDisclosure } from '../motion/Presence';
 import { AssetThumbnail } from '../resources/AssetThumbnail';
@@ -358,7 +359,7 @@ export function AssetLibrary({
       setReplacementBusy(false);
     }
   }
-  const [tools, setTools] = useState<{ asset: Asset; kind: 'ocr' | 'animation' } | null>(null);
+  const [tools, setTools] = useState<{ asset: Asset; kind: 'ocr' | 'animation' | 'restoration' } | null>(null);
   const [projectTools, setProjectTools] = useState(false);
   const [expandedAssetDetails, setExpandedAssetDetails] = useState<Set<string>>(() => new Set());
   const [density, setDensity] = useState<'comfortable' | 'compact'>('comfortable');
@@ -737,10 +738,8 @@ export function AssetLibrary({
                   const versions = sameProject
                     ? artworks.filter((work) => work.assetId === asset.id)
                     : [];
-                  const editable =
-                    !!parent &&
-                    ['owner', 'admin', 'editor'].includes(parent.role) &&
-                    !!asset.annotationVersion;
+                  const canProcess = !!parent && ['owner', 'admin', 'editor'].includes(parent.role);
+                  const editable = canProcess && !!asset.annotationVersion;
                   const title = asset.annotations?.title || asset.name;
                   const open = () =>
                     sameProject ? onOpenAsset(asset) : parent && onSelectProject(parent);
@@ -807,6 +806,16 @@ export function AssetLibrary({
                           {asset.height}
                         </p>
                         {!sameProject && <small>{parent?.title ?? t('当前授权项目')}</small>}
+                        {canProcess && asset.provenance?.animation !== true && (
+                          <button
+                            className="text-button library-restoration-action"
+                            type="button"
+                            onClick={() => setTools({ asset, kind: 'restoration' })}
+                          >
+                            <StudioGlyph name="repair" size={16} />
+                            {t('修复照片')}
+                          </button>
+                        )}
                         {!!versions.length && (
                           <div className="library-version-links">
                             <div className="library-version-heading">
@@ -910,6 +919,16 @@ export function AssetLibrary({
           assets={assets.filter((asset) => asset.projectId === project.id)}
           onClose={() => setProjectTools(false)}
           onCreated={() => setRefresh((value) => value + 1)}
+        />
+      )}
+      {tools?.kind === 'restoration' && (
+        <RestorationDialog
+          key={tools.asset.projectId + ':' + tools.asset.id}
+          asset={assets.find((item) => item.id === tools.asset.id) ?? tools.asset}
+          editable={toolsEditable}
+          onClose={() => setTools(null)}
+          onCreated={() => setRefresh((value) => value + 1)}
+          onOpen={tools.asset.projectId === project?.id ? onOpenAsset : undefined}
         />
       )}
       {tools?.kind === 'ocr' && (

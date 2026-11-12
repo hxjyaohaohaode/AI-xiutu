@@ -1,3 +1,5 @@
+import { nativeGradeEnglish } from './native-grade-messages';
+import { restorationEnglish } from './restoration-messages';
 import { aiRedesignEnglish } from './ai-redesign-messages';
 import { finalEnglish } from './final-messages';
 import { appEnglish } from './app-messages';
@@ -29,6 +31,8 @@ export const english: Readonly<Record<string, string>> = {
   ...editorEnglish,
   ...finalEnglish,
   ...aiRedesignEnglish,
+  ...nativeGradeEnglish,
+  ...restorationEnglish,
   '确认 AI 调整': 'Apply AI adjustments',
   '本地编辑': 'Local editing',
   "格式像素上限": "Pixel limits by format",

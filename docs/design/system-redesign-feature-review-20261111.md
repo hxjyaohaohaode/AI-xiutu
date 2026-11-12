@@ -6,7 +6,7 @@
 
 需求来源固定为 [new/native-color-feedback@fc2827c](https://github.com/hxjyaohaohaode/AI-xiutu/commit/fc2827c05c137588511c94e4431b523f2d3bab87) 的 [AI修图功能对照与验收主表](https://github.com/hxjyaohaohaode/AI-xiutu/blob/fc2827c05c137588511c94e4431b523f2d3bab87/docs/research/PHOTO-EDITING-FEATURE-MATRIX.md)，文件blob为 `09d821e4ba685e6ef79417dd28885752a98a900c`。本文件没有修改canonical表。
 
-前端核对以 `8811b4f769088f6e3729b4f26bc3677c68a57297` 为初始重设计检查点，包含随后AI结果/文案/弹窗样式的5项补丁，以及 `383d067` 合入的最新后端与常规模型CAS接线。F07母版曲线/区域和S09/S10独立修复派生在该检查点尚缺完整前端入口；本轮已将其明确列为接线工作，后续合入时应更新对应行的源码记录。
+前端核对以 `8811b4f769088f6e3729b4f26bc3677c68a57297` 为初始重设计检查点，包含随后AI结果/文案/弹窗样式的5项补丁、`383d067` 合入的最新后端与常规模型CAS，以及 `f8c276a74e0adbc7193fa91ff238d59b1154138d` 的前端整合状态。后续已产出F07母版曲线/区域和S09/S10独立修复派生的真实源码blob，本文按这些新增源码更新对应行；这些新增项仍需合入后的CI与浏览器验证。
 
 本轮范围是前端信息结构、交互、组件大小、状态、真实图像展示及已有后端能力的接线。没有承诺在前端任务中填满缺失的算法。主表原证据状态逐行原样保留，包括括号内的限定范围：**15项已验、85项部分、11项缺口**。这里的“已验”是canonical既有证据，绝不代表本轮UI、当前设备或新提交已重新通过。
 
@@ -17,7 +17,7 @@
 ## 本轮查出的两类接线问题
 
 1. **C13常规模型保存契约已更新。** 当前后端要求 `expectedVersion`；新建为0，编辑现有模型使用读到的版本。已把 `version/baseId`、保存回执更新版本、`MODEL_CONFIG_CHANGED` 后读取目录并保留草稿合入重设计表单，并与最新后端一起保存到 `383d067`。这与已有助手模型的 `expectedHash` 是两种不同契约。
-2. **F07和独立photo-restore-v1不能由相似控件冒充。** 8811母版查看器只有七项全局参数；SDR CurveEditor/LocalControls不是native高位深曲线/区域的接线。S09已有本地optics降噪控件，但独立修复派生接口、尤其S10运动核参数没有前端动作。两项本轮都应以真实能力和真实派生结果补接，不增加虚构算法或假进度。
+2. **F07和独立photo-restore-v1不能由相似控件冒充。** 8811母版查看器只有七项全局参数；SDR CurveEditor/LocalControls不是native高位深曲线/区域的接线。S09已有本地optics降噪控件，但独立修复派生接口、尤其S10运动核参数没有前端动作。两项已补接独立真实入口：F07保留native精度配方，S09/S10创建新的派生图。没有增加虚构算法或假进度，源码实现不等于端到端验收完成。
 
 ## 逐项核对
 
@@ -95,8 +95,8 @@
 | S06 | 克隆图章、点瑕疵修复、梯度域补片 | 已验（基础） | 编辑→修复；[RepairControls.tsx](../../apps/web/src/editor/RepairControls.tsx)、[repair-draft.ts](../../apps/web/src/editor/repair-draft.ts) | 模式、供体、笔刷、保护与强度重新布局；保留真实算法选择。 | 原基础验收保留；需要自然照片逐模式比对、取消快照和历史回放，不能默认exemplar更优。 |
 | S07 | 语义消除路人、物件、电线及其影子 | 部分 | 手工修复/AI遮罩参考；[RepairControls.tsx](../../apps/web/src/editor/RepairControls.tsx)、[AIPanel.tsx](../../apps/web/src/components/AIPanel.tsx) | AI参考区按allowMask/allowMarkup分别保留附件，防止能力刷新误清标注图。 | 未补目标影子识别、蒙版外原图回用或专用消除融合；通用模型质量另验。 |
 | S08 | AI 超分、旧照片修复与人脸保真 | 部分 | 近似入口：细节/普通导出；[ToolInspector.tsx](../../apps/web/src/editor/ToolInspector.tsx)、[ProjectDialogs.tsx](../../apps/web/src/components/ProjectDialogs.tsx) | 未增加专用超分或旧照修复入口；不使用伪造修复效果图。 | 人脸与文字保真、专用模型部署和真实质量证据仍缺。 |
-| S09 | 亮度与色度降噪、保边与纹理 | 部分 | 编辑→细节→光学；[ColorControls.tsx](../../apps/web/src/editor/ColorControls.tsx)、[advanced-model.ts](../../apps/web/src/editor/advanced-model.ts)；新派生入口待接[AssetTools.tsx](../../apps/web/src/components/AssetTools.tsx) | 原有optics.denoiseLuminance/denoiseChroma（固定5×5）已通过动态V3工具表接入；独立photo-restore-v1派生尚未接前端，本轮补接已授权。 | 局部配方降噪与新素材派生分开；restoration.maxPixels/maxWork继续限制，RAW噪声模型/高ISO成对质量不因此完成。 |
-| S10 | 去运动拖影与散焦 | 部分 | 待接：素材→降噪与去拖影；[AssetTools.tsx](../../apps/web/src/components/AssetTools.tsx)；后端restorationRequest | 后端已有photo-restore-v1受控运动核反卷积；383d前端无length/angle/iterations/strength输入，本轮补接真实quote→显式执行→新素材。 | 4,194,304像素/134,217,728工作预算；长度0–31源像素、角度±180、迭代1–12、强度0–1；未知核盲估仍false。 |
+| S09 | 亮度与色度降噪、保边与纹理 | 部分 | 编辑→细节→光学；[ColorControls.tsx](../../apps/web/src/editor/ColorControls.tsx)、[advanced-model.ts](../../apps/web/src/editor/advanced-model.ts)；素材→修复照片→降噪；[RestorationDialog.tsx](../../apps/web/src/restoration/RestorationDialog.tsx) | 保留optics.denoiseLuminance/denoiseChroma动态控件；新增独立photo-restore-v1整图亮度/色度降噪，900ms防抖自动估算，一次明确创建修复副本。结果是新素材，不伪装为原作品可撤销配方。 | 服务端能力、edit ACL、source hash、maxPixels/maxWork权威；原图和画布选区不混用；12项提交/恢复测试已写，CI与真实纹理质量待验；RAW噪声模型及高ISO成对质量未补。 |
+| S10 | 去运动拖影与散焦 | 部分 | 素材→修复照片→运动模糊；[AssetLibrary.tsx](../../apps/web/src/components/AssetLibrary.tsx)、[RestorationDialog.tsx](../../apps/web/src/restoration/RestorationDialog.tsx)、[restoration-model.ts](../../apps/web/src/restoration/restoration-model.ts) | 新增length/angle/strength及更多参数中的iterations/同时降噪；自动quote后显式创建immutable-derived-asset。同步锁与会话凭证保留同一requestId/payload；未知结果仅显式恢复，刷新列表失败不覆盖成功回执。 | 4,194,304像素/134,217,728工作预算；长度0–31源像素、角度±180、迭代1–12、强度0–1按当前能力限制。整图模式不隐式继承selection/protection；未知核盲估仍false，散焦算法和实拍专项未因此完成。 |
 | S11 | 玻璃去反光、眩光、镜面污渍与摩尔纹 | 部分 | 编辑→细节→光学/局部；[ColorControls.tsx](../../apps/web/src/editor/ColorControls.tsx)、[advanced-model.ts](../../apps/web/src/editor/advanced-model.ts) | 保留已有确定性算子和局部控制。 | 不称为完整玻璃反射/透射分离；需夜窗、展柜等实拍失败样本验证。 |
 | S12 | 弱光、补光、闪光灯、发丝光和环境统一 | 部分 | 明暗/局部/场景候选；[ToolInspector.tsx](../../apps/web/src/editor/ToolInspector.tsx)、[LocalControls.tsx](../../apps/web/src/editor/LocalControls.tsx)、[WorkspaceCards.tsx](../../apps/web/src/ai/WorkspaceCards.tsx) | 统一局部调光和候选动作表现。 | 未补定向补光、材质估计或换背景一致照明；高光/发丝保持待验。 |
 | S13 | 换天、天气、穿搭与参考换背景 | 部分 | AI生图→显式参考；[AIPanel.tsx](../../apps/web/src/components/AIPanel.tsx)、[ResultActions.tsx](../../apps/web/src/ai/ResultActions.tsx) | 保留授权参考、真实候选预览和采纳；删除无关说明。 | 没有专用换天/穿搭算法；地景反光、人体分区与光色一致性不能自动判通过。 |
@@ -110,7 +110,7 @@
 | F04 | 相机 RAW 显影、曝光余量与相机资料 | 部分 | 素材→原件与母版；[MediaSourceViewer.tsx](../../apps/web/src/media/MediaSourceViewer.tsx) | 保留RAW原件、源窗口、母版版本和三种精度导出。 | 相机配置/64MP等边界以服务descriptor为准；灰点、坏点、EXIF完整性及高光重建仍待验。 |
 | F05 | 真 HDR 原件、浮点、非零 data window 与 alpha | 部分 | 原件与母版→线性输入；[MediaSourceViewer.tsx](../../apps/web/src/media/MediaSourceViewer.tsx) | 保持真HDR/EXR线性入口，未用普通RGBA8预览替代母版保存。 | floatAvailable、源色域/window/alpha语义有效；deep/multipart等受限能力不显示为已支持。 |
 | F06 | 16 位母版与线性 32 位可重编导出 | 部分 | 母版→PNG16/TIFF16/EXR32；[MediaSourceViewer.tsx](../../apps/web/src/media/MediaSourceViewer.tsx) | 保留独立精度导出、源SHA与版本；普通导出新UI不改变高位深链路。 | RGBA8配方与场景线性母版不能混写；需要重开/窗口/导出同值验证。 |
-| F07 | RAW/HDR 全配方、图层和实时母版窗口 | 部分 | 母版编辑；[MediaSourceViewer.tsx](../../apps/web/src/media/MediaSourceViewer.tsx)、[useMasterPreview.ts](../../apps/web/src/media/useMasterPreview.ts) | 8811基线仅有七项全局参数；本轮已明确补接native曲线和ordered regions，源码补丁与端到端验证在本表生成时仍待整合。 | 仅linear-master及curves.available/regions.available启用；区域最多8，使用源坐标；save保留expectedVersion/sourceSha，导出继续attachment。不得冒充全部高位深笔刷/图层/修复/液化已支持。 |
+| F07 | RAW/HDR 全配方、图层和实时母版窗口 | 部分 | 母版编辑；[MediaSourceViewer.tsx](../../apps/web/src/media/MediaSourceViewer.tsx)、[NativeGradeControls.tsx](../../apps/web/src/media/NativeGradeControls.tsx)、[NativeRegionOverlay.tsx](../../apps/web/src/media/NativeRegionOverlay.tsx)、[native-grade-model.ts](../../apps/web/src/media/native-grade-model.ts) | 新增native EV曲线与按顺序处理的局部区域，保留已有七项全局参数。preview/save/export共享native payload；读取已保存V3不降级。已独立对照后端save/preview/export字段，但新源码未记为运行验收。 | 仅linear-master及curves.available/regions.available启用；区域最多8，源归一坐标、radial/linear、各7调整项。save保留expectedVersion/sourceSha；export attachment及实时窗口并行保留。尚无全部高位深笔刷/图层/修复/液化能力。 |
 | F08 | Display-P3、ICC、场景工作空间及显示 | 部分 | 媒体色彩信息/预览；[MediaSourceViewer.tsx](../../apps/web/src/media/MediaSourceViewer.tsx)、[MediaImportDialog.tsx](../../apps/web/src/components/MediaImportDialog.tsx) | 保持现有ICC输入与sRGB显示路径；未新增广色域工作空间选择器。 | P3输入转色证据不等于广色域编辑/输出；HDR显示器、软打样仍待专项。 |
 | F09 | 手机 Ultra HDR / 增益图与 HEIC HDR | 部分 | 母版→Ultra HDR；[MediaSourceViewer.tsx](../../apps/web/src/media/MediaSourceViewer.tsx) | 保留真实增益图/HEIC HDR原件与HDR JPEG导出选项。 | 只有ultraHdrJpeg能力允许才显示/执行；线性输入、源SHA与attachment下载票据必须保持，手机HDR显示待验。 |
 | F10 | CMYK 输入、编辑、软打样和印前输出 | 部分 | 媒体导入→带ICC的CMYK；[MediaImportDialog.tsx](../../apps/web/src/components/MediaImportDialog.tsx) | 保留受支持的CMYK输入转sRGB；未添加印前输出UI。 | 16位CMYK、目标纸张/墨量/意图与CMYK导出仍缺。 |
@@ -204,3 +204,12 @@
 - 在执行环境不可用期间，已对实际capabilities helper移除TypeScript注解后运行4个行为用例，结果通过。该检查不等于TypeScript编译、React测试、浏览器交互或真实API验收。
 
 本轮CI、真实浏览器以及F07/修复派生整合后的验收结果应附精确commit、设备/viewport、输入、动作、输出和证据链接。不得复用canonical旧数字来填本轮测试结果。
+
+## 新增接线的可检查契约
+
+- **照片修复入口**：[AssetLibrary.tsx](../../apps/web/src/components/AssetLibrary.tsx) 的素材卡直接显示“修复照片”，按项目owner/admin/editor权限提供入口，GIF不冒充静态整图修复。独立组件和样式位于 `apps/web/src/restoration/`；[restoration.test.ts](../../apps/web/test/restoration.test.ts) 包含12项行为测试，当前为已写、待CI执行。
+- **预算估算**：参数稳定900ms后调用 `POST /v1/projects/:id/derived-assets/quote`；quote `reservesQuota=false`、`checksDecodedPixels=false`，不渲染、不提交派生。来源只能有当前一张原图，校验assetId、尺寸、contentHash；估算成功不是处理成功。
+- **明确执行**：用户点击“创建修复副本”后再次读取当前session和服务能力，并复核quote与edit ACL。请求严格为 `kind:'restoration'` + `sourceAssetId` + `name` + `requestId` + `settings.algorithm:'photo-restore-v1'`；UI默认整图，不携带画布坐标的selection/protection。服务端最终校验仍是权威。
+- **未知结果**：在写请求前将actor/project/source和精确payload存入会话凭证；同步锁阻止双击。网络或不明确的服务端结果保持unknown，关闭/换项目/重载后只能使用同一requestId和参数恢复，不能静默另开事务。成功回执直接给出新的派生Asset，后续预览图/列表刷新失败不把成功改成失败。
+- **母版精度**：[native-grade.test.ts](../../apps/web/test/native-grade.test.ts) 对输入能力、EV节点排序、8区域次序、旋转区域源坐标、CAS保存与attachment导出写有专项测试。源码审查确认 `expectedSourceSha256`、`expectedVersion` 和 `precisionInput:'linear-master'` 契约；CI、真实EXR/RAW/HDR拖动和导出样本仍待验证。
+- **新增源码记录**：restoration helper `872c06e26de04e1e88762c4b6b637c7229c47241`；Dialog `ec75cc436e469d85c949d73d42b554807430afb3`；测试 `72b56f130970171ec343ac6ed2c6fbaef70c7024`。F07 helper `8ea9fd6602ddf921f60c51cb5e388d1fd15fbc99`、Viewer `ec736840ecf76b4d00c7d157242ff96074aad249`、测试 `9f275081f1cac6bbad26efb738c7c98e19542b95`。这些blob是源码证据，不能替代CI或浏览器结果。

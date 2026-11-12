@@ -1,3 +1,5 @@
+import { nativeGradeTraditionalChinese } from './native-grade-messages';
+import { restorationTraditionalChinese } from './restoration-messages';
 import { aiRedesignTraditionalChinese } from './ai-redesign-messages';
 import { libraryTraditional } from './library-messages';
 import { usageTraditional } from './usage-messages';
@@ -143,6 +145,8 @@ export const traditional: Readonly<Record<string, string>> = {
   ...workspaceTraditional,
   ...libraryTraditional,
   ...aiRedesignTraditionalChinese,
+  ...nativeGradeTraditionalChinese,
+  ...restorationTraditionalChinese,
   '确认 AI 调整': '套用 AI 調整',
   '本地编辑': '本地編輯',
   "格式像素上限": "格式像素上限",

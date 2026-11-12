@@ -1,0 +1,253 @@
+.native-grade-controls {
+  display: grid;
+  gap: 16px;
+  min-width: 0;
+  padding-block: 8px 18px;
+}
+.native-grade-tabs,
+.native-curve-channels,
+.native-region-add {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 5px;
+  min-width: 0;
+}
+.native-grade-tabs > button,
+.native-curve-channels > button,
+.native-region-add > button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 7px;
+  min-height: 38px;
+  padding: 7px 13px;
+  border: 0;
+  border-radius: 8px;
+  color: var(--muted);
+  background: transparent;
+  font-size: 12px;
+  white-space: nowrap;
+}
+.native-grade-tabs > button[aria-pressed='true'],
+.native-curve-channels > button[aria-pressed='true'] {
+  color: var(--ink);
+  background: color-mix(in srgb, var(--ink) 7%, var(--surface));
+}
+.native-grade-tabs small {
+  font-size: 10px;
+  opacity: .65;
+  font-variant-numeric: tabular-nums;
+}
+.native-grade-controls.refined-inspector .parameter-shelf { gap: 8px; }
+.native-grade-controls .parameter-shelf .parameter-shelf-options {
+  display: flex;
+  gap: 4px;
+  max-height: none;
+  padding: 3px 1px 5px;
+  overflow-x: auto;
+  overflow-y: hidden;
+  scrollbar-width: thin;
+}
+.native-grade-controls .parameter-shelf .parameter-shelf-options > button {
+  flex: 0 0 58px;
+  min-width: 58px;
+  min-height: 62px;
+}
+.native-grade-controls .parameter-glyph-disc {
+  width: 37px;
+  height: 37px;
+  min-height: 37px;
+  flex-basis: 37px;
+}
+.native-grade-controls .parameter-shelf .parameter-shelf-options > button > i {
+  right: calc(50% - 19px);
+}
+.native-grade-curves,
+.native-grade-regions,
+.native-region-current {
+  display: grid;
+  gap: 12px;
+  min-width: 0;
+}
+.native-curve-channels { justify-content: center; }
+.native-curve-channels > button { padding-inline: 10px; }
+.native-curve-channels i {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+}
+.native-curve-editor { min-width: 0; }
+.native-curve-plot {
+  display: block;
+  width: min(100%, 256px);
+  aspect-ratio: 1;
+  margin-inline: auto;
+  touch-action: none;
+  cursor: crosshair;
+  overflow: visible;
+}
+.native-curve-paper { fill: var(--surface-secondary); }
+.native-curve-grid { fill: none; stroke: var(--ink); stroke-opacity: .08; stroke-width: 1; }
+.native-curve-identity { fill: none; stroke: var(--ink); stroke-opacity: .22; stroke-width: 1; stroke-dasharray: 3 4; }
+.native-curve-plot [role='button']:focus-visible {
+  outline: none;
+  stroke: var(--ink);
+  stroke-width: 1;
+  stroke-dasharray: 2 2;
+}
+.native-curve-legend {
+  display: flex;
+  justify-content: space-between;
+  gap: 10px;
+  width: min(100%, 256px);
+  margin: 3px auto;
+  color: var(--muted);
+  font-size: 10px;
+  font-variant-numeric: tabular-nums;
+}
+.native-curve-actions {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  margin-top: 13px;
+}
+.native-curve-actions > .choice-select { flex: 1; min-width: 0; }
+.native-curve-actions .icon-button {
+  flex: 0 0 38px;
+  width: 38px;
+  height: 38px;
+}
+.native-curve-coordinates {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 16px;
+  margin-top: 8px;
+}
+.native-grade-controls .native-curve-coordinates .precision-readout .precision-value {
+  min-width: 40px;
+  padding-inline: 3px;
+  font-size: 14px;
+}
+.native-grade-controls .native-curve-coordinates .precision-readout input { width: 60px; }
+.native-curve-coordinates .precision-heading { gap: 4px; }
+.native-curve-coordinates .precision-heading > label { font-size: 12px; }
+.native-region-add > button {
+  padding-inline: 10px;
+  color: var(--ink);
+}
+.native-region-add > small {
+  margin-left: auto;
+  padding-right: 4px;
+  color: var(--muted);
+  font-size: 11px;
+  font-variant-numeric: tabular-nums;
+}
+.native-region-list {
+  display: grid;
+  gap: 2px;
+  max-height: 192px;
+  overflow-y: auto;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  scrollbar-width: thin;
+}
+.native-region-list > li {
+  display: flex;
+  align-items: center;
+  gap: 0;
+  min-width: 0;
+  padding: 2px;
+  border-radius: 8px;
+}
+.native-region-list > li[data-selected='true'] {
+  background: color-mix(in srgb, var(--ink) 5%, var(--surface));
+}
+.native-region-name {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  flex: 1;
+  min-width: 0;
+  min-height: 36px;
+  padding: 5px 7px;
+  border: 0;
+  color: var(--ink);
+  background: transparent;
+  font-size: 12px;
+  text-align: left;
+}
+.native-region-name > span { color: var(--muted); font-size: 10px; }
+.native-region-name > svg { flex: 0 0 16px; }
+.native-region-list .icon-button {
+  flex: 0 0 32px;
+  width: 32px;
+  height: 36px;
+  border: 0;
+  background: transparent;
+}
+.native-region-modes .native-mask-invert { margin-left: auto; }
+.native-mask-smooth {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 38px;
+  font-size: 12px;
+  color: var(--muted);
+}
+.native-mask-smooth input { accent-color: var(--ink); }
+.native-region-overlay {
+  position: absolute;
+  inset: 0;
+  z-index: 3;
+  width: 100%;
+  height: 100%;
+  pointer-events: none;
+  overflow: hidden;
+}
+.native-mask-outline,
+.native-mask-feather {
+  stroke: white;
+  stroke-width: 1.5px;
+  vector-effect: non-scaling-stroke;
+  filter: drop-shadow(0 1px 1px #000a);
+}
+.native-mask-feather { stroke-width: 1px; stroke-dasharray: 4 4; opacity: .75; }
+.native-region-overlay[data-enabled='false'] .native-mask-outline { stroke-dasharray: 5 4; opacity: .5; }
+.native-mask-end-label {
+  fill: white;
+  paint-order: stroke;
+  stroke: #000a;
+  stroke-width: 2px;
+  font-size: 11px;
+  font-variant-numeric: tabular-nums;
+}
+.native-mask-hit { pointer-events: all; cursor: move; }
+.native-mask-hit[aria-disabled='true'] { pointer-events: none; }
+.native-mask-hit:focus-visible { outline: none; stroke: white; stroke-width: 2px; stroke-dasharray: 3 3; }
+.native-mask-handle {
+  fill: var(--ink);
+  stroke: white;
+  stroke-width: 2px;
+  pointer-events: none;
+}
+.media-source > .editor-section > .media-grade-source { margin-block: 4px 10px; }
+.media-grade-source { min-width: 0; }
+.media-grade-source > .choice-select { max-width: 100%; }
+.native-grade-controls button:disabled { opacity: .35; }
+@media (max-width: 700px) {
+  .native-grade-controls { gap: 12px; }
+  .native-grade-tabs > button,
+  .native-curve-channels > button,
+  .native-region-add > button { min-height: 42px; }
+  .native-region-list .icon-button { flex-basis: 38px; width: 38px; height: 42px; }
+  .native-region-name { padding-inline: 4px; gap: 4px; }
+  .native-curve-plot { width: min(100%, 224px); }
+  .native-curve-legend { width: min(100%, 224px); }
+  .native-curve-coordinates { gap: 12px; }
+}
+@media (max-height: 550px) and (orientation: landscape) {
+  .native-curve-plot { width: min(100%, 200px); }
+  .native-curve-legend { width: min(100%, 200px); }
+}
