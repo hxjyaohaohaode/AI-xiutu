@@ -146,6 +146,8 @@ sha256sum "$xiutu_backup_dir/database.dump" "$xiutu_backup_dir/private-and-dispa
 
 通过运营端配置助手模型；对应 API 是 `GET /v1/ops/assistant-models` 读取目录、`PUT /v1/ops/assistant-models/:modelId` 更新单项。首次写入 `expectedHash:null`，后续必须提交读取到的配置哈希；409 时重新读取并确认，不覆盖另一位运营人员的修改。
 
+图片和其他常规模型通过 `GET /v1/ops/models` 读取目录，`PUT /v1/ops/models/:id` 必须提交 `expectedVersion`。新标识填 0，已有项填读取到的版本。版本冲突返回 409，运营端会刷新列表并保留当前草稿。重新打开当前项后可按最新配置修改。
+
 必须指定 `provider:openai`、实际模型 ID、`enabled`、`operations` 和整数服务点 `unitCost`。操作只开放 `assistant-turn`、`realtime-voice`；语音模型必须在当前程序的已实现协议档案内。还可设置时长 30～600 秒、委派 1～20 次、输出 token 应用上限 256～8192，以及模型确实支持的图像输入、联网和推理强度。Realtime 输出进一步限制到 4096；不会给 GPT-Live 伪造它不支持的同名字段。具体字段以 [API_V4 §6](../apps/api/API_V4.md#6-contextual-assistant-and-continuous-voice) 为准。
 
 应用当前为 GPT-Live 1 和 Realtime 系列分别实现协议适配；不能把用户口述的近似名称猜成可调用模型。使用 `/v1/assistant/models` 返回的实际档案和本账户真实权限选模型与音色。语音模型与后端助手模型需要分别启用；后端负责获准资源检索、图像推理和候选建议。

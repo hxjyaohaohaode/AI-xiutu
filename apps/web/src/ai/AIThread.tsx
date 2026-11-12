@@ -72,12 +72,13 @@ function TextResult({
   const busy = controller.busy;
   const locked = busy || !!controller.uncertain;
   const target = documents.find((document) => document.id === targetId);
-  async function save() {
+  async function save(destination?: { id: string; title: string; version: number }) {
+    if (!visible || locked || !canEdit) return;
     const response = await controller.decide({
       action: 'save-text',
       title: title.trim() || t('AI 创作文案'),
       body,
-      ...(target ? { targetDocumentId: target.id, expectedDocumentVersion: target.version } : {}),
+      ...(destination ? { targetDocumentId: destination.id, expectedDocumentVersion: destination.version } : {}),
     });
     if (response) {
       setSaved(true);
@@ -143,11 +144,27 @@ function TextResult({
         <button
           className="text-button"
           disabled={locked || saved || !canEdit}
-          onClick={() => setConfirming(true)}
+          onClick={() => {
+            setTargetId('');
+            if (body === '') setConfirming(true);
+            else void save();
+          }}
         >
           {busy ? <Busy label="" /> : saved ? <CheckCircle size={16} /> : <FloppyDisk size={16} />}
           {saved ? t('已存为文档') : t('存为文档')}
         </button>
+        {documents.length > 0 && (
+          <button
+            className="text-button"
+            disabled={locked || saved || !canEdit}
+            onClick={() => {
+              setTargetId(documents[0]!.id);
+              setConfirming(true);
+            }}
+          >
+            {t('保存到已有文档')}
+          </button>
+        )}
       </div>
       <InlineError message={error} />
       {controller.uncertain?.action === 'save-text' && (
@@ -186,25 +203,17 @@ function TextResult({
               })),
             ]}
           />
-          <p>
-            {target
-              ? t(
-                  '将“{v0}”的 V{v1} 保存为新版本，旧版本保留。若队员已修改该文档，系统会阻止本次覆盖。',
-                  { v0: target.title, v1: target.version },
-                )
-              : t('建立独立的项目文档，原始 AI 输出保持不变。')}
-          </p>
+          {target && (
+            <p>{t('保存至「{title}」的新版本，基于 V{version}。', { title: target.title, version: target.version })}</p>
+          )}
           {(title !== output.title || body !== output.body) && (
             <p className="control-note">
-              {t('这是你编辑后的文稿，系统会标记“经手动编辑”，不会将它标记为模型原始审核结果。')}
+              {t('经手动编辑')}
             </p>
           )}
           {body === '' && (
             <p className="control-note">
-              {t('当前正文为空。')}
-              {target
-                ? t('确认后将建立一个正文已清空的新版本，旧版本仍保留。')
-                : t('确认后将建立正文为空的独立文档。')}
+              {target ? t('新版本正文为空，旧版本保留。') : t('将创建正文为空的文档。')}
             </p>
           )}
           <InlineError message={controller.error} />
@@ -220,7 +229,7 @@ function TextResult({
               className="button button-primary"
               disabled={locked || !canEdit || (!!targetId && !target)}
               onClick={() => {
-                if (visible && confirming) void save();
+                if (visible && confirming) void save(target);
               }}
             >
               {busy ? <Busy label={t('保存中')} /> : target ? t('保存为文档新版本') : t('新建文档')}
@@ -424,12 +433,6 @@ function CompletedResult({
       {job.output?.kind === 'edit-plan' && (
         <div data-motion="ai-answer">
           <p>{job.output.summary}</p>
-          {!!job.output.parameterChanges?.length && (
-            <p className="control-note">
-              {t('已生成')}
-              {job.output.parameterChanges.length} {t('项参数建议，可先逐项对照。')}
-            </p>
-          )}
           <div className="ai-result-actions">
             <button className="button button-primary" onClick={() => onPreview(job)}>
               {t('对照与本地预览')}
@@ -488,7 +491,7 @@ function CompletedResult({
       )}
       {job.output?.kind === 'transcript' && (job.output.noSpeech || !job.output.text.trim()) && (
         <p className="ai-status-copy">
-          {t('没有识别到清晰语音。本次识别已完成并结算，可以检查麦克风后重新录制。')}
+          {t('本次已结算，未识别到清晰语音。')}
         </p>
       )}
       {job.output?.kind === 'transcript' && !!job.output.text.trim() && (
@@ -609,12 +612,12 @@ export function AIThread({
                 job.state !== 'completed' && <PendingImagePreview job={job} />}
               {job.state === 'unknown' && (
                 <p className="ai-status-copy">
-                  {t('外部结果尚不明确，预占保持等待核验。此任务不会自动重发。')}
+                  {t('结果待核验，预占保留。')}
                 </p>
               )}
               {job.state === 'failed' && (
                 <p className="ai-status-copy">
-                  {t('本次未完成，已有作品没有改变。点数以任务最终账务状态为准。')}
+                  {t('任务未完成，点数以用量记录为准。')}
                 </p>
               )}
               <QueuedCancellation
@@ -623,7 +626,7 @@ export function AIThread({
                 onChanged={onChanged}
               />
               {job.state === 'cancelled' && (
-                <p className="ai-status-copy">{t('任务已取消。点数变动可在用量记录中核对。')}</p>
+                <p className="ai-status-copy">{t('已取消，点数变化见用量。')}</p>
               )}
               {job.state === 'completed' && (
                 <CompletedResult

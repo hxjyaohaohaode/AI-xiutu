@@ -17,7 +17,7 @@ import {
   ArrowClockwise,
   ChatCircleDots,
 } from '@phosphor-icons/react';
-import { api, errorMessage, formatDate, jsonRequest } from '../lib/api';
+import { api, ApiError, errorMessage, formatDate, jsonRequest } from '../lib/api';
 import { Busy, IconButton, InlineError } from './Ui';
 import { FeatureSkeleton } from './DeferredFeature';
 import { OpsReadCoordinator } from './ops-read';
@@ -44,6 +44,7 @@ type OpsTab =
   | 'reconciliation';
 type ModelConfig = {
   id: string;
+  version: number;
   label: string;
   provider: 'qwen' | 'ark' | 'openai';
   operations: ('edit-plan' | 'generate-image' | 'generate-text' | 'transcribe')[];
@@ -158,7 +159,7 @@ export function OpsDashboard({
     expiresAfterDays: null,
     active: false,
   });
-  const [modelEdit, setModelEdit] = useState<ModelConfig | null>(null);
+  const [modelEdit, setModelEdit] = useState<(ModelConfig & { baseId?: string }) | null>(null);
   const modelFields = modelEdit
     ? opsModelFields(modelEdit, providerCatalog.find((model) => model.id === modelEdit.id)?.parameterCapabilities)
     : null;
@@ -854,6 +855,7 @@ export function OpsDashboard({
                       onClick={() =>
                         setModelEdit({
                           id: '',
+                          version: 0,
                           label: '',
                           provider: 'qwen',
                           operations: ['edit-plan'],
@@ -891,9 +893,10 @@ export function OpsDashboard({
                             const existing = models.find((model) => model.id === item.id);
                             setModelEdit(
                               existing
-                                ? { ...existing }
+                                ? { ...existing, baseId: existing.id }
                                 : {
                                     id: item.id,
+                                    version: 0,
                                     label: item.label,
                                     provider: item.provider,
                                     operations: ['generate-image'],
@@ -930,7 +933,7 @@ export function OpsDashboard({
                       className="model-row"
                       data-motion="ops-row"
                       key={model.id}
-                      onClick={() => setModelEdit({ ...model })}
+                      onClick={() => setModelEdit({ ...model, baseId: model.id })}
                     >
                       <SlidersHorizontal size={23} />
                       <div>
@@ -971,25 +974,37 @@ export function OpsDashboard({
                         imageUnitCosts,
                       } = modelEdit;
                       void action(
-                        () =>
-                          api(
-                            `/ops/models/${encodeURIComponent(id)}`,
-                            jsonRequest('PUT', {
-                              label,
-                              provider,
-                              operations,
-                              enabled,
-                              minWidth,
-                              maxWidth,
-                              minHeight,
-                              maxHeight,
-                              maxOutputs,
-                              unitCost,
-                              allowedQualities,
-                              ...(imageUnitCosts ? { imageUnitCosts } : {}),
-                              reason,
-                            }),
-                          ),
+                        async () => {
+                          try {
+                            const { model } = await api<{ model: ModelConfig }>(
+                              `/ops/models/${encodeURIComponent(id)}`,
+                              jsonRequest('PUT', {
+                                expectedVersion: modelEdit.baseId === id ? modelEdit.version : 0,
+                                label,
+                                provider,
+                                operations,
+                                enabled,
+                                minWidth,
+                                maxWidth,
+                                minHeight,
+                                maxHeight,
+                                maxOutputs,
+                                unitCost,
+                                allowedQualities,
+                                ...(imageUnitCosts ? { imageUnitCosts } : {}),
+                                reason,
+                              }),
+                            );
+                            if (mounted.current && currentTab.current === tab)
+                              setModelEdit((current) =>
+                                current === modelEdit ? { ...model, baseId: model.id } : current,
+                              );
+                          } catch (error) {
+                            if (error instanceof ApiError && error.code === 'MODEL_CONFIG_CHANGED')
+                              await load();
+                            throw error;
+                          }
+                        },
                         t('模型目录配置已更新'),
                       );
                     }}

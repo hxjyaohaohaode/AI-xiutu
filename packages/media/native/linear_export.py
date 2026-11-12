@@ -40,7 +40,7 @@ def curve_gain(value, points):
 
 
 def luminance(rgb):
-    return np.sum(rgb * [0.2126, 0.7152, 0.0722], axis=-1, keepdims=True)
+    return (rgb[..., 0:1] * 0.2126 + rgb[..., 1:2] * 0.7152) + rgb[..., 2:3] * 0.0722
 
 
 def grade_gains(edit):
@@ -54,19 +54,26 @@ def grade_gains(edit):
     ])
 
 
-def grade_rgb(rgb, edit, gains):
+def grade_rgb(rgb, edit, gains, measure_y=False):
     rgb *= gains
+    shadows = edit.get("shadows", 0)
+    highlights = edit.get("highlights", 0)
+    contrast = edit.get("contrast", 0)
+    saturation = edit.get("saturation", 0)
+    if not (measure_y or shadows or highlights or contrast or saturation):
+        return rgb, None, 1
     signed_y = luminance(rgb)
     y = np.maximum(0, signed_y)
-    highlight = y / (y + 0.18)
-    gain = np.exp2(
-        (edit.get("shadows", 0) * (1 - highlight) + edit.get("highlights", 0) * highlight) / 100
-    )
-    if edit.get("contrast"):
-        gain *= np.power(np.where(y > 0, y / 0.18, 1), 2 ** (edit["contrast"] / 100) - 1)
-    if edit.get("saturation"):
-        rgb = signed_y + (rgb - signed_y) * (1 + edit["saturation"] / 100)
-    rgb *= gain
+    gain = 1
+    if shadows or highlights:
+        highlight = y / (y + 0.18)
+        gain = np.exp2((shadows * (1 - highlight) + highlights * highlight) / 100)
+    if contrast:
+        gain = gain * np.power(np.where(y > 0, y / 0.18, 1), 2 ** (contrast / 100) - 1)
+    if saturation:
+        rgb = signed_y + (rgb - signed_y) * (1 + saturation / 100)
+    if shadows or highlights or contrast:
+        rgb *= gain
     return rgb, y, gain
 
 
@@ -149,13 +156,13 @@ def develop(pixels, edit, gains, sdr, curves, regions=(), x=None, y=None, sdr_to
         if np.any(alpha < 0) or np.any(alpha > 1):
             raise ValueError("Invalid retained alpha")
         rgb = np.divide(rgb, alpha, out=np.zeros_like(rgb), where=alpha > 0)
-    rgb, base_y, gain = grade_rgb(rgb, edit, gains)
+    tone_map = edit["toneMap"] == "reinhard" or sdr_tone_map
+    rgb, base_y, gain = grade_rgb(rgb, edit, gains, measure_y=tone_map and not curves)
     if "luminance" in curves:
         rgb *= curve_gain(luminance(rgb), curves["luminance"])
     for channel, name in enumerate(("red", "green", "blue")):
         if name in curves:
             rgb[:, :, channel] *= curve_gain(rgb[:, :, channel], curves[name])
-    tone_map = edit["toneMap"] == "reinhard" or sdr_tone_map
     if tone_map:
         mapped_y = np.maximum(0, luminance(rgb)) if curves else base_y * gain
     if regions:
@@ -232,7 +239,10 @@ def render(image, request, window_png=False, read_source_band=read_band):
     columns = pixel_centers(left, width, spec.width) if regions else None
     out_spec = oiio.ImageSpec(width, height, channels, oiio.UINT16 if sdr else oiio.FLOAT)
     out_spec.attribute("oiio:ColorSpace", "sRGB" if sdr else "Linear")
-    out_spec.attribute("compression", "zip")
+    # Whole-image previews immediately consume the private TIFF for resizing.
+    # Its samples can be stored losslessly without a deflate/inflate round trip.
+    uncompressed = sdr and not region and not window_png and request.get("uncompressedSdr", False)
+    out_spec.attribute("compression", "none" if uncompressed else "zip")
     if window_png:
         out_spec.attribute("png:compressionLevel", 1)
     if sdr and channels == 4:

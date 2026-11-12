@@ -747,6 +747,7 @@ async function exportLinearMaster(
         edit: parsePrecisionEdit(job.precisionEdit ?? NEUTRAL_PRECISION_EDIT),
         sdr,
         sdrToneMap: sdr && hasDisplayHdr(descriptor.original),
+        uncompressedSdr: sdr && !!job.preview && !region,
         ...(ultraHdr ? { linearTiff: true } : {}),
         region,
       }),

@@ -51,7 +51,7 @@ function modelInput(image: RGBAImage) {
     for (let channel = 0; channel < 3; channel++)
       values[channel * count + i] = rgba[i * 4 + channel]! / 127.5 - 1;
   }
-  return { width, height, tensor: new Tensor('float32', values, [1, 3, height, width]) };
+  return { width, height, rgba, tensor: new Tensor('float32', values, [1, 3, height, width]) };
 }
 
 async function predict({ image, source, subject }: PortraitMatteRequest) {
@@ -85,7 +85,7 @@ async function predict({ image, source, subject }: PortraitMatteRequest) {
       session.outputNames.length !== 1
     )
       throw new Error('Unexpected portrait matting graph');
-    const { width, height, tensor } = modelInput(image);
+    const { width, height, rgba, tensor } = modelInput(image);
     try {
       const output = (await session.run({ [inputName]: tensor }, [outputName]))[outputName];
       try {
@@ -95,7 +95,7 @@ async function predict({ image, source, subject }: PortraitMatteRequest) {
           output.dims.join(',') !== `1,1,${height},${width}`
         )
           throw new Error('Unexpected portrait matting output');
-        return fusePortraitCutoutPrior(output.data, { width, height }, subject, source);
+        return fusePortraitCutoutPrior(output.data, { width, height }, subject, source, rgba);
       } finally {
         output?.dispose();
       }

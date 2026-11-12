@@ -2217,11 +2217,6 @@ export function LiveAssistant(props: LiveAssistantProps) {
               <div className="ai-conversation-empty">
                 <ComposerVisual kind="assistant" />
                 <h3>{t('描述需要修改的地方')}</h3>
-                <p>
-                  {artwork
-                    ? t('共享预览后，也可以针对画面提出建议。')
-                    : t('可以先讨论想法，也可以切换到生图。')}
-                </p>
               </div>
             )}
             <div className="assistant-messages" aria-label={t('协作对话')} data-motion="ai-answer">
@@ -2512,9 +2507,6 @@ export function LiveAssistant(props: LiveAssistantProps) {
             {selected ? t('文字 {v0} 点 / 轮', { v0: selected.unitCost }) : t('点数待确认')}
           </span>
         </div>
-        {inCall && (
-          <p className="ai-input-disclosure">{t('收起后通话继续，可在顶部活动条静音或结束。')}</p>
-        )}
       </footer>
       <PanelSettingsPage
         title={t('助手设置')}

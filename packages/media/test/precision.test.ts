@@ -761,6 +761,23 @@ out=o.ImageOutput.create(sys.argv[1]); assert out.open(sys.argv[1],s); assert ou
       };
       assert.deepEqual(await raw16(window), await raw16(png, region));
       assert.equal(preview.precisionEdit?.sha256, full.precisionEdit?.sha256);
+      const overviewPath = join(dir, 'overview.png');
+      const overview = await exportMedia({
+        ...pngRequest,
+        outputPath: overviewPath,
+        preview: { maxEdge: 128 },
+      });
+      const expectedOverview = await sharp(png, { ignoreIcc: true })
+        .resize({ width: 128, height: 128, fit: 'inside', withoutEnlargement: true })
+        .toColourspace('rgb16')
+        .raw({ depth: 'ushort' })
+        .toBuffer({ resolveWithObject: true });
+      assert.deepEqual(await raw16(overviewPath), expectedOverview.data);
+      assert.deepEqual(
+        [overview.width, overview.height, overview.bitDepth],
+        [expectedOverview.info.width, expectedOverview.info.height, 16],
+      );
+      assert.equal(overview.precisionEdit?.sha256, full.precisionEdit?.sha256);
       assert.deepEqual(await readFile(join(workDir, 'original.bin')), await readFile(inputPath));
     } finally {
       await runtime.close();

@@ -1344,7 +1344,6 @@ export function AIPanel({
               <Modal
                 title={t('对照调整建议')}
                 open={visible && !!candidate}
-                subtitle={t('与当前草稿逐项对比，确认后才进入本地编辑记录。')}
                 onClose={() => setCandidate(null)}
               >
                 <div className="ai-proposal-review" data-motion="modal-content">
@@ -1374,20 +1373,17 @@ export function AIPanel({
                     ))}
                   </div>
                   {!recipeDifferences(recipe, displayedCandidate.recipe).length && (
-                    <p className="control-note">{t('基础与新版数值参数没有变化。')}</p>
+                    <p className="control-note">{t('数值参数未变化')}</p>
                   )}
                   {!!additionalRecipeChanges(recipe, displayedCandidate.recipe).length && (
-                    <p className="parameter-error">
-                      {t('完整候选还与当前的 {changes} 不同；确认将一起替换，可撤销。', {
+                    <p className="ai-proposal-extra">
+                      {t('同时更新：{changes}', {
                         changes: additionalRecipeChanges(recipe, displayedCandidate.recipe)
                           .map((label) => t(label))
                           .join(' / '),
                       })}
                     </p>
                   )}
-                  <p className="control-note">
-                    {t('云端版本不会自动改写。预览后可以继续精修，再由你保存新版本。')}
-                  </p>
                   <button
                     className="button button-primary"
                     onClick={() => {
@@ -1407,7 +1403,7 @@ export function AIPanel({
                       setCandidate(null);
                     }}
                   >
-                    {t('作为可撤销的一步预览')}
+                    {t('在画布预览')}
                   </button>
                 </div>
               </Modal>
@@ -1654,7 +1650,7 @@ export function AIPanel({
             </div>
             {(!caps?.references.supported || !referenceLimit) && (
               <p className="control-note">
-                {t('当前模型没有开放参考图，选择已开通的模型后可使用。')}
+                {t('当前模型不支持参考图')}
               </p>
             )}
             {(caps?.references.allowMask || caps?.references.allowMarkup) && (
@@ -1686,15 +1682,13 @@ export function AIPanel({
                       : []),
                   ]}
                 />
-                <p className="control-note">
-                  {t(
-                    '二者互斥，需先选参考图；遮罩透明区域表示修改范围，必须符合模型对尺寸和格式的要求。',
-                  )}
-                </p>
+                {auxiliary?.kind === 'mask' && (
+                  <p className="control-note">{t('遮罩透明处为修改区域。')}</p>
+                )}
               </div>
             )}
             <p className="control-note">
-              {t('参考只表示创作依据，不保证像素级保留。当前原图不包含尚未导出的本地调整。')}
+              {t('原图未包含本地调整。')}
             </p>
           </div>
         </Modal>

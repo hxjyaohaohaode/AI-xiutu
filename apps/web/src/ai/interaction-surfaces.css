@@ -261,3 +261,53 @@
   .live-assistant .assistant-call { animation: none !important; }
   .live-assistant .assistant-call-actions button { transition: none; }
 }
+
+.ai-proposal-review,
+.ai-decision-confirm {
+  display: grid;
+  gap: 16px;
+  min-width: 0;
+}
+.ai-proposal-review .proposal-differences {
+  max-height: min(42dvh, 360px);
+  overflow: auto;
+  border: 0;
+  background: none;
+}
+.ai-proposal-review .proposal-differences [role='row'] {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(64px, .45fr) minmax(64px, .45fr);
+  gap: 12px;
+  padding: 10px 0;
+}
+.ai-proposal-review .proposal-diff-heading {
+  position: sticky;
+  top: 0;
+  background: var(--surface);
+  color: var(--muted);
+  font-size: 11px;
+}
+.ai-proposal-review .proposal-differences [role='cell'] {
+  min-width: 0;
+  overflow-wrap: anywhere;
+  font-variant-numeric: tabular-nums;
+}
+.ai-proposal-extra {
+  font-size: 12px;
+  color: var(--muted);
+}
+.ai-text-result .ai-result-actions,
+.ai-decision-confirm .ai-result-actions {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 6px 12px;
+}
+.ai-text-result .ai-result-actions button,
+.ai-decision-confirm .ai-result-actions button { min-height: 44px; }
+.ai-panel .ai-answer {
+  padding-inline: 0;
+  border: 0;
+  background: none;
+  box-shadow: none;
+}
