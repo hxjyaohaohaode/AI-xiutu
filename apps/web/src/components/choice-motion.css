@@ -98,12 +98,13 @@
 
 /* Compact painted controls retain separate, non-overlapping hit rectangles. */
 .choice-select[data-size] > .choice-trigger {
+  --choice-inset: calc((var(--ui-hit, 40px) - var(--ui-control-h, 36px)) / 2);
   min-height: var(--ui-hit, 40px);
   padding: 0 10px;
-  border-block: calc((var(--ui-hit, 40px) - var(--ui-control-h, 36px)) / 2) solid transparent;
+  border-block: var(--choice-inset) solid transparent;
   background-clip: padding-box;
   font-size: var(--ui-text-size, 13px);
-  border-radius: 6px;
+  border-radius: calc(6px + var(--choice-inset));
 }
 .choice-select[data-size] > .choice-trigger > .studio-glyph {
   width: var(--ui-icon-small, 18px);
