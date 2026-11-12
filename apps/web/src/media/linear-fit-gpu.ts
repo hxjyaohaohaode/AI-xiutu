@@ -1,15 +1,21 @@
 import type { PrecisionEdit } from '@ai-xiutu/editor';
-import { rawFitGeometry, rawGradeParameters, RAW_GRADE_WORDS } from './raw-fit-parameters';
-import { normalizedRawCodes, streamRawMaster, type RawMaster } from './raw-master-stream';
-import shader from './raw-fit.wgsl?raw';
+import { linearFitGeometry, fitGradeParameters, FIT_GRADE_WORDS } from './linear-fit-parameters';
+import {
+  normalizedRawCodes,
+  streamLinearMaster,
+  type FitMasterEncoding,
+  type LinearMaster,
+} from './linear-master-stream';
+import shader from './linear-fit.wgsl?raw';
 
 const MAX_GPU_BYTES = 768 * 1024 ** 2;
 const WORKGROUP_WIDTH = 16;
 const WORKGROUP_HEIGHT = 8;
 
-export async function openRawFitGpu(
+export async function openLinearFitGpu(
   assetId: string,
-  master: RawMaster,
+  master: LinearMaster,
+  encoding: FitMasterEncoding,
   maxEdge: number,
   onLost: () => void,
 ) {
@@ -22,16 +28,17 @@ export async function openRawFitGpu(
     maxEdge < 128 ||
     maxEdge > 1536
   )
-    throw new Error('Unsupported RAW preview dimensions');
-  const shape = rawFitGeometry(width, height, maxEdge);
+    throw new Error('Unsupported linear preview dimensions');
+  const shape = linearFitGeometry(width, height, maxEdge);
   const { outputWidth, outputHeight, x, y } = shape;
-  const sourceBytes = Math.ceil((pixels * 3) / 2) * 4;
+  const displayHdr = encoding === 'display-hdr';
+  const sourceBytes = displayHdr ? pixels * 12 : Math.ceil((pixels * 3) / 2) * 4;
   const verticalBytes = width * y.reduced * 8;
   const horizontalBytes = x.reduced * outputHeight * 8;
   const outputBytes = outputWidth * outputHeight * 8;
   const largest = Math.max(sourceBytes, verticalBytes, horizontalBytes, outputBytes);
   if (sourceBytes + verticalBytes + horizontalBytes + outputBytes > MAX_GPU_BYTES)
-    throw new Error('RAW preview exceeds its GPU budget');
+    throw new Error('Linear preview exceeds its GPU budget');
 
   const adapter = await navigator.gpu?.requestAdapter({ powerPreference: 'high-performance' });
   if (
@@ -40,7 +47,7 @@ export async function openRawFitGpu(
     adapter.limits.maxBufferSize < largest ||
     adapter.limits.maxStorageBufferBindingSize < largest
   )
-    throw new Error('RAW preview GPU is unavailable');
+    throw new Error('Linear preview GPU is unavailable');
   const device = await adapter.requestDevice({
     requiredLimits: { maxBufferSize: largest, maxStorageBufferBindingSize: largest },
   });
@@ -51,7 +58,7 @@ export async function openRawFitGpu(
   const canvas = new OffscreenCanvas(outputWidth, outputHeight);
   const context = canvas.getContext('webgpu');
   try {
-    if (!context) throw new Error('RAW preview canvas is unavailable');
+    if (!context) throw new Error('Linear preview canvas is unavailable');
     const format = navigator.gpu.getPreferredCanvasFormat();
     context.configure({ device, format, alphaMode: 'opaque', colorSpace: 'srgb' });
     const storage = GPUBufferUsage.STORAGE;
@@ -68,7 +75,7 @@ export async function openRawFitGpu(
       return buffer;
     };
     const original = device.createBuffer({ size: sourceBytes, usage: writableStorage });
-    const lookup = upload(normalizedRawCodes(), storage);
+    const lookup = upload(displayHdr ? new Float32Array(1) : normalizedRawCodes(), storage);
     const geometry = upload(
       new Uint32Array([
         width,
@@ -78,7 +85,7 @@ export async function openRawFitGpu(
         y.average,
         y.reduced,
         y.taps,
-        0,
+        Number(displayHdr),
         x.average,
         x.reduced,
         x.taps,
@@ -86,7 +93,7 @@ export async function openRawFitGpu(
       ]),
       GPUBufferUsage.UNIFORM,
     );
-    const parameters = device.createBuffer({ size: RAW_GRADE_WORDS * 4, usage: writableStorage });
+    const parameters = device.createBuffer({ size: FIT_GRADE_WORDS * 4, usage: writableStorage });
     const vertical = device.createBuffer({ size: verticalBytes, usage: storage });
     const horizontal = device.createBuffer({ size: horizontalBytes, usage: storage });
     const rows = upload(y.table, storage);
@@ -136,21 +143,25 @@ export async function openRawFitGpu(
     const display = bind(render.getBindGroupLayout(0), [2, 9]);
     const invalid = await device.popErrorScope();
     const allocation = await device.popErrorScope();
-    if (invalid || allocation) throw new Error('RAW preview GPU initialization failed');
+    if (invalid || allocation) throw new Error('Linear preview GPU initialization failed');
 
     const response = await fetch(`/v1/assets/${encodeURIComponent(assetId)}/media/linearMaster`, {
       credentials: 'same-origin',
       cache: 'no-store',
       signal: AbortSignal.timeout(180_000),
     });
-    await streamRawMaster(response, master, async (top, band) => {
-      device.queue.writeBuffer(original, top * width * 6, band);
+    await streamLinearMaster(response, master, encoding, async (top, band) => {
+      device.queue.writeBuffer(original, top * width * 3 * band.BYTES_PER_ELEMENT, band);
       await device.queue.onSubmittedWorkDone();
     });
 
     return {
       async frame(edit: PrecisionEdit) {
-        device.queue.writeBuffer(parameters, 0, rawGradeParameters(edit, width, height));
+        device.queue.writeBuffer(
+          parameters,
+          0,
+          fitGradeParameters(edit, width, height, displayHdr),
+        );
         const command = device.createCommandEncoder();
         for (const { pipeline, group, width, height } of passes) {
           const pass = command.beginComputePass();

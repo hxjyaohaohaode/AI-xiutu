@@ -17,7 +17,7 @@ import {
 import { ChoiceSelect } from '../components/ChoiceSelect';
 import { nativePreviewWindow, visibleTiles, zoomAround, type TileView } from './tile-layout';
 import { useMasterPreview } from './useMasterPreview';
-import { useRawFitPreview } from './useRawFitPreview';
+import { useLinearFitPreview } from './useLinearFitPreview';
 import './media.css';
 export interface MediaRecord {
   descriptor: MediaDescriptorV1;
@@ -167,13 +167,23 @@ export function MediaSourceViewer({ assetId }: { assetId: string }) {
   const supportedGrade = nativeGradeSupported(edit, precisionInput, precision);
   const wantsGrade = grading && canEdit && supportedGrade;
   const overviewEdge = Math.min(maxEdge ?? 1536, 1536);
-  const rawMaster =
-    wantsGrade &&
-    precisionInput === 'linear-master' &&
+  const fitEncoding =
     descriptor?.original.sampleEncoding === 'sensor-raw'
-      ? descriptor.linearMaster
+      ? 'camera-raw'
+      : descriptor?.original.gainMap || descriptor?.original.pq
+        ? 'display-hdr'
+        : undefined;
+  const fitMaster =
+    wantsGrade && precisionInput === 'linear-master' && fitEncoding
+      ? descriptor?.linearMaster
       : undefined;
-  const gpu = useRawFitPreview(assetId, rawMaster, overviewEdge, wantsGrade && !region ? edit : null);
+  const gpu = useLinearFitPreview(
+    assetId,
+    fitMaster,
+    fitEncoding,
+    overviewEdge,
+    wantsGrade && !region ? edit : null,
+  );
   const activeNativeRegion = nativeRegions(edit).find((item) => item.id === selectedNativeRegion);
   function changeGrade(update: (current: PrecisionEdit) => PrecisionEdit) {
     // This synchronous lock also covers cancellation callbacks captured by an older gesture.
@@ -471,16 +481,16 @@ export function MediaSourceViewer({ assetId }: { assetId: string }) {
             <img draggable={false} alt="" src={frame.url} />
           </div>
         )}
-        {rawMaster && (
+        {fitMaster && (
           <div
             className="media-tile media-precision-frame"
-            data-raw-fit={gpu.painted ? 'ready' : gpu.loading ? 'loading' : undefined}
+            data-linear-fit={gpu.painted ? 'ready' : gpu.loading ? 'loading' : undefined}
             hidden={!gpu.painted}
             style={{
               left: view.x,
               top: view.y,
-              width: rawMaster.width * view.zoom,
-              height: rawMaster.height * view.zoom,
+              width: fitMaster.width * view.zoom,
+              height: fitMaster.height * view.zoom,
             }}
           >
             <canvas ref={gpu.canvas} aria-hidden="true" />

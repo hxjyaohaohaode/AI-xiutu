@@ -4,7 +4,7 @@ export const CURVE_OFFSET = 16;
 export const CURVE_STRIDE = 32;
 export const REGION_OFFSET = CURVE_OFFSET + 4 * CURVE_STRIDE;
 export const REGION_STRIDE = 20;
-export const RAW_GRADE_WORDS = REGION_OFFSET + 8 * REGION_STRIDE;
+export const FIT_GRADE_WORDS = REGION_OFFSET + 8 * REGION_STRIDE;
 
 type GlobalAdjustments = Partial<
   Pick<
@@ -28,10 +28,15 @@ function adjustmentValues(edit: GlobalAdjustments) {
   ];
 }
 
-export function rawGradeParameters(edit: PrecisionEdit, width: number, height: number) {
-  const values = new Float32Array(RAW_GRADE_WORDS);
+export function fitGradeParameters(
+  edit: PrecisionEdit,
+  width: number,
+  height: number,
+  displayHdr: boolean,
+) {
+  const values = new Float32Array(FIT_GRADE_WORDS);
   values.set(adjustmentValues(edit));
-  values[7] = Number(edit.toneMap === 'reinhard');
+  values[7] = Number(displayHdr || edit.toneMap === 'reinhard');
   if ('curves' in edit) {
     const channels = ['luminance', 'red', 'green', 'blue'] as const;
     for (const [channel, name] of channels.entries()) {
@@ -132,7 +137,7 @@ function resizeAxis(input: number, target: number, scale: number) {
   return { average, reduced, taps, table };
 }
 
-export function rawFitGeometry(width: number, height: number, maxEdge: number) {
+export function linearFitGeometry(width: number, height: number, maxEdge: number) {
   const scale = Math.max(1, Math.max(width, height) / maxEdge);
   const outputWidth = Math.max(1, Math.round(width / scale));
   const outputHeight = Math.max(1, Math.round(height / scale));

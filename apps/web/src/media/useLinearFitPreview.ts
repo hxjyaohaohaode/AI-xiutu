@@ -1,30 +1,31 @@
 import { useEffect, useRef, useState } from 'react';
 import type { PrecisionEdit } from '@ai-xiutu/editor';
-import RawFitWorker from './raw-fit.worker?worker';
-import type { RawFitRequest, RawFitResponse } from './raw-fit.worker';
-import type { RawMaster } from './raw-master-stream';
+import LinearFitWorker from './linear-fit.worker?worker';
+import type { FitRequest, FitResponse } from './linear-fit.worker';
+import type { FitMasterEncoding, LinearMaster } from './linear-master-stream';
 
-export function useRawFitPreview(
+export function useLinearFitPreview(
   assetId: string,
-  source: RawMaster | undefined,
+  source: LinearMaster | undefined,
+  encoding: FitMasterEncoding | undefined,
   maxEdge: number,
   edit: PrecisionEdit | null,
 ) {
   const canvas = useRef<HTMLCanvasElement>(null);
   const offer = useRef<(edit: PrecisionEdit | null) => void>(() => {});
   const [state, setState] = useState<{ key: string; painted: boolean } | null>(null);
-  const key = source ? `${assetId}:${source.sha256}:${maxEdge}` : '';
+  const key = source && encoding ? `${assetId}:${source.sha256}:${encoding}:${maxEdge}` : '';
 
   useEffect(() => {
-    if (!source || !navigator.gpu || typeof OffscreenCanvas === 'undefined') return;
-    const worker = new RawFitWorker();
+    if (!source || !encoding || !navigator.gpu || typeof OffscreenCanvas === 'undefined') return;
+    const worker = new LinearFitWorker();
     let started = false;
     let ready = false;
     let rendering = false;
     let closed = false;
     let desired: PrecisionEdit | null = null;
     let lastSent: PrecisionEdit | null = null;
-    const send = (request: RawFitRequest) => worker.postMessage(request);
+    const send = (request: FitRequest) => worker.postMessage(request);
     function pump() {
       if (closed || !ready || rendering || !desired || desired === lastSent) return;
       rendering = true;
@@ -47,13 +48,13 @@ export function useRawFitPreview(
       if (value && !started && !closed) {
         started = true;
         setState({ key, painted: false });
-        send({ type: 'open', assetId, source, maxEdge });
+        send({ type: 'open', assetId, source, encoding, maxEdge });
       }
       pump();
     };
     worker.onerror = fail;
     worker.onmessageerror = fail;
-    worker.onmessage = ({ data }: MessageEvent<RawFitResponse>) => {
+    worker.onmessage = ({ data }: MessageEvent<FitResponse>) => {
       if (closed) {
         if (data.type === 'frame') data.bitmap.close();
         return;
@@ -80,7 +81,7 @@ export function useRawFitPreview(
             element.height = bitmap.height;
           }
           const output = element.getContext('bitmaprenderer');
-          if (!output) throw new Error('RAW preview canvas could not receive the frame');
+          if (!output) throw new Error('Linear preview canvas could not receive the frame');
           output.transferFromImageBitmap(bitmap);
           setState((current) =>
             current?.key === key && current.painted ? current : { key, painted: true },
@@ -94,7 +95,7 @@ export function useRawFitPreview(
       pump();
     };
     return close;
-  }, [assetId, source, maxEdge, key]);
+  }, [assetId, source, encoding, maxEdge, key]);
 
   useEffect(() => {
     offer.current(edit);
