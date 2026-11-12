@@ -34,6 +34,64 @@ function measureSupportDistance(distance: Uint16Array, width: number, height: nu
   }
 }
 
+/** Follow similar colors out from areas both models identify as background.
+ * Keep the connected path and the color of its background seed in agreement. */
+function suppressConnectedBackground(
+  alpha: Uint8Array,
+  semantic: Float32Array,
+  rgba: Uint8ClampedArray,
+  { width }: Dimensions,
+  semanticCore: number,
+) {
+  const size = alpha.length;
+  const queue = new Uint32Array(size);
+  const seeds = new Uint32Array(size);
+  const steps = new Uint8Array(size);
+  const reach = Math.round(Math.min(42, Math.max(12, 0.15 * Math.sqrt(semanticCore))));
+  let tail = 0;
+  for (let i = 0; i < size; i++) {
+    if (alpha[i]! <= 8 && semantic[i]! <= 0.12) {
+      queue[tail++] = i;
+      steps[i] = 1;
+      seeds[i] = i;
+    }
+  }
+  const colorDistance = (left: number, right: number) => {
+    const a = left * 4;
+    const b = right * 4;
+    return (
+      Math.abs(rgba[a]! - rgba[b]!) +
+      Math.abs(rgba[a + 1]! - rgba[b + 1]!) +
+      Math.abs(rgba[a + 2]! - rgba[b + 2]!)
+    );
+  };
+  const visit = (from: number, at: number) => {
+    if (steps[at] || semantic[at]! >= 0.35 || colorDistance(from, at) > 18) return;
+    const seed = seeds[from]!;
+    const distance = colorDistance(seed, at);
+    if (distance >= 30) return;
+    const step = steps[from]! + 1;
+    queue[tail++] = at;
+    steps[at] = step;
+    seeds[at] = seed;
+    if (alpha[at]! <= 8) return;
+    const confidence =
+      (1 - smoothstep(distance / 30)) *
+      (1 - smoothstep(semantic[at]! / 0.35)) *
+      (1 - smoothstep((step - reach * 0.7) / (reach * 0.3)));
+    alpha[at] = Math.round(alpha[at]! * (1 - confidence));
+  };
+  for (let head = 0; head < tail; head++) {
+    const at = queue[head]!;
+    if (steps[at]! >= reach) continue;
+    const x = at % width;
+    if (x > 0) visit(at, at - 1);
+    if (x + 1 < width) visit(at, at + 1);
+    if (at >= width) visit(at, at - width);
+    if (at + width < size) visit(at, at + width);
+  }
+}
+
 /** Keep the matting model's edge coverage and restore high-confidence human
  * regions that it omits, such as a hand or an opaque garment behind glasses. */
 export function fusePortraitCutoutPrior(
@@ -41,6 +99,7 @@ export function fusePortraitCutoutPrior(
   grid: Dimensions,
   subject: SelectionMaskV3,
   source: Dimensions,
+  modelRgba?: Uint8ClampedArray,
 ): CutoutAlphaPrior | undefined {
   const mask = parseSelectionMaskV3(subject);
   const { width, height } = grid;
@@ -50,7 +109,8 @@ export function fusePortraitCutoutPrior(
     ![width, height].every(
       (edge) => Number.isInteger(edge) && edge > 0 && edge <= MAX_CUTOUT_ALPHA_EDGE,
     ) ||
-    predicted.length !== width * height
+    predicted.length !== width * height ||
+    (modelRgba && modelRgba.length !== width * height * 4)
   )
     return undefined;
   const coarse = new Uint8Array(mask.width * mask.height);
@@ -69,6 +129,7 @@ export function fusePortraitCutoutPrior(
   const rows = axis(height, mask.height),
     columns = axis(width, mask.width);
   const alpha = new Uint8Array(predicted.length);
+  const semanticCoverage = modelRgba ? new Float32Array(predicted.length) : undefined;
   const distance = new Uint16Array(predicted.length).fill(width + height);
   let modelCore = 0,
     modelOutside = 0,
@@ -85,6 +146,7 @@ export function fusePortraitCutoutPrior(
       const a = coarse[y0 * mask.width + x0]! * (1 - tx) + coarse[y0 * mask.width + x1]! * tx;
       const b = coarse[y1 * mask.width + x0]! * (1 - tx) + coarse[y1 * mask.width + x1]! * tx;
       const semantic = (a * (1 - ty) + b * ty) / 255;
+      if (semanticCoverage) semanticCoverage[i] = semantic;
       if (semantic >= 0.35) distance[i] = 0;
       if (probability >= 0.9) modelCore++;
       if (probability <= 0.1) modelOutside++;
@@ -111,5 +173,7 @@ export function fusePortraitCutoutPrior(
     if (alpha[i] && distance[i]! > 0.35 * reach)
       alpha[i] = Math.round(alpha[i]! * smoothstep((reach - distance[i]!) / (0.65 * reach)));
   }
+  if (semanticCoverage && modelRgba)
+    suppressConnectedBackground(alpha, semanticCoverage, modelRgba, grid, semanticCore);
   return createCutoutAlphaPrior(source, grid, alpha);
 }
