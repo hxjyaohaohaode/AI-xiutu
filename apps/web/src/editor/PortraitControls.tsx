@@ -23,6 +23,7 @@ import { currentV3, rgbaHex, hexRgba, type InspectorController } from './advance
 import type { ToolGroup } from './ToolInspector';
 import { portraitTargetDisplayLabel } from './portrait-label';
 import { interactionText } from '../workspace/interaction-copy';
+import type { PortraitMatteMethod } from './portrait-matte.worker';
 import {
   portraitSelectionLabels,
   portraitSelectionMatchesSource,
@@ -31,10 +32,18 @@ import {
 } from './portrait-selection';
 
 export type CutoutGuides = {
+  method: PortraitMatteMethod;
   foregroundId: string;
   backgroundId: string;
   radius: number;
   decontaminate: number;
+};
+const DEFAULT_CUTOUT_GUIDES: CutoutGuides = {
+  method: 'standard',
+  foregroundId: '',
+  backgroundId: '',
+  radius: 0.015,
+  decontaminate: 0.8,
 };
 
 export function PortraitControls({
@@ -88,20 +97,34 @@ export function PortraitControls({
   const target = targets.find((person) => person.id === state.activeTargetId) ?? targets[0];
   const recipe = currentV3(editor);
   const selectionHintId = useId();
-  const [guides, setGuides] = useState<CutoutGuides>({
-    foregroundId: '',
-    backgroundId: '',
-    radius: 0.015,
-    decontaminate: 0.8,
-  });
+  const [guides, setGuides] = useState(DEFAULT_CUTOUT_GUIDES);
   const guideSource = useRef(sourceIdentity);
   useEffect(() => {
     if (guideSource.current === sourceIdentity) return;
     guideSource.current = sourceIdentity;
-    setGuides({ foregroundId: '', backgroundId: '', radius: 0.015, decontaminate: 0.8 });
+    setGuides(DEFAULT_CUTOUT_GUIDES);
   }, [sourceIdentity]);
   const analysisCurrent = portraitSelectionMatchesSource(state.analysis, editor.getSourceFrame());
   const hasSubject = analysisCurrent && !!state.analysis?.segmentation?.subject;
+  const [fineMatteAvailable, setFineMatteAvailable] = useState(false);
+  useEffect(() => {
+    if (!hasSubject || !navigator.gpu) return;
+    let active = true;
+    void navigator.gpu
+      .requestAdapter()
+      .then((adapter) => {
+        if (active)
+          setFineMatteAvailable(
+            !!adapter && !adapter.info.isFallbackAdapter && adapter.features.has('shader-f16'),
+          );
+      })
+      .catch(() => {
+        if (active) setFineMatteAvailable(false);
+      });
+    return () => {
+      active = false;
+    };
+  }, [hasSubject]);
   const guideOptions = [
     { value: '', label: t('无') },
     ...recipe.regionEdits
@@ -347,6 +370,24 @@ export function PortraitControls({
         <>
           <MotionDetails className="editor-section">
             <summary>{t('精准抠图')}</summary>
+            {((hasSubject && fineMatteAvailable) || guides.method === 'fine') && (
+              <ChoiceSelect
+                ariaLabel={t('抠图模式')}
+                value={guides.method}
+                disabled={cutting}
+                options={[
+                  { value: 'standard', label: t('标准抠图') },
+                  {
+                    value: 'fine',
+                    label: t('发丝与边缘'),
+                    disabled: !hasSubject || !fineMatteAvailable,
+                  },
+                ]}
+                onValueChange={(value) =>
+                  setGuides((prev) => ({ ...prev, method: value === 'fine' ? 'fine' : 'standard' }))
+                }
+              />
+            )}
             {guideOptions.length > 1 && (
               <>
                 <ChoiceSelect

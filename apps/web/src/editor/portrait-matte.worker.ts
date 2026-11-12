@@ -10,6 +10,9 @@ import {
 } from '@ai-xiutu/editor';
 import { fusePortraitCutoutPrior } from '@ai-xiutu/portrait';
 import model from '../../../../third-party/portrait-matting.json';
+import { resizeMatteInput } from './portrait-matte-input';
+
+export type PortraitMatteMethod = 'standard' | 'fine';
 
 export interface PortraitMatteRequest {
   image: RGBAImage;
@@ -28,23 +31,7 @@ function modelInput(image: RGBAImage) {
   );
   const width = Math.max(32, Math.floor((image.width * scale) / 32) * 32);
   const height = Math.max(32, Math.floor((image.height * scale) / 32) * 32);
-  const source = new OffscreenCanvas(image.width, image.height);
-  const sourceContext = source.getContext('2d');
-  const target = new OffscreenCanvas(width, height);
-  const context = target.getContext('2d', { alpha: false, willReadFrequently: true });
-  if (!sourceContext || !context) throw new Error('Portrait matting canvas is unavailable');
-  sourceContext.putImageData(
-    new ImageData(new Uint8ClampedArray(image.data), image.width, image.height),
-    0,
-    0,
-  );
-  context.imageSmoothingQuality = 'high';
-  context.fillStyle = '#808080';
-  context.fillRect(0, 0, width, height);
-  context.drawImage(source, 0, 0, width, height);
-  source.width = source.height = 1;
-  const rgba = context.getImageData(0, 0, width, height).data;
-  target.width = target.height = 1;
+  const rgba = resizeMatteInput(image, width, height);
   const count = width * height;
   const values = new Float32Array(count * 3);
   for (let i = 0; i < count; i++) {

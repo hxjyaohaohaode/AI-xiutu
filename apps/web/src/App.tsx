@@ -1466,13 +1466,15 @@ export function App({
         : undefined;
     const identity = editor.getSourceIdentity();
     const context = projectRequest.current;
-    const alphaPrior = subject && (await editor.portrait.prepareCutoutPrior(subject));
+    const alphaPrior = subject && (await editor.portrait.prepareCutoutPrior(subject, guides.method));
     if (
       editor.getSourceIdentity() !== identity ||
       editor.isLoading() ||
       projectRequest.current !== context
     )
       throw new Error(t('图片已切换，请重新运行抠图。'));
+    if (guides.method === 'fine' && !alphaPrior)
+      throw new Error(t('发丝与边缘抠图暂不可用，可以切回标准抠图。'));
     const selection = alphaPrior ?? subject ?? foreground;
     if (!selection) throw new Error(t('请先识别人像或选择前景。'));
     const settings: CutoutSettings = {
@@ -1483,7 +1485,7 @@ export function App({
       radius: guides.radius,
       decontaminate: guides.decontaminate,
     };
-    const name = `${filenameBase(editor.file.name).slice(0, 106)}-抠图.png`;
+    const name = `${filenameBase(editor.file.name).slice(0, 106)}-${guides.method === 'fine' ? t('发丝与边缘') : '抠图'}.png`;
     const sourceAsset = cloudBaseSources.current.get(identity);
     if (
       asset &&
