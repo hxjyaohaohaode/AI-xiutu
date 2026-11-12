@@ -1,67 +1,16 @@
-# About 与账号图像
+# About product captures
 
-本目录分别保存宣传插图、实际浏览器界面截图和本地引擎演示素材。**宣传图不能直接变成用户作品，也不能被表述为已经执行过的修图或云端任务结果。** 本轮 About 的创作入口进入用户自己的工作台；不会因为选择创作方向、Agent 候选或调色预设而自动导入宣传图。
+The active About page is a continuous product overview. Generated promotional illustrations, fake conversations, click-to-reveal tours and the old FAQ interaction are no longer part of it.
 
-本轮 8 张宣传图由 imagegen 独立生成，另有 2 张 Agent 候选由项目的 `renderRecipeV4` 从源图实际计算。完整提示词、来源标识、校验值和制作步骤见 [本轮素材来源记录](../../../../docs/design/about-art-r3-20261111.md)。
+## Allowed imagery
 
-## 本轮素材与固定用途
+- workspace, local, portrait, layers, tablet and phone captures each have zh-CN, zh-TW and en variants. They must come from the actual application running the source revision recorded in the capture manifest.
+- The capture workflow imports licensed real photographs, uses the actual editor and preserves visible unavailable or error states. It never paints fictitious application controls onto an image.
+- Existing capture files retain their historical provenance until replaced by a successful new capture job. Their presence alone does not validate the redesign.
+- The three fixed sample paths coast.webp, portrait.webp and color-study.webp remain for legacy navigation compatibility; the verification task replaces their former generated practice images with the licensed real input photographs. The active About entry does not import a sample into a user's workspace.
 
-尺寸与体积于 2026-11-11 从实际文件读取；1 KiB = 1,024 bytes。8 张原图均为 1,536 × 1,024 的 PNG，转为 WebP 时使用 `quality: 86, effort: 6`，没有再次缩小尺寸，也没有在照片内生成软件控件。标注、选区、连线和光标由页面代码绘制。
+## Capture and verification
 
-| 文件                      | 固定用途                                     | 输出尺寸    |        字节数 / 体积 |
-| ------------------------- | -------------------------------------------- | ----------- | -------------------: |
-| `hero-editorial.webp`     | 首页主视觉；石庭、水面与橙色亚麻             | 1536 × 1024 | 343,172 / 335.13 KiB |
-| `color-landscape.webp`    | 探索创作 · 光线与色彩                        | 1536 × 1024 | 310,836 / 303.55 KiB |
-| `local-stilllife.webp`    | 探索创作 · 局部与修复                        | 1536 × 1024 | 194,236 / 189.68 KiB |
-| `portrait-editorial.webp` | 探索创作 · 人像与美颜                        | 1536 × 1024 |   99,758 / 97.42 KiB |
-| `layers-editorial.webp`   | 探索创作 · 绘制与合成                        | 1536 × 1024 | 158,802 / 155.08 KiB |
-| `agent-night.webp`        | 创作伙伴 · 源照片及真实候选的共同输入        | 1536 × 1024 | 416,636 / 406.87 KiB |
-| `team-studio.webp`        | 个人与团队 · 协作状态插图                    | 1536 × 1024 | 173,326 / 169.26 KiB |
-| `auth-atelier.webp`       | 独立登录、注册及账号流程                     | 1536 × 1024 |   79,652 / 77.79 KiB |
-| `agent-candidate-0.webp`  | Agent 候选 A，由 `agent-night.webp` 真实渲染 | 768 × 512   | 152,820 / 149.24 KiB |
-| `agent-candidate-1.webp`  | Agent 候选 B，由 `agent-night.webp` 真实渲染 | 768 × 512   | 154,546 / 150.92 KiB |
+See scripts/qa/system-redesign.browser.mjs and the screenshot manifest generated beside these assets. Captures should record the tested commit, source-photo author and license URL, image dimensions and SHA-256. Desktop and narrow-screen About captures are also retained under docs/design/verification/system-redesign for review.
 
-两个候选为 768 × 512，WebP 使用 `quality: 90, effort: 6`。它们是同一工作流程中可比较的真实派生结果，不是将同一张照片充当多个互不相关章节的装饰。`auth-atelier.webp` 只用于账号流程，不在 About 内重复出现。
-
-## 实际界面截图
-
-以下截图来自此前实际浏览器中的映间工作台，只转码为 WebP，没有补画控件或替换照片中的编辑结果。本轮保留这些截图，在“探索创作”中按需展开，在设备区展示桌面和手机工作台。真实截图不再占据每个功能章节的主宣传图位置。
-
-| 文件                              | 实际内容                                       | 原始尺寸   |   zh-CN / zh-TW / en 字节数 |
-| --------------------------------- | ---------------------------------------------- | ---------- | --------------------------: |
-| `workspace-{zh-CN,zh-TW,en}.webp` | 海岸示例、实际色温参数与工作台                 | 1440 × 960 | 110,496 / 110,810 / 115,096 |
-| `local-{zh-CN,zh-TW,en}.webp`     | 实际创建并旋转的多边形选区，未开启持续红色覆盖 | 1440 × 960 | 111,480 / 111,562 / 116,278 |
-| `portrait-{zh-CN,zh-TW,en}.webp`  | 本机模型识别后的人物、美肤参数与原图           | 1440 × 960 |    72,386 / 72,518 / 79,118 |
-| `layers-{zh-CN,zh-TW,en}.webp`    | 独立绘制图层、4 px 笔刷与实际绘制的一笔        | 1440 × 960 | 111,174 / 111,458 / 116,592 |
-| `phone-{zh-CN,zh-TW,en}.webp`     | 手机常规调节状态，照片与滑杆触控区域同时保留   | 390 × 844  |    38,546 / 38,618 / 38,998 |
-
-`ProductImage` 根据当前语言选择文件，不把三种语言同时作为三个可见界面加载。设备区的平板模式沿用桌面截图的展示框变换，没有单独捕获的平板截图；不能将其作为平板交互已实测的证据。
-
-截图中的“云端暂不可用”来自当时仅部署静态前端的验收站点，保留真实状态，不把它改成虚构的云端成功提示。人像截图的美颜参数为零，展示识别及控制入口，不宣称没有执行过的修饰效果。图层和选区名称属于创作数据，切换语言保留原值；界面标题、参数、状态与操作控件按语言切换。
-
-## 保留的本地演示素材
-
-| 文件               | 当前用途                                                                | 尺寸        |  字节数 |
-| ------------------ | ----------------------------------------------------------------------- | ----------- | ------: |
-| `color-study.webp` | “亲手试一下”的唯一静物源图，使用与工作台相同的编辑引擎实时计算 8 项参数 | 1536 × 1024 | 119,258 |
-| `coast.webp`       | 旧示例入口的兼容素材，同时出现在此前真实工作台截图中                    | 1536 × 1024 | 255,372 |
-| `portrait.webp`    | 旧示例入口的兼容素材，同时出现在此前真实人像截图中                      | 1536 × 1024 |  78,750 |
-
-这些是此前生成的练习照片，不能混记为本轮新增图。旧示例路由仍使用固定的同源素材白名单，不接受导航状态传来的任意 URL；新 About 的“开始自己的作品”不走示例导入路径。
-
-## 载入与体积
-
-首屏主图优先加载；其余 `EditorialImage` / `ProductImage` 使用原生懒加载和异步解码。图片框预留比例，加载时保留骨架，失败时提供重试。功能截图仅在展开实际界面后挂载。浏览器可能按自己的预加载距离提前获取懒加载图片，因此不能把目录总量或标记为 lazy 等同于实测首屏流量。
-
-| 范围             | 数量 |                     文件体积 |
-| ---------------- | ---: | ---------------------------: |
-| 本轮生成宣传图   |    8 | 1,776,418 bytes（1.694 MiB） |
-| 本轮真实引擎候选 |    2 |   307,366 bytes（0.293 MiB） |
-| 本轮新增合计     |   10 | 2,083,784 bytes（1.987 MiB） |
-| 已有三语实际截图 |   15 | 1,355,130 bytes（1.292 MiB） |
-| 已有练习源图     |    3 |   453,380 bytes（0.432 MiB） |
-| 本目录全部 WebP  |   28 | 3,892,294 bytes（3.712 MiB） |
-
-当前仓库未定义 About 图片总字节数的独立自动门禁。本轮完成了真实文件格式、尺寸与体积检查；以上数据不是 LCP、帧率、移动网络或生产构建通过的替代证据。具体检查范围见 [素材来源记录](../../../../docs/design/about-art-r3-20261111.md#资源预算核查)。
-
-源码适配与许可见 [交互参考记录](../../src/about/effects/REFERENCE_STUDY.md) 和 [React Bits 许可](../../src/about/effects/LICENSE.react-bits.md)。此前截图的验收背景见 [此前交互与构建记录](../../../../docs/verification/frontend-immersive-20261111-tests.md)。
+A screenshot is evidence of the visible interface only. It does not establish successful paid AI generation, SMS delivery, native HDR processing or real multi-user collaboration. Those require their own runtime checks.

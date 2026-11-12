@@ -58,12 +58,13 @@
   backdrop-filter: blur(18px);
   border-bottom: 1px solid rgb(38 42 36 / 6%);
 }
-.overview-brand { display: inline-flex; align-items: center; gap: 10px; flex-shrink: 0; font-size: 22px; font-weight: 650; letter-spacing: -.04em; }
+.overview-brand { display: inline-flex; align-items: center; gap: 10px; min-width: 0; max-width: min(240px, 28vw); flex-shrink: 1; font-size: 22px; font-weight: 650; letter-spacing: -.04em; }
+.overview-brand > span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .overview-brand .product-brand-mark { width: 31px; height: 31px; }
 .overview-header nav { display: flex; align-items: center; gap: clamp(16px, 2.4vw, 38px); margin-left: auto; }
 .overview-header nav a { font-size: 13px; padding: 8px 0; white-space: nowrap; transition: color .2s; }
 .overview-header nav a:hover { color: #9b6f13; }
-.overview-header-actions { display: flex; align-items: center; gap: 14px; }
+.overview-header-actions { display: flex; align-items: center; gap: 14px; flex-shrink: 0; }
 .overview-header-actions .language-select { color: var(--overview-ink); }
 .overview-header-actions .language-select select { color: var(--overview-ink); background: transparent; }
 .overview-sign-in { min-height: 40px; padding: 4px 2px; font-size: 13px; white-space: nowrap; }

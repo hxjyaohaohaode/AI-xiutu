@@ -30,6 +30,7 @@ export const english: Readonly<Record<string, string>> = {
   ...finalEnglish,
   ...aiRedesignEnglish,
   '确认 AI 调整': 'Apply AI adjustments',
+  '本地编辑': 'Local editing',
   语言: 'Language',
   简体中文: 'Simplified Chinese',
   繁體中文: 'Traditional Chinese',

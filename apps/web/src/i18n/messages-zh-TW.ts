@@ -144,6 +144,7 @@ export const traditional: Readonly<Record<string, string>> = {
   ...libraryTraditional,
   ...aiRedesignTraditionalChinese,
   '确认 AI 调整': '套用 AI 調整',
+  '本地编辑': '本地編輯',
   语言: '語言',
   简体中文: '簡體中文',
   繁體中文: '繁體中文',
