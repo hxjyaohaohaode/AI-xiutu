@@ -1,16 +1,17 @@
 import { spawn } from 'node:child_process';
 import { createHash } from 'node:crypto';
 import { createReadStream } from 'node:fs';
-import { lstat, rename, statfs } from 'node:fs/promises';
+import { lstat, readFile, rename, rm, statfs } from 'node:fs/promises';
 import { basename, dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import sharp from 'sharp';
 import { NEUTRAL_PRECISION_EDIT, type PrecisionEdit } from '@ai-xiutu/editor';
 import { attachPngIcc, srgbProfile } from './icc.js';
-import { precisionRecord, previewWindow } from './precision.js';
+import { fitPrecisionPreview, precisionRecord, previewWindow } from './precision.js';
 import type { NormalizedMediaOptions } from './process.js';
 import {
   MEDIA_MAX_LINEAR_PIXELS,
+  MEDIA_MAX_PRECISION_PIXELS,
   MEDIA_MAX_SIDE,
   MEDIA_PROTOCOL,
   hasDisplayHdr,
@@ -22,6 +23,7 @@ import {
 } from './types.js';
 
 const MAX_WINDOW_FILE_BYTES = 40 * 1024 * 1024;
+const MAX_NATIVE_FILE_BYTES = MEDIA_MAX_PRECISION_PIXELS * 8;
 const WINDOW_IDLE_MS = 20_000;
 const WINDOW_JOB_LIMIT = 1024;
 const aborted = () => new MediaProcessingError('Media operation cancelled', 'aborted');
@@ -37,6 +39,7 @@ interface NativeWindow {
   height: number;
   maxPixels: number;
   region: MediaPrecisionWindow;
+  fitted: boolean;
   edit: PrecisionEdit;
   sdr: true;
   sdrToneMap: boolean;
@@ -59,7 +62,7 @@ function startWindowProcess(python: string, memoryBytes: number) {
     [
       `--as=${memoryBytes}`,
       '--cpu=600',
-      `--fsize=${MAX_WINDOW_FILE_BYTES}`,
+      `--fsize=${MAX_NATIVE_FILE_BYTES}`,
       '--nofile=128',
       '--',
       python,
@@ -249,6 +252,7 @@ export async function exportLinearWindow(
     throw new MediaProcessingError('Retained master exceeds the precision budget', 'limit');
   const region = previewWindow(preview, source);
   if (!region) throw new MediaProcessingError('Missing native preview window', 'processing');
+  const fitted = !!preview.fitRegion;
   const count = region.width * region.height;
   const volume = await statfs(dirname(outputPath), { bigint: true });
   if (BigInt(count * 26 + 8 * 1024 * 1024) > volume.bavail * volume.bsize)
@@ -264,6 +268,7 @@ export async function exportLinearWindow(
       height: source.height,
       maxPixels: MEDIA_MAX_LINEAR_PIXELS,
       region,
+      fitted,
       edit: edit ?? NEUTRAL_PRECISION_EDIT,
       sdr: true,
       sdrToneMap: hasDisplayHdr(descriptor.original),
@@ -275,19 +280,32 @@ export async function exportLinearWindow(
   const info = await lstat(partial);
   if (
     !info.isFile() ||
-    info.size < 33 ||
-    info.size > MAX_WINDOW_FILE_BYTES ||
+    (fitted
+      ? info.size !== count * result.channels * 2
+      : info.size < 33 || info.size > MAX_WINDOW_FILE_BYTES) ||
     result.width !== region.width ||
     result.height !== region.height ||
     result.bitDepth !== 16 ||
     ![3, 4].includes(result.channels)
   )
     throw failed();
+  if (fitted) {
+    // The isolated decoder emits only the checked, tightly packed uint16 raster.
+    const raw = await readFile(partial, { signal });
+    if (raw.byteLength !== info.size) throw failed();
+    const samples = new Uint16Array(raw.buffer, raw.byteOffset, raw.byteLength / 2);
+    await rm(partial);
+    const input = sharp(samples, {
+      raw: { width: region.width, height: region.height, channels: result.channels },
+    });
+    await fitPrecisionPreview(input, preview.maxEdge).toColourspace('rgb16').png().toFile(partial);
+  }
   const metadata = await sharp(partial, { limitInputPixels: count }).metadata();
+  const ratio = fitted ? Math.min(1, preview.maxEdge / Math.max(region.width, region.height)) : 1;
   if (
     metadata.format !== 'png' ||
-    metadata.width !== region.width ||
-    metadata.height !== region.height ||
+    metadata.width !== Math.max(1, Math.round(region.width * ratio)) ||
+    metadata.height !== Math.max(1, Math.round(region.height * ratio)) ||
     metadata.depth !== 'ushort' ||
     metadata.channels !== result.channels
   )
@@ -303,8 +321,8 @@ export async function exportLinearWindow(
     bytes,
     sha256: hash.digest('hex'),
     mime: 'image/png',
-    width: result.width,
-    height: result.height,
+    width: metadata.width,
+    height: metadata.height,
     bitDepth: 16,
     colorSpace: 'sRGB',
     format: 'png16',

@@ -378,7 +378,7 @@ export async function exportMedia(
   try {
     if (
       window &&
-      request.preview?.region &&
+      (request.preview?.region || request.preview?.fitRegion) &&
       request.precisionInput === 'linear-master' &&
       process.platform === 'linux' &&
       (await access('/proc/self/fd', constants.R_OK | constants.X_OK).then(

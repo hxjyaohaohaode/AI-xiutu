@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import vm from 'node:vm';
-import { visibleTiles, zoomAround } from '../src/media/tile-layout.js';
+import { visibleSourceWindow, visibleTiles, zoomAround } from '../src/media/tile-layout.js';
 import { PcmResampler } from '@ai-xiutu/assistant';
 import { createRecipeV4 } from '@ai-xiutu/editor';
 import { additionalRecipeChanges, recipeDifferences } from '../src/ai/recipeDiff.js';
@@ -11,6 +11,14 @@ test('200MP tile viewport requests only visible levels and crops one-pixel overl
   const fit = visibleTiles(source, { x: 0, y: 100, zoom: 0.04 }, { width: 800, height: 600 });
   assert.ok(fit.length > 0 && fit.length < 20);
   assert.ok(fit.every((tile) => tile.level < 15));
+  const highDensity = visibleTiles(
+    source,
+    { x: 0, y: 100, zoom: 0.04 },
+    { width: 800, height: 600 },
+    2,
+  );
+  assert.ok(highDensity.length > fit.length);
+  assert.ok(highDensity.every((tile) => tile.level === fit[0]!.level + 1));
   const pixels = visibleTiles(
     source,
     { x: -10000, y: -5000, zoom: 1 },
@@ -26,6 +34,22 @@ test('200MP tile viewport requests only visible levels and crops one-pixel overl
     point = { x: 321, y: 220 };
   const zoom = zoomAround(view, point, 1.2);
   assert.ok(Math.abs((point.x - view.x) / view.zoom - (point.x - zoom.x) / zoom.zoom) < 1e-10);
+});
+test('a zoomed viewport maps to enclosing original pixels without upscaling the overview', () => {
+  const source = { width: 9568, height: 6376 };
+  const viewport = { width: 430, height: 300 };
+  assert.deepEqual(visibleSourceWindow(source, { x: -860.25, y: -575.5, zoom: 0.25 }, viewport), {
+    left: 3441,
+    top: 2302,
+    width: 1720,
+    height: 1200,
+  });
+  assert.deepEqual(visibleSourceWindow(source, { x: 100, y: 130, zoom: 0.02 }, viewport), {
+    left: 0,
+    top: 0,
+    ...source,
+  });
+  assert.equal(visibleSourceWindow(source, { x: 500, y: 310, zoom: 0.25 }, viewport), undefined);
 });
 test('actual microphone worklet emits streaming little-endian PCM and clears buffers on mute', () => {
   const emitted: ArrayBuffer[] = [];

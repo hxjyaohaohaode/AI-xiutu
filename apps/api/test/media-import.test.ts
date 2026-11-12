@@ -406,6 +406,25 @@ test(
             await pixels(sharp(preview.rawPayload, { ignoreIcc: true })),
             await pixels(sharp(originalGrade.rawPayload, { ignoreIcc: true }).extract(region)),
           );
+          const fitted = { ...recipe, maxEdge: 128, fitRegion: region };
+          const fittedPreview = await f.call('POST', path + '/preview', fitted, 'viewer');
+          assert.equal(fittedPreview.statusCode, 200);
+          assert.equal(
+            fittedPreview.headers['x-precision-edit-sha256'],
+            originalGrade.headers['x-precision-edit-sha256'],
+          );
+          assert.deepEqual(
+            await pixels(sharp(fittedPreview.rawPayload, { ignoreIcc: true })),
+            await pixels(
+              sharp(originalGrade.rawPayload, { ignoreIcc: true })
+                .extract(region)
+                .resize({ width: 128, height: 128, fit: 'inside', withoutEnlargement: true }),
+            ),
+          );
+          assert.equal((await f.call('POST', path + '/preview', fitted, 'outsider')).statusCode, 404);
+          const ambiguous = await f.call('POST', path + '/preview', { ...fitted, region });
+          assert.equal(ambiguous.statusCode, 422);
+          assert.equal(ambiguous.json().error.code, 'MEDIA_PREVIEW_WINDOW');
         },
       );
       await t.test(

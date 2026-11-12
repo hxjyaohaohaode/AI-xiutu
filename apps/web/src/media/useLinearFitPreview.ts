@@ -3,34 +3,45 @@ import type { PrecisionEdit } from '@ai-xiutu/editor';
 import LinearFitWorker from './linear-fit.worker?worker';
 import type { FitRequest, FitResponse } from './linear-fit.worker';
 import type { FitMasterEncoding, LinearMaster } from './linear-master-stream';
+import type { LinearFitArea } from './linear-fit-parameters';
+
+type PendingFrame = {
+  edit: PrecisionEdit;
+  area: LinearFitArea;
+  viewKey: string;
+  loadSource: boolean;
+};
 
 export function useLinearFitPreview(
   assetId: string,
   source: LinearMaster | undefined,
   encoding: FitMasterEncoding | undefined,
-  maxEdge: number,
+  area: LinearFitArea,
   edit: PrecisionEdit | null,
+  loadSource: boolean,
 ) {
   const canvas = useRef<HTMLCanvasElement>(null);
-  const offer = useRef<(edit: PrecisionEdit | null) => void>(() => {});
-  const [state, setState] = useState<{ key: string; painted: boolean } | null>(null);
-  const key = source && encoding ? `${assetId}:${source.sha256}:${encoding}:${maxEdge}` : '';
+  const offer = useRef<(frame: PendingFrame | null) => void>(() => {});
+  const [state, setState] = useState<{ key: string; viewKey: string | null } | null>(null);
+  const key = source && encoding ? `${assetId}:${source.sha256}:${encoding}` : '';
+  const { region, maxEdge } = area;
+  const viewKey = [maxEdge, region?.left, region?.top, region?.width, region?.height].join(':');
 
   useEffect(() => {
+    setState(null);
     if (!source || !encoding || !navigator.gpu || typeof OffscreenCanvas === 'undefined') return;
     const worker = new LinearFitWorker();
     let started = false;
     let ready = false;
-    let rendering = false;
     let closed = false;
-    let desired: PrecisionEdit | null = null;
-    let lastSent: PrecisionEdit | null = null;
+    let desired: PendingFrame | null = null;
+    let inFlight: PendingFrame | null = null;
+    let lastSent: PendingFrame | null = null;
     const send = (request: FitRequest) => worker.postMessage(request);
     function pump() {
-      if (closed || !ready || rendering || !desired || desired === lastSent) return;
-      rendering = true;
-      lastSent = desired;
-      send({ type: 'frame', edit: desired });
+      if (closed || !ready || inFlight || !desired || desired === lastSent) return;
+      inFlight = lastSent = desired;
+      send({ type: 'frame', edit: desired.edit, area: desired.area });
     }
     function close() {
       if (closed) return;
@@ -45,10 +56,10 @@ export function useLinearFitPreview(
     }
     offer.current = (value) => {
       desired = value;
-      if (value && !started && !closed) {
+      if (value?.loadSource && !started && !closed) {
         started = true;
-        setState({ key, painted: false });
-        send({ type: 'open', assetId, source, encoding, maxEdge });
+        setState({ key, viewKey: null });
+        send({ type: 'open', assetId, source, encoding });
       }
       pump();
     };
@@ -68,10 +79,11 @@ export function useLinearFitPreview(
         pump();
         return;
       }
-      rendering = false;
+      const finished = inFlight;
+      inFlight = null;
       const element = canvas.current;
       const bitmap = data.bitmap;
-      if (!element || !desired) {
+      if (!element || !finished || finished.viewKey !== desired?.viewKey) {
         lastSent = null;
         bitmap.close();
       } else {
@@ -84,7 +96,9 @@ export function useLinearFitPreview(
           if (!output) throw new Error('Linear preview canvas could not receive the frame');
           output.transferFromImageBitmap(bitmap);
           setState((current) =>
-            current?.key === key && current.painted ? current : { key, painted: true },
+            current?.key === key && current.viewKey === finished.viewKey
+              ? current
+              : { key, viewKey: finished.viewKey },
           );
         } catch {
           bitmap.close();
@@ -95,15 +109,17 @@ export function useLinearFitPreview(
       pump();
     };
     return close;
-  }, [assetId, source, encoding, maxEdge, key]);
+  }, [assetId, source, encoding, key]);
 
   useEffect(() => {
-    offer.current(edit);
-  }, [edit, key]);
+    offer.current(edit ? { edit, area, viewKey, loadSource } : null);
+  }, [edit, key, viewKey, loadSource]);
 
+  const warm = !!edit && !!key && state?.key === key && state.viewKey !== null;
   return {
     canvas,
-    loading: !!edit && !!key && state?.key === key && !state.painted,
-    painted: !!edit && !!key && state?.key === key && state.painted,
+    loading: !!edit && !!key && state?.key === key && state.viewKey !== viewKey,
+    painted: warm && state.viewKey === viewKey,
+    warm,
   };
 }

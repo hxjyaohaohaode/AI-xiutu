@@ -156,8 +156,10 @@ export interface MediaPrecisionWindow {
 }
 export interface MediaPrecisionPreview {
   maxEdge: number;
-  /** Source data-window coordinates after orientation normalization. */
+  /** Original-pixel window, at native resolution. */
   region?: MediaPrecisionWindow;
+  /** Develop this source window before fitting it to maxEdge. */
+  fitRegion?: MediaPrecisionWindow;
 }
 export interface ExportMediaRequest {
   workDir: string;
@@ -168,7 +170,7 @@ export interface ExportMediaRequest {
   precisionEdit?: PrecisionEdit;
   /** Existing SDR exports default to master16. EXR always requires the linear master. */
   precisionInput?: MediaPrecisionInput;
-  /** Display PNG16, optionally limited to a native-resolution window. */
+  /** Display PNG16, optionally limited to a source window. */
   preview?: MediaPrecisionPreview;
   /** Ultra HDR JPEG output crop in orientation-normalized source pixels. */
   crop?: MediaPrecisionWindow;
