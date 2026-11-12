@@ -145,17 +145,23 @@
     height: 18px;
   }
   .studio-workspace .floating-tool-dock[data-compact='true'] .dock-selection {
-    background: transparent;
-    box-shadow: none;
+    border-radius: var(--ui-pill);
+    background: var(--surface-raised);
+    box-shadow: inset 0 0 0 1px var(--line), var(--shadow-sm);
   }
   .studio-workspace .floating-tool-dock[data-compact='true'] .dock-selection::after {
-    content: '';
-    position: absolute;
-    inset-inline: 22%;
-    bottom: 0;
-    height: 2px;
-    border-radius: 2px;
-    background: var(--accent);
+    content: none;
+  }
+  .studio-workspace .floating-tool-dock[data-compact='true'] .dock-tool-scroll > button.active {
+    background: transparent;
+    color: var(--accent-ink);
+  }
+  .studio-workspace .floating-tool-dock[data-compact='true'] > .ai-tool {
+    border-radius: var(--ui-pill);
+  }
+  .studio-workspace .phone-panel .parameter-shelf-options > button[aria-pressed='true'] {
+    border-radius: 11px;
+    box-shadow: inset 0 0 0 1px var(--accent);
   }
 
   .studio-workspace .phone-panel .parameter-shelf .parameter-shelf-options > button {

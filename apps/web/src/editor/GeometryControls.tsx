@@ -3,6 +3,7 @@ import type { ReactNode } from 'react';
 import { MotionDetails } from '../motion/Presence';
 import { CropOrientationControls, CropPresetRail } from './CropPresetRail';
 import { ChoiceSelect } from '../components/ChoiceSelect';
+import { RubberSegment } from '../components/control-motion';
 import { Crop, Perspective, FrameCorners, ArrowsOutCardinal } from '../components/ControlGlyph';
 import {
   createFineTransformV3,
@@ -127,27 +128,20 @@ export function GeometryControls({
       data-motion="geometry-controls"
     >
       <div className="crop-mode-tabs">
-        <div className="tonal-tabs" aria-label={t('构图类别')}>
-          {(
-            [
-              ['crop', t('裁切'), Crop],
-              ['transform', t('角度与透视'), Perspective],
-              ['projective', t('自由四角'), FrameCorners],
-              ['placement', t('缩放与位置'), ArrowsOutCardinal],
-            ] as const
-          ).map(([id, label, Glyph]) => (
-            <button
-              key={id}
-              aria-pressed={tab === id}
-              onClick={() => {
-                editor.commitCurrent(t('完成当前构图'));
-                setTab(id);
-              }}
-            >
-              <Glyph size={16} /> {label}
-            </button>
-          ))}
-        </div>
+        <RubberSegment
+          label={t('构图类别')}
+          value={tab}
+          onChange={(next) => {
+            editor.commitCurrent(t('完成当前构图'));
+            setTab(next);
+          }}
+          options={[
+            { value: 'crop', label: t('裁切'), icon: <Crop size={16} /> },
+            { value: 'transform', label: t('角度'), ariaLabel: t('角度与透视'), icon: <Perspective size={16} /> },
+            { value: 'projective', label: t('四角'), ariaLabel: t('自由四角'), icon: <FrameCorners size={16} /> },
+            { value: 'placement', label: t('缩放'), ariaLabel: t('缩放与位置'), icon: <ArrowsOutCardinal size={16} /> },
+          ]}
+        />
         {layoutControl}
       </div>
       {tab === 'crop' ? (

@@ -162,8 +162,8 @@ body[data-site-page='account'] #root {
   border-radius: 9px;
 }
 .account-page.account-auth .auth-methods > button[aria-pressed='true'] {
-  background: var(--surface);
-  box-shadow: 0 2px 8px #00000006;
+  background: transparent;
+  box-shadow: none;
 }
 .account-page.account-auth .auth-fields {
   gap: 16px;

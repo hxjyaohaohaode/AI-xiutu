@@ -22,3 +22,20 @@
 ## 许可证
 
 上述 React Bits 固定版本的许可证名称是 **MIT + Commons Clause License Condition v1.0**，版权所有 **Copyright (c) 2026 David Haz**，并非无附加条件的普通 MIT。完整原文随本项目保存在 [REFERENCE-LICENSE.react-bits.txt](REFERENCE-LICENSE.react-bits.txt)。本项目只将经过调整的机制用于应用界面，不作为独立组件库销售或再分发。
+
+## 全站界面复查
+
+[42 个入口流程](../../../../docs/design/reference-209-flows.md) 和 [209 项逐项对应](../../../../docs/design/reference-209-review.md) 用于核对应用可见路径。此次统一面板层级、字段、媒体框、状态与导航密度，并把以下参考接入具体业务界面。
+
+| 页面 | 对应参考 | 产品中的采用方式 |
+| --- | --- | --- |
+| 介绍与公开入口 | 31 Scroll Expand、35 Animated Content、78 Pill Nav | 实际产品图沿正常文档流出现。导航入口、媒体框和键盘焦点采用同一主题。 |
+| 登录、注册、重置和欢迎 | 125 Code Slots、131 Rubber Segment、119 Status Mark | 同一个原生输入支持短信自动填充、粘贴和退格，六格直接显示该字段的值。密码与验证码登录使用可键盘操作的分段控件。 |
+| 精修、构图、草图与专业修复 | 124 Wake Slider、127 Scrub Field、129 Warm Tooltip、131 Rubber Segment、204 色板 | 手机端区分视觉尺寸和触控区域。构图和修复模式使用测量过的选中底板，草图工具可组合选择、调色和改对象。 |
+| AI 对话、生图和语音 | 114 Prompt Bar、112 Voice Pill、111 Thought Line、110 Refine Frame | 参考图、输入、模型和送出动作共用一组控件。加号在输入区上方展开真实来源菜单，保持键盘、短屏、IME 和正在执行状态。 |
+| 作品库、跨空间搜索与长期素材 | 78 Pill Nav、120 Glide Select、110 Refine Frame | 作品分类选中块跟随实际选项尺寸。筛选与图片卡使用原生选择和真实加载状态。 |
+| 对比、版本、协作和文档 | 131 Rubber Segment、119 Status Mark、133 Spring Check | 对比模式和协作分类支持方向键。版本及草稿入口采用一致的行状态，任务状态仍由实际操作驱动。 |
+| 导出、分享和专业原片 | 110 Refine Frame、119 Status Mark、120 Glide Select | 图片和导出选项分别排版，状态图标跟随真实渲染。弹层使用既有尺寸配置与原件、预览的真实状态。 |
+| 账户、用量、运营和共享弹层 | 78 Pill Nav、120 Glide Select、115 Swipe Toast、136 Squish Switch | 账户和运营导航的选中态、用量卡片、配置表单及回执沿用统一主题和明确焦点。业务权限、额度及请求处理由现有接口驱动。 |
+
+新增组件参考的固定源文件为 [PromptBar.tsx](https://github.com/DavidHDev/react-bits/blob/9d9c687dc4f55b23539aa5417b703078047efa74/src/ts-default/Micro/PromptBar/PromptBar.tsx) 和 [CodeSlots.tsx](https://github.com/DavidHDev/react-bits/blob/9d9c687dc4f55b23539aa5417b703078047efa74/src/ts-default/Micro/CodeSlots/CodeSlots.tsx)。Prompt Bar 的真实演示已核对文字输入和上方来源菜单。应用中的对应实现位于 `PromptToolbar.tsx`、`ComposerInput.tsx`、`AuthPanel.tsx` 和 `reference-surfaces.css`，复用项目现有原生控件、图标和弹簧。交互与视觉以本次实际运行报告为准。

@@ -38,6 +38,8 @@ export const english: Readonly<Record<string, string>> = {
   ...restorationEnglish,
   ...viewsRedesignEnglish,
   '电影 {v0}': 'Cinema {v0}',
+  四角: 'Corners',
+  缩放: 'Scale',
   草图添加元素: 'Add sketch elements',
   裁切像素: 'Crop dimensions',
   笔触粗细: 'Stroke width',

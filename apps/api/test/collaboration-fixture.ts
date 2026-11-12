@@ -31,7 +31,7 @@ export async function collaborationFixture(
     db,
     config,
     assistant: options.assistant,
-    aiService: options.aiJobHistory ? createAiService(db, {}) : undefined,
+    aiService: options.aiJobHistory ? { ...createAiService(db, {}), resolve: undefined } : undefined,
     sms: {
       configured: false,
       async send() {

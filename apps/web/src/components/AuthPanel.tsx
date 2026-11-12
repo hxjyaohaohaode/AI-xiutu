@@ -18,6 +18,7 @@ import {
 import { api, errorMessage, jsonRequest } from '../lib/api';
 import type { PublicConfig, Session } from '../lib/types';
 import { Busy, DialogMotionContext, IconButton, InlineError } from './Ui';
+import { RubberSegment } from './control-motion';
 import { AccountPageFrame } from '../account/AccountPageFrame';
 import { accountPageCopy } from '../account/page-copy';
 import { MotionDisclosure, MotionSwitch } from '../motion/Presence';
@@ -453,24 +454,38 @@ export function AuthPanel({
     <div className="auth-field auth-code-field">
       <label htmlFor={fieldId('code')}>{t('短信验证码')}</label>
       <div className="auth-code-row">
-        <input
-          id={fieldId('code')}
-          data-testid="auth-code"
-          name="code"
-          autoComplete="one-time-code"
-          inputMode="numeric"
-          pattern="[0-9]{6}"
-          value={fields.code}
-          onChange={(event) => updateField('code', event.target.value)}
-          onBlur={(event) => blurField('code', event.relatedTarget)}
-          placeholder={t('6 位验证码')}
-          minLength={6}
-          maxLength={6}
-          required
-          data-auth-initial={mode === 'register' ? '' : undefined}
-          aria-invalid={!!errors.code}
-          aria-describedby={descriptions('code')}
-        />
+        <div className="auth-code-slots" data-invalid={!!errors.code || undefined}>
+          <div className="auth-code-cells" aria-hidden="true">
+            {Array.from({ length: 6 }, (_, index) => (
+              <span
+                key={index}
+                data-next={index === Math.min(fields.code.length, 5) || undefined}
+              >
+                {fields.code[index]
+                  ? <i key={fields.code[index]} className="auth-code-digit">{fields.code[index]}</i>
+                  : '·'}
+              </span>
+            ))}
+          </div>
+          <input
+            id={fieldId('code')}
+            data-testid="auth-code"
+            name="code"
+            autoComplete="one-time-code"
+            inputMode="numeric"
+            pattern="[0-9]{6}"
+            value={fields.code}
+            onChange={(event) => updateField('code', event.target.value)}
+            onBlur={(event) => blurField('code', event.relatedTarget)}
+            placeholder={t('6 位验证码')}
+            minLength={6}
+            maxLength={6}
+            required
+            data-auth-initial={mode === 'register' ? '' : undefined}
+            aria-invalid={!!errors.code}
+            aria-describedby={descriptions('code')}
+          />
+        </div>
         <button
           type="button"
           className="auth-send-code"
@@ -584,26 +599,17 @@ export function AuthPanel({
         </div>
       )}
       {!resetDone && !uncertain && (mode === 'password' || mode === 'otp') && (
-        <div className="auth-methods" role="group" aria-label={t('登录方式')}>
-          <button
-            type="button"
-            aria-pressed={mode === 'password'}
-            onClick={() => switchMode('password')}
-            disabled={busy}
-          >
-            <LockKey size={17} aria-hidden />
-            {t('密码登录')}
-          </button>
-          <button
-            type="button"
-            aria-pressed={mode === 'otp'}
-            onClick={() => switchMode('otp')}
-            disabled={busy}
-          >
-            <DeviceMobile size={17} aria-hidden />
-            {t('验证码登录')}
-          </button>
-        </div>
+        <RubberSegment
+          className="auth-methods"
+          label={t('登录方式')}
+          value={mode}
+          onChange={switchMode}
+          disabled={busy}
+          options={[
+            { value: 'password', label: t('密码登录'), icon: <LockKey size={17} aria-hidden /> },
+            { value: 'otp', label: t('验证码登录'), icon: <DeviceMobile size={17} aria-hidden /> },
+          ]}
+        />
       )}
       {!uncertain && mode === 'register' && (
         <ol className="auth-steps" aria-label={t('注册进度')}>

@@ -17,6 +17,12 @@
 .asset-thumbnail[data-state='loading'] > img {
   visibility: hidden;
 }
+.asset-thumbnail[data-state='ready'] > img {
+  animation: asset-thumbnail-reveal 160ms var(--ease-enter) both;
+}
+@keyframes asset-thumbnail-reveal {
+  from { opacity: 0; }
+}
 .asset-thumbnail-loading {
   position: absolute;
   inset: 0;
@@ -53,7 +59,8 @@
   }
 }
 @media (prefers-reduced-motion: reduce) {
-  .asset-thumbnail-loading {
+  .asset-thumbnail-loading,
+  .asset-thumbnail[data-state='ready'] > img {
     animation: none;
   }
 }

@@ -54,13 +54,18 @@ export const ComposerInput = forwardRef<
     const element = input.current;
     if (!element) return;
     let width = element.clientWidth;
+    let frame = 0;
     const observer = new ResizeObserver(() => {
       if (element.clientWidth === width) return;
       width = element.clientWidth;
-      fit();
+      cancelAnimationFrame(frame);
+      frame = requestAnimationFrame(fit);
     });
     observer.observe(element);
-    return () => observer.disconnect();
+    return () => {
+      cancelAnimationFrame(frame);
+      observer.disconnect();
+    };
   }, []);
   return (
     <textarea

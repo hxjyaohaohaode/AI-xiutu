@@ -14,6 +14,7 @@ import {
   CaretDown,
   ClockCounterClockwise,
   Paperclip,
+  ImageSquare,
   WarningCircle,
   ArrowsOut,
   ArrowsIn,
@@ -52,6 +53,7 @@ import './live-assistant.css';
 import { IconButton, Modal } from '../components/Ui';
 import { ChoiceSelect } from '../components/ChoiceSelect';
 import { ComposerInput } from './ComposerInput';
+import { PromptToolbar } from './PromptToolbar';
 import { DraftAttachmentCard, visualAttachmentLabel } from './DraftAttachmentCard';
 import { ComposerAction } from './ComposerAction';
 import { ExecutionStatus } from './ExecutionStatus';
@@ -2533,26 +2535,32 @@ export function LiveAssistant(props: LiveAssistantProps) {
               {t('请选择支持图片的模型，或移除附件。')}
             </small>
           )}
-          <div className="ai-composer-toolbar">
-            <button
-              type="button"
-              className="ai-model-trigger"
-              aria-label={t('选择助手模型与执行方式')}
-              onClick={() => setOverlay('settings')}
-            >
-              <span>{selected?.label ?? t('选择模型')}</span>
-              <CaretDown size={12} />
-            </button>
-            <div className="ai-composer-tools">
-              <IconButton
-                label={t('共享画面与参考素材')}
-                onClick={() => {
-                  setSharedRangeOpen(true);
-                  setOverlay('settings');
-                }}
-              >
-                <Paperclip size={18} />
-              </IconButton>
+          <PromptToolbar
+            model={selected?.label ?? t('选择模型')}
+            modelLabel={t('选择助手模型与执行方式')}
+            openSettings={() => setOverlay('settings')}
+            attachment={{
+              label: t('共享画面与参考素材'),
+              actions: [
+                {
+                  label: t('参考图'),
+                  icon: <Paperclip size={17} />,
+                  run: () => {
+                    setSharedRangeOpen(true);
+                    setOverlay('settings');
+                  },
+                },
+                {
+                  label: t('当前预览'),
+                  icon: <ImageSquare size={17} />,
+                  pressed: shareImage,
+                  disabled: busy || submissionBlocked || !artwork || !selected?.imageInput ||
+                    callState === 'connecting' || callState === 'closing',
+                  run: () => setShareImage((enabled) => !enabled),
+                },
+              ],
+            }}
+          >
               <IconButton
                 label={mode === 'voice' ? t('返回文字协作') : t('打开实时语音')}
                 disabled={inCall || busy}
@@ -2581,8 +2589,7 @@ export function LiveAssistant(props: LiveAssistantProps) {
                 disabled={activeTurn ? activeTurn.stopping : !canSend}
                 onStop={activeTurn ? () => void stopActiveTurn() : undefined}
               />
-            </div>
-          </div>
+          </PromptToolbar>
         </form>
         {selected && (
           <div className="ai-composer-meta">

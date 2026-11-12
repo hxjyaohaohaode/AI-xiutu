@@ -40,6 +40,7 @@ import { Busy, IconButton, InlineError, Modal } from './Ui';
 import { ChoiceSelect } from './ChoiceSelect';
 import { useConfirmation } from './ConfirmationDialog';
 import { ComposerInput } from '../ai/ComposerInput';
+import { PromptToolbar } from '../ai/PromptToolbar';
 import { ComposerAction } from '../ai/ComposerAction';
 import { ComposerVisual } from '../ai/ComposerVisual';
 import { DraftAttachmentCard } from '../ai/DraftAttachmentCard';
@@ -1332,25 +1333,39 @@ export function AIPanel({
                     }}
                   />
                 )}
-                <div className="ai-composer-toolbar">
-                  <button
-                    type="button"
-                    className="ai-model-trigger"
-                    onClick={() => setOverlay('settings')}
-                    aria-label={t('选择任务模型与参数')}
-                  >
-                    <span>{selected?.label ?? t('选择模型')}</span>
-                    <CaretDown size={12} />
-                  </button>
-                  <div className="ai-composer-tools">
-                    {operation === 'generate-image' && (
-                      <IconButton
-                        label={t('添加或管理参考图')}
-                        onClick={() => setOverlay('references')}
-                      >
-                        <Paperclip size={18} />
-                      </IconButton>
-                    )}
+                <PromptToolbar
+                  model={selected?.label ?? t('选择模型')}
+                  modelLabel={t('选择任务模型与参数')}
+                  openSettings={() => setOverlay('settings')}
+                  attachment={
+                    operation === 'generate-image'
+                      ? {
+                          label: t('添加或管理参考图'),
+                          actions: [
+                            {
+                              label: t('参考图'),
+                              icon: <Paperclip size={17} />,
+                              run: () => setOverlay('references'),
+                            },
+                            {
+                              label: t('画草图'),
+                              icon: <PencilSimple size={17} />,
+                              disabled: inputLocked || !caps?.references.supported ||
+                                referencedCount >= referenceLimit,
+                              run: onDraw,
+                            },
+                            ...(captureReferenceCanvas ? [{
+                              label: t('用当前编辑图'),
+                              icon: <Scan size={17} />,
+                              disabled: inputLocked || capturingReference ||
+                                !caps?.references.supported || referencedCount >= referenceLimit,
+                              run: () => void useEditedFrame(),
+                            }] : []),
+                          ],
+                        }
+                      : undefined
+                  }
+                >
                     {operation !== 'transcribe' && (
                       <IconButton
                         label={t('改用语音输入，识别后再确认')}
@@ -1365,8 +1380,7 @@ export function AIPanel({
                       label={task.button}
                       disabled={!canSubmit}
                     />
-                  </div>
-                </div>
+                </PromptToolbar>
               </form>
               <div className="ai-composer-meta">
                 <span>

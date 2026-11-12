@@ -7,6 +7,7 @@ import { Busy, InlineError, Modal } from '../components/Ui';
 import { StudioGlyph } from '../components/StudioGlyph';
 import { CheckControl } from '../components/CheckControl';
 import { StatusMark } from '../components/StatusMark';
+import { RubberSegment } from '../components/control-motion';
 import {
   buildRestorationRequest,
   executeRestoration,
@@ -436,19 +437,17 @@ export function RestorationDialog({
           )}
         </div>
         <div className="restoration-controls">
-          <div className="restoration-modes" role="group" aria-label={t('修复模式')}>
-            {(['denoise', 'motion'] as const).map((mode) => (
-              <button
-                key={mode}
-                type="button"
-                aria-pressed={draft.mode === mode}
-                disabled={frozen || initializing || !editable}
-                onClick={() => change('mode', mode)}
-              >
-                {mode === 'denoise' ? t('降噪') : t('运动模糊')}
-              </button>
-            ))}
-          </div>
+          <RubberSegment
+            className="restoration-modes"
+            label={t('修复模式')}
+            value={draft.mode}
+            disabled={frozen || initializing || !editable}
+            onChange={(mode) => change('mode', mode)}
+            options={[
+              { value: 'denoise', label: t('降噪') },
+              { value: 'motion', label: t('运动模糊') },
+            ]}
+          />
           {draft.mode === 'motion' && (
             <>
               <Amount

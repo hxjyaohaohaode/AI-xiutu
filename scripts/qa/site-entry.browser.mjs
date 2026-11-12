@@ -378,10 +378,13 @@ export async function runSiteEntryChecks({
           });
           // A sticky header is already visible even when the document is far
           // down the page. Return with a real wheel before the hero capture.
-          const scrollPosition = await page.evaluate(() => scrollY);
           await page.mouse.move(12, Math.min(350, viewport.height - 30));
-          await page.mouse.wheel(0, -scrollPosition - viewport.height);
-          await until(() => page.evaluate(() => scrollY < 2), 'the public page returns to the top');
+          await until(async () => {
+            const scrollPosition = await page.evaluate(() => scrollY);
+            if (scrollPosition < 2) return true;
+            await page.mouse.wheel(0, -scrollPosition - viewport.height);
+            return false;
+          }, 'the public page returns to the top');
           await capture(page, `site-about-${locale.value}-${viewport.width}x${viewport.height}`);
         }
       }

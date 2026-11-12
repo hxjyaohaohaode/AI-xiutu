@@ -2,19 +2,19 @@
 :root,
 :root[data-theme='light'] {
   color-scheme: light;
-  --color-app: #f6f5f1;
-  --color-canvas: #eeede8;
-  --color-surface: #fffefa;
+  --color-app: #f5f5f3;
+  --color-canvas: #eeefec;
+  --color-surface: #fcfcfb;
   --color-raised: #ffffff;
-  --color-surface-secondary: #f0eee7;
-  --color-surface-hover: #e9e6dd;
-  --color-surface-active: #e3dfd3;
-  --color-ink: #282a25;
-  --color-muted: #65675e;
-  --color-subtle: #6a6d61;
+  --color-surface-secondary: #f0f0ed;
+  --color-surface-hover: #e8e9e4;
+  --color-surface-active: #e0e2dc;
+  --color-ink: #22241f;
+  --color-muted: #5d6057;
+  --color-subtle: #65695f;
   --color-disabled: #909185;
-  --color-line: #dedbd2;
-  --color-line-strong: #b3b3a4;
+  --color-line: #dddfd7;
+  --color-line-strong: #a9afa0;
   --color-accent: #edbc41;
   --color-accent-hover: #e0aa27;
   --color-accent-soft: #f7edcf;
@@ -37,18 +37,18 @@
 
 :root[data-theme='dark'] {
   color-scheme: dark;
-  --color-app: #1b1c1a;
-  --color-canvas: #131411;
-  --color-surface: #242621;
-  --color-raised: #2d302a;
-  --color-surface-secondary: #20221d;
-  --color-surface-hover: #353931;
-  --color-surface-active: #41463b;
+  --color-app: #1a1b1a;
+  --color-canvas: #141513;
+  --color-surface: #212320;
+  --color-raised: #2b2e29;
+  --color-surface-secondary: #262924;
+  --color-surface-hover: #33372f;
+  --color-surface-active: #3d4338;
   --color-ink: #f1f0e8;
   --color-muted: #c4c6b5;
   --color-subtle: #a8ad97;
   --color-disabled: #7d8870;
-  --color-line: #414a35;
+  --color-line: #3b4137;
   --color-line-strong: #68785b;
   --color-accent: #edbc41;
   --color-accent-hover: #f4cf70;
@@ -130,6 +130,10 @@
   --ui-gap: 12px;
   --ui-label-size: 12px;
   --ui-text-size: 13px;
+  --ui-pill: 999px;
+  --ui-prompt-radius: 22px;
+  --ui-prompt-surface: var(--color-raised);
+  --ui-lift: 0 1px 2px rgb(var(--color-shadow) / 5%), 0 9px 26px rgb(var(--color-shadow) / 7%);
   --shadow-sm: 0 1px 3px rgb(var(--color-shadow) / 8%);
   --shadow-md: 0 6px 24px rgb(var(--color-shadow) / 12%);
   --shadow-lg: 0 20px 64px rgb(var(--color-shadow) / 22%);

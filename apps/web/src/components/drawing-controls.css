@@ -193,9 +193,14 @@
   }
   .drawing-modal .drawing-object-actions {
     overflow-x: auto;
+    max-width: min(35%, 136px);
+    scrollbar-width: none;
+  }
+  .drawing-modal .drawing-element-toolbar:not(:has(.drawing-project-choice)) {
+    flex-wrap: nowrap;
   }
   .drawing-modal .drawing-shape-rail {
-    flex-basis: 100%;
+    flex: 1 1 0;
   }
   .drawing-modal .drawing-insert-current > span {
     display: none;

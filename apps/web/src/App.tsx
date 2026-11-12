@@ -15,6 +15,9 @@ import {
   CornersOut,
   ChartBar,
   MagnifyingGlass,
+  Images,
+  BookmarkSimple,
+  FileImage,
   ClockCounterClockwise,
   Microphone,
   MicrophoneSlash,
@@ -59,6 +62,7 @@ import {
 } from './workspace/WorkspaceNavigation';
 import type { StudioThemeController } from './workspace/useStudioTheme';
 import { StudioGlyph } from './components/StudioGlyph';
+import { RubberSegment } from './components/control-motion';
 import { boundedTitle } from './lib/titles';
 import { workspaceCanvasInsets, useWorkspaceLayout } from './workspace/useWorkspaceLayout';
 import { usePresence } from './motion/usePresence';
@@ -911,6 +915,7 @@ export function App({
     const handle = (e: KeyboardEvent) => {
       if (
         !activeRef.current ||
+        e.defaultPrevented ||
         document.querySelector('dialog[open]') ||
         e.isComposing ||
         e.keyCode === 229
@@ -933,6 +938,8 @@ export function App({
         workspaceLayout.setFocused((value) => !value);
       }
       if (e.key === 'Escape') {
+        if (CSS.supports('selector(:popover-open)') && document.querySelector(':popover-open'))
+          return;
         setComparing(false);
         setSidebarOpen(false);
         setInspectorOpen(false);
@@ -2856,36 +2863,28 @@ export function App({
                             aria-label={t('素材视图')}
                             data-motion="context-navigation"
                           >
+                            <RubberSegment
+                              label={t('素材视图')}
+                              value={libraryTab}
+                              onChange={setLibraryTab}
+                              options={[
+                                { value: 'project', label: t('项目作品'), icon: <Images size={17} /> },
+                                { value: 'all', label: t('跨空间查找'), icon: <MagnifyingGlass size={17} /> },
+                                { value: 'memory', label: t('长期素材'), icon: <BookmarkSimple size={17} /> },
+                              ]}
+                            />
                             <button
                               type="button"
-                              aria-pressed={libraryTab === 'project'}
-                              onClick={() => setLibraryTab('project')}
-                            >
-                              {t('项目作品')}
-                            </button>
-                            <button
-                              type="button"
-                              aria-pressed={libraryTab === 'all'}
-                              onClick={() => setLibraryTab('all')}
-                            >
-                              {t('跨空间查找')}
-                            </button>
-                            <button
-                              type="button"
-                              aria-pressed={libraryTab === 'memory'}
-                              onClick={() => setLibraryTab('memory')}
-                            >
-                              {t('长期素材')}
-                            </button>
-                            <button
-                              type="button"
+                              className="library-original-action"
+                              aria-label={t('原片与专业格式')}
                               onClick={() => {
                                 if (!session.user) openAuth();
                                 else if (!project) openCreateProject();
                                 else setDialog('mediaImport');
                               }}
                             >
-                              {t('原片与专业格式')}
+                              <FileImage size={18} />
+                              <span>{t('原片与专业格式')}</span>
                             </button>
                           </nav>
                           {libraryTab === 'project' ? (

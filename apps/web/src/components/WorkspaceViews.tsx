@@ -41,6 +41,7 @@ import type {
 } from '../lib/types';
 import { Busy, EmptyState, IconButton, InlineError, Modal } from './Ui';
 import { ChoiceSelect } from './ChoiceSelect';
+import { RubberSegment } from './control-motion';
 import { StatusMark } from './StatusMark';
 import { TaskStateMark } from './TaskStateMark';
 import { ImagePreview } from './ImagePreview';
@@ -391,21 +392,23 @@ export function CompareView({
         <div>
           <h1 className="view-artwork-title">{artwork?.title ?? editor.file.name}</h1>
         </div>
-        <div className="compare-mode-choice" role="group" aria-label={t('对比显示方式')}>
-          {(['slide', 'side', 'original', 'edited'] as const).map((item) => (
-            <button
-              key={item}
-              type="button"
-              aria-pressed={visibleMode === item}
-              className={visibleMode === item ? 'selected' : ''}
-              disabled={item === 'slide' && !slideAvailable}
-              title={item === 'slide' && !slideAvailable ? t('不同画幅请使用并排对比') : undefined}
-              onClick={() => setMode(item)}
-            >
-              {t({ slide: '滑动对比', side: '并排', original: '原图', edited: '当前' }[item])}
-            </button>
-          ))}
-        </div>
+        <RubberSegment
+          className="compare-mode-choice"
+          label={t('对比显示方式')}
+          value={visibleMode}
+          onChange={setMode}
+          options={[
+            {
+              value: 'slide',
+              label: t('滑动对比'),
+              disabled: !slideAvailable,
+              title: !slideAvailable ? t('不同画幅请使用并排对比') : undefined,
+            },
+            { value: 'side', label: t('并排') },
+            { value: 'original', label: t('原图') },
+            { value: 'edited', label: t('当前') },
+          ]}
+        />
       </div>
       {visibleMode === 'slide' ? (
         <CompareReveal
@@ -856,22 +859,21 @@ export function CollaborateView({
         <>
           {embedded && (
             <nav className="collaboration-panel-tabs" aria-label={t('项目协作')}>
-              <button
-                type="button"
-                aria-pressed={panelSection === 'discussion'}
-                onClick={() => setPanelSection('discussion')}
-              >
-                {t('项目讨论')}
-                <span>{openComments}</span>
-              </button>
-              <button
-                type="button"
-                aria-pressed={panelSection === 'tasks'}
-                onClick={() => setPanelSection('tasks')}
-              >
-                {interactionText('tasks')}
-                <span>{tasks.length - completedTasks}</span>
-              </button>
+              <RubberSegment
+                value={panelSection}
+                onChange={setPanelSection}
+                label={t('项目协作')}
+                options={[
+                  {
+                    value: 'discussion',
+                    label: <>{t('项目讨论')} <small>{openComments}</small></>,
+                  },
+                  {
+                    value: 'tasks',
+                    label: <>{interactionText('tasks')} <small>{tasks.length - completedTasks}</small></>,
+                  },
+                ]}
+              />
             </nav>
           )}
           <div className="collaboration-grid">
@@ -1924,10 +1926,7 @@ export function DeliveryView({
               ) : editor.rendering ? (
                 <Busy label={t('正在更新预览')} />
               ) : (
-                <>
-                  <CheckCircle size={16} />
-                  {t('可导出当前编辑')}
-                </>
+                <StatusMark state="done" size="small" label={t('可导出当前编辑')} />
               )}
             </span>
             <div className="delivery-primary-action">

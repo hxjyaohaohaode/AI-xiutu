@@ -7,6 +7,7 @@ export type SegmentOption<T extends string = string> = {
   icon?: ReactNode;
   disabled?: boolean;
   ariaLabel?: string;
+  title?: string;
 };
 
 /** Measured leading/trailing springs from React Bits 131, with native keyboard activation. */
@@ -237,6 +238,7 @@ export function RubberSegment<T extends string>({
           data-segment-value={option.value}
           aria-pressed={value === option.value}
           aria-label={option.ariaLabel}
+          title={option.title}
           disabled={disabled || option.disabled}
           tabIndex={
             value === option.value ||

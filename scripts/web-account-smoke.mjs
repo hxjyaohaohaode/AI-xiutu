@@ -336,6 +336,9 @@ async function waitForOtpCooldown(phone) {
 }
 async function fillRegistration(page, code, name = primaryName) {
   await authControl(page, 'code').fill(code);
+  const digits = page.locator('.auth-code-cells:visible .auth-code-digit');
+  assert.equal(await digits.count(), 6, 'the one native input paints six code slots');
+  assert.ok((await digits.allTextContents()).join('') === code, 'the visible slots mirror the native value');
   await authControl(page, 'display-name').fill(name);
   await authControl(page, 'password').fill(password);
 }

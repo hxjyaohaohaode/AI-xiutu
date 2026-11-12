@@ -6,7 +6,7 @@ import {
   useId,
   useRef,
   useState,
-  type ButtonHTMLAttributes,
+  type ComponentPropsWithRef,
   type CSSProperties,
   type ReactNode,
 } from 'react';
@@ -37,7 +37,7 @@ export function IconButton({
   children,
   className = '',
   ...props
-}: ButtonHTMLAttributes<HTMLButtonElement> & { label: string }) {
+}: ComponentPropsWithRef<'button'> & { label: string }) {
   return (
     <button
       type="button"

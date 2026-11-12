@@ -556,6 +556,11 @@ async function parameter(page, id, value, owner = '.free-panel[aria-hidden="fals
 }
 const viewIds = ['editor', 'works', 'compare', 'collaborate', 'docs', 'deliver', 'usage'];
 async function changeView(page, id) {
+  const assistantReturn = page.locator('[data-ai-return]:visible');
+  if (await assistantReturn.count()) {
+    await assistantReturn.click();
+    await assistantReturn.waitFor({ state: 'hidden' });
+  }
   assert.ok(viewIds.includes(id));
   const compact = page.locator('.mobile-view-trigger');
   if (await compact.isVisible()) {
@@ -1102,6 +1107,18 @@ async function mobileEditingFlow() {
     assert.equal(await page.locator('.workspace-view-transition').getAttribute('inert'), '');
     await layout(page, 'full-screen phone assistant with a real editor screenshot');
     await capture(page, 'interactions/mobile-ai-390.png');
+    const sourceTrigger = chat.getByRole('button', { name: '共享画面与参考素材', exact: true });
+    await sourceTrigger.press('ArrowDown');
+    const sources = chat.locator('.ai-prompt-source-menu:popover-open');
+    await sources.waitFor();
+    assert.equal(await sourceTrigger.getAttribute('aria-expanded'), 'true');
+    const sourceMenu = await sources.boundingBox();
+    const promptSurface = await chat.locator('.ai-composer-surface:visible').boundingBox();
+    assert.ok(sourceMenu.y + sourceMenu.height < promptSurface.y, 'the sources menu opens above the prompt bar');
+    await capture(page, 'interactions/mobile-ai-sources.png');
+    await page.keyboard.press('Escape');
+    await sources.waitFor({ state: 'hidden' });
+    await screenshot.waitFor();
     const back = chat.getByRole('button', { name: '返回编辑器', exact: true });
     await back.click();
     await actions.waitFor();

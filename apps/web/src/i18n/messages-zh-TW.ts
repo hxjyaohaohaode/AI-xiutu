@@ -158,6 +158,8 @@ export const traditional: Readonly<Record<string, string>> = {
   ...restorationTraditionalChinese,
   ...viewsRedesignTraditional,
   '电影 {v0}': '電影 {v0}',
+  四角: '四角',
+  缩放: '縮放',
   裁切像素: '裁切像素',
   笔触粗细: '筆觸粗細',
   '发给 AI': '傳給 AI',

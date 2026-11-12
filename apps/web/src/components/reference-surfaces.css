@@ -1,0 +1,353 @@
+/* Shared geometry for the reference controls. Keep media and text on separate planes. */
+:root {
+  --ui-card-radius: 16px;
+  --ui-media-radius: 12px;
+  --ui-divider: color-mix(in srgb, var(--line) 78%, transparent);
+}
+
+.choice-select[data-size='compact'] .choice-trigger,
+.choice-popover .choice-option,
+.choice-popover .choice-highlight {
+  border-radius: 10px;
+}
+.choice-select[data-size='compact'] .choice-trigger {
+  background: var(--surface);
+}
+.choice-popover[popover] {
+  padding: 6px;
+  border-radius: var(--ui-card-radius);
+  box-shadow: var(--shadow-lg);
+}
+.choice-popover .choice-option {
+  min-height: 40px;
+}
+
+:is(.modal[data-dialog-profile], .account-auth) .stack-form
+  :is(input:not([type]), input[type='text'], input[type='number'], input[type='password'], textarea) {
+  border-radius: var(--radius-control);
+  background: var(--surface);
+}
+.modal[data-dialog-profile] > .modal-header {
+  gap: 12px;
+  align-items: flex-start;
+}
+.modal[data-dialog-profile] > .modal-header .icon-button,
+.account-page-header-actions .account-page-back {
+  border-radius: var(--ui-pill);
+}
+.studio-workspace .workspace-notice-anchor > .toast {
+  border-radius: var(--ui-card-radius);
+  background: var(--surface-raised);
+  box-shadow: var(--ui-lift);
+}
+.empty-state .empty-symbol {
+  border-radius: 18px;
+  background: var(--surface-secondary);
+  color: var(--ink);
+}
+.empty-state h2,
+.view-heading h1,
+.account-page-heading h1 {
+  text-wrap: balance;
+}
+
+/* Authentication uses a single native input for paste, autofill and validation. */
+.auth-code-slots {
+  position: relative;
+  min-width: 0;
+}
+.auth-code-slots .auth-code-cells {
+  display: grid;
+  grid-template-columns: repeat(6, minmax(0, 1fr));
+  gap: clamp(2px, 0.8vw, 6px);
+  pointer-events: none;
+}
+.auth-code-cells > span {
+  display: grid;
+  place-items: center;
+  min-height: 44px;
+  border: 1px solid var(--line);
+  border-radius: 9px;
+  background: var(--surface-secondary);
+  color: var(--ink);
+  font-size: 16px;
+  font-weight: 600;
+  line-height: 1;
+  font-variant-numeric: tabular-nums;
+  transition: background-color 150ms ease, border-color 150ms ease;
+}
+.auth-code-slots:focus-within .auth-code-cells > span[data-next] {
+  border-color: var(--focus-ring);
+  background: var(--accent-soft);
+}
+.auth-code-slots[data-invalid='true'] .auth-code-cells > span {
+  border-color: var(--danger);
+}
+.auth-code-digit {
+  font-style: normal;
+  animation: auth-code-digit-enter 180ms var(--ease-enter) both;
+}
+@keyframes auth-code-digit-enter {
+  from {
+    opacity: .5;
+    transform: translateY(3px) scale(.9);
+  }
+}
+.account-auth .auth-code-field .auth-code-slots > input[data-testid='auth-code'] {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  margin: 0;
+  padding: 0;
+  border: 0;
+  color: transparent;
+  caret-color: transparent;
+  -webkit-text-fill-color: transparent;
+  background: transparent;
+  box-shadow: none;
+}
+.account-auth .auth-code-slots > input::placeholder {
+  color: transparent;
+}
+.account-page.account-auth .auth-methods.rubber-segment,
+.account-auth .auth-methods.rubber-segment {
+  padding: 3px;
+  border-radius: var(--ui-pill);
+  background: var(--surface-secondary);
+}
+.account-page.account-auth .auth-methods.rubber-segment > button,
+.account-auth .auth-methods.rubber-segment > button {
+  border: 0;
+  border-radius: var(--ui-pill);
+  background: transparent;
+  box-shadow: none;
+}
+.account-auth .auth-methods .rubber-segment-indicator {
+  top: 3px;
+  bottom: 3px;
+  border-radius: var(--ui-pill);
+}
+
+/* Media frames give real photographs stable bounds through loading and comparison. */
+.overview-screen .overview-screen-image,
+.overview-screen picture,
+.overview-expanding-frame {
+  border-radius: var(--ui-media-radius);
+}
+.overview-screen picture {
+  overflow: hidden;
+  background: var(--canvas);
+}
+.overview-header .overview-header-actions > :is(button, a) {
+  border-radius: var(--ui-pill);
+}
+.overview-questions details {
+  border-color: var(--ui-divider);
+}
+
+.studio-workspace .library-context-tabs {
+  gap: 8px;
+  padding-block: 8px 0;
+}
+.studio-workspace .library-context-tabs > .rubber-segment {
+  flex: 0 1 auto;
+  max-width: 100%;
+}
+.studio-workspace .library-context-tabs > .library-original-action {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  min-width: var(--ui-hit);
+  border-radius: var(--ui-pill);
+  background: var(--surface);
+  box-shadow: inset 0 0 0 1px var(--line);
+}
+.studio-workspace .library-context-tabs > .library-original-action:hover {
+  background: var(--surface-hover);
+}
+:is(.library-context-tabs, .crop-mode-tabs, .collaboration-panel-tabs, .compare-view)
+  .rubber-segment {
+  border-radius: var(--ui-pill);
+  background: var(--surface-secondary);
+}
+:is(.library-context-tabs, .crop-mode-tabs, .collaboration-panel-tabs, .compare-view)
+  .rubber-segment-indicator,
+:is(.library-context-tabs, .crop-mode-tabs, .collaboration-panel-tabs, .compare-view)
+  .rubber-segment > button {
+  border-radius: var(--ui-pill);
+}
+.studio-workspace .crop-mode-tabs .rubber-segment {
+  flex: 1;
+}
+.studio-workspace .crop-mode-tabs .rubber-segment > button {
+  padding-inline: 5px;
+}
+.studio-workspace .compare-mode-choice.rubber-segment {
+  gap: 2px;
+  padding: 3px;
+}
+.studio-workspace .compare-mode-choice.rubber-segment > button {
+  flex: 1 1 auto;
+  white-space: nowrap;
+}
+.collaboration-panel-tabs .rubber-segment {
+  width: 100%;
+}
+.collaboration-panel-tabs .rubber-segment small {
+  padding: 2px 6px;
+  margin-inline-start: 3px;
+  border-radius: var(--ui-pill);
+  background: var(--surface-hover);
+  color: var(--muted);
+  font-size: 10px;
+}
+.studio-workspace :is(.studio-view, .resource-search)
+  :is(.library-cover, .artwork-cover, .resource-cover) {
+  border-radius: var(--ui-media-radius);
+  box-shadow: inset 0 0 0 1px var(--ui-divider);
+}
+.studio-workspace :is(.library-asset, .artwork-card, .resource-card)
+  :is(.library-cover, .artwork-cover, .resource-cover) {
+  transition: box-shadow 160ms ease;
+}
+.studio-workspace :is(.library-asset, .artwork-card, .resource-card):hover
+  :is(.library-cover, .artwork-cover, .resource-cover) {
+  box-shadow: inset 0 0 0 1px var(--line-strong), var(--shadow-sm);
+}
+.studio-workspace :is(.library-search, .resource-search-field, .document-search) {
+  border-radius: var(--ui-pill);
+  box-shadow: inset 0 0 0 1px var(--ui-divider);
+}
+.studio-workspace :is(.compare-reveal, .compare-pair > section, .delivery-current-preview) {
+  border-radius: var(--ui-media-radius);
+}
+.studio-workspace .compare-reveal-label {
+  border-radius: var(--ui-pill);
+}
+.studio-workspace .saved-versions {
+  border-top-color: var(--ui-divider);
+}
+.studio-workspace :is(.revision-entry, .document-rows > button) {
+  border-radius: var(--radius-control);
+}
+.studio-workspace .documents-layout > :is(.document-list, .document-editor) {
+  border-color: var(--ui-divider);
+  border-radius: var(--ui-card-radius);
+}
+.studio-workspace .document-editor .document-title {
+  font-weight: 650;
+  letter-spacing: -0.025em;
+}
+.studio-workspace .document-editor textarea {
+  line-height: 1.72;
+}
+.studio-workspace .delivery-action-rail {
+  padding: clamp(12px, 2vw, 22px);
+  border: 1px solid var(--ui-divider);
+  border-radius: var(--ui-card-radius);
+  background: var(--surface);
+}
+.studio-workspace .delivery-primary-action > .button {
+  border-radius: var(--ui-pill);
+}
+.studio-workspace .collaboration-grid > .surface {
+  border-radius: var(--ui-card-radius);
+  border-color: var(--ui-divider);
+}
+.studio-workspace :is(.discussion, .task-section) textarea {
+  border-radius: 14px;
+}
+
+/* Dense account, usage and operations surfaces share field and row states. */
+.account-center :is(.account-identity, .account-payment, .account-deletion),
+.account-ready :is(.account-ready-space, .account-ready-identity) {
+  border-radius: var(--ui-card-radius);
+}
+.account-center .account-tab-indicator,
+.account-center .account-tab,
+.account-center .account-action {
+  border-radius: var(--ui-pill);
+}
+.usage-dashboard :is(.usage-card, .usage-period .usage-total) {
+  border-radius: var(--ui-card-radius);
+  border-color: var(--ui-divider);
+}
+.usage-dashboard .usage-presets > button {
+  border-radius: var(--ui-pill);
+}
+.usage-dashboard :is(.usage-filters, .usage-id-filter) .choice-trigger {
+  border-radius: var(--radius-control);
+}
+.ops-layout .ops-sidebar nav button[data-ops-nav] {
+  border-radius: var(--ui-pill);
+}
+.ops-layout .ops-sidebar nav button[data-ops-nav][aria-current='page'] {
+  background: var(--accent-soft);
+  color: var(--accent-ink);
+}
+.ops-layout :is(.ops-section, .metric, .ops-audit-detail, .ops-readiness) {
+  border-radius: var(--ui-card-radius);
+  border-color: var(--ui-divider);
+}
+.ops-layout :is(.model-row, .ops-user-row, .plan-row) {
+  border-radius: var(--radius-control);
+}
+.ops-layout .option-chips > button {
+  border-radius: var(--ui-pill);
+}
+
+.media-source .media-tile-viewport,
+.restoration-dialog .restoration-image > div {
+  border-radius: var(--ui-media-radius);
+}
+.restoration-dialog .restoration-modes button {
+  border-radius: var(--ui-pill);
+}
+.restoration-dialog .restoration-modes.rubber-segment > button[aria-pressed='true'] {
+  border-color: transparent;
+  background: transparent;
+}
+
+@media (max-width: 759px) {
+  .studio-workspace .library-context-tabs > .rubber-segment {
+    flex: 1 1 auto;
+  }
+  .studio-workspace .library-context-tabs > .library-original-action {
+    min-width: 44px;
+    padding-inline: 0;
+  }
+  .studio-workspace .library-original-action > span {
+    display: none;
+  }
+  .studio-workspace .library-context-tabs .rubber-segment > button {
+    min-height: 44px;
+    padding-inline: 4px;
+  }
+  .studio-workspace .library-context-tabs .rubber-segment > button > svg {
+    display: none;
+  }
+  .studio-workspace .crop-mode-tabs .rubber-segment > button {
+    min-height: 38px;
+    padding-inline: 4px;
+    font-size: 10px;
+  }
+  .studio-workspace .crop-mode-tabs .rubber-segment > button > svg {
+    width: 14px;
+    height: 14px;
+  }
+  .studio-workspace .delivery-action-rail {
+    padding: 12px;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .auth-code-digit {
+    animation: none;
+  }
+  .auth-code-cells > span,
+  .studio-workspace :is(.library-cover, .artwork-cover, .resource-cover) {
+    transition: none;
+  }
+}
