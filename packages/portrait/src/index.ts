@@ -29,4 +29,4 @@ export type {
 } from './retouch-adapter.js';
 export { visibleTeeth, visibleEyeAccessories, visibleMeshLighting } from './visible-features.js';
 export { anchoredSubjectPrior } from './subject-prior.js';
-export { fusePortraitCutoutPrior } from './cutout-prior.js';
+export { fusePortraitCutoutPrior, restoreOpaqueCutoutCore } from './cutout-prior.js';
