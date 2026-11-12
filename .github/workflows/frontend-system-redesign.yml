@@ -3,6 +3,8 @@ name: Frontend system redesign review
 # Review each prepared source head. Intermediate checkpoints use [skip ci].
 # The capture-only commit uses GITHUB_TOKEN and [skip ci], so it does not loop.
 on:
+  push:
+    branches: [main]
   pull_request:
     branches: [new/native-color-feedback]
     types: [opened, reopened, synchronize]
@@ -19,7 +21,8 @@ jobs:
   contracts:
     if: >-
       github.repository == 'hxjyaohaohaode/AI-xiutu' &&
-      ((github.event_name == 'pull_request' &&
+      (github.ref == 'refs/heads/main' ||
+       (github.event_name == 'pull_request' &&
         github.event.pull_request.head.repo.full_name == github.repository &&
         github.head_ref == 'frontend/system-redesign-20261111') ||
        (github.event_name == 'workflow_dispatch' &&
@@ -73,7 +76,8 @@ jobs:
   verify:
     if: >-
       github.repository == 'hxjyaohaohaode/AI-xiutu' &&
-      ((github.event_name == 'pull_request' &&
+      (github.ref == 'refs/heads/main' ||
+       (github.event_name == 'pull_request' &&
         github.event.pull_request.head.repo.full_name == github.repository &&
         github.head_ref == 'frontend/system-redesign-20261111') ||
        (github.event_name == 'workflow_dispatch' &&
@@ -170,7 +174,10 @@ jobs:
   publish-captures:
     name: Publish only the successful exact-head screenshot allowlist
     needs: [verify, contracts]
-    if: needs.verify.result == 'success' && needs.contracts.result == 'success'
+    if: >-
+      needs.verify.result == 'success' && needs.contracts.result == 'success' &&
+      (github.head_ref == 'frontend/system-redesign-20261111' ||
+       github.ref == 'refs/heads/frontend/system-redesign-20261111')
     runs-on: ubuntu-latest
     timeout-minutes: 4
     # Only this post-verification job receives write access. No secrets, deploy
@@ -198,4 +205,3 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ github.token }}
         run: node scripts/qa/publish-system-redesign-captures.mjs artifacts/frontend-review
-

@@ -1052,7 +1052,8 @@ async function productScreens(locale) {
       for(const [name,viewport] of [['small-phone',{width:320,height:568}],['short-landscape',{width:844,height:390}]]) {
         await page.setViewportSize(viewport);
         await layout(page,name+': local adjustment first screen');
-        const current=page.locator('[data-motion="region-controls"]:visible .parameter-shelf-current input[type="range"]');
+        const current = page.locator('[data-motion="region-controls"]:visible .parameter-shelf-current')
+          .getByRole('slider', { name: '曝光', exact: true });
         const bounds=await current.boundingBox();
         const panel=await page.locator('[data-panel-id="inspector"][aria-hidden="false"]').boundingBox();
         assert.ok(bounds && panel && bounds.y+2>=panel.y && bounds.y+bounds.height<=panel.y+panel.height+1,
@@ -1153,21 +1154,26 @@ async function supplementalViews(config) {
       });
     }
   });
-  let documentSeeded = false;
+  let sessionCookies;
   const signedIn = async (context) => {
+    // The viewport cases share one verified account session. Each still loads
+    // its own page and reads the real authorized routes in a fresh context.
+    if (sessionCookies) {
+      await context.addCookies(sessionCookies);
+      return;
+    }
     const response = await context.request.post(origin + '/v1/auth/login', {
       headers: { origin }, data: { phone: actor.phone, password: actor.password },
     });
     assert.equal(response.status(), 200, 'Disposable account must pass actual password verification.');
     assert.equal((await response.json()).user.id, actor.id);
-    if (!documentSeeded) {
-      const document = await context.request.post(origin + '/v1/projects/' + projectId + '/documents', {
-        headers: { origin },
-        data: { title: 'Retouch notes', body: '保留山湖的自然层次。先调光影，再检查局部与导出。\n\nPreserve natural texture and colour. Review the edit before delivery.' },
-      });
-      assert.equal(document.status(), 201, 'Fixture document must be accepted by the actual route.');
-      documentSeeded = true;
-    }
+    const document = await context.request.post(origin + '/v1/projects/' + projectId + '/documents', {
+      headers: { origin },
+      data: { title: 'Retouch notes', body: '保留山湖的自然层次。先调光影，再检查局部与导出。\n\nPreserve natural texture and colour. Review the edit before delivery.' },
+    });
+    assert.equal(document.status(), 201, 'Fixture document must be accepted by the actual route.');
+    sessionCookies = await context.cookies(origin);
+    assert.ok(sessionCookies.length, 'Password verification must establish a browser session.');
   };
   reviewFixture = { actorId: actor.id, projectId, projectName, signedIn };
   const { context, page } = await newPage({
@@ -1470,7 +1476,7 @@ async function publicThemeReview() {
         await page.emulateMedia({colorScheme:'light'});await themed('light');
         await page.emulateMedia({colorScheme:'dark'});await themed('dark');
       }
-      await page.locator('.overview-start').click();
+      await page.locator(specification.touch ? '.overview-hero .overview-primary' : '.overview-start').click();
       await page.locator('.floating-topbar').waitFor();
       await themed('dark');
       await page.locator('.workspace-settings-trigger').click();

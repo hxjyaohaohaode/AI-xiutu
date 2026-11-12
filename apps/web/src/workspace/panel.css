@@ -119,7 +119,7 @@
 }
 .free-panel .panel-layout-menu[data-direction='up'] {
   top: auto;
-  bottom: calc(var(--panel-header-height, 44px) + 2px);
+  bottom: calc(100% + 2px);
 }
 .free-panel .panel-layout-menu p {
   color: var(--muted);
