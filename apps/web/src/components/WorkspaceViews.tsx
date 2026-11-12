@@ -792,9 +792,15 @@ export function CollaborateView({
         </div>
         <div className="view-actions">
           {!embedded && onReturnToEditor && (
-            <button type="button" className="button button-quiet" onClick={onReturnToEditor}>
+            <button
+              type="button"
+              className="button button-quiet collaboration-compact-action"
+              onClick={onReturnToEditor}
+              aria-label={interactionText('keepEditing')}
+              title={interactionText('keepEditing')}
+            >
               <ArrowLeft size={17} />
-              {interactionText('keepEditing')}
+              <span>{interactionText('keepEditing')}</span>
             </button>
           )}
           {embedded && onExpand && (
@@ -803,12 +809,14 @@ export function CollaborateView({
             </IconButton>
           )}
           <button
-            className="button button-secondary"
+            className="button button-secondary collaboration-compact-action"
             onClick={() => setReloadToken((value) => value + 1)}
             disabled={loading || busy}
+            aria-label={t('刷新')}
+            title={t('刷新')}
           >
             <ArrowClockwise size={17} />
-            {t('刷新')}
+            <span>{t('刷新')}</span>
           </button>
           {permissions.share && (
             <button className="button button-secondary" onClick={onShare}>

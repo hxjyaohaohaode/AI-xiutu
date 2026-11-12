@@ -8,6 +8,8 @@
 
 设计参考、动效约束和真实验证范围见 [官网研究](../../docs/design/official-study-20261111.md) 与 [前端体验验收](../../docs/verification/frontend-experience-20261111.md)。
 
+209项新参考文档的逐项取舍、完整源码证据和组合使用见[参考审阅](../../docs/design/reference-209-review.md)；独立桌面/平板/手机重构与实际问题修正见[多轮检查](../../docs/design/reference-209-review-rounds.md)。历史验收各自绑定原提交，当前改造的测试和截图不能沿用历史结论。
+
 React + TypeScript + Vite 的真实接口前端。本轮以内容优先的 Studio 方向重做 AI 输入、手机工作区、参数控件和跨页面主题，经过 PR #2、PR #3 整合后，继续在最新主线上同步协作会话、历史恢复和验收调度。研究分支、素材处理、供应商用量与图像算法沿用真实主线实现；前端使用对应的 DTO、权限、版本和请求恢复契约，没有独立的假数据业务层。
 
 页面默认品牌来自 `src/lib/brand.ts`；服务端 `/v1/public-config` 的品牌名称、说明和公开图标优先。没有默认用户、演示项目、伪造任务结果或内置私人照片。本轮源码、实际截图与自动验收的对应关系由 [交互重构验收记录](../../docs/verification/frontend-interaction-20261110.md) 汇总，每组证据都标明受检版本及执行范围；实际设备与付费供应商另行记录。

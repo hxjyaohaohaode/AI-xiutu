@@ -23,6 +23,7 @@ import { accountPageCopy } from './account/page-copy';
 import { t, useLocale } from './i18n';
 import { api } from './lib/api';
 import { brandLogoUrl } from './lib/brand';
+import { useStudioTheme } from './workspace/useStudioTheme';
 import type { PublicConfig } from './lib/types';
 import type { StudioEntry } from './App';
 import type { SampleSettings } from './about/sample';
@@ -100,6 +101,7 @@ class StudioBoundary extends Component<
 }
 export function SiteShell() {
   const locale = useLocale();
+  const studioTheme = useStudioTheme();
   const c = aboutCopy(locale);
   const [route, setRoute] = useState<SiteRoute>(() => readSiteRoute(location.hash));
   const [opened, setOpened] = useState(() => route !== 'about');
@@ -188,6 +190,7 @@ export function SiteShell() {
           >
             <Suspense fallback={<StudioLoading route={route} logoUrl={brandLogoUrl(config?.brand)} />}>
               <Studio
+                studioTheme={studioTheme}
                 active={active}
                 siteRoute={route}
                 accountBackToAbout={accountReturn.current === 'about'}

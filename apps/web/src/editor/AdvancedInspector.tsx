@@ -209,6 +209,7 @@ export function AdvancedInspector({
                       {id === 'crop' && <GeometryControls controller={controller} />}
                       {id === 'local' && (
                         <LocalControls
+                          headerTarget={group === id ? chrome?.headerTarget : null}
                           controller={controller}
                           scope={retainedScope}
                           onScope={(next) => chooseScope(next, id)}

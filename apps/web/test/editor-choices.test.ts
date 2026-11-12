@@ -5,6 +5,7 @@ import { Children, createElement, isValidElement, type ReactElement, type ReactN
 import {
   BLEND_MODES_V3,
   createAdjustmentRegionV3,
+  createColorBlockV3,
   createRecipeV4,
   createRetouchRegionV4,
   parseRecipeV4,
@@ -85,6 +86,73 @@ test('the transform fit selector commits the actual recipe field and preserves t
   control.choose('crop');
   assert.deepEqual(recipe, { ...before, transform: { ...before.transform, fit: 'crop' } });
   assert.deepEqual(commits, [['选择变换画幅', true]]);
+});
+
+test('the active local scope selector changes the real region or group without rewriting masks or edits', () => {
+  const recipe = createRecipeV4({
+    regionEdits: [
+      createAdjustmentRegionV3({ id: 'one', name: 'Foreground' }),
+      createAdjustmentRegionV3({ id: 'two', name: 'Sky' }),
+    ],
+    regionGroups: [
+      {
+        id: 'shared',
+        name: 'Shared light',
+        enabled: true,
+        opacity: 0.75,
+        color: createColorBlockV3(),
+      },
+    ],
+  });
+  const before = structuredClone(recipe);
+  let activeRegionId = 'one';
+  let activePath: unknown = [2];
+  let chosen: unknown;
+  const controller = {
+    editor: {
+      getRecipe: () => recipe,
+      get activeRegionId() {
+        return activeRegionId;
+      },
+      setActiveRegionId(id: string) {
+        activeRegionId = id;
+      },
+      setActiveMaskPath(path: unknown) {
+        activePath = path;
+      },
+    },
+    apply() {
+      assert.fail('Selecting an existing scope must not rewrite the recipe');
+    },
+  } as unknown as InspectorController;
+  const control = readChoice(
+    () =>
+      LocalControls({
+        controller,
+        scope: { kind: 'region', id: 'one' },
+        pickedColor: '#34372EFF',
+        onScope(scope) {
+          chosen = scope;
+        },
+      }),
+    '独立局部与编组选择',
+  );
+  assert.deepEqual(
+    control.props.options?.map(({ value }) => value),
+    ['region:one', 'region:two', 'group:shared'],
+  );
+  control.choose('region:two');
+  assert.equal(activeRegionId, 'two');
+  assert.deepEqual(activePath, []);
+  assert.deepEqual(chosen, { kind: 'region', id: 'two' });
+  control.choose('group:shared');
+  assert.deepEqual(chosen, { kind: 'group', id: 'shared' });
+  assert.equal(
+    activeRegionId,
+    'two',
+    'a group keeps the last individual selection for returning to it',
+  );
+  assert.deepEqual(recipe, before);
 });
 
 test('blend selection preserves every registered blend mode without inventing or renaming values', () => {

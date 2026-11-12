@@ -158,6 +158,32 @@ test('the actual phone collapse and resume controls recover a usable compact she
   }
 });
 
+test('the actual phone resume control preserves every legal manual height rather than replacing it with the default', () => {
+  const view: Viewport = {
+    width: 390,
+    height: 844,
+    bucket: 'phone',
+    workspaceHeight: 759.8542,
+    toolShelfHeight: 64,
+  };
+  for (const height of [176, 208, 339.25]) {
+    const geometry = { ...defaultPanel('inspector', view), height };
+    const before = structuredClone(geometry);
+    const open = capturePanel(view, geometry);
+    open.control((props) => props.className === 'panel-collapse-action').onClick();
+    assert.equal(open.writes.length, 1);
+    assert.equal(open.writes[0]!.presentation, 'collapsed');
+    assert.equal(open.writes[0]!.height, height);
+    const collapsed = capturePanel(view, open.writes[0]!);
+    const resume = collapsed.control((props) => props.className === 'panel-collapse-action');
+    assert.ok(resume.label.includes(String(Math.round(height))));
+    resume.onClick();
+    assert.equal(collapsed.writes.length, 1);
+    assert.deepEqual(collapsed.writes[0], geometry);
+    assert.deepEqual(geometry, before);
+  }
+});
+
 test('queued desktop resize, pointer release and cancel cannot write into a changed phone viewport', () => {
   // Replay the real component callbacks and RAF queue. SSR does not assert DOM
   // layout or effects; the supplied viewport object represents the current owner.

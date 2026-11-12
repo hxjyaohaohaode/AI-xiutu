@@ -152,6 +152,11 @@ export function FloatingPanel({
   const page = displayMode === 'page';
   const condensed = mobile && panelKey === 'ai' && !collapsed && !page;
   const bounds = panelBounds(viewport, value.dock, panelKey);
+  const repairPhoneHeight =
+    attached &&
+    panelKey === 'inspector' &&
+    (!Number.isFinite(geometry.height) || geometry.height < bounds.minHeight);
+  const resumeHeight = repairPhoneHeight ? defaultPanel(panelKey, viewport).height : value.height;
   const contentPresence = usePresence((page || !collapsed) && open, 'panel-body');
   const needsPhotoSpace = panelNeedsPhotoSpace(value, viewport);
   const menuBelow =
@@ -382,11 +387,11 @@ export function FloatingPanel({
   ) {
     finishGesture(false);
     setMenu(false);
-    animateGeometry(
-      next === 'normal' && restoreEditingSpace
+    const normal =
+      repairPhoneHeight || (next === 'normal' && restoreEditingSpace)
         ? restorePanelForEditing(value, viewport, panelKey)
-        : { ...value, presentation: next },
-    );
+        : value;
+    animateGeometry({ ...normal, presentation: next });
     // Do not leave keyboard focus inside a collapsed or inert content subtree.
     if (next === 'collapsed') {
       // The phone title is replaced by the active categories. Keep focus on a
@@ -536,7 +541,7 @@ export function FloatingPanel({
               label={
                 collapsed
                   ? t('继续调节：恢复面板到{height}像素，保留当前操作', {
-                      height: Math.round(value.height),
+                      height: Math.round(resumeHeight),
                     })
                   : needsPhotoSpace
                     ? t('看全图：临时折叠面板，保留当前操作和{height}像素高度', {
@@ -546,7 +551,7 @@ export function FloatingPanel({
               }
               aria-expanded={!collapsed}
               aria-controls={contentId}
-              onClick={() => setPresentation(collapsed ? 'normal' : 'collapsed', collapsed)}
+              onClick={() => setPresentation(collapsed ? 'normal' : 'collapsed')}
             >
               {collapsed ? <CaretUp size={17} /> : <CaretDown size={17} />}
             </IconButton>

@@ -70,7 +70,14 @@ export function PrecisionRange({
   const range = useRef<HTMLInputElement>(null);
   const ticks = useRef<HTMLDivElement>(null);
   const scrubButton = useRef<HTMLButtonElement>(null);
-  const scrub = useRef<{ id: number; x: number; initial: number; moved: boolean } | null>(null);
+  const scrub = useRef<{
+    id: number;
+    x: number;
+    initial: number;
+    origin: number;
+    multiplier: number;
+    moved: boolean;
+  } | null>(null);
   const suppressNumberClick = useRef(false);
   const touchTrack = useRef<{ left: number; travel: number; offset: number } | null>(null);
   const ignoredPointer = useRef<number | null>(null);
@@ -290,6 +297,7 @@ export function PrecisionRange({
               />
               <button
                 type="button"
+                className="precision-confirm"
                 aria-label={t('确认{v0}数值', { v0: label })}
                 disabled={disabled}
                 onMouseDown={(event) => event.preventDefault()}
@@ -325,6 +333,8 @@ export function PrecisionRange({
                   id: event.pointerId,
                   x: event.clientX,
                   initial: latest.current,
+                  origin: latest.current,
+                  multiplier: event.shiftKey ? 10 : event.altKey && !integer ? 0.1 : 1,
                   moved: false,
                 };
               }}
@@ -343,14 +353,24 @@ export function PrecisionRange({
                   event.currentTarget.setPointerCapture(active.id);
                 }
                 event.preventDefault();
-                const increment = step * (event.shiftKey ? 10 : event.altKey && !integer ? 0.1 : 1);
-                const raw = active.initial + (distance / 2) * increment;
+                const multiplier = event.shiftKey ? 10 : event.altKey && !integer ? 0.1 : 1;
+                if (multiplier !== active.multiplier) {
+                  // Rebase only the sensitivity origin. Cancellation still owns
+                  // the original gesture value, and a modifier alone never edits.
+                  active.multiplier = multiplier;
+                  active.origin = latest.current;
+                  active.x = event.clientX;
+                  event.currentTarget.style.removeProperty('--scrub-offset');
+                  return;
+                }
+                const increment = step * multiplier;
+                const raw = active.origin + Math.round(distance / 2) * increment;
                 const overflow = raw < min ? raw - min : raw > max ? raw - max : 0;
                 event.currentTarget.style.setProperty(
                   '--scrub-offset',
                   `${Math.sign(overflow) * Math.min(3, Math.log1p(Math.abs(overflow) / Math.max(increment, 1e-10)))}px`,
                 );
-                change(pointerRangeValue(raw, min, max, increment));
+                change(raw);
               }}
               onPointerUp={(event) => {
                 const active = scrub.current;

@@ -62,6 +62,14 @@ function ProductScreen({
             height={844}
           />
         )}
+        {responsive && name === 'workspace' && (
+          <source
+            media="(min-width: 760px) and (max-width: 1100px)"
+            srcSet={'/about/tablet-' + locale + '.webp' + suffix}
+            width={1024}
+            height={768}
+          />
+        )}
         <img
           key={name + locale + retry}
           src={'/about/' + name + '-' + locale + '.webp' + suffix}

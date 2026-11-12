@@ -146,7 +146,7 @@ body[data-site-page='account'] #root {
 .auth-entry-links > button[aria-pressed='true']::after {
   transform: scaleX(1);
 }
-.account-page .auth-methods {
+.account-page.account-auth .auth-methods {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: 4px;
@@ -155,31 +155,44 @@ body[data-site-page='account'] #root {
   background: var(--surface-secondary);
   border-radius: 12px;
 }
-.account-page .auth-methods > button {
+.account-page.account-auth .auth-methods > button {
   min-height: var(--ui-hit, 40px);
   font-size: 12px;
   border: 0;
   border-radius: 9px;
 }
-.account-page .auth-methods > button[aria-pressed='true'] {
+.account-page.account-auth .auth-methods > button[aria-pressed='true'] {
   background: var(--surface);
   box-shadow: 0 2px 8px #00000006;
 }
-.account-page .auth-fields {
+.account-page.account-auth .auth-fields {
   gap: 16px;
 }
-.account-page .auth-field input {
-  min-height: var(--ui-field-h, 38px);
-  padding: 7px 11px;
+.account-page.account-auth .auth-field input {
+  height: var(--ui-hit, 40px);
+  min-height: var(--ui-hit, 40px);
+  padding: 0 11px;
   border: 0;
+  border-block: calc((var(--ui-hit, 40px) - var(--ui-field-h, 38px)) / 2) solid transparent;
   border-radius: 10px;
   background: var(--surface-secondary);
+  background-clip: padding-box;
   font-size: 16px;
 }
-.account-page .auth-password-field input {
+.account-page.account-auth .auth-field input:focus {
+  border-color: transparent;
+  background: var(--surface-raised);
+  background-clip: padding-box;
+}
+.account-page.account-auth .auth-field input[aria-invalid='true'] {
+  border-color: transparent;
+  outline: 1px solid var(--danger);
+  outline-offset: 1px;
+}
+.account-page.account-auth .auth-password-field input {
   padding-inline-end: 50px;
 }
-.account-page .auth-password-toggle {
+.account-page.account-auth .auth-password-toggle {
   position: absolute;
   inset-block-start: 0;
   inset-inline-end: 0;
@@ -193,18 +206,19 @@ body[data-site-page='account'] #root {
   color: var(--muted);
   background: transparent;
 }
-.account-page .auth-send-code {
+.account-page.account-auth .auth-send-code {
   min-height: var(--ui-hit, 40px);
 }
-.account-page .auth-primary {
+.account-page.account-auth .auth-primary {
+  height: var(--ui-hit, 40px);
   min-height: var(--ui-hit, 40px);
   border-radius: 10px;
 }
-.account-page .auth-navigation {
+.account-page.account-auth .auth-navigation {
   margin-top: 16px;
   gap: 12px;
 }
-.account-page .auth-navigation button {
+.account-page.account-auth .auth-navigation button {
   min-height: 44px;
 }
 .account-page--wide .account-page-main {
@@ -302,13 +316,11 @@ body[data-site-page='account'] #root {
   .account-page-heading h1 {
     font-size: 27px;
   }
-  .account-page .auth-fields {
+  .account-page.account-auth .auth-fields {
     gap: 12px;
   }
-  .account-page .auth-field input {
-    min-height: 36px;
+  .account-page.account-auth .auth-field input {
     font-size: 16px;
-    padding-block: 6px;
   }
 }
 @media (height < 500px) {
@@ -334,27 +346,27 @@ body[data-site-page='account'] #root {
 }
 
 /* Fields retain readable type; their surrounding layout owns the full hit area. */
-.account-page .auth-password-field {
+.account-page.account-auth .auth-password-row {
   display: grid;
   align-items: center;
   min-height: var(--ui-hit, 40px);
 }
-.account-page .auth-code-row {
+.account-page.account-auth .auth-code-row {
   align-items: center;
 }
-.account-page :is(.auth-primary, .auth-send-code) {
+.account-page.account-auth :is(.auth-primary, .auth-send-code) {
   padding-block: max(0px, calc((var(--ui-control-h, 36px) - 1.4em) / 2));
   border-block: calc((var(--ui-hit, 40px) - var(--ui-control-h, 36px)) / 2) solid transparent;
   background-clip: padding-box;
   line-height: 1.4;
   font-size: 13px;
 }
-.account-page .auth-methods > button {
+.account-page.account-auth .auth-methods > button {
   border-block: calc((var(--ui-hit, 40px) - var(--ui-control-h, 36px)) / 2) solid transparent;
   background-clip: padding-box;
   padding-block: 4px;
 }
-.account-page .auth-password-toggle svg {
+.account-page.account-auth .auth-password-toggle svg {
   width: var(--ui-icon-small, 18px);
   height: var(--ui-icon-small, 18px);
 }

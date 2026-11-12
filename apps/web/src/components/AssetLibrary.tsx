@@ -513,24 +513,39 @@ export function AssetLibrary({
           {project && (
             <>
               {['owner', 'admin', 'editor'].includes(project.role) && (
-                <button className="text-button" onClick={() => setProjectTools(true)}>
+                <button
+                  className="text-button library-secondary-action"
+                  onClick={() => setProjectTools(true)}
+                  aria-label={t('拼图与 GIF')}
+                  title={t('拼图与 GIF')}
+                >
                   <StudioGlyph name="collage" size={18} />
-                  {t('拼图与 GIF')}
+                  <span>{t('拼图与 GIF')}</span>
                 </button>
               )}
-              <button className="text-button" onClick={onCopy}>
+              <button
+                className="text-button library-secondary-action"
+                onClick={onCopy}
+                aria-label={t('复制项目')}
+                title={t('复制项目')}
+              >
                 <Copy size={17} />
-                {t('复制项目')}
+                <span>{t('复制项目')}</span>
               </button>
               {['owner', 'admin'].includes(project.role) && (
-                <button className="text-button" onClick={onShare}>
+                <button
+                  className="text-button library-secondary-action"
+                  onClick={onShare}
+                  aria-label={t('共享')}
+                  title={t('共享')}
+                >
                   <ShareNetwork size={17} />
-                  {t('共享')}
+                  <span>{t('共享')}</span>
                 </button>
               )}
             </>
           )}
-          <button className="button button-primary" onClick={onImport}>
+          <button className="button button-primary library-import-action" onClick={onImport}>
             <Plus size={18} />
             {project && !['owner', 'admin', 'editor'].includes(project.role)
               ? t('打开本地照片')
@@ -600,14 +615,21 @@ export function AssetLibrary({
             <button
               type="button"
               className="library-filter-toggle"
+              aria-label={
+                source !== 'all' || period !== 'all'
+                  ? `${c.filters} · ${Number(source !== 'all') + Number(period !== 'all')} ${c.filterCount}`
+                  : c.filters
+              }
+              title={c.filters}
               aria-expanded={filtersOpen}
               aria-controls={filterId}
               onClick={() => setFiltersOpen((value) => !value)}
             >
               <SlidersHorizontal size={18} aria-hidden />
-              {c.filters}
+              <span className="library-filter-label">{c.filters}</span>
               {(source !== 'all' || period !== 'all') && (
                 <span
+                  className="library-filter-count"
                   aria-label={`${Number(source !== 'all') + Number(period !== 'all')} ${c.filterCount}`}
                 >
                   {Number(source !== 'all') + Number(period !== 'all')}
@@ -617,7 +639,7 @@ export function AssetLibrary({
             </button>
             <div className="library-status-actions">
               {filtered && (
-                <button className="text-button" onClick={resetFilters}>
+                <button className="text-button library-reset-filters" onClick={resetFilters}>
                   <X size={15} />
                   {t('重置筛选')}
                 </button>
@@ -641,12 +663,14 @@ export function AssetLibrary({
                 </button>
               </div>
               <button
-                className="text-button"
+                className="text-button library-refresh"
                 onClick={() => setRefresh((value) => value + 1)}
                 disabled={loading}
+                aria-label={t('刷新')}
+                title={t('刷新')}
               >
                 <ArrowClockwise size={16} />
-                {t('刷新')}
+                <span>{t('刷新')}</span>
               </button>
             </div>
             <MotionDisclosure

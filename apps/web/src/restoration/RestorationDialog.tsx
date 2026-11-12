@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useRef, useState, type CSSProperties } from 'react';
 import { t, useLocale } from '../i18n';
 import { api, errorMessage, filenameBase, jsonRequest } from '../lib/api';
 import { secureUuid } from '../lib/uuid';
@@ -139,6 +139,11 @@ function Amount({
       </span>
       <input
         type="range"
+        style={
+          {
+            '--restoration-percent': `${Number.isFinite(value) && max > min ? Math.max(0, Math.min(100, ((value - min) / (max - min)) * 100)) : 0}%`,
+          } as CSSProperties
+        }
         value={Number.isFinite(value) ? value : min}
         min={min}
         max={max}

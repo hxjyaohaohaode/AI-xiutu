@@ -643,6 +643,7 @@
   }
   .overview-hero-media {
     width: calc(100% - 32px);
+    aspect-ratio: 4 / 3;
   }
   .overview-section-heading {
     gap: 7%;

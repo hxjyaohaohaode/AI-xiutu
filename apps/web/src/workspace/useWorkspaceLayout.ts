@@ -132,6 +132,8 @@ function read(view: Viewport): WorkspaceLayout {
     return defaultWorkspaceLayout(view);
   }
 }
+// Public theme initialization uses the same validated migration as the studio.
+export { read as readWorkspaceLayout };
 export function useWorkspaceLayout() {
   const [view, setView] = useState<Viewport>(viewport);
   const [preferences, setPreferences] = useState(() => {

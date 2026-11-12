@@ -200,6 +200,7 @@ export function RubberSegment<T extends string>({
       onKeyDown={(event) => {
         if (event.key === 'Escape' && drag.current) {
           event.preventDefault();
+          event.stopPropagation();
           cancel();
           return;
         }

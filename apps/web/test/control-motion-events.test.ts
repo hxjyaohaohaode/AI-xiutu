@@ -3,6 +3,7 @@ import test from 'node:test';
 import { Children, createElement, isValidElement, type ReactNode, type ReactElement } from 'react';
 import { PrecisionRange } from '../src/editor/PrecisionRange.tsx';
 import { SquishSwitch } from '../src/components/control-motion/SquishSwitch.tsx';
+import { RubberSegment } from '../src/components/control-motion/RubberSegment.tsx';
 import { renderTestMarkup } from './support/render.ts';
 
 type Props = Record<string, any>;
@@ -118,6 +119,38 @@ test('the actual touch scrub keeps its threshold, exact bounds and single releas
   assert.equal(commits, 1);
 });
 
+test('changing scrub sensitivity preserves the current precise value and the original cancel transaction', () => {
+  for (const finish of ['release', 'cancel'] as const) {
+    let value = 1.234, commits = 0, cancels = 0;
+    const writes: number[] = [];
+    const button = capture(() => PrecisionRange({
+      label: '曝光', value, min: -100, max: 100, step: 0.1,
+      onChange: (next) => { value = next; writes.push(next); },
+      onCommit: () => commits++, onCancel: () => cancels++,
+    }), (props) => props.className === 'precision-value');
+    const event = input();
+    button.onPointerDown(event(1, 0));
+    button.onPointerMove(event(1, 20));
+    assert.equal(value, 2.234);
+    button.onPointerMove(event(1, 22, { altKey: true }));
+    assert.deepEqual(writes, [2.234], 'changing sensitivity alone never rewrites the value');
+    button.onPointerMove(event(1, 24, { altKey: true }));
+    assert.equal(value, 2.244, 'future movement uses the fine increment from the precise current value');
+    button.onPointerMove(event(1, 26, { shiftKey: true }));
+    assert.equal(value, 2.244);
+    button.onPointerMove(event(1, 28, { shiftKey: true }));
+    assert.equal(value, 3.244);
+    if (finish === 'cancel') {
+      button.onKeyDown({ key: 'Escape', preventDefault() {}, stopPropagation() {} });
+      assert.equal(value, 1.234, 'modifier rebasing never replaces the original transaction baseline');
+    }
+    button.onPointerUp(event(1, 28));
+    button.onLostPointerCapture(event(1, 28));
+    assert.equal(commits, finish === 'release' ? 1 : 0);
+    assert.equal(cancels, finish === 'cancel' ? 1 : 0);
+  }
+});
+
 test('the actual boolean switch previews a drag, ignores a foreign cancellation, and commits once', () => {
   const writes: boolean[] = [];
   const button = capture(
@@ -159,4 +192,41 @@ test('cancelling the actual switch restores its controlled choice and does not s
   assert.deepEqual(writes, []);
   button.onClick({ detail: 0 });
   assert.deepEqual(writes, [true]);
+});
+
+test('Escape cancels a segment gesture before it can reach the workspace close handler', () => {
+  const previousElement = Object.getOwnPropertyDescriptor(globalThis, 'Element');
+  Object.defineProperty(globalThis, 'Element', { value: class {}, configurable: true });
+  try {
+    const writes: string[] = [];
+    const segment = capture(
+      () =>
+        RubberSegment({
+          value: 'first',
+          onChange: (value) => writes.push(value),
+          label: '分类',
+          options: [
+            { value: 'first', label: '第一项' },
+            { value: 'second', label: '第二项' },
+          ],
+        }),
+      (props) => props.role === 'group',
+    );
+    const pointer = input();
+    segment.onPointerDown(pointer(7, 10));
+    let prevented = false;
+    let stopped = false;
+    segment.onKeyDown({
+      key: 'Escape',
+      preventDefault() { prevented = true; },
+      stopPropagation() { stopped = true; },
+    });
+    assert.equal(prevented, true);
+    assert.equal(stopped, true, 'a cancelled segment must not close the enclosing inspector/AI');
+    segment.onPointerUp(pointer(7, 70));
+    assert.deepEqual(writes, [], 'late release cannot select after cancellation');
+  } finally {
+    if (previousElement) Object.defineProperty(globalThis, 'Element', previousElement);
+    else Reflect.deleteProperty(globalThis, 'Element');
+  }
 });

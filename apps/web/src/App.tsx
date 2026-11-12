@@ -56,7 +56,7 @@ import {
   WorkspaceSettings,
   workspaceViews,
 } from './workspace/WorkspaceNavigation';
-import { useStudioTheme } from './workspace/useStudioTheme';
+import type { StudioThemeController } from './workspace/useStudioTheme';
 import { StudioGlyph } from './components/StudioGlyph';
 import { boundedTitle } from './lib/titles';
 import { workspaceCanvasInsets, useWorkspaceLayout } from './workspace/useWorkspaceLayout';
@@ -263,6 +263,7 @@ export type StudioEntry = {
   sample?: SampleSettings;
 };
 type AppProps = {
+  studioTheme: StudioThemeController;
   active?: boolean;
   siteRoute?: SiteRoute;
   accountBackToAbout?: boolean;
@@ -275,6 +276,7 @@ type AppProps = {
   onRegisterLeaveGuard?: (guard: ((next: SiteRoute) => boolean) | null) => void;
 };
 export function App({
+  studioTheme,
   active = true,
   siteRoute = 'studio',
   accountBackToAbout = false,
@@ -285,7 +287,7 @@ export function App({
   onEntryComplete,
   onPageNavigate,
   onRegisterLeaveGuard,
-}: AppProps = {}) {
+}: AppProps) {
   const locale = useLocale();
   const introduction = aboutCopy(locale);
   const accountCopy = accountPageCopy(locale);
@@ -304,7 +306,6 @@ export function App({
   const accountReturnFocus = useRef<HTMLElement | null>(null);
   const rawEditor = useEditor();
   const workspaceLayout = useWorkspaceLayout();
-  const studioTheme = useStudioTheme(workspaceLayout.layout.theme);
   const [pickedColor, setPickedColor] = useState('#34372EFF');
   const [sampling, setSampling] = useState(false);
   const [pendingImport, setPendingImport] = useState<File | null>(null);

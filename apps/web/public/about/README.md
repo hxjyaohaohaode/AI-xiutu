@@ -4,7 +4,7 @@ The active About page is a continuous product overview. Generated promotional il
 
 ## Allowed imagery
 
-- workspace, local, portrait, layers, tablet and phone captures each have zh-CN, zh-TW and en variants. They must come from the actual application running the source revision recorded in the capture manifest.
+- Seventeen capture names each have zh-CN, zh-TW and en variants: workspace, local, portrait, layers, tablet, phone, library, collaboration, assistant and delivery, plus seven separately rendered phone views. A native picture selects the matching phone image. Every image must come from the actual application running the source revision recorded in the capture manifest.
 - The capture workflow imports licensed real photographs, uses the actual editor and preserves visible unavailable or error states. It never paints fictitious application controls onto an image.
 - Existing capture files retain their historical provenance until replaced by a successful new capture job. Their presence alone does not validate the redesign.
 - The three fixed sample paths coast.webp, portrait.webp and color-study.webp remain for legacy navigation compatibility; the verification task replaces their former generated practice images with the licensed real input photographs. The active About entry does not import a sample into a user's workspace.

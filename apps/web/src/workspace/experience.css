@@ -1239,6 +1239,7 @@
 .studio-context-tabs.context-segment {
   position: relative;
   isolation: isolate;
+  container: context-tabs / inline-size;
   display: grid;
   grid-template-columns: repeat(4, minmax(0, 1fr));
   overflow: visible;
@@ -1280,6 +1281,16 @@
   min-width: 0;
   overflow-wrap: normal;
   word-break: normal;
+}
+@container context-tabs (max-width: 300px) {
+  /* A resized panel can be narrow on a wide screen. Give its full labels
+     room before allowing decorative glyphs to crowd the adjacent target. */
+  .studio-context-tabs.context-segment > button {
+    gap: 0;
+  }
+  .studio-context-tabs.context-segment > button > svg {
+    display: none;
+  }
 }
 .studio-workspace .free-panel .panel-back-action {
   flex-shrink: 0;

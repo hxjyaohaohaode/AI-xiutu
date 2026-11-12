@@ -1,6 +1,36 @@
 /* Content surfaces, rebuilt around the work. Masonry/AnimatedContent source study:
    natural image proportions, progressive arrival and direct content actions.
    DOM reading order and native scrolling remain intact; no image blur or cropping. */
+/* The project library is loaded before ResourceSearch. Its common subnavigation
+   belongs to this eagerly loaded stylesheet, not the search route's CSS chunk. */
+.library-hub {
+  min-width: 0;
+}
+.library-context-tabs {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 4px clamp(20px, 2.5vw, 36px) 0;
+  overflow-x: auto;
+  overscroll-behavior-inline: contain;
+  scrollbar-width: none;
+}
+.library-context-tabs > button {
+  flex: 0 0 auto;
+  min-height: var(--ui-hit, 40px);
+  padding: 4px 10px;
+  border: 0;
+  border-radius: 8px;
+  background: transparent;
+  color: var(--muted);
+  font-size: 12px;
+  white-space: nowrap;
+}
+.studio-workspace .library-context-tabs > button[aria-pressed='true'] {
+  color: var(--ink);
+  background: var(--surface-hover);
+  font-weight: 550;
+}
 .canvas-workspace .content-view.studio-view,
 .canvas-workspace .resource-search,
 .canvas-workspace .usage-dashboard {
@@ -483,6 +513,30 @@
   background: var(--surface-secondary);
   border: 0;
   border-radius: 10px;
+}
+/* Live comments can remount after a successful refresh. Keep their text and
+   controls readable from the first frame; only their position settles. */
+.collaboration-view
+  :is([data-motion='discussion'], [data-motion='comment'], [data-motion='task-item']) {
+  animation-name: collaboration-content-enter;
+  animation-duration: 180ms;
+  animation-delay: 0ms;
+  animation-timing-function: var(--ease-enter, cubic-bezier(0.2, 0.75, 0.2, 1));
+  animation-fill-mode: backwards;
+}
+@keyframes collaboration-content-enter {
+  from {
+    translate: 0 3px;
+  }
+  to {
+    translate: 0 0;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .collaboration-view
+    :is([data-motion='discussion'], [data-motion='comment'], [data-motion='task-item']) {
+    animation: none;
+  }
 }
 .studio-view.collaboration-panel .view-heading {
   align-items: start;
@@ -1300,8 +1354,15 @@
   padding: 10px;
 }
 @media (width < 760px) {
+  .library-context-tabs {
+    padding-inline: 16px;
+    gap: 2px;
+  }
+  .library-context-tabs > button {
+    padding-inline: 8px;
+  }
   .canvas-workspace .content-view.studio-view.asset-library {
-    padding-top: 14px;
+    padding-top: 10px;
   }
   .canvas-workspace
     :is(.studio-view, .resource-search, .usage-dashboard)
@@ -1310,12 +1371,73 @@
     font-size: 16px;
   }
   .studio-view.asset-library .asset-library-filters.library-filters-progressive {
+    grid-template-columns: minmax(82px, 1fr) var(--ui-hit, 44px) auto;
     margin-bottom: 12px;
-    gap: 4px 8px;
+    gap: 4px;
   }
-  .studio-view.asset-library .view-heading {
+  .canvas-workspace .studio-view.asset-library .view-heading {
     gap: 8px;
-    margin-bottom: 12px;
+    margin-bottom: 8px;
+  }
+  .canvas-workspace .studio-view.asset-library .view-heading h1 {
+    font-size: 21px;
+  }
+  .canvas-workspace .studio-view.asset-library .view-actions {
+    flex-wrap: nowrap;
+    gap: 4px;
+  }
+  .studio-view.asset-library .view-actions .library-secondary-action {
+    flex: 0 0 var(--ui-hit, 44px);
+    justify-content: center;
+    width: var(--ui-hit, 44px);
+    padding-inline: 0;
+  }
+  .studio-view.asset-library .library-secondary-action > span,
+  .studio-view.asset-library .library-refresh > span,
+  .studio-view.asset-library .library-filter-label,
+  .studio-view.asset-library .library-filter-toggle > svg:last-child {
+    display: none;
+  }
+  .studio-view.asset-library .view-actions .library-import-action {
+    margin-inline-start: auto;
+    white-space: normal;
+  }
+  .studio-view.asset-library .library-project-select .choice-trigger {
+    width: 100%;
+    min-height: var(--ui-hit, 44px);
+    padding-inline: 8px;
+  }
+  .studio-view.asset-library .library-filter-toggle {
+    position: relative;
+    width: var(--ui-hit, 44px);
+    min-height: var(--ui-hit, 44px);
+    padding: 0;
+  }
+  .studio-view.asset-library .library-filter-count {
+    position: absolute;
+    inset: 1px 1px auto auto;
+    width: 16px;
+    height: 16px;
+  }
+  .studio-view.asset-library .library-status-actions {
+    grid-column: auto;
+    justify-content: flex-end;
+    gap: 4px;
+    max-width: calc(3 * var(--ui-hit, 44px) + 4px);
+  }
+  .studio-view.asset-library .library-density-choice {
+    padding: 0;
+  }
+  .studio-view.asset-library .library-status-actions .library-refresh {
+    justify-content: center;
+    flex: 0 0 var(--ui-hit, 44px);
+    width: var(--ui-hit, 44px);
+    min-height: var(--ui-hit, 44px);
+    padding: 0;
+  }
+  .studio-view.asset-library .library-reset-filters {
+    flex-basis: 100%;
+    justify-content: flex-end;
   }
   .studio-view.asset-library .library-group > h2 {
     font-size: 12px;
@@ -1349,6 +1471,17 @@
   }
   .studio-view.collaboration-view .comment-composer textarea {
     min-height: 64px;
+  }
+  .studio-view.collaboration-view:not(.collaboration-panel) .comments-list {
+    min-height: 0;
+  }
+  .studio-view.collaboration-view:not(.collaboration-panel) .collaboration-compact-action {
+    width: var(--ui-hit, 44px);
+    flex: 0 0 var(--ui-hit, 44px);
+    padding-inline: 0;
+  }
+  .studio-view.collaboration-view:not(.collaboration-panel) .collaboration-compact-action > span {
+    display: none;
   }
   .canvas-workspace .collaboration-view .view-heading {
     gap: 10px;

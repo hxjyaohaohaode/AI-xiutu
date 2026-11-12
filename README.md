@@ -12,7 +12,7 @@
 
 ![内容优先的桌面工作台](docs/screenshots/v3-portrait-desktop.jpg)
 
-默认把空间留给作品，工具按需出现；支持移动和连续调整面板、停靠、专注模式及按屏幕保存布局。上图及[图层绘制](docs/screenshots/v3-paint-desktop.jpg)、[短横屏](docs/screenshots/v3-landscape.jpg)为V3历史截图，不能代替V4验证。V4手机采用贴底上下文面板与单一主控分层；实际新提交的浏览器记录以本轮验收文档为准。About 提供三张 AI 生成、可打开并继续编辑的练习照片；用户工作区不会预置或伪造云端作品。
+默认把空间留给作品，工具按需出现；支持移动和连续调整面板、停靠、专注模式及按屏幕保存布局。上图及[图层绘制](docs/screenshots/v3-paint-desktop.jpg)、[短横屏](docs/screenshots/v3-landscape.jpg)为V3历史截图，不能代替当前版本验证。手机采用独立尺寸的贴底上下文面板与单一主控分层。About 使用真实系统截图连续介绍精修、人像、绘制、AI、项目和交付，核心内容直接滚动可见；打开工作台不会预置宣传素材。209项参考对应、功能边界和本轮逐项修正见[参考审阅](docs/design/reference-209-review.md)及[多轮检查记录](docs/design/reference-209-review-rounds.md)，截图来源与受检版本由[验收证据](docs/design/verification/system-redesign/README.md)分别记录。
 
 ## 从这里开始
 

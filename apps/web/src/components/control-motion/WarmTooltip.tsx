@@ -77,6 +77,12 @@ function show(tip: Tip, instant: boolean) {
 
 function TooltipLayer({ tip }: { tip: Tip | null }) {
   const bubble = useRef<HTMLDivElement>(null);
+  // Keep modal help in the modal's DOM/focus scope. The native popover supplies
+  // the top layer and viewport containing block even while that dialog transforms.
+  const host =
+    tip && typeof document !== 'undefined'
+      ? (tip.anchor.closest<HTMLDialogElement>('dialog[open]') ?? document.body)
+      : null;
   const xy = useRef(lastPosition ?? { x: 0, y: 0 });
   const paint = () => {
     if (bubble.current)
@@ -100,24 +106,50 @@ function TooltipLayer({ tip }: { tip: Tip | null }) {
   );
   const previousId = useRef<string | null>(null);
   useLayoutEffect(() => {
-    if (!tip || !bubble.current) {
+    if (!tip || !bubble.current || !host) {
       previousId.current = null;
       return;
     }
+    const element = bubble.current;
+    const owners: HTMLElement[] = [];
+    let owner: HTMLElement | null = tip.anchor;
+    while (owner && owner !== document.body) {
+      owners.push(owner);
+      owner = owner.parentElement;
+    }
+    const unavailable = () =>
+      !tip.anchor.isConnected ||
+      tip.anchor.matches(':disabled') ||
+      owners.some(
+        (node) =>
+          node.hidden ||
+          node.inert ||
+          node.getAttribute('aria-hidden') === 'true' ||
+          node.matches('dialog:not([open])'),
+      );
+    const closeWithOwner = () => {
+      if (unavailable()) hide(tip.id, true);
+    };
+    if (unavailable() || typeof element.showPopover !== 'function') {
+      hide(tip.id, true);
+      return;
+    }
+    if (!element.matches(':popover-open')) element.showPopover();
     const position = (animate: boolean) => {
       const element = bubble.current;
-      if (!element || !tip.anchor.isConnected) {
+      if (!element || unavailable() || !tip.anchor.getClientRects().length) {
         hide(tip.id, true);
         return;
       }
       const rect = tip.anchor.getBoundingClientRect();
-      const bounds = element.getBoundingClientRect();
       const view = window.visualViewport;
       const viewportLeft = view?.offsetLeft ?? 0,
         viewportTop = view?.offsetTop ?? 0;
       const viewportWidth = view?.width ?? window.innerWidth,
         viewportHeight = view?.height ?? window.innerHeight;
       const margin = 10;
+      element.style.maxWidth = `${Math.max(1, Math.min(260, viewportWidth - margin * 2))}px`;
+      const bounds = element.getBoundingClientRect();
       const left = Math.max(
         viewportLeft + margin,
         Math.min(
@@ -160,18 +192,29 @@ function TooltipLayer({ tip }: { tip: Tip | null }) {
     const observer = new ResizeObserver(reposition);
     observer.observe(tip.anchor);
     observer.observe(bubble.current);
+    const ownerObserver = new MutationObserver(closeWithOwner);
+    for (const node of owners) {
+      ownerObserver.observe(node, {
+        attributes: true,
+        attributeFilter: ['open', 'hidden', 'inert', 'aria-hidden', 'disabled'],
+      });
+      node.addEventListener('close', closeWithOwner);
+    }
     window.addEventListener('resize', reposition);
     window.addEventListener('scroll', reposition, true);
     window.visualViewport?.addEventListener('resize', reposition);
     window.visualViewport?.addEventListener('scroll', reposition);
     return () => {
       observer.disconnect();
+      ownerObserver.disconnect();
+      for (const node of owners) node.removeEventListener('close', closeWithOwner);
+      if (element.matches(':popover-open')) element.hidePopover();
       window.removeEventListener('resize', reposition);
       window.removeEventListener('scroll', reposition, true);
       window.visualViewport?.removeEventListener('resize', reposition);
       window.visualViewport?.removeEventListener('scroll', reposition);
     };
-  }, [tip, x, y]);
+  }, [tip, host, x, y]);
   useEffect(() => {
     if (!tip) return;
     const dismiss = (event: KeyboardEvent) => {
@@ -183,25 +226,31 @@ function TooltipLayer({ tip }: { tip: Tip | null }) {
       hide(tip.id, true);
     };
     const blur = () => hide(tip.id, true);
+    const hidden = () => {
+      if (document.visibilityState === 'hidden') hide(tip.id, true);
+    };
     document.addEventListener('keydown', dismiss, true);
+    document.addEventListener('visibilitychange', hidden);
     window.addEventListener('blur', blur);
     return () => {
       document.removeEventListener('keydown', dismiss, true);
+      document.removeEventListener('visibilitychange', hidden);
       window.removeEventListener('blur', blur);
     };
   }, [tip]);
-  if (!tip || typeof document === 'undefined') return null;
+  if (!tip || !host) return null;
   return createPortal(
     <div
       ref={bubble}
       id={tip.id}
       role="tooltip"
       className="warm-tooltip"
+      popover="manual"
       style={{ visibility: 'hidden' }}
     >
       {tip.content}
     </div>,
-    document.body,
+    host,
   );
 }
 
@@ -229,12 +278,15 @@ export function WarmTooltip({
     disabled?: boolean;
     title?: string;
   };
+  const nativePopover =
+    typeof HTMLElement !== 'undefined' &&
+    typeof HTMLElement.prototype.showPopover === 'function';
   useEffect(() => register(id), [id]);
   useEffect(() => {
     if (disabled) hide(id, true);
   }, [disabled, id]);
   const reveal = (instant: boolean) => {
-    if (!disabled && !props.disabled && anchor.current)
+    if (nativePopover && !disabled && !props.disabled && anchor.current)
       show({ id, anchor: anchor.current, content, placement }, instant);
   };
   const describedBy =
@@ -250,7 +302,12 @@ export function WarmTooltip({
             if (typeof props.ref === 'function') props.ref(node);
             else if (props.ref) props.ref.current = node;
           },
-          title: disabled || props.disabled ? props.title : undefined,
+          title:
+            disabled || props.disabled
+              ? props.title
+              : nativePopover
+                ? undefined
+                : (props.title ?? (typeof content === 'string' ? content : undefined)),
           'aria-describedby': describedBy,
           onPointerEnter: (event) => {
             props.onPointerEnter?.(event);

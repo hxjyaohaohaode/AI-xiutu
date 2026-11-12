@@ -33,6 +33,65 @@
   width: 16px;
   height: 16px;
 }
+.studio-workspace .precision-control .precision-readout .precision-confirm {
+  display: grid;
+  place-items: center;
+  flex: 0 0 36px;
+  width: 36px;
+  min-height: 36px;
+  padding: 0;
+  border-radius: 50%;
+  color: var(--accent-ink, var(--ink));
+  background: var(--accent-soft);
+}
+.studio-workspace .precision-control .precision-readout .precision-confirm > svg {
+  width: 16px;
+  height: 16px;
+}
+.local-primary-controls {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  gap: 10px;
+  margin-bottom: 8px;
+}
+.advanced-inspector .local-controls-v3 > .local-create-actions {
+  flex-wrap: wrap;
+  overflow: visible;
+}
+.advanced-inspector .local-controls-v3 > .local-create-actions > button {
+  min-height: var(--ui-hit, 40px);
+  max-width: 100%;
+  white-space: normal;
+}
+.local-compact-context {
+  display: flex;
+  flex: 1;
+  align-items: center;
+  min-width: 0;
+  gap: 4px;
+}
+.local-compact-context .local-scope-choice {
+  flex: 1 1 0;
+  min-width: 0;
+}
+.local-compact-context .local-family-choice {
+  flex: 0 0 72px;
+  min-width: 0;
+}
+.panel-inline-context .local-compact-context .choice-trigger {
+  min-height: 44px;
+  min-width: 0;
+  padding: 4px;
+  gap: 3px;
+  color: var(--ink);
+  background: transparent;
+  font-size: 11px;
+}
+.panel-inline-context .local-compact-context .choice-trigger > svg {
+  width: 12px;
+  height: 12px;
+}
 .studio-workspace .precision-control .precision-track input[type='range']:focus-visible {
   outline: 0;
 }
@@ -170,8 +229,24 @@
     width: 44px;
     min-width: 44px;
   }
+  .studio-workspace .precision-control .precision-readout .precision-confirm {
+    flex-basis: 44px;
+    width: 44px;
+    min-height: 44px;
+  }
 }
 @media (max-width: 759px) {
+  .studio-workspace .local-primary-controls {
+    gap: 0;
+  }
+  .studio-workspace .precision-control .precision-readout .precision-confirm {
+    flex-basis: 44px;
+    width: 44px;
+    min-height: 44px;
+  }
+  .studio-workspace .precision-heading:has(.precision-confirm) .precision-heading-accessory {
+    display: none;
+  }
   .studio-workspace .floating-tool-dock .dock-icon {
     width: 22px;
     height: 22px;

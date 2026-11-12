@@ -96,7 +96,7 @@ async function failureEvidence(page = activePage) {
     .replace(/\b[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}\b/gi, '[redacted email]')
     .replace(/\+?\d[\d ()-]{8,}\d/g, '[redacted phone]')
     .replace(/(?:Bearer\s+)?[A-Za-z0-9_-]{28,}(?:\.[A-Za-z0-9_-]+)*/g, '[redacted identifier]')
-    .replace(/界面验收/g, '[fixture user]').slice(0, limit);
+    .replace(/界面验收|示例创作者/g, '[fixture user]').slice(0, limit);
   try {
     evidence.dom = await page.evaluate(() => {
       const visible = (node) => {
@@ -208,37 +208,36 @@ async function settle(page) {
       const r = node.getBoundingClientRect();
       return r.width > 0 && r.height > 0 && r.bottom > 0 && r.top < innerHeight;
     };
-    const finite = document.getAnimations().filter((animation) =>
-      visible(animation.effect?.target) &&
-      Number.isFinite(animation.effect?.getComputedTiming().iterations) &&
-      animation.effect?.getComputedTiming().endTime < 3000 &&
-      animation.playState === 'running');
-    await Promise.allSettled(finite.map((animation) => animation.finished));
-    await new Promise((done) => requestAnimationFrame(() => requestAnimationFrame(done)));
-    // Resting JS springs are not Web Animations. Observe their painted geometry
-    // without disabling motion or reading private application state.
-    const springs=[...document.querySelectorAll('.overview-expanding-frame,[data-scroll-reveal],.rubber-segment-indicator,.choice-highlight,.squish-switch-thumb,.workspace-view-indicator,.warm-tooltip')].filter(visible);
-    if (springs.length) {
-      const signature=()=>springs.map(node=>{
-        const box=node.getBoundingClientRect();
-        return [box.x,box.y,box.width,box.height].map(value=>Math.round(value*10)).join(',');
-      }).join(';');
-      let previous=signature(), stable=0;
-      const deadline=performance.now()+2200;
-      while (stable<4 && performance.now()<deadline) {
-        await new Promise(done=>requestAnimationFrame(done));
-        const current=signature();
-        stable=current===previous?stable+1:0;
-        previous=current;
-      }
-      if (stable<4) throw new Error('Visible reference springs did not settle within the capture bound.');
+    // Recheck each frame: a real API read can mount a second entry animation
+    // after the first one finishes. JS springs are not Web Animations, so also
+    // observe the painted geometry and visibility without changing app state.
+    const watched='.overview-expanding-frame,[data-scroll-reveal],.rubber-segment-indicator,.choice-highlight,.squish-switch-thumb,.workspace-view-indicator,.warm-tooltip,[data-motion]';
+    const signature=()=>[...document.querySelectorAll(watched)].filter(visible).map(node=>{
+      const box=node.getBoundingClientRect(),style=getComputedStyle(node);
+      return [box.x,box.y,box.width,box.height].map(value=>Math.round(value*10)).join(',')+
+        ':'+[style.opacity,style.filter,style.clipPath].join(',');
+    }).join(';');
+    const isMoving=()=>document.getAnimations().some(animation=>{
+      const timing=animation.effect?.getComputedTiming();
+      return visible(animation.effect?.target) && Number.isFinite(timing?.iterations) &&
+        timing.endTime<3000 && animation.playState==='running';
+    });
+    let previous=signature(),stable=0;
+    const deadline=performance.now()+3500;
+    while(stable<4 && performance.now()<deadline) {
+      await new Promise(done=>requestAnimationFrame(done));
+      const current=signature();
+      stable=!isMoving() && current===previous?stable+1:0;
+      previous=current;
     }
+    if(stable<4) throw new Error('Visible motion did not settle within the capture bound.');
   });
 }
 async function newPage(specification, route = '/#/studio', signedIn = false) {
   const context = await browser.newContext({
     viewport: specification.viewport, hasTouch: specification.touch ?? false,
     reducedMotion: specification.motion ?? 'no-preference', locale: specification.locale,
+    colorScheme: specification.colorScheme ?? 'light',
     acceptDownloads: true, serviceWorkers: 'block',
   });
   caseContexts.add(context);
@@ -246,7 +245,8 @@ async function newPage(specification, route = '/#/studio', signedIn = false) {
   context.setDefaultNavigationTimeout(30000);
   await context.addInitScript(({ locale, theme }) => {
     localStorage.setItem('yingjian.locale.v1', locale);
-    localStorage.setItem('image-workspace:theme', theme);
+    if(localStorage.getItem('image-workspace:theme')===null)
+      localStorage.setItem('image-workspace:theme', theme);
   }, { locale: specification.locale, theme: specification.theme ?? 'light' });
   const ownerCase = activeCase;
   await context.route('**/*', async (route) => {
@@ -530,7 +530,7 @@ async function importPhoto(page, id) {
   const source = photos.get(id);
   assert.ok(source);
   await page.locator('input[type="file"].sr-only').first().setInputFiles({
-    name: id + '-pexels-' + source.pexelsId + '.jpg', mimeType: 'image/jpeg', buffer: source.bytes,
+    name: id === 'coast' ? 'Lake study.jpg' : 'Portrait study.jpg', mimeType: 'image/jpeg', buffer: source.bytes,
   });
   await imageReady(page);
   return canvasPixels(page);
@@ -601,6 +601,118 @@ async function editorGeometry(page, specification) {
     }
   }
   (report.editorGeometry ??= []).push(evidence);
+}
+
+async function referenceControlReview() {
+  const desktop = await newPage({locale:'en',viewport:{width:1440,height:960}});
+  const scrubs=[];
+  try {
+    const page=desktop.page;
+    await importPhoto(page,'coast');
+    await tool(page,'light');
+    await parameter(page,'exposure',0.1234);
+    const panel=page.locator('[data-panel-id="inspector"][aria-hidden="false"]');
+    const current=panel.locator('.parameter-shelf-current');
+    const range=current.locator('input[type="range"]');
+    const value=current.locator('.precision-value');
+    const baseline=await canvasPixels(page);
+    const exact=async(expected,label)=>until(async()=>Math.abs(Number(await range.inputValue())-expected)<1e-10,label);
+    for (const cancel of [true,false]) {
+      const box=await value.boundingBox();
+      assert.ok(box);
+      const x=box.x+box.width/2,y=box.y+box.height/2;
+      await page.mouse.move(x,y);
+      await page.mouse.down();
+      try {
+        await page.mouse.move(x+20,y,{steps:1});
+        await exact(0.2234,'Scrub begins at the actual step');
+        await page.keyboard.down('Alt');
+        await page.mouse.move(x+22,y,{steps:1});
+        await exact(0.2234,'Switching to fine movement does not jump');
+        await page.mouse.move(x+24,y,{steps:1});
+        await exact(0.2244,'Fine movement uses the new origin');
+        await page.keyboard.up('Alt');
+        await page.keyboard.down('Shift');
+        await page.mouse.move(x+26,y,{steps:1});
+        await exact(0.2244,'Switching to coarse movement does not jump');
+        await page.mouse.move(x+28,y,{steps:1});
+        await exact(0.3244,'Coarse movement uses the new origin');
+        if (cancel) await page.keyboard.press('Escape');
+      } finally {
+        await page.mouse.up();
+        await page.keyboard.up('Alt');
+        await page.keyboard.up('Shift');
+      }
+      assert.equal(await panel.getAttribute('aria-hidden'),'false','Cancelling a scrub does not close its inspector');
+      assert.equal(await current.locator('input[type="number"]').count(),0,'A finished drag does not open numeric entry');
+      if (cancel) {
+        await exact(0.1234,'Escape and late pointer release preserve the original value');
+      } else {
+        await exact(0.3244,'Pointer release commits the actual edit');
+        assert.notEqual((await canvasPixels(page)).pixelSha256,baseline.pixelSha256);
+        await page.keyboard.press('Control+z');
+        await exact(0.1234,'One Undo restores the whole scrub transaction');
+      }
+      assert.equal((await canvasPixels(page)).pixelSha256,baseline.pixelSha256,'Cancelled or undone scrub restores the real pixels');
+      scrubs.push({cancel,modifierRebase:true,singleTransaction:true,restoredPixels:true});
+    }
+    await layout(page,'actual Scrub modifiers, cancellation and single Undo');
+    await capture(page,'interactions/scrub-desktop.png');
+  } catch(error) {await failureEvidence(desktop.page);throw error;}
+  finally {await closeCaseContext(desktop.context);}
+  const phone=await newPage({locale:'zh-CN',viewport:{width:390,height:844},touch:true});
+  const heights=[];
+  let touchEvidence;
+  try {
+    const page=phone.page;
+    await importPhoto(page,'coast');await tool(page,'light');await parameter(page,'exposure',0);
+    const panel=page.locator('[data-panel-id="inspector"][aria-hidden="false"]');
+    const slider=panel.locator('.parameter-shelf-current input[type="range"]');
+    const beforeTouch=await canvasPixels(page),touchStart=Number(await slider.inputValue());
+    const track=await slider.boundingBox();assert.ok(track);
+    const x=track.x+track.width/2,y=track.y+track.height/2;
+    const touchSession=await page.context().newCDPSession(page);
+    try {
+      await touchSession.send('Input.dispatchTouchEvent',{type:'touchStart',touchPoints:[{x,y,id:1}]});
+      for(let distance=6;distance<=30;distance+=6)
+        await touchSession.send('Input.dispatchTouchEvent',{type:'touchMove',touchPoints:[{x:x+distance,y,id:1}]});
+      await touchSession.send('Input.dispatchTouchEvent',{type:'touchEnd',touchPoints:[]});
+    } finally {await touchSession.detach();}
+    await until(async()=>Number(await slider.inputValue())>touchStart+0.1,'Real touchscreen input changes the mobile range');
+    const afterTouch=await canvasPixels(page);
+    assert.notEqual(afterTouch.pixelSha256,beforeTouch.pixelSha256);
+    const undo=page.getByRole('button',{name:'撤销本次编辑',exact:true});
+    const undoBox=await undo.boundingBox();assert.ok(undoBox);
+    await page.touchscreen.tap(undoBox.x+undoBox.width/2,undoBox.y+undoBox.height/2);
+    await until(async()=>Number(await slider.inputValue())===touchStart,'One real touch on Undo reverses the slider gesture');
+    assert.equal((await canvasPixels(page)).pixelSha256,beforeTouch.pixelSha256);
+    touchEvidence={method:'Chromium touchscreen events and actual touchscreen tap',changedPixels:true,oneUndoRestoredPixels:true,physicalDevice:false};
+    for (const target of [339,176]) {
+      await panel.locator('.panel-layout-trigger').click();
+      const height=panel.locator('.panel-size-controls input[type="range"]').last();
+      await height.waitFor();await height.press('Home');
+      const minimum=Number(await height.inputValue());
+      assert.ok(target>=minimum);
+      for(let step=minimum;step<target;step++) await height.press('ArrowRight');
+      assert.equal(Number(await height.inputValue()),target);
+      await panel.locator('.panel-layout-trigger').click();
+      await settle(page);
+      const before=await panel.boundingBox();
+      await panel.locator('.panel-collapse-action').click();await settle(page);
+      assert.ok((await panel.boundingBox()).height<before.height-60,'The panel really collapses');
+      await panel.locator('.panel-collapse-action').click();await settle(page);
+      const after=await panel.boundingBox();
+      assert.ok(Math.abs(after.height-before.height)<1.5,'A manually sized panel restores its actual height');
+      await panel.locator('.panel-layout-trigger').click();
+      assert.equal(Number(await height.inputValue()),target,'The saved manual height survives collapse');
+      await panel.locator('.panel-layout-trigger').click();
+      heights.push({target,before:before.height,after:after.height});
+    }
+    await layout(page,'phone manually resized and restored panel');
+    await capture(page,'interactions/restored-phone-panel.png');
+  } catch(error) {await failureEvidence(phone.page);throw error;}
+  finally {await closeCaseContext(phone.context);}
+  return {scrubs,heights,touchEvidence};
 }
 
 async function actualDownload(page, expectedSource, label) {
@@ -824,13 +936,62 @@ async function selectChoiceIndex(owner, index) {
   await owner.locator('[role="option"][data-choice-index="' + index + '"]').click();
   await until(async () => (await trigger.getAttribute('aria-expanded')) === 'false', 'choice closes after an actual selection');
 }
+async function checkModalTooltip(page, drawing) {
+  await drawing.locator('.full-palette-trigger').click();
+  const color = drawing.locator('.drawing-color-popover[aria-hidden="false"]');
+  await color.waitFor();
+  const swatch = color.locator('.color-swatch-rail [data-color]').first();
+  await swatch.scrollIntoViewIfNeeded();
+  await swatch.focus();
+  // Use real keyboard navigation so the trigger receives :focus-visible.
+  await page.keyboard.press('Tab');
+  await page.keyboard.press('Shift+Tab');
+  const tip = drawing.locator('.warm-tooltip:popover-open');
+  await tip.waitFor();
+  await settle(page);
+  const evidence = await tip.evaluate((node) => {
+    const id = node.id;
+    const anchor = [...document.querySelectorAll('[aria-describedby]')]
+      .find((candidate) => candidate.getAttribute('aria-describedby')?.split(/\s+/).includes(id));
+    if (!anchor) throw new Error('Tooltip is missing its real described trigger');
+    const rect = node.getBoundingClientRect();
+    const source = anchor.getBoundingClientRect();
+    const view = window.visualViewport;
+    const left = view?.offsetLeft ?? 0, top = view?.offsetTop ?? 0;
+    const width = view?.width ?? innerWidth, height = view?.height ?? innerHeight;
+    const expectedLeft = Math.max(left + 10, Math.min(left + width - rect.width - 10,
+      source.left + source.width / 2 - rect.width / 2));
+    return {
+      id,
+      ownDialog: node.closest('dialog[open]') === anchor.closest('dialog[open]'),
+      topLayer: node.matches(':popover-open'),
+      fixed: getComputedStyle(node).position === 'fixed',
+      viewportPositionError: Math.abs(rect.left - expectedLeft),
+      insideViewport: rect.left >= left - 1 && rect.right <= left + width + 1 &&
+        rect.top >= top - 1 && rect.bottom <= top + height + 1,
+    };
+  });
+  assert.equal(evidence.ownDialog, true, 'Tooltip stays in the native modal DOM scope');
+  assert.equal(evidence.topLayer, true, 'Tooltip is in the top layer, above its native modal');
+  assert.equal(evidence.fixed, true);
+  assert.ok(evidence.viewportPositionError < 1.5, 'Dialog transform must not offset viewport coordinates');
+  assert.equal(evidence.insideViewport, true);
+  await page.keyboard.press('Escape');
+  await page.waitForFunction((id) => document.getElementById(id) === null, evidence.id);
+  assert.equal(await drawing.evaluate((node) => node.open), true, 'First Escape dismisses help only');
+  assert.equal((await swatch.getAttribute('aria-describedby') ?? '').split(/\s+/).includes(evidence.id), false);
+  await color.locator('.popover-heading button').click();
+  await color.waitFor({ state: 'hidden' });
+  return evidence;
+}
+
 async function sketchScreens(page, locale) {
   await page.locator('[data-action="open-sketch"]:visible').first().click();
   const drawing = page.locator('dialog.drawing-modal[open]');
   await drawing.waitFor();
   await selectChoiceIndex(drawing.locator('[data-qa="sketch-ratio"]'), 1);
   await drawing.locator('input[type="file"]').setInputFiles({
-    name: 'coast-pexels-17344850.jpg', mimeType: 'image/jpeg', buffer: photos.get('coast').bytes,
+    name: 'Lake study.jpg', mimeType: 'image/jpeg', buffer: photos.get('coast').bytes,
   });
   await until(async () => (await drawing.locator('.drawing-surface canvas').evaluate(canvas => {
     const data = canvas.getContext('2d').getImageData(0,0,canvas.width,canvas.height).data;
@@ -838,7 +999,7 @@ async function sketchScreens(page, locale) {
     return false;
   })), 'drawing contains the actually imported photograph');
   await selectChoiceIndex(drawing.locator('[data-qa="sketch-tool"]'), 10);
-  await drawing.locator('textarea').fill('QUIET\nCOAST');
+  await drawing.locator('textarea').fill('STILL\nWATER');
   await drawing.locator('.drawing-colors > button').first().click();
   const size = drawing.locator('.drawing-width input[type="range"]');
   await size.press('End');
@@ -847,12 +1008,25 @@ async function sketchScreens(page, locale) {
   assert.ok(box?.width > 100 && box.height > 100);
   await canvas.click({ position: { x: box.width * .58, y: box.height * .32 } });
   await selectChoiceIndex(drawing.locator('[data-qa="sketch-tool"]'), 2);
+  if(locale==='zh-CN') (report.modalTooltips??=[]).push({phone:false,...await checkModalTooltip(page,drawing)});
   await layout(page, locale + ': actual photograph and editable text in drawing board');
   await productCapture(page, 'layers', locale, 'coast', 'Real drawing board: photograph imported, text entered and placed with pointer; no generated interface');
   await page.setViewportSize({ width: 390, height: 844 });
   await settle(page);
+  if(locale==='zh-CN') (report.modalTooltips??=[]).push({phone:true,...await checkModalTooltip(page,drawing)});
+  await drawing.locator('.drawing-mode-tools').scrollIntoViewIfNeeded();
   await layout(page, locale + ': phone drawing board');
   await productCapture(page, 'layers-phone', locale, 'coast', 'Same real drawing document rendered in the independent phone layout');
+  if(locale==='zh-CN') {
+    for(const [name,viewport] of [['small-phone',{width:320,height:568}],['short-landscape',{width:844,height:390}]]) {
+      await page.setViewportSize(viewport);
+      await drawing.locator('.drawing-mode-tools').scrollIntoViewIfNeeded();
+      await layout(page,name+': actual drawing document');
+      const rect=await canvas.boundingBox();
+      assert.ok(rect.width>=100 && rect.height>=100,'Drawing retains usable canvas space at '+name);
+      await capture(page,'interactions/drawing-'+name+'.png');
+    }
+  }
 }
 
 async function productScreens(locale) {
@@ -865,7 +1039,7 @@ async function productScreens(locale) {
     await layout(page, locale + ': workspace capture');
     await productCapture(page, 'workspace', locale, 'coast', 'Actual local exposure adjustment');
     await tool(page, 'local');
-    await page.locator('[data-motion="region-controls"]:visible > .tonal-tabs > button').first().click();
+    await page.locator('[data-motion="region-controls"]:visible [data-action="create-region"][data-mask-type="radial"]').click();
     await page.locator('[data-motion="region-controls"]:visible .advanced-object-list .object-name').waitFor();
     await parameter(page, 'exposure', 0.25, '[data-motion="region-controls"]:visible');
     await layout(page, locale + ': local capture');
@@ -874,6 +1048,18 @@ async function productScreens(locale) {
     await settle(page);
     await layout(page, locale + ': phone local capture');
     await productCapture(page, 'local-phone', locale, 'coast', 'Real radial selection and controls in independent phone layout');
+    if(locale==='zh-CN') {
+      for(const [name,viewport] of [['small-phone',{width:320,height:568}],['short-landscape',{width:844,height:390}]]) {
+        await page.setViewportSize(viewport);
+        await layout(page,name+': local adjustment first screen');
+        const current=page.locator('[data-motion="region-controls"]:visible .parameter-shelf-current input[type="range"]');
+        const bounds=await current.boundingBox();
+        const panel=await page.locator('[data-panel-id="inspector"][aria-hidden="false"]').boundingBox();
+        assert.ok(bounds && panel && bounds.y+2>=panel.y && bounds.y+bounds.height<=panel.y+panel.height+1,
+          'The current local slider is visible without scrolling at '+name);
+        await capture(page,'interactions/local-'+name+'.png');
+      }
+    }
     await page.setViewportSize(specification.viewport);
     await settle(page);
     await sketchScreens(page, locale);
@@ -933,11 +1119,11 @@ async function supplementalViews(config) {
   const { createArtworkBranch } = await import('../../apps/api/src/revision-commands.ts');
   const { LocalPrivateStorage } = await import('../../apps/api/src/storage.ts');
   const actor = {
-    id: randomUUID(), name: '界面验收',
+    id: randomUUID(), name: '示例创作者',
     phone: '+1555' + String(1000000 + (Number.parseInt(randomBytes(3).toString('hex'), 16) % 8000000)),
     password: randomBytes(24).toString('base64url'),
   };
-  const projectId = randomUUID(), projectName = 'Coast & portrait';
+  const projectId = randomUUID(), projectName = 'Lake & portrait';
   const storage = new LocalPrivateStorage(config);
   await storage.initialize();
   const stored = [];
@@ -957,12 +1143,12 @@ async function supplementalViews(config) {
       const file = source.file;
       await tx.query(
         'INSERT INTO assets(id,project_id,name,storage_key,mime,width,height,bytes,content_hash,provenance,created_by) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10::jsonb,$11)',
-        [source.assetId, projectId, source.id + '.png', file.key, file.mime, file.width, file.height,
+        [source.assetId, projectId, source.id === 'coast' ? 'Lake study.png' : 'Portrait study.png', file.key, file.mime, file.width, file.height,
           file.bytes, file.hash, JSON.stringify({ kind: 'uploaded', declaredSource: 'upload' }), actor.id],
       );
       await createArtworkBranch(tx, {
         projectId, actorId: actor.id, assetId: source.assetId,
-        title: source.id === 'coast' ? 'Coast study' : 'Portrait study',
+          title: source.id === 'coast' ? 'Lake study' : 'Portrait study',
         label: 'Public photo fixture', recipe: createRecipeV4(),
       });
     }
@@ -977,7 +1163,7 @@ async function supplementalViews(config) {
     if (!documentSeeded) {
       const document = await context.request.post(origin + '/v1/projects/' + projectId + '/documents', {
         headers: { origin },
-        data: { title: 'Retouch notes', body: '保留海岸的自然层次。先调光影，再检查局部与导出。\n\nPreserve natural texture and colour. Review the edit before delivery.' },
+        data: { title: 'Retouch notes', body: '保留山湖的自然层次。先调光影，再检查局部与导出。\n\nPreserve natural texture and colour. Review the edit before delivery.' },
       });
       assert.equal(document.status(), 201, 'Fixture document must be accepted by the actual route.');
       documentSeeded = true;
@@ -998,14 +1184,14 @@ async function supplementalViews(config) {
     const selectedProject = await projectResponse.json();
     assert.equal(selectedProject.project.id, projectId);
     assert.deepEqual(selectedProject.assets.map((asset) => asset.id).sort(), stored.map((source) => source.assetId).sort());
-    assert.deepEqual(selectedProject.artworks.map((work) => work.title).sort(), ['Coast study', 'Portrait study']);
+    assert.deepEqual(selectedProject.artworks.map((work) => work.title).sort(), ['Lake study', 'Portrait study']);
     await changeView(page, 'works');
     const library = page.locator('.asset-library:visible');
     await library.getByRole('heading', { name: projectName, exact: true }).waitFor();
     await library.locator('.library-asset').first().waitFor();
     assert.equal(await library.locator('.library-asset').count(), 2);
     const savedWorks = library.locator('.library-version-links > button');
-    assert.deepEqual((await savedWorks.locator('span').allTextContents()).sort(), ['Coast study', 'Portrait study']);
+    assert.deepEqual((await savedWorks.locator('span').allTextContents()).sort(), ['Lake study', 'Portrait study']);
     await layout(page, 'isolated project gallery');
     await verificationCapture(page, 'views/works.png', 'works', 'Actual isolated project library with two real public photographs and their saved versions');
     const restoration = { state: 'unavailable', quoteVerified: false, createdDerivedAssets: 0 };
@@ -1121,7 +1307,7 @@ async function supplementalViews(config) {
     await verificationCapture(page, 'views/documents.png', 'documents', 'Actual isolated project document created through the HTTP API');
     await changeView(page, 'collaborate');
     const collaboration = page.locator('.collaboration-view:not(.collaboration-panel):visible');
-    await collaboration.locator('.comment-composer textarea').fill('保留海岸与天空的自然层次。局部调整后，再核对导出效果。');
+    await collaboration.locator('.comment-composer textarea').fill('保留山湖与天空的自然层次。局部调整后，再核对导出效果。');
     const [commentReceipt] = await Promise.all([
       page.waitForResponse(response => new URL(response.url()).pathname === '/v1/projects/' + projectId + '/comments' && response.request().method() === 'POST'),
       collaboration.locator('.comment-composer button[type="submit"]').click(),
@@ -1214,6 +1400,16 @@ async function businessScreens(locale) {
       await page.locator('.asset-library:visible img').evaluateAll(async nodes => { await Promise.all(nodes.map(node => node.decode())); });
       await layout(page, locale + suffix + ': real project library');
       await productCapture(page,'library'+suffix,locale,['coast','portrait'],'Actual private project assets and saved versions from disposable API-backed fixture');
+      if(phone && locale==='zh-CN') {
+        const firstAsset=page.locator('.asset-library:visible .library-asset').first();
+        const regular=await firstAsset.boundingBox();
+        await page.setViewportSize({width:320,height:568});
+        await layout(page,'small phone: real library filters and assets');
+        const narrow=await firstAsset.boundingBox();
+        (report.libraryGeometry??=[]).push({regularPhone:regular,narrowPhone:narrow});
+        await capture(page,'interactions/library-small-phone.png');
+        await page.setViewportSize({width:390,height:844});await settle(page);
+      }
       await changeView(page,'collaborate');
       const collaboration=page.locator('.collaboration-view:not(.collaboration-panel):visible');
       await collaboration.locator('.task-item').first().waitFor();
@@ -1231,8 +1427,8 @@ async function businessScreens(locale) {
       const input=assistant.locator('.ai-composer-input');
       const draftEditable=await input.isEditable();
       if (draftEditable) await input.fill(locale==='en'
-        ? 'Keep the coast natural. Lift the shadows slightly and preserve the sky.'
-        : locale==='zh-TW'?'保留海岸的自然層次，稍微提亮暗部，天空保持不變。':'保留海岸的自然层次，稍微提亮暗部，天空保持不变。');
+        ? 'Keep the lake natural. Lift the shadows slightly and preserve the sky.'
+        : locale==='zh-TW'?'保留山湖的自然層次，稍微提亮暗部，天空保持不變。':'保留山湖的自然层次，稍微提亮暗部，天空保持不变。');
       assert.equal(await assistant.locator('.ai-submit-request').isDisabled(),true);
       await layout(page,locale+suffix+': actual assistant composer and unconfigured service state');
       await productCapture(page,'assistant'+suffix,locale,'coast',
@@ -1253,15 +1449,69 @@ async function businessScreens(locale) {
   return { locale, screens:['library','collaboration','assistant','delivery'], independentPhoneCaptures:true };
 }
 
-async function accountAndOperationsReview() {
+async function publicThemeReview() {
+  const evidence=[];
+  for(const specification of [
+    {name:'desktop',locale:'en',viewport:{width:1440,height:960},theme:'dark',colorScheme:'light',motion:'reduce'},
+    {name:'phone',locale:'en',viewport:{width:390,height:844},theme:'system',colorScheme:'dark',motion:'reduce',touch:true},
+  ]) {
+    const {context,page}=await newPage(specification,'/');
+    try {
+      const themed=async expected=>until(async()=>await page.locator('html').getAttribute('data-theme')===expected,
+        specification.name+' document theme '+expected);
+      await page.locator('.product-overview-root').waitFor();
+      assert.equal(await page.locator('.studio-workspace').count(),0,'Fresh About does not mount the studio to initialize appearance');
+      await themed('dark');
+      await until(async()=>await page.locator('.overview-hero-media img').evaluate(node=>node.complete && node.naturalWidth>0),'Actual hero image loaded');
+      await logo(page,specification.name+': direct dark About');
+      await layout(page,specification.name+': direct dark About');
+      await capture(page,'brand/about-dark-'+specification.name+'.png');
+      if(specification.theme==='system') {
+        await page.emulateMedia({colorScheme:'light'});await themed('light');
+        await page.emulateMedia({colorScheme:'dark'});await themed('dark');
+      }
+      await page.locator('.overview-start').click();
+      await page.locator('.floating-topbar').waitFor();
+      await themed('dark');
+      await page.locator('.workspace-settings-trigger').click();
+      const settings=page.locator('dialog.workspace-settings-dialog[open]');
+      await settings.waitFor();
+      await settings.locator('[data-theme-choice="light"]').click();
+      await themed('light');
+      await until(async()=>await page.evaluate(()=>localStorage.getItem('image-workspace:theme'))==='light','Actual appearance choice persists');
+      await layout(page,specification.name+': actual appearance settings');
+      await capture(page,'brand/theme-settings-'+specification.name+'.png');
+      await page.keyboard.press('Escape');await settings.waitFor({state:'hidden'});
+      await page.locator('.workspace-home-link').click();
+      await page.locator('.product-overview-root').waitFor();await themed('light');
+      await page.reload();
+      await page.locator('.product-overview-root').waitFor();await themed('light');
+      assert.equal(await page.locator('.studio-workspace').count(),0);
+      assert.equal(await page.evaluate(()=>localStorage.getItem('image-workspace:theme')),'light');
+      await layout(page,specification.name+': chosen public appearance survives refresh');
+      evidence.push({viewport:specification.viewport,initialPreference:specification.theme,
+        systemChanges:specification.theme==='system',actualSettingsChoice:'light',returnAndRefresh:true});
+    } catch(error) {await failureEvidence(page);throw error;}
+    finally {await closeCaseContext(context);}
+  }
+  return {evidence};
+}
+
+async function accountAndOperationsReview(section, requestedPhone) {
   assert.ok(reviewFixture);
   const accountEvidence=[];
-  for (const phone of [false,true]) {
+  if(section==='account') {
+  for (const phone of [requestedPhone]) {
     const {context,page}=await newPage({
       locale:'zh-CN',viewport:phone?{width:390,height:844}:{width:1440,height:960},touch:phone,
     },'/#/studio',reviewFixture.signedIn);
     try {
-      await page.locator('.studio-account').click();
+      if(phone) {
+        await page.locator('.workspace-identity button').first().click();
+        const navigation=page.locator('dialog.sidebar-navigation-modal[open]');
+        await navigation.locator('.sidebar-account-details').click();
+        await navigation.waitFor({state:'hidden'});
+      } else await page.locator('.studio-account').click();
       const account=page.locator('[data-testid="account-center"]');
       await account.waitFor();
       for (const id of ['overview','security','billing','data']) {
@@ -1278,17 +1528,24 @@ async function accountAndOperationsReview() {
         accountEvidence.push({phone,section:id});
       }
       const tabs=account.getByRole('tablist');
-      await tabs.getByRole('tab').first().focus();
-      await page.keyboard.press(phone?'ArrowRight':'ArrowDown');
-      assert.equal(await tabs.getByRole('tab').nth(1).evaluate(node=>node===document.activeElement),true,'Account roving focus follows its actual orientation');
+      // Start from a real selected tab. Focusing an inactive tab in script does
+      // not select it and is not the state produced by the roving tab stop.
+      await tabs.getByRole('tab').first().click();
+      await until(async()=>await tabs.getByRole('tab').first().getAttribute('aria-selected')==='true','account first tab is actually selected');
+      const orientation=await tabs.getAttribute('aria-orientation');
+      assert.equal(orientation,phone?'horizontal':'vertical');
+      await page.keyboard.press(orientation==='horizontal'?'ArrowRight':'ArrowDown');
+      await until(async()=>await tabs.getByRole('tab').nth(1).evaluate(node=>node===document.activeElement && node.getAttribute('aria-selected')==='true'),'Account roving focus and selection follow its actual orientation');
     } catch(error) {await failureEvidence(page);throw error;}
     finally {await closeCaseContext(context);}
   }
+  return {accountEvidence,productionAccount:false,billingMutations:false};
+  }
   // Explicit fixture setup in the disposable in-memory database, never a production grant.
-  await db.query('INSERT INTO operator_users(user_id) VALUES($1)',[reviewFixture.actorId]);
+  await db.query('INSERT INTO operator_users(user_id) VALUES($1) ON CONFLICT (user_id) DO NOTHING',[reviewFixture.actorId]);
   const operationsEvidence=[];
   const tabs=['overview','users','config','plans','models','assistant','quota','usage','reconciliation','audit'];
-  for (const phone of [false,true]) {
+  for (const phone of [requestedPhone]) {
     const {context,page}=await newPage({
       locale:'zh-CN',viewport:phone?{width:390,height:844}:{width:1440,height:960},touch:phone,
     },'/#/studio',reviewFixture.signedIn);
@@ -1363,6 +1620,7 @@ try {
   report.browser = { name: 'Chromium', version: browser.version(), channel: process.env.BROWSER_CHANNEL ?? 'bundled' };
   for (const scenario of SCENARIOS)
     await check('flow:' + scenario.id, () => coreFlow(scenario));
+  await check('reference-controls:actual-scrub-and-panel-restore', referenceControlReview);
   for (const locale of LOCALES)
     await check('captures:' + locale, () => productScreens(locale));
   await check('supplemental:isolated-account-and-views', () => supplementalViews(config));
@@ -1370,13 +1628,20 @@ try {
     await check('business-captures:' + locale, () => businessScreens(locale));
   for (const scenario of SCENARIOS)
     await check('about:' + scenario.id, () => inspectAbout(scenario));
-  await check('account-and-operations:read-only-surfaces', accountAndOperationsReview);
+  await check('theme:direct-public-entry-and-persisted-choice',publicThemeReview);
+  for (const phone of [false,true])
+    await check('account:'+(phone?'phone':'desktop')+'-four-sections',()=>accountAndOperationsReview('account',phone));
+  for (const phone of [false,true])
+    await check('operations:'+(phone?'phone':'desktop')+'-ten-tabs',()=>accountAndOperationsReview('operations',phone));
   await check('brand:dark-studio-and-favicon', async () => {
     const { context, page } = await newPage({
       locale: 'en', viewport: { width: 1440, height: 960 }, theme: 'dark', motion: 'reduce',
     });
     try {
       await logo(page, 'dark studio');
+      await importPhoto(page,'coast');
+      await tool(page,'light');
+      await parameter(page,'exposure',0.25);
       const favicon = await page.locator('link[rel~="icon"]').getAttribute('href');
       assert.ok(favicon);
       const response = await page.request.get(new URL(favicon, origin).href);
@@ -1387,7 +1652,12 @@ try {
       assert.equal(faviconBytes.toString('utf8').trim(), logoBytes.toString('utf8').trim(), 'Favicon and product mark use the same original asset.');
       await layout(page, 'dark studio');
       await capture(page, 'brand/dark-studio.png');
-      return { source: canonicalLogo, favicon, sha256: sha256(logoBytes) };
+      await page.setViewportSize({width:390,height:844});
+      await logo(page,'dark phone studio');
+      await layout(page,'dark phone studio');
+      await capture(page,'brand/dark-phone.png');
+      return { source: canonicalLogo, favicon, sha256: sha256(logoBytes),
+        viewports:[{width:1440,height:960},{width:390,height:844}],actualPhotoEdited:true };
     } catch (error) {
     await failureEvidence(page);
     throw error;
