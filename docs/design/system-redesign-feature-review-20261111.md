@@ -4,15 +4,23 @@
 
 ## 快照、范围与读法
 
-需求来源固定为 [new/native-color-feedback@fc2827c](https://github.com/hxjyaohaohaode/AI-xiutu/commit/fc2827c05c137588511c94e4431b523f2d3bab87) 的 [AI修图功能对照与验收主表](https://github.com/hxjyaohaohaode/AI-xiutu/blob/fc2827c05c137588511c94e4431b523f2d3bab87/docs/research/PHOTO-EDITING-FEATURE-MATRIX.md)，文件blob为 `09d821e4ba685e6ef79417dd28885752a98a900c`。本文件没有修改canonical表。
+需求来源固定为 [new/native-color-feedback@b28a181](https://github.com/hxjyaohaohaode/AI-xiutu/commit/b28a18175e32727ce48a253867f9847a0e1b3bfa) 的 [AI修图功能对照与验收主表](https://github.com/hxjyaohaohaode/AI-xiutu/blob/b28a18175e32727ce48a253867f9847a0e1b3bfa/docs/research/PHOTO-EDITING-FEATURE-MATRIX.md)，文件blob为 `27966fd9fa8cd657b2bb0d884738f8428b14098a`。本文件没有修改canonical表。该基线较上一版 `fc2827c05c137588511c94e4431b523f2d3bab87` 新增一个相机RAW适屏WebGPU提交；111个ID、功能名称和证据状态均未变，仅R01/F07证据文字及对应实测段更新。
 
-前端核对以 `8811b4f769088f6e3729b4f26bc3677c68a57297` 为初始重设计检查点，包含随后AI结果/文案/弹窗样式的5项补丁、`383d067` 合入的最新后端与常规模型CAS，以及 `f8c276a74e0adbc7193fa91ff238d59b1154138d` 的前端整合状态。后续已产出F07母版曲线/区域和S09/S10独立修复派生的真实源码blob，本文按这些新增源码更新对应行；这些新增项仍需合入后的CI与浏览器验证。
+前端核对以 `8811b4f769088f6e3729b4f26bc3677c68a57297` 为初始重设计检查点，包含随后AI结果/文案/弹窗样式补丁、`383d067` 的常规模型CAS，以及 `5ba7b6bd47e5f34cdf6b62399fd7e39f8943ff0a` 已整合的F07母版曲线/区域、S09/S10独立修复派生、翻译和逐项核对表。本次文档更新同时记录b28a原图WebGPU适屏链路的合并约束；MediaSourceViewer必须同时保留新的GPU预览及重设计后的native曲线/局部控件。新增入口与语义合并均需在最终整合head执行CI及浏览器验证。
 
 本轮范围是前端信息结构、交互、组件大小、状态、真实图像展示及已有后端能力的接线。没有承诺在前端任务中填满缺失的算法。主表原证据状态逐行原样保留，包括括号内的限定范围：**15项已验、85项部分、11项缺口**。这里的“已验”是canonical既有证据，绝不代表本轮UI、当前设备或新提交已重新通过。
 
 本表的111个ID与名称来自canonical逐行读取；旧R5的44项只可写为 `FE-R5-<旧编号>`，不能用旧R5的R/A/C编号替代当前同名ID。用户现在要求About自然滚动读取全部内容，覆盖旧FE-R5中需要多次点击才能看到完整介绍的交互要求。
 
 “本轮处理”说明实际源码变动或保留的范围；“门禁与待验”列出具体约束与尚无本轮证据的交互。**本文件生成时，本轮CI与新布局真实浏览器验收待运行。** 旧浏览器/性能/SQL结果不会因换UI自动升级。
+
+## b28a基线更新与合并要求
+
+`fc2827c…b28a181` 仅增加一个提交、14个文件。与已整合重设计源码的交集只有 [MediaSourceViewer.tsx](../../apps/web/src/media/MediaSourceViewer.tsx)，需要语义合并。其余GPU实现、Worker、WGSL、测试、媒体CSS、`@webgpu/types@0.1.74`、lock和tsconfig随新基线保留；未新增API字段或改变修复派生契约。
+
+Viewer中必须保留四项新行为：RAW适屏只在 `sensor-raw + linear-master` 且配方可用时启用；已绘制GPU帧避免同时调度CPU适屏；导出时已可用GPU适屏仍允许调参；进入1:1后不得把旧适屏栅格放大充作原像素窗口。新的native曲线、局部覆盖层、区域源坐标与保存版本约束继续保留。
+
+[R01/F07的canonical适屏实测](https://github.com/hxjyaohaohaode/AI-xiutu/blob/b28a18175e32727ce48a253867f9847a0e1b3bfa/docs/research/PHOTO-EDITING-FEATURE-MATRIX.md#r01-和-f07-原尺寸开发后的适屏性能)记录了同一Windows Edge电脑的桌面及模拟触控视口：Sony 61.01MP / Nikon 45.75MP，固定1536×1024 / 1536×1023栅格，持按47–48个变化帧；冷加载至首帧仍为12.49–16.74秒。四组与服务器PNG16解码后的8位显示像素最大误差为1码值。上述是新基线已提交的实验记录，没有在本轮重设计界面上重新跑过，也不覆盖HDR/透明母版适屏或移动真机。旧CPU适屏7.00–17.36秒及既有1:1/原像素窗口证据继续保留，不被新GPU数字覆盖。
 
 ## 本轮查出的两类接线问题
 
@@ -25,7 +33,7 @@
 
 | ID | 功能（原名） | 原证据状态 | 当前前端入口与源码 | 本轮处理 / 明确未补项 | 能力门禁与具体待验 |
 | --- | --- | --- | --- | --- | --- |
-| R01 | 拖动时原尺寸清晰 | 部分 | 编辑→明暗/色彩；[ToolInspector.tsx](../../apps/web/src/editor/ToolInspector.tsx)、[PrecisionRange.tsx](../../apps/web/src/editor/PrecisionRange.tsx)、[previewBudget.ts](../../apps/web/src/editor/previewBudget.ts) | 重做参数选择与调节位置；连续输入仍调用原有预览链路，未替换渲染内核。 | 按原图/设备预算执行；须重测持按首变化、最长帧间隔、1:1细节，旧性能成绩不自动覆盖新UI。 |
+| R01 | 拖动时原尺寸清晰 | 部分 | 常规编辑→明暗/色彩；[ToolInspector.tsx](../../apps/web/src/editor/ToolInspector.tsx)、[PrecisionRange.tsx](../../apps/web/src/editor/PrecisionRange.tsx)；相机RAW母版适屏：[MediaSourceViewer.tsx](../../apps/web/src/media/MediaSourceViewer.tsx)、[useRawFitPreview.ts](../../apps/web/src/media/useRawFitPreview.ts)、[raw-master-stream.ts](../../apps/web/src/media/raw-master-stream.ts) | 重做参数位置并继承b28a原图线性样本流、GPU逐像素调色及固定RGB16 Lanczos3适屏采样。canonical已有45.75/61.01MP RAW持按47–48帧、首变化80–144ms、最长间隔90–149ms的桌面/模拟触控证据；仍保留CPU适屏约7秒的既有记录。 | GPU只在当前RAW线性母版和实际WebGPU/OffscreenCanvas能力满足时启用，失败回退CPU；1:1等待native窗口时保留原像素瓦片。既有硬件成绩不等于新UI已验；本轮重测持按、适屏↔1:1、导出并行及失败回退，冷加载/弱网/HDR适屏/移动真机仍待验。 |
 | R02 | 超预算大图与 1:1 瓦片 | 部分 | 原件与母版→1:1；[MediaSourceViewer.tsx](../../apps/web/src/media/MediaSourceViewer.tsx)、[tile-layout.ts](../../apps/web/src/media/tile-layout.ts) | 保留平移、缩放、瓦片及原件入口；本轮未新增超预算渲染算法。 | 由媒体descriptor/tiles及maxPixels决定；重测跨瓦片接缝、宽窗、弱网与移动真机内存。 |
 | R03 | 即时取消、撤销与重做 | 已验（浏览器基础路径） | 编辑确认/取消/历史；[useEditor.ts](../../apps/web/src/editor/useEditor.ts)、[HistoryPanel.tsx](../../apps/web/src/editor/HistoryPanel.tsx)、[CandidateActions.tsx](../../apps/web/src/ai/CandidateActions.tsx) | 暴露hasUncommittedPreview；AI候选旁新增确认/取消，并允许取消后再次预览。裁切撤销同步释放失效比例。 | 沿用协作editor封装与候选基线校验；待逐工具Esc、失焦、pointercancel、一次手势一条历史回归。 |
 | R04 | 局部回退与重编辑栈 | 部分 | 历史/图层；[HistoryPanel.tsx](../../apps/web/src/editor/HistoryPanel.tsx)、[LayerControls.tsx](../../apps/web/src/editor/LayerControls.tsx) | 保留配方版本重开及现有图层排序；没有新增任意效果节点重排。 | 现有处理阶段保持固定顺序；局部退回、可启停节点及换序一致性仍是原主表差距。 |
@@ -110,7 +118,7 @@
 | F04 | 相机 RAW 显影、曝光余量与相机资料 | 部分 | 素材→原件与母版；[MediaSourceViewer.tsx](../../apps/web/src/media/MediaSourceViewer.tsx) | 保留RAW原件、源窗口、母版版本和三种精度导出。 | 相机配置/64MP等边界以服务descriptor为准；灰点、坏点、EXIF完整性及高光重建仍待验。 |
 | F05 | 真 HDR 原件、浮点、非零 data window 与 alpha | 部分 | 原件与母版→线性输入；[MediaSourceViewer.tsx](../../apps/web/src/media/MediaSourceViewer.tsx) | 保持真HDR/EXR线性入口，未用普通RGBA8预览替代母版保存。 | floatAvailable、源色域/window/alpha语义有效；deep/multipart等受限能力不显示为已支持。 |
 | F06 | 16 位母版与线性 32 位可重编导出 | 部分 | 母版→PNG16/TIFF16/EXR32；[MediaSourceViewer.tsx](../../apps/web/src/media/MediaSourceViewer.tsx) | 保留独立精度导出、源SHA与版本；普通导出新UI不改变高位深链路。 | RGBA8配方与场景线性母版不能混写；需要重开/窗口/导出同值验证。 |
-| F07 | RAW/HDR 全配方、图层和实时母版窗口 | 部分 | 母版编辑；[MediaSourceViewer.tsx](../../apps/web/src/media/MediaSourceViewer.tsx)、[NativeGradeControls.tsx](../../apps/web/src/media/NativeGradeControls.tsx)、[NativeRegionOverlay.tsx](../../apps/web/src/media/NativeRegionOverlay.tsx)、[native-grade-model.ts](../../apps/web/src/media/native-grade-model.ts) | 新增native EV曲线与按顺序处理的局部区域，保留已有七项全局参数。preview/save/export共享native payload；读取已保存V3不降级。已独立对照后端save/preview/export字段，但新源码未记为运行验收。 | 仅linear-master及curves.available/regions.available启用；区域最多8，源归一坐标、radial/linear、各7调整项。save保留expectedVersion/sourceSha；export attachment及实时窗口并行保留。尚无全部高位深笔刷/图层/修复/液化能力。 |
+| F07 | RAW/HDR 全配方、图层和实时母版窗口 | 部分 | 母版编辑；[MediaSourceViewer.tsx](../../apps/web/src/media/MediaSourceViewer.tsx)、[NativeGradeControls.tsx](../../apps/web/src/media/NativeGradeControls.tsx)、[NativeRegionOverlay.tsx](../../apps/web/src/media/NativeRegionOverlay.tsx)、[native-grade-model.ts](../../apps/web/src/media/native-grade-model.ts)；RAW适屏：[useRawFitPreview.ts](../../apps/web/src/media/useRawFitPreview.ts)、[raw-fit.wgsl](../../apps/web/src/media/raw-fit.wgsl) | 新增native EV曲线和有序局部区域，保留七项全局参数；preview/save/export共享native payload，已有V3不降级。继承b28a以同一全局/曲线/局部配方处理相机RAW全部保留像素再适屏显示的GPU路径。canonical的窗口逐值核对和新增GPU实测均保留为既有证据。 | 曲线/区域仅linear-master及各自available启用；最多8个源归一坐标区域、radial/linear及7调整项。GPU适屏额外限sensor-raw，不能据此宣称HDR适屏通过；save保留expectedVersion/sourceSha，attachment导出与窗口/GPU预览并行。本轮新控件和合并后UI待CI/实机；高位深笔刷/图层/修复/液化仍缺。 |
 | F08 | Display-P3、ICC、场景工作空间及显示 | 部分 | 媒体色彩信息/预览；[MediaSourceViewer.tsx](../../apps/web/src/media/MediaSourceViewer.tsx)、[MediaImportDialog.tsx](../../apps/web/src/components/MediaImportDialog.tsx) | 保持现有ICC输入与sRGB显示路径；未新增广色域工作空间选择器。 | P3输入转色证据不等于广色域编辑/输出；HDR显示器、软打样仍待专项。 |
 | F09 | 手机 Ultra HDR / 增益图与 HEIC HDR | 部分 | 母版→Ultra HDR；[MediaSourceViewer.tsx](../../apps/web/src/media/MediaSourceViewer.tsx) | 保留真实增益图/HEIC HDR原件与HDR JPEG导出选项。 | 只有ultraHdrJpeg能力允许才显示/执行；线性输入、源SHA与attachment下载票据必须保持，手机HDR显示待验。 |
 | F10 | CMYK 输入、编辑、软打样和印前输出 | 部分 | 媒体导入→带ICC的CMYK；[MediaImportDialog.tsx](../../apps/web/src/components/MediaImportDialog.tsx) | 保留受支持的CMYK输入转sRGB；未添加印前输出UI。 | 16位CMYK、目标纸张/墨量/意图与CMYK导出仍缺。 |

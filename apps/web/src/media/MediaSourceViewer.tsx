@@ -17,6 +17,7 @@ import {
 import { ChoiceSelect } from '../components/ChoiceSelect';
 import { nativePreviewWindow, visibleTiles, zoomAround, type TileView } from './tile-layout';
 import { useMasterPreview } from './useMasterPreview';
+import { useRawFitPreview } from './useRawFitPreview';
 import './media.css';
 export interface MediaRecord {
   descriptor: MediaDescriptorV1;
@@ -165,6 +166,14 @@ export function MediaSourceViewer({ assetId }: { assetId: string }) {
     descriptor && maxEdge ? nativePreviewWindow(descriptor.master, view, size, maxEdge) : undefined;
   const supportedGrade = nativeGradeSupported(edit, precisionInput, precision);
   const wantsGrade = grading && canEdit && supportedGrade;
+  const overviewEdge = Math.min(maxEdge ?? 1536, 1536);
+  const rawMaster =
+    wantsGrade &&
+    precisionInput === 'linear-master' &&
+    descriptor?.original.sampleEncoding === 'sensor-raw'
+      ? descriptor.linearMaster
+      : undefined;
+  const gpu = useRawFitPreview(assetId, rawMaster, overviewEdge, wantsGrade && !region ? edit : null);
   const activeNativeRegion = nativeRegions(edit).find((item) => item.id === selectedNativeRegion);
   function changeGrade(update: (current: PrecisionEdit) => PrecisionEdit) {
     // This synchronous lock also covers cancellation callbacks captured by an older gesture.
@@ -185,7 +194,7 @@ export function MediaSourceViewer({ assetId }: { assetId: string }) {
           ...(wantsGrade
             ? nativeGradePayload({ edit, input: precisionInput, sourceSha256: precision.sourceSha256 })
             : { expectedSourceSha256: precision.sourceSha256, precisionInput: 'master16' }),
-          maxEdge: region ? maxEdge : Math.min(maxEdge, 1536),
+          maxEdge: region ? maxEdge : overviewEdge,
           region,
         })
       : null;
@@ -193,11 +202,14 @@ export function MediaSourceViewer({ assetId }: { assetId: string }) {
   const preview = useMasterPreview(
     assetId,
     previewBody,
-    !exporting || nativeLinearWindow,
+    !gpu.painted && (!exporting || nativeLinearWindow),
     nativeLinearWindow,
   );
-  const adjustmentsDisabled = saving || !supportedGrade || (exporting && !nativeLinearWindow);
-  const previewRegion = preview.frame?.region ?? descriptor?.master;
+  const adjustmentsDisabled = saving || !supportedGrade || (exporting && !nativeLinearWindow && !gpu.painted);
+  // A fitted raster becomes soft when enlarged to 1:1. Keep the source tiles
+  // visible until a native window for that view has finished decoding.
+  const frame = region && !preview.frame?.region ? null : preview.frame;
+  const previewRegion = frame?.region ?? descriptor?.master;
   const tileList =
     descriptor && tiles ? visibleTiles({ ...descriptor.master, ...tiles }, view, size) : [];
   useEffect(() => {
@@ -361,11 +373,11 @@ export function MediaSourceViewer({ assetId }: { assetId: string }) {
       <div
         className="media-tile-viewport"
         data-media-preview={
-          preview.pending
+          !gpu.painted && preview.pending
             ? 'pending'
-            : preview.failed
+            : !gpu.painted && preview.failed
               ? 'failed'
-              : preview.frame
+              : gpu.painted || frame
                 ? 'ready'
                 : 'source'
         }
@@ -412,7 +424,7 @@ export function MediaSourceViewer({ assetId }: { assetId: string }) {
           if (drag.current?.pointerId === event.pointerId) drag.current = null;
         }}
       >
-        {(!preview.frame || preview.frame.region) &&
+        {!gpu.painted && (!frame || frame.region) &&
           (tiles ? (
             tileList.map((tile) => (
               <div
@@ -445,10 +457,10 @@ export function MediaSourceViewer({ assetId }: { assetId: string }) {
               alt={t('编辑代理图')}
             />
           ))}
-        {preview.frame && previewRegion && (
+        {!gpu.painted && frame && previewRegion && (
           <div
             className="media-tile media-precision-frame"
-            data-native-window={preview.frame.region ? 'true' : undefined}
+            data-native-window={frame.region ? 'true' : undefined}
             style={{
               left: view.x + ('left' in previewRegion ? previewRegion.left : 0) * view.zoom,
               top: view.y + ('top' in previewRegion ? previewRegion.top : 0) * view.zoom,
@@ -456,7 +468,22 @@ export function MediaSourceViewer({ assetId }: { assetId: string }) {
               height: previewRegion.height * view.zoom,
             }}
           >
-            <img draggable={false} alt="" src={preview.frame.url} />
+            <img draggable={false} alt="" src={frame.url} />
+          </div>
+        )}
+        {rawMaster && (
+          <div
+            className="media-tile media-precision-frame"
+            data-raw-fit={gpu.painted ? 'ready' : gpu.loading ? 'loading' : undefined}
+            hidden={!gpu.painted}
+            style={{
+              left: view.x,
+              top: view.y,
+              width: rawMaster.width * view.zoom,
+              height: rawMaster.height * view.zoom,
+            }}
+          >
+            <canvas ref={gpu.canvas} aria-hidden="true" />
           </div>
         )}
         {grading && canEdit && activeNativeRegion && descriptor && (
@@ -471,7 +498,7 @@ export function MediaSourceViewer({ assetId }: { assetId: string }) {
           />
         )}
       </div>
-      {(preview.pending || preview.failed) && (
+      {!gpu.painted && (preview.pending || preview.failed) && (
         <small role="status">{t(preview.failed ? '母版预览未能更新' : '正在更新母版预览')}</small>
       )}
       {descriptor && (

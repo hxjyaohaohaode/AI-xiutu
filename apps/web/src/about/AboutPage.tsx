@@ -32,8 +32,8 @@ function ProductScreen({ name, priority = false, className = '' }: {
         key={name + locale}
         src={'/about/' + name + '-' + locale + '.webp'}
         alt={c.alts[name]}
-        width={phone ? 390 : 1440}
-        height={phone ? 844 : 960}
+        width={phone ? 390 : name === 'tablet' ? 1024 : 1440}
+        height={phone ? 844 : name === 'tablet' ? 768 : 960}
         loading={priority ? 'eager' : 'lazy'}
         fetchPriority={priority ? 'high' : undefined}
         decoding="async"

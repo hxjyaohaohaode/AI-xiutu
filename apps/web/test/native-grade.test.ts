@@ -70,6 +70,9 @@ test('curve point editing maintains strict input order, bounded EV and the serve
   const tight = moveNativeCurvePoint(adjacent, 1, [1, 2]);
   assert.ok(tight[1]![0] < tight[2]![0]);
   assert.equal(tight[1]![1], 2);
+  const outputOnly = moveNativeCurvePoint(adjacent, 1, [adjacent[1]![0], 2]);
+  assert.equal(outputOnly[1]![0], adjacent[1]![0], 'editing output preserves a read-only input beside a close knot');
+  assert.equal(outputOnly[1]![1], 2);
   const dense: CurvePoint[] = [[-16, -16], [0, 0], [.0004, 1], [.0008, 2], [16, 16]];
   const bounds = nativeCurveInputBounds(dense, 2);
   assert.equal(bounds.editable, false);

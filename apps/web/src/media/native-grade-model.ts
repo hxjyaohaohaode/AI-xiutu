@@ -152,7 +152,8 @@ export function moveNativeCurvePoint(
   if (!points[index] || point.some((value) => !Number.isFinite(value))) return points;
   const low = index ? points[index - 1]![0] + .001 : minEv;
   const high = index < points.length - 1 ? points[index + 1]![0] - .001 : maxEv;
-  const x = low > high ? points[index]![0] : Math.max(low, Math.min(high, point[0]));
+  const x = !nativeCurveInputBounds(points, index, minEv, maxEv).editable
+    ? points[index]![0] : Math.max(low, Math.min(high, point[0]));
   const y = Math.max(minEv, Math.min(maxEv, point[1]));
   return points.map((current, at): CurvePoint => at === index ? [x, y] : current);
 }

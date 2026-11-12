@@ -26,6 +26,7 @@
     "@types/react": "^19.0.0",
     "@types/react-dom": "^19.0.0",
     "@vitejs/plugin-react": "latest",
+    "@webgpu/types": "0.1.74",
     "typescript": "^5.9.3",
     "vite": "^8.3.7"
   }

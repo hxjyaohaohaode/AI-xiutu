@@ -108,7 +108,8 @@
   overflow: hidden;
   pointer-events: none;
 }
-.media-tile img {
+.media-tile img,
+.media-precision-frame canvas {
   position: absolute;
   max-width: none;
   image-rendering: auto;
@@ -116,7 +117,8 @@
 .media-precision-frame {
   background: var(--canvas);
 }
-.media-precision-frame img {
+.media-precision-frame img,
+.media-precision-frame canvas {
   inset: 0;
   width: 100%;
   height: 100%;
