@@ -89,6 +89,11 @@ async function failureEvidence(page = activePage) {
     evidence.dom = await page.evaluate(() => {
       const visible = (node) => {
         if (!(node instanceof Element) || node.closest('[hidden],[inert],[aria-hidden="true"]')) return false;
+        // A closed disclosure only paints its first direct summary, even when descendants retain layout boxes.
+        for (let parent = node.parentElement; parent; parent = parent.parentElement) {
+          if (parent instanceof HTMLDetailsElement && !parent.open &&
+            !parent.querySelector(':scope > summary')?.contains(node)) return false;
+        }
         const r = node.getBoundingClientRect(), css = getComputedStyle(node);
         return r.width > 0 && r.height > 0 && css.visibility !== 'hidden' &&
           Number(css.opacity) > .01 && r.bottom > 0 && r.top < innerHeight &&
@@ -114,7 +119,7 @@ async function failureEvidence(page = activePage) {
       while ((node = walker.nextNode()) && textLength < 3000) {
         const owner = node.parentElement;
         if (!owner || !visible(owner) ||
-          owner.closest('input,textarea,select,[role="textbox"],script,style,[data-sensitive],[class*="account"],[class*="profile"],[data-testid="account-center"]')) continue;
+          owner.closest('input,textarea,select,[role="textbox"],script,style,.sr-only,[data-sensitive],[class*="account"],[class*="profile"],[data-testid="account-center"]')) continue;
         const value = node.textContent?.replace(/\s+/g, ' ').trim();
         if (value) { fragments.push(value); textLength += value.length + 1; }
       }
@@ -182,6 +187,11 @@ async function settle(page) {
     await document.fonts.ready;
     const visible = (node) => {
       if (!(node instanceof Element) || node.closest('[inert],[hidden],[aria-hidden="true"]')) return false;
+      // A closed disclosure only paints its first direct summary, even when descendants retain layout boxes.
+      for (let parent = node.parentElement; parent; parent = parent.parentElement) {
+        if (parent instanceof HTMLDetailsElement && !parent.open &&
+          !parent.querySelector(':scope > summary')?.contains(node)) return false;
+      }
       const r = node.getBoundingClientRect();
       return r.width > 0 && r.height > 0 && r.bottom > 0 && r.top < innerHeight;
     };
@@ -264,6 +274,13 @@ async function publishImage(path, bytes, detail) {
     await writeFile(runtime, bytes);
   }
 }
+async function verificationCapture(page, artifactName, name, state) {
+  const bytes = await capture(page, artifactName);
+  await publishImage('docs/design/verification/system-redesign/' + name + '.png', bytes, {
+    kind: 'current-ui-screenshot', screen: name, state, locale: 'zh-CN',
+    viewport: page.viewportSize(), isolatedFixture: true,
+  });
+}
 async function productCapture(page, name, locale, photo, state) {
   const png = await capture(page, 'screens/' + name + '-' + locale + '.png');
   const bytes = await sharp(png).webp({ quality: 90 }).toBuffer();
@@ -279,6 +296,11 @@ async function layout(page, label, selector = null) {
     if (!scope) throw new Error('Missing layout scope: ' + selector);
     const visible = (node) => {
       if (!(node instanceof HTMLElement) || node.closest('[hidden],[inert],[aria-hidden="true"]')) return false;
+      // A closed disclosure only paints its first direct summary, even when descendants retain layout boxes.
+      for (let parent = node.parentElement; parent; parent = parent.parentElement) {
+        if (parent instanceof HTMLDetailsElement && !parent.open &&
+          !parent.querySelector(':scope > summary')?.contains(node)) return false;
+      }
       const style = getComputedStyle(node), rect = node.getBoundingClientRect();
       return rect.width > 1 && rect.height > 1 && style.visibility !== 'hidden' && Number(style.opacity) > 0.01;
     };
@@ -414,7 +436,11 @@ async function actualDownload(page, expectedSource, label) {
   const dialog = page.locator('dialog.export-dialog[open]');
   await dialog.waitFor();
   await layout(page, label + ': export modal');
-  await capture(page, 'flows/' + label + '-export-dialog.png');
+  if (label === 'desktop-zh-CN' || label === 'phone-zh-CN')
+    await verificationCapture(page, 'flows/' + label + '-export-dialog.png',
+      label === 'desktop-zh-CN' ? 'export-desktop' : 'export-phone',
+      'Actual export dialog before the same verified full-size PNG download; no generated interface');
+  else await capture(page, 'flows/' + label + '-export-dialog.png');
   await dialog.locator('button:visible:not(:disabled)').last().focus();
   await page.keyboard.press('Tab');
   assert.equal(await dialog.evaluate((node) => node.contains(document.activeElement)), true, 'Tab must remain inside the active modal.');
@@ -764,7 +790,7 @@ async function supplementalViews(config) {
     const savedWorks = library.locator('.library-version-links > button');
     assert.deepEqual((await savedWorks.locator('span').allTextContents()).sort(), ['Coast study', 'Portrait study']);
     await layout(page, 'isolated project gallery');
-    await capture(page, 'views/works.png');
+    await verificationCapture(page, 'views/works.png', 'works', 'Actual isolated project library with two real public photographs and their saved versions');
     const restoration = { state: 'unavailable', quoteVerified: false, createdDerivedAssets: 0 };
     const derivePath = '/v1/projects/' + projectId + '/derived-assets';
     let quoteResponse;
@@ -802,11 +828,72 @@ async function supplementalViews(config) {
         console.log('RESTORATION unavailable: the actual service does not advertise photo repair; no quote or mutation is claimed.');
       }
       await layout(page, 'restoration denoise dialog');
-      await capture(page, 'views/restoration-denoise.png');
-      await repair.getByRole('button', { name: '运动模糊', exact: true }).click();
-      await repair.locator('input[type="number"][aria-label="运动长度"]').waitFor();
+      await verificationCapture(page, 'views/restoration-denoise.png', 'restoration-denoise', restoration.state + ': actual denoise controls; no derived asset created');
+      const advanced = repair.locator('details.restoration-extra');
+      const quoteUrl = origin + derivePath + '/quote';
+      let releaseQuote, quoteHeld = false;
+      const quoteGate = new Promise((resolveGate) => { releaseQuote = resolveGate; });
+      const holdMotionQuote = async (route) => {
+        if (route.request().method() !== 'POST' || quoteHeld) return route.fallback();
+        quoteHeld = true;
+        // Delay transport only. The exact request still passes through the origin
+        // guard and real backend after the keyboard boundary has been checked.
+        await quoteGate;
+        await route.fallback();
+      };
+      quoteResponse = undefined;
+      await page.route(quoteUrl, holdMotionQuote);
+      try {
+        await repair.getByRole('button', { name: '运动模糊', exact: true }).click();
+        await repair.locator('input[type="number"][aria-label="运动长度"]').waitFor();
+        if (restoration.quoteVerified) {
+          await until(() => quoteHeld, 'the next real motion quote waits at the transport gate');
+          assert.equal(await repair.locator('.restoration-actions > button.button-primary').isDisabled(), true,
+            'Creating a copy stays disabled while its actual quote is pending.');
+          assert.equal(await advanced.evaluate((node) => node.open), false, 'Optional restoration parameters start collapsed.');
+          const close = repair.locator('.modal-header').getByRole('button', { name: '关闭窗口', exact: true });
+          const summary = advanced.locator(':scope > summary');
+          await close.focus();
+          await page.keyboard.press('Shift+Tab');
+          assert.equal(await summary.evaluate((node) => node === document.activeElement), true,
+            'Reverse Tab skips closed advanced inputs and reaches the visible summary.');
+          await page.keyboard.press('Tab');
+          assert.equal(await close.evaluate((node) => node === document.activeElement), true,
+            'Tab wraps from the last visible summary to the dialog close button.');
+          restoration.pendingKeyboardCycle = 'transport-delayed real quote: close → summary → close';
+        } else {
+          restoration.pendingKeyboardCycle = 'unavailable: no supported quote request to delay';
+        }
+      } finally {
+        releaseQuote();
+        await page.unroute(quoteUrl, holdMotionQuote);
+      }
+      if (restoration.quoteVerified) {
+        await until(() => quoteResponse, 'the released motion quote reaches the real backend');
+        assert.equal(quoteResponse.status(), 200);
+        const motionQuote = await quoteResponse.json();
+        assert.equal(motionQuote.reservesQuota, false);
+        assert.equal(motionQuote.checksDecodedPixels, false);
+        assert.equal(motionQuote.sources.length, 1);
+        assert.ok(stored.some((source) => source.assetId === motionQuote.sources[0].assetId));
+        assert.equal(typeof motionQuote.available, 'boolean');
+        if (motionQuote.available)
+          await repair.locator('.restoration-status').getByText(/预算检查通过/).waitFor();
+        else await repair.locator('.restoration-status .restoration-limit').waitFor();
+        restoration.motionQuoteAvailable = motionQuote.available;
+      }
+      assert.equal(await advanced.evaluate((node) => node.open), false, 'Optional restoration parameters remain collapsed after keyboard navigation.');
       await layout(page, 'restoration motion dialog');
-      await capture(page, 'views/restoration-motion.png');
+      await verificationCapture(page, 'views/restoration-motion.png', 'restoration-motion', restoration.state + ': actual motion controls with advanced disclosure closed; no derived asset created');
+      await advanced.locator(':scope > summary').click();
+      await repair.locator('details.restoration-extra[open]').waitFor();
+      await advanced.scrollIntoViewIfNeeded();
+      const advancedLayout = await layout(page, 'restoration advanced parameter hit targets',
+        'dialog.restoration-dialog[open] details.restoration-extra[open]');
+      assert.equal(advancedLayout.sampledControls, 2, 'Both the iteration input and denoise checkbox must be visible, enabled and checked for overlap.');
+      await layout(page, 'restoration expanded motion dialog');
+      await verificationCapture(page, 'views/restoration-motion-advanced.png', 'restoration-motion-advanced', restoration.state + ': actual expanded iteration and denoise controls verified by hit testing; no derived asset created');
+      restoration.advancedControlsChecked = advancedLayout.sampledControls;
       await page.keyboard.press('Escape');
       await repair.waitFor({ state: 'hidden' });
       assert.equal(restoration.createdDerivedAssets, 0, 'Inspecting repair settings and quotes must never create an output.');
@@ -818,26 +905,26 @@ async function supplementalViews(config) {
     await page.locator('.document-row').filter({ hasText: 'Retouch notes' }).click();
     await page.locator('.document-editor').waitFor();
     await layout(page, 'isolated project document');
-    await capture(page, 'views/documents.png');
+    await verificationCapture(page, 'views/documents.png', 'documents', 'Actual isolated project document created through the HTTP API');
     await changeView(page, 'collaborate');
     await settle(page);
     await layout(page, 'isolated project collaboration empty state');
-    await capture(page, 'views/collaborate.png');
+    await verificationCapture(page, 'views/collaborate.png', 'collaborate', 'Actual empty collaboration view; no live multi-person session acceptance claim');
     await changeView(page, 'usage');
     await settle(page);
     await layout(page, 'isolated account usage');
-    await capture(page, 'views/usage.png');
+    await verificationCapture(page, 'views/usage.png', 'usage', 'Actual isolated account usage; no paid supplier activity');
     await changeView(page, 'editor');
     await importPhoto(page, 'coast');
     await tool(page, 'ai');
     await page.locator('.free-panel[data-panel-id="ai"][aria-hidden="false"]').waitFor();
     await layout(page, 'AI unavailable state without supplier');
-    await capture(page, 'views/assistant-disabled.png');
+    await verificationCapture(page, 'views/assistant-disabled.png', 'assistant-unavailable', 'Actual assistant unavailable state; no external AI request');
     await page.locator('.studio-account').click();
     await page.locator('[data-testid="account-center"]').waitFor();
     await logo(page, 'isolated account center');
     await layout(page, 'account center');
-    await capture(page, 'account/center.png');
+    await verificationCapture(page, 'account/center.png', 'account', 'Actual disposable account center; no production account data');
     return {
       environment: 'One disposable account and real local project with two public photos and one API-created document.',
       views: ['works', 'restoration-read-only', 'documents', 'collaborate', 'usage', 'assistant-unavailable', 'account'],

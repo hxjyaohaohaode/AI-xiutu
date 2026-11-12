@@ -1045,9 +1045,26 @@
   padding: 5px;
   border-radius: 15px;
 }
+/* Scroll arrows occupy their own slots. The measured rail is exactly the
+   clickable viewport, including when another arrow appears after scrolling. */
+.studio-workspace .dock-tool-region {
+  display: flex;
+  align-items: stretch;
+}
 .studio-workspace .dock-tool-scroll {
-  padding-inline: 12px;
+  flex: 1 1 auto;
+  padding-inline: 2px;
+  scroll-padding-inline: 4px;
   gap: 2px;
+}
+.studio-workspace .dock-scroll {
+  position: static;
+  inset: auto;
+  flex: 0 0 28px;
+  width: 28px;
+  min-width: 28px;
+  min-height: 44px;
+  box-shadow: none;
 }
 .studio-workspace .dock-tool-scroll > button {
   min-width: 48px;
@@ -1293,6 +1310,12 @@
     min-width: 52px;
     min-height: 48px;
     padding-inline: 7px;
+  }
+  .studio-workspace .dock-scroll {
+    flex-basis: 44px;
+    width: 44px;
+    min-width: 44px;
+    min-height: 48px;
   }
   .studio-workspace .floating-tool-dock > .ai-tool {
     min-height: 48px;

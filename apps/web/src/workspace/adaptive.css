@@ -335,19 +335,25 @@
   min-width: 0;
 }
 
-/* The zero-height anchor follows the real header/status stack. Notifications
-   stay clear of live controls without moving the canvas or guessing bar heights. */
+/* Notices participate in the measured workspace stack. Their close action
+   must never sit on top of a panel header or a canvas control. The empty slot
+   takes no space; long error messages may wrap without covering the editor. */
 .workspace-notice-anchor {
-  --toast-gap: 12px;
   position: relative;
-  flex: 0 0 0;
+  display: flex;
+  justify-content: center;
+  flex: 0 0 auto;
   min-width: 0;
   margin-inline: max(12px, env(safe-area-inset-left)) max(12px, env(safe-area-inset-right));
 }
 .workspace-notice-anchor > .toast {
-  position: absolute;
-  top: calc(var(--toast-gap) + env(safe-area-inset-top));
+  position: relative;
+  inset: auto;
+  transform: none;
+  min-height: 44px;
   max-width: min(520px, 100%);
+  margin-block: 4px;
+  padding: 4px 8px 4px 12px;
 }
 .toast > span {
   min-width: 0;
@@ -360,9 +366,6 @@
 }
 
 @media (max-width: 759px) {
-  .workspace-notice-anchor {
-    --toast-gap: 8px;
-  }
   .toast {
     top: calc(60px + env(safe-area-inset-top));
     bottom: auto;

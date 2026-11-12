@@ -43,11 +43,12 @@ workspace、local、portrait、layers、tablet、phone 六类截图在三种语�
 - public/about 六类三语 WebP，18张。
 - public/about/coast.webp、portrait.webp、color-study.webp，3张真实源照片。
 - docs/design/verification/system-redesign/about-desktop.png 和 about-phone.png，2张最终 About 截图。
+- 同目录另存11张真实审阅截图：桌面／手机导出弹窗、作品、降噪、运动模糊、展开后的运动模糊参数、文档、协作空态、用量、助手不可用态、账户。总图片白名单为34张。
 - apps/web/public/about/source-manifest.json，来源和被测提交记录。
 
 发布脚本不 stage 任何其他路径；只接收普通 PNG/WebP 文件。它在读取、提交和推送前检查远端 feature head 仍等于被测 head，分支发生变化立即失败。只允许正常快进 push，不 merge、不 force、不重试，提交带 [skip ci]。
 
-这是素材更新提交，不是生产部署。manifest 的 manualVisualReview 保持 false；实际目检由审阅者打开本次提交中的完整 About 截图完成，不能用浏览器自动断言代替视觉判断。
+这是素材更新提交，不是生产部署。manifest 的 manualVisualReview 保持 false；实际目检由审阅者打开本次提交中的工作台、完整 About、页面与弹窗截图完成，不能用浏览器自动断言代替视觉判断。
 
 ## 证据位置与失败处理
 

@@ -1218,7 +1218,6 @@ export function App({
       setSampling(false);
       setPendingImport(null);
       setImportReason(null);
-      notify(t('图片已打开，尚未上传。'), 'success');
       return true;
     } catch (e) {
       if (!entryIsCurrent()) return false;

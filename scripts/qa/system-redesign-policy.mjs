@@ -20,6 +20,17 @@ export const PUBLISH_IMAGE_PATHS = [
   'apps/web/public/about/color-study.webp',
   'docs/design/verification/system-redesign/about-desktop.png',
   'docs/design/verification/system-redesign/about-phone.png',
+  'docs/design/verification/system-redesign/export-desktop.png',
+  'docs/design/verification/system-redesign/export-phone.png',
+  'docs/design/verification/system-redesign/works.png',
+  'docs/design/verification/system-redesign/restoration-denoise.png',
+  'docs/design/verification/system-redesign/restoration-motion.png',
+  'docs/design/verification/system-redesign/restoration-motion-advanced.png',
+  'docs/design/verification/system-redesign/documents.png',
+  'docs/design/verification/system-redesign/collaborate.png',
+  'docs/design/verification/system-redesign/usage.png',
+  'docs/design/verification/system-redesign/assistant-unavailable.png',
+  'docs/design/verification/system-redesign/account.png',
 ];
 export const PUBLISH_PATHS = [...PUBLISH_IMAGE_PATHS, MANIFEST_PATH];
 export const PHOTO_SOURCES = [

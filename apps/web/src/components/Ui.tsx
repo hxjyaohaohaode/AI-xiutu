@@ -327,14 +327,33 @@ export function Modal({
             'button, input, select, textarea, a[href], area[href], summary, iframe, [tabindex], [contenteditable]:not([contenteditable="false"])',
           ),
         )
-          .filter(
-            (candidate) =>
-              candidate.tabIndex >= 0 &&
-              !candidate.matches(':disabled') &&
-              !candidate.closest('[inert], [hidden], [aria-hidden="true"]') &&
-              candidate.getClientRects().length > 0 &&
-              getComputedStyle(candidate).visibility !== 'hidden',
-          )
+          .filter((candidate) => {
+            if (
+              candidate.tabIndex < 0 ||
+              candidate.matches(':disabled') ||
+              candidate.closest('[inert], [hidden], [aria-hidden="true"]') ||
+              candidate.getClientRects().length === 0 ||
+              getComputedStyle(candidate).visibility === 'hidden'
+            ) {
+              return false;
+            }
+            // Closed disclosures can retain geometry for their unpainted content.
+            // Only their first direct summary belongs in the keyboard cycle.
+            for (
+              let parent = candidate.parentElement;
+              parent && parent !== element;
+              parent = parent.parentElement
+            ) {
+              if (
+                parent instanceof HTMLDetailsElement &&
+                !parent.open &&
+                !parent.querySelector(':scope > summary')?.contains(candidate)
+              ) {
+                return false;
+              }
+            }
+            return true;
+          })
           .sort((a, b) => (a.tabIndex || Infinity) - (b.tabIndex || Infinity));
         const first = stops[0];
         const last = stops.at(-1);
