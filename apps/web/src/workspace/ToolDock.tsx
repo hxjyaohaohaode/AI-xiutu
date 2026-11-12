@@ -17,6 +17,8 @@ export function dockTool(group: ToolGroup, compact: boolean): ToolGroup {
 export function ToolDock({
   group,
   inspectorOpen,
+  collageOpen,
+  onCollage,
   aiOpen,
   compact,
   onTool,
@@ -24,6 +26,8 @@ export function ToolDock({
 }: {
   group: ToolGroup;
   inspectorOpen: boolean;
+  collageOpen: boolean;
+  onCollage: () => void;
   aiOpen: boolean;
   compact: boolean;
   onTool: (group: ToolGroup) => void;
@@ -59,7 +63,8 @@ export function ToolDock({
   useDockProximity(dock, compact, locale);
   const reducedMotion = useReducedMotion();
   const [overflow, setOverflow] = useState({ left: false, right: false });
-  const active = dockTool(group, compact);
+  const active = collageOpen ? 'collage' : dockTool(group, compact);
+  const contextOpen = inspectorOpen || collageOpen;
   const [tabStop, setTabStop] = useState<string>(aiOpen ? 'ai' : active);
   const [selection, setSelection] = useState<{ x: number; width: number; height: number } | null>(
     null,
@@ -67,6 +72,18 @@ export function ToolDock({
   const choices = toolGroups.filter(
     (tool) => !compact || !['color', 'curves', 'detail'].includes(tool.id),
   );
+  const dockChoices = [...choices];
+  const collageChoice = {
+    id: 'collage' as const,
+    label: '拼图',
+    description: '组合照片、实况和动图',
+  };
+  const afterCrop = dockChoices.findIndex((tool) => tool.id === 'crop') + 1;
+  const tools = [
+    ...dockChoices.slice(0, afterCrop),
+    collageChoice,
+    ...dockChoices.slice(afterCrop),
+  ];
   useLayoutEffect(() => {
     if (!selection) {
       selectionReady.current = false;
@@ -89,12 +106,12 @@ export function ToolDock({
     const item = button.getBoundingClientRect();
     if (item.left < viewport.left) rail.scrollLeft += item.left - viewport.left;
     else if (item.right > viewport.right) rail.scrollLeft += item.right - viewport.right;
-  }, [active, inspectorOpen, aiOpen, compact, locale]);
+  }, [active, contextOpen, aiOpen, compact, locale]);
   useEffect(() => setTabStop(aiOpen ? 'ai' : active), [active, aiOpen, compact]);
   useLayoutEffect(() => {
     const rail = nav.current;
     const button = rail?.querySelector<HTMLButtonElement>('[aria-pressed="true"]');
-    if (!rail || !button || !inspectorOpen) {
+    if (!rail || !button || !contextOpen) {
       setSelection(null);
       return;
     }
@@ -114,7 +131,7 @@ export function ToolDock({
     observer.observe(rail);
     observer.observe(button);
     return () => observer.disconnect();
-  }, [active, inspectorOpen, compact, locale]);
+  }, [active, contextOpen, compact, locale]);
   useEffect(() => {
     const rail = nav.current;
     if (!rail) return;
@@ -127,7 +144,7 @@ export function ToolDock({
           parseFloat(style.paddingLeft || '0') -
           parseFloat(style.paddingRight || '0');
         const minimum = Math.max(
-          52,
+          46,
           ...[...rail.querySelectorAll<HTMLButtonElement>('button')].map((button) => {
             const itemStyle = getComputedStyle(button);
             return Math.ceil(
@@ -183,7 +200,7 @@ export function ToolDock({
       data-motion="tool-dock"
       data-compact={compact || undefined}
       data-selection-ready={selection ? 'true' : undefined}
-      data-context-open={inspectorOpen || aiOpen ? 'true' : undefined}
+      data-context-open={contextOpen || aiOpen ? 'true' : undefined}
       onKeyDown={(event) => {
         if (!['ArrowLeft', 'ArrowRight', 'Home', 'End'].includes(event.key)) return;
         const buttons = [
@@ -239,25 +256,27 @@ export function ToolDock({
               }}
             />
           )}
-          {choices.map((tool) => (
+          {tools.map((tool) => (
             <WarmTooltip key={tool.id} content={t(tool.description)}>
               <button
                 type="button"
                 key={tool.id}
                 data-dock-tool={tool.id}
                 data-motion="tool-item"
-                className={active === tool.id && inspectorOpen ? 'active' : ''}
-                aria-pressed={active === tool.id && inspectorOpen}
+                className={active === tool.id && contextOpen ? 'active' : ''}
+                aria-pressed={active === tool.id && contextOpen}
                 title={t(tool.description)}
                 tabIndex={tabStop === tool.id ? 0 : -1}
                 onFocus={() => setTabStop(tool.id)}
-                onClick={() =>
-                  onTool(
-                    compact && tool.id === 'light' && ADJUSTMENT_GROUPS.includes(group)
-                      ? group
-                      : tool.id,
-                  )
-                }
+                onClick={() => {
+                  if (tool.id === 'collage') onCollage();
+                  else
+                    onTool(
+                      compact && tool.id === 'light' && ADJUSTMENT_GROUPS.includes(group)
+                        ? group
+                        : tool.id,
+                    );
+                }}
               >
                 <span className="dock-icon">
                   <StudioGlyph name={tool.id} size={20} />

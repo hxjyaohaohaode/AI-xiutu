@@ -16,6 +16,7 @@ import { PGlite } from '@electric-sql/pglite';
 import { PGLiteSocketServer } from '@electric-sql/pglite-socket';
 import { chromium } from 'playwright';
 import sharp from 'sharp';
+import { reviewCollage, reviewMakeup } from './collage-makeup.browser.mjs';
 import {
   REPOSITORY, LOCALES, SCREEN_NAMES, ABOUT_SECTIONS, SCENARIOS,
   PHOTO_SOURCES, PUBLISH_IMAGE_PATHS, MANIFEST_PATH,
@@ -1838,6 +1839,21 @@ try {
     await check('flow:' + scenario.id, () => coreFlow(scenario));
   await check('reference-controls:actual-scrub-and-panel-restore', referenceControlReview);
   await check('mobile:crop-sketch-and-assistant-attachment', mobileEditingFlow);
+  await check('mobile:makeup-brush-edit-and-undo', async () => {
+    const { page } = await newPage({
+      locale: 'zh-CN', viewport: { width: 390, height: 844 }, touch: true, motion: 'reduce', theme: 'dark',
+    });
+    await importPhoto(page, 'portrait');
+    return reviewMakeup({ page, canvasPixels, tool, parameter, until, capture });
+  });
+  await check('mobile:collage-cutout-and-motion-roundtrip', async () => {
+    const { page } = await newPage({
+      locale: 'zh-CN', viewport: { width: 390, height: 844 }, touch: true, motion: 'reduce', theme: 'dark',
+    });
+    return reviewCollage({
+      page, until, capture, portrait: photos.get('portrait').bytes, coast: photos.get('coast').bytes,
+    });
+  });
   for (const locale of LOCALES)
     await check('captures:' + locale, () => productScreens(locale));
   await check('supplemental:isolated-account-and-views', () => supplementalViews(config));

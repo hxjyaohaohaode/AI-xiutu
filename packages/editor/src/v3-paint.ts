@@ -18,6 +18,7 @@ interface PreparedStroke {
   grid: Map<number, number[]>;
   ends: number[];
   radii?: number[];
+  pigment?: number[];
 }
 interface PreparedLayer {
   layer: PaintLayerV3;
@@ -37,6 +38,14 @@ function prepare(
     radius = brushRadius + (stroke.sampling?.antialias ? Math.SQRT1_2 : 0),
     points = stroke.points.map((p) => ({ x: p.x * image.width, y: p.y * image.height }));
   const radii = stroke.sampling?.pressure.map((pressure) => brushRadius * (0.2 + 0.8 * pressure));
+  const material = stroke.material;
+  let pigment: number[] | undefined;
+  if (material) {
+    const luma = 0.2126 * stroke.color[0] + 0.7152 * stroke.color[1] + 0.0722 * stroke.color[2];
+    pigment = stroke.color
+      .slice(0, 3)
+      .map((value) => 255 * clamp01((luma + (value - luma) * material.saturation) / 255));
+  }
   const breaks = new Set(stroke.sampling?.breaks);
   const ends: number[] = [];
   // Spatial bins avoid scanning a long freehand path for every covered pixel.
@@ -100,7 +109,24 @@ function prepare(
     grid,
     ends,
     radii,
+    pigment,
   };
+}
+function pigmentSheen(
+  finish: NonNullable<PaintStrokeV3['material']>['finish'],
+  luma: number,
+  x: number,
+  y: number,
+) {
+  if (finish === 'satin') return 0.13 * luma ** 2;
+  if (finish === 'metallic') return 0.045 + 0.28 * luma ** 3;
+  if (finish !== 'shimmer') return 0;
+  // The light points follow normalized source coordinates across tiles and previews.
+  const cellX = Math.floor(x * 1024),
+    cellY = Math.floor(y * 1024);
+  const hash = Math.imul(cellX ^ 0x9e3779b9, 374761393) ^ Math.imul(cellY, 668265263);
+  const grain = (Math.imul(hash ^ (hash >>> 13), 1274126177) >>> 24) / 255;
+  return 0.045 * luma + (grain > 0.85 ? (grain - 0.85) * (0.7 + luma * 1.3) : 0);
 }
 /** Admission happens before image-sized intermediates and is bounded across all active layers. */
 export function preparePaintLayersV3(
@@ -206,7 +232,8 @@ export function applyPaintLayersV3(
   );
   const rgba = new Float64Array(4),
     paint = new Float64Array(4),
-    mixed = new Float64Array(4);
+    mixed = new Float64Array(4),
+    photograph = new Float64Array(4);
   for (const { layer, prepared } of preparedLayers) {
     const mask = layer.mask ? compileSelectionMaskV3(layer.mask, destination, original) : null;
     for (let ty = 0; ty < destination.height; ty += tileSize)
@@ -242,6 +269,24 @@ export function applyPaintLayersV3(
                   'transparent',
                 );
                 paint[3] = (paint[3]! * p.stroke.color[3]) / 255;
+              } else if (p.stroke.material && p.pigment) {
+                const pixel = (y * destination.width + x) * 4;
+                for (let c = 0; c < 4; c++) photograph[c] = destination.data[pixel + c]!;
+                if (photograph[3] === 0) continue;
+                const luma =
+                  (0.2126 * photograph[0]! + 0.7152 * photograph[1]! + 0.0722 * photograph[2]!) /
+                  255;
+                const sheen = pigmentSheen(
+                  p.stroke.material.finish,
+                  luma,
+                  (x + 0.5) / destination.width,
+                  (y + 0.5) / destination.height,
+                );
+                for (let c = 0; c < 3; c++) paint[c] = p.pigment[c]!;
+                paint[3] = 255;
+                blendRgbaV3(photograph, paint, p.stroke.material.blendMode, 1, mixed);
+                for (let c = 0; c < 3; c++) paint[c] = mixed[c]! + (255 - mixed[c]!) * sheen;
+                paint[3] = (p.stroke.color[3]! * photograph[3]!) / 255;
               } else for (let c = 0; c < 4; c++) paint[c] = p.stroke.color[c]!;
               for (let c = 0; c < 4; c++) rgba[c] = tile[at + c]!;
               blendRgbaV3(rgba, paint, 'normal', strength, mixed);

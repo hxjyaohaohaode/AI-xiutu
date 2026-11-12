@@ -196,7 +196,59 @@ self.onmessage = async (event: MessageEvent<Request>) => {
       minFacePresenceConfidence: 0.6,
     });
     try {
-      const found = face.detect(canvas).faceLandmarks;
+      let found = face.detect(canvas).faceLandmarks;
+      if (!found.length && Math.min(canvas.width, canvas.height) >= 128) {
+        // Full-frame inference can miss small faces in a wide or busy composition.
+        // Retry overlapping crops only when the first pass produced no targets.
+        const width = Math.round(canvas.width * 0.64);
+        const height = Math.round(canvas.height * 0.64);
+        const crop = new OffscreenCanvas(width, height);
+        const context = crop.getContext('2d');
+        if (context) {
+          const boxes: { x: number; y: number; width: number; height: number }[] = [];
+          for (const top of [0, canvas.height - height]) {
+            for (const left of [0, canvas.width - width]) {
+              context.clearRect(0, 0, width, height);
+              context.drawImage(canvas, left, top, width, height, 0, 0, width, height);
+              for (const candidate of face.detect(crop).faceLandmarks) {
+                const remapped = candidate.map((p) => ({
+                  ...p,
+                  x: (p.x * width + left) / canvas.width,
+                  y: (p.y * height + top) / canvas.height,
+                  z: (p.z * width) / canvas.width,
+                }));
+                try {
+                  const box = boundsOf(contours(remapped).oval);
+                  if (
+                    boxes.some((previous) => {
+                      const overlapX = Math.max(
+                        0,
+                        Math.min(previous.x + previous.width, box.x + box.width) -
+                          Math.max(previous.x, box.x),
+                      );
+                      const overlapY = Math.max(
+                        0,
+                        Math.min(previous.y + previous.height, box.y + box.height) -
+                          Math.max(previous.y, box.y),
+                      );
+                      return (
+                        overlapX * overlapY >
+                        0.45 * Math.min(previous.width * previous.height, box.width * box.height)
+                      );
+                    })
+                  )
+                    continue;
+                  boxes.push(box);
+                  found.push(remapped);
+                } catch {
+                  // Cropped partial contours cannot establish an editing target.
+                }
+              }
+            }
+          }
+          found = found.slice(0, 8);
+        }
+      }
       const targets = found
         .flatMap((points) => {
           try {

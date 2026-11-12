@@ -95,7 +95,7 @@
   box-shadow: none;
 }
 .ai-workbench-v2 .ai-composer-input {
-  min-height: 32px;
+  min-height: 36px;
   max-height: 132px;
   padding: 2px 4px;
   font-size: 14px;

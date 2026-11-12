@@ -13,16 +13,21 @@ import {
   portraitToolAvailability,
   detachPortraitTarget,
 } from '@ai-xiutu/portrait';
-import { MAX_V3_PAINT_LAYERS, MAX_V3_REGION_EDITS, type PaintLayerV3 } from '@ai-xiutu/editor';
+import {
+  createAdjustmentRegionV3,
+  MAX_V3_PAINT_LAYERS,
+  MAX_V3_REGION_EDITS,
+  type PaintLayerV3,
+} from '@ai-xiutu/editor';
 import { secureUuid } from '../lib/uuid';
 import { errorMessage } from '../lib/api';
 import { Busy, InlineError } from '../components/Ui';
 import { StudioGlyph } from '../components/StudioGlyph';
-import { ColorPicker } from '../components/ColorPicker';
+import { AutomaticMakeupControls } from './AutomaticMakeupControls';
 import { ParameterShelf } from './ParameterShelf';
 import { ParameterGlyph } from './ParameterGlyph';
 import { PrecisionRange } from './PrecisionRange';
-import { currentV3, rgbaHex, hexRgba, type InspectorController } from './advanced-model';
+import { currentV3, newMask, type InspectorController } from './advanced-model';
 import type { ToolGroup } from './ToolInspector';
 import { portraitTargetDisplayLabel } from './portrait-label';
 import { interactionText } from '../workspace/interaction-copy';
@@ -65,10 +70,7 @@ export function PortraitControls({
   const { editor, apply, report } = controller,
     state = editor.portrait;
   const [category, setCategory] = useState<'skin' | 'features' | 'body' | 'makeup'>('skin');
-  const [makeupTool, setMakeupTool] = useState('lipstick');
-  const [draftColors, setDraftColors] = useState<Record<string, [number, number, number, number]>>(
-    {},
-  );
+  const [mode, setMode] = useState<'auto' | 'manual'>('auto');
   const annotationInput = useRef<HTMLInputElement>(null);
   const [annotationBusy, setAnnotationBusy] = useState(false);
   const [annotationStatus, setAnnotationStatus] = useState<string | null>(null);
@@ -158,15 +160,12 @@ export function PortraitControls({
   );
   const hasManual = targetOperations.some((item) => item.origin?.moduleId === 'portrait.manual.v1');
   const values = target ? portraitValues(recipe, target.id) : {};
-  const existingColors = target ? portraitMakeupColors(recipe, target.id) : {};
   const availability =
     state.analysis && target
       ? portraitToolAvailability(state.analysis, target.id, recipe.schemaVersion)
       : [];
   const hasLegacyNeck =
     recipe.schemaVersion === 4 && category === 'body' && (values.neckLength ?? 0) !== 0;
-  const colorKey = [state.analysis?.frame.contentHash, target?.id, makeupTool].join(':');
-  const color = existingColors[makeupTool] ?? draftColors[colorKey] ?? [178, 66, 86, 255];
   async function createCutout() {
     if (cutoutLocked.current || !mounted.current || !onCutout) return;
     if (editor.isLoading() || editor.getSourceIdentity() !== sourceIdentity) {
@@ -224,10 +223,10 @@ export function PortraitControls({
       editor.setActiveMaskPath([]);
     }
   }
-  function openManual(mode: 'paint' | 'clone' | 'liquify') {
+  function openManual(mode: 'paint' | 'clone' | 'liquify', independent = true) {
     try {
       let next = currentV3(editor);
-      if (target && hasAutomatic) next = detachPortraitTarget(next, target.id);
+      if (independent && target && hasAutomatic) next = detachPortraitTarget(next, target.id);
       let layerId: string | null = null;
       if (mode !== 'liquify') {
         if (next.paintLayers.length >= MAX_V3_PAINT_LAYERS) {
@@ -256,7 +255,7 @@ export function PortraitControls({
           ...settings,
           mode,
           choosingSource: mode === 'clone',
-          ...(mode === 'paint' && category === 'makeup' ? { color } : {}),
+          automaticMakeup: false,
         }));
         onGroupChange?.('paint');
       }
@@ -264,32 +263,12 @@ export function PortraitControls({
       report(errorMessage(failure));
     }
   }
-  function change(
-    id: string,
-    value: number,
-    commit = false,
-    selectedColor?: [number, number, number, number],
-  ) {
+  function change(id: string, value: number, commit = false) {
     if (!state.analysis || !target) return;
     try {
       const latest = currentV3(editor);
       const nextValues = { ...portraitValues(latest, target.id), [id]: value };
-      const next = applyPortraitValues(
-        latest,
-        state.analysis,
-        target.id,
-        nextValues,
-        [178, 66, 86, 255],
-        category === 'makeup'
-          ? {
-              makeupColors: {
-                [id]:
-                  selectedColor ??
-                  (id === makeupTool ? color : (existingColors[id] ?? [178, 66, 86, 255])),
-              },
-            }
-          : undefined,
-      );
+      const next = applyPortraitValues(latest, state.analysis, target.id, nextValues);
       apply(
         next,
         t('调整{v0}', { v0: t(PORTRAIT_TOOLS.find((tool) => tool.id === id)?.label ?? '人像') }),
@@ -298,6 +277,28 @@ export function PortraitControls({
     } catch (error) {
       report(error instanceof Error ? error.message : '这个人物控制当前无法使用，请检查识别范围。');
     }
+  }
+  function manualSkin() {
+    const latest = currentV3(editor);
+    if (latest.regionEdits.length >= MAX_V3_REGION_EDITS) {
+      report(t('已有 {v0} 个局部，请先整理选区。', { v0: MAX_V3_REGION_EDITS }));
+      return;
+    }
+    const region = createAdjustmentRegionV3({
+      id: secureUuid(),
+      name: t('手动美肤'),
+      mask: newMask('brush'),
+    });
+    if (!apply({ ...latest, regionEdits: [...latest.regionEdits, region] }, t('手动美肤'), true))
+      return;
+    editor.setActiveRegionId(region.id);
+    editor.setActiveMaskPath([]);
+    if (onSelectionCreated) onSelectionCreated(region.id);
+    else onGroupChange?.('local');
+  }
+  function manualStretch(axis: 'free' | 'horizontal' | 'vertical') {
+    editor.setWarpSettings((settings) => ({ ...settings, axis, mode: 'push', protecting: false }));
+    openManual('liquify', false);
   }
   function clearLegacyNeck() {
     if (!state.analysis || !target) return;
@@ -489,274 +490,297 @@ export function PortraitControls({
   return (
     <section className="advanced-tool-family portrait-controls-v3" data-motion="portrait-controls">
       {headerTarget ? createPortal(categories, headerTarget) : categories}
-      {(!target || state.error) && analyzeAction}
-      {state.progress && (
-        <div className="portrait-analysis-progress">
-          <Busy label={state.progress} />
-          <button className="text-button" onClick={state.cancel}>
-            {t('取消识别')}
-          </button>
-        </div>
-      )}
-      <InlineError message={state.error} />
-      {target && (
-        <label
-          className="advanced-select portrait-person-select"
-          data-single={targets.length === 1 || undefined}
-        >
-          {t('当前人物')}
-          <ChoiceSelect
-            ariaLabel={t('选择独立调整的人物')}
-            size="compact"
-            value={target.id}
-            onValueChange={(value) => {
-              editor.commitCurrent(t('完成人物调节'));
-              state.setTarget(value);
-            }}
-            options={targets.map((item) => ({
-              value: item.id,
-              label: portraitTargetDisplayLabel(item, state.analysis),
-            }))}
-          />
-        </label>
-      )}
-      {target && (
-        <>
-          {hasLegacyNeck && (
-            <div className="portrait-ownership-note" role="status">
-              <p className="control-note">
-                {t(
-                  '当前作品仍保留旧颈部效果。这个自动工具已暂停新增调整；清除旧效果后可继续调节其他身形参数，其他人物参数与妆容保持，可撤销。',
-                )}
-              </p>
-              <button className="text-button" onClick={clearLegacyNeck}>
-                {t('清除旧颈部效果')}
-              </button>
-            </div>
-          )}
-          {category === 'makeup' && (
-            <div className="tonal-tabs portrait-makeup-tabs" aria-label={t('妆容区域')}>
-              {PORTRAIT_TOOLS.filter((tool) => tool.group === 'makeup').map((tool) => (
-                <button
-                  key={tool.id}
-                  aria-pressed={makeupTool === tool.id}
-                  onClick={() => {
-                    editor.commitCurrent(t('完成妆容调节'));
-                    setMakeupTool(tool.id);
-                  }}
-                >
-                  <ParameterGlyph id={'portrait:' + tool.id} />
-                  {t(tool.label)}
-                </button>
-              ))}
-            </div>
-          )}
-          <ParameterShelf
-            key={target.id + ':' + category + ':' + (category === 'makeup' ? makeupTool : '')}
-            label={category === 'makeup' ? t('当前妆容强度') : t('人物参数')}
-            headingAccessory={
-              targets.length > 1 ? (
-                <ChoiceSelect
-                  ariaLabel={t('选择独立调整的人物')}
-                  size="compact"
-                  value={target.id}
-                  onValueChange={(value) => {
-                    editor.commitCurrent(t('完成人物调节'));
-                    state.setTarget(value);
-                  }}
-                  options={targets.map((item) => ({
-                    value: item.id,
-                    label: portraitTargetDisplayLabel(item, state.analysis),
-                  }))}
-                />
-              ) : undefined
-            }
-            controls={PORTRAIT_TOOLS.filter(
-              (tool) =>
-                tool.group === category && (category !== 'makeup' || tool.id === makeupTool),
-            ).map((tool) => {
-              const condition = availability.find((item) => item.id === tool.id);
-              return {
-                id: tool.id,
-                glyph: 'portrait:' + tool.id,
-                label: tool.label,
-                value: values[tool.id] ?? 0,
-                min: tool.min,
-                max: tool.max,
-                step: tool.step,
-                neutral: 0,
-                unit: '%',
-                description:
-                  condition?.available === false
-                    ? (condition.reason ?? t('当前人物条件不足。'))
-                    : tool.description,
-                disabled: condition?.available === false,
-                onChange: (value: number) => change(tool.id, value),
-                onReset: () => change(tool.id, 0, true),
-              };
-            })}
-            onCommit={(label) => editor.commitCurrent(t('调整{v0}', { v0: t(label) }))}
-            onCancel={editor.cancelPreview}
-          />
-          {(hasAutomatic || hasManual) && (
-            <div className="portrait-ownership-note">
-              {hasAutomatic && (
-                <>
-                  <button
-                    className="text-button"
-                    onClick={detach}
-                    title={t(
-                      '当前自动参数会重建这个人物的自动局部与妆容。手改范围、笔画或形状前，可将整个人物转为独立精修；外观保持不变，可撤销。',
-                    )}
-                  >
-                    {t('当前人物转为独立精修')}
-                  </button>
-                </>
-              )}
-            </div>
-          )}
-          {category === 'makeup' && (
-            <MotionDetails className="advanced-disclosure" defaultOpen>
-              <summary>
-                <i className="paint-color-chip" style={{ background: rgbaHex(color) }} />
-                {t(PORTRAIT_TOOLS.find((tool) => tool.id === makeupTool)?.label ?? '')}
-                {t('颜色')}
-              </summary>
-              <ColorPicker
-                value={rgbaHex(color)}
-                label={t('当前妆容颜色')}
-                onChange={(value) => {
-                  const rgba = hexRgba(value);
-                  setDraftColors((previous) => ({ ...previous, [colorKey]: rgba }));
-                  if ((values[makeupTool] ?? 0) > 0)
-                    change(makeupTool, values[makeupTool]!, false, rgba);
-                }}
-              />
+      <RubberSegment<'auto' | 'manual'>
+        label={t('人像调节方式')}
+        className="makeup-mode"
+        value={mode}
+        options={[
+          { value: 'auto', label: t('自动') },
+          { value: 'manual', label: t('手动') },
+        ]}
+        onChange={(value) => {
+          editor.commitCurrent(t('完成人像调节'));
+          setMode(value);
+        }}
+      />
+      {mode === 'manual' ? (
+        <div className="makeup-parameter-tabs portrait-manual-rail">
+          {category === 'skin' ? (
+            <button
+              type="button"
+              className="text-button"
+              disabled={!onGroupChange}
+              onClick={manualSkin}
+            >
+              {t('手动美肤')}
+            </button>
+          ) : category === 'makeup' ? (
+            <button
+              type="button"
+              className="text-button"
+              disabled={!onGroupChange}
+              onClick={() => openManual('paint', false)}
+            >
+              {t('手动涂妆与细修')}
+            </button>
+          ) : (
+            <>
               <button
+                type="button"
                 className="text-button"
-                onClick={() => editor.commitCurrent(t('确认当前妆容颜色'))}
+                disabled={!onGroupChange}
+                onClick={() => manualStretch('free')}
               >
-                {t('确认这个妆容颜色')}
+                {t('自由拉伸')}
               </button>
+              <button
+                type="button"
+                className="text-button"
+                disabled={!onGroupChange}
+                onClick={() => manualStretch('horizontal')}
+              >
+                {t('横向拉伸')}
+              </button>
+              <button
+                type="button"
+                className="text-button"
+                disabled={!onGroupChange}
+                onClick={() => manualStretch('vertical')}
+              >
+                {t('纵向拉伸')}
+              </button>
+            </>
+          )}
+        </div>
+      ) : category === 'makeup' ? (
+        <AutomaticMakeupControls controller={controller} />
+      ) : (
+        <>
+          {(!target || state.error) && analyzeAction}
+          {state.progress && (
+            <div className="portrait-analysis-progress">
+              <Busy label={state.progress} />
+              <button className="text-button" onClick={state.cancel}>
+                {t('取消识别')}
+              </button>
+            </div>
+          )}
+          <InlineError message={state.error} />
+          {target && (
+            <label
+              className="advanced-select portrait-person-select"
+              data-single={targets.length === 1 || undefined}
+            >
+              {t('当前人物')}
+              <ChoiceSelect
+                ariaLabel={t('选择独立调整的人物')}
+                size="compact"
+                value={target.id}
+                onValueChange={(value) => {
+                  editor.commitCurrent(t('完成人物调节'));
+                  state.setTarget(value);
+                }}
+                options={targets.map((item) => ({
+                  value: item.id,
+                  label: portraitTargetDisplayLabel(item, state.analysis),
+                }))}
+              />
+            </label>
+          )}
+          {target && (
+            <>
+              {hasLegacyNeck && (
+                <div className="portrait-ownership-note" role="status">
+                  <p className="control-note">
+                    {t(
+                      '当前作品仍保留旧颈部效果。这个自动工具已暂停新增调整；清除旧效果后可继续调节其他身形参数，其他人物参数与妆容保持，可撤销。',
+                    )}
+                  </p>
+                  <button className="text-button" onClick={clearLegacyNeck}>
+                    {t('清除旧颈部效果')}
+                  </button>
+                </div>
+              )}
+              <ParameterShelf
+                key={target.id + ':' + category}
+                label={t('人物参数')}
+                headingAccessory={
+                  targets.length > 1 ? (
+                    <ChoiceSelect
+                      ariaLabel={t('选择独立调整的人物')}
+                      size="compact"
+                      value={target.id}
+                      onValueChange={(value) => {
+                        editor.commitCurrent(t('完成人物调节'));
+                        state.setTarget(value);
+                      }}
+                      options={targets.map((item) => ({
+                        value: item.id,
+                        label: portraitTargetDisplayLabel(item, state.analysis),
+                      }))}
+                    />
+                  ) : undefined
+                }
+                controls={PORTRAIT_TOOLS.filter((tool) => tool.group === category).map((tool) => {
+                  const condition = availability.find((item) => item.id === tool.id);
+                  return {
+                    id: tool.id,
+                    glyph: 'portrait:' + tool.id,
+                    label: tool.label,
+                    value: values[tool.id] ?? 0,
+                    min: tool.min,
+                    max: tool.max,
+                    step: tool.step,
+                    neutral: 0,
+                    unit: '%',
+                    description:
+                      condition?.available === false
+                        ? (condition.reason ?? t('当前人物条件不足。'))
+                        : tool.description,
+                    disabled: condition?.available === false,
+                    onChange: (value: number) => change(tool.id, value),
+                    onReset: () => change(tool.id, 0, true),
+                  };
+                })}
+                onCommit={(label) => editor.commitCurrent(t('调整{v0}', { v0: t(label) }))}
+                onCancel={editor.cancelPreview}
+              />
+              {(hasAutomatic || hasManual) && (
+                <div className="portrait-ownership-note">
+                  {hasAutomatic && (
+                    <>
+                      <button
+                        className="text-button"
+                        onClick={detach}
+                        title={t(
+                          '当前自动参数会重建这个人物的自动局部与妆容。手改范围、笔画或形状前，可将整个人物转为独立精修；外观保持不变，可撤销。',
+                        )}
+                      >
+                        {t('当前人物转为独立精修')}
+                      </button>
+                    </>
+                  )}
+                </div>
+              )}
+              <MotionDetails className="advanced-disclosure">
+                <summary>{t('识别与手动修正说明')}</summary>
+                <p className="control-note">
+                  {t(
+                    '自动位置是可编辑的起点。美肤生成局部调色区，美妆生成带范围的绘制层，塑形生成可撤销的液化笔画。先转为独立精修，再到“局部、绘制、液化”修改，避免后续自动调参重建手工细节。',
+                  )}
+                </p>
+                {state.analysis?.warnings.map((warning) => (
+                  <p key={t(warning)} className="control-note">
+                    {t(warning)}
+                  </p>
+                ))}
+              </MotionDetails>
+            </>
+          )}
+          {!target && !state.progress && (
+            <MotionDetails className="advanced-disclosure portrait-context-help">
+              <summary>{interactionText('portraitHelp')}</summary>
+              <p className="control-note">
+                {category === 'body'
+                  ? t('选择“识别身体位置”后，按可见的肩、手臂、腰胯与腿部锚点分别调整。')
+                  : t('先在本机识别人脸，再选择人物独立调整。没有识别到的内容仍可手动精修。')}
+              </p>
+              <p className="control-note">
+                {t('识别后可建立头发和背景选区。模型不可用时，可到“局部”手动选择。')}
+              </p>
             </MotionDetails>
           )}
+          <MotionDetails className="advanced-disclosure portrait-source-actions">
+            <summary>{t('选区与抠图')}</summary>
+            {target && !state.error && analyzeAction}
+            {sourceActions}
+          </MotionDetails>
           <MotionDetails className="advanced-disclosure">
-            <summary>{t('识别与手动修正说明')}</summary>
+            <summary>{t('人物标注与分析接入')}</summary>
+            <input
+              hidden
+              ref={annotationInput}
+              type="file"
+              accept="application/json,.json"
+              onChange={async (event) => {
+                const file = event.currentTarget.files?.[0];
+                event.currentTarget.value = '';
+                if (!file) return;
+                setAnnotationBusy(true);
+                setAnnotationStatus(null);
+                try {
+                  await state.importAnalysis(file);
+                  setAnnotationStatus(t('人物标注已导入，请检查人物和范围后再调节。'));
+                  report(null);
+                } catch (failure) {
+                  report(errorMessage(failure));
+                } finally {
+                  setAnnotationBusy(false);
+                }
+              }}
+            />
+            <div className="advanced-row">
+              <button
+                className="text-button"
+                disabled={annotationBusy || !!state.progress || !editor.sourceHash}
+                onClick={() => annotationInput.current?.click()}
+              >
+                {annotationBusy ? t('校验标注中') : t('导入人物标注')}
+              </button>
+              <button
+                className="text-button"
+                disabled={!state.analysis || annotationBusy || !!state.progress}
+                onClick={() => {
+                  try {
+                    state.exportAnalysis();
+                    setAnnotationStatus(t('人物标注下载已发起。'));
+                  } catch (failure) {
+                    report(errorMessage(failure));
+                  }
+                }}
+              >
+                {t('导出人物标注')}
+              </button>
+            </div>
+            {annotationStatus && (
+              <p className="control-note" role="status">
+                {t(annotationStatus)}
+              </p>
+            )}
             <p className="control-note">
               {t(
-                '自动位置是可编辑的起点。美肤生成局部调色区，美妆生成带范围的绘制层，塑形生成可撤销的液化笔画。先转为独立精修，再到“局部、绘制、液化”修改，避免后续自动调参重建手工细节。',
+                '仅接受当前同一张原图的兼容标注，文件需通过来源、尺寸、方向、结构和版本校验。导入是显式提供标注，不代表浏览器自动识别成功；导入后仍需检查并可转为独立精修。',
               )}
             </p>
-            {state.analysis?.warnings.map((warning) => (
-              <p key={t(warning)} className="control-note">
-                {t(warning)}
-              </p>
-            ))}
           </MotionDetails>
+          <div className="portrait-manual-actions" data-motion="portrait-manual">
+            <button
+              className="text-button"
+              disabled={!onGroupChange}
+              onClick={() => openManual('paint')}
+            >
+              <PaintBrush size={16} />
+              {hasAutomatic ? t('转为独立涂妆与细修') : t('手动涂妆与细修')}
+            </button>
+            <button
+              className="text-button"
+              disabled={!onGroupChange}
+              onClick={() => openManual('clone')}
+            >
+              <ArrowsClockwise size={16} />
+              {t('瑕疵克隆修补')}
+            </button>
+            <button
+              className="text-button"
+              disabled={!onGroupChange}
+              onClick={() => openManual('liquify')}
+            >
+              <HandPointing size={16} />
+              {t('手动塑形与保护')}
+            </button>
+          </div>
         </>
       )}
-      {!target && !state.progress && (
-        <MotionDetails className="advanced-disclosure portrait-context-help">
-          <summary>{interactionText('portraitHelp')}</summary>
-          <p className="control-note">
-            {category === 'body'
-              ? t('选择“识别身体位置”后，按可见的肩、手臂、腰胯与腿部锚点分别调整。')
-              : t('先在本机识别人脸，再选择人物独立调整。没有识别到的内容仍可手动精修。')}
-          </p>
-          <p className="control-note">
-            {t('识别后可建立头发和背景选区。模型不可用时，可到“局部”手动选择。')}
-          </p>
-        </MotionDetails>
-      )}
-      <MotionDetails className="advanced-disclosure portrait-source-actions">
-        <summary>{t('选区与抠图')}</summary>
-        {target && !state.error && analyzeAction}
-        {sourceActions}
-      </MotionDetails>
-      <MotionDetails className="advanced-disclosure">
-        <summary>{t('人物标注与分析接入')}</summary>
-        <input
-          hidden
-          ref={annotationInput}
-          type="file"
-          accept="application/json,.json"
-          onChange={async (event) => {
-            const file = event.currentTarget.files?.[0];
-            event.currentTarget.value = '';
-            if (!file) return;
-            setAnnotationBusy(true);
-            setAnnotationStatus(null);
-            try {
-              await state.importAnalysis(file);
-              setAnnotationStatus(t('人物标注已导入，请检查人物和范围后再调节。'));
-              report(null);
-            } catch (failure) {
-              report(errorMessage(failure));
-            } finally {
-              setAnnotationBusy(false);
-            }
-          }}
-        />
-        <div className="advanced-row">
-          <button
-            className="text-button"
-            disabled={annotationBusy || !!state.progress || !editor.sourceHash}
-            onClick={() => annotationInput.current?.click()}
-          >
-            {annotationBusy ? t('校验标注中') : t('导入人物标注')}
-          </button>
-          <button
-            className="text-button"
-            disabled={!state.analysis || annotationBusy || !!state.progress}
-            onClick={() => {
-              try {
-                state.exportAnalysis();
-                setAnnotationStatus(t('人物标注下载已发起。'));
-              } catch (failure) {
-                report(errorMessage(failure));
-              }
-            }}
-          >
-            {t('导出人物标注')}
-          </button>
-        </div>
-        {annotationStatus && (
-          <p className="control-note" role="status">
-            {t(annotationStatus)}
-          </p>
-        )}
-        <p className="control-note">
-          {t(
-            '仅接受当前同一张原图的兼容标注，文件需通过来源、尺寸、方向、结构和版本校验。导入是显式提供标注，不代表浏览器自动识别成功；导入后仍需检查并可转为独立精修。',
-          )}
-        </p>
-      </MotionDetails>
-      <div className="portrait-manual-actions" data-motion="portrait-manual">
-        <button
-          className="text-button"
-          disabled={!onGroupChange}
-          onClick={() => openManual('paint')}
-        >
-          <PaintBrush size={16} />
-          {hasAutomatic ? t('转为独立涂妆与细修') : t('手动涂妆与细修')}
-        </button>
-        <button
-          className="text-button"
-          disabled={!onGroupChange}
-          onClick={() => openManual('clone')}
-        >
-          <ArrowsClockwise size={16} />
-          {t('瑕疵克隆修补')}
-        </button>
-        <button
-          className="text-button"
-          disabled={!onGroupChange}
-          onClick={() => openManual('liquify')}
-        >
-          <HandPointing size={16} />
-          {t('手动塑形与保护')}
-        </button>
-      </div>
     </section>
   );
 }

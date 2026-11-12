@@ -127,8 +127,16 @@ export interface PaintStrokeV3 {
   mode: 'paint' | 'erase' | 'clone';
   /** Straight RGBA8. Alpha is opacity, 255 = fully opaque. */
   color: [number, number, number, number];
+  /** Optional pigment shading. A stroke without it keeps the published paint behavior. */
+  material?: PaintMaterialV3;
   /** Clone sample origin corresponding to points[0], from immutable pre-paint image. */
   source: Point | null;
+}
+export interface PaintMaterialV3 {
+  algorithm: 'pigment-v1';
+  finish: 'matte' | 'satin' | 'shimmer' | 'metallic';
+  saturation: number;
+  blendMode: BlendModeV3;
 }
 export interface PaintLayerV3 {
   origin?: OperationOriginV3;

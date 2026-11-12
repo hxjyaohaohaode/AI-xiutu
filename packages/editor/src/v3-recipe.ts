@@ -506,6 +506,7 @@ export function parseRecipeV3(input: unknown): RecipeV3 {
                 'color',
                 'source',
                 ...(v && typeof v === 'object' && Object.hasOwn(v, 'sampling') ? ['sampling'] : []),
+                ...(v && typeof v === 'object' && Object.hasOwn(v, 'material') ? ['material'] : []),
               ],
               q,
               errors,
@@ -522,6 +523,20 @@ export function parseRecipeV3(input: unknown): RecipeV3 {
             integer(n, 0, 255, `${q}.color[${k}]`, errors),
           ) as PaintStrokeV3['color'];
           let sampling: PaintStrokeV3['sampling'];
+          let material: PaintStrokeV3['material'];
+          if (Object.hasOwn(s, 'material')) {
+            const data = record(s.material, ['algorithm', 'finish', 'saturation', 'blendMode'], `${q}.material`, errors);
+            if (s.mode !== 'paint') errors.push(`${q}.material: requires paint mode`);
+            if (data.algorithm !== 'pigment-v1') errors.push(`${q}.material.algorithm: unsupported`);
+            if (!['matte', 'satin', 'shimmer', 'metallic'].includes(String(data.finish)))
+              errors.push(`${q}.material.finish: invalid`);
+            material = {
+              algorithm: 'pigment-v1',
+              finish: data.finish as NonNullable<PaintStrokeV3['material']>['finish'],
+              saturation: number(data.saturation, 0, 2, `${q}.material.saturation`, errors),
+              blendMode: blend(data.blendMode, `${q}.material.blendMode`, errors),
+            };
+          }
           if (Object.hasOwn(s, 'sampling')) {
             const data = record(
               s.sampling,
@@ -558,6 +573,7 @@ export function parseRecipeV3(input: unknown): RecipeV3 {
           return {
             points: pts,
             ...(sampling ? { sampling } : {}),
+            ...(material ? { material } : {}),
             radius: number(s.radius, 0.000001, 0.5, `${q}.radius`, errors),
             feather: number(s.feather, 0, 1, `${q}.feather`, errors),
             opacity: number(s.opacity, 0, 1, `${q}.opacity`, errors),

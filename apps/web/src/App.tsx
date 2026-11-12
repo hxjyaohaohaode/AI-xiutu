@@ -44,7 +44,12 @@ import type {
   View,
 } from './lib/types';
 import type { AssistantVisualAttachment } from '@ai-xiutu/contracts';
-import { useEditor, localPixelBudget, LocalImportError } from './editor/useEditor';
+import {
+  useEditor,
+  localPixelBudget,
+  localImportLimits,
+  LocalImportError,
+} from './editor/useEditor';
 import { normalizeImageSourceFile } from './editor/imageSources';
 import { createSourceLoadGuard, assertRevisionSourceBinding } from './editor/source-flow';
 import { assetCopyAttempt, sourcePersistenceRoute } from './lib/asset-copy';
@@ -114,7 +119,11 @@ import { useCollaboration } from './collaboration/useCollaboration';
 import { CollaborationStatus } from './collaboration/CollaborationStatus';
 import { TeamVoiceBanner } from './collaboration/TeamVoiceBanner';
 import { useTeamVoice } from './collaboration/useTeamVoice';
-import { captureRenderedImage, captureSketchVisual, captureWorkspaceVisual } from './editor/capture';
+import {
+  captureRenderedImage,
+  captureSketchVisual,
+  captureWorkspaceVisual,
+} from './editor/capture';
 import {
   ExportDialog,
   NameDialog,
@@ -141,6 +150,12 @@ const DrawingBoard = createDeferredFeature(
     </Modal>
   ),
   'drawing',
+);
+const CollageStudio = createDeferredFeature(
+  async () => ({ default: (await import('./media/CollageStudio')).CollageStudio }),
+  '拼图',
+  (state, props) => <DeferredFeatureStatus {...state} profile="media" onBack={props.onClose} />,
+  'media',
 );
 const CompareView = createDeferredFeature(
   async () => ({ default: (await import('./components/WorkspaceViews')).CompareView }),
@@ -423,6 +438,11 @@ export function App({
   const [comparing, setComparing] = useState(false);
   const [ops, setOps] = useState(false);
   const [dialog, setDialog] = useState<Dialog>(null);
+  const [collageMode, setCollageMode] = useState<'open' | 'hidden' | null>(null);
+  const [collageFiles, setCollageFiles] = useState<File[] | null>(null);
+  const [collageExportHost, setCollageExportHost] = useState<HTMLDivElement | null>(null);
+  const collageOpen = view === 'editor' && collageMode === 'open';
+  const closeCollage = useCallback(() => setCollageMode((mode) => mode && 'hidden'), []);
   const accountPageOpen = dialog === 'auth' || dialog === 'account' || dialog === 'accountReady';
   const accountPagePending =
     isAccountSiteRoute(siteRoute) && (booting || entryHandled.current !== entryRequest?.key);
@@ -444,6 +464,7 @@ export function App({
     periodEnd: string;
   } | null>(null);
   const fileInput = useRef<HTMLInputElement>(null);
+  const filePickerRequest = useRef(0);
   const recipeInput = useRef<HTMLInputElement>(null);
   const projectRequest = useRef(0);
   const projectRefresh = useRef(0);
@@ -553,6 +574,13 @@ export function App({
     if (result === 'changed') notify(t('工作区已更新，请核对当前内容后重新操作。'));
     return result === 'confirmed';
   }
+  const readCurrentCanvas = async () => {
+    const identity = editor.getSourceIdentity();
+    const blob = await editor.exportImage('png');
+    if (identity !== editor.getSourceIdentity() || editor.isLoading())
+      throw new Error(t('图片已切换，请重新添加。'));
+    return new File([blob], t('当前画布') + '.png', { type: 'image/png' });
+  };
   const captureCurrentImage = async () => {
     const current = artworkRef.current;
     if (
@@ -927,9 +955,15 @@ export function App({
         return;
       }
       const target = e.target as HTMLElement;
-      if (target.isContentEditable || ['INPUT', 'TEXTAREA', 'SELECT'].includes(target.tagName))
+      if (
+        target.isContentEditable ||
+        ['TEXTAREA', 'SELECT'].includes(target.tagName) ||
+        (target instanceof HTMLInputElement &&
+          !['range', 'checkbox', 'color', 'button'].includes(target.type))
+      )
         return;
       if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 'z') {
+        if (collageOpen) return;
         e.preventDefault();
         e.shiftKey ? editor.redo() : editor.undo();
       }
@@ -940,6 +974,10 @@ export function App({
       if (e.key === 'Escape') {
         if (CSS.supports('selector(:popover-open)') && document.querySelector(':popover-open'))
           return;
+        if (collageOpen) {
+          closeCollage();
+          return;
+        }
         setComparing(false);
         setSidebarOpen(false);
         setInspectorOpen(false);
@@ -949,7 +987,7 @@ export function App({
     };
     window.addEventListener('keydown', handle);
     return () => window.removeEventListener('keydown', handle);
-  }, [editor.undo, editor.redo]);
+  }, [editor.undo, editor.redo, collageOpen, closeCollage]);
   useEffect(() => {
     if (!dirty && !documentDirty && retainedDocumentCount === 0) return;
     const prevent = (e: BeforeUnloadEvent) => {
@@ -1947,6 +1985,7 @@ export function App({
     )
       return false;
     setView(next);
+    if (next !== 'editor') closeCollage();
     setCollaborationOpen(false);
     setInspectorOpen(false);
     setAiOpen(false);
@@ -2224,6 +2263,7 @@ export function App({
     setSampling(false);
   };
   const openInspector = (tool: ToolGroup) => {
+    closeCollage();
     workspaceLayout.setFocused(false);
     setCollaborationOpen(false);
     selectInspectorTool(tool);
@@ -2242,6 +2282,31 @@ export function App({
       setSampling(false);
     } else openInspector(tool);
   };
+  async function openCollage(files?: File[]) {
+    if (view !== 'editor' && !(await changeView('editor'))) return;
+    workspaceLayout.setFocused(false);
+    setCollaborationOpen(false);
+    setInspectorOpen(false);
+    setAiOpen(false);
+    setSampling(false);
+    setComparing(false);
+    if (files?.length) setCollageFiles(files);
+    setCollageMode('open');
+  }
+  async function importSelectedFiles(files: File[]) {
+    if (!files.length) return;
+    const request = ++filePickerRequest.current;
+    const scope = projectRequest.current;
+    const { needsMotionWorkspace } = await import('./media/collage-media');
+    const motion = files.length > 1 || (await needsMotionWorkspace(files[0]!).catch(() => false));
+    if (request !== filePickerRequest.current || scope !== projectRequest.current) return;
+    if (motion) {
+      await openCollage(files);
+      return;
+    }
+    closeCollage();
+    await importFile(files[0]);
+  }
   const resetWorkspace = () => {
     workspaceLayout.reset();
     setCollaborationOpen(false);
@@ -2251,6 +2316,7 @@ export function App({
     notify(t('已恢复当前屏幕的默认布局。'));
   };
   const showAI = () => {
+    closeCollage();
     if (!aiOpen) restoreInspectorAfterAI.current = inspectorOpen;
     editor.commitCurrent(t('完成当前调节'));
     workspaceLayout.setFocused(false);
@@ -2450,6 +2516,15 @@ export function App({
       section: t('常用操作'),
       icon: <PencilSimple size={20} />,
       run: () => setDialog('drawing'),
+    },
+    {
+      id: 'collage',
+      label: t('拼图'),
+      description: t('组合照片、实况和动图'),
+      keywords: 'collage live photo gif',
+      section: t('常用操作'),
+      icon: <StudioGlyph name="collage" size={20} />,
+      run: () => void openCollage(),
     },
     {
       id: 'export',
@@ -2673,24 +2748,30 @@ export function App({
                   >
                     <StudioGlyph name="settings" />
                   </IconButton>
-                  <button
-                    className="button button-secondary top-save"
-                    aria-label={t('保存')}
-                    disabled={!editor.file || saving || opening || editor.loading}
-                    onClick={save}
-                  >
-                    {saving ? <Busy label="" /> : <CloudArrowUp size={20} />}
-                    <span>{t('保存')}</span>
-                  </button>
-                  <button
-                    className="button button-primary top-export"
-                    aria-label={t('导出')}
-                    disabled={!editor.file || opening || editor.loading}
-                    onClick={() => setDialog('export')}
-                  >
-                    <StudioGlyph name="export" size={20} />
-                    <span>{t('导出')}</span>
-                  </button>
+                  {!collageOpen && (
+                    <button
+                      className="button button-secondary top-save"
+                      aria-label={t('保存')}
+                      disabled={!editor.file || saving || opening || editor.loading}
+                      onClick={save}
+                    >
+                      {saving ? <Busy label="" /> : <CloudArrowUp size={20} />}
+                      <span>{t('保存')}</span>
+                    </button>
+                  )}
+                  {collageOpen ? (
+                    <div className="collage-export-host" ref={setCollageExportHost} />
+                  ) : (
+                    <button
+                      className="button button-primary top-export"
+                      aria-label={t('导出')}
+                      disabled={!editor.file || opening || editor.loading}
+                      onClick={() => setDialog('export')}
+                    >
+                      <StudioGlyph name="export" size={20} />
+                      <span>{t('导出')}</span>
+                    </button>
+                  )}
                   <button
                     type="button"
                     className={`studio-account ${session.user ? 'is-signed-in' : ''}`}
@@ -2770,8 +2851,8 @@ export function App({
               <div
                 className="workspace-canvas-status"
                 ref={setCanvasStatusContainer}
-                hidden={view !== 'editor' || mobileAssistantOpen}
-                inert={view !== 'editor' || mobileAssistantOpen}
+                hidden={view !== 'editor' || mobileAssistantOpen || collageOpen}
+                inert={view !== 'editor' || mobileAssistantOpen || collageOpen}
               />
               <div className="workspace-notice-anchor" ref={setNoticeContainer} />
               <div className="workspace-body">
@@ -2785,6 +2866,8 @@ export function App({
                     <>
                       <div
                         className="editor-content"
+                        hidden={collageOpen}
+                        inert={collageOpen}
                         style={{
                           left: canvasInsets.left,
                           right: canvasInsets.right,
@@ -2822,7 +2905,9 @@ export function App({
                           statusContainer={canvasStatusContainer}
                           collaboration={collaboration}
                           group={group}
-                          onImport={(file) => void importFile(file)}
+                          onImport={(files) =>
+                            files ? void importSelectedFiles(files) : void importFile()
+                          }
                           onAI={openAI}
                           onDraw={() => setDialog('drawing')}
                           accountState={booting ? 'loading' : session.user ? 'signed-in' : 'guest'}
@@ -2844,6 +2929,8 @@ export function App({
                         <ToolDock
                           group={group}
                           inspectorOpen={inspectorOpen}
+                          collageOpen={collageOpen}
+                          onCollage={() => (collageOpen ? closeCollage() : void openCollage())}
                           aiOpen={aiOpen}
                           compact={workspaceLayout.view.bucket === 'phone'}
                           onTool={chooseTool}
@@ -2868,9 +2955,21 @@ export function App({
                               value={libraryTab}
                               onChange={setLibraryTab}
                               options={[
-                                { value: 'project', label: t('项目作品'), icon: <Images size={17} /> },
-                                { value: 'all', label: t('跨空间查找'), icon: <MagnifyingGlass size={17} /> },
-                                { value: 'memory', label: t('长期素材'), icon: <BookmarkSimple size={17} /> },
+                                {
+                                  value: 'project',
+                                  label: t('项目作品'),
+                                  icon: <Images size={17} />,
+                                },
+                                {
+                                  value: 'all',
+                                  label: t('跨空间查找'),
+                                  icon: <MagnifyingGlass size={17} />,
+                                },
+                                {
+                                  value: 'memory',
+                                  label: t('长期素材'),
+                                  icon: <BookmarkSimple size={17} />,
+                                },
                               ]}
                             />
                             <button
@@ -2913,6 +3012,7 @@ export function App({
                               onCreate={openCreateProject}
                               onCopy={() => setDialog('copy')}
                               onShare={() => setDialog('share')}
+                              onCollage={() => void openCollage()}
                             />
                           ) : !session.user ? (
                             <EmptyState
@@ -3022,6 +3122,37 @@ export function App({
                     </div>
                   )}
                 </MotionSwitch>
+                {collageMode && (
+                  <div
+                    className="editor-content collage-editor-content"
+                    hidden={!collageOpen}
+                    inert={!collageOpen}
+                    style={{
+                      left: canvasInsets.left,
+                      right: canvasInsets.right,
+                      bottom: canvasInsets.bottom,
+                    }}
+                  >
+                    <Suspense
+                      fallback={<FeatureSkeleton profile="media" label={t('拼图')} compact />}
+                    >
+                      <CollageStudio
+                        key={JSON.stringify([session.user?.id, project?.id])}
+                        active={collageOpen}
+                        onClose={closeCollage}
+                        onUse={(file, signal) => importFile(file, undefined, () => !signal.aborted)}
+                        insertLimits={localImportLimits(4, editor.pixelBudget)}
+                        importRequest={collageFiles}
+                        onImportConsumed={() => setCollageFiles(null)}
+                        exportHost={collageExportHost}
+                        assets={
+                          project ? assets.filter((item) => item.projectId === project.id) : []
+                        }
+                        onCurrent={editor.file ? readCurrentCanvas : undefined}
+                      />
+                    </Suspense>
+                  </div>
+                )}
                 {(['inspector', 'ai'] as const)
                   .filter((id) =>
                     id === 'ai'
@@ -3123,7 +3254,9 @@ export function App({
                           mobilePage={mobileAssistantPage}
                           visualAttachment={visualAttachment}
                           onClearVisualAttachment={(attachment) =>
-                            setVisualDraft((draft) => (draft?.attachment === attachment ? null : draft))
+                            setVisualDraft((draft) =>
+                              draft?.attachment === attachment ? null : draft,
+                            )
                           }
                           onActivityChange={setAiActivity}
                           userId={session.user?.id ?? null}
@@ -3316,11 +3449,12 @@ export function App({
           className="sr-only"
           tabIndex={-1}
           aria-label={t('选择照片')}
-          accept="image/jpeg,image/png,image/webp,image/bmp,image/gif,image/avif,image/tiff,.bmp,.gif,.avif,.tif,.tiff"
+          accept="image/jpeg,image/png,image/webp,image/bmp,image/gif,image/avif,image/tiff,image/heic,image/heif,video/mp4,video/webm,video/quicktime,.bmp,.gif,.avif,.tif,.tiff,.heic,.heif,.mov,.mp4,.webm"
+          multiple
           onChange={(e) => {
-            const file = e.target.files?.[0];
+            const files = [...(e.target.files ?? [])];
             e.target.value = '';
-            if (file) void importFile(file);
+            void importSelectedFiles(files);
           }}
         />
         <input
@@ -3434,17 +3568,7 @@ export function App({
                     }
                   : undefined
               }
-              readCurrentImage={
-                editor.file
-                  ? async () => {
-                      const identity = editor.getSourceIdentity();
-                      const blob = await editor.exportImage('png');
-                      if (identity !== editor.getSourceIdentity() || editor.isLoading())
-                        throw new Error(t('图片已切换，请重新添加。'));
-                      return new File([blob], t('当前画布') + '.png', { type: 'image/png' });
-                    }
-                  : undefined
-              }
+              readCurrentImage={editor.file ? readCurrentCanvas : undefined}
               onClose={closeDialog}
               onUse={(file) => importFile(file)}
               onReference={async (file) => {

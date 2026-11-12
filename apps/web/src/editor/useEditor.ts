@@ -92,12 +92,16 @@ export type BrushSettings = {
 const DEFAULT_BRUSH: BrushSettings = { radius: 0.05, feather: 0.65, opacity: 1, mode: 'add' };
 
 export type PaintSettings = Omit<PaintStrokeV3, 'points' | 'sampling'> & {
+  makeupTip?: import('./MakeupBrushRail').MakeupBrushId;
+  automaticMakeup?: boolean;
   choosingSource: boolean;
   pressureSensitive: boolean;
 };
 export type WarpSettings = Pick<WarpStrokeV3, 'mode' | 'radius' | 'feather' | 'strength'> & {
   protecting: boolean;
   restoreStrength: number;
+  axis?: 'free' | 'horizontal' | 'vertical';
+  regionId?: string;
 };
 export type CropGuide = 'thirds' | 'golden' | 'center' | 'diagonal' | 'none';
 const INITIAL_PAINT: PaintSettings = {
@@ -112,6 +116,7 @@ const INITIAL_PAINT: PaintSettings = {
 };
 const INITIAL_WARP: WarpSettings = {
   mode: 'push',
+  axis: 'free',
   radius: 0.12,
   feather: 0.7,
   strength: 0.5,

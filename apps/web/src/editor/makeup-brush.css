@@ -1,0 +1,107 @@
+.makeup-brush-rail,
+.makeup-swatches {
+  display: flex;
+  gap: 4px;
+  min-width: 0;
+  overflow-x: auto;
+  overscroll-behavior-inline: contain;
+  scrollbar-width: thin;
+  padding-block: 1px;
+}
+.makeup-brush-rail button {
+  display: grid;
+  place-content: center;
+  justify-items: center;
+  flex: 0 0 auto;
+  gap: 3px;
+  min-width: 51px;
+  min-height: 45px;
+  padding: 4px;
+  border: 0;
+  border-radius: 9px;
+  background: transparent;
+  color: var(--muted);
+  font-size: 11px;
+  white-space: nowrap;
+}
+.makeup-brush-rail button[aria-pressed='true'] {
+  background: var(--accent-soft);
+  color: var(--accent-ink);
+}
+.makeup-brush-rail svg {
+  width: 20px;
+  height: 20px;
+  stroke: currentColor;
+  stroke-width: 1.55;
+  stroke-linejoin: round;
+  stroke-linecap: round;
+  fill: none;
+}
+.makeup-swatches button {
+  display: grid;
+  place-items: center;
+  flex: 0 0 44px;
+  height: 44px;
+  padding: 0;
+  border: 0;
+  border-radius: 50%;
+  background: transparent;
+}
+.makeup-swatches button > span {
+  width: 24px;
+  height: 24px;
+  border-radius: 50%;
+}
+.makeup-swatches button[aria-pressed='true'] > span {
+  box-shadow:
+    0 0 0 2px var(--surface),
+    0 0 0 3px var(--accent-ink);
+}
+.makeup-detail-fields {
+  display: flex;
+  align-items: flex-start;
+  flex-wrap: wrap;
+  gap: 4px 8px;
+}
+.makeup-detail-fields > * {
+  min-width: 0;
+  flex: 1 1 112px;
+}
+.automatic-makeup {
+  display: grid;
+  align-content: start;
+  min-width: 0;
+  gap: 4px;
+}
+.makeup-mode,
+.makeup-parameter-tabs {
+  justify-content: start;
+  min-width: 0;
+  max-width: 100%;
+  overflow-x: auto;
+  overscroll-behavior-inline: contain;
+}
+.makeup-mode button,
+.makeup-parameter-tabs button {
+  white-space: nowrap;
+}
+.makeup-parameter-tabs button {
+  flex: 0 0 auto;
+}
+.portrait-manual-rail {
+  display: flex;
+  gap: 4px;
+  align-items: center;
+}
+.portrait-manual-rail > :is(button, .choice-select, .rubber-segment) {
+  flex-shrink: 0;
+}
+@media (width < 760px) {
+  .automatic-makeup .makeup-parameter-tabs button {
+    min-height: 40px;
+  }
+  .automatic-makeup .makeup-swatches > button > span {
+    width: 22px;
+    height: 22px;
+  }
+}

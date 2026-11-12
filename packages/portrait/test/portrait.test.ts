@@ -150,7 +150,11 @@ test('all registered face/body controls compile to real valid primitives with th
     body = analysis([bodyTarget()]);
   for (const tool of PORTRAIT_TOOLS) {
     const a = tool.target === 'face' ? face : body;
-    if (!portraitToolAvailability(a, a.targets[0]!.id, 3).find((item) => item.id === tool.id)?.available) continue;
+    if (
+      !portraitToolAvailability(a, a.targets[0]!.id, 3).find((item) => item.id === tool.id)
+        ?.available
+    )
+      continue;
     const r = applyPortraitValues(createRecipeV3(), a, a.targets[0]!.id, { [tool.id]: 50 });
     assert(r.regionEdits.length + r.paintLayers.length + r.warp.strokes.length > 0, tool.id);
     assert.equal(portraitValues(r, a.targets[0]!.id)[tool.id], 50);
@@ -163,8 +167,10 @@ test('every enabled portrait control produces real pixels, signed controls rever
     source = rgba(),
     original = new Uint8ClampedArray(source.data);
   for (const tool of PORTRAIT_TOOLS) {
-    const a = tool.target === 'face' ? face : body, id = a.targets[0]!.id;
-    if (!portraitToolAvailability(a, id, 3).find((item) => item.id === tool.id)?.available) continue;
+    const a = tool.target === 'face' ? face : body,
+      id = a.targets[0]!.id;
+    if (!portraitToolAvailability(a, id, 3).find((item) => item.id === tool.id)?.available)
+      continue;
     const positive = applyPortraitValues(createRecipeV3(), a, id, { [tool.id]: 70 }),
       rendered = renderEditorRecipe(source, positive),
       tiled = renderEditorRecipeTiled(source, positive, { tileSize: 64 });
@@ -241,6 +247,85 @@ test('makeup color is per tool and does not leak into numeric controls or recolo
   assert.deepEqual(portraitMakeupColors(r, id).browColor, [40, 25, 20, 230]);
   assert.deepEqual(portraitMakeupColors(r, id).lipstick, [230, 60, 80, 180]);
 });
+test('automatic makeup retains separate strength, alpha and material through other facial edits', () => {
+  const a = analysis(),
+    id = a.targets[0]!.id;
+  const material = {
+    algorithm: 'pigment-v1',
+    finish: 'satin',
+    saturation: 1.45,
+    blendMode: 'color',
+  } as const;
+  const initial = applyPortraitValues(
+    createRecipeV3(),
+    a,
+    id,
+    { lipstick: 61.7, foundation: 21, eyeliner: 27, eyeshadow: 35 },
+    undefined,
+    {
+      makeupColors: { lipstick: [191, 56, 82, 123] },
+      makeupMaterials: { lipstick: material, eyeshadow: material },
+    },
+  );
+  const updated = applyPortraitValues(initial, a, id, {
+    ...portraitValues(initial, id),
+    chin: -10.3,
+  });
+  const lip = updated.paintLayers.find((layer) => layer.origin?.parameterId === 'lipstick')!;
+  assert.equal(lip.opacity, 0.617);
+  assert.deepEqual(lip.strokes[0]!.color, [191, 56, 82, 123]);
+  assert.deepEqual(lip.strokes[0]!.material, material);
+  const foundation = updated.paintLayers.find(
+    (layer) => layer.origin?.parameterId === 'foundation',
+  )!;
+  const eyeliner = updated.paintLayers.find((layer) => layer.origin?.parameterId === 'eyeliner')!;
+  const coverage = (layer: typeof lip) => compileSelectionMaskV3(layer.mask!, frame);
+  for (const x of [0.415, 0.585]) {
+    assert.equal(coverage(foundation)(x, 0.365), 0);
+    assert.equal(coverage(eyeliner)(x, 0.365), 0);
+    assert.ok(coverage(eyeliner)(x, 0.344) > 0);
+  }
+  assert.equal(coverage(lip)(0.5, 0.55), 0);
+  assert.throws(
+    () =>
+      applyPortraitValues(initial, a, id, { lipstick: 20 }, undefined, {
+        makeupMaterials: { lipstick: { ...material, saturation: 2.01 } },
+      }),
+    /妆效参数无效/,
+  );
+});
+test('hairline warps require several observed hair boundaries and stay local to the forehead', () => {
+  const a = analysis(),
+    id = a.targets[0]!.id;
+  assert.equal(
+    portraitToolAvailability(a, id).find(({ id }) => id === 'hairline')!.available,
+    false,
+  );
+  const hair = {
+    type: 'polygon',
+    points: [
+      { x: 0.18, y: 0.04 },
+      { x: 0.82, y: 0.04 },
+      { x: 0.82, y: 0.183 },
+      { x: 0.18, y: 0.183 },
+    ],
+    feather: 0,
+    invert: false,
+  } as const;
+  a.segmentation = {
+    hair: { ...hair, points: [...hair.points] },
+    skin: { ...hair, points: [...hair.points], invert: true },
+    background: { ...hair, points: [...hair.points], invert: true },
+  };
+  const down = applyPortraitValues(createRecipeV3(), a, id, { hairline: 42.1 });
+  const up = applyPortraitValues(createRecipeV3(), a, id, { hairline: -42.1 });
+  assert.equal(down.warp.strokes.length, 5);
+  for (const [index, stroke] of down.warp.strokes.entries()) {
+    assert.equal(stroke.algorithm, 'flow-v2');
+    assert.ok(stroke.from.y < 0.19 && stroke.to.y < 0.23);
+    assert.equal(stroke.strength, -up.warp.strokes[index]!.strength);
+  }
+});
 test('automatic recompilation refuses manual changes, deletion, ordering and missing checksums without losing the existing recipe', () => {
   const a = analysis(),
     id = a.targets[0]!.id;
@@ -301,12 +386,14 @@ test('changing automatic values retains existing order relative to later indepen
 test('two fully configured portrait targets fit published operation budgets and keep independent values', () => {
   const a = analysis([faceTarget(1, 0.27, 0.43, 0.75), faceTarget(2, 0.73, 0.43, 0.75)]),
     values = Object.fromEntries(
-      portraitToolAvailability(a, a.targets[0]!.id, 3).filter((tool) => tool.available).map((tool) => [tool.id, 30]),
+      portraitToolAvailability(a, a.targets[0]!.id, 3)
+        .filter((tool) => tool.available)
+        .map((tool) => [tool.id, 30]),
     );
   let r = applyPortraitValues(createRecipeV3(), a, a.targets[0]!.id, values);
   r = applyPortraitValues(r, a, a.targets[1]!.id, { ...values, smooth: 60 });
   assert.equal(r.regionEdits.length, 10);
-  assert.equal(r.paintLayers.length, 14);
+  assert.equal(r.paintLayers.length, 18);
   assert.equal(r.warp.strokes.length, 64);
   assert.equal(portraitValues(r, a.targets[0]!.id).smooth, 30);
   assert.equal(portraitValues(r, a.targets[1]!.id).smooth, 60);

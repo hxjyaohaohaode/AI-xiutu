@@ -561,11 +561,13 @@ export function ProjectAssetTools({
   assets,
   onClose,
   onCreated,
+  onOpenCollage,
 }: {
   projectId: string;
   assets: Asset[];
   onClose(): void;
   onCreated(asset: Asset): void;
+  onOpenCollage(): void;
 }) {
   const [selected, setSelected] = useState<string[]>([]);
   const [size, setSize] = useState({ width: 1600, height: 1200, columns: 2, gap: 12 });
@@ -697,6 +699,10 @@ export function ProjectAssetTools({
       canClose={() => !busy && !locked.current}
     >
       <div className="stack-form asset-tool-content">
+        <button type="button" className="button button-secondary" disabled={busy} onClick={onOpenCollage}>
+          <StudioGlyph name="collage" size={18} />
+          {t('拼图')}
+        </button>
         <InlineError message={error} />
         {status && (
           <p role="status">

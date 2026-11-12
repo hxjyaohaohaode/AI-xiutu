@@ -6,6 +6,7 @@ import {
   createAdjustmentRegionV3,
   renderEditorRecipe,
   renderEditorRecipeTiled,
+  validateRecipeV3,
   compileSelectionMaskV3,
   compileWarpFieldV3,
   blendRgbaV3,
@@ -298,6 +299,90 @@ test('swept stylus coverage is invariant to linear resampling, preserves gaps an
   );
   assert.deepEqual(pixel(sparse, 64, 42)[3], 255);
 });
+test('makeup finishes preserve texture and give fractional edges with the same pixels across tiles', () => {
+  const source = solid(146, 110, 91, 255, 43, 31);
+  const paint = stroke({
+    radius: 0.28,
+    color: [212, 84, 143, 255],
+    opacity: 0.72,
+    feather: 0.41,
+    sampling: { algorithm: 'swept-v1', pressure: [1], breaks: [], antialias: true },
+    material: { algorithm: 'pigment-v1', finish: 'matte', blendMode: 'multiply', saturation: 1 },
+  });
+  source.data.set([201, 169, 153, 255], (15 * source.width + 22) * 4);
+  const recipe = (overrides: Partial<PaintStrokeV3>) =>
+    createRecipeV3({ paintLayers: [layer([{ ...paint, ...overrides }])] });
+  const finishes = ['matte', 'satin', 'shimmer', 'metallic'] as const;
+  const images = finishes.map((finish) => {
+    const candidate = recipe({ material: { ...paint.material!, finish } });
+    const output = renderEditorRecipe(source, candidate);
+    assert.deepEqual(renderEditorRecipeTiled(source, candidate, { tileSize: 16 }), output);
+    assert.deepEqual(pixel(output, 0, 0), pixel(source, 0, 0));
+    assert.ok(
+      pixel(output, 22, 15)[0]! > pixel(output, 21, 15)[0]!,
+      'skin texture remains visible',
+    );
+    return output;
+  });
+  assert.equal(new Set(images.map((image) => Buffer.from(image.data).toString('base64'))).size, 4);
+  assert.deepEqual(renderEditorRecipe(source, recipe({ opacity: 0 })), source);
+
+  const pigment = { ...paint.material!, blendMode: 'normal' as const };
+  const neutral = renderEditorRecipe(
+    source,
+    recipe({ material: { ...pigment, saturation: 0 }, opacity: 1 }),
+  );
+  const saturated = renderEditorRecipe(
+    source,
+    recipe({ material: { ...pigment, saturation: 2 }, opacity: 1 }),
+  );
+  const [r, g, b] = pixel(neutral, 21, 15);
+  assert.equal(r, g);
+  assert.equal(g, b);
+  assert.ok(pixel(saturated, 21, 15)[0]! > pixel(saturated, 21, 15)[1]! + 60);
+
+  const dot = (x: number) =>
+    renderEditorRecipe(
+      source,
+      recipe({
+        points: [{ x: x / source.width, y: 10.5 / source.height }],
+        radius: 0.25 / source.height,
+        feather: 0,
+      }),
+    );
+  const edge = dot(10.98);
+  for (const x of [10, 11]) {
+    const red = pixel(edge, x, 10)[0]!;
+    assert.ok(red > 123 && red < 146, 'a half-pixel diameter produces a partial neighboring pixel');
+  }
+  assert.notDeepEqual(pixel(dot(10.78), 10, 10), pixel(edge, 10, 10));
+});
+
+test('makeup recipe validation preserves old strokes and rejects materials on erasers', () => {
+  const legacy = createRecipeV3({ paintLayers: [layer([stroke()])] });
+  const restored = validateRecipeV3(JSON.parse(JSON.stringify(legacy)));
+  assert.ok(restored.valid);
+  assert.equal(Object.hasOwn(restored.recipe.paintLayers[0]!.strokes[0]!, 'material'), false);
+  const material = {
+    algorithm: 'pigment-v1',
+    finish: 'satin',
+    saturation: 1.3,
+    blendMode: 'color',
+  };
+  const input = (overrides: object) => ({
+    ...legacy,
+    paintLayers: [{ ...legacy.paintLayers[0], strokes: [{ ...stroke(), material, ...overrides }] }],
+  });
+  const parsed = validateRecipeV3(input({}));
+  assert.ok(parsed.valid);
+  assert.deepEqual(parsed.recipe.paintLayers[0]!.strokes[0]!.material, material);
+  assert.equal(validateRecipeV3(input({ mode: 'erase' })).valid, false);
+  assert.equal(
+    validateRecipeV3(input({ material: { ...material, saturation: 2.01 } })).valid,
+    false,
+  );
+});
+
 test('paint opacity and isolated erasing do not erase the original image', () => {
   const source = solid(0, 0, 200, 255, 10, 10),
     r = createRecipeV3({

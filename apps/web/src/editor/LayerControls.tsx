@@ -2,6 +2,8 @@ import { t } from '../i18n';
 import { MotionDetails } from '../motion/Presence';
 import { ChoiceSelect } from '../components/ChoiceSelect';
 import { useEffect, useRef, useState } from 'react';
+import { createPortal } from 'react-dom';
+import { RubberSegment } from '../components/control-motion';
 import {
   ArrowUp,
   ArrowDown,
@@ -22,6 +24,8 @@ import {
   MAX_V3_WARP_STROKES,
   type BlendModeV3,
   type PaintLayerV3,
+  type PaintMaterialV3,
+  type PaintStrokeV3,
   type ImageLayerV3,
   type SelectionMaskV3,
 } from '@ai-xiutu/editor';
@@ -34,6 +38,14 @@ import { MaskControls } from './MaskControls';
 import { currentV3, newMask, rgbaHex, hexRgba, type InspectorController } from './advanced-model';
 import { portraitSelectionMatchesSource } from './portrait-selection';
 import { editorFlowText } from './flow-copy';
+import {
+  MakeupBrushRail,
+  MakeupSwatches,
+  makeupBrushes,
+  makeupFinishLabels,
+  type MakeupBrushId,
+} from './MakeupBrushRail';
+import { AutomaticMakeupControls } from './AutomaticMakeupControls';
 
 const blendLabels: Record<BlendModeV3, string> = {
   normal: '正常混合',
@@ -56,21 +68,50 @@ const blendLabels: Record<BlendModeV3, string> = {
 export function BlendPicker({
   value,
   onChange,
+  ariaLabel = t('图层混合模式'),
 }: {
   value: BlendModeV3;
   onChange: (value: BlendModeV3) => void;
+  ariaLabel?: string;
 }) {
   return (
     <label className="advanced-select">
       {t('混合模式')}
       <ChoiceSelect
-        ariaLabel={t('图层混合模式')}
+        ariaLabel={ariaLabel}
         size="compact"
         value={value}
         onValueChange={(value) => onChange(value as BlendModeV3)}
         options={BLEND_MODES_V3.map((mode) => ({ value: mode, label: t(blendLabels[mode]) }))}
       />
     </label>
+  );
+}
+function MaterialChoices({
+  value,
+  onChange,
+}: {
+  value: PaintMaterialV3;
+  onChange: (value: PaintMaterialV3) => void;
+}) {
+  return (
+    <div className="makeup-detail-fields">
+      <ChoiceSelect
+        size="compact"
+        label={t('妆效')}
+        value={value.finish}
+        onValueChange={(finish) => onChange({ ...value, finish })}
+        options={(Object.keys(makeupFinishLabels) as PaintMaterialV3['finish'][]).map((finish) => ({
+          value: finish,
+          label: t(makeupFinishLabels[finish]),
+        }))}
+      />
+      <BlendPicker
+        value={value.blendMode}
+        ariaLabel={t('笔触混合模式')}
+        onChange={(blendMode) => onChange({ ...value, blendMode })}
+      />
+    </div>
   );
 }
 function shifted<T>(items: T[], index: number, direction: number): T[] {
@@ -82,16 +123,18 @@ function shifted<T>(items: T[], index: number, direction: number): T[] {
 }
 export function PaintControls({
   controller,
+  headerTarget,
   pickedColor,
   onSample,
   sampling,
 }: {
   controller: InspectorController;
+  headerTarget?: HTMLElement | null;
   pickedColor: string;
   onSample?: () => void;
   sampling?: boolean;
 }) {
-  const { editor, apply } = controller,
+  const { editor, apply, report } = controller,
     recipe = currentV3(editor);
   const layer =
     recipe.paintLayers.find((item) => item.id === editor.activePaintLayerId) ??
@@ -103,6 +146,17 @@ export function PaintControls({
     height = editor.dimensions?.height ?? 1,
     short = Math.min(width, height);
   const settings = editor.paintSettings;
+  const material = settings.mode === 'paint' ? settings.material : undefined;
+  const [makeupView, setMakeupView] = useState<'brush' | 'color' | 'layers'>('brush');
+  const [strokeEdit, setStrokeEdit] = useState<{
+    layerId: string;
+    index: number;
+    original: PaintStrokeV3;
+    draft: PaintStrokeV3;
+  } | null>(null);
+  const selectedStroke = strokeEdit?.layerId === layer?.id ? strokeEdit : null;
+  const editableStrokes =
+    layer?.strokes.flatMap((stroke, index) => (stroke.material ? [index] : [])) ?? [];
   useEffect(() => {
     if (layer && editor.activePaintLayerId !== layer.id) editor.setActivePaintLayerId(layer.id);
   }, [layer?.id, editor.activePaintLayerId]);
@@ -134,12 +188,62 @@ export function PaintControls({
     if (apply({ ...latest, paintLayers: [...latest.paintLayers, next] }, '新建绘制图层', true))
       editor.setActivePaintLayerId(next.id);
   }
+  function selectMakeup(tip: MakeupBrushId | null) {
+    const preset = tip ? makeupBrushes[tip] : undefined;
+    editor.setPaintSettings((previous) => ({
+      ...previous,
+      mode: 'paint',
+      choosingSource: false,
+      makeupTip: tip ?? undefined,
+      material: preset?.material,
+      ...(preset
+        ? {
+            color: hexRgba(preset.colors[0]!),
+            radius: preset.radius,
+            feather: preset.feather,
+            opacity: preset.opacity,
+          }
+        : {}),
+    }));
+  }
+  function chooseStroke(index: number) {
+    const original = layer?.strokes[index];
+    if (!layer || !original?.material) return;
+    setStrokeEdit({ layerId: layer.id, index, original, draft: original });
+  }
+  function changeStroke(changes: Partial<PaintStrokeV3>) {
+    setStrokeEdit((value) => (value ? { ...value, draft: { ...value.draft, ...changes } } : null));
+  }
+  function saveStroke(remove = false) {
+    if (!selectedStroke || !layer) return;
+    const latest = currentV3(editor).paintLayers.find((item) => item.id === selectedStroke.layerId);
+    if (
+      !latest ||
+      JSON.stringify(latest.strokes[selectedStroke.index]) !==
+        JSON.stringify(selectedStroke.original)
+    ) {
+      report(t('笔画已变化，请重新选择。'));
+      setStrokeEdit(null);
+      return;
+    }
+    const strokes = latest.strokes.flatMap((stroke, index) =>
+      index === selectedStroke.index ? (remove ? [] : [selectedStroke.draft]) : [stroke],
+    );
+    if (patch({ strokes }, t(remove ? '删除妆容笔画' : '应用笔画修改'))) setStrokeEdit(null);
+  }
   function stamp() {
     if (!layer || (settings.mode === 'clone' && !settings.source)) return;
     const latest = currentV3(editor),
       current = latest.paintLayers.find((item) => item.id === layer.id);
     if (!current) return;
-    const { choosingSource: _state, pressureSensitive: _pressure, ...stroke } = settings;
+    const {
+      choosingSource: _state,
+      pressureSensitive: _pressure,
+      makeupTip: _tip,
+      material: _material,
+      automaticMakeup: _auto,
+      ...stroke
+    } = settings;
     apply(
       {
         ...latest,
@@ -151,6 +255,17 @@ export function PaintControls({
                   ...item.strokes,
                   {
                     ...stroke,
+                    ...(material
+                      ? {
+                          material,
+                          sampling: {
+                            algorithm: 'swept-v1' as const,
+                            pressure: [1],
+                            breaks: [],
+                            antialias: true,
+                          },
+                        }
+                      : {}),
                     points: [
                       {
                         x: (Math.min(width - 1, pixelX) + 0.5) / width,
@@ -167,398 +282,653 @@ export function PaintControls({
       true,
     );
   }
+  const modeSwitch = (
+    <RubberSegment<'manual' | 'auto'>
+      label={t('妆容方式')}
+      className="makeup-mode"
+      value={settings.automaticMakeup ? 'auto' : 'manual'}
+      onChange={(value) => {
+        editor.commitCurrent(t('完成妆容调节'));
+        editor.setPaintSettings((previous) => ({ ...previous, automaticMakeup: value === 'auto' }));
+      }}
+      options={[
+        { value: 'manual', label: t('手动') },
+        { value: 'auto', label: t('自动') },
+      ]}
+    />
+  );
   return (
     <section className="advanced-tool-family" data-motion="paint-controls">
-      <div className="advanced-row">
-        <span>
-          {t('绘制图层')}
-          {recipe.paintLayers.length} / {MAX_V3_PAINT_LAYERS}
-        </span>
-        <button
-          className="text-button"
-          disabled={recipe.paintLayers.length >= MAX_V3_PAINT_LAYERS}
-          onClick={addLayer}
-        >
-          <Plus size={16} />
-          {t('新建')}
-        </button>
-      </div>
-      <div className="advanced-object-list" aria-label={t('绘制图层')}>
-        {recipe.paintLayers.map((item, index) => (
-          <div key={item.id} className="advanced-row" data-selected={item.id === layer?.id}>
-            <button
-              className="object-name"
-              aria-pressed={item.id === layer?.id}
-              onClick={() => {
-                editor.setActivePaintLayerId(item.id);
-                setPath([]);
-              }}
-            >
-              {item.name}
-              <small>
-                {t(item.strokes.length === 1 ? '1 笔 · {mode}' : '{count} 笔 · {mode}', {
-                  count: item.strokes.length,
-                  mode: t(blendLabels[item.blendMode]),
-                })}
-              </small>
-            </button>
-            <IconButton
-              label={editorFlowText(item.enabled ? 'hideNamed' : 'showNamed', { name: item.name })}
-              onClick={() =>
-                apply(
-                  {
-                    ...currentV3(editor),
-                    paintLayers: currentV3(editor).paintLayers.map((p) =>
-                      p.id === item.id ? { ...p, enabled: !p.enabled } : p,
-                    ),
-                  },
-                  t('切换绘制图层'),
-                  true,
-                )
-              }
-            >
-              {item.enabled ? <Eye size={16} /> : <EyeSlash size={16} />}
-            </IconButton>
-          </div>
-        ))}
-      </div>
-      {!layer ? (
-        <p className="control-note">
-          {t('新建一个图层后，即可在照片上涂画。颜色、混合、范围和笔画分别保留。')}
-        </p>
+      {headerTarget ? createPortal(modeSwitch, headerTarget) : modeSwitch}
+      {settings.automaticMakeup ? (
+        <AutomaticMakeupControls controller={controller} />
       ) : (
         <>
-          <div className="tonal-tabs" aria-label={t('绘制模式')}>
-            {(
-              [
-                ['paint', t('画笔')],
-                ['erase', t('橡皮')],
-                ['clone', t('克隆')],
-              ] as const
-            ).map(([mode, name]) => (
-              <button
-                key={mode}
-                aria-pressed={settings.mode === mode}
-                onClick={() =>
-                  editor.setPaintSettings({ ...settings, mode, choosingSource: false })
-                }
-              >
-                {name}
-              </button>
-            ))}
-          </div>
-          <ParameterShelf
-            label={t('绘制参数')}
-            controls={[
-              {
-                id: 'diameter',
-                label: t('直径'),
-                value: settings.radius * short * 2,
-                min: 1,
-                max: short,
-                step: 0.1,
-                unit: 'px',
-                description: t('以原图像素为准；1px 使用精确栅格落点。'),
-                onChange: (n) => editor.setPaintSettings((s) => ({ ...s, radius: n / short / 2 })),
-              },
-              {
-                id: 'feather',
-                label: t('柔边'),
-                value: settings.feather * 100,
-                min: 0,
-                max: 100,
-                step: 0.1,
-                unit: '%',
-                onChange: (n) => editor.setPaintSettings((s) => ({ ...s, feather: n / 100 })),
-              },
-              {
-                id: 'flow',
-                label: t('笔触透明度'),
-                value: settings.opacity * 100,
-                min: 0,
-                max: 100,
-                step: 0.1,
-                unit: '%',
-                onChange: (n) => editor.setPaintSettings((s) => ({ ...s, opacity: n / 100 })),
-              },
-              {
-                id: 'layer-opacity',
-                label: t('图层透明度'),
-                value: layer.opacity * 100,
-                min: 0,
-                max: 100,
-                step: 0.1,
-                unit: '%',
-                onChange: (n) => patch({ opacity: n / 100 }, t('调整图层透明度'), false),
-              },
-            ]}
-            onCommit={(name) => editor.commitCurrent(t('调整{v0}', { v0: t(name) }))}
-            onCancel={editor.cancelPreview}
+          <MakeupBrushRail
+            value={material ? (settings.makeupTip ?? null) : null}
+            onChange={selectMakeup}
           />
-          <label className="check-label">
-            <input
-              type="checkbox"
-              checked={settings.pressureSensitive}
-              onChange={(event) =>
-                editor.setPaintSettings((previous) => ({
-                  ...previous,
-                  pressureSensitive: event.target.checked,
-                }))
-              }
-            />
-            {t('数位笔压感与平滑边缘（大于 1 px 的画笔）')}
-          </label>
-          {settings.mode === 'paint' && (
-            <MotionDetails className="advanced-disclosure" defaultOpen>
-              <summary>
-                <i className="paint-color-chip" style={{ background: rgbaHex(settings.color) }} />
-                {t('画笔颜色与 Alpha')}
-              </summary>
-              <ColorPicker
-                value={rgbaHex(settings.color)}
-                onChange={(value) =>
-                  editor.setPaintSettings((s) => ({ ...s, color: hexRgba(value) }))
-                }
-                label={t('画笔颜色')}
-              />
-              <div className="advanced-row">
-                <button className="text-button" onClick={onSample}>
-                  {sampling ? t('结束取色') : t('从原图取色')}
-                </button>
-                <button
-                  className="text-button"
-                  onClick={() =>
-                    editor.setPaintSettings((s) => ({ ...s, color: hexRgba(pickedColor) }))
-                  }
-                >
-                  {t('使用所取颜色')}
-                </button>
-              </div>
-            </MotionDetails>
-          )}
-          {settings.mode === 'clone' && (
-            <>
-              <button
-                className="text-button"
-                aria-pressed={settings.choosingSource}
-                onClick={() =>
-                  editor.setPaintSettings((s) => ({ ...s, choosingSource: !s.choosingSource }))
-                }
-              >
-                {settings.choosingSource ? t('点击照片设定克隆来源') : t('在照片选择克隆来源')}
-              </button>
-              <p className="control-note">
-                {settings.source
-                  ? t('来源约为 ({v0}, {v1})；采样绘制前图像，不累积复制自身。', {
-                      v0: Math.floor(settings.source.x * width),
-                      v1: Math.floor(settings.source.y * height),
-                    })
-                  : t('先选择来源，再绘制；也可以在下面按像素坐标设置来源。')}
-              </p>
-            </>
-          )}
-          <BlendPicker
-            value={layer.blendMode}
-            onChange={(blendMode) => patch({ blendMode }, t('切换绘制混合模式'))}
-          />
-          <MotionDetails className="advanced-disclosure">
-            <summary>{t('逐像素落点')}</summary>
-            <ParameterShelf
-              label={t('原图像素位置')}
-              controls={[
-                {
-                  id: 'x',
-                  label: t('像素 X'),
-                  value: Math.min(width - 1, pixelX),
-                  min: 0,
-                  max: width - 1,
-                  step: 1,
-                  integer: true,
-                  unit: 'px',
-                  onChange: setPixelX,
-                },
-                {
-                  id: 'y',
-                  label: t('像素 Y'),
-                  value: Math.min(height - 1, pixelY),
-                  min: 0,
-                  max: height - 1,
-                  step: 1,
-                  integer: true,
-                  unit: 'px',
-                  onChange: setPixelY,
-                },
+          {material && (
+            <RubberSegment<'brush' | 'color' | 'layers'>
+              label={t('手动妆容参数')}
+              className="makeup-parameter-tabs"
+              value={makeupView}
+              onChange={setMakeupView}
+              options={[
+                { value: 'brush', label: t('笔触') },
+                { value: 'color', label: t('颜色') },
+                { value: 'layers', label: t('图层') },
               ]}
             />
-            <div className="advanced-row">
-              <button
-                className="text-button"
-                disabled={settings.mode === 'clone' && !settings.source}
-                onClick={stamp}
-              >
-                {t('在这个像素落笔')}
-              </button>
-              {settings.mode === 'clone' && (
-                <button
-                  className="text-button"
-                  onClick={() =>
-                    editor.setPaintSettings((s) => ({
-                      ...s,
-                      source: {
-                        x: (Math.min(width - 1, pixelX) + 0.5) / width,
-                        y: (Math.min(height - 1, pixelY) + 0.5) / height,
-                      },
-                      choosingSource: false,
-                    }))
-                  }
-                >
-                  {t('设为克隆来源')}
-                </button>
-              )}
-            </div>
-          </MotionDetails>
-          <MotionDetails className="advanced-disclosure">
-            <summary>{t('限制绘制范围')}</summary>
-            <label className="advanced-select">
-              {t('使用局部选区')}
-              <ChoiceSelect
-                ariaLabel={t('绘制范围来源')}
-                size="compact"
-                value=""
-                onValueChange={(value) => {
-                  const selected = currentV3(editor).regionEdits.find((r) => r.id === value);
-                  if (selected) {
-                    patch({ mask: structuredClone(selected.mask) }, t('复制绘制范围'));
-                    setPath([]);
-                  }
-                }}
-                options={[
-                  { value: '', label: t('选择一个范围副本') },
-                  ...recipe.regionEdits.map((r) => ({ value: r.id, label: r.name })),
-                ]}
-              />
-            </label>
-            {layer.mask && (
-              <>
-                <MaskControls
-                  controller={controller}
-                  path={path}
-                  onPath={setPath}
-                  drawsMask={false}
-                  getMask={() =>
-                    currentV3(editor).paintLayers.find((p) => p.id === layer.id)!.mask!
-                  }
-                  onChange={(mask, commit) => patch({ mask }, t('修改绘制范围'), commit)}
+          )}
+          {material && (
+            <>
+              {makeupView === 'brush' && (
+                <ParameterShelf
+                  label={t('妆容笔')}
+                  controls={[
+                    {
+                      id: 'makeup-diameter',
+                      glyph: 'diameter',
+                      label: t('直径'),
+                      value: settings.radius * short * 2,
+                      min: 0.5,
+                      max: short,
+                      step: 0.1,
+                      unit: 'px',
+                      onChange: (n) =>
+                        editor.setPaintSettings((s) => ({ ...s, radius: n / short / 2 })),
+                    },
+                    {
+                      id: 'makeup-opacity',
+                      glyph: 'opacity',
+                      label: t('笔触透明度'),
+                      value: settings.opacity * 100,
+                      min: 0,
+                      max: 100,
+                      step: 0.1,
+                      unit: '%',
+                      onChange: (n) => editor.setPaintSettings((s) => ({ ...s, opacity: n / 100 })),
+                    },
+                    {
+                      id: 'makeup-saturation',
+                      glyph: 'saturation',
+                      label: t('饱和度'),
+                      value: material.saturation * 100,
+                      min: 0,
+                      max: 200,
+                      step: 0.1,
+                      unit: '%',
+                      onChange: (n) =>
+                        editor.setPaintSettings((s) =>
+                          s.material
+                            ? { ...s, material: { ...s.material, saturation: n / 100 } }
+                            : s,
+                        ),
+                    },
+                    {
+                      id: 'makeup-feather',
+                      glyph: 'feather',
+                      label: t('柔边'),
+                      value: settings.feather * 100,
+                      min: 0,
+                      max: 100,
+                      step: 0.1,
+                      unit: '%',
+                      onChange: (n) => editor.setPaintSettings((s) => ({ ...s, feather: n / 100 })),
+                    },
+                  ]}
                 />
+              )}
+              {makeupView === 'color' && (
+                <>
+                  {settings.makeupTip && (
+                    <MakeupSwatches
+                      brush={settings.makeupTip}
+                      color={rgbaHex(settings.color)}
+                      onColor={(color) =>
+                        editor.setPaintSettings((previous) => {
+                          const next = hexRgba(color);
+                          next[3] = previous.color[3];
+                          return { ...previous, color: next };
+                        })
+                      }
+                    />
+                  )}
+                  <MotionDetails className="advanced-disclosure">
+                    <summary>
+                      <i
+                        className="paint-color-chip"
+                        style={{ background: rgbaHex(settings.color) }}
+                      />
+                      {t('画笔颜色与 Alpha')}
+                    </summary>
+                    <ColorPicker
+                      value={rgbaHex(settings.color)}
+                      label={t('画笔颜色')}
+                      onChange={(color) =>
+                        editor.setPaintSettings((s) => ({ ...s, color: hexRgba(color) }))
+                      }
+                    />
+                    <MaterialChoices
+                      value={material}
+                      onChange={(value) =>
+                        editor.setPaintSettings((s) => ({ ...s, material: value }))
+                      }
+                    />
+                  </MotionDetails>
+                </>
+              )}
+            </>
+          )}
+          {(!material || makeupView === 'layers') && (
+            <>
+              <div className="advanced-row">
+                <span>
+                  {t('绘制图层')}
+                  {recipe.paintLayers.length} / {MAX_V3_PAINT_LAYERS}
+                </span>
                 <button
                   className="text-button"
-                  onClick={() => patch({ mask: null }, t('解除绘制范围'))}
+                  disabled={recipe.paintLayers.length >= MAX_V3_PAINT_LAYERS}
+                  onClick={addLayer}
                 >
-                  {t('解除范围限制')}
+                  <Plus size={16} />
+                  {t('新建')}
                 </button>
-              </>
-            )}
-          </MotionDetails>
-          <MotionDetails className="advanced-disclosure">
-            <summary>{t('图层与笔画管理')}</summary>
-            <label className="advanced-select">
-              {t('名称')}
-              <input
-                aria-label={t('绘制图层名称')}
-                key={layer.id + ':' + layer.name}
-                defaultValue={layer.name}
-                maxLength={120}
-                onBlur={(event) => {
-                  const name = event.currentTarget.value.trim();
-                  if (!name || name === layer.name) {
-                    event.currentTarget.value = layer.name;
-                    return;
-                  }
-                  patch({ name }, t('重命名绘制图层'));
-                }}
-                onKeyDown={(event) => {
-                  if (event.nativeEvent.isComposing) return;
-                  if (event.key === 'Enter') event.currentTarget.blur();
-                  if (event.key === 'Escape') {
-                    event.currentTarget.value = layer.name;
-                    event.currentTarget.blur();
-                  }
-                }}
-              />
-            </label>
-            <div className="advanced-row">
-              <button
-                className="text-button"
-                disabled={!layer.strokes.length}
-                onClick={() => patch({ strokes: layer.strokes.slice(0, -1) }, t('移除最后一笔'))}
-              >
-                {t('移除最后一笔')}
-              </button>
-              <IconButton
-                label={t('绘制图层前移')}
-                disabled={recipe.paintLayers[0]?.id === layer.id}
-                onClick={() =>
-                  apply(
-                    {
-                      ...recipe,
-                      paintLayers: shifted(
-                        recipe.paintLayers,
-                        recipe.paintLayers.indexOf(layer),
-                        -1,
-                      ),
-                    },
-                    t('调整绘制图层顺序'),
-                    true,
-                  )
-                }
-              >
-                <ArrowUp size={16} />
-              </IconButton>
-              <IconButton
-                label={t('绘制图层后移')}
-                disabled={recipe.paintLayers.at(-1)?.id === layer.id}
-                onClick={() =>
-                  apply(
-                    {
-                      ...recipe,
-                      paintLayers: shifted(
-                        recipe.paintLayers,
-                        recipe.paintLayers.indexOf(layer),
-                        1,
-                      ),
-                    },
-                    t('调整绘制图层顺序'),
-                    true,
-                  )
-                }
-              >
-                <ArrowDown size={16} />
-              </IconButton>
-              <IconButton
-                label={t('删除绘制图层，可撤销')}
-                onClick={() => {
-                  if (
-                    apply(
-                      {
-                        ...recipe,
-                        paintLayers: recipe.paintLayers.filter((p) => p.id !== layer.id),
-                      },
-                      t('删除绘制图层'),
-                      true,
-                    )
-                  )
-                    editor.setActivePaintLayerId(null);
-                }}
-              >
-                <Trash size={16} />
-              </IconButton>
-            </div>
-          </MotionDetails>
-          <small className="control-note">
-            {t('总笔画预算')}
-            {recipe.paintLayers.reduce((n, p) => n + p.strokes.length, 0)} / {MAX_V3_PAINT_STROKES}
-            {t('；重置参数不改已绘制的笔画。')}
-          </small>
+              </div>
+              <div className="advanced-object-list" aria-label={t('绘制图层')}>
+                {recipe.paintLayers.map((item, index) => (
+                  <div key={item.id} className="advanced-row" data-selected={item.id === layer?.id}>
+                    <button
+                      className="object-name"
+                      aria-pressed={item.id === layer?.id}
+                      onClick={() => {
+                        editor.setActivePaintLayerId(item.id);
+                        setPath([]);
+                        setStrokeEdit(null);
+                      }}
+                    >
+                      {item.name}
+                      <small>
+                        {t(item.strokes.length === 1 ? '1 笔 · {mode}' : '{count} 笔 · {mode}', {
+                          count: item.strokes.length,
+                          mode: t(blendLabels[item.blendMode]),
+                        })}
+                      </small>
+                    </button>
+                    <IconButton
+                      label={editorFlowText(item.enabled ? 'hideNamed' : 'showNamed', {
+                        name: item.name,
+                      })}
+                      onClick={() =>
+                        apply(
+                          {
+                            ...currentV3(editor),
+                            paintLayers: currentV3(editor).paintLayers.map((p) =>
+                              p.id === item.id ? { ...p, enabled: !p.enabled } : p,
+                            ),
+                          },
+                          t('切换绘制图层'),
+                          true,
+                        )
+                      }
+                    >
+                      {item.enabled ? <Eye size={16} /> : <EyeSlash size={16} />}
+                    </IconButton>
+                  </div>
+                ))}
+              </div>
+              {layer && (
+                <>
+                  <div className="tonal-tabs" aria-label={t('绘制模式')}>
+                    {(
+                      [
+                        ['paint', t('画笔')],
+                        ['erase', t('橡皮')],
+                        ['clone', t('克隆')],
+                      ] as const
+                    ).map(([mode, name]) => (
+                      <button
+                        key={mode}
+                        aria-pressed={settings.mode === mode}
+                        onClick={() =>
+                          editor.setPaintSettings({ ...settings, mode, choosingSource: false })
+                        }
+                      >
+                        {name}
+                      </button>
+                    ))}
+                  </div>
+                  <ParameterShelf
+                    label={t('绘制参数')}
+                    controls={(
+                      [
+                        {
+                          id: 'diameter',
+                          label: t('直径'),
+                          value: settings.radius * short * 2,
+                          min: 1,
+                          max: short,
+                          step: 0.1,
+                          unit: 'px',
+                          description: t('以原图像素为准；1px 使用精确栅格落点。'),
+                          onChange: (n) =>
+                            editor.setPaintSettings((s) => ({ ...s, radius: n / short / 2 })),
+                        },
+                        {
+                          id: 'feather',
+                          label: t('柔边'),
+                          value: settings.feather * 100,
+                          min: 0,
+                          max: 100,
+                          step: 0.1,
+                          unit: '%',
+                          onChange: (n) =>
+                            editor.setPaintSettings((s) => ({ ...s, feather: n / 100 })),
+                        },
+                        {
+                          id: 'flow',
+                          label: t('笔触透明度'),
+                          value: settings.opacity * 100,
+                          min: 0,
+                          max: 100,
+                          step: 0.1,
+                          unit: '%',
+                          onChange: (n) =>
+                            editor.setPaintSettings((s) => ({ ...s, opacity: n / 100 })),
+                        },
+                        {
+                          id: 'layer-opacity',
+                          label: t('图层透明度'),
+                          value: layer.opacity * 100,
+                          min: 0,
+                          max: 100,
+                          step: 0.1,
+                          unit: '%',
+                          onChange: (n) => patch({ opacity: n / 100 }, t('调整图层透明度'), false),
+                        },
+                      ] satisfies ShelfControl[]
+                    ).filter((control) => !material || control.id === 'layer-opacity')}
+                    onCommit={(name) => editor.commitCurrent(t('调整{v0}', { v0: t(name) }))}
+                    onCancel={editor.cancelPreview}
+                  />
+                  <label className="check-label">
+                    <input
+                      type="checkbox"
+                      checked={settings.pressureSensitive}
+                      onChange={(event) =>
+                        editor.setPaintSettings((previous) => ({
+                          ...previous,
+                          pressureSensitive: event.target.checked,
+                        }))
+                      }
+                    />
+                    {t('数位笔压感与平滑边缘（大于 1 px 的画笔）')}
+                  </label>
+                  {settings.mode === 'paint' && !material && (
+                    <MotionDetails className="advanced-disclosure" defaultOpen>
+                      <summary>
+                        <i
+                          className="paint-color-chip"
+                          style={{ background: rgbaHex(settings.color) }}
+                        />
+                        {t('画笔颜色与 Alpha')}
+                      </summary>
+                      <ColorPicker
+                        value={rgbaHex(settings.color)}
+                        onChange={(value) =>
+                          editor.setPaintSettings((s) => ({ ...s, color: hexRgba(value) }))
+                        }
+                        label={t('画笔颜色')}
+                      />
+                      <div className="advanced-row">
+                        <button className="text-button" onClick={onSample}>
+                          {sampling ? t('结束取色') : t('从原图取色')}
+                        </button>
+                        <button
+                          className="text-button"
+                          onClick={() =>
+                            editor.setPaintSettings((s) => ({ ...s, color: hexRgba(pickedColor) }))
+                          }
+                        >
+                          {t('使用所取颜色')}
+                        </button>
+                      </div>
+                    </MotionDetails>
+                  )}
+                  {settings.mode === 'clone' && (
+                    <>
+                      <button
+                        className="text-button"
+                        aria-pressed={settings.choosingSource}
+                        onClick={() =>
+                          editor.setPaintSettings((s) => ({
+                            ...s,
+                            choosingSource: !s.choosingSource,
+                          }))
+                        }
+                      >
+                        {settings.choosingSource
+                          ? t('点击照片设定克隆来源')
+                          : t('在照片选择克隆来源')}
+                      </button>
+                      <p className="control-note">
+                        {settings.source
+                          ? t('来源约为 ({v0}, {v1})；采样绘制前图像，不累积复制自身。', {
+                              v0: Math.floor(settings.source.x * width),
+                              v1: Math.floor(settings.source.y * height),
+                            })
+                          : t('先选择来源，再绘制；也可以在下面按像素坐标设置来源。')}
+                      </p>
+                    </>
+                  )}
+                  <BlendPicker
+                    value={layer.blendMode}
+                    onChange={(blendMode) => patch({ blendMode }, t('切换绘制混合模式'))}
+                  />
+                  {editableStrokes.length > 0 && (
+                    <MotionDetails className="advanced-disclosure">
+                      <summary>{t('编辑妆容笔画')}</summary>
+                      <ChoiceSelect
+                        size="compact"
+                        label={t('笔画')}
+                        value={selectedStroke ? String(selectedStroke.index) : ''}
+                        onValueChange={(index) => chooseStroke(Number(index))}
+                        options={editableStrokes.map((index) => ({
+                          value: String(index),
+                          label: t('第 {v0} 笔', { v0: index + 1 }),
+                        }))}
+                      />
+                      {selectedStroke?.draft.material && (
+                        <>
+                          <ColorPicker
+                            value={rgbaHex(selectedStroke.draft.color)}
+                            label={t('画笔颜色')}
+                            onChange={(color) => changeStroke({ color: hexRgba(color) })}
+                          />
+                          <MaterialChoices
+                            value={selectedStroke.draft.material}
+                            onChange={(value) => changeStroke({ material: value })}
+                          />
+                          <ParameterShelf
+                            label={t('编辑妆容笔画')}
+                            controls={[
+                              {
+                                id: 'stroke-diameter',
+                                glyph: 'diameter',
+                                label: t('直径'),
+                                value: selectedStroke.draft.radius * short * 2,
+                                min: 0.5,
+                                max: short,
+                                step: 0.1,
+                                unit: 'px',
+                                onChange: (n) => changeStroke({ radius: n / short / 2 }),
+                              },
+                              {
+                                id: 'stroke-feather',
+                                glyph: 'feather',
+                                label: t('柔边'),
+                                value: selectedStroke.draft.feather * 100,
+                                min: 0,
+                                max: 100,
+                                step: 0.1,
+                                unit: '%',
+                                onChange: (n) => changeStroke({ feather: n / 100 }),
+                              },
+                              {
+                                id: 'stroke-opacity',
+                                glyph: 'opacity',
+                                label: t('笔触透明度'),
+                                value: selectedStroke.draft.opacity * 100,
+                                min: 0,
+                                max: 100,
+                                step: 0.1,
+                                unit: '%',
+                                onChange: (n) => changeStroke({ opacity: n / 100 }),
+                              },
+                              {
+                                id: 'stroke-saturation',
+                                glyph: 'saturation',
+                                label: t('饱和度'),
+                                value: selectedStroke.draft.material.saturation * 100,
+                                min: 0,
+                                max: 200,
+                                step: 0.1,
+                                unit: '%',
+                                onChange: (n) =>
+                                  changeStroke({
+                                    material: {
+                                      ...selectedStroke.draft.material!,
+                                      saturation: n / 100,
+                                    },
+                                  }),
+                              },
+                            ]}
+                          />
+                          <div className="advanced-row">
+                            <IconButton label={t('删除妆容笔画')} onClick={() => saveStroke(true)}>
+                              <Trash size={16} />
+                            </IconButton>
+                            <button
+                              type="button"
+                              className="button button-primary"
+                              onClick={() => saveStroke()}
+                            >
+                              {t('应用笔画修改')}
+                            </button>
+                          </div>
+                        </>
+                      )}
+                    </MotionDetails>
+                  )}
+                  <MotionDetails className="advanced-disclosure">
+                    <summary>{t('逐像素落点')}</summary>
+                    <ParameterShelf
+                      label={t('原图像素位置')}
+                      controls={[
+                        {
+                          id: 'x',
+                          label: t('像素 X'),
+                          value: Math.min(width - 1, pixelX),
+                          min: 0,
+                          max: width - 1,
+                          step: material ? 0.1 : 1,
+                          integer: !material,
+                          unit: 'px',
+                          onChange: setPixelX,
+                        },
+                        {
+                          id: 'y',
+                          label: t('像素 Y'),
+                          value: Math.min(height - 1, pixelY),
+                          min: 0,
+                          max: height - 1,
+                          step: material ? 0.1 : 1,
+                          integer: !material,
+                          unit: 'px',
+                          onChange: setPixelY,
+                        },
+                      ]}
+                    />
+                    <div className="advanced-row">
+                      <button
+                        className="text-button"
+                        disabled={settings.mode === 'clone' && !settings.source}
+                        onClick={stamp}
+                      >
+                        {t('在这个像素落笔')}
+                      </button>
+                      {settings.mode === 'clone' && (
+                        <button
+                          className="text-button"
+                          onClick={() =>
+                            editor.setPaintSettings((s) => ({
+                              ...s,
+                              source: {
+                                x: (Math.min(width - 1, pixelX) + 0.5) / width,
+                                y: (Math.min(height - 1, pixelY) + 0.5) / height,
+                              },
+                              choosingSource: false,
+                            }))
+                          }
+                        >
+                          {t('设为克隆来源')}
+                        </button>
+                      )}
+                    </div>
+                  </MotionDetails>
+                  <MotionDetails className="advanced-disclosure">
+                    <summary>{t('限制绘制范围')}</summary>
+                    <label className="advanced-select">
+                      {t('使用局部选区')}
+                      <ChoiceSelect
+                        ariaLabel={t('绘制范围来源')}
+                        size="compact"
+                        value=""
+                        onValueChange={(value) => {
+                          const selected = currentV3(editor).regionEdits.find(
+                            (r) => r.id === value,
+                          );
+                          if (selected) {
+                            patch({ mask: structuredClone(selected.mask) }, t('复制绘制范围'));
+                            setPath([]);
+                          }
+                        }}
+                        options={[
+                          { value: '', label: t('选择一个范围副本') },
+                          ...recipe.regionEdits.map((r) => ({ value: r.id, label: r.name })),
+                        ]}
+                      />
+                    </label>
+                    {layer.mask && (
+                      <>
+                        <MaskControls
+                          controller={controller}
+                          path={path}
+                          onPath={setPath}
+                          drawsMask={false}
+                          getMask={() =>
+                            currentV3(editor).paintLayers.find((p) => p.id === layer.id)!.mask!
+                          }
+                          onChange={(mask, commit) => patch({ mask }, t('修改绘制范围'), commit)}
+                        />
+                        <button
+                          className="text-button"
+                          onClick={() => patch({ mask: null }, t('解除绘制范围'))}
+                        >
+                          {t('解除范围限制')}
+                        </button>
+                      </>
+                    )}
+                  </MotionDetails>
+                  <MotionDetails className="advanced-disclosure">
+                    <summary>{t('图层与笔画管理')}</summary>
+                    <label className="advanced-select">
+                      {t('名称')}
+                      <input
+                        aria-label={t('绘制图层名称')}
+                        key={layer.id + ':' + layer.name}
+                        defaultValue={layer.name}
+                        maxLength={120}
+                        onBlur={(event) => {
+                          const name = event.currentTarget.value.trim();
+                          if (!name || name === layer.name) {
+                            event.currentTarget.value = layer.name;
+                            return;
+                          }
+                          patch({ name }, t('重命名绘制图层'));
+                        }}
+                        onKeyDown={(event) => {
+                          if (event.nativeEvent.isComposing) return;
+                          if (event.key === 'Enter') event.currentTarget.blur();
+                          if (event.key === 'Escape') {
+                            event.currentTarget.value = layer.name;
+                            event.currentTarget.blur();
+                          }
+                        }}
+                      />
+                    </label>
+                    <div className="advanced-row">
+                      <button
+                        className="text-button"
+                        disabled={!layer.strokes.length}
+                        onClick={() =>
+                          patch({ strokes: layer.strokes.slice(0, -1) }, t('移除最后一笔'))
+                        }
+                      >
+                        {t('移除最后一笔')}
+                      </button>
+                      <IconButton
+                        label={t('绘制图层前移')}
+                        disabled={recipe.paintLayers[0]?.id === layer.id}
+                        onClick={() =>
+                          apply(
+                            {
+                              ...recipe,
+                              paintLayers: shifted(
+                                recipe.paintLayers,
+                                recipe.paintLayers.indexOf(layer),
+                                -1,
+                              ),
+                            },
+                            t('调整绘制图层顺序'),
+                            true,
+                          )
+                        }
+                      >
+                        <ArrowUp size={16} />
+                      </IconButton>
+                      <IconButton
+                        label={t('绘制图层后移')}
+                        disabled={recipe.paintLayers.at(-1)?.id === layer.id}
+                        onClick={() =>
+                          apply(
+                            {
+                              ...recipe,
+                              paintLayers: shifted(
+                                recipe.paintLayers,
+                                recipe.paintLayers.indexOf(layer),
+                                1,
+                              ),
+                            },
+                            t('调整绘制图层顺序'),
+                            true,
+                          )
+                        }
+                      >
+                        <ArrowDown size={16} />
+                      </IconButton>
+                      <IconButton
+                        label={t('删除绘制图层，可撤销')}
+                        onClick={() => {
+                          if (
+                            apply(
+                              {
+                                ...recipe,
+                                paintLayers: recipe.paintLayers.filter((p) => p.id !== layer.id),
+                              },
+                              t('删除绘制图层'),
+                              true,
+                            )
+                          )
+                            editor.setActivePaintLayerId(null);
+                        }}
+                      >
+                        <Trash size={16} />
+                      </IconButton>
+                    </div>
+                  </MotionDetails>
+                  <small className="control-note">
+                    {t('总笔画预算')}
+                    {recipe.paintLayers.reduce((n, p) => n + p.strokes.length, 0)} /{' '}
+                    {MAX_V3_PAINT_STROKES}
+                    {t('；重置参数不改已绘制的笔画。')}
+                  </small>
+                </>
+              )}
+            </>
+          )}
         </>
       )}
     </section>
@@ -636,6 +1006,41 @@ export function LiquifyControls({ controller }: { controller: InspectorControlle
           </button>
         ))}
       </div>
+      <div className="makeup-parameter-tabs portrait-manual-rail">
+        <RubberSegment<'free' | 'horizontal' | 'vertical'>
+          label={t('拉伸方向')}
+          value={settings.axis ?? 'free'}
+          onChange={(axis) =>
+            editor.setWarpSettings((current) => ({
+              ...current,
+              axis,
+              mode: 'push',
+              protecting: false,
+            }))
+          }
+          options={[
+            { value: 'free', label: t('自由') },
+            { value: 'horizontal', label: t('横向') },
+            { value: 'vertical', label: t('纵向') },
+          ]}
+        />
+        {recipe.regionEdits.some((region) => region.enabled) && (
+          <ChoiceSelect
+            size="compact"
+            ariaLabel={t('拉伸范围')}
+            value={settings.regionId ?? ''}
+            onValueChange={(regionId) =>
+              editor.setWarpSettings((current) => ({ ...current, regionId }))
+            }
+            options={[
+              { value: '', label: t('整张图片') },
+              ...recipe.regionEdits
+                .filter((region) => region.enabled)
+                .map(({ id, name }) => ({ value: id, label: name })),
+            ]}
+          />
+        )}
+      </div>
       <ParameterShelf
         label={t('液化画笔')}
         controls={[
@@ -643,7 +1048,7 @@ export function LiquifyControls({ controller }: { controller: InspectorControlle
             id: 'radius',
             label: t('作用直径'),
             value: settings.radius * short * 2,
-            min: 1,
+            min: 0.5,
             max: short * 2,
             step: 0.1,
             unit: 'px',

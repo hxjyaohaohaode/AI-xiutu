@@ -258,6 +258,12 @@ type EditGesture = {
   paint?: PaintStrokeV3;
   paintLayerId?: string;
   warp?: WarpStrokeV3;
+  warpPointer?: {
+    axis: 'free' | 'horizontal' | 'vertical';
+    x: number;
+    y: number;
+    strength: number;
+  };
   imageLayer?: ImageLayerV3;
   newRepair?: { mode: 'healing' | 'retouch'; id: string };
   projective?: {
@@ -299,7 +305,7 @@ export function CanvasStage({
   statusContainer: HTMLElement | null;
   collaboration?: CollaborationState;
   group: ToolGroup;
-  onImport: (file?: File) => void;
+  onImport: (files?: File[]) => void;
   onAI: () => void;
   onDraw: () => void;
   accountState?: 'loading' | 'guest' | 'signed-in';
@@ -468,7 +474,7 @@ export function CanvasStage({
   const footprintRadius =
     group === 'liquify' && !protecting
       ? editor.warpSettings.radius
-      : group === 'paint'
+      : group === 'paint' && !editor.paintSettings.automaticMakeup
         ? editor.paintSettings.radius
         : startRepair || (editingSelection && mask.type === 'brush')
           ? startRepair
@@ -902,7 +908,9 @@ export function CanvasStage({
         ? { radius: defaultRepairBrush, feather: 0.25, opacity: 1, mode: 'add' as const }
         : editor.brushSettings;
     const point =
-      kind === 'brush' || kind === 'paint'
+      kind === 'brush' ||
+      (kind === 'paint' &&
+        !(editor.paintSettings.mode === 'paint' && editor.paintSettings.material))
         ? brushPointAtSource(
             rawPoint,
             dimensions,
@@ -953,6 +961,7 @@ export function CanvasStage({
     }
     if (kind === 'paint' && (recipe.schemaVersion === 3 || recipe.schemaVersion === 4)) {
       const settings = editor.paintSettings;
+      const material = settings.mode === 'paint' ? settings.material : undefined;
       if (settings.mode === 'clone' && (settings.choosingSource || !settings.source)) {
         editor.setPaintSettings({ ...settings, source: point, choosingSource: false });
         setNotice('克隆来源已选，下一笔开始绘制。');
@@ -963,7 +972,7 @@ export function CanvasStage({
       if (!layer) {
         layer = {
           id: newId!,
-          name: '手动绘制',
+          name: material ? t('妆容') : '手动绘制',
           enabled: true,
           opacity: 1,
           blendMode: 'normal',
@@ -986,9 +995,10 @@ export function CanvasStage({
         feather: settings.feather,
         opacity: settings.opacity,
         color: settings.color,
+        ...(material ? { material } : {}),
         source: settings.mode === 'clone' ? settings.source : null,
         points: state.points,
-        ...(pressure
+        ...(pressure || material
           ? {
               sampling: {
                 algorithm: 'swept-v1',
@@ -1011,8 +1021,50 @@ export function CanvasStage({
       });
     }
     if (kind === 'warp' && (recipe.schemaVersion === 3 || recipe.schemaVersion === 4)) {
+      const settings = editor.warpSettings;
+      const region = recipe.regionEdits.find(
+        (item) => item.id === settings.regionId && item.enabled,
+      );
+      let guardId: string | undefined;
+      if (settings.regionId && !region) {
+        frame.current.releasePointerCapture(event.pointerId);
+        setNotice(t('拉伸范围已变化，请重新选择。'));
+        return;
+      }
+      if (region) {
+        const mask = { ...region.mask, invert: !region.mask.invert };
+        const existing = recipe.warp.guards ?? [];
+        const stored = existing.find(
+          (guard) => JSON.stringify(guard.mask) === JSON.stringify(mask),
+        );
+        guardId = stored?.id ?? 'scope-' + newId;
+        if (!stored) {
+          const used = new Set(recipe.warp.strokes.map((stroke) => stroke.guardId));
+          const guards = existing.filter((guard) => used.has(guard.id));
+          if (guards.length >= 8) {
+            frame.current.releasePointerCapture(event.pointerId);
+            setNotice(t('液化范围已达上限，请删除不用的笔画。'));
+            return;
+          }
+          state.rollback = recipe;
+          state.base = {
+            ...recipe,
+            warp: { ...recipe.warp, guards: [...guards, { id: guardId, mask }] },
+          };
+        }
+      }
+      const strength = settings.mode === 'restore' ? settings.restoreStrength : settings.strength;
+      const pressure =
+        event.pointerType === 'pen' && event.pressure > 0 ? 0.25 + 0.75 * event.pressure : 1;
+      state.warpPointer = {
+        axis: settings.axis ?? 'free',
+        x: event.clientX,
+        y: event.clientY,
+        strength,
+      };
       state.warp = {
         id: newId!,
+        ...(guardId ? { guardId } : {}),
         ...(editor.warpSettings.mode === 'restore'
           ? { algorithm: 'restore-v1' as const, resampling: 'bounded-cubic-v1' as const }
           : recipe.schemaVersion === 4
@@ -1023,16 +1075,19 @@ export function CanvasStage({
         to: point,
         radius: editor.warpSettings.radius,
         feather: editor.warpSettings.feather,
-        strength:
-          editor.warpSettings.mode === 'restore'
-            ? editor.warpSettings.restoreStrength
-            : editor.warpSettings.strength,
+        strength: strength * pressure,
       };
-      if (state.warp.mode !== 'push')
+      if (state.warp.mode !== 'push') {
+        const base = state.base as typeof recipe;
         previewEdit(state, {
-          ...recipe,
-          warp: { ...recipe.warp, enabled: true, strokes: [...recipe.warp.strokes, state.warp] },
+          ...base,
+          warp: {
+            ...base.warp,
+            enabled: true,
+            strokes: [...recipe.warp.strokes, state.warp],
+          },
         });
+      }
     }
     const brush = state.mask;
     if (kind === 'brush' && brush?.type === 'brush') {
@@ -1133,7 +1188,9 @@ export function CanvasStage({
         pointerPathSamples(event.nativeEvent),
         (sample) => {
           const point = toSource(sample.clientX, sample.clientY, contentSpace, 'strict');
-          return point ? brushPointAtSource(point, dimensions, stroke.radius) : null;
+          return point && !state.paint?.material
+            ? brushPointAtSource(point, dimensions, stroke.radius)
+            : point;
         },
         dimensions,
         Math.max(
@@ -1172,13 +1229,16 @@ export function CanvasStage({
                     {
                       ...state.paint!,
                       points: sampled.points,
-                      ...(state.path && (state.path.pressureSensitive || state.path.breaks.length)
+                      ...(state.path &&
+                      (state.paint!.material ||
+                        state.path.pressureSensitive ||
+                        state.path.breaks.length)
                         ? {
                             sampling: {
                               algorithm: 'swept-v1' as const,
                               pressure: state.path.pressures,
                               breaks: state.path.breaks,
-                              antialias: state.path.pressureSensitive,
+                              antialias: !!state.paint!.material || state.path.pressureSensitive,
                             },
                           }
                         : {}),
@@ -1236,8 +1296,12 @@ export function CanvasStage({
       return;
     }
     const rawPoint = toSource(
-      event.clientX,
-      event.clientY,
+      state.warpPointer?.axis === 'vertical' && state.warp?.mode === 'push'
+        ? state.warpPointer.x
+        : event.clientX,
+      state.warpPointer?.axis === 'horizontal' && state.warp?.mode === 'push'
+        ? state.warpPointer.y
+        : event.clientY,
       contentSpace,
       editPointerBounds(state.kind),
     );
@@ -1300,7 +1364,17 @@ export function CanvasStage({
       state.warp &&
       (state.base.schemaVersion === 3 || state.base.schemaVersion === 4)
     ) {
-      const stroke = { ...state.warp, to: point };
+      const pressure =
+        event.pointerType === 'pen' && event.pressure > 0 ? 0.25 + 0.75 * event.pressure : null;
+      const stroke = {
+        ...state.warp,
+        to: point,
+        strength:
+          pressure && state.warpPointer
+            ? state.warpPointer.strength * pressure
+            : state.warp.strength,
+      };
+      state.warp = stroke;
       previewEdit(state, {
         ...state.base,
         warp: { ...state.base.warp, enabled: true, strokes: [...state.base.warp.strokes, stroke] },
@@ -1760,8 +1834,8 @@ export function CanvasStage({
       onDrop={(event) => {
         prevent(event);
         setDragging(false);
-        const file = event.dataTransfer.files[0];
-        if (file) onImport(file);
+        const files = [...event.dataTransfer.files];
+        if (files.length) onImport(files);
       }}
     >
       <div className="canvas-file-info" data-motion="canvas-file-info">
@@ -2018,6 +2092,7 @@ export function CanvasStage({
                 }
               } else if (
                 group === 'paint' &&
+                !editor.paintSettings.automaticMakeup &&
                 (recipe.schemaVersion === 3 || recipe.schemaVersion === 4)
               )
                 beginEdit(event, 'paint');

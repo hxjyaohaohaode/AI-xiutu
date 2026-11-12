@@ -276,6 +276,7 @@ export function AdvancedInspector({
                       {id === 'paint' && (
                         <PaintControls
                           controller={controller}
+                          headerTarget={id === group ? chrome?.headerTarget : null}
                           pickedColor={pickedColor}
                           onSample={onSample}
                           sampling={sampling}

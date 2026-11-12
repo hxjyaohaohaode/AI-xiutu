@@ -301,6 +301,7 @@ export function AssetLibrary({
   onCreate,
   onCopy,
   onShare,
+  onCollage,
 }: {
   space: Space | null;
   project: Project | null;
@@ -321,6 +322,7 @@ export function AssetLibrary({
   onCreate: () => void;
   onCopy: () => void;
   onShare: () => void;
+  onCollage: () => void;
 }) {
   const locale = useLocale();
   const c = resourceExperienceCopy(locale);
@@ -948,6 +950,10 @@ export function AssetLibrary({
           assets={assets.filter((asset) => asset.projectId === project.id)}
           onClose={() => setProjectTools(false)}
           onCreated={() => setRefresh((value) => value + 1)}
+          onOpenCollage={() => {
+            setProjectTools(false);
+            onCollage();
+          }}
         />
       )}
       {tools?.kind === 'restoration' && (

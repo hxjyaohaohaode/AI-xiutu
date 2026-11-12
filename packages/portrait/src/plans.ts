@@ -1,14 +1,17 @@
 import {
+  compileSelectionMaskV3,
   createColorBlockV3,
   createAdjustmentRegionV3,
   parseEditorRecipe,
   createRetouchRegionV4,
+  BLEND_MODES_V3,
   type LayeredRecipe,
   type RetouchRegionV4,
   type HealingOperationV4,
   type Point,
   type SelectionMaskV3,
   type PaintLayerV3,
+  type PaintMaterialV3,
   type WarpStrokeV3,
   type AdjustmentRegionV3,
   type OperationOriginV3,
@@ -31,6 +34,7 @@ function parseLayeredRecipe(input: unknown): LayeredRecipe {
 export type MakeupColor = [number, number, number, number];
 export interface PortraitApplyOptions {
   makeupColors?: Partial<Record<string, MakeupColor>>;
+  makeupMaterials?: Partial<Record<string, PaintMaterialV3>>;
 }
 const catalog = new Map(PORTRAIT_TOOLS.map((t) => [t.id, t]));
 const skinSpotTools = ['skinShine', 'skinBlemish', 'skinColorSpot'];
@@ -250,6 +254,53 @@ const bodyRequirements: Record<string, number[]> = {
   legs: [11, 12, 23, 24, 25, 26, 27, 28],
   height: [11, 12, 23, 24, 25, 26, 27, 28],
 };
+
+function hairlineAnchors(analysis: PortraitAnalysis, target: PortraitTarget) {
+  const hair = analysis.segmentation?.hair;
+  const outline = target.contours.oval;
+  const left = target.contours.leftEye;
+  const right = target.contours.rightEye;
+  const lips = target.contours.lips;
+  if (!hair || !outline?.length || !left?.length || !right?.length || !lips?.length) return [];
+  const { width, height } = analysis.frame;
+  const eyeA = center(left),
+    eyeB = center(right);
+  const middle = { x: (eyeA.x + eyeB.x) / 2, y: (eyeA.y + eyeB.y) / 2 };
+  const x = (eyeB.x - eyeA.x) * width,
+    y = (eyeB.y - eyeA.y) * height;
+  const distance = Math.hypot(x, y);
+  if (distance < 14) return [];
+  const u = { x: x / distance, y: y / distance };
+  const mouth = center(lips);
+  const towardMouth =
+    (mouth.x - middle.x) * width * -u.y + (mouth.y - middle.y) * height * u.x < 0 ? -1 : 1;
+  const v = { x: -u.y * towardMouth, y: u.x * towardMouth };
+  const upper = Math.min(
+    ...outline.map(
+      (point) => (point.x - middle.x) * width * v.x + (point.y - middle.y) * height * v.y,
+    ),
+  );
+  if (upper >= -distance * 0.28) return [];
+  const sampleHair = compileSelectionMaskV3(hair, { width, height });
+  return [-0.55, -0.28, 0, 0.28, 0.55].flatMap((offset) => {
+    let sawHair = false;
+    for (
+      let along = upper - distance * 0.5;
+      along <= upper + distance * 0.55;
+      along += Math.max(0.6, distance / 80)
+    ) {
+      const p = {
+        x: middle.x + (u.x * offset * distance + v.x * along) / width,
+        y: middle.y + (u.y * offset * distance + v.y * along) / height,
+      };
+      if (p.x <= 0 || p.x >= 1 || p.y <= 0 || p.y >= 1) continue;
+      const coverage = sampleHair(p.x, p.y);
+      if (coverage >= 0.65) sawHair = true;
+      if (sawHair && coverage <= 0.28) return [{ point: p, axis: v, radius: distance }];
+    }
+    return [];
+  });
+}
 export interface PortraitToolAvailability {
   id: string;
   available: boolean;
@@ -275,6 +326,14 @@ export function portraitToolAvailability(
           : detail?.has(tool.id as DetailFeatureId)
             ? null
             : '该部位的可见轮廓不足，无法精确塑形。';
+    } else if (tool.id === 'hairline') {
+      if (hairlineAnchors(safe, target).length < 3)
+        reason = '没有足够清晰的发际边界，可切换手动调节。';
+    } else if (
+      tool.id === 'eyeliner' &&
+      ['leftEye', 'rightEye'].some((key) => (target.contours[key]?.length ?? 0) < 6)
+    ) {
+      reason = '眼睑轮廓不完整，可切换手动眼线。';
     } else if (tool.id === 'teethTone' || tool.id === 'meshLight') {
       reason =
         schemaVersion === 3
@@ -334,12 +393,17 @@ export function applyPortraitValues<T extends LayeredRecipe>(
   );
   if (unavailable) throw new Error(unavailable.reason!);
   const makeupColors = portraitMakeupColors(recipe, targetId);
+  const materials: Partial<Record<string, PaintMaterialV3>> = {};
+  for (const layer of recipe.paintLayers) {
+    const material = layer.strokes[0]?.material;
+    if (material && belongsTo(layer, targetId)) materials[layer.origin!.parameterId] = material;
+  }
   const requested = copyPortraitData(options);
   if (
     !requested ||
     typeof requested !== 'object' ||
     Array.isArray(requested) ||
-    Object.keys(requested).some((k) => k !== 'makeupColors')
+    Object.keys(requested).some((k) => k !== 'makeupColors' && k !== 'makeupMaterials')
   )
     throw new Error('人像选项无效。');
   const requestedColors = (requested as Record<string, unknown>).makeupColors;
@@ -349,6 +413,32 @@ export function applyPortraitValues<T extends LayeredRecipe>(
     for (const [key, shade] of Object.entries(requestedColors)) {
       if (catalog.get(key)?.group !== 'makeup' || !shade) throw new Error('未注册的妆容颜色字段。');
       makeupColors[key] = validateColor(shade);
+    }
+  }
+  const requestedMaterials = (requested as PortraitApplyOptions).makeupMaterials;
+  if (requestedMaterials !== undefined) {
+    if (
+      !requestedMaterials ||
+      typeof requestedMaterials !== 'object' ||
+      Array.isArray(requestedMaterials)
+    )
+      throw new Error('妆效选项无效。');
+    for (const [key, material] of Object.entries(requestedMaterials)) {
+      if (
+        catalog.get(key)?.group !== 'makeup' ||
+        !material ||
+        material.algorithm !== 'pigment-v1' ||
+        !['matte', 'satin', 'shimmer', 'metallic'].includes(material.finish) ||
+        !Number.isFinite(material.saturation) ||
+        material.saturation < 0 ||
+        material.saturation > 2 ||
+        !BLEND_MODES_V3.includes(material.blendMode) ||
+        Object.keys(material).some(
+          (key) => !['algorithm', 'finish', 'saturation', 'blendMode'].includes(key),
+        )
+      )
+        throw new Error('妆效参数无效。');
+      materials[key] = material;
     }
   }
   const provenance = (
@@ -638,6 +728,18 @@ export function applyPortraitValues<T extends LayeredRecipe>(
     const eyeMasks = [le, re].map((p) =>
       oval(axisOffset(p, 0, fh * 0.065), fw * 0.18, fh * 0.055, 0.8),
     );
+    if (value('hairline'))
+      hairlineAnchors(analysis, target).forEach(({ point, axis, radius: distance }, index) =>
+        warp(
+          'hairline-' + index,
+          'push',
+          point,
+          add(point, axis.x * distance * 0.24, axis.y * distance * 0.24),
+          (distance * 0.3) / short,
+          value('hairline') * 0.38,
+          true,
+        ),
+      );
     if (value('underEye'))
       region(
         'underEye',
@@ -779,6 +881,7 @@ export function applyPortraitValues<T extends LayeredRecipe>(
     const cheekPoints = [anchor(-0.28, 0.1), anchor(0.28, 0.1)];
     const makeupMasks: Record<string, SelectionMaskV3> = {
       lipstick: masks.lips,
+      foundation: masks.skin,
       browColor: masks.brows,
       blush: combine(
         'union',
@@ -798,6 +901,37 @@ export function applyPortraitValues<T extends LayeredRecipe>(
       ),
       underEyeMakeup: combine('union', eyeMasks),
     };
+    if (value('eyeliner')) {
+      const upperEdges = [target.contours.leftEye!, target.contours.rightEye!].map((eye) => {
+        const eyeCenter = px(center(eye));
+        const upper = eye
+          .map((point) => {
+            const pixel = px(point),
+              x = pixel.x - eyeCenter.x,
+              y = pixel.y - eyeCenter.y;
+            return { point, along: x * ux + y * uy, above: x * vx + y * vy };
+          })
+          .filter(({ above }) => above <= 0)
+          .sort((a, b) => a.along - b.along);
+        const line = upper.map(({ point }) => point);
+        const weight = bounded(fh * 0.008, 0.65, 9);
+        return polygon(
+          [
+            ...line,
+            ...line
+              .slice()
+              .reverse()
+              .map((p) => axisOffset(p, 0, -weight)),
+          ],
+          (weight * 0.22) / short,
+        );
+      });
+      makeupMasks.eyeliner = guard(
+        combine('subtract', [combine('union', upperEdges), baseMasks.eyes]),
+      );
+    }
+    if (materials.eyeshadow && value('eyeshadow'))
+      makeupMasks.eyeshadow = guard(combine('subtract', [makeupMasks.eyeshadow!, baseMasks.eyes]));
     for (const tool of PORTRAIT_TOOLS.filter((t) => t.group === 'makeup')) {
       if (!value(tool.id)) continue;
       const fallback: MakeupColor = ['highlight', 'underEyeMakeup'].includes(tool.id)
@@ -806,6 +940,7 @@ export function applyPortraitValues<T extends LayeredRecipe>(
             ? [104, 75, 63, defaultColor[3]]
             : defaultColor,
         shade = makeupColors[tool.id] ?? fallback;
+      const material = materials[tool.id];
       const fillPoints =
         dims.width >= dims.height
           ? [
@@ -820,12 +955,14 @@ export function applyPortraitValues<T extends LayeredRecipe>(
         id: prefix + tool.id,
         name: `${target.label} · ${tool.label}`,
         enabled: true,
-        opacity: value(tool.id) * 0.65,
-        blendMode: ['highlight', 'underEyeMakeup', 'contour'].includes(tool.id)
-          ? 'soft-light'
-          : tool.id === 'browColor'
-            ? 'multiply'
-            : 'color',
+        opacity: value(tool.id) * (material ? 1 : 0.65),
+        blendMode: material
+          ? 'normal'
+          : ['highlight', 'underEyeMakeup', 'contour', 'foundation'].includes(tool.id)
+            ? 'soft-light'
+            : ['browColor', 'eyeliner'].includes(tool.id)
+              ? 'multiply'
+              : 'color',
         mask: makeupMasks[tool.id]!,
         origin: provenance(tool.id, values[tool.id]!, shade),
         strokes: [
@@ -837,6 +974,7 @@ export function applyPortraitValues<T extends LayeredRecipe>(
             mode: 'paint',
             color: shade,
             source: null,
+            ...(material ? { material } : {}),
           },
         ],
       });
