@@ -197,6 +197,8 @@ Edge 桌面在 Nikon 45.75MP 的整图转换期间持按曝光约 2.57 秒，48 
 
 同容器分段采样显示，临时 TIFF 写入从 8.08–13.49 秒缩短到 0.27–0.29 秒。剩余主要耗时为逐像素调色，曝光约 4 秒，曲线和局部约 14 秒。此项保留原尺寸开发和适屏输出清晰度，仍未达到持续拖动验收。包含此改动的生产媒体镜像通过 1,045 项真实 PostgreSQL 回归。
 
+同一原片的独立硬件原型在 Windows Edge 的 Intel Arc WebGPU 适配器中读入 732,066,816 字节 float32 原像素。沿用先调色、后纵横分离 Lanczos3 的流程，预热后两组各连续计算 12 帧，曝光 86.5–120.0ms，曲线加两个局部 85.6–101.2ms。每组与生产 PNG16 核对全部 4,718,592 个 RGB 通道样本，最大误差为 1 个 16 位码值，平均绝对误差分别为 0.00144 和 0.00273 码值。原型在本机首次传输约 2.58 秒，需约 0.9GiB GPU 缓冲。工作台接入、来源传输预算、透明素材、设备失效及移动真机仍待验收。[libvips 纵向采样](https://github.com/libvips/libvips/blob/v8.18.7/libvips/resample/reducev.cpp) · [横向采样](https://github.com/libvips/libvips/blob/v8.18.7/libvips/resample/reduceh.cpp)
+
 ### F09 手机 Ultra HDR JPEG 往返
 
 取自 Pixel 6 Pro 的四张 4,080×3,072 相机原片，均带 1,020×768 增益图和 Display P3 色域。Linux API 在 2 CPU、4 GiB 容器中验证原件哈希、32 位线性 Rec.709 母版、旋转径向与线性渐变调色及版本冲突。导入 5.38–6.10 秒，解码进程峰值 RSS 236–249MiB。每张以 420×300 热窗口测试 12 次局部更新，范围 87–131ms。每张窗口与独立全图 PNG16/TIFF16 对照的 1,008,000 个通道样本一致，43,194 个选区外像素未改变。[原片与 CC BY 4.0 授权][pixel-ultrahdr] · [参考解码][ultrahdr-reference] · [复现脚本][ours-master-qa]
