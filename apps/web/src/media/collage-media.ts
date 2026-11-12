@@ -55,10 +55,10 @@ const isImage = (file: File) =>
 const stem = (file: File) => file.name.replace(/\.[^.]+$/, '').toLocaleLowerCase();
 const isHeic = (file: File) => /^image\/hei[cf]$/.test(file.type) || /\.hei[cf]$/i.test(file.name);
 
-export type MediaInput = { photo?: File; video?: File };
+export type MediaInput = { photo?: File; video?: File; requireMotion?: boolean };
 type CollageAsset = Pick<Asset, 'id' | 'name' | 'mime' | 'bytes' | 'provenance'>;
 export type CollageImport = { scope: string } & (
-  { files: File[] } | { asset: CollageAsset; replaceId?: string }
+  { files: File[] } | { capture: () => Promise<File> } | { asset: CollageAsset; replaceId?: string }
 );
 
 export async function readCollageAsset(asset: CollageAsset, signal: AbortSignal) {
@@ -83,8 +83,9 @@ export function groupCollageFiles(files: File[], explicitPair: boolean): MediaIn
     throw new Error('COLLAGE_FILE_LIMIT');
   const pairs = new Map<File, File>();
   if (explicitPair) {
-    const photo = files.find(isImage),
-      video = files.find(isVideo);
+    const photo = files.find(isImage);
+    const video = files.find(isVideo);
+    if (files.length === 1 && photo) return [{ photo, requireMotion: true }];
     if (files.length !== 2 || !photo || !video) throw new Error('COLLAGE_PAIR');
     return [{ photo, video }];
   }
@@ -386,6 +387,7 @@ export async function decodeCollageMedia(
   try {
     const embedded = input.photo && !input.video ? await embeddedMotionPhoto(input.photo) : null;
     const video = input.video ?? embedded?.motion;
+    if (input.requireMotion && !video) throw new Error('COLLAGE_PAIR');
     if (input.photo && !video) animation = await loadAnimation(input.photo, signal);
     if (input.photo && !animation) {
       try {

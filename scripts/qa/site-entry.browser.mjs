@@ -207,7 +207,7 @@ export async function runSiteEntryChecks({
           .locator('.overview-hero h1')
           .getByText(locales[0].headline, { exact: true })
           .waitFor();
-        const hero = page.locator('.overview-hero-media img');
+        const hero = page.locator('.overview-hero-media .overview-screen picture > img');
         await until(
           () => hero.evaluate((image) => image.complete && image.naturalWidth > 0),
           'the public preview shows a decoded current-product image',

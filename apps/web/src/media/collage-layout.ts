@@ -35,6 +35,8 @@ export type CollageItem = {
     offsetX: number;
     offsetY: number;
     scale: number;
+    feather?: number;
+    order?: number;
     only: boolean;
   };
 };

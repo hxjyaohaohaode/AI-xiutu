@@ -1,0 +1,300 @@
+{
+  "capturedAt": "2026-11-12T19:01:27.486936+00:00",
+  "base": "b652ddea24bff0dd45e4897bfc99ea149e1e0266",
+  "source": "running local workspace with synthetic signed-in projects, no private assets",
+  "photos": [
+    {
+      "file": "collaboration-en.webp",
+      "input": "disposable team project with actual notes and task records",
+      "dimensions": [
+        1440,
+        960
+      ],
+      "sha256": "549e01a5dd7dfb75fa30c0af6211be200f1b3e2f06029ebaceebf2aab2d5a7b5"
+    },
+    {
+      "file": "collaboration-zh-CN.webp",
+      "input": "disposable team project with actual notes and task records",
+      "dimensions": [
+        1440,
+        960
+      ],
+      "sha256": "3c81b99b95ea7a075dc28f2bf734522c55b5f76901675ed6dca333e2050b26b5"
+    },
+    {
+      "file": "collaboration-zh-TW.webp",
+      "input": "disposable team project with actual notes and task records",
+      "dimensions": [
+        1440,
+        960
+      ],
+      "sha256": "ae27d865d5e69c6ac0f944b108dea527ee0c320ed19ea4f8723cb884809be32d"
+    },
+    {
+      "file": "desktop-flow-en.webp",
+      "input": "stories/shore.webp",
+      "dimensions": [
+        1440,
+        960
+      ],
+      "sha256": "b219a09204d8f99c17db5b1da3405484d16dd99ca5ccdd16d31b63d6644e637c"
+    },
+    {
+      "file": "desktop-flow-zh-CN.webp",
+      "input": "stories/shore.webp",
+      "dimensions": [
+        1440,
+        960
+      ],
+      "sha256": "b393f354da377188e53da1246b03d42c8f2ce95088a06ff03838ffb5b7f390f2"
+    },
+    {
+      "file": "desktop-flow-zh-TW.webp",
+      "input": "stories/shore.webp",
+      "dimensions": [
+        1440,
+        960
+      ],
+      "sha256": "6ab69cc2c4c8095364974ff238a4f27dcf10973ac131b48fa3a80f7d8db8069e"
+    },
+    {
+      "file": "library-en.webp",
+      "input": "signed-in disposable project with eight portfolio photographs and actual saved works",
+      "dimensions": [
+        1440,
+        960
+      ],
+      "sha256": "3d3d6dfd0dac9cccbb56d39a9d1caebf462f422f8d650791a372f42b5d609bcc"
+    },
+    {
+      "file": "library-phone-en.webp",
+      "input": "signed-in disposable project with eight portfolio photographs and actual saved works",
+      "dimensions": [
+        390,
+        844
+      ],
+      "sha256": "034393053a075b8cf94899629a24dc0a5b8edc37644c5053a7e4684b9af2fae5"
+    },
+    {
+      "file": "library-phone-zh-CN.webp",
+      "input": "signed-in disposable project with eight portfolio photographs and actual saved works",
+      "dimensions": [
+        390,
+        844
+      ],
+      "sha256": "37fd09ab068ce032fb9112f7f3535953800edcb48866a9b55d6b7d8676bd7094"
+    },
+    {
+      "file": "library-phone-zh-TW.webp",
+      "input": "signed-in disposable project with eight portfolio photographs and actual saved works",
+      "dimensions": [
+        390,
+        844
+      ],
+      "sha256": "e7bea2366cf9e0dc23c12178418ad01e872669ece89b0e2960367395f3cd7fe3"
+    },
+    {
+      "file": "library-zh-CN.webp",
+      "input": "signed-in disposable project with eight portfolio photographs and actual saved works",
+      "dimensions": [
+        1440,
+        960
+      ],
+      "sha256": "18228facb6b141450832f6509793000f947e0b6d0596bcc4f807ed347593313d"
+    },
+    {
+      "file": "library-zh-TW.webp",
+      "input": "signed-in disposable project with eight portfolio photographs and actual saved works",
+      "dimensions": [
+        1440,
+        960
+      ],
+      "sha256": "9f31cfb4e7ec22e230b10d59191364065b68374c69395dffce545eb9c87e1679"
+    },
+    {
+      "file": "local-en.webp",
+      "input": "stories/ceramics-original.webp",
+      "dimensions": [
+        1440,
+        960
+      ],
+      "sha256": "5bc41797e0998f1c8ab493ce2bf45dd7b11fecfb9e9942adb6dd009f795ef07e"
+    },
+    {
+      "file": "local-phone-en.webp",
+      "input": "stories/ceramics-original.webp",
+      "dimensions": [
+        390,
+        844
+      ],
+      "sha256": "d1b46c76ad0fc679ff6f710d99a7ca9864236389b764f1c6cb1e4dc8a743e6b9"
+    },
+    {
+      "file": "local-phone-zh-CN.webp",
+      "input": "stories/ceramics-original.webp",
+      "dimensions": [
+        390,
+        844
+      ],
+      "sha256": "66819f9e70de986245531d633d2f96425b82f54cfa04c0d1b902b9dce790cd31"
+    },
+    {
+      "file": "local-phone-zh-TW.webp",
+      "input": "stories/ceramics-original.webp",
+      "dimensions": [
+        390,
+        844
+      ],
+      "sha256": "8dcd2e5a494acf6216415bd7e959535e5fe0f7eb7d35dae4b51766e9eea3d963"
+    },
+    {
+      "file": "local-zh-CN.webp",
+      "input": "stories/ceramics-original.webp",
+      "dimensions": [
+        1440,
+        960
+      ],
+      "sha256": "cee26ec4a6e7cd665bc6830b3a3472c105118e1cfb96057828cca922e1a22bb6"
+    },
+    {
+      "file": "local-zh-TW.webp",
+      "input": "stories/ceramics-original.webp",
+      "dimensions": [
+        1440,
+        960
+      ],
+      "sha256": "b6766397f7c823bffc81349b2f0014297bc8dabd15a0b8bf79f3e12b2508e26d"
+    },
+    {
+      "file": "phone-en.webp",
+      "input": "stories/tulip.webp",
+      "dimensions": [
+        390,
+        844
+      ],
+      "sha256": "55990ffdcf3317ebdc62fd807090805dbcc571eceae79bf15dd9934268858c5e"
+    },
+    {
+      "file": "phone-zh-CN.webp",
+      "input": "stories/tulip.webp",
+      "dimensions": [
+        390,
+        844
+      ],
+      "sha256": "627a7fdf29dc6824a2590fb4cd92a00f92af6579aff706565ba3faea0ffae8a2"
+    },
+    {
+      "file": "phone-zh-TW.webp",
+      "input": "stories/tulip.webp",
+      "dimensions": [
+        390,
+        844
+      ],
+      "sha256": "c67479cc2e36fdc653a75f8ac0cac5d1c7400d9078e8ef07836fb2fd633a1cf0"
+    },
+    {
+      "file": "stories/team-review-canvas.webp",
+      "input": "stories/gallery.webp with actual annotations from two signed-in project members",
+      "dimensions": [
+        954,
+        636
+      ],
+      "sha256": "d6050b8e2c9c859421e1a19fa49c1a6d09dba3a13e51780b0585fc7fc9775c1a"
+    },
+    {
+      "file": "tablet-en.webp",
+      "input": "color-study.webp",
+      "dimensions": [
+        1024,
+        768
+      ],
+      "sha256": "8200b793eacefdd3d9bdc64aac2593426c11312c0da2df4532a42f0b71b5cd5a"
+    },
+    {
+      "file": "tablet-zh-CN.webp",
+      "input": "color-study.webp",
+      "dimensions": [
+        1024,
+        768
+      ],
+      "sha256": "98dad38e21a333ef6ed02d8d83fb065c1c85683ad21e7836a3971f54bdfe48f5"
+    },
+    {
+      "file": "tablet-zh-TW.webp",
+      "input": "color-study.webp",
+      "dimensions": [
+        1024,
+        768
+      ],
+      "sha256": "42d16676acf9cf6a953e68bcd4cea8726f209f61edc22796f3377ea970c37787"
+    },
+    {
+      "file": "workspace-en.webp",
+      "input": "color-study.webp",
+      "dimensions": [
+        1440,
+        960
+      ],
+      "sha256": "2267a26cfc23ad733d31904215c9ae8c81120695ea08423f2ed79e8d2c511277"
+    },
+    {
+      "file": "workspace-zh-CN.webp",
+      "input": "color-study.webp",
+      "dimensions": [
+        1440,
+        960
+      ],
+      "sha256": "f5db4fa96404ce1f18717e67c5b03ea0a9dbf3650a85c5f46002c6f5d5302c50"
+    },
+    {
+      "file": "workspace-zh-TW.webp",
+      "input": "color-study.webp",
+      "dimensions": [
+        1440,
+        960
+      ],
+      "sha256": "b303d8f491912b7adf8712f8caff885f8c803163a7b99fda1189ffcf0745373f"
+    }
+  ],
+  "recaptures": [
+    {
+      "capturedAt": "2026-11-12T19:07:05.909621+00:00",
+      "base": "7447dafe75b0f1baf40c7f7fef8e163f214539f3",
+      "workspaceChanges": "Dock selection aligned to the active tool in both dimensions",
+      "files": [
+        "desktop-flow-en.webp",
+        "desktop-flow-zh-CN.webp",
+        "desktop-flow-zh-TW.webp",
+        "local-en.webp",
+        "local-zh-CN.webp",
+        "local-zh-TW.webp",
+        "tablet-en.webp",
+        "tablet-zh-CN.webp",
+        "tablet-zh-TW.webp",
+        "workspace-en.webp",
+        "workspace-zh-CN.webp",
+        "workspace-zh-TW.webp"
+      ]
+    },
+    {
+      "capturedAt": "2026-11-12T19:24:53.678708+00:00",
+      "base": "e781fed12a899cc2179c1b941350ec9b5ea86aad",
+      "workspaceChanges": "Consistent thumbnail aspect ratios and a single project result count",
+      "files": [
+        "library-phone-zh-CN.webp",
+        "library-phone-zh-TW.webp",
+        "library-zh-CN.webp",
+        "library-zh-TW.webp"
+      ]
+    },
+    {
+      "capturedAt": "2026-11-12T19:27:37.717210+00:00",
+      "base": "eaf867e7746e4cc4fa01cd443288b34f5128d4de",
+      "workspaceChanges": "Consistent thumbnail aspect ratios and a single project result count",
+      "files": [
+        "library-en.webp",
+        "library-phone-en.webp"
+      ]
+    }
+  ]
+}

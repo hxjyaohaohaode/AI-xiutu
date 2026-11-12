@@ -23,6 +23,8 @@ export function ImportSettings({
   onServerImport,
   onProfessionalImport,
   onClose,
+  onBack,
+  embedded = false,
 }: {
   budget: number;
   recipeVersion: EditorRecipe['schemaVersion'];
@@ -38,6 +40,8 @@ export function ImportSettings({
   onServerImport: () => Promise<void>;
   onProfessionalImport: () => void;
   onClose: () => void;
+  onBack?: () => void;
+  embedded?: boolean;
 }) {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -75,13 +79,8 @@ export function ImportSettings({
       setBusy(false);
     }
   }
-  return (
-    <Modal
-      title={t('图片导入与分辨率')}
-      onClose={onClose}
-      canClose={() => !locked.current}
-      className="studio-dialog import-dialog"
-    >
+  const content = (
+    <>
       {file && (
         <div className="import-file-summary">
           <ImageSquare size={23} />
@@ -114,12 +113,7 @@ export function ImportSettings({
             }))}
           />
         </label>
-        <p className="resource-budget-note" role="status">
-          {t('当前上限 {v0} 百万像素 · 单边 {v1} px', {
-            v0: (limits.maxPixels / 1e6).toFixed(1),
-            v1: limits.maxDimension,
-          })}
-        </p>
+        <output className="import-budget-limit">{t('单边上限')} {limits.maxDimension} px</output>
         {file && (
           <button className="button button-primary" disabled={busy} onClick={() => void retry()}>
             {busy ? (
@@ -151,7 +145,6 @@ export function ImportSettings({
       </div>
       <section className="server-import-section">
         <h3>{t('原片与专业格式')}</h3>
-        <p>{t('原件上传到项目；工作预览用于编辑，原件与母版分别保留。')}</p>
         <button
           className="button button-secondary"
           disabled={busy || (!!project && !canWrite)}
@@ -222,6 +215,18 @@ export function ImportSettings({
         </section>
       )}
       <InlineError message={error} />
+    </>
+  );
+  if (embedded) return content;
+  return (
+    <Modal
+      title={t('图片导入与分辨率')}
+      onClose={onClose}
+      onBack={busy ? undefined : onBack}
+      canClose={() => !locked.current}
+      className="studio-dialog import-dialog"
+    >
+      {content}
     </Modal>
   );
 }

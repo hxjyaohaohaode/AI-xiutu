@@ -179,6 +179,8 @@ export function Modal({
   subtitle,
   children,
   onClose,
+  onBack,
+  hideTitle = false,
   wide = false,
   className = '',
   canClose,
@@ -191,6 +193,8 @@ export function Modal({
   subtitle?: string;
   children: ReactNode;
   onClose: () => void;
+  onBack?: () => void;
+  hideTitle?: boolean;
   wide?: boolean;
   className?: string;
   canClose?: () => boolean | Promise<boolean>;
@@ -424,7 +428,8 @@ export function Modal({
       }}
     >
       <header className="modal-header" data-motion="modal-header" data-motion-state={phase}>
-        <div>
+        {onBack && <IconButton label={t('返回')} className="modal-back" onClick={onBack}><span aria-hidden="true">←</span></IconButton>}
+        <div className={hideTitle ? 'review-sr-only' : undefined}>
           <h2 id={titleId}>{title}</h2>
           {subtitle && <p id={subtitleId}>{subtitle}</p>}
         </div>

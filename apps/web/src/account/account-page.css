@@ -386,3 +386,28 @@ body[data-site-page='account'] #root {
     margin-bottom: 16px;
   }
 }
+
+/* VijinV's moving field label, with a full-surface focus state. */
+.account-page.account-auth .auth-field input {
+  min-height: 42px;
+  border: 1px solid color-mix(in srgb, var(--line) 58%, transparent);
+  border-radius: 10px;
+  box-shadow: none;
+  background: var(--surface-secondary);
+  transition: background 180ms ease, border-color 180ms ease;
+}
+.account-page.account-auth .auth-field input:focus {
+  outline: 1px solid var(--focus-ring);
+  outline-offset: 1px;
+  border-color: transparent;
+  box-shadow: none;
+  background: var(--surface);
+}
+.account-page.account-auth .auth-field > label {
+  font-size: 12px;
+  transition: transform 180ms ease, color 180ms ease;
+}
+.account-page.account-auth .auth-field:focus-within > label {
+  transform: translateY(-2px);
+  color: var(--accent-ink);
+}

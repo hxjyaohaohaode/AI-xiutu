@@ -49,6 +49,7 @@ function drawForeground(
   clipped.clearRect(0, 0, width, height);
   draw(clipped, source, { x: 0, y: 0, width, height });
   clipped.globalCompositeOperation = 'destination-in';
+  if (subject.feather) clipped.filter = 'blur(' + subject.feather * scale + 'px)';
   clipped.drawImage(
     subject.matte,
     (offset?.x ?? 0) * width,
@@ -56,6 +57,7 @@ function drawForeground(
     width,
     height,
   );
+  clipped.filter = 'none';
   clipped.globalCompositeOperation = 'source-over';
   draw(context, scratch, image);
   context.restore();
@@ -90,6 +92,7 @@ export function paintCollage(
       {
         item,
         cell,
+        order: item.subject?.order ?? index,
         source: collageFrame(entry, playing),
         image: tileImageRect(item, cell, scene.mode !== 'layout'),
         track: !!entry.animation || (!!entry.video && (playing || !entry.cover)),
@@ -105,8 +108,10 @@ export function paintCollage(
     draw(context, source, image);
     context.restore();
   }
-  for (const { item, cell, source, image, track } of placed)
-    if (item.subject) drawForeground(context, source, item, cell, image, scratch, track);
+  const foreground = placed.filter(({ item }) => item.subject).sort((a, b) => a.order - b.order);
+  for (const { item, cell, source, image, track } of foreground) {
+    drawForeground(context, source, item, cell, image, scratch, track);
+  }
   return geometry;
 }
 

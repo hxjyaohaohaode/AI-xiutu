@@ -148,9 +148,9 @@ export function FloatingPanel({
     const inspector = panel.current?.querySelector<HTMLElement>('.inspector-scroll');
     if (inspector) inspector.scrollTop = 0;
   }, [viewport.bucket]);
-  const value = boundPanel(geometry, viewport, panelKey);
-  const rect = panelRectangle(value, viewport);
   const mobile = viewport.bucket === 'phone';
+  const value = boundPanel(mobile && panelKey === 'inspector' ? { ...geometry, dock: 'bottom' } : geometry, viewport, panelKey);
+  const rect = panelRectangle(value, viewport);
   const maximized = value.presentation === 'maximized',
     collapsed = value.presentation === 'collapsed';
   const attached = mobile && value.dock === 'bottom';
@@ -497,7 +497,7 @@ export function FloatingPanel({
             })}
             aria-expanded={!collapsed}
             aria-controls={contentId}
-            onPointerDown={(event) => begin(event, attached ? 'resize' : 'move', 'n')}
+            onPointerDown={(event) => { if (!mobile) begin(event, 'move', 'n'); }}
             onPointerMove={move}
             onPointerUp={(event) => end(event)}
             onPointerCancel={(event) => end(event, true)}
@@ -531,6 +531,9 @@ export function FloatingPanel({
             </span>
             <strong>{title}</strong>
           </div>
+          {!mobile && navigation && (
+            <div className="panel-context-navigation panel-context-inline">{navigation}</div>
+          )}
           <div className="panel-presentation-actions" data-motion="panel-actions">
             {attached && !condensed && panelKey !== 'inspector' && (
               <div
@@ -659,7 +662,7 @@ export function FloatingPanel({
               </button>
             </div>
           )}
-          <div
+          {(!mobile || panelKey !== 'inspector') && <div
             className="panel-dock-choices"
             role="group"
             aria-label={t('面板停靠位置')}
@@ -693,7 +696,7 @@ export function FloatingPanel({
               <ArrowsOut size={17} />
               {t('浮动')}
             </button>
-          </div>
+          </div>}
           <div className="panel-size-controls" data-motion="panel-sizing">
             {!attached && (
               <label>
@@ -802,7 +805,6 @@ export function FloatingPanel({
         aria-hidden={(!page && collapsed) || !open}
         hidden={!contentPresence.present}
       >
-        {!page && navigation && <div className="panel-context-navigation">{navigation}</div>}
         <PanelChromeContext.Provider
           value={{
             mobile,

@@ -7,6 +7,7 @@ export function StudioWelcome({
   onImport,
   onDraw,
   onAI,
+  onCollage,
   accountState = 'guest',
   onSignIn,
   onRegister,
@@ -14,6 +15,7 @@ export function StudioWelcome({
   onImport: () => void;
   onDraw: () => void;
   onAI: () => void;
+  onCollage: () => void;
   accountState?: 'loading' | 'guest' | 'signed-in';
   onSignIn?: () => void;
   onRegister?: () => void;
@@ -33,6 +35,11 @@ export function StudioWelcome({
             <span>{t('绘制草图')}</span>
             <ArrowUpRight size={16} />
           </button>
+          <button type="button" data-action="open-collage" onClick={onCollage}>
+            <StudioGlyph name="collage" size={20} />
+            <span>{t('拼图')}</span>
+            <ArrowUpRight size={16} />
+          </button>
           <button type="button" onClick={onAI}>
             <StudioGlyph name="ai" size={20} />
             <span>{t('AI 助手')}</span>
@@ -47,7 +54,11 @@ export function StudioWelcome({
         onClick={onImport}
       >
         <span className="welcome-photo-frame" aria-hidden="true">
-          <StudioGlyph name="import" size={34} />
+          <span className="welcome-folder-back" />
+          <span className="welcome-folder-sheet" />
+          <span className="welcome-folder-sheet" />
+          <span className="welcome-folder-photo"><StudioGlyph name="import" size={25} /></span>
+          <span className="welcome-folder-front" />
           <span className="welcome-frame-corner corner-tl" />
           <span className="welcome-frame-corner corner-tr" />
           <span className="welcome-frame-corner corner-bl" />

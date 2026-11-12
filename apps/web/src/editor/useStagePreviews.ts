@@ -31,6 +31,7 @@ export function useStagePreviews(
   images: ReadonlyMap<string, RGBAImage>,
   remoteRecipe: EditorRecipe | null = null,
   live = false,
+  comparing = false,
 ) {
   const worker = useRef<Worker | null>(null);
   const nextId = useRef(0);
@@ -138,7 +139,7 @@ export function useStagePreviews(
     }
   }, [images]);
   useEffect(() => {
-    if (source)
+    if (source && (comparing || compare?.source !== source) && (compare?.source !== source || compare.key !== comparisonKey))
       enqueue(
         'compare',
         comparisonKey,
@@ -152,7 +153,7 @@ export function useStagePreviews(
             ? createRecipeV3({ geometry: recipe.geometry, transform: recipe.transform })
             : createRecipe({ geometry: recipe.geometry }),
       );
-  }, [source, comparisonKey]);
+  }, [source, comparisonKey, comparing]);
   useEffect(() => {
     if (!source || !cropOpen) {
       pending.current.crop = null;

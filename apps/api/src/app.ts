@@ -6,7 +6,7 @@ import { listUnknownAiJobs } from './ai-reconciliation.js';
 import { createDatabase, migrate, QuotaError, type Database } from '@ai-xiutu/db';
 import {
   createTencentSms,
-  createTencentTextModerator,
+  createTextModerator,
   ProviderError,
   type SmsAdapter,
 } from '@ai-xiutu/providers';
@@ -261,7 +261,7 @@ export async function buildApp(options: BuildOptions = {}): Promise<FastifyInsta
     providerConfigured: Boolean(
       process.env.DASHSCOPE_API_KEY || process.env.ARK_API_KEY || process.env.OPENAI_API_KEY,
     ),
-    moderationConfigured: createTencentTextModerator().configured,
+    moderationConfigured: createTextModerator().configured,
     aiConfigured: ai?.configured ?? false,
     aiUnavailableReason: ai?.reason ?? 'AI服务尚未配置；未进行任何模型调用',
     paymentConfigured: false,

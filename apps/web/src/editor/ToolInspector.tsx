@@ -140,7 +140,7 @@ export const toolGroups: { id: ToolGroup; label: string; icon: ReactNode; descri
     },
     {
       id: 'composite',
-      label: '合成',
+      label: '图层',
       icon: <StudioGlyph name="composite" />,
       description: '图层、混合与蒙版',
     },
@@ -184,6 +184,8 @@ function Section({
 }
 export type ToolInspectorProps = {
   editor: EditorState;
+  target?: string;
+  onPortraitTool?: (tool: ToolGroup | null) => void;
   group: ToolGroup;
   mobileOpen: boolean;
   onClose: () => void;

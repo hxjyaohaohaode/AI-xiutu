@@ -31,7 +31,7 @@ import {
   VoiceTranscriptBuffer,
 } from '@ai-xiutu/assistant';
 import type { AppConfig } from '../config.js';
-import { hash } from '../core.js';
+import { hash, HttpError } from '../core.js';
 import {
   assistantAccess,
   lockedAssistantAccess,
@@ -267,7 +267,8 @@ export function attachVoiceBridge(
         return;
       }
       if (!context?.imageDataUrl) return;
-      const id = `item_xiutu_${randomUUID().replaceAll('-', '')}`;
+      // Realtime accepts client item IDs of at most 32 characters.
+      const id = randomUUID().replaceAll('-', '');
       upstreamSend({
         type: 'conversation.item.create',
         item: {
@@ -1007,6 +1008,16 @@ export function attachVoiceBridge(
           return;
         }
         if (controlBusy) {
+          if (event.type === 'context') {
+            send(client, {
+              type: 'context',
+              accepted: false,
+              imageShared: false,
+              contextTag: event.contextTag,
+              reason: 'busy',
+            });
+            return;
+          }
           send(client, {
             type: 'error',
             code: 'CONTROL_BUSY',
@@ -1064,13 +1075,29 @@ export function attachVoiceBridge(
             if (live) delegate(`typed_${randomUUID()}`, event.text);
           }
         })()
-          .catch(() =>
+          .catch((reason) => {
+            if (ended || closing) return;
+            if (event.type === 'context') {
+              send(client, {
+                type: 'context',
+                accepted: false,
+                imageShared: false,
+                contextTag: event.contextTag,
+                reason:
+                  reason instanceof HttpError && reason.code === 'CONTEXT_VERSION_CONFLICT'
+                    ? 'version'
+                    : reason instanceof Error && reason.message === 'CONTEXT_RATE'
+                      ? 'busy'
+                      : 'unavailable',
+              });
+              return;
+            }
             send(client, {
               type: 'error',
               code: 'CONTEXT_OR_ACCESS_REJECTED',
               message: '审核、上下文或权限检查未通过，请检查后再试。',
-            }),
-          )
+            });
+          })
           .finally(() => {
             controlBusy = false;
           });

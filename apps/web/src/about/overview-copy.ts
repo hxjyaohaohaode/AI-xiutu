@@ -2,6 +2,7 @@ import type { Locale } from '../i18n';
 
 export type OverviewScreenName =
   | 'workspace'
+  | 'desktop-flow'
   | 'local'
   | 'portrait'
   | 'layers'
@@ -151,6 +152,7 @@ const copy: Record<Locale, OverviewCopy> = {
       library: '项目作品与素材的实际界面',
       collaboration: '项目讨论与任务的实际界面',
       assistant: 'AI 助手的实际输入界面与当前服务状态',
+      'desktop-flow': '桌面端同时显示照片、调节和 AI 助手',
       delivery: '图片导出的实际格式、质量与下载界面',
     },
     libraryTitle: '素材和作品，回到同一个项目。',
@@ -243,6 +245,7 @@ const copy: Record<Locale, OverviewCopy> = {
       library: '專案作品與素材的實際介面',
       collaboration: '專案討論與任務的實際介面',
       assistant: 'AI 助手的實際輸入介面與目前服務狀態',
+      'desktop-flow': '電腦同時顯示照片、調整與 AI 助理',
       delivery: '圖片匯出的實際格式、品質與下載介面',
     },
     libraryTitle: '素材和作品，回到同一個專案。',
@@ -349,6 +352,7 @@ const copy: Record<Locale, OverviewCopy> = {
       library: 'Actual project artwork and asset library',
       collaboration: 'Actual project conversations and tasks',
       assistant: 'Actual assistant input and current service availability',
+      'desktop-flow': 'Desktop editor with the photo, adjustments and AI assistant open together',
       delivery: 'Actual image export format, quality and download controls',
     },
     libraryTitle: 'Assets and artwork, together.',

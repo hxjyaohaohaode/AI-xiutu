@@ -1,5 +1,5 @@
 import { getLocale, t, useLocale } from '../i18n';
-import { useEffect, useId, useMemo, useRef, useState, type FormEvent } from 'react';
+import { useEffect, useId, useMemo, useRef, useState, type FormEvent, type ReactNode } from 'react';
 import {
   ArrowRight,
   ArrowClockwise,
@@ -286,6 +286,8 @@ function MetadataDialog({
   );
 }
 export function AssetLibrary({
+  navigation,
+  onSignIn,
   space,
   project,
   projects,
@@ -303,6 +305,8 @@ export function AssetLibrary({
   onShare,
   onCollage,
 }: {
+  navigation?: ReactNode;
+  onSignIn?: () => void;
   space: Space | null;
   project: Project | null;
   projects: Project[];
@@ -492,7 +496,8 @@ export function AssetLibrary({
   return (
     <div className={`content-view studio-view asset-library library-density-${density}`}>
       <header className="view-heading" data-motion="view-header">
-        <div>
+        <div className="library-heading-lead">
+          {navigation}
           <div className="library-title-line">
             <h1>{project?.title ?? space?.name ?? t('作品')}</h1>
             {(space || project) && (
@@ -501,7 +506,7 @@ export function AssetLibrary({
                   <span>{t('读取中')}</span>
                 ) : (
                   <span>
-                    <strong>{assets.length}</strong> {t('张已载入')}
+                    <strong>{assets.length}</strong> <span>{t('张已载入')}</span>
                     {cursor ? t(' · 还有更多') : ''}
                   </span>
                 )}
@@ -547,7 +552,8 @@ export function AssetLibrary({
               )}
             </>
           )}
-          <button className="button button-primary library-import-action" onClick={onImport}>
+          <button className="button button-primary library-import-action" onClick={onImport}
+            aria-label={t(project && !['owner', 'admin', 'editor'].includes(project.role) ? '打开本地照片' : '导入照片')}>
             <Plus size={18} />
             {project && !['owner', 'admin', 'editor'].includes(project.role)
               ? t('打开本地照片')
@@ -564,11 +570,10 @@ export function AssetLibrary({
       {!space && !project ? (
         <EmptyState
           icon={<Images size={32} />}
-          title={t('选择工作空间')}
-          description={t('登录后选择个人或团队空间。照片仍可直接在本机打开编辑。')}
+          title={t(onSignIn ? '登录后查看作品' : '选择工作空间')}
           action={
-            <button className="button button-secondary" onClick={onCreate}>
-              {t('创建项目')}
+            <button className="button button-secondary" onClick={onSignIn ?? onCreate}>
+              {t(onSignIn ? '登录' : '创建项目')}
               <ArrowRight size={16} />
             </button>
           }
@@ -758,9 +763,11 @@ export function AssetLibrary({
             <section className="library-group" key={key}>
               <h2>
                 {name}
-                <span>
-                  {items.length} {t('张已载入')}
-                </span>
+                {groups.length > 1 && (
+                  <span>
+                    {items.length} {t('张已载入')}
+                  </span>
+                )}
               </h2>
               <div className="library-grid">
                 {items.map((asset) => {
@@ -778,7 +785,6 @@ export function AssetLibrary({
                     <article className="library-asset" key={asset.id}>
                       <button
                         className="library-cover"
-                        style={{ aspectRatio: `${asset.width} / ${asset.height}` }}
                         onClick={open}
                         disabled={!sameProject && !parent}
                         aria-label={

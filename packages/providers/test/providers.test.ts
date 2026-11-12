@@ -6,6 +6,8 @@ import {
   createTencentSms,
   createTencentTextModerator,
   createTencentImageModerator,
+  createTextModerator,
+  createImageModerator,
   tc3Headers,
   ProviderError,
   type TencentCredentials,
@@ -227,4 +229,32 @@ test('image moderation hashes the exact file and refuses small, mismatched or ov
     code: 'IMAGE_MODERATION_INPUT_LIMIT',
   });
   assert.equal(calls, 1);
+});
+
+test('OpenAI moderation binds the exact submitted text and image and fails closed on incomplete receipts', async () => {
+  const config = { AI_MODERATION_PROVIDER: 'openai', OPENAI_API_KEY: 'test-only' };
+  const png = await sharp({ create: { width: 16, height: 16, channels: 3, background: '#426fa1' } }).png().toBuffer();
+  const seen: { type: string; text?: string; image_url?: { url: string } }[] = [];
+  const fetcher = fetchAs(async (url, init) => {
+    assert.equal(url, 'https://api.openai.com/v1/moderations');
+    assert.equal(init.redirect, 'error');
+    const body = JSON.parse(String(init.body));
+    assert.equal(body.model, 'omni-moderation-latest');
+    seen.push(body.input[0]);
+    return Response.json(seen.length === 3
+      ? { id: 'missing-decision', results: [{}] }
+      : { id: 'review-' + seen.length, results: [{ flagged: seen.length === 2 }] });
+  });
+  const text = createTextModerator(config, fetcher);
+  const image = createImageModerator(config, fetcher);
+  const exact = ' Warm shadows · 冷暖 ';
+  const hash = (input: Buffer | string) => createHash('sha256').update(input).digest('hex');
+  assert.deepEqual(await text.check(exact), { decision: 'passed', requestId: 'review-1', inputHash: hash(exact) });
+  assert.equal(seen[0]?.text, exact);
+  await assert.rejects(image.check(png, 'image/jpeg'), { code: 'IMAGE_MODERATION_INVALID_IMAGE' });
+  assert.equal(seen.length, 1, 'wrong image format is rejected before dispatch');
+  assert.deepEqual(await image.check(png, 'image/png'), { decision: 'blocked', requestId: 'review-2', inputHash: hash(png) });
+  assert.deepEqual(Buffer.from(seen[1]?.image_url?.url.split(',')[1] ?? '', 'base64'), png);
+  await assert.rejects(text.check('no complete receipt'), unknown);
+  assert.equal(seen.length, 3, 'unknown result is never retried automatically');
 });

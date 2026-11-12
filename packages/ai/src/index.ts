@@ -13,7 +13,7 @@ import {
   type Database,
   type Queryable,
 } from '@ai-xiutu/db';
-import { createTencentTextModerator, ProviderError, type TextModerator } from '@ai-xiutu/providers';
+import { createTextModerator, ProviderError, type TextModerator } from '@ai-xiutu/providers';
 import {
   canonical,
   digest,
@@ -225,7 +225,7 @@ function createEditPlanService(
   dependencies: AiDependencies = {},
 ) {
   const provider = dependencies.provider ?? createQwenProvider(env.DASHSCOPE_API_KEY ?? '');
-  const moderator = dependencies.moderator ?? createTencentTextModerator(env);
+  const moderator = dependencies.moderator ?? createTextModerator(env);
   const journal =
     dependencies.journal ?? new DispatchJournal(env.AI_JOURNAL_DIR ?? '.data/ai-dispatch-journal');
   let endpoint = '';

@@ -13,6 +13,7 @@ import {
   type RecipeV4,
 } from '@ai-xiutu/editor';
 import { ChoiceSelect } from '../src/components/ChoiceSelect.tsx';
+import { RubberSegment } from '../src/components/control-motion/RubberSegment.tsx';
 import { GeometryControls } from '../src/editor/GeometryControls.tsx';
 import { RepairControls } from '../src/editor/RepairControls.tsx';
 import type { InspectorController } from '../src/editor/advanced-model.ts';
@@ -78,12 +79,19 @@ test('the transform fit selector commits the actual recipe field and preserves t
       assert.fail(message);
     },
   } as unknown as InspectorController;
-  const control = readChoice(() => GeometryControls({ controller }), '变换后的画幅');
-  assert.deepEqual(
-    control.props.options?.map((option) => option.value),
-    ['contain', 'crop'],
-  );
-  control.choose('crop');
+  type FitControl = ReactElement<{ label: string; options: { value: string }[]; onChange: (value: 'crop') => void }>;
+  let fit: FitControl | undefined;
+  function CaptureFit() {
+    fit = elements(GeometryControls({ controller })).find(
+      (element) => element.type === RubberSegment && (element.props as FitControl['props']).label === '变换后的画幅',
+    ) as FitControl | undefined;
+    return fit;
+  }
+  const markup = renderTestMarkup(createElement(CaptureFit));
+  assert.ok(fit?.props.onChange);
+  assert.deepEqual(fit.props.options.map((option) => option.value), ['contain', 'crop']);
+  assert.match(markup, /data-segment-value="contain" aria-pressed="true"/);
+  fit.props.onChange('crop');
   assert.deepEqual(recipe, { ...before, transform: { ...before.transform, fit: 'crop' } });
   assert.deepEqual(commits, [['选择变换画幅', true]]);
 });
@@ -321,6 +329,7 @@ test('new local names use the creation locale while existing names and accessibl
         onClick?: () => void;
         className?: string;
         'aria-label'?: string;
+        'data-mask-type'?: string;
         label?: string;
       };
       let controls: ReactElement<ActionProps>[] = [];
@@ -338,7 +347,7 @@ test('new local names use the creation locale while existing names and accessibl
       renderTestMarkup(createElement(Capture));
       const add = controls.find(
         (element) =>
-          element.type === 'button' && Children.toArray(element.props.children).includes(t('径向')),
+          element.type === 'button' && element.props['data-mask-type'] === 'radial' && element.props['aria-label'] === t('径向'),
       );
       assert.ok(add?.props.onClick);
       add.props.onClick();

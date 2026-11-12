@@ -421,6 +421,7 @@ try {
   await fixture.app.listen({ host: '127.0.0.1', port: 0 });
   process.env.PORT = String(fixture.app.server.address().port);
   vite = await createServer({
+    cacheDir: resolve(artifacts, 'vite-cache'),
     configFile: resolve(root, 'apps/web/vite.config.ts'),
     server: { host: '127.0.0.1', port, strictPort: true },
   });
@@ -663,10 +664,10 @@ try {
       const taskInput = page.getByLabel('本轮创作要求', { exact: true });
       await taskInput.fill(taskDraft);
       await page.getByRole('button', { name: '任务设置', exact: true }).click();
-      const settings = page.getByRole('region', { name: '任务设置', exact: true });
+      const settings = page.getByRole('region', { name: '模型与参数', exact: true });
       await settings.waitFor();
       await settings.getByRole('combobox', { name: '生图模型', exact: true }).waitFor();
-      assert.equal(await page.getByRole('dialog', { name: '任务设置', exact: true }).count(), 0);
+      assert.equal(await page.getByRole('dialog', { name: '模型与参数', exact: true }).count(), 0);
       await settings.getByRole('button', { name: '返回对话', exact: true }).click();
       await settings.waitFor({ state: 'hidden' });
       assert.equal(await taskInput.inputValue(), taskDraft);
@@ -1953,7 +1954,7 @@ try {
         };
         await selectTask('生图');
         await page.getByRole('button', { name: '任务设置', exact: true }).click();
-        const settings = page.getByRole('region', { name: '任务设置', exact: true });
+        const settings = page.getByRole('region', { name: '模型与参数', exact: true });
         const model = settings.getByRole('combobox', { name: '生图模型', exact: true });
         await model.waitFor();
         assert.equal(
@@ -2106,9 +2107,17 @@ try {
     assert.deepEqual(restored.revision.recipe, baseline.revision.recipe);
     await page.locator('.image-frame canvas[aria-label]:visible').waitFor();
     await changeView('editor', '精修');
-    await page.locator('[data-dock-tool="collage"]').click();
+    const collageEntry = page.locator('[data-action="open-collage"]:visible');
+    if (!(await collageEntry.isVisible())) await page.locator('.canvas-tools-trigger').click();
+    await collageEntry.click();
     const collage = page.locator('.collage-studio:visible');
     const collageCanvas = collage.getByRole('img', { name: '拼图预览' });
+    await collageCanvas.waitFor();
+    const tileSettings = collage.locator('.collage-tile-settings > summary');
+    await tileSettings.click();
+    await collage.getByRole('button', { name: '1 当前画布.png', exact: true }).waitFor();
+    await collage.getByRole('button', { name: '移除素材', exact: true }).click();
+    await collageCanvas.waitFor({ state: 'hidden' });
     await collage.getByTestId('collage-files').setInputFiles({
       name: 'Local tile.png',
       mimeType: 'image/png',
@@ -2131,7 +2140,6 @@ try {
     };
     await insertCandidate('添加到拼图');
     await until(async () => (await tilePixel(0.75))[1] === 112, 'authorized candidate becomes a collage tile');
-    const tileSettings = collage.locator('.collage-tile-settings > summary');
     await tileSettings.click();
     await collage.getByRole('button', { name: '1 Local tile.png', exact: true }).click();
     await tileSettings.click();

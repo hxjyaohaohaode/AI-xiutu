@@ -1,3 +1,4 @@
+import { Circle, Gradient, Polygon, Eyedropper, PaintBrush } from '@phosphor-icons/react';
 import { t } from '../i18n';
 import { MotionDetails } from '../motion/Presence';
 import { ChoiceSelect } from '../components/ChoiceSelect';
@@ -168,6 +169,21 @@ export function LocalControls({
       className="advanced-tool-family local-controls-v3"
       data-motion="region-controls"
     >
+      <div className="tonal-tabs local-create-actions" aria-label={t('添加局部范围')}>
+        {(['radial', 'linear', 'brush', 'polygon', 'color-range'] as const).map((type) => (
+          <button
+            key={type}
+            data-action="create-region"
+            data-mask-type={type}
+            aria-label={t(maskLabels[type])}
+            disabled={recipe.regionEdits.length >= MAX_V3_REGION_EDITS}
+            onClick={() => add(type)}
+          >
+            {type === 'radial' ? <Circle size={18} /> : type === 'linear' ? <Gradient size={18} /> : type === 'brush' ? <PaintBrush size={18} /> : type === 'polygon' ? <Polygon size={18} /> : <Eyedropper size={18} />}
+            <span>{t(maskLabels[type])}</span>
+          </button>
+        ))}
+      </div>
       {colorScope && (
         <div className="local-primary-controls">
           {headerTarget ? (
@@ -213,20 +229,6 @@ export function LocalControls({
           />
         </div>
       )}
-      <div className="tonal-tabs local-create-actions" aria-label={t('添加局部范围')}>
-        {(['radial', 'linear', 'brush', 'polygon', 'color-range'] as const).map((type) => (
-          <button
-            key={type}
-            data-action="create-region"
-            data-mask-type={type}
-            disabled={recipe.regionEdits.length >= MAX_V3_REGION_EDITS}
-            onClick={() => add(type)}
-          >
-            <Plus size={12} />
-            {t(maskLabels[type])}
-          </button>
-        ))}
-      </div>
       <div className="local-region-summary">
         <span>{editorFlowText('localCount')}</span>
         <output aria-label={editorFlowText('localCount')}>

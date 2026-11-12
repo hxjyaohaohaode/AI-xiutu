@@ -181,6 +181,9 @@
   position: absolute;
   inset: 0;
 }
+.studio-view.asset-library .library-cover img {
+  object-fit: cover;
+}
 .studio-view .library-cover > span,
 .studio-view .artwork-cover > span {
   inset: auto 10px 10px auto;

@@ -274,7 +274,13 @@ export type VoiceServerEvent =
     }
   | { type: 'interrupted'; bySpeech?: true }
   | { type: 'search-started' }
-  | { type: 'context'; accepted: boolean; imageShared: boolean; contextTag?: string }
+  | {
+      type: 'context';
+      accepted: boolean;
+      imageShared: boolean;
+      contextTag?: string;
+      reason?: 'version' | 'busy' | 'unavailable';
+    }
   | { type: 'tool'; name: string; state: 'running' | 'completed' | 'failed' }
   | {
       type: 'assistant-result';

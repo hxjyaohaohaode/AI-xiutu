@@ -1,3 +1,4 @@
+import { OpeningEffects, EditEffects, PortraitOrbit, LayerEffects, AIExamples, AssistantVoiceStory, TeamReviewStory, LibraryEffects, DeliveryEffects } from './AboutEffects';
 import { useEffect, useRef, useState } from 'react';
 import { ArrowDown, ArrowUp, ArrowUpRight, ArrowClockwise } from '@phosphor-icons/react';
 import { useLocale } from '../i18n';
@@ -8,6 +9,7 @@ import { DEFAULT_BRAND, brandLogoUrl } from '../lib/brand';
 import type { PublicConfig } from '../lib/types';
 import { overviewCopy, type OverviewScreenName } from './overview-copy';
 import { useOverviewMotion } from './useOverviewMotion';
+import { overviewStories } from './overview-stories';
 import { getSampleImage, type SampleSettings } from './sample-settings';
 
 export const DEMO_IMAGE = getSampleImage();
@@ -144,6 +146,7 @@ export function AboutPage({
 }) {
   const locale = useLocale();
   const c = overviewCopy(locale);
+  const story = overviewStories(locale);
   const brand = config?.brand.name || DEFAULT_BRAND;
   const logo = brandLogoUrl(config?.brand);
   const root = useRef<HTMLDivElement>(null);
@@ -194,9 +197,9 @@ export function AboutPage({
           data-product-section="hero"
           aria-labelledby="about-title"
         >
+          <OpeningEffects />
           <div className="overview-container overview-hero-heading">
             <div>
-              <p className="overview-eyebrow">{c.heroLabel}</p>
               <h1 id="about-title">
                 <Lines lines={c.heroTitle} />
               </h1>
@@ -209,7 +212,8 @@ export function AboutPage({
               </button>
             </div>
           </div>
-          <div className="overview-hero-media" data-scroll-expand>
+          <div className="overview-hero-media overview-annotated">
+            <img className="overview-annotation-art" src="/about/editing-annotations.webp" alt="" decoding="async" />
             <div className="overview-expanding-frame">
               <ProductScreen name="workspace" priority />
             </div>
@@ -231,8 +235,7 @@ export function AboutPage({
           <div className="overview-container">
             <div className="overview-section-heading">
               <div data-scroll-reveal>
-                <p className="overview-eyebrow">{c.craftLabel}</p>
-                <h2 id="craft-title">
+                  <h2 id="craft-title">
                   <Lines lines={c.craftTitle} />
                 </h2>
               </div>
@@ -240,8 +243,12 @@ export function AboutPage({
                 {c.craftBody}
               </p>
             </div>
-            <div className="overview-showcase overview-showcase-local" data-scroll-reveal>
-              <ProductScreen name="local" />
+            <div className="about-craft-story">
+              <EditEffects labels={story} />
+              <div className="overview-showcase overview-showcase-local" data-scroll-reveal>
+                <ProductScreen name="local" />
+                <span className="about-screen-caption">{story.mask}</span>
+              </div>
             </div>
             <Capabilities items={c.craftItems} icons={['light', 'curves', 'local', 'compare']} />
           </div>
@@ -253,7 +260,6 @@ export function AboutPage({
         >
           <div className="overview-container overview-split-feature">
             <div className="overview-section-copy" data-scroll-reveal>
-              <p className="overview-eyebrow">{c.portraitLabel}</p>
               <h2 id="portrait-title">
                 <Lines lines={c.portraitTitle} />
               </h2>
@@ -261,7 +267,7 @@ export function AboutPage({
               <Keywords items={c.portraitItems} />
             </div>
             <div className="overview-portrait-media" data-scroll-reveal>
-              <ProductScreen name="portrait" />
+              <PortraitOrbit screen={<ProductScreen name="portrait" />} />
             </div>
           </div>
         </section>
@@ -273,8 +279,7 @@ export function AboutPage({
           <div className="overview-container">
             <div className="overview-section-heading">
               <div data-scroll-reveal>
-                <p className="overview-eyebrow">{c.layersLabel}</p>
-                <h2 id="layers-title">
+                  <h2 id="layers-title">
                   <Lines lines={c.layersTitle} />
                 </h2>
               </div>
@@ -284,7 +289,7 @@ export function AboutPage({
               </div>
             </div>
             <div className="overview-showcase overview-showcase-layers" data-scroll-reveal>
-              <ProductScreen name="layers" />
+              <LayerEffects labels={story} screen={<ProductScreen name="layers" />} />
             </div>
           </div>
         </section>
@@ -297,8 +302,7 @@ export function AboutPage({
           <div className="overview-container">
             <div className="overview-section-heading">
               <div data-scroll-reveal>
-                <p className="overview-eyebrow">{c.assistantLabel}</p>
-                <h2 id="assistant-title">
+                  <h2 id="assistant-title">
                   <Lines lines={c.assistantTitle} />
                 </h2>
               </div>
@@ -306,9 +310,12 @@ export function AboutPage({
                 {c.assistantBody}
               </p>
             </div>
-            <div className="overview-assistant-layout">
-              <ProductScreen name="assistant" />
-              <div>
+            <AIExamples labels={story} />
+            <section className="overview-assistant-layout about-voice-section" aria-labelledby="about-voice-title">
+              <h3 id="about-voice-title">{story.voiceTitle}</h3>
+              <AssistantVoiceStory labels={story} />
+            </section>
+            <div className="about-assistant-followup">
                 <ol className="overview-assistant-steps">
                   {c.assistantSteps.map(([title, body], index) => (
                     <li key={title} data-scroll-reveal>
@@ -325,8 +332,7 @@ export function AboutPage({
                     </li>
                   ))}
                 </ol>
-                <p className="overview-service-note">{c.assistantNote}</p>
-              </div>
+              <p className="overview-service-note">{c.assistantNote}</p>
             </div>
           </div>
         </section>
@@ -339,8 +345,7 @@ export function AboutPage({
           <div className="overview-container">
             <div className="overview-section-heading">
               <div data-scroll-reveal>
-                <p className="overview-eyebrow">{c.togetherLabel}</p>
-                <h2 id="together-title">
+                  <h2 id="together-title">
                   <Lines lines={c.togetherTitle} />
                 </h2>
               </div>
@@ -349,12 +354,14 @@ export function AboutPage({
               </p>
             </div>
             <div className="overview-showcase overview-showcase-team" data-scroll-reveal>
+              <TeamReviewStory labels={story} />
               <ProductScreen name="collaboration" />
             </div>
             <Capabilities
               items={c.togetherItems}
               icons={['works', 'collaborate', 'history', 'docs']}
             />
+            <div className="about-library-section">
             <div className="overview-library-layout">
               <div data-scroll-reveal>
                 <h3>{c.libraryTitle}</h3>
@@ -364,19 +371,20 @@ export function AboutPage({
                 <ProductScreen name="library" />
               </div>
             </div>
+            <LibraryEffects labels={story} locale={locale} />
+            </div>
             <div className="overview-devices">
               <div className="overview-device-copy" data-scroll-reveal>
-                <StudioGlyph name="system" size={28} />
                 <h3>{c.devicesTitle}</h3>
                 <p>{c.devicesBody}</p>
               </div>
-              <div className="overview-device-tablet" data-scroll-reveal>
-                <ProductScreen name="tablet" responsive={false} />
-                <span>{c.deviceLabels[0]}</span>
+              <div className="overview-device-desktop" data-scroll-reveal>
+                <ProductScreen name="desktop-flow" responsive={false} />
+                <p><strong>{story.desktop[0]}</strong> · {story.desktop[1]}</p>
               </div>
               <div className="overview-device-phone" data-scroll-reveal>
                 <ProductScreen name="phone" />
-                <span>{c.deviceLabels[1]}</span>
+                <p><strong>{story.phone[0]}</strong> · {story.phone[1]}</p>
               </div>
             </div>
           </div>
@@ -389,8 +397,7 @@ export function AboutPage({
           <div className="overview-container">
             <div className="overview-section-heading">
               <div data-scroll-reveal>
-                <p className="overview-eyebrow">{c.deliveryLabel}</p>
-                <h2 id="delivery-title">
+                  <h2 id="delivery-title">
                   <Lines lines={c.deliveryTitle} />
                 </h2>
               </div>
@@ -400,7 +407,7 @@ export function AboutPage({
               </div>
             </div>
             <div className="overview-delivery-media" data-scroll-reveal>
-              <ProductScreen name="delivery" />
+              <DeliveryEffects labels={story} screen={<ProductScreen name="delivery" />} />
             </div>
             <button type="button" className="overview-text-action" onClick={open}>
               {c.deliveryAction}
@@ -428,8 +435,15 @@ export function AboutPage({
         </section>
         <section className="overview-end" data-product-section="end" aria-labelledby="end-title">
           <div className="overview-container">
-            <BrandMark logoUrl={logo} />
-            <h2 id="end-title">{c.endTitle}</h2>
+            <h2 id="end-title" className="review-sr-only">{c.endTitle}</h2>
+            <div className="overview-end-flow" aria-hidden="true">
+              {[0, 1].map((copy) => (
+                <div className="overview-end-line" key={copy}>
+                  <BrandMark logoUrl={logo} /><span>{c.endTitle}</span>
+                  <BrandMark logoUrl={logo} /><span>{c.endTitle}</span>
+                </div>
+              ))}
+            </div>
             <button type="button" className="overview-primary" onClick={open}>
               {action}
               <ArrowUpRight size={21} />

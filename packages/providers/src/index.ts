@@ -348,3 +348,73 @@ export function createTencentImageModerator(
     },
   };
 }
+
+type OpenAIModerationInput =
+  | { type: 'text'; text: string }
+  | { type: 'image_url'; image_url: { url: string } };
+
+async function openAIReview(
+  key: string,
+  input: OpenAIModerationInput,
+  inputHash: string,
+  fetcher: typeof fetch,
+): Promise<ModerationResult> {
+  if (!key) throw new ProviderError('MODERATION_NOT_CONFIGURED', 'rejected');
+  const signal = AbortSignal.timeout(15_000);
+  let response: Response;
+  try {
+    response = await fetcher('https://api.openai.com/v1/moderations', {
+      method: 'POST',
+      headers: { Authorization: 'Bearer ' + key, 'Content-Type': 'application/json' },
+      body: JSON.stringify({ model: 'omni-moderation-latest', input: [input] }),
+      redirect: 'error',
+      signal,
+    });
+  } catch {
+    throw new ProviderError('MODERATION_UNAVAILABLE', 'unknown');
+  }
+  if (!response.ok) {
+    void response.body?.cancel().catch(() => {});
+    throw new ProviderError('MODERATION_UNAVAILABLE', response.status >= 500 ? 'unknown' : 'rejected');
+  }
+  const data = await readJson(response, signal);
+  const result = Array.isArray(data.results) && data.results.length === 1 ? data.results[0] : null;
+  if (!result || typeof result.flagged !== 'boolean' || typeof data.id !== 'string' ||
+      !/^[A-Za-z0-9._:-]{1,128}$/.test(data.id))
+    throw new ProviderError('MODERATION_INCOMPLETE', 'unknown');
+  return { decision: result.flagged ? 'blocked' : 'passed', requestId: data.id, inputHash };
+}
+
+export function createTextModerator(env: NodeJS.ProcessEnv = process.env, fetcher: typeof fetch = fetch): TextModerator {
+  if (env.AI_MODERATION_PROVIDER !== 'openai') return createTencentTextModerator(env, fetcher);
+  const key = env.OPENAI_API_KEY?.trim() ?? '';
+  return {
+    configured: !!key,
+    check(text) {
+      if (!text.length || Array.from(text).length > 10_000)
+        return Promise.reject(new ProviderError('MODERATION_INPUT_LIMIT', 'rejected'));
+      return openAIReview(key, { type: 'text', text }, sha256(text), fetcher);
+    },
+  };
+}
+
+export function createImageModerator(env: NodeJS.ProcessEnv = process.env, fetcher: typeof fetch = fetch): ImageModerator {
+  if (env.AI_MODERATION_PROVIDER !== 'openai') return createTencentImageModerator(env, fetcher);
+  const key = env.OPENAI_API_KEY?.trim() ?? '';
+  return {
+    configured: !!key,
+    async check(bytes, mime) {
+      if (!key) throw new ProviderError('IMAGE_MODERATION_NOT_CONFIGURED', 'rejected');
+      if (bytes.byteLength < 16 || Math.ceil(bytes.byteLength / 3) * 4 >= 10 * 1024 * 1024 ||
+          !['image/png', 'image/jpeg', 'image/webp'].includes(mime))
+        throw new ProviderError('IMAGE_MODERATION_INPUT_LIMIT', 'rejected');
+      const buffer = Buffer.from(bytes);
+      const meta = await sharp(buffer, { limitInputPixels: 40_000_000, animated: true, failOn: 'warning' })
+        .metadata().catch(() => { throw new ProviderError('IMAGE_MODERATION_INVALID_IMAGE', 'rejected'); });
+      if (mime !== 'image/' + meta.format || (meta.pages ?? 1) > 1 || !meta.width || !meta.height)
+        throw new ProviderError('IMAGE_MODERATION_INVALID_IMAGE', 'rejected');
+      const url = 'data:' + mime + ';base64,' + buffer.toString('base64');
+      return openAIReview(key, { type: 'image_url', image_url: { url } }, createHash('sha256').update(buffer).digest('hex'), fetcher);
+    },
+  };
+}

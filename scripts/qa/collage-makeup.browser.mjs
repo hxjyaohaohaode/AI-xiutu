@@ -74,7 +74,11 @@ function canvasPixel(canvas, x, y) {
 }
 
 async function openCollage(page) {
-  await page.locator('[data-dock-tool="collage"]').click();
+  const entry = page.locator('[data-action="open-collage"]:visible');
+  const more = page.locator('.canvas-tools-trigger:visible');
+  await entry.or(more).first().waitFor();
+  if (!(await entry.count())) await more.click();
+  await entry.click();
   const surface = page.locator('.collage-studio:visible');
   await surface.waitFor();
   assert.equal(await page.locator('dialog[open]').count(), 0);
@@ -233,10 +237,8 @@ export async function reviewCollage({ page, until, capture, portrait, coast }) {
   await page.locator('input[type="file"].sr-only').first().setInputFiles([gif]);
   const moving = page.locator('.collage-studio:visible');
   await moving.waitFor();
-  assert.equal(
-    await page.locator('[data-dock-tool="collage"]').getAttribute('aria-pressed'),
-    'true',
-  );
+  assert.ok(await page.locator('[data-action="close-collage"]:visible').isVisible());
+  assert.equal(await page.locator('[data-dock-tool="collage"]').count(), 0);
   const movingInput = moving.getByTestId('collage-files');
   const movingCanvas = moving.getByRole('img', { name: '拼图预览' });
   assert.equal((await sharp(gif.buffer, { animated: true }).metadata()).pages, 2);
@@ -289,7 +291,7 @@ export async function reviewCollage({ page, until, capture, portrait, coast }) {
     'paired clip plays instead of its cover',
   );
   await pause();
-  await page.locator('[data-dock-tool="collage"]').click();
+  await page.locator('[data-action="close-collage"]:visible').click();
   await moving.waitFor({ state: 'hidden' });
 
   await page.reload();
@@ -389,8 +391,9 @@ export async function reviewCollage({ page, until, capture, portrait, coast }) {
   ]) {
     await page.setViewportSize({ width, height });
     const canvas = await preview.boundingBox();
-    const rail = await page.locator('.floating-tool-dock:visible').boundingBox();
-    assert.ok(canvas.width > 30 && canvas.height > 30 && rail.y + rail.height <= height + 1, label);
+    const inspector = await review.locator('.collage-inspector').boundingBox();
+    assert.ok(canvas.width > 30 && canvas.height > 30 && inspector.y + inspector.height <= height + 1, label);
+    assert.equal(await page.locator('.floating-tool-dock:visible').count(), 0);
     assert.ok(canvas.x >= 0 && canvas.x + canvas.width <= width + 1, label);
     await checkControlBounds(review.locator('.collage-ratio-rail > button'));
     assert.ok(
@@ -444,7 +447,7 @@ export async function reviewMakeup({ page, canvasPixels, tool, parameter, until,
   });
   await capture(page, 'interactions/mobile-makeup-brush.png');
 
-  await page.getByRole('button', { name: '图层', exact: true }).click();
+  await page.locator('button[data-segment-value="layers"]:visible').click();
   await page.locator('.advanced-tool-family summary').filter({ hasText: '编辑妆容笔画' }).click();
   await page.getByRole('combobox', { name: '笔画', exact: true }).click();
   await page.getByRole('option', { name: '第 1 笔', exact: true }).click();

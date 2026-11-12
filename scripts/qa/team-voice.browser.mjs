@@ -76,7 +76,7 @@ async function openAssistant(page) {
 }
 async function openAssistantSettings(page) {
   await page
-    .locator('.live-assistant')
+    .locator('.voice-call-workspace')
     .getByRole('button', { name: '助手设置', exact: true })
     .click();
   const settings = page.getByRole('region', { name: '助手设置', exact: true });
@@ -213,6 +213,7 @@ try {
   await fixture.app.listen({ port: 0, host: '127.0.0.1' });
   process.env.PORT = String(fixture.app.server.address().port);
   vite = await createServer({
+    cacheDir: resolve(artifact, 'vite-cache'),
     configFile: resolve('apps/web/vite.config.ts'),
     server: { host: '127.0.0.1', port, strictPort: true },
   });
@@ -513,7 +514,7 @@ try {
     await recovery.waitFor({ state: 'hidden' });
     await panel.getByRole('button', { name: '打开实时语音', exact: true }).click();
     assert.equal(
-      await panel.getByRole('button', { name: '开始实时通话', exact: true }).isEnabled(),
+      await page.locator('.voice-call-workspace').getByRole('button', { name: '开始实时通话', exact: true }).isEnabled(),
       false,
     );
     assert.equal(
@@ -533,6 +534,9 @@ try {
       await page.locator('.collaboration-summary').click();
       const panel = await openAssistant(page);
       await panel.getByRole('button', { name: '打开实时语音', exact: true }).click();
+      const callWorkspace = page.locator('.voice-call-workspace');
+      const dismissCall = () =>
+        callWorkspace.getByRole('button', { name: '收起语音通话', exact: true }).click();
       const settings = await openAssistantSettings(page);
       await choose(settings, '助手模型', '本地团队思考模型');
       await choose(settings, '语音模型', '本地 Live 协议');
@@ -546,11 +550,11 @@ try {
       await settings.waitFor({ state: 'hidden' });
       const beforeSoloStarts = inbound.filter((event) => event.type === 'session.start').length;
       holdSoloReady = true;
-      await panel.getByRole('button', { name: '开始实时通话', exact: true }).click();
-      const connecting = panel.locator('.assistant-call.connecting .assistant-call-status');
+      await callWorkspace.getByRole('button', { name: '开始实时通话', exact: true }).click();
+      const connecting = callWorkspace.locator('.assistant-call.connecting .assistant-call-status');
       await connecting.waitFor();
       assert.match(await connecting.innerText(), /正在连接麦克风与语音服务/);
-      const endCall = panel.getByRole('button', { name: '结束实时通话', exact: true });
+      const endCall = callWorkspace.getByRole('button', { name: '结束实时通话', exact: true });
       const hangupExposed = () =>
         endCall.evaluate((button) => {
           const box = button.getBoundingClientRect();
@@ -569,6 +573,7 @@ try {
       const beforeHiddenFrames = inbound.filter(
         (event) => event.type === 'session.input_audio.append',
       ).length;
+      await dismissCall();
       await closeAIPanel(page);
       const ongoing = page.locator('.ai-activity-banner');
       await ongoing.getByText('AI 语音正在连接', { exact: true }).waitFor();
@@ -605,13 +610,8 @@ try {
           beforeMute + 1,
         'the existing voice connection receives the banner mute',
       );
-      assert.equal(
-        await panel
-          .getByRole('button', { name: '开启麦克风', exact: true, includeHidden: true })
-          .getAttribute('aria-pressed'),
-        'true',
-        'the hidden owner and the activity banner share the same microphone state',
-      );
+      assert.equal(await panel.getAttribute('data-in-call'), 'true');
+      assert.equal(await callWorkspace.isVisible(), false);
       const beforeUnmute = inbound.filter(
         (event) => event.type === 'session.input_audio.unmute',
       ).length;
@@ -623,7 +623,7 @@ try {
           beforeUnmute + 1,
         'the banner resumes the original microphone',
       );
-      await ongoing.getByRole('button', { name: '返回 AI 助手', exact: true }).click();
+      await ongoing.getByRole('button', { name: '返回通话', exact: true }).click();
       await endCall.waitFor();
       assert.equal(sockets.length, 2, 'returning never creates another provider connection');
       assert.ok(await hangupExposed(), 'hang-up is reachable after returning');
@@ -638,30 +638,30 @@ try {
       voice.send(
         JSON.stringify({ type: 'session.output_transcript.delta', delta: '好，先看主光。' }),
       );
-      const captions = panel.locator('[aria-label="实时字幕"]');
+      const captions = callWorkspace.locator('[aria-label="实时字幕"]');
       await captions.getByText('看看光线。', { exact: false }).waitFor();
       await captions.getByText('好，先看主光。', { exact: false }).waitFor();
-      await panel.getByRole('button', { name: '隐藏字幕', exact: true }).click();
+      await callWorkspace.getByRole('button', { name: '隐藏字幕', exact: true }).click();
       assert.equal(await captions.isVisible(), false);
-      await panel.getByRole('button', { name: '打断播报', exact: true }).click();
+      await callWorkspace.getByRole('button', { name: '打断播报', exact: true }).click();
       await wait(
         () => inbound.some((event) => event.type === 'session.instructions.append'),
         'manual interruption control',
       );
-      await panel.getByText('通话中公开搜索', { exact: true }).click();
-      await panel.getByLabel('通话公开检索查询词').fill('自然人像柔光');
-      await panel.getByRole('button', { name: '搜索', exact: true }).click();
-      await panel.getByRole('link', { name: '布光资料', exact: true }).waitFor();
+      await callWorkspace.getByText('通话中公开搜索', { exact: true }).click();
+      await callWorkspace.getByLabel('通话公开检索查询词').fill('自然人像柔光');
+      await callWorkspace.getByRole('button', { name: '搜索', exact: true }).click();
+      await callWorkspace.getByRole('link', { name: '布光资料', exact: true }).waitFor();
       assert.deepEqual(publicQueries, ['自然人像柔光']);
-      await panel.getByText('通话中公开搜索', { exact: true }).click();
-      await panel.getByRole('button', { name: '显示字幕', exact: true }).click();
+      await callWorkspace.getByText('通话中公开搜索', { exact: true }).click();
+      await callWorkspace.getByRole('button', { name: '显示字幕', exact: true }).click();
       await captions.getByText('好，先看主光。', { exact: false }).waitFor();
       const supplement = '通话补充：保留当前画面，稍后再调整。';
       const composerControls = {
-        input: panel.getByLabel('向智能体描述修改需求', { exact: true }),
-        model: panel.getByRole('button', { name: '选择助手模型与执行方式', exact: true }),
-        attachment: panel.getByRole('button', { name: '共享画面与参考素材', exact: true }),
-        send: panel.getByRole('button', { name: '发送协作请求', exact: true }),
+        input: callWorkspace.getByLabel('向智能体描述修改需求', { exact: true }),
+        settings: callWorkspace.getByRole('button', { name: '助手设置', exact: true }),
+        preview: callWorkspace.getByRole('button', { name: '当前预览', exact: true }),
+        send: callWorkspace.getByRole('button', { name: '发送协作请求', exact: true }),
       };
       await composerControls.input.fill(supplement);
       assert.equal(await composerControls.send.isEnabled(), true);
@@ -816,6 +816,7 @@ try {
       }
       holdSoloClose = true;
       const beforeSoloClose = inbound.filter((event) => event.type === 'session.close').length;
+      await dismissCall();
       await closeAIPanel(page);
       await ongoing.getByRole('button', { name: '结束实时通话', exact: true }).click();
       await ongoing.getByText('AI 通话正在结束', { exact: true }).waitFor();
@@ -837,17 +838,18 @@ try {
       voice.send(JSON.stringify({ type: 'session.closed', usage: { seconds: 5 } }));
       await ongoing.waitFor({ state: 'hidden' });
       await openAssistant(page);
-      await panel.getByRole('button', { name: '开始实时通话', exact: true }).waitFor();
+      await panel.getByRole('button', { name: '打开实时语音', exact: true }).click();
+      await callWorkspace.getByRole('button', { name: '开始实时通话', exact: true }).waitFor();
       assert.equal(sockets.length, 2, 'ending and returning never prepare a replacement call');
       report.soloPanelRestore.bannerEndAndSettlement = true;
     },
   );
   assert.deepEqual(report.pageErrors, []);
 } finally {
+  await writeFile(resolve(artifact, 'report.json'), JSON.stringify(report, null, 2));
+  for (const socket of vendor.clients) socket.terminate();
   await browser?.close();
   await vite?.close();
   await fixture?.close();
-  for (const socket of vendor.clients) socket.terminate();
   await new Promise((done) => vendor.close(done));
-  await writeFile(resolve(artifact, 'report.json'), JSON.stringify(report, null, 2));
 }

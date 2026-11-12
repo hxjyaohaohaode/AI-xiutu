@@ -498,6 +498,7 @@ export function PortraitControls({
         onChange={(automatic) => {
           editor.commitCurrent(t('完成人像调节'));
           setMode(automatic ? 'auto' : 'manual');
+          onGroupChange?.('beauty');
         }}
       />
     </div>
@@ -678,19 +679,6 @@ export function PortraitControls({
                 ))}
               </MotionDetails>
             </>
-          )}
-          {!target && !state.progress && (
-            <MotionDetails className="advanced-disclosure portrait-context-help">
-              <summary>{interactionText('portraitHelp')}</summary>
-              <p className="control-note">
-                {category === 'body'
-                  ? t('选择“识别身体位置”后，按可见的肩、手臂、腰胯与腿部锚点分别调整。')
-                  : t('先在本机识别人脸，再选择人物独立调整。没有识别到的内容仍可手动精修。')}
-              </p>
-              <p className="control-note">
-                {t('识别后可建立头发和背景选区。模型不可用时，可到“局部”手动选择。')}
-              </p>
-            </MotionDetails>
           )}
           <MotionDetails className="advanced-disclosure portrait-source-actions">
             <summary>{t('选区与抠图')}</summary>

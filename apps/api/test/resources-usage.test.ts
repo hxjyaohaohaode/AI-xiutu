@@ -338,7 +338,7 @@ test(
           assert.ok(csv.body.includes("'=IMPORTXML("));
           assert.ok(!csv.body.includes('private prompt'));
           await f.db.query(
-            "INSERT INTO ledger_entries(space_id,kind,units,event_key,reason) VALUES($1,'expire',0,$2,'historic expiry amount unavailable')",
+            "INSERT INTO ledger_entries(space_id,kind,units,event_key,reason,created_at) VALUES($1,'expire',0,$2,'historic expiry amount unavailable',now() - interval '1 second')",
             [f.teamId, randomUUID()],
           );
           const report = (await f.call('GET', usage)).json();

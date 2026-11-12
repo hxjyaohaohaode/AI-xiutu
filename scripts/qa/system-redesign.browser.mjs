@@ -468,6 +468,11 @@ async function layout(page, label, selector = null) {
           covering: hit?.className?.toString().slice(0, 80) ?? null,
         });
     }
+    const selectedTool = scope.querySelector('.dock-tool-scroll > button[aria-pressed="true"]');
+    const indicator = scope.querySelector('.dock-tool-scroll > .dock-selection');
+    const selectionOffset = selectedTool && visible(selectedTool) && indicator && visible(indicator)
+      ? indicator.getBoundingClientRect().top - selectedTool.getBoundingClientRect().top
+      : null;
     const dialog = scope instanceof HTMLDialogElement ? scope : null;
     const bounds = dialog?.getBoundingClientRect();
     const headings = [...scope.querySelectorAll('h1,h2,h3')].filter(visible).filter((node) =>
@@ -476,7 +481,7 @@ async function layout(page, label, selector = null) {
     return {
       width: innerWidth, height: innerHeight,
       documentOverflow: document.documentElement.scrollWidth - innerWidth,
-      sampledControls, obscured, headingOverflows: headings,
+      sampledControls, obscured, headingOverflows: headings, selectionOffset,
       dialog: bounds ? { left: bounds.left, right: bounds.right, top: bounds.top, bottom: bounds.bottom } : null,
     };
   }, selector);
@@ -484,6 +489,8 @@ async function layout(page, label, selector = null) {
   assert.ok(result.documentOverflow <= 2, label + ' creates horizontal document overflow: ' + result.documentOverflow);
   assert.deepEqual(result.headingOverflows, [], label + ' heading overflows');
   assert.deepEqual(result.obscured, [], label + ' controls overlap or are covered');
+  assert.ok(result.selectionOffset === null || Math.abs(result.selectionOffset) <= 1,
+    label + ' Dock selection must align with its button');
   assert.ok(result.sampledControls > 0, label + ' must expose real usable controls.');
   if (result.dialog) {
     const box = result.dialog;
@@ -527,14 +534,29 @@ async function canvasPixels(page) {
   assert.ok(opaque > 0, 'The actual photo canvas must contain visible pixels.');
   return { width: info.width, height: info.height, pixelSha256: sha256(pixels), opaque, meanLuma: luma / opaque };
 }
+async function importReviewFile(page, filename, input) {
+  const fileName = page.locator('.canvas-file-info').getByText(filename, { exact: true });
+  const confirm = page.locator('dialog.confirmation-dialog[open] .dialog-actions button').last();
+  await page.getByLabel(/^(选择照片|選擇照片|Choose photo)$/, { exact: true }).setInputFiles(input);
+  const outcome = await Promise.race([
+    fileName.waitFor({ state: 'attached' }).then(() => 'opened'),
+    confirm.waitFor().then(() => 'confirm'),
+  ]);
+  if (outcome === 'confirm') {
+    await confirm.click();
+    await fileName.waitFor({ state: 'attached' });
+  }
+  await imageReady(page);
+}
 async function importPhoto(page, id) {
   const source = photos.get(id);
   assert.ok(source);
-  await page.locator('input[type="file"].sr-only').first().setInputFiles({
-    name: id === 'coast' ? 'Lake study.jpg' : 'Portrait study.jpg', mimeType: 'image/jpeg', buffer: source.bytes,
-  });
-  await imageReady(page);
+  const name = id === 'coast' ? 'Lake study.jpg' : 'Portrait study.jpg';
+  await importReviewFile(page, name, { name, mimeType: 'image/jpeg', buffer: source.bytes });
   return canvasPixels(page);
+}
+async function importStoryPhoto(page, filename) {
+  await importReviewFile(page, filename, resolve(root, 'apps/web/public/about/stories', filename));
 }
 async function tool(page, id) {
   const button = page.locator('[data-dock-tool="' + id + '"]');
@@ -1001,33 +1023,31 @@ async function sketchScreens(page, locale) {
   const shapes = drawing.getByRole('group', {
     name: locale === 'en' ? 'Add sketch elements' : locale === 'zh-TW' ? '草圖新增元素' : '草图添加元素',
   });
-  await drawing.locator('input[type="file"]').setInputFiles({
-    name: 'Lake study.jpg', mimeType: 'image/jpeg', buffer: photos.get('coast').bytes,
-  });
+  await drawing.locator('input[type="file"]').setInputFiles(resolve(root, 'apps/web/public/about/stories/ginkgo.webp'));
   await until(async () => (await drawing.locator('.drawing-surface canvas').evaluate(canvas => {
     const data = canvas.getContext('2d').getImageData(0,0,canvas.width,canvas.height).data;
     for (let index=3; index<data.length; index+=4) if (data[index]) return true;
     return false;
   })), 'drawing contains the actually imported photograph');
-  await shapes.getByRole('button', { name: locale === 'en' ? 'Text' : '文字', exact: true }).click();
-  await drawing.locator('textarea').fill('STILL\nWATER');
-  await drawing.locator('.drawing-colors > button').first().click();
-  const size = drawing.locator('.drawing-width input[type="range"]');
-  await size.press('End');
+  await shapes.locator('[data-action="sketch-text"]').click();
   const canvas = drawing.locator('.drawing-surface canvas');
   const box = await canvas.boundingBox();
   assert.ok(box?.width > 100 && box.height > 100);
-  await canvas.click({ position: { x: box.width * .58, y: box.height * .32 } });
+  await canvas.click({ position: { x: box.width * .56, y: box.height * .42 } });
+  const field = drawing.locator('.sketch-text-input[contenteditable="true"]');
+  await field.fill('AUTUMN LIGHT');
+  await field.press('Control+Enter');
+  await field.waitFor({ state: 'hidden' });
   await drawing.locator('.drawing-mode-tools > button').first().click();
   if(locale==='zh-CN') (report.modalTooltips??=[]).push({phone:false,...await checkModalTooltip(page,drawing)});
   await layout(page, locale + ': actual photograph and editable text in drawing board');
-  await productCapture(page, 'layers', locale, 'coast', 'Real drawing board: photograph imported, text entered and placed with pointer; no generated interface');
+  await productCapture(page, 'layers', locale, 'stories/ginkgo.webp', 'Real drawing board: photograph imported, text entered and placed with pointer; no generated interface');
   await page.setViewportSize({ width: 390, height: 844 });
   await settle(page);
   if(locale==='zh-CN') (report.modalTooltips??=[]).push({phone:true,...await checkModalTooltip(page,drawing)});
   await drawing.locator('.drawing-mode-tools').scrollIntoViewIfNeeded();
   await layout(page, locale + ': phone drawing board');
-  await productCapture(page, 'layers-phone', locale, 'coast', 'Same real drawing document rendered in the independent phone layout');
+  await productCapture(page, 'layers-phone', locale, 'stories/ginkgo.webp', 'Same real drawing document rendered in the independent phone layout');
   if(locale==='zh-CN') {
     for(const [name,viewport] of [['small-phone',{width:320,height:568}],['short-landscape',{width:844,height:390}]]) {
       await page.setViewportSize(viewport);
@@ -1236,16 +1256,17 @@ async function productScreens(locale) {
     await parameter(page, 'exposure', 0.25);
     await layout(page, locale + ': workspace capture');
     await productCapture(page, 'workspace', locale, 'coast', 'Actual local exposure adjustment');
+    await importStoryPhoto(page, 'ceramics-original.webp');
     await tool(page, 'local');
     await page.locator('[data-motion="region-controls"]:visible [data-action="create-region"][data-mask-type="radial"]').click();
     await page.locator('[data-motion="region-controls"]:visible .advanced-object-list .object-name').waitFor();
     await parameter(page, 'exposure', 0.25, '[data-motion="region-controls"]:visible');
     await layout(page, locale + ': local capture');
-    await productCapture(page, 'local', locale, 'coast', 'Actual radial region created and adjusted through UI');
+    await productCapture(page, 'local', locale, 'stories/ceramics-original.webp', 'Actual radial region created and adjusted through UI');
     await page.setViewportSize({ width: 390, height: 844 });
     await settle(page);
     await layout(page, locale + ': phone local capture');
-    await productCapture(page, 'local-phone', locale, 'coast', 'Real radial selection and controls in independent phone layout');
+    await productCapture(page, 'local-phone', locale, 'stories/ceramics-original.webp', 'Real radial selection and controls in independent phone layout');
     if(locale==='zh-CN') {
       for(const [name,viewport] of [['small-phone',{width:320,height:568}],['short-landscape',{width:844,height:390}]]) {
         await page.setViewportSize(viewport);
@@ -1266,6 +1287,20 @@ async function productScreens(locale) {
     await failureEvidence(page);
     throw error;
   } finally { await closeCaseContext(context); }
+  const desktop = await newPage(specification);
+  try {
+    await importStoryPhoto(desktop.page, 'pool.webp');
+    await tool(desktop.page, 'light');
+    await parameter(desktop.page, 'exposure', 0.25);
+    await desktop.page.locator('[data-dock-tool="ai"]').click();
+    await desktop.page.locator('.studio-workspace.editing-with-ai').waitFor();
+    await desktop.page.locator('.free-panel[data-panel-id="ai"][aria-hidden="false"] .ai-workbench').waitFor();
+    await layout(desktop.page, locale + ': desktop editing alongside the assistant');
+    await productCapture(desktop.page, 'desktop-flow', locale, 'stories/pool.webp', 'Actual desktop layout with both the adjustment and assistant panels; no provider request');
+  } catch (error) {
+    await failureEvidence(desktop.page);
+    throw error;
+  } finally { await closeCaseContext(desktop.context); }
   const portrait = await newPage(specification);
   try {
     await importPhoto(portrait.page, 'portrait');
@@ -1297,17 +1332,17 @@ async function productScreens(locale) {
   for (const [name, viewport] of [['tablet', { width: 1024, height: 768 }], ['phone', { width: 390, height: 844 }]]) {
     const device = await newPage({ ...specification, viewport, touch: true });
     try {
-      await importPhoto(device.page, 'coast');
+      await importStoryPhoto(device.page, name === 'phone' ? 'tulip.webp' : 'shore.webp');
       await tool(device.page, 'light');
       await parameter(device.page, 'exposure', 0.25);
       await layout(device.page, locale + ': ' + name + ' capture');
-      await productCapture(device.page, name, locale, 'coast', 'Actual responsive editor; viewport emulation, not a physical device claim');
+      await productCapture(device.page, name, locale, 'stories/' + (name === 'phone' ? 'tulip.webp' : 'shore.webp'), 'Actual responsive editor; viewport emulation, not a physical device claim');
     } catch (error) {
       await failureEvidence(device.page);
       throw error;
     } finally { await closeCaseContext(device.context); }
   }
-  return { locale, screens: ['workspace','local','local-phone','layers','layers-phone','portrait','portrait-phone','tablet','phone'] };
+  return { locale, screens: ['workspace','desktop-flow','local','local-phone','layers','layers-phone','portrait','portrait-phone','tablet','phone'] };
 }
 
 async function supplementalViews(config) {
@@ -1603,6 +1638,13 @@ async function businessScreens(locale) {
       await page.locator('.asset-library:visible .library-asset').first().waitFor();
       await page.locator('.asset-library:visible img').evaluateAll(async nodes => { await Promise.all(nodes.map(node => node.decode())); });
       await layout(page, locale + suffix + ': real project library');
+      if (!phone) {
+        const covers = page.locator('.asset-library:visible .library-cover');
+        const first = await covers.nth(0).boundingBox();
+        const second = await covers.nth(1).boundingBox();
+        assert.ok(first && second && Math.abs(first.y - second.y) <= 1 && Math.abs(first.height - second.height) <= 1,
+          locale + ': artwork thumbnails with different source proportions must share a row and baseline');
+      }
       await productCapture(page,'library'+suffix,locale,['coast','portrait'],'Actual private project assets and saved versions from disposable API-backed fixture');
       if(phone && locale==='zh-CN') {
         const firstAsset=page.locator('.asset-library:visible .library-asset').first();
@@ -1623,26 +1665,36 @@ async function businessScreens(locale) {
       await collaboration.locator('.view-heading').scrollIntoViewIfNeeded();
       await layout(page,locale+suffix+': real project discussion and three task states');
       await productCapture(page,'collaboration'+suffix,locale,null,'Actual local API discussion and tasks; no claim of a live multiplayer session');
+      if (!phone) {
+        await changeView(page, 'editor');
+        await importStoryPhoto(page, 'gallery.webp');
+        await tool(page, 'local');
+        await page.locator('[data-mask-type="radial"]:visible').click();
+        await page.locator('.mask-overlay polygon').waitFor();
+        await productCapture(page, 'team-canvas', locale, 'stories/gallery.webp', 'Real signed-in image canvas; About adds clearly marked annotations');
+      }
       await changeView(page,'editor');
-      await importPhoto(page,'coast');
+      await importStoryPhoto(page,'shore.webp');
       await tool(page,'ai');
       const assistant=page.locator('.free-panel[data-panel-id="ai"][aria-hidden="false"] .live-assistant:visible');
       await until(async()=>await assistant.getAttribute('data-availability')==='unavailable','honest AI service availability');
       const input=assistant.locator('.ai-composer-input');
       const draftEditable=await input.isEditable();
       if (draftEditable) await input.fill(locale==='en'
-        ? 'Keep the lake natural. Lift the shadows slightly and preserve the sky.'
-        : locale==='zh-TW'?'保留山湖的自然層次，稍微提亮暗部，天空保持不變。':'保留山湖的自然层次，稍微提亮暗部，天空保持不变。');
+        ? 'Lift the shadows on the rocks. Keep the light in the surf.'
+        : locale==='zh-TW'?'稍微提亮岩石暗部，保留浪花的亮部。':'稍微提亮礁石暗部，保留浪花的亮部。');
       assert.equal(await assistant.locator('.ai-submit-request').isDisabled(),true);
       await layout(page,locale+suffix+': actual assistant composer and unconfigured service state');
-      await productCapture(page,'assistant'+suffix,locale,'coast',
+      await productCapture(page,'assistant'+suffix,locale,'stories/shore.webp',
         'Actual assistant input'+(draftEditable?' with an unsent draft':'')+'; service unavailable and submit disabled; no fabricated AI result');
+      await changeView(page,'editor');
+      await importStoryPhoto(page,'railway.webp');
       await changeView(page,'deliver');
       await page.locator('.delivery-primary-action > button').click();
       const dialog=page.locator('dialog.export-dialog[open]');
       await dialog.waitFor();
       await layout(page,locale+suffix+': actual export dialog');
-      await productCapture(page,'delivery'+suffix,locale,'coast','Actual export settings before download; independent full-size PNG downloads are verified in the seven core flows');
+      await productCapture(page,'delivery'+suffix,locale,'stories/railway.webp','Actual export settings before download; independent full-size PNG downloads are verified in the seven core flows');
       await page.keyboard.press('Escape');
       await dialog.waitFor({state:'hidden'});
     } catch(error) {
@@ -1666,7 +1718,7 @@ async function publicThemeReview() {
       await page.locator('.product-overview-root').waitFor();
       assert.equal(await page.locator('.studio-workspace').count(),0,'Fresh About does not mount the studio to initialize appearance');
       await themed('dark');
-      await until(async()=>await page.locator('.overview-hero-media img').evaluate(node=>node.complete && node.naturalWidth>0),'Actual hero image loaded');
+      await until(async()=>await page.locator('.overview-hero-media [data-product-screen] img').evaluate(node=>node.complete && node.naturalWidth>0),'Actual hero image loaded');
       await logo(page,specification.name+': direct dark About');
       await layout(page,specification.name+': direct dark About');
       await capture(page,'brand/about-dark-'+specification.name+'.png');

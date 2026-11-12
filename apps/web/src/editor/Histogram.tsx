@@ -1,5 +1,5 @@
 import { getLocale, t } from '../i18n';
-import { ChoiceSelect } from '../components/ChoiceSelect';
+import { RubberSegment } from '../components/control-motion';
 import { useMemo, useState } from 'react';
 import type { RGBAImage } from '@ai-xiutu/editor';
 import { sharedHistogram } from './histogram-cache';
@@ -24,21 +24,19 @@ export function Histogram({ image }: { image: RGBAImage | null }) {
       data-motion="histogram"
     >
       <div className="histogram-title">
-        <label className="histogram-channel">
-          <ChoiceSelect
-            ariaLabel={t('直方图通道')}
-            size="compact"
-            value={channel}
-            onValueChange={(value) => setChannel(value as typeof channel)}
-            options={[
-              { value: 'rgb', label: t('RGB 直方图') },
-              { value: 'luminance', label: t('亮度分布') },
-              { value: 'red', label: t('红色通道') },
-              { value: 'green', label: t('绿色通道') },
-              { value: 'blue', label: t('蓝色通道') },
-            ]}
-          />
-        </label>
+        <RubberSegment<typeof channel>
+          className="histogram-channel compact-choice-row"
+          label={t('直方图通道')}
+          value={channel}
+          onChange={setChannel}
+          options={[
+            { value: 'rgb', label: 'RGB', ariaLabel: t('RGB 直方图') },
+            { value: 'luminance', label: 'L', ariaLabel: t('亮度分布') },
+            { value: 'red', label: 'R', ariaLabel: t('红色通道') },
+            { value: 'green', label: 'G', ariaLabel: t('绿色通道') },
+            { value: 'blue', label: 'B', ariaLabel: t('蓝色通道') },
+          ]}
+        />
         <label>
           <input
             type="checkbox"
@@ -55,6 +53,7 @@ export function Histogram({ image }: { image: RGBAImage | null }) {
       </div>
       <svg
         viewBox="0 0 255 96"
+        preserveAspectRatio="none"
         role="img"
         aria-label={t('当前预览 {v0} 个像素的红绿蓝亮度分布', {
           v0: histogram.pixelCount.toLocaleString(getLocale()),

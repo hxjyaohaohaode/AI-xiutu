@@ -233,12 +233,14 @@
   width: 22px;
   height: 22px;
 }
+/* The upper corners share the frame edge without taking clicks from the header. */
+.free-panel :is(.resize-ne, .resize-nw) {
+  top: -12px;
+}
 .free-panel .resize-ne {
-  top: -4px;
   right: -4px;
 }
 .free-panel .resize-nw {
-  top: -4px;
   left: -4px;
 }
 .free-panel .resize-se {

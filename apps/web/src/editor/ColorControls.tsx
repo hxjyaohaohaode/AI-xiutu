@@ -1,3 +1,4 @@
+import { useEffect } from 'react';
 import { t } from '../i18n';
 import { useState, type CSSProperties, type ReactNode } from 'react';
 import { MotionDetails } from '../motion/Presence';
@@ -32,6 +33,7 @@ export type AdjustmentFamily = 'light' | 'color' | 'curves' | 'detail';
 
 export function ColorControls({
   controller,
+  target,
   scope,
   family,
   pickedColor,
@@ -42,6 +44,7 @@ export function ColorControls({
   compactTools,
 }: {
   controller: InspectorController;
+  target?: string;
   scope: EditScope;
   family: AdjustmentFamily;
   compactTools?: {
@@ -65,6 +68,20 @@ export function ColorControls({
   >('detail');
   const [band, setBand] = useState('red'),
     [zone, setZone] = useState('midtones');
+  useEffect(() => {
+    if (!target) return;
+    const [kind, variant] = target.split('.');
+    if (family === 'light') setLightTab(kind === 'levels' ? 'levels' : 'light');
+    if (family === 'color') {
+      if (kind === 'hsl') setBand(variant ?? 'red');
+      if (kind === 'grading' && variant !== 'balance') setZone(variant ?? 'midtones');
+      setColorTab(kind === 'hsl' || kind === 'grading' ? kind : 'global');
+    }
+    if (family === 'detail')
+      setDetailTab(kind === 'optics' ? 'optics' : kind === 'effects'
+        ? variant === 'vignette' || variant === 'grain' ? variant : 'effects'
+        : 'detail');
+  }, [family, target]);
   const lightIds = [
     'exposure',
     'brightness',
@@ -389,11 +406,11 @@ export function ColorControls({
         <div className="tonal-tabs color-family-tabs" aria-label={t('细节类别')}>
           {(
             [
-              ['detail', t('清晰与肌理')],
-              ['optics', t('降噪与色散')],
-              ['vignette', t('明暗角')],
+              ['detail', t('质感')],
+              ['optics', t('光学')],
+              ['vignette', t('暗角')],
               ['grain', t('颗粒')],
-              ['effects', t('黑白与褪色')],
+              ['effects', t('风格')],
             ] as const
           ).map(([id, label]) => (
             <button
@@ -450,6 +467,7 @@ export function ColorControls({
             }
             label={t('图像参数')}
             controls={controls}
+            target={target?.startsWith('adjustments.') ? target.slice('adjustments.'.length) : target}
             headingAccessory={compactCategory}
             onCommit={(label) => editor.commitCurrent(t('调整{v0}', { v0: t(label) }))}
             onCancel={editor.cancelPreview}

@@ -6,7 +6,6 @@ import { ChoiceSelect } from '../components/ChoiceSelect';
 import { RubberSegment } from '../components/control-motion';
 import { Crop, Perspective, FrameCorners, ArrowsOutCardinal } from '../components/ControlGlyph';
 import {
-  createFineTransformV3,
   createRecipeV4,
   fitOrientedCrop,
   orientGeometry,
@@ -27,9 +26,11 @@ import { ProjectiveControls } from './ProjectiveControls';
 export function GeometryControls({
   controller,
   layoutControl,
+  target,
 }: {
   controller: InspectorController;
   layoutControl?: ReactNode;
+  target?: string;
 }) {
   const { editor, apply, report } = controller,
     recipe = currentV3(editor);
@@ -198,6 +199,7 @@ export function GeometryControls({
       ) : (
         <ParameterShelf
           key={tab}
+          target={target}
           label={t('自由构图变换')}
           controls={transformControls}
           onCommit={(name) => editor.commitCurrent(t('调整{v0}', { v0: t(name) }))}
@@ -205,40 +207,35 @@ export function GeometryControls({
         />
       )}
       {tab !== 'crop' && orientation}
-      <label className="advanced-select">
-        {t('变换后的画幅')}
-        <ChoiceSelect
-          ariaLabel={t('变换后的画幅')}
-          size="compact"
+      {(tab === 'transform' || tab === 'placement') && (
+        <RubberSegment<'contain' | 'crop'>
+          className="compact-choice-row"
+          label={t('变换后的画幅')}
           value={recipe.transform.fit}
-          onValueChange={(value) =>
-            apply(
-              { ...recipe, transform: { ...recipe.transform, fit: value as 'contain' | 'crop' } },
-              t('选择变换画幅'),
-              true,
-            )
-          }
+          onChange={(fit) => apply({ ...recipe, transform: { ...recipe.transform, fit } }, t('选择变换画幅'), true)}
           options={[
-            { value: 'contain', label: t('包含完整变换结果') },
-            { value: 'crop', label: t('保留原来画幅') },
+            { value: 'contain', label: t('容纳全部') },
+            { value: 'crop', label: t('保留画幅') },
           ]}
         />
-      </label>
-      <button
-        className="text-button"
-        onClick={() => {
-          const current = currentV3(editor);
-          const next = {
-            ...current,
-            geometry: { crop: null, rotation: 0 as const, flipX: false, flipY: false },
-            transform: createFineTransformV3(),
-            ...(current.schemaVersion === 4 ? { projective: createRecipeV4().projective } : {}),
-          };
-          if (apply(next, t('重置构图'), true)) editor.setCropRatio(null);
-        }}
-      >
-        {t('重置构图')}
-      </button>
+      )}
+      {tab !== 'crop' && (
+        <button
+          type="button"
+          className="text-button geometry-reset"
+          onClick={() => {
+            const current = currentV3(editor);
+            const next = tab === 'projective' && current.schemaVersion === 4
+              ? { ...current, projective: createRecipeV4().projective }
+              : NUMERIC_CONTROLS
+                .filter((tool) => transformControls.some(({ id }) => id === tool.path))
+                .reduce((value, tool) => withNumeric(value, tool, tool.neutral), current);
+            apply(next, t('重置当前构图参数'), true);
+          }}
+        >
+          {t('重置当前构图参数')}
+        </button>
+      )}
     </section>
   );
 }

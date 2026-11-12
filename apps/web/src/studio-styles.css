@@ -27,3 +27,5 @@
 @import './components/drawing-controls.css';
 @import './editor/crop-controls.css';
 @import './workspace/mobile-editor.css';
+
+@import './workspace/compact-controls.css';

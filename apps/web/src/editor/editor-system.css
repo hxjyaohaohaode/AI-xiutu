@@ -56,13 +56,14 @@
   margin-bottom: 8px;
 }
 .advanced-inspector .local-controls-v3 > .local-create-actions {
-  flex-wrap: wrap;
-  overflow: visible;
+  flex-wrap: nowrap;
+  overflow-x: auto;
+  scrollbar-width: none;
 }
 .advanced-inspector .local-controls-v3 > .local-create-actions > button {
+  flex: 0 0 auto;
   min-height: var(--ui-hit, 40px);
-  max-width: 100%;
-  white-space: normal;
+  white-space: nowrap;
 }
 .local-compact-context {
   display: flex;
@@ -185,6 +186,8 @@
   line-height: 1.25;
 }
 .panel-menu-presentation {
+  position: relative;
+  z-index: 1;
   display: grid;
   gap: 4px;
   padding-bottom: 8px;
@@ -192,6 +195,7 @@
 .panel-menu-presentation > button {
   display: flex;
   align-items: center;
+  justify-content: flex-start;
   gap: 8px;
   min-height: 44px;
   padding: 6px 9px;

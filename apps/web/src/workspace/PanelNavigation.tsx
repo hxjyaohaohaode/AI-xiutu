@@ -92,6 +92,7 @@ export function PanelNavigation({
           key={item.id}
           aria-pressed={item.id === selected}
           aria-label={item.label}
+          title={item.label}
           onClick={(event) => {
             if (focusRequest && event.detail === 0) focusRequest.current = item.id;
             item.onSelect();

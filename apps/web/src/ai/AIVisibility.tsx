@@ -9,9 +9,11 @@ export interface AIActivity {
   /** Current local connection state; an unresolved receipt is not a live call. */
   callState: 'idle' | 'connecting' | 'active' | 'closing';
   muted: boolean;
+  callVisible: boolean;
   /** Stable controls for the currently mounted voice owner. */
   onMute?: () => void;
   onEnd?: () => void;
+  onResume?: (trigger?: HTMLElement) => void;
 }
 
 export const IDLE_AI_ACTIVITY: AIActivity = Object.freeze({
@@ -19,4 +21,5 @@ export const IDLE_AI_ACTIVITY: AIActivity = Object.freeze({
   requestActive: false,
   callState: 'idle',
   muted: false,
+  callVisible: false,
 });

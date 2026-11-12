@@ -46,6 +46,11 @@ export async function api<T>(path: string, init: RequestInit = {}): Promise<T> {
   return body as T;
 }
 
+/** A deadline for model discovery only. This never retries a paid mutation. */
+export async function readModelCatalog<T>(path: string, signal: AbortSignal): Promise<T> {
+  return api<T>(path, { signal: AbortSignal.any([signal, AbortSignal.timeout(10_000)]) });
+}
+
 export const jsonRequest = (method: string, body?: unknown): RequestInit => ({
   method,
   ...(body === undefined ? {} : { body: JSON.stringify(body) }),

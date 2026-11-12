@@ -1,0 +1,87 @@
+{
+  "assets": [
+    {
+      "path": "ceramics-original.webp",
+      "source": "OpenAI ImageGen",
+      "promptSummary": "Studio ceramics, window shadows and blue textile",
+      "sha256": "e541f922f4423bf2c780e50161c9fe030758d278d9f498c21dc12b2b090c2cb7"
+    },
+    {
+      "path": "ceramics-graded.webp",
+      "source": "The application’s renderRecipeV4 reference engine",
+      "input": "ceramics-original.webp",
+      "adjustments": {
+        "exposure": 0.48,
+        "brightness": 0,
+        "contrast": 0,
+        "highlights": -18,
+        "shadows": 18,
+        "whites": 0,
+        "blacks": 0,
+        "saturation": 0,
+        "vibrance": 12,
+        "temperature": 9,
+        "tint": 0,
+        "sharpness": 0,
+        "soften": 0
+      },
+      "sha256": "7f0d426ebe5b1bd0bee9647c0dce522196fb6772bc3467b81fcd00bc84221dd2"
+    },
+    {
+      "path": "ginkgo.webp",
+      "source": "OpenAI ImageGen",
+      "promptSummary": "Ginkgo, terracotta and terrazzo layer source",
+      "sha256": "1c688b0a42ec6aa7552fb8c9618e133ddd9ee4b787bac212cab5602e81eb489a"
+    },
+    {
+      "path": "gallery.webp",
+      "source": "OpenAI ImageGen",
+      "promptSummary": "Travertine gallery with deep arch shadows and warm floor light",
+      "sha256": "5180ad3ac9b6e88aec434c91db49abf9504678f050f5ebf52579b39a5f4012fc"
+    },
+    {
+      "path": "railway.webp",
+      "source": "OpenAI ImageGen",
+      "promptSummary": "Amber railway windows against blue rain",
+      "sha256": "c3264265570b0820ddc11a40b9700cc2e56ac0f2f2c9b7ab449c096c315a24dc"
+    },
+    {
+      "path": "pool.webp",
+      "source": "OpenAI ImageGen",
+      "promptSummary": "Cobalt pool geometry and hard palm shadows",
+      "sha256": "c1c4dc1bc059d9a8cf59dcd6e657b32fa20fbc5ccc790eed9dd0798ed613f72f"
+    },
+    {
+      "path": "tulip.webp",
+      "source": "OpenAI ImageGen",
+      "promptSummary": "Coral tulips against a soft lavender portrait background",
+      "sha256": "fbfd096b7c0a31683bc748178cd0a22028540d84a7d2262c7267018dbf0a4d0d"
+    },
+    {
+      "path": "shore.webp",
+      "source": "OpenAI ImageGen",
+      "promptSummary": "Blue waves and a misty Atlantic cliff",
+      "sha256": "693a0b5c19e5b35bfa3c7043b07c595915636fda6ebd623dc4c132447a6830bd"
+    }
+  ],
+  "voiceCapture": {
+    "source": "Actual OpenAI Realtime browser session using an isolated test project and generated source photo",
+    "model": "gpt-realtime-mini",
+    "voice": "marin",
+    "maxSeconds": 35,
+    "captures": [
+      {
+        "path": "voice-listening.webp",
+        "sha256": "886514225d1a8c01fc07a4003b551aa93f99c1391e14ee4c61aa3cac71da847f"
+      },
+      {
+        "path": "voice-response.webp",
+        "sha256": "ea6697bd05486bf4e0a7fb1ce95a31e6cb01834da19b8ae69411965df4a6aa3f"
+      },
+      {
+        "path": "voice-muted.webp",
+        "sha256": "ad52af454dfb623b97e85c04255748df9fe975bbfb59fa207f06b2319f07b260"
+      }
+    ]
+  }
+}

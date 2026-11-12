@@ -60,6 +60,8 @@ const gpt54 = {
 } as const;
 export const RESPONSES_MODELS = Object.freeze(
   [
+    { id: 'gpt-6.1-sol', ...gpt6, reasoning: ['low', 'medium', 'high', 'xhigh', 'max'] as const },
+    { id: 'gpt-6.1-terra', ...gpt6 },
     { id: 'gpt-6-astra', ...gpt6 },
     { id: 'gpt-6-sol', ...gpt6 },
     { id: 'gpt-6-luna', ...gpt6 },

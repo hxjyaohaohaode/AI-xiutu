@@ -1,3 +1,4 @@
+import { SketchTextEditor, type SketchTextHandle } from './SketchTextEditor';
 import { t } from '../i18n';
 import { ChoiceSelect } from './ChoiceSelect';
 import { useEffect, useLayoutEffect, useRef, useState, type PointerEvent } from 'react';
@@ -35,6 +36,7 @@ import {
   sketchResizeCorner,
   type SketchCorner,
   type SketchItem,
+  type SketchText,
   type SketchPoint,
   type SketchIcon,
   type SketchShape,
@@ -109,7 +111,8 @@ export function DrawingBoard({
   const [width, setWidth] = useState(5);
   const [tool, setTool] = useState<Tool>('pencil');
   const [selection, setSelection] = useState<number | null>(null);
-  const [textValue, setTextValue] = useState('');
+  const [textEdit, setTextEdit] = useState<{ item: SketchText; index: number | null } | null>(null);
+  const textField = useRef<SketchTextHandle>(null);
   const [symbol, setSymbol] = useState<SketchIcon>('star');
   const [filled, setFilled] = useState(false);
   const [transparent, setTransparent] = useState(false);
@@ -173,7 +176,7 @@ export function DrawingBoard({
     if (!mounted.current || locked.current || latest.current.busy || pointer.current !== null)
       return false;
     return (
-      !latest.current.items.length ||
+      (!latest.current.items.length && !textField.current?.read().text.trim()) ||
       (await confirmDrawing(
         '草图还在当前绘画窗口中。确认已下载或不再需要后，再关闭吗？',
         '关闭草图',
@@ -224,7 +227,7 @@ export function DrawingBoard({
     if (!context) return;
     context.clearRect(0, 0, context.canvas.width, context.canvas.height);
     latest.current.items.forEach((item, i) =>
-      paintSketchItem(moving.current?.index === i ? moving.current.item : item, context),
+      textEdit?.index !== i && paintSketchItem(moving.current?.index === i ? moving.current.item : item, context),
     );
     if (active.current && !moving.current) paintSketchItem(active.current, context);
     const item = moving.current?.item ?? (tool === 'select' ? selected : null);
@@ -247,7 +250,7 @@ export function DrawingBoard({
   }
   useLayoutEffect(() => {
     redraw();
-  }, [items, areaSize, selection, tool]);
+  }, [items, areaSize, selection, tool, textEdit]);
   function position(
     event: Pick<PointerEvent, 'clientX' | 'clientY'>,
     bounds: DOMRect,
@@ -263,7 +266,6 @@ export function DrawingBoard({
   }
   function selectItem(index: number, item: SketchItem) {
     setSelection(index);
-    if (item.kind === 'text') setTextValue(item.text);
     if ('color' in item) setColor(item.color);
     setTool('select');
   }
@@ -345,6 +347,19 @@ export function DrawingBoard({
     } else if (item) commitItems([...previous, item]);
     redraw();
   }
+  function finishText() {
+    if (!textEdit) return;
+    const item = textField.current?.read();
+    setTextEdit(null);
+    if (!item?.text.trim()) return;
+    const previous = latest.current.items;
+    const index = textEdit.index ?? previous.length;
+    const next = textEdit.index === null
+      ? [...previous, item]
+      : previous.map((value, position) => position === index ? item : value);
+    commitItems(next);
+    selectItem(index, item);
+  }
   async function getFile() {
     if (!canvas.current) throw new Error('草图画布暂不可用。');
     const output = document.createElement('canvas');
@@ -372,6 +387,7 @@ export function DrawingBoard({
   }
   async function useDrawing(action: 'download' | 'local' | 'reference') {
     if (!mounted.current || locked.current || pointer.current !== null) return;
+    finishText();
     locked.current = true;
     const drawing = latest.current;
     const isCurrent = () =>
@@ -401,6 +417,7 @@ export function DrawingBoard({
     <>
       <Modal
         title={t('草图')}
+        hideTitle
         onClose={onClose}
         canClose={canCloseDrawing}
         wide
@@ -475,6 +492,7 @@ export function DrawingBoard({
               ))}
               <IconButton
                 label={t('文字')}
+                data-action="sketch-text"
                 aria-pressed={tool === 'text'}
                 disabled={busy}
                 onClick={() => setTool('text')}
@@ -565,29 +583,6 @@ export function DrawingBoard({
               )}
             </div>
           </div>
-          {(tool === 'text' || (tool === 'select' && selected?.kind === 'text')) && (
-            <div className="drawing-controls">
-              <TextT size={20} />
-              <textarea
-                aria-label={t('草图文字')}
-                rows={1}
-                maxLength={160}
-                value={textValue}
-                placeholder={t('输入文字')}
-                disabled={busy}
-                onChange={(event) => setTextValue(event.currentTarget.value)}
-              />
-              {tool === 'select' && selected?.kind === 'text' && (
-                <button
-                  className="text-button"
-                  disabled={busy || !textValue.trim() || textValue.trim() === selected.text}
-                  onClick={() => patchSelected({ ...selected, text: textValue.trim() })}
-                >
-                  {t('更新文字')}
-                </button>
-              )}
-            </div>
-          )}
           {tool === 'icon' && (
             <div className="drawing-shape-rail" role="group" aria-label={t('草图图标')}>
               {symbolTools.map(([icon, label]) => (
@@ -675,7 +670,7 @@ export function DrawingBoard({
               </button>
             </div>
             {tool !== 'select' && (
-              <label className="drawing-width drawing-brush-width">
+              <label className="drawing-width drawing-brush-width" style={{ '--sketch-width-progress': (width / 70 * 100) + '%' } as React.CSSProperties}>
                 {tool === 'text' || tool === 'icon' ? t('大小') : erase ? t('橡皮') : t('笔触')}
                 <input
                   type="range"
@@ -784,6 +779,15 @@ export function DrawingBoard({
             data-tool={tool}
             aria-label={t('草图画布，使用鼠标、手指或触控笔绘画')}
             tabIndex={0}
+            onDoubleClick={(event) => {
+              if (tool !== 'select' || busy || textEdit) return;
+              const target = event.currentTarget;
+              const context = target.getContext('2d');
+              if (!context) return;
+              const index = sketchItemAt(context, items, position(event, target.getBoundingClientRect()));
+              const item = items[index];
+              if (item?.kind === 'text') setTextEdit({ item, index });
+            }}
             onKeyDown={(event) => {
               if (busy || pointer.current !== null) return;
               const key = event.key.toLowerCase();
@@ -840,6 +844,7 @@ export function DrawingBoard({
               if (!context) return;
               target.focus({ preventScroll: true });
               const at = position(event, target.getBoundingClientRect());
+              if (textEdit) { finishText(); return; }
               if (tool === 'select') {
                 const corner = selected
                   ? sketchResizeCorner(
@@ -874,20 +879,15 @@ export function DrawingBoard({
                 return;
               }
               event.preventDefault();
-              if (tool === 'text' || tool === 'icon') {
-                const text = textValue.trim();
-                if (tool === 'text' && !text) {
-                  setError(t('请输入草图文字'));
-                  return;
-                }
-                const size = 12 + width * 2;
-                const item: SketchItem =
-                  tool === 'text'
-                    ? { kind: 'text', at, text, color, size }
-                    : { kind: 'icon', at, icon: symbol, color, size };
+              if (tool === 'text') {
+                setTextEdit({ item: { kind: 'text', at, text: '', color, size: Math.max(16, 12 + width * 2) }, index: null });
+                setError(null);
+                return;
+              }
+              if (tool === 'icon') {
+                const item: SketchItem = { kind: 'icon', at, icon: symbol, color, size: 12 + width * 2 };
                 commitItems([...items, item]);
                 selectItem(items.length, item);
-                setError(null);
                 return;
               }
               const base = strokeBase.current ?? document.createElement('canvas');
@@ -947,6 +947,7 @@ export function DrawingBoard({
             onPointerCancel={(event) => finish(event, true)}
             onLostPointerCapture={(event) => finish(event, true)}
           />
+          {textEdit && <SketchTextEditor item={textEdit.item} ref={textField} onDone={finishText} />}
         </div>
         <div className="drawing-actions">
           <button
@@ -959,7 +960,7 @@ export function DrawingBoard({
           </button>
           <button
             className="button button-secondary"
-            disabled={busy || !items.length}
+            disabled={busy || (!items.length && !textEdit)}
             onClick={() => void useDrawing('local')}
           >
             <ImageSquare size={17} />
@@ -967,7 +968,7 @@ export function DrawingBoard({
           </button>
           <button
             className="button button-primary"
-            disabled={busy || !items.length}
+            disabled={busy || (!items.length && !textEdit)}
             onClick={() => void useDrawing('reference')}
           >
             {busy ? (

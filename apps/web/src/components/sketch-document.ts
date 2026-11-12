@@ -2,6 +2,20 @@ export type SketchPoint = { x: number; y: number };
 export type SketchShape =
   'rectangle' | 'rounded' | 'ellipse' | 'triangle' | 'diamond' | 'line' | 'arrow';
 export type SketchIcon = 'star' | 'heart' | 'check' | 'pin' | 'bolt' | 'speech';
+export type SketchTextStyle = {
+  color: string;
+  size: number;
+  family: 'sans' | 'serif' | 'mono';
+  weight: number;
+  italic: boolean;
+};
+export type SketchTextRun = { text: string; style: SketchTextStyle };
+export const sketchFonts: Record<SketchTextStyle['family'], string> = {
+  sans: 'system-ui, sans-serif',
+  serif: 'Georgia, "Noto Serif CJK SC", serif',
+  mono: 'Consolas, monospace',
+};
+
 export type SketchItem = (
   | { kind: 'stroke'; points: SketchPoint[]; color: string; width: number; erase: boolean }
   | {
@@ -13,7 +27,7 @@ export type SketchItem = (
       width: number;
       fill: boolean;
     }
-  | { kind: 'text'; at: SketchPoint; text: string; color: string; size: number }
+  | { kind: 'text'; at: SketchPoint; text: string; color: string; size: number; runs?: SketchTextRun[] }
   | { kind: 'icon'; at: SketchPoint; icon: SketchIcon; color: string; size: number }
   | { kind: 'image'; at: SketchPoint; image: HTMLCanvasElement; size: number; name: string }
 ) & { angle?: number; opacity?: number };
@@ -28,6 +42,42 @@ function imageBox(context: CanvasRenderingContext2D, item: Extract<SketchItem, {
   const edge = item.size * shortEdge(context);
   const ratio = item.image.width / item.image.height;
   return { width: Math.min(edge, edge * ratio), height: Math.min(edge, edge / ratio) };
+}
+
+export type SketchText = Extract<SketchItem, { kind: 'text' }>;
+export const sketchTextRuns = (item: SketchText): SketchTextRun[] => item.runs ?? [
+  { text: item.text, style: { color: item.color, size: item.size, family: 'sans', weight: 600, italic: false } },
+];
+
+function textGeometry(context: CanvasRenderingContext2D, item: SketchText, paint: boolean) {
+  const at = pixel(context, item.at);
+  const lines: SketchTextRun[][] = [[]];
+  for (const run of sketchTextRuns(item)) {
+    run.text.split('\n').forEach((text, index) => {
+      if (index) lines.push([]);
+      if (text) lines.at(-1)!.push({ text, style: run.style });
+    });
+  }
+  context.save();
+  context.textBaseline = 'alphabetic';
+  let y = 0;
+  let width = 0;
+  for (const line of lines) {
+    const size = line.length ? Math.max(...line.map(({ style }) => style.size)) : item.size;
+    let x = 0;
+    for (const { text, style } of line) {
+      context.font = [style.italic ? 'italic' : 'normal', style.weight, style.size + 'px', sketchFonts[style.family]].join(' ');
+      if (paint) {
+        context.fillStyle = style.color;
+        context.fillText(text, at.x + x, at.y + y + size);
+      }
+      x += context.measureText(text).width;
+    }
+    width = Math.max(width, x);
+    y += size * 1.22;
+  }
+  context.restore();
+  return { ...at, width, height: y };
 }
 
 export function paintSketchItem(item: SketchItem, context: CanvasRenderingContext2D) {
@@ -103,14 +153,7 @@ export function paintSketchItem(item: SketchItem, context: CanvasRenderingContex
       const { width, height } = imageBox(context, item);
       context.drawImage(item.image, at.x, at.y, width, height);
     } else if (item.kind === 'text') {
-      context.font = `600 ${item.size}px system-ui, sans-serif`;
-      context.textBaseline = 'top';
-      const lineHeight = item.size * 1.2;
-      item.text
-        .split('\n')
-        .forEach((line, i) =>
-          context.fillText(line, at.x, at.y + i * lineHeight, context.canvas.width * 0.9),
-        );
+      textGeometry(context, item, true);
     } else {
       context.translate(at.x, at.y);
       context.scale(item.size, item.size);
@@ -182,15 +225,7 @@ function flatSketchBounds(context: CanvasRenderingContext2D, item: SketchItem) {
   const at = pixel(context, item.at);
   if (item.kind === 'image') return { ...at, ...imageBox(context, item) };
   if (item.kind === 'icon') return { ...at, width: item.size, height: item.size };
-  context.save();
-  context.font = `600 ${item.size}px system-ui, sans-serif`;
-  const lines = item.text.split('\n');
-  const width = Math.min(
-    context.canvas.width * 0.9,
-    Math.max(...lines.map((line) => context.measureText(line).width)),
-  );
-  context.restore();
-  return { ...at, width, height: lines.length * item.size * 1.2 };
+  return textGeometry(context, item, false);
 }
 
 export function sketchBounds(context: CanvasRenderingContext2D, item: SketchItem) {
@@ -293,6 +328,7 @@ export function resizeSketchItem(
       to: stretch(item.to),
       width: Math.max(1, item.width * scale),
     };
+  if (item.kind === 'text' && item.runs) return { ...item, at: stretch(item.at), size: item.size * scale, runs: item.runs.map((run) => ({ ...run, style: { ...run.style, size: run.style.size * scale } })) };
   return { ...item, at: stretch(item.at), size: item.size * scale };
 }
 

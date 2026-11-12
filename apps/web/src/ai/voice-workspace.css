@@ -1,0 +1,164 @@
+/* This surface has its own viewport and never owns the live connection. */
+.voice-call-workspace {
+  --voice-ink: #f4f1e7;
+  --voice-muted: #c1c7b6;
+  --voice-border: #a3a98b3a;
+  position: fixed;
+  z-index: 120;
+  inset: max(64px, env(safe-area-inset-top)) max(16px, env(safe-area-inset-right)) auto auto;
+  width: min(580px, calc(100% - 28px), max(410px, 44vw));
+  height: min(740px, calc(100dvh - max(64px, env(safe-area-inset-top)) - 15px));
+  display: grid;
+  grid-template-rows: auto minmax(0, 1fr) auto;
+  border-radius: 24px;
+  overflow: hidden;
+  color-scheme: dark;
+  color: var(--voice-ink);
+  background: radial-gradient(ellipse at 50% 44%, #2d3d36, #171e1d 54%, #101513 90%);
+  box-shadow: 0 20px 65px #111a1473, inset 0 0 0 1px var(--voice-border);
+}
+.voice-call-workspace .voice-workspace-heading {
+  display: grid;
+  grid-template-columns: 40px minmax(0, 1fr) 40px;
+  gap: 8px;
+  align-items: center;
+  padding: 12px 16px 8px;
+  text-align: center;
+}
+.voice-workspace-heading > div { display: grid; gap: 3px; min-width: 0; }
+.voice-workspace-heading strong { font-size: 14px; overflow-wrap: anywhere; }
+.voice-workspace-heading span { color: var(--voice-muted); font-size: 11px; }
+.voice-call-workspace .icon-button, .voice-call-workspace .text-button { color: inherit; }
+.voice-workspace-body { min-height: 0; overflow: auto; overscroll-behavior: contain; padding: 0 clamp(15px, 4vw, 42px) 10px; }
+.voice-call-workspace .assistant-call {
+  display: grid;
+  justify-items: center;
+  align-content: center;
+  margin: 0;
+  border: 0;
+  background: transparent;
+  padding: 0;
+  gap: 5px;
+  min-height: min(49dvh, 360px);
+}
+.voice-call-workspace .voice-workspace-orb {
+  position: relative;
+  inline-size: clamp(120px, 31dvh, 270px);
+  aspect-ratio: 1;
+  border-radius: 50%;
+  border: 0;
+  padding: 0;
+  display: grid;
+  place-items: center;
+  isolation: isolate;
+  background: transparent;
+  color: #fff9df;
+}
+.voice-call-workspace .voice-strands-orb { display: block; inline-size: 100%; block-size: 100%; }
+.voice-workspace-orb .voice-orb-glyph {
+  position: absolute; z-index: 1; inset: auto auto 11% 50%; translate: -50%;
+  display: grid; place-items: center; width: 38px; height: 38px;
+  border-radius: 50%; background: #0a130ed9;
+  box-shadow: inset 0 0 0 1px #f7f7d64d;
+  pointer-events: none;
+}
+.voice-workspace-orb[aria-disabled='true'] { cursor: default; }
+.voice-workspace-orb:not([aria-disabled='true']):hover .voice-orb-glyph { background: #2c3a2c; }
+.voice-workspace-orb:focus-visible { outline: 2px solid #f3ce6c; outline-offset: 3px; }
+.voice-call-workspace .assistant-call-status { color: inherit; text-align: center; font-size: clamp(14px, 2vw, 20px); }
+.voice-call-workspace .assistant-call-status > small { color: var(--voice-muted); font-size: 12px; overflow-wrap: anywhere; }
+.voice-workspace-actions {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 8px;
+}
+.voice-call-workspace .assistant-call-actions { justify-content: end; margin: 0; }
+.voice-call-workspace .assistant-call-actions > button {
+  display: grid; place-items: center; min-width: 40px; min-height: 40px;
+  color: inherit; background: #242d25; border: 0; box-shadow: inset 0 0 0 1px var(--voice-border);
+}
+.voice-call-workspace .assistant-call-actions > .end-call { background: #833f3e; color: #fff8ee; }
+.voice-call-workspace .assistant-call-start { display: flex; flex-wrap: wrap; justify-content: center; margin-top: 7px; }
+.voice-call-workspace .assistant-call-start .choice-select { max-inline-size: min(190px, 100%); }
+.voice-call-workspace .assistant-error { color: #ffb9b1; }
+.voice-call-workspace :is(.assistant-captions, .assistant-voice-search) { background: transparent; color: inherit; }
+.voice-tool-status { color: var(--voice-muted); font-size: 12px; }
+.voice-results {
+  --text: var(--voice-ink);
+  --subtle: var(--voice-muted);
+  --line: var(--voice-border);
+  --surface-secondary: #ffffff12;
+  display: grid;
+  gap: 12px;
+  border-top: 1px solid var(--voice-border);
+  padding-top: 12px;
+}
+.voice-results .assistant-messages { max-height: none; overflow: visible; }
+.voice-results :is(.assistant-message, .assistant-candidate) {
+  padding: 8px 0;
+  color: inherit;
+  background: transparent;
+  overflow-wrap: anywhere;
+}
+.voice-results .assistant-message.user { padding-inline: 11px; background: var(--surface-secondary); }
+.voice-results :is(.assistant-message > small, .assistant-message-actions button) {
+  color: var(--voice-muted);
+}
+.voice-results .assistant-citations a { color: #f7d282; }
+.voice-workspace-footer {
+  display: grid;
+  gap: 2px;
+  margin: 0 clamp(12px, 3vw, 27px) max(10px, env(safe-area-inset-bottom));
+}
+.voice-workspace-footer .voice-composer {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: end;
+  gap: 5px;
+  padding: 5px 6px 5px 9px;
+  border-radius: 20px;
+  background: #ffffff10;
+}
+.voice-workspace-footer .voice-composer .ai-composer-input {
+  min-height: 38px;
+  padding: 8px 4px;
+  color: var(--voice-ink);
+  caret-color: #f7d282;
+}
+.voice-workspace-footer .voice-composer .ai-composer-input::placeholder { color: var(--voice-muted); }
+.voice-workspace-footer .voice-composer .ai-send-button {
+  color: #221a0b;
+  background: #f7d282;
+}
+.voice-workspace-footer .voice-composer .ai-send-button:disabled {
+  color: var(--voice-muted);
+  background: #ffffff12;
+}
+.voice-workspace-footer .voice-share-canvas {
+  justify-self: start; display: inline-flex; align-items: center; gap: 5px; min-height: 28px; font-size: 12px;
+}
+.voice-workspace-footer .voice-share-canvas[aria-pressed='true'] { color: #f7d282; }
+.live-assistant .ai-composer-region[hidden] { display: none; }
+@media (max-width: 899px) {
+  .voice-call-workspace {
+    inset: 0;
+    width: 100%;
+    height: 100dvh;
+    border-radius: 0;
+    padding-top: env(safe-area-inset-top);
+  }
+  .voice-workspace-heading .icon-button { min-inline-size: 40px; min-block-size: 40px; }
+  .voice-call-workspace .assistant-call-start { gap: 6px; }
+}
+@media (max-height: 440px) and (orientation: landscape) {
+  .voice-call-workspace .assistant-call {
+    min-height: 145px;
+    grid-template-columns: minmax(120px, .6fr) minmax(0, 1fr);
+    align-items: center;
+  }
+  .voice-call-workspace .voice-workspace-orb { grid-row: 1 / span 2; }
+}
+
+.voice-workspace-heading > .icon-button { inline-size: 40px; block-size: 40px; }
+.voice-workspace-footer :is(.voice-share-canvas, .ai-send-button) { min-height: 40px; min-width: 40px; }

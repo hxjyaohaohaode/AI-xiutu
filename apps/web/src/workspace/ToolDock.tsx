@@ -26,8 +26,6 @@ function revealPressedTool(rail: HTMLElement) {
 export function ToolDock({
   group,
   inspectorOpen,
-  collageOpen,
-  onCollage,
   aiOpen,
   compact,
   onTool,
@@ -35,8 +33,6 @@ export function ToolDock({
 }: {
   group: ToolGroup;
   inspectorOpen: boolean;
-  collageOpen: boolean;
-  onCollage: () => void;
   aiOpen: boolean;
   compact: boolean;
   onTool: (group: ToolGroup) => void;
@@ -72,27 +68,16 @@ export function ToolDock({
   useDockProximity(dock, compact, locale);
   const reducedMotion = useReducedMotion();
   const [overflow, setOverflow] = useState({ left: false, right: false });
-  const active = collageOpen ? 'collage' : dockTool(group, compact);
-  const contextOpen = inspectorOpen || collageOpen;
+  const active = dockTool(group, compact);
+  const contextOpen = inspectorOpen;
   const [tabStop, setTabStop] = useState<string>(aiOpen ? 'ai' : active);
-  const [selection, setSelection] = useState<{ x: number; width: number; height: number } | null>(
+  const [selection, setSelection] = useState<{ x: number; y: number; width: number; height: number } | null>(
     null,
   );
   const choices = toolGroups.filter(
     (tool) => !compact || !['color', 'curves', 'detail'].includes(tool.id),
   );
-  const dockChoices = [...choices];
-  const collageChoice = {
-    id: 'collage' as const,
-    label: '拼图',
-    description: '组合照片、实况和动图',
-  };
-  const afterCrop = dockChoices.findIndex((tool) => tool.id === 'crop') + 1;
-  const tools = [
-    ...dockChoices.slice(0, afterCrop),
-    collageChoice,
-    ...dockChoices.slice(afterCrop),
-  ];
+  const tools = choices;
   useLayoutEffect(() => {
     if (!selection) {
       selectionReady.current = false;
@@ -120,10 +105,16 @@ export function ToolDock({
       return;
     }
     const measure = () => {
-      const next = { x: button.offsetLeft, width: button.offsetWidth, height: button.offsetHeight };
+      const next = {
+        x: button.offsetLeft,
+        y: button.offsetTop,
+        width: button.offsetWidth,
+        height: button.offsetHeight,
+      };
       setSelection((previous) =>
         previous &&
         previous.x === next.x &&
+        previous.y === next.y &&
         previous.width === next.width &&
         previous.height === next.height
           ? previous
@@ -258,6 +249,7 @@ export function ToolDock({
               className="dock-selection"
               aria-hidden="true"
               style={{
+                top: selection.y,
                 height: selection.height,
               }}
             />
@@ -275,9 +267,7 @@ export function ToolDock({
                 tabIndex={tabStop === tool.id ? 0 : -1}
                 onFocus={() => setTabStop(tool.id)}
                 onClick={() => {
-                  if (tool.id === 'collage') onCollage();
-                  else
-                    onTool(
+                  onTool(
                       compact && tool.id === 'light' && ADJUSTMENT_GROUPS.includes(group)
                         ? group
                         : tool.id,

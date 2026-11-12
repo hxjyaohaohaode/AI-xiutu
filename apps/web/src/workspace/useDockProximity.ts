@@ -2,7 +2,7 @@ import { useLayoutEffect, type RefObject } from 'react';
 import { KineticValue } from '../motion/kinetic';
 import { useReducedMotion } from '../motion/usePresence';
 
-/** React Bits 88: measured cosine-squared neighbours, without moving any hit target. */
+/** React Bits Dock: cosine-squared magnification over the resting button centers. */
 export function dockProximity(distance: number, reach: number): number {
   if (!Number.isFinite(distance) || reach <= 0 || Math.abs(distance) >= reach) return 0;
   return Math.cos(((Math.abs(distance) / reach) * Math.PI) / 2) ** 2;
@@ -24,9 +24,12 @@ export function useDockProximity(
         spring.setReduced(reduced);
         spring.subscribe((value) => {
           if (!icon) return;
-          const lift = compact ? 1.5 : 4;
-          const scale = compact ? 0.12 : 0.34;
-          icon.style.transform = `translate3d(0, ${-Math.max(0, value) * lift}px, 0) scale(${1 + Math.max(0, value) * scale})`;
+          const lift = compact ? 0 : 7.5;
+          const scale = compact ? 0 : 0.58;
+          const proximity = Math.max(0, value);
+          icon.style.setProperty('--dock-lift', `${-proximity * lift}px`);
+          icon.style.setProperty('--dock-zoom', String(1 + proximity * scale));
+          icon.style.setProperty('--dock-warmth', String(proximity));
         });
         return { button, spring };
       },
@@ -49,9 +52,34 @@ export function useDockProximity(
         );
       }
     };
+    let moveFrame = 0;
+    let lastX = 0;
+    const cancelMove = () => { cancelAnimationFrame(moveFrame); moveFrame = 0; };
     const hover = (event: PointerEvent) => {
-      if (event.pointerType === 'touch' || compact) return;
-      point(event.clientX);
+      if (event.pointerType === 'touch' || compact || reduced) return;
+      lastX = event.clientX;
+      if (moveFrame) return;
+      moveFrame = requestAnimationFrame(() => { moveFrame = 0; point(lastX); });
+    };
+    const launch = (event: MouseEvent) => {
+      if (compact || reduced) return;
+      const icon = event.target instanceof Element
+        ? event.target.closest('[data-dock-tool]')?.querySelector('.dock-icon > svg')
+        : null;
+      // The source dock hops and rebounds; translate the face rather than the button.
+      icon?.getAnimations().forEach((motion) => {
+        if (motion.id === 'dock-hop') motion.cancel();
+      });
+      if (icon) {
+        const hop = icon.animate([
+          { translate: '0 0', offset: 0 },
+          { translate: '0 -7px', offset: 0.33 },
+          { translate: '0 0', offset: 0.66 },
+          { translate: '0 -2px', offset: 0.82 },
+          { translate: '0 0', offset: 1 },
+        ], { duration: 390, easing: 'ease-out' });
+        hop.id = 'dock-hop';
+      }
     };
     const focus = (event: FocusEvent) => {
       const target =
@@ -63,6 +91,7 @@ export function useDockProximity(
       point(rect.left + rect.width / 2, target);
     };
     const leave = () => {
+      cancelMove();
       const focused = element.querySelector<HTMLElement>('[data-dock-tool]:focus-visible');
       if (focused) {
         const rect = focused.getBoundingClientRect();
@@ -78,6 +107,7 @@ export function useDockProximity(
       if (target) point(event.clientX, target);
     };
     element.addEventListener('pointermove', hover);
+    element.addEventListener('click', launch);
     element.addEventListener('pointerleave', leave);
     element.addEventListener('focusin', focus);
     element.addEventListener('focusout', leave);
@@ -86,7 +116,9 @@ export function useDockProximity(
     element.addEventListener('pointercancel', reset);
     window.addEventListener('blur', reset);
     return () => {
+      cancelMove();
       element.removeEventListener('pointermove', hover);
+      element.removeEventListener('click', launch);
       element.removeEventListener('pointerleave', leave);
       element.removeEventListener('focusin', focus);
       element.removeEventListener('focusout', leave);

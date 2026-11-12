@@ -84,6 +84,7 @@ import {
 } from './projective-model';
 import type { CollaborationState } from '../collaboration/useCollaboration';
 import { CollaborationOverlay } from '../collaboration/CollaborationOverlay';
+import { CanvasReviewToggle, CanvasReviewPins, CanvasReviewCard, useCanvasReview, type CanvasReviewScope } from '../collaboration/CanvasReview';
 import './editor-controls.css';
 import { StudioWelcome } from '../workspace/StudioWelcome';
 import { studioText } from '../workspace/studio-copy';
@@ -254,6 +255,7 @@ type EditGesture = {
   base: EditorRecipe;
   rollback?: EditorRecipe;
   lastPreview: EditorRecipe;
+  pending?: EditorRecipe;
   mask?: SelectionMaskV3;
   paint?: PaintStrokeV3;
   paintLayerId?: string;
@@ -289,9 +291,11 @@ export function CanvasStage({
   editor,
   statusContainer,
   collaboration,
+  reviewScope,
   group,
   onImport,
   onAI,
+  onCollage,
   onDraw,
   accountState,
   onSignIn,
@@ -304,9 +308,11 @@ export function CanvasStage({
   editor: EditorState;
   statusContainer: HTMLElement | null;
   collaboration?: CollaborationState;
+  reviewScope?: CanvasReviewScope;
   group: ToolGroup;
   onImport: (files?: File[]) => void;
   onAI: () => void;
+  onCollage: () => void;
   onDraw: () => void;
   accountState?: 'loading' | 'guest' | 'signed-in';
   onSignIn?: () => void;
@@ -316,6 +322,7 @@ export function CanvasStage({
   sampling?: boolean;
   onSample?: (color: string) => void;
 }) {
+  const review = useCanvasReview(reviewScope);
   const [dragging, setDragging] = useState(false),
     [camera, setCamera] = useState(fittedCamera),
     [bounds, setBounds] = useState({ width: 1, height: 1 });
@@ -361,6 +368,9 @@ export function CanvasStage({
   const pinch = useRef<{ distance: number; camera: typeof camera; center: Point } | null>(null);
   const wheelAction = useRef<(event: WheelEvent) => void>(() => {});
   const brushFootprint = useRef<SVGPathElement>(null);
+  const gestureTrail = useRef<SVGPathElement>(null);
+  const gestureFrame = useRef(0);
+  useEffect(() => () => cancelAnimationFrame(gestureFrame.current), []);
   const recipe = editor.recipe,
     source = editor.originalPreview,
     dimensions = editor.dimensions;
@@ -377,6 +387,7 @@ export function CanvasStage({
     editor.layerImages,
     collaboration?.remotePreview ?? null,
     editor.liveFrame !== null,
+    comparing,
   );
   const liveFrame =
     !comparing &&
@@ -397,7 +408,9 @@ export function CanvasStage({
     previews.remote && collaboration?.remotePreview && !cropEditing && !comparing
       ? collaboration.remotePreview
       : localViewRecipe;
-  const liveGeometry = liveFrame ? editorGeometryKey(liveFrame.recipe) : null;
+  const recipeGeometry = editorGeometryKey(recipe, false);
+  const liveGeometry = liveFrame ? editorGeometryKey(liveFrame.recipe, false) : null;
+  const settledGeometry = editor.renderedRecipe ? editorGeometryKey(editor.renderedRecipe, false) : null;
   const layoutRecipe = !comparing && cropEditing ? viewRecipe : liveFrame?.recipe;
   const layoutGeometry = layoutRecipe ? editorGeometryKey(layoutRecipe) : null;
   const referenceSize = useMemo(() => {
@@ -411,7 +424,7 @@ export function CanvasStage({
   // Resolution can change while a stroke is still collecting points. Keep its
   // CSS frame in the same geometry rather than the live raster's rounded ratio.
   const frameRaster =
-    liveGeometry && liveGeometry === editor.renderedGeometryKey
+    liveGeometry && liveGeometry === settledGeometry
       ? (editor.rendered ?? referenceSize ?? image)
       : (referenceSize ?? image);
   const coordinateMap = useMemo(() => {
@@ -422,7 +435,7 @@ export function CanvasStage({
     } catch {
       return null;
     }
-  }, [dimensions, JSON.stringify(viewRecipe), source]);
+  }, [dimensions, editorGeometryKey(viewRecipe), source]);
   const protecting =
     (recipe.schemaVersion === 3 || recipe.schemaVersion === 4) &&
     group === 'liquify' &&
@@ -455,8 +468,8 @@ export function CanvasStage({
   const hasSelection = Boolean(repair || protecting || region || recipe.local.enabled);
   const geometryReady =
     Boolean(coordinateMap) &&
-    (!previews.remote || editorGeometryKey(viewRecipe) === editorGeometryKey(recipe)) &&
-    (cropEditing || (liveGeometry ?? editor.renderedGeometryKey) === editorGeometryKey(recipe));
+    (!previews.remote || editorGeometryKey(viewRecipe, false) === recipeGeometry) &&
+    (cropEditing || liveGeometry === recipeGeometry || settledGeometry === recipeGeometry);
   const editingSelection =
     (group === 'local' ||
       (group === 'repair' && !!repair && !editor.repairChoosingSource) ||
@@ -471,9 +484,10 @@ export function CanvasStage({
   const defaultRepairBrush = dimensions
     ? Math.min(0.012, 12 / Math.min(dimensions.width, dimensions.height))
     : 0;
+  const warpRadius = dimensions ? Math.min(editor.warpSettings.radius, 0.325, 800 / Math.min(dimensions.width, dimensions.height)) : editor.warpSettings.radius;
   const footprintRadius =
     group === 'liquify' && !protecting
-      ? editor.warpSettings.radius
+      ? warpRadius
       : group === 'paint' && !editor.paintSettings.automaticMakeup
         ? editor.paintSettings.radius
         : startRepair || (editingSelection && mask.type === 'brush')
@@ -513,7 +527,7 @@ export function CanvasStage({
     } catch {
       return null;
     }
-  }, [dimensions, recipe]);
+  }, [dimensions, recipeGeometry]);
   const scale = frameRaster
     ? Math.max(
         0.0001,
@@ -674,6 +688,10 @@ export function CanvasStage({
         editGesture.current.quality,
       );
     editGesture.current = null;
+    cancelAnimationFrame(gestureFrame.current);
+    gestureFrame.current = 0;
+    gestureTrail.current?.removeAttribute('d');
+    setHandMode(false);
     setSelectionManipulating(false);
     setProjectiveFrame(null);
     setNotice(null);
@@ -691,8 +709,9 @@ export function CanvasStage({
     setCamera(fittedCamera);
   }
   function boundedPan(value: typeof pan, z = zoom) {
-    const x = Math.max(0, (display.width * z - bounds.width) / 2),
-      y = Math.max(0, (display.height * z - bounds.height) / 2);
+    // Keep enough of the image on screen to grab it again, including at Fit.
+    const x = Math.max(Math.min(120, bounds.width * 0.18), (display.width * z - bounds.width) / 2);
+    const y = Math.max(Math.min(120, bounds.height * 0.18), (display.height * z - bounds.height) / 2);
     return { x: clamp(value.x, -x, x), y: clamp(value.y, -y, y) };
   }
   function viewportPoint(clientX: number, clientY: number): Point {
@@ -846,7 +865,10 @@ export function CanvasStage({
       },
     };
   }
-  function previewEdit(state: EditGesture, next: EditorRecipe) {
+  function flushEdit(state: EditGesture) {
+    const next = state.pending;
+    state.pending = undefined;
+    if (!next || !ownsEdit(state)) return;
     try {
       parseEditorRecipe(next);
       state.lastPreview = next;
@@ -856,6 +878,24 @@ export function CanvasStage({
         error instanceof Error ? error.message : '本次调整超出安全范围，已保留上一个有效状态。',
       );
     }
+  }
+  function previewEdit(state: EditGesture, next: EditorRecipe) {
+    state.pending = next;
+    if (gestureFrame.current) return;
+    gestureFrame.current = requestAnimationFrame(() => {
+      gestureFrame.current = 0;
+      if (editGesture.current === state) flushEdit(state);
+    });
+  }
+  function drawGestureTrail(state: EditGesture) {
+    const trail = gestureTrail.current;
+    if (!trail) return;
+    const points = state.points ?? (state.warp ? [state.warp.from, state.warp.to] : []);
+    const projected = projectOverlayPath(points, toDisplay);
+    if (!projected?.length) return;
+    const path = projected.map(({ x, y }, i) => (i ? 'L' : 'M') + (x * 100) + ' ' + (y * 100));
+    if (path.length === 1) path.push('l.001 .001');
+    trail.setAttribute('d', path.join(' '));
   }
   function beginEdit(event: PointerEvent, kind: string) {
     if (
@@ -1073,7 +1113,7 @@ export function CanvasStage({
         mode: editor.warpSettings.mode,
         from: point,
         to: point,
-        radius: editor.warpSettings.radius,
+        radius: warpRadius,
         feather: editor.warpSettings.feather,
         strength: strength * pressure,
       };
@@ -1127,6 +1167,7 @@ export function CanvasStage({
       );
     }
     editGesture.current = state;
+    drawGestureTrail(state);
     setSelectionManipulating(
       kind === 'brush' ||
         kind === 'center' ||
@@ -1213,6 +1254,7 @@ export function CanvasStage({
       if (sampled.limitReached) setNotice('本笔已达采样预算，请松开后继续下一笔；已画部分保留。');
       if (!sampled.changed) return;
       state.points = sampled.points;
+      drawGestureTrail(state);
       if (
         painting &&
         state.paint &&
@@ -1475,7 +1517,11 @@ export function CanvasStage({
     if (!state || state.pointer !== event.pointerId) return;
     if (!cancel && (state.kind === 'paint' || state.kind === 'brush' || state.kind === 'warp'))
       moveEdit(event, true);
+    if (!cancel) flushEdit(state);
     editGesture.current = null;
+    cancelAnimationFrame(gestureFrame.current);
+    gestureFrame.current = 0;
+    gestureTrail.current?.removeAttribute('d');
     setSelectionManipulating(false);
     setProjectiveFrame(null);
     if (ownsEdit(state)) {
@@ -1793,7 +1839,7 @@ export function CanvasStage({
               return [Math.cos(angle), Math.sin(angle)];
             });
   const hasOutline = mask.type === 'radial' || mask.type === 'polygon' || mask.type === 'linear';
-  const showOutline = hasOutline && selectionVisible;
+  const showOutline = hasOutline && (!editor.hasUncommittedPreview || selectionVisible);
   const canRotateRadial =
     (recipe.schemaVersion === 3 || recipe.schemaVersion === 4) &&
     Boolean(region || repair || protecting);
@@ -1815,6 +1861,7 @@ export function CanvasStage({
       y: cy + (dx * Math.sin(r) + dy * Math.cos(r)) / dimensions.height,
     };
   };
+  const frameTransform = `translate(${pan.x + projectiveOffset.x}px,${pan.y + projectiveOffset.y}px) scale(${zoom})`;
   return (
     <main
       className={`canvas-stage content-first ${dragging ? 'is-dragging' : ''} ${editor.file ? 'has-image' : ''}`}
@@ -1905,7 +1952,11 @@ export function CanvasStage({
           if (event.key === '+' || event.key === '=') zoomBy(1.25);
           else if (event.key === '-' || event.key === '_') zoomBy(0.8);
           else if (event.key === '0') fit();
-          else return;
+          else if (handMode && /^Arrow/.test(event.key)) {
+            const dx = event.key === 'ArrowLeft' ? -16 : event.key === 'ArrowRight' ? 16 : 0;
+            const dy = event.key === 'ArrowUp' ? -16 : event.key === 'ArrowDown' ? 16 : 0;
+            setCamera((current) => ({ ...current, pan: boundedPan({ x: current.pan.x + dx, y: current.pan.y + dy }, current.zoom) }));
+          } else return;
           event.preventDefault();
         }}
         onPointerDownCapture={(event) => {
@@ -1919,6 +1970,7 @@ export function CanvasStage({
           if (decision === 'cancel-edit' && state) {
             // Invalidate first: releasing capture may synchronously run a lost-capture handler.
             editGesture.current = null;
+            gestureTrail.current?.removeAttribute('d');
             setSelectionManipulating(false);
             setProjectiveFrame(null);
             const rollback = ownedCanvasRollback(
@@ -2051,6 +2103,7 @@ export function CanvasStage({
             onImport={() => onImport()}
             onDraw={onDraw}
             onAI={onAI}
+            onCollage={onCollage}
             accountState={accountState}
             onSignIn={onSignIn}
             onRegister={onRegister}
@@ -2058,13 +2111,15 @@ export function CanvasStage({
         ) : image ? (
           <div
             className="image-frame"
+            data-review-placing={review.placing || undefined}
             ref={frame}
             style={{
               width: display.width,
               height: display.height,
-              transform: `translate(${pan.x + projectiveOffset.x}px,${pan.y + projectiveOffset.y}px) scale(${zoom})`,
+              transform: frameTransform,
             }}
             onPointerDown={(event) => {
+              if (review.placing || handMode || space || event.button !== 0) return;
               updateBrushFootprint(event);
               if (
                 group === 'repair' &&
@@ -2123,6 +2178,11 @@ export function CanvasStage({
                 return;
               }
               if ((event.target as Element).closest('.image-handle') || comparing) return;
+              if (review.placing) {
+                const point = toSource(event.clientX, event.clientY, false, 'strict');
+                if (point) review.pick(point);
+                return;
+              }
               if (sampling) {
                 sampleAt(event.clientX, event.clientY);
                 return;
@@ -2142,6 +2202,7 @@ export function CanvasStage({
             }}
           >
             <PixelCanvas image={image} />
+            {!comparing && <CanvasReviewPins review={review} map={(point) => coordinateMap?.toOutput(point) ?? point} zoom={zoom} />}
             {collaboration?.snapshot && (
               <CollaborationOverlay
                 snapshot={collaboration.snapshot}
@@ -2159,6 +2220,7 @@ export function CanvasStage({
                 preserveAspectRatio="none"
                 aria-hidden="true"
               >
+                <path ref={gestureTrail} className="canvas-gesture-trail" vectorEffect="non-scaling-stroke" />
                 <path ref={brushFootprint} vectorEffect="non-scaling-stroke" />
               </svg>
             )}
@@ -2205,7 +2267,9 @@ export function CanvasStage({
                         x2={linearEnds[1]!.x * 100}
                         y2={linearEnds[1]!.y * 100}
                         stroke="#fff"
-                        strokeWidth={0.35 / zoom}
+                        strokeWidth={1.35}
+                        strokeDasharray="5 4"
+                        vectorEffect="non-scaling-stroke"
                       />
                     )}
                     {mask.type === 'polygon' && (
@@ -2213,7 +2277,7 @@ export function CanvasStage({
                         points={overlayPolygon(mask.points)}
                         fill="none"
                         stroke="#fff"
-                        strokeWidth={0.25 / zoom}
+                        strokeWidth={0.25 / zoom} strokeDasharray={'6 4'}
                       />
                     )}
                   </svg>
@@ -2454,6 +2518,7 @@ export function CanvasStage({
       </div>
       {editor.file && (
         <>
+          <CanvasReviewCard review={review} frameTransform={frameTransform} />
           <div
             ref={viewToolbar}
             className="canvas-view-controls"
@@ -2474,6 +2539,7 @@ export function CanvasStage({
                 setViewToolsOpen(false);
             }}
           >
+            <CanvasReviewToggle review={review} onOpen={() => setHandMode(false)} />
             <IconButton label={t('撤销本次编辑')} disabled={!editor.canUndo} onClick={editor.undo}>
               <ArrowCounterClockwise size={17} />
             </IconButton>
@@ -2589,9 +2655,19 @@ export function CanvasStage({
                 <PencilSimple size={18} />
                 <span>{t('草图')}</span>
               </button>
-              <small className="canvas-touch-caption">
-                {output?.width} × {output?.height}
-              </small>
+              <button
+                type="button"
+                className="canvas-touch-action"
+                data-action="open-collage"
+                aria-label={t('拼图')}
+                onClick={() => {
+                  setViewToolsOpen(false);
+                  onCollage();
+                }}
+              >
+                <StudioGlyph name="collage" size={18} />
+                <span>{t('拼图')}</span>
+              </button>
             </div>
           </div>
           {sampling ? (
@@ -2627,18 +2703,13 @@ export function CanvasStage({
               </button>
             </output>
           )}
-          {image && zoom !== 1 && (
-            <span className="preview-resolution">
-              {t('预览')}
-              {image.width}×{image.height} {t('· 导出')}
-              {output?.width}×{output?.height}
-            </span>
-          )}
+
         </>
       )}
       {editor.loading && (
         <div className="stage-loading" role="status">
-          <Busy label={t('正在准备图片…')} />
+          <img className="studio-import-activity" src="/import-activity.svg" alt="" />
+          <span>{t('正在准备图片…')}</span>
         </div>
       )}
       {dragging && (

@@ -22,8 +22,8 @@ import { publicPricingSnapshot } from '@ai-xiutu/contracts';
 import { freezePreviouslyDispatchedJob } from './lifecycle.js';
 import {
   ProviderError,
-  createTencentTextModerator,
-  createTencentImageModerator,
+  createTextModerator,
+  createImageModerator,
   type TextModerator,
   type ImageModerator,
 } from '@ai-xiutu/providers';
@@ -257,8 +257,8 @@ export function createMultimodalService(
   const openAIImages = dependencies.openAIImageProvider ?? createOpenAIImageProvider(env);
   const openAIBudgets = getOpenAIImageBudgets(env);
   const speech = dependencies.speechProvider ?? createQwenSpeechProvider(env);
-  const textReview = dependencies.moderator ?? createTencentTextModerator(env);
-  const imageReview = dependencies.imageModerator ?? createTencentImageModerator(env);
+  const textReview = dependencies.moderator ?? createTextModerator(env);
+  const imageReview = dependencies.imageModerator ?? createImageModerator(env);
   const journal =
     dependencies.journal ?? new DispatchJournal(env.AI_JOURNAL_DIR ?? '.data/ai-dispatch-journal');
   const storage = dependencies.storage ?? createPrivateStorage(env);

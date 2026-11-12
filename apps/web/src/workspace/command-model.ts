@@ -26,14 +26,19 @@ export function currentCommand(
 }
 
 export function filterCommands<
-  T extends { label: string; description: string; keywords?: string; section: string },
+  T extends { label: string; description: string; keywords?: string; section: string; searchOnly?: boolean },
 >(commands: readonly T[], query: string): T[] {
   const terms = query.trim().toLocaleLowerCase().split(/\s+/).filter(Boolean);
-  return commands.filter((command) =>
-    terms.every((term) =>
-      `${command.label} ${command.description} ${command.keywords ?? ''} ${command.section}`
-        .toLocaleLowerCase()
-        .includes(term),
-    ),
-  );
+  if (!terms.length) return commands.filter((command) => !command.searchOnly);
+  const phrase = terms.join(' ');
+  const weight = (label: string) => {
+    const normalized = label.toLocaleLowerCase();
+    return normalized === phrase ? 2 : normalized.startsWith(phrase) ? 1 : 0;
+  };
+  return commands
+    .filter((command) => terms.every((term) =>
+      [command.label, command.description, command.keywords, command.section]
+        .join(' ').toLocaleLowerCase().includes(term),
+    ))
+    .sort((a, b) => weight(b.label) - weight(a.label));
 }

@@ -1,8 +1,10 @@
 import { useEffect, useRef, useState, type CSSProperties, type PointerEvent } from 'react';
 import { createPortal } from 'react-dom';
 import {
+  ArrowDown,
   ArrowLeft,
   ArrowRight,
+  ArrowUp,
   ArrowUUpLeft,
   ArrowUUpRight,
   ArrowsClockwise,
@@ -109,7 +111,7 @@ const templates: { id: CollageTemplate; label: string; min?: number }[] = [
 const errors: Record<string, string> = {
   COLLAGE_FORMAT: '请选择支持的照片、GIF 或视频文件。',
   COLLAGE_FILE_LIMIT: '单个文件最多 48 MB。',
-  COLLAGE_PAIR: '请选择一张封面和一段配对视频。',
+  COLLAGE_PAIR: '请选择原始实况照片，或同时选中分开的照片和视频。',
   COLLAGE_DECODE: '浏览器无法解码这份素材。',
   COLLAGE_FRAME_LIMIT: '素材的分辨率或帧数超出拼图上限。',
   COLLAGE_ANIMATION_UNAVAILABLE: '此浏览器无法解码该动图。',
@@ -237,16 +239,21 @@ export function CollageStudio({
       stopPlayback();
       return;
     }
-    if (!busy && importRequest && !operation.current) {
+    if (busy || !importRequest) return;
+    // Let the mount commit settle before starting I/O. Suspense can replay this effect.
+    const queued = window.setTimeout(() => {
       const onSettled = () => onImportConsumed(importRequest);
       if ('files' in importRequest)
         void importFiles(async () => importRequest.files, { onSettled });
+      else if ('capture' in importRequest)
+        void importFiles(async () => [await importRequest.capture()], { onSettled });
       else
         void importFiles(async (signal) => [await readCollageAsset(importRequest.asset, signal)], {
           replaceId: importRequest.replaceId,
           onSettled,
         });
-    }
+    }, 0);
+    return () => window.clearTimeout(queued);
   }, [active, busy, importRequest]);
   useEffect(() => {
     const retained = new Set(
@@ -373,6 +380,7 @@ export function CollageStudio({
     const staged: CollageMedia[] = [];
     try {
       const files = await getFiles(task.signal);
+      task.signal.throwIfAborted();
       if (!files.length) return;
       const inputs = groupCollageFiles(files, explicitPair);
       const base = history.present;
@@ -473,6 +481,12 @@ export function CollageStudio({
     [items[index], items[next]] = [items[next]!, items[index]!];
     commit({ ...history.present, items });
   }
+  function moveForeground(direction: 'up' | 'down') {
+    if (!selected?.subject) return;
+    const orders = scene.items.flatMap((item, index) => item.subject ? [item.subject.order ?? index] : []);
+    const extreme = direction === 'up' ? Math.max(...orders) + 1 : Math.min(...orders) - 1;
+    updateSelected((item) => ({ ...item, subject: { ...item.subject!, order: extreme } }));
+  }
   function beginMask() {
     if (!selected) return;
     stopPlayback();
@@ -489,6 +503,7 @@ export function CollageStudio({
       patchItem(history.present, mask.id, (item) => ({
         ...item,
         subject: {
+          ...item.subject,
           points: mask.points,
           matte,
           track,
@@ -518,6 +533,8 @@ export function CollageStudio({
       updateSelected((item) => ({
         ...item,
         subject: {
+          ...item.subject,
+          points: undefined,
           matte,
           track: currentMedia.kind === 'photo' ? undefined : trackCollageSubject(reference, matte),
           scale: item.subject?.scale ?? 1,
@@ -721,7 +738,8 @@ export function CollageStudio({
   const customAspect = customRatio ? Number(customRatio.width) / Number(customRatio.height) : 0;
   const customAspectValid = customAspect >= 1 / 20 && customAspect <= 20;
   const sourceOptions = [
-    { value: 'pair', label: t('配对实况') },
+    { value: 'local', label: t('本地照片、实况或动图') },
+    { value: 'pair', label: t('导入分开的实况文件') },
     ...(onCurrent ? [{ value: 'canvas', label: t('当前画布') }] : []),
     ...assets.map((item) => ({ value: 'asset:' + item.id, label: item.name })),
   ];
@@ -736,6 +754,7 @@ export function CollageStudio({
   return (
     <section
       className="collage-studio"
+      data-empty={!scene.items.length}
       aria-label={t('拼图')}
       onKeyDown={(event) => {
         if (
@@ -861,7 +880,7 @@ export function CollageStudio({
             onClick={() => input.current?.click()}
             disabled={!!busy}
           >
-            <Plus size={18} /> {t('添加照片或动图')}
+            <Plus size={18} /> {t('添加照片或实况')}
           </button>
         )}
         {moving && !mask && (
@@ -889,355 +908,409 @@ export function CollageStudio({
           </div>
         )}
       </div>
-      <InlineError message={error} />
-      {currentMedia?.usingVideoCover && (
-        <p className="collage-format-note" role="status">
-          {t('封面无法解码，已显示实况视频帧。')}
-        </p>
-      )}
-      {busy && (
-        <div className="collage-status" role="status">
-          <Busy label={t(busy === 'export' ? '正在导出' : '正在读取图片')} />
-          {busy === 'export' && <progress value={progress} max={100} aria-label={t('导出进度')} />}
-          <button
-            type="button"
-            className="text-button"
-            onClick={() => {
-              if (busy === 'import' && importRequest) onImportConsumed(importRequest);
-              operation.current?.abort();
-            }}
-          >
-            {t('取消')}
-          </button>
-        </div>
-      )}
-      {mask ? (
-        <div className="collage-actions">
-          <IconButton label={t('取消')} onClick={() => setMask(null)}>
-            <X size={19} />
-          </IconButton>
-          <IconButton
-            label={t('撤销描边')}
-            disabled={!mask.points.length}
-            onClick={() => setMask({ ...mask, points: mask.points.slice(0, -1) })}
-          >
-            <ArrowUUpLeft size={19} />
-          </IconButton>
-          <button
-            className="button button-primary"
-            disabled={mask.points.length < 3}
-            onClick={finishMask}
-          >
-            <Check size={17} /> {t('应用抠图')}
-          </button>
-        </div>
-      ) : (
-        <div className="collage-controls" inert={!!busy}>
-          <div className="collage-actions collage-source-tools">
-            {selected && (
-              <IconButton label={t('添加照片或动图')} onClick={() => input.current?.click()}>
-                <Plus size={19} />
-              </IconButton>
+      <aside className="collage-inspector" aria-label={t('拼图工具')}>
+        {(error || busy || currentMedia?.usingVideoCover) && (
+          <div className="collage-feedback">
+            {error ? (
+              <div className="collage-error">
+                <InlineError message={error} />
+                <IconButton label={t('关闭')} onClick={() => setError('')}>
+                  <X size={15} />
+                </IconButton>
+              </div>
+            ) : busy ? (
+              <div className="collage-status" role="status">
+                <Busy
+                  label={t(
+                    busy === 'export'
+                      ? '正在导出'
+                      : busy === 'subject'
+                        ? '正在分离主体'
+                        : '正在读取图片',
+                  )}
+                />
+                {busy === 'export' && (
+                  <progress value={progress} max={100} aria-label={t('导出进度')} />
+                )}
+                <button
+                  type="button"
+                  className="text-button"
+                  onClick={() => {
+                    if (busy === 'import' && importRequest) onImportConsumed(importRequest);
+                    operation.current?.abort();
+                  }}
+                >
+                  {t('取消')}
+                </button>
+              </div>
+            ) : (
+              <p className="collage-format-note" role="status">
+                {t('封面无法解码，已显示实况视频帧。')}
+              </p>
             )}
-            <ChoiceSelect
-              size="compact"
-              ariaLabel={t('添加素材')}
-              placeholder={t('素材')}
-              value=""
-              options={sourceOptions}
-              onValueChange={(value) => {
-                if (value === 'pair') pairInput.current?.click();
-                else if (value === 'canvas' && onCurrent)
-                  void importFiles(async () => [await onCurrent()]);
-                else if (value.startsWith('asset:')) addProjectAsset(value.slice(6));
-              }}
-            />
-            <IconButton label={t('AI 生成素材')} onClick={generateMaterial}>
-              <Sparkle size={17} />
-            </IconButton>
-            {selected && (
-              <IconButton label={t('编辑抠图轮廓')} onClick={beginMask}>
-                <Scissors size={17} />
-              </IconButton>
-            )}
-            <span className="collage-actions-spacer" />
-            <IconButton label={t('撤销')} disabled={!history.past.length} onClick={() => undo()}>
-              <ArrowUUpLeft size={18} />
+          </div>
+        )}
+        {mask ? (
+          <div className="collage-actions collage-mask-actions">
+            <IconButton label={t('取消')} onClick={() => setMask(null)}>
+              <X size={19} />
             </IconButton>
             <IconButton
-              label={t('重做')}
-              disabled={!history.future.length}
-              onClick={() => undo(true)}
+              label={t('撤销描边')}
+              disabled={!mask.points.length}
+              onClick={() => setMask({ ...mask, points: mask.points.slice(0, -1) })}
             >
-              <ArrowUUpRight size={18} />
+              <ArrowUUpLeft size={19} />
             </IconButton>
+            <button
+              className="button button-primary"
+              disabled={mask.points.length < 3}
+              onClick={finishMask}
+            >
+              <Check size={17} /> {t('应用抠图')}
+            </button>
           </div>
-          {selected && (
-            <>
-              <RubberSegment<CollageMode>
-                label={t('拼图方式')}
-                value={scene.mode}
-                onChange={(mode) => commit({ ...scene, mode })}
-                options={[
-                  {
-                    value: 'layout',
-                    label: t('模板'),
-                    icon: <StudioGlyph name="collage" size={16} />,
-                  },
-                  { value: 'vertical', label: t('长拼图') },
-                  { value: 'horizontal', label: t('横拼图') },
-                ]}
+        ) : (
+          <div className="collage-controls" inert={!!busy}>
+            <div className="collage-actions collage-source-tools">
+              {selected && (
+                <IconButton label={t('添加照片或实况')} onClick={() => input.current?.click()}>
+                  <Plus size={19} />
+                </IconButton>
+              )}
+              <ChoiceSelect
+                size="compact"
+                ariaLabel={t('添加素材')}
+                placeholder={t('素材')}
+                value=""
+                options={sourceOptions}
+                onValueChange={(value) => {
+                  if (value === 'local') input.current?.click();
+                  else if (value === 'pair') pairInput.current?.click();
+                  else if (value === 'canvas' && onCurrent)
+                    void importFiles(async () => [await onCurrent()]);
+                  else if (value.startsWith('asset:')) addProjectAsset(value.slice(6));
+                }}
               />
-              {scene.mode === 'layout' && (
-                <>
-                  <div className="collage-ratio-rail" role="group" aria-label={t('画幅比例')}>
-                    {ratioChoices.map(([label, ratio]) => (
+              <IconButton label={t('AI 生成素材')} onClick={generateMaterial}>
+                <Sparkle size={17} />
+              </IconButton>
+              {selected && (
+                <IconButton label={t('编辑抠图轮廓')} onClick={beginMask}>
+                  <Scissors size={17} />
+                </IconButton>
+              )}
+              <span className="collage-actions-spacer" />
+              <IconButton label={t('撤销')} disabled={!history.past.length} onClick={() => undo()}>
+                <ArrowUUpLeft size={18} />
+              </IconButton>
+              <IconButton
+                label={t('重做')}
+                disabled={!history.future.length}
+                onClick={() => undo(true)}
+              >
+                <ArrowUUpRight size={18} />
+              </IconButton>
+            </div>
+            {selected && (
+              <>
+                <RubberSegment<CollageMode>
+                  label={t('拼图方式')}
+                  value={scene.mode}
+                  onChange={(mode) => commit({ ...scene, mode })}
+                  options={[
+                    {
+                      value: 'layout',
+                      label: t('模板'),
+                      icon: <StudioGlyph name="collage" size={16} />,
+                    },
+                    { value: 'vertical', label: t('长拼图') },
+                    { value: 'horizontal', label: t('横拼图') },
+                  ]}
+                />
+                {scene.mode === 'layout' && (
+                  <>
+                    <div className="collage-ratio-rail" role="group" aria-label={t('画幅比例')}>
+                      {ratioChoices.map(([label, ratio]) => (
+                        <button
+                          type="button"
+                          key={label}
+                          aria-pressed={scene.ratio === ratio}
+                          onClick={() => commit({ ...scene, ratio })}
+                        >
+                          <CollageRatioGlyph ratio={ratio} />
+                          <span>{label}</span>
+                        </button>
+                      ))}
                       <button
                         type="button"
-                        key={label}
-                        aria-pressed={scene.ratio === ratio}
-                        onClick={() => commit({ ...scene, ratio })}
+                        aria-label={t('自定比例')}
+                        title={t('自定比例')}
+                        onClick={() =>
+                          setCustomRatio({
+                            width: String(geometry.width),
+                            height: String(geometry.height),
+                          })
+                        }
                       >
-                        <CollageRatioGlyph ratio={ratio} />
-                        <span>{label}</span>
+                        <SlidersHorizontal size={19} />
+                        <span>{t('自定')}</span>
                       </button>
-                    ))}
+                    </div>
+                    <div className="collage-template-rail" role="group" aria-label={t('拼图模板')}>
+                      {templates
+                        .filter(({ min = 2 }) => scene.items.length >= min)
+                        .map(({ id, label }) => {
+                          const frame = collageGeometry({ ...scene, template: id }, 42);
+                          return (
+                            <button
+                              type="button"
+                              key={id}
+                              aria-label={t(label)}
+                              title={t(label)}
+                              aria-pressed={scene.template === id}
+                              onClick={() => commit({ ...scene, template: id })}
+                            >
+                              <svg viewBox={`0 0 ${frame.width} ${frame.height}`} aria-hidden="true">
+                                <rect
+                                  className="collage-template-frame"
+                                  x={0}
+                                  y={0}
+                                  width={frame.width}
+                                  height={frame.height}
+                                  rx={1.5}
+                                />
+                                {frame.cells.map(({ x, y, width, height }, i) => (
+                                  <rect
+                                    key={i}
+                                    x={x + 0.5}
+                                    y={y + 0.5}
+                                    width={Math.max(0, width - 1)}
+                                    height={Math.max(0, height - 1)}
+                                    rx={0.65}
+                                  />
+                                ))}
+                              </svg>
+                            </button>
+                          );
+                        })}
+                    </div>
+                  </>
+                )}
+                <MotionDetails className="collage-tile-settings">
+                  <summary>
+                    <SlidersHorizontal size={16} /> {t('拼图素材')} <CaretDown size={12} />
+                  </summary>
+                  <div className="collage-item-rail" role="group" aria-label={t('拼图素材')}>
+                    {scene.items.map((item, index) => {
+                      const entry = resources.current.get(item.id);
+                      return (
+                        <button
+                          type="button"
+                          key={item.id}
+                          aria-pressed={selected.id === item.id}
+                          title={entry?.name}
+                          onClick={() => {
+                            setSelectedId(item.id);
+                            setMoveSubject(false);
+                            updateAudio(sound, item.id);
+                          }}
+                        >
+                          {entry?.kind === 'photo' ? <ImageSquare size={16} /> : <Play size={16} />}
+                          {index + 1} <span>{entry?.name}</span>
+                        </button>
+                      );
+                    })}
+                  </div>
+                  <div className="collage-actions">
+                    <IconButton
+                      label={t('替换素材')}
+                      onClick={() => {
+                        replacementTarget.current = selected.id;
+                        replacementInput.current?.click();
+                      }}
+                    >
+                      <ArrowsClockwise size={17} />
+                    </IconButton>
+                    <IconButton
+                      label={t('向前移动素材')}
+                      disabled={selectedIndex <= 0}
+                      onClick={() => reorder(-1)}
+                    >
+                      <ArrowLeft size={17} />
+                    </IconButton>
+                    <IconButton
+                      label={t('向后移动素材')}
+                      disabled={selectedIndex >= scene.items.length - 1}
+                      onClick={() => reorder(1)}
+                    >
+                      <ArrowRight size={17} />
+                    </IconButton>
+                    <IconButton
+                      label={t('移除素材')}
+                      onClick={() => {
+                        stopPlayback();
+                        commit({
+                          ...history.present,
+                          items: history.present.items.filter((item) => item.id !== selected.id),
+                        });
+                      }}
+                    >
+                      <Trash size={17} />
+                    </IconButton>
+                    <button type="button" className="text-button" onClick={beginMask}>
+                      <Scissors size={16} /> {t('手动抠图')}
+                    </button>
+                    <button type="button" className="text-button" onClick={() => void autoPerson()}>
+                      {t('人像抠图')}
+                    </button>
+                  </div>
+                  {selected.subject && (
+                    <div className="collage-actions">
+                      <button
+                        type="button"
+                        className="text-button"
+                        aria-pressed={moveSubject}
+                        onClick={() => setMoveSubject(!moveSubject)}
+                      >
+                        {t('移动出圈主体')}
+                      </button>
+                      <button
+                        type="button"
+                        className="text-button"
+                        aria-pressed={selected.subject.only}
+                        onClick={() =>
+                          updateSelected((item) => ({
+                            ...item,
+                            subject: { ...item.subject!, only: !item.subject!.only },
+                          }))
+                        }
+                      >
+                        {t('仅保留主体')}
+                      </button>
+                      <IconButton
+                        label={t('前景置顶')}
+                        disabled={scene.items.filter((item) => item.subject).length < 2}
+                        onClick={() => moveForeground('up')}
+                      >
+                        <ArrowUp size={16} />
+                      </IconButton>
+                      <IconButton
+                        label={t('前景置底')}
+                        disabled={scene.items.filter((item) => item.subject).length < 2}
+                        onClick={() => moveForeground('down')}
+                      >
+                        <ArrowDown size={16} />
+                      </IconButton>
+                      <IconButton
+                        label={t('移除抠图')}
+                        onClick={() => updateSelected((item) => ({ ...item, subject: undefined }))}
+                      >
+                        <X size={16} />
+                      </IconButton>
+                    </div>
+                  )}
+                  <div className="collage-actions">
+                    <label>
+                      {t('背景')}{' '}
+                      <input
+                        type="color"
+                        value={scene.background === 'transparent' ? '#ffffff' : scene.background}
+                        onChange={(event) =>
+                          commit({ ...history.present, background: event.target.value })
+                        }
+                      />
+                    </label>
                     <button
                       type="button"
-                      aria-label={t('自定比例')}
-                      title={t('自定比例')}
+                      className="text-button"
+                      aria-pressed={scene.background === 'transparent'}
                       onClick={() =>
-                        setCustomRatio({
-                          width: String(geometry.width),
-                          height: String(geometry.height),
+                        commit({
+                          ...history.present,
+                          background: scene.background === 'transparent' ? '#ffffff' : 'transparent',
                         })
                       }
                     >
-                      <SlidersHorizontal size={19} />
-                      <span>{t('自定')}</span>
+                      {t('透明背景')}
                     </button>
-                  </div>
-                  <div className="collage-template-rail" role="group" aria-label={t('拼图模板')}>
-                    {templates
-                      .filter(({ min = 2 }) => scene.items.length >= min)
-                      .map(({ id, label }) => {
-                        const frame = collageGeometry({ ...scene, template: id }, 42);
-                        return (
-                          <button
-                            type="button"
-                            key={id}
-                            aria-label={t(label)}
-                            title={t(label)}
-                            aria-pressed={scene.template === id}
-                            onClick={() => commit({ ...scene, template: id })}
-                          >
-                            <svg viewBox={`0 0 ${frame.width} ${frame.height}`} aria-hidden="true">
-                              <rect
-                                className="collage-template-frame"
-                                x={0}
-                                y={0}
-                                width={frame.width}
-                                height={frame.height}
-                                rx={1.5}
-                              />
-                              {frame.cells.map(({ x, y, width, height }, i) => (
-                                <rect
-                                  key={i}
-                                  x={x + 0.5}
-                                  y={y + 0.5}
-                                  width={Math.max(0, width - 1)}
-                                  height={Math.max(0, height - 1)}
-                                  rx={0.65}
-                                />
-                              ))}
-                            </svg>
-                          </button>
-                        );
-                      })}
-                  </div>
-                </>
-              )}
-              <MotionDetails className="collage-tile-settings">
-                <summary>
-                  <SlidersHorizontal size={16} /> {t('拼图素材')} <CaretDown size={12} />
-                </summary>
-                <div className="collage-item-rail">
-                  {scene.items.map((item, index) => {
-                    const entry = resources.current.get(item.id);
-                    return (
-                      <button
-                        type="button"
-                        key={item.id}
-                        aria-pressed={selected.id === item.id}
-                        title={entry?.name}
-                        onClick={() => {
-                          setSelectedId(item.id);
-                          setMoveSubject(false);
-                          updateAudio(sound, item.id);
-                        }}
-                      >
-                        {entry?.kind === 'photo' ? <ImageSquare size={16} /> : <Play size={16} />}
-                        {index + 1} <span>{entry?.name}</span>
-                      </button>
-                    );
-                  })}
-                </div>
-                <div className="collage-actions">
-                  <IconButton
-                    label={t('替换素材')}
-                    onClick={() => {
-                      replacementTarget.current = selected.id;
-                      replacementInput.current?.click();
-                    }}
-                  >
-                    <ArrowsClockwise size={17} />
-                  </IconButton>
-                  <IconButton
-                    label={t('向前移动素材')}
-                    disabled={selectedIndex <= 0}
-                    onClick={() => reorder(-1)}
-                  >
-                    <ArrowLeft size={17} />
-                  </IconButton>
-                  <IconButton
-                    label={t('向后移动素材')}
-                    disabled={selectedIndex >= scene.items.length - 1}
-                    onClick={() => reorder(1)}
-                  >
-                    <ArrowRight size={17} />
-                  </IconButton>
-                  <IconButton
-                    label={t('移除素材')}
-                    onClick={() => {
-                      stopPlayback();
-                      commit({
-                        ...history.present,
-                        items: history.present.items.filter((item) => item.id !== selected.id),
-                      });
-                    }}
-                  >
-                    <Trash size={17} />
-                  </IconButton>
-                  <button type="button" className="text-button" onClick={beginMask}>
-                    <Scissors size={16} /> {t('手动抠图')}
-                  </button>
-                  <button type="button" className="text-button" onClick={() => void autoPerson()}>
-                    {t('人像抠图')}
-                  </button>
-                </div>
-                {selected.subject && (
-                  <div className="collage-actions">
-                    <button
-                      type="button"
-                      className="text-button"
-                      aria-pressed={moveSubject}
-                      onClick={() => setMoveSubject(!moveSubject)}
-                    >
-                      {t('移动出圈主体')}
-                    </button>
-                    <button
-                      type="button"
-                      className="text-button"
-                      aria-pressed={selected.subject.only}
-                      onClick={() =>
-                        updateSelected((item) => ({
-                          ...item,
-                          subject: { ...item.subject!, only: !item.subject!.only },
-                        }))
-                      }
-                    >
-                      {t('仅保留主体')}
-                    </button>
-                    <IconButton
-                      label={t('移除抠图')}
-                      onClick={() => updateSelected((item) => ({ ...item, subject: undefined }))}
-                    >
-                      <X size={16} />
-                    </IconButton>
-                  </div>
-                )}
-                <div className="collage-actions">
-                  <label>
-                    {t('背景')}{' '}
-                    <input
-                      type="color"
-                      value={scene.background === 'transparent' ? '#ffffff' : scene.background}
-                      onChange={(event) =>
-                        commit({ ...history.present, background: event.target.value })
-                      }
-                    />
-                  </label>
-                  <button
-                    type="button"
-                    className="text-button"
-                    aria-pressed={scene.background === 'transparent'}
-                    onClick={() =>
-                      commit({
-                        ...history.present,
-                        background: scene.background === 'transparent' ? '#ffffff' : 'transparent',
-                      })
-                    }
-                  >
-                    {t('透明背景')}
-                  </button>
-                  <ChoiceSelect
-                    size="compact"
-                    ariaLabel={t('间距')}
-                    value={String(scene.gap)}
-                    options={[
-                      { value: '0', label: '0' },
-                      { value: '0.006', label: '1×' },
-                      { value: '0.016', label: '2×' },
-                      { value: '0.035', label: '4×' },
-                    ]}
-                    onValueChange={(gap) => commit({ ...history.present, gap: Number(gap) })}
-                  />
-                  {moving && (
                     <ChoiceSelect
                       size="compact"
-                      ariaLabel={t('动态时长')}
-                      value={seconds}
-                      options={['3', '5', '8'].map((value) => ({ value, label: value + ' s' }))}
-                      onValueChange={setSeconds}
+                      ariaLabel={t('间距')}
+                      value={String(scene.gap)}
+                      options={[
+                        { value: '0', label: '0' },
+                        { value: '0.006', label: '1×' },
+                        { value: '0.016', label: '2×' },
+                        { value: '0.035', label: '4×' },
+                      ]}
+                      onValueChange={(gap) => commit({ ...history.present, gap: Number(gap) })}
                     />
-                  )}
-                </div>
-                <ParameterShelf
-                  key={selected.id + (editingSubject ? ':subject' : ':tile')}
-                  label={t(editingSubject ? '主体' : '素材')}
-                  onCommit={() => {
-                    if (precisionDraft.current) commit(precisionDraft.current);
-                  }}
-                  onCancel={() => {
-                    precisionDraft.current = null;
-                    setDraft(null);
-                  }}
-                  controls={[
-                    {
-                      id: 'collage-scale',
-                      glyph: 'diameter',
-                      label: t(editingSubject ? '主体大小' : '素材缩放'),
-                      value: (editingSubject?.scale ?? selected.zoom) * 100,
-                      min: 25,
-                      max: 400,
-                      step: 0.1,
-                      neutral: 100,
-                      unit: '%',
-                      onChange: (value) =>
-                        adjustTile((item) =>
-                          editingSubject && item.subject
-                            ? { ...item, subject: { ...item.subject, scale: value / 100 } }
-                            : { ...item, zoom: value / 100 },
-                        ),
-                    },
+                    {moving && (
+                      <ChoiceSelect
+                        size="compact"
+                        ariaLabel={t('动态时长')}
+                        value={seconds}
+                        options={['3', '5', '8'].map((value) => ({ value, label: value + ' s' }))}
+                        onValueChange={setSeconds}
+                      />
+                    )}
+                  </div>
+                  <ParameterShelf
+                    key={selected.id + (editingSubject ? ':subject' : ':tile')}
+                    label={t(editingSubject ? '主体' : '素材')}
+                    onCommit={() => {
+                      if (precisionDraft.current) commit(precisionDraft.current);
+                    }}
+                    onCancel={() => {
+                      precisionDraft.current = null;
+                      setDraft(null);
+                    }}
+                    controls={[
+                      {
+                        id: 'collage-scale',
+                        glyph: 'diameter',
+                        label: t(editingSubject ? '主体大小' : '素材缩放'),
+                        value: (editingSubject?.scale ?? selected.zoom) * 100,
+                        min: 25,
+                        max: 400,
+                        step: 0.1,
+                        neutral: 100,
+                        unit: '%',
+                        onChange: (value) =>
+                          adjustTile((item) =>
+                            editingSubject && item.subject
+                              ? { ...item, subject: { ...item.subject, scale: value / 100 } }
+                              : { ...item, zoom: value / 100 },
+                          ),
+                      },
+                      ...(editingSubject
+                      ? [{
+                          id: 'collage-feather',
+                          glyph: 'feather' as const,
+                          label: t('边缘羽化'),
+                          value: editingSubject.feather ?? 0,
+                          min: 0,
+                          max: Math.min(32, Math.min(selected.width, selected.height) / 8),
+                          step: 0.1,
+                          neutral: 0,
+                          unit: 'px',
+                          onChange: (value: number) =>
+                            adjustTile((item) => ({
+                              ...item,
+                              subject: { ...item.subject!, feather: value },
+                            })),
+                        }]
+                      : []),
                     ...positionControls,
-                  ]}
-                />
-              </MotionDetails>
-            </>
-          )}
-        </div>
-      )}
+                    ]}
+                  />
+                </MotionDetails>
+              </>
+            )}
+          </div>
+        )}
+      </aside>
       {active && customRatio && (
         <Modal title={t('自定比例')} onClose={() => setCustomRatio(null)}>
           <form

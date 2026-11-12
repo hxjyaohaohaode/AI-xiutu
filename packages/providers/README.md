@@ -51,3 +51,11 @@ Official interface references checked 2026-11-09:
 
 Unit/integration tests may inject adapters; those adapters are never enabled by
 environment variables or installed in the public application.
+
+## OpenAI test configuration
+
+Set AI_MODERATION_PROVIDER=openai with a server-only OPENAI_API_KEY to use
+the OpenAI moderation endpoint for frozen text and single PNG, JPEG or WebP
+images. The default remains Tencent. The receipt includes the digest of the
+exact input bytes; missing, incomplete or unknown results cannot authorize
+a paid action or expose an image. The key never belongs in web configuration.

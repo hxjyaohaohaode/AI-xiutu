@@ -11,6 +11,7 @@ export type StudioCommand = {
   label: string;
   description: string;
   keywords?: string;
+  searchOnly?: boolean;
   section: string;
   icon: ReactNode;
   disabled?: boolean;
@@ -187,6 +188,7 @@ export function CommandMenu({
                   aria-disabled={command.disabled || undefined}
                   aria-describedby={`${id}-${position}-description`}
                   data-command-index={position}
+                  data-command-id={command.id}
                   data-action={command.id === 'draw' ? 'open-sketch' : undefined}
                   className="command-option"
                   onPointerMove={(event) => {

@@ -1,3 +1,5 @@
+import { captureSketchVisual } from '../editor/capture';
+import { ModelReadStatus } from '../ai/ModelReadStatus';
 import { t } from '../i18n';
 import '../ai/interaction-surfaces.css';
 import { useCallback, useEffect, useLayoutEffect, useRef, useState, type FormEvent } from 'react';
@@ -33,7 +35,7 @@ import type {
   AssistantVisualAttachment,
 } from '@ai-xiutu/contracts';
 import { secureUuid } from '../lib/uuid';
-import { api, errorMessage, jsonRequest } from '../lib/api';
+import { readModelCatalog, api, errorMessage, jsonRequest } from '../lib/api';
 import { assetCopyAttempt } from '../lib/asset-copy';
 import type { Artwork, Asset, Project, PublicConfig } from '../lib/types';
 import { Busy, IconButton, InlineError, Modal } from './Ui';
@@ -249,6 +251,18 @@ export function AIPanel({
       !referenceFile &&
       (Boolean(visualAttachment) || (cached?.assistantOpen ?? initialOperation === 'edit-plan')),
   );
+  const [uploadForAssistant, setUploadForAssistant] = useState<{
+    file: File;
+    attachment: AssistantVisualAttachment;
+  } | null>(null);
+  useEffect(() => {
+    if (!assistantOpen || !referenceFile || visualAttachment) return;
+    let active = true;
+    void captureSketchVisual(referenceFile, referenceSource === 'sketch' ? 'sketch' : 'photo')
+      .then((attachment) => { if (active) setUploadForAssistant({ file: referenceFile, attachment }); })
+      .catch(() => { if (active) setError(t('无法读取参考图，请重新选择。')); });
+    return () => { active = false; };
+  }, [assistantOpen, referenceFile, referenceSource, visualAttachment]);
   const [assistantVisited, setAssistantVisited] = useState(assistantOpen);
   const panel = useRef<HTMLElement>(null);
   useLayoutEffect(() => {
@@ -299,7 +313,9 @@ export function AIPanel({
   const displayedCandidate = useRetainedDialogValue(candidate);
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false),
-    [loading, setLoading] = useState(true);
+    [loading, setLoading] = useState(false);
+  const [catalogError, setCatalogError] = useState('');
+  const [catalogAttempt, setCatalogAttempt] = useState(0);
   const [refresh, setRefresh] = useState(0);
   const [idempotency, setIdempotency] = useState(() => secureUuid());
   const [width, setWidth] = useState(cached?.width ?? 2048),
@@ -540,12 +556,14 @@ export function AIPanel({
       if (refreshing || controller.signal.aborted || document.visibilityState === 'hidden') return;
       if (Date.now() - lastRead < 15_000) return;
       refreshing = true;
+      setLoading(true);
+      setCatalogError('');
       lastRead = Date.now();
       try {
-        const result = await api<ModelResponse>('/models', { signal: controller.signal });
+        const result = await readModelCatalog<ModelResponse>('/models', controller.signal);
         if (!controller.signal.aborted) setModelResponse(result);
       } catch (failure) {
-        if (!controller.signal.aborted) setError(errorMessage(failure));
+        if (!controller.signal.aborted) setCatalogError(errorMessage(failure));
       } finally {
         refreshing = false;
         if (!controller.signal.aborted) setLoading(false);
@@ -562,7 +580,7 @@ export function AIPanel({
       window.removeEventListener('focus', refreshModelsOnFocus);
       document.removeEventListener('visibilitychange', refreshModelsOnFocus);
     };
-  }, [isLoggedIn, visible]);
+  }, [isLoggedIn, visible, catalogAttempt]);
   useEffect(() => {
     if (!modelResponse || pending.current || busy || preparingDraft) return;
     if (!eligible.some((model) => model.id === modelId))
@@ -1155,8 +1173,11 @@ export function AIPanel({
             onAfterArtworkWrite={onAfterArtworkWrite}
             onApplied={onDecisionApplied ?? onOpenArtwork}
             captureCurrentImage={captureCurrentImage}
-            visualAttachment={visualAttachment}
-            onClearVisualAttachment={onClearVisualAttachment}
+            visualAttachment={visualAttachment ?? (uploadForAssistant && uploadForAssistant.file === referenceFile ? uploadForAssistant.attachment : null)}
+            onClearVisualAttachment={(attachment) => {
+              if (attachment === uploadForAssistant?.attachment) removeLocalReference();
+              else onClearVisualAttachment?.(attachment);
+            }}
             onUseCanvasSource={onUseCanvasSource}
             onPrepareGenerationDraft={prepareAssistantGenerationDraft}
           />
@@ -1204,7 +1225,8 @@ export function AIPanel({
                   )}
                 </div>
               )}
-              {loading && <Busy label={t('正在读取模型')} />}
+              {isLoggedIn && loading && !modelResponse && <ModelReadStatus label={t('正在读取模型')} />}
+              {isLoggedIn && catalogError && <ModelReadStatus label={t('模型列表加载失败')} error={catalogError} retry={() => setCatalogAttempt((n) => n + 1)} />}
               {visibleJobs.length && project ? (
                 <AIThread
                   jobs={visibleJobs}
@@ -1325,7 +1347,7 @@ export function AIPanel({
                     </IconButton>
                   </div>
                 )}
-                {operation === 'generate-image' && referenceFile && (
+                {referenceFile && (
                   <DraftAttachmentCard
                     source={referenceFile}
                     label={referenceSource === 'sketch' ? t('草图') : t('参考图')}
@@ -1333,11 +1355,12 @@ export function AIPanel({
                     onRemove={removeLocalReference}
                   />
                 )}
-                {operation === 'generate-image' && referenceIds.length > 0 && (
+                {referenceIds.length > 0 && (
                   <button
                     type="button"
                     className="ai-selected-context"
                     onClick={() => setOverlay('references')}
+                    title={operation !== 'generate-image' ? t('参考图已保留，生图时使用') : undefined}
                   >
                     <Paperclip size={14} />
                     {referenceIds.length} {t('张参考')}
@@ -1543,7 +1566,7 @@ export function AIPanel({
           </div>
         </Modal>
         <PanelSettingsPage
-          title={t('任务设置')}
+          title={t('模型与参数')}
           open={visible && overlay === 'settings'}
           onClose={() => setOverlay(null)}
         >

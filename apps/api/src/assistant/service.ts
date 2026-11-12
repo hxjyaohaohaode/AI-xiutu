@@ -36,8 +36,8 @@ import {
   type AssistantModelConfig,
 } from '@ai-xiutu/assistant';
 import {
-  createTencentTextModerator,
-  createTencentImageModerator,
+  createTextModerator,
+  createImageModerator,
   ProviderError,
   type ImageModerator,
   type TextModerator,
@@ -168,8 +168,8 @@ export function createAssistantService(
     }
   }
   const key = env.OPENAI_API_KEY ?? '';
-  const textModerator = dependencies.textModerator ?? createTencentTextModerator(env);
-  const imageModerator = dependencies.imageModerator ?? createTencentImageModerator(env);
+  const textModerator = dependencies.textModerator ?? createTextModerator(env);
+  const imageModerator = dependencies.imageModerator ?? createImageModerator(env);
   const ready = Boolean(
     env.AI_ASSISTANT_ENABLED === 'true' &&
     key &&

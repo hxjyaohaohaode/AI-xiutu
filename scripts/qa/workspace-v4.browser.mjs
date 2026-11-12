@@ -546,7 +546,7 @@ async function cloudRecoveryHeaderEvidence(page, expectedRoute) {
       },
       contexts: {
         ...rect(contexts),
-        buttons: Array.from(contexts.querySelectorAll('button')).map((button) => ({
+        buttons: Array.from(contexts?.querySelectorAll('button') ?? []).map((button) => ({
           label: button.querySelector('span').textContent.trim(),
           lines: textLines(button.querySelector('span')),
           ...rect(button),
@@ -610,7 +610,7 @@ async function cloudRecoveryHeaderEvidence(page, expectedRoute) {
     'the compare glyph has no second visual line on phones',
   );
   assert.equal(
-    measured.contexts.width,
+    measured.contexts.width ?? 0,
     0,
     'the phone editor does not duplicate work-view navigation in the adjustment sheet',
   );
@@ -619,8 +619,8 @@ async function cloudRecoveryHeaderEvidence(page, expectedRoute) {
   const tools = page.locator('.canvas-secondary-controls[data-open="true"]');
   assert.equal(
     await tools.locator('button:visible').count(),
-    6,
-    'all secondary canvas commands remain available',
+    7,
+    'the six view controls and collage remain available',
   );
   await page.keyboard.press('Escape');
   await tools.waitFor({ state: 'hidden' });
@@ -734,7 +734,7 @@ async function assertPaintPanelFocus(page) {
   const field = panel
     .locator('[data-motion="paint-controls"]')
     .getByRole('textbox', { name: 'HEX颜色', exact: true });
-  await panel.locator('.panel-context-navigation').waitFor({ state: 'visible' });
+  await panel.locator('.panel-drag-header').waitFor({ state: 'visible' });
   // Native focus must reveal the low color input through the editor scroller,
   // without scrolling the shared navigation out of the clipped outer shell.
   await field.focus();
@@ -746,7 +746,7 @@ async function assertPaintPanelFocus(page) {
     const content = input.closest('.panel-content');
     const scroller = input.closest('.inspector-scroll');
     const header = panel?.querySelector('.panel-drag-header');
-    const navigation = panel?.querySelector('.studio-context-tabs');
+    const navigation = panel?.querySelector('.panel-presentation-actions');
     if (!content || !scroller || !header || !navigation)
       throw new Error('The paint input must be inside the real editor panel');
     const bounds = (element) => {
@@ -767,9 +767,9 @@ async function assertPaintPanelFocus(page) {
   assert.equal(measured.focused, true, 'the low color input receives real native focus');
   assert.equal(measured.outerScrollTop, 0, 'focus cannot scroll the outer panel shell');
   assert.ok(
-    measured.navigation.top >= Math.max(measured.header.bottom, measured.content.top) - 1 &&
-      measured.navigation.bottom <= measured.content.bottom + 1,
-    'all context tabs stay below the panel header and inside the visible panel body',
+    measured.navigation.top >= measured.header.top - 1 &&
+      measured.navigation.bottom <= measured.header.bottom + 1,
+    'compact context actions stay inside the single pinned header',
   );
   assert.ok(
     measured.input.top >= measured.scroller.top - 1 &&
@@ -793,6 +793,7 @@ try {
   await app.listen({ host: '127.0.0.1', port: 0 });
   process.env.PORT = String(app.server.address().port);
   vite = await createServer({
+    cacheDir: resolve(artifacts, 'vite-cache'),
     configFile: resolve(root, 'apps/web/vite.config.ts'),
     server: { host: '127.0.0.1', port: webPort, strictPort: true },
   });
@@ -977,23 +978,9 @@ try {
         );
         await edge.press('Alt+ArrowDown');
         await page.getByRole('button', { name: '面板位置与连续尺寸', exact: true }).click();
-        await page.getByRole('button', { name: '浮动', exact: true }).click();
-        const beforeFloatingResize = await page
-          .locator('.free-panel[aria-hidden="false"]')
-          .boundingBox();
-        const eastHandle = page.getByRole('separator', { name: /^从右边调整/ });
-        await eastHandle.press('Alt+ArrowLeft');
-        const afterFloatingResize = await page
-          .locator('.free-panel[aria-hidden="false"]')
-          .boundingBox();
-        assert.ok(
-          Math.abs(afterFloatingResize.width - (beforeFloatingResize.width - 1)) < 0.1,
-          'a floating phone panel keeps precise 1px width adjustment',
-        );
-        await eastHandle.press('Alt+ArrowRight');
-        await page.getByRole('button', { name: '面板位置与连续尺寸', exact: true }).click();
-        await page.getByRole('button', { name: '底部', exact: true }).click();
-        await panel.locator('.panel-layout-trigger').click();
+        assert.equal(await panel.getByRole('button', { name: '浮动', exact: true }).count(), 0,
+          'the phone adjustment rail cannot detach and cover the photo');
+        assert.equal(await panel.getAttribute('data-attached'), 'true');
         await panel.locator('.panel-layout-menu .panel-collapse-action').click();
         await eventually(
           async () =>
@@ -1019,6 +1006,10 @@ try {
         await panel
           .getByRole('button', { name: '返回常规调节，恢复面板尺寸', exact: true })
           .click();
+        await panel.locator('.panel-layout-trigger').click();
+        await panel.getByRole('button', { name: '收起工具面板', exact: true }).click();
+        await panel.waitFor({ state: 'hidden' });
+        await tool(page, '调节');
       }
       await page.screenshot({ path: join(artifacts, `layout-${size.width}x${size.height}.png`) });
       const exported = await recipeDownload(page);
@@ -1067,7 +1058,7 @@ try {
       assert.ok(portraitOwner);
       const bodyTab = inspector.getByRole('button', { name: '身形', exact: true });
       await bodyTab.click();
-      const portraitHelp = portrait.locator('summary').filter({ hasText: '人物识别与选区帮助' });
+      const portraitHelp = portrait.locator('summary').filter({ hasText: '选区与抠图' });
       await portraitHelp.click();
       await tool(page, '构图');
       assert.equal(await portrait.isVisible(), false, 'previous tool has no visible hit targets');
@@ -1144,7 +1135,7 @@ try {
       assert.equal(
         await inspector
           .locator('summary')
-          .filter({ hasText: '人物识别与选区帮助' })
+          .filter({ hasText: '选区与抠图' })
           .getAttribute('aria-expanded'),
         'false',
       );
@@ -1499,8 +1490,8 @@ try {
           await tool(page, '绘制');
           const panel = page.locator('.free-panel[aria-hidden="false"]');
           if (viewport.width < 760) {
-            await panel.getByRole('button', { name: '面板位置与连续尺寸', exact: true }).click();
-            await panel.getByRole('button', { name: '收起工具面板', exact: true }).click();
+            await page.locator('[data-dock-tool="paint"][aria-pressed="true"]').click();
+            await panel.waitFor({ state: 'hidden' });
           } else {
             await panel.getByRole('button', { name: /^收起.*可从工具栏重新打开$/ }).click();
           }

@@ -4,8 +4,8 @@ export const BRANCH = 'frontend/system-redesign-20261111';
 export const BASE_BRANCH = 'new/native-color-feedback';
 export const LOCALES = ['zh-CN', 'zh-TW', 'en'];
 export const SCREEN_NAMES = [
-  'workspace', 'local', 'portrait', 'layers', 'tablet', 'phone',
-  'library', 'collaboration', 'assistant', 'delivery',
+  'workspace', 'desktop-flow', 'local', 'portrait', 'layers', 'tablet', 'phone',
+  'library', 'collaboration', 'team-canvas', 'assistant', 'delivery',
   'local-phone', 'portrait-phone', 'layers-phone', 'library-phone',
   'collaboration-phone', 'assistant-phone', 'delivery-phone',
 ];

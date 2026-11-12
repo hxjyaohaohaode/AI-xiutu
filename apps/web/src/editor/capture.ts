@@ -27,7 +27,7 @@ export async function captureWorkspaceVisual(
       filter: (node) =>
         !node.matches?.(
           'img, video, iframe, textarea, input[type=file], [hidden], [inert], ' +
-            '.studio-account, .canvas-file-info, .workspace-notice-anchor, ' +
+            '.studio-account, .canvas-file-info, .workspace-project-title, .workspace-notice-anchor, ' +
             '.workspace-canvas-status, .collaboration-status, .workspace-busy, ' +
             '.ai-activity-banner, .free-panel[data-panel-id=ai]',
         ),
@@ -45,7 +45,7 @@ export async function captureWorkspaceVisual(
   }
 }
 
-export async function captureSketchVisual(file: File): Promise<AssistantVisualAttachment> {
+export async function captureSketchVisual(file: File, kind: 'sketch' | 'photo' = 'sketch'): Promise<AssistantVisualAttachment> {
   const bitmap = await createImageBitmap(file);
   const canvas = document.createElement('canvas');
   try {
@@ -60,7 +60,7 @@ export async function captureSketchVisual(file: File): Promise<AssistantVisualAt
     const png = canvas.toDataURL('image/png');
     const imageDataUrl = png.length <= 1_500_000 ? png : canvas.toDataURL('image/jpeg', 0.85);
     if (!imageDataUrl.startsWith('data:image/')) throw new Error('浏览器未能编码共享预览。');
-    return { kind: 'sketch', imageDataUrl };
+    return { kind, imageDataUrl };
   } finally {
     bitmap.close();
     canvas.width = canvas.height = 0;

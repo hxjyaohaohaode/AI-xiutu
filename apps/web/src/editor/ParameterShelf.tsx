@@ -1,5 +1,5 @@
 import { t } from '../i18n';
-import { useLayoutEffect, useRef, useState, type ReactNode } from 'react';
+import { useEffect, useLayoutEffect, useRef, useState, type ReactNode } from 'react';
 import { PrecisionRange } from './PrecisionRange';
 import { ParameterGlyph } from './ParameterGlyph';
 import { useKinetic } from '../motion/useKinetic';
@@ -54,12 +54,14 @@ export function ParameterShelf({
   onCommit,
   onCancel,
   headingAccessory,
+  target,
 }: {
   controls: ShelfControl[];
   label: string;
   onCommit?: (label: string) => void;
   onCancel?: () => void;
   headingAccessory?: ReactNode;
+  target?: string;
 }) {
   const [selectedId, setSelectedId] = useState(
     controls.find((control) => !control.disabled)?.id ?? controls[0]?.id ?? '',
@@ -200,6 +202,12 @@ export function ParameterShelf({
       observer.disconnect();
     };
   }, [active?.id, controls.length]);
+  useEffect(() => {
+    if (target && controls.some(({ id, disabled }) => id === target && !disabled)) {
+      revealRequested.current = true;
+      setSelectedId(target);
+    }
+  }, [target, controls.some(({ id, disabled }) => id === target && !disabled)]);
   if (!active) return <p className="control-note">{t('当前范围没有可调整的参数。')}</p>;
   function selectControl(id: string) {
     if (active && active.id !== id) onCommit?.(active.label);

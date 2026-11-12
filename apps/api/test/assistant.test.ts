@@ -2732,7 +2732,7 @@ test(
               ),
             Boolean,
           );
-          assert.equal(typeof visual.item.id, 'string');
+          assert.match(visual.item.id, /^[a-zA-Z0-9_-]{1,32}$/);
           stream.ws.send(JSON.stringify({ type: 'context.invalidate' }));
           await until(
             async () =>

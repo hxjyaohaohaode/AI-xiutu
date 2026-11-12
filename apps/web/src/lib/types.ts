@@ -93,6 +93,7 @@ export type Notice = { message: string; tone: 'success' | 'error' | 'info' };
 export type Comment = {
   id: string;
   body: string;
+  anchor?: { x: number; y: number; shape?: 'point' | 'diamond' | 'frame' } | null;
   artworkId?: string;
   revisionId?: string;
   createdAt: string;

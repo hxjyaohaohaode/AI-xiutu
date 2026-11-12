@@ -1,3 +1,8 @@
+import { lazy, Suspense } from 'react';
+import { createPortal } from 'react-dom';
+import './voice-workspace.css';
+import { readModelCatalog } from '../lib/api';
+import { ModelReadStatus } from './ModelReadStatus';
 import { t, formatNumber, useLocale, type MessageParams } from '../i18n';
 import { MotionDetails } from '../motion/Presence';
 import { useCallback, useEffect, useLayoutEffect, useRef, useState, type ReactNode } from 'react';
@@ -18,6 +23,7 @@ import {
   WarningCircle,
   ArrowsOut,
   ArrowsIn,
+  ArrowLeft,
   X,
 } from '@phosphor-icons/react';
 import type {
@@ -176,6 +182,8 @@ interface Message {
   citations?: AssistantCitation[];
   search?: AssistantSearchEvidence[];
   attachmentKind?: AssistantVisualAttachment['kind'];
+  voiceSession?: number;
+  candidateIds?: string[];
 }
 const assistantDrafts = new Map<
   string,
@@ -227,6 +235,8 @@ function editorState(value: LiveAssistantProps): AssistantEditorState {
     recipe: value.recipe,
   };
 }
+const Strands = lazy(() => import('../components/react-bits/Strands'));
+
 export function LiveAssistant(props: LiveAssistantProps) {
   const compactCopy = modelCopy(useLocale());
   const [composerExpanded, setComposerExpanded] = useState(false);
@@ -240,6 +250,8 @@ export function LiveAssistant(props: LiveAssistantProps) {
     onPrepareGenerationDraft,
     captureCurrentImage,
   } = props;
+  const [catalogError, setCatalogError] = useState('');
+  const [catalogAttempt, setCatalogAttempt] = useState(0);
   const [catalog, setCatalog] = useState<Catalog | null>(null),
     [spaces, setSpaces] = useState<Space[]>([]);
   const [creative, setCreative] = useState(initialCreativeSettings);
@@ -266,7 +278,20 @@ export function LiveAssistant(props: LiveAssistantProps) {
     [voice, setVoice] = useState('marin');
   const [mode, setMode] = useState<'text' | 'voice'>('text'),
     [callState, setCallState] = useState<'idle' | 'connecting' | 'active' | 'closing'>('idle');
-  const callPanel = useRef<HTMLDivElement>(null);
+  const [voiceExpanded, setVoiceExpanded] = useState(false);
+  const voiceOrb = useRef<HTMLButtonElement>(null);
+  const voiceEntry = useRef<HTMLElement | null>(null);
+  const dismissVoice = () => {
+    setVoiceExpanded(false);
+    if (callState === 'idle') setMode('text');
+    const trigger = voiceEntry.current;
+    requestAnimationFrame(() => trigger?.isConnected && trigger.focus({ preventScroll: true }));
+  };
+  const showVoice = useCallback((trigger?: HTMLElement) => {
+    voiceEntry.current = trigger ?? null;
+    setMode('voice');
+    setVoiceExpanded(true);
+  }, []);
   const composerInput = useRef<HTMLTextAreaElement>(null);
   const conversationBody = useRef<HTMLDivElement>(null);
   const followingConversation = useRef(true);
@@ -466,9 +491,13 @@ export function LiveAssistant(props: LiveAssistantProps) {
     if (voiceOptions.length && !voiceOptions.includes(voice)) setVoice(voiceOptions[0]!);
   }, [voiceId, voiceOptions.join(','), voice]);
   const inCall = callState !== 'idle';
+  const voiceVisible = voiceExpanded && mode === 'voice' && isLoggedIn && props.visible !== false && !overlay;
   useEffect(() => {
-    if (props.visualAttachment && callState === 'idle') setMode('text');
-  }, [props.visualAttachment, callState]);
+    if (voiceVisible) voiceOrb.current?.focus({ preventScroll: true });
+  }, [voiceVisible]);
+  useEffect(() => {
+    if (props.visualAttachment && callState === 'idle' && !voiceExpanded) setMode('text');
+  }, [props.visualAttachment, callState, voiceExpanded]);
   const catalogSelectionLocked =
     busy || inCall || !!pendingSubmission || !!pendingVoiceSubmission || !!activeTurn;
   useEffect(() => {
@@ -516,10 +545,12 @@ export function LiveAssistant(props: LiveAssistantProps) {
       requestActive: busy,
       callState,
       muted: inCall && muted,
+      callVisible: voiceVisible,
       onMute: toggleVoiceMute,
       onEnd: endCurrentVoice,
+      onResume: showVoice,
     });
-  }, [inCall, callState, muted, busy, toggleVoiceMute, endCurrentVoice, props.onActivityChange]);
+  }, [inCall, callState, muted, voiceVisible, busy, toggleVoiceMute, endCurrentVoice, showVoice, props.onActivityChange]);
   useEffect(() => () => activityReporter.current?.(IDLE_AI_ACTIVITY), []);
   useEffect(() => {
     if (props.visible === false) setOverlay(null);
@@ -543,18 +574,19 @@ export function LiveAssistant(props: LiveAssistantProps) {
       if (refreshing || controller.signal.aborted || document.visibilityState === 'hidden') return;
       if (Date.now() - lastRead < 15_000) return;
       refreshing = true;
+      setCatalogError('');
       lastRead = Date.now();
       try {
         const [value, session] = await Promise.all([
-          api<Catalog>('/assistant/models', { signal: controller.signal }),
-          api<Session>('/session', { signal: controller.signal }),
+          readModelCatalog<Catalog>('/assistant/models', controller.signal),
+          readModelCatalog<Session>('/session', controller.signal),
         ]);
         if (controller.signal.aborted) return;
         setCatalog(value);
         setSpaces(session.spaces);
         setActorId(session.user?.id ?? null);
       } catch (err) {
-        if (!controller.signal.aborted) setError(errorMessage(err));
+        if (!controller.signal.aborted) setCatalogError(errorMessage(err));
       } finally {
         refreshing = false;
       }
@@ -570,7 +602,7 @@ export function LiveAssistant(props: LiveAssistantProps) {
       window.removeEventListener('focus', refresh);
       document.removeEventListener('visibilitychange', refresh);
     };
-  }, [isLoggedIn, props.visible]);
+  }, [isLoggedIn, props.visible, catalogAttempt]);
   useEffect(() => {
     restoreSubmission();
   }, [actorId, isLoggedIn]);
@@ -836,6 +868,8 @@ export function LiveAssistant(props: LiveAssistantProps) {
     };
   };
   const recipeSnapshot = JSON.stringify(recipe);
+  const [contextRetry, setContextRetry] = useState(0);
+  const lastContextRetryKey = useRef('');
   useEffect(() => {
     if (callState !== 'active') return;
     const epoch = voiceEpoch.current,
@@ -897,6 +931,7 @@ export function LiveAssistant(props: LiveAssistantProps) {
     artwork?.assetId,
     artwork?.headVersion,
     requestScope,
+    contextRetry,
   ]);
   const scope = {
     spaceIds,
@@ -1008,11 +1043,22 @@ export function LiveAssistant(props: LiveAssistantProps) {
       if (
         pending &&
         pending.tag === event.contextTag &&
-        event.accepted &&
         pending.key === assistantEditorKey(editorState(current.current))
       ) {
-        voiceCanvas.current = { accepted: pending.key, shared: pending.shared };
-        setContextStatus(event.imageShared ? '画面已更新' : '参数已更新');
+        if (event.accepted) {
+          voiceCanvas.current = { accepted: pending.key, shared: pending.shared };
+          lastContextRetryKey.current = '';
+          setContextStatus(event.imageShared ? '画面已更新' : '参数已更新');
+        } else {
+          voiceCanvas.current = { accepted: '' };
+          if (event.reason === 'busy' && lastContextRetryKey.current !== pending.key) {
+            lastContextRetryKey.current = pending.key;
+            setContextRetry((attempt) => attempt + 1);
+          }
+          setContextStatus(event.reason === 'version'
+            ? '作品版本已变化，正在等待同步'
+            : '共享更新未确认，可重新选择当前预览');
+        }
       }
     }
     if (event.type === 'tool')
@@ -1059,6 +1105,7 @@ export function LiveAssistant(props: LiveAssistantProps) {
           ? { spec: event.workspace, candidateIds: event.candidates.map((item) => item.id) }
           : null,
       );
+      const voiceSession = voiceEpoch.current;
       setMessages((old) =>
         [
           ...old,
@@ -1068,6 +1115,8 @@ export function LiveAssistant(props: LiveAssistantProps) {
             text: event.text,
             citations: event.citations,
             search: event.search,
+            voiceSession,
+            candidateIds: event.candidates.map(({ id }) => id),
           },
         ].slice(-40),
       );
@@ -1132,6 +1181,7 @@ export function LiveAssistant(props: LiveAssistantProps) {
     setExecutionEvents([]);
     setVoiceSearchRemaining(0);
     lastVoiceContextSend.current = -Infinity;
+    lastContextRetryKey.current = '';
     setMuted(false);
     setCallState('connecting');
     const voiceIsActive = () =>
@@ -1429,7 +1479,10 @@ export function LiveAssistant(props: LiveAssistantProps) {
     if (callState === 'active') {
       client.current?.send({ type: 'text', text });
       setPrompt('');
-      setMessages((old) => [...old, { id: secureUuid(), role: 'user' as const, text }].slice(-40));
+      const voiceSession = voiceEpoch.current;
+      setMessages((old) =>
+        [...old, { id: secureUuid(), role: 'user' as const, text, voiceSession }].slice(-40),
+      );
       return;
     }
     const token = requests.current.begin();
@@ -1748,6 +1801,7 @@ export function LiveAssistant(props: LiveAssistantProps) {
           },
           apply: (next) => {
             if (!automatic) {
+              if (voiceVisible) dismissVoice();
               current.current.onPreview(next);
               setPreviewCandidateId(candidate.id);
             }
@@ -1990,94 +2044,64 @@ export function LiveAssistant(props: LiveAssistantProps) {
     creative.mode
   ];
   const researchTurnId = activeTurn?.id ?? researchGraph?.turnId ?? parentTurnId;
-  const voicePanel = mode === 'voice' && (
-    <div ref={callPanel} className={`assistant-call ${callState}`} data-motion="ai-status">
-      {!inCall && <ComposerVisual kind="voice" />}
-      <div className="assistant-call-status" aria-live="polite">
-        {callState === 'active'
-          ? t('正在通话 {v0}:{v1}', {
-              v0: Math.floor(elapsed / 60),
-              v1: String(elapsed % 60).padStart(2, '0'),
-            })
-          : callState === 'connecting'
-            ? t('正在连接麦克风与语音服务…')
-            : callState === 'closing'
-              ? t('正在结束并核对用量…')
-              : t('实时语音')}
-        <small>
-          {inCall
-            ? t(contextStatus)
-            : selectedVoice
-              ? t('本次 {v0} 服务点 · 最长 {v1} 秒 · 最多 {v2} 次后端协作', {
-                  v0: selectedVoice.unitCost,
-                  v1: selectedVoice.maxSeconds,
-                  v2: selectedVoice.maxDelegations,
-                })
-              : t('选择可用的语音模型后开始')}
-        </small>
+  const canStartVoice = !inCall && !busy && !submissionBlocked && voiceSubmissionReady &&
+    !pendingVoiceSubmission && !pendingTeamVoiceSubmission && catalog?.voiceReady &&
+    !!project && !!selected && !!selectedVoice;
+  const voiceAction = inCall
+    ? t(muted ? '开启麦克风' : '静音麦克风')
+    : t('开始实时通话');
+  const voiceHeading = callState === 'active'
+    ? t('正在通话 {v0}:{v1}', {
+        v0: Math.floor(elapsed / 60),
+        v1: String(elapsed % 60).padStart(2, '0'),
+      })
+    : t(callState === 'connecting'
+        ? '正在连接麦克风与语音服务…'
+        : callState === 'closing'
+          ? '正在结束并核对用量…'
+          : canStartVoice ? '开始实时通话' : '选择可用的语音模型后开始');
+  const voicePanel = (
+    <div className={`assistant-call ${callState}`} data-motion="ai-status">
+      <button
+        ref={voiceOrb}
+        type="button"
+        className="voice-workspace-orb"
+        aria-label={voiceAction}
+        aria-pressed={inCall ? muted : undefined}
+        aria-disabled={inCall ? callState !== 'active' : !canStartVoice}
+        onClick={() => {
+          if (callState === 'active') toggleVoiceMute();
+          else if (canStartVoice) void startVoice();
+        }}
+      >
+        <span className="voice-strands-orb" data-muted={muted} aria-hidden>
+          <Suspense fallback={<ComposerVisual kind="voice" />}>
+            <Strands colors={['#eec467', '#f0e8d4', '#719790']} count={15}
+              speed={muted ? 0.12 : inCall ? 0.72 : 0.28}
+              listening={callState === 'active' && !muted}
+              glass glassSize={0.89} glow={0.65} maxDevicePixelRatio={1.2} />
+          </Suspense>
+        </span>
+        <span className="voice-orb-glyph" aria-hidden>
+          {muted ? <MicrophoneSlash size={22} /> : <Microphone size={22} />}
+        </span>
+      </button>
+      <div className="assistant-call-status" role="status">
+        {voiceHeading}
+        {inCall && <small>{t(contextStatus)}</small>}
       </div>
       {!inCall ? (
         <div className="assistant-call-start">
-          <ChoiceSelect
-            ariaLabel={t('语音音色')}
-            size="compact"
-            value={voice}
-            disabled={
-              busy ||
-              !!pendingVoiceSubmission ||
-              !!pendingTeamVoiceSubmission ||
-              !voiceSubmissionReady
-            }
-            onValueChange={setVoice}
-            placeholder={t('选择音色')}
-            options={voiceOptions.map((option) => ({ value: option, label: option }))}
-          />
-          <button
-            className="button button-primary"
-            onClick={() => void startVoice()}
-            disabled={
-              busy ||
-              submissionBlocked ||
-              !voiceSubmissionReady ||
-              !!pendingVoiceSubmission ||
-              !!pendingTeamVoiceSubmission ||
-              !catalog?.voiceReady ||
-              !project ||
-              !selected ||
-              !selectedVoice
-            }
-          >
-            <Microphone size={17} />
-            {t('开始实时通话')}
-          </button>
+          <ModelChoice label={t('语音模型')} ariaLabel={t('语音模型')} value={voiceId}
+            onChange={setVoiceId} disabled={busy || submissionBlocked || !!grant}
+            placeholder={t('暂无语音模型')}
+            options={voices.map((item) => ({ value: item.id, label: item.label }))} />
+          <ChoiceSelect ariaLabel={t('语音音色')} size="compact" value={voice}
+            disabled={!selectedVoice || busy || !!pendingVoiceSubmission || !!pendingTeamVoiceSubmission || !voiceSubmissionReady}
+            onValueChange={setVoice} placeholder={t('选择音色')}
+            options={voiceOptions.map((option) => ({ value: option, label: option }))} />
         </div>
-      ) : (
-        <div className="assistant-call-actions">
-          <button
-            aria-label={muted ? t('开启麦克风') : t('静音麦克风')}
-            aria-pressed={muted}
-            disabled={callState !== 'active'}
-            onClick={toggleVoiceMute}
-          >
-            {muted ? <MicrophoneSlash size={20} /> : <Microphone size={20} />}
-          </button>
-          <button
-            aria-label={t('打断播报')}
-            disabled={callState !== 'active'}
-            onClick={() => client.current?.interrupt()}
-          >
-            <Pause size={20} />
-          </button>
-          <button
-            className="end-call"
-            aria-label={t('结束实时通话')}
-            disabled={callState === 'closing'}
-            onClick={endCurrentVoice}
-          >
-            <PhoneDisconnect size={20} />
-          </button>
-        </div>
-      )}
+      ) : null}
     </div>
   );
   const voiceSupplement = mode === 'voice' && (
@@ -2133,7 +2157,7 @@ export function LiveAssistant(props: LiveAssistantProps) {
   const availabilityMessage = !project
     ? t('选择项目后开始对话')
     : !catalog?.ready
-      ? t(catalog ? '助手暂不可用' : '正在读取可用模型…')
+      ? t(catalog || catalogError ? '助手暂不可用' : '正在读取可用模型…')
       : null;
   const availabilityDetails =
     project && catalog && !catalog.ready && catalog.reason ? (
@@ -2149,7 +2173,213 @@ export function LiveAssistant(props: LiveAssistantProps) {
       : activeTurn?.stopping
         ? 'pending'
         : (latestExecution?.state ?? (busy || toolStatus ? 'running' : 'pending'));
+  function renderMessages(entries: Message[]) {
+    return (
+      <div className="assistant-messages" aria-label={t('协作对话')} data-motion="ai-answer">
+        {entries.map((message) => (
+          <article key={message.id} className={`assistant-message ${message.role}`}>
+            <small>{message.role === 'user' ? t('你') : t('创作助手')}</small>
+            {message.attachmentKind && (
+              <span className="ai-sent-attachment">
+                <Paperclip size={13} /> {visualAttachmentLabel(message.attachmentKind)}
+              </span>
+            )}
+            {message.text &&
+              (message.role === 'assistant' ? (
+                <AssistantText text={message.text} />
+              ) : (
+                <p>{message.text}</p>
+              ))}
+            {message.appStatus && <p>{renderStatus(message.appStatus)}</p>}
+            {!!message.search?.length && (
+              <SearchEvidence
+                evidence={message.search}
+                selected={referenceIds}
+                disabled={inCall || busy}
+                onSelect={toggleReference}
+                useSource={props.onUseCanvasSource}
+                sourceProjectId={artwork?.projectId}
+                currentAssetId={artwork?.assetId}
+              />
+            )}
+            {!message.search?.some((item) => item.kind === 'web') &&
+              !!message.citations?.length && (
+                <div className="assistant-citations">
+                  {message.citations.map((citation) => (
+                    <a
+                      key={citation.url}
+                      href={/^https?:\/\//.test(citation.url) ? citation.url : undefined}
+                      target="_blank"
+                      rel="noreferrer noopener"
+                    >
+                      {citation.title}
+                    </a>
+                  ))}
+                </div>
+              )}
+            {message.role === 'assistant' && message.text && (
+              <CopyMessage text={message.text} />
+            )}
+          </article>
+        ))}
+      </div>
+    );
+  }
+  function renderWorkspace() {
+    if (!workspace || !workspaceReady) return null;
+    return (
+      <WorkspaceCards
+        spec={workspace.spec}
+        candidates={workspace.candidateIds.map((id) =>
+          candidates.find((item) => item.id === id)!,
+        )}
+        grant={grant}
+        disabled={busy || submissionBlocked}
+        canExecute={creative.mode !== 'suggest'}
+        previewCandidateId={previewCandidateId}
+        confirmedCandidateIds={confirmedCandidateIds}
+        onConfirmPreview={props.onConfirmPreview ? confirmCandidatePreview : undefined}
+        onCancelPreview={props.onCancelPreview ? cancelCandidatePreview : undefined}
+        onDecision={(candidate, decision) => {
+          void decide(candidate, decision);
+        }}
+        onPrompt={(text) => {
+          setPrompt(text);
+          composerInput.current?.focus({ preventScroll: true });
+        }}
+      />
+    );
+  }
+  function renderCandidates(entries: AssistantCandidate[]) {
+    if (!entries.length) return null;
+    return (
+      <div className="assistant-candidates" data-motion="ai-answer">
+        {entries.map((candidate) => (
+          <article key={candidate.id} className="assistant-candidate">
+            <h4>
+              <Sparkle size={15} />
+              {candidate.kind === 'edit' ? t('待确认的编辑') : t('生图草案')}
+            </h4>
+            <p>{candidate.summary}</p>
+            {!!candidate.changes?.length && (
+              <MotionDetails>
+                <summary>
+                  {t('查看')}
+                  {candidate.changes.length} {t('项参数变化')}
+                </summary>
+                <table>
+                  <thead>
+                    <tr>
+                      <th>{t('参数')}</th>
+                      <th>{t('原值')}</th>
+                      <th>{t('建议')}</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {candidate.changes.map((change) => (
+                      <tr key={change.path}>
+                        <td>{change.label}</td>
+                        <td>{change.before}</td>
+                        <td>{change.after}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </MotionDetails>
+            )}
+            <CandidateActions
+              candidate={candidate}
+              disabled={busy || submissionBlocked}
+              canExecute={creative.mode !== 'suggest'}
+              previewing={previewCandidateId === candidate.id}
+              confirmed={confirmedCandidateIds.has(candidate.id)}
+              onDecision={(item, decision) => void decide(item, decision)}
+              onConfirm={props.onConfirmPreview ? confirmCandidatePreview : undefined}
+              onCancel={props.onCancelPreview ? cancelCandidatePreview : undefined}
+            />
+          </article>
+        ))}
+      </div>
+    );
+  }
+  const voiceMessages = messages.filter((message) => message.voiceSession === voiceEpoch.current);
+  const voiceCandidateIds = new Set(voiceMessages.flatMap((message) => message.candidateIds ?? []));
+  const voicePortal = voiceVisible && createPortal(
+    <section
+      className="voice-call-workspace"
+      data-call-state={callState}
+      aria-label={t('实时语音')}
+      onKeyDown={(event) => {
+        if (event.key !== 'Escape' || event.defaultPrevented) return;
+        event.preventDefault();
+        dismissVoice();
+      }}
+    >
+      <header className="voice-workspace-heading">
+        <IconButton label={t('收起语音通话')} onClick={dismissVoice}><ArrowLeft size={20} /></IconButton>
+        <div>
+          <strong>{selectedVoice?.label ?? t('实时语音')}</strong>
+          {selectedVoice && (
+            <span>{[inCall && voice, t('{v0} 服务点 · 最长 {v1} 秒', {
+              v0: selectedVoice.unitCost, v1: selectedVoice.maxSeconds,
+            })].filter(Boolean).join(' · ')}</span>
+          )}
+        </div>
+        <IconButton label={t('助手设置')} onClick={() => setOverlay('settings')}><GearSix size={19} /></IconButton>
+      </header>
+      <div className="voice-workspace-body">
+        {isLoggedIn && !catalog && (
+          <ModelReadStatus label={t(catalogError ? '模型列表加载失败' : '正在读取模型')}
+            error={catalogError} retry={() => setCatalogAttempt((n) => n + 1)} />
+        )}
+        {voicePanel}
+        {voiceSupplement}
+        {toolStatus && <p className="voice-tool-status" role="status">{renderStatus(toolStatus)}</p>}
+        {!!voiceMessages.length && (
+          <div className="voice-results">
+            {renderMessages(voiceMessages)}
+            {workspace?.candidateIds.some((id) => voiceCandidateIds.has(id)) && renderWorkspace()}
+            {renderCandidates(remainingCandidates.filter(({ id }) => voiceCandidateIds.has(id)))}
+          </div>
+        )}
+        {error && <p className="assistant-error" role="alert">{renderStatus(error)}</p>}
+        {recoveryLabel && <button type="button" className="text-button" onClick={() => {
+          setOverlay('recovery');
+        }}>{t(recoveryLabel)} · {t('核对请求')}</button>}
+      </div>
+      <footer className="voice-workspace-footer">
+        <form className="ai-composer-surface voice-composer" data-ai-voice-composer onSubmit={(event) => {
+          event.preventDefault();
+          if (callState === 'active' && canSend) void submit();
+        }}>
+          <ComposerInput label={t('向智能体描述修改需求')} placeholder={t('补充通话要求…')}
+            value={prompt} onChange={setPrompt} maxLength={4000}
+            canSubmit={callState === 'active' && canSend}
+            readOnly={callState !== 'active' || !!pendingSubmission || !submissionReady} />
+          <ComposerAction state={busy ? 'waiting' : 'send'} label={t('发送协作请求')}
+            disabled={callState !== 'active' || !canSend} />
+        </form>
+        <div className="voice-workspace-actions">
+          <button className="text-button voice-share-canvas" type="button" aria-pressed={shareImage}
+            disabled={!artwork || !selected?.imageInput || busy || callState === 'connecting' || callState === 'closing'}
+            onClick={() => setShareImage((enabled) => !enabled)}>
+            <ImageSquare size={16} />{t('当前预览')}
+          </button>
+          {inCall && (
+            <div className="assistant-call-actions">
+              <button type="button" aria-label={t('打断播报')} disabled={callState !== 'active'}
+                onClick={() => client.current?.interrupt()}><Pause size={19} /></button>
+              <button type="button" className="end-call" aria-label={t('结束实时通话')}
+                disabled={callState === 'closing'} onClick={endCurrentVoice}><PhoneDisconnect size={19} /></button>
+            </div>
+          )}
+        </div>
+      </footer>
+    </section>, document.body,
+  );
   return (
+    <>
+    {voicePortal}
     <section
       className="live-assistant live-assistant-v2"
       data-availability={
@@ -2171,7 +2401,7 @@ export function LiveAssistant(props: LiveAssistantProps) {
       data-settings-open={overlay === 'settings' || undefined}
       aria-label={t('实时语音与智能体协作')}
     >
-      <header className="ai-workbench-header">
+      <header className="ai-workbench-header" inert={voiceVisible}>
         {props.navigation ?? (
           <strong className="ai-task-title">
             <Sparkle size={18} />
@@ -2199,9 +2429,9 @@ export function LiveAssistant(props: LiveAssistantProps) {
           </IconButton>
           <IconButton
             className="ai-compact-action ai-compact-voice"
-            label={mode === 'voice' ? t('返回文字协作') : t('打开实时语音')}
-            disabled={inCall || busy}
-            onClick={() => setMode((old) => (old === 'voice' ? 'text' : 'voice'))}
+            label={t('打开实时语音')}
+            disabled={!isLoggedIn || busy}
+            onClick={(event) => showVoice(event.currentTarget)}
           >
             <Microphone size={18} />
           </IconButton>
@@ -2230,18 +2460,26 @@ export function LiveAssistant(props: LiveAssistantProps) {
           )}
         </div>
       </header>
-      {inCall && voicePanel}
       <div
         ref={conversationBody}
         className="ai-conversation-body"
+        inert={voiceVisible}
         aria-label={t('助手对话内容')}
-        onScroll={(event) => {
+        onScroll={(event) =>
+ {
           const node = event.currentTarget;
           if (props.visible === false || !node.clientHeight) return;
           followingConversation.current =
             node.scrollHeight - node.clientHeight - node.scrollTop < 64;
         }}
       >
+          {isLoggedIn && !catalog && (
+            <ModelReadStatus
+              label={t(catalogError ? '模型列表加载失败' : '正在读取模型')}
+              error={catalogError}
+              retry={() => setCatalogAttempt((n) => n + 1)}
+            />
+          )}
         {!isLoggedIn ? (
           <div className="ai-conversation-empty ai-login-empty">
             <ComposerVisual kind="assistant" />
@@ -2265,8 +2503,6 @@ export function LiveAssistant(props: LiveAssistantProps) {
                 )}
               </div>
             )}
-            {!inCall && voicePanel}
-            {voiceSupplement}
             <ResearchGraph
               turnId={researchTurnId}
               live={
@@ -2292,125 +2528,9 @@ export function LiveAssistant(props: LiveAssistantProps) {
                 )}
               </div>
             )}
-            <div className="assistant-messages" aria-label={t('协作对话')} data-motion="ai-answer">
-              {messages.map((message) => (
-                <article key={message.id} className={`assistant-message ${message.role}`}>
-                  <small>{message.role === 'user' ? t('你') : t('创作助手')}</small>
-                  {message.attachmentKind && (
-                    <span className="ai-sent-attachment">
-                      <Paperclip size={13} /> {visualAttachmentLabel(message.attachmentKind)}
-                    </span>
-                  )}
-                  {message.text &&
-                    (message.role === 'assistant' ? (
-                      <AssistantText text={message.text} />
-                    ) : (
-                      <p>{message.text}</p>
-                    ))}
-                  {message.appStatus && <p>{renderStatus(message.appStatus)}</p>}
-                  {!!message.search?.length && (
-                    <SearchEvidence
-                      evidence={message.search}
-                      selected={referenceIds}
-                      disabled={inCall || busy}
-                      onSelect={toggleReference}
-                      useSource={props.onUseCanvasSource}
-                      sourceProjectId={artwork?.projectId}
-                      currentAssetId={artwork?.assetId}
-                    />
-                  )}
-                  {!message.search?.some((item) => item.kind === 'web') &&
-                    !!message.citations?.length && (
-                      <div className="assistant-citations">
-                        {message.citations.map((citation) => (
-                          <a
-                            key={citation.url}
-                            href={/^https?:\/\//.test(citation.url) ? citation.url : undefined}
-                            target="_blank"
-                            rel="noreferrer noopener"
-                          >
-                            {citation.title}
-                          </a>
-                        ))}
-                      </div>
-                    )}
-                  {message.role === 'assistant' && message.text && (
-                    <CopyMessage text={message.text} />
-                  )}
-                </article>
-              ))}
-            </div>
-            {workspace && workspaceReady && (
-              <WorkspaceCards
-                spec={workspace.spec}
-                candidates={workspace.candidateIds.map((id) =>
-                  candidates.find((item) => item.id === id)!,
-                )}
-                grant={grant}
-                disabled={busy || submissionBlocked}
-                canExecute={creative.mode !== 'suggest'}
-                previewCandidateId={previewCandidateId}
-                confirmedCandidateIds={confirmedCandidateIds}
-                onConfirmPreview={props.onConfirmPreview ? confirmCandidatePreview : undefined}
-                onCancelPreview={props.onCancelPreview ? cancelCandidatePreview : undefined}
-                onDecision={(candidate, decision) => {
-                  void decide(candidate, decision);
-                }}
-                onPrompt={(text) => {
-                  setPrompt(text);
-                  composerInput.current?.focus({ preventScroll: true });
-                }}
-              />
-            )}
-            {remainingCandidates.length > 0 && (
-              <div className="assistant-candidates" data-motion="ai-answer">
-                {remainingCandidates.map((candidate) => (
-                  <article key={candidate.id} className="assistant-candidate">
-                    <h4>
-                      <Sparkle size={15} />
-                      {candidate.kind === 'edit' ? t('待确认的编辑') : t('生图草案')}
-                    </h4>
-                    <p>{candidate.summary}</p>
-                    {!!candidate.changes?.length && (
-                      <MotionDetails>
-                        <summary>
-                          {t('查看')}
-                          {candidate.changes.length} {t('项参数变化')}
-                        </summary>
-                        <table>
-                          <thead>
-                            <tr>
-                              <th>{t('参数')}</th>
-                              <th>{t('原值')}</th>
-                              <th>{t('建议')}</th>
-                            </tr>
-                          </thead>
-                          <tbody>
-                            {candidate.changes.map((change) => (
-                              <tr key={change.path}>
-                                <td>{change.label}</td>
-                                <td>{change.before}</td>
-                                <td>{change.after}</td>
-                              </tr>
-                            ))}
-                          </tbody>
-                        </table>
-                      </MotionDetails>
-                    )}
-                    <CandidateActions
-                      candidate={candidate}
-                      disabled={busy || submissionBlocked}
-                      canExecute={creative.mode !== 'suggest'}
-                      previewing={previewCandidateId === candidate.id}
-                      confirmed={confirmedCandidateIds.has(candidate.id)}
-                      onDecision={(item, decision) => void decide(item, decision)}
-                      onConfirm={props.onConfirmPreview ? confirmCandidatePreview : undefined}
-                      onCancel={props.onCancelPreview ? cancelCandidatePreview : undefined}
-                    />
-                  </article>
-                ))}
-              </div>
-            )}
+            {renderMessages(messages)}
+            {renderWorkspace()}
+            {renderCandidates(remainingCandidates)}
             {candidateHistoryStatus && (
               <p className="ai-secondary-copy" role="status">
                 {renderStatus(candidateHistoryStatus)}
@@ -2456,7 +2576,7 @@ export function LiveAssistant(props: LiveAssistantProps) {
           />
         )}
       </div>
-      <footer className="ai-composer-region">
+      <footer className="ai-composer-region" hidden={voiceVisible} inert={voiceVisible}>
         <form
           className="assistant-composer ai-composer-surface"
           data-ai-composer
@@ -2562,9 +2682,9 @@ export function LiveAssistant(props: LiveAssistantProps) {
             }}
           >
               <IconButton
-                label={mode === 'voice' ? t('返回文字协作') : t('打开实时语音')}
-                disabled={inCall || busy}
-                onClick={() => setMode((old) => (old === 'voice' ? 'text' : 'voice'))}
+                label={t('打开实时语音')}
+                disabled={!isLoggedIn || busy}
+                onClick={(event) => showVoice(event.currentTarget)}
               >
                 <Microphone size={18} />
               </IconButton>
@@ -2630,7 +2750,13 @@ export function LiveAssistant(props: LiveAssistantProps) {
             label={t('交流方式')}
             className="assistant-mode"
             value={mode}
-            onChange={setMode}
+            onChange={(value) => {
+              setMode(value);
+              if (value === 'voice') {
+                setOverlay(null);
+                showVoice();
+              }
+            }}
             disabled={inCall}
             options={[
               { value: 'text', label: t('文字协作') },
@@ -3112,5 +3238,6 @@ export function LiveAssistant(props: LiveAssistantProps) {
         </div>
       </Modal>
     </section>
+    </>
   );
 }

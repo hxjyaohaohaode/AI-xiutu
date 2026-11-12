@@ -233,7 +233,7 @@ export const libraryEnglish: Readonly<Record<string, string>> = {
   'WebP 按所选质量编码；只有实际编码MIME一致时才提供下载。':
     'WebP uses the selected quality. Download is available only when the actual encoded MIME type matches.',
   文件名: 'Filename',
-  作品: 'Image',
+  作品: 'Library',
   '-编辑.': '-edited.',
   照片处理: 'Photo processing',
   '当前调色、构图和局部调整': 'Current color, composition, and local adjustments',

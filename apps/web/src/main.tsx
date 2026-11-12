@@ -9,6 +9,7 @@ import './components/control-motion/control-motion.css';
 import './components/status-mark.css';
 import './components/check-control.css';
 import './about/about.css';
+import './about/stories.css';
 
 void initializeLocale().then(() =>
   ReactDOM.createRoot(document.getElementById('root')!).render(

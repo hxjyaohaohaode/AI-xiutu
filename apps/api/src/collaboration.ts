@@ -66,11 +66,18 @@ export function registerCollaboration(app: FastifyInstance, db: Database): void 
     const user = requireUser(req);
     const p = z.object({ id }).parse(req.params);
     await projectAccess(db, p.id, user.id);
+    const filter = z.object({ artworkId: id.optional(), revisionId: id.optional() }).strict().parse(req.query);
+    if (filter.revisionId && !filter.artworkId)
+      throw new HttpError(400, 'COMMENT_ANCHOR_INVALID', '版本锚点需要对应作品');
     return {
       comments: (
         await db.query(
-          'SELECT c.*,u.display_name AS author_name FROM comments c JOIN users u ON u.id=c.author_id WHERE project_id=$1 ORDER BY created_at LIMIT 500',
-          [p.id],
+          `SELECT c.*,u.display_name AS author_name FROM comments c JOIN users u ON u.id=c.author_id
+           WHERE project_id=$1
+           AND ($2::uuid IS NULL OR (c.artwork_id=$2 AND c.anchor IS NOT NULL))
+           AND ($3::uuid IS NULL OR c.revision_id=$3)
+           ORDER BY c.created_at, c.id LIMIT 500`,
+          [p.id, filter.artworkId ?? null, filter.revisionId ?? null],
         )
       ).rows.map(commentDto),
     };
@@ -84,7 +91,11 @@ export function registerCollaboration(app: FastifyInstance, db: Database): void 
         artworkId: id.optional(),
         revisionId: id.optional(),
         anchor: z
-          .object({ x: z.number().min(0).max(1), y: z.number().min(0).max(1) })
+          .object({
+            x: z.number().min(0).max(1),
+            y: z.number().min(0).max(1),
+            shape: z.enum(['point', 'diamond', 'frame']).optional(),
+          })
           .strict()
           .optional(),
       })
@@ -92,7 +103,7 @@ export function registerCollaboration(app: FastifyInstance, db: Database): void 
       .parse(req.body);
     const comment = await transaction(db, async (tx) => {
       const project = await projectAccess(tx, p.id, user.id, 'comment');
-      if (body.revisionId && !body.artworkId)
+      if ((body.revisionId || body.anchor) && !body.artworkId)
         throw new HttpError(400, 'COMMENT_ANCHOR_INVALID', '版本锚点需要对应作品');
       if (
         body.artworkId &&

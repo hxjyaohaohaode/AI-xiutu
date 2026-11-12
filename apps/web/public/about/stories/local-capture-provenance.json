@@ -1,0 +1,404 @@
+{
+  "createdAt": "2026-11-12T16:48:56.585Z",
+  "sourceHead": "c2ec6d460a711ed99a63542a2c68a1eea185ec8d",
+  "sourceState": "current local working tree",
+  "runtime": "Edge rendering the actual local Vite application",
+  "photos": [
+    {
+      "file": "workspace-zh-CN.webp",
+      "locale": "zh-CN",
+      "viewport": {
+        "width": 1440,
+        "height": 960
+      },
+      "input": "apps/web/public/about/color-study.webp",
+      "sha256": "8f5cbdd7aae44fd6df516fab63e9bf4d2d2f4178f64690d8ae728af1274af75a",
+      "bytes": 127084
+    },
+    {
+      "file": "desktop-flow-zh-CN.webp",
+      "locale": "zh-CN",
+      "viewport": {
+        "width": 1440,
+        "height": 960
+      },
+      "input": "apps/web/public/about/stories/pool.webp",
+      "sha256": "96ffea7dfb4139f3ae9c6e6725253ef58ccd81f59e73566df40cb14fdc041719",
+      "bytes": 112012
+    },
+    {
+      "file": "phone-zh-CN.webp",
+      "locale": "zh-CN",
+      "viewport": {
+        "width": 390,
+        "height": 844
+      },
+      "input": "apps/web/public/about/stories/tulip.webp",
+      "sha256": "73f6af4009974fd0c20ca173ba7f501d76cdf58cce227472b303f4e88508da47",
+      "bytes": 23402
+    },
+    {
+      "file": "tablet-zh-CN.webp",
+      "locale": "zh-CN",
+      "viewport": {
+        "width": 1024,
+        "height": 768
+      },
+      "input": "apps/web/public/about/stories/shore.webp",
+      "sha256": "12a7396ae2d70f900dd58aa18887e0390911b5fd4b984f9643126b436fe43e79",
+      "bytes": 104664
+    },
+    {
+      "file": "local-zh-CN.webp",
+      "locale": "zh-CN",
+      "viewport": {
+        "width": 1440,
+        "height": 960
+      },
+      "input": "apps/web/public/about/stories/ceramics-original.webp",
+      "sha256": "d74513488ebc6c37b4bfd38643855f570fe923c014c069a4380cc841b5ef59a6",
+      "bytes": 88080
+    },
+    {
+      "file": "local-phone-zh-CN.webp",
+      "locale": "zh-CN",
+      "viewport": {
+        "width": 390,
+        "height": 844
+      },
+      "input": "apps/web/public/about/stories/ceramics-original.webp",
+      "sha256": "ee64e037d9f05c807e1663840c07067102599090318f99393c406557b64f8db8",
+      "bytes": 23688
+    },
+    {
+      "file": "layers-zh-CN.webp",
+      "locale": "zh-CN",
+      "viewport": {
+        "width": 1440,
+        "height": 960
+      },
+      "input": "apps/web/public/about/stories/ginkgo.webp",
+      "sha256": "832f5d2b9391199e44f868cb7b2452bacbd22065383e8098319457954267286e",
+      "bytes": 58270
+    },
+    {
+      "file": "layers-phone-zh-CN.webp",
+      "locale": "zh-CN",
+      "viewport": {
+        "width": 390,
+        "height": 844
+      },
+      "input": "apps/web/public/about/stories/ginkgo.webp",
+      "sha256": "7c3c20e199fc25b7cb4a043206a382409b54881e4be0ed8acddf099203bf150f",
+      "bytes": 21306
+    },
+    {
+      "file": "assistant-zh-CN.webp",
+      "locale": "zh-CN",
+      "viewport": {
+        "width": 1440,
+        "height": 960
+      },
+      "input": "apps/web/public/about/stories/shore.webp",
+      "sha256": "8306afe2482cd96a39cf8614072e0554f31f92e13596d90b3625ac90ab6d9694",
+      "bytes": 173252
+    },
+    {
+      "file": "assistant-phone-zh-CN.webp",
+      "locale": "zh-CN",
+      "viewport": {
+        "width": 390,
+        "height": 844
+      },
+      "input": "apps/web/public/about/stories/shore.webp",
+      "sha256": "286e29fe83d04dfd2b33aaf98fb6ddd9effcbbdedeb816ae3526ad24e2528357",
+      "bytes": 7328
+    },
+    {
+      "file": "delivery-zh-CN.webp",
+      "locale": "zh-CN",
+      "viewport": {
+        "width": 1440,
+        "height": 960
+      },
+      "input": "apps/web/public/about/stories/railway.webp",
+      "sha256": "7041eda1fe270c07202d74625aa7829e06041b831f609e032b894c5105166917",
+      "bytes": 93482
+    },
+    {
+      "file": "delivery-phone-zh-CN.webp",
+      "locale": "zh-CN",
+      "viewport": {
+        "width": 390,
+        "height": 844
+      },
+      "input": "apps/web/public/about/stories/railway.webp",
+      "sha256": "323b66542570a7c9682c772c3b8f3f1b28ccb75320a4a029561aa7bd06252394",
+      "bytes": 29146
+    },
+    {
+      "file": "workspace-zh-TW.webp",
+      "locale": "zh-TW",
+      "viewport": {
+        "width": 1440,
+        "height": 960
+      },
+      "input": "apps/web/public/about/color-study.webp",
+      "sha256": "0e8287e4d3eab4c97e2a781f497eb8be5c3cf23fdf88545eb5b1036276512872",
+      "bytes": 126534
+    },
+    {
+      "file": "desktop-flow-zh-TW.webp",
+      "locale": "zh-TW",
+      "viewport": {
+        "width": 1440,
+        "height": 960
+      },
+      "input": "apps/web/public/about/stories/pool.webp",
+      "sha256": "dad6970bdcd7246aa3b8b9ee2244cc8df4462593c239aea206b62e4dfef9e34c",
+      "bytes": 111096
+    },
+    {
+      "file": "phone-zh-TW.webp",
+      "locale": "zh-TW",
+      "viewport": {
+        "width": 390,
+        "height": 844
+      },
+      "input": "apps/web/public/about/stories/tulip.webp",
+      "sha256": "633a526a946906d1a28dd29840210e0770f53cc6aeb829befd4f045ca846f093",
+      "bytes": 23288
+    },
+    {
+      "file": "tablet-zh-TW.webp",
+      "locale": "zh-TW",
+      "viewport": {
+        "width": 1024,
+        "height": 768
+      },
+      "input": "apps/web/public/about/stories/shore.webp",
+      "sha256": "0599530ce13629db97629b340ae792cd5e0038d4e00627791851c9df4361f32a",
+      "bytes": 104068
+    },
+    {
+      "file": "local-zh-TW.webp",
+      "locale": "zh-TW",
+      "viewport": {
+        "width": 1440,
+        "height": 960
+      },
+      "input": "apps/web/public/about/stories/ceramics-original.webp",
+      "sha256": "c3c9b8c848fe5f3b5743d2221d3c5fbd936dce9defb7db0bb095bcf737558f2a",
+      "bytes": 88586
+    },
+    {
+      "file": "local-phone-zh-TW.webp",
+      "locale": "zh-TW",
+      "viewport": {
+        "width": 390,
+        "height": 844
+      },
+      "input": "apps/web/public/about/stories/ceramics-original.webp",
+      "sha256": "0ce20202c416f1bb2765cd88972f98d0ac1bbe74f6add08743fcdfe2e3b4f30e",
+      "bytes": 23244
+    },
+    {
+      "file": "layers-zh-TW.webp",
+      "locale": "zh-TW",
+      "viewport": {
+        "width": 1440,
+        "height": 960
+      },
+      "input": "apps/web/public/about/stories/ginkgo.webp",
+      "sha256": "0bdb4003d97c6b21b5bd6e597da43d64124a367f781a967ccb7267948b6cb93c",
+      "bytes": 57896
+    },
+    {
+      "file": "layers-phone-zh-TW.webp",
+      "locale": "zh-TW",
+      "viewport": {
+        "width": 390,
+        "height": 844
+      },
+      "input": "apps/web/public/about/stories/ginkgo.webp",
+      "sha256": "172d5d346a685b4a38058c0bc9c19caf1453f06048cab9617357405d6319d8f3",
+      "bytes": 21190
+    },
+    {
+      "file": "assistant-zh-TW.webp",
+      "locale": "zh-TW",
+      "viewport": {
+        "width": 1440,
+        "height": 960
+      },
+      "input": "apps/web/public/about/stories/shore.webp",
+      "sha256": "b24fc1d550c381ff551663825b567fef75560daef3bda143cb335703c007dcdf",
+      "bytes": 172476
+    },
+    {
+      "file": "assistant-phone-zh-TW.webp",
+      "locale": "zh-TW",
+      "viewport": {
+        "width": 390,
+        "height": 844
+      },
+      "input": "apps/web/public/about/stories/shore.webp",
+      "sha256": "24f4bf1a63aa53c65405e50cef65f2446728470f3c86c3ed22136dc274ec5d66",
+      "bytes": 6896
+    },
+    {
+      "file": "delivery-zh-TW.webp",
+      "locale": "zh-TW",
+      "viewport": {
+        "width": 1440,
+        "height": 960
+      },
+      "input": "apps/web/public/about/stories/railway.webp",
+      "sha256": "db6569c86fe6ab3b0caea4985d6695bfef2921714bc313eb2e898ab5a702fb96",
+      "bytes": 92972
+    },
+    {
+      "file": "delivery-phone-zh-TW.webp",
+      "locale": "zh-TW",
+      "viewport": {
+        "width": 390,
+        "height": 844
+      },
+      "input": "apps/web/public/about/stories/railway.webp",
+      "sha256": "cbec133a1af093733113d961780e93bbeb30ac36fe6bc1db434844f76b353668",
+      "bytes": 28876
+    },
+    {
+      "file": "workspace-en.webp",
+      "locale": "en",
+      "viewport": {
+        "width": 1440,
+        "height": 960
+      },
+      "input": "apps/web/public/about/color-study.webp",
+      "sha256": "2c7d22272a0bdf4fba7ebb646c2e92ebc8ba5a7a0d95b988bbcbd3bd779980c4",
+      "bytes": 129288
+    },
+    {
+      "file": "desktop-flow-en.webp",
+      "locale": "en",
+      "viewport": {
+        "width": 1440,
+        "height": 960
+      },
+      "input": "apps/web/public/about/stories/pool.webp",
+      "sha256": "a6007d9664cdac08db62c2936c174345f62ad78dd3a194cc90c83c9d0032071f",
+      "bytes": 114474
+    },
+    {
+      "file": "phone-en.webp",
+      "locale": "en",
+      "viewport": {
+        "width": 390,
+        "height": 844
+      },
+      "input": "apps/web/public/about/stories/tulip.webp",
+      "sha256": "9a621c90570e4cd88860bbf3885f7c046df225ec83758f4bfd8bcf673e0be7b8",
+      "bytes": 23778
+    },
+    {
+      "file": "tablet-en.webp",
+      "locale": "en",
+      "viewport": {
+        "width": 1024,
+        "height": 768
+      },
+      "input": "apps/web/public/about/stories/shore.webp",
+      "sha256": "30fe2a03810370239264e07c2489f6ca4deb21e527796857b8d4983c91cfdf39",
+      "bytes": 106504
+    },
+    {
+      "file": "local-en.webp",
+      "locale": "en",
+      "viewport": {
+        "width": 1440,
+        "height": 960
+      },
+      "input": "apps/web/public/about/stories/ceramics-original.webp",
+      "sha256": "725abbc1c4d305536ce352423a5741f5aa87b4c82aafae9ae40938fb5433c10b",
+      "bytes": 91080
+    },
+    {
+      "file": "local-phone-en.webp",
+      "locale": "en",
+      "viewport": {
+        "width": 390,
+        "height": 844
+      },
+      "input": "apps/web/public/about/stories/ceramics-original.webp",
+      "sha256": "e006e86daac09e1cd5ebf10380cdf4abdf48fb51df59d8f682093d9d837972d5",
+      "bytes": 23840
+    },
+    {
+      "file": "assistant-en.webp",
+      "locale": "en",
+      "viewport": {
+        "width": 1440,
+        "height": 960
+      },
+      "input": "apps/web/public/about/stories/shore.webp",
+      "sha256": "8b7792d98ad9d7ffd63cba709145814216719d59a2597192143ebf33fe09a93a",
+      "bytes": 174922
+    },
+    {
+      "file": "assistant-phone-en.webp",
+      "locale": "en",
+      "viewport": {
+        "width": 390,
+        "height": 844
+      },
+      "input": "apps/web/public/about/stories/shore.webp",
+      "sha256": "f4ab7f95ea4d94b1bbeb1aa27eea600e6631372ef1f73690e5cf58f82637e7a9",
+      "bytes": 7806
+    },
+    {
+      "file": "delivery-en.webp",
+      "locale": "en",
+      "viewport": {
+        "width": 1440,
+        "height": 960
+      },
+      "input": "apps/web/public/about/stories/railway.webp",
+      "sha256": "82de42edaa8bcf70f677693f0eed4d9458f519287703a95d70b21eb1603decfe",
+      "bytes": 94958
+    },
+    {
+      "file": "delivery-phone-en.webp",
+      "locale": "en",
+      "viewport": {
+        "width": 390,
+        "height": 844
+      },
+      "input": "apps/web/public/about/stories/railway.webp",
+      "sha256": "4563b2f4d004d9ed2075706b2acec653c0025a9398adab4432f5bf1c51af5671",
+      "bytes": 29446
+    },
+    {
+      "file": "layers-en.webp",
+      "locale": "en",
+      "viewport": {
+        "width": 1440,
+        "height": 960
+      },
+      "input": "apps/web/public/about/stories/ginkgo.webp",
+      "sha256": "af8dc8cab8a314b3793a16d8f7aab158881807471f3ba7164f7333902ff1282f",
+      "bytes": 59362
+    },
+    {
+      "file": "layers-phone-en.webp",
+      "locale": "en",
+      "viewport": {
+        "width": 390,
+        "height": 844
+      },
+      "input": "apps/web/public/about/stories/ginkgo.webp",
+      "sha256": "0ed64ece7a598d7bf6bca095eefa124a4d09f18b2e2ee9e17faaaf781b443c7e",
+      "bytes": 21524
+    }
+  ]
+}

@@ -1,11 +1,9 @@
 import { t } from '../i18n';
-import { MotionDetails } from '../motion/Presence';
-import { ChoiceSelect } from '../components/ChoiceSelect';
 import { Activity, useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { usePanelChrome } from '../workspace/PanelChromeContext';
 import { RubberSegment } from '../components/control-motion';
-import { CaretDown } from '../components/ControlGlyph';
+import { ArrowCounterClockwise, CaretDown } from '../components/ControlGlyph';
 import { createColorBlockV3 } from '@ai-xiutu/editor';
 import { IconButton, InlineError } from '../components/Ui';
 import type { ToolGroup, ToolInspectorProps } from './ToolInspector';
@@ -29,6 +27,8 @@ import './advanced-inspector.css';
 
 export function AdvancedInspector({
   editor,
+  target,
+  onPortraitTool,
   group,
   mobileOpen,
   onClose,
@@ -40,6 +40,13 @@ export function AdvancedInspector({
   onCutout,
 }: ToolInspectorProps) {
   const chrome = usePanelChrome();
+  const [portraitTool, setPortraitTool] = useState<ToolGroup | null>(null);
+  function openPortraitTool(tool: ToolGroup) {
+    const next = tool === 'beauty' ? null : tool;
+    setPortraitTool(next);
+    onPortraitTool?.(next);
+  }
+  useEffect(() => { if (group !== 'beauty') setPortraitTool(null); }, [group]);
   const [scopes, setScopes] = useState<Partial<Record<typeof group, EditScope>>>({});
   const [visited, setVisited] = useState<ToolGroup[]>([group]);
   useEffect(() => {
@@ -90,24 +97,17 @@ export function AdvancedInspector({
   }
   function resetControls(scope: EditScope) {
     return (
-      <MotionDetails className="advanced-disclosure">
-        <summary aria-label={t('恢复当前作用范围')}>{t('重置')}</summary>
-        <button
-          className="text-button"
-          onClick={() =>
-            controller.apply(
-              withScopeColor(currentV3(editor), scope, createColorBlockV3()),
-              t('恢复当前范围的中性色彩'),
-              true,
-            )
-          }
-        >
-          {t('恢复当前范围全部明暗、色彩和细节')}
-        </button>
-        <p className="control-note">
-          {t('保留选区形状、其他人物、构图和合成图层；该操作可以撤销。')}
-        </p>
-      </MotionDetails>
+      <IconButton
+        className="scope-reset-button"
+        label={t('恢复当前范围全部明暗、色彩和细节')}
+        onClick={() => controller.apply(
+          withScopeColor(currentV3(editor), scope, createColorBlockV3()),
+          t('恢复当前范围的中性色彩'),
+          true,
+        )}
+      >
+        <ArrowCounterClockwise size={16} />
+      </IconButton>
     );
   }
   const familyIds: readonly AdjustmentFamily[] = ['light', 'color', 'curves', 'detail'];
@@ -171,44 +171,21 @@ export function AdvancedInspector({
           </div>
         ) : (
           <>
-            {scopedFamily && (
-              <div
-                className="scope-selector"
-                data-motion="scope-selector"
-                data-single-scope={
-                  !recipe.regionEdits.length && !recipe.regionGroups.length ? 'true' : undefined
-                }
-              >
-                <label>
-                  {t('作用范围')}
-                  <ChoiceSelect
-                    ariaLabel={t('参数作用范围')}
-                    size="compact"
-                    value={scopeKey(scope)}
-                    onValueChange={(value) => {
-                      const [kind, id] = value.split(':');
-                      chooseScope(
-                        kind === 'global'
-                          ? { kind: 'global' }
-                          : { kind: kind as 'region' | 'group', id: id! },
-                      );
-                    }}
-                    options={[
-                      { value: 'global', label: t('整张照片') },
-                      ...recipe.regionEdits.map((r) => ({
-                        value: 'region:' + r.id,
-                        label: r.name,
-                        description: t('单个局部'),
-                      })),
-                      ...recipe.regionGroups.map((g) => ({
-                        value: 'group:' + g.id,
-                        label: g.name,
-                        description: t('多个局部分组'),
-                      })),
-                    ]}
-                  />
-                </label>
-              </div>
+            {scopedFamily && (recipe.regionEdits.length > 0 || recipe.regionGroups.length > 0) && (
+              <RubberSegment
+                className="scope-selector compact-choice-row"
+                label={t('参数作用范围')}
+                value={scopeKey(scope)}
+                onChange={(value) => {
+                  const [kind, id] = value.split(':');
+                  chooseScope(kind === 'global' ? { kind: 'global' } : { kind: kind as 'region' | 'group', id: id! });
+                }}
+                options={[
+                  { value: 'global', label: t('整张照片') },
+                  ...recipe.regionEdits.map((r) => ({ value: 'region:' + r.id, label: r.name })),
+                  ...recipe.regionGroups.map((g) => ({ value: 'group:' + g.id, label: g.name })),
+                ]}
+              />
             )}
             <InlineError message={error} />
             {toolGroups
@@ -226,6 +203,7 @@ export function AdvancedInspector({
                         <ColorControls
                           controller={controller}
                           scope={retainedScope}
+                          target={group === id ? target : undefined}
                           family={id as AdjustmentFamily}
                           compactTools={group === id ? compactTools : undefined}
                           pickedColor={pickedColor}
@@ -243,6 +221,7 @@ export function AdvancedInspector({
                         <GeometryControls
                           controller={controller}
                           layoutControl={group === id ? chrome?.adjustmentLayoutControl : undefined}
+                          target={group === id ? target : undefined}
                         />
                       )}
                       {id === 'local' && (
@@ -258,19 +237,33 @@ export function AdvancedInspector({
                         />
                       )}
                       {id === 'beauty' && (
-                        <PortraitControls
-                          controller={controller}
-                          onGroupChange={onGroupChange}
-                          onCutout={onCutout}
-                          headerTarget={id === group ? chrome?.headerTarget : null}
-                          onSelectionCreated={(regionId) => {
-                            setScopes((current) => ({
-                              ...current,
-                              local: { kind: 'region', id: regionId },
-                            }));
-                            onGroupChange?.('local');
-                          }}
-                        />
+                        <>
+                          <PortraitControls
+                            controller={controller}
+                            onGroupChange={openPortraitTool}
+                            onCutout={onCutout}
+                            headerTarget={id === group ? chrome?.headerTarget : null}
+                            onSelectionCreated={(regionId) => {
+                              setScopes((current) => ({ ...current, local: { kind: 'region', id: regionId } }));
+                              openPortraitTool('local');
+                            }}
+                          />
+                          {portraitTool === 'local' && (
+                            <LocalControls
+                              controller={controller}
+                              scope={scopeFor('local')}
+                              onScope={(next) => chooseScope(next, 'local')}
+                              pickedColor={pickedColor}
+                              onColorChange={onColorChange}
+                              onSample={onSample}
+                              sampling={sampling}
+                            />
+                          )}
+                          {portraitTool === 'paint' && (
+                            <PaintControls controller={controller} pickedColor={pickedColor} onSample={onSample} sampling={sampling} />
+                          )}
+                          {portraitTool === 'liquify' && <LiquifyControls controller={controller} />}
+                        </>
                       )}
                       {id === 'repair' && <RepairControls controller={controller} />}
                       {id === 'paint' && (

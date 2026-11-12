@@ -1,0 +1,54 @@
+/* Version notes are available in review mode, so editing handles stay clean. */
+.canvas-review-toggle {
+  display: inline-flex; place-items: center; align-items: center; justify-content: center;
+  gap: 3px; min-inline-size: 33px; min-block-size: 34px; padding: 4px;
+  border: 0; border-radius: 7px; color: var(--text); background: transparent;
+}
+.canvas-review-toggle[aria-pressed='true'] { color: var(--color-accent-ink); background: var(--color-accent-soft); }
+.canvas-review-toggle > span { font-size: 10px; font-variant-numeric: tabular-nums; }
+.canvas-review-pins { position: absolute; inset: 0; z-index: 9; pointer-events: none; }
+.canvas-review-pin {
+  --review-tint: #5846a0;
+  position: absolute; display: grid; place-items: center; pointer-events: auto; padding: 0;
+  transform: translate(-50%, -50%) scale(var(--review-scale, 1));
+  width: 28px; height: 28px; background: var(--review-tint); color: #fff;
+  border: 2px solid #fff; border-radius: 50%; font-size: 11px; font-weight: 650;
+  box-shadow: 0 2px 7px #0007;
+}
+.canvas-review-pin[data-shape='diamond'] { border-radius: 6px; rotate: 45deg; }
+.canvas-review-pin[data-shape='diamond'] > span { rotate: -45deg; }
+.canvas-review-pin[data-shape='frame'] { border-radius: 4px; outline: 1px solid var(--review-tint); outline-offset: 3px; }
+.canvas-review-pin[aria-pressed='true'] { z-index: 2; box-shadow: 0 0 0 4px #ffffff90, 0 3px 9px #0007; }
+.image-frame[data-review-placing='true'], .image-frame[data-review-placing='true'] canvas { cursor: crosshair; }
+.canvas-review-card {
+  position: absolute; z-index: 20;
+  top: var(--review-card-top, max(63px, 9%));
+  left: var(--review-card-left, 12px);
+  width: min(264px, calc(100% - 24px)); padding: 9px 12px 10px; border-radius: 12px;
+  color: var(--text); background: var(--surface);
+  box-shadow: 0 9px 34px #1417132a, inset 0 0 0 1px var(--color-border);
+  display: grid; gap: 8px;
+}
+.canvas-review-card .canvas-review-heading {
+  display: grid; grid-template-columns: 17px minmax(0, 1fr) 27px; align-items: center; gap: 7px;
+  font-size: 12px;
+}
+.canvas-review-heading strong { min-width: 0; overflow-wrap: anywhere; }
+.canvas-review-heading button, .canvas-review-shapes button {
+  display: grid; place-items: center; min-height: 27px; min-width: 27px; padding: 2px;
+  border: 0; color: inherit; background: transparent; border-radius: 6px;
+}
+.canvas-review-shapes button[aria-pressed='true'] { background: var(--color-accent-soft); }
+.canvas-review-card p { margin: 0; overflow-wrap: anywhere; font-size: 12px; }
+.canvas-review-body { max-block-size: 7em; overflow: auto; white-space: pre-wrap; }
+.canvas-review-card form { display: grid; gap: 6px; }
+.canvas-review-card textarea {
+  min-width: 0; width: 100%; padding: 6px; border: 0; border-radius: 6px;
+  background: var(--color-surface-secondary); color: inherit; resize: vertical; font: inherit; font-size: 13px;
+}
+.canvas-review-card .button { justify-self: end; min-height: 28px; padding-block: 4px; }
+.canvas-review-shapes { display: flex; gap: 5px; }
+@media (max-width: 759px) {
+  .canvas-review-card { top: var(--review-card-top, 8px); left: var(--review-card-left, 8px); padding: 8px; width: min(245px, calc(100% - 16px)); }
+  .canvas-review-toggle { min-width: 30px; min-height: 34px; }
+}

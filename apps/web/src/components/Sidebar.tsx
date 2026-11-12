@@ -249,8 +249,9 @@ export function Sidebar({
                 <span>{session.user.phoneMasked}</span>
               </span>
             </button>
-            <IconButton label={t('退出登录选项')} onClick={onLogout}>
+            <IconButton className="account-exit" label={t('退出登录选项')} onClick={onLogout}>
               <SignOut size={18} />
+              <span>{t('退出')}</span>
             </IconButton>
           </div>
         ) : (

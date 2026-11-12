@@ -1,7 +1,8 @@
+import { lazy, Suspense, useEffect, useMemo } from 'react';
 import { t } from '../i18n';
 import { MotionDetails } from '../motion/Presence';
 import { ChoiceSelect } from '../components/ChoiceSelect';
-import { useEffect, useRef, useState } from 'react';
+import { useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { RubberSegment } from '../components/control-motion';
 import {
@@ -931,6 +932,7 @@ export function LiquifyControls({ controller }: { controller: InspectorControlle
     recipe = currentV3(editor),
     settings = editor.warpSettings;
   const short = Math.min(editor.dimensions?.width ?? 1, editor.dimensions?.height ?? 1);
+  const maxDiameter = Math.max(1, Math.min(1600, short * 0.65));
   async function protectBackground() {
     const before = editor.getSourceIdentity();
     const frame = editor.getSourceFrame();
@@ -1038,9 +1040,9 @@ export function LiquifyControls({ controller }: { controller: InspectorControlle
           {
             id: 'radius',
             label: t('作用直径'),
-            value: settings.radius * short * 2,
+            value: Math.min(maxDiameter, settings.radius * short * 2),
             min: 0.5,
-            max: short * 2,
+            max: maxDiameter,
             step: 0.1,
             unit: 'px',
             onChange: (n) => editor.setWarpSettings((s) => ({ ...s, radius: n / short / 2 })),
@@ -1195,12 +1197,44 @@ export function LiquifyControls({ controller }: { controller: InspectorControlle
   );
 }
 
+const BounceCards = lazy(() => import('../components/react-bits/BounceCards'));
+
+function LayerPreviews({ layers, files, active, select }: {
+  layers: readonly ImageLayerV3[];
+  files: ReadonlyMap<string, File>;
+  active: string | undefined;
+  select: (id: string) => void;
+}) {
+  const [urls, setUrls] = useState<ReadonlyMap<string, string>>(new Map());
+  useEffect(() => {
+    const previews = new Map(Array.from(files, ([id, file]) => [id, URL.createObjectURL(file)]));
+    setUrls(previews);
+    return () => { for (const url of previews.values()) URL.revokeObjectURL(url); };
+  }, [files]);
+  const cards = layers.flatMap((layer) => {
+    const src = urls.get(layer.sourceId);
+    return src ? [{ ...layer, src }] : [];
+  });
+  if (!cards.length) return null;
+  return <div className="layer-preview-stack" aria-label={t('图层预览')}>
+    <Suspense fallback={null}>
+      <BounceCards images={cards.map(({ src, name }) => ({ src, alt: name }))} cardSize={60}
+        spread={Math.min(36, 153 / Math.max(1, cards.length - 1))} rotation={9} pushDistance={8}
+        enableHover radius={9} borderColor="var(--surface)" borderWidth={2}
+        onCardClick={(index) => { if (cards[index]) select(cards[index]!.id); }}
+      />
+    </Suspense>
+    <small>{layers.find(({ id }) => id === active)?.name}</small>
+  </div>;
+}
+
 export function ImageLayerControls({ controller }: { controller: InspectorController }) {
   const { editor, apply, report } = controller,
     recipe = currentV3(editor);
   const input = useRef<HTMLInputElement>(null),
     [loading, setLoading] = useState(false),
     [path, setPath] = useState<number[]>([]);
+  const layerFiles = useMemo(() => editor.getLayerFiles(), [editor.getLayerFiles, editor.layerImages]);
   const layer =
     recipe.imageLayers.find((p) => p.id === editor.activeImageLayerId) ?? recipe.imageLayers.at(-1);
   useEffect(() => {
@@ -1280,6 +1314,8 @@ export function ImageLayerControls({ controller }: { controller: InspectorContro
       <p className="control-note">
         {t('每层保留自己的原图、范围、混合与位置。AI 候选也可在结果区明确选择“作为合成图层”。')}
       </p>
+      <LayerPreviews layers={recipe.imageLayers} files={layerFiles} active={layer?.id}
+        select={(id) => { editor.setActiveImageLayerId(id); setPath([]); }} />
       <div className="advanced-object-list" aria-label={t('合成图层')}>
         {recipe.imageLayers.map((item) => (
           <div className="advanced-row" key={item.id} data-selected={layer?.id === item.id}>
