@@ -196,13 +196,32 @@ export function AssistantVoiceStory({ labels }: { labels: OverviewStories }) {
   const rail = useRef<HTMLDivElement>(null);
   const reduce = useReducedMotion();
   useEffect(() => {
-    if (reduce || !rail.current) return;
-    const observer = new IntersectionObserver((entries) => {
-      const current = entries.find((entry) => entry.isIntersecting);
-      if (current) setMode(Number((current.target as HTMLElement).dataset.voiceStep));
-    }, { rootMargin: '-34% 0px -42%', threshold: 0 });
-    rail.current.querySelectorAll('[data-voice-step]').forEach((element) => observer.observe(element));
-    return () => observer.disconnect();
+    const choices = rail.current;
+    if (reduce || !choices) return;
+    const steps = [...choices.querySelectorAll('[data-voice-step]')];
+    let frame = 0;
+    const update = () => {
+      frame = 0;
+      const focus = window.innerHeight / 2;
+      const bounds = choices.getBoundingClientRect();
+      if (focus < bounds.top || focus >= bounds.bottom) return;
+      const index = steps.findIndex((step) => {
+        const row = step.getBoundingClientRect();
+        return row.top <= focus && focus < row.bottom;
+      });
+      if (index !== -1) setMode(index);
+    };
+    const schedule = () => {
+      if (!frame) frame = requestAnimationFrame(update);
+    };
+    schedule();
+    window.addEventListener('scroll', schedule, { passive: true });
+    window.addEventListener('resize', schedule);
+    return () => {
+      cancelAnimationFrame(frame);
+      window.removeEventListener('scroll', schedule);
+      window.removeEventListener('resize', schedule);
+    };
   }, [reduce]);
   const paused = mode === 2;
   const VoiceIcon = paused ? MicrophoneSlash : mode === 1 ? Waveform : Microphone;

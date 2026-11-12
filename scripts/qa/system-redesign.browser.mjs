@@ -893,6 +893,22 @@ async function inspectAbout(specification) {
     assert.deepEqual([...seen].sort(), [...ABOUT_SECTIONS].sort(), 'Native scrolling must reach every section.');
     assert.ok(positions.length > 2 && positions.at(-1) > positions[0], 'About must use natural document scrolling.');
     report.scrolls.push({ scenario: specification.id, positions, sections: [...seen] });
+    const voiceSteps = [];
+    if (specification.id === 'desktop-zh-CN') {
+      const voice = about.locator('.about-voice-layout');
+      for (const [index, state] of [[0, 'listening'], [1, 'response'], [2, 'muted'], [1, 'response']]) {
+        await voice.locator(`[data-voice-step="${index}"]`).evaluate((step) =>
+          step.scrollIntoView({ block: 'center', behavior: 'instant' }));
+        const frame = voice.locator(`[data-recorded-voice="${state}"] img`);
+        await frame.waitFor();
+        const source = await frame.evaluate(async (image) => {
+          await image.decode();
+          return new URL(image.currentSrc).pathname;
+        });
+        assert.equal(source, `/about/stories/voice-${state}.webp`);
+        voiceSteps.push(state);
+      }
+    }
     for (const image of await about.locator('[data-product-screen] img').all()) {
       await image.evaluate(async (node) => { await node.decode(); });
       const state = await image.evaluate((node) => ({
@@ -925,7 +941,7 @@ async function inspectAbout(specification) {
     await page.locator('.site-studio:not([hidden]) .floating-topbar').waitFor();
     assert.equal(await page.locator('.image-frame canvas').count(), 0, 'The primary About action opens the actual empty studio without inserting a marketing photo.');
     await logo(page, specification.id + ': entered studio');
-    return { scenario: specification.id, nativeScrollSteps: positions.length, sections: [...seen], noDisclosureClicks: true, screenshotBytesVerified: true, directPrimaryEntry: true };
+    return { scenario: specification.id, nativeScrollSteps: positions.length, sections: [...seen], voiceSteps, noDisclosureClicks: true, screenshotBytesVerified: true, directPrimaryEntry: true };
   } catch (error) {
     await failureEvidence(page);
     throw error;
