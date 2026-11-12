@@ -10,13 +10,17 @@ import {
   linearToSrgb,
   tone,
   mapPoint,
+  mapSourceColor,
   detailPoint,
+  encodedPointByte,
   NO_CURVES,
   type LinearRegionExtension,
   type ReferenceRenderWorkspace,
+  type ReferenceRenderSession,
 } from './engine.js';
+import { encodeFloat32Byte } from './linear-byte.js';
 import { renderRecipeTiled, validateTiledImage, DEFAULT_TILE_SIZE } from './tiled.js';
-import { getOutputDimensions, outputPixel, pixelCrop } from './geometry.js';
+import { getOutputDimensions, outputPixel, pixelCrop, sourcePixel } from './geometry.js';
 import { radialMaskWeight } from './mask.js';
 import { ADJUSTMENT_IDS } from './registry.js';
 import { HSL_BANDS } from './v2-registry.js';
@@ -111,8 +115,7 @@ function noiseAt(x: number, y: number, size: number, seed: number): number {
   return upper * (1 - v) + lower * v;
 }
 
-function compileExtension(recipe: RecipeV2, original: RGBAImage): LinearRegionExtension {
-  const dimensions: Dimensions = original;
+function compilePointColor(recipe: RecipeV2) {
   const levels = recipe.levels;
   const levelActive =
     levels.inputBlack !== 0 ||
@@ -137,7 +140,101 @@ function compileExtension(recipe: RecipeV2, original: RGBAImage): LinearRegionEx
   const pivot = 0.5 + recipe.grading.balance / 400;
   const mono = recipe.effects.monochrome / 100,
     fade = recipe.effects.fade / 100;
-  const pointActive = levelActive || hslActive || gradeActive || mono !== 0 || fade !== 0;
+  const hasDisplay = levelActive || hslActive || gradeActive;
+  const hasLinear = mono !== 0 || fade !== 0;
+  const level = (value: number) =>
+    levels.outputBlack +
+    (levels.outputWhite - levels.outputBlack) *
+      clamp((value - levels.inputBlack) / (levels.inputWhite - levels.inputBlack)) **
+        (1 / levels.gamma);
+  const bands = HSL_BANDS.map((band) => recipe.hsl[band.id]);
+  const hsl = new Float64Array(3);
+
+  return {
+    hasDisplay,
+    hasLinear,
+    active: hasDisplay || hasLinear,
+    display(r: number, g: number, b: number, out: Float64Array) {
+      if (levelActive) {
+        r = level(r);
+        g = level(g);
+        b = level(b);
+      }
+      const chroma = Math.max(r, g, b) - Math.min(r, g, b);
+      if (hslActive && chroma > 0) {
+        rgbToHsl(r, g, b, hsl);
+        const hue = hsl[0]!;
+        let band = 0;
+        while (band < HSL_BANDS.length - 1 && hue >= HSL_BANDS[band + 1]!.center) band += 1;
+        const next = (band + 1) % HSL_BANDS.length;
+        const left = HSL_BANDS[band]!.center,
+          right = HSL_BANDS[next]!.center || 360;
+        const t = (hue - left) / (right - left);
+        const a = bands[band]!,
+          z = bands[next]!,
+          gate = clamp(chroma / 0.05);
+        const hueDelta = (a.hue * (1 - t) + z.hue * t) * gate;
+        const saturationDelta = ((a.saturation * (1 - t) + z.saturation * t) / 100) * gate;
+        const lightnessDelta = ((a.lightness * (1 - t) + z.lightness * t) / 100) * gate;
+        if (hueDelta !== 0 || saturationDelta !== 0 || lightnessDelta !== 0) {
+          hslToRgb(
+            hue + hueDelta,
+            toward(hsl[1]!, saturationDelta),
+            toward(hsl[2]!, lightnessDelta),
+            hsl,
+          );
+          r = hsl[0]!;
+          g = hsl[1]!;
+          b = hsl[2]!;
+        }
+      }
+      if (gradeActive) {
+        const y = luminance(r, g, b);
+        const shadow = y < pivot ? 1 - y / pivot : 0;
+        const highlight = y > pivot ? (y - pivot) / (1 - pivot) : 0;
+        const mid = 1 - shadow - highlight;
+        r = clamp(
+          r + shadow * offsets[0]![0]! + mid * offsets[1]![0]! + highlight * offsets[2]![0]!,
+        );
+        g = clamp(
+          g + shadow * offsets[0]![1]! + mid * offsets[1]![1]! + highlight * offsets[2]![1]!,
+        );
+        b = clamp(
+          b + shadow * offsets[0]![2]! + mid * offsets[1]![2]! + highlight * offsets[2]![2]!,
+        );
+      }
+      out[0] = r;
+      out[1] = g;
+      out[2] = b;
+    },
+    linear(color: Float64Array) {
+      let r = color[0]!,
+        g = color[1]!,
+        b = color[2]!;
+      if (mono !== 0) {
+        const y = luminance(r, g, b);
+        r += (y - r) * mono;
+        g += (y - g) * mono;
+        b += (y - b) * mono;
+      }
+      if (fade !== 0) {
+        r = srgbToLinear(0.12 * fade + (1 - 0.24 * fade) * clamp(linearToSrgb(r)));
+        g = srgbToLinear(0.12 * fade + (1 - 0.24 * fade) * clamp(linearToSrgb(g)));
+        b = srgbToLinear(0.12 * fade + (1 - 0.24 * fade) * clamp(linearToSrgb(b)));
+      }
+      color[0] = r;
+      color[1] = g;
+      color[2] = b;
+    },
+  };
+}
+
+function compileExtension(
+  recipe: RecipeV2,
+  original: RGBAImage,
+  point = compilePointColor(recipe),
+): LinearRegionExtension {
+  const dimensions: Dimensions = original;
   const extendedDetail = recipe.detail.texture !== 0 || recipe.detail.clarity !== 0;
   const activeRegions = recipe.regions
     .filter(
@@ -157,12 +254,7 @@ function compileExtension(recipe: RecipeV2, original: RGBAImage): LinearRegionEx
   const grain = recipe.effects.grain,
     grainActive = grain.amount !== 0;
   const active =
-    pointActive || extendedDetail || activeRegions.length !== 0 || vignetteActive || grainActive;
-  const level = (value: number) =>
-    levels.outputBlack +
-    (levels.outputWhite - levels.outputBlack) *
-      clamp((value - levels.inputBlack) / (levels.inputWhite - levels.inputBlack)) **
-        (1 / levels.gamma);
+    point.active || extendedDetail || activeRegions.length !== 0 || vignetteActive || grainActive;
 
   return {
     active,
@@ -173,95 +265,32 @@ function compileExtension(recipe: RecipeV2, original: RGBAImage): LinearRegionEx
         fullHeight = dimensions.height;
       const color = new Float64Array(3),
         detail = new Float64Array(3);
-      if (pointActive) {
+      if (point.active) {
         for (let y = 0; y < image.height; y += 1) {
           if ((y & 31) === 0) check(options);
           for (let x = 0; x < image.width; x += 1) {
             const pixel = y * image.width + x,
               at = pixel * 3;
             if (image.data[pixel * 4 + 3] === 0) continue;
-            let r = working[at]!,
-              g = working[at + 1]!,
-              b = working[at + 2]!;
-            if (levelActive || hslActive || gradeActive) {
-              r = clamp(linearToSrgb(r));
-              g = clamp(linearToSrgb(g));
-              b = clamp(linearToSrgb(b));
-              if (levelActive) {
-                r = level(r);
-                g = level(g);
-                b = level(b);
-              }
-              const chroma = Math.max(r, g, b) - Math.min(r, g, b);
-              if (hslActive && chroma > 0) {
-                rgbToHsl(r, g, b, color);
-                const hue = color[0]!;
-                let band = 0;
-                while (band < HSL_BANDS.length - 1 && hue >= HSL_BANDS[band + 1]!.center) band += 1;
-                const first = HSL_BANDS[band]!,
-                  second = HSL_BANDS[(band + 1) % HSL_BANDS.length]!;
-                const right = second.center === 0 ? 360 : second.center;
-                const t = (hue - first.center) / (right - first.center);
-                const a = recipe.hsl[first.id],
-                  z = recipe.hsl[second.id],
-                  gate = clamp(chroma / 0.05);
-                const hueDelta = (a.hue * (1 - t) + z.hue * t) * gate;
-                const saturationDelta = ((a.saturation * (1 - t) + z.saturation * t) / 100) * gate;
-                const lightnessDelta = ((a.lightness * (1 - t) + z.lightness * t) / 100) * gate;
-                if (hueDelta !== 0 || saturationDelta !== 0 || lightnessDelta !== 0) {
-                  hslToRgb(
-                    hue + hueDelta,
-                    toward(color[1]!, saturationDelta),
-                    toward(color[2]!, lightnessDelta),
-                    color,
-                  );
-                  r = color[0]!;
-                  g = color[1]!;
-                  b = color[2]!;
-                }
-              }
-              if (gradeActive) {
-                const y = luminance(r, g, b);
-                const shadow = y < pivot ? 1 - y / pivot : 0;
-                const highlight = y > pivot ? (y - pivot) / (1 - pivot) : 0;
-                const mid = 1 - shadow - highlight;
-                r = clamp(
-                  r +
-                    shadow * offsets[0]![0]! +
-                    mid * offsets[1]![0]! +
-                    highlight * offsets[2]![0]!,
-                );
-                g = clamp(
-                  g +
-                    shadow * offsets[0]![1]! +
-                    mid * offsets[1]![1]! +
-                    highlight * offsets[2]![1]!,
-                );
-                b = clamp(
-                  b +
-                    shadow * offsets[0]![2]! +
-                    mid * offsets[1]![2]! +
-                    highlight * offsets[2]![2]!,
-                );
-              }
-              r = srgbToLinear(r);
-              g = srgbToLinear(g);
-              b = srgbToLinear(b);
+            if (point.hasDisplay) {
+              point.display(
+                clamp(linearToSrgb(working[at]!)),
+                clamp(linearToSrgb(working[at + 1]!)),
+                clamp(linearToSrgb(working[at + 2]!)),
+                color,
+              );
+              color[0] = srgbToLinear(color[0]!);
+              color[1] = srgbToLinear(color[1]!);
+              color[2] = srgbToLinear(color[2]!);
+            } else {
+              color[0] = working[at]!;
+              color[1] = working[at + 1]!;
+              color[2] = working[at + 2]!;
             }
-            if (mono !== 0) {
-              const y = luminance(r, g, b);
-              r += (y - r) * mono;
-              g += (y - g) * mono;
-              b += (y - b) * mono;
-            }
-            if (fade !== 0) {
-              r = srgbToLinear(0.12 * fade + (1 - 0.24 * fade) * clamp(linearToSrgb(r)));
-              g = srgbToLinear(0.12 * fade + (1 - 0.24 * fade) * clamp(linearToSrgb(g)));
-              b = srgbToLinear(0.12 * fade + (1 - 0.24 * fade) * clamp(linearToSrgb(b)));
-            }
-            working[at] = r;
-            working[at + 1] = g;
-            working[at + 2] = b;
+            if (point.hasLinear) point.linear(color);
+            working[at] = color[0]!;
+            working[at + 1] = color[1]!;
+            working[at + 2] = color[2]!;
           }
         }
       }
@@ -436,6 +465,75 @@ export function recipeV2Halo(input: RecipeV2): number {
   );
 }
 
+const neutralLinear = Float32Array.from({ length: 256 }, (_, value) => srgbToLinear(value / 255));
+const neutralDisplay = Float64Array.from(neutralLinear, (value) => clamp(linearToSrgb(value)));
+
+/** Same point stages and rounding as the linear workspace, without full-size float buffers. */
+function renderUniformPointColor(
+  image: RGBAImage,
+  geometry: RecipeV2['geometry'],
+  session: ReferenceRenderSession,
+  point: ReturnType<typeof compilePointColor>,
+  options: RenderOptions,
+): RGBAImage {
+  const dimensions = getOutputDimensions(image, geometry);
+  const crop = pixelCrop(image, geometry);
+  const locate = (x: number, y: number) =>
+    sourcePixel(x, y, dimensions, crop, geometry, image.width);
+  const step = dimensions.width > 1 ? (locate(1, 0) - locate(0, 0)) * 4 : 0;
+  const data = new Uint8ClampedArray(dimensions.width * dimensions.height * 4);
+  const base = new Float32Array(3);
+  const color = new Float64Array(3);
+  const neutralBase = session.encoded === null;
+  for (let y = 0; y < dimensions.height; y++) {
+    if ((y & 31) === 0) check(options);
+    const start = y * dimensions.width * 4;
+    const end = start + dimensions.width * 4;
+    let from = locate(0, y) * 4;
+    for (let at = start; at < end; at += 4, from += step) {
+      const r = image.data[from]!,
+        g = image.data[from + 1]!,
+        b = image.data[from + 2]!,
+        a = image.data[from + 3]!;
+      data[at + 3] = a;
+      if (!a) {
+        data[at] = r;
+        data[at + 1] = g;
+        data[at + 2] = b;
+        continue;
+      }
+      if (!neutralBase) mapSourceColor(session, r, g, b, base, 0);
+      if (point.hasDisplay) {
+        point.display(
+          neutralBase ? neutralDisplay[r]! : clamp(linearToSrgb(base[0]!)),
+          neutralBase ? neutralDisplay[g]! : clamp(linearToSrgb(base[1]!)),
+          neutralBase ? neutralDisplay[b]! : clamp(linearToSrgb(base[2]!)),
+          color,
+        );
+        if (!point.hasLinear) {
+          data[at] = encodedPointByte(color[0]!);
+          data[at + 1] = encodedPointByte(color[1]!);
+          data[at + 2] = encodedPointByte(color[2]!);
+          continue;
+        }
+        color[0] = srgbToLinear(color[0]!);
+        color[1] = srgbToLinear(color[1]!);
+        color[2] = srgbToLinear(color[2]!);
+      } else {
+        color[0] = neutralBase ? neutralLinear[r]! : base[0]!;
+        color[1] = neutralBase ? neutralLinear[g]! : base[1]!;
+        color[2] = neutralBase ? neutralLinear[b]! : base[2]!;
+      }
+      point.linear(color);
+      data[at] = encodeFloat32Byte(Math.fround(color[0]!));
+      data[at + 1] = encodeFloat32Byte(Math.fround(color[1]!));
+      data[at + 2] = encodeFloat32Byte(Math.fround(color[2]!));
+    }
+  }
+  check(options);
+  return { ...dimensions, data };
+}
+
 export function renderRecipeV2(
   image: RGBAImage,
   input: RecipeV2,
@@ -443,14 +541,27 @@ export function renderRecipeV2(
 ): RGBAImage {
   validateImage(image, options);
   const recipe = parseRecipeV2(input),
-    session = createRenderSession(recipeV1Stage(recipe));
+    session = createRenderSession(recipeV1Stage(recipe)),
+    point = compilePointColor(recipe);
+  if (
+    point.active &&
+    !recipe.local.enabled &&
+    recipe.adjustments.sharpness === 0 &&
+    recipe.adjustments.soften === 0 &&
+    recipe.detail.texture === 0 &&
+    recipe.detail.clarity === 0 &&
+    recipe.effects.grain.amount === 0 &&
+    recipe.effects.vignette.amount === 0 &&
+    recipe.regions.every((region) => !region.enabled || region.opacity === 0)
+  )
+    return renderUniformPointColor(image, recipe.geometry, session, point, options);
   return renderValidatedRegion(
     image,
     session,
     options,
     undefined,
     undefined,
-    compileExtension(recipe, image),
+    compileExtension(recipe, image, point),
   );
 }
 

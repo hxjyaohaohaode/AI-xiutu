@@ -13,11 +13,12 @@ import {
 import { createPortal } from 'react-dom';
 import { usePresence } from '../motion/usePresence';
 import type { MotionPhase } from '../motion/registry';
-import { X, WarningCircle, CheckCircle, Info, SpinnerGap } from '@phosphor-icons/react';
+import { X, Info } from '@phosphor-icons/react';
 import type { Notice } from '../lib/types';
 import { DEFAULT_BRAND } from '../lib/brand';
 import { BrandMark } from './BrandMark';
 import { StudioGlyph } from './StudioGlyph';
+import { StatusMark } from './StatusMark';
 import { ModalCloseRequests } from './modal-close';
 import {
   modalMotionRole,
@@ -52,8 +53,7 @@ export function IconButton({
 export function Busy({ label = '正在处理' }: { label?: string }) {
   return (
     <span className="busy">
-      <SpinnerGap className="spin" size={17} aria-hidden />
-      {t(label)}
+      <StatusMark state="running" size="small" label={label ? t(label) : undefined} />
     </span>
   );
 }
@@ -65,7 +65,7 @@ export function EmptyState({
 }: {
   icon: ReactNode;
   title: string;
-  description: string;
+  description?: string;
   action?: ReactNode;
 }) {
   return (
@@ -74,7 +74,7 @@ export function EmptyState({
         {icon}
       </div>
       <h2>{title}</h2>
-      <p>{description}</p>
+      {description?.trim() && <p>{description}</p>}
       {action}
     </div>
   );
@@ -92,7 +92,7 @@ export function InlineError({ message }: { message: string | null }) {
       inert={!message}
       aria-hidden={!message}
     >
-      <WarningCircle size={18} aria-hidden />
+      <StatusMark state="failed" size="small" />
       <span>{t(message ?? last.current ?? '')}</span>
     </div>
   ) : null;
@@ -106,18 +106,46 @@ export function Toast({
   dismiss: () => void;
   container?: HTMLElement | null;
 }) {
+  const [hovered, setHovered] = useState(false);
+  const [focused, setFocused] = useState(false);
+  const [pageHidden, setPageHidden] = useState(
+    () => typeof document !== 'undefined' && document.hidden,
+  );
+  const dismissRef = useRef(dismiss);
+  dismissRef.current = dismiss;
+  const clock = useRef<{ notice: Notice | null; remaining: number }>({
+    notice: null,
+    remaining: 5000,
+  });
   useEffect(() => {
-    if (!notice) return;
-    const t = setTimeout(dismiss, notice.tone === 'error' ? 9000 : 5000);
-    return () => clearTimeout(t);
-  }, [notice, dismiss]);
+    const update = () => setPageHidden(document.hidden);
+    document.addEventListener('visibilitychange', update);
+    return () => document.removeEventListener('visibilitychange', update);
+  }, []);
+  useEffect(() => {
+    if (!notice) {
+      setHovered(false);
+      setFocused(false);
+    }
+  }, [notice]);
+  useEffect(() => {
+    if (clock.current.notice !== notice) clock.current = { notice, remaining: 5000 };
+    // Errors remain available until explicitly dismissed. Pointer, keyboard and
+    // hidden-page pauses share the same remaining time, rather than restarting it.
+    if (!notice || notice.tone === 'error' || hovered || focused || pageHidden) return;
+    const current = clock.current;
+    const started = performance.now();
+    const timer = setTimeout(() => dismissRef.current(), current.remaining);
+    return () => {
+      clearTimeout(timer);
+      current.remaining = Math.max(0, current.remaining - (performance.now() - started));
+    };
+  }, [notice, hovered, focused, pageHidden]);
   const retained = useRef(notice);
   if (notice) retained.current = notice;
   const presence = usePresence(!!notice, 'notice');
   const visible = notice ?? retained.current;
   if (!presence.present || !visible) return null;
-  const Symbol =
-    visible.tone === 'success' ? CheckCircle : visible.tone === 'error' ? WarningCircle : Info;
   const content = (
     <div
       className={`toast ${visible.tone}`}
@@ -126,9 +154,19 @@ export function Toast({
       data-motion-state={presence.phase}
       inert={!notice}
       aria-hidden={!notice}
+      onPointerEnter={() => setHovered(true)}
+      onPointerLeave={() => setHovered(false)}
+      onFocusCapture={() => setFocused(true)}
+      onBlurCapture={(event) => {
+        if (!event.currentTarget.contains(event.relatedTarget as Node | null)) setFocused(false);
+      }}
     >
-      <Symbol size={21} />
-      <span>{t(visible.message)}</span>
+      {visible.tone === 'info' ? (
+        <Info size={20} aria-hidden />
+      ) : (
+        <StatusMark state={visible.tone === 'success' ? 'done' : 'failed'} />
+      )}
+      <span className="toast-message">{t(visible.message)}</span>
       <IconButton label={t('关闭提示')} onClick={dismiss}>
         <X size={16} />
       </IconButton>
@@ -149,7 +187,7 @@ export function Modal({
   keepMounted = false,
   profile: requestedProfile,
 }: {
-  title: string;
+  title: ReactNode;
   subtitle?: string;
   children: ReactNode;
   onClose: () => void;
@@ -327,14 +365,33 @@ export function Modal({
             'button, input, select, textarea, a[href], area[href], summary, iframe, [tabindex], [contenteditable]:not([contenteditable="false"])',
           ),
         )
-          .filter(
-            (candidate) =>
-              candidate.tabIndex >= 0 &&
-              !candidate.matches(':disabled') &&
-              !candidate.closest('[inert], [hidden], [aria-hidden="true"]') &&
-              candidate.getClientRects().length > 0 &&
-              getComputedStyle(candidate).visibility !== 'hidden',
-          )
+          .filter((candidate) => {
+            if (
+              candidate.tabIndex < 0 ||
+              candidate.matches(':disabled') ||
+              candidate.closest('[inert], [hidden], [aria-hidden="true"]') ||
+              candidate.getClientRects().length === 0 ||
+              getComputedStyle(candidate).visibility === 'hidden'
+            ) {
+              return false;
+            }
+            // Closed disclosures can retain geometry for their unpainted content.
+            // Only their first direct summary belongs in the keyboard cycle.
+            for (
+              let parent = candidate.parentElement;
+              parent && parent !== element;
+              parent = parent.parentElement
+            ) {
+              if (
+                parent instanceof HTMLDetailsElement &&
+                !parent.open &&
+                !parent.querySelector(':scope > summary')?.contains(candidate)
+              ) {
+                return false;
+              }
+            }
+            return true;
+          })
           .sort((a, b) => (a.tabIndex || Infinity) - (b.tabIndex || Infinity));
         const first = stops[0];
         const last = stops.at(-1);
@@ -392,7 +449,6 @@ export function Brand({
     <div className={`brand ${compact ? 'brand-compact' : ''}`} data-motion="brand">
       <BrandMark logoUrl={logoUrl} className="brand-logo" />
       <span>{name}</span>
-      {!compact && <small>{t('创作空间')}</small>}
     </div>
   );
 }

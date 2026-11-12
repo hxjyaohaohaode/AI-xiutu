@@ -21,3 +21,7 @@
 @import './account/document-drafts.css';
 @import './components/deferred-feature.css';
 @import './workspace/experience.css';
+
+@import './workspace/content-redesign.css';
+@import './components/asset-tools.css';
+@import './components/drawing-controls.css';

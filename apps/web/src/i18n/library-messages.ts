@@ -1,4 +1,16 @@
 export const libraryEnglish: Readonly<Record<string, string>> = {
+  '滑动对比': 'Slide',
+  '不同画幅请使用并排对比': 'Use side by side for different image sizes',
+  '原图与当前图的分界': 'Boundary between original and edited image',
+  '原图 {percent}%': 'Original {percent}%',
+  '配方不含原图': 'Recipes do not include the original image',
+  '还没有打开照片': 'No photo open',
+  '打开照片后即可导出。': 'Open a photo to export it.',
+  '无损 · 透明': 'Lossless · transparent',
+  '有损 · 白底': 'Lossy · white background',
+  '压缩 · 透明': 'Compressed · transparent',
+  '再次下载': 'Download again',
+  '下载 {format}': 'Download {format}',
   缩略图暂不可用: 'Thumbnail unavailable',
   整理素材信息: 'Organize asset details',
   标题: 'Title',
@@ -646,4 +658,19 @@ export const libraryEnglish: Readonly<Record<string, string>> = {
   读取成员动态: 'Loading member activity',
   '当前没有可显示的成员动态。': 'No member activity to display.',
   更多动态: 'More activity',
+};
+
+export const libraryTraditional: Readonly<Record<string, string>> = {
+  '滑动对比': '滑動對比',
+  '不同画幅请使用并排对比': '不同畫幅請使用並排對比',
+  '原图与当前图的分界': '原圖與目前影像的分界',
+  '原图 {percent}%': '原圖 {percent}%',
+  '配方不含原图': '配方不含原圖',
+  '还没有打开照片': '尚未開啟照片',
+  '打开照片后即可导出。': '開啟照片後即可匯出。',
+  '无损 · 透明': '無損 · 透明',
+  '有损 · 白底': '有損 · 白底',
+  '压缩 · 透明': '壓縮 · 透明',
+  '再次下载': '再次下載',
+  '下载 {format}': '下載 {format}',
 };

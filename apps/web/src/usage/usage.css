@@ -411,7 +411,7 @@
 }
 .usage-totals button > small {
   color: var(--muted);
-  font-size: 10px;
+  font-size: 11px;
 }
 .usage-insights {
   display: grid;
@@ -542,7 +542,7 @@
 }
 .usage-distribution-list small {
   display: block;
-  font-size: 10px;
+  font-size: 11px;
   color: var(--muted);
   margin-top: 3px;
 }
@@ -712,7 +712,7 @@
   border-radius: 5px;
   color: var(--muted);
   background: var(--surface-hover);
-  font-size: 10px;
+  font-size: 11px;
   line-height: 1.5;
 }
 .usage-kind[data-kind='consumed'] {
@@ -733,13 +733,13 @@
 }
 .usage-row-amount > span {
   color: var(--muted);
-  font-size: 10px;
+  font-size: 11px;
   white-space: nowrap;
 }
 .usage-row-amount small {
   display: block;
   margin-top: 5px;
-  font-size: 10px;
+  font-size: 11px;
   color: var(--muted);
 }
 .usage-table .usage-row-toggle {
@@ -956,7 +956,7 @@
 .usage-price-model > code {
   display: block;
   color: var(--muted);
-  font-size: 10px;
+  font-size: 11px;
   margin-top: 5px;
   overflow-wrap: anywhere;
 }
@@ -984,7 +984,7 @@
   display: inline-flex;
   align-items: center;
   gap: 5px;
-  font-size: 10px;
+  font-size: 11px;
   color: var(--muted);
 }
 .usage-availability::before {
@@ -1138,7 +1138,7 @@
     font-size: 24px;
   }
   .usage-totals button > small {
-    font-size: 10px;
+    font-size: 11px;
   }
   .usage-bucket select {
     min-height: 44px;
@@ -1193,7 +1193,7 @@
     font-size: 11px;
   }
   .usage-row-time small {
-    font-size: 10px;
+    font-size: 11px;
   }
   .usage-row-amount {
     grid-column: 2;
@@ -1261,7 +1261,7 @@
     position: relative;
   }
   .usage-pricing-summary {
-    font-size: 10px;
+    font-size: 11px;
   }
   .usage-pricing-filter select {
     min-height: 44px;
@@ -1364,7 +1364,7 @@
   justify-content: space-between;
   gap: 4px;
   color: var(--muted);
-  font-size: 9px;
+  font-size: 11px;
 }
 .usage-river .usage-small-details {
   margin-top: 8px;
@@ -1465,7 +1465,7 @@
 }
 .usage-job-metrics small {
   display: block;
-  font-size: 10px;
+  font-size: 11px;
   line-height: 1.7;
   color: var(--muted);
 }
@@ -1480,7 +1480,7 @@
   padding: 4px 7px;
   border: 1px solid var(--line);
   border-radius: 6px;
-  font-size: 10px;
+  font-size: 11px;
   font-weight: 450;
   color: var(--muted);
   background: var(--surface);
@@ -1544,7 +1544,7 @@
 .usage-job-distribution li small {
   display: block;
   margin-top: 5px;
-  font-size: 10px;
+  font-size: 11px;
   color: var(--muted);
 }
 .usage-job-distribution li svg {
@@ -1597,7 +1597,7 @@
 }
 .usage-stage-order {
   align-self: start;
-  font-size: 10px;
+  font-size: 11px;
   color: var(--muted);
   font-variant-numeric: tabular-nums;
   line-height: 2;
@@ -1620,7 +1620,7 @@
 }
 .usage-stage-name small {
   color: var(--muted);
-  font-size: 10px;
+  font-size: 11px;
   overflow-wrap: anywhere;
 }
 .usage-stage-result {
@@ -1637,7 +1637,7 @@
   overflow-wrap: anywhere;
 }
 .usage-stage-result > small {
-  font-size: 10px;
+  font-size: 11px;
   color: var(--muted);
   overflow-wrap: anywhere;
 }
@@ -1652,7 +1652,7 @@
   margin: 16px 0;
 }
 .usage-token-totals dt {
-  font-size: 10px;
+  font-size: 11px;
   color: var(--muted);
 }
 .usage-token-totals dd {
@@ -1676,7 +1676,7 @@
   text-align: left;
   padding: 8px 0;
   color: var(--muted);
-  font-size: 10px;
+  font-size: 11px;
 }
 .usage-meter-table :is(th, td) {
   padding: 10px 8px;
@@ -1691,7 +1691,7 @@
 .usage-meter-table small {
   display: block;
   color: var(--muted);
-  font-size: 9px;
+  font-size: 11px;
 }
 .usage-stage-meta {
   display: grid;
@@ -1703,7 +1703,7 @@
   min-width: 0;
 }
 .usage-stage-meta dt {
-  font-size: 10px;
+  font-size: 11px;
   color: var(--muted);
 }
 .usage-stage-meta dd {
@@ -1713,14 +1713,14 @@
   overflow-wrap: anywhere;
 }
 .usage-stage-meta code {
-  font-size: 10px;
+  font-size: 11px;
 }
 .usage-price-source {
   display: flex;
   align-items: start;
   flex-direction: column;
   gap: 4px;
-  font-size: 10px;
+  font-size: 11px;
   color: var(--muted);
   overflow-wrap: anywhere;
 }
@@ -1768,7 +1768,7 @@
 .usage-job-movements time,
 .usage-job-movements code {
   display: block;
-  font-size: 10px;
+  font-size: 11px;
   color: var(--muted);
   margin-top: 6px;
   overflow-wrap: anywhere;
@@ -1829,7 +1829,7 @@
 }
 .usage-rate-table thead {
   color: var(--muted);
-  font-size: 10px;
+  font-size: 11px;
 }
 .usage-rate-table thead th:first-child {
   width: 30%;
@@ -1839,7 +1839,7 @@
 }
 .usage-rate-model {
   color: var(--muted);
-  font-size: 10px;
+  font-size: 11px;
   vertical-align: top;
 }
 @container usage-workspace (max-width: 850px) {
@@ -1861,10 +1861,10 @@
     font-size: 18px;
   }
   .usage-river-dates {
-    font-size: 8px;
+    font-size: 11px;
   }
   .usage-river-lanes figcaption {
-    font-size: 10px;
+    font-size: 11px;
   }
 }
 @media (max-width: 650px) {
@@ -1914,20 +1914,20 @@
     font-size: 12px;
   }
   .usage-stage-name code {
-    font-size: 10px;
+    font-size: 11px;
   }
   .usage-stage-result {
     max-width: 120px;
   }
   .usage-stage-result .usage-receipt-status {
-    font-size: 9px;
+    font-size: 11px;
     padding-inline: 5px;
   }
   .usage-stage-result > strong {
     font-size: 11px;
   }
   .usage-stage-result > small {
-    font-size: 9px;
+    font-size: 11px;
   }
   .usage-stage-body {
     padding: 0 12px 14px;
@@ -1982,12 +1982,12 @@
     text-align: left;
   }
   .usage-rate-table {
-    font-size: 10px;
+    font-size: 11px;
   }
   .usage-rate-table :is(th, td) {
     padding: 10px 7px;
   }
   .usage-rate-model {
-    font-size: 9px;
+    font-size: 11px;
   }
 }

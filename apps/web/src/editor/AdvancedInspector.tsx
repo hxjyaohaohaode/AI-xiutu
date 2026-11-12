@@ -2,7 +2,10 @@ import { t } from '../i18n';
 import { MotionDetails } from '../motion/Presence';
 import { ChoiceSelect } from '../components/ChoiceSelect';
 import { Activity, useEffect, useLayoutEffect, useRef, useState } from 'react';
-import { CaretDown } from '@phosphor-icons/react';
+import { createPortal } from 'react-dom';
+import { usePanelChrome } from '../workspace/PanelChromeContext';
+import { RubberSegment } from '../components/control-motion';
+import { CaretDown } from '../components/ControlGlyph';
 import { createColorBlockV3 } from '@ai-xiutu/editor';
 import { IconButton, InlineError } from '../components/Ui';
 import type { ToolGroup, ToolInspectorProps } from './ToolInspector';
@@ -36,6 +39,7 @@ export function AdvancedInspector({
   onGroupChange,
   onCutout,
 }: ToolInspectorProps) {
+  const chrome = usePanelChrome();
   const [scopes, setScopes] = useState<Partial<Record<typeof group, EditScope>>>({});
   const [visited, setVisited] = useState<ToolGroup[]>([group]);
   useEffect(() => {
@@ -85,6 +89,23 @@ export function AdvancedInspector({
     }
   }
   const scopedFamily = ['light', 'color', 'curves', 'detail'].includes(group);
+  const familyNavigation =
+    scopedFamily && onGroupChange ? (
+      <RubberSegment
+        className="context-adjustment-tabs"
+        motionId="context-navigation"
+        label={t('调节类别')}
+        value={group}
+        options={(['light', 'color', 'curves', 'detail'] as const).map((id) => ({
+          value: id,
+          label: t(toolGroups.find((tool) => tool.id === id)?.label ?? ''),
+        }))}
+        onChange={(id) => {
+          editor.commitCurrent(t('完成当前调节'));
+          onGroupChange(id);
+        }}
+      />
+    ) : null;
   return (
     <aside
       className={`inspector refined-inspector advanced-inspector ${mobileOpen ? 'mobile-open' : ''}`}
@@ -96,7 +117,6 @@ export function AdvancedInspector({
             {t(descriptor.label)}
             <span className="tiny-dot" />
           </h2>
-          <p>{t(descriptor.description)}</p>
         </div>
         <IconButton label={t('收起工具面板')} className="mobile-only" onClick={onClose}>
           <CaretDown size={20} />
@@ -109,32 +129,13 @@ export function AdvancedInspector({
           scrollOffsets.current[group] = event.currentTarget.scrollTop;
         }}
       >
-        {scopedFamily && onGroupChange && (
-          <nav
-            className="context-adjustment-tabs"
-            aria-label={t('调节类别')}
-            data-motion="context-navigation"
-          >
-            {(['light', 'color', 'curves', 'detail'] as const).map((id) => (
-              <button
-                type="button"
-                key={id}
-                aria-pressed={group === id}
-                onClick={() => {
-                  editor.commitCurrent(t('完成当前调节'));
-                  onGroupChange(id);
-                }}
-              >
-                {t(toolGroups.find((tool) => tool.id === id)?.label ?? '')}
-              </button>
-            ))}
-          </nav>
-        )}
+        {chrome?.headerTarget && familyNavigation
+          ? createPortal(familyNavigation, chrome.headerTarget)
+          : familyNavigation}
         {!editor.file ? (
           <div className="inspector-empty">
             <span>{descriptor.icon}</span>
             <h3>{t('先放入一张照片')}</h3>
-            <p>{t('打开后即可调节。图像、工具范围与记录分别保留。')}</p>
           </div>
         ) : (
           <>
@@ -208,6 +209,7 @@ export function AdvancedInspector({
                       {id === 'crop' && <GeometryControls controller={controller} />}
                       {id === 'local' && (
                         <LocalControls
+                          headerTarget={group === id ? chrome?.headerTarget : null}
                           controller={controller}
                           scope={retainedScope}
                           onScope={(next) => chooseScope(next, id)}
@@ -222,6 +224,7 @@ export function AdvancedInspector({
                           controller={controller}
                           onGroupChange={onGroupChange}
                           onCutout={onCutout}
+                          headerTarget={id === group ? chrome?.headerTarget : null}
                           onSelectionCreated={(regionId) => {
                             setScopes((current) => ({
                               ...current,
@@ -245,7 +248,7 @@ export function AdvancedInspector({
                       {id === 'history' && <HistoryPanel editor={editor} />}
                       {colorFamily && (
                         <MotionDetails className="advanced-disclosure">
-                          <summary>{t('恢复当前作用范围')}</summary>
+                          <summary aria-label={t('恢复当前作用范围')}>{t('重置')}</summary>
                           <button
                             className="text-button"
                             onClick={() =>

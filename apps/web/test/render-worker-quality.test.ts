@@ -1,6 +1,11 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { createRecipeV4, renderEditorRecipe, type RGBAImage } from '@ai-xiutu/editor';
+import {
+  createRecipeV4,
+  renderEditorRecipe,
+  renderEditorRecipeTiled,
+  type RGBAImage,
+} from '@ai-xiutu/editor';
 
 test('all live tools preserve the original raster, cached pixels and auxiliary sources', async (t) => {
   const replies: any[] = [];
@@ -38,7 +43,7 @@ test('all live tools preserve the original raster, cached pixels and auxiliary s
           width: 2304,
           height: 1856,
           data: Uint8ClampedArray.from({ length: 2304 * 1856 * 4 }, (_, i) =>
-            i % 4 === 3 ? ((i >>> 2) % 31 ? 255 : 0) : ((i * 37) ^ (i >> 12)) & 255,
+            i % 4 === 3 ? ((i >>> 2) % 31 ? (i % 7 ? 255 : 127) : 0) : ((i * 37) ^ (i >> 12)) & 255,
           ),
         };
         await send({ type: 'interactive-source', image: large, sourceDimensions: large });
@@ -72,6 +77,42 @@ test('all live tools preserve the original raster, cached pixels and auxiliary s
           reused.result,
           renderEditorRecipe(large, changed, { maxPixels: 16_777_216 }),
         );
+
+        // Extended point color is independent of geometry, even when input
+        // pixels have partial alpha and the crop changes the backing size.
+        const extended = structuredClone(changed);
+        extended.hsl.red.hue = 25;
+        extended.hsl.blue.saturation = -16;
+        extended.grading.midtones.luminance = 8;
+        extended.levels.gamma = 1.18;
+        extended.effects.fade = 12;
+        extended.geometry = {
+          crop: { x: 0.13, y: 0.2, width: 0.65, height: 0.56 },
+          rotation: 270,
+          flipX: true,
+          flipY: true,
+        };
+        const cropped = await send({ type: 'interactive-preview', id: ++id, recipe: extended });
+        assert.equal(cropped.recyclable, true);
+        assert.deepEqual(
+          cropped.result,
+          renderEditorRecipeTiled(large, extended, { maxPixels: 16_777_216 }),
+        );
+        const croppedBuffer = cropped.result.data.buffer;
+        await send({ type: 'recycle-point-preview', buffer: croppedBuffer });
+        extended.hsl.red.hue = -21;
+        const next = await send({ type: 'interactive-preview', id: ++id, recipe: extended });
+        assert.equal(croppedBuffer.byteLength, 0);
+        const reference = renderEditorRecipeTiled(large, extended, { maxPixels: 16_777_216 });
+        assert.deepEqual(next.result, reference);
+        await send({ type: 'source', image: large, original: large, sourceDimensions: large });
+        const settled = await send({ type: 'preview', id: ++id, recipe: extended });
+        assert.equal(settled.recyclable, false);
+        assert.deepEqual(settled.result, reference);
+        await send({ type: 'interactive-source', image: source, sourceDimensions: source });
+        const unindexed = await send({ type: 'interactive-preview', id: ++id, recipe: extended });
+        assert.equal(unindexed.recyclable, false);
+        assert.deepEqual(unindexed.result, renderEditorRecipeTiled(source, extended));
       },
     );
 

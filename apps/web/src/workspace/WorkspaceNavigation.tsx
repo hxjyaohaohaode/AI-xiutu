@@ -39,7 +39,6 @@ export function WorkspaceNavigation({
             <StudioGlyph name={item.id} size={22} />
             <span>
               <strong>{t(item.label)}</strong>
-              <small>{t(item.description)}</small>
             </span>
             {view === item.id && <StudioGlyph name="check" size={18} />}
           </button>
@@ -111,7 +110,7 @@ export function WorkspaceSettings({
           <span>{t('重置当前屏幕布局')}</span>
         </button>
         <button type="button" onClick={onFocus}>
-          <StudioGlyph name="select" />
+          <StudioGlyph name="focus" />
           <span>{t('专注画面')}</span>
           <kbd>F</kbd>
         </button>

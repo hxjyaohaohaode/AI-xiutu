@@ -1,7 +1,7 @@
 import { t } from '../i18n';
+import '../ai/interaction-surfaces.css';
 import { useCallback, useEffect, useLayoutEffect, useRef, useState, type FormEvent } from 'react';
 import {
-  ArrowUp,
   Sparkle,
   X,
   SlidersHorizontal,
@@ -35,6 +35,7 @@ import { Busy, IconButton, InlineError, Modal } from './Ui';
 import { ChoiceSelect } from './ChoiceSelect';
 import { useConfirmation } from './ConfirmationDialog';
 import { ComposerInput } from '../ai/ComposerInput';
+import { ComposerAction } from '../ai/ComposerAction';
 import { ComposerVisual } from '../ai/ComposerVisual';
 import { AIVisibilityContext, IDLE_AI_ACTIVITY, type AIActivity } from '../ai/AIVisibility';
 import { useRetainedDialogValue } from '../ai/useRetainedDialogValue';
@@ -70,6 +71,7 @@ import {
   imagePointQuote,
   imageSizeError,
   requestImageOptions,
+  reconcileImageOptions,
 } from '../ai/capabilities';
 import type {
   AIOperation,
@@ -162,6 +164,9 @@ export function AIPanel({
   visible = true,
   onActivityChange,
   onPreview,
+  previewActive,
+  onConfirmPreview,
+  onCancelPreview,
   onSave,
   onCreateProject,
   onOpenArtwork,
@@ -193,6 +198,9 @@ export function AIPanel({
   visible?: boolean;
   onActivityChange?: (activity: AIActivity) => void;
   onPreview: (recipe: EditorRecipe) => void;
+  previewActive?: boolean;
+  onConfirmPreview?: () => void;
+  onCancelPreview?: () => void;
   onSave: () => void;
   onCreateProject: () => void;
   onOpenArtwork: (id: string) => void;
@@ -269,6 +277,7 @@ export function AIPanel({
     [height, setHeight] = useState(cached?.height ?? 2048);
   const [imageOptions, setImageOptions] = useState<ImageOptions>(cached?.imageOptions ?? {});
   const previousModel = useRef(cached?.modelId ?? '');
+  const appliedCapabilityKey = useRef('');
   const [audioBase64, setAudioBase64] = useState<string | null>(null);
   const [voiceEpoch, setVoiceEpoch] = useState(0);
   const [referenceIds, setReferenceIds] = useState<string[]>(cached?.referenceIds ?? []);
@@ -493,36 +502,88 @@ export function AIPanel({
     };
   }, [scope]);
   useEffect(() => {
-    let live = true;
-    setLoading(true);
-    api<ModelResponse>('/models')
-      .then((result) => {
-        if (live) setModelResponse(result);
-      })
-      .catch((error) => live && setError(errorMessage(error)))
-      .finally(() => live && setLoading(false));
+    if (!isLoggedIn || !visible) return;
+    const controller = new AbortController();
+    let refreshing = false;
+    let lastRead = -Infinity;
+    async function refreshModels() {
+      if (refreshing || controller.signal.aborted || document.visibilityState === 'hidden') return;
+      if (Date.now() - lastRead < 15_000) return;
+      refreshing = true;
+      lastRead = Date.now();
+      try {
+        const result = await api<ModelResponse>('/models', { signal: controller.signal });
+        if (!controller.signal.aborted) setModelResponse(result);
+      } catch (failure) {
+        if (!controller.signal.aborted) setError(errorMessage(failure));
+      } finally {
+        refreshing = false;
+        if (!controller.signal.aborted) setLoading(false);
+      }
+    }
+    void refreshModels();
+    const refreshModelsOnFocus = () => void refreshModels();
+    const interval = window.setInterval(refreshModelsOnFocus, 60_000);
+    window.addEventListener('focus', refreshModelsOnFocus);
+    document.addEventListener('visibilitychange', refreshModelsOnFocus);
     return () => {
-      live = false;
+      controller.abort();
+      window.clearInterval(interval);
+      window.removeEventListener('focus', refreshModelsOnFocus);
+      document.removeEventListener('visibilitychange', refreshModelsOnFocus);
     };
-  }, []);
+  }, [isLoggedIn, visible]);
   useEffect(() => {
-    if (!modelResponse || pending.current) return;
+    if (!modelResponse || pending.current || busy || preparingDraft) return;
     if (!eligible.some((model) => model.id === modelId))
       setModelId(eligible.find(modelReady)?.id ?? eligible[0]?.id ?? '');
-  }, [operation, modelResponse, modelId, pendingSubmission]);
+  }, [operation, modelResponse, modelId, pendingSubmission, busy, preparingDraft]);
+  const selectedCapabilityKey = JSON.stringify([
+    modelId,
+    selected?.parameterCapabilities,
+    selected?.minWidth,
+    selected?.maxWidth,
+    selected?.minHeight,
+    selected?.maxHeight,
+    selected?.minPixels,
+    selected?.maxPixels,
+    selected?.maxDimension,
+    selected?.minAspectRatio,
+    selected?.maxAspectRatio,
+  ]);
   useEffect(() => {
-    if (modelId === previousModel.current) return;
+    if (
+      !selected ||
+      pending.current ||
+      busy ||
+      preparingDraft ||
+      appliedCapabilityKey.current === selectedCapabilityKey
+    )
+      return;
+    appliedCapabilityKey.current = selectedCapabilityKey;
+    const changedModel = modelId !== previousModel.current;
     previousModel.current = modelId;
-    if (pending.current) return;
-    setImageOptions(defaultImageOptions(selected));
+    setImageOptions((current) => {
+      const next = changedModel
+        ? defaultImageOptions(selected)
+        : reconcileImageOptions(selected, current);
+      return JSON.stringify(next) === JSON.stringify(current) ? current : next;
+    });
     const allowed = allowedImageSizes(selected);
     if (imageSizeError(selected, width, height) && allowed[0]) {
       setWidth(allowed[0].width);
       setHeight(allowed[0].height);
     }
-    setAuxiliary(null);
+    setAuxiliary((current) => {
+      if (!current) return current;
+      const references = selected.parameterCapabilities?.references;
+      const supported =
+        references?.supported &&
+        (current.kind === 'mask' ? references.allowMask : references.allowMarkup);
+      return changedModel || !supported ? null : current;
+    });
     changed();
-  }, [modelId]);
+  }, [selectedCapabilityKey, pendingSubmission, busy, preparingDraft]);
   useEffect(() => {
     setUploadedReference(null);
     if (referenceFile && !pending.current) {
@@ -972,7 +1033,7 @@ export function AIPanel({
       onClick={() => setOverlay('tasks')}
     >
       {assistantOpen ? <Sparkle size={18} /> : task.icon}
-      <span>{assistantOpen ? t('AI 助手') : task.label}</span>
+      <span>{assistantOpen ? t('对话') : task.label}</span>
       <CaretDown size={13} />
     </button>
   );
@@ -1015,6 +1076,9 @@ export function AIPanel({
             onAuth={onAuth}
             onSave={onSave}
             onPreview={onPreview}
+            previewActive={previewActive}
+            onConfirmPreview={onConfirmPreview}
+            onCancelPreview={onCancelPreview}
             imageModelIds={(modelResponse?.models ?? [])
               .filter(
                 (model) => model.enabled !== false && model.operations?.includes('generate-image'),
@@ -1109,13 +1173,6 @@ export function AIPanel({
                           : 'adjust'
                     }
                   />
-                  <h3>
-                    {operation === 'generate-image'
-                      ? t('描述要生成的画面')
-                      : operation === 'generate-text'
-                        ? t('描述文案内容与用途')
-                        : t('描述需要调整的地方')}
-                  </h3>
                   <div className="ai-prompt-suggestions" aria-label={t('填写示例要求')}>
                     {task.chips.slice(0, 2).map((text) => (
                       <button
@@ -1135,7 +1192,7 @@ export function AIPanel({
                 </div>
               )}
               {operation === 'transcribe' && !pendingSubmission && (
-                <VoiceCapture key={voiceEpoch} onReady={audioReady} />
+                <VoiceCapture key={voiceEpoch} active={visible} onReady={audioReady} />
               )}
             </div>
             <footer className="ai-composer-region">
@@ -1250,21 +1307,17 @@ export function AIPanel({
                         <Microphone size={18} />
                       </IconButton>
                     )}
-                    <button
-                      type="submit"
-                      className="ai-send-button"
-                      title={task.button}
-                      aria-label={task.button}
+                    <ComposerAction
+                      state={busy ? 'waiting' : 'send'}
+                      label={task.button}
                       disabled={!canSubmit}
-                    >
-                      {busy ? <Busy label="" /> : <ArrowUp size={19} />}
-                    </button>
+                    />
                   </div>
                 </div>
               </form>
               <div className="ai-composer-meta">
                 <span>
-                  {quote === null ? t('点数待确认') : t('{v0} 点 / 次', { v0: quote })}
+                  {quote !== null && t('{v0} 点 / 次', { v0: quote })}
                   {operation === 'generate-image'
                     ? t(' · {v0}×{v1} · {v2} 张', {
                         v0: width,
@@ -1287,7 +1340,6 @@ export function AIPanel({
               <Modal
                 title={t('对照调整建议')}
                 open={visible && !!candidate}
-                subtitle={t('与当前草稿逐项对比，确认后才进入本地编辑记录。')}
                 onClose={() => setCandidate(null)}
               >
                 <div className="ai-proposal-review" data-motion="modal-content">
@@ -1317,20 +1369,17 @@ export function AIPanel({
                     ))}
                   </div>
                   {!recipeDifferences(recipe, displayedCandidate.recipe).length && (
-                    <p className="control-note">{t('基础与新版数值参数没有变化。')}</p>
+                    <p className="control-note">{t('数值参数未变化')}</p>
                   )}
                   {!!additionalRecipeChanges(recipe, displayedCandidate.recipe).length && (
-                    <p className="parameter-error">
-                      {t('完整候选还与当前的 {changes} 不同；确认将一起替换，可撤销。', {
+                    <p className="ai-proposal-extra">
+                      {t('同时更新：{changes}', {
                         changes: additionalRecipeChanges(recipe, displayedCandidate.recipe)
                           .map((label) => t(label))
                           .join(' / '),
                       })}
                     </p>
                   )}
-                  <p className="control-note">
-                    {t('云端版本不会自动改写。预览后可以继续精修，再由你保存新版本。')}
-                  </p>
                   <button
                     className="button button-primary"
                     onClick={() => {
@@ -1350,7 +1399,7 @@ export function AIPanel({
                       setCandidate(null);
                     }}
                   >
-                    {t('作为可撤销的一步预览')}
+                    {t('在画布预览')}
                   </button>
                 </div>
               </Modal>
@@ -1497,6 +1546,7 @@ export function AIPanel({
                 disabled={
                   inputLocked || !caps?.references.supported || referencedCount >= referenceLimit
                 }
+                data-action="open-sketch"
                 onClick={onDraw}
               >
                 <PencilSimple size={16} />
@@ -1596,9 +1646,7 @@ export function AIPanel({
               ))}
             </div>
             {(!caps?.references.supported || !referenceLimit) && (
-              <p className="control-note">
-                {t('当前模型没有开放参考图，选择已开通的模型后可使用。')}
-              </p>
+              <p className="control-note">{t('当前模型不支持参考图')}</p>
             )}
             {(caps?.references.allowMask || caps?.references.allowMarkup) && (
               <div className="auxiliary-picker">
@@ -1629,16 +1677,12 @@ export function AIPanel({
                       : []),
                   ]}
                 />
-                <p className="control-note">
-                  {t(
-                    '二者互斥，需先选参考图；遮罩透明区域表示修改范围，必须符合模型对尺寸和格式的要求。',
-                  )}
-                </p>
+                {auxiliary?.kind === 'mask' && (
+                  <p className="control-note">{t('遮罩透明处为修改区域。')}</p>
+                )}
               </div>
             )}
-            <p className="control-note">
-              {t('参考只表示创作依据，不保证像素级保留。当前原图不包含尚未导出的本地调整。')}
-            </p>
+            <p className="control-note">{t('原图未包含本地调整。')}</p>
           </div>
         </Modal>
         <Modal

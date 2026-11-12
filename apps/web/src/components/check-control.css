@@ -1,0 +1,169 @@
+.check-control {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  min-width: 0;
+  min-height: var(--ui-hit, 40px);
+  color: var(--ink);
+  font-size: var(--ui-text-size, 13px);
+  line-height: 1.45;
+  cursor: pointer;
+}
+.check-control-target {
+  position: relative;
+  display: grid;
+  place-items: center;
+  flex: 0 0 var(--ui-hit, 40px);
+  width: var(--ui-hit, 40px);
+  height: var(--ui-hit, 40px);
+}
+.check-control .check-control-target > input {
+  position: absolute;
+  inset: 0;
+  display: block;
+  width: 100%;
+  height: 100%;
+  min-height: 0;
+  margin: 0;
+  opacity: 0;
+  cursor: inherit;
+}
+.check-control-target > svg {
+  width: calc(var(--ui-icon-size, 20px) + 4px);
+  height: calc(var(--ui-icon-size, 20px) + 4px);
+  stroke-width: 1.6;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  pointer-events: none;
+}
+.check-control-track {
+  fill: var(--surface-secondary);
+  stroke: var(--line-strong);
+}
+.check-control-fill {
+  fill: var(--accent);
+  stroke: var(--accent);
+  transform-origin: 12px 12px;
+  opacity: 0;
+}
+.check-control-tick {
+  stroke: var(--on-accent);
+  stroke-width: 2;
+  stroke-dasharray: 1;
+  stroke-dashoffset: 1;
+  transition:
+    stroke-dashoffset 170ms ease,
+    opacity 120ms ease;
+  opacity: 0;
+}
+.check-control[data-checked='true'] .check-control-tick {
+  stroke-dashoffset: 0;
+  opacity: 1;
+}
+.check-control-target:has(input:focus-visible) {
+  outline: 2px solid var(--focus-ring);
+  outline-offset: 0;
+  border-radius: 9px;
+}
+.check-control-target:has(input:active:not(:disabled)) > svg {
+  scale: 0.95;
+}
+.check-control-label {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+.check-control[data-disabled='true'] {
+  color: var(--muted);
+  cursor: not-allowed;
+}
+.check-control[data-disabled='true'] svg {
+  opacity: 0.5;
+}
+.check-control:has(input:disabled) {
+  color: var(--muted);
+  cursor: not-allowed;
+}
+.check-control:has(input:disabled) svg {
+  opacity: 0.5;
+}
+.modal[data-dialog-profile]:not(.drawing-modal) .stack-form label.check-control {
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  gap: 7px;
+}
+@media (pointer: coarse) {
+  .check-control,
+  .check-control-target {
+    min-height: 44px;
+  }
+  .check-control-target {
+    width: 44px;
+    height: 44px;
+    flex-basis: 44px;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .check-control-tick {
+    transition: none;
+  }
+}
+.task-state-mark {
+  display: block;
+  width: var(--ui-icon-size, 20px);
+  height: var(--ui-icon-size, 20px);
+  stroke: currentColor;
+  stroke-width: 1.6;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  overflow: visible;
+}
+.task-state-outline {
+  opacity: 0.6;
+}
+.task-state-fill {
+  fill: var(--accent);
+  stroke: var(--accent);
+  opacity: 0;
+  transform-origin: 12px 12px;
+}
+.task-state-clock {
+  opacity: 0;
+}
+.task-state-mark[data-state='doing'] .task-state-clock {
+  opacity: 1;
+}
+.task-state-tick {
+  stroke: var(--on-accent);
+  stroke-dasharray: 1;
+  stroke-dashoffset: 1;
+  opacity: 0;
+  transition:
+    stroke-dashoffset 180ms ease,
+    opacity 120ms ease;
+}
+.task-state-mark[data-state='done'] .task-state-tick {
+  opacity: 1;
+  stroke-dashoffset: 0;
+}
+.task-state-pending {
+  stroke-dasharray: 0.22 1;
+  transform-origin: 12px 12px;
+  animation: task-status-wait 1s linear infinite;
+  stroke-width: 1.25;
+}
+@keyframes task-status-wait {
+  to {
+    transform: rotate(360deg);
+  }
+}
+.task-state-mark[data-reduced='true'] * {
+  animation: none;
+  transition: none;
+}
+@media (prefers-reduced-motion: reduce) {
+  .task-state-mark * {
+    animation: none;
+    transition: none;
+  }
+}

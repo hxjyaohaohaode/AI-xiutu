@@ -1,0 +1,567 @@
+{
+  "format": "r5-editor-recovery-v1",
+  "repository": "hxjyaohaohaode/AI-xiutu",
+  "branch": "frontend/experience-r5-20261111",
+  "baseline": "ecd2a53 (restored branch; based on main d5ad8db311a424c8e6a90487666f15b2806989f9)",
+  "purpose": "Non-integrated recovery bundle; do not apply automatically.",
+  "environment": "Single read-only git status probe immediately failed with No usable execution environment is available. No recovery.patch could be produced.",
+  "accuracy": "Complete items are transcribed from fully returned file text plus explicit successful patches retained in this conversation. Formatting may differ from the final Prettier output. Partial items contain only observed exact hunks; absent material is not guessed.",
+  "validationStatus": "All content requires restore-time typecheck, tests and real UI verification. Historical checks do not establish that this recovery bundle compiles.",
+  "historicalValidation": [
+    "npm run typecheck --workspace=@ai-xiutu/web completed successfully before the final two small regression tests were added.",
+    "Eight focused editor suites: 60 tests passed.",
+    "Final parameter-glyph + floating-panel-gesture suites: 10 tests passed (includes two added regressions).",
+    "i18n suite earlier: 15/16 passed; missing translations were in other in-progress frontend sections; editor polygon markup test fixed and passed.",
+    "Actual desktop browser: exposure drag 0→1.31 EV, Alt+Right→1.311, HSL orange 12.5° numeric submit, explicit history differences, crop 1:1→undo restored free selection, real paint stroke 0→1→undo 0.",
+    "Desktop preview interruption after selecting liquify recorded and downloaded recipe. Potential Fast Refresh path identified by root; frozen-code reproduction not completed.",
+    "Actual 390px iframe photo import and light panel: height340, image + main slider + icon rail visible. 320 switch returned height252 (320×640); final screenshot not taken before environment stopped."
+  ],
+  "unverified": [
+    "No complete five-round site regression.",
+    "No actual successful portrait inference / 59 functional algorithm acceptance; prior browser WebGL2 limitation.",
+    "No stable-version reproduction of preview interruption.",
+    "No completed 320/820/844 editor visual verification after final changes.",
+    "No claim that screenshot or recipe files survived current environment failure."
+  ],
+  "files": [
+    {
+      "status": "complete",
+      "path": "apps/web/src/editor/ParameterShelf.tsx",
+      "validation": "Previously typechecked and tested in working tree. This transcription has not been tested.",
+      "content": "import { t } from '../i18n';\nimport { MotionDetails } from '../motion/Presence';\nimport { useLayoutEffect, useRef, useState } from 'react';\nimport { PrecisionRange } from './PrecisionRange';\nimport { ParameterGlyph, parameterGlyphFor, type ParameterGlyphName } from './ParameterGlyph';\n\n/** Reveal only the active control inside its existing scroll surface, never the page. */\nexport function parameterControlScrollTop({\n  scrollTop,\n  viewportTop,\n  viewportHeight,\n  controlTop,\n  controlHeight,\n}: {\n  scrollTop: number;\n  viewportTop: number;\n  viewportHeight: number;\n  controlTop: number;\n  controlHeight: number;\n}): number {\n  const margin = 6;\n  if (controlTop < viewportTop + margin || controlHeight > viewportHeight - margin * 2)\n    return Math.max(0, scrollTop + controlTop - viewportTop - margin);\n  const overflow = controlTop + controlHeight - (viewportTop + viewportHeight - margin);\n  return overflow > 0 ? scrollTop + overflow : scrollTop;\n}\n\nexport type ShelfControl = {\n  id: string;\n  label: string;\n  value: number;\n  min: number;\n  max: number;\n  step: number;\n  neutral?: number;\n  unit?: string;\n  gradient?: string;\n  description?: string;\n  disabled?: boolean;\n  onChange: (value: number) => void;\n  onReset?: () => void;\n  integer?: boolean;\n  glyph?: ParameterGlyphName;\n  shortLabel?: string;\n  /** Brush configuration is not an applied image adjustment. */\n  kind?: 'adjustment' | 'setting';\n};\n\nexport function isShelfControlAdjusted(control: ShelfControl): boolean {\n  return control.kind !== 'setting' && control.neutral !== undefined &&\n    Math.abs(control.value - control.neutral) > 1e-8;\n}\n/** One precise active control; adjacent tools stay discoverable without a wall of sliders. */\nexport function ParameterShelf({\n  controls,\n  label,\n  onCommit,\n  onCancel,\n}: {\n  controls: ShelfControl[];\n  label: string;\n  onCommit?: (label: string) => void;\n  onCancel?: () => void;\n}) {\n  const [selectedId, setSelectedId] = useState(\n    controls.find((control) => !control.disabled)?.id ?? controls[0]?.id ?? '',\n  );\n  const shelf = useRef<HTMLElement>(null);\n  const current = useRef<HTMLDivElement>(null);\n  const choices = useRef<HTMLDivElement>(null);\n  const revealRequested = useRef(false);\n  const active =\n    controls.find((control) => control.id === selectedId && !control.disabled) ??\n    controls.find((control) => !control.disabled) ??\n    controls[0];\n  function revealCurrent() {\n    revealRequested.current = false;\n    const element = shelf.current;\n    if (\n      !element ||\n      getComputedStyle(element).getPropertyValue('--parameter-shelf-compact').trim() !== '1'\n    )\n      return;\n    const scroller = element.closest<HTMLElement>('.inspector-scroll');\n    const control = current.current?.querySelector<HTMLElement>('.precision-control');\n    if (!scroller || !control || scroller.clientHeight === 0) return;\n    const viewport = scroller.getBoundingClientRect();\n    const target = control.getBoundingClientRect();\n    scroller.scrollTop = parameterControlScrollTop({\n      scrollTop: scroller.scrollTop,\n      viewportTop: viewport.top + scroller.clientTop,\n      viewportHeight: scroller.clientHeight,\n      controlTop: target.top,\n      controlHeight: target.height,\n    });\n  }\n  useLayoutEffect(() => {\n    if (revealRequested.current) revealCurrent();\n    const rail = choices.current;\n    const selected = rail?.querySelector<HTMLElement>('[aria-pressed=\"true\"]');\n    if (!rail || !selected || rail.scrollWidth <= rail.clientWidth) return;\n    const visible = rail.getBoundingClientRect();\n    const item = selected.getBoundingClientRect();\n    if (item.left < visible.left) rail.scrollLeft += item.left - visible.left - 4;\n    else if (item.right > visible.right) rail.scrollLeft += item.right - visible.right + 4;\n  }, [active?.id]);\n  if (!active) return <p className=\"control-note\">{t('当前范围没有可调整的参数。')}</p>;\n  function selectControl(id: string) {\n    if (active && active.id !== id) onCommit?.(active.label);\n    revealRequested.current = true;\n    setSelectedId(id);\n    if (active?.id === id) revealCurrent();\n  }\n  return (\n    <section ref={shelf} className=\"parameter-shelf parameter-shelf-r5\" aria-label={t(label)}>\n      <div ref={current} className=\"parameter-shelf-current\" data-motion=\"parameter-current\">\n        <PrecisionRange\n          key={active.id}\n          label={t(active.label)}\n          value={active.value}\n          min={active.min}\n          max={active.max}\n          step={active.step}\n          neutral={active.neutral}\n          adjusted={isShelfControlAdjusted(active)}\n          unit={active.unit === 'ratio' ? '' : t(active.unit ?? '')}\n          gradient={active.gradient}\n          disabled={active.disabled}\n          integer={active.integer}\n          onChange={active.onChange}\n          onCommit={() => onCommit?.(active.label)}\n          onCancel={onCancel}\n          onReset={active.onReset}\n        />\n      </div>\n      <div\n        ref={choices}\n        className=\"parameter-shelf-options\"\n        role=\"group\"\n        aria-label={t('{name}选项', { name: t(label) })}\n        data-motion=\"parameter-options\"\n        onKeyDown={(event) => {\n          if (!['ArrowLeft', 'ArrowRight', 'Home', 'End'].includes(event.key)) return;\n          const buttons = [\n            ...event.currentTarget.querySelectorAll<HTMLButtonElement>('button:not(:disabled)'),\n          ];\n          const index = buttons.indexOf(event.target as HTMLButtonElement);\n          if (index < 0) return;\n          event.preventDefault();\n          const next =\n            event.key === 'Home'\n              ? 0\n              : event.key === 'End'\n                ? buttons.length - 1\n                : (index + (event.key === 'ArrowLeft' ? -1 : 1) + buttons.length) % buttons.length;\n          const target = buttons[next];\n          if (!target) return;\n          target.focus({ preventScroll: true });\n          const rail = event.currentTarget;\n          const viewport = rail.getBoundingClientRect();\n          const item = target.getBoundingClientRect();\n          const left = viewport.left + rail.clientLeft;\n          const top = viewport.top + rail.clientTop;\n          if (item.left < left) rail.scrollLeft += item.left - left;\n          else if (item.right > left + rail.clientWidth)\n            rail.scrollLeft += item.right - left - rail.clientWidth;\n          if (item.top < top) rail.scrollTop += item.top - top;\n          else if (item.bottom > top + rail.clientHeight)\n            rail.scrollTop += item.bottom - top - rail.clientHeight;\n        }}\n      >\n        {controls.map((control) => (\n          <button\n            type=\"button\"\n            key={control.id}\n            aria-pressed={active.id === control.id}\n            disabled={control.disabled}\n            tabIndex={active.id === control.id ? 0 : -1}\n            aria-label={t('{v0}，{v1}{v2}{v3}', {\n              v0: t(control.label),\n              v1: Number(control.value.toFixed(4)),\n              v2: control.unit === 'ratio' ? '' : t(control.unit ?? ''),\n              v3: isShelfControlAdjusted(control) ? t('，已调整') : '',\n            })}\n            data-adjusted={isShelfControlAdjusted(control) ? 'true' : undefined}\n            title={control.disabled && control.description ? t(control.description) : undefined}\n            onClick={() => selectControl(control.id)}\n          >\n            <span className=\"parameter-choice-symbol\" aria-hidden=\"true\">\n              <ParameterGlyph name={control.glyph ?? parameterGlyphFor(control.id)} />\n            </span>\n            <span className=\"parameter-choice-label\">{t(control.shortLabel ?? control.label)}</span>\n            <small>\n              {Number(control.value.toFixed(4))}\n              {control.unit === 'ratio' ? '' : t(control.unit ?? '')}\n            </small>\n            {isShelfControlAdjusted(control) && <i aria-hidden=\"true\" />}\n          </button>\n        ))}\n      </div>\n      {active.description && (\n        <MotionDetails key={active.id + '-description'} className=\"parameter-description\">\n          <summary title={t('{name}说明', { name: t(active.label) })}>\n            <svg viewBox=\"0 0 24 24\" width=\"17\" height=\"17\" fill=\"none\" stroke=\"currentColor\" strokeWidth=\"1.6\" aria-hidden=\"true\"><circle cx=\"12\" cy=\"12\" r=\"9\" /><path d=\"M12 11v6M12 7h.01\" strokeLinecap=\"round\" /></svg>\n            <span className=\"sr-only\">{t('{name}说明', { name: t(active.label) })}</span>\n          </summary>\n          <p className=\"control-note\">{t(active.description)}</p>\n        </MotionDetails>\n      )}\n    </section>\n  );\n}\n"
+    },
+    {
+      "status": "complete",
+      "path": "apps/web/src/editor/editor-control-copy.ts",
+      "validation": "Previously typechecked; short labels were tested in English and Traditional Chinese. Restore-time retest required.",
+      "content": "import { getLocale } from '../i18n';\n\nconst labels = {\n  白场: ['白場', 'Whites'],\n  黑场: ['黑場', 'Blacks'],\n  自然饱和: ['自然飽和', 'Vibrance'],\n  纹理: ['紋理', 'Texture'],\n  清晰度: ['清晰度', 'Clarity'],\n  输入黑场: ['輸入黑場', 'Black input'],\n  输入白场: ['輸入白場', 'White input'],\n  输出黑场: ['輸出黑場', 'Black output'],\n  输出白场: ['輸出白場', 'White output'],\n  伽马: ['伽瑪', 'Gamma'],\n  平衡: ['平衡', 'Balance'],\n  黑白: ['黑白', 'B&W'],\n  褪色: ['褪色', 'Fade'],\n  强度: ['強度', 'Amount'],\n  横向位置: ['橫向位置', 'Position X'],\n  纵向位置: ['縱向位置', 'Position Y'],\n  横向半径: ['橫向半徑', 'Radius X'],\n  纵向半径: ['縱向半徑', 'Radius Y'],\n  过渡: ['過渡', 'Feather'],\n  间距: ['間距', 'Spacing'],\n  种子: ['種子', 'Seed'],\n  明度降噪: ['明度降噪', 'Luma noise'],\n  色彩降噪: ['色彩降噪', 'Color noise'],\n  红色色散: ['紅色色散', 'Red fringe'],\n  蓝色色散: ['藍色色散', 'Blue fringe'],\n  横向中心: ['橫向中心', 'Center X'],\n  纵向中心: ['縱向中心', 'Center Y'],\n  旋转: ['旋轉', 'Rotation'],\n  水平透视: ['水平透視', 'Perspective X'],\n  垂直透视: ['垂直透視', 'Perspective Y'],\n  水平倾斜: ['水平傾斜', 'Skew X'],\n  垂直倾斜: ['垂直傾斜', 'Skew Y'],\n  横向缩放: ['橫向縮放', 'Scale X'],\n  纵向缩放: ['縱向縮放', 'Scale Y'],\n  水平位移: ['水平位移', 'Move X'],\n  垂直位移: ['垂直位移', 'Move Y'],\n  色相: ['色相', 'Hue'],\n  饱和度: ['飽和度', 'Saturation'],\n  明度: ['明度', 'Lightness'],\n  明暗: ['明暗', 'Luminance'],\n  直方图: ['直方圖', 'Histogram'],\n  色谱: ['色譜', 'Spectrum'],\n  细节: ['細節', 'Detail'],\n  光学: ['光學', 'Optics'],\n  风格: ['風格', 'Style'],\n  '外观保持不变，可撤销。': ['外觀保持不變，可撤銷。', 'Appearance is preserved. You can undo this.'],\n  独立精修: ['獨立精修', 'Manual retouch'],\n  识别后可用的人物参数: ['識別後可用的人物參數', 'Portrait controls available after detection'],\n  请先识别人物: ['請先識別人物', 'Detect a person first'],\n  手动涂妆: ['手動塗妝', 'Paint makeup'],\n  克隆修补: ['複製修補', 'Clone repair'],\n  手动塑形: ['手動塑形', 'Manual reshape'],\n  当前预览: ['目前預覽', 'Current preview'],\n  撤销预览: ['撤銷預覽', 'Revert preview'],\n  数位笔压感: ['數位筆壓感', 'Pen pressure'],\n  快捷键: ['快速鍵', 'Keyboard shortcuts'],\n} as const;\n\nexport type EditorControlCopy = keyof typeof labels;\nexport function editorControlText(key: EditorControlCopy): string {\n  const locale = getLocale();\n  return locale === 'en' ? labels[key][1] : locale === 'zh-TW' ? labels[key][0] : key;\n}\n"
+    },
+    {
+      "status": "complete",
+      "path": "apps/web/src/editor/HistoryPanel.tsx",
+      "validation": "Previously typechecked after root exposed hasUncommittedPreview. Depends on that root change. This transcription requires retest.",
+      "content": "import { editorControlText } from './editor-control-copy';\nimport { useMemo, useState } from 'react';\nimport { ArrowClockwise, ArrowCounterClockwise, CaretDown } from '@phosphor-icons/react';\nimport { formatNumber, t } from '../i18n';\nimport { recipeDifferences } from '../ai/recipeDiff';\nimport { interactionText } from '../workspace/interaction-copy';\nimport { historyDetails } from './history-details';\nimport { historyText } from './history-copy';\nimport type { EditorState } from './useEditor';\n\nfunction formatValue(\n  value: string | number | boolean,\n  unit = '',\n  userText = false,\n  presence = false,\n) {\n  if (typeof value === 'boolean')\n    return presence ? historyText(value ? '存在' : '无') : interactionText(value ? 'on' : 'off');\n  return typeof value === 'number'\n    ? `${formatNumber(value, { maximumFractionDigits: 4 })}${unit}`\n    : userText\n      ? value\n      : historyText(value);\n}\n\nexport function HistoryPanel({ editor }: { editor: EditorState }) {\n  const [expanded, setExpanded] = useState<number | null>(null);\n  const summaries = useMemo(\n    () =>\n      editor.history.map((item, index) =>\n        index ? recipeDifferences(editor.history[index - 1]!.recipe, item.recipe) : [],\n      ),\n    [editor.history],\n  );\n  const detailed = useMemo(\n    () =>\n      expanded !== null && expanded > 0 && editor.history[expanded]\n        ? historyDetails(editor.history[expanded - 1]!.recipe, editor.history[expanded]!.recipe)\n        : [],\n    [editor.history, expanded],\n  );\n  const previewChanges = useMemo(() => {\n    const committed = editor.history[editor.historyIndex]?.recipe;\n    return editor.hasUncommittedPreview && committed ? recipeDifferences(committed, editor.recipe) : [];\n  }, [editor.hasUncommittedPreview, editor.history, editor.historyIndex, editor.recipe]);\n  return (\n    <section className=\"advanced-tool-family\" data-motion=\"advanced-history\">\n      <div className=\"advanced-row history-actions\">\n        <button className=\"text-button\" disabled={!editor.canUndo} onClick={editor.undo}>\n          <ArrowCounterClockwise size={17} />\n          {t('撤销本次编辑')}\n        </button>\n        <button className=\"text-button\" disabled={!editor.canRedo} onClick={editor.redo}>\n          <ArrowClockwise size={17} />\n          {t('重做本次编辑')}\n        </button>\n      </div>\n      <ol className=\"advanced-history-list detailed-history-list\">\n        {editor.hasUncommittedPreview && (\n          <li className=\"history-preview-entry\" data-preview=\"true\">\n            <strong>{editorControlText('当前预览')}</strong>\n            {previewChanges.length > 0 && <p>{previewChanges.slice(0, 4).map((change) =>\n              `${t(change.label)} ${formatValue(change.before, change.unit)} → ${formatValue(change.after, change.unit)}`,\n            ).join(' · ')}</p>}\n            <div className=\"history-preview-actions\">\n              <button type=\"button\" className=\"text-button\" onClick={editor.cancelPreview}>\n                <ArrowCounterClockwise size={16} />{editorControlText('撤销预览')}\n              </button>\n            </div>\n          </li>\n        )}\n        {editor.history.map((item, index) => {\n          const changes = summaries[index] ?? [];\n          return (\n            <li key={index} data-selected={index === editor.historyIndex && !editor.hasUncommittedPreview}>\n              <div className=\"history-entry-row\">\n                <button\n                  className=\"history-restore\"\n                  onClick={() => editor.commit(item.recipe, t('从本地记录恢复：') + item.label)}\n                  disabled={index === editor.historyIndex && !editor.hasUncommittedPreview}\n                >\n                  <span className=\"history-index\">{String(index + 1).padStart(2, '0')}</span>\n                  <span className=\"history-entry-copy\">\n                    <strong>{t(item.label)}</strong>\n                    {changes.length > 0 && (\n                      <small>\n                        {changes\n                          .slice(0, 2)\n                          .map(\n                            (change) =>\n                              `${t(change.label)} ${formatValue(change.before, change.unit)} → ${formatValue(change.after, change.unit)}`,\n                          )\n                          .join(' · ')}\n                      </small>\n                    )}\n                    {index === 0 && t(item.label) !== interactionText('originalState') && (\n                      <small>{interactionText('originalState')}</small>\n                    )}\n                  </span>\n                  {index === editor.historyIndex && !editor.hasUncommittedPreview && (\n                    <small className=\"history-current\">{t('当前')}</small>\n                  )}\n                </button>\n                {index > 0 && (\n                  <button\n                    type=\"button\"\n                    className=\"history-expand\"\n                    aria-expanded={expanded === index}\n                    aria-label={interactionText('historyDetails') + ' · ' + t(item.label)}\n                    onClick={() => setExpanded(expanded === index ? null : index)}\n                  >\n                    <CaretDown size={15} />\n                  </button>\n                )}\n              </div>\n              {expanded === index && (\n                <dl className=\"history-change-details\">\n                  {detailed.length ? (\n                    detailed.map((detail, i) => (\n                      <div key={i}>\n                        <dt>\n                          <span>\n                            {detail.scopeIsUserName ? detail.scope : historyText(detail.scope)}\n                          </span>\n                          {historyText(detail.label)}\n                        </dt>\n                        <dd>\n                          <span>\n                            {formatValue(\n                              detail.before,\n                              detail.unit,\n                              detail.valuesAreUserText,\n                              detail.presence,\n                            )}\n                          </span>\n                          <i aria-hidden>→</i>\n                          <strong>\n                            {formatValue(\n                              detail.after,\n                              detail.unit,\n                              detail.valuesAreUserText,\n                              detail.presence,\n                            )}\n                          </strong>\n                        </dd>\n                      </div>\n                    ))\n                  ) : (\n                    <div>\n                      <dt className=\"sr-only\">{interactionText('historyDetails')}</dt>\n                      <dd>{interactionText('noParameterChanges')}</dd>\n                    </div>\n                  )}\n                </dl>\n              )}\n            </li>\n          );\n        })}\n      </ol>\n    </section>\n  );\n}\n"
+    },
+    {
+      "status": "complete",
+      "path": "apps/web/src/editor/editor-controls-r5.css",
+      "validation": "Actually rendered and screenshot-reviewed at desktop and 390px before final environment loss. This transcription requires visual retest.",
+      "content": "/* Editor-only presentation. Parameter geometry and gesture transactions remain native. */\n.parameter-shelf.parameter-shelf-r5 {\n  --parameter-shelf-compact: 1;\n  position: relative;\n  gap: 8px;\n  min-width: 0;\n}\n.parameter-shelf.parameter-shelf-r5 > .parameter-shelf-current {\n  position: static;\n  order: 0;\n  padding: 0 2px;\n  background: transparent;\n}\n.parameter-shelf.parameter-shelf-r5 .precision-heading {\n  padding-inline-end: 34px;\n  min-height: 42px;\n}\n.parameter-shelf.parameter-shelf-r5 .precision-heading > label {\n  visibility: visible;\n  min-width: 0;\n  font-size: 13px;\n  line-height: 1.4;\n  overflow-wrap: anywhere;\n}\n.parameter-shelf.parameter-shelf-r5 .precision-readout .precision-value {\n  background: transparent;\n  min-width: 52px;\n  min-height: 42px;\n  font-size: 20px;\n  letter-spacing: -.045em;\n}\n.parameter-shelf.parameter-shelf-r5 .precision-readout .precision-value small {\n  font-size: 10px;\n  margin-inline-start: 3px;\n  letter-spacing: 0;\n}\n.parameter-shelf.parameter-shelf-r5 .precision-readout .precision-reset {\n  min-width: 32px;\n  min-height: 42px;\n}\n.parameter-shelf.parameter-shelf-r5 .precision-track,\n.parameter-shelf.parameter-shelf-r5 .precision-track input[type='range'] {\n  min-height: 44px;\n  height: 44px;\n}\n.parameter-shelf.parameter-shelf-r5 .precision-track input[type='range']::-webkit-slider-thumb {\n  width: 22px;\n  height: 22px;\n  margin-top: -8.5px;\n  border: 3px solid var(--surface);\n  box-shadow: 0 0 0 2px var(--accent), 0 2px 6px rgb(var(--color-shadow) / 10%);\n}\n.parameter-shelf.parameter-shelf-r5 .precision-track input[type='range']::-moz-range-thumb {\n  width: 16px;\n  height: 16px;\n  border: 3px solid var(--surface);\n  box-shadow: 0 0 0 2px var(--accent), 0 2px 6px rgb(var(--color-shadow) / 10%);\n}\n.parameter-shelf.parameter-shelf-r5 .precision-neutral { top: 16px; }\n.parameter-shelf.parameter-shelf-r5 > .parameter-shelf-options {\n  display: flex;\n  flex-wrap: nowrap;\n  align-items: stretch;\n  gap: 6px;\n  padding: 4px 2px 7px;\n  min-height: 90px;\n  max-height: none;\n  overflow-x: auto;\n  overflow-y: hidden;\n  scroll-padding-inline: 4px;\n  scroll-snap-type: x proximity;\n  scrollbar-width: thin;\n  overscroll-behavior-inline: contain;\n}\n.parameter-shelf.parameter-shelf-r5 > .parameter-shelf-options > button {\n  flex: 0 0 72px;\n  min-width: 72px;\n  min-height: 80px;\n  justify-content: flex-start;\n  gap: 4px;\n  padding: 7px 4px 6px;\n  color: var(--muted);\n  background: transparent;\n  border: 1px solid transparent;\n  border-radius: 15px;\n  scroll-snap-align: center;\n  transition: border-color 160ms ease, background-color 160ms ease, color 160ms ease;\n}\n.parameter-shelf.parameter-shelf-r5 .parameter-choice-symbol {\n  display: grid;\n  place-items: center;\n  width: 34px;\n  height: 32px;\n  color: var(--ink);\n}\n.parameter-shelf.parameter-shelf-r5 .parameter-choice-label {\n  font-size: 11px;\n  font-weight: 500;\n  line-height: 1.35;\n  max-width: 100%;\n  overflow-wrap: anywhere;\n}\n.parameter-shelf.parameter-shelf-r5 > .parameter-shelf-options small {\n  font-size: 10px;\n  line-height: 1.2;\n  color: inherit;\n  opacity: .72;\n}\n.parameter-shelf.parameter-shelf-r5 > .parameter-shelf-options > button[aria-pressed='true'],\n.parameter-shelf.parameter-shelf-r5 > .parameter-shelf-options > button[aria-pressed='true']:hover {\n  color: var(--ink);\n  border-color: color-mix(in srgb, var(--accent) 85%, var(--ink));\n  background: color-mix(in srgb, var(--accent) 10%, var(--surface));\n  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--accent) 50%, transparent);\n}\n.parameter-shelf.parameter-shelf-r5 > .parameter-shelf-options > button:hover:not(:disabled):not([aria-pressed='true']) {\n  color: var(--ink);\n  background: color-mix(in srgb, var(--ink) 4%, var(--surface));\n}\n.parameter-shelf.parameter-shelf-r5 > .parameter-shelf-options > button:disabled {\n  opacity: .38;\n  cursor: not-allowed;\n}\n.parameter-shelf.parameter-shelf-r5 > .parameter-shelf-options > button:focus-visible {\n  outline: 2px solid var(--ink);\n  outline-offset: 1px;\n}\n.parameter-shelf.parameter-shelf-r5 > .parameter-description {\n  position: absolute;\n  top: 0;\n  right: 0;\n  z-index: 4;\n  margin: 0;\n}\n.parameter-shelf.parameter-shelf-r5 > .parameter-description > summary {\n  display: grid;\n  place-items: center;\n  width: 34px;\n  min-height: 42px;\n  padding: 0;\n  margin: 0;\n  list-style: none;\n  border-radius: 8px;\n  color: var(--muted);\n}\n.parameter-shelf.parameter-shelf-r5 > .parameter-description > summary::-webkit-details-marker { display: none; }\n.parameter-shelf.parameter-shelf-r5 > .parameter-description > summary::after { display: none; }\n.parameter-shelf.parameter-shelf-r5 > .parameter-description[open] > summary { background: var(--surface-secondary); }\n.parameter-shelf.parameter-shelf-r5 > .parameter-description > .motion-disclosure {\n  position: absolute;\n  right: 0;\n  top: 44px;\n  width: min(260px, calc(100cqw - 36px));\n  border-radius: 12px;\n  background: var(--surface);\n  box-shadow: 0 6px 24px rgb(var(--color-shadow) / 12%);\n  border: 1px solid var(--line);\n}\n.parameter-shelf.parameter-shelf-r5 .parameter-description .motion-disclosure-content > p {\n  margin: 0;\n  padding: 13px;\n  color: var(--muted);\n  font-size: 12px;\n  line-height: 1.6;\n}\n.advanced-inspector .color-controls-v3 > .histogram-disclosure { order: 5; }\n.advanced-inspector .color-controls-v3 > .histogram-disclosure > summary { font-size: 11px; }\n.advanced-inspector .advanced-inspector-scroll { gap: 10px; }\n.advanced-inspector .advanced-tool-family,\n.advanced-inspector .color-controls-v3 { gap: 9px; }\n.advanced-inspector .tonal-tabs {\n  flex-wrap: nowrap;\n  overflow-x: auto;\n  scrollbar-width: none;\n  min-height: 38px;\n}\n.advanced-inspector .tonal-tabs > button { min-height: 38px; }\n.advanced-inspector .portrait-manual-actions { gap: 6px; }\n.advanced-inspector .portrait-manual-actions .text-button { flex: 1 1 110px; min-height: 44px; }\n.advanced-inspector .portrait-ownership-note { padding: 0; border: 0; }\n.advanced-inspector .portrait-category-tabs button { display: inline-flex; align-items: center; gap: 6px; }\n.portrait-unavailable-tools {\n  display: flex;\n  flex-wrap: nowrap;\n  gap: 6px;\n  overflow-x: auto;\n  scrollbar-width: thin;\n  padding-block: 6px;\n}\n.portrait-unavailable-tools > button {\n  display: flex;\n  flex: 0 0 72px;\n  align-items: center;\n  flex-direction: column;\n  gap: 8px;\n  min-height: 76px;\n  padding: 8px 4px;\n  border: 0;\n  border-radius: 12px;\n  background: color-mix(in srgb, var(--ink) 3%, var(--surface));\n  color: var(--muted);\n  font-size: 11px;\n  line-height: 1.4;\n  opacity: .5;\n}\n.floating-panel[data-panel-id='inspector'] .panel-drag-header { gap: 4px; }\n.floating-panel[data-panel-id='inspector'] .panel-title-drag { min-width: 0; }\n.floating-panel[data-panel-id='inspector'] .panel-title-drag strong { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }\n.floating-panel .panel-back-action { flex-shrink: 0; }\n.studio-workspace .floating-tool-dock.tool-dock-r5 {\n  max-width: min(920px, calc(100% - 32px));\n  padding: 5px;\n  border-radius: 15px;\n  background: color-mix(in srgb, var(--surface) 96%, transparent);\n  backdrop-filter: blur(8px);\n}\n.studio-workspace .tool-dock-r5 .dock-tool-scroll > button { min-width: 50px; min-height: 50px; }\n.studio-workspace .tool-dock-r5 .dock-tool-scroll > button.active {\n  color: var(--ink);\n  background: transparent;\n}\n.studio-workspace .tool-dock-r5 .dock-selection {\n  background: var(--accent-soft);\n  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--accent) 60%, transparent);\n}\n.studio-workspace .context-navigation-r5.context-segment > button {\n  display: inline-flex;\n  align-items: center;\n  justify-content: center;\n  gap: 5px;\n  min-height: 40px;\n}\n.advanced-history-list .history-preview-entry {\n  padding: 12px;\n  border: 1px solid color-mix(in srgb, var(--accent) 55%, var(--line));\n  border-radius: 12px;\n  background: color-mix(in srgb, var(--accent) 6%, var(--surface));\n}\n.history-preview-entry > strong { font-size: 12px; }\n.history-preview-entry > p { margin: 6px 0; color: var(--muted); font-size: 11px; line-height: 1.5; }\n.history-preview-entry .history-preview-actions { display: flex; gap: 8px; }\n.history-preview-entry .history-preview-actions > button { min-height: 40px; }\n@media (max-width: 759px) {\n  .studio-workspace .floating-tool-dock.tool-dock-r5 { max-width: 100%; border-radius: 0; }\n  .advanced-inspector .advanced-inspector-scroll { padding: 8px 12px 16px; gap: 6px; }\n  .parameter-shelf.parameter-shelf-r5 { gap: 4px; }\n  .parameter-shelf.parameter-shelf-r5 > .parameter-shelf-options { min-height: 84px; gap: 5px; }\n  .parameter-shelf.parameter-shelf-r5 > .parameter-shelf-options > button { flex-basis: 68px; min-width: 68px; min-height: 76px; padding: 5px 3px; }\n  .advanced-inspector .context-adjustment-tabs { flex-shrink: 0; min-height: 38px; }\n  .advanced-inspector .context-adjustment-tabs > button { min-height: 38px; }\n  .advanced-inspector .tonal-tabs > button { min-height: 38px; font-size: 12px; }\n}\n@media (max-height: 520px) and (orientation: landscape) {\n  .parameter-shelf.parameter-shelf-r5 { gap: 2px; }\n  .parameter-shelf.parameter-shelf-r5 .precision-heading { min-height: 34px; }\n  .parameter-shelf.parameter-shelf-r5 .precision-readout .precision-value,\n  .parameter-shelf.parameter-shelf-r5 .precision-readout .precision-reset { min-height: 34px; }\n  .parameter-shelf.parameter-shelf-r5 > .parameter-shelf-options { min-height: 74px; }\n  .parameter-shelf.parameter-shelf-r5 > .parameter-shelf-options > button { min-height: 66px; }\n  .parameter-shelf.parameter-shelf-r5 .parameter-choice-symbol { height: 25px; }\n  .parameter-shelf.parameter-shelf-r5 .parameter-choice-symbol > svg { width: 24px; height: 24px; }\n  .advanced-inspector .advanced-inspector-scroll { padding-top: 5px; gap: 4px; }\n}\n@media (prefers-reduced-motion: reduce) {\n  .parameter-shelf.parameter-shelf-r5 > .parameter-shelf-options > button { transition: none; }\n}\n"
+    },
+    {
+      "status": "complete",
+      "path": "apps/web/src/editor/ProjectiveControls.tsx",
+      "validation": "Previously typechecked. Exact coordinate behavior retained; final browser interaction not completed. Restore-time retest required.",
+      "content": "import { t } from '../i18n';\nimport { MotionDetails } from '../motion/Presence';\nimport { editorControlText } from './editor-control-copy';\nimport { createRecipeV4, migrateRecipeToV4 } from '@ai-xiutu/editor';\nimport { ParameterShelf, type ShelfControl } from './ParameterShelf';\nimport { currentV3, type InspectorController } from './advanced-model';\nimport { CORNER_LABELS, preProjectiveDimensions, withProjectiveCorner } from './projective-model';\n\nexport function ProjectiveControls({ controller }: { controller: InspectorController }) {\n  const { editor, apply, report } = controller,\n    recipe = currentV3(editor);\n  if (recipe.schemaVersion !== 4)\n    return (\n      <div className=\"advanced-tool-family\">\n        <p className=\"control-note\">\n          {t('四角投影使用第四代配方。升级保留已有像素语义和历史，可撤销。')}\n        </p>\n        <button\n          className=\"button button-secondary\"\n          onClick={() => {\n            try {\n              apply(migrateRecipeToV4(recipe), t('升级以启用四角变换'), true);\n            } catch (e) {\n              report(e instanceof Error ? e.message : t('无法升级。'));\n            }\n          }}\n        >\n          {t('启用四角自由变换')}\n        </button>\n      </div>\n    );\n  const dims = editor.dimensions ?? { width: 1, height: 1 },\n    frame = preProjectiveDimensions(dims, recipe);\n  const neutralCorners = createRecipeV4().projective.corners;\n  const controls: ShelfControl[] = CORNER_LABELS.flatMap((label, i) =>\n    (['x', 'y'] as const).map((axis) => ({\n      id: `projective-${i}-${axis}`,\n      label: t('{corner}{axis}', { corner: t(label), axis: t(axis === 'x' ? '水平' : '垂直') }),\n      value: recipe.projective.corners[i]![axis] * (axis === 'x' ? frame.width : frame.height),\n      neutral: neutralCorners[i]![axis] * (axis === 'x' ? frame.width : frame.height),\n      min: -2 * (axis === 'x' ? frame.width : frame.height),\n      max: 3 * (axis === 'x' ? frame.width : frame.height),\n      step: 0.1,\n      unit: 'px',\n      onChange(value) {\n        const current = currentV3(editor);\n        if (current.schemaVersion !== 4) return;\n        try {\n          apply(\n            withProjectiveCorner(\n              current,\n              i,\n              {\n                ...current.projective.corners[i]!,\n                [axis]: value / (axis === 'x' ? frame.width : frame.height),\n              },\n              dims,\n              editor.pixelBudget,\n            ),\n            '调整' + label,\n          );\n        } catch (e) {\n          report(e instanceof Error ? e.message : '请保持四角轮廓不交叉。');\n        }\n      },\n    })),\n  );\n  return (\n    <section className=\"advanced-tool-family\" data-motion=\"projective-controls\">\n      <ParameterShelf\n        controls={controls}\n        label={t('四角逐点坐标')}\n        onCommit={(name) => editor.commitCurrent(name)}\n        onCancel={editor.cancelPreview}\n      />\n      <MotionDetails className=\"editor-help-disclosure\">\n        <summary>{editorControlText('快捷键')}</summary>\n        <p className=\"control-note\">\n          {t(\n            '拖动照片四角自由调整透视。角点支持方向键 1px、Shift 10px、Alt 0.1px；Esc 取消这一拖动。',\n          )}\n        </p>\n      </MotionDetails>\n      <div className=\"tonal-tabs\" aria-label={t('四角变换的画幅')}>\n        <button\n          type=\"button\"\n          aria-pressed={recipe.projective.fit === 'contain'}\n          onClick={() =>\n            apply(\n              { ...recipe, projective: { ...recipe.projective, fit: 'contain' } },\n              t('容纳四角全部内容'),\n              true,\n            )\n          }\n        >\n          {t('容纳全部')}\n        </button>\n        <button\n          type=\"button\"\n          aria-pressed={recipe.projective.fit === 'crop'}\n          onClick={() =>\n            apply(\n              { ...recipe, projective: { ...recipe.projective, fit: 'crop' } },\n              t('保留变换前画幅'),\n              true,\n            )\n          }\n        >\n          {t('保留画幅')}\n        </button>\n        <button\n          type=\"button\"\n          aria-pressed={recipe.projective.enabled}\n          onClick={() =>\n            apply(\n              {\n                ...recipe,\n                projective: { ...recipe.projective, enabled: !recipe.projective.enabled },\n              },\n              recipe.projective.enabled ? t('暂时关闭四角变换') : t('启用四角变换'),\n              true,\n            )\n          }\n        >\n          {recipe.projective.enabled ? t('暂时关闭') : t('启用效果')}\n        </button>\n      </div>\n      <button\n        className=\"text-button\"\n        onClick={() =>\n          apply({ ...recipe, projective: createRecipeV4().projective }, t('重置四角变换'), true)\n        }\n      >\n        {t('恢复四角原位')}\n      </button>\n    </section>\n  );\n}\n"
+    },
+    {
+      "status": "complete",
+      "path": "apps/web/test/parameter-glyph.test.ts",
+      "validation": "This four-test suite was included in final 10/10 run before environment loss. The transcription remains untested.",
+      "content": "import assert from 'node:assert/strict';\nimport test from 'node:test';\nimport { createElement } from 'react';\nimport { PORTRAIT_TOOLS } from '@ai-xiutu/portrait';\nimport { NUMERIC_CONTROLS } from '../src/editor/advanced-model.ts';\nimport {\n  ParameterGlyph,\n  parameterGlyphFor,\n  parameterShortLabel,\n  portraitParameterGlyph,\n  portraitParameterDrawings,\n} from '../src/editor/ParameterGlyph.tsx';\nimport { setLocale } from '../src/i18n/index.ts';\nimport { renderTestMarkup } from './support/render.ts';\n\ntest('every shipped portrait tool has its own semantic drawing, without fallback icons', () => {\n  const drawings = new Set<string>();\n  for (const tool of PORTRAIT_TOOLS) {\n    const name = portraitParameterGlyph(tool.id);\n    assert.notEqual(name, 'parameter', tool.id);\n    const drawing = portraitParameterDrawings[tool.id as keyof typeof portraitParameterDrawings];\n    assert.ok(drawing, tool.id);\n    const signature = JSON.stringify(drawing);\n    assert.equal(drawings.has(signature), false, `reused drawing for ${tool.id}`);\n    drawings.add(signature);\n    const markup = renderTestMarkup(createElement(ParameterGlyph, { name }));\n    assert.match(markup, /viewBox=\"0 0 24 24\"/);\n    assert.match(markup, /aria-hidden=\"true\"/);\n    assert.doesNotMatch(markup, /NaN|undefined/);\n  }\n  assert.equal(drawings.size, Object.keys(portraitParameterDrawings).length);\n});\n\ntest('all registered color, tone and geometry parameters resolve a stable functional icon', () => {\n  for (const parameter of NUMERIC_CONTROLS)\n    assert.notEqual(parameterGlyphFor(parameter.path), 'parameter', parameter.path);\n  assert.notEqual(parameterGlyphFor('adjustments.brightness'), parameterGlyphFor('adjustments.exposure'));\n  assert.notEqual(parameterGlyphFor('optics.aberrationRed'), parameterGlyphFor('optics.aberrationBlue'));\n  assert.notEqual(parameterGlyphFor('effects.vignette.centerX'), parameterGlyphFor('effects.vignette.centerY'));\n});\n\ntest('dynamic selection and four-corner controls retain distinct axis semantics', () => {\n  const corners = Array.from({ length: 4 }, (_, index) =>\n    ['x', 'y'].map((axis) => parameterGlyphFor(`projective-${index}-${axis}`)),\n  ).flat();\n  assert.equal(new Set(corners).size, 8);\n  assert.equal(corners.includes('parameter'), false);\n  for (const id of ['startx', 'starty', 'endx', 'endy', 'rotationDegrees', 'luminanceMin', 'luminanceMax'])\n    assert.notEqual(parameterGlyphFor(id), 'parameter', id);\n  assert.notEqual(parameterGlyphFor('startx'), parameterGlyphFor('endx'));\n  assert.notEqual(parameterGlyphFor('luminanceMin'), parameterGlyphFor('levels.inputBlack'));\n  assert.notEqual(parameterGlyphFor('feather'), parameterGlyphFor('adjustments.brightness'));\n});\n\ntest('short parameter names are localized without changing the registry labels', async () => {\n  try {\n    await setLocale('en');\n    assert.equal(parameterShortLabel('adjustments.whites', '白色色阶'), 'Whites');\n    assert.equal(parameterShortLabel('hsl.red.hue', '红色色相'), 'Hue');\n    await setLocale('zh-TW');\n    assert.equal(parameterShortLabel('effects.grain.size', '颗粒间距'), '間距');\n  } finally {\n    await setLocale('zh-CN');\n  }\n});\n"
+    }
+  ],
+  "partialPatches": [
+    {
+      "status": "partial",
+      "path": "apps/web/src/editor/ParameterGlyph.tsx",
+      "validation": "Original full working file passed glyph tests and was visually reviewed as a 59-glyph atlas. This partial reconstruction is not a buildable file.",
+      "missing": "Final SVG JSX body after aria-hidden was not fully returned in retained tool output, so it is not guessed here. The 59 portrait drawing data are preserved in the already-committed docs/design/drafts/r5-portrait-glyphs.json; recover that exact source rather than infer from screenshot.",
+      "imports": "import { editorControlText, type EditorControlCopy } from './editor-control-copy';\nimport { useId } from 'react';\n",
+      "data": {
+        "parameterPaths": {
+          "parameter": "M4 7h16M4 17h16M8 4v6M16 14v6",
+          "exposure": "M12 2a10 10 0 1 0 0 20 10 10 0 0 0 0-20M6 8h6M9 5v6M13 16h5",
+          "brightness": "M12 7a5 5 0 1 0 0 10 5 5 0 0 0 0-10M12 1v2M12 21v2M1 12h2M21 12h2M4 4l1.5 1.5M18.5 18.5L20 20M4 20l1.5-1.5M18.5 5.5L20 4",
+          "contrast": "M12 2a10 10 0 1 0 0 20 10 10 0 0 0 0-20M12 2v20M12 6h5M12 10h7M12 14h7M12 18h5",
+          "highlights": "M4 17a8 8 0 0 1 16 0M2 21h20M12 2v3M3 6l2 2M21 6l-2 2",
+          "shadows": "M4 7a8 8 0 0 0 16 0M2 3h20M12 19v3M3 18l2-2M21 18l-2-2",
+          "whites": "M5 3h14v18H5ZM9 8h6M12 5v6M8 16h8",
+          "blacks": "M5 3h14v18H5ZM8 8h8M5 13h14M5 16h14M5 19h14",
+          "saturation": "M12 2C10 5 4 10 4 15a8 8 0 0 0 16 0c0-5-6-10-8-13ZM12 8v12",
+          "vibrance": "M12 3l3 6 7 1-5 5 1 7-6-3-6 3 1-7-5-5 7-1Z",
+          "temperature": "M9 4a3 3 0 0 1 6 0v10a5 5 0 1 1-6 0ZM12 6v11M16 6h3M16 10h2",
+          "tint": "M12 2l8 10-8 10L4 12ZM12 2v20M12 8l4 4-4 4",
+          "sharpness": "M12 2L2 21h20ZM12 8v8M9 16h6",
+          "soften": "M5 6q7-7 14 0M3 12q9-7 18 0M5 18q7-7 14 0",
+          "photo-texture": "M3 6l3-3 3 3 3-3 3 3 3-3 3 3M3 12l3-3 3 3 3-3 3 3 3-3 3 3M3 18l3-3 3 3 3-3 3 3 3-3 3 3",
+          "clarity": "M3 9V3h6M15 3h6v6M21 15v6h-6M9 21H3v-6M8 12l3 3 5-6",
+          "input-black": "M3 3v18M5 12h7M9 9l3 3-3 3M15 7l7 5-7 5ZM15 10h3M15 13h5",
+          "input-white": "M3 3v18M5 12h7M9 9l3 3-3 3M15 7l7 5-7 5Z",
+          "gamma": "M3 20h18M4 20C7 20 8 5 20 4M4 4v16",
+          "output-black": "M21 3v18M12 12h7M16 9l3 3-3 3M3 7l7 5-7 5ZM3 10h3M3 13h5",
+          "output-white": "M21 3v18M12 12h7M16 9l3 3-3 3M3 7l7 5-7 5Z",
+          "hsl-hue": "M12 3a9 9 0 1 0 9 9M12 3l4 1-3 3M12 8v4l4 2",
+          "hsl-saturation": "M4 4h16v16H4ZM4 12h16M8 12v8M12 12v8M16 12v8",
+          "hsl-lightness": "M4 4h16v16H4ZM4 12h16M8 4v8M12 4v8M16 4v8",
+          "grading-hue": "M8 3a4 4 0 1 0 .01 0M16 3a4 4 0 1 0 .01 0M12 12a4 4 0 1 0 .01 0",
+          "grading-strength": "M5 21V13h3v8M10.5 21V8h3v13M16 21V3h3v18",
+          "grading-luminance": "M2 6h20M2 12h20M2 18h20M7 3v6M12 9v6M17 15v6",
+          "grading-balance": "M12 3v18M5 6h14M5 6l-4 8h8ZM19 6l-4 8h8ZM7 21h10",
+          "monochrome": "M12 2L2 19h20ZM12 2v17M12 10h4M12 14h6M12 17h8",
+          "fade": "M4 4h16v16H4ZM4 8h16M4 12h12M4 16h7",
+          "vignette-amount": "M3 3h18v18H3ZM7 7c-4 7 6 13 10 6S11 0 7 7Z",
+          "vignette-x": "M12 3a8 9 0 1 0 .01 0M1 12h22M3 10l-2 2 2 2M21 10l2 2-2 2",
+          "vignette-y": "M3 12a9 8 0 1 0 0-.01M12 1v22M10 3l2-2 2 2M10 21l2 2 2-2",
+          "vignette-width": "M2 12a10 6 0 1 0 0-.01M3 3h18M3 1v4M21 1v4",
+          "vignette-height": "M12 2a6 10 0 1 0 .01 0M3 3v18M1 3h4M1 21h4",
+          "vignette-feather": "M12 2a10 10 0 1 0 .01 0M12 6a6 6 0 1 0 .01 0M12 10a2 2 0 1 0 .01 0",
+          "grain-amount": "M4 4h.01M11 3h.01M19 5h.01M7 10h.01M16 11h.01M3 17h.01M11 20h.01M20 18h.01",
+          "grain-size": "M5 5h.01M5 19h.01M19 5h.01M19 19h.01M7 12h10M9 10l-2 2 2 2M15 10l2 2-2 2",
+          "grain-seed": "M5 3h14l2 2v14l-2 2H5l-2-2V5ZM7 7h.01M12 12h.01M17 17h.01M17 7h.01M7 17h.01",
+          "denoise-luminance": "M3 5h.01M7 4h.01M5 9h.01M3 15h.01M7 19h.01M12 3v18M12 6h8M12 12h8M12 18h8",
+          "denoise-chroma": "M3 4h.01M7 7h.01M3 12h.01M7 17h.01M3 20h.01M13 5l8 7-8 7ZM13 12h8",
+          "aberration-red": "M9 4a8 8 0 1 0 .01 0M15 4a8 8 0 1 0 .01 0M2 2h7M6 1l3 1-3 2",
+          "aberration-blue": "M9 4a8 8 0 1 0 .01 0M15 4a8 8 0 1 0 .01 0M15 22h7M18 20l-3 2 3 1",
+          "aberration-x": "M4 12a8 8 0 1 0 0-.01M1 12h22M5 10l-2 2 2 2M19 10l2 2-2 2M12 4v3M12 17v3",
+          "aberration-y": "M4 12a8 8 0 1 0 0-.01M12 1v22M10 5l2-2 2 2M10 19l2 2 2-2M4 12h3M17 12h3",
+          "rotation": "M6 7l6-4 6 4v10l-6 4-6-4ZM2 12a10 10 0 0 1 3-7M2 5h3v3M22 12a10 10 0 0 1-3 7M22 19h-3v-3",
+          "perspective-x": "M5 5l14-3v20L5 19ZM12 4v16",
+          "perspective-y": "M5 5h14l3 14H2ZM4 12h16",
+          "skew-x": "M8 4h14l-6 16H2ZM4 2h16M17 1l3 1-3 2",
+          "skew-y": "M4 8l16-6v14L4 22ZM2 4v16M1 17l1 3 2-3",
+          "scale-x": "M6 4h12v16H6ZM1 12h22M3 10l-2 2 2 2M21 10l2 2-2 2",
+          "scale-y": "M4 6h16v12H4ZM12 1v22M10 3l2-2 2 2M10 21l2 2 2-2",
+          "translate-x": "M3 6h7v12H3ZM14 6h7v12h-7M8 2h11M16 1l3 1-3 2",
+          "translate-y": "M6 3h12v7H6ZM6 14h12v7H6M2 8v11M1 16l1 3 2-3",
+          "crop-width": "M4 2v17h18M2 5h17v17M4 13h15M7 11l-3 2 3 2M16 11l3 2-3 2",
+          "crop-height": "M4 2v17h18M2 5h17v17M11 5v14M9 8l2-3 2 3M9 16l2 3 2-3",
+          "crop-left": "M4 2v17h18M2 5h17v17M1 11h11M9 9l3 2-3 2",
+          "crop-top": "M4 2v17h18M2 5h17v17M11 1v11M9 9l2 3 2-3",
+          "brush-size": "M12 3a9 9 0 1 0 .01 0M5 17L19 7M6 13l-1 4 4-.5M15 7l4 0-1 4",
+          "brush-feather": "M3 21l14-14M7 17C2 9 10 1 21 3c0 11-6 18-14 14ZM9 15l6-1M12 11l6-1M14 7l5-1",
+          "brush-flow": "M5 2c0 5-3 5-3 8a3 3 0 0 0 6 0c0-3-3-3-3-8ZM15 4v16M11 16l4 4 4-4M20 4v8",
+          "layer-opacity": "M3 3h12v12H3ZM9 9h12v12H9ZM9 12h6M9 15h6",
+          "position-x": "M3 4v17h18M7 12h13M17 9l3 3-3 3",
+          "position-y": "M3 4v17h18M12 18V5M9 8l3-3 3 3",
+          "layer-width": "M2 4h20v13H2ZM2 21h20M5 19l-3 2 3 2M19 19l3 2-3 2",
+          "layer-height": "M4 2h13v20H4ZM21 2v20M19 5l2-3 2 3M19 19l2 3-2 3",
+          "warp-strength": "M2 6c5 0 5 12 10 12s5-12 10-12M2 12h20M19 9l3 3-3 3",
+          "repair-search": "M3 3h7M3 3v7M21 3h-7M21 3v7M3 21h7M3 21v-7M21 21h-7M21 21v-7M9 5a4 4 0 1 0 .01 0M12 12l4 4",
+          "repair-iterations": "M4 8a9 9 0 0 1 15-3M19 1v4h-4M20 16a9 9 0 0 1-15 3M5 23v-4h4M12 8v8M9 12h6",
+          "repair-texture": "M3 7h18M3 12h18M3 17h18M7 4v16M12 4v16M17 4v16",
+          "repair-patch": "M3 3h18v18H3ZM8 8h8v8H8ZM3 8h3M18 8h3M3 16h3M18 16h3",
+          "repair-donor-x": "M3 7h6v10H3ZM15 7h6v10h-6M7 3h11M15 1l3 2-3 2",
+          "repair-donor-y": "M7 3h10v6H7ZM7 15h10v6H7M3 7v11M1 15l2 3 2-3",
+          "repair-opacity": "M4 6l3-3h10l3 3v12l-3 3H7l-3-3ZM8 12h8M12 8v8",
+          "mask-hue": "M12 3a9 9 0 1 0 .01 0M12 3v9l7 5M12 12L5 17",
+          "mask-hue-width": "M12 3a9 9 0 1 0 .01 0M12 12l-6-6M12 12l6-6M8 4l4 2 4-2",
+          "mask-feather": "M3 3h18v18H3ZM6 6h12v12H6ZM9 9h6v6H9",
+          "mask-radius-x": "M2 12a10 6 0 1 0 0-.01M12 12h9M18 10l3 2-3 2",
+          "mask-radius-y": "M12 2a6 10 0 1 0 .01 0M12 12v9M10 18l2 3 2-3",
+          "mask-min": "M3 20V4M3 17h18M18 14l3 3-3 3M8 4v10M6 11l2 3 2-3",
+          "mask-max": "M21 20V4M3 7h18M6 4L3 7l3 3M16 20V10M14 13l2-3 2 3",
+          "mask-luma-min": "M4 4h16v16H4ZM4 14h16M8 17h.01M12 17h.01M16 17h.01M12 5v6M10 9l2 2 2-2",
+          "mask-luma-max": "M4 4h16v16H4ZM4 10h16M8 7h.01M12 7h.01M16 7h.01M12 13v6M10 15l2-2 2 2",
+          "gradient-start-x": "M4 4v16M4 12h16M17 9l3 3-3 3M8 4v4M12 4v4M16 4v4",
+          "gradient-start-y": "M4 4h16M12 4v16M9 17l3 3 3-3M4 8h4M4 12h4M4 16h4",
+          "gradient-end-x": "M20 4v16M4 12h16M7 9l-3 3 3 3M8 16v4M12 16v4M16 16v4",
+          "gradient-end-y": "M4 20h16M12 4v16M9 7l3-3 3 3M16 8h4M16 12h4M16 16h4",
+          "corner-0-x": "M4 4h16v16H4ZM1 4h9M7 1l3 3-3 3M4 10V4",
+          "corner-0-y": "M4 4h16v16H4ZM4 1v9M1 7l3 3 3-3M10 4H4",
+          "corner-1-x": "M4 4h16v16H4ZM14 4h9M17 1l-3 3 3 3M20 10V4",
+          "corner-1-y": "M4 4h16v16H4ZM20 1v9M17 7l3 3 3-3M14 4h6",
+          "corner-2-x": "M4 4h16v16H4ZM14 20h9M17 17l-3 3 3 3M20 14v6",
+          "corner-2-y": "M4 4h16v16H4ZM20 14v9M17 17l3-3 3 3M14 20h6",
+          "corner-3-x": "M4 4h16v16H4ZM1 20h9M7 17l3 3-3 3M4 14v6",
+          "corner-3-y": "M4 4h16v16H4ZM4 14v9M1 17l3-3 3 3M10 20H4",
+          "repair-smoothing": "M3 6l3-2 3 2 3-2 3 2 3-2 3 2M3 12q4-4 9 0t9 0M3 19h18",
+          "repair-uniformity": "M3 4h7v6H3ZM14 14h7v6h-7M14 4h7M14 7h7M3 17h7M12 2v20",
+          "repair-shine": "M12 2v4M3 5l3 3M21 5l-3 3M5 13a7 7 0 0 1 14 0M4 17h16M7 21h10",
+          "repair-speckle": "M4 4h.01M19 5h.01M4 20h.01M19 20h.01M9 9h6v6H9ZM7 12h10M12 7v10",
+          "repair-lines": "M3 5q4-3 9 0t9 0M3 11q4-3 9 0t9 0M8 20l8-6M8 17v3h3",
+          "repair-chroma": "M8 4c-7 0-7 9 0 9 7 0 7-9 0-9ZM16 11c-7 0-7 9 0 9 7 0 7-9 0-9M4 4l16 16"
+        },
+        "pathGlyphs": {
+          "levels.inputBlack": "input-black",
+          "levels.inputWhite": "input-white",
+          "levels.gamma": "gamma",
+          "levels.outputBlack": "output-black",
+          "levels.outputWhite": "output-white",
+          "detail.texture": "photo-texture",
+          "detail.clarity": "clarity",
+          "grading.balance": "grading-balance",
+          "effects.monochrome": "monochrome",
+          "effects.fade": "fade",
+          "effects.vignette.amount": "vignette-amount",
+          "effects.vignette.centerX": "vignette-x",
+          "effects.vignette.centerY": "vignette-y",
+          "effects.vignette.radiusX": "vignette-width",
+          "effects.vignette.radiusY": "vignette-height",
+          "effects.vignette.feather": "vignette-feather",
+          "effects.grain.amount": "grain-amount",
+          "effects.grain.size": "grain-size",
+          "effects.grain.seed": "grain-seed",
+          "optics.denoiseLuminance": "denoise-luminance",
+          "optics.denoiseChroma": "denoise-chroma",
+          "optics.aberrationRed": "aberration-red",
+          "optics.aberrationBlue": "aberration-blue",
+          "optics.aberrationCenterX": "aberration-x",
+          "optics.aberrationCenterY": "aberration-y",
+          "transform.rotationDegrees": "rotation",
+          "transform.perspectiveX": "perspective-x",
+          "transform.perspectiveY": "perspective-y",
+          "transform.skewX": "skew-x",
+          "transform.skewY": "skew-y",
+          "transform.scaleX": "scale-x",
+          "transform.scaleY": "scale-y",
+          "transform.translateX": "translate-x",
+          "transform.translateY": "translate-y",
+          "diameter": "brush-size",
+          "radius": "brush-size",
+          "feather": "brush-feather",
+          "flow": "brush-flow",
+          "layer-opacity": "layer-opacity",
+          "opacity": "layer-opacity",
+          "strength": "warp-strength",
+          "x": "position-x",
+          "y": "position-y",
+          "width": "layer-width",
+          "height": "layer-height",
+          "rotation": "rotation",
+          "searchRadius": "repair-search",
+          "iterations": "repair-iterations",
+          "texture": "repair-texture",
+          "patchRadius": "repair-patch",
+          "donor-x": "repair-donor-x",
+          "donor-y": "repair-donor-y",
+          "hue": "mask-hue",
+          "hueWidth": "mask-hue-width",
+          "centerX": "position-x",
+          "centerY": "position-y",
+          "radiusX": "mask-radius-x",
+          "radiusY": "mask-radius-y",
+          "saturationMin": "mask-min",
+          "saturationMax": "mask-max",
+          "luminanceMin": "mask-luma-min",
+          "luminanceMax": "mask-luma-max",
+          "startx": "gradient-start-x",
+          "starty": "gradient-start-y",
+          "endx": "gradient-end-x",
+          "endy": "gradient-end-y",
+          "rotationDegrees": "rotation",
+          "smoothing": "repair-smoothing",
+          "uniformity": "repair-uniformity",
+          "shine": "repair-shine",
+          "speckle": "repair-speckle",
+          "fineLines": "repair-lines",
+          "chromaSpots": "repair-chroma"
+        },
+        "compactLabels": {
+          "adjustments.whites": "白场",
+          "adjustments.blacks": "黑场",
+          "adjustments.vibrance": "自然饱和",
+          "detail.texture": "纹理",
+          "detail.clarity": "清晰度",
+          "levels.inputBlack": "输入黑场",
+          "levels.inputWhite": "输入白场",
+          "levels.outputBlack": "输出黑场",
+          "levels.outputWhite": "输出白场",
+          "levels.gamma": "伽马",
+          "grading.balance": "平衡",
+          "effects.monochrome": "黑白",
+          "effects.fade": "褪色",
+          "effects.vignette.amount": "强度",
+          "effects.vignette.centerX": "横向位置",
+          "effects.vignette.centerY": "纵向位置",
+          "effects.vignette.radiusX": "横向半径",
+          "effects.vignette.radiusY": "纵向半径",
+          "effects.vignette.feather": "过渡",
+          "effects.grain.amount": "强度",
+          "effects.grain.size": "间距",
+          "effects.grain.seed": "种子",
+          "optics.denoiseLuminance": "明度降噪",
+          "optics.denoiseChroma": "色彩降噪",
+          "optics.aberrationRed": "红色色散",
+          "optics.aberrationBlue": "蓝色色散",
+          "optics.aberrationCenterX": "横向中心",
+          "optics.aberrationCenterY": "纵向中心",
+          "transform.rotationDegrees": "旋转",
+          "transform.perspectiveX": "水平透视",
+          "transform.perspectiveY": "垂直透视",
+          "transform.skewX": "水平倾斜",
+          "transform.skewY": "垂直倾斜",
+          "transform.scaleX": "横向缩放",
+          "transform.scaleY": "纵向缩放",
+          "transform.translateX": "水平位移",
+          "transform.translateY": "垂直位移"
+        }
+      },
+      "functions": "export type PortraitParameterName = keyof typeof portraitParameterDrawings;\nexport type ParameterGlyphName = keyof typeof parameterPaths | `portrait:${PortraitParameterName}`;\n\nexport function parameterShortLabel(id: string, fallback: string): string {\n  if (compactLabels[id]) return editorControlText(compactLabels[id]);\n  if (/^hsl\\./.test(id)) {\n    const labels: Record<string, EditorControlCopy> = {\n      hue: '色相',\n      saturation: '饱和度',\n      lightness: '明度',\n    };\n    const key = labels[id.split('.').at(-1)!];\n    return key ? editorControlText(key) : fallback;\n  }\n  if (/^grading\\./.test(id)) {\n    const labels: Record<string, EditorControlCopy> = {\n      hue: '色相',\n      saturation: '强度',\n      luminance: '明暗',\n    };\n    const key = labels[id.split('.').at(-1)!];\n    return key ? editorControlText(key) : fallback;\n  }\n  return fallback;\n}\nexport function portraitParameterGlyph(id: string): ParameterGlyphName {\n  return Object.hasOwn(portraitParameterDrawings, id)\n    ? `portrait:${id as PortraitParameterName}`\n    : 'parameter';\n}\n/** Registry paths, never translated labels, own a control's icon identity. */\nexport function parameterGlyphFor(id: string): ParameterGlyphName {\n  const direct = pathGlyphs[id];\n  if (direct) return direct;\n  if (/^projective-[0-3]-[xy]$/.test(id))\n    return id.replace('projective-', 'corner-') as ParameterGlyphName;\n  const adjustment = id.startsWith('adjustments.') ? id.slice(12) : id;\n  if (Object.hasOwn(parameterPaths, adjustment)) return adjustment as keyof typeof parameterPaths;\n  if (/^hsl\\.[^.]+\\.(hue|saturation|lightness)$/.test(id))\n    return `hsl-${id.split('.').at(-1)}` as ParameterGlyphName;\n  if (/^grading\\.[^.]+\\.(hue|saturation|luminance)$/.test(id)) {\n    const kind = id.split('.').at(-1);\n    return kind === 'hue'\n      ? 'grading-hue'\n      : kind === 'saturation'\n        ? 'grading-strength'\n        : 'grading-luminance';\n  }\n  return 'parameter';\n}\n"
+    },
+    {
+      "status": "partial",
+      "path": "apps/web/src/workspace/panelGeometry.ts",
+      "recoveryKind": "exact replacement function; surrounding module not recovered",
+      "validation": "Historically included in 60 passing focused tests; restored source has not been compiled or retested.",
+      "content": "export function panelBounds(view: Viewport, dock: Dock = 'floating', id?: PanelId) {\n  const body = workspaceSize(view);\n  const attached = view.bucket === 'phone' && dock === 'bottom';\n  const maxWidth = Math.max(0, body.width - (attached ? 0 : PANEL_MARGIN * 2));\n  const maxHeight = Math.max(\n    0,\n    body.height - panelBottomOffset(view) - (attached ? PANEL_MARGIN : PANEL_MARGIN * 2),\n  );\n  // A normal inspector needs room below its header and context navigation. Old\n  // 112px preferences are migrated in place; docking, width and collapse remain.\n  const inspectorMinimum =\n    view.height <= 520\n      ? 216\n      : view.bucket === 'phone'\n        ? Math.min(\n            304,\n            Math.max(\n              224,\n              Math.floor(\n                canvasImageArea(view, {\n                  left: 0,\n                  right: 0,\n                  bottom: panelBottomOffset(view) + PANEL_MARGIN,\n                }).height - minimumImageArea(view).height,\n              ),\n            ),\n          )\n        : 320;\n  return {\n    width: body.width,\n    height: body.height,\n    minWidth: attached ? maxWidth : Math.min(view.bucket === 'phone' ? 224 : 240, maxWidth),\n    maxWidth,\n    minHeight: Math.min(\n      id === 'ai'\n        ? view.bucket === 'phone'\n          ? 224\n          : 260\n        : id === 'inspector'\n          ? inspectorMinimum\n          : view.height <= 520\n            ? 96\n            : 112,\n      maxHeight,\n    ),\n    maxHeight,\n  };\n}",
+      "missing": "Imports, other helpers and functions, and complete final module text."
+    },
+    {
+      "status": "partial",
+      "path": "apps/web/src/workspace/FloatingPanel.tsx",
+      "recoveryKind": "two exact source substitutions; not a full patch",
+      "validation": "Historical condensed phone Back regression passed; not retested after recovery.",
+      "substitutions": [
+        {
+          "before": "{onBack && !condensed && (",
+          "after": "{onBack && ("
+        },
+        {
+          "before": "'--panel-header-height': `${condensed ? 16 : panelHeaderHeight(viewport)}px`,",
+          "after": "'--panel-header-height': `${condensed && !onBack ? 16 : panelHeaderHeight(viewport)}px`,"
+        }
+      ],
+      "missing": "Complete final source; preserve all existing gesture, ownership and dismissal behavior."
+    },
+    {
+      "status": "partial",
+      "path": "apps/web/src/editor/MaskControls.tsx",
+      "recoveryKind": "exact additions at identified control object locations; not a full patch",
+      "validation": "Historical UI-only changes, no mask coordinate writes changed; not retested after recovery.",
+      "additions": [
+        {
+          "location": "controls.push({ id: key, ... })",
+          "source": "glyph: key === 'feather' ? 'mask-feather' : undefined,"
+        },
+        {
+          "location": "ParameterShelf label={t('选区画笔')}, diameter control",
+          "source": "kind: 'setting',"
+        },
+        {
+          "location": "ParameterShelf label={t('选区画笔')}, feather control",
+          "source": "kind: 'setting',"
+        },
+        {
+          "location": "ParameterShelf label={t('选区画笔')}, opacity control",
+          "source": "kind: 'setting',\nglyph: 'brush-flow',"
+        }
+      ],
+      "missing": "Complete module and exact full unified diff."
+    },
+    {
+      "status": "partial",
+      "path": "apps/web/src/editor/PrecisionRange.tsx",
+      "recoveryKind": "exact property fragments plus separately labelled behavioral record",
+      "validation": "Historical range gesture tests passed in the 60-test run. Complete final JSX is missing; no restore-time test.",
+      "exactFragments": [
+        {
+          "before": "neutral = 0",
+          "after": "neutral",
+          "location": "destructured neutral default removal"
+        },
+        {
+          "source": "adjusted?: boolean;",
+          "location": "props type"
+        }
+      ],
+      "behavioralRecordNotSource": [
+        "Track baseline uses neutral ?? 0.",
+        "Adjusted state uses explicit adjusted prop, otherwise compares only an explicit neutral to value.",
+        "Only an explicitly supplied neutral produces the neutral marker and applicable reset behavior.",
+        "Original pointer, keyboard, touch, number input and commit gesture code was preserved."
+      ],
+      "missing": "Exact complete final component, especially JSX and final reset expression. Behavioral notes must not be treated as recovered source."
+    },
+    {
+      "status": "partial",
+      "path": "apps/web/src/editor/GeometryControls.tsx",
+      "recoveryKind": "exact field snippets and neutral behavior; not a full patch",
+      "validation": "Historical crop/undo visible check passed with root's separate useEditor fix. No recovery-time validation.",
+      "exactFragments": [
+        "glyph: ({ width: 'crop-width', height: 'crop-height', x: 'crop-left', y: 'crop-top' } as const)[key],",
+        "neutral: key === 'width' ? cropSpace.dimensions.width : key === 'height' ? cropSpace.dimensions.height : 0,",
+        "shortLabel: parameterShortLabel(tool.path, tool.label),"
+      ],
+      "missing": "Full module, imports and full final cropControls formatting; cropRatio controller belongs to root and is excluded."
+    },
+    {
+      "status": "partial",
+      "path": "apps/web/src/editor/LayerControls.tsx",
+      "recoveryKind": "exact removed text/conditional and separate behavior record",
+      "validation": "Historical real paint stroke 0→1 and Undo 1→0 observed; not retested after recovery.",
+      "substitutions": [
+        {
+          "before": "{!layer ? (\n  <p className=\"control-note\">\n    {t('新建一个图层后，即可在照片上涂画。颜色、混合、范围和笔画分别保留。')}\n  </p>\n) : (",
+          "after": "{layer && (",
+          "note": "Whitespace may differ from final Prettier; exact source text and JSX branch semantics retained."
+        },
+        {
+          "before": "{t('；重置参数不改已绘制的笔画。')}",
+          "after": ""
+        }
+      ],
+      "behavioralRecordNotSource": [
+        "Paint diameter, feather and flow are setting controls.",
+        "Layer opacity neutral is 100.",
+        "Liquify radius, strength and feather are setting controls; strength retains neutral 0 for track positioning.",
+        "Image-layer rotation uses the rotation glyph with neutral 0; opacity has neutral 1.",
+        "Unknown position and dimension neutrals are not invented."
+      ],
+      "missing": "Complete final layer module; behavior notes are not executable recovery code."
+    },
+    {
+      "status": "partial",
+      "path": "apps/web/src/editor/RepairControls.tsx",
+      "recoveryKind": "exact neutral/default expressions only",
+      "validation": "Historical real region creation showed default values without false adjusted state; no repair stroke was performed.",
+      "exactFragments": [
+        "const healingDefaults = createHealingOperationV4();",
+        "const retouchDefaults = createRetouchRegionV4();",
+        "healingDefaults.opacity * 100",
+        "healingDefaults.searchRadius * short",
+        "healingDefaults.iterations",
+        "healingDefaults.texture * 100",
+        "retouchDefaults[id]",
+        "retouchDefaults.chromaSpots ?? 0",
+        "retouchDefaults.radius * short"
+      ],
+      "behavioralRecordNotSource": [
+        "Healing creation helpers imported from @ai-xiutu/editor.",
+        "Opacity glyph repair-opacity; patchRadius neutral 4.",
+        "Processing-limit explanation moved into closed MotionDetails with summary 处理范围."
+      ],
+      "missing": "Full imports and final JSX/tail; expressions require their original control context."
+    },
+    {
+      "status": "partial",
+      "path": "apps/web/src/editor/PortraitControls.tsx",
+      "recoveryKind": "exact short fragments; full surrounding implementation missing",
+      "validation": "59-glyph atlas was visually reviewed before loss. Automatic inference was not verified: root observed browser WebGL 2 unavailable. No injected landmarks.",
+      "exactFragments": [
+        "glyph: portraitParameterGlyph(tool.id)",
+        "PORTRAIT_TOOLS.filter((tool) => tool.group === category)",
+        "editorControlText('请先识别人物')",
+        "editorControlText('识别后可用的人物参数')"
+      ],
+      "behavioralRecordNotSource": [
+        "No-target/no-progress state lists category tools as native disabled buttons with distinct ParameterGlyph and labels.",
+        "Actual error remains visible and manual makeup, clone and manual shaping actions stay reachable.",
+        "Hair/background selection requires actual analysis state.",
+        "Cutout setting control uses adjusted=false.",
+        "No fake inference, fabricated targets or altered algorithms."
+      ],
+      "missing": "Complete module and manualActions definition. Do not recreate from the behavioral record without original baseline review."
+    },
+    {
+      "status": "partial",
+      "path": "apps/web/test/floating-panel-gesture.test.ts",
+      "recoveryKind": "exact added regression test; remainder of test file not recovered",
+      "validation": "This regression passed in the historical two-suite 10/10 run; not retested after recovery.",
+      "content": "test('a condensed phone assistant keeps a full-height Back target without closing its draft', () => {\n  const view: Viewport = { width: 390, height: 844, bucket: 'phone' };\n  let backs = 0;\n  const ui = capturePanel(view, defaultPanel('ai', view), {\n    identity: 'ai',\n    panelKey: 'ai',\n    onBack: () => backs++,\n    backLabel: 'Back to editor',\n    onClose: () => assert.fail('Back must not close the assistant'),\n  });\n  ui.control((props) => props.label === 'Back to editor').onClick();\n  assert.equal(backs, 1);\n  const surface = ui.control((props) => props['data-panel-id'] === 'ai');\n  assert.equal(surface['data-condensed-header'], true);\n  assert.equal(surface.style['--panel-header-height'], '44px');\n  assert.equal(ui.writes.length, 0);\n});",
+      "missing": "Rest of test module and imports."
+    },
+    {
+      "status": "partial",
+      "path": "apps/web/test/i18n.test.ts",
+      "recoveryKind": "exact one-line substitution; full module missing",
+      "validation": "Original assertion update was applied; overall historical i18n suite was 15/16 pending other agents' translation catalog updates. Not retested.",
+      "substitutions": [
+        {
+          "before": "assert.ok(html.includes(`<span>${expected}</span>`));",
+          "after": "assert.ok(html.includes(`<span class=\"parameter-choice-label\">${expected}</span>`));"
+        }
+      ],
+      "missing": "Rest of module; other-agent catalog changes not included."
+    }
+  ],
+  "missingFiles": [
+    {
+      "path": "apps/web/src/editor/ToolInspector.tsx",
+      "status": "missing",
+      "knownChange": "Legacy basic/advanced slider lists migrated to ParameterShelf preserving callbacks and recipe writes; full new functions are not recoverable."
+    },
+    {
+      "path": "apps/web/src/editor/ColorControls.tsx",
+      "status": "missing",
+      "knownChange": "Single primary parameter shelf for seven light and five level controls; short labels; histogram ordered after controls. No full source retained."
+    },
+    {
+      "path": "apps/web/src/editor/AdvancedInspector.tsx",
+      "status": "missing",
+      "knownChange": "Scoped editor-controls-r5.css import, concise heading, conditional scope selector; no full source retained."
+    },
+    {
+      "path": "apps/web/src/components/StudioGlyph.tsx",
+      "status": "missing",
+      "knownChange": "New semantic portrait/category/tool glyphs. Exact path strings not retained; do not invent replacements in this recovery package."
+    },
+    {
+      "path": "apps/web/src/workspace/ToolDock.tsx",
+      "status": "missing",
+      "knownChange": "Scoped tool-dock-r5 class with keyboard behavior preserved; final module unavailable."
+    },
+    {
+      "path": "apps/web/src/workspace/PanelNavigation.tsx",
+      "status": "missing",
+      "knownChange": "Scoped context-navigation-r5 class, roving tabIndex, stable context glyph mapping; final module unavailable."
+    },
+    {
+      "path": "apps/web/test/parameter-shelf.test.ts",
+      "status": "missing",
+      "knownChange": "Removed select-layout expectation; added explicit nonzero neutral and settings regression. Exact full test unavailable."
+    },
+    {
+      "path": "apps/web/test/workspace-layout.test.ts",
+      "status": "missing",
+      "knownChange": "Old 112px inspector migration regression across desktop, tablet, portrait, landscape and constrained keyboard viewport. Exact full test unavailable."
+    },
+    {
+      "path": "docs/design/r5-reference-uiverse-20261111.md",
+      "status": "missing",
+      "knownChange": "Accurate recovery summary of original 35 records with lost screenshots; not a full-community-site coverage claim. Exact final text unavailable."
+    },
+    {
+      "path": "docs/design/r5-editor-implementation-20261111.md",
+      "status": "missing",
+      "knownChange": "Historical implementation and browser acceptance notes. Exact final document unavailable."
+    }
+  ],
+  "scopeExclusions": [
+    "useWorkspaceLayout was not modified; its existing migration/adapt/update paths already bound panel IDs.",
+    "useEditor/native rendering/scene-linear photo pipeline are excluded; root owns cropRatio and hasUncommittedPreview changes.",
+    "Other agents' product changes, App, global styles, WorkspaceViews and shared QA ownership are excluded."
+  ],
+  "historicalEvidence": {
+    "status": "Paths and observations only; file bytes are not in this bundle and survival has not been verified.",
+    "paths": [
+      "/workspace/shared/r5-editor-after/desktop-light.jpg",
+      "/workspace/shared/r5-editor-after/desktop-history.jpg",
+      "/workspace/shared/r5-editor-after/desktop-paint-default.jpg",
+      "/workspace/shared/r5-editor-after/desktop-worker-interruption.jpg",
+      "/workspace/shared/r5-editor-after/worker-interruption-recipe.json",
+      "/workspace/shared/r5-editor-after/phone390-light.jpg",
+      "artifacts/r5/editor/portrait-glyph-atlas.svg",
+      "artifacts/r5/editor/portrait-glyph-atlas.png"
+    ],
+    "observed": [
+      "Desktop 1363×936: real bundled portrait file import; primary exposure 0→1.31 EV; Alt+Right 1.31→1.311; contrast selection; Back preserved image.",
+      "HSL orange entered 12.5°; history showed specific numeric changes.",
+      "Crop 1:1 produced 1024×1024; undo restored 1536×1024 and free-ratio selection, using root's separate engine-boundary fix.",
+      "Repair region created with real defaults; no repair painting performed.",
+      "Paint layer created with correct default states; real stroke count 0→1, Undo 1→0.",
+      "Clicking liquify after the preceding chain showed a real image-processing interrupted error; recipe downloaded through the actual export UI.",
+      "Root identified a possible Fast Refresh/Worker-transfer explanation; stable-version reproduction remained incomplete and must be treated as unresolved.",
+      "390×844 iframe: real upload and adjust panel; measured panel 340px, full 364×243 image above it; controls and return action visible.",
+      "320×640 iframe selection observed in AX with 252px panel, but no settled visual screenshot or full pass before environment loss.",
+      "59-glyph atlas rendered from actual components and visually reviewed; this is not proof of successful portrait model inference."
+    ],
+    "residuals": [
+      "Stable-version Worker interruption reproduction remains required.",
+      "Automatic portrait model inference failed with unavailable WebGL 2 in the browser; no successful inference acceptance.",
+      "Remaining responsive sizes and all tool workflows are not fully verified.",
+      "The user-required five full regression rounds have not been completed.",
+      "Historical browser evidence must not be counted as restore-time validation."
+    ]
+  },
+  "recoveryValidation": {
+    "serialization": "JSON serialization and parse only.",
+    "compiled": false,
+    "unitTestsRerun": false,
+    "browserRetested": false,
+    "automaticApplicationAllowed": false,
+    "completeFileCount": 6,
+    "partialFileCount": 11,
+    "missingFileCount": 10
+  }
+}

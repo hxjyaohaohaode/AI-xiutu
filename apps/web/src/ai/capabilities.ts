@@ -80,6 +80,27 @@ export function defaultImageOptions(model: AIModel | undefined): ImageOptions {
     result.outputCompression = Number(caps.outputCompression.default ?? 100);
   return result;
 }
+/** Reconcile refreshed capabilities without dropping choices that are still valid. */
+export function reconcileImageOptions(
+  model: AIModel | undefined,
+  selected: ImageOptions,
+): ImageOptions {
+  const caps = model?.parameterCapabilities;
+  if (!caps) return {};
+  const requested = requestImageOptions(model, selected) ?? {};
+  const retained = Object.fromEntries(Object.entries(requested).filter(([, value]) => value !== undefined));
+  let next: ImageOptions = { ...defaultImageOptions(model), ...retained };
+  if (caps.n.supported)
+    next.n = Math.max(caps.n.min ?? 1, Math.min(caps.n.max ?? 1, Math.round(next.n ?? 1)));
+  if (caps.outputCompression.supported && next.outputCompression !== undefined)
+    next.outputCompression = Math.max(
+      caps.outputCompression.min ?? 0,
+      Math.min(caps.outputCompression.max ?? 100, Math.round(next.outputCompression)),
+    );
+  if (model && next.background === 'transparent' && next.outputFormat === 'jpeg')
+    next = changeImageOption(model, next, 'background', 'transparent') ?? defaultImageOptions(model);
+  return imageOptionsError(model, next) ? defaultImageOptions(model) : next;
+}
 export function requestImageOptions(
   model: AIModel | undefined,
   selected: ImageOptions,

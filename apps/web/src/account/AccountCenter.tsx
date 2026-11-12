@@ -12,7 +12,6 @@ import {
 import {
   ArrowClockwise,
   ArrowRight,
-  CaretDown,
   ChartBar,
   CheckCircle,
   Clock,
@@ -34,10 +33,8 @@ import {
 } from '@phosphor-icons/react';
 import { DialogMotionContext } from '../components/Ui';
 import { AccountPageFrame } from './AccountPageFrame';
-import { accountPageCopy } from './page-copy';
 import { api, ApiError, errorMessage } from '../lib/api';
 import type { PublicConfig, Session } from '../lib/types';
-import { MotionDetails, MotionDisclosure } from '../motion/Presence';
 import { AccountDocumentDrafts } from './AccountDocumentDrafts';
 import { t, useLocale } from '../i18n';
 import {
@@ -116,18 +113,6 @@ function AccountFact({
   );
 }
 
-function AccountFaq({ question, children }: { question: string; children: ReactNode }) {
-  return (
-    <MotionDetails className="account-faq">
-      <summary>
-        <span>{question}</span>
-        <CaretDown size={16} aria-hidden />
-      </summary>
-      <p>{children}</p>
-    </MotionDetails>
-  );
-}
-
 export function AccountCenter({
   session,
   config,
@@ -150,7 +135,6 @@ export function AccountCenter({
   onSessionExpired,
 }: AccountCenterProps) {
   const locale = useLocale();
-  const c = accountPageCopy(locale);
   const id = useId();
   const user = session.user;
   const space = accountSpace(session, spaceId);
@@ -158,7 +142,6 @@ export function AccountCenter({
   const spaceKey = space?.id;
   const [tab, setTab] = useState<AccountTab>(initialTab);
   const [direction, setDirection] = useState(1);
-  const [deletionOpen, setDeletionOpen] = useState(false);
   const [retry, setRetry] = useState(0);
   const [entitlements, setEntitlements] = useState<EntitlementState>({
     key: null,
@@ -301,7 +284,6 @@ export function AccountCenter({
   return (
     <AccountPageFrame
       title={t('账号与使用')}
-      description={c.account}
       config={config}
       onBack={onClose}
       onHome={onHome}
@@ -413,7 +395,6 @@ export function AccountCenter({
               <>
                 <header className="account-panel-heading">
                   <h3>{t('你的账号')}</h3>
-                  <p>{t('在自己的空间里，继续创作。')}</p>
                 </header>
                 <dl className="account-facts">
                   <AccountFact label={t('手机号')}>{t(accountPhone(user.phoneMasked))}</AccountFact>
@@ -444,18 +425,6 @@ export function AccountCenter({
                     {t('{count} 个团队空间', { count: teamCount })}
                   </AccountFact>
                 </dl>
-                <div className="account-space-note">
-                  {space?.kind === 'team' ? (
-                    <UsersThree size={18} aria-hidden />
-                  ) : (
-                    <LockKey size={18} aria-hidden />
-                  )}
-                  <p>
-                    {space?.kind === 'team'
-                      ? t('作品与额度归当前团队空间。')
-                      : t('个人与团队分别管理作品和额度。')}
-                  </p>
-                </div>
                 <div className="account-services">
                   <h4>{t('服务状态')}</h4>
                   <dl className="account-service-list">
@@ -541,7 +510,6 @@ export function AccountCenter({
                   <div>
                     <h4>{t('绑定手机号')}</h4>
                     <p className="account-phone">{t(accountPhone(user.phoneMasked))}</p>
-                    <p className="account-helper">{t('用于登录和身份验证。')}</p>
                   </div>
                 </div>
                 <div className="account-security-row account-reset-row">
@@ -566,9 +534,6 @@ export function AccountCenter({
                     <p>{t('短信暂不可用，暂时无法重置密码。')}</p>
                   </div>
                 )}
-                <AccountFaq question={t('想再次使用原来的账号？')}>
-                  {t('使用原手机号登录即可。忘记密码时可通过短信重置，无需重新注册。')}
-                </AccountFaq>
               </>
             )}
 
@@ -630,7 +595,6 @@ export function AccountCenter({
                         <strong data-testid="account-available-units">
                           {formatAccountUnits(quota.data.available)}
                         </strong>
-                        <p>{t('用于云端 AI 任务。')}</p>
                       </div>
                       <dl className="account-quota-breakdown">
                         <div>
@@ -675,17 +639,8 @@ export function AccountCenter({
                       <h4>{t('购买与订阅')}</h4>
                       <span>{t('尚未开放')}</span>
                     </div>
-                    <p>{t('目前无法购买或开通订阅，已有额度可照常使用。')} </p>
                   </div>
                 </div>
-                <AccountFaq question={t('服务点等于付款金额吗？')}>
-                  {t('服务点用于计量云端任务。每笔消耗、预占与有效期都可在账本中查看。')}
-                </AccountFaq>
-                <AccountFaq question={t('想停止使用云端服务？')}>
-                  {t(
-                    '不再发起新任务即可继续本地编辑。已提交的任务需查看执行状态；退出登录不会取消任务或释放预占额度。当前未开放订阅及自动续费。',
-                  )}
-                </AccountFaq>
               </>
             )}
 
@@ -693,7 +648,6 @@ export function AccountCenter({
               <>
                 <header className="account-panel-heading">
                   <h3>{t('带走你的作品')}</h3>
-                  <p>{t('导出照片，检查未保存的草稿。')}</p>
                 </header>
                 <div className="account-export-row">
                   <DownloadSimple size={23} aria-hidden />
@@ -769,30 +723,10 @@ export function AccountCenter({
                     <p>{t(logoutError)}</p>
                   </div>
                 )}
-                <div className="account-deletion">
-                  <button
-                    type="button"
-                    className="account-text-action account-deletion-trigger"
-                    aria-expanded={deletionOpen}
-                    aria-controls={`${id}-deletion-status`}
-                    disabled={loggingOut}
-                    onClick={() => setDeletionOpen((value) => !value)}
-                  >
-                    <Trash size={17} aria-hidden />
-                    <span>{t('注销账号')}</span>
-                    <CaretDown size={15} aria-hidden />
-                  </button>
-                  <MotionDisclosure
-                    open={deletionOpen}
-                    className="account-deletion-disclosure"
-                    id={`${id}-deletion-status`}
-                  >
-                    <div className="account-deletion-notice" data-testid="account-deletion-status">
-                      <h4>{t('暂不支持自助注销')}</h4>
-                      <p>{t('导出或退出登录不会删除账号，也不会释放手机号。')} </p>
-                      <p>{t('注销及注销后重新注册暂未开放。再次使用时，请用原手机号登录。')}</p>
-                    </div>
-                  </MotionDisclosure>
+                <div className="account-deletion account-deletion-notice" data-testid="account-deletion-status">
+                  <Trash size={17} aria-hidden />
+                  <h4>{t('注销账号')}</h4>
+                  <span>{t('暂不支持自助注销')}</span>
                 </div>
               </>
             )}

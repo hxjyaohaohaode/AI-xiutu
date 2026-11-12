@@ -187,6 +187,7 @@ export function CommandMenu({
                   aria-disabled={command.disabled || undefined}
                   aria-describedby={`${id}-${position}-description`}
                   data-command-index={position}
+                  data-action={command.id === 'draw' ? 'open-sketch' : undefined}
                   className="command-option"
                   onPointerMove={(event) => {
                     if (event.pointerType === 'touch' || command.disabled) return;

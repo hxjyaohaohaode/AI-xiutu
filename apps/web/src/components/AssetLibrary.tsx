@@ -18,7 +18,6 @@ import {
   GridFour,
   Swap,
   SlidersHorizontal,
-  Info,
   CaretDown,
 } from '@phosphor-icons/react';
 import { api, ApiError, errorMessage, formatDate, jsonRequest } from '../lib/api';
@@ -31,6 +30,7 @@ import { MediaSourceViewer } from '../media/MediaSourceViewer';
 import { useConfirmation } from './ConfirmationDialog';
 import { confirmStableScope } from '../lib/confirmation-scope';
 import { AnimationDialog, AssetRecognitionDialog, ProjectAssetTools } from './AssetTools';
+import { RestorationDialog } from '../restoration/RestorationDialog';
 import { StudioGlyph } from './StudioGlyph';
 import { MotionDetails, MotionDisclosure } from '../motion/Presence';
 import { AssetThumbnail } from '../resources/AssetThumbnail';
@@ -244,7 +244,6 @@ function MetadataDialog({
             <small>
               {t('按当前设备时区')}
               {Intl.DateTimeFormat().resolvedOptions().timeZone}{' '}
-              {t('解释，保存时包含时区。不从照片推测。')}
             </small>
           </label>
           <label>
@@ -261,7 +260,6 @@ function MetadataDialog({
             {t('来源：')}
             {t(SOURCE_LABELS[asset.source ?? 'unknown'])} {t('· 入库于')}{' '}
             {formatDate(asset.createdAt) || t('未记录')}
-            {t('。这些说明随项目权限可见，不会改写原图或自动公开。')}
           </p>
           <InlineError message={error} />
           {conflict ? (
@@ -361,8 +359,12 @@ export function AssetLibrary({
       setReplacementBusy(false);
     }
   }
-  const [tools, setTools] = useState<{ asset: Asset; kind: 'ocr' | 'animation' } | null>(null);
+  const [tools, setTools] = useState<{
+    asset: Asset;
+    kind: 'ocr' | 'animation' | 'restoration';
+  } | null>(null);
   const [projectTools, setProjectTools] = useState(false);
+  const [expandedAssetDetails, setExpandedAssetDetails] = useState<Set<string>>(() => new Set());
   const [density, setDensity] = useState<'comfortable' | 'compact'>('comfortable');
   const requestGeneration = useRef(0),
     moreLock = useRef(false);
@@ -379,6 +381,7 @@ export function AssetLibrary({
   useEffect(() => {
     setTools(null);
     setProjectTools(false);
+    setExpandedAssetDetails(new Set());
   }, [space?.id, project?.id]);
   useEffect(() => {
     const timer = setTimeout(() => setDebouncedQuery(query.trim()), 250);
@@ -488,7 +491,21 @@ export function AssetLibrary({
     <div className={`content-view studio-view asset-library library-density-${density}`}>
       <header className="view-heading" data-motion="view-header">
         <div>
-          <h1>{project?.title ?? space?.name ?? t('作品')}</h1>
+          <div className="library-title-line">
+            <h1>{project?.title ?? space?.name ?? t('作品')}</h1>
+            {(space || project) && (
+              <div className="library-result-count" aria-live="polite">
+                {loading ? (
+                  <span>{t('读取中')}</span>
+                ) : (
+                  <span>
+                    <strong>{assets.length}</strong> {t('张已载入')}
+                    {cursor ? t(' · 还有更多') : ''}
+                  </span>
+                )}
+              </div>
+            )}
+          </div>
           {project?.description && <p>{project.description}</p>}
           {externalProject && <span className="library-shared-label">{t('受邀共享项目')}</span>}
         </div>
@@ -496,24 +513,39 @@ export function AssetLibrary({
           {project && (
             <>
               {['owner', 'admin', 'editor'].includes(project.role) && (
-                <button className="text-button" onClick={() => setProjectTools(true)}>
+                <button
+                  className="text-button library-secondary-action"
+                  onClick={() => setProjectTools(true)}
+                  aria-label={t('拼图与 GIF')}
+                  title={t('拼图与 GIF')}
+                >
                   <StudioGlyph name="collage" size={18} />
-                  {t('拼图与 GIF')}
+                  <span>{t('拼图与 GIF')}</span>
                 </button>
               )}
-              <button className="text-button" onClick={onCopy}>
+              <button
+                className="text-button library-secondary-action"
+                onClick={onCopy}
+                aria-label={t('复制项目')}
+                title={t('复制项目')}
+              >
                 <Copy size={17} />
-                {t('复制项目')}
+                <span>{t('复制项目')}</span>
               </button>
               {['owner', 'admin'].includes(project.role) && (
-                <button className="text-button" onClick={onShare}>
+                <button
+                  className="text-button library-secondary-action"
+                  onClick={onShare}
+                  aria-label={t('共享')}
+                  title={t('共享')}
+                >
                   <ShareNetwork size={17} />
-                  {t('共享')}
+                  <span>{t('共享')}</span>
                 </button>
               )}
             </>
           )}
-          <button className="button button-primary" onClick={onImport}>
+          <button className="button button-primary library-import-action" onClick={onImport}>
             <Plus size={18} />
             {project && !['owner', 'admin', 'editor'].includes(project.role)
               ? t('打开本地照片')
@@ -583,14 +615,21 @@ export function AssetLibrary({
             <button
               type="button"
               className="library-filter-toggle"
+              aria-label={
+                source !== 'all' || period !== 'all'
+                  ? `${c.filters} · ${Number(source !== 'all') + Number(period !== 'all')} ${c.filterCount}`
+                  : c.filters
+              }
+              title={c.filters}
               aria-expanded={filtersOpen}
               aria-controls={filterId}
               onClick={() => setFiltersOpen((value) => !value)}
             >
               <SlidersHorizontal size={18} aria-hidden />
-              {c.filters}
+              <span className="library-filter-label">{c.filters}</span>
               {(source !== 'all' || period !== 'all') && (
                 <span
+                  className="library-filter-count"
                   aria-label={`${Number(source !== 'all') + Number(period !== 'all')} ${c.filterCount}`}
                 >
                   {Number(source !== 'all') + Number(period !== 'all')}
@@ -598,6 +637,42 @@ export function AssetLibrary({
               )}
               <CaretDown size={13} aria-hidden />
             </button>
+            <div className="library-status-actions">
+              {filtered && (
+                <button className="text-button library-reset-filters" onClick={resetFilters}>
+                  <X size={15} />
+                  {t('重置筛选')}
+                </button>
+              )}
+              <div className="library-density-choice" role="group" aria-label={t('素材显示密度')}>
+                <button
+                  aria-label={t('大图显示')}
+                  title={t('大图显示')}
+                  aria-pressed={density === 'comfortable'}
+                  onClick={() => setDensity('comfortable')}
+                >
+                  <SquaresFour size={19} />
+                </button>
+                <button
+                  aria-label={t('紧凑显示')}
+                  title={t('紧凑显示')}
+                  aria-pressed={density === 'compact'}
+                  onClick={() => setDensity('compact')}
+                >
+                  <GridFour size={19} />
+                </button>
+              </div>
+              <button
+                className="text-button library-refresh"
+                onClick={() => setRefresh((value) => value + 1)}
+                disabled={loading}
+                aria-label={t('刷新')}
+                title={t('刷新')}
+              >
+                <ArrowClockwise size={16} />
+                <span>{t('刷新')}</span>
+              </button>
+            </div>
             <MotionDisclosure
               id={filterId}
               open={filtersOpen}
@@ -646,52 +721,6 @@ export function AssetLibrary({
               </div>
             </MotionDisclosure>
           </div>
-          <div className="library-status">
-            <div className="library-result-count" aria-live="polite">
-              {loading ? (
-                <span>{t('读取中')}</span>
-              ) : (
-                <span>
-                  <strong>{assets.length}</strong> {t('张已载入')}
-                  {cursor ? t(' · 还有更多') : ''}
-                </span>
-              )}
-            </div>
-            <div className="library-status-actions">
-              {filtered && (
-                <button className="text-button" onClick={resetFilters}>
-                  <X size={15} />
-                  {t('重置筛选')}
-                </button>
-              )}
-              <div className="library-density-choice" role="group" aria-label={t('素材显示密度')}>
-                <button
-                  aria-label={t('大图显示')}
-                  title={t('大图显示')}
-                  aria-pressed={density === 'comfortable'}
-                  onClick={() => setDensity('comfortable')}
-                >
-                  <SquaresFour size={19} />
-                </button>
-                <button
-                  aria-label={t('紧凑显示')}
-                  title={t('紧凑显示')}
-                  aria-pressed={density === 'compact'}
-                  onClick={() => setDensity('compact')}
-                >
-                  <GridFour size={19} />
-                </button>
-              </div>
-              <button
-                className="text-button"
-                onClick={() => setRefresh((value) => value + 1)}
-                disabled={loading}
-              >
-                <ArrowClockwise size={16} />
-                {t('刷新')}
-              </button>
-            </div>
-          </div>
           <InlineError message={error} />
           {loading && !assets.length && (
             <FeatureSkeleton profile="gallery" label={t('读取当前授权范围')} compact />
@@ -738,10 +767,8 @@ export function AssetLibrary({
                   const versions = sameProject
                     ? artworks.filter((work) => work.assetId === asset.id)
                     : [];
-                  const editable =
-                    !!parent &&
-                    ['owner', 'admin', 'editor'].includes(parent.role) &&
-                    !!asset.annotationVersion;
+                  const canProcess = !!parent && ['owner', 'admin', 'editor'].includes(parent.role);
+                  const editable = canProcess && !!asset.annotationVersion;
                   const title = asset.annotations?.title || asset.name;
                   const open = () =>
                     sameProject ? onOpenAsset(asset) : parent && onSelectProject(parent);
@@ -749,6 +776,7 @@ export function AssetLibrary({
                     <article className="library-asset" key={asset.id}>
                       <button
                         className="library-cover"
+                        style={{ aspectRatio: `${asset.width} / ${asset.height}` }}
                         onClick={open}
                         disabled={!sameProject && !parent}
                         aria-label={
@@ -807,6 +835,16 @@ export function AssetLibrary({
                           {asset.height}
                         </p>
                         {!sameProject && <small>{parent?.title ?? t('当前授权项目')}</small>}
+                        {canProcess && asset.provenance?.animation !== true && (
+                          <button
+                            className="text-button library-restoration-action"
+                            type="button"
+                            onClick={() => setTools({ asset, kind: 'restoration' })}
+                          >
+                            <StudioGlyph name="repair" size={16} />
+                            {t('修复照片')}
+                          </button>
+                        )}
                         {!!versions.length && (
                           <div className="library-version-links">
                             <div className="library-version-heading">
@@ -822,7 +860,18 @@ export function AssetLibrary({
                             ))}
                           </div>
                         )}
-                        <MotionDetails className="library-asset-details">
+                        <MotionDetails
+                          className="library-asset-details"
+                          open={expandedAssetDetails.has(asset.id)}
+                          onOpenChange={(open) =>
+                            setExpandedAssetDetails((previous) => {
+                              const expanded = new Set(previous);
+                              if (open) expanded.add(asset.id);
+                              else expanded.delete(asset.id);
+                              return expanded;
+                            })
+                          }
+                        >
                           <summary>
                             {c.details}
                             <CaretDown size={14} aria-hidden />
@@ -890,13 +939,6 @@ export function AssetLibrary({
               </button>
             </div>
           )}
-          <MotionDetails className="library-source-help">
-            <summary>
-              <Info size={15} aria-hidden />
-              {c.sourceCovers}
-            </summary>
-            <p>{c.sourceHelp}</p>
-          </MotionDetails>
         </>
       )}
       {projectTools && project && ['owner', 'admin', 'editor'].includes(project.role) && (
@@ -906,6 +948,16 @@ export function AssetLibrary({
           assets={assets.filter((asset) => asset.projectId === project.id)}
           onClose={() => setProjectTools(false)}
           onCreated={() => setRefresh((value) => value + 1)}
+        />
+      )}
+      {tools?.kind === 'restoration' && (
+        <RestorationDialog
+          key={tools.asset.projectId + ':' + tools.asset.id}
+          asset={assets.find((item) => item.id === tools.asset.id) ?? tools.asset}
+          editable={toolsEditable}
+          onClose={() => setTools(null)}
+          onCreated={() => setRefresh((value) => value + 1)}
+          onOpen={tools.asset.projectId === project?.id ? onOpenAsset : undefined}
         />
       )}
       {tools?.kind === 'ocr' && (
@@ -963,6 +1015,8 @@ export function AssetLibrary({
           title={t('原件与母版')}
           subtitle={sourceDetails.name}
           onClose={() => setSourceDetails(null)}
+          className="media-source-dialog"
+          profile="media"
         >
           <MediaSourceViewer assetId={sourceDetails.id} />
         </Modal>

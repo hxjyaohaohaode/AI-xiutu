@@ -13,7 +13,7 @@ import {
   UploadSimple,
   ShieldCheckered,
   Eraser,
-} from '@phosphor-icons/react';
+} from '../components/ControlGlyph';
 import {
   BLEND_MODES_V3,
   MAX_V3_PAINT_LAYERS,

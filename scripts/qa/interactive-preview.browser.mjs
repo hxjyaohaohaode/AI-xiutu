@@ -6,7 +6,13 @@ import { fileURLToPath } from 'node:url';
 import { chromium } from 'playwright';
 import sharp from 'sharp';
 import { createServer } from 'vite';
-import { compileEditorCoordinateMap, renderEditorRecipe } from '@ai-xiutu/editor';
+import {
+  compileEditorCoordinateMap,
+  createRecipeV4,
+  HSL_BANDS,
+  renderEditorRecipe,
+  renderEditorRecipeTiled,
+} from '@ai-xiutu/editor';
 
 const root = fileURLToPath(new URL('../..', import.meta.url));
 const artifacts = resolve(
@@ -25,6 +31,36 @@ const report = {
   workerRecovery: { state: 'not-run', reason: 'The independent recovery check has not started.' },
 };
 let browser;
+
+function hslProbePositions(rgba, width, height, band) {
+  // A one-degree adjustment can affect only a small subset of real pixels.
+  // Select probes against the tiled reference before the measured gesture.
+  const stride = Math.ceil((width * height) / 32_768);
+  const count = Math.ceil((width * height) / stride);
+  const data = new Uint8ClampedArray(256 * Math.ceil(count / 256) * 4);
+  for (let i = 0; i < count; i++) {
+    const at = i * stride * 4;
+    data.set(rgba.subarray(at, at + 4), i * 4);
+  }
+  const recipe = createRecipeV4();
+  recipe.hsl[band].hue = 1;
+  const edited = renderEditorRecipeTiled({ width: 256, height: data.length / 1024, data }, recipe);
+  const changed = [];
+  for (let i = 0; i < count; i++) {
+    const at = i * 4;
+    if (!data.subarray(at, at + 3).some((value, channel) => value !== edited.data[at + channel]))
+      continue;
+    const pixel = i * stride;
+    changed.push([(Math.floor(pixel / width) + 0.5) / height, ((pixel % width) + 0.5) / width]);
+  }
+  assert.ok(changed.length, `the source contains pixels affected by a one-degree ${band} edit`);
+  const samples = Math.min(32, changed.length);
+  return Array.from(
+    { length: samples },
+    (_, i) => changed[Math.floor((i * changed.length) / samples)],
+  );
+}
+
 async function verifyLocalMaskAndLiquify(input) {
   const page = await browser.newPage({
     viewport: { width: 1440, height: 960 },
@@ -824,17 +860,22 @@ try {
   const buffer = await sharp(rgba, { raw: { width, height, channels: 4 } })
     .png()
     .toBuffer();
+  const selectedCase = process.env.PREVIEW_CASE;
+  const hslBand = HSL_BANDS.find((band) => band.id === (process.env.PREVIEW_HSL_BAND ?? 'red'));
+  assert.ok(hslBand, 'the requested HSL band exists');
   for (const [size, test] of [
     [{ width: 1440, height: 900, deviceScaleFactor: 2 }, '曝光'],
     [{ width: 1440, height: 900, deviceScaleFactor: 2 }, '曲线'],
     [{ width: 1440, height: 900, deviceScaleFactor: 2 }, '饱和度'],
+    [{ width: 1440, height: 900, deviceScaleFactor: 2 }, 'HSL'],
     [{ width: 390, height: 844, deviceScaleFactor: 2, hasTouch: true }, '曝光'],
   ]) {
     const { width: w, height: h, ...device } = size;
     if (
-      process.env.PREVIEW_CASE === 'mask' ||
-      (process.env.PREVIEW_CASE === 'saturation' && test !== '饱和度') ||
-      (process.env.PREVIEW_CASE === 'phone' && !device.hasTouch)
+      selectedCase === 'mask' ||
+      (selectedCase === 'saturation' && test !== '饱和度') ||
+      (selectedCase === 'hsl' && test !== 'HSL') ||
+      (selectedCase === 'phone' && !device.hasTouch)
     )
       continue;
     const page = await browser.newPage({
@@ -844,105 +885,114 @@ try {
       ...device,
     });
     // Record actual paints on the visible canvas. No readbacks or serialization in the hot path.
-    await page.addInitScript((large) => {
-      if (large) localStorage.setItem('editor:pixel-budget:v2', '16777216');
-      const paint = CanvasRenderingContext2D.prototype.putImageData;
-      const observed = new WeakSet();
-      const post = Worker.prototype.postMessage;
-      window.previewTrace = {
-        paints: [],
-        worker: [],
-        inputs: [],
-        valueChanges: [],
-        armed: false,
-        pointerId: null,
-        pointerType: null,
-        start: null,
-        end: null,
-      };
-      Worker.prototype.postMessage = function (message, ...args) {
-        if (message?.type === 'interactive-preview') {
-          const trace = window.previewTrace;
-          trace.worker.push({
-            id: message.id,
-            sent: performance.now(),
-            saturation: message.recipe?.adjustments?.saturation,
-          });
-          if (!observed.has(this)) {
-            observed.add(this);
-            this.addEventListener('message', ({ data }) => {
-              const job = trace.worker.find(({ id }) => id === data?.id);
-              if (job) job.received = performance.now();
+    await page.addInitScript(
+      ({ large, band, probes }) => {
+        if (large) localStorage.setItem('editor:pixel-budget:v2', '16777216');
+        const paint = CanvasRenderingContext2D.prototype.putImageData;
+        const observed = new WeakSet();
+        const post = Worker.prototype.postMessage;
+        const positions = Array.from({ length: 81 }, (_, i) => [
+          (Math.floor(i / 9) + 0.5) / 9,
+          ((i % 9) + 0.5) / 9,
+        ]).concat(probes);
+        window.previewTrace = {
+          paints: [],
+          worker: [],
+          inputs: [],
+          valueChanges: [],
+          armed: false,
+          pointerId: null,
+          pointerType: null,
+          start: null,
+          end: null,
+        };
+        Worker.prototype.postMessage = function (message, ...args) {
+          if (message?.type === 'interactive-preview') {
+            const trace = window.previewTrace;
+            trace.worker.push({
+              id: message.id,
+              sent: performance.now(),
+              saturation: message.recipe?.adjustments?.saturation,
+              hue: message.recipe?.hsl?.[band]?.hue,
             });
+            if (!observed.has(this)) {
+              observed.add(this);
+              this.addEventListener('message', ({ data }) => {
+                const job = trace.worker.find(({ id }) => id === data?.id);
+                if (job) job.received = performance.now();
+              });
+            }
           }
-        }
-        return post.call(this, message, ...args);
-      };
-      CanvasRenderingContext2D.prototype.putImageData = function (image, ...args) {
-        paint.call(this, image, ...args);
-        if (this.canvas.getAttribute('aria-label') !== '照片编辑预览') return;
-        const positions = Array.from({ length: 25 }, (_, i) => [
-          (Math.floor(i / 5) + 0.5) / 5,
-          ((i % 5) + 0.5) / 5,
-        ]);
-        const sample = positions.flatMap(([y, x]) => {
-          const at = (Math.floor(image.height * y) * image.width + Math.floor(image.width * x)) * 4;
-          return Array.from(image.data.subarray(at, at + 4));
-        });
-        window.previewTrace.paints.push({
-          t: performance.now(),
-          width: image.width,
-          height: image.height,
-          sample,
-        });
-      };
-      document.addEventListener(
-        'pointerdown',
-        (event) => {
-          const trace = window.previewTrace;
-          if (!trace.armed || trace.start !== null || event.button !== 0) return;
-          // Start at the actual DOM input, before the control handles the gesture.
-          // The first pointermove is later and can follow a valid pointerdown paint.
-          trace.start = event.timeStamp;
-          trace.pointerId = event.pointerId;
-          trace.pointerType = event.pointerType;
-          trace.armed = false;
-        },
-        true,
-      );
-      document.addEventListener(
-        'pointermove',
-        (event) => {
+          return post.call(this, message, ...args);
+        };
+        CanvasRenderingContext2D.prototype.putImageData = function (image, ...args) {
+          paint.call(this, image, ...args);
+          if (this.canvas.getAttribute('aria-label') !== '照片编辑预览') return;
+          const sample = positions.flatMap(([y, x]) => {
+            const at =
+              (Math.floor(image.height * y) * image.width + Math.floor(image.width * x)) * 4;
+            return Array.from(image.data.subarray(at, at + 4));
+          });
+          window.previewTrace.paints.push({
+            t: performance.now(),
+            width: image.width,
+            height: image.height,
+            sample,
+          });
+        };
+        document.addEventListener(
+          'pointerdown',
+          (event) => {
+            const trace = window.previewTrace;
+            if (!trace.armed || trace.start !== null || event.button !== 0) return;
+            // Start at the actual DOM input, before the control handles the gesture.
+            // The first pointermove is later and can follow a valid pointerdown paint.
+            trace.start = event.timeStamp;
+            trace.pointerId = event.pointerId;
+            trace.pointerType = event.pointerType;
+            trace.armed = false;
+          },
+          true,
+        );
+        document.addEventListener(
+          'pointermove',
+          (event) => {
+            const trace = window.previewTrace;
+            if (
+              trace.start !== null &&
+              trace.end === null &&
+              event.pointerId === trace.pointerId &&
+              (event.buttons & 1 || event.pointerType === 'touch')
+            )
+              trace.inputs.push(performance.now());
+          },
+          true,
+        );
+        new MutationObserver((mutations) => {
           const trace = window.previewTrace;
           if (
             trace.start !== null &&
             trace.end === null &&
-            event.pointerId === trace.pointerId &&
-            (event.buttons & 1 || event.pointerType === 'touch')
+            mutations.some(({ target }) => target.matches('input[type=range]'))
           )
-            trace.inputs.push(performance.now());
-        },
-        true,
-      );
-      new MutationObserver((mutations) => {
-        const trace = window.previewTrace;
-        if (
-          trace.start !== null &&
-          trace.end === null &&
-          mutations.some(({ target }) => target.matches('input[type=range]'))
-        )
-          trace.valueChanges.push(performance.now());
-      }).observe(document, { subtree: true, attributeFilter: ['aria-valuetext'] });
-      document.addEventListener(
-        'pointerup',
-        (event) => {
-          const trace = window.previewTrace;
-          if (trace.start !== null && trace.end === null && event.pointerId === trace.pointerId)
-            trace.end = performance.now();
-        },
-        true,
-      );
-    }, Boolean(largePhoto));
+            trace.valueChanges.push(performance.now());
+        }).observe(document, { subtree: true, attributeFilter: ['aria-valuetext'] });
+        document.addEventListener(
+          'pointerup',
+          (event) => {
+            const trace = window.previewTrace;
+            if (trace.start !== null && trace.end === null && event.pointerId === trace.pointerId)
+              trace.end = performance.now();
+          },
+          true,
+        );
+      },
+      {
+        large: Boolean(largePhoto),
+        band: hslBand.id,
+        probes: test === 'HSL' ? hslProbePositions(rgba, width, height, hslBand.id) : [],
+      },
+    );
     // Local editor works without an authenticated API. Keep unrelated config requests deterministic.
     await page.route('**/v1/**', (route) =>
       route.fulfill({ status: 503, json: { message: 'offline' } }),
@@ -964,12 +1014,20 @@ try {
     }
     const tools = page.getByRole('navigation', { name: '编辑工具' });
     const tool = tools.getByRole('button', {
-      name: test === '曲线' ? '曲线' : test === '饱和度' ? '色彩' : w < 760 ? '调节' : '明暗',
+      name:
+        test === '曲线'
+          ? '曲线'
+          : test === '饱和度' || test === 'HSL'
+            ? '色彩'
+            : w < 760
+              ? '调节'
+              : '明暗',
       exact: true,
     });
     if ((await tool.getAttribute('aria-pressed')) !== 'true') await tool.click();
     const panel = page.locator('.free-panel[aria-hidden="false"]');
     await panel.waitFor();
+    const sliderName = test === 'HSL' ? hslBand.label + '色色相' : test;
     let start, target;
     if (test === '曲线') {
       const graph = panel.locator('.curve-graph');
@@ -997,7 +1055,12 @@ try {
       start = { x: point.x + point.width / 2, y: point.y + point.height / 2 };
       target = { x: start.x, y: box.y + box.height * 0.14 };
     } else {
-      const slider = panel.getByRole('slider', { name: test, exact: true });
+      if (test === 'HSL') {
+        await panel.getByRole('button', { name: 'HSL', exact: true }).click();
+        const chip = panel.getByRole('button', { name: hslBand.label + '色段', exact: true });
+        if ((await chip.getAttribute('aria-pressed')) !== 'true') await chip.click();
+      }
+      const slider = panel.getByRole('slider', { name: sliderName, exact: true });
       await slider.scrollIntoViewIfNeeded();
       const box = await slider.boundingBox();
       assert.ok(box);
@@ -1089,20 +1152,30 @@ try {
       'actual pointermove inputs belong to the measured pointerdown/up interval',
     );
     const changed = (p) => p.sample.some((v, i) => v !== trace.baseline.sample[i]);
-    const frames = trace.paints.filter((p) => p.t >= inputTime && p.t < trace.end && changed(p));
+    const duringGesture = trace.paints.filter((p) => p.t >= inputTime && p.t < trace.end);
+    const frames = duringGesture.filter(changed);
     const distinct = new Set(frames.map((p) => p.sample.join(','))).size;
     assert.ok(
-      frames.length &&
-        frames.every((p) => p.width === trace.baseline.width && p.height === trace.baseline.height),
-      'simple global exposure and curves paint at the full working image size throughout the gesture',
+      duringGesture.every(
+        (p) => p.width === trace.baseline.width && p.height === trace.baseline.height,
+      ),
+      'every paint during the gesture must keep the full working image dimensions',
     );
+    const gaps = frames.length
+      ? [
+          ...frames.map((frame, index) => frame.t - (frames[index - 1]?.t ?? inputTime)),
+          trace.end - frames.at(-1).t,
+        ].sort((a, b) => a - b)
+      : [];
     const caseReport = {
       test,
+      ...(test === 'HSL' ? { band: hslBand.id } : {}),
       viewport: `${w}×${h}`,
       inputStartEvent: 'pointerdown',
       pointerType: trace.pointerType,
       inputEvents: trace.inputs.length,
       gestureMs: trace.end - inputTime,
+      firstPaintMs: duringGesture.length ? duringGesture[0].t - inputTime : null,
       firstChangedMs: frames.length ? frames[0].t - inputTime : null,
       firstRangeChangeMs: trace.valueChanges.length ? trace.valueChanges[0] - inputTime : null,
       firstWorkerDispatchMs: trace.worker[0] ? trace.worker[0].sent - inputTime : null,
@@ -1110,20 +1183,17 @@ try {
         ? trace.worker[0].received - trace.worker[0].sent
         : null,
       firstWorkerSaturation: trace.worker[0]?.saturation ?? null,
+      ...(test === 'HSL' ? { firstWorkerHue: trace.worker[0]?.hue ?? null } : {}),
       distinctLiveFrames: distinct,
-      liveRasterPixels: frames.length
+      liveRasterPixels: duringGesture.length
         ? {
-            minimum: Math.min(...frames.map((frame) => frame.width * frame.height)),
-            maximum: Math.max(...frames.map((frame) => frame.width * frame.height)),
+            minimum: Math.min(...duringGesture.map((frame) => frame.width * frame.height)),
+            maximum: Math.max(...duringGesture.map((frame) => frame.width * frame.height)),
             settled: trace.baseline.width * trace.baseline.height,
           }
         : null,
-      maxFrameGapMs: frames.length
-        ? Math.max(
-            ...frames.map((f, i) => f.t - (frames[i - 1]?.t ?? inputTime)),
-            trace.end - frames.at(-1).t,
-          )
-        : null,
+      p95FrameGapMs: gaps[Math.ceil(gaps.length * 0.95) - 1] ?? null,
+      maxFrameGapMs: gaps.at(-1) ?? null,
       firstPostReleasePaintMs:
         trace.paints.find((p) => p.t >= trace.end && p.width === trace.baseline.width && changed(p))
           .t - trace.end,
@@ -1134,7 +1204,7 @@ try {
     if (process.env.PREVIEW_RECORD_ONLY !== '1') {
       const rendered = Buffer.from(await readCanvas(), 'base64');
       if (cdp) {
-        const slider = panel.getByRole('slider', { name: test, exact: true });
+        const slider = panel.getByRole('slider', { name: sliderName, exact: true });
         const settledValue = await slider.inputValue();
         await touch('touchStart', target);
         await touch('touchMove', start);
@@ -1173,7 +1243,8 @@ try {
         .ensureAlpha()
         .raw()
         .toBuffer({ resolveWithObject: true });
-      const expected = renderEditorRecipe(
+      const renderReference = test === 'HSL' ? renderEditorRecipeTiled : renderEditorRecipe;
+      const expected = renderReference(
         {
           width: source.info.width,
           height: source.info.height,
@@ -1194,7 +1265,7 @@ try {
       await page.screenshot({
         path: resolve(
           artifacts,
-          `native-${test === '曲线' ? 'curve' : test === '饱和度' ? 'saturation' : 'exposure'}-${w}.png`,
+          `native-${test === '曲线' ? 'curve' : test === '饱和度' ? 'saturation' : test === 'HSL' ? 'hsl' : 'exposure'}-${w}.png`,
         ),
       });
     process.stdout.write(JSON.stringify(caseReport) + '\n');
@@ -1217,9 +1288,9 @@ try {
   if (
     !largePhoto &&
     process.env.PREVIEW_RECORD_ONLY !== '1' &&
-    process.env.PREVIEW_CASE !== 'phone'
+    (!selectedCase || selectedCase === 'mask')
   ) {
-    if (process.env.PREVIEW_CASE !== 'mask')
+    if (selectedCase !== 'mask')
       await verifyWorkerRecovery({
         png: buffer,
         source: { width, height, data: new Uint8ClampedArray(rgba) },

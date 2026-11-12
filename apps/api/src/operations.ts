@@ -33,6 +33,7 @@ const planSchema = z.object({
 });
 const modelSchema = z
   .object({
+    expectedVersion: z.number().int().min(0).max(2_147_483_646),
     label: title,
     provider: z.enum(['qwen', 'ark', 'openai']).default('qwen'),
     operations: z
@@ -426,14 +427,26 @@ export function registerOperations(
       .object({ id: z.string().regex(/^[a-zA-Z0-9][a-zA-Z0-9._:-]{0,119}$/) })
       .parse(req.params);
     const body = modelSchema.parse(req.body);
-    const { reason: why, ...config } = body;
+    const { reason: why, expectedVersion, ...config } = body;
     const model = await transaction(db, async (tx) => {
-      const row = (
-        await tx.query(
-          'INSERT INTO model_configs(id,config) VALUES($1,$2) ON CONFLICT(id) DO UPDATE SET config=$2,version=model_configs.version+1,updated_at=clock_timestamp() RETURNING *',
-          [p.id, JSON.stringify(config)],
-        )
-      ).rows[0]!;
+      const encoded = JSON.stringify(config);
+      const result =
+        expectedVersion === 0
+          ? await tx.query(
+              'INSERT INTO model_configs(id,config) VALUES($1,$2) ON CONFLICT(id) DO NOTHING RETURNING *',
+              [p.id, encoded],
+            )
+          : await tx.query(
+              'UPDATE model_configs SET config=$2,version=version+1,updated_at=clock_timestamp() WHERE id=$1 AND version=$3 RETURNING *',
+              [p.id, encoded, expectedVersion],
+            );
+      const row = result.rows[0];
+      if (!row)
+        throw new HttpError(
+          409,
+          'MODEL_CONFIG_CHANGED',
+          '模型配置已变化，请从目录重新打开后再保存。',
+        );
       await audit(tx, actor.id, 'operator.model_config', 'model', p.id, {
         reason: why,
         version: row.version,

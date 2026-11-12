@@ -14,7 +14,7 @@ concurrency:
 jobs:
   browser:
     runs-on: ubuntu-latest
-    timeout-minutes: 35
+    timeout-minutes: 50
     services:
       postgres:
         image: postgres:18
@@ -45,6 +45,22 @@ jobs:
         run: google-chrome --version
       - name: Measure continuous slider, curve and touch paints
         run: node --import tsx scripts/qa/interactive-preview.browser.mjs
+      - name: Six complete browser flows on this commit
+        run: |
+          for round in 1 2 3 4 5 6; do
+            BROWSER_ARTIFACT_DIR="artifacts/browser-v4/round-${round}" node --import tsx scripts/qa/workspace-v4.browser.mjs
+          done
+      - name: Assistant permissions, memory, streaming, conversations and generated workspace
+        run: node --import tsx scripts/qa/assistant.browser.mjs
+      - name: Team voice microphones, permissions and shared AI speaker
+        run: node --import tsx scripts/qa/team-voice.browser.mjs
+      - name: Real portrait inference and full/tiled pixel comparison
+        run: |
+          npm run vision:prepare
+          node --import tsx scripts/qa/spatial-quality.browser.mjs
+      - name: Diverse real-photo beauty, matte and sports restoration observations
+        run: node --import tsx scripts/qa/photo-quality.browser.mjs
+      # Keep the product checks independent of transient artifact service errors.
       - name: Preserve preview timing evidence
         if: always()
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
@@ -52,11 +68,6 @@ jobs:
           name: interactive-preview-${{ github.sha }}
           path: artifacts/interactive-preview
           retention-days: 14
-      - name: Six complete browser flows on this commit
-        run: |
-          for round in 1 2 3 4 5 6; do
-            BROWSER_ARTIFACT_DIR="artifacts/browser-v4/round-${round}" node --import tsx scripts/qa/workspace-v4.browser.mjs
-          done
       - name: Preserve measurements, downloaded-image checks and screenshots
         if: always()
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
@@ -65,10 +76,6 @@ jobs:
           path: artifacts/browser-v4
           retention-days: 14
           if-no-files-found: error
-      - name: Assistant permissions, memory, streaming, conversations and generated workspace
-        run: node --import tsx scripts/qa/assistant.browser.mjs
-      - name: Team voice microphones, permissions and shared AI speaker
-        run: node --import tsx scripts/qa/team-voice.browser.mjs
       - name: Preserve team voice evidence
         if: always()
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
@@ -77,12 +84,6 @@ jobs:
           path: artifacts/browser-team-voice
           retention-days: 14
           if-no-files-found: error
-      - name: Real portrait inference and full/tiled pixel comparison
-        run: |
-          npm run vision:prepare
-          node --import tsx scripts/qa/spatial-quality.browser.mjs
-      - name: Diverse real-photo beauty, matte and sports restoration observations
-        run: node --import tsx scripts/qa/photo-quality.browser.mjs
       - name: Preserve diverse-photo references and observations
         if: always()
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
@@ -190,7 +191,7 @@ jobs:
       - name: Build optional native media runtime and verify its actual libraries
         run: |
           docker build --target server-media --tag xiutu-media-ci -f infra/Dockerfile .
-          docker run --rm --memory 4g --pids-limit 192 --cap-drop ALL --security-opt no-new-privileges xiutu-media-ci node --import tsx --input-type=module -e 'import {getMediaCapabilities} from "@ai-xiutu/media"; const c=await getMediaCapabilities({pythonExecutable:process.env.MEDIA_PYTHON}); if(!c.available||!c.nativeReady)process.exit(1); console.log(JSON.stringify({isolation:c.isolation,nativeVersions:c.nativeVersions}));'
+          docker run --rm --memory 4g --pids-limit 192 --cap-drop ALL --security-opt no-new-privileges xiutu-media-ci node --import tsx --input-type=module -e 'import {getMediaCapabilities} from "@ai-xiutu/media"; const c=await getMediaCapabilities({pythonExecutable:process.env.MEDIA_PYTHON,ultraHdrLibrary:process.env.MEDIA_UHDR_LIBRARY,heicDecoder:process.env.MEDIA_HEIC_DECODER}); if(!c.available||!c.nativeReady||!c.ultraHdrJpeg.available||!c.heicPq.available||!c.heicHlg.available)process.exit(1); console.log(JSON.stringify({isolation:c.isolation,nativeVersions:c.nativeVersions}));'
           docker run --rm --memory 4g --pids-limit 192 --cap-drop ALL --security-opt no-new-privileges xiutu-media-ci node --import tsx --test packages/media/test/media.test.ts
           docker run --rm --memory 4g --pids-limit 192 --cap-drop ALL --security-opt no-new-privileges --env MEDIA_QA_PYTHON=/opt/media/bin/python xiutu-media-ci node --import tsx --test packages/media/test/precision.test.ts
       - name: Start PostgreSQL, migration, API, worker and web
@@ -201,6 +202,7 @@ jobs:
           import json
           import subprocess
           import time
+          from pathlib import Path
           from urllib.request import urlopen
           from urllib.error import HTTPError, URLError
 
@@ -231,11 +233,27 @@ jobs:
           with urlopen(base + '/vision/manifest.json', timeout=5) as response:
               vision = json.load(response)
               assert vision['schemaVersion'] == 1 and vision['sdkVersion'] == '1.2.2'
-              assert len(vision['assets']) == 3
+          matting = json.loads(Path('third-party/portrait-matting.json').read_text())
+          fine_matting = json.loads(Path('third-party/portrait-fine-matting.json').read_text())
+          expected_vision = {
+              'face_landmarker.task', 'pose_landmarker_lite.task',
+              'selfie_multiclass_256x256.tflite', matting['file'], fine_matting['file'],
+          }
+          assert len(vision['assets']) == len(expected_vision)
+          published_vision = {item['file']: item for item in vision['assets']}
+          assert published_vision.keys() == expected_vision
+          for model in (matting, fine_matting):
+              assert published_vision[model['file']] == {key: model[key] for key in ('file', 'bytes', 'sha256')}
           import hashlib
           for item in vision['assets']:
               with urlopen(base + '/vision/' + item['file'], timeout=15) as response:
-                  assert hashlib.sha256(response.read()).hexdigest() == item['sha256']
+                  contents = response.read()
+                  assert len(contents) == item['bytes']
+                  assert hashlib.sha256(contents).hexdigest() == item['sha256']
+          for runtime in (matting['runtimeFile'], 'ort-wasm-simd-threaded.jsep.wasm', 'ort-wasm-simd-threaded.asyncify.wasm'):
+              with urlopen(base + '/vision/wasm/' + runtime, timeout=15) as response:
+                  assert response.headers.get_content_type() == 'application/wasm'
+                  assert response.read(8) == b'\0asm\1\0\0\0'
           try:
               urlopen(base + '/vision/missing-file.task', timeout=5)
           except HTTPError as error:

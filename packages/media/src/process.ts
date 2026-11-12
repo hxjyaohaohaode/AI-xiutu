@@ -5,11 +5,13 @@ import { dirname, isAbsolute, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { tmpdir } from 'node:os';
 import { parsePrecisionEdit } from '@ai-xiutu/editor';
+import { exportLinearWindow, type LinearWindowContext } from './linear-window.js';
 import {
   MEDIA_MAX_INPUT_BYTES,
   MEDIA_DEFAULT_MAX_PIXELS,
   MEDIA_MAX_PIXELS,
   MEDIA_MAX_PROXY_PIXELS,
+  MediaProcessingError,
   type ProcessMediaRequest,
   type ExportMediaRequest,
   type MediaDescriptorV1,
@@ -17,15 +19,7 @@ import {
   type MediaProcessingOptions,
 } from './types.js';
 
-export class MediaProcessingError extends Error {
-  constructor(
-    message: string,
-    readonly code: 'unsupported' | 'limit' | 'aborted' | 'timeout' | 'processing',
-  ) {
-    super(message);
-    this.name = 'MediaProcessingError';
-  }
-}
+export { MediaProcessingError } from './types.js';
 export interface NormalizedMediaOptions {
   maxPixels: number;
   maxInputBytes: number;
@@ -35,6 +29,8 @@ export interface NormalizedMediaOptions {
   timeoutMs: number;
   memoryBytes: number;
   pythonExecutable?: string;
+  ultraHdrLibrary?: string;
+  heicDecoder?: string;
 }
 function integer(
   value: number | undefined,
@@ -61,6 +57,16 @@ export function normalizeMediaOptions(
       'Native interpreter must be a trusted absolute deployment path',
       'unsupported',
     );
+  if (
+    options.ultraHdrLibrary !== undefined &&
+    (!isAbsolute(options.ultraHdrLibrary) || options.ultraHdrLibrary.includes('\0'))
+  )
+    throw new MediaProcessingError('Ultra HDR codec must be a trusted absolute path', 'unsupported');
+  if (
+    options.heicDecoder !== undefined &&
+    (!isAbsolute(options.heicDecoder) || options.heicDecoder.includes('\0'))
+  )
+    throw new MediaProcessingError('HEIC decoder must be a trusted absolute path', 'unsupported');
   const tileSize = options.tileSize ?? 512;
   if (![256, 512, 1024].includes(tileSize))
     throw new MediaProcessingError('Unsupported tile size', 'limit');
@@ -97,6 +103,8 @@ export function normalizeMediaOptions(
       'Job address space',
     ),
     ...(options.pythonExecutable ? { pythonExecutable: options.pythonExecutable } : {}),
+    ...(options.ultraHdrLibrary ? { ultraHdrLibrary: options.ultraHdrLibrary } : {}),
+    ...(options.heicDecoder ? { heicDecoder: options.heicDecoder } : {}),
   };
 }
 type Waiter = {
@@ -105,44 +113,50 @@ type Waiter = {
   reject: (reason: Error) => void;
   abort: () => void;
 };
-let active = false;
-const waiters: Waiter[] = [];
-function release() {
-  const next = waiters.shift();
-  if (!next) {
-    active = false;
-    return;
+function mediaSlot(maxQueued: number) {
+  let active = false;
+  const waiters: Waiter[] = [];
+  function release() {
+    const next = waiters.shift();
+    if (!next) {
+      active = false;
+      return;
+    }
+    next.signal?.removeEventListener('abort', next.abort);
+    next.resolve(release);
   }
-  next.signal?.removeEventListener('abort', next.abort);
-  next.resolve(release);
+  return (signal?: AbortSignal): Promise<() => void> => {
+    if (signal?.aborted)
+      return Promise.reject(new MediaProcessingError('Media operation cancelled', 'aborted'));
+    if (!active) {
+      active = true;
+      return Promise.resolve(release);
+    }
+    if (waiters.length >= maxQueued)
+      return Promise.reject(
+        new MediaProcessingError('Media queue is full; try after the active task finishes', 'limit'),
+      );
+    return new Promise((resolve, reject) => {
+      const item: Waiter = {
+        signal,
+        resolve,
+        reject,
+        abort: () => {
+          const index = waiters.indexOf(item);
+          if (index >= 0) waiters.splice(index, 1);
+          reject(new MediaProcessingError('Queued media operation cancelled', 'aborted'));
+        },
+      };
+      waiters.push(item);
+      signal?.addEventListener('abort', item.abort, { once: true });
+      if (signal?.aborted) item.abort();
+    });
+  };
 }
-function slot(signal?: AbortSignal): Promise<() => void> {
-  if (signal?.aborted)
-    return Promise.reject(new MediaProcessingError('Media operation cancelled', 'aborted'));
-  if (!active) {
-    active = true;
-    return Promise.resolve(release);
-  }
-  if (waiters.length >= 8)
-    return Promise.reject(
-      new MediaProcessingError('Media queue is full; try after the active task finishes', 'limit'),
-    );
-  return new Promise((resolve, reject) => {
-    const item: Waiter = {
-      signal,
-      resolve,
-      reject,
-      abort: () => {
-        const index = waiters.indexOf(item);
-        if (index >= 0) waiters.splice(index, 1);
-        reject(new MediaProcessingError('Queued media operation cancelled', 'aborted'));
-      },
-    };
-    waiters.push(item);
-    signal?.addEventListener('abort', item.abort, { once: true });
-    if (signal?.aborted) item.abort();
-  });
-}
+const slot = mediaSlot(8);
+const windowSlot = mediaSlot(1);
+const NATIVE_WINDOW_ADDRESS_BYTES = 1024 ** 3;
+const NATIVE_WINDOW_TIMEOUT_MS = 10_000;
 async function absent(path: string) {
   try {
     await lstat(path);
@@ -155,17 +169,20 @@ async function absent(path: string) {
     'processing',
   );
 }
-async function isolated<T>(
-  job: Record<string, unknown>,
-  options: NormalizedMediaOptions,
-  signal?: AbortSignal,
-): Promise<T> {
+async function assertIsolation() {
   if (process.platform !== 'linux')
     throw new MediaProcessingError(
       'Media processor requires the Linux prlimit isolation runtime',
       'unsupported',
     );
   await access('/usr/bin/prlimit', constants.X_OK);
+}
+async function isolated<T>(
+  job: Record<string, unknown>,
+  options: NormalizedMediaOptions,
+  signal?: AbortSignal,
+): Promise<T> {
+  await assertIsolation();
   const releaseSlot = await slot(signal);
   let control: string | undefined;
   try {
@@ -206,6 +223,8 @@ async function isolated<T>(
             VIPS_CONCURRENCY: '1',
             OPENBLAS_NUM_THREADS: '1',
             OMP_NUM_THREADS: '1',
+            OPENIMAGEIO_THREADS: '2',
+            OPENIMAGEIO_OPTIONS: 'exr_threads=2',
             GOMAXPROCS: '2',
             MALLOC_ARENA_MAX: '2',
           },
@@ -317,14 +336,19 @@ export async function processMedia(request: ProcessMediaRequest): Promise<MediaD
     throw error;
   }
 }
-export async function exportMedia(request: ExportMediaRequest): Promise<MediaExportResult> {
-  if (!['png16', 'tiff16', 'jpeg', 'webp', 'exr32'].includes(request.format))
+export async function exportMedia(
+  request: ExportMediaRequest,
+  window?: LinearWindowContext,
+): Promise<MediaExportResult> {
+  if (!['png16', 'tiff16', 'jpeg', 'webp', 'exr32', 'ultrahdr'].includes(request.format))
     throw new MediaProcessingError('Unsupported export format', 'unsupported');
   if (
     (request.precisionInput !== undefined &&
-      (!['master16', 'linear-master'].includes(request.precisionInput) ||
-        (request.format === 'exr32' && request.precisionInput !== 'linear-master'))) ||
-    (request.preview && request.format !== 'png16')
+      !['master16', 'linear-master'].includes(request.precisionInput)) ||
+    (request.format === 'exr32' && request.precisionInput === 'master16') ||
+    (request.format === 'ultrahdr' && request.precisionInput !== 'linear-master') ||
+    (request.preview && request.format !== 'png16') ||
+    (request.crop && request.format !== 'ultrahdr')
   )
     throw new MediaProcessingError('Unsupported precision input or preview format', 'unsupported');
   const options = normalizeMediaOptions({ ...request.options, maxPixels: MEDIA_MAX_PIXELS }),
@@ -337,9 +361,54 @@ export async function exportMedia(request: ExportMediaRequest): Promise<MediaExp
   const quality = integer(request.options?.quality, 90, 1, 100, 'Export quality');
   const precisionEdit =
     request.precisionEdit === undefined ? undefined : parsePrecisionEdit(request.precisionEdit);
+  if (
+    precisionEdit &&
+    precisionEdit.algorithm !== 'scene-linear-v1' &&
+    request.precisionInput !== 'linear-master' &&
+    request.format !== 'exr32'
+  )
+    throw new MediaProcessingError(
+      precisionEdit.algorithm === 'scene-linear-v2'
+        ? 'Scene-linear curves require the retained float master'
+        : 'Scene-linear regions require the retained float master',
+      'unsupported',
+    );
   const reservation = await open(outputPath, 'wx', 0o600);
   await reservation.close();
   try {
+    if (
+      window &&
+      (request.preview?.region || request.preview?.fitRegion) &&
+      request.precisionInput === 'linear-master' &&
+      process.platform === 'linux' &&
+      (await access('/proc/self/fd', constants.R_OK | constants.X_OK).then(
+        () => true,
+        () => false,
+      ))
+    ) {
+      await assertIsolation();
+      const releaseSlot = await windowSlot(request.signal);
+      try {
+        return await exportLinearWindow(
+          window,
+          workDir,
+          outputPath,
+          request.preview,
+          precisionEdit,
+          {
+            ...options,
+            memoryBytes: Math.min(options.memoryBytes, NATIVE_WINDOW_ADDRESS_BYTES),
+            timeoutMs: Math.min(options.timeoutMs, NATIVE_WINDOW_TIMEOUT_MS),
+          },
+          request.signal,
+        );
+      } catch (error) {
+        if (error instanceof MediaProcessingError) throw error;
+        throw new MediaProcessingError('Isolated native window processing failed', 'processing');
+      } finally {
+        releaseSlot();
+      }
+    }
     return await isolated<MediaExportResult>(
       {
         kind: 'export',
@@ -350,6 +419,7 @@ export async function exportMedia(request: ExportMediaRequest): Promise<MediaExp
         ...(precisionEdit ? { precisionEdit } : {}),
         ...(request.precisionInput ? { precisionInput: request.precisionInput } : {}),
         ...(request.preview ? { preview: request.preview } : {}),
+        ...(request.crop ? { crop: request.crop } : {}),
       },
       options,
       request.signal,

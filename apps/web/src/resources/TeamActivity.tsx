@@ -31,6 +31,7 @@ export function TeamActivity({
     [error, setError] = useState<string | null>(null);
   const generation = useRef(0),
     moreLock = useRef(false);
+  const [retry, setRetry] = useState(0);
   useEffect(() => {
     const id = ++generation.current,
       controller = new AbortController();
@@ -56,12 +57,13 @@ export function TeamActivity({
         if (id === generation.current) setBusy(false);
       });
     return () => controller.abort();
-  }, [spaceId, refreshToken]);
+  }, [spaceId, refreshToken, retry]);
   async function more() {
     if (!cursor || moreLock.current) return;
     moreLock.current = true;
     const id = generation.current;
     setBusy(true);
+    setError(null);
     try {
       const result = await api<{ activities: Activity[]; nextCursor: string | null }>(
         `/spaces/${spaceId}/activity?limit=30&cursor=${encodeURIComponent(cursor)}`,
@@ -85,6 +87,15 @@ export function TeamActivity({
   return (
     <section className="team-activity" aria-label={t('成员动态')} data-motion="team-activity">
       <InlineError message={error} />
+      {error && !items.length && !busy && (
+        <button
+          type="button"
+          className="text-button"
+          onClick={() => setRetry((value) => value + 1)}
+        >
+          {t('重新读取')}
+        </button>
+      )}
       <ol>
         {items.map((item) => (
           <li key={item.id}>

@@ -7,6 +7,8 @@ import assert from 'node:assert/strict';
 import sharp from 'sharp';
 import { chromium } from 'playwright';
 import { createServer } from 'vite';
+import matting from '../../third-party/portrait-matting.json' with { type: 'json' };
+import fineMatting from '../../third-party/portrait-fine-matting.json' with { type: 'json' };
 import {
   createRecipeV4,
   renderEditorRecipe,
@@ -27,6 +29,7 @@ import {
 if (process.env.CI !== 'true' || process.env.NODE_ENV === 'production')
   throw new Error('Isolated QA only');
 const output = resolve(process.env.PHOTO_QUALITY_ARTIFACT_DIR ?? 'artifacts/photo-quality');
+const verifyFineMatting = process.env.PHOTO_QUALITY_FINE_MATTING === '1';
 await mkdir(output, { recursive: true });
 const sources = [
   ...JSON.parse(await readFile('scripts/qa/portrait-native-inputs.json', 'utf8')).inputs,
@@ -133,9 +136,10 @@ async function getBytes(source) {
   return bytes;
 }
 
-async function checkLocalCutout(browser, origin, image) {
+async function checkLocalCutout(browser, origin, image, view) {
   const page = await browser.newPage({
-    viewport: { width: 1440, height: 960 },
+    viewport: { width: view.width, height: view.height },
+    hasTouch: view.touch ?? false,
     reducedMotion: 'reduce',
     acceptDownloads: true,
   });
@@ -156,6 +160,10 @@ async function checkLocalCutout(browser, origin, image) {
       const url = new URL(route.request().url());
       if (['data:', 'blob:'].includes(url.protocol)) return route.continue();
       if (url.origin !== origin) return route.abort();
+      if (view.missingModel && url.pathname === '/vision/' + matting.file)
+        return route.fulfill({ status: 404 });
+      if (view.missingFineModel && url.pathname === '/vision/' + fineMatting.file)
+        return route.fulfill({ status: 404 });
       if (url.pathname.startsWith('/v1/'))
         return route.fulfill({ status: 503, json: { message: 'offline' } });
       return route.continue();
@@ -174,13 +182,33 @@ async function checkLocalCutout(browser, origin, image) {
     await page.getByRole('button', { name: '识别照片中的人物', exact: true }).click();
     const button = page.getByRole('button', { name: '从原图提取人物素材', exact: true });
     await button.waitFor({ timeout: 60000 });
-    const downloading = page.waitForEvent('download', { timeout: 30000 });
+    if (view.fine) {
+      await page.locator('summary').filter({ hasText: '精准抠图' }).click();
+      const mode = page.getByRole('combobox', { name: '抠图模式', exact: true });
+      await mode.click();
+      await page.getByRole('option', { name: '发丝与边缘', exact: true }).click();
+      if (view.missingFineModel) {
+        let downloads = 0;
+        page.on('download', () => downloads++);
+        await button.click();
+        await page
+          .getByText('发丝与边缘抠图暂不可用，可以切回标准抠图。', { exact: true })
+          .first()
+          .waitFor();
+        assert.equal(downloads, 0);
+        await mode.click();
+        await page.getByRole('option', { name: '标准抠图', exact: true }).click();
+      }
+    }
+    const downloading = page.waitForEvent('download', { timeout: 70000 });
     await button.click();
     const download = await downloading;
     assert.equal(await download.failure(), null);
     const bytes = await readFile(await download.path());
     const settings = await page.evaluate(() => window.observedCutout);
-    assert.equal(settings.algorithm, 'guided-v4');
+    assert.equal(settings.algorithm, view.missingModel ? 'guided-v5' : 'continuous-alpha-v1');
+    if (view.fine && !view.missingFineModel)
+      assert.deepEqual([settings.selection.width, settings.selection.height], [768, 768]);
     const expected = renderCutout(image, settings);
     const decoded = await sharp(bytes).ensureAlpha().raw().toBuffer();
     assert.deepEqual(decoded, Buffer.from(expected.data));
@@ -189,9 +217,17 @@ async function checkLocalCutout(browser, origin, image) {
     ).length;
     assert.ok(partialAlpha > 0);
     assert.deepEqual(pageErrors, []);
-    const cloud = await checkCloudCutout(sourcePng, settings, decoded);
-    await writeFile(join(output, 'workspace-cutout.png'), bytes);
+    const overflow = await page.evaluate(() => document.documentElement.scrollWidth - innerWidth);
+    assert.ok(overflow <= 1, `Horizontal overflow: ${overflow}px`);
+    const cloud =
+      view.id === 'desktop' || view.id === 'fine-desktop'
+        ? await checkCloudCutout(sourcePng, settings, decoded)
+        : undefined;
+    await writeFile(join(output, `workspace-cutout-${view.id}.png`), bytes);
+    await page.screenshot({ path: join(output, `workspace-cutout-${view.id}-view.png`) });
     return {
+      view,
+      overflow,
       algorithm: settings.algorithm,
       exactRgbaBytes: decoded.length,
       partialAlpha,
@@ -238,6 +274,9 @@ async function checkCloudCutout(sourcePng, settings, browserPixels) {
       settings,
     };
     assert.equal((await fixture.call('POST', path, request, 'viewer')).statusCode, 403);
+    const quote = await fixture.call('POST', `${path}/quote`, request);
+    assert.equal(quote.statusCode, 200, quote.body);
+    assert.equal(quote.json().available, true);
     const derived = await fixture.call('POST', path, request);
     assert.equal(derived.statusCode, 201, derived.body);
     const asset = derived.json().asset;
@@ -246,7 +285,7 @@ async function checkCloudCutout(sourcePng, settings, browserPixels) {
     const decoded = await sharp(download.rawPayload).ensureAlpha().raw().toBuffer();
     assert.deepEqual(decoded, browserPixels);
     const lineage = (await fixture.call('GET', `/v1/assets/${asset.id}/derivation`)).json();
-    assert.equal(lineage.algorithm, 'rgb-guided-trimap-v4');
+    assert.equal(lineage.algorithm, 'continuous-alpha-v1');
     assert.equal(lineage.sources[0].assetId, request.sourceAssetId);
     assert.equal((await fixture.call('POST', path, request)).json().asset.id, asset.id);
     return {
@@ -270,7 +309,7 @@ try {
   browser = await chromium.launch({
     headless: true,
     channel: process.env.BROWSER_CHANNEL || undefined,
-    args: ['--use-angle=swiftshader', '--enable-unsafe-swiftshader'],
+    args: verifyFineMatting ? [] : ['--use-angle=swiftshader', '--enable-unsafe-swiftshader'],
   });
   const page = await browser.newPage();
   await page.route('**/*', (route) => {
@@ -294,13 +333,34 @@ try {
       data: new Uint8ClampedArray(decoded.data),
     };
     if (source.name === 'portrait-hopper') {
-      const receipt = await checkLocalCutout(browser, 'http://127.0.0.1:4186', image);
-      report.cases.push({
-        photo: source.name,
-        tool: 'workspace-cutout',
-        state: 'passed',
-        ...receipt,
-      });
+      const standard = [
+        { id: 'desktop', width: 1440, height: 960 },
+        { id: 'tablet', width: 1024, height: 768, touch: true },
+        { id: 'phone', width: 320, height: 640, touch: true },
+        { id: 'landscape', width: 844, height: 390, touch: true },
+        { id: 'missing-model', width: 960, height: 720, missingModel: true },
+      ];
+      const fine = verifyFineMatting
+        ? [
+            ...standard.slice(0, 4).map((view) => ({ ...view, id: 'fine-' + view.id, fine: true })),
+            {
+              id: 'missing-fine-model',
+              width: 960,
+              height: 720,
+              fine: true,
+              missingFineModel: true,
+            },
+          ]
+        : [];
+      for (const view of [...standard, ...fine]) {
+        const receipt = await checkLocalCutout(browser, 'http://127.0.0.1:4186', image, view);
+        report.cases.push({
+          photo: source.name,
+          tool: 'workspace-cutout',
+          state: 'passed',
+          ...receipt,
+        });
+      }
     }
     const frame = {
       width: image.width,
@@ -461,7 +521,7 @@ try {
     await sheet(`${source.name}-beauty`, beautyTiles);
     if (analysis.segmentation?.subject) {
       const tiles = [{ label: 'Original', image }];
-      for (const algorithm of ['guided-v3', 'guided-v4']) {
+      for (const algorithm of ['guided-v4', 'guided-v5']) {
         const start = performance.now(),
           cutout = renderCutout(image, {
             algorithm,

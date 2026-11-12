@@ -9,6 +9,7 @@ import {
   imageSizeError,
   requestImageOptions,
   changeImageOption,
+  reconcileImageOptions,
 } from '../src/ai/capabilities.ts';
 import type { AIModel, ImageCapabilities } from '../src/ai/types.ts';
 const unsupported = { supported: false, reason: '未开放' };
@@ -189,4 +190,27 @@ test('format changes preserve a valid compression setting and repair only missin
       ?.outputCompression,
     undefined,
   );
+});
+
+test('capability refresh retains valid choices while reconciling a reduced output limit', () => {
+  const m = model();
+  m.parameterCapabilities!.n.max = 2;
+  const result = reconcileImageOptions(m, { quality: 'max', background: 'opaque', outputFormat: 'webp', outputCompression: 75, n: 4 });
+  assert.equal(result.quality, 'max');
+  assert.equal(result.outputFormat, 'webp');
+  assert.equal(result.outputCompression, 75);
+  assert.equal(result.n, 2);
+  assert.equal(imageOptionsError(m, result), null);
+});
+
+test('capability refresh removes unsupported choices and keeps transparency valid', () => {
+  const m = model();
+  m.parameterCapabilities!.quality = { supported: false };
+  const result = reconcileImageOptions(m, { quality: 'max', background: 'transparent', outputFormat: 'jpeg', complexity: 'max', n: 2 });
+  assert.equal(result.quality, undefined);
+  assert.equal(result.complexity, undefined);
+  assert.equal(result.background, 'transparent');
+  assert.equal(result.outputFormat, 'png');
+  assert.equal(result.n, 2);
+  assert.equal(imageOptionsError(m, result), null);
 });

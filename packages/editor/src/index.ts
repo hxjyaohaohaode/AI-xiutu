@@ -49,6 +49,7 @@ export { readImageHeader, MAX_HEADER_BYTES, ImageHeaderError } from './headers.j
 export { encodeRgbaPng } from './png.js';
 export { radialMaskFrameV3 } from './v3-radial.js';
 export { WarpPreviewCache } from './warp-preview.js';
+export { pointPreviewMode, preparePointPreview } from './point-preview.js';
 export { measureSceneTone } from './scene-tone.js';
 export type { ImageHeader, HeaderLimits } from './headers.js';
 export {
@@ -169,7 +170,17 @@ export {
 } from './v4-types.js';
 export { MAX_V4_RETOUCH_PIXELS } from './v4-spatial.js';
 export { renderRecipeV4, renderRecipeV4Tiled } from './v4-engine.js';
-export { renderCutout, MAX_CUTOUT_PIXELS, type CutoutSettings } from './matte.js';
+export { CUTOUT_ALGORITHMS, renderCutout, type CutoutSettings } from './matte.js';
+export { MAX_CUTOUT_ALPHA_EDGE, type CutoutAlphaPrior } from './matte-alpha-prior.js';
+export {
+  createCutoutAlphaPrior,
+  createCutoutTrimap,
+  cutoutSelectionDimensionError,
+  parseCutoutSelection,
+  MAX_CUTOUT_PIXELS,
+  MAX_CUTOUT_TRIMAP_RUNS,
+  type CutoutTrimap,
+} from './matte-trimap.js';
 export {
   renderPhotoRestoration,
   restorationCost,
@@ -179,7 +190,17 @@ export {
 export {
   NEUTRAL_PRECISION_EDIT,
   PRECISION_EDIT_CONTROLS,
+  PRECISION_CURVE_CHANNELS,
+  PRECISION_CURVE_LIMITS,
+  PRECISION_REGION_MASKS,
+  MAX_PRECISION_REGIONS,
   parsePrecisionEdit,
   compilePrecisionEdit,
   type PrecisionEditV1,
+  type PrecisionEditV2,
+  type PrecisionEditV3,
+  type PrecisionRegionV3,
+  type PrecisionRegionAdjustments,
+  type PrecisionEdit,
+  type PrecisionCurveChannel,
 } from './linear-edit.js';

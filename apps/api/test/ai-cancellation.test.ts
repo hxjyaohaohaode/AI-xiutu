@@ -53,25 +53,33 @@ test(
       dependencies,
     );
     const origin = 'http://localhost:5173';
+    const config = loadConfig({
+      DATABASE_URL: databaseUrl!,
+      SESSION_SECRET: 'isolated-lifecycle-test-secret-2026',
+      APP_ORIGIN: origin,
+      STORAGE_DIR: join(directory, 'storage'),
+    });
+    const sms = {
+      configured: false,
+      async send() {
+        throw new Error('not configured');
+      },
+    };
     const app = await buildApp({
       db,
-      config: loadConfig({
-        DATABASE_URL: databaseUrl!,
-        SESSION_SECRET: 'isolated-lifecycle-test-secret-2026',
-        APP_ORIGIN: origin,
-        STORAGE_DIR: join(directory, 'storage'),
-      }),
+      config,
       aiService: disabled,
-      sms: {
-        configured: false,
-        async send() {
-          throw new Error('not configured');
-        },
-      },
+      sms,
     });
     await app.ready();
-    const call = (method: 'GET' | 'POST', url: string, cookie: string, body?: unknown) =>
-      app.inject({
+    const call = (
+      method: 'GET' | 'POST',
+      url: string,
+      cookie: string,
+      body?: unknown,
+      target = app,
+    ) =>
+      target.inject({
         method,
         url,
         remoteAddress: '127.0.2.11',
@@ -149,21 +157,17 @@ test(
           requestHash: digest(`lifecycle-grant:${spaceId}`),
         });
       });
+      const submission = () => ({
+        operation: 'edit-plan',
+        prompt: '降低对比度',
+        modelId,
+        idempotencyKey: randomUUID(),
+        artworkId,
+        expectedVersion: 1,
+        recipe: createRecipe(),
+      });
       const submit = () =>
-        enabled.submit({
-          actorId: actor.id,
-          projectId,
-          spaceId,
-          body: {
-            operation: 'edit-plan',
-            prompt: '降低对比度',
-            modelId,
-            idempotencyKey: randomUUID(),
-            artworkId,
-            expectedVersion: 1,
-            recipe: createRecipe(),
-          },
-        });
+        enabled.submit({ actorId: actor.id, projectId, spaceId, body: submission() });
       const row = async (jobId: string) =>
         (
           await db.query(
@@ -182,12 +186,62 @@ test(
         spaceId,
         projectId,
         modelId,
+        submission,
         submit,
         row,
         cancel,
       };
     }
     try {
+      await t.test('HTTP queues a single plan and reconciles an unknown hold with an audit record', async () => {
+        const f = await fixture();
+        const submissionApi = await buildApp({ db, config, aiService: enabled, sms });
+        try {
+          const before = calls;
+          const path = `/v1/projects/${f.projectId}/ai-jobs`;
+          const payload = f.submission();
+          const denied = await call('POST', path, f.viewer.cookie, payload, submissionApi);
+          assert.equal(denied.statusCode, 403);
+          const submitted = await call('POST', path, f.actor.cookie, payload, submissionApi);
+          assert.equal(submitted.statusCode, 202, submitted.body);
+          const job = submitted.json().job;
+          assert.equal(job.state, 'queued');
+          const retry = await call('POST', path, f.actor.cookie, payload, submissionApi);
+          assert.equal(retry.statusCode, 202, retry.body);
+          assert.equal(retry.json().job.id, job.id);
+          assert.equal((await f.row(job.id)).hold_state, 'held');
+          await journal.start(job.id, job.inputHash);
+          assert.equal((await f.cancel(job.id)).statusCode, 409);
+          assert.equal((await f.row(job.id)).state, 'unknown');
+          assert.equal((await f.row(job.id)).hold_state, 'unknown');
+          const resolve = `/v1/ops/ai-jobs/${job.id}/resolve`;
+          const evidence = {
+            resolution: 'release',
+            reason: 'Isolated fixture confirms no provider charge',
+            evidenceRef: 'fixture-charge-record',
+          };
+          assert.equal((await call('POST', resolve, f.actor.cookie, evidence)).statusCode, 403);
+          const resolution = await call('POST', resolve, f.operator.cookie, evidence);
+          assert.equal(resolution.statusCode, 200, resolution.body);
+          assert.deepEqual(resolution.json(), { ok: true, state: 'failed', resolution: 'release' });
+          assert.equal((await call('POST', resolve, f.operator.cookie, evidence)).statusCode, 200);
+          assert.equal((await f.row(job.id)).hold_state, 'released');
+          assert.equal(
+            (
+              await call('POST', resolve, f.operator.cookie, { ...evidence, resolution: 'settle' })
+            ).statusCode,
+            409,
+          );
+          const audits = await db.query(
+            "SELECT count(*)::int AS count FROM audit_entries WHERE action='ai.unknown_resolved' AND target_id=$1",
+            [job.id],
+          );
+          assert.equal(audits.rows[0]!.count, 1);
+          assert.equal(calls, before);
+        } finally {
+          await submissionApi.close();
+        }
+      });
       await t.test(
         'disabled capabilities still expose authorized cancellation; concurrent retries release once',
         async () => {

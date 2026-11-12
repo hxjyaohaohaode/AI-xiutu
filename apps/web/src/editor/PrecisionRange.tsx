@@ -1,6 +1,16 @@
 import { getLocale, t } from '../i18n';
-import { useEffect, useId, useMemo, useRef, useState, type CSSProperties } from 'react';
-import { ArrowCounterClockwise, Check } from '@phosphor-icons/react';
+import {
+  useEffect,
+  useId,
+  useMemo,
+  useRef,
+  useState,
+  type CSSProperties,
+  type ReactNode,
+} from 'react';
+import { ArrowCounterClockwise, Check } from '../components/ControlGlyph';
+import { WarmTooltip } from '../components/control-motion';
+import { useWakeTicks } from './useWakeTicks';
 import {
   RangeGesture,
   RANGE_KEYS,
@@ -28,6 +38,9 @@ export function PrecisionRange({
   integer = false,
   gradient,
   index = 0,
+  glyph,
+  primary = false,
+  headingAccessory,
 }: {
   label: string;
   value: number;
@@ -45,6 +58,9 @@ export function PrecisionRange({
   integer?: boolean;
   gradient?: string;
   index?: number;
+  glyph?: ReactNode;
+  primary?: boolean;
+  headingAccessory?: ReactNode;
 }) {
   const id = useId();
   const [editing, setEditing] = useState(false);
@@ -52,12 +68,25 @@ export function PrecisionRange({
   const [numberError, setNumberError] = useState<string | null>(null);
   const gesture = useRef(new RangeGesture());
   const range = useRef<HTMLInputElement>(null);
+  const ticks = useRef<HTMLDivElement>(null);
+  const scrubButton = useRef<HTMLButtonElement>(null);
+  const scrub = useRef<{
+    id: number;
+    x: number;
+    initial: number;
+    origin: number;
+    multiplier: number;
+    moved: boolean;
+  } | null>(null);
+  const suppressNumberClick = useRef(false);
   const touchTrack = useRef<{ left: number; travel: number; offset: number } | null>(null);
   const ignoredPointer = useRef<number | null>(null);
   const numberEditing = useRef<{ initial: number } | null>(null);
   const input = useRef<HTMLInputElement>(null);
   const latest = useRef(value);
   latest.current = value;
+  const fraction = max > min ? Math.max(0, Math.min(1, (value - min) / (max - min))) : 0;
+  useWakeTicks(ticks, fraction, gesture.current.pointerId !== null);
   const decimals = Math.min(10, Math.max(0, Math.ceil(-Math.log10(step)) + (integer ? 0 : 1)));
   const locale = getLocale();
   const numberFormat = useMemo(
@@ -90,11 +119,16 @@ export function PrecisionRange({
   }
   function cancelGesture() {
     const pointerId = gesture.current.pointerId;
+    if (scrub.current) suppressNumberClick.current = true;
+    scrub.current = null;
+    scrubButton.current?.style.removeProperty('--scrub-offset');
     touchTrack.current = null;
     if (pointerId !== null) ignoredPointer.current = pointerId;
     complete(gesture.current.cancel());
     if (pointerId !== null && range.current?.hasPointerCapture(pointerId))
       range.current.releasePointerCapture(pointerId);
+    if (pointerId !== null && scrubButton.current?.hasPointerCapture(pointerId))
+      scrubButton.current.releasePointerCapture(pointerId);
   }
   const cancelRef = useRef(cancelGesture);
   cancelRef.current = cancelGesture;
@@ -207,9 +241,9 @@ export function PrecisionRange({
     undefined;
   return (
     <div
-      className="precision-control"
+      className={`precision-control${primary ? ' precision-primary' : ''}`}
       data-motion="slider-row"
-      data-adjusted={Math.abs(value - neutral) > 1e-10 ? 'true' : undefined}
+      data-adjusted={onReset && Math.abs(value - neutral) > 1e-10 ? 'true' : undefined}
       data-disabled={disabled || max <= min ? 'true' : undefined}
       style={
         {
@@ -223,9 +257,11 @@ export function PrecisionRange({
       }
     >
       <div className="precision-heading">
-        <label htmlFor={id} title={description}>
-          {label}
+        <label htmlFor={id}>
+          {glyph && <span className="precision-label-glyph">{glyph}</span>}
+          <span>{label}</span>
         </label>
+        {headingAccessory && <div className="precision-heading-accessory">{headingAccessory}</div>}
         <div className="precision-readout">
           {editing ? (
             <>
@@ -261,6 +297,7 @@ export function PrecisionRange({
               />
               <button
                 type="button"
+                className="precision-confirm"
                 aria-label={t('确认{v0}数值', { v0: label })}
                 disabled={disabled}
                 onMouseDown={(event) => event.preventDefault()}
@@ -273,6 +310,7 @@ export function PrecisionRange({
             </>
           ) : (
             <button
+              ref={scrubButton}
               type="button"
               className="precision-value"
               aria-label={t('{v0}数值 {v1}{v2}，点击精确输入', {
@@ -281,7 +319,90 @@ export function PrecisionRange({
                 v2: unit,
               })}
               disabled={disabled}
-              onClick={() => {
+              onPointerDown={(event) => {
+                if (
+                  disabled ||
+                  event.button !== 0 ||
+                  !event.isPrimary ||
+                  gesture.current.active ||
+                  scrub.current
+                )
+                  return;
+                suppressNumberClick.current = false;
+                scrub.current = {
+                  id: event.pointerId,
+                  x: event.clientX,
+                  initial: latest.current,
+                  origin: latest.current,
+                  multiplier: event.shiftKey ? 10 : event.altKey && !integer ? 0.1 : 1,
+                  moved: false,
+                };
+              }}
+              onPointerMove={(event) => {
+                const active = scrub.current;
+                if (!active || active.id !== event.pointerId) return;
+                const distance = event.clientX - active.x;
+                if (!active.moved && Math.abs(distance) < (event.pointerType === 'touch' ? 8 : 3))
+                  return;
+                if (!active.moved) {
+                  if (!gesture.current.beginPointer(active.id, active.initial)) {
+                    scrub.current = null;
+                    return;
+                  }
+                  active.moved = true;
+                  event.currentTarget.setPointerCapture(active.id);
+                }
+                event.preventDefault();
+                const multiplier = event.shiftKey ? 10 : event.altKey && !integer ? 0.1 : 1;
+                if (multiplier !== active.multiplier) {
+                  // Rebase only the sensitivity origin. Cancellation still owns
+                  // the original gesture value, and a modifier alone never edits.
+                  active.multiplier = multiplier;
+                  active.origin = latest.current;
+                  active.x = event.clientX;
+                  event.currentTarget.style.removeProperty('--scrub-offset');
+                  return;
+                }
+                const increment = step * multiplier;
+                const raw = active.origin + Math.round(distance / 2) * increment;
+                const overflow = raw < min ? raw - min : raw > max ? raw - max : 0;
+                event.currentTarget.style.setProperty(
+                  '--scrub-offset',
+                  `${Math.sign(overflow) * Math.min(3, Math.log1p(Math.abs(overflow) / Math.max(increment, 1e-10)))}px`,
+                );
+                change(raw);
+              }}
+              onPointerUp={(event) => {
+                const active = scrub.current;
+                if (!active || active.id !== event.pointerId) return;
+                scrub.current = null;
+                event.currentTarget.style.removeProperty('--scrub-offset');
+                if (!active.moved) return;
+                suppressNumberClick.current = true;
+                complete(gesture.current.endPointer(active.id));
+                if (event.currentTarget.hasPointerCapture(active.id))
+                  event.currentTarget.releasePointerCapture(active.id);
+              }}
+              onPointerCancel={(event) => {
+                if (scrub.current?.id === event.pointerId) cancelGesture();
+              }}
+              onLostPointerCapture={(event) => {
+                if (scrub.current?.id === event.pointerId && scrub.current.moved) cancelGesture();
+              }}
+              onKeyDown={(event) => {
+                if (event.key === 'Escape' && scrub.current) {
+                  event.preventDefault();
+                  event.stopPropagation();
+                  cancelGesture();
+                }
+              }}
+              onBlur={() => {
+                if (scrub.current) cancelGesture();
+              }}
+              onClick={(event) => {
+                const ignore = suppressNumberClick.current && event.detail > 0;
+                suppressNumberClick.current = false;
+                if (ignore) return;
                 if (gesture.current.active) return;
                 numberEditing.current = { initial: latest.current };
                 setDraft(String(latest.current));
@@ -294,21 +415,30 @@ export function PrecisionRange({
             </button>
           )}
           {onReset && (
-            <button
-              type="button"
-              className="precision-reset"
-              title={t('重置{v0}', { v0: label })}
-              aria-label={t('重置{v0}', { v0: label })}
-              disabled={disabled || Math.abs(value - neutral) < 1e-10}
-              onPointerDown={(event) => event.preventDefault()}
-              onClick={resetControl}
-            >
-              <ArrowCounterClockwise size={13} />
-            </button>
+            <WarmTooltip content={t('重置{v0}', { v0: label })}>
+              <button
+                type="button"
+                className="precision-reset"
+                title={t('重置{v0}', { v0: label })}
+                aria-label={t('重置{v0}', { v0: label })}
+                disabled={disabled || Math.abs(value - neutral) < 1e-10}
+                onPointerDown={(event) => event.preventDefault()}
+                onClick={resetControl}
+              >
+                <ArrowCounterClockwise size={13} />
+              </button>
+            </WarmTooltip>
           )}
         </div>
       </div>
       <div className={`precision-track ${gradient ? 'with-gradient' : ''}`}>
+        {primary && (
+          <div ref={ticks} className="precision-ticks" aria-hidden="true">
+            {Array.from({ length: 37 }, (_, tick) => (
+              <i key={tick} data-major={tick % 6 === 0 || undefined} />
+            ))}
+          </div>
+        )}
         {neutral > min && neutral < max && <i className="precision-neutral" aria-hidden />}
         <input
           id={id}
@@ -347,7 +477,11 @@ export function PrecisionRange({
               event.preventDefault();
               control.focus({ preventScroll: true });
               const bounds = control.getBoundingClientRect();
-              const inset = Math.min(6.5, bounds.width / 4);
+              const thumbWidth =
+                Number.parseFloat(
+                  getComputedStyle(control).getPropertyValue('--range-thumb-size'),
+                ) || 20;
+              const inset = Math.min(thumbWidth / 2, bounds.width / 4);
               const left = bounds.left + inset;
               const travel = bounds.width - 2 * inset;
               if (travel <= 0) return;

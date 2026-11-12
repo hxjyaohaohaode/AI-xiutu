@@ -8,8 +8,29 @@ export const MEDIA_MAX_TILE_COUNT = 8_192;
 export const MEDIA_MAX_INPUT_BYTES = 536_870_912;
 export const MEDIA_MAX_PROXY_PIXELS = 4_194_304;
 export const MEDIA_MAX_PRECISION_PIXELS = 16_777_216;
-export const MEDIA_MAX_LINEAR_PIXELS = 50_000_000;
+export const MEDIA_MAX_SDR_MASTER_PIXELS = 64_000_000;
+export const MEDIA_MAX_LINEAR_PIXELS = 64_000_000;
+export const MEDIA_MAX_HDR_IMPORT_PIXELS = 50_000_000;
+export const MEDIA_MAX_GAIN_MAP_PIXELS = 24_000_000;
+export const MEDIA_MAX_GAIN_MAP_BYTES = 128 * 1024 ** 2;
+export const MEDIA_MIN_GAIN_MAP_SIDE = 8;
+export const MEDIA_MAX_GAIN_MAP_SIDE = 8192;
+export const MEDIA_MAX_HEIC_PQ_PIXELS = 24_000_000;
+export const MEDIA_MAX_HEIC_HDR_BYTES = 128 * 1024 ** 2;
+export const MEDIA_MIN_HEIC_HDR_SIDE = 8;
+export const MEDIA_MAX_HEIC_PQ_SIDE = 8192;
+export const MEDIA_MAX_HEIC_HLG_PIXELS = 50_000_000;
+export const MEDIA_MAX_HEIC_HLG_SIDE = 10_000;
 export const MEDIA_MAX_PREVIEW_EDGE = 2048;
+export class MediaProcessingError extends Error {
+  constructor(
+    message: string,
+    readonly code: 'unsupported' | 'limit' | 'aborted' | 'timeout' | 'processing',
+  ) {
+    super(message);
+    this.name = 'MediaProcessingError';
+  }
+}
 export interface MediaProcessingOptions {
   maxPixels?: number;
   maxInputBytes?: number;
@@ -22,6 +43,10 @@ export interface MediaProcessingOptions {
   memoryBytes?: number;
   /** Optional trusted interpreter with the pinned native requirements installed. */
   pythonExecutable?: string;
+  /** Optional trusted reference Ultra HDR codec library. */
+  ultraHdrLibrary?: string;
+  /** Optional trusted HEIC HDR decoder executable. */
+  heicDecoder?: string;
 }
 export interface MediaFileV1 {
   relativePath: string;
@@ -41,8 +66,12 @@ export interface MediaDescriptorV1 {
   original: MediaFileV1 & {
     format: string;
     /** Native formats disambiguate half/float/RGBE or sensor samples from decoded precision. */
-    sampleEncoding?: 'uint' | 'half-float' | 'float' | 'rgbe' | 'sensor-raw';
+    sampleEncoding?:
+      'uint' | 'half-float' | 'float' | 'rgbe' | 'sensor-raw' | 'gain-map' | 'pq' | 'hlg';
     decodedBitDepth?: number;
+    gainMap?: { width: number; height: number; hdrGamut: 'Rec.709' | 'Display P3' | 'Rec.2020' };
+    pq?: { primaries: 'Rec.709' | 'Display P3' | 'Rec.2020'; referenceWhiteNits: number };
+    hlg?: { primaries: 'Rec.2020'; referenceWhiteNits: number; referencePeakNits: 1000 };
     /** null means that this decoder did not inspect an embedded ICC resource. */
     hasIcc: boolean | null;
     metadataSummary: {
@@ -92,6 +121,19 @@ export interface MediaDescriptorV1 {
     nativePeakRssBytes?: number;
   };
 }
+export function hasDisplayHdr(original: MediaDescriptorV1['original']) {
+  return !!(original.gainMap || original.pq || original.hlg);
+}
+export function isSdrJpegSource(original: MediaDescriptorV1['original']) {
+  return original.format === 'jpeg' && !hasDisplayHdr(original);
+}
+export function fitsGainMapRaster({ width, height }: { width: number; height: number }) {
+  return (
+    width * height <= MEDIA_MAX_GAIN_MAP_PIXELS &&
+    Math.max(width, height) <= MEDIA_MAX_GAIN_MAP_SIDE &&
+    Math.min(width, height) >= MEDIA_MIN_GAIN_MAP_SIDE
+  );
+}
 export interface ProcessMediaRequest {
   /** An API-owned regular file, never an arbitrary client path or URL. */
   inputPath: string;
@@ -101,13 +143,13 @@ export interface ProcessMediaRequest {
   signal?: AbortSignal;
   options?: MediaProcessingOptions;
 }
-export type MediaExportFormat = 'png16' | 'tiff16' | 'jpeg' | 'webp' | 'exr32';
+export type MediaExportFormat = 'png16' | 'tiff16' | 'jpeg' | 'webp' | 'exr32' | 'ultrahdr';
 export type MediaPrecisionInput = 'master16' | 'linear-master';
 export interface MediaGradeRevision {
   version: number;
   sourceSha256: string;
   precisionInput: MediaPrecisionInput;
-  edit: PrecisionEditV1;
+  edit: PrecisionEdit;
   createdAt: string;
 }
 export interface MediaPrecisionWindow {
@@ -118,8 +160,10 @@ export interface MediaPrecisionWindow {
 }
 export interface MediaPrecisionPreview {
   maxEdge: number;
-  /** Source data-window coordinates after orientation normalization. */
+  /** Original-pixel window, at native resolution. */
   region?: MediaPrecisionWindow;
+  /** Develop this source window before fitting it to maxEdge. */
+  fitRegion?: MediaPrecisionWindow;
 }
 export interface ExportMediaRequest {
   workDir: string;
@@ -127,11 +171,13 @@ export interface ExportMediaRequest {
   outputPath: string;
   format: MediaExportFormat;
   /** Explicit global grading of the actual retained master, independently versioned. */
-  precisionEdit?: PrecisionEditV1;
+  precisionEdit?: PrecisionEdit;
   /** Existing SDR exports default to master16. EXR always requires the linear master. */
   precisionInput?: MediaPrecisionInput;
-  /** Display PNG16, optionally limited to a native-resolution window. */
+  /** Display PNG16, optionally limited to a source window. */
   preview?: MediaPrecisionPreview;
+  /** Ultra HDR JPEG output crop in orientation-normalized source pixels. */
+  crop?: MediaPrecisionWindow;
   signal?: AbortSignal;
   options?: Pick<MediaProcessingOptions, 'timeoutMs' | 'memoryBytes' | 'pythonExecutable'> & {
     quality?: number;
@@ -143,10 +189,10 @@ export interface MediaExportResult extends MediaFileV1 {
   /** This converts the retained master; browser edits are not injected into a high-bit master. */
   includesEditorRecipe: false;
   precisionEdit?: {
-    algorithm: 'scene-linear-v1';
+    algorithm: PrecisionEdit['algorithm'];
     sha256: string;
     input: MediaPrecisionInput;
-    edit: PrecisionEditV1;
+    edit: PrecisionEdit;
   };
 }
-import type { PrecisionEditV1 } from '@ai-xiutu/editor';
+import type { PrecisionEdit } from '@ai-xiutu/editor';

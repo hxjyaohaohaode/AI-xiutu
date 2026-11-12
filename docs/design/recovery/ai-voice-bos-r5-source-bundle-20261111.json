@@ -1,0 +1,264 @@
+{
+  "schemaVersion": 1,
+  "title": "AI / voice / BOS R5 non-integrated source recovery",
+  "createdAt": "2026-11-11",
+  "repository": "hxjyaohaohaode/AI-xiutu",
+  "originalWorkspace": "/workspace/scratch/8ed9bdfb07e6/AI-xiutu",
+  "branch": "frontend/experience-r5-20261111",
+  "baseline": "d5ad8db311a424c8e6a90487666f15b2806989f9",
+  "reason": "Execution environment became unavailable before a product commit or full diff could be captured.",
+  "completeness": "Only complete sources explicitly present in this agent's retained tool inputs/outputs are reconstructed. Formatting may differ from the last Prettier pass; no missing old-file content is invented. Partial entries require review against the named baseline. This is not an integrated or browser-accepted release.",
+  "files": [
+    {
+      "path": "apps/web/src/ai/voice-errors.ts",
+      "status": "complete",
+      "verification": "voice-errors.test.ts passed",
+      "source": "import { errorMessage } from '../lib/api';\n\n/** Device failures are shared by recording, personal calls and team calls. */\nexport function voiceErrorMessage(error: unknown): string {\n  const name = error && typeof error === 'object' && 'name' in error ? String(error.name) : '';\n  const message = typeof error === 'string' ? error : errorMessage(error);\n  if (/NotFoundError|DevicesNotFoundError/.test(name) || /requested device not found|no (audio )?input device|no microphone/i.test(message))\n    return '未找到麦克风，请连接后重试。';\n  if (/NotAllowedError|PermissionDeniedError/.test(name) || /permission denied|permission dismissed/i.test(message))\n    return '麦克风未获允许，请在浏览器中开启权限。';\n  if (/NotReadableError|TrackStartError/.test(name) || /could not start audio source|device in use/i.test(message))\n    return '麦克风无法启动，请关闭其他录音后重试。';\n  if (name === 'OverconstrainedError') return '麦克风不支持所需格式，请换一个设备。';\n  if (name === 'SecurityError') return '当前页面无法使用麦克风，请通过 HTTPS 打开。';\n  return message;\n}\n"
+    },
+    {
+      "path": "apps/web/src/ai/CandidateActions.tsx",
+      "status": "complete",
+      "verification": "2 candidate tests passed; typecheck passed. Root App previewControls hookup is outside this bundle.",
+      "source": "import React, { useEffect, useRef, useState } from 'react';\nimport { Check, Eye, X } from '@phosphor-icons/react';\nimport type { AssistantCandidate } from '@ai-xiutu/contracts';\nimport { t } from '../i18n';\nimport { errorMessage } from '../lib/api';\nimport { assistantEditorKey, type AssistantEditorState } from './assistantGuards';\n\nexport interface PreviewControls {\n  pending: boolean;\n  saving?: boolean;\n  onConfirm: () => void | Promise<void>;\n  onCancel: () => void;\n}\n\nexport function candidateMatchesEditor(\n  candidate: AssistantCandidate,\n  editor: AssistantEditorState,\n  field: 'baseRecipe' | 'recipe',\n): boolean {\n  if (!editor.loggedIn || !editor.projectId || !editor.assetId || candidate.kind !== 'edit' || candidate.artworkId !== editor.artworkId || candidate.baseVersion !== editor.version)\n    return false;\n  try {\n    return assistantEditorKey(editor) === assistantEditorKey({ ...editor, recipe: candidate[field] as AssistantEditorState['recipe'] });\n  } catch {\n    return false;\n  }\n}\n\n/** A recorded preview decision remains reversible until a real version is saved. */\nexport function CandidateActions({\n  candidate, editor, controls, disabled, canExecute, onDecision,\n}: {\n  candidate: AssistantCandidate;\n  editor: AssistantEditorState;\n  controls?: PreviewControls;\n  disabled: boolean;\n  canExecute: boolean;\n  onDecision: (candidate: AssistantCandidate, decision: 'previewed' | 'rejected') => void;\n}) {\n  const [error, setError] = useState('');\n  const confirming = useRef(false);\n  const mounted = useRef(true);\n  const [confirmBusy, setConfirmBusy] = useState(false);\n  useEffect(() => {\n    mounted.current = true;\n    return () => { mounted.current = false; };\n  }, []);\n  const isEdit = candidate.kind === 'edit';\n  const previewing = isEdit && controls?.pending && candidateMatchesEditor(candidate, editor, 'recipe');\n  const available = !isEdit || candidateMatchesEditor(candidate, editor, 'baseRecipe');\n  const applied = !!candidate.appliedRevisionId;\n  const rejected = candidate.decision === 'rejected';\n  const locked = disabled || controls?.saving || confirmBusy;\n  async function confirm() {\n    if (!controls || confirming.current || locked) return;\n    confirming.current = true;\n    setConfirmBusy(true);\n    setError('');\n    try { await controls.onConfirm(); }\n    catch (failure) { if (mounted.current) setError(errorMessage(failure)); }\n    finally { confirming.current = false; if (mounted.current) setConfirmBusy(false); }\n  }\n  return (\n    <div className=\"candidate-action-region\">\n      <div className=\"candidate-actions\" data-previewing={previewing || undefined}>\n        {previewing ? <>\n          <button type=\"button\" className=\"ai-candidate-primary\" disabled={locked} onClick={() => void confirm()}>\n            <Check size={16} />{t(locked ? '正在确认…' : '确认修改')}\n          </button>\n          <button type=\"button\" disabled={locked} onClick={() => { setError(''); controls.onCancel(); }}>\n            <X size={16} />{t('取消预览')}\n          </button>\n        </> : <>\n          <button type=\"button\" className=\"ai-candidate-primary\" disabled={locked || !canExecute || applied || rejected || !available}\n            onClick={() => { setError(''); onDecision(candidate, 'previewed'); }}>\n            <Eye size={16} />\n            {t(applied ? '已保存新版本' : rejected ? '已退回' : !available ? '版本或参数已变化' : isEdit\n              ? candidate.decision === 'previewed' ? '重新预览' : '在画布预览'\n              : candidate.decision === 'previewed' ? '重新打开生图草案' : '选择模型与规格')}\n          </button>\n          {!applied && !rejected && <button type=\"button\" disabled={locked} onClick={() => onDecision(candidate, 'rejected')}>\n            <X size={16} />{t('退回')}\n          </button>}\n        </>}\n      </div>\n      {error && <p className=\"parameter-error\" role=\"alert\">{t(error)}</p>}\n    </div>\n  );\n}\n"
+    },
+    {
+      "path": "apps/web/src/components/ops-audit.ts",
+      "status": "complete",
+      "verification": "Typecheck passed; visual audit UI not yet accepted.",
+      "source": "/** Semantic labels for the real audit DTO; unknown operations remain inspectable in details. */\nconst actions: Record<string, string> = {\n  'account.register': '注册账号', 'account.password_reset': '重置密码',\n  'space.create': '创建团队空间', 'space.owner.transfer': '移交空间所有权',\n  'invitation.create': '创建邀请', 'invitation.accept': '接受邀请', 'invitation.revoke': '撤销邀请',\n  'sharing.policy': '更新共享规则', 'sharing.grant': '授予项目访问权',\n  'sharing.revoke': '撤销项目访问权', 'sharing.copy': '复制项目',\n  'project.delete': '删除项目', 'asset.copy': '复制素材', 'asset.media_copy': '复制原片',\n  'asset.annotations': '更新素材标注', 'media.import': '导入原片',\n  'resource.memory.update': '更新长期标注', 'resource.memory.delete': '移除长期标注',\n  'artwork.replace-source': '更换作品底图', 'artwork.restore': '恢复作品版本',\n  'artwork.fork-revision': '从版本创建作品', 'collaboration.commit': '发布协作调整',\n  'assistant.candidate.applied': '保存助手候选', 'assistant.grant.created': '建立助手执行授权',\n  'assistant.model_configured': '更新协作模型', 'assistant.reconciled': '核验助手会话',\n  'operator.bootstrap': '创建运营账号', 'operator.quota_view': '查看空间权益',\n  'operator.user_invite': '创建待验证账号', 'operator.user_status': '更新账号状态',\n  'operator.config': '更新站点配置', 'operator.plan_create': '创建权益套餐',\n  'operator.plan_update': '更新权益套餐', 'operator.model_config': '更新图像模型',\n  'operator.quota_adjustment': '调整服务点', 'operator.registration_invite': '创建注册邀请码',\n  'operator.storage_view': '查看存储策略', 'operator.storage_policy': '更新存储策略',\n  'ai.result.preview': '预览生成结果', 'ai.result.apply': '应用生成结果',\n  'ai.result.save': '保存生成结果', 'ai.result.reject': '退回生成结果',\n};\nexport function auditActionLabel(action: string): string { return actions[action] ?? '管理操作'; }\nexport function auditTargetLabel(target: string): string {\n  return ({ user: '账号', space: '空间', project: '项目', asset: '素材', artwork: '作品',\n    revision: '版本', model: '模型', plan: '套餐', adjustment: '额度调整', config: '站点',\n    invitation: '邀请', grant: '授权', turn: '对话', voice: '语音', 'asset-copy': '素材复制',\n    'ai-result-decision': '生成结果' } as Record<string, string>)[target] ?? '对象';\n}\n"
+    },
+    {
+      "path": "apps/web/src/i18n/ai-r5-messages.ts",
+      "status": "complete",
+      "verification": "Parent reported both exports merged; full web i18n/test suite passed before the last additional tests. Main dictionaries are outside this bundle.",
+      "source": "/** Assistant, voice and operations labels added by the R5 workflow review. */\nconst messages: Record<string, readonly [string, string]> = {\n  '正在确认…': ['Confirming…', '正在確認…'],\n  确认修改: ['Confirm edits', '確認修改'],\n  取消预览: ['Cancel preview', '取消預覽'],\n  版本或参数已变化: ['Version or settings changed', '版本或參數已變更'],\n  重新预览: ['Preview again', '重新預覽'],\n  选择模型与规格: ['Choose model and settings', '選擇模型與規格'],\n  '{step} px 步进': ['{step} px increments', '{step} px 步進'],\n  '正在连接…': ['Connecting…', '正在連線…'],\n  '正在结束…': ['Ending…', '正在結束…'],\n  '{v0} 点 · {v1} 秒 · {v2} 次协作': ['{v0} credits · {v1} seconds · {v2} delegations', '{v0} 點 · {v1} 秒 · {v2} 次協作'],\n  未设置执行预算: ['No execution budget set', '未設定執行預算'],\n  确认当前预览: ['Confirm current preview', '確認目前預覽'],\n  静音: ['Mute', '靜音'],\n  '语音按一次通话计点。': ['Voice is charged per call.', '語音按一次通話計點。'],\n  共享图像: ['Share image', '共用圖像'],\n  公开网络检索: ['Public web search', '公開網路搜尋'],\n  公开图片检索: ['Public image search', '公開圖片搜尋'],\n  输出预算: ['Output budget', '輸出預算'],\n  上下文预算: ['Context budget', '上下文預算'],\n  重新读取已保存配置: ['Reload saved settings', '重新讀取已儲存設定'],\n  '核对供应商回执后结算或释放预占。': ['Check the provider receipt before settling or releasing the reservation.', '核對供應商回執後結算或釋放預占。'],\n  '配置已保存，重新读取后可继续编辑。': ['Settings were saved. Reload them to continue editing.', '設定已儲存，重新讀取後可繼續編輯。'],\n  未配置: ['Not configured', '未設定'],\n  '图标已上传，保存后生效。': ['Icon uploaded. Save to apply it.', '圖示已上傳，儲存後生效。'],\n  '图标将公开显示在导航、登录页与标签页。': ['The icon appears publicly in navigation, sign-in pages and browser tabs.', '圖示將公開顯示在導覽、登入頁與標籤頁。'],\n  '新模型默认停用。': ['New models start disabled.', '新模型預設停用。'],\n  关闭模型设置: ['Close model settings', '關閉模型設定'],\n  '新标识会创建另一项。': ['A new ID creates another entry.', '新識別碼會建立另一項。'],\n  按质量定价: ['Pricing by quality', '依品質定價'],\n  操作类型: ['Action type', '操作類型'],\n  操作账号: ['Acting account', '操作帳號'],\n  选择用户: ['Choose user', '選擇使用者'],\n  调整服务点: ['Adjust credits', '調整服務點'],\n  '正数增加，负数减少可用额度。': ['Positive amounts add credits; negative amounts remove credits.', '正數增加，負數減少可用額度。'],\n  '调整已完成，其他空间余额暂未刷新。': ['Adjustment completed. Other space balances have not refreshed yet.', '調整已完成，其他空間餘額暫未重新整理。'],\n  '预占额度已保留。核对供应商回执后结算或释放。': ['Credits remain reserved. Check the provider receipt before settling or releasing them.', '預占額度已保留。核對供應商回執後結算或釋放。'],\n  '最长 30 秒 · 发送后转为文字': ['Up to 30 seconds · Transcribed after sending', '最長 30 秒 · 傳送後轉為文字'],\n  '当前浏览器无法录音，请改用文字输入。': ['Recording is unavailable in this browser. Type your message instead.', '目前瀏覽器無法錄音，請改用文字輸入。'],\n  '未找到麦克风，请连接后重试。': ['No microphone found. Connect one and try again.', '未找到麥克風，請連接後重試。'],\n  '麦克风未获允许，请在浏览器中开启权限。': ['Microphone access is blocked. Allow it in your browser.', '麥克風未獲允許，請在瀏覽器中開啟權限。'],\n  '麦克风无法启动，请关闭其他录音后重试。': ['The microphone could not start. Close other recording apps and try again.', '麥克風無法啟動，請關閉其他錄音後重試。'],\n  '麦克风不支持所需格式，请换一个设备。': ['This microphone does not support the required format. Try another device.', '麥克風不支援所需格式，請換一個裝置。'],\n  '当前页面无法使用麦克风，请通过 HTTPS 打开。': ['The microphone is unavailable on this page. Open it over HTTPS.', '目前頁面無法使用麥克風，請透過 HTTPS 開啟。'],\n  '最小尺寸不能大于最大尺寸。': ['Minimum dimensions cannot exceed maximum dimensions.', '最小尺寸不能大於最大尺寸。'],\n  '尺寸超出当前模型范围。': ['Dimensions exceed this model’s limits.', '尺寸超出目前模型範圍。'],\n  '输出数量超出当前模型范围。': ['Output count exceeds this model’s limit.', '輸出數量超出目前模型範圍。'],\n  '至少选择一个支持的质量档位。': ['Select at least one supported quality level.', '至少選擇一個支援的品質等級。'],\n  默认每张服务点: ['Default credits per image', '預設每張服務點'],\n  注册账号: ['Register account', '註冊帳號'],\n  重置密码: ['Reset password', '重設密碼'],\n  创建团队空间: ['Create team space', '建立團隊空間'],\n  移交空间所有权: ['Transfer space ownership', '移交空間所有權'],\n  创建邀请: ['Create invitation', '建立邀請'],\n  接受邀请: ['Accept invitation', '接受邀請'],\n  撤销邀请: ['Revoke invitation', '撤銷邀請'],\n  更新共享规则: ['Update sharing policy', '更新共用規則'],\n  授予项目访问权: ['Grant project access', '授予專案存取權'],\n  撤销项目访问权: ['Revoke project access', '撤銷專案存取權'],\n  复制项目: ['Copy project', '複製專案'],\n  删除项目: ['Delete project', '刪除專案'],\n  复制素材: ['Copy asset', '複製素材'],\n  复制原片: ['Copy original', '複製原片'],\n  更新素材标注: ['Update asset notes', '更新素材標註'],\n  导入原片: ['Import original', '匯入原片'],\n  更新长期标注: ['Update retained notes', '更新長期標註'],\n  移除长期标注: ['Remove retained notes', '移除長期標註'],\n  更换作品底图: ['Replace source image', '更換作品底圖'],\n  恢复作品版本: ['Restore work version', '恢復作品版本'],\n  从版本创建作品: ['Create work from version', '從版本建立作品'],\n  发布协作调整: ['Publish collaborative edits', '發佈協作調整'],\n  保存助手候选: ['Save assistant candidate', '儲存助手候選'],\n  建立助手执行授权: ['Authorize assistant execution', '建立助手執行授權'],\n  更新协作模型: ['Update assistant model', '更新協作模型'],\n  核验助手会话: ['Reconcile assistant session', '核驗助手工作階段'],\n  创建运营账号: ['Create operator account', '建立營運帳號'],\n  查看空间权益: ['View space entitlements', '檢視空間權益'],\n  创建待验证账号: ['Create unverified account', '建立待驗證帳號'],\n  更新账号状态: ['Update account status', '更新帳號狀態'],\n  更新站点配置: ['Update site settings', '更新網站設定'],\n  创建权益套餐: ['Create entitlement plan', '建立權益方案'],\n  更新权益套餐: ['Update entitlement plan', '更新權益方案'],\n  更新图像模型: ['Update image model', '更新圖像模型'],\n  创建注册邀请码: ['Create registration invitation', '建立註冊邀請碼'],\n  查看存储策略: ['View storage policy', '檢視儲存策略'],\n  更新存储策略: ['Update storage policy', '更新儲存策略'],\n  预览生成结果: ['Preview generated result', '預覽生成結果'],\n  应用生成结果: ['Apply generated result', '套用生成結果'],\n  保存生成结果: ['Save generated result', '儲存生成結果'],\n  退回生成结果: ['Reject generated result', '退回生成結果'],\n  管理操作: ['Administrative action', '管理操作'],\n  额度调整: ['Credit adjustment', '額度調整'],\n  素材复制: ['Asset copy', '素材複製'],\n  生成结果: ['Generated result', '生成結果'],\n  对象: ['Target', '對象'],\n};\n\nexport const aiR5English = Object.fromEntries(Object.entries(messages).map(([key, value]) => [key, value[0]]));\nexport const aiR5Traditional = Object.fromEntries(Object.entries(messages).map(([key, value]) => [key, value[1]]));\n"
+    },
+    {
+      "path": "scripts/qa/manual-ai-fixture.mjs",
+      "status": "complete",
+      "verification": "Local-only smoke passed. Parent reported --protocol-fixtures integration and preview start; post-start browser not verified before environment loss.",
+      "source": "/**\n * Disposable protocol fixture for the manual UI QA server.\n * This module never opens a vendor connection. Product handlers, PostgreSQL,\n * permission checks, event replay, candidate guards and settlement remain real.\n */\nimport { createHash } from 'node:crypto';\nimport WebSocket, { WebSocketServer } from 'ws';\nimport { assistantModelConfigSchema } from '@ai-xiutu/assistant';\n\nconst digest = (value) => createHash('sha256').update(value).digest('hex');\nexport const manualAssistantModelId = 'manual-protocol-r5';\n\nexport async function createManualAssistantFixture({ databaseUrl, isolated }) {\n  const database = new URL(databaseUrl);\n  if (\n    isolated !== true ||\n    process.env.NODE_ENV === 'production' ||\n    !['127.0.0.1', 'localhost', '[::1]'].includes(database.hostname) ||\n    !/^\\/manual_test_[a-f\\d]+$/.test(database.pathname)\n  ) throw new Error('Assistant fixture requires the disposable manual test database.');\n\n  let dispatches = 0;\n  const vendor = new WebSocketServer({ host: '127.0.0.1', port: 0 });\n  await new Promise((resolve, reject) => {\n    vendor.once('listening', resolve);\n    vendor.once('error', reject);\n  });\n  const address = vendor.address();\n  if (!address || typeof address === 'string') throw new Error('Local voice fixture did not bind.');\n  vendor.on('connection', (socket) => {\n    let sentInput = false;\n    socket.on('message', (bytes) => {\n      let event;\n      try { event = JSON.parse(String(bytes)); } catch { socket.close(1003); return; }\n      const send = (value) => { if (socket.readyState === WebSocket.OPEN) socket.send(JSON.stringify(value)); };\n      if (event.type === 'session.start') send({ type: 'session.started', session: { id: 'manual-live-protocol' } });\n      if (event.type === 'session.update') send({ type: 'session.updated', session: { id: 'manual-realtime-protocol' } });\n      if (['session.input_audio.append', 'input_audio_buffer.append'].includes(event.type) && !sentInput) {\n        sentInput = true;\n        send({ type: 'session.input_transcript.delta', item_id: 'manual-input', delta: '本地协议已收到音频。', start_ms: 0, end_ms: 1000 });\n      }\n      if (event.type === 'session.close') send({ type: 'session.closed', usage: { seconds: 1 } });\n    });\n  });\n\n  const workspace = {\n    title: '曝光调整',\n    sections: [\n      { type: 'candidates', title: '画面预览', candidateIndexes: [0] },\n      { type: 'parameters', title: '调整明细', candidateIndexes: [0] },\n      { type: 'budget', title: '本轮用量' },\n    ],\n  };\n  const text = '已准备 +0.60 EV 的曝光候选。可先在画布预览，再确认或取消。';\n  const outputText = { type: 'message', role: 'assistant', content: [{ type: 'output_text', text }] };\n  const dependencies = {\n    env: { AI_ASSISTANT_ENABLED: 'true', AI_VOICE_ENABLED: 'true', OPENAI_API_KEY: 'manual-protocol-not-a-provider-key' },\n    textModerator: {\n      configured: true,\n      async check(value) { return { decision: 'passed', inputHash: digest(value), requestId: 'manual-text-protocol' }; },\n    },\n    imageModerator: {\n      configured: true,\n      async check(value) { return { decision: 'passed', inputHash: digest(value), requestId: 'manual-image-protocol' }; },\n    },\n    connectVoice() { return new WebSocket(`ws://127.0.0.1:${address.port}`); },\n    async fetcher(_url, init) {\n      // Never fall through to global fetch, including malformed requests.\n      const body = JSON.parse(String(init?.body));\n      if (!Array.isArray(body.input)) throw new Error('Manual fixture only supports editor turns.');\n      const ordinal = ++dispatches;\n      const hasCandidate = body.input.some((item) => item.type === 'function_call' && item.call_id === 'manual-edit');\n      const output = hasCandidate ? [outputText] : [\n        { type: 'function_call', name: 'propose_edit', call_id: 'manual-edit', arguments: JSON.stringify({ summary: '曝光调整为 +0.60 EV', target: 'global', targetId: null, changes: [{ path: 'adjustments.exposure', value: 0.6 }] }) },\n        { type: 'function_call', name: 'compose_workspace', call_id: 'manual-workspace', arguments: JSON.stringify(workspace) },\n      ];\n      const response = { id: `manual-response-${ordinal}`, status: 'completed', output, usage: { input_tokens: 100, output_tokens: 50, total_tokens: 150 } };\n      if (!body.stream) return Response.json(response, { headers: { 'x-request-id': `manual-protocol-${ordinal}` } });\n      const encoder = new TextEncoder();\n      return new Response(new ReadableStream({\n        start(controller) {\n          if (hasCandidate) controller.enqueue(encoder.encode(`data: ${JSON.stringify({ type: 'response.output_text.delta', delta: text })}\\n\\n`));\n          controller.enqueue(encoder.encode(`data: ${JSON.stringify({ type: 'response.completed', response })}\\n\\n`));\n          controller.close();\n        },\n      }), { headers: { 'content-type': 'text/event-stream', 'x-request-id': `manual-protocol-${ordinal}` } });\n    },\n  };\n  return {\n    dependencies,\n    async seedModels(db) {\n      for (const [id, label, operations] of [\n        [manualAssistantModelId, '本地协议验收 · 无供应商调用', ['assistant-turn']],\n        ['gpt-live-1', 'Live 协议验收 · 本地连接', ['realtime-voice']],\n        ['gpt-realtime-2.1', 'Realtime 协议验收 · 本地连接', ['realtime-voice']],\n      ]) {\n        const config = assistantModelConfigSchema.parse({ label, enabled: true, provider: 'openai', operations, unitCost: 1, imageInput: true, webSearch: false, webImageSearch: false, maxSeconds: 60, maxDelegations: 2 });\n        await db.query('INSERT INTO assistant_model_configs(id, config) VALUES($1,$2) ON CONFLICT(id) DO UPDATE SET config=EXCLUDED.config', [id, JSON.stringify(config)]);\n      }\n    },\n    async close() {\n      for (const socket of vendor.clients) socket.terminate();\n      await new Promise((resolve) => vendor.close(resolve));\n    },\n  };\n}\n"
+    },
+    {
+      "path": "apps/web/test/ai-candidate-actions.test.ts",
+      "status": "complete",
+      "verification": "2 tests passed after CandidateActions explicit React import.",
+      "source": "import assert from 'node:assert/strict';\nimport { test } from 'node:test';\nimport { createElement } from 'react';\nimport { renderToStaticMarkup } from 'react-dom/server';\nimport { createRecipeV4 } from '@ai-xiutu/editor';\nimport type { AssistantCandidate } from '@ai-xiutu/contracts';\nimport { CandidateActions, candidateMatchesEditor } from '../src/ai/CandidateActions.tsx';\nimport { acknowledgeEditCandidate, type AssistantEditorState } from '../src/ai/assistantGuards.ts';\n\ntest('a preview can be cancelled and reopened without changing its recorded decision or bypassing the base check', async () => {\n  const editor: AssistantEditorState = { loggedIn: true, projectId: 'project', spaceId: 'space', artworkId: 'artwork', assetId: 'asset', version: 3, recipe: createRecipeV4() };\n  const candidate: AssistantCandidate = { id: 'candidate', kind: 'edit', summary: 'Exposure', artworkId: editor.artworkId, baseVersion: 3, baseRecipeHash: 'server-owned', baseRecipe: structuredClone(editor.recipe), recipe: createRecipeV4({ adjustments: { exposure: 0.6 } }), decision: 'pending' };\n  let acknowledgements = 0;\n  const open = () => acknowledgeEditCandidate(candidate, {\n    readCurrent: () => editor,\n    isActive: () => true,\n    acknowledge: async () => { acknowledgements += 1; },\n    apply: (recipe) => { editor.recipe = recipe; },\n  });\n  await open();\n  candidate.decision = 'previewed';\n  assert.equal(candidateMatchesEditor(candidate, editor, 'recipe'), true);\n  const previewMarkup = renderToStaticMarkup(createElement(CandidateActions, { candidate, editor, controls: { pending: true, onConfirm() {}, onCancel() {} }, disabled: false, canExecute: true, onDecision() {} }));\n  assert.match(previewMarkup, /确认修改/);\n  assert.match(previewMarkup, /取消预览/);\n  editor.recipe = createRecipeV4();\n  const cancelledMarkup = renderToStaticMarkup(createElement(CandidateActions, { candidate, editor, controls: { pending: false, onConfirm() {}, onCancel() {} }, disabled: false, canExecute: true, onDecision() {} }));\n  assert.match(cancelledMarkup, /重新预览/);\n  assert.doesNotMatch(cancelledMarkup, /disabled=\"\"/);\n  assert.equal(candidateMatchesEditor(candidate, editor, 'baseRecipe'), true);\n  await open();\n  assert.equal(acknowledgements, 2);\n  assert.equal(editor.recipe.adjustments.exposure, 0.6);\n  editor.version += 1;\n  assert.equal(candidateMatchesEditor(candidate, editor, 'baseRecipe'), false);\n  assert.equal(candidateMatchesEditor(candidate, editor, 'recipe'), false);\n  await assert.rejects(open(), /图片或参数已经变化/);\n  assert.equal(acknowledgements, 2, 'stale candidates never reach the acknowledgement endpoint');\n});\n\ntest('candidate actions remain unavailable after sign-out or with missing source identity', () => {\n  const editor: AssistantEditorState = { loggedIn: true, projectId: 'project', spaceId: 'space', artworkId: 'artwork', assetId: 'asset', version: 1, recipe: createRecipeV4() };\n  const candidate: AssistantCandidate = { id: 'candidate', kind: 'edit', summary: 'Exposure', artworkId: 'artwork', baseVersion: 1, baseRecipeHash: 'server-owned', baseRecipe: editor.recipe, recipe: createRecipeV4({ adjustments: { exposure: 0.6 } }), decision: 'previewed' };\n  assert.equal(candidateMatchesEditor(candidate, { ...editor, loggedIn: false }, 'baseRecipe'), false);\n  assert.equal(candidateMatchesEditor(candidate, { ...editor, assetId: null }, 'baseRecipe'), false);\n  assert.equal(candidateMatchesEditor(candidate, { ...editor, recipe: createRecipeV4({ adjustments: { contrast: 7 } }) }, 'baseRecipe'), false);\n});\n"
+    },
+    {
+      "path": "apps/web/test/voice-errors.test.ts",
+      "status": "complete",
+      "verification": "1 test passed.",
+      "source": "import assert from 'node:assert/strict';\nimport { test } from 'node:test';\nimport { voiceErrorMessage } from '../src/ai/voice-errors.ts';\n\ntest('microphone failures use the same short actionable state across recording and both call types', () => {\n  assert.equal(voiceErrorMessage(new DOMException('Requested device not found', 'NotFoundError')), '未找到麦克风，请连接后重试。');\n  assert.equal(voiceErrorMessage('Requested device not found'), '未找到麦克风，请连接后重试。');\n  assert.equal(voiceErrorMessage(new DOMException('Permission denied', 'NotAllowedError')), '麦克风未获允许，请在浏览器中开启权限。');\n  assert.equal(voiceErrorMessage(new DOMException('Could not start audio source', 'NotReadableError')), '麦克风无法启动，请关闭其他录音后重试。');\n  assert.equal(voiceErrorMessage(new Error('会话结果待核验')), '会话结果待核验', 'a billing or protocol state must never be relabelled as a device error');\n});\n"
+    }
+  ],
+  "partials": [
+    {
+      "path": "apps/web/src/ai/capabilities.ts",
+      "status": "partial",
+      "verification": "Both added functions were typechecked. Two new capability-refresh tests passed.",
+      "integration": "Insert before requestImageOptions; retain the rest of baseline capabilities.ts. This is the exact logical content after moving compression handling below transparency resolution.",
+      "source": "/** Keep valid user choices when the same model ID is reconfigured by operations. */\nexport function reconcileImageOptions(model: AIModel | undefined, selected: ImageOptions): ImageOptions {\n  const defaults = defaultImageOptions(model);\n  const caps = model?.parameterCapabilities;\n  if (!caps) return {};\n  const next = { ...defaults };\n  for (const field of ['quality', 'background', 'outputFormat', 'complexity'] as const) {\n    const value = selected[field];\n    if (caps[field].supported && value && caps[field].values?.includes(value)) next[field] = value;\n  }\n  if (caps.n.supported && Number.isSafeInteger(selected.n))\n    next.n = Math.max(caps.n.min ?? 1, Math.min(caps.n.max ?? 1, selected.n!));\n  if (next.background === 'transparent' && next.outputFormat === 'jpeg') {\n    const format = caps.outputFormat.values?.find((value) => value === 'png' || value === 'webp');\n    if (format) next.outputFormat = format;\n    else next.background = caps.background.values?.find((value) => value === 'auto' || value === 'opaque');\n  }\n  if (caps.outputCompression.supported && caps.outputCompression.formats?.includes(next.outputFormat ?? 'png')) {\n    next.outputCompression = Number.isSafeInteger(selected.outputCompression)\n      ? Math.max(caps.outputCompression.min ?? 0, Math.min(caps.outputCompression.max ?? 100, selected.outputCompression!))\n      : defaults.outputCompression;\n  } else delete next.outputCompression;\n  return next;\n}\n\nexport function imageCapabilityKey(model: AIModel | undefined): string {\n  if (!model) return '';\n  return JSON.stringify([\n    model.id, model.operations, model.parameterCapabilities, model.minWidth, model.maxWidth,\n    model.minHeight, model.maxHeight, model.minPixels, model.maxPixels, model.maxDimension,\n    model.minAspectRatio, model.maxAspectRatio, model.batchLimits, model.maxOutputs,\n  ]);\n}\n"
+    },
+    {
+      "path": "apps/web/test/ai-capabilities.test.ts",
+      "status": "partial",
+      "verification": "Full 10-test file passed, including these two additions.",
+      "integration": "Add reconcileImageOptions and imageCapabilityKey to the existing capabilities import, then append these tests. Existing model() fixture remains baseline.",
+      "source": "test('a capability refresh for the same model removes revoked options and preserves valid choices', () => {\n  const previous = model();\n  const next = structuredClone(previous);\n  next.parameterCapabilities!.quality = { supported: true, values: ['auto', 'low'], default: 'low' };\n  next.parameterCapabilities!.n.max = 2;\n  next.parameterCapabilities!.outputCompression.max = 75;\n  const before = { quality: 'max', background: 'opaque', outputFormat: 'webp', outputCompression: 92, complexity: 'high', n: 4 };\n  const repaired = reconcileImageOptions(next, before);\n  assert.equal(next.id, previous.id);\n  assert.notEqual(imageCapabilityKey(next), imageCapabilityKey(previous));\n  assert.deepEqual(repaired, { quality: 'low', background: 'opaque', outputFormat: 'webp', outputCompression: 75, n: 2 });\n  assert.equal(imageOptionsError(next, repaired), null);\n  assert.deepEqual(requestImageOptions(next, repaired), repaired);\n  assert.equal(before.quality, 'max', 'an already-frozen request is not mutated');\n  assert.equal(before.n, 4);\n});\n\ntest('capability refresh resolves dependent format settings before admitting compression', () => {\n  const m = model();\n  const repaired = reconcileImageOptions(m, { quality: 'low', background: 'transparent', outputFormat: 'jpeg', outputCompression: 72, n: 1 });\n  assert.equal(repaired.outputFormat, 'png');\n  assert.equal(repaired.outputCompression, undefined);\n  assert.equal(imageOptionsError(m, repaired), null);\n  m.parameterCapabilities!.n = { supported: false };\n  m.parameterCapabilities!.quality = { supported: false };\n  assert.equal(reconcileImageOptions(m, repaired).n, undefined);\n  assert.equal(reconcileImageOptions(m, repaired).quality, undefined);\n  assert.deepEqual(reconcileImageOptions({ ...m, parameterCapabilities: undefined }, repaired), {});\n});\n"
+    },
+    {
+      "path": "apps/web/src/ai/LiveAssistant.tsx",
+      "status": "partial",
+      "verification": "Final catalog refresh was written after the last typecheck/test run and remains unverified. Earlier CandidateActions/workspace/status integration had typechecked but its complete diff is not retained.",
+      "integration": "Exact final replacement of catalog-loading effect. Also add catalogLoading state; include !catalogLoading in canSend and catalogLoading in start-call disabled expression. Add catalogSelectionLocked ref after inCall calculation. Do not blindly integrate: review initialization lock risk below.",
+      "knownReviewRisk": "At initial load submissionBlocked may still be true while the catalog resolves. The last patch skips initial model-ID selection if catalogSelectionLocked.current is true. Ensure initial idle selection is reconciled when recovery completes; do not overwrite a frozen request or active call. This was noticed during recovery and not fixed/tested before environment loss.",
+      "fragments": {
+        "state": "const [catalogLoading, setCatalogLoading] = useState(false);",
+        "selectionLock": "const catalogSelectionLocked = useRef(false);\ncatalogSelectionLocked.current = busy || inCall || submissionBlocked || !!grant;",
+        "voiceOptionEffect": "useEffect(() => {\n  if (callState !== 'idle') return;\n  if (voiceOptions.length && !voiceOptions.includes(voice)) setVoice(voiceOptions[0]!);\n}, [voiceId, voiceOptions.join(','), voice, callState]);",
+        "catalogEffect": "useEffect(() => {\n  alive.current = true;\n  if (!isLoggedIn || props.visible === false) return;\n  let controller: AbortController | undefined;\n  const refresh = () => {\n    controller?.abort();\n    const request = new AbortController();\n    controller = request;\n    setCatalogLoading(true);\n    void Promise.all([\n      api<Catalog>('/assistant/models', { signal: request.signal }),\n      api<Session>('/session', { signal: request.signal }),\n    ])\n      .then(([value, session]) => {\n        if (request.signal.aborted) return;\n        setCatalog(value);\n        setSpaces(session.spaces);\n        setActorId(session.user?.id ?? null);\n        if (catalogSelectionLocked.current) return;\n        setModelId((old) =>\n          value.models.some((item) => item.id === old && item.operations.includes('assistant-turn'))\n            ? old\n            : (value.models.find((item) => item.operations.includes('assistant-turn'))?.id ?? ''),\n        );\n        setVoiceId((old) =>\n          value.models.some((item) => item.id === old && item.operations.includes('realtime-voice'))\n            ? old\n            : (value.models.find((item) => item.operations.includes('realtime-voice'))?.id ?? ''),\n        );\n      })\n      .catch((err) => {\n        if (!request.signal.aborted) setError(errorMessage(err));\n      })\n      .finally(() => {\n        if (!request.signal.aborted) setCatalogLoading(false);\n      });\n  };\n  refresh();\n  window.addEventListener('focus', refresh);\n  window.addEventListener('ai-xiutu:model-catalog-changed', refresh);\n  return () => {\n    controller?.abort();\n    window.removeEventListener('focus', refresh);\n    window.removeEventListener('ai-xiutu:model-catalog-changed', refresh);\n  };\n}, [isLoggedIn, props.visible]);"
+      }
+    },
+    {
+      "path": "apps/web/src/collaboration/TeamVoiceControls.tsx",
+      "status": "partial",
+      "verification": "This request-epoch patch typechecked. Other control/UI changes are described in unrecovered list.",
+      "integration": "Add useRef import, mutation and micChanging refs from the earlier control rewrite, operationEpoch ref plus effect. Replace toggleMic/control current ownership captures and finalizers as shown; full source not retained.",
+      "fragments": {
+        "epoch": "const operationEpoch = useRef(0);\nuseEffect(() => {\n  const epoch = ++operationEpoch.current;\n  mutation.current = false;\n  micChanging.current = false;\n  setPending(false);\n  setMicBusy(false);\n  return () => {\n    if (operationEpoch.current === epoch) operationEpoch.current += 1;\n  };\n}, [room.artworkId, room.state]);",
+        "toggleMic": "async function toggleMic() {\n  if (micChanging.current || room.state !== 'connected' || !room.artworkId) return;\n  const epoch = operationEpoch.current;\n  const ownsRoom = room.ownership(room.artworkId);\n  const current = () => operationEpoch.current === epoch && ownsRoom();\n  if (!current()) return;\n  micChanging.current = true;\n  setMicBusy(true);\n  try { await room.toggleMic(); }\n  catch (failure) { if (current()) room.setMessage(voiceErrorMessage(failure)); }\n  finally {\n    if (operationEpoch.current === epoch) {\n      micChanging.current = false;\n      setMicBusy(false);\n    }\n  }\n}",
+        "controlOwnership": "const epoch = operationEpoch.current;\nconst ownsRoom = room.ownership(id);\nconst current = () => operationEpoch.current === epoch && ownsRoom();",
+        "controlFinally": "if (operationEpoch.current === epoch) {\n  mutation.current = false;\n  setPending(false);\n}"
+      }
+    },
+    {
+      "path": "apps/web/src/components/OpsDashboard.tsx",
+      "status": "partial",
+      "verification": "Typecheck passed. Full model form/brand/audit rewrite not retained.",
+      "integration": "These exact capability derivations were inserted after action(); type aliases/models/providerCatalog are from current baseline. Number fields displayed only for generate-image; the remaining UI wiring must be recovered/reviewed.",
+      "source": "const imageTask = !!modelEdit?.operations.includes('generate-image');\nconst providerProfile = providerCatalog.find((item) => item.id === modelEdit?.id && item.provider === modelEdit?.provider);\nconst savedProfile = models.find((item) => item.id === modelEdit?.id && item.provider === modelEdit?.provider);\nconst editingCaps = providerProfile?.parameterCapabilities ?? savedProfile?.parameterCapabilities;\nconst qualityChoices = imageTask && editingCaps?.quality.supported ? editingCaps.quality.values ?? [] : [];\nconst selectedQualities = qualityChoices.filter((quality) => modelEdit?.allowedQualities.includes(quality));\nconst maxImageEdge = Math.min(8192, editingCaps?.size.maxDimension ?? providerProfile?.maxDimension ?? 8192);\nconst maxImageOutputs = editingCaps?.n.supported ? Math.min(10, editingCaps.n.max ?? 1) : 1;\nconst imageDraftError = imageTask && modelEdit ?\n  modelEdit.minWidth > modelEdit.maxWidth || modelEdit.minHeight > modelEdit.maxHeight ? '最小尺寸不能大于最大尺寸。' :\n  modelEdit.maxWidth > maxImageEdge || modelEdit.maxHeight > maxImageEdge ? '尺寸超出当前模型范围。' :\n  modelEdit.maxOutputs > maxImageOutputs ? '输出数量超出当前模型范围。' :\n  qualityChoices.length > 0 && selectedQualities.length === 0 ? '至少选择一个支持的质量档位。' : null : null;\n",
+      "additionalExactFragments": {
+        "maxOutputsVisibility": "...((editingCaps?.n.supported && maxImageOutputs > 1) || modelEdit.maxOutputs > maxImageOutputs ? [['maxOutputs', '最大输出数']] : [])",
+        "savedEvent": "window.dispatchEvent(new Event('ai-xiutu:model-catalog-changed'));",
+        "qualityBody": "allowedQualities: qualityChoices.length ? selectedQualities : ['auto']"
+      },
+      "knownReviewRisk": "Unknown image model IDs have no declared parameterCapabilities and must not acquire capability by name guessing. Existing Ark settings with maxOutputs > allowed max must expose a corrective field rather than remain blocked behind a hidden control."
+    },
+    {
+      "path": "apps/web/src/components/AIPanel.tsx",
+      "status": "partial",
+      "verification": "Typecheck passed; complete catalog effect and capability revalidation diff not retained.",
+      "integration": "Exact final submit guard adds !loading after !busy. Remaining implementation described in unrecovered list.",
+      "source": "const canSubmit =\n  !busy &&\n  !loading &&\n  recovery.ready &&\n  !pendingSubmission &&\n  quote !== null &&\n  !!project &&\n  ready &&\n  (!needsArtwork || !!artwork) &&\n  (operation === 'transcribe' ? !!audioBase64 : !!prompt.trim()) &&\n  !sizeFailure &&\n  !optionsFailure &&\n  !batchFailure &&\n  (operation !== 'generate-image' ||\n    (referencedCount <= referenceLimit && (!referencedCount || !!caps?.references.supported)));\n"
+    }
+  ],
+  "unrecovered": [
+    {
+      "path": "apps/web/src/components/AIPanel.tsx",
+      "status": "partial-not-reconstructable",
+      "implementedBeforeFailure": "Optional previewControls passed to LiveAssistant. Visible/focus/model-catalog-changed catalog refresh; same-ID imageCapabilityKey reconciliation; invalid sizes reset to allowed image size; valid options retained, revoked reference guides removed; pending and busy requests remain frozen. Exact complete diff not present in retained context."
+    },
+    {
+      "path": "apps/web/src/ai/LiveAssistant.tsx",
+      "status": "partial-not-reconstructable",
+      "implementedBeforeFailure": "Shared CandidateActions used by workspace and remaining candidates; previewed edit candidates remain visible unless applied; controls appear next to results. Completed execution status removed from composer footer. Voice status mapped through voiceErrorMessage. Exact complete integration diff missing; final catalog effect is a separate unverified partial."
+    },
+    {
+      "path": "apps/web/src/ai/WorkspaceCards.tsx",
+      "status": "partial-not-reconstructable",
+      "implementedBeforeFailure": "renderCandidateActions prop replaced duplicated buttons. Parameters/budget/references moved to MotionDetails; candidate result remains primary. Redundant section title removed. Budget short empty label. Exact complete source not retained."
+    },
+    {
+      "path": "apps/web/src/ai/ImageParameters.tsx",
+      "status": "partial-not-reconstructable",
+      "implementedBeforeFailure": "Removed catalog of unsupported features and long complexity rationale. Kept actual limits/dependencies in compact details. Size hint became step px. Exact complete source not retained."
+    },
+    {
+      "path": "apps/web/src/ai/live-assistant.css",
+      "status": "partial-not-reconstructable",
+      "implementedBeforeFailure": "Scoped assistant/workspace/candidate action layout adjustments were written and formatted. Full CSS content not in retained context; do not invent."
+    },
+    {
+      "path": "apps/web/src/collaboration/CollaborationStatus.tsx",
+      "status": "partial-not-reconstructable",
+      "implementedBeforeFailure": "Confirm/cancel moved outside collapsed status details; helper maps registry target paths and tool IDs to human labels; dismissible error; no repeated cooperation paragraph. Uses existing publishCurrent/discardDraft/lease/version. Exact full source not retained."
+    },
+    {
+      "path": "apps/web/src/collaboration/collaboration-r5.css",
+      "status": "partial-not-reconstructable",
+      "implementedBeforeFailure": "Dedicated status preview actions, 40/36px summary, 44px team primary actions, mobile breakpoints and errors. Full source missing."
+    },
+    {
+      "path": "apps/web/src/collaboration/TeamVoiceControls.tsx",
+      "status": "partial-not-reconstructable",
+      "implementedBeforeFailure": "Dedicated Mic/MicSlash/PhoneDisconnect semantics, shortened top state copy, selected task type filtering, shared device error mapping, sync double-click locks and room epoch cleanup. Exact epoch patch retained separately; rest of file unavailable."
+    },
+    {
+      "path": "apps/web/src/collaboration/TeamVoiceBanner.tsx",
+      "status": "partial-not-reconstructable",
+      "implementedBeforeFailure": "Error handling/display changed to voiceErrorMessage; existing mic request lock retained. Exact full source unavailable."
+    },
+    {
+      "path": "apps/web/src/components/VoiceCapture.tsx",
+      "status": "partial-not-reconstructable",
+      "implementedBeforeFailure": "Attempt epoch, synchronous active guard, ownership checks after getUserMedia and blob conversion, stale tracks stopped, failed recorder onstop prevented from emitting audio, unmount invalidation, shared short device errors. Exact full source unavailable."
+    },
+    {
+      "path": "apps/web/src/components/QuotaManager.tsx",
+      "status": "partial-not-reconstructable",
+      "implementedBeforeFailure": "Mounted/pending refs guard writes. POST adjustments body and user frozen. Authoritative adjustment+entitlements receipt updates matching selected account balances, rotates idempotency key and shows success before optional GET refresh. GET failure shows secondary refreshNotice, not write failure. Functional updates guard current !== null. Full source unavailable."
+    },
+    {
+      "path": "apps/web/src/components/OpsDashboard.tsx",
+      "status": "partial-not-reconstructable",
+      "implementedBeforeFailure": "Scoped 2-column model editor and precise numeric fields only for image task; declared qualities/prices only; Live settings separately. Synchronous mutation lock. Logo epoch/project owner checked after upload, functional config merge, reset/select guarded. Real audit targetType/targetId/detail and semantic labels. Full source unavailable beyond recorded fragments."
+    },
+    {
+      "path": "apps/web/src/components/ops-r5.css",
+      "status": "partial-not-reconstructable",
+      "implementedBeforeFailure": "Dedicated BOS nav/metrics/forms/audit typography, model list-editor layout, 44px inputs, responsive breakpoints, short entry animations with reduced-motion guard. Full source unavailable."
+    },
+    {
+      "path": "apps/web/src/components/AssistantOpsPanel.tsx",
+      "status": "partial-not-reconstructable",
+      "implementedBeforeFailure": "Provider profile derived settings; Live hides maxOutputTokens, voice hides text context reserve; text numeric limits and exact profile reasoning values. Save uses existing expectedHash CAS. Authoritative PUT receipt locks editing until a fresh GET supplies new hash; read failure retains success and offers Reload saved settings. allSettled keeps unknown records when catalog fails. Exact full diff missing."
+    },
+    {
+      "path": "apps/web/src/components/UnknownJobsPanel.tsx",
+      "status": "partial-not-reconstructable",
+      "implementedBeforeFailure": "Removed duplicate page heading; short held-credit warning. Existing review confirmation and resolve/idempotent terminal checks preserved. Full source unavailable."
+    },
+    {
+      "path": "docs/design/r5-reference-aceternity-20261111.md",
+      "status": "partial-not-reconstructable",
+      "implementedBeforeFailure": "Written restored research summary with original evidence-loss caveat and seven newly completed page/lab interaction records. Old catalog 163 / related 82 are historical, not claims of full recovered proof. Source not retained fully."
+    },
+    {
+      "path": "docs/design/r5-reference-aceternity-20261111.json",
+      "status": "partial-not-reconstructable",
+      "implementedBeforeFailure": "Seven fresh research records were written from own browser actions; raw screenshot bytes lived under /workspace/shared/aceternity-r5-resumed. Those bytes cannot be reconstructed from text."
+    }
+  ],
+  "validations": [
+    {
+      "status": "passed",
+      "command": "node --import tsx --test apps/web/test/ai-candidate-actions.test.ts apps/web/test/ai-capabilities.test.ts apps/web/test/voice-errors.test.ts",
+      "result": "13 passed, 0 failed, 0 skipped. Candidate cancellation/repreview, stale base prevention, same-ID capability tightening, dependent format/compression, shared microphone errors."
+    },
+    {
+      "status": "passed",
+      "command": "npm run typecheck --workspace @ai-xiutu/web",
+      "result": "Exited 0. This predates the final LiveAssistant catalog-refresh patch."
+    },
+    {
+      "status": "passed",
+      "command": "manual-ai-fixture local-only smoke via node --import tsx",
+      "result": "Responses SSE propose_edit + compose_workspace; completed text delta; non-local DB refusal; local WS server closed. No external provider connection."
+    },
+    {
+      "status": "passed-partial-run",
+      "command": "27 targeted assistant/capability/voice tests",
+      "result": "26 initially passed; one candidate SSR test had missing React import. React import was corrected and all 13 affected tests passed on rerun; existing voice-playback and assistant-guards tests were not rerun unnecessarily."
+    },
+    {
+      "status": "not-completed",
+      "command": "AI/BOS product browser after implementation",
+      "result": "Root reported preview restarted with --protocol-fixtures, then environment failed again. No claim of post-implementation AI/BOS browser acceptance or five full regression rounds."
+    }
+  ],
+  "researchRecovery": {
+    "status": "summary-only",
+    "newlyCompleted": [
+      {
+        "url": "https://ui.aceternity.com/pages/ai-visibility-landing-page",
+        "observed": "Entered actual page preview and used the site Mobile preview; no fabricated device emulation."
+      },
+      {
+        "url": "https://ui.aceternity.com/pages/product-landing-page",
+        "observed": "Opened chapter/video panel, Escape returned to original context. First AX observation lagged; second confirmed close. Site Mobile preview available."
+      },
+      {
+        "url": "https://ui.aceternity.com/pages/inference-landing-page",
+        "observed": "Connect all reached four connected items; reset restored one of four/waiting. Right arrow changed tab and matching panel. OpenAI tab click was not confirmed."
+      },
+      {
+        "url": "https://ui.aceternity.com/pages/meeting-notes-landing-page",
+        "observed": "Ask + Enter selected matching description; Left returned to Summary. Site Mobile preview confirmed."
+      },
+      {
+        "url": "https://ui.aceternity.com/labs/wispr-flow-text-animation",
+        "observed": "After one refresh SVG curve/Controls appeared. Edit path/Done worked; Speed 25 to 26 confirmed by AX; screenshot217 still25 was marked lag. No mobile/reduced-motion control confirmed."
+      },
+      {
+        "url": "https://ui.aceternity.com/labs/interface-crafts-cards",
+        "observed": "AI button lifted central card and revealed description. Escape/same-card click/outer click did not establish close. No direct product adoption; no mobile/reduced-motion claim."
+      },
+      {
+        "url": "https://ui.aceternity.com/labs/fey-cards",
+        "observed": "Controls Shift60 to65 by keyboard and controls close confirmed. Fan click did not prove semantic selection/spread; no direct product need. No mobile/reduced-motion claim."
+      }
+    ],
+    "evidence": "18 screenshot files numbered205–222 and research.json were saved to shared transient storage and visually inspected before environment loss. Do not fabricate or claim those bytes survive."
+  }
+}

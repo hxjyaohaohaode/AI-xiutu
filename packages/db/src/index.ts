@@ -18,6 +18,8 @@ import { schemaV17Sql } from './schema-v17.js';
 import { schemaV18Sql } from './schema-v18.js';
 import { schemaV19Sql } from './schema-v19.js';
 import { schemaV20Sql } from './schema-v20.js';
+import { schemaV21Sql } from './schema-v21.js';
+import { schemaV22Sql } from './schema-v22.js';
 
 export type { PoolClient, QueryResultRow } from 'pg';
 export type Database = pg.Pool;
@@ -46,6 +48,8 @@ const migrations = [
   { version: 18, sql: schemaV18Sql },
   { version: 19, sql: schemaV19Sql },
   { version: 20, sql: schemaV20Sql },
+  { version: 21, sql: schemaV21Sql },
+  { version: 22, sql: schemaV22Sql },
 ] as const;
 export const REQUIRED_SCHEMA_VERSIONS: readonly number[] = Object.freeze(
   migrations.map(({ version }) => version),

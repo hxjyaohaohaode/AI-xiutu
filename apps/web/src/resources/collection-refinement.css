@@ -26,7 +26,7 @@
   font-size: 12px;
   white-space: nowrap;
 }
-.library-filter-toggle > span {
+.library-filter-toggle > .library-filter-count {
   display: grid;
   place-items: center;
   width: 20px;

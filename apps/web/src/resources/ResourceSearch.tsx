@@ -507,6 +507,7 @@ export function ResourceSearch({
           >
             <button
               className="resource-cover"
+              style={{ aspectRatio: `${item.asset.width} / ${item.asset.height}` }}
               disabled={!!opening}
               onClick={() => void open(item)}
               aria-label={t('打开{v0}', {
@@ -571,6 +572,8 @@ export function ResourceSearch({
           title={t('原件与母版')}
           subtitle={sourceDetails.name}
           onClose={() => setSourceDetails(null)}
+          className="media-source-dialog"
+          profile="media"
         >
           <MediaSourceViewer assetId={sourceDetails.id} />
         </Modal>

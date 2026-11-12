@@ -15,7 +15,7 @@ import OpenImageIO as oiio
 from exr_layout import apply_layout, capture_layout
 
 
-def write_image(path, pixels, kind, colorspace, unassociated=False, layout=None):
+def write_image(path, pixels, kind, colorspace, unassociated=False, layout=None, tile_transform=None):
     height, width, channels = pixels.shape
     spec = oiio.ImageSpec(width, height, channels, kind)
     spec.attribute("oiio:ColorSpace", colorspace)
@@ -30,10 +30,27 @@ def write_image(path, pixels, kind, colorspace, unassociated=False, layout=None)
     if output is None or not output.open(str(path), spec):
         raise RuntimeError("Cannot create native intermediate")
     try:
-        if not output.write_image(pixels):
-            raise RuntimeError(output.geterror())
+        if tile_transform is None:
+            if not output.write_image(pixels):
+                raise RuntimeError(output.geterror())
+        else:
+            for top in range(0, height, spec.tile_height):
+                end = min(height, top + spec.tile_height)
+                band = tile_transform(pixels[top:end])
+                if not output.write_tiles(
+                    spec.x, spec.x + width, spec.y + top, spec.y + end, spec.z, spec.z + 1, band
+                ):
+                    raise RuntimeError(output.geterror())
     finally:
-        output.close()
+        closed = output.close()
+    if not closed:
+        raise RuntimeError(output.geterror())
+
+
+def normalize_raw_tiles(pixels):
+    linear = pixels.astype(np.float32)
+    linear /= np.float32(65535)
+    return linear
 
 
 def admit_native(width, height, maximum, directory):
@@ -48,7 +65,7 @@ def admit_native(width, height, maximum, directory):
 def main():
     request = json.loads(Path(sys.argv[1]).read_text())
     source, destination = request["inputPath"], Path(request["outputPath"])
-    max_pixels = min(int(request["maxPixels"]), 50_000_000)
+    max_pixels = int(request["maxPixels"])
     native = {"openimageio": oiio.VERSION_STRING}
     if request["kind"] == "raw":
         import rawpy
@@ -62,10 +79,10 @@ def main():
             source_info = {"width": width, "height": height, "bitDepth": math.ceil(math.log2(int(raw.white_level) + 1)),
                            "colorSpace": "camera-native", "sampleEncoding": "sensor-raw", "decodedBitDepth": 16, "whiteLevel": int(raw.white_level),
                            "blackLevels": list(map(int, raw.black_level_per_channel))}
-        linear = pixels.astype(np.float32)
-        linear /= np.float32(65535)
-        write_image(destination.with_name("linear-master.exr"), linear, oiio.FLOAT, "Linear")
-        del linear
+        write_image(
+            destination.with_name("linear-master.exr"), pixels, oiio.FLOAT, "Linear",
+            tile_transform=normalize_raw_tiles,
+        )
         ramp = np.arange(65536, dtype=np.float64) / 65535
         encoded = np.where(ramp <= 0.0031308, 12.92 * ramp, 1.055 * np.power(ramp, 1 / 2.4) - 0.055)
         lookup = np.rint(encoded * 65535).astype(np.uint16)
@@ -73,6 +90,56 @@ def main():
             pixels[row:row + 64] = lookup[pixels[row:row + 64]]
         write_image(destination, pixels, oiio.UINT16, "sRGB")
         warnings = ["RAW is demosaiced by LibRaw with camera white balance and no automatic brightening. The float master preserves the normalized 16-bit linear development; it cannot restore clipped sensor data. Original sensor bytes are retained."]
+    elif request["kind"] == "gain-map":
+        from ultrahdr import GAMUT_NAMES, decode_gain_map, linear_rec709, orient
+
+        pixels, gamut, gain_size = decode_gain_map(
+            source, request["ultraHdrLibrary"],
+            lambda width, height: admit_native(width, height, max_pixels, destination.parent),
+        )
+        pixels = orient(pixels, request["orientation"])
+        height, width, _ = pixels.shape
+        write_image(
+            destination.with_name("linear-master.exr"), pixels, oiio.FLOAT, "Linear",
+            tile_transform=lambda band: linear_rec709(band, gamut),
+        )
+        source_info = {
+            "width": width, "height": height, "bitDepth": 8, "decodedBitDepth": 16,
+            "colorSpace": "linear-sRGB/Rec709-display-referred",
+            "gainMap": {"width": gain_size[0], "height": gain_size[1], "hdrGamut": GAMUT_NAMES[gamut]},
+        }
+        native["ultrahdr"] = "reference decoder"
+        warnings = ["The JPEG gain map was decoded at full HDR intent. The float master uses linear Rec.709 and retains out-of-gamut values. The SDR working master uses the original SDR rendition and its ICC profile."]
+    elif request["kind"] == "heic-hdr":
+        from heic_hdr import decode_heic_hdr
+        from linear_export import develop, grade_gains
+
+        raw = destination.with_name("heic-rgb16.bin")
+        try:
+            pixels, linearize, source_info, native["libheif"] = decode_heic_hdr(
+                source, raw, request["heicDecoder"],
+                lambda width, height: admit_native(width, height, max_pixels, destination.parent),
+            )
+            write_image(
+                destination.with_name("linear-master.exr"), pixels, oiio.FLOAT, "Linear",
+                tile_transform=linearize,
+            )
+            neutral = {"toneMap": "none"}
+            gains = grade_gains(neutral)
+            write_image(
+                destination, pixels, oiio.UINT16, "sRGB",
+                tile_transform=lambda band: develop(
+                    linearize(band), neutral, gains, True, {}, sdr_tone_map=True,
+                ),
+            )
+        finally:
+            raw.unlink(missing_ok=True)
+        transfer_notice = (
+            "BT.2100 HLG uses the Rec.2020 luminance OOTF for a 1000 cd/m² reference display."
+            if source_info["sampleEncoding"] == "hlg"
+            else "ST 2084 samples are decoded using the source NCLX primaries."
+        )
+        warnings = [transfer_notice + " The Rec.709 float master retains signed RGB and HDR headroom, relative to the declared diffuse white or 203 cd/m² when unspecified. SDR uses the same display tone map as linear-master previews."]
     elif request["kind"] == "hdr":
         image = oiio.ImageInput.open(source)
         if image is None:
@@ -144,8 +211,12 @@ def main():
         warnings = ["HDR is interpreted as linear Rec.709/sRGB; explicit unsupported primaries/transfer are rejected. The float32 master retains the source data window, display window and pixel aspect ratio. The SDR proxy uses data-window pixels and fixed luminance Reinhard tone mapping, clipping negative/out-of-gamut SDR values."]
     else:
         raise ValueError("Unknown native decoder kind")
+    peak_rss = max(
+        resource.getrusage(resource.RUSAGE_SELF).ru_maxrss,
+        resource.getrusage(resource.RUSAGE_CHILDREN).ru_maxrss,
+    )
     Path(request["resultPath"]).write_text(json.dumps({"source": source_info, "native": native, "warnings": warnings,
-                                                     "peakRssBytes": resource.getrusage(resource.RUSAGE_SELF).ru_maxrss * 1024}))
+                                                     "peakRssBytes": peak_rss * 1024}))
 
 
 if __name__ == "__main__":

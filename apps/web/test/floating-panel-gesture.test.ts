@@ -133,7 +133,7 @@ function withFrames(run: (flush: () => void) => void) {
   }
 }
 
-test('the actual phone Edit button restores useful height even when normal is already selected', () => {
+test('the actual phone collapse and resume controls recover a usable compact sheet without editing the source geometry', () => {
   const view: Viewport = {
     width: 390,
     height: 844,
@@ -144,11 +144,43 @@ test('the actual phone Edit button restores useful height even when normal is al
   for (const presentation of ['normal', 'maximized', 'collapsed'] as const) {
     const geometry = { ...defaultPanel('inspector', view), height: 112, presentation };
     const ui = capturePanel(view, geometry);
-    ui.control((props) => props['aria-label'] === '恢复参数，保留当前调整').onClick();
-    assert.equal(ui.writes.length, 1);
-    assert.equal(ui.writes[0]!.presentation, 'normal');
-    assert.ok(ui.writes[0]!.height >= 330 && ui.writes[0]!.height <= 360);
+    ui.control((props) => props.className === 'panel-collapse-action').onClick();
+    assert.equal(ui.writes.length, 1, 'each explicit presentation action writes once');
+    const restored = presentation === 'collapsed' ? ui : capturePanel(view, ui.writes[0]!);
+    if (presentation !== 'collapsed') {
+      assert.equal(ui.writes[0]!.presentation, 'collapsed');
+      restored.control((props) => props.className === 'panel-collapse-action').onClick();
+    }
+    assert.equal(restored.writes.length, 1);
+    assert.equal(restored.writes[0]!.presentation, 'normal');
+    assert.ok(restored.writes[0]!.height >= 200 && restored.writes[0]!.height <= 216);
     assert.equal(geometry.height, 112);
+  }
+});
+
+test('the actual phone resume control preserves every legal manual height rather than replacing it with the default', () => {
+  const view: Viewport = {
+    width: 390,
+    height: 844,
+    bucket: 'phone',
+    workspaceHeight: 759.8542,
+    toolShelfHeight: 64,
+  };
+  for (const height of [176, 208, 339.25]) {
+    const geometry = { ...defaultPanel('inspector', view), height };
+    const before = structuredClone(geometry);
+    const open = capturePanel(view, geometry);
+    open.control((props) => props.className === 'panel-collapse-action').onClick();
+    assert.equal(open.writes.length, 1);
+    assert.equal(open.writes[0]!.presentation, 'collapsed');
+    assert.equal(open.writes[0]!.height, height);
+    const collapsed = capturePanel(view, open.writes[0]!);
+    const resume = collapsed.control((props) => props.className === 'panel-collapse-action');
+    assert.ok(resume.label.includes(String(Math.round(height))));
+    resume.onClick();
+    assert.equal(collapsed.writes.length, 1);
+    assert.deepEqual(collapsed.writes[0], geometry);
+    assert.deepEqual(geometry, before);
   }
 });
 

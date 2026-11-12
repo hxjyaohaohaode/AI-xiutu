@@ -80,6 +80,7 @@ export function CloudImageResults({
       {displayedPreview && (
         <Modal
           title={label(displayedPreview)}
+          profile="media"
           open={visible && !!preview}
           onClose={() => setPreview(null)}
         >

@@ -5,7 +5,6 @@ import {
   Microphone,
   MicrophoneSlash,
   PhoneDisconnect,
-  ArrowUp,
   Eye,
   MagnifyingGlass,
   Sparkle,
@@ -18,7 +17,6 @@ import {
   WarningCircle,
   ArrowsOut,
   ArrowsIn,
-  Stop,
   X,
 } from '@phosphor-icons/react';
 import type {
@@ -53,6 +51,14 @@ import './live-assistant.css';
 import { IconButton, Modal } from '../components/Ui';
 import { ChoiceSelect } from '../components/ChoiceSelect';
 import { ComposerInput } from './ComposerInput';
+import { ComposerAction } from './ComposerAction';
+import { ExecutionStatus } from './ExecutionStatus';
+import {
+  appendPublicExecutionEvent,
+  executionToolLabel,
+  type PublicExecutionEvent,
+} from './execution-events';
+import { RubberSegment } from '../components/control-motion';
 import { ComposerVisual } from './ComposerVisual';
 import { IDLE_AI_ACTIVITY, type AIActivity } from './AIVisibility';
 import { PanelSettings } from './PanelSettings';
@@ -66,6 +72,8 @@ import { ResearchGraph } from './ResearchGraph';
 import { AssistantText, CopyMessage } from './AssistantText';
 import { MemoryControls } from './MemoryControls';
 import { WorkspaceCards } from './WorkspaceCards';
+import { CandidateActions } from './CandidateActions';
+import { voiceErrorMessage } from './voice-error';
 import { CloudImageResults, SearchEvidence } from './SearchEvidence';
 import {
   acceptAssistantSubmission,
@@ -185,6 +193,9 @@ export interface LiveAssistantProps {
   onAuth: () => void;
   onSave: () => void;
   onPreview: (recipe: EditorRecipe) => void;
+  previewActive?: boolean;
+  onConfirmPreview?: () => void;
+  onCancelPreview?: () => void;
   imageModelIds: string[];
   onBeforeArtworkWrite?: () => void | Promise<void>;
   onAfterArtworkWrite?: () => void | Promise<void>;
@@ -285,6 +296,8 @@ export function LiveAssistant(props: LiveAssistantProps) {
   const [voiceCaptions, setVoiceCaptions] = useState<CaptionState>({});
   const [voiceSearchRemaining, setVoiceSearchRemaining] = useState(0);
   const [activeTurn, setActiveTurn] = useState<{ id: string; stopping: boolean } | null>(null);
+  const [executionEvents, setExecutionEvents] = useState<readonly PublicExecutionEvent[]>([]);
+  const [sharedRangeOpen, setSharedRangeOpen] = useState(false);
   const [spaceIds, setSpaceIds] = useState<string[]>(project ? [project.spaceId] : []),
     [referenceIds, setReferenceIds] = useState<string[]>([]);
   const [resourceQuery, setResourceQuery] = useState(''),
@@ -292,6 +305,27 @@ export function LiveAssistant(props: LiveAssistantProps) {
   const [searchStatus, setSearchStatus] = useState<StatusMessage>('');
   const [messages, setMessages] = useState<Message[]>([]),
     [candidates, setCandidates] = useState<AssistantCandidate[]>([]);
+  const [previewCandidateId, setPreviewCandidateId] = useState<string | null>(null);
+  const [confirmedCandidateIds, setConfirmedCandidateIds] = useState<ReadonlySet<string>>(
+    new Set(),
+  );
+  useEffect(() => {
+    if (props.previewActive === false) setPreviewCandidateId(null);
+  }, [props.previewActive]);
+  useEffect(() => {
+    setPreviewCandidateId(null);
+    setConfirmedCandidateIds(new Set());
+  }, [project?.id, artwork?.id]);
+  function cancelCandidatePreview() {
+    props.onCancelPreview?.();
+    setPreviewCandidateId(null);
+  }
+  function confirmCandidatePreview() {
+    if (!previewCandidateId || !props.onConfirmPreview) return;
+    props.onConfirmPreview();
+    setConfirmedCandidateIds((old) => new Set([...old, previewCandidateId]));
+    setPreviewCandidateId(null);
+  }
   const [historyEpoch, setHistoryEpoch] = useState(0);
   const [candidateHistoryStatus, setCandidateHistoryStatus] = useState<StatusMessage>('');
   const [parentTurnId, setParentTurnId] = useState<string | undefined>(),
@@ -421,6 +455,23 @@ export function LiveAssistant(props: LiveAssistantProps) {
     if (voiceOptions.length && !voiceOptions.includes(voice)) setVoice(voiceOptions[0]!);
   }, [voiceId, voiceOptions.join(','), voice]);
   const inCall = callState !== 'idle';
+  const catalogSelectionLocked =
+    busy || inCall || !!pendingSubmission || !!pendingVoiceSubmission || !!activeTurn;
+  useEffect(() => {
+    if (!catalog || catalogSelectionLocked) return;
+    // Admission readiness depends on the actor loaded with the catalog. It must
+    // never lock the initial default selection while that first read is pending.
+    setModelId((old) =>
+      catalog.models.some((item) => item.id === old && item.operations.includes('assistant-turn'))
+        ? old
+        : (catalog.models.find((item) => item.operations.includes('assistant-turn'))?.id ?? ''),
+    );
+    setVoiceId((old) =>
+      catalog.models.some((item) => item.id === old && item.operations.includes('realtime-voice'))
+        ? old
+        : (catalog.models.find((item) => item.operations.includes('realtime-voice'))?.id ?? ''),
+    );
+  }, [catalog, catalogSelectionLocked]);
   const currentVoiceControls = useRef({ callState, muted, end: endVoice });
   currentVoiceControls.current = { callState, muted, end: endVoice };
   const toggleVoiceMute = useCallback(() => {
@@ -467,38 +518,45 @@ export function LiveAssistant(props: LiveAssistantProps) {
     } else if (followingConversation.current) {
       element.scrollTop = element.scrollHeight;
     }
-  }, [messages, candidates, workspace, props.visible]);
+  }, [messages, candidates, workspace, executionEvents, props.visible]);
   useEffect(() => {
     alive.current = true;
-    if (!isLoggedIn) return;
+    if (!isLoggedIn || props.visible === false) return;
     const controller = new AbortController();
-    void Promise.all([
-      api<Catalog>('/assistant/models', { signal: controller.signal }),
-      api<Session>('/session', { signal: controller.signal }),
-    ])
-      .then(([value, session]) => {
+    let refreshing = false;
+    let lastRead = -Infinity;
+    async function refreshCatalog() {
+      if (refreshing || controller.signal.aborted || document.visibilityState === 'hidden') return;
+      if (Date.now() - lastRead < 15_000) return;
+      refreshing = true;
+      lastRead = Date.now();
+      try {
+        const [value, session] = await Promise.all([
+          api<Catalog>('/assistant/models', { signal: controller.signal }),
+          api<Session>('/session', { signal: controller.signal }),
+        ]);
         if (controller.signal.aborted) return;
         setCatalog(value);
         setSpaces(session.spaces);
         setActorId(session.user?.id ?? null);
-        setModelId((old) =>
-          value.models.some((item) => item.id === old && item.operations.includes('assistant-turn'))
-            ? old
-            : (value.models.find((item) => item.operations.includes('assistant-turn'))?.id ?? ''),
-        );
-        setVoiceId((old) =>
-          value.models.some((item) => item.id === old && item.operations.includes('realtime-voice'))
-            ? old
-            : (value.models.find((item) => item.operations.includes('realtime-voice'))?.id ?? ''),
-        );
-      })
-      .catch((err) => {
+      } catch (err) {
         if (!controller.signal.aborted) setError(errorMessage(err));
-      });
+      } finally {
+        refreshing = false;
+      }
+    }
+    void refreshCatalog();
+    const refresh = () => void refreshCatalog();
+    const interval = window.setInterval(refresh, 60_000);
+    window.addEventListener('focus', refresh);
+    document.addEventListener('visibilitychange', refresh);
     return () => {
       controller.abort();
+      window.clearInterval(interval);
+      window.removeEventListener('focus', refresh);
+      document.removeEventListener('visibilitychange', refresh);
     };
-  }, [isLoggedIn]);
+  }, [isLoggedIn, props.visible]);
   useEffect(() => {
     restoreSubmission();
   }, [actorId, isLoggedIn]);
@@ -538,6 +596,8 @@ export function LiveAssistant(props: LiveAssistantProps) {
     setResearchLibrary('');
     setResearchCanvas(false);
     setResearchGraph(null);
+    setExecutionEvents([]);
+    setSharedRangeOpen(false);
     setPublicImages(false);
     setActiveTurn(null);
     setContextStatus('未共享画面');
@@ -1055,6 +1115,7 @@ export function LiveAssistant(props: LiveAssistantProps) {
     // reachable as soon as a preserved voice request starts connecting.
     setMode('voice');
     setVoiceCaptions({});
+    setExecutionEvents([]);
     setVoiceSearchRemaining(0);
     lastVoiceContextSend.current = -Infinity;
     setMuted(false);
@@ -1188,7 +1249,7 @@ export function LiveAssistant(props: LiveAssistantProps) {
       }
       if (requestIsActive(token) && epoch === voiceEpoch.current) {
         setCallState('idle');
-        setError(errorMessage(err));
+        setError(voiceErrorMessage(err));
       }
     } finally {
       requests.current.finish(token);
@@ -1251,6 +1312,7 @@ export function LiveAssistant(props: LiveAssistantProps) {
     }
   }
   function showRunEvent(event: RunEvent) {
+    setExecutionEvents((previous) => appendPublicExecutionEvent(previous, event));
     if (event.type === 'text.delta' && typeof event.payload.delta === 'string') {
       const text = (streamText.current.get(event.runId) ?? '') + event.payload.delta;
       streamText.current.set(event.runId, text);
@@ -1299,27 +1361,10 @@ export function LiveAssistant(props: LiveAssistantProps) {
       setActiveTurn({ id: event.runId, stopping: true });
       setToolStatus('已收到停止请求，正在核对已发送的请求');
     } else if (event.type.startsWith('tool.')) {
-      const names: Record<string, string> = {
-        describe_editor: '读取编辑参数',
-        search_resources: '检索素材',
-        delegate_research: '并行查找素材与检查画面',
-        public_search: '检索公开来源',
-        propose_sequence: '组合编辑步骤',
-        propose_retouch: '准备局部质感候选',
-        propose_healing: '准备局部修复候选',
-        propose_edit: '准备参数候选',
-        propose_scene_balance: '按画面亮度准备调色候选',
-        propose_curve: '准备曲线',
-        draft_generation: '整理生图要求',
-        inspect_candidate: '渲染并检查真实候选图像',
-        select_candidate: '确定本轮编辑方案',
-        read_history: '回查原文',
-        read_tool_result: '读取工具结果',
-      };
       setToolStatus({
         message: '{tool} · {state}',
         params: {
-          tool: names[event.payload.name] ?? '处理工具结果',
+          tool: executionToolLabel(event.payload.name),
           state:
             (
               {
@@ -1361,6 +1406,7 @@ export function LiveAssistant(props: LiveAssistantProps) {
     const text = prompt.trim();
     setError('');
     setToolStatus('');
+    setExecutionEvents([]);
     if (callState === 'active') {
       client.current?.send({ type: 'text', text });
       setPrompt('');
@@ -1621,8 +1667,7 @@ export function LiveAssistant(props: LiveAssistantProps) {
       });
       const actionable = result.candidates.filter(
         (item) =>
-          item.decision === 'pending' ||
-          (item.kind === 'generation' && item.decision === 'previewed'),
+          item.decision === 'pending' || (item.decision === 'previewed' && !item.appliedRevisionId),
       ).length;
       setCandidateHistoryStatus(
         actionable
@@ -1671,7 +1716,10 @@ export function LiveAssistant(props: LiveAssistantProps) {
             return result;
           },
           apply: (next) => {
-            if (!automatic) current.current.onPreview(next);
+            if (!automatic) {
+              current.current.onPreview(next);
+              setPreviewCandidateId(candidate.id);
+            }
           },
         });
         if (!applied) return;
@@ -1742,8 +1790,8 @@ export function LiveAssistant(props: LiveAssistantProps) {
   const remainingCandidates = candidates.filter(
     (item) =>
       !workspaceCandidateIds.has(item.id) &&
-      (item.decision === 'pending' ||
-        (item.kind === 'generation' && item.decision === 'previewed')),
+      !confirmedCandidateIds.has(item.id) &&
+      (item.decision === 'pending' || (item.decision === 'previewed' && !item.appliedRevisionId)),
   );
   useEffect(() => {
     if (
@@ -1853,6 +1901,7 @@ export function LiveAssistant(props: LiveAssistantProps) {
     setCandidates([]);
     setContextManifest(null);
     setResearchGraph(null);
+    setExecutionEvents([]);
     setWorkspace(null);
     setMemorySuggestions({ items: [] });
     followingConversation.current = true;
@@ -2047,9 +2096,41 @@ export function LiveAssistant(props: LiveAssistantProps) {
       )}
     </>
   );
+  const showConversationEmpty =
+    !messages.length && !remainingCandidates.length && mode === 'text' && !busy;
+  const availabilityMessage = !project
+    ? t('选择项目后开始对话')
+    : !catalog?.ready
+      ? t(catalog ? '助手暂不可用' : '正在读取可用模型…')
+      : null;
+  const availabilityDetails =
+    project && catalog && !catalog.ready && catalog.reason ? (
+      <MotionDetails className="ai-availability-details">
+        <summary>{t('查看原因')}</summary>
+        <p>{t(catalog.reason)}</p>
+      </MotionDetails>
+    ) : null;
+  const latestExecution = executionEvents.at(-1);
+  const executionState =
+    pendingSubmission?.state === 'unknown' || hasVoiceRecovery
+      ? 'unknown'
+      : activeTurn?.stopping
+        ? 'pending'
+        : (latestExecution?.state ?? (busy || toolStatus ? 'running' : 'pending'));
   return (
     <section
       className="live-assistant live-assistant-v2"
+      data-availability={
+        !isLoggedIn
+          ? 'login'
+          : !project
+            ? 'project'
+            : !catalog
+              ? 'loading'
+              : catalog.ready
+                ? 'ready'
+                : 'unavailable'
+      }
       hidden={props.hidden}
       inert={props.hidden}
       data-in-call={inCall || undefined}
@@ -2062,12 +2143,13 @@ export function LiveAssistant(props: LiveAssistantProps) {
         {props.navigation ?? (
           <strong className="ai-task-title">
             <Sparkle size={18} />
-            {t('AI 助手')}
+            {t('对话')}
           </strong>
         )}
         <div className="ai-header-actions">
           <IconButton
             label={t('新会话')}
+            className="ai-new-conversation"
             disabled={busy || inCall || submissionBlocked}
             onClick={newConversation}
           >
@@ -2133,7 +2215,6 @@ export function LiveAssistant(props: LiveAssistantProps) {
             <ComposerVisual kind="assistant" />
             <div>
               <h3>{t('登录后使用 AI 助手')}</h3>
-              <p>{t('对话与结果保存到项目。')}</p>
             </div>
             <button className="button button-primary" onClick={onAuth}>
               {t('登录')}
@@ -2141,11 +2222,10 @@ export function LiveAssistant(props: LiveAssistantProps) {
           </div>
         ) : (
           <>
-            {(!catalog?.ready || !project) && (
-              <div className="ai-availability" role="status">
-                <span>
-                  {!project ? t('选择项目后开始对话') : t(catalog?.reason ?? '正在读取可用模型…')}
-                </span>
+            {availabilityMessage && !showConversationEmpty && (
+              <div className="ai-availability" role="status" data-assistant-availability>
+                <span>{availabilityMessage}</span>
+                {availabilityDetails}
                 {!project && (
                   <button type="button" onClick={onSave}>
                     {t('选择项目')}
@@ -2162,15 +2242,22 @@ export function LiveAssistant(props: LiveAssistantProps) {
               }
               running={Boolean(activeTurn && activeTurn.id === researchTurnId)}
             />
-            {!messages.length && !remainingCandidates.length && mode === 'text' && !busy && (
+            {showConversationEmpty && (
               <div className="ai-conversation-empty">
                 <ComposerVisual kind="assistant" />
-                <h3>{t('描述需要修改的地方')}</h3>
-                <p>
-                  {artwork
-                    ? t('共享预览后，也可以针对画面提出建议。')
-                    : t('可以先讨论想法，也可以切换到生图。')}
-                </p>
+                {availabilityMessage ? (
+                  <div className="ai-empty-availability" role="status" data-assistant-availability>
+                    <p>{availabilityMessage}</p>
+                    {availabilityDetails}
+                    {!project && (
+                      <button className="button button-secondary" type="button" onClick={onSave}>
+                        {t('选择项目')}
+                      </button>
+                    )}
+                  </div>
+                ) : (
+                  <h3>{t('描述需要修改的地方')}</h3>
+                )}
               </div>
             )}
             <div className="assistant-messages" aria-label={t('协作对话')} data-motion="ai-answer">
@@ -2225,6 +2312,10 @@ export function LiveAssistant(props: LiveAssistantProps) {
                 grant={grant}
                 disabled={busy || submissionBlocked}
                 canExecute={creative.mode !== 'suggest'}
+                previewCandidateId={previewCandidateId}
+                confirmedCandidateIds={confirmedCandidateIds}
+                onConfirmPreview={props.onConfirmPreview ? confirmCandidatePreview : undefined}
+                onCancelPreview={props.onCancelPreview ? cancelCandidatePreview : undefined}
                 onDecision={(candidate, decision) => {
                   void decide(candidate, decision);
                 }}
@@ -2269,25 +2360,16 @@ export function LiveAssistant(props: LiveAssistantProps) {
                         </table>
                       </MotionDetails>
                     )}
-                    <div>
-                      <button
-                        disabled={busy || submissionBlocked}
-                        onClick={() => void decide(candidate, 'rejected')}
-                      >
-                        {t('退回')}
-                      </button>
-                      <button
-                        className="ai-candidate-primary"
-                        disabled={creative.mode === 'suggest' || busy || submissionBlocked}
-                        onClick={() => void decide(candidate, 'previewed')}
-                      >
-                        {candidate.kind === 'edit'
-                          ? t('在编辑器预览')
-                          : candidate.decision === 'previewed'
-                            ? t('重新打开生图草案')
-                            : t('选择模型与生成参数')}
-                      </button>
-                    </div>
+                    <CandidateActions
+                      candidate={candidate}
+                      disabled={busy || submissionBlocked}
+                      canExecute={creative.mode !== 'suggest'}
+                      previewing={previewCandidateId === candidate.id}
+                      confirmed={confirmedCandidateIds.has(candidate.id)}
+                      onDecision={(item, decision) => void decide(item, decision)}
+                      onConfirm={props.onConfirmPreview ? confirmCandidatePreview : undefined}
+                      onCancel={props.onCancelPreview ? cancelCandidatePreview : undefined}
+                    />
                   </article>
                 ))}
               </div>
@@ -2321,22 +2403,23 @@ export function LiveAssistant(props: LiveAssistantProps) {
             )}
           </p>
         )}
+        {(toolStatus || busy || executionEvents.length > 0) && (
+          <ExecutionStatus
+            label={
+              recoveryLabel
+                ? t('最近执行记录')
+                : toolStatus
+                  ? renderStatus(toolStatus)
+                  : busy
+                    ? t('正在处理…')
+                    : ''
+            }
+            state={executionState}
+            events={executionEvents}
+          />
+        )}
       </div>
       <footer className="ai-composer-region">
-        <div className="ai-execution-status">
-          <p className="assistant-tool-status" aria-live="polite">
-            {toolStatus ? renderStatus(toolStatus) : busy ? t('正在处理…') : ''}
-          </p>
-          {activeTurn && (
-            <button
-              type="button"
-              disabled={activeTurn.stopping}
-              onClick={() => void stopActiveTurn()}
-            >
-              {activeTurn.stopping ? t('正在核对停止结果') : t('停止本轮执行')}
-            </button>
-          )}
-        </div>
         <form
           className="assistant-composer ai-composer-surface"
           data-ai-composer
@@ -2363,7 +2446,10 @@ export function LiveAssistant(props: LiveAssistantProps) {
             <button
               className="ai-selected-context"
               type="button"
-              onClick={() => setOverlay('settings')}
+              onClick={() => {
+                setSharedRangeOpen(true);
+                setOverlay('settings');
+              }}
             >
               <Eye size={14} />
               <span>
@@ -2407,7 +2493,13 @@ export function LiveAssistant(props: LiveAssistantProps) {
               <CaretDown size={12} />
             </button>
             <div className="ai-composer-tools">
-              <IconButton label={t('共享画面与参考素材')} onClick={() => setOverlay('settings')}>
+              <IconButton
+                label={t('共享画面与参考素材')}
+                onClick={() => {
+                  setSharedRangeOpen(true);
+                  setOverlay('settings');
+                }}
+              >
                 <Paperclip size={18} />
               </IconButton>
               <IconButton
@@ -2417,57 +2509,56 @@ export function LiveAssistant(props: LiveAssistantProps) {
               >
                 <Microphone size={18} />
               </IconButton>
-              <button
-                className="ai-send-button ai-submit-request"
-                aria-label={t('发送协作请求')}
-                title={t('发送（Ctrl / ⌘ Enter）')}
-                type="submit"
-                disabled={!canSend}
-              >
-                <ArrowUp size={19} />
-              </button>
-              {activeTurn && (
-                <button
-                  type="button"
-                  className="ai-send-button ai-compact-stop"
-                  aria-label={activeTurn.stopping ? t('正在核对停止结果') : t('停止本轮执行')}
-                  title={activeTurn.stopping ? t('正在核对停止结果') : t('停止本轮执行')}
-                  disabled={activeTurn.stopping}
-                  onClick={() => void stopActiveTurn()}
-                >
-                  <Stop size={18} />
-                </button>
-              )}
+              <ComposerAction
+                state={
+                  activeTurn
+                    ? activeTurn.stopping
+                      ? 'stopping'
+                      : 'stop'
+                    : busy
+                      ? 'waiting'
+                      : 'send'
+                }
+                label={
+                  activeTurn
+                    ? activeTurn.stopping
+                      ? t('正在核对停止结果')
+                      : t('停止本轮执行')
+                    : t('发送协作请求')
+                }
+                title={activeTurn ? undefined : t('发送（Ctrl / ⌘ Enter）')}
+                disabled={activeTurn ? activeTurn.stopping : !canSend}
+                onStop={activeTurn ? () => void stopActiveTurn() : undefined}
+              />
             </div>
           </div>
         </form>
-        <div className="ai-composer-meta">
-          <span className="ai-execution-summary">
-            <span className="ai-full-execution-label">{t(executionLabel)}</span>
-            <span className="ai-compact-status" aria-live="polite">
+        {selected && (
+          <div className="ai-composer-meta">
+            <span className="ai-execution-summary">
+              <span className="ai-full-execution-label">{t(executionLabel)}</span>
+              <span className="ai-compact-status" aria-live="polite">
+                {grant && creative.mode === 'auto'
+                  ? t(executionLabel)
+                  : toolStatus
+                    ? renderStatus(toolStatus)
+                    : busy
+                      ? t('正在处理…')
+                      : t(executionLabel)}
+              </span>
               {grant && creative.mode === 'auto'
-                ? t(executionLabel)
-                : toolStatus
-                  ? renderStatus(toolStatus)
-                  : busy
-                    ? t('正在处理…')
-                    : t(executionLabel)}
+                ? t(' · {v0}/{v1} 点', { v0: grant.usedUnits, v1: grant.unitLimit })
+                : ''}
             </span>
-            {grant && creative.mode === 'auto'
-              ? t(' · {v0}/{v1} 点', { v0: grant.usedUnits, v1: grant.unitLimit })
-              : ''}
-          </span>
-          {grant && creative.mode === 'auto' && (
-            <button className="ai-grant-stop" type="button" onClick={() => void revokeGrant()}>
-              {t('停止授权')}
-            </button>
-          )}
-          <span className="ai-price-summary">
-            {selected ? t('文字 {v0} 点 / 轮', { v0: selected.unitCost }) : t('点数待确认')}
-          </span>
-        </div>
-        {inCall && (
-          <p className="ai-input-disclosure">{t('收起后通话继续，可在顶部活动条静音或结束。')}</p>
+            {grant && creative.mode === 'auto' && (
+              <button className="ai-grant-stop" type="button" onClick={() => void revokeGrant()}>
+                {t('停止授权')}
+              </button>
+            )}
+            <span className="ai-price-summary">
+              {selected ? t('文字 {v0} 点 / 轮', { v0: selected.unitCost }) : t('点数待确认')}
+            </span>
+          </div>
         )}
       </footer>
       <PanelSettingsPage
@@ -2477,19 +2568,17 @@ export function LiveAssistant(props: LiveAssistantProps) {
       >
         <div className="ai-options-content">
           <PanelSettings onClose={() => setOverlay(null)} />
-          <div className="assistant-mode" role="group" aria-label={t('交流方式')}>
-            <button
-              type="button"
-              aria-pressed={mode === 'text'}
-              disabled={inCall}
-              onClick={() => setMode('text')}
-            >
-              {t('文字协作')}
-            </button>
-            <button type="button" aria-pressed={mode === 'voice'} onClick={() => setMode('voice')}>
-              {t('实时对话')}
-            </button>
-          </div>
+          <RubberSegment
+            label={t('交流方式')}
+            className="assistant-mode"
+            value={mode}
+            onChange={setMode}
+            disabled={inCall}
+            options={[
+              { value: 'text', label: t('文字协作') },
+              { value: 'voice', label: t('实时对话') },
+            ]}
+          />
           <div className="assistant-models">
             <ModelChoice
               label={t('助手模型')}
@@ -2551,7 +2640,11 @@ export function LiveAssistant(props: LiveAssistantProps) {
               suggestions={memorySuggestions}
             />
           )}
-          <MotionDetails className="assistant-context">
+          <MotionDetails
+            className="assistant-context"
+            open={sharedRangeOpen}
+            onOpenChange={setSharedRangeOpen}
+          >
             <summary>
               <Eye size={15} /> {t('共享范围 ·')}
               {shareImage ? t('画面与参数') : t('仅参数')}
@@ -2767,6 +2860,7 @@ export function LiveAssistant(props: LiveAssistantProps) {
               setMemorySuggestions({ items: [] });
               setContextManifest(null);
               setResearchGraph(null);
+              setExecutionEvents([]);
               setError('');
               followingConversation.current = true;
               setOverlay(null);

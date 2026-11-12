@@ -8,7 +8,7 @@ import {
   ArrowUUpLeft,
   ArrowClockwise,
   ArrowCounterClockwise,
-} from '@phosphor-icons/react';
+} from '../components/ControlGlyph';
 import { MAX_POLYGON_POINTS, type SelectionMaskV3 } from '@ai-xiutu/editor';
 import { IconButton } from '../components/Ui';
 import { ParameterShelf, type ShelfControl } from './ParameterShelf';

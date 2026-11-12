@@ -5,6 +5,8 @@ import type { Asset, Project } from '../lib/types';
 import { api, ApiError, jsonRequest, errorMessage } from '../lib/api';
 import { secureUuid } from '../lib/uuid';
 import { Modal, InlineError, Busy } from './Ui';
+import { CheckControl } from './CheckControl';
+import { StatusMark } from './StatusMark';
 import { MediaSourceViewer } from '../media/MediaSourceViewer';
 import '../media/media.css';
 interface Capabilities {
@@ -16,6 +18,8 @@ interface Capabilities {
   maxRawPixels: number;
   maxHdrPixels: number;
   maxPsdPixels: number;
+  heicPq?: { available: boolean; maxPixels: number; maxBytes: number };
+  heicHlg?: { available: boolean; maxPixels: number; maxBytes: number };
   maxInputBytes: number;
   rasterFormats: string[];
   maxChunkBytes: number;
@@ -279,19 +283,14 @@ export function MediaImportDialog({
   const progress = job ? Math.round((job.uploadedBytes / job.size) * 100) : 0;
   return (
     <Modal
-      title={t('保留原件，轻量编辑')}
+      title={t('导入原件')}
       subtitle={project.title}
       onClose={onClose}
       canClose={() => !cancelLock.current && !openLock.current}
       className="studio-dialog media-import-dialog"
     >
       <div className="media-import" data-motion="media-import">
-        <p>
-          {t(
-            '高像素与专业格式经过独立处理。保留原件、16 位母版和色彩信息，编辑器使用轻量预览；原文件不会被覆盖。',
-          )}
-        </p>
-        {caps ? (
+        {caps?.available ? (
           <>
             <div className="media-import-limits">
               <span>
@@ -302,20 +301,33 @@ export function MediaImportDialog({
                 {t('单文件')}
                 {Math.floor(caps.maxInputBytes / 1024 ** 2)} MiB
               </span>
+              {caps.available && caps.heicPq?.available && (
+                <span>
+                  HEIC PQ · {(caps.heicPq.maxPixels / 1e6).toLocaleString(getLocale())}{' '}
+                  {t('百万像素')} · {Math.floor(caps.heicPq.maxBytes / 1024 ** 2)} MiB
+                </span>
+              )}
+              {caps.available && caps.heicHlg?.available && (
+                <span>
+                  HEIC / HIF HLG · {(caps.heicHlg.maxPixels / 1e6).toLocaleString(getLocale())}{' '}
+                  {t('百万像素')} · {Math.floor(caps.heicHlg.maxBytes / 1024 ** 2)} MiB
+                </span>
+              )}
+            </div>
+            <div className="media-import-limits" aria-label={t('格式像素上限')}>
+              <span>RAW · {(caps.maxRawPixels / 1e6).toLocaleString(getLocale())} MP</span>
+              <span>HDR · {(caps.maxHdrPixels / 1e6).toLocaleString(getLocale())} MP</span>
               <span>
-                {Math.floor(caps.maxChunkBytes / 1024 ** 2)} {t('MiB 分片续传')}
+                PSD ·{' '}
+                {(caps.maxPsdPixels / 1e6).toLocaleString(getLocale(), {
+                  maximumFractionDigits: 1,
+                })}{' '}
+                MP
               </span>
             </div>
-            <p className="control-note">
-              {t('RAW / HDR 上限分别为')}
-              {(caps.maxRawPixels / 1e6).toLocaleString(getLocale())} /{' '}
-              {(caps.maxHdrPixels / 1e6).toLocaleString(getLocale())} {t('百万像素，PSD 上限约')}{' '}
-              {(caps.maxPsdPixels / 1e6).toFixed(1)}{' '}
-              {t('百万像素；格式支持以当前服务器解码结果为准。')}
-            </p>
           </>
         ) : (
-          !error && <Busy label={t('正在读取原件导入能力')} />
+          !caps && !error && <Busy label={t('正在读取原件导入能力')} />
         )}
         {!canWrite && (
           <p className="form-hint" role="status">
@@ -324,16 +336,13 @@ export function MediaImportDialog({
         )}
         {caps && !caps.available && (
           <p role="status" className="control-note">
-            {t(
-              '当前服务器尚未启用高精度素材处理。普通导入仍可使用，运营需配置 Linux 隔离处理环境和存储容量。',
-            )}
+            {t('高精度导入暂不可用，普通图片仍可在本地编辑。')}
           </p>
         )}
         {caps?.available && !caps.nativeReady && (
           <p className="control-note">
             {t('当前可处理')}
-            {caps.rasterFormats.join('、')}{' '}
-            {t('与支持的 PSD 合成图；RAW / EXR / Radiance 需要安装原生解码器。')}
+            {caps.rasterFormats.join('、')} {t('与 PSD 合成图；RAW / EXR / Radiance 暂不可用。')}
           </p>
         )}
         {!asset && (
@@ -396,35 +405,48 @@ export function MediaImportDialog({
                 </small>
               </span>
             </button>
-            <label className="media-check">
-              <input
-                type="checkbox"
-                checked={tiles}
-                disabled={
-                  !canWrite || !!job || uploading || cancelling || restorePending || restoreBlocked
-                }
-                onChange={(event) => setTiles(event.target.checked)}
-              />
-              {t('建立分级图块，便于按原尺寸查看细节')}
-            </label>
+            <CheckControl
+              className="media-check"
+              checked={tiles}
+              disabled={
+                !canWrite || !!job || uploading || cancelling || restorePending || restoreBlocked
+              }
+              onChange={(event) => setTiles(event.target.checked)}
+              label={t('建立分级图块，便于按原尺寸查看细节')}
+            />
           </>
         )}
         {job && (
           <div className="media-upload-progress" role="status">
             <div>
-              <span>
-                {job.state === 'processing'
-                  ? t('已上传，正在隔离处理')
-                  : job.state === 'ready'
-                    ? t('原件与母版已保存')
-                    : job.state === 'failed'
-                      ? t('处理未完成')
-                      : job.state === 'cancelled'
-                        ? t('已取消')
-                        : uploading
-                          ? t('正在上传')
-                          : t('上传已暂停，可选择同一文件继续')}
-              </span>
+              <StatusMark
+                state={
+                  job.state === 'processing' || uploading
+                    ? 'running'
+                    : job.state === 'ready'
+                      ? 'done'
+                      : job.state === 'failed'
+                        ? 'failed'
+                        : job.state === 'cancelled'
+                          ? 'cancelled'
+                          : 'pending'
+                }
+                size="small"
+                progress={uploading ? progress / 100 : undefined}
+                label={
+                  job.state === 'processing'
+                    ? t('已上传，正在隔离处理')
+                    : job.state === 'ready'
+                      ? t('原件与母版已保存')
+                      : job.state === 'failed'
+                        ? t('处理未完成')
+                        : job.state === 'cancelled'
+                          ? t('已取消')
+                          : uploading
+                            ? t('正在上传')
+                            : t('上传已暂停，可选择同一文件继续')
+                }
+              />
               <span>{progress}%</span>
             </div>
             <progress max={100} value={progress} aria-label={t('原件上传进度')} />
@@ -508,9 +530,7 @@ export function MediaImportDialog({
           </div>
         )}
         <p className="control-note">
-          {t(
-            '原件与派生文件计入所在空间的存储额度。关闭面板会暂停上传；处理中的任务继续运行。AI 不会因导入而自动读取图片。',
-          )}
+          {t('原件和派生图计入空间存储。关闭后暂停上传，已开始的处理会继续。')}
         </p>
       </div>
     </Modal>

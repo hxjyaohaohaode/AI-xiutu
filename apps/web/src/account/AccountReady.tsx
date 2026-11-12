@@ -1,6 +1,5 @@
-import { ArrowRight, Check, FolderPlus, Image } from '@phosphor-icons/react';
+import { ArrowRight, Check, FolderPlus } from '@phosphor-icons/react';
 import { AccountPageFrame } from './AccountPageFrame';
-import { accountPageCopy } from './page-copy';
 import type { PublicConfig, Session } from '../lib/types';
 import { t, useLocale } from '../i18n';
 import { accountPhone } from './account-model';
@@ -23,12 +22,11 @@ export function AccountReady({
   config: PublicConfig | null;
   onHome?: () => void;
 }) {
-  const c = accountPageCopy(useLocale());
+  useLocale();
   const personal = session.spaces.find((space) => space.kind === 'personal');
   return (
     <AccountPageFrame
       title={t('账号已创建')}
-      description={c.ready}
       config={config}
       onBack={onContinue}
       onHome={onHome}
@@ -44,13 +42,6 @@ export function AccountReady({
             <span>{session.user ? t(accountPhone(session.user.phoneMasked)) : ''}</span>
           </div>
         </div>
-        <p>
-          {personal
-            ? hasImage
-              ? t('空间已就绪，继续完成你的作品。')
-              : t('空间已就绪，开始你的第一件作品。')
-            : t('已登录，可以先在本地编辑照片。')}
-        </p>
         {personal && (
           <div className="account-ready-space">
             <span>{t('个人空间')}</span>
@@ -61,16 +52,15 @@ export function AccountReady({
           <button
             className="button button-primary"
             data-testid="account-start"
-            onClick={onContinue}
+            onClick={hasImage ? onContinue : onImport}
           >
-            {hasImage ? t('继续编辑') : t('进入工作台')}
+            {hasImage ? t('继续编辑') : t('打开照片')}
             <ArrowRight size={18} />
           </button>
-          <button className="account-ready-next" onClick={hasImage ? onProject : onImport}>
-            {hasImage ? <FolderPlus size={20} /> : <Image size={20} />}
+          <button className="account-ready-next" onClick={onProject} disabled={!personal}>
+            <FolderPlus size={20} />
             <span>
-              <strong>{hasImage ? t('新建云端项目') : t('打开照片')}</strong>
-              <small>{hasImage ? t('保存作品与版本') : t('从设备选择图片')}</small>
+              <strong>{t('新建云端项目')}</strong>
             </span>
             <ArrowRight size={16} />
           </button>

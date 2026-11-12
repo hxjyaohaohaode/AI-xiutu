@@ -1,3 +1,9 @@
+import { navigationAiV2Traditional } from './navigation-ai-v2-messages';
+import { nativeGradeTraditionalChinese } from './native-grade-messages';
+import { viewsRedesignTraditional } from './views-redesign-messages';
+import { restorationTraditionalChinese } from './restoration-messages';
+import { aiRedesignTraditionalChinese } from './ai-redesign-messages';
+import { libraryTraditional } from './library-messages';
 import { usageTraditional } from './usage-messages';
 import { workspaceTraditional } from './workspace-messages';
 import { accountTraditional } from './account-messages';
@@ -5,6 +11,9 @@ import { traditionalGenerated } from './traditional-generated';
 
 /** Traditional Chinese copy; user content is never passed through this catalog. */
 export const traditional: Readonly<Record<string, string>> = {
+  ...navigationAiV2Traditional,
+  直方图: '直方圖',
+  重置: '重置',
   圆角矩形: '圓角矩形',
   位置标记: '位置標記',
   闪电: '閃電',
@@ -108,6 +117,10 @@ export const traditional: Readonly<Record<string, string>> = {
   重置曲线: '重設曲線',
   重置全部曲线: '重設所有曲線',
   精准抠图: '精細去背',
+  抠图模式: '去背模式',
+  标准抠图: '標準去背',
+  发丝与边缘: '髮絲與邊緣',
+  '发丝与边缘抠图暂不可用，可以切回标准抠图。': '髮絲與邊緣去背暫不可用，可以切回標準去背。',
   保留前景选区: '保留前景選區',
   排除遮挡选区: '排除遮擋選區',
   抠图边缘范围: '去背邊緣範圍',
@@ -139,6 +152,19 @@ export const traditional: Readonly<Record<string, string>> = {
   ...usageTraditional,
   ...accountTraditional,
   ...workspaceTraditional,
+  ...libraryTraditional,
+  ...aiRedesignTraditionalChinese,
+  ...nativeGradeTraditionalChinese,
+  ...restorationTraditionalChinese,
+  ...viewsRedesignTraditional,
+  '确认 AI 调整': '套用 AI 調整',
+  本地编辑: '本機編輯',
+  格式像素上限: '格式像素上限',
+  '高精度导入暂不可用，普通图片仍可在本地编辑。': '高精度匯入暫不可用，一般圖片仍可在本地編輯。',
+  '与 PSD 合成图；RAW / EXR / Radiance 暂不可用。':
+    '與 PSD 合成圖；RAW / EXR / Radiance 暫不可用。',
+  '原件和派生图计入空间存储。关闭后暂停上传，已开始的处理会继续。':
+    '原件和衍生圖計入空間儲存。關閉後暫停上傳，已開始的處理會繼續。',
   语言: '語言',
   简体中文: '簡體中文',
   繁體中文: '繁體中文',

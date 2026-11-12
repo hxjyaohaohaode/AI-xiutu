@@ -1,12 +1,5 @@
 import './studio-styles.css';
-import {
-  Suspense,
-  useCallback,
-  useEffect,
-  useRef,
-  useState,
-  useSyncExternalStore,
-} from 'react';
+import { Suspense, useCallback, useEffect, useRef, useState, useSyncExternalStore } from 'react';
 import {
   CloudArrowUp,
   DownloadSimple,
@@ -56,13 +49,14 @@ import { ToolDock } from './workspace/ToolDock';
 import { ToolOverview } from './workspace/ToolOverview';
 import { PanelNavigation, type PanelSection } from './workspace/PanelNavigation';
 import { interactionText } from './workspace/interaction-copy';
+import { WorkspaceViewTabs } from './workspace/WorkspaceViewTabs';
 import { CommandMenu, type StudioCommand } from './workspace/CommandMenu';
 import {
   WorkspaceNavigation,
   WorkspaceSettings,
   workspaceViews,
 } from './workspace/WorkspaceNavigation';
-import { useStudioTheme } from './workspace/useStudioTheme';
+import type { StudioThemeController } from './workspace/useStudioTheme';
 import { StudioGlyph } from './components/StudioGlyph';
 import { boundedTitle } from './lib/titles';
 import { workspaceCanvasInsets, useWorkspaceLayout } from './workspace/useWorkspaceLayout';
@@ -210,7 +204,9 @@ const AccountCenter = createDeferredFeature(
       const url = new URL(failedUrl);
       if (
         url.origin !== window.location.origin ||
-        !/^\/(?:src\/account\/AccountCenter\.tsx|assets\/AccountCenter-[\w-]+\.js)$/.test(url.pathname)
+        !/^\/(?:src\/account\/AccountCenter\.tsx|assets\/AccountCenter-[\w-]+\.js)$/.test(
+          url.pathname,
+        )
       )
         throw error;
       url.searchParams.set('retry', String(++accountModuleRetry));
@@ -267,6 +263,7 @@ export type StudioEntry = {
   sample?: SampleSettings;
 };
 type AppProps = {
+  studioTheme: StudioThemeController;
   active?: boolean;
   siteRoute?: SiteRoute;
   accountBackToAbout?: boolean;
@@ -279,6 +276,7 @@ type AppProps = {
   onRegisterLeaveGuard?: (guard: ((next: SiteRoute) => boolean) | null) => void;
 };
 export function App({
+  studioTheme,
   active = true,
   siteRoute = 'studio',
   accountBackToAbout = false,
@@ -289,7 +287,7 @@ export function App({
   onEntryComplete,
   onPageNavigate,
   onRegisterLeaveGuard,
-}: AppProps = {}) {
+}: AppProps) {
   const locale = useLocale();
   const introduction = aboutCopy(locale);
   const accountCopy = accountPageCopy(locale);
@@ -308,7 +306,6 @@ export function App({
   const accountReturnFocus = useRef<HTMLElement | null>(null);
   const rawEditor = useEditor();
   const workspaceLayout = useWorkspaceLayout();
-  const studioTheme = useStudioTheme(workspaceLayout.layout.theme);
   const [pickedColor, setPickedColor] = useState('#34372EFF');
   const [sampling, setSampling] = useState(false);
   const [pendingImport, setPendingImport] = useState<File | null>(null);
@@ -1218,7 +1215,6 @@ export function App({
       setSampling(false);
       setPendingImport(null);
       setImportReason(null);
-      notify(t('图片已打开，尚未上传。'), 'success');
       return true;
     } catch (e) {
       if (!entryIsCurrent()) return false;
@@ -1464,18 +1460,29 @@ export function App({
       analysis.frame.height === frame.height
         ? analysis.segmentation?.subject
         : undefined;
-    const selection = subject ?? foreground;
+    const identity = editor.getSourceIdentity();
+    const context = projectRequest.current;
+    const alphaPrior =
+      subject && (await editor.portrait.prepareCutoutPrior(subject, guides.method));
+    if (
+      editor.getSourceIdentity() !== identity ||
+      editor.isLoading() ||
+      projectRequest.current !== context
+    )
+      throw new Error(t('图片已切换，请重新运行抠图。'));
+    if (guides.method === 'fine' && !alphaPrior)
+      throw new Error(t('发丝与边缘抠图暂不可用，可以切回标准抠图。'));
+    const selection = alphaPrior ?? subject ?? foreground;
     if (!selection) throw new Error(t('请先识别人像或选择前景。'));
     const settings: CutoutSettings = {
-      algorithm: 'guided-v4',
+      algorithm: alphaPrior ? 'continuous-alpha-v1' : 'guided-v5',
       selection,
       ...(foreground && subject ? { foreground } : {}),
       ...(background ? { background } : {}),
       radius: guides.radius,
       decontaminate: guides.decontaminate,
     };
-    const identity = editor.getSourceIdentity();
-    const name = `${filenameBase(editor.file.name).slice(0, 106)}-抠图.png`;
+    const name = `${filenameBase(editor.file.name).slice(0, 106)}-${guides.method === 'fine' ? t('发丝与边缘') : '抠图'}.png`;
     const sourceAsset = cloudBaseSources.current.get(identity);
     if (
       asset &&
@@ -2508,62 +2515,33 @@ export function App({
                   >
                     <Brand name={brand} logoUrl={brandLogoUrl(config?.brand)} compact />
                   </button>
-                  <div className="workspace-project-title">
-                    <strong
-                      title={artwork?.title ?? project?.title ?? editor.file?.name ?? t('本地创作')}
-                    >
-                      {artwork?.title ?? project?.title ?? t('本地创作')}
-                    </strong>
-                    <span
-                      className="workspace-save-state"
-                      data-state={
-                        saving
-                          ? 'saving'
-                          : artwork && !dirty
-                            ? 'saved'
-                            : editor.file
-                              ? 'draft'
-                              : 'local'
-                      }
-                      role="status"
-                    >
-                      {saving
-                        ? t('正在保存')
-                        : artwork && !dirty
-                          ? t('版本 {v0} 已保存', { v0: artwork.headVersion })
-                          : editor.file
-                            ? t('本地草稿')
-                            : t('图片不会自动上传')}
-                    </span>
-                  </div>
+                  {(artwork || project || editor.file) && (
+                    <div className="workspace-project-title">
+                      <strong title={artwork?.title ?? project?.title ?? editor.file?.name}>
+                        {artwork?.title ?? project?.title ?? editor.file?.name}
+                      </strong>
+                      {view === 'editor' && editor.file && (
+                        <span
+                          className="workspace-save-state"
+                          data-state={saving ? 'saving' : artwork && !dirty ? 'saved' : 'draft'}
+                          role="status"
+                        >
+                          {saving
+                            ? t('正在保存')
+                            : artwork && !dirty
+                              ? t('版本 {v0} 已保存', { v0: artwork.headVersion })
+                              : t('本地草稿')}
+                        </span>
+                      )}
+                    </div>
+                  )}
                 </div>
-                <nav className="compact-view-tabs" aria-label={t('工作视图')}>
-                  {views.map((item) => (
-                    <button
-                      key={item.id}
-                      className={view === item.id ? 'active' : ''}
-                      onClick={() => changeView(item.id)}
-                      aria-label={t(item.label)}
-                      title={t(item.label)}
-                      aria-current={view === item.id ? 'page' : undefined}
-                    >
-                      {item.icon}
-                      <span>{t(item.label)}</span>
-                    </button>
-                  ))}
-                </nav>
-                <button
-                  type="button"
-                  className="mobile-view-trigger"
-                  aria-label={t('切换工作视图')}
-                  aria-haspopup="dialog"
-                  aria-expanded={dialog === 'navigation'}
-                  onClick={() => setDialog('navigation')}
-                >
-                  <StudioGlyph name={view} size={19} />
-                  <span>{t(views.find((item) => item.id === view)?.label ?? '')}</span>
-                  <StudioGlyph name="chevron" size={14} />
-                </button>
+                <WorkspaceViewTabs
+                  value={view}
+                  onChange={changeView}
+                  menuOpen={dialog === 'navigation'}
+                  onOpenMenu={() => setDialog('navigation')}
+                />
                 <div className="workspace-top-actions">
                   {cloudError && cloudNoticeDismissed && (
                     <IconButton
@@ -2730,6 +2708,7 @@ export function App({
                             </IconButton>
                             <IconButton
                               label={t('打开草图板')}
+                              data-action="open-sketch"
                               onClick={() => setDialog('drawing')}
                             >
                               <PencilSimple size={19} />
@@ -3062,6 +3041,9 @@ export function App({
                           project={project}
                           artwork={artwork}
                           recipe={editor.recipe}
+                          previewActive={editor.hasUncommittedPreview}
+                          onConfirmPreview={() => editor.commitCurrent(t('确认 AI 调整'))}
+                          onCancelPreview={editor.cancelPreview}
                           captureCurrentImage={captureCurrentImage}
                           onUseCanvasSource={
                             project && ['owner', 'admin', 'editor'].includes(project.role)

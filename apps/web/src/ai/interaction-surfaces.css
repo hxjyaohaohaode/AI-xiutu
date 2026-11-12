@@ -1,0 +1,313 @@
+/*
+ * Interaction studies: React Bits RefineFrame (stable media slot) and VoicePill
+ * (expanding call capsule). These surfaces use real server/device states only.
+ * No simulated completion percentage, generated placeholder, or audio activity.
+ */
+.ai-result-frame {
+  position: relative;
+  display: grid;
+  width: 100%;
+  min-width: 0;
+  overflow: hidden;
+  isolation: isolate;
+  border-radius: 16px;
+  background: color-mix(in srgb, var(--ink) 5%, var(--surface));
+}
+.ai-result-frame .ai-image-open {
+  display: block;
+  width: 100%;
+  height: 100%;
+  min-height: 0;
+  padding: 0;
+  border: 0;
+  background: transparent;
+}
+.ai-result-frame .ai-image-open img {
+  width: 100%;
+  height: 100%;
+  max-height: none;
+  object-fit: contain;
+  border-radius: inherit;
+}
+.ai-result-placeholder {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-direction: column;
+  gap: 10px;
+  padding: 20px;
+  color: var(--muted);
+  font-size: 12px;
+  text-align: center;
+}
+.ai-result-frame[data-state='queued']::before,
+.ai-result-frame[data-state='running']::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(110deg, transparent 25%, color-mix(in srgb, var(--surface) 65%, transparent) 48%, transparent 70%);
+  transform: translateX(-100%);
+  animation: ai-result-wait 2.8s ease-in-out infinite;
+}
+.ai-image-retry {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  min-height: 44px;
+  padding: 7px 14px;
+  border: 0;
+  border-radius: 999px;
+  color: var(--ink);
+  background: color-mix(in srgb, var(--ink) 7%, transparent);
+}
+.ai-generated-image { min-width: 0; }
+.ai-image-gallery { gap: 20px; }
+.ai-answer .ai-result-frame { margin-block: 12px; }
+@keyframes ai-result-wait {
+  0%, 15% { transform: translateX(-100%); }
+  80%, 100% { transform: translateX(100%); }
+}
+
+.live-assistant {
+  container-name: assistant;
+  container-type: inline-size;
+}
+.live-assistant .assistant-workspace {
+  display: grid;
+  gap: 22px;
+  padding: 6px 0 12px;
+  border: 0;
+  background: none;
+  box-shadow: none;
+}
+.live-assistant .assistant-workspace > h3 {
+  margin: 0;
+  font-size: 15px;
+  font-weight: 600;
+}
+.live-assistant .assistant-candidate {
+  min-width: 0;
+  padding: 15px 0;
+  border: 0;
+  border-radius: 0;
+  background: none;
+  box-shadow: none;
+}
+.live-assistant .assistant-candidate + .assistant-candidate {
+  border-top: 1px solid color-mix(in srgb, var(--ink) 8%, transparent);
+}
+.live-assistant .assistant-candidate h4 {
+  margin-bottom: 10px;
+  font-size: 13px;
+  font-weight: 600;
+}
+.live-assistant .assistant-candidate p {
+  font-size: 13px;
+  line-height: 1.65;
+  overflow-wrap: anywhere;
+}
+.live-assistant .workspace-section .workspace-candidate {
+  display: grid;
+  justify-content: stretch;
+  gap: 8px;
+  min-width: 0;
+}
+.live-assistant .workspace-section .workspace-budget {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 18px;
+}
+.live-assistant .workspace-section .workspace-parameter-scroll {
+  display: block;
+  overflow-x: auto;
+  min-width: 0;
+}
+.live-assistant .workspace-section .workspace-references {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 100px), 1fr));
+  gap: 10px;
+}
+.live-assistant .ai-candidate-actions,
+.live-assistant .assistant-candidate > .ai-candidate-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 8px;
+  width: 100%;
+}
+.live-assistant .ai-candidate-actions button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  min-width: 0;
+  min-height: 44px;
+  padding: 8px 14px;
+  border: 0;
+  border-radius: 999px;
+  font-size: 12px;
+  background: color-mix(in srgb, var(--ink) 6%, transparent);
+}
+.live-assistant .ai-candidate-actions .ai-candidate-primary {
+  color: var(--surface);
+  background: var(--ink);
+}
+.live-assistant .assistant-candidate > .ai-candidate-preview,
+.live-assistant .workspace-candidate .ai-candidate-preview {
+  display: grid;
+  justify-content: stretch;
+  gap: 9px;
+  min-width: 0;
+}
+.live-assistant .ai-candidate-outcome,
+.live-assistant .assistant-candidate > .ai-candidate-outcome {
+  display: flex;
+  align-items: center;
+  justify-content: flex-start;
+  gap: 7px;
+  min-height: 30px;
+  color: var(--muted);
+  font-size: 12px;
+}
+.live-assistant .assistant-call {
+  width: 100%;
+  min-width: 0;
+  padding: 20px 10px;
+}
+.live-assistant .assistant-call:is(.active, .connecting, .closing) {
+  display: flex;
+  flex-direction: row;
+  justify-content: space-between;
+  align-items: center;
+  gap: 14px;
+  padding: 12px 16px;
+  margin-block: 8px;
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--ink) 6%, transparent);
+  animation: ai-call-enter 240ms cubic-bezier(.2,.8,.2,1);
+}
+.live-assistant .assistant-call:is(.active, .connecting, .closing) .assistant-call-status {
+  min-width: 0;
+  flex: 1;
+  text-align: left;
+  font-variant-numeric: tabular-nums;
+}
+.live-assistant .assistant-call-status small {
+  overflow-wrap: anywhere;
+}
+.live-assistant .assistant-call-actions {
+  flex-shrink: 0;
+  gap: 6px;
+}
+.live-assistant .assistant-call-actions button {
+  width: 44px;
+  height: 44px;
+  padding: 0;
+}
+.live-assistant .assistant-call-start {
+  flex-wrap: wrap;
+  justify-content: center;
+  width: 100%;
+}
+.live-assistant .assistant-call-start .button {
+  min-height: 44px;
+}
+.ai-task-picker button small { display: none; }
+.ai-panel .ai-settings-section { border: 0; background: none; }
+.ai-panel .parameter-row { min-width: 0; }
+
+.team-voice {
+  min-width: 0;
+  padding-block: 12px;
+}
+.team-voice .collaboration-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+.team-voice .collaboration-actions > button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 7px;
+  min-height: 44px;
+  padding: 8px 13px;
+  border-radius: 999px;
+}
+.team-voice :is(label, details, form, .choice-select) { min-width: 0; }
+.team-voice-caption { overflow-wrap: anywhere; }
+@keyframes ai-call-enter {
+  from { opacity: 0; transform: translateY(6px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+@container assistant (max-width: 342px) {
+  .live-assistant .assistant-call:is(.active, .connecting, .closing) {
+    flex-direction: column;
+    border-radius: 22px;
+  }
+  .live-assistant .assistant-call:is(.active, .connecting, .closing) .assistant-call-status {
+    text-align: center;
+  }
+  .live-assistant .ai-candidate-actions button {
+    flex: 1 1 100px;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .ai-result-frame::before,
+  .live-assistant .assistant-call { animation: none !important; }
+  .live-assistant .assistant-call-actions button { transition: none; }
+}
+
+.ai-proposal-review,
+.ai-decision-confirm {
+  display: grid;
+  gap: 16px;
+  min-width: 0;
+}
+.ai-proposal-review .proposal-differences {
+  max-height: min(42dvh, 360px);
+  overflow: auto;
+  border: 0;
+  background: none;
+}
+.ai-proposal-review .proposal-differences [role='row'] {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(64px, .45fr) minmax(64px, .45fr);
+  gap: 12px;
+  padding: 10px 0;
+}
+.ai-proposal-review .proposal-diff-heading {
+  position: sticky;
+  top: 0;
+  background: var(--surface);
+  color: var(--muted);
+  font-size: 11px;
+}
+.ai-proposal-review .proposal-differences [role='cell'] {
+  min-width: 0;
+  overflow-wrap: anywhere;
+  font-variant-numeric: tabular-nums;
+}
+.ai-proposal-extra {
+  font-size: 12px;
+  color: var(--muted);
+}
+.ai-text-result .ai-result-actions,
+.ai-decision-confirm .ai-result-actions {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 6px 12px;
+}
+.ai-text-result .ai-result-actions button,
+.ai-decision-confirm .ai-result-actions button { min-height: 44px; }
+.ai-panel .ai-answer {
+  padding-inline: 0;
+  border: 0;
+  background: none;
+  box-shadow: none;
+}

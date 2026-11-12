@@ -1,27 +1,3 @@
-.library-hub {
-  min-width: 0;
-}
-.library-context-tabs {
-  display: flex;
-  gap: 4px;
-  padding: 17px 28px 0;
-  overflow-x: auto;
-  scrollbar-width: none;
-}
-.library-context-tabs button {
-  padding: 8px 12px;
-  min-height: 38px;
-  border: 0;
-  border-radius: 8px;
-  background: transparent;
-  color: var(--muted);
-  white-space: nowrap;
-  font-size: 12px;
-}
-.library-context-tabs button[aria-pressed='true'] {
-  background: color-mix(in srgb, var(--ink) 7.06%, transparent);
-  color: var(--text);
-}
 .resource-search {
   padding: 24px 28px 40px;
   display: flex;
@@ -178,15 +154,6 @@
   }
 }
 @media (width < 760px) {
-  .library-context-tabs {
-    padding: 12px 12px 0;
-    gap: 2px;
-  }
-  .library-context-tabs button {
-    font-size: 12px;
-    min-height: 40px;
-    padding-inline: 9px;
-  }
   .resource-search {
     padding: 18px 12px 28px;
     gap: 16px;

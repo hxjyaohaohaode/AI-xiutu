@@ -1,0 +1,259 @@
+/* Drawing has its own phone composition; hit areas do not scale with the glyph. */
+.drawing-modal .drawing-tool-area :is(.drawing-tools, .drawing-switches) {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  min-width: 0;
+}
+.drawing-modal .drawing-switches {
+  flex-wrap: wrap;
+  gap: 4px 12px;
+}
+.drawing-modal .drawing-switches .squish-switch {
+  min-height: var(--ui-hit, 40px);
+  padding: 0;
+  font-size: 12px;
+}
+.drawing-modal .drawing-tool-area .icon-button {
+  width: var(--ui-hit, 40px);
+  min-width: var(--ui-hit, 40px);
+  height: var(--ui-hit, 40px);
+  min-height: var(--ui-hit, 40px);
+}
+.drawing-modal .drawing-tool-area .icon-button > svg {
+  width: var(--ui-icon-size, 20px);
+  height: var(--ui-icon-size, 20px);
+}
+.drawing-modal .drawing-insert-current {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 5px;
+  min-height: var(--ui-hit, 40px);
+}
+.drawing-modal .drawing-selection-controls {
+  flex: 1;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+.drawing-modal .drawing-selection-controls .drawing-width {
+  width: auto;
+  min-width: 0;
+  gap: 5px;
+  font-size: 12px;
+}
+.drawing-modal .drawing-number-field input {
+  flex: 0 0 64px;
+  width: 64px;
+  min-width: 0;
+  min-height: var(--ui-field-h, 38px);
+  padding: 5px;
+  border: 0;
+  border-radius: 6px;
+  box-shadow: inset 0 -1px 0 var(--line);
+  background: var(--surface-secondary);
+  font-size: 13px;
+  font-variant-numeric: tabular-nums;
+}
+.drawing-modal .drawing-image-size {
+  flex: 1 1 100px;
+}
+.drawing-modal .drawing-image-size input {
+  flex: 1;
+  width: 100%;
+  min-width: 44px;
+}
+.drawing-modal .drawing-palette-label {
+  width: auto;
+  height: auto;
+  background: transparent;
+}
+
+@media (max-width: 759px), (max-height: 520px) and (orientation: landscape) {
+  .drawing-modal .drawing-tool-area {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) minmax(88px, auto);
+    align-items: center;
+    gap: 4px;
+    flex: 0 0 auto;
+    min-height: 0;
+    max-height: max(88px, min(42dvh, calc(100dvh - 400px)));
+    margin-bottom: 8px;
+    overflow: auto;
+    overscroll-behavior: contain;
+  }
+  .drawing-modal .drawing-primary-toolbar,
+  .drawing-modal .drawing-element-toolbar {
+    display: contents;
+  }
+  .drawing-modal .drawing-mode-tools {
+    grid-column: 1 / -1;
+    grid-row: 1;
+    gap: 0;
+    padding-inline-end: 48px;
+  }
+  .drawing-modal .drawing-mode-tools .toolbar-separator {
+    display: none;
+  }
+  .drawing-modal .drawing-clear {
+    grid-column: 2;
+    grid-row: 1;
+    justify-self: end;
+  }
+  .drawing-modal .drawing-element-field {
+    grid-column: 1;
+    grid-row: 2;
+    min-width: 0;
+  }
+  .drawing-modal .drawing-ratio-field {
+    grid-column: 2;
+    grid-row: 2;
+    min-width: 0;
+  }
+  .drawing-modal :is(.drawing-element-field, .drawing-ratio-field) .choice-select {
+    width: 100%;
+    min-width: 0;
+  }
+  .drawing-modal :is(.drawing-element-field, .drawing-ratio-field) .choice-trigger {
+    min-height: 44px;
+    padding: 5px 7px;
+    font-size: 12px;
+  }
+  .drawing-modal .drawing-tool-area > :is(.drawing-controls, .choice-select),
+  .drawing-modal .drawing-tool-area > .inline-error,
+  .drawing-modal .drawing-project-choice,
+  .drawing-modal .drawing-object-actions {
+    grid-column: 1 / -1;
+    min-width: 0;
+    margin: 0;
+  }
+  .drawing-modal .drawing-tool-area .icon-button,
+  .drawing-modal .drawing-insert-current {
+    flex: 0 0 44px;
+    min-width: 44px;
+    width: 44px;
+    height: 44px;
+    min-height: 44px;
+    padding: 0;
+  }
+  .drawing-modal .drawing-insert-current > span {
+    display: none;
+  }
+  .drawing-modal .drawing-object-actions {
+    flex-wrap: wrap;
+    gap: 0;
+  }
+  .drawing-modal .drawing-appearance-controls {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr);
+    gap: 4px;
+  }
+  .drawing-modal .drawing-switches .squish-switch {
+    min-height: 44px;
+    font-size: 11px;
+  }
+  .drawing-modal .drawing-colors {
+    display: flex;
+    flex-wrap: nowrap;
+    min-width: 0;
+    gap: 4px;
+    overflow-x: auto;
+    padding: 0;
+    scrollbar-width: none;
+    scroll-snap-type: x proximity;
+  }
+  .drawing-modal .drawing-colors > button {
+    position: relative;
+    flex: 0 0 44px;
+    width: 44px;
+    height: 44px;
+    min-width: 44px;
+    min-height: 44px;
+    border: 0;
+    border-radius: 9px;
+    background: transparent;
+    box-shadow: none;
+    outline-offset: -2px;
+    scroll-snap-align: center;
+  }
+  .drawing-modal .drawing-colors > button:not(.full-palette-trigger)::before {
+    position: absolute;
+    content: '';
+    inset: 8px;
+    border-radius: 50%;
+    background: var(--swatch);
+    box-shadow: 0 0 0 1px color-mix(in srgb, var(--ink) 15%, transparent);
+  }
+  .drawing-modal .drawing-colors > button.selected::before {
+    outline: 1.5px solid var(--accent-ink, var(--ink));
+    outline-offset: 3px;
+  }
+  .drawing-modal .drawing-colors > button.selected:not(:focus-visible) {
+    outline-color: transparent;
+  }
+  .drawing-modal .drawing-colors .full-palette-trigger {
+    justify-content: center;
+    width: 44px !important;
+    height: 44px !important;
+    min-width: 44px;
+    padding: 0;
+    gap: 2px;
+    background: var(--surface-secondary);
+  }
+  .drawing-modal .full-palette-trigger > span:first-child {
+    width: 23px;
+    height: 23px;
+    border-radius: 5px;
+  }
+  .drawing-modal .drawing-palette-label {
+    display: none;
+  }
+  .drawing-modal .drawing-selection-controls {
+    display: flex;
+    flex-wrap: nowrap;
+    gap: 4px;
+  }
+  .drawing-modal .drawing-selection-controls .drawing-width {
+    flex: 0 0 auto;
+    min-height: 44px;
+    gap: 3px;
+    font-size: 11px;
+  }
+  .drawing-modal .drawing-number-field input {
+    flex-basis: 44px;
+    width: 44px;
+    height: 44px;
+    min-height: 44px;
+    padding: 3px;
+    font-size: 16px;
+  }
+  .drawing-modal .drawing-selection-controls .drawing-image-size {
+    flex: 1;
+    min-width: 0;
+  }
+  .drawing-modal .drawing-tool-area .drawing-width input[type='range'] {
+    height: 44px;
+    min-height: 44px;
+  }
+  .drawing-modal .drawing-brush-width {
+    width: 100%;
+    min-height: 44px;
+    margin: 0;
+  }
+  .drawing-modal .drawing-color-popover {
+    position: relative;
+    inset: auto;
+    width: 100%;
+    max-width: 100%;
+    max-height: none;
+    grid-column: 1 / -1;
+  }
+}
+
+@media (min-width: 540px) and (max-height: 520px) and (orientation: landscape) {
+  .drawing-modal .drawing-tool-area {
+    align-content: start;
+    max-height: none;
+    margin-bottom: 0;
+  }
+}

@@ -16,6 +16,7 @@
     "@mediapipe/tasks-vision": "1.2.2",
     "@noble/hashes": "2.4.0",
     "@phosphor-icons/react": "^2.1.10",
+    "onnxruntime-web": "1.23.2",
     "react": "^19.3.1",
     "react-dom": "^19.3.1"
   },
@@ -25,6 +26,7 @@
     "@types/react": "^19.0.0",
     "@types/react-dom": "^19.0.0",
     "@vitejs/plugin-react": "latest",
+    "@webgpu/types": "0.1.74",
     "typescript": "^5.9.3",
     "vite": "^8.3.7"
   }

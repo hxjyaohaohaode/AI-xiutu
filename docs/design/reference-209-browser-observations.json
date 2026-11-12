@@ -1,0 +1,249 @@
+{
+  "schemaVersion": 1,
+  "reviewDate": "2026-11-12",
+  "browser": "User-connected Microsoft Edge via Browser plugin",
+  "officialReactBitsCommit": "9d9c687dc4f55b23539aa5417b703078047efa74",
+  "scope": "20 references with actual demo observations; not a claim that all209 demos or full application coverage passed",
+  "observations": [
+    {
+      "id": 1,
+      "name": "Tech Text",
+      "actions": [
+        "Inspected default rendered wordmark and all exposed properties"
+      ],
+      "limits": [
+        "No adopted product interaction"
+      ]
+    },
+    {
+      "id": 31,
+      "name": "Scroll Expand",
+      "actions": [
+        "Inspected 42% by 58% rounded resting frame",
+        "Scrolled its real preview 531px: media expanded to near full bleed; overlay appeared and title departed",
+        "Reverse scroll returned scroller to 0"
+      ],
+      "limits": [
+        "Preview uses internal scroller; product will use natural document scrolling",
+        "No image cropping or hidden core content in adaptation"
+      ]
+    },
+    {
+      "id": 35,
+      "name": "Animated Content",
+      "actions": [
+        "Inspected default Rise / Scroll preview after settling",
+        "Scrolled 417px; image and metrics entered and settled",
+        "Reverse scroll restored initial scroll region"
+      ],
+      "limits": [
+        "Product will omit example claims/data and preserve visible content without motion"
+      ]
+    },
+    {
+      "id": 68,
+      "name": "Line Sidebar",
+      "actions": [
+        "Inspected all 8 items and exposed settings",
+        "Moved pointer near Animations; visual label tint changed"
+      ],
+      "limits": [
+        "List-item outer transform was none; child proximity geometry established by full source",
+        "Demo has no satisfactory keyboard semantics; product retains buttons and current-route state"
+      ]
+    },
+    {
+      "id": 78,
+      "name": "Pill Nav",
+      "actions": [
+        "Clicked Journal: aria-current=page and rising fill/rolling label observed",
+        "375px preview settled to logo and Open menu button"
+      ],
+      "limits": [
+        "Phone menu opening/focus not exercised in this demo",
+        "No rotating product logo"
+      ]
+    },
+    {
+      "id": 85,
+      "name": "Staggered Menu",
+      "actions": [
+        "Opened menu and inspected settled white side panel and four large navigation links",
+        "Closed menu; trigger returned to Open menu and links lost accessible names in hidden state"
+      ],
+      "limits": [
+        "Demo Escape/focus/inert not verified; product uses native Modal"
+      ]
+    },
+    {
+      "id": 88,
+      "name": "Dock",
+      "actions": [
+        "Inspected 8 default dock items",
+        "Pointer near Messages yielded neighbouring rect widths about50–69px",
+        "Tab moved focus from Messages to Music"
+      ],
+      "limits": [
+        "375 preview immediately captured before settling; no claim of mobile behaviour verification"
+      ]
+    },
+    {
+      "id": 111,
+      "name": "Thought Line",
+      "actions": [
+        "Observed default simulated steps",
+        "Turned Loop off and Working off",
+        "Settled header showed elapsed0.9s and aria-expanded=false"
+      ],
+      "limits": [
+        "Demo data is simulated; product only public SSE execution events, no synthetic reasoning or progress",
+        "Reopening trace not exercised"
+      ]
+    },
+    {
+      "id": 112,
+      "name": "Voice Pill",
+      "actions": [
+        "Read demo wrapper fully: reactive=simulated",
+        "Clicked Dictate: pressed=true, capsule/waveform/timer appeared",
+        "Escape removed pressed state and timer froze at0:16"
+      ],
+      "limits": [
+        "No microphone access, recording, actual audio or mobile cancel gesture verified",
+        "Product uses existing real MediaStream, no simulated waveform"
+      ]
+    },
+    {
+      "id": 114,
+      "name": "Prompt Bar",
+      "actions": [
+        "Filled two Chinese lines and observed textarea growth/Send enabled",
+        "Opened Sources listbox and Escape closed it preserving draft",
+        "Busy control changed Send to Stop"
+      ],
+      "limits": [
+        "No external send, upload or dictation performed",
+        "Product Stop only when actual cancellation exists; do not copy eager draft deletion"
+      ]
+    },
+    {
+      "id": 115,
+      "name": "Swipe Toast",
+      "actions": [
+        "Turned Close Button on and showed real demo toast",
+        "Set duration to10000ms and inspected status rect356×70.7",
+        "Explicit Close removed status"
+      ],
+      "limits": [
+        "Swipe and focus/hover pause were not physically verified; do not report them as demo-verified",
+        "Critical product unknown/errors remain persistent"
+      ]
+    },
+    {
+      "id": 119,
+      "name": "Status Mark",
+      "actions": [
+        "Observed completed demo with strike",
+        "Turned lifecycle playback off; opened Pending/Running/Done/Failed/Cancelled options",
+        "Selected Failed with redcross, then Running with Inprogress"
+      ],
+      "limits": [
+        "Product adds honest unknown state and stops all decorative animation for reduced motion"
+      ]
+    },
+    {
+      "id": 120,
+      "name": "Glide Select",
+      "actions": [
+        "Opened actual Export format listbox withPNG/JPG/WebP/SVG/PDF",
+        "ArrowDown+Enter selectedJPG",
+        "Reopened thenEscape closed and retained combobox focus"
+      ],
+      "limits": [
+        "Long-list collision/IME/touch require product verification"
+      ]
+    },
+    {
+      "id": 124,
+      "name": "Wake Slider",
+      "actions": [
+        "Inspected32bar slider at50",
+        "Dragged and value changed63",
+        "Home thenArrowRight changedvalue1"
+      ],
+      "limits": [
+        "Peak transient wake not sampled; velocity shape established by source and must be tested in product"
+      ]
+    },
+    {
+      "id": 127,
+      "name": "Scrub Field",
+      "actions": [
+        "Dragged Radius24→56 and saw +32ghost",
+        "Clicked numeric editing,filled42,Enter,ArrowUp→43"
+      ],
+      "limits": [
+        "Escape/pointercancel/bounds need product tests"
+      ]
+    },
+    {
+      "id": 129,
+      "name": "Warm Tooltip",
+      "actions": [
+        "HoveredBold thenTab focusedItalic",
+        "ObservedItalic tooltip withshortcut and focusring"
+      ],
+      "limits": [
+        "Escape requested but immediate screenshot still showed tooltip; dismissed end state not verified",
+        "Product implementation must dismiss immediately onEscape"
+      ]
+    },
+    {
+      "id": 131,
+      "name": "Rubber Segment",
+      "actions": [
+        "ClickedMonth fromWeek",
+        "ArrowRight selectedYear with onecheckedradio"
+      ],
+      "limits": [
+        "No fixed-duration guarantee inferred from screenshot"
+      ]
+    },
+    {
+      "id": 133,
+      "name": "Spring Check",
+      "actions": [
+        "Default last checkboxchecked",
+        "ClickedShip checkbox and Space onUpdate; both becamechecked"
+      ],
+      "limits": [
+        "Immediate image may precede end animation",
+        "Producttask3states not converted tobinary checkbox"
+      ]
+    },
+    {
+      "id": 136,
+      "name": "Squish Switch",
+      "actions": [
+        "ClickedAirplane mode→true withrightthumb",
+        "Space→false"
+      ],
+      "limits": [
+        "Actualdrag/pointercancel toverifyinproduct"
+      ]
+    },
+    {
+      "id": 204,
+      "name": "Uiverse colour hover",
+      "actions": [
+        "Inspectedresting32×40palette",
+        "Hoveredmiddlegreen:currentandneighborsscaled",
+        "ReadentireHTML/CSSandMITlicense"
+      ],
+      "limits": [
+        "NoJavaScript/clipboardcopyinexample",
+        "Clickandmouseexitcapturewastransitional,notsettledreset"
+      ]
+    }
+  ]
+}

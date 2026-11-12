@@ -2506,6 +2506,13 @@ try {
     const title = `CI phone document ${randomUUID().slice(0, 8)}`;
     const initialBody = '真实手机文档初稿。';
     const editedBody = `${initialBody}\n返回列表和刷新列表后，这一段仍应保留。`;
+    const readDocument = async (match) => {
+      const response = await request(a, `/projects/${projectId}/documents`);
+      assert.equal(response.status(), 200);
+      const document = (await response.json()).documents.find(match);
+      assert.ok(document, 'The saved document must be visible to the project member');
+      return document;
+    };
     await a.page.getByLabel('文档标题', { exact: true }).fill(title);
     await a.page.getByLabel('文档内容', { exact: true }).fill(initialBody);
     const [createdResponse] = await Promise.all([
@@ -2517,7 +2524,6 @@ try {
       a.page.getByRole('button', { name: '保存文档', exact: true }).click(),
     ]);
     assert.equal(createdResponse.status(), 201);
-    const document = (await createdResponse.json()).document;
     await eventually(
       async () =>
         (await a.page.locator('.document-editor footer > span').innerText()).includes(
@@ -2525,6 +2531,9 @@ try {
         ),
       'first document acknowledgement settles',
     );
+    const document = await readDocument((item) => item.title === title);
+    assert.equal(document.version, 1);
+    assert.equal(document.body, initialBody);
     await a.page.getByLabel('文档内容', { exact: true }).fill(editedBody);
     await a.page.getByRole('button', { name: '文档列表', exact: true }).click();
     assert.equal(
@@ -2541,7 +2550,7 @@ try {
       list.getByRole('button', { name: '刷新列表', exact: true }).click(),
     ]);
     assert.equal(refreshResponse.status(), 200);
-    const persistedBefore = (await refreshResponse.json()).documents.find(
+    const persistedBefore = await readDocument(
       (item) => item.id === document.id,
     );
     assert.equal(persistedBefore.body, initialBody, 'returning to the list must not silently save');
@@ -2601,9 +2610,6 @@ try {
         body: editedBody,
         expectedVersion: 1,
       });
-      const saved = (await savedResponse.json()).document;
-      assert.equal(saved.version, 2);
-      assert.equal(saved.body, editedBody);
       await eventually(
         async () =>
           (await a.page.locator('.document-editor footer > span').innerText()).includes(
@@ -2611,6 +2617,9 @@ try {
           ),
         'CAS save acknowledgement settles',
       );
+      const saved = await readDocument((item) => item.id === document.id);
+      assert.equal(saved.version, 2);
+      assert.equal(saved.body, editedBody);
       await a.page.getByRole('button', { name: '文档列表', exact: true }).click();
       await list.locator('.document-row').filter({ hasText: title }).click();
       assert.equal(await a.page.getByLabel('文档内容', { exact: true }).inputValue(), editedBody);
@@ -3148,7 +3157,24 @@ try {
     await dialog.getByRole('status').filter({ hasText: '拼图.png' }).waitFor();
     await dialog.getByRole('button', { name: '关闭窗口', exact: true }).click();
     const animationCard = page.locator('.library-asset').filter({ hasText: 'QA-motion.gif' });
-    await animationCard.locator('.library-asset-details > summary').click();
+    const summary = animationCard.locator('.library-asset-details > summary');
+    await summary.click();
+    assert.equal(await summary.getAttribute('aria-expanded'), 'true');
+    const refresh = page
+      .locator('.library-status-actions')
+      .getByRole('button', { name: '刷新', exact: true });
+    const [refreshed] = await Promise.all([
+      page.waitForResponse(
+        (response) =>
+          response.request().method() === 'GET' &&
+          new URL(response.url()).pathname === `/v1/projects/${projectId}/assets` &&
+          new URL(response.url()).searchParams.get('limit') === '50',
+      ),
+      refresh.click(),
+    ]);
+    assert.equal(refreshed.status(), 200);
+    await eventually(() => refresh.isEnabled(), 'the refreshed asset listing settles');
+    assert.equal(await summary.getAttribute('aria-expanded'), 'true');
     await animationCard.getByRole('button', { name: 'GIF 帧编辑' }).click();
     const editor = page.getByRole('dialog', { name: 'GIF 帧编辑' });
     await editor.getByRole('button', { name: '反转帧顺序' }).click();
@@ -3182,6 +3208,7 @@ try {
       viewportEvidence,
       projectSelectedThroughUi: true,
       sourceReadFromProjectListing: true,
+      disclosureSurvivesRefresh: true,
       navigationAfterSelection: { team: afterTeamSelection, project: afterProjectSelection },
     };
   });

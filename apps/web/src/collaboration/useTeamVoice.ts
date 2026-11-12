@@ -5,6 +5,7 @@ import {
   type TeamVoiceEvent,
 } from '@ai-xiutu/contracts';
 import { api, errorMessage, jsonRequest } from '../lib/api';
+import { voiceErrorMessage } from '../ai/voice-error';
 import { appendCaption, type CaptionState } from '../ai/VoiceCaptions';
 import {
   AI_VOICE_BUFFER_SECONDS,
@@ -199,7 +200,7 @@ class TeamVoiceTransport {
     } catch (error) {
       if (this.peerCaptions === captions) {
         this.stopPeerCaptions();
-        status(errorMessage(error));
+        status(voiceErrorMessage(error));
       }
     }
   }
@@ -473,7 +474,7 @@ export function useTeamVoice(artworkId: string | undefined, actorId: string | un
     } catch (error) {
       if (transport.current === connection && currentActor.current === actorId) {
         stop();
-        setMessage(errorMessage(error));
+        setMessage(voiceErrorMessage(error));
       }
     }
   }
@@ -485,7 +486,7 @@ export function useTeamVoice(artworkId: string | undefined, actorId: string | un
       await connection.microphone(muted);
       if (transport.current === connection) setMuted(!muted);
     } catch (error) {
-      if (transport.current === connection) setMessage(errorMessage(error));
+      if (transport.current === connection) setMessage(voiceErrorMessage(error));
     } finally {
       micPending.current = false;
     }

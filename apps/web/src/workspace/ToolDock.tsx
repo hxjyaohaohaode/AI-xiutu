@@ -1,9 +1,12 @@
 import { useEffect, useLayoutEffect, useRef, useState } from 'react';
-import { CaretLeft, CaretRight } from '@phosphor-icons/react';
+import { CaretLeft, CaretRight } from '../components/ControlGlyph';
 import { StudioGlyph } from '../components/StudioGlyph';
 import { useReducedMotion } from '../motion/usePresence';
 import { toolGroups, type ToolGroup } from '../editor/ToolInspector';
 import { t, useI18n } from '../i18n';
+import { useDockProximity } from './useDockProximity';
+import { useKinetic } from '../motion/useKinetic';
+import { WarmTooltip } from '../components/control-motion';
 
 export const ADJUSTMENT_GROUPS: ToolGroup[] = ['light', 'color', 'curves', 'detail'];
 export function dockTool(group: ToolGroup, compact: boolean): ToolGroup {
@@ -28,6 +31,32 @@ export function ToolDock({
 }) {
   const { locale } = useI18n();
   const nav = useRef<HTMLDivElement>(null);
+  const dock = useRef<HTMLElement>(null);
+  const selectionNode = useRef<HTMLSpanElement>(null);
+  const selectionBox = useRef({ x: 0, width: 0 });
+  const paintSelection = () => {
+    if (!selectionNode.current) return;
+    selectionNode.current.style.transform = `translate3d(${selectionBox.current.x}px, 0, 0)`;
+    selectionNode.current.style.width = `${selectionBox.current.width}px`;
+  };
+  const selectionX = useKinetic(
+    0,
+    (value) => {
+      selectionBox.current.x = value;
+      paintSelection();
+    },
+    { stiffness: 370, damping: 32 },
+  );
+  const selectionWidth = useKinetic(
+    0,
+    (value) => {
+      selectionBox.current.width = value;
+      paintSelection();
+    },
+    { stiffness: 420, damping: 35 },
+  );
+  const selectionReady = useRef(false);
+  useDockProximity(dock, compact, locale);
   const reducedMotion = useReducedMotion();
   const [overflow, setOverflow] = useState({ left: false, right: false });
   const active = dockTool(group, compact);
@@ -38,6 +67,20 @@ export function ToolDock({
   const choices = toolGroups.filter(
     (tool) => !compact || !['color', 'curves', 'detail'].includes(tool.id),
   );
+  useLayoutEffect(() => {
+    if (!selection) {
+      selectionReady.current = false;
+      return;
+    }
+    if (!selectionReady.current) {
+      selectionX.jump(selection.x);
+      selectionWidth.jump(selection.width);
+      selectionReady.current = true;
+    } else {
+      selectionX.setTarget(selection.x);
+      selectionWidth.setTarget(selection.width);
+    }
+  }, [selection, selectionX, selectionWidth]);
   useLayoutEffect(() => {
     const rail = nav.current;
     const button = rail?.querySelector<HTMLElement>('[aria-pressed="true"]');
@@ -76,6 +119,33 @@ export function ToolDock({
     const rail = nav.current;
     if (!rail) return;
     const measure = () => {
+      if (compact) {
+        const style = getComputedStyle(rail);
+        const gap = parseFloat(style.columnGap || '0') || 0;
+        const available =
+          rail.clientWidth -
+          parseFloat(style.paddingLeft || '0') -
+          parseFloat(style.paddingRight || '0');
+        const minimum = Math.max(
+          52,
+          ...[...rail.querySelectorAll<HTMLButtonElement>('button')].map((button) => {
+            const itemStyle = getComputedStyle(button);
+            return Math.ceil(
+              (button.querySelector('.dock-label')?.scrollWidth ?? 0) +
+                parseFloat(itemStyle.paddingLeft || '0') +
+                parseFloat(itemStyle.paddingRight || '0') +
+                parseFloat(itemStyle.borderLeftWidth || '0') +
+                parseFloat(itemStyle.borderRightWidth || '0'),
+            );
+          }),
+        );
+        if (available > 0) {
+          const slots = Math.max(1, Math.floor((available + gap) / (minimum + gap)));
+          const width = `${(available - gap * (slots - 1)) / slots}px`;
+          if (rail.style.getPropertyValue('--dock-item-width') !== width)
+            rail.style.setProperty('--dock-item-width', width);
+        }
+      }
       const left = rail.scrollLeft > 2;
       const right = rail.scrollLeft + rail.clientWidth < rail.scrollWidth - 2;
       setOverflow((previous) =>
@@ -84,6 +154,10 @@ export function ToolDock({
     };
     const observer = new ResizeObserver(measure);
     observer.observe(rail);
+    if (compact) {
+      for (const label of rail.querySelectorAll<HTMLElement>('.dock-label'))
+        observer.observe(label);
+    }
     rail.addEventListener('scroll', measure, { passive: true });
     measure();
     return () => {
@@ -93,9 +167,11 @@ export function ToolDock({
   }, [compact, locale]);
   return (
     <nav
+      ref={dock}
       className="floating-tool-dock"
       aria-label={t('编辑工具')}
       data-motion="tool-dock"
+      data-compact={compact || undefined}
       data-selection-ready={selection ? 'true' : undefined}
       data-context-open={inspectorOpen || aiOpen ? 'true' : undefined}
       onKeyDown={(event) => {
@@ -145,37 +221,42 @@ export function ToolDock({
         <div className="dock-tool-scroll" ref={nav}>
           {selection && (
             <span
+              ref={selectionNode}
               className="dock-selection"
               aria-hidden="true"
               style={{
-                transform: `translateX(${selection.x}px)`,
-                width: selection.width,
                 height: selection.height,
               }}
             />
           )}
           {choices.map((tool) => (
-            <button
-              type="button"
-              key={tool.id}
-              data-dock-tool={tool.id}
-              data-motion="tool-item"
-              className={active === tool.id && inspectorOpen ? 'active' : ''}
-              aria-pressed={active === tool.id && inspectorOpen}
-              title={t(tool.description)}
-              tabIndex={tabStop === tool.id ? 0 : -1}
-              onFocus={() => setTabStop(tool.id)}
-              onClick={() =>
-                onTool(
-                  compact && tool.id === 'light' && ADJUSTMENT_GROUPS.includes(group)
-                    ? group
-                    : tool.id,
-                )
-              }
-            >
-              <StudioGlyph name={tool.id} size={21} />
-              <span>{t(compact && tool.id === 'light' ? '调节' : tool.label)}</span>
-            </button>
+            <WarmTooltip key={tool.id} content={t(tool.description)}>
+              <button
+                type="button"
+                key={tool.id}
+                data-dock-tool={tool.id}
+                data-motion="tool-item"
+                className={active === tool.id && inspectorOpen ? 'active' : ''}
+                aria-pressed={active === tool.id && inspectorOpen}
+                title={t(tool.description)}
+                tabIndex={tabStop === tool.id ? 0 : -1}
+                onFocus={() => setTabStop(tool.id)}
+                onClick={() =>
+                  onTool(
+                    compact && tool.id === 'light' && ADJUSTMENT_GROUPS.includes(group)
+                      ? group
+                      : tool.id,
+                  )
+                }
+              >
+                <span className="dock-icon">
+                  <StudioGlyph name={tool.id} size={20} />
+                </span>
+                <span className="dock-label">
+                  {t(compact && tool.id === 'light' ? '调节' : tool.label)}
+                </span>
+              </button>
+            </WarmTooltip>
           ))}
         </div>
         {overflow.right && (
@@ -202,8 +283,10 @@ export function ToolDock({
         onFocus={() => setTabStop('ai')}
         onClick={onAI}
       >
-        <StudioGlyph name="ai" size={21} />
-        <span>{t('AI 助手')}</span>
+        <span className="dock-icon">
+          <StudioGlyph name="ai" size={20} />
+        </span>
+        <span className="dock-label">{t('AI 助手')}</span>
       </button>
     </nav>
   );

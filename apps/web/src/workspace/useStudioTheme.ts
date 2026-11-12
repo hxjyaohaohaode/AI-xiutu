@@ -1,20 +1,33 @@
 import { useEffect, useLayoutEffect, useState } from 'react';
+import { readWorkspaceLayout, type Viewport } from './useWorkspaceLayout';
 
 export type ThemePreference = 'light' | 'dark' | 'system';
 const STORAGE_KEY = 'image-workspace:theme';
 
-function readPreference(fallback: 'light' | 'dark'): ThemePreference {
+export function readThemePreference(view: Viewport): ThemePreference {
   try {
     const stored = localStorage.getItem(STORAGE_KEY);
-    return stored === 'light' || stored === 'dark' || stored === 'system' ? stored : fallback;
+    if (stored === 'light' || stored === 'dark' || stored === 'system') return stored;
   } catch {
-    return fallback;
+    return 'light';
   }
+  return readWorkspaceLayout(view).theme;
+}
+
+function initialPreference(): ThemePreference {
+  if (typeof window === 'undefined') return 'light';
+  const width = window.innerWidth;
+  const height = window.innerHeight;
+  return readThemePreference({
+    width,
+    height,
+    bucket: width < 760 ? 'phone' : width < 1120 ? 'tablet' : 'desktop',
+  });
 }
 
 /** Theme belongs to the document, not a panel or a screen-size layout bucket. */
-export function useStudioTheme(legacyTheme: 'light' | 'dark' = 'light') {
-  const [preference, setPreference] = useState<ThemePreference>(() => readPreference(legacyTheme));
+export function useStudioTheme() {
+  const [preference, setPreference] = useState<ThemePreference>(initialPreference);
   const [systemDark, setSystemDark] = useState(() =>
     typeof matchMedia === 'function' ? matchMedia('(prefers-color-scheme: dark)').matches : false,
   );
@@ -61,3 +74,5 @@ export function useStudioTheme(legacyTheme: 'light' | 'dark' = 'light') {
     toggle: () => setPreference(theme === 'light' ? 'dark' : 'light'),
   };
 }
+
+export type StudioThemeController = ReturnType<typeof useStudioTheme>;

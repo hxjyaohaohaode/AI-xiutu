@@ -21,7 +21,7 @@ import {
   CaretUp,
   ArrowCounterClockwise,
   ArrowLeft,
-} from '@phosphor-icons/react';
+} from '../components/ControlGlyph';
 import { IconButton } from '../components/Ui';
 import {
   boundPanel,
@@ -120,6 +120,7 @@ export function FloatingPanel({
   const gesture = useRef<Gesture | null>(null);
   const [dragging, setDragging] = useState(false);
   const [menu, setMenu] = useState(false);
+  const [headerTarget, setHeaderTarget] = useState<HTMLDivElement | null>(null);
   const [animatingPresentation, setAnimatingPresentation] = useState(false);
   const [presentationMs, setPresentationMs] = useState(220);
   const menuPresence = usePresence(menu, 'panel-menu');
@@ -151,6 +152,11 @@ export function FloatingPanel({
   const page = displayMode === 'page';
   const condensed = mobile && panelKey === 'ai' && !collapsed && !page;
   const bounds = panelBounds(viewport, value.dock, panelKey);
+  const repairPhoneHeight =
+    attached &&
+    panelKey === 'inspector' &&
+    (!Number.isFinite(geometry.height) || geometry.height < bounds.minHeight);
+  const resumeHeight = repairPhoneHeight ? defaultPanel(panelKey, viewport).height : value.height;
   const contentPresence = usePresence((page || !collapsed) && open, 'panel-body');
   const needsPhotoSpace = panelNeedsPhotoSpace(value, viewport);
   const menuBelow =
@@ -381,13 +387,19 @@ export function FloatingPanel({
   ) {
     finishGesture(false);
     setMenu(false);
-    animateGeometry(
-      next === 'normal' && restoreEditingSpace
+    const normal =
+      repairPhoneHeight || (next === 'normal' && restoreEditingSpace)
         ? restorePanelForEditing(value, viewport, panelKey)
-        : { ...value, presentation: next },
-    );
+        : value;
+    animateGeometry({ ...normal, presentation: next });
     // Do not leave keyboard focus inside a collapsed or inert content subtree.
-    if (next === 'collapsed') dragHandle.current?.focus();
+    if (next === 'collapsed') {
+      // The phone title is replaced by the active categories. Keep focus on a
+      // control that stays visible through both sheet presentations.
+      if (attached && panelKey === 'inspector')
+        layoutTrigger.current?.focus({ preventScroll: true });
+      else dragHandle.current?.focus({ preventScroll: true });
+    }
   }
   function dock(next: Dock) {
     finishGesture(false);
@@ -447,6 +459,9 @@ export function FloatingPanel({
               <ArrowLeft size={17} />
             </IconButton>
           )}
+          {mobile && panelKey === 'inspector' && !collapsed && (
+            <div ref={setHeaderTarget} className="panel-inline-context" />
+          )}
           <div
             ref={dragHandle}
             className="panel-title-drag"
@@ -494,7 +509,7 @@ export function FloatingPanel({
             <strong>{title}</strong>
           </div>
           <div className="panel-presentation-actions" data-motion="panel-actions">
-            {attached && !condensed && (
+            {attached && !condensed && panelKey !== 'inspector' && (
               <div
                 className="panel-mobile-presentations"
                 role="group"
@@ -526,7 +541,7 @@ export function FloatingPanel({
               label={
                 collapsed
                   ? t('继续调节：恢复面板到{height}像素，保留当前操作', {
-                      height: Math.round(value.height),
+                      height: Math.round(resumeHeight),
                     })
                   : needsPhotoSpace
                     ? t('看全图：临时折叠面板，保留当前操作和{height}像素高度', {
@@ -583,6 +598,30 @@ export function FloatingPanel({
           data-direction={menuDirection}
           style={{ maxHeight: Math.max(44, menuDirection === 'up' ? menuAbove : menuBelow) }}
         >
+          {mobile && panelKey === 'inspector' && (
+            <div className="panel-menu-presentation">
+              <button
+                type="button"
+                onClick={() => {
+                  setMenu(false);
+                  setPresentation(maximized ? 'normal' : 'maximized');
+                }}
+              >
+                {maximized ? <CornersIn size={18} /> : <CornersOut size={18} />}
+                {maximized ? t('返回常规调节，恢复面板尺寸') : t('展开精调，允许遮挡画面')}
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  setMenu(false);
+                  onClose();
+                }}
+              >
+                <X size={18} />
+                {t('收起工具面板')}
+              </button>
+            </div>
+          )}
           <div
             className="panel-dock-choices"
             role="group"
@@ -733,6 +772,8 @@ export function FloatingPanel({
             maximized,
             openLayout: () => setMenu(true),
             toggleMaximized: () => setPresentation(maximized ? 'normal' : 'maximized'),
+            headerTarget:
+              attached && panelKey === 'inspector' && !collapsed && open ? headerTarget : null,
           }}
         >
           {children}

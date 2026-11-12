@@ -1,0 +1,513 @@
+{
+  "schema_version": 1,
+  "frontend_baseline": "bb9e126cd668eb87d53548fbcdef773982f284a4",
+  "read_only": true,
+  "official_repo": "/workspace/scratch/a16fa6d0bc34/react-bits-audit",
+  "official_ref": "9d9c687dc4f55b23539aa5417b703078047efa74",
+  "license": {
+    "path": "LICENSE.md",
+    "name": "MIT + Commons Clause License Condition v1.0",
+    "copyright": "Copyright (c) 2026 David Haz",
+    "sha256": "4bdd1fa59a6b7d5954bc3b213dbc34e455c635a94bbcecf9293553797d0fad02",
+    "full_file_read": true,
+    "note": "Preserve copyright/permission in substantial adaptations; do not redistribute reference components as a component product."
+  },
+  "items": [
+    {
+      "id": 31,
+      "component": "ScrollExpand",
+      "source_status": "complete TSX and all separate CSS read",
+      "variant": "ts-default",
+      "decision": "adapt",
+      "surface": "About hero/craft/portrait",
+      "mechanism": "bounded clip-frame expansion; passive scroll + ResizeObserver + RAF; cleanup; natural scroll",
+      "dependencies": "React/native",
+      "adaptation_limits": "Default media zoom 1.35 and cover crop prohibited for actual screenshots; do not add 2.55 viewport hold to every section.",
+      "demo_status": "root owns fresh official demo observation; not independently verified by views_modals",
+      "files": [
+        {
+          "path": "src/ts-default/Animations/ScrollExpand/ScrollExpand.tsx",
+          "git_blob": "6a1f9ae2e238094037fa838b8c4c7ab08d7652ba",
+          "sha256": "e419d5d31c0d1651188aaee478bbde3a151ede49813b8145356efffedab1c491",
+          "lines": 280,
+          "url": "https://github.com/DavidHDev/react-bits/blob/9d9c687dc4f55b23539aa5417b703078047efa74/src/ts-default/Animations/ScrollExpand/ScrollExpand.tsx"
+        },
+        {
+          "path": "src/ts-default/Animations/ScrollExpand/ScrollExpand.css",
+          "git_blob": "0bd0b5ef3282fbbe78f7d7ba4dc64e3f117e56d6",
+          "sha256": "1904e6e0c498a45b11b16521e64dafb02f9e7e2bd33305bb7134fb0081d39c1e",
+          "lines": 102,
+          "url": "https://github.com/DavidHDev/react-bits/blob/9d9c687dc4f55b23539aa5417b703078047efa74/src/ts-default/Animations/ScrollExpand/ScrollExpand.css"
+        }
+      ]
+    },
+    {
+      "id": 35,
+      "component": "AnimatedContent",
+      "source_status": "complete TSX and all separate CSS read",
+      "variant": "ts-default",
+      "decision": "adapt",
+      "surface": "About short section entrances; content arrivals",
+      "mechanism": "small translate/stagger only; visible base and no hidden essential content",
+      "dependencies": "gsap + ScrollTrigger",
+      "adaptation_limits": "Raw mount sets visibility:hidden; avoid opacity/blur masks; runtime dependency absent from app.",
+      "demo_status": "root owns fresh official demo observation; not independently verified by views_modals",
+      "files": [
+        {
+          "path": "src/ts-default/Animations/AnimatedContent/AnimatedContent.tsx",
+          "git_blob": "50c252d6c74e0218504d019df9d06aa02e471f30",
+          "sha256": "9d39ac2d4d5db3701477f744b1c937e6ff4f26d30a40c4514fedec35b1419f5f",
+          "lines": 249,
+          "url": "https://github.com/DavidHDev/react-bits/blob/9d9c687dc4f55b23539aa5417b703078047efa74/src/ts-default/Animations/AnimatedContent/AnimatedContent.tsx"
+        }
+      ]
+    },
+    {
+      "id": 68,
+      "component": "LineSidebar",
+      "source_status": "complete TSX and all separate CSS read",
+      "variant": "ts-default",
+      "decision": "adapt",
+      "surface": "main/sidebar current-selection indicator",
+      "mechanism": "distance falloff + frame-rate independent 100ms RAF smoothing; restrained 4-6px marker response",
+      "dependencies": "React/native",
+      "adaptation_limits": "Raw li onClick lacks keyboard semantics; defaultActive uncontrolled; no reduced-motion branch. Keep actual buttons and controlled route.",
+      "demo_status": "root owns fresh official demo observation; not independently verified by views_modals",
+      "files": [
+        {
+          "path": "src/ts-default/Components/LineSidebar/LineSidebar.tsx",
+          "git_blob": "15f1a8e8790a8b57e8482f45cecad906ef82fc1a",
+          "sha256": "ca5182a5a0b25f04b1a8172ee2d679111de5836fef5c37c4fa709d6dd7e63f94",
+          "lines": 206,
+          "url": "https://github.com/DavidHDev/react-bits/blob/9d9c687dc4f55b23539aa5417b703078047efa74/src/ts-default/Components/LineSidebar/LineSidebar.tsx"
+        },
+        {
+          "path": "src/ts-default/Components/LineSidebar/LineSidebar.css",
+          "git_blob": "d05dadf4ca2fb486b0b4e923fe23f092ced35418",
+          "sha256": "c54eb77aec1a1311c17cdf97fb69be8cc85b4e28e7749cd92e81dfe0aa3a2481",
+          "lines": 91,
+          "url": "https://github.com/DavidHDev/react-bits/blob/9d9c687dc4f55b23539aa5417b703078047efa74/src/ts-default/Components/LineSidebar/LineSidebar.css"
+        }
+      ]
+    },
+    {
+      "id": 69,
+      "component": "AnimatedList",
+      "source_status": "complete TSX and all separate CSS read",
+      "variant": "ts-default",
+      "decision": "adapt",
+      "surface": "document/history/result rows",
+      "mechanism": "measured moving selection outline and short arrival",
+      "dependencies": "React + Hugeicons",
+      "adaptation_limits": "Raw hover changes selection; IntersectionObserver hides partly visible rows; keyboard smooth scroll persists with reduced motion; keep existing list DOM and no hover-driven business selection.",
+      "demo_status": "root owns fresh official demo observation; not independently verified by views_modals",
+      "files": [
+        {
+          "path": "src/ts-default/Components/AnimatedList/AnimatedList.tsx",
+          "git_blob": "82bfe3d03aa92d89b2e30ee1b6eb75550e910b13",
+          "sha256": "dcd33973cb71bb13485a2aa3ef76cb7372d0dd783c94d748709560e939152691",
+          "lines": 602,
+          "url": "https://github.com/DavidHDev/react-bits/blob/9d9c687dc4f55b23539aa5417b703078047efa74/src/ts-default/Components/AnimatedList/AnimatedList.tsx"
+        },
+        {
+          "path": "src/ts-default/Components/AnimatedList/AnimatedList.css",
+          "git_blob": "51da8e8a8bb10bc0a0e70b21f28aed9a264bfe6a",
+          "sha256": "c9b74ad88b92e9836b6ec91ad21170da5d5325cfd0a1a18d1a863e545d8baffc",
+          "lines": 195,
+          "url": "https://github.com/DavidHDev/react-bits/blob/9d9c687dc4f55b23539aa5417b703078047efa74/src/ts-default/Components/AnimatedList/AnimatedList.css"
+        }
+      ]
+    },
+    {
+      "id": 78,
+      "component": "PillNav",
+      "source_status": "complete TSX and all separate CSS read",
+      "variant": "ts-default",
+      "decision": "adapt",
+      "surface": "top nav and mobile menu trigger",
+      "mechanism": "dual-edge spring selection; measured available-width collapse; controlled activeHref",
+      "dependencies": "React/native WAAPI",
+      "adaptation_limits": "No mobile focus trap; closing links need inert; omit demo logo spin/recolor. Default sizes 36/44/52, design own phone visual geometry.",
+      "demo_status": "root owns fresh official demo observation; not independently verified by views_modals",
+      "files": [
+        {
+          "path": "src/ts-default/Components/PillNav/PillNav.tsx",
+          "git_blob": "9344bbfefb34e3f5023f49b17173d566f6ba2340",
+          "sha256": "e7c6094b0f8cf376726ff95b784dfa6e836ede843145cc7c5abc803a49120b20",
+          "lines": 928,
+          "url": "https://github.com/DavidHDev/react-bits/blob/9d9c687dc4f55b23539aa5417b703078047efa74/src/ts-default/Components/PillNav/PillNav.tsx"
+        },
+        {
+          "path": "src/ts-default/Components/PillNav/PillNav.css",
+          "git_blob": "e459a73ea2d584f5bdbd7c846360582c43198f13",
+          "sha256": "dd278611d6134fac392c87cc79594d258c0c1f7d45ea85c51ffaf7841501b7c6",
+          "lines": 460,
+          "url": "https://github.com/DavidHDev/react-bits/blob/9d9c687dc4f55b23539aa5417b703078047efa74/src/ts-default/Components/PillNav/PillNav.css"
+        }
+      ]
+    },
+    {
+      "id": 85,
+      "component": "StaggeredMenu",
+      "source_status": "complete TSX and all separate CSS read",
+      "variant": "ts-default",
+      "decision": "adapt",
+      "surface": "space/navigation sheet arrival",
+      "mechanism": "brief staggered plane/row arrival only inside app native dialog",
+      "dependencies": "gsap",
+      "adaptation_limits": "Raw closed aside links focusable; no Escape/focus trap/inert/reduced-motion; omit 4rem labels and logo invert; cleanup all event-created timelines.",
+      "demo_status": "root owns fresh official demo observation; not independently verified by views_modals",
+      "files": [
+        {
+          "path": "src/ts-default/Components/StaggeredMenu/StaggeredMenu.tsx",
+          "git_blob": "134612032a0d5aec61f83e44c8f0b498895c10fc",
+          "sha256": "be9a613b39ab134538bb795e118f692084163a14eaa80b70532719d52f35554f",
+          "lines": 482,
+          "url": "https://github.com/DavidHDev/react-bits/blob/9d9c687dc4f55b23539aa5417b703078047efa74/src/ts-default/Components/StaggeredMenu/StaggeredMenu.tsx"
+        },
+        {
+          "path": "src/ts-default/Components/StaggeredMenu/StaggeredMenu.css",
+          "git_blob": "14e304ccc0d2cf3138b26e33896e616424d2b60d",
+          "sha256": "b1e7ddc1ce77a0e5d84908b64cd89f02eea33c9986ef1b0bd2a0fa031e0438d0",
+          "lines": 360,
+          "url": "https://github.com/DavidHDev/react-bits/blob/9d9c687dc4f55b23539aa5417b703078047efa74/src/ts-default/Components/StaggeredMenu/StaggeredMenu.css"
+        }
+      ]
+    },
+    {
+      "id": 102,
+      "component": "Stepper",
+      "source_status": "complete TSX and all separate CSS read",
+      "variant": "ts-default",
+      "decision": "not-adopt",
+      "surface": "auth/import/export",
+      "mechanism": "Existing auth state indicator can be compact; no new wizard or forced steps",
+      "dependencies": "React + Hugeicons/native WAAPI",
+      "adaptation_limits": "Footer auto-advances unless synchronous preventDefault; not async validation; leaving panes aria-hidden without inert can duplicate focusable DOM/ids.",
+      "demo_status": "root owns fresh official demo observation; not independently verified by views_modals",
+      "files": [
+        {
+          "path": "src/ts-default/Components/Stepper/Stepper.tsx",
+          "git_blob": "5cc099ce062ed30c88cdeeba62fd8a193f396db9",
+          "sha256": "d61797e7565611157ba912d9dda26d43937698f2fe2701d2271aa2380a00a2f0",
+          "lines": 570,
+          "url": "https://github.com/DavidHDev/react-bits/blob/9d9c687dc4f55b23539aa5417b703078047efa74/src/ts-default/Components/Stepper/Stepper.tsx"
+        },
+        {
+          "path": "src/ts-default/Components/Stepper/Stepper.css",
+          "git_blob": "af1806b511a8fc413da91b47e80f358141e16868",
+          "sha256": "417223c9c56157b27bae7d7214e3fb3a3c8da65e69c6935c6a199fc22b151436",
+          "lines": 430,
+          "url": "https://github.com/DavidHDev/react-bits/blob/9d9c687dc4f55b23539aa5417b703078047efa74/src/ts-default/Components/Stepper/Stepper.css"
+        }
+      ]
+    },
+    {
+      "id": 110,
+      "component": "RefineFrame",
+      "source_status": "complete TSX and all separate CSS read",
+      "variant": "ts-default",
+      "decision": "not-adopt",
+      "surface": "AI pending image/preview",
+      "mechanism": "Retain current honest pending placeholder; real completed image only",
+      "dependencies": "React + Hugeicons/canvas",
+      "adaptation_limits": "Nine full-resolution mosaic buffers make already available image artificially resolve by synthetic stages. Not server progress or actual progressive generation.",
+      "demo_status": "root owns fresh official demo observation; not independently verified by views_modals",
+      "files": [
+        {
+          "path": "src/ts-default/Micro/RefineFrame/RefineFrame.tsx",
+          "git_blob": "799b0d58a8bd8ec69317f4241f49e7af6052f939",
+          "sha256": "8c149632b996a1c6503e32c90b9619c11996ab3314f61aec91827b36ea930ac6",
+          "lines": 342,
+          "url": "https://github.com/DavidHDev/react-bits/blob/9d9c687dc4f55b23539aa5417b703078047efa74/src/ts-default/Micro/RefineFrame/RefineFrame.tsx"
+        },
+        {
+          "path": "src/ts-default/Micro/RefineFrame/RefineFrame.css",
+          "git_blob": "3be94753229c8a4c7abea5655aa503fd685c8c56",
+          "sha256": "9b7d1fb24305b448820d43f9393c090edae34fbb3a398fe24b401a2a554da6fe",
+          "lines": 262,
+          "url": "https://github.com/DavidHDev/react-bits/blob/9d9c687dc4f55b23539aa5417b703078047efa74/src/ts-default/Micro/RefineFrame/RefineFrame.css"
+        }
+      ]
+    },
+    {
+      "id": 111,
+      "component": "ThoughtLine",
+      "source_status": "complete TSX and all separate CSS read",
+      "variant": "ts-default",
+      "decision": "adapt",
+      "surface": "AI real event/status summary",
+      "mechanism": "compact status/elapsed header + optional real event trace; use actual SSE state",
+      "dependencies": "motion/react + Hugeicons",
+      "adaptation_limits": "No settleAfter; original marks previous steps done based on index and all done when working false; cannot represent parallel/unknown without adaptation.",
+      "demo_status": "root owns fresh official demo observation; not independently verified by views_modals",
+      "files": [
+        {
+          "path": "src/ts-default/Micro/ThoughtLine/ThoughtLine.tsx",
+          "git_blob": "fe9753b4e3be3817dcc512fb459d1511bb47e544",
+          "sha256": "170a4cd745c2041bbfad79f408bd7f9b08e54891c7ffd48edfd36212d216fc69",
+          "lines": 299,
+          "url": "https://github.com/DavidHDev/react-bits/blob/9d9c687dc4f55b23539aa5417b703078047efa74/src/ts-default/Micro/ThoughtLine/ThoughtLine.tsx"
+        },
+        {
+          "path": "src/ts-default/Micro/ThoughtLine/ThoughtLine.css",
+          "git_blob": "2d9e3cac01acf1b16dfe219675a81f5428d465f0",
+          "sha256": "fcf125579ead2806c69ecd109c88f14007eaf5fb54ffe46c867482d03add2ef7",
+          "lines": 257,
+          "url": "https://github.com/DavidHDev/react-bits/blob/9d9c687dc4f55b23539aa5417b703078047efa74/src/ts-default/Micro/ThoughtLine/ThoughtLine.css"
+        }
+      ]
+    },
+    {
+      "id": 112,
+      "component": "VoicePill",
+      "source_status": "complete TSX and all separate CSS read",
+      "variant": "ts-default",
+      "decision": "adapt",
+      "surface": "existing VoiceCapture and real-time call toolbar",
+      "mechanism": "capsule expansion, real amplitude strip, explicit cancel and elapsed duration",
+      "dependencies": "React + Hugeicons/native canvas",
+      "adaptation_limits": "Default simulated waveform prohibited; do not open second mic. pointercancel calls normal up; blur listener only while pressed misses toggle mode. Preserve existing media/session cleanup.",
+      "demo_status": "root owns fresh official demo observation; not independently verified by views_modals",
+      "files": [
+        {
+          "path": "src/ts-default/Micro/VoicePill/VoicePill.tsx",
+          "git_blob": "5fee776cd880c20e33b7851b0b5bdb9687c3160d",
+          "sha256": "5e98b7377af38b095270187f3cba26784e4b8bac7e7b158006f09ac930e02202",
+          "lines": 517,
+          "url": "https://github.com/DavidHDev/react-bits/blob/9d9c687dc4f55b23539aa5417b703078047efa74/src/ts-default/Micro/VoicePill/VoicePill.tsx"
+        },
+        {
+          "path": "src/ts-default/Micro/VoicePill/VoicePill.css",
+          "git_blob": "ff53de47f6eefbb017f1790b2a40d234b737cb1c",
+          "sha256": "d3e52c9c3980d890dc66f38c30e615b358654a378631cb55dd9e34873a030346",
+          "lines": 235,
+          "url": "https://github.com/DavidHDev/react-bits/blob/9d9c687dc4f55b23539aa5417b703078047efa74/src/ts-default/Micro/VoicePill/VoicePill.css"
+        }
+      ]
+    },
+    {
+      "id": 114,
+      "component": "PromptBar",
+      "source_status": "complete TSX and all separate CSS read",
+      "variant": "ts-default",
+      "decision": "adapt",
+      "surface": "AI composer",
+      "mechanism": "auto-growing input + attachment chips + 240ms send/stop SVG morph + compact settings row",
+      "dependencies": "motion/react + Hugeicons",
+      "adaptation_limits": "Raw send clears draft immediately without awaiting receipt; menu Enter branch precedes IME guard; no viewport collision/scroll bounds; 18px chip removal and 28px tools require separate touch targets. No fake models/sources or max-effort sparks.",
+      "demo_status": "root owns fresh official demo observation; not independently verified by views_modals",
+      "files": [
+        {
+          "path": "src/ts-default/Micro/PromptBar/PromptBar.tsx",
+          "git_blob": "c2e480ae55094bde6e7365c15c296d5a912d7c2b",
+          "sha256": "eb43fa3dcf092b49457cb283fa2bd4ea37456f43997eae813cab677b8f7e9217",
+          "lines": 826,
+          "url": "https://github.com/DavidHDev/react-bits/blob/9d9c687dc4f55b23539aa5417b703078047efa74/src/ts-default/Micro/PromptBar/PromptBar.tsx"
+        },
+        {
+          "path": "src/ts-default/Micro/PromptBar/PromptBar.css",
+          "git_blob": "1a09e7d505481099e982642aacd88379e3a966a9",
+          "sha256": "dbbc1ed1f1455f4f0bf429b8b3028c0e496debb00a047b609c4d9a02aa48f359",
+          "lines": 516,
+          "url": "https://github.com/DavidHDev/react-bits/blob/9d9c687dc4f55b23539aa5417b703078047efa74/src/ts-default/Micro/PromptBar/PromptBar.css"
+        }
+      ]
+    },
+    {
+      "id": 115,
+      "component": "SwipeToast",
+      "source_status": "complete TSX and all separate CSS read",
+      "variant": "ts-default",
+      "decision": "adapt",
+      "surface": "reversible short feedback and task receipt",
+      "mechanism": "pause timeout on hover/focus/document-hidden, gesture dismissal, visible close and keyboard",
+      "dependencies": "motion/react + Hugeicons",
+      "adaptation_limits": "pointercancel treated as completion; raw action closes before await; default z999999999/overlay not used; unknown/error persistent; preserve normal-flow product placement.",
+      "demo_status": "root owns fresh official demo observation; not independently verified by views_modals",
+      "files": [
+        {
+          "path": "src/ts-default/Micro/SwipeToast/SwipeToast.tsx",
+          "git_blob": "318a390517745e7be37a9037d2eb4285810f156e",
+          "sha256": "e133570fee810e66a610f9b13fe7b6418787ee0bb14d7bc16c94f9965980257f",
+          "lines": 375,
+          "url": "https://github.com/DavidHDev/react-bits/blob/9d9c687dc4f55b23539aa5417b703078047efa74/src/ts-default/Micro/SwipeToast/SwipeToast.tsx"
+        },
+        {
+          "path": "src/ts-default/Micro/SwipeToast/SwipeToast.css",
+          "git_blob": "7c934298007e02e1cbeed0f2205fa0649731c4ba",
+          "sha256": "dcb13f804fa6c3012b48bfa3c2c3c2ca35369209c4fe0687283191b516db22be",
+          "lines": 268,
+          "url": "https://github.com/DavidHDev/react-bits/blob/9d9c687dc4f55b23539aa5417b703078047efa74/src/ts-default/Micro/SwipeToast/SwipeToast.css"
+        }
+      ]
+    },
+    {
+      "id": 118,
+      "component": "CallChip",
+      "source_status": "complete TSX and all separate CSS read",
+      "variant": "ts-default",
+      "decision": "not-adopt",
+      "surface": "tool execution",
+      "mechanism": "At most tool name/status styling; 119 serves shared real state",
+      "dependencies": "React + Hugeicons/native WAAPI",
+      "adaptation_limits": "This is tool-call not voice; expectedMs fabricates progress to 90%. No timing-based percentage.",
+      "demo_status": "root owns fresh official demo observation; not independently verified by views_modals",
+      "files": [
+        {
+          "path": "src/ts-default/Micro/CallChip/CallChip.tsx",
+          "git_blob": "090f55decf6e584f24086674f280a0bacdf8bb14",
+          "sha256": "1199c1a25281d3ecb12dd23423f04a0256242a1f82b36cf1eedf59101722f5b0",
+          "lines": 247,
+          "url": "https://github.com/DavidHDev/react-bits/blob/9d9c687dc4f55b23539aa5417b703078047efa74/src/ts-default/Micro/CallChip/CallChip.tsx"
+        },
+        {
+          "path": "src/ts-default/Micro/CallChip/CallChip.css",
+          "git_blob": "7c3fbcf077618a7a90902a04cd79bc69b680de39",
+          "sha256": "772aea95a1ca3d0c6de2708353b119e59fa437ba2ee08bf37eb5e0eef3f2f676",
+          "lines": 181,
+          "url": "https://github.com/DavidHDev/react-bits/blob/9d9c687dc4f55b23539aa5417b703078047efa74/src/ts-default/Micro/CallChip/CallChip.css"
+        }
+      ]
+    },
+    {
+      "id": 119,
+      "component": "StatusMark",
+      "source_status": "complete TSX and all separate CSS read",
+      "variant": "ts-default",
+      "decision": "adapt",
+      "surface": "all true async states; exports/quotes/upload/AI/auth",
+      "mechanism": "24-viewbox SVG morph from pending/running to done/failed/cancelled; only real progress if supplied",
+      "dependencies": "motion/react",
+      "adaptation_limits": "Must add unknown state and label. Disable default strike for transaction labels. Reduced branch still breathes; freeze static under reduced motion.",
+      "demo_status": "root owns fresh official demo observation; not independently verified by views_modals",
+      "files": [
+        {
+          "path": "src/ts-default/Micro/StatusMark/StatusMark.tsx",
+          "git_blob": "a7cf62eee254860876e2a22c4db971e56a25ca02",
+          "sha256": "569d152892cb788cf5f1b602542fc67bc77faa89fde7cc1f1482cdfc7d3a8959",
+          "lines": 184,
+          "url": "https://github.com/DavidHDev/react-bits/blob/9d9c687dc4f55b23539aa5417b703078047efa74/src/ts-default/Micro/StatusMark/StatusMark.tsx"
+        },
+        {
+          "path": "src/ts-default/Micro/StatusMark/StatusMark.css",
+          "git_blob": "f4238cfed225f4f8577df18049057fef5f6272aa",
+          "sha256": "9c46c47df3729a4e1d258d7a77521faa08fc445fd1ea8b8c4ade8bdb8c2e45c9",
+          "lines": 179,
+          "url": "https://github.com/DavidHDev/react-bits/blob/9d9c687dc4f55b23539aa5417b703078047efa74/src/ts-default/Micro/StatusMark/StatusMark.css"
+        }
+      ]
+    },
+    {
+      "id": 120,
+      "component": "GlideSelect",
+      "source_status": "complete TSX and all separate CSS read",
+      "variant": "ts-default",
+      "decision": "adapt",
+      "surface": "existing ChoiceSelect row highlight",
+      "mechanism": "measured selection highlight and restrained pop; keep existing actual select logic",
+      "dependencies": "React + Hugeicons",
+      "adaptation_limits": "No horizontal collision/max-height/long-list scrolling; no IME guard; raw pointerdown model needs AT check; do not replace existing portal/focus semantics.",
+      "demo_status": "root owns fresh official demo observation; not independently verified by views_modals",
+      "files": [
+        {
+          "path": "src/ts-default/Micro/GlideSelect/GlideSelect.tsx",
+          "git_blob": "a8822d9e20e96ad02972c63cbd914cb61bb59880",
+          "sha256": "4ab4dec9aeafdbb84137d2e78ae4b49369604a1e17b24491c932b8891d8fb499",
+          "lines": 357,
+          "url": "https://github.com/DavidHDev/react-bits/blob/9d9c687dc4f55b23539aa5417b703078047efa74/src/ts-default/Micro/GlideSelect/GlideSelect.tsx"
+        },
+        {
+          "path": "src/ts-default/Micro/GlideSelect/GlideSelect.css",
+          "git_blob": "0bd194c622f7f53e1717c8b4329c7475590025c4",
+          "sha256": "2004ce25349676b1cb056a2169a6b1fc833b4cde3effd1302a0a4b1edb3aaebc",
+          "lines": 242,
+          "url": "https://github.com/DavidHDev/react-bits/blob/9d9c687dc4f55b23539aa5417b703078047efa74/src/ts-default/Micro/GlideSelect/GlideSelect.css"
+        }
+      ]
+    },
+    {
+      "id": 125,
+      "component": "CodeSlots",
+      "source_status": "complete TSX and all separate CSS read",
+      "variant": "ts-default",
+      "decision": "not-adopt",
+      "surface": "auth SMS code",
+      "mechanism": "Retain actual-value native one-time-code input; optional decorative slot baseline only",
+      "dependencies": "motion/react + Hugeicons",
+      "adaptation_limits": "Input value is always empty; visual characters aria-hidden; manual typing lacks IME composition guard; error drains and clears code automatically, invalid for unknown result or reusable code.",
+      "demo_status": "root owns fresh official demo observation; not independently verified by views_modals",
+      "files": [
+        {
+          "path": "src/ts-default/Micro/CodeSlots/CodeSlots.tsx",
+          "git_blob": "18c527dd3103151ebd7a01a1b64eb27ebec795fe",
+          "sha256": "4b2c73673d3aad43ca1eb32c0b1cfd2d9271437382123f2b4e4214c630e5ad9c",
+          "lines": 519,
+          "url": "https://github.com/DavidHDev/react-bits/blob/9d9c687dc4f55b23539aa5417b703078047efa74/src/ts-default/Micro/CodeSlots/CodeSlots.tsx"
+        },
+        {
+          "path": "src/ts-default/Micro/CodeSlots/CodeSlots.css",
+          "git_blob": "9d75e667523761d5dc70a4e2326bd4e741bc3d0c",
+          "sha256": "007ee23eac71c9a1157cb98c4855a94607d280123515a8cbd62672f4a42566c4",
+          "lines": 185,
+          "url": "https://github.com/DavidHDev/react-bits/blob/9d9c687dc4f55b23539aa5417b703078047efa74/src/ts-default/Micro/CodeSlots/CodeSlots.css"
+        }
+      ]
+    },
+    {
+      "id": 133,
+      "component": "SpringCheck",
+      "source_status": "complete TSX and all separate CSS read",
+      "variant": "ts-default",
+      "decision": "adapt",
+      "surface": "collaboration tasks and true checkbox selection",
+      "mechanism": "small visual checkbox independent from 44px hit area; spring press and actual confirmed completion",
+      "dependencies": "motion/react + Hugeicons",
+      "adaptation_limits": "Keep todo/doing/done distinct and server/CAS receipt-driven; no optimistic done animation before save; avoid strikethrough meaningful data labels.",
+      "demo_status": "root owns fresh official demo observation; not independently verified by views_modals",
+      "files": [
+        {
+          "path": "src/ts-default/Micro/SpringCheck/SpringCheck.tsx",
+          "git_blob": "b4f8d39919c48b828810418bd989d3fb081acc2f",
+          "sha256": "600b13423a6f360486e2f2cc8b7c0a96524e5184efbbeb95a4bee2cdaecd0219",
+          "lines": 199,
+          "url": "https://github.com/DavidHDev/react-bits/blob/9d9c687dc4f55b23539aa5417b703078047efa74/src/ts-default/Micro/SpringCheck/SpringCheck.tsx"
+        },
+        {
+          "path": "src/ts-default/Micro/SpringCheck/SpringCheck.css",
+          "git_blob": "6b443d8c49890963a3a0c6004f700e23b0a3b55e",
+          "sha256": "dc29047d805e99f439356880dda04240c1524693380059650e8188ce456c81c6",
+          "lines": 132,
+          "url": "https://github.com/DavidHDev/react-bits/blob/9d9c687dc4f55b23539aa5417b703078047efa74/src/ts-default/Micro/SpringCheck/SpringCheck.css"
+        }
+      ]
+    }
+  ],
+  "pending_not_adoption_ready": [
+    {
+      "id": 84,
+      "name": "Folder",
+      "status": "partial source only, no adoption claim"
+    },
+    {
+      "id": 80,
+      "name": "Masonry",
+      "status": "not source-verified; no replacement of working content grid proposed"
+    },
+    {
+      "id": 121,
+      "name": "SwipeRow",
+      "status": "not source-verified; do not hide essential actions behind swipe"
+    },
+    {
+      "id": 187,
+      "name": "Uiverse stack",
+      "status": "root to supply exact full source and license evidence"
+    },
+    {
+      "id": 200,
+      "name": "Uiverse theme switch",
+      "status": "root to supply exact full source and license evidence"
+    }
+  ]
+}

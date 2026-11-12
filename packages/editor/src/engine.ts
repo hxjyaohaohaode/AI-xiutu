@@ -175,7 +175,7 @@ function mapEncodedPoint(
   }
 }
 
-function encodedPointByte(sample: number): number {
+export function encodedPointByte(sample: number): number {
   const value = clamp(sample) * 255;
   // Float32 linear roundoff is at most 2^-24. The largest sRGB slope is
   // 12.92, so its effect in byte units is below 0.0002. Evaluate the original
@@ -267,6 +267,32 @@ export interface ReferenceRenderSession {
   encoded: [Float64Array, Float64Array, Float64Array] | null;
   pointBytes: Int16Array[] | null;
   pointCache?: { keys: Uint32Array; values: Uint32Array };
+}
+
+/** Map encoded source bytes through the shared v1 point stage into Float32 linear RGB. */
+export function mapSourceColor(
+  session: ReferenceRenderSession,
+  r: number,
+  g: number,
+  b: number,
+  output: Float32Array,
+  at: number,
+): void {
+  if (session.encoded) {
+    mapEncodedPoint(
+      session.encoded[0][r]!,
+      session.encoded[1][g]!,
+      session.encoded[2][b]!,
+      session.globalTone,
+      session.curves,
+      output,
+      at,
+    );
+  } else {
+    output[at] = DECODE[r]!;
+    output[at + 1] = DECODE[g]!;
+    output[at + 2] = DECODE[b]!;
+  }
 }
 
 export interface ImageCoordinateContext {
@@ -541,35 +567,21 @@ export function renderValidatedRegion(
   if (!globalNeutral || localActive || extension?.active) {
     const n = image.width * image.height;
     working = workspace ? workspace.working.subarray(0, n * 3) : new Float32Array(n * 3);
-    const t = session.globalTone;
-    const curves = session.curves;
     for (let y = 0; y < image.height; y += 1) {
       if ((y & 31) === 0) checkAbort(options);
       for (let x = 0; x < image.width; x += 1) {
         const p = y * image.width + x;
         const i = p * 4;
         const o = p * 3;
-        const r = DECODE[image.data[i]!]!;
-        const g = DECODE[image.data[i + 1]!]!;
-        const b = DECODE[image.data[i + 2]!]!;
+        const r = image.data[i]!;
+        const g = image.data[i + 1]!;
+        const b = image.data[i + 2]!;
         if (image.data[i + 3] === 0) {
-          working[o] = r;
-          working[o + 1] = g;
-          working[o + 2] = b;
-        } else if (session.encoded) {
-          mapEncodedPoint(
-            session.encoded[0][image.data[i]!]!,
-            session.encoded[1][image.data[i + 1]!]!,
-            session.encoded[2][image.data[i + 2]!]!,
-            t,
-            curves,
-            working,
-            o,
-          );
+          working[o] = DECODE[r]!;
+          working[o + 1] = DECODE[g]!;
+          working[o + 2] = DECODE[b]!;
         } else {
-          working[o] = r;
-          working[o + 1] = g;
-          working[o + 2] = b;
+          mapSourceColor(session, r, g, b, working, o);
         }
       }
     }

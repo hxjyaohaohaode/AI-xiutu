@@ -3,6 +3,8 @@ import { randomUUID } from 'node:crypto';
 import test from 'node:test';
 import sharp from 'sharp';
 import {
+  createCutoutAlphaPrior,
+  createCutoutTrimap,
   createRasterMask,
   createRecipeV4,
   renderCutout,
@@ -106,6 +108,81 @@ test(
       assert.deepEqual(
         await sharp(actual.rawPayload).ensureAlpha().raw().toBuffer(),
         Buffer.from(expected.data),
+      );
+      const nativeSettings: CutoutSettings = {
+        ...settings,
+        algorithm: 'guided-v5',
+        selection: createCutoutTrimap(
+          64,
+          48,
+          Uint8Array.from({ length: 64 * 48 }, (_, at) =>
+            at % 64 < 20 ? 255 : at % 64 < 27 ? 128 : 0,
+          ),
+        ),
+      };
+      const nativeRequest = {
+        kind: 'cutout',
+        sourceAssetId: f.assetId,
+        requestId: randomUUID(),
+        name: 'native-trimap.png',
+        settings: nativeSettings,
+      };
+      const wrongSize = {
+        ...nativeRequest,
+        settings: { ...nativeSettings, selection: createCutoutTrimap(1, 1, Uint8Array.of(255)) },
+      };
+      const nativeQuote = await f.call('POST', `${path}/quote`, wrongSize);
+      assert.equal(nativeQuote.statusCode, 200);
+      assert.deepEqual(nativeQuote.json().limits, ['CUTOUT_TRIMAP_DIMENSIONS']);
+      assert.equal((await f.call('POST', path, wrongSize)).statusCode, 422);
+      const native = await f.call('POST', path, nativeRequest);
+      assert.equal(native.statusCode, 201, native.body);
+      assert.equal(
+        (await f.call('GET', `/v1/assets/${native.json().asset.id}/derivation`)).json().algorithm,
+        'rgb-guided-trimap-v5',
+      );
+      const png = await f.call('GET', native.json().asset.url);
+      assert.equal(png.statusCode, 200);
+      assert.deepEqual(
+        await sharp(png.rawPayload).ensureAlpha().raw().toBuffer(),
+        Buffer.from(renderCutout({ width: 64, height: 48, data: source }, nativeSettings).data),
+      );
+      const alphaSettings = {
+        ...settings,
+        algorithm: 'continuous-alpha-v1' as const,
+        selection: createCutoutAlphaPrior(
+          { width: 64, height: 48 },
+          { width: 4, height: 1 },
+          Uint8Array.of(255, 195, 17, 0),
+        ),
+      };
+      const alphaRequest = {
+        ...nativeRequest,
+        requestId: randomUUID(),
+        name: 'continuous-alpha.png',
+        settings: alphaSettings,
+      };
+      const wrongAlphaSize = {
+        ...alphaRequest,
+        settings: { ...alphaSettings, selection: { ...alphaSettings.selection, sourceWidth: 63 } },
+      };
+      const alphaQuote = await f.call('POST', `${path}/quote`, wrongAlphaSize);
+      assert.equal(alphaQuote.statusCode, 200);
+      assert.deepEqual(alphaQuote.json().limits, ['CUTOUT_ALPHA_PRIOR_DIMENSIONS']);
+      assert.equal((await f.call('POST', path, wrongAlphaSize)).statusCode, 422);
+      assert.equal((await f.call('POST', path, alphaRequest, 'viewer')).statusCode, 403);
+      const alpha = await f.call('POST', path, alphaRequest);
+      assert.equal(alpha.statusCode, 201, alpha.body);
+      const asset = alpha.json().asset;
+      assert.equal((await f.call('POST', path, alphaRequest)).json().asset.id, asset.id);
+      const alphaLineage = (await f.call('GET', `/v1/assets/${asset.id}/derivation`)).json();
+      assert.equal(alphaLineage.algorithm, 'continuous-alpha-v1');
+      assert.equal(alphaLineage.sources[0].assetId, f.assetId);
+      const alphaPng = await f.call('GET', asset.url);
+      assert.equal(alphaPng.statusCode, 200);
+      assert.deepEqual(
+        await sharp(alphaPng.rawPayload).ensureAlpha().raw().toBuffer(),
+        Buffer.from(renderCutout({ width: 64, height: 48, data: source }, alphaSettings).data),
       );
     } finally {
       await f.close();
@@ -241,6 +318,11 @@ test(
       assert.equal(uploaded.statusCode, 201, uploaded.body);
       const original = uploaded.json().asset;
       const path = `/v1/assets/${original.id}/animation`;
+      const metadata = await f.call('GET', path, undefined, 'viewer');
+      assert.equal(metadata.statusCode, 200, metadata.body);
+      const { animation: retained } = metadata.json();
+      assert.deepEqual([retained.frames, retained.delay, retained.loop], [3, [70, 120, 190], 4]);
+      assert.equal((await f.call('GET', path, undefined, 'outsider')).statusCode, 404);
       assert.deepEqual((await f.call('GET', `${path}/file`)).rawPayload, gif);
       assert.equal((await f.call('GET', `${path}/file`, undefined, 'outsider')).statusCode, 404);
       await f.db.query(
@@ -366,12 +448,17 @@ test(
       );
       const search = `/v1/projects/${f.projectId}/assets?query=APRICOT`;
       assert.equal((await f.call('GET', search, undefined, 'viewer')).json().assets[0].id, assetId);
+      const listing = await f.call('GET', path, undefined, 'viewer');
+      assert.equal(listing.statusCode, 200, listing.body);
+      assert.equal(listing.headers['cache-control'], 'private, no-store');
+      assert.deepEqual(listing.json().recognitions, [recognition]);
       assert.equal((await f.call('GET', path, undefined, 'outsider')).statusCode, 404);
       assert.equal(
         (await f.call('DELETE', `${path}/${recognition.id}`, undefined, 'editor')).statusCode,
         200,
       );
       assert.deepEqual((await f.call('GET', search)).json().assets, []);
+      assert.deepEqual((await f.call('GET', path)).json().recognitions, []);
       const chinese = Buffer.from(`<svg xmlns="http://www.w3.org/2000/svg" width="760" height="240">
       <rect width="760" height="240" fill="white"/><text font-family="Noto Sans CJK SC" font-size="70" x="60" y="130">春天花园</text></svg>`);
       const importedChinese = await upload(

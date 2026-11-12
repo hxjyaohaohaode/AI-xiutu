@@ -2,8 +2,8 @@
 :root,
 :root[data-theme='light'] {
   color-scheme: light;
-  --color-app: #f5f3ee;
-  --color-canvas: #eceae4;
+  --color-app: #f6f5f1;
+  --color-canvas: #eeede8;
   --color-surface: #fffefa;
   --color-raised: #ffffff;
   --color-surface-secondary: #f0eee7;
@@ -15,11 +15,11 @@
   --color-disabled: #909185;
   --color-line: #dedbd2;
   --color-line-strong: #b3b3a4;
-  --color-accent: #e4ac85;
-  --color-accent-hover: #d89970;
-  --color-accent-soft: #f4e6dc;
-  --color-accent-ink: #8a4228;
-  --color-on-accent: #3b2318;
+  --color-accent: #edbc41;
+  --color-accent-hover: #e0aa27;
+  --color-accent-soft: #f7edcf;
+  --color-accent-ink: #795713;
+  --color-on-accent: #29261b;
   --color-success: #366b4c;
   --color-success-soft: #eaf3eb;
   --color-warning: #876115;
@@ -28,7 +28,7 @@
   --color-danger-soft: #faeae6;
   --color-info: #356a82;
   --color-info-soft: #e8f1f5;
-  --color-focus: #a24c2e;
+  --color-focus: #856213;
   --color-scrim: rgb(19 25 16 / 38%);
   --color-shadow: 35 45 27;
   --color-checker-light: #f7f8f4;
@@ -37,24 +37,24 @@
 
 :root[data-theme='dark'] {
   color-scheme: dark;
-  --color-app: #1b1d19;
-  --color-canvas: #121410;
-  --color-surface: #242720;
-  --color-raised: #2c3027;
-  --color-surface-secondary: #1e211b;
-  --color-surface-hover: #363c2e;
-  --color-surface-active: #444a3a;
+  --color-app: #1b1c1a;
+  --color-canvas: #131411;
+  --color-surface: #242621;
+  --color-raised: #2d302a;
+  --color-surface-secondary: #20221d;
+  --color-surface-hover: #353931;
+  --color-surface-active: #41463b;
   --color-ink: #f1f0e8;
   --color-muted: #c4c6b5;
   --color-subtle: #a8ad97;
   --color-disabled: #7d8870;
   --color-line: #414a35;
   --color-line-strong: #68785b;
-  --color-accent: #dfac85;
-  --color-accent-hover: #edc4a2;
-  --color-accent-soft: #403428;
-  --color-accent-ink: #ecc2a0;
-  --color-on-accent: #322317;
+  --color-accent: #edbc41;
+  --color-accent-hover: #f4cf70;
+  --color-accent-soft: #3c341f;
+  --color-accent-ink: #efd08a;
+  --color-on-accent: #29261b;
   --color-success: #96d3ad;
   --color-success-soft: #223a2b;
   --color-warning: #e5c47d;
@@ -63,7 +63,7 @@
   --color-danger-soft: #422b26;
   --color-info: #9bcbdc;
   --color-info-soft: #233942;
-  --color-focus: #dfac85;
+  --color-focus: #edbc41;
   --color-scrim: rgb(5 9 4 / 62%);
   --color-shadow: 0 0 0;
   --color-checker-light: #30382b;
@@ -119,6 +119,17 @@
   --ui-line: var(--color-line);
   --ui-hover: var(--color-surface-hover);
   --ui-selected: var(--color-accent-soft);
+  /* Visual geometry and hit geometry are independent. Modules choose the
+     appropriate token; a touch target must not overlap its neighbours. */
+  --ui-icon-size: 20px;
+  --ui-icon-small: 18px;
+  --ui-control-h: 36px;
+  --ui-field-h: 38px;
+  --ui-hit: 40px;
+  --ui-panel-pad: 20px;
+  --ui-gap: 12px;
+  --ui-label-size: 12px;
+  --ui-text-size: 13px;
   --shadow-sm: 0 1px 3px rgb(var(--color-shadow) / 8%);
   --shadow-md: 0 6px 24px rgb(var(--color-shadow) / 12%);
   --shadow-lg: 0 20px 64px rgb(var(--color-shadow) / 22%);
@@ -126,7 +137,7 @@
   --studio-shadow: var(--shadow-md);
   --radius-control: 10px;
   --radius-surface: 16px;
-  --radius-overlay: 22px;
+  --radius-overlay: 18px;
   --control-height: 40px;
   --control-compact: 36px;
   --icon-size: 20px;
@@ -199,15 +210,49 @@ select optgroup {
   overflow: visible;
 }
 
+@media (760px <= width <= 1100px) {
+  :root {
+    --ui-icon-size: 18px;
+    --ui-icon-small: 16px;
+    --ui-control-h: 34px;
+    --ui-field-h: 36px;
+    --ui-hit: 44px;
+    --ui-panel-pad: 16px;
+    --ui-gap: 10px;
+  }
+}
+
 @media (width < 760px) {
   :root {
+    --ui-icon-size: 18px;
+    --ui-icon-small: 16px;
+    --ui-control-h: 32px;
+    --ui-field-h: 36px;
+    --ui-hit: 44px;
+    --ui-panel-pad: 12px;
+    --ui-gap: 8px;
     --input-font-size: 16px;
-    --radius-overlay: 22px;
+    --radius-overlay: 16px;
   }
 
   :root[data-theme]
     :is(input:not([type='range']):not([type='checkbox']):not([type='radio']), textarea, select) {
     font-size: var(--input-font-size);
+  }
+}
+
+@media (height <= 480px) and (orientation: landscape) {
+  :root {
+    --ui-control-h: 32px;
+    --ui-field-h: 34px;
+    --ui-panel-pad: 10px;
+    --ui-gap: 8px;
+  }
+}
+
+@media (pointer: coarse) {
+  :root {
+    --ui-hit: 44px;
   }
 }
 

@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import { createElement } from 'react';
 import { renderTestMarkup } from './support/render.ts';
-import { ParameterShelf, parameterControlScrollTop } from '../src/editor/ParameterShelf.tsx';
+import { ParameterShelf, parameterControlScrollTop, shelfControlAdjusted } from '../src/editor/ParameterShelf.tsx';
 import { PrecisionRange } from '../src/editor/PrecisionRange.tsx';
 import { setLocale } from '../src/i18n';
 
@@ -121,15 +121,7 @@ test('the shelf retains named controls, exact signed ranges, selected state and 
   assert.match(slider, /value="-0.35"/);
   assert.match(html, /aria-label="重置曝光"/);
   assert.match(html, /点击精确输入/);
-  const picker = html.match(/<button\b[^>]*role="combobox"[^>]*>[\s\S]*?<\/button>/)?.[0];
-  assert.ok(picker, 'compact panels retain a keyboard-accessible way to choose another parameter');
-  assert.match(picker, /aria-label="选择影调精调"/);
-  assert.match(picker, /aria-expanded="false"/);
-  assert.match(picker, />曝光<\/span>/);
-  const description = html.match(/<details\b[^>]*>[\s\S]*?<\/details>/)?.[0];
-  assert.ok(description, 'parameter guidance remains available through a named disclosure');
-  assert.match(description, /<summary[^>]*aria-expanded="false"[^>]*>曝光说明<\/summary>/);
-  assert.doesNotMatch(description, /^<details[^>]*\bopen(?:=|[ >])/);
+  assert.match(html, /aria-describedby="[^"]+-description"/, 'the active range retains its accessible parameter semantics');
   assert.equal(
     html.split('正负曝光均可连续微调。').length - 1,
     1,
@@ -169,6 +161,7 @@ test('an unavailable first parameter does not hide the usable control and adjust
           min: -8,
           max: 8,
           step: 0.01,
+          neutral: 0,
           unit: 'EV',
           onChange() {},
         },
@@ -179,11 +172,6 @@ test('an unavailable first parameter does not hide the usable control and adjust
   assert.ok(slider);
   assert.match(slider, /aria-label="曝光"/);
   assert.doesNotMatch(slider, /disabled=/);
-  assert.match(
-    html.match(/<button\b[^>]*role="combobox"[^>]*>[\s\S]*?<\/button>/)?.[0] ?? '',
-    />曝光<\/span>/,
-    'compact picker and slider use the same first available parameter',
-  );
   assert.match(html, /aria-label="曝光，-0.35EV，已调整"/);
   assert.match(
     html,
@@ -228,4 +216,12 @@ test('rotated selection bounds stay exact in native controls while all locales s
   } finally {
     await setLocale('zh-CN');
   }
+});
+
+test('adjusted indicators respect registered non-zero defaults and do not guess a crop or brush default', () => {
+  assert.equal(shelfControlAdjusted({ value: 1, neutral: 1 }), false);
+  assert.equal(shelfControlAdjusted({ value: .8, neutral: 1 }), true);
+  assert.equal(shelfControlAdjusted({ value: -0.35, neutral: 0 }), true);
+  assert.equal(shelfControlAdjusted({ value: 1536 }), false);
+  assert.equal(shelfControlAdjusted({ value: 100 }), false);
 });

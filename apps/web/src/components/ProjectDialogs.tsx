@@ -18,6 +18,8 @@ import type { EditorState } from '../editor/useEditor';
 import { createSourceLoadGuard, type SourceLoadCheckpoint } from '../editor/source-flow';
 import { Busy, IconButton, InlineError, Modal } from './Ui';
 import { ChoiceSelect } from './ChoiceSelect';
+import { StatusMark } from './StatusMark';
+import { ImagePreview } from './ImagePreview';
 import { TeamActivity } from '../resources/TeamActivity';
 import { useConfirmation } from './ConfirmationDialog';
 import { confirmStableScope } from '../lib/confirmation-scope';
@@ -61,13 +63,6 @@ export function NameDialog({
   return (
     <Modal
       title={t(titles[kind])}
-      subtitle={
-        kind === 'join'
-          ? t('填写队友发给你的团队邀请码。')
-          : kind === 'team'
-            ? t('照片、讨论和项目，将在这个空间里共同整理。')
-            : t('一个项目，可以保存多张作品和每次编辑的版本。')
-      }
       onClose={onClose}
       canClose={() => !locked.current}
       className="studio-dialog name-dialog"
@@ -226,6 +221,13 @@ export function ExportDialog({
           current.current.quality === quality,
       };
       setPrepared(result);
+      // The explicit download action starts delivery after encoding. The same
+      // prepared file remains available if the browser requires another gesture.
+      const link = document.createElement('a');
+      link.href = result.url;
+      link.download = result.name;
+      link.click();
+      onSuccess(t('下载已发起，可在浏览器下载记录中查看。'));
     } catch (e) {
       if (live.current && request === generation.current) setError(errorMessage(e));
     } finally {
@@ -242,11 +244,13 @@ export function ExportDialog({
   return (
     <Modal
       title={t('导出图片')}
-      subtitle={t('从原始照片重新计算，保留当前的每一项调整。')}
       onClose={onClose}
       canClose={() => !locked.current}
       className="studio-dialog export-dialog"
     >
+      <div className="export-preview">
+        <ImagePreview image={editor.rendered} label={t('当前编辑的预览图')} />
+      </div>
       <div className="export-options" role="group" aria-label={t('导出图片格式')}>
         <button
           type="button"
@@ -256,7 +260,7 @@ export function ExportDialog({
           onClick={() => setFormat('png')}
         >
           <strong>PNG</strong>
-          <span>{t('无损图片 · 保留透明')}</span>
+          <span>{t('无损 · 透明')}</span>
           {format === 'png' && <Check size={19} />}
         </button>
         <button
@@ -267,7 +271,7 @@ export function ExportDialog({
           onClick={() => setFormat('jpeg')}
         >
           <strong>JPEG</strong>
-          <span>{t('轻巧分享 · 白色底图')}</span>
+          <span>{t('有损 · 白底')}</span>
           {format === 'jpeg' && <Check size={19} />}
         </button>
         <button
@@ -278,7 +282,7 @@ export function ExportDialog({
           onClick={() => setFormat('webp')}
         >
           <strong>WebP</strong>
-          <span>{t('较小体积 · 浏览器支持时')}</span>
+          <span>{t('压缩 · 透明')}</span>
           {format === 'webp' && <Check size={19} />}
         </button>
       </div>
@@ -297,27 +301,23 @@ export function ExportDialog({
             disabled={busy}
             onChange={(e) => setQuality(Number(e.target.value))}
           />
-          <small>
-            {format === 'jpeg'
-              ? t('JPEG 有损压缩会改变像素；透明区域填为白色。')
-              : t('WebP 按所选质量编码；只有实际编码MIME一致时才提供下载。')}
-          </small>
         </label>
       )}
       <div className="export-summary">
         <span>{t('文件名')}</span>
         <strong>{ready?.name ?? exportName}</strong>
-        <span>{t('照片处理')}</span>
-        <strong>{t('当前调色、构图和局部调整')}</strong>
       </div>
       <InlineError message={error} />
       {ready && (
         <div className="stack-form" role="status">
-          <p>
-            {t('文件已生成 ·')}
-            {(ready.bytes / 1024 / 1024).toFixed(2)}{' '}
-            {t('MB。点击下载，未收到文件时可以再次点击，无需重新计算。')}
-          </p>
+          <StatusMark
+            state="done"
+            label={
+              <>
+                {t('文件已生成 ·')} {(ready.bytes / 1024 / 1024).toFixed(2)} MB
+              </>
+            }
+          />
           <a
             className="button button-primary button-full"
             href={ready.url}
@@ -338,7 +338,7 @@ export function ExportDialog({
             }}
           >
             <DownloadSimple size={18} />
-            {t('下载图片')}
+            {t('再次下载')}
           </a>
         </div>
       )}
@@ -352,13 +352,10 @@ export function ExportDialog({
         ) : (
           <>
             <DownloadSimple size={18} />
-            {ready ? t('重新生成文件') : t('生成导出文件')}
+            {ready ? t('重新生成文件') : t('下载 {format}', { format: format.toUpperCase() })}
           </>
         )}
       </button>
-      <p className="fine-print">
-        {t('照片仍留在你的设备上。浏览器下载完成，不等于已写入系统相册。')}
-      </p>
     </Modal>
   );
 }
@@ -385,6 +382,9 @@ export function TeamDialog({
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [policy, setPolicy] = useState<SharingPolicy | null>(null);
+  const [policyLoading, setPolicyLoading] = useState(true);
+  const [policyError, setPolicyError] = useState<string | null>(null);
+  const policyRequest = useRef(0);
   const [loading, setLoading] = useState(true);
   const [message, setMessage] = useState('');
   const locked = useRef(false);
@@ -425,6 +425,24 @@ export function TeamDialog({
     const result = await api<{ members: Member[] }>(`/spaces/${space.id}/members`);
     if (mounted.current && generation === scope.current.generation) setMembers(result.members);
   };
+  const loadPolicy = async () => {
+    const generation = scope.current.generation;
+    const request = ++policyRequest.current;
+    const isCurrent = () =>
+      mounted.current &&
+      generation === scope.current.generation &&
+      request === policyRequest.current;
+    setPolicyLoading(true);
+    setPolicyError(null);
+    try {
+      const result = await api<{ policy: SharingPolicy }>(`/spaces/${space.id}/sharing-policy`);
+      if (isCurrent()) setPolicy(result.policy);
+    } catch (failure) {
+      if (isCurrent()) setPolicyError(errorMessage(failure));
+    } finally {
+      if (isCurrent()) setPolicyLoading(false);
+    }
+  };
   useEffect(() => {
     const generation = scope.current.generation;
     let active = true;
@@ -442,13 +460,7 @@ export function TeamDialog({
       .finally(() => {
         if (isCurrent()) setLoading(false);
       });
-    api<{ policy: SharingPolicy }>(`/spaces/${space.id}/sharing-policy`)
-      .then((v) => {
-        if (isCurrent()) setPolicy(v.policy);
-      })
-      .catch((e) => {
-        if (isCurrent()) setError(errorMessage(e));
-      });
+    void loadPolicy();
     return () => {
       active = false;
     };
@@ -628,7 +640,6 @@ export function TeamDialog({
     <>
       <Modal
         title={space.name}
-        subtitle={t('管理成员、角色与邀请。')}
         onClose={onClose}
         canClose={() => !locked.current}
         className="studio-dialog team-dialog"
@@ -847,10 +858,20 @@ export function TeamDialog({
               </button>
             )}
           </div>
-        ) : !error ? (
+        ) : policyLoading ? (
           <Busy label={t('读取共享规则')} />
         ) : (
-          <p className="form-hint">{t('共享规则读取失败，请关闭后重试。当前规则没有被更改。')}</p>
+          <div className="stack-form">
+            <InlineError message={policyError} />
+            <button
+              type="button"
+              className="button button-secondary"
+              disabled={busy}
+              onClick={() => void loadPolicy()}
+            >
+              {t('重新读取')}
+            </button>
+          </div>
         )}
       </Modal>
       {confirmation.dialog}
@@ -914,7 +935,7 @@ export function CopyProjectDialog({
   return (
     <Modal
       title={t('把项目复制到另一个空间')}
-      subtitle={t('副本包含允许复制的素材和作品版本，与来源项目独立保存。')}
+      subtitle={project.title}
       onClose={onClose}
       canClose={() => !locked.current}
       className="studio-dialog copy-dialog"
@@ -978,6 +999,9 @@ export function CopyProjectDialog({
 }
 export function ShareDialog({ project, onClose }: { project: Project; onClose: () => void }) {
   const [grants, setGrants] = useState<Grant[]>([]);
+  const [grantsLoading, setGrantsLoading] = useState(true);
+  const [grantsReady, setGrantsReady] = useState(false);
+  const [readError, setReadError] = useState<string | null>(null);
   const [phone, setPhone] = useState('');
   const [mode, setMode] = useState<'reference' | 'copy'>('reference');
   const [days, setDays] = useState(7);
@@ -985,13 +1009,52 @@ export function ShareDialog({ project, onClose }: { project: Project; onClose: (
   const [error, setError] = useState<string | null>(null);
   const [message, setMessage] = useState('');
   const locked = useRef(false);
+  const mounted = useRef(true);
+  const readRequest = useRef(0);
+  const readController = useRef<AbortController | null>(null);
+  const currentProject = useRef(project.id);
+  currentProject.current = project.id;
   const canManage = project.role === 'owner' || project.role === 'admin';
   const load = async () => {
-    const result = await api<{ grants: Grant[] }>(`/projects/${project.id}/grants`);
-    setGrants(result.grants);
+    if (!mounted.current || currentProject.current !== project.id) return;
+    const request = ++readRequest.current;
+    readController.current?.abort();
+    const controller = new AbortController();
+    readController.current = controller;
+    const isCurrent = () =>
+      mounted.current &&
+      currentProject.current === project.id &&
+      request === readRequest.current &&
+      !controller.signal.aborted;
+    setGrantsLoading(true);
+    setReadError(null);
+    try {
+      const result = await api<{ grants: Grant[] }>(`/projects/${project.id}/grants`, {
+        signal: controller.signal,
+      });
+      if (isCurrent()) {
+        setGrants(result.grants);
+        setGrantsReady(true);
+      }
+    } catch (failure) {
+      if (isCurrent()) setReadError(errorMessage(failure));
+    } finally {
+      if (isCurrent()) setGrantsLoading(false);
+      if (readController.current === controller) readController.current = null;
+    }
   };
   useEffect(() => {
-    load().catch((e) => setError(errorMessage(e)));
+    mounted.current = true;
+    setGrants([]);
+    setGrantsReady(false);
+    setMessage('');
+    setError(null);
+    void load();
+    return () => {
+      mounted.current = false;
+      readRequest.current++;
+      readController.current?.abort();
+    };
   }, [project.id]);
   async function share(event: FormEvent) {
     event.preventDefault();
@@ -1005,14 +1068,15 @@ export function ShareDialog({ project, onClose }: { project: Project; onClose: (
         `/projects/${project.id}/grants`,
         jsonRequest('POST', { targetPhone: phone.trim(), mode, expiresInDays: days }),
       );
+      if (!mounted.current || currentProject.current !== project.id) return;
       setPhone('');
       setMessage('项目已授权给接收者。请提醒对方在自己的账号中查看。');
       await load();
     } catch (e) {
-      setError(errorMessage(e));
+      if (mounted.current && currentProject.current === project.id) setError(errorMessage(e));
     } finally {
       locked.current = false;
-      setBusy(false);
+      if (mounted.current) setBusy(false);
     }
   }
   async function revoke(grant: Grant) {
@@ -1023,19 +1087,20 @@ export function ShareDialog({ project, onClose }: { project: Project; onClose: (
     setMessage('');
     try {
       await api(`/projects/${project.id}/grants/${grant.id}`, jsonRequest('DELETE'));
-      await load();
+      if (!mounted.current || currentProject.current !== project.id) return;
       setMessage('已撤销该授权，后续访问将重新检查权限。');
+      await load();
     } catch (e) {
-      setError(errorMessage(e));
+      if (mounted.current && currentProject.current === project.id) setError(errorMessage(e));
     } finally {
       locked.current = false;
-      setBusy(false);
+      if (mounted.current) setBusy(false);
     }
   }
   return (
     <Modal
       title={t('共享这个项目')}
-      subtitle={t('{v0} · 仅向明确的接收者授权', { v0: project.title })}
+      subtitle={project.title}
       onClose={onClose}
       canClose={() => !locked.current}
       className="studio-dialog share-dialog"
@@ -1112,8 +1177,20 @@ export function ShareDialog({ project, onClose }: { project: Project; onClose: (
           )}
         </button>
       </form>
-      <div className="grants-list">
+      <div className="grants-list" aria-busy={grantsLoading}>
         <h3>{t('项目授权')}</h3>
+        {grantsLoading && <Busy label={t('正在读取')} />}
+        <InlineError message={readError} />
+        {readError && (
+          <button
+            type="button"
+            className="text-button"
+            disabled={busy || grantsLoading}
+            onClick={() => void load()}
+          >
+            {t('重新读取')}
+          </button>
+        )}
         {grants
           .filter((g) => !g.revokedAt)
           .map((g) => (
@@ -1140,9 +1217,12 @@ export function ShareDialog({ project, onClose }: { project: Project; onClose: (
               </button>
             </div>
           ))}
-        {!grants.filter((g) => !g.revokedAt).length && (
-          <p className="quiet-copy">{t('暂时没有未撤销的外部授权。')}</p>
-        )}
+        {grantsReady &&
+          !grantsLoading &&
+          !readError &&
+          !grants.filter((g) => !g.revokedAt).length && (
+            <p className="quiet-copy">{t('暂时没有未撤销的外部授权。')}</p>
+          )}
       </div>
     </Modal>
   );

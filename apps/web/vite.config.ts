@@ -57,5 +57,6 @@ export default defineConfig({
     allowedHosts: ['terminal.local'],
     proxy: { '/v1': { target: `http://127.0.0.1:${apiPort}`, ws: true } },
   },
+  optimizeDeps: { include: ['onnxruntime-web/wasm'] },
   build: { target: 'es2022', sourcemap: false },
 });

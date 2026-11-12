@@ -1,22 +1,4 @@
-/** A single, theme-independent mark shared by public, account and studio surfaces. */
-export function BrandMark({
-  className = '',
-  logoUrl,
-}: {
-  className?: string;
-  logoUrl?: string | null;
-}) {
-  if (logoUrl) return <img className={`product-brand-mark ${className}`} src={logoUrl} alt="" />;
-  return (
-    <svg
-      className={`product-brand-mark ${className}`}
-      viewBox="0 0 32 32"
-      fill="none"
-      aria-hidden="true"
-    >
-      <rect width="32" height="32" rx="8" fill="#4F6049" />
-      <path d="M8 8.5L14.5 6V23.5L8 26V8.5Z" fill="#F6F5EF" />
-      <path d="M17.5 6L24 8.5V26L17.5 23.5V6Z" fill="#CAD2BE" />
-    </svg>
-  );
+/** The original mark is one asset in public, account, loading and studio states. */
+export function BrandMark({ className = '', logoUrl }: { className?: string; logoUrl?: string | null }) {
+  return <img className={'product-brand-mark ' + className} src={logoUrl || '/brand-mark.svg'} alt="" />;
 }

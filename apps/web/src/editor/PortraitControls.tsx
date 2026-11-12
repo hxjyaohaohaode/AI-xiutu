@@ -2,7 +2,9 @@ import { t } from '../i18n';
 import { MotionDetails } from '../motion/Presence';
 import { ChoiceSelect } from '../components/ChoiceSelect';
 import { useEffect, useId, useRef, useState } from 'react';
-import { Sparkle, PaintBrush, HandPointing, ArrowsClockwise } from '@phosphor-icons/react';
+import { createPortal } from 'react-dom';
+import { RubberSegment } from '../components/control-motion';
+import { Sparkle, PaintBrush, HandPointing, ArrowsClockwise } from '../components/ControlGlyph';
 import {
   PORTRAIT_TOOLS,
   portraitValues,
@@ -18,11 +20,13 @@ import { Busy, InlineError } from '../components/Ui';
 import { StudioGlyph } from '../components/StudioGlyph';
 import { ColorPicker } from '../components/ColorPicker';
 import { ParameterShelf } from './ParameterShelf';
+import { ParameterGlyph } from './ParameterGlyph';
 import { PrecisionRange } from './PrecisionRange';
 import { currentV3, rgbaHex, hexRgba, type InspectorController } from './advanced-model';
 import type { ToolGroup } from './ToolInspector';
 import { portraitTargetDisplayLabel } from './portrait-label';
 import { interactionText } from '../workspace/interaction-copy';
+import type { PortraitMatteMethod } from './portrait-matte.worker';
 import {
   portraitSelectionLabels,
   portraitSelectionMatchesSource,
@@ -31,10 +35,18 @@ import {
 } from './portrait-selection';
 
 export type CutoutGuides = {
+  method: PortraitMatteMethod;
   foregroundId: string;
   backgroundId: string;
   radius: number;
   decontaminate: number;
+};
+const DEFAULT_CUTOUT_GUIDES: CutoutGuides = {
+  method: 'standard',
+  foregroundId: '',
+  backgroundId: '',
+  radius: 0.015,
+  decontaminate: 0.8,
 };
 
 export function PortraitControls({
@@ -42,8 +54,10 @@ export function PortraitControls({
   onGroupChange,
   onSelectionCreated,
   onCutout,
+  headerTarget,
 }: {
   controller: InspectorController;
+  headerTarget?: HTMLElement | null;
   onGroupChange?: (group: ToolGroup) => void;
   onSelectionCreated?: (id: string) => void;
   onCutout?: (guides: CutoutGuides) => Promise<string>;
@@ -88,20 +102,34 @@ export function PortraitControls({
   const target = targets.find((person) => person.id === state.activeTargetId) ?? targets[0];
   const recipe = currentV3(editor);
   const selectionHintId = useId();
-  const [guides, setGuides] = useState<CutoutGuides>({
-    foregroundId: '',
-    backgroundId: '',
-    radius: 0.015,
-    decontaminate: 0.8,
-  });
+  const [guides, setGuides] = useState(DEFAULT_CUTOUT_GUIDES);
   const guideSource = useRef(sourceIdentity);
   useEffect(() => {
     if (guideSource.current === sourceIdentity) return;
     guideSource.current = sourceIdentity;
-    setGuides({ foregroundId: '', backgroundId: '', radius: 0.015, decontaminate: 0.8 });
+    setGuides(DEFAULT_CUTOUT_GUIDES);
   }, [sourceIdentity]);
   const analysisCurrent = portraitSelectionMatchesSource(state.analysis, editor.getSourceFrame());
   const hasSubject = analysisCurrent && !!state.analysis?.segmentation?.subject;
+  const [fineMatteAvailable, setFineMatteAvailable] = useState(false);
+  useEffect(() => {
+    if (!hasSubject || !navigator.gpu) return;
+    let active = true;
+    void navigator.gpu
+      .requestAdapter()
+      .then((adapter) => {
+        if (active)
+          setFineMatteAvailable(
+            !!adapter && !adapter.info.isFallbackAdapter && adapter.features.has('shader-f16'),
+          );
+      })
+      .catch(() => {
+        if (active) setFineMatteAvailable(false);
+      });
+    return () => {
+      active = false;
+    };
+  }, [hasSubject]);
   const guideOptions = [
     { value: '', label: t('无') },
     ...recipe.regionEdits
@@ -292,33 +320,31 @@ export function PortraitControls({
       report(errorMessage(failure));
     }
   }
-  return (
-    <section className="advanced-tool-family portrait-controls-v3" data-motion="portrait-controls">
-      <div className="tonal-tabs portrait-categories" aria-label={t('人像工具类别')}>
-        {(
-          [
-            ['skin', t('美肤')],
-            ['features', t('面部')],
-            ['body', t('身形')],
-            ['makeup', t('美妆')],
-          ] as const
-        ).map(([id, label]) => (
-          <button
-            key={id}
-            aria-pressed={category === id}
-            onClick={() => {
-              editor.commitCurrent(t('完成人像调节'));
-              setCategory(id);
-              const next = state.analysis?.targets.find(
-                (t) => t.kind === (id === 'body' ? 'body' : 'face'),
-              );
-              if (next) state.setTarget(next.id);
-            }}
-          >
-            {label}
-          </button>
-        ))}
-      </div>
+  const categories = (
+    <RubberSegment
+      className="tonal-tabs portrait-categories"
+      label={t('人像工具类别')}
+      value={category}
+      options={(
+        [
+          ['skin', t('美肤')],
+          ['features', t('面部')],
+          ['body', t('身形')],
+          ['makeup', t('美妆')],
+        ] as const
+      ).map(([value, label]) => ({ value, label }))}
+      onChange={(id) => {
+        editor.commitCurrent(t('完成人像调节'));
+        setCategory(id);
+        const next = state.analysis?.targets.find(
+          (person) => person.kind === (id === 'body' ? 'body' : 'face'),
+        );
+        if (next) state.setTarget(next.id);
+      }}
+    />
+  );
+  const analyzeAction = (
+    <>
       <div className="portrait-analysis-row">
         <button
           className="text-button"
@@ -336,17 +362,33 @@ export function PortraitControls({
                 ? t('识别身体位置')
                 : t('识别照片中的人物')}
         </button>
-        {state.progress && (
-          <button className="text-button" onClick={state.cancel}>
-            {t('取消识别')}
-          </button>
-        )}
       </div>
-      {state.progress && <Busy label={state.progress} />}
+    </>
+  );
+  const sourceActions = (
+    <>
       {onCutout && (hasSubject || guideOptions.length > 1) && (
         <>
           <MotionDetails className="editor-section">
             <summary>{t('精准抠图')}</summary>
+            {((hasSubject && fineMatteAvailable) || guides.method === 'fine') && (
+              <ChoiceSelect
+                ariaLabel={t('抠图模式')}
+                value={guides.method}
+                disabled={cutting}
+                options={[
+                  { value: 'standard', label: t('标准抠图') },
+                  {
+                    value: 'fine',
+                    label: t('发丝与边缘'),
+                    disabled: !hasSubject || !fineMatteAvailable,
+                  },
+                ]}
+                onValueChange={(value) =>
+                  setGuides((prev) => ({ ...prev, method: value === 'fine' ? 'fine' : 'standard' }))
+                }
+              />
+            )}
             {guideOptions.length > 1 && (
               <>
                 <ChoiceSelect
@@ -398,12 +440,11 @@ export function PortraitControls({
             }
             onClick={createCutout}
           >
-            <StudioGlyph name="select" size={18} />
+            <StudioGlyph name="cutout" size={18} />
             {cutting ? t('正在精修透明边缘') : t('从原图提取人物素材')}
           </button>
         </>
       )}
-      <InlineError message={state.error} />
       <div className="portrait-selections">
         <div
           className="advanced-row"
@@ -443,8 +484,26 @@ export function PortraitControls({
                   : interactionText('selectAfterAnalysis')}
         </p>
       </div>
+    </>
+  );
+  return (
+    <section className="advanced-tool-family portrait-controls-v3" data-motion="portrait-controls">
+      {headerTarget ? createPortal(categories, headerTarget) : categories}
+      {(!target || state.error) && analyzeAction}
+      {state.progress && (
+        <div className="portrait-analysis-progress">
+          <Busy label={state.progress} />
+          <button className="text-button" onClick={state.cancel}>
+            {t('取消识别')}
+          </button>
+        </div>
+      )}
+      <InlineError message={state.error} />
       {target && (
-        <label className="advanced-select">
+        <label
+          className="advanced-select portrait-person-select"
+          data-single={targets.length === 1 || undefined}
+        >
           {t('当前人物')}
           <ChoiceSelect
             ariaLabel={t('选择独立调整的人物')}
@@ -476,7 +535,7 @@ export function PortraitControls({
             </div>
           )}
           {category === 'makeup' && (
-            <div className="tonal-tabs" aria-label={t('妆容区域')}>
+            <div className="tonal-tabs portrait-makeup-tabs" aria-label={t('妆容区域')}>
               {PORTRAIT_TOOLS.filter((tool) => tool.group === 'makeup').map((tool) => (
                 <button
                   key={tool.id}
@@ -486,6 +545,7 @@ export function PortraitControls({
                     setMakeupTool(tool.id);
                   }}
                 >
+                  <ParameterGlyph id={'portrait:' + tool.id} />
                   {t(tool.label)}
                 </button>
               ))}
@@ -494,6 +554,23 @@ export function PortraitControls({
           <ParameterShelf
             key={target.id + ':' + category + ':' + (category === 'makeup' ? makeupTool : '')}
             label={category === 'makeup' ? t('当前妆容强度') : t('人物参数')}
+            headingAccessory={
+              targets.length > 1 ? (
+                <ChoiceSelect
+                  ariaLabel={t('选择独立调整的人物')}
+                  size="compact"
+                  value={target.id}
+                  onValueChange={(value) => {
+                    editor.commitCurrent(t('完成人物调节'));
+                    state.setTarget(value);
+                  }}
+                  options={targets.map((item) => ({
+                    value: item.id,
+                    label: portraitTargetDisplayLabel(item, state.analysis),
+                  }))}
+                />
+              ) : undefined
+            }
             controls={PORTRAIT_TOOLS.filter(
               (tool) =>
                 tool.group === category && (category !== 'makeup' || tool.id === makeupTool),
@@ -501,6 +578,7 @@ export function PortraitControls({
               const condition = availability.find((item) => item.id === tool.id);
               return {
                 id: tool.id,
+                glyph: 'portrait:' + tool.id,
                 label: tool.label,
                 value: values[tool.id] ?? 0,
                 min: tool.min,
@@ -524,22 +602,16 @@ export function PortraitControls({
             <div className="portrait-ownership-note">
               {hasAutomatic && (
                 <>
-                  <p className="control-note">
-                    {t(
+                  <button
+                    className="text-button"
+                    onClick={detach}
+                    title={t(
                       '当前自动参数会重建这个人物的自动局部与妆容。手改范围、笔画或形状前，可将整个人物转为独立精修；外观保持不变，可撤销。',
                     )}
-                  </p>
-                  <button className="text-button" onClick={detach}>
+                  >
                     {t('当前人物转为独立精修')}
                   </button>
                 </>
-              )}
-              {hasManual && (
-                <p className="control-note">
-                  {t(
-                    '这个人物已有独立精修结果，以下自动参数会在固定结果之上新增一轮效果，不会替换独立精修层。',
-                  )}
-                </p>
               )}
             </div>
           )}
@@ -566,9 +638,6 @@ export function PortraitControls({
               >
                 {t('确认这个妆容颜色')}
               </button>
-              <p className="control-note">
-                {t('只改变当前妆容。其他人物、口红、眉妆与高光等各自保留颜色。')}
-              </p>
             </MotionDetails>
           )}
           <MotionDetails className="advanced-disclosure">
@@ -599,6 +668,11 @@ export function PortraitControls({
           </p>
         </MotionDetails>
       )}
+      <MotionDetails className="advanced-disclosure portrait-source-actions">
+        <summary>{t('选区与抠图')}</summary>
+        {target && !state.error && analyzeAction}
+        {sourceActions}
+      </MotionDetails>
       <MotionDetails className="advanced-disclosure">
         <summary>{t('人物标注与分析接入')}</summary>
         <input

@@ -165,25 +165,49 @@ additional media links, with explicit source asset IDs and audited provenance.
 
 - `GET /v1/media-capabilities`: enabled/effective available, decoder details, per-format pixel/byte budgets and maxChunkBytes. Runtime readiness does not prove every file is decodable.
 - `MEDIA_RASTER_MAX_PIXELS` sets admission for retained raster import. Default 200,000,000 and ceiling 256,000,000. Side length, frame-oriented decoders, address space, tile count and available staging space impose independent limits.
+- Native import checks the sensor dimensions for RAW up to 64,000,000 pixels and the data window for EXR/Radiance up to 50,000,000 pixels. The RAW float master is normalized one tile row at a time. The decoder retains a full-resolution demosaiced uint16 raster during import.
+- `GET /v1/media-capabilities` reports `ultraHdrJpeg {available,maxPixels,maxBytes,minSide,maxSide}`. With the native reference decoder present, JPEG gain maps can be developed up to 24,000,000 pixels and 128 MiB, with sides from 8 to 8,192 pixels. Imports preserve the original JPEG bytes and create a linear Rec.709 EXR master for the reconstructed HDR values. The separate SDR master uses the original base rendition and its ICC profile. For a recognised JPEG gain map outside these limits or with the decoder unavailable, the original remains downloadable and the descriptor reports SDR-only development.
+- `heicPq {available,maxPixels,maxBytes,minSide,maxSide,bitDepths}` advertises single-image HEIC with 10- or 12-bit NCLX ST 2084 (PQ). The upper bounds are 24,000,000 pixels and 128 MiB, with sides from 8 to 8,192 pixels. The admitted source is opaque and declares Rec.709, Display P3 or Rec.2020 primaries. The descriptor records `original.mime:'image/heic'`, `original.sampleEncoding:'pq'` and `original.pq {primaries,referenceWhiteNits}`.
+- `heicHlg` uses the same capability shape for Rec.2020 BT.2100 HLG in HEIC or camera HIF. Bounds are 50,000,000 pixels, 128 MiB and sides from 8 to 10,000 pixels. `original.sampleEncoding:'hlg'` and `original.hlg {primaries,referenceWhiteNits,referencePeakNits}` identify the HLG transform. The 1000 cd/m² reference OOTF applies system gamma 1.2 to Rec.2020 luminance before conversion to Rec.709. Both transfer types retain the original as an immutable attachment and hold signed linear Rec.709 in EXR32, relative to declared diffuse white or 203 cd/m². Decoder admission requires an opaque single image with NCLX, without gain-map/other auxiliary items or ICC.
 - `POST /v1/projects/:id/media-imports` `{name,size,idempotencyKey,generateTiles?:boolean}` ->201 `{job}`. Current editor; size1..512MiB, name has no paths/control characters. Reserves input bytes. One active import per actor, at most4 database-wide. Same key/body returns existing job; changed body409.
 - `PUT /v1/media-imports/:id/chunk?offset=N`, application/octet-stream,1..4MiB -> `{uploadedBytes,chunkSha256}`. Task actor and current project editor only. Contiguous append or exact-byte retry wholly inside confirmed bytes; overlaps/mismatch409. No caller path/URL.
 - `POST /v1/media-imports/:id/complete` ->202 `{job}`. Fully uploaded input required; repeated complete never launches another decoder.
 - `GET /v1/media-imports/:id` -> `{job,asset:null|Asset}`; states uploading|processing|ready|failed|cancelled.
 - `POST /v1/media-imports/:id/cancel` -> `{ok:true,cleanupPending:boolean}`; unfinished work only. Ready409 never deletes published originals. When processing may still be owned by another worker, cancellation remains durable but the reservation and work directory stay until that worker stops or stale recovery confirms ownership loss. Repeated cancellation does not extend its lease or free its capacity early.
-- `GET /v1/assets/:id/media` -> `{descriptor,downloads,editor}`. `editor.precisionEditing` includes `currentGrade`, `canSave`, the installed-runtime flags, the exact source digest and the preview/export budgets.
+- `GET /v1/assets/:id/media` -> `{descriptor,downloads,editor}`. `editor.precisionEditing` includes `currentGrade`, `canSave`, the installed-runtime flags, the exact source digest and the preview/export budgets. `precisionEditing.curves.available` and `precisionEditing.regions.available` advertise the curve and local adjustment capabilities for this asset.
 - `GET /v1/assets/:id/media/original`, `/master`, `/linearMaster`, `/tiles.dzi`, `/tiles_files/:level/:tile` serve immutable originals, masters or tiles under the asset ACL.
-- `POST /v1/assets/:id/media/preview` accepts `{expectedSourceSha256,precisionInput,precisionEdit?,maxEdge,region?}`. The PNG16 response applies the grade before downsampling an overview. An optional `{left,top,width,height}` selects native pixels in the orientation-normalized data window. Each edge must fit `maxEdge` (128–2048); the coordinates must fit the master. A window may be read from a raster above the whole-image grading budget.
+- `POST /v1/assets/:id/media/preview` accepts `{expectedSourceSha256,precisionInput,precisionEdit?,maxEdge,region?,fitRegion?}` and returns PNG16. Use one optional rectangle in orientation-normalized master pixels, `{left,top,width,height}`. `region` returns one output sample per source pixel and requires both edges to fit `maxEdge`. `fitRegion` applies the grade in original coordinates, then downsamples the selected rectangle to fit `maxEdge` (128–2048). `editor.precisionEditing.maxFitRegionPixels` advertises the input limit, currently 16,777,216 pixels. The server verifies current asset access, source digest, and bounds in both modes. Omitting both rectangles applies the grade to the full master before resizing.
+- Preview requests have their own limits of 900 per user and 3,600 per IP per minute. On native Linux, linear-master `region` and `fitRegion` share one active slot and one waiter per API instance. This lane can run while a full master is converting. The native window worker has a 1 GiB address-space limit and a 10 second rendering deadline. It can reuse up to 128 MiB of verified float32 bands for one asset and rectangle. A fitted result runs the shared PNG16 resampler on the bounded uint16 raster returned by the worker.
 - `GET /v1/assets/:id/media/grades?beforeVersion=N` returns `{grades,nextBeforeVersion}` in descending order, at most 30 per response. `POST .../grades` accepts `{expectedVersion,expectedSourceSha256,precisionInput,precisionEdit}` and returns `201 {grade}`. Version 0 means no prior grade. A stale save returns 409. Each new version is appended under current project edit access.
-- `POST /v1/assets/:id/media/export` accepts `{format,quality?,expectedSourceSha256?,precisionInput?,precisionEdit?,gradeVersion?}`. Select either an inline grade or an immutable saved version. `precisionInput` is `master16` or `linear-master`. Legacy PNG/TIFF/JPEG/WebP requests default to the SDR master; EXR32 uses the linear master. Grades, explicit input selection and EXR require the source digest. The response includes `X-Precision-Input`, `X-Precision-Edit-SHA256` and `X-Editor-Recipe-Included:false`.
+- `POST /v1/assets/:id/media/export` accepts `{format,quality?,expectedSourceSha256?,precisionInput?,precisionEdit?,gradeVersion?,delivery?:'attachment'}`. Select either an inline grade or an immutable saved version. `precisionInput` is `master16` or `linear-master`. Legacy PNG/TIFF/JPEG/WebP requests default to the SDR master; EXR32 uses the linear master. Grades, explicit input selection and EXR require the source digest. The default response streams the file with `X-Precision-Input`, `X-Precision-Edit-SHA256` and `X-Editor-Recipe-Included:false`. The optional browser delivery returns `201 {downloadId,expiresAt}` once the file is ready.
+- `editor.precisionEditing.ultraHdrJpeg:true` enables full-image `format:'ultrahdr'`. `ultraHdrJpegCrop:true` enables `crop:{left,top,width,height}` in orientation-normalized original pixels, including larger HEIC/HIF sources. Supported sources are retained display HDR masters from Ultra HDR JPEG and HEIC PQ/HLG. The output must fit 24,000,000 pixels and 8–8,192 pixels per side, otherwise the API returns 413 `MEDIA_GAIN_MAP_DIMENSIONS` before starting conversion. A crop also must fit the asset. The source digest and a linear master grade are required. The output is `image/jpeg` with a newly encoded SDR base and HDR gain map. JPEG compression and gain-map sampling affect reconstructed values. Use EXR32 for a floating-point interchange file. With `toneMap:'none'`, both HDR formats retain linear highlight intent. SDR previews and exports from these display HDR masters use Reinhard display mapping before sRGB encoding.
+- `GET /v1/assets/:id/media/exports/:downloadId` streams that attachment once, with the same precision headers. The result is held for 60 seconds on the API instance that produced it. The same session, current asset ACL and source identity are required at download. The server permits one held attachment per user and two per API instance. The browser download can continue while preview requests use the conversion lane again.
 
-A grade requires `algorithm:'scene-linear-v1'`, `exposure:-10..10`,
+A grade includes `exposure:-10..10`,
 `temperature/tint/contrast/saturation/shadows/highlights:-100..100`, and
-`toneMap:'none'|'reinhard'`. Whole-image grading supports up to 16,777,216
-SDR master pixels or 50,000,000 linear master pixels. PNG/TIFF apply the requested
+`toneMap:'none'|'reinhard'`. `scene-linear-v1` accepts these controls.
+`scene-linear-v2` requires `precisionInput:'linear-master'` and accepts
+`curves` with optional `luminance`, `red`, `green` and `blue` entries. Each
+entry has 2–16 `[inputEV,outputEV]` points in −16…16 EV relative to 0.18 linear
+grey. Input EV increases strictly. `scene-linear-v3` accepts the same `curves`
+and an ordered `regions` array with at most eight entries. Each region requires
+`id`, `enabled`, `opacity` in 0…1, a `mask` and an `adjustments` object with any
+of the seven numeric grade controls. IDs are unique. The mask uses the existing
+source-normalized `radial` (including rotated ellipse, rectangle and diamond)
+or `linear` selection shape. Regions blend adjusted RGB in linear light after
+global curves and before optional tone mapping, using full source pixel centers
+for previews and exports. Both versions return `422 MEDIA_FLOAT_INPUT` with `master16`.
+Whole-image `master16` grading supports up to 16,777,216 pixels by default.
+For a retained SDR JPEG with the native runtime, `master16` supports up to
+64,000,000 pixels with `scene-linear-v1`. `editor.precisionEditing.maxPixels`
+returns the limit for the individual asset. The capability catalog publishes
+the optional higher JPEG limit in `precisionEditing.maxSdrJpegPixels`.
+`linear-master` supports up to 64,000,000 pixels. PNG/TIFF apply the requested
 grade in the selected input domain and encode sRGB at 16 bits. EXR32 preserves
 signed float values, headroom, associated alpha and the retained EXR windows.
-Preview and export share a renderer and recheck the source, session and ACL before
-returning the result.
+Preview and export share the native development math. The server rechecks the
+source, session and ACL before returning either result. A linear-master window
+can reuse the isolated native process and its verified file identity.
 
 Publication atomically replaces the input reservation with actual object/proxy
 bytes. Capacity failure rolls back the asset and links. No prior content is
@@ -486,24 +510,31 @@ master remains accessible through the media export endpoint in section 5.
 
 `GET /v1/asset-processing/capabilities` reports installed OCR languages and the
 GIF processing limits. `POST /v1/projects/:id/derived-assets` accepts the shared
-`derivedAssetRequest` contract. A cutout takes a source-normalized trimap, optional
-foreground/background masks, refinement radius and edge decontamination strength.
-The optional `settings.algorithm` is `ray-v1` (published default), `guided-v2`,
-`guided-v3` or `guided-v4`. The guided paths estimate RGB affine coefficients on a bounded
-area image, evaluate them against original linear RGB and fit nearby color pairs
-inside the uncertain support. V3 samples additional distances between powers of
-two. V4 adds color-weighted paths from confirmed foreground and background through
-the uncertain band. The workspace binds selected foreground and occluder masks to
-the current source and uses V4 in both the local worker and cloud request. Hard trimap pixels
-retain their weights. Local PNG export encodes straight RGBA
-directly, so partially transparent RGB samples match cloud-derived pixels for
-the same canonical source and settings. Omitted algorithms still resolve to
-`ray-v1` for existing API clients and retries.
+`derivedAssetRequest` contract. Cutout settings include a selection, optional foreground
+and background masks, refinement radius and edge decontamination strength. `ray-v1`
+is the published default. `guided-v2` through `guided-v5` use the same source coordinates.
+V4 follows color-weighted paths through the uncertain region and V5 stops each ray at
+the first confirmed boundary. A native ternary trimap uses source dimensions and up to
+131,072 runs. The API returns `CUTOUT_TRIMAP_DIMENSIONS` on a size mismatch.
+
+`continuous-alpha-v1` takes `settings.selection` with `type: 'alpha-prior'`, grid
+`width` and `height` up to 1024 each, exact `sourceWidth` and `sourceHeight`, and
+`alpha` containing one row-major byte per grid cell in canonical standard base64.
+The capability is advertised in `cutout.alphaPrior`. The quote and mutation check
+source dimensions before decoding the asset and return `CUTOUT_ALPHA_PRIOR_DIMENSIONS`
+for a mismatch. The renderer reconstructs alpha at original pixel centers, applies
+foreground and occluder paint, and uses original linear RGB for bounded edge refinement
+and color decontamination. The browser generates the grid from pinned local models and
+uses the same renderer for local and project PNGs. Derivation stores the input grid and
+algorithm under project read permissions. PNG output uses straight RGBA at the source
+dimensions and multiplies the cutout weight by the original alpha. For identical decoded sources and settings,
+local and project output pixels agree.
 A collage takes ordered pixel rectangles, fit, focal points and RGBA background.
 All sources must belong to the authorized project. The output is a normal PNG asset.
 `GET /v1/assets/:id/derivation` reads the algorithm, source IDs and hashes, and
 settings under the project's read permission. The actor's request ID is idempotent.
-The V4 derivation identifier is `rgb-guided-trimap-v4` and requires schema 20.
+The `rgb-guided-trimap-v5` derivation requires schema 21. `continuous-alpha-v1`
+requires schema 22. The API, renderer and migration ship together.
 
 The same capability response now includes `cutout`, `restoration`, `collage` and
 source/working limits. `POST /v1/projects/:id/derived-assets/quote` accepts the same

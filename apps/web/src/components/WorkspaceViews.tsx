@@ -6,7 +6,6 @@ import {
   ArrowSquareOut,
   Check,
   ChatCircleDots,
-  Circle,
   Clock,
   FileText,
   Images,
@@ -42,6 +41,10 @@ import type {
 } from '../lib/types';
 import { Busy, EmptyState, IconButton, InlineError, Modal } from './Ui';
 import { ChoiceSelect } from './ChoiceSelect';
+import { StatusMark } from './StatusMark';
+import { TaskStateMark } from './TaskStateMark';
+import { ImagePreview } from './ImagePreview';
+import { CompareReveal } from './CompareReveal';
 import { FeatureSkeleton } from './DeferredFeature';
 import { interactionText } from '../workspace/interaction-copy';
 import { RevisionTools, RevisionForkDialog, type CreatedRevisionBranch } from './RevisionTools';
@@ -133,7 +136,6 @@ export function WorksView({
             <Images size={16} />
             {artworks.length} {t('件作品')}
           </span>
-          <span>{t('原件与编辑版本分别保存')}</span>
         </div>
       )}
       {!project ? (
@@ -168,6 +170,7 @@ export function WorksView({
               <button key={work.id} className="artwork-card" onClick={() => onOpen(work)}>
                 <div
                   className="artwork-cover"
+                  style={{ aspectRatio: asset ? `${asset.width} / ${asset.height}` : '4 / 3' }}
                   data-motion="artwork-media"
                   data-motion-pixels="true"
                 >
@@ -196,7 +199,6 @@ export function WorksView({
                     {work.headVersion}
                     <i /> {formatDate(work.updatedAt)}
                   </span>
-                  <small>{t('封面显示原始素材')}</small>
                 </div>
               </button>
             );
@@ -271,9 +273,14 @@ export function CompareView({
   } | null>(null);
   const scope = useRef(historyScope.current);
   scope.current = historyScope.current;
-  const [mode, setMode] = useState<'side' | 'original' | 'edited'>(() =>
-    typeof window !== 'undefined' && window.innerWidth < 760 ? 'edited' : 'side',
-  );
+  const [mode, setMode] = useState<'slide' | 'side' | 'original' | 'edited'>('slide');
+  const [split, setSplit] = useState(50);
+  const slideAvailable =
+    !!editor.originalPreview &&
+    !!editor.rendered &&
+    editor.originalPreview.width === editor.rendered.width &&
+    editor.originalPreview.height === editor.rendered.height;
+  const visibleMode = mode === 'slide' && !slideAvailable ? 'side' : mode;
   const historyChanged =
     !!artwork && historyHeadVersion !== null && historyHeadVersion > artwork.headVersion;
   async function loadHistory(beforeVersion?: number) {
@@ -375,11 +382,7 @@ export function CompareView({
   if (!editor.file)
     return (
       <div className="content-view studio-view">
-        <EmptyState
-          icon={<Images size={34} />}
-          title={t('先打开一张图片')}
-          description={t('原件与当前编辑会在这里完整显示，不需要滚动查看整张画面。')}
-        />
+        <EmptyState icon={<Images size={34} />} title={t('先打开一张图片')} />
       </div>
     );
   return (
@@ -389,50 +392,51 @@ export function CompareView({
           <h1 className="view-artwork-title">{artwork?.title ?? editor.file.name}</h1>
         </div>
         <div className="compare-mode-choice" role="group" aria-label={t('对比显示方式')}>
-          <button
-            aria-pressed={mode === 'side'}
-            className={mode === 'side' ? 'selected' : ''}
-            onClick={() => setMode('side')}
-          >
-            {t('并排')}
-          </button>
-          <button
-            className={mode === 'original' ? 'selected' : ''}
-            aria-pressed={mode === 'original'}
-            onClick={() => setMode('original')}
-          >
-            {t('原图')}
-          </button>
-          <button
-            aria-pressed={mode === 'edited'}
-            className={mode === 'edited' ? 'selected' : ''}
-            onClick={() => setMode('edited')}
-          >
-            {t('当前')}
-          </button>
+          {(['slide', 'side', 'original', 'edited'] as const).map((item) => (
+            <button
+              key={item}
+              type="button"
+              aria-pressed={visibleMode === item}
+              className={visibleMode === item ? 'selected' : ''}
+              disabled={item === 'slide' && !slideAvailable}
+              title={item === 'slide' && !slideAvailable ? t('不同画幅请使用并排对比') : undefined}
+              onClick={() => setMode(item)}
+            >
+              {t({ slide: '滑动对比', side: '并排', original: '原图', edited: '当前' }[item])}
+            </button>
+          ))}
         </div>
       </div>
-      <div className={`compare-pair ${mode !== 'side' ? 'single' : ''}`}>
-        {mode !== 'edited' && (
-          <section>
-            <header>
-              <span>{t('原始图片')}</span>
-            </header>
-            <ComparisonFrame image={editor.originalPreview} />
-          </section>
-        )}
-        {mode !== 'original' && (
-          <section>
-            <header>
-              <span>{t('当前编辑')}</span>
-              <small aria-live="polite">
-                {editor.rendering ? t('正在更新') : isDirty ? t('本地草稿') : t('当前预览')}
-              </small>
-            </header>
-            <ComparisonFrame image={editor.rendered} />
-          </section>
-        )}
-      </div>
+      {visibleMode === 'slide' ? (
+        <CompareReveal
+          before={editor.originalPreview}
+          after={editor.rendered}
+          value={split}
+          onChange={setSplit}
+        />
+      ) : (
+        <div className={`compare-pair ${visibleMode !== 'side' ? 'single' : ''}`}>
+          {visibleMode !== 'edited' && (
+            <section>
+              <header>
+                <span>{t('原始图片')}</span>
+              </header>
+              <ComparisonFrame image={editor.originalPreview} />
+            </section>
+          )}
+          {visibleMode !== 'original' && (
+            <section>
+              <header>
+                <span>{t('当前编辑')}</span>
+                <small aria-live="polite">
+                  {editor.rendering ? t('正在更新') : isDirty ? t('本地草稿') : t('当前预览')}
+                </small>
+              </header>
+              <ComparisonFrame image={editor.rendered} />
+            </section>
+          )}
+        </div>
+      )}
       <InlineError message={error} />
       {artwork && (
         <MotionDetails className="saved-versions">
@@ -767,14 +771,36 @@ export function CollaborateView({
       className={`content-view studio-view collaboration-view${embedded ? ' collaboration-panel' : ''}`}
     >
       <div className="view-heading" data-motion="view-header">
-        <div>
+        <div className="collaboration-heading-title">
           <h1>{project.title}</h1>
+          {!embedded && !loading && hasLoaded && (
+            <dl className="collaboration-heading-stats" aria-label={t('项目协作概览')}>
+              <div>
+                <dt>{t('待解决')}</dt>
+                <dd>{openComments}</dd>
+              </div>
+              <div>
+                <dt>{t('进行中')}</dt>
+                <dd>{tasks.filter((task) => task.status === 'doing').length}</dd>
+              </div>
+              <div>
+                <dt>{t('已完成')}</dt>
+                <dd>{completedTasks}</dd>
+              </div>
+            </dl>
+          )}
         </div>
         <div className="view-actions">
           {!embedded && onReturnToEditor && (
-            <button type="button" className="button button-quiet" onClick={onReturnToEditor}>
+            <button
+              type="button"
+              className="button button-quiet collaboration-compact-action"
+              onClick={onReturnToEditor}
+              aria-label={interactionText('keepEditing')}
+              title={interactionText('keepEditing')}
+            >
               <ArrowLeft size={17} />
-              {interactionText('keepEditing')}
+              <span>{interactionText('keepEditing')}</span>
             </button>
           )}
           {embedded && onExpand && (
@@ -783,12 +809,14 @@ export function CollaborateView({
             </IconButton>
           )}
           <button
-            className="button button-secondary"
+            className="button button-secondary collaboration-compact-action"
             onClick={() => setReloadToken((value) => value + 1)}
             disabled={loading || busy}
+            aria-label={t('刷新')}
+            title={t('刷新')}
           >
             <ArrowClockwise size={17} />
-            {t('刷新')}
+            <span>{t('刷新')}</span>
           </button>
           {permissions.share && (
             <button className="button button-secondary" onClick={onShare}>
@@ -846,23 +874,6 @@ export function CollaborateView({
               </button>
             </nav>
           )}
-          <div className="collaboration-summary" aria-label={t('项目协作概览')} hidden={embedded}>
-            <div>
-              <ChatCircleDots size={19} />
-              <strong>{openComments}</strong>
-              <span>{t('条待解决意见')}</span>
-            </div>
-            <div>
-              <Clock size={19} />
-              <strong>{tasks.filter((task) => task.status === 'doing').length}</strong>
-              <span>{t('件正在进行')}</span>
-            </div>
-            <div>
-              <CheckCircle size={19} />
-              <strong>{completedTasks}</strong>
-              <span>{t('件已完成')}</span>
-            </div>
-          </div>
           <div className="collaboration-grid">
             <section
               className="surface discussion"
@@ -971,21 +982,12 @@ export function CollaborateView({
                   ))
                 ) : (
                   <div className="quiet-empty">
-                    <ChatCircleDots size={29} />
                     <p>
                       {comments.length
                         ? commentFilter === 'open'
                           ? t('没有待解决的意见')
                           : t('还没有已解决的意见')
                         : t('尚无讨论')}
-                      <br />
-                      <small>
-                        {comments.length
-                          ? t('切换筛选，可以查看其他讨论。')
-                          : permissions.comment
-                            ? t('提一个建议，或记下你希望保留的细节。')
-                            : t('团队发表的意见会出现在这里。')}
-                      </small>
                     </p>
                   </div>
                 )}
@@ -1052,9 +1054,11 @@ export function CollaborateView({
                   <CheckCircle size={20} />
                   {t('接下来做什么')}
                 </h2>
-                <span>
-                  {completedTasks}/{tasks.length}
-                </span>
+                {tasks.length > 0 && (
+                  <span>
+                    {completedTasks}/{tasks.length}
+                  </span>
+                )}
               </div>
               {tasks.length > 0 && (
                 <div
@@ -1085,6 +1089,7 @@ export function CollaborateView({
                     {permissions.edit ? (
                       <button
                         disabled={busy}
+                        aria-busy={pending === `task:${task.id}`}
                         aria-label={t('{v0}：{v1}', {
                           v0: task.title,
                           v1:
@@ -1096,25 +1101,14 @@ export function CollaborateView({
                         })}
                         onClick={() => void changeTask(task)}
                       >
-                        {pending === `task:${task.id}` ? (
-                          <Busy label="" />
-                        ) : task.status === 'done' ? (
-                          <CheckCircle size={23} weight="fill" />
-                        ) : task.status === 'doing' ? (
-                          <Clock size={23} />
-                        ) : (
-                          <Circle size={23} />
-                        )}
+                        <TaskStateMark
+                          state={task.status}
+                          pending={pending === `task:${task.id}`}
+                        />
                       </button>
                     ) : (
                       <span className="task-status-icon" aria-hidden="true">
-                        {task.status === 'done' ? (
-                          <CheckCircle size={23} weight="fill" />
-                        ) : task.status === 'doing' ? (
-                          <Clock size={23} />
-                        ) : (
-                          <Circle size={23} />
-                        )}
+                        <TaskStateMark state={task.status} />
                       </span>
                     )}
                     <div>
@@ -1130,13 +1124,9 @@ export function CollaborateView({
                     </div>
                   </div>
                 ))}
-                {!visibleTasks.length && (
+                {!visibleTasks.length && (tasks.length > 0 || !permissions.edit) && (
                   <p className="quiet-copy">
-                    {tasks.length
-                      ? t('当前任务都已完成。')
-                      : permissions.edit
-                        ? t('把讨论变成一件可以完成的小事。')
-                        : t('团队添加的任务会出现在这里。')}
+                    {tasks.length ? t('当前任务都已完成。') : t('团队添加的任务会出现在这里。')}
                   </p>
                 )}
               </div>
@@ -1769,8 +1759,27 @@ export function DocumentsView({
               </button>
               <FileText size={16} />
               <span>{selected ? t('版本 {v0}', { v0: selected.version }) : t('新建文档')}</span>
-              <span className={dirty ? 'document-save-state is-dirty' : 'document-save-state'}>
-                {dirty ? t('有未保存修改') : selected ? t('已保存') : t('尚未保存')}
+              <span
+                className={dirty ? 'document-save-state is-dirty' : 'document-save-state'}
+                aria-live="polite"
+              >
+                {busy || pendingSave ? (
+                  <StatusMark
+                    state="running"
+                    size="small"
+                    label={pending === 'read' ? t('读取中') : t('保存中')}
+                  />
+                ) : retainedDraft?.saveState === 'unknown' ? (
+                  <StatusMark state="unknown" size="small" label={t('保存结果待确认')} />
+                ) : !canEdit ? (
+                  t('只读文档')
+                ) : dirty ? (
+                  t('有未保存修改')
+                ) : selected ? (
+                  <StatusMark state="done" size="small" label={t('已保存')} />
+                ) : (
+                  t('尚未保存')
+                )}
               </span>
             </div>
             <input
@@ -1811,21 +1820,8 @@ export function DocumentsView({
             )}
             <InlineError message={error} />
             <footer>
-              <span aria-live="polite">
-                {busy
-                  ? pending === 'read'
-                    ? t('正在读取最新版本…')
-                    : t('正在保存…')
-                  : !canEdit
-                    ? t('只读文档')
-                    : dirty
-                      ? t('有未保存的修改')
-                      : selected
-                        ? t('已保存 · 版本 {v0}', { v0: selected.version })
-                        : t('新文档')}
-                <small>
-                  {body.length.toLocaleString(getLocale())} {t('字')}
-                </small>
+              <span className="document-word-count">
+                {body.length.toLocaleString(getLocale())} {t('字')}
               </span>
               <div className="document-draft-editor-actions">
                 {dirty && retainedDraft && (
@@ -1900,31 +1896,30 @@ export function DeliveryView({
   onExport: () => void;
   onRecipeImport: () => void;
 }) {
+  const busy = sourcePending || editor.loading;
+  const dimensions = editor.rendered ?? editor.dimensions;
   return (
     <div className="content-view studio-view delivery-view">
       <div className="view-heading" data-motion="view-header">
-        <div>
-          <h1>{t('导出与交付')}</h1>
-        </div>
+        <h1>{t('导出与交付')}</h1>
       </div>
       {editor.file ? (
-        <section className="delivery-current" aria-label={t('当前交付作品')}>
+        <section className="delivery-composition" aria-label={t('当前交付作品')}>
           <div className="delivery-current-preview" role="img" aria-label={t('当前编辑的预览图')}>
             <ComparisonFrame image={editor.rendered} />
           </div>
-          <div>
-            <span className="small-label">{t('本次交付')}</span>
+          <div className="delivery-action-rail">
             <h2>{artwork?.title ?? editor.file.name}</h2>
-            <p>
-              {editor.dimensions
-                ? t('{v0} × {v1} · 原始尺寸', {
-                    v0: editor.dimensions.width,
-                    v1: editor.dimensions.height,
-                  })
-                : t('本地图片')}
-            </p>
+            <div className="delivery-facts">
+              {dimensions && (
+                <span>
+                  {dimensions.width} × {dimensions.height}
+                </span>
+              )}
+              {artwork && <span>V{artwork.headVersion}</span>}
+            </div>
             <span className="studio-status" aria-live="polite">
-              {sourcePending || editor.loading ? (
+              {busy ? (
                 <Busy label={t('正在读取图片')} />
               ) : editor.rendering ? (
                 <Busy label={t('正在更新预览')} />
@@ -1935,79 +1930,33 @@ export function DeliveryView({
                 </>
               )}
             </span>
+            <div className="delivery-primary-action">
+              <button className="button button-primary" onClick={onExport} disabled={busy}>
+                <DownloadSimple size={18} />
+                {t('导出图片')}
+              </button>
+              <span>PNG · JPEG · WebP</span>
+            </div>
+            <div className="delivery-recipe-actions">
+              <button className="text-button" disabled={busy} onClick={editor.exportRecipe}>
+                <NotePencil size={18} />
+                {t('保存编辑配方')}
+              </button>
+              <button className="text-button" disabled={busy} onClick={onRecipeImport}>
+                <UploadSimple size={18} />
+                {t('导入已有配方')}
+              </button>
+            </div>
+            <small className="delivery-recipe-note">{t('配方不含原图')}</small>
           </div>
         </section>
       ) : (
-        <p className="studio-access-note">
-          <Images size={18} />
-          {t('先在精修中打开一张照片，再选择交付方式。')}
-        </p>
+        <EmptyState
+          icon={<Images size={34} />}
+          title={t('还没有打开照片')}
+          description={t('打开照片后即可导出。')}
+        />
       )}
-      <div className="delivery-grid">
-        <section className="surface delivery-card" data-motion="delivery">
-          <div className="delivery-icon">
-            <Images size={30} />
-          </div>
-          <span className="small-label">{t('完成后的画面')}</span>
-          <h2>{t('导出图片')}</h2>
-          <p>{t('以完整编辑尺寸重新计算当前调整，选择适合分享或继续创作的格式。')}</p>
-          <div className="delivery-formats" aria-label={t('可选图片格式')}>
-            <span>
-              PNG <small>{t('保留透明')}</small>
-            </span>
-            <span>
-              JPEG <small>{t('轻巧分享')}</small>
-            </span>
-            <span>
-              WebP <small>{t('按浏览器支持')}</small>
-            </span>
-          </div>
-          <button
-            className="button button-primary"
-            onClick={onExport}
-            disabled={!editor.file || editor.loading || sourcePending}
-          >
-            <DownloadSimple size={18} />
-            {t('选择导出格式')}
-          </button>
-        </section>
-        <section className="surface delivery-card" data-motion="delivery">
-          <div className="delivery-icon recipe">
-            <NotePencil size={30} />
-          </div>
-          <span className="small-label">{t('下一次继续创作')}</span>
-          <h2>{t('保存编辑配方')}</h2>
-          <p>{t('保存调色、曲线、构图和局部参数。配方不包含照片，请一并保留原件。')}</p>
-          <button
-            className="button button-secondary"
-            disabled={!editor.file || editor.loading || sourcePending}
-            onClick={editor.exportRecipe}
-          >
-            <DownloadSimple size={18} />
-            {t('下载配方 JSON')}
-          </button>
-          <button
-            className="text-button"
-            disabled={!editor.file || editor.loading || sourcePending}
-            onClick={onRecipeImport}
-          >
-            <UploadSimple size={16} />
-            {t('导入已有配方')}
-          </button>
-        </section>
-      </div>
-      <div className="delivery-note">
-        <CheckCircle size={19} />
-        <p>
-          {artwork
-            ? t('当前云端作品版本为 V{v0}。本地修改需保存后才进入项目历史。', {
-                v0: artwork.headVersion,
-              })
-            : t('本地导出无需登录。登录并保存到项目后，可以从其他设备继续编辑。')}
-          <br />
-          {t('原图和配方可能包含个人内容，分享前请确认接收范围。')}
-        </p>
-      </div>
     </div>
   );
 }

@@ -23,6 +23,9 @@
     height 180ms cubic-bezier(0.22, 1, 0.36, 1),
     background-color 140ms ease;
 }
+.choice-highlight[data-kinetic='true'] {
+  transition: background-color 140ms ease;
+}
 
 .choice-highlight[data-selected='true'] {
   background: var(--accent-soft);
@@ -71,7 +74,7 @@
 @media (width < 760px), (pointer: coarse) {
   :is(.studio-workspace, .modal) .choice-select[data-size] > .choice-trigger,
   .choice-select[data-size] > .choice-trigger {
-    min-height: 44px;
+    min-height: var(--ui-hit, 44px);
     padding-block: 8px;
   }
 
@@ -81,7 +84,7 @@
   }
 
   .choice-option-label {
-    font-size: 14px;
+    font-size: 13px;
   }
 
   .choice-option small {
@@ -91,6 +94,41 @@
   .choice-highlight[data-animate='true'] {
     transition-duration: 165ms, 165ms, 165ms, 120ms;
   }
+}
+
+/* Compact painted controls retain separate, non-overlapping hit rectangles. */
+.choice-select[data-size] > .choice-trigger {
+  min-height: var(--ui-hit, 40px);
+  padding: 0 10px;
+  border-block: calc((var(--ui-hit, 40px) - var(--ui-control-h, 36px)) / 2) solid transparent;
+  background-clip: padding-box;
+  font-size: var(--ui-text-size, 13px);
+  border-radius: 9px;
+}
+.choice-select[data-size] > .choice-trigger > .studio-glyph {
+  width: var(--ui-icon-small, 18px);
+  height: var(--ui-icon-small, 18px);
+  flex-basis: var(--ui-icon-small, 18px);
+}
+.choice-options .choice-option {
+  min-height: var(--ui-hit, 40px);
+  padding: 7px 9px;
+}
+.choice-option-label {
+  font-size: 13px;
+}
+.choice-option small {
+  font-size: 11px;
+}
+.choice-options .choice-option > .choice-option-mark {
+  width: 18px;
+  height: 18px;
+  min-width: 18px;
+  flex-basis: 18px;
+}
+.choice-option-mark svg {
+  width: var(--ui-icon-small, 18px);
+  height: var(--ui-icon-small, 18px);
 }
 
 @media (prefers-reduced-motion: reduce) {

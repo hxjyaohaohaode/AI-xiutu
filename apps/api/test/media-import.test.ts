@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { randomUUID, createHash } from 'node:crypto';
 import { setTimeout as delay } from 'node:timers/promises';
-import { mkdir, writeFile, readFile, rm } from 'node:fs/promises';
+import { mkdir, writeFile, readFile, readdir, rm } from 'node:fs/promises';
 import { join } from 'node:path';
 import sharp, { type Sharp } from 'sharp';
 import { collaborationFixture } from './collaboration-fixture.js';
@@ -248,6 +248,63 @@ test(
           );
         },
       );
+      await t.test('prepared master downloads stay private, single-use and byte-exact', async () => {
+        const path = `/v1/assets/${importedAsset}/media`;
+        const direct = await f.call('POST', path + '/export', { format: 'png16' });
+        assert.equal(direct.statusCode, 200);
+        const payload = { format: 'png16', delivery: 'attachment' };
+        const prepared = await f.call('POST', path + '/export', payload);
+        assert.equal(prepared.statusCode, 201, prepared.body);
+        const { downloadId, expiresAt } = prepared.json();
+        assert.ok(Date.parse(expiresAt) > Date.now());
+        const url = `${path}/exports/${downloadId}`;
+        assert.equal((await f.call('POST', path + '/export', payload)).statusCode, 429);
+        const preview = await f.call('POST', path + '/preview', {
+          expectedSourceSha256: descriptor.sourceSha256,
+          precisionInput: 'master16',
+          maxEdge: 128,
+          region: { left: 0, top: 0, width: 16, height: 16 },
+        });
+        assert.equal(preview.statusCode, 200);
+        assert.equal((await f.call('HEAD', url)).statusCode, 404);
+        assert.equal((await f.app.inject({ method: 'GET', url })).statusCode, 401);
+        for (const actor of ['outsider', 'editor', 'operator'] as const)
+          assert.equal((await f.call('GET', url, undefined, actor)).statusCode, 404);
+        assert.equal((await f.call('GET', url.replace(importedAsset, f.assetId))).statusCode, 404);
+        const secondToken = randomUUID().replaceAll('-', '') + randomUUID().replaceAll('-', '');
+        const secondHash = sha(Buffer.from(secondToken));
+        await f.db.query(
+          "INSERT INTO sessions(token_hash,user_id,expires_at) VALUES($1,$2,clock_timestamp()+interval '1 hour')",
+          [secondHash, f.actors.owner.id],
+        );
+        assert.equal(
+          (await f.app.inject({ method: 'GET', url, cookies: { xiutu_session: secondToken } })).statusCode,
+          404,
+        );
+        assert.equal((await readdir(join(f.directory, 'media-v1'))).filter((file) => file.endsWith('.export')).length, 0);
+        const downloads = await Promise.all([f.call('GET', url), f.call('GET', url)]);
+        assert.deepEqual(downloads.map(({ statusCode }) => statusCode).sort(), [200, 404]);
+        const downloaded = downloads.find(({ statusCode }) => statusCode === 200)!;
+        assert.equal(sha(downloaded.rawPayload), sha(direct.rawPayload));
+        assert.equal(downloaded.headers['content-disposition'], direct.headers['content-disposition']);
+        assert.equal(downloaded.headers['cache-control'], 'private, no-store');
+        assert.equal(downloaded.headers['x-editor-recipe-included'], 'false');
+        const viewer = await f.call('POST', path + '/export', payload, 'viewer');
+        assert.equal(viewer.statusCode, 201, viewer.body);
+        const revokedUrl = `${path}/exports/${viewer.json().downloadId}`;
+        await f.db.query('DELETE FROM memberships WHERE space_id=$1 AND user_id=$2', [f.teamId, f.actors.viewer.id]);
+        assert.equal((await f.call('GET', revokedUrl, undefined, 'viewer')).statusCode, 404);
+        await f.db.query("INSERT INTO memberships(space_id,user_id,role) VALUES($1,$2,'viewer')", [f.teamId, f.actors.viewer.id]);
+        assert.equal((await f.call('GET', revokedUrl, undefined, 'viewer')).statusCode, 404);
+        const available = await f.call('POST', path + '/export', payload, 'viewer');
+        assert.equal(available.statusCode, 201, available.body);
+        const deletedSessionUrl = `${path}/exports/${available.json().downloadId}`;
+        const tokenHash = f.actors.viewer.tokenHash;
+        await f.db.query("UPDATE sessions SET expires_at=clock_timestamp() WHERE token_hash=$1", [tokenHash]);
+        assert.equal((await f.call('GET', deletedSessionUrl, undefined, 'viewer')).statusCode, 401);
+        await f.db.query("UPDATE sessions SET expires_at=clock_timestamp()+interval '1 hour' WHERE token_hash=$1", [tokenHash]);
+        assert.equal((await f.call('GET', deletedSessionUrl, undefined, 'viewer')).statusCode, 200);
+      });
       await t.test(
         'master previews, saved grades and history use the same immutable source and exact samples',
         async () => {
@@ -349,6 +406,25 @@ test(
             await pixels(sharp(preview.rawPayload, { ignoreIcc: true })),
             await pixels(sharp(originalGrade.rawPayload, { ignoreIcc: true }).extract(region)),
           );
+          const fitted = { ...recipe, maxEdge: 128, fitRegion: region };
+          const fittedPreview = await f.call('POST', path + '/preview', fitted, 'viewer');
+          assert.equal(fittedPreview.statusCode, 200);
+          assert.equal(
+            fittedPreview.headers['x-precision-edit-sha256'],
+            originalGrade.headers['x-precision-edit-sha256'],
+          );
+          assert.deepEqual(
+            await pixels(sharp(fittedPreview.rawPayload, { ignoreIcc: true })),
+            await pixels(
+              sharp(originalGrade.rawPayload, { ignoreIcc: true })
+                .extract(region)
+                .resize({ width: 128, height: 128, fit: 'inside', withoutEnlargement: true }),
+            ),
+          );
+          assert.equal((await f.call('POST', path + '/preview', fitted, 'outsider')).statusCode, 404);
+          const ambiguous = await f.call('POST', path + '/preview', { ...fitted, region });
+          assert.equal(ambiguous.statusCode, 422);
+          assert.equal(ambiguous.json().error.code, 'MEDIA_PREVIEW_WINDOW');
         },
       );
       await t.test(

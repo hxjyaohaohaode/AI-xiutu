@@ -211,8 +211,10 @@
 .free-panel .resize-n {
   top: -5px;
 }
+/* The lower resize target lives outside the clipped editor viewport, so a
+   partly scrolled parameter can never start a panel resize instead of editing. */
 .free-panel .resize-s {
-  bottom: -5px;
+  bottom: -12px;
 }
 .free-panel .resize-e,
 .free-panel .resize-w {

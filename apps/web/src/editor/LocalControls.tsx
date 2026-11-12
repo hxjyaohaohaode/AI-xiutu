@@ -1,8 +1,9 @@
 import { t } from '../i18n';
 import { MotionDetails } from '../motion/Presence';
 import { ChoiceSelect } from '../components/ChoiceSelect';
-import { useState } from 'react';
-import { ArrowUp, ArrowDown, Copy, Eye, EyeSlash, Plus, Trash } from '@phosphor-icons/react';
+import { useLayoutEffect, useRef, useState } from 'react';
+import { createPortal } from 'react-dom';
+import { ArrowUp, ArrowDown, Copy, Eye, EyeSlash, Plus, Trash } from '../components/ControlGlyph';
 import {
   createAdjustmentRegionV3,
   createColorBlockV3,
@@ -28,6 +29,7 @@ export function LocalControls({
   onColorChange,
   onSample,
   sampling,
+  headerTarget,
 }: {
   controller: InspectorController;
   scope: EditScope;
@@ -36,10 +38,12 @@ export function LocalControls({
   onColorChange?: (value: string) => void;
   onSample?: () => void;
   sampling?: boolean;
+  headerTarget?: HTMLElement | null;
 }) {
   const { editor, apply } = controller,
     recipe = currentV3(editor);
   const [checked, setChecked] = useState<string[]>([]);
+  const root = useRef<HTMLElement>(null);
   const selectedIds = checked.filter((id) => recipe.regionEdits.some((item) => item.id === id));
   const [family, setFamily] = useState<'light' | 'color' | 'curves' | 'detail'>('light');
   const region = recipe.regionEdits.find((item) => item.id === editor.activeRegionId);
@@ -123,12 +127,98 @@ export function LocalControls({
     : region
       ? { kind: 'region' as const, id: region.id }
       : null;
+  const families = [
+    { value: 'light', label: t('明暗') },
+    { value: 'color', label: t('色彩') },
+    { value: 'curves', label: t('曲线') },
+    { value: 'detail', label: t('细节') },
+  ] as const;
+  function chooseFamily(value: typeof family) {
+    editor.commitCurrent(t('完成当前局部调节'));
+    setFamily(value);
+  }
+  useLayoutEffect(() => {
+    if (!headerTarget || !colorScope) return;
+    const scroller = root.current?.closest<HTMLElement>('.inspector-scroll');
+    // Choosing/creating a region must reveal its controls, even if the old
+    // region manager was farther down this same retained scroll surface.
+    if (scroller) scroller.scrollTop = 0;
+  }, [headerTarget, colorScope?.kind, colorScope?.id, family]);
+  const scopePicker = colorScope ? (
+    <ChoiceSelect
+      className="local-scope-choice"
+      ariaLabel={t('独立局部与编组选择')}
+      size="compact"
+      value={`${colorScope.kind}:${colorScope.id}`}
+      onValueChange={(value) => {
+        const separator = value.indexOf(':');
+        const id = value.slice(separator + 1);
+        if (value.startsWith('region:')) select(id);
+        else if (value.startsWith('group:')) onScope({ kind: 'group', id });
+      }}
+      options={[
+        ...recipe.regionEdits.map((item) => ({ value: `region:${item.id}`, label: item.name })),
+        ...recipe.regionGroups.map((item) => ({ value: `group:${item.id}`, label: item.name })),
+      ]}
+    />
+  ) : null;
   return (
-    <section className="advanced-tool-family" data-motion="region-controls">
-      <div className="tonal-tabs" aria-label={t('添加局部范围')}>
+    <section
+      ref={root}
+      className="advanced-tool-family local-controls-v3"
+      data-motion="region-controls"
+    >
+      {colorScope && (
+        <div className="local-primary-controls">
+          {headerTarget ? (
+            createPortal(
+              <div className="local-compact-context" data-motion="local-context">
+                {scopePicker}
+                <ChoiceSelect
+                  className="local-family-choice"
+                  ariaLabel={t('局部完整参数类别')}
+                  size="compact"
+                  value={family}
+                  options={families}
+                  onValueChange={chooseFamily}
+                />
+              </div>,
+              headerTarget,
+            )
+          ) : (
+            <>
+              {scopePicker}
+              <div className="tonal-tabs" aria-label={t('局部完整参数类别')}>
+                {families.map(({ value, label }) => (
+                  <button
+                    key={value}
+                    aria-pressed={family === value}
+                    onClick={() => chooseFamily(value)}
+                  >
+                    {label}
+                  </button>
+                ))}
+              </div>
+            </>
+          )}
+          <ColorControls
+            controller={controller}
+            scope={colorScope}
+            family={family}
+            pickedColor={pickedColor}
+            onColorChange={onColorChange}
+            onSample={onSample}
+            sampling={sampling}
+            onScope={onScope}
+          />
+        </div>
+      )}
+      <div className="tonal-tabs local-create-actions" aria-label={t('添加局部范围')}>
         {(['radial', 'linear', 'brush', 'polygon', 'color-range'] as const).map((type) => (
           <button
             key={type}
+            data-action="create-region"
+            data-mask-type={type}
             disabled={recipe.regionEdits.length >= MAX_V3_REGION_EDITS}
             onClick={() => add(type)}
           >
@@ -504,41 +594,6 @@ export function LocalControls({
               />
             </label>
           </MotionDetails>
-        </>
-      )}
-      {colorScope && (
-        <>
-          <div className="tonal-tabs" aria-label={t('局部完整参数类别')}>
-            {(
-              [
-                ['light', t('明暗')],
-                ['color', t('色彩')],
-                ['curves', t('曲线')],
-                ['detail', t('细节')],
-              ] as const
-            ).map(([id, label]) => (
-              <button
-                key={id}
-                aria-pressed={family === id}
-                onClick={() => {
-                  editor.commitCurrent(t('完成当前局部调节'));
-                  setFamily(id);
-                }}
-              >
-                {label}
-              </button>
-            ))}
-          </div>
-          <ColorControls
-            controller={controller}
-            scope={colorScope}
-            family={family}
-            pickedColor={pickedColor}
-            onColorChange={onColorChange}
-            onSample={onSample}
-            sampling={sampling}
-            onScope={onScope}
-          />
         </>
       )}
     </section>

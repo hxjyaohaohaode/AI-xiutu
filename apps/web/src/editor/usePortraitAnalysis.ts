@@ -4,8 +4,18 @@ import {
   validatePortraitAnalysis,
   type PortraitAnalysis,
 } from '@ai-xiutu/portrait';
-import type { RGBAImage } from '@ai-xiutu/editor';
+import {
+  MAX_CUTOUT_PIXELS,
+  type CutoutAlphaPrior,
+  type RGBAImage,
+  type SelectionMaskV3,
+} from '@ai-xiutu/editor';
 import { downloadBlob } from '../lib/api';
+import type {
+  PortraitMatteMethod,
+  PortraitMatteReply,
+  PortraitMatteRequest,
+} from './portrait-matte.worker';
 import {
   PORTRAIT_ANALYSIS_TIMEOUT_MESSAGE,
   portraitAnalysisErrorMessage,
@@ -25,6 +35,18 @@ export function usePortraitAnalysis(
     request = useRef(0),
     sourceRef = useRef(source);
   const controller = useRef<AbortController | null>(null);
+  const matte = useRef<
+    Partial<
+      Record<
+        PortraitMatteMethod,
+        {
+          image: RGBAImage;
+          subject: SelectionMaskV3;
+          prior: CutoutAlphaPrior;
+        }
+      >
+    >
+  >({});
   sourceRef.current = source;
   const stop = useCallback(() => {
     request.current++;
@@ -36,6 +58,7 @@ export function usePortraitAnalysis(
   }, []);
   useEffect(() => {
     stop();
+    matte.current = {};
     setAnalysis(null);
     setTarget(null);
     setError(null);
@@ -145,7 +168,8 @@ export function usePortraitAnalysis(
         if (request.current !== id || sourceRef.current !== sourceAtStart) return;
         setAnalysis(result);
         setTarget(result.targets[0]?.id ?? null);
-        if (!result.targets.length) setError('未找到可信的人像目标；可使用手动局部、绘制或液化。');
+        if (!result.targets.length && !result.segmentation?.subject)
+          setError('未找到可信的人像目标；可使用手动局部、绘制或液化。');
         return result;
       } catch (failure) {
         if (request.current === id && sourceRef.current === sourceAtStart)
@@ -161,6 +185,54 @@ export function usePortraitAnalysis(
       }
     },
     [source, dimensions, contentHash, stop],
+  );
+  const prepareCutoutPrior = useCallback(
+    async (subject: SelectionMaskV3, method: PortraitMatteMethod = 'standard') => {
+      if (
+        !source ||
+        !dimensions ||
+        subject.type !== 'raster' ||
+        dimensions.width * dimensions.height > MAX_CUTOUT_PIXELS
+      )
+        return undefined;
+      const cached = matte.current[method];
+      if (cached?.image === source && cached.subject === subject) return cached.prior;
+      stop();
+      const id = request.current;
+      const abort = new AbortController();
+      controller.current = abort;
+      setProgress('正在精修透明边缘');
+      const timer = setTimeout(() => abort.abort(), method === 'fine' ? 135_000 : 60_000);
+      try {
+        const w =
+          method === 'fine'
+            ? new Worker(new URL('./portrait-fine-matte.worker.ts', import.meta.url), {
+                type: 'module',
+              })
+            : new Worker(new URL('./portrait-matte.worker.ts', import.meta.url), {
+                type: 'module',
+              });
+        worker.current = w;
+        const prior = await new Promise<CutoutAlphaPrior | undefined>((resolve, reject) => {
+          abort.signal.addEventListener('abort', () => reject(abort.signal.reason), { once: true });
+          w.onmessage = ({ data }: MessageEvent<PortraitMatteReply>) => resolve(data.prior);
+          w.onerror = () => resolve(undefined);
+          w.postMessage({
+            image: source,
+            source: dimensions,
+            subject,
+          } satisfies PortraitMatteRequest);
+        });
+        if (request.current !== id || sourceRef.current !== source)
+          throw new DOMException('Portrait cutout was cancelled', 'AbortError');
+        if (prior) matte.current[method] = { image: source, subject, prior };
+        return prior;
+      } finally {
+        clearTimeout(timer);
+        if (request.current === id) stop();
+      }
+    },
+    [source, dimensions, stop],
   );
   const importAnalysis = useCallback(
     async (file: File) => {
@@ -184,7 +256,8 @@ export function usePortraitAnalysis(
       setError(null);
       setAnalysis(result);
       setTarget(result.targets[0]?.id ?? null);
-      if (!result.targets.length) setError('标注中没有人物目标，可以继续手动精修。');
+      if (!result.targets.length && !result.segmentation?.subject)
+        setError('标注中没有人物目标，可以继续手动精修。');
     },
     [source, dimensions, contentHash, stop],
   );
@@ -202,6 +275,7 @@ export function usePortraitAnalysis(
     progress,
     error,
     analyze,
+    prepareCutoutPrior,
     cancel: stop,
     importAnalysis,
     exportAnalysis,

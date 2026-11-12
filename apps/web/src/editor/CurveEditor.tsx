@@ -2,7 +2,13 @@ import { t } from '../i18n';
 import { MotionDetails } from '../motion/Presence';
 import { ChoiceSelect } from '../components/ChoiceSelect';
 import { useEffect, useMemo, useRef, useState, type PointerEvent } from 'react';
-import { Plus, Trash, ArrowBendUpLeft, BezierCurve, SelectionPlus } from '@phosphor-icons/react';
+import {
+  Plus,
+  Trash,
+  ArrowBendUpLeft,
+  BezierCurve,
+  SelectionPlus,
+} from '../components/ControlGlyph';
 import {
   compileCurveFunction,
   smoothCurveSegments,

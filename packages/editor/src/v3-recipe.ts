@@ -150,7 +150,13 @@ function name(v: unknown, path: string, errors: string[]): string {
   if (!s.trim() || s.length > 120) errors.push(`${path}: expected 1–120 characters`);
   return s;
 }
-function integer(v: unknown, min: number, max: number, path: string, errors: string[]): number {
+export function integer(
+  v: unknown,
+  min: number,
+  max: number,
+  path: string,
+  errors: string[],
+): number {
   const n = number(v, min, max, path, errors);
   if (!Number.isSafeInteger(n)) errors.push(`${path}: expected integer`);
   return n;

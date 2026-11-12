@@ -1,4 +1,6 @@
 import { t } from '../i18n';
+import { Microphone, MicrophoneSlash, PhoneDisconnect } from '@phosphor-icons/react';
+import '../ai/interaction-surfaces.css';
 import { MotionDetails } from '../motion/Presence';
 import { useEffect, useState } from 'react';
 import type { AssistantContext } from '@ai-xiutu/contracts';
@@ -52,7 +54,19 @@ export function TeamVoiceControls({
     const controller = new AbortController();
     void api<Catalog>('/assistant/models', { signal: controller.signal })
       .then((value) => {
-        if (!controller.signal.aborted) setCatalog(value);
+        if (controller.signal.aborted) return;
+        setCatalog(value);
+        if (room.pendingInvitation || room.pendingIndividualVoice) return;
+        setVoiceId((old) =>
+          value.models.some((item) => item.id === old && item.operations.includes('realtime-voice'))
+            ? old
+            : (value.models.find((item) => item.operations.includes('realtime-voice'))?.id ?? ''),
+        );
+        setModelId((old) =>
+          value.models.some((item) => item.id === old && item.operations.includes('assistant-turn'))
+            ? old
+            : (value.models.find((item) => item.operations.includes('assistant-turn'))?.id ?? ''),
+        );
       })
       .catch((error) => {
         if (!controller.signal.aborted) room.setMessage(errorMessage(error));
@@ -101,9 +115,11 @@ export function TeamVoiceControls({
       {room.state === 'connected' && (
         <div className="collaboration-actions">
           <button type="button" aria-pressed={!room.muted} onClick={() => void room.toggleMic()}>
+            {room.muted ? <Microphone size={17} /> : <MicrophoneSlash size={17} />}
             {room.muted ? t('开启麦克风') : t('关闭麦克风')}
           </button>
           <button type="button" onClick={room.leave}>
+            <PhoneDisconnect size={17} />
             {t('离开团队语音')}
           </button>
         </div>

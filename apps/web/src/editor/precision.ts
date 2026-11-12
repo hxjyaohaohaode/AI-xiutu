@@ -1,4 +1,4 @@
-import { parseRecipeV2, type SelectionMaskV3, type Point, type RGBAImage } from '@ai-xiutu/editor';
+import { parseRecipeV2, orientedCropSpace, type SelectionMaskV3, type Point, type RGBAImage } from '@ai-xiutu/editor';
 import type {
   CropRect,
   Dimensions,
@@ -9,6 +9,19 @@ import type {
 
 export const clamp = (n: number, min = 0, max = 1) =>
   Math.min(max, Math.max(min, Number.isFinite(n) ? n : min));
+
+/** A ratio is a UI constraint, not recipe metadata. Undo/import/remote replay
+ * must release a stale constraint when it no longer matches the visible crop. */
+export function cropRatioForGeometry(
+  ratio: number | null,
+  dimensions: Dimensions | null,
+  geometry: EditorRecipe['geometry'],
+): number | null {
+  if (ratio === null || !dimensions || !Number.isFinite(ratio) || ratio <= 0) return null;
+  const { width, height } = orientedCropSpace(dimensions, geometry).crop;
+  const pixelTolerance = .5 * (1 + ratio) + 1e-6;
+  return Math.abs(width - height * ratio) <= pixelTolerance ? ratio : null;
+}
 
 /** Radius is measured against the original short edge, never the preview size. */
 export function brushPointAtSource(point: Point, dimensions: Dimensions, radius: number): Point {

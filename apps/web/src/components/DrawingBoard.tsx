@@ -1,5 +1,6 @@
 import { t } from '../i18n';
 import { ChoiceSelect } from './ChoiceSelect';
+import { SquishSwitch } from './control-motion';
 import { useEffect, useRef, useState, type PointerEvent } from 'react';
 import {
   ArrowCounterClockwise,
@@ -16,7 +17,7 @@ import {
   CopySimple,
   CaretUp,
   CaretDown,
-} from '@phosphor-icons/react';
+} from './ControlGlyph';
 import { downloadBlob, errorMessage } from '../lib/api';
 import { Busy, IconButton, InlineError, Modal } from './Ui';
 import { usePresence } from '../motion/usePresence';
@@ -346,8 +347,8 @@ export function DrawingBoard({
         className="drawing-modal"
       >
         <div className="drawing-tool-area">
-          <div className="drawing-toolbar" data-motion="drawing-tools">
-            <div className="drawing-tools">
+          <div className="drawing-toolbar drawing-primary-toolbar" data-motion="drawing-tools">
+            <div className="drawing-tools drawing-mode-tools">
               <IconButton
                 label={t('铅笔')}
                 aria-pressed={tool === 'pencil'}
@@ -394,22 +395,25 @@ export function DrawingBoard({
                 <ArrowClockwise size={20} />
               </IconButton>
             </div>
-            <ChoiceSelect
-              ariaLabel={t('草图画幅')}
-              className="drawing-ratio"
-              size="compact"
-              value={ratio}
-              disabled={busy}
-              onValueChange={(value) => {
-                void changeRatio(value);
-              }}
-              options={[
-                { value: 'square', label: t('1:1 方形') },
-                { value: 'landscape', label: t('3:2 横向') },
-                { value: 'portrait', label: t('2:3 竖向') },
-              ]}
-            />
+            <div className="drawing-ratio-field" data-qa="sketch-ratio">
+              <ChoiceSelect
+                ariaLabel={t('草图画幅')}
+                className="drawing-ratio"
+                size="compact"
+                value={ratio}
+                disabled={busy}
+                onValueChange={(value) => {
+                  void changeRatio(value);
+                }}
+                options={[
+                  { value: 'square', label: t('1:1 方形') },
+                  { value: 'landscape', label: t('3:2 横向') },
+                  { value: 'portrait', label: t('2:3 竖向') },
+                ]}
+              />
+            </div>
             <IconButton
+              className="drawing-clear"
               label={t('清空草图')}
               disabled={busy || !items.length}
               onClick={() => {
@@ -419,30 +423,33 @@ export function DrawingBoard({
               <Trash size={20} />
             </IconButton>
           </div>
-          <div className="drawing-toolbar">
-            <ChoiceSelect
-              ariaLabel={t('草图添加元素')}
-              size="compact"
-              value={tool}
-              disabled={busy}
-              onValueChange={(value) => setTool(value as Tool)}
-              options={[
-                { value: 'pencil', label: t('铅笔') },
-                { value: 'erase', label: t('橡皮擦') },
-                { value: 'select', label: t('选择草图元素') },
-                { value: 'rectangle', label: t('矩形') },
-                { value: 'rounded', label: t('圆角矩形') },
-                { value: 'ellipse', label: t('椭圆') },
-                { value: 'triangle', label: t('三角形') },
-                { value: 'diamond', label: t('菱形') },
-                { value: 'line', label: t('直线') },
-                { value: 'arrow', label: t('箭头') },
-                { value: 'text', label: t('文字') },
-                { value: 'icon', label: t('图标') },
-              ]}
-            />
+          <div className="drawing-toolbar drawing-element-toolbar">
+            <div className="drawing-element-field" data-qa="sketch-tool">
+              <ChoiceSelect
+                ariaLabel={t('草图添加元素')}
+                size="compact"
+                value={tool}
+                disabled={busy}
+                onValueChange={(value) => setTool(value as Tool)}
+                options={[
+                  { value: 'pencil', label: t('铅笔') },
+                  { value: 'erase', label: t('橡皮擦') },
+                  { value: 'select', label: t('选择草图元素') },
+                  { value: 'rectangle', label: t('矩形') },
+                  { value: 'rounded', label: t('圆角矩形') },
+                  { value: 'ellipse', label: t('椭圆') },
+                  { value: 'triangle', label: t('三角形') },
+                  { value: 'diamond', label: t('菱形') },
+                  { value: 'line', label: t('直线') },
+                  { value: 'arrow', label: t('箭头') },
+                  { value: 'text', label: t('文字') },
+                  { value: 'icon', label: t('图标') },
+                ]}
+              />
+            </div>
             {!!projectImages?.length && readProjectImage && (
               <ChoiceSelect
+                className="drawing-project-choice"
                 ariaLabel={t('添加项目图片到草图')}
                 size="compact"
                 value=""
@@ -452,7 +459,7 @@ export function DrawingBoard({
                 onValueChange={(id) => void insertImage(() => readProjectImage(id))}
               />
             )}
-            <div className="drawing-tools">
+            <div className="drawing-tools drawing-object-actions">
               <IconButton
                 label={t('添加本地图片到草图')}
                 disabled={busy}
@@ -462,11 +469,13 @@ export function DrawingBoard({
               </IconButton>
               {readCurrentImage && (
                 <button
-                  className="text-button"
+                  className="text-button drawing-insert-current"
+                  aria-label={t('添加当前画布')}
                   disabled={busy}
                   onClick={() => void insertImage(readCurrentImage)}
                 >
-                  {t('添加当前画布')}
+                  <ImageSquare size={18} />
+                  <span>{t('添加当前画布')}</span>
                 </button>
               )}
               <input
@@ -559,26 +568,26 @@ export function DrawingBoard({
               ]}
             />
           )}
-          {filledShapes.has(tool) && (
-            <label className="drawing-width">
-              <input
-                type="checkbox"
-                checked={filled}
-                onChange={(event) => setFilled(event.currentTarget.checked)}
-              />
-              {t('填充形状')}
-            </label>
-          )}
-          <div className="drawing-controls" data-motion="drawing-colors">
-            <label className="drawing-width">
-              <input
-                type="checkbox"
+          <div
+            className="drawing-controls drawing-appearance-controls"
+            data-motion="drawing-colors"
+          >
+            <div className="drawing-switches">
+              <SquishSwitch
+                label={t('透明背景')}
                 checked={transparent}
                 disabled={busy}
-                onChange={(event) => setTransparent(event.target.checked)}
+                onCheckedChange={setTransparent}
               />
-              {t('透明背景')}
-            </label>
+              {filledShapes.has(tool) && (
+                <SquishSwitch
+                  label={t('填充形状')}
+                  checked={filled}
+                  disabled={busy}
+                  onCheckedChange={setFilled}
+                />
+              )}
+            </div>
             <div className="drawing-colors" aria-label={t('快捷笔触颜色')}>
               {colors.map((value) => (
                 <button
@@ -602,11 +611,12 @@ export function DrawingBoard({
                 onClick={() => setShowColor(!showColor)}
               >
                 <span style={{ background: color }} />
-                {t('色谱')}
+                <span className="drawing-palette-label">{t('色谱')}</span>
+                <CaretDown size={12} />
               </button>
             </div>
             {tool !== 'select' && (
-              <label className="drawing-width">
+              <label className="drawing-width drawing-brush-width">
                 {tool === 'text' || tool === 'icon' ? t('大小') : erase ? t('橡皮') : t('笔触')}
                 <input
                   type="range"
@@ -619,8 +629,8 @@ export function DrawingBoard({
               </label>
             )}
             {tool === 'select' && selected && (
-              <div className="drawing-tools">
-                <label className="drawing-width">
+              <div className="drawing-tools drawing-selection-controls">
+                <label className="drawing-width drawing-number-field">
                   {t('角度')}
                   <input
                     type="number"
@@ -637,7 +647,7 @@ export function DrawingBoard({
                     }}
                   />
                 </label>
-                <label className="drawing-width">
+                <label className="drawing-width drawing-number-field">
                   {t('透明度')}
                   <input
                     type="number"
@@ -654,24 +664,24 @@ export function DrawingBoard({
                     }}
                   />
                 </label>
+                {selected.kind === 'image' && (
+                  <label className="drawing-width drawing-image-size">
+                    {t('大小')}
+                    <input
+                      aria-label={t('图片大小')}
+                      type="range"
+                      min="0.1"
+                      max="1"
+                      step="0.01"
+                      value={selected.size}
+                      disabled={busy}
+                      onChange={(event) =>
+                        patchSelected({ ...selected, size: Number(event.currentTarget.value) })
+                      }
+                    />
+                  </label>
+                )}
               </div>
-            )}
-            {tool === 'select' && selected?.kind === 'image' && (
-              <label className="drawing-width">
-                {t('大小')}
-                <input
-                  aria-label={t('图片大小')}
-                  type="range"
-                  min="0.1"
-                  max="1"
-                  step="0.01"
-                  value={selected.size}
-                  disabled={busy}
-                  onChange={(event) =>
-                    patchSelected({ ...selected, size: Number(event.currentTarget.value) })
-                  }
-                />
-              </label>
             )}
             {colorPresence.present && (
               <div

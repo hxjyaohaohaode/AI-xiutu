@@ -1045,9 +1045,26 @@
   padding: 5px;
   border-radius: 15px;
 }
+/* Scroll arrows occupy their own slots. The measured rail is exactly the
+   clickable viewport, including when another arrow appears after scrolling. */
+.studio-workspace .dock-tool-region {
+  display: flex;
+  align-items: stretch;
+}
 .studio-workspace .dock-tool-scroll {
-  padding-inline: 12px;
+  flex: 1 1 auto;
+  padding-inline: 2px;
+  scroll-padding-inline: 4px;
   gap: 2px;
+}
+.studio-workspace .dock-scroll {
+  position: static;
+  inset: auto;
+  flex: 0 0 28px;
+  width: 28px;
+  min-width: 28px;
+  min-height: 44px;
+  box-shadow: none;
 }
 .studio-workspace .dock-tool-scroll > button {
   min-width: 48px;
@@ -1222,6 +1239,7 @@
 .studio-context-tabs.context-segment {
   position: relative;
   isolation: isolate;
+  container: context-tabs / inline-size;
   display: grid;
   grid-template-columns: repeat(4, minmax(0, 1fr));
   overflow: visible;
@@ -1264,6 +1282,16 @@
   overflow-wrap: normal;
   word-break: normal;
 }
+@container context-tabs (max-width: 300px) {
+  /* A resized panel can be narrow on a wide screen. Give its full labels
+     room before allowing decorative glyphs to crowd the adjacent target. */
+  .studio-context-tabs.context-segment > button {
+    gap: 0;
+  }
+  .studio-context-tabs.context-segment > button > svg {
+    display: none;
+  }
+}
 .studio-workspace .free-panel .panel-back-action {
   flex-shrink: 0;
 }
@@ -1293,6 +1321,12 @@
     min-width: 52px;
     min-height: 48px;
     padding-inline: 7px;
+  }
+  .studio-workspace .dock-scroll {
+    flex-basis: 44px;
+    width: 44px;
+    min-width: 44px;
+    min-height: 48px;
   }
   .studio-workspace .floating-tool-dock > .ai-tool {
     min-height: 48px;
@@ -1404,4 +1438,18 @@
   .studio-workspace .context-segment > .context-segment-indicator {
     transition: none;
   }
+}
+
+/* The compact dock measures complete label slots. Its arrows keep their own
+   hit area; snapping settles a swipe on whole tools rather than half a label. */
+.studio-workspace .floating-tool-dock[data-compact='true'] .dock-tool-scroll {
+  scroll-snap-type: x mandatory;
+  scroll-padding-inline: 2px;
+}
+.studio-workspace .floating-tool-dock[data-compact='true'] .dock-tool-scroll > button {
+  flex: 0 0 var(--dock-item-width, 64px);
+  width: var(--dock-item-width, 64px);
+  min-width: 0;
+  padding-inline: 3px;
+  scroll-snap-align: start;
 }

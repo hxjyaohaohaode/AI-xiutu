@@ -3,6 +3,7 @@ import { useState } from 'react';
 import { MotionDetails } from '../motion/Presence';
 import type { AssistantCandidate, AssistantGrant, AssistantWorkspace } from '@ai-xiutu/contracts';
 import { StudioGlyph, type StudioGlyphName } from '../components/StudioGlyph';
+import { CandidateActions } from './CandidateActions';
 
 const sectionGlyph: Record<AssistantWorkspace['sections'][number]['type'], StudioGlyphName> = {
   clarification: 'ai',
@@ -45,12 +46,20 @@ export function WorkspaceCards({
   canExecute,
   onDecision,
   onPrompt,
+  previewCandidateId,
+  confirmedCandidateIds,
+  onConfirmPreview,
+  onCancelPreview,
 }: {
   spec: AssistantWorkspace;
   candidates: AssistantCandidate[];
   grant: AssistantGrant | null;
   disabled: boolean;
   canExecute: boolean;
+  previewCandidateId?: string | null;
+  confirmedCandidateIds?: ReadonlySet<string>;
+  onConfirmPreview?: () => void;
+  onCancelPreview?: () => void;
   onDecision: (candidate: AssistantCandidate, decision: 'previewed' | 'rejected') => void;
   onPrompt: (text: string) => void;
 }) {
@@ -155,35 +164,16 @@ export function WorkspaceCards({
                       <p>{candidate.prompt}</p>
                     </MotionDetails>
                   )}
-                  <div>
-                    <button
-                      className="ai-candidate-primary"
-                      disabled={
-                        disabled ||
-                        !canExecute ||
-                        candidate.decision === 'rejected' ||
-                        !!candidate.appliedRevisionId ||
-                        (candidate.kind === 'edit' && candidate.decision === 'previewed')
-                      }
-                      onClick={() => onDecision(candidate, 'previewed')}
-                    >
-                      {candidate.appliedRevisionId
-                        ? t('已保存新版本')
-                        : candidate.decision === 'rejected'
-                          ? t('已退回')
-                          : candidate.kind === 'edit'
-                            ? candidate.decision === 'previewed'
-                              ? t('已放入画布预览')
-                              : t('在画布预览')
-                            : t('选择生图模型与规格')}
-                    </button>
-                    <button
-                      disabled={disabled || candidate.decision !== 'pending'}
-                      onClick={() => onDecision(candidate, 'rejected')}
-                    >
-                      {t('退回')}
-                    </button>
-                  </div>
+                  <CandidateActions
+                    candidate={candidate}
+                    disabled={disabled}
+                    canExecute={canExecute}
+                    previewing={previewCandidateId === candidate.id}
+                    confirmed={confirmedCandidateIds?.has(candidate.id)}
+                    onDecision={onDecision}
+                    onConfirm={onConfirmPreview}
+                    onCancel={onCancelPreview}
+                  />
                 </div>
               );
             })}

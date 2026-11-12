@@ -72,6 +72,42 @@ test(
         },
       );
       await t.test(
+        'lease renewal, preview cancellation and leaving a room preserve the persisted head',
+        async () => {
+          const session = await join('owner');
+          const target = { kind: 'parameter', id: 'adjustments.exposure' };
+          const lease = await acquire(session, target);
+          const proof = { sessionId: session.id, fence: lease.fence };
+          const renewal = `${route}/leases/${lease.id}`;
+          assert.equal((await f.call('PATCH', renewal, proof, 'outsider')).statusCode, 403);
+          const renewed = await f.call('PATCH', renewal, proof);
+          assert.equal(renewed.statusCode, 200, renewed.body);
+          assert.equal(renewed.json().lease.fence, lease.fence);
+          assert.ok(Date.parse(renewed.json().lease.expiresAt) >= Date.parse(lease.expiresAt));
+          const previewProof = { ...proof, leaseId: lease.id };
+          const transient = await f.call('POST', `${route}/previews`, {
+            ...previewProof,
+            baseVersion: 1,
+            sequence: 1,
+            operation: parameter(target.id, 0.75),
+          });
+          assert.equal(transient.statusCode, 200, transient.body);
+          assert.equal(transient.json().accepted, true);
+          assert.equal((await f.call('DELETE', `${route}/previews`, previewProof, 'outsider')).statusCode, 403);
+          assert.equal((await f.call('DELETE', `${route}/previews`, previewProof)).statusCode, 200);
+          const leave = `${route}/sessions/${session.id}`;
+          assert.equal((await f.call('DELETE', leave, undefined, 'outsider')).statusCode, 403);
+          assert.equal((await f.call('DELETE', leave, undefined, 'editor')).statusCode, 200);
+          assert.ok((await f.call('GET', route)).json().snapshot.presences.some(({ id }: { id: string }) => id === session.id));
+          assert.equal((await f.call('DELETE', leave)).statusCode, 200);
+          const snapshot = (await f.call('GET', route)).json().snapshot;
+          assert.equal(snapshot.artwork.headVersion, 1);
+          assert.deepEqual(snapshot.previews, []);
+          assert.ok(!snapshot.presences.some(({ id }: { id: string }) => id === session.id));
+          assert.ok(!snapshot.leases.some(({ id }: { id: string }) => id === lease.id));
+        },
+      );
+      await t.test(
         'long-poll admission bounds concurrent subscriptions and releases slots after response',
         async () => {
           const cursor = (await f.call('GET', route)).json().cursor;

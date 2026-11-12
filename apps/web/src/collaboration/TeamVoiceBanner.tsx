@@ -8,7 +8,7 @@ import {
   SpinnerGap,
   UsersThree,
 } from '@phosphor-icons/react';
-import { errorMessage } from '../lib/api';
+import { voiceErrorMessage } from '../ai/voice-error';
 import type { TeamVoiceState } from './useTeamVoice';
 
 type RoomControls = Pick<
@@ -29,7 +29,7 @@ export function TeamVoiceBanner({ room, onReturn }: { room: RoomControls; onRetu
     try {
       await room.toggleMic();
     } catch (error) {
-      room.setMessage(errorMessage(error));
+      room.setMessage(voiceErrorMessage(error));
     } finally {
       micRequest.current = false;
       setSwitchingMic(false);
