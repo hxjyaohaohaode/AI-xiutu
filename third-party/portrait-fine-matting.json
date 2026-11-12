@@ -1,0 +1,8 @@
+{
+  "file": "birefnet-lite-matting-768-fp16.onnx",
+  "url": "https://huggingface.co/FixedSeed/lattice-vision/resolve/05b78163725b64f55203468f26117cffd2d0de0b/birefnet-lite-matting-768-fp16.onnx",
+  "bytes": 95043507,
+  "sha256": "5cd18865d2b548c41f2202b889af4240490cce72c63439691c66252fcad01176",
+  "inputEdge": 768,
+  "downloadTimeoutMs": 180000
+}

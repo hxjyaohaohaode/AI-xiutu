@@ -488,7 +488,21 @@ export function AssetLibrary({
     <div className={`content-view studio-view asset-library library-density-${density}`}>
       <header className="view-heading" data-motion="view-header">
         <div>
-          <h1>{project?.title ?? space?.name ?? t('作品')}</h1>
+          <div className="library-title-line">
+            <h1>{project?.title ?? space?.name ?? t('作品')}</h1>
+            {(space || project) && (
+              <div className="library-result-count" aria-live="polite">
+                {loading ? (
+                  <span>{t('读取中')}</span>
+                ) : (
+                  <span>
+                    <strong>{assets.length}</strong> {t('张已载入')}
+                    {cursor ? t(' · 还有更多') : ''}
+                  </span>
+                )}
+              </div>
+            )}
+          </div>
           {project?.description && <p>{project.description}</p>}
           {externalProject && <span className="library-shared-label">{t('受邀共享项目')}</span>}
         </div>
@@ -598,6 +612,40 @@ export function AssetLibrary({
               )}
               <CaretDown size={13} aria-hidden />
             </button>
+            <div className="library-status-actions">
+              {filtered && (
+                <button className="text-button" onClick={resetFilters}>
+                  <X size={15} />
+                  {t('重置筛选')}
+                </button>
+              )}
+              <div className="library-density-choice" role="group" aria-label={t('素材显示密度')}>
+                <button
+                  aria-label={t('大图显示')}
+                  title={t('大图显示')}
+                  aria-pressed={density === 'comfortable'}
+                  onClick={() => setDensity('comfortable')}
+                >
+                  <SquaresFour size={19} />
+                </button>
+                <button
+                  aria-label={t('紧凑显示')}
+                  title={t('紧凑显示')}
+                  aria-pressed={density === 'compact'}
+                  onClick={() => setDensity('compact')}
+                >
+                  <GridFour size={19} />
+                </button>
+              </div>
+              <button
+                className="text-button"
+                onClick={() => setRefresh((value) => value + 1)}
+                disabled={loading}
+              >
+                <ArrowClockwise size={16} />
+                {t('刷新')}
+              </button>
+            </div>
             <MotionDisclosure
               id={filterId}
               open={filtersOpen}
@@ -645,52 +693,6 @@ export function AssetLibrary({
                 </div>
               </div>
             </MotionDisclosure>
-          </div>
-          <div className="library-status">
-            <div className="library-result-count" aria-live="polite">
-              {loading ? (
-                <span>{t('读取中')}</span>
-              ) : (
-                <span>
-                  <strong>{assets.length}</strong> {t('张已载入')}
-                  {cursor ? t(' · 还有更多') : ''}
-                </span>
-              )}
-            </div>
-            <div className="library-status-actions">
-              {filtered && (
-                <button className="text-button" onClick={resetFilters}>
-                  <X size={15} />
-                  {t('重置筛选')}
-                </button>
-              )}
-              <div className="library-density-choice" role="group" aria-label={t('素材显示密度')}>
-                <button
-                  aria-label={t('大图显示')}
-                  title={t('大图显示')}
-                  aria-pressed={density === 'comfortable'}
-                  onClick={() => setDensity('comfortable')}
-                >
-                  <SquaresFour size={19} />
-                </button>
-                <button
-                  aria-label={t('紧凑显示')}
-                  title={t('紧凑显示')}
-                  aria-pressed={density === 'compact'}
-                  onClick={() => setDensity('compact')}
-                >
-                  <GridFour size={19} />
-                </button>
-              </div>
-              <button
-                className="text-button"
-                onClick={() => setRefresh((value) => value + 1)}
-                disabled={loading}
-              >
-                <ArrowClockwise size={16} />
-                {t('刷新')}
-              </button>
-            </div>
           </div>
           <InlineError message={error} />
           {loading && !assets.length && (

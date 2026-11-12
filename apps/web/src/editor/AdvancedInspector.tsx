@@ -243,7 +243,7 @@ export function AdvancedInspector({
                       {id === 'history' && <HistoryPanel editor={editor} />}
                       {colorFamily && (
                         <MotionDetails className="advanced-disclosure">
-                          <summary>{t('恢复当前作用范围')}</summary>
+                          <summary aria-label={t('恢复当前作用范围')}>{t('重置')}</summary>
                           <button
                             className="text-button"
                             onClick={() =>

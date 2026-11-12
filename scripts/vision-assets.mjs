@@ -27,7 +27,7 @@ export const assets = [
 ];
 
 export function verifyVisionAsset(asset, input) {
-  const bytes = Buffer.from(input);
+  const bytes = Buffer.isBuffer(input) ? input : Buffer.from(input);
   if (bytes.length !== asset.bytes) throw new Error(`Model length mismatch: ${asset.file}`);
   if (createHash('sha256').update(bytes).digest('hex') !== asset.sha256)
     throw new Error(`SHA256 mismatch: ${asset.file}`);

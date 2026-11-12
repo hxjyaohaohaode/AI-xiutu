@@ -2099,9 +2099,27 @@ export function LiveAssistant(props: LiveAssistantProps) {
       )}
     </>
   );
+  const showConversationEmpty =
+    !messages.length && !remainingCandidates.length && mode === 'text' && !busy;
+  const availabilityMessage = !project
+    ? t('选择项目后开始对话')
+    : !catalog?.ready
+      ? t(catalog?.reason ?? '正在读取可用模型…')
+      : null;
   return (
     <section
       className="live-assistant live-assistant-v2"
+      data-availability={
+        !isLoggedIn
+          ? 'login'
+          : !project
+            ? 'project'
+            : !catalog
+              ? 'loading'
+              : catalog.ready
+                ? 'ready'
+                : 'unavailable'
+      }
       hidden={props.hidden}
       inert={props.hidden}
       data-in-call={inCall || undefined}
@@ -2114,7 +2132,7 @@ export function LiveAssistant(props: LiveAssistantProps) {
         {props.navigation ?? (
           <strong className="ai-task-title">
             <Sparkle size={18} />
-            {t('AI 助手')}
+            {t('对话')}
           </strong>
         )}
         <div className="ai-header-actions">
@@ -2192,11 +2210,9 @@ export function LiveAssistant(props: LiveAssistantProps) {
           </div>
         ) : (
           <>
-            {(!catalog?.ready || !project) && (
-              <div className="ai-availability" role="status">
-                <span>
-                  {!project ? t('选择项目后开始对话') : t(catalog?.reason ?? '正在读取可用模型…')}
-                </span>
+            {availabilityMessage && !showConversationEmpty && (
+              <div className="ai-availability" role="status" data-assistant-availability>
+                <span>{availabilityMessage}</span>
                 {!project && (
                   <button type="button" onClick={onSave}>
                     {t('选择项目')}
@@ -2213,10 +2229,21 @@ export function LiveAssistant(props: LiveAssistantProps) {
               }
               running={Boolean(activeTurn && activeTurn.id === researchTurnId)}
             />
-            {!messages.length && !remainingCandidates.length && mode === 'text' && !busy && (
+            {showConversationEmpty && (
               <div className="ai-conversation-empty">
                 <ComposerVisual kind="assistant" />
-                <h3>{t('描述需要修改的地方')}</h3>
+                {availabilityMessage ? (
+                  <div className="ai-empty-availability" role="status" data-assistant-availability>
+                    <p>{availabilityMessage}</p>
+                    {!project && (
+                      <button className="button button-secondary" type="button" onClick={onSave}>
+                        {t('选择项目')}
+                      </button>
+                    )}
+                  </div>
+                ) : (
+                  <h3>{t('描述需要修改的地方')}</h3>
+                )}
               </div>
             )}
             <div className="assistant-messages" aria-label={t('协作对话')} data-motion="ai-answer">

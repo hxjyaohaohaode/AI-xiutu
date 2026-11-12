@@ -77,11 +77,31 @@ jobs:
         id: build
         if: always() && steps.install.outcome == 'success'
         run: npm run build -w @ai-xiutu/web
+      - name: Install and verify Simplified and Traditional Chinese fonts
+        id: cjk
+        if: always() && steps.install.outcome == 'success'
+        run: |
+          sudo --preserve-env=GITHUB_ACTIONS,RUNNER_OS python3 scripts/ci/prepare-apt-mirror.py
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends fonts-noto-cjk fontconfig
+          fc-cache -f
+          node --input-type=module <<'NODE'
+          import assert from 'node:assert/strict';
+          import { execFileSync } from 'node:child_process';
+          import { statSync } from 'node:fs';
+          for (const [locale, family] of [['zh-cn', 'Noto Sans CJK SC'], ['zh-tw', 'Noto Sans CJK TC']]) {
+            const [matchedFamily, file] = execFileSync('fc-match',
+              ['-f', '%{family}\n%{file}\n', family + ':lang=' + locale], { encoding: 'utf8' }).trim().split('\n');
+            assert.equal(matchedFamily, family, 'Fontconfig silently substituted the required Chinese font.');
+            assert.ok(file && statSync(file).isFile(), 'The matched Chinese font file must exist.');
+            console.log(JSON.stringify({ locale, family: matchedFamily, file }));
+          }
+          NODE
       - name: Check the installed real browser
         if: always() && steps.install.outcome == 'success'
         run: google-chrome --version
       - name: Five UI risk scenarios, natural About scrolling and current screenshots
-        if: always() && steps.build.outcome == 'success'
+        if: always() && steps.build.outcome == 'success' && steps.cjk.outcome == 'success'
         run: node --import tsx scripts/qa/system-redesign.browser.mjs
       - name: Preserve reports, failure screenshots and exact image publication payload
         if: always()
@@ -124,3 +144,4 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ github.token }}
         run: node scripts/qa/publish-system-redesign-captures.mjs artifacts/frontend-review
+

@@ -1,4 +1,6 @@
 export const editorEnglish: Readonly<Record<string, string>> = {
+  直方图: 'Histogram',
+  重置: 'Reset',
   圆角矩形: 'Rounded rectangle',
   三角形: 'Triangle',
   位置标记: 'Map pin',
@@ -102,6 +104,10 @@ export const editorEnglish: Readonly<Record<string, string>> = {
   重置曲线: 'Reset curve',
   重置全部曲线: 'Reset all curves',
   精准抠图: 'Refine cutout',
+  抠图模式: 'Cutout mode',
+  标准抠图: 'Standard cutout',
+  发丝与边缘: 'Hair and edges',
+  '发丝与边缘抠图暂不可用，可以切回标准抠图。': 'Hair and edge cutout is unavailable. You can switch to standard cutout.',
   保留前景选区: 'Keep foreground selection',
   排除遮挡选区: 'Exclude occluder selection',
   抠图边缘范围: 'Cutout edge range',

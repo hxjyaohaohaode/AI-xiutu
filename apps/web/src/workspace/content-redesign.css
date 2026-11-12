@@ -29,10 +29,8 @@
 .studio-view .library-group { margin: 0 0 36px; }
 .studio-view .library-group > h2 { font-size: 16px; font-weight: 500; margin-bottom: 18px; }
 .studio-view .library-group > h2 > span { font-size: 10px; margin-inline-start: 12px; }
-.studio-view .library-grid,
 .studio-view .artwork-grid,
 .resource-search .resource-grid { display: block; columns: 3 260px; column-gap: 24px; }
-.studio-view.library-density-compact .library-grid { columns: 4 190px; column-gap: 18px; }
 .studio-view .library-asset,
 .studio-view .artwork-card,
 .resource-search .resource-card { display: inline-block; vertical-align: top; width: 100%; min-width: 0; padding: 0; margin: 0 0 30px; break-inside: avoid; border: 0; border-radius: 0; box-shadow: none; background: transparent; color: var(--ink); text-align: start; overflow: visible; }
@@ -102,8 +100,6 @@
 .studio-view.documents-view .document-refresh { align-self: start; padding-inline: 0; }
 .studio-view.documents-view .document-placeholder { min-height: 460px; }
 /* Discussion and tasks: no nested card borders. */
-.studio-view.collaboration-view:not(.collaboration-panel) .collaboration-summary { display: flex; flex-wrap: wrap; gap: 32px; padding: 0 0 28px; border: 0; background: transparent; }
-.studio-view.collaboration-view:not(.collaboration-panel) .collaboration-summary > div { border: 0; background: transparent; padding: 0; }
 .studio-view.collaboration-view:not(.collaboration-panel) .collaboration-grid { display: grid; grid-template-columns: minmax(0,1.6fr) minmax(260px,1fr); gap: 52px; }
 .studio-view.collaboration-view .discussion,.studio-view.collaboration-view .task-panel { min-width: 0; padding: 0; border: 0; background: transparent; }
 .studio-view.collaboration-view .comment { background: transparent; border: 0; border-radius: 0; padding: 20px 0; }
@@ -199,8 +195,7 @@
  .canvas-workspace :is(.studio-view,.resource-search,.usage-dashboard) .view-heading { gap: 16px; flex-wrap: wrap; margin-bottom: 24px; }
  .canvas-workspace :is(.studio-view,.resource-search,.usage-dashboard) .view-heading h1 { font-size: 28px; }
  .studio-view .asset-library-filters.library-filters-progressive { grid-template-columns: minmax(0,1fr) auto; }
- .studio-view .library-grid,.studio-view .artwork-grid,.resource-search .resource-grid { columns: 2 200px; column-gap: 18px; }
- .studio-view.library-density-compact .library-grid { columns: 2; column-gap: 14px; }
+ .studio-view .artwork-grid,.resource-search .resource-grid { columns: 2 200px; column-gap: 18px; }
  .studio-view.documents-view .documents-layout { display: block; }
  .studio-view.documents-view .document-list .document-rows { max-height: none; }
  .studio-view.documents-view .documents-layout[data-mobile-view='editor'] > .document-list { display: none; }
@@ -209,7 +204,6 @@
  .studio-view.documents-view .document-editor > textarea { min-height: 40dvh; font-size: 16px; }
  .studio-view.documents-view .document-title { font-size: 26px; }
  .studio-view.collaboration-view:not(.collaboration-panel) .collaboration-grid { grid-template-columns: minmax(0,1fr); gap: 36px; }
- .studio-view.collaboration-view:not(.collaboration-panel) .collaboration-summary { gap: 24px; padding-bottom: 24px; }
  .studio-view.delivery-view .delivery-composition { grid-template-columns: minmax(0,1fr); gap: 24px; }
  .studio-view.delivery-view .delivery-current-preview { height: min(48dvh,450px); }
  .studio-view.delivery-view .delivery-action-rail h2 { font-size: 24px; }
@@ -238,8 +232,7 @@
 }
 @media (width < 440px) {
  .canvas-workspace .content-view.studio-view,.canvas-workspace .resource-search,.canvas-workspace .usage-dashboard { padding-inline: 16px; }
- .studio-view .library-grid,.studio-view .artwork-grid,.resource-search .resource-grid { columns: 1; }
- .studio-view.library-density-compact .library-grid { columns: 2; }
+ .studio-view .artwork-grid,.resource-search .resource-grid { columns: 1; }
  .resource-search .resource-filters { grid-template-columns: repeat(2,minmax(0,1fr)); }
  .resource-search .resource-filters > .choice-select:last-child { grid-column: 1 / -1; }
  .studio-view .view-actions .button { padding-inline: 12px; font-size: 11px; }
@@ -271,3 +264,173 @@
 .compare-reveal:focus-within { outline: 2px solid var(--focus-ring); outline-offset: 4px; }
 @media (width < 760px) { .compare-reveal { height: min(62dvh,600px); min-height: 260px; } .compare-reveal-layer { padding: 8px; } .studio-view .compare-mode-choice { display: flex; width: 100%; } .studio-view .compare-mode-choice > button { flex: 1; padding-inline: 8px; font-size: 12px; } }
 @media (height < 500px) and (orientation: landscape) { .compare-reveal { height: 65dvh; min-height: 180px; } }
+
+/* Library rows follow DOM order. Multi-column fragmentation could put a short
+   collection in its first column; explicit grid tracks keep the next asset beside it. */
+.canvas-workspace .content-view.studio-view.asset-library {
+  padding-top: clamp(22px, 2.2vw, 32px);
+}
+.canvas-workspace .studio-view.asset-library .view-heading {
+  gap: 16px;
+  margin-bottom: 18px;
+}
+.studio-view.asset-library .view-heading > div:first-child {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+.library-title-line {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 8px 16px;
+  min-width: 0;
+}
+.library-title-line .library-result-count {
+  color: var(--muted);
+  font-size: 12px;
+  white-space: nowrap;
+}
+.studio-view.asset-library .asset-library-filters.library-filters-progressive {
+  display: grid;
+  grid-template-columns: minmax(180px, 1fr) minmax(150px, 220px) auto auto;
+  align-items: center;
+  gap: 0 12px;
+  margin-bottom: 20px;
+}
+.studio-view.asset-library .library-project-select {
+  min-width: 0;
+}
+.studio-view.asset-library .library-status-actions {
+  gap: 8px;
+  min-width: 0;
+}
+.studio-view.asset-library .library-status-actions .text-button {
+  min-height: 40px;
+  padding-inline: 8px;
+  white-space: nowrap;
+}
+.studio-view.asset-library .library-density-choice button {
+  width: 38px;
+  height: 38px;
+}
+.studio-view.asset-library .library-group > h2 {
+  margin: 0 0 12px;
+  gap: 8px;
+  font-size: 14px;
+  color: var(--muted);
+}
+.studio-view.asset-library .library-group > h2 > span {
+  margin-inline-start: 0;
+  font-size: 11px;
+}
+.studio-view.asset-library .library-grid {
+  display: grid;
+  columns: auto;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 320px), 1fr));
+  grid-auto-flow: row;
+  align-items: start;
+  gap: 28px 24px;
+}
+.studio-view.asset-library.library-density-compact .library-grid {
+  grid-template-columns: repeat(auto-fill, minmax(min(100%, 210px), 1fr));
+  gap: 24px 18px;
+}
+.studio-view.asset-library .library-asset {
+  display: block;
+  margin: 0;
+  break-inside: auto;
+}
+.canvas-workspace .collaboration-view .view-heading {
+  flex-wrap: wrap;
+  gap: 16px;
+  margin-bottom: 26px;
+}
+.collaboration-heading-title {
+  display: flex;
+  flex: 1 1 420px;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 12px 24px;
+  min-width: 0;
+}
+.collaboration-heading-stats {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px 18px;
+  margin: 0;
+}
+.collaboration-heading-stats > div {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 6px;
+}
+.collaboration-heading-stats dt {
+  color: var(--muted);
+  font-size: 12px;
+}
+.collaboration-heading-stats dd {
+  margin: 0;
+  color: var(--ink);
+  font-size: 14px;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+}
+.studio-view.collaboration-view .comments-list .quiet-empty {
+  min-height: 112px;
+  padding: 24px 0;
+}
+.studio-view.collaboration-view .comments-list .quiet-empty p {
+  margin: 0;
+}
+/* The AI tab names the open surface. Keep its drag and window controls, then
+   use the inner toolbar for the current task rather than a third AI title. */
+.free-panel[data-panel-id='ai']:not([data-presentation='collapsed']) .panel-title-drag > strong {
+  display: none;
+}
+.ai-empty-availability {
+  display: grid;
+  gap: 12px;
+  width: 100%;
+}
+.ai-empty-availability > .button {
+  justify-self: start;
+}
+@media (width < 1000px) {
+  .studio-view.asset-library .asset-library-filters.library-filters-progressive {
+    grid-template-columns: minmax(0, 1fr) auto auto;
+    gap: 8px 10px;
+  }
+  .studio-view.asset-library .library-search {
+    grid-column: 1 / -1;
+  }
+}
+@media (width < 760px) {
+  .studio-view.asset-library .asset-library-filters.library-filters-progressive {
+    grid-template-columns: minmax(0, 1fr) auto;
+    margin-bottom: 16px;
+  }
+  .studio-view.asset-library .library-status-actions {
+    grid-column: 1 / -1;
+    justify-content: flex-end;
+    flex-wrap: wrap;
+  }
+  .studio-view.asset-library .library-density-choice button {
+    width: 44px;
+    height: 44px;
+  }
+  .studio-view.asset-library.library-density-compact .library-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 22px 14px;
+  }
+  .collaboration-heading-title {
+    flex-basis: 100%;
+  }
+  .collaboration-heading-stats {
+    gap: 8px 16px;
+  }
+}
+@media (height < 500px) and (orientation: landscape) {
+  .canvas-workspace .content-view.studio-view.asset-library {
+    padding-top: 18px;
+  }
+}

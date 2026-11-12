@@ -44,11 +44,18 @@ export function PanelNavigation({
       if (
         focusRequest.current !== selected ||
         !nav ||
-        nav.closest('[inert],[hidden]') ||
-        !nav.getClientRects().length
+        nav.closest('[inert],[hidden]')
       )
         return;
-      nav.querySelector<HTMLButtonElement>('[aria-pressed="true"]')?.focus({ preventScroll: true });
+      // The editing view omits this duplicate row on short surfaces. Returning
+      // from AI or collaboration must still land on a visible keyboard target.
+      const target = nav.getClientRects().length
+        ? nav.querySelector<HTMLElement>('[aria-pressed="true"]')
+        : nav.closest('.free-panel')?.querySelector<HTMLElement>(
+            '.panel-back-action, .panel-title-drag',
+          );
+      if (!target?.getClientRects().length) return;
+      target.focus({ preventScroll: true });
       focusRequest.current = null;
     });
     return () => cancelAnimationFrame(frame);

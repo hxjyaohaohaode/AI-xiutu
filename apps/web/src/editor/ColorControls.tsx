@@ -148,7 +148,7 @@ export function ColorControls({
     <section className="color-controls-v3" data-motion="color-family">
       {family !== 'detail' && (
         <MotionDetails className="advanced-disclosure histogram-disclosure">
-          <summary>{t('查看明度与 RGB 分布')}</summary>
+          <summary aria-label={t('查看明度与 RGB 分布')}>{t('直方图')}</summary>
           <Histogram image={editor.rendered} />
         </MotionDetails>
       )}

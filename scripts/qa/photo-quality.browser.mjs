@@ -8,6 +8,7 @@ import sharp from 'sharp';
 import { chromium } from 'playwright';
 import { createServer } from 'vite';
 import matting from '../../third-party/portrait-matting.json' with { type: 'json' };
+import fineMatting from '../../third-party/portrait-fine-matting.json' with { type: 'json' };
 import {
   createRecipeV4,
   renderEditorRecipe,
@@ -28,6 +29,7 @@ import {
 if (process.env.CI !== 'true' || process.env.NODE_ENV === 'production')
   throw new Error('Isolated QA only');
 const output = resolve(process.env.PHOTO_QUALITY_ARTIFACT_DIR ?? 'artifacts/photo-quality');
+const verifyFineMatting = process.env.PHOTO_QUALITY_FINE_MATTING === '1';
 await mkdir(output, { recursive: true });
 const sources = [
   ...JSON.parse(await readFile('scripts/qa/portrait-native-inputs.json', 'utf8')).inputs,
@@ -160,6 +162,8 @@ async function checkLocalCutout(browser, origin, image, view) {
       if (url.origin !== origin) return route.abort();
       if (view.missingModel && url.pathname === '/vision/' + matting.file)
         return route.fulfill({ status: 404 });
+      if (view.missingFineModel && url.pathname === '/vision/' + fineMatting.file)
+        return route.fulfill({ status: 404 });
       if (url.pathname.startsWith('/v1/'))
         return route.fulfill({ status: 503, json: { message: 'offline' } });
       return route.continue();
@@ -178,6 +182,24 @@ async function checkLocalCutout(browser, origin, image, view) {
     await page.getByRole('button', { name: '识别照片中的人物', exact: true }).click();
     const button = page.getByRole('button', { name: '从原图提取人物素材', exact: true });
     await button.waitFor({ timeout: 60000 });
+    if (view.fine) {
+      await page.locator('summary').filter({ hasText: '精准抠图' }).click();
+      const mode = page.getByRole('combobox', { name: '抠图模式', exact: true });
+      await mode.click();
+      await page.getByRole('option', { name: '发丝与边缘', exact: true }).click();
+      if (view.missingFineModel) {
+        let downloads = 0;
+        page.on('download', () => downloads++);
+        await button.click();
+        await page
+          .getByText('发丝与边缘抠图暂不可用，可以切回标准抠图。', { exact: true })
+          .first()
+          .waitFor();
+        assert.equal(downloads, 0);
+        await mode.click();
+        await page.getByRole('option', { name: '标准抠图', exact: true }).click();
+      }
+    }
     const downloading = page.waitForEvent('download', { timeout: 70000 });
     await button.click();
     const download = await downloading;
@@ -185,6 +207,8 @@ async function checkLocalCutout(browser, origin, image, view) {
     const bytes = await readFile(await download.path());
     const settings = await page.evaluate(() => window.observedCutout);
     assert.equal(settings.algorithm, view.missingModel ? 'guided-v5' : 'continuous-alpha-v1');
+    if (view.fine && !view.missingFineModel)
+      assert.deepEqual([settings.selection.width, settings.selection.height], [768, 768]);
     const expected = renderCutout(image, settings);
     const decoded = await sharp(bytes).ensureAlpha().raw().toBuffer();
     assert.deepEqual(decoded, Buffer.from(expected.data));
@@ -196,7 +220,9 @@ async function checkLocalCutout(browser, origin, image, view) {
     const overflow = await page.evaluate(() => document.documentElement.scrollWidth - innerWidth);
     assert.ok(overflow <= 1, `Horizontal overflow: ${overflow}px`);
     const cloud =
-      view.id === 'desktop' ? await checkCloudCutout(sourcePng, settings, decoded) : undefined;
+      view.id === 'desktop' || view.id === 'fine-desktop'
+        ? await checkCloudCutout(sourcePng, settings, decoded)
+        : undefined;
     await writeFile(join(output, `workspace-cutout-${view.id}.png`), bytes);
     await page.screenshot({ path: join(output, `workspace-cutout-${view.id}-view.png`) });
     return {
@@ -283,7 +309,7 @@ try {
   browser = await chromium.launch({
     headless: true,
     channel: process.env.BROWSER_CHANNEL || undefined,
-    args: ['--use-angle=swiftshader', '--enable-unsafe-swiftshader'],
+    args: verifyFineMatting ? [] : ['--use-angle=swiftshader', '--enable-unsafe-swiftshader'],
   });
   const page = await browser.newPage();
   await page.route('**/*', (route) => {
@@ -307,13 +333,26 @@ try {
       data: new Uint8ClampedArray(decoded.data),
     };
     if (source.name === 'portrait-hopper') {
-      for (const view of [
+      const standard = [
         { id: 'desktop', width: 1440, height: 960 },
         { id: 'tablet', width: 1024, height: 768, touch: true },
         { id: 'phone', width: 320, height: 640, touch: true },
         { id: 'landscape', width: 844, height: 390, touch: true },
         { id: 'missing-model', width: 960, height: 720, missingModel: true },
-      ]) {
+      ];
+      const fine = verifyFineMatting
+        ? [
+            ...standard.slice(0, 4).map((view) => ({ ...view, id: 'fine-' + view.id, fine: true })),
+            {
+              id: 'missing-fine-model',
+              width: 960,
+              height: 720,
+              fine: true,
+              missingFineModel: true,
+            },
+          ]
+        : [];
+      for (const view of [...standard, ...fine]) {
         const receipt = await checkLocalCutout(browser, 'http://127.0.0.1:4186', image, view);
         report.cases.push({
           photo: source.name,

@@ -752,8 +752,24 @@ export function CollaborateView({
       className={`content-view studio-view collaboration-view${embedded ? ' collaboration-panel' : ''}`}
     >
       <div className="view-heading" data-motion="view-header">
-        <div>
+        <div className="collaboration-heading-title">
           <h1>{project.title}</h1>
+          {!embedded && !loading && hasLoaded && (
+            <dl className="collaboration-heading-stats" aria-label={t('项目协作概览')}>
+              <div>
+                <dt>{t('待解决')}</dt>
+                <dd>{openComments}</dd>
+              </div>
+              <div>
+                <dt>{t('进行中')}</dt>
+                <dd>{tasks.filter((task) => task.status === 'doing').length}</dd>
+              </div>
+              <div>
+                <dt>{t('已完成')}</dt>
+                <dd>{completedTasks}</dd>
+              </div>
+            </dl>
+          )}
         </div>
         <div className="view-actions">
           {!embedded && onReturnToEditor && (
@@ -831,23 +847,6 @@ export function CollaborateView({
               </button>
             </nav>
           )}
-          <div className="collaboration-summary" aria-label={t('项目协作概览')} hidden={embedded}>
-            <div>
-              <ChatCircleDots size={19} />
-              <strong>{openComments}</strong>
-              <span>{t('条待解决意见')}</span>
-            </div>
-            <div>
-              <Clock size={19} />
-              <strong>{tasks.filter((task) => task.status === 'doing').length}</strong>
-              <span>{t('件正在进行')}</span>
-            </div>
-            <div>
-              <CheckCircle size={19} />
-              <strong>{completedTasks}</strong>
-              <span>{t('件已完成')}</span>
-            </div>
-          </div>
           <div className="collaboration-grid">
             <section
               className="surface discussion"
@@ -956,21 +955,12 @@ export function CollaborateView({
                   ))
                 ) : (
                   <div className="quiet-empty">
-                    <ChatCircleDots size={29} />
                     <p>
                       {comments.length
                         ? commentFilter === 'open'
                           ? t('没有待解决的意见')
                           : t('还没有已解决的意见')
                         : t('尚无讨论')}
-                      <br />
-                      <small>
-                        {comments.length
-                          ? t('切换筛选，可以查看其他讨论。')
-                          : permissions.comment
-                            ? t('提一个建议，或记下你希望保留的细节。')
-                            : t('团队发表的意见会出现在这里。')}
-                      </small>
                     </p>
                   </div>
                 )}
@@ -1037,9 +1027,11 @@ export function CollaborateView({
                   <CheckCircle size={20} />
                   {t('接下来做什么')}
                 </h2>
-                <span>
-                  {completedTasks}/{tasks.length}
-                </span>
+                {tasks.length > 0 && (
+                  <span>
+                    {completedTasks}/{tasks.length}
+                  </span>
+                )}
               </div>
               {tasks.length > 0 && (
                 <div
@@ -1115,13 +1107,11 @@ export function CollaborateView({
                     </div>
                   </div>
                 ))}
-                {!visibleTasks.length && (
+                {!visibleTasks.length && (tasks.length > 0 || !permissions.edit) && (
                   <p className="quiet-copy">
                     {tasks.length
                       ? t('当前任务都已完成。')
-                      : permissions.edit
-                        ? t('把讨论变成一件可以完成的小事。')
-                        : t('团队添加的任务会出现在这里。')}
+                      : t('团队添加的任务会出现在这里。')}
                   </p>
                 )}
               </div>

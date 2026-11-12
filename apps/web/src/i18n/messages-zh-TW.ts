@@ -9,6 +9,8 @@ import { traditionalGenerated } from './traditional-generated';
 
 /** Traditional Chinese copy; user content is never passed through this catalog. */
 export const traditional: Readonly<Record<string, string>> = {
+  直方图: '直方圖',
+  重置: '重置',
   圆角矩形: '圓角矩形',
   位置标记: '位置標記',
   闪电: '閃電',
@@ -112,6 +114,10 @@ export const traditional: Readonly<Record<string, string>> = {
   重置曲线: '重設曲線',
   重置全部曲线: '重設所有曲線',
   精准抠图: '精細去背',
+  抠图模式: '去背模式',
+  标准抠图: '標準去背',
+  发丝与边缘: '髮絲與邊緣',
+  '发丝与边缘抠图暂不可用，可以切回标准抠图。': '髮絲與邊緣去背暫不可用，可以切回標準去背。',
   保留前景选区: '保留前景選區',
   排除遮挡选区: '排除遮擋選區',
   抠图边缘范围: '去背邊緣範圍',

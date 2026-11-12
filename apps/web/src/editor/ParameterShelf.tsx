@@ -106,6 +106,23 @@ export function ParameterShelf({
     const marker = selection.current;
     if (!rail || !marker) return;
     const measure = () => {
+      const style = getComputedStyle(rail);
+      if (style.display === 'grid') {
+        // Fit complete rows, including translated two-line labels. A fixed
+        // pixel cap used to cut the third portrait row halfway through its name.
+        const rows = new Map<number, number>();
+        for (const button of rail.querySelectorAll<HTMLButtonElement>('button')) {
+          const top = button.offsetTop;
+          if (!rows.has(top) && rows.size === 3) break;
+          rows.set(top, Math.max(rows.get(top) ?? 0, top + button.offsetHeight));
+        }
+        const bottom = Math.max(0, ...rows.values()) + parseFloat(style.paddingBottom || '0');
+        const height = `${bottom}px`;
+        if (rail.style.getPropertyValue('--parameter-grid-height') !== height)
+          rail.style.setProperty('--parameter-grid-height', height);
+      } else if (rail.style.getPropertyValue('--parameter-grid-height')) {
+        rail.style.removeProperty('--parameter-grid-height');
+      }
       const disc = rail.querySelector<HTMLElement>('[aria-pressed="true"] .parameter-glyph-disc');
       if (!disc) return;
       const base = rail.getBoundingClientRect();
@@ -118,6 +135,7 @@ export function ParameterShelf({
     measure();
     const observer = new ResizeObserver(measure);
     observer.observe(rail);
+    for (const button of rail.querySelectorAll<HTMLButtonElement>('button')) observer.observe(button);
     return () => observer.disconnect();
   }, [active?.id, controls.length]);
   if (!active) return <p className="control-note">{t('当前范围没有可调整的参数。')}</p>;

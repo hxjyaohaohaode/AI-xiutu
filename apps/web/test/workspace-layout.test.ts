@@ -194,7 +194,7 @@ test('fresh phone defaults reserve photo pixels without beginning in overlay', (
     284.24,
   );
   assert.equal(defaultPanel('ai', { width: 320, height: 700, bucket: 'phone' }).height, 293);
-  assert.equal(defaultPanel('inspector', phone).height, 340);
+  assert.equal(defaultPanel('inspector', phone).height, 288);
   assert.equal(defaultPanel('ai', phone).height, 390);
 });
 
@@ -211,7 +211,7 @@ test('phone Edit and manual resize retain enough panel height for a visible acti
         restored.height >= 260,
         'editing recovers space for the active range and parameter rail',
       );
-      if (view.width === 390) assert.ok(restored.height >= 330 && restored.height <= 360);
+      if (view.width === 390) assert.ok(restored.height >= 280 && restored.height <= 300);
       assert.ok(canvasImageArea(view, workspaceCanvasInsets(restored, view)).height >= 160);
       assert.equal(
         resizePanel(restored, 'n', 0, 10_000, view, 'inspector').height,

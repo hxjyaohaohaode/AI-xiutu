@@ -308,7 +308,7 @@
   grid-template-columns: repeat(4, minmax(0, 1fr));
   align-items: start;
   gap: 9px 4px;
-  max-height: 245px;
+  max-height: var(--parameter-grid-height, 245px);
   padding: 3px 1px 6px;
   overflow-x: hidden;
   overflow-y: auto;

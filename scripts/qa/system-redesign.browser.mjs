@@ -24,6 +24,13 @@ import {
 assert.equal(process.env.CI, 'true', 'Use only this isolated CI review.');
 assert.notEqual(process.env.NODE_ENV, 'production');
 const root = fileURLToPath(new URL('../..', import.meta.url));
+const sdkName = '@mediapipe/tasks-vision';
+const sdkTelemetryEndpoint = 'https://odml.pa.googleapis.com/v1/log';
+const webPackage = JSON.parse(await readFile(resolve(root, 'apps/web/package.json'), 'utf8'));
+const sdkVersion = webPackage.dependencies[sdkName];
+const dependencyLock = JSON.parse(await readFile(resolve(root, 'package-lock.json'), 'utf8'));
+assert.equal(sdkVersion, '1.2.2', 'Telemetry classification is restricted to the reviewed, exactly pinned SDK.');
+assert.equal(dependencyLock.packages['node_modules/' + sdkName].version, sdkVersion);
 const testedCommit = execFileSync('git', ['rev-parse', 'HEAD'], { cwd: root, encoding: 'utf8' }).trim();
 assert.equal(testedCommit, process.env.REVIEW_HEAD, 'The checkout must be the exact reviewed feature head.');
 const artifacts = resolve(root, 'artifacts/frontend-review');
@@ -48,14 +55,17 @@ const report = {
   schemaVersion: 1, testedCommit, repository: REPOSITORY,
   startedAt: new Date().toISOString(), state: 'running',
   runtime: 'built Vite app; actual API; isolated in-memory PostgreSQL WASM',
-  cases: [], layouts: [], logos: [], scrolls: [], screenshots: [], inputs: [],
-  pageErrors: [], routingErrors: [], unexpectedOrigins: [], requests: {}, manualVisualReview: false,
+  cases: [], layouts: [], logos: [], scrolls: [], screenshots: [], inputs: [], cjkFontEvidence: [],
+  pageErrors: [], routingErrors: [], unexpectedOrigins: [], blockedSdkTelemetryAttempts: [], requests: {}, manualVisualReview: false,
   limits: [
     'Five different locale/viewport/motion scenarios exercise import, numeric editing, undo, redo, original comparison and a decoded download.',
     'This does not certify all 111 matrix items, native HDR precision, a physical device, a live AI provider or a real multiplayer session.',
     'Account/project images, if present, use explicit disposable CI fixtures and actual local API permissions.',
     'Photo capture is a browser screenshot followed only by WebP encoding. No generated interface or retouched screenshot is used.',
+    'Every Simplified/Traditional Chinese capture requires CDP evidence of visible Han glyphs rendered with the matching Noto CJK family. This sampled font gate does not replace visual review.',
     'Publication is a separate exact-head, explicit-path job and cannot occur after any required verification step fails.',
+    'Only exact POST attempts to the pinned MediaPipe SDK telemetry endpoint may be classified separately after route.abort succeeds; all remain blocked. Unknown external attempts fail the review.',
+    'Telemetry counts apply only to this isolated Vite browser run. The repository Caddy configuration declares connect-src self, but deployed response headers and production telemetry were not verified.',
   ],
 };
 const published = [];
@@ -225,8 +235,18 @@ async function newPage(specification, route = '/#/studio', signedIn = false) {
     const url = new URL(request.url());
     try {
       if (url.origin !== origin && !['data:', 'blob:'].includes(url.protocol)) {
-        report.unexpectedOrigins.push({ case: ownerCase, origin: url.origin, path: url.pathname });
+        const knownSdkTelemetry = request.method() === 'POST' &&
+          request.url() === sdkTelemetryEndpoint && url.search === '' && url.hash === '';
+        // Classification follows successful blocking. Neither known telemetry nor
+        // an unknown origin is ever continued or answered with a synthetic response.
         await route.abort('blockedbyclient');
+        if (knownSdkTelemetry)
+          report.blockedSdkTelemetryAttempts.push({
+            case: ownerCase, endpoint: sdkTelemetryEndpoint, method: 'POST', blocked: true,
+          });
+        else report.unexpectedOrigins.push({
+          case: ownerCase, origin: url.origin, path: url.pathname, method: request.method(),
+        });
       } else {
         const gate = quoteTransportGates.get(context);
         if (gate && !gate.held && request.method() === 'POST' && request.url() === gate.url) {
@@ -272,8 +292,78 @@ async function newPage(specification, route = '/#/studio', signedIn = false) {
   await settle(page);
   return { page, context };
 }
+const cjkFontFamilies = { 'zh-CN': 'Noto Sans CJK SC', 'zh-TW': 'Noto Sans CJK TC' };
+async function verifyRenderedCjk(page, captureName) {
+  const locale = await page.evaluate(() => document.documentElement.lang);
+  const expectedFamily = cjkFontFamilies[locale];
+  if (!expectedFamily) return locale;
+  const samples = await page.evaluate(() => {
+    const scope = document.querySelector('dialog[open]:not([inert])') ?? document.body;
+    const walker = document.createTreeWalker(scope, NodeFilter.SHOW_TEXT);
+    const samples = [];
+    for (let textNode = walker.nextNode(); textNode && samples.length < 3; textNode = walker.nextNode()) {
+      const element = textNode.parentElement;
+      const text = textNode.textContent.trim();
+      // Pure Han text prevents Latin glyphs in a CJK font from satisfying this check.
+      if (!element || element.children.length || !/^[\p{Script=Han}\s]+$/u.test(text)) continue;
+      const hanText = text.replace(/\s/g, '');
+      if (!hanText || [...hanText].length > 32 ||
+          [...element.childNodes].filter((node) => node.nodeType === Node.TEXT_NODE && node.textContent.trim()).length !== 1 ||
+          element.closest('[inert],[hidden],[aria-hidden="true"],script,style') ||
+          !element.checkVisibility({ checkOpacity: true, checkVisibilityCSS: true })) continue;
+      let closed = false;
+      for (let parent = element.parentElement; parent; parent = parent.parentElement)
+        if (parent instanceof HTMLDetailsElement && !parent.open &&
+            !parent.querySelector(':scope > summary')?.contains(element)) closed = true;
+      if (closed) continue;
+      const range = document.createRange();
+      range.selectNodeContents(textNode);
+      const rect = [...range.getClientRects()].find((r) =>
+        r.width > 0 && r.height > 0 && r.right > 0 && r.left < innerWidth && r.bottom > 0 && r.top < innerHeight);
+      if (!rect) continue;
+      const x = (Math.max(0, rect.left) + Math.min(innerWidth, rect.right)) / 2;
+      const y = (Math.max(0, rect.top) + Math.min(innerHeight, rect.bottom)) / 2;
+      const hit = document.elementFromPoint(x, y);
+      if (!hit || (hit !== element && !element.contains(hit))) continue;
+      const parts = [];
+      for (let node = element; node && node !== document.documentElement; node = node.parentElement)
+        parts.unshift(node.localName + ':nth-child(' + ([...node.parentElement.children].indexOf(node) + 1) + ')');
+      samples.push({ selector: 'html > ' + parts.join(' > '), text: hanText, hanCount: [...hanText].length });
+    }
+    return samples;
+  });
+  assert.ok(samples.length, captureName + ': no visible Han text node available for the font gate.');
+  const session = await page.context().newCDPSession(page);
+  const evidence = { case: activeCase, capture: captureName, locale, method: 'CDP.CSS.getPlatformFontsForNode', samples: [] };
+  // Keep actual fallback evidence even when the expected font check fails.
+  report.cjkFontEvidence.push(evidence);
+  try {
+    await session.send('DOM.enable');
+    await session.send('CSS.enable');
+    const { root: documentNode } = await session.send('DOM.getDocument');
+    for (const sample of samples) {
+      const { nodeId } = await session.send('DOM.querySelector', { nodeId: documentNode.nodeId, selector: sample.selector });
+      assert.ok(nodeId, captureName + ': the actual Han text node disappeared.');
+      const { fonts } = await session.send('CSS.getPlatformFontsForNode', { nodeId });
+      evidence.samples.push({
+        ...sample,
+        fonts: fonts.map(({ familyName, postScriptName, isCustomFont, glyphCount }) =>
+          ({ familyName, postScriptName, isCustomFont, glyphCount })),
+      });
+    }
+    for (const sample of evidence.samples) {
+      const rendered = sample.fonts.filter((font) => font.familyName === expectedFamily)
+        .reduce((count, font) => count + font.glyphCount, 0);
+      assert.ok(rendered >= sample.hanCount,
+        captureName + ': visible Han text must actually render with ' + expectedFamily + '; got ' + JSON.stringify(sample.fonts));
+    }
+  } finally { await session.detach(); }
+  return locale;
+}
+
 async function capture(page, name, options = {}) {
   await settle(page);
+  const locale = await verifyRenderedCjk(page, name);
   const path = resolve(artifacts, name);
   await mkdir(dirname(path), { recursive: true });
   const bytes = await page.screenshot({
@@ -282,7 +372,7 @@ async function capture(page, name, options = {}) {
   });
   report.screenshots.push({
     file: name, bytes: bytes.length, sha256: sha256(bytes),
-    viewport: page.viewportSize(), state: 'captured', case: activeCase,
+    viewport: page.viewportSize(), locale, state: 'captured', case: activeCase,
   });
   return bytes;
 }
@@ -944,6 +1034,14 @@ async function supplementalViews(config) {
     await importPhoto(page, 'coast');
     await tool(page, 'ai');
     await page.locator('.free-panel[data-panel-id="ai"][aria-hidden="false"]').waitFor();
+    const assistant = page.locator('.free-panel[data-panel-id="ai"][aria-hidden="false"] .live-assistant:visible');
+    await page.waitForFunction(() =>
+      document.querySelector('.free-panel[data-panel-id="ai"][aria-hidden="false"] .live-assistant')?.getAttribute('data-availability') === 'unavailable');
+    const availability = assistant.locator('[data-assistant-availability]');
+    await availability.waitFor();
+    assert.equal(await availability.count(), 1, 'Unavailable assistant has one status, not repeated notices.');
+    assert.ok((await availability.innerText()).trim());
+    assert.equal(await assistant.locator('.ai-submit-request').isDisabled(), true);
     await layout(page, 'AI unavailable state without supplier');
     await verificationCapture(page, 'views/assistant-disabled.png', 'assistant-unavailable', 'Actual assistant unavailable state; no external AI request');
     await page.locator('.studio-account').click();
@@ -955,6 +1053,7 @@ async function supplementalViews(config) {
       environment: 'One disposable account and real local project with two public photos and one API-created document.',
       views: ['works', 'restoration-read-only', 'documents', 'collaborate', 'usage', 'assistant-unavailable', 'account'],
       restoration,
+      assistant: { state: 'unavailable', statusCount: 1, submitDisabled: true },
       liveCloudServiceAcceptance: false, multiPersonSessionAcceptance: false,
     };
   } catch (error) {
@@ -1035,8 +1134,10 @@ try {
     assert.deepEqual([...published.map((file) => file.path)].sort(), [...PUBLISH_IMAGE_PATHS].sort());
     assert.deepEqual(report.pageErrors, [], 'No unhandled browser runtime errors.');
     assert.deepEqual(report.routingErrors, [], 'No browser request routing errors.');
-    assert.deepEqual(report.unexpectedOrigins, [], 'The browser must not contact any external service.');
-    return { publishedImageCount: published.length };
+    assert.deepEqual(report.unexpectedOrigins, [], 'No unknown external request attempts are permitted.');
+    for (const locale of Object.keys(cjkFontFamilies))
+      assert.ok(report.cjkFontEvidence.some((entry) => entry.locale === locale), 'Missing rendered CJK font evidence: ' + locale);
+    return { publishedImageCount: published.length, blockedSdkTelemetryCount: report.blockedSdkTelemetryAttempts.length };
   });
   report.state = report.cases.some((entry) => entry.state !== 'passed') || report.routingErrors.length || report.cleanupErrors?.length ? 'failed' : 'passed';
 } catch (error) {
@@ -1059,6 +1160,12 @@ try {
   }
   if (report.routingErrors.length) report.state = 'failed';
   report.finishedAt = new Date().toISOString();
+  report.sdkTelemetrySummary = {
+    sdk: sdkName, sdkVersion, endpoint: sdkTelemetryEndpoint, method: 'POST', blocked: true,
+    count: report.blockedSdkTelemetryAttempts.length,
+    enforcement: 'isolated-vite-context-route-abort', productionHeadersVerified: false,
+  };
+  console.log('SDK TELEMETRY BLOCKED ' + JSON.stringify(report.sdkTelemetrySummary));
   const manifest = {
     schemaVersion: 1, state: report.state, testedCommit, repository: REPOSITORY,
     capturedAt: report.finishedAt, browser: report.browser ?? null, manualVisualReview: false,
@@ -1067,6 +1174,9 @@ try {
       ...scenario, state: report.cases.find((entry) => entry.name === 'flow:' + scenario.id)?.state ?? 'not-run',
     })),
     files: published, limits: report.limits,
+    cjkFontEvidence: report.cjkFontEvidence,
+    blockedSdkTelemetryAttempts: report.blockedSdkTelemetryAttempts,
+    sdkTelemetrySummary: report.sdkTelemetrySummary,
   };
   await mkdir(dirname(resolve(publishRoot, MANIFEST_PATH)), { recursive: true });
   await writeFile(resolve(publishRoot, MANIFEST_PATH), JSON.stringify(manifest, null, 2) + '\n');

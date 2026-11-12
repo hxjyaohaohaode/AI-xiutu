@@ -1,4 +1,5 @@
 export const aiRedesignEnglish: Record<string, string> = {
+  "对话": "Chat",
   "保存到已有文档": "Save to an existing document",
   "保存至「{title}」的新版本，基于 V{version}。": "Save a new version of “{title}”, based on V{version}.",
   "经手动编辑": "Manually edited",
@@ -47,6 +48,7 @@ export const aiRedesignEnglish: Record<string, string> = {
 };
 
 export const aiRedesignTraditionalChinese: Record<string, string> = {
+  "对话": "對話",
   "保存到已有文档": "儲存至現有文件",
   "保存至「{title}」的新版本，基于 V{version}。": "儲存至「{title}」的新版本，以 V{version} 為基礎。",
   "经手动编辑": "經手動編輯",

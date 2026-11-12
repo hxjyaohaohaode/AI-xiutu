@@ -1026,7 +1026,7 @@ export function AIPanel({
       onClick={() => setOverlay('tasks')}
     >
       {assistantOpen ? <Sparkle size={18} /> : task.icon}
-      <span>{assistantOpen ? t('AI 助手') : task.label}</span>
+      <span>{assistantOpen ? t('对话') : task.label}</span>
       <CaretDown size={13} />
     </button>
   );

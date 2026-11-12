@@ -76,6 +76,24 @@ export function ToolDock({
     const rail = nav.current;
     if (!rail) return;
     const measure = () => {
+      if (compact) {
+        const style = getComputedStyle(rail);
+        const gap = parseFloat(style.columnGap || '0') || 0;
+        const available = rail.clientWidth - parseFloat(style.paddingLeft || '0') -
+          parseFloat(style.paddingRight || '0');
+        const minimum = Math.max(52, ...[...rail.querySelectorAll<HTMLButtonElement>('button')].map((button) => {
+          const itemStyle = getComputedStyle(button);
+          return Math.ceil((button.querySelector('span')?.scrollWidth ?? 0) +
+            parseFloat(itemStyle.paddingLeft || '0') + parseFloat(itemStyle.paddingRight || '0') +
+            parseFloat(itemStyle.borderLeftWidth || '0') + parseFloat(itemStyle.borderRightWidth || '0'));
+        }));
+        if (available > 0) {
+          const slots = Math.max(1, Math.floor((available + gap) / (minimum + gap)));
+          const width = `${(available - gap * (slots - 1)) / slots}px`;
+          if (rail.style.getPropertyValue('--dock-item-width') !== width)
+            rail.style.setProperty('--dock-item-width', width);
+        }
+      }
       const left = rail.scrollLeft > 2;
       const right = rail.scrollLeft + rail.clientWidth < rail.scrollWidth - 2;
       setOverflow((previous) =>
@@ -84,6 +102,9 @@ export function ToolDock({
     };
     const observer = new ResizeObserver(measure);
     observer.observe(rail);
+    if (compact) {
+      for (const label of rail.querySelectorAll<HTMLElement>('button > span')) observer.observe(label);
+    }
     rail.addEventListener('scroll', measure, { passive: true });
     measure();
     return () => {
@@ -96,6 +117,7 @@ export function ToolDock({
       className="floating-tool-dock"
       aria-label={t('编辑工具')}
       data-motion="tool-dock"
+      data-compact={compact || undefined}
       data-selection-ready={selection ? 'true' : undefined}
       data-context-open={inspectorOpen || aiOpen ? 'true' : undefined}
       onKeyDown={(event) => {

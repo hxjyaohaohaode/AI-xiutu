@@ -74,6 +74,73 @@ assert.equal(report.testedCommit, expectedHead);
 assert.equal(report.state, 'passed');
 assert.equal(report.pageErrors.length, 0);
 assert.equal(report.unexpectedOrigins.length, 0);
+
+// This is a classification of already-blocked attempts, never permission to send.
+const sdkName = '@mediapipe/tasks-vision';
+const sdkTelemetryEndpoint = 'https://odml.pa.googleapis.com/v1/log';
+const webPackage = JSON.parse(await readFile(resolve(root, 'apps/web/package.json'), 'utf8'));
+const sdkVersion = webPackage.dependencies[sdkName];
+const dependencyLock = JSON.parse(await readFile(resolve(root, 'package-lock.json'), 'utf8'));
+assert.equal(sdkVersion, '1.2.2');
+assert.equal(dependencyLock.packages['node_modules/' + sdkName].version, sdkVersion);
+assert.ok(Array.isArray(report.blockedSdkTelemetryAttempts));
+assert.ok(Array.isArray(manifest.blockedSdkTelemetryAttempts));
+assert.deepEqual(manifest.blockedSdkTelemetryAttempts, report.blockedSdkTelemetryAttempts,
+  'Published telemetry evidence must exactly match the actual browser report.');
+const passedCases = new Set(report.cases.filter((entry) => entry.state === 'passed').map((entry) => entry.name));
+for (const attempt of report.blockedSdkTelemetryAttempts) {
+  assert.deepEqual(Object.keys(attempt).sort(), ['blocked', 'case', 'endpoint', 'method']);
+  assert.ok(passedCases.has(attempt.case));
+  assert.equal(attempt.endpoint, sdkTelemetryEndpoint);
+  assert.equal(attempt.method, 'POST');
+  assert.equal(attempt.blocked, true);
+}
+const expectedTelemetrySummary = {
+  sdk: sdkName, sdkVersion, endpoint: sdkTelemetryEndpoint, method: 'POST', blocked: true,
+  count: report.blockedSdkTelemetryAttempts.length,
+  enforcement: 'isolated-vite-context-route-abort', productionHeadersVerified: false,
+};
+assert.deepEqual(report.sdkTelemetrySummary, expectedTelemetrySummary);
+assert.deepEqual(manifest.sdkTelemetrySummary, expectedTelemetrySummary);
+
+// Font readiness alone can pass while every Chinese character is a missing glyph.
+const cjkFontFamilies = { 'zh-CN': 'Noto Sans CJK SC', 'zh-TW': 'Noto Sans CJK TC' };
+assert.ok(Array.isArray(report.cjkFontEvidence));
+assert.ok(Array.isArray(manifest.cjkFontEvidence));
+assert.deepEqual(manifest.cjkFontEvidence, report.cjkFontEvidence,
+  'Published font evidence must match the actual browser report.');
+const cjkCaptures = report.screenshots.filter((entry) =>
+  entry.state === 'captured' && !entry.failure && Object.hasOwn(cjkFontFamilies, entry.locale));
+const captureKey = (entry) => entry.case + '\n' + (entry.capture ?? entry.file);
+assert.deepEqual(report.cjkFontEvidence.map(captureKey).sort(), cjkCaptures.map(captureKey).sort(),
+  'Each Chinese screenshot needs its own rendered-font evidence.');
+assert.equal(new Set(report.cjkFontEvidence.map(captureKey)).size, report.cjkFontEvidence.length);
+for (const locale of Object.keys(cjkFontFamilies))
+  assert.ok(cjkCaptures.some((entry) => entry.locale === locale), 'Missing Chinese capture locale: ' + locale);
+for (const evidence of report.cjkFontEvidence) {
+  const capture = cjkCaptures.find((entry) => captureKey(entry) === captureKey(evidence));
+  assert.equal(evidence.locale, capture.locale);
+  assert.ok(passedCases.has(evidence.case));
+  assert.equal(evidence.method, 'CDP.CSS.getPlatformFontsForNode');
+  assert.ok(Array.isArray(evidence.samples) && evidence.samples.length > 0 && evidence.samples.length <= 3);
+  for (const sample of evidence.samples) {
+    assert.match(sample.selector, /^html > /);
+    assert.match(sample.text, /^\p{Script=Han}+$/u);
+    assert.equal(sample.hanCount, [...sample.text].length);
+    assert.ok(sample.hanCount > 0 && sample.hanCount <= 32);
+    assert.ok(Array.isArray(sample.fonts) && sample.fonts.length > 0);
+    for (const font of sample.fonts) {
+      assert.equal(typeof font.familyName, 'string');
+      assert.equal(typeof font.postScriptName, 'string');
+      assert.equal(typeof font.isCustomFont, 'boolean');
+      assert.ok(Number.isInteger(font.glyphCount) && font.glyphCount >= 0);
+    }
+    const rendered = sample.fonts.filter((font) => font.familyName === cjkFontFamilies[evidence.locale])
+      .reduce((count, font) => count + font.glyphCount, 0);
+    assert.ok(rendered >= sample.hanCount, 'Chinese text used a missing or incorrect regional font.');
+  }
+}
+
 let totalBytes = 0;
 for (const file of manifest.files) {
   assert.ok(PUBLISH_IMAGE_PATHS.includes(file.path));

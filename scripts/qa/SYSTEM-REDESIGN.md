@@ -12,6 +12,24 @@ workflow_dispatch 也受到精确分支限制；GitHub 手动调度是否可用�
 
 免费本地人物模型通过现有 vision:prepare 的固定摘要校验下载，然后随本地站点提供。人物截图必须经过真实识别和真实参数调整。模型或照片无法取得时检查失败，不生成替代的 AI 界面图片。
 
+## 本地 SDK 遥测的明确拦截
+
+检查从 apps/web/package.json 读取精确锁定的 @mediapipe/tasks-vision 1.2.2，并与 package-lock.json 的解析版本一致核对。已审阅的 SDK 使用 POST 向 https://odml.pa.googleapis.com/v1/log 尝试发送日志。此处不将遥测元数据称为“无敏感数据”，也不据此推断生产环境没有遥测。
+
+隔离浏览器仍阻止所有外部请求。只有完整 URL 严格等于上述地址、方法为 POST、query 和 fragment 均为空，并且 route.abort('blockedbyclient') 已成功完成的尝试，才单独进入 blockedSdkTelemetryAttempts；没有外连放行、伪造响应或重试。任何其他地址/方法仍作为未知外连尝试使检查失败，阻止操作本身出错也使检查失败。
+
+report.json 与 source-manifest.json 保存完全相同的安全条目和汇总：场景、固定 endpoint、方法、blocked:true、实际次数、SDK 名称与读取的版本。次数来自本轮实际事件，不强制为六次，也不把历史缺失的方法记录补写成 POST。不记录请求 body、headers 或 query。publisher 逐条验证精确字段、地址、方法和阻止状态，并校验汇总、次数、SDK 版本及两份记录一致。
+
+仓库 infra/Caddyfile 已配置 connect-src 'self'。本轮使用的 Vite preview 不带该生产响应头，隔离由原有唯一 context.route guard 完成。线上响应头未核验，本报告只说明本轮受控浏览器的阻止情况，不宣称线上 SDK 从不发起遥测。SDK 隐私边界参见 [官方隐私说明](https://developers.google.com/edge/mediapipe/solutions/privacy) 与 [服务条款](https://developers.google.com/edge/mediapipe/legal/tos)。
+
+## 简繁中文的实际字体门槛
+
+工作流安装 fonts-noto-cjk 与 fontconfig，刷新缓存，并用 fc-match 严格核对 Noto Sans CJK SC/TC 实际匹配的字体家族和文件；不能接受静默回退到没有汉字的字体。安装或匹配失败时不进入截图步骤。
+
+每张简体/繁体截图在 document.fonts.ready 后，从当前真实页面读取最多三个可见的纯汉字叶节点；弹窗打开时只在该弹窗内取样。隐藏、遮挡、inert 和收起 details 内文字不能提供证据，不新增测试节点，也不改写页面文字或图片。通过 CDP DOM.enable、CSS.enable、DOM.getDocument、DOM.querySelector、CSS.getPlatformFontsForNode 获取实际使用的字体与 glyphCount；简体必须由 Noto Sans CJK SC、繁体必须由 Noto Sans CJK TC 渲染取样汉字，仅有 CSS font-family 声明或字体加载完成不算通过。
+
+report.json 和 source-manifest.json 保存完全相同的 cjkFontEvidence，包含所属 case、截图名、语言、真实节点选择器、短汉字样本、实际字体及字形计数。publisher 要求两语均有覆盖、每张中文截图有对应证据、case 已通过、两份证据相同，且正确区域字体的字形计数覆盖样本；缺失、错误回退或零字形阻止图片提交。这个取样门槛解决已发现的中文缺字风险，不替代整页人工目检。既有16个case、34张发布图片和精确head限制保持不变。
+
 ## 五组不同的真实核心流程
 
 | 场景 | 视口 | 语言 | 主要风险 |
@@ -36,7 +54,7 @@ workspace、local、portrait、layers、tablet、phone 六类截图在三种语�
 
 ## 成功后的有限图片提交
 
-只有第二个 publish-captures job 获得 contents:write。它必须依赖第一个 job 完全成功，重新核对被测40位SHA、5个核心场景、报告状态、无浏览器错误/外连，以及每张图片的长度和 SHA-256。
+只有第二个 publish-captures job 获得 contents:write。它必须依赖第一个 job 完全成功，重新核对被测40位SHA、5个核心场景、报告状态、无浏览器错误或未知外连尝试、已知 SDK 遥测确已阻止且两份证据一致，逐张简繁中文的实际字体证据，以及每张图片的长度和 SHA-256。
 
 源码中的精确白名单只有：
 

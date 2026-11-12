@@ -332,7 +332,7 @@ export function defaultPanel(id: PanelId, view: Viewport): PanelGeometry {
     phone = view.bucket === 'phone';
   const width = phone ? body.width : id === 'ai' ? 390 : view.bucket === 'tablet' ? 320 : 344;
   const preferredHeight = phone
-    ? Math.min(id === 'ai' ? 390 : 340, body.height * (id === 'ai' ? 0.57 : 0.44))
+    ? Math.min(id === 'ai' ? 390 : 288, body.height * (id === 'ai' ? 0.57 : 0.44))
     : Math.min(id === 'ai' ? 680 : 600, body.height - panelBottomOffset(view) - 24);
   // Starting sizes leave usable image pixels, including on a 320px phone. This is
   // a default choice only: manual sizes and saved preferences retain their full

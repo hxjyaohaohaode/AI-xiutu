@@ -255,3 +255,12 @@
     animation: none;
   }
 }
+
+/* Editing already has the global view switcher and the persistent tool dock.
+   Keep its controls close to the image on phones and short landscape windows.
+   AI and collaboration retain their contextual navigation. */
+@media (max-width: 759px), (max-height: 520px) {
+  .studio-workspace .free-panel[data-panel-id='inspector'] .panel-context-navigation {
+    display: none;
+  }
+}
