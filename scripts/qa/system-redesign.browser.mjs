@@ -470,7 +470,8 @@ async function layout(page, label, selector = null) {
     }
     const selectedTool = scope.querySelector('.dock-tool-scroll > button[aria-pressed="true"]');
     const indicator = scope.querySelector('.dock-tool-scroll > .dock-selection');
-    const selectionOffset = selectedTool && visible(selectedTool) && indicator && visible(indicator)
+    const selectionOffset = selectedTool && visible(selectedTool) &&
+      indicator?.checkVisibility({ checkOpacity: true, checkVisibilityCSS: true })
       ? indicator.getBoundingClientRect().top - selectedTool.getBoundingClientRect().top
       : null;
     const dialog = scope instanceof HTMLDialogElement ? scope : null;
@@ -684,7 +685,8 @@ async function referenceControlReview() {
       assert.equal((await canvasPixels(page)).pixelSha256,baseline.pixelSha256,'Cancelled or undone scrub restores the real pixels');
       scrubs.push({cancel,modifierRebase:true,singleTransaction:true,restoredPixels:true});
     }
-    await layout(page,'actual Scrub modifiers, cancellation and single Undo');
+    const geometry = await layout(page,'actual Scrub modifiers, cancellation and single Undo');
+    assert.notEqual(geometry.selectionOffset, null, 'The selected Dock decoration must be measured');
     await capture(page,'interactions/scrub-desktop.png');
   } catch(error) {await failureEvidence(desktop.page);throw error;}
   finally {await closeCaseContext(desktop.context);}
