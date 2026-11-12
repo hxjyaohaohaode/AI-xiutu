@@ -39,10 +39,10 @@ RUN curl --fail --location --retry 2 https://codeload.github.com/strukturag/libh
     && PKG_CONFIG_PATH=/opt/heic/lib/pkgconfig cmake -S /tmp/heif -B /tmp/heif-build -DCMAKE_BUILD_TYPE=Release -DCMAKE_INSTALL_PREFIX=/opt/heic -DCMAKE_INSTALL_LIBDIR=lib -DCMAKE_PREFIX_PATH=/opt/heic -DCMAKE_INSTALL_RPATH=/opt/heic/lib \
       -DWITH_LIBDE265=ON -DWITH_LIBDE265_PLUGIN=OFF -DENABLE_PLUGIN_LOADING=OFF -DWITH_X265=OFF -DWITH_AOM_DECODER=OFF -DWITH_AOM_ENCODER=OFF -DWITH_DAV1D=OFF -DWITH_JPEG_DECODER=OFF -DWITH_JPEG_ENCODER=OFF -DWITH_LIBSHARPYUV=OFF -DWITH_EXAMPLES=OFF -DWITH_GDK_PIXBUF=OFF -DBUILD_TESTING=OFF -DBUILD_DOCUMENTATION=OFF \
     && cmake --build /tmp/heif-build --parallel 4 && cmake --install /tmp/heif-build
-COPY packages/media/native/heic-pq.c /tmp/heic-pq.c
+COPY packages/media/native/heic-hdr.c /tmp/heic-hdr.c
 RUN mkdir -p /opt/heic/bin \
-    && cc -std=c11 -Wall -Wextra -Werror -O2 -I/opt/heic/include -L/opt/heic/lib -Wl,-rpath,/opt/heic/lib /tmp/heic-pq.c -lheif -o /opt/heic/bin/heic-pq \
-    && /opt/heic/bin/heic-pq --probe
+    && cc -std=c11 -Wall -Wextra -Werror -O2 -I/opt/heic/include -L/opt/heic/lib -Wl,-rpath,/opt/heic/lib /tmp/heic-hdr.c -lheif -o /opt/heic/bin/heic-pq \
+    && /opt/heic/bin/heic-pq --probe-hlg
 
 # Optional native RAW/HDR decoder runtime.
 FROM server AS server-media

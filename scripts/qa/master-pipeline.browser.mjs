@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { mkdir, open as openFile, readFile, stat, writeFile } from 'node:fs/promises';
-import { resolve } from 'node:path';
+import { basename, resolve } from 'node:path';
 import { chromium } from 'playwright';
 import { createServer } from 'vite';
 import sharp from 'sharp';
@@ -73,19 +73,25 @@ try {
           .click();
       }
       let heicImport;
-      if (asset.pq) {
+      if (asset.pq || asset.hlg) {
+        const hlg = !!asset.hlg;
         await page.getByRole('button', { name: '原片与专业格式', exact: true }).click();
         const importer = page.getByRole('dialog', { name: '保留原件，轻量编辑', exact: true });
-        const chip = importer.locator('.media-import-limits').getByText(/^HEIC PQ/);
+        const chip = importer.locator('.media-import-limits').getByText(hlg ? /^HEIC \/ HIF HLG/ : /^HEIC PQ/);
         await chip.waitFor();
         const limit = await chip.innerText();
         const importOverflow = await importer.evaluate((node) => node.scrollWidth - node.clientWidth);
         assert.ok(importOverflow <= 1);
         await page.screenshot({ path: resolve(output, size.width + '-heic-import.png') });
         heicImport = { limit, overflow: importOverflow };
-        const file = process.env.MEDIA_QA_BROWSER_PQ_FILE;
+        const file = hlg ? process.env.MEDIA_QA_BROWSER_HLG_FILE : process.env.MEDIA_QA_BROWSER_PQ_FILE;
         if (file && size.width === 1440) {
-          await importer.getByLabel('选择高精度原件', { exact: true }).setInputFiles(file);
+          const bytes = await readFile(file);
+          await importer.getByLabel('选择高精度原件', { exact: true }).setInputFiles({
+            name: `browser-check-${basename(file)}`,
+            mimeType: 'image/heic',
+            buffer: bytes,
+          });
           const descriptor = page.waitForResponse(
             (response) =>
               response.request().method() === 'GET' &&
@@ -96,11 +102,11 @@ try {
           await importer.getByRole('button', { name: '导入原件', exact: true }).click();
           await importer.getByText('原件与母版已保存', { exact: true }).waitFor({ timeout: 90_000 });
           const record = await (await descriptor).json();
-          assert.equal(record.descriptor.original.sampleEncoding, 'pq');
+          assert.equal(record.descriptor.original.sampleEncoding, hlg ? 'hlg' : 'pq');
           assert.equal(record.descriptor.linearMaster.bitDepth, 32);
           const source = await context.request.get(new URL(record.downloads.original, origin).href);
           assert.equal(source.status(), 200);
-          assert.deepEqual(await source.body(), await readFile(file));
+          assert.deepEqual(await source.body(), bytes);
           heicImport.bytes = (await stat(file)).size;
           heicImport.sourcePreserved = true;
         }

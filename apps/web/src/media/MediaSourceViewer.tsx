@@ -1,6 +1,11 @@
 import { t } from '../i18n';
 import { useEffect, useRef, useState } from 'react';
-import type { MediaDescriptorV1, MediaGradeRevision, MediaPrecisionInput } from '@ai-xiutu/media';
+import {
+  hasDisplayHdr,
+  type MediaDescriptorV1,
+  type MediaGradeRevision,
+  type MediaPrecisionInput,
+} from '@ai-xiutu/media/types';
 import {
   NEUTRAL_PRECISION_EDIT,
   PRECISION_EDIT_CONTROLS,
@@ -100,8 +105,7 @@ export function MediaSourceViewer({ assetId }: { assetId: string }) {
         } else if (
           input === 'linear-master' &&
           record.descriptor.original.sampleEncoding !== 'sensor-raw' &&
-          record.descriptor.original.sampleEncoding !== 'gain-map' &&
-          record.descriptor.original.sampleEncoding !== 'pq'
+          !hasDisplayHdr(record.descriptor.original)
         )
           setEdit({ ...NEUTRAL_PRECISION_EDIT, toneMap: 'reinhard' });
       })
@@ -153,7 +157,7 @@ export function MediaSourceViewer({ assetId }: { assetId: string }) {
   const fitEncoding =
     descriptor?.original.sampleEncoding === 'sensor-raw'
       ? 'camera-raw'
-      : descriptor?.original.gainMap || descriptor?.original.pq
+      : descriptor && hasDisplayHdr(descriptor.original)
         ? 'display-hdr'
         : undefined;
   const fitMaster =
@@ -514,8 +518,7 @@ export function MediaSourceViewer({ assetId }: { assetId: string }) {
                       toneMap:
                         precisionInput === 'linear-master' &&
                         descriptor.original.sampleEncoding !== 'sensor-raw' &&
-                        descriptor.original.sampleEncoding !== 'gain-map' &&
-                        descriptor.original.sampleEncoding !== 'pq'
+                        !hasDisplayHdr(descriptor.original)
                           ? 'reinhard'
                           : 'none',
                     });

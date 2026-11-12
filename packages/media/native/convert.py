@@ -110,13 +110,13 @@ def main():
         }
         native["ultrahdr"] = "reference decoder"
         warnings = ["The JPEG gain map was decoded at full HDR intent. The float master uses linear Rec.709 and retains out-of-gamut values. The SDR working master uses the original SDR rendition and its ICC profile."]
-    elif request["kind"] == "heic-pq":
-        from heic_pq import decode_heic_pq
+    elif request["kind"] == "heic-hdr":
+        from heic_hdr import decode_heic_hdr
         from linear_export import develop, grade_gains
 
         raw = destination.with_name("heic-rgb16.bin")
         try:
-            pixels, linearize, source_info, native["libheif"] = decode_heic_pq(
+            pixels, linearize, source_info, native["libheif"] = decode_heic_hdr(
                 source, raw, request["heicDecoder"],
                 lambda width, height: admit_native(width, height, max_pixels, destination.parent),
             )
@@ -134,7 +134,12 @@ def main():
             )
         finally:
             raw.unlink(missing_ok=True)
-        warnings = ["ST 2084 samples are decoded using the source NCLX primaries and nominal diffuse white, defaulting to 203 cd/m² when unspecified. The Rec.709 float master retains signed RGB and HDR headroom. SDR uses the same display tone map as linear-master previews."]
+        transfer_notice = (
+            "BT.2100 HLG uses the Rec.2020 luminance OOTF for a 1000 cd/m² reference display."
+            if source_info["sampleEncoding"] == "hlg"
+            else "ST 2084 samples are decoded using the source NCLX primaries."
+        )
+        warnings = [transfer_notice + " The Rec.709 float master retains signed RGB and HDR headroom, relative to the declared diffuse white or 203 cd/m² when unspecified. SDR uses the same display tone map as linear-master previews."]
     elif request["kind"] == "hdr":
         image = oiio.ImageInput.open(source)
         if image is None:

@@ -14,6 +14,7 @@ import {
   createLinearWindowRuntime,
   getMediaCapabilities,
   hasDisplayHdr,
+  fitsGainMapRaster,
   MediaProcessingError,
   MEDIA_MAX_INPUT_BYTES,
   MEDIA_MAX_PIXELS,
@@ -739,6 +740,8 @@ export function registerMediaImport(app: FastifyInstance, db: Database, config: 
     const runtime = await capabilities;
     const precision = runtime.precisionEditing;
     const currentGrade = await grade(assetId, undefined);
+    const ultraHdrSource =
+      enabled && hasDisplayHdr(row.descriptor.original) && runtime.ultraHdrJpeg.available;
     return {
       descriptor: row.descriptor,
       downloads: {
@@ -759,8 +762,8 @@ export function registerMediaImport(app: FastifyInstance, db: Database, config: 
           master16: enabled && precision.master16,
           sourceSha256: row.descriptor.sourceSha256,
           floatAvailable: enabled && !!row.descriptor.linearMaster && precision.linearFloat,
-          ultraHdrJpeg:
-            enabled && hasDisplayHdr(row.descriptor.original) && runtime.ultraHdrJpeg.available,
+          ultraHdrJpeg: ultraHdrSource && fitsGainMapRaster(row.descriptor.master),
+          ultraHdrJpegCrop: ultraHdrSource,
           curves: {
             ...precision.curves,
             available: enabled && !!row.descriptor.linearMaster && precision.curves.available,
@@ -1155,6 +1158,8 @@ export function registerMediaImport(app: FastifyInstance, db: Database, config: 
         crop.top + crop.height > row.descriptor.master.height)
     )
       throw new HttpError(422, 'MEDIA_EXPORT_CROP', '导出裁切超出素材尺寸或所选格式范围。');
+    if (ultraHdr && !fitsGainMapRaster(crop ?? row.descriptor.master))
+      throw new HttpError(413, 'MEDIA_GAIN_MAP_DIMENSIONS', '增益图 JPEG 超出输出尺寸，请选择裁切或 EXR。');
     if (precisionEdit || body.precisionInput || floatFormat)
       await assertPrecision(row, body.expectedSourceSha256, precisionInput, precisionEdit);
     return sendMaster(req, reply, assetId, actor.id, row, {

@@ -17,6 +17,7 @@ interface Capabilities {
   maxHdrPixels: number;
   maxPsdPixels: number;
   heicPq?: { available: boolean; maxPixels: number; maxBytes: number };
+  heicHlg?: { available: boolean; maxPixels: number; maxBytes: number };
   maxInputBytes: number;
   rasterFormats: string[];
   maxChunkBytes: number;
@@ -310,6 +311,12 @@ export function MediaImportDialog({
                 <span>
                   HEIC PQ · {(caps.heicPq.maxPixels / 1e6).toLocaleString(getLocale())}{' '}
                   {t('百万像素')} · {Math.floor(caps.heicPq.maxBytes / 1024 ** 2)} MiB
+                </span>
+              )}
+              {caps.available && caps.heicHlg?.available && (
+                <span>
+                  HEIC / HIF HLG · {(caps.heicHlg.maxPixels / 1e6).toLocaleString(getLocale())}{' '}
+                  {t('百万像素')} · {Math.floor(caps.heicHlg.maxBytes / 1024 ** 2)} MiB
                 </span>
               )}
             </div>

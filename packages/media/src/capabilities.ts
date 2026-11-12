@@ -25,9 +25,11 @@ import {
   MEDIA_MIN_GAIN_MAP_SIDE,
   MEDIA_MAX_GAIN_MAP_SIDE,
   MEDIA_MAX_HEIC_PQ_PIXELS,
-  MEDIA_MAX_HEIC_PQ_BYTES,
-  MEDIA_MIN_HEIC_PQ_SIDE,
+  MEDIA_MAX_HEIC_HDR_BYTES,
+  MEDIA_MIN_HEIC_HDR_SIDE,
   MEDIA_MAX_HEIC_PQ_SIDE,
+  MEDIA_MAX_HEIC_HLG_PIXELS,
+  MEDIA_MAX_HEIC_HLG_SIDE,
   MEDIA_MAX_PREVIEW_EDGE,
 } from './types.js';
 const probes = new Map<string, { at: number; versions: Record<string, string> | null }>();
@@ -57,6 +59,11 @@ async function probeNative(
           '  result=subprocess.run([sys.argv[2],"--probe"],capture_output=True,text=True,timeout=2,check=True)',
           '  v["heic"]=result.stdout.strip()',
           ' except (OSError, ValueError, subprocess.SubprocessError): pass',
+          ' if v.get("heic"):',
+          '  try:',
+          '   result=subprocess.run([sys.argv[2],"--probe-hlg"],capture_output=True,text=True,timeout=2,check=True)',
+          '   v["heicHlg"]=result.stdout.strip()',
+          '  except (OSError, ValueError, subprocess.SubprocessError): pass',
           'print(json.dumps(v))',
         ].join('\n'),
         gainMapLibrary,
@@ -126,7 +133,8 @@ export async function getMediaCapabilities(
     }
   const gainMapLibrary =
     options.ultraHdrLibrary && isAbsolute(options.ultraHdrLibrary) ? options.ultraHdrLibrary : '';
-  const heicDecoder = options.heicDecoder && isAbsolute(options.heicDecoder) ? options.heicDecoder : '';
+  const heicDecoder =
+    options.heicDecoder && isAbsolute(options.heicDecoder) ? options.heicDecoder : '';
   const nativeVersions = nativeConfigured
     ? await probeNative(options.pythonExecutable!, gainMapLibrary, heicDecoder)
     : null;
@@ -157,9 +165,17 @@ export async function getMediaCapabilities(
     heicPq: {
       available: isolated && !!nativeVersions?.heic,
       maxPixels: Math.min(options.maxPixels ?? MEDIA_DEFAULT_MAX_PIXELS, MEDIA_MAX_HEIC_PQ_PIXELS),
-      maxBytes: MEDIA_MAX_HEIC_PQ_BYTES,
-      minSide: MEDIA_MIN_HEIC_PQ_SIDE,
+      maxBytes: MEDIA_MAX_HEIC_HDR_BYTES,
+      minSide: MEDIA_MIN_HEIC_HDR_SIDE,
       maxSide: MEDIA_MAX_HEIC_PQ_SIDE,
+      bitDepths: [10, 12],
+    },
+    heicHlg: {
+      available: isolated && !!nativeVersions?.heicHlg,
+      maxPixels: Math.min(options.maxPixels ?? MEDIA_DEFAULT_MAX_PIXELS, MEDIA_MAX_HEIC_HLG_PIXELS),
+      maxBytes: MEDIA_MAX_HEIC_HDR_BYTES,
+      minSide: MEDIA_MIN_HEIC_HDR_SIDE,
+      maxSide: MEDIA_MAX_HEIC_HLG_SIDE,
       bitDepths: [10, 12],
     },
     maxConcurrent: 1,

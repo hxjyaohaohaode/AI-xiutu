@@ -10,7 +10,7 @@ static int checked(heif_error result) {
 }
 
 int main(int argc, char **argv) {
-    if (argc == 2 && strcmp(argv[1], "--probe") == 0) {
+    if (argc == 2 && (strcmp(argv[1], "--probe") == 0 || strcmp(argv[1], "--probe-hlg") == 0)) {
         if (!heif_have_decoder_for_format(heif_compression_HEVC)) return 1;
         puts(heif_get_version());
         return 0;
@@ -35,17 +35,25 @@ int main(int argc, char **argv) {
         heif_context_get_number_of_top_level_images(context) != 1 ||
         heif_image_handle_has_alpha_channel(handle) ||
         heif_image_handle_get_number_of_auxiliary_images(handle, 0) ||
-        width < 8 || height < 8 || width > 8192 || height > 8192 ||
-        (long long)width * height > 24000000 || (bits != 10 && bits != 12)) {
-        fprintf(stderr, "HEIC requires a bounded single opaque PQ raster\n");
+        width < 8 || height < 8 || (bits != 10 && bits != 12)) {
+        fprintf(stderr, "HEIC requires a single opaque 10- or 12-bit HDR raster\n");
         goto done;
     }
     if (!checked(heif_image_handle_get_nclx_color_profile(handle, &profile))) goto done;
     const unsigned int primaries = profile->color_primaries;
-    if (profile->transfer_characteristics != heif_transfer_characteristic_ITU_R_BT_2100_0_PQ ||
-        (primaries != 1 && primaries != 9 && primaries != 12) ||
+    const unsigned int transfer = profile->transfer_characteristics;
+    const int hlg = transfer == heif_transfer_characteristic_ITU_R_BT_2100_0_HLG;
+    const int pq = transfer == heif_transfer_characteristic_ITU_R_BT_2100_0_PQ;
+    if ((!pq && !hlg) || (primaries != 1 && primaries != 9 && primaries != 12) ||
+        (hlg && primaries != 9) ||
         heif_image_handle_get_raw_color_profile_size(handle) != 0) {
-        fprintf(stderr, "HEIC requires an explicit supported NCLX PQ colour profile\n");
+        fprintf(stderr, "HEIC requires a supported NCLX HDR colour profile\n");
+        goto done;
+    }
+    const int max_side = hlg ? 10000 : 8192;
+    const long long max_pixels = hlg ? 50000000 : 24000000;
+    if (width > max_side || height > max_side || (long long)width * height > max_pixels) {
+        fprintf(stderr, "HEIC dimensions exceed the transfer-specific decoder limit\n");
         goto done;
     }
     if (decode) {
@@ -78,8 +86,8 @@ int main(int argc, char **argv) {
     }
     const uint32_t diffuse_white = heif_image_handle_get_nominal_diffuse_white_luminance(handle);
     printf("{\"width\":%d,\"height\":%d,\"bitDepth\":%d,\"primaries\":%u,"
-           "\"diffuseWhite\":%u,\"codec\":\"%s\"}\n",
-           width, height, bits, primaries, diffuse_white, heif_get_version());
+           "\"transfer\":%u,\"diffuseWhite\":%u,\"codec\":\"%s\"}\n",
+           width, height, bits, primaries, transfer, diffuse_white, heif_get_version());
     exit_code = 0;
 done:
     if (output) fclose(output);
