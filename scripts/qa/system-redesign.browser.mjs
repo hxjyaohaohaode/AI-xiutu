@@ -60,6 +60,8 @@ const report = {
 };
 const published = [];
 const photos = new Map();
+const caseContexts = new Set();
+const failures = new Map();
 let memoryDb, socket, db, app, preview, browser, activePage;
 let activeCase = 'bootstrap';
 let canonicalLogo;
@@ -72,8 +74,87 @@ async function until(read, label, timeout = 25000) {
   } while (Date.now() < deadline);
   throw new Error('Timed out: ' + label);
 }
+
+async function failureEvidence(page = activePage) {
+  if (failures.has(activeCase)) return failures.get(activeCase);
+  const evidence = { case: activeCase, pageAvailable: !!page && !page.isClosed() };
+  failures.set(activeCase, evidence);
+  if (!evidence.pageAvailable) return evidence;
+  const safe = (value, limit = 500) => String(value ?? '')
+    .replace(/\b[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}\b/gi, '[redacted email]')
+    .replace(/\+?\d[\d ()-]{8,}\d/g, '[redacted phone]')
+    .replace(/(?:Bearer\s+)?[A-Za-z0-9_-]{28,}(?:\.[A-Za-z0-9_-]+)*/g, '[redacted identifier]')
+    .replace(/界面验收/g, '[fixture user]').slice(0, limit);
+  try {
+    evidence.dom = await page.evaluate(() => {
+      const visible = (node) => {
+        if (!(node instanceof Element) || node.closest('[hidden],[inert],[aria-hidden="true"]')) return false;
+        const r = node.getBoundingClientRect(), css = getComputedStyle(node);
+        return r.width > 0 && r.height > 0 && css.visibility !== 'hidden' &&
+          Number(css.opacity) > .01 && r.bottom > 0 && r.top < innerHeight &&
+          r.right > 0 && r.left < innerWidth;
+      };
+      const panels = [...document.querySelectorAll('.free-panel,[data-panel-id],dialog')].slice(0, 20).map((node) => ({
+        tag: node.tagName.toLowerCase(), panel: node.getAttribute('data-panel-id'),
+        hidden: node.hasAttribute('hidden'), inert: node.hasAttribute('inert'),
+        ariaHidden: node.getAttribute('aria-hidden'), ariaExpanded: node.getAttribute('aria-expanded'),
+        open: node.hasAttribute('open'), visible: visible(node),
+      }));
+      const controls = [...document.querySelectorAll('[data-control-id]')].filter(visible).slice(0, 80).map((node) => ({
+        id: node.getAttribute('data-control-id'), pressed: node.getAttribute('aria-pressed'),
+        selected: node.getAttribute('aria-selected'), disabled: node.matches(':disabled'),
+      }));
+      const tools = [...document.querySelectorAll('[data-dock-tool]')].filter(visible).slice(0, 24).map((node) => ({
+        id: node.getAttribute('data-dock-tool'), pressed: node.getAttribute('aria-pressed'),
+        expanded: node.getAttribute('aria-expanded'),
+      }));
+      const fragments = [];
+      const walker = document.createTreeWalker(document.body, NodeFilter.SHOW_TEXT);
+      let textLength = 0, node;
+      while ((node = walker.nextNode()) && textLength < 3000) {
+        const owner = node.parentElement;
+        if (!owner || !visible(owner) ||
+          owner.closest('input,textarea,select,[role="textbox"],script,style,[data-sensitive],[class*="account"],[class*="profile"],[data-testid="account-center"]')) continue;
+        const value = node.textContent?.replace(/\s+/g, ' ').trim();
+        if (value) { fragments.push(value); textLength += value.length + 1; }
+      }
+      return {
+        path: location.pathname,
+        route: location.hash.match(/^#\/[a-z-]+/)?.[0] ?? '',
+        panels, controls, tools,
+        body: fragments.join(' ').slice(0, 3000),
+      };
+    });
+    evidence.dom.path = safe(evidence.dom.path, 180);
+    evidence.dom.body = safe(evidence.dom.body, 3000);
+    console.error('DIAGNOSTIC ' + activeCase + ' ' + JSON.stringify(evidence.dom));
+  } catch (error) {
+    evidence.diagnosticError = safe(error?.message ?? error);
+    console.error('DIAGNOSTIC ' + activeCase + ' unavailable: ' + evidence.diagnosticError);
+  }
+  const name = 'failures/' + activeCase.replace(/[^a-zA-Z0-9_-]+/g, '-') + '.png';
+  try {
+    const path = resolve(artifacts, name);
+    await mkdir(dirname(path), { recursive: true });
+    const bytes = await page.screenshot({
+      path, timeout: 5000,
+      mask: [page.locator('input[type="password"]:visible')],
+    });
+    evidence.screenshot = name;
+    report.screenshots.push({ case: activeCase, file: name, state: 'captured', bytes: bytes.length, sha256: sha256(bytes), viewport: page.viewportSize(), failure: true });
+  } catch (error) {
+    evidence.screenshotError = safe(error?.message ?? error);
+    report.screenshots.push({ case: activeCase, file: name, state: 'failed', message: evidence.screenshotError });
+  }
+  return evidence;
+}
+async function closeCaseContext(context) {
+  try { await context.close(); }
+  finally { caseContexts.delete(context); }
+}
 async function check(name, run) {
   activeCase = name;
+  activePage = undefined;
   const started = Date.now();
   try {
     const details = await run();
@@ -82,14 +163,18 @@ async function check(name, run) {
     return details;
   } catch (error) {
     const message = String(error?.stack ?? error).slice(0, 6000);
-    report.cases.push({ name, state: 'failed', durationMs: Date.now() - started, message });
+    const diagnostics = await failureEvidence();
+    report.cases.push({ name, state: 'failed', durationMs: Date.now() - started, message, diagnostics });
     console.error('FAIL ' + name + ': ' + String(error?.message ?? error).slice(0, 1500));
-    if (activePage && !activePage.isClosed()) {
-      const name = 'failure-' + String(report.cases.length).padStart(2, '0') + '.png';
-      try { await activePage.screenshot({ path: resolve(artifacts, name) }); }
-      catch (failure) { report.screenshots.push({ file: name, state: 'failed', message: String(failure.message) }); }
-    }
     return null;
+  } finally {
+    for (const context of [...caseContexts]) {
+      try { await closeCaseContext(context); }
+      catch (error) {
+        (report.cleanupErrors ??= []).push({ resource: 'browser context', case: name, message: String(error.message).slice(0, 500) });
+      }
+    }
+    activePage = undefined;
   }
 }
 async function settle(page) {
@@ -115,6 +200,7 @@ async function newPage(specification, route = '/#/studio', signedIn = false) {
     reducedMotion: specification.motion ?? 'no-preference', locale: specification.locale,
     acceptDownloads: true, serviceWorkers: 'block',
   });
+  caseContexts.add(context);
   context.setDefaultTimeout(25000);
   context.setDefaultNavigationTimeout(30000);
   await context.addInitScript(({ locale, theme }) => {
@@ -294,7 +380,8 @@ async function tool(page, id) {
 }
 async function parameter(page, id, value, owner = '.free-panel[aria-hidden="false"]') {
   const button = page.locator(owner + ' [data-control-id="' + id + '"]:visible').first();
-  await button.click();
+  await button.waitFor({ state: 'visible', timeout: 5000 });
+  await button.click({ timeout: 5000 });
   const shelf = button.locator('..').locator('..');
   const current = shelf.locator('.parameter-shelf-current');
   await current.locator('.precision-value').click();
@@ -364,7 +451,7 @@ async function coreFlow(specification) {
     await importPhoto(page, 'coast');
     await tool(page, 'light');
     const original = await canvasPixels(page);
-    await parameter(page, 'adjustments.exposure', 0.35);
+    await parameter(page, 'exposure', 0.35);
     const edited = await until(async () => {
       const frame = await canvasPixels(page);
       return frame.pixelSha256 !== original.pixelSha256 ? frame : null;
@@ -411,7 +498,10 @@ async function coreFlow(specification) {
       reducedMotion: specification.motion, original, edited, held, exported,
       assertions: ['real import', 'numeric commit', 'changed canvas pixels', 'undo', 'redo', 'held original', 'keyboard split comparison', 'decoded full-size PNG', 'modal Tab and Escape'],
     };
-  } finally { await context.close(); }
+  } catch (error) {
+    await failureEvidence(page);
+    throw error;
+  } finally { await closeCaseContext(context); }
 }
 async function inspectAbout(specification) {
   const { context, page } = await newPage(specification, '/');
@@ -486,7 +576,10 @@ async function inspectAbout(specification) {
     assert.equal(await page.locator('.image-frame canvas').count(), 0, 'The primary About action opens the actual empty studio without inserting a marketing photo.');
     await logo(page, specification.id + ': entered studio');
     return { scenario: specification.id, nativeScrollSteps: positions.length, sections: [...seen], noDisclosureClicks: true, screenshotBytesVerified: true, directPrimaryEntry: true };
-  } finally { await context.close(); }
+  } catch (error) {
+    await failureEvidence(page);
+    throw error;
+  } finally { await closeCaseContext(context); }
 }
 async function downloadPhotos() {
   for (const source of PHOTO_SOURCES) {
@@ -526,13 +619,13 @@ async function productScreens(locale) {
   try {
     await importPhoto(page, 'coast');
     await tool(page, 'light');
-    await parameter(page, 'adjustments.exposure', 0.25);
+    await parameter(page, 'exposure', 0.25);
     await layout(page, locale + ': workspace capture');
     await productCapture(page, 'workspace', locale, 'coast', 'Actual local exposure adjustment');
     await tool(page, 'local');
     await page.locator('[data-motion="region-controls"]:visible > .tonal-tabs > button').first().click();
     await page.locator('[data-motion="region-controls"]:visible .advanced-object-list .object-name').waitFor();
-    await parameter(page, 'adjustments.exposure', 0.25, '[data-motion="region-controls"]:visible');
+    await parameter(page, 'exposure', 0.25, '[data-motion="region-controls"]:visible');
     await layout(page, locale + ': local capture');
     await productCapture(page, 'local', locale, 'coast', 'Actual radial region created and adjusted through UI');
     await tool(page, 'composite');
@@ -550,7 +643,10 @@ async function productScreens(locale) {
     await parameter(page, 'y', 0.2, '[data-motion="composite-controls"]:visible');
     await layout(page, locale + ': layers capture');
     await productCapture(page, 'layers', locale, ['coast', 'portrait'], 'Actual imported image layer with UI position and scale controls');
-  } finally { await context.close(); }
+  } catch (error) {
+    await failureEvidence(page);
+    throw error;
+  } finally { await closeCaseContext(context); }
   const portrait = await newPage(specification);
   try {
     await importPhoto(portrait.page, 'portrait');
@@ -571,16 +667,22 @@ async function productScreens(locale) {
     await parameter(portrait.page, controlId, value, '.portrait-controls-v3');
     await layout(portrait.page, locale + ': portrait capture');
     await productCapture(portrait.page, 'portrait', locale, 'portrait', 'Actual local model inference and person-specific adjustment; no supplier call');
-  } finally { await portrait.context.close(); }
+  } catch (error) {
+    await failureEvidence(portrait.page);
+    throw error;
+  } finally { await closeCaseContext(portrait.context); }
   for (const [name, viewport] of [['tablet', { width: 1024, height: 768 }], ['phone', { width: 390, height: 844 }]]) {
     const device = await newPage({ ...specification, viewport, touch: true });
     try {
       await importPhoto(device.page, 'coast');
       await tool(device.page, 'light');
-      await parameter(device.page, 'adjustments.exposure', 0.25);
+      await parameter(device.page, 'exposure', 0.25);
       await layout(device.page, locale + ': ' + name + ' capture');
       await productCapture(device.page, name, locale, 'coast', 'Actual responsive editor; viewport emulation, not a physical device claim');
-    } finally { await device.context.close(); }
+    } catch (error) {
+      await failureEvidence(device.page);
+      throw error;
+    } finally { await closeCaseContext(device.context); }
   }
   return { locale, screens: SCREEN_NAMES };
 }
@@ -644,13 +746,74 @@ async function supplementalViews(config) {
   }, '/#/studio', signedIn);
   try {
     await page.getByRole('button', { name: '打开空间与项目', exact: true }).click();
-    await page.getByRole('navigation', { name: '项目', exact: true })
-      .getByRole('button', { name: projectName, exact: true }).click();
+    const [projectResponse] = await Promise.all([
+      page.waitForResponse((response) => new URL(response.url()).pathname === '/v1/projects/' + projectId && response.request().method() === 'GET'),
+      page.getByRole('navigation', { name: '项目', exact: true })
+        .getByRole('button', { name: projectName, exact: true }).click(),
+    ]);
+    assert.equal(projectResponse.status(), 200, 'The UI must load the selected project through its real permissions.');
+    const selectedProject = await projectResponse.json();
+    assert.equal(selectedProject.project.id, projectId);
+    assert.deepEqual(selectedProject.assets.map((asset) => asset.id).sort(), stored.map((source) => source.assetId).sort());
+    assert.deepEqual(selectedProject.artworks.map((work) => work.title).sort(), ['Coast study', 'Portrait study']);
     await changeView(page, 'works');
-    await page.locator('.artwork-card').first().waitFor();
-    assert.equal(await page.locator('.artwork-card').count(), 2);
+    const library = page.locator('.asset-library:visible');
+    await library.getByRole('heading', { name: projectName, exact: true }).waitFor();
+    await library.locator('.library-asset').first().waitFor();
+    assert.equal(await library.locator('.library-asset').count(), 2);
+    const savedWorks = library.locator('.library-version-links > button');
+    assert.deepEqual((await savedWorks.locator('span').allTextContents()).sort(), ['Coast study', 'Portrait study']);
     await layout(page, 'isolated project gallery');
     await capture(page, 'views/works.png');
+    const restoration = { state: 'unavailable', quoteVerified: false, createdDerivedAssets: 0 };
+    const derivePath = '/v1/projects/' + projectId + '/derived-assets';
+    let quoteResponse;
+    const onRestorationResponse = (response) => {
+      if (new URL(response.url()).pathname === derivePath + '/quote' && response.request().method() === 'POST')
+        quoteResponse = response;
+    };
+    const onRestorationRequest = (request) => {
+      if (new URL(request.url()).pathname === derivePath && request.method() === 'POST')
+        restoration.createdDerivedAssets++;
+    };
+    page.on('response', onRestorationResponse);
+    page.on('request', onRestorationRequest);
+    try {
+      await library.locator('.library-restoration-action').first().click();
+      const repair = page.locator('dialog.restoration-dialog[open]');
+      await repair.waitFor();
+      const state = await until(async () => {
+        if (quoteResponse) return 'quoted';
+        if (await repair.getByText('当前服务未开放照片修复。', { exact: true }).isVisible()) return 'unavailable';
+        return null;
+      }, 'restoration capability or its actual read-only source quote');
+      if (state === 'quoted') {
+        assert.equal(quoteResponse.status(), 200, 'The repair estimate must reach the real quote route.');
+        const quote = await quoteResponse.json();
+        assert.equal(quote.reservesQuota, false);
+        assert.equal(quote.checksDecodedPixels, false);
+        assert.equal(quote.sources.length, 1);
+        assert.ok(stored.some((source) => source.assetId === quote.sources[0].assetId));
+        assert.equal(quote.available, true, 'Default repair settings must fit the advertised budget for this public fixture.');
+        await repair.locator('.restoration-status').getByText(/预算检查通过/).waitFor();
+        restoration.state = 'read-only-quote-confirmed';
+        restoration.quoteVerified = true;
+      } else {
+        console.log('RESTORATION unavailable: the actual service does not advertise photo repair; no quote or mutation is claimed.');
+      }
+      await layout(page, 'restoration denoise dialog');
+      await capture(page, 'views/restoration-denoise.png');
+      await repair.getByRole('button', { name: '运动模糊', exact: true }).click();
+      await repair.locator('input[type="number"][aria-label="运动长度"]').waitFor();
+      await layout(page, 'restoration motion dialog');
+      await capture(page, 'views/restoration-motion.png');
+      await page.keyboard.press('Escape');
+      await repair.waitFor({ state: 'hidden' });
+      assert.equal(restoration.createdDerivedAssets, 0, 'Inspecting repair settings and quotes must never create an output.');
+    } finally {
+      page.off('response', onRestorationResponse);
+      page.off('request', onRestorationRequest);
+    }
     await changeView(page, 'docs');
     await page.locator('.document-row').filter({ hasText: 'Retouch notes' }).click();
     await page.locator('.document-editor').waitFor();
@@ -677,10 +840,14 @@ async function supplementalViews(config) {
     await capture(page, 'account/center.png');
     return {
       environment: 'One disposable account and real local project with two public photos and one API-created document.',
-      views: ['works', 'documents', 'collaborate', 'usage', 'assistant-unavailable', 'account'],
+      views: ['works', 'restoration-read-only', 'documents', 'collaborate', 'usage', 'assistant-unavailable', 'account'],
+      restoration,
       liveCloudServiceAcceptance: false, multiPersonSessionAcceptance: false,
     };
-  } finally { await context.close(); }
+  } catch (error) {
+    await failureEvidence(page);
+    throw error;
+  } finally { await closeCaseContext(context); }
 }
 try {
   await downloadPhotos();
@@ -746,7 +913,10 @@ try {
       await layout(page, 'dark studio');
       await capture(page, 'brand/dark-studio.png');
       return { source: canonicalLogo, favicon, sha256: sha256(logoBytes) };
-    } finally { await context.close(); }
+    } catch (error) {
+    await failureEvidence(page);
+    throw error;
+  } finally { await closeCaseContext(context); }
   });
   await check('capture-completeness-and-runtime-errors', async () => {
     assert.deepEqual([...published.map((file) => file.path)].sort(), [...PUBLISH_IMAGE_PATHS].sort());
@@ -754,7 +924,7 @@ try {
     assert.deepEqual(report.unexpectedOrigins, [], 'The browser must not contact any external service.');
     return { publishedImageCount: published.length };
   });
-  report.state = report.cases.some((entry) => entry.state !== 'passed') ? 'failed' : 'passed';
+  report.state = report.cases.some((entry) => entry.state !== 'passed') || report.cleanupErrors?.length ? 'failed' : 'passed';
 } catch (error) {
   report.state = 'failed';
   report.failure = { case: activeCase, message: String(error?.stack ?? error).slice(0, 6000) };

@@ -148,7 +148,7 @@ export const traditional: Readonly<Record<string, string>> = {
   ...nativeGradeTraditionalChinese,
   ...restorationTraditionalChinese,
   '确认 AI 调整': '套用 AI 調整',
-  '本地编辑': '本地編輯',
+  '本地编辑': '本機編輯',
   "格式像素上限": "格式像素上限",
   "高精度导入暂不可用，普通图片仍可在本地编辑。": "高精度匯入暫不可用，一般圖片仍可在本地編輯。",
   "与 PSD 合成图；RAW / EXR / Radiance 暂不可用。": "與 PSD 合成圖；RAW / EXR / Radiance 暫不可用。",

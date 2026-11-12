@@ -91,16 +91,15 @@ export function QuotaManager() {
       if (!alive.current) return;
       // The mutation receipt is authoritative. A later read failure must never
       // turn a committed adjustment into a retryable failed write.
-      setAccount((current) =>
-        current?.user.id === snapshot.actorId
-          ? {
-              ...current,
-              spaces: current.spaces.map((item) =>
-                item.id === snapshot.spaceId ? { ...item, entitlements: receipt.entitlements } : item,
-              ),
-            }
-          : current,
-      );
+      setAccount((current) => {
+        if (!current || current.user.id !== snapshot.actorId) return current;
+        return {
+          ...current,
+          spaces: current.spaces.map((item) =>
+            item.id === snapshot.spaceId ? { ...item, entitlements: receipt.entitlements } : item,
+          ),
+        };
+      });
       setKey(secureUuid());
       setReason('');
       setSuccess(

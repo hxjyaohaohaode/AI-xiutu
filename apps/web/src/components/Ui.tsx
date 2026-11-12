@@ -65,7 +65,7 @@ export function EmptyState({
 }: {
   icon: ReactNode;
   title: string;
-  description: string;
+  description?: string;
   action?: ReactNode;
 }) {
   return (
@@ -74,7 +74,7 @@ export function EmptyState({
         {icon}
       </div>
       <h2>{title}</h2>
-      <p>{description}</p>
+      {description?.trim() && <p>{description}</p>}
       {action}
     </div>
   );
