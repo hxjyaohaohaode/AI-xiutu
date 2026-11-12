@@ -28,10 +28,6 @@ body[data-site-page='account'] #root {
 .account-page :where(button, a, input, select) {
   -webkit-tap-highlight-color: transparent;
 }
-.account-page :where(button, a):focus-visible {
-  outline: 2px solid var(--focus-ring);
-  outline-offset: 4px;
-}
 .account-page-header {
   display: flex;
   align-items: center;
@@ -98,6 +94,9 @@ body[data-site-page='account'] #root {
 .account-page-content {
   min-width: 0;
   width: 100%;
+}
+.account-page-center .account-page-main {
+  margin-top: clamp(14px, 3vh, 32px);
 }
 .account-page-heading {
   margin: 0 0 24px;
@@ -319,7 +318,7 @@ body[data-site-page='account'] #root {
     margin-bottom: 20px;
   }
   .account-page-heading h1 {
-    font-size: 27px;
+    font-size: 22px;
   }
   .account-page.account-auth .auth-fields {
     gap: 12px;

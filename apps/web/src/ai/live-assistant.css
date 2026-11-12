@@ -968,23 +968,22 @@
   }
 }
 .assistant-workspace {
-  gap: 12px;
-}
-.assistant-workspace > h3 {
-  padding-block: 5px 0;
-  font-size: 13px;
-  font-weight: 550;
+  gap: 0;
 }
 .assistant-workspace .workspace-section,
 .live-assistant-v2 .assistant-workspace .workspace-section {
-  padding: 13px 14px;
-  background: var(--surface-secondary);
-  border-radius: 11px;
+  padding: 10px 0;
+  background: transparent;
+  border-radius: 0;
   border: 0;
+  border-bottom: 1px solid var(--ui-divider);
   min-width: 0;
 }
+.live-assistant-v2 .assistant-workspace .workspace-section:last-child {
+  border-bottom: 0;
+}
 .workspace-section > h4 {
-  margin-bottom: 10px;
+  margin-bottom: 6px;
   gap: 7px;
   font-size: 12px;
 }
@@ -994,10 +993,10 @@
   gap: 7px;
 }
 .workspace-section .workspace-choices button {
-  min-height: 38px;
+  min-height: 36px;
   text-align: start;
   padding: 8px 11px;
-  background: var(--surface);
+  background: var(--surface-secondary);
   font-size: 12px;
   line-height: 1.6;
 }

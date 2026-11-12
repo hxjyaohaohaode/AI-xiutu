@@ -111,15 +111,15 @@
   display: grid;
   grid-template-rows: minmax(0, 1fr) auto;
   align-self: flex-start;
-  width: min(162px, 60%);
-  height: clamp(68px, 14dvh, 126px);
+  width: min(140px, 60%);
+  height: clamp(68px, 12dvh, 108px);
   min-width: 0;
   margin: 0;
   padding: 4px;
   overflow: hidden;
-  border: 1px solid var(--line);
-  border-radius: 14px;
-  background: var(--surface-secondary);
+  border: 0;
+  border-radius: 10px;
+  background: var(--surface-hover);
 }
 .ai-attachment-thumbnail {
   display: block;
@@ -322,30 +322,23 @@
   flex-direction: column;
   align-items: stretch;
   min-width: 0;
-  gap: 6px;
+  gap: 4px;
   margin: 0;
-  padding: 10px 10px 8px;
-  border: 1px solid var(--line);
-  border-radius: var(--ui-prompt-radius);
+  padding: 8px 10px 5px;
+  border: 0;
+  border-radius: 16px;
   background: var(--ui-prompt-surface);
   color: var(--ink);
-  box-shadow: var(--ui-lift);
-  transition:
-    border-color 140ms ease,
-    box-shadow 140ms ease;
-}
-.ai-composer-surface:focus-within {
-  border-color: color-mix(in srgb, var(--focus-ring) 72%, var(--line));
-  box-shadow: 0 0 0 3px color-mix(in srgb, var(--focus-ring) 10%, transparent), var(--ui-lift);
+  box-shadow: none;
 }
 .ai-composer-surface .ai-composer-input {
   display: block;
   flex: none;
   width: 100%;
   min-width: 0;
-  min-height: 36px;
+  min-height: 32px;
   max-height: 136px;
-  padding: 4px 6px;
+  padding: 3px 4px;
   margin: 0;
   border: 0;
   border-radius: 0;
@@ -366,8 +359,9 @@
   opacity: 1;
 }
 .ai-composer-surface .ai-composer-input:focus-visible {
-  /* The surrounding composer already carries the keyboard focus ring. */
   outline: none;
+  box-shadow: none;
+  caret-color: var(--accent-ink);
 }
 .ai-composer-input:disabled {
   opacity: 0.7;
@@ -394,28 +388,42 @@
   width: 36px;
   height: 36px;
   padding: 0;
-  border: 1px solid var(--line);
+  border: 0;
   border-radius: var(--ui-pill);
-  background: var(--surface-secondary);
+  background: transparent;
   color: var(--ink);
 }
 .ai-composer-options .ai-add-context[aria-expanded='true'] {
-  background: var(--accent-soft);
-  color: var(--accent-ink);
+  background: var(--surface-hover);
+  color: var(--ink);
 }
 .ai-prompt-source-menu {
   position: fixed;
   inset: auto;
   margin: 0;
-  padding: 5px;
+  padding: 4px;
   overflow-y: auto;
   overscroll-behavior: contain;
-  border: 1px solid var(--line);
-  border-radius: var(--ui-card-radius);
+  border: 0;
+  border-radius: 12px;
   background: var(--surface-raised);
   color: var(--ink);
-  box-shadow: var(--shadow-md);
+  box-shadow: 0 10px 30px -10px rgb(var(--color-shadow) / 35%);
   transform-origin: left bottom;
+}
+.ai-prompt-source-menu::before {
+  content: '';
+  position: absolute;
+  inset: var(--source-row-y, 4px) 4px auto;
+  height: var(--source-row-height, 36px);
+  border-radius: 8px;
+  background: var(--surface-hover);
+  opacity: 0;
+  pointer-events: none;
+  transition: top 220ms cubic-bezier(0.23, 1, 0.32, 1), height 220ms ease, opacity 150ms ease;
+}
+.ai-prompt-source-menu[data-highlight]::before {
+  opacity: 1;
 }
 .ai-prompt-source-menu[data-placement='below'] {
   transform-origin: left top;
@@ -424,14 +432,15 @@
   animation: ai-source-menu-enter 170ms var(--ease-enter) both;
 }
 .ai-prompt-source-menu > button {
+  position: relative;
   display: flex;
   align-items: center;
   gap: 9px;
   width: 100%;
-  min-height: 40px;
-  padding: 6px 10px;
+  min-height: 36px;
+  padding: 4px 8px;
   border: 0;
-  border-radius: 10px;
+  border-radius: 8px;
   background: transparent;
   color: var(--ink);
   font-size: 13px;
@@ -440,8 +449,8 @@
 .ai-prompt-source-menu > button > span {
   flex: 1;
 }
-.ai-prompt-source-menu > button:not(:disabled):is(:hover, :focus-visible) {
-  background: var(--surface-hover);
+.ai-prompt-source-menu > button:focus-visible {
+  outline: none;
 }
 .ai-prompt-source-menu > button[aria-pressed='true'] {
   color: var(--accent-ink);
@@ -458,6 +467,9 @@
 @media (prefers-reduced-motion: reduce) {
   .ai-prompt-source-menu:popover-open {
     animation: none;
+  }
+  .ai-prompt-source-menu::before {
+    transition: none;
   }
 }
 .ai-composer-surface .ai-model-trigger {
@@ -1172,8 +1184,8 @@
 }
 .ai-workbench-v2
   :is(.ai-task-trigger, .ai-send-button, .ai-model-trigger, .icon-button):focus-visible {
-  outline: 2px solid var(--focus-ring);
-  outline-offset: 2px;
+  outline: 1.5px solid var(--focus-ring);
+  outline-offset: -3px;
 }
 @container workspace-panel (max-height: 360px) {
   .ai-workbench-v2 .ai-conversation-body {
@@ -1217,7 +1229,8 @@
     min-height: 44px;
   }
   .ai-prompt-source-menu > button {
-    min-height: 44px;
+    min-height: 40px;
+    font-size: 12px;
   }
   .ai-composer-region {
     padding: 6px 8px 7px;
@@ -1227,9 +1240,12 @@
     padding: 5px;
   }
   .ai-composer-surface .ai-composer-input {
-    min-height: 36px;
+    min-height: 32px;
     max-height: 112px;
     font-size: 16px;
+  }
+  .ai-composer-surface .ai-composer-input::placeholder {
+    font-size: 13px;
   }
   .ai-composer-surface .ai-composer-tools .icon-button,
   .ai-composer-surface .ai-send-button {

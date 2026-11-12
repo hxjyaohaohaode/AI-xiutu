@@ -1075,9 +1075,8 @@
   cursor: ew-resize;
   touch-action: pan-y;
 }
-.compare-reveal:focus-within {
-  outline: 2px solid var(--focus-ring);
-  outline-offset: 4px;
+.compare-reveal:has(.compare-reveal-input:focus-visible) .compare-reveal-handle {
+  box-shadow: 0 0 0 2px var(--focus-ring);
 }
 @media (width < 760px) {
   .compare-reveal {

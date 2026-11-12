@@ -1118,8 +1118,13 @@ async function mobileEditingFlow() {
     await until(async () => (await sourceTrigger.getAttribute('aria-expanded')) === 'true',
       'the sources trigger reflects the native popover open state');
     const sourceMenu = await sources.boundingBox();
-    const promptSurface = await chat.locator('.ai-composer-surface:visible').boundingBox();
+    const composer = chat.locator('.ai-composer-surface:visible');
+    const promptSurface = await composer.boundingBox();
     assert.ok(sourceMenu.y + sourceMenu.height < promptSurface.y, 'the sources menu opens above the prompt bar');
+    assert.deepEqual(await composer.evaluate(node => {
+      const style = getComputedStyle(node);
+      return { border: style.borderTopWidth, outline: style.outlineStyle, shadow: style.boxShadow };
+    }), { border: '0px', outline: 'none', shadow: 'none' }, 'focus belongs to the action inside the prompt bar');
     await capture(page, 'interactions/mobile-ai-sources.png');
     await page.keyboard.press('Escape');
     await sources.waitFor({ state: 'hidden' });
@@ -1184,8 +1189,10 @@ async function mobileEditingFlow() {
     await drawing.getByRole('button', { name: '重做草图操作', exact: true }).click();
     assert.ok(Math.abs((await ink()).right - resized.right) < .02);
     await drawing.getByRole('button', { name: '铅笔', exact: true }).click();
-    await drawing.getByRole('slider', { name: '笔触粗细', exact: true }).press('End');
-    assert.equal(await drawing.getByRole('slider', { name: '笔触粗细', exact: true }).inputValue(), '70');
+    const brushSize = drawing.getByRole('slider', { name: '笔触粗细', exact: true });
+    await brushSize.press('End');
+    assert.equal(await brushSize.inputValue(), '70');
+    assert.equal(await brushSize.evaluate(node => getComputedStyle(node).outlineStyle), 'none');
     await layout(page, 'phone sketch with a moved and resized SVG-tool triangle');
     await capture(page, 'interactions/mobile-sketch-390.png');
     const sketchDimensions = await canvas.evaluate((node) => [node.width, node.height]);
@@ -1710,6 +1717,8 @@ async function accountAndOperationsReview(section, requestedPhone) {
       } else await page.locator('.studio-account').click();
       const account=page.locator('[data-testid="account-center"]');
       await account.waitFor();
+      assert.equal(await page.locator('[data-testid="account-page"] .account-page-heading:visible').count(),0,
+        'the account navigation and identity are the visible context');
       for (const id of ['overview','security','billing','data']) {
         const tab=account.locator('[data-testid="account-tab-'+id+'"]');
         await tab.click();
@@ -1747,10 +1756,15 @@ async function accountAndOperationsReview(section, requestedPhone) {
     },'/#/studio',reviewFixture.signedIn);
     try {
       await page.locator('.workspace-identity button').first().click();
+      const overviewResponse=page.waitForResponse(response=>new URL(response.url()).pathname==='/v1/ops/overview' && response.ok());
       await page.locator('dialog.sidebar-navigation-modal[open]').getByRole('button',{name:'运营管理',exact:true}).click();
       await page.locator('[data-ops-tab]').waitFor();
-      for (const id of tabs) {
-        await page.locator('[data-ops-nav="'+id+'"]').click();
+      for (const [index,id] of tabs.entries()) {
+        const mobileNavigation=page.locator('.ops-mobile-nav');
+        if (phone) {
+          await mobileNavigation.getByRole('combobox').click();
+          await mobileNavigation.locator('[role="option"][data-choice-index="'+index+'"]').click();
+        } else await page.locator('[data-ops-nav="'+id+'"]').click();
         const main=page.locator('[data-ops-tab="'+id+'"]');
         await until(async()=>await main.getAttribute('data-read-state')==='ready','operations '+id+' actual initial read');
         await until(async()=>await main.locator('.feature-skeleton:visible').count()===0,'operations '+id+' visible read placeholders settle');
@@ -1763,10 +1777,16 @@ async function accountAndOperationsReview(section, requestedPhone) {
           await main.locator('.usage-skeleton-dashboard').waitFor({state:'hidden'});
           await main.locator('.usage-overview').waitFor();
         }
+        if (id==='overview') {
+          const {counts}=await (await overviewResponse).json();
+          assert.deepEqual(await main.locator('.ops-counts meter').evaluateAll(nodes=>nodes.map(node=>node.value)),
+            Object.values(counts),'every bar uses the actual operations count');
+        }
         assert.equal(await main.locator('[role="alert"]:visible').count(),0,'operations '+id+' has no unresolved read error');
         await layout(page,(phone?'phone':'desktop')+': operations '+id);
         await capture(page,'operations/'+(phone?'phone':'desktop')+'-'+id+'.png');
-        assert.equal(await page.locator('[data-ops-nav][aria-current="page"]').count(),1);
+        if (phone) assert.equal(await mobileNavigation.locator('.choice-value').innerText(),await main.locator(':scope > h1').innerText());
+        else assert.equal(await page.locator('[data-ops-nav][aria-current="page"]').count(),1);
         operationsEvidence.push({phone,tab:id,readsOnly:true});
       }
     } catch(error) {await failureEvidence(page);throw error;}

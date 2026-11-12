@@ -2918,7 +2918,6 @@ export function App({
                             <EmptyState
                               icon={<StudioGlyph name="works" size={30} />}
                               title={t('登录后查找素材')}
-                              description={t('浏览你有权限访问的项目、图片与长期素材。')}
                               action={
                                 <button
                                   className="button button-primary"
@@ -3008,7 +3007,6 @@ export function App({
                             <EmptyState
                               icon={<StudioGlyph name="usage" size={30} />}
                               title={t('登录后查看用量')}
-                              description={t('查看服务点余额，以及任务、模型和成员的使用明细。')}
                               action={
                                 <button
                                   className="button button-primary"

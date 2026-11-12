@@ -19,6 +19,9 @@
   grid-area: header;
   margin: 0;
 }
+.drawing-modal .modal-header > .icon-button {
+  border-radius: 999px;
+}
 .drawing-modal .drawing-tool-area {
   display: grid;
   grid-area: tools;
@@ -96,6 +99,10 @@
   width: 100%;
   min-width: 44px;
   min-height: var(--ui-hit, 40px);
+}
+.drawing-modal .drawing-width input[type='range']:focus-visible {
+  outline: none;
+  accent-color: var(--accent-ink);
 }
 .drawing-modal .drawing-selection-controls .drawing-width {
   width: auto;

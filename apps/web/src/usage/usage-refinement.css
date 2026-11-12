@@ -1,12 +1,7 @@
 /* React Bits Counter / Animated List informed the cadence and fixed digit widths.
    Curves below are built from real ledger buckets; no demo series or invented totals. */
 .usage-dashboard {
-  gap: 22px;
-}
-.usage-heading h1 {
-  margin: 0;
-  font-size: clamp(24px, 3cqi, 30px);
-  font-weight: 560;
+  gap: 14px;
 }
 .usage-presets button[aria-pressed='true'] {
   color: var(--ink);
@@ -539,7 +534,11 @@
 }
 @container usage-workspace (max-width: 520px) {
   .usage-dashboard .usage-card {
-    padding: 17px 14px;
+    padding: 12px 10px;
+  }
+  .usage-dashboard .usage-filter-card {
+    padding: 0 0 8px;
+    border-radius: 0;
   }
   .usage-totals {
     grid-template-columns: repeat(3, minmax(0, 1fr));

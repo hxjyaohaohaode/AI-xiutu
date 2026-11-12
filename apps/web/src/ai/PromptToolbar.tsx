@@ -10,6 +10,15 @@ type SourceAction = {
   pressed?: boolean;
 };
 
+function highlightSource(popup: HTMLDivElement, target: EventTarget | null) {
+  if (!(target instanceof Element)) return;
+  const row = target.closest<HTMLButtonElement>('button:not(:disabled)');
+  if (!row || !popup.contains(row)) return;
+  popup.style.setProperty('--source-row-y', `${row.offsetTop}px`);
+  popup.style.setProperty('--source-row-height', `${row.offsetHeight}px`);
+  popup.dataset.highlight = 'true';
+}
+
 /** Prompt Bar #114 layout. Callers supply the real context, model and request actions. */
 export function PromptToolbar({
   attachment,
@@ -38,7 +47,7 @@ export function PromptToolbar({
     const left = viewport?.offsetLeft ?? 0;
     const bottom = top + (viewport?.height ?? innerHeight);
     const width = viewport?.width ?? innerWidth;
-    const popupWidth = Math.min(320, width - 16, surface.width);
+    const popupWidth = Math.min(400, width - 16, surface.width);
     popup.style.width = `${popupWidth}px`;
     popup.style.left = `${Math.max(left + 8, Math.min(surface.left, left + width - popupWidth - 8))}px`;
     const above = surface.top - top - 12;
@@ -94,7 +103,21 @@ export function PromptToolbar({
             className="ai-prompt-source-menu"
             role="group"
             aria-label={attachment.label}
-            onToggle={(event) => setOpen(event.newState === 'open')}
+            onToggle={(event) => {
+              const shown = event.newState === 'open';
+              if (!shown) delete event.currentTarget.dataset.highlight;
+              setOpen(shown);
+            }}
+            onFocus={(event) => highlightSource(event.currentTarget, event.target)}
+            onPointerOver={(event) => {
+              if (event.pointerType !== 'touch') highlightSource(event.currentTarget, event.target);
+            }}
+            onPointerLeave={(event) => {
+              if (event.currentTarget.contains(document.activeElement) &&
+                document.activeElement?.matches(':focus-visible')) {
+                highlightSource(event.currentTarget, document.activeElement);
+              } else delete event.currentTarget.dataset.highlight;
+            }}
             onKeyDown={(event) => {
               if (event.key !== 'ArrowDown' && event.key !== 'ArrowUp') return;
               const buttons = [...event.currentTarget.querySelectorAll('button:not(:disabled)')];

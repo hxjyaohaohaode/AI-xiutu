@@ -26,8 +26,8 @@
 }
 
 .account-center :where(button, summary):focus-visible {
-  outline: 2px solid var(--focus-ring);
-  outline-offset: 3px;
+  outline: 1.5px solid var(--focus-ring);
+  outline-offset: -2px;
 }
 
 .account-center button:disabled {
@@ -83,12 +83,6 @@
   letter-spacing: 0.025em;
 }
 
-.account-identity .account-phone {
-  margin-top: 2px;
-  color: var(--muted);
-  font-size: 12px;
-  overflow-wrap: anywhere;
-}
 
 .account-tabs-wrap {
   min-width: 0;
@@ -150,21 +144,7 @@
 }
 
 .account-tab:focus-visible {
-  outline-offset: 1px;
-}
-
-.account-rail-context {
-  display: flex;
-  align-items: flex-start;
-  gap: 7px;
-  margin: 17px 6px 0 !important;
-  color: var(--muted);
-  font-size: 11px;
-  line-height: 1.5;
-}
-
-.account-rail-context > svg {
-  margin-top: 1px;
+  outline-offset: -2px;
 }
 
 .account-language {
@@ -185,9 +165,8 @@
 }
 
 .account-panel:focus-visible {
-  outline: 2px solid var(--focus-ring);
-  outline-offset: 6px;
-  border-radius: 4px;
+  outline: none;
+  box-shadow: inset 0 -1px var(--focus-ring);
 }
 
 .account-panel-heading {
@@ -1069,7 +1048,7 @@
   }
   .account-center {
     grid-template-columns: minmax(0, 1fr);
-    row-gap: 21px;
+    row-gap: 14px;
   }
   .account-dialog .modal-header > .icon-button {
     width: 44px;
@@ -1081,7 +1060,7 @@
   }
   .account-identity {
     gap: 9px;
-    margin: 0 0 13px;
+    margin: 0 0 6px;
   }
   .account-avatar {
     width: 36px;
@@ -1094,9 +1073,6 @@
   }
   .account-identity h3 {
     font-size: 14px;
-  }
-  .account-identity .account-phone {
-    font-size: 11px;
   }
   .account-tabs {
     display: flex;
@@ -1112,11 +1088,8 @@
     justify-content: center;
     gap: 6px;
     min-height: 44px;
-    padding: 9px 11px;
+    padding: 5px 9px;
     font-size: 12px;
-  }
-  .account-rail-context {
-    display: none;
   }
   .account-language {
     margin: 10px 0 0;
@@ -1132,7 +1105,7 @@
     margin-bottom: 18px;
   }
   .account-panel-heading h3 {
-    font-size: 23px;
+    font-size: 18px;
   }
   .account-section-label {
     margin-bottom: 3px;

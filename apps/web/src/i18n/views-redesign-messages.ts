@@ -1,4 +1,5 @@
 export const viewsRedesignEnglish: Readonly<Record<string, string>> = {
+  尚未选择项目: 'No project selected',
   格式与资源限制: 'Formats and resource limits',
   '原件上传到项目；工作预览用于编辑，原件与母版分别保留。':
     'Upload the original to the project. Edit its working preview; the original and master are retained separately.',
@@ -7,6 +8,7 @@ export const viewsRedesignEnglish: Readonly<Record<string, string>> = {
 };
 
 export const viewsRedesignTraditional: Readonly<Record<string, string>> = {
+  尚未选择项目: '尚未選擇專案',
   格式与资源限制: '格式與資源限制',
   '原件上传到项目；工作预览用于编辑，原件与母版分别保留。':
     '原件上傳至專案；以工作預覽進行編輯，原件與母版分別保留。',

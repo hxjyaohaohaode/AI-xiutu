@@ -87,19 +87,15 @@
   border-top: 0;
 }
 .ai-workbench-v2 .ai-composer-surface {
-  padding: 9px 8px 6px;
-  gap: 6px;
-  border: 1px solid transparent;
-  border-radius: 14px;
+  padding: 7px 8px 4px;
+  gap: 3px;
+  border: 0;
+  border-radius: 16px;
   background: var(--surface-secondary);
   box-shadow: none;
 }
-.ai-workbench-v2 .ai-composer-surface:focus-within {
-  border-color: var(--line-strong);
-  box-shadow: none;
-}
 .ai-workbench-v2 .ai-composer-input {
-  min-height: 38px;
+  min-height: 32px;
   max-height: 132px;
   padding: 2px 4px;
   font-size: 14px;
@@ -129,7 +125,7 @@
   flex: 0 0 40px;
   padding: 0;
   border: 0;
-  border-radius: 11px;
+  border-radius: 999px;
   background: transparent;
 }
 .ai-workbench-v2 .ai-composer-tools > .icon-button > svg {
@@ -142,7 +138,7 @@
   position: absolute;
   z-index: -1;
   inset: 3px;
-  border-radius: 9px;
+  border-radius: inherit;
   background: transparent;
   transition:
     background-color 150ms ease,

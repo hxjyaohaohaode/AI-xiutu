@@ -142,8 +142,7 @@ export function WorksView({
       {!project ? (
         <EmptyState
           icon={<Images size={34} />}
-          title={t('创建项目')}
-          description={t('创建项目后，可以保存照片、调整配方和每次修改的版本。')}
+          title={t('尚未选择项目')}
           action={
             <button className="button button-secondary" onClick={onCreate}>
               {t('创建项目')}
@@ -155,7 +154,6 @@ export function WorksView({
         <EmptyState
           icon={<Images size={34} />}
           title={t('这里还没有作品')}
-          description={t('打开照片开始编辑，再点击「保存版本」，它就会出现在这里。')}
           action={
             <button className="button button-secondary" onClick={onImport}>
               <UploadSimple size={17} />
@@ -1902,9 +1900,7 @@ export function DeliveryView({
   const dimensions = editor.rendered ?? editor.dimensions;
   return (
     <div className="content-view studio-view delivery-view">
-      <div className="view-heading" data-motion="view-header">
-        <h1>{t('导出与交付')}</h1>
-      </div>
+      <h1 className="sr-only">{t('导出与交付')}</h1>
       {editor.file ? (
         <section className="delivery-composition" aria-label={t('当前交付作品')}>
           <div className="delivery-current-preview" role="img" aria-label={t('当前编辑的预览图')}>
@@ -1953,7 +1949,6 @@ export function DeliveryView({
         <EmptyState
           icon={<Images size={34} />}
           title={t('还没有打开照片')}
-          description={t('打开照片后即可导出。')}
         />
       )}
     </div>

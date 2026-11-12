@@ -170,10 +170,6 @@
   border-color: transparent;
   color: var(--ink);
 }
-.studio-view :is(button, input, textarea, select):focus-visible {
-  outline: 2px solid var(--view-accent-ink);
-  outline-offset: 3px;
-}
 .studio-view button:disabled {
   opacity: 0.48;
 }

@@ -198,8 +198,14 @@ select optgroup {
 }
 
 :where(button, a, input, textarea, select, summary, [tabindex]):focus-visible {
-  outline: 2px solid var(--focus-ring);
-  outline-offset: 3px;
+  outline: 1.5px solid var(--focus-ring);
+  outline-offset: -2px;
+}
+
+:where(input:not([type='range'], [type='checkbox'], [type='radio']), textarea):focus-visible {
+  outline: none;
+  box-shadow: inset 0 -1.5px var(--focus-ring);
+  caret-color: var(--accent-ink);
 }
 
 :where(input, textarea, select):disabled {
@@ -233,8 +239,9 @@ select optgroup {
     --ui-control-h: 32px;
     --ui-field-h: 36px;
     --ui-hit: 44px;
-    --ui-panel-pad: 12px;
-    --ui-gap: 8px;
+    --ui-panel-pad: 10px;
+    --ui-gap: 7px;
+    --ui-text-size: 12px;
     --input-font-size: 16px;
     --radius-overlay: 16px;
   }

@@ -360,9 +360,7 @@ function UsageWorkspace({
   return (
     <section className="usage-dashboard" aria-label={t('用量与额度历史')}>
       <header className="view-heading usage-heading" data-motion="usage-heading">
-        <div>
-          <h1>{t('用量与额度')}</h1>
-        </div>
+        <h1 className="sr-only">{t('用量与额度')}</h1>
         <div className="view-actions usage-actions">
           <button
             type="button"

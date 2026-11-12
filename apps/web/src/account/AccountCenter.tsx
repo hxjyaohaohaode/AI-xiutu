@@ -27,7 +27,6 @@ import {
   Trash,
   UploadSimple,
   UserCircle,
-  UsersThree,
   Wallet,
   WarningCircle,
 } from '@phosphor-icons/react';
@@ -289,6 +288,7 @@ export function AccountCenter({
       onHome={onHome}
       busy={loggingOut}
       wide
+      hideHeading
       className="account-page-center"
     >
       <div
@@ -303,7 +303,6 @@ export function AccountCenter({
             </span>
             <div className="account-identity-copy">
               <h3>{user.displayName || t('当前账号')}</h3>
-              <p className="account-phone">{t(accountPhone(user.phoneMasked))}</p>
             </div>
           </div>
           <div className="account-tabs-wrap">
@@ -352,20 +351,6 @@ export function AccountCenter({
               })}
             </div>
           </div>
-          <p className="account-rail-context">
-            {space?.kind === 'team' ? (
-              <UsersThree size={16} aria-hidden />
-            ) : (
-              <LockKey size={16} aria-hidden />
-            )}
-            <span>
-              {space
-                ? space.kind === 'team'
-                  ? t('当前为团队空间')
-                  : t('当前为个人空间')
-                : t('尚未选择空间')}
-            </span>
-          </p>
         </aside>
 
         <div
@@ -393,9 +378,6 @@ export function AccountCenter({
           >
             {tab === 'overview' && (
               <>
-                <header className="account-panel-heading">
-                  <h3>{t('你的账号')}</h3>
-                </header>
                 <dl className="account-facts">
                   <AccountFact label={t('手机号')}>{t(accountPhone(user.phoneMasked))}</AccountFact>
                   <AccountFact label={t('账号状态')}>
@@ -431,6 +413,9 @@ export function AccountCenter({
                     <div>
                       <dt>{t('云端 AI')}</dt>
                       <dd
+                        title={config && !config.capabilities.aiConfigured && config.capabilities.aiUnavailableReason
+                          ? t(config.capabilities.aiUnavailableReason)
+                          : undefined}
                         data-state={
                           !config
                             ? 'unknown'
@@ -465,11 +450,6 @@ export function AccountCenter({
                       </dd>
                     </div>
                   </dl>
-                  {config &&
-                    !config.capabilities.aiConfigured &&
-                    config.capabilities.aiUnavailableReason && (
-                      <p className="account-helper">{t(config.capabilities.aiUnavailableReason)}</p>
-                    )}
                 </div>
                 {(onStartProject || onImport) && (
                   <div className="account-overview-actions">
@@ -502,9 +482,6 @@ export function AccountCenter({
 
             {tab === 'security' && (
               <>
-                <header className="account-panel-heading">
-                  <h3>{t('登录与安全')}</h3>
-                </header>
                 <div className="account-security-row">
                   <DeviceMobile size={22} aria-hidden />
                   <div>

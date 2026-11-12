@@ -212,10 +212,8 @@
 }
 
 .account-auth .auth-field input:focus {
-  border-color: var(--focus-ring);
-  background: var(--surface-raised);
-  outline: 2px solid color-mix(in srgb, var(--focus-ring) 18%, transparent);
-  outline-offset: 1px;
+  outline: none;
+  box-shadow: inset 0 -1.5px var(--focus-ring);
 }
 
 .account-auth .auth-field input[aria-invalid='true'] {

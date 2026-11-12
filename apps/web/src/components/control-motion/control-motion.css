@@ -102,8 +102,10 @@
   box-shadow: 0 1px 3px rgb(var(--color-shadow) / 18%);
 }
 .squish-switch:focus-visible {
-  outline: 2px solid var(--accent, #edbc41);
-  outline-offset: 3px;
+  outline: none;
+}
+.squish-switch:focus-visible .squish-switch-track {
+  box-shadow: 0 0 0 2px var(--focus-ring);
 }
 .squish-switch:disabled {
   opacity: 0.4;

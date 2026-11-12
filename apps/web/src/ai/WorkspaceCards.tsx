@@ -67,7 +67,6 @@ export function WorkspaceCards({
   const operations = locale === 'en' ? 'Operations' : locale === 'zh-TW' ? '操作次數' : '操作次数';
   return (
     <section className="assistant-workspace" aria-label={spec.title}>
-      <h3>{spec.title}</h3>
       {spec.sections.map((section, index) => (
         <article
           key={`${index}:${section.type}`}

@@ -1,7 +1,7 @@
 import { getLocale, t } from '../i18n';
 import { ChoiceSelect } from './ChoiceSelect';
 import { secureUuid } from '../lib/uuid';
-import { useCallback, useEffect, useRef, useState, type FormEvent } from 'react';
+import { useCallback, useEffect, useRef, useState, type CSSProperties, type FormEvent } from 'react';
 import {
   ArrowLeft,
   ChartBar,
@@ -314,6 +314,15 @@ export function OpsDashboard({
     artworks: '作品',
     jobs: 'AI任务',
   };
+  const counts = Object.entries(overview?.counts ?? {});
+  const countScale = Math.max(1, ...counts.map(([, value]) => value));
+  function selectTab(next: OpsTab) {
+    if (next === tab) return;
+    logoUploadOwner.current++;
+    reader.cancel();
+    setLoading(true);
+    setTab(next);
+  }
   return (
     <div className="ops-layout">
       <aside className="ops-sidebar" data-motion="ops-navigation">
@@ -321,10 +330,6 @@ export function OpsDashboard({
           <ArrowLeft size={18} />
           {t('返回创作')}
         </button>
-        <div className="ops-title">
-          <GearSix size={25} />
-          <h1>{t('运营管理')}</h1>
-        </div>
         <nav aria-label={t('运营功能')}>
           {tabs.map((item) => (
             <button
@@ -332,19 +337,21 @@ export function OpsDashboard({
               data-ops-nav={item.id}
               aria-current={tab === item.id ? 'page' : undefined}
               className={tab === item.id ? 'selected' : ''}
-              onClick={() => {
-                if (item.id === tab) return;
-                logoUploadOwner.current++;
-                reader.cancel();
-                setLoading(true);
-                setTab(item.id);
-              }}
+              onClick={() => selectTab(item.id)}
             >
               {item.icon}
               {t(item.label)}
             </button>
           ))}
         </nav>
+        <ChoiceSelect
+          className="ops-mobile-nav"
+          ariaLabel={t('运营功能')}
+          value={tab}
+          size="compact"
+          options={tabs.map((item) => ({ value: item.id, label: t(item.label) }))}
+          onValueChange={selectTab}
+        />
       </aside>
       <main
         className="ops-content"
@@ -352,10 +359,8 @@ export function OpsDashboard({
         data-read-state={loading ? 'loading' : readReady ? 'ready' : 'error'}
         aria-busy={loading}
       >
-        <div className="view-heading">
-          <div>
-            <h1>{t(tabs.find((item) => item.id === tab)?.label ?? '')}</h1>
-          </div>
+        <h1 className="sr-only">{t(tabs.find((item) => item.id === tab)?.label ?? '')}</h1>
+        <div className="ops-content-actions">
           <IconButton label={t('刷新管理数据')} onClick={() => void load()}>
             <ArrowClockwise size={21} />
           </IconButton>
@@ -405,14 +410,20 @@ export function OpsDashboard({
           <>
             {tab === 'overview' && overview && (
               <>
-                <div className="ops-counts">
-                  {Object.entries(overview.counts).map(([key, value]) => (
-                    <div className="surface metric" key={key}>
-                      <span>{t(countLabels[key] ?? key)}</span>
-                      <strong>{value.toLocaleString(getLocale())}</strong>
+                <dl
+                  className="ops-counts"
+                  style={{ '--ops-count-digits': countScale.toLocaleString(getLocale()).length } as CSSProperties}
+                >
+                  {counts.map(([key, value]) => (
+                    <div className="ops-count-row" key={key}>
+                      <dt>{t(countLabels[key] ?? key)}</dt>
+                      <dd>
+                        <meter min={0} max={countScale} value={value} aria-hidden="true" />
+                        <strong>{value.toLocaleString(getLocale())}</strong>
+                      </dd>
                     </div>
                   ))}
-                </div>
+                </dl>
                 <section className="surface ops-section">
                   <h2>{t('服务能力')}</h2>
                   <div className="capability-list">
@@ -430,7 +441,7 @@ export function OpsDashboard({
                               imageGenerationConfigured: t('图像生成'),
                             }[key] ?? key}
                           </span>
-                          <span className={`status-pill ${value ? 'positive' : ''}`}>
+                          <span className="ops-capability-state" data-enabled={value}>
                             {value ? t('已启用 / 已配置') : t('未启用')}
                           </span>
                         </div>

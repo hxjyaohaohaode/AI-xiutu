@@ -17,6 +17,7 @@ export function AccountPageFrame({
   backLabel,
   busy = false,
   wide = false,
+  hideHeading = false,
   className = '',
   children,
 }: {
@@ -28,6 +29,7 @@ export function AccountPageFrame({
   backLabel?: string;
   busy?: boolean;
   wide?: boolean;
+  hideHeading?: boolean;
   className?: string;
   children: ReactNode;
 }) {
@@ -68,7 +70,7 @@ export function AccountPageFrame({
       </header>
       <main className="account-page-main">
         <div className="account-page-content">
-          <header className="account-page-heading">
+          <header className={hideHeading ? 'sr-only' : 'account-page-heading'}>
             <h1 id={titleId} ref={heading} tabIndex={-1}>
               {title}
             </h1>

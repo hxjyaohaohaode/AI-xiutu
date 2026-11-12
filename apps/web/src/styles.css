@@ -127,14 +127,6 @@
   select {
     min-width: 0;
   }
-  button:focus-visible,
-  a:focus-visible,
-  input:focus-visible,
-  textarea:focus-visible,
-  select:focus-visible {
-    outline: 2px solid var(--focus-ring);
-    outline-offset: 3px;
-  }
   ::selection {
     background: var(--accent-soft);
     color: var(--ink);
@@ -1497,8 +1489,16 @@
       var(--surface-secondary) 100%
     );
     display: block;
-    outline-offset: 7px !important;
     cursor: ew-resize;
+  }
+  .range:focus-visible {
+    outline: none;
+  }
+  .range:focus-visible::-webkit-slider-thumb {
+    box-shadow: 0 0 0 2px var(--focus-ring);
+  }
+  .range:focus-visible::-moz-range-thumb {
+    box-shadow: 0 0 0 2px var(--focus-ring);
   }
   .range::-webkit-slider-thumb {
     appearance: none;

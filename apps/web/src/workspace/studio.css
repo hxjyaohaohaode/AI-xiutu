@@ -71,11 +71,6 @@
 .modal .button-secondary:hover:not(:disabled) {
   background: var(--surface-hover);
 }
-.studio-workspace :is(button, input, select, textarea):focus-visible,
-.modal :is(button, input, select, textarea):focus-visible {
-  outline: 2px solid var(--focus-ring);
-  outline-offset: 3px;
-}
 .studio-workspace .text-button {
   color: var(--accent-ink);
 }
