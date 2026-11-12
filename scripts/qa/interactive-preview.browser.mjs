@@ -646,7 +646,9 @@ async function verifyWorkerRecovery({ png, source }) {
         return { clip, ancestors };
       };
       const { clip, ancestors } = clipping(element);
-      const message = element.querySelector(':scope > span');
+      const message = [...element.querySelectorAll(':scope > span')].find((part) =>
+        part.textContent?.trim(),
+      );
       if (!message) throw new Error('The actual canvas error has no message span');
       const range = document.createRange();
       range.selectNodeContents(message);

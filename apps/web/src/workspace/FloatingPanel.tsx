@@ -123,6 +123,7 @@ export function FloatingPanel({
   const [dragging, setDragging] = useState(false);
   const [menu, setMenu] = useState(false);
   const [headerTarget, setHeaderTarget] = useState<HTMLDivElement | null>(null);
+  const [adjustmentMenuTarget, setAdjustmentMenuTarget] = useState<HTMLDivElement | null>(null);
   const [animatingPresentation, setAnimatingPresentation] = useState(false);
   const [presentationMs, setPresentationMs] = useState(220);
   const menuPresence = usePresence(menu, 'panel-menu');
@@ -610,6 +611,9 @@ export function FloatingPanel({
           {mobile && panelKey === 'inspector' && (
             <div className="panel-menu-presentation">
               {inlineAdjustment && (
+                <div ref={setAdjustmentMenuTarget} className="panel-adjustment-actions" />
+              )}
+              {inlineAdjustment && (
                 <button
                   type="button"
                   className="panel-collapse-action"
@@ -806,6 +810,7 @@ export function FloatingPanel({
             headerTarget:
               attached && panelKey === 'inspector' && !collapsed && open ? headerTarget : null,
             adjustmentLayoutControl: inlineAdjustment ? layoutControl : undefined,
+            adjustmentMenuTarget: inlineAdjustment && menu ? adjustmentMenuTarget : null,
           }}
         >
           {children}

@@ -588,24 +588,27 @@
     .free-panel[data-panel-id='inspector']
     .parameter-shelf
     .parameter-shelf-options {
-    min-height: 44px;
-    height: 44px;
+    min-height: 48px;
+    height: 48px;
   }
   .studio-workspace
     .free-panel[data-panel-id='inspector']
     .parameter-shelf
     .parameter-shelf-options
     > button {
-    min-height: 44px;
-    height: 44px;
-    padding: 6px;
+    min-height: 48px;
+    height: 48px;
+    padding: 1px 2px;
     justify-content: center;
-  }
-  .studio-workspace .free-panel[data-panel-id='inspector'] .parameter-short-label {
-    display: none;
   }
 }
 @media (max-height: 520px) and (min-width: 760px) {
+  .local-primary-controls > :is(.local-scope-choice, .tonal-tabs),
+  .local-primary-controls
+    .color-controls-v3[data-primary-controls]
+    > :is(.histogram-disclosure, .color-family-tabs) {
+    order: 1;
+  }
   .studio-workspace .free-panel[data-panel-id='inspector'] .refined-inspector .inspector-scroll {
     padding: 2px 10px 8px;
   }

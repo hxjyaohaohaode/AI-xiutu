@@ -88,6 +88,28 @@ export function AdvancedInspector({
       editor.setActiveMaskPath([]);
     }
   }
+  function resetControls(scope: EditScope) {
+    return (
+      <MotionDetails className="advanced-disclosure">
+        <summary aria-label={t('恢复当前作用范围')}>{t('重置')}</summary>
+        <button
+          className="text-button"
+          onClick={() =>
+            controller.apply(
+              withScopeColor(currentV3(editor), scope, createColorBlockV3()),
+              t('恢复当前范围的中性色彩'),
+              true,
+            )
+          }
+        >
+          {t('恢复当前范围全部明暗、色彩和细节')}
+        </button>
+        <p className="control-note">
+          {t('保留选区形状、其他人物、构图和合成图层；该操作可以撤销。')}
+        </p>
+      </MotionDetails>
+    );
+  }
   const familyIds: readonly AdjustmentFamily[] = ['light', 'color', 'curves', 'detail'];
   const scopedFamily = familyIds.includes(group as AdjustmentFamily);
   const familyOptions = familyIds.map((id) => ({
@@ -257,30 +279,12 @@ export function AdvancedInspector({
                       {id === 'liquify' && <LiquifyControls controller={controller} />}
                       {id === 'composite' && <ImageLayerControls controller={controller} />}
                       {id === 'history' && <HistoryPanel editor={editor} />}
-                      {colorFamily && (
-                        <MotionDetails className="advanced-disclosure">
-                          <summary aria-label={t('恢复当前作用范围')}>{t('重置')}</summary>
-                          <button
-                            className="text-button"
-                            onClick={() =>
-                              controller.apply(
-                                withScopeColor(
-                                  currentV3(editor),
-                                  retainedScope,
-                                  createColorBlockV3(),
-                                ),
-                                t('恢复当前范围的中性色彩'),
-                                true,
-                              )
-                            }
-                          >
-                            {t('恢复当前范围全部明暗、色彩和细节')}
-                          </button>
-                          <p className="control-note">
-                            {t('保留选区形状、其他人物、构图和合成图层；该操作可以撤销。')}
-                          </p>
-                        </MotionDetails>
-                      )}
+                      {colorFamily &&
+                        (compactTools
+                          ? group === id &&
+                            chrome?.adjustmentMenuTarget &&
+                            createPortal(resetControls(retainedScope), chrome.adjustmentMenuTarget)
+                          : resetControls(retainedScope))}
                     </div>
                   </Activity>
                 );

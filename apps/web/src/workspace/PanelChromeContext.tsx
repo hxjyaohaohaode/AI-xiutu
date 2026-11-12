@@ -9,6 +9,7 @@ export const PanelChromeContext = createContext<{
   headerTarget?: HTMLElement | null;
   /** The phone adjustment shelf hosts this real layout trigger beside the current value. */
   adjustmentLayoutControl?: ReactNode;
+  adjustmentMenuTarget?: HTMLElement | null;
 } | null>(null);
 
 export const usePanelChrome = () => useContext(PanelChromeContext);

@@ -173,7 +173,7 @@ async function editorReturnAndHistory(page) {
   assert.ok(canvas, 'the live canvas exists before changing panel contexts');
   try {
     const inspector = page.locator('.free-panel[data-panel-id="inspector"][aria-hidden="false"]');
-    if (await inspector.getAttribute('data-inline-adjustment') === 'true')
+    if ((await inspector.getAttribute('data-inline-adjustment')) === 'true')
       await inspector.locator('.panel-layout-trigger').click();
     await inspector.getByRole('button', { name: '返回工具总览', exact: true }).click();
     const overview = inspector.getByRole('region', { name: '全部工具', exact: true });
@@ -262,12 +262,10 @@ async function recipeDownload(page) {
 }
 async function imageDownload(page) {
   await page.getByRole('button', { name: '导出', exact: true }).click();
-  const dialog = page.getByRole('dialog', { name: '导出图片', exact: true });
-  await dialog.getByRole('button', { name: '生成导出文件', exact: true }).click();
-  const bytes = await downloadBytes(page, () =>
-    dialog.getByRole('link', { name: '下载图片', exact: true }).click(),
-  );
-  await dialog.getByRole('button', { name: '关闭窗口', exact: true }).click();
+  const dialog = page.locator('dialog.export-dialog[open]');
+  const bytes = await downloadBytes(page, () => dialog.locator('button.button-full').click());
+  await dialog.locator('a[download]').waitFor();
+  await page.keyboard.press('Escape');
   await dialog.waitFor({ state: 'hidden' });
   return bytes;
 }
@@ -384,7 +382,9 @@ async function pixelEvidence(bytes) {
 }
 async function canvasEvidence(page) {
   await imageReady(page);
-  await page.locator('.free-panel[aria-hidden="false"] .panel-layout-trigger').click({ trial: true });
+  await page
+    .locator('.free-panel[aria-hidden="false"] .panel-layout-trigger')
+    .click({ trial: true });
   // PixelCanvas paints in an effect; give committed state and its paint two
   // actual animation frames rather than reading React internals.
   await page.evaluate(
@@ -540,7 +540,7 @@ async function cloudRecoveryHeaderEvidence(page, expectedRoute) {
           })),
         compare: {
           ...rect(compare),
-          text: compareLabel.textContent.trim(),
+          text: compare.getAttribute('aria-label'),
           lines: textLines(compareLabel),
         },
       },
@@ -556,13 +556,10 @@ async function cloudRecoveryHeaderEvidence(page, expectedRoute) {
   });
   report.layoutMeasurements.push({ case: activeCase, cloudRecoveryHeader: measured });
   assert.equal(measured.label, expectedRoute);
-  assert.equal(measured.lines.length, 1, 'the current view label must remain on one line');
   assert.ok(measured.route?.height >= 44, 'the work-view switch retains its 44px touch height');
-  assert.ok(
-    measured.lines[0].x >= measured.route.x - 1 &&
-      measured.lines[0].right <= measured.route.right + 1,
-    'the complete label fits within its own switch without clipping',
-  );
+  assert.ok(measured.lines.length <= 1, 'the current view does not wrap into another line');
+  for (const line of measured.lines)
+    assert.ok(line.x >= measured.route.x - 1 && line.right <= measured.route.right + 1);
   assert.ok(measured.pageOverflow <= 1, 'cloud recovery must not cause horizontal page overflow');
   assert.ok(measured.headerOverflow <= 1, 'the header must fit without hiding overflow');
   for (const control of [measured.route, measured.brand, ...measured.controls]) {
@@ -592,10 +589,13 @@ async function cloudRecoveryHeaderEvidence(page, expectedRoute) {
       toolbar.overflow <= 1,
     'the canvas toolbar and its contents must fit the phone width',
   );
-  assert.equal(toolbar.buttons.length, 8, 'all eight phone canvas actions remain visible');
+  assert.equal(toolbar.buttons.length, 5, 'the phone keeps five primary canvas actions in one row');
   for (const button of toolbar.buttons) {
     inside(button, toolbar, `${button.label} fits fully within the canvas toolbar`);
-    assert.ok(button.width >= 28 && button.height >= 32, 'canvas actions retain their touch sizes');
+    assert.ok(
+      button.width >= 43.5 && button.height >= 43.5,
+      'canvas actions retain 44px touch targets',
+    );
     if (button.enabled)
       assert.equal(button.exposed, true, `${button.label} receives a pointer at its center`);
   }
@@ -604,21 +604,26 @@ async function cloudRecoveryHeaderEvidence(page, expectedRoute) {
     { 'zh-CN': '按住对比', 'zh-TW': '按住對比', en: 'Hold to compare' }[measured.locale],
     'the compare instruction retains its complete translated text',
   );
-  assert.ok(toolbar.compare.lines.length >= 1 && toolbar.compare.lines.length <= 2);
-  for (const line of toolbar.compare.lines)
-    inside(line, toolbar.compare, 'each compare instruction line remains inside its button');
-  assert.equal(measured.contexts.buttons.length, 4, 'all four editing contexts remain available');
-  assert.ok(
-    measured.contexts.x >= -1 && measured.contexts.right <= measured.viewportWidth + 1,
-    'the context row fits the phone width',
+  assert.equal(
+    toolbar.compare.lines.length,
+    0,
+    'the compare glyph has no second visual line on phones',
   );
-  for (const button of measured.contexts.buttons) {
-    assert.ok(button.height >= 44, 'each context keeps its 44px touch height');
-    assert.equal(button.lines.length, 1, `${button.label} stays on one intact line`);
-    inside(button, measured.contexts, 'the context button fits its navigation row');
-    inside(button.lines[0], button, 'the entire context label fits inside its button');
-    assert.equal(button.exposed, true, `${button.label} receives a pointer at its center`);
-  }
+  assert.equal(
+    measured.contexts.width,
+    0,
+    'the phone editor does not duplicate work-view navigation in the adjustment sheet',
+  );
+  const more = page.locator('.canvas-tools-trigger');
+  await more.click();
+  const tools = page.locator('.canvas-secondary-controls[data-open="true"]');
+  assert.equal(
+    await tools.locator('button:visible').count(),
+    6,
+    'all secondary canvas commands remain available',
+  );
+  await page.keyboard.press('Escape');
+  await tools.waitFor({ state: 'hidden' });
   return measured;
 }
 async function layoutAssertions(page, phone) {
@@ -632,7 +637,9 @@ async function layoutAssertions(page, phone) {
     const photo = document.querySelector('.image-frame canvas');
     const scroller = document.querySelector('.inspector-scroll');
     const workspace = document.querySelector('.workspace-body');
-    const slider = document.querySelector('.free-panel[aria-hidden="false"] .parameter-shelf-current input[type="range"]');
+    const slider = document.querySelector(
+      '.free-panel[aria-hidden="false"] .parameter-shelf-current input[type="range"]',
+    );
     return {
       rangeBounds: slider ? { min: Number(slider.min), max: Number(slider.max) } : null,
       width: innerWidth,
@@ -697,13 +704,15 @@ async function layoutAssertions(page, phone) {
       'parameter bounds are rendered with the active control',
     );
     assert.ok(
-      measured.scale.y >= measured.heading.bottom && measured.scale.y >= measured.slider.bottom - 5.5,
+      measured.scale.y >= measured.heading.bottom &&
+        measured.scale.y >= measured.slider.bottom - 5.5,
       'min/max labels stay below the value and reset row, even with About CSS loaded',
     );
     assert.ok(
       measured.scaleStart.x + measured.scaleStart.width < measured.scaleEnd.x &&
         measured.scaleStart.x >= measured.scale.x - 1 &&
-        measured.scaleEnd.x + measured.scaleEnd.width <= measured.scale.x + measured.scale.width + 1,
+        measured.scaleEnd.x + measured.scaleEnd.width <=
+          measured.scale.x + measured.scale.width + 1,
       'signed min/max labels occupy distinct ends of their own full-width row',
     );
   }
@@ -1007,17 +1016,15 @@ try {
           'maximized',
         );
         await panel.locator('.panel-layout-trigger').click();
-        await panel.getByRole('button', { name: '返回常规调节，恢复面板尺寸', exact: true }).click();
+        await panel
+          .getByRole('button', { name: '返回常规调节，恢复面板尺寸', exact: true })
+          .click();
       }
       await page.screenshot({ path: join(artifacts, `layout-${size.width}x${size.height}.png`) });
       const exported = await recipeDownload(page);
       assert.equal(exported.schemaVersion, 4);
       assert.equal(exported.adjustments.exposure, -0.35);
-      await page.getByRole('button', { name: '导出', exact: true }).click();
-      await page.getByRole('button', { name: '生成导出文件', exact: true }).click();
-      const bytes = await downloadBytes(page, () =>
-        page.getByRole('link', { name: '下载图片', exact: true }).click(),
-      );
+      const bytes = await imageDownload(page);
       const metadata = await sharp(bytes).metadata();
       assert.equal(metadata.format, 'png');
       assert.equal(metadata.width, width);
@@ -2563,9 +2570,7 @@ try {
       list.getByRole('button', { name: '刷新列表', exact: true }).click(),
     ]);
     assert.equal(refreshResponse.status(), 200);
-    const persistedBefore = await readDocument(
-      (item) => item.id === document.id,
-    );
+    const persistedBefore = await readDocument((item) => item.id === document.id);
     assert.equal(persistedBefore.body, initialBody, 'returning to the list must not silently save');
     const confirmations = [];
     await a.page.removeLocatorHandler(

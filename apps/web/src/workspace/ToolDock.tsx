@@ -140,8 +140,9 @@ export function ToolDock({
           }),
         );
         if (available > 0) {
-          const slots = Math.max(1, Math.floor((available + gap) / (minimum + gap)));
-          const width = `${(available - gap * (slots - 1)) / slots}px`;
+          const peek = 12;
+          const slots = Math.max(1, Math.floor((available - peek + gap) / (minimum + gap)));
+          const width = `${Math.max(minimum, (available - peek - gap * (slots - 1)) / slots)}px`;
           if (rail.style.getPropertyValue('--dock-item-width') !== width)
             rail.style.setProperty('--dock-item-width', width);
         }
@@ -205,7 +206,7 @@ export function ToolDock({
         data-overflow-left={overflow.left || undefined}
         data-overflow-right={overflow.right || undefined}
       >
-        {overflow.left && (
+        {!compact && overflow.left && (
           <button
             type="button"
             className="dock-scroll dock-scroll-left"
@@ -259,7 +260,7 @@ export function ToolDock({
             </WarmTooltip>
           ))}
         </div>
-        {overflow.right && (
+        {!compact && overflow.right && (
           <button
             type="button"
             className="dock-scroll dock-scroll-right"
