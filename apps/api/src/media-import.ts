@@ -15,6 +15,7 @@ import {
   getMediaCapabilities,
   hasDisplayHdr,
   isSdrJpegSource,
+  supportsNativeSdrMaster,
   fitsGainMapRaster,
   MediaProcessingError,
   MEDIA_MAX_INPUT_BYTES,
@@ -783,6 +784,7 @@ export function registerMediaImport(app: FastifyInstance, db: Database, config: 
           maxPixels: master16GradeLimit(row, precision),
           sourceSha256: row.descriptor.sourceSha256,
           floatAvailable: enabled && !!row.descriptor.linearMaster && precision.linearFloat,
+          nativeSdrWindow: enabled && precision.linearFloat && supportsNativeSdrMaster(row.descriptor),
           ultraHdrJpeg: ultraHdrSource && fitsGainMapRaster(row.descriptor.master),
           ultraHdrJpegCrop: ultraHdrSource,
           curves: {
@@ -986,7 +988,10 @@ export function registerMediaImport(app: FastifyInstance, db: Database, config: 
     const nativeWindow =
       !!linearWindows &&
       !!(options.preview?.region || options.preview?.fitRegion) &&
-      options.precisionInput === 'linear-master';
+      (options.precisionInput === 'linear-master' ||
+        (options.precisionInput === 'master16' &&
+          supportsNativeSdrMaster(row.descriptor) &&
+          (await capabilities).nativeReady));
     const lane = nativeWindow ? windowing : exporting;
     if (
       lane.has(actorId) || lane.size >= 2 ||
@@ -1021,7 +1026,7 @@ export function registerMediaImport(app: FastifyInstance, db: Database, config: 
             ...(pythonExecutable ? { pythonExecutable } : {}),
           },
         },
-        linearWindows ? { runtime: linearWindows, descriptor: row.descriptor } : undefined,
+        nativeWindow ? { runtime: linearWindows, descriptor: row.descriptor } : undefined,
       );
       const sessionHash = hash(req.cookies.xiutu_session ?? '');
       const input = options.precisionInput ?? 'master16';

@@ -36,7 +36,7 @@ import {
   MEDIA_MAX_HEIC_HDR_BYTES,
   fitsGainMapRaster,
   hasDisplayHdr,
-  isSdrJpegSource,
+  supportsNativeSdrMaster,
   MediaProcessingError,
   type MediaDescriptorV1,
   type MediaFileV1,
@@ -858,8 +858,7 @@ async function exportMaster(job: Job): Promise<MediaExportResult> {
   if (edit && pixels > MEDIA_MAX_PRECISION_PIXELS) {
     if (
       !job.options.pythonExecutable ||
-      !isSdrJpegSource(descriptor.original) ||
-      pixels > MEDIA_MAX_SDR_MASTER_PIXELS
+      !supportsNativeSdrMaster(descriptor)
     )
       throw new MediaLimitError('Precision edits exceed the SDR master pixel budget');
     return exportNativeMaster(job, descriptor, region, 'master16');

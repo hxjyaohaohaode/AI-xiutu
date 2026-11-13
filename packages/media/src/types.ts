@@ -127,6 +127,10 @@ export function hasDisplayHdr(original: MediaDescriptorV1['original']) {
 export function isSdrJpegSource(original: MediaDescriptorV1['original']) {
   return original.format === 'jpeg' && !hasDisplayHdr(original);
 }
+export function supportsNativeSdrMaster(descriptor: MediaDescriptorV1) {
+  return isSdrJpegSource(descriptor.original) &&
+    descriptor.master.width * descriptor.master.height <= MEDIA_MAX_SDR_MASTER_PIXELS;
+}
 export function fitsGainMapRaster({ width, height }: { width: number; height: number }) {
   return (
     width * height <= MEDIA_MAX_GAIN_MAP_PIXELS &&

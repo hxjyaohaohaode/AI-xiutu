@@ -23,6 +23,7 @@ def render_window(request, verified, window_cache):
     if any(type(region[key]) is not int for key in ("left", "top", "width", "height")):
         raise ValueError("Invalid window coordinates")
     width, height = region["width"], region["height"]
+    input_srgb = request.get("inputSrgb", False)
     if min(width, height) < 1 or (
         width * height > MAX_FITTED_PIXELS if fitted else max(width, height) > 2048
     ):
@@ -46,22 +47,23 @@ def render_window(request, verified, window_cache):
         if image is None:
             raise ValueError("Cannot open retained master")
         try:
-            if image.format_name() != "openexr":
+            if image.format_name() != ("tiff" if input_srgb else "openexr"):
                 raise ValueError("Invalid retained master format")
             cache_key = (candidate, region["left"], region["top"], region["width"], region["height"])
             if window_cache and window_cache[0] != cache_key:
                 window_cache[1].clear()
             cached_bands = window_cache[1] if window_cache and window_cache[0] == cache_key else {}
 
-            def read_window_band(source, spec, left, top, width, height):
+            def read_window_band(source, spec, left, top, width, height, sample_type):
                 key = (top, height)
                 if key not in cached_bands:
-                    band = read_band(source, spec, left, top, width, height).copy()
+                    band = read_band(source, spec, left, top, width, height, sample_type).copy()
                     band.setflags(write=False)
                     cached_bands[key] = band
                 return cached_bands[key]
 
-            cacheable = width * height * image.spec().nchannels * 4 <= MAX_CACHED_BYTES
+            sample_bytes = 2 if input_srgb else 4
+            cacheable = width * height * image.spec().nchannels * sample_bytes <= MAX_CACHED_BYTES
             result = render(
                 image, request, window_png=not fitted, window_raw=fitted,
                 read_source_band=read_window_band if cacheable else read_band,
