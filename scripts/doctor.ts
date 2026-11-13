@@ -4,14 +4,10 @@ import { join, resolve } from 'node:path';
 import { randomBytes } from 'node:crypto';
 import { createDatabase, getSchemaReadiness, transaction, type Database } from '@ai-xiutu/db';
 import { createAiService } from '@ai-xiutu/ai';
-import {
-  createTencentSms,
-  createTencentTextModerator,
-  createTencentImageModerator,
-} from '@ai-xiutu/providers';
+import { createSms, createTextModerator, createImageModerator } from '@ai-xiutu/providers';
 import { createPrivateStorage } from '@ai-xiutu/storage';
 import { getMediaCapabilities } from '@ai-xiutu/media';
-import { assistantModelConfigSchema, VOICE_MODELS } from '@ai-xiutu/assistant';
+import { assistantModelConfigSchema, modelProfileError, VOICE_MODELS } from '@ai-xiutu/assistant';
 import { loadConfig } from '../apps/api/src/config.js';
 import { LocalPrivateStorage } from '../apps/api/src/storage.js';
 import { createAssistantService } from '../apps/api/src/assistant/service.js';
@@ -111,9 +107,10 @@ try {
     check: 'adapters',
     ok: true,
     detail: JSON.stringify({
-      smsConfigured: createTencentSms().configured,
-      textModerationConfigured: createTencentTextModerator().configured,
-      imageModerationConfigured: createTencentImageModerator().configured,
+      smsProvider: process.env.SMS_PROVIDER?.trim() || 'tencent',
+      smsConfigured: createSms().configured,
+      textModerationConfigured: createTextModerator().configured,
+      imageModerationConfigured: createImageModerator().configured,
       availableOperations: ai.availableOperations,
       ...catalog,
     }),
@@ -127,12 +124,14 @@ try {
   await assistant.assertJournal();
   const assistantModels = await catalogSummary(db, 'assistant_model_configs', (row) => {
     const parsed = assistantModelConfigSchema.safeParse(row.config);
+    const profileError = parsed.success ? (modelProfileError(row.id, parsed.data) ?? null) : null;
     return {
-      valid: parsed.success,
+      valid: parsed.success && (!parsed.data.enabled || !profileError),
       value: {
         id: row.id.slice(0, 160),
         idTruncated: row.id.length > 160,
         configValid: parsed.success,
+        profileError,
         enabled: parsed.success && parsed.data.enabled,
         operations: parsed.success ? parsed.data.operations : [],
         voiceProfileKnown: VOICE_MODELS.some((model) => model.id === row.id),
@@ -162,20 +161,22 @@ try {
   const mediaEnabled = process.env.MEDIA_ADVANCED_ENABLED === 'true';
   results.push({
     check: 'advanced-media',
-    ok: !mediaEnabled || (
-      media.available && (!process.env.MEDIA_PYTHON || media.nativeReady) &&
-      (!process.env.MEDIA_UHDR_LIBRARY || media.ultraHdrJpeg.available) &&
-      (!process.env.MEDIA_HEIC_DECODER || media.heicPq.available)
-    ),
+    ok:
+      !mediaEnabled ||
+      (media.available &&
+        (!process.env.MEDIA_PYTHON || media.nativeReady) &&
+        (!process.env.MEDIA_UHDR_LIBRARY || media.ultraHdrJpeg.available) &&
+        (!process.env.MEDIA_HEIC_DECODER || media.heicPq.available)),
     detail: JSON.stringify({ enabled: mediaEnabled, ...media }),
   });
-  const proxy = process.env.ASSISTANT_EGRESS_PROXY;
+  const proxy = process.env.ASSISTANT_EGRESS_PROXY?.trim();
   let voiceProxyValid = true;
   if (proxy) {
     try {
       const url = new URL(proxy);
       voiceProxyValid =
         ['http:', 'https:'].includes(url.protocol) &&
+        !url.search &&
         !url.hash &&
         (!url.pathname || url.pathname === '/');
     } catch {

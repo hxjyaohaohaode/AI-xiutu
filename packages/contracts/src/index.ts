@@ -12,3 +12,7 @@ export * from './assistant-ui.js';
 export * from './team-voice.js';
 export * from './revision-history.js';
 export * from './photo-trash.js';
+export * from './openai-transcription.js';
+export * from './openai-image-formats.js';
+export * from './openai-responses-models.js';
+export * from './openai-specialist.js';

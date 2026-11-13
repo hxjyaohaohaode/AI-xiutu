@@ -81,6 +81,22 @@ export const assistantScopeSchema = z
   })
   .strict();
 export type AssistantScope = z.infer<typeof assistantScopeSchema>;
+export const responseEfforts = [
+  'none',
+  'minimal',
+  'low',
+  'medium',
+  'high',
+  'xhigh',
+  'max',
+] as const;
+export const assistantResponseTuning = z
+  .object({
+    effort: z.enum(responseEfforts).optional(),
+    verbosity: z.enum(['low', 'medium', 'high']).optional(),
+  })
+  .strict();
+export type AssistantResponseTuning = z.infer<typeof assistantResponseTuning>;
 export const assistantTurnSchema = z
   .object({
     idempotencyKey: z.uuid(),
@@ -96,6 +112,7 @@ export const assistantTurnSchema = z
     }),
     parentTurnId: z.uuid().optional(),
     research: assistantResearchPlan.optional(),
+    responseTuning: assistantResponseTuning.optional(),
   })
   .strict();
 export const voiceSessionSchema = z
@@ -108,7 +125,9 @@ export const voiceSessionSchema = z
       'gpt-realtime-2',
       'gpt-realtime-1.5',
       'gpt-realtime',
+      'gpt-realtime-2025-08-28',
       'gpt-realtime-mini',
+      'gpt-realtime-mini-2025-12-15',
     ]),
     backendModelId: z.string().min(1).max(128),
     voice: z

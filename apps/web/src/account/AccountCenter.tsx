@@ -63,6 +63,7 @@ export type AccountCenterProps = {
   initialTab?: AccountTab;
   onClose: () => void;
   onHome?: () => void;
+  onSupport: () => void;
   onResetPassword: () => void;
   onUsage: () => void;
   onExport: () => void;
@@ -125,6 +126,7 @@ export function AccountCenter({
   initialTab = 'overview',
   onClose,
   onHome,
+  onSupport,
   onResetPassword,
   onUsage,
   onExport,
@@ -409,9 +411,13 @@ export function AccountCenter({
                     <div>
                       <dt>{t('云端 AI')}</dt>
                       <dd
-                        title={config && !config.capabilities.aiConfigured && config.capabilities.aiUnavailableReason
-                          ? t(config.capabilities.aiUnavailableReason)
-                          : undefined}
+                        title={
+                          config &&
+                          !config.capabilities.aiConfigured &&
+                          config.capabilities.aiUnavailableReason
+                            ? t(config.capabilities.aiUnavailableReason)
+                            : undefined
+                        }
                         data-state={
                           !config
                             ? 'unknown'
@@ -471,6 +477,15 @@ export function AccountCenter({
                         {t('新建项目')}
                       </button>
                     )}
+                    <button
+                      type="button"
+                      className="account-action"
+                      disabled={loggingOut}
+                      onClick={onSupport}
+                    >
+                      <Wallet size={18} aria-hidden />
+                      {t('订阅与支持')}
+                    </button>
                   </div>
                 )}
               </>
@@ -584,6 +599,14 @@ export function AccountCenter({
                   {t('查看用量与账本')} <ArrowRight size={16} aria-hidden />
                 </button>
                 <PlanCatalog actorId={user.id} />
+                <button
+                  type="button"
+                  className="account-action"
+                  disabled={loggingOut}
+                  onClick={onSupport}
+                >
+                  {t('订阅与支持')} <ArrowRight size={16} aria-hidden />
+                </button>
               </>
             )}
 
@@ -666,7 +689,10 @@ export function AccountCenter({
                     <p>{t(logoutError)}</p>
                   </div>
                 )}
-                <div className="account-deletion account-deletion-notice" data-testid="account-deletion-status">
+                <div
+                  className="account-deletion account-deletion-notice"
+                  data-testid="account-deletion-status"
+                >
                   <Trash size={17} aria-hidden />
                   <h4>{t('注销账号')}</h4>
                   <span>{t('暂不支持自助注销')}</span>

@@ -22,6 +22,9 @@ import {
   assistantModelConfigSchema,
   VoiceTranscriptBuffer,
   VOICE_MODELS,
+  modelProfileError,
+  RESPONSES_MODELS,
+  responsesParameters,
 } from '../src/index.js';
 const settings = assistantModelConfigSchema.parse({
   enabled: true,
@@ -30,6 +33,90 @@ const settings = assistantModelConfigSchema.parse({
   unitCost: 5,
   imageInput: true,
   webSearch: true,
+});
+
+test('OpenAI reasoning validation is model-specific and rejects an unverified production model', () => {
+  assert.equal(new Set(RESPONSES_MODELS.map((profile) => profile.id)).size, 47);
+  for (const model of ['gpt-6.1-sol', 'gpt-6-astra']) {
+    assert.equal(
+      modelProfileError(model, { ...settings, reasoningEffort: 'none' }),
+      'RESPONSES_PROFILE_MISMATCH',
+    );
+    assert.equal(modelProfileError(model, { ...settings, reasoningEffort: 'low' }), undefined);
+  }
+  assert.equal(
+    modelProfileError('gpt-6.1-terra', { ...settings, reasoningEffort: 'none' }),
+    undefined,
+  );
+  assert.equal(
+    modelProfileError('gpt-5.4-mini-2026-03-17', { ...settings, reasoningEffort: 'xhigh' }),
+    undefined,
+  );
+  assert.equal(
+    modelProfileError('gpt-5.4-mini-2026-03-17', { ...settings, reasoningEffort: 'max' }),
+    'RESPONSES_PROFILE_MISMATCH',
+  );
+  assert.equal(modelProfileError('unverified-model', settings), 'RESPONSES_PROFILE_UNKNOWN');
+  assert.equal(
+    modelProfileError('o3', { ...settings, responses: { reasoningSummary: 'concise' } }),
+    'RESPONSES_PROFILE_MISMATCH',
+  );
+  assert.equal(
+    modelProfileError('chat-latest', { ...settings, responses: { temperature: 0.3 } }),
+    'RESPONSES_PROFILE_MISMATCH',
+  );
+  const configured = assistantModelConfigSchema.parse({
+    ...settings,
+    reasoningEffort: 'none',
+    responses: {
+      reasoningMode: 'standard',
+      verbosity: 'low',
+      format: { type: 'json_object' },
+      temperature: 0,
+      topP: 0.8,
+      serviceTier: 'fast',
+      transport: 'websocket',
+    },
+  });
+  assert.equal(modelProfileError('gpt-6.1-terra', configured), undefined);
+  assert.equal(
+    modelProfileError('gpt-6.1-terra', {
+      ...configured,
+      responses: { ...configured.responses, reasoningMode: 'pro', serviceTier: 'flex' },
+    }),
+    undefined,
+  );
+  assert.equal(
+    modelProfileError('gpt-6.1-terra', {
+      ...configured,
+      responses: { serviceTier: 'ultrafast' },
+    }),
+    'RESPONSES_PROFILE_MISMATCH',
+  );
+  assert.equal(
+    modelProfileError('gpt-4o-mini', { ...settings, responses: { transport: 'websocket' } }),
+    undefined,
+  );
+  assert.deepEqual(responsesParameters(configured), {
+    service_tier: 'fast',
+    reasoning: { effort: 'none', mode: 'standard' },
+    temperature: 0,
+    top_p: 0.8,
+    text: { verbosity: 'low', format: { type: 'json_object' } },
+  });
+  let deepSchema: object = { type: 'string' };
+  for (let depth = 0; depth < 40; depth++) deepSchema = { items: deepSchema };
+  for (const schema of [
+    { type: 'object', properties: { answer: deepSchema } },
+    { type: 'object', properties: { answer: { $ref: 'https://example.org/schema' } } },
+  ])
+    assert.equal(
+      assistantModelConfigSchema.safeParse({
+        ...settings,
+        responses: { format: { type: 'json_schema', name: 'answer', schema } },
+      }).success,
+      false,
+    );
 });
 
 test('composed creative edits preserve their immutable base and accumulate ordered steps', () => {
@@ -139,36 +226,73 @@ function tool(name: string, args: unknown, callId = name) {
 }
 
 test('parallel research isolates literal public inputs, joins scoped evidence and records dispatch purposes', async () => {
-  const observed: any[] = [], phases: any[] = [], purposes: string[] = [];
+  const observed: any[] = [],
+    phases: any[] = [],
+    purposes: string[] = [];
   let publicRequests = 0;
   let opened!: () => void;
-  const allPublic = new Promise<void>((resolve) => { opened = resolve; });
-  const timeout = AbortSignal.timeout(3000);
-  const result = await runEditorAgent('fixture', 'fixture', settings, context({
-    prompt: '私人项目提示，不可发给公开检索分支',
-    imageDataUrl: 'data:image/png;base64,AA==',
-    allowWebSearch: true,
-    publicSearch: { query: 'public one', kind: 'text' },
-    research: [{ kind: 'web', query: 'public two', resultKind: 'text' }, { kind: 'cloud', query: 'private-asset', limit: 2 }, { kind: 'canvas' }],
-    async search(query) { assert.equal(query, 'private-asset'); return { resources: [] }; },
-    async inspectCandidate() { return { observation: { changedPixels: 17 }, imageDataUrl: 'data:image/png;base64,AA==' }; },
-    async onBranch(value) { phases.push(value); },
-    async beforeDispatch(_index, _hash, meta) { purposes.push(meta.purpose); },
-  }), async (_url, options) => {
-    const body = JSON.parse(String(options?.body));
-    observed.push(body);
-    if (typeof body.input === 'string') {
-      assert.match(body.input, /^public (one|two)$/);
-      assert.doesNotMatch(JSON.stringify(body), /private-asset|私人项目|base64/);
-      if (++publicRequests === 2) opened();
-      await Promise.race([allPublic, new Promise<void>((_, reject) => timeout.addEventListener('abort', () => reject(timeout.reason), { once: true }))]);
-      return response([{ type: 'web_search_call', status: 'completed' }, text('公开结果', [{ type: 'url_citation', url: `https://example.org/${body.input.split(' ')[1]}`, title: '公用来源' }])]);
-    }
-    assert.equal(publicRequests, 2);
-    assert.match(JSON.stringify(body.input), /private-asset/);
-    assert.match(JSON.stringify(body.input), /changedPixels/);
-    return response([text('三类来源已核对。')]);
+  const allPublic = new Promise<void>((resolve) => {
+    opened = resolve;
   });
+  const timeout = AbortSignal.timeout(3000);
+  const result = await runEditorAgent(
+    'fixture',
+    'fixture',
+    settings,
+    context({
+      prompt: '私人项目提示，不可发给公开检索分支',
+      imageDataUrl: 'data:image/png;base64,AA==',
+      allowWebSearch: true,
+      publicSearch: { query: 'public one', kind: 'text' },
+      research: [
+        { kind: 'web', query: 'public two', resultKind: 'text' },
+        { kind: 'cloud', query: 'private-asset', limit: 2 },
+        { kind: 'canvas' },
+      ],
+      async search(query) {
+        assert.equal(query, 'private-asset');
+        return { resources: [] };
+      },
+      async inspectCandidate() {
+        return { observation: { changedPixels: 17 }, imageDataUrl: 'data:image/png;base64,AA==' };
+      },
+      async onBranch(value) {
+        phases.push(value);
+      },
+      async beforeDispatch(_index, _hash, meta) {
+        purposes.push(meta.purpose);
+      },
+    }),
+    async (_url, options) => {
+      const body = JSON.parse(String(options?.body));
+      observed.push(body);
+      if (typeof body.input === 'string') {
+        assert.match(body.input, /^public (one|two)$/);
+        assert.doesNotMatch(JSON.stringify(body), /private-asset|私人项目|base64/);
+        if (++publicRequests === 2) opened();
+        await Promise.race([
+          allPublic,
+          new Promise<void>((_, reject) =>
+            timeout.addEventListener('abort', () => reject(timeout.reason), { once: true }),
+          ),
+        ]);
+        return response([
+          { type: 'web_search_call', status: 'completed' },
+          text('公开结果', [
+            {
+              type: 'url_citation',
+              url: `https://example.org/${body.input.split(' ')[1]}`,
+              title: '公用来源',
+            },
+          ]),
+        ]);
+      }
+      assert.equal(publicRequests, 2);
+      assert.match(JSON.stringify(body.input), /private-asset/);
+      assert.match(JSON.stringify(body.input), /changedPixels/);
+      return response([text('三类来源已核对。')]);
+    },
+  );
   assert.equal(observed.length, 3);
   assert.deepEqual(purposes, ['web-search', 'web-search', 'research-merge']);
   assert.equal(result.citations.length, 2);
@@ -181,14 +305,29 @@ test('parallel research isolates literal public inputs, joins scoped evidence an
 test('model-delegated private search is scoped and cannot start a public request', async () => {
   let sent = 0;
   const nodes: string[] = [];
-  await runEditorAgent('fixture', 'fixture', settings, context({
-    allowWebSearch: false,
-    async onBranch(node) { if (node.state === 'completed') nodes.push(node.kind); },
-  }), async (_url, options) => {
-    const body = JSON.parse(String(options?.body));
-    assert.ok(Array.isArray(body.input));
-    return ++sent === 1 ? response([tool('delegate_research', { queries: [{ query: 'scoped', limit: 2 }], inspectCanvas: false })]) : response([text('已汇总素材。')]);
-  });
+  await runEditorAgent(
+    'fixture',
+    'fixture',
+    settings,
+    context({
+      allowWebSearch: false,
+      async onBranch(node) {
+        if (node.state === 'completed') nodes.push(node.kind);
+      },
+    }),
+    async (_url, options) => {
+      const body = JSON.parse(String(options?.body));
+      assert.ok(Array.isArray(body.input));
+      return ++sent === 1
+        ? response([
+            tool('delegate_research', {
+              queries: [{ query: 'scoped', limit: 2 }],
+              inspectCanvas: false,
+            }),
+          ])
+        : response([text('已汇总素材。')]);
+    },
+  );
   assert.deepEqual(nodes, ['cloud', 'merge', 'root']);
 });
 

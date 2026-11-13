@@ -5,13 +5,13 @@ import { z, ZodError } from 'zod';
 import { listUnknownAiJobs } from './ai-reconciliation.js';
 import { createDatabase, migrate, QuotaError, type Database } from '@ai-xiutu/db';
 import {
-  createTencentSms,
+  createSms,
   createTextModerator,
   ProviderError,
   type SmsAdapter,
 } from '@ai-xiutu/providers';
 import { RecipeValidationError } from '@ai-xiutu/editor';
-import { assistantModelConfigSchema, VOICE_MODELS } from '@ai-xiutu/assistant';
+import { assistantModelConfigSchema, modelProfileError, VOICE_MODELS } from '@ai-xiutu/assistant';
 import { loadConfig, type AppConfig } from './config.js';
 import {
   HttpError,
@@ -35,7 +35,7 @@ import { registerAssetRecognition } from './asset-recognition.js';
 import { registerAiDecisions } from './ai-decisions.js';
 import { registerAssetCopy } from './asset-copy.js';
 import { registerEditorContract } from './editor-contract.js';
-import { createBuiltinRegistry, type RuntimeGate } from '@ai-xiutu/contracts';
+import { createBuiltinRegistry, OPENAI_SPECIALIST_OPERATIONS, type RuntimeGate } from '@ai-xiutu/contracts';
 import { registerCollaboration } from './collaboration.js';
 import { registerRealtimeCollaboration } from './realtime-collaboration.js';
 import { registerResources } from './resources.js';
@@ -46,6 +46,7 @@ import { registerAssistant, type AssistantDependencies } from './assistant/index
 import { registerSharing } from './sharing.js';
 import { registerOperations, publicSettings, modelDto } from './operations.js';
 import { LocalPrivateStorage, StorageError } from './storage.js';
+import { loadSupportQr, registerSupport } from './support.js';
 
 export interface AiService {
   configured: boolean;
@@ -98,7 +99,8 @@ export interface BuildOptions {
 export async function buildApp(options: BuildOptions = {}): Promise<FastifyInstance> {
   const config = options.config ?? loadConfig();
   const db = options.db ?? createDatabase(config.databaseUrl);
-  const sms = options.sms ?? createTencentSms();
+  const sms = options.sms ?? createSms();
+  const supportQr = await loadSupportQr(config.supportQrFile);
   const ai = options.aiService;
   await migrate(db);
   const storage = new LocalPrivateStorage(config);
@@ -290,7 +292,9 @@ export async function buildApp(options: BuildOptions = {}): Promise<FastifyInsta
     const assistantRows = (await db.query('SELECT id,config FROM assistant_model_configs')).rows;
     const assistantModels = assistantRows.flatMap((model) => {
       const parsed = assistantModelConfigSchema.safeParse(model.config);
-      return parsed.success && parsed.data.enabled
+      return parsed.success &&
+        parsed.data.enabled &&
+        !modelProfileError(String(model.id), parsed.data)
         ? [{ id: String(model.id), config: parsed.data }]
         : [];
     });
@@ -327,7 +331,7 @@ export async function buildApp(options: BuildOptions = {}): Promise<FastifyInsta
           : (assistantRuntime.reason ?? '实时语音开关未启用'),
       },
     };
-    for (const operation of ['generate-image', 'edit-plan', 'generate-text', 'transcribe']) {
+    for (const operation of ['generate-image', 'edit-plan', 'generate-text', 'transcribe', ...OPENAI_SPECIALIST_OPERATIONS]) {
       const status = ai?.operationStatus?.[operation];
       const executorStatus = status ?? {
         available: ai?.availableOperations?.includes(operation) ?? false,
@@ -337,7 +341,9 @@ export async function buildApp(options: BuildOptions = {}): Promise<FastifyInsta
         (model) =>
           model.config?.enabled === true &&
           Array.isArray(model.config.operations) &&
-          model.config.operations.includes(operation),
+          model.config.operations.includes(operation) &&
+          (!(OPENAI_SPECIALIST_OPERATIONS as readonly string[]).includes(operation) ||
+            ai?.describeModel?.(model.id, model.config)?.runtimeAvailable === true),
       );
       gates[operation] = {
         available: executorStatus.available && configured,
@@ -402,6 +408,20 @@ export async function buildApp(options: BuildOptions = {}): Promise<FastifyInsta
     await projectAccess(db, p.id, user.id);
     return ai ? ai.list({ actorId: user.id, projectId: p.id }) : { jobs: [] };
   });
+  app.get('/v1/ai-jobs/:id/audio', async (req, reply) => {
+    const user = requireUser(req);
+    const p = z.object({ id }).parse(req.params);
+    const audio = (await db.query(`SELECT a.format,a.mime,a.bytes FROM ai_job_audio a
+      JOIN ai_jobs j ON j.id=a.job_id JOIN projects p ON p.id=j.project_id AND p.deleted_at IS NULL
+      JOIN memberships m ON m.space_id=p.space_id AND m.user_id=$2
+      JOIN users u ON u.id=m.user_id AND u.status='active' AND u.phone_verified_at IS NOT NULL
+      WHERE a.job_id=$1 AND j.state='completed'`, [p.id, user.id])).rows[0];
+    if (!audio) throw new HttpError(404, 'AI_AUDIO_NOT_FOUND', '音频结果不存在');
+    const extension = audio.format === 'pcm16' ? 'pcm' : audio.format;
+    return reply.header('Cache-Control', 'private, no-store')
+      .header('Content-Disposition', `inline; filename="ai-${p.id}.${extension}"`)
+      .type(audio.mime).send(audio.bytes);
+  });
   app.post('/v1/ai-jobs/:id/cancel', async (req) => {
     const user = requireUser(req);
     const p = z.object({ id }).parse(req.params);
@@ -426,6 +446,7 @@ export async function buildApp(options: BuildOptions = {}): Promise<FastifyInsta
     return ai.resolve({ actorId: user.id, jobId: p.id, body: req.body });
   });
   registerAuth(app, db, config, sms);
+  registerSupport(app, db, supportQr);
   registerSpaces(app, db);
   registerProjects(app, db, storage);
   registerPhotoTrash(app, db);

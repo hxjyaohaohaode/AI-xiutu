@@ -7,6 +7,7 @@ import { CheckControl } from './CheckControl';
 import { StatusMark } from './StatusMark';
 import { FeatureSkeleton } from './DeferredFeature';
 import './unknown-jobs.css';
+import { specialistTaskLabels } from '../ai/SpecialistOptions';
 
 interface Job {
   id: string;
@@ -29,6 +30,7 @@ const operations: Record<string, string> = {
   'generate-image': '图片生成',
   'generate-text': '文案生成',
   transcribe: '语音转写',
+  ...specialistTaskLabels,
 };
 export function UnknownJobsPanel() {
   const [jobId, setJobId] = useState(''),

@@ -1,4 +1,5 @@
 import { t, formatNumber } from '../i18n';
+import { specialistTaskLabels } from '../ai/SpecialistOptions';
 export const usageKinds = [
   'issued',
   'held',
@@ -60,6 +61,7 @@ export function usageChartValues(report: UsageReport, kind: UsageKind) {
 }
 
 export const usageOperationLabels: Record<string, string> = {
+  ...specialistTaskLabels,
   'edit-plan': '参数建议',
   'generate-image': '图像生成',
   'generate-text': '文字创作',

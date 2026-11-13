@@ -10,7 +10,13 @@ import {
 } from './requestPayload';
 
 type CheckpointStorage = Pick<Storage, 'getItem' | 'setItem' | 'removeItem'>;
-const operations: AIOperation[] = ['edit-plan', 'generate-image', 'generate-text', 'transcribe'];
+const operations: AIOperation[] = [
+  'edit-plan',
+  'generate-image',
+  'generate-text',
+  'transcribe',
+  ...OPENAI_SPECIALIST_OPERATIONS,
+];
 const validId = (value: unknown): value is string =>
   typeof value === 'string' &&
   /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(value);
@@ -68,7 +74,12 @@ function validateJobRequest(raw: unknown): Record<string, unknown> & {
       'executionGrantId',
     ],
     'generate-text': ['prompt', 'contextDocumentId', 'expectedDocumentVersion', 'parentJobId'],
-    transcribe: ['audioBase64'],
+    transcribe: ['audioBase64', 'transcriptionOptions'],
+    speak: ['prompt', 'options'],
+    'audio-chat': ['prompt', 'options', 'audioBase64'],
+    'web-search': ['prompt', 'options'],
+    embed: ['prompt', 'options'],
+    'translate-audio': ['audioBase64', 'options'],
   }[body.operation as AIOperation];
   if (
     Object.keys(body).some(
@@ -76,7 +87,11 @@ function validateJobRequest(raw: unknown): Record<string, unknown> & {
     )
   )
     throw new Error('创作请求包含当前任务不支持的字段。');
-  if (body.operation === 'transcribe') {
+  if (
+    body.operation === 'transcribe' ||
+    body.operation === 'translate-audio' ||
+    (body.operation === 'audio-chat' && body.audioBase64 !== undefined)
+  ) {
     if (
       typeof body.audioBase64 !== 'string' ||
       body.audioBase64.length < 60 ||
@@ -84,10 +99,18 @@ function validateJobRequest(raw: unknown): Record<string, unknown> & {
       !/^[A-Za-z0-9+/]+={0,2}$/.test(body.audioBase64)
     )
       throw new Error('请先准备有效的录音。');
-  } else if (
-    typeof body.prompt !== 'string' ||
-    !body.prompt.trim() ||
-    body.prompt.trim().length > (body.operation === 'generate-image' ? 4000 : 1500)
+  }
+  if (
+    body.operation !== 'transcribe' &&
+    body.operation !== 'translate-audio' &&
+    (typeof body.prompt !== 'string' ||
+      !body.prompt.trim() ||
+      body.prompt.trim().length >
+        (body.operation === 'generate-image'
+          ? 4000
+          : body.operation === 'speak' || body.operation === 'embed'
+            ? 4096
+            : 1500))
   )
     throw new Error('创作要求为空或超过当前任务的字数限制。');
   if (body.operation === 'edit-plan') {
@@ -263,3 +286,4 @@ export function isJobAdmissionRejected(error: unknown, retry: boolean): boolean 
     error.code !== 'IDEMPOTENCY_CONFLICT'
   );
 }
+import { OPENAI_SPECIALIST_OPERATIONS } from '@ai-xiutu/contracts';

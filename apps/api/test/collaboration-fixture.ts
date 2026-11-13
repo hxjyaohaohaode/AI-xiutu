@@ -1,5 +1,5 @@
 import { randomBytes, randomUUID } from 'node:crypto';
-import { mkdtemp, rm } from 'node:fs/promises';
+import { mkdtemp, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import sharp from 'sharp';
@@ -15,23 +15,33 @@ import { hash } from '../src/core.js';
 
 export async function collaborationFixture(
   databaseUrl: string,
-  options: { assistant?: AssistantDependencies; origin?: string; aiJobHistory?: boolean } = {},
+  options: {
+    assistant?: AssistantDependencies;
+    origin?: string;
+    aiJobHistory?: boolean;
+    supportQr?: Uint8Array;
+  } = {},
 ) {
   const db = createDatabase(databaseUrl),
     directory = await mkdtemp(join(tmpdir(), 'xiutu-v4-sql-'));
   const origin = options.origin ?? 'http://v4.test';
+  const supportQrFile = options.supportQr ? join(directory, 'support.png') : undefined;
+  if (supportQrFile) await writeFile(supportQrFile, options.supportQr!);
   const config = loadConfig({
     DATABASE_URL: databaseUrl,
     SESSION_SECRET: 'isolated-v4-fixture-not-production-credentials',
     STORAGE_DIR: directory,
     APP_ORIGIN: origin,
     NODE_ENV: 'test',
+    SUPPORT_QR_FILE: supportQrFile,
   });
   const app = await buildApp({
     db,
     config,
     assistant: options.assistant,
-    aiService: options.aiJobHistory ? { ...createAiService(db, {}), resolve: undefined } : undefined,
+    aiService: options.aiJobHistory
+      ? { ...createAiService(db, {}), resolve: undefined }
+      : undefined,
     sms: {
       configured: false,
       async send() {

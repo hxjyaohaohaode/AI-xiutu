@@ -9,9 +9,11 @@ import { usageTraditional } from './usage-messages';
 import { workspaceTraditional } from './workspace-messages';
 import { accountTraditional } from './account-messages';
 import { traditionalGenerated } from './traditional-generated';
+import { openAITraditional } from './ai-messages';
 
 /** Traditional Chinese copy; user content is never passed through this catalog. */
 export const traditional: Readonly<Record<string, string>> = {
+  ...openAITraditional,
   '画布批注': '畫布註解',
   '圆点标记': '圓點標記',
   '菱形标记': '菱形標記',

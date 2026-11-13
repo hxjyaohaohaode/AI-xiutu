@@ -120,6 +120,7 @@ try {
     origin,
     assistant: {
       env: {
+        NODE_ENV: 'test',
         AI_ASSISTANT_ENABLED: 'true',
         AI_VOICE_ENABLED: 'true',
         OPENAI_API_KEY: 'local-team-browser-only',

@@ -143,6 +143,7 @@ test(
     const f = await collaborationFixture(databaseUrl!, {
       assistant: {
         env: {
+          NODE_ENV: 'test',
           AI_ASSISTANT_ENABLED: 'true',
           AI_VOICE_ENABLED: 'true',
           OPENAI_API_KEY: 'team-voice-test-only',
@@ -409,7 +410,11 @@ test(
       assert.equal(sockets.length, 1);
     } finally {
       for (const ws of connected) ws.terminate();
-      await f.close();
+      try {
+        await f.db.query('DELETE FROM assistant_model_configs WHERE id=$1', [model]);
+      } finally {
+        await f.close();
+      }
       for (const ws of vendor.clients) ws.terminate();
       await new Promise<void>((resolve) => vendor.close(() => resolve()));
     }

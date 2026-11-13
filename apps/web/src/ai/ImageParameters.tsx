@@ -10,6 +10,7 @@ import {
 } from './capabilities';
 import { Disclosure, OptionChips } from '../components/Controls';
 import { modelCopy } from './model-copy';
+import { CheckControl } from '../components/CheckControl';
 import './model-settings.css';
 
 const names: Record<string, string> = {
@@ -37,6 +38,7 @@ export function ImageParameters({
   width,
   height,
   options,
+  hasReference = false,
   disabled,
   onSize,
   onOptions,
@@ -45,6 +47,7 @@ export function ImageParameters({
   width: number;
   height: number;
   options: ImageOptions;
+  hasReference?: boolean;
   disabled: boolean;
   onSize: (width: number, height: number) => void;
   onOptions: (options: ImageOptions) => void;
@@ -58,7 +61,7 @@ export function ImageParameters({
   } | null>(null);
   const c = model?.parameterCapabilities;
   const choices = allowedImageSizes(model);
-  const sizeError = imageSizeError(model, width, height);
+  const sizeError = options.size === 'auto' ? null : imageSizeError(model, width, height);
   const batchError = imageBatchError(model, width, height, options);
   const optionError = imageOptionsError(model, options);
   const step = c?.size.multipleOf ?? 1;
@@ -95,14 +98,24 @@ export function ImageParameters({
         <OptionChips
           label={fieldLabel}
           value={options[field] ?? ''}
-          options={(capability.values ?? []).map((value) => ({
-            value,
-            label: names[value] ? t(names[value]) : value,
-            disabled: !changeImageOption(model, options, field, value),
-            reason: !changeImageOption(model, options, field, value) ? copy.invalidPair : undefined,
-          }))}
+          options={[
+            ...(field === 'complexity' ? [{ value: '', label: t('使用官方默认') }] : []),
+            ...(capability.values ?? []).map((value) => ({
+              value,
+              label: names[value] ? t(names[value]) : value,
+              disabled: !changeImageOption(model, options, field, value),
+              reason: !changeImageOption(model, options, field, value)
+                ? copy.invalidPair
+                : undefined,
+            })),
+          ]}
           disabled={disabled}
           onChange={(value) => {
+            if (field === 'complexity' && !value) {
+              const { complexity: _default, ...next } = options;
+              onOptions(next);
+              return;
+            }
             const next = changeImageOption(model, options, field, value);
             if (!next) return;
             setLinkedChange(
@@ -142,36 +155,44 @@ export function ImageParameters({
         </span>
         <span>
           <strong>
-            {width || '—'} × {height || '—'}
+            {options.size === 'auto' ? t('自动尺寸') : `${width || '—'} × ${height || '—'}`}
           </strong>
           <small>
-            px · {options.n ?? 1} {t('张')}
+            {options.size === 'auto' ? '' : 'px · '}
+            {options.n ?? 1} {t('张')}
           </small>
         </span>
       </div>
       <div className="parameter-label">{t('画幅与尺寸')}</div>
       <OptionChips
         label={t('常用生成尺寸')}
-        value={width + 'x' + height}
-        options={(c?.size.allowedSizes ? choices : choices.slice(0, 3)).map((size) => ({
-          value: size.width + 'x' + size.height,
-          label: (
-            <>
-              <span>
-                {size.width === size.height
-                  ? t('方形')
-                  : size.width > size.height
-                    ? t('横向')
-                    : t('竖向')}
-              </span>
-              <small>
-                {size.width}×{size.height}
-              </small>
-            </>
-          ),
-        }))}
+        value={options.size ?? width + 'x' + height}
+        options={[
+          ...(c?.size.auto ? [{ value: 'auto', label: t('自动尺寸') }] : []),
+          ...(c?.size.allowedSizes ? choices : choices.slice(0, 3)).map((size) => ({
+            value: size.width + 'x' + size.height,
+            label: (
+              <>
+                <span>
+                  {size.width === size.height
+                    ? t('方形')
+                    : size.width > size.height
+                      ? t('横向')
+                      : t('竖向')}
+                </span>
+                <small>
+                  {size.width}×{size.height}
+                </small>
+              </>
+            ),
+          })),
+        ]}
         disabled={disabled}
         onChange={(value) => {
+          if (value === 'auto') {
+            onOptions({ ...options, size: 'auto' });
+            return;
+          }
           const [w, h] = value.split('x').map(Number);
           onSize(w!, h!);
         }}
@@ -245,9 +266,9 @@ export function ImageParameters({
             inputMode="numeric"
             value={options.n ?? 1}
             min={c.n.min ?? 1}
-            max={c.n.max ?? 1}
+            max={options.stream ? 1 : (c.n.max ?? 1)}
             step={1}
-            disabled={disabled}
+            disabled={disabled || options.stream}
             onChange={(event) => onOptions({ ...options, n: Number(event.target.value) })}
           />
         </label>
@@ -257,6 +278,73 @@ export function ImageParameters({
           {renderField('background', '背景')}
           {renderField('outputFormat', '供应商编码')}
           {renderField('complexity', '复杂度')}
+          {c?.stream.supported && (
+            <>
+              <CheckControl
+                label={t('使用 OpenAI 流式生成')}
+                checked={options.stream === true}
+                disabled={disabled}
+                onChange={(event) =>
+                  onOptions(
+                    event.target.checked
+                      ? { ...options, stream: true, n: 1 }
+                      : { ...options, stream: undefined, partialImages: undefined },
+                  )
+                }
+              />
+              {options.stream && c.partialImages.supported && (
+                <label className="ai-numeric-setting">
+                  <span>{t('供应商部分图数量（0–3）')}</span>
+                  <input
+                    type="number"
+                    min={0}
+                    max={3}
+                    step={1}
+                    disabled={disabled}
+                    value={options.partialImages ?? 0}
+                    onChange={(event) =>
+                      onOptions({ ...options, partialImages: event.target.valueAsNumber })
+                    }
+                  />
+                </label>
+              )}
+              {options.stream && c.partialImages.supported && (
+                <p className="fine-print">
+                  {t('审核通过后展示最终图。部分图每张按当前单张点数预留。')}
+                </p>
+              )}
+            </>
+          )}
+          {c?.moderation?.supported && (
+            <div className="parameter-row">
+              <div className="parameter-label">{t('OpenAI 内容审核')}</div>
+              <OptionChips
+                label={t('OpenAI 内容审核')}
+                value={options.moderation ?? 'auto'}
+                disabled={disabled}
+                options={(c.moderation.values ?? []).map((value) => ({
+                  value,
+                  label: t(names[value] ?? value),
+                }))}
+                onChange={(moderation) => onOptions({ ...options, moderation })}
+              />
+            </div>
+          )}
+          {hasReference && c?.inputFidelity.supported && (
+            <div className="parameter-row">
+              <div className="parameter-label">{t('输入保真度')}</div>
+              <OptionChips
+                label={t('输入保真度')}
+                value={options.inputFidelity ?? 'low'}
+                disabled={disabled}
+                options={(c.inputFidelity.values ?? []).map((value) => ({
+                  value,
+                  label: t(names[value] ?? value),
+                }))}
+                onChange={(inputFidelity) => onOptions({ ...options, inputFidelity })}
+              />
+            </div>
+          )}
           {linkedChange?.modelId === model.id &&
             linkedChange.background === options.background &&
             linkedChange.format === options.outputFormat && (
@@ -329,9 +417,10 @@ export function ImageParameters({
               <div key={field}>
                 <dt>{t(label)}</dt>
                 <dd>
-                  {capability?.supported
-                    ? t('当前模型已开放')
-                    : t(capability?.reason ?? '当前适配器未开放')}
+                  {t(
+                    capability?.reason ??
+                      (capability?.supported ? '当前模型已开放' : '当前适配器未开放'),
+                  )}
                 </dd>
               </div>
             );

@@ -68,7 +68,7 @@ export function defaultImageOptions(model: AIModel | undefined): ImageOptions {
   const caps = model?.parameterCapabilities;
   if (!caps) return {};
   const result: ImageOptions = {};
-  for (const field of ['quality', 'background', 'outputFormat', 'complexity'] as const) {
+  for (const field of ['quality', 'background', 'outputFormat'] as const) {
     const c = caps[field];
     if (c.supported && c.values?.length)
       result[field] =
@@ -88,7 +88,9 @@ export function reconcileImageOptions(
   const caps = model?.parameterCapabilities;
   if (!caps) return {};
   const requested = requestImageOptions(model, selected) ?? {};
-  const retained = Object.fromEntries(Object.entries(requested).filter(([, value]) => value !== undefined));
+  const retained = Object.fromEntries(
+    Object.entries(requested).filter(([, value]) => value !== undefined),
+  );
   let next: ImageOptions = { ...defaultImageOptions(model), ...retained };
   if (caps.n.supported)
     next.n = Math.max(caps.n.min ?? 1, Math.min(caps.n.max ?? 1, Math.round(next.n ?? 1)));
@@ -98,7 +100,8 @@ export function reconcileImageOptions(
       Math.min(caps.outputCompression.max ?? 100, Math.round(next.outputCompression)),
     );
   if (model && next.background === 'transparent' && next.outputFormat === 'jpeg')
-    next = changeImageOption(model, next, 'background', 'transparent') ?? defaultImageOptions(model);
+    next =
+      changeImageOption(model, next, 'background', 'transparent') ?? defaultImageOptions(model);
   return imageOptionsError(model, next) ? defaultImageOptions(model) : next;
 }
 export function requestImageOptions(
@@ -112,6 +115,16 @@ export function requestImageOptions(
     const value = selected[field];
     if (caps[field].supported && value && caps[field].values?.includes(value))
       result[field] = value;
+  }
+  if (selected.size === 'auto' && caps.size.auto) result.size = 'auto';
+  if (selected.inputFidelity && caps.inputFidelity.values?.includes(selected.inputFidelity))
+    result.inputFidelity = selected.inputFidelity;
+  if (selected.moderation && caps.moderation?.values?.includes(selected.moderation))
+    result.moderation = selected.moderation;
+  if (selected.stream && caps.stream.supported) {
+    result.stream = true;
+    if (caps.partialImages.supported && selected.partialImages !== undefined)
+      result.partialImages = selected.partialImages;
   }
   if (caps.n.supported && Number.isInteger(selected.n)) result.n = selected.n;
   if (
@@ -167,13 +180,31 @@ export function imageOptionsError(
 ): string | null {
   const caps = model?.parameterCapabilities;
   if (!caps) return null;
-  for (const field of ['quality', 'background', 'outputFormat', 'complexity'] as const) {
+  for (const field of ['quality', 'background', 'outputFormat'] as const) {
     const c = caps[field];
     if (c.supported && (!selected[field] || !c.values?.includes(selected[field]!)))
       return t('请重新选择当前模型支持的参数。');
   }
+  if (
+    (selected.size && !caps.size.auto) ||
+    (selected.complexity && !caps.complexity.values?.includes(selected.complexity)) ||
+    (selected.inputFidelity && !caps.inputFidelity.values?.includes(selected.inputFidelity)) ||
+    (selected.moderation && !caps.moderation?.values?.includes(selected.moderation))
+  )
+    return t('请重新选择当前模型支持的参数。');
   if (selected.background === 'transparent' && selected.outputFormat === 'jpeg')
     return t('透明背景需要 PNG 或 WebP，JPEG 不支持透明度。');
+  if (selected.stream && (!caps.stream.supported || (selected.n ?? 1) !== 1))
+    return t('流式生成每次限一张图。');
+  if (
+    selected.partialImages !== undefined &&
+    (!selected.stream ||
+      !caps.partialImages.supported ||
+      !Number.isInteger(selected.partialImages) ||
+      selected.partialImages < 0 ||
+      selected.partialImages > 3)
+  )
+    return t('部分图数量须为 0–3，且需要流式生成。');
   if (
     caps.n.supported &&
     (!Number.isInteger(selected.n) ||
@@ -199,7 +230,7 @@ export function imagePointQuote(model: AIModel | undefined, options: ImageOption
     model.pointsPerPlan;
   if (typeof perImage !== 'number' || !Number.isSafeInteger(perImage) || perImage < 1) return null;
   const count = model.parameterCapabilities?.n.supported ? (options.n ?? 1) : 1;
-  const total = perImage * count;
+  const total = perImage * (count + (options.stream ? (options.partialImages ?? 0) : 0));
   return Number.isSafeInteger(count) && count >= 1 && Number.isSafeInteger(total) ? total : null;
 }
 
@@ -215,10 +246,21 @@ export function imageBatchError(
   const max = model.batchLimits?.maxTotalPixels;
   if (count > 1 && (!max || !Number.isSafeInteger(max)))
     return t('服务尚未给出整批像素预算，请先选择1张。');
-  if (max && width * height * count > max)
+  const pixels =
+    options.size === 'auto'
+      ? Math.max(
+          0,
+          ...(model.parameterCapabilities?.size.autoSizes ?? []).map((size) => {
+            const [w, h] = size.split('x').map(Number);
+            return w! * h!;
+          }),
+        )
+      : width * height;
+  const frames = count + (options.stream ? (options.partialImages ?? 0) : 0);
+  if (max && pixels * frames > max)
     return t(
       '这批 {count} 张合计 {total} 百万像素，超过当前整批 {max} 百万预算。请减少张数或尺寸。',
-      { count, total: ((width * height * count) / 1e6).toFixed(2), max: (max / 1e6).toFixed(2) },
+      { count: frames, total: ((pixels * frames) / 1e6).toFixed(2), max: (max / 1e6).toFixed(2) },
     );
   const points = imagePointQuote(model, options);
   if (points !== null && points > 100000)

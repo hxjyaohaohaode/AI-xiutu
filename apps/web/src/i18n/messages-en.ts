@@ -9,7 +9,7 @@ import { appEnglish } from './app-messages';
 import { residualEnglish } from './residual-messages';
 import { additionalEnglish } from './additional-messages';
 import { registryEnglish } from './registry-messages';
-import { aiEnglish } from './ai-messages';
+import { aiEnglish, openAIEnglish } from './ai-messages';
 import { usageEnglish } from './usage-messages';
 import { workspaceEnglish } from './workspace-messages';
 import { accountEnglish } from './account-messages';
@@ -43,6 +43,7 @@ export const english: Readonly<Record<string, string>> = {
   ...additionalEnglish,
   ...registryEnglish,
   ...aiEnglish,
+  ...openAIEnglish,
   ...usageEnglish,
   ...workspaceEnglish,
   ...accountEnglish,

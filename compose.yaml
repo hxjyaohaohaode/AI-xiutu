@@ -43,6 +43,7 @@ services:
     volumes:
       - assets:/app/.data/private
       - dispatch:/app/.data/ai-dispatch-journal
+      - ./.data/support:/app/.data/support:ro
     depends_on:
       migrate:
         condition: service_completed_successfully

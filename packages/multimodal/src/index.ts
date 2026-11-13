@@ -19,3 +19,7 @@ export { MAX_WAV_BYTES, MAX_WAV_SECONDS, validateWav } from './wav.js';
 export { createTencentImageModerator } from '@ai-xiutu/providers';
 export type { ImageModerator, ModerationResult } from '@ai-xiutu/providers';
 export * from './openai.js';
+export * from './openai-speech.js';
+export * from './openai-inventory.js';
+export * from './openai-specialist.js';
+export * from './openai-image-artifacts.js';

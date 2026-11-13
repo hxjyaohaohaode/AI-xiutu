@@ -1,5 +1,16 @@
 # External adapters
 
+`createSms(env)` selects `alibaba-pnvs` or `tencent`. It defaults to Tencent for
+existing deployments. Alibaba Cloud SMS Authentication sends app-generated
+verification codes using `SendSmsVerifyCode`, version `2017-05-25`, with
+ACS3-HMAC-SHA256 and fixed `dypnsapi.aliyuncs.com` HTTPS. Configure a RAM key
+pair, an approved platform signature and a template for each OTP purpose. The
+adapter sends the locally generated code and minutes as template variables.
+The application keeps its existing purpose-scoped OTP verification and
+expiry. Provider acceptance requires `Success`, `Code`, a request ID and a
+business receipt. A transport error or uncertain response is never retried
+automatically. Mainland China numbers only. [Official SendSmsVerifyCode reference](https://help.aliyun.com/zh/pnvs/developer-reference/api-dypnsapi-2017-05-25-sendsmsverifycode)
+
 `createTencentSms(env)` implements Tencent SMS `SendSms`, API `2021-01-11`,
 with TC3-HMAC-SHA256. All three approved template IDs are required. By default
 template parameters are `[code, expiryMinutes]`; set `TENCENT_SMS_CODE_ONLY=true`

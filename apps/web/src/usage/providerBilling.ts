@@ -7,10 +7,13 @@ import type {
   UsageJobDetail,
 } from '@ai-xiutu/contracts';
 import type { UsageEntry } from './model';
+import { specialistTaskLabels } from '../ai/SpecialistOptions';
 
 export const meterLabels: Record<Meter, string> = {
   input: '输入',
   'cached-input': '缓存输入',
+  'cache-write-30m': '缓存写入（30 分钟）',
+  'cache-write-12h': '缓存写入（12 小时）',
   output: '输出',
   reasoning: '推理输出',
   'text-input': '文本输入',
@@ -26,6 +29,7 @@ export const meterLabels: Record<Meter, string> = {
   'voice-seconds': '通话计费时长',
 };
 export const stagePurposeLabels: Record<string, string> = {
+  ...specialistTaskLabels,
   conversation: '编辑对话',
   'web-search': '公开检索',
   'research-merge': '合并研究证据',

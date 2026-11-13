@@ -25,7 +25,9 @@ import {
   voiceTextEvents,
   voiceResultEvents,
   liveContextAppend,
+  liveOpeningText,
   normalizeVoiceEvent,
+  assistantEgressProxy,
   voiceModel,
   runEditorAgent,
   VoiceTranscriptBuffer,
@@ -214,18 +216,8 @@ export function attachVoiceBridge(
     const done = new Promise<void>((resolve) => {
       resolveDone = resolve;
     });
-    const proxyRaw = service.env.ASSISTANT_EGRESS_PROXY;
-    let proxy: HttpsProxyAgent<string> | undefined;
-    if (proxyRaw) {
-      const url = new URL(proxyRaw);
-      if (
-        !['http:', 'https:'].includes(url.protocol) ||
-        url.hash ||
-        (url.pathname && url.pathname !== '/')
-      )
-        throw new Error('VOICE_PROXY_CONFIG_INVALID');
-      proxy = new HttpsProxyAgent(proxyRaw);
-    }
+    const proxyRaw = assistantEgressProxy(service.env.ASSISTANT_EGRESS_PROXY);
+    const proxy = proxyRaw ? new HttpsProxyAgent(proxyRaw) : undefined;
     const upstream = (
       service.dependencies.connectVoice ?? ((url, options) => new WebSocket(url, options))
     )(voiceEndpoint(row.model_id), {
@@ -664,6 +656,7 @@ export function attachVoiceBridge(
               row.config.voiceModel.maxOutputTokens,
               Boolean(row.config.teamArtworkId),
               row.config.voiceModel.voiceReasoningEffort,
+              row.config.voiceModel,
             ),
           );
       } catch {
@@ -704,6 +697,8 @@ export function attachVoiceBridge(
                 maxPublicSearches: searchLimit,
               });
               publishContext();
+              const opening = live && liveOpeningText(row.config.voiceModel.live);
+              if (opening) upstreamSend(liveContextAppend('commentary', opening));
               durationTimer = setTimeout(
                 () => stop('DURATION_BUDGET'),
                 row.config.voiceModel.maxSeconds * 1000,

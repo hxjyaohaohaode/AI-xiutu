@@ -527,11 +527,91 @@ function CompletedResult({
           <ResultActions {...actionProps} />
         </div>
       )}
+      {job.output?.kind === 'specialist' && (
+        <div className="ai-text-copy">
+          {job.output.text && <AssistantText text={job.output.text} />}
+          {!!job.output.citations?.length && (
+            <ul>
+              {job.output.citations.map((item) => (
+                <li key={item.url}>
+                  <a href={item.url} target="_blank" rel="noopener noreferrer">
+                    {item.title}
+                  </a>
+                </li>
+              ))}
+            </ul>
+          )}
+          {job.output.audio && (
+            <div className="ai-result-actions">
+              <span>{t('此音频由 AI 生成')}</span>
+              {!job.output.audio.format.startsWith('pcm') && (
+                <audio
+                  aria-label={t('播放 AI 音频')}
+                  controls
+                  preload="none"
+                  src={job.output.audio.url}
+                />
+              )}
+              <a href={job.output.audio.url} download>
+                {t('下载音频')}
+              </a>
+            </div>
+          )}
+          {job.output.embedding !== undefined && (
+            <details>
+              <summary>{t('查看向量')}</summary>
+              <textarea
+                readOnly
+                aria-label={t('向量结果')}
+                value={
+                  typeof job.output.embedding === 'string'
+                    ? job.output.embedding
+                    : JSON.stringify(job.output.embedding)
+                }
+                rows={6}
+              />
+            </details>
+          )}
+        </div>
+      )}
       {job.output?.kind === 'transcript' && (job.output.noSpeech || !job.output.text.trim()) && (
         <p className="ai-status-copy">{t('本次已结算，未识别到清晰语音。')}</p>
       )}
       {job.output?.kind === 'transcript' && !!job.output.text.trim() && (
-        <TranscriptResult text={job.output.text} onUse={onTranscript} />
+        <>
+          <TranscriptResult text={job.output.text} onUse={onTranscript} />
+          {!!job.output.segments?.length && (
+            <details>
+              <summary>{t('按说话人查看')}</summary>
+              <ol>
+                {job.output.segments.map((segment, index) => (
+                  <li key={index}>
+                    <strong>
+                      {segment.speaker} · {segment.start.toFixed(1)}–{segment.end.toFixed(1)} s
+                    </strong>{' '}
+                    {segment.text}
+                  </li>
+                ))}
+              </ol>
+            </details>
+          )}
+          {(['word', 'segment'] as const).map((granularity) => {
+            const timestamps =
+              job.output?.kind === 'transcript' ? job.output.timestamps?.[granularity] : undefined;
+            return timestamps?.length ? (
+              <details key={granularity}>
+                <summary>{t(granularity === 'word' ? '词级时间戳' : '段级时间戳')}</summary>
+                <ol>
+                  {timestamps.map((item, index) => (
+                    <li key={index}>
+                      {item.start.toFixed(2)}–{item.end.toFixed(2)} s · {item.text}
+                    </li>
+                  ))}
+                </ol>
+              </details>
+            ) : null;
+          })}
+        </>
       )}
       <InlineError message={controller.error} />
     </>

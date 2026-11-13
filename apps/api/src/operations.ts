@@ -1,5 +1,6 @@
 import type { FastifyInstance } from 'fastify';
 import { z } from 'zod';
+import { OPENAI_SPECIALIST_OPERATIONS } from '@ai-xiutu/contracts';
 import {
   transaction,
   audit,
@@ -14,6 +15,7 @@ import {
   title,
   reason,
   phoneSchema,
+  normalizePhone,
   requireUser,
   requireOperator,
   spaceRole,
@@ -40,7 +42,15 @@ const modelSchema = z
     label: title,
     provider: z.enum(['qwen', 'ark', 'openai']).default('qwen'),
     operations: z
-      .array(z.enum(['edit-plan', 'generate-image', 'generate-text', 'transcribe']))
+      .array(
+        z.enum([
+          'edit-plan',
+          'generate-image',
+          'generate-text',
+          'transcribe',
+          ...OPENAI_SPECIALIST_OPERATIONS,
+        ]),
+      )
       .min(1)
       .max(4)
       .default(['edit-plan']),
@@ -74,8 +84,11 @@ const modelSchema = z
     (x) =>
       x.operations.every((op) =>
         x.provider === 'ark' || x.provider === 'openai'
-          ? op === 'generate-image'
-          : op !== 'generate-image',
+          ? op === 'generate-image' ||
+            (x.provider === 'openai' &&
+              (op === 'transcribe' ||
+                (OPENAI_SPECIALIST_OPERATIONS as readonly string[]).includes(op)))
+          : ['edit-plan', 'generate-text', 'transcribe'].includes(op),
       ),
     '供应商与操作能力不匹配',
   );
@@ -184,11 +197,16 @@ export function registerOperations(
   app.get('/v1/ops/users', async (req) => {
     requireOperator(req);
     const p = z.object({ query: z.string().max(120).default('') }).parse(req.query);
-    const term = p.query.replace(/[\\%_]/g, '\\$&');
+    const query = p.query.trim();
+    const compact = query.replace(/[\s()-]/g, '');
+    const exactPhone = /^(?:1[3-9]\d{9}|\+[1-9]\d{7,14})$/.test(compact)
+      ? normalizePhone(compact)
+      : null;
+    const term = query.replace(/[\\%_]/g, '\\$&');
     const rows = (
       await db.query(
-        "SELECT u.id,u.display_name,u.phone,u.status,u.created_at,EXISTS(SELECT 1 FROM operator_users o WHERE o.user_id=u.id) AS is_operator FROM users u WHERE u.display_name ILIKE $1 ESCAPE '\\' OR u.phone ILIKE $1 ESCAPE '\\' ORDER BY u.created_at DESC LIMIT 100",
-        [`%${term}%`],
+        "SELECT u.id,u.display_name,u.phone,u.status,u.created_at,EXISTS(SELECT 1 FROM operator_users o WHERE o.user_id=u.id) AS is_operator FROM users u WHERE CASE WHEN $2::text IS NOT NULL THEN u.phone=$2 ELSE u.display_name ILIKE $1 ESCAPE '\\' OR u.phone ILIKE $1 ESCAPE '\\' END ORDER BY u.created_at DESC LIMIT 100",
+        [`%${term}%`, exactPhone],
       )
     ).rows;
     return {
@@ -237,6 +255,7 @@ export function registerOperations(
           displayName: user.display_name,
           phoneMasked: maskPhone(user.phone),
           status: user.status,
+          phoneVerified: Boolean(user.phone_verified_at),
         },
         spaces,
       };
@@ -398,7 +417,10 @@ export function registerOperations(
   app.patch('/v1/ops/plans/:id', async (req) => {
     const actor = requireOperator(req);
     const params = z.object({ id }).parse(req.params);
-    const p = planSchema.extend({ expectedVersion: z.number().int().positive().optional() }).strict().parse(req.body);
+    const p = planSchema
+      .extend({ expectedVersion: z.number().int().positive().optional() })
+      .strict()
+      .parse(req.body);
     const plan = await transaction(db, async (tx) => {
       const current = (await tx.query('SELECT * FROM plans WHERE id=$1 FOR UPDATE', [params.id]))
         .rows[0];
@@ -453,6 +475,18 @@ export function registerOperations(
       .object({ id: z.string().regex(/^[a-zA-Z0-9][a-zA-Z0-9._:-]{0,119}$/) })
       .parse(req.params);
     const body = modelSchema.parse(req.body);
+    if (
+      body.enabled &&
+      body.provider === 'openai' &&
+      body.operations.some(
+        (operation) =>
+          !providerModelCatalog.some((value) => {
+            const item = value as { id: string; operation?: string };
+            return item.id === p.id && item.operation === operation;
+          }),
+      )
+    )
+      throw new HttpError(400, 'MODEL_PROFILE_MISMATCH', '模型 ID 与 OpenAI 接口用途不匹配');
     const { reason: why, expectedVersion, ...config } = body;
     const model = await transaction(db, async (tx) => {
       const encoded = JSON.stringify(config);
@@ -497,6 +531,8 @@ export function registerOperations(
       })
       .strict()
       .parse(req.body);
+    if (p.idempotencyKey.startsWith('support:wechat:'))
+      throw new HttpError(400, 'ADJUSTMENT_KEY_RESERVED', '请使用微信赞赏发放入口');
     return transaction(db, async (tx) => {
       if (!(await tx.query('SELECT id FROM spaces WHERE id=$1', [p.spaceId])).rowCount)
         throw new HttpError(404, 'SPACE_NOT_FOUND', '空间不存在');

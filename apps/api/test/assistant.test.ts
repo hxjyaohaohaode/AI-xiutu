@@ -7,9 +7,11 @@ import { createConnection } from 'node:net';
 import WebSocket, { WebSocketServer } from 'ws';
 import { transaction, adjustUnits } from '@ai-xiutu/db';
 import { assistantModelConfigSchema } from '@ai-xiutu/assistant';
+import { publicPricingSnapshot } from '@ai-xiutu/contracts';
 import { collaborationFixture } from './collaboration-fixture.js';
 import type { AssistantDependencies } from '../src/assistant/index.js';
 import { createAssistantService } from '../src/assistant/service.js';
+import { meterStage } from '../src/provider-metering.js';
 import sharp from 'sharp';
 import { inspectCandidatePixels } from '../src/assistant/preview.js';
 import { createRecipeV4, createAdjustmentRegionV3, migrateRecipeToV4 } from '@ai-xiutu/editor';
@@ -18,6 +20,7 @@ import { createArtworkBranch } from '../src/revision-commands.js';
 const databaseUrl = process.env.TEST_DATABASE_URL;
 const sha = (value: string | Uint8Array) => createHash('sha256').update(value).digest('hex');
 const env = {
+  NODE_ENV: 'test',
   AI_ASSISTANT_ENABLED: 'true',
   AI_VOICE_ENABLED: 'true',
   OPENAI_API_KEY: 'local-protocol-fixture-not-a-real-key',
@@ -42,6 +45,40 @@ const outputText = (text: string) => ({
   type: 'message',
   role: 'assistant',
   content: [{ type: 'output_text', text }],
+});
+
+test('Responses estimates separate GPT-6 cache writes and leave older unpriced receipts incomplete', () => {
+  const modelId = 'gpt-6.1-terra';
+  const receipt = {
+    input_tokens: 12_000,
+    output_tokens: 20,
+    total_tokens: 12_020,
+    input_tokens_details: {
+      cached_tokens: 4000,
+      cache_write_tokens: 7000,
+      cache_write_tokens_details: { ttl_30m_tokens: 3000, ttl_12h_tokens: 4000 },
+    },
+  };
+  const stage = {
+    modelId,
+    stageId: 'dispatch',
+    branchId: null,
+    purpose: 'conversation',
+    dispatchedAt: null,
+    receivedAt: null,
+    status: 'received' as const,
+    pricing: publicPricingSnapshot(modelId, 'openai'),
+  };
+  const calculated = meterStage(stage, receipt, 'responses');
+  assert.equal(calculated.estimateComplete, true);
+  assert.equal(calculated.estimatedNanoUsd, '15050000');
+  const historic = meterStage(
+    stage,
+    { ...receipt, input_tokens_details: { cached_tokens: 4000 } },
+    'responses',
+  );
+  assert.equal(historic.estimateComplete, false);
+  assert.equal(historic.meters.find(({ meter }) => meter === 'input')?.rate, null);
 });
 
 test(
@@ -269,72 +306,112 @@ async function fixture(extra: Partial<AssistantDependencies> = {}) {
       actor,
     );
   const readTurn = async (id: string) => (await f.call('GET', `/v1/assistant-turns/${id}`)).json();
-  return { ...f, modelId, settings, context, scope, turn, prepare, readTurn };
+  return {
+    ...f,
+    modelId,
+    settings,
+    context,
+    scope,
+    turn,
+    prepare,
+    readTurn,
+    async close() {
+      try {
+        await f.db.query('DELETE FROM assistant_model_configs WHERE id=$1', [modelId]);
+      } finally {
+        await f.close();
+      }
+    },
+  };
 }
 
-test('an explicit visual attachment is moderated, frozen and delivered without storing its pixels', {
-  skip: !databaseUrl,
-}, async () => {
-  const moderated: string[] = [];
-  const sent: string[] = [];
-  const f = await fixture({
-    imageModerator: {
-      configured: true,
-      async check(bytes) {
-        moderated.push(sha(bytes));
-        return { decision: 'passed', inputHash: sha(bytes), requestId: 'attachment-review' };
+test(
+  'an explicit visual attachment is moderated, frozen and delivered without storing its pixels',
+  {
+    skip: !databaseUrl,
+  },
+  async () => {
+    const moderated: string[] = [];
+    const sent: string[] = [];
+    const f = await fixture({
+      imageModerator: {
+        configured: true,
+        async check(bytes) {
+          moderated.push(sha(bytes));
+          return { decision: 'passed', inputHash: sha(bytes), requestId: 'attachment-review' };
+        },
       },
-    },
-    fetcher: async (_url, options) => {
-      const input = JSON.parse(String(options?.body)).input;
-      for (const item of input)
-        for (const part of item.content ?? [])
-          if (part.type === 'input_image') sent.push(part.image_url);
-      return response([outputText('已查看附件。')]);
-    },
-  });
-  try {
-    const png = await sharp({
-      create: { width: 120, height: 180, channels: 3, background: '#79944c' },
-    }).png().toBuffer();
-    const body = {
-      ...f.turn('查看编辑界面截图'),
-      visualAttachment: { kind: 'editor', imageDataUrl: `data:image/png;base64,${png.toString('base64')}` },
-    };
-    const path = `/v1/projects/${f.projectId}/assistant-turns`;
-    const denied = await f.call('POST', path, body, 'operator');
-    assert.equal(denied.statusCode, 404);
-    assert.deepEqual(moderated, []);
-    const textOnly = `fixture-text-${randomUUID()}`;
-    await f.db.query('INSERT INTO assistant_model_configs(id,config) VALUES($1,$2)', [
-      textOnly, JSON.stringify({ ...f.settings, imageInput: false }),
-    ]);
-    const unsupported = await f.call('POST', path, { ...body, modelId: textOnly });
-    assert.equal(unsupported.statusCode, 400);
-    assert.deepEqual(moderated, []);
-
-    const started = await f.call('POST', path, body);
-    assert.equal(started.statusCode, 202, started.body);
-    const id = started.json().id;
-    const result = await until(() => f.readTurn(id), (value) => value.state !== 'running');
-    assert.equal(result.state, 'completed', JSON.stringify(result));
-    assert.equal(sent.length, 1);
-    assert.deepEqual(moderated, [sha(Buffer.from(sent[0]!.split(',')[1]!, 'base64'))]);
-    const evidence = await f.db.query('SELECT manifest FROM assistant_context_snapshots WHERE turn_id=$1', [id]);
-    assert.deepEqual(evidence.rows[0]?.manifest.visualAttachment, {
-      kind: 'editor', sharedDataUrlSha256: sha(sent[0]!),
+      fetcher: async (_url, options) => {
+        const input = JSON.parse(String(options?.body)).input;
+        for (const item of input)
+          for (const part of item.content ?? [])
+            if (part.type === 'input_image') sent.push(part.image_url);
+        return response([outputText('已查看附件。')]);
+      },
     });
-    const stored = await f.db.query('SELECT to_jsonb(assistant_turns) AS row FROM assistant_turns WHERE id=$1', [id]);
-    assert.doesNotMatch(JSON.stringify([stored.rows, evidence.rows]), /data:image/);
-    assert.equal((await f.call('POST', path, body)).json().id, id);
-    const changed = await f.call('POST', path, { ...body, visualAttachment: { ...body.visualAttachment, kind: 'sketch' } });
-    assert.equal(changed.statusCode, 409);
-    assert.equal(sent.length, 1);
-    assert.equal(moderated.length, 1);
-  } finally {
-    await f.close();
-  }
-});
+    try {
+      const png = await sharp({
+        create: { width: 120, height: 180, channels: 3, background: '#79944c' },
+      })
+        .png()
+        .toBuffer();
+      const body = {
+        ...f.turn('查看编辑界面截图'),
+        visualAttachment: {
+          kind: 'editor',
+          imageDataUrl: `data:image/png;base64,${png.toString('base64')}`,
+        },
+      };
+      const path = `/v1/projects/${f.projectId}/assistant-turns`;
+      const denied = await f.call('POST', path, body, 'operator');
+      assert.equal(denied.statusCode, 404);
+      assert.deepEqual(moderated, []);
+      const textOnly = `fixture-text-${randomUUID()}`;
+      await f.db.query('INSERT INTO assistant_model_configs(id,config) VALUES($1,$2)', [
+        textOnly,
+        JSON.stringify({ ...f.settings, imageInput: false }),
+      ]);
+      const unsupported = await f.call('POST', path, { ...body, modelId: textOnly });
+      assert.equal(unsupported.statusCode, 400);
+      await f.db.query('DELETE FROM assistant_model_configs WHERE id=$1', [textOnly]);
+      assert.deepEqual(moderated, []);
+
+      const started = await f.call('POST', path, body);
+      assert.equal(started.statusCode, 202, started.body);
+      const id = started.json().id;
+      const result = await until(
+        () => f.readTurn(id),
+        (value) => value.state !== 'running',
+      );
+      assert.equal(result.state, 'completed', JSON.stringify(result));
+      assert.equal(sent.length, 1);
+      assert.deepEqual(moderated, [sha(Buffer.from(sent[0]!.split(',')[1]!, 'base64'))]);
+      const evidence = await f.db.query(
+        'SELECT manifest FROM assistant_context_snapshots WHERE turn_id=$1',
+        [id],
+      );
+      assert.deepEqual(evidence.rows[0]?.manifest.visualAttachment, {
+        kind: 'editor',
+        sharedDataUrlSha256: sha(sent[0]!),
+      });
+      const stored = await f.db.query(
+        'SELECT to_jsonb(assistant_turns) AS row FROM assistant_turns WHERE id=$1',
+        [id],
+      );
+      assert.doesNotMatch(JSON.stringify([stored.rows, evidence.rows]), /data:image/);
+      assert.equal((await f.call('POST', path, body)).json().id, id);
+      const changed = await f.call('POST', path, {
+        ...body,
+        visualAttachment: { ...body.visualAttachment, kind: 'sketch' },
+      });
+      assert.equal(changed.statusCode, 409);
+      assert.equal(sent.length, 1);
+      assert.equal(moderated.length, 1);
+    } finally {
+      await f.close();
+    }
+  },
+);
 
 test(
   'explicit candidate commit binds unsaved edits, preview, budget, lease and original retry',

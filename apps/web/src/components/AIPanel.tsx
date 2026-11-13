@@ -1,4 +1,11 @@
 import { captureSketchVisual } from '../editor/capture';
+import {
+  fileTranscriptionOptionsSchema, supportsFileTranscriptionOptions, type FileTranscriptionOptions,
+  openAISpeechOptionsSchema, openAIAudioChatOptionsSchema, openAISearchOptionsSchema,
+  openAIEmbeddingOptionsSchema, openAITranslationOptionsSchema, type OpenAISpecialistOperation,
+} from '@ai-xiutu/contracts';
+import { TranscriptionParameters } from '../ai/TranscriptionParameters';
+import { SpecialistOptions, specialistDefaults, specialistTaskLabels } from '../ai/SpecialistOptions';
 import { ModelReadStatus } from '../ai/ModelReadStatus';
 import { t } from '../i18n';
 import '../ai/interaction-surfaces.css';
@@ -22,6 +29,11 @@ import {
   ArrowClockwise,
   Scan,
   Export,
+  SpeakerHigh,
+  MagnifyingGlass,
+  Translate,
+  Waveform,
+  Hash,
 } from '@phosphor-icons/react';
 import {
   MAX_HEADER_BYTES,
@@ -129,6 +141,11 @@ const tasks = [
     hint: '录音先在本机，确认后识别',
     chips: [],
   },
+  { id: 'speak' as const, label: specialistTaskLabels.speak, icon: <SpeakerHigh size={18} />, placeholder: '输入要朗读的文字…', button: '生成朗读', hint: '生成可下载的 AI 朗读音频', chips: [] },
+  { id: 'audio-chat' as const, label: specialistTaskLabels['audio-chat'], icon: <Waveform size={18} />, placeholder: '输入问题，可附上录音…', button: '提交音频问答', hint: '选择文字或语音回答', chips: [] },
+  { id: 'web-search' as const, label: specialistTaskLabels['web-search'], icon: <MagnifyingGlass size={18} />, placeholder: '输入要公开搜索的问题…', button: '发起联网搜索', hint: '将输入的问题用于公开搜索', chips: [] },
+  { id: 'embed' as const, label: specialistTaskLabels.embed, icon: <Hash size={18} />, placeholder: '输入要转换成向量的文字…', button: '生成向量', hint: '可复制浮点数组或 Base64 向量', chips: [] },
+  { id: 'translate-audio' as const, label: specialistTaskLabels['translate-audio'], icon: <Translate size={18} />, placeholder: '', button: '确认翻译语音', hint: '确认后发送录音并返回译文与译音', chips: [] },
 ];
 interface AIPanelDraft {
   prompt: string;
@@ -138,6 +155,8 @@ interface AIPanelDraft {
   width: number;
   height: number;
   imageOptions: ImageOptions;
+  transcriptionOptions?: Record<string, FileTranscriptionOptions>;
+  specialistSettings?: Record<string, Record<string, string | number>>;
   referenceIds: string[];
   parentJobId: string | null;
   threadId: string | null | 'recent';
@@ -334,6 +353,8 @@ export function AIPanel({
   const previousModel = useRef(cached?.modelId ?? '');
   const appliedCapabilityKey = useRef('');
   const [audioBase64, setAudioBase64] = useState<string | null>(null);
+  const [transcriptionOptions, setTranscriptionOptions] = useState<Record<string, FileTranscriptionOptions>>(cached?.transcriptionOptions ?? {});
+  const [specialistSettings, setSpecialistSettings] = useState<Record<string, Record<string, string | number>>>(cached?.specialistSettings ?? {});
   const [voiceEpoch, setVoiceEpoch] = useState(0);
   const [referenceIds, setReferenceIds] = useState<string[]>(cached?.referenceIds ?? []);
   const [uploadedReference, setUploadedReference] = useState<{ file: File; asset: Asset } | null>(null);
@@ -424,6 +445,8 @@ export function AIPanel({
     width,
     height,
     imageOptions,
+    transcriptionOptions,
+    specialistSettings,
     referenceIds,
     parentJobId,
     threadId,
@@ -459,7 +482,7 @@ export function AIPanel({
   };
   const caps = selected?.parameterCapabilities;
   const sizeFailure =
-    operation === 'generate-image' ? imageSizeError(selected, width, height) : null;
+    operation === 'generate-image' && imageOptions.size !== 'auto' ? imageSizeError(selected, width, height) : null;
   const optionsFailure =
     operation === 'generate-image' ? imageOptionsError(selected, imageOptions) : null;
   const batchFailure =
@@ -505,6 +528,27 @@ export function AIPanel({
             : ready
               ? t('已准备好')
               : t('{task}暂未开通', { task: task.label });
+  const fileOptions = selected?.provider === 'openai' ? transcriptionOptions[modelId] ?? {} : {};
+  const validFileOptions = fileTranscriptionOptionsSchema.safeParse(fileOptions);
+  const transcriptionOptionsReady = validFileOptions.success && supportsFileTranscriptionOptions(modelId, validFileOptions.data);
+  const specialist = Object.hasOwn(specialistTaskLabels, operation) ? operation as OpenAISpecialistOperation : undefined;
+  const audioOnly = operation === 'transcribe' || operation === 'translate-audio';
+  const needsRecording = audioOnly || operation === 'audio-chat';
+  const promptLimit = operation === 'generate-image' ? 4000
+    : operation === 'speak' || operation === 'embed' ? 4096 : 1500;
+  const specialistOptions = specialist ? specialistSettings[modelId] ?? specialistDefaults(specialist) : {};
+  const { city, country, region, timezone, ...searchOptions } = specialistOptions;
+  const location = Object.fromEntries(Object.entries({ city, country, region, timezone }).filter(([, value]) => value !== undefined));
+  const checkedSpecialist = specialist && ({
+    speak: openAISpeechOptionsSchema,
+    'audio-chat': openAIAudioChatOptionsSchema,
+    'web-search': openAISearchOptionsSchema,
+    embed: openAIEmbeddingOptionsSchema,
+    'translate-audio': openAITranslationOptionsSchema,
+  }[specialist].safeParse(specialist === 'web-search'
+    ? { ...searchOptions, ...(Object.keys(location).length ? { location } : {}) }
+    : specialistOptions));
+  const audioChatNeedsRecording = operation === 'audio-chat' && specialistOptions.output === 'text' && !audioBase64;
   const canSubmit =
     !busy &&
     recovery.ready &&
@@ -513,7 +557,10 @@ export function AIPanel({
     !!project &&
     ready &&
     (!needsArtwork || !!artwork) &&
-    (operation === 'transcribe' ? !!audioBase64 : !!prompt.trim()) &&
+    (audioOnly ? !!audioBase64 : !!prompt.trim()) &&
+    (operation !== 'transcribe' || transcriptionOptionsReady) &&
+    (!checkedSpecialist || checkedSpecialist.success) &&
+    !audioChatNeedsRecording &&
     !sizeFailure &&
     !optionsFailure &&
     !batchFailure &&
@@ -764,6 +811,8 @@ export function AIPanel({
     setGenerationGrantId(undefined);
     generationDraftEpoch.current += 1;
     setOperation(next);
+    setAudioBase64(null);
+    setVoiceEpoch((value) => value + 1);
     setParentJobId(null);
     changed();
   }
@@ -936,6 +985,7 @@ export function AIPanel({
         Object.assign(body, { prompt: prompt.trim(), width, height });
         if (generationGrantId) body.executionGrantId = generationGrantId;
         const options = requestImageOptions(selected, imageOptions);
+        if (options && !referencedCount) delete options.inputFidelity;
         if (options) body.imageOptions = options;
         const ids = [...referenceIds];
         if (selectedReferenceFile) {
@@ -973,9 +1023,15 @@ export function AIPanel({
           body.contextDocumentId = doc.id;
           body.expectedDocumentVersion = doc.version;
         }
-      } else {
+      } else if (operation === 'transcribe') {
         if (!audioBase64) throw new Error('请先录制一段语音。');
         body.audioBase64 = audioBase64;
+        if (validFileOptions.success && Object.values(validFileOptions.data).some((value) => value !== undefined))
+          body.transcriptionOptions = validFileOptions.data;
+      } else if (checkedSpecialist?.success) {
+        if (!audioOnly) body.prompt = prompt.trim();
+        if (needsRecording && audioBase64) body.audioBase64 = audioBase64;
+        body.options = checkedSpecialist.data;
       }
       if (expectedGeneration !== generation.current) return;
       const frozen = freezeJobSubmission({
@@ -1025,7 +1081,7 @@ export function AIPanel({
     setThreadId(job.threadId ?? job.id);
     setParentJobId(null);
     setPrompt((old) => (old.trim() === saved.prompt ? '' : old));
-    if (saved.operation === 'transcribe') {
+    if (['transcribe', 'translate-audio', 'audio-chat'].includes(saved.operation)) {
       setAudioBase64(null);
       setVoiceEpoch((value) => value + 1);
     }
@@ -1310,7 +1366,7 @@ export function AIPanel({
                     promptInput.current?.focus({ preventScroll: true });
                   }}
                 />
-              ) : operation === 'transcribe' ? null : (
+              ) : audioOnly || specialist ? null : (
                 <div className="ai-conversation-empty">
                   <ComposerVisual
                     kind={
@@ -1339,8 +1395,11 @@ export function AIPanel({
                   </div>
                 </div>
               )}
-              {operation === 'transcribe' && !pendingSubmission && (
-                <VoiceCapture key={voiceEpoch} active={visible} onReady={audioReady} />
+              {needsRecording && !pendingSubmission && (
+                <VoiceCapture key={voiceEpoch} active={visible} onReady={audioReady}
+                  notice={operation === 'translate-audio' ? '本机录音，确认发送后翻译。最多 30 秒。'
+                    : operation === 'audio-chat' ? '可附上最多 30 秒的本机录音，确认提交后才发送。'
+                      : undefined} />
               )}
             </div>
             <footer className="ai-composer-region">
@@ -1371,6 +1430,7 @@ export function AIPanel({
               {onTopUp && error && /额度|服务点|credit|quota/i.test(error) && (
                 <button className="text-button" type="button" onClick={onTopUp}>{t('充值与订阅')}</button>
               )}
+              {audioChatNeedsRecording && <p className="ai-inline-error" role="status">{t('选择纯文字回答时，请先添加录音。')}</p>}
               {(sizeFailure || optionsFailure || batchFailure || referenceFailure) &&
                 operation === 'generate-image' && (
                   <p className="ai-inline-error" role="status">
@@ -1429,9 +1489,9 @@ export function AIPanel({
                   inputRef={promptInput}
                   value={prompt}
                   placeholder={task.placeholder}
-                  hideInput={operation === 'transcribe'}
-                  allowEmpty={operation === 'transcribe'}
-                  maxLength={operation === 'generate-image' ? 4000 : 1500}
+                  hideInput={audioOnly}
+                  allowEmpty={audioOnly}
+                  maxLength={promptLimit}
                   disabled={inputLocked}
                   sendDisabled={!canSubmit}
                   onValueChange={(value) => { setPrompt(value); changed(); }}
@@ -1458,7 +1518,7 @@ export function AIPanel({
                       action: () => void useEditedFrame(),
                     }] : []),
                   ] : []}
-                  tools={operation !== 'transcribe' && (
+                  tools={!needsRecording && (
                     <button type="button" className="prompt-bar__tool"
                       aria-label={t('改用语音输入，识别后再确认')}
                       disabled={inputLocked} onClick={() => changeOperation('transcribe')}>
@@ -1471,16 +1531,16 @@ export function AIPanel({
                 <span>
                   {quote !== null && t('{v0} 点 / 次', { v0: quote })}
                   {operation === 'generate-image'
-                    ? t(' · {v0}×{v1} · {v2} 张', {
+                    ? imageOptions.size === 'auto' ? t(' · 自动尺寸 · {count} 张', { count: imageOptions.n ?? 1 }) : t(' · {v0}×{v1} · {v2} 张', {
                         v0: width,
                         v1: height,
                         v2: imageOptions.n ?? 1,
                       })
                     : ''}
                 </span>
-                {prompt.length > (operation === 'generate-image' ? 3200 : 1200) && (
+                {prompt.length > promptLimit * 0.8 && (
                   <span>
-                    {prompt.length}/{operation === 'generate-image' ? 4000 : 1500}
+                    {prompt.length}/{promptLimit}
                   </span>
                 )}
               </div>
@@ -1581,7 +1641,8 @@ export function AIPanel({
                 <small>{t('文字交流、看图建议与实时通话')}</small>
               </span>
             </button>
-            {tasks.map((item) => (
+            {tasks.filter((item) => !Object.hasOwn(specialistTaskLabels, item.id) ||
+              modelResponse?.models.some((model) => model.enabled && model.runtimeOperations?.includes(item.id))).map((item) => (
               <button
                 key={item.id}
                 type="button"
@@ -1635,8 +1696,14 @@ export function AIPanel({
                   width={width}
                   height={height}
                   options={imageOptions}
+                  hasReference={referencedCount > 0}
                   disabled={inputLocked}
                   onSize={(w, h) => {
+                    setImageOptions((current) => {
+                      if (!current.size) return current;
+                      const { size: _auto, ...explicit } = current;
+                      return explicit;
+                    });
                     setWidth(w);
                     setHeight(h);
                     changed();
@@ -1668,6 +1735,35 @@ export function AIPanel({
                   ]}
                 />
               </section>
+            )}
+            {operation === 'transcribe' && selected?.provider === 'openai' && (
+              <>
+                <TranscriptionParameters
+                  key={modelId}
+                  modelId={modelId}
+                  options={fileOptions}
+                  disabled={inputLocked}
+                  onChange={(value) => {
+                    setTranscriptionOptions((current) => ({ ...current, [modelId]: value }));
+                    changed();
+                  }}
+                />
+                {!transcriptionOptionsReady && (
+                  <p className="ai-inline-error" role="status">{t('请核对转写语言、提示和参数范围。')}</p>
+                )}
+              </>
+            )}
+            {specialist && (
+              <>
+                <SpecialistOptions operation={specialist} modelId={modelId} values={specialistOptions}
+                  disabled={inputLocked} onChange={(value) => {
+                    setSpecialistSettings((old) => ({ ...old, [modelId]: value }));
+                    changed();
+                  }} />
+                {checkedSpecialist && !checkedSpecialist.success && (
+                  <p className="ai-inline-error" role="status">{t('请检查模型参数的取值范围。')}</p>
+                )}
+              </>
             )}
             <p className="ai-option-price">
               {quote === null ? t('选择可用模型后确认点数') : t('本轮 {v0} 服务点', { v0: quote })}

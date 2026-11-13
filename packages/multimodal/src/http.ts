@@ -45,6 +45,22 @@ async function readBoundedJson(
   maxBytes: number,
   signal: AbortSignal,
 ): Promise<Record<string, unknown>> {
+  const bytes = await readBounded(response, maxBytes, signal);
+  const id = responseId(response);
+  try {
+    const parsed: unknown = JSON.parse(bytes.toString('utf8'));
+    if (!record(parsed)) unknown('PROVIDER_INVALID_JSON_OBJECT', id);
+    return parsed;
+  } catch (error) {
+    if (error instanceof MultimodalProviderError) throw error;
+    return unknown('PROVIDER_INVALID_JSON', id);
+  }
+}
+
+async function readBounded(
+  response: Response, maxBytes: number, signal: AbortSignal,
+  consume?: (chunk: Uint8Array) => void,
+) {
   const id = responseId(response);
   const length = response.headers.get('content-length');
   if (length !== null && (!/^\d+$/.test(length) || Number(length) > maxBytes)) {
@@ -68,7 +84,8 @@ async function readBoundedJson(
       if (done) break;
       total += value.byteLength;
       if (total > maxBytes) unknown('PROVIDER_RESPONSE_TOO_LARGE', id);
-      chunks.push(value);
+      if (consume) consume(value);
+      else chunks.push(value);
     }
   } catch (error) {
     void reader.cancel().catch(() => undefined);
@@ -78,25 +95,136 @@ async function readBoundedJson(
     if (abort) signal.removeEventListener('abort', abort);
     reader.releaseLock();
   }
+  return consume ? Buffer.alloc(0) : Buffer.concat(chunks, total);
+}
+
+/** The caller owns the fixed provider URL and authorization. */
+export async function getJson(
+  url: string,
+  apiKey: string,
+  maxBytes: number,
+  timeoutMs: number,
+  fetcher: typeof fetch = fetch,
+) {
+  const signal = AbortSignal.timeout(timeoutMs);
+  let response: Response;
   try {
-    const parsed: unknown = JSON.parse(Buffer.concat(chunks, total).toString('utf8'));
-    if (!record(parsed)) unknown('PROVIDER_INVALID_JSON_OBJECT', id);
-    return parsed;
-  } catch (error) {
-    if (error instanceof MultimodalProviderError) throw error;
-    return unknown('PROVIDER_INVALID_JSON', id);
+    response = await fetcher(url, {
+      method: 'GET',
+      redirect: 'error',
+      signal,
+      headers: { Authorization: `Bearer ${apiKey}` },
+    });
+  } catch {
+    return unknown('PROVIDER_NETWORK_UNKNOWN');
   }
+  if (!response.ok) {
+    void response.body?.cancel().catch(() => undefined);
+    unknown('PROVIDER_HTTP_UNKNOWN', responseId(response));
+  }
+  return readBoundedJson(response, maxBytes, signal);
 }
 
 /** One request only. No redirect following, URL fetching from a response, or automatic retry. */
 export async function postJson(
   url: string,
   apiKey: string,
-  body: Record<string, unknown> | string,
+  body: Record<string, unknown> | string | FormData,
   maxBytes: number,
   timeoutMs: number,
   fetcher: typeof fetch,
 ): Promise<{ data: Record<string, unknown>; requestId: string }> {
+  const { response, signal } = await postResponse(url, apiKey, body, timeoutMs, fetcher);
+  const data = await readBoundedJson(response, maxBytes, signal);
+  const requestId = responseId(response, data);
+  assertHttpSuccess(response, data, requestId);
+  return { data, requestId };
+}
+
+export async function postBinary(
+  url: string,
+  apiKey: string,
+  body: Record<string, unknown>,
+  maxBytes: number,
+  timeoutMs: number,
+  fetcher: typeof fetch = fetch,
+) {
+  const { response, signal } = await postResponse(url, apiKey, body, timeoutMs, fetcher);
+  const requestId = responseId(response);
+  if (!response.ok)
+    assertHttpSuccess(response, await readBoundedJson(response, 32_768, signal), requestId);
+  const mime = response.headers.get('content-type')?.split(';')[0]?.toLowerCase();
+  if (!mime?.startsWith('audio/') && mime !== 'application/octet-stream') {
+    void response.body?.cancel().catch(() => undefined);
+    unknown('PROVIDER_INVALID_AUDIO_TYPE', requestId);
+  }
+  const bytes = await readBounded(response, maxBytes, signal);
+  if (!bytes.length) unknown('PROVIDER_EMPTY_RESPONSE', requestId);
+  return { bytes, requestId };
+}
+
+export async function postEventStream(
+  url: string,
+  apiKey: string,
+  body: Record<string, unknown>,
+  maxBytes: number,
+  timeoutMs: number,
+  fetcher: typeof fetch = fetch,
+  onEvent?: (event: Record<string, unknown>, requestId: string) => void,
+) {
+  const { response, signal } = await postResponse(url, apiKey, body, timeoutMs, fetcher);
+  const requestId = responseId(response);
+  if (!response.ok)
+    assertHttpSuccess(response, await readBoundedJson(response, 32_768, signal), requestId);
+  if (!response.headers.get('content-type')?.includes('text/event-stream')) {
+    void response.body?.cancel().catch(() => undefined);
+    unknown('PROVIDER_INVALID_EVENT_STREAM', requestId);
+  }
+  const events: Record<string, unknown>[] = [];
+  const decoder = new TextDecoder('utf-8', { fatal: true });
+  let buffered = '';
+  let count = 0;
+  function parse(block: string) {
+    const data = block
+      .split(/\r?\n/)
+      .filter((line) => line.startsWith('data:'))
+      .map((line) => line.slice(5).replace(/^ /, ''))
+      .join('\n');
+    if (!data || data === '[DONE]') return;
+    const event: unknown = JSON.parse(data);
+    if (!record(event) || ++count > 24) unknown('PROVIDER_INVALID_EVENT_STREAM', requestId);
+    if (onEvent) onEvent(event, requestId);
+    else events.push(event);
+  }
+  try {
+    let scanned = 0;
+    await readBounded(response, maxBytes, signal, (chunk) => {
+      buffered += decoder.decode(chunk, { stream: true });
+      const boundary = /\r?\n\r?\n/g;
+      boundary.lastIndex = Math.max(0, scanned - 3);
+      let start = 0;
+      for (let match = boundary.exec(buffered); match; match = boundary.exec(buffered)) {
+        parse(buffered.slice(start, match.index));
+        start = boundary.lastIndex;
+      }
+      buffered = buffered.slice(start);
+      scanned = buffered.length;
+    });
+    parse(buffered + decoder.decode());
+  } catch (error) {
+    if (error instanceof MultimodalProviderError) throw error;
+    unknown('PROVIDER_INVALID_EVENT_STREAM', requestId);
+  }
+  return { events, requestId };
+}
+
+async function postResponse(
+  url: string,
+  apiKey: string,
+  body: Record<string, unknown> | string | FormData,
+  timeoutMs: number,
+  fetcher: typeof fetch,
+) {
   const signal = AbortSignal.timeout(timeoutMs);
   let response: Response;
   try {
@@ -104,14 +232,19 @@ export async function postJson(
       method: 'POST',
       redirect: 'error',
       signal,
-      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${apiKey}` },
-      body: typeof body === 'string' ? body : JSON.stringify(body),
+      headers: {
+        ...(body instanceof FormData ? {} : { 'Content-Type': 'application/json' }),
+        Authorization: `Bearer ${apiKey}`,
+      },
+      body: typeof body === 'string' || body instanceof FormData ? body : JSON.stringify(body),
     });
   } catch {
     return unknown('PROVIDER_NETWORK_UNKNOWN');
   }
-  const data = await readBoundedJson(response, maxBytes, signal);
-  const requestId = responseId(response, data);
+  return { response, signal };
+}
+
+function assertHttpSuccess(response: Response, data: Record<string, unknown>, requestId: string) {
   if (!response.ok) {
     // A definite client-error envelope is a rejected request. 408/429/5xx and
     // malformed/unexplained replies remain unknown; caller must reconcile.
@@ -124,5 +257,4 @@ export async function postJson(
     }
     unknown('PROVIDER_HTTP_UNKNOWN', requestId);
   }
-  return { data, requestId };
 }

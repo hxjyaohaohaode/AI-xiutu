@@ -479,6 +479,25 @@ export function createBuiltinRegistry(): ModuleRegistry {
           persistence: 'candidate',
           limitations: ['最长30秒；不是全双工实时语音'],
         }),
+        ...(
+          [
+            ['speak', '文字朗读'],
+            ['audio-chat', '音频问答'],
+            ['web-search', '独立联网搜索'],
+            ['embed', '文本向量'],
+            ['translate-audio', '录音翻译与译音'],
+          ] as const
+        ).map(([operation, label]) =>
+          cap(`ai.${operation}`, label, {
+            execution: 'external',
+            permission: 'edit',
+            inputs: [],
+            outputs: ['job'],
+            requires: [operation],
+            confirmation: 'explicit',
+            persistence: 'candidate',
+          }),
+        ),
         cap('ai.cancel', '取消尚未派发的排队任务', {
           ...cloud,
           inputs: ['job'],

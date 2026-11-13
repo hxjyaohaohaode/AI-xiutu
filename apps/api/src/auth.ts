@@ -90,6 +90,8 @@ export function registerAuth(
     const p = otpInput.parse(req.body);
     if (!sms.configured)
       throw new HttpError(503, 'SMS_NOT_CONFIGURED', '短信服务尚未配置，无法发送验证码');
+    if (sms.supportsPhone && !sms.supportsPhone(p.phone))
+      throw new HttpError(400, 'SMS_PHONE_UNSUPPORTED', '当前短信服务仅支持中国大陆手机号码');
     await rateLimit(db, `sms-ip:${keyed(req.ip)}`, 10, 600);
     await rateLimit(db, `sms-phone:${keyed(p.phone)}`, 5, 3600);
     await rateLimit(db, 'sms-platform', 1000, 86400);

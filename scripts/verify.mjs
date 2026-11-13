@@ -9,7 +9,7 @@ import {
   lstatSync,
 } from 'node:fs';
 import { createHash } from 'node:crypto';
-import { isAbsolute, resolve, join } from 'node:path';
+import { dirname, isAbsolute, resolve, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 const projectRoot = resolve(import.meta.dirname, '..');
@@ -437,15 +437,21 @@ export async function runVerification(label = process.argv[2] ?? 'manual') {
   process.on('SIGINT', interrupt);
   process.on('SIGTERM', interrupt);
   try {
+    const npmCli =
+      process.platform === 'win32'
+        ? (process.env.npm_execpath ??
+          join(dirname(process.execPath), 'node_modules/npm/bin/npm-cli.js'))
+        : null;
+    if (npmCli) accessSync(npmCli, constants.R_OK);
     for (const [name, args, runtime] of commands) {
       if (controller.signal.aborted) break;
       const start = Date.now();
       console.log(`Verification ${label}: ${name}`);
-      const executable =
-        runtime === 'node' ? process.execPath : process.platform === 'win32' ? 'npm.cmd' : 'npm';
+      const npmOnWindows = runtime === 'npm' && npmCli;
+      const executable = runtime === 'node' || npmOnWindows ? process.execPath : 'npm';
       const result = await command(
         executable,
-        args,
+        npmOnWindows ? [npmCli, ...args] : args,
         { ...process.env, REQUIRE_DB_TESTS: '1' },
         controller.signal,
       );
