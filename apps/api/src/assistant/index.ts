@@ -468,7 +468,7 @@ export function registerAssistant(
         if (body.decision === 'previewed' && row.kind === 'edit') {
           const artwork = (
             await tx.query(
-              'SELECT head_version FROM artworks WHERE id=$1 AND project_id=$2 FOR SHARE',
+              'SELECT head_version FROM artworks WHERE id=$1 AND project_id=$2 AND deleted_at IS NULL FOR SHARE',
               [row.artwork_id, row.project_id],
             )
           ).rows[0];

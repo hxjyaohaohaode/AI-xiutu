@@ -193,7 +193,7 @@
 .studio-workspace .canvas-view-controls svg { width: 15px; height: 15px; }
 .studio-workspace .floating-tool-dock:not([data-compact='true']) { min-height: 45px; padding-block: 2px; }
 .studio-workspace .floating-tool-dock:not([data-compact='true']) :is(.dock-tool-scroll > button, .ai-tool) { min-height: 42px; height: 42px; padding-block: 3px; }
-.studio-workspace .free-panel:not(.phone-panel):not([data-display-mode='page']):not([data-presentation='collapsed']) { max-height: calc(100% - 59px); }
+.studio-workspace .free-panel:not(.phone-panel):not([data-display-mode='page']):not([data-presentation='collapsed']) { max-height: calc(100% - 65px); }
 .studio-workspace .image-frame .selection-overlay { pointer-events: none; }
 
 .studio-workspace .advanced-inspector-scroll { --section-spacing: 8px; }
@@ -319,29 +319,6 @@
 }
 .drawing-modal .drawing-actions button { min-height: 33px; min-width: 33px; padding: 4px 6px; font-size: 11px; pointer-events: auto; }
 .drawing-modal .drawing-insert-current span { display: none; }
-.sketch-text-anchor { position: absolute; z-index: 3; max-width: min(380px, 75vw); min-width: min(132px, 39vw); }
-.sketch-text-anchor[data-edge='true'] .sketch-text-format { right: 0; left: auto; }
-.sketch-text-anchor[data-edge='true'] { min-width: 0; width: 18vw; }
-.sketch-text-anchor[data-top='true'] .sketch-text-format { top: calc(100% + 3px); bottom: auto; }
-.sketch-text-format {
-  position: absolute;
-  bottom: calc(100% + 3px);
-  left: 0;
-  width: max-content;
-  max-width: min(260px, 83vw);
-  display: flex;
-  align-items: center;
-  gap: 2px;
-  padding: 3px;
-  border-radius: 9px;
-  background: var(--surface);
-  box-shadow: 0 4px 18px #13252628;
-}
-.sketch-text-format :is(input, select, button) { height: 29px; min-height: 29px; min-width: 24px; font-size: 12px; padding: 2px 3px; }
-.sketch-text-format input[type='number'] { width: 42px; }
-.sketch-text-format input[type='color'] { width: 28px; }
-.sketch-text-input { white-space: pre-wrap; overflow-wrap: anywhere; min-height: 1.22em; line-height: 1.22; outline: 1px dashed #6288c1; cursor: text; }
-.sketch-text-input:empty::before { content: attr(data-placeholder); font: 12px/22px system-ui; color: #737d8a; pointer-events: none; }
 @media (min-width: 901px) {
   .drawing-modal .drawing-tool-area { display: grid; grid-template-columns: max-content; right: auto; top: 8px; max-width: min(340px, 45%); }
   .drawing-modal .drawing-primary-toolbar { gap: 4px; }
@@ -397,83 +374,4 @@
 
 @media (min-width: 760px) and (min-height: 521px) {
   .studio-workspace .canvas-stage .canvas-selection-peek { inset-inline-start: 134px; }
-}
-
-.studio-workspace .free-panel .panel-context-inline {
-  margin-inline-start: auto;
-  padding: 0;
-  align-self: center;
-  background: none;
-}
-.studio-workspace .free-panel .panel-context-inline .studio-context-tabs {
-  gap: 1px;
-  padding: 0;
-  background: none;
-  border-radius: 6px;
-}
-.studio-workspace .free-panel .panel-context-inline .studio-context-tabs > button {
-  min-width: 25px;
-  min-height: 26px;
-  padding: 4px;
-  border-radius: 6px;
-}
-.studio-workspace .free-panel .panel-context-inline .studio-context-tabs > button > span { display: none; }
-.studio-workspace .free-panel .panel-context-inline .studio-context-tabs > button > svg {
-  display: block;
-  width: 16px;
-  height: 16px;
-  flex: none;
-}
-.studio-workspace .free-panel .panel-context-inline .context-segment-indicator { display: none; }
-.studio-workspace .free-panel .panel-context-inline .studio-context-tabs > button[aria-pressed='true'] {
-  color: var(--accent-ink);
-  background: var(--accent-soft);
-  box-shadow: none;
-}
-
-.studio-workspace .free-panel .panel-context-inline { flex: 0 0 104px; width: 104px; min-width: 104px; }
-.studio-workspace .free-panel .panel-context-inline .studio-context-tabs {
-  display: grid;
-  grid-template-columns: repeat(4, minmax(0, 1fr));
-  width: 104px;
-}
-.studio-workspace .free-panel .panel-context-inline .studio-context-tabs > button { min-width: 0; width: auto; }
-.studio-workspace .free-panel[data-panel-width='narrow'] .panel-drag-header:has(.panel-context-inline) .panel-title-drag {
-  min-width: 20px;
-}
-.studio-workspace .free-panel[data-panel-width='narrow'] .panel-drag-header:has(.panel-context-inline) .panel-title-drag > strong {
-  overflow: hidden;
-  white-space: nowrap;
-  text-overflow: ellipsis;
-}
-
-/* React Bits Dock adapted to stable targets and a compact touch rail. */
-.studio-workspace .floating-tool-dock[data-motion='tool-dock'] .dock-icon {
-  pointer-events: none;
-  transform-origin: center 74%;
-  transform: translateY(var(--dock-lift, 0px)) scale(var(--dock-zoom, 1));
-}
-@media (hover: hover) and (pointer: fine) and (min-width: 760px) {
-  .studio-workspace .floating-tool-dock:not([data-compact='true']) {
-    background: color-mix(in srgb, var(--surface) 89%, transparent);
-    backdrop-filter: blur(18px) saturate(1.4);
-  }
-  .studio-workspace .floating-tool-dock:not([data-compact='true']) .dock-icon {
-    color: color-mix(in srgb, currentColor, var(--color-accent-ink) calc(var(--dock-warmth, 0) * 62%));
-  }
-  /* A horizontal scrollport also clips in the block direction. Put the
-     bounce room inside the scrollport without adding to the dock's height. */
-  .studio-workspace .floating-tool-dock:not([data-compact='true']) .dock-tool-scroll {
-    --dock-bounce-room: 28px;
-    margin-block-start: calc(-1 * var(--dock-bounce-room));
-    padding-block-start: var(--dock-bounce-room);
-    pointer-events: none;
-  }
-  .studio-workspace .floating-tool-dock:not([data-compact='true']) .dock-tool-scroll > button {
-    pointer-events: auto;
-    overflow: visible;
-  }
-}
-@media (prefers-reduced-motion: reduce) {
-  .studio-workspace .floating-tool-dock[data-motion='tool-dock'] .dock-icon { transform: none; }
 }

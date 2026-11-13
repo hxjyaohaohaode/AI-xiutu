@@ -42,6 +42,7 @@ import {
   Eyedropper,
 } from '../components/ControlGlyph';
 import { IconButton } from '../components/Ui';
+import { InspectorFamilyNav } from './InspectorFamilyNav';
 import { CurveEditor } from './CurveEditor';
 import type { EditorState } from './useEditor';
 import { Histogram } from './Histogram';
@@ -186,6 +187,7 @@ export type ToolInspectorProps = {
   editor: EditorState;
   target?: string;
   onPortraitTool?: (tool: ToolGroup | null) => void;
+  canvasOverlay?: HTMLElement | null;
   group: ToolGroup;
   mobileOpen: boolean;
   onClose: () => void;
@@ -195,6 +197,8 @@ export type ToolInspectorProps = {
   onSample?: () => void;
   onGroupChange?: (group: ToolGroup) => void;
   onCutout?: (guides: import('./PortraitControls').CutoutGuides) => Promise<string>;
+  onFlattenLayers?: () => Promise<void>;
+  cloudHistory?: ReactNode;
 };
 export function ToolInspector(props: ToolInspectorProps) {
   const [upgradeError, setUpgradeError] = useState<string | null>(null);
@@ -204,6 +208,7 @@ export function ToolInspector(props: ToolInspectorProps) {
     return (
       <aside className="inspector refined-inspector">
         <div className="inspector-scroll">
+          <InspectorFamilyNav group={props.group} onChange={props.onGroupChange} />
           <h2>{t('升级到可扩展编辑配方')}</h2>
           <p className="control-note">
             {t('旧版本会保留原有色彩与局部语义。升级后可使用独立绘制、液化、合成与完整局部调色。')}
@@ -240,6 +245,7 @@ export function ToolInspector(props: ToolInspectorProps) {
 }
 function LegacyToolInspector({
   editor,
+  cloudHistory,
   group,
   mobileOpen,
   onClose,
@@ -247,16 +253,8 @@ function LegacyToolInspector({
   onColorChange,
   sampling = false,
   onSample,
-}: {
-  editor: EditorState;
-  group: ToolGroup;
-  mobileOpen: boolean;
-  onClose: () => void;
-  pickedColor?: string;
-  onColorChange?: (value: string) => void;
-  sampling?: boolean;
-  onSample?: () => void;
-}) {
+  onGroupChange,
+}: ToolInspectorProps) {
   const [localSub, setLocalSub] = useState<'light' | 'color' | 'detail'>('light');
   const [colorTab, setColorTab] = useState<'global' | 'hsl' | 'grading' | 'palette'>('global');
   const [band, setBand] = useState<HslBandId>('red');
@@ -587,6 +585,7 @@ function LegacyToolInspector({
         </IconButton>
       </header>
       <div className="inspector-scroll" key={group}>
+        <InspectorFamilyNav group={group} onChange={onGroupChange} />
         {!editor.file ? (
           <div className="inspector-empty">
             <span>{current.icon}</span>
@@ -1546,7 +1545,7 @@ function LegacyToolInspector({
             )}
             {group === 'history' && (
               <>
-                <HistoryPanel editor={editor} />
+                <HistoryPanel editor={editor} cloudHistory={cloudHistory} />
                 <button className="text-button" onClick={editor.exportRecipe}>
                   {t('下载可恢复的编辑配方')}
                 </button>

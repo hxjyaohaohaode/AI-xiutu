@@ -1,25 +1,37 @@
-import { Component, lazy, Suspense, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
-import { ArrowLeft, ArrowRight, ImageSquare, Microphone, MicrophoneSlash, Waveform } from '@phosphor-icons/react';
+import {
+  Component, lazy, Suspense, useEffect, useId, useMemo, useRef, useState,
+  type CSSProperties, type ReactNode, type RefObject,
+} from 'react';
+import {
+  ArrowCounterClockwise, ArrowDownRight, ArrowsOutSimple, CheckCircle, ClosedCaptioning,
+  ImageSquare, Microphone, MicrophoneSlash, PaintBrush, PaperPlaneRight, PhoneDisconnect, Shapes,
+  SlidersHorizontal, Sparkle, TextT, Waveform, X,
+} from '@phosphor-icons/react';
 import { useReducedMotion } from '../motion/usePresence';
-import { voiceExample, type OverviewStories } from './overview-stories';
+import type { Locale } from '../i18n';
+import type { AboutDetailsCopy } from './overview-details';
+import { voiceExample, voiceReplay, type OverviewStories } from './overview-stories';
 import { recordedExamples } from './recorded-examples';
+import { overviewLibrary, overviewDeliveryPhotos } from './overview-library';
+import { useSketchRail } from './useSketchRail';
+import { overviewSketchTools } from './overview-sketch-tools';
 
-const GridMotion = lazy(() => import('../components/react-bits/GridMotion'));
 const LightRays = lazy(() => import('../components/react-bits/LightRays'));
-const GridDistortion = lazy(() => import('../components/react-bits/GridDistortion'));
 const TargetCursor = lazy(() => import('../components/react-bits/TargetCursor'));
-const PixelTransition = lazy(() => import('../components/react-bits/PixelTransition'));
-const OrbitImages = lazy(() => import('../components/react-bits/OrbitImages'));
-const LaserFlow = lazy(() => import('../components/react-bits/LaserFlow'));
-const CardSwap = lazy(() => import('../components/react-bits/CardSwap'));
-const CircularGallery = lazy(() => import('../components/react-bits/CircularGallery'));
-const FlyingPosters = lazy(() => import('../components/react-bits/FlyingPosters'));
-const Folder = lazy(() => import('../components/react-bits/Folder'));
 const MorphSlider = lazy(() => import('../components/react-bits/MorphSlider'));
-const ReflectiveCard = lazy(() => import('../components/react-bits/ReflectiveCard'));
-const DriftWall = lazy(() => import('../components/react-bits/DriftWall'));
+const OrbitImages = lazy(() => import('../components/react-bits/OrbitImages'));
+const CardSwap = lazy(() => import('../components/react-bits/CardSwap'));
 const BounceCards = lazy(() => import('../components/react-bits/BounceCards'));
+const HoloCard = lazy(() => import('../components/react-bits/HoloCard'));
 const Strands = lazy(() => import('../components/react-bits/Strands'));
+const Folder = lazy(() => import('../components/react-bits/Folder'));
+const DriftWall = lazy(() => import('../components/react-bits/DriftWall'));
+
+type Theme = 'light' | 'dark';
+const review = '/about/review/';
+const stories = '/about/stories/';
+export const reviewCapture = (name: string, theme: Theme) =>
+  review + name + (theme === 'dark' ? '-dark' : '') + '.webp';
 
 class EffectBoundary extends Component<{ fallback: ReactNode; children: ReactNode }, { failed: boolean }> {
   state = { failed: false };
@@ -27,10 +39,11 @@ class EffectBoundary extends Component<{ fallback: ReactNode; children: ReactNod
   render() { return this.state.failed ? this.props.fallback : this.props.children; }
 }
 
-function InView({ name, className = '', fallback = null, children }: {
+function InView({ name, className = '', fallback = null, persistent = false, children }: {
   name?: string;
   className?: string;
   fallback?: ReactNode;
+  persistent?: boolean;
   children: ReactNode;
 }) {
   const ref = useRef<HTMLDivElement>(null);
@@ -38,12 +51,17 @@ function InView({ name, className = '', fallback = null, children }: {
   const reduce = useReducedMotion();
   useEffect(() => {
     if (reduce || !ref.current) return;
-    const observer = new IntersectionObserver(([entry]) => setInView(!!entry?.isIntersecting), {
-      rootMargin: '100px 0px', threshold: 0,
-    });
+    if (typeof IntersectionObserver !== 'function') {
+      setInView(true);
+      return;
+    }
+    const observer = new IntersectionObserver(([entry]) => {
+      if (!entry?.isIntersecting && persistent) return;
+      setInView(!!entry?.isIntersecting);
+    }, { rootMargin: '120px 0px' });
     observer.observe(ref.current);
     return () => observer.disconnect();
-  }, [reduce]);
+  }, [reduce, persistent]);
   return (
     <div ref={ref} className={'about-effect ' + className} data-about-effect={name}>
       {!reduce && inView ? (
@@ -53,312 +71,486 @@ function InView({ name, className = '', fallback = null, children }: {
   );
 }
 
-const art = {
-  original: '/about/stories/ceramics-original.webp',
-  graded: '/about/stories/ceramics-graded.webp',
-  layers: '/about/stories/ginkgo.webp',
-  review: '/about/stories/gallery.webp',
-  delivery: '/about/stories/railway.webp',
-  coast: '/about/stories/shore.webp',
-  pool: '/about/stories/pool.webp',
-  tulip: '/about/stories/tulip.webp',
-  portrait: '/about/portrait.webp',
+function Photo({ src, alt = '' }: { src: string; alt?: string }) {
+  return <img src={src} alt={alt} loading="lazy" decoding="async" draggable={false} />;
+}
 
-};
+type Exhibit = { src: string; title: string; body?: string };
+function ExhibitDialog({ item, closeLabel, onClose }: {
+  item: Exhibit;
+  closeLabel: string;
+  onClose: () => void;
+}) {
+  const dialog = useRef<HTMLDialogElement>(null);
+  useEffect(() => { dialog.current?.showModal(); }, []);
+  return (
+    <dialog ref={dialog} className="about-exhibit" aria-label={item.title}
+      onClose={onClose} onClick={(event) => { if (event.target === event.currentTarget) onClose(); }}>
+      <div className="about-exhibit-head">
+        <strong>{item.title}</strong>
+        <button type="button" aria-label={closeLabel} onClick={onClose} autoFocus><X size={22} /></button>
+      </div>
+      <img src={item.src} alt={item.title} decoding="async" />
+      {item.body && <p>{item.body}</p>}
+    </dialog>
+  );
+}
 
-const photo = (src: string, alt = '') => <img src={src} alt={alt} loading="lazy" decoding="async" />;
-
-export function OpeningEffects() {
-  const colors = ['#c2b694', '#d0c6af', '#7b9185', '#8a938b', '#bb9567', '#6e8291'];
+export function OpeningEffects({ theme }: { theme: Theme }) {
+  const dark = theme === 'dark';
   return (
     <div className="overview-opening-effects" aria-hidden="true">
-      <InView name="GridMotion" className="opening-grid">
-        <GridMotion items={colors.map((color) => <i key={color} className="opening-tile" style={{ backgroundColor: color }} />)}
-          rows={3} speed={5} radius={7} gap={10} spotlight={0.1} parallax={0.22} dim={0.5} fade={0.55} />
-      </InView>
       <InView name="LightRays" className="opening-rays">
-        <LightRays raysColor="#ceaa64" raysOrigin="top-right" rayLength={0.9} raysSpeed={0.35}
-          lightSpread={0.45} haze={0.12} opacity={0.28} maxDevicePixelRatio={1} followMouse />
-      </InView>
-      <InView name="TargetCursor" className="opening-cursor">
-        <TargetCursor targetSelector=".overview-hero .overview-primary" cursorColor="#9b7430" hideDefaultCursor={false}
-          cornerSize={5} size={22} thickness={1} clickEffect />
+        <LightRays raysColor={dark ? '#edc780' : '#b88b4c'} raysOrigin="top-right"
+          tilt={27} rayLength={2.45} raysSpeed={0.46} rayDensity={1.34} lightSpread={0.97}
+          raySharpness={0.78} glow={0.43} haze={0.17} atmosphere={0.4}
+          intensity={dark ? 1.58 : 1.4} opacity={dark ? 0.86 : 0.85}
+          lightMode={!dark} intro={false} cursorShadow followMouse mouseInfluence={0.24}
+          clickPulse={false} maxDevicePixelRatio={1} />
       </InView>
     </div>
   );
 }
 
+export function OverviewCursor({ scope, theme }: { scope: RefObject<HTMLDivElement | null>; theme: Theme }) {
+  const reduce = useReducedMotion();
+  if (reduce) return null;
+  return (
+    <Suspense fallback={null}>
+      <TargetCursor container={scope} blendMode="normal" hideDefaultCursor={false} showLabel={false}
+        targetSelector=".product-overview-root :is(.overview-primary, .overview-start, .overview-header nav a, .about-portrait-tabs button, .overview-text-action)"
+        cursorColor={theme === 'dark' ? '#f4ce78' : '#856330'}
+        size={22} cornerSize={5} thickness={1} padding={4} clickEffect />
+    </Suspense>
+  );
+}
+
 export function EditEffects({ labels }: { labels: OverviewStories }) {
-  const [graded, setGraded] = useState(false);
+  const [index, setIndex] = useState(0);
   const pair = useMemo(() => [
-    { image: art.original, caption: labels.original },
-    { image: art.graded, caption: labels.adjusted },
+    { image: review + 'tone-still-life.webp', caption: labels.original },
+    { image: review + 'tone-still-life-graded.webp', caption: labels.adjusted },
   ], [labels]);
   return (
     <figure className="about-grade-story">
-      <div className="about-grade-photo" aria-label={labels.compare}>
-        <InView name="GridDistortion" className="about-grade-detail" fallback={photo(art.original)}>
-          <GridDistortion imageSrc={art.original} grid={22} radius={0.16} strength={0.045} relaxation={0.14} intro={false} />
-        </InView>
-        <InView name="MorphSlider" className="about-grade-result" fallback={photo(graded ? art.graded : art.original)}>
-          <MorphSlider items={pair} selectedIndex={graded ? 1 : 0} onIndexChange={(index) => setGraded(index === 1)}
-            radius={0} transition="shear" showControls={false} showIndicators={false} showCaptions={false}
-            autoplay={false} duration={0.65} intensity={0.09} aria-label={labels.compare} />
-        </InView>
-      </div>
+      <InView name="MorphSlider" className="about-grade-photo"
+        fallback={<Photo src={pair[index]!.image} alt={pair[index]!.caption} />}>
+        <MorphSlider items={pair} selectedIndex={index} onIndexChange={setIndex} radius={0}
+          transition="shear" showControls={false} showIndicators={false} showCaptions={false}
+          autoplay={false} duration={0.55} intensity={0.08} aria-label={labels.compare} />
+      </InView>
       <figcaption className="about-story-caption">
         <span>{labels.tone}</span>
         <div className="about-inline-choice" role="group" aria-label={labels.compare}>
-          <button type="button" onClick={() => setGraded(false)} aria-pressed={!graded}>{labels.original}</button>
-          <button type="button" onClick={() => setGraded(true)} aria-pressed={graded}>{labels.adjusted}</button>
+          {pair.map((frame, i) => <button key={frame.caption} type="button"
+            onClick={() => setIndex(i)} aria-pressed={index === i}>{frame.caption}</button>)}
         </div>
       </figcaption>
     </figure>
   );
 }
 
-export function PortraitOrbit({ screen }: { screen: ReactNode }) {
+const portraitIds = ['skin', 'face', 'body', 'makeup'] as const;
+
+export function PortraitOrbit({ copy, theme, locale }: { copy: AboutDetailsCopy; theme: Theme; locale: Locale }) {
+  const [active, setActive] = useState(0);
+  const [enlarge, setEnlarge] = useState(false);
+  const [title, description] = copy.portraits[active]!;
+  const shots = portraitIds.map((id) => reviewCapture('portrait-' + id + '-' + locale, theme));
+  const details = portraitIds.map((id, i) => ({
+    src: reviewCapture('portrait-' + id + '-detail-' + locale, theme),
+    alt: copy.portraits[i]![0],
+  }));
+  const cover = (
+    <div className="about-portrait-focus" data-portrait-mode={portraitIds[active]}>
+      <Photo key={shots[active]} src={shots[active]!} alt={title} />
+      <button type="button" aria-label={copy.openImage + ' · ' + title} onClick={() => setEnlarge(true)}>
+        <ArrowsOutSimple size={16} aria-hidden="true" />
+      </button>
+    </div>
+  );
   return (
     <div className="about-orbit-stage">
-      {screen}
+      <div className="about-portrait-main">{cover}</div>
       <InView name="OrbitImages" className="about-orbit-decoration">
-        <OrbitImages images={[art.portrait]} responsive radiusX={125} radiusY={24}
-          duration={26} itemSize={56} rotation={-6} height="100%" width="100%" itemRadius={50} />
+        <OrbitImages images={details} shape="ellipse" baseWidth={850} radiusX={380} radiusY={270}
+          itemSize={100} rotation={0} duration={32} height="100%" itemRadius={11} depth={0.07}
+          showPath pathWidth={1} pathDash={4} pathColor="currentColor" intro={false}
+          draggable clickToFront hoverScale={1.04} hoverSpeed={0.08} onItemClick={setActive} />
       </InView>
-    </div>
-  );
-}
-
-export function LayerEffects({ labels, screen }: { labels: OverviewStories; screen: ReactNode }) {
-  const ingredients = [
-    { image: art.layers, title: labels.layerNames[0] },
-    { image: '/about/stories/layer-ink.svg', title: labels.layerNames[1] },
-    { image: '/about/stories/layer-type.svg', title: labels.layerNames[2] },
-    { image: '/about/stories/layer-shapes.svg', title: labels.layerNames[3] },
-  ];
-  return (
-    <div className="about-layer-stage">
-      <figure className="about-layer-ingredients">
-        <InView name="CardSwap" className="about-card-swap" fallback={photo(art.layers, labels.layerNames[0])}>
-          <CardSwap items={ingredients} width={405} height={230} cardDistance={18} verticalDistance={10}
-            autoplay={false} cardRadius={9} visibleCards={3} intro />
-        </InView>
-        <figcaption className="about-story-caption">{labels.layers}</figcaption>
-      </figure>
-      <div className="about-layer-work">
-        {screen}
-        <div className="about-layer-parts">
-          <InView name="BounceCards" className="about-bounce-cards" fallback={photo(ingredients[1]!.image)}>
-            <BounceCards images={ingredients.map((item) => item.image)} cardSize={83} spread={52}
-              rotation={10} enableHover pushDistance={20} borderWidth={1} radius={7} />
-          </InView>
-        </div>
-      </div>
-    </div>
-  );
-}
-
-export function AIExamples({ labels }: { labels: OverviewStories }) {
-  const { dialogue, image } = recordedExamples;
-  return (
-    <div className="about-ai-examples">
-      <section className="about-ai-dialogue" aria-label={labels.dialogueTitle}>
-        <h3>{labels.dialogueTitle}</h3>
-        <div className="about-ai-model-line">
-          <span>{dialogue.displayModel}</span>
-          <span>{labels.outputLimit} · {dialogue.maxOutputTokens} tokens</span>
-        </div>
-        <figure className="about-ai-dialogue-window">
-          {photo('/about/stories/assistant-conversation.webp', labels.dialogueTitle)}
-        </figure>
-        <blockquote className="sr-only" lang="zh-CN">{dialogue.answer.replaceAll('**', '')}</blockquote>
-        <small>{labels.recorded}</small>
-      </section>
-      <section className="about-ai-generation" aria-label={labels.generationTitle}>
-        <div>
-          <h3>{labels.generationTitle}</h3>
-          <div className="about-ai-model-line">
-            <span>{image.modelLabel}</span><span>{image.width} × {image.height} · {image.format} · ×{image.outputs}</span>
-          </div>
-          <blockquote className="about-ai-image-prompt" lang="zh-CN">{image.prompt}</blockquote>
-          <small>{labels.recorded} · {image.quality}</small>
-        </div>
-        <figure className="about-ai-image-result">
-          {photo('/about/stories/generated-lighthouse.webp', labels.imageAlt)}
-        </figure>
-      </section>
-    </div>
-  );
-}
-
-export function AssistantVoiceStory({ labels }: { labels: OverviewStories }) {
-  const [mode, setMode] = useState(0);
-  const rail = useRef<HTMLDivElement>(null);
-  const reduce = useReducedMotion();
-  useEffect(() => {
-    const choices = rail.current;
-    if (reduce || !choices) return;
-    const steps = [...choices.querySelectorAll('[data-voice-step]')];
-    let frame = 0;
-    const update = () => {
-      frame = 0;
-      const focus = window.innerHeight / 2;
-      const bounds = choices.getBoundingClientRect();
-      if (focus < bounds.top || focus >= bounds.bottom) return;
-      const index = steps.findIndex((step) => {
-        const row = step.getBoundingClientRect();
-        return row.top <= focus && focus < row.bottom;
-      });
-      if (index !== -1) setMode(index);
-    };
-    const schedule = () => {
-      if (!frame) frame = requestAnimationFrame(update);
-    };
-    schedule();
-    window.addEventListener('scroll', schedule, { passive: true });
-    window.addEventListener('resize', schedule);
-    return () => {
-      cancelAnimationFrame(frame);
-      window.removeEventListener('scroll', schedule);
-      window.removeEventListener('resize', schedule);
-    };
-  }, [reduce]);
-  const paused = mode === 2;
-  const VoiceIcon = paused ? MicrophoneSlash : mode === 1 ? Waveform : Microphone;
-  const capture = ['listening', 'response', 'muted'][mode]!;
-  return (
-    <div className="about-voice-layout">
-      <div className="about-voice-window">
-        <InView name="LaserFlow" className="about-assistant-beam">
-          <LaserFlow color="#d1a65d" beamPosition={0.62} theme="dark" intensity={0.38}
-            fog={0.16} dust={0.08} dpr={0.85} mouseInteraction={false} />
-        </InView>
-        <figure className="about-voice-capture" data-recorded-voice={capture}>
-          <div className="about-voice-recording">
-            {photo('/about/stories/voice-' + capture + '.webp', labels.voiceStates[mode])}
-            <button type="button" className="about-voice-preview-toggle"
-              aria-label={labels.voiceStates[paused ? 0 : 2]} aria-pressed={paused}
-              onClick={() => setMode(paused ? 0 : 2)}>
-              <InView className={'about-voice-orb voice-strands-orb' + (paused ? ' is-muted' : '')}>
-                <Strands colors={['#eec467', '#f0e8d4', '#719790']} count={13} speed={paused ? 0.1 : mode === 1 ? 0.92 : 0.38}
-                  intensity={mode === 1 ? 1 : 0.65} listening={mode === 0} maxDevicePixelRatio={1.25} interactive={false} />
-              </InView>
-              <VoiceIcon size={18} className="about-voice-orb-glyph" aria-hidden />
-            </button>
-          </div>
-          <figcaption>{labels.recorded}</figcaption>
-        </figure>
-        <div className="about-voice-story" aria-label={labels.voiceDemo}>
-          <div className="about-voice-model">
-            <strong>{voiceExample.modelLabel}</strong>
-            <span>{voiceExample.voice} · {labels.voiceDuration}</span>
-            <span className="about-voice-context"><ImageSquare size={14} aria-hidden />{labels.voiceContext}</span>
-            <p className="about-voice-state" aria-live="polite">
-              <VoiceIcon size={17} aria-hidden />{labels.voiceStates[mode]}
-            </p>
-          </div>
-        </div>
-      </div>
-      <div ref={rail} className="about-voice-choices" role="group" aria-label={labels.voiceDemo}>
-        {labels.voiceStates.map((state, index) => (
-          <button key={state} type="button" data-voice-step={index} aria-pressed={mode === index} onClick={() => setMode(index)}>
-            <strong>{state}</strong>
-            <small>{labels.voiceDetails[index]}</small>
+      <div className="about-portrait-tabs" role="group" aria-label={copy.portraitTitle.join(' ')}>
+        {copy.portraits.map(([name], i) => (
+          <button key={name} type="button" aria-pressed={active === i} onClick={() => setActive(i)}>
+            <Photo src={details[i]!.src} />
+            <span>{name}</span>
           </button>
         ))}
       </div>
+      <p className="about-portrait-description" aria-live="polite">{description}</p>
+      {enlarge && <ExhibitDialog item={{ src: shots[active]!, title, body: description }}
+        closeLabel={copy.close} onClose={() => setEnlarge(false)} />}
     </div>
   );
 }
 
-export function TeamReviewStory({ labels }: { labels: OverviewStories }) {
-  const [active, setActive] = useState<number | null>(0);
+const stripIds = ['pressure', 'eraser', 'shapes', 'type', 'palette', 'image-layer', 'opacity', 'history', 'arrange', 'reference'] as const;
+const featureImage = (id: typeof stripIds[number]) => review + 'sketch-' + id + '.webp';
+const deckIds = ['image-layer', 'eraser', 'type', 'shapes'] as const;
+const deckIcons = [ImageSquare, PaintBrush, TextT, Shapes];
+const featureSize = 83;
+const featureGap = 17;
+
+export function LayerEffects({ copy, screen, theme, locale }: {
+  copy: AboutDetailsCopy;
+  screen: ReactNode;
+  theme: Theme;
+  locale: Locale;
+}) {
+  const [exhibit, setExhibit] = useState<Exhibit | null>(null);
+  const rail = useSketchRail();
+  const items = deckIds.map((id, i) => {
+    const Icon = deckIcons[i]!;
+    return { image: featureImage(id), title: copy.layerCards[i], icon: <Icon size={16} /> };
+  });
+  const illustrations = stripIds.map((id, i) => ({
+    src: featureImage(id), title: copy.sketchCards[i]![0], body: copy.sketchCards[i]![1],
+  }));
+  const interfaceShots = overviewSketchTools(locale).map((tool) => ({
+    src: reviewCapture('sketch-ui-' + tool.id, theme), title: tool.title, body: tool.body,
+  }));
+  const featureCards = interfaceShots.flatMap((tool, index) =>
+    illustrations[index] ? [illustrations[index], tool] : [tool]);
+  const railWidth = featureCards.length * (featureSize + featureGap) + featureGap * 2;
+  const railStyle = { '--sketch-rail-width': railWidth + 'px' } as CSSProperties;
   return (
-    <figure className="about-team-story">
-      <div className="about-team-screen">
-        {photo('/about/stories/team-review-canvas.webp', labels.reviewDemo)}
-        {labels.reviewNotes.map((note, index) => (
-          <div key={note} className="about-team-pin" data-pin={index} data-active={active === index}>
-            <button type="button" aria-label={note} aria-pressed={active === index}
-              onClick={() => setActive(active === index ? null : index)} />
-            {active === index && (
-              <span className="about-team-note">
-                <strong>{labels.editors[index]}</strong>{note}
-              </span>
-            )}
-          </div>
-        ))}
+    <>
+      <div className="about-layer-stage">
+        <div className="about-layer-work">
+          {screen}
+          <ol className="about-sketch-steps">
+            {copy.sketchSteps.map(([title, body]) => <li key={title}><strong>{title}</strong><p>{body}</p></li>)}
+          </ol>
+        </div>
+        <figure className="about-layer-ingredients">
+          <InView name="CardSwap" className="about-card-swap" persistent
+            fallback={<Photo src={items[0]!.image} alt={items[0]!.title} />}>
+            <CardSwap items={items} width={394} height={259} cardDistance={48}
+              verticalDistance={53} depth={92} skewAmount={5} bounce={0.68} hoverSpread={0.16}
+              visibleCards={4} delay={5000} autoplay pauseOnHover draggable intro
+              theme={theme} cardRadius={16} />
+          </InView>
+        </figure>
       </div>
-      <figcaption>{labels.reviewDemo}</figcaption>
+      <div className="about-sketch-band">
+        <div className="about-sketch-scroll" role="region" aria-label={copy.featureStrip}
+          tabIndex={0} style={railStyle} {...rail}>
+          <InView name="BounceCards" className="about-bounce-cards" persistent
+            fallback={<div className="about-static-strip">{featureCards.map((card) =>
+              <button type="button" key={card.src} onClick={() => setExhibit(card)} aria-label={card.title}>
+                <Photo src={card.src} />
+              </button>)}</div>}>
+            <BounceCards images={featureCards.map(({ src, title }) => ({ src, alt: title }))}
+              containerWidth={railWidth} containerHeight={125}
+              cardSize={featureSize} spread={featureSize + featureGap} rotation={7} arc={2}
+              animationDelay={0.06} animationStagger={0.024}
+              enableHover pushDistance={7} hoverScale={1.11} borderWidth={1}
+              borderColor="var(--overview-line)" radius={9}
+              onCardClick={(index) => setExhibit(featureCards[index] ?? null)} />
+          </InView>
+        </div>
+      </div>
+      {exhibit && <ExhibitDialog item={exhibit} closeLabel={copy.close} onClose={() => setExhibit(null)} />}
+    </>
+  );
+}
+
+export function AIExamples({ labels, copy }: { labels: OverviewStories; copy: AboutDetailsCopy }) {
+  const [stage, setStage] = useState(2);
+  const { dialogue, image } = recordedExamples;
+  const stageIcons = [PaperPlaneRight, SlidersHorizontal, CheckCircle];
+  return (
+    <div className="about-ai-examples">
+      <section className="about-ai-dialogue" aria-labelledby="about-dialogue-title">
+        <header className="about-example-heading">
+          <h3 id="about-dialogue-title">{labels.dialogueTitle}</h3>
+          <span>{labels.recorded}</span>
+        </header>
+        <div className="about-ai-dialogue-window">
+          <Photo src={stories + 'pool.webp'} />
+          <div className="about-dialogue-bubbles">
+            <div className="about-dialogue-request">
+              <small>{copy.assistantUser}</small>
+              <p>{copy.dialoguePrompt}</p>
+            </div>
+            <div className="about-dialogue-response">
+              <small><Sparkle size={14} />{copy.assistantName} <span>{dialogue.displayModel}</span></small>
+              <p>{copy.dialogueReply}</p>
+            </div>
+          </div>
+        </div>
+      </section>
+      <section className="about-ai-generation" aria-labelledby="about-generation-title">
+        <header className="about-example-heading">
+          <h3 id="about-generation-title">{labels.generationTitle}</h3>
+          <span>{labels.recorded}</span>
+        </header>
+        <div className="about-generation-window">
+          <ol className="about-generation-steps">
+            {copy.generationStages.map(([title], i) => {
+              const Icon = stageIcons[i]!;
+              return <li key={title}><button type="button" aria-pressed={stage === i} onClick={() => setStage(i)}>
+                <Icon size={16} aria-hidden="true" />{title}
+              </button></li>;
+            })}
+          </ol>
+          <div className="about-generation-content">
+            <div className="about-generation-transcript">
+              <div className="about-dialogue-request">
+                <small>{copy.assistantUser}</small>
+                <p>{copy.generationPrompt}</p>
+              </div>
+              {stage > 0 && <div className="about-ai-model-line">
+                <span>{image.modelLabel}</span>
+                <span>{image.width} × {image.height} · {image.format} · ×{image.outputs}</span><span>{copy.imageQuality}</span>
+              </div>}
+              <p className="about-generation-status" aria-live="polite">{copy.generationStages[stage]![1]}</p>
+            </div>
+            {stage === 2 && <figure className="about-ai-image-result">
+              <Photo src={stories + 'generated-lighthouse.webp'} alt={labels.imageAlt} />
+            </figure>}
+          </div>
+        </div>
+      </section>
+    </div>
+  );
+}
+
+const voiceFrames = ['listening', 'response', 'muted'] as const;
+type ReplayState = typeof voiceFrames[number] | 'ended';
+const voiceColors = ['#e4b76c', '#d8eee6', '#76a69c', '#a2abbf'];
+const voiceMutedColors = ['#a7aaa0', '#e0e0d8', '#808c96'];
+const voiceTime = (seconds: number) => Math.floor(seconds / 60) + ':' + String(seconds % 60).padStart(2, '0');
+
+function VoiceReplayCard({ copy, labels, animate }: {
+  copy: AboutDetailsCopy;
+  labels: OverviewStories;
+  animate: boolean;
+}) {
+  const [state, setState] = useState<ReplayState>('response');
+  const [captions, setCaptions] = useState(true);
+  const captionId = useId();
+  const muted = state === 'muted';
+  const ended = state === 'ended';
+  const index = ended ? 2 : voiceFrames.indexOf(state);
+  const elapsed = voiceReplay.seconds[index]!;
+  const OrbIcon = muted ? MicrophoneSlash : state === 'response' ? Waveform : Microphone;
+
+  useEffect(() => {
+    if (state !== 'listening') return;
+    const timer = window.setTimeout(() => setState('response'), 1500);
+    return () => window.clearTimeout(timer);
+  }, [state]);
+
+  return (
+    <div className="about-voice-interface" data-recorded-voice={state}>
+      <div className="about-voice-instrument">
+        <div className="about-voice-card-top">
+          <div><Waveform size={15} aria-hidden="true" /><span>{copy.voiceReplay}</span></div>
+          <strong>{voiceExample.modelLabel}</strong>
+          <small>{voiceExample.voice} · {labels.voiceDuration}</small>
+        </div>
+        <div className="about-voice-card-orb" data-muted={muted || ended} aria-hidden="true">
+          <div className="about-voice-orb-art" />
+          {animate && !ended && (
+            <EffectBoundary fallback={null}>
+              <Suspense fallback={null}>
+                <Strands colors={muted ? voiceMutedColors : voiceColors} count={19}
+                  speed={muted ? 0.2 : state === 'response' ? 1.02 : 0.52} amplitude={state === 'response' ? 1.18 : 0.92}
+                  listening={!muted} energy={state === 'response' ? 1.13 : 0.63} level={muted ? 0.06 : state === 'response' ? 0.74 : 0.28}
+                  glass glassSize={0.9} glow={0.73} rim={0.92}
+                  interactive={false} clickPulse={false} intro={false} maxDevicePixelRatio={1} />
+              </Suspense>
+            </EffectBoundary>
+          )}
+          <span className="about-voice-orb-badge"><OrbIcon size={17} /></span>
+        </div>
+        <div className="about-voice-card-state" aria-live="polite">
+          <strong>{ended ? copy.voiceControls.ended : labels.voiceStates[index]}</strong>
+          <time dateTime={'PT' + elapsed + 'S'}>{voiceTime(elapsed)}</time>
+        </div>
+      </div>
+      <div className="about-voice-record">
+        <div className="about-voice-record-header">
+          <span><ImageSquare size={15} aria-hidden="true" />{labels.voiceContext}</span>
+          <button type="button" className="about-voice-caption-toggle"
+            aria-expanded={captions} aria-controls={captionId} onClick={() => setCaptions((value) => !value)}>
+            <ClosedCaptioning size={16} aria-hidden="true" />
+            {captions ? copy.voiceControls.hideCaptions : copy.voiceControls.showCaptions}
+          </button>
+        </div>
+        <div className="about-voice-transcript" id={captionId} hidden={!captions} aria-live="polite">
+          <p><span>{copy.assistantUser}</span>{copy.voiceTranscript[0]}</p>
+          {state !== 'listening' && <p className="about-voice-transcript-reply">
+            <span><Sparkle size={13} aria-hidden="true" />{copy.assistantName}</span>{copy.voiceTranscript[1]}
+          </p>}
+        </div>
+        <div className="about-voice-actions" role="group" aria-label={copy.voiceReplay}>
+          <button type="button" className="about-voice-replay" onClick={() => {
+            setCaptions(true);
+            setState('listening');
+          }}>
+            <ArrowCounterClockwise size={17} aria-hidden="true" />{copy.voiceControls.replay}
+          </button>
+          <button type="button" aria-label={muted ? copy.voiceControls.unmute : copy.voiceControls.mute}
+            aria-pressed={muted} disabled={ended} onClick={() => setState(muted ? 'response' : 'muted')}>
+            {muted ? <MicrophoneSlash size={17} /> : <Microphone size={17} />}
+          </button>
+          <button type="button" className="about-voice-end" aria-label={copy.voiceControls.end}
+            disabled={ended} onClick={() => setState('ended')}><PhoneDisconnect size={18} /></button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+export function AssistantVoiceStory({ labels, copy, theme }: {
+  labels: OverviewStories;
+  copy: AboutDetailsCopy;
+  theme: Theme;
+}) {
+  return (
+    <figure className="about-voice-capture">
+      <InView name="HoloCard" className="about-voice-recording" persistent
+        fallback={<VoiceReplayCard copy={copy} labels={labels} animate={false} />}>
+        <HoloCard alt={copy.voiceReplay} radius={22}
+          style={{ '--hc-w': '100%', '--hc-ratio': 'auto' } as CSSProperties}
+          preset="shards" intensity={theme === 'dark' ? 0.28 : 0.23} edgeSparkle={0.58}
+          frame={1.2} glare={theme === 'dark' ? 0.11 : 0.13}
+          foilColor={theme === 'dark' ? '#b5d6cd' : '#ebce92'}
+          tiltMax={7} hoverScale={1.012} idle={false} shadow>
+          <VoiceReplayCard copy={copy} labels={labels} animate />
+        </HoloCard>
+      </InView>
     </figure>
   );
 }
 
-export function LibraryEffects({ labels, locale }: { labels: OverviewStories; locale: string }) {
-  const pictures = useMemo(() => [
-    art.coast, art.tulip, art.pool,
-    '/about/local-' + locale + '.webp',
-    '/about/layers-' + locale + '.webp',
-    '/about/desktop-flow-' + locale + '.webp',
-  ].map((image, index) => ({ image, text: labels.galleryNames[index], alt: labels.galleryNames[index] })), [labels, locale]);
-  const [active, setActive] = useState(0);
-  const [requested, setRequested] = useState<number | undefined>();
-  function move(delta: number) {
-    const index = (active + delta + pictures.length) % pictures.length;
-    setRequested(index);
-    setActive(index);
-  }
+export function TeamReviewStory({ copy, theme, locale }: { copy: AboutDetailsCopy; theme: Theme; locale: Locale }) {
+  const [enlarge, setEnlarge] = useState(false);
+  const src = reviewCapture('team-canvas-' + locale, theme);
   return (
-    <div className="about-library-effects">
-      <InView name="DriftWall" className="about-drift-wall">
-        <DriftWall items={pictures.map(({ image }) => ({ image }))} columns={5} tileWidth={134}
-          tileHeight={118} gap={9} speed={9} pauseOnHover radius={6} tilt={7} />
-      </InView>
-      <InView name="Folder" className="about-folder-stage" fallback={photo(art.coast)}>
-        <Folder items={pictures.slice(0, 3).map(({ image, text }) => ({ image, title: text }))}
-          label={labels.galleryNames[0].split(' · ')[0]} theme="light" variant="matte" color="#cba454" size={0.72}
-          peek defaultOpen layout="spread" />
-      </InView>
-      <div className="about-library-browser">
-        <div className="about-library-image-fallback" aria-hidden>{photo(pictures[active]!.image)}</div>
-        <InView name="CircularGallery" className="about-circular-gallery">
-          <CircularGallery items={pictures} activeIndex={requested} onActiveChange={setActive} aria-label={labels.galleryNames[active]}
-            font="600 18px system-ui" bend={0.52} itemSize={1.05} itemAspect={1.24} dpr={1}
-            showTitles={false} fadeEdges={0.25} snap openOnClick={false} intro={false} />
+    <figure className="about-team-story">
+      <button type="button" className="about-review-shot" aria-label={copy.openImage + ' · ' + copy.canvasReview}
+        onClick={() => setEnlarge(true)}>
+        <Photo src={src} alt={copy.canvasReview} />
+        <span aria-hidden="true"><ArrowsOutSimple size={16} /></span>
+      </button>
+      <figcaption>{copy.canvasReview}</figcaption>
+      {enlarge && <ExhibitDialog item={{ src, title: copy.canvasReview }}
+        closeLabel={copy.close} onClose={() => setEnlarge(false)} />}
+    </figure>
+  );
+}
+
+export function LibraryEffects({ copy, theme, locale, screen, heading, description }: {
+  copy: AboutDetailsCopy;
+  theme: Theme;
+  locale: Locale;
+  screen: ReactNode;
+  heading: string;
+  description: string;
+}) {
+  const [exhibit, setExhibit] = useState<Exhibit | null>(null);
+  const { wall, folder } = useMemo(() => overviewLibrary(locale), [locale]);
+  const wallSurface = useRef<HTMLDivElement>(null);
+  const [wallWidth, setWallWidth] = useState(1440);
+  useEffect(() => {
+    const surface = wallSurface.current;
+    if (!surface) return;
+    const update = () => setWallWidth(Math.round(surface.clientWidth));
+    update();
+    const observer = new ResizeObserver(update);
+    observer.observe(surface);
+    return () => observer.disconnect();
+  }, []);
+  const columns = Math.max(3, Math.min(6, Math.round(wallWidth / 275)));
+  const tileWidth = Math.max(102, Math.round(wallWidth / (columns * 1.07)) - 13);
+  const openItem = ({ image, title }: typeof wall[number]) => setExhibit({ src: image, title });
+  return (
+    <section className="about-library-section" aria-labelledby="about-library-title">
+      <div className="about-library-wall" ref={wallSurface}>
+        <InView name="DriftWall" className="about-drift-wall"
+          fallback={<div className="about-library-static" role="group" aria-label={copy.libraryWall}>
+            {wall.slice(0, 12).map((item) => (
+              <button type="button" key={item.image} onClick={() => openItem(item)} aria-label={item.title}>
+                <Photo src={item.image} />
+              </button>
+            ))}
+          </div>}>
+          <DriftWall items={wall} columns={columns} tileWidth={tileWidth} tileHeight={Math.round(tileWidth * .75)} gap={13}
+            speed={14} pauseOnHover radius={10} tilt={11} turn={-8} roll={-7} depth={40} perspective={1480}
+            parallax={0.76} variance={0.51} lift={48} dim={0.91} repeat={false}
+            overlayColor="transparent" onItemClick={(index) => { if (wall[index]) openItem(wall[index]); }}
+            ariaLabel={copy.libraryWall} />
         </InView>
-        <div className="about-library-caption">
-          <button type="button" aria-label={labels.galleryArrows[0]} onClick={() => move(-1)}><ArrowLeft size={17} /></button>
-          <span aria-live="polite">{pictures[active]?.text}</span>
-          <button type="button" aria-label={labels.galleryArrows[1]} onClick={() => move(1)}><ArrowRight size={17} /></button>
+      </div>
+      <div className="about-library-foreground overview-container">
+        <div className="about-library-work">{screen}</div>
+        <div className="about-library-aside">
+          <div className="about-library-copy">
+            <h3 id="about-library-title">{heading}</h3>
+            <p className="overview-body">{description}</p>
+          </div>
+          <div className="about-library-folder">
+            <InView name="Folder" className="about-folder-stage" persistent
+              fallback={<div className="about-folder-fallback">{folder.map((item) => (
+                <button type="button" key={item.image} onClick={() => openItem(item)} aria-label={item.title}>
+                  <Photo src={item.image} />
+                </button>
+              ))}</div>}>
+              <Folder items={folder} label={copy.folderName} theme={theme} variant="matte"
+                color="#cba454" size={0.86} peek defaultOpen layout="spread" intro={false} closeOnOutsideClick={false}
+                onItemClick={(_, index) => { if (folder[index]) openItem(folder[index]); }} />
+            </InView>
+          </div>
         </div>
       </div>
-    </div>
+      {exhibit && <ExhibitDialog item={exhibit} closeLabel={copy.close} onClose={() => setExhibit(null)} />}
+    </section>
   );
 }
 
 export function DeliveryEffects({ labels, screen }: { labels: OverviewStories; screen: ReactNode }) {
   return (
     <div className="about-delivery-effects">
-      <figure className="about-delivery-art">
-        <InView name="FlyingPosters" className="about-flying-posters" fallback={photo(art.delivery)}>
-          <FlyingPosters items={[art.delivery]} planeWidth={240} planeHeight={245}
-            columns={2} axis="horizontal" distortion={0.16} gap={14} rotation={12}
-            pageScroll={0.14} speed={7} drag wheel={false} />
+      <div className="about-delivery-background" aria-hidden="true">
+        <InView className="about-poster-field" name="DeliveryPosters" fallback={
+          <div className="about-poster-lanes" data-static>
+            {overviewDeliveryPhotos.map((lane) => (
+              <div key={lane[0]} className="about-poster-lane">
+                {lane.slice(0, 4).map((src) => <Photo key={src} src={src} />)}
+              </div>
+            ))}
+          </div>
+        }>
+          <div className="about-poster-lanes">
+            {overviewDeliveryPhotos.map((lane) => (
+              <div key={lane[0]} className="about-poster-lane">
+                <div className="about-poster-track">
+                  {[0, 1].map((cycle) => (
+                    <div key={cycle} className="about-poster-run">
+                      {lane.map((src) => <Photo key={src} src={src} />)}
+                    </div>
+                  ))}
+                </div>
+              </div>
+            ))}
+          </div>
         </InView>
-        <InView name="PixelTransition" className="about-delivery-proof" fallback={photo(art.delivery)}>
-          <PixelTransition firstContent={photo(art.delivery)}
-            secondContent={<img src={art.delivery} style={{ filter: 'grayscale(1)' }} alt="" />}
-            trigger="hover" pattern="ripple" pixelColor="#bfa465" gridSize={20} animationStepDuration={0.28} aspectRatio="3/2" />
-        </InView>
-      </figure>
+      </div>
       <div className="about-delivery-window">
         {screen}
-        <InView name="ReflectiveCard" className="about-reflective" fallback={<span>{labels.file}</span>}>
-          <ReflectiveCard theme="light" name={labels.file} width="100%" height="100%" radius={9}
-            tint="#b29a64" enableTilt tiltStrength={3} metalness={0.29} glare={0.22}>
-            <span>PNG · JPEG · WebP</span>
-          </ReflectiveCard>
-        </InView>
+        <span className="about-screen-caption">{labels.file}<ArrowDownRight size={15} aria-hidden="true" /></span>
       </div>
     </div>
   );

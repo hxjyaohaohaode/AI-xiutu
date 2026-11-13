@@ -47,7 +47,7 @@ import {
 } from './revision-commands.js';
 
 async function artworkProject(tx: Queryable, artworkId: string): Promise<string> {
-  const row = (await tx.query('SELECT project_id FROM artworks WHERE id=$1', [artworkId])).rows[0];
+  const row = (await tx.query('SELECT project_id FROM artworks WHERE id=$1 AND deleted_at IS NULL', [artworkId])).rows[0];
   if (!row) throw new HttpError(404, 'ARTWORK_NOT_FOUND', '作品不存在');
   return row.project_id;
 }
@@ -61,7 +61,7 @@ async function lockArtworkWrite(
   const projectId = await artworkProject(tx, artworkId);
   const project = await lockProjectMutation(tx, projectId, actorId, authHash);
   const artwork = (
-    await tx.query('SELECT * FROM artworks WHERE id=$1 AND project_id=$2 FOR UPDATE', [
+    await tx.query('SELECT * FROM artworks WHERE id=$1 AND project_id=$2 AND deleted_at IS NULL FOR UPDATE', [
       artworkId,
       projectId,
     ])
@@ -125,7 +125,7 @@ export function registerProjects(
       [p.id],
     );
     const artworks = await db.query(
-      'SELECT * FROM artworks WHERE project_id=$1 ORDER BY updated_at DESC',
+      'SELECT * FROM artworks WHERE project_id=$1 AND deleted_at IS NULL ORDER BY updated_at DESC',
       [p.id],
     );
     return {
@@ -252,7 +252,17 @@ export function registerProjects(
     ).rows[0];
     if (!asset) throw new HttpError(404, 'ASSET_NOT_FOUND', '资源不存在');
     await projectAccess(db, asset.project_id, user.id);
-    const thumbnail = await storage.thumbnail(asset.storage_key);
+    const thumbnail = await storage.thumbnail(asset.storage_key, (publish) =>
+      transaction(db, async (tx) => {
+        await lockAssetStorageKeys(tx, [asset.storage_key]);
+        const retained = await tx.query(
+          'SELECT 1 FROM assets WHERE storage_key=$1 AND purged_at IS NULL LIMIT 1',
+          [asset.storage_key],
+        );
+        if (!retained.rowCount) throw new HttpError(404, 'ASSET_NOT_FOUND', '资源不存在');
+        await publish();
+      }),
+    );
     // Cold-cache work can take time; deletion or grant revocation during it must
     // not turn a newly generated private derivative into an authorized response.
     if (
@@ -266,43 +276,6 @@ export function registerProjects(
       .header('Content-Length', String(thumbnail.bytes))
       .header('Content-Disposition', `inline; filename="${asset.id}-thumbnail.webp"`)
       .send(storage.thumbnailStream(asset.storage_key));
-  });
-  app.delete('/v1/assets/:id', async (req) => {
-    const user = requireUser(req);
-    const p = z.object({ id }).parse(req.params);
-    await transaction(db, async (tx) => {
-      const hint = (
-        await tx.query('SELECT project_id FROM assets WHERE id=$1 AND deleted_at IS NULL', [p.id])
-      ).rows[0];
-      if (!hint) throw new HttpError(404, 'ASSET_NOT_FOUND', '资源不存在');
-      const project = await lockProjectMutation(
-        tx,
-        hint.project_id,
-        user.id,
-        hash(req.cookies.xiutu_session ?? ''),
-      );
-      const asset = (
-        await tx.query(
-          'SELECT id FROM assets WHERE id=$1 AND project_id=$2 AND deleted_at IS NULL FOR UPDATE',
-          [p.id, project.id],
-        )
-      ).rows[0];
-      if (!asset) throw new HttpError(404, 'ASSET_NOT_FOUND', '资源不存在');
-      if ((await tx.query('SELECT id FROM artworks WHERE asset_id=$1 LIMIT 1', [p.id])).rowCount)
-        throw new HttpError(409, 'ASSET_IN_USE', '作品仍引用此资源');
-      if (
-        (
-          await tx.query(
-            'SELECT revision_id FROM revision_sources WHERE asset_id=$1 UNION ALL SELECT revision_id FROM revision_image_layers WHERE asset_id=$1 LIMIT 1',
-            [p.id],
-          )
-        ).rowCount
-      )
-        throw new HttpError(409, 'ASSET_IN_USE', '历史版本或合成图层仍引用此资源');
-      await tx.query('UPDATE assets SET deleted_at=clock_timestamp() WHERE id=$1', [p.id]);
-      await emit(tx, project.space_id, project.id, 'asset.deleted', p.id);
-    });
-    return { ok: true };
   });
   app.post('/v1/projects/:id/artworks', async (req, reply) => {
     const user = requireUser(req);
@@ -346,7 +319,7 @@ export function registerProjects(
         LEFT JOIN assets src ON src.id=a.asset_id AND src.project_id=a.project_id AND src.deleted_at IS NULL
         LEFT JOIN revisions r ON r.id=a.head_revision_id AND r.artwork_id=a.id AND r.version=a.head_version
         LEFT JOIN revision_sources s ON s.revision_id=r.id
-        WHERE a.id=$1 AND a.project_id=$2`,
+        WHERE a.id=$1 AND a.project_id=$2 AND a.deleted_at IS NULL`,
         [p.id, projectId],
       )
     ).rows[0];
@@ -425,7 +398,7 @@ export function registerProjects(
     const p = z.object({ id }).parse(req.params);
     const options = revisionHistoryQuerySchema.parse(req.query);
     const artwork = (
-      await db.query('SELECT project_id,head_version FROM artworks WHERE id=$1', [p.id])
+      await db.query('SELECT project_id,head_version FROM artworks WHERE id=$1 AND deleted_at IS NULL', [p.id])
     ).rows[0];
     if (!artwork) throw new HttpError(404, 'ARTWORK_NOT_FOUND', '作品不存在');
     await projectAccess(db, artwork.project_id, user.id);
@@ -479,7 +452,7 @@ export function registerProjects(
     const p = z.object({ id, revisionId: id }).parse(req.params);
     const row = (
       await db.query(
-        'SELECT r.*,a.project_id,s.asset_id FROM revisions r JOIN artworks a ON a.id=r.artwork_id JOIN revision_sources s ON s.revision_id=r.id WHERE r.id=$1 AND r.artwork_id=$2',
+        'SELECT r.*,a.project_id,s.asset_id FROM revisions r JOIN artworks a ON a.id=r.artwork_id JOIN revision_sources s ON s.revision_id=r.id WHERE r.id=$1 AND r.artwork_id=$2 AND a.deleted_at IS NULL',
         [p.revisionId, p.id],
       )
     ).rows[0];
@@ -608,13 +581,10 @@ export function registerProjects(
     const body = forkRevisionSchema.parse(req.body);
     const requestDigest = digest(canonical({ artworkId: params.id, body }));
     const result = await transaction(db, async (tx) => {
-      const projectId = await artworkProject(tx, params.id);
-      const project = await lockProjectMutation(
-        tx,
-        projectId,
-        user.id,
-        hash(req.cookies.xiutu_session ?? ''),
+      const { project } = await lockArtworkWrite(
+        tx, params.id, user.id, hash(req.cookies.xiutu_session ?? ''),
       );
+      const projectId = project.id;
       await tx.query('SELECT pg_advisory_xact_lock(hashtextextended($1,0))', [
         `history-fork:${user.id}:${body.idempotencyKey}`,
       ]);
@@ -627,6 +597,8 @@ export function registerProjects(
         )
       ).rows[0];
       if (prior) {
+        if (prior.branch.deleted_at)
+          throw new HttpError(409, 'FORK_TARGET_UNAVAILABLE', '此分支已移入回收站');
         if (prior.request_digest !== requestDigest || prior.branch.project_id !== projectId)
           throw new HttpError(409, 'IDEMPOTENCY_CONFLICT', '此操作标识已用于其他分支');
         const asset = await requireSourceAsset(tx, projectId, prior.asset_id);

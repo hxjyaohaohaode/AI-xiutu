@@ -1,13 +1,27 @@
-/* Strong Squid day/night switch by Galahhad, adapted to button-owned state. */
+/* Strong Squid by Galahhad · MIT. The shared button supplies the checked state. */
+.theme-switch {
+  display: inline-grid;
+  place-items: center;
+  flex: 0 0 auto;
+  min-inline-size: 44px;
+  min-block-size: 44px;
+  padding: 0;
+  border: 0;
+  border-radius: 999px;
+  background: transparent;
+  cursor: pointer;
+}
+.theme-switch:focus-visible { outline: 2px solid var(--color-focus); outline-offset: 2px; }
 .theme-scene {
-  --sky: #4c86b5;
-  --night: #232942;
-  --cloud: #eff9ff;
-  --cloud-back: #a9cdeb;
+  --sky: #3d7eae;
+  --night: #1d1f2c;
+  --cloud: #f3fdff;
+  --cloud-back: #aacadf;
   --orb: 2.125em;
   --halo: 3.375em;
-  --halo-offset: -0.4375em;
-  --ease-theme: 460ms cubic-bezier(.15, .04, .35, 1.12);
+  --halo-offset: -.4375em;
+  --ease-theme: 500ms cubic-bezier(0, -.02, .4, 1.25);
+  --ease-halo: 300ms cubic-bezier(0, -.02, .35, 1.17);
   display: block;
   position: relative;
   overflow: hidden;
@@ -17,31 +31,39 @@
   flex: none;
   border-radius: 999px;
   background: var(--sky);
-  box-shadow: inset 0 .06em .19em #11182755;
-  font-size: 8px;
-  pointer-events: none;
-  transition: background var(--ease-theme);
+  box-shadow: 0 -.062em .062em #fff3, 0 .062em .125em #14172048;
+  font-size: var(--theme-scene-size, 9px);
+  transition: background-color var(--ease-theme);
 }
-.theme-scene[data-night='true'] { background: var(--night); }
+.theme-scene::after {
+  position: absolute;
+  inset: 0;
+  z-index: 1;
+  border-radius: inherit;
+  box-shadow: 0 .05em .187em #0004 inset, 0 .05em .187em #0004 inset;
+  pointer-events: none;
+  content: '';
+}
+.theme-scene[data-night='true'] { background-color: var(--night); }
 .theme-scene-clouds {
   position: absolute;
-  left: .31em;
+  left: .312em;
   bottom: -.625em;
   width: 1.25em;
   height: 1.25em;
   border-radius: 50%;
   background: var(--cloud);
-  box-shadow: .94em .31em var(--cloud), -.31em -.31em var(--cloud-back),
-    1.44em .375em var(--cloud), .5em -.125em var(--cloud-back),
-    2.19em 0 var(--cloud), 1.25em -.06em var(--cloud-back),
-    2.94em .31em var(--cloud), 2em -.31em var(--cloud-back),
-    3.62em -.06em var(--cloud), 2.62em 0 var(--cloud-back),
-    4.5em -.31em var(--cloud), 3.375em -.437em var(--cloud-back),
+  box-shadow: .937em .312em var(--cloud), -.312em -.312em var(--cloud-back),
+    1.437em .375em var(--cloud), .5em -.125em var(--cloud-back),
+    2.187em 0 var(--cloud), 1.25em -.062em var(--cloud-back),
+    2.937em .312em var(--cloud), 2em -.312em var(--cloud-back),
+    3.625em -.062em var(--cloud), 2.625em 0 var(--cloud-back),
+    4.5em -.312em var(--cloud), 3.375em -.437em var(--cloud-back),
     4.625em -1.75em 0 .437em var(--cloud), 4em -.625em var(--cloud-back),
     4.125em -2.125em 0 .437em var(--cloud-back);
   transition: bottom var(--ease-theme);
 }
-.theme-scene[data-night='true'] .theme-scene-clouds { bottom: -4.1em; }
+.theme-scene[data-night='true'] .theme-scene-clouds { bottom: -4.062em; }
 .theme-scene-stars {
   position: absolute;
   top: -100%;
@@ -49,33 +71,43 @@
   width: 2.75em;
   height: auto;
   color: #fff;
-  transition: top var(--ease-theme);
+  transition: top var(--ease-theme), transform var(--ease-theme);
 }
-.theme-scene[data-night='true'] .theme-scene-stars { top: 22%; }
+.theme-scene[data-night='true'] .theme-scene-stars { top: 50%; transform: translateY(-50%); }
 .theme-scene-halo {
   position: absolute;
   display: grid;
   place-items: center;
-  inset-block-start: var(--halo-offset);
-  inset-inline-start: var(--halo-offset);
+  top: var(--halo-offset);
+  left: var(--halo-offset);
   width: var(--halo);
   height: var(--halo);
   border-radius: 50%;
-  background: #ffffff25;
-  box-shadow: 0 0 0 .625em #ffffff21, 0 0 0 1.25em #ffffff15;
-  transition: inset-inline-start 370ms cubic-bezier(.16, .09, .35, 1.08);
+  background: #ffffff19;
+  box-shadow: inset 0 0 0 3.375em #ffffff19, inset 0 0 0 3.375em #ffffff19,
+    0 0 0 .625em #ffffff19, 0 0 0 1.25em #ffffff19;
+  transition: left var(--ease-halo);
 }
 .theme-scene[data-night='true'] .theme-scene-halo {
-  inset-inline-start: calc(100% - var(--halo-offset) - var(--halo));
+  left: calc(100% - var(--halo-offset) - var(--halo));
+}
+@media (hover: hover) {
+  .theme-switch:hover .theme-scene-halo { left: calc(var(--halo-offset) + .187em); }
+  .theme-switch:hover .theme-scene[data-night='true'] .theme-scene-halo {
+    left: calc(100% - var(--halo-offset) - var(--halo) - .187em);
+  }
 }
 .theme-scene-sun {
+  position: relative;
+  z-index: 2;
   display: block;
   overflow: hidden;
   width: var(--orb);
   height: var(--orb);
   border-radius: 50%;
-  background: #f5ce61;
-  box-shadow: inset .06em .06em .08em #fff5c9, inset 0 -.06em .09em #a87922, 0 .11em .22em #0d14294d;
+  background: #ecca2f;
+  box-shadow: inset .062em .062em .062em #feffef9c, inset 0 -.062em .062em #a1872a;
+  filter: drop-shadow(.062em .125em .125em #0004) drop-shadow(0 .062em .125em #0004);
 }
 .theme-scene-moon {
   position: relative;
@@ -83,23 +115,33 @@
   width: 100%;
   height: 100%;
   border-radius: inherit;
-  background: #d9e2f0;
-  translate: 100% 0;
-  box-shadow: inset .06em .06em .08em #fff, inset 0 -.06em .09em #9da8bd;
-  transition: translate var(--ease-theme);
+  background: #c4c9d1;
+  transform: translateX(100%);
+  box-shadow: inset .062em .062em .062em #feffef9c, inset 0 -.062em .062em #969696;
+  transition: transform var(--ease-theme);
 }
-.theme-scene[data-night='true'] .theme-scene-moon { translate: 0 0; }
+.theme-scene[data-night='true'] .theme-scene-moon { transform: translateX(0); }
 .theme-scene-moon i {
   position: absolute;
-  inset: .72em auto auto .3em;
-  width: .72em;
-  height: .72em;
+  inset: .75em auto auto .312em;
+  width: .75em;
+  height: .75em;
   border-radius: 50%;
-  background: #91a2bd;
-  box-shadow: inset 0 .04em .06em #141b3040;
+  background: #959db1;
+  box-shadow: 0 .0312em .062em #0004 inset;
 }
-.theme-scene-moon i:nth-child(2) { inset: .94em auto auto 1.38em; width: .38em; height: .38em; }
-.theme-scene-moon i:nth-child(3) { inset: .31em auto auto .81em; width: .25em; height: .25em; }
+.theme-scene-moon i:nth-child(2) { inset: .937em auto auto 1.375em; width: .375em; height: .375em; }
+.theme-scene-moon i:nth-child(3) { inset: .312em auto auto .812em; width: .25em; height: .25em; }
+
+.studio-workspace .workspace-top-actions .theme-switch {
+  display: inline-grid;
+  min-inline-size: 47px;
+}
+.ops-content-actions { display: flex; align-items: center; justify-content: end; gap: 8px; }
+@media (max-width: 759px) {
+  .theme-switch { --theme-scene-size: 7.5px; }
+  .studio-workspace .workspace-top-actions .theme-switch { min-inline-size: 44px; }
+}
 
 .modal.workspace-settings-dialog {
   width: min(442px, calc(100vw - 24px));

@@ -1,4 +1,4 @@
-import { mkdir, unlink, stat, readFile, writeFile, open, rename } from 'node:fs/promises';
+import { mkdir, unlink, stat, readFile, writeFile, open, rename, rm } from 'node:fs/promises';
 import { createReadStream, createWriteStream } from 'node:fs';
 import { join, resolve } from 'node:path';
 import { pipeline } from 'node:stream/promises';
@@ -355,7 +355,10 @@ export class LocalPrivateStorage {
       throw new StorageError(503, 'THUMBNAIL_CACHE_INVALID', '缩略图缓存无效，请联系维护人员');
     }
   }
-  private async createThumbnail(key: string): Promise<ThumbnailInfo> {
+  private async createThumbnail(
+    key: string,
+    publish: (write: () => Promise<void>) => Promise<void>,
+  ): Promise<ThumbnailInfo> {
     await acquireThumbnailSlot();
     const temporary = join(this.directory, `${randomUUID()}.thumbnail`);
     try {
@@ -377,8 +380,10 @@ export class LocalPrivateStorage {
       } finally {
         await file.close();
       }
-      await rename(temporary, this.thumbnailPath(key));
-      await syncStorageDirectory(this.directory);
+      await publish(async () => {
+        await rename(temporary, this.thumbnailPath(key));
+        await syncStorageDirectory(this.directory);
+      });
       return { mime: 'image/webp', width: info.width, height: info.height, bytes: data.length };
     } catch (error) {
       if (error instanceof StorageError) throw error;
@@ -391,7 +396,10 @@ export class LocalPrivateStorage {
     }
   }
   /** Callers must check the current asset ACL for every request, including cache hits. */
-  async thumbnail(key: string): Promise<ThumbnailInfo> {
+  async thumbnail(
+    key: string,
+    publish: (write: () => Promise<void>) => Promise<void> = (write) => write(),
+  ): Promise<ThumbnailInfo> {
     const path = this.thumbnailPath(key);
     const cached = await this.cachedThumbnail(key);
     if (cached) return cached;
@@ -399,7 +407,7 @@ export class LocalPrivateStorage {
     if (running) return running;
     if (thumbnailTasks.size >= 32)
       throw new StorageError(503, 'MEDIA_BUSY', '缩略图队列已满，请稍后重试');
-    const task = this.createThumbnail(key);
+    const task = this.createThumbnail(key, publish);
     thumbnailTasks.set(path, task);
     try {
       return await task;
@@ -415,6 +423,27 @@ export class LocalPrivateStorage {
       unlink(this.path(key)).catch(() => {}),
       unlink(this.thumbnailPath(key)).catch(() => {}),
     ]);
+  }
+  async purgePhotoFile(kind: 'canonical' | 'original' | 'animation', key: string) {
+    const unlinkIfPresent = (path: string) => unlink(path).catch((error: NodeJS.ErrnoException) => {
+      if (error.code !== 'ENOENT') throw error;
+    });
+    if (kind === 'canonical') {
+      await unlinkIfPresent(this.path(key));
+      await unlinkIfPresent(this.thumbnailPath(key));
+      await syncStorageDirectory(this.directory);
+      return;
+    }
+    if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/.test(key))
+      throw new Error('Invalid recycle-bin storage key');
+    const directory = join(this.directory, kind === 'original' ? 'media-v1' : 'animation-v1');
+    if (kind === 'original') await rm(join(directory, key), { recursive: true, force: true });
+    else await unlinkIfPresent(join(directory, key + '.gif'));
+    try {
+      await syncStorageDirectory(directory);
+    } catch (error) {
+      if ((error as NodeJS.ErrnoException).code !== 'ENOENT') throw error;
+    }
   }
   stream(key: string) {
     return createReadStream(this.path(key));

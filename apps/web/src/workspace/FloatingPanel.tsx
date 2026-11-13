@@ -40,6 +40,7 @@ import {
   type PanelEdge,
   type PanelGeometry,
   type PanelId,
+  type PanelRectangle,
   type Viewport,
 } from './useWorkspaceLayout';
 import { usePresence } from '../motion/usePresence';
@@ -86,11 +87,11 @@ export function FloatingPanel({
   backLabel,
   onClose,
   children,
-  navigation,
   panelKey = 'inspector',
   open = true,
+  covered = false,
   motionState = 'enter',
-  compactAdjustment = false,
+  fixedRectangle,
   showBackInHeader = true,
   displayMode = 'panel',
   identity,
@@ -108,11 +109,11 @@ export function FloatingPanel({
   backLabel?: string;
   onClose: () => void;
   children: ReactNode;
-  navigation?: ReactNode;
   panelKey?: PanelId;
   open?: boolean;
+  covered?: boolean;
   motionState?: MotionPhase;
-  compactAdjustment?: boolean;
+  fixedRectangle?: PanelRectangle;
   showBackInHeader?: boolean;
   displayMode?: 'panel' | 'page';
   identity?: string;
@@ -125,7 +126,6 @@ export function FloatingPanel({
   const [dragging, setDragging] = useState(false);
   const [menu, setMenu] = useState(false);
   const [headerTarget, setHeaderTarget] = useState<HTMLDivElement | null>(null);
-  const [adjustmentMenuTarget, setAdjustmentMenuTarget] = useState<HTMLDivElement | null>(null);
   const [animatingPresentation, setAnimatingPresentation] = useState(false);
   const [presentationMs, setPresentationMs] = useState(220);
   const menuPresence = usePresence(menu, 'panel-menu');
@@ -148,14 +148,14 @@ export function FloatingPanel({
     const inspector = panel.current?.querySelector<HTMLElement>('.inspector-scroll');
     if (inspector) inspector.scrollTop = 0;
   }, [viewport.bucket]);
-  const mobile = viewport.bucket === 'phone';
+  const fixed = !!fixedRectangle;
+  const mobile = viewport.bucket === 'phone' || fixed;
   const value = boundPanel(mobile && panelKey === 'inspector' ? { ...geometry, dock: 'bottom' } : geometry, viewport, panelKey);
-  const rect = panelRectangle(value, viewport);
-  const maximized = value.presentation === 'maximized',
-    collapsed = value.presentation === 'collapsed';
+  const rect = fixedRectangle ?? panelRectangle(value, viewport);
+  const maximized = !fixed && value.presentation === 'maximized',
+    collapsed = !fixed && value.presentation === 'collapsed';
   const attached = mobile && value.dock === 'bottom';
   const page = displayMode === 'page';
-  const inlineAdjustment = !page && attached && compactAdjustment && !collapsed;
   const condensed = mobile && panelKey === 'ai' && !collapsed && !page;
   const bounds = panelBounds(viewport, value.dock, panelKey);
   const repairPhoneHeight =
@@ -164,7 +164,7 @@ export function FloatingPanel({
     (!Number.isFinite(geometry.height) || geometry.height < bounds.minHeight);
   const resumeHeight = repairPhoneHeight ? defaultPanel(panelKey, viewport).height : value.height;
   const contentPresence = usePresence((page || !collapsed) && open, 'panel-body');
-  const needsPhotoSpace = panelNeedsPhotoSpace(value, viewport);
+  const needsPhotoSpace = !fixed && panelNeedsPhotoSpace(value, viewport);
   const menuBelow =
     bounds.height - panelBottomOffset(viewport) - rect.y - panelHeaderHeight(viewport) - 8;
   const menuAbove = rect.y - 8;
@@ -332,6 +332,7 @@ export function FloatingPanel({
     viewport.workspaceWidth,
     viewport.workspaceHeight,
     displayMode,
+    fixed,
   ]);
   const previousKey = useRef(panelKey);
   useEffect(() => {
@@ -400,11 +401,7 @@ export function FloatingPanel({
     animateGeometry({ ...normal, presentation: next });
     // Do not leave keyboard focus inside a collapsed or inert content subtree.
     if (next === 'collapsed') {
-      // The phone title is replaced by the active categories. Keep focus on a
-      // control that stays visible through both sheet presentations.
-      if (inlineAdjustment)
-        requestAnimationFrame(() => layoutTrigger.current?.focus({ preventScroll: true }));
-      else if (attached && panelKey === 'inspector')
+      if (attached && panelKey === 'inspector')
         layoutTrigger.current?.focus({ preventScroll: true });
       else dragHandle.current?.focus({ preventScroll: true });
     }
@@ -446,18 +443,19 @@ export function FloatingPanel({
       className={`floating-panel free-panel dock-${value.dock}${mobile ? ' phone-panel' : ''}`}
       style={style}
       aria-label={label}
-      inert={!open}
-      aria-hidden={!open}
+      inert={!open || covered}
+      aria-hidden={!open || covered}
+      data-covered={covered || undefined}
       data-motion="panel-frame"
       data-motion-pixels="true"
       data-motion-state={motionState}
       data-gesture={dragging ? 'active' : undefined}
-      data-presentation={page ? 'normal' : value.presentation}
-      data-size-motion={animatingPresentation ? 'active' : undefined}
+      data-presentation={page || fixed ? 'normal' : value.presentation}
+      data-size-motion={!fixed && animatingPresentation ? 'active' : undefined}
       data-panel-width={rect.width < 300 ? 'narrow' : rect.width >= 640 ? 'wide' : 'regular'}
       data-attached={attached && !page ? 'true' : undefined}
-      data-inline-adjustment={inlineAdjustment || undefined}
-      data-composition={value.composition}
+      data-fixed-inspector={fixed || undefined}
+      data-composition={fixed ? 'reflow' : value.composition}
       data-device={viewport.bucket}
       data-panel-id={identity ?? panelKey}
       data-display-mode={displayMode}
@@ -471,9 +469,9 @@ export function FloatingPanel({
         }
       }}
     >
-      {!page && !inlineAdjustment && (
+      {!page && !fixed && (
         <div className="panel-drag-header" data-motion="panel-header">
-          {onBack && showBackInHeader && !condensed && !(attached && compactAdjustment) && (
+          {onBack && showBackInHeader && !condensed && (
             <IconButton
               className="panel-back-action"
               label={backLabel ?? t('返回上一步工具')}
@@ -531,9 +529,6 @@ export function FloatingPanel({
             </span>
             <strong>{title}</strong>
           </div>
-          {!mobile && navigation && (
-            <div className="panel-context-navigation panel-context-inline">{navigation}</div>
-          )}
           <div className="panel-presentation-actions" data-motion="panel-actions">
             {attached && !condensed && panelKey !== 'inspector' && (
               <div
@@ -602,7 +597,7 @@ export function FloatingPanel({
           </div>
         </div>
       )}
-      {!page && menuPresence.present && (
+      {!page && !fixed && menuPresence.present && (
         <div
           id={menuId}
           className="panel-layout-menu"
@@ -615,31 +610,6 @@ export function FloatingPanel({
         >
           {mobile && panelKey === 'inspector' && (
             <div className="panel-menu-presentation">
-              {inlineAdjustment && (
-                <div ref={setAdjustmentMenuTarget} className="panel-adjustment-actions" />
-              )}
-              {inlineAdjustment && (
-                <button
-                  type="button"
-                  className="panel-collapse-action"
-                  onClick={() => setPresentation('collapsed')}
-                >
-                  <CaretDown size={18} />
-                  {t('折叠到标题栏，保留当前操作')}
-                </button>
-              )}
-              {inlineAdjustment && onBack && (
-                <button
-                  type="button"
-                  onClick={() => {
-                    setMenu(false);
-                    onBack();
-                  }}
-                >
-                  <ArrowLeft size={18} />
-                  {backLabel ?? t('返回上一步工具')}
-                </button>
-              )}
               <button
                 type="button"
                 onClick={() => {
@@ -809,18 +779,18 @@ export function FloatingPanel({
           value={{
             mobile,
             maximized,
-            openLayout: () => setMenu(true),
-            toggleMaximized: () => setPresentation(maximized ? 'normal' : 'maximized'),
+            openLayout: () => { if (!fixed) setMenu(true); },
+            toggleMaximized: () => { if (!fixed) setPresentation(maximized ? 'normal' : 'maximized'); },
             headerTarget:
-              attached && panelKey === 'inspector' && !collapsed && open ? headerTarget : null,
-            adjustmentLayoutControl: inlineAdjustment ? layoutControl : undefined,
-            adjustmentMenuTarget: inlineAdjustment && menu ? adjustmentMenuTarget : null,
+              attached && !fixed && panelKey === 'inspector' && !collapsed && open ? headerTarget : null,
+            fixedInspector: fixed,
           }}
         >
           {children}
         </PanelChromeContext.Provider>
       </div>
       {!page &&
+        !fixed &&
         !collapsed &&
         !maximized &&
         edges

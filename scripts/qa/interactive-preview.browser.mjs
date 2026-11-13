@@ -32,6 +32,11 @@ const report = {
 };
 let browser;
 
+async function openRecipeExport(page) {
+  await page.locator('.workspace-top-actions .top-export').click();
+  return page.locator('dialog.export-dialog[open]');
+}
+
 function hslProbePositions(rgba, width, height, band) {
   // A one-degree adjustment can affect only a small subset of real pixels.
   // Select probes against the tiled reference before the measured gesture.
@@ -326,9 +331,9 @@ async function verifyLocalMaskAndLiquify(input) {
     await settled();
     assert.deepEqual(await png(), repaired, 'redo restores the exact combined result');
     await page.screenshot({ path: resolve(artifacts, 'liquify-then-repair.png') });
-    await page.getByRole('button', { name: '交付', exact: true }).click();
+    const exportDialog = await openRecipeExport(page);
     const pending = page.waitForEvent('download');
-    await page.getByRole('button', { name: '保存编辑配方' }).click();
+    await exportDialog.getByRole('button', { name: '保存编辑配方', exact: true }).click();
     const download = await pending;
     const recipe = JSON.parse(await readFile(await download.path(), 'utf8'));
     const mask = recipe.regionEdits[0].mask;
@@ -534,10 +539,9 @@ async function verifyWorkerRecovery({ png, source }) {
       return value;
     };
     const downloadRecipe = async () => {
-      const views = page.getByRole('navigation', { name: '工作视图', exact: true });
-      await views.getByRole('button', { name: '交付', exact: true }).click();
+      const exportDialog = await openRecipeExport(page);
       const pending = page.waitForEvent('download');
-      await page.getByRole('button', { name: '保存编辑配方', exact: true }).click();
+      await exportDialog.getByRole('button', { name: '保存编辑配方', exact: true }).click();
       const download = await pending;
       const stream = await download.createReadStream();
       assert.ok(stream, 'the draft is downloaded through the real product action');
@@ -545,7 +549,8 @@ async function verifyWorkerRecovery({ png, source }) {
       for await (const chunk of stream) chunks.push(chunk);
       assert.equal(await download.failure(), null);
       const bytes = Buffer.concat(chunks);
-      await views.getByRole('button', { name: '精修', exact: true }).click();
+      await page.keyboard.press('Escape');
+      await exportDialog.waitFor({ state: 'hidden' });
       await page.locator('.canvas-stage').waitFor();
       return { bytes, recipe: JSON.parse(bytes.toString('utf8')) };
     };
@@ -1227,21 +1232,13 @@ try {
         assert.equal(await readCanvas(), rendered.toString('base64'));
         caseReport.touchCancellationRestoredPixels = true;
       }
-      const view = page.getByRole('button', { name: '切换工作视图' });
-      if (await view.isVisible()) {
-        await view.click();
-        const navigation = page.getByRole('dialog', { name: '工作视图', exact: true });
-        await navigation.locator('button[data-view="deliver"]').click();
-        await navigation.waitFor({ state: 'hidden' });
-      } else
-        await page
-          .getByRole('navigation', { name: '工作视图', exact: true })
-          .getByRole('button', { name: '交付', exact: true })
-          .click();
+      const exportDialog = await openRecipeExport(page);
       const [download] = await Promise.all([
         page.waitForEvent('download'),
-        page.getByRole('button', { name: '保存编辑配方', exact: true }).click(),
+        exportDialog.getByRole('button', { name: '保存编辑配方', exact: true }).click(),
       ]);
+      await page.keyboard.press('Escape');
+      await exportDialog.waitFor({ state: 'hidden' });
       const stream = await download.createReadStream();
       const chunks = [];
       for await (const chunk of stream) chunks.push(chunk);

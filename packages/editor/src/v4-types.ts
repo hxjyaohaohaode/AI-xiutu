@@ -69,6 +69,8 @@ export interface RecipeV4 extends Omit<RecipeV3, 'schemaVersion' | 'engineVersio
   projective: ProjectiveTransformV4;
   healing: HealingOperationV4[];
   retouch: RetouchRegionV4[];
+  /** Final color correction in source coordinates, after image and paint compositing. */
+  compositeGrade?: import('./v3-types.js').ColorBlockV3;
 }
 
 export type LayeredRecipe = RecipeV3 | RecipeV4;
@@ -78,6 +80,7 @@ export type RecipeV4Overrides = Omit<RecipeV3Overrides, 'schemaVersion' | 'engin
   projective?: Partial<ProjectiveTransformV4>;
   healing?: HealingOperationV4[];
   retouch?: RetouchRegionV4[];
+  compositeGrade?: import('./v3-types.js').ColorBlockV3Overrides;
 };
 export type RecipeV4ValidationResult =
   { valid: true; recipe: RecipeV4; errors: [] } | { valid: false; errors: string[] };

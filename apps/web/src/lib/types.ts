@@ -88,11 +88,13 @@ export type Revision = {
   origin?: { kind: RevisionOriginKind; sourceRevisionId: string | null };
 };
 export type RevisionSummary = Omit<Revision, 'recipe'>;
-export type View = 'editor' | 'works' | 'compare' | 'collaborate' | 'docs' | 'deliver' | 'usage';
+export type View = 'editor' | 'works' | 'collaborate' | 'docs' | 'usage';
 export type Notice = { message: string; tone: 'success' | 'error' | 'info' };
 export type Comment = {
   id: string;
   body: string;
+  bodyVersion: number;
+  editedAt?: string | null;
   anchor?: { x: number; y: number; shape?: 'point' | 'diamond' | 'frame' } | null;
   artworkId?: string;
   revisionId?: string;

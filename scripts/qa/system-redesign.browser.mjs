@@ -560,9 +560,14 @@ async function importStoryPhoto(page, filename) {
   await importReviewFile(page, filename, resolve(root, 'apps/web/public/about/stories', filename));
 }
 async function tool(page, id) {
-  const button = page.locator('[data-dock-tool="' + id + '"]');
+  const root = ['color', 'curves', 'detail'].includes(id) ? 'light'
+    : ['paint', 'liquify'].includes(id) ? 'repair' : id;
+  const button = page.locator(id === 'history' ? '[data-action="open-history"]' : '[data-dock-tool="' + root + '"]');
   if ((await button.getAttribute('aria-pressed')) !== 'true') await button.click();
-  await page.locator('.free-panel[aria-hidden="false"]').waitFor();
+  const panel = page.locator('.free-panel[aria-hidden="false"]').first();
+  await panel.waitFor();
+  const option = panel.locator('.inspector-family-tabs:visible [data-segment-value="' + id + '"]');
+  if (await option.count() && (await option.getAttribute('aria-pressed')) !== 'true') await option.click();
   await settle(page);
 }
 async function parameter(page, id, value, owner = '.free-panel[aria-hidden="false"]') {
@@ -578,7 +583,7 @@ async function parameter(page, id, value, owner = '.free-panel[aria-hidden="fals
   await until(async () => Number(await current.locator('input[type="range"]').inputValue()) === value, 'numeric change is committed');
   await imageReady(page);
 }
-const viewIds = ['editor', 'works', 'compare', 'collaborate', 'docs', 'deliver', 'usage'];
+const viewIds = ['editor', 'works', 'collaborate', 'docs', 'usage'];
 async function changeView(page, id) {
   const assistantReturn = page.locator('[data-ai-return]:visible');
   if (await assistantReturn.count()) {
@@ -587,11 +592,11 @@ async function changeView(page, id) {
   }
   assert.ok(viewIds.includes(id));
   const compact = page.locator('.mobile-view-trigger');
-  if (await compact.isVisible()) {
-    await compact.click();
-    const dialog = page.locator('dialog.workspace-navigation-dialog');
-    await dialog.locator('[data-view="' + id + '"]').click();
-    await dialog.waitFor({ state: 'hidden' });
+  if (await compact.isVisible() || !['editor', 'works'].includes(id)) {
+    await (await compact.isVisible() ? compact : page.locator('.project-view-trigger')).click();
+    const navigation = page.getByRole('navigation', { name: '切换工作视图', exact: true });
+    await navigation.locator('[data-view="' + id + '"]').click();
+    await navigation.waitFor({ state: 'hidden' });
   } else await page.locator('.compact-view-tabs > button[data-view="' + id + '"]').click();
   await settle(page);
 }
@@ -717,42 +722,40 @@ async function referenceControlReview() {
     await until(async()=>Number(await slider.inputValue())===touchStart,'One real touch on Undo reverses the slider gesture');
     assert.equal((await canvasPixels(page)).pixelSha256,beforeTouch.pixelSha256);
     touchEvidence={method:'Chromium touchscreen events and actual touchscreen tap',changedPixels:true,oneUndoRestoredPixels:true,physicalDevice:false};
-    for (const target of [339,176]) {
-      await panel.locator('.panel-layout-trigger').click();
-      const height=panel.locator('.panel-size-controls input[type="range"]').last();
-      await height.waitFor();await height.press('Home');
-      const minimum=Number(await height.inputValue());
-      assert.ok(target>=minimum);
-      for(let step=minimum;step<target;step++) await height.press('ArrowRight');
-      assert.equal(Number(await height.inputValue()),target);
-      await panel.locator('.panel-layout-trigger').click();
-      await settle(page);
-      const before=await panel.boundingBox();
-      await panel.locator('.panel-layout-trigger').click();
-      await panel.locator('.panel-layout-menu .panel-collapse-action').click();
-      await settle(page);
-      assert.ok((await panel.boundingBox()).height<before.height-60,'The panel really collapses');
-      await panel.locator('.panel-drag-header .panel-collapse-action').click();
-      await settle(page);
-      const after=await panel.boundingBox();
-      assert.ok(Math.abs(after.height-before.height)<1.5,'A manually sized panel restores its actual height');
-      await panel.locator('.panel-layout-trigger').click();
-      assert.equal(Number(await height.inputValue()),target,'The saved manual height survives collapse');
-      await panel.locator('.panel-layout-trigger').click();
-      heights.push({target,before:before.height,after:after.height});
-    }
-    await layout(page,'phone manually resized and restored panel');
-    await capture(page,'interactions/restored-phone-panel.png');
+    const before=await panel.boundingBox();
+    assert.equal(before.height,146);
+    assert.equal(await panel.locator('.panel-layout-trigger, .panel-resize-edge').count(),0);
+    const rail=panel.locator('.parameter-shelf-options');
+    const railBox=await rail.boundingBox();
+    const swipe=await page.context().newCDPSession(page);
+    try {
+      const startX=railBox.x+railBox.width-20, railY=railBox.y+railBox.height/2;
+      await swipe.send('Input.dispatchTouchEvent',{type:'touchStart',touchPoints:[{x:startX,y:railY,id:1}]});
+      for(let distance=20;distance<=220;distance+=20)
+        await swipe.send('Input.dispatchTouchEvent',{type:'touchMove',touchPoints:[{x:startX-distance,y:railY,id:1}]});
+      await swipe.send('Input.dispatchTouchEvent',{type:'touchEnd',touchPoints:[]});
+    } finally {await swipe.detach();}
+    await until(async()=>await rail.evaluate(node=>node.scrollLeft)>24,'Touch scroll reaches further adjustments');
+    const finalParameter=rail.locator('button[data-control-id]').last();
+    await finalParameter.click();
+    assert.equal(await finalParameter.getAttribute('aria-pressed'),'true');
+    assert.equal((await panel.boundingBox()).height,before.height);
+    await page.locator('[data-dock-tool="light"]').click();
+    await panel.waitFor({state:'hidden'});
+    await tool(page,'light');
+    await settle(page);
+    const after=await panel.boundingBox();
+    assert.equal(after.height,before.height);
+    heights.push({target:146,before:before.height,after:after.height});
+    await layout(page,'fixed phone adjustment panel after touch scrolling');
+    await capture(page,'interactions/fixed-phone-panel.png');
   } catch(error) {await failureEvidence(phone.page);throw error;}
   finally {await closeCaseContext(phone.context);}
   return {scrubs,heights,touchEvidence};
 }
 
 async function actualDownload(page, expectedSource, label) {
-  await changeView(page, 'deliver');
-  await page.locator('.delivery-composition').waitFor();
-  await layout(page, label + ': delivery');
-  const trigger = page.locator('.delivery-primary-action > button');
+  const trigger = page.locator('.workspace-top-actions .top-export');
   const triggerHandle = await trigger.elementHandle();
   await trigger.click();
   const dialog = page.locator('dialog.export-dialog[open]');
@@ -826,7 +829,7 @@ async function coreFlow(specification) {
     } finally { await page.keyboard.up('Space'); }
     await page.locator('.original-label').waitFor({ state: 'hidden' });
     await until(async () => (await canvasPixels(page)).pixelSha256 === edited.pixelSha256, 'releasing comparison restores the edit');
-    await changeView(page, 'compare');
+    await compare.press('Enter');
     const split = page.locator('.compare-reveal-input');
     await split.waitFor();
     await split.focus();
@@ -837,6 +840,7 @@ async function coreFlow(specification) {
     await split.press('ArrowLeft');
     assert.equal(await split.inputValue(), '99');
     await layout(page, specification.id + ': comparison');
+    await split.press('Escape');
     const exported = await actualDownload(page, photos.get('coast'), specification.id);
     if (edited.width === exported.width && edited.height === exported.height)
       assert.equal(exported.pixelSha256, edited.pixelSha256, 'Full-size export retains the actual displayed edited pixels.');
@@ -895,33 +899,53 @@ async function inspectAbout(specification) {
     report.scrolls.push({ scenario: specification.id, positions, sections: [...seen] });
     const voiceSteps = [];
     if (specification.id === 'desktop-zh-CN') {
-      const voice = about.locator('.about-voice-layout');
-      for (const [index, state] of [[0, 'listening'], [1, 'response'], [2, 'muted'], [1, 'response']]) {
-        await voice.locator(`[data-voice-step="${index}"]`).evaluate((step) =>
-          step.scrollIntoView({ block: 'center', behavior: 'instant' }));
-        const frame = voice.locator(`[data-recorded-voice="${state}"] img`);
+      const voice = about.locator('.about-voice-interface');
+      const snapshot = async (state) => {
+        const frame = voice.and(about.locator('[data-recorded-voice="' + state + '"]'));
         await frame.waitFor();
-        const source = await frame.evaluate(async (image) => {
-          await image.decode();
-          return new URL(image.currentSrc).pathname;
-        });
-        assert.equal(source, `/about/stories/voice-${state}.webp`);
+        assert.ok(await frame.locator('time').evaluate((time) => /^PT[1-9]\d*S$/.test(time.dateTime)));
         voiceSteps.push(state);
+      };
+      await voice.scrollIntoViewIfNeeded();
+      await snapshot('response');
+      await voice.getByRole('button', { name: '静音回放' }).click();
+      await snapshot('muted');
+      await voice.getByRole('button', { name: '结束回放' }).click();
+      await snapshot('ended');
+      await voice.getByRole('button', { name: '重播片段' }).click();
+      await snapshot('listening');
+      await snapshot('response');
+      await voice.getByRole('button', { name: '隐藏字幕' }).click();
+      assert.equal(await voice.locator('.about-voice-transcript').isVisible(), false);
+      await voice.getByRole('button', { name: '显示字幕' }).click();
+      assert.equal(await voice.locator('.about-voice-transcript p').count(), 2);
+      assert.equal(await about.locator('.about-voice-choices,.about-layer-controls,.about-sketch-band-head,.about-delivery-formats').count(), 0);
+    }
+    const verifyAboutScreens = async (theme) => {
+      for (const image of await about.locator('[data-product-screen] img').all()) {
+        await image.evaluate(async (node) => { await node.decode(); });
+        const state = await image.evaluate((node) => ({
+          path: new URL(node.currentSrc || node.src, location.href).pathname,
+          width: node.naturalWidth, height: node.naturalHeight, alt: node.alt,
+        }));
+        assert.ok(state.width > 0 && state.height > 0 && state.alt.trim());
+        assert.ok(state.path.startsWith('/about/review/') && state.path.endsWith(
+          '-' + specification.locale + (theme === 'dark' ? '-dark' : '') + '.webp',
+        ), 'About uses the reviewed capture for the active language and theme: ' + state.path);
+        const expected = await readFile(resolve(root, 'apps/web/public' + state.path));
+        const response = await page.request.get(origin + state.path);
+        assert.equal(response.status(), 200);
+        assert.equal(sha256(await response.body()), sha256(expected), 'Served capture matches the workspace file.');
       }
-    }
-    for (const image of await about.locator('[data-product-screen] img').all()) {
-      await image.evaluate(async (node) => { await node.decode(); });
-      const state = await image.evaluate((node) => ({
-        path: new URL(node.currentSrc || node.src, location.href).pathname,
-        width: node.naturalWidth, height: node.naturalHeight, alt: node.alt,
-      }));
-      assert.ok(state.width > 0 && state.height > 0 && state.alt.trim());
-      const expected = published.find((file) => file.path === 'apps/web/public' + state.path);
-      assert.ok(expected, 'About must use a current screenshot from this run: ' + state.path);
-      const response = await page.request.get(origin + state.path);
-      assert.equal(response.status(), 200);
-      assert.equal(sha256(await response.body()), expected.sha256, 'About must show the new screenshot bytes, not a cached older capture.');
-    }
+    };
+    const themeSwitch = about.locator('.overview-header .theme-switch');
+    const initialTheme = await page.locator('html').getAttribute('data-theme');
+    await verifyAboutScreens(initialTheme);
+    await themeSwitch.click();
+    const nextTheme = initialTheme === 'dark' ? 'light' : 'dark';
+    await page.locator(`html[data-theme="${nextTheme}"]`).waitFor({ state: 'attached' });
+    await verifyAboutScreens(nextTheme);
+    await themeSwitch.click();
     await page.keyboard.press('Control+Home');
     await page.waitForFunction(() => scrollY <= 1);
     await settle(page);
@@ -1707,8 +1731,7 @@ async function businessScreens(locale) {
         'Actual assistant input'+(draftEditable?' with an unsent draft':'')+'; service unavailable and submit disabled; no fabricated AI result');
       await changeView(page,'editor');
       await importStoryPhoto(page,'railway.webp');
-      await changeView(page,'deliver');
-      await page.locator('.delivery-primary-action > button').click();
+      await page.locator('.workspace-top-actions .top-export').click();
       const dialog=page.locator('dialog.export-dialog[open]');
       await dialog.waitFor();
       await layout(page,locale+suffix+': actual export dialog');

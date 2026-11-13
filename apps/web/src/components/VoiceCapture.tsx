@@ -1,10 +1,9 @@
 import { t } from '../i18n';
 import { useEffect, useRef, useState } from 'react';
-import { Microphone, Stop, Trash, X } from '@phosphor-icons/react';
+import { Microphone, Trash } from '@phosphor-icons/react';
 import { voiceErrorMessage } from '../ai/voice-error';
 import { LocalRecording, type LocalRecordingPhase } from '../ai/local-recording';
-import { RecordingMeter } from '../ai/RecordingMeter';
-import { StatusMark } from './StatusMark';
+import VoicePill from './react-bits/VoicePill';
 import { IconButton, InlineError } from './Ui';
 import '../ai/interaction-v2.css';
 
@@ -121,39 +120,17 @@ export function VoiceCapture({
         </p>
       ) : (
         <>
-          <div className="recording-capsule" data-active={recording || preparing}>
-            {(recording || preparing) && (
-              <IconButton label={t('取消这次录音')} onClick={discard}>
-                <X size={17} />
-              </IconButton>
-            )}
-            {recording && <RecordingMeter stream={stream} />}
-            {(recording || preparing || state === 'ready') && (
-              <span
-                className="recording-time"
-                role="timer"
-                aria-label={t('录音时长')}
-              >{`0:${String(Math.floor(seconds)).padStart(2, '0')}`}</span>
-            )}
-            {preparing ? (
-              <span className="recording-preparing" role="status">
-                <StatusMark state="pending" size="small" />
-                <span>{t('正在准备录音')}</span>
-              </span>
-            ) : (
-              <button
-                type="button"
-                className="recording-toggle"
-                aria-label={
-                  recording ? t('停止录音') : state === 'ready' ? t('重新录制') : t('开始录音')
-                }
-                aria-pressed={recording}
-                onClick={recording ? () => current.current?.finish() : start}
-              >
-                {recording ? <Stop size={17} weight="fill" /> : <Microphone size={18} />}
-                {!recording && <span>{state === 'ready' ? t('重新录制') : t('开始录音')}</span>}
-              </button>
-            )}
+          <div className="recording-reference-row">
+            {preparing && <span role="status">{t('正在准备录音')}</span>}
+            <VoicePill size={36} reactive="external" externalStream={stream}
+              background="var(--surface-hover)" accentColor="var(--accent-ink)" iconColor="var(--ink)"
+              externalActive={recording || preparing} disabled={!active}
+              cancelLabel={t('取消录音')} ariaLabel={recording ? t('停止录音') : state === 'ready' ? t('重新录制') : t('开始录音')}
+              onStart={start} onStop={({ reason }) => {
+                if (reason === 'cancel' || reason === 'escape' || reason === 'disabled' || reason === 'unmount') discard();
+                else current.current?.finish();
+              }} />
+            {state === 'ready' && <span className="recording-time">{`0:${String(Math.floor(seconds)).padStart(2, '0')}`}</span>}
           </div>
           {url && (
             <div className="voice-playback">

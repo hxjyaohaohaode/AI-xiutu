@@ -1,0 +1,36 @@
+/* Copyright 2026 byllzz (Bilal Malik), Uiverse. MIT notice in reference-licenses. */
+.quota-wallet { position: relative; inline-size: min(280px, 100%); block-size: 252px; margin: 88px auto 7px; perspective: 1000px; }
+.quota-wallet-back { position: absolute; inset: auto 0 0; block-size: 200px; background: #1e341e; border-radius: 22px 22px 60px 60px; z-index: 5; box-shadow: inset 0 25px 35px #0006, inset 0 5px 15px #0008; }
+.quota-wallet-card { position: absolute; inset-inline: 10px; block-size: 140px; padding: 8px 16px; border-radius: 16px; color: #fff; box-shadow: inset 0 1px 1px #ffffff4d, 0 -4px 15px #0001; transition: transform .6s cubic-bezier(.34, 1.56, .64, 1); animation: quota-wallet-in .8s cubic-bezier(.2,.8,.2,1) backwards; }
+.quota-wallet-card-heading { display: flex; align-items: center; justify-content: space-between; gap: 8px; font-size: 13px; }
+.quota-wallet-card-label { min-inline-size: 0; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
+.quota-wallet-card-amount { min-inline-size: 32px; flex: none; padding: 3px 6px; border-radius: 4px; background: #fff3; text-align: center; white-space: nowrap; font-size: 12px; line-height: 16px; font-variant-numeric: tabular-nums; }
+.quota-wallet-card--free { inset-block-end: 112px; z-index: 10; background: #635bff; animation-delay: .1s; }
+.quota-wallet-card--paid { inset-block-end: 76px; z-index: 20; background: #9bd86a; color: #1a3017; animation-delay: .2s; }
+.quota-wallet-card--held { inset-block-end: 40px; z-index: 30; color: #003087; background: #fff; animation-delay: .3s; }
+.quota-wallet-card--held .quota-wallet-card-amount { background: #0000000d; }
+.quota-wallet-pocket { position: absolute; inset: auto 0 0; block-size: 160px; z-index: 40; filter: drop-shadow(0 15px 25px #14281466); pointer-events: none; }
+.quota-wallet-pocket > svg { position: absolute; inset: 0; inline-size: 100%; block-size: 100%; }
+.quota-wallet-balance { position: absolute; inset: 43px 0 auto; display: grid; justify-items: center; gap: 8px; inline-size: 100%; padding: 0; border: 0; background: transparent; color: #aac1a3; font-family: inherit; font-size: 12px; font-weight: 500; line-height: 1.4; cursor: pointer; pointer-events: auto; }
+.quota-wallet-number { min-block-size: 25px; color: #a7c59e; font-size: 22px; line-height: 1.1; font-variant-numeric: tabular-nums; }
+.quota-wallet-balance > svg { margin-block-start: 5px; color: #91aa88; }
+.quota-wallet[data-revealed='false'] .quota-wallet-number { color: #91aa88; letter-spacing: 4px; }
+.quota-wallet[data-revealed='true'] .quota-wallet-balance > svg { color: #3be60b; }
+.quota-wallet[data-revealed='true'] .quota-wallet-card--free { transform: translateY(-75px) rotate(-3deg); }
+.quota-wallet[data-revealed='true'] .quota-wallet-card--paid { transform: translateY(-45px) rotate(2deg); }
+.quota-wallet[data-revealed='true'] .quota-wallet-card--held { transform: translateY(-10px); }
+@keyframes quota-wallet-in { from { transform: translateY(-100px); opacity: 0; } to { transform: translateY(0); opacity: 1; } }
+@media (prefers-reduced-motion: reduce) { .quota-wallet *, .quota-wallet { animation: none; transition: none; } }
+@media (width < 760px) {
+  .quota-wallet { inline-size: min(252px, 100%); block-size: 225px; margin-block-start: 60px; }
+  .quota-wallet-back { block-size: 180px; }
+  .quota-wallet-card { block-size: 126px; padding: 6px 13px; }
+  .quota-wallet-card-amount { padding-block: 2px; }
+  .quota-wallet-card--free { inset-block-end: 99px; }
+  .quota-wallet-card--paid { inset-block-end: 67px; }
+  .quota-wallet-card--held { inset-block-end: 35px; }
+  .quota-wallet-pocket { block-size: 144px; }
+  .quota-wallet-balance { inset-block-start: 36px; }
+  .quota-wallet[data-revealed='true'] .quota-wallet-card--free { transform: translateY(-44px) rotate(-3deg); }
+  .quota-wallet[data-revealed='true'] .quota-wallet-card--paid { transform: translateY(-26px) rotate(2deg); }
+}

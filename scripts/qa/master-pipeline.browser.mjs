@@ -63,7 +63,7 @@ try {
       if (await view.isVisible()) {
         await view.click();
         await page
-          .getByRole('dialog', { name: '工作视图', exact: true })
+          .getByRole('navigation', { name: '切换工作视图', exact: true })
           .locator('button[data-view="works"]')
           .click();
       } else {

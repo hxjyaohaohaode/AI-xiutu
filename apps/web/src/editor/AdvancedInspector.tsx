@@ -1,8 +1,8 @@
 import { t } from '../i18n';
 import { Activity, useEffect, useLayoutEffect, useRef, useState } from 'react';
-import { createPortal } from 'react-dom';
 import { usePanelChrome } from '../workspace/PanelChromeContext';
 import { RubberSegment } from '../components/control-motion';
+import { ChoiceSelect } from '../components/ChoiceSelect';
 import { ArrowCounterClockwise, CaretDown } from '../components/ControlGlyph';
 import { createColorBlockV3 } from '@ai-xiutu/editor';
 import { IconButton, InlineError } from '../components/Ui';
@@ -12,6 +12,7 @@ import {
   checkedRecipe,
   currentV3,
   scopeKey,
+  hasCompositeGradeScope,
   withScopeColor,
   type EditScope,
   type InspectorController,
@@ -23,12 +24,15 @@ import { PaintControls, LiquifyControls, ImageLayerControls } from './LayerContr
 import { RepairControls } from './RepairControls';
 import { PortraitControls } from './PortraitControls';
 import { HistoryPanel } from './HistoryPanel';
+import { InspectorFamilyNav } from './InspectorFamilyNav';
+import { adjustmentTools } from './tool-families';
 import './advanced-inspector.css';
 
 export function AdvancedInspector({
   editor,
   target,
   onPortraitTool,
+  canvasOverlay,
   group,
   mobileOpen,
   onClose,
@@ -38,14 +42,20 @@ export function AdvancedInspector({
   sampling,
   onGroupChange,
   onCutout,
+  onFlattenLayers,
+  cloudHistory,
 }: ToolInspectorProps) {
   const chrome = usePanelChrome();
+  const fixed = !!chrome?.fixedInspector;
   const [portraitTool, setPortraitTool] = useState<ToolGroup | null>(null);
   function openPortraitTool(tool: ToolGroup) {
     const next = tool === 'beauty' ? null : tool;
     setPortraitTool(next);
     onPortraitTool?.(next);
   }
+  useLayoutEffect(() => {
+    if (fixed && group === 'beauty' && scroller.current) scroller.current.scrollTop = 0;
+  }, [fixed, group, portraitTool]);
   useEffect(() => { if (group !== 'beauty') setPortraitTool(null); }, [group]);
   const [scopes, setScopes] = useState<Partial<Record<typeof group, EditScope>>>({});
   const [visited, setVisited] = useState<ToolGroup[]>([group]);
@@ -56,13 +66,14 @@ export function AdvancedInspector({
   const scroller = useRef<HTMLDivElement>(null);
   const scrollOffsets = useRef<Partial<Record<typeof group, number>>>({});
   useLayoutEffect(() => {
-    if (scroller.current) scroller.current.scrollTop = scrollOffsets.current[group] ?? 0;
-  }, [group]);
+    if (scroller.current) scroller.current.scrollTop = fixed ? 0 : scrollOffsets.current[group] ?? 0;
+  }, [group, fixed]);
   const recipe = currentV3(editor),
     descriptor = toolGroups.find((tool) => tool.id === group)!;
   const scopeFor = (owner: ToolGroup): EditScope => {
     const requested = scopes[owner] ?? { kind: 'global' };
     return requested.kind === 'global' ||
+      (requested.kind === 'base' && hasCompositeGradeScope(recipe)) ||
       (requested.kind === 'region' && recipe.regionEdits.some((r) => r.id === requested.id)) ||
       (requested.kind === 'group' && recipe.regionGroups.some((r) => r.id === requested.id))
       ? requested
@@ -110,34 +121,28 @@ export function AdvancedInspector({
       </IconButton>
     );
   }
-  const familyIds: readonly AdjustmentFamily[] = ['light', 'color', 'curves', 'detail'];
-  const scopedFamily = familyIds.includes(group as AdjustmentFamily);
-  const familyOptions = familyIds.map((id) => ({
-    value: id,
-    label: t(toolGroups.find((tool) => tool.id === id)?.label ?? ''),
-  }));
-  const compactTools =
-    chrome?.adjustmentLayoutControl && onGroupChange
-      ? {
-          layout: chrome.adjustmentLayoutControl,
-          options: familyOptions,
-          onFamilyChange: onGroupChange,
-        }
-      : undefined;
-  const familyNavigation =
-    scopedFamily && onGroupChange && !compactTools ? (
-      <RubberSegment
-        className="context-adjustment-tabs"
-        motionId="context-navigation"
-        label={t('调节类别')}
-        value={group}
-        options={familyOptions}
-        onChange={(id) => {
-          editor.commitCurrent(t('完成当前调节'));
-          onGroupChange(id);
-        }}
-      />
-    ) : null;
+  const scopedFamily = adjustmentTools.includes(group);
+  const scopeOptions = scopedFamily && (hasCompositeGradeScope(recipe) || recipe.regionEdits.length > 0 || recipe.regionGroups.length > 0)
+    ? [
+        { value: 'global', label: t('整张照片') },
+        ...(hasCompositeGradeScope(recipe) ? [{ value: 'base', label: t('底图') }] : []),
+        ...recipe.regionEdits.map((r) => ({ value: 'region:' + r.id, label: r.name })),
+        ...recipe.regionGroups.map((g) => ({ value: 'group:' + g.id, label: g.name })),
+      ]
+    : [];
+  function selectScope(value: string) {
+    const [kind, id] = value.split(':');
+    chooseScope(kind === 'global' || kind === 'base' ? { kind } : { kind: kind as 'region' | 'group', id: id! });
+  }
+  const familyNav = (
+    <InspectorFamilyNav
+      group={group}
+      onChange={(next) => {
+        editor.commitCurrent(t('完成当前调节'));
+        onGroupChange?.(next);
+      }}
+    />
+  );
   return (
     <aside
       className={`inspector refined-inspector advanced-inspector ${mobileOpen ? 'mobile-open' : ''}`}
@@ -158,12 +163,23 @@ export function AdvancedInspector({
         ref={scroller}
         className="inspector-scroll advanced-inspector-scroll"
         onScroll={(event) => {
-          scrollOffsets.current[group] = event.currentTarget.scrollTop;
+          if (!fixed) scrollOffsets.current[group] = event.currentTarget.scrollTop;
         }}
       >
-        {chrome?.headerTarget && familyNavigation
-          ? createPortal(familyNavigation, chrome.headerTarget)
-          : familyNavigation}
+        {fixed && scopeOptions.length > 0 ? (
+          <div className="fixed-inspector-navigation">
+            {familyNav}
+            <ChoiceSelect
+              size="compact"
+              className="fixed-inspector-scope"
+              ariaLabel={t('参数作用范围')}
+              displayLabel={t('作用范围')}
+              value={scopeKey(scope)}
+              options={scopeOptions}
+              onValueChange={selectScope}
+            />
+          </div>
+        ) : familyNav}
         {!editor.file ? (
           <div className="inspector-empty">
             <span>{descriptor.icon}</span>
@@ -171,20 +187,13 @@ export function AdvancedInspector({
           </div>
         ) : (
           <>
-            {scopedFamily && (recipe.regionEdits.length > 0 || recipe.regionGroups.length > 0) && (
+            {!fixed && scopeOptions.length > 0 && (
               <RubberSegment
                 className="scope-selector compact-choice-row"
                 label={t('参数作用范围')}
                 value={scopeKey(scope)}
-                onChange={(value) => {
-                  const [kind, id] = value.split(':');
-                  chooseScope(kind === 'global' ? { kind: 'global' } : { kind: kind as 'region' | 'group', id: id! });
-                }}
-                options={[
-                  { value: 'global', label: t('整张照片') },
-                  ...recipe.regionEdits.map((r) => ({ value: 'region:' + r.id, label: r.name })),
-                  ...recipe.regionGroups.map((g) => ({ value: 'group:' + g.id, label: g.name })),
-                ]}
+                onChange={selectScope}
+                options={scopeOptions}
               />
             )}
             <InlineError message={error} />
@@ -198,14 +207,20 @@ export function AdvancedInspector({
                     {/* Only visited tools are retained, inside this source-keyed inspector.
                         Activity pauses hidden effects and focus targets while preserving
                         subcategories, selected controls, disclosures and unfinished inputs. */}
-                    <div className="inspector-tool-content" data-tool-family={id}>
+                    <div
+                      className="inspector-tool-content"
+                      data-tool-family={id}
+                      data-portrait-tool={id === 'beauty' ? portraitTool ?? undefined : undefined}
+                    >
                       {colorFamily && (
                         <ColorControls
                           controller={controller}
                           scope={retainedScope}
                           target={group === id ? target : undefined}
                           family={id as AdjustmentFamily}
-                          compactTools={group === id ? compactTools : undefined}
+                          compact={fixed}
+                          canvasOverlay={group === id ? canvasOverlay : null}
+                          resetScope={fixed ? resetControls(retainedScope) : undefined}
                           pickedColor={pickedColor}
                           onColorChange={onColorChange}
                           onSample={onSample}
@@ -220,7 +235,6 @@ export function AdvancedInspector({
                       {id === 'crop' && (
                         <GeometryControls
                           controller={controller}
-                          layoutControl={group === id ? chrome?.adjustmentLayoutControl : undefined}
                           target={group === id ? target : undefined}
                         />
                       )}
@@ -241,6 +255,8 @@ export function AdvancedInspector({
                           <PortraitControls
                             controller={controller}
                             onGroupChange={openPortraitTool}
+                            compact={fixed}
+                            activeManualTool={portraitTool}
                             onCutout={onCutout}
                             headerTarget={id === group ? chrome?.headerTarget : null}
                             onSelectionCreated={(regionId) => {
@@ -260,9 +276,17 @@ export function AdvancedInspector({
                             />
                           )}
                           {portraitTool === 'paint' && (
-                            <PaintControls controller={controller} pickedColor={pickedColor} onSample={onSample} sampling={sampling} />
+                            <PaintControls
+                              makeup
+                              compact={fixed}
+                              controller={controller}
+                              pickedColor={pickedColor}
+                              onSample={onSample}
+                              sampling={sampling}
+                              canvasOverlay={group === id ? canvasOverlay : null}
+                            />
                           )}
-                          {portraitTool === 'liquify' && <LiquifyControls controller={controller} />}
+                          {portraitTool === 'liquify' && <LiquifyControls controller={controller} compactPortrait={fixed} />}
                         </>
                       )}
                       {id === 'repair' && <RepairControls controller={controller} />}
@@ -276,14 +300,9 @@ export function AdvancedInspector({
                         />
                       )}
                       {id === 'liquify' && <LiquifyControls controller={controller} />}
-                      {id === 'composite' && <ImageLayerControls controller={controller} />}
-                      {id === 'history' && <HistoryPanel editor={editor} />}
-                      {colorFamily &&
-                        (compactTools
-                          ? group === id &&
-                            chrome?.adjustmentMenuTarget &&
-                            createPortal(resetControls(retainedScope), chrome.adjustmentMenuTarget)
-                          : resetControls(retainedScope))}
+                      {id === 'composite' && <ImageLayerControls controller={controller} onFlatten={onFlattenLayers} />}
+                      {id === 'history' && <HistoryPanel editor={editor} cloudHistory={cloudHistory} />}
+                      {colorFamily && !fixed && resetControls(retainedScope)}
                     </div>
                   </Activity>
                 );

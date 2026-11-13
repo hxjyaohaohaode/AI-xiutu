@@ -2,7 +2,7 @@ import { captureSketchVisual } from '../editor/capture';
 import { ModelReadStatus } from '../ai/ModelReadStatus';
 import { t } from '../i18n';
 import '../ai/interaction-surfaces.css';
-import { useCallback, useEffect, useLayoutEffect, useRef, useState, type FormEvent } from 'react';
+import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react';
 import {
   Sparkle,
   X,
@@ -21,6 +21,7 @@ import {
   GearSix,
   ArrowClockwise,
   Scan,
+  Export,
 } from '@phosphor-icons/react';
 import {
   MAX_HEADER_BYTES,
@@ -41,11 +42,9 @@ import type { Artwork, Asset, Project, PublicConfig } from '../lib/types';
 import { Busy, IconButton, InlineError, Modal } from './Ui';
 import { ChoiceSelect } from './ChoiceSelect';
 import { useConfirmation } from './ConfirmationDialog';
-import { ComposerInput } from '../ai/ComposerInput';
-import { PromptToolbar } from '../ai/PromptToolbar';
-import { ComposerAction } from '../ai/ComposerAction';
+import PromptBar from './react-bits/PromptBar';
 import { ComposerVisual } from '../ai/ComposerVisual';
-import { DraftAttachmentCard } from '../ai/DraftAttachmentCard';
+import { DraftAttachmentCard, visualAttachmentLabel } from '../ai/DraftAttachmentCard';
 import { AIVisibilityContext, IDLE_AI_ACTIVITY, type AIActivity } from '../ai/AIVisibility';
 import { useRetainedDialogValue } from '../ai/useRetainedDialogValue';
 import { PanelSettings } from '../ai/PanelSettings';
@@ -181,6 +180,9 @@ export function AIPanel({
   onConfirmPreview,
   onCancelPreview,
   onSave,
+  onExport,
+  onTopUp,
+  voiceEntry = 0,
   onCreateProject,
   onOpenArtwork,
   onTaskChanged,
@@ -222,6 +224,9 @@ export function AIPanel({
   onConfirmPreview?: () => void;
   onCancelPreview?: () => void;
   onSave: () => void;
+  onExport?: () => void;
+  onTopUp?: () => void;
+  voiceEntry?: number;
   onCreateProject: () => void;
   onOpenArtwork: (id: string) => void;
   onTaskChanged: () => void;
@@ -264,6 +269,11 @@ export function AIPanel({
     return () => { active = false; };
   }, [assistantOpen, referenceFile, referenceSource, visualAttachment]);
   const [assistantVisited, setAssistantVisited] = useState(assistantOpen);
+  const lastVoiceEntry = useRef(0);
+  useEffect(() => {
+    if (voiceEntry > lastVoiceEntry.current && !pendingSubmission) setAssistantOpen(true);
+    lastVoiceEntry.current = voiceEntry;
+  }, [voiceEntry, pendingSubmission]);
   const panel = useRef<HTMLElement>(null);
   useLayoutEffect(() => {
     if (!mobilePage || !visible) return;
@@ -326,7 +336,20 @@ export function AIPanel({
   const [audioBase64, setAudioBase64] = useState<string | null>(null);
   const [voiceEpoch, setVoiceEpoch] = useState(0);
   const [referenceIds, setReferenceIds] = useState<string[]>(cached?.referenceIds ?? []);
-  const [uploadedReference, setUploadedReference] = useState<Asset | null>(null);
+  const [uploadedReference, setUploadedReference] = useState<{ file: File; asset: Asset } | null>(null);
+  const [visualReference, setVisualReference] = useState<{
+    attachment: AssistantVisualAttachment;
+    file: File | null;
+  } | null>(null);
+  const currentVisualReference = visualReference?.attachment === visualAttachment
+    ? visualReference
+    : null;
+  const selectedReferenceFile = referenceFile ?? currentVisualReference?.file ?? null;
+  const selectedReferenceSource = referenceFile ? referenceSource : 'upload';
+  const selectedReferenceLabel =
+    !referenceFile && currentVisualReference?.file
+      ? visualAttachmentLabel(currentVisualReference.attachment.kind)
+      : t(selectedReferenceSource === 'sketch' ? '草图' : '参考图');
   const [preparedReferenceAssets, setPreparedReferenceAssets] = useState<Asset[]>([]);
   const [preparingDraft, setPreparingDraft] = useState(false);
   const activityReporter = useRef(onActivityChange);
@@ -370,19 +393,24 @@ export function AIPanel({
   ]);
   const consentContext = useRef({
     identity: consentIdentity,
-    referenceFile,
-    referenceSource,
+    referenceFile: selectedReferenceFile,
+    referenceSource: selectedReferenceSource,
     visible,
   });
   // Keep a distinct lifetime even if the user leaves an artwork and returns to
   // the same values while a question is open. Unrelated renders do not revoke it.
   if (
     consentContext.current.identity !== consentIdentity ||
-    consentContext.current.referenceFile !== referenceFile ||
-    consentContext.current.referenceSource !== referenceSource ||
+    consentContext.current.referenceFile !== selectedReferenceFile ||
+    consentContext.current.referenceSource !== selectedReferenceSource ||
     consentContext.current.visible !== visible
   )
-    consentContext.current = { identity: consentIdentity, referenceFile, referenceSource, visible };
+    consentContext.current = {
+      identity: consentIdentity,
+      referenceFile: selectedReferenceFile,
+      referenceSource: selectedReferenceSource,
+      visible,
+    };
   const previewPending = useRef(false);
   useLayoutEffect(() => {
     if (!visible) cancelConfirmation();
@@ -442,7 +470,7 @@ export function AIPanel({
       : (selected?.pointsPerPlan ?? null);
   const needsArtwork = operation === 'edit-plan';
   const parent = jobs.find((job) => job.id === parentJobId);
-  const referencedCount = referenceIds.length + (referenceFile ? 1 : 0);
+  const referencedCount = referenceIds.length + (selectedReferenceFile ? 1 : 0);
   const referenceLimit = caps?.references.maxCount ?? 0;
   const referenceFailure =
     operation === 'generate-image' &&
@@ -633,7 +661,6 @@ export function AIPanel({
     changed();
   }, [selectedCapabilityKey, pendingSubmission, busy, preparingDraft]);
   useEffect(() => {
-    setUploadedReference(null);
     if (referenceFile && !pending.current) {
       setAssistantOpen(false);
       setOperation('generate-image');
@@ -718,6 +745,20 @@ export function AIPanel({
     setAudioBase64(value);
     setIdempotency(secureUuid());
   }, []);
+  function useVisualReference(attachment: AssistantVisualAttachment) {
+    if (visualReference?.attachment === attachment) return;
+    // Keep the captured image local until the user submits the image task.
+    const [header, encoded] = attachment.imageDataUrl.split(',', 2);
+    const format = header?.match(/^data:image\/(jpeg|png|webp);base64$/)?.[1];
+    if (!format || !encoded) return;
+    const bytes = Uint8Array.from(atob(encoded), (character) => character.charCodeAt(0));
+    const type = 'image/' + format;
+    const name = attachment.kind + '.' + format;
+    setVisualReference({ attachment, file: new File([bytes], name, { type }) });
+  }
+  function dismissVisualReference() {
+    setVisualReference(visualAttachment ? { attachment: visualAttachment, file: null } : null);
+  }
   function changeOperation(next: AIOperation) {
     if (pending.current) return;
     setGenerationGrantId(undefined);
@@ -792,6 +833,7 @@ export function AIPanel({
           // No image request is sent here. The user still chooses a model and
           // its supported parameters before explicitly submitting generation.
           onClearReference();
+          dismissVisualReference();
           setUploadedReference(null);
           setAuxiliary(null);
           setReferenceIds(prepared.referenceAssetIds);
@@ -829,6 +871,7 @@ export function AIPanel({
       if (header.animated || !['png', 'jpeg', 'webp'].includes(header.format))
         throw new Error('AI参考请选择已确认的静态 PNG、JPEG 或 WebP。');
       if (!mounted.current || consentContext.current !== expected || pending.current) return;
+      dismissVisualReference();
       onReferenceFile(new File([file], file.name, { type: 'image/' + header.format }), 'upload');
     } catch (error) {
       setError(errorMessage(error));
@@ -866,12 +909,12 @@ export function AIPanel({
       setReferenceIds([image.assetId]);
       setAuxiliary(null);
       onClearReference();
+      dismissVisualReference();
     }
     changed();
     setTimeout(() => promptInput.current?.focus(), 0);
   }
-  async function submit(event: FormEvent) {
-    event.preventDefault();
+  async function submit() {
     if (!canSubmit || !project || !userId || pending.current || submitLock.current) return;
     submitLock.current = true;
     setBusy(true);
@@ -895,21 +938,23 @@ export function AIPanel({
         const options = requestImageOptions(selected, imageOptions);
         if (options) body.imageOptions = options;
         const ids = [...referenceIds];
-        if (referenceFile) {
-          if (referenceFile.size > (config?.limits.maxUploadBytes ?? 20 * 1024 * 1024))
-            throw new Error('参考图超过当前云端上传限制。');
-          let asset = uploadedReference;
+        if (selectedReferenceFile) {
+          if (selectedReferenceFile.size > Math.min(
+            config?.limits.maxUploadBytes ?? 20 * 1024 * 1024,
+            caps?.references.maxBytes ?? 20 * 1024 * 1024,
+          )) throw new Error('参考图超过当前云端上传限制。');
+          let asset = uploadedReference?.file === selectedReferenceFile ? uploadedReference.asset : null;
           if (!asset) {
             const form = new FormData();
-            form.append('file', referenceFile);
+            form.append('file', selectedReferenceFile);
             asset = (
               await api<{ asset: Asset }>(
-                '/projects/' + project.id + '/assets?source=' + referenceSource,
+                '/projects/' + project.id + '/assets?source=' + selectedReferenceSource,
                 { method: 'POST', body: form },
               )
             ).asset;
             if (expectedGeneration !== generation.current) return;
-            setUploadedReference(asset);
+            setUploadedReference({ file: selectedReferenceFile, asset });
           }
           ids.push(asset.id);
         }
@@ -1117,7 +1162,8 @@ export function AIPanel({
     taskPicker
   );
   const removeLocalReference = () => {
-    onClearReference();
+    if (referenceFile) onClearReference();
+    dismissVisualReference();
     setUploadedReference(null);
     changed();
   };
@@ -1160,6 +1206,9 @@ export function AIPanel({
             isLoggedIn={isLoggedIn}
             onAuth={onAuth}
             onSave={onSave}
+            onExport={onExport}
+            onTopUp={onTopUp}
+            voiceEntry={voiceEntry}
             onPreview={onPreview}
             previewActive={previewActive}
             onConfirmPreview={onConfirmPreview}
@@ -1187,6 +1236,11 @@ export function AIPanel({
             <header className="ai-workbench-header">
               {taskNavigation}
               <div className="ai-header-actions">
+                {onExport && (
+                  <IconButton label={t('导出当前照片')} onClick={onExport}>
+                    <Export size={18} />
+                  </IconButton>
+                )}
                 <IconButton label={t('创作记录')} onClick={() => setOverlay('history')}>
                   <ClockCounterClockwise size={18} />
                 </IconButton>
@@ -1314,6 +1368,9 @@ export function AIPanel({
                 </div>
               )}
               <InlineError message={error} />
+              {onTopUp && error && /额度|服务点|credit|quota/i.test(error) && (
+                <button className="text-button" type="button" onClick={onTopUp}>{t('充值与订阅')}</button>
+              )}
               {(sizeFailure || optionsFailure || batchFailure || referenceFailure) &&
                 operation === 'generate-image' && (
                   <p className="ai-inline-error" role="status">
@@ -1321,9 +1378,9 @@ export function AIPanel({
                   </p>
                 )}
               <form
-                className="ai-task-composer ai-composer-surface"
+                className="ai-task-composer assistant-reference-composer"
                 data-ai-composer
-                onSubmit={submit}
+                onSubmit={(event) => { event.preventDefault(); void submit(); }}
               >
                 {parent && (
                   <div className="ai-context-strip">
@@ -1347,10 +1404,10 @@ export function AIPanel({
                     </IconButton>
                   </div>
                 )}
-                {referenceFile && (
+                {operation === 'generate-image' && selectedReferenceFile && (
                   <DraftAttachmentCard
-                    source={referenceFile}
-                    label={referenceSource === 'sketch' ? t('草图') : t('参考图')}
+                    source={selectedReferenceFile}
+                    label={selectedReferenceLabel}
                     disabled={inputLocked}
                     onRemove={removeLocalReference}
                   />
@@ -1366,69 +1423,49 @@ export function AIPanel({
                     {referenceIds.length} {t('张参考')}
                   </button>
                 )}
-                {operation !== 'transcribe' && (
-                  <ComposerInput
-                    ref={promptInput}
-                    label={t('本轮创作要求')}
-                    disabled={inputLocked}
-                    value={prompt}
-                    placeholder={task.placeholder}
-                    maxLength={operation === 'generate-image' ? 4000 : 1500}
-                    canSubmit={canSubmit}
-                    onChange={(value) => {
-                      setPrompt(value);
-                      changed();
-                    }}
-                  />
-                )}
-                <PromptToolbar
-                  model={selected?.label ?? t('选择模型')}
-                  modelLabel={t('选择任务模型与参数')}
-                  openSettings={() => setOverlay('settings')}
-                  attachment={
-                    operation === 'generate-image'
-                      ? {
-                          label: t('添加或管理参考图'),
-                          actions: [
-                            {
-                              label: t('参考图'),
-                              icon: <Paperclip size={17} />,
-                              run: () => setOverlay('references'),
-                            },
-                            {
-                              label: t('画草图'),
-                              icon: <PencilSimple size={17} />,
-                              disabled: inputLocked || !caps?.references.supported ||
-                                referencedCount >= referenceLimit,
-                              run: onDraw,
-                            },
-                            ...(captureReferenceCanvas ? [{
-                              label: t(referenceCanvasLabel),
-                              icon: <Scan size={17} />,
-                              disabled: inputLocked || capturingReference ||
-                                !caps?.references.supported || referencedCount >= referenceLimit,
-                              run: () => void useEditedFrame(),
-                            }] : []),
-                          ],
-                        }
-                      : undefined
-                  }
-                >
-                    {operation !== 'transcribe' && (
-                      <IconButton
-                        label={t('改用语音输入，识别后再确认')}
-                        disabled={inputLocked}
-                        onClick={() => changeOperation('transcribe')}
-                      >
-                        <Microphone size={18} />
-                      </IconButton>
-                    )}
-                    <ComposerAction
-                      state={busy ? 'waiting' : 'send'}
-                      label={task.button}
-                      disabled={!canSubmit}
-                    />
-                </PromptToolbar>
+                <PromptBar
+                  className="assistant-reference-prompt"
+                  width={1200}
+                  inputRef={promptInput}
+                  value={prompt}
+                  placeholder={task.placeholder}
+                  hideInput={operation === 'transcribe'}
+                  allowEmpty={operation === 'transcribe'}
+                  maxLength={operation === 'generate-image' ? 4000 : 1500}
+                  disabled={inputLocked}
+                  sendDisabled={!canSubmit}
+                  onValueChange={(value) => { setPrompt(value); changed(); }}
+                  onSend={() => void submit()}
+                  commands={[]}
+                  efforts={[]}
+                  models={eligible.map((model) => ({
+                    key: model.id, name: model.label, disabled: !modelReady(model),
+                  }))}
+                  modelKey={modelId}
+                  onModelChange={(value) => { setModelId(value); changed(); }}
+                  labels={{
+                    input: t('本轮创作要求'), send: task.button,
+                    attach: t('添加或管理参考图'), sources: t('参考图'),
+                    chooseModel: t('选择模型'), models: t('模型'), empty: t('暂无适用模型'),
+                  }}
+                  sources={operation === 'generate-image' ? [
+                    { key: 'references', name: t('参考图'), icon: <Paperclip size={17} />, action: () => setOverlay('references') },
+                    { key: 'sketch', name: t('画草图'), icon: <PencilSimple size={17} />,
+                      disabled: !caps?.references.supported || referencedCount >= referenceLimit, action: onDraw },
+                    ...(captureReferenceCanvas ? [{
+                      key: 'canvas', name: t(referenceCanvasLabel), icon: <Scan size={17} />,
+                      disabled: capturingReference || !caps?.references.supported || referencedCount >= referenceLimit,
+                      action: () => void useEditedFrame(),
+                    }] : []),
+                  ] : []}
+                  tools={operation !== 'transcribe' && (
+                    <button type="button" className="prompt-bar__tool"
+                      aria-label={t('改用语音输入，识别后再确认')}
+                      disabled={inputLocked} onClick={() => changeOperation('transcribe')}>
+                      <Microphone size={17} />
+                    </button>
+                  )}
+                />
               </form>
               <div className="ai-composer-meta">
                 <span>
@@ -1447,7 +1484,7 @@ export function AIPanel({
                   </span>
                 )}
               </div>
-              {operation === 'generate-image' && referenceFile && (
+              {operation === 'generate-image' && selectedReferenceFile && (
                 <p className="ai-input-disclosure">{t('发送时会上传选中的参考图。')}</p>
               )}
             </footer>
@@ -1551,6 +1588,8 @@ export function AIPanel({
                 aria-pressed={!assistantOpen && operation === item.id}
                 disabled={inputLocked || preparingDraft || assistantLocked}
                 onClick={() => {
+                  if (item.id === 'generate-image' && visualAttachment && !referenceFile)
+                    useVisualReference(visualAttachment);
                   setAssistantOpen(false);
                   changeOperation(item.id);
                   setOverlay(null);
@@ -1711,11 +1750,11 @@ export function AIPanel({
                 event.target.value = '';
               }}
             />
-            {referenceFile && (
+            {selectedReferenceFile && (
               <div className="pending-reference ai-reference-pending">
                 <Paperclip size={18} />
                 <span>
-                  {referenceFile.name}
+                  {referenceFile ? referenceFile.name : selectedReferenceLabel}
                   <small>{t('确认发送后上传')}</small>
                 </span>
                 <IconButton

@@ -1044,10 +1044,22 @@
 .product-overview-root .overview-hero-intro { width: min(540px, 100%); display: grid; justify-items: center; gap: 12px; }
 .product-overview-root .overview-hero-intro p { max-width: 100%; margin: 0; font-size: 15px; line-height: 1.65; text-wrap: balance; }
 .product-overview-root .overview-hero-intro .overview-primary { margin-top: 4px; }
-.overview-opening-effects { position: absolute; inset: 0 0 auto; height: min(65vh, 660px); z-index: -1; pointer-events: none; overflow: clip; }
-.opening-grid { position: absolute; inset: -22% -16% -18%; opacity: .16; mask-image: radial-gradient(ellipse at center, transparent 26%, black 100%); }
-.opening-rays { position: absolute; inset: 0; opacity: .65; }
-.opening-cursor { position: absolute; inset: 0; }
+.overview-opening-effects {
+  position: absolute;
+  inset: 0 0 auto;
+  height: min(100%, max(600px, 96dvh));
+  z-index: -1;
+  pointer-events: none;
+  overflow: clip;
+  background: radial-gradient(ellipse at 95% -12%, #e1b25b49 1%, #cbb98324 28%, transparent 64%),
+    radial-gradient(ellipse at 0% 52%, #789fba25, transparent 58%);
+  mask-image: linear-gradient(black 72%, transparent 100%);
+}
+html[data-theme='dark'] .overview-opening-effects {
+  background: radial-gradient(ellipse at 94% -6%, #b8893c61 1%, #a57c3d23 28%, transparent 66%),
+    radial-gradient(ellipse at 1% 53%, #658a9e38, transparent 60%);
+}
+.overview-opening-effects .opening-rays { position: absolute; inset: 0; }
 .product-overview-root .overview-hero-media.overview-annotated {
   position: relative;
   isolation: isolate;
@@ -1073,30 +1085,7 @@
 .product-overview-root .overview-showcase .overview-screen { width: min(100%, 960px); margin-inline: auto; }
 .about-effect { position: relative; min-width: 0; }
 .about-effect > :is(img, canvas), .about-effect > div > img { display: block; width: 100%; height: 100%; object-fit: cover; }
-.about-edit-comparison, .about-library-effects, .about-delivery-effects {
-  display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
-  gap: clamp(8px, 2vw, 22px);
-  align-items: stretch;
-  margin: 24px auto;
-  max-width: 1000px;
-}
-.about-edit-photo { aspect-ratio: 4 / 3; border-radius: 14px; overflow: clip; background: var(--color-surface); }
-.about-edit-photo > div, .about-flying-posters > div { width: 100%; height: 100%; }
-.about-orbit-stage { position: relative; isolation: isolate; padding: 5% 7%; }
-.about-orbit-decoration { position: absolute; inset: 0; z-index: -1; }
-.about-layer-stage { display: grid; gap: 12px; }
-.about-layer-examples { display: grid; grid-template-columns: 1fr 1fr; width: min(100%, 690px); margin-inline: auto; gap: 14px; }
-.about-layer-examples > div { height: 192px; overflow: clip; border-radius: 14px; background: var(--color-surface); display: grid; place-items: center; }
-.about-bounce-cards > div { width: 100%; height: 100%; }
-.overview-assistant-layout { position: relative; isolation: isolate; }
-.about-assistant-beam { position: absolute; inset: -20px -18px; z-index: -1; opacity: .6; pointer-events: none; }
-.about-library-effects > div { min-height: 215px; aspect-ratio: 4 / 3; overflow: clip; border-radius: 14px; background: var(--color-surface); }
-.about-folder-stage { display: grid; place-items: center; }
-.about-circular-gallery > div { height: 100%; }
-.about-delivery-effects { grid-template-columns: 1.2fr 1fr; }
-.about-delivery-effects > div { height: clamp(170px, 25vw, 300px); overflow: clip; border-radius: 14px; background: var(--color-surface); }
-.about-reflective img { width: 100%; max-height: 190px; object-fit: contain; border-radius: 8px; }
+.about-flying-posters > div, .about-bounce-cards > div { width: 100%; height: 100%; }
 @media (max-width: 759px) {
   .product-overview-root .overview-hero-heading h1 { font-size: clamp(34px, 8.4vw, 57px); }
   .product-overview-root .overview-hero-heading h1 > span { display: block; }
@@ -1104,11 +1093,4 @@
   .overview-annotated .overview-expanding-frame { width: min(74%, 280px); }
   .overview-annotation-label { font-size: 10px; padding: 4px 6px; }
   .overview-annotation-label svg { width: 12px; }
-  .about-edit-comparison { grid-template-columns: repeat(2,minmax(0,1fr)); }
-  .about-morph { grid-column: 1 / -1; aspect-ratio: 16 / 9; }
-  .about-library-effects { grid-template-columns: 1fr 1fr; }
-  .about-library-effects > div { min-height: 130px; }
-  .about-library-effects .about-circular-gallery { grid-column: 1 / -1; grid-row: 2; aspect-ratio: 2.4; }
-  .about-layer-examples > div { height: 150px; }
-  .about-card-swap > div { transform: scale(.8); transform-origin: center; }
 }

@@ -32,6 +32,7 @@ function harness(initial: RecipeV4, activeId: string | null = initial.retouch[0]
     repairMode: 'retouch',
     activeRepairId: activeId,
     dimensions: { width: 400, height: 500 },
+    brushSettings: { radius: 0.05, feather: 0.65, opacity: 1, mode: 'add' },
     setActiveRepairId(id: string | null) {
       editor.activeRepairId = id;
     },
@@ -67,7 +68,7 @@ function harness(initial: RecipeV4, activeId: string | null = initial.retouch[0]
       algorithms: elements(selector?.props.children),
       click(label: string) {
         const button = nodes.find(
-          (node) => node.type === 'button' && node.props.children === label,
+          (node) => node.type === 'button' && Children.toArray(node.props.children).includes(label),
         );
         assert.ok(button?.props.onClick, `Missing real control: ${label}`);
         button.props.onClick();

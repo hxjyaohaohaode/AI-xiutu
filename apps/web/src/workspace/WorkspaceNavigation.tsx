@@ -1,7 +1,8 @@
 import { useLayoutEffect, useRef, useState, type ReactNode } from 'react';
-import { BookmarkSimple, FileImage, Images, MagnifyingGlass } from '@phosphor-icons/react';
+import { BookmarkSimple, FileImage, Images, MagnifyingGlass, Trash } from '@phosphor-icons/react';
 import { ThemeScene } from '../components/ThemeScene';
 import type { View } from '../lib/types';
+import type { LibraryTab } from '../resources/useLibraryCollection';
 import { Modal } from '../components/Ui';
 import { StudioGlyph } from '../components/StudioGlyph';
 import type { ThemePreference } from './useStudioTheme';
@@ -11,56 +12,21 @@ import { LanguageSelect } from '../i18n/LanguageSelect';
 export const workspaceViews: { id: View; label: string; description: string }[] = [
   { id: 'editor', label: '精修', description: '调色、修饰与图层' },
   { id: 'works', label: '作品', description: '项目图片与素材' },
-  { id: 'compare', label: '对比', description: '前后效果与版本' },
   { id: 'collaborate', label: '协作', description: '讨论、任务与成员' },
   { id: 'docs', label: '文档', description: '项目说明与记录' },
-  { id: 'deliver', label: '交付', description: '图片与配方导出' },
   { id: 'usage', label: '用量', description: '服务点与使用明细' },
 ];
-
-export function WorkspaceNavigation({
-  view,
-  onView,
-  onClose,
-}: {
-  view: View;
-  onView: (view: View) => void;
-  onClose: () => void;
-}) {
-  useI18n();
-  return (
-    <Modal title={t('工作视图')} onClose={onClose} className="workspace-navigation-dialog">
-      <nav className="workspace-destinations" aria-label={t('切换工作视图')}>
-        {workspaceViews.map((item) => (
-          <button
-            type="button"
-            key={item.id}
-            data-view={item.id}
-            aria-current={view === item.id ? 'page' : undefined}
-            onClick={() => onView(item.id)}
-          >
-            <StudioGlyph name={item.id} size={22} />
-            <span>
-              <strong>{t(item.label)}</strong>
-            </span>
-            {view === item.id && <StudioGlyph name="check" size={18} />}
-          </button>
-        ))}
-      </nav>
-    </Modal>
-  );
-}
-
-export type LibraryTab = 'project' | 'all' | 'memory';
 
 export function LibraryNavigation({
   value,
   onChange,
   onProfessionalImport,
+  onPhotoTrash,
 }: {
   value: LibraryTab;
   onChange: (value: LibraryTab) => void;
   onProfessionalImport: () => void;
+  onPhotoTrash: () => void;
 }) {
   useI18n();
   return (
@@ -93,6 +59,16 @@ export function LibraryNavigation({
         <FileImage size={17} aria-hidden />
         <span>{t('原片与专业格式')}</span>
       </button>
+      <button
+        type="button"
+        aria-label={t('回收站')}
+        title={t('回收站')}
+        aria-haspopup="dialog"
+        onClick={onPhotoTrash}
+      >
+        <Trash size={17} aria-hidden />
+        <span>{t('回收站')}</span>
+      </button>
     </nav>
   );
 }
@@ -102,7 +78,7 @@ export function WorkspaceHelpContent() {
     <div className="help-list compact-help-list">
       {([
         ['编辑照片', '用底部工具调整，按住对比查看原图。', 'editor'],
-        ['保存与版本', '保存到项目后，可在对比中查看历史版本。', 'history'],
+        ['保存与版本', '保存到项目后，在编辑记录中打开云端版本。', 'history'],
         ['团队协作', '在协作视图邀请成员、讨论和分配任务。', 'collaborate'],
         ['图片与 AI 授权', '发送时才共享选中的图片和文字。', 'ai'],
       ] as const).map(([label, hint, icon]) => (

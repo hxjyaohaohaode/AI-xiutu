@@ -18,6 +18,10 @@ import {
   Copy,
   ArrowClockwise,
   Eye,
+  FolderOpen,
+  CaretDown,
+  PencilSimple,
+  Trash,
   MagnifyingGlass,
 } from '@phosphor-icons/react';
 import {
@@ -45,17 +49,16 @@ import { RubberSegment } from './control-motion';
 import { StatusMark } from './StatusMark';
 import { TaskStateMark } from './TaskStateMark';
 import { ImagePreview } from './ImagePreview';
-import { CompareReveal } from './CompareReveal';
+import { CommentDictation } from '../collaboration/CommentDictation';
+import { FloatingNotice } from './FloatingNotice';
 import { FeatureSkeleton } from './DeferredFeature';
 import { interactionText } from '../workspace/interaction-copy';
 import { RevisionTools, RevisionForkDialog, type CreatedRevisionBranch } from './RevisionTools';
 import { MotionDetails } from '../motion/Presence';
 import { useConfirmation } from './ConfirmationDialog';
 import { confirmStableScope } from '../lib/confirmation-scope';
-import { PixelCanvas } from '../editor/CanvasStage';
-import { localPixelBudget, type EditorState } from '../editor/useEditor';
+import { localPixelBudget } from '../editor/useEditor';
 import { appendRevisionHistoryPage, type RevisionHistoryPage } from '../lib/revisionHistory';
-import type { RGBAImage } from '@ai-xiutu/editor';
 import {
   documentDrafts,
   isDocumentSaveReceipt,
@@ -208,34 +211,7 @@ export function WorksView({
   );
 }
 
-function ComparisonFrame({ image }: { image: RGBAImage | null }) {
-  const area = useRef<HTMLDivElement>(null);
-  const [size, setSize] = useState({ width: 1, height: 1 });
-  useEffect(() => {
-    const element = area.current;
-    if (!element) return;
-    const update = () => setSize({ width: element.clientWidth, height: element.clientHeight });
-    const observer = new ResizeObserver(update);
-    observer.observe(element);
-    update();
-    return () => observer.disconnect();
-  }, []);
-  const fit = image
-    ? Math.max(0.001, Math.min((size.width - 20) / image.width, (size.height - 20) / image.height))
-    : 1;
-  return (
-    <div className="comparison-image-region" ref={area}>
-      <div
-        className="comparison-image-frame"
-        style={{ width: image ? image.width * fit : 1, height: image ? image.height * fit : 1 }}
-      >
-        <PixelCanvas image={image} />
-      </div>
-    </div>
-  );
-}
-export function CompareView({
-  editor,
+export function RevisionHistoryPanel({
   artwork,
   onOpenRevision,
   onRestoreRevision,
@@ -244,8 +220,7 @@ export function CompareView({
   isDirty = true,
   canRestore = false,
 }: {
-  editor: EditorState;
-  artwork: Artwork | null;
+  artwork: Artwork;
   onOpenRevision: (revision: RevisionSummary) => void | Promise<void>;
   onRestoreRevision?: (revision: RevisionSummary) => Promise<void>;
   currentUserId?: string;
@@ -255,14 +230,14 @@ export function CompareView({
 }) {
   const [revisions, setRevisions] = useState<RevisionSummary[]>([]);
   const [error, setError] = useState<string | null>(null);
-  const [loadingRevisions, setLoadingRevisions] = useState(false);
+  const [loadingRevisions, setLoadingRevisions] = useState(true);
   const [nextBeforeVersion, setNextBeforeVersion] = useState<number | null>(null);
   const [historyHeadVersion, setHistoryHeadVersion] = useState<number | null>(null);
   const [historyReadFailed, setHistoryReadFailed] = useState(false);
   const historyRows = useRef<RevisionSummary[]>([]);
   const historyRequest = useRef<AbortController | null>(null);
   const historyScope = useRef('');
-  historyScope.current = `${artwork?.id ?? ''}:${artwork?.headVersion ?? ''}`;
+  historyScope.current = `${artwork.id}:${artwork.headVersion}`;
   const [busyRevision, setBusyRevision] = useState<string | null>(null);
   const [forkRevision, setForkRevision] = useState<RevisionSummary | null>(null);
   const [restore, setRestore] = useState<{
@@ -270,20 +245,10 @@ export function CompareView({
     artworkId: string;
     headVersion: number;
   } | null>(null);
-  const scope = useRef(historyScope.current);
-  scope.current = historyScope.current;
-  const [mode, setMode] = useState<'slide' | 'side' | 'original' | 'edited'>('slide');
-  const [split, setSplit] = useState(50);
-  const slideAvailable =
-    !!editor.originalPreview &&
-    !!editor.rendered &&
-    editor.originalPreview.width === editor.rendered.width &&
-    editor.originalPreview.height === editor.rendered.height;
-  const visibleMode = mode === 'slide' && !slideAvailable ? 'side' : mode;
   const historyChanged =
-    !!artwork && historyHeadVersion !== null && historyHeadVersion > artwork.headVersion;
+    historyHeadVersion !== null && historyHeadVersion > artwork.headVersion;
   async function loadHistory(beforeVersion?: number) {
-    if (!artwork || historyRequest.current) return;
+    if (historyRequest.current) return;
     const expected = historyScope.current;
     const controller = new AbortController();
     historyRequest.current = controller;
@@ -336,27 +301,23 @@ export function CompareView({
     setRestore(null);
     setForkRevision(null);
     setBusyRevision(null);
-    if (!artwork) {
-      setLoadingRevisions(false);
-      return;
-    }
     void loadHistory();
     return () => {
       historyRequest.current?.abort();
       historyRequest.current = null;
     };
-  }, [artwork?.id, artwork?.headVersion, currentUserId]);
+  }, [artwork.id, artwork.headVersion, currentUserId]);
   async function openRevision(revision: RevisionSummary) {
     if (busyRevision) return;
-    const expected = scope.current;
+    const expected = historyScope.current;
     setBusyRevision(revision.id);
     setError(null);
     try {
       await onOpenRevision(revision);
     } catch (failure) {
-      if (scope.current === expected) setError(errorMessage(failure));
+      if (historyScope.current === expected) setError(errorMessage(failure));
     } finally {
-      if (scope.current === expected) setBusyRevision(null);
+      if (historyScope.current === expected) setBusyRevision(null);
     }
   }
   async function restoreRevision() {
@@ -366,195 +327,124 @@ export function CompareView({
       setError('当前作品版本已改变，请重新查看历史后恢复。');
       return;
     }
-    const expected = scope.current;
+    const expected = historyScope.current;
     setBusyRevision(restore.revision.id);
     setError(null);
     try {
       await onRestoreRevision(restore.revision);
-      if (scope.current === expected) setRestore(null);
+      if (historyScope.current === expected) setRestore(null);
     } catch (failure) {
-      if (scope.current === expected) setError(errorMessage(failure));
+      if (historyScope.current === expected) setError(errorMessage(failure));
     } finally {
-      if (scope.current === expected) setBusyRevision(null);
+      if (historyScope.current === expected) setBusyRevision(null);
     }
   }
-  if (!editor.file)
-    return (
-      <div className="content-view studio-view">
-        <EmptyState icon={<Images size={34} />} title={t('先打开一张图片')} />
-      </div>
-    );
   return (
-    <div className="content-view studio-view compare-view">
-      <div className="view-heading" data-motion="view-header">
-        <div>
-          <h1 className="view-artwork-title">{artwork?.title ?? editor.file.name}</h1>
-        </div>
-        <RubberSegment
-          className="compare-mode-choice"
-          label={t('对比显示方式')}
-          value={visibleMode}
-          onChange={setMode}
-          options={[
-            {
-              value: 'slide',
-              label: t('滑动对比'),
-              disabled: !slideAvailable,
-              title: !slideAvailable ? t('不同画幅请使用并排对比') : undefined,
-            },
-            { value: 'side', label: t('并排') },
-            { value: 'original', label: t('原图') },
-            { value: 'edited', label: t('当前') },
-          ]}
-        />
-      </div>
-      {visibleMode === 'slide' ? (
-        <CompareReveal
-          before={editor.originalPreview}
-          after={editor.rendered}
-          value={split}
-          onChange={setSplit}
-        />
-      ) : (
-        <div className={`compare-pair ${visibleMode !== 'side' ? 'single' : ''}`}>
-          {visibleMode !== 'edited' && (
-            <section>
-              <header>
-                <span>{t('原始图片')}</span>
-              </header>
-              <ComparisonFrame image={editor.originalPreview} />
-            </section>
-          )}
-          {visibleMode !== 'original' && (
-            <section>
-              <header>
-                <span>{t('当前编辑')}</span>
-                <small aria-live="polite">
-                  {editor.rendering ? t('正在更新') : isDirty ? t('本地草稿') : t('当前预览')}
-                </small>
-              </header>
-              <ComparisonFrame image={editor.rendered} />
-            </section>
-          )}
-        </div>
-      )}
+    <section className="saved-versions" aria-label={t('云端版本')}>
       <InlineError message={error} />
-      {artwork && (
-        <MotionDetails className="saved-versions">
-          <summary>
-            {t('云端版本')}
-            {revisions.length > 0 ? t('· 已载入 {v0}', { v0: revisions.length }) : ''}
-            <span>
-              {t('当前 V')}
-              {artwork.headVersion} {t('· 恢复会保留已有版本')}
-            </span>
-          </summary>
-          {loadingRevisions &&
-            (revisions.length ? (
-              <Busy label={t('正在读取版本')} />
-            ) : (
-              <FeatureSkeleton profile="panel" label={t('正在读取版本')} compact />
-            ))}
-          {!loadingRevisions && !revisions.length && !historyReadFailed && (
-            <p className="control-note">{t('尚未读取到保存版本。')}</p>
-          )}
-          <div className="version-list">
-            {revisions.map((revision) => (
-              <div className="revision-entry" key={revision.id} data-motion="revision-entry">
-                <button
-                  className="revision-open"
-                  disabled={!!busyRevision}
-                  onClick={() => void openRevision(revision)}
-                >
-                  <Clock size={19} />
-                  <div>
-                    <strong>{revision.label || t('版本 {v0}', { v0: revision.version })}</strong>
-                    <small>{formatDate(revision.createdAt)}</small>
-                  </div>
-                  <span>
-                    {busyRevision === revision.id ? (
-                      <Busy label="" />
-                    ) : (
-                      t('V{v0}{v1}', {
-                        v0: revision.version,
-                        v1: revision.version === artwork.headVersion ? t(' · 当前') : '',
-                      })
-                    )}
-                  </span>
-                </button>
-                <MotionDetails className="revision-more">
-                  <summary>{t('版本详情与操作')}</summary>
-                  <span className="revision-source-note">
-                    {revision.assetId !== artwork.assetId
-                      ? t('使用此版本自己的原图来源')
-                      : t('与当前作品使用同一原图')}{' '}
-                    {t('· 打开为本地草稿')}
-                  </span>
-                  {currentUserId && (
-                    <RevisionTools
-                      actorId={currentUserId}
-                      artworkId={artwork.id}
-                      artworkTitle={artwork.title}
-                      revision={revision}
-                      canFork={canRestore && !!onForkCreated}
-                      onForkRequested={() => setForkRevision(revision)}
-                    />
-                  )}
-                  {canRestore && onRestoreRevision && revision.version !== artwork.headVersion && (
-                    <button
-                      className="revision-restore text-button"
-                      disabled={!!busyRevision || isDirty || historyChanged}
-                      title={
-                        historyChanged
-                          ? t('云端版本已更新，请重新打开作品后再恢复')
-                          : isDirty
-                            ? t('先保存或撤销本地修改后再恢复云端版本')
-                            : undefined
-                      }
-                      onClick={() =>
-                        setRestore({
-                          revision,
-                          artworkId: artwork.id,
-                          headVersion: artwork.headVersion,
-                        })
-                      }
-                    >
-                      {t('恢复为新版本')}
-                    </button>
-                  )}
-                </MotionDetails>
-              </div>
-            ))}
-          </div>
-          {(nextBeforeVersion !== null || historyReadFailed) && (
+      {loadingRevisions &&
+        (revisions.length ? (
+          <Busy label={t('正在读取版本')} />
+        ) : (
+          <FeatureSkeleton profile="panel" label={t('正在读取版本')} compact />
+        ))}
+      {!loadingRevisions && !revisions.length && !historyReadFailed && (
+        <p className="control-note">{t('尚未读取到保存版本。')}</p>
+      )}
+      <div className="version-list">
+        {revisions.map((revision) => (
+          <div className="revision-entry" key={revision.id} data-motion="revision-entry">
             <button
-              className="button button-secondary"
-              disabled={loadingRevisions || !!busyRevision}
-              onClick={() => void loadHistory(nextBeforeVersion ?? undefined)}
+              className="revision-open"
+              disabled={!!busyRevision}
+              onClick={() => void openRevision(revision)}
             >
-              {loadingRevisions
-                ? t('正在读取版本…')
-                : historyReadFailed
-                  ? t('重试读取版本')
-                  : t('加载更早版本')}
+              <Clock size={19} />
+              <div>
+                <strong>{revision.label || t('版本 {v0}', { v0: revision.version })}</strong>
+                <small>{formatDate(revision.createdAt)}</small>
+              </div>
+              <span>
+                {busyRevision === revision.id ? (
+                  <Busy label="" />
+                ) : (
+                  t('V{v0}{v1}', {
+                    v0: revision.version,
+                    v1: revision.version === artwork.headVersion ? t(' · 当前') : '',
+                  })
+                )}
+              </span>
             </button>
-          )}
-          {historyChanged && (
-            <p className="control-note" role="status">
-              {t('云端已更新至 V')}
-              {historyHeadVersion}
-              {t('。历史仍可查看；请重新打开作品后再恢复版本。')}
-            </p>
-          )}
-          {isDirty && canRestore && onRestoreRevision && (
-            <p className="control-note">
-              {t('先保存或撤销本地修改后，才能将历史恢复为云端新版本。')}
-            </p>
-          )}
-        </MotionDetails>
+            <MotionDetails className="revision-more">
+              <summary>{t('版本详情与操作')}</summary>
+              <span className="revision-source-note">
+                {revision.assetId !== artwork.assetId
+                  ? t('使用此版本自己的原图来源')
+                  : t('与当前作品使用同一原图')}{' '}
+                {t('· 打开为本地草稿')}
+              </span>
+              {currentUserId && (
+                <RevisionTools
+                  actorId={currentUserId}
+                  artworkId={artwork.id}
+                  artworkTitle={artwork.title}
+                  revision={revision}
+                  canFork={canRestore && !!onForkCreated}
+                  onForkRequested={() => setForkRevision(revision)}
+                />
+              )}
+              {canRestore && onRestoreRevision && revision.version !== artwork.headVersion && (
+                <button
+                  className="revision-restore text-button"
+                  disabled={!!busyRevision || isDirty || historyChanged}
+                  title={
+                    historyChanged
+                      ? t('云端版本已更新，请重新打开作品后再恢复')
+                      : isDirty
+                        ? t('先保存或撤销本地修改后再恢复云端版本')
+                        : undefined
+                  }
+                  onClick={() =>
+                    setRestore({
+                      revision,
+                      artworkId: artwork.id,
+                      headVersion: artwork.headVersion,
+                    })
+                  }
+                >
+                  {t('恢复为新版本')}
+                </button>
+              )}
+            </MotionDetails>
+          </div>
+        ))}
+      </div>
+      {(nextBeforeVersion !== null || historyReadFailed) && (
+        <button
+          className="button button-secondary"
+          disabled={loadingRevisions || !!busyRevision}
+          onClick={() => void loadHistory(nextBeforeVersion ?? undefined)}
+        >
+          {loadingRevisions
+            ? t('正在读取版本…')
+            : historyReadFailed
+              ? t('重试读取版本')
+              : t('加载更早版本')}
+        </button>
+      )}
+      {historyChanged && (
+        <p className="control-note" role="status">
+          {t('云端已更新至 V')}
+          {historyHeadVersion}
+          {t('。历史仍可查看；请重新打开作品后再恢复版本。')}
+        </p>
+      )}
+      {isDirty && canRestore && onRestoreRevision && (
+        <p className="control-note">
+          {t('先保存或撤销本地修改后，才能将历史恢复为云端新版本。')}
+        </p>
       )}
       {forkRevision &&
-        artwork &&
         forkRevision.artworkId === artwork.id &&
         currentUserId &&
         onForkCreated && (
@@ -617,7 +507,7 @@ export function CompareView({
           </div>
         </Modal>
       )}
-    </div>
+    </section>
   );
 }
 
@@ -646,6 +536,9 @@ export function CollaborateView({
   const [comments, setComments] = useState<Comment[]>([]);
   const [tasks, setTasks] = useState<Task[]>([]);
   const [body, setBody] = useState('');
+  const [commentEdit, setCommentEdit] = useState<Comment | null>(null);
+  const [editedBody, setEditedBody] = useState('');
+  const commentConfirmation = useConfirmation();
   const [taskTitle, setTaskTitle] = useState('');
   const [error, setError] = useState<string | null>(null);
   const [pending, setPending] = useState<string | null>(null);
@@ -680,7 +573,7 @@ export function CollaborateView({
   }
   useEffect(() => {
     const controller = new AbortController();
-    setLoading(true);
+    if (!hasLoaded) setLoading(true);
     setError(null);
     void load(controller.signal)
       .catch((e) => !controller.signal.aborted && setError(errorMessage(e)))
@@ -759,6 +652,28 @@ export function CollaborateView({
       await api(`/comments/${comment.id}`, jsonRequest('PATCH', { resolved: !comment.resolved }));
     });
   }
+  const editOwnComment = (comment: Comment) => {
+    setCommentEdit(comment);
+    setEditedBody(comment.body);
+  };
+  async function saveComment(event: FormEvent) {
+    event.preventDefault();
+    if (!commentEdit || commentEdit.authorId !== currentUserId || !editedBody.trim()) return;
+    await mutate('edit-comment', async () => {
+      await api(`/comments/${commentEdit.id}`, jsonRequest('PATCH', {
+        body: editedBody.trim(), expectedVersion: commentEdit.bodyVersion,
+      }));
+      setCommentEdit(null);
+    });
+  }
+  async function removeComment(comment: Comment) {
+    if (comment.authorId !== currentUserId ||
+      !(await commentConfirmation.confirm({ title: t('删除批注'), description: t('这条批注将从项目讨论移除。'),
+        confirmLabel: t('删除'), tone: 'danger' })) || activeProject.current !== project.id) return;
+    await mutate('delete-comment', async () => {
+      await api(`/comments/${comment.id}?expectedVersion=${comment.bodyVersion}`, { method: 'DELETE' });
+    });
+  }
   const openComments = comments.filter((comment) => !comment.resolved).length;
   const completedTasks = tasks.filter((task) => task.status === 'done').length;
   const visibleComments = comments.filter(
@@ -771,6 +686,7 @@ export function CollaborateView({
     <div
       className={`content-view studio-view collaboration-view${embedded ? ' collaboration-panel' : ''}`}
     >
+      {commentConfirmation.dialog}
       <div className="view-heading" data-motion="view-header">
         <div className="collaboration-heading-title">
           <h1>{project.title}</h1>
@@ -835,7 +751,7 @@ export function CollaborateView({
             : t('当前为浏览模式，可以查看项目讨论和任务进度。')}
         </p>
       )}
-      <InlineError message={error} />
+      <FloatingNotice message={error} onRetry={() => setReloadToken((value) => value + 1)} />
       {loading ? (
         <FeatureSkeleton profile="collaboration" label={t('正在读取讨论与任务')} compact />
       ) : !hasLoaded ? (
@@ -928,7 +844,17 @@ export function CollaborateView({
                           </strong>
                           <time dateTime={comment.createdAt}>{formatDate(comment.createdAt)}</time>
                         </header>
-                        <p>{comment.body}</p>
+                        {commentEdit?.id === comment.id ? (
+                          <form className="comment-edit-form" onSubmit={(event) => void saveComment(event)}>
+                            <textarea aria-label={t('编辑批注')} value={editedBody} maxLength={5000}
+                              onChange={(event) => setEditedBody(event.target.value)} autoFocus />
+                            <div className="comment-edit-actions">
+                              <CommentDictation disabled={busy} onText={(text) => setEditedBody((value) => (value + ' ' + text).trim().slice(0, 5000))} />
+                              <button type="button" className="text-button" onClick={() => setCommentEdit(null)}>{t('取消')}</button>
+                              <button type="submit" className="button button-primary" disabled={busy || !editedBody.trim()}>{t('保存批注')}</button>
+                            </div>
+                          </form>
+                        ) : <p>{comment.body}</p>}
                         <footer>
                           <span>
                             {comment.revisionId === revision?.id && revision
@@ -937,6 +863,12 @@ export function CollaborateView({
                                 ? t('绑定作品版本')
                                 : t('项目讨论')}
                           </span>
+                          {permissions.comment && currentUserId && comment.authorId === currentUserId && (
+                            <div className="comment-inline-actions">
+                              <IconButton label={t('编辑批注')} disabled={busy} onClick={() => editOwnComment(comment)}><PencilSimple size={15} /></IconButton>
+                              <IconButton label={t('删除批注')} disabled={busy} onClick={() => void removeComment(comment)}><Trash size={15} /></IconButton>
+                            </div>
+                          )}
                           {canResolveProjectComment(
                             project.role,
                             currentUserId,
@@ -1025,7 +957,7 @@ export function CollaborateView({
                           : []),
                       ]}
                     />
-                    <span className="composer-count">{body.length}/5000</span>
+                    <CommentDictation disabled={busy} onText={(text) => setBody((value) => (value + ' ' + text).trim().slice(0, 5000))} />
                     <button
                       type="submit"
                       className="button button-primary"
@@ -1186,6 +1118,7 @@ export function DocumentsView({
   const [selected, setSelected] = useState<ProjectDocument | null>(null);
   const [creating, setCreating] = useState(false);
   const [mobileList, setMobileList] = useState(true);
+  const [documentsExpanded, setDocumentsExpanded] = useState(true);
   const [query, setQuery] = useState('');
   const [title, setTitle] = useState('');
   const [body, setBody] = useState('');
@@ -1574,7 +1507,7 @@ export function DocumentsView({
       {confirmation.dialog}
       <div className="view-heading" data-motion="view-header">
         <div>
-          <h1>{project.title}</h1>
+          <h1 className="sr-only">{project.title}</h1>
         </div>
         <span className="studio-count">
           <FileText size={17} />
@@ -1707,16 +1640,23 @@ export function DocumentsView({
             </label>
           )}
           {loading && <FeatureSkeleton profile="panel" label={t('正在读取')} compact />}
-          <div className="document-rows">
+          <div className="document-tree-reference" data-open={documentsExpanded}>
+          <button type="button" className="document-tree-root" aria-expanded={documentsExpanded}
+            onClick={() => setDocumentsExpanded((value) => !value)}>
+            <FolderOpen size={16} aria-hidden />
+            <span>{project.title}</span><small>{docs.length}</small>
+          </button>
+          <div className="document-tree-fold" inert={!documentsExpanded}>
+          <ul className="document-rows">
             {visibleDocs.map((doc) => (
+              <li key={doc.id}>
               <button
-                key={doc.id}
                 className={`document-row ${selected?.id === doc.id ? 'selected' : ''}`}
                 aria-pressed={selected?.id === doc.id}
                 disabled={busy || pendingSave || !!recoveryDraft}
                 onClick={() => choose(doc)}
               >
-                <FileText size={18} />
+                <FileText size={16} />
                 <span title={doc.title}>
                   {doc.title}
                   <small>
@@ -1724,7 +1664,10 @@ export function DocumentsView({
                   </small>
                 </span>
               </button>
+              </li>
             ))}
+          </ul>
+          </div>
           </div>
           {!loading && !visibleDocs.length && (
             <p className="quiet-copy">
@@ -1794,7 +1737,11 @@ export function DocumentsView({
               maxLength={120}
               required
             />
-            <textarea
+            <div className="document-code-body">
+              <div className="document-line-gutter" aria-hidden>
+                {Array.from({ length: Math.min(200, body.split('\n').length + 18) }, (_, index) => <span key={index}>{index + 1}</span>)}
+              </div>
+              <textarea
               aria-label={t('文档内容')}
               placeholder={t('输入项目说明、参考要求或交付文案…')}
               value={body}
@@ -1803,7 +1750,8 @@ export function DocumentsView({
                 updateDraft({ title: currentDraft.current.title, body: event.target.value });
               }}
               maxLength={100000}
-            />
+              />
+            </div>
             {(newerVersion || conflict) && (
               <div className="document-conflict">
                 <span>{t('云端已有更新。当前文字已保留，读取前可先复制需要的内容。')}</span>
@@ -1879,78 +1827,6 @@ export function DocumentsView({
           </div>
         )}
       </div>
-    </div>
-  );
-}
-
-export function DeliveryView({
-  editor,
-  artwork,
-  sourcePending,
-  onExport,
-  onRecipeImport,
-}: {
-  editor: EditorState;
-  artwork: Artwork | null;
-  sourcePending: boolean;
-  onExport: () => void;
-  onRecipeImport: () => void;
-}) {
-  const busy = sourcePending || editor.loading;
-  const dimensions = editor.rendered ?? editor.dimensions;
-  return (
-    <div className="content-view studio-view delivery-view">
-      <h1 className="sr-only">{t('导出与交付')}</h1>
-      {editor.file ? (
-        <section className="delivery-composition" aria-label={t('当前交付作品')}>
-          <div className="delivery-current-preview" role="img" aria-label={t('当前编辑的预览图')}>
-            <ComparisonFrame image={editor.rendered} />
-          </div>
-          <div className="delivery-action-rail">
-            <h2>{artwork?.title ?? editor.file.name}</h2>
-            <div className="delivery-facts">
-              {dimensions && (
-                <span>
-                  {dimensions.width} × {dimensions.height}
-                </span>
-              )}
-              {artwork && <span>V{artwork.headVersion}</span>}
-            </div>
-            <span className="studio-status" aria-live="polite">
-              {busy ? (
-                <Busy label={t('正在读取图片')} />
-              ) : editor.rendering ? (
-                <Busy label={t('正在更新预览')} />
-              ) : (
-                <StatusMark state="done" size="small" label={t('可导出当前编辑')} />
-              )}
-            </span>
-            <div className="delivery-primary-action">
-              <button className="button button-primary" onClick={onExport} disabled={busy}>
-                <DownloadSimple size={18} />
-                {t('导出图片')}
-              </button>
-              <span>PNG · JPEG · WebP</span>
-            </div>
-            <div className="delivery-recipe-actions">
-              <button className="text-button" disabled={busy} onClick={editor.exportRecipe}>
-                <NotePencil size={18} />
-                {t('保存编辑配方')}
-              </button>
-              <button className="text-button" disabled={busy} onClick={onRecipeImport}>
-                <UploadSimple size={18} />
-                {t('导入已有配方')}
-              </button>
-            </div>
-            <small className="delivery-recipe-note">{t('配方不含原图')}</small>
-          </div>
-        </section>
-      ) : (
-        <EmptyState
-          icon={<Images size={34} />}
-          title={t('还没有打开照片')}
-        />
-      )}
     </div>
   );
 }

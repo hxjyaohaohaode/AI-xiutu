@@ -1,6 +1,6 @@
 import { t } from '../i18n';
 import { useId, useRef, useState } from 'react';
-import { UsersThree, CloudCheck, CloudSlash, ArrowClockwise } from '@phosphor-icons/react';
+import { UsersThree, CloudCheck, CloudSlash, ArrowClockwise, EyeSlash, X } from '@phosphor-icons/react';
 import type { CollaborationState } from './useCollaboration';
 import { targetLabel } from './model';
 import { usePresence } from '../motion/usePresence';
@@ -25,12 +25,18 @@ export function CollaborationStatus({
   onFork,
   teamVoice,
   captureVoiceContext,
+  onIndividualVoice,
+  onHide,
+  onProjectCollaboration,
 }: {
   collaboration: CollaborationState;
   onReload: () => void;
   onFork: () => void;
   teamVoice?: TeamVoiceState;
   captureVoiceContext?: () => Promise<AssistantContext>;
+  onIndividualVoice?: () => void;
+  onHide?: () => void;
+  onProjectCollaboration?: () => void;
 }) {
   const [open, setOpen] = useState(false);
   const detailsId = useId();
@@ -40,6 +46,7 @@ export function CollaborationStatus({
   if (c.error) lastError.current = c.error;
   const members = c.enabled ? (c.snapshot?.presences ?? []) : [],
     leases = c.enabled ? (c.snapshot?.leases ?? []) : [];
+  const status = !c.enabled && teamVoice ? t('团队语音') : t(labels[c.status]);
   return (
     <aside
       className="collaboration-status"
@@ -49,15 +56,16 @@ export function CollaborationStatus({
       <button
         className="collaboration-summary"
         aria-expanded={open}
+        aria-label={members.length ? status + ' · ' + members.length : status}
         aria-controls={detailsId}
         onClick={() => setOpen((value) => !value)}
       >
         <UsersThree size={17} />
-        <span>{!c.enabled && teamVoice ? t('团队语音') : t(labels[c.status])}</span>
+        <span>{status}</span>
         <small>
           {teamVoice?.state === 'connected'
             ? t('语音 ') + teamVoice.roster.members.length
-            : members.length || '—'}
+            : members.length || null}
         </small>
         {c.enabled && c.status === 'ready' ? (
           <CloudCheck size={16} />
@@ -75,25 +83,31 @@ export function CollaborationStatus({
           aria-hidden={!open}
           aria-label={c.enabled ? t('实时编辑协作状态') : t('团队语音状态')}
         >
-          {teamVoice && <TeamVoiceControls room={teamVoice} capture={captureVoiceContext} />}
-          <p>
-            {c.enabled
-              ? t(
-                  '已发布的协作调整会同步到当前作品。游标与半透明范围表示队员的位置和未发布的预览。',
-                )
-              : t('在当前作品中与队员通话。编辑协作尚未连接。')}
-          </p>
+          <div className="collaboration-detail-toolbar">
+            <strong>{t('协作成员')}</strong>
+            {onHide && <button type="button" className="icon-button" aria-label={t('隐藏协作状态')} onClick={onHide}><EyeSlash size={17} /></button>}
+            <button type="button" className="icon-button" aria-label={t('收起协作状态')} onClick={() => setOpen(false)}><X size={17} /></button>
+          </div>
           <ul>
             {members.map((member) => (
               <li key={member.id}>
+                <span className="comment-avatar" aria-hidden>{member.displayName.slice(0, 1)}</span>
                 <strong>
                   {member.displayName}
                   {member.id === c.session?.id ? t('（本窗口）') : ''}
                 </strong>
-                <span>{member.tool ?? t('查看画面')}</span>
+                <span>{member.tool ? t(({ light: '明暗', color: '色彩', beauty: '美颜', detail: '细节', crop: '构图', paint: '绘制', local: '局部', repair: '修复', liquify: '液化', composite: '图层' } as Record<string, string>)[member.tool] ?? '编辑中') : t('查看画面')}</span>
               </li>
             ))}
           </ul>
+          {teamVoice && <TeamVoiceControls room={teamVoice} capture={captureVoiceContext} onIndividual={onIndividualVoice} />}
+          {onProjectCollaboration && (
+            <div className="collaboration-actions">
+              <button type="button" onClick={() => { setOpen(false); onProjectCollaboration(); }}>
+                {t('项目协作')}
+              </button>
+            </div>
+          )}
           {leases.length > 0 && (
             <ul className="collaboration-leases">
               {leases.map((lease) => (

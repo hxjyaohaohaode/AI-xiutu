@@ -41,17 +41,17 @@ export function ColorControls({
   onSample,
   sampling,
   onScope,
-  compactTools,
+  compact = false,
+  canvasOverlay,
+  resetScope,
 }: {
   controller: InspectorController;
   target?: string;
   scope: EditScope;
   family: AdjustmentFamily;
-  compactTools?: {
-    layout: ReactNode;
-    options: readonly ChoiceOption<AdjustmentFamily>[];
-    onFamilyChange: (family: AdjustmentFamily) => void;
-  };
+  compact?: boolean;
+  canvasOverlay?: HTMLElement | null;
+  resetScope?: ReactNode;
   pickedColor: string;
   onColorChange?: (value: string) => void;
   onSample?: () => void;
@@ -104,9 +104,7 @@ export function ColorControls({
     if (family === 'light')
       return lightTab === 'levels'
         ? tool.path.startsWith('levels.')
-        : tonePaths.includes(tool.path) ||
-            (!!compactTools &&
-              (colorPaths.includes(tool.path) || quickDetailPaths.includes(tool.path)));
+        : tonePaths.includes(tool.path);
     if (family === 'color') {
       if (colorTab === 'hsl') return tool.path.startsWith('hsl.' + band + '.');
       if (colorTab === 'grading')
@@ -179,41 +177,18 @@ export function ColorControls({
     label: string,
     selected: T,
     options: readonly ChoiceOption<T>[],
-    select?: (value: T) => void,
+    select: (value: T) => void,
   ) {
-    if (!compactTools)
-      return select ? (
-        <ChoiceSelect
-          size="compact"
-          ariaLabel={t(label)}
-          value={selected}
-          options={options}
-          onValueChange={select}
-        />
-      ) : null;
-    const families = compactTools.options.filter((option) => option.value !== family);
-    return (
-      <>
-        <ChoiceSelect<T | AdjustmentFamily>
-          size="compact"
-          className="mobile-adjustment-choice"
-          ariaLabel={t('调节类别')}
-          displayLabel={t('更多参数')}
-          value={selected}
-          options={[...options, ...families]}
-          onValueChange={(value) => {
-            const category = options.find((option) => option.value === value);
-            if (category) select?.(category.value);
-            else {
-              const destination = families.find((option) => option.value === value);
-              if (!destination) return;
-              editor.commitCurrent(t('完成当前调节'));
-              compactTools.onFamilyChange(destination.value);
-            }
-          }}
-        />
-        {compactTools.layout}
-      </>
+    return compact && (
+      <ChoiceSelect
+        size="compact"
+        className="mobile-adjustment-choice"
+        ariaLabel={t(label)}
+        displayLabel={t('更多')}
+        value={selected}
+        options={options}
+        onValueChange={select}
+      />
     );
   }
   const compactCategory =
@@ -261,24 +236,60 @@ export function ColorControls({
                 setDetailTab(value);
               },
             )
-          : categoryPicker('调节类别', 'curves', [{ value: 'curves', label: t('曲线') }]);
+          : null;
+  const compactColorScope = compact && family === 'color' && (
+    colorTab === 'hsl' ? (
+      <ChoiceSelect
+        size="compact"
+        className="mobile-adjustment-choice"
+        ariaLabel={t('HSL 色段')}
+        value={band}
+        options={HSL_BANDS.map((item) => ({ value: item.id, label: t(item.label) }))}
+        renderOptionLabel={(option) => {
+          const hue = HSL_BANDS.find((item) => item.id === option.value)?.center ?? 0;
+          return <span className="compact-hsl-band"><i style={{ backgroundColor: `hsl(${hue} 65% 48%)` }} />{option.label}</span>;
+        }}
+        onValueChange={(value) => {
+          editor.commitCurrent(t('完成当前色段'));
+          setBand(value);
+        }}
+      />
+    ) : colorTab === 'grading' ? (
+      <ChoiceSelect
+        size="compact"
+        className="mobile-adjustment-choice"
+        ariaLabel={t('分级区域')}
+        value={zone}
+        options={[
+          { value: 'shadows', label: t('阴影') },
+          { value: 'midtones', label: t('中间调') },
+          { value: 'highlights', label: t('高光') },
+        ]}
+        onValueChange={(value) => {
+          editor.commitCurrent(t('完成当前分级'));
+          setZone(value);
+        }}
+      />
+    ) : null
+  );
   const hasShelf = family !== 'curves' && !(family === 'color' && colorTab === 'palette');
+  const histogram = family !== 'detail' && (!compact || family === 'curves' || lightTab === 'levels') && (
+    <MotionDetails className="advanced-disclosure histogram-disclosure">
+      <summary aria-label={t('查看明度与 RGB 分布')}>{t('直方图')}</summary>
+      <Histogram image={editor.rendered} />
+    </MotionDetails>
+  );
   return (
     <section
       className="color-controls-v3"
       data-motion="color-family"
       data-primary-controls={hasShelf || undefined}
     >
-      {compactTools && !hasShelf && (
-        <div className="mobile-adjustment-tools">{compactCategory}</div>
+      {compact && !hasShelf && family !== 'curves' && (
+        <div className="mobile-adjustment-tools">{compactCategory}{resetScope}</div>
       )}
-      {family !== 'detail' && (!compactTools || family === 'curves' || lightTab === 'levels') && (
-        <MotionDetails className="advanced-disclosure histogram-disclosure">
-          <summary aria-label={t('查看明度与 RGB 分布')}>{t('直方图')}</summary>
-          <Histogram image={editor.rendered} />
-        </MotionDetails>
-      )}
-      {family === 'light' && (
+      {!compact && histogram}
+      {family === 'light' && !compact && (
         <div className="tonal-tabs color-family-tabs" aria-label={t('明暗类别')}>
           {(
             [
@@ -301,7 +312,7 @@ export function ColorControls({
       )}
       {family === 'color' && (
         <>
-          <div className="tonal-tabs color-family-tabs" aria-label={t('色彩类别')}>
+          {!compact && <div className="tonal-tabs color-family-tabs" aria-label={t('色彩类别')}>
             {(
               [
                 ['global', t('整体')],
@@ -321,8 +332,8 @@ export function ColorControls({
                 {label}
               </button>
             ))}
-          </div>
-          {colorTab === 'hsl' && (
+          </div>}
+          {colorTab === 'hsl' && !compact && (
             <>
               <div className="hsl-range-chips" aria-label={t('HSL 色段')}>
                 {HSL_BANDS.map((item) => (
@@ -351,7 +362,7 @@ export function ColorControls({
               </MotionDetails>
             </>
           )}
-          {colorTab === 'grading' && (
+          {colorTab === 'grading' && !compact && (
             <div className="tonal-tabs" aria-label={t('分级区域')}>
               {(
                 [
@@ -402,7 +413,7 @@ export function ColorControls({
           )}
         </>
       )}
-      {family === 'detail' && (
+      {family === 'detail' && !compact && (
         <div className="tonal-tabs color-family-tabs" aria-label={t('细节类别')}>
           {(
             [
@@ -429,11 +440,13 @@ export function ColorControls({
       {family === 'curves' ? (
         <CurveEditor
           editor={editor}
+          compact={compact}
+          canvasOverlay={canvasOverlay}
           scope={{
             key: scopeKey(scope),
             label:
-              scope.kind === 'global'
-                ? t('全局')
+              !('id' in scope)
+                ? t(scope.kind === 'base' ? '底图' : '整张照片')
                 : ((scope.kind === 'region' ? recipe.regionEdits : recipe.regionGroups).find(
                     (entry) => entry.id === scope.id,
                   )?.name ?? t('局部')),
@@ -468,11 +481,18 @@ export function ColorControls({
             label={t('图像参数')}
             controls={controls}
             target={target?.startsWith('adjustments.') ? target.slice('adjustments.'.length) : target}
-            headingAccessory={compactCategory}
+            headingAccessory={compact && <>{compactColorScope}{compactCategory}</>}
+            trailingAction={resetScope}
             onCommit={(label) => editor.commitCurrent(t('调整{v0}', { v0: t(label) }))}
             onCancel={editor.cancelPreview}
           />
         )
+      )}
+      {compact && histogram && (
+        <div className="mobile-adjustment-tools compact-analysis-tools">
+          {histogram}
+          {family === 'curves' && resetScope}
+        </div>
       )}
       {family === 'detail' && detailTab === 'grain' && (
         <div className="advanced-row">

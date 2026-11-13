@@ -102,7 +102,7 @@ the proof inside its transaction. This is targeted replay with leases, not CRDT.
 
 ## 2. Authorized resource search and private memory
 
-- `GET /v1/resources`: `scope=all|personal|team`, `spaceId?`, `projectId?`, `query?` up to120 characters, `remembered=true|false?`, `source=upload|generated|sketch|unknown?`, `createdFrom?`, `createdTo?`, `limit=1..100` default50, `cursor?`.
+- `GET /v1/resources`: `scope=all|personal|team`, `spaceId?`, `projectId?`, `query?` up to120 characters, `remembered=true|false?`, `source=upload|generated|sketch|derived|unknown?`, `mime?`, `createdFrom?`, `createdTo?`, `limit=1..100` default50, `cursor?`. `groupBy=date|project|source|type` uses the same access checks and filters and returns `{groups:[{key,count}]}` across all matching rows. Date grouping accepts an IANA `timeZone` (UTC by default). Project grouping also returns authorized `{id,title}` labels in `projects`.
 - Response `{resources:[{asset,space:{id,name,kind},project:{id,title},memory}],nextCursor}`. Rows require current membership or an unexpired grant permitted by current sharing policy. Operator status adds no private rows. Cursor binds actor/filters; changed filters return400 `CURSOR_SCOPE_MISMATCH`.
 - `GET /v1/assets/:id/memory` -> `{memory:null|{remembered,title,tags,note,version,updatedAt}}`; current asset read access.
 - `PUT /v1/assets/:id/memory` `{expectedVersion,remembered,title:null|string,tags:string[],note:string}` -> `{memory}`. Version0 creates a record; later changes use CAS. Title≤200, ≤30 unique tags of≤40characters each, note≤2000. Unknown fields rejected.
@@ -509,6 +509,13 @@ DB派发标记、独立fsync日志和发送前的第二次权限/状态校验共
 
 Retained media appears as `retained-proxy` at this editor entry point. The high-bit
 master remains accessible through the media export endpoint in section 5.
+
+### Photo recycle bin
+
+- `DELETE /v1/artworks/:id?expectedVersion=N` moves the saved work and its version history into the recycle bin. The source asset stays available independently. Active editing leases conflict with this command.
+- `DELETE /v1/assets/:id` moves an unreferenced original into the recycle bin. A source referenced by an active or recoverable work, its version history, or an image layer returns `ASSET_IN_USE`. Both commands return `{ok,item}`.
+- `GET /v1/photo-trash?limit=50&cursor=...` returns `{items,nextCursor}` within current owner, admin or editor memberships. `POST /v1/photo-trash/:kind/:id/restore` accepts `{token}` from the item and restores it to the original project. The server rejects stale tokens and returns `PHOTO_TRASH_EXPIRED` after 48 hours.
+- The API sweeps expired entries at startup and every 30 seconds. Capacity remains reserved during the recovery window. After expiry, the API releases eligible capacity and retries private file cleanup independently of the expiry transaction. Copies retain shared bytes while any retained asset uses them. Immutable audit and revision records remain internal. The policy applies to deletions made through the recycle-bin commands.
 
 ## Asset processing and provider usage
 

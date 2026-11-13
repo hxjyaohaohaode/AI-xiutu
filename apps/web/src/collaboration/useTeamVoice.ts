@@ -36,6 +36,7 @@ class TeamVoiceTransport {
   private source?: MediaStreamAudioSourceNode;
   private silentOutput?: GainNode;
   private timer?: ReturnType<typeof setInterval>;
+  private joinDeadline?: ReturnType<typeof setTimeout>;
   private closed = false;
   private captureGeneration = 0;
   private readonly playback = new Map<
@@ -66,6 +67,7 @@ class TeamVoiceTransport {
     const socket = new WebSocket(url, [TEAM_VOICE_PROTOCOL, ticket]);
     socket.binaryType = 'arraybuffer';
     this.socket = socket;
+    this.joinDeadline = setTimeout(() => this.disconnect(), 10_000);
     socket.onmessage = (message) => {
       if (this.closed) return;
       if (message.data instanceof ArrayBuffer) {
@@ -74,6 +76,7 @@ class TeamVoiceTransport {
       }
       try {
         const event = JSON.parse(String(message.data)) as TeamVoiceEvent;
+        if (event.type === 'joined') clearTimeout(this.joinDeadline);
         if (event.type === 'ai-interrupted') this.clearSpeaker(0);
         if (event.type === 'roster') {
           const present = new Set(event.members.map((member) => member.speakerId));
@@ -233,6 +236,7 @@ class TeamVoiceTransport {
     if (this.closed) return;
     this.closed = true;
     clearInterval(this.timer);
+    clearTimeout(this.joinDeadline);
     this.stopCapture();
     this.stopPeerCaptions();
     this.socket?.close();
@@ -447,7 +451,9 @@ export function useTeamVoice(artworkId: string | undefined, actorId: string | un
       () => {
         if (transport.current === connection && currentActor.current === actorId) {
           stop();
-          setMessage('团队语音已断开，可以重新加入');
+          setMessage(ownSpeaker === undefined
+            ? '团队语音连接未完成，请重试。'
+            : '团队语音已断开，可以重新加入');
         }
       },
     );
@@ -462,7 +468,7 @@ export function useTeamVoice(artworkId: string | undefined, actorId: string | un
         return;
       const result = await api<{ ticket: string; path: string }>(
         '/artworks/' + artworkId + '/team-voice/join',
-        jsonRequest('POST', {}),
+        { ...jsonRequest('POST', {}), signal: AbortSignal.timeout(10_000) },
       );
       if (
         transport.current !== connection ||

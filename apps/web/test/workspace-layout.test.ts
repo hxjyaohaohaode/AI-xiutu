@@ -8,11 +8,13 @@ import {
   floatPanel,
   layoutStorageKey,
   movePanel,
+  PANEL_MARGIN,
   panelBottomOffset,
   panelBounds,
   panelNeedsPhotoSpace,
   panelOverlayReason,
   panelRectangle,
+  phoneInspectorLayout,
   parseWorkspaceLayout,
   resizePanel,
   restorePanelForEditing,
@@ -25,6 +27,28 @@ import {
 const savedPanel: PanelGeometry = { dock: 'right', x: 700, y: 500, width: 330, height: 600 };
 const desktop: Viewport = { width: 1440, height: 900, bucket: 'desktop' };
 const phone: Viewport = { width: 390, height: 844, bucket: 'phone' };
+
+test('the fixed phone inspector and canvas agree about the measured dock clearance', () => {
+  const narrow: Viewport = {
+    width: 320, height: 640, bucket: 'phone', workspaceWidth: 320,
+    workspaceHeight: 596, toolShelfHeight: 56,
+  };
+  assert.deepEqual(phoneInspectorLayout(narrow), {
+    rect: { x: 0, y: 394, width: 320, height: 146 },
+    insets: { left: 0, right: 0, bottom: 202 },
+  });
+  const landscape: Viewport = {
+    width: 844, height: 390, bucket: 'tablet', workspaceHeight: 334, toolShelfHeight: 44,
+  };
+  assert.deepEqual(phoneInspectorLayout(landscape), {
+    rect: { x: 0, y: 174, width: 844, height: 104 },
+    insets: { left: 0, right: 0, bottom: 160 },
+  });
+  const keyboard = phoneInspectorLayout({ ...narrow, workspaceHeight: 154 });
+  assert.equal(keyboard.rect.y, 0);
+  assert.equal(keyboard.rect.height, 98);
+  assert.equal(keyboard.insets.bottom, 154);
+});
 
 test('AI resize, numeric preferences and restored geometry preserve the usable composer minimum', () => {
   for (const view of [phone, desktop]) {
@@ -100,7 +124,7 @@ test('continuous panel sizes are bounded by available pixels, not a 330px produc
   assert.equal(boundPanel({ ...panel, width: 1002, height: 684 }, desktop).width, 1002);
   const maximum = boundPanel({ ...requested, width: 1e9, height: 1e9 }, desktop);
   assert.equal(maximum.width, 1424);
-  assert.equal(maximum.height, 740);
+  assert.equal(maximum.height, workspaceSize(desktop).height - 2 * PANEL_MARGIN);
 });
 
 test('phone floating width and positions remain adjustable while an attached sheet follows viewport width', () => {
@@ -153,7 +177,7 @@ test('a 339px saved phone sheet preserves the complete exclusion area at both 32
   assert.equal(panelNeedsPhotoSpace(narrowed, smaller), false);
   const safeInsets = workspaceCanvasInsets(narrowed, smaller);
   assert.deepEqual(safeInsets, { left: 0, right: 0, bottom: 395 });
-  assert.deepEqual(canvasImageArea(smaller, safeInsets), { width: 296, height: 191 });
+  assert.deepEqual(canvasImageArea(smaller, safeInsets), { width: 296, height: 170 });
   assert.ok(
     workspaceSize(smaller).height - safeInsets.bottom < panelRectangle(narrowed, smaller).y,
   );
@@ -164,7 +188,7 @@ test('a 339px saved phone sheet preserves the complete exclusion area at both 32
   assert.deepEqual(workspaceCanvasInsets(larger, phone), { left: 0, right: 0, bottom: 395 });
   assert.deepEqual(canvasImageArea(phone, workspaceCanvasInsets(larger, phone)), {
     width: 366,
-    height: 335,
+    height: 314,
   });
   assert.equal(requested.width, 368);
   assert.equal(requested.height, 339);
@@ -186,7 +210,7 @@ test('fresh phone defaults reserve photo pixels without beginning in overlay', (
     }
   }
   assert.equal(defaultPanel('inspector', { width: 320, height: 700, bucket: 'phone' }).height, 184);
-  assert.equal(defaultPanel('ai', { width: 320, height: 700, bucket: 'phone' }).height, 331);
+  assert.equal(defaultPanel('ai', { width: 320, height: 700, bucket: 'phone' }).height, 310);
   assert.equal(defaultPanel('inspector', phone).height, 184);
   assert.equal(defaultPanel('ai', phone).height, 390);
   const shortPhone: Viewport = {
@@ -246,11 +270,11 @@ test('phone Edit and manual resize retain enough panel height for a visible acti
 test('low-room guidance uses actual fit space without changing composition or limiting manual sizes', () => {
   const view: Viewport = { width: 320, height: 700, bucket: 'phone' };
   const panel = defaultPanel('inspector', view);
-  assert.equal(panelNeedsPhotoSpace({ ...panel, height: 370 }, view), false);
-  assert.equal(panelNeedsPhotoSpace({ ...panel, height: 371 }, view), true);
-  assert.equal(panelOverlayReason({ ...panel, height: 371 }, view), null);
-  const enlarged = resizePanel({ ...panel, height: 370 }, 'n', 0, -46, view);
-  assert.equal(enlarged.height, 416);
+  assert.equal(panelNeedsPhotoSpace({ ...panel, height: 349 }, view), false);
+  assert.equal(panelNeedsPhotoSpace({ ...panel, height: 350 }, view), true);
+  assert.equal(panelOverlayReason({ ...panel, height: 350 }, view), null);
+  const enlarged = resizePanel({ ...panel, height: 349 }, 'n', 0, -46, view);
+  assert.equal(enlarged.height, 395);
   assert.equal(panelNeedsPhotoSpace(enlarged, view), true);
   assert.equal(panelOverlayReason(enlarged, view), null);
   assert.equal(
@@ -267,7 +291,7 @@ test('side docks and short windows deduct their own viewport chrome and fit padd
   const short: Viewport = { width: 844, height: 390, bucket: 'tablet' };
   assert.deepEqual(canvasImageArea(short, { left: 0, right: 360, bottom: 58 }), {
     width: 448,
-    height: 194,
+    height: 109,
   });
   assert.equal(panelOverlayReason(defaultPanel('inspector', short), short), null);
   const keyboard: Viewport = { ...phone, workspaceHeight: 250 };
@@ -290,18 +314,18 @@ test('320px quick photo view preserves the requested 339px panel and keeps fitte
   assert.deepEqual(workspaceCanvasInsets(collapsed, view), { left: 0, right: 0, bottom: 100 });
   assert.deepEqual(canvasImageArea(view, workspaceCanvasInsets(collapsed, view)), {
     width: 296,
-    height: 486,
+    height: 465,
   });
   assert.deepEqual(panelRectangle(restored, view), panelRectangle(normal, view));
   assert.deepEqual(normal, before);
 
-  // Match the compact phone viewport's 2px top / 44px bottom chrome and centered
+  // Match the compact phone viewport's 23px top / 44px bottom chrome and centered
   // contain fit. A larger fit box is useful only if the actual photo does not
   // intersect the visible panel. This catches the previous automatic-overlay bug.
   for (const panel of [defaultPanel('inspector', view), normal, collapsed, restored]) {
     const inset = workspaceCanvasInsets(panel, view);
     const area = canvasImageArea(view, inset);
-    const viewportHeight = workspaceSize(view).height - inset.bottom - 2 - 44;
+    const viewportHeight = workspaceSize(view).height - inset.bottom - 23 - 44;
     const panelTop = panelRectangle(panel, view).y;
     assert.ok(area.height > 0);
     for (const aspect of [3 / 2, 2 / 3, 1, 16 / 9]) {

@@ -70,7 +70,7 @@ async function imageOutput(tx: Queryable, job: Record<string, any>, index: numbe
 }
 async function lockedArtwork(tx: Queryable, projectId: string, artworkId: string, version: number) {
   const artwork = (
-    await tx.query('SELECT * FROM artworks WHERE id=$1 AND project_id=$2 FOR UPDATE', [
+    await tx.query('SELECT * FROM artworks WHERE id=$1 AND project_id=$2 AND deleted_at IS NULL FOR UPDATE', [
       artworkId,
       projectId,
     ])
@@ -161,7 +161,7 @@ export function registerAiDecisions(app: FastifyInstance, db: Database): void {
             throw new HttpError(400, 'RESULT_INDEX_INVALID', '参数建议没有图像序号');
           const source = (
             await tx.query(
-              'SELECT s.asset_id FROM revisions r JOIN revision_sources s ON s.revision_id=r.id JOIN artworks a ON a.id=r.artwork_id WHERE r.artwork_id=$1 AND r.version=$2 AND a.project_id=$3',
+              'SELECT s.asset_id FROM revisions r JOIN revision_sources s ON s.revision_id=r.id JOIN artworks a ON a.id=r.artwork_id WHERE r.artwork_id=$1 AND r.version=$2 AND a.project_id=$3 AND a.deleted_at IS NULL FOR SHARE OF a',
               [output.artworkId, output.baseVersion, job.project_id],
             )
           ).rows[0];

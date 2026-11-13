@@ -25,6 +25,9 @@ export class EditorVoiceClient {
     private onEvent: (event: VoiceServerEvent) => void,
     private onFailure: (message: string) => void,
   ) {}
+  get microphoneStream() {
+    return this.stream;
+  }
   async prepareMicrophone() {
     if (
       !window.isSecureContext ||

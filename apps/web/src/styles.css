@@ -1919,44 +1919,6 @@
     display: block;
     margin-top: 6px;
   }
-  .compare-pair {
-    display: grid;
-    grid-template-columns: 1fr 1fr;
-    gap: 20px;
-  }
-  .compare-pair section {
-    min-width: 0;
-  }
-  .compare-pair section header {
-    display: flex;
-    justify-content: space-between;
-    align-items: center;
-    padding: 9px 0 14px;
-    font-size: 11px;
-    color: var(--muted);
-  }
-  .compare-pair header small {
-    font-size: 9px;
-    color: var(--muted);
-  }
-  .compare-pair section > div {
-    height: 420px;
-    background: var(--surface-secondary);
-    border: 1px solid var(--line);
-    display: flex;
-    justify-content: center;
-    align-items: center;
-    padding: 15px;
-    border-radius: 10px;
-    overflow: hidden;
-  }
-  .compare-pair canvas {
-    object-fit: contain;
-    max-width: 100%;
-    max-height: 100%;
-    width: auto;
-    height: auto;
-  }
   .saved-versions {
     margin-top: 35px;
   }
@@ -2263,62 +2225,6 @@
     border-top: 1px solid var(--line);
     font-size: 10px;
     color: var(--muted);
-  }
-  .delivery-grid {
-    display: grid;
-    grid-template-columns: 1fr 1fr;
-    gap: 23px;
-  }
-  .delivery-card {
-    padding: 31px;
-    display: flex;
-    flex-direction: column;
-    align-items: flex-start;
-  }
-  .delivery-icon {
-    width: 65px;
-    height: 65px;
-    border-radius: 18px;
-    background: var(--accent-soft);
-    color: var(--accent-ink);
-    display: grid;
-    place-items: center;
-    margin-bottom: 29px;
-  }
-  .delivery-icon.recipe {
-    background: var(--surface-secondary);
-    color: var(--muted);
-  }
-  .delivery-card h2 {
-    font-size: 22px;
-    margin: 8px 0 12px;
-    color: var(--ink);
-    letter-spacing: 0.02em;
-    font-weight: 500;
-  }
-  .delivery-card p {
-    font-size: 12px;
-    color: var(--muted);
-    line-height: 1.9;
-    max-width: 300px;
-    min-height: 67px;
-    margin-bottom: 24px;
-  }
-  .delivery-card .text-button {
-    margin-top: 12px;
-    color: var(--muted);
-  }
-  .delivery-note {
-    display: flex;
-    align-items: flex-start;
-    gap: 10px;
-    font-size: 11px;
-    line-height: 1.9;
-    color: var(--muted);
-    margin: 28px 3px;
-  }
-  .delivery-note > svg {
-    margin-top: 2px;
   }
   .modal {
     border: 1px solid var(--line);
@@ -3981,20 +3887,6 @@
       height: 65px;
       border-radius: 18px;
     }
-    .compare-pair {
-      gap: 10px;
-    }
-    .compare-pair section > div {
-      height: 260px;
-      padding: 7px;
-    }
-    .compare-pair section header {
-      font-size: 10px;
-      padding: 6px 0 10px;
-    }
-    .compare-pair header small {
-      font-size: 7px;
-    }
     .section-heading {
       gap: 8px;
       align-items: flex-start;
@@ -4119,31 +4011,6 @@
     }
     .document-editor .button {
       font-size: 11px;
-    }
-    .delivery-grid {
-      grid-template-columns: 1fr;
-      gap: 18px;
-    }
-    .delivery-card {
-      padding: 25px;
-    }
-    .delivery-icon {
-      width: 54px;
-      height: 54px;
-      border-radius: 14px;
-      margin-bottom: 20px;
-    }
-    .delivery-card h2 {
-      font-size: 21px;
-    }
-    .delivery-card p {
-      min-height: 0;
-      font-size: 12px;
-      max-width: none;
-      margin-bottom: 20px;
-    }
-    .delivery-note {
-      font-size: 10px;
     }
     .modal {
       padding: 23px 22px;
@@ -4483,9 +4350,6 @@
     }
     .artwork-cover {
       height: 140px;
-    }
-    .compare-pair section > div {
-      height: 225px;
     }
   }
 }

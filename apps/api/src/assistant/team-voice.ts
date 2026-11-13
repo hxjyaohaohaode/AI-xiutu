@@ -124,7 +124,7 @@ export function registerTeamVoice(
         "JOIN users u ON u.id=m.user_id AND u.status='active' " +
         'JOIN sessions se ON se.user_id=u.id AND se.token_hash=$3 AND se.expires_at>clock_timestamp() ' +
         'JOIN assets src ON src.id=a.asset_id AND src.deleted_at IS NULL ' +
-        "WHERE a.id=$1 AND p.deleted_at IS NULL AND s.kind='team'",
+        "WHERE a.id=$1 AND a.deleted_at IS NULL AND p.deleted_at IS NULL AND s.kind='team'",
       [artworkId, actorId, authHash],
     );
     if (!result.rows[0])

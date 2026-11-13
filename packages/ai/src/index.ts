@@ -287,7 +287,7 @@ function createEditPlanService(
           return { job: jobDto(old, old.state === 'queued') };
         }
         const artwork = await tx.query(
-          'SELECT head_version FROM artworks WHERE id=$1 AND project_id=$2',
+          'SELECT head_version FROM artworks WHERE id=$1 AND project_id=$2 AND deleted_at IS NULL FOR SHARE',
           [body.artworkId, args.projectId],
         );
         if (!artwork.rows[0]) throw new AiError('ARTWORK_NOT_FOUND', '请先保存作品', 404);

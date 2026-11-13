@@ -1,15 +1,16 @@
-import { useEffect, useId, useRef } from 'react';
+import { useEffect, useId, useRef, type Ref } from 'react';
 import type { RGBAImage } from '@ai-xiutu/editor';
 import { ArrowsHorizontal } from '@phosphor-icons/react';
 import { t } from '../i18n';
 import { ImagePreview } from './ImagePreview';
 
 /** Original SVG edge motion. Both image planes remain stationary and share the same fit rectangle. */
-export function CompareReveal({ before, after, value, onChange }: {
+export function CompareReveal({ before, value, onChange, onClose, inputRef }: {
   before: RGBAImage | null;
-  after: RGBAImage | null;
   value: number;
   onChange: (value: number) => void;
+  onClose: () => void;
+  inputRef?: Ref<HTMLInputElement>;
 }) {
   const identifier = 'image-compare-' + useId().replace(/[^a-zA-Z0-9_-]/g, '');
   const area = useRef<HTMLDivElement>(null);
@@ -94,7 +95,6 @@ export function CompareReveal({ before, after, value, onChange }: {
   useEffect(() => wake.current(), [value]);
   return (
     <div className="compare-reveal" data-testid="compare-reveal" ref={area}>
-      <div className="compare-reveal-layer"><ImagePreview image={after} label={t('当前编辑')} /></div>
       <div className="compare-reveal-layer" style={{ clipPath: 'url(#' + identifier + ')' }}>
         <ImagePreview image={before} label={t('原始图片')} />
       </div>
@@ -108,14 +108,22 @@ export function CompareReveal({ before, after, value, onChange }: {
       <span className="compare-reveal-label compare-reveal-before">{t('原图')}</span>
       <span className="compare-reveal-label compare-reveal-after">{t('当前')}</span>
       <span className="compare-reveal-boundary compare-reveal-handle" style={{ left: value + '%' }} aria-hidden="true"><ArrowsHorizontal size={20} /></span>
-      <input className="compare-reveal-input" type="range" min="0" max="100" step="1" value={value}
+      <input ref={inputRef} className="compare-reveal-input" type="range" min="0" max="100" step="1" value={value}
         aria-label={t('原图与当前图的分界')} aria-valuetext={t('原图 {percent}%', { percent: value })}
         onPointerDown={() => { motion.current.dragging = true; motion.current.lastValue = value; motion.current.lastTime = performance.now(); }}
         onPointerUp={() => { motion.current.dragging = false; motion.current.target = 0; wake.current(); }}
         onPointerCancel={() => { motion.current.dragging = false; reset.current(); }}
         onLostPointerCapture={() => { motion.current.dragging = false; motion.current.target = 0; wake.current(); }}
         onBlur={() => { motion.current.dragging = false; reset.current(); }}
-        onKeyDown={() => { motion.current.dragging = false; reset.current(); }}
+        onKeyDown={(event) => {
+          motion.current.dragging = false;
+          reset.current();
+          if (event.key === 'Escape') {
+            event.preventDefault();
+            event.stopPropagation();
+            onClose();
+          }
+        }}
         onChange={(event) => {
           const next = Number(event.currentTarget.value);
           const now = performance.now();

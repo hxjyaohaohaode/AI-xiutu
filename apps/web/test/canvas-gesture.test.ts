@@ -1,7 +1,26 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
-import { createRecipeV3 } from '@ai-xiutu/editor';
+import { compileSelectionMaskV3, createRecipeV3 } from '@ai-xiutu/editor';
+import { bodyStretchGuard, moveBodyStretchBoundary } from '../src/editor/BodyStretchGuides.tsx';
 import { CanvasPointerOwnership, ownedCanvasRollback } from '../src/editor/canvas-gesture.ts';
+
+test('a body stretch band protects pixels outside its displayed boundaries', () => {
+  const initial = { top: 0.38, bottom: 0.72 };
+  const range = moveBodyStretchBoundary(initial, 'top', 0.284);
+  assert.deepEqual(range, { top: 0.284, bottom: 0.72 });
+  assert.equal(moveBodyStretchBoundary(range, 'top', 0.9).top, range.bottom - 0.04);
+  assert.equal(moveBodyStretchBoundary(range, 'bottom', 0).bottom, range.top + 0.04);
+  assert.equal(moveBodyStretchBoundary(range, 'bottom', Number.NaN), range);
+  for (const dimensions of [{ width: 400, height: 600 }, { width: 600, height: 400 }]) {
+    const protection = compileSelectionMaskV3(bodyStretchGuard(range), dimensions);
+    assert.equal(protection(0.5, range.top - 0.01), 1);
+    assert.equal(protection(0.5, range.bottom + 0.01), 1);
+    assert.equal(protection(0.02, 0.5), 0);
+    assert.equal(protection(0.98, 0.5), 0);
+    assert.ok(protection(0.5, range.top + 0.01) > 0);
+    assert.ok(protection(0.5, range.top + 0.01) < 1);
+  }
+});
 
 test('second contact cancels a drawing transaction once and suppresses both pointers until released', () => {
   for (const releaseOrder of [

@@ -971,7 +971,7 @@ export function CollageStudio({
             </button>
           </div>
         ) : (
-          <div className="collage-controls" inert={!!busy}>
+          <div className="collage-controls" data-mode={scene.mode} inert={!!busy}>
             <div className="collage-actions collage-source-tools">
               {selected && (
                 <IconButton label={t('添加照片或实况')} onClick={() => input.current?.click()}>
@@ -980,6 +980,7 @@ export function CollageStudio({
               )}
               <ChoiceSelect
                 size="compact"
+                className="collage-source-picker"
                 ariaLabel={t('添加素材')}
                 placeholder={t('素材')}
                 value=""
@@ -1015,6 +1016,7 @@ export function CollageStudio({
             {selected && (
               <>
                 <RubberSegment<CollageMode>
+                  className="collage-mode-choices"
                   label={t('拼图方式')}
                   value={scene.mode}
                   onChange={(mode) => commit({ ...scene, mode })}
@@ -1035,11 +1037,12 @@ export function CollageStudio({
                         <button
                           type="button"
                           key={label}
+                          className="collage-ratio-option"
+                          aria-label={label}
                           aria-pressed={scene.ratio === ratio}
                           onClick={() => commit({ ...scene, ratio })}
                         >
-                          <CollageRatioGlyph ratio={ratio} />
-                          <span>{label}</span>
+                          <CollageRatioGlyph ratio={ratio} label={label} />
                         </button>
                       ))}
                       <button
@@ -1099,7 +1102,7 @@ export function CollageStudio({
                 )}
                 <MotionDetails className="collage-tile-settings">
                   <summary>
-                    <SlidersHorizontal size={16} /> {t('拼图素材')} <CaretDown size={12} />
+                    <SlidersHorizontal size={16} /> <span>{t('拼图素材')}</span> <CaretDown size={12} />
                   </summary>
                   <div className="collage-item-rail" role="group" aria-label={t('拼图素材')}>
                     {scene.items.map((item, index) => {
@@ -1358,18 +1361,27 @@ export function CollageStudio({
   );
 }
 
-function CollageRatioGlyph({ ratio }: { ratio: number }) {
-  const outlineWidth = Math.min(26, 20 * ratio);
-  const outlineHeight = outlineWidth / ratio;
+function CollageRatioGlyph({ ratio, label }: { ratio: number; label: string }) {
+  const height = Math.min(32, 42 / ratio);
+  const width = height * ratio;
   return (
-    <svg width="29" height="23" viewBox="0 0 29 23" aria-hidden="true">
+    <svg width="46" height="36" viewBox="0 0 46 36" aria-hidden="true">
       <rect
-        x={(29 - outlineWidth) / 2}
-        y={(23 - outlineHeight) / 2}
-        width={outlineWidth}
-        height={outlineHeight}
-        rx="2.5"
+        x={(46 - width) / 2}
+        y={(36 - height) / 2}
+        width={width}
+        height={height}
+        rx="3.5"
       />
+      <text
+        x="23"
+        y="18"
+        textAnchor="middle"
+        dominantBaseline="central"
+        style={{ fontSize: Math.min(9, (width - 3) / (label.length * 0.56)) }}
+      >
+        {label}
+      </text>
     </svg>
   );
 }

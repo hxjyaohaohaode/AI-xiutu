@@ -28,6 +28,9 @@ const planSchema = z.object({
   units: z.number().int().min(1).max(1000000),
   priceCents: z.number().int().min(0).max(10000000),
   expiresAfterDays: z.number().int().min(1).max(3650).nullable().optional(),
+  description: z.string().trim().max(400).optional(),
+  benefits: z.array(z.string().trim().min(1).max(100)).max(12).optional(),
+  kind: z.enum(['credits', 'subscription']).optional(),
   active: z.boolean(),
   reason,
 });
@@ -83,6 +86,9 @@ const planDto = (p: Record<string, any>) => ({
   units: p.units,
   priceCents: p.price_cents,
   expiresAfterDays: p.expires_after_days,
+  description: p.description,
+  benefits: p.benefits,
+  kind: p.kind,
   active: p.active,
   createdAt: p.created_at,
 });
@@ -350,6 +356,14 @@ export function registerOperations(
     });
     return publicSettings(db);
   });
+  app.get('/v1/plans', async (req) => {
+    requireUser(req);
+    const { rows } = await db.query(
+      `SELECT v.* FROM plans p JOIN plan_versions v ON v.plan_id=p.id AND v.version=p.current_version
+       WHERE v.active ORDER BY v.price_cents, p.created_at, p.id`,
+    );
+    return { plans: rows.map(planDto), checkoutAvailable: false };
+  });
   app.get('/v1/ops/plans', async (req) => {
     requireOperator(req);
     return {
@@ -367,8 +381,10 @@ export function registerOperations(
       const row = (await tx.query('INSERT INTO plans DEFAULT VALUES RETURNING id')).rows[0]!;
       const version = (
         await tx.query(
-          'INSERT INTO plan_versions(plan_id,version,name,units,price_cents,expires_after_days,active,created_by) VALUES($1,1,$2,$3,$4,$5,$6,$7) RETURNING *',
-          [row.id, p.name, p.units, p.priceCents, p.expiresAfterDays ?? null, p.active, actor.id],
+          `INSERT INTO plan_versions(plan_id,version,name,units,price_cents,expires_after_days,active,created_by,description,benefits,kind)
+           VALUES($1,1,$2,$3,$4,$5,$6,$7,$8,$9,$10) RETURNING *`,
+          [row.id, p.name, p.units, p.priceCents, p.expiresAfterDays ?? null, p.active, actor.id,
+            p.description ?? '', p.benefits ?? [], p.kind ?? 'credits'],
         )
       ).rows[0]!;
       await audit(tx, actor.id, 'operator.plan_create', 'plan', row.id, {
@@ -382,15 +398,22 @@ export function registerOperations(
   app.patch('/v1/ops/plans/:id', async (req) => {
     const actor = requireOperator(req);
     const params = z.object({ id }).parse(req.params);
-    const p = planSchema.strict().parse(req.body);
+    const p = planSchema.extend({ expectedVersion: z.number().int().positive().optional() }).strict().parse(req.body);
     const plan = await transaction(db, async (tx) => {
       const current = (await tx.query('SELECT * FROM plans WHERE id=$1 FOR UPDATE', [params.id]))
         .rows[0];
       if (!current) throw new HttpError(404, 'PLAN_NOT_FOUND', '套餐不存在');
+      if (p.expectedVersion !== undefined && current.current_version !== p.expectedVersion)
+        throw new HttpError(409, 'PLAN_VERSION_CHANGED', '套餐已经更新，请重新读取');
+      const previous = (await tx.query(
+        'SELECT description,benefits,kind FROM plan_versions WHERE plan_id=$1 AND version=$2',
+        [params.id, current.current_version],
+      )).rows[0]!;
       const next = current.current_version + 1;
       const row = (
         await tx.query(
-          'INSERT INTO plan_versions(plan_id,version,name,units,price_cents,expires_after_days,active,created_by) VALUES($1,$2,$3,$4,$5,$6,$7,$8) RETURNING *',
+          `INSERT INTO plan_versions(plan_id,version,name,units,price_cents,expires_after_days,active,created_by,description,benefits,kind)
+           VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11) RETURNING *`,
           [
             params.id,
             next,
@@ -400,6 +423,9 @@ export function registerOperations(
             p.expiresAfterDays ?? null,
             p.active,
             actor.id,
+            p.description ?? previous.description,
+            p.benefits ?? previous.benefits,
+            p.kind ?? previous.kind,
           ],
         )
       ).rows[0]!;

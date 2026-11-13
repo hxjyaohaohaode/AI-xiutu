@@ -145,14 +145,14 @@
 .studio-workspace .library-context-tabs > .library-original-action:hover {
   background: var(--surface-hover);
 }
-:is(.library-context-tabs, .crop-mode-tabs, .collaboration-panel-tabs, .compare-view)
+:is(.library-context-tabs, .crop-mode-tabs, .collaboration-panel-tabs)
   .rubber-segment {
   border-radius: var(--ui-pill);
   background: var(--surface-secondary);
 }
-:is(.library-context-tabs, .crop-mode-tabs, .collaboration-panel-tabs, .compare-view)
+:is(.library-context-tabs, .crop-mode-tabs, .collaboration-panel-tabs)
   .rubber-segment-indicator,
-:is(.library-context-tabs, .crop-mode-tabs, .collaboration-panel-tabs, .compare-view)
+:is(.library-context-tabs, .crop-mode-tabs, .collaboration-panel-tabs)
   .rubber-segment > button {
   border-radius: var(--ui-pill);
 }
@@ -161,14 +161,6 @@
 }
 .studio-workspace .crop-mode-tabs .rubber-segment > button {
   padding-inline: 5px;
-}
-.studio-workspace .compare-mode-choice.rubber-segment {
-  gap: 2px;
-  padding: 3px;
-}
-.studio-workspace .compare-mode-choice.rubber-segment > button {
-  flex: 1 1 auto;
-  white-space: nowrap;
 }
 .collaboration-panel-tabs .rubber-segment {
   width: 100%;
@@ -199,7 +191,7 @@
   border-radius: 8px;
   box-shadow: none;
 }
-.studio-workspace :is(.compare-reveal, .compare-pair > section, .delivery-current-preview) {
+.studio-workspace .compare-reveal {
   border-radius: var(--ui-media-radius);
 }
 .studio-workspace .compare-reveal-label {
@@ -222,15 +214,6 @@
 }
 .studio-workspace .document-editor textarea {
   line-height: 1.72;
-}
-.studio-workspace .delivery-action-rail {
-  padding: clamp(12px, 2vw, 22px);
-  border: 1px solid var(--ui-divider);
-  border-radius: var(--ui-card-radius);
-  background: var(--surface);
-}
-.studio-workspace .delivery-primary-action > .button {
-  border-radius: var(--ui-pill);
 }
 .studio-workspace .collaboration-grid > .surface {
   border-radius: var(--ui-card-radius);
@@ -332,9 +315,6 @@
   .studio-workspace .crop-mode-tabs .rubber-segment > button > svg {
     width: 14px;
     height: 14px;
-  }
-  .studio-workspace .delivery-action-rail {
-    padding: 10px 0;
   }
   .account-center .account-tab-indicator {
     clip-path: inset(5px 0 round 999px);

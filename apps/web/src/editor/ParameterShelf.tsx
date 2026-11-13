@@ -4,6 +4,7 @@ import { PrecisionRange } from './PrecisionRange';
 import { ParameterGlyph } from './ParameterGlyph';
 import { useKinetic } from '../motion/useKinetic';
 import { WarmTooltip } from '../components/control-motion';
+import { ChoiceSelect } from '../components/ChoiceSelect';
 
 /** Reveal only the active control inside its existing scroll surface, never the page. */
 export function parameterControlScrollTop({
@@ -54,17 +55,23 @@ export function ParameterShelf({
   onCommit,
   onCancel,
   headingAccessory,
+  trailingAction,
   target,
+  controlMenu = false,
+  initialControl,
 }: {
   controls: ShelfControl[];
   label: string;
   onCommit?: (label: string) => void;
   onCancel?: () => void;
   headingAccessory?: ReactNode;
+  trailingAction?: ReactNode;
   target?: string;
+  controlMenu?: boolean;
+  initialControl?: string;
 }) {
   const [selectedId, setSelectedId] = useState(
-    controls.find((control) => !control.disabled)?.id ?? controls[0]?.id ?? '',
+    initialControl ?? controls.find((control) => !control.disabled)?.id ?? controls[0]?.id ?? '',
   );
   const shelf = useRef<HTMLElement>(null);
   const current = useRef<HTMLDivElement>(null);
@@ -232,7 +239,26 @@ export function ParameterShelf({
           description={active.description ? t(active.description) : undefined}
           glyph={<ParameterGlyph id={active.glyph ?? active.id} />}
           primary
-          headingAccessory={headingAccessory}
+          headingAccessory={
+            controlMenu && controls.length > 1 ? (
+              <>
+                {headingAccessory}
+                <ChoiceSelect
+                  size="compact"
+                  className="mobile-adjustment-choice"
+                  ariaLabel={t(label)}
+                  displayLabel={t('更多')}
+                  value={active.id}
+                  onValueChange={selectControl}
+                  options={controls.map(({ id, label, disabled }) => ({
+                    value: id,
+                    label: t(label),
+                    disabled,
+                  }))}
+                />
+              </>
+            ) : headingAccessory
+          }
           gradient={active.gradient}
           onChange={active.onChange}
           onCommit={() => onCommit?.(active.label)}
@@ -240,7 +266,7 @@ export function ParameterShelf({
           onReset={active.onReset}
         />
       </div>
-      {controls.length > 1 && (
+      {!controlMenu && (controls.length > 1 || trailingAction) && (
         <div
           ref={choices}
           className="parameter-shelf-options"
@@ -255,7 +281,7 @@ export function ParameterShelf({
             )
               return;
             const buttons = [
-              ...event.currentTarget.querySelectorAll<HTMLButtonElement>('button:not(:disabled)'),
+              ...event.currentTarget.querySelectorAll<HTMLButtonElement>('button[data-control-id]:not(:disabled)'),
             ];
             const index = buttons.indexOf(event.target as HTMLButtonElement);
             if (index < 0) return;
@@ -327,6 +353,7 @@ export function ParameterShelf({
               </button>
             </WarmTooltip>
           ))}
+          {trailingAction && <div className="parameter-shelf-action">{trailingAction}</div>}
         </div>
       )}
     </section>

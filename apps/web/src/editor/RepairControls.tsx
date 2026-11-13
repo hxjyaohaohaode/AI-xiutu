@@ -12,6 +12,7 @@ import { ParameterShelf, type ShelfControl } from './ParameterShelf';
 import { MaskControls } from './MaskControls';
 import { currentV3, newMask, type InspectorController } from './advanced-model';
 import { appendRepairRegion } from './repair-draft';
+import { PaintBrush, Plus } from '@phosphor-icons/react';
 
 export function RepairControls({ controller }: { controller: InspectorController }) {
   const { editor, apply, report } = controller,
@@ -58,13 +59,7 @@ export function RepairControls({ controller }: { controller: InspectorController
         editor.setActiveMaskPath([]);
         editor.setRepairProtection(false);
         editor.setRepairChoosingSource(false);
-        editor.setBrushSettings((s) => ({
-          ...s,
-          radius: Math.min(0.012, 12 / short),
-          feather: 0.25,
-          opacity: 1,
-          mode: 'add',
-        }));
+        editor.setBrushSettings((s) => ({ ...s, mode: 'add' }));
       }
     } catch (e) {
       report(e instanceof Error ? e.message : '无法新建修复区域。');
@@ -221,7 +216,8 @@ export function RepairControls({ controller }: { controller: InspectorController
           </button>
         ))}
       </nav>
-      <div className="advanced-row">
+      <div className="advanced-row repair-area-row">
+        {recipe[mode].length > 0 ? (
         <ChoiceSelect
           ariaLabel={t('修复区域')}
           size="compact"
@@ -235,11 +231,19 @@ export function RepairControls({ controller }: { controller: InspectorController
             ...(!item ? [{ value: '', label: t('在照片上涂抹') }] : []),
             ...recipe[mode].map((op) => ({ value: op.id, label: op.name })),
           ]}
-        />
+        />) : <span><PaintBrush size={16} aria-hidden />{t('在照片上涂抹')}</span>}
         <button className="text-button" onClick={add}>
-          {t('新区域')}
+          <Plus size={15} aria-hidden />{t('新区域')}
         </button>
       </div>
+      <ParameterShelf label={t('修复画笔')} controls={[
+        { id: 'diameter', label: t('画笔直径'), glyph: 'diameter', value: editor.brushSettings.radius * short * 2,
+          min: 1, max: Math.max(1, short * 0.4), step: 0.1, unit: 'px',
+          onChange: (value) => editor.setBrushSettings((current) => ({ ...current, radius: value / short / 2 })) },
+        { id: 'feather', label: t('柔边'), glyph: 'feather', value: editor.brushSettings.feather * 100,
+          min: 0, max: 100, step: 0.1, unit: '%',
+          onChange: (value) => editor.setBrushSettings((current) => ({ ...current, feather: value / 100 })) },
+      ]} />
       {item && (
         <>
           <ParameterShelf

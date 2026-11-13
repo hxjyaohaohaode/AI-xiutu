@@ -1,8 +1,10 @@
 import { useId, useLayoutEffect, useRef, useState, type ReactNode } from 'react';
+import { createPortal } from 'react-dom';
 import type { PaintMaterialV3 } from '@ai-xiutu/editor';
 import { t, useLocale } from '../i18n';
 import { ChoiceSelect } from '../components/ChoiceSelect';
-import { ControlGlyph } from '../components/ControlGlyph';
+import { Check, ControlGlyph, Eyedropper } from '../components/ControlGlyph';
+import { IconButton } from '../components/Ui';
 import { RubberSegment, SquishSwitch, WarmTooltip } from '../components/control-motion';
 import { makeupPalettes, type MakeupBrushId } from './makeup-palettes';
 import { ParameterGlyph } from './ParameterGlyph';
@@ -170,63 +172,105 @@ export function MakeupSwatches({
   color,
   onColor,
   children,
+  canvasOverlay,
+  onSample,
+  sampling,
 }: {
   brush: MakeupBrushId;
   color: string;
   onColor: (value: string) => void;
   children: ReactNode;
+  canvasOverlay?: HTMLElement | null;
+  onSample?: () => void;
+  sampling?: boolean;
 }) {
-  const [familyName, setFamilyName] = useState<string | null>(null);
+  const [family, setFamily] = useState<{ brush: MakeupBrushId; name: string } | null>(null);
   const [customOpen, setCustomOpen] = useState(false);
   const customId = useId();
   const families = makeupPalettes[brush];
   const selected = color.toLowerCase().slice(0, 7);
   const current =
-    families.find(({ name }) => name === familyName) ??
+    families.find(({ name }) => family?.brush === brush && name === family.name) ??
     families.find(({ shades }) => shades.includes(selected)) ??
     families[0]!;
+  const swatches = (
+    <div className="makeup-swatches" role="group" aria-label={t('画笔颜色')}>
+      {current.shades.map((shade) => (
+        <button
+          type="button"
+          key={shade}
+          aria-label={shade.toUpperCase()}
+          title={shade.toUpperCase()}
+          aria-pressed={selected === shade}
+          onClick={() => onColor(shade)}
+        >
+          <span aria-hidden="true" style={{ background: shade }}>
+            {canvasOverlay && selected === shade && <Check size={14} />}
+          </span>
+        </button>
+      ))}
+    </div>
+  );
+  const familyPicker = (
+    <ChoiceSelect
+      size="compact"
+      className="makeup-color-family"
+      ariaLabel={t('色系')}
+      value={current.name}
+      onValueChange={(name) => setFamily({ brush, name })}
+      options={families.map(({ name }) => ({ value: name, label: t(name) }))}
+    />
+  );
+  const customButton = (
+    <WarmTooltip content={t('自定义颜色')}>
+      <button
+        type="button"
+        className="makeup-custom-color"
+        aria-label={t('自定义颜色')}
+        aria-expanded={customOpen}
+        aria-controls={customId}
+        onClick={() => setCustomOpen((open) => !open)}
+      >
+        <span aria-hidden="true" style={{ backgroundColor: color }} />
+        <ControlGlyph name="plus" size={13} />
+      </button>
+    </WarmTooltip>
+  );
+  const customEditor = (
+    <div className="makeup-custom-editor" id={customId} hidden={!customOpen}>
+      {customOpen && (
+        <>
+          {canvasOverlay && familyPicker}
+          {children}
+        </>
+      )}
+    </div>
+  );
+  if (canvasOverlay) {
+    return createPortal(
+      <div className="makeup-canvas-palette">
+        {swatches}
+        <div className="makeup-canvas-palette-actions">
+          {onSample && (
+            <IconButton label={t('画面取色')} aria-pressed={sampling} onClick={onSample}>
+              <Eyedropper size={17} />
+            </IconButton>
+          )}
+          {customButton}
+        </div>
+        {customEditor}
+      </div>,
+      canvasOverlay,
+    );
+  }
   return (
     <>
       <div className="makeup-palette">
-        <ChoiceSelect
-          size="compact"
-          className="makeup-color-family"
-          ariaLabel={t('色系')}
-          value={current.name}
-          onValueChange={setFamilyName}
-          options={families.map(({ name }) => ({ value: name, label: t(name) }))}
-        />
-        <div className="makeup-swatches" role="group" aria-label={t('画笔颜色')}>
-          {current.shades.map((shade) => (
-            <button
-              type="button"
-              key={shade}
-              aria-label={shade.toUpperCase()}
-              title={shade.toUpperCase()}
-              aria-pressed={selected === shade}
-              onClick={() => onColor(shade)}
-            >
-              <span style={{ background: shade }} />
-            </button>
-          ))}
-        </div>
-        <WarmTooltip content={t('自定义颜色')}>
-          <button
-            type="button"
-            className="makeup-custom-color"
-            aria-label={t('自定义颜色')}
-            aria-expanded={customOpen}
-            aria-controls={customId}
-            onClick={() => setCustomOpen((open) => !open)}
-          >
-            <span aria-hidden="true" style={{ backgroundColor: color }} />
-            <ControlGlyph name="plus" size={13} />
-          </button>
-        </WarmTooltip>
+        {familyPicker}
+        {swatches}
+        {customButton}
       </div>
-      <div className="makeup-custom-editor" id={customId} hidden={!customOpen}>
-        {customOpen && children}
-      </div>
+      {customEditor}
     </>
   );
 }

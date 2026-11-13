@@ -413,19 +413,33 @@ export async function reviewCollage({ page, until, capture, portrait, coast }) {
 
 export async function reviewMakeup({ page, canvasPixels, tool, parameter, until, capture }) {
   const baseline = await canvasPixels(page);
-  await tool(page, 'paint');
+  await tool(page, 'beauty');
+  await page.getByRole('button', { name: '美妆', exact: true }).click();
+  const mode = page.getByRole('switch', { name: '自动人像调节', exact: true });
+  await mode.click();
+  assert.equal(await mode.getAttribute('aria-checked'), 'false');
   const brush = page.getByRole('group', { name: '妆容笔', exact: true });
   await brush.getByRole('button', { name: '眼影', exact: true }).click();
-  await parameter(page, 'makeup-saturation', 155);
-  await parameter(page, 'makeup-diameter', 17.5);
-  await page.getByRole('button', { name: '颜色', exact: true }).click();
+  const brushSettings = page.locator('.makeup-brush-settings');
+  const brushParameter = brushSettings.getByRole('combobox', { name: '妆容笔', exact: true });
+  async function setBrushParameter(label, value) {
+    await brushParameter.click();
+    await page.getByRole('option', { name: label, exact: true }).click();
+    await brushSettings.locator('.precision-value').click();
+    const number = brushSettings.getByRole('spinbutton');
+    await number.fill(String(value));
+    await number.press('Enter');
+    assert.equal(Number(await brushSettings.getByRole('slider').inputValue()), value);
+  }
+  await setBrushParameter('饱和度', 155);
+  await setBrushParameter('直径', 17.5);
+  await page.locator('.makeup-canvas-palette').waitFor();
   const disclosure = page.getByRole('button', { name: '自定义颜色', exact: true });
   await disclosure.click();
   const custom = page.getByRole('textbox', { name: 'HEX颜色', exact: true }).last();
   await custom.fill('#ac4569');
   await custom.press('Enter');
   await disclosure.click();
-  await page.getByRole('button', { name: '笔触', exact: true }).click();
 
   const canvas = page.locator('.image-frame canvas[aria-label]:visible');
   const image = await canvas.boundingBox();
@@ -447,7 +461,7 @@ export async function reviewMakeup({ page, canvasPixels, tool, parameter, until,
   });
   await capture(page, 'interactions/mobile-makeup-brush.png');
 
-  await page.locator('button[data-segment-value="layers"]:visible').click();
+  await page.locator('[data-canvas-makeup] > details > summary').click();
   await page.locator('.advanced-tool-family summary').filter({ hasText: '编辑妆容笔画' }).click();
   await page.getByRole('combobox', { name: '笔画', exact: true }).click();
   await page.getByRole('option', { name: '第 1 笔', exact: true }).click();
@@ -462,7 +476,6 @@ export async function reviewMakeup({ page, canvasPixels, tool, parameter, until,
     async () => (await canvasPixels(page)).pixelSha256 === painted.pixelSha256,
     'undo restores the edited makeup stroke',
   );
-  const mode = page.getByRole('switch', { name: '自动妆容', exact: true });
   await mode.click();
   assert.equal(await mode.getAttribute('aria-checked'), 'true');
   const automatic = page.locator('.automatic-makeup:visible');

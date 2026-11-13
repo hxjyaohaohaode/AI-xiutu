@@ -3,7 +3,7 @@ import type { BlendModeV3, V3ToolDefinition } from './v3-types.js';
 export const MAX_V3_PIXELS = 16_777_216;
 export const MAX_V3_REGION_EDITS = 12;
 export const MAX_V3_REGION_GROUPS = 6;
-export const MAX_V3_PAINT_LAYERS = 24;
+export const MAX_V3_PAINT_LAYERS = 256;
 export const MAX_V3_IMAGE_LAYERS = 8;
 export const MAX_V3_PAINT_STROKES = 128;
 export const MAX_V3_PAINT_POINTS = 8192;

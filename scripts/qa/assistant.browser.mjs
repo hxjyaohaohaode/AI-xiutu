@@ -130,14 +130,11 @@ async function selectProject(target) {
 async function openProject(target, selectModel = true) {
   await selectProject(target);
   await target
-    .locator('.library-version-links')
+    .locator('.library-reference-masonry')
     .getByRole('button', { name: /Collaborative portrait/ })
     .click();
   await target.locator('.collaboration-status[data-state="ready"]').waitFor();
-  await target
-    .locator('.floating-tool-dock')
-    .getByRole('button', { name: 'AI 助手', exact: true })
-    .click();
+  await target.locator('[data-dock-tool="ai"]:visible').click();
   await target.getByLabel('向智能体描述修改需求').waitFor();
   if (selectModel) {
     const settings = await openSettings(target);
@@ -171,7 +168,9 @@ async function choose(scope, label, option) {
   const control = scope.getByRole('combobox', { name: label, exact: true });
   if ((await control.getAttribute('aria-expanded')) !== 'true') await control.click();
   const options = scope.getByRole('listbox', { name: label, exact: true });
-  await options.getByText(option, { exact: true }).click();
+  const match = options.getByRole('option').filter({ has: scope.page().getByText(option, { exact: true }) });
+  const current = match.and(options.locator('[aria-selected="true"]'));
+  await (await current.count() ? current.first() : match.first()).click();
   await options.waitFor({ state: 'hidden' });
 }
 async function newConversation() {
@@ -195,11 +194,12 @@ async function closeAIPanel(target = page) {
 }
 async function changeView(id, label) {
   const compact = page.getByRole('button', { name: '切换工作视图', exact: true });
-  if (await compact.isVisible()) {
-    await compact.click();
-    const dialog = page.getByRole('dialog', { name: '工作视图', exact: true });
-    await dialog.locator(`button[data-view="${id}"]`).click();
-    await dialog.waitFor({ state: 'hidden' });
+  const project = page.getByRole('button', { name: '项目与用量', exact: true });
+  if (await compact.isVisible() || !['editor', 'works'].includes(id)) {
+    await (await compact.isVisible() ? compact : project).click();
+    const navigation = page.getByRole('navigation', { name: '切换工作视图', exact: true });
+    await navigation.locator(`button[data-view="${id}"]`).click();
+    await navigation.waitFor({ state: 'hidden' });
   } else {
     await page
       .getByRole('navigation', { name: '工作视图', exact: true })
@@ -1387,8 +1387,12 @@ try {
           !url.searchParams.has('cursor')
         );
       });
+      const billingCompact = billing.getByRole('button', { name: '切换工作视图', exact: true });
+      await (await billingCompact.isVisible()
+        ? billingCompact
+        : billing.getByRole('button', { name: '项目与用量', exact: true })).click();
       await billing
-        .getByRole('navigation', { name: '工作视图', exact: true })
+        .getByRole('navigation', { name: '切换工作视图', exact: true })
         .getByRole('button', { name: '用量', exact: true })
         .click();
       const usage = await usageResponse;
@@ -1632,9 +1636,9 @@ try {
         'the next same-scope turn has actual incremental text',
       );
       const progress = await page
-        .locator('.live-assistant :is(.ai-execution-line,.ai-execution-trace > summary)')
-        .innerText();
-      assert.ok(!progress.includes('已停止') && !progress.includes('停止请求'));
+        .locator('.live-assistant .ai-turn-activity .thought-line__head')
+        .getAttribute('aria-label');
+      assert.ok(progress && !progress.includes('已停止') && !progress.includes('停止请求'));
       assert.equal(await stop.isEnabled(), true);
       const nextBeforeReply = await fixture.call('GET', `/v1/assistant-turns/${nextTurn.id}`);
       assert.equal(nextBeforeReply.statusCode, 200);
@@ -1655,8 +1659,8 @@ try {
       );
       assert.equal(
         await page
-          .locator('.live-assistant :is(.ai-execution-line,.ai-execution-trace > summary)')
-          .innerText(),
+          .locator('.live-assistant .ai-turn-activity .thought-line__head')
+          .getAttribute('aria-label'),
         progress,
         'the old successful stop receipt cannot overwrite the next turn progress',
       );
@@ -1760,7 +1764,7 @@ try {
           composer: box('.assistant-composer'),
           input: box('.assistant-composer textarea'),
           send: box('.assistant-composer .ai-send-button'),
-          toolbar: box('.assistant-composer .ai-composer-toolbar'),
+          toolbar: box('.assistant-composer .prompt-bar__bar'),
           close: box('.ai-workbench-header [data-ai-return]'),
           panel: box('.ai-workbench'),
           conversation: box('.live-assistant:not([hidden]) > .ai-conversation-body'),
@@ -2093,8 +2097,8 @@ try {
     await page.locator('.image-frame canvas[aria-label]:visible').waitFor();
     await page.screenshot({ path: resolve(artifacts, 'phone-generated-source.png') });
 
-    await changeView('compare', '对比');
-    await page.locator('.saved-versions > summary').click();
+    await page.locator('[data-action="open-history"]').click();
+    await page.getByRole('button', { name: '云端版本', exact: true }).click();
     const previous = page.locator('.revision-entry').filter({
       has: page.locator('.revision-open > span').getByText('V' + baseline.artwork.headVersion, { exact: true }),
     });

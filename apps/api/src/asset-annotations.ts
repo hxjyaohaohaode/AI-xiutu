@@ -53,6 +53,12 @@ const filters = z
       .regex(/^[^\u0000-\u001f\u007f]*$/)
       .optional(),
     source: z.enum(assetSources).optional(),
+    mime: z.string().max(80).regex(/^image\/[a-z0-9.+-]+$/).optional(),
+    groupBy: z.enum(['date', 'project', 'source', 'type']).optional(),
+    timeZone: z.string().max(80).refine((zone) => {
+      try { new Intl.DateTimeFormat('en', { timeZone: zone }); return true; }
+      catch { return false; }
+    }, '无效的时区').default('UTC'),
     createdFrom: timestamp.optional(),
     createdTo: timestamp.optional(),
     limit: z.coerce.number().int().min(1).max(100).default(50),
@@ -123,6 +129,7 @@ export function registerAssetAnnotations(app: FastifyInstance, db: Database): vo
           spaceId: query.spaceId ?? null,
           query: query.query ?? '',
           source: query.source ?? null,
+          ...(query.mime ? { mime: query.mime } : {}),
           createdFrom: query.createdFrom ?? null,
           createdTo: query.createdTo ?? null,
         }),
@@ -139,11 +146,7 @@ export function registerAssetAnnotations(app: FastifyInstance, db: Database): vo
         if (cursor.scope !== scope)
           throw new HttpError(400, 'CURSOR_SCOPE_MISMATCH', '筛选条件已改变，请从第一页查询');
       }
-      // ACL is checked again in this query, including revoked/expired grants and deleted projects.
-      const rows = (
-        await db.query(
-          `SELECT a.*,to_char(a.created_at AT TIME ZONE 'UTC','YYYY-MM-DD"T"HH24:MI:SS.US"Z"') AS cursor_at
-         FROM assets a JOIN projects p ON p.id=a.project_id JOIN spaces s ON s.id=p.space_id
+      const assetScope = `FROM assets a JOIN projects p ON p.id=a.project_id JOIN spaces s ON s.id=p.space_id
          LEFT JOIN memberships m ON m.space_id=s.id AND m.user_id=$1
          WHERE a.deleted_at IS NULL AND p.deleted_at IS NULL
          AND ($2::uuid IS NULL OR p.id=$2) AND ($3::uuid IS NULL OR p.space_id=$3)
@@ -152,9 +155,8 @@ export function registerAssetAnnotations(app: FastifyInstance, db: Database): vo
           OR EXISTS(SELECT 1 FROM asset_recognitions r WHERE r.asset_id=a.id AND r.source_hash=a.content_hash AND strpos(lower(r.text_content),lower($4))>0))
          AND ($5::text IS NULL OR (${assetSourceSql})=$5)
          AND ($6::timestamptz IS NULL OR a.created_at >= $6) AND ($7::timestamptz IS NULL OR a.created_at < $7)
-         AND ($8::timestamptz IS NULL OR (a.created_at,a.id)<($8::timestamptz,$9::uuid))
-         ORDER BY a.created_at DESC,a.id DESC LIMIT $10`,
-          [
+         AND ($8::text IS NULL OR a.mime=$8)`;
+      const values = [
             actor.id,
             projectId,
             query.spaceId ?? null,
@@ -162,6 +164,30 @@ export function registerAssetAnnotations(app: FastifyInstance, db: Database): vo
             query.source ?? null,
             query.createdFrom ?? null,
             query.createdTo ?? null,
+            query.mime ?? null,
+      ];
+      if (query.groupBy) {
+        const groupKey = {
+          date: "to_char(a.created_at AT TIME ZONE $9::text,'YYYY-MM-DD')",
+          project: 'a.project_id::text',
+          source: assetSourceSql,
+          type: 'a.mime',
+        }[query.groupBy];
+        const { rows } = await db.query(
+          `SELECT ${groupKey} AS key, count(*)::int AS count ${assetScope}
+           GROUP BY 1 ORDER BY 1 DESC`,
+          query.groupBy === 'date' ? [...values, query.timeZone] : values,
+        );
+        return { groups: rows };
+      }
+      // Use the same ACL and filters for folders and their paginated contents.
+      const rows = (
+        await db.query(
+          `SELECT a.*,to_char(a.created_at AT TIME ZONE 'UTC','YYYY-MM-DD"T"HH24:MI:SS.US"Z"') AS cursor_at
+           ${assetScope} AND ($9::timestamptz IS NULL OR (a.created_at,a.id)<($9::timestamptz,$10::uuid))
+           ORDER BY a.created_at DESC,a.id DESC LIMIT $11`,
+          [
+            ...values,
             cursor?.at ?? null,
             cursor?.id ?? null,
             query.limit + 1,

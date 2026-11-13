@@ -1,0 +1,44 @@
+/* React Bits by David Haz. License in ./LICENSE.md. */
+.lanyard {
+  position: relative;
+  width: 100%;
+  height: 100%;
+  overflow: hidden;
+}
+
+.lanyard-canvas {
+  display: block;
+  width: 100%;
+  height: 100%;
+}
+
+.lanyard:has(.lanyard-hit-area) .lanyard-canvas {
+  pointer-events: none;
+}
+.lanyard-canvas:not([data-ready]) {
+  visibility: hidden;
+}
+
+.lanyard-hit-area {
+  position: absolute;
+  z-index: 1;
+  inset: 0 auto auto 0;
+  width: 0;
+  height: 0;
+  visibility: hidden;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  touch-action: none;
+  pointer-events: auto;
+  cursor: grab;
+}
+
+.lanyard:has(.lanyard-canvas[data-ready]) .lanyard-hit-area {
+  visibility: visible;
+}
+
+.lanyard-hit-area:focus-visible {
+  box-shadow: inset 0 0 0 2px #eabe48;
+}
+

@@ -67,18 +67,17 @@ async function check(name, run) {
   }
 }
 async function openAssistant(page) {
-  await page
-    .locator('.floating-tool-dock')
-    .getByRole('button', { name: 'AI 助手', exact: true })
-    .click();
+  await page.locator('[data-dock-tool="ai"]:visible').click();
   await page.getByLabel('向智能体描述修改需求').waitFor();
   return page.locator('.live-assistant');
 }
 async function openAssistantSettings(page) {
-  await page
-    .locator('.voice-call-workspace')
-    .getByRole('button', { name: '助手设置', exact: true })
-    .click();
+  const workspace = page.locator('.voice-call-workspace');
+  const trigger = workspace.getByRole('button', { name: '助手设置', exact: true });
+  if (!(await trigger.isVisible())) {
+    await workspace.getByRole('button', { name: '通话工具', exact: true }).click();
+  }
+  await trigger.click();
   const settings = page.getByRole('region', { name: '助手设置', exact: true });
   await settings.waitFor();
   assert.equal(await page.getByRole('dialog', { name: '助手设置', exact: true }).count(), 0);
@@ -108,9 +107,9 @@ async function changeView(page, label) {
     .getByRole('button', { name: label, exact: true });
   if (await direct.isVisible()) await direct.click();
   else {
-    await page.getByRole('button', { name: '切换工作视图', exact: true }).click();
+    const compact = page.getByRole('button', { name: '切换工作视图', exact: true });
+    await (await compact.isVisible() ? compact : page.getByRole('button', { name: '项目与用量', exact: true })).click();
     await page
-      .getByRole('dialog', { name: '工作视图', exact: true })
       .getByRole('navigation', { name: '切换工作视图', exact: true })
       .getByRole('button', { name: new RegExp('^' + label) })
       .click();
@@ -288,17 +287,15 @@ try {
           if (Buffer.isBuffer(payload)) frames.push(payload);
         });
     });
-    const sessionResponse = page.waitForResponse(
-      (response) => new URL(response.url()).pathname === '/v1/session',
-    );
-    await page.goto(`${origin}/#/studio`);
-    const session = await sessionResponse;
+    const session = await context.request.get(origin + '/v1/session');
     assert.equal(session.status(), 200, 'the studio should reach the isolated account service');
     assert.equal(
       (await session.json()).user?.id,
       fixture.actors[actor].id,
       'the expected actor is logged in',
     );
+    const navigation = await page.goto(`${origin}/#/studio`, { waitUntil: 'domcontentloaded' });
+    assert.ok(navigation?.ok(), 'the studio document loads');
     await page.getByRole('button', { name: '打开空间与项目', exact: true }).click();
     await page
       .locator('dialog.sidebar-navigation-modal')
@@ -310,7 +307,7 @@ try {
       .getByRole('button', { name: 'V4 project', exact: true })
       .click();
     await page
-      .locator('.library-version-links')
+      .locator('.library-reference-masonry')
       .getByRole('button', { name: /Collaborative portrait/ })
       .click();
     await page.locator('.collaboration-status[data-state="ready"]').waitFor();
@@ -553,7 +550,7 @@ try {
       await callWorkspace.getByRole('button', { name: '开始实时通话', exact: true }).click();
       const connecting = callWorkspace.locator('.assistant-call.connecting .assistant-call-status');
       await connecting.waitFor();
-      assert.match(await connecting.innerText(), /正在连接麦克风与语音服务/);
+      assert.equal(await connecting.innerText(), '连接中');
       const endCall = callWorkspace.getByRole('button', { name: '结束实时通话', exact: true });
       const hangupExposed = () =>
         endCall.evaluate((button) => {
@@ -641,6 +638,10 @@ try {
       const captions = callWorkspace.locator('[aria-label="实时字幕"]');
       await captions.getByText('看看光线。', { exact: false }).waitFor();
       await captions.getByText('好，先看主光。', { exact: false }).waitFor();
+      const callTools = callWorkspace.getByRole('button', { name: '通话工具', exact: true });
+      assert.equal(await callTools.getAttribute('aria-expanded'), 'false');
+      assert.equal(await callWorkspace.locator('.voice-composer').count(), 0);
+      await callTools.click();
       await callWorkspace.getByRole('button', { name: '隐藏字幕', exact: true }).click();
       assert.equal(await captions.isVisible(), false);
       await callWorkspace.getByRole('button', { name: '打断播报', exact: true }).click();
@@ -648,14 +649,17 @@ try {
         () => inbound.some((event) => event.type === 'session.instructions.append'),
         'manual interruption control',
       );
+      const details = callWorkspace.getByRole('button', { name: '通话详情', exact: true });
+      await details.click();
       await callWorkspace.getByText('通话中公开搜索', { exact: true }).click();
       await callWorkspace.getByLabel('通话公开检索查询词').fill('自然人像柔光');
       await callWorkspace.getByRole('button', { name: '搜索', exact: true }).click();
       await callWorkspace.getByRole('link', { name: '布光资料', exact: true }).waitFor();
       assert.deepEqual(publicQueries, ['自然人像柔光']);
-      await callWorkspace.getByText('通话中公开搜索', { exact: true }).click();
+      await details.click();
       await callWorkspace.getByRole('button', { name: '显示字幕', exact: true }).click();
       await captions.getByText('好，先看主光。', { exact: false }).waitFor();
+      await callWorkspace.getByRole('button', { name: '补充文字', exact: true }).click();
       const supplement = '通话补充：保留当前画面，稍后再调整。';
       const composerControls = {
         input: callWorkspace.getByLabel('向智能体描述修改需求', { exact: true }),

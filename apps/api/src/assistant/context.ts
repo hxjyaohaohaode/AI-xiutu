@@ -115,7 +115,7 @@ export async function validateContext(
   const permission = await assistantAccess(db, actorId, projectId);
   const found = await db.query(
     `SELECT a.asset_id,a.head_version FROM artworks a JOIN assets s ON s.id=a.asset_id
-    WHERE a.id=$1 AND a.project_id=$2 AND s.project_id=a.project_id AND s.deleted_at IS NULL` +
+    WHERE a.id=$1 AND a.project_id=$2 AND a.deleted_at IS NULL AND s.project_id=a.project_id AND s.deleted_at IS NULL` +
       (lock ? ' FOR NO KEY UPDATE OF a FOR SHARE OF s' : ''),
     [context.artworkId, permission.id],
   );

@@ -256,7 +256,7 @@ export function createAssistantService(
       ? (
           await db.query(
             `SELECT s.width,s.height,r.recipe FROM artworks a JOIN assets s ON s.id=a.asset_id
-       JOIN revisions r ON r.id=a.head_revision_id WHERE a.id=$1 AND a.project_id=$2 AND s.id=$3 AND a.head_version=$4 AND s.deleted_at IS NULL`,
+       JOIN revisions r ON r.id=a.head_revision_id WHERE a.id=$1 AND a.project_id=$2 AND s.id=$3 AND a.head_version=$4 AND a.deleted_at IS NULL AND s.deleted_at IS NULL`,
             [context.artworkId, row.project_id, context.assetId, context.expectedVersion],
           )
         ).rows[0]
@@ -965,7 +965,7 @@ export function createAssistantService(
                 ? (
                     await tx.query(
                       `SELECT r.id,r.recipe FROM artworks a JOIN revisions r ON r.id=a.head_revision_id
-                  WHERE a.id=$1 AND a.project_id=$2 AND r.artwork_id=a.id AND r.version=$3`,
+                  WHERE a.id=$1 AND a.project_id=$2 AND a.deleted_at IS NULL AND r.artwork_id=a.id AND r.version=$3`,
                       [context.artworkId, projectId, context.expectedVersion],
                     )
                   ).rows[0]

@@ -8,12 +8,13 @@ import {
   getEditorOutputDimensions,
   type ColorBlockV3,
   type LayeredRecipe,
+  type PaintLayerV3,
   type SelectionMaskV3,
   type Dimensions,
 } from '@ai-xiutu/editor';
 import type { EditorState } from './useEditor';
 
-export type EditScope = { kind: 'global' } | { kind: 'region' | 'group'; id: string };
+export type EditScope = { kind: 'global' | 'base' } | { kind: 'region' | 'group'; id: string };
 export type NumericDefinition = {
   path: string;
   label: string;
@@ -47,10 +48,26 @@ export const currentV3 = (editor: EditorState): LayeredRecipe => {
     throw new Error('当前配方版本已经改变，请重新打开工具。');
   return recipe;
 };
+export function paintLayerInMode(layer: PaintLayerV3, makeup: boolean) {
+  if (layer.origin?.moduleId === 'editor.manual-paint.v1')
+    return (layer.origin.parameterId === 'makeup') === makeup;
+  // Portrait-generated layers are managed by the landmark controls. Existing
+  // manual layers predate the mode marker and can be identified by their material.
+  return !layer.origin && layer.strokes.some((stroke) => stroke.material !== undefined) === makeup;
+}
+export function manualPaintOrigin(id: string, makeup: boolean): NonNullable<PaintLayerV3['origin']> {
+  return { moduleId: 'editor.manual-paint.v1', instanceId: id, parameterId: makeup ? 'makeup' : 'draw', value: 1 };
+}
 export const scopeKey = (scope: EditScope) =>
-  scope.kind === 'global' ? 'global' : scope.kind + ':' + scope.id;
+  'id' in scope ? scope.kind + ':' + scope.id : scope.kind;
+export function hasCompositeGradeScope(recipe: LayeredRecipe) {
+  return recipe.schemaVersion === 4 && (recipe.compositeGrade !== undefined ||
+    recipe.imageLayers.length > 0 || recipe.paintLayers.some((layer) => layer.strokes.length > 0));
+}
 export function scopeColor(recipe: LayeredRecipe, scope: EditScope): ColorBlockV3 {
-  if (scope.kind === 'global')
+  if (scope.kind === 'global' && recipe.schemaVersion === 4 && hasCompositeGradeScope(recipe))
+    return recipe.compositeGrade ?? createColorBlockV3();
+  if (!('id' in scope))
     return {
       adjustments: recipe.adjustments,
       curves: recipe.curves,
@@ -73,7 +90,9 @@ export function withScopeColor(
   scope: EditScope,
   color: ColorBlockV3,
 ): LayeredRecipe {
-  if (scope.kind === 'global') return { ...recipe, ...color };
+  if (scope.kind === 'global' && recipe.schemaVersion === 4 && hasCompositeGradeScope(recipe))
+    return { ...recipe, compositeGrade: color };
+  if (!('id' in scope)) return { ...recipe, ...color };
   scopeColor(recipe, scope); // fail closed on a deleted scope
   return scope.kind === 'region'
     ? {

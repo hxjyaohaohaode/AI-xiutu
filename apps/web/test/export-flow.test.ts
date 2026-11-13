@@ -1,5 +1,4 @@
 import assert from 'node:assert/strict';
-import { registerHooks } from 'node:module';
 import test from 'node:test';
 import { createElement } from 'react';
 import { renderTestMarkup } from './support/render.ts';
@@ -10,16 +9,6 @@ import {
 } from '../src/components/ProjectDialogs.tsx';
 import type { EditorState } from '../src/editor/useEditor.ts';
 import { setLocale } from '../src/i18n/index.ts';
-
-// This SSR check verifies action availability, not CSS layout. Browser QA owns styling.
-const stylesheetLoader = registerHooks({
-  load(url, context, next) {
-    if (url.endsWith('.css')) return { format: 'module', source: 'export {};', shortCircuit: true };
-    return next(url, context);
-  },
-});
-const { DeliveryView } = await import('../src/components/WorkspaceViews.tsx');
-stylesheetLoader.deregister();
 
 function deferred() {
   let resolve!: (blob: Blob) => void;
@@ -182,7 +171,7 @@ test('codec failures remain actionable only for the current request owner', asyn
   assert.equal(await pending, null);
 });
 
-test('delivery disables image and recipe actions during decode or pending cloud source lookup', () => {
+test('the editor export dialog disables image and recipe actions during source changes', () => {
   for (const [loading, sourcePending, disabled] of [
     [false, false, false],
     [true, false, true],
@@ -194,21 +183,21 @@ test('delivery disables image and recipe actions during decode or pending cloud 
       exportRecipe: () => undefined,
     } as unknown as EditorState;
     const markup = renderTestMarkup(
-      createElement(DeliveryView, {
+      createElement(ExportDialog, {
         editor,
-        artwork: null,
         sourcePending,
-        onExport: () => undefined,
+        onClose: () => undefined,
+        onSuccess: () => undefined,
         onRecipeImport: () => undefined,
       }),
     );
-    const buttons = [...markup.matchAll(/<button\b([^>]*)>/g)];
+    const buttons = [...markup.matchAll(/<button\b([^>]*(?:button-full|text-button)[^>]*)>/g)];
     assert.equal(buttons.length, 3);
     for (const button of buttons)
       assert.equal(
         /\bdisabled=/.test(button[1]!),
         disabled,
-        'all delivery actions share the source gate',
+        'all export actions share the source gate',
       );
   }
 });

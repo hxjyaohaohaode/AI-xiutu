@@ -13,6 +13,7 @@ import {
   ArrowRight,
 } from '@phosphor-icons/react';
 import { api, downloadBlob, errorMessage, filenameBase, formatDate, jsonRequest } from '../lib/api';
+import { UploadSimple } from '@phosphor-icons/react';
 import type { Project, Space } from '../lib/types';
 import type { EditorState } from '../editor/useEditor';
 import { createSourceLoadGuard, type SourceLoadCheckpoint } from '../editor/source-flow';
@@ -144,17 +145,20 @@ export function ExportDialog({
   sourcePending,
   onClose,
   onSuccess,
+  onRecipeImport,
 }: {
   editor: EditorState;
   sourcePending: boolean;
   onClose: () => void;
   onSuccess: (message: string) => void;
+  onRecipeImport?: () => void;
 }) {
   const [format, setFormat] = useState<'png' | 'jpeg' | 'webp'>('png');
   const [quality, setQuality] = useState(0.94);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [prepared, setPrepared] = useState<PreparedImageExport | null>(null);
+  const actionsDisabled = busy || sourcePending || editor.loading || !editor.file;
   const preparedRef = useRef<PreparedImageExport | null>(null);
   const preparedOwner = useRef<{ isCurrent: () => boolean } | null>(null);
   const live = useRef(true);
@@ -344,7 +348,7 @@ export function ExportDialog({
       )}
       <button
         className={`button ${ready ? 'button-quiet' : 'button-primary'} button-full`}
-        disabled={busy || sourcePending || editor.loading || !editor.file}
+        disabled={actionsDisabled}
         onClick={save}
       >
         {busy ? (
@@ -356,6 +360,14 @@ export function ExportDialog({
           </>
         )}
       </button>
+      <div className="export-recipe-actions">
+        <button type="button" className="text-button" disabled={actionsDisabled} onClick={editor.exportRecipe}>
+          <DownloadSimple size={16} />{t('保存编辑配方')}
+        </button>
+        {onRecipeImport && <button type="button" className="text-button" disabled={actionsDisabled} onClick={onRecipeImport}>
+          <UploadSimple size={16} />{t('导入已有配方')}
+        </button>}
+      </div>
     </Modal>
   );
 }

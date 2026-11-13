@@ -40,7 +40,7 @@ export async function assistantMemories(
   if (
     artworkId &&
     !(
-      await db.query('SELECT 1 FROM artworks WHERE id=$1 AND project_id=$2', [artworkId, projectId])
+      await db.query('SELECT 1 FROM artworks WHERE id=$1 AND project_id=$2 AND deleted_at IS NULL', [artworkId, projectId])
     ).rowCount
   )
     throw new HttpError(404, 'ARTWORK_NOT_FOUND', '作品不属于当前项目');
@@ -138,7 +138,7 @@ export function registerAssistantMemory(app: FastifyInstance, db: Database) {
         if (
           !body.artworkId ||
           !(
-            await tx.query('SELECT 1 FROM artworks WHERE id=$1 AND project_id=$2 FOR SHARE', [
+            await tx.query('SELECT 1 FROM artworks WHERE id=$1 AND project_id=$2 AND deleted_at IS NULL FOR SHARE', [
               body.artworkId,
               projectId,
             ])

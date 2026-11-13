@@ -53,7 +53,7 @@ export function pointPreviewMode(recipe: EditorRecipe): 'simple' | 'coupled' | '
     return null;
   if (
     recipe.schemaVersion === 4 &&
-    (recipe.projective.enabled ||
+    (recipe.compositeGrade !== undefined || recipe.projective.enabled ||
       recipe.healing.some((operation) => operation.enabled && operation.opacity > 0) ||
       recipe.retouch.some((operation) => operation.enabled && operation.opacity > 0))
   )

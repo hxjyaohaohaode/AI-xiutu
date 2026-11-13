@@ -1426,96 +1426,6 @@
     height: 250px;
     background: var(--surface-secondary);
   }
-  .canvas-workspace .compare-view {
-    height: 100%;
-    min-height: 0;
-    display: flex;
-    flex-direction: column;
-    padding: 16px 22px;
-  }
-  .canvas-workspace .compare-view .view-heading {
-    flex-shrink: 0;
-    margin: 0 0 13px;
-  }
-  .canvas-workspace .compare-view .view-heading h1 {
-    font-size: 18px;
-    margin: 0;
-  }
-  .canvas-workspace .compare-view .view-heading p {
-    font-size: 11px;
-    margin-top: 4px;
-  }
-  .canvas-workspace .compare-pair {
-    flex: 1;
-    min-height: 0;
-    height: auto;
-    gap: 14px;
-  }
-  .canvas-workspace .compare-pair > section {
-    display: flex;
-    flex-direction: column;
-    min-height: 0;
-  }
-  .canvas-workspace .compare-pair section > div {
-    height: auto;
-    flex: 1;
-    min-height: 0;
-    padding: 10px;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    border: 0;
-    border-radius: 3px;
-    background: var(--surface-hover);
-  }
-  .canvas-workspace .compare-pair canvas {
-    max-width: 100%;
-    max-height: 100%;
-    width: auto;
-    height: auto;
-    object-fit: contain;
-  }
-  .canvas-workspace .compare-pair section header {
-    font-size: 12px;
-    color: var(--muted);
-    padding: 4px 0 9px;
-  }
-  .canvas-workspace .compare-pair.single {
-    grid-template-columns: 1fr;
-  }
-  .canvas-workspace .comparison-image-region {
-    overflow: hidden;
-    position: relative;
-  }
-  .canvas-workspace .comparison-image-frame {
-    flex: none;
-    line-height: 0;
-  }
-  .canvas-workspace .comparison-image-frame > canvas {
-    width: 100%;
-    height: 100%;
-    max-width: none;
-    max-height: none;
-  }
-  .compare-mode-choice {
-    display: flex;
-    gap: 4px;
-    padding: 3px;
-    background: var(--surface-hover);
-    border-radius: 8px;
-  }
-  .compare-mode-choice > button {
-    padding: 8px 13px;
-    min-height: 34px;
-    font-size: 12px;
-    color: var(--muted);
-    border-radius: 6px;
-  }
-  .compare-mode-choice > button.selected {
-    background: var(--surface);
-    color: var(--ink);
-    box-shadow: 0 1px 4px rgb(var(--color-shadow) / 6%);
-  }
   .canvas-workspace .saved-versions > summary {
     cursor: pointer;
     color: var(--muted);
@@ -1668,9 +1578,6 @@
     .compact-view-tabs > button {
       padding: 10px;
     }
-    .workspace-top-actions .theme-toggle {
-      display: none;
-    }
     .workspace-top-actions > .button {
       padding: 8px 10px;
     }
@@ -1749,9 +1656,6 @@
     }
     .workspace-settings > div {
       right: -85px;
-    }
-    .workspace-top-actions .theme-toggle {
-      display: none;
     }
     .editor-content {
       transition: bottom 0.1s ease;
@@ -2135,33 +2039,8 @@
       font-size: 16px;
       min-height: 37px;
     }
-    .canvas-workspace .compare-view {
-      padding: 10px 12px;
-    }
-    .canvas-workspace .compare-pair {
-      gap: 8px;
-    }
-    .canvas-workspace .compare-pair section > div {
-      padding: 3px;
-    }
-    .canvas-workspace .compare-pair section header {
-      font-size: 11px;
-    }
     .canvas-workspace .saved-versions {
       max-height: 105px;
-    }
-    .canvas-workspace .compare-view .view-heading {
-      gap: 8px;
-      flex-wrap: nowrap;
-    }
-    .canvas-workspace .compare-view .view-heading p {
-      max-width: 160px;
-      font-size: 10px;
-    }
-    .compare-mode-choice > button {
-      font-size: 11px;
-      min-height: 40px;
-      padding: 7px 10px;
     }
     .canvas-workspace .saved-versions > summary > span {
       display: none;

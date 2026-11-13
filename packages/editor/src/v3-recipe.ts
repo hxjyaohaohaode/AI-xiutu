@@ -408,6 +408,12 @@ export function createColorBlockV3(overrides?: ColorBlockV3Overrides): ColorBloc
   if (errors.length) throw new RecipeValidationError(errors);
   return c;
 }
+export function parseColorBlockV3(input: unknown, path = 'color'): ColorBlockV3 {
+  const errors: string[] = [];
+  const color = readColor(cloneData(input), path, errors);
+  if (errors.length) throw new RecipeValidationError(errors);
+  return color;
+}
 function blend(v: unknown, path: string, errors: string[]): BlendModeV3 {
   if (!BLEND_MODES_V3.includes(v as BlendModeV3)) errors.push(`${path}: unsupported blend mode`);
   return v as BlendModeV3;

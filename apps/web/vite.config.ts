@@ -57,6 +57,16 @@ export default defineConfig({
     allowedHosts: ['terminal.local'],
     proxy: { '/v1': { target: `http://127.0.0.1:${apiPort}`, ws: true } },
   },
-  optimizeDeps: { include: ['onnxruntime-web/wasm', '@mediapipe/tasks-vision'] },
+  resolve: { dedupe: ['react', 'react-dom'] },
+  optimizeDeps: {
+    include: [
+      'react',
+      'react-dom',
+      'react-dom/client',
+      'motion/react',
+      'onnxruntime-web/wasm',
+      '@mediapipe/tasks-vision',
+    ],
+  },
   build: { target: 'es2022', sourcemap: false },
 });

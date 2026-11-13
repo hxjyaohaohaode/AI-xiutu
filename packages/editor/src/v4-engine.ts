@@ -1,7 +1,7 @@
 import { validateImage } from './engine.js';
 import { validateTiledImage } from './tiled.js';
 import { MAX_INPUT_PIXELS, getOutputDimensions, validateTiledDimensions } from './geometry.js';
-import { createFineTransformV3 } from './v3-recipe.js';
+import { createColorBlockV3, createFineTransformV3, createRecipeV3 } from './v3-recipe.js';
 import { parseRecipeV4, recipeV3Stage } from './v4-recipe.js';
 import { renderRecipeV3, renderRecipeV3Tiled, legacyGeometry } from './v3-engine.js';
 import { compileFineTransformV3, applyMatrixV3 } from './v3-geometry.js';
@@ -18,6 +18,8 @@ import {
 } from './v4-types.js';
 import type { RGBAImage } from './types.js';
 import type { RecipeV3 } from './v3-types.js';
+
+const neutralCompositeGrade = JSON.stringify(createColorBlockV3());
 
 /** v4 geometry composes the fine and four-corner matrices before the single reconstruction.
  * The pre-projective viewport is still clipped, so a perspective cannot reveal cropped pixels. */
@@ -79,9 +81,11 @@ function render(
   const spatial =
     recipe.healing.some((op) => op.enabled && op.opacity > 0) ||
     recipe.retouch.some(retouchActiveV4);
+  const compositeGrade = recipe.compositeGrade;
+  const gradeActive = compositeGrade && JSON.stringify(compositeGrade) !== neutralCompositeGrade;
   // This fast path is the migration contract: all old pixels and rounding remain v3 exact.
-  if (!spatial && projective.identity) return run(image, base);
-  if (!spatial)
+  if (!spatial && !gradeActive && projective.identity) return run(image, base);
+  if (!spatial && !gradeActive)
     return geometryV4(run(image, { ...base, transform: createFineTransformV3() }), recipe, opts);
 
   // Admission of auxiliary buffers and paths occurs before creating full-sized intermediates.
@@ -122,7 +126,9 @@ function render(
       opts.tileSize ?? 256,
       preparedPaint,
     );
-    return current;
+    return gradeActive
+      ? run(current, createRecipeV3(compositeGrade), { ...opts, warpPreviewCache: undefined })
+      : current;
   };
   let current =
     opts.warpPreviewCache?.beforeWarp(image, recipe, opts, tiled, composeSource) ?? composeSource();

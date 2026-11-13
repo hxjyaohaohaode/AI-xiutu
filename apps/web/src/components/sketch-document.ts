@@ -1,3 +1,5 @@
+import { sketchFontCss, type SketchFont } from './sketch-typography';
+
 export type SketchPoint = { x: number; y: number };
 export type SketchShape =
   'rectangle' | 'rounded' | 'ellipse' | 'triangle' | 'diamond' | 'line' | 'arrow';
@@ -5,16 +7,14 @@ export type SketchIcon = 'star' | 'heart' | 'check' | 'pin' | 'bolt' | 'speech';
 export type SketchTextStyle = {
   color: string;
   size: number;
-  family: 'sans' | 'serif' | 'mono';
+  family: SketchFont;
   weight: number;
   italic: boolean;
+  underline?: boolean;
 };
 export type SketchTextRun = { text: string; style: SketchTextStyle };
-export const sketchFonts: Record<SketchTextStyle['family'], string> = {
-  sans: 'system-ui, sans-serif',
-  serif: 'Georgia, "Noto Serif CJK SC", serif',
-  mono: 'Consolas, monospace',
-};
+export type SketchTextLayout = { align: 'left' | 'center' | 'right'; lineHeight: number; letterSpacing: number };
+export const defaultSketchTextLayout: SketchTextLayout = { align: 'left', lineHeight: 1.22, letterSpacing: 0 };
 
 export type SketchItem = (
   | { kind: 'stroke'; points: SketchPoint[]; color: string; width: number; erase: boolean }
@@ -27,7 +27,7 @@ export type SketchItem = (
       width: number;
       fill: boolean;
     }
-  | { kind: 'text'; at: SketchPoint; text: string; color: string; size: number; runs?: SketchTextRun[] }
+  | { kind: 'text'; at: SketchPoint; text: string; color: string; size: number; runs?: SketchTextRun[]; layout?: SketchTextLayout }
   | { kind: 'icon'; at: SketchPoint; icon: SketchIcon; color: string; size: number }
   | { kind: 'image'; at: SketchPoint; image: HTMLCanvasElement; size: number; name: string }
 ) & { angle?: number; opacity?: number };
@@ -58,26 +58,40 @@ function textGeometry(context: CanvasRenderingContext2D, item: SketchText, paint
       if (text) lines.at(-1)!.push({ text, style: run.style });
     });
   }
+  const layout = item.layout ?? defaultSketchTextLayout;
   context.save();
   context.textBaseline = 'alphabetic';
-  let y = 0;
-  let width = 0;
-  for (const line of lines) {
-    const size = line.length ? Math.max(...line.map(({ style }) => style.size)) : item.size;
-    let x = 0;
-    for (const { text, style } of line) {
-      context.font = [style.italic ? 'italic' : 'normal', style.weight, style.size + 'px', sketchFonts[style.family]].join(' ');
-      if (paint) {
-        context.fillStyle = style.color;
-        context.fillText(text, at.x + x, at.y + y + size);
+  context.textAlign = 'left';
+  if ('letterSpacing' in context) context.letterSpacing = `${layout.letterSpacing}px`;
+  const measured = lines.map((line) => {
+    const runs = line.map(({ text, style }) => {
+      const font = sketchFontCss(style.family, style.size, style.weight, style.italic);
+      context.font = font;
+      return { text, style, font, width: context.measureText(text).width };
+    });
+    const size = runs.length ? Math.max(...runs.map(({ style }) => style.size)) : item.size;
+    return { runs, size, width: runs.reduce((sum, run) => sum + run.width, 0) };
+  });
+  const width = Math.max(...measured.map((line) => line.width));
+  let y = at.y;
+  for (const line of measured) {
+    if (paint) {
+      const free = width - line.width;
+      let x = at.x + (layout.align === 'center' ? free / 2 : layout.align === 'right' ? free : 0);
+      const baseline = y + line.size;
+      for (const run of line.runs) {
+        context.font = run.font;
+        context.fillStyle = run.style.color;
+        context.fillText(run.text, x, baseline);
+        if (run.style.underline)
+          context.fillRect(x, baseline + run.style.size * 0.11, run.width, Math.max(1, run.style.size * 0.055));
+        x += run.width;
       }
-      x += context.measureText(text).width;
     }
-    width = Math.max(width, x);
-    y += size * 1.22;
+    y += line.size * layout.lineHeight;
   }
   context.restore();
-  return { ...at, width, height: y };
+  return { ...at, width, height: y - at.y };
 }
 
 export function paintSketchItem(item: SketchItem, context: CanvasRenderingContext2D) {
@@ -242,6 +256,18 @@ export function sketchBounds(context: CanvasRenderingContext2D, item: SketchItem
   };
 }
 
+/** Keep an unrotated text block inside the canvas when it fits. */
+export function fitSketchText(context: CanvasRenderingContext2D, item: SketchText): SketchText {
+  if (item.angle) return item;
+  const box = flatSketchBounds(context, item);
+  const { width, height } = context.canvas;
+  const margin = 6;
+  const x = Math.max(margin, Math.min(box.x, width - box.width - margin));
+  const y = Math.max(margin, Math.min(box.y, height - box.height - margin));
+  if (x === box.x && y === box.y) return item;
+  return { ...item, at: { x: x / width, y: y / height } };
+}
+
 export function sketchItemAt(
   context: CanvasRenderingContext2D,
   items: readonly SketchItem[],
@@ -328,7 +354,14 @@ export function resizeSketchItem(
       to: stretch(item.to),
       width: Math.max(1, item.width * scale),
     };
-  if (item.kind === 'text' && item.runs) return { ...item, at: stretch(item.at), size: item.size * scale, runs: item.runs.map((run) => ({ ...run, style: { ...run.style, size: run.style.size * scale } })) };
+  if (item.kind === 'text')
+    return {
+      ...item,
+      at: stretch(item.at),
+      size: item.size * scale,
+      runs: item.runs?.map((run) => ({ ...run, style: { ...run.style, size: run.style.size * scale } })),
+      layout: item.layout && { ...item.layout, letterSpacing: item.layout.letterSpacing * scale },
+    };
   return { ...item, at: stretch(item.at), size: item.size * scale };
 }
 

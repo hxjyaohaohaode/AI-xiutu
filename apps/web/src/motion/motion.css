@@ -1973,7 +1973,6 @@
   canvas,
   .image-viewport,
   .image-frame,
-  .comparison-image-frame,
   .drawing-surface {
     filter: none !important;
   }

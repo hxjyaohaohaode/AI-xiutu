@@ -14,8 +14,6 @@ import {
   ArrowRight,
   ChartBar,
   CheckCircle,
-  Clock,
-  CreditCard,
   DeviceMobile,
   DownloadSimple,
   FolderPlus,
@@ -32,6 +30,9 @@ import {
 } from '@phosphor-icons/react';
 import { DialogMotionContext } from '../components/Ui';
 import { AccountPageFrame } from './AccountPageFrame';
+import { AccountIdentityCard, AccountLanyard } from './AccountIdentityCard';
+import { PlanCatalog } from './PlanCatalog';
+import { QuotaWallet } from './QuotaWallet';
 import { api, ApiError, errorMessage } from '../lib/api';
 import type { PublicConfig, Session } from '../lib/types';
 import { AccountDocumentDrafts } from './AccountDocumentDrafts';
@@ -279,6 +280,7 @@ export function AccountCenter({
           : null;
 
   if (!user) return null;
+  const name = user.displayName || t('当前账号');
 
   return (
     <AccountPageFrame
@@ -290,6 +292,7 @@ export function AccountCenter({
       wide
       hideHeading
       className="account-page-center"
+      headerAction={<AccountLanyard name={name} space={space?.name} brand={config?.brand} />}
     >
       <div
         className="account-center"
@@ -297,14 +300,7 @@ export function AccountCenter({
         data-account-layout={wide ? 'rail' : 'strip'}
       >
         <aside className="account-rail" aria-label={t('当前账号')}>
-          <div className="account-identity">
-            <span className="account-avatar" aria-hidden>
-              {Array.from(user.displayName.trim())[0] || '·'}
-            </span>
-            <div className="account-identity-copy">
-              <h3>{user.displayName || t('当前账号')}</h3>
-            </div>
-          </div>
+          <AccountIdentityCard name={name} space={space?.name} />
           <div className="account-tabs-wrap">
             <div
               className="account-tabs"
@@ -567,29 +563,7 @@ export function AccountCenter({
                     </div>
                   ) : (
                     <>
-                      <div className="account-balance">
-                        <span>{t('可用服务点')}</span>
-                        <strong data-testid="account-available-units">
-                          {formatAccountUnits(quota.data.available)}
-                        </strong>
-                      </div>
-                      <dl className="account-quota-breakdown">
-                        <div>
-                          <dt>{t('免费与获赠')}</dt>
-                          <dd>{formatAccountUnits(quota.data.freeAvailable)}</dd>
-                        </div>
-                        <div>
-                          <dt>{t('已购可用')}</dt>
-                          <dd>{formatAccountUnits(quota.data.purchasedAvailable)}</dd>
-                        </div>
-                        <div>
-                          <dt>
-                            <Clock size={14} aria-hidden />
-                            {t('任务预占')}
-                          </dt>
-                          <dd>{formatAccountUnits(quota.data.held)}</dd>
-                        </div>
-                      </dl>
+                      <QuotaWallet data={quota.data} />
                       {quota.data.held > 0 && (
                         <p className="account-helper">{t('预占额度会在任务结束后结算或释放。')} </p>
                       )}
@@ -609,15 +583,7 @@ export function AccountCenter({
                   <ChartBar size={18} aria-hidden />
                   {t('查看用量与账本')} <ArrowRight size={16} aria-hidden />
                 </button>
-                <div className="account-payment" data-testid="account-payment-status">
-                  <CreditCard size={21} aria-hidden />
-                  <div>
-                    <div className="account-capability-heading">
-                      <h4>{t('购买与订阅')}</h4>
-                      <span>{t('尚未开放')}</span>
-                    </div>
-                  </div>
-                </div>
+                <PlanCatalog actorId={user.id} />
               </>
             )}
 

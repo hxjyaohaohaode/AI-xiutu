@@ -111,15 +111,16 @@ async function caseRun(name, run) {
 }
 async function changeView(page, id, label) {
   const compact = page.getByRole('button', { name: '切换工作视图', exact: true });
+  const project = page.getByRole('button', { name: '项目与用量', exact: true });
   const tab = page
     .getByRole('navigation', { name: '工作视图', exact: true })
     .getByRole('button', { name: label, exact: true });
-  await compact.or(tab).first().waitFor();
-  if (await compact.isVisible()) {
-    await compact.click();
-    const dialog = page.getByRole('dialog', { name: '工作视图', exact: true });
-    await dialog.locator(`button[data-view="${id}"]`).click();
-    await dialog.waitFor({ state: 'hidden' });
+  await compact.or(tab).or(project).first().waitFor();
+  if (await compact.isVisible() || !['editor', 'works'].includes(id)) {
+    await (await compact.isVisible() ? compact : project).click();
+    const navigation = page.getByRole('navigation', { name: '切换工作视图', exact: true });
+    await navigation.locator(`button[data-view="${id}"]`).click();
+    await navigation.waitFor({ state: 'hidden' });
   } else await tab.click();
 }
 async function navigationClosed(page) {
@@ -139,11 +140,16 @@ async function navigationClosed(page) {
   return state;
 }
 async function tool(page, label) {
-  const button = page
-    .getByRole('navigation', { name: '编辑工具' })
-    .getByRole('button', { name: label, exact: true });
+  const buttons = { '调节': 'light', '明暗': 'light', '色彩': 'light', '曲线': 'light', '细节': 'light',
+    '修复': 'repair', '绘制': 'repair', '液化': 'repair', '美颜': 'beauty', '构图': 'crop',
+    '局部': 'local', '图层': 'composite', '合成': 'composite', 'AI 助手': 'ai' };
+  const button = page.locator(label === '记录' ? '[data-action="open-history"]'
+    : '[data-dock-tool="' + buttons[label] + '"]');
   if ((await button.getAttribute('aria-pressed')) !== 'true') await button.click();
-  await page.locator('.free-panel[aria-hidden="false"]').waitFor();
+  const panel = page.locator('.free-panel[aria-hidden="false"]').first();
+  await panel.waitFor();
+  const option = panel.locator('.inspector-family-tabs:visible').getByRole('button', { name: label, exact: true });
+  if (await option.count() && (await option.getAttribute('aria-pressed')) !== 'true') await option.click();
 }
 async function precision(page, label, value) {
   const panel = page.locator('.free-panel[aria-hidden="false"]');
@@ -173,36 +179,15 @@ async function editorReturnAndHistory(page) {
   assert.ok(canvas, 'the live canvas exists before changing panel contexts');
   try {
     const inspector = page.locator('.free-panel[data-panel-id="inspector"][aria-hidden="false"]');
-    if ((await inspector.getAttribute('data-inline-adjustment')) === 'true')
-      await inspector.locator('.panel-layout-trigger').click();
-    await inspector.getByRole('button', { name: '返回工具总览', exact: true }).click();
-    const overview = inspector.getByRole('region', { name: '全部工具', exact: true });
-    await overview.waitFor();
-    assert.equal(await inspector.locator('.inspector-retained').getAttribute('inert'), '');
-    const first = overview.locator('.tool-overview-list > button').first();
-    await first.focus();
-    await first.press('End');
-    assert.equal(
-      await overview
-        .locator('.tool-overview-list > button')
-        .last()
-        .evaluate((button) => button === document.activeElement),
-      true,
-      'End focuses and reveals the actual last tool',
-    );
-    await overview.getByRole('searchbox', { name: '查找工具', exact: true }).fill('明暗');
-    assert.equal(await overview.locator('.tool-overview-list > button').count(), 1);
-    await overview.getByRole('button', { name: /^明暗/ }).click();
-    await overview.waitFor({ state: 'hidden' });
+    await tool(page, '色彩');
+    await inspector.locator('[data-tool-family="color"]').waitFor();
+    await tool(page, '明暗');
     assert.equal(
       Number(await inspector.getByRole('slider', { name: '曝光', exact: true }).inputValue()),
       -0.35,
-      'returning through the tool overview preserves the exact current adjustment',
+      'switching adjustment tools preserves the exact current adjustment',
     );
-    const tabs = inspector.getByRole('navigation', { name: '当前作品面板', exact: true });
-    const visibleTabs = await tabs.isVisible();
-    if (visibleTabs) await tabs.getByRole('button', { name: '记录', exact: true }).click();
-    else await tool(page, '记录');
+    await tool(page, '记录');
     await inspector
       .locator('.detailed-history-list > li[data-selected="true"] .history-expand')
       .click();
@@ -213,8 +198,7 @@ async function editorReturnAndHistory(page) {
       .filter({ has: page.locator('dt').filter({ hasText: /曝光$/ }) });
     assert.equal(await exposure.locator('dd > span').innerText(), '0EV');
     assert.equal(await exposure.locator('dd > strong').innerText(), '-0.35EV');
-    if (visibleTabs) await tabs.getByRole('button', { name: '调整', exact: true }).click();
-    else await tool(page, page.viewportSize().width < 760 ? '调节' : '明暗');
+    await tool(page, '明暗');
     assert.equal(
       Number(await inspector.getByRole('slider', { name: '曝光', exact: true }).inputValue()),
       -0.35,
@@ -224,7 +208,7 @@ async function editorReturnAndHistory(page) {
         (node) => node.isConnected && node === document.querySelector('.image-frame canvas'),
       ),
       true,
-      'tool overview and local history keep the original canvas owner mounted',
+      'tool switching and local history keep the original canvas owner mounted',
     );
     const topbar = await page.locator('.floating-topbar').boundingBox();
     assert.ok(
@@ -232,8 +216,7 @@ async function editorReturnAndHistory(page) {
       'compact studio chrome leaves room for the photograph',
     );
     return {
-      toolOverviewReturn: true,
-      keyboardToolTraversal: true,
+      toolSwitchReturn: true,
       actualHistoryDelta: [0, -0.35],
       sameCanvas: true,
       topbarHeight: topbar.height,
@@ -252,13 +235,20 @@ async function downloadBytes(page, action) {
   return Buffer.concat(chunks);
 }
 async function recipeDownload(page) {
-  await changeView(page, 'deliver', '交付');
+  await page.locator('.workspace-top-actions .top-export').click();
+  const dialog = page.locator('dialog.export-dialog[open]');
   const bytes = await downloadBytes(page, () =>
-    page.getByRole('button', { name: '保存编辑配方' }).click(),
+    dialog.getByRole('button', { name: '保存编辑配方' }).click(),
   );
-  const value = JSON.parse(bytes.toString('utf8'));
-  await changeView(page, 'editor', '精修');
-  return value;
+  await page.keyboard.press('Escape');
+  await dialog.waitFor({ state: 'hidden' });
+  return JSON.parse(bytes.toString('utf8'));
+}
+async function openCloudHistory(page) {
+  const trigger = page.locator('[data-action="open-history"]');
+  if ((await trigger.getAttribute('aria-pressed')) !== 'true') await trigger.click();
+  const cloud = page.getByRole('button', { name: '云端版本', exact: true });
+  if ((await cloud.getAttribute('aria-pressed')) !== 'true') await cloud.click();
 }
 async function imageDownload(page) {
   await page.getByRole('button', { name: '导出', exact: true }).click();
@@ -718,8 +708,9 @@ async function layoutAssertions(page, phone) {
   }
   if (phone) {
     assert.ok(
-      Math.abs(measured.panel.bottom - measured.dock.y) <= 1.5,
-      'the phone sheet attaches directly to its bottom tool rail',
+      measured.dock.y - measured.panel.bottom >= -1.5 &&
+        measured.dock.y - measured.panel.bottom <= 12,
+      'the fixed panel stays immediately above the tool rail',
     );
     assert.ok(
       measured.frame.bottom <= measured.panel.y + 1.5,
@@ -940,76 +931,26 @@ try {
         .getByLabel('选择照片', { exact: true })
         .setInputFiles({ name: 'technical-gradient.png', mimeType: 'image/png', buffer: png });
       await page.locator('.image-frame canvas').waitFor();
-      await tool(page, size.width < 760 ? '调节' : '明暗');
-      const initial = await layoutAssertions(page, size.width < 760);
+      const fixed = size.width < 760 || (size.width < 1000 && size.height <= 500);
+      await tool(page, '明暗');
+      const initial = await layoutAssertions(page, fixed);
       await precision(page, '曝光', -0.35);
       const panelContext = await editorReturnAndHistory(page);
-      const normal = await layoutAssertions(page, size.width < 760);
-      let resized = null;
-      if (size.width < 760) {
+      const normal = await layoutAssertions(page, fixed);
+      let fixedInspector = null;
+      if (fixed) {
         const panel = page.locator('.free-panel[aria-hidden="false"]');
-        const grip = panel.locator('.panel-title-drag');
-        const edge = panel.locator('.panel-resize-edge.resize-n');
-        const box = await edge.boundingBox();
-        assert.ok(box);
-        await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2);
-        await page.mouse.down();
-        await page.mouse.move(
-          box.x + box.width / 2,
-          box.y + box.height / 2 - (339 - normal.panel.height),
-          { steps: 8 },
-        );
-        await page.mouse.up();
-        resized = await layoutAssertions(page, true);
-        assert.ok(
-          Math.abs(resized.panel.height - 339) < 2,
-          'phone resize is continuous CSS pixels',
-        );
-        assert.equal(
-          resized.panel.width,
-          size.width,
-          'an attached phone sheet uses the complete viewport width',
-        );
-        await edge.press('Alt+ArrowUp');
-        const taller = await page.locator('.free-panel[aria-hidden="false"]').boundingBox();
-        assert.ok(
-          Math.abs(taller.height - (resized.panel.height + 1)) < 0.1,
-          'keyboard height has a true 1px step',
-        );
-        await edge.press('Alt+ArrowDown');
-        await page.getByRole('button', { name: '面板位置与连续尺寸', exact: true }).click();
-        assert.equal(await panel.getByRole('button', { name: '浮动', exact: true }).count(), 0,
-          'the phone adjustment rail cannot detach and cover the photo');
+        assert.equal(await panel.getAttribute('data-fixed-inspector'), 'true');
         assert.equal(await panel.getAttribute('data-attached'), 'true');
-        await panel.locator('.panel-layout-menu .panel-collapse-action').click();
-        await eventually(
-          async () =>
-            (await page
-              .locator('.free-panel[aria-hidden="false"]')
-              .getAttribute('data-presentation')) === 'collapsed',
-          'collapse',
-        );
-        await grip.press('Enter');
-        await eventually(
-          async () =>
-            Number(await page.getByRole('slider', { name: '曝光', exact: true }).inputValue()) ===
-            -0.35,
-          'restore retains photo adjustment',
-        );
-        await panel.locator('.panel-layout-trigger').click();
-        await panel.getByRole('button', { name: '展开精调，允许遮挡画面', exact: true }).click();
-        assert.equal(
-          await page.locator('.free-panel[aria-hidden="false"]').getAttribute('data-presentation'),
-          'maximized',
-        );
-        await panel.locator('.panel-layout-trigger').click();
-        await panel
-          .getByRole('button', { name: '返回常规调节，恢复面板尺寸', exact: true })
-          .click();
-        await panel.locator('.panel-layout-trigger').click();
-        await panel.getByRole('button', { name: '收起工具面板', exact: true }).click();
+        assert.equal(await panel.locator('.panel-resize-edge, .panel-layout-trigger').count(), 0);
+        assert.equal(normal.panel.width, size.width);
+        assert.equal(normal.panel.height, size.height <= 500 ? 104 : 146);
+        const dock = page.locator('[data-dock-tool="light"]');
+        await dock.click();
         await panel.waitFor({ state: 'hidden' });
-        await tool(page, '调节');
+        await tool(page, '明暗');
+        fixedInspector = await layoutAssertions(page, true);
+        assert.equal(fixedInspector.panel.height, normal.panel.height);
       }
       await page.screenshot({ path: join(artifacts, `layout-${size.width}x${size.height}.png`) });
       const exported = await recipeDownload(page);
@@ -1030,7 +971,7 @@ try {
         initial,
         normal,
         panelContext,
-        resized,
+        fixedInspector,
         download: { format: metadata.format, width: metadata.width, height: metadata.height },
       };
     });
@@ -1070,43 +1011,38 @@ try {
         true,
         'return keeps the same portrait controls owner',
       );
-      const openColor = async () => {
-        await tool(page, viewport.width < 760 ? '调节' : '色彩');
-        if (
-          viewport.width < 760 &&
-          !(await inspector.locator('[data-tool-family="color"]').isVisible())
-        ) {
-          await inspector.getByRole('combobox', { name: '调节类别', exact: true }).click();
-          await page.getByRole('option', { name: '色彩', exact: true }).click();
-        }
-      };
+      const openColor = () => tool(page, '色彩');
       await openColor();
       const color = inspector.locator('[data-tool-family="color"]');
       const colorOwner = await color.elementHandle();
       assert.ok(colorOwner);
       if (viewport.width < 760) {
-        await color.getByRole('combobox', { name: '调节类别', exact: true }).click();
+        await color.getByRole('combobox', { name: '色彩类别', exact: true }).click();
         await page.getByRole('option', { name: 'HSL', exact: true }).click();
+        await color.getByRole('combobox', { name: 'HSL 色段', exact: true }).click();
+        await page.getByRole('option', { name: '蓝', exact: true }).click();
       } else {
         await color.getByRole('button', { name: 'HSL', exact: true }).click();
+        await color.getByRole('button', { name: '蓝色段', exact: true }).click();
       }
-      await color.getByRole('button', { name: '蓝色段', exact: true }).click();
       await tool(page, '构图');
       assert.equal(await color.isVisible(), false);
       await openColor();
-      assert.equal(
-        await color
-          .locator('.color-family-tabs button')
-          .filter({ hasText: /^HSL$/ })
-          .getAttribute('aria-pressed'),
-        'true',
-      );
-      assert.equal(
-        await color
-          .getByRole('button', { name: '蓝色段', exact: true })
-          .getAttribute('aria-pressed'),
-        'true',
-      );
+      if (viewport.width < 760) {
+        assert.equal(
+          await color.getByRole('combobox', { name: 'HSL 色段', exact: true }).locator('.choice-value').innerText(),
+          '蓝',
+        );
+      } else {
+        assert.equal(
+          await color.locator('.color-family-tabs button').filter({ hasText: /^HSL$/ }).getAttribute('aria-pressed'),
+          'true',
+        );
+        assert.equal(
+          await color.getByRole('button', { name: '蓝色段', exact: true }).getAttribute('aria-pressed'),
+          'true',
+        );
+      }
       assert.equal(
         await colorOwner.evaluate((element) => element.isConnected),
         true,
@@ -1490,7 +1426,7 @@ try {
           await tool(page, '绘制');
           const panel = page.locator('.free-panel[aria-hidden="false"]');
           if (viewport.width < 760) {
-            await page.locator('[data-dock-tool="paint"][aria-pressed="true"]').click();
+            await page.locator('[data-dock-tool="repair"][aria-pressed="true"]').click();
             await panel.waitFor({ state: 'hidden' });
           } else {
             await panel.getByRole('button', { name: /^收起.*可从工具栏重新打开$/ }).click();
@@ -1989,10 +1925,10 @@ try {
   await caseRun('resource-memory-privacy-and-ledger-export', async () => {
     await changeView(a.page, 'works', '作品');
     await a.page.getByRole('button', { name: '跨空间查找', exact: true }).click();
-    await a.page.getByRole('searchbox', { name: '搜索资源', exact: true }).fill('CI-gradient');
-    const card = a.page.locator('.resource-card').filter({ hasText: 'CI-gradient.png' });
-    await card.waitFor();
-    await card.getByRole('button', { name: '长期复用', exact: true }).click();
+    const crossSpace = a.page.locator('[data-library-scope="all"]');
+    await crossSpace.getByRole('searchbox', { name: '搜索当前范围素材', exact: true }).fill('CI-gradient');
+    await crossSpace.getByRole('button', { name: /工具与信息.*CI-gradient\.png/ }).click();
+    await a.page.getByRole('dialog').getByRole('button', { name: '长期复用', exact: true }).click();
     await a.page
       .getByRole('textbox', { name: '便于查找的名称', exact: true })
       .fill('CI private memory');
@@ -2084,7 +2020,7 @@ try {
     };
     const [firstPageResponse] = await Promise.all([
       a.page.waitForResponse((response) => isHistoryPage(response, null)),
-      changeView(a.page, 'compare', '对比'),
+      openCloudHistory(a.page),
     ]);
     assert.equal(firstPageResponse.status(), 200);
     const firstPage = await firstPageResponse.json();
@@ -2098,11 +2034,8 @@ try {
     assert.ok(firstPage.revisions.every((revision) => !Object.hasOwn(revision, 'recipe')));
 
     const history = a.page.locator('.saved-versions');
-    await history.locator(':scope > summary').click();
     await eventually(
-      async () =>
-        (await history.locator('.revision-entry').count()) === 100 &&
-        (await history.locator(':scope > summary').innerText()).includes('已载入 100'),
+      async () => (await history.locator('.revision-entry').count()) === 100,
       'the first 100 summary rows are visible',
     );
     const olderPageUrl = (url) =>
@@ -2121,7 +2054,7 @@ try {
       await history.getByRole('button', { name: '加载更早版本', exact: true }).click();
       await history.getByRole('button', { name: '重试读取版本', exact: true }).waitFor();
       assert.equal(await history.locator('.revision-entry').count(), 100);
-      assert.ok((await history.locator(':scope > summary').innerText()).includes('已载入 100'));
+      assert.equal(await history.locator('.revision-entry').count(), 100);
       [secondPageResponse] = await Promise.all([
         a.page.waitForResponse((response) => isHistoryPage(response, '6')),
         history.getByRole('button', { name: '重试读取版本', exact: true }).click(),
@@ -2320,9 +2253,8 @@ try {
     }
     const localDraft = await recipeDownload(a.page);
     assert.equal(localDraft.adjustments.exposure, -0.8);
-    await changeView(a.page, 'compare', '对比');
+    await openCloudHistory(a.page);
     const history = a.page.locator('.saved-versions');
-    await history.locator(':scope > summary').click();
     const historicalRow = history.locator('.revision-entry').filter({
       has: a.page.locator('.revision-open').filter({ hasText: /V1$/ }),
     });
@@ -2448,8 +2380,7 @@ try {
         'declining to open keeps every field of the local draft',
       );
       await acceptDefaultConfirmations(a.page);
-      await changeView(a.page, 'compare', '对比');
-      await history.locator(':scope > summary').click();
+      await openCloudHistory(a.page);
       await historicalRow.locator('.revision-more > summary').click();
       await historicalRow.getByRole('button', { name: '从此版本建分支', exact: true }).click();
       const recovered = a.page.getByRole('dialog', { name: '分支已创建', exact: true });
@@ -2657,7 +2588,7 @@ try {
     }
   });
 
-  await caseRun('document-theme-persists-through-navigation-dialog-and-usage', async () => {
+  await caseRun('document-theme-persists-through-card-navigation-and-usage', async () => {
     const page = a.page;
     const readTheme = () =>
       page.evaluate(() => ({
@@ -2719,10 +2650,19 @@ try {
     await page.screenshot({ path: join(artifacts, 'theme-dark-settings-phone.png') });
     await settings.getByRole('button', { name: '关闭窗口', exact: true }).click();
     await settings.waitFor({ state: 'hidden' });
-    await page.getByRole('button', { name: '切换工作视图', exact: true }).click();
-    const navigation = page.getByRole('dialog', { name: '工作视图', exact: true });
+    const trigger = page.getByRole('button', { name: '切换工作视图', exact: true });
+    const navigation = page.getByRole('navigation', { name: '切换工作视图', exact: true });
+    await trigger.click();
     const darkNavigation = await surfaceEvidence(navigation, 'var(--surface-raised)');
-    assertSurface(darkNavigation, 'navigation dialog');
+    assertSurface(darkNavigation, 'card navigation');
+    assert.equal(await page.locator('dialog[open]').count(), 0);
+    await page.keyboard.press('Tab');
+    assert.equal(await navigation.locator(':focus').getAttribute('data-view'), 'editor');
+    await page.keyboard.press('Escape');
+    await navigation.waitFor({ state: 'hidden' });
+    assert.equal(await trigger.getAttribute('aria-expanded'), 'false');
+    assert.equal(await trigger.evaluate((button) => button === document.activeElement), true);
+    await trigger.click();
     await navigation.locator('button[data-view="usage"]').click();
     await navigation.waitFor({ state: 'hidden' });
     const usage = page.getByRole('region', { name: '用量与额度历史', exact: true });
