@@ -3004,6 +3004,7 @@ try {
     const viewportEvidence = [];
     // The theme case deliberately reloads the app. Re-select this isolated
     // fixture through the real navigation instead of inheriting a prior view.
+    await page.goto(`${origin}/#/studio`);
     await page.getByRole('button', { name: '打开空间与项目', exact: true }).click();
     await page
       .locator('dialog.sidebar-navigation-modal')
@@ -3018,9 +3019,12 @@ try {
           new URL(response.url()).pathname === `/v1/projects/${projectId}`,
       ),
       page.waitForResponse(
-        (response) =>
-          response.request().method() === 'GET' &&
-          new URL(response.url()).pathname === `/v1/projects/${projectId}/assets`,
+        (response) => {
+          const url = new URL(response.url());
+          return response.request().method() === 'GET' &&
+            url.pathname === `/v1/projects/${projectId}/assets` &&
+            !url.searchParams.has('groupBy');
+        },
       ),
       page
         .getByRole('navigation', { name: '项目', exact: true })
@@ -3068,6 +3072,7 @@ try {
     await changeView(page, 'works', '作品');
     await page.getByRole('button', { name: '拼图与 GIF', exact: true }).click();
     const dialog = page.getByRole('dialog', { name: '拼图与 GIF', exact: true });
+    await dialog.getByRole('button', { name: '导入 GIF', exact: true }).click();
     const raw = Buffer.alloc(16 * 12 * 4 * 2);
     for (let at = 0; at < raw.length; at += 4)
       raw.set(at < raw.length / 2 ? [221, 21, 19, 255] : [16, 29, 209, 255], at);
@@ -3080,9 +3085,8 @@ try {
     await dialog.getByRole('button', { name: '保留全部帧并导入' }).click();
     await dialog.getByRole('status').filter({ hasText: 'QA-motion.gif' }).waitFor();
     await checkDialog(dialog, 'project-asset-tools', '保留全部帧并导入');
-    const sourcePicker = dialog.locator('.asset-tool-assets');
-    const sourceSummary = sourcePicker.locator(':scope > summary');
-    if ((await sourceSummary.getAttribute('aria-expanded')) !== 'true') await sourceSummary.click();
+    await dialog.getByRole('button', { name: '拼图', exact: true }).click();
+    const sourcePicker = dialog.getByRole('region', { name: '选择拼图素材', exact: true });
     await sourcePicker.getByRole('checkbox', { name: /^CI-gradient\.png/ }).check();
     await sourcePicker.getByRole('checkbox', { name: /^QA-motion\.gif/ }).check();
     await dialog.getByRole('spinbutton', { name: '画布宽' }).fill('64');

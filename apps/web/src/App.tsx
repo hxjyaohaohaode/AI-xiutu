@@ -1190,6 +1190,7 @@ export function App({
     }
   }
   async function selectSpace(space: Space | null) {
+    const nextSpaceId = space?.id ?? null;
     if (documentDirty && !(await confirmNavigation(t('文档还有未保存的修改，确定切换空间吗？'))))
       return;
     if (saveLock.current) {
@@ -1199,9 +1200,11 @@ export function App({
     ++projectRequest.current;
     editor.cancelPendingLoad();
     setOpening(false);
-    setSpaceId(space?.id ?? null);
-    setProjects([]);
-    setEntitlements(null);
+    setSpaceId(nextSpaceId);
+    if (nextSpaceId !== spaceId) {
+      setProjects([]);
+      setEntitlements(null);
+    }
     setLibraryTab('project');
     setProject(null);
     setArtwork(null);
