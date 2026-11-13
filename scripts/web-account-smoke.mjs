@@ -757,8 +757,7 @@ try {
         'local photo finishes decoding',
       );
       await page
-        .locator('.floating-tool-dock')
-        .getByRole('button', { name: 'AI 助手', exact: true })
+        .locator('[data-dock-tool="ai"]:visible')
         .click();
       const assistant = page.locator('.live-assistant');
       await assistant.waitFor();
@@ -1691,16 +1690,18 @@ try {
           .getByRole('navigation', { name: '工作视图', exact: true })
           .getByRole('button', { name: '作品', exact: true })
           .click();
-      const cloudOpen = page.waitForResponse(
-        (response) =>
-          new URL(response.url()).pathname === `/v1/artworks/${sourceArtwork.id}` &&
-          response.request().method() === 'GET',
-      );
       await page
-        .locator('.library-version-links button')
-        .filter({ hasText: sourceArtwork.title })
+        .getByRole('button', { name: `工具与信息 · ${sourceArtwork.title}`, exact: true })
         .click();
-      assert.equal((await cloudOpen).status(), 200);
+      const [cloudOpen] = await Promise.all([
+        page.waitForResponse(
+          (response) =>
+            new URL(response.url()).pathname === `/v1/artworks/${sourceArtwork.id}` &&
+            response.request().method() === 'GET',
+        ),
+        page.locator('.library-version-links button').filter({ hasText: sourceArtwork.title }).click(),
+      ]);
+      assert.equal(cloudOpen.status(), 200);
       await until(
         () => canvas.evaluate((element) => element.width === 32 && element.height === 24),
         'private cloud source is actually opened',

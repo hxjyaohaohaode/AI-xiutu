@@ -91,7 +91,7 @@ export interface PromptBarProps {
   sendOnEnter?: boolean;
   stopDisabled?: boolean;
   maxLength?: number;
-  labels?: Partial<{ input: string; sources: string; commands: string; models: string; effort: string; attach: string; chooseModel: string; dictate: string; stop: string; send: string; listening: string; empty: string }>;
+  labels?: Partial<{ input: string; sources: string; commands: string; models: string; effort: string; attach: string; chooseModel: string; dictate: string; stop: string; stopping: string; send: string; listening: string; empty: string }>;
   tools?: ReactNode;
   background?: string;
   color?: string;
@@ -902,7 +902,7 @@ const PromptBar: React.FC<PromptBarProps> = ({
           <button
             type="button"
             className="prompt-bar__send"
-            aria-label={busy ? labels.stop ?? 'Stop' : labels.send ?? 'Send'}
+            aria-label={busy ? (stopDisabled ? labels.stopping : undefined) ?? labels.stop ?? 'Stop' : labels.send ?? 'Send'}
             disabled={!armed}
             data-armed={armed ? '' : undefined}
             data-pressed={pressed ? '' : undefined}

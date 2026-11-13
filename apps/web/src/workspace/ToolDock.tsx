@@ -302,6 +302,7 @@ function TouchToolDock({
         type="button"
         className={aiOpen ? 'active ai-tool' : 'ai-tool'}
         data-dock-tool="ai"
+        aria-label={t('AI 助手')}
         aria-pressed={aiOpen}
         tabIndex={tabStop === 'ai' ? 0 : -1}
         onFocus={() => setTabStop('ai')}

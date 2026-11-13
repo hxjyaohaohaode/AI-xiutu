@@ -686,7 +686,12 @@ async function verifyWorkerRecovery({ png, source }) {
         .filter((toast) => toast.box.width > 0 && toast.box.height > 0);
       const hit = (x, y) => {
         const target = document.elementFromPoint(x, y);
-        return { x, y, unobscured: target === element || element.contains(target) };
+        return {
+          x,
+          y,
+          unobscured: target === element || element.contains(target),
+          target: target && `${target.tagName}.${target.getAttribute('class') ?? ''}`,
+        };
       };
       return {
         notificationSource: 'actual user action: reset current screen layout',
@@ -894,7 +899,7 @@ try {
   ]) {
     const { width: w, height: h, ...device } = size;
     if (
-      selectedCase === 'mask' ||
+      selectedCase === 'mask' || selectedCase === 'recovery' ||
       (selectedCase === 'saturation' && test !== '饱和度') ||
       (selectedCase === 'hsl' && test !== 'HSL') ||
       (selectedCase === 'phone' && !device.hasTouch)
@@ -1292,14 +1297,14 @@ try {
   if (
     !largePhoto &&
     process.env.PREVIEW_RECORD_ONLY !== '1' &&
-    (!selectedCase || selectedCase === 'mask')
+    (!selectedCase || selectedCase === 'mask' || selectedCase === 'recovery')
   ) {
     if (selectedCase !== 'mask')
       await verifyWorkerRecovery({
         png: buffer,
         source: { width, height, data: new Uint8ClampedArray(rgba) },
       });
-    await verifyLocalMaskAndLiquify(buffer);
+    if (selectedCase !== 'recovery') await verifyLocalMaskAndLiquify(buffer);
   } else {
     report.workerRecovery = {
       state: 'not-run',

@@ -173,16 +173,17 @@
 .modal.project-asset-tools .asset-size-fields input { width: 100%; min-height: 34px; }
 .export-recipe-actions { display: flex; justify-content: center; flex-wrap: wrap; gap: 4px 12px; }
 
-.workspace-body > .floating-notice, .workspace-canvas-status > .floating-notice { top: 5px; }
-.studio-workspace .workspace-canvas-status {
+.studio-workspace .workspace-status-stack {
   position: absolute;
-  top: var(--ui-topbar-height, 52px);
-  left: 0;
-  right: 0;
-  z-index: 25;
-  height: 0;
+  inset: calc(var(--ui-topbar-height, 52px) + 5px) 0 auto;
+  z-index: 41;
+  display: grid;
+  justify-items: center;
+  gap: 6px;
   pointer-events: none;
 }
+.studio-workspace.is-focused .workspace-status-stack { inset-block-start: 8px; }
+.studio-workspace .workspace-canvas-status:empty { display: none; }
 .studio-workspace .floating-notice {
   position: fixed;
   inset: 57px auto auto 50%;
@@ -202,7 +203,11 @@
   font-size: 12px;
   pointer-events: auto;
 }
-.studio-workspace :is(.workspace-body, .workspace-canvas-status) > .floating-notice { position: absolute; }
+.studio-workspace .workspace-status-stack .floating-notice {
+  position: static;
+  margin: 0;
+  transform: none;
+}
 .floating-notice-icon { display: grid; place-items: center; inline-size: 24px; block-size: 30px; flex: none; }
 .floating-notice-icon > img { inline-size: 100%; block-size: 100%; object-fit: contain; }
 .floating-notice > span:nth-child(2) { min-width: 0; overflow-wrap: anywhere; }
@@ -329,7 +334,7 @@
   .studio-workspace .canvas-tools-dock .collaboration-summary { min-width: 32px; padding: 4px; }
   .studio-workspace .canvas-tools-dock .collaboration-summary > span, .studio-workspace .canvas-tools-dock .collaboration-summary > svg:nth-of-type(2) { display: none; }
   .studio-workspace .canvas-tools-settings > .icon-button { min-height: 30px; height: 30px; }
-  .studio-workspace .workspace-canvas-status { top: 42px; }
+  .studio-workspace .workspace-status-stack { inset-block-start: 59px; }
 }
 @media (prefers-reduced-motion: reduce) {
 }
@@ -502,9 +507,18 @@
   .studio-workspace .canvas-tools-dock .collaboration-summary { min-height: 30px; }
   .studio-workspace .free-panel .rubber-segment.inspector-family-tabs > button { min-height: 29px; }
   .studio-workspace .canvas-stage.content-first .canvas-view-controls
-    > :is(button.icon-button, .compare-press, .zoom-fit, .canvas-tools-trigger) {
-    width: 38px;
-    min-width: 38px;
+    > :is(button.icon-button, .compare-press, .zoom-fit, .canvas-tools-trigger, .canvas-review-toggle) {
+    width: 44px;
+    min-width: 44px;
+    height: 44px;
+    min-height: 44px;
+  }
+  .studio-workspace[data-fixed-inspector-open='true'] .canvas-stage.content-first .canvas-view-controls {
+    height: 44px;
+    min-height: 44px;
+  }
+  .studio-workspace[data-fixed-inspector-open='true'] .canvas-stage.content-first.has-image .image-viewport {
+    padding-block-end: 44px;
   }
 }
 @media (width >= 760px) and (height <= 480px) {

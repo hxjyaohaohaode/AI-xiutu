@@ -527,27 +527,6 @@ try {
       dispatches,
       version: (await head()).artwork.headVersion,
     };
-    const tabs = () =>
-      page
-        .locator('.free-panel[aria-hidden="false"]')
-        .getByRole('navigation', { name: '当前作品面板', exact: true });
-    const focusedSection = (id, label) =>
-      until(
-        () =>
-          page.evaluate(
-            ({ id, label }) => {
-              const active = document.activeElement;
-              return (
-                active?.getAttribute('aria-pressed') === 'true' &&
-                active.textContent.trim() === label &&
-                active.closest('.free-panel')?.getAttribute('data-panel-id') === id &&
-                !active.closest('[hidden],[inert]')
-              );
-            },
-            { id, label },
-          ),
-        `keyboard focus reaches the visible ${label} context`,
-      );
     try {
       // A native model menu may close independently; Escape must not dismiss the
       // retained settings page as well or erase the current composer draft.
@@ -563,26 +542,24 @@ try {
       await closeSettings();
       assert.equal(await input.inputValue(), draft);
 
-      const assistantTab = tabs().getByRole('button', { name: 'AI 助手', exact: true });
+      const dock = (id) => page.locator('[data-dock-tool="' + id + '"]:visible');
+      const assistantTab = dock('ai');
       await assistantTab.focus();
-      await assistantTab.press('ArrowRight');
-      await focusedSection('collaboration', '协作');
-      await page
-        .locator('.free-panel[data-panel-id="collaboration"][aria-hidden="false"]')
-        .waitFor();
-      assert.equal(
-        await canvasOwner.evaluate(
-          (node) => node.isConnected && node === document.querySelector('.image-frame canvas'),
-        ),
-        true,
-      );
-      await tabs().getByRole('button', { name: '协作', exact: true }).press('ArrowRight');
-      await focusedSection('inspector', '记录');
+      await assistantTab.press('ArrowLeft');
+      assert.equal(await dock('composite').evaluate((node) => node === document.activeElement), true);
+      const adjustments = dock('light');
+      await adjustments.focus();
+      await adjustments.press('Enter');
+      await page.locator('.free-panel[data-panel-id="inspector"][aria-hidden="false"]').waitFor();
+      await page.locator('.collaboration-summary').click();
+      await page.getByRole('button', { name: '项目协作', exact: true }).click();
+      await page.locator('.free-panel[data-panel-id="collaboration"][aria-hidden="false"]').waitFor();
+      const history = page.locator('[data-action="open-history"]:visible');
+      await history.focus();
+      await history.press('Enter');
       await page.locator('.detailed-history-list').waitFor();
-      await tabs().getByRole('button', { name: '记录', exact: true }).press('Home');
-      await focusedSection('inspector', '调整');
-      await tabs().getByRole('button', { name: '调整', exact: true }).press('ArrowRight');
-      await focusedSection('ai', 'AI 助手');
+      await assistantTab.focus();
+      await assistantTab.press('Enter');
       await input.waitFor();
       assert.equal(await input.inputValue(), draft);
       assert.equal(
@@ -770,7 +747,7 @@ try {
       original.artwork.headVersion,
       'preview has no persisted write',
     );
-    await page.getByRole('button', { name: '撤销本次编辑', exact: true }).click();
+    await page.locator('.canvas-view-controls').getByRole('button', { name: '撤销本次编辑', exact: true }).click();
     return { persistedWrite: false, undoAvailable: true };
   });
   await testCase(
@@ -789,7 +766,7 @@ try {
           path: resolve(artifacts, 'local-spatial-preview.png'),
           fullPage: true,
         });
-        await page.getByRole('button', { name: '撤销本次编辑', exact: true }).click();
+        await page.locator('.canvas-view-controls').getByRole('button', { name: '撤销本次编辑', exact: true }).click();
         return { selectedSourceRegion: 'left', persistedWrite: false, undoAvailable: true };
       } finally {
         spatialFixture = false;
@@ -1764,7 +1741,7 @@ try {
           overflow: document.documentElement.scrollWidth,
           composer: box('.assistant-composer'),
           input: box('.assistant-composer textarea'),
-          send: box('.assistant-composer .ai-send-button'),
+          send: box('.assistant-composer .prompt-bar__send'),
           toolbar: box('.assistant-composer .prompt-bar__bar'),
           close: box('.ai-workbench-header [data-ai-return]'),
           panel: box('.ai-workbench'),
@@ -1781,7 +1758,7 @@ try {
                   ),
                 }
               : null,
-          canvas: box('.canvas-photo-frame'),
+          canvas: box('.image-frame canvas'),
           inputFontSize: parseFloat(
             getComputedStyle(document.querySelector('.assistant-composer textarea')).fontSize,
           ),

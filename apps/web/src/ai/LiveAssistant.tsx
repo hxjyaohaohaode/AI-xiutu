@@ -2878,7 +2878,7 @@ export function LiveAssistant(props: LiveAssistantProps) {
             labels={{ input: t('向智能体描述修改需求'), attach: t('共享画面与参考素材'),
               chooseModel: t('选择助手模型与执行方式'), models: t('选择模型'),
               sources: t('共享画面与参考素材'), commands: t('助手操作'), empty: t('没有匹配的选项'),
-              send: t('发送协作请求'), stop: t('停止本轮执行') }}
+              send: t('发送协作请求'), stop: t('停止本轮执行'), stopping: t('正在核对停止结果') }}
             sources={[
                 {
                   key: 'reference', name: t('参考图'),

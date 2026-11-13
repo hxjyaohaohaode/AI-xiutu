@@ -3126,17 +3126,19 @@ export function App({
                   </button>
                 </div>
               )}
-              <div
-                className="workspace-canvas-status"
-                ref={setCanvasStatusContainer}
-                hidden={view !== 'editor' || mobileAssistantOpen || collageOpen}
-                inert={view !== 'editor' || mobileAssistantOpen || collageOpen}
-              />
-              <div className="workspace-notice-anchor" ref={setNoticeContainer} />
-              <div className="workspace-body">
+              <div className="workspace-status-stack">
+                <div
+                  className="workspace-canvas-status"
+                  ref={setCanvasStatusContainer}
+                  hidden={view !== 'editor' || mobileAssistantOpen || collageOpen}
+                  inert={view !== 'editor' || mobileAssistantOpen || collageOpen}
+                />
                 {!cloudNoticeDismissed && <FloatingNotice message={cloudError} className="cloud-status"
                   dismissLabel={interactionText('dismissCloud')}
                   onRetry={retryCloudRead} onDismiss={() => setCloudNoticeDismissed(true)} />}
+              </div>
+              <div className="workspace-notice-anchor" ref={setNoticeContainer} />
+              <div className="workspace-body">
                 <MotionSwitch
                   switchKey={view}
                   className="workspace-view-transition"

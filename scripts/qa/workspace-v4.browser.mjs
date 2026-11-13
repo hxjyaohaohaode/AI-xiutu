@@ -372,9 +372,6 @@ async function pixelEvidence(bytes) {
 }
 async function canvasEvidence(page) {
   await imageReady(page);
-  await page
-    .locator('.free-panel[aria-hidden="false"] .panel-layout-trigger')
-    .click({ trial: true });
   // PixelCanvas paints in an effect; give committed state and its paint two
   // actual animation frames rather than reading React internals.
   await page.evaluate(
@@ -443,7 +440,7 @@ async function imageReady(page) {
   await page.locator('.stage-loading').waitFor({ state: 'hidden' });
   await page.locator('.canvas-stage[aria-busy="true"]').waitFor({ state: 'hidden' });
   assert.equal(
-    await page.locator('.canvas-error').getByRole('alert').count(),
+    await page.locator('.workspace-canvas-status').getByRole('alert').count(),
     0,
     'the image pipeline must complete without a visible processing error',
   );
@@ -579,7 +576,7 @@ async function cloudRecoveryHeaderEvidence(page, expectedRoute) {
       toolbar.overflow <= 1,
     'the canvas toolbar and its contents must fit the phone width',
   );
-  assert.equal(toolbar.buttons.length, 5, 'the phone keeps five primary canvas actions in one row');
+  assert.equal(toolbar.buttons.length, 6, 'the phone keeps the five canvas actions and editing history in one row');
   for (const button of toolbar.buttons) {
     inside(button, toolbar, `${button.label} fits fully within the canvas toolbar`);
     assert.ok(
@@ -1425,7 +1422,7 @@ try {
         const closeTools = async () => {
           await tool(page, '绘制');
           const panel = page.locator('.free-panel[aria-hidden="false"]');
-          if (viewport.width < 760) {
+          if ((await panel.getAttribute('data-fixed-inspector')) === 'true') {
             await page.locator('[data-dock-tool="repair"][aria-pressed="true"]').click();
             await panel.waitFor({ state: 'hidden' });
           } else {

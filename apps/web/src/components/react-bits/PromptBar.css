@@ -568,6 +568,7 @@
 .assistant-reference-prompt .prompt-bar__pick > span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .assistant-reference-prompt .prompt-bar__pick > svg { flex: none; }
 .assistant-reference-prompt .prompt-bar__send { background: var(--surface-hover); border-radius: 10px; }
+.assistant-reference-composer .prompt-bar__send { min-width: 36px; min-height: 36px; }
 .assistant-reference-prompt .prompt-bar__send[data-armed] { background: var(--accent); color: var(--on-accent); }
 .assistant-reference-prompt[data-busy] .prompt-bar__send[data-armed] { background: var(--ink); color: var(--surface); }
 .assistant-reference-prompt :is(.prompt-bar__tool, .prompt-bar__pick, .prompt-bar__send):focus-visible {
@@ -578,7 +579,16 @@
   .assistant-reference-prompt :is(.prompt-bar__tool, .prompt-bar__pick, .prompt-bar__send) { height: 40px; }
   .assistant-reference-prompt :is(.prompt-bar__tool, .prompt-bar__send) { width: 40px; }
 }
+@media (width < 760px) {
+  .assistant-reference-composer .prompt-bar__input { font-size: 16px; }
+  .assistant-reference-composer .prompt-bar__send { min-width: 44px; min-height: 44px; }
+}
 @media (max-height: 490px) and (orientation: landscape) {
   .assistant-reference-prompt .prompt-bar__field { gap: 2px; padding-block: 5px; }
   .assistant-reference-prompt :is(.prompt-bar__tool, .prompt-bar__pick, .prompt-bar__send) { height: 32px; }
+}
+@media (max-width: 359px), (max-width: 999px) and (max-height: 500px) {
+  .live-assistant[data-compose-expanded='true'] .assistant-reference-composer .prompt-bar__input {
+    min-height: min(30dvh, 160px);
+  }
 }
