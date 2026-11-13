@@ -1925,7 +1925,7 @@ try {
     await a.page.getByRole('button', { name: '跨空间查找', exact: true }).click();
     const crossSpace = a.page.locator('[data-library-scope="all"]');
     await crossSpace.getByRole('searchbox', { name: '搜索当前范围素材', exact: true }).fill('CI-gradient');
-    await crossSpace.getByRole('button', { name: /工具与信息.*CI-gradient\.png/ }).click();
+    await crossSpace.locator(`[data-id="${assetId}"] .library-masonry-more`).click();
     await a.page.getByRole('dialog').getByRole('button', { name: '长期复用', exact: true }).click();
     await a.page
       .getByRole('textbox', { name: '便于查找的名称', exact: true })
@@ -2049,7 +2049,6 @@ try {
       await history.getByRole('button', { name: '加载更早版本', exact: true }).click();
       await history.getByRole('button', { name: '重试读取版本', exact: true }).waitFor();
       assert.equal(await history.locator('.revision-entry').count(), 100);
-      assert.equal(await history.locator('.revision-entry').count(), 100);
       [secondPageResponse] = await Promise.all([
         a.page.waitForResponse((response) => isHistoryPage(response, '6')),
         history.getByRole('button', { name: '重试读取版本', exact: true }).click(),
@@ -2071,10 +2070,14 @@ try {
     assert.equal(secondPage.page.nextBeforeVersion, null);
     assert.ok(secondPage.revisions.every((revision) => !Object.hasOwn(revision, 'recipe')));
     await eventually(
-      async () =>
-        (await history.locator('.revision-entry').count()) === 105 &&
-        (await history.locator(':scope > summary').innerText()).includes('已载入 105'),
+      async () => (await history.locator('.revision-entry').count()) === 105,
       'the older page appends without dropping or duplicating history',
+    );
+    assert.deepEqual(
+      (await history.locator('.revision-open > span').allTextContents()).map(
+        (label) => Number(/^V(\d+)/.exec(label)?.[1]),
+      ),
+      Array.from({ length: 105 }, (_, index) => 105 - index),
     );
     assert.equal(
       await history.getByRole('button', { name: '加载更早版本', exact: true }).count(),
@@ -3099,10 +3102,16 @@ try {
     assert.deepEqual([...collagePixels.subarray(gifCell, gifCell + 4)], [221, 21, 19, 255]);
     await dialog.getByRole('status').filter({ hasText: '拼图.png' }).waitFor();
     await dialog.getByRole('button', { name: '关闭窗口', exact: true }).click();
-    const animationCard = page.locator('.library-asset').filter({ hasText: 'QA-motion.gif' });
-    const summary = animationCard.locator('.library-asset-details > summary');
+    const openAnimationTools = () => page.getByRole('button', {
+      name: '工具与信息 · QA-motion.gif', exact: true,
+    }).click();
+    await openAnimationTools();
+    const animationTools = page.locator('dialog.library-asset-menu');
+    const summary = animationTools.locator('.library-asset-details > summary');
     await summary.click();
     assert.equal(await summary.getAttribute('aria-expanded'), 'true');
+    await animationTools.getByRole('button', { name: '关闭窗口', exact: true }).click();
+    await animationTools.waitFor({ state: 'hidden' });
     const refresh = page
       .locator('.library-status-actions')
       .getByRole('button', { name: '刷新', exact: true });
@@ -3117,8 +3126,9 @@ try {
     ]);
     assert.equal(refreshed.status(), 200);
     await eventually(() => refresh.isEnabled(), 'the refreshed asset listing settles');
+    await openAnimationTools();
     assert.equal(await summary.getAttribute('aria-expanded'), 'true');
-    await animationCard.getByRole('button', { name: 'GIF 帧编辑' }).click();
+    await animationTools.getByRole('button', { name: 'GIF 帧编辑' }).click();
     const editor = page.getByRole('dialog', { name: 'GIF 帧编辑' });
     await editor.getByRole('button', { name: '反转帧顺序' }).click();
     const pendingEdit = page.waitForResponse((response) =>
