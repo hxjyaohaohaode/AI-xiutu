@@ -1,6 +1,6 @@
 import sharp from 'sharp';
 import { MAX_HEADER_BYTES, readImageHeader } from '@ai-xiutu/editor';
-import { gifFrameCount, gifFrameDelay, openAISvgAuthorSchema, responsesModel } from '@ai-xiutu/contracts';
+import { gifFrameCount, gifFrameDelay, openAISvgAuthorSchema, openAITwoFrameGifFits, responsesModel } from '@ai-xiutu/contracts';
 import { postEventStream, postJson, record, reject, token, unknown } from './http.js';
 import { sanitizeOpenAISvg } from './openai-image-artifacts.js';
 import type {
@@ -155,11 +155,11 @@ export function describeOpenAIImageModel(
           }
         : { supported: false, reason: '此型号由 OpenAI 决定输入保真度。' },
     stream: {
-      supported: !old,
-      reason: old ? '该型号暂采用单次 JSON 返回。' : 'PNG、JPEG、WebP 支持单张流式生成。',
+      supported: true,
+      reason: 'PNG、JPEG、WebP 支持单张流式生成。',
     },
     partialImages: {
-      supported: !old && env.OPENAI_IMAGE_PARTIALS_ENABLED === 'true',
+      supported: env.OPENAI_IMAGE_PARTIALS_ENABLED === 'true',
       min: 0,
       max: 3,
       default: 0,
@@ -389,6 +389,8 @@ export function validateOpenAIImageInput(
       (!Number.isInteger(options.frameDurationMs) || options.frameDurationMs < gifFrameDelay.min ||
         options.frameDurationMs > gifFrameDelay.max)) reject('OPENAI_GIF_DURATION_INVALID');
   const { width, height } = input;
+  if (gif && !options.size && frames === 2 && !openAITwoFrameGifFits(width, height, caps.size))
+    reject('OPENAI_GIF_STORYBOARD_SIZE_LIMIT');
   if (options.size !== undefined && (options.size !== 'auto' || !caps.size.auto))
     reject('OPENAI_SIZE_NOT_VERIFIED');
   if (!options.size && !(gif ? gifDimensionsFit(model, width, height, frames) :
@@ -543,6 +545,7 @@ export function createOpenAIImageProvider(
       const request = buildOpenAIImageRequest(input);
       const responseBytes = Math.ceil(budgets.maxTotalBytes / 3) * 4 + 1_000_000;
       const deadline = options.outputFormat === 'svg' || options.outputFormat === 'gif' ? 220_000 : 180_000;
+      let partialImageCount: number | undefined;
       async function streamResult(): Promise<{ data: Record<string, unknown>; requestId: string }> {
         const type = request.endpoint === OPENAI_IMAGE_EDITS_ENDPOINT ? 'image_edit' : 'image_generation';
         const seen = new Set<number>();
@@ -563,6 +566,7 @@ export function createOpenAIImageProvider(
           },
         );
         if (!complete) unknown('OPENAI_IMAGE_STREAM_INCOMPLETE', requestId);
+        partialImageCount = seen.size;
         return { data: { ...complete, data: [{ b64_json: complete.b64_json }] }, requestId };
       }
       const { data, requestId } = options.stream ? await streamResult() :
@@ -682,7 +686,10 @@ export function createOpenAIImageProvider(
         }
         usage.svg_author = authorUsage;
       }
-      return { ...images[0]!, requestId, images, usage };
+      return {
+        ...images[0]!, requestId, images, usage,
+        ...(partialImageCount !== undefined ? { partialImageCount } : {}),
+      };
     },
   };
 }

@@ -53,7 +53,8 @@ Responses 和 Live / Realtime 目录公布按型号及快照核对的档案。�
 
 浏览器麦克风通过 AudioWorklet 产出24kHz单声道PCM16小包，经同源 WebSocket 到受控服务端，再连接固定官方地址。没有先录完整文件再上传的中间步骤。短录音转写仍作为另一种入口存在。
 
-- **GPT-Live 1**：独立 Live 会话，支持同声输入输出与客户端委派。它自身不直接接收图片；共享画面进入受权限控制的后端 Responses 智能体。后端结果再作为有长度限制的委派返回进入通话。
+- **GPT-Live 1**使用独立 Live 会话。应用委派可读取获准的画面与作品参数。原生 Responses 可独立选择委派模型及参数，原生 Decisions 可提交分类、判断或打分问题并选字幕触发方式。原生模式处理本轮语音和文字，供应商回执单列，应用内写入继续经已有权限和确认流程。[官方委派](https://developers.openai.com/api/docs/guides/live-delegation)
+- **Realtime Translate**在个人通话入口直接处理麦克风输入。选择目标语言、原语字幕和降噪，界面连续播放译音。服务端等待官方 `session.closed` 再结算，并记录实际传输的 PCM 时长。[官方翻译协议](https://developers.openai.com/api/docs/guides/realtime-translation)
 - **Realtime 系列**：使用独立 Realtime 会话、服务端VAD、逐回应收据与函数调用。当前共享图像可进入会话，具体是否开放仍由能力与用户授权决定。应用一次只保持一个在途回应和一个后续待回应标记，防止无限创建收费响应。
 - 浏览器可以静音、停止播报、结束、发文字补充和主动更新当前图；不能直接发送供应商 `session.update`、任意工具、URL或密钥。
 - 单人通话可独立开关字幕。Realtime 检测到用户开口时按 Web Audio 时钟回报当前播放片段和实际播到的毫秒数。用户明确允许公开搜索后，每通可提交 1–3 条不同查询，具体上限取决于委派配置。结果保留来源。

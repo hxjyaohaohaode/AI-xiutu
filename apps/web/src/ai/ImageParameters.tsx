@@ -367,7 +367,7 @@ export function ImageParameters({
               )}
               {options.stream && c.partialImages.supported && (
                 <p className="fine-print">
-                  {t('部分图审核通过后实时展示，每张按当前单张点数预留。')}
+                  {t('部分图审核通过后实时展示。按收到的张数结算，余下预占自动退回。')}
                 </p>
               )}
             </>

@@ -154,6 +154,7 @@ async function finishHold(
   tx: Queryable,
   holdId: string,
   target: 'settled' | 'released',
+  actualUnits?: number,
 ): Promise<void> {
   const found = await tx.query('SELECT space_id FROM quota_holds WHERE id=$1', [holdId]);
   if (!found.rows[0]) throw new QuotaError('HOLD_NOT_FOUND', '预占记录不存在');
@@ -163,52 +164,53 @@ async function finishHold(
   if (hold.state === target) return;
   if (!['held', 'unknown'].includes(hold.state))
     throw new QuotaError('HOLD_TERMINAL', '预占已按另一结果结束');
+  const charged = target === 'settled' ? actualUnits ?? Number(hold.units) : 0;
+  if (!Number.isSafeInteger(charged) || charged < 0 || charged > Number(hold.units) ||
+      (target === 'settled' && charged === 0))
+    throw new QuotaError('INVALID_UNITS', '结算额度超出预占');
   const allocations = await tx.query(
-    'SELECT a.*,l.expires_at FROM hold_allocations a JOIN quota_lots l ON l.id=a.lot_id WHERE hold_id=$1 ORDER BY l.id FOR UPDATE OF l',
+    `SELECT a.*,l.expires_at FROM hold_allocations a JOIN quota_lots l ON l.id=a.lot_id
+      WHERE hold_id=$1 ORDER BY l.expires_at NULLS LAST,CASE WHEN l.kind='purchased' THEN 1 ELSE 0 END,l.created_at,l.id FOR UPDATE OF l`,
     [holdId],
   );
   // Keep PostgreSQL's full timestamp precision and one instant for every lot and
   // both complementary branches. Two clock_timestamp() calls can straddle expiry.
   const releasedAt =
-    target === 'released'
+    charged < Number(hold.units)
       ? (await tx.query('SELECT clock_timestamp()::text AS value')).rows[0]!.value
       : null;
+  let remaining = charged;
   for (const a of allocations.rows) {
-    if (target === 'settled')
-      await tx.query('UPDATE quota_lots SET held=held-$2,spent=spent+$2 WHERE id=$1', [
-        a.lot_id,
-        a.units,
-      ]);
-    else
-      await tx.query(
-        `UPDATE quota_lots SET held=held-$2,
-      available=available+CASE WHEN expires_at IS NULL OR expires_at>$3::timestamptz THEN $2 ELSE 0 END,
-      expired=expired+CASE WHEN expires_at IS NULL OR expires_at>$3::timestamptz THEN 0 ELSE $2 END WHERE id=$1`,
-        [a.lot_id, a.units, releasedAt],
-      );
+    const spent = Math.min(remaining, Number(a.units));
+    remaining -= spent;
+    const released = Number(a.units) - spent;
     await tx.query(
-      `INSERT INTO ledger_entries(space_id,lot_id,kind,units,event_key,actor_id,reason,movement)
-       SELECT $1,$2,$3,$4,$5,$6,$7,
-         CASE WHEN $3='settled' THEN jsonb_build_object('consumed',$8::integer)
-         ELSE jsonb_build_object('released',$8::integer,'expired',
-           CASE WHEN expires_at<=$9::timestamptz THEN $8::integer ELSE 0 END) END
-       FROM quota_lots WHERE id=$2`,
-      [
-        hold.space_id,
-        a.lot_id,
-        target,
-        target === 'released' ? a.units : 0,
-        `${target}:${holdId}:${a.lot_id}`,
-        hold.user_id,
-        target === 'settled' ? '任务权益结算' : '未交付任务释放到原批次',
-        a.units,
-        releasedAt,
-      ],
+      `UPDATE quota_lots SET held=held-$2,spent=spent+$3,
+      available=available+CASE WHEN expires_at IS NULL OR expires_at>$5::timestamptz THEN $4 ELSE 0 END,
+      expired=expired+CASE WHEN expires_at<=$5::timestamptz THEN $4 ELSE 0 END WHERE id=$1`,
+      [a.lot_id, a.units, spent, released, releasedAt],
     );
+    if (spent)
+      await tx.query(
+        `INSERT INTO ledger_entries(space_id,lot_id,kind,units,event_key,actor_id,reason,movement)
+         VALUES($1,$2,'settled',0,$3,$4,'任务权益结算',jsonb_build_object('consumed',$5::integer))`,
+        [hold.space_id, a.lot_id, `settled:${holdId}:${a.lot_id}`, hold.user_id, spent],
+      );
+    if (released)
+      await tx.query(
+        `INSERT INTO ledger_entries(space_id,lot_id,kind,units,event_key,actor_id,reason,movement)
+         SELECT $1,$2,'released',$3,$4,$5,$6,jsonb_build_object('released',$3::integer,
+           'expired',CASE WHEN expires_at<=$7::timestamptz THEN $3::integer ELSE 0 END)
+         FROM quota_lots WHERE id=$2`,
+        [hold.space_id, a.lot_id, released, `released:${holdId}:${a.lot_id}`, hold.user_id,
+          target === 'released' ? '未交付任务释放到原批次' : '未生成的部分图额度释放到原批次', releasedAt],
+      );
   }
+  if (remaining) throw new QuotaError('INVALID_UNITS', '预占分配不足');
   await tx.query('UPDATE quota_holds SET state=$2 WHERE id=$1', [holdId, target]);
 }
-export const settleHold = (tx: Queryable, id: string) => finishHold(tx, id, 'settled');
+export const settleHold = (tx: Queryable, id: string, actualUnits?: number) =>
+  finishHold(tx, id, 'settled', actualUnits);
 export const releaseHold = (tx: Queryable, id: string) => finishHold(tx, id, 'released');
 export async function markUnknownHold(tx: Queryable, id: string): Promise<void> {
   const found = await tx.query('SELECT space_id FROM quota_holds WHERE id=$1', [id]);

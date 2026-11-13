@@ -367,7 +367,7 @@ existing candidate/reference IDs; they cannot run arbitrary HTML or commands.
 ### 6.3 Voice preparation and application WebSocket
 
 `POST /v1/projects/:projectId/voice-sessions` accepts
-`{idempotencyKey:UUID,modelId,backendModelId,voice,context?,scope?}` and returns
+`{idempotencyKey:UUID,modelId,backendModelId?,voice,context?,scope?,delegation?,translation?}` and returns
 `{id,ticket,websocketPath,maxSeconds,reservedUnits,billing}`. It reserves one
 configured, time-limited voice service-unit block. Backend delegations share that
 declared block; provider token/second receipts are separate metadata. Limits are
@@ -375,6 +375,10 @@ one prepared/connecting/active voice session per actor and12 preparations per
 hour. Same-key preparation returns409 `VOICE_ALREADY_PREPARED`, without another
 hold or automatic reconnect. A lost ticket is not reissued; unconnected preparation
 expires after60seconds and is safely released during maintenance.
+
+For `gpt-live-1`, `delegation.type` selects `client`, `responses` or `decisions`. A Responses session requires an enabled `backendModelId` and accepts `prompt`, `maxOutputTokens` (16 to the configured/model limit), `serviceTier`, `effort` and `verbosity` when the backend supports those values. Decisions uses `gpt-6-luna`, accepts typed `questions` and an optional `trigger:input|output`. Native sessions receive current conversation inputs and may return `delegated-result`. They accept no editor snapshot, private references, personal memory or execution grant.
+
+For `gpt-realtime-translate`, pass `translation:{language,sourceTranscript?,noiseReduction?,noiseStrength?}` with no backend or editor context. Supported languages come from the translation profile. Noise reduction accepts `near_field`, `far_field` or `null`, with strength 0–1 for an enabled filter. PCM and subtitle deltas are forwarded during the call. The server waits for the provider to close the translation session before settling. Native delegation and translation use the individual voice endpoint.
 
 Connect to the returned same-origin path `/v1/voice-sessions/:id/stream` with the
 normal session cookie and exactly two subprotocols: `xiutu-voice` and the opaque

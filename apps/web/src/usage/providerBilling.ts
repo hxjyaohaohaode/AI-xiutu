@@ -162,7 +162,7 @@ export function publicPriceSource(source: string): string | undefined {
 
 /** Do not add cached/reasoning subset meters to provider token totals a second time. */
 export function summarizeProviderStages(stages: readonly ProviderStage[]) {
-  const tokenStages = stages.filter((stage) => stage.purpose !== 'live-duration');
+  const tokenStages = stages.filter((stage) => !['live-duration', 'live-translation'].includes(stage.purpose));
   const counted = tokenStages.filter((stage) => recordedCount(stage.totals.total) !== null);
   const total = counted.reduce((sum, stage) => sum + stage.totals.total!, 0);
   const knownTokens = counted.length && Number.isSafeInteger(total) ? total : null;

@@ -774,7 +774,10 @@ export function AIThread({
                   size="small"
                 />
                 <span>
-                  {job.reservedUnits} {t('点')}
+                  {job.state === 'completed' && job.output?.kind === 'image' &&
+                    job.output.chargedUnits !== undefined
+                    ? t('实扣 {count} 点', { count: job.output.chargedUnits })
+                    : `${job.reservedUnits} ${t('点')}`}
                 </span>
               </header>
               {(job.operation ?? job.request?.operation) === 'generate-image' &&

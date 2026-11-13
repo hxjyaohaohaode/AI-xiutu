@@ -4,7 +4,7 @@
 
 ## Responses
 
-模型及快照的精确 ID、官方上限、可选值和来源写在 [responses-models.ts](../packages/assistant/src/responses-models.ts)。当前包含官方 Playground 中 47 个可选模型，均以对应 ID 收到正式 Responses 回复。产品服务点按运营确认的模型配置预占，实际档位和供应商用量进入派发记录。应用每次响应使用 256–8192 输出 token 预算，且不会超过所选模型的限制。基础控制已接入运营设置，普通用户可在助手设置覆盖本轮的推理档位和详细度，价格和服务档位由服务器配置。[Responses 请求](https://developers.openai.com/api/reference/resources/responses/methods/create) · [推理指南](https://developers.openai.com/api/docs/guides/reasoning)
+模型及快照的精确 ID、官方上限、可选值和来源见 [Responses 模型档案](../packages/contracts/src/openai-responses-models.ts)。当前包含官方 Playground 中 47 个可选模型，均以对应 ID 收到正式 Responses 回复。产品服务点按运营确认的模型配置预占，实际档位和供应商用量进入派发记录。应用每次响应使用 256–8192 输出 token 预算，且不会超过所选模型的限制。基础控制已接入运营设置，普通用户可在助手设置覆盖本轮的推理档位和详细度，价格和服务档位由服务器配置。[Responses 请求](https://developers.openai.com/api/reference/resources/responses/methods/create) · [推理指南](https://developers.openai.com/api/docs/guides/reasoning)
 
 | 官方型号或系列 | `reasoning.effort` | 默认或其他约束 |
 | --- | --- | --- |
@@ -38,6 +38,8 @@
 
 11 个精确 ID 支持从生图/编辑路径使用。2、2.5 Sunburst/Flare 及其快照、2.6 Sunburst/Flare 支持可用档案内的自定义尺寸。应用按 16 像素步进、1:3 到 3:1、最多 8,294,400 像素、最长边 3840 检查。2.6 Flare 的 `3840x2160` 有真实回执。`gpt-image-1.5`、`gpt-image-1-mini` 和 `chatgpt-image-latest` 开放 `1024x1024`、`1536x1024`、`1024x1536`。选 `auto` 时以实际出图尺寸为准，并在入队前确认三种标准尺寸均在该配置的预算内。[Images 生成参数](https://developers.openai.com/api/reference/resources/images/methods/generate) · [Images 编辑参数](https://developers.openai.com/api/reference/resources/images/methods/edit) · [图像生成指南](https://developers.openai.com/api/docs/guides/image-generation)
 
+OpenAI 公告计划于 2026-12-01 停用 `gpt-image-1.5`、`gpt-image-1-mini` 和 `chatgpt-image-latest`。项目密钥在本次测试中仍可调用这些别名。[退役公告](https://developers.openai.com/api/docs/deprecations)
+
 | 官方字段 | 应用行为 |
 | --- | --- |
 | `quality` | 默认 `auto`，标准 `low/medium/high`。2.5 / 2.6 增加 `xhigh/max`。运营可限制可选质量、单张点数和批量张数 |
@@ -48,13 +50,17 @@
 | `moderation` | `auto/low`，默认 `auto`。两种取值仍经过应用的输入、输出审核 |
 | `input_fidelity` | 仅编辑使用。GPT Image 1.5 支持 `low/high`，1 mini 支持 `low`，其余档案交由上游处理 |
 | `images` / `mask` / `markup` | 绑定当前有权读取的真实素材。蒙版与标注互斥，标注由 2.5/2.6 接入，首张参考和引导图需满足尺寸与透明度条件 |
-| `stream` / `partial_images` | Images 2 系列支持单张流式请求。Worker 读取供应商 SSE 终态并审核最终图。运营可通过 `OPENAI_IMAGE_PARTIALS_ENABLED=true` 开放 `partial_images=0–3`，每个请求的部分图按当前单张点数计入本轮报价。界面暂未播放中间图 |
-| `svg` / GIF | 测试项目实际返回过 SVG（需要明确 `svg.model`，作者有独立 token）及 512×512 双帧 GIF（`frame_count` 为 2–16）。应用尚缺向量净化、逐帧审核、原格式下载与新增费率结算 |
+| `stream` / `partial_images` | 上述图像型号开放单张光栅流，`partial_images=0–3`，默认 0。最终图提前完成时，供应商可以少发部分图。任务发起人看到审核通过的实时部分图。预占按请求数量计算，最终按实际收到的部分图数结算并释放余量。供应商对每张实际部分图另计 100 图像输出 token |
+| SVG / `svg` | 2.6 Flare、Sunburst 支持单张生成，可选背景及运营核准的作者和推理强度。审核用栅格预览，下载是通过净化的可编辑 SVG。参考图、流、压缩不可与 SVG 组合使用。作者 token 单列 |
+| GIF / `frame_count` / `frame_duration_ms` | 2.6 Flare、Sunburst 支持生成和静态参考引导，帧数 2–16，默认 9。延时默认 200ms。REST 接受至少 20ms、编码按 10ms 舍入并封顶 655,350ms，入门指南列出常用范围 20–2000ms。尺寸随帧数变化，并受整批像素预算约束。逐帧审核后原格式交付，无流、蒙版或自定义压缩 |
 
 ## 语音和其他专用模型
 
 - **Realtime 通话**覆盖 8 个 ID 和 **GPT-Live** 的 `gpt-live-1`。可分别选通话模型、音色与委派的 Responses 模型。Realtime 2 系列支持 `minimal/low/medium/high/xhigh`，Realtime 1.x 没有该推理控件。Realtime 音色取官方 10 项。Live 预设目录为 38 个官方名称，`marin` 为默认，`gleam` 可选。Live 的风格提示、开场白及 `acknowledgement_delay_ms`（0–800）随会话冻结。开场经官方事件请求，语音实际开始时间及措辞由模型决定。[Realtime 参数](https://developers.openai.com/api/reference/resources/realtime/client-events) · [GPT-Live 开场与音色](https://developers.openai.com/api/docs/guides/live-conversations) · [Live 委派](https://developers.openai.com/api/docs/guides/live-delegation)
-- **通话转写**核验了 8 个模型，包括两个 4o mini 快照、`gpt-transcribe`、`gpt-live-transcribe`、`gpt-realtime-whisper` 和 `whisper-1`。可设置 ISO 639-1 语言、型号适用的转写提示或 Whisper 延迟档、降噪 `near_field/far_field`、语速 `0.25–1.5`。`server_vad` 按音量和静音判停，阈值 `0–1`，应用默认 `0.5`、前置缓冲 300ms、判停 600ms；`semantic_vad` 按语意判停，积极度 `auto/low/medium/high`。本应用的安全输出预算目前限制为 4096 token，PCM 固定 24 kHz 单声道。禁用 VAD 后的手动提交、闲置触发和原生 OpenAI Responses/Decisions 委派仍需接入。[Realtime 语音活动检测](https://developers.openai.com/api/docs/guides/realtime-vad)
+- **通话转写**核验了 8 个模型，包括两个 4o mini 快照、`gpt-transcribe`、`gpt-live-transcribe`、`gpt-realtime-whisper` 和 `whisper-1`。可设置 ISO 639-1 语言、型号适用的转写提示或 Whisper 延迟档、降噪 `near_field/far_field`、语速 `0.25–1.5`。`server_vad` 按音量和静音判停，阈值 `0–1`，应用默认 `0.5`、前置缓冲 300ms、判停 600ms。`semantic_vad` 按语意判停，积极度 `auto/low/medium/high`。本应用的安全输出预算目前限制为 4096 token，PCM 固定 24 kHz 单声道。禁用 VAD 后的手动提交与闲置触发仍缺产品入口。[Realtime 语音活动检测](https://developers.openai.com/api/docs/guides/realtime-vad)
+- **GPT-Live 原生 Responses**在通话页独立选择后台模型，支持型号适用的推理强度、详细度、指令、服务档位和至少 16 的输出预算。产品上限取运营配置与型号限制的交集。公开联网须在此模式单独授权。原生委派使用本轮会话，作品编辑和私有素材仍由应用委派完成。[官方委派](https://developers.openai.com/api/docs/guides/live-delegation) · [配置参考](https://developers.openai.com/api/reference/resources/live/methods/create)
+- **GPT-Live 原生 Decisions**以 `gpt-6-luna` 对 `predicate/choice/score` 作答。可配置输入或回复字幕触发，或提交当前需求。应用展示已审核结果，通话时长和委派用量分别入账。问卷不产生编辑或授权动作。[官方 Decisions](https://developers.openai.com/api/docs/guides/decisions-voice)
+- **麦克风实时同传**在通话页选择 `gpt-realtime-translate`，可选目标语言、原语字幕、输入降噪及 0–1 强度。浏览器用音频工作线程发送 24kHz 单声道 PCM，界面连续播放译音、显示字幕。关闭等待供应商终态，平台按配置的语音时长块结算。文件翻译继续从任务入口使用。[官方同传指南](https://developers.openai.com/api/docs/guides/realtime-translation)
 - **录音转写**使用 `/v1/audio/transcriptions`，运营可启用 `gpt-transcribe`、`gpt-4o-transcribe`、`gpt-4o-transcribe-diarize`、`gpt-4o-mini-transcribe` 及两份快照、`whisper-1`。现有录音入口提交 30 秒以内的单声道 PCM WAV，可设 ISO 639-1 语言、`temperature`（0–1，默认 0）及型号支持的提示。`gpt-transcribe` 可另设候选语言与关键词。diarize 使用 `diarized_json` 并返回说话人，拒绝 `prompt`。Whisper 可选词级、段级或两种时间戳，通过 `verbose_json` 取回。SRT/VTT、说话人参照音频与 token 置信度暂无应用入口。`gpt-live-transcribe` 的文件 API 返回 404，实时通话转写成功。[录音转写接口](https://developers.openai.com/api/reference/resources/audio/subresources/transcriptions/methods/create)
 - **专用模型**通过现有「切换 AI 任务」进入 AI 朗读、音频问答、联网搜索、文本向量和语音翻译。7 个朗读、5 个音频问答、2 个联网搜索、3 个嵌入和 1 个语音翻译 ID 均通过应用入队、真实供应商请求、结果落库及服务点结算。语音翻译把确认提交的录音通过官方实时翻译 WebSocket 发送，输出译文和 WAV。2 个 `omni-moderation` ID 可由服务端选择用于审核。[朗读](https://developers.openai.com/api/docs/guides/text-to-speech) · [音频 API](https://developers.openai.com/api/docs/guides/audio) · [嵌入](https://developers.openai.com/api/docs/guides/embeddings) · [实时翻译](https://developers.openai.com/api/docs/guides/realtime-translation)
 
@@ -66,8 +72,10 @@
 | Embeddings | `input` 为字符串、字符串数组或 token 数组。单条最多 8192 tokens，总批次最多 300,000 tokens。`encoding_format` 为 `float/base64`，默认 `float`。3 Small 默认 1536 维，3 Large 默认 3072 维，两者可指定较低的 `dimensions`。Ada 002 固定 1536 维。 [Embeddings 请求](https://developers.openai.com/api/reference/resources/embeddings/methods/create) |
 | Realtime Translate | 在专用 WebSocket 以 `session.update` 设置 `audio.output.language`，以 `session.input_audio_buffer.append` 发送 PCM 音频。结束时发送 `session.close`，等待 `session.closed` 后断开，排空剩余译文和语音。 [实时翻译协议](https://developers.openai.com/api/docs/guides/realtime-translation) |
 
-运营启用专用任务需在 API 和 Worker 一起设置 `OPENAI_SPECIALIST_ENABLED=true`、注入服务端密钥和审核配置、应用数据库迁移 23，并在「模型能力」启用对应型号。结果音频按字节纳入项目空间存储额度，通过当前已验证项目成员的同源接口播放或下载。应用的专用任务采用显式提交和完整结果交付。朗读 SSE、账户级自定义音色、音频多轮和实时麦克风同传、批量向量输入暂无对应入口。
+运营启用专用任务需在 API 和 Worker 一起设置 `OPENAI_SPECIALIST_ENABLED=true`、注入服务端密钥和审核配置、应用数据库迁移 23，并在「模型能力」启用对应型号。结果音频按字节纳入项目空间存储额度，通过当前已验证项目成员的同源接口播放或下载。应用的专用任务采用显式提交和完整结果交付。朗读 SSE、账户级自定义音色、音频多轮和批量向量输入暂无对应入口。
 
 ## 验收证据
 
-本机 `artifacts/acceptance-20261113/openai` 保存脱敏 JSON。`models.json` 是 96 个项目 ID，`responses.json` 是 47 个文本型号的逐一响应，`responses-options.json`、`responses-constraints.json` 和 `responses-transport-edge.json` 保存真实参数的正反例。`application-responses-all.json` 记录 47 个模型从应用发起到真实回执和服务点结算，40 条因同一审核项目集中调用触发限制后使用隔离审核夹具复验，模型请求仍为真实请求。`images.json` 与 `images-extended.json` 覆盖 11 个图像型号。`application-worker-expanded.json` 记录自动画幅与说话人识别，`application-image-stream.json` 记录流式终态，`application-transcription-options.json` 记录 Whisper 时间戳和候选语言，`application-specialists.json` 记录 18 个专用模型的真实应用任务。语音采用合成素材，实体设备、较长会话、商用网络及生产账号还需验收。
+本机 `artifacts/acceptance-20261113/openai` 保存脱敏 JSON。`models.json` 是 96 个项目 ID，`responses.json` 是 47 个文本型号的逐一响应，`responses-options.json`、`responses-constraints.json` 和 `responses-transport-edge.json` 保存真实参数的正反例。`application-responses-all.json` 记录 47 个模型从应用发起到真实回执和服务点结算，40 条因同一审核项目集中调用触发限制后使用隔离审核夹具复验，模型请求仍为真实请求。`application-specialists.json` 记录 18 个专用模型的真实应用任务。语音采用合成素材，实体设备、较长会话、目标部署网络及生产账号还需验收。
+
+`artifacts/acceptance-20261113/playground-browser` 记录本轮浏览器验收。两款 2.6 的 SVG/GIF、其余图像档案、真实部分图、原生委派、八款 Realtime 通话模型和麦克风同传均从应用界面发起。应用验证了文件权限、账本结算及部分图余量释放。直接端点的 SSE 事件和本地浏览器预览分别取证。布局记录含桌面、平板、窄屏手机和横屏。

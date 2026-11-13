@@ -19,6 +19,7 @@ export function VoiceModelOptions({
   onLive: (options: LiveOptions) => void;
   onRealtime: (options: RealtimeOptions) => void;
 }) {
+  if (protocol === 'translation') return null;
   const select = (
     label: string,
     value: string,

@@ -1140,6 +1140,7 @@ export function createMultimodalService(
         if (!(await journal.start(job.id, job.input_hash)))
           throw new ProviderError('DISPATCH_ALREADY_RECORDED', 'unknown');
         let output: Record<string, unknown>;
+        let actualUnits: number | undefined;
         const imageArtifacts: Array<{ index: number; format: 'svg' | 'gif'; bytes: Buffer; frames?: number }> = [];
         if (manifest.adapterVersion === 3) {
           const payload = specialistInput.parse({ ...job.input.input, ...(job.input.audioBase64 ? { audioBase64: job.input.audioBase64 } : {}) });
@@ -1363,6 +1364,12 @@ export function createMultimodalService(
           } : undefined);
           modelCompleted = true;
           requestId = result.requestId;
+          if (quote.partialImages) {
+            const count = result.partialImageCount;
+            if (count === undefined || !Number.isSafeInteger(count) || count < 0 || count > quote.partialImages)
+              throw new ProviderError('IMAGE_PARTIAL_USAGE_UNCONFIRMED', 'unknown', requestId);
+            actualUnits = quote.perImage * (quote.n + count);
+          }
           if (result.usage && Object.keys(result.usage).length)
             await db.query(
               'UPDATE ai_jobs SET provider_usage=$2,provider_received_at=clock_timestamp() WHERE id=$1 AND provider_received_at IS NULL',
@@ -1392,10 +1399,16 @@ export function createMultimodalService(
               if (animation.width !== item.width || animation.height !== item.height)
                 throw new AiError('IMAGE_DIMENSIONS_MISMATCH', '动画分辨率与供应商回执不一致');
               let first: Buffer | undefined;
+              let reviewBatch: Buffer[] = [];
               for await (const frame of animation.frames) {
-                await assertImage(frame, 'image/png', job.id);
                 first ??= frame;
+                reviewBatch.push(frame);
+                if (reviewBatch.length === 3) {
+                  await Promise.all(reviewBatch.map((item) => assertImage(item, 'image/png', job.id)));
+                  reviewBatch = [];
+                }
               }
+              await Promise.all(reviewBatch.map((item) => assertImage(item, 'image/png', job.id)));
               if (!first) throw new AiError('IMAGE_FORMAT_MISMATCH', '动画未返回可用帧');
               raster = first;
               imageArtifacts.push({ index, format: 'gif', bytes: Buffer.from(item.bytes), frames: animation.count });
@@ -1412,7 +1425,7 @@ export function createMultimodalService(
             if (normalizedBytes > (isOpenAI ? openAIBudgets.maxTotalBytes : 7_000_000))
               throw new ProviderError('IMAGE_BATCH_BYTES_EXCEEDED', 'unknown');
             const normalized = await storage.readBytes(file.key, 7_000_000);
-            await assertImage(normalized, file.mime, job.id);
+            if (item.mime !== 'image/gif') await assertImage(normalized, file.mime, job.id);
           }
           output = {
             kind: 'image',
@@ -1421,6 +1434,7 @@ export function createMultimodalService(
             modelId: job.model_id,
             providerOutputFormat: options?.outputFormat ?? 'png',
             canonicalFormat: 'png',
+            ...(actualUnits !== undefined ? { chargedUnits: actualUnits } : {}),
             ...(result.usage ? { providerUsage: result.usage } : {}),
           };
         } else {
@@ -1581,7 +1595,7 @@ export function createMultimodalService(
           if (audioOutput)
             await tx.query('INSERT INTO ai_job_audio(job_id,format,mime,bytes) VALUES($1,$2,$3,$4)',
               [job.id, audioOutput.format, audioOutput.mime, audioOutput.bytes]);
-          await settleHold(tx, job.hold_id);
+          await settleHold(tx, job.hold_id, actualUnits);
           await tx.query(
             "UPDATE ai_jobs SET state='completed',output=$2,provider_request_id=$3,input=input-'audioBase64',updated_at=clock_timestamp() WHERE id=$1",
             [job.id, JSON.stringify(output), requestId],

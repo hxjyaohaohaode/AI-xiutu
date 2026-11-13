@@ -534,6 +534,7 @@ export function AIPanel({
     !sizeFailure &&
     !optionsFailure &&
     !batchFailure &&
+    !referenceFailure &&
     (operation !== 'generate-image' ||
       (referencedCount <= referenceLimit && (!referencedCount || !!caps?.references.supported)));
   const allThreads = Array.from(new Set(jobs.map((job) => job.threadId ?? job.id)));
@@ -1725,7 +1726,10 @@ export function AIPanel({
               </>
             )}
             <p className="ai-option-price">
-              {quote === null ? t('选择可用模型后确认点数') : t('本轮 {v0} 服务点', { v0: quote })}
+              {quote === null ? t('选择可用模型后确认点数') :
+                operation === 'generate-image' && imageOptions.partialImages
+                  ? t('本轮最多预占 {v0} 点', { v0: quote })
+                  : t('本轮 {v0} 服务点', { v0: quote })}
             </p>
           </div>
         </PanelSettingsPage>

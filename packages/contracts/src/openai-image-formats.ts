@@ -12,6 +12,19 @@ export const openAISvgAuthorSchema = z.object({
 }).strict();
 export type OpenAISvgAuthor = z.infer<typeof openAISvgAuthorSchema>;
 
+/** The two-frame Images 2.6 request packs a 4×2 or 2×4 storyboard. */
+export function openAITwoFrameGifFits(
+  width: number,
+  height: number,
+  limits: { minPixels: number; maxPixels: number; maxDimension: number; minAspectRatio: number; maxAspectRatio: number },
+) {
+  return [[4, 2], [2, 4]].some(([columns, rows]) => {
+    const w = width * columns!, h = height * rows!, pixels = w * h;
+    return Math.max(w, h) <= limits.maxDimension && pixels >= limits.minPixels &&
+      pixels <= limits.maxPixels && w / h >= limits.minAspectRatio && w / h <= limits.maxAspectRatio;
+  });
+}
+
 export function imageBillableOutputs(
   options?: { n?: number; outputFormat?: string; frameCount?: number; partialImages?: number },
 ) {

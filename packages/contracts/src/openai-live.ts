@@ -25,8 +25,8 @@ const instructions = z.string().trim().min(1).max(1600);
 export const liveDecisionQuestionSchema = z.discriminatedUnion('type', [
   z.object({ type: z.literal('predicate'), name, instructions }).strict(),
   z.object({ type: z.literal('choice'), name, instructions,
-    choices: z.array(z.object({ value: name, description: instructions.optional() }).strict())
-      .min(2).max(20).refine((items) => new Set(items.map((item) => item.value)).size === items.length),
+    choices: z.array(z.object({ value: z.union([name, z.boolean()]), description: instructions.optional() }).strict())
+      .min(2).max(255).refine((items) => new Set(items.map((item) => item.value)).size === items.length),
   }).strict(),
   z.object({ type: z.literal('score'), name, instructions,
     levels: z.array(z.object({ label: name, description: instructions.optional() }).strict())
@@ -38,17 +38,22 @@ export const liveDecisionQuestionsSchema = z.array(liveDecisionQuestionSchema)
   .refine((items) => new Set(items.map((item) => item.name)).size === items.length)
   .refine((items) => JSON.stringify(items).length <= 8000, 'Application text budget');
 export type LiveDecisionQuestion = z.infer<typeof liveDecisionQuestionSchema>;
+export const liveResponseEfforts = ['none', 'minimal', 'low', 'medium', 'high', 'xhigh'] as const;
+export const liveResponseTiers = ['auto', 'default', 'flex', 'priority', 'ultrafast'] as const;
 export const liveDelegationSchema = z.discriminatedUnion('type', [
   z.object({ type: z.literal('client') }).strict(),
   z.object({
     type: z.literal('responses'),
     prompt: instructions.optional(),
     maxOutputTokens: z.number().int().min(16).max(8192).optional(),
-    serviceTier: z.enum(['auto', 'default', 'flex', 'priority']).optional(),
+    serviceTier: z.enum(liveResponseTiers).optional(),
+    effort: z.enum(liveResponseEfforts).optional(),
+    verbosity: z.enum(['low', 'medium', 'high']).optional(),
   }).strict(),
   z.object({
     type: z.literal('decisions'),
     questions: liveDecisionQuestionsSchema,
+    trigger: z.enum(['input', 'output']).optional(),
   }).strict(),
 ]);
 export type LiveDelegationOptions = z.infer<typeof liveDelegationSchema>;

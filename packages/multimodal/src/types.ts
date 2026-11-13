@@ -116,6 +116,8 @@ export interface ImageGenerationResult {
   requestId: string;
   /** Every requested output must be present; the caller publishes the entire batch atomically. */
   images?: readonly GeneratedImageOutput[];
+  /** Count of distinct supplier partial images received on the completed image stream. */
+  partialImageCount?: number;
   usage?: Record<string, unknown>;
 }
 export interface GeneratedImageOutput {

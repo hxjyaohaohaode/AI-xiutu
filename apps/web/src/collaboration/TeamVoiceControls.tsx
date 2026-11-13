@@ -3,7 +3,7 @@ import { Microphone, MicrophoneSlash, PhoneDisconnect } from '@phosphor-icons/re
 import '../ai/interaction-surfaces.css';
 import { MotionDetails } from '../motion/Presence';
 import { useEffect, useState } from 'react';
-import type { AssistantContext } from '@ai-xiutu/contracts';
+import { OPENAI_TRANSLATION_MODEL, type AssistantContext } from '@ai-xiutu/contracts';
 import { api, errorMessage, jsonRequest } from '../lib/api';
 import { secureUuid } from '../lib/uuid';
 import type { TeamVoiceState } from './useTeamVoice';
@@ -58,9 +58,9 @@ export function TeamVoiceControls({
         setCatalog(value);
         if (room.pendingInvitation || room.pendingIndividualVoice) return;
         setVoiceId((old) =>
-          value.models.some((item) => item.id === old && item.id !== 'gpt-realtime-translate' && item.operations.includes('realtime-voice'))
+          value.models.some((item) => item.id === old && item.id !== OPENAI_TRANSLATION_MODEL && item.operations.includes('realtime-voice'))
             ? old
-            : (value.models.find((item) => item.id !== 'gpt-realtime-translate' && item.operations.includes('realtime-voice'))?.id ?? ''),
+            : (value.models.find((item) => item.id !== OPENAI_TRANSLATION_MODEL && item.operations.includes('realtime-voice'))?.id ?? ''),
         );
         setModelId((old) =>
           value.models.some((item) => item.id === old && item.operations.includes('assistant-turn'))
@@ -198,7 +198,7 @@ export function TeamVoiceControls({
                 options={[
                   { value: '', label: t('选择语音模型') },
                   ...catalog.models
-                    .filter((item) => item.id !== 'gpt-realtime-translate' && item.operations.includes('realtime-voice'))
+                    .filter((item) => item.id !== OPENAI_TRANSLATION_MODEL && item.operations.includes('realtime-voice'))
                     .map((item) => ({ value: item.id, label: item.label })),
                 ]}
               />

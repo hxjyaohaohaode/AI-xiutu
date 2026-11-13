@@ -1310,9 +1310,11 @@ export function createAssistantService(
         const selected = body.delegation;
         if (!profile?.streaming ||
           (selected.maxOutputTokens !== undefined && selected.maxOutputTokens > profile.maxOutputTokens) ||
+          (selected.effort && !profile.reasoning.includes(selected.effort)) ||
+          (selected.verbosity && !profile.verbosity) ||
           (selected.serviceTier && selected.serviceTier !== 'default' && selected.serviceTier !== 'auto' &&
             !profile.tiers.includes(selected.serviceTier)))
-          throw new HttpError(400, 'LIVE_RESPONSES_PROFILE_MISMATCH', '委派模型、输出上限或服务档位不可用');
+          throw new HttpError(400, 'LIVE_RESPONSES_PROFILE_MISMATCH', '委派参数与所选模型不匹配');
       }
       const requestHash = hash(JSON.stringify(teamArtworkId ? { ...body, teamArtworkId } : body));
       const context = await currentContext(actorId, projectId, body.context);

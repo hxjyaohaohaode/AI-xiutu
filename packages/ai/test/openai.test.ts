@@ -28,6 +28,7 @@ type Control = {
   beforeOutput?: () => Promise<void>;
   interrupted?: boolean;
   missingImage?: boolean;
+  streamPartials?: number;
 };
 async function fixture(db: Database, png: Buffer, transparent: Buffer) {
   const actorId = randomUUID(),
@@ -111,6 +112,7 @@ async function fixture(db: Database, png: Buffer, transparent: Buffer) {
       OPENAI_IMAGE_ENABLED: 'true',
       OPENAI_API_KEY: 'only-an-injected-http-test-key',
       OPENAI_IMAGE_MODELS: model,
+      OPENAI_IMAGE_PARTIALS_ENABLED: 'true',
     },
     (async (_url, init) => {
       calls.provider++;
@@ -119,6 +121,19 @@ async function fixture(db: Database, png: Buffer, transparent: Buffer) {
       await controls.beforeOutput?.();
       if (controls.interrupted) throw new Error('transport interrupted');
       const count = controls.missingImage ? 1 : Number(body.n);
+      if (body.stream) {
+        const encoded = png.toString('base64');
+        const events = Array.from({ length: controls.streamPartials ?? 0 }, (_, index) => ({
+          type: 'image_generation.partial_image',
+          partial_image_index: index,
+          b64_json: encoded,
+        }));
+        return new Response(
+          [...events, { type: 'image_generation.completed', b64_json: encoded }]
+            .map((event) => 'data: ' + JSON.stringify(event) + '\n\n').join(''),
+          { headers: { 'content-type': 'text/event-stream', 'x-request-id': 'req-lifecycle-openai' } },
+        );
+      }
       return new Response(
         JSON.stringify({
           data: Array.from({ length: count }, () => ({ b64_json: png.toString('base64') })),
@@ -291,6 +306,35 @@ test(
             assert.ok((await f.storage.readBytes(retained[0]!, 7_000_000)).length > 0);
           } finally {
             f.dbFaults.failPublicationCheck = false;
+            await f.cleanup();
+          }
+        },
+      );
+      await t.test(
+        'streaming image holds release the unused partial-image units exactly once',
+        async () => {
+          const f = await fixture(db, png, transparent);
+          try {
+            f.controls.streamPartials = 1;
+            const { job } = await f.submit({ ...f.body(), imageOptions: { stream: true, partialImages: 3 } });
+            assert.equal(job.reservedUnits, 12);
+            assert.equal(await f.service.runOnce(), true);
+            const row = await f.row(job.id);
+            assert.equal(row.state, 'completed');
+            assert.equal(row.hold_state, 'settled');
+            const wallet = await f.entitlements();
+            assert.equal(wallet.held, 0);
+            assert.equal(wallet.usage.spent, 6);
+            const movements = await db.query(
+              "SELECT kind, movement FROM ledger_entries WHERE space_id=$1 AND split_part(event_key,':',2)=$2 AND kind IN ('settled','released') ORDER BY id",
+              [f.spaceId, row.hold_id],
+            );
+            assert.deepEqual(movements.rows, [
+              { kind: 'settled', movement: { consumed: 6 } },
+              { kind: 'released', movement: { released: 6, expired: 0 } },
+            ]);
+            assert.equal(await f.service.runOnce(), false);
+          } finally {
             await f.cleanup();
           }
         },
