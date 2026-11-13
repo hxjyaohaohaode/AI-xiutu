@@ -1,5 +1,12 @@
 /** Workspace copy is separate from user-created titles, filenames and command payloads. */
 const messages: Record<string, readonly [string, string]> = {
+  显示画布曲线: ['Show curve on canvas', '顯示畫布曲線'],
+  曲线精调与预设: ['Curve points and presets', '曲線精調與預設'],
+  图层与笔画: ['Layers and strokes', '圖層與筆畫'],
+  画面取色: ['Sample from canvas', '從畫面取色'],
+  拉伸上边界: ['Top stretch boundary', '拉伸上邊界'],
+  拉伸下边界: ['Bottom stretch boundary', '拉伸下邊界'],
+  拉伸笔参数: ['Stretch brush settings', '拉伸筆參數'],
   编辑工具: ['Editing tools', '編輯工具'],
   查看前面的编辑工具: ['Show previous tools', '檢視前面的編輯工具'],
   查看更多编辑工具: ['Show more tools', '檢視更多編輯工具'],
@@ -29,6 +36,7 @@ const messages: Record<string, readonly [string, string]> = {
   注册账号: ['Create account', '註冊帳號'],
   工作视图: ['Workspace views', '工作檢視'],
   切换工作视图: ['Switch workspace view', '切換工作檢視'],
+  创作: ['Create', '創作'],
   精修: ['Edit', '精修'],
   作品: ['Work', '作品'],
   对比: ['Compare', '對比'],

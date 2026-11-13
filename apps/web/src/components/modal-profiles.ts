@@ -263,7 +263,6 @@ export function resolveModalProfile(
     ['media-import-dialog', 'media'],
     ['media-source-dialog', 'media'],
     ['restoration-dialog', 'media'],
-    ['workspace-navigation-dialog', 'navigation'],
     ['workspace-settings-dialog', 'settings'],
     ['import-dialog', 'settings'],
     ['ai-options-dialog', 'ai'],
@@ -285,7 +284,6 @@ export function modalMotionRoleForDialog(dialog: string | null): `modal-${ModalP
     export: 'export',
     drawing: 'drawing',
     commands: 'command',
-    navigation: 'navigation',
     settings: 'settings',
     importSettings: 'settings',
     teamSettings: 'collaboration',
@@ -293,6 +291,7 @@ export function modalMotionRoleForDialog(dialog: string | null): `modal-${ModalP
     mediaImport: 'media',
     conflict: 'danger',
     help: 'detail',
+    photoTrash: 'detail',
   };
   return modalMotionRole(profiles[dialog ?? ''] ?? 'form');
 }

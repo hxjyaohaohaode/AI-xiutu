@@ -1,4 +1,5 @@
-import { useLayoutEffect, useRef, useState } from 'react';
+import { useEffect, useId, useLayoutEffect, useRef, useState } from 'react';
+import { ArrowUpRight } from '@phosphor-icons/react';
 import { t, useLocale } from '../i18n';
 import type { View } from '../lib/types';
 import { StudioGlyph } from '../components/StudioGlyph';
@@ -8,22 +9,32 @@ import './navigation.css';
 
 /** Controlled destinations with two measured edges; motion never changes the route.
  * Reference mechanisms: React Bits PillNav #78 and LineSidebar #68. */
+const primaryViews = workspaceViews.filter(({ id }) => id === 'editor' || id === 'works');
+const cardGroups = [
+  { label: '创作', views: primaryViews },
+  { label: '项目', views: workspaceViews.filter(({ id }) => id === 'collaborate' || id === 'docs') },
+  { label: '账号', views: workspaceViews.filter(({ id }) => id === 'usage') },
+];
+
 export function WorkspaceViewTabs({
   value,
   onChange,
-  menuOpen,
-  onOpenMenu,
+  menuEnabled,
 }: {
   value: View;
   onChange: (value: View) => void;
-  menuOpen: boolean;
-  onOpenMenu: () => void;
+  menuEnabled: boolean;
 }) {
   const locale = useLocale();
+  const menuId = useId();
   const wrapper = useRef<HTMLDivElement>(null);
   const navigation = useRef<HTMLElement>(null);
   const indicator = useRef<HTMLSpanElement>(null);
+  const projectTrigger = useRef<HTMLButtonElement>(null);
+  const compactTrigger = useRef<HTMLButtonElement>(null);
   const [compact, setCompact] = useState(false);
+  const [menuOpen, setMenuOpen] = useState(false);
+  const open = menuEnabled && menuOpen;
   const compactRef = useRef(compact);
   compactRef.current = compact;
   const measured = useRef(false);
@@ -72,7 +83,10 @@ export function WorkspaceViewTabs({
         setCompact(nextCompact);
       }
       const selected = nav.querySelector<HTMLButtonElement>('[aria-current="page"]');
-      if (!selected) return;
+      if (!selected) {
+        if (indicator.current) delete indicator.current.dataset.ready;
+        return;
+      }
       const box = nav.getBoundingClientRect();
       const item = selected.getBoundingClientRect();
       const start = item.left - box.left + nav.scrollLeft;
@@ -103,7 +117,49 @@ export function WorkspaceViewTabs({
     };
   }, [value, locale, left, right]);
 
+  useEffect(() => {
+    setMenuOpen(false);
+  }, [menuEnabled, value]);
+
+  useEffect(() => {
+    if (!open) return;
+    const dismissOutside = (event: Event) => {
+      if (event.target instanceof Node && !wrapper.current?.contains(event.target)) {
+        setMenuOpen(false);
+      }
+    };
+    const dismissOnEscape = (event: KeyboardEvent) => {
+      if (event.key !== 'Escape' || event.isComposing || event.defaultPrevented) return;
+      event.preventDefault();
+      setMenuOpen(false);
+      const trigger = compactRef.current ? compactTrigger.current : projectTrigger.current;
+      trigger?.focus({ preventScroll: true });
+    };
+    document.addEventListener('pointerdown', dismissOutside, true);
+    document.addEventListener('focusin', dismissOutside);
+    document.addEventListener('keydown', dismissOnEscape);
+    return () => {
+      document.removeEventListener('pointerdown', dismissOutside, true);
+      document.removeEventListener('focusin', dismissOutside);
+      document.removeEventListener('keydown', dismissOnEscape);
+    };
+  }, [open]);
+
+  function selectView(next: View, fromMenu = false) {
+    setMenuOpen(false);
+    if (fromMenu) {
+      const trigger = compact ? compactTrigger.current : projectTrigger.current;
+      trigger?.focus({ preventScroll: true });
+    }
+    onChange(next);
+  }
+
+  function toggleMenu() {
+    if (menuEnabled) setMenuOpen((previous) => !previous);
+  }
+
   const current = workspaceViews.find((item) => item.id === value)!;
+  const projectActive = value !== 'editor' && value !== 'works';
   return (
     <div ref={wrapper} className="workspace-view-navigation" data-compact={compact}>
       <nav
@@ -114,7 +170,7 @@ export function WorkspaceViewTabs({
         inert={compact}
       >
         <span ref={indicator} className="workspace-view-indicator" aria-hidden="true" />
-        {workspaceViews.map((item) => (
+        {primaryViews.map((item) => (
           <button
             type="button"
             key={item.id}
@@ -122,25 +178,78 @@ export function WorkspaceViewTabs({
             className={value === item.id ? 'active' : ''}
             aria-label={t(item.label)}
             aria-current={value === item.id ? 'page' : undefined}
-            onClick={() => onChange(item.id)}
+            onClick={() => selectView(item.id)}
           >
+            <StudioGlyph name={item.id} size={15} />
             <span>{t(item.label)}</span>
           </button>
         ))}
+        <button
+          ref={projectTrigger}
+          type="button"
+          className={`project-view-trigger${projectActive ? ' active' : ''}`}
+          aria-label={t('项目与用量')}
+          aria-controls={menuId}
+          aria-expanded={open}
+          aria-current={projectActive ? 'page' : undefined}
+          onClick={toggleMenu}
+        >
+          <span>{t(projectActive ? current.label : '项目')}</span>
+          <StudioGlyph name="chevron" size={12} />
+        </button>
       </nav>
       <button
+        ref={compactTrigger}
         type="button"
         className="mobile-view-trigger"
         aria-label={t('切换工作视图')}
-        aria-haspopup="dialog"
-        aria-expanded={menuOpen}
+        title={t(current.label)}
+        aria-controls={menuId}
+        aria-expanded={open}
         hidden={!compact}
-        onClick={onOpenMenu}
+        onClick={toggleMenu}
       >
         <StudioGlyph name={value} size={18} />
         <span>{t(current.label)}</span>
         <StudioGlyph name="chevron" size={12} />
       </button>
+      <nav
+        id={menuId}
+        className="workspace-card-nav"
+        aria-label={t('切换工作视图')}
+        aria-hidden={!open}
+        inert={!open}
+        data-open={open || undefined}
+      >
+        <div className="workspace-card-nav-clip">
+          <div className="workspace-card-nav-grid">
+            {cardGroups.map(({ label, views }) => (
+              <div className="workspace-nav-card" key={label} role="group" aria-label={t(label)}>
+                <span className="workspace-nav-card-title" aria-hidden="true">
+                  {t(label)}
+                </span>
+                <div className="workspace-nav-card-links">
+                  {views.map((item) => (
+                    <button
+                      type="button"
+                      key={item.id}
+                      data-view={item.id}
+                      aria-current={value === item.id ? 'page' : undefined}
+                      onClick={() => selectView(item.id, true)}
+                    >
+                      <span className="workspace-nav-card-arrow" aria-hidden="true">
+                        <ArrowUpRight size={15} />
+                        <ArrowUpRight size={15} />
+                      </span>
+                      <span>{t(item.label)}</span>
+                    </button>
+                  ))}
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      </nav>
     </div>
   );
 }

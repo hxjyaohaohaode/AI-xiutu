@@ -7,6 +7,7 @@ import {
   useState,
   type CSSProperties,
   type KeyboardEvent,
+  type ReactNode,
 } from 'react';
 import { usePresence } from '../motion/usePresence';
 import { useKinetic } from '../motion/useKinetic';
@@ -47,6 +48,7 @@ export function ChoiceSelect<T extends string>({
   placeholder = t('请选择'),
   className = '',
   displayLabel,
+  renderOptionLabel,
   size = 'regular',
 }: {
   value: T;
@@ -61,6 +63,7 @@ export function ChoiceSelect<T extends string>({
   placeholder?: string;
   className?: string;
   displayLabel?: string;
+  renderOptionLabel?: (option: ChoiceOption<T>, selectedValue: boolean) => ReactNode;
   size?: 'compact' | 'regular';
 }) {
   const generatedId = useId();
@@ -483,7 +486,7 @@ export function ChoiceSelect<T extends string>({
           className={displayLabel ? 'sr-only' : 'choice-value'}
           data-placeholder={!selected}
         >
-          {selected?.label ?? placeholder}
+          {selected ? renderOptionLabel?.(selected, true) ?? selected.label : placeholder}
         </span>
         <StudioGlyph name="chevron" size={18} />
       </button>
@@ -541,7 +544,7 @@ export function ChoiceSelect<T extends string>({
                 onClick={() => choose(index)}
               >
                 <span>
-                  <span className="choice-option-label">{option.label}</span>
+                  <span className="choice-option-label">{renderOptionLabel?.(option, false) ?? option.label}</span>
                   {option.description && <small>{option.description}</small>}
                 </span>
                 <span className="choice-option-mark" aria-hidden="true">

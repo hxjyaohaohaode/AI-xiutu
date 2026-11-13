@@ -314,42 +314,6 @@
 .resource-search .resource-tags > span::before {
   content: '#';
 }
-/* Comparisons occupy the view; version controls stay below the image. */
-.canvas-workspace .studio-view.compare-view .compare-pair {
-  gap: 18px;
-  min-height: 0;
-}
-.canvas-workspace .studio-view.compare-view .compare-pair section {
-  min-width: 0;
-  background: transparent;
-  border: 0;
-  border-radius: 0;
-}
-.canvas-workspace .studio-view.compare-view .compare-pair section > .comparison-image-region {
-  height: clamp(320px, 60dvh, 740px);
-  min-height: 0;
-  background: var(--surface-secondary);
-  border-radius: 5px;
-}
-.canvas-workspace .studio-view.compare-view .compare-pair section header {
-  min-height: 42px;
-  padding: 0 2px;
-  background: transparent;
-}
-.canvas-workspace .studio-view.compare-view .saved-versions {
-  margin-top: 32px;
-}
-.studio-view .compare-mode-choice {
-  padding: 3px;
-  background: var(--surface-secondary);
-  border: 0;
-  border-radius: 10px;
-}
-.studio-view .compare-mode-choice > button {
-  min-height: 40px;
-  padding: 8px 14px;
-  border-radius: 7px;
-}
 /* One writing canvas and one real vertical document list. */
 .studio-view.documents-view .documents-layout {
   display: grid;
@@ -560,76 +524,6 @@
   flex-wrap: wrap;
 }
 /* Export is anchored by the actual edited pixels. */
-.studio-view.delivery-view .delivery-composition {
-  display: grid;
-  grid-template-columns: minmax(0, 1fr) minmax(240px, 300px);
-  align-items: center;
-  gap: clamp(24px, 3vw, 40px);
-}
-.studio-view.delivery-view .delivery-current-preview {
-  width: 100%;
-  min-height: 0;
-  height: min(66dvh, 720px);
-  aspect-ratio: auto;
-  border: 0;
-  border-radius: 5px;
-  background: var(--surface-secondary);
-}
-.studio-view.delivery-view .delivery-current-preview .comparison-image-region {
-  height: 100%;
-  min-height: 0;
-  padding: 14px;
-}
-.studio-view.delivery-view .delivery-action-rail {
-  min-width: 0;
-}
-.studio-view.delivery-view .delivery-action-rail h2 {
-  margin: 0;
-  font-size: clamp(22px, 2vw, 28px);
-  line-height: 1.35;
-  font-weight: 500;
-  letter-spacing: -0.035em;
-  overflow-wrap: anywhere;
-}
-.delivery-facts {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 14px;
-  margin: 16px 0 12px;
-  font-size: 12px;
-  color: var(--muted);
-  font-variant-numeric: tabular-nums;
-}
-.delivery-primary-action {
-  display: grid;
-  gap: 8px;
-  margin: 22px 0;
-}
-.delivery-primary-action .button {
-  width: 100%;
-  min-height: var(--ui-hit, 40px);
-}
-.delivery-primary-action > span {
-  color: var(--muted);
-  font-size: 11px;
-  letter-spacing: 0.08em;
-  text-align: center;
-}
-.delivery-recipe-actions {
-  display: grid;
-  gap: 4px;
-}
-.delivery-recipe-actions .text-button {
-  justify-content: start;
-  min-height: 44px;
-  padding-inline: 0;
-}
-.delivery-recipe-note {
-  display: block;
-  color: var(--muted);
-  font-size: 11px;
-  margin-top: 8px;
-}
 .rendered-image-preview {
   display: grid;
   place-items: center;
@@ -821,10 +715,6 @@
     grid-template-columns: minmax(0, 1.2fr) minmax(220px, 1fr);
     gap: 28px;
   }
-  .studio-view.delivery-view .delivery-composition {
-    grid-template-columns: minmax(0, 1fr) 240px;
-    gap: 26px;
-  }
   .usage-dashboard .usage-insights {
     grid-template-columns: minmax(0, 1fr);
     gap: 22px;
@@ -883,24 +773,6 @@
   .studio-view.collaboration-view:not(.collaboration-panel) .collaboration-grid {
     grid-template-columns: minmax(0, 1fr);
     gap: 22px;
-  }
-  .studio-view.delivery-view .delivery-composition {
-    grid-template-columns: minmax(0, 1fr);
-    gap: 24px;
-  }
-  .studio-view.delivery-view .delivery-current-preview {
-    height: min(48dvh, 450px);
-  }
-  .studio-view.delivery-view .delivery-action-rail h2 {
-    font-size: 21px;
-  }
-  .delivery-primary-action {
-    margin: 18px 0 14px;
-  }
-  .delivery-recipe-actions {
-    display: flex;
-    flex-wrap: wrap;
-    gap: 8px 24px;
   }
   .modal.export-dialog .export-preview {
     height: 144px;
@@ -976,18 +848,6 @@
   .modal.export-dialog .export-preview {
     display: none;
   }
-  .studio-view.delivery-view .delivery-composition {
-    grid-template-columns: minmax(0, 1fr) 230px;
-  }
-  .studio-view.delivery-view .delivery-current-preview {
-    height: 65dvh;
-  }
-  .canvas-workspace .studio-view.compare-view .compare-pair:not(.single) {
-    grid-template-columns: repeat(2, minmax(0, 1fr));
-  }
-  .canvas-workspace .studio-view.compare-view .compare-pair section > .comparison-image-region {
-    height: 64dvh;
-  }
 }
 @media (prefers-reduced-motion: reduce) {
   .studio-view :is(.library-cover, .artwork-cover) > span {
@@ -996,20 +856,18 @@
   }
 }
 
-/* Both layers use the exact same fit rectangle; differing dimensions never overlay. */
-.compare-reveal {
-  position: relative;
-  height: clamp(320px, 65dvh, 760px);
-  min-width: 0;
+/* Shares the fitted and panned canvas rectangle. The edited raster is below it. */
+.image-frame > .compare-reveal {
+  position: absolute;
+  inset: 0;
   overflow: hidden;
   isolation: isolate;
-  background: var(--surface-secondary);
-  border-radius: 5px;
+  z-index: 5;
+  line-height: normal;
 }
 .compare-reveal-layer {
   position: absolute;
   inset: 0;
-  padding: 16px;
   background: var(--surface-secondary);
 }
 .compare-reveal-label {
@@ -1076,36 +934,11 @@
   margin: 0;
   opacity: 0;
   cursor: ew-resize;
-  touch-action: pan-y;
+  touch-action: none;
 }
 .compare-reveal:has(.compare-reveal-input:focus-visible) .compare-reveal-handle {
   box-shadow: 0 0 0 2px var(--focus-ring);
 }
-@media (width < 760px) {
-  .compare-reveal {
-    height: min(62dvh, 600px);
-    min-height: 260px;
-  }
-  .compare-reveal-layer {
-    padding: 8px;
-  }
-  .studio-view .compare-mode-choice {
-    display: flex;
-    width: 100%;
-  }
-  .studio-view .compare-mode-choice > button {
-    flex: 1;
-    padding-inline: 8px;
-    font-size: 12px;
-  }
-}
-@media (height < 500px) and (orientation: landscape) {
-  .compare-reveal {
-    height: 65dvh;
-    min-height: 180px;
-  }
-}
-
 /* Library rows follow DOM order. Multi-column fragmentation could put a short
    collection in its first column; explicit grid tracks keep the next asset beside it. */
 .canvas-workspace .content-view.studio-view.asset-library {

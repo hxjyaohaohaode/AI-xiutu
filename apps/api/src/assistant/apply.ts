@@ -166,7 +166,7 @@ export async function applyAuthorizedCandidate(
   if (!grantId && !input.confirmed)
     throw new HttpError(403, 'AUTOMATIC_GRANT_REQUIRED', '自动执行需要有效授权');
   const artwork = (
-    await tx.query('SELECT * FROM artworks WHERE id=$1 AND project_id=$2 FOR UPDATE', [
+    await tx.query('SELECT * FROM artworks WHERE id=$1 AND project_id=$2 AND deleted_at IS NULL FOR UPDATE', [
       row.artwork_id,
       row.project_id,
     ])

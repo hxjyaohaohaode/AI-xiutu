@@ -35,9 +35,7 @@ export const PANEL_MARGIN = 8;
 export function panelBottomOffset(view: Viewport): number {
   return view.bucket === 'phone'
     ? Math.max(48, finite(view.toolShelfHeight ?? 48, 48))
-    : view.height <= 520
-      ? 64
-      : 84;
+    : 0;
 }
 export function panelHeaderHeight(view: Viewport): number {
   return view.bucket === 'phone' ? 44 : view.height <= 520 ? 40 : 44;
@@ -49,6 +47,20 @@ export function workspaceSize(view: Viewport): { width: number; height: number }
       0,
       finite(view.workspaceHeight ?? view.height - (view.bucket === 'phone' ? 44 : 60), 0),
     ),
+  };
+}
+
+/** The phone inspector is an attached tool shelf. Stored panel geometry applies to desktop. */
+export function phoneInspectorLayout(view: Viewport): { rect: PanelRectangle; insets: CanvasInsets } {
+  const body = workspaceSize(view);
+  const bottom = view.bucket === 'phone'
+    ? panelBottomOffset(view)
+    : Math.max(48, finite(view.toolShelfHeight ?? 44, 44) + 12);
+  const landscape = view.width > view.height && view.height <= 500;
+  const height = Math.min(landscape ? 104 : 146, Math.max(0, body.height - bottom));
+  return {
+    rect: { x: 0, y: Math.max(0, body.height - bottom - height), width: body.width, height },
+    insets: { left: 0, right: 0, bottom: height + bottom },
   };
 }
 
@@ -157,7 +169,7 @@ export function panelRectangle(value: PanelGeometry, view: Viewport): PanelRecta
 }
 
 function canvasNavigationInset(view: Viewport): number {
-  return view.bucket === 'phone' ? panelBottomOffset(view) : view.height <= 520 ? 58 : 78;
+  return view.bucket === 'phone' ? panelBottomOffset(view) : 0;
 }
 
 function dockedCanvasInsets(rect: PanelRectangle, dock: Dock, view: Viewport): CanvasInsets {
@@ -185,7 +197,7 @@ export function canvasImageArea(view: Viewport, insets: CanvasInsets) {
   const body = workspaceSize(view);
   const short = view.height <= 520;
   const horizontalChrome = view.bucket === 'phone' ? 0 : short ? 12 : 16;
-  const verticalChrome = view.bucket === 'phone' ? 46 : short ? 54 : 108;
+  const verticalChrome = view.bucket === 'phone' ? 67 : short ? 139 : 148;
   const fitPadding = 24;
   return {
     width: Math.max(0, body.width - insets.left - insets.right - horizontalChrome - fitPadding),

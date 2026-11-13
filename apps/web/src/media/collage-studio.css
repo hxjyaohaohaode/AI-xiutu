@@ -237,6 +237,11 @@
   stroke: currentColor;
   stroke-width: 1.35;
 }
+.collage-ratio-rail .collage-ratio-option svg text {
+  fill: currentColor;
+  stroke: none;
+  font-weight: 650;
+}
 .collage-template-rail button {
   min-width: 53px;
   min-height: 50px;
@@ -354,9 +359,119 @@
   }
 }
 @media (width < 760px) and (orientation: portrait) {
+  .collage-studio:not([data-empty='true']) .collage-inspector {
+    max-height: min(48dvh, 225px);
+    padding-inline: max(7px, env(safe-area-inset-right)) max(7px, env(safe-area-inset-left));
+    border-block-start: 1px solid var(--line);
+  }
+  .collage-controls {
+    grid-template-columns: minmax(0, 1fr) auto;
+    gap: 3px 2px;
+    padding-block: 3px;
+    scrollbar-width: none;
+  }
+  .collage-controls > * {
+    grid-column: 1 / -1;
+  }
+  .collage-controls > .collage-mode-choices {
+    grid-row: 3;
+    min-height: 36px;
+    gap: 2px;
+    border-radius: 999px;
+    background: transparent;
+  }
+  .collage-mode-choices > button {
+    min-height: 34px;
+    padding: 0 8px;
+    font-size: 11px;
+    border-radius: 999px;
+  }
+  .collage-mode-choices > button > svg {
+    display: none;
+  }
+  .collage-ratio-rail {
+    grid-row: 1;
+  }
+  .collage-template-rail {
+    grid-row: 2;
+  }
+  .collage-controls :is(.collage-ratio-rail, .collage-template-rail, .collage-item-rail) {
+    gap: 5px;
+    padding: 1px 2px;
+    touch-action: pan-x;
+    scrollbar-width: none;
+  }
+  .collage-ratio-rail button {
+    min-height: 38px;
+  }
+  .collage-ratio-rail .collage-ratio-option {
+    padding: 0;
+  }
+  .collage-ratio-rail .collage-ratio-option[aria-pressed='true'] {
+    background: transparent;
+    color: var(--accent-ink);
+  }
+  .collage-ratio-option[aria-pressed='true'] rect {
+    stroke-width: 2;
+  }
+  .collage-template-rail button {
+    min-width: 52px;
+    min-height: 49px;
+  }
+  .collage-template-rail svg {
+    width: 36px;
+    height: 36px;
+  }
   .collage-source-tools {
+    grid-row: 4;
+    grid-column: 1;
     flex-wrap: nowrap;
     gap: 2px;
+  }
+  .collage-source-tools > .icon-button {
+    flex-shrink: 0;
+    min-width: 34px;
+    min-height: 37px;
+  }
+  .collage-source-tools > .choice-select {
+    flex: 0 1 70px;
+    min-width: 58px;
+  }
+  .studio-workspace .collage-source-picker[data-size] > .choice-trigger {
+    padding-inline: 5px;
+    gap: 2px;
+  }
+  .studio-workspace .collage-source-picker[data-size] > .choice-trigger > svg {
+    width: 12px;
+    flex-basis: 12px;
+  }
+  .studio-workspace .collage-source-picker .choice-value {
+    white-space: nowrap;
+    text-overflow: clip;
+  }
+  .collage-tile-settings {
+    grid-row: 4;
+    grid-column: 2;
+    justify-self: end;
+  }
+  .collage-tile-settings > summary {
+    justify-content: center;
+    min-width: 37px;
+  }
+  .collage-tile-settings:not([open]) > summary :is(span, svg:last-child) {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    overflow: hidden;
+    clip-path: inset(50%);
+  }
+  .collage-tile-settings[open] {
+    grid-row: 5;
+    grid-column: 1 / -1;
+    justify-self: stretch;
+  }
+  .collage-controls:has(> .collage-tile-settings[open]) .collage-source-tools {
+    grid-column: 1 / -1;
   }
 }
 @media (width >= 940px), (orientation: landscape) and (max-height: 480px) {

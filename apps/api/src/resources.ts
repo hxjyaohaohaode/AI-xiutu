@@ -27,6 +27,12 @@ export const resourceFiltersSchema = z
       .default(''),
     remembered: z.enum(['true', 'false']).optional(),
     source: z.enum(assetSources).optional(),
+    mime: z.string().max(80).regex(/^image\/[a-z0-9.+-]+$/).optional(),
+    groupBy: z.enum(['date', 'project', 'source', 'type']).optional(),
+    timeZone: z.string().max(80).refine((zone) => {
+      try { new Intl.DateTimeFormat('en', { timeZone: zone }); return true; }
+      catch { return false; }
+    }, '无效的时区').optional(),
     createdFrom: timestamp.optional(),
     createdTo: timestamp.optional(),
     limit: z.coerce.number().int().min(1).max(100).default(50),
@@ -55,7 +61,9 @@ const memoryDto = (row: Record<string, any> | undefined) =>
 /** Shared by the HTTP API and explicitly authorized assistant search. No operator bypass. */
 export async function searchResources(db: Queryable, actorId: string, input: unknown) {
   const query = resourceFiltersSchema.parse(input);
-  const scope = hash(JSON.stringify({ actorId, ...query, cursor: undefined, limit: undefined }));
+  const scope = hash(JSON.stringify({
+    actorId, ...query, cursor: undefined, limit: undefined, groupBy: undefined, timeZone: undefined,
+  }));
   let cursor: z.infer<typeof cursorSchema> | undefined;
   if (query.cursor) {
     try {
@@ -68,12 +76,7 @@ export async function searchResources(db: Queryable, actorId: string, input: unk
     if (cursor.scope !== scope)
       throw new HttpError(400, 'CURSOR_SCOPE_MISMATCH', '筛选条件已改变，请重新查询');
   }
-  const rows = (
-    await db.query(
-      `SELECT a.*,s.id AS space_id,s.name AS space_name,s.kind AS space_kind,p.title AS project_title,
-    CASE WHEN rm.asset_id IS NULL THEN NULL ELSE jsonb_build_object('remembered',rm.remembered,'title',rm.title,'tags',rm.tags,'note',rm.note,'version',rm.version,'updatedAt',rm.updated_at) END AS memory,
-    to_char(a.created_at AT TIME ZONE 'UTC','YYYY-MM-DD"T"HH24:MI:SS.US"Z"') AS cursor_at
-    FROM assets a JOIN projects p ON p.id=a.project_id JOIN spaces s ON s.id=p.space_id
+  const assetScope = `FROM assets a JOIN projects p ON p.id=a.project_id JOIN spaces s ON s.id=p.space_id
     LEFT JOIN memberships m ON m.space_id=s.id AND m.user_id=$1
     LEFT JOIN resource_memories rm ON rm.user_id=$1 AND rm.asset_id=a.id
     WHERE a.deleted_at IS NULL AND p.deleted_at IS NULL
@@ -85,22 +88,39 @@ export async function searchResources(db: Queryable, actorId: string, input: unk
       OR EXISTS(SELECT 1 FROM asset_recognitions r WHERE r.asset_id=a.id AND r.source_hash=a.content_hash AND strpos(lower(r.text_content),lower($5))>0))
     AND ($6::boolean IS NULL OR COALESCE(rm.remembered,false)=$6) AND ($7::text IS NULL OR (${assetSourceSql})=$7)
     AND ($8::timestamptz IS NULL OR a.created_at>=$8) AND ($9::timestamptz IS NULL OR a.created_at<$9)
-    AND ($10::timestamptz IS NULL OR (a.created_at,a.id)<($10::timestamptz,$11::uuid))
-    ORDER BY a.created_at DESC,a.id DESC LIMIT $12`,
-      [
-        actorId,
-        query.scope,
-        query.spaceId ?? null,
-        query.projectId ?? null,
-        query.query,
-        query.remembered ?? null,
-        query.source ?? null,
-        query.createdFrom ?? null,
-        query.createdTo ?? null,
-        cursor?.at ?? null,
-        cursor?.id ?? null,
-        query.limit + 1,
-      ],
+    AND ($10::text IS NULL OR a.mime=$10)`;
+  const values = [
+    actorId, query.scope, query.spaceId ?? null, query.projectId ?? null, query.query,
+    query.remembered ?? null, query.source ?? null, query.createdFrom ?? null, query.createdTo ?? null,
+    query.mime ?? null,
+  ];
+  if (query.groupBy) {
+    const key = {
+      date: "to_char(a.created_at AT TIME ZONE COALESCE($11::text,'UTC'),'YYYY-MM-DD')",
+      project: 'p.id::text',
+      source: assetSourceSql,
+      type: 'a.mime',
+    }[query.groupBy];
+    const isProject = query.groupBy === 'project';
+    const { rows } = await db.query(
+      `SELECT ${key} AS key, count(*)::int AS count${isProject ? ', min(p.title) AS title' : ''}
+       ${assetScope} GROUP BY 1 ORDER BY ${isProject ? 'title, key' : 'key DESC'}`,
+      query.groupBy === 'date' ? [...values, query.timeZone ?? null] : values,
+    );
+    return {
+      groups: rows.map(({ key, count }) => ({ key, count })),
+      ...(isProject ? { projects: rows.map(({ key, title }) => ({ id: key, title })) } : {}),
+    };
+  }
+  const rows = (
+    await db.query(
+      `SELECT a.*,s.id AS space_id,s.name AS space_name,s.kind AS space_kind,p.title AS project_title,
+      CASE WHEN rm.asset_id IS NULL THEN NULL ELSE jsonb_build_object('remembered',rm.remembered,'title',rm.title,'tags',rm.tags,'note',rm.note,'version',rm.version,'updatedAt',rm.updated_at) END AS memory,
+      to_char(a.created_at AT TIME ZONE 'UTC','YYYY-MM-DD"T"HH24:MI:SS.US"Z"') AS cursor_at
+      ${assetScope}
+      AND ($11::timestamptz IS NULL OR (a.created_at,a.id)<($11::timestamptz,$12::uuid))
+      ORDER BY a.created_at DESC,a.id DESC LIMIT $13`,
+      [...values, cursor?.at ?? null, cursor?.id ?? null, query.limit + 1],
     )
   ).rows;
   const page = rows.slice(0, query.limit),

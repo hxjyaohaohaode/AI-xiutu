@@ -78,8 +78,8 @@ async function access(
 ) {
   const room = (
     await tx.query(
-      `SELECT a.*,p.space_id,p.deleted_at FROM artworks a JOIN projects p ON p.id=a.project_id
-    WHERE a.id=$1 AND p.deleted_at IS NULL`,
+      `SELECT a.*,p.space_id FROM artworks a JOIN projects p ON p.id=a.project_id
+    WHERE a.id=$1 AND a.deleted_at IS NULL AND p.deleted_at IS NULL`,
       [roomId],
     )
   ).rows[0];
@@ -97,8 +97,9 @@ async function access(
   if (editing && !['owner', 'admin', 'editor'].includes(member.role))
     throw new HttpError(403, 'PROJECT_FORBIDDEN', '当前角色不能编辑作品');
   if (lock) {
-    const current = (await tx.query('SELECT * FROM artworks WHERE id=$1 FOR UPDATE', [roomId]))
-      .rows[0]!;
+    const current = (await tx.query('SELECT * FROM artworks WHERE id=$1 AND deleted_at IS NULL FOR UPDATE', [roomId]))
+      .rows[0];
+    if (!current) throw new HttpError(404, 'ARTWORK_NOT_FOUND', '作品不存在或已移入回收站');
     return { ...current, space_id: room.space_id, role: member.role };
   }
   return { ...room, role: member.role };

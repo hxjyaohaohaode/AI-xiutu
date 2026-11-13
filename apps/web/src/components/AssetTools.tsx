@@ -16,6 +16,7 @@ import { StudioGlyph } from './StudioGlyph';
 import { Busy, InlineError, Modal } from './Ui';
 import { CheckControl } from './CheckControl';
 import { StatusMark } from './StatusMark';
+import GradualBlur from './react-bits/GradualBlur';
 
 type Capability = {
   recognition: { engine: string | null; languages: string[]; maxPixels: number };
@@ -558,13 +559,11 @@ export function AnimationDialog({
 
 export function ProjectAssetTools({
   projectId,
-  assets,
   onClose,
   onCreated,
   onOpenCollage,
 }: {
   projectId: string;
-  assets: Asset[];
   onClose(): void;
   onCreated(asset: Asset): void;
   onOpenCollage(): void;
@@ -574,12 +573,19 @@ export function ProjectAssetTools({
   const [fit, setFit] = useState<'cover' | 'contain'>('cover');
   const [transparent, setTransparent] = useState(false);
   const [gif, setGif] = useState<File | null>(null);
+  const [tab, setTab] = useState<'collage' | 'gif'>('collage');
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
   const [status, setStatus] = useState('');
   const [capability, setCapability] = useState<Capability | null>(null);
   const [capabilityError, setCapabilityError] = useState('');
   const [capabilityAttempt, setCapabilityAttempt] = useState(0);
+  const [assets, setAssets] = useState<Asset[]>([]);
+  const [nextCursor, setNextCursor] = useState<string | null>(null);
+  const [sourceQuery, setSourceQuery] = useState({ cursor: '', attempt: 0 });
+  const [sourceError, setSourceError] = useState('');
+  const [sourceLoading, setSourceLoading] = useState(true);
+  const sourcesScroll = useRef<HTMLDivElement>(null);
   const id = useRef<{ key: string; id: string } | null>(null);
   const mounted = useRef(true);
   const locked = useRef(false);
@@ -603,7 +609,29 @@ export function ProjectAssetTools({
       });
     return () => controller.abort();
   }, [capabilityAttempt]);
-  const selectable = assets.filter((asset) => asset.projectId === projectId);
+  useEffect(() => {
+    if (tab !== 'collage') return;
+    const controller = new AbortController();
+    const query = new URLSearchParams({ limit: '50' });
+    if (sourceQuery.cursor) query.set('cursor', sourceQuery.cursor);
+    setSourceLoading(true);
+    setSourceError('');
+    void api<{ assets: Asset[]; nextCursor: string | null }>(
+      `/projects/${projectId}/assets?${query}`,
+      { signal: controller.signal },
+    ).then((page) => {
+      if (controller.signal.aborted) return;
+      setAssets((previous) => sourceQuery.cursor ? [
+        ...previous, ...page.assets.filter((asset) => !previous.some((existing) => existing.id === asset.id)),
+      ] : page.assets);
+      setNextCursor(page.nextCursor);
+    }).catch((failure) => {
+      if (!controller.signal.aborted) setSourceError(errorMessage(failure));
+    }).finally(() => {
+      if (!controller.signal.aborted) setSourceLoading(false);
+    });
+    return () => controller.abort();
+  }, [projectId, sourceQuery, tab]);
   const gifLimits = capability?.animation;
   async function submit(kind: 'collage' | 'gif') {
     if (!mounted.current || busy || locked.current) return;
@@ -693,23 +721,27 @@ export function ProjectAssetTools({
   return (
     <Modal
       title={t('拼图与 GIF')}
-      subtitle={t('保留原文件，生成独立项目素材')}
-      className="studio-dialog asset-tools-dialog"
+      hideTitle
+      className="studio-dialog asset-tools-dialog project-asset-tools"
       onClose={onClose}
       canClose={() => !busy && !locked.current}
     >
-      <div className="stack-form asset-tool-content">
-        <button type="button" className="button button-secondary" disabled={busy} onClick={onOpenCollage}>
-          <StudioGlyph name="collage" size={18} />
-          {t('拼图')}
+      <div className="project-asset-switch" role="group" aria-label={t('素材操作')}>
+        <button type="button" aria-pressed={tab === 'collage'} disabled={busy} onClick={() => { setTab('collage'); setError(''); setStatus(''); }}>
+          <StudioGlyph name="collage" size={17} />{t('拼图')}
         </button>
+        <button type="button" aria-pressed={tab === 'gif'} disabled={busy} onClick={() => { setTab('gif'); setError(''); setStatus(''); }}>
+          <StudioGlyph name="import" size={17} />{t('导入 GIF')}
+        </button>
+      </div>
+      <div className="stack-form asset-tool-content" data-operation={tab}>
         <InlineError message={error} />
         {status && (
           <p role="status">
             <StatusMark state="done" size="small" label={t(status)} />
           </p>
         )}
-        <section className="asset-tool-section" aria-label={t('导入完整动图')}>
+        {tab === 'gif' && <section className="asset-tool-section project-gif-section" aria-label={t('导入完整动图')}>
           <h3>
             <StudioGlyph name="import" />
             {t('导入完整动图')}
@@ -755,24 +787,13 @@ export function ProjectAssetTools({
               </button>
             </>
           )}
-        </section>
-        <section className="asset-tool-section" aria-label={t('创建拼图')}>
-          <h3>
-            <StudioGlyph name="collage" />
-            {t('创建拼图')}
-          </h3>
-          <p className="control-note">
-            {t(
-              '从当前已载入的项目素材中选择 2 到 12 张，按选择顺序排列。画布最多 16,777,216 像素，单边最多 8192 像素。',
-            )}
-          </p>
-          <MotionDetails className="asset-tool-assets" defaultOpen>
-            <summary>
-              {t('选择拼图素材（已选')}
-              {selected.length}）
-            </summary>
-            <div className="asset-tool-asset-list asset-source-options">
-              {selectable.map((asset) => (
+        </section>}
+        {tab === 'collage' && <>
+          <section className="asset-tool-section project-collage-sources" aria-label={t('选择拼图素材')}>
+            <h3>{t('项目素材')} <small>{selected.length}/12</small></h3>
+            <div className="project-collage-scroll">
+            <div className="asset-tool-asset-list asset-source-options" ref={sourcesScroll}>
+              {assets.map((asset) => (
                 <CheckControl
                   key={asset.id}
                   className="asset-tool-asset-choice"
@@ -817,13 +838,32 @@ export function ProjectAssetTools({
                   }
                 />
               ))}
-              {!selectable.length && (
+              {sourceLoading && <Busy label={t('读取当前授权范围')} />}
+              {sourceError && <div role="alert" className="control-note">
+                {sourceError}
+                <button className="text-button" type="button"
+                  onClick={() => setSourceQuery((current) => ({ ...current, attempt: current.attempt + 1 }))}>
+                  {t('重试')}
+                </button>
+              </div>}
+              {!sourceLoading && !sourceError && nextCursor && (
+                <button className="text-button" type="button" disabled={busy}
+                  onClick={() => setSourceQuery({ cursor: nextCursor, attempt: 0 })}>
+                  {t('载入更多素材')}
+                </button>
+              )}
+              {!assets.length && !sourceLoading && !sourceError && (
                 <p className="control-note">
-                  {t('当前列表没有这个项目的素材，请关闭后导入图片或载入更多素材。')}
+                  {t('这里还没有素材')}
                 </p>
               )}
             </div>
-          </MotionDetails>
+            <GradualBlur position="top" container={sourcesScroll} height={20} strength={1.6} autoHide />
+            <GradualBlur position="bottom" container={sourcesScroll} height={20} strength={1.6} autoHide />
+            </div>
+          </section>
+          <section className="asset-tool-section project-collage-config" aria-label={t('创建拼图')}>
+          <h3>{t('拼图设置')}</h3>
           <div className="asset-tool-fields asset-size-fields">
             {(
               [
@@ -846,25 +886,13 @@ export function ProjectAssetTools({
               </label>
             ))}
           </div>
-          <ChoiceSelect
-            label={t('适应方式')}
-            ariaLabel={t('拼图适应方式')}
-            value={fit}
-            disabled={busy}
-            onValueChange={(value) => setFit(value === 'contain' ? 'contain' : 'cover')}
-            options={[
-              {
-                value: 'cover',
-                label: t('填满网格'),
-                description: t('保持比例，超出网格的部分裁切'),
-              },
-              {
-                value: 'contain',
-                label: t('完整保留'),
-                description: t('保持完整构图，网格中允许留白'),
-              },
-            ]}
-          />
+          <div className="project-collage-options">
+          <div className="tonal-tabs" role="group" aria-label={t('拼图适应方式')}>
+            {([['cover', '填满网格'], ['contain', '完整保留']] as const).map(([value, label]) => (
+              <button key={value} type="button" disabled={busy} aria-pressed={fit === value}
+                onClick={() => setFit(value)}>{t(label)}</button>
+            ))}
+          </div>
           <CheckControl
             className="asset-tool-checkbox"
             disabled={busy}
@@ -872,6 +900,8 @@ export function ProjectAssetTools({
             onChange={(event) => setTransparent(event.target.checked)}
             label={t('透明间距')}
           />
+          </div>
+          <div className="project-collage-actions">
           <button
             className="button button-primary"
             disabled={selected.length < 2 || busy}
@@ -879,7 +909,12 @@ export function ProjectAssetTools({
           >
             {busy ? t('正在处理') : t('生成拼图素材')}
           </button>
-        </section>
+          <button type="button" className="text-button" disabled={busy} onClick={onOpenCollage}>
+            <StudioGlyph name="collage" size={16} />{t('打开拼图编辑器')}
+          </button>
+          </div>
+          </section>
+        </>}
       </div>
     </Modal>
   );

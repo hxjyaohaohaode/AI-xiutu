@@ -93,13 +93,13 @@ const copy: Record<Locale, OverviewCopy> = {
     portraitBody: '识别人像后，再调节肤质、五官和身形。保留原片与每一步编辑，随时对照力度。',
     portraitItems: ['美肤与五官', '身形与姿态', '力度随时可调'],
     layersLabel: '03 / 绘制与合成',
-    layersTitle: ['照片、文字、手绘，', '各有自己的图层。'],
+    layersTitle: ['从照片到构图，', '把想法画在图层里。'],
     layersBody:
-      '在画布中安排位置，逐层调整尺寸、透明度与混合。需要时继续修改，不必把所有内容压在一起。',
+      '调好照片，再加上文字、形状或手绘笔迹。把各个元素放在独立图层，需要时也可以把草图发给助手作参考。',
     layersItems: ['画笔与形状', '文字与图片图层', '位置、透明度与混合'],
     assistantLabel: '04 / AI 助手',
     assistantTitle: ['告诉助手你的想法。', '由你决定最后一步。'],
-    assistantBody: '输入要求、提供参考或选定范围。查看真实候选与变更，再决定应用、继续调整或放弃。',
+    assistantBody: '带着刚调好的照片或画好的草图，向助手说明你想改哪里。看完建议和候选，再决定要不要应用。',
     assistantSteps: [
       ['描述想法', '选择当前照片、参考图或选区。'],
       ['查看候选', '在画面中预览，继续补充要求。'],
@@ -108,7 +108,7 @@ const copy: Record<Locale, OverviewCopy> = {
     assistantNote: '在线模型、语音与生成能力取决于当前服务配置和账号额度。',
     togetherLabel: '05 / 项目与协作',
     togetherTitle: ['从一个人的创作，', '到一群人的配合。'],
-    togetherBody: '作品、素材、版本、讨论与任务归在项目里。成员按权限协作，编辑有迹可循。',
+    togetherBody: '把准备审阅的一版留在项目里，和团队在图上标注要改的地方。素材、讨论与任务跟着作品走。',
     togetherItems: [
       ['作品与素材', '整理图片，复用素材，随时打开继续编辑。'],
       ['讨论与任务', '围绕同一份作品沟通，把待办留在项目中。'],
@@ -120,8 +120,8 @@ const copy: Record<Locale, OverviewCopy> = {
     deviceLabels: ['平板工作台', '手机工作台'],
     deliveryLabel: '06 / 交付',
     deliveryTitle: ['对照效果，', '带走完成的作品。'],
-    deliveryBody: '导出当前画面，选择 PNG、JPEG 或 WebP；也可以保存调色配方，继续编辑同一份原图。',
-    deliveryItems: ['PNG · JPEG · WebP', '原图与效果对照', '调色配方'],
+    deliveryBody: '选定要交付的一版，在导出窗口确认效果和格式。保存调色配方后，还能用同一份原图继续编辑。',
+    deliveryItems: ['原图与效果对照', '调色配方'],
     deliveryAction: '开始编辑',
     questionsTitle: '开始之前，你可能想知道',
     questions: [
@@ -186,13 +186,13 @@ const copy: Record<Locale, OverviewCopy> = {
     portraitBody: '辨識人像後，再調整膚質、五官和身形。保留原片與每一步編輯，隨時對照力度。',
     portraitItems: ['美膚與五官', '身形與姿態', '力度隨時可調'],
     layersLabel: '03 / 繪製與合成',
-    layersTitle: ['照片、文字、手繪，', '各有自己的圖層。'],
+    layersTitle: ['從照片到構圖，', '把想法畫在圖層裡。'],
     layersBody:
-      '在畫布中安排位置，逐層調整尺寸、透明度與混合。需要時繼續修改，不必把所有內容壓在一起。',
+      '調好照片，再加上文字、形狀或手繪筆觸。把各個元素放在獨立圖層，需要時也可以把草圖傳給助手作為參考。',
     layersItems: ['畫筆與形狀', '文字與圖片圖層', '位置、透明度與混合'],
     assistantLabel: '04 / AI 助手',
     assistantTitle: ['告訴助手你的想法。', '由你決定最後一步。'],
-    assistantBody: '輸入要求、提供參考或選定範圍。查看真實候選與變更，再決定套用、繼續調整或放棄。',
+    assistantBody: '帶著剛調好的照片或畫好的草圖，向助手說明想改哪裡。看完建議和候選，再決定要不要套用。',
     assistantSteps: [
       ['描述想法', '選擇目前照片、參考圖或選區。'],
       ['查看候選', '在畫面中預覽，繼續補充要求。'],
@@ -201,7 +201,7 @@ const copy: Record<Locale, OverviewCopy> = {
     assistantNote: '線上模型、語音與生成能力取決於目前服務設定和帳號額度。',
     togetherLabel: '05 / 專案與協作',
     togetherTitle: ['從一個人的創作，', '到一群人的配合。'],
-    togetherBody: '作品、素材、版本、討論與任務歸在專案裡。成員依權限協作，編輯有跡可循。',
+    togetherBody: '把準備審閱的一版留在專案裡，和團隊在圖上標註要改的地方。素材、討論與任務跟著作品走。',
     togetherItems: [
       ['作品與素材', '整理圖片，重用素材，隨時開啟繼續編輯。'],
       ['討論與任務', '圍繞同一份作品溝通，把待辦留在專案中。'],
@@ -213,8 +213,8 @@ const copy: Record<Locale, OverviewCopy> = {
     deviceLabels: ['平板工作台', '手機工作台'],
     deliveryLabel: '06 / 交付',
     deliveryTitle: ['對照效果，', '帶走完成的作品。'],
-    deliveryBody: '匯出目前畫面，選擇 PNG、JPEG 或 WebP；也可以儲存調色配方，繼續編輯同一份原圖。',
-    deliveryItems: ['PNG · JPEG · WebP', '原圖與效果對照', '調色配方'],
+    deliveryBody: '選定要交付的一版，在匯出視窗確認效果和格式。儲存調色配方後，還能用同一份原始照片繼續編輯。',
+    deliveryItems: ['原圖與效果對照', '調色配方'],
     deliveryAction: '開始編輯',
     questionsTitle: '開始之前，你可能想知道',
     questions: [
@@ -285,14 +285,14 @@ const copy: Record<Locale, OverviewCopy> = {
       'Detect the portrait, then refine skin, facial features and body shape. Keep the original and compare the strength of each edit.',
     portraitItems: ['Skin and facial details', 'Body and pose', 'Adjustable intensity'],
     layersLabel: '03 / DRAWING & COMPOSITION',
-    layersTitle: ['Photos, text and drawing.', 'Each on its own layer.'],
+    layersTitle: ['From photo to composition.', 'Sketch it on separate layers.'],
     layersBody:
-      'Arrange the canvas and adjust size, opacity and blending layer by layer. Return to any part of the composition as your idea changes.',
+      'Start with the edited photo, then place text, shapes or hand-drawn marks on separate layers. Send the sketch to the assistant as a reference when you need it.',
     layersItems: ['Brushes and shapes', 'Text and image layers', 'Position, opacity and blending'],
     assistantLabel: '04 / AI ASSISTANT',
     assistantTitle: ['Give the assistant an idea.', 'Keep the final decision.'],
     assistantBody:
-      'Describe a change, add a reference or choose an area. Review actual candidates and changes before applying, refining or discarding them.',
+      'Show the assistant the edited photo or sketch and say what you want to change. Read its suggestions and review the candidates before choosing what to apply.',
     assistantSteps: [
       ['Describe', 'Choose a photograph, reference or selection.'],
       ['Preview', 'See the candidate on the canvas and refine your request.'],
@@ -303,7 +303,7 @@ const copy: Record<Locale, OverviewCopy> = {
     togetherLabel: '05 / PROJECTS & COLLABORATION',
     togetherTitle: ['Your creative space.', "Your team's, too."],
     togetherBody:
-      'Keep work, assets, versions, conversations and tasks together. Give each collaborator the access they need.',
+      'Save a version for review and mark changes directly on the image with your team. The assets, discussion and tasks stay with the work.',
     togetherItems: [
       ['Work and assets', 'Organise images, reuse assets and return to an edit.'],
       ['Conversations and tasks', 'Discuss the same work and keep the next steps with it.'],
@@ -317,8 +317,8 @@ const copy: Record<Locale, OverviewCopy> = {
     deliveryLabel: '06 / DELIVERY',
     deliveryTitle: ['Review the result.', 'Take your work with you.'],
     deliveryBody:
-      'Export the current image as PNG, JPEG or WebP. Save the colour recipe to continue editing the same original.',
-    deliveryItems: ['PNG · JPEG · WebP', 'Before and after', 'Colour recipes'],
+      'Choose a version for delivery, then check the image and format in the export window. Save the colour recipe to keep editing the same original later.',
+    deliveryItems: ['Before and after', 'Colour recipes'],
     deliveryAction: 'Start editing',
     questionsTitle: 'Before you begin',
     questions: [

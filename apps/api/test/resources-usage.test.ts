@@ -70,6 +70,16 @@ test(
             (await f.call('GET', '/v1/resources?scope=personal')).json().resources[0].asset.id,
             f.privateAssetId,
           );
+          const grouped = await f.call('GET', '/v1/resources?groupBy=project', undefined, 'editor');
+          assert.equal(grouped.statusCode, 200, grouped.body);
+          assert.deepEqual(grouped.json().groups, [{ key: f.projectId, count: 1 }]);
+          assert.deepEqual(grouped.json().projects, [{ id: f.projectId, title: 'V4 project' }]);
+          const dates = await f.call('GET', '/v1/resources?groupBy=date&timeZone=Asia%2FShanghai&mime=image%2Fpng');
+          assert.equal(dates.statusCode, 200, dates.body);
+          assert.equal(dates.json().groups.reduce((sum: number, row: { count: number }) => sum + row.count, 0), 2);
+          const mismatchedType = await f.call('GET', '/v1/resources?groupBy=type&mime=image%2Fjpeg');
+          assert.equal(mismatchedType.statusCode, 200, mismatchedType.body);
+          assert.deepEqual(mismatchedType.json().groups, []);
           const first = (await f.call('GET', '/v1/resources?limit=1')).json();
           assert.ok(first.nextCursor);
           const next = (

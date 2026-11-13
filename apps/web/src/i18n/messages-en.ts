@@ -1,4 +1,5 @@
 import { navigationAiV2English } from './navigation-ai-v2-messages';
+import { reviewEnglish } from './review-messages';
 import { nativeGradeEnglish } from './native-grade-messages';
 import { viewsRedesignEnglish } from './views-redesign-messages';
 import { restorationEnglish } from './restoration-messages';
@@ -29,6 +30,13 @@ export const english: Readonly<Record<string, string>> = {
   '发表批注': 'Post comment',
   '添加批注': 'Add comment',
   '收起语音通话': 'Minimize voice call',
+  '通话工具': 'Call tools',
+  '通话详情': 'Call details',
+  '通话时长': 'Call duration',
+  '正在结束': 'Ending call',
+  '语音服务暂不可用': 'Voice service unavailable',
+  '补充文字': 'Add text',
+  '已静音': 'Muted',
   ...navigationAiV2English,
   ...appEnglish,
   ...residualEnglish,
@@ -47,6 +55,7 @@ export const english: Readonly<Record<string, string>> = {
   ...nativeGradeEnglish,
   ...restorationEnglish,
   ...viewsRedesignEnglish,
+  ...reviewEnglish,
   "模型列表加载失败": "Couldn't load models",
   "重新加载": "Reload",
   "无法读取参考图，请重新选择。": "Couldn't read the reference image. Choose it again.",
@@ -79,7 +88,7 @@ export const english: Readonly<Record<string, string>> = {
   照片预览: 'Photo preview',
   移除附件: 'Remove attachment',
   查看附件: 'View attachment',
-  '已替换底图，可在「对比」中恢复上一版本。': 'Source replaced. Restore the previous version in Compare.',
+  '已替换底图，可在「记录」中恢复上一版本。': 'Source replaced. Restore the previous version in History.',
   '请选择支持图片的模型，或移除附件。': 'Choose a model that accepts images, or remove the attachment.',
   '确认 AI 调整': 'Apply AI adjustments',
   本地编辑: 'Local editing',

@@ -2,12 +2,16 @@ import { t } from '../i18n';
 import { MotionDetails } from '../motion/Presence';
 import { ChoiceSelect } from '../components/ChoiceSelect';
 import { useEffect, useMemo, useRef, useState, type PointerEvent } from 'react';
+import { createPortal } from 'react-dom';
 import {
   Plus,
   Trash,
   ArrowBendUpLeft,
   BezierCurve,
   SelectionPlus,
+  Eye,
+  EyeSlash,
+  SlidersHorizontal,
 } from '../components/ControlGlyph';
 import {
   compileCurveFunction,
@@ -184,8 +188,19 @@ function curveHistory(
   return `${target} · ${t('控制点')} ${before.length} → ${after.length}`;
 }
 
-export function CurveEditor({ editor, scope }: { editor: EditorState; scope?: CurveScope }) {
+export function CurveEditor({
+  editor,
+  scope,
+  compact = false,
+  canvasOverlay,
+}: {
+  editor: EditorState;
+  scope?: CurveScope;
+  compact?: boolean;
+  canvasOverlay?: HTMLElement | null;
+}) {
   const [channel, setChannel] = useState<Channel>('rgb');
+  const [showGraph, setShowGraph] = useState(true);
   const [selected, setSelected] = useState(1);
   const [multiSelect, setMultiSelect] = useState(false);
   const [selectedPoints, setSelectedPoints] = useState<number[]>([]);
@@ -256,7 +271,8 @@ export function CurveEditor({ editor, scope }: { editor: EditorState; scope?: Cu
   const curves = scope?.getCurves(editor.recipe) ?? editor.recipe.curves;
   const points = curves[channel];
   const mode = curves.interpolation?.[channel] ?? 'linear';
-  const color = channels.find((c) => c.key === channel)!.color;
+  const channelColor = channels.find((c) => c.key === channel)!.color;
+  const color = canvasOverlay && channel === 'rgb' ? '#fff' : channelColor;
   const writeCurves = (next: Curves, commit = false, pointerId?: number, label?: string) => {
     const current = editor.getRecipe();
     const currentScope = scopeRef.current;
@@ -426,28 +442,168 @@ export function CurveEditor({ editor, scope }: { editor: EditorState; scope?: Cu
   const histogramPath = distribution
     ? `M0 256 ${Array.from(distribution, (count, x) => `L${x} ${256 - (count / maximum) * 220}`).join(' ')} L256 256Z`
     : '';
-  return (
-    <section className="curve-editor refined-curve" data-motion="curve-controls">
-      <div className="channel-tabs" role="tablist" aria-label={t('曲线通道')}>
-        {channels.map((c) => (
-          <button
-            key={c.key}
-            className={channel === c.key ? 'selected' : ''}
-            role="tab"
-            aria-selected={channel === c.key}
-            onClick={() => {
-              gestures.current?.cancel();
-              channelRef.current = c.key;
-              setChannel(c.key);
-              setSelected(0);
-            }}
-          >
-            <i style={{ background: c.color }} />
-            {t(c.label)}
-          </button>
-        ))}
-      </div>
+  const graphElement = (
+    <svg
+      className="curve-graph"
+      viewBox="0 0 256 256"
+      preserveAspectRatio={compact && !canvasOverlay ? 'none' : undefined}
+      role="img"
+      aria-label={t('{v0} 通道曲线。可通过下方数值控制点编辑。', {
+        v0: t(channels.find((c) => c.key === channel)?.label ?? ''),
+      })}
+      onDoubleClick={(event) => {
+        if ((event.target as Element).closest('[data-curve-point], [data-curve-hit]')) return;
+        const point = graphPoint(event.currentTarget, event.clientX, event.clientY);
+        if (point) addPoint(point);
+      }}
+      onPointerMove={(e) => {
+        const gesture = gestures.current?.current(e.pointerId);
+        if (!gesture) return;
+        if ((e.buttons & 1) === 0) {
+          gestures.current?.cancel(e.pointerId);
+          return;
+        }
+        moveDrag(e);
+      }}
+      onPointerUp={(e) => {
+        moveDrag(e);
+        gestures.current?.commit(e.pointerId);
+        if (drag.current?.pointerId === e.pointerId) drag.current = null;
+      }}
+      onPointerCancel={(e) => gestures.current?.cancel(e.pointerId)}
+      onLostPointerCapture={(e) => gestures.current?.cancel(e.pointerId)}
+    >
+      {histogramPath && <path d={histogramPath} fill={color} opacity={canvasOverlay ? 0.24 : 0.1} />}
+      {[0, 64, 128, 192, 256].map((n) => (
+        <g key={n}>
+          <line x1={n} x2={n} y1="0" y2="256" className="graph-grid" />
+          <line y1={n} y2={n} x1="0" x2="256" className="graph-grid" />
+        </g>
+      ))}
+      <line x1="0" y1="256" x2="256" y2="0" className="curve-reference-line" stroke="var(--line-strong)" strokeDasharray="4 5" />
+      <path
+        data-curve-interpolation={mode}
+        d={graph}
+        fill="none"
+        stroke={color}
+        strokeWidth="2.5"
+        vectorEffect="non-scaling-stroke"
+      />
+      <path
+        data-curve-hit
+        d={graph}
+        fill="none"
+        stroke="transparent"
+        strokeWidth="18"
+        vectorEffect="non-scaling-stroke"
+        onPointerDown={(event) => {
+          if (multiSelect || event.shiftKey || points.length >= 16) return;
+          const svg = event.currentTarget.ownerSVGElement;
+          if (!svg) return;
+          const at = graphPoint(svg, event.clientX, event.clientY);
+          if (
+            !at ||
+            at[0] <= 0 ||
+            at[0] >= 1 ||
+            points.some(([x]) => Math.abs(x - at[0]) < 0.000001)
+          )
+            return;
+          const index = points.findIndex(([x]) => x > at[0]);
+          const next = [...points];
+          next.splice(index, 0, [at[0], compileCurveFunction(points, mode)(at[0])]);
+          if (startDrag(event, svg, index, next)) update(next, false, event.pointerId);
+        }}
+      />
+      {points.map((p, i) => (
+        <g
+          key={i}
+          data-curve-point={i}
+          role="button"
+          aria-pressed={selectedPoints.includes(i)}
+          tabIndex={0}
+          aria-label={t('曲线控制点 {v0}，输入 {v1}，输出 {v2}', {
+            v0: i + 1,
+            v1: Number((p[0] * 255).toFixed(2)),
+            v2: Number((p[1] * 255).toFixed(2)),
+          })}
+          onFocus={() => setSelected(i)}
+          onKeyDown={(event) => {
+            const step = (event.altKey ? 0.1 : event.shiftKey ? 10 : 1) / 255;
+            if (event.key === 'Enter' && (multiSelect || event.shiftKey)) {
+              event.preventDefault();
+              togglePoint(i);
+            } else if (['ArrowLeft', 'ArrowRight', 'ArrowUp', 'ArrowDown'].includes(event.key)) {
+              event.preventDefault();
+              const current = editor.getRecipe();
+              update(
+                translateCurvePoints(
+                  (scopeRef.current?.getCurves(current) ?? current.curves)[channel],
+                  selectedPoints.includes(i) ? selectedPoints : [i],
+                  event.key === 'ArrowRight' ? step : event.key === 'ArrowLeft' ? -step : 0,
+                  event.key === 'ArrowUp' ? step : event.key === 'ArrowDown' ? -step : 0,
+                ),
+              );
+            } else if (
+              (event.key === 'Delete' || event.key === 'Backspace') &&
+              i > 0 &&
+              i < points.length - 1
+            ) {
+              event.preventDefault();
+              update(
+                points.filter((_, index) => index !== i),
+                true,
+              );
+              setSelected(Math.max(0, i - 1));
+              setSelectedPoints([]);
+            } else if (event.key === 'Escape') {
+              event.preventDefault();
+              if (!gestures.current?.cancel()) editor.cancelPreview();
+            }
+          }}
+          onKeyUp={(event) => {
+            if (['ArrowLeft', 'ArrowRight', 'ArrowUp', 'ArrowDown'].includes(event.key))
+              commitPoint();
+          }}
+          onPointerDown={(e) => {
+            if (e.button !== 0) return;
+            const svg = e.currentTarget.ownerSVGElement;
+            if (!svg) return;
+            if (multiSelect || e.shiftKey) {
+              e.preventDefault();
+              togglePoint(i);
+            } else startDrag(e, svg, i);
+          }}
+        >
+          <circle cx={p[0] * 256} cy={(1 - p[1]) * 256} r="14" fill="transparent" />
+          <circle
+            cx={p[0] * 256}
+            cy={(1 - p[1]) * 256}
+            r={selected === i || selectedPoints.includes(i) ? 6 : 4.5}
+            fill={
+              selected === i || selectedPoints.includes(i)
+                ? 'var(--accent)'
+                : canvasOverlay ? '#fff' : 'var(--surface-raised)'
+            }
+            stroke={canvasOverlay ? 'rgb(12 15 16 / 80%)' : color}
+            strokeWidth="2"
+            vectorEffect={compact ? 'non-scaling-stroke' : undefined}
+          />
+        </g>
+      ))}
+    </svg>
+  );
+  const pointControls = (
+    <>
       <div className="curve-point-controls">
+        {canvasOverlay && (
+          <IconButton
+            label={t('添加曲线控制点')}
+            disabled={points.length >= 16}
+            onClick={() => addPoint()}
+          >
+            <Plus size={18} />
+          </IconButton>
+        )}
         <IconButton
           label={t('多选曲线点')}
           aria-pressed={multiSelect}
@@ -499,152 +655,7 @@ export function CurveEditor({ editor, scope }: { editor: EditorState; scope?: Cu
           {t('重置全部曲线')}
         </button>
       </div>
-      <svg
-        className="curve-graph"
-        viewBox="0 0 256 256"
-        role="img"
-        aria-label={t('{v0} 通道曲线。可通过下方数值控制点编辑。', {
-          v0: t(channels.find((c) => c.key === channel)?.label ?? ''),
-        })}
-        onDoubleClick={(event) => {
-          if ((event.target as Element).closest('[data-curve-point], [data-curve-hit]')) return;
-          const point = graphPoint(event.currentTarget, event.clientX, event.clientY);
-          if (point) addPoint(point);
-        }}
-        onPointerMove={(e) => {
-          const gesture = gestures.current?.current(e.pointerId);
-          if (!gesture) return;
-          if ((e.buttons & 1) === 0) {
-            gestures.current?.cancel(e.pointerId);
-            return;
-          }
-          moveDrag(e);
-        }}
-        onPointerUp={(e) => {
-          moveDrag(e);
-          gestures.current?.commit(e.pointerId);
-          if (drag.current?.pointerId === e.pointerId) drag.current = null;
-        }}
-        onPointerCancel={(e) => gestures.current?.cancel(e.pointerId)}
-        onLostPointerCapture={(e) => gestures.current?.cancel(e.pointerId)}
-      >
-        {histogramPath && <path d={histogramPath} fill={color} opacity=".1" />}
-        {[0, 64, 128, 192, 256].map((n) => (
-          <g key={n}>
-            <line x1={n} x2={n} y1="0" y2="256" className="graph-grid" />
-            <line y1={n} y2={n} x1="0" x2="256" className="graph-grid" />
-          </g>
-        ))}
-        <line x1="0" y1="256" x2="256" y2="0" stroke="var(--line-strong)" strokeDasharray="4 5" />
-        <path
-          data-curve-interpolation={mode}
-          d={graph}
-          fill="none"
-          stroke={color}
-          strokeWidth="2.5"
-          vectorEffect="non-scaling-stroke"
-        />
-        <path
-          data-curve-hit
-          d={graph}
-          fill="none"
-          stroke="transparent"
-          strokeWidth="18"
-          vectorEffect="non-scaling-stroke"
-          onPointerDown={(event) => {
-            if (multiSelect || event.shiftKey || points.length >= 16) return;
-            const svg = event.currentTarget.ownerSVGElement;
-            if (!svg) return;
-            const at = graphPoint(svg, event.clientX, event.clientY);
-            if (
-              !at ||
-              at[0] <= 0 ||
-              at[0] >= 1 ||
-              points.some(([x]) => Math.abs(x - at[0]) < 0.000001)
-            )
-              return;
-            const index = points.findIndex(([x]) => x > at[0]);
-            const next = [...points];
-            next.splice(index, 0, [at[0], compileCurveFunction(points, mode)(at[0])]);
-            if (startDrag(event, svg, index, next)) update(next, false, event.pointerId);
-          }}
-        />
-        {points.map((p, i) => (
-          <g
-            key={i}
-            data-curve-point={i}
-            role="button"
-            aria-pressed={selectedPoints.includes(i)}
-            tabIndex={0}
-            aria-label={t('曲线控制点 {v0}，输入 {v1}，输出 {v2}', {
-              v0: i + 1,
-              v1: Number((p[0] * 255).toFixed(2)),
-              v2: Number((p[1] * 255).toFixed(2)),
-            })}
-            onFocus={() => setSelected(i)}
-            onKeyDown={(event) => {
-              const step = (event.altKey ? 0.1 : event.shiftKey ? 10 : 1) / 255;
-              if (event.key === 'Enter' && (multiSelect || event.shiftKey)) {
-                event.preventDefault();
-                togglePoint(i);
-              } else if (['ArrowLeft', 'ArrowRight', 'ArrowUp', 'ArrowDown'].includes(event.key)) {
-                event.preventDefault();
-                const current = editor.getRecipe();
-                update(
-                  translateCurvePoints(
-                    (scopeRef.current?.getCurves(current) ?? current.curves)[channel],
-                    selectedPoints.includes(i) ? selectedPoints : [i],
-                    event.key === 'ArrowRight' ? step : event.key === 'ArrowLeft' ? -step : 0,
-                    event.key === 'ArrowUp' ? step : event.key === 'ArrowDown' ? -step : 0,
-                  ),
-                );
-              } else if (
-                (event.key === 'Delete' || event.key === 'Backspace') &&
-                i > 0 &&
-                i < points.length - 1
-              ) {
-                event.preventDefault();
-                update(
-                  points.filter((_, index) => index !== i),
-                  true,
-                );
-                setSelected(Math.max(0, i - 1));
-                setSelectedPoints([]);
-              } else if (event.key === 'Escape') {
-                event.preventDefault();
-                if (!gestures.current?.cancel()) editor.cancelPreview();
-              }
-            }}
-            onKeyUp={(event) => {
-              if (['ArrowLeft', 'ArrowRight', 'ArrowUp', 'ArrowDown'].includes(event.key))
-                commitPoint();
-            }}
-            onPointerDown={(e) => {
-              if (e.button !== 0) return;
-              const svg = e.currentTarget.ownerSVGElement;
-              if (!svg) return;
-              if (multiSelect || e.shiftKey) {
-                e.preventDefault();
-                togglePoint(i);
-              } else startDrag(e, svg, i);
-            }}
-          >
-            <circle cx={p[0] * 256} cy={(1 - p[1]) * 256} r="14" fill="transparent" />
-            <circle
-              cx={p[0] * 256}
-              cy={(1 - p[1]) * 256}
-              r={selected === i || selectedPoints.includes(i) ? 6 : 4.5}
-              fill={
-                selected === i || selectedPoints.includes(i)
-                  ? 'var(--accent)'
-                  : 'var(--surface-raised)'
-              }
-              stroke={color}
-              strokeWidth="2"
-            />
-          </g>
-        ))}
-      </svg>
+      {!canvasOverlay && graphElement}
       <label className="curve-point-select">
         {t('选择控制点')}
         <ChoiceSelect
@@ -691,13 +702,15 @@ export function CurveEditor({ editor, scope }: { editor: EditorState; scope?: Cu
         <small>
           {points.length} {t('/ 16 个控制点')}
         </small>
-        <IconButton
-          label={t('添加曲线控制点')}
-          onClick={() => addPoint()}
-          disabled={points.length >= 16}
-        >
-          <Plus size={18} />
-        </IconButton>
+        {!canvasOverlay && (
+          <IconButton
+            label={t('添加曲线控制点')}
+            onClick={() => addPoint()}
+            disabled={points.length >= 16}
+          >
+            <Plus size={18} />
+          </IconButton>
+        )}
         <IconButton
           label={t('删除选中的控制点')}
           disabled={selected === 0 || selected >= points.length - 1}
@@ -767,6 +780,57 @@ export function CurveEditor({ editor, scope }: { editor: EditorState; scope?: Cu
           ))}
         </div>
       </MotionDetails>
+    </>
+  );
+  return (
+    <section className="curve-editor refined-curve" data-motion="curve-controls">
+      <div className="curve-channel-row">
+        <div className="channel-tabs" role="tablist" aria-label={t('曲线通道')}>
+          {channels.map((c) => (
+            <button
+              key={c.key}
+              className={channel === c.key ? 'selected' : ''}
+              role="tab"
+              aria-selected={channel === c.key}
+              onClick={() => {
+                gestures.current?.cancel();
+                channelRef.current = c.key;
+                setChannel(c.key);
+                setSelected(0);
+              }}
+            >
+              <i style={{ background: c.color }} />
+              {t(c.label)}
+            </button>
+          ))}
+        </div>
+        {canvasOverlay && (
+          <IconButton
+            className="curve-overlay-toggle"
+            label={t('显示画布曲线')}
+            aria-pressed={showGraph}
+            onClick={() => {
+              gestures.current?.cancel();
+              setShowGraph(!showGraph);
+            }}
+          >
+            {showGraph ? <Eye size={17} /> : <EyeSlash size={17} />}
+          </IconButton>
+        )}
+      </div>
+      {canvasOverlay && showGraph && createPortal(
+        <div className="curve-canvas-overlay">{graphElement}</div>,
+        canvasOverlay,
+      )}
+      {canvasOverlay ? (
+        <MotionDetails className="curve-advanced">
+          <summary>
+            <SlidersHorizontal size={16} />
+            {t('曲线精调与预设')}
+          </summary>
+          {pointControls}
+        </MotionDetails>
+      ) : pointControls}
     </section>
   );
 }

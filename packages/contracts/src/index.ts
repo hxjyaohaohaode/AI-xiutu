@@ -11,3 +11,4 @@ export * from './memory.js';
 export * from './assistant-ui.js';
 export * from './team-voice.js';
 export * from './revision-history.js';
+export * from './photo-trash.js';

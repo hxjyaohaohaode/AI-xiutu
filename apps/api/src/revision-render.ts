@@ -47,7 +47,7 @@ async function authorizedRevision(db: Database, req: FastifyRequest) {
     await db.query(
       `SELECT r.id,r.version,r.recipe,r.origin_kind,a.project_id,s.asset_id
       FROM revisions r JOIN artworks a ON a.id=r.artwork_id
-      JOIN revision_sources s ON s.revision_id=r.id WHERE a.id=$1 AND r.id=$2`,
+      JOIN revision_sources s ON s.revision_id=r.id WHERE a.id=$1 AND r.id=$2 AND a.deleted_at IS NULL`,
       [artworkId, revisionId],
     )
   ).rows[0];

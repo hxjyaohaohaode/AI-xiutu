@@ -28,12 +28,14 @@ export function VoiceCaptions({
   captions,
   userLabel,
   initiallyVisible = true,
+  compact = false,
   onVisibilityChange,
   status,
 }: {
   captions: CaptionState;
   userLabel?: string;
   initiallyVisible?: boolean;
+  compact?: boolean;
   onVisibilityChange?: (visible: boolean) => void;
   status?: string;
 }) {
@@ -48,7 +50,7 @@ export function VoiceCaptions({
   }, [visible, captions]);
   return (
     <div className="voice-captions">
-      <button
+      {!compact && <button
         type="button"
         aria-controls={id}
         aria-expanded={visible}
@@ -58,7 +60,7 @@ export function VoiceCaptions({
         }}
       >
         {visible ? t('隐藏字幕') : t('显示字幕')}
-      </button>
+      </button>}
       <div id={id} hidden={!visible} className="voice-captions-lines" aria-label={t('实时字幕')}>
         {captions.user?.text && (
           <p ref={userLine}>

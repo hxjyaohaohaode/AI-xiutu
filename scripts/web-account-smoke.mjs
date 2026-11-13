@@ -1222,17 +1222,13 @@ try {
           .getByRole('button', { name: projectTitle, exact: true })
           .click();
         const compact = page.getByRole('button', { name: '切换工作视图', exact: true });
-        if (await compact.isVisible()) {
-          await compact.click();
-          const navigation = page.getByRole('dialog', { name: '工作视图', exact: true });
-          await navigation.locator('button[data-view="docs"]').click();
-          await navigation.waitFor({ state: 'hidden' });
-        } else {
-          await page
-            .getByRole('navigation', { name: '工作视图', exact: true })
-            .getByRole('button', { name: '文档', exact: true })
-            .click();
-        }
+        const trigger = await compact.isVisible()
+          ? compact
+          : page.getByRole('button', { name: '项目与用量', exact: true });
+        await trigger.click();
+        const navigation = page.getByRole('navigation', { name: '切换工作视图', exact: true });
+        await navigation.locator('button[data-view="docs"]').click();
+        await navigation.waitFor({ state: 'hidden' });
         await page.locator('.documents-view').waitFor();
       }
       await openProjectDocuments();
@@ -1687,7 +1683,7 @@ try {
       const compact = page.getByRole('button', { name: '切换工作视图', exact: true });
       if (await compact.isVisible()) {
         await compact.click();
-        const navigation = page.getByRole('dialog', { name: '工作视图', exact: true });
+        const navigation = page.getByRole('navigation', { name: '切换工作视图', exact: true });
         await navigation.locator('button[data-view="works"]').click();
         await navigation.waitFor({ state: 'hidden' });
       } else

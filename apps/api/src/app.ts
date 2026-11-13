@@ -26,6 +26,8 @@ import {
 import { registerAuth } from './auth.js';
 import { registerSpaces } from './spaces.js';
 import { registerProjects } from './projects.js';
+import { registerPhotoTrash } from './photo-trash.js';
+import { startPhotoTrashCleanup } from './photo-trash-cleanup.js';
 import { registerRevisionRender } from './revision-render.js';
 import { registerAssetAnnotations } from './asset-annotations.js';
 import { registerAssetProcessing } from './asset-processing.js';
@@ -214,6 +216,8 @@ export async function buildApp(options: BuildOptions = {}): Promise<FastifyInsta
               : '编辑租约已失效，请刷新后重新取得编辑权',
         },
       });
+    if (e.code === 'P0001' && e.message === 'ARTWORK_TRASHED')
+      return reply.code(409).send({ error: { code: 'ARTWORK_TRASHED', message: '作品已移入回收站' } });
     if (e.code === 'P0001' && e.message === 'SPACE_STORAGE_LIMIT')
       return reply.code(409).send({
         error: {
@@ -424,6 +428,8 @@ export async function buildApp(options: BuildOptions = {}): Promise<FastifyInsta
   registerAuth(app, db, config, sms);
   registerSpaces(app, db);
   registerProjects(app, db, storage);
+  registerPhotoTrash(app, db);
+  startPhotoTrashCleanup(app, db, storage);
   registerRevisionRender(app, db, storage);
   registerCollaboration(app, db);
   registerRealtimeCollaboration(app, db);

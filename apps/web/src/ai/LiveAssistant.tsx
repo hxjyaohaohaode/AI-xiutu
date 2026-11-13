@@ -5,11 +5,14 @@ import { readModelCatalog } from '../lib/api';
 import { ModelReadStatus } from './ModelReadStatus';
 import { t, formatNumber, useLocale, type MessageParams } from '../i18n';
 import { MotionDetails } from '../motion/Presence';
-import { useCallback, useEffect, useLayoutEffect, useRef, useState, type ReactNode } from 'react';
+import { useCallback, useContext, useEffect, useId, useLayoutEffect, useRef, useState, type ReactNode } from 'react';
 import {
   Microphone,
-  MicrophoneSlash,
   PhoneDisconnect,
+  ClosedCaptioning,
+  DotsThree,
+  Keyboard,
+  ChatText,
   Eye,
   MagnifyingGlass,
   Sparkle,
@@ -57,15 +60,15 @@ import {
 } from './assistantGuards';
 import './live-assistant.css';
 import { IconButton, Modal } from '../components/Ui';
+import { StudioGlyph } from '../components/StudioGlyph';
+import { ThemeContext } from '../components/ThemeSwitch';
 import { ChoiceSelect } from '../components/ChoiceSelect';
-import { ComposerInput } from './ComposerInput';
-import { PromptToolbar } from './PromptToolbar';
+import PromptBar from '../components/react-bits/PromptBar';
 import { DraftAttachmentCard, visualAttachmentLabel } from './DraftAttachmentCard';
-import { ComposerAction } from './ComposerAction';
-import { ExecutionStatus } from './ExecutionStatus';
+import { AssistantActivity, ExecutionStatus } from './ExecutionStatus';
+import VoicePill from '../components/react-bits/VoicePill';
 import {
   appendPublicExecutionEvent,
-  executionToolLabel,
   type PublicExecutionEvent,
 } from './execution-events';
 import { RubberSegment } from '../components/control-motion';
@@ -205,6 +208,9 @@ export interface LiveAssistantProps {
   isLoggedIn: boolean;
   onAuth: () => void;
   onSave: () => void;
+  onExport?: () => void;
+  onTopUp?: () => void;
+  voiceEntry?: number;
   onPreview: (recipe: EditorRecipe) => void;
   previewActive?: boolean;
   onConfirmPreview?: () => void;
@@ -236,6 +242,8 @@ function editorState(value: LiveAssistantProps): AssistantEditorState {
   };
 }
 const Strands = lazy(() => import('../components/react-bits/Strands'));
+const VOICE_STRANDS_LIGHT = ['#d28438', '#bd8b39', '#d6a94d', '#fff5d8', '#4c917f', '#77ae9f', '#3d7569'];
+const VOICE_STRANDS_DARK = ['#b7f3d8', '#8ce2c2', '#a8ebd7', '#f1fff0', '#84ebdf', '#51c9bb', '#3ea999'];
 
 export function LiveAssistant(props: LiveAssistantProps) {
   const compactCopy = modelCopy(useLocale());
@@ -279,19 +287,50 @@ export function LiveAssistant(props: LiveAssistantProps) {
   const [mode, setMode] = useState<'text' | 'voice'>('text'),
     [callState, setCallState] = useState<'idle' | 'connecting' | 'active' | 'closing'>('idle');
   const [voiceExpanded, setVoiceExpanded] = useState(false);
-  const voiceOrb = useRef<HTMLButtonElement>(null);
+  const voiceStartButton = useRef<HTMLButtonElement>(null);
+  const voiceDark = useContext(ThemeContext)?.theme === 'dark';
+  const [voiceToolsOpen, setVoiceToolsOpen] = useState(false);
+  const [voiceExtra, setVoiceExtra] = useState<'text' | 'details' | null>(null);
+  const [voiceCaptionsVisible, setVoiceCaptionsVisible] = useState(true);
+  const voiceLevel = useRef(0);
+  const readVoiceLevel = useCallback(() => voiceLevel.current, []);
+  const setVoiceLevel = useCallback((level: number) => { voiceLevel.current = level; }, []);
+  const voiceToolsId = useId();
+  const voiceTextId = useId();
+  const voiceDetailsId = useId();
+  const voiceContextId = useId();
+  const voiceToolsTrigger = useRef<HTMLButtonElement>(null);
+  const voiceTextInput = useRef<HTMLTextAreaElement>(null);
+  const voiceTextTrigger = useRef<HTMLButtonElement>(null);
+  const voiceDetailsTrigger = useRef<HTMLButtonElement>(null);
+  function closeVoiceExtra() {
+    const trigger = voiceExtra === 'text' ? voiceTextTrigger : voiceDetailsTrigger;
+    setVoiceExtra(null);
+    trigger.current?.focus({ preventScroll: true });
+  }
+  const voiceWorkspace = useRef<HTMLElement>(null);
   const voiceEntry = useRef<HTMLElement | null>(null);
   const dismissVoice = () => {
     setVoiceExpanded(false);
     if (callState === 'idle') setMode('text');
     const trigger = voiceEntry.current;
-    requestAnimationFrame(() => trigger?.isConnected && trigger.focus({ preventScroll: true }));
+    requestAnimationFrame(() => {
+      if (trigger?.isConnected) trigger.focus({ preventScroll: true });
+      else composerInput.current?.focus({ preventScroll: true });
+    });
   };
   const showVoice = useCallback((trigger?: HTMLElement) => {
     voiceEntry.current = trigger ?? null;
     setMode('voice');
     setVoiceExpanded(true);
   }, []);
+  const lastVoiceEntry = useRef(0);
+  useEffect(() => {
+    if (props.visible && (props.voiceEntry ?? 0) > lastVoiceEntry.current) {
+      lastVoiceEntry.current = props.voiceEntry!;
+      showVoice();
+    }
+  }, [props.visible, props.voiceEntry, showVoice]);
   const composerInput = useRef<HTMLTextAreaElement>(null);
   const conversationBody = useRef<HTMLDivElement>(null);
   const followingConversation = useRef(true);
@@ -332,6 +371,8 @@ export function LiveAssistant(props: LiveAssistantProps) {
   const [voiceSearchRemaining, setVoiceSearchRemaining] = useState(0);
   const [activeTurn, setActiveTurn] = useState<{ id: string; stopping: boolean } | null>(null);
   const [executionEvents, setExecutionEvents] = useState<readonly PublicExecutionEvent[]>([]);
+  const [submittingTurn, setSubmittingTurn] = useState(false);
+  const [settledTurn, setSettledTurn] = useState<Pick<Turn, 'id' | 'state'> | null>(null);
   const [sharedRangeOpen, setSharedRangeOpen] = useState(false);
   const [spaceIds, setSpaceIds] = useState<string[]>(project ? [project.spaceId] : []),
     [referenceIds, setReferenceIds] = useState<string[]>([]);
@@ -492,9 +533,38 @@ export function LiveAssistant(props: LiveAssistantProps) {
   }, [voiceId, voiceOptions.join(','), voice]);
   const inCall = callState !== 'idle';
   const voiceVisible = voiceExpanded && mode === 'voice' && isLoggedIn && props.visible !== false && !overlay;
-  useEffect(() => {
-    if (voiceVisible) voiceOrb.current?.focus({ preventScroll: true });
+  useLayoutEffect(() => {
+    if (!voiceVisible || !voiceWorkspace.current) return;
+    const element = voiceWorkspace.current;
+    const viewport = window.visualViewport;
+    const position = () => {
+      const top = viewport?.offsetTop ?? 0;
+      const bottom = viewport ? Math.max(0, window.innerHeight - viewport.height - top) : 0;
+      element.style.setProperty('--voice-viewport-top', top + 'px');
+      element.style.setProperty('--voice-viewport-bottom', bottom + 'px');
+    };
+    position();
+    viewport?.addEventListener('resize', position);
+    viewport?.addEventListener('scroll', position);
+    return () => {
+      viewport?.removeEventListener('resize', position);
+      viewport?.removeEventListener('scroll', position);
+    };
   }, [voiceVisible]);
+  useEffect(() => {
+    if (!voiceVisible) return;
+    const firstControl = voiceStartButton.current ?? voiceWorkspace.current?.querySelector<HTMLButtonElement>('button');
+    firstControl?.focus({ preventScroll: true });
+  }, [voiceVisible]);
+  useEffect(() => {
+    if (voiceVisible && voiceExtra === 'text') voiceTextInput.current?.focus({ preventScroll: true });
+  }, [voiceVisible, voiceExtra]);
+  useEffect(() => {
+    if (callState === 'connecting') {
+      setVoiceToolsOpen(false);
+      setVoiceExtra(null);
+    } else if (callState !== 'active') setVoiceExtra((open) => open === 'text' ? null : open);
+  }, [callState]);
   useEffect(() => {
     if (props.visualAttachment && callState === 'idle' && !voiceExpanded) setMode('text');
   }, [props.visualAttachment, callState, voiceExpanded]);
@@ -643,6 +713,9 @@ export function LiveAssistant(props: LiveAssistantProps) {
     setResearchCanvas(false);
     setResearchGraph(null);
     setExecutionEvents([]);
+    setSettledTurn(null);
+    setSubmittingTurn(false);
+    setToolStatus('');
     setSharedRangeOpen(false);
     setPublicImages(false);
     setActiveTurn(null);
@@ -796,6 +869,7 @@ export function LiveAssistant(props: LiveAssistantProps) {
           if (running.modelId) setModelId(running.modelId);
           const token = requests.current.begin();
           if (token) {
+            setSettledTurn(null);
             streamText.current.delete(running.id);
             setActiveTurn({ id: running.id, stopping: running.stopRequested === true });
             setBusy(true);
@@ -803,6 +877,7 @@ export function LiveAssistant(props: LiveAssistantProps) {
               .then((result) => {
                 if (requestIsActive(token)) {
                   acknowledgeKnownTurn(result);
+                  setSettledTurn({ id: result.id, state: result.state });
                   if (result.state === 'completed') setParentTurnId(result.id);
                   setHistoryEpoch((old) => old + 1);
                 }
@@ -1179,6 +1254,7 @@ export function LiveAssistant(props: LiveAssistantProps) {
     setMode('voice');
     setVoiceCaptions({});
     setExecutionEvents([]);
+    setSettledTurn(null);
     setVoiceSearchRemaining(0);
     lastVoiceContextSend.current = -Infinity;
     lastContextRetryKey.current = '';
@@ -1325,6 +1401,7 @@ export function LiveAssistant(props: LiveAssistantProps) {
     turnAbort.current?.abort();
     turnAbort.current = null;
     setBusy(false);
+    setSubmittingTurn(false);
     if (callState === 'connecting') voiceEpoch.current++;
     setMuted(true);
     setCallState(callState === 'connecting' ? 'idle' : 'closing');
@@ -1423,23 +1500,6 @@ export function LiveAssistant(props: LiveAssistantProps) {
       });
     } else if (event.type === 'run.stopping') {
       setActiveTurn({ id: event.runId, stopping: true });
-      setToolStatus('已收到停止请求，正在核对已发送的请求');
-    } else if (event.type.startsWith('tool.')) {
-      setToolStatus({
-        message: '{tool} · {state}',
-        params: {
-          tool: executionToolLabel(event.payload.name),
-          state:
-            (
-              {
-                'tool.running': '进行中',
-                'tool.completed': '已完成',
-                'tool.failed': '未通过检查',
-              } as Record<string, string>
-            )[event.type] ?? '',
-        },
-        labels: ['tool', 'state'],
-      });
     } else if (event.type === 'context.prepared') setContextManifest(event.payload);
   }
   async function submit() {
@@ -1476,6 +1536,8 @@ export function LiveAssistant(props: LiveAssistantProps) {
     setError('');
     setToolStatus('');
     setExecutionEvents([]);
+    setSettledTurn(null);
+    followingConversation.current = true;
     if (callState === 'active') {
       client.current?.send({ type: 'text', text });
       setPrompt('');
@@ -1488,6 +1550,7 @@ export function LiveAssistant(props: LiveAssistantProps) {
     const token = requests.current.begin();
     if (!token) return;
     setBusy(true);
+    setSubmittingTurn(true);
     const controller = new AbortController();
     turnAbort.current = controller;
     const baseline = assistantEditorKey(editorState(current.current));
@@ -1541,6 +1604,12 @@ export function LiveAssistant(props: LiveAssistantProps) {
       // discard an uncertain paid request and accidentally create a different key.
       rememberSubmission(frozen);
       if (attachment) submittedVisual.current = { key: frozen.idempotencyKey, attachment };
+      setMessages((old) => [...old, {
+        id: `pending-${frozen.idempotencyKey}`,
+        role: 'user' as const,
+        text,
+        attachmentKind: attachment?.kind,
+      }].slice(-60));
       await runSubmission(frozen, token, controller, true);
     } catch (err) {
       if (!controller.signal.aborted && requestIsActive(token)) setError(errorMessage(err));
@@ -1570,6 +1639,10 @@ export function LiveAssistant(props: LiveAssistantProps) {
     const controller = new AbortController();
     turnAbort.current = controller;
     setBusy(true);
+    setSubmittingTurn(true);
+    setSettledTurn(null);
+    setExecutionEvents([]);
+    followingConversation.current = true;
     setError('');
     let writePrepared = false;
     try {
@@ -1643,6 +1716,7 @@ export function LiveAssistant(props: LiveAssistantProps) {
     if (assistantSubmissionResolved(result.state)) resolveSubmission(accepted);
     if (controller.signal.aborted || !requestIsActive(token)) return;
     setActiveTurn(null);
+    setSettledTurn({ id: result.id, state: result.state });
     if (result.state === 'completed' && result.output) {
       setMemorySuggestions({
         items: result.output.memorySuggestions ?? [],
@@ -1721,6 +1795,7 @@ export function LiveAssistant(props: LiveAssistantProps) {
     }
     if (requests.current.finish(token) && alive.current) {
       setBusy(false);
+      setSubmittingTurn(false);
       setActiveTurn(null);
     }
     if (turnAbort.current === controller) turnAbort.current = null;
@@ -1935,9 +2010,9 @@ export function LiveAssistant(props: LiveAssistantProps) {
         alive.current &&
         assistantScopeKey(editorState(current.current)) === scope &&
         ownsTurnObservation(observer) &&
-        result.stopRequested
+        !result.stopRequested
       )
-        setToolStatus('已停止后续动作，正在核对本轮状态');
+        setActiveTurn((value) => (value?.id === id ? { id, stopping: false } : value));
     } catch (error) {
       if (
         alive.current &&
@@ -1987,6 +2062,8 @@ export function LiveAssistant(props: LiveAssistantProps) {
     setContextManifest(null);
     setResearchGraph(null);
     setExecutionEvents([]);
+    setSettledTurn(null);
+    setToolStatus('');
     setWorkspace(null);
     setMemorySuggestions({ items: [] });
     followingConversation.current = true;
@@ -2013,7 +2090,8 @@ export function LiveAssistant(props: LiveAssistantProps) {
     pendingSubmission.projectId === project?.id &&
     activeTurn.id === pendingSubmission.turnId;
   const recoveryLabel =
-    pendingSubmission && !observingCurrentSubmission
+    pendingSubmission && !observingCurrentSubmission &&
+      !(submittingTurn && pendingSubmission.state === 'unconfirmed' && pendingSubmission.projectId === project?.id)
       ? pendingSubmission.state === 'unknown'
         ? '本轮结果待核验，发送已暂停'
         : busy
@@ -2047,110 +2125,143 @@ export function LiveAssistant(props: LiveAssistantProps) {
   const canStartVoice = !inCall && !busy && !submissionBlocked && voiceSubmissionReady &&
     !pendingVoiceSubmission && !pendingTeamVoiceSubmission && catalog?.voiceReady &&
     !!project && !!selected && !!selectedVoice;
-  const voiceAction = inCall
-    ? t(muted ? '开启麦克风' : '静音麦克风')
-    : t('开始实时通话');
+  const voiceMessages = messages.filter((message) => message.voiceSession === voiceEpoch.current);
+  const voiceCandidateIds = new Set(voiceMessages.flatMap((message) => message.candidateIds ?? []));
+  const hasVoiceResults = voiceMessages.length > 0;
+  const voiceAction = t(muted ? '开启麦克风' : '静音麦克风');
   const voiceHeading = callState === 'active'
-    ? t('正在通话 {v0}:{v1}', {
-        v0: Math.floor(elapsed / 60),
-        v1: String(elapsed % 60).padStart(2, '0'),
-      })
-    : t(callState === 'connecting'
-        ? '正在连接麦克风与语音服务…'
-        : callState === 'closing'
-          ? '正在结束并核对用量…'
-          : canStartVoice ? '开始实时通话' : '选择可用的语音模型后开始');
+    ? t(muted ? '已静音' : '通话中')
+    : t(callState === 'connecting' ? '连接中' : callState === 'closing' ? '正在结束'
+      : '实时语音');
+  const voiceTime = `${Math.floor(elapsed / 60)}:${String(elapsed % 60).padStart(2, '0')}`;
+  const hasVoiceCaptions = !!(voiceCaptions.user?.text || voiceCaptions.assistant?.text);
+  const voiceSearchAvailable = callState === 'active' && allowWebSearch && selected?.webSearch;
+  const voiceTools = (
+    <IconButton ref={voiceToolsTrigger} className="voice-more" label={t('通话工具')}
+      aria-expanded={voiceToolsOpen} aria-controls={voiceToolsOpen ? voiceToolsId : undefined}
+      data-has-results={hasVoiceResults && !voiceToolsOpen ? '' : undefined}
+      onClick={() => {
+        if (voiceToolsOpen) setVoiceExtra(null);
+        setVoiceToolsOpen(!voiceToolsOpen);
+      }}>
+      <DotsThree size={19} weight="bold" />
+    </IconButton>
+  );
   const voicePanel = (
     <div className={`assistant-call ${callState}`} data-motion="ai-status">
-      <button
-        ref={voiceOrb}
-        type="button"
-        className="voice-workspace-orb"
-        aria-label={voiceAction}
-        aria-pressed={inCall ? muted : undefined}
-        aria-disabled={inCall ? callState !== 'active' : !canStartVoice}
-        onClick={() => {
-          if (callState === 'active') toggleVoiceMute();
-          else if (canStartVoice) void startVoice();
-        }}
-      >
-        <span className="voice-strands-orb" data-muted={muted} aria-hidden>
-          <Suspense fallback={<ComposerVisual kind="voice" />}>
-            <Strands colors={['#eec467', '#f0e8d4', '#719790']} count={15}
-              speed={muted ? 0.12 : inCall ? 0.72 : 0.28}
-              listening={callState === 'active' && !muted}
-              glass glassSize={0.89} glow={0.65} maxDevicePixelRatio={1.2} />
-          </Suspense>
-        </span>
-        <span className="voice-orb-glyph" aria-hidden>
-          {muted ? <MicrophoneSlash size={22} /> : <Microphone size={22} />}
-        </span>
-      </button>
-      <div className="assistant-call-status" role="status">
-        {voiceHeading}
-        {inCall && <small>{t(contextStatus)}</small>}
+      <div className="voice-workspace-orb" data-muted={muted}>
+        <Suspense fallback={null}>
+          <Strands
+            className="voice-strands-orb"
+            colors={voiceDark ? VOICE_STRANDS_DARK : VOICE_STRANDS_LIGHT}
+            glassTint={voiceDark ? '#387f75' : '#ebd4a9'}
+            lightMode={!voiceDark}
+            speed={muted ? 0.16 : callState === 'active' ? 0.7 : 0.38}
+            level={readVoiceLevel}
+            energy={muted ? 0.40 : 0.64}
+            refraction={0.72}
+            dispersion={0.25}
+            glassSize={1.13}
+            glow={0.68}
+            intro={false}
+            clickPulse={false}
+            maxDevicePixelRatio={1.5}
+            pluck
+          />
+        </Suspense>
+        {callState === 'connecting' && <span className="voice-orb-connecting" aria-hidden />}
       </div>
-      {!inCall ? (
-        <div className="assistant-call-start">
-          <ModelChoice label={t('语音模型')} ariaLabel={t('语音模型')} value={voiceId}
-            onChange={setVoiceId} disabled={busy || submissionBlocked || !!grant}
-            placeholder={t('暂无语音模型')}
-            options={voices.map((item) => ({ value: item.id, label: item.label }))} />
-          <ChoiceSelect ariaLabel={t('语音音色')} size="compact" value={voice}
-            disabled={!selectedVoice || busy || !!pendingVoiceSubmission || !!pendingTeamVoiceSubmission || !voiceSubmissionReady}
-            onValueChange={setVoice} placeholder={t('选择音色')}
-            options={voiceOptions.map((option) => ({ value: option, label: option }))} />
+      <div className="voice-workspace-actions" role="group" aria-label={t('通话控制')}>
+        <IconButton label={t('收起语音通话')} onClick={dismissVoice}><ArrowLeft size={17} /></IconButton>
+        <div className="assistant-call-status">
+          <span role="status">{voiceHeading}</span>
+          {callState === 'active' && <time aria-label={t('通话时长')}>{voiceTime}</time>}
+          {!inCall && catalog && (
+            <small>{!project ? t('选择项目后开始对话') : !catalog.voiceReady ? t('语音服务暂不可用')
+              : selectedVoice ? t('{v0} 服务点 · 最长 {v1} 秒', {
+                v0: selectedVoice.unitCost, v1: selectedVoice.maxSeconds,
+              }) : t('暂无语音模型')}</small>
+          )}
         </div>
-      ) : null}
+        {!inCall ? (
+          <>
+            {voiceTools}
+            <button ref={voiceStartButton} type="button" className="voice-start-button"
+              aria-label={t('开始实时通话')} aria-disabled={!canStartVoice}
+              onClick={() => { if (canStartVoice) void startVoice(); }}>
+              <Microphone size={17} /><span>{t('开始实时通话')}</span>
+            </button>
+          </>
+        ) : (
+          <div className="assistant-call-actions">
+            {callState === 'active' && (
+              <>
+                <VoicePill className="voice-live-pill" size={34} reach={2} showTime={false} reactive="external"
+                  background="var(--voice-control)" accentColor="var(--voice-accent)" iconColor="var(--voice-ink)"
+                  externalDisplay externalActive={!muted} externalStream={client.current?.microphoneStream}
+                  ariaLabel={voiceAction} ariaPressed={muted} slideToCancel={false}
+                  onLevel={setVoiceLevel} onAction={toggleVoiceMute} />
+                <IconButton label={t('打断播报')} onClick={() => client.current?.interrupt()}><Pause size={16} /></IconButton>
+              </>
+            )}
+            {callState === 'active' && voiceTools}
+            <IconButton className="end-call" label={t('结束实时通话')}
+              disabled={callState === 'closing'} onClick={endCurrentVoice}><PhoneDisconnect size={17} /></IconButton>
+          </div>
+        )}
+      </div>
     </div>
   );
-  const voiceSupplement = mode === 'voice' && (
-    <>
-      {(inCall || voiceCaptions.user || voiceCaptions.assistant) && (
-        <VoiceCaptions captions={voiceCaptions} />
-      )}
-      {callState === 'active' && allowWebSearch && selected?.webSearch && (
-        <MotionDetails className="assistant-voice-search">
-          <summary>{t('通话中公开搜索')}</summary>
-          <form
-            className="assistant-public-query"
-            onSubmit={(event) => {
-              event.preventDefault();
-              searchDuringCall();
-            }}
-          >
-            <label>
-              {t('可公开的查询词')}
-              <input
-                aria-label={t('通话公开检索查询词')}
-                value={publicQuery}
-                maxLength={240}
-                onChange={(event) => setPublicQuery(event.target.value)}
-                placeholder={t('例如：静物柔光参考')}
-              />
-            </label>
-            {selected.webImageSearch && (
-              <label>
-                <input
-                  type="checkbox"
-                  checked={publicImages}
-                  onChange={(event) => setPublicImages(event.target.checked)}
-                />
-                {t('查找公开图片')}
-              </label>
-            )}
-            <small>{t('也可说「公开搜索：关键词」。本通话最多一次公开搜索，只发送查询词。')}</small>
-            <button
-              type="submit"
-              className="button button-secondary"
-              disabled={!publicQuery.trim() || !!toolStatus || voiceSearchRemaining <= 0}
-            >
-              {voiceSearchRemaining ? t('搜索') : t('检索次数已用完')}
-            </button>
-          </form>
-        </MotionDetails>
-      )}
-    </>
+  const voiceContextToggle = (
+    <IconButton label={t('当前预览')}
+      title={t(shareImage ? '移除当前预览' : '共享当前预览')}
+      aria-pressed={shareImage} aria-describedby={inCall ? voiceContextId : undefined}
+      disabled={!artwork || !selected?.imageInput || busy || submissionBlocked ||
+        callState === 'connecting' || callState === 'closing'}
+      onClick={() => setShareImage((enabled) => !enabled)}>
+      <ImageSquare size={17} />
+    </IconButton>
+  );
+  const voiceSupplement = voiceSearchAvailable && (
+    <MotionDetails className="assistant-voice-search">
+      <summary>{t('通话中公开搜索')}</summary>
+      <form
+        className="assistant-public-query"
+        onSubmit={(event) => {
+          event.preventDefault();
+          searchDuringCall();
+        }}
+      >
+        <label>
+          {t('可公开的查询词')}
+          <input
+            aria-label={t('通话公开检索查询词')}
+            value={publicQuery}
+            maxLength={240}
+            onChange={(event) => setPublicQuery(event.target.value)}
+            placeholder={t('例如：静物柔光参考')}
+          />
+        </label>
+        {selected.webImageSearch && (
+          <label>
+            <input
+              type="checkbox"
+              checked={publicImages}
+              onChange={(event) => setPublicImages(event.target.checked)}
+            />
+            {t('查找公开图片')}
+          </label>
+        )}
+        <small>{t('也可说「公开搜索：关键词」。本通话最多一次公开搜索，只发送查询词。')}</small>
+        <button
+          type="submit"
+          className="button button-secondary"
+          disabled={!publicQuery.trim() || !!toolStatus || voiceSearchRemaining <= 0}
+        >
+          {voiceSearchRemaining ? t('搜索') : t('检索次数已用完')}
+        </button>
+      </form>
+    </MotionDetails>
   );
   const showConversationEmpty =
     !messages.length && !remainingCandidates.length && mode === 'text' && !busy;
@@ -2166,18 +2277,44 @@ export function LiveAssistant(props: LiveAssistantProps) {
         <p>{t(catalog.reason)}</p>
       </MotionDetails>
     ) : null;
-  const latestExecution = executionEvents.at(-1);
-  const executionState =
-    pendingSubmission?.state === 'unknown' || hasVoiceRecovery
-      ? 'unknown'
-      : activeTurn?.stopping
-        ? 'pending'
-        : (latestExecution?.state ?? (busy || toolStatus ? 'running' : 'pending'));
-  function renderMessages(entries: Message[]) {
+  const turnId = activeTurn?.id ?? settledTurn?.id;
+  const turnEvents = executionEvents.filter((event) => event.runId === turnId);
+  const latestToolEvent = [...turnEvents].reverse().find((event) => event.label !== '本轮执行');
+  const streaming = Boolean(activeTurn && messages.some((message) => message.id === activeTurn.id && message.text));
+  const waitingForReply = Boolean(activeTurn && !activeTurn.stopping && !streaming && !turnEvents.length);
+  const sending = submittingTurn && !activeTurn && !settledTurn;
+  const activeMessageId = turnId
+    ? `${turnId}-u`
+    : pendingSubmission?.projectId === project?.id && pendingSubmission
+      ? `pending-${pendingSubmission.idempotencyKey}`
+      : null;
+  const terminalState = settledTurn?.state;
+  const executionState = activeTurn
+    ? activeTurn.stopping ? 'pending' : 'running'
+    : terminalState === 'completed' ? 'done'
+      : terminalState === 'stopped' ? 'cancelled'
+        : terminalState === 'unknown' ? 'unknown' : 'failed';
+  const doneLabel = executionState === 'done' ? t('本轮执行已完成')
+    : executionState === 'cancelled' ? t('已停止')
+      : executionState === 'unknown' ? t('结果待核验') : t('本轮执行未完成');
+  const progressLabel = activeTurn?.stopping ? t('已收到停止请求，正在核对已发送的请求')
+    : latestToolEvent?.state === 'running' ? t(latestToolEvent.label)
+      : streaming ? t('正在输出回复') : t('正在处理本轮请求');
+  const turnProgress = sending || waitingForReply ? (
+    <AssistantActivity label={t(waitingForReply ? '等待助手回复' : pendingSubmission ? '正在发送' : '正在准备本轮请求')} />
+  ) : turnId ? (
+    <ExecutionStatus label={progressLabel} doneLabel={doneLabel} state={executionState} events={turnEvents} />
+  ) : busy && !inCall ? <AssistantActivity label={t('正在处理…')} /> : null;
+
+  function renderMessages(entries: Message[], showTurnProgress = false) {
+    const anchor = showTurnProgress ? entries.find((message) => message.id === activeMessageId) : null;
     return (
       <div className="assistant-messages" aria-label={t('协作对话')} data-motion="ai-answer">
-        {entries.map((message) => (
-          <article key={message.id} className={`assistant-message ${message.role}`}>
+        {entries.flatMap((message) => {
+          const isStreaming = message.id === activeTurn?.id && !!message.text;
+          const article = (
+            <article key={message.id} className={`assistant-message ${message.role}`}
+            data-streaming={isStreaming || undefined} aria-busy={isStreaming || undefined}>
             <small>{message.role === 'user' ? t('你') : t('创作助手')}</small>
             {message.attachmentKind && (
               <span className="ai-sent-attachment">
@@ -2217,11 +2354,12 @@ export function LiveAssistant(props: LiveAssistantProps) {
                   ))}
                 </div>
               )}
-            {message.role === 'assistant' && message.text && (
-              <CopyMessage text={message.text} />
-            )}
-          </article>
-        ))}
+            {message.role === 'assistant' && message.text && !isStreaming && <CopyMessage text={message.text} />}
+            </article>
+          );
+          return message === anchor && turnProgress ? [article, <div className="ai-turn-activity" key="turn-progress">{turnProgress}</div>] : [article];
+        })}
+        {showTurnProgress && !anchor && turnProgress && <div className="ai-turn-activity">{turnProgress}</div>}
       </div>
     );
   }
@@ -2302,79 +2440,96 @@ export function LiveAssistant(props: LiveAssistantProps) {
       </div>
     );
   }
-  const voiceMessages = messages.filter((message) => message.voiceSession === voiceEpoch.current);
-  const voiceCandidateIds = new Set(voiceMessages.flatMap((message) => message.candidateIds ?? []));
+  const showVoiceTranscript = voiceCaptionsVisible && hasVoiceCaptions && voiceExtra === null;
   const voicePortal = voiceVisible && createPortal(
     <section
+      ref={voiceWorkspace}
       className="voice-call-workspace"
       data-call-state={callState}
       aria-label={t('实时语音')}
       onKeyDown={(event) => {
-        if (event.key !== 'Escape' || event.defaultPrevented) return;
+        if (event.key !== 'Escape' || event.defaultPrevented || event.nativeEvent.isComposing) return;
         event.preventDefault();
-        dismissVoice();
+        event.stopPropagation();
+        if (voiceExtra) closeVoiceExtra();
+        else if (voiceToolsOpen) {
+          setVoiceToolsOpen(false);
+          voiceToolsTrigger.current?.focus({ preventScroll: true });
+        } else dismissVoice();
       }}
     >
-      <header className="voice-workspace-heading">
-        <IconButton label={t('收起语音通话')} onClick={dismissVoice}><ArrowLeft size={20} /></IconButton>
-        <div>
-          <strong>{selectedVoice?.label ?? t('实时语音')}</strong>
-          {selectedVoice && (
-            <span>{[inCall && voice, t('{v0} 服务点 · 最长 {v1} 秒', {
-              v0: selectedVoice.unitCost, v1: selectedVoice.maxSeconds,
-            })].filter(Boolean).join(' · ')}</span>
-          )}
-        </div>
-        <IconButton label={t('助手设置')} onClick={() => setOverlay('settings')}><GearSix size={19} /></IconButton>
-      </header>
-      <div className="voice-workspace-body">
-        {isLoggedIn && !catalog && (
-          <ModelReadStatus label={t(catalogError ? '模型列表加载失败' : '正在读取模型')}
-            error={catalogError} retry={() => setCatalogAttempt((n) => n + 1)} />
-        )}
-        {voicePanel}
-        {voiceSupplement}
-        {toolStatus && <p className="voice-tool-status" role="status">{renderStatus(toolStatus)}</p>}
-        {!!voiceMessages.length && (
-          <div className="voice-results">
-            {renderMessages(voiceMessages)}
-            {workspace?.candidateIds.some((id) => voiceCandidateIds.has(id)) && renderWorkspace()}
-            {renderCandidates(remainingCandidates.filter(({ id }) => voiceCandidateIds.has(id)))}
+      <div className="voice-workspace-center">{voicePanel}</div>
+      <div className="voice-workspace-footer">
+        {(!catalog || showVoiceTranscript || toolStatus || voiceExtra === 'details' ||
+          error || recoveryLabel) && (
+          <div className="voice-workspace-details">
+            {!catalog && (
+              <ModelReadStatus label={t(catalogError ? '模型列表加载失败' : '正在读取模型')}
+                error={catalogError} retry={() => setCatalogAttempt((n) => n + 1)} />
+            )}
+            {showVoiceTranscript && <VoiceCaptions captions={voiceCaptions} compact />}
+            {toolStatus && <div className="voice-tool-status"><AssistantActivity label={renderStatus(toolStatus)} color="var(--voice-muted)" /></div>}
+            {voiceExtra === 'details' && (
+              <div id={voiceDetailsId} className="voice-results">
+                <p className="voice-context-status" id={voiceContextId}>{t(contextStatus)}</p>
+                {voiceCaptionsVisible && hasVoiceCaptions && <VoiceCaptions captions={voiceCaptions} compact />}
+                {voiceSupplement}
+                {hasVoiceResults && renderMessages(voiceMessages)}
+                {workspace?.candidateIds.some((id) => voiceCandidateIds.has(id)) && renderWorkspace()}
+                {renderCandidates(remainingCandidates.filter(({ id }) => voiceCandidateIds.has(id)))}
+              </div>
+            )}
+            {error && <p className="assistant-error" role="alert">{renderStatus(error)}</p>}
+            {recoveryLabel && <button type="button" className="text-button" onClick={() => {
+              setOverlay('recovery');
+            }}>{t(recoveryLabel)} · {t('核对请求')}</button>}
           </div>
         )}
-        {error && <p className="assistant-error" role="alert">{renderStatus(error)}</p>}
-        {recoveryLabel && <button type="button" className="text-button" onClick={() => {
-          setOverlay('recovery');
-        }}>{t(recoveryLabel)} · {t('核对请求')}</button>}
+        {voiceExtra !== 'details' && <span className="voice-sr-only" id={voiceContextId}>{t(contextStatus)}</span>}
+        {callState === 'active' && voiceExtra === 'text' && (
+          <form id={voiceTextId} className="voice-composer" data-ai-voice-composer onSubmit={(event) => {
+            event.preventDefault();
+            if (canSend) void submit();
+          }}>
+            <PromptBar className="assistant-reference-prompt" width={1200} maxRows={2}
+              value={prompt} onValueChange={setPrompt} maxLength={4000} inputRef={voiceTextInput}
+              placeholder={t('补充通话要求…')}
+              sources={[]} commands={[]} models={[]} efforts={[]}
+              disabled={!!pendingSubmission || !submissionReady} sendDisabled={!canSend}
+              onSend={() => void submit()}
+              labels={{ input: t('向智能体描述修改需求'), send: t('发送协作请求') }} />
+          </form>
+        )}
+        {voiceToolsOpen && (callState === 'idle' || callState === 'active') && (
+          <div id={voiceToolsId} className="voice-workspace-utilities" role="group" aria-label={t('通话工具')}>
+            {callState === 'active' && (
+              <IconButton ref={voiceTextTrigger} label={t('补充文字')} aria-expanded={voiceExtra === 'text'}
+                aria-controls={voiceExtra === 'text' ? voiceTextId : undefined}
+                onClick={() => setVoiceExtra((open) => open === 'text' ? null : 'text')}>
+                <Keyboard size={17} />
+              </IconButton>
+            )}
+            {(inCall || hasVoiceCaptions) && (
+              <IconButton label={t(voiceCaptionsVisible ? '隐藏字幕' : '显示字幕')}
+                aria-pressed={voiceCaptionsVisible}
+                onClick={() => setVoiceCaptionsVisible((visible) => !visible)}>
+                <ClosedCaptioning size={17} />
+              </IconButton>
+            )}
+            {voiceContextToggle}
+            {(inCall || hasVoiceResults) && (
+              <IconButton ref={voiceDetailsTrigger} label={t('通话详情')}
+                aria-expanded={voiceExtra === 'details'}
+                aria-controls={voiceExtra === 'details' ? voiceDetailsId : undefined}
+                data-has-results={hasVoiceResults && voiceExtra !== 'details' ? '' : undefined}
+                onClick={() => setVoiceExtra((open) => open === 'details' ? null : 'details')}>
+                <ChatText size={17} />
+              </IconButton>
+            )}
+            <IconButton label={t('助手设置')} onClick={() => setOverlay('settings')}><GearSix size={17} /></IconButton>
+          </div>
+        )}
       </div>
-      <footer className="voice-workspace-footer">
-        <form className="ai-composer-surface voice-composer" data-ai-voice-composer onSubmit={(event) => {
-          event.preventDefault();
-          if (callState === 'active' && canSend) void submit();
-        }}>
-          <ComposerInput label={t('向智能体描述修改需求')} placeholder={t('补充通话要求…')}
-            value={prompt} onChange={setPrompt} maxLength={4000}
-            canSubmit={callState === 'active' && canSend}
-            readOnly={callState !== 'active' || !!pendingSubmission || !submissionReady} />
-          <ComposerAction state={busy ? 'waiting' : 'send'} label={t('发送协作请求')}
-            disabled={callState !== 'active' || !canSend} />
-        </form>
-        <div className="voice-workspace-actions">
-          <button className="text-button voice-share-canvas" type="button" aria-pressed={shareImage}
-            disabled={!artwork || !selected?.imageInput || busy || callState === 'connecting' || callState === 'closing'}
-            onClick={() => setShareImage((enabled) => !enabled)}>
-            <ImageSquare size={16} />{t('当前预览')}
-          </button>
-          {inCall && (
-            <div className="assistant-call-actions">
-              <button type="button" aria-label={t('打断播报')} disabled={callState !== 'active'}
-                onClick={() => client.current?.interrupt()}><Pause size={19} /></button>
-              <button type="button" className="end-call" aria-label={t('结束实时通话')}
-                disabled={callState === 'closing'} onClick={endCurrentVoice}><PhoneDisconnect size={19} /></button>
-            </div>
-          )}
-        </div>
-      </footer>
     </section>, document.body,
   );
   return (
@@ -2409,6 +2564,9 @@ export function LiveAssistant(props: LiveAssistantProps) {
           </strong>
         )}
         <div className="ai-header-actions">
+          {props.onExport && <IconButton label={t('导出当前照片')} onClick={props.onExport}>
+            <StudioGlyph name="export" size={18} />
+          </IconButton>}
           <IconButton
             label={t('新会话')}
             className="ai-new-conversation"
@@ -2528,7 +2686,10 @@ export function LiveAssistant(props: LiveAssistantProps) {
                 )}
               </div>
             )}
-            {renderMessages(messages)}
+            {renderMessages(messages, true)}
+            {toolStatus && !activeTurn && !inCall && (
+              <p className="ai-turn-note" role="status">{renderStatus(toolStatus)}</p>
+            )}
             {renderWorkspace()}
             {renderCandidates(remainingCandidates)}
             {candidateHistoryStatus && (
@@ -2550,6 +2711,9 @@ export function LiveAssistant(props: LiveAssistantProps) {
         {error && (
           <p className="assistant-error" role="alert">
             {renderStatus(error)}
+            {props.onTopUp && /额度|服务点|credit|quota/i.test(String(renderStatus(error))) && (
+              <button className="text-button" type="button" onClick={props.onTopUp}>{t('充值与订阅')}</button>
+            )}
             <button className="text-button" onClick={refreshHistory}>
               {t('刷新会话记录')}
             </button>
@@ -2560,25 +2724,10 @@ export function LiveAssistant(props: LiveAssistantProps) {
             )}
           </p>
         )}
-        {(toolStatus || busy || executionEvents.length > 0) && (
-          <ExecutionStatus
-            label={
-              recoveryLabel
-                ? t('最近执行记录')
-                : toolStatus
-                  ? renderStatus(toolStatus)
-                  : busy
-                    ? t('正在处理…')
-                    : ''
-            }
-            state={executionState}
-            events={executionEvents}
-          />
-        )}
       </div>
       <footer className="ai-composer-region" hidden={voiceVisible} inert={voiceVisible}>
         <form
-          className="assistant-composer ai-composer-surface"
+          className="assistant-composer assistant-reference-composer"
           data-ai-composer
           onKeyDown={(event) => {
             if (event.key === 'Escape' && composerExpanded && !event.nativeEvent.isComposing) {
@@ -2640,90 +2789,59 @@ export function LiveAssistant(props: LiveAssistantProps) {
               </span>
             </button>
           )}
-          <ComposerInput
-            ref={composerInput}
-            label={t('向智能体描述修改需求')}
-            placeholder={inCall ? t('补充通话要求…') : t('输入调整要求…')}
-            value={prompt}
-            onChange={setPrompt}
-            maxLength={4000}
-            canSubmit={canSend}
-            readOnly={!!pendingSubmission || !submissionReady}
-          />
           {mode === 'text' && props.visualAttachment && selected && !selected.imageInput && (
             <small className="ai-attachment-status" role="status">
               {t('请选择支持图片的模型，或移除附件。')}
             </small>
           )}
-          <PromptToolbar
-            model={selected?.label ?? t('选择模型')}
-            modelLabel={t('选择助手模型与执行方式')}
-            openSettings={() => setOverlay('settings')}
-            attachment={{
-              label: t('共享画面与参考素材'),
-              actions: [
+          <PromptBar className="assistant-reference-prompt" width={1200} inputRef={composerInput}
+            placeholder={inCall ? t('补充通话要求…') : t('输入调整要求…')}
+            value={prompt} onValueChange={setPrompt} maxLength={4000}
+            modelKey={modelId} onModelChange={setModelId}
+            models={models.map((model) => ({ key: model.id, name: model.label }))}
+            efforts={[]}
+            commands={[
+              { key: 'settings', name: '/' + t('助手设置'), action: () => setOverlay('settings') },
+              { key: 'history', name: '/' + t('会话记录'), action: () => setOverlay('history') },
+            ]}
+            disabled={!isLoggedIn || !!pendingSubmission || !submissionReady}
+            modelDisabled={busy || inCall || !!grant} sendDisabled={!canSend}
+            busy={!!activeTurn} stopDisabled={!!activeTurn?.stopping}
+            onSend={() => void submit()} onStop={() => void stopActiveTurn()}
+            labels={{ input: t('向智能体描述修改需求'), attach: t('共享画面与参考素材'),
+              chooseModel: t('选择助手模型与执行方式'), models: t('选择模型'),
+              sources: t('共享画面与参考素材'), commands: t('助手操作'), empty: t('没有匹配的选项'),
+              send: t('发送协作请求'), stop: t('停止本轮执行') }}
+            sources={[
                 {
-                  label: t('参考图'),
+                  key: 'reference', name: t('参考图'),
                   icon: <Paperclip size={17} />,
-                  run: () => {
+                  description: t('共享画面与参考素材'),
+                  action: () => {
                     setSharedRangeOpen(true);
                     setOverlay('settings');
                   },
                 },
-                {
-                  label: t('当前预览'),
+                ...(!busy && !submissionBlocked && artwork && selected?.imageInput &&
+                  callState !== 'connecting' && callState !== 'closing' ? [{
+                  key: 'canvas', name: t('当前预览'),
                   icon: <ImageSquare size={17} />,
-                  pressed: shareImage,
-                  disabled: busy || submissionBlocked || !artwork || !selected?.imageInput ||
-                    callState === 'connecting' || callState === 'closing',
-                  run: () => setShareImage((enabled) => !enabled),
-                },
-              ],
-            }}
-          >
-              <IconButton
-                label={t('打开实时语音')}
-                disabled={!isLoggedIn || busy}
-                onClick={(event) => showVoice(event.currentTarget)}
-              >
-                <Microphone size={18} />
-              </IconButton>
-              <ComposerAction
-                state={
-                  activeTurn
-                    ? activeTurn.stopping
-                      ? 'stopping'
-                      : 'stop'
-                    : busy
-                      ? 'waiting'
-                      : 'send'
-                }
-                label={
-                  activeTurn
-                    ? activeTurn.stopping
-                      ? t('正在核对停止结果')
-                      : t('停止本轮执行')
-                    : t('发送协作请求')
-                }
-                title={activeTurn ? undefined : t('发送（Ctrl / ⌘ Enter）')}
-                disabled={activeTurn ? activeTurn.stopping : !canSend}
-                onStop={activeTurn ? () => void stopActiveTurn() : undefined}
-              />
-          </PromptToolbar>
+                  description: t(shareImage ? '移除当前预览' : '共享当前预览'),
+                  action: () => setShareImage((enabled) => !enabled),
+                }] : []),
+              ]}
+            tools={<VoicePill className="assistant-voice-pill" size={34} reactive="external"
+              background={inCall ? 'var(--accent-soft)' : 'transparent'} accentColor="var(--accent-ink)" iconColor="var(--muted)"
+              externalDisplay={inCall} externalActive={callState === 'active' && !muted}
+              externalStream={client.current?.microphoneStream} elapsed={elapsed}
+              slideToCancel={false} disabled={!isLoggedIn || busy} ariaLabel={t(inCall ? '返回实时通话' : '打开实时语音')}
+              onAction={(trigger) => showVoice(trigger)} />} />
         </form>
         {selected && (
           <div className="ai-composer-meta">
             <span className="ai-execution-summary">
               <span className="ai-full-execution-label">{t(executionLabel)}</span>
-              <span className="ai-compact-status" aria-live="polite">
-                {grant && creative.mode === 'auto'
-                  ? t(executionLabel)
-                  : toolStatus
-                    ? renderStatus(toolStatus)
-                    : busy
-                      ? t('正在处理…')
-                      : t(executionLabel)}
-              </span>
+              <span className="ai-compact-status">{t(executionLabel)}</span>
               {grant && creative.mode === 'auto'
                 ? t(' · {v0}/{v1} 点', { v0: grant.usedUnits, v1: grant.unitLimit })
                 : ''}
@@ -2791,6 +2909,12 @@ export function LiveAssistant(props: LiveAssistantProps) {
                   description: `${formatNumber(item.unitCost)} ${t('点')}`,
                 }))}
               />
+            )}
+            {mode === 'voice' && voiceOptions.length > 1 && (
+              <ChoiceSelect label={t('语音音色')} value={voice} onValueChange={setVoice}
+                disabled={inCall || busy || !!pendingVoiceSubmission || !!pendingTeamVoiceSubmission || !voiceSubmissionReady}
+                placeholder={t('选择音色')}
+                options={voiceOptions.map((option) => ({ value: option, label: option }))} />
             )}
             {mode === 'voice' && selectedVoice && (
               <p className="ai-selected-model-meta">
@@ -3045,6 +3169,8 @@ export function LiveAssistant(props: LiveAssistantProps) {
               setContextManifest(null);
               setResearchGraph(null);
               setExecutionEvents([]);
+              setSettledTurn(null);
+              setToolStatus('');
               setError('');
               followingConversation.current = true;
               setOverlay(null);

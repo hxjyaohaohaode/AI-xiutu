@@ -4,7 +4,8 @@ import { ChoiceSelect } from '../components/ChoiceSelect';
 import { useEffect, useId, useMemo, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { RubberSegment } from '../components/control-motion';
-import { PortraitModeSwitch } from './MakeupBrushRail';
+import { makeupBrushes, PortraitModeSwitch } from './MakeupBrushRail';
+import { makeupPalettes } from './makeup-palettes';
 import { Sparkle, PaintBrush, HandPointing, ArrowsClockwise } from '../components/ControlGlyph';
 import {
   PORTRAIT_TOOLS,
@@ -30,7 +31,7 @@ import { AutomaticMakeupControls } from './AutomaticMakeupControls';
 import { ParameterShelf } from './ParameterShelf';
 import { ParameterGlyph } from './ParameterGlyph';
 import { PrecisionRange } from './PrecisionRange';
-import { currentV3, newMask, type InspectorController } from './advanced-model';
+import { currentV3, hexRgba, manualPaintOrigin, newMask, type InspectorController } from './advanced-model';
 import type { ToolGroup } from './ToolInspector';
 import { portraitTargetDisplayLabel } from './portrait-label';
 import { interactionText } from '../workspace/interaction-copy';
@@ -63,9 +64,13 @@ export function PortraitControls({
   onSelectionCreated,
   onCutout,
   headerTarget,
+  compact = false,
+  activeManualTool,
 }: {
   controller: InspectorController;
   headerTarget?: HTMLElement | null;
+  compact?: boolean;
+  activeManualTool?: ToolGroup | null;
   onGroupChange?: (group: ToolGroup) => void;
   onSelectionCreated?: (id: string) => void;
   onCutout?: (guides: CutoutGuides) => Promise<string>;
@@ -115,6 +120,14 @@ export function PortraitControls({
     setGuides(DEFAULT_CUTOUT_GUIDES);
   }, [sourceIdentity]);
   const analysisCurrent = portraitSelectionMatchesSource(state.analysis, editor.getSourceFrame());
+  const automaticAnalysis = useRef(new Set<string>());
+  useEffect(() => {
+    if (mode !== 'auto' || category === 'makeup' || !editor.sourceHash || state.progress) return;
+    const key = sourceIdentity + ':' + kind;
+    if ((analysisCurrent && (kind === 'face' || target)) || automaticAnalysis.current.has(key)) return;
+    automaticAnalysis.current.add(key);
+    void state.analyze(kind === 'body');
+  }, [mode, category, sourceIdentity, kind, editor.sourceHash, state.progress, state.analyze, analysisCurrent, target]);
   const hasSubject = analysisCurrent && !!state.analysis?.segmentation?.subject;
   const [fineMatteAvailable, setFineMatteAvailable] = useState(false);
   useEffect(() => {
@@ -248,8 +261,10 @@ export function PortraitControls({
           report('绘制图层已达当前预算，请先整理图层后再新建手动精修。');
           return;
         }
+        const id = secureUuid();
         const layer: PaintLayerV3 = {
-          id: secureUuid(),
+          id,
+          origin: manualPaintOrigin(id, true),
           name: (target?.label ?? '图像') + (mode === 'clone' ? ' · 手动修补' : ' · 手动绘制'),
           enabled: true,
           opacity: 1,
@@ -330,9 +345,36 @@ export function PortraitControls({
     if (onSelectionCreated) onSelectionCreated(region.id);
     else onGroupChange?.('local');
   }
-  function manualStretch(axis: 'free' | 'horizontal' | 'vertical') {
-    editor.setWarpSettings((settings) => ({ ...settings, axis, mode: 'push', protecting: false }));
+  function manualStretch(axis: 'free' | 'horizontal' | 'vertical', band = false) {
+    const firstBand = band && !editor.warpSettings.verticalRange;
+    editor.setWarpSettings((settings) => ({
+      ...settings,
+      axis,
+      mode: 'push',
+      protecting: false,
+      regionId: band ? undefined : settings.regionId,
+      ...(firstBand ? { verticalRange: { top: 0.38, bottom: 0.72 } } : {}),
+    }));
     openManual('liquify', false);
+  }
+  function openMobileMakeup() {
+    editor.setPaintSettings((previous) => ({
+      ...previous,
+      mode: 'paint',
+      choosingSource: false,
+      automaticMakeup: false,
+      ...(previous.material || previous.makeupTip === null
+        ? {}
+        : {
+            makeupTip: 'base' as const,
+            material: makeupBrushes.base.material,
+            color: hexRgba(makeupPalettes.base[0]!.shades[0]!),
+            radius: makeupBrushes.base.radius,
+            feather: makeupBrushes.base.feather,
+            opacity: makeupBrushes.base.opacity,
+          }),
+    }));
+    onGroupChange?.('paint');
   }
   function clearLegacyNeck() {
     if (!state.analysis || !target) return;
@@ -371,6 +413,9 @@ export function PortraitControls({
       onChange={(id) => {
         editor.commitCurrent(t('完成人像调节'));
         setCategory(id);
+        if (compact && mode === 'manual' && id === 'makeup') openMobileMakeup();
+        else if (compact && mode === 'manual' && id === 'body') manualStretch('vertical', true);
+        else if (compact && activeManualTool) onGroupChange?.('beauty');
         const nextKind = id === 'body' ? 'body' : 'face';
         const next =
           state.analysis?.targets.find(
@@ -533,7 +578,9 @@ export function PortraitControls({
         onChange={(automatic) => {
           editor.commitCurrent(t('完成人像调节'));
           setMode(automatic ? 'auto' : 'manual');
-          onGroupChange?.('beauty');
+          if (compact && !automatic && category === 'makeup') openMobileMakeup();
+          else if (compact && !automatic && category === 'body') manualStretch('vertical', true);
+          else onGroupChange?.('beauty');
         }}
       />
     </div>
@@ -542,7 +589,7 @@ export function PortraitControls({
     <section className="advanced-tool-family portrait-controls-v3" data-motion="portrait-controls">
       {headerTarget ? createPortal(portraitToolbar, headerTarget) : portraitToolbar}
       {mode === 'manual' ? (
-        <div className="makeup-parameter-tabs portrait-manual-rail">
+        <div className="makeup-parameter-tabs portrait-manual-rail" hidden={compact && category === 'makeup' && activeManualTool === 'paint'}>
           {category === 'skin' ? (
             <button
               type="button"
@@ -557,7 +604,7 @@ export function PortraitControls({
               type="button"
               className="text-button"
               disabled={!onGroupChange}
-              onClick={() => openManual('paint', false)}
+              onClick={() => compact ? openMobileMakeup() : openManual('paint', false)}
             >
               {t('手动涂妆与细修')}
             </button>
@@ -567,6 +614,7 @@ export function PortraitControls({
                 type="button"
                 className="text-button"
                 disabled={!onGroupChange}
+                aria-pressed={activeManualTool === 'liquify' && editor.warpSettings.axis === 'free'}
                 onClick={() => manualStretch('free')}
               >
                 {t('自由拉伸')}
@@ -575,6 +623,7 @@ export function PortraitControls({
                 type="button"
                 className="text-button"
                 disabled={!onGroupChange}
+                aria-pressed={activeManualTool === 'liquify' && editor.warpSettings.axis === 'horizontal'}
                 onClick={() => manualStretch('horizontal')}
               >
                 {t('横向拉伸')}
@@ -583,7 +632,8 @@ export function PortraitControls({
                 type="button"
                 className="text-button"
                 disabled={!onGroupChange}
-                onClick={() => manualStretch('vertical')}
+                aria-pressed={activeManualTool === 'liquify' && editor.warpSettings.axis === 'vertical'}
+                onClick={() => manualStretch('vertical', compact && category === 'body')}
               >
                 {t('纵向拉伸')}
               </button>

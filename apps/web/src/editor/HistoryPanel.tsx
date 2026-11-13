@@ -1,5 +1,6 @@
-import { useMemo, useState } from 'react';
+import { useMemo, useState, type ReactNode } from 'react';
 import { ArrowClockwise, ArrowCounterClockwise, CaretDown } from '../components/ControlGlyph';
+import { RubberSegment } from '../components/control-motion';
 import { formatNumber, t } from '../i18n';
 import { recipeDifferences } from '../ai/recipeDiff';
 import { interactionText } from '../workspace/interaction-copy';
@@ -22,7 +23,29 @@ function formatValue(
       : historyText(value);
 }
 
-export function HistoryPanel({ editor }: { editor: EditorState }) {
+export function HistoryPanel({ editor, cloudHistory }: { editor: EditorState; cloudHistory?: ReactNode }) {
+  const [tab, setTab] = useState<'local' | 'cloud'>('local');
+  const active = cloudHistory ? tab : 'local';
+  return (
+    <section className="advanced-tool-family editor-history" data-motion="advanced-history">
+      {cloudHistory && (
+        <RubberSegment
+          className="history-source-tabs"
+          label={t('编辑记录')}
+          value={active}
+          options={[
+            { value: 'local', label: t('本次编辑') },
+            { value: 'cloud', label: t('云端版本') },
+          ]}
+          onChange={setTab}
+        />
+      )}
+      {active === 'cloud' ? cloudHistory : <LocalHistory editor={editor} />}
+    </section>
+  );
+}
+
+function LocalHistory({ editor }: { editor: EditorState }) {
   const [expanded, setExpanded] = useState<number | null>(null);
   const summaries = useMemo(
     () =>
@@ -39,7 +62,7 @@ export function HistoryPanel({ editor }: { editor: EditorState }) {
     [editor.history, expanded],
   );
   return (
-    <section className="advanced-tool-family" data-motion="advanced-history">
+    <>
       <div className="advanced-row history-actions">
         <button className="text-button" disabled={!editor.canUndo} onClick={editor.undo}>
           <ArrowCounterClockwise size={17} />
@@ -137,6 +160,6 @@ export function HistoryPanel({ editor }: { editor: EditorState }) {
           );
         })}
       </ol>
-    </section>
+    </>
   );
 }

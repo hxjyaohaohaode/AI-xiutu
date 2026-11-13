@@ -2,7 +2,6 @@ import assert from 'node:assert/strict';
 import { registerHooks } from 'node:module';
 import test from 'node:test';
 import { createElement } from 'react';
-import type { EditorState } from '../src/editor/useEditor.ts';
 import type { Project } from '../src/lib/types.ts';
 import { renderTestMarkup } from './support/render.ts';
 
@@ -17,7 +16,7 @@ const {
   canResolveProjectComment,
   workspacePermissions,
   CollaborateView,
-  CompareView,
+  RevisionHistoryPanel,
   DocumentsView,
   WorksView,
 } = await import('../src/components/WorkspaceViews.tsx');
@@ -138,19 +137,14 @@ test('read-only project documents do not expose new-document or save actions', a
     });
 });
 
-test('empty comparison renders without browser globals and cannot restore a version', () => {
-  const editor = { file: null } as EditorState;
+test('cloud version history renders without browser globals and starts with no writable rows', () => {
   const markup = renderTestMarkup(
-    createElement(CompareView, {
-      editor,
-      artwork: null,
+    createElement(RevisionHistoryPanel, {
+      artwork: { id: 'work', projectId: 'project', assetId: 'asset', title: 'Saved edit', headVersion: 3 },
       onOpenRevision: async () => undefined,
       onRestoreRevision: async () => undefined,
     }),
   );
-  assert.match(markup, /先打开一张图片/);
-  assert.equal(
-    buttonLabels(markup).some((label) => label.includes('恢复')),
-    false,
-  );
+  assert.match(markup, /云端版本/);
+  assert.equal(buttonLabels(markup).some((label) => label.includes('恢复')), false);
 });

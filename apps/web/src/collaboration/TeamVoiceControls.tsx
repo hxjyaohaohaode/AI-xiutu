@@ -29,9 +29,11 @@ interface Catalog {
 export function TeamVoiceControls({
   room,
   capture,
+  onIndividual,
 }: {
   room: TeamVoiceState;
   capture?: () => Promise<AssistantContext>;
+  onIndividual?: () => void;
 }) {
   const [catalog, setCatalog] = useState<Catalog | null>(null);
   const [voiceId, setVoiceId] = useState('');
@@ -165,13 +167,12 @@ export function TeamVoiceControls({
           </div>
         )}
       {room.state !== 'connected' ? (
-        <button
-          type="button"
-          disabled={room.state === 'connecting'}
-          onClick={() => void room.join()}
-        >
-          {room.state === 'connecting' ? t('正在加入语音') : t('加入团队语音')}
-        </button>
+        <div className="team-voice-entry">
+          <button type="button" disabled={room.state === 'connecting'} onClick={() => void room.join()}>
+            {t(room.state === 'connecting' ? '正在加入语音' : room.message ? '重新加入' : '加入团队语音')}
+          </button>
+          {onIndividual && <button type="button" onClick={onIndividual}><Microphone size={16} />{t('与 AI 通话')}</button>}
+        </div>
       ) : (
         <>
           {agent.state === 'off' && (
@@ -332,7 +333,7 @@ export function TeamVoiceControls({
           </ul>
         </>
       )}
-      {room.message && <small role="status">{room.message}</small>}
+      {room.message && <small className="team-voice-message" role={room.state === 'idle' ? 'alert' : 'status'}>{t(room.message)}</small>}
     </section>
   );
 }

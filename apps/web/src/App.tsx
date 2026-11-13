@@ -1,5 +1,5 @@
-import { ThemeScene } from './components/ThemeScene';
-import { NUMERIC_CONTROLS } from './editor/advanced-model';
+import { ThemeSwitch } from './components/ThemeSwitch';
+import { hexRgba, NUMERIC_CONTROLS } from './editor/advanced-model';
 import { ParameterGlyph } from './editor/ParameterGlyph';
 import './studio-styles.css';
 import { Suspense, useCallback, useEffect, useRef, useState, useSyncExternalStore } from 'react';
@@ -9,7 +9,6 @@ import {
   Info,
   List,
   Plus,
-  SlidersHorizontal,
   Sparkle,
   UsersThree,
   ArrowRight,
@@ -20,13 +19,16 @@ import {
   ChartBar,
   MagnifyingGlass,
   Images,
-  ClockCounterClockwise,
   Microphone,
   MicrophoneSlash,
   PhoneDisconnect,
+  Trash,
   X,
 } from '@phosphor-icons/react';
 import { api, ApiError, downloadBlob, errorMessage, filenameBase, jsonRequest } from './lib/api';
+import { FloatingNotice } from './components/FloatingNotice';
+import { PhotoTrashDialog } from './resources/PhotoTrashDialog';
+import { pruneLocalPhotoTrash, removeLocalPhoto, storeLocalPhoto, type LocalPhotoTrashEntry } from './resources/localPhotoTrash';
 import { secureUuid } from './lib/uuid';
 import { t, useLocale } from './i18n';
 import { createSampleRecipe, getSampleImage, type SampleSettings } from './about/sample';
@@ -56,23 +58,21 @@ import { normalizeImageSourceFile } from './editor/imageSources';
 import { createSourceLoadGuard, assertRevisionSourceBinding } from './editor/source-flow';
 import { assetCopyAttempt, sourcePersistenceRoute } from './lib/asset-copy';
 import { FloatingPanel } from './workspace/FloatingPanel';
-import { ADJUSTMENT_GROUPS, ToolDock } from './workspace/ToolDock';
-import { ToolOverview } from './workspace/ToolOverview';
-import { PanelNavigation, type PanelSection } from './workspace/PanelNavigation';
+import { CanvasTools, useCanvasTools } from './workspace/CanvasTools';
+import { ToolDock } from './workspace/ToolDock';
 import { interactionText } from './workspace/interaction-copy';
 import { WorkspaceViewTabs } from './workspace/WorkspaceViewTabs';
 import { CommandMenu, type StudioCommand } from './workspace/CommandMenu';
 import {
   LibraryNavigation,
   WorkspaceHelpContent,
-  WorkspaceNavigation,
   WorkspaceSettings,
   workspaceViews,
 } from './workspace/WorkspaceNavigation';
 import type { StudioThemeController } from './workspace/useStudioTheme';
 import { StudioGlyph } from './components/StudioGlyph';
 import { boundedTitle } from './lib/titles';
-import { workspaceCanvasInsets, useWorkspaceLayout } from './workspace/useWorkspaceLayout';
+import { phoneInspectorLayout, workspaceCanvasInsets, useWorkspaceLayout } from './workspace/useWorkspaceLayout';
 import { usePresence } from './motion/usePresence';
 import { MotionSwitch } from './motion/Presence';
 import { ImportSettings } from './components/ImportSettings';
@@ -162,11 +162,11 @@ const CollageStudio = createDeferredFeature(
   (state, props) => <DeferredFeatureStatus {...state} profile="media" onBack={props.onClose} />,
   'media',
 );
-const CompareView = createDeferredFeature(
-  async () => ({ default: (await import('./components/WorkspaceViews')).CompareView }),
-  '版本比较',
+const RevisionHistoryPanel = createDeferredFeature(
+  async () => ({ default: (await import('./components/WorkspaceViews')).RevisionHistoryPanel }),
+  '云端版本',
   undefined,
-  'compare',
+  'panel',
 );
 const CollaborateView = createDeferredFeature(
   async () => ({ default: (await import('./components/WorkspaceViews')).CollaborateView }),
@@ -180,12 +180,6 @@ const DocumentsView = createDeferredFeature(
   undefined,
   'documents',
 );
-const DeliveryView = createDeferredFeature(
-  async () => ({ default: (await import('./components/WorkspaceViews')).DeliveryView }),
-  '作品交付',
-  undefined,
-  'delivery',
-);
 const AssetLibrary = createDeferredFeature(
   async () => ({ default: (await import('./components/AssetLibrary')).AssetLibrary }),
   '素材库',
@@ -197,12 +191,6 @@ const UsageDashboard = createDeferredFeature(
   '用量账本',
   undefined,
   'usage',
-);
-const ResourceSearch = createDeferredFeature(
-  async () => ({ default: (await import('./resources/ResourceSearch')).ResourceSearch }),
-  '资源搜索',
-  undefined,
-  'search',
 );
 const MediaImportDialog = createDeferredFeature(
   async () => ({ default: (await import('./components/MediaImportDialog')).MediaImportDialog }),
@@ -279,7 +267,7 @@ type Dialog =
   | 'importSettings'
   | 'mediaImport'
   | 'commands'
-  | 'navigation'
+  | 'photoTrash'
   | 'settings'
   | null;
 export type StudioEntry = {
@@ -331,6 +319,7 @@ export function App({
   const accountReturnFocus = useRef<HTMLElement | null>(null);
   const rawEditor = useEditor();
   const workspaceLayout = useWorkspaceLayout();
+  const canvasTools = useCanvasTools();
   const workspaceSurface = useRef<HTMLDivElement>(null);
   const capturingWorkspace = useRef(false);
   const restoreInspectorAfterAI = useRef(false);
@@ -407,26 +396,32 @@ export function App({
   );
   const [view, setView] = useState<View>('editor');
   const [libraryTab, setLibraryTab] = useState<'project' | 'all' | 'memory'>('project');
+  const [libraryOpened, setLibraryOpened] = useState(false);
+  const [libraryDensity, setLibraryDensity] = useState<'comfortable' | 'compact'>('comfortable');
+  const [libraryMemoryRevision, setLibraryMemoryRevision] = useState(0);
+  const [libraryAccessRevision, setLibraryAccessRevision] = useState(0);
+  const [withdrawnAssets, setWithdrawnAssets] = useState<ReadonlySet<string>>(() => new Set());
+  const [withdrawnArtworks, setWithdrawnArtworks] = useState<ReadonlySet<string>>(() => new Set());
+  useEffect(() => { if (view === 'works') setLibraryOpened(true); }, [view]);
   const [group, setGroup] = useState<ToolGroup>('light');
   const [commandTarget, setCommandTarget] = useState<string>();
   const [portraitCanvasTool, setPortraitCanvasTool] = useState<ToolGroup | null>(null);
-  const [previousTools, setPreviousTools] = useState<ToolGroup[]>([]);
-  const [toolOverview, setToolOverview] = useState(false);
+  const [canvasToolOverlay, setCanvasToolOverlay] = useState<HTMLDivElement | null>(null);
+  const lastEditTool = useRef<ToolGroup>('light');
   const sourceForTools = rawEditor.getSourceIdentity();
   useEffect(() => {
-    setPreviousTools([]);
-    setToolOverview(false);
+    lastEditTool.current = 'light';
   }, [sourceForTools]);
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [inspectorOpen, setInspectorOpen] = useState(false);
   const [aiOpen, setAiOpen] = useState(false);
+  const [voiceEntry, setVoiceEntry] = useState(0);
   const aiOpenRef = useRef(aiOpen);
   aiOpenRef.current = aiOpen;
   const [inspectorVisited, setInspectorVisited] = useState(false);
   const [aiVisited, setAiVisited] = useState(false);
   const [collaborationOpen, setCollaborationOpen] = useState(false);
   const [collaborationVisited, setCollaborationVisited] = useState(false);
-  const panelNavigationFocus = useRef<PanelSection | null>(null);
   useEffect(() => {
     if (inspectorOpen) setInspectorVisited(true);
   }, [inspectorOpen]);
@@ -472,6 +467,19 @@ export function App({
   accountRouteRef.current = isAccountSiteRoute(siteRoute);
   const [saving, setSaving] = useState(false);
   const [opening, setOpening] = useState(false);
+  const [removingPhoto, setRemovingPhoto] = useState(false);
+  const localPhotoOwner = session.user?.id ?? 'guest';
+  useEffect(() => {
+    if (!active) return;
+    const prune = () => { void pruneLocalPhotoTrash().catch(() => undefined); };
+    prune();
+    window.addEventListener('focus', prune);
+    const timer = window.setInterval(prune, 60_000);
+    return () => {
+      window.removeEventListener('focus', prune);
+      window.clearInterval(timer);
+    };
+  }, [active]);
   const [notice, setNotice] = useState<Notice | null>(null);
   const [noticeContainer, setNoticeContainer] = useState<HTMLDivElement | null>(null);
   const [canvasStatusContainer, setCanvasStatusContainer] = useState<HTMLDivElement | null>(null);
@@ -573,7 +581,7 @@ export function App({
   };
   async function confirmNavigation(
     description: string,
-    labels?: { title: string; confirmLabel: string; cancelLabel?: string },
+    labels?: { title: string; confirmLabel: string; cancelLabel?: string; tone?: 'danger' },
   ) {
     const result = await confirmStableScope(
       () => ({
@@ -685,6 +693,9 @@ export function App({
     const lostMembership = !changed && !!previousMembership && !nextMembership;
     if (changed || lostMembership) {
       clearCloudWorkspace();
+      setLibraryAccessRevision((revision) => revision + 1);
+      setWithdrawnAssets(new Set());
+      setWithdrawnArtworks(new Set());
       if (!booting || previousActor) setSidebarOpen(false);
     }
     if (lostMembership) notify(t('当前空间的访问权限已变化。照片仍在本机，请选择可访问的空间。'));
@@ -898,8 +909,6 @@ export function App({
     }
     let live = true;
     setCloudError(null);
-    setProjects([]);
-    setEntitlements(null);
     Promise.allSettled([
       api<{ projects: Project[] }>(`/projects?spaceId=${encodeURIComponent(spaceId)}`),
       api<NonNullable<typeof entitlements>>(
@@ -945,13 +954,20 @@ export function App({
     const poll = async () => {
       try {
         const result = await api<{
-          events: { type: string; projectId?: string }[];
+          events: { type: string; entityId: string | null }[];
           nextCursor: number;
         }>(`/events?spaceId=${encodeURIComponent(spaceId)}&after=${cursor}&waitMs=15000`, {
           signal: controller.signal,
         });
         cursor = result.nextCursor;
         if (disposed) return;
+        for (const event of result.events) {
+          if (!event.entityId) continue;
+          if (event.type === 'asset.deleted' || event.type === 'asset.restored')
+            markPhotoWithdrawn('asset', event.entityId, event.type === 'asset.deleted');
+          if (event.type === 'artwork.deleted' || event.type === 'artwork.restored')
+            markPhotoWithdrawn('artwork', event.entityId, event.type === 'artwork.deleted');
+        }
         if (result.events.length) setRefreshToken((t) => t + 1);
         timer = setTimeout(poll, 500);
       } catch (e) {
@@ -1174,6 +1190,9 @@ export function App({
     editor.cancelPendingLoad();
     setOpening(false);
     setSpaceId(space?.id ?? null);
+    setProjects([]);
+    setEntitlements(null);
+    setLibraryTab('project');
     setProject(null);
     setArtwork(null);
     setAsset(null);
@@ -1187,6 +1206,9 @@ export function App({
     setCollaborationOpen(false);
   }
   async function loadProject(next: Project) {
+    if (editor.file && artworkRef.current && artworkRef.current.projectId !== next.id &&
+        isEditorDirty() && !(await confirmNavigation(t('当前作品有未保存修改。切换项目会将它保留为本地草稿，继续吗？'))))
+      return;
     if (documentDirty && !(await confirmNavigation(t('文档还有未保存的修改，确定切换项目吗？'))))
       return;
     if (saveLock.current) {
@@ -1209,6 +1231,7 @@ export function App({
       setAsset(null);
       setRevision(null);
       setSavedRecipe(null);
+      setLibraryTab('project');
       setView('works');
       setSidebarOpen(false);
       setAiOpen(false);
@@ -1262,8 +1285,10 @@ export function App({
     file?: File,
     initialRecipe?: EditorRecipe,
     entryIsCurrent: () => boolean = () => true,
+    compositeGuard?: () => boolean,
+    layerReferences?: ReadonlyMap<string, File>,
   ): Promise<boolean> {
-    if (!entryIsCurrent()) return false;
+    if (!entryIsCurrent() || (compositeGuard && !compositeGuard())) return false;
     if (saveLock.current) {
       notify(t('作品正在保存，请稍等片刻。'));
       return false;
@@ -1278,11 +1303,14 @@ export function App({
     )
       return false;
     if (
-      isEditorDirty() &&
-      !(await confirmNavigation(t('当前还有未保存的编辑。打开新图片将替换本地编辑，确认继续吗？')))
+      (isEditorDirty() || compositeGuard) &&
+      !(await confirmNavigation(t(compositeGuard
+        ? '合并当前画面并打开新的本地图片？可编辑图层请先保存到项目。'
+        : '当前还有未保存的编辑。打开新图片将替换本地编辑，确认继续吗？')))
     )
       return false;
     if (!entryIsCurrent()) return false;
+    if (compositeGuard && !compositeGuard()) throw new Error(t('画面已变化，请重新合并图层。'));
     // Close the previous source's panel before decoding. A tool explicitly opened
     // while the new image becomes visible must not be closed by the late load completion.
     // Leave a confirmed document now, so no new document edits can be lost while decoding.
@@ -1294,6 +1322,7 @@ export function App({
         file,
         initialRecipe,
         () => load.isCurrent() && entryIsCurrent(),
+        layerReferences,
       );
       if (!entryIsCurrent()) return false;
       if (!loaded) return load.abandoned();
@@ -1320,6 +1349,177 @@ export function App({
       } else notify(errorMessage(e), 'error');
       return false;
     }
+  }
+
+  function markPhotoWithdrawn(kind: 'asset' | 'artwork', id: string, withdrawn: boolean) {
+    const set = kind === 'asset' ? setWithdrawnAssets : setWithdrawnArtworks;
+    set((current) => {
+      if (current.has(id) === withdrawn) return current;
+      const next = new Set(current);
+      if (withdrawn) next.add(id);
+      else next.delete(id);
+      return next;
+    });
+  }
+
+  function finishPhotoEditing() {
+    const source = editor.getSourceIdentity();
+    ++projectRequest.current;
+    ++filePickerRequest.current;
+    rawEditor.clearPhoto();
+    cloudBaseSources.current.delete(source);
+    uploadedBaseAssets.current.clear();
+    uploadedLayerAliases.current.clear();
+    layerOwners.current.clear();
+    setOpening(false);
+    setArtwork(null);
+    setAsset(null);
+    setRevision(null);
+    setSavedRecipe(null);
+    setComparing(false);
+    setSampling(false);
+    setInspectorOpen(false);
+    setAiOpen(false);
+    setCollaborationOpen(false);
+    setPortraitCanvasTool(null);
+    setVisualDraft(null);
+    setReferenceFile(null);
+    setPendingImport(null);
+    setImportReason(null);
+    workspaceLayout.setFocused(false);
+    setView('works');
+  }
+
+  function readyToLeavePhoto() {
+    if (saveLock.current || editor.isLoading() || opening || sessionFence.busy) {
+      notify(t('请等当前图片操作完成。'));
+      return false;
+    }
+    if (accountActivity.current.ai || accountActivity.current.voice) {
+      notify(t('请先结束当前 AI 请求或语音通话。'));
+      return false;
+    }
+    return true;
+  }
+
+  async function exitPhotoEditing() {
+    if (!editor.file || !readyToLeavePhoto()) return;
+    const unsavedChanges = isEditorDirty() && (artwork ||
+      JSON.stringify(editor.getRecipe()) !== JSON.stringify(createRecipeV4()));
+    if (unsavedChanges && !(await confirmNavigation(
+      t('当前编辑尚未保存。退出后，这次未保存的修改将丢失。'),
+      { title: t('退出编辑'), confirmLabel: t('放弃并退出'), cancelLabel: t('继续编辑') },
+    ))) return;
+    if (!readyToLeavePhoto()) return;
+    if (collaboration.enabled && collaboration.pendingCount) collaboration.discardDraft();
+    finishPhotoEditing();
+  }
+
+  const originalPhoto = cloudBaseSources.current.get(sourceIdentity);
+  const cloudPhoto = originalPhoto && asset?.id === originalPhoto.id ? artwork ?? asset : null;
+  const canRemovePhoto = !originalPhoto ||
+    (!!cloudPhoto && project?.id === cloudPhoto.projectId &&
+      ['owner', 'admin', 'editor'].includes(project.role));
+  const deletePhotoLabel = cloudPhoto && 'headVersion' in cloudPhoto ? '删除作品' : '删除照片';
+
+  async function trashCurrentPhoto() {
+    const file = editor.file;
+    if (!file || !canRemovePhoto || !readyToLeavePhoto()) return;
+    const savedWork = cloudPhoto && 'headVersion' in cloudPhoto ? cloudPhoto : null;
+    const description = savedWork
+      ? t('作品和已保存的版本将进入回收站，48 小时内可以恢复。项目里的原图仍可使用。')
+      : cloudPhoto
+        ? t('原图将进入回收站，48 小时内可以恢复。仍被作品引用的原图需要保留。')
+        : t('这张照片和当前编辑将进入本机回收站，48 小时内可以恢复。');
+    const warning = cloudPhoto && isEditorDirty() ? '\n' + t('本次未保存的修改将丢失。') : '';
+    if (!(await confirmNavigation(description + warning, {
+      title: t(deletePhotoLabel), confirmLabel: t('移入回收站'), tone: 'danger',
+    })) || !readyToLeavePhoto()) return;
+    const owner = sessionFence.snapshot();
+    const scope = createSourceLoadGuard(() => ({
+      context: projectRequest.current, source: editor.getSourceIdentity(), recipe: editor.getRecipe(),
+    }));
+    const stillHere = () =>
+      sessionFence.isCurrent(owner) && scope.isCurrent() && navigationScope.current.view === 'editor';
+    saveLock.current = true;
+    setRemovingPhoto(true);
+    let released = false;
+    let moved = false;
+    try {
+      if (savedWork && collaboration.enabled) {
+        await collaboration.beforeExternalWrite();
+        released = true;
+      }
+      if (!stillHere()) return;
+      if (savedWork) {
+        await api(`/artworks/${savedWork.id}?expectedVersion=${savedWork.headVersion}`, jsonRequest('DELETE'));
+      } else if (cloudPhoto) {
+        await api(`/assets/${cloudPhoto.id}`, jsonRequest('DELETE'));
+      } else {
+        try {
+          await storeLocalPhoto(localPhotoOwner, file, editor.getRecipe(), rawEditor.getLayerFiles());
+        } catch {
+          throw new Error(t('本机回收站写入失败，照片仍在编辑器中。'));
+        }
+      }
+      moved = true;
+      if (!sessionFence.isCurrent(owner)) return;
+      if (savedWork) setArtworks((items) => items.filter((item) => item.id !== savedWork.id));
+      else if (cloudPhoto) setAssets((items) => items.filter((item) => item.id !== cloudPhoto.id));
+      if (cloudPhoto) {
+        markPhotoWithdrawn(savedWork ? 'artwork' : 'asset', cloudPhoto.id, true);
+        ++projectRefresh.current;
+        setRefreshToken((value) => value + 1);
+      }
+      // Keep a newer canvas or edits that arrived while the delete was in flight.
+      if (stillHere()) finishPhotoEditing();
+      notify(t('已移入回收站，可在 48 小时内恢复。'), 'success');
+    } catch (error) {
+      if (sessionFence.isCurrent(owner)) notify(errorMessage(error), 'error');
+    } finally {
+      saveLock.current = false;
+      setRemovingPhoto(false);
+      if (released && !moved) void collaboration.afterExternalWrite().catch(() => undefined);
+    }
+  }
+
+  async function restoreLocalPhoto(photo: LocalPhotoTrashEntry) {
+    const owner = sessionFence.snapshot();
+    const current = () => sessionFence.isCurrent(owner) && !sessionFence.busy && activeRef.current;
+    if (!current() || photo.owner !== (owner.actor ?? 'guest')) return false;
+    if (photo.expiresAt <= Date.now()) {
+      await pruneLocalPhotoTrash();
+      throw new Error(t('已超过 48 小时恢复期限'));
+    }
+    const loaded = await importFile(
+      photo.file, photo.recipe, () => current() && photo.expiresAt > Date.now(),
+      undefined, new Map(photo.layerFiles),
+    );
+    if (!loaded || !current()) return false;
+    try {
+      await removeLocalPhoto(photo.owner, photo.id);
+    } catch {
+      throw new Error(t('照片已打开，回收站条目暂未移除。'));
+    }
+    if (current()) {
+      closeDialog();
+      notify(t('照片已恢复到编辑器。'), 'success');
+    }
+    return true;
+  }
+
+  async function flattenLayers() {
+    if (!editor.file) return;
+    const name = filenameBase(editor.file.name);
+    const guard = createSourceLoadGuard(() => ({
+      context: projectRequest.current,
+      source: editor.getSourceIdentity(),
+      recipe: editor.getRecipe(),
+    }));
+    const blob = await editor.exportImage('png');
+    if (!guard.isCurrent()) throw new Error(t('画面已变化，请重新合并图层。'));
+    const flattened = new File([blob], `${name} ${t('合并图层')}.png`, { type: 'image/png' });
+    await importFile(flattened, undefined, undefined, guard.isCurrent);
   }
 
   async function resolveLayerReferences(
@@ -2237,6 +2437,7 @@ export function App({
     <LibraryNavigation
       value={libraryTab}
       onChange={setLibraryTab}
+      onPhotoTrash={() => setDialog('photoTrash')}
       onProfessionalImport={() => {
         if (!session.user) openAuth();
         else if (!project) openCreateProject();
@@ -2258,12 +2459,14 @@ export function App({
   const activePanel = activePanelId
     ? workspaceLayout.panel(activePanelId === 'collaboration' ? 'inspector' : activePanelId)
     : null;
-  const mobileAssistantPage =
+  const phoneEditor =
     workspaceLayout.view.bucket === 'phone' ||
     (workspaceLayout.view.width < 1000 &&
       workspaceLayout.view.height <= 500 &&
       navigator.maxTouchPoints > 0);
-  const mobileAssistantOpen = mobileAssistantPage && activePanelId === 'ai';
+  const phoneInspector = phoneEditor ? phoneInspectorLayout(workspaceLayout.view) : null;
+  const floatingVoice = activePanelId === 'ai' && aiActivity.callVisible;
+  const mobileAssistantOpen = phoneEditor && activePanelId === 'ai' && !floatingVoice;
   const inspectorPresence = usePresence(activePanelId === 'inspector', 'panel-frame');
   const aiPresence = usePresence(activePanelId === 'ai', 'panel-frame');
   const collaborationPresence = usePresence(
@@ -2284,30 +2487,31 @@ export function App({
   const renderedDialog = accountPageOpen
     ? dialog
     : (modalDialog ?? (dialogPresence.present ? lastDialog.current : null));
-  const wideEditing = workspaceLayout.view.width >= 1180 && !mobileAssistantPage;
-  const editingWithAI = wideEditing && activePanelId === 'ai' && inspectorOpen && !!editor.file && activePanel?.presentation !== 'maximized';
-  const canvasInsets = workspaceCanvasInsets(
-    mobileAssistantOpen ? null : activePanel && workspaceLayout.view.bucket === 'phone' && activePanelId !== 'ai'
-      ? { ...activePanel, dock: 'bottom' }
-      : activePanel,
-    workspaceLayout.view,
-    workspaceLayout.focused,
-  );
+  const wideEditing = workspaceLayout.view.width >= 1180 && !phoneEditor;
+  const editingWithAI = wideEditing && activePanelId === 'ai' && !floatingVoice && inspectorOpen && !!editor.file && activePanel?.presentation !== 'maximized';
+  const fixedInspectorOpen = !!phoneInspector && activePanelId === 'inspector' && !workspaceLayout.focused;
+  const makeupPaint = group === 'beauty' && portraitCanvasTool === 'paint';
+  const canvasInsets = fixedInspectorOpen
+    ? phoneInspector.insets
+    : workspaceCanvasInsets(
+        mobileAssistantOpen || floatingVoice ? null : activePanel && workspaceLayout.view.bucket === 'phone' && activePanelId !== 'ai'
+          ? { ...activePanel, dock: 'bottom' }
+          : activePanel,
+        workspaceLayout.view,
+        workspaceLayout.focused,
+      );
   const selectInspectorTool = (tool: ToolGroup) => {
-    setToolOverview(false);
+    editor.commitCurrent(t('完成当前调节'));
     setCommandTarget(undefined);
     setPortraitCanvasTool(null);
-    if (tool === group) return;
-    setPreviousTools((items) => [...items, group].slice(-16));
+    setSampling(false);
+    if (tool !== 'history') lastEditTool.current = tool;
     setGroup(tool);
   };
-  const backToTool = () => {
-    const previous = previousTools.at(-1);
+  const closeInspector = () => {
     editor.commitCurrent(t('完成当前调节'));
-    if (previous) {
-      setPreviousTools((items) => items.slice(0, -1));
-      setGroup(previous);
-    } else setToolOverview(true);
+    setInspectorOpen(false);
+    if (group === 'history') setGroup(lastEditTool.current);
     setSampling(false);
   };
   const openInspector = (tool: ToolGroup) => {
@@ -2318,17 +2522,15 @@ export function App({
     setInspectorOpen(true);
     if (!wideEditing) setAiOpen(false);
     setSampling(false);
-    if (workspaceLayout.panel('inspector').presentation === 'collapsed')
+    if (!phoneInspector && workspaceLayout.panel('inspector').presentation === 'collapsed')
       workspaceLayout.updatePanel('inspector', {
         ...workspaceLayout.panel('inspector'),
         presentation: 'normal',
       });
   };
   const chooseTool = (tool: ToolGroup) => {
-    if (group === tool && inspectorOpen && !aiOpen && !toolOverview) {
-      setInspectorOpen(false);
-      setSampling(false);
-    } else openInspector(tool);
+    if (group === tool && inspectorOpen && !aiOpen) closeInspector();
+    else openInspector(tool);
   };
   async function openCollage(files?: File[]) {
     if (view !== 'editor' && !(await changeView('editor'))) return;
@@ -2397,7 +2599,7 @@ export function App({
       );
       return;
     }
-    if (!mobileAssistantPage) return;
+    if (!phoneEditor) return;
     if (restoreInspectorAfterAI.current) setInspectorOpen(true);
     requestAnimationFrame(() =>
       workspaceSurface.current
@@ -2441,7 +2643,7 @@ export function App({
     const workspace = workspaceSurface.current;
     const recipe = editor.getRecipe();
     if (
-      !mobileAssistantPage ||
+      !phoneEditor ||
       !workspace ||
       !editor.file ||
       keepAIActive ||
@@ -2491,55 +2693,8 @@ export function App({
   };
   const returnToAdjustments = async () => {
     if (view !== 'editor' && !(await changeView('editor'))) return;
-    openInspector(
-      group === 'history'
-        ? (previousTools
-            .slice()
-            .reverse()
-            .find((tool) => tool !== 'history') ?? 'light')
-        : group,
-    );
+    openInspector(lastEditTool.current);
   };
-  const panelNavigation = (
-    <PanelNavigation
-      focusRequest={panelNavigationFocus}
-      selected={
-        activePanelId === 'ai'
-          ? 'assistant'
-          : activePanelId === 'collaboration'
-            ? 'collaboration'
-            : group === 'history'
-              ? 'history'
-              : 'adjustments'
-      }
-      items={[
-        {
-          id: 'adjustments',
-          label: t('调整'),
-          icon: <SlidersHorizontal size={15} />,
-          onSelect: returnToAdjustments,
-        },
-        {
-          id: 'assistant',
-          label: t('AI 助手'),
-          icon: <StudioGlyph name="ai" size={17} />,
-          onSelect: () => void openAI(),
-        },
-        {
-          id: 'collaboration',
-          label: t('协作'),
-          icon: <UsersThree size={15} />,
-          onSelect: openCollaborationPanel,
-        },
-        {
-          id: 'history',
-          label: t('记录'),
-          icon: <ClockCounterClockwise size={15} />,
-          onSelect: () => openInspector('history'),
-        },
-      ]}
-    />
-  );
   const retryCloudRead = () => {
     setCloudNoticeDismissed(false);
     setCloudError(null);
@@ -2602,7 +2757,7 @@ export function App({
       .filter((item) => item.id !== 'editor')
       .map((item) => ({
         id: 'view-' + item.id,
-        label: item.id === 'compare' ? t('对比与云端版本') : t(item.label),
+        label: t(item.label),
         description: t('打开{name}工作视图', { name: t(item.label) }),
         keywords: item.id,
         section: t('创作空间'),
@@ -2721,6 +2876,7 @@ export function App({
             className={`app-shell canvas-workspace studio-workspace ${editingWithAI ? 'editing-with-ai' : ''} view-${view} theme-${studioTheme.theme} ${workspaceLayout.focused ? 'is-focused' : ''}`}
             data-has-image={!!editor.file}
             data-mobile-ai-page={mobileAssistantOpen || undefined}
+            data-fixed-inspector-open={fixedInspectorOpen || undefined}
           >
             <Sidebar
               brand={brand}
@@ -2796,12 +2952,12 @@ export function App({
                   >
                     <Brand name={brand} logoUrl={brandLogoUrl(config?.brand)} compact />
                   </button>
-                  {(artwork || project || editor.file) && (
+                  {view === 'editor' && (artwork || project || editor.file) && (
                     <div className="workspace-project-title">
                       <strong title={artwork?.title ?? project?.title ?? editor.file?.name}>
                         {artwork?.title ?? project?.title ?? editor.file?.name}
                       </strong>
-                      {view === 'editor' && editor.file && (
+                      {editor.file && (
                         <span
                           className="workspace-save-state"
                           data-state={saving ? 'saving' : artwork && !dirty ? 'saved' : 'draft'}
@@ -2820,8 +2976,14 @@ export function App({
                 <WorkspaceViewTabs
                   value={view}
                   onChange={changeView}
-                  menuOpen={dialog === 'navigation'}
-                  onOpenMenu={() => setDialog('navigation')}
+                  menuEnabled={
+                    active &&
+                    workspaceVisible &&
+                    !renderedDialog &&
+                    !sidebarOpen &&
+                    !workspaceLayout.focused &&
+                    !mobileAssistantOpen
+                  }
                 />
                 <div className="workspace-top-actions">
                   {cloudError && cloudNoticeDismissed && (
@@ -2840,13 +3002,7 @@ export function App({
                   >
                     <MagnifyingGlass size={19} />
                   </IconButton>
-                  <IconButton
-                    label={studioTheme.theme === 'light' ? t('切换深色模式') : t('切换浅色模式')}
-                    className="theme-toggle"
-                    onClick={studioTheme.toggle}
-                  >
-                    <ThemeScene dark={studioTheme.theme === 'dark'} />
-                  </IconButton>
+                  <ThemeSwitch className="theme-toggle" />
                   <IconButton
                     label={t('专注画面（F）')}
                     className="focus-toggle"
@@ -2905,22 +3061,6 @@ export function App({
                   </button>
                 </div>
               </header>
-              {cloudError && !cloudNoticeDismissed && (
-                <div className="cloud-status" role="status">
-                  <Info size={16} aria-hidden />
-                  <span>{t('云端暂不可用，本地编辑可以继续。')}</span>
-                  <button type="button" onClick={retryCloudRead}>
-                    {t('重试')}
-                  </button>
-                  <IconButton
-                    className="cloud-status-dismiss"
-                    label={interactionText('dismissCloud')}
-                    onClick={() => setCloudNoticeDismissed(true)}
-                  >
-                    <X size={16} />
-                  </IconButton>
-                </div>
-              )}
               {view !== 'editor' && teamVoice.state !== 'idle' && (
                 <TeamVoiceBanner room={teamVoice} onReturn={() => changeView('editor')} />
               )}
@@ -2982,11 +3122,14 @@ export function App({
               />
               <div className="workspace-notice-anchor" ref={setNoticeContainer} />
               <div className="workspace-body">
+                {!cloudNoticeDismissed && <FloatingNotice message={cloudError}
+                  onRetry={retryCloudRead} onDismiss={() => setCloudNoticeDismissed(true)} />}
                 <MotionSwitch
                   switchKey={view}
                   className="workspace-view-transition"
                   data-motion-pixels="true"
-                  inert={mobileAssistantOpen}
+                  hidden={view === 'works'}
+                  inert={mobileAssistantOpen || view === 'works'}
                 >
                   {view === 'editor' ? (
                     <>
@@ -3000,8 +3143,23 @@ export function App({
                           bottom: canvasInsets.bottom,
                         }}
                       >
-                        {editor.file && !workspaceLayout.focused && (
-                          <div className="image-action-strip" data-motion="canvas-toolbar">
+                        {editor.file && <CanvasTools layout={canvasTools} focused={workspaceLayout.focused}
+                          fixedActions={<div className="image-action-strip photo-session-actions">
+                            <button type="button" data-action="exit-photo" aria-label={t('退出编辑')}
+                              disabled={removingPhoto || saving || opening || editor.loading}
+                              onClick={() => void exitPhotoEditing()}>
+                              <ArrowLeft size={17} aria-hidden />
+                              <span>{t('退出编辑')}</span>
+                            </button>
+                            {canRemovePhoto && <button type="button" data-action="trash-photo"
+                              aria-label={t(deletePhotoLabel)} title={t(deletePhotoLabel)}
+                              disabled={removingPhoto || saving || opening || editor.loading}
+                              onClick={() => void trashCurrentPhoto()}>
+                              <Trash size={17} aria-hidden />
+                              <span>{t(deletePhotoLabel)}</span>
+                            </button>}
+                          </div>}
+                          actions={<div className="image-action-strip" data-motion="canvas-toolbar">
                             <IconButton
                               label={t('打开另一张图片')}
                               onClick={() => void importFile()}
@@ -3018,27 +3176,35 @@ export function App({
                             <IconButton label={t('拼图')} data-action="open-collage" onClick={() => void openCollage()}>
                               <StudioGlyph name="collage" size={19} />
                             </IconButton>
-                          </div>
-                        )}
-                        {(collaboration.enabled || teamVoiceArtwork) && (
+                          </div>}
+                          collaboration={(collaboration.enabled || teamVoiceArtwork) && (
                           <CollaborationStatus
                             collaboration={collaboration}
                             onReload={() => void openArtwork(artwork!.id)}
                             onFork={() => project && void saveToProject(project, true)}
                             teamVoice={teamVoiceArtwork ? teamVoice : undefined}
                             captureVoiceContext={captureCurrentImage}
+                            onIndividualVoice={() => { showAI(); setVoiceEntry((value) => value + 1); }}
+                            onHide={() => canvasTools.move('collaboration', 'hidden')}
+                            onProjectCollaboration={openCollaborationPanel}
                           />
-                        )}
+                        )} />}
                         <CanvasStage
                           editor={editor}
                           statusContainer={canvasStatusContainer}
                           collaboration={collaboration}
-                          reviewScope={teamVoiceArtwork && project && artwork && revision &&
-                            collaboration.enabled && artwork.projectId === project.id && revision.artworkId === artwork.id
+                          reviewScope={session.user && project && artwork && revision &&
+                            artwork.projectId === project.id && revision.artworkId === artwork.id
                             ? { projectId: project.id, artworkId: artwork.id, revisionId: revision.id,
+                                actorId: session.user.id,
                                 canComment: ['owner', 'admin', 'editor', 'reviewer'].includes(project.role), refresh: refreshToken }
                             : undefined}
                           group={group === 'beauty' ? portraitCanvasTool ?? group : group}
+                          toolOverlayRef={setCanvasToolOverlay}
+                          onHistory={() => chooseTool('history')}
+                          historyOpen={inspectorOpen && group === 'history'}
+                          makeupPaint={makeupPaint}
+                          portraitWarp={group === 'beauty' && portraitCanvasTool === 'liquify'}
                           onImport={(files) =>
                             files ? void importSelectedFiles(files) : void importFile()
                           }
@@ -3054,8 +3220,16 @@ export function App({
                           onSample={(color) => {
                             setPickedColor(color);
                             setSampling(false);
-                            selectInspectorTool('color');
-                            setInspectorOpen(true);
+                            if (makeupPaint) {
+                              editor.setPaintSettings((previous) => {
+                                const next = hexRgba(color);
+                                next[3] = previous.color[3];
+                                return { ...previous, color: next };
+                              });
+                            } else {
+                              selectInspectorTool('color');
+                              setInspectorOpen(true);
+                            }
                             notify(t('已取色 {v0}', { v0: color }));
                           }}
                         />
@@ -3065,7 +3239,8 @@ export function App({
                           group={group}
                           inspectorOpen={inspectorOpen}
                           aiOpen={aiOpen}
-                          compact={workspaceLayout.view.bucket === 'phone'}
+                          compact={phoneEditor || workspaceLayout.view.height <= 480}
+                          theme={studioTheme.theme}
                           onTool={chooseTool}
                           onAI={() => {
                             if (aiOpen) closeAI();
@@ -3076,89 +3251,6 @@ export function App({
                     </>
                   ) : (
                     <div className="view-container">
-                      {view === 'works' && (
-                        <div className="library-hub">
-                          {libraryTab !== 'project' && (
-                            <div className="library-resource-heading">{libraryNavigation}</div>
-                          )}
-                          {libraryTab === 'project' ? (
-                            <AssetLibrary
-                              navigation={libraryNavigation}
-                              onSignIn={session.user ? undefined : () => openAuth()}
-                              onLoadBack={() => {
-                                void changeView('editor');
-                              }}
-                              project={project}
-                              artworks={artworks}
-                              space={currentSpace}
-                              projects={projects}
-                              refreshToken={refreshToken}
-                              onSelectProject={(item) => void loadProject(item)}
-                              onOpenAsset={(item) => void openLibraryAsset(item)}
-                              replacementTarget={
-                                artwork &&
-                                project?.id === artwork.projectId &&
-                                ['owner', 'admin', 'editor'].includes(project.role)
-                                  ? artwork
-                                  : null
-                              }
-                              replacementHasDraft={dirty}
-                              onReplaceSource={replaceCurrentSource}
-                              onOpen={(item) => void openArtwork(item)}
-                              onImport={() => void importFile()}
-                              onCreate={openCreateProject}
-                              onCopy={() => setDialog('copy')}
-                              onShare={() => setDialog('share')}
-                              onCollage={() => void openCollage()}
-                            />
-                          ) : !session.user ? (
-                            <EmptyState
-                              icon={<StudioGlyph name="works" size={30} />}
-                              title={t('登录后查找素材')}
-                              action={
-                                <button
-                                  className="button button-primary"
-                                  onClick={() => openAuth()}
-                                >
-                                  {t('登录')}
-                                </button>
-                              }
-                            />
-                          ) : (
-                            <ResourceSearch
-                              onLoadBack={() => {
-                                void changeView('editor');
-                              }}
-                              key={`${session.user.id}:${libraryTab}`}
-                              spaces={session.spaces}
-                              rememberedOnly={libraryTab === 'memory'}
-                              onOpen={async (item) => {
-                                await openLibraryAsset(item.asset);
-                              }}
-                            />
-                          )}
-                        </div>
-                      )}{' '}
-                      {view === 'compare' && (
-                        <CompareView
-                          onLoadBack={() => {
-                            void changeView('editor');
-                          }}
-                          editor={editor}
-                          artwork={artwork}
-                          onOpenRevision={openRevision}
-                          isDirty={dirty}
-                          onRestoreRevision={restoreRevision}
-                          currentUserId={session.user?.id}
-                          onForkCreated={async (created) => {
-                            setRefreshToken((value) => value + 1);
-                            return openArtwork(created.artworkId);
-                          }}
-                          canRestore={
-                            !!project && ['owner', 'admin', 'editor'].includes(project.role)
-                          }
-                        />
-                      )}{' '}
                       {view === 'collaborate' && !project && requireProject}
                       {view === 'docs' &&
                         (project ? (
@@ -3175,18 +3267,6 @@ export function App({
                         ) : (
                           requireProject
                         ))}{' '}
-                      {view === 'deliver' && (
-                        <DeliveryView
-                          onLoadBack={() => {
-                            void changeView('editor');
-                          }}
-                          editor={editor}
-                          artwork={artwork}
-                          sourcePending={opening || editor.loading}
-                          onExport={() => setDialog('export')}
-                          onRecipeImport={() => recipeInput.current?.click()}
-                        />
-                      )}
                       {view === 'usage' && (
                         <div className="content-view">
                           {session.user ? (
@@ -3219,6 +3299,53 @@ export function App({
                     </div>
                   )}
                 </MotionSwitch>
+                {(libraryOpened || view === 'works') && (
+                  <div className="view-container workspace-library-view" hidden={view !== 'works'} inert={view !== 'works'}>
+                    <div className="content-view studio-view asset-library library-hub">
+                      <header className="view-heading">
+                        <div className="library-heading-lead">{libraryNavigation}</div>
+                      </header>
+                      {(['project', 'all', 'memory'] as const).map((tab) => (
+                        <AssetLibrary
+                          key={`${session.user?.id ?? 'guest'}:${tab}`}
+                          tab={tab}
+                          active={view === 'works' && active && libraryTab === tab}
+                          actorId={session.user?.id ?? null}
+                          spaces={session.spaces}
+                          accessRevision={libraryAccessRevision}
+                          density={libraryDensity}
+                          setDensity={setLibraryDensity}
+                          onSignIn={session.user ? undefined : () => openAuth()}
+                          onResourceChanged={() => setLibraryMemoryRevision((n) => n + 1)}
+                          project={project}
+                          artworks={artworks}
+                          withdrawnAssets={withdrawnAssets}
+                          withdrawnArtworks={withdrawnArtworks}
+                          space={currentSpace}
+                          projects={[...projects, ...sharedProjects]}
+                          refreshToken={tab === 'project' ? refreshToken : refreshToken + libraryMemoryRevision}
+                          onSelectProject={(item) => void loadProject(item)}
+                          onOpenAsset={(item) => void openLibraryAsset(item)}
+                          replacementTarget={
+                            artwork &&
+                            project?.id === artwork.projectId &&
+                            ['owner', 'admin', 'editor'].includes(project.role)
+                              ? artwork
+                              : null
+                          }
+                          replacementHasDraft={dirty}
+                          onReplaceSource={replaceCurrentSource}
+                          onOpen={(item) => void openArtwork(item)}
+                          onImport={() => void importFile()}
+                          onCreate={openCreateProject}
+                          onCopy={() => setDialog('copy')}
+                          onShare={() => setDialog('share')}
+                          onCollage={() => void openCollage()}
+                        />
+                      ))}
+                    </div>
+                  </div>
+                )}
                 {collageMode && (
                   <div
                     className="editor-content collage-editor-content"
@@ -3266,17 +3393,16 @@ export function App({
                     <FloatingPanel
                       key={shownPanelId}
                       panelKey={shownPanelId}
-                      displayMode={shownPanelId === 'ai' && mobileAssistantPage ? 'page' : 'panel'}
+                      displayMode={shownPanelId === 'ai' && phoneEditor ? 'page' : 'panel'}
                       open={activePanelId === shownPanelId || (shownPanelId === 'inspector' && editingWithAI)}
+                      covered={shownPanelId === 'ai' && floatingVoice}
                       motionState={shownPanelId === 'inspector' && editingWithAI ? 'idle' : (shownPanelId === 'ai' ? aiPresence : inspectorPresence).phase}
                       title={
                         shownPanelId === 'ai'
                           ? t('AI 助手')
-                          : toolOverview
-                            ? interactionText('toolOverview')
-                            : t(toolGroups.find((tool) => tool.id === group)?.label ?? '调整')
+                          : t(toolGroups.find((tool) => tool.id === group)?.label ?? '调整')
                       }
-                      label={shownPanelId === 'ai' ? t('AI可移动面板') : t('可移动编辑面板')}
+                      label={shownPanelId === 'ai' ? t('AI可移动面板') : t(phoneInspector ? '编辑工具' : '可移动编辑面板')}
                       geometry={workspaceLayout.panel(shownPanelId)}
                       viewport={workspaceLayout.view}
                       onGeometry={(next, change) =>
@@ -3289,17 +3415,15 @@ export function App({
                       }
                       onBack={
                         shownPanelId === 'ai'
-                          ? (collageReturn ? closeAI : returnToAdjustments)
-                          : toolOverview
-                            ? undefined
-                            : backToTool
+                          ? closeAI
+                          : group === 'history'
+                            ? returnToAdjustments
+                            : undefined
                       }
                       backLabel={
                         shownPanelId === 'ai'
                           ? (collageReturn ? t('返回拼图') : interactionText('backToEditing'))
-                          : previousTools.length
-                            ? t('返回上一步工具')
-                            : interactionText('backToTools')
+                          : interactionText('backToEditing')
                       }
                       showBackInHeader={shownPanelId === 'ai' || workspaceLayout.view.bucket !== 'phone'}
                       onClose={() => {
@@ -3308,60 +3432,55 @@ export function App({
                           return;
                         }
                         if (shownPanelId === 'ai') closeAI();
-                        else setInspectorOpen(false);
-                        setSampling(false);
+                        else closeInspector();
                       }}
-                      navigation={shownPanelId === activePanelId ? panelNavigation : undefined}
-                      compactAdjustment={
-                        shownPanelId === 'inspector' &&
-                        !!editor.file &&
-                        !toolOverview &&
-                        (ADJUSTMENT_GROUPS.includes(group) ||
-                          (group === 'crop' && editor.recipe.schemaVersion >= 3))
-                      }
+                      fixedRectangle={shownPanelId === 'inspector' ? phoneInspector?.rect : undefined}
                     >
                       {shownPanelId === 'inspector' ? (
-                        <>
-                          {toolOverview && (
-                            <ToolOverview
-                              current={group}
-                              onSelect={(tool) => {
-                                setPreviousTools([]);
-                                setGroup(tool);
-                                setToolOverview(false);
-                              }}
-                            />
-                          )}
-                          <div
-                            className="inspector-retained"
-                            hidden={toolOverview}
-                            inert={toolOverview}
-                          >
+                        <div className="inspector-retained">
                             <ToolInspector
                               editor={editor}
                               group={group}
                               target={commandTarget}
                               onPortraitTool={setPortraitCanvasTool}
+                              canvasOverlay={fixedInspectorOpen ? canvasToolOverlay : null}
                               onGroupChange={selectInspectorTool}
                               onCutout={createCutout}
+                              onFlattenLayers={flattenLayers}
+                              cloudHistory={artwork && (
+                                <RevisionHistoryPanel
+                                  key={session.user?.id + ':' + artwork.id}
+                                  artwork={artwork}
+                                  onOpenRevision={openRevision}
+                                  onRestoreRevision={restoreRevision}
+                                  currentUserId={session.user?.id}
+                                  onForkCreated={async (created) => {
+                                    setRefreshToken((value) => value + 1);
+                                    return openArtwork(created.artworkId);
+                                  }}
+                                  isDirty={dirty}
+                                  canRestore={
+                                    !!project && ['owner', 'admin', 'editor'].includes(project.role)
+                                  }
+                                />
+                              )}
                               mobileOpen
-                              onClose={() => setInspectorOpen(false)}
+                              onClose={closeInspector}
                               pickedColor={pickedColor}
                               onColorChange={setPickedColor}
                               sampling={sampling}
                               onSample={() => {
-                                setSampling(!sampling);
-                                if (workspaceLayout.view.bucket === 'phone')
+                                setSampling((current) => !current);
+                                if (phoneEditor && !makeupPaint)
                                   setInspectorOpen(false);
                               }}
                             />
-                          </div>
-                        </>
+                        </div>
                       ) : (
                         <AIPanelFeature
                           key={(session.user?.id ?? 'local') + ':' + (project?.id ?? 'none')}
                           visible={activePanelId === 'ai'}
-                          mobilePage={mobileAssistantPage}
+                          mobilePage={phoneEditor}
                           generationRequest={collageReturn?.request}
                           returnLabel={collageReturn ? t('返回拼图') : undefined}
                           collageActions={
@@ -3453,13 +3572,13 @@ export function App({
                             }
                             if (await openArtwork(id)) {
                               if (
-                                mobileAssistantPage &&
+                                phoneEditor &&
                                 aiOpenRef.current &&
                                 (action === 'replace' || action === 'layer')
                               )
                                 closeAIToEditor();
                               if (action === 'replace')
-                                notify(t('已替换底图，可在「对比」中恢复上一版本。'));
+                                notify(t('已替换底图，可在「记录」中恢复上一版本。'));
                             }
                           }}
                           config={config}
@@ -3477,7 +3596,7 @@ export function App({
                           onClose={closeAI}
                           onPreview={(next) => {
                             editor.preview(next);
-                            if (mobileAssistantPage && aiOpenRef.current) closeAIToEditor();
+                            if (phoneEditor && aiOpenRef.current) closeAIToEditor();
                             notify(
                               navigationScope.current.view === 'editor'
                                 ? t('建议已进入预览，可以继续调整、取消或保存。')
@@ -3485,6 +3604,9 @@ export function App({
                             );
                           }}
                           onSave={save}
+                          onExport={editor.file && !opening && !editor.loading ? () => setDialog('export') : undefined}
+                          onTopUp={() => openAccount('billing')}
+                          voiceEntry={voiceEntry}
                           isLoggedIn={!!session.user}
                           onAuth={() => openAuth()}
                         />
@@ -3505,10 +3627,12 @@ export function App({
                     onGeometry={(next, change) =>
                       workspaceLayout.updatePanel('inspector', next, change)
                     }
-                    onBack={returnToAdjustments}
+                    onBack={() => {
+                      if (view === 'collaborate') void changeView('editor');
+                      else setCollaborationOpen(false);
+                    }}
                     backLabel={interactionText('backToEditing')}
                     onClose={() => setCollaborationOpen(false)}
-                    navigation={panelNavigation}
                   >
                     <div
                       className="collaboration-retained"
@@ -3609,12 +3733,13 @@ export function App({
         </AccountPageFrame>
       )}
       <DialogMotionContext.Provider value={{ open: !!dialog, phase: dialogPresence.phase }}>
-        {renderedDialog === 'navigation' && (
-          <WorkspaceNavigation
-            view={view}
-            onClose={closeDialog}
-            onView={async (next) => {
-              if (await changeView(next)) closeDialog();
+        {renderedDialog === 'photoTrash' && (
+          <PhotoTrashDialog key={localPhotoOwner} owner={localPhotoOwner} actorId={session.user?.id ?? null}
+            refreshToken={refreshToken} onClose={closeDialog} onLocalRestore={restoreLocalPhoto}
+            onCloudRestored={(photo) => {
+              markPhotoWithdrawn(photo.kind, photo.id, false);
+              setRefreshToken((value) => value + 1);
+              notify(t('已恢复到原项目。'), 'success');
             }}
           />
         )}
@@ -3699,7 +3824,7 @@ export function App({
               onUse={(file) => importFile(file)}
               onReference={async (file) => {
                 if (!(await changeView('editor'))) return false;
-                if (mobileAssistantPage && !aiOpen && !keepAIActive) {
+                if (phoneEditor && !aiOpen && !keepAIActive) {
                   const attachment = await captureSketchVisual(file);
                   if (visualScopeRef.current !== visualScope) return false;
                   setReferenceFile(null);
@@ -3900,6 +4025,7 @@ export function App({
             sourcePending={opening || editor.loading}
             onClose={closeDialog}
             onSuccess={(message) => notify(message, 'success')}
+            onRecipeImport={() => { closeDialog(); recipeInput.current?.click(); }}
           />
         )}
         {renderedDialog === 'conflict' && (

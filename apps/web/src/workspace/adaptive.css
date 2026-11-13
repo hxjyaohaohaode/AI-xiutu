@@ -105,58 +105,8 @@
   line-height: 1.6;
 }
 
-.workspace-navigation-dialog,
 .workspace-settings-dialog {
   width: min(480px, calc(100vw - 24px));
-}
-.workspace-destinations {
-  display: grid;
-  grid-template-columns: 1fr 1fr;
-  gap: 6px;
-}
-.workspace-destinations > button {
-  display: flex;
-  align-items: center;
-  gap: 12px;
-  padding: 14px 12px;
-  min-width: 0;
-  min-height: 76px;
-  border-radius: 12px;
-  text-align: left;
-  background: var(--surface-secondary);
-  color: var(--muted);
-  transition:
-    color var(--duration-control),
-    background var(--duration-control),
-    transform var(--duration-control);
-}
-.workspace-destinations > button > svg {
-  flex: 0 0 auto;
-}
-.workspace-destinations > button > span {
-  display: grid;
-  gap: 4px;
-  min-width: 0;
-  flex: 1;
-}
-.workspace-destinations strong {
-  font-size: 14px;
-  font-weight: 600;
-  color: var(--ink);
-}
-.workspace-destinations small {
-  font-size: 11px;
-  line-height: 1.5;
-}
-.workspace-destinations > button[aria-current='page'] {
-  color: var(--accent-ink);
-  background: var(--accent-soft);
-}
-.workspace-destinations > button:hover {
-  background: var(--surface-hover);
-}
-.workspace-destinations > button:active {
-  transform: scale(0.98);
 }
 .settings-theme-section h3 {
   font-size: 13px;
@@ -519,17 +469,6 @@
     border-radius: 15px;
     margin-bottom: 16px;
   }
-  .workspace-destinations > button {
-    min-height: 68px;
-    padding: 12px 10px;
-    gap: 10px;
-  }
-  .workspace-destinations small {
-    font-size: 10px;
-  }
-  .workspace-destinations > button > svg:last-child:not(:first-child) {
-    display: none;
-  }
   .canvas-workspace .studio-view {
     padding: 18px 16px 32px;
   }
@@ -605,10 +544,6 @@
   .studio-workspace .workspace-top-actions .studio-search-trigger {
     display: none;
   }
-  .workspace-destinations > button {
-    gap: 7px;
-    padding-inline: 8px;
-  }
 }
 @media (max-height: 520px) {
   .studio-workspace .floating-topbar {
@@ -629,16 +564,6 @@
     margin-top: 6px;
   }
   .studio-welcome .welcome-drop-hint {
-    display: none;
-  }
-  .workspace-destinations {
-    grid-template-columns: repeat(3, minmax(0, 1fr));
-  }
-  .workspace-destinations > button {
-    min-height: 56px;
-    padding: 8px;
-  }
-  .workspace-destinations small {
     display: none;
   }
 }

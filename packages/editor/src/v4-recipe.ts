@@ -2,6 +2,8 @@ import { RecipeValidationError, record, number, boolean, arrayData } from './rec
 import { parseEditorRecipe } from './v2-recipe.js';
 import {
   createRecipeV3,
+  createColorBlockV3,
+  parseColorBlockV3,
   parseRecipeV3,
   migrateRecipeToV3,
   parseSelectionMaskV3,
@@ -92,13 +94,13 @@ const maskNodes = (m: SelectionMaskV3): number =>
 
 /** Strip only the explicitly versioned additions, never use this helper as a persisted downgrade. */
 export function recipeV3Stage(input: RecipeV4): RecipeV3 {
-  const { projective: _p, healing: _h, retouch: _r, ...base } = input;
+  const { projective: _p, healing: _h, retouch: _r, compositeGrade: _grade, ...base } = input;
   return parseRecipeV3({ ...base, schemaVersion: 3, engineVersion: '3.0.0' });
 }
 export function parseRecipeV4(input: unknown): RecipeV4 {
   const errors: string[] = [];
   const copied = cloneRecipeDataV3(input);
-  const root = record(copied, [...Object.keys(createRecipeV3()), ...NEW_KEYS], 'recipe', errors);
+  const root = record(copied, [...Object.keys(createRecipeV3()), ...NEW_KEYS], 'recipe', errors, ['compositeGrade']);
   if (root.schemaVersion !== 4) errors.push('recipe.schemaVersion: expected 4');
   if (root.engineVersion !== '4.0.0') errors.push('recipe.engineVersion: expected 4.0.0');
   const baseObject = { ...root, schemaVersion: 3, engineVersion: '3.0.0' } as Record<
@@ -106,6 +108,7 @@ export function parseRecipeV4(input: unknown): RecipeV4 {
     unknown
   >;
   for (const key of NEW_KEYS) delete baseObject[key];
+  delete baseObject.compositeGrade;
   const base = parseRecipeV3(baseObject);
   let nodes = 0;
   const readMask = (v: unknown) => {
@@ -246,7 +249,11 @@ export function parseRecipeV4(input: unknown): RecipeV4 {
   });
   const projective = readProjective(root.projective, errors);
   if (errors.length) throw new RecipeValidationError(errors);
-  return { ...base, schemaVersion: 4, engineVersion: '4.0.0', projective, healing, retouch };
+  const compositeGrade = Object.hasOwn(root, 'compositeGrade')
+    ? parseColorBlockV3(root.compositeGrade, 'compositeGrade')
+    : undefined;
+  return { ...base, schemaVersion: 4, engineVersion: '4.0.0', projective, healing, retouch,
+    ...(compositeGrade ? { compositeGrade } : {}) };
 }
 export function validateRecipeV4(input: unknown): RecipeV4ValidationResult {
   try {
@@ -267,9 +274,10 @@ export function createRecipeV4(overrides?: RecipeV4Overrides): RecipeV4 {
     healing: [],
     retouch: [],
   };
-  return parseRecipeV4(
-    overrides === undefined ? base : mergeRecipeDataV3(base, cloneRecipeDataV3(overrides)),
-  );
+  if (!overrides) return parseRecipeV4(base);
+  const copied = cloneRecipeDataV3(overrides) as RecipeV4Overrides;
+  if (copied.compositeGrade) base.compositeGrade = createColorBlockV3();
+  return parseRecipeV4(mergeRecipeDataV3(base, copied));
 }
 export function migrateRecipeToV4(input: EditorRecipe): RecipeV4 {
   const recipe = parseEditorRecipe(input);

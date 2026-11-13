@@ -1,5 +1,6 @@
 import { t } from '../i18n';
 import {
+  Fragment,
   useEffect,
   useId,
   useLayoutEffect,
@@ -32,6 +33,7 @@ import {
   type RecipeV4,
   compileEditorCoordinateMap,
   parseEditorRecipe,
+  compileSelectionMaskV3,
   pixelCrop,
   parseSelectionMaskV3,
   radialMaskFrameV3,
@@ -44,6 +46,7 @@ import {
   MAX_BRUSH_POINTS_PER_STROKE,
   MAX_BRUSH_POINTS_PER_MASK,
   MAX_TOTAL_BRUSH_POINTS,
+  MAX_V3_PAINT_LAYERS,
   type RGBAImage,
   type EditorRecipe,
   type Geometry,
@@ -51,12 +54,16 @@ import {
   type Point,
   type BrushStrokeV2,
 } from '@ai-xiutu/editor';
-import { Busy, IconButton, InlineError } from '../components/Ui';
+import { Busy, IconButton } from '../components/Ui';
+import { CompareReveal } from '../components/CompareReveal';
+import { FloatingNotice } from '../components/FloatingNotice';
 import { StudioGlyph } from '../components/StudioGlyph';
 import { editorGeometryKey, type EditorState, type PreviewQuality } from './useEditor';
 import { sourcePointer, projectOverlayPoint, projectOverlayPath } from './coordinates';
+import { manualPaintOrigin, paintLayerInMode } from './advanced-model';
 import { appendRepairRegion } from './repair-draft';
 import { CanvasPointerOwnership, ownedCanvasRollback } from './canvas-gesture';
+import { BodyStretchGuides, bodyStretchGuard } from './BodyStretchGuides';
 import {
   appendFreehandPoints,
   pointerPathSamples,
@@ -292,13 +299,45 @@ const isTyping = (target: EventTarget | null) =>
 const MIN_CANVAS_ZOOM = 0.25;
 const MAX_CANVAS_ZOOM = 128;
 const fittedCamera = { zoom: 1, pan: { x: 0, y: 0 } };
+const zoomStep = 1.08;
+function pickImageLayer(
+  layers: readonly ImageLayerV3[],
+  point: Point,
+  dimensions: Dimensions,
+  sources: ReadonlyMap<string, RGBAImage>,
+  original: RGBAImage | null,
+) {
+  return layers.slice().reverse().find((layer) => {
+    const image = sources.get(layer.sourceId);
+    if (!layer.enabled || layer.opacity === 0 || !image) return false;
+    const x = (point.x - layer.x - layer.width / 2) * dimensions.width;
+    const y = (point.y - layer.y - layer.height / 2) * dimensions.height;
+    const angle = layer.rotationDegrees * Math.PI / 180;
+    const c = Math.cos(angle), s = Math.sin(angle);
+    let u = (x * c + y * s) / (layer.width * dimensions.width) + .5;
+    let v = (y * c - x * s) / (layer.height * dimensions.height) + .5;
+    if (u < 0 || v < 0 || u > 1 || v > 1) return false;
+    if (layer.flipX) u = 1 - u;
+    if (layer.flipY) v = 1 - v;
+    const pixel = (Math.min(image.height - 1, Math.floor(v * image.height)) * image.width
+      + Math.min(image.width - 1, Math.floor(u * image.width))) * 4;
+    if (image.data[pixel + 3] === 0) return false;
+    return !layer.mask || !original ||
+      compileSelectionMaskV3(layer.mask, original, original)(point.x, point.y) > 0;
+  });
+}
 
 export function CanvasStage({
   editor,
   statusContainer,
   collaboration,
   reviewScope,
+  onHistory,
+  historyOpen = false,
+  makeupPaint = false,
   group,
+  toolOverlayRef,
+  portraitWarp,
   onImport,
   onAI,
   onCollage,
@@ -315,7 +354,12 @@ export function CanvasStage({
   statusContainer: HTMLElement | null;
   collaboration?: CollaborationState;
   reviewScope?: CanvasReviewScope;
+  onHistory: () => void;
+  historyOpen?: boolean;
+  makeupPaint?: boolean;
   group: ToolGroup;
+  toolOverlayRef?: (element: HTMLDivElement | null) => void;
+  portraitWarp?: boolean;
   onImport: (files?: File[]) => void;
   onAI: () => void;
   onCollage: () => void;
@@ -331,12 +375,29 @@ export function CanvasStage({
   const review = useCanvasReview(reviewScope);
   const [dragging, setDragging] = useState(false),
     [camera, setCamera] = useState(fittedCamera),
-    [bounds, setBounds] = useState({ width: 1, height: 1 });
+    [bounds, setBounds] = useState({ width: 1, height: 1, offsetX: 0, offsetY: 0 });
   const { zoom, pan } = camera;
   const [space, setSpace] = useState(false),
     [handMode, setHandMode] = useState(false),
     [notice, setNotice] = useState<string | null>(null);
   const [viewToolsOpen, setViewToolsOpen] = useState(false);
+  const [splitOpen, setSplitOpen] = useState(false);
+  const [split, setSplit] = useState(50);
+  const splitToggle = useRef<HTMLButtonElement>(null);
+  const comparePressStart = useRef(0);
+  const comparePressTimer = useRef(0);
+  const focusSplit = useRef(false);
+  const comparisonSlider = useRef<HTMLInputElement>(null);
+  function releaseComparison() {
+    window.clearTimeout(comparePressTimer.current);
+    setComparing(false);
+  }
+  useEffect(() => () => window.clearTimeout(comparePressTimer.current), []);
+  function closeSplit() {
+    setSplitOpen(false);
+    splitToggle.current?.focus({ preventScroll: true });
+  }
+  useEffect(() => setSplitOpen(false), [editor.file, group]);
   const viewToolsId = useId();
   const viewToolbar = useRef<HTMLDivElement>(null);
   const viewToolsButton = useRef<HTMLButtonElement>(null);
@@ -376,12 +437,18 @@ export function CanvasStage({
   const lastFaceFocus = useRef<typeof editor.portrait.faceFocus>(null);
   const brushFootprint = useRef<SVGPathElement>(null);
   const gestureTrail = useRef<SVGPathElement>(null);
+  const warpTrail = useRef<Point[]>([]);
   const gestureFrame = useRef(0);
   useEffect(() => () => cancelAnimationFrame(gestureFrame.current), []);
   const recipe = editor.recipe,
     source = editor.originalPreview,
     dimensions = editor.dimensions;
   const cropEditing = group === 'crop' && editor.geometryMode === 'crop';
+  const splitActive = splitOpen && !cropEditing;
+  const inspectingOriginal = comparing || splitActive;
+  const bodyRange = portraitWarp && editor.warpSettings.axis === 'vertical' && !editor.warpSettings.protecting
+    ? editor.warpSettings.verticalRange
+    : undefined;
   const projectiveEditing =
     group === 'crop' && editor.geometryMode === 'projective' && recipe.schemaVersion === 4;
   const contentSpace =
@@ -394,7 +461,7 @@ export function CanvasStage({
     editor.layerImages,
     collaboration?.remotePreview ?? null,
     editor.isInteractive,
-    comparing,
+    inspectingOriginal,
   );
   const liveFrame =
     !comparing &&
@@ -408,6 +475,17 @@ export function CanvasStage({
     : cropEditing
       ? (previews.crop ?? null)
       : (previews.remote ?? liveFrame?.image ?? editor.rendered);
+  const compareFrame = splitActive && !comparing && !previews.remote &&
+    editor.renderedRecipe === recipe && image && previews.compare &&
+    image.width === previews.compare.width && image.height === previews.compare.height
+    ? previews.compare
+    : null;
+  useEffect(() => {
+    if (compareFrame && focusSplit.current) {
+      comparisonSlider.current?.focus({ preventScroll: true });
+      focusSplit.current = false;
+    }
+  }, [compareFrame]);
   const viewGeometry: Geometry =
     cropEditing && !comparing ? { ...recipe.geometry, crop: null } : recipe.geometry;
   const localViewRecipe: EditorRecipe = { ...recipe, geometry: viewGeometry };
@@ -448,7 +526,7 @@ export function CanvasStage({
   const portraitTargets =
     group === 'beauty' &&
     editor.portrait.showLandmarks &&
-    !comparing &&
+    !inspectingOriginal &&
     !previews.remote &&
     editor.portrait.analysis?.frame.contentHash === editor.getSourceFrame()?.contentHash
       ? (editor.portrait.analysis?.targets.filter((target) => target.kind === 'face') ?? [])
@@ -507,7 +585,7 @@ export function CanvasStage({
       protecting) &&
     hasSelection &&
     geometryReady &&
-    !comparing &&
+    !inspectingOriginal &&
     !sampling &&
     !space &&
     !handMode;
@@ -524,12 +602,10 @@ export function CanvasStage({
   const footprintRadius =
     group === 'liquify' && !protecting
       ? warpRadius
-      : group === 'paint' && !editor.paintSettings.automaticMakeup
+      : group === 'paint' && (!makeupPaint || !editor.paintSettings.automaticMakeup)
         ? editor.paintSettings.radius
         : startRepair || (editingSelection && mask.type === 'brush')
-          ? startRepair
-            ? defaultRepairBrush
-            : editor.brushSettings.radius
+          ? editor.brushSettings.radius
           : 0;
   const selectionContext = [
     group,
@@ -622,9 +698,24 @@ export function CanvasStage({
     pinch.current = null;
   }, [editor.file]);
   useEffect(() => {
+    setInspected(null);
+  }, [group]);
+  useEffect(() => {
     const element = viewport.current;
     if (!element) return;
-    const measure = () => setBounds({ width: element.clientWidth, height: element.clientHeight });
+    const measure = () => {
+      const style = window.getComputedStyle(element);
+      const top = Number.parseFloat(style.paddingTop);
+      const bottom = Number.parseFloat(style.paddingBottom);
+      const left = Number.parseFloat(style.paddingLeft);
+      const right = Number.parseFloat(style.paddingRight);
+      setBounds({
+        width: element.clientWidth - left - right,
+        height: element.clientHeight - top - bottom,
+        offsetX: (left - right) / 2,
+        offsetY: (top - bottom) / 2,
+      });
+    };
     const observer = new ResizeObserver(measure);
     observer.observe(element);
     measure();
@@ -756,7 +847,10 @@ export function CanvasStage({
   function viewportPoint(clientX: number, clientY: number): Point {
     const rect = viewport.current?.getBoundingClientRect();
     return rect
-      ? { x: clientX - (rect.left + rect.width / 2), y: clientY - (rect.top + rect.height / 2) }
+      ? {
+          x: clientX - (rect.left + rect.width / 2 + bounds.offsetX),
+          y: clientY - (rect.top + rect.height / 2 + bounds.offsetY),
+        }
       : { x: 0, y: 0 };
   }
   function zoomedCamera(base: typeof camera, next: number, anchor: Point, destination = anchor) {
@@ -838,7 +932,10 @@ export function CanvasStage({
     setCamera((current) => zoomedCamera(current, current.zoom * factor, anchor));
   }
   wheelAction.current = (event) => {
-    if (!image || isTyping(event.target) || editGesture.current || projectiveFrame) return;
+    if (
+      !image || isTyping(event.target) || editGesture.current || projectiveFrame ||
+      (event.target instanceof Element && event.target.closest('.makeup-canvas-palette'))
+    ) return;
     const units = event.deltaMode === 1 ? 16 : event.deltaMode === 2 ? bounds.height : 1;
     if (
       zoom > 1 &&
@@ -1012,7 +1109,7 @@ export function CanvasStage({
   function drawGestureTrail(state: EditGesture) {
     const trail = gestureTrail.current;
     if (!trail) return;
-    const points = state.points ?? (state.warp ? [state.warp.from, state.warp.to] : []);
+    const points = state.points ?? (state.warp ? warpTrail.current : []);
     const projected = projectOverlayPath(points, toDisplay);
     if (!projected?.length) return;
     const path = projected.map(({ x, y }, i) => (i ? 'L' : 'M') + x * 100 + ' ' + y * 100);
@@ -1046,13 +1143,22 @@ export function CanvasStage({
       setNotice('这里没有可编辑的源像素，请在图片内容上落笔。');
       return;
     }
+    if (kind === 'warp' && bodyRange && (rawPoint.y < bodyRange.top || rawPoint.y > bodyRange.bottom))
+      return;
+    const paintLayers = kind === 'paint' && (recipe.schemaVersion === 3 || recipe.schemaVersion === 4)
+      ? recipe.paintLayers.filter((layer) => paintLayerInMode(layer, makeupPaint))
+      : [];
+    const paintLayer = paintLayers.find((layer) => layer.id === editor.activePaintLayerId) ?? paintLayers.at(-1);
+    if (kind === 'paint' && !paintLayer && (recipe.schemaVersion === 3 || recipe.schemaVersion === 4) &&
+        recipe.paintLayers.length >= MAX_V3_PAINT_LAYERS) {
+      setNotice(t('已达设备处理上限'));
+      return;
+    }
     let newId: string | undefined;
     if (
       kind === 'warp' ||
       (kind === 'brush' && startRepair) ||
-      (kind === 'paint' &&
-        (recipe.schemaVersion === 3 || recipe.schemaVersion === 4) &&
-        !recipe.paintLayers.some((layer) => layer.id === editor.activePaintLayerId))
+      (kind === 'paint' && !paintLayer)
     ) {
       try {
         newId = secureUuid();
@@ -1067,12 +1173,12 @@ export function CanvasStage({
     frame.current.setPointerCapture(event.pointerId);
     const brushSettings =
       startRepair && kind === 'brush'
-        ? { radius: defaultRepairBrush, feather: 0.25, opacity: 1, mode: 'add' as const }
+        ? { ...editor.brushSettings, mode: 'add' as const }
         : editor.brushSettings;
     const point =
       kind === 'brush' ||
       (kind === 'paint' &&
-        !(editor.paintSettings.mode === 'paint' && editor.paintSettings.material))
+        !(makeupPaint && editor.paintSettings.mode === 'paint' && editor.paintSettings.material))
         ? brushPointAtSource(
             rawPoint,
             dimensions,
@@ -1123,18 +1229,19 @@ export function CanvasStage({
     }
     if (kind === 'paint' && (recipe.schemaVersion === 3 || recipe.schemaVersion === 4)) {
       const settings = editor.paintSettings;
-      const material = settings.mode === 'paint' ? settings.material : undefined;
+      const material = makeupPaint && settings.mode === 'paint' ? settings.material : undefined;
       if (settings.mode === 'clone' && (settings.choosingSource || !settings.source)) {
         editor.setPaintSettings({ ...settings, source: point, choosingSource: false });
         setNotice('克隆来源已选，下一笔开始绘制。');
         return;
       }
-      let layer = recipe.paintLayers.find((l) => l.id === editor.activePaintLayerId);
+      let layer = paintLayer;
       let base = recipe;
       if (!layer) {
         layer = {
           id: newId!,
-          name: material ? t('妆容') : '手动绘制',
+          name: t(makeupPaint ? '妆容' : '手动绘制'),
+          origin: manualPaintOrigin(newId!, makeupPaint),
           enabled: true,
           opacity: 1,
           blendMode: 'normal',
@@ -1142,8 +1249,8 @@ export function CanvasStage({
           strokes: [],
         };
         base = { ...recipe, paintLayers: [...recipe.paintLayers, layer] };
-        editor.setActivePaintLayerId(layer.id);
       }
+      if (editor.activePaintLayerId !== layer.id) editor.setActivePaintLayerId(layer.id);
       state.points = [point];
       const pressure =
         settings.pressureSensitive &&
@@ -1193,8 +1300,10 @@ export function CanvasStage({
         setNotice(t('拉伸范围已变化，请重新选择。'));
         return;
       }
-      if (region) {
-        const mask = { ...region.mask, invert: !region.mask.invert };
+      const mask = bodyRange
+        ? bodyStretchGuard(bodyRange)
+        : region && { ...region.mask, invert: !region.mask.invert };
+      if (mask) {
         const existing = recipe.warp.guards ?? [];
         const stored = existing.find(
           (guard) => JSON.stringify(guard.mask) === JSON.stringify(mask),
@@ -1239,6 +1348,8 @@ export function CanvasStage({
         feather: editor.warpSettings.feather,
         strength: strength * pressure,
       };
+      warpTrail.current = [point];
+      drawGestureTrail(state);
       if (state.warp.mode !== 'push') {
         const base = state.base as typeof recipe;
         previewEdit(state, {
@@ -1294,6 +1405,7 @@ export function CanvasStage({
       kind === 'brush' ||
         kind === 'center' ||
         kind === 'radial-rotation' ||
+        kind === 'radial-corner' ||
         kind.startsWith('radius') ||
         kind.startsWith('linear-') ||
         kind.startsWith('polygon-'),
@@ -1538,7 +1650,13 @@ export function CanvasStage({
             ? state.warpPointer.strength * pressure
             : state.warp.strength,
       };
+      if (bodyRange && stroke.mode === 'push' &&
+        state.lastPreview === (state.rollback ?? state.base) && !state.pending &&
+        (stroke.strength === 0 || (stroke.from.x === point.x && stroke.from.y === point.y)))
+        return;
       state.warp = stroke;
+      if (warpTrail.current.length < 512) warpTrail.current.push(point);
+      drawGestureTrail(state);
       previewEdit(state, {
         ...state.base,
         warp: { ...state.base.warp, enabled: true, strokes: [...state.base.warp.strokes, stroke] },
@@ -1570,6 +1688,11 @@ export function CanvasStage({
           centerX: clamp(original.centerX + point.x - state.start.x),
           centerY: clamp(original.centerY + point.y - state.start.y),
         };
+      if (state.kind === 'radial-corner') {
+        const local = radialMaskFrameV3(original, dimensions).local(point);
+        next = { ...original, radiusX: clamp(Math.abs(local.x) * original.radiusX, 0.0001, 1),
+          radiusY: clamp(Math.abs(local.y) * original.radiusY, 0.0001, 1) };
+      }
       if (state.kind === 'radiusX' || state.kind === 'radiusY') {
         const local = radialMaskFrameV3(original, dimensions).local(point);
         const axis = state.kind === 'radiusX' ? local.x : local.y;
@@ -1644,6 +1767,7 @@ export function CanvasStage({
     cancelAnimationFrame(gestureFrame.current);
     gestureFrame.current = 0;
     gestureTrail.current?.removeAttribute('d');
+    warpTrail.current = [];
     setSelectionManipulating(false);
     setProjectiveFrame(null);
     if (ownsEdit(state)) {
@@ -2017,17 +2141,6 @@ export function CanvasStage({
         if (files.length) onImport(files);
       }}
     >
-      <div className="canvas-file-info" data-motion="canvas-file-info">
-        {editor.file && (
-          <>
-            <span>{editor.file.name}</span>
-            <small>
-              {output?.width} × {output?.height}
-            </small>
-            {editor.rendering && !liveFrame && <Busy label={t('更新预览')} />}
-          </>
-        )}
-      </div>
       {previews.remote && (
         <div className="collaboration-preview-note">{t('队员调整预览 · 尚未保存为版本')}</div>
       )}
@@ -2061,9 +2174,7 @@ export function CanvasStage({
       )}
       {statusContainer &&
         createPortal(
-          <div className="canvas-error">
-            <InlineError message={editor.error ?? previews.error ?? notice} />
-          </div>,
+          <FloatingNotice message={editor.error ?? previews.error ?? notice} />,
           statusContainer,
         )}
       <div
@@ -2082,8 +2193,8 @@ export function CanvasStage({
             editGesture.current
           )
             return;
-          if (event.key === '+' || event.key === '=') zoomBy(1.25);
-          else if (event.key === '-' || event.key === '_') zoomBy(0.8);
+          if (event.key === '+' || event.key === '=') zoomBy(zoomStep);
+          else if (event.key === '-' || event.key === '_') zoomBy(1 / zoomStep);
           else if (event.key === '0') fit();
           else if ((handMode || zoom > 1) && /^Arrow/.test(event.key)) {
             const step = event.shiftKey ? 80 : 16;
@@ -2167,8 +2278,12 @@ export function CanvasStage({
           if (event.button !== 0 && event.button !== 1) return;
           if (
             !image ||
+              (event.target as Element).closest('.compare-reveal-input, .body-stretch-handle') ||
+            review.placing ||
             editGesture.current ||
             (editingSelection && !handMode && !space) ||
+            (group === 'composite' && event.button === 0 && !handMode && !space &&
+              event.pointerType !== 'touch' && (event.target as Element).closest('.image-frame')) ||
             (group === 'crop' && !space && !handMode)
           )
             return;
@@ -2249,6 +2364,7 @@ export function CanvasStage({
           <div
             className="image-frame"
             data-review-placing={review.placing || undefined}
+            data-split-compare={splitActive || undefined}
             ref={frame}
             style={{
               width: display.width,
@@ -2256,7 +2372,7 @@ export function CanvasStage({
               transform: frameTransform,
             }}
             onPointerDown={(event) => {
-              if (review.placing || handMode || space || event.button !== 0) return;
+              if (inspectingOriginal || review.placing || handMode || space || sampling || event.button !== 0) return;
               updateBrushFootprint(event);
               if (
                 group === 'repair' &&
@@ -2284,7 +2400,7 @@ export function CanvasStage({
                 }
               } else if (
                 group === 'paint' &&
-                !editor.paintSettings.automaticMakeup &&
+                (!makeupPaint || !editor.paintSettings.automaticMakeup) &&
                 (recipe.schemaVersion === 3 || recipe.schemaVersion === 4)
               )
                 beginEdit(event, 'paint');
@@ -2314,7 +2430,7 @@ export function CanvasStage({
                 suppressClick.current = false;
                 return;
               }
-              if ((event.target as Element).closest('.image-handle') || comparing) return;
+              if ((event.target as Element).closest('.image-handle') || inspectingOriginal) return;
               if (review.placing) {
                 const point = toSource(event.clientX, event.clientY, false, 'strict');
                 if (point) review.pick(point);
@@ -2352,6 +2468,13 @@ export function CanvasStage({
                   editor.commitCurrent(t('完成人物调节'));
                   editor.portrait.setTarget(hit.id);
                 }
+                return;
+              }
+              if (group === 'composite' && !handMode && !space && dimensions && 'imageLayers' in recipe) {
+                const point = toSource(event.clientX, event.clientY, true, 'strict');
+                if (!point) return;
+                const selected = pickImageLayer(recipe.imageLayers, point, dimensions, editor.layerImages, source);
+                if (selected) editor.setActiveImageLayerId(selected.id);
                 return;
               }
               if (editingSelection && mask.type === 'radial' && dimensions) {
@@ -2434,6 +2557,19 @@ export function CanvasStage({
               />
             )}
             {collaboration?.snapshot && (
+                return;
+              }
+            {bodyRange && geometryReady && !inspectingOriginal && !sampling && !review.placing && !handMode && !space && (
+              <BodyStretchGuides
+                range={bodyRange}
+                zoom={zoom}
+                toDisplay={toDisplay}
+                toSource={toSource}
+                onChange={(verticalRange) => editor.setWarpSettings((current) => ({ ...current, verticalRange }))}
+              />
+            )}
+            {!inspectingOriginal && <CanvasReviewPins review={review} map={(point) => coordinateMap?.toOutput(point) ?? point} zoom={zoom} />}
+            {collaboration?.snapshot && !inspectingOriginal && (
               <CollaborationOverlay
                 snapshot={collaboration.snapshot}
                 sessionId={collaboration.session?.id ?? null}
@@ -2443,7 +2579,7 @@ export function CanvasStage({
               />
             )}
 
-            {footprintRadius > 0 && (
+            {footprintRadius > 0 && !inspectingOriginal && (
               <svg
                 className="brush-footprint"
                 viewBox="0 0 100 100"
@@ -2485,6 +2621,10 @@ export function CanvasStage({
                     preserveAspectRatio="none"
                     aria-hidden
                   >
+                    {radial && <polygon
+                      points={overlayPolygon([radial.point(-1, -1), radial.point(1, -1), radial.point(1, 1), radial.point(-1, 1)])}
+                      fill="none" stroke="white" strokeWidth={1} opacity={0.75} vectorEffect="non-scaling-stroke"
+                    />}
                     {radial && (
                       <polygon
                         points={overlayPolygon(radialOutline.map(([x, y]) => radial.point(x!, y!)))}
@@ -2517,11 +2657,14 @@ export function CanvasStage({
                     )}
                   </svg>
                 )}
-                {radial && (
+                {radial && !review.open && (
                   <>
                     {handle(radial.point(0, 0), t('拖动选区中心'), 'center')}
                     {handle(radial.point(1, 0), t('拖动横向半径'), 'radiusX')}
                     {handle(radial.point(0, 1), t('拖动纵向半径'), 'radiusY')}
+                    {([[-1, -1], [1, -1], [1, 1], [-1, 1]] as const).map(([x, y]) => (
+                      <Fragment key={`${x}:${y}`}>{handle(radial.point(x, y), t('缩放选区'), 'radial-corner')}</Fragment>
+                    ))}
                     {canRotateRadial &&
                       handle(radial.point(0, -1), t('拖动旋转选区'), 'radial-rotation')}
                   </>
@@ -2554,7 +2697,7 @@ export function CanvasStage({
                 )}
               </>
             )}
-            {group === 'composite' && imageLayer?.enabled && !comparing && geometryReady && (
+            {group === 'composite' && imageLayer?.enabled && !inspectingOriginal && geometryReady && (
               <>
                 <svg className="composite-overlay" viewBox="0 0 100 100" preserveAspectRatio="none">
                   <polygon
@@ -2566,10 +2709,11 @@ export function CanvasStage({
                         [0, 1],
                       ].map(([x, y]) => layerPoint(x!, y!)),
                     )}
-                    fill="transparent"
+                    fill="none"
                     stroke="white"
                     strokeWidth={0.2 / zoom}
-                    onPointerDown={(event) => beginEdit(event, 'image-move')}
+                    pointerEvents="stroke"
+                    onPointerDown={(event) => { if (!review.placing) beginEdit(event, 'image-move'); }}
                   />
                 </svg>
                 {(
@@ -2738,6 +2882,15 @@ export function CanvasStage({
                 )}
               </>
             )}
+            {compareFrame && (
+              <CompareReveal
+                before={compareFrame}
+                value={split}
+                onChange={setSplit}
+                onClose={closeSplit}
+                inputRef={comparisonSlider}
+              />
+            )}
             {comparing && (
               <span
                 className="original-label"
@@ -2749,6 +2902,18 @@ export function CanvasStage({
           </div>
         ) : (
           <Busy label={comparing ? t('准备同一构图的原图…') : t('准备完整构图预览…')} />
+        )}
+        {editor.file && toolOverlayRef && (
+          <div
+            className="canvas-tool-overlay"
+            ref={toolOverlayRef}
+            style={{
+              '--canvas-photo-width': `${fittedDisplay.width}px`,
+              '--canvas-photo-height': `${fittedDisplay.height}px`,
+              '--canvas-center-y': `${bounds.offsetY}px`,
+            } as React.CSSProperties}
+            onPointerDown={(event) => event.stopPropagation()}
+          />
         )}
       </div>
       {editor.file && (
@@ -2782,23 +2947,40 @@ export function CanvasStage({
               <ArrowClockwise size={17} />
             </IconButton>
             <button
+              type="button"
               className={`compare-press ${comparing ? 'active' : ''}`}
               aria-label={t('按住对比')}
-              aria-pressed={comparing}
+              ref={splitToggle}
+              aria-pressed={inspectingOriginal}
+              title={t('点击滑动对比，按住查看原图')}
               onPointerDown={(event) => {
+                if (event.button !== 0) return;
                 event.currentTarget.setPointerCapture(event.pointerId);
-                setComparing(true);
+                comparePressStart.current = performance.now();
+                window.clearTimeout(comparePressTimer.current);
+                comparePressTimer.current = window.setTimeout(() => setComparing(true), 230);
               }}
-              onPointerUp={() => setComparing(false)}
-              onPointerCancel={() => setComparing(false)}
-              onLostPointerCapture={() => setComparing(false)}
+              onPointerUp={releaseComparison}
+              onClick={(event) => {
+                if (cropEditing) return;
+                if (event.detail && performance.now() - comparePressStart.current > 260) return;
+                focusSplit.current = !splitOpen && event.detail === 0;
+                setSplitOpen(!splitOpen);
+              }}
+              onPointerCancel={releaseComparison}
+              onLostPointerCapture={releaseComparison}
               onKeyDown={(event) => {
-                if (event.key === ' ' || event.key === 'Enter') {
+                if (event.key === ' ') {
                   event.preventDefault();
                   setComparing(true);
                 }
               }}
-              onKeyUp={() => setComparing(false)}
+              onKeyUp={(event) => {
+                if (event.key === ' ') {
+                  event.preventDefault();
+                  setComparing(false);
+                }
+              }}
               onBlur={() => setComparing(false)}
             >
               <StudioGlyph name="compare" size={17} />
@@ -2815,6 +2997,15 @@ export function CanvasStage({
               <CornersIn className="zoom-fit-glyph" size={17} />
               <span>{zoom === 1 ? t('适应') : `${Math.round(scale * zoom * 100)}%`}</span>
             </button>
+            <IconButton
+              label={t('编辑记录')}
+              className="canvas-history-trigger"
+              data-action="open-history"
+              aria-pressed={historyOpen}
+              onClick={onHistory}
+            >
+              <StudioGlyph name="history" size={17} />
+            </IconButton>
             <button
               ref={viewToolsButton}
               type="button"
@@ -2836,14 +3027,14 @@ export function CanvasStage({
               <IconButton
                 label={t('缩小预览')}
                 disabled={zoom <= MIN_CANVAS_ZOOM}
-                onClick={() => zoomBy(0.8)}
+                onClick={() => zoomBy(1 / zoomStep)}
               >
                 <MagnifyingGlassMinus size={18} />
               </IconButton>
               <IconButton
                 label={t('放大预览')}
                 disabled={zoom >= MAX_CANVAS_ZOOM}
-                onClick={() => zoomBy(1.25)}
+                onClick={() => zoomBy(zoomStep)}
               >
                 <MagnifyingGlassPlus size={18} />
               </IconButton>

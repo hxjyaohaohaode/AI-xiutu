@@ -1,4 +1,5 @@
 import { navigationAiV2Traditional } from './navigation-ai-v2-messages';
+import { reviewTraditional } from './review-messages';
 import { nativeGradeTraditionalChinese } from './native-grade-messages';
 import { viewsRedesignTraditional } from './views-redesign-messages';
 import { restorationTraditionalChinese } from './restoration-messages';
@@ -21,7 +22,15 @@ export const traditional: Readonly<Record<string, string>> = {
   '发表批注': '發表註解',
   '添加批注': '新增註解',
   '收起语音通话': '收起語音通話',
+  '通话工具': '通話工具',
+  '通话详情': '通話詳情',
+  '通话时长': '通話時間',
+  '正在结束': '正在結束',
+  '语音服务暂不可用': '語音服務暫時無法使用',
+  '补充文字': '補充文字',
+  '已静音': '已靜音',
   ...navigationAiV2Traditional,
+  ...reviewTraditional,
   "模型列表加载失败": "無法載入模型",
   "重新加载": "重新載入",
   "无法读取参考图，请重新选择。": "無法讀取參考圖，請重新選擇。",
@@ -199,7 +208,7 @@ export const traditional: Readonly<Record<string, string>> = {
   移除附件: '移除附件',
   查看附件: '查看附件',
   垂直镜像: '垂直鏡像',
-  '已替换底图，可在「对比」中恢复上一版本。': '已替換底圖，可在「比較」中還原上一版本。',
+  '已替换底图，可在「记录」中恢复上一版本。': '已替換底圖，可在「記錄」中還原上一版本。',
   '请选择支持图片的模型，或移除附件。': '請選擇支援圖片的模型，或移除附件。',
   '确认 AI 调整': '套用 AI 調整',
   本地编辑: '本機編輯',

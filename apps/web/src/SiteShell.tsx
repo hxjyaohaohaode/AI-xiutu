@@ -23,6 +23,7 @@ import { accountPageCopy } from './account/page-copy';
 import { t, useLocale } from './i18n';
 import { api } from './lib/api';
 import { brandLogoUrl } from './lib/brand';
+import { ThemeContext } from './components/ThemeSwitch';
 import { useStudioTheme } from './workspace/useStudioTheme';
 import type { PublicConfig } from './lib/types';
 import type { StudioEntry } from './App';
@@ -174,7 +175,7 @@ export function SiteShell() {
   }, []);
   const enter = (intent: AboutIntent, sample?: SampleSettings) => navigate(intent, false, sample);
   return (
-    <>
+    <ThemeContext.Provider value={studioTheme}>
       {!active && <AboutPage config={config} onEnter={enter} hasStudio={opened} />}
       {opened && (
         <div className="site-studio" hidden={!active} inert={!active}>
@@ -208,6 +209,6 @@ export function SiteShell() {
           </StudioBoundary>
         </div>
       )}
-    </>
+    </ThemeContext.Provider>
   );
 }

@@ -21,6 +21,8 @@ const commentDto = (c: Record<string, any>) => ({
   authorId: c.author_id,
   authorName: c.author_name,
   resolved: c.resolved,
+  bodyVersion: c.body_version,
+  editedAt: c.edited_at,
   createdAt: c.created_at,
 });
 const taskDto = (t: Record<string, any>) => ({
@@ -73,7 +75,7 @@ export function registerCollaboration(app: FastifyInstance, db: Database): void 
       comments: (
         await db.query(
           `SELECT c.*,u.display_name AS author_name FROM comments c JOIN users u ON u.id=c.author_id
-           WHERE project_id=$1
+           WHERE project_id=$1 AND c.deleted_at IS NULL
            AND ($2::uuid IS NULL OR (c.artwork_id=$2 AND c.anchor IS NOT NULL))
            AND ($3::uuid IS NULL OR c.revision_id=$3)
            ORDER BY c.created_at, c.id LIMIT 500`,
@@ -108,7 +110,7 @@ export function registerCollaboration(app: FastifyInstance, db: Database): void 
       if (
         body.artworkId &&
         !(
-          await tx.query('SELECT id FROM artworks WHERE id=$1 AND project_id=$2', [
+          await tx.query('SELECT id FROM artworks WHERE id=$1 AND project_id=$2 AND deleted_at IS NULL FOR SHARE', [
             body.artworkId,
             p.id,
           ])
@@ -146,23 +148,48 @@ export function registerCollaboration(app: FastifyInstance, db: Database): void 
   app.patch('/v1/comments/:id', async (req) => {
     const user = requireUser(req);
     const p = z.object({ id }).parse(req.params);
-    const body = z.object({ resolved: z.boolean() }).strict().parse(req.body);
+    const body = z.union([
+      z.object({ resolved: z.boolean() }).strict(),
+      z.object({ body: z.string().trim().min(1).max(5000), expectedVersion: z.number().int().positive() }).strict(),
+    ]).parse(req.body);
     const comment = await transaction(db, async (tx) => {
-      const row = (await tx.query('SELECT * FROM comments WHERE id=$1 FOR UPDATE', [p.id])).rows[0];
+      const row = (await tx.query('SELECT * FROM comments WHERE id=$1 AND deleted_at IS NULL FOR UPDATE', [p.id])).rows[0];
       if (!row) throw new HttpError(404, 'COMMENT_NOT_FOUND', '评论不存在');
       const project = await projectAccess(tx, row.project_id, user.id, 'comment');
-      if (row.author_id !== user.id && !['owner', 'admin', 'editor'].includes(project.role))
+      if (row.author_id !== user.id &&
+          ('body' in body || !['owner', 'admin', 'editor'].includes(project.role)))
         throw new HttpError(403, 'COMMENT_FORBIDDEN', '仅作者或编辑者可以处理评论');
+      if ('body' in body) assertVersion(row.body_version, body.expectedVersion);
       const updated = (
-        await tx.query('UPDATE comments SET resolved=$2 WHERE id=$1 RETURNING *', [
-          p.id,
-          body.resolved,
-        ])
+        await ('body' in body
+          ? tx.query(`UPDATE comments SET body=$2,body_version=body_version+1,edited_at=clock_timestamp()
+                      WHERE id=$1 RETURNING *, (SELECT display_name FROM users WHERE id=author_id) AS author_name`,
+                    [p.id, body.body])
+          : tx.query(`UPDATE comments SET resolved=$2 WHERE id=$1
+                      RETURNING *, (SELECT display_name FROM users WHERE id=author_id) AS author_name`,
+                    [p.id, body.resolved]))
       ).rows[0]!;
       await emit(tx, project.space_id, project.id, 'comment.updated', p.id);
       return commentDto(updated);
     });
     return { comment };
+  });
+  app.delete('/v1/comments/:id', async (req, reply) => {
+    const user = requireUser(req);
+    const p = z.object({ id }).parse(req.params);
+    const { expectedVersion } = z.object({ expectedVersion: z.coerce.number().int().positive() }).strict().parse(req.query);
+    await transaction(db, async (tx) => {
+      const row = (await tx.query('SELECT * FROM comments WHERE id=$1 FOR UPDATE', [p.id])).rows[0];
+      if (!row) throw new HttpError(404, 'COMMENT_NOT_FOUND', '评论不存在');
+      const project = await projectAccess(tx, row.project_id, user.id, 'comment');
+      if (row.author_id !== user.id)
+        throw new HttpError(403, 'COMMENT_FORBIDDEN', '仅作者可以删除评论');
+      if (row.deleted_at) return;
+      assertVersion(row.body_version, expectedVersion);
+      await tx.query('UPDATE comments SET deleted_at=clock_timestamp() WHERE id=$1', [p.id]);
+      await emit(tx, project.space_id, project.id, 'comment.deleted', p.id);
+    });
+    return reply.code(204).send();
   });
   app.get('/v1/projects/:id/tasks', async (req) => {
     const user = requireUser(req);

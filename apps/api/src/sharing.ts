@@ -287,7 +287,7 @@ export function registerSharing(app: FastifyInstance, db: Database): void {
       }
       const arts = (
         await tx.query(
-          'SELECT a.*,r.recipe FROM artworks a JOIN revisions r ON r.id=a.head_revision_id WHERE a.project_id=$1 ORDER BY a.id FOR SHARE OF a',
+          'SELECT a.*,r.recipe FROM artworks a JOIN revisions r ON r.id=a.head_revision_id WHERE a.project_id=$1 AND a.deleted_at IS NULL ORDER BY a.id FOR SHARE OF a',
           [p.id],
         )
       ).rows;

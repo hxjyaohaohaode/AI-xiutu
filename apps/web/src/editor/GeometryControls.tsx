@@ -1,5 +1,4 @@
 import { t } from '../i18n';
-import type { ReactNode } from 'react';
 import { MotionDetails } from '../motion/Presence';
 import { CropOrientationControls, CropPresetRail } from './CropPresetRail';
 import { ChoiceSelect } from '../components/ChoiceSelect';
@@ -25,11 +24,9 @@ import { ProjectiveControls } from './ProjectiveControls';
 
 export function GeometryControls({
   controller,
-  layoutControl,
   target,
 }: {
   controller: InspectorController;
-  layoutControl?: ReactNode;
   target?: string;
 }) {
   const { editor, apply, report } = controller,
@@ -143,7 +140,6 @@ export function GeometryControls({
             { value: 'placement', label: t('缩放'), ariaLabel: t('缩放与位置'), icon: <ArrowsOutCardinal size={16} /> },
           ]}
         />
-        {layoutControl}
       </div>
       {tab === 'crop' ? (
         <>

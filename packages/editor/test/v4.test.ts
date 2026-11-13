@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import {
   createRecipeV3,
   createRecipeV4,
+  createColorBlockV3,
   migrateRecipeToV4,
   migrateRecipeToV3,
   parseEditorRecipe,
@@ -48,6 +49,34 @@ const radial = (x = 0.5, y = 0.5, radius = 0.12): SelectionMaskV3 => ({
 });
 const close = (actual: number, expected: number, eps = 1e-8) =>
   assert.ok(Math.abs(actual - expected) < eps, `${actual} != ${expected}`);
+
+test('a global V4 grade reaches a composited layer and the base with identical tiled output', () => {
+  const base = image();
+  const layer = image(10, 10);
+  const opts = { images: new Map([['source', layer]]), tileSize: 16 };
+  const original = createRecipeV4({
+    imageLayers: [{
+      id: 'overlay',
+      sourceId: 'source',
+      name: 'Overlay',
+      enabled: true,
+      x: 0.2, y: 0.2, width: 0.6, height: 0.6,
+      rotationDegrees: 0, flipX: false, flipY: false,
+      opacity: 1, blendMode: 'normal', mask: null,
+    }],
+  });
+  const grade = createColorBlockV3();
+  const recipe = parseRecipeV4({ ...original, compositeGrade: {
+    ...grade, adjustments: { ...grade.adjustments, exposure: 0.75 },
+  } });
+  const before = renderEditorRecipe(base, original, opts);
+  const after = renderEditorRecipe(base, recipe, opts);
+  const overlayPixel = (Math.floor(base.height / 2) * base.width + Math.floor(base.width / 2)) * 4;
+  assert.ok(after.data[0]! > before.data[0]!);
+  assert.ok(after.data[overlayPixel]! > before.data[overlayPixel]!);
+  assert.deepEqual(renderEditorRecipeTiled(base, recipe, opts), after);
+  assert.equal(parseRecipeV4(original).compositeGrade, undefined);
+});
 
 test('bounded local sampling matches a full-frame scan byte for byte across mask families and aspect ratios', () => {
   for (const [width, height] of [

@@ -26,6 +26,7 @@
     .bob { animation: bob 1s infinite ease-in-out; }
     .left { animation: lstep 1s infinite ease-in; }
     .right { animation: rstep 1s .45s infinite ease-in; }
+    #still:target ~ g .bob, #still:target ~ g .left, #still:target ~ g .right { animation: none; }
     @media (prefers-reduced-motion: reduce) {
       .bob, .left, .right { animation: none; }
     }
@@ -78,6 +79,7 @@
       }
     }
   </style>
+  <g id="still"/>
   <g transform="translate(75 135)">
     <g class="right">
       <svg

@@ -19,13 +19,15 @@ interface StrandsProps {
   opacity?: number;
   scale?: number;
   glass?: boolean;
+  glassTint?: string;
+  pluck?: boolean;
   refraction?: number;
   dispersion?: number;
   glassSize?: number;
   rim?: number;
   energy?: number;
   listening?: boolean;
-  level?: number;
+  level?: number | (() => number);
   interactive?: boolean;
   clickPulse?: boolean;
   intro?: boolean;
@@ -51,13 +53,15 @@ interface StrandsConfig {
   opacity: number;
   scale: number;
   glass: boolean;
+  glassTint?: string;
+  pluck: boolean;
   refraction: number;
   dispersion: number;
   glassSize: number;
   rim: number;
   energy: number;
   listening: boolean;
-  level?: number;
+  level?: number | (() => number);
   interactive: boolean;
   clickPulse: boolean;
   intro: boolean;
@@ -94,11 +98,14 @@ uniform float uIntensity;
 uniform float uSaturation;
 uniform float uScale;
 uniform float uGlass;
+uniform vec3 uGlassTint;
+uniform bool uTintedGlass;
 uniform float uRadius;
 uniform float uRefraction;
 uniform float uDispersion;
 uniform float uRim;
 uniform vec2 uLean;
+uniform vec3 uPluck;
 uniform float uIntro;
 uniform float uPulse;
 uniform float uLight;
@@ -188,6 +195,15 @@ float axis(float x) {
   return -0.2318 + uLean.y * 0.06 + (-0.2394 + uLean.x * 0.1) * x + 0.2815 * a * x * x + 0.3368 * a * x * x * x;
 }
 
+float pluckFalloff(float x) {
+  float distance = x - uPluck.x;
+  return exp(-8.0 * distance * distance) * (1.0 - smoothstep(0.55, 0.96, abs(x)));
+}
+
+float pluckBend(float x) {
+  return (uPluck.y * 0.88 + uPluck.z * 1.1 * (x - uPluck.x)) * pluckFalloff(x);
+}
+
 float softp(float z) {
   return 0.03 * log(1.0 + exp(clamp(z / 0.03, -60.0, 60.0)));
 }
@@ -196,8 +212,9 @@ vec3 light(vec2 u, float fp, float bend, float level, out float halo) {
   float amp = level < 0.65 ? mix(0.25, 1.0, sstep(0.0, 0.65, level)) : mix(1.0, 1.12, (level - 0.65) / 0.35);
   float grow = clamp((amp - 0.25) / 0.75, 0.0, 1.25);
   float x = u.x / uScale;
+  x -= 0.3 * uPluck.z * pluckFalloff(x);
   float uy = u.y;
-  float ya = axis(x);
+  float ya = axis(x) + pluckBend(x);
   float taper = max(uTaper, 0.05);
   float bx = 0.0437 + uMotion.z + uLean.x * 0.08;
   float bump = exp(-pow((x - bx) / (0.6879 * taper), 2.0));
@@ -251,7 +268,7 @@ vec3 light(vec2 u, float fp, float bend, float level, out float halo) {
   G += vec3(1.0, 0.97, 0.92) * (exp(-dg * dg) * 0.0315 / wh * mend * glow);
   float nx = -0.0664 - uMotion.x / k + 0.2168;
   float bxx = (x - nx) / 0.1849;
-  float byy = (uy - axis(nx) - 0.0333) / (0.0544 * mix(0.7, 1.0, min(amp, 1.0)));
+  float byy = (uy - axis(nx) - pluckBend(nx) - 0.0333) / (0.0544 * mix(0.7, 1.0, min(amp, 1.0)));
   G += mint * (exp(-bxx * bxx - byy * byy) * 1.4 * glow * sstep(0.0, 0.6, amp));
   float hb = (uy - ya - 0.3 * hW) / (0.07 + 0.45 * hW + 0.3 * envC);
   halo = exp(-hb * hb) * mend * smoothstep(0.0, 0.3, uIntro);
@@ -279,7 +296,7 @@ void main() {
     vec2 pc = p / R;
     float rho = length(pc);
     if (rho > 1.0 + 2.0 * px) {
-      float sh = uLight * 0.07 * exp(-pow((rho - 0.985) / 0.07, 2.0)) * smoothstep(-0.6, 0.4, -pc.y) * appear * uOpacity;
+      float sh = (uTintedGlass ? 0.0 : uLight) * 0.07 * exp(-pow((rho - 0.985) / 0.07, 2.0)) * smoothstep(-0.6, 0.4, -pc.y) * appear * uOpacity;
       fragColor = vec4(0.0, 0.0, 0.0, sh);
       return;
     }
@@ -303,6 +320,23 @@ void main() {
     float ring = exp(-pow((r - 0.985) / 0.011, 2.0));
     float hzk = 0.25 + 0.7 * pow(max(0.0, -d.x * 0.6 + d.y * 0.8), 2.0) + pow(max(0.0, d.x * 0.8 - d.y * 0.6), 2.0);
     float haze = exp(-pow((1.0 - r) / 0.09, 2.0)) * hzk * 0.13 * uRim;
+    if (uTintedGlass) {
+      float lightAngle = dot(pc, vec2(-0.6, 0.8));
+      float top = smoothstep(-0.75, 0.85, lightAngle);
+      vec3 body = mix(uGlassTint, vec3(1.0, 0.985, 0.96), mix(0.14, 0.66, top));
+      float edge = smoothstep(0.62, 1.0, r);
+      body = mix(body, uGlassTint, edge * 0.28);
+      float luminous = 1.0 - exp(-2.1 * max(col.r, max(col.g, col.b)));
+      vec3 luminousBand = clamp(grade(col) * 1.14 + body * 0.42, 0.0, 1.0);
+      vec3 orb = uLight > 0.5 ? lightInk(L, halo, body) : mix(body, luminousBand, luminous);
+      float reflect = exp(-pow((r - 0.935) / 0.045, 2.0)) *
+        pow(max(0.0, dot(d, vec2(-0.6, 0.8))), 3.5);
+      orb = mix(orb, vec3(1.0, 0.995, 0.97), clamp((reflect * 0.65 + ring * key + haze) * uRim, 0.0, 0.85));
+      float alpha = clamp((1.0 - rho) / px + 0.5, 0.0, 1.0) *
+        (0.82 + 0.14 * luminous) * appear * uOpacity;
+      fragColor = vec4(clamp(orb, 0.0, 1.0) * alpha, alpha);
+      return;
+    }
     vec3 orb;
     if (uLight > 0.5) {
       float lz = dot(d * r, vec2(-0.55, 0.83));
@@ -397,6 +431,8 @@ export default function Strands({
   opacity = 1,
   scale = 1,
   glass = true,
+  glassTint,
+  pluck = false,
   refraction = 1,
   dispersion = 1,
   glassSize = 1,
@@ -413,6 +449,7 @@ export default function Strands({
   style
 }: StrandsProps) {
   const containerRef = useRef<HTMLDivElement>(null);
+  const refreshRef = useRef<(() => void) | null>(null);
   const propsRef = useRef<StrandsConfig>({} as StrandsConfig);
   propsRef.current = {
     colors,
@@ -430,6 +467,8 @@ export default function Strands({
     opacity,
     scale,
     glass,
+    glassTint,
+    pluck,
     refraction,
     dispersion,
     glassSize,
@@ -476,11 +515,14 @@ export default function Strands({
       'uSaturation',
       'uScale',
       'uGlass',
+      'uGlassTint',
+      'uTintedGlass',
       'uRadius',
       'uRefraction',
       'uDispersion',
       'uRim',
       'uLean',
+      'uPluck',
       'uIntro',
       'uPulse',
       'uLight',
@@ -517,6 +559,9 @@ export default function Strands({
       burst: 0,
       lean: [0, 0] as number[],
       leanTarget: [0, 0] as number[],
+      pluck: [0, 0, 0] as [number, number, number],
+      pluckTarget: [0, 0, 0] as [number, number, number],
+      press: null as { id: number; x: number; y: number } | null,
       pulse: 0,
       pulseV: 0,
       introStart: -1,
@@ -529,6 +574,8 @@ export default function Strands({
       height: 0,
       speechT: 0,
       paletteKey: '',
+      tintKey: '',
+      tint: [1, 1, 1] as [number, number, number],
       palette: { flat: new Float32Array(MAX_COLORS * 3), count: 1 }
     };
 
@@ -591,11 +638,18 @@ export default function Strands({
       gl.uniform1f(loc.uSaturation, p.saturation);
       gl.uniform1f(loc.uScale, Math.max(0.05, p.scale));
       gl.uniform1f(loc.uGlass, p.glass ? 1 : 0);
+      if (p.glassTint && p.glassTint !== st.tintKey) {
+        st.tintKey = p.glassTint;
+        st.tint = hexToRgb(p.glassTint);
+      }
+      gl.uniform1i(loc.uTintedGlass, p.glassTint ? 1 : 0);
+      gl.uniform3f(loc.uGlassTint, ...st.tint);
       gl.uniform1f(loc.uRadius, 0.42 * p.glassSize);
       gl.uniform1f(loc.uRefraction, p.refraction);
       gl.uniform1f(loc.uDispersion, p.dispersion);
       gl.uniform1f(loc.uRim, p.rim);
       gl.uniform2f(loc.uLean, st.lean[0], st.lean[1]);
+      gl.uniform3f(loc.uPluck, ...st.pluck);
       gl.uniform1f(loc.uIntro, st.intro);
       gl.uniform1f(loc.uPulse, st.pulse);
       gl.uniform1f(loc.uLight, p.lightMode ? 1 : 0);
@@ -619,12 +673,16 @@ export default function Strands({
       }
       st.hover += (st.hoverTarget - st.hover) * (1 - Math.exp(-dt / (st.hoverTarget > st.hover ? 0.25 : 0.6)));
       for (let i = 0; i < 2; i++) st.lean[i] += (st.leanTarget[i] - st.lean[i]) * (1 - Math.exp(-dt / 0.35));
+      const pluckRate = reduced ? 1 : 1 - Math.exp(-dt / (st.press ? 0.035 : 0.16));
+      for (let i = 0; i < 3; i++) st.pluck[i] += (st.pluckTarget[i] - st.pluck[i]) * pluckRate;
       st.pulseV += (-170 * st.pulse - 14 * st.pulseV) * dt;
       st.pulse += st.pulseV * dt;
       st.burst *= Math.exp(-dt / 0.45);
       if (p.listening && !reduced) st.speechT += dt;
-      const voice =
-        typeof p.level === 'number' ? clamp(p.level, 0, 1) : p.listening && !reduced ? speech(st.speechT) : 0;
+      const audioLevel = typeof p.level === 'function' ? p.level() : p.level;
+      const voice = typeof audioLevel === 'number'
+        ? clamp(audioLevel, 0, 1)
+        : p.listening && !reduced ? speech(st.speechT) : 0;
       const target = Math.min(1.2, Math.max(clamp(p.energy, 0, 1), voice) + st.hover * 0.18 + st.burst);
       st.activity += (target - st.activity) * (1 - Math.exp(-dt / (target > st.activity ? 0.12 : 0.4)));
       st.pace += (Math.min(1, st.activity) - st.pace) * (1 - Math.exp(-dt / 0.8));
@@ -658,36 +716,73 @@ export default function Strands({
     };
 
     const onMove = (e: PointerEvent) => {
-      if (!propsRef.current.interactive) return;
+      const p = propsRef.current;
+      if (!p.interactive || (st.press && st.press.id !== e.pointerId)) return;
       const [x, y] = local(e);
       st.hoverTarget = clamp(1.6 - Math.hypot(x, y), 0, 1);
       st.leanTarget = [clamp(x, -1.2, 1.2) * 0.8, clamp(-y, -1.2, 1.2) * 0.8];
+      if (st.press) {
+        const radius = 0.84 * p.glassSize;
+        st.pluckTarget = [
+          clamp(x / radius, -0.82, 0.82),
+          clamp((st.press.y - y) / radius, -0.96, 0.96),
+          clamp((x - st.press.x) / radius, -0.96, 0.96)
+        ];
+      }
       wake();
     };
 
     const onLeave = () => {
+      if (st.press) return;
       st.hoverTarget = 0;
       st.leanTarget = [0, 0];
       wake();
     };
 
-    const onDown = () => {
-      if (!propsRef.current.clickPulse) return;
-      st.pulseV += 5;
-      st.burst = Math.min(1.2, st.burst + 0.9);
+    const onDown = (e: PointerEvent) => {
+      const p = propsRef.current;
+      if (p.pluck && p.interactive && e.isPrimary && e.button === 0 && !st.press) {
+        const [x, y] = local(e);
+        st.press = { id: e.pointerId, x, y };
+        st.pluck[0] = clamp(x / (0.84 * p.glassSize), -0.82, 0.82);
+        st.pluckTarget = [st.pluck[0], 0, 0];
+        container.setPointerCapture(e.pointerId);
+        container.dataset.dragging = '';
+      }
+      if (p.clickPulse) {
+        st.pulseV += 5;
+        st.burst = Math.min(1.2, st.burst + 0.9);
+      }
       wake();
     };
+
+    const onRelease = (e: PointerEvent) => {
+      if (st.press?.id !== e.pointerId) return;
+      st.press = null;
+      st.pluckTarget = [st.pluckTarget[0], 0, 0];
+      delete container.dataset.dragging;
+      onLeave();
+    };
+
+    const refresh = () => {
+      draw();
+      wake();
+    };
+    refreshRef.current = refresh;
+    query?.addEventListener('change', refresh);
 
     const onLost = (e: Event) => {
       e.preventDefault();
       st.lost = true;
+      canvas.hidden = true;
       if (st.raf) cancelAnimationFrame(st.raf);
       st.raf = 0;
     };
 
     const onRestored = () => {
-      st.lost = false;
-      if (setup()) wake();
+      st.lost = !setup();
+      canvas.hidden = st.lost;
+      if (!st.lost) wake();
     };
 
     canvas.addEventListener('webglcontextlost', onLost);
@@ -695,6 +790,9 @@ export default function Strands({
     container.addEventListener('pointermove', onMove);
     container.addEventListener('pointerleave', onLeave);
     container.addEventListener('pointerdown', onDown);
+    container.addEventListener('pointerup', onRelease);
+    container.addEventListener('pointercancel', onRelease);
+    container.addEventListener('lostpointercapture', onRelease);
 
     const resizeObserver = new ResizeObserver(() => {
       resize();
@@ -724,6 +822,11 @@ export default function Strands({
       container.removeEventListener('pointermove', onMove);
       container.removeEventListener('pointerleave', onLeave);
       container.removeEventListener('pointerdown', onDown);
+      container.removeEventListener('pointerup', onRelease);
+      container.removeEventListener('pointercancel', onRelease);
+      container.removeEventListener('lostpointercapture', onRelease);
+      refreshRef.current = null;
+      query?.removeEventListener('change', refresh);
       document.removeEventListener('visibilitychange', onVisibility);
       resizeObserver.disconnect();
       intersection?.disconnect();
@@ -733,6 +836,9 @@ export default function Strands({
       canvas.remove();
     };
   }, []);
+
+  // A theme switch can occur after the reduced-motion loop has settled.
+  useEffect(() => { refreshRef.current?.(); }, [glassTint, lightMode, colors]);
 
   return <div ref={containerRef} className={`strands-container ${className}`.trim()} style={style} />;
 }

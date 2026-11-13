@@ -264,6 +264,7 @@ test('changing repair region commits the previous preview before moving the acti
       activeRepairId: 'first',
       repairMode: 'retouch',
       dimensions: { width: 640, height: 480 },
+      brushSettings: { radius: 0.05, feather: 0.65, opacity: 1, mode: 'add' },
       commitCurrent(label: string) {
         actions.push(['commit', label]);
       },

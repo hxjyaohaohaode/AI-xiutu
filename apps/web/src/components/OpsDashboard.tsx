@@ -1,3 +1,4 @@
+import { ThemeSwitch } from './ThemeSwitch';
 import { getLocale, t } from '../i18n';
 import { ChoiceSelect } from './ChoiceSelect';
 import { secureUuid } from '../lib/uuid';
@@ -75,13 +76,26 @@ type ProviderCatalogItem = {
 };
 type Plan = {
   id: string;
+  version: number;
   name: string;
   units: number;
   priceCents: number;
   expiresAfterDays: number | null;
   active: boolean;
-  version?: number;
+  kind: 'credits' | 'subscription';
+  description: string;
+  benefits: string[];
 };
+const emptyPlan = {
+  name: '',
+  units: 1000,
+  priceCents: 0,
+  expiresAfterDays: null,
+  active: false,
+  kind: 'credits',
+  description: '',
+  benefits: [],
+} satisfies Omit<Plan, 'id' | 'version'>;
 type Config = {
   brand: PublicConfig['brand'];
   registrationMode: 'open' | 'invite';
@@ -154,13 +168,9 @@ export function OpsDashboard({
   const [spaceId, setSpaceId] = useState('');
   const [units, setUnits] = useState(200);
   const [adjustKey, setAdjustKey] = useState(() => secureUuid());
-  const [planDraft, setPlanDraft] = useState<Omit<Plan, 'id'>>({
-    name: '',
-    units: 1000,
-    priceCents: 990,
-    expiresAfterDays: null,
-    active: false,
-  });
+  const [planDraft, setPlanDraft] = useState<Omit<Plan, 'id' | 'version'>>(emptyPlan);
+  const [planEditing, setPlanEditing] = useState<Pick<Plan, 'id' | 'version'> | null>(null);
+  const [planBenefits, setPlanBenefits] = useState('');
   const [modelEdit, setModelEdit] = useState<(ModelConfig & { baseId?: string }) | null>(null);
   const modelFields = modelEdit
     ? opsModelFields(
@@ -361,6 +371,7 @@ export function OpsDashboard({
       >
         <h1 className="sr-only">{t(tabs.find((item) => item.id === tab)?.label ?? '')}</h1>
         <div className="ops-content-actions">
+          <ThemeSwitch />
           <IconButton label={t('刷新管理数据')} onClick={() => void load()}>
             <ArrowClockwise size={21} />
           </IconButton>
@@ -772,29 +783,12 @@ export function OpsDashboard({
                       <span className="soft-tag">
                         {plan.active ? t('可用目录项') : t('未上架')}
                       </span>
-                      <button
-                        className="text-button"
-                        disabled={busy || reason.trim().length < 3}
-                        onClick={() =>
-                          void action(
-                            () =>
-                              api(
-                                `/ops/plans/${plan.id}`,
-                                jsonRequest('PATCH', {
-                                  name: plan.name,
-                                  units: plan.units,
-                                  priceCents: plan.priceCents,
-                                  expiresAfterDays: plan.expiresAfterDays,
-                                  active: !plan.active,
-                                  reason,
-                                }),
-                              ),
-                            t('套餐新版本已保存'),
-                          )
-                        }
-                      >
-                        {plan.active ? t('停售') : t('启用目录')}
-                      </button>
+                      <button className="text-button" disabled={busy} onClick={() => {
+                        const { id, version, name, units, priceCents, expiresAfterDays, active, kind, description, benefits } = plan;
+                        setPlanEditing({ id, version });
+                        setPlanDraft({ name, units, priceCents, expiresAfterDays, active, kind, description, benefits });
+                        setPlanBenefits(benefits.join('\n'));
+                      }}>{t('编辑套餐')}</button>
                     </div>
                   ))}
                   {!plans.length && (
@@ -805,13 +799,18 @@ export function OpsDashboard({
                   className="surface ops-section stack-form"
                   onSubmit={(e) => {
                     e.preventDefault();
-                    void action(
-                      () => api('/ops/plans', jsonRequest('POST', { ...planDraft, reason })),
-                      t('套餐目录已创建'),
-                    );
+                    void action(async () => {
+                      const body = { ...planDraft, benefits: planBenefits.split(/\r?\n/).map((line) => line.trim()).filter(Boolean), reason };
+                      await (planEditing
+                        ? api(`/ops/plans/${planEditing.id}`, jsonRequest('PATCH', { ...body, expectedVersion: planEditing.version }))
+                        : api('/ops/plans', jsonRequest('POST', body)));
+                      setPlanEditing(null);
+                      setPlanDraft(emptyPlan);
+                      setPlanBenefits('');
+                    }, t(planEditing ? '套餐新版本已保存' : '套餐目录已创建'));
                   }}
                 >
-                  <h2>{t('创建权益套餐')}</h2>
+                  <h2>{t(planEditing ? '编辑权益套餐' : '创建权益套餐')}</h2>
                   <label>
                     {t('套餐名称')}
                     <input
@@ -838,7 +837,7 @@ export function OpsDashboard({
                       {t('价格（元）')}
                       <input
                         type="number"
-                        min="0.01"
+                        min="0"
                         step="0.01"
                         value={planDraft.priceCents / 100}
                         onChange={(e) =>
@@ -865,13 +864,37 @@ export function OpsDashboard({
                       />
                     </label>
                   </div>
+                  <div className="field-grid">
+                    <label>{t('套餐类型')}
+                      <select value={planDraft.kind} onChange={(e) => setPlanDraft({ ...planDraft, kind: e.target.value as Plan['kind'] })}>
+                        <option value="credits">{t('充值')}</option>
+                        <option value="subscription">{t('订阅')}</option>
+                      </select>
+                    </label>
+                    <label className="switch-row"><input type="checkbox" checked={planDraft.active}
+                      onChange={(e) => setPlanDraft({ ...planDraft, active: e.target.checked })} />
+                      {t('在用户端展示')}
+                    </label>
+                  </div>
+                  <label>{t('套餐说明')}
+                    <textarea rows={2} value={planDraft.description} maxLength={400}
+                      onChange={(e) => setPlanDraft({ ...planDraft, description: e.target.value })} />
+                  </label>
+                  <label>{t('套餐权益（每行一项）')}
+                    <textarea rows={3} value={planBenefits} maxLength={1212}
+                      onChange={(e) => setPlanBenefits(e.target.value)} />
+                  </label>
                   {reasonField}
-                  <button
-                    className="button button-primary"
-                    disabled={busy || reason.trim().length < 3}
-                  >
-                    {t('创建未上架套餐')}
-                  </button>
+                  <div className="dialog-actions">
+                    {planEditing && <button type="button" className="button button-secondary" disabled={busy} onClick={() => {
+                      setPlanEditing(null);
+                      setPlanDraft(emptyPlan);
+                      setPlanBenefits('');
+                    }}>{t('取消编辑')}</button>}
+                    <button className="button button-primary" disabled={busy || reason.trim().length < 3}>
+                      {t(planEditing ? '保存套餐' : '创建套餐')}
+                    </button>
+                  </div>
                 </form>
               </>
             )}

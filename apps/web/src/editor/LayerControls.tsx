@@ -1,4 +1,4 @@
-import { lazy, Suspense, useEffect, useMemo } from 'react';
+import { Fragment, lazy, Suspense, useEffect, useMemo } from 'react';
 import { t } from '../i18n';
 import { MotionDetails } from '../motion/Presence';
 import { ChoiceSelect } from '../components/ChoiceSelect';
@@ -17,6 +17,7 @@ import {
   ShieldCheckered,
   Eraser,
 } from '../components/ControlGlyph';
+import { PaintBrush, Stamp, Stack } from '@phosphor-icons/react';
 import {
   BLEND_MODES_V3,
   MAX_V3_PAINT_LAYERS,
@@ -36,12 +37,11 @@ import { ColorPicker } from '../components/ColorPicker';
 import { IconButton } from '../components/Ui';
 import { ParameterShelf, type ShelfControl } from './ParameterShelf';
 import { MaskControls } from './MaskControls';
-import { currentV3, newMask, rgbaHex, hexRgba, type InspectorController } from './advanced-model';
+import { currentV3, manualPaintOrigin, newMask, paintLayerInMode, rgbaHex, hexRgba, type InspectorController } from './advanced-model';
 import { portraitSelectionMatchesSource } from './portrait-selection';
 import { editorFlowText } from './flow-copy';
 import {
   MakeupBrushRail,
-  MakeupParameterRail,
   MakeupSwatches,
   PortraitModeSwitch,
   makeupBrushes,
@@ -127,22 +127,27 @@ function shifted<T>(items: T[], index: number, direction: number): T[] {
 }
 export function PaintControls({
   controller,
+  makeup = false,
   headerTarget,
   pickedColor,
   onSample,
   sampling,
+  compact = false,
+  canvasOverlay,
 }: {
   controller: InspectorController;
+  makeup?: boolean;
   headerTarget?: HTMLElement | null;
   pickedColor: string;
   onSample?: () => void;
   sampling?: boolean;
+  compact?: boolean;
+  canvasOverlay?: HTMLElement | null;
 }) {
   const { editor, apply, report } = controller,
     recipe = currentV3(editor);
-  const layer =
-    recipe.paintLayers.find((item) => item.id === editor.activePaintLayerId) ??
-    recipe.paintLayers.at(-1);
+  const layers = recipe.paintLayers.filter((layer) => paintLayerInMode(layer, makeup));
+  const layer = layers.find((item) => item.id === editor.activePaintLayerId) ?? layers.at(-1);
   const [pixelX, setPixelX] = useState(0),
     [pixelY, setPixelY] = useState(0),
     [path, setPath] = useState<number[]>([]);
@@ -150,8 +155,8 @@ export function PaintControls({
     height = editor.dimensions?.height ?? 1,
     short = Math.min(width, height);
   const settings = editor.paintSettings;
-  const material = settings.mode === 'paint' ? settings.material : undefined;
-  const [makeupView, setMakeupView] = useState<'brush' | 'color' | 'layers'>('brush');
+  const material = makeup && settings.mode === 'paint' ? settings.material : undefined;
+  const automaticMakeup = makeup && !!settings.automaticMakeup;
   const [strokeEdit, setStrokeEdit] = useState<{
     layerId: string;
     index: number;
@@ -180,9 +185,11 @@ export function PaintControls({
   }
   function addLayer() {
     const latest = currentV3(editor),
+      id = secureUuid(),
       next: PaintLayerV3 = {
-        id: secureUuid(),
-        name: t('绘制 ') + (latest.paintLayers.length + 1),
+        id,
+        origin: manualPaintOrigin(id, makeup),
+        name: `${t(makeup ? '妆容' : '绘制')} ${layers.length + 1}`,
         enabled: true,
         opacity: 1,
         blendMode: 'normal',
@@ -198,7 +205,7 @@ export function PaintControls({
       ...previous,
       mode: 'paint',
       choosingSource: false,
-      makeupTip: tip ?? undefined,
+      makeupTip: tip,
       material: preset?.material,
       ...(tip && preset
         ? {
@@ -297,36 +304,46 @@ export function PaintControls({
     />
   );
   const makeupToolbar = (
-    <div className="makeup-toolbar">
+    makeup && !compact ? <div className="makeup-toolbar">
       {modeSwitch}
-      {!settings.automaticMakeup && material && (
-        <MakeupParameterRail<'brush' | 'color' | 'layers'>
-          label={t('手动妆容参数')}
-          value={makeupView}
-          onChange={setMakeupView}
-          labels={{ brush: '笔触', color: '颜色', layers: '图层' }}
-        />
-      )}
-    </div>
+    </div> : null
   );
+  const makeupBrushRail = makeup && (
+    <MakeupBrushRail value={material ? (settings.makeupTip ?? null) : null} onChange={selectMakeup} />
+  );
+  const PaintDetails = compact && material ? MotionDetails : Fragment;
   return (
-    <section className="advanced-tool-family" data-motion="paint-controls">
+    <section
+      className="advanced-tool-family"
+      data-motion="paint-controls"
+      data-canvas-makeup={compact && !!material ? true : undefined}
+    >
       {headerTarget ? createPortal(makeupToolbar, headerTarget) : makeupToolbar}
-      {settings.automaticMakeup ? (
+      {automaticMakeup ? (
         <AutomaticMakeupControls controller={controller} />
       ) : (
         <>
-          <MakeupBrushRail
-            value={material ? (settings.makeupTip ?? null) : null}
-            onChange={selectMakeup}
-          />
+          {(!compact || !material) && makeupBrushRail}
           {material && (
             <>
-              {makeupView === 'brush' && (
+              {(
                 <div className="makeup-brush-settings">
                   <ParameterShelf
                     label={t('妆容笔')}
+                    controlMenu={compact}
                     controls={[
+                      {
+                        id: 'makeup-opacity',
+                        glyph: 'opacity',
+                        label: t(compact ? '透明度' : '笔触透明度'),
+                        value: settings.opacity * 100,
+                        min: 0,
+                        max: 100,
+                        step: 0.1,
+                        unit: '%',
+                        onChange: (n) =>
+                          editor.setPaintSettings((s) => ({ ...s, opacity: n / 100 })),
+                      },
                       {
                         id: 'makeup-diameter',
                         glyph: 'diameter',
@@ -338,18 +355,6 @@ export function PaintControls({
                         unit: 'px',
                         onChange: (n) =>
                           editor.setPaintSettings((s) => ({ ...s, radius: n / short / 2 })),
-                      },
-                      {
-                        id: 'makeup-opacity',
-                        glyph: 'opacity',
-                        label: t('笔触透明度'),
-                        value: settings.opacity * 100,
-                        min: 0,
-                        max: 100,
-                        step: 0.1,
-                        unit: '%',
-                        onChange: (n) =>
-                          editor.setPaintSettings((s) => ({ ...s, opacity: n / 100 })),
                       },
                       {
                         id: 'makeup-saturation',
@@ -383,11 +388,14 @@ export function PaintControls({
                   />
                 </div>
               )}
-              {makeupView === 'color' && (
+              {compact && makeupBrushRail}
+              {(
                 <MakeupSwatches
-                  key={settings.makeupTip}
                   brush={settings.makeupTip ?? 'base'}
                   color={rgbaHex(settings.color)}
+                  canvasOverlay={canvasOverlay}
+                  onSample={onSample}
+                  sampling={sampling}
                   onColor={(color) =>
                     editor.setPaintSettings((previous) => {
                       const next = hexRgba(color);
@@ -413,16 +421,18 @@ export function PaintControls({
               )}
             </>
           )}
-          {(!material || makeupView === 'layers') && (
-            <>
+          <PaintDetails>
+              {compact && material && (
+                <summary><Stack size={15} aria-hidden="true" /> {t('图层与笔画')}</summary>
+              )}
               <div className="advanced-row">
                 <span>
-                  {t('绘制图层')}
-                  {recipe.paintLayers.length} / {MAX_V3_PAINT_LAYERS}
+                  {t('绘制图层')} <small>{layers.length}</small>
                 </span>
                 <button
                   className="text-button"
                   disabled={recipe.paintLayers.length >= MAX_V3_PAINT_LAYERS}
+                  title={recipe.paintLayers.length >= MAX_V3_PAINT_LAYERS ? t('已达设备处理上限') : undefined}
                   onClick={addLayer}
                 >
                   <Plus size={16} />
@@ -430,7 +440,7 @@ export function PaintControls({
                 </button>
               </div>
               <div className="advanced-object-list" aria-label={t('绘制图层')}>
-                {recipe.paintLayers.map((item, index) => (
+                {layers.map((item) => (
                   <div key={item.id} className="advanced-row" data-selected={item.id === layer?.id}>
                     <button
                       className="object-name"
@@ -471,16 +481,15 @@ export function PaintControls({
                   </div>
                 ))}
               </div>
-              {layer && (
-                <>
+              <>
                   <div className="tonal-tabs" aria-label={t('绘制模式')}>
                     {(
                       [
-                        ['paint', t('画笔')],
-                        ['erase', t('橡皮')],
-                        ['clone', t('克隆')],
+                        ['paint', t('画笔'), PaintBrush],
+                        ['erase', t('橡皮'), Eraser],
+                        ['clone', t('克隆'), Stamp],
                       ] as const
-                    ).map(([mode, name]) => (
+                    ).map(([mode, name, Icon]) => (
                       <button
                         key={mode}
                         aria-pressed={settings.mode === mode}
@@ -488,7 +497,7 @@ export function PaintControls({
                           editor.setPaintSettings({ ...settings, mode, choosingSource: false })
                         }
                       >
-                        {name}
+                        <Icon size={16} aria-hidden />{name}
                       </button>
                     ))}
                   </div>
@@ -533,7 +542,7 @@ export function PaintControls({
                         {
                           id: 'layer-opacity',
                           label: t('图层透明度'),
-                          value: layer.opacity * 100,
+                          value: (layer?.opacity ?? 1) * 100,
                           min: 0,
                           max: 100,
                           step: 0.1,
@@ -541,7 +550,7 @@ export function PaintControls({
                           onChange: (n) => patch({ opacity: n / 100 }, t('调整图层透明度'), false),
                         },
                       ] satisfies ShelfControl[]
-                    ).filter((control) => !material || control.id === 'layer-opacity')}
+                    ).filter((control) => control.id === 'layer-opacity' ? Boolean(layer) : !material)}
                     onCommit={(name) => editor.commitCurrent(t('调整{v0}', { v0: t(name) }))}
                     onCancel={editor.cancelPreview}
                   />
@@ -615,6 +624,9 @@ export function PaintControls({
                       </p>
                     </>
                   )}
+              </>
+              {layer && (
+                <>
                   <BlendPicker
                     value={layer.blendMode}
                     onChange={(blendMode) => patch({ blendMode }, t('切换绘制混合模式'))}
@@ -919,20 +931,41 @@ export function PaintControls({
                   </small>
                 </>
               )}
-            </>
-          )}
+          </PaintDetails>
         </>
       )}
     </section>
   );
 }
 
-export function LiquifyControls({ controller }: { controller: InspectorController }) {
+export function LiquifyControls({
+  controller,
+  compactPortrait = false,
+}: {
+  controller: InspectorController;
+  compactPortrait?: boolean;
+}) {
   const { editor, apply, report } = controller,
     recipe = currentV3(editor),
     settings = editor.warpSettings;
   const short = Math.min(editor.dimensions?.width ?? 1, editor.dimensions?.height ?? 1);
   const maxDiameter = Math.max(1, Math.min(1600, short * 0.65));
+  const warpVisibility = (
+    <label className="compact-check">
+      <input
+        type="checkbox"
+        checked={recipe.warp.enabled}
+        onChange={(event) =>
+          apply(
+            { ...recipe, warp: { ...recipe.warp, enabled: event.target.checked } },
+            t('切换液化效果'),
+            true,
+          )
+        }
+      />
+      {t('显示液化效果')}
+    </label>
+  );
   async function protectBackground() {
     const before = editor.getSourceIdentity();
     const frame = editor.getSourceFrame();
@@ -973,7 +1006,7 @@ export function LiquifyControls({ controller }: { controller: InspectorControlle
   }
   return (
     <section className="advanced-tool-family" data-motion="warp-controls">
-      <div className="tonal-tabs" aria-label={t('液化方式')}>
+      {!compactPortrait && <div className="tonal-tabs" aria-label={t('液化方式')}>
         {(
           [
             ['push', t('推动')],
@@ -998,8 +1031,8 @@ export function LiquifyControls({ controller }: { controller: InspectorControlle
             {label}
           </button>
         ))}
-      </div>
-      <div className="makeup-parameter-tabs portrait-manual-rail">
+      </div>}
+      {!compactPortrait && <div className="makeup-parameter-tabs portrait-manual-rail">
         <RubberSegment<'free' | 'horizontal' | 'vertical'>
           label={t('拉伸方向')}
           value={settings.axis ?? 'free'}
@@ -1033,9 +1066,11 @@ export function LiquifyControls({ controller }: { controller: InspectorControlle
             ]}
           />
         )}
-      </div>
+      </div>}
       <ParameterShelf
-        label={t('液化画笔')}
+        label={t(compactPortrait ? '拉伸笔参数' : '液化画笔')}
+        controlMenu={compactPortrait}
+        initialControl={compactPortrait ? 'strength' : undefined}
         controls={[
           {
             id: 'radius',
@@ -1075,22 +1110,10 @@ export function LiquifyControls({ controller }: { controller: InspectorControlle
           },
         ]}
       />
-      <label className="compact-check">
-        <input
-          type="checkbox"
-          checked={recipe.warp.enabled}
-          onChange={(event) =>
-            apply(
-              { ...recipe, warp: { ...recipe.warp, enabled: event.target.checked } },
-              t('切换液化效果'),
-              true,
-            )
-          }
-        />
-        {t('显示液化效果')}
-      </label>
+      {!compactPortrait && warpVisibility}
       <MotionDetails className="advanced-disclosure">
         <summary>{t('背景与局部保护')}</summary>
+        {compactPortrait && warpVisibility}
         <div className="advanced-row">
           <button
             className="text-button"
@@ -1216,24 +1239,27 @@ function LayerPreviews({ layers, files, active, select }: {
     return src ? [{ ...layer, src }] : [];
   });
   if (!cards.length) return null;
+  const caption = layers.find(({ id }) => id === active)?.name;
   return <div className="layer-preview-stack" aria-label={t('图层预览')}>
     <Suspense fallback={null}>
-      <BounceCards images={cards.map(({ src, name }) => ({ src, alt: name }))} cardSize={60}
-        spread={Math.min(36, 153 / Math.max(1, cards.length - 1))} rotation={9} pushDistance={8}
-        enableHover radius={9} borderColor="var(--surface)" borderWidth={2}
+      <BounceCards images={cards.map(({ src, name }) => ({ src, alt: name }))} cardSize={58}
+        containerWidth={185} containerHeight={76} animationDelay={0}
+        spread={Math.min(36, 102 / Math.max(1, cards.length - 1))} rotation={9} pushDistance={8}
+        enableHover radius={7} borderColor="var(--surface)" borderWidth={2}
         onCardClick={(index) => { if (cards[index]) select(cards[index]!.id); }}
       />
     </Suspense>
-    <small>{layers.find(({ id }) => id === active)?.name}</small>
+    {caption && <small>{caption}</small>}
   </div>;
 }
 
-export function ImageLayerControls({ controller }: { controller: InspectorController }) {
+export function ImageLayerControls({ controller, onFlatten }: { controller: InspectorController; onFlatten?: () => Promise<void> }) {
   const { editor, apply, report } = controller,
     recipe = currentV3(editor);
   const input = useRef<HTMLInputElement>(null),
     [loading, setLoading] = useState(false),
     [path, setPath] = useState<number[]>([]);
+  const [flattening, setFlattening] = useState(false);
   const layerFiles = useMemo(() => editor.getLayerFiles(), [editor.getLayerFiles, editor.layerImages]);
   const layer =
     recipe.imageLayers.find((p) => p.id === editor.activeImageLayerId) ?? recipe.imageLayers.at(-1);
@@ -1311,9 +1337,6 @@ export function ImageLayerControls({ controller }: { controller: InspectorContro
           {loading ? t('导入中') : t('添加图片')}
         </button>
       </div>
-      <p className="control-note">
-        {t('每层保留自己的原图、范围、混合与位置。AI 候选也可在结果区明确选择“作为合成图层”。')}
-      </p>
       <LayerPreviews layers={recipe.imageLayers} files={layerFiles} active={layer?.id}
         select={(id) => { editor.setActiveImageLayerId(id); setPath([]); }} />
       <div className="advanced-object-list" aria-label={t('合成图层')}>
@@ -1350,6 +1373,14 @@ export function ImageLayerControls({ controller }: { controller: InspectorContro
           </div>
         ))}
       </div>
+      {onFlatten && (recipe.imageLayers.length > 0 || recipe.paintLayers.some(({ strokes }) => strokes.length > 0)) && (
+        <button type="button" className="text-button layer-flatten" disabled={flattening} onClick={async () => {
+          setFlattening(true);
+          try { await onFlatten(); }
+          catch (error) { report(errorMessage(error)); }
+          finally { setFlattening(false); }
+        }}><Stack size={16} />{t(flattening ? '正在合并图层' : '合并为新图片')}</button>
+      )}
       {layer && (
         <>
           <ParameterShelf

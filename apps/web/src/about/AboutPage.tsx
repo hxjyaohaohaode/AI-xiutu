@@ -1,9 +1,14 @@
-import { OpeningEffects, EditEffects, PortraitOrbit, LayerEffects, AIExamples, AssistantVoiceStory, TeamReviewStory, LibraryEffects, DeliveryEffects } from './AboutEffects';
-import { useEffect, useRef, useState } from 'react';
+import {
+  OpeningEffects, OverviewCursor, EditEffects, PortraitOrbit, LayerEffects, AIExamples,
+  AssistantVoiceStory, TeamReviewStory, LibraryEffects, DeliveryEffects, reviewCapture,
+} from './AboutEffects';
+import { useContext, useEffect, useRef, useState } from 'react';
 import { ArrowDown, ArrowUp, ArrowUpRight, ArrowClockwise } from '@phosphor-icons/react';
 import { useLocale } from '../i18n';
 import { LanguageSelect } from '../i18n/LanguageSelect';
 import { BrandMark } from '../components/BrandMark';
+import { ThemeContext, ThemeSwitch } from '../components/ThemeSwitch';
+import { aboutDetails } from './overview-details';
 import { StudioGlyph, type StudioGlyphName } from '../components/StudioGlyph';
 import { DEFAULT_BRAND, brandLogoUrl } from '../lib/brand';
 import type { PublicConfig } from '../lib/types';
@@ -15,14 +20,14 @@ import { getSampleImage, type SampleSettings } from './sample-settings';
 export const DEMO_IMAGE = getSampleImage();
 export type AboutIntent = 'login' | 'register' | 'studio' | 'sample';
 
+const captureNames: Partial<Record<OverviewScreenName, string>> = {
+  layers: 'sketch',
+};
 const mobileScreens: Partial<Record<OverviewScreenName, string>> = {
   workspace: 'phone',
   local: 'local-phone',
-  portrait: 'portrait-phone',
-  layers: 'layers-phone',
-  library: 'library-phone',
   collaboration: 'collaboration-phone',
-  assistant: 'assistant-phone',
+  library: 'library-phone',
   delivery: 'delivery-phone',
 };
 
@@ -40,6 +45,8 @@ function ProductScreen({
 }) {
   const locale = useLocale();
   const c = overviewCopy(locale);
+  const theme = useContext(ThemeContext)?.theme ?? 'light';
+  const screen = captureNames[name] ?? name;
   const [failed, setFailed] = useState(false);
   const [retry, setRetry] = useState(0);
   const phone = name === 'phone';
@@ -48,7 +55,7 @@ function ProductScreen({
   useEffect(() => {
     setFailed(false);
     setRetry(0);
-  }, [name, locale]);
+  }, [name, locale, theme]);
   return (
     <figure
       className={'overview-screen ' + (phone ? 'overview-screen-phone ' : '') + className}
@@ -59,7 +66,7 @@ function ProductScreen({
         {mobile && (
           <source
             media="(width < 760px)"
-            srcSet={'/about/' + mobile + '-' + locale + '.webp' + suffix}
+            srcSet={reviewCapture(mobile + '-' + locale, theme) + suffix}
             width={390}
             height={844}
           />
@@ -67,14 +74,14 @@ function ProductScreen({
         {responsive && name === 'workspace' && (
           <source
             media="(min-width: 760px) and (max-width: 1100px)"
-            srcSet={'/about/tablet-' + locale + '.webp' + suffix}
+            srcSet={reviewCapture('tablet-' + locale, theme) + suffix}
             width={1024}
             height={768}
           />
         )}
         <img
-          key={name + locale + retry}
-          src={'/about/' + name + '-' + locale + '.webp' + suffix}
+          key={name + locale + theme + retry}
+          src={reviewCapture(screen + '-' + locale, theme) + suffix}
           alt={c.alts[name]}
           width={phone ? 390 : name === 'tablet' ? 1024 : 1440}
           height={phone ? 844 : name === 'tablet' ? 768 : 960}
@@ -147,6 +154,8 @@ export function AboutPage({
   const locale = useLocale();
   const c = overviewCopy(locale);
   const story = overviewStories(locale);
+  const details = aboutDetails(locale);
+  const theme = useContext(ThemeContext)?.theme ?? 'light';
   const brand = config?.brand.name || DEFAULT_BRAND;
   const logo = brandLogoUrl(config?.brand);
   const root = useRef<HTMLDivElement>(null);
@@ -166,6 +175,7 @@ export function AboutPage({
       lang={locale}
       data-locale={locale}
     >
+      <OverviewCursor scope={root} theme={theme} />
       <a className="overview-skip" href="#about-content">
         {c.skip}
       </a>
@@ -180,6 +190,7 @@ export function AboutPage({
           <a href="#together">{c.nav[2]}</a>
         </nav>
         <div className="overview-header-actions">
+          <ThemeSwitch />
           <LanguageSelect compact />
           <button type="button" className="overview-sign-in" onClick={() => onEnter('login')}>
             {c.login}
@@ -197,7 +208,7 @@ export function AboutPage({
           data-product-section="hero"
           aria-labelledby="about-title"
         >
-          <OpeningEffects />
+          <OpeningEffects theme={theme} />
           <div className="overview-container overview-hero-heading">
             <div>
               <h1 id="about-title">
@@ -235,7 +246,7 @@ export function AboutPage({
           <div className="overview-container">
             <div className="overview-section-heading">
               <div data-scroll-reveal>
-                  <h2 id="craft-title">
+                <h2 id="craft-title">
                   <Lines lines={c.craftTitle} />
                 </h2>
               </div>
@@ -247,7 +258,12 @@ export function AboutPage({
               <EditEffects labels={story} />
               <div className="overview-showcase overview-showcase-local" data-scroll-reveal>
                 <ProductScreen name="local" />
-                <span className="about-screen-caption">{story.mask}</span>
+                <div className="about-local-caption">
+                  <strong>{details.local}</strong>
+                  <dl>{details.localValues.map(([label, value]) =>
+                    <div key={label}><dt>{label}</dt><dd>{value}</dd></div>
+                  )}</dl>
+                </div>
               </div>
             </div>
             <Capabilities items={c.craftItems} icons={['light', 'curves', 'local', 'compare']} />
@@ -261,13 +277,12 @@ export function AboutPage({
           <div className="overview-container overview-split-feature">
             <div className="overview-section-copy" data-scroll-reveal>
               <h2 id="portrait-title">
-                <Lines lines={c.portraitTitle} />
+                <Lines lines={details.portraitTitle} />
               </h2>
-              <p className="overview-body">{c.portraitBody}</p>
-              <Keywords items={c.portraitItems} />
+              <p className="overview-body">{details.portraitIntro}</p>
             </div>
             <div className="overview-portrait-media" data-scroll-reveal>
-              <PortraitOrbit screen={<ProductScreen name="portrait" />} />
+              <PortraitOrbit copy={details} theme={theme} locale={locale} />
             </div>
           </div>
         </section>
@@ -279,7 +294,7 @@ export function AboutPage({
           <div className="overview-container">
             <div className="overview-section-heading">
               <div data-scroll-reveal>
-                  <h2 id="layers-title">
+                <h2 id="layers-title">
                   <Lines lines={c.layersTitle} />
                 </h2>
               </div>
@@ -289,7 +304,7 @@ export function AboutPage({
               </div>
             </div>
             <div className="overview-showcase overview-showcase-layers" data-scroll-reveal>
-              <LayerEffects labels={story} screen={<ProductScreen name="layers" />} />
+              <LayerEffects copy={details} theme={theme} locale={locale} screen={<ProductScreen name="layers" />} />
             </div>
           </div>
         </section>
@@ -302,7 +317,7 @@ export function AboutPage({
           <div className="overview-container">
             <div className="overview-section-heading">
               <div data-scroll-reveal>
-                  <h2 id="assistant-title">
+                <h2 id="assistant-title">
                   <Lines lines={c.assistantTitle} />
                 </h2>
               </div>
@@ -310,10 +325,13 @@ export function AboutPage({
                 {c.assistantBody}
               </p>
             </div>
-            <AIExamples labels={story} />
+            <AIExamples labels={story} copy={details} />
             <section className="overview-assistant-layout about-voice-section" aria-labelledby="about-voice-title">
-              <h3 id="about-voice-title">{story.voiceTitle}</h3>
-              <AssistantVoiceStory labels={story} />
+              <header className="about-voice-heading">
+                <h3 id="about-voice-title">{story.voiceTitle}</h3>
+                <p>{details.voiceLead}</p>
+              </header>
+              <AssistantVoiceStory labels={story} copy={details} theme={theme} />
             </section>
             <div className="about-assistant-followup">
                 <ol className="overview-assistant-steps">
@@ -345,7 +363,7 @@ export function AboutPage({
           <div className="overview-container">
             <div className="overview-section-heading">
               <div data-scroll-reveal>
-                  <h2 id="together-title">
+                <h2 id="together-title">
                   <Lines lines={c.togetherTitle} />
                 </h2>
               </div>
@@ -354,25 +372,20 @@ export function AboutPage({
               </p>
             </div>
             <div className="overview-showcase overview-showcase-team" data-scroll-reveal>
-              <TeamReviewStory labels={story} />
-              <ProductScreen name="collaboration" />
+              <TeamReviewStory copy={details} theme={theme} locale={locale} />
+              <div>
+                <ProductScreen name="collaboration" />
+                <span className="about-screen-caption">{details.reviewQueue}</span>
+              </div>
             </div>
             <Capabilities
               items={c.togetherItems}
               icons={['works', 'collaborate', 'history', 'docs']}
             />
-            <div className="about-library-section">
-            <div className="overview-library-layout">
-              <div data-scroll-reveal>
-                <h3>{c.libraryTitle}</h3>
-                <p className="overview-body">{c.libraryBody}</p>
-              </div>
-              <div data-scroll-reveal>
-                <ProductScreen name="library" />
-              </div>
-            </div>
-            <LibraryEffects labels={story} locale={locale} />
-            </div>
+          </div>
+          <LibraryEffects copy={details} theme={theme} locale={locale}
+            heading={c.libraryTitle} description={c.libraryBody} screen={<ProductScreen name="library" />} />
+          <div className="overview-container">
             <div className="overview-devices">
               <div className="overview-device-copy" data-scroll-reveal>
                 <h3>{c.devicesTitle}</h3>
@@ -397,7 +410,7 @@ export function AboutPage({
           <div className="overview-container">
             <div className="overview-section-heading">
               <div data-scroll-reveal>
-                  <h2 id="delivery-title">
+                <h2 id="delivery-title">
                   <Lines lines={c.deliveryTitle} />
                 </h2>
               </div>
@@ -435,19 +448,20 @@ export function AboutPage({
         </section>
         <section className="overview-end" data-product-section="end" aria-labelledby="end-title">
           <div className="overview-container">
-            <h2 id="end-title" className="review-sr-only">{c.endTitle}</h2>
-            <div className="overview-end-flow" aria-hidden="true">
-              {[0, 1].map((copy) => (
-                <div className="overview-end-line" key={copy}>
-                  <BrandMark logoUrl={logo} /><span>{c.endTitle}</span>
-                  <BrandMark logoUrl={logo} /><span>{c.endTitle}</span>
-                </div>
-              ))}
-            </div>
+            <h2 id="end-title">{c.endTitle}</h2>
             <button type="button" className="overview-primary" onClick={open}>
               {action}
               <ArrowUpRight size={21} />
             </button>
+          </div>
+          <div className="overview-end-flow">
+            {[false, true].map((repeat) => (
+              <div className="overview-end-line" key={String(repeat)} aria-hidden={repeat || undefined}>
+                {details.closing.map((line) => (
+                  <span key={line}><BrandMark logoUrl={logo} /><span>{line}</span></span>
+                ))}
+              </div>
+            ))}
           </div>
         </section>
       </main>

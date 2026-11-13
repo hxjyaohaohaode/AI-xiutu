@@ -1,16 +1,76 @@
 import { useEffect, useLayoutEffect, useRef, useState } from 'react';
-import { CaretLeft, CaretRight } from '../components/ControlGlyph';
 import { StudioGlyph } from '../components/StudioGlyph';
-import { useReducedMotion } from '../motion/usePresence';
 import { toolGroups, type ToolGroup } from '../editor/ToolInspector';
 import { t, useI18n } from '../i18n';
-import { useDockProximity } from './useDockProximity';
 import { useKinetic } from '../motion/useKinetic';
-import { WarmTooltip } from '../components/control-motion';
+import Dock, { type DockItemData } from '../components/react-bits/Dock';
+import { adjustmentTools, retouchTools, rootTool, toolFamilyLabels } from '../editor/tool-families';
 
-export const ADJUSTMENT_GROUPS: ToolGroup[] = ['light', 'color', 'curves', 'detail'];
-export function dockTool(group: ToolGroup, compact: boolean): ToolGroup {
-  return compact && ADJUSTMENT_GROUPS.includes(group) ? 'light' : group;
+const primaryTools: readonly ToolGroup[] = ['light', 'crop', 'beauty', 'local', 'repair', 'composite'];
+
+function toolLabel(id: ToolGroup, fallback: string) {
+  return t(id === 'light' || id === 'repair' ? toolFamilyLabels[id] : fallback);
+}
+
+type ToolDockProps = {
+  group: ToolGroup;
+  inspectorOpen: boolean;
+  aiOpen: boolean;
+  compact: boolean;
+  theme: 'light' | 'dark';
+  onTool: (group: ToolGroup) => void;
+  onAI: () => void;
+};
+
+export function ToolDock(props: ToolDockProps) {
+  const { locale } = useI18n();
+  const { group, compact, inspectorOpen, aiOpen, theme, onTool, onAI } = props;
+  if (compact) return <TouchToolDock {...props} />;
+  const active = rootTool(group);
+  const items: DockItemData[] = primaryTools.map((id) => {
+    const tool = toolGroups.find((item) => item.id === id)!;
+    const siblings = id === 'light' ? adjustmentTools : id === 'repair' ? retouchTools : null;
+    return {
+      id,
+      icon: <StudioGlyph name={id === 'light' ? 'editor' : id} size={23} />,
+      label: toolLabel(id, tool.label),
+      active: inspectorOpen && active === id,
+      onClick: () => onTool(active === id ? group : id),
+      menu: siblings?.map((child) => {
+        const descriptor = toolGroups.find((item) => item.id === child)!;
+        return {
+          label: t(descriptor.label),
+          icon: descriptor.icon,
+          checked: group === child && inspectorOpen,
+          onClick: () => { if (!inspectorOpen || group !== child) onTool(child); },
+        };
+      }),
+    };
+  });
+  items.push({ separator: true }, {
+    id: 'ai',
+    icon: <StudioGlyph name="ai" size={23} />,
+    label: t('AI 助手'),
+    active: aiOpen,
+    onClick: onAI,
+  });
+  return (
+    <nav aria-label={t('编辑工具')} className="desktop-dock-landmark">
+      <Dock
+        key={locale}
+        ariaLabel={t('编辑工具')}
+        className="studio-reference-dock"
+        theme={theme}
+        items={items}
+        baseItemSize={38}
+        panelHeight={52}
+        magnification={53}
+        distance={112}
+        gap={7}
+        roundness={0.58}
+      />
+    </nav>
+  );
 }
 
 function revealPressedTool(rail: HTMLElement) {
@@ -22,22 +82,13 @@ function revealPressedTool(rail: HTMLElement) {
   else if (item.right > viewport.right) rail.scrollLeft += item.right - viewport.right;
 }
 
-/** A connected phone category rail; the selected context opens directly above it. */
-export function ToolDock({
+function TouchToolDock({
   group,
   inspectorOpen,
   aiOpen,
-  compact,
   onTool,
   onAI,
-}: {
-  group: ToolGroup;
-  inspectorOpen: boolean;
-  aiOpen: boolean;
-  compact: boolean;
-  onTool: (group: ToolGroup) => void;
-  onAI: () => void;
-}) {
+}: ToolDockProps) {
   const { locale } = useI18n();
   const nav = useRef<HTMLDivElement>(null);
   const dock = useRef<HTMLElement>(null);
@@ -65,19 +116,12 @@ export function ToolDock({
     { stiffness: 420, damping: 35 },
   );
   const selectionReady = useRef(false);
-  useDockProximity(dock, compact, locale);
-  const reducedMotion = useReducedMotion();
-  const [overflow, setOverflow] = useState({ left: false, right: false });
-  const active = dockTool(group, compact);
+  const active = rootTool(group);
   const contextOpen = inspectorOpen;
   const [tabStop, setTabStop] = useState<string>(aiOpen ? 'ai' : active);
   const [selection, setSelection] = useState<{ x: number; y: number; width: number; height: number } | null>(
     null,
   );
-  const choices = toolGroups.filter(
-    (tool) => !compact || !['color', 'curves', 'detail'].includes(tool.id),
-  );
-  const tools = choices;
   useLayoutEffect(() => {
     if (!selection) {
       selectionReady.current = false;
@@ -95,8 +139,8 @@ export function ToolDock({
   useLayoutEffect(() => {
     const rail = nav.current;
     if (rail) revealPressedTool(rail);
-  }, [active, contextOpen, aiOpen, compact, locale]);
-  useEffect(() => setTabStop(aiOpen ? 'ai' : active), [active, aiOpen, compact]);
+  }, [active, contextOpen, aiOpen, locale]);
+  useEffect(() => setTabStop(aiOpen ? 'ai' : active), [active, aiOpen]);
   useLayoutEffect(() => {
     const rail = nav.current;
     const button = rail?.querySelector<HTMLButtonElement>('[aria-pressed="true"]');
@@ -126,12 +170,12 @@ export function ToolDock({
     observer.observe(rail);
     observer.observe(button);
     return () => observer.disconnect();
-  }, [active, contextOpen, compact, locale]);
+  }, [active, contextOpen, locale]);
   useEffect(() => {
     const rail = nav.current;
     if (!rail) return;
     const measure = () => {
-      if (compact && window.innerWidth < 760) {
+      if (window.innerWidth < 760) {
         const style = getComputedStyle(rail);
         const gap = parseFloat(style.columnGap || '0') || 0;
         const available =
@@ -153,19 +197,15 @@ export function ToolDock({
         );
         if (available > 0) {
           const peek = 12;
-          const slots = Math.max(1, Math.floor((available - peek + gap) / (minimum + gap)));
-          const width = `${Math.max(minimum, (available - peek - gap * (slots - 1)) / slots)}px`;
+          const slots = Math.min(primaryTools.length, Math.max(1, Math.floor((available + gap) / (minimum + gap))));
+          const occupied = available - (slots < primaryTools.length ? peek : 0);
+          const width = `${Math.max(minimum, (occupied - gap * (slots - 1)) / slots)}px`;
           if (rail.style.getPropertyValue('--dock-item-width') !== width) {
             rail.style.setProperty('--dock-item-width', width);
             revealPressedTool(rail);
           }
         }
       }
-      const left = rail.scrollLeft > 2;
-      const right = rail.scrollLeft + rail.clientWidth < rail.scrollWidth - 2;
-      setOverflow((previous) =>
-        previous.left === left && previous.right === right ? previous : { left, right },
-      );
     };
     let frame = 0;
     const schedule = () => {
@@ -177,25 +217,20 @@ export function ToolDock({
     };
     const observer = new ResizeObserver(schedule);
     observer.observe(rail);
-    if (compact) {
-      for (const label of rail.querySelectorAll<HTMLElement>('.dock-label'))
-        observer.observe(label);
-    }
-    rail.addEventListener('scroll', schedule, { passive: true });
+    for (const label of rail.querySelectorAll<HTMLElement>('.dock-label')) observer.observe(label);
     measure();
     return () => {
       cancelAnimationFrame(frame);
       observer.disconnect();
-      rail.removeEventListener('scroll', schedule);
     };
-  }, [compact, locale]);
+  }, [locale]);
   return (
     <nav
       ref={dock}
       className="floating-tool-dock"
       aria-label={t('编辑工具')}
       data-motion="tool-dock"
-      data-compact={compact || undefined}
+      data-compact="true"
       data-selection-ready={selection ? 'true' : undefined}
       data-context-open={contextOpen || aiOpen ? 'true' : undefined}
       onKeyDown={(event) => {
@@ -224,24 +259,7 @@ export function ToolDock({
         }
       }}
     >
-      <div
-        className="dock-tool-region"
-        data-overflow-left={overflow.left || undefined}
-        data-overflow-right={overflow.right || undefined}
-      >
-        {!compact && overflow.left && (
-          <button
-            type="button"
-            className="dock-scroll dock-scroll-left"
-            aria-label={t('查看前面的编辑工具')}
-            tabIndex={-1}
-            onClick={() =>
-              nav.current?.scrollBy({ left: -200, behavior: reducedMotion ? 'auto' : 'smooth' })
-            }
-          >
-            <CaretLeft size={14} />
-          </button>
-        )}
+      <div className="dock-tool-region">
         <div className="dock-tool-scroll" ref={nav}>
           {selection && (
             <span
@@ -254,8 +272,9 @@ export function ToolDock({
               }}
             />
           )}
-          {tools.map((tool) => (
-            <WarmTooltip key={tool.id} content={t(tool.description)}>
+          {primaryTools.map((id) => {
+            const tool = toolGroups.find((item) => item.id === id)!;
+            return (
               <button
                 type="button"
                 key={tool.id}
@@ -263,40 +282,20 @@ export function ToolDock({
                 data-motion="tool-item"
                 className={active === tool.id && contextOpen ? 'active' : ''}
                 aria-pressed={active === tool.id && contextOpen}
-                title={t(tool.description)}
                 tabIndex={tabStop === tool.id ? 0 : -1}
                 onFocus={() => setTabStop(tool.id)}
-                onClick={() => {
-                  onTool(
-                      compact && tool.id === 'light' && ADJUSTMENT_GROUPS.includes(group)
-                        ? group
-                        : tool.id,
-                    );
-                }}
+                onClick={() => onTool(active === tool.id ? group : tool.id)}
               >
                 <span className="dock-icon">
-                  <StudioGlyph name={tool.id} size={20} />
+                  <StudioGlyph name={tool.id === 'light' ? 'editor' : tool.id} size={20} />
                 </span>
                 <span className="dock-label">
-                  {t(compact && tool.id === 'light' ? '调节' : tool.label)}
+                  {toolLabel(tool.id, tool.label)}
                 </span>
               </button>
-            </WarmTooltip>
-          ))}
+            );
+          })}
         </div>
-        {!compact && overflow.right && (
-          <button
-            type="button"
-            className="dock-scroll dock-scroll-right"
-            aria-label={t('查看更多编辑工具')}
-            tabIndex={-1}
-            onClick={() =>
-              nav.current?.scrollBy({ left: 200, behavior: reducedMotion ? 'auto' : 'smooth' })
-            }
-          >
-            <CaretRight size={14} />
-          </button>
-        )}
       </div>
       <span className="dock-divider" aria-hidden="true" />
       <button

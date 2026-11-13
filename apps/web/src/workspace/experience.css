@@ -183,53 +183,6 @@
   color: var(--muted);
 }
 
-/* One linear destination list: names, context and current position have fixed lanes. */
-.workspace-navigation-dialog .workspace-destinations {
-  display: grid;
-  grid-template-columns: minmax(0, 1fr);
-  gap: 2px;
-}
-.workspace-navigation-dialog .workspace-destinations > button {
-  min-height: 62px;
-  padding: 10px 12px;
-  border-radius: 8px;
-  gap: 15px;
-  background: transparent;
-  transition:
-    color 120ms,
-    background-color 120ms;
-}
-.workspace-navigation-dialog .workspace-destinations > button > svg:first-child {
-  width: 22px;
-  height: 22px;
-}
-.workspace-navigation-dialog .workspace-destinations > button > span {
-  display: flex;
-  align-items: baseline;
-  gap: 20px;
-}
-.workspace-navigation-dialog .workspace-destinations strong {
-  flex: 0 0 64px;
-  font-size: 14px;
-  font-weight: 550;
-  overflow-wrap: anywhere;
-}
-.workspace-navigation-dialog .workspace-destinations small {
-  font-size: 12px;
-  color: var(--muted);
-  overflow-wrap: anywhere;
-}
-.workspace-navigation-dialog .workspace-destinations > button:hover {
-  background: var(--surface-secondary);
-}
-.workspace-navigation-dialog .workspace-destinations > button[aria-current='page'] {
-  color: var(--ink);
-  background: var(--surface-active);
-}
-.workspace-navigation-dialog .workspace-destinations > button:active {
-  transform: none;
-  background: var(--surface-hover);
-}
 .workspace-settings-dialog .settings-theme-choices {
   gap: 5px;
   padding: 4px;
@@ -612,21 +565,6 @@
     min-height: 40px;
     font-size: 11px;
   }
-  .workspace-navigation-dialog .workspace-destinations > button {
-    min-height: 59px;
-    gap: 12px;
-    padding-inline: 9px;
-  }
-  .workspace-navigation-dialog .workspace-destinations > button > span {
-    gap: 10px;
-  }
-  .workspace-navigation-dialog .workspace-destinations strong {
-    flex-basis: 66px;
-    font-size: 13px;
-  }
-  .workspace-navigation-dialog .workspace-destinations small {
-    font-size: 11px;
-  }
   .studio-workspace .floating-tool-dock {
     box-shadow: 0 -3px 18px rgb(var(--color-shadow) / 3%);
   }
@@ -653,10 +591,6 @@
   }
   .studio-welcome-editorial .welcome-session-actions {
     margin-inline-start: auto;
-  }
-  .workspace-navigation-dialog .workspace-destinations > button > span {
-    display: grid;
-    gap: 3px;
   }
 }
 @media (height < 600px) and (width < 760px) {
@@ -725,16 +659,6 @@
   }
   .studio-welcome-editorial .welcome-session {
     padding-top: 8px;
-  }
-  .workspace-navigation-dialog .workspace-destinations {
-    grid-template-columns: repeat(2, minmax(0, 1fr));
-  }
-  .workspace-navigation-dialog .workspace-destinations > button > span {
-    display: grid;
-    gap: 2px;
-  }
-  .workspace-navigation-dialog .workspace-destinations > button {
-    min-height: 55px;
   }
   .workspace-settings-dialog .settings-theme-choices > button {
     min-height: 58px;

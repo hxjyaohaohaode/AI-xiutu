@@ -1,4 +1,5 @@
 import { SketchTextEditor, type SketchTextHandle } from './SketchTextEditor';
+import { loadSketchFont } from './sketch-typography';
 import { t } from '../i18n';
 import { ChoiceSelect } from './ChoiceSelect';
 import { useEffect, useLayoutEffect, useRef, useState, type PointerEvent } from 'react';
@@ -27,6 +28,7 @@ import { confirmStableScope } from '../lib/confirmation-scope';
 import { loadSketchImage, SKETCH_IMAGE_INPUT } from './sketch-images';
 import { SketchGlyph } from './SketchGlyph';
 import {
+  fitSketchText,
   moveSketchItem,
   paintSketchItem,
   resizeSketchItem,
@@ -34,6 +36,7 @@ import {
   sketchCorners,
   sketchItemAt,
   sketchResizeCorner,
+  sketchTextRuns,
   type SketchCorner,
   type SketchItem,
   type SketchText,
@@ -186,6 +189,7 @@ export function DrawingBoard({
   }
   async function clearDrawing() {
     if (await confirmDrawing('清空画布？已下载的草图不会改变。', '清空草图', true)) {
+      setTextEdit(null);
       commitItems([]);
       setSelection(null);
     }
@@ -250,6 +254,9 @@ export function DrawingBoard({
   }
   useLayoutEffect(() => {
     redraw();
+    // The canvas needs repainting when a newly selected webfont finishes loading.
+    document.fonts.addEventListener('loadingdone', redraw);
+    return () => document.fonts.removeEventListener('loadingdone', redraw);
   }, [items, areaSize, selection, tool, textEdit]);
   function position(
     event: Pick<PointerEvent, 'clientX' | 'clientY'>,
@@ -271,6 +278,7 @@ export function DrawingBoard({
   }
   function stepHistory(offset: -1 | 1) {
     if (locked.current || pointer.current !== null) return;
+    setTextEdit(null);
     setSelection(null);
     setCursor((value) => Math.min(history.length - 1, Math.max(0, value + offset)));
   }
@@ -353,22 +361,28 @@ export function DrawingBoard({
     setTextEdit(null);
     if (!item?.text.trim()) return;
     const previous = latest.current.items;
+    const context = canvas.current?.getContext('2d');
+    const fitted = context ? fitSketchText(context, item) : item;
     const index = textEdit.index ?? previous.length;
     const next = textEdit.index === null
-      ? [...previous, item]
-      : previous.map((value, position) => position === index ? item : value);
+      ? [...previous, fitted]
+      : previous.map((value, position) => position === index ? fitted : value);
     commitItems(next);
-    selectItem(index, item);
+    selectItem(index, fitted);
   }
-  async function getFile() {
+  async function getFile(drawing: typeof latest.current) {
     if (!canvas.current) throw new Error('草图画布暂不可用。');
+    const { width, height } = canvas.current;
+    await Promise.all(drawing.items.flatMap((item) => item.kind === 'text'
+      ? sketchTextRuns(item).map(({ text, style }) => loadSketchFont(style.family, style.size, style.weight, style.italic, text))
+      : []));
     const output = document.createElement('canvas');
-    output.width = canvas.current.width;
-    output.height = canvas.current.height;
+    output.width = width;
+    output.height = height;
     const context = output.getContext('2d');
     if (!context) throw new Error('无法导出这张草图。');
-    for (const item of latest.current.items) paintSketchItem(item, context);
-    if (!latest.current.transparent) {
+    for (const item of drawing.items) paintSketchItem(item, context);
+    if (!drawing.transparent) {
       context.globalCompositeOperation = 'destination-over';
       context.fillStyle = '#fff';
       context.fillRect(0, 0, output.width, output.height);
@@ -398,7 +412,7 @@ export function DrawingBoard({
     setBusy(true);
     setError(null);
     try {
-      const file = await getFile();
+      const file = await getFile(drawing);
       if (!isCurrent()) return;
       if (action === 'download') downloadBlob(file, file.name);
       else if (action === 'local') {
@@ -798,6 +812,9 @@ export function DrawingBoard({
               } else if (selected && (event.key === 'Delete' || event.key === 'Backspace')) {
                 event.preventDefault();
                 deleteSelection();
+              } else if (selected?.kind === 'text' && selection !== null && event.key === 'Enter') {
+                event.preventDefault();
+                setTextEdit({ item: selected, index: selection });
               } else if (selected && tool === 'select') {
                 const direction = {
                   ArrowLeft: [-1, 0],
@@ -880,7 +897,12 @@ export function DrawingBoard({
               }
               event.preventDefault();
               if (tool === 'text') {
-                setTextEdit({ item: { kind: 'text', at, text: '', color, size: Math.max(16, 12 + width * 2) }, index: null });
+                const textAt = {
+                  x: Math.min(at.x, 1 - 106 / target.width),
+                  y: Math.min(at.y, 1 - 34 / target.height),
+                };
+                setTextEdit({ item: { kind: 'text', at: { x: Math.max(0, textAt.x), y: Math.max(0, textAt.y) },
+                  text: '', color, size: Math.max(16, 12 + width * 2) }, index: null });
                 setError(null);
                 return;
               }
@@ -947,7 +969,8 @@ export function DrawingBoard({
             onPointerCancel={(event) => finish(event, true)}
             onLostPointerCapture={(event) => finish(event, true)}
           />
-          {textEdit && <SketchTextEditor item={textEdit.item} ref={textField} onDone={finishText} />}
+          {textEdit && <SketchTextEditor item={textEdit.item} ref={textField} onDone={finishText}
+            onCancel={() => { setTextEdit(null); canvas.current?.focus({ preventScroll: true }); }} />}
         </div>
         <div className="drawing-actions">
           <button

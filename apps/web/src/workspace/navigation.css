@@ -1,6 +1,7 @@
 /* Navigation keeps fixed hit boxes. #78 moves the measured selection behind text;
    #68 affects a small marker; #85 contributes only a short, finite entrance. */
 .studio-workspace .floating-topbar {
+  position: relative;
   min-height: 56px;
   height: 56px;
   gap: 12px;
@@ -28,7 +29,6 @@
   white-space: nowrap;
 }
 .studio-workspace .workspace-view-navigation {
-  position: relative;
   flex: 1 1 auto;
   min-width: 0;
   align-self: stretch;
@@ -125,6 +125,163 @@
 }
 .studio-workspace .workspace-view-navigation .mobile-view-trigger[hidden] {
   display: none;
+}
+.studio-workspace .workspace-view-navigation .project-view-trigger > svg:last-child {
+  display: block;
+}
+.workspace-view-navigation :is(.project-view-trigger, .mobile-view-trigger) > svg:last-child {
+  transition: rotate 200ms ease;
+}
+.studio-workspace .workspace-view-navigation :is(.project-view-trigger, .mobile-view-trigger)[aria-expanded='true'] {
+  color: var(--ink);
+  background: var(--surface-hover);
+}
+.workspace-view-navigation :is(.project-view-trigger, .mobile-view-trigger)[aria-expanded='true'] > svg:last-child {
+  rotate: 180deg;
+}
+
+.workspace-card-nav {
+  --card-nav-link-height: 27px;
+  position: absolute;
+  inset-block-start: 100%;
+  inset-inline: 0;
+  margin-inline: auto;
+  inline-size: min(506px, calc(100% - 20px));
+  display: grid;
+  grid-template-rows: 0fr;
+  border-radius: 0 0 12px 12px;
+  background: var(--surface-raised);
+  color: var(--ink);
+  box-shadow: 0 9px 25px rgb(var(--color-shadow) / 13%);
+  opacity: 0;
+  visibility: hidden;
+  pointer-events: none;
+  transition:
+    grid-template-rows 260ms cubic-bezier(0.22, 1, 0.36, 1),
+    opacity 180ms ease,
+    visibility 0s linear 260ms;
+}
+.workspace-card-nav[data-open='true'] {
+  grid-template-rows: 1fr;
+  opacity: 1;
+  visibility: visible;
+  pointer-events: auto;
+  transition-delay: 0s;
+}
+.workspace-card-nav-clip {
+  min-block-size: 0;
+  overflow: clip;
+  border-radius: inherit;
+}
+.workspace-card-nav-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 6px;
+  padding: 6px;
+  max-block-size: calc(100dvh - 80px);
+  overflow: auto;
+  overscroll-behavior: contain;
+}
+.workspace-nav-card {
+  min-inline-size: 0;
+  padding: 8px 8px 6px;
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  gap: 3px;
+  color: var(--ink);
+  background: var(--surface-secondary);
+  border-radius: 8px;
+  translate: 0 12px;
+  opacity: 0;
+  transition: translate 280ms cubic-bezier(0.22, 1.16, 0.36, 1), opacity 180ms ease;
+}
+.workspace-card-nav[data-open='true'] .workspace-nav-card {
+  translate: 0 0;
+  opacity: 1;
+}
+.workspace-card-nav[data-open='true'] .workspace-nav-card:nth-child(2) {
+  transition-delay: 36ms;
+}
+.workspace-card-nav[data-open='true'] .workspace-nav-card:nth-child(3) {
+  transition-delay: 72ms;
+}
+.workspace-nav-card-title {
+  padding-inline: 5px;
+  font-size: 14px;
+  line-height: 1.3;
+  font-weight: 620;
+  overflow-wrap: anywhere;
+}
+.workspace-nav-card-links {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  min-block-size: calc(2 * var(--card-nav-link-height));
+}
+.workspace-nav-card-links > button {
+  display: inline-flex;
+  align-items: center;
+  min-inline-size: 0;
+  min-block-size: var(--card-nav-link-height);
+  gap: 4px;
+  padding: 4px 5px;
+  border: 0;
+  border-radius: 5px;
+  background: transparent;
+  color: inherit;
+  font-size: 12px;
+  line-height: 1.25;
+  text-align: start;
+}
+.workspace-nav-card-links > button > span {
+  overflow-wrap: anywhere;
+}
+.workspace-nav-card-arrow {
+  position: relative;
+  flex: none;
+  inline-size: 15px;
+  block-size: 15px;
+  overflow: hidden;
+}
+.workspace-nav-card-arrow > svg {
+  position: absolute;
+  inset: 0;
+  transition: translate 220ms cubic-bezier(0.22, 1, 0.36, 1);
+}
+.workspace-nav-card-arrow > svg:last-child {
+  translate: -100% 100%;
+}
+.workspace-nav-card-links > button[aria-current='page'] {
+  color: var(--accent-ink);
+  background: var(--accent-soft);
+  font-weight: 620;
+}
+.workspace-nav-card-links > button:focus-visible {
+  outline: 2px solid var(--focus-ring);
+  outline-offset: 1px;
+}
+@media (hover: hover) {
+  .workspace-nav-card-links > button:hover {
+    background: var(--surface-hover);
+  }
+  .workspace-nav-card-links > button:hover .workspace-nav-card-arrow > svg:first-child {
+    translate: 100% -100%;
+  }
+  .workspace-nav-card-links > button:hover .workspace-nav-card-arrow > svg:last-child {
+    translate: 0 0;
+  }
+}
+@media (pointer: coarse) {
+  .workspace-card-nav {
+    --card-nav-link-height: 44px;
+  }
+}
+@media (min-width: 760px) and (max-height: 520px) and (pointer: coarse) {
+  .workspace-nav-card {
+    padding-block: 8px 4px;
+    gap: 3px;
+  }
 }
 .studio-workspace .workspace-top-actions {
   flex: 0 0 auto;
@@ -419,6 +576,37 @@
   }
 }
 @media (max-width: 759px) {
+  .workspace-card-nav {
+    --card-nav-link-height: 44px;
+    inline-size: min(430px, calc(100% - 12px));
+  }
+  .workspace-card-nav-grid {
+    grid-template-columns: minmax(0, 1fr);
+    gap: 4px;
+    padding: 6px;
+  }
+  .workspace-nav-card {
+    display: grid;
+    grid-template-columns: clamp(62px, 22%, 76px) minmax(0, 1fr);
+    align-items: center;
+    padding: 2px 4px;
+    gap: 4px;
+  }
+  .workspace-nav-card-title {
+    padding-inline: 5px 0;
+    font-size: 13px;
+    overflow-wrap: normal;
+  }
+  .workspace-nav-card-links {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    align-items: center;
+    gap: 0 2px;
+    min-block-size: 0;
+  }
+  .workspace-nav-card-links > button {
+    padding-inline: 4px;
+  }
   /* The phone always uses the route menu, so it needs no offscreen tab measurement. */
   .studio-workspace .workspace-view-navigation .compact-view-tabs {
     display: none;
@@ -569,6 +757,12 @@
   }
 }
 @media (prefers-reduced-motion: reduce) {
+  .workspace-card-nav,
+  .workspace-card-nav .workspace-nav-card,
+  .workspace-nav-card-arrow > svg,
+  .workspace-view-navigation :is(.project-view-trigger, .mobile-view-trigger) > svg:last-child {
+    transition: none;
+  }
   .sidebar-navigation-modal .sidebar-section {
     animation: none !important;
     translate: none;

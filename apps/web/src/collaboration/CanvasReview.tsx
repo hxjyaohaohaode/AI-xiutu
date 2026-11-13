@@ -1,9 +1,11 @@
 import { useEffect, useId, useLayoutEffect, useRef, useState, type CSSProperties } from 'react';
-import { ChatTeardropDots, Circle, CornersOut, Diamond, Plus, X } from '@phosphor-icons/react';
+import { ChatTeardropDots, Circle, CornersOut, Diamond, PencilSimple, Plus, Trash, X } from '@phosphor-icons/react';
 import type { Point } from '@ai-xiutu/editor';
 import { api, errorMessage, jsonRequest } from '../lib/api';
 import { t } from '../i18n';
 import type { Comment } from '../lib/types';
+import { CommentDictation } from './CommentDictation';
+import { useConfirmation } from '../components/ConfirmationDialog';
 import './canvas-review.css';
 
 export type CanvasReviewScope = {
@@ -11,6 +13,7 @@ export type CanvasReviewScope = {
   artworkId: string;
   revisionId: string;
   canComment: boolean;
+  actorId: string;
   refresh: number;
 };
 type Shape = NonNullable<NonNullable<Comment['anchor']>['shape']>;
@@ -21,12 +24,14 @@ const shapes = [
 ] as const;
 
 export function useCanvasReview(scope: CanvasReviewScope | undefined) {
-  const scopeKey = scope ? `${scope.projectId}/${scope.artworkId}/${scope.revisionId}` : '';
+  const scopeKey = scope ? `${scope.actorId}/${scope.projectId}/${scope.artworkId}/${scope.revisionId}` : '';
   const [data, setData] = useState<{ key: string; notes: Comment[] }>({ key: '', notes: [] });
   const [open, setOpen] = useState(false);
   const [placing, setPlacing] = useState(false);
+  const [showHint, setShowHint] = useState(false);
   const [point, setPoint] = useState<Point | null>(null);
   const [active, setActive] = useState('');
+  const [editing, setEditing] = useState<Comment | null>(null);
   const [body, setBody] = useState('');
   const [shape, setShape] = useState<Shape>('point');
   const [busy, setBusy] = useState(false);
@@ -36,7 +41,7 @@ export function useCanvasReview(scope: CanvasReviewScope | undefined) {
   key.current = scopeKey;
   const pending = useRef(false);
   useEffect(() => {
-    setOpen(false); setPlacing(false); setPoint(null); setActive(''); setBody(''); setError('');
+    setOpen(false); setPlacing(false); setShowHint(false); setPoint(null); setActive(''); setEditing(null); setBody(''); setError('');
   }, [scopeKey]);
   useEffect(() => {
     if (!scope) return;
@@ -53,38 +58,75 @@ export function useCanvasReview(scope: CanvasReviewScope | undefined) {
     return () => controller.abort();
   }, [scopeKey, scope?.refresh, reload]);
   const notes = data.key === scopeKey ? data.notes : [];
-  const begin = () => { setPlacing(true); setPoint(null); setActive(''); setBody(''); setError(''); };
+  const resetDraft = () => { setPoint(null); setEditing(null); setBody(''); setError(''); };
+  const closeCard = () => { resetDraft(); setActive(''); setPlacing(false); setShowHint(false); };
+  const begin = () => { closeCard(); setPlacing(true); setShowHint(true); };
+  useEffect(() => {
+    if (!showHint) return;
+    const timeout = window.setTimeout(() => setShowHint(false), 7000);
+    return () => window.clearTimeout(timeout);
+  }, [showHint, scopeKey]);
   function pick(value: Point) {
     if (!open || !placing || !scope?.canComment) return false;
     setPoint(value);
     setPlacing(false);
+    setShowHint(false);
     return true;
   }
   async function save() {
-    if (!scope?.canComment || !point || !body.trim() || pending.current) return;
+    if (!scope?.canComment || (!point && !editing) || !body.trim() || pending.current) return;
     pending.current = true;
     setBusy(true); setError('');
     try {
-      const { comment } = await api<{ comment: Comment }>(`/projects/${scope.projectId}/comments`, jsonRequest('POST', {
-        artworkId: scope.artworkId, revisionId: scope.revisionId, anchor: { ...point, shape }, body: body.trim(),
-      }));
+      const { comment } = editing
+        ? await api<{ comment: Comment }>(`/comments/${editing.id}`, jsonRequest('PATCH', {
+            expectedVersion: editing.bodyVersion, body: body.trim(),
+          }))
+        : await api<{ comment: Comment }>(`/projects/${scope.projectId}/comments`, jsonRequest('POST', {
+            artworkId: scope.artworkId, revisionId: scope.revisionId, anchor: { ...point!, shape }, body: body.trim(),
+          }));
       if (key.current !== scopeKey) return;
       setData((previous) => ({ key: scopeKey, notes: [
         ...(previous.key === scopeKey ? previous.notes.filter((note) => note.id !== comment.id) : []),
         comment,
       ] }));
-      setPoint(null); setBody(''); setActive(comment.id); setReload((value) => value + 1);
+      closeCard();
+      setReload((value) => value + 1);
+    } catch (err) {
+      if (key.current === scopeKey) setError(errorMessage(err));
+    } finally { pending.current = false; setBusy(false); }
+  }
+  function owns(note: Comment) { return !!scope?.canComment && note.authorId === scope.actorId; }
+  async function remove(note: Comment) {
+    if (!owns(note) || pending.current || key.current !== scopeKey) return;
+    pending.current = true;
+    setBusy(true);
+    setError('');
+    try {
+      await api(`/comments/${note.id}?expectedVersion=${note.bodyVersion}`, { method: 'DELETE' });
+      if (key.current !== scopeKey) return;
+      setData((value) => ({ key: scopeKey, notes: value.notes.filter((item) => item.id !== note.id) }));
+      closeCard();
+      setReload((value) => value + 1);
     } catch (err) {
       if (key.current === scopeKey) setError(errorMessage(err));
     } finally { pending.current = false; setBusy(false); }
   }
   return {
     enabled: Boolean(scope),
-    open, placing: open && placing, point, notes, active, body, shape, error, busy,
+    open, placing: open && placing, showHint: open && showHint,
+    point, notes, active, body, shape, error, busy, editing,
     canComment: Boolean(scope?.canComment), pick, begin, save, setBody, setShape,
+    closeCard, owns, remove,
+    dictate(text: string) { setBody((value) => [value.trimEnd(), text].filter(Boolean).join(' ').slice(0, 5000)); },
+    edit(note: Comment) { if (owns(note)) { setEditing(note); setBody(note.body); setError(''); } },
     retry: () => { setError(''); setReload((value) => value + 1); },
-    toggle() { setOpen(!open); setActive(''); setPoint(null); setPlacing(!open && notes.length === 0 && !!scope?.canComment); },
-    select(id: string) { setActive(id === active ? '' : id); setPlacing(false); setPoint(null); },
+    toggle() {
+      setOpen(!open);
+      if (!open && notes.length === 0 && scope?.canComment) begin();
+      else closeCard();
+    },
+    select(id: string) { closeCard(); setActive(id === active ? '' : id); },
   };
 }
 
@@ -100,9 +142,10 @@ export function CanvasReviewToggle({ review, onOpen }: { review: Review; onOpen:
         <ChatTeardropDots size={18} />
         {review.notes.length > 0 && <span>{review.notes.length}</span>}
       </button>
-      {review.open && review.canComment && !review.active && !review.placing && !review.point && (
+      {review.open && review.canComment && !review.active && !review.point && (
         <button type="button" className="canvas-review-toggle" aria-label={t('添加批注')}
-          title={t('添加批注')} onClick={review.begin}>
+          title={t('添加批注')} aria-pressed={review.placing}
+          onClick={review.placing ? review.closeCard : review.begin}>
           <Plus size={17} />
         </button>
       )}
@@ -141,6 +184,7 @@ export function CanvasReviewPins({ review, map, zoom }: {
 
 export function CanvasReviewCard({ review, frameTransform }: { review: Review; frameTransform: string }) {
   const id = useId();
+  const confirmation = useConfirmation();
   const card = useRef<HTMLElement>(null);
   const note = review.notes.find((item) => item.id === review.active);
   useLayoutEffect(() => {
@@ -170,34 +214,44 @@ export function CanvasReviewCard({ review, frameTransform }: { review: Review; f
     resize.observe(element);
     return () => resize.disconnect();
   }, [note?.id, review.open, frameTransform]);
-  if (!review.open || (!note && !review.point && !review.placing && !review.error)) return null;
+  if (!review.open || (!note && !review.editing && !review.point && !review.showHint && !review.error)) return null;
   return (
     <section className="canvas-review-card" ref={card} aria-label={t('画布批注')}>
       <div className="canvas-review-heading">
         <ChatTeardropDots size={17} />
         <strong>{note?.authorName ?? t('画布批注')}</strong>
-        <button type="button" aria-label={t('关闭')} onClick={review.toggle}><X size={15} /></button>
+        {note && !review.editing && review.owns(note) && <>
+          <button type="button" aria-label={t('编辑批注')} disabled={review.busy} onClick={() => review.edit(note)}><PencilSimple size={15} /></button>
+          <button type="button" aria-label={t('删除批注')} disabled={review.busy} onClick={async () => {
+            if (await confirmation.confirm({ title: t('删除批注'), description: t('这条批注将从协作画布移除。'), confirmLabel: t('删除'), tone: 'danger' })) await review.remove(note);
+          }}><Trash size={15} /></button>
+        </>}
+        <button type="button" aria-label={t('关闭')} onClick={review.closeCard}><X size={15} /></button>
       </div>
-      {note && <p className="canvas-review-body">{note.body}</p>}
-      {review.placing && <p role="status">{t('点选照片上的批注位置')}</p>}
-      {review.point && (
+      {confirmation.dialog}
+      {note && !review.editing && <p className="canvas-review-body">{note.body}</p>}
+      {review.showHint && <p role="status">{t('点选照片上的批注位置')}</p>}
+      {(review.point || review.editing) && (
         <form onSubmit={(event) => { event.preventDefault(); void review.save(); }}>
-          <div className="canvas-review-shapes" role="group" aria-label={t('标记形状')}>
+          {review.point && <div className="canvas-review-shapes" role="group" aria-label={t('标记形状')}>
             {shapes.map(([shape, Icon, label]) => (
               <button key={shape} type="button" aria-label={t(label)} aria-pressed={review.shape === shape}
                 onClick={() => review.setShape(shape)}><Icon size={17} /></button>
             ))}
-          </div>
+          </div>}
           <label className="sr-only" htmlFor={id}>{t('输入画布批注')}</label>
           <textarea autoFocus id={id} value={review.body} onChange={(event) => review.setBody(event.target.value)}
-            rows={2} maxLength={500} placeholder={t('输入画布批注')} />
-          <button type="submit" className="button button-primary" disabled={!review.body.trim() || review.busy}>
-            {t('发表批注')}
-          </button>
+            rows={2} maxLength={5000} placeholder={t('输入画布批注')} />
+          <div className="canvas-review-actions">
+            <CommentDictation onText={review.dictate} disabled={review.busy} />
+            <button type="submit" className="button button-primary" disabled={!review.body.trim() || review.busy}>
+              {t(review.editing ? '保存批注' : '发表批注')}
+            </button>
+          </div>
         </form>
       )}
       {review.error && <div role="alert">{t(review.error)} <button type="button" onClick={review.retry}>{t('重试')}</button></div>}
-      {!review.point && !review.placing && review.canComment &&
+      {!review.point && !review.placing && !review.editing && review.canComment &&
         <button type="button" className="text-button" onClick={review.begin}>{t('添加批注')}</button>}
     </section>
   );

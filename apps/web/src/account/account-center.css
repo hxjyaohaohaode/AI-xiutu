@@ -1454,3 +1454,287 @@
     padding-block: 10px;
   }
 }
+.account-page-center .account-identity {
+  position: relative;
+  display: block;
+  inline-size: 100%;
+  min-block-size: 152px;
+  padding: 20px 0 0;
+  border: 0;
+  background: transparent;
+  color: var(--ink);
+  text-align: start;
+  perspective: 650px;
+}
+.account-identity-lanyard {
+  position: absolute;
+  top: 0;
+  left: calc(50% - 9px);
+  width: 18px;
+  height: 29px;
+  border-radius: 5px;
+  background: repeating-linear-gradient(135deg, var(--accent) 0 3px, color-mix(in srgb, var(--accent), var(--ink) 18%) 3px 5px);
+}
+.account-identity-face {
+  display: grid;
+  min-block-size: 124px;
+  border-radius: 13px;
+  border: 1px solid var(--line);
+  background:
+    radial-gradient(ellipse at var(--card-light-x, 24%) var(--card-light-y, 18%), color-mix(in srgb, white 45%, transparent), transparent 62%),
+    linear-gradient(150deg, var(--surface), var(--surface-secondary) 63%, var(--accent-soft));
+  box-shadow: 0 7px 19px rgb(var(--color-shadow) / 9%);
+  transform: rotateY(var(--card-turn, 0deg));
+  transform-origin: 50% 0;
+  transition: transform 180ms ease, box-shadow 180ms ease;
+}
+.account-identity:focus-visible .account-identity-face,
+.account-identity:hover .account-identity-face { box-shadow: 0 11px 26px rgb(var(--color-shadow) / 15%); }
+.account-identity-face > span {
+  grid-area: 1 / 1;
+  display: grid;
+  justify-items: start;
+  align-content: center;
+  gap: 7px;
+  padding: 12px;
+  min-inline-size: 0;
+  transition: opacity 160ms ease, transform 180ms ease;
+}
+.account-identity-face strong { max-inline-size: 100%; overflow-wrap: anywhere; line-height: 1.25; }
+.account-identity-face > span[aria-hidden='true'] { opacity: 0; transform: translateY(5px); }
+.account-identity-front > svg { position: absolute; inset: 12px 12px auto auto; color: var(--muted); }
+.account-identity-front .account-avatar { background: color-mix(in srgb, var(--accent-soft), var(--surface) 35%); }
+.account-identity-mobile-icon { display: none; }
+.account-page-center .account-entitlements {
+  display: grid;
+  padding: 8px 0 0;
+  border: 0;
+  background: transparent;
+}
+.account-page-center .account-entitlements :is(.account-period, .account-helper) { text-align: center; }
+.account-reference-identity {
+  --account-card-height: 110px;
+  --account-card-padding: 13px;
+  inline-size: min(100%, 188px);
+  min-inline-size: 0;
+  margin-block-end: 16px;
+  /* A percentage-sized card otherwise contributes its text's intrinsic grid track width. */
+  contain: inline-size;
+}
+.account-reference-identity .reflective-card {
+  min-inline-size: 0;
+  max-inline-size: 100%;
+}
+.account-reference-identity .reflective-card__content,
+.account-card-fallback { padding: var(--account-card-padding); }
+.account-card-fallback {
+  block-size: var(--account-card-height);
+  border-radius: 11px;
+  color: #f4f4f5;
+  background: #25242b;
+}
+.account-card-details {
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  min-inline-size: 0;
+  min-block-size: 0;
+  block-size: 100%;
+  gap: 4px;
+  line-height: 1.25;
+}
+.account-card-label {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  font-size: 11px;
+}
+.account-card-person {
+  display: grid;
+  min-inline-size: 0;
+  gap: 4px;
+}
+.account-card-person :is(h3, p) {
+  min-inline-size: 0;
+  margin: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.account-card-person h3 { font-size: 17px; font-weight: 580; }
+.account-card-person p { color: #d3d1db; font-size: 11px; }
+
+.account-page-header .account-lanyard-trigger {
+  display: inline-flex;
+  gap: 5px;
+  inline-size: auto;
+  min-inline-size: 44px;
+  min-block-size: 44px;
+  padding: 0 8px;
+  border: 0;
+  border-radius: 8px;
+  background: transparent;
+  color: var(--ink);
+  font-size: 12px;
+  white-space: nowrap;
+}
+.account-page-header .account-lanyard-trigger:is(:hover, [aria-expanded='true']) {
+  background: var(--surface-secondary);
+}
+.account-lanyard-popover {
+  --lanyard-top: calc(56px + max(12px, env(safe-area-inset-top)));
+  --lanyard-end-gap: max(12px, env(safe-area-inset-right), calc((100vw - 1480px) / 2 + 40px));
+  --lanyard-placement-width: 318px;
+  --lanyard-placement-height: 382px;
+  position: fixed;
+  inset: 0;
+  inline-size: auto;
+  block-size: auto;
+  max-inline-size: none;
+  max-block-size: none;
+  margin: 0;
+  padding: 0;
+  border: 0;
+  color: var(--ink);
+  background: transparent;
+  overflow: hidden;
+  pointer-events: none;
+}
+.account-lanyard-popover .account-lanyard-close {
+  position: absolute;
+  z-index: 2;
+  inset-block-start: var(--lanyard-top);
+  inset-inline-end: var(--lanyard-end-gap);
+  inline-size: 44px;
+  min-inline-size: 44px;
+  block-size: 44px;
+  min-block-size: 44px;
+  padding: 0;
+  border: 0;
+  border-radius: 50%;
+  color: var(--ink);
+  background: transparent;
+  pointer-events: auto;
+}
+.account-lanyard-popover .account-lanyard-close::before {
+  content: '';
+  position: absolute;
+  inset: 9px;
+  z-index: -1;
+  border-radius: inherit;
+  background: var(--surface-secondary);
+}
+.account-lanyard-stage { position: absolute; inset: 0; }
+.account-lanyard-placement {
+  position: absolute;
+  inset: var(--lanyard-top) var(--lanyard-end-gap) auto auto;
+  inline-size: min(var(--lanyard-placement-width), calc(100% - var(--lanyard-end-gap) - 12px));
+  block-size: min(var(--lanyard-placement-height), calc(100dvh - var(--lanyard-top) - 12px));
+}
+@media (prefers-reduced-motion: no-preference) {
+  .account-lanyard-popover:popover-open .account-lanyard-stage {
+    animation: account-lanyard-appear 160ms var(--account-ease) both;
+  }
+  @keyframes account-lanyard-appear {
+    from { opacity: 0; }
+  }
+}
+.account-lanyard-static {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  padding-inline-start: 46%;
+  pointer-events: none;
+}
+.account-lanyard-static::before {
+  content: '';
+  inline-size: 13px;
+  block-size: 27%;
+  background: #141414;
+}
+.account-lanyard-static :is(img, strong) {
+  display: grid;
+  place-items: center;
+  inline-size: auto;
+  max-inline-size: 98%;
+  block-size: 52%;
+  aspect-ratio: 1.6 / 2.25;
+  border-radius: 8px;
+  object-fit: cover;
+  background: #f7f7f5;
+  color: #17181a;
+  box-shadow: inset 0 0 0 1px #0002;
+}
+.account-lanyard-stage:has(.lanyard-canvas[data-ready]) .account-lanyard-static { visibility: hidden; }
+.account-plan-catalog { margin-block-start: 20px; display: grid; gap: 12px; }
+.account-plan-catalog > header { display: flex; align-items: center; flex-wrap: wrap; gap: 8px; }
+.account-plan-catalog > header > span { margin-inline-start: auto; color: var(--muted); font-size: 12px; }
+.account-plan-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(min(100%, 220px), 300px)); gap: 12px; }
+.account-plan-card {
+  position: relative;
+  isolation: isolate;
+  display: grid;
+  align-content: start;
+  gap: 5px;
+  min-width: 0;
+  padding: 22px;
+  color: #f5f5f5;
+  inline-size: 100%;
+  overflow-wrap: anywhere;
+}
+.account-plan-card h5 { margin: 3px 0 0; font-size: 15px; }
+.account-plan-card p { color: #cac8d1; font-size: 12px; }
+.account-plan-empty { color: var(--muted); font-size: 12px; }
+.account-plan-kind, .account-plan-card li { display: flex; align-items: center; gap: 6px; }
+.account-plan-kind { color: #ecc65e; font-size: 11px; }
+.account-plan-price { font-size: 23px; font-variant-numeric: tabular-nums; }
+.account-plan-card ul { margin: 4px 0 0; padding: 0; display: grid; gap: 4px; list-style: none; }
+@media (width < 760px) {
+  .account-page-center .account-identity { min-block-size: 44px; margin-block-end: 8px; padding: 0; perspective: none; }
+  .account-identity-face { min-block-size: 44px; border-radius: 9px; box-shadow: none; }
+  .account-identity-face > span { grid-template-columns: auto minmax(0, 1fr); gap: 7px; align-items: center; justify-items: start; padding: 5px 8px; }
+  .account-identity-lanyard, .account-identity-front > svg, .account-identity-back > small { display: none; }
+  .account-page-center .account-identity-front .account-avatar { width: 28px; height: 28px; font-size: 13px; }
+  .account-plan-grid { grid-template-columns: repeat(auto-fit, minmax(min(100%, 138px), 1fr)); }
+  .account-plan-card { padding: 10px; }
+  .account-page-header .account-lanyard-trigger {
+    inline-size: 44px;
+    padding: 0;
+  }
+  .account-lanyard-trigger > span { display: none; }
+  .account-lanyard-popover {
+    --lanyard-end-gap: max(12px, env(safe-area-inset-right));
+    --lanyard-placement-width: 246px;
+    --lanyard-placement-height: 320px;
+  }
+}
+@media (width < 420px) {
+  .account-page-center .account-page-header-actions { gap: 4px; }
+  .account-page-center .account-page-back {
+    inline-size: 44px;
+    justify-content: center;
+  }
+  .account-page-center .account-page-back > span { display: none; }
+}
+@media (width < 760px), (height < 500px) {
+  .account-reference-identity {
+    --account-card-height: 76px;
+    --account-card-padding: 10px;
+    inline-size: min(100%, 214px);
+    margin-block-end: 10px;
+  }
+  .account-card-person { gap: 2px; }
+  .account-card-person h3 { font-size: 15px; }
+}
+@media (height < 500px) {
+  .account-lanyard-popover {
+    --lanyard-placement-width: 238px;
+    --lanyard-placement-height: 290px;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .account-identity-face { transform: none; }
+  .account-identity-face > span, .account-plan-pixels { transition: none; }
+}

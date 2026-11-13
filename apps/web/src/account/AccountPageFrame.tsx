@@ -1,5 +1,6 @@
 import { useEffect, useId, useRef, type ReactNode } from 'react';
 import { ArrowLeft } from '@phosphor-icons/react';
+import { ThemeSwitch } from '../components/ThemeSwitch';
 import { Brand } from '../components/Ui';
 import { LanguageSelect } from '../i18n/LanguageSelect';
 import { useLocale } from '../i18n';
@@ -19,6 +20,7 @@ export function AccountPageFrame({
   wide = false,
   hideHeading = false,
   className = '',
+  headerAction,
   children,
 }: {
   title: string;
@@ -31,6 +33,7 @@ export function AccountPageFrame({
   wide?: boolean;
   hideHeading?: boolean;
   className?: string;
+  headerAction?: ReactNode;
   children: ReactNode;
 }) {
   const c = accountPageCopy(useLocale());
@@ -61,8 +64,11 @@ export function AccountPageFrame({
           <Brand name={config?.brand.name} logoUrl={brandLogoUrl(config?.brand)} />
         </button>
         <div className="account-page-header-actions">
+          <ThemeSwitch />
           <LanguageSelect compact />
-          <button type="button" className="account-page-back" onClick={onBack} disabled={busy}>
+          {headerAction}
+          <button type="button" className="account-page-back" onClick={onBack} disabled={busy}
+            aria-label={backLabel ?? c.back}>
             <ArrowLeft size={17} aria-hidden />
             <span>{backLabel ?? c.back}</span>
           </button>

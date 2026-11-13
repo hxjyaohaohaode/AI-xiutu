@@ -1247,9 +1247,6 @@
   .studio-workspace .compact-view-tabs > button {
     padding: 7px 9px;
   }
-  .studio-workspace .workspace-top-actions .theme-toggle {
-    display: none;
-  }
   .studio-workspace .studio-account {
     margin-left: 1px;
   }
@@ -1270,9 +1267,6 @@
   .studio-workspace .compact-view-tabs > button {
     padding: 6px 9px;
     font-size: 11px;
-  }
-  .studio-workspace .workspace-top-actions .theme-toggle {
-    display: none;
   }
   .studio-workspace .workspace-top-actions .focus-toggle {
     display: none;
@@ -1327,7 +1321,6 @@
   }
   .studio-workspace .workspace-project-title,
   .studio-workspace .compact-view-tabs,
-  .studio-workspace .workspace-top-actions .theme-toggle,
   .studio-workspace .workspace-top-actions .focus-toggle,
   .studio-workspace .studio-account {
     display: none;

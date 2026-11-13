@@ -92,7 +92,7 @@ export type BrushSettings = {
 const DEFAULT_BRUSH: BrushSettings = { radius: 0.05, feather: 0.65, opacity: 1, mode: 'add' };
 
 export type PaintSettings = Omit<PaintStrokeV3, 'points' | 'sampling'> & {
-  makeupTip?: import('./MakeupBrushRail').MakeupBrushId;
+  makeupTip?: import('./MakeupBrushRail').MakeupBrushId | null;
   automaticMakeup?: boolean;
   choosingSource: boolean;
   pressureSensitive: boolean;
@@ -102,6 +102,7 @@ export type WarpSettings = Pick<WarpStrokeV3, 'mode' | 'radius' | 'feather' | 's
   restoreStrength: number;
   axis?: 'free' | 'horizontal' | 'vertical';
   regionId?: string;
+  verticalRange?: import('./BodyStretchGuides').BodyStretchRange;
 };
 export type CropGuide = 'thirds' | 'golden' | 'center' | 'diagonal' | 'none';
 const INITIAL_PAINT: PaintSettings = {
@@ -548,6 +549,44 @@ export function useEditor() {
     loadBusy.current = false;
     setLoading(false);
   }, []);
+  const clearPhoto = useCallback(() => {
+    cancelPendingLoad();
+    releaseWorker(worker);
+    stopLiveWorker();
+    rejectExports(new Error('照片已关闭'));
+    sourceWorker.current = null;
+    sourceIdentity.current += 1;
+    sourceRef.current = null;
+    sourceFrame.current = null;
+    settledLane.current = { inFlight: null, pending: null };
+    settledVersion.current = 0;
+    previewVersion.current += 1;
+    eagerPreview.current = null;
+    prewarmedWarp.current = null;
+    interactiveInput.current = null;
+    layerFiles.current.clear();
+    layerDimensions.current.clear();
+    setLayerImages(new Map());
+    setSourceHash(null);
+    setFile(null);
+    setSourceFormat('');
+    setDimensions(null);
+    setOriginalPreview(null);
+    setAnalysisPreview(null);
+    setRendered(null);
+    setRenderedRecipe(null);
+    setRenderedGeometryKey(null);
+    setRendering(false);
+    setError(null);
+    setActiveRegionId(null);
+    setActiveMaskPath([]);
+    setActivePaintLayerId(null);
+    setActiveImageLayerId(null);
+    setActiveRepairId(null);
+    setMaskOverlay(false);
+    resetHistory(createRecipeV4());
+  }, [cancelPendingLoad, rejectExports, resetHistory, stopLiveWorker]);
+
   const loadFile = useCallback(
     async (
       incoming: File,
@@ -1198,6 +1237,7 @@ export function useEditor() {
     canUndo: hasUncommittedPreview || historyIndex > 0,
     canRedo: !hasUncommittedPreview && historyIndex < history.length - 1,
     cancelPendingLoad,
+    clearPhoto,
     loadFile,
     preview: previewRecipe,
     cancelPreview,
