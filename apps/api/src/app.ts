@@ -422,6 +422,43 @@ export async function buildApp(options: BuildOptions = {}): Promise<FastifyInsta
       .header('Content-Disposition', `inline; filename="ai-${p.id}.${extension}"`)
       .type(audio.mime).send(audio.bytes);
   });
+  app.get('/v1/ai-jobs/:id/image-artifacts/:index', async (req, reply) => {
+    const user = requireUser(req);
+    const params = z.object({ id, index: z.coerce.number().int().min(0).max(9) }).parse(req.params);
+    const artifact = (await db.query(
+      `SELECT a.format,a.bytes FROM ai_job_image_artifacts a
+       JOIN ai_jobs j ON j.id=a.job_id JOIN projects p ON p.id=j.project_id AND p.deleted_at IS NULL
+       JOIN memberships m ON m.space_id=p.space_id AND m.user_id=$3
+       JOIN users u ON u.id=m.user_id AND u.status='active' AND u.phone_verified_at IS NOT NULL
+       WHERE a.job_id=$1 AND a.output_index=$2 AND j.state='completed'`,
+      [params.id, params.index, user.id],
+    )).rows[0];
+    if (!artifact) throw new HttpError(404, 'AI_IMAGE_ARTIFACT_NOT_FOUND', '生成文件不存在');
+    reply.header('Cache-Control', 'private, no-store');
+    if (artifact.format === 'svg')
+      reply.header('Content-Security-Policy', "default-src 'none'; sandbox; frame-ancestors 'none'")
+        .header('X-Frame-Options', 'DENY');
+    return reply.header(
+      'Content-Disposition',
+      (artifact.format === 'svg' ? 'attachment' : 'inline') +
+        '; filename="ai-' + params.id + '-' + (params.index + 1) + '.' + artifact.format + '"',
+    ).type(artifact.format === 'svg' ? 'image/svg+xml' : 'image/gif').send(artifact.bytes);
+  });
+  app.get('/v1/ai-jobs/:id/image-preview', async (req, reply) => {
+    const user = requireUser(req);
+    const params = z.object({ id }).parse(req.params);
+    const frame = (await db.query(
+      `SELECT f.frame_index,f.bytes FROM ai_job_image_previews f
+       JOIN ai_jobs j ON j.id=f.job_id JOIN projects p ON p.id=j.project_id AND p.deleted_at IS NULL
+       JOIN memberships m ON m.space_id=p.space_id AND m.user_id=$2
+       JOIN users u ON u.id=m.user_id AND u.status='active' AND u.phone_verified_at IS NOT NULL
+       WHERE f.job_id=$1 AND j.actor_id=$2 AND j.state='running' AND f.expires_at>clock_timestamp()`,
+      [params.id, user.id],
+    )).rows[0];
+    if (!frame) throw new HttpError(404, 'AI_IMAGE_PREVIEW_UNAVAILABLE', '暂无可展示的中间图');
+    return reply.header('Cache-Control', 'private, no-store')
+      .header('X-Preview-Index', String(frame.frame_index)).type('image/png').send(frame.bytes);
+  });
   app.post('/v1/ai-jobs/:id/cancel', async (req) => {
     const user = requireUser(req);
     const p = z.object({ id }).parse(req.params);

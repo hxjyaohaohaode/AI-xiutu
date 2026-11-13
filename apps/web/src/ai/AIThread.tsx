@@ -389,6 +389,47 @@ function PendingImagePreview({ job }: { job: AIJob }) {
   const width = Math.max(1, job.request?.width ?? 1);
   const height = Math.max(1, job.request?.height ?? 1);
   const pending = job.state === 'queued' || job.state === 'running';
+  const wantsPreview = Boolean(job.request?.imageOptions?.partialImages);
+  const [preview, setPreview] = useState<string | null>(null);
+  useEffect(() => {
+    if (!pending || !wantsPreview) return;
+    const controller = new AbortController();
+    let timer: number | undefined;
+    let current: string | undefined;
+    let index: string | null = null;
+    const poll = async () => {
+      try {
+        const response = await fetch('/v1/ai-jobs/' + job.id + '/image-preview', {
+          signal: controller.signal,
+          credentials: 'same-origin',
+        });
+        const next = response.headers.get('X-Preview-Index');
+        if (response.ok && next !== null && next !== index) {
+          const bytes = await response.blob();
+          if (!controller.signal.aborted) {
+            if (current) URL.revokeObjectURL(current);
+            current = URL.createObjectURL(bytes);
+            index = next;
+            setPreview(current);
+          }
+        } else if (response.status === 401 || response.status === 403 || response.status === 404) {
+          if (current) URL.revokeObjectURL(current);
+          current = undefined;
+          index = null;
+          setPreview(null);
+        } else await response.body?.cancel();
+      } catch {
+        // The existing job poll remains the authority for state and final delivery.
+      }
+      if (!controller.signal.aborted) timer = window.setTimeout(poll, 950);
+    };
+    void poll();
+    return () => {
+      controller.abort();
+      window.clearTimeout(timer);
+      if (current) URL.revokeObjectURL(current);
+    };
+  }, [job.id, pending, wantsPreview]);
   return (
     <div
       className="ai-result-frame"
@@ -396,7 +437,10 @@ function PendingImagePreview({ job }: { job: AIJob }) {
       data-state={job.state}
       aria-busy={pending}
     >
-      <div className="ai-result-placeholder" role="status">
+      {pending && preview && (
+        <img className="ai-provider-preview" src={preview} alt={t('已审核的生成中间预览')} />
+      )}
+      <div className="ai-result-placeholder" role="status" hidden={Boolean(pending && preview)}>
         <StatusMark state={jobStateMark[job.state]} label={jobStateLabel(job.state)} />
       </div>
     </div>
@@ -473,7 +517,12 @@ function CompletedResult({
         <div className="ai-image-gallery" data-motion="ai-result-media" data-motion-pixels="true">
           {images.map((image, index) => (
             <div key={image.assetId} className="ai-generated-image">
-              <GeneratedImagePreview image={image} index={index} onOpen={onOpen} />
+              {image.original?.format === 'gif' ? (
+                <div className="ai-result-frame" style={{ aspectRatio: image.width + ' / ' + image.height }}>
+                  <img className="ai-provider-preview" src={image.original.url} width={image.width}
+                    height={image.height} loading="lazy" alt={t('AI 生成的 GIF 动画')} />
+                </div>
+              ) : <GeneratedImagePreview image={image} index={index} onOpen={onOpen} />}
               <div className="ai-image-meta">
                 <span>
                   {image.width}×{image.height}
@@ -484,6 +533,11 @@ function CompletedResult({
                 </span>
               </div>
               <div className="ai-result-actions">
+                {image.original && (
+                  <a href={image.original.url} className="text-button" download>
+                    {t('下载 {format}', { format: image.original.format.toUpperCase() })}
+                  </a>
+                )}
                 <button className="text-button" onClick={() => onOpen(image.artworkId)}>
                   <ArrowSquareOut size={16} />
                   {t('打开候选')}

@@ -155,3 +155,11 @@ export async function reviewableGifFrames(
 export async function renderSvgForReview(bytes: Uint8Array, maxPixels: number) {
   return sharp(bytes, { limitInputPixels: maxPixels, failOn: 'warning' }).png().toBuffer();
 }
+
+export async function normalizePartialImage(bytes: Uint8Array, maxPixels: number) {
+  return sharp(bytes, { limitInputPixels: maxPixels, failOn: 'warning' })
+    .rotate()
+    .resize({ width: 768, height: 768, fit: 'inside', withoutEnlargement: true })
+    .png()
+    .toBuffer();
+}

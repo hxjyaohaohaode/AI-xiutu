@@ -1,4 +1,5 @@
 import { t } from '../i18n';
+import { gifFrameCount, gifFrameDelay, imageBillableOutputs } from '@ai-xiutu/contracts';
 import type { AIModel, ImageOptions } from './types';
 export const COMMON_SIZES = [
   [1024, 1024],
@@ -15,15 +16,17 @@ export function imageSizeError(
   model: AIModel | undefined,
   width: number,
   height: number,
+  options?: ImageOptions,
 ): string | null {
   if (!model) return t('请先选择一个图像模型。');
   if (!Number.isSafeInteger(width) || !Number.isSafeInteger(height))
     return t('宽高需要是整数像素。');
   const c = model.parameterCapabilities?.size;
+  const gif = options?.outputFormat === 'gif' ? model.parameterCapabilities?.gif : undefined;
   if (c && !c.supported) return t(c.reason || '当前模型未开放尺寸设置。');
   if (c?.allowedSizes && !c.allowedSizes.includes(width + 'x' + height))
     return t(c.reason || '这个模型只开放列出的尺寸。');
-  const maxDimension = Math.min(model.maxDimension ?? Infinity, c?.maxDimension ?? Infinity);
+  const maxDimension = Math.min(model.maxDimension ?? Infinity, gif?.maxDimension ?? c?.maxDimension ?? Infinity);
   const minWidth = model.minWidth ?? 64,
     minHeight = model.minHeight ?? 64;
   const maxWidth = Math.min(model.maxWidth ?? 8192, maxDimension),
@@ -35,7 +38,7 @@ export function imageSizeError(
       minHeight,
       maxHeight,
     });
-  const minPixels = Math.max(model.minPixels ?? 1, c?.minPixels ?? 1);
+  const minPixels = gif?.minPixels ?? Math.max(model.minPixels ?? 1, c?.minPixels ?? 1);
   const maxPixels = Math.min(model.maxPixels ?? 0, c?.maxPixels ?? Infinity);
   if (!maxPixels) return t('服务尚未提供此模型的像素范围。');
   if (width * height < minPixels || width * height > maxPixels)
@@ -46,6 +49,11 @@ export function imageSizeError(
   const multiple = c?.multipleOf ?? 1;
   if (width % multiple || height % multiple)
     return t('宽高都需要是 {multiple} 的倍数。', { multiple });
+  if (gif) {
+    if (width * height * (options?.frameCount ?? gifFrameCount.default) > (gif.maxPixels ?? maxPixels))
+      return t('动画的画幅与帧数超出模型像素预算。');
+    return null;
+  }
   const minRatio = Math.max(model.minAspectRatio ?? 0, c?.minAspectRatio ?? 0);
   const maxRatio = Math.min(model.maxAspectRatio ?? Infinity, c?.maxAspectRatio ?? Infinity);
   if (!minRatio || !Number.isFinite(maxRatio)) return t('服务尚未提供此模型的宽高比范围。');
@@ -56,12 +64,14 @@ export function imageSizeError(
     });
   return null;
 }
-export function allowedImageSizes(model: AIModel | undefined) {
-  const fixed = model?.parameterCapabilities?.size.allowedSizes?.map((value) =>
+export function allowedImageSizes(model: AIModel | undefined, options?: ImageOptions) {
+  const gif = options?.outputFormat === 'gif';
+  const fixed = (gif ? ['512x512', '512x768', '768x512', '768x768'] :
+    model?.parameterCapabilities?.size.allowedSizes)?.map((value) =>
     value.split('x').map(Number),
   );
   return (fixed ?? COMMON_SIZES)
-    .filter(([width, height]) => !imageSizeError(model, width!, height!))
+    .filter(([width, height]) => !imageSizeError(model, width!, height!, options))
     .map(([width, height]) => ({ width: width!, height: height! }));
 }
 export function defaultImageOptions(model: AIModel | undefined): ImageOptions {
@@ -127,6 +137,11 @@ export function requestImageOptions(
       result.partialImages = selected.partialImages;
   }
   if (caps.n.supported && Number.isInteger(selected.n)) result.n = selected.n;
+  if (result.outputFormat === 'svg' && selected.svg) result.svg = selected.svg;
+  if (result.outputFormat === 'gif') {
+    result.frameCount = selected.frameCount;
+    result.frameDurationMs = selected.frameDurationMs;
+  }
   if (
     caps.outputCompression.supported &&
     caps.outputCompression.formats?.includes(result.outputFormat ?? 'png')
@@ -145,7 +160,7 @@ export function changeImageOption(
   const capabilities = model.parameterCapabilities;
   if (!capabilities?.[field].supported || !capabilities[field].values?.includes(value)) return null;
   const next = { ...selected, [field]: value };
-  if (next.background === 'transparent' && next.outputFormat === 'jpeg') {
+  if (next.background === 'transparent' && ['jpeg', 'gif'].includes(next.outputFormat ?? '')) {
     if (field === 'background') {
       const format = capabilities.outputFormat.supported
         ? ['png', 'webp'].find((entry) => capabilities.outputFormat.values?.includes(entry))
@@ -159,6 +174,27 @@ export function changeImageOption(
       if (!background) return null;
       next.background = background;
     } else return null;
+  }
+  if (field === 'outputFormat') {
+    if (value === 'svg' || value === 'gif') {
+      delete next.stream;
+      delete next.partialImages;
+      delete next.outputCompression;
+    }
+    if (value === 'svg') {
+      next.n = 1;
+      const author = capabilities.svg.authors?.[0];
+      if (author) next.svg = { model: author.id };
+      delete next.inputFidelity;
+    } else delete next.svg;
+    if (value === 'gif') {
+      next.frameCount = gifFrameCount.default;
+      next.frameDurationMs = gifFrameDelay.default;
+      if (capabilities.gif.autoSizes?.length) next.size = 'auto';
+    } else {
+      delete next.frameCount;
+      delete next.frameDurationMs;
+    }
   }
   const compression = capabilities.outputCompression;
   if (compression.supported && compression.formats?.includes(next.outputFormat ?? 'png')) {
@@ -192,9 +228,10 @@ export function imageOptionsError(
     (selected.moderation && !caps.moderation?.values?.includes(selected.moderation))
   )
     return t('请重新选择当前模型支持的参数。');
-  if (selected.background === 'transparent' && selected.outputFormat === 'jpeg')
-    return t('透明背景需要 PNG 或 WebP，JPEG 不支持透明度。');
-  if (selected.stream && (!caps.stream.supported || (selected.n ?? 1) !== 1))
+  if (selected.background === 'transparent' && ['jpeg', 'gif'].includes(selected.outputFormat ?? ''))
+    return t('此透明背景设置支持 PNG、WebP 或 SVG。');
+  if (selected.stream && (!caps.stream.supported || (selected.n ?? 1) !== 1 ||
+      ['gif','svg'].includes(selected.outputFormat ?? '')))
     return t('流式生成每次限一张图。');
   if (
     selected.partialImages !== undefined &&
@@ -212,6 +249,19 @@ export function imageOptionsError(
       selected.n! > (caps.n.max ?? 1))
   )
     return t('输出数量超出当前模型范围。');
+  if (selected.outputFormat === 'svg') {
+    const authors = caps.svg.authors ?? [];
+    const author = authors.find((option) => option.id === selected.svg?.model);
+    if ((selected.n ?? 1) !== 1 || (authors.length > 0 && !author) ||
+        (selected.svg?.reasoning && !author?.efforts.includes(selected.svg.reasoning.effort)))
+      return t('请选择受支持的 SVG 作者及推理强度。');
+  }
+  if (selected.outputFormat === 'gif' && (
+    (selected.frameCount !== undefined && (!Number.isInteger(selected.frameCount) ||
+      selected.frameCount < gifFrameCount.min || selected.frameCount > gifFrameCount.max)) ||
+    (selected.frameDurationMs !== undefined && (!Number.isInteger(selected.frameDurationMs) ||
+      selected.frameDurationMs < gifFrameDelay.min || selected.frameDurationMs > gifFrameDelay.max))))
+    return t('GIF 帧数或每帧停留时间超出范围。');
   if (
     caps.outputCompression.supported &&
     caps.outputCompression.formats?.includes(selected.outputFormat ?? 'png') &&
@@ -230,7 +280,7 @@ export function imagePointQuote(model: AIModel | undefined, options: ImageOption
     model.pointsPerPlan;
   if (typeof perImage !== 'number' || !Number.isSafeInteger(perImage) || perImage < 1) return null;
   const count = model.parameterCapabilities?.n.supported ? (options.n ?? 1) : 1;
-  const total = perImage * (count + (options.stream ? (options.partialImages ?? 0) : 0));
+  const total = perImage * imageBillableOutputs({ ...options, n: count, partialImages: options.stream ? options.partialImages : undefined });
   return Number.isSafeInteger(count) && count >= 1 && Number.isSafeInteger(total) ? total : null;
 }
 
@@ -250,13 +300,15 @@ export function imageBatchError(
     options.size === 'auto'
       ? Math.max(
           0,
-          ...(model.parameterCapabilities?.size.autoSizes ?? []).map((size) => {
+          ...((options.outputFormat === 'gif' ? model.parameterCapabilities?.gif.autoSizes :
+            model.parameterCapabilities?.size.autoSizes) ?? []).map((size) => {
             const [w, h] = size.split('x').map(Number);
             return w! * h!;
           }),
         )
       : width * height;
-  const frames = count + (options.stream ? (options.partialImages ?? 0) : 0);
+  const frames = options.outputFormat === 'gif' ? count * (options.frameCount ?? gifFrameCount.default) :
+    count + (options.stream ? (options.partialImages ?? 0) : 0);
   if (max && pixels * frames > max)
     return t(
       '这批 {count} 张合计 {total} 百万像素，超过当前整批 {max} 百万预算。请减少张数或尺寸。',
