@@ -1,14 +1,16 @@
 import { z } from 'zod';
-import { voiceSessionSchema, type AssistantSearchEvidence } from './assistant.js';
+import { voiceSessionFields, type AssistantSearchEvidence } from './assistant.js';
+import { OPENAI_TRANSLATION_MODEL } from './openai-live.js';
 
 export const TEAM_VOICE_PROTOCOL = 'xiutu-team-voice';
 export const TEAM_VOICE_MAX_MEMBERS = 6;
 export const TEAM_VOICE_MAX_PCM_BYTES = 9600;
 
-export const teamVoiceInviteSchema = voiceSessionSchema
-  .pick({ idempotencyKey: true, modelId: true, backendModelId: true, voice: true, context: true })
-  .extend({ confirmed: z.literal(true) })
-  .strict();
+export const teamVoiceInviteSchema = voiceSessionFields
+  .pick({ idempotencyKey: true, modelId: true, voice: true, context: true })
+  .extend({ confirmed: z.literal(true), backendModelId: z.string().min(1).max(128) })
+  .strict()
+  .refine((body) => body.modelId !== OPENAI_TRANSLATION_MODEL, 'Team voice requires a conversation model');
 
 export const teamVoiceControlSchema = z.discriminatedUnion('type', [
   z.object({ type: z.literal('mute'), muted: z.boolean() }).strict(),

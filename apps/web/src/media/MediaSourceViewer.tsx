@@ -42,6 +42,7 @@ export interface MediaRecord {
       algorithm: string;
       master16: boolean;
       floatAvailable: boolean;
+      nativeSdrWindow?: boolean;
       ultraHdrJpeg?: boolean;
       ultraHdrJpegCrop?: boolean;
       sourceSha256: string;
@@ -263,16 +264,16 @@ export function MediaSourceViewer({ assetId }: { assetId: string }) {
           fitRegion,
         })
       : null;
-  const nativeLinearWindow =
-    !!(region || fitRegion) && wantsGrade && precisionInput === 'linear-master';
+  const nativeWindow = !!(region || fitRegion) && wantsGrade &&
+    (precisionInput === 'linear-master' || !!precision?.nativeSdrWindow);
   const preview = useMasterPreview(
     assetId,
     previewBody,
-    !gpu.warm && (!exporting || nativeLinearWindow),
-    nativeLinearWindow,
+    !gpu.warm && (!exporting || nativeWindow),
+    nativeWindow,
   );
   const adjustmentsDisabled =
-    saving || !supportedGrade || (exporting && !nativeLinearWindow && !gpu.warm);
+    saving || !supportedGrade || (exporting && !nativeWindow && !gpu.warm);
   const previousFrame = preview.frame;
   const regionHasDetail =
     previousFrame?.region &&

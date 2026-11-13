@@ -116,7 +116,7 @@ export const assistantTurnSchema = z
     responseTuning: assistantResponseTuning.optional(),
   })
   .strict();
-export const voiceSessionSchema = z
+export const voiceSessionFields = z
   .object({
     idempotencyKey: z.uuid(),
     modelId: z.enum([
@@ -146,8 +146,8 @@ export const voiceSessionSchema = z
       usePersonalMemory: false,
     }),
   })
-  .strict()
-  .refine((body) => body.modelId === OPENAI_TRANSLATION_MODEL
+  .strict();
+export const voiceSessionSchema = voiceSessionFields.refine((body) => body.modelId === OPENAI_TRANSLATION_MODEL
     ? Boolean(body.translation && !body.delegation && !body.backendModelId && !body.context)
     : Boolean(body.backendModelId && !body.translation &&
       (body.modelId === 'gpt-live-1' || !body.delegation)), 'Voice settings must match the selected model');
