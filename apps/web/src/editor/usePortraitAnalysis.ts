@@ -166,9 +166,10 @@ export function usePortraitAnalysis(
         if (request.current !== id || sourceRef.current !== sourceAtStart) return;
         setAnalysis(result);
         setTarget((selected) =>
-          result.targets.some((target) => target.id === selected)
+          result.targets.some((target) => target.id === selected && target.kind === (body ? 'body' : 'face'))
             ? selected
-            : (result.targets[0]?.id ?? null),
+            : (result.targets.find((target) => target.kind === (body ? 'body' : 'face'))?.id ??
+               result.targets[0]?.id ?? null),
         );
         if (!result.targets.length && !result.segmentation?.subject)
           setError('未找到可信的人像目标；可使用手动局部、绘制或液化。');
