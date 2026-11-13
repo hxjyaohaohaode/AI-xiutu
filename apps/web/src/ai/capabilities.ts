@@ -1,5 +1,5 @@
 import { t } from '../i18n';
-import { gifFrameCount, gifFrameDelay, imageBillableOutputs } from '@ai-xiutu/contracts';
+import { gifFrameCount, gifFrameDelay, imageBillableOutputs, openAITwoFrameGifFits } from '@ai-xiutu/contracts';
 import type { AIModel, ImageOptions } from './types';
 export const COMMON_SIZES = [
   [1024, 1024],
@@ -50,7 +50,9 @@ export function imageSizeError(
   if (width % multiple || height % multiple)
     return t('宽高都需要是 {multiple} 的倍数。', { multiple });
   if (gif) {
-    if (width * height * (options?.frameCount ?? gifFrameCount.default) > (gif.maxPixels ?? maxPixels))
+    const frames = options?.frameCount ?? gifFrameCount.default;
+    if (width * height * frames > (gif.maxPixels ?? maxPixels) ||
+        (frames === 2 && c && !openAITwoFrameGifFits(width, height, c)))
       return t('动画的画幅与帧数超出模型像素预算。');
     return null;
   }

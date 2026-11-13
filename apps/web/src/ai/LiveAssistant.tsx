@@ -372,6 +372,8 @@ export function LiveAssistant(props: LiveAssistantProps) {
   const [shareImage, setShareImage] = useState(false),
     [allowWebSearch, setAllowWebSearch] = useState(false),
     [memory, setMemory] = useState(false);
+  const [liveWebSearch, setLiveWebSearch] = useState(false);
+  const [liveBackendId, setLiveBackendId] = useState('');
   const [publicQuery, setPublicQuery] = useState('');
   const [secondPublicQuery, setSecondPublicQuery] = useState('');
   const [researchLibrary, setResearchLibrary] = useState('');
@@ -551,14 +553,20 @@ export function LiveAssistant(props: LiveAssistantProps) {
   const translating = voiceId === OPENAI_TRANSLATION_MODEL;
   const actualDelegation = voiceId === 'gpt-live-1' ? liveDelegation : undefined;
   const nativeMode = actualDelegation?.type === 'responses' || actualDelegation?.type === 'decisions';
+  const nativeBackends = models.filter((item) =>
+    item.responses?.streaming && !item.responseDefaults?.effortFixedForSampling);
+  const liveBackend = nativeBackends.find((item) => item.id === (liveBackendId || modelId))
+    ?? nativeBackends[0];
   const voiceBackendOk = translating || actualDelegation?.type === 'decisions' ||
-    (!!selected && (actualDelegation?.type !== 'responses' || (
-      !!selected.responses?.streaming && !selected.responseDefaults?.effortFixedForSampling &&
+    (actualDelegation?.type !== 'responses' ? Boolean(selected) : (
+      !!liveBackend?.responses &&
       liveDelegationSchema.safeParse(actualDelegation).success &&
-      (actualDelegation.maxOutputTokens ?? 16) <= (selected.maxOutputTokens ?? 2048) &&
+      (actualDelegation.maxOutputTokens ?? 16) <= (liveBackend.maxOutputTokens ?? 2048) &&
+      (!actualDelegation.effort || liveBackend.responses.reasoning.includes(actualDelegation.effort)) &&
+      (!actualDelegation.verbosity || liveBackend.responses.verbosity) &&
       (!actualDelegation.serviceTier || ['auto','default'].includes(actualDelegation.serviceTier) ||
-        selected.responses.tiers?.includes(actualDelegation.serviceTier))
-    )));
+        liveBackend.responses.tiers?.includes(actualDelegation.serviceTier))
+    ));
   useEffect(() => {
     if (voiceOptions.length && !voiceOptions.includes(voice)) setVoice(voiceOptions[0]!);
   }, [voiceId, voiceOptions.join(','), voice]);
@@ -1343,6 +1351,7 @@ export function LiveAssistant(props: LiveAssistantProps) {
       },
       translating,
     );
+    client.current?.dispose();
     client.current = voiceClient;
     const baseline = assistantEditorKey(editorState(current.current));
     try {
@@ -1359,7 +1368,7 @@ export function LiveAssistant(props: LiveAssistantProps) {
         }
         const authorizedScope = translating || nativeMode
           ? { spaceIds: [], referenceAssetIds: [], usePersonalMemory: false,
-              allowWebSearch: actualDelegation?.type === 'responses' && allowWebSearch && Boolean(selected?.webSearch) }
+              allowWebSearch: actualDelegation?.type === 'responses' && liveWebSearch && Boolean(liveBackend?.webSearch) }
           : await requestScopeWithGrant();
         if (!requestIsActive(token) || epoch !== voiceEpoch.current) {
           voiceClient.dispose();
@@ -1376,7 +1385,8 @@ export function LiveAssistant(props: LiveAssistantProps) {
             idempotencyKey: secureUuid(),
             modelId: voiceId,
             ...(translating ? { translation: liveTranslation } : {
-              backendModelId: actualDelegation?.type === 'decisions' ? OPENAI_DECISIONS_MODEL : modelId,
+              backendModelId: actualDelegation?.type === 'decisions' ? OPENAI_DECISIONS_MODEL :
+                actualDelegation?.type === 'responses' ? liveBackend?.id : modelId,
               ...(actualDelegation ? { delegation: actualDelegation } : {}),
             }),
             voice,
@@ -2995,14 +3005,32 @@ export function LiveAssistant(props: LiveAssistantProps) {
               <LiveModeSettings
                 disabled={inCall || busy || submissionBlocked || !!grant}
                 mode={translating ? 'translation' : liveDelegation.type}
-                setMode={(value) => setLiveDelegation(value === 'decisions'
-                  ? { type: value, questions: [...defaultLiveDecisionQuestions] } : { type: value })}
+                setMode={(value) => {
+                  setLiveWebSearch(false);
+                  setLiveDelegation(value === 'decisions'
+                    ? { type: value, questions: [...defaultLiveDecisionQuestions] } : { type: value });
+                }}
                 delegation={liveDelegation}
                 setDelegation={setLiveDelegation}
                 translation={liveTranslation}
                 setTranslation={setLiveTranslation}
-                tiers={selected?.responses?.tiers ?? []}
-                maxOutputTokens={selected?.maxOutputTokens ?? 2048}
+                tiers={liveBackend?.responses?.tiers ?? []}
+                efforts={liveBackend?.responses?.reasoning ?? []}
+                verbosity={Boolean(liveBackend?.responses?.verbosity)}
+                maxOutputTokens={liveBackend?.maxOutputTokens ?? 2048}
+                webSearchAvailable={Boolean(liveBackend?.webSearch)}
+                webSearch={liveWebSearch}
+                setWebSearch={setLiveWebSearch}
+                backendPicker={actualDelegation?.type === 'responses' && <ModelChoice
+                  label={t('委派模型')} ariaLabel={t('委派模型')} value={liveBackend?.id ?? ''}
+                  placeholder={t('暂无可用模型')}
+                  disabled={inCall || busy || submissionBlocked || !!grant}
+                  options={nativeBackends.map((item) => ({ value: item.id, label: item.label }))}
+                  onChange={(value) => {
+                    setLiveBackendId(value);
+                    setLiveWebSearch(false);
+                    setLiveDelegation({ type: 'responses', prompt: actualDelegation.prompt });
+                  }} />}
               />
             )}
             {mode === 'voice' && selectedVoice && (

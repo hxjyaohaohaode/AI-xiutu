@@ -7,10 +7,13 @@ export const TEAM_VOICE_MAX_MEMBERS = 6;
 export const TEAM_VOICE_MAX_PCM_BYTES = 9600;
 
 export const teamVoiceInviteSchema = voiceSessionFields
-  .pick({ idempotencyKey: true, modelId: true, voice: true, context: true })
-  .extend({ confirmed: z.literal(true), backendModelId: z.string().min(1).max(128) })
-  .strict()
-  .refine((body) => body.modelId !== OPENAI_TRANSLATION_MODEL, 'Team voice requires a conversation model');
+  .pick({ idempotencyKey: true, modelId: true, backendModelId: true, voice: true, context: true })
+  .extend({
+    confirmed: z.literal(true),
+    backendModelId: voiceSessionFields.shape.backendModelId.unwrap(),
+    modelId: voiceSessionFields.shape.modelId.exclude([OPENAI_TRANSLATION_MODEL]),
+  })
+  .strict();
 
 export const teamVoiceControlSchema = z.discriminatedUnion('type', [
   z.object({ type: z.literal('mute'), muted: z.boolean() }).strict(),

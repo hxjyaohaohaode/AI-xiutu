@@ -9,6 +9,8 @@ import {
   createOpenAIImageProvider,
   getOpenAIImageModels,
   describeOpenAIImageModel,
+  sanitizeOpenAISvg,
+  reviewableGifFrames,
   type ImageGenerationInput,
 } from '../src/index.js';
 
@@ -311,7 +313,7 @@ test('OpenAI profiles enforce real quality, format dependencies, current size ev
   assert.equal(profile.parameterCapabilities?.gif.supported, false);
   assert.equal(profile.parameterCapabilities?.stream.supported, true);
   assert.equal(profile.parameterCapabilities?.partialImages.supported, false);
-  assert.equal(describeOpenAIImageModel('gpt-image-1.5')?.parameterCapabilities?.stream.supported, false);
+  assert.equal(describeOpenAIImageModel('gpt-image-1.5')?.parameterCapabilities?.stream.supported, true);
 });
 
 test('OpenAI Images uses the actual auto dimensions and validates fidelity only for supported edits', async () => {
@@ -376,13 +378,23 @@ test('OpenAI image streams require an authenticated terminal image before any re
     output_format: 'png',
   };
   let events = [partial, completed];
+  let pendingTerminal: ReadableStreamDefaultController<Uint8Array> | undefined;
   const provider = createOpenAIImageProvider(
     { ...env, OPENAI_IMAGE_PARTIALS_ENABLED: 'true' },
     async (_url, init) => {
       const body = JSON.parse(String(init?.body));
       assert.equal(body.stream, true);
       assert.equal(body.partial_images, 1);
-      return new Response(events.map((event) => `data: ${JSON.stringify(event)}\n\n`).join(''), {
+      const eventBytes = (event: object) => new TextEncoder().encode('data: ' + JSON.stringify(event) + '\r\n\r\n');
+      return new Response(new ReadableStream({
+        start(controller) {
+          const initial = eventBytes(events[0]!);
+          controller.enqueue(initial.subarray(0, initial.length - 1));
+          controller.enqueue(initial.subarray(initial.length - 1));
+          if (events.length > 1) pendingTerminal = controller;
+          else controller.close();
+        },
+      }), {
         headers: { 'content-type': 'text/event-stream', 'x-request-id': 'image-stream-fixture' },
       });
     },
@@ -392,9 +404,42 @@ test('OpenAI image streams require an authenticated terminal image before any re
     () => provider.validate({ ...options, imageOptions: { ...options.imageOptions, n: 2 } }),
     { code: 'OPENAI_STREAM_REQUIRES_ONE_IMAGE' },
   );
-  assert.equal((await provider.generate(options)).requestId, 'image-stream-fixture');
+  const finished = await provider.generate(options, (frame) => {
+    assert.equal(frame.index, 0);
+    assert.equal(frame.mime, 'image/png');
+    assert.deepEqual(Buffer.from(frame.bytes), png);
+    assert.ok(pendingTerminal, 'partial is emitted before the terminal event is sent');
+    pendingTerminal.enqueue(new TextEncoder().encode('data: ' + JSON.stringify(completed) + '\n\n'));
+    pendingTerminal.close();
+  });
+  assert.equal(finished.requestId, 'image-stream-fixture');
   events = [partial];
   await assert.rejects(provider.generate(options), { code: 'OPENAI_IMAGE_STREAM_INCOMPLETE' });
+});
+
+test('SVG preserves vectors and rejects external references, active XML and recursive expansion', () => {
+  const size = { width: 1024, height: 1024 };
+  const parse = (xml: string) => sanitizeOpenAISvg(Buffer.from(xml), size).toString('utf8');
+  assert.match(parse('<svg xmlns="http://www.w3.org/2000/svg"><g><path d="M0 0 L20 20"/></g></svg>'), /<path /);
+  for (const xml of [
+    '<svg><image href="https://example.com/image.png"/></svg>',
+    '<svg onload="run()"><path d="M0 0"/></svg>',
+    '<!DOCTYPE svg><svg/>',
+    '<svg><defs><g id="a"><use href="#a"/></g></defs></svg>',
+  ]) assert.throws(() => parse(xml));
+});
+
+test('animated output validation presents each composited GIF frame to review', async () => {
+  const width = 48, height = 32;
+  const raw = Buffer.concat([Buffer.alloc(width * height * 3, 32), Buffer.alloc(width * height * 3, 210)]);
+  const gif = await sharp(raw, { raw: { width, height: height * 2, channels: 3, pageHeight: height } })
+    .gif({ delay: [180, 190], loop: 0 }).toBuffer();
+  const animation = await reviewableGifFrames(gif, { maxPixels: 10000, maxBytes: 1_000_000, frames: 2 });
+  const frames = [];
+  for await (const frame of animation.frames) frames.push(await sharp(frame).raw().toBuffer());
+  assert.equal(frames.length, 2);
+  assert.notDeepEqual(frames[0], frames[1]);
+  await assert.rejects(reviewableGifFrames(gif, { maxPixels: 10000, maxBytes: 1_000_000, frames: 3 }));
 });
 test('explicit transparency checks actual decoded alpha, not a filename or response declaration', async () => {
   const provider = createOpenAIImageProvider(env, (async () =>

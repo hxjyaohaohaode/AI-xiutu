@@ -131,6 +131,7 @@ export type JobOutput =
     }
   | ({
       kind: 'image';
+      chargedUnits?: number;
       images?: GeneratedImage[];
       modelId: string;
       providerOutputFormat?: string;

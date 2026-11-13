@@ -20,6 +20,7 @@ export class EditorVoiceClient {
   private outputPaused = false;
   private blockedItems = new Set<string>();
   private ending = false;
+  private serverClosed = false;
   private disposed = false;
   constructor(
     private onEvent: (event: VoiceServerEvent) => void,
@@ -94,8 +95,20 @@ export class EditorVoiceClient {
           this.clearPlayback();
         }
         if (event.type === 'closed') {
+          this.serverClosed = true;
+          this.ready = false;
+          clearInterval(this.heartbeat);
+          clearTimeout(this.disconnectTimer);
+          this.stream?.getTracks().forEach((track) => track.stop());
           this.onEvent(event);
-          this.dispose();
+          const remaining = this.translation && this.audio?.state === 'running'
+            ? this.nextAudioTime - this.audio.currentTime
+            : 0;
+          if (remaining > 0) {
+            this.disconnectTimer = setTimeout(() => this.dispose(), Math.ceil(remaining * 1000) + 30);
+          } else {
+            this.dispose();
+          }
           return;
         }
         this.onEvent(event);
@@ -105,7 +118,7 @@ export class EditorVoiceClient {
       }
     };
     this.socket.onclose = () => {
-      if (!this.disposed) {
+      if (!this.disposed && !this.serverClosed) {
         this.onFailure('实时连接已断开，没有自动重拨；请查看会话和额度状态。');
         this.dispose();
       }
@@ -212,7 +225,7 @@ export class EditorVoiceClient {
     this.ready = false;
     this.mute(true);
     this.send({ type: 'end' });
-    this.clearPlayback();
+    if (!this.translation) this.clearPlayback();
     this.disconnectTimer = setTimeout(() => {
       this.onFailure('通话最终状态尚未确认，请查看用量记录。');
       this.dispose();

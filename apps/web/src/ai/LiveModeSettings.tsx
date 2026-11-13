@@ -1,12 +1,14 @@
-import { useState } from 'react';
+import { useState, type ReactNode } from 'react';
 import {
   defaultLiveDecisionQuestions, liveDecisionQuestionsSchema, translationLanguages,
+  liveResponseEfforts, liveResponseTiers,
   type LiveDelegationOptions, type LiveTranslationOptions,
 } from '@ai-xiutu/contracts';
 import { t, useLocale } from '../i18n';
 
 export function LiveModeSettings({
-  disabled, mode, setMode, delegation, setDelegation, translation, setTranslation, tiers, maxOutputTokens,
+  disabled, mode, setMode, delegation, setDelegation, translation, setTranslation,
+  tiers, efforts, verbosity, maxOutputTokens, webSearchAvailable, webSearch, setWebSearch, backendPicker,
 }: {
   disabled: boolean;
   mode: 'client' | 'responses' | 'decisions' | 'translation';
@@ -16,7 +18,13 @@ export function LiveModeSettings({
   translation: LiveTranslationOptions;
   setTranslation: (value: LiveTranslationOptions) => void;
   tiers: readonly string[];
+  efforts: readonly string[];
+  verbosity: boolean;
   maxOutputTokens: number;
+  webSearchAvailable: boolean;
+  webSearch: boolean;
+  setWebSearch: (value: boolean) => void;
+  backendPicker?: ReactNode;
 }) {
   const locale = useLocale();
   const labels = new Intl.DisplayNames([locale], { type: 'language' });
@@ -79,6 +87,7 @@ export function LiveModeSettings({
       </label>
       {delegation.type === 'responses' && (
         <>
+          {backendPicker}
           <label>{t('委派模型提示')}
             <textarea rows={2} maxLength={1600} disabled={disabled} value={delegation.prompt ?? ''}
               onChange={(event) => setDelegation({ ...delegation, prompt: event.target.value || undefined })} />
@@ -87,13 +96,41 @@ export function LiveModeSettings({
             <select disabled={disabled} value={delegation.serviceTier ?? 'default'}
               onChange={(event) => {
                 const value = event.target.value;
-                if (value === 'auto' || value === 'default' || value === 'flex' || value === 'priority')
-                  setDelegation({ ...delegation, serviceTier: value });
+                setDelegation({ ...delegation, serviceTier: liveResponseTiers.find((tier) => tier === value) });
               }}>
-              {['auto', 'default', ...['flex', 'priority'].filter((tier) => tiers.includes(tier))]
+              {liveResponseTiers.filter((tier) => tier === 'auto' || tier === 'default' || tiers.includes(tier))
                 .map((tier) => <option key={tier}>{tier}</option>)}
             </select>
           </label>
+          {efforts.length > 0 && (
+            <label>{t('推理强度')}
+              <select aria-label={t('推理强度')} disabled={disabled} value={delegation.effort ?? ''}
+                onChange={(event) => setDelegation({
+                  ...delegation, effort: liveResponseEfforts.find((effort) => effort === event.target.value),
+                })}>
+                <option value="">{t('使用模型设置')}</option>
+                {liveResponseEfforts.filter((effort) => efforts.includes(effort))
+                  .map((effort) => <option key={effort}>{effort}</option>)}
+              </select>
+            </label>
+          )}
+          {verbosity && (
+            <label>{t('回复详细程度')}
+              <select aria-label={t('回复详细程度')} disabled={disabled} value={delegation.verbosity ?? ''} onChange={(event) => {
+                const value = event.target.value;
+                setDelegation({ ...delegation, verbosity:
+                  value === 'low' || value === 'medium' || value === 'high' ? value : undefined });
+              }}>
+                <option value="">{t('使用模型设置')}</option>
+                <option>low</option><option>medium</option><option>high</option>
+              </select>
+            </label>
+          )}
+          {webSearchAvailable && <label className="voice-provider-check">
+            <input type="checkbox" disabled={disabled} checked={webSearch}
+              onChange={(event) => setWebSearch(event.target.checked)} />
+            {t('允许委派模型根据本轮对话联网检索')}
+          </label>}
           <label>{t('委派输出 Token 上限')}
             <input type="number" min={16} max={maxOutputTokens} step={1} disabled={disabled}
               value={delegation.maxOutputTokens ?? ''} placeholder={String(maxOutputTokens)}
@@ -104,6 +141,16 @@ export function LiveModeSettings({
       )}
       {delegation.type === 'decisions' && (
         <>
+          <label>{t('Decisions 触发方式')}
+            <select value={delegation.trigger ?? ''} disabled={disabled} onChange={(event) => {
+              const value = event.target.value;
+              setDelegation({ ...delegation, trigger: value === 'input' || value === 'output' ? value : undefined });
+            }}>
+              <option value="">{t('委派或手动提交')}</option>
+              <option value="input">{t('原语字幕变化')}</option>
+              <option value="output">{t('回复字幕变化')}</option>
+            </select>
+          </label>
           <label>{t('Decisions 问题（JSON）')}
             <textarea rows={5} disabled={disabled} maxLength={12000} spellCheck={false}
               value={questionDraft ?? JSON.stringify(delegation.questions, null, 2)}
@@ -113,7 +160,7 @@ export function LiveModeSettings({
             onClick={() => {
               try {
                 const questions = liveDecisionQuestionsSchema.parse(JSON.parse(questionDraft ?? ''));
-                setDelegation({ type: 'decisions', questions });
+                setDelegation({ ...delegation, questions });
                 setQuestionError(false);
                 setQuestionDraft(undefined);
               } catch { setQuestionError(true); }
@@ -121,7 +168,7 @@ export function LiveModeSettings({
           {questionError && <p role="alert">{t('请检查问题名称、JSON 格式及选项范围。')}</p>}
           {questionDraft !== undefined && <p className="fine-print">{t('点击应用后，下次通话使用新问题。')}</p>}
           <button type="button" className="text-button" disabled={disabled} onClick={() => {
-            setDelegation({ type: 'decisions', questions: [...defaultLiveDecisionQuestions] });
+            setDelegation({ ...delegation, questions: [...defaultLiveDecisionQuestions] });
             setQuestionDraft(undefined);
             setQuestionError(false);
           }}>{t('恢复示例问题')}</button>

@@ -873,12 +873,12 @@ export function attachVoiceBridge(
           }
           nativePending.delete(key);
           nativeFinished.add(key);
-          nativeExplicit = false;
+          if (!event.trigger_id) nativeExplicit = false;
           nativeReceipts.push({
             kind, model: row.backend_model_id, at: new Date().toISOString(), usage: metered,
             ...(typeof result.service_tier === 'string' ? { serviceTier: result.service_tier } : {}),
           });
-          if (nativeFinished.size >= row.config.voiceModel.maxDelegations && nativePending.size)
+          if (nativeFinished.size >= row.config.voiceModel.maxDelegations)
             stop('DELEGATION_BUDGET');
           const text = kind === 'decisions'
             ? summarizeLiveDecision(row.config.delegation, result.answers)
@@ -942,6 +942,7 @@ export function attachVoiceBridge(
           if (queuedResponse && !responses.size) requestResponse();
         }
         if (live && event.type === 'session.closed') {
+          transportClosedConfirmed = true;
           const seconds = event.usage?.seconds;
           finalUsage = Number.isFinite(seconds) && seconds >= 0;
           if (usage.length < 100) {

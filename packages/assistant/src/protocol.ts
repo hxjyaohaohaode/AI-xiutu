@@ -97,6 +97,9 @@ export function voiceStartEvent(
     };
     if (selected?.type === 'responses' && backend) {
       const parameters = responsesParameters(backend.model);
+      const effort = selected.effort ?? parameters.reasoning?.effort;
+      const summary = parameters.reasoning?.summary;
+      const verbosity = selected.verbosity ?? parameters.text?.verbosity;
       delegation = {
         type: 'responses',
         responses: {
@@ -105,8 +108,11 @@ export function voiceStartEvent(
             (selected.prompt ?? ''),
           max_output_tokens: selected.maxOutputTokens ?? backend.model.maxOutputTokens,
           service_tier: selected.serviceTier ?? 'default',
-          ...(parameters.reasoning ? { reasoning: parameters.reasoning } : {}),
-          ...(parameters.text ? { text: parameters.text } : {}),
+          ...(effort && effort !== 'max' || summary ? { reasoning: {
+            ...(effort && effort !== 'max' ? { effort } : {}),
+            ...(summary ? { summary } : {}),
+          } } : {}),
+          ...(verbosity ? { text: { verbosity } } : {}),
           ...(native?.webSearch ? { tools: [{ type: 'web_search' }], tool_choice: 'auto' } : {}),
         },
       };
@@ -129,6 +135,11 @@ export function voiceStartEvent(
           : {}),
         audio: { format: { type: 'audio/pcm', rate: 24000 }, output: { voice } },
         delegation,
+        ...(selected?.type === 'decisions' && selected.trigger ? { triggers: [{
+          type: 'decisions',
+          event_type: selected.trigger === 'input' ? 'session.input_transcript.delta' : 'session.output_transcript.delta',
+          decisions: { questions: selected.questions },
+        }] } : {}),
       },
     };
   }

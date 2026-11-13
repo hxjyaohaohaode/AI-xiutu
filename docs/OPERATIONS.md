@@ -66,6 +66,12 @@ npm run dev
 
 应用生成六位验证码并保留现有哈希、用途、频控和单次消费逻辑。阿里云适配器只接受中国大陆手机号。供应商受理后应通过已授权手机完成实际注册、验证码登录、密码重置，并查看运营商回执。原有腾讯发送通道可通过 `SMS_PROVIDER=tencent` 继续使用，已审核模板参数须匹配 `TENCENT_SMS_CODE_ONLY`。
 
+RAM 自定义策略只需要下列权限。将其绑定到此应用专用程序身份。阿里云将此操作定义为账号级权限。[发码权限](https://help.aliyun.com/zh/pnvs/developer-reference/api-dypnsapi-2017-05-25-sendsmsverifycode)
+
+```json
+{"Version":"1","Statement":[{"Effect":"Allow","Action":["dypns:SendSmsVerifyCode"],"Resource":["*"]}]}
+```
+
 注册包含手机号验证码、密码与可选邀请码；验证码不能由运营面板查看。运营预先添加的账号保持待验证状态，既不赋予默认密码，也不直接视为已验证。命令行初始运营账号是部署持有者的受控配置，审计会记录这一来源。
 
 ### 四类 AI 任务
@@ -101,9 +107,9 @@ npm run dev
 
 录音转写可配置 `AI_SPEECH_ENABLED=true` 和 `OPENAI_TRANSCRIPTION_MODELS`，在运营端为对应模型开启 `transcribe`。使用 OpenAI 审核时，可由 `OPENAI_MODERATION_MODEL` 选择官方别名或 `omni-moderation-2024-09-26` 快照。Responses、Images、Live、Realtime 与转写的参数和验收范围见 [OpenAI 模型与参数](./OPENAI-MODELS.md)。
 
-默认整批最多 4 张、总像素 16,777,216、原始/规范化输出分别不超过 28,000,000 字节；运营的单次上限可进一步收紧。按质量设置单张整数服务点，整批报价乘输出数量并冻结。运营定价要覆盖输入参考图、允许的最大尺寸、文本/图片审核以及 unknown 核验损耗，不能把同一个服务点写成所有模型统一的美元价格。完整配置、8 个精确模型和官方参数来源见 [OpenAI 接入契约](../packages/multimodal/OPENAI.md)。
+默认整批最多 4 张、总像素 16,777,216，原始和规范化输出分别不超过 28,000,000 字节。运营可收紧单次上限，按质量设置基价。报价在入队时冻结。完整配置、11 个精确模型和官方参数来源见 [OpenAI 接入契约](../packages/multimodal/OPENAI.md)。
 
-当前 SVG/GIF、流式部分图像和自动尺寸没有放开，原因与接口状态明确返回。配置成功不表示已完成真实 OpenAI 账户/地区/账单验收。
+自动画幅按模型和运营预算开放。流式中间图、SVG、GIF 分别由 `OPENAI_IMAGE_PARTIALS_ENABLED`、`OPENAI_IMAGE_SVG_ENABLED`、`OPENAI_IMAGE_GIF_ENABLED` 开启。启用前让 API 与 Worker 一起应用迁移 24，按项目权限启用 2.6 型号和允许的 `OPENAI_IMAGE_SVG_AUTHORS`，并在用量明细复核实际回执与预占释放。单张基价随运营设置，GIF 按帧、SVG 按生成加作者两段预占。
 
 ## 4. 生产容器与持久化
 
