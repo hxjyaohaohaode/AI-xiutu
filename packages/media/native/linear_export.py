@@ -227,12 +227,14 @@ def render(image, request, window_png=False, read_source_band=read_band, window_
         raise ValueError("Ultra HDR JPEG development requires opaque RGB samples")
     region = request.get("region")
     srgb_decode = None
+    sample_type = oiio.FLOAT
     if request.get("inputSrgb", False):
         if (
-            not sdr or sdr_tone_map or region or channels != 3 or spec.format != oiio.UINT16
+            not sdr or sdr_tone_map or channels != 3 or spec.format != oiio.UINT16
             or image.format_name() != "tiff" or edit["algorithm"] != "scene-linear-v1"
         ):
             raise ValueError("SDR development requires the opaque RGB16 TIFF master and v1 grade")
+        sample_type = oiio.UINT16
         codes = np.arange(65536, dtype=np.float64) / 65535
         srgb_decode = np.where(codes <= 0.04045, codes / 12.92, np.power((codes + 0.055) / 1.055, 2.4))
     left, top = 0, 0
@@ -247,6 +249,8 @@ def render(image, request, window_png=False, read_source_band=read_band, window_
         ):
             raise ValueError("Invalid native precision window")
     columns = pixel_centers(left, width, spec.width) if regions else None
+    opaque_window_alpha = srgb_decode is not None and region is not None
+    output_channels = 4 if opaque_window_alpha else channels
 
     def developed_stripes():
         end = top + height
@@ -256,23 +260,24 @@ def render(image, request, window_png=False, read_source_band=read_band, window_
                 end,
                 (row // spec.tile_height + 1) * spec.tile_height if spec.tile_height else row + 64,
             )
-            band = (
-                read_source_band(image, spec, left, row, width, next_row - row)
-                if srgb_decode is None
-                else read_band(image, spec, left, row, width, next_row - row, oiio.UINT16)
-            )
+            band = read_source_band(image, spec, left, row, width, next_row - row, sample_type)
             for offset in range(0, band.shape[0], 64):
                 source = band[offset:offset + 64]
                 rows = (
                     pixel_centers(row + offset, source.shape[0], spec.height)[:, None]
                     if regions else None
                 )
-                yield row + offset - top, develop(
+                graded = develop(
                     source, edit, gains, sdr, curves, regions, columns, rows, sdr_tone_map, srgb_decode,
                 )
+                if opaque_window_alpha:
+                    rgba = np.full((*graded.shape[:2], 4), 65535, dtype=np.uint16)
+                    rgba[:, :, :3] = graded
+                    graded = rgba
+                yield row + offset - top, graded
             row = next_row
 
-    result = {"width": width, "height": height, "channels": channels, "bitDepth": 16 if sdr else 32}
+    result = {"width": width, "height": height, "channels": output_channels, "bitDepth": 16 if sdr else 32}
     if window_raw:
         if not (sdr and region) or window_png:
             raise ValueError("A raw preview requires an SDR window")
@@ -281,7 +286,7 @@ def render(image, request, window_png=False, read_source_band=read_band, window_
                 output.write(memoryview(np.ascontiguousarray(stripe)).cast("B"))
         return result
 
-    out_spec = oiio.ImageSpec(width, height, channels, oiio.UINT16 if sdr else oiio.FLOAT)
+    out_spec = oiio.ImageSpec(width, height, output_channels, oiio.UINT16 if sdr else oiio.FLOAT)
     out_spec.attribute("oiio:ColorSpace", "sRGB" if sdr else "Linear")
     # Fitted previews immediately consume the private TIFF for resizing.
     # Its samples can be stored losslessly without a deflate/inflate round trip.
@@ -289,7 +294,7 @@ def render(image, request, window_png=False, read_source_band=read_band, window_
     out_spec.attribute("compression", "none" if uncompressed else "zip")
     if window_png:
         out_spec.attribute("png:compressionLevel", 1)
-    if sdr and channels == 4:
+    if sdr and output_channels == 4:
         out_spec.attribute("oiio:UnassociatedAlpha", 1)
     if not sdr and not linear_tiff:
         apply_layout(out_spec, capture_layout(spec))

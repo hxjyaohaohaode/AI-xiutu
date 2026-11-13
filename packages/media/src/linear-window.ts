@@ -12,12 +12,15 @@ import type { NormalizedMediaOptions } from './process.js';
 import {
   MEDIA_MAX_LINEAR_PIXELS,
   MEDIA_MAX_PRECISION_PIXELS,
+  MEDIA_MAX_SDR_MASTER_PIXELS,
   MEDIA_MAX_SIDE,
   MEDIA_PROTOCOL,
   hasDisplayHdr,
+  supportsNativeSdrMaster,
   MediaProcessingError,
   type MediaDescriptorV1,
   type MediaExportResult,
+  type MediaPrecisionInput,
   type MediaPrecisionPreview,
   type MediaPrecisionWindow,
 } from './types.js';
@@ -41,6 +44,7 @@ interface NativeWindow {
   region: MediaPrecisionWindow;
   fitted: boolean;
   edit: PrecisionEdit;
+  inputSrgb?: true;
   sdr: true;
   sdrToneMap: boolean;
 }
@@ -220,34 +224,39 @@ export interface LinearWindowContext {
   descriptor: MediaDescriptorV1;
 }
 
-export async function exportLinearWindow(
+export async function exportMasterWindow(
   context: LinearWindowContext,
   workDir: string,
   outputPath: string,
   preview: MediaPrecisionPreview,
+  input: MediaPrecisionInput,
   edit: PrecisionEdit | undefined,
   options: NormalizedMediaOptions,
   signal?: AbortSignal,
 ): Promise<MediaExportResult> {
   const { descriptor, runtime } = context;
-  const source = descriptor.linearMaster;
+  const inputSrgb = input === 'master16';
+  const source = inputSrgb ? descriptor.master : descriptor.linearMaster;
+  const maxPixels = inputSrgb ? MEDIA_MAX_SDR_MASTER_PIXELS : MEDIA_MAX_LINEAR_PIXELS;
   if (
     descriptor.protocol !== MEDIA_PROTOCOL ||
     !/^[a-f0-9]{64}$/.test(descriptor.sourceSha256) ||
     !source ||
-    source.relativePath !== 'linear-master.exr' ||
-    source.bitDepth !== 32 ||
+    (inputSrgb && !supportsNativeSdrMaster(descriptor)) ||
+    source.relativePath !== (inputSrgb ? 'master.tif' : 'linear-master.exr') ||
+    source.bitDepth !== (inputSrgb ? 16 : 32) ||
+    (inputSrgb && source.colorSpace !== 'sRGB') ||
     !/^[a-f0-9]{64}$/.test(source.sha256) ||
     !Number.isSafeInteger(source.bytes) ||
     source.bytes < 1 ||
     source.bytes > 2_147_483_648
   )
-    throw new MediaProcessingError('Invalid retained linear master descriptor', 'processing');
+    throw new MediaProcessingError('Invalid retained master descriptor', 'processing');
   if (
     ![source.width, source.height].every(
       (edge) => Number.isSafeInteger(edge) && edge >= 1 && edge <= MEDIA_MAX_SIDE,
     ) ||
-    source.width * source.height > MEDIA_MAX_LINEAR_PIXELS
+    source.width * source.height > maxPixels
   )
     throw new MediaProcessingError('Retained master exceeds the precision budget', 'limit');
   const region = previewWindow(preview, source);
@@ -266,12 +275,13 @@ export async function exportLinearWindow(
       outputPath: partial,
       width: source.width,
       height: source.height,
-      maxPixels: MEDIA_MAX_LINEAR_PIXELS,
+      maxPixels,
       region,
       fitted,
       edit: edit ?? NEUTRAL_PRECISION_EDIT,
+      ...(inputSrgb ? { inputSrgb: true } : {}),
       sdr: true,
-      sdrToneMap: hasDisplayHdr(descriptor.original),
+      sdrToneMap: !inputSrgb && hasDisplayHdr(descriptor.original),
     },
     options,
     signal,
@@ -328,6 +338,6 @@ export async function exportLinearWindow(
     format: 'png16',
     sourceSha256: descriptor.sourceSha256,
     includesEditorRecipe: false,
-    ...precisionRecord(edit, descriptor.sourceSha256, 'linear-master'),
+    ...precisionRecord(edit, descriptor.sourceSha256, input),
   };
 }

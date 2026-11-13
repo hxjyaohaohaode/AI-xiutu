@@ -5,12 +5,13 @@ import { dirname, isAbsolute, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { tmpdir } from 'node:os';
 import { parsePrecisionEdit } from '@ai-xiutu/editor';
-import { exportLinearWindow, type LinearWindowContext } from './linear-window.js';
+import { exportMasterWindow, type LinearWindowContext } from './linear-window.js';
 import {
   MEDIA_MAX_INPUT_BYTES,
   MEDIA_DEFAULT_MAX_PIXELS,
   MEDIA_MAX_PIXELS,
   MEDIA_MAX_PROXY_PIXELS,
+  supportsNativeSdrMaster,
   MediaProcessingError,
   type ProcessMediaRequest,
   type ExportMediaRequest,
@@ -376,10 +377,12 @@ export async function exportMedia(
   const reservation = await open(outputPath, 'wx', 0o600);
   await reservation.close();
   try {
+    const input = request.precisionInput;
     if (
       window &&
       (request.preview?.region || request.preview?.fitRegion) &&
-      request.precisionInput === 'linear-master' &&
+      (input === 'linear-master' ||
+        (input === 'master16' && options.pythonExecutable && supportsNativeSdrMaster(window.descriptor))) &&
       process.platform === 'linux' &&
       (await access('/proc/self/fd', constants.R_OK | constants.X_OK).then(
         () => true,
@@ -389,11 +392,12 @@ export async function exportMedia(
       await assertIsolation();
       const releaseSlot = await windowSlot(request.signal);
       try {
-        return await exportLinearWindow(
+        return await exportMasterWindow(
           window,
           workDir,
           outputPath,
           request.preview,
+          input,
           precisionEdit,
           {
             ...options,
