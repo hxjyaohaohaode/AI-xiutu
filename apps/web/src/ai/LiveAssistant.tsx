@@ -2851,7 +2851,7 @@ export function LiveAssistant(props: LiveAssistantProps) {
               {t('请选择支持图片的模型，或移除附件。')}
             </small>
           )}
-          <PromptBar className="assistant-reference-prompt" width={1200} inputRef={composerInput}
+          <PromptBar className="assistant-reference-prompt" width={1200} inputRef={composerInput} sendOnEnter={false}
             placeholder={inCall ? t('补充通话要求…') : t('输入调整要求…')}
             value={prompt} onValueChange={setPrompt} maxLength={4000}
             modelKey={modelId} onModelChange={setModelId}

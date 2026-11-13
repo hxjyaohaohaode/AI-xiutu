@@ -309,7 +309,7 @@ try {
       .click();
     await page
       .locator('.library-reference-masonry')
-      .getByRole('button', { name: /Collaborative portrait/ })
+      .getByRole('button', { name: 'Collaborative portrait', exact: true })
       .click();
     await page.locator('.collaboration-status[data-state="ready"]').waitFor();
     await page.locator('.collaboration-summary').click();

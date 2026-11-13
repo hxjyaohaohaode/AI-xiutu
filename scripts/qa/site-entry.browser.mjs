@@ -105,11 +105,9 @@ async function exportedImageSnapshot(page, closeDialog, dimensions) {
 }
 
 async function assertSampleSettings(page, dimensions) {
-  assert.equal(await page.locator('.canvas-file-info > span').innerText(), 'color-study.webp');
-  assert.equal(
-    await page.locator('.canvas-file-info > small').innerText(),
-    `${dimensions.width} × ${dimensions.height}`,
-  );
+  assert.equal(await page.locator('.workspace-project-title strong').getAttribute('title'), 'color-study.webp');
+  assert.deepEqual(await page.locator('canvas[aria-label="照片编辑预览"]').evaluate(
+    (canvas) => [canvas.width, canvas.height]), [dimensions.width, dimensions.height]);
   const panel = page.locator('.free-panel[aria-hidden="false"]');
   for (const [name, expected] of [
     ['色温', 60],
@@ -235,10 +233,10 @@ export async function runSiteEntryChecks({
           'an explicitly imported local photo renders in the actual editor',
         );
         await page.locator('.canvas-stage[aria-busy="false"]').waitFor();
-        await page
-          .getByRole('navigation', { name: '编辑工具', exact: true })
-          .getByRole('button', { name: '色彩', exact: true })
-          .click();
+        const adjustment = page.locator('[data-dock-tool="light"]');
+        if ((await adjustment.getAttribute('aria-pressed')) !== 'true') await adjustment.click();
+        const color = page.locator('.free-panel[aria-hidden="false"] .inspector-family-tabs [data-segment-value="color"]');
+        if ((await color.getAttribute('aria-pressed')) !== 'true') await color.click();
         const colorPanel = page.locator('.free-panel[aria-hidden="false"]');
         await colorPanel.getByRole('button', { name: /^色温，/ }).click();
         await colorPanel.getByRole('slider', { name: '色温', exact: true }).fill('60');

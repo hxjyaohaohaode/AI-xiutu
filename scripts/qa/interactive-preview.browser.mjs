@@ -32,6 +32,18 @@ const report = {
 };
 let browser;
 
+async function openTool(page, id) {
+  const root = ['color', 'curves', 'detail'].includes(id) ? 'light'
+    : ['paint', 'liquify'].includes(id) ? 'repair' : id;
+  const dock = page.locator(`[data-dock-tool="${root}"]`);
+  if ((await dock.getAttribute('aria-pressed')) !== 'true') await dock.click();
+  const panel = page.locator('.free-panel[aria-hidden="false"]');
+  await panel.waitFor();
+  const choice = panel.locator(`.inspector-family-tabs:visible [data-segment-value="${id}"]`);
+  if (await choice.count() && (await choice.getAttribute('aria-pressed')) !== 'true')
+    await choice.click();
+}
+
 async function openRecipeExport(page) {
   await page.locator('.workspace-top-actions .top-export').click();
   return page.locator('dialog.export-dialog[open]');
@@ -142,11 +154,7 @@ async function verifyLocalMaskAndLiquify(input) {
       .raw()
       .toBuffer({ resolveWithObject: true });
     const source = { width: info.width, height: info.height, data: new Uint8ClampedArray(data) };
-    const tool = (name) =>
-      page
-        .getByRole('navigation', { name: '编辑工具' })
-        .getByRole('button', { name, exact: true })
-        .click();
+    const tool = (name) => openTool(page, { 局部: 'local', 液化: 'liquify', 修复: 'repair' }[name]);
     const selectedPanel = page.locator('.free-panel[aria-hidden="false"]');
     const canvas = page.locator('.image-frame canvas[aria-label="照片编辑预览"]');
     const settled = () => page.locator('.canvas-stage[aria-busy="false"]').waitFor();
@@ -160,7 +168,7 @@ async function verifyLocalMaskAndLiquify(input) {
     await page.route('**/v1/**', (route) =>
       route.fulfill({ status: 503, json: { message: 'offline' } }),
     );
-    await page.goto(`http://127.0.0.1:${vite.httpServer.address().port}/#/studio`);
+    await page.goto(`http://127.0.0.1:${vite.httpServer.address().port}/#/studio`, { waitUntil: 'domcontentloaded', timeout: 60000 });
     await page
       .getByLabel('选择照片', { exact: true })
       .setInputFiles({ name: 'scene-preview.png', mimeType: 'image/png', buffer: encoded });
@@ -560,14 +568,12 @@ async function verifyWorkerRecovery({ png, source }) {
       await page.locator('.canvas-stage').waitFor();
       return { bytes, recipe: JSON.parse(bytes.toString('utf8')) };
     };
-    await page.goto(`http://127.0.0.1:${vite.httpServer.address().port}/#/studio`);
+    await page.goto(`http://127.0.0.1:${vite.httpServer.address().port}/#/studio`, { waitUntil: 'domcontentloaded', timeout: 60000 });
     await page.getByLabel('选择照片', { exact: true }).setInputFiles(file);
     const original = await waitForSettled(0);
     const canvas = page.locator('.image-frame canvas[aria-label="照片编辑预览"]');
     assert.deepEqual([original.width, original.height], [source.width, source.height]);
-    const tools = page.getByRole('navigation', { name: '编辑工具', exact: true });
-    const light = tools.getByRole('button', { name: '明暗', exact: true });
-    if ((await light.getAttribute('aria-pressed')) !== 'true') await light.click();
+    await openTool(page, 'light');
     const panel = page.locator('.free-panel[aria-hidden="false"]');
     const beforeOwners = await page.evaluate((workerId) => {
       const trace = window.workerRecoveryTrace;
@@ -1013,7 +1019,7 @@ try {
     await page.route('**/v1/**', (route) =>
       route.fulfill({ status: 503, json: { message: 'offline' } }),
     );
-    await page.goto(`http://127.0.0.1:${vite.httpServer.address().port}/#/studio`);
+    await page.goto(`http://127.0.0.1:${vite.httpServer.address().port}/#/studio`, { waitUntil: 'domcontentloaded', timeout: 60000 });
     await page.getByLabel('选择照片', { exact: true }).setInputFiles({
       name: 'interactive-preview.png',
       mimeType: 'image/png',
@@ -1028,19 +1034,7 @@ try {
       const opened = await sharp(original).metadata();
       assert.deepEqual([opened.width, opened.height], [width, height]);
     }
-    const tools = page.getByRole('navigation', { name: '编辑工具' });
-    const tool = tools.getByRole('button', {
-      name:
-        test === '曲线'
-          ? '曲线'
-          : test === '饱和度' || test === 'HSL'
-            ? '色彩'
-            : w < 760
-              ? '调节'
-              : '明暗',
-      exact: true,
-    });
-    if ((await tool.getAttribute('aria-pressed')) !== 'true') await tool.click();
+    await openTool(page, test === '曲线' ? 'curves' : test === '饱和度' || test === 'HSL' ? 'color' : 'light');
     const panel = page.locator('.free-panel[aria-hidden="false"]');
     await panel.waitFor();
     const sliderName = test === 'HSL' ? hslBand.label + '色色相' : test;

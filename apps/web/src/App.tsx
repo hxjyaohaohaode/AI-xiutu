@@ -3134,7 +3134,8 @@ export function App({
               />
               <div className="workspace-notice-anchor" ref={setNoticeContainer} />
               <div className="workspace-body">
-                {!cloudNoticeDismissed && <FloatingNotice message={cloudError}
+                {!cloudNoticeDismissed && <FloatingNotice message={cloudError} className="cloud-status"
+                  dismissLabel={interactionText('dismissCloud')}
                   onRetry={retryCloudRead} onDismiss={() => setCloudNoticeDismissed(true)} />}
                 <MotionSwitch
                   switchKey={view}

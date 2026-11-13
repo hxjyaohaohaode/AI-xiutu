@@ -131,7 +131,7 @@ async function openProject(target, selectModel = true) {
   await selectProject(target);
   await target
     .locator('.library-reference-masonry')
-    .getByRole('button', { name: /Collaborative portrait/ })
+    .getByRole('button', { name: 'Collaborative portrait', exact: true })
     .click();
   await target.locator('.collaboration-status[data-state="ready"]').waitFor();
   await target.locator('[data-dock-tool="ai"]:visible').click();

@@ -88,6 +88,7 @@ export interface PromptBarProps {
   hideInput?: boolean;
   allowEmpty?: boolean;
   sendDisabled?: boolean;
+  sendOnEnter?: boolean;
   stopDisabled?: boolean;
   maxLength?: number;
   labels?: Partial<{ input: string; sources: string; commands: string; models: string; effort: string; attach: string; chooseModel: string; dictate: string; stop: string; send: string; listening: string; empty: string }>;
@@ -234,6 +235,7 @@ function SendGlyph({ busy, morphDuration, squash, tilt }: SendGlyphProps) {
 }
 
 const PromptBar: React.FC<PromptBarProps> = ({
+  sendOnEnter = true,
   placeholder = 'Ask anything',
   sources = DEFAULT_SOURCES,
   commands = DEFAULT_COMMANDS,
@@ -606,7 +608,7 @@ const PromptBar: React.FC<PromptBarProps> = ({
   };
 
   const onKeyDown = (e: KeyboardEvent<HTMLTextAreaElement>) => {
-    if (e.nativeEvent.isComposing) return;
+    if (e.nativeEvent.isComposing || e.nativeEvent.keyCode === 229) return;
     if (open && list.length) {
       if (e.key === 'ArrowDown' || e.key === 'ArrowUp') {
         e.preventDefault();
@@ -631,7 +633,7 @@ const PromptBar: React.FC<PromptBarProps> = ({
       }
       return;
     }
-    if (e.key === 'Enter' && !e.shiftKey && !e.nativeEvent.isComposing) {
+    if (e.key === 'Enter' && !e.shiftKey && (sendOnEnter || e.ctrlKey || e.metaKey)) {
       e.preventDefault();
       send();
     }
