@@ -11,10 +11,12 @@ import {
   srgbToLinear,
   type RGBAImage,
   type FaceWarpAnchorV3,
+  type FaceContourV3,
   type WarpStrokeV3,
 } from '../src/index.js';
 import { applyWarpV3, compileWarpFieldV3 } from '../src/v3-warp.js';
 import { compileFaceWarp } from '../src/face-warp.js';
+import { compileFaceContour, faceContourBounds } from '../src/face-contour.js';
 import { sampleBilinearV3, sampleBoundedCubicV3 } from '../src/v3-pixels.js';
 import { flowWarpPoint, flowWarpPointV2 } from '../src/v3-flow.js';
 
@@ -477,4 +479,129 @@ test('an eye transform preserves the jaw displacement and shares a bounded inver
       assert.ok(area > 0.05, 'the combined field must preserve local orientation');
     }
   }
+});
+
+test('face contour is signed, preserves the central features and reaches the fitted outline without folding', () => {
+  const contour: FaceContourV3 = {
+    center: { x: 0.52, y: 0.37 },
+    axis: 24,
+    rows: [
+      {
+        y: -0.12,
+        left: -0.24,
+        right: 0.21,
+        leftCore: -0.13,
+        rightCore: 0.12,
+        leftShift: 0,
+        rightShift: 0,
+      },
+      {
+        y: 0.06,
+        left: -0.26,
+        right: 0.23,
+        leftCore: -0.13,
+        rightCore: 0.12,
+        leftShift: 0.012,
+        rightShift: 0.009,
+      },
+      {
+        y: 0.23,
+        left: -0.2,
+        right: 0.18,
+        leftCore: -0.1,
+        rightCore: 0.1,
+        leftShift: 0.009,
+        rightShift: 0.011,
+      },
+      {
+        y: 0.31,
+        left: -0.07,
+        right: 0.08,
+        leftCore: -0.035,
+        rightCore: 0.043,
+        leftShift: 0,
+        rightShift: 0,
+      },
+    ],
+  };
+  for (const sign of [-1, 1]) {
+    const profile = {
+      ...contour,
+      rows: contour.rows.map((row) => ({
+        ...row,
+        leftShift: row.leftShift * sign,
+        rightShift: row.rightShift * sign,
+      })),
+    };
+    const map = compileFaceContour(profile, dimensions);
+    const half = compileFaceContour(profile, { width: 150, height: 110 });
+    const bounds = faceContourBounds(profile, dimensions);
+    const angle = (contour.axis * Math.PI) / 180;
+    const axis = { x: Math.cos(angle), y: Math.sin(angle) };
+    const pixel = (u: number, v: number) => ({
+      x: contour.center.x * dimensions.width + dimensions.height * (axis.x * u - axis.y * v),
+      y: contour.center.y * dimensions.height + dimensions.height * (axis.y * u + axis.x * v),
+    });
+    const sample = (u: number, v: number) => {
+      const p = pixel(u, v);
+      return map(p.x, p.y);
+    };
+    const row = profile.rows[1]!;
+    const left = sample(row.left + row.leftShift, row.y);
+    const original = pixel(row.left, row.y);
+    assert.ok(Math.hypot(left.x - original.x, left.y - original.y) < 0.05);
+    assert.deepEqual(sample(0, row.y), pixel(0, row.y));
+    assert.deepEqual(sample(0.45, row.y), pixel(0.45, row.y));
+    for (let v = -0.13; v <= 0.33; v += 0.013) {
+      for (let u = -0.36; u <= 0.34; u += 0.007) {
+        const p = pixel(u, v);
+        const a = map(p.x, p.y);
+        const b = sample(u + 0.001, v);
+        assert.ok((b.x - a.x) * axis.x + (b.y - a.y) * axis.y > 0.1);
+        const small = half(p.x / 2, p.y / 2);
+        assert.ok(Math.hypot(a.x - 2 * small.x, a.y - 2 * small.y) < 1e-8);
+        if (a.x !== p.x || a.y !== p.y) {
+          assert.ok(
+            p.x > bounds.left && p.x < bounds.right && p.y > bounds.top && p.y < bounds.bottom,
+          );
+        }
+      }
+    }
+  }
+  const operation: WarpStrokeV3 = {
+    ...stroke('push', 1),
+    algorithm: 'face-field-v2',
+    anchors: [],
+    contour,
+    resampling: 'bounded-cubic-v1',
+  };
+  const recipe = createRecipeV4({
+    warp: { enabled: true, protection: null, strokes: [operation] },
+  });
+  const source: RGBAImage = {
+    ...dimensions,
+    data: Uint8ClampedArray.from({ length: dimensions.width * dimensions.height * 4 }, (_, i) =>
+      i % 4 === 3 ? 255 : (i * 13) % 251,
+    ),
+  };
+  assert.deepEqual(
+    renderEditorRecipeTiled(source, recipe, { tileSize: 65 }),
+    renderEditorRecipe(source, recipe),
+  );
+  assert.deepEqual(parseEditorRecipe(JSON.parse(JSON.stringify(recipe))), recipe);
+  assert.throws(
+    () =>
+      createRecipeV4({
+        warp: { ...recipe.warp, strokes: [{ ...operation, algorithm: 'face-field-v1' }] },
+      }),
+    /contour: requires face-field-v2/,
+  );
+  const rows = [...contour.rows].reverse();
+  assert.throws(
+    () =>
+      createRecipeV4({
+        warp: { ...recipe.warp, strokes: [{ ...operation, contour: { ...contour, rows } }] },
+      }),
+    /strictly increasing/,
+  );
 });

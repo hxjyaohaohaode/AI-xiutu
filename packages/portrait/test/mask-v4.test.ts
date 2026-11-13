@@ -17,6 +17,7 @@ import {
   facialMasks,
   facialMasksV4,
   portraitToolAvailability,
+  portraitValues,
   type PortraitTarget,
 } from '../src/index.js';
 import { analysis, bodyTarget, faceTarget } from './fixtures.js';
@@ -292,4 +293,30 @@ test('new V4 portrait flows retain their algorithm during edits and legacy targe
   const legacy = migrateRecipeToV4(applyPortraitValues(createRecipeV3(), a, id, { jaw: 50 }));
   const preserved = applyPortraitValues(legacy, a, id, { jaw: 60, eyeSize: 30 });
   assert.ok(preserved.warp.strokes.every((s) => s.algorithm === undefined));
+});
+
+test('contour controls share a smooth width budget with explicit upgrade of existing automatic values', () => {
+  const target = faceTarget();
+  const before = analysis([target]);
+  const latest = { ...before, algorithmVersion: REFINED_PORTRAIT_ANALYSIS };
+  const values = { faceSlim: 90, faceNarrow: 90, vFace: 90, jaw: 90, faceSmall: 70, smooth: 40 };
+  const saved = applyPortraitValues(createRecipeV4(), before, target.id, values);
+  const keep = applyPortraitValues(saved, latest, target.id, values);
+  assert.ok(keep.warp.strokes.every((stroke) => stroke.algorithm !== 'face-field-v2'));
+  const upgraded = applyPortraitValues(saved, latest, target.id, values, undefined, {
+    upgradeFace: true,
+  });
+  const created = applyPortraitValues(createRecipeV4(), latest, target.id, values);
+  assert.deepEqual(upgraded.warp, created.warp);
+  assert.deepEqual(portraitValues(upgraded, target.id), values);
+  assert.equal(created.warp.strokes.length, 1);
+  const contour = created.warp.strokes[0]!.contour!;
+  assert.ok(contour.rows.some(({ leftShift, rightShift }) => leftShift > 0 && rightShift > 0));
+  assert.ok(
+    contour.rows.every(
+      ({ leftShift, rightShift, left, right }) => (leftShift + rightShift) / (right - left) < 0.113,
+    ),
+  );
+  const wide = applyPortraitValues(createRecipeV4(), latest, target.id, { faceSlim: -90 });
+  assert.ok(wide.warp.strokes[0]?.contour?.rows.some(({ leftShift }) => leftShift < 0));
 });

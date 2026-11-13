@@ -12,6 +12,7 @@ export {
 } from './geometry.js';
 export {
   applyPortraitValues,
+  CURRENT_PORTRAIT_GEOMETRY,
   portraitValues,
   portraitMakeupColors,
   portraitToolAvailability,

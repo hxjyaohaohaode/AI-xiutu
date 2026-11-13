@@ -4,10 +4,22 @@ import type { WarpStrokeV3, WarpV3 } from './v3-types.js';
 import type { RGBAImage, RenderOptions, Point, Dimensions } from './types.js';
 import { flowWarpPoint, flowWarpPointV2 } from './v3-flow.js';
 import { compileFaceWarp, faceWarpBounds } from './face-warp.js';
+import { compileFaceContour, faceContourBounds } from './face-contour.js';
 
 function support(stroke: WarpStrokeV3, dimensions: Dimensions) {
-  if (stroke.algorithm === 'face-field-v1' && stroke.anchors)
-    return faceWarpBounds(stroke.anchors, dimensions);
+  if (stroke.anchors) {
+    const bounds = stroke.anchors.length ? faceWarpBounds(stroke.anchors, dimensions) : null;
+    if (!stroke.contour) return bounds ?? { left: 0, right: 0, top: 0, bottom: 0 };
+    const contour = faceContourBounds(stroke.contour, dimensions);
+    return bounds
+      ? {
+          left: Math.min(bounds.left, contour.left),
+          right: Math.max(bounds.right, contour.right),
+          top: Math.min(bounds.top, contour.top),
+          bottom: Math.max(bounds.bottom, contour.bottom),
+        }
+      : contour;
+  }
   const radius = stroke.radius * Math.min(dimensions.width, dimensions.height),
     x = stroke.from.x * dimensions.width,
     y = stroke.from.y * dimensions.height,
@@ -56,10 +68,8 @@ function compileWarpMapping(warp: WarpV3, dimensions: Dimensions, original?: RGB
             dy,
             dragLimit: Math.min(1, (r * 0.8) / Math.max(1e-12, Math.hypot(dx, dy))),
             guard: s.guardId ? guards.get(s.guardId) : undefined,
-            faceField:
-              s.anchors && s.algorithm === 'face-field-v1'
-                ? compileFaceWarp(s.anchors, dimensions)
-                : undefined,
+            faceField: s.anchors?.length ? compileFaceWarp(s.anchors, dimensions) : undefined,
+            faceContour: s.contour ? compileFaceContour(s.contour, dimensions) : undefined,
           };
         })
     : [];
@@ -102,14 +112,18 @@ function compileWarpMapping(warp: WarpV3, dimensions: Dimensions, original?: RGB
     while (position >= 0) {
       const i = candidates[position--]!;
       const stroke = strokes[i]!;
-      if (stroke.faceField) {
+      if (stroke.faceField || stroke.faceContour) {
         const protectedWeight = stroke.guard?.(point.x, point.y) ?? 0;
         const strength = stroke.strength * (1 - Math.max(globalProtection, protectedWeight));
         if (!strength) continue;
-        const mapped = stroke.faceField(x, y);
-        if (mapped.x === x && mapped.y === y) continue;
-        x += (mapped.x - x) * strength;
-        y += (mapped.y - y) * strength;
+        const detail = stroke.faceField?.(x, y);
+        const contour = stroke.faceContour?.(detail?.x ?? x, detail?.y ?? y);
+        const mapped = contour ?? detail!;
+        const dx = mapped.x - x;
+        const dy = mapped.y - y;
+        if (!dx && !dy) continue;
+        x += dx * strength;
+        y += dy * strength;
         if (reconstruction && stroke.resampling) reconstruction.detail = true;
         const next = candidatesAt(x, y);
         if (next !== candidates) {
@@ -216,6 +230,8 @@ export function applyWarpV3(
   // Outside the union of stroke supports the reverse mapping is identity, even for a composed field.
   const bounds = (suffix ? [suffix.stroke] : active)
     .map((stroke) => {
+      // A compact inverse feature motion can move a sample into the contour's
+      // support. The two support rectangles are merged before scanning.
       const box = support(stroke, image);
       return {
         left: Math.max(0, Math.floor(box.left - 0.5)),

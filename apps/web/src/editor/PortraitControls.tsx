@@ -9,6 +9,7 @@ import { Sparkle, PaintBrush, HandPointing, ArrowsClockwise } from '../component
 import {
   PORTRAIT_TOOLS,
   REFINED_PORTRAIT_ANALYSIS,
+  CURRENT_PORTRAIT_GEOMETRY,
   portraitValues,
   applyPortraitValues,
   portraitMakeupColors,
@@ -161,22 +162,22 @@ export function PortraitControls({
       item.origin?.moduleId === 'portrait.basic.v2',
   );
   const hasManual = targetOperations.some((item) => item.origin?.moduleId === 'portrait.manual.v1');
-  const hasRefinedFace = targetOperations.some(
-    (item) => item.origin?.parameters?.portraitGeometry === 1,
+  const hasCurrentFace = targetOperations.some(
+    (item) => item.origin?.parameters?.portraitGeometry === CURRENT_PORTRAIT_GEOMETRY,
   );
   const canUpdateFace =
     recipe.schemaVersion === 4 &&
     target?.kind === 'face' &&
     hasAutomatic &&
     state.analysis?.algorithmVersion === REFINED_PORTRAIT_ANALYSIS &&
-    !hasRefinedFace;
+    !hasCurrentFace;
   const values = target ? portraitValues(recipe, target.id) : {};
   const availability = useMemo(
     () =>
       state.analysis && target
         ? portraitToolAvailability(state.analysis, target.id, recipe.schemaVersion, recipe)
         : [],
-    [state.analysis, target, recipe.schemaVersion, hasAutomatic, hasRefinedFace],
+    [state.analysis, target, recipe.schemaVersion, hasAutomatic, hasCurrentFace],
   );
   const hasLegacyNeck =
     recipe.schemaVersion === 4 && category === 'body' && (values.neckLength ?? 0) !== 0;

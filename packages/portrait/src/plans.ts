@@ -29,6 +29,7 @@ import {
 } from './types.js';
 import { classicFaceFeatures, faceLandmarkMoves } from './face-landmark-moves.js';
 import { eyeTransformIds, featureTransforms, mouthTransformIds } from './feature-transforms.js';
+import { contourTools, portraitContour } from './contour-shaping.js';
 
 const MODULE = 'portrait.basic.v1';
 const MODULE_V4 = 'portrait.basic.v2';
@@ -45,6 +46,8 @@ export interface PortraitApplyOptions {
   makeupMaterials?: Partial<Record<string, PaintMaterialV3>>;
   upgradeFace?: boolean;
 }
+const insideSource = (p: Point) => p.x >= 0 && p.x <= 1 && p.y >= 0 && p.y <= 1;
+export const CURRENT_PORTRAIT_GEOMETRY = 2;
 const catalog = new Map(PORTRAIT_TOOLS.map((t) => [t.id, t]));
 const skinSpotTools = ['skinShine', 'skinBlemish', 'skinColorSpot'];
 type OwnedPrimitive =
@@ -334,14 +337,14 @@ export function portraitToolAvailability(
     safe,
     target,
     schemaVersion,
-    schemaVersion === 4 && usesRefinedGeometry(safe, targetId, recipe),
+    schemaVersion === 4 ? portraitGeometry(safe, targetId, recipe) : 0,
   );
 }
 
-function hasRefinedPrimitives(recipe: LayeredRecipe, targetId: string) {
-  return ownedPrimitives(recipe, targetId).some(
-    (item) => item.origin?.parameters?.portraitGeometry === 1,
-  );
+function storedPortraitGeometry(recipe: LayeredRecipe | undefined, targetId: string) {
+  const existing = recipe ? ownedPrimitives(recipe, targetId) : [];
+  if (!existing.length) return null;
+  return Math.max(0, ...existing.map((item) => item.origin?.parameters?.portraitGeometry ?? 0));
 }
 
 function requiresRefinedAnalysis(
@@ -352,16 +355,16 @@ function requiresRefinedAnalysis(
   return (
     analysis.algorithmVersion !== REFINED_PORTRAIT_ANALYSIS &&
     recipe?.schemaVersion === 4 &&
-    hasRefinedPrimitives(recipe, targetId)
+    (storedPortraitGeometry(recipe, targetId) ?? 0) >= 1
   );
 }
 
-function usesRefinedGeometry(analysis: PortraitAnalysis, targetId: string, recipe?: LayeredRecipe) {
+function portraitGeometry(analysis: PortraitAnalysis, targetId: string, recipe?: LayeredRecipe) {
   if (analysis.algorithmVersion !== REFINED_PORTRAIT_ANALYSIS || recipe?.schemaVersion === 3)
-    return false;
-  const existing = recipe ? ownedPrimitives(recipe, targetId) : [];
-  return (
-    !existing.length || existing.some((item) => item.origin?.parameters?.portraitGeometry === 1)
+    return 0;
+  return Math.min(
+    CURRENT_PORTRAIT_GEOMETRY,
+    storedPortraitGeometry(recipe, targetId) ?? CURRENT_PORTRAIT_GEOMETRY,
   );
 }
 
@@ -369,20 +372,37 @@ function toolAvailability(
   safe: PortraitAnalysis,
   target: PortraitTarget,
   schemaVersion: 3 | 4,
-  refined: boolean,
+  version: number,
 ): PortraitToolAvailability[] {
   const detail =
-    target.kind === 'face' && schemaVersion === 4 ? facialDetailMoves(target, safe.frame) : null;
-  const classic = refined && detail ? faceLandmarkMoves(target, safe.frame) : null;
+    target.kind === 'face' && schemaVersion === 4
+      ? facialDetailMoves(target, safe.frame, version >= 2)
+      : null;
+  const classic = version && detail ? faceLandmarkMoves(target, safe.frame) : null;
+  const contoursAvailable =
+    version >= 2 && target.kind === 'face'
+      ? !!portraitContour(target, safe.frame, (id) => Number(id === 'faceSlim'))
+      : null;
   const eyeAffineAvailable =
-    classic && featureTransforms(target, safe.frame, (id) => Number(id === 'eyeSize')).length > 0;
+    classic &&
+    featureTransforms(target, safe.frame, (id) => Number(id === 'eyeSize'), version >= 2).length >
+      0;
   const lipAffineAvailable =
-    classic && featureTransforms(target, safe.frame, (id) => Number(id === 'lipSize')).length > 0;
+    classic &&
+    featureTransforms(target, safe.frame, (id) => Number(id === 'lipWidth'), version >= 2).length >
+      0;
   return PORTRAIT_TOOLS.filter((t) => t.target === target.kind).map((tool) => {
     let reason: string | null = null;
     if (classic && (eyeTransformIds.includes(tool.id) || mouthTransformIds.includes(tool.id))) {
-      if (!(eyeTransformIds.includes(tool.id) ? eyeAffineAvailable : lipAffineAvailable))
-        reason = '该部位的可见轮廓不足，无法精确塑形。';
+      const usable = eyeTransformIds.includes(tool.id)
+        ? eyeAffineAvailable
+        : lipAffineAvailable ||
+          (version >= 2 &&
+            tool.id === 'lipSize' &&
+            (detail?.has('upperLip') || detail?.has('lowerLip')));
+      if (!usable) reason = '该部位的可见轮廓不足，无法精确塑形。';
+    } else if (contoursAvailable !== null && contourTools.some((id) => id === tool.id)) {
+      if (!contoursAvailable) reason = '该部位的可见轮廓不足，无法精确塑形。';
     } else if (detailFeatureIds.includes(tool.id as DetailFeatureId)) {
       reason =
         schemaVersion === 3
@@ -478,9 +498,16 @@ export function applyPortraitValues<T extends LayeredRecipe>(
     throw new Error('请重新识别当前人物后更新美颜效果。');
   if (requiresRefinedAnalysis(analysis, targetId, recipe) && Object.values(values).some(Boolean))
     throw new Error('请重新识别当前人物以继续编辑已保存的美颜效果。');
-  const refined = requested.upgradeFace || usesRefinedGeometry(analysis, targetId, recipe);
-  const unavailable = toolAvailability(analysis, target, recipe.schemaVersion, refined).find(
-    (t) => !t.available && (values[t.id] ?? 0) !== 0,
+  const version = requested.upgradeFace
+    ? CURRENT_PORTRAIT_GEOMETRY
+    : portraitGeometry(analysis, targetId, recipe);
+  const refined = version >= 1;
+  const coordinated = version >= 2;
+  const availability = toolAvailability(analysis, target, recipe.schemaVersion, version);
+  const previousValues = portraitValues(recipe, targetId);
+  const unavailable = availability.find(
+    ({ id, available }) =>
+      !available && (values[id] ?? 0) !== 0 && (!coordinated || values[id] !== previousValues[id]),
   );
   if (unavailable) throw new Error(unavailable.reason!);
   const makeupColors = portraitMakeupColors(recipe, targetId);
@@ -535,7 +562,7 @@ export function applyPortraitValues<T extends LayeredRecipe>(
     value,
     parameters: {
       ...values,
-      ...(refined ? { portraitGeometry: 1 } : {}),
+      ...(refined ? { portraitGeometry: version } : {}),
       ...(shade
         ? { makeupR: shade[0], makeupG: shade[1], makeupB: shade[2], makeupA: shade[3] }
         : {}),
@@ -568,8 +595,9 @@ export function applyPortraitValues<T extends LayeredRecipe>(
     paints: PaintLayerV3[] = [],
     warps: WarpStrokeV3[] = [],
     faceAnchors: FaceWarpAnchorV3[] = [],
-    retouches: RetouchRegionV4[] = [],
-    value = (id: string) => (values[id] ?? 0) / 100;
+    retouches: RetouchRegionV4[] = [];
+  const inactive = new Set(availability.filter((tool) => !tool.available).map((tool) => tool.id));
+  const value = (id: string) => (inactive.has(id) ? 0 : (values[id] ?? 0) / 100);
   const previousClassicWarps = recipe.warp.strokes.filter(
     (stroke) =>
       belongsTo(stroke, targetId) &&
@@ -915,10 +943,16 @@ export function applyPortraitValues<T extends LayeredRecipe>(
         createColorBlockV3({ adjustments: { exposure: value('sculpt') * 0.5 } }),
       );
     const radius = fw / short;
+    const contour = coordinated ? portraitContour(target, dims, value) : undefined;
     if (refined) {
-      faceAnchors.push(...featureTransforms(target, dims, value));
+      faceAnchors.push(...featureTransforms(target, dims, value, coordinated));
       for (const [id, moves] of faceLandmarkMoves(target, dims)) {
-        if (!value(id)) continue;
+        if (!value(id) || (coordinated && contourTools.some((key) => key === id))) continue;
+        let gain = 1;
+        if (coordinated && id === 'chin') gain = 0.44;
+        if (coordinated && id === 'smile')
+          gain = 0.44 - 0.16 * Math.max(Math.abs(value('lipSize')), Math.abs(value('lipWidth')));
+        if (coordinated && id === 'forehead') gain = 0.66;
         moves.forEach((move, index) =>
           warp(
             id + '-' + index,
@@ -926,10 +960,28 @@ export function applyPortraitValues<T extends LayeredRecipe>(
             move.from,
             move.to,
             move.radius,
-            value(id) * move.gain,
+            value(id) * move.gain * gain,
             true,
           ),
         );
+      }
+      if (coordinated && contour && value('faceSmall')) {
+        for (const [index, direction] of [
+          [10, 1],
+          [152, -1],
+        ] as const) {
+          const point = target.landmarks[index];
+          if (!point || !insideSource(point)) continue;
+          warp(
+            'faceSmall-' + index,
+            'push',
+            point,
+            axisOffset(point, 0, direction * fh * 0.012),
+            radius * 0.19,
+            value('faceSmall'),
+            true,
+          );
+        }
       }
     } else {
       const bilateral = (id: string, y: number, x: number, r: number) => {
@@ -1017,10 +1069,19 @@ export function applyPortraitValues<T extends LayeredRecipe>(
           );
       }
     }
-    if (recipe.schemaVersion === 4 && detailFeatureIds.some((id) => value(id) !== 0)) {
-      for (const [id, moves] of facialDetailMoves(target, dims)) {
+    const detailValue = (id: DetailFeatureId) => {
+      if (!coordinated) return value(id);
+      if (id === 'upperLip' || id === 'lowerLip')
+        return Math.tanh(value(id) * 0.93 + value('lipSize') * 0.81);
+      if (id === 'lowerLid')
+        return value(id) * (1 - 0.66 * Math.max(0, value('eyeSize'), value('eyeHeight')));
+      if (id === 'irisScale') return value(id) * (1 - 0.61 * Math.max(0, value('eyeSize')));
+      return value(id);
+    };
+    if (recipe.schemaVersion === 4 && detailFeatureIds.some((id) => detailValue(id) !== 0)) {
+      for (const [id, moves] of facialDetailMoves(target, dims, coordinated)) {
         if (
-          !value(id) ||
+          !detailValue(id) ||
           (refined && (eyeTransformIds.includes(id) || mouthTransformIds.includes(id)))
         )
           continue;
@@ -1031,13 +1092,13 @@ export function applyPortraitValues<T extends LayeredRecipe>(
             move.from,
             move.to,
             move.radius,
-            value(id) * move.gain,
+            detailValue(id) * move.gain,
             true,
           ),
         );
       }
     }
-    if (faceAnchors.length) {
+    if (faceAnchors.length || contour) {
       const faceScale = Math.min(fw, fh) / short;
       // Stable central features anchor the face while its outer silhouette is edited.
       // A direct eye, nose or lip adjustment releases only its own restraint.
@@ -1048,9 +1109,15 @@ export function applyPortraitValues<T extends LayeredRecipe>(
       };
       const restraint = (names: string[]) =>
         1 - Math.min(1, Math.max(0, ...names.map((name) => Math.abs(value(name)))) * 3.4);
-      const eyeRestraint = restraint(['faceSmall', 'lowerLid', 'irisScale']);
-      const noseRestraint = restraint(['faceSmall', 'noseWidth', 'noseTip', 'noseLength']);
-      const lipRestraint = restraint(['faceSmall', 'upperLip', 'lowerLip', 'smile']);
+      const smallFaceRestraint = coordinated ? [] : ['faceSmall'];
+      const eyeRestraint = restraint([...smallFaceRestraint, 'lowerLid', 'irisScale']);
+      const noseRestraint = restraint([
+        ...smallFaceRestraint,
+        'noseWidth',
+        'noseTip',
+        'noseLength',
+      ]);
+      const lipRestraint = restraint([...smallFaceRestraint, 'upperLip', 'lowerLip', 'smile']);
       for (const [point, strength] of [
         [le, eyeRestraint],
         [re, eyeRestraint],
@@ -1064,7 +1131,20 @@ export function applyPortraitValues<T extends LayeredRecipe>(
       }
       for (const index of [61, 291, 13, 14]) {
         const point = target.landmarks[index];
-        if (point) pin(point, faceScale * 0.069, lipRestraint * 0.76);
+        if (point)
+          pin(
+            point,
+            faceScale * (coordinated ? 0.038 : 0.069),
+            (coordinated && (index === 13 || index === 14) ? 1 : lipRestraint) * 0.76,
+          );
+      }
+      if (
+        coordinated &&
+        (value('lipSize') || value('upperLip') || value('lowerLip') || value('smile'))
+      ) {
+        for (const [i, point] of (target.contours.innerLips ?? []).entries()) {
+          if (i % 3 === 0) pin(point, faceScale * 0.026, 1);
+        }
       }
       for (const index of [127, 356, 172, 397]) {
         const point = target.landmarks[index];
@@ -1079,8 +1159,9 @@ export function applyPortraitValues<T extends LayeredRecipe>(
         id: prefix + 'face-field',
         ...(accessory ? { guardId } : {}),
         origin: provenance('face-field', 1),
-        algorithm: 'face-field-v1',
+        algorithm: coordinated ? 'face-field-v2' : 'face-field-v1',
         anchors: faceAnchors,
+        ...(contour ? { contour } : {}),
         resampling: 'bounded-cubic-v1',
         mode: 'push',
         from: c,

@@ -1,5 +1,6 @@
 import type { Dimensions, Point, WarpStrokeV3 } from '@ai-xiutu/editor';
-import { center } from './geometry.js';
+import { center, unit } from './geometry.js';
+import { apertureWeight } from './contour-shaping.js';
 import type { PortraitTarget } from './types.js';
 
 export const detailFeatureIds = [
@@ -17,7 +18,11 @@ type Move = { from: Point; to: Point; radius: number; mode: WarpStrokeV3['mode']
 const visible = (p: Point) => p.x >= 0 && p.x <= 1 && p.y >= 0 && p.y <= 1;
 
 /** Derive independent motion supports from the observed outlines in source pixels. */
-export function facialDetailMoves(target: PortraitTarget, dimensions: Dimensions) {
+export function facialDetailMoves(
+  target: PortraitTarget,
+  dimensions: Dimensions,
+  coordinated = false,
+) {
   const result = new Map<DetailFeatureId, Move[]>();
   const { width, height } = dimensions;
   const contours = target.contours;
@@ -85,7 +90,18 @@ export function facialDetailMoves(target: PortraitTarget, dimensions: Dimensions
     const lidSupport = Math.min(e.width * 0.3, e.height * 0.82);
     move('eyeHeight', e.top, 0, -e.height * 0.23, lidSupport);
     move('eyeHeight', e.bottom, 0, e.height * 0.23, lidSupport);
-    move('lowerLid', e.bottom, 0, e.height * 0.27, lidSupport);
+    const aperture = coordinated ? apertureWeight(e.height / e.width) : 1;
+    if (aperture >= 0.04) {
+      move(
+        'lowerLid',
+        e.bottom,
+        0,
+        e.height * (coordinated ? 0.14 : 0.27),
+        lidSupport,
+        'push',
+        aperture,
+      );
+    }
     if (brow?.length) {
       const b = extent(brow),
         origin = center(brow);
@@ -138,7 +154,16 @@ export function facialDetailMoves(target: PortraitTarget, dimensions: Dimensions
         irisRadius < e.width * 0.42 &&
         clearance >= irisRadius * 0.65
       )
-        move('irisScale', pupil, 0, 0, Math.min(clearance * 0.95, irisRadius * 1.7), 'bulge', 0.48);
+        if (aperture >= 0.04)
+          move(
+            'irisScale',
+            pupil,
+            0,
+            0,
+            Math.min(clearance * 0.95, irisRadius * 1.7),
+            'bulge',
+            (coordinated ? 0.29 : 0.48) * aperture,
+          );
       break;
     }
   }
@@ -150,8 +175,45 @@ export function facialDetailMoves(target: PortraitTarget, dimensions: Dimensions
     move('lipWidth', lip.right, lip.width * 0.08, 0, corners);
     const upper = inner ? v(inner.top) - v(lip.top) : lip.height * 0.35;
     const lower = inner ? v(lip.bottom) - v(inner.bottom) : lip.height * 0.35;
-    move('upperLip', lip.top, 0, -upper * 0.4, upper * 0.88);
-    move('lowerLip', lip.bottom, 0, lower * 0.4, lower * 0.88);
+    if (coordinated) {
+      // Preserve the observed oral opening and the original smile at the corners.
+      // Move the vermilion border in proportion to its distance from the inner lip.
+      const along = u(lip.right) - u(lip.left);
+      const faceAxisCenter = (u(lip.left) + u(lip.right)) / 2;
+      const mouthLevel = v(center(contours.innerLips?.length ? contours.innerLips : lips));
+      for (const fraction of [-0.29, 0, 0.29]) {
+        const x = faceAxisCenter + fraction * along;
+        const slice = lips.filter((point) => Math.abs(u(point) - x) < along * 0.13);
+        if (slice.length < 2) continue;
+        const outer = extent(slice);
+        const inside = contours.innerLips?.filter((point) => Math.abs(u(point) - x) < along * 0.15);
+        const aperture = inside?.length ? extent(inside) : null;
+        const topGap = (aperture ? v(aperture.top) : mouthLevel) - v(outer.top);
+        const bottomGap = v(outer.bottom) - (aperture ? v(aperture.bottom) : mouthLevel);
+        const taper = 1 - unit(Math.abs(fraction) * 1.6);
+        move(
+          'upperLip',
+          outer.top,
+          0,
+          -topGap * 0.23,
+          Math.min(topGap * 0.95, along * 0.16),
+          'push',
+          taper,
+        );
+        move(
+          'lowerLip',
+          outer.bottom,
+          0,
+          bottomGap * 0.23,
+          Math.min(bottomGap * 0.95, along * 0.16),
+          'push',
+          taper,
+        );
+      }
+    } else {
+      move('upperLip', lip.top, 0, -upper * 0.4, upper * 0.88);
+      move('lowerLip', lip.bottom, 0, lower * 0.4, lower * 0.88);
+    }
   }
   return result;
 }

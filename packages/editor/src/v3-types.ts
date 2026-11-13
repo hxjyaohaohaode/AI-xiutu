@@ -164,11 +164,30 @@ export interface FaceWarpAnchorV3 {
   };
 }
 
+export interface FaceContourV3 {
+  center: Point;
+  /** Clockwise source-pixel angle, with the perpendicular axis pointing toward the chin. */
+  axis: number;
+  /** All row measurements are in source short-edge units from center.
+   * Positive shifts move the corresponding side toward the center of its row. */
+  rows: {
+    y: number;
+    left: number;
+    right: number;
+    leftCore: number;
+    rightCore: number;
+    leftShift: number;
+    rightShift: number;
+  }[];
+}
+
 export interface WarpStrokeV3 {
   /** Omitted preserves the published displacement field. New flows integrate a smooth velocity. */
-  algorithm?: 'flow-v1' | 'flow-v2' | 'face-field-v1' | 'restore-v1';
-  /** Only face-field-v1 reads these source-space constraints. */
+  algorithm?: 'flow-v1' | 'flow-v2' | 'face-field-v1' | 'face-field-v2' | 'restore-v1';
+  /** Source-space constraints used by the face fields. */
   anchors?: FaceWarpAnchorV3[];
+  /** Original and requested side outlines for face-field-v2. */
+  contour?: FaceContourV3;
   resampling?: 'bounded-cubic-v1';
   guardId?: string;
   origin?: OperationOriginV3;

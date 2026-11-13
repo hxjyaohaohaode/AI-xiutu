@@ -34,6 +34,7 @@ import type {
   RegionGroupV3,
   FineTransformV3,
   FaceWarpAnchorV3,
+  FaceContourV3,
   OpticsV3,
   SelectionMaskV3,
   PaintLayerV3,
@@ -165,6 +166,56 @@ export function integer(
 function point(v: unknown, path: string, errors: string[]): Point {
   const r = record(v, ['x', 'y'], path, errors);
   return { x: number(r.x, 0, 1, `${path}.x`, errors), y: number(r.y, 0, 1, `${path}.y`, errors) };
+}
+
+function readFaceContour(value: unknown, path: string, errors: string[]): FaceContourV3 {
+  const r = record(value, ['center', 'axis', 'rows'], path, errors);
+  const rows = arrayData(r.rows, 3, 24, path + '.rows', errors).map((value, index) => {
+    const at = path + '.rows[' + index + ']';
+    const row = record(
+      value,
+      ['y', 'left', 'right', 'leftCore', 'rightCore', 'leftShift', 'rightShift'],
+      at,
+      errors,
+    );
+    const left = number(row.left, -2, 2, at + '.left', errors);
+    const right = number(row.right, -2, 2, at + '.right', errors);
+    if (right - left < 0.000001) errors.push(at + ': requires an ordered left/right extent');
+    const span = Math.max(0, right - left);
+    const leftCore = number(
+      row.leftCore,
+      left + span * 0.15,
+      right - span * 0.15,
+      at + '.leftCore',
+      errors,
+    );
+    const rightCore = number(
+      row.rightCore,
+      leftCore,
+      right - span * 0.15,
+      at + '.rightCore',
+      errors,
+    );
+    const limit = span * 0.07;
+    return {
+      y: number(row.y, -2, 2, at + '.y', errors),
+      left,
+      right,
+      leftCore,
+      rightCore,
+      leftShift: number(row.leftShift, -limit, limit, at + '.leftShift', errors),
+      rightShift: number(row.rightShift, -limit, limit, at + '.rightShift', errors),
+    };
+  });
+  if (rows.some((row, i) => i > 0 && row.y - rows[i - 1]!.y < 0.000001))
+    errors.push(path + '.rows: requires strictly increasing coordinates');
+  if ([rows[0], rows.at(-1)].some((row) => row && (row.leftShift || row.rightShift)))
+    errors.push(path + '.rows: the first and last rows must have zero shift');
+  return {
+    center: point(r.center, path + '.center', errors),
+    axis: number(r.axis, -180, 180, path + '.axis', errors),
+    rows,
+  };
 }
 function recordOrigin(
   v: unknown,
@@ -682,6 +733,7 @@ export function parseRecipeV3(input: unknown): RecipeV3 {
             ...(v && typeof v === 'object' && Object.hasOwn(v, 'resampling') ? ['resampling'] : []),
             ...(v && typeof v === 'object' && Object.hasOwn(v, 'guardId') ? ['guardId'] : []),
             ...(v && typeof v === 'object' && Object.hasOwn(v, 'anchors') ? ['anchors'] : []),
+            ...(v && typeof v === 'object' && Object.hasOwn(v, 'contour') ? ['contour'] : []),
           ],
           p,
           errors,
@@ -697,7 +749,8 @@ export function parseRecipeV3(input: unknown): RecipeV3 {
           : Object.hasOwn(r, 'algorithm') &&
             r.algorithm !== 'flow-v1' &&
             r.algorithm !== 'flow-v2' &&
-            r.algorithm !== 'face-field-v1'
+            r.algorithm !== 'face-field-v1' &&
+            r.algorithm !== 'face-field-v2'
       )
         errors.push(`${p}.algorithm: unsupported warp algorithm`);
       if (Object.hasOwn(r, 'resampling') && r.resampling !== 'bounded-cubic-v1')
@@ -706,12 +759,18 @@ export function parseRecipeV3(input: unknown): RecipeV3 {
         ? identifier(r.guardId, `${p}.guardId`, errors)
         : undefined;
       if (guardId && !guardIds.has(guardId)) errors.push(`${p}.guardId: unknown warp guard`);
-      const faceField = r.algorithm === 'face-field-v1';
+      const faceFieldV2 = r.algorithm === 'face-field-v2';
+      const faceField = r.algorithm === 'face-field-v1' || faceFieldV2;
+      if (!faceFieldV2 && r.contour !== undefined)
+        errors.push(p + '.contour: requires face-field-v2');
+      const contour =
+        faceFieldV2 && Object.hasOwn(r, 'contour')
+          ? readFaceContour(r.contour, p + '.contour', errors)
+          : undefined;
       if (faceField && r.mode !== 'push') errors.push(`${p}.mode: face field requires push`);
-      if (!faceField && r.anchors !== undefined)
-        errors.push(`${p}.anchors: requires face-field-v1`);
+      if (!faceField && r.anchors !== undefined) errors.push(`${p}.anchors: requires a face field`);
       const anchors = faceField
-        ? arrayData(r.anchors, 1, 112, `${p}.anchors`, errors).map(
+        ? arrayData(r.anchors, contour ? 0 : 1, 112, `${p}.anchors`, errors).map(
             (value, index): FaceWarpAnchorV3 => {
               const path = `${p}.anchors[${index}]`;
               const a = record(value, ['from', 'to', 'radius', 'strength', 'mode'], path, errors, [
@@ -759,12 +818,14 @@ export function parseRecipeV3(input: unknown): RecipeV3 {
         ...(r.algorithm === 'flow-v1' ||
         r.algorithm === 'flow-v2' ||
         r.algorithm === 'face-field-v1' ||
+        r.algorithm === 'face-field-v2' ||
         r.algorithm === 'restore-v1'
           ? { algorithm: r.algorithm }
           : {}),
         ...(Object.hasOwn(r, 'resampling') ? { resampling: 'bounded-cubic-v1' as const } : {}),
         ...(guardId ? { guardId } : {}),
         ...(anchors ? { anchors } : {}),
+        ...(contour ? { contour } : {}),
         mode: r.mode as WarpStrokeV3['mode'],
         from: point(r.from, `${p}.from`, errors),
         to: point(r.to, `${p}.to`, errors),

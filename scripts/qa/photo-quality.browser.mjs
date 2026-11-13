@@ -513,16 +513,11 @@ try {
         const slim = applyPortraitValues(createRecipeV4(), analysis, target.id, { faceSlim: 55 });
         assert.equal(slim.warp.strokes.length, 1);
         const field = slim.warp.strokes[0];
-        assert.equal(field.algorithm, 'face-field-v1');
-        const moving = field.anchors.filter((point) => point.mode !== 'pin');
-        assert.ok(moving.length >= 3);
+        assert.equal(field.algorithm, 'face-field-v2');
+        assert.ok(field.contour.rows.length >= 12);
         assert.ok(
-          moving.every((anchor) =>
-            target.landmarks.some(
-              (point) => point.x === anchor.from.x && point.y === anchor.from.y,
-            ),
-          ),
-          'face slimming follows observed mesh landmarks',
+          field.contour.rows.some(({ leftShift, rightShift }) => leftShift > 0 || rightShift > 0),
+          'the width profile responds to the single face slimming control',
         );
         const shaped = renderEditorRecipe(image, slim);
         assert.deepEqual(renderEditorRecipeTiled(image, slim, { tileSize: 61 }), shaped);
@@ -536,35 +531,74 @@ try {
           target: target.id,
           tool: 'faceSlim',
           state: 'passed',
-          anchors: moving.length,
+          contourRows: field.contour.rows.length,
           mseChange: mse(image, shaped),
         });
         if (
           target === analysis.targets.find((item) => item.kind === 'face') &&
           ['mediapipe-portrait', 'astronaut'].includes(source.name)
         ) {
-          const forward = (params) => {
-            const recipe = applyPortraitValues(createRecipeV4(), analysis, target.id, params);
-            return compileEditorCoordinateMap(image, recipe, image).toContentOutput;
-          };
           const distance = (a, b) =>
             Math.hypot((a.x - b.x) * image.width, (a.y - b.y) * image.height);
           const landmarks = target.landmarks;
+          const forward = (params) => {
+            const enabled = Object.fromEntries(
+              Object.entries(params).filter(([id]) => available.get(id)?.available),
+            );
+            const recipe = applyPortraitValues(createRecipeV4(), analysis, target.id, enabled);
+            return compileEditorCoordinateMap(image, recipe, image).toContentOutput;
+          };
           const ratio = (map, a, b) =>
             distance(map(landmarks[a]), map(landmarks[b])) / distance(landmarks[a], landmarks[b]);
           const contour = { faceSlim: 70, vFace: 70 };
           const combined = forward({ ...contour, eyeSize: 65, lipSize: 45, smooth: 50 });
-          const contourOnly = forward(contour);
+          const singleSlim = forward({ faceSlim: 70 });
           const singleV = forward({ vFace: 70 });
-          const bigEyes = forward({ eyeSize: 65 });
+          const singleEye = forward({ eyeSize: 65 });
+          const strong = forward({
+            faceSlim: 100,
+            faceNarrow: 100,
+            vFace: 100,
+            jaw: 100,
+            faceSmall: 100,
+            chin: 100,
+            eyeSize: 100,
+            eyeWidth: 100,
+            eyeHeight: 100,
+            lowerLid: 100,
+            irisScale: 100,
+            lipSize: 100,
+            lipWidth: 100,
+            upperLip: 100,
+            lowerLip: 100,
+            smile: 100,
+            smooth: 100,
+          });
           const cheek = ratio(combined, 234, 454);
           const jaw = ratio(combined, 150, 379);
           const aperture = ratio(combined, 159, 145);
-          assert.ok(cheek < 0.97 && Math.abs(cheek - ratio(contourOnly, 234, 454)) < 0.008);
-          assert.ok(jaw < 0.96 && Math.abs(jaw - ratio(singleV, 150, 379)) < 0.02);
-          assert.ok(aperture > 1.06 && Math.abs(aperture - ratio(bigEyes, 159, 145)) < 0.02);
-          const mouth = ratio(contourOnly, 61, 291);
-          assert.ok(Math.abs(mouth - 1) < 0.005);
+          const strongJaw = ratio(strong, 150, 379);
+          const mouthOpening = ratio(strong, 13, 14);
+          const strongSmileToJaw = ratio(strong, 61, 291) / strongJaw;
+          assert.ok(ratio(singleSlim, 234, 454) < 0.991, 'single cheek narrowing stays visible');
+          assert.ok(ratio(singleV, 150, 379) < 0.989, 'single lower-jaw narrowing stays visible');
+          assert.ok(ratio(singleEye, 159, 145) > 1.015, 'a clear eye opening still responds');
+          assert.ok(cheek > 0.955 && cheek < 0.992 && jaw > 0.947 && jaw < 0.993);
+          assert.ok(aperture > 1.015 && aperture < 1.105);
+          assert.ok(strongJaw > 0.9 && strongJaw < 0.995);
+          assert.ok(
+            Math.abs(mouthOpening - 1) < 0.035,
+            'lip thickness and smile retain the original mouth opening',
+          );
+          assert.ok(
+            strongSmileToJaw < 1.17,
+            'simultaneous edits preserve smile scale relative to the jaw',
+          );
+          assert.ok(
+            distance(strong(landmarks[152]), landmarks[152]) <
+              0.026 * distance(landmarks[234], landmarks[454]),
+            'small face and chin together keep the chin within the shape budget',
+          );
           report.cases.push({
             photo: source.name,
             target: target.id,
@@ -573,7 +607,9 @@ try {
             cheek,
             jaw,
             aperture,
-            mouth,
+            strongJaw,
+            mouthOpening,
+            strongSmileToJaw,
           });
         }
         if (shapeTiles.length === 1) {
@@ -647,12 +683,13 @@ try {
             state: 'passed',
             beforeRelativeDisplacement: before,
             afterRelativeDisplacement: after,
+            contourRows: refined.warp.strokes[0].contour?.rows.length,
             movingAnchors: refined.warp.strokes[0].anchors.filter((anchor) => anchor.mode !== 'pin')
               .length,
           });
           shapeTiles.push(
             { label: 'Previous combined retouch', image: renderEditorRecipe(image, baseline) },
-            { label: 'Coordinated retouch', image: output },
+            { label: 'Coordinated contour and features', image: output },
           );
         }
       }
